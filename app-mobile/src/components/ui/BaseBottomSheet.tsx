@@ -47,8 +47,10 @@ import BottomSheet, {
   BottomSheetSectionList,
   BottomSheetTextInput,
   BottomSheetView,
+  useBottomSheetTimingConfigs,
   type BottomSheetBackdropProps,
 } from '@gorhom/bottom-sheet';
+import { Easing } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 // META-ORCH-0991 (sheet rework — Bug 1): GestureHandlerRootView must wrap the
 // sheet INSIDE the RN <Modal> window so gorhom's pan-down-to-dismiss
@@ -338,6 +340,21 @@ function BaseBottomSheetComponent(props: BaseBottomSheetProps): React.ReactEleme
   } = props;
 
   const effectiveBackdropOpacity = useEffectiveBackdropOpacity(theme, backdropOpacity);
+
+  // ORCH-1064: DETERMINISTIC timing open/close, replacing gorhom's default SPRING.
+  // Replay 6a970e63 + 1d7caee1 (release, on-device) proved the sheet STALLED
+  // mid-animation — stuck half-open, or "didn't close fully" — leaving its dimmed
+  // backdrop capturing every touch (app frozen, no crash/hang/error). A reanimated
+  // SPRING can settle/stall partway when interrupted on a fast release build; a
+  // TIMING animation always interpolates fully to the target snap index, so the
+  // sheet can never stall partway and a CLOSE always reaches index -1 (which fires
+  // onClose → the wrapInRNModal RN <Modal> actually unmounts instead of lingering
+  // half-drawn). This supersedes the META-ORCH-0991 "stock default spring" choice
+  // for correctness (the freeze outranks the spring feel).
+  const sheetAnimationConfigs = useBottomSheetTimingConfigs({
+    duration: 280,
+    easing: Easing.out(Easing.cubic),
+  });
 
   // ORCH-1064 (replay-confirmed "half-open stall" freeze, release-only): the
   // declarative `index={visible ? initialIndex : -1}` prop on <BottomSheet>
@@ -686,6 +703,7 @@ function BaseBottomSheetComponent(props: BaseBottomSheetProps): React.ReactEleme
     <BottomSheet
       ref={sheetRef}
       index={visible ? initialIndex : -1}
+      animationConfigs={sheetAnimationConfigs}
       snapPoints={snapPoints}
       enableDynamicSizing={enableDynamicSizing}
       enablePanDownToClose={enablePanDownToClose}
