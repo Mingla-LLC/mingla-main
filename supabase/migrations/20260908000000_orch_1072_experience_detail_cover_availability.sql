@@ -33,8 +33,14 @@
 -- Capped to the next 12 future occurrences (end_at > p_now) so the payload stays
 -- bounded for never-ends/recurring experiences.
 --
--- Idempotent CREATE OR REPLACE; the trailing `;` ends the function body BEFORE
--- the GRANT (a prior ORCH broke CI migration-baseline by omitting it).
+-- DROP-then-CREATE is REQUIRED (not a bare CREATE OR REPLACE): this migration
+-- ADDS columns to the function's RETURNS TABLE, and Postgres rejects a
+-- CREATE OR REPLACE that changes an existing function's OUT/return-table columns
+-- ("cannot change return type of existing function" —
+-- https://www.postgresql.org/docs/current/sql-createfunction.html). The DROP +
+-- CREATE run inside the migration's single transaction, so service-role callers
+-- see no live gap. The trailing `;` ends the function body BEFORE the GRANT (a
+-- prior ORCH broke CI migration-baseline by omitting it).
 --
 -- DOCS (per COMMS-0003 external-API-docs-verified — Postgres/Supabase):
 --   jsonb_agg / jsonb_build_object:
@@ -54,7 +60,10 @@
 -- DO NOT run `supabase db push` from this skill — the orchestrator applies it
 -- after the safe-migration protocol. Prefix 20260908000000 re-checked free
 -- across all active worktrees + origin/main (max prior = 20260907000000,
--- ORCH-1070). Additive only: CREATE OR REPLACE FUNCTION; no destructive DDL.
+-- ORCH-1070). Additive widening of an existing RPC's RETURNS TABLE; the only
+-- DDL is DROP FUNCTION (the same signature) + CREATE FUNCTION + GRANT.
+
+DROP FUNCTION IF EXISTS public.pg_eligible_experiences_for_deck(double precision, double precision, double precision, text[], timestamptz, uuid[], integer);
 
 CREATE OR REPLACE FUNCTION public.pg_eligible_experiences_for_deck(p_lat double precision, p_lng double precision, p_radius_m double precision, p_intents text[], p_now timestamp with time zone, p_exclude_ids uuid[], p_limit integer)
  RETURNS TABLE(event_id uuid, event_slug text, title text, experience_intents text[], tagline text, description text, cover_media_url text, cover_media_type text, currency text, timezone text, brand_id uuid, brand_name text, brand_slug text, brand_logo_url text, master_date_utc timestamp with time zone, master_end_at_utc timestamp with time zone, total_price_cents integer, stops jsonb, upcoming_occurrences jsonb)
