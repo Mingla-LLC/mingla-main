@@ -25,7 +25,19 @@
 // Honest-unknown rule (Constitution #9, LOCKED): genuinely no hours data
 // (no periods, no _periods, no day text) → assume OPEN. Curated cards are
 // precious; never fabricate "closed" for a venue we simply lack data on.
+//
+// ORCH-1068 [business-authored venues render on deck]: business venues persist
+// hours as a top-level array [{weekday(0=Mon),isClosed,openTime,closeTime}].
+// isStopOpenAtHour gains an array branch (after the honest-unknown check, before
+// the `.periods` branch) that converts via businessHoursToGoogleOpeningHours
+// (day = (weekday+1)%7) so a curated stop that is a business venue is gated
+// correctly — open during its hours, closed on its explicit closed days.
 // ─────────────────────────────────────────────────────────────────────────────
+
+import {
+  businessHoursToGoogleOpeningHours,
+  isBusinessHoursArray,
+} from './businessHoursToGoogle.ts';
 
 /** Parse a single time range like "9:00 AM – 5:00 PM" or "5:00 – 9:30 PM" (Google PM-only format).
  *  Returns { open, close } in fractional 24h hours, or null if unparseable.
@@ -165,6 +177,16 @@ export function isStopOpenAtHour(stop: any, hour: number, dayOfWeek: number): bo
   // 2. No data → assume open (honest-unknown).
   const oh = stop.openingHours;
   if (!oh || typeof oh !== 'object') return true;
+
+  // 2b. ORCH-1068 — business-authored array shape [{weekday(0=Mon),isClosed,…}].
+  // An array with ≥1 explicit row is real data: convert to Google-day periods and
+  // evaluate. An array whose only data for `dayOfWeek` is a closed/absent day
+  // correctly returns false on that day (not honest-unknown — the closure is
+  // explicit). An all-empty/all-unparseable array yields periods:[] → false on
+  // every day (the rows existed but carried no usable hours).
+  if (isBusinessHoursArray(oh)) {
+    return evalPeriods(businessHoursToGoogleOpeningHours(oh).periods, dayOfWeek, hour);
+  }
 
   // 3. Path A — canonical Google v1 `periods` (D-1 FIX: prior reader skipped this).
   if (Array.isArray(oh.periods) && oh.periods.length > 0) {
