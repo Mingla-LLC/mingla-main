@@ -132,6 +132,10 @@ export const NAV_GROUPS = [
       // counterpart to the seeding/place tooling.
       { id: "launch-cities",             label: "Launch Cities",      icon: "Rocket" },
       { id: "signals",                   label: "Signal Library",     icon: "Activity" },
+      // ORCH-1066: deck score tuner — search a live venue → set/pin its 16
+      // category scores + preview its deck card + read its rank. Serving/ranking
+      // tool, sits next to Signal Library + Intelligence Trial.
+      { id: "deck-tuner",                label: "Deck tuner",         icon: "SlidersHorizontal" },
       { id: "place-intelligence-trial",  label: "Intelligence Trial", icon: "Microscope" },
       { id: "email",                     label: "Email",              icon: "Mail" },
       // ORCH-1045: read-only list of "Get Beta Access" leads from the organiser

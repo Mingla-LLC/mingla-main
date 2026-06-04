@@ -8,6 +8,9 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { computeScore, type PlaceForScoring, type SignalConfig } from '../_shared/signalScorer.ts';
+// ORCH-1066 — sticky-through-approval: shared admin-override marker predicates so
+// the scorer and its regression test agree on exactly one definition.
+import { isAdminOverridden } from '../_shared/stickyOverride.ts';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL') ?? '';
 const SUPABASE_SERVICE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
@@ -276,6 +279,67 @@ serve(async (req: Request) => {
       );
     }
 
+    // ── ORCH-1066 STICKY-THROUGH-APPROVAL ──────────────────────────────────────
+    // An admin can SET / PIN a place's signal score via the deck-score-tuner RPCs
+    // (admin_set_place_signal_score / admin_pin_place_to_top) — and META-ORCH-1062
+    // can override via admin_apply_score_override. Those writes stamp
+    // place_scores.contributions with an admin-override marker (_admin_set /
+    // _admin_pin / _admin_override). The approval re-score loop
+    // (admin-review-venue-claim runApproveGoLive) invokes THIS function per signal,
+    // which would re-UPSERT the computed score (clobbering the admin's value) OR,
+    // if the AI vetoes, DELETE the admin's row. To keep an admin pin/set sticky
+    // through approval, build the set of (place_id) for THIS signal whose committed
+    // contributions carry an admin marker, then (a) drop those from the write batch
+    // and (b) drop those from the veto-delete batch. The admin score wins.
+    // Authority: I-1066-ADMIN-OVERRIDE-STICKY-THROUGH-RESCORE (DRAFT→ACTIVE on close).
+    const protectedIds = new Set<string>();
+    let stickySkipped = 0;
+    {
+      // Union of every place_id we'd touch this run (upsert OR veto-delete).
+      const touchedIds = Array.from(
+        new Set<string>([...writes.map((w) => w.place_id), ...vetoedPlaceIds]),
+      );
+      for (let i = 0; i < touchedIds.length; i += BATCH_SIZE) {
+        const idChunk = touchedIds.slice(i, i + BATCH_SIZE);
+        if (idChunk.length === 0) continue;
+        const { data: existingRows, error: existErr } = await supabaseAdmin
+          .from('place_scores')
+          .select('place_id, contributions')
+          .eq('signal_id', signalId)
+          .in('place_id', idChunk);
+        if (existErr) {
+          // Fail-safe: if we cannot read existing overrides, do NOT proceed with a
+          // re-score that might clobber admin pins. Surface the error (Constitution
+          // #5 — no silent failure) rather than risk overwriting a sticky score.
+          console.error('[run-signal-scorer] sticky pre-read failed:', existErr.message);
+          return new Response(
+            JSON.stringify({
+              error: `sticky override pre-read failed: ${existErr.message}`,
+              partial_summary: summary,
+            }),
+            { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+          );
+        }
+        for (const row of (existingRows ?? []) as Array<{ place_id: string; contributions: Record<string, unknown> | null }>) {
+          if (isAdminOverridden(row.contributions)) {
+            protectedIds.add(row.place_id);
+          }
+        }
+      }
+      if (protectedIds.size > 0) {
+        const beforeWrites = writes.length;
+        for (let i = writes.length - 1; i >= 0; i--) {
+          if (protectedIds.has(writes[i].place_id)) writes.splice(i, 1);
+        }
+        stickySkipped = beforeWrites - writes.length;
+        // Also protect admin rows from veto-deletion.
+        for (let i = vetoedPlaceIds.length - 1; i >= 0; i--) {
+          if (protectedIds.has(vetoedPlaceIds[i])) vetoedPlaceIds.splice(i, 1);
+        }
+        console.log(`[run-signal-scorer] sticky: protected ${protectedIds.size} admin-overridden place(s) for signal=${signalId} (write-skipped ${stickySkipped})`);
+      }
+    }
+
     // UPSERT in chunks of 500 — ON CONFLICT (place_id, signal_id) DO UPDATE
     const now = new Date().toISOString();
     let written = 0;
@@ -335,7 +399,7 @@ serve(async (req: Request) => {
     console.log(`[run-signal-scorer] signal=${signalId} scope=${scope} scored=${summary.scored_count} ineligible=${summary.ineligible_count} vetoed=${summary.vetoed_count} ai_blended=${summary.ai_blended_count} written=${written} veto_deleted=${deleted} elapsed_ms=${elapsed}`);
 
     return new Response(
-      JSON.stringify({ success: true, ...summary, written, veto_deleted: deleted, duration_ms: elapsed }),
+      JSON.stringify({ success: true, ...summary, written, veto_deleted: deleted, sticky_skipped: stickySkipped, duration_ms: elapsed }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
     );
 
