@@ -25,6 +25,8 @@ import {
 
 import {
   accent,
+  radius,
+  semantic,
   spacing,
   text as textTokens,
   typography,
@@ -99,9 +101,13 @@ export const BusinessTodoToggle: React.FC<BusinessTodoToggleProps> = ({
               onPress={() => onAction(todo)}
               accessibilityRole="button"
               accessibilityLabel={
-                todo.sublabel !== undefined
-                  ? `${todo.label}. ${todo.sublabel}`
-                  : todo.label
+                todo.badge !== undefined
+                  ? todo.sublabel !== undefined
+                    ? `${todo.label}, ${todo.badge}. ${todo.sublabel}`
+                    : `${todo.label}, ${todo.badge}`
+                  : todo.sublabel !== undefined
+                    ? `${todo.label}. ${todo.sublabel}`
+                    : todo.label
               }
               style={[styles.row, index === 0 && styles.rowFirst]}
               testID={testID !== undefined ? `${testID}-row-${todo.id}` : undefined}
@@ -112,6 +118,21 @@ export const BusinessTodoToggle: React.FC<BusinessTodoToggleProps> = ({
                   <Text style={styles.rowSublabel}>{todo.sublabel}</Text>
                 ) : null}
               </View>
+              {/* ORCH-1064 — worded count pill (e.g. "3 to fix") for the
+                  venue-claim-feedback row; decorative-within-the-button (count is
+                  already folded into the row's accessibilityLabel above). */}
+              {todo.badge !== undefined ? (
+                <View
+                  style={styles.badge}
+                  testID={
+                    testID !== undefined
+                      ? `${testID}-row-${todo.id}-badge`
+                      : undefined
+                  }
+                >
+                  <Text style={styles.badgeText}>{todo.badge}</Text>
+                </View>
+              ) : null}
               <Icon name="chevR" size={16} color={textTokens.tertiary} />
             </Pressable>
           ))}
@@ -169,6 +190,21 @@ const styles = StyleSheet.create({
     fontSize: typography.caption.fontSize,
     color: textTokens.secondary,
     marginTop: 2,
+  },
+  // ORCH-1064 — "N to fix" count pill (matches the VenueClaimStatusBanner badge:
+  // worded, warning-tinted, finite-punch-list framing — not an anxiety dot).
+  badge: {
+    borderRadius: radius.full,
+    backgroundColor: semantic.warning,
+    paddingHorizontal: spacing.sm,
+    height: 22,
+    minWidth: 18,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  badgeText: {
+    ...typography.micro,
+    color: "#1a1206",
   },
 });
 

@@ -122,6 +122,10 @@ export const formatTermination = (rule: RecurrenceRule): string => {
     const n = rule.termination.count;
     return n === 1 ? "1 occurrence" : `${n} occurrences`;
   }
+  // META-ORCH-1059 — open-ended recurrence.
+  if (rule.termination.kind === "never") {
+    return "Never ends";
+  }
   const d = parseIso(rule.termination.until);
   return `Until ${d.toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}`;
 };

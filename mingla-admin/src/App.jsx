@@ -18,6 +18,7 @@ import { SubscriptionManagementPage } from "./pages/SubscriptionManagementPage";
 import { SignalLibraryPage } from "./pages/SignalLibraryPage";
 import { PlaceIntelligenceTrialPage } from "./pages/PlaceIntelligenceTrialPage";
 import { ClaimsPage } from "./pages/ClaimsPage";
+import { DeckScoreTunerPage } from "./pages/DeckScoreTunerPage";
 import { PricingPage } from "./pages/PricingPage";
 import { LaunchCitiesPage } from "./pages/LaunchCitiesPage";
 import { BetaLeadsPage } from "./pages/BetaLeadsPage";
@@ -45,6 +46,8 @@ const PAGES = {
   admin: AdminPage,
   settings: SettingsPage,
   signals: SignalLibraryPage,
+  // ORCH-1066: deck score tuner (hash route #/deck-tuner).
+  "deck-tuner": DeckScoreTunerPage,
   "place-intelligence-trial": PlaceIntelligenceTrialPage,
   // ORCH-1056: unified Stripe mode dashboard (hash route #/stripe-mode).
   "stripe-mode": StripeModePage,

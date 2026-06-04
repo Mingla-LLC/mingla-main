@@ -288,6 +288,124 @@ describe("ORCH-0859 REWORK 3 — strict-grep gate registered", () => {
   });
 });
 
+describe("META-ORCH-1059 Sub-B — experience routing via routeForEventRow", () => {
+  const ROUTE_HELPER = read("utils/routeForEventRow.ts");
+
+  test("routeForEventRow routes ALL experiences (incl. drafts) to /experience/{id} dashboard", () => {
+    // META-ORCH-1059: the experience branch ALWAYS returns the dashboard
+    // (`/experience/{id}`) — draft or live. Unlike event/trip, a draft does NOT
+    // jump straight to `/edit`; the dashboard's "Continue editing" action owns
+    // that. Reintroducing a draft → `/experience/{id}/edit` branch (or the old
+    // `/experience/coming-soon` stub) flips these assertions.
+    expect(ROUTE_HELPER).toMatch(/event_type === ["']experience["']/);
+    expect(ROUTE_HELPER).toMatch(/`\/experience\/\$\{row\.id\}`/);
+  });
+
+  test("the experience branch never routes to /edit or the coming-soon stub", () => {
+    const expBranch = ROUTE_HELPER.match(
+      /if \(row\.event_type === "experience"\)[\s\S]*?\n  \}/,
+    );
+    expect(expBranch).not.toBeNull();
+    // No draft→edit jump: the dashboard is the single tap-through target.
+    expect(expBranch?.[0]).not.toMatch(/`\/experience\/\$\{row\.id\}\/edit`/);
+    // The dead coming-soon stub must be gone from the experience branch.
+    expect(expBranch?.[0]).not.toMatch(/coming-soon/);
+  });
+
+  test("experience dashboard + edit routes exist under app/experience/[id]", () => {
+    // The dashboard + edit screens are the tap-through targets above.
+    expect(() => appRead("experience/[id]/index.tsx")).not.toThrow();
+    expect(() => appRead("experience/[id]/edit.tsx")).not.toThrow();
+  });
+
+  test("biz_publish_experience migration writes exactly one ticket + UPDATEs (no new events INSERT)", () => {
+    const migration = readFileSync(
+      join(
+        __dirname,
+        "..",
+        "..",
+        "..",
+        "..",
+        "supabase",
+        "migrations",
+        "20260825000000_meta_orch_1059_sub_b_publish_experience.sql",
+      ),
+      "utf8",
+    );
+    // UPDATE the existing row (draft-first), not a new INSERT INTO events.
+    expect(migration).toMatch(/UPDATE\s+public\.events\s+SET/);
+    expect(migration).not.toMatch(/INSERT\s+INTO\s+public\.events/);
+    // Exactly one ticket_types INSERT (I-1 one-ticket).
+    const ticketInserts = migration.match(/INSERT\s+INTO\s+public\.ticket_types/gi) ?? [];
+    expect(ticketInserts.length).toBe(1);
+  });
+});
+
+describe("META-ORCH-1059 Sub-C/D — buyer journey (public page + checkout entry)", () => {
+  const CHECKOUT_FLOW = read("components/experience/ExperienceCheckoutFlow.tsx");
+  const PUBLIC_SERVICE = read("services/publicExperienceService.ts");
+
+  test("the public experience route exists at app/exp/[brandSlug]/[experienceSlug]", () => {
+    expect(() =>
+      appRead("exp/[brandSlug]/[experienceSlug].tsx"),
+    ).not.toThrow();
+  });
+
+  test("the experience checkout chain exists (index/buyer/payment/confirm/_layout)", () => {
+    expect(() =>
+      appRead("checkout-experience/[experienceEventId]/_layout.tsx"),
+    ).not.toThrow();
+    expect(() =>
+      appRead("checkout-experience/[experienceEventId]/index.tsx"),
+    ).not.toThrow();
+    expect(() =>
+      appRead("checkout-experience/[experienceEventId]/buyer.tsx"),
+    ).not.toThrow();
+    expect(() =>
+      appRead("checkout-experience/[experienceEventId]/payment.tsx"),
+    ).not.toThrow();
+    expect(() =>
+      appRead("checkout-experience/[experienceEventId]/confirm.tsx"),
+    ).not.toThrow();
+  });
+
+  test("ExperienceCheckoutFlow routes into its own /checkout-experience chain (not event/trip)", () => {
+    expect(CHECKOUT_FLOW).toMatch(
+      /router\.push\(\s*`\/checkout-experience\/\$\{experience\.id\}`/,
+    );
+    // Must NOT route into the event-side or trip-side chains.
+    expect(CHECKOUT_FLOW).not.toMatch(/\/checkout\/\$\{/);
+    expect(CHECKOUT_FLOW).not.toMatch(/\/checkout-trip\//);
+  });
+
+  test("COMMS-0014/0016 — checkout POSTs to the SHARED ticket-checkout-create, no parallel money fn", () => {
+    const BUYER = appRead("checkout-experience/[experienceEventId]/buyer.tsx");
+    const PAYMENT = appRead(
+      "checkout-experience/[experienceEventId]/payment.tsx",
+    );
+    // Both reuse the shared createTicketCheckout service (event_type-agnostic).
+    expect(BUYER).toMatch(/createTicketCheckout/);
+    expect(PAYMENT).toMatch(/createTicketCheckout/);
+    // No bespoke edge-function name introduced for experiences.
+    expect(BUYER).not.toMatch(/experience-checkout-create/);
+    expect(PAYMENT).not.toMatch(/experience-checkout-create/);
+    // Native path goes through the shared NativeCheckoutPaymentBoundary.
+    expect(PAYMENT).toMatch(/NativeCheckoutPaymentBoundary/);
+  });
+
+  test("the public-by-slug resolver gates on published experiences only (draft never leaks)", () => {
+    // Anon resolver: event_type='experience' + published lifecycle statuses.
+    expect(PUBLIC_SERVICE).toMatch(/event_type["']?,\s*["']experience["']/);
+    expect(PUBLIC_SERVICE).toMatch(/PUBLIC_STATUSES/);
+    // "draft" must NOT be in the anon-visible status set.
+    const statusDecl = PUBLIC_SERVICE.match(
+      /PUBLIC_STATUSES\s*=\s*\[([^\]]*)\]/,
+    );
+    expect(statusDecl).not.toBeNull();
+    expect(statusDecl?.[1]).not.toMatch(/draft/);
+  });
+});
+
 // Silence unused-import warning for appRead — kept for symmetry with other
 // audit tests that may need app/ reads in a future expansion.
 void appRead;

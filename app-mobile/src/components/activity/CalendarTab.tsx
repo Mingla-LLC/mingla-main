@@ -197,6 +197,9 @@ const CalendarTab = ({
   const [entryToReschedule, setEntryToReschedule] =
     useState<CalendarEntry | null>(null);
   const [isExpandedModalVisible, setIsExpandedModalVisible] = useState(false);
+  // ORCH-1064: re-open guard window (block re-present within 500ms of close so the
+  // wrapInRNModal modal isn't re-presented mid-dismiss → intermittent freeze).
+  const lastModalCloseAtRef = useRef(0);
   const [selectedCardForExpansion, setSelectedCardForExpansion] =
     useState<ExpandedCardData | null>(null);
   const [isScheduling, setIsScheduling] = useState(false);
@@ -1497,6 +1500,8 @@ const CalendarTab = ({
   };
 
   const handleCardExpand = (entry: CalendarEntry) => {
+    // ORCH-1064: ignore a re-open within 500ms of the last close (re-present-mid-dismiss freeze)
+    if (Date.now() - lastModalCloseAtRef.current < 500) return;
     HapticFeedback.buttonPress();
     // Transform CalendarEntry to ExpandedCardData format
     const experience = entry.experience || entry;
@@ -1601,6 +1606,7 @@ const CalendarTab = ({
   const handleCloseExpandedModal = () => {
     setIsExpandedModalVisible(false);
     setSelectedCardForExpansion(null);
+    lastModalCloseAtRef.current = Date.now(); // ORCH-1064: re-open guard window
   };
 
   const handleSaveFromModal = async (card: ExpandedCardData) => {

@@ -49,6 +49,11 @@ export interface PlaceRow {
   opening_hours: unknown; // jsonb — anything truthy means populated
   photos: unknown[] | null;
   stored_photo_urls: string[] | null;
+  // ORCH-1067 — provenance. 'business_authored' ⇒ skip B7 (Google-photos gate);
+  // such venues are not on Google and are gated on B8 (stored photos) instead.
+  // Optional so existing test fixtures / callers compile; absent ⇒ treated as
+  // Google-sourced (B7 applies).
+  fetched_via?: string | null;
   review_count: number | null;
   rating: number | null;
 }
@@ -248,6 +253,20 @@ function hasStoredPhotos(place: PlaceRow): boolean {
   return Array.isArray(place.stored_photo_urls) && place.stored_photo_urls.length > 0;
 }
 
+/**
+ * ORCH-1067 — a business-AUTHORED venue is not on Google, so it can never have
+ * Google `photos` and must not be gated on B7. Its photo gate is B8
+ * (stored_photo_urls — the operator's own uploads). Narrowest correct predicate:
+ * the explicit provenance marker the authoring pipeline writes on insert
+ * (run-business-place-authoring-pipeline sets fetched_via='business_authored').
+ * NOT broadened to `google_place_id IS NULL` — provenance, not an incidental id,
+ * is the intent. Google-seeded rows (nearby_search/detail_refresh/text_search)
+ * keep B7 unchanged.
+ */
+export function isBusinessAuthored(place: PlaceRow): boolean {
+  return place.fetched_via === 'business_authored';
+}
+
 function hasOpeningHours(place: PlaceRow): boolean {
   // jsonb opening_hours — truthy if it's a non-empty object/array
   if (place.opening_hours == null) return false;
@@ -332,10 +351,21 @@ export function bounce(
     };
   }
 
-  // B7: Google photos required (universal — applies to all clusters including Natural).
-  // Always checked, including in pre-photo pass — no point queueing zero-photo-metadata
-  // rows for download.
-  if (!hasGooglePhotos(place)) reasons.push('B7:no_google_photos');
+  // B7: Google photos required (universal — applies to all clusters including
+  // Natural). Always checked, including in pre-photo pass — no point queueing
+  // zero-photo-metadata rows for download.
+  //
+  // ORCH-1067 EXCEPTION: business-authored venues are not on Google and cannot
+  // have a Google `photos` array; their photo gate is B8 (stored_photo_urls,
+  // which they have). Skipping B7 for them — and ONLY them — lets a self-listed
+  // venue with real uploaded photos reach the deck while keeping the Google
+  // photo requirement intact for every Google-seeded place. A business-authored
+  // venue with NO stored photos still fails (B8 below). The skip is photo-pass
+  // INDEPENDENT and fires identically in both passes → I-TWO-PASS-BOUNCER-RULE-
+  // PARITY preserved (the only allowed cross-pass difference remains B8).
+  if (!isBusinessAuthored(place) && !hasGooglePhotos(place)) {
+    reasons.push('B7:no_google_photos');
+  }
 
   // B8: stored (downloaded) photos required (universal in final pass; SKIPPED in
   // pre-photo pass per ORCH-0678 two-pass design — pre-photo runs B1-B7+B9 only,

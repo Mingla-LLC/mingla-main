@@ -28,6 +28,8 @@ import {
   mostRecentDraftRoute,
 } from "../utils/homeNextAction";
 import { routeForPipelineStateFix } from "../utils/deckReadinessRoutes";
+import { venueClaimBannerVariant } from "../services/venueClaimBannerLogic";
+import { useVenueClaimOpenCount } from "./useVenueClaimFeedback";
 
 export function useBusinessTodos(): BusinessTodo[] {
   const { user } = useAuth();
@@ -58,6 +60,29 @@ export function useBusinessTodos(): BusinessTodo[] {
     currentBrandId === null &&
     currentBrand === null &&
     !isBrandResolving;
+
+  // META-ORCH-1059 — the venue-claim "under review" to-do row (replaces the Hub
+  // blue banner). Reuse the SAME variant logic the banner used so the row shows
+  // for exactly the pending/under-review states (pending_review + admin follow-up).
+  const venueClaimVariant = venueClaimBannerVariant(
+    currentBrand !== null
+      ? {
+          claim_status: currentBrand.claimStatus ?? "none",
+          rejection_reason: currentBrand.rejectionReason ?? null,
+          claim_follow_up_at: currentBrand.claimFollowUpAt ?? null,
+        }
+      : null,
+  );
+  const venueClaimPending =
+    venueClaimVariant === "pending_review" || venueClaimVariant === "follow_up";
+
+  // ORCH-1064 — open admin-feedback count for the active follow-up round. Reads
+  // the feedback query cache (enabled only when a follow-up stamp exists), so it
+  // never forces an extra fetch for plain pending / verified / rejected claims.
+  const venueClaimOpenFeedbackCount = useVenueClaimOpenCount(
+    currentBrand?.id ?? null,
+    currentBrand?.claimFollowUpAt ?? null,
+  );
 
   const pipelineRoute = useMemo(
     () =>
@@ -93,6 +118,14 @@ export function useBusinessTodos(): BusinessTodo[] {
         stripeRoute:
           currentBrand !== null ? `/brand/${currentBrand.id}/payments` : "",
         draftRoute: mostRecentDraftRoute(drafts),
+        venueClaimPending,
+        venueListingRoute:
+          currentBrand !== null ? `/brand/${currentBrand.id}/listing` : "",
+        venueClaimOpenFeedbackCount,
+        venueFeedbackRoute:
+          currentBrand !== null
+            ? `/brand/${currentBrand.id}/listing?focus=feedback`
+            : "",
       }),
     [
       hasNoBrands,
@@ -105,6 +138,8 @@ export function useBusinessTodos(): BusinessTodo[] {
       venueDraftInProgress,
       upcoming.counts,
       drafts,
+      venueClaimPending,
+      venueClaimOpenFeedbackCount,
     ],
   );
 }

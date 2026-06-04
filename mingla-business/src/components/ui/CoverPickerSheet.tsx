@@ -18,14 +18,16 @@
  * Per SPEC_ORCH-0989 §3.1/§4.1 + SPEC_ORCH-0989_..._DESIGN.md §2.
  */
 
-import React from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import React, { useCallback, useEffect, useState } from "react";
+import { Image, Pressable, StyleSheet, Text, View } from "react-native";
 
 // ORCH-0892-B v2 sheet-consumer contract: the body scroll routes through the
 // SmartScrollView wrapper (KAS on native) so the GIF/Stock search input
 // scrolls above the keyboard without bespoke listeners (KeyboardRoot test).
 import { ScrollView } from "../../wrappers/SmartScrollView";
 import {
+  accent,
+  radius as radiusTokens,
   spacing,
   text as textTokens,
   typography,
@@ -65,6 +67,30 @@ export const CoverPickerSheet: React.FC<CoverPickerSheetProps> = ({
 }) => {
   const { isWideDesktop } = useResponsiveLayout();
 
+  // META-ORCH-1059 [cover picker selected-state]: track the live selection so
+  // the bottom confirm button can show a thumbnail of the chosen cover and read
+  // "Use this cover". Covers persist live via onCoverChange (this button is
+  // confirm + close, NOT the persistence path). Seed from `initial`; re-sync
+  // when `initial` changes (sheet reopened for a different target / cover).
+  const [currentPatch, setCurrentPatch] = useState<CoverPatch>(initial);
+  useEffect(() => {
+    setCurrentPatch(initial);
+  }, [initial]);
+
+  const handleCoverChange = useCallback(
+    (patch: CoverPatch): void => {
+      setCurrentPatch(patch);
+      onCoverChange(patch);
+    },
+    [onCoverChange],
+  );
+
+  const hasSelection = currentPatch.coverMediaUrl !== null;
+  // Images + GIFs render a thumbnail; video covers show a play glyph instead of
+  // a still (the processed URL is not an image source).
+  const showThumb =
+    hasSelection && currentPatch.coverMediaType !== "video";
+
   return (
     <Sheet visible={visible} onClose={onClose} snapPoint="full">
       <View style={styles.host}>
@@ -97,7 +123,7 @@ export const CoverPickerSheet: React.FC<CoverPickerSheetProps> = ({
             initialCredit={initial.coverMediaCredit}
             initialCreditUrl={initial.coverMediaCreditUrl}
             initialAlt={initial.coverMediaAlt}
-            onCoverChange={onCoverChange}
+            onCoverChange={handleCoverChange}
             onShowToast={onShowToast}
             disabled={disabled}
             isWideDesktop={isWideDesktop}
@@ -105,21 +131,53 @@ export const CoverPickerSheet: React.FC<CoverPickerSheetProps> = ({
           />
         </ScrollView>
 
-        {/* META-ORCH-1009 Sub-E: an explicit Done button anchored at the bottom.
-            The top-right X is easy to miss once the picker is scrolled down after
-            an upload; a clear primary "Done" gives a reliable way to confirm and
-            close. Cover changes persist live via onCoverChange, so Done is purely
-            a dismiss. */}
+        {/* META-ORCH-1009 Sub-E + META-ORCH-1059: an explicit confirm button
+            anchored at the bottom. The top-right X is easy to miss once the
+            picker is scrolled after an upload, AND tapping a tile gave no
+            persistent signal. The confirm button now reflects the live
+            selection: "Use this cover" with a thumbnail of the chosen media
+            once something is picked, or a plain "Done" dismiss when nothing is
+            selected yet. Covers persist live via onCoverChange, so this button
+            is confirm + close, not the persistence path. */}
         <View style={styles.footer}>
-          <Button
-            label="Done"
-            variant="primary"
-            size="lg"
-            fullWidth
-            onPress={onClose}
-            accessibilityLabel="Done choosing cover"
-            testID="cover-picker-done"
-          />
+          {hasSelection ? (
+            <Pressable
+              onPress={onClose}
+              accessibilityRole="button"
+              accessibilityLabel="Use this cover"
+              testID="cover-picker-confirm"
+              style={({ pressed }) => [
+                styles.confirmButton,
+                pressed && styles.confirmButtonPressed,
+              ]}
+            >
+              {showThumb && currentPatch.coverMediaUrl !== null ? (
+                <Image
+                  source={{ uri: currentPatch.coverMediaUrl }}
+                  style={styles.confirmThumb}
+                  accessibilityIgnoresInvertColors
+                />
+              ) : (
+                <View style={[styles.confirmThumb, styles.confirmThumbVideo]}>
+                  <Icon name="play" size={16} color={textTokens.inverse} />
+                </View>
+              )}
+              <Text style={styles.confirmLabel} numberOfLines={1}>
+                Use this cover
+              </Text>
+              <Icon name="check" size={20} color={textTokens.inverse} />
+            </Pressable>
+          ) : (
+            <Button
+              label="Done"
+              variant="primary"
+              size="lg"
+              fullWidth
+              onPress={onClose}
+              accessibilityLabel="Done choosing cover"
+              testID="cover-picker-done"
+            />
+          )}
         </View>
       </View>
     </Sheet>
@@ -157,5 +215,38 @@ const styles = StyleSheet.create({
   footer: {
     paddingTop: spacing.sm,
     paddingBottom: spacing.md,
+  },
+  // META-ORCH-1059: confirm CTA with selection thumbnail. Primary-filled,
+  // 52px tall to match Button size="lg".
+  confirmButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    height: 52,
+    paddingLeft: spacing.xs,
+    paddingRight: spacing.md,
+    borderRadius: radiusTokens.full,
+    backgroundColor: accent.warm,
+    gap: spacing.sm,
+  },
+  confirmButtonPressed: {
+    opacity: 0.85,
+  },
+  confirmThumb: {
+    width: 40,
+    height: 40,
+    borderRadius: radiusTokens.full,
+    backgroundColor: "rgba(255, 255, 255, 0.18)",
+  },
+  confirmThumbVideo: {
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  confirmLabel: {
+    flex: 1,
+    fontSize: typography.buttonLg.fontSize,
+    lineHeight: typography.buttonLg.lineHeight,
+    fontWeight: typography.buttonLg.fontWeight,
+    letterSpacing: typography.buttonLg.letterSpacing,
+    color: textTokens.inverse,
   },
 });

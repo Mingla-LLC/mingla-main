@@ -25,6 +25,12 @@ export interface BusinessTodo {
   label: string;
   sublabel?: string;
   action: BusinessTodoAction;
+  /**
+   * ORCH-1064 — optional worded count pill for a row (e.g. "3 to fix"). Rendered
+   * by BusinessTodoToggle on the right of the row, before the chevron. Only the
+   * venue-claim-feedback row sets this today; absent → no pill.
+   */
+  badge?: string;
 }
 
 export interface BusinessTodoInput {
@@ -59,6 +65,29 @@ export interface BusinessTodoInput {
   stripeRoute: string;
   /** Route to the most-recent draft, or null when there is none. */
   draftRoute: string | null;
+  /**
+   * META-ORCH-1059 — the brand has a venue claim that is pending / under review
+   * (claim_status='pending_review', incl. the admin-follow-up sub-state). Drives
+   * the "Venue claim under review" row that replaced the Hub blue banner. Vanishes
+   * automatically once the claim resolves (verified / rejected / none).
+   */
+  venueClaimPending: boolean;
+  /** Route to the brand's venue-listing surface (where claim status lives). */
+  venueListingRoute: string;
+  /**
+   * ORCH-1064 — count of OPEN admin-feedback items in the active follow-up round.
+   * 0 when the claim is plainly pending (no admin follow-up yet) or all items are
+   * addressed. >0 sharpens the venue-claim row: it gains a "N to fix" badge and
+   * its action deep-links the listing focused on the feedback sheet. The row
+   * itself still appears for any pending claim (with or without open feedback) —
+   * the count only escalates an already-present row, preserving the vanish logic.
+   */
+  venueClaimOpenFeedbackCount: number;
+  /**
+   * ORCH-1064 — route to the venue listing with the feedback sheet auto-opened.
+   * Used as the venue-claim row's action when there is open admin feedback.
+   */
+  venueFeedbackRoute: string;
 }
 
 function venueLiveSublabel(
@@ -141,6 +170,36 @@ export function buildBusinessTodos(input: BusinessTodoInput): BusinessTodo[] {
       sublabel: venueLiveSublabel(input.pipelineStatus),
       action: { kind: "route", route: input.pipelineRoute },
     });
+  }
+
+  // 2b — Venue claim under review. META-ORCH-1059: replaces the Hub blue
+  // "your venue claim is being reviewed" banner. Informational + tappable to the
+  // venue listing (where the live claim status is shown). Only present while the
+  // claim is actually pending/under-review, so it auto-vanishes on resolution.
+  //
+  // ORCH-1064: when the admin has left OPEN feedback (follow-up round with items
+  // still to fix), the SAME row sharpens into an actionable punch-list pointer —
+  // "Updates requested" + an "N to fix" badge — and its action deep-links the
+  // listing focused on the feedback sheet. The row's presence is unchanged (it
+  // still vanishes the moment the claim resolves); the count only escalates it.
+  if (input.venueClaimPending) {
+    const openCount = input.venueClaimOpenFeedbackCount;
+    if (openCount > 0) {
+      todos.push({
+        id: "venue_claim_review",
+        label: "Updates requested",
+        sublabel: "A few tweaks will get you live — tap to see what to fix",
+        badge: openCount === 1 ? "1 to fix" : `${openCount} to fix`,
+        action: { kind: "route", route: input.venueFeedbackRoute },
+      });
+    } else {
+      todos.push({
+        id: "venue_claim_review",
+        label: "Venue claim under review",
+        sublabel: "We're verifying your venue — usually within 4 business hours",
+        action: { kind: "route", route: input.venueListingRoute },
+      });
+    }
   }
 
   // 3 — First offering.

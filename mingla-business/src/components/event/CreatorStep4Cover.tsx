@@ -13,7 +13,7 @@
  * both flow through this step.
  */
 
-import React, { useCallback, useState } from "react";
+import React, { useCallback, useMemo, useState } from "react";
 import { StyleSheet, Text, View } from "react-native";
 
 import {
@@ -27,6 +27,7 @@ import { CoverPickerSheet } from "../ui/CoverPickerSheet";
 import { EventCoverMedia } from "../ui/EventCoverMedia";
 import { eventCoverProviderCreditLabel } from "../../types/eventCoverProvider";
 import type { CoverPatch } from "../ui/CoverPicker";
+import type { CoverTarget } from "../ui/coverTarget";
 
 import { type StepBodyProps } from "./types";
 
@@ -62,6 +63,21 @@ export const CreatorStep4Cover: React.FC<StepBodyProps> = ({
     credit: draft.coverMediaCredit ?? null,
   });
 
+  // META-ORCH-1059 [cover freeze parity] — Stabilize the discriminated target
+  // so it keeps a constant reference across cover-selection re-renders (mirrors
+  // the ExperienceCoverStep fix; the CoverPicker is shared). Only depends on the
+  // event row id + brand + apply mode.
+  const coverRowId = coverMediaEventId ?? draft.id;
+  const target = useMemo<CoverTarget>(
+    () => ({
+      kind: "event",
+      brandId: draft.brandId,
+      eventRowId: coverRowId,
+      coverMediaApplyMode: coverMediaApplyMode ?? "draft_auto",
+    }),
+    [draft.brandId, coverRowId, coverMediaApplyMode],
+  );
+
   return (
     <View>
       <View style={styles.field}>
@@ -75,7 +91,12 @@ export const CreatorStep4Cover: React.FC<StepBodyProps> = ({
             label={draft.coverMediaAlt ?? "cover"}
             height={180}
             muted={true}
-            showAudioControl={draft.coverMediaType === "video"}
+            // META-ORCH-1059 [cover freeze parity] — pause this inline preview's
+            // expo-video player while the picker sheet (which renders its own
+            // live preview) is open, to avoid two video surfaces for one URL.
+            autoplay={!pickerVisible}
+            playbackActive={!pickerVisible}
+            showAudioControl={draft.coverMediaType === "video" && !pickerVisible}
           />
         </View>
         {credit !== null ? <Text style={styles.creditText}>{credit}</Text> : null}
@@ -97,12 +118,7 @@ export const CreatorStep4Cover: React.FC<StepBodyProps> = ({
       <CoverPickerSheet
         visible={pickerVisible}
         onClose={() => setPickerVisible(false)}
-        target={{
-          kind: "event",
-          brandId: draft.brandId,
-          eventRowId: coverMediaEventId ?? draft.id,
-          coverMediaApplyMode: coverMediaApplyMode ?? "draft_auto",
-        }}
+        target={target}
         initial={{
           coverMediaUrl: draft.coverMediaUrl ?? null,
           coverMediaType: draft.coverMediaType ?? null,

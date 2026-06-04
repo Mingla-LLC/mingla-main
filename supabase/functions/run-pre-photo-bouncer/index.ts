@@ -42,7 +42,7 @@ const corsHeaders = {
 
 // Selected fields used by Bouncer + minimal context for the UPDATE
 const SELECT_FIELDS =
-  'id, name, lat, lng, types, business_status, website, opening_hours, photos, stored_photo_urls, review_count, rating';
+  'id, name, lat, lng, types, business_status, website, opening_hours, photos, stored_photo_urls, fetched_via, review_count, rating';
 
 const PAGE_SIZE = 500;
 const WRITE_CONCURRENCY = 50;

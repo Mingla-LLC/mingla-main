@@ -31,6 +31,15 @@ import {
   isStopOpenAtHour,
   filterCuratedByStopHours,
 } from '../_shared/curatedStopHours.ts';
+// ORCH-1068 [business-authored venues render on deck]: business venues persist
+// hours as a top-level array [{weekday(0=Mon),isClosed,openTime,closeTime}], not
+// the Google {periods} object. Normalize-at-write + the backfill migration fix
+// new/existing rows, but the readers below ALSO accept the array shape defensively
+// so a stray un-normalized array never silently excludes a servable venue.
+import {
+  businessHoursToGoogleOpeningHours,
+  isBusinessHoursArray,
+} from '../_shared/businessHoursToGoogle.ts';
 
 // ─── ORCH-0588 Slice 1: cohort cache for signal-serving rollout ───────────────
 // Module-scoped 60s cache for the admin-config cohort pct. 60s = balance between
@@ -121,6 +130,276 @@ const CATEGORY_TO_SIGNAL: Record<
   'Movies & Theatre': { signalIds: ['movies', 'theatre'], filterMin: 100, displayCategory: 'Movies' },
   'movies_theatre':   { signalIds: ['movies', 'theatre'], filterMin: 100, displayCategory: 'Movies' },
 };
+
+// ─── ORCH-1065 [consumer-experience-deck-card] ────────────────────────────────
+// Brand-authored experiences surface on the SOLO swipe deck via a dedicated
+// `events` source that bypasses place_pool / ai_signal_scores / run-signal-scorer
+// ENTIRELY (the COMMS-0018 signal_id-buggy venue→deck path) — this reads the
+// pg_eligible_experiences_for_deck RPC (events + experience_stops) directly.
+// Experiences book through the EXISTING ticket-checkout-create path (NO parallel
+// money fn — COMMS-0014/0016); only the deck FACE + supply are new here.
+
+// Server card envelope pushed into cards[] for each eligible experience. The
+// client converter (deckService.experienceCardToRecommendation) decodes it.
+interface ExperienceDeckCard {
+  cardType: 'experience';
+  id: string;
+  eventId: string;
+  experienceType: string;
+  title: string;
+  tagline: string;
+  // ORCH-1072: the experience's REAL description + cover (events.description /
+  // cover_media_url / cover_media_type) so the detail sheet renders the actual
+  // story + cover image/video, not the fabricated first-stop image + tagline.
+  description: string;
+  coverMediaUrl: string | null;
+  coverMediaType: 'image' | 'video' | 'gif' | null;
+  brandId: string;
+  brandName: string;
+  brandSlug: string;
+  brandLogoUrl: string | null;
+  eventSlug: string;
+  totalPriceMin: number;
+  totalPriceMax: number;
+  currency: string;
+  masterDateUtc: string | null;
+  masterEndAtUtc: string | null;
+  timezone: string;
+  // ORCH-1072: upcoming occurrences for the Book sheet date picker. One-off
+  // experiences carry a single element (auto-selected); sold-out occurrences
+  // (remaining === 0) render disabled. remaining === null ⇒ unlimited.
+  upcomingOccurrences: Array<{
+    eventDateId: string;
+    startAt: string;
+    endAt: string;
+    capacity: number | null;
+    sold: number;
+    remaining: number | null;
+  }>;
+  stops: Array<{
+    stopNumber: number;
+    placeId: string;
+    placeName: string;
+    address: string;
+    imageUrl: string;
+    imageUrls: string[];
+    aiDescription: string;
+    lat: number;
+    lng: number;
+    priceMin: number;
+    priceMax: number;
+    rating: number;
+    reviewCount: number;
+    distanceFromUserKm: number | null;
+    travelTimeFromUserMin: number | null;
+  }>;
+  estimatedDurationMinutes: number;
+  matchScore: number;
+}
+
+// ORCH-1065 Decision D4 — map an active deck signal / pill to the 4 brand
+// experience-intent ids. Any signal not present here contributes no intent.
+const EXPERIENCE_INTENT_BY_SIGNAL: Record<string, string> = {
+  adventurous: 'adventurous',
+  romantic: 'romantic',
+  'group-fun': 'group-fun',
+  lively: 'group-fun',
+  icebreakers: 'first-date',
+};
+
+// Resolve the request's active deck signals → the DISTINCT set of experience
+// intent ids. Empty result ⇒ permissive (RPC applies no intent filter so every
+// geo-eligible published experience surfaces — auto-surface is never starved).
+function resolveExperienceIntents(signalIds: string[]): string[] {
+  const out = new Set<string>();
+  for (const sig of signalIds) {
+    const intent = EXPERIENCE_INTENT_BY_SIGNAL[sig];
+    if (intent) out.add(intent);
+  }
+  return [...out];
+}
+
+// ORCH-1072: decode the RPC's upcoming_occurrences jsonb into the camelCase
+// envelope shape. Drops malformed rows (no event_date_id / no start_at) so the
+// client never renders an unbookable occurrence. Honest passthrough — no
+// fabricated capacity (remaining stays null when the RPC said unlimited).
+function mapExperienceOccurrences(raw: unknown): Array<{
+  eventDateId: string;
+  startAt: string;
+  endAt: string;
+  capacity: number | null;
+  sold: number;
+  remaining: number | null;
+}> {
+  const arr = Array.isArray(raw) ? raw : [];
+  return arr
+    .map((o: any) => {
+      const eventDateId = typeof o?.event_date_id === 'string' ? o.event_date_id : '';
+      const startAt = o?.start_at ? String(o.start_at) : '';
+      if (eventDateId.length === 0 || startAt.length === 0) return null;
+      return {
+        eventDateId,
+        startAt,
+        endAt: o?.end_at ? String(o.end_at) : '',
+        capacity: typeof o?.capacity === 'number' ? o.capacity : null,
+        sold: typeof o?.sold === 'number' ? o.sold : 0,
+        remaining: typeof o?.remaining === 'number' ? o.remaining : null,
+      };
+    })
+    .filter((o): o is {
+      eventDateId: string;
+      startAt: string;
+      endAt: string;
+      capacity: number | null;
+      sold: number;
+      remaining: number | null;
+    } => o !== null);
+}
+
+// Single service-role round-trip to the deck-eligibility RPC. Throws on error
+// (the caller swallows best-effort so an experience-source failure never
+// degrades the place deck — INV-042).
+async function fetchEligibleExperiences(args: {
+  supabaseAdmin: any;
+  lat: number;
+  lng: number;
+  radiusMeters: number;
+  signalIds: string[];
+  nowIso: string;
+  excludeEventIds: string[];
+  limit: number;
+}): Promise<ExperienceDeckCard[]> {
+  const intents = resolveExperienceIntents(args.signalIds);
+  const { data, error } = await args.supabaseAdmin.rpc(
+    'pg_eligible_experiences_for_deck',
+    {
+      p_lat: args.lat,
+      p_lng: args.lng,
+      p_radius_m: args.radiusMeters,
+      p_intents: intents,
+      p_now: args.nowIso,
+      p_exclude_ids: args.excludeEventIds,
+      p_limit: Math.min(Math.max(args.limit, 0), 30),
+    },
+  );
+  if (error) {
+    throw new Error(`pg_eligible_experiences_for_deck failed: ${error.message}`);
+  }
+  const rows = (data as any[]) ?? [];
+  return rows.map((row): ExperienceDeckCard => {
+    const rawStops = Array.isArray(row.stops) ? row.stops : [];
+    const stops = rawStops.map((s: any) => {
+      const imageUrls: string[] = Array.isArray(s.image_urls) ? s.image_urls : [];
+      const lat = typeof s.lat === 'number' ? s.lat : 0;
+      const lng = typeof s.lng === 'number' ? s.lng : 0;
+      const distanceKm =
+        typeof s.lat === 'number' && typeof s.lng === 'number'
+          ? haversineKm(args.lat, args.lng, lat, lng)
+          : null;
+      const priceMajor = Math.round((Number(s.price_cents) || 0)) / 100;
+      return {
+        stopNumber: (Number(s.stop_order) || 0) + 1,
+        placeId: typeof s.place_id === 'string' ? s.place_id : String(s.place_id ?? ''),
+        placeName: typeof s.place_name === 'string' ? s.place_name : '',
+        address: typeof s.address === 'string' ? s.address : '',
+        imageUrl: imageUrls[0] ?? '',
+        imageUrls: imageUrls.slice(0, 5),
+        aiDescription: typeof s.ai_description === 'string' ? s.ai_description : '',
+        lat,
+        lng,
+        priceMin: priceMajor,
+        priceMax: priceMajor,
+        // Experiences carry no Google rating — honest 0, never fabricated.
+        rating: 0,
+        reviewCount: 0,
+        distanceFromUserKm: distanceKm,
+        travelTimeFromUserMin: null,
+      };
+    });
+    const totalMajor = Math.round((Number(row.total_price_cents) || 0)) / 100;
+    const intentsArr: string[] = Array.isArray(row.experience_intents)
+      ? row.experience_intents
+      : [];
+    return {
+      cardType: 'experience',
+      id: String(row.event_id),
+      eventId: String(row.event_id),
+      experienceType: intentsArr[0] ?? 'adventurous',
+      title: typeof row.title === 'string' ? row.title : '',
+      tagline: typeof row.tagline === 'string' ? row.tagline : '',
+      // ORCH-1072: carry the real description + cover (honest defaults — '' /
+      // null when absent; the client shows an empty-state, never the tagline).
+      description: typeof row.description === 'string' ? row.description : '',
+      coverMediaUrl:
+        typeof row.cover_media_url === 'string' && row.cover_media_url.length > 0
+          ? row.cover_media_url
+          : null,
+      coverMediaType:
+        row.cover_media_type === 'image' ||
+        row.cover_media_type === 'video' ||
+        row.cover_media_type === 'gif'
+          ? row.cover_media_type
+          : null,
+      upcomingOccurrences: mapExperienceOccurrences(row.upcoming_occurrences),
+      brandId: String(row.brand_id),
+      brandName: typeof row.brand_name === 'string' ? row.brand_name : '',
+      brandSlug: typeof row.brand_slug === 'string' ? row.brand_slug : '',
+      brandLogoUrl:
+        typeof row.brand_logo_url === 'string' && row.brand_logo_url.length > 0
+          ? row.brand_logo_url
+          : null,
+      eventSlug: typeof row.event_slug === 'string' ? row.event_slug : '',
+      totalPriceMin: totalMajor,
+      totalPriceMax: totalMajor,
+      currency:
+        typeof row.currency === 'string' && row.currency.trim().length > 0
+          ? row.currency.trim()
+          : 'USD',
+      masterDateUtc: row.master_date_utc ? String(row.master_date_utc) : null,
+      masterEndAtUtc: row.master_end_at_utc ? String(row.master_end_at_utc) : null,
+      timezone: typeof row.timezone === 'string' ? row.timezone : 'UTC',
+      stops,
+      estimatedDurationMinutes: 0,
+      matchScore: 85,
+    };
+  });
+}
+
+// FRONT-LOAD (operator-approved 2026-06-03, Seth): eligible brand experiences
+// LEAD the deck — every experience is placed at the FRONT (index 0..n-1), ahead
+// of the AI curated cards and singles, so the feature is easy to spot and test.
+// Order is deterministic and stable: experiences keep the RPC's existing order
+// (soonest upcoming date first, then most-recently published —
+// `ORDER BY next_start_at ASC NULLS LAST, published_at DESC` in
+// pg_eligible_experiences_for_deck), and the normal place deck follows them
+// unchanged. Preserves every prior guard: dedupes by id; excludes any experience
+// whose id collides with a place id (exclude-self / no double-render); additive
+// (experiences NEVER displace or drop place cards). If placeCards is empty but
+// experiences exist, returns the experiences alone (experiences-only deck).
+function interleaveExperiencesIntoDeck(
+  placeCards: any[],
+  experienceCards: ExperienceDeckCard[],
+): any[] {
+  if (experienceCards.length === 0) return placeCards;
+  const seen = new Set<string>();
+  const dedupedExp: ExperienceDeckCard[] = [];
+  for (const exp of experienceCards) {
+    if (!seen.has(exp.id)) {
+      seen.add(exp.id);
+      dedupedExp.push(exp);
+    }
+  }
+  if (placeCards.length === 0) return [...dedupedExp];
+  const placeIds = new Set<string>();
+  for (const c of placeCards) {
+    if (c && typeof c.id === 'string') placeIds.add(c.id);
+  }
+  const expToPlace = dedupedExp.filter((e) => !placeIds.has(e.id));
+  if (expToPlace.length === 0) return placeCards;
+  // Experiences first (stable RPC order), then the full place deck unchanged.
+  return [...expToPlace, ...placeCards];
+}
+// ─── end ORCH-1065 ────────────────────────────────────────────────────────────
 
 /* ─────────────────────────────────────────────────────────────────────────────
  * discover-cards  –  Pool-Only Card Serving Edge Function
@@ -266,6 +545,13 @@ function filterByDateTime(
           return hourFrac >= openH && hourFrac < closeH;
         });
       };
+      // ORCH-1068: business-authored array shape [{weekday(0=Mon),isClosed,…}].
+      // Convert to Google-day periods (day = (weekday+1)%7) then eval normally.
+      // `day` here is the JS/Google 0=Sunday index, and the converter emits
+      // Google-day periods, so the comparison is correct (no double-shift).
+      if (isBusinessHoursArray(oh)) {
+        return evalPeriods(businessHoursToGoogleOpeningHours(oh).periods);
+      }
       // Path B.1a: Primary shape — `periods` array (place_pool canonical, Google v1).
       if (Array.isArray(oh.periods) && oh.periods.length > 0) {
         return evalPeriods(oh.periods);
@@ -294,6 +580,10 @@ function filterByDateTime(
     if (place.regularOpeningHours?.periods?.length > 0) return true;
     const oh = place.openingHours;
     if (oh && typeof oh === 'object') {
+      // ORCH-1068: business-authored array shape → has data iff ≥1 open period.
+      if (isBusinessHoursArray(oh)) {
+        return businessHoursToGoogleOpeningHours(oh).periods.length > 0;
+      }
       // Path B.1a: Primary shape — `periods` (no underscore) per admin-seed-places:314.
       if (Array.isArray(oh.periods) && oh.periods.length > 0) return true;
       // Path B.1b: Legacy underscore-prefixed fallback.
@@ -329,6 +619,12 @@ function filterByDateTime(
     // Path B: Pool format — openingHours is the unwrapped Google v1 shape.
     const oh = place.openingHours;
     if (oh && typeof oh === 'object') {
+      // ORCH-1068: business-authored array shape → open on any day with a period.
+      if (isBusinessHoursArray(oh)) {
+        return businessHoursToGoogleOpeningHours(oh).periods.some(
+          (period) => period.open.day === day,
+        );
+      }
       // Path B.1a: Primary shape — `periods` array (canonical, no underscore).
       if (Array.isArray(oh.periods) && oh.periods.length > 0) {
         return oh.periods.some((period: any) => period.open?.day === day);
@@ -471,6 +767,17 @@ function transformServablePlaceToCard(
   const storedPhotos = Array.isArray(row.stored_photo_urls) ? row.stored_photo_urls : [];
   const tier = googleLevelToTierSlug(row.price_level);
 
+  // ORCH-1068 (F-5): a business-authored venue's stored_photo_urls[0] can be a
+  // Cloudinary cover VIDEO (.mp4) that the deck's still-image hero (ExpoImage)
+  // can't decode → it falls back to a generic stock photo. Pick the first IMAGE
+  // url for the hero (`image`); keep the FULL ordered list in `images` so a
+  // future cover-video player can still reach the video. Image URLs win over
+  // video — never show a stock fallback for a venue we have a real photo for.
+  const VIDEO_EXT = /\.(mp4|mov|webm|m4v)(\?|$)/i;
+  const isVideoUrl = (u: string): boolean => VIDEO_EXT.test(u) || /\/video\/upload\//.test(u);
+  const heroImage: string | null =
+    storedPhotos.find((u: unknown) => typeof u === 'string' && !isVideoUrl(u)) ?? null;
+
   // ORCH-0659/0660: honest distance + per-mode travel-time computation.
   // I-DECK-CARD-CONTRACT-DISTANCE-AND-TIME — never 0-sentinel; if either
   // place lat/lng is null, both fields drop to null so mobile hides the
@@ -495,8 +802,8 @@ function transformServablePlaceToCard(
     reviewCount: row.review_count,
     priceLevel: row.price_level,
     priceTier: tier,
-    image: storedPhotos[0] ?? null,
-    images: storedPhotos,
+    image: heroImage, // ORCH-1068: first non-video url (real photo, not stock fallback)
+    images: storedPhotos, // full ordered list unchanged (cover-video stays available)
     openingHours: row.opening_hours ?? null,
     utcOffsetMinutes: row.utc_offset_minutes ?? null,
     isOpenNow: null, // computed downstream — mirrors today's behavior
@@ -1980,8 +2287,60 @@ serve(async (req: Request) => {
     // Step 8: round-robin one-card-per-chip, cap at `limit`.
     const interleavedRows = roundRobinByChip({ perChip: perChipSorted, totalLimit: limit });
 
+    // ORCH-1065: fetch deck-eligible brand experiences ONCE (best-effort). Hoisted
+    // ABOVE the zero-row branch so "auto-surface every published experience" holds
+    // even when the place pool is empty (empty-pool early-return hazard, SPEC §3.1.4).
+    // Bypasses place_pool/ai_signal_scores/run-signal-scorer entirely (COMMS-0018).
+    const curatedUtcNowForExp = datetimePref ? new Date(datetimePref) : new Date();
+    let experienceCards: ExperienceDeckCard[] = [];
+    try {
+      experienceCards = await fetchEligibleExperiences({
+        supabaseAdmin,
+        lat: location.lat,
+        lng: location.lng,
+        radiusMeters,
+        signalIds: uniqueSignalIds,
+        nowIso: curatedUtcNowForExp.toISOString(),
+        excludeEventIds: excludeCardIds,
+        limit: Math.min(limit, 30),
+      });
+    } catch (err) {
+      // Best-effort: an experience-source failure MUST NOT degrade the place deck
+      // and MUST NOT be converted to pool-empty/pipeline-error (INV-042).
+      console.warn(`[discover-cards] experience source failed (tolerating): ${(err as Error).message}`);
+    }
+
     if (interleavedRows.length === 0) {
       const elapsed = Date.now() - t0;
+      // ORCH-1065: if the place pool is empty but experiences exist, return a
+      // POPULATED path:'pipeline' deck built from experiences alone (NOT
+      // pool-empty) — INV-043 explicit return.
+      if (experienceCards.length > 0) {
+        const expOnly = interleaveExperiencesIntoDeck([], experienceCards);
+        console.log(`[discover-cards] exit path=pipeline source=experiences-only experiences=${experienceCards.length} elapsed_ms=${elapsed} mode=solo`);
+        return new Response(JSON.stringify({
+          success: true,
+          cards: expOnly,
+          total: expOnly.length,
+          source: 'experiences-only',
+          metadata: {
+            hasMore: false,
+            poolSize: expOnly.length,
+            batchSeed: batchSeed ?? 0,
+          },
+          sourceBreakdown: {
+            fromPool: expOnly.length,
+            fromApi: 0,
+            totalServed: expOnly.length,
+            apiCallsMade: 0,
+            cacheHits: 0,
+            gapCategories: [],
+            reason: `Place pool empty; ${experienceCards.length} brand experiences surfaced`,
+            path: 'pipeline',
+            experienceCount: experienceCards.length,
+          },
+        }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+      }
       console.log(`[discover-cards] exit path=pool-empty reason=zero_rows_post_filter chips=[${categories.join(',')}] elapsed_ms=${elapsed}`);
       return buildEmptyResponse({
         path: 'pool-empty',
@@ -2045,28 +2404,34 @@ serve(async (req: Request) => {
     // away signal ranking in favor of chip-match heuristics.
     const finalCards = hoursFilteredCards;
 
+    // ORCH-1065: front-load brand-authored experiences onto the deck — they LEAD
+    // the deck (index 0..n-1, ahead of curated/singles) in stable RPC order
+    // (operator-approved 2026-06-03). Additive — experiences never displace place
+    // cards. Bypasses place_pool/ai_signal_scores/run-signal-scorer (COMMS-0018).
+    const mergedCards = interleaveExperiencesIntoDeck(finalCards, experienceCards);
+
     const elapsed = Date.now() - t0;
     const perChipBreakdown: Record<string, number> = {};
     for (const [chip, arr] of perChipSorted) perChipBreakdown[chip] = arr.length;
     const filterMins: Record<string, number> = {};
     for (const t of chipTargets) filterMins[t.chip] = t.filterMin;
-    console.log(`[discover-cards] exit path=pipeline source=signal-serving-v2-multi-chip chips=${categories.length} rpcs=${rpcTasks.length} failed=${failedTasks.length} pre=${rawCards.length} post=${finalCards.length} elapsed_ms=${elapsed} mode=solo`);
+    console.log(`[discover-cards] exit path=pipeline source=signal-serving-v2-multi-chip chips=${categories.length} rpcs=${rpcTasks.length} failed=${failedTasks.length} pre=${rawCards.length} post=${finalCards.length} experiences=${experienceCards.length} merged=${mergedCards.length} elapsed_ms=${elapsed} mode=solo`);
 
     return new Response(JSON.stringify({
       success: true,
-      cards: finalCards,
-      total: finalCards.length,
+      cards: mergedCards,
+      total: mergedCards.length,
       source: 'signal-serving-v2-multi-chip',
       metadata: {
         hasMore: finalCards.length === limit,
-        poolSize: finalCards.length,
+        poolSize: mergedCards.length,
         batchSeed: batchSeed ?? 0,
         perChipBreakdown,
       },
       sourceBreakdown: {
-        fromPool: finalCards.length,
+        fromPool: mergedCards.length,
         fromApi: 0,
-        totalServed: finalCards.length,
+        totalServed: mergedCards.length,
         apiCallsMade: 0,
         cacheHits: 0,
         gapCategories: [],
@@ -2076,6 +2441,7 @@ serve(async (req: Request) => {
         cohort: 'NEW',
         filterMins,
         droppedByTravelTimeFilter: _droppedByTravelTimeFilter,  // ORCH-0903 telemetry
+        experienceCount: experienceCards.length,  // ORCH-1065 telemetry
       },
     }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
 

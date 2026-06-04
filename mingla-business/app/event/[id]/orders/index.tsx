@@ -25,6 +25,11 @@ import {
 } from "../../../../src/store/orderStore";
 import { useManagedEventRoute } from "../../../../src/hooks/useManagedEventRoute";
 import { useEventOrders } from "../../../../src/hooks/useEventOrders";
+import {
+  capitalizeNoun,
+  offeringKindConfig,
+  offeringKindFromEventType,
+} from "../../../../src/components/offering/offeringKind";
 
 import { EmptyState } from "../../../../src/components/ui/EmptyState";
 import { IconChrome } from "../../../../src/components/ui/IconChrome";
@@ -82,6 +87,12 @@ export default function EventOrdersListRoute(): React.ReactElement {
     typeof eventId === "string" ? eventId : null,
   );
   const event = routeEvent.event;
+  // META-ORCH-1059 — kind-aware copy lens. The shared orders screen is reused
+  // by trips + experiences; read the per-kind noun from the loaded row's
+  // event_type so user-facing strings say "trip"/"experience" not "event".
+  const kindCfg = offeringKindConfig(
+    offeringKindFromEventType(event?.event_type),
+  );
   const ordersQuery = useEventOrders(typeof eventId === "string" ? eventId : null);
   const orders = useMemo<OrderRecord[]>(
     () => ordersQuery.data ?? [],
@@ -145,6 +156,11 @@ export default function EventOrdersListRoute(): React.ReactElement {
           <View style={styles.chromeRightSlot} />
         </View>
         <View style={styles.emptyHost}>
+          {/* META-ORCH-1059 — kept generic "Loading event..." on purpose: this
+              loader renders while the row is still resolving (event === null),
+              so the offering kind is not yet known. It is also the locked
+              shared-route-recovery marker (serverDraftLifecycleGuards). The
+              kind-aware copy applies on every steady-state string below. */}
           <Text style={styles.emptyLoadingText}>Loading event...</Text>
         </View>
       </View>
@@ -226,7 +242,7 @@ export default function EventOrdersListRoute(): React.ReactElement {
         <View style={styles.emptyHost}>
           <EmptyState
             illustration="ticket"
-            title="Event not found"
+            title={`${capitalizeNoun(kindCfg.noun)} not found`}
             description="It may have been deleted."
           />
         </View>
@@ -324,7 +340,7 @@ export default function EventOrdersListRoute(): React.ReactElement {
               title="No orders yet"
               description="Once buyers start checking out, their orders appear here."
               cta={{
-                label: "Share event link",
+                label: `Share ${kindCfg.noun} link`,
                 onPress: () => {
                   router.push(
                     `/e/${event.brandSlug}/${event.eventSlug}` as never,
@@ -342,7 +358,7 @@ export default function EventOrdersListRoute(): React.ReactElement {
               description={
                 search.trim().length > 0
                   ? `No orders match "${search.trim()}".`
-                  : `No ${filter} orders for this event.`
+                  : `No ${filter} orders for this ${kindCfg.noun}.`
               }
             />
           </View>

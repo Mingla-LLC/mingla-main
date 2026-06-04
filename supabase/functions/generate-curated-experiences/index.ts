@@ -45,6 +45,255 @@ let supabaseAdmin: ReturnType<typeof createClient>;
 // (Type exclusion code removed — AI validation is the sole quality gate.
 //  Single cards are already filtered at generation time.)
 
+// ─── ORCH-1071 [experiences-on-curated-path] ──────────────────────────────────
+// The "See curated experiences" path calls THIS fn per curated pill with
+// experienceType = the pill id. ORCH-1065 wired brand experiences into the PLACES
+// path (discover-cards) only, so a user who turns on "See curated experiences" and
+// picks a vibe (Romantic / First Dates / Group Fun / Adventurous) never saw the
+// matching brand experience. ORCH-1071 front-loads eligible brand experiences here
+// too — same RPC, same envelope, same client converter as ORCH-1065. NO parallel
+// money fn (booking stays via ticket-checkout-create — COMMS-0014/0016).
+//
+// Bypasses place_pool / ai_signal_scores / run-signal-scorer ENTIRELY (the
+// COMMS-0018 signal_id-buggy venue→deck path): reads ONLY events + experience_stops
+// via the pg_eligible_experiences_for_deck RPC (service-role, ORCH-1070 strict-gated).
+//
+// Best-effort: a failure here MUST NOT break AI curated generation. Brand
+// experiences front-load ONLY for the 4 brand intents (the AI strolls still run);
+// every other experienceType (picnic-dates / take-a-stroll / anything non-brand)
+// is skipped.
+
+// The 4 curated pill ids that map to brand experience intents. picnic-dates and
+// take-a-stroll have NO brand-experience analog, so they are skipped.
+const CURATED_BRAND_EXPERIENCE_INTENTS = new Set([
+  'adventurous', 'first-date', 'romantic', 'group-fun',
+]);
+
+// Server card envelope pushed at the FRONT of the curated cards[] for each
+// eligible experience. IDENTICAL shape to the discover-cards ExperienceDeckCard
+// envelope — the client converter (deckService.experienceCardToRecommendation)
+// decodes BOTH paths the same way (no parallel system).
+interface CuratedExperienceDeckCard {
+  cardType: 'experience';
+  id: string;
+  eventId: string;
+  experienceType: string;
+  title: string;
+  tagline: string;
+  // ORCH-1072: IDENTICAL to discover-cards ExperienceDeckCard — real cover +
+  // description + upcoming occurrences threaded through the curated path too.
+  description: string;
+  coverMediaUrl: string | null;
+  coverMediaType: 'image' | 'video' | 'gif' | null;
+  brandId: string;
+  brandName: string;
+  brandSlug: string;
+  brandLogoUrl: string | null;
+  eventSlug: string;
+  totalPriceMin: number;
+  totalPriceMax: number;
+  currency: string;
+  masterDateUtc: string | null;
+  masterEndAtUtc: string | null;
+  timezone: string;
+  upcomingOccurrences: Array<{
+    eventDateId: string;
+    startAt: string;
+    endAt: string;
+    capacity: number | null;
+    sold: number;
+    remaining: number | null;
+  }>;
+  stops: Array<{
+    stopNumber: number;
+    placeId: string;
+    placeName: string;
+    address: string;
+    imageUrl: string;
+    imageUrls: string[];
+    aiDescription: string;
+    lat: number;
+    lng: number;
+    priceMin: number;
+    priceMax: number;
+    rating: number;
+    reviewCount: number;
+    distanceFromUserKm: number | null;
+    travelTimeFromUserMin: number | null;
+  }>;
+  estimatedDurationMinutes: number;
+  matchScore: number;
+}
+
+// ORCH-1072: decode upcoming_occurrences jsonb → camelCase envelope shape.
+// IDENTICAL to discover-cards.mapExperienceOccurrences (no parallel system —
+// both paths decode the SAME RPC output the SAME way).
+function mapExperienceOccurrences(raw: unknown): Array<{
+  eventDateId: string;
+  startAt: string;
+  endAt: string;
+  capacity: number | null;
+  sold: number;
+  remaining: number | null;
+}> {
+  const arr = Array.isArray(raw) ? raw : [];
+  return arr
+    .map((o: any) => {
+      const eventDateId = typeof o?.event_date_id === 'string' ? o.event_date_id : '';
+      const startAt = o?.start_at ? String(o.start_at) : '';
+      if (eventDateId.length === 0 || startAt.length === 0) return null;
+      return {
+        eventDateId,
+        startAt,
+        endAt: o?.end_at ? String(o.end_at) : '',
+        capacity: typeof o?.capacity === 'number' ? o.capacity : null,
+        sold: typeof o?.sold === 'number' ? o.sold : 0,
+        remaining: typeof o?.remaining === 'number' ? o.remaining : null,
+      };
+    })
+    .filter((o): o is {
+      eventDateId: string;
+      startAt: string;
+      endAt: string;
+      capacity: number | null;
+      sold: number;
+      remaining: number | null;
+    } => o !== null);
+}
+
+// Single service-role round-trip to pg_eligible_experiences_for_deck for ONE
+// brand intent (the curated pill). Maps each row into the SAME envelope shape
+// discover-cards emits. Throws on RPC error (the caller swallows best-effort so
+// an experience-source failure never degrades the AI curated generation).
+async function fetchEligibleExperiencesForCurated(args: {
+  lat: number;
+  lng: number;
+  radiusMeters: number;
+  experienceType: string;
+  nowIso: string;
+  excludeEventIds: string[];
+  limit: number;
+}): Promise<CuratedExperienceDeckCard[]> {
+  const { data, error } = await (supabaseAdmin as any).rpc(
+    'pg_eligible_experiences_for_deck',
+    {
+      p_lat: args.lat,
+      p_lng: args.lng,
+      p_radius_m: args.radiusMeters,
+      // Filter to exactly the pill's intent (one element). The RPC returns every
+      // experience whose experience_intents && p_intents.
+      p_intents: [args.experienceType],
+      p_now: args.nowIso,
+      p_exclude_ids: args.excludeEventIds,
+      p_limit: Math.min(Math.max(args.limit, 0), 30),
+    },
+  );
+  if (error) {
+    throw new Error(`pg_eligible_experiences_for_deck failed: ${error.message}`);
+  }
+  const rows = (data as any[]) ?? [];
+  return rows.map((row): CuratedExperienceDeckCard => {
+    const rawStops = Array.isArray(row.stops) ? row.stops : [];
+    const stops = rawStops.map((s: any) => {
+      const imageUrls: string[] = Array.isArray(s.image_urls) ? s.image_urls : [];
+      const lat = typeof s.lat === 'number' ? s.lat : 0;
+      const lng = typeof s.lng === 'number' ? s.lng : 0;
+      const distanceKm =
+        typeof s.lat === 'number' && typeof s.lng === 'number'
+          ? haversineKm(args.lat, args.lng, lat, lng)
+          : null;
+      const priceMajor = Math.round((Number(s.price_cents) || 0)) / 100;
+      return {
+        stopNumber: (Number(s.stop_order) || 0) + 1,
+        placeId: typeof s.place_id === 'string' ? s.place_id : String(s.place_id ?? ''),
+        placeName: typeof s.place_name === 'string' ? s.place_name : '',
+        address: typeof s.address === 'string' ? s.address : '',
+        imageUrl: imageUrls[0] ?? '',
+        imageUrls: imageUrls.slice(0, 5),
+        aiDescription: typeof s.ai_description === 'string' ? s.ai_description : '',
+        lat,
+        lng,
+        priceMin: priceMajor,
+        priceMax: priceMajor,
+        // Experiences carry no Google rating — honest 0, never fabricated.
+        rating: 0,
+        reviewCount: 0,
+        distanceFromUserKm: distanceKm,
+        travelTimeFromUserMin: null,
+      };
+    });
+    const totalMajor = Math.round((Number(row.total_price_cents) || 0)) / 100;
+    const intentsArr: string[] = Array.isArray(row.experience_intents)
+      ? row.experience_intents
+      : [];
+    return {
+      cardType: 'experience',
+      id: String(row.event_id),
+      eventId: String(row.event_id),
+      // Prefer the pill's own intent when the experience carries it, else the
+      // experience's first declared intent (mirrors discover-cards).
+      experienceType: intentsArr.includes(args.experienceType)
+        ? args.experienceType
+        : (intentsArr[0] ?? args.experienceType),
+      title: typeof row.title === 'string' ? row.title : '',
+      tagline: typeof row.tagline === 'string' ? row.tagline : '',
+      // ORCH-1072: real description + cover + occurrences (same as discover-cards).
+      description: typeof row.description === 'string' ? row.description : '',
+      coverMediaUrl:
+        typeof row.cover_media_url === 'string' && row.cover_media_url.length > 0
+          ? row.cover_media_url
+          : null,
+      coverMediaType:
+        row.cover_media_type === 'image' ||
+        row.cover_media_type === 'video' ||
+        row.cover_media_type === 'gif'
+          ? row.cover_media_type
+          : null,
+      upcomingOccurrences: mapExperienceOccurrences(row.upcoming_occurrences),
+      brandId: String(row.brand_id),
+      brandName: typeof row.brand_name === 'string' ? row.brand_name : '',
+      brandSlug: typeof row.brand_slug === 'string' ? row.brand_slug : '',
+      brandLogoUrl:
+        typeof row.brand_logo_url === 'string' && row.brand_logo_url.length > 0
+          ? row.brand_logo_url
+          : null,
+      eventSlug: typeof row.event_slug === 'string' ? row.event_slug : '',
+      totalPriceMin: totalMajor,
+      totalPriceMax: totalMajor,
+      currency:
+        typeof row.currency === 'string' && row.currency.trim().length > 0
+          ? row.currency.trim()
+          : 'USD',
+      masterDateUtc: row.master_date_utc ? String(row.master_date_utc) : null,
+      masterEndAtUtc: row.master_end_at_utc ? String(row.master_end_at_utc) : null,
+      timezone: typeof row.timezone === 'string' ? row.timezone : 'UTC',
+      stops,
+      estimatedDurationMinutes: 0,
+      matchScore: 85,
+    };
+  });
+}
+
+// Front-load the brand experiences at the HEAD of the curated cards array,
+// ahead of the AI cardType:'curated' cards, deduped by id. Additive — AI cards
+// are never displaced or dropped.
+function frontLoadCuratedExperiences(
+  aiCards: any[],
+  experienceCards: CuratedExperienceDeckCard[],
+): any[] {
+  if (experienceCards.length === 0) return aiCards;
+  const seen = new Set<string>();
+  const deduped: CuratedExperienceDeckCard[] = [];
+  for (const exp of experienceCards) {
+    if (!seen.has(exp.id)) {
+      seen.add(exp.id);
+      deduped.push(exp);
+    }
+  }
+  return [...deduped, ...aiCards];
+}
+// ─── end ORCH-1071 ────────────────────────────────────────────────────────────
+
 // ── Session preference aggregation (for collaboration mode) ────────────────
 
 const SESSION_INTENT_IDS = new Set([
@@ -1377,9 +1626,17 @@ export const handler = async (req: Request): Promise<Response> => {
       session_id,
       batchSeed = 0,
       excludePlacePoolIds = [],
+      // ORCH-1071: ids already in the deck — passed to the experience RPC as
+      // p_exclude_ids so a brand experience already shown via the places path
+      // is not re-fetched here. Optional; the curated client does not send it
+      // today, so it defaults to [] and is a no-op until wired.
+      excludeCardIds = [],
     } = body;
     if (!Array.isArray(excludePlacePoolIds)) {
       excludePlacePoolIds = [];
+    }
+    if (!Array.isArray(excludeCardIds)) {
+      excludeCardIds = [];
     }
     const warmPool = body.warmPool ?? false;
 
@@ -1624,18 +1881,55 @@ export const handler = async (req: Request): Promise<Response> => {
     }
 
     const servedCards = warmPool ? [] : cards.slice(0, limit);
-    const normalizedCards = servedCards.map((card: any) => ({
+    let normalizedCards = servedCards.map((card: any) => ({
       ...card,
       categoryLabel: card.categoryLabel || card.category || experienceType || 'Experience',
     }));
+
+    // ORCH-1071 [experiences-on-curated-path]: for the 4 brand intents ONLY,
+    // front-load eligible brand experiences ahead of the AI curated cards so the
+    // "See curated experiences" path surfaces them (the places-path-only ORCH-1065
+    // gap). Best-effort — a failure here NEVER breaks the AI curated generation.
+    // Skipped on the warm path (servedCards is empty there). Bypasses
+    // place_pool/ai_signal_scores/run-signal-scorer (COMMS-0018) — reads only
+    // events+experience_stops via the RPC.
+    if (!warmPool && CURATED_BRAND_EXPERIENCE_INTENTS.has(experienceType)) {
+      try {
+        // Radius mirrors discover-cards' experience supply (generosity=1.5 so the
+        // candidate radius is wider than the tight curated multi-stop radius —
+        // an auto-surface experience is a single bookable card, not a walked route).
+        const expMaxDistKm = radiusKmForConstraint(travelConstraintValue, travelMode, 1.5);
+        const expRadiusMeters = Math.min(Math.max(Math.round(expMaxDistKm * 1000), 500), 100000);
+        const expNowIso = (datetimePref ? new Date(datetimePref) : new Date()).toISOString();
+        const experienceCards = await fetchEligibleExperiencesForCurated({
+          lat: location.lat,
+          lng: location.lng,
+          radiusMeters: expRadiusMeters,
+          experienceType,
+          nowIso: expNowIso,
+          excludeEventIds: excludeCardIds.filter(
+            (v: unknown): v is string => typeof v === 'string' && v.length > 0,
+          ),
+          limit: Math.min(limit, 30),
+        });
+        if (experienceCards.length > 0) {
+          normalizedCards = frontLoadCuratedExperiences(normalizedCards, experienceCards);
+          console.log(`[curated-v2] front-loaded ${experienceCards.length} brand experiences for intent=${experienceType}`);
+        }
+      } catch (expErr) {
+        // Best-effort: experience supply failure must NOT break AI curated cards.
+        console.warn(`[curated-v2] experience front-load failed (tolerating): ${(expErr as Error)?.message}`);
+      }
+    }
     return new Response(
       JSON.stringify({
         cards: normalizedCards,
         experienceType,
-        total: servedCards.length,
+        // ORCH-1071: total reflects front-loaded brand experiences + AI cards.
+        total: normalizedCards.length,
         generatedAt: new Date().toISOString(),
         meta: {
-          totalResults: servedCards.length,
+          totalResults: normalizedCards.length,
           totalCardsBuilt: cards.length,
           fromPool: 0,
           fromApi: servedCards.length,

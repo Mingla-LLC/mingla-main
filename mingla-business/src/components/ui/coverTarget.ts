@@ -15,9 +15,14 @@
 
 export type CoverTarget =
   | {
-      kind: "event" | "trip";
+      // META-ORCH-1059 Sub-B: "experience" joins event/trip — experiences are
+      // events-table rows that use the SAME events.cover_media_* columns, so
+      // the experience variant mirrors event/trip exactly (uploadEventCoverMedia
+      // + the event-scoped video pipeline keyed on the experience's events-row
+      // id). No new persistence path or server-side video-target is needed.
+      kind: "event" | "trip" | "experience";
       brandId: string;
-      /** events-table row id (event id, or the trip's events-row id). */
+      /** events-table row id (event id, trip's events-row id, or experience id). */
       eventRowId: string;
       coverMediaApplyMode: "draft_auto" | "published_manual";
     }
