@@ -588,6 +588,6 @@ BEGIN
     'eventDates', v_event_dates_rows
   );
 END;
-$function$
+$function$;
 
 GRANT EXECUTE ON FUNCTION public.biz_update_live_experience(uuid, jsonb, text) TO authenticated;
