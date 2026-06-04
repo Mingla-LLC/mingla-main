@@ -301,6 +301,48 @@ Deno.test("placeForBouncer: an operator-uploaded hero satisfies the photo gate f
   );
 });
 
+// ── ORCH-1067 T-07: placeForBouncer passes fetched_via through to bounce() ───
+// The canonical B7-skip lives in bounce() keyed on fetched_via. placeForBouncer
+// MUST forward fetched_via so a business-authored row with no Google photos
+// clears B7 via provenance (not just the legacy photosForGate swap). fails-on-
+// revert: dropping the `fetched_via:` line from the return object makes the
+// provenance assertion fail.
+Deno.test("ORCH-1067 T-07: placeForBouncer forwards fetched_via; business-authored verdict is servable", () => {
+  const businessAuthored = {
+    id: "p7",
+    name: "Lantern & Vine",
+    lat: 38.9,
+    lng: -77.0,
+    types: ["restaurant", "food", "point_of_interest"],
+    business_status: "OPERATIONAL",
+    website: "https://www.deathandcompany.com",
+    opening_hours: { monday: "17:00-23:00" },
+    photos: [], // not on Google → no Google photos
+    stored_photo_urls: ["https://cdn.example/uploaded.jpg"],
+    fetched_via: "business_authored",
+    review_count: 0,
+    rating: null,
+  };
+  const mapped = placeForBouncer("p7", businessAuthored, { website: "https://www.deathandcompany.com" });
+  // Provenance is forwarded so bounce()'s isBusinessAuthored predicate sees it.
+  assertEquals(mapped.fetched_via, "business_authored");
+  const verdict = bounce(mapped);
+  assertEquals(verdict.is_servable, true, `unexpected reasons: ${verdict.reasons.join(",")}`);
+  assert(!verdict.reasons.some((r) => r.startsWith("B7")), "B7 must not fire for business-authored");
+
+  // A Google row's provenance is forwarded verbatim too (nearby_search ⇒ B7 still applies).
+  const googleMapped = placeForBouncer("p8", {
+    ...businessAuthored,
+    fetched_via: "nearby_search",
+    photos: [],
+  });
+  assertEquals(googleMapped.fetched_via, "nearby_search");
+  assert(
+    bounce(googleMapped).reasons.some((r) => r.startsWith("B7")),
+    "B7 must still fire for a Google-seeded row with no Google photos",
+  );
+});
+
 Deno.test("bounce gate: a business-authored row with no photos + no hours surfaces fixable reasons (not a hard chain reject)", () => {
   const incomplete = {
     id: "p2",

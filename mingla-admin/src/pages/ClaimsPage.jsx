@@ -3,7 +3,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { ClipboardList } from "lucide-react";
+import { ClipboardList, MessageSquarePlus, X } from "lucide-react";
 import { supabase } from "../lib/supabase";
 import { SectionCard } from "../components/ui/Card";
 import { Button } from "../components/ui/Button";
@@ -16,15 +16,20 @@ import { logAdminAction } from "../lib/auditLog";
 import { resolveClaimDisplayPhone, formatPhoneHref } from "../lib/claimsPhone";
 import { ClaimRow } from "../components/claims/ClaimRow";
 import {
+  addClaimFeedback,
   getClaimReviewBundle,
   groupClaimsByGooglePlaceId,
   listPendingClaims,
   listRejectedClaims,
   listVerifiedClaims,
-  overrideClaimScore,
   reviewClaim,
   tweakClaimFields,
 } from "../services/adminClaimsService";
+// ORCH-1066 — the place-keyed tuner supersedes the brand-keyed overrideClaimScore
+// for set/pin (richer + works from zero). overrideClaimScore stays in the service
+// for the approval score_vetoes channel but the modal no longer calls it.
+import { ScoreTunerPanel } from "../components/ScoreTunerPanel";
+import { getActiveSignals } from "../services/deckTunerService";
 import { collectClaimPhotos } from "../lib/claimPhotos";
 
 const CAT_LABELS = {
@@ -32,6 +37,27 @@ const CAT_LABELS = {
   play: "Play",
   creative_and_arts: "Creative & arts",
 };
+
+// ORCH-1064 — feedback category enum → human label (matches the migration
+// CHECK + the business sheet's group order).
+const FEEDBACK_CAT_LABELS = {
+  photos: "Photos",
+  address: "Address",
+  hours: "Hours",
+  category: "Category",
+  description: "Description",
+  quality: "Listing quality",
+  other: "Other",
+};
+const FEEDBACK_CAT_ORDER = [
+  "photos",
+  "address",
+  "hours",
+  "category",
+  "description",
+  "quality",
+  "other",
+];
 
 const WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
@@ -67,12 +93,15 @@ export function ClaimsPage() {
   const [tweakAddress, setTweakAddress] = useState("");
   const [tweakCategory, setTweakCategory] = useState("");
   const [tweakPriceLevel, setTweakPriceLevel] = useState("");
-  // Score override draft per signal: { [signalId]: { score, reason } }.
-  // META-ORCH-1062 BIDIRECTIONAL override (Q2: admins may raise OR lower) — this
-  // SUPERSEDES the #299 WS7 reduce-only `vetoes` state, which was removed in the
-  // merge. admin-review-venue-claim still accepts score_vetoes for backward-compat,
-  // but approve no longer depends on it (go-live is the Phase 4 servable→scorer path).
-  const [scoreDraft, setScoreDraft] = useState({});
+  // ORCH-1066 — active-signal catalog (the 16 dials), fetched once + cached, so
+  // the tuner can show a row for every signal even when the place has 0 scores.
+  const [activeSignals, setActiveSignals] = useState([]);
+  // ORCH-1064 — feedback authoring draft: staged items + the per-row composer +
+  // the optional overall message. Cleared on open/close/submit.
+  const [feedbackItems, setFeedbackItems] = useState([]);
+  const [feedbackCat, setFeedbackCat] = useState("photos");
+  const [feedbackNote, setFeedbackNote] = useState("");
+  const [feedbackMessage, setFeedbackMessage] = useState("");
 
   const duplicateGroups = useMemo(
     () => groupClaimsByGooglePlaceId(rows),
@@ -105,6 +134,22 @@ export function ClaimsPage() {
     void load();
   }, [load]);
 
+  // ORCH-1066 — fetch the active-signal catalog once for the tuner dials.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const sigs = await getActiveSignals();
+        if (!cancelled) setActiveSignals(sigs);
+      } catch {
+        if (!cancelled) setActiveSignals([]);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   const loadBundle = useCallback(async (brandId) => {
     setBundleLoading(true);
     setBundleError(null);
@@ -125,7 +170,10 @@ export function ClaimsPage() {
     setBundle(null);
     setBundleError(null);
     setLightboxIndex(null);
-    setScoreDraft({});
+    setFeedbackItems([]);
+    setFeedbackCat("photos");
+    setFeedbackNote("");
+    setFeedbackMessage("");
     setTweakAddress(row.address ?? "");
     setTweakCategory(row.venue_category ?? "");
     setTweakPriceLevel("");
@@ -157,7 +205,62 @@ export function ClaimsPage() {
     setBundle(null);
     setBundleError(null);
     setLightboxIndex(null);
-    setScoreDraft({});
+    setFeedbackItems([]);
+    setFeedbackCat("photos");
+    setFeedbackNote("");
+    setFeedbackMessage("");
+  };
+
+  // ORCH-1064 — stage one feedback item into the local draft array.
+  const addFeedbackItem = () => {
+    const note = feedbackNote.trim();
+    if (note.length === 0) {
+      addToast({ variant: "warning", title: "Add a note for this item" });
+      return;
+    }
+    setFeedbackItems((items) => [...items, { category: feedbackCat, note }]);
+    setFeedbackNote("");
+  };
+
+  const removeFeedbackItem = (index) => {
+    setFeedbackItems((items) => items.filter((_, i) => i !== index));
+  };
+
+  // ORCH-1064 — send the staged round through the edge wrapper (push + audit
+  // server-side), then close + reload so the "Follow-up requested" badge shows.
+  const submitFeedback = async () => {
+    if (!detail) return;
+    if (feedbackItems.length === 0) {
+      addToast({ variant: "warning", title: "Add at least one feedback item" });
+      return;
+    }
+    setActing(true);
+    try {
+      const data = await addClaimFeedback(
+        detail.id,
+        feedbackItems,
+        feedbackMessage.trim() || null,
+      );
+      await logAdminAction("claim.add_feedback", "venue_claim", detail.id, {
+        round: data?.round ?? null,
+        item_count: data?.item_count ?? feedbackItems.length,
+      });
+      addToast({
+        variant: "info",
+        title: "Feedback sent",
+        description: `${data?.item_count ?? feedbackItems.length} item(s) sent to the business`,
+      });
+      closeDetail();
+      await load();
+    } catch (e) {
+      addToast({
+        variant: "error",
+        title: "Couldn't send feedback",
+        description: e?.message ?? String(e),
+      });
+    } finally {
+      setActing(false);
+    }
   };
 
   const runReview = async (action, opts = {}) => {
@@ -267,38 +370,10 @@ export function ClaimsPage() {
     }
   };
 
-  // META-ORCH-1062 Q2 — apply a bidirectional score override for one signal.
-  const submitScoreOverride = async (signalId) => {
-    if (!detail) return;
-    const draft = scoreDraft[signalId] ?? {};
-    const score = Number(draft.score);
-    if (!Number.isFinite(score) || score < 0 || score > 200) {
-      addToast({
-        variant: "warning",
-        title: "Score must be 0–200",
-      });
-      return;
-    }
-    setActing(true);
-    try {
-      const res = await overrideClaimScore(detail.id, signalId, score, draft.reason);
-      await logAdminAction("claim.score_override", "venue_claim", detail.id, {
-        signal_id: signalId,
-        score,
-      });
-      const dir = res?.result?.direction ?? "updated";
-      addToast({ variant: "info", title: `Score ${dir}`, description: `${signalId} → ${score}` });
-      await loadBundle(detail.id);
-    } catch (e) {
-      addToast({
-        variant: "error",
-        title: "Couldn't override score",
-        description: e?.message ?? String(e),
-      });
-    } finally {
-      setActing(false);
-    }
-  };
+  // ORCH-1066 — score editing moved to <ScoreTunerPanel> (place-keyed set/pin,
+  // works from zero, with live preview + projected rank). The brand-keyed
+  // overrideClaimScore + its submitScoreOverride handler were removed here; the
+  // RPC remains in the codebase for the approval score_vetoes channel (SC-8).
 
   const phoneInfo = detail ? resolveClaimDisplayPhone(detail) : null;
   const tel = phoneInfo ? formatPhoneHref(phoneInfo.phone) : null;
@@ -319,6 +394,24 @@ export function ClaimsPage() {
     [bundle, detail],
   );
   const scores = Array.isArray(bundle?.scores) ? bundle.scores : [];
+  // ORCH-1064 — the active feedback round's items (grouped by category for the
+  // read-only status view). bundle.feedback is the active round only.
+  const feedbackRows = useMemo(
+    () => (Array.isArray(bundle?.feedback) ? bundle.feedback : []),
+    [bundle],
+  );
+  const feedbackByCategory = useMemo(() => {
+    const groups = new Map();
+    for (const row of feedbackRows) {
+      const list = groups.get(row.category) ?? [];
+      list.push(row);
+      groups.set(row.category, list);
+    }
+    return FEEDBACK_CAT_ORDER.filter((c) => groups.has(c)).map((c) => ({
+      category: c,
+      items: groups.get(c),
+    }));
+  }, [feedbackRows]);
   const isPending = detail?.claim_status
     ? detail.claim_status === "pending_review"
     : activeTab === "pending";
@@ -708,67 +801,185 @@ export function ClaimsPage() {
                     </Button>
                   </div>
 
-                  {scores.length > 0 ? (
-                    <div className="space-y-2">
-                      <div className="text-xs text-[var(--color-text-secondary)]">
-                        Score override (0–200; raises or lowers deck rank)
-                      </div>
-                      {scores.map((s) => (
-                        <div key={s.signal_id} className="flex flex-wrap items-end gap-2">
-                          <div className="text-xs">
-                            <div className="text-[var(--color-text-tertiary)]">
-                              {s.signal_id} (now {Math.round(s.score)})
-                            </div>
-                            <input
-                              type="number"
-                              min={0}
-                              max={200}
-                              value={scoreDraft[s.signal_id]?.score ?? ""}
-                              placeholder={String(Math.round(s.score))}
-                              onChange={(e) =>
-                                setScoreDraft((d) => ({
-                                  ...d,
-                                  [s.signal_id]: {
-                                    ...(d[s.signal_id] ?? {}),
-                                    score: e.target.value,
-                                  },
-                                }))
-                              }
-                              disabled={acting}
-                              className="mt-1 w-24 rounded-lg border border-white/10 bg-white/5 px-2 py-1 text-sm text-[var(--color-text-primary)]"
-                            />
-                          </div>
-                          <input
-                            type="text"
-                            placeholder="reason"
-                            value={scoreDraft[s.signal_id]?.reason ?? ""}
-                            onChange={(e) =>
-                              setScoreDraft((d) => ({
-                                ...d,
-                                [s.signal_id]: {
-                                  ...(d[s.signal_id] ?? {}),
-                                  reason: e.target.value,
-                                },
-                              }))
-                            }
+                  {/* ORCH-1066 — deck score tuner: seed (from zero) + per-signal
+                      set/pin + live card preview + projected rank. Replaces the
+                      dead-end "available after approve" copy + the brand-keyed
+                      override grid. projected=true: the venue is pending/non-servable
+                      so rank is a projection ("goes live when you approve"). */}
+                  {detail.place_pool_id ? (
+                    <ScoreTunerPanel
+                      placePoolId={detail.place_pool_id}
+                      placeData={{
+                        id: detail.place_pool_id,
+                        name: detail.name,
+                        stored_photo_urls: pp?.stored_photo_urls ?? null,
+                        rating: pp?.rating ?? null,
+                        price_level: pp?.price_level ?? null,
+                        price_tiers: pp?.price_tiers ?? null,
+                        generative_summary: pp?.generative_summary ?? null,
+                        primary_type: null,
+                        types: null,
+                        lat: detail.lat ?? null,
+                        lng: detail.lng ?? null,
+                        is_servable: pp?.is_servable ?? false,
+                        is_active: pp?.is_active ?? true,
+                      }}
+                      scores={scores}
+                      signals={activeSignals}
+                      projected
+                      density="modal"
+                      loading={bundleLoading && scores.length === 0}
+                      error={bundleError}
+                      onAfterWrite={() => loadBundle(detail.id)}
+                      onRetry={() => loadBundle(detail.id)}
+                      addToast={addToast}
+                    />
+                  ) : (
+                    <p className="text-xs text-[var(--color-text-tertiary)]">
+                      No linked place — scoring is unavailable for this claim.
+                    </p>
+                  )}
+                </div>
+              ) : null}
+
+              {/* ORCH-1064 — feedback to the business (pending claims only). Each
+                  Send opens a fresh round, moves the claim to need_more_info, and
+                  pushes the owner; the current round's items + their fixed status
+                  render read-only below. */}
+              {isPending ? (
+                <div className="space-y-4 rounded-lg border border-white/10 bg-white/[0.03] p-3">
+                  <div className="flex items-center gap-2 text-[var(--color-text-tertiary)] text-xs uppercase tracking-wide">
+                    <MessageSquarePlus className="h-3.5 w-3.5" />
+                    Feedback to business
+                  </div>
+
+                  {/* Staged items */}
+                  {feedbackItems.length > 0 ? (
+                    <div className="space-y-1.5">
+                      {feedbackItems.map((item, i) => (
+                        <div
+                          key={`${item.category}-${i}`}
+                          className="flex items-center gap-2 rounded-lg border border-white/10 bg-white/5 px-2 py-1.5 text-xs"
+                        >
+                          <span className="font-medium text-[var(--color-text-primary)]">
+                            {FEEDBACK_CAT_LABELS[item.category]}
+                          </span>
+                          <span className="flex-1 truncate text-[var(--color-text-secondary)]">
+                            {item.note}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => removeFeedbackItem(i)}
                             disabled={acting}
-                            className="flex-1 min-w-[8rem] rounded-lg border border-white/10 bg-white/5 px-2 py-1 text-sm text-[var(--color-text-primary)]"
-                          />
-                          <Button
-                            variant="secondary"
-                            onClick={() => void submitScoreOverride(s.signal_id)}
-                            disabled={acting}
+                            aria-label="Remove feedback item"
+                            className="rounded p-0.5 text-[var(--color-text-tertiary)] hover:text-[var(--color-text-primary)]"
                           >
-                            Apply
-                          </Button>
+                            <X className="h-3.5 w-3.5" />
+                          </button>
                         </div>
                       ))}
                     </div>
-                  ) : (
-                    <p className="text-xs text-[var(--color-text-tertiary)]">
-                      Score override available after the venue is scored (on approve).
-                    </p>
-                  )}
+                  ) : null}
+
+                  {/* Add-item composer */}
+                  <div className="flex flex-wrap items-end gap-2">
+                    <label className="text-xs text-[var(--color-text-tertiary)]">
+                      Category
+                      <select
+                        value={feedbackCat}
+                        onChange={(e) => setFeedbackCat(e.target.value)}
+                        disabled={acting}
+                        className="mt-1 block w-36 rounded-lg border border-white/10 bg-white/5 px-2 py-1.5 text-sm text-[var(--color-text-primary)]"
+                      >
+                        {FEEDBACK_CAT_ORDER.map((c) => (
+                          <option key={c} value={c}>
+                            {FEEDBACK_CAT_LABELS[c]}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <label className="flex-1 min-w-[10rem] text-xs text-[var(--color-text-tertiary)]">
+                      Note
+                      <input
+                        type="text"
+                        value={feedbackNote}
+                        onChange={(e) => setFeedbackNote(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") {
+                            e.preventDefault();
+                            addFeedbackItem();
+                          }
+                        }}
+                        placeholder="What needs fixing?"
+                        disabled={acting}
+                        className="mt-1 w-full rounded-lg border border-white/10 bg-white/5 px-2 py-1.5 text-sm text-[var(--color-text-primary)]"
+                      />
+                    </label>
+                    <Button
+                      variant="secondary"
+                      onClick={addFeedbackItem}
+                      disabled={acting}
+                    >
+                      Add item
+                    </Button>
+                  </div>
+
+                  {/* Optional overall message */}
+                  <label className="block text-xs text-[var(--color-text-tertiary)]">
+                    Overall message (optional)
+                    <textarea
+                      value={feedbackMessage}
+                      onChange={(e) => setFeedbackMessage(e.target.value)}
+                      placeholder="Optional message to the business (one per round)."
+                      disabled={acting}
+                      rows={2}
+                      className="mt-1 w-full rounded-lg border border-white/10 bg-white/5 px-2 py-1.5 text-sm text-[var(--color-text-primary)]"
+                    />
+                  </label>
+
+                  <Button
+                    variant="primary"
+                    onClick={() => void submitFeedback()}
+                    disabled={acting || feedbackItems.length === 0}
+                  >
+                    Send feedback
+                  </Button>
+
+                  {/* Current round status (read-only) */}
+                  {feedbackByCategory.length > 0 ? (
+                    <div className="space-y-2 border-t border-white/10 pt-3">
+                      <div className="text-xs text-[var(--color-text-secondary)]">
+                        Current round — what the business has addressed
+                      </div>
+                      {feedbackByCategory.map((group) => (
+                        <div key={group.category} className="space-y-1">
+                          <div className="text-[10px] uppercase tracking-wide text-[var(--color-text-tertiary)]">
+                            {FEEDBACK_CAT_LABELS[group.category]}
+                          </div>
+                          {group.items.map((item) => (
+                            <div
+                              key={item.id}
+                              className="flex items-center gap-2 text-xs"
+                            >
+                              <span className="flex-1 text-[var(--color-text-secondary)]">
+                                {item.note}
+                              </span>
+                              <Badge
+                                variant={item.status === "fixed" ? "success" : "warning"}
+                              >
+                                {item.status === "fixed" ? "Fixed" : "Open"}
+                              </Badge>
+                            </div>
+                          ))}
+                        </div>
+                      ))}
+                      {feedbackRows[0]?.overall_message ? (
+                        <p className="text-[11px] italic text-[var(--color-text-tertiary)]">
+                          “{feedbackRows[0].overall_message}”
+                        </p>
+                      ) : null}
+                    </div>
+                  ) : null}
                 </div>
               ) : null}
 

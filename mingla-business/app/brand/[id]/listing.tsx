@@ -11,7 +11,7 @@
  * Closes the Sub-E/Sub-F loop: the scores + changes-remaining + rejection message
  * were produced by the pipeline/admin but never surfaced to the brand until now.
  */
-import React, { useCallback, useMemo } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   Pressable,
@@ -23,10 +23,13 @@ import {
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
+import { VenueClaimFeedbackSheet } from "../../../src/components/brand/VenueClaimFeedbackSheet";
+import { VenueClaimStatusBanner } from "../../../src/components/brand/VenueClaimStatusBanner";
 import { Button } from "../../../src/components/ui/Button";
 import { EventCoverMedia } from "../../../src/components/ui/EventCoverMedia";
 import { GlassCard } from "../../../src/components/ui/GlassCard";
 import { Icon } from "../../../src/components/ui/Icon";
+import { Toast } from "../../../src/components/ui/Toast";
 import {
   accent,
   canvas,
@@ -36,11 +39,13 @@ import {
   typography,
 } from "../../../src/constants/designSystem";
 import { venueSignalLabel } from "../../../src/constants/venueSignals";
+import { useAuth } from "../../../src/context/AuthContext";
 import { useBrand } from "../../../src/hooks/useBrands";
 import {
   useBrandPlaceAuthoringContext,
   useBrandPlacePipelineState,
 } from "../../../src/hooks/useBrandPlacePipelineState";
+import { useVenueClaimOpenCount } from "../../../src/hooks/useVenueClaimFeedback";
 import { listingStatusView, type ListingTone } from "../../../src/utils/listingStatus";
 
 const TONE_COLOR: Record<ListingTone, string> = {
@@ -66,8 +71,13 @@ const PRICE_TIER_LABEL: Record<string, string> = {
 export default function BrandListingRoute(): React.ReactElement {
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const params = useLocalSearchParams<{ id: string | string[] }>();
+  const { user } = useAuth();
+  const params = useLocalSearchParams<{
+    id: string | string[];
+    focus?: string | string[];
+  }>();
   const idParam = Array.isArray(params.id) ? params.id[0] : params.id;
+  const focusParam = Array.isArray(params.focus) ? params.focus[0] : params.focus;
   const brandId =
     typeof idParam === "string" && idParam.length > 0 ? idParam : null;
 
@@ -75,6 +85,51 @@ export default function BrandListingRoute(): React.ReactElement {
   const placePoolId = brand?.placePoolId ?? null;
   const pipeline = useBrandPlacePipelineState(brandId);
   const ctx = useBrandPlaceAuthoringContext(brandId, placePoolId);
+
+  // ORCH-1064 — venue-claim feedback affordance (re-targeted from the Hub).
+  // The follow_up tile + sheet live HERE now (META-ORCH-1059 removed the Hub
+  // mount). openCount drives the tile badge; the sheet + a single Toast host are
+  // mounted at the bottom of this screen.
+  const followUpAt = brand?.claimFollowUpAt ?? null;
+  const hasFollowUp =
+    brand?.claimStatus === "pending_review" && Boolean(followUpAt);
+  const openFeedbackCount = useVenueClaimOpenCount(brandId, followUpAt);
+  const [feedbackVisible, setFeedbackVisible] = useState<boolean>(false);
+  const [toast, setToast] = useState<{
+    kind: "success" | "error";
+    message: string;
+  } | null>(null);
+
+  const handleOpenFeedback = useCallback((): void => {
+    setFeedbackVisible(true);
+  }, []);
+
+  const handleCloseFeedback = useCallback((): void => {
+    setFeedbackVisible(false);
+  }, []);
+
+  const handleResubmitted = useCallback((): void => {
+    setToast({
+      kind: "success",
+      message: "Sent back for review — we'll take another look.",
+    });
+  }, []);
+
+  const handleFeedbackError = useCallback((message: string): void => {
+    setToast({ kind: "error", message });
+  }, []);
+
+  const handleDismissToast = useCallback((): void => {
+    setToast(null);
+  }, []);
+
+  // Deep-link: /brand/{id}/listing?focus=feedback (from the to-do row) auto-opens
+  // the sheet once, only when there is actually an active follow-up round.
+  useEffect(() => {
+    if (focusParam === "feedback" && hasFollowUp) {
+      setFeedbackVisible(true);
+    }
+  }, [focusParam, hasFollowUp]);
 
   const hasVenue = placePoolId !== null;
   const statusV = listingStatusView({
@@ -184,6 +239,21 @@ export default function BrandListingRoute(): React.ReactElement {
               <Text style={styles.statusHint}>{statusV.hint}</Text>
             </GlassCard>
 
+            {/* ORCH-1064 — venue-claim feedback affordance. Re-homed from the Hub
+                (META-ORCH-1059). The reusable follow_up tile renders ONLY when the
+                claim is pending_review WITH an admin follow-up stamp; tapping it
+                (or the "View feedback" button via the same handler) opens the
+                feedback sheet. The open-count badge shows "N to fix" / "Ready". */}
+            {hasFollowUp ? (
+              <View style={styles.bannerHost}>
+                <VenueClaimStatusBanner
+                  brand={brand}
+                  openCount={openFeedbackCount}
+                  onPressFeedback={handleOpenFeedback}
+                />
+              </View>
+            ) : null}
+
             {/* Rejection message */}
             {rejected && rejectionReason !== null ? (
               <GlassCard variant="base" padding={spacing.lg}>
@@ -270,6 +340,27 @@ export default function BrandListingRoute(): React.ReactElement {
 
             {/* Manage actions */}
             <View style={styles.actionsCol}>
+              {/* ORCH-1064 — explicit "View feedback" CTA (badge = open count)
+                  alongside the tappable status tile, so the affordance is obvious
+                  in the actions row too. Present only with an active follow-up. */}
+              {hasFollowUp ? (
+                <Button
+                  label={
+                    openFeedbackCount > 0
+                      ? `View feedback · ${openFeedbackCount}`
+                      : "View feedback"
+                  }
+                  variant="secondary"
+                  size="md"
+                  leadingIcon="flag"
+                  onPress={handleOpenFeedback}
+                  accessibilityLabel={
+                    openFeedbackCount > 0
+                      ? `View venue feedback, ${openFeedbackCount} to fix`
+                      : "View venue feedback"
+                  }
+                />
+              ) : null}
               <Button
                 label="Edit listing"
                 variant="primary"
@@ -292,6 +383,22 @@ export default function BrandListingRoute(): React.ReactElement {
           </>
         )}
       </ScrollView>
+
+      {/* ORCH-1064 — feedback sheet + single Toast host (re-homed from the Hub). */}
+      <VenueClaimFeedbackSheet
+        visible={feedbackVisible}
+        brand={brand}
+        accountId={user?.id ?? null}
+        onClose={handleCloseFeedback}
+        onResubmitted={handleResubmitted}
+        onActionError={handleFeedbackError}
+      />
+      <Toast
+        visible={toast !== null}
+        kind={toast?.kind ?? "success"}
+        message={toast?.message ?? ""}
+        onDismiss={handleDismissToast}
+      />
     </View>
   );
 }
@@ -386,4 +493,8 @@ const styles = StyleSheet.create({
   },
   actionRow: { marginTop: spacing.md, alignItems: "flex-start" },
   actionsCol: { gap: spacing.sm, marginTop: spacing.xs },
+  // ORCH-1064 — cancel the banner's own marginHorizontal so the re-homed
+  // follow_up tile aligns flush with the surrounding GlassCards; trim its
+  // marginBottom (the scroll already supplies `gap: spacing.md`).
+  bannerHost: { marginHorizontal: -spacing.md, marginBottom: -spacing.sm },
 });

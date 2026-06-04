@@ -1455,6 +1455,35 @@ function checkNoNewBackendFiles() {
     // backend test file → allowlisted in the SAME commit (COMMS-0002).
     "supabase/functions/discover-cards/__tests__/orch1065_experience_supply_adversarial.test.ts",
   ];
+  // ORCH-1064 [admin↔business venue-listing feedback loop]: one NEW migration
+  // (venue_claim_feedback table + RLS + view + 3 RPCs + admin bundle extension)
+  // plus its backend regression tests. The edge fn (admin-review-venue-claim/
+  // index.ts) is a MODIFICATION of an existing file (already allowlisted under
+  // ORCH_0101_VE3), so only the migration + new test files need listing. Per
+  // COMMS-0002 — lands in the same commit as the migration.
+  const ORCH_1064_BACKEND_ALLOWLIST = [
+    "supabase/migrations/20260901000000_orch_1064_venue_claim_feedback.sql",
+    "supabase/migrations/__tests__/orch_1064_venue_claim_feedback.test.sql",
+    "supabase/migrations/__tests__/orch_1064_feedback_owner_rls.adversarial.test.sql",
+    "supabase/functions/admin-review-venue-claim/__tests__/orch_1064_feedback_loop.test.ts",
+  ];
+  // ORCH-1067 [Bouncer accepts business-authored uploaded photos]: skips deck
+  // bouncer rule B7 (Google-photos gate) ONLY for fetched_via='business_authored'
+  // rows, so a self-listed venue with real uploaded photos (stored_photo_urls /
+  // B8) reaches the deck. Edge-function-logic-only — NO migration, NO new edge
+  // fn source. The four bounce() callers (run-bouncer, run-pre-photo-bouncer,
+  // admin-review-venue-claim, run-business-place-authoring-pipeline index.ts +
+  // their two adversarial/behavioral tests) are already allowlisted under the
+  // ORCH-0100/0101/META-ORCH-1009/ORCH-1062/ORCH-1064 blocks above; only the
+  // canonical _shared/bouncer.ts (MODIFY), its existing Deno unit test (MODIFY),
+  // and the tester's NEW adversarial regression test need listing here. C7 is
+  // scoped to ORCH-0863 marketing; these are bouncer backend touches. Per
+  // COMMS-0002.
+  const ORCH_1067_BACKEND_ALLOWLIST = [
+    "supabase/functions/_shared/bouncer.ts",
+    "supabase/functions/_shared/__tests__/bouncer.test.ts",
+    "supabase/functions/_shared/__tests__/bouncer_orch1067_adversarial.test.ts",
+  ];
   // ORCH-1032 [Intelligence pipeline concurrency cap + chunked enqueue]:
   // adds the additive 'queued'-status migration (status CHECK widen + per-city
   // unique active index widen + tg_kick_pending_trial_runs promotion built on
@@ -1546,7 +1575,25 @@ function checkNoNewBackendFiles() {
     "supabase/migrations/20260826000000_orch_1058b_post_collab_dead_end_banner.sql",
     "supabase/migrations/20260826000001_orch_1058b_allow_system_message_type.sql",
   ];
+  // ORCH-1066 [admin deck score tuner + card preview]: adds the new 4-RPC
+  // deck-score-tuner migration + its SQL-shape migration test + the
+  // sticky-through-approval Deno regression test. run-signal-scorer/index.ts and
+  // admin-review-venue-claim/index.ts are MODIFIES (sticky-skip + new tuner
+  // actions) — C7 flags modified backend files too, so they are listed here.
+  // C7 is scoped to ORCH-0863 marketing; these are venue-scoring/admin backend
+  // touches. Per COMMS-0002 — lands in the same commit as the migration.
+  const ORCH_1066_BACKEND_ALLOWLIST = [
+    "supabase/migrations/20260904000000_orch_1066_deck_score_tuner.sql",
+    "supabase/migrations/__tests__/orch_1066_deck_score_tuner.test.sql",
+    "supabase/functions/_shared/stickyOverride.ts",
+    "supabase/functions/run-signal-scorer/index.ts",
+    "supabase/functions/run-signal-scorer/__tests__/orch_1066_sticky_override.test.ts",
+    "supabase/functions/run-signal-scorer/__tests__/orch_1066_sticky_mixed_batch.adversarial.test.ts",
+    "supabase/functions/admin-review-venue-claim/index.ts",
+    "supabase/functions/admin-review-venue-claim/__tests__/orch_1066_tuner_actions.test.ts",
+  ];
   const ALLOWLIST = [
+    ...ORCH_1066_BACKEND_ALLOWLIST,
     ...META_ORCH_1059_BACKEND_ALLOWLIST,
     ...META_ORCH_1062_BACKEND_ALLOWLIST,
     ...ORCH_1058B_BACKEND_ALLOWLIST,
@@ -1634,6 +1681,8 @@ function checkNoNewBackendFiles() {
     ...ORCH_1061_BACKEND_ALLOWLIST,
     ...ORCH_1062_BACKEND_ALLOWLIST,
     ...ORCH_1065_BACKEND_ALLOWLIST,
+    ...ORCH_1064_BACKEND_ALLOWLIST,
+    ...ORCH_1067_BACKEND_ALLOWLIST,
     // Schedule-edit buyer protection + "Refund all & proceed" (separate PR;
     // shares the ORCH-1047 work id used in code). New migration recording the
     // already-live business_patch_event_when change — not ORCH-0863 marketing

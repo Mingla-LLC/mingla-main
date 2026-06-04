@@ -607,6 +607,16 @@ export default function SwipeableCards({
   const [showNextBatchLoader, setShowNextBatchLoader] = useState(false);
   const [dismissedSheetVisible, setDismissedSheetVisible] = useState(false);
   const [reviewIndex, setReviewIndex] = useState(0);
+  // ORCH-1064: true ONLY when the expanded card was opened from swipe-history
+  // review. Gates the prev/next review chrome so it never appears on a normal
+  // deck tap (reviewCards is the whole session-swiped list, so it is non-empty
+  // after any swipe — it cannot be used alone to detect review mode).
+  const [isReviewMode, setIsReviewMode] = useState(false);
+  // ORCH-1064: timestamp of the last expanded-card close. Used to block a
+  // re-open within ~500ms so the wrapInRNModal RN <Modal> is never re-presented
+  // while the prior dismissal is still in flight on iOS (the intermittent
+  // release-build present-during-dismiss freeze on rapid open/close).
+  const lastModalCloseAtRef = useRef(0);
 
   const previousBatchRefreshKeyRef = useRef<number | string | undefined>(
     refreshKey
@@ -1556,6 +1566,10 @@ export default function SwipeableCards({
 
   const handleCardExpand = async () => {
     if (!currentRec) return;
+    // ORCH-1064: re-open guard — ignore an open within 500ms of the last close so
+    // the modal can't be re-presented mid-dismiss (intermittent freeze).
+    if (Date.now() - lastModalCloseAtRef.current < 500) return;
+    setIsReviewMode(false); // ORCH-1064: normal deck tap — no review chrome
     setIsExpandedModalVisible(true);
 
     // ORCH-0408 Phase 4: Record expand — counter + user interaction log (fire-and-forget)
@@ -1642,6 +1656,8 @@ export default function SwipeableCards({
     setIsExpandedModalVisible(false);
     setSelectedCardForExpansion(null);
     setExpandedBrandExperience(null);  // ORCH-1065
+    setIsReviewMode(false); // ORCH-1064: reset review mode on close
+    lastModalCloseAtRef.current = Date.now(); // ORCH-1064: re-open guard window
   };
 
   const handleSwipe = async (
@@ -2085,6 +2101,7 @@ export default function SwipeableCards({
     const reversedCards = [...sessionSwipedCards].reverse();
     const idx = reversedCards.findIndex(c => c.id === card.id);
     setReviewIndex(idx >= 0 ? idx : 0);
+    setIsReviewMode(true); // ORCH-1064: opened from swipe history — show review chrome
 
     setDismissedSheetVisible(false);
     setTimeout(() => {
@@ -2897,12 +2914,16 @@ export default function SwipeableCards({
         }}
         userPreferences={userPreferences}
         accountPreferences={accountPreferences}
-        // ORCH-1063: review-navigation props from the former EXHAUSTED-case
-        // modal instance. Inert when reviewCards is empty (normal deck tap).
-        onNavigateNext={reviewIndex < reviewCards.length - 1 ? handleReviewNext : undefined}
-        onNavigatePrevious={reviewIndex > 0 ? handleReviewPrevious : undefined}
-        navigationIndex={reviewIndex}
-        navigationTotal={reviewCards.length}
+        // ORCH-1064: review-navigation chrome shows ONLY when opened from swipe
+        // history (isReviewMode). reviewCards is the whole session-swiped list, so
+        // it is non-empty after any swipe — gating on it alone wrongly showed the
+        // "X of Y" prev/next header on normal deck taps (the regression). All four
+        // props are gated on isReviewMode (navigationIndex/Total too, because the
+        // header also renders when those are non-null).
+        onNavigateNext={isReviewMode && reviewIndex < reviewCards.length - 1 ? handleReviewNext : undefined}
+        onNavigatePrevious={isReviewMode && reviewIndex > 0 ? handleReviewPrevious : undefined}
+        navigationIndex={isReviewMode ? reviewIndex : undefined}
+        navigationTotal={isReviewMode ? reviewCards.length : undefined}
         canAccessCurated={canAccess('curated_cards')}
         onPaywallRequired={() => {
           handleCloseExpandedModal();

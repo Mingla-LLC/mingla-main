@@ -1,63 +1,94 @@
 diff --git a/node_modules/@gorhom/bottom-sheet/src/hooks/useScrollEventsHandlersDefault.ts b/node_modules/@gorhom/bottom-sheet/src/hooks/useScrollEventsHandlersDefault.ts
-index c059449..0290160 100644
+index c059449..7895453 100644
 --- a/node_modules/@gorhom/bottom-sheet/src/hooks/useScrollEventsHandlersDefault.ts
 +++ b/node_modules/@gorhom/bottom-sheet/src/hooks/useScrollEventsHandlersDefault.ts
-@@ -55,8 +55,17 @@ export const useScrollEventsHandlersDefault: ScrollEventsHandlersHookType = (
+@@ -1,6 +1,6 @@
+ import { useCallback } from 'react';
+ import { State } from 'react-native-gesture-handler';
+-import { scrollTo } from 'react-native-reanimated';
++import { scrollTo, useSharedValue } from 'react-native-reanimated';
+ import { ANIMATION_STATUS, SCROLLABLE_STATUS, SHEET_STATE } from '../constants';
+ import type {
+   ScrollEventHandlerCallbackType,
+@@ -26,6 +26,10 @@ export const useScrollEventsHandlersDefault: ScrollEventsHandlersHookType = (
+     animatedHandleGestureState,
+   } = useBottomSheetInternal();
+ 
++  // ORCH-1064: re-entrancy flag for the reanimated-v4 scroll-lock recursion
++  // (gorhom #2546/#2617). See the guarded scrollTo() sites below.
++  const isLockingScroll = useSharedValue(false);
++
+   //#region callbacks
+   const handleOnScroll: ScrollEventHandlerCallbackType<ScrollEventContextType> =
+     useCallback(
+@@ -55,8 +59,21 @@ export const useScrollEventsHandlersDefault: ScrollEventsHandlersHookType = (
            const lockPosition = context.shouldLockInitialPosition
              ? (context.initialContentOffsetY ?? 0)
              : 0;
 -          // @ts-ignore
 -          scrollTo(scrollableRef, 0, lockPosition, false);
-+          // ORCH-1063: react-native-reanimated v4 + New Architecture re-entrancy guard
-+          // (gorhom #2546 / #2617). Under reanimated v4, scrollTo() synchronously
-+          // re-fires the scroll event, which re-enters this same worklet while the
-+          // scrollable is LOCKED, calling scrollTo() again → unbounded recursion →
-+          // "Maximum call stack size exceeded (native stack depth)" fatal crash.
-+          // Skipping the redundant scrollTo once already at lockPosition breaks the
-+          // loop while preserving the lock behavior (the first call still snaps back).
-+          if (y !== lockPosition) {
++          // ORCH-1064: react-native-reanimated v4 + New Architecture re-entrancy
++          // guard (gorhom #2546 / #2617). scrollTo() synchronously re-fires the
++          // scroll event, re-entering this worklet while still LOCKED → it calls
++          // scrollTo() again → unbounded recursion → "Maximum call stack size
++          // exceeded (native stack depth)" fatal crash. A position check
++          // (y !== lockPosition) is NOT reliable: the native re-emit can replay
++          // the ORIGINAL offset, so the check passes and the loop continues. The
++          // re-entrancy flag is robust — the synchronous nested invocation sees
++          // isLockingScroll.value === true and skips the call, regardless of y.
++          if (!isLockingScroll.value) {
++            isLockingScroll.value = true;
 +            // @ts-ignore
 +            scrollTo(scrollableRef, 0, lockPosition, false);
++            isLockingScroll.value = false;
 +          }
            scrollableContentOffsetY.value = lockPosition;
            return;
          }
-@@ -104,8 +113,17 @@ export const useScrollEventsHandlersDefault: ScrollEventsHandlersHookType = (
+@@ -104,8 +121,21 @@ export const useScrollEventsHandlersDefault: ScrollEventsHandlersHookType = (
            const lockPosition = context.shouldLockInitialPosition
              ? (context.initialContentOffsetY ?? 0)
              : 0;
 -          // @ts-ignore
 -          scrollTo(scrollableRef, 0, lockPosition, false);
-+          // ORCH-1063: react-native-reanimated v4 + New Architecture re-entrancy guard
-+          // (gorhom #2546 / #2617). Under reanimated v4, scrollTo() synchronously
-+          // re-fires the scroll event, which re-enters this same worklet while the
-+          // scrollable is LOCKED, calling scrollTo() again → unbounded recursion →
-+          // "Maximum call stack size exceeded (native stack depth)" fatal crash.
-+          // Skipping the redundant scrollTo once already at lockPosition breaks the
-+          // loop while preserving the lock behavior (the first call still snaps back).
-+          if (y !== lockPosition) {
++          // ORCH-1064: react-native-reanimated v4 + New Architecture re-entrancy
++          // guard (gorhom #2546 / #2617). scrollTo() synchronously re-fires the
++          // scroll event, re-entering this worklet while still LOCKED → it calls
++          // scrollTo() again → unbounded recursion → "Maximum call stack size
++          // exceeded (native stack depth)" fatal crash. A position check
++          // (y !== lockPosition) is NOT reliable: the native re-emit can replay
++          // the ORIGINAL offset, so the check passes and the loop continues. The
++          // re-entrancy flag is robust — the synchronous nested invocation sees
++          // isLockingScroll.value === true and skips the call, regardless of y.
++          if (!isLockingScroll.value) {
++            isLockingScroll.value = true;
 +            // @ts-ignore
 +            scrollTo(scrollableRef, 0, lockPosition, false);
++            isLockingScroll.value = false;
 +          }
            scrollableContentOffsetY.value = lockPosition;
            return;
          }
-@@ -134,8 +152,17 @@ export const useScrollEventsHandlersDefault: ScrollEventsHandlersHookType = (
+@@ -134,8 +164,21 @@ export const useScrollEventsHandlersDefault: ScrollEventsHandlersHookType = (
            const lockPosition = context.shouldLockInitialPosition
              ? (context.initialContentOffsetY ?? 0)
              : 0;
 -          // @ts-ignore
 -          scrollTo(scrollableRef, 0, lockPosition, false);
-+          // ORCH-1063: react-native-reanimated v4 + New Architecture re-entrancy guard
-+          // (gorhom #2546 / #2617). Under reanimated v4, scrollTo() synchronously
-+          // re-fires the scroll event, which re-enters this same worklet while the
-+          // scrollable is LOCKED, calling scrollTo() again → unbounded recursion →
-+          // "Maximum call stack size exceeded (native stack depth)" fatal crash.
-+          // Skipping the redundant scrollTo once already at lockPosition breaks the
-+          // loop while preserving the lock behavior (the first call still snaps back).
-+          if (y !== lockPosition) {
++          // ORCH-1064: react-native-reanimated v4 + New Architecture re-entrancy
++          // guard (gorhom #2546 / #2617). scrollTo() synchronously re-fires the
++          // scroll event, re-entering this worklet while still LOCKED → it calls
++          // scrollTo() again → unbounded recursion → "Maximum call stack size
++          // exceeded (native stack depth)" fatal crash. A position check
++          // (y !== lockPosition) is NOT reliable: the native re-emit can replay
++          // the ORIGINAL offset, so the check passes and the loop continues. The
++          // re-entrancy flag is robust — the synchronous nested invocation sees
++          // isLockingScroll.value === true and skips the call, regardless of y.
++          if (!isLockingScroll.value) {
++            isLockingScroll.value = true;
 +            // @ts-ignore
 +            scrollTo(scrollableRef, 0, lockPosition, false);
++            isLockingScroll.value = false;
 +          }
            scrollableContentOffsetY.value = 0;
            return;

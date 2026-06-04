@@ -357,6 +357,11 @@ export function placeForBouncer(
     opening_hours: (place as { opening_hours?: unknown }).opening_hours ?? null,
     photos: photosForGate,
     stored_photo_urls: storedPhotos,
+    // ORCH-1067 — pass provenance through so the canonical bounce() B7-skip
+    // predicate (isBusinessAuthored) sees it. The photosForGate swap above is now
+    // redundant for the B7 verdict but harmless (kept; produces a passing verdict
+    // either way).
+    fetched_via: (place as { fetched_via?: string | null }).fetched_via ?? null,
     review_count: (place as { review_count?: number | null }).review_count ?? null,
     rating: (place as { rating?: number | null }).rating ?? null,
   };

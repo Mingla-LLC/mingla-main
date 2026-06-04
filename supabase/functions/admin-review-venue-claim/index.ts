@@ -25,6 +25,8 @@ import { sendPush } from "../_shared/push-utils.ts";
 import { bounce, type PlaceRow } from "../_shared/bouncer.ts";
 import {
   auditActionForReview,
+  feedbackPushCopy,
+  normalizeFeedbackBody,
   normalizeReviewBody,
   pushCopyForReview,
 } from "./reviewLogic.ts";
@@ -54,7 +56,7 @@ type AdminClient = any;
 // _shared/bouncer.ts PlaceRow (id, name, lat, lng, types, business_status,
 // website, opening_hours, photos, stored_photo_urls, review_count, rating).
 const BOUNCER_SELECT =
-  "id, name, lat, lng, types, business_status, website, opening_hours, photos, stored_photo_urls, review_count, rating";
+  "id, name, lat, lng, types, business_status, website, opening_hours, photos, stored_photo_urls, fetched_via, review_count, rating";
 
 interface GoLiveResult {
   rebounced: boolean;
@@ -254,6 +256,161 @@ serve(async (req) => {
       rawBody !== null && typeof rawBody === "object"
         ? String((rawBody as { action?: unknown }).action ?? "")
         : "";
+    // ORCH-1064 — admin leaves a structured feedback round on a pending claim.
+    // Like tweak_fields/score_override: call the dedicated SECURITY DEFINER RPC
+    // (which re-asserts is_admin_user) through the user client, write an
+    // admin_audit_log row, and additionally fire the business push (the RPC has
+    // no server-only side-effect; the wrapper owns the push + audit). Returns early.
+    if (rawAction === "add_feedback") {
+      const adminEarly = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+      const parsed = normalizeFeedbackBody(rawBody);
+      if (!parsed.ok) return json({ error: parsed.error }, 400);
+
+      const { data: fbRes, error: fbErr } = await userClient.rpc(
+        "admin_add_venue_claim_feedback",
+        {
+          p_brand_id: parsed.brandId,
+          p_items: parsed.items,
+          p_overall_message: parsed.overallMessage,
+        },
+      );
+      if (fbErr) return json({ error: fbErr.message }, 400);
+
+      const round =
+        fbRes !== null && typeof fbRes === "object"
+          ? (fbRes as { round?: unknown }).round ?? null
+          : null;
+      const itemCount =
+        fbRes !== null && typeof fbRes === "object"
+          ? (fbRes as { item_count?: unknown }).item_count ?? null
+          : null;
+
+      await adminEarly.from("admin_audit_log").insert({
+        admin_email: user.email ?? "unknown",
+        action: "venue_claim_feedback",
+        target_type: "venue_claim",
+        target_id: parsed.brandId,
+        metadata: { round, item_count: itemCount },
+      });
+
+      // Push the business owner (brand.account_id = OneSignal external_id).
+      let pushSent = false;
+      const { data: fbBrand, error: fbBrandErr } = await adminEarly
+        .from("brands")
+        .select("name, account_id")
+        .eq("id", parsed.brandId)
+        .maybeSingle();
+      if (fbBrandErr) {
+        console.warn(
+          "[admin-review-venue-claim] add_feedback brand lookup",
+          fbBrandErr.message,
+        );
+      }
+      if (fbBrand && typeof fbBrand.account_id === "string") {
+        const copy = feedbackPushCopy((fbBrand.name as string) ?? "Your venue");
+        pushSent = await sendPush({
+          targetUserId: fbBrand.account_id,
+          title: copy.title,
+          body: copy.body,
+          data: {
+            type: "venue_claim_feedback",
+            brand_id: parsed.brandId,
+            round,
+          },
+          androidChannelId: "system",
+        });
+      }
+
+      return json({ ok: true, round, item_count: itemCount, push_sent: pushSent });
+    }
+
+    // ORCH-1066 — deck-score-tuner write actions. Place-keyed (not brand-keyed):
+    // they target ANY place_pool row (Google-seeded or claimed, servable or
+    // pending). Like tweak_fields/score_override, each calls its dedicated
+    // SECURITY DEFINER RPC through the user client (so is_admin_user() sees
+    // auth.uid()), writes an admin_audit_log row via the service-role client, and
+    // returns early. verify_jwt config is unchanged.
+    if (
+      rawAction === "set_place_score" ||
+      rawAction === "pin_place_score" ||
+      rawAction === "score_place_preview"
+    ) {
+      const adminEarly = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+      const b = rawBody as Record<string, unknown>;
+      const placePoolId = typeof b.place_pool_id === "string"
+        ? b.place_pool_id.trim()
+        : "";
+      if (placePoolId.length === 0) {
+        return json({ error: "place_pool_id_required" }, 400);
+      }
+
+      if (rawAction === "score_place_preview") {
+        const { data: seedRes, error: seedErr } = await userClient.rpc(
+          "admin_score_place_preview",
+          { p_place_pool_id: placePoolId },
+        );
+        if (seedErr) return json({ error: seedErr.message }, 400);
+        await adminEarly.from("admin_audit_log").insert({
+          admin_email: user.email ?? "unknown",
+          action: "place_score_preview_seed",
+          target_type: "place_pool",
+          target_id: placePoolId,
+          metadata: { result: seedRes ?? null },
+        });
+        return json({ ok: true, result: seedRes });
+      }
+
+      const signalId = typeof b.signal_id === "string" ? b.signal_id.trim() : "";
+      if (signalId.length === 0) return json({ error: "signal_id_required" }, 400);
+
+      if (rawAction === "set_place_score") {
+        const score = typeof b.score === "number" ? b.score : Number(b.score);
+        const reason = typeof b.reason === "string" ? b.reason : null;
+        if (!Number.isFinite(score)) return json({ error: "score_required" }, 400);
+        const { data: setRes, error: setErr } = await userClient.rpc(
+          "admin_set_place_signal_score",
+          {
+            p_place_pool_id: placePoolId,
+            p_signal_id: signalId,
+            p_score: score,
+            p_reason: reason,
+          },
+        );
+        if (setErr) return json({ error: setErr.message }, 400);
+        await adminEarly.from("admin_audit_log").insert({
+          admin_email: user.email ?? "unknown",
+          action: "place_score_set",
+          target_type: "place_pool",
+          target_id: placePoolId,
+          metadata: { signal_id: signalId, score, reason, result: setRes ?? null },
+        });
+        return json({ ok: true, result: setRes });
+      }
+
+      // pin_place_score
+      const radiusM = typeof b.radius_m === "number"
+        ? b.radius_m
+        : (b.radius_m === undefined || b.radius_m === null
+          ? 16000
+          : Number(b.radius_m));
+      if (!Number.isFinite(radiusM) || radiusM <= 0) {
+        return json({ error: "invalid_radius" }, 400);
+      }
+      const { data: pinRes, error: pinErr } = await userClient.rpc(
+        "admin_pin_place_to_top",
+        { p_place_pool_id: placePoolId, p_signal_id: signalId, p_radius_m: radiusM },
+      );
+      if (pinErr) return json({ error: pinErr.message }, 400);
+      await adminEarly.from("admin_audit_log").insert({
+        admin_email: user.email ?? "unknown",
+        action: "place_score_pin",
+        target_type: "place_pool",
+        target_id: placePoolId,
+        metadata: { signal_id: signalId, radius_m: radiusM, result: pinRes ?? null },
+      });
+      return json({ ok: true, result: pinRes });
+    }
+
     if (rawAction === "tweak_fields" || rawAction === "score_override") {
       const adminEarly = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
       const b = rawBody as Record<string, unknown>;
