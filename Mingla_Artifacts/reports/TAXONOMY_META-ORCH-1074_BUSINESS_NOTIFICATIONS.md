@@ -1,7 +1,7 @@
-# META-ORCH-1072 — Mingla Business Notification Taxonomy & Build Map
+# META-ORCH-1074 — Mingla Business Notification Taxonomy & Build Map
 
 **Date:** 2026-06-04 · **Owner:** mingla-orchestrator+claude · **Status:** INTAKE complete, awaiting v1-cut steering
-**Companion:** `Mingla_Artifacts/reports/INVESTIGATION_META-ORCH-1072_BUSINESS_NOTIFICATIONS.md` (anchor) — cross-app forensic map.
+**Companion:** `Mingla_Artifacts/reports/INVESTIGATION_META-ORCH-1074_BUSINESS_NOTIFICATIONS.md` (anchor) — cross-app forensic map.
 
 This document answers the operator's directive: *"a thorough investigation of everything and anything the user should be notified about."* It is the complete catalog of brand-relevant events, with the current notification state, the proposed `business.*` type, recipient, deep-link target, and a recommended v1 cut.
 

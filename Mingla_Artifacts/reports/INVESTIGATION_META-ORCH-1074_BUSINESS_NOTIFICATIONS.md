@@ -1,4 +1,4 @@
-# INVESTIGATION — META-ORCH-1072 [Mingla Business notifications feature build-out]
+# INVESTIGATION — META-ORCH-1074 [Mingla Business notifications feature build-out]
 
 **Date:** 2026-06-04
 **Mode:** INTAKE / INVESTIGATE (cross-app forensic map)
@@ -85,7 +85,7 @@ The Business app registers devices against a **separate OneSignal application** 
 
 ---
 
-## 5. Recommended build shape (META-ORCH-1072, ~4 sub-orchs)
+## 5. Recommended build shape (META-ORCH-1074, ~4 sub-orchs)
 
 - **Sub-A — Backend dual-app routing + business triggers.** Teach `push-utils`/`notify-dispatch` to target the business OneSignal app for `business.*` types; add the trigger call-sites for the chosen business events (write via `notify-dispatch` with `brand_id` + `business.*` type + `deep_link`). Cite OneSignal REST docs inline per COMMS-0003. Backend strict-grep allowlist per COMMS-0002.
 - **Sub-B — Client receive path (Business app).** Call `optIn()` behind a permission moment; port `processNotification` + a business `NAV_TARGETS` map; foreground display + click handlers; deep-link into hub/orders/account.
