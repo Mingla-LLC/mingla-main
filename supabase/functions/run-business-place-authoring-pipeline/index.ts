@@ -7,6 +7,11 @@
 import { createClient, type SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.45.4";
 import { corsHeaders } from "../_shared/cors.ts";
 import { bounce } from "../_shared/bouncer.ts";
+// ORCH-1068 [business-authored venues render on deck]: normalize the wizard hours
+// ARRAY [{weekday(0=Mon),isClosed,openTime,closeTime}] → canonical Google v1
+// {periods,…} object on the place_pool write so the consumer deck's open-hours
+// filter (which reads {periods}) includes the venue. day = (weekday+1)%7.
+import { normalizeBusinessHoursForPool } from "../_shared/businessHoursToGoogle.ts";
 
 const GEMINI_MODEL = "gemini-2.5-flash";
 const PROMPT_VERSION = "v4";
@@ -530,7 +535,8 @@ async function handleTier1(
         claimed_by: userId,
         business_hero_video_present: coverMediaType === "video",
         business_authoring_status: "processing",
-        opening_hours: draft.hours ?? draft.openingHours ?? null,
+        // ORCH-1068: normalize wizard array hours → Google {periods} object.
+        opening_hours: normalizeBusinessHoursForPool(draft.hours ?? draft.openingHours),
         business_authoring_inputs: { tier1: draft, selected_place_pool_id: selectedPlacePoolId },
       })
       .eq("id", selectedPlacePoolId);
@@ -589,7 +595,8 @@ async function handleTier1(
       is_active: true,
       is_servable: false,
       bouncer_reason: "pending_business_pipeline",
-      opening_hours: draft.hours ?? draft.openingHours ?? null,
+      // ORCH-1068: normalize wizard array hours → Google {periods} object.
+      opening_hours: normalizeBusinessHoursForPool(draft.hours ?? draft.openingHours),
       stored_photo_urls: storedPhotoUrls,
       business_author_brand_id: brand.id,
       business_authoring_status: "processing",
