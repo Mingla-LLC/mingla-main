@@ -1466,6 +1466,20 @@ function checkNoNewBackendFiles() {
     "supabase/functions/generate-curated-experiences/index.ts",
     "supabase/functions/generate-curated-experiences/__tests__/orch_1071_experiences_on_curated_path.test.ts",
   ];
+  // ORCH-1072 [experience-detail-cover-availability]: ONE new migration
+  // (additive CREATE OR REPLACE of pg_eligible_experiences_for_deck adding
+  // cover_media_url/cover_media_type/description/upcoming_occurrences) plus its
+  // backend regression tests. The two edge fns it threads through
+  // (discover-cards/index.ts, generate-curated-experiences/index.ts) are
+  // MODIFICATIONS of already-allowlisted files (ORCH_1065 / ORCH_0902_0903 /
+  // ORCH_1071), so only the migration + the two new test files need listing.
+  // C7 is scoped to ORCH-0863 marketing; these are consumer-deck backend
+  // touches. Per COMMS-0002 — lands in the SAME commit as the migration.
+  const ORCH_1072_BACKEND_ALLOWLIST = [
+    "supabase/migrations/20260908000000_orch_1072_experience_detail_cover_availability.sql",
+    "supabase/functions/discover-cards/__tests__/orch_1072_experience_detail_supply.test.ts",
+    "supabase/functions/ticket-checkout-create/__tests__/orch1072_experience_occurrence_checkout.test.ts",
+  ];
   // ORCH-1064 [admin↔business venue-listing feedback loop]: one NEW migration
   // (venue_claim_feedback table + RLS + view + 3 RPCs + admin bundle extension)
   // plus its backend regression tests. The edge fn (admin-review-venue-claim/
@@ -1733,6 +1747,7 @@ function checkNoNewBackendFiles() {
     ...ORCH_1062_BACKEND_ALLOWLIST,
     ...ORCH_1065_BACKEND_ALLOWLIST,
     ...ORCH_1071_BACKEND_ALLOWLIST,
+    ...ORCH_1072_BACKEND_ALLOWLIST,
     ...ORCH_1064_BACKEND_ALLOWLIST,
     ...ORCH_1067_BACKEND_ALLOWLIST,
     ...ORCH_1072_BACKEND_ALLOWLIST,

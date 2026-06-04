@@ -140,9 +140,28 @@ function experienceRecToBusinessEventCard(rec: any): BusinessEventCard {
     brandProfilePhotoUrl: typeof rec?.brandLogoUrl === 'string' ? rec.brandLogoUrl : null,
     eventSlug,
     title: typeof rec?.title === 'string' ? rec.title : '',
-    description: typeof rec?.tagline === 'string' && rec.tagline.length > 0 ? rec.tagline : null,
-    coverMediaUrl: firstStop?.imageUrl ?? null,
-    coverMediaType: 'image',
+    // ORCH-1072: use the experience's REAL description (events.description),
+    // NOT the one-line tagline. Empty → null → the sheet shows its empty-state.
+    description:
+      typeof rec?.description === 'string' && rec.description.trim().length > 0
+        ? rec.description
+        : null,
+    // ORCH-1072: use the experience's REAL cover (image OR video), NOT the
+    // fabricated first-stop image + hardcoded 'image'. EventCoverMedia in the
+    // shared render layer plays video/gif/image. Falls back to the first stop
+    // image only when the experience has no cover at all (honest fallback).
+    coverMediaUrl:
+      typeof rec?.coverMediaUrl === 'string' && rec.coverMediaUrl.length > 0
+        ? rec.coverMediaUrl
+        : (firstStop?.imageUrl ?? null),
+    coverMediaType:
+      rec?.coverMediaType === 'image' ||
+      rec?.coverMediaType === 'video' ||
+      rec?.coverMediaType === 'gif'
+        ? rec.coverMediaType
+        : (typeof rec?.coverMediaUrl === 'string' && rec.coverMediaUrl.length > 0
+            ? 'image'
+            : (firstStop?.imageUrl ? 'image' : null)),
     coverHue: hueFromId(eventId),
     masterDateUtc: rec?.masterDateUtc ?? null,
     masterEndAtUtc: rec?.masterEndAtUtc ?? null,
@@ -167,6 +186,29 @@ function experienceRecToBusinessEventCard(rec: any): BusinessEventCard {
     displayCurrency: null,
     currency: typeof rec?.currency === 'string' ? rec.currency : 'USD',
     publicBuyerUrl: `https://business.usemingla.com/e/${brandSlug}/${eventSlug}`,
+    // ORCH-1072: carry the multi-stop itinerary + upcoming occurrences so the
+    // detail sheet renders the route + the date picker. Experience-only (an
+    // event/trip card never sets these → undefined → no itinerary/picker).
+    experienceStops: Array.isArray(rec?.stops)
+      ? rec.stops.map((s: any) => ({
+          stopNumber: typeof s?.stopNumber === 'number' ? s.stopNumber : 0,
+          placeName: typeof s?.placeName === 'string' && s.placeName.length > 0 ? s.placeName : null,
+          address: typeof s?.address === 'string' && s.address.length > 0 ? s.address : null,
+          imageUrl: typeof s?.imageUrl === 'string' && s.imageUrl.length > 0 ? s.imageUrl : null,
+          aiDescription:
+            typeof s?.aiDescription === 'string' && s.aiDescription.length > 0 ? s.aiDescription : null,
+        }))
+      : undefined,
+    upcomingOccurrences: Array.isArray(rec?.upcomingOccurrences)
+      ? rec.upcomingOccurrences.map((o: any) => ({
+          eventDateId: typeof o?.eventDateId === 'string' ? o.eventDateId : '',
+          startAt: typeof o?.startAt === 'string' ? o.startAt : '',
+          endAt: typeof o?.endAt === 'string' ? o.endAt : '',
+          capacity: typeof o?.capacity === 'number' ? o.capacity : null,
+          sold: typeof o?.sold === 'number' ? o.sold : 0,
+          remaining: typeof o?.remaining === 'number' ? o.remaining : null,
+        }))
+      : undefined,
   } as unknown as BusinessEventCard;
 }
 
@@ -2777,6 +2819,13 @@ export default function SwipeableCards({
                     brandExperience={{
                       brandName: (currentRec as any).brandName,
                       brandLogoUrl: (currentRec as any).brandLogoUrl ?? null,
+                    }}
+                    // ORCH-1072: real cover → card hero (image/video) with the
+                    // stop photos as a strip below (CuratedExperienceSwipeCard).
+                    experienceCover={{
+                      coverMediaUrl: (currentRec as any).coverMediaUrl ?? null,
+                      coverMediaType: (currentRec as any).coverMediaType ?? null,
+                      coverHue: hueFromId(String((currentRec as any).eventId ?? (currentRec as any).id ?? '')),
                     }}
                     ctaOverride="Book"
                   />
