@@ -1,11 +1,18 @@
 /**
- * Ve3 — surfaces physical-venue claim_status on Hub screens.
+ * Ve3 — surfaces physical-venue claim_status as a compact tile.
  *
  * ORCH-1064 — the `follow_up` variant becomes interactive: a tappable tile with
  * a leading icon, an open-count (or "Ready") badge, a trailing chevron, and
  * press feedback, opening the feedback sheet. The other 3 variants
  * (pending_review / verified / rejected) stay byte-identical static Views.
  * DESIGN_ORCH-1064 §2.
+ *
+ * RE-TARGET (META-ORCH-1059 / ORCH-1064): the Hub mount was removed when
+ * META-ORCH-1059 dropped the Hub claim box. This tile is now mounted on the
+ * brand-page venue listing (`app/brand/[id]/listing.tsx`) for the follow_up
+ * affordance; a pending claim without follow-up surfaces instead as a smart
+ * to-do row (see buildBusinessTodos). The component is surface-agnostic — it
+ * renders the same regardless of where it's mounted.
  */
 
 import React, { useCallback } from "react";

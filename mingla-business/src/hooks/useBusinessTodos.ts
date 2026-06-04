@@ -29,6 +29,7 @@ import {
 } from "../utils/homeNextAction";
 import { routeForPipelineStateFix } from "../utils/deckReadinessRoutes";
 import { venueClaimBannerVariant } from "../services/venueClaimBannerLogic";
+import { useVenueClaimOpenCount } from "./useVenueClaimFeedback";
 
 export function useBusinessTodos(): BusinessTodo[] {
   const { user } = useAuth();
@@ -75,6 +76,14 @@ export function useBusinessTodos(): BusinessTodo[] {
   const venueClaimPending =
     venueClaimVariant === "pending_review" || venueClaimVariant === "follow_up";
 
+  // ORCH-1064 — open admin-feedback count for the active follow-up round. Reads
+  // the feedback query cache (enabled only when a follow-up stamp exists), so it
+  // never forces an extra fetch for plain pending / verified / rejected claims.
+  const venueClaimOpenFeedbackCount = useVenueClaimOpenCount(
+    currentBrand?.id ?? null,
+    currentBrand?.claimFollowUpAt ?? null,
+  );
+
   const pipelineRoute = useMemo(
     () =>
       currentBrand !== null
@@ -112,6 +121,11 @@ export function useBusinessTodos(): BusinessTodo[] {
         venueClaimPending,
         venueListingRoute:
           currentBrand !== null ? `/brand/${currentBrand.id}/listing` : "",
+        venueClaimOpenFeedbackCount,
+        venueFeedbackRoute:
+          currentBrand !== null
+            ? `/brand/${currentBrand.id}/listing?focus=feedback`
+            : "",
       }),
     [
       hasNoBrands,
@@ -125,6 +139,7 @@ export function useBusinessTodos(): BusinessTodo[] {
       upcoming.counts,
       drafts,
       venueClaimPending,
+      venueClaimOpenFeedbackCount,
     ],
   );
 }

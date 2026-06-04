@@ -225,3 +225,55 @@ Manual-parity flag: the Sheet platform-resolution is the only divergence; iOS/An
 5. Tester live-fire: admin sends feedback → business owner gets push → opens tile → marks fixed → re-submits → claim reappears in admin Pending queue.
 
 **End of report — ORCH-1064.**
+
+---
+
+## ADDENDUM — Business-UI RE-TARGET (Hub → brand listing + to-do row)
+
+**Date:** 2026-06-03 · **Skill:** mingla-implementor (Claude) · **Commit base:** `e0bde66f3` (post META-ORCH-1059 merge into branch).
+
+### Why
+
+META-ORCH-1059 (merged to main `b9d272156`, already in this branch) REMOVED the venue-claim status box from the Hub (`(tabs)/hub/_layout.tsx` is now origin/main's version — the claim box was replaced by a smart to-do row). The operator wants the ORCH-1064 feedback affordance on the two surfaces that now carry claim status: (a) the brand-page venue listing `app/brand/[id]/listing.tsx`, and (b) the "Venue claim under review" to-do row in `src/utils/businessTodos.ts`. The Hub must carry ZERO feedback references. The backend (migration + 3 RPCs, LIVE on remote), the admin panel, and the sheet + hook are unchanged and reused as-is.
+
+### Surface move (no rebuild of backend/admin/sheet/hook)
+
+| File | Before | After |
+|---|---|---|
+| `app/brand/[id]/listing.tsx` | Status tile + submitted/scores/edits cards + Edit/View-public actions; no feedback affordance. | Mounts the reusable `VenueClaimStatusBanner` follow_up tile (icon + "N to fix"/"Ready" badge + chevron) in the status area when `claimStatus==='pending_review' && claimFollowUpAt`; adds an explicit "View feedback · N" secondary Button in the actions column; mounts `VenueClaimFeedbackSheet` + a single `Toast` host at screen root. Tapping the tile or the button opens the sheet; `?focus=feedback` deep-link auto-opens it once; on re-submit a success toast fires and the hook's existing invalidations refresh the data. Open count via `useVenueClaimOpenCount` (cache-read selector — no extra fetch). |
+| `src/utils/businessTodos.ts` | `venue_claim_review` row was a single calm "Venue claim under review" → `venueListingRoute`. | Same row now ESCALATES when `venueClaimOpenFeedbackCount > 0`: label "Updates requested", `badge: "N to fix"`, action → `venueFeedbackRoute` (`/brand/{id}/listing?focus=feedback`). Count 0 keeps the calm copy → `venueListingRoute`. Row presence + vanish-on-resolution logic UNCHANGED (escalation only re-skins an already-present row; a stale count can never resurrect a resolved claim). Two new required `BusinessTodoInput` fields + an optional `BusinessTodo.badge`. |
+| `src/hooks/useBusinessTodos.ts` | Fed `venueClaimPending` + `venueListingRoute`. | Also feeds `venueClaimOpenFeedbackCount` (via `useVenueClaimOpenCount(brandId, claimFollowUpAt)`) + `venueFeedbackRoute`. No new fetch for non-follow-up claims (selector `enabled` gates on the stamp). |
+| `src/components/home/BusinessTodoToggle.tsx` | Row = text + chevron. | Renders an optional worded count pill (`todo.badge`) before the chevron, warning-tinted, tokens only; count folded into the row `accessibilityLabel`. Additive. |
+| `src/components/brand/VenueClaimStatusBanner.tsx` | Doc said "on Hub screens". | Doc updated: surface-agnostic, now mounted on the brand listing. No behavior change. **This was the orphaned Hub component — it is now actively mounted (no dead code).** |
+
+### Hub has ZERO feedback references (verified)
+
+`grep -rn "feedback|Feedback|VenueClaim" mingla-business/app/(tabs)/hub/` → only `useVenueClaimRefresh` (a cache-refresh hook, NOT feedback UI) + unrelated ScrollView-footgun comments. The `_layout.tsx` is byte-identical to origin/main's post-META-ORCH-1059 version; the claim box comment block confirms removal. No `VenueClaimFeedbackSheet` / `VenueClaimStatusBanner` / `useVenueClaimFeedback` import anywhere under `hub/`.
+
+### No dead code / dangling imports
+
+`VenueClaimStatusBanner` + `VenueClaimFeedbackSheet` + `useVenueClaimFeedback`/`useVenueClaimOpenCount` are all now reachable from `listing.tsx` (+ the toggle/hook for the count). require-cycles gate: **PASS, zero new cycles** (the new `useBusinessTodos → useVenueClaimFeedback` import introduces no cycle).
+
+### Tests re-pointed to the new surfaces
+
+- `src/utils/__tests__/businessTodos.test.ts` — added the ORCH-1064 escalation describe block (4 tests: "N to fix" badge + feedback deep-link, singular "1 to fix", calm-row-when-count-0, vanish-when-resolved-despite-stale-count). Added the two new required input fields to `base`. **Additive only — no TEST-MOD-APPROVED needed.**
+- `src/components/home/__tests__/BusinessTodoToggle.test.ts` — added the count-pill render + a11y-fold assertion. Additive.
+- `src/components/home/__tests__/{DeckReadinessCard,NoVenueDeckEntryCard}.sub_e.test.ts` — added the two new required `BusinessTodoInput` fields to fixtures (interface-completeness, additive).
+- The original `src/services/__tests__/venueClaimFeedback.orch1064.test.ts` tested PURE units (banner copy, key factory, count derivation) — NOT a Hub mount — so it remains valid and untouched. There was no Hub-render jest test to repoint (the mingla-business harness is node/ts-jest with no RN renderer; the affordance was always asserted at source/pure-fn level).
+
+### Verification (captured)
+
+- **tsc** (`npx tsc --noEmit` in mingla-business): zero errors in ANY touched file (listing.tsx, businessTodos.ts, useBusinessTodos.ts, BusinessTodoToggle.tsx, VenueClaimStatusBanner.tsx, 4 test files). Pre-existing repo errors (DraftEvent.category, account_owner rank map, packages/brand-rendering missing `react` types, payments-native module) are META-ORCH-1059-merge breakage, NOT introduced here.
+- **jest** (touched suites): `businessTodos.test.ts` (33), `BusinessTodoToggle.test.ts`, `DeckReadinessCard.sub_e`, `NoVenueDeckEntryCard.sub_e`, `venueClaimFeedback.orch1064` → **51/51 PASS**. The 18 failing suites in the broader run (`PublicBrandPage.*`, `TripMiniCard.*`, `navTabGate`, `serverDraftEventMapper`, etc.) are ALL pre-existing META-ORCH-1059 breakage — zero of them are files this re-target touched (confirmed via `git diff --name-only`).
+- **eslint** (9 touched files): **0 errors**, 1 pre-existing `Array<T>` warning on a META-ORCH-1059 fixture line (not my code).
+- **strict-grep** (relevant gates, run with anchor node_modules): I-39 pressable-label PASS (0 violations), I-38 touch-target PASS, ORCH-0863 C7 backend-allowlist PASS (zero backend touch), meta-orch-0954 comms-ledger-stanza PASS, I-PROPOSED-N transitional-exit PASS, I-PROPOSED-K require-cycles PASS (21 cycles = baseline, zero new).
+
+### Regression test — fails-on-revert
+
+`src/utils/__tests__/businessTodos.test.ts` "venue-claim open feedback (ORCH-1064)" block. **Fails-on-revert verified at `e0bde66f3`:** collapsing the `businessTodos.ts` escalation branch back to the single calm row makes the "3 to fix" + "1 to fix" badge assertions FAIL (`row.badge === undefined`); restoring the fix → 33/33 PASS. Captured.
+
+### Cross-surface impact
+
+Business iOS + Business Android only (shared RN code path → parity automatic). NOT consumer (no business claim flow), NOT admin (authoring panel unchanged), NOT buyer-anon (no business state). No new dependency.
+
+**End of ADDENDUM.**
