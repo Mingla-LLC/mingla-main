@@ -11,7 +11,7 @@
 
 ## Files changed (Old → New receipts)
 
-### supabase/migrations/20260908000000_meta_orch_1076_p1_payment_provider.sql (NEW)
+### supabase/migrations/20260915000000_meta_orch_1076_p1_payment_provider.sql (NEW)
 **Before:** none. **Now:** additive, non-destructive migration:
 - `brands.payment_provider` (NOT NULL DEFAULT 'stripe' + allowlist CHECK), `payment_country`, `paystack_subaccount_code`.
 - Widens `brands_pricing_region_allowlist`/`brands_pricing_currency_allowlist` to the **union of the live remote set + NG/NGN** (see "Migration filename + remote reconciliation" below).
@@ -75,7 +75,7 @@ Result with both reverted: **11 passed | 4 failed**. Restored from backup → **
 
 ## Migration filename + remote reconciliation (IMPORTANT for the orchestrator)
 
-**Chosen filename:** `20260908000000_meta_orch_1076_p1_payment_provider.sql`. The SPEC suggested `20260818000000`, but `ls`/scan showed the max migration prefix across sibling worktrees is `20260907000000` and this worktree's local max is `20260826000001`. `20260908000000` is strictly greater than all → monotonic (COMMS-0004).
+**Chosen filename:** `20260915000000_meta_orch_1076_p1_payment_provider.sql`. The SPEC suggested `20260818000000`, but `ls`/scan showed the max migration prefix across sibling worktrees is `20260907000000` and this worktree's local max is `20260826000001`. `20260908000000` is strictly greater than all → monotonic (COMMS-0004).
 
 **Remote-state reconciliation (resolved at IMPLEMENT via read-only probes):** the SPEC §3.1.b assumed the ORCH-1006 GB-only CHECKs. The linked remote is **already ORCH-1034-ahead** — `brands_pricing_region_allowlist` is live as `('GB','US','EU','CH')` with **15 US + 2 EU + 1 CH brands** (currencies USD/EUR/CHF). A narrow `IN ('GB','NG')` CHECK would have rejected those 18 rows and **aborted db push**. I widened to the UNION `('GB','US','EU','CH','NG')` / `('GBP','USD','EUR','CHF','NGN')`. Re-probed: **0 region violations, 0 currency violations** against the union. The ORCH-1034 migration (`20260816000000_orch_1034_currency_de_gbp.sql`) IS present in this branch's history, so the chain is consistent and no remote-only migration is introduced by this branch. The remote `resolve_event_pricing_inputs` returns exactly the 10-column base (append-only widening is legal). This is the COMMS-0004/ORCH-1034 coordination point the spec flagged — resolved by union, documented inline in the migration.
 

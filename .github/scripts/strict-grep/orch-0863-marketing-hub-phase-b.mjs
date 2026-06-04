@@ -1463,7 +1463,7 @@ function checkNoNewBackendFiles() {
   // that were never allowlisted. Per COMMS-0002 — lands in the SAME commit as
   // the backend diff. Also covers the new Deno tests under __tests__/.
   const META_ORCH_1076_BACKEND_ALLOWLIST = [
-    "supabase/migrations/20260908000000_meta_orch_1076_p1_payment_provider.sql",
+    "supabase/migrations/20260915000000_meta_orch_1076_p1_payment_provider.sql",
     "supabase/functions/_shared/paymentProvider.ts",
     "supabase/functions/_shared/paystack.ts",
     "supabase/functions/_shared/paystackWebhookRouter.ts",
