@@ -3,30 +3,61 @@
  */
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { ClipboardList } from "lucide-react";
+import { ClipboardList, MessageSquarePlus, X } from "lucide-react";
 import { supabase } from "../lib/supabase";
 import { SectionCard } from "../components/ui/Card";
 import { Button } from "../components/ui/Button";
 import { Badge } from "../components/ui/Badge";
 import { Modal, ModalBody, ModalFooter } from "../components/ui/Modal";
 import { Spinner } from "../components/ui/Spinner";
+import { PhotoLightbox } from "../components/ui/PhotoLightbox";
 import { useToast } from "../context/ToastContext";
 import { logAdminAction } from "../lib/auditLog";
 import { resolveClaimDisplayPhone, formatPhoneHref } from "../lib/claimsPhone";
 import { ClaimRow } from "../components/claims/ClaimRow";
 import {
+  addClaimFeedback,
+  getClaimReviewBundle,
   groupClaimsByGooglePlaceId,
   listPendingClaims,
   listRejectedClaims,
   listVerifiedClaims,
   reviewClaim,
+  tweakClaimFields,
 } from "../services/adminClaimsService";
+// ORCH-1066 — the place-keyed tuner supersedes the brand-keyed overrideClaimScore
+// for set/pin (richer + works from zero). overrideClaimScore stays in the service
+// for the approval score_vetoes channel but the modal no longer calls it.
+import { ScoreTunerPanel } from "../components/ScoreTunerPanel";
+import { getActiveSignals } from "../services/deckTunerService";
+import { collectClaimPhotos } from "../lib/claimPhotos";
 
 const CAT_LABELS = {
   restaurant: "Restaurant",
   play: "Play",
   creative_and_arts: "Creative & arts",
 };
+
+// ORCH-1064 — feedback category enum → human label (matches the migration
+// CHECK + the business sheet's group order).
+const FEEDBACK_CAT_LABELS = {
+  photos: "Photos",
+  address: "Address",
+  hours: "Hours",
+  category: "Category",
+  description: "Description",
+  quality: "Listing quality",
+  other: "Other",
+};
+const FEEDBACK_CAT_ORDER = [
+  "photos",
+  "address",
+  "hours",
+  "category",
+  "description",
+  "quality",
+  "other",
+];
 
 const WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
@@ -53,8 +84,24 @@ export function ClaimsPage() {
   const [acting, setActing] = useState(false);
   const [rejectOpen, setRejectOpen] = useState(false);
   const [rejectReason, setRejectReason] = useState("");
-  // META-ORCH-1009 Sub-F WS7: admin reduce-only signal-score vetoes for this claim.
-  const [vetoes, setVetoes] = useState({});
+  // META-ORCH-1062 — claim-review bundle (photos + scores + missing fields).
+  const [bundle, setBundle] = useState(null);
+  const [bundleLoading, setBundleLoading] = useState(false);
+  const [bundleError, setBundleError] = useState(null);
+  const [lightboxIndex, setLightboxIndex] = useState(null);
+  // Tweak form (address / category / price), pending-only.
+  const [tweakAddress, setTweakAddress] = useState("");
+  const [tweakCategory, setTweakCategory] = useState("");
+  const [tweakPriceLevel, setTweakPriceLevel] = useState("");
+  // ORCH-1066 — active-signal catalog (the 16 dials), fetched once + cached, so
+  // the tuner can show a row for every signal even when the place has 0 scores.
+  const [activeSignals, setActiveSignals] = useState([]);
+  // ORCH-1064 — feedback authoring draft: staged items + the per-row composer +
+  // the optional overall message. Cleared on open/close/submit.
+  const [feedbackItems, setFeedbackItems] = useState([]);
+  const [feedbackCat, setFeedbackCat] = useState("photos");
+  const [feedbackNote, setFeedbackNote] = useState("");
+  const [feedbackMessage, setFeedbackMessage] = useState("");
 
   const duplicateGroups = useMemo(
     () => groupClaimsByGooglePlaceId(rows),
@@ -87,10 +134,52 @@ export function ClaimsPage() {
     void load();
   }, [load]);
 
+  // ORCH-1066 — fetch the active-signal catalog once for the tuner dials.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const sigs = await getActiveSignals();
+        if (!cancelled) setActiveSignals(sigs);
+      } catch {
+        if (!cancelled) setActiveSignals([]);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const loadBundle = useCallback(async (brandId) => {
+    setBundleLoading(true);
+    setBundleError(null);
+    try {
+      const data = await getClaimReviewBundle(brandId);
+      setBundle(data);
+    } catch (e) {
+      setBundle(null);
+      setBundleError(e?.message ?? String(e));
+    } finally {
+      setBundleLoading(false);
+    }
+  }, []);
+
   const openDetail = async (row) => {
     setDetail(row);
     setHours([]);
+    setBundle(null);
+    setBundleError(null);
+    setLightboxIndex(null);
+    setFeedbackItems([]);
+    setFeedbackCat("photos");
+    setFeedbackNote("");
+    setFeedbackMessage("");
+    setTweakAddress(row.address ?? "");
+    setTweakCategory(row.venue_category ?? "");
+    setTweakPriceLevel("");
     setHoursLoading(true);
+    // META-ORCH-1062 — fetch photos + scores + missing fields in parallel.
+    void loadBundle(row.id);
     try {
       const { data, error } = await supabase
         .from("brand_hours")
@@ -113,7 +202,65 @@ export function ClaimsPage() {
   const closeDetail = () => {
     setDetail(null);
     setHours([]);
-    setVetoes({});
+    setBundle(null);
+    setBundleError(null);
+    setLightboxIndex(null);
+    setFeedbackItems([]);
+    setFeedbackCat("photos");
+    setFeedbackNote("");
+    setFeedbackMessage("");
+  };
+
+  // ORCH-1064 — stage one feedback item into the local draft array.
+  const addFeedbackItem = () => {
+    const note = feedbackNote.trim();
+    if (note.length === 0) {
+      addToast({ variant: "warning", title: "Add a note for this item" });
+      return;
+    }
+    setFeedbackItems((items) => [...items, { category: feedbackCat, note }]);
+    setFeedbackNote("");
+  };
+
+  const removeFeedbackItem = (index) => {
+    setFeedbackItems((items) => items.filter((_, i) => i !== index));
+  };
+
+  // ORCH-1064 — send the staged round through the edge wrapper (push + audit
+  // server-side), then close + reload so the "Follow-up requested" badge shows.
+  const submitFeedback = async () => {
+    if (!detail) return;
+    if (feedbackItems.length === 0) {
+      addToast({ variant: "warning", title: "Add at least one feedback item" });
+      return;
+    }
+    setActing(true);
+    try {
+      const data = await addClaimFeedback(
+        detail.id,
+        feedbackItems,
+        feedbackMessage.trim() || null,
+      );
+      await logAdminAction("claim.add_feedback", "venue_claim", detail.id, {
+        round: data?.round ?? null,
+        item_count: data?.item_count ?? feedbackItems.length,
+      });
+      addToast({
+        variant: "info",
+        title: "Feedback sent",
+        description: `${data?.item_count ?? feedbackItems.length} item(s) sent to the business`,
+      });
+      closeDetail();
+      await load();
+    } catch (e) {
+      addToast({
+        variant: "error",
+        title: "Couldn't send feedback",
+        description: e?.message ?? String(e),
+      });
+    } finally {
+      setActing(false);
+    }
   };
 
   const runReview = async (action, opts = {}) => {
@@ -180,6 +327,54 @@ export function ClaimsPage() {
     await runReview("reject", { rejectionReason: reason });
   };
 
+  // META-ORCH-1062 — tweak whitelisted fields on a pending claim, then reload.
+  const submitTweak = async () => {
+    if (!detail) return;
+    const patch = {};
+    if ((tweakAddress ?? "") !== (detail.address ?? "")) patch.address = tweakAddress;
+    if ((tweakCategory ?? "") !== (detail.venue_category ?? "")) {
+      patch.venue_category = tweakCategory;
+    }
+    if ((tweakPriceLevel ?? "").trim().length > 0) {
+      patch.price_level = tweakPriceLevel.trim();
+    }
+    if (Object.keys(patch).length === 0) {
+      addToast({ variant: "info", title: "No changes to save" });
+      return;
+    }
+    setActing(true);
+    try {
+      await tweakClaimFields(detail.id, patch);
+      await logAdminAction("claim.tweak_fields", "venue_claim", detail.id, { patch });
+      addToast({ variant: "info", title: "Fields updated" });
+      // Reload bundle + refresh the underlying row's address/category locally.
+      setDetail((d) =>
+        d
+          ? {
+              ...d,
+              address: "address" in patch ? patch.address : d.address,
+              venue_category:
+                "venue_category" in patch ? patch.venue_category : d.venue_category,
+            }
+          : d,
+      );
+      await loadBundle(detail.id);
+    } catch (e) {
+      addToast({
+        variant: "error",
+        title: "Couldn't update fields",
+        description: e?.message ?? String(e),
+      });
+    } finally {
+      setActing(false);
+    }
+  };
+
+  // ORCH-1066 — score editing moved to <ScoreTunerPanel> (place-keyed set/pin,
+  // works from zero, with live preview + projected rank). The brand-keyed
+  // overrideClaimScore + its submitScoreOverride handler were removed here; the
+  // RPC remains in the codebase for the approval score_vetoes channel (SC-8).
+
   const phoneInfo = detail ? resolveClaimDisplayPhone(detail) : null;
   const tel = phoneInfo ? formatPhoneHref(phoneInfo.phone) : null;
   const mapsUri = detail
@@ -191,6 +386,47 @@ export function ClaimsPage() {
   const isDuplicateOfApproved = Boolean(detail?.duplicate_of_brand_id);
   const canApprove =
     Boolean(detail?.marked_called_at) && !isDuplicateOfApproved;
+
+  // META-ORCH-1062 — derived bundle views for the modal.
+  const pp = bundle?.place_pool ?? null;
+  const photos = useMemo(
+    () => (detail ? collectClaimPhotos(bundle, detail.cover_media_url) : []),
+    [bundle, detail],
+  );
+  const scores = Array.isArray(bundle?.scores) ? bundle.scores : [];
+  // ORCH-1064 — the active feedback round's items (grouped by category for the
+  // read-only status view). bundle.feedback is the active round only.
+  const feedbackRows = useMemo(
+    () => (Array.isArray(bundle?.feedback) ? bundle.feedback : []),
+    [bundle],
+  );
+  const feedbackByCategory = useMemo(() => {
+    const groups = new Map();
+    for (const row of feedbackRows) {
+      const list = groups.get(row.category) ?? [];
+      list.push(row);
+      groups.set(row.category, list);
+    }
+    return FEEDBACK_CAT_ORDER.filter((c) => groups.has(c)).map((c) => ({
+      category: c,
+      items: groups.get(c),
+    }));
+  }, [feedbackRows]);
+  const isPending = detail?.claim_status
+    ? detail.claim_status === "pending_review"
+    : activeTab === "pending";
+  const aestheticScore =
+    pp?.photo_aesthetic_data && typeof pp.photo_aesthetic_data === "object"
+      ? pp.photo_aesthetic_data.score ?? null
+      : null;
+  const submitterPitch =
+    pp?.business_authoring_inputs?.tier1?.description ??
+    pp?.business_authoring_inputs?.tier1?.pitch ??
+    null;
+  const bouncerReasonChips =
+    typeof pp?.bouncer_reason === "string" && pp.bouncer_reason.length > 0
+      ? pp.bouncer_reason.split(/[;,]/).map((s) => s.trim()).filter(Boolean)
+      : [];
 
   return (
     <div className="p-6 space-y-6 max-w-6xl mx-auto">
@@ -358,17 +594,134 @@ export function ClaimsPage() {
                 <div className="text-[var(--color-text-tertiary)] mb-1">Description</div>
                 <div className="whitespace-pre-wrap">{detail.description || "—"}</div>
               </div>
-              {detail.cover_media_url ? (
-                <div>
-                  <div className="text-[var(--color-text-tertiary)] mb-1">Cover</div>
-                  <a
-                    href={detail.cover_media_url}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="text-[var(--color-brand-400)] underline"
-                  >
-                    Open image
-                  </a>
+              {/* META-ORCH-1062 — inline photo gallery (cover + stored + gallery). */}
+              <div>
+                <div className="text-[var(--color-text-tertiary)] mb-2">
+                  Photos {photos.length > 0 ? `(${photos.length})` : ""}
+                </div>
+                {bundleLoading && photos.length === 0 ? (
+                  <div className="flex items-center gap-2 text-[var(--color-text-tertiary)]">
+                    <Spinner /> <span>Loading photos…</span>
+                  </div>
+                ) : bundleError ? (
+                  <div className="rounded-lg border border-red-500/30 bg-red-500/10 p-2 text-xs text-red-200">
+                    Couldn't load photos: {bundleError}
+                  </div>
+                ) : photos.length === 0 ? (
+                  <p className="text-xs text-[var(--color-text-tertiary)]">
+                    No photos submitted yet.
+                  </p>
+                ) : (
+                  <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
+                    {photos.map((url, i) => (
+                      <button
+                        key={url}
+                        type="button"
+                        onClick={() => setLightboxIndex(i)}
+                        className="aspect-square overflow-hidden rounded-lg border border-white/10 bg-white/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-brand-500)]"
+                        aria-label={`Open photo ${i + 1}`}
+                      >
+                        <img
+                          src={url}
+                          alt={`Venue photo ${i + 1}`}
+                          loading="lazy"
+                          className="h-full w-full object-cover"
+                        />
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* META-ORCH-1062 — quality signals: bouncer verdict + place_scores + aesthetic. */}
+              <div>
+                <div className="text-[var(--color-text-tertiary)] mb-2">Quality signals</div>
+                {bundleLoading && !pp ? (
+                  <div className="flex items-center gap-2 text-[var(--color-text-tertiary)]">
+                    <Spinner /> <span>Loading scores…</span>
+                  </div>
+                ) : bundleError ? (
+                  <div className="rounded-lg border border-red-500/30 bg-red-500/10 p-2 text-xs text-red-200">
+                    Couldn't load scores: {bundleError}
+                  </div>
+                ) : !pp ? (
+                  <p className="text-xs text-[var(--color-text-tertiary)]">
+                    No linked place to score.
+                  </p>
+                ) : (
+                  <div className="space-y-2">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Badge variant={pp.is_servable ? "success" : "warning"}>
+                        {pp.is_servable ? "Passes bouncer" : "Bounced"}
+                      </Badge>
+                      {bouncerReasonChips.map((r) => (
+                        <span
+                          key={r}
+                          className="rounded-full border border-white/10 bg-white/5 px-2 py-0.5 text-xs text-[var(--color-text-secondary)]"
+                        >
+                          {r}
+                        </span>
+                      ))}
+                    </div>
+                    <div>
+                      <div className="text-xs text-[var(--color-text-tertiary)] mb-1">
+                        Aesthetic:{" "}
+                        {aestheticScore != null ? aestheticScore : "Not scored"}
+                      </div>
+                      {scores.length === 0 ? (
+                        <p className="text-xs text-[var(--color-text-tertiary)]">
+                          Not yet scored — scoring runs on approve.
+                        </p>
+                      ) : (
+                        <ul className="space-y-1">
+                          {scores.map((s) => (
+                            <li
+                              key={s.signal_id}
+                              className="flex justify-between gap-4 text-xs"
+                            >
+                              <span className="text-[var(--color-text-secondary)]">
+                                {s.signal_id}
+                              </span>
+                              <span className="font-mono">{Math.round(s.score)}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* META-ORCH-1062 — missing fields (price / website / submitter pitch). */}
+              {pp && (pp.price_level || pp.website || submitterPitch) ? (
+                <div className="space-y-2">
+                  {pp.price_level ? (
+                    <div className="grid grid-cols-2 gap-2">
+                      <div className="text-[var(--color-text-tertiary)]">Price level</div>
+                      <div>{pp.price_level}</div>
+                    </div>
+                  ) : null}
+                  {pp.website ? (
+                    <div className="grid grid-cols-2 gap-2">
+                      <div className="text-[var(--color-text-tertiary)]">Website</div>
+                      <a
+                        href={pp.website}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="text-[var(--color-brand-400)] underline break-all"
+                      >
+                        {pp.website}
+                      </a>
+                    </div>
+                  ) : null}
+                  {submitterPitch ? (
+                    <div>
+                      <div className="text-[var(--color-text-tertiary)] mb-1">
+                        Submitter pitch
+                      </div>
+                      <div className="whitespace-pre-wrap">{submitterPitch}</div>
+                    </div>
+                  ) : null}
                 </div>
               ) : null}
               <div>
@@ -391,49 +744,280 @@ export function ClaimsPage() {
                 )}
               </div>
 
-              {/* META-ORCH-1009 Sub-F WS7: recommendation profile + reduce-only veto. */}
+              {/* META-ORCH-1062 — admin tweak + score override (pending claims only). */}
+              {isPending ? (
+                <div className="space-y-4 rounded-lg border border-white/10 bg-white/[0.03] p-3">
+                  <div className="text-[var(--color-text-tertiary)] text-xs uppercase tracking-wide">
+                    Admin adjustments
+                  </div>
+
+                  <div className="space-y-2">
+                    <div className="text-xs text-[var(--color-text-secondary)]">
+                      Tweak fields
+                    </div>
+                    <label className="block text-xs text-[var(--color-text-tertiary)]">
+                      Address
+                      <input
+                        type="text"
+                        value={tweakAddress}
+                        onChange={(e) => setTweakAddress(e.target.value)}
+                        disabled={acting}
+                        className="mt-1 w-full rounded-lg border border-white/10 bg-white/5 px-2 py-1.5 text-sm text-[var(--color-text-primary)]"
+                      />
+                    </label>
+                    <label className="block text-xs text-[var(--color-text-tertiary)]">
+                      Category
+                      <select
+                        value={tweakCategory}
+                        onChange={(e) => setTweakCategory(e.target.value)}
+                        disabled={acting}
+                        className="mt-1 w-full rounded-lg border border-white/10 bg-white/5 px-2 py-1.5 text-sm text-[var(--color-text-primary)]"
+                      >
+                        <option value="">—</option>
+                        {Object.entries(CAT_LABELS).map(([k, v]) => (
+                          <option key={k} value={k}>
+                            {v}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <label className="block text-xs text-[var(--color-text-tertiary)]">
+                      Price level
+                      <input
+                        type="text"
+                        value={tweakPriceLevel}
+                        onChange={(e) => setTweakPriceLevel(e.target.value)}
+                        placeholder={pp?.price_level ?? "PRICE_LEVEL_MODERATE"}
+                        disabled={acting}
+                        className="mt-1 w-full rounded-lg border border-white/10 bg-white/5 px-2 py-1.5 text-sm text-[var(--color-text-primary)]"
+                      />
+                    </label>
+                    <Button
+                      variant="secondary"
+                      onClick={() => void submitTweak()}
+                      disabled={acting}
+                    >
+                      Save field tweaks
+                    </Button>
+                  </div>
+
+                  {/* ORCH-1066 — deck score tuner: seed (from zero) + per-signal
+                      set/pin + live card preview + projected rank. Replaces the
+                      dead-end "available after approve" copy + the brand-keyed
+                      override grid. projected=true: the venue is pending/non-servable
+                      so rank is a projection ("goes live when you approve"). */}
+                  {detail.place_pool_id ? (
+                    <ScoreTunerPanel
+                      placePoolId={detail.place_pool_id}
+                      placeData={{
+                        id: detail.place_pool_id,
+                        name: detail.name,
+                        stored_photo_urls: pp?.stored_photo_urls ?? null,
+                        rating: pp?.rating ?? null,
+                        price_level: pp?.price_level ?? null,
+                        price_tiers: pp?.price_tiers ?? null,
+                        generative_summary: pp?.generative_summary ?? null,
+                        primary_type: null,
+                        types: null,
+                        lat: detail.lat ?? null,
+                        lng: detail.lng ?? null,
+                        is_servable: pp?.is_servable ?? false,
+                        is_active: pp?.is_active ?? true,
+                      }}
+                      scores={scores}
+                      signals={activeSignals}
+                      projected
+                      density="modal"
+                      loading={bundleLoading && scores.length === 0}
+                      error={bundleError}
+                      onAfterWrite={() => loadBundle(detail.id)}
+                      onRetry={() => loadBundle(detail.id)}
+                      addToast={addToast}
+                    />
+                  ) : (
+                    <p className="text-xs text-[var(--color-text-tertiary)]">
+                      No linked place — scoring is unavailable for this claim.
+                    </p>
+                  )}
+                </div>
+              ) : null}
+
+              {/* ORCH-1064 — feedback to the business (pending claims only). Each
+                  Send opens a fresh round, moves the claim to need_more_info, and
+                  pushes the owner; the current round's items + their fixed status
+                  render read-only below. */}
+              {isPending ? (
+                <div className="space-y-4 rounded-lg border border-white/10 bg-white/[0.03] p-3">
+                  <div className="flex items-center gap-2 text-[var(--color-text-tertiary)] text-xs uppercase tracking-wide">
+                    <MessageSquarePlus className="h-3.5 w-3.5" />
+                    Feedback to business
+                  </div>
+
+                  {/* Staged items */}
+                  {feedbackItems.length > 0 ? (
+                    <div className="space-y-1.5">
+                      {feedbackItems.map((item, i) => (
+                        <div
+                          key={`${item.category}-${i}`}
+                          className="flex items-center gap-2 rounded-lg border border-white/10 bg-white/5 px-2 py-1.5 text-xs"
+                        >
+                          <span className="font-medium text-[var(--color-text-primary)]">
+                            {FEEDBACK_CAT_LABELS[item.category]}
+                          </span>
+                          <span className="flex-1 truncate text-[var(--color-text-secondary)]">
+                            {item.note}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => removeFeedbackItem(i)}
+                            disabled={acting}
+                            aria-label="Remove feedback item"
+                            className="rounded p-0.5 text-[var(--color-text-tertiary)] hover:text-[var(--color-text-primary)]"
+                          >
+                            <X className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  ) : null}
+
+                  {/* Add-item composer */}
+                  <div className="flex flex-wrap items-end gap-2">
+                    <label className="text-xs text-[var(--color-text-tertiary)]">
+                      Category
+                      <select
+                        value={feedbackCat}
+                        onChange={(e) => setFeedbackCat(e.target.value)}
+                        disabled={acting}
+                        className="mt-1 block w-36 rounded-lg border border-white/10 bg-white/5 px-2 py-1.5 text-sm text-[var(--color-text-primary)]"
+                      >
+                        {FEEDBACK_CAT_ORDER.map((c) => (
+                          <option key={c} value={c}>
+                            {FEEDBACK_CAT_LABELS[c]}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <label className="flex-1 min-w-[10rem] text-xs text-[var(--color-text-tertiary)]">
+                      Note
+                      <input
+                        type="text"
+                        value={feedbackNote}
+                        onChange={(e) => setFeedbackNote(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") {
+                            e.preventDefault();
+                            addFeedbackItem();
+                          }
+                        }}
+                        placeholder="What needs fixing?"
+                        disabled={acting}
+                        className="mt-1 w-full rounded-lg border border-white/10 bg-white/5 px-2 py-1.5 text-sm text-[var(--color-text-primary)]"
+                      />
+                    </label>
+                    <Button
+                      variant="secondary"
+                      onClick={addFeedbackItem}
+                      disabled={acting}
+                    >
+                      Add item
+                    </Button>
+                  </div>
+
+                  {/* Optional overall message */}
+                  <label className="block text-xs text-[var(--color-text-tertiary)]">
+                    Overall message (optional)
+                    <textarea
+                      value={feedbackMessage}
+                      onChange={(e) => setFeedbackMessage(e.target.value)}
+                      placeholder="Optional message to the business (one per round)."
+                      disabled={acting}
+                      rows={2}
+                      className="mt-1 w-full rounded-lg border border-white/10 bg-white/5 px-2 py-1.5 text-sm text-[var(--color-text-primary)]"
+                    />
+                  </label>
+
+                  <Button
+                    variant="primary"
+                    onClick={() => void submitFeedback()}
+                    disabled={acting || feedbackItems.length === 0}
+                  >
+                    Send feedback
+                  </Button>
+
+                  {/* Current round status (read-only) */}
+                  {feedbackByCategory.length > 0 ? (
+                    <div className="space-y-2 border-t border-white/10 pt-3">
+                      <div className="text-xs text-[var(--color-text-secondary)]">
+                        Current round — what the business has addressed
+                      </div>
+                      {feedbackByCategory.map((group) => (
+                        <div key={group.category} className="space-y-1">
+                          <div className="text-[10px] uppercase tracking-wide text-[var(--color-text-tertiary)]">
+                            {FEEDBACK_CAT_LABELS[group.category]}
+                          </div>
+                          {group.items.map((item) => (
+                            <div
+                              key={item.id}
+                              className="flex items-center gap-2 text-xs"
+                            >
+                              <span className="flex-1 text-[var(--color-text-secondary)]">
+                                {item.note}
+                              </span>
+                              <Badge
+                                variant={item.status === "fixed" ? "success" : "warning"}
+                              >
+                                {item.status === "fixed" ? "Fixed" : "Open"}
+                              </Badge>
+                            </div>
+                          ))}
+                        </div>
+                      ))}
+                      {feedbackRows[0]?.overall_message ? (
+                        <p className="text-[11px] italic text-[var(--color-text-tertiary)]">
+                          “{feedbackRows[0].overall_message}”
+                        </p>
+                      ) : null}
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
+
+              {/*
+                META-ORCH-1009 Sub-F WS7 recommendation profile (PRESERVED in the
+                #299 merge): AI pitch + operator answers (facets) + AI consistency
+                check from business_authoring_inputs. The simple WS7 photo gallery
+                and the WS7 reduce-only signal-score veto editor were REMOVED here
+                — the canonical gallery is the PhotoLightbox grid above, and score
+                editing is the META-ORCH-1062 bidirectional override above. Approve
+                no longer depends on score_vetoes (the go-live path is now the
+                Phase 4 servable-flip → scorer, not WS7 vetoes); admin-review-
+                venue-claim still ACCEPTS score_vetoes for backward-compat.
+              */}
               {(() => {
-                const pp = detail.place_pool ?? {};
-                const inputs = pp.business_authoring_inputs ?? {};
+                const recoPp = detail.place_pool ?? bundle?.place_pool ?? {};
+                const inputs = recoPp.business_authoring_inputs ?? {};
                 const consistency = inputs.consistency ?? null;
                 const facets =
                   inputs.confirmed_ai_outputs?.facets ?? inputs.tier2?.facets ?? {};
-                const scores = pp.ai_signal_scores ?? {};
-                const gallery = Array.isArray(pp.business_gallery_urls)
-                  ? pp.business_gallery_urls
-                  : [];
-                const scoreEntries = Object.entries(scores);
                 return (
                   <div className="mt-2 border-t border-[var(--color-border)] pt-4 space-y-4">
                     <div className="text-[var(--color-text-primary)] font-semibold">
                       Recommendation profile
                     </div>
                     <div className="text-xs text-[var(--color-text-tertiary)]">
-                      {pp.business_recommend_edit_count ?? 0} recommend run(s) ·{" "}
-                      {pp.website ? (
-                        <a href={pp.website} target="_blank" rel="noreferrer" className="text-[var(--color-brand-400)] underline">
+                      {recoPp.business_recommend_edit_count ?? 0} recommend run(s) ·{" "}
+                      {recoPp.website ? (
+                        <a href={recoPp.website} target="_blank" rel="noreferrer" className="text-[var(--color-brand-400)] underline">
                           website
                         </a>
                       ) : "no website"}
                     </div>
 
-                    {pp.generative_summary ? (
+                    {recoPp.generative_summary ? (
                       <div>
                         <div className="text-[var(--color-text-tertiary)] mb-1">AI pitch</div>
-                        <div className="whitespace-pre-wrap text-sm">{pp.generative_summary}</div>
-                      </div>
-                    ) : null}
-
-                    {gallery.length > 0 ? (
-                      <div>
-                        <div className="text-[var(--color-text-tertiary)] mb-1">Photos ({gallery.length})</div>
-                        <div className="flex flex-wrap gap-2">
-                          {gallery.map((u) => (
-                            <a key={u} href={u} target="_blank" rel="noreferrer">
-                              <img src={u} alt="venue" className="h-16 w-16 object-cover rounded" />
-                            </a>
-                          ))}
-                        </div>
+                        <div className="whitespace-pre-wrap text-sm">{recoPp.generative_summary}</div>
                       </div>
                     ) : null}
 
@@ -471,50 +1055,6 @@ export function ClaimsPage() {
                         ) : null}
                       </div>
                     ) : null}
-
-                    {scoreEntries.length > 0 ? (
-                      <div>
-                        <div className="text-[var(--color-text-tertiary)] mb-1">
-                          Signal scores — lower a score to veto (deck shows ≥120-equiv)
-                        </div>
-                        <div className="space-y-1">
-                          {scoreEntries.map(([sigId, entry]) => {
-                            const original = Number(entry?.score_0_to_100 ?? 0);
-                            const current = vetoes[sigId]?.vetoed_score ?? original;
-                            return (
-                              <div key={sigId} className="flex items-center gap-2 text-sm">
-                                <span className="flex-1">{sigId.replace(/_/g, " ")}</span>
-                                <span className="text-[var(--color-text-tertiary)] w-10 text-right">{original}</span>
-                                <input
-                                  type="number"
-                                  min={0}
-                                  max={original}
-                                  value={current}
-                                  onChange={(e) => {
-                                    const val = Math.max(0, Math.min(original, Number(e.target.value) || 0));
-                                    setVetoes((prev) => {
-                                      const next = { ...prev };
-                                      if (val < original) {
-                                        next[sigId] = { vetoed_score: val, original_score: original, reason: "" };
-                                      } else {
-                                        delete next[sigId];
-                                      }
-                                      return next;
-                                    });
-                                  }}
-                                  className="w-16 rounded bg-[var(--color-surface)] border border-[var(--color-border)] px-2 py-1 text-right"
-                                />
-                              </div>
-                            );
-                          })}
-                        </div>
-                        {Object.keys(vetoes).length > 0 ? (
-                          <div className="text-xs text-amber-200/90 mt-1">
-                            {Object.keys(vetoes).length} score(s) will be reduced on approve.
-                          </div>
-                        ) : null}
-                      </div>
-                    ) : null}
                   </div>
                 );
               })()}
@@ -546,7 +1086,7 @@ export function ClaimsPage() {
           ) : (
             <Button
               variant="primary"
-              onClick={() => void runReview("approve", { scoreVetoes: vetoes })}
+              onClick={() => void runReview("approve")}
               disabled={acting || !canApprove}
               title={
                 isDuplicateOfApproved
@@ -590,6 +1130,15 @@ export function ClaimsPage() {
           </Button>
         </ModalFooter>
       </Modal>
+
+      {/* META-ORCH-1062 — full-screen photo viewer (Esc/arrows/click-outside). */}
+      {lightboxIndex != null && photos.length > 0 ? (
+        <PhotoLightbox
+          photos={photos}
+          startIndex={lightboxIndex}
+          onClose={() => setLightboxIndex(null)}
+        />
+      ) : null}
     </div>
   );
 }

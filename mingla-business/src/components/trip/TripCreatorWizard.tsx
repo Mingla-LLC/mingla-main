@@ -1207,7 +1207,7 @@ export const TripCreatorWizard: React.FC<TripCreatorWizardProps> = ({
           variant="elevated"
           padding={0}
           radius="xxl"
-          style={styles.dock}
+          style={[styles.dock, { marginBottom: insets.bottom + spacing.lg }]}
         >
           {step === 1 ? (
             <Button
@@ -1557,7 +1557,9 @@ const styles = StyleSheet.create({
   },
   dock: {
     marginHorizontal: spacing.md,
-    marginBottom: spacing.lg,
+    // marginBottom is applied inline as insets.bottom + spacing.lg so the
+    // floating dock clears the phone's bottom nav / home-indicator on both
+    // Android gesture-nav and iOS (META-ORCH-1059 Sub-A footer-bleed fix).
     paddingVertical: 6,
     paddingHorizontal: 8,
   },

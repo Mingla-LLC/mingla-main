@@ -777,14 +777,16 @@ export default function NotificationsSheet({
       visible={visible}
       onClose={onClose}
       theme="light"
-      wrapInRNModal={false}
-      // META-ORCH-0991 Bug 4 (tab-bar awareness): this sheet is z-stacked by
-      // HomePage as a NON-wrapInRNModal sheet, so Mingla's floating GlassBottomNav
-      // (app-root absolute, zIndex 50) stays VISIBLE and overlaps the sheet's
-      // bottom. tabBarAware makes the primitive add the nav-capsule clearance to
-      // the notifications list's bottom padding (Math.max with the existing
-      // insets.bottom+16) so the last notification row clears the floating menu.
-      tabBarAware
+      // ORCH-1064: was wrapInRNModal={false} (inline) — which rendered the sheet
+      // BELOW the app-root GlassBottomNav (zIndex 50) so it opened "behind the
+      // nav menu", AND left its wrapped sectionlist scroll unbound (maxScroll==0
+      // frozen body). Enabling the BaseBottomSheet RN-modal wrapper (prop below)
+      // lifts it into a separate OS window ABOVE the nav and gives gorhom a
+      // bounded full-screen parent so the list scrolls. tabBarAware is now
+      // redundant (the nav no longer overlaps the sheet) and is dropped.
+      // NOTE: this sheet still imports NO RN Modal — the wrapper lives inside
+      // BaseBottomSheet (ORCH-0975 / META-ORCH-0991 sole-gorhom-consumer invariant).
+      wrapInRNModal={true}
       snapPoints={SHEET_SNAP_POINTS}
       backdropOpacity={0.32}
       backgroundStyle={styles.sheetBackground}

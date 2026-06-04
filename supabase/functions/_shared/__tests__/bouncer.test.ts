@@ -5,6 +5,7 @@ import { assertEquals } from 'https://deno.land/std@0.168.0/testing/asserts.ts';
 import {
   bounce,
   deriveCluster,
+  isBusinessAuthored,
   isOwnDomain,
   isUpscaleChainAllowlisted,
   matchFastFoodPattern,
@@ -1102,4 +1103,118 @@ Deno.test('T-SONIC-ROOM-LAGOS-ADMIT (v3): Lagos sound-room nightclub admits', ()
   });
   const v = bounce(place);
   assertEquals(v.is_servable, true, `v3 regression: Sonic Room nightclub must admit. Reasons: ${JSON.stringify(v.reasons)}`);
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// ORCH-1067 — B7 skipped ONLY for fetched_via='business_authored'; B8 stays
+// their real photo gate. Google-seeded places unchanged.
+// Enforces I-BOUNCER-B7-SKIPS-BUSINESS-AUTHORED (proposed). fails-on-revert
+// anchor: removing the `!isBusinessAuthored(place) &&` guard at the B7 push
+// site makes T-1067-01 (happy) and T-1067-05 (parity) fail.
+// ═══════════════════════════════════════════════════════════════════════════
+
+Deno.test('T-1067-01 (happy): business-authored w/ stored photos, NO Google photos → servable, reasons=[]', () => {
+  const place = basePlace({
+    name: 'Lantern & Vine',
+    types: ['restaurant', 'food', 'point_of_interest'],
+    website: 'https://www.deathandcompany.com',
+    opening_hours: { monday: '17:00-23:00' },
+    photos: [], // ← NO Google photos (not on Google)
+    stored_photo_urls: ['https://cdn.example/uploaded.jpg'], // ← operator uploads
+    fetched_via: 'business_authored',
+    review_count: 0,
+    rating: null,
+  });
+  const v = bounce(place);
+  assertEquals(v.is_servable, true, `Expected servable, got reasons: ${JSON.stringify(v.reasons)}`);
+  assertEquals(v.reasons, []);
+  assertEquals(v.reasons.includes('B7:no_google_photos'), false);
+  assertEquals(v.reasons.includes('B8:no_stored_photos'), false);
+});
+
+Deno.test('T-1067-02 (adversarial B8): business-authored w/ NO stored photos (final pass) → fails B8, NOT B7', () => {
+  const place = basePlace({
+    name: 'Lantern & Vine',
+    types: ['restaurant', 'food', 'point_of_interest'],
+    website: 'https://www.deathandcompany.com',
+    opening_hours: { monday: '17:00-23:00' },
+    photos: [], // no Google photos
+    stored_photo_urls: [], // ← no stored photos either
+    fetched_via: 'business_authored',
+  });
+  const v = bounce(place); // final pass (no skipStoredPhotoCheck)
+  assertEquals(v.is_servable, false);
+  assertEquals(v.reasons.includes('B8:no_stored_photos'), true);
+  assertEquals(v.reasons.includes('B7:no_google_photos'), false);
+});
+
+Deno.test('T-1067-03 (regression): Google-seeded (nearby_search) w/ no Google photos → STILL fails B7', () => {
+  const place = basePlace({
+    name: 'Some Google Venue',
+    types: ['restaurant'],
+    photos: [], // no Google photos
+    stored_photo_urls: ['https://cdn.example/u.jpg'],
+    fetched_via: 'nearby_search', // ← Google-seeded provenance
+  });
+  const v = bounce(place);
+  assertEquals(v.reasons.includes('B7:no_google_photos'), true);
+});
+
+Deno.test('T-1067-04 (regression, absent provenance): fetched_via undefined w/ no Google photos → STILL fails B7', () => {
+  const place = basePlace({
+    name: 'Legacy Row',
+    types: ['restaurant'],
+    photos: [], // no Google photos
+    stored_photo_urls: ['https://cdn.example/u.jpg'],
+    // fetched_via intentionally omitted → treated as Google-sourced
+  });
+  const v = bounce(place);
+  assertEquals(v.reasons.includes('B7:no_google_photos'), true);
+});
+
+Deno.test('T-1067-05 (parity): business-authored across both passes differ ONLY by B8; NEITHER has B7', () => {
+  const place = basePlace({
+    name: 'Lantern & Vine',
+    types: ['restaurant', 'food', 'point_of_interest'],
+    website: 'https://www.deathandcompany.com',
+    opening_hours: { monday: '17:00-23:00' },
+    photos: [], // no Google photos
+    stored_photo_urls: [], // no stored photos → final fails B8, pre-photo does not
+    fetched_via: 'business_authored',
+  });
+  const final = bounce(place);
+  const pre = bounce(place, { skipStoredPhotoCheck: true });
+  // Neither pass has B7 (business-authored skip is pass-independent).
+  assertEquals(final.reasons.includes('B7:no_google_photos'), false);
+  assertEquals(pre.reasons.includes('B7:no_google_photos'), false);
+  // Final has B8, pre-photo does not — the ONLY allowed cross-pass difference.
+  assertEquals(final.reasons.includes('B8:no_stored_photos'), true);
+  assertEquals(pre.reasons.includes('B8:no_stored_photos'), false);
+  // Removing B8 from final must equal pre exactly (parity invariant).
+  assertEquals(final.reasons.filter((r) => r !== 'B8:no_stored_photos'), pre.reasons);
+});
+
+Deno.test('T-1067-06 (cluster rule still applies): business-authored, no website → fails B4, NOT B7 (mirrors The Tuscanny Place)', () => {
+  const place = basePlace({
+    name: 'The Tuscanny Place',
+    types: ['restaurant', 'food', 'point_of_interest'],
+    website: null, // ← no website
+    opening_hours: { monday: '17:00-23:00' },
+    photos: [],
+    stored_photo_urls: ['https://cdn.example/u.jpg'],
+    fetched_via: 'business_authored',
+  });
+  const v = bounce(place);
+  assertEquals(v.is_servable, false);
+  assertEquals(v.reasons.includes('B4:no_website'), true);
+  assertEquals(v.reasons.includes('B7:no_google_photos'), false);
+});
+
+Deno.test('T-1067-helper: isBusinessAuthored is the narrowest provenance predicate', () => {
+  assertEquals(isBusinessAuthored(basePlace({ fetched_via: 'business_authored' })), true);
+  assertEquals(isBusinessAuthored(basePlace({ fetched_via: 'nearby_search' })), false);
+  assertEquals(isBusinessAuthored(basePlace({ fetched_via: 'detail_refresh' })), false);
+  assertEquals(isBusinessAuthored(basePlace({ fetched_via: 'text_search' })), false);
+  assertEquals(isBusinessAuthored(basePlace({ fetched_via: null })), false);
+  assertEquals(isBusinessAuthored(basePlace()), false); // absent ⇒ Google-treated
 });

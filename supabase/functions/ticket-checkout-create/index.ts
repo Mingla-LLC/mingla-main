@@ -227,6 +227,16 @@ serve(async (req) => {
     ? body.lines.filter(isCheckoutLine)
     : [];
   const mode: CheckoutMode = body.mode === "preview" ? "preview" : "create";
+  // ORCH-1072: OPTIONAL chosen experience occurrence (event_dates.id). When a
+  // recurring/multi-date experience is booked, the consumer Book sheet sends the
+  // picked date here so the order records WHICH occurrence was booked. Validated
+  // below (future + belongs to this event); persisted to the PI + order metadata.
+  // When ABSENT, every downstream branch is byte-identical to today — events,
+  // trips, and one-off experiences are completely unaffected (no behavior change).
+  const eventDateId = typeof body.eventDateId === "string" &&
+      body.eventDateId.length > 0
+    ? body.eventDateId
+    : null;
   const clientTaxCalculationId = typeof body.taxCalculationId === "string" &&
       body.taxCalculationId.length > 0
     ? body.taxCalculationId
@@ -283,6 +293,43 @@ serve(async (req) => {
   }
   if ((futureDateCount ?? 0) === 0) {
     return jsonResponse({ error: "event_no_active_dates" }, 422);
+  }
+
+  // ORCH-1072: validate the chosen experience occurrence when one was supplied.
+  // The occurrence MUST belong to this event AND still be in the future. A
+  // mismatched / past / sold-out occurrence is rejected with 422 so the buyer
+  // re-picks (the Book sheet shows sold-out occurrences disabled, but this is
+  // the authoritative last line of defense — Supabase RLS-bypassing service
+  // client read, https://supabase.com/docs/reference/javascript/select). When
+  // eventDateId is null this whole block is skipped → unchanged path.
+  if (eventDateId !== null) {
+    const { data: occRow, error: occErr } = await supabase
+      .from("event_dates")
+      .select("id, end_at")
+      .eq("id", eventDateId)
+      .eq("event_id", eventId)
+      .maybeSingle();
+    if (occErr !== null) {
+      console.error(
+        "[ticket-checkout-create] occurrence lookup failed",
+        occErr,
+      );
+      return jsonResponse(
+        { error: "occurrence_lookup_failed", detail: occErr.message },
+        500,
+      );
+    }
+    if (occRow === null) {
+      // Not an occurrence of THIS event (or deleted) → unbookable.
+      return jsonResponse({ error: "occurrence_not_found" }, 422);
+    }
+    if (
+      typeof occRow.end_at === "string" &&
+      new Date(occRow.end_at).getTime() <= Date.now()
+    ) {
+      // The chosen occurrence already ended → unbookable.
+      return jsonResponse({ error: "occurrence_not_available" }, 422);
+    }
   }
 
   // ORCH-0875 [Tr4 Refund Tiers + Booking Deadline] — bookings-closed gate.
@@ -468,12 +515,25 @@ serve(async (req) => {
 
   const session = sessionResult as Record<string, unknown>;
   const checkoutSessionId = String(session.checkoutSessionId ?? "");
+  // ORCH-1072: persist the chosen occurrence onto the checkout session row's
+  // metadata (validated above) so the booked event_date is recorded with the
+  // session → order. Merged into the SAME UPDATE that writes the status token
+  // (no extra round-trip). When eventDateId is null the metadata key is omitted
+  // → byte-identical write to today (events/trips/one-off).
+  const sessionUpdate: Record<string, unknown> = {
+    buyer_status_token_hash: await sha256Hex(buyerStatusToken),
+    updated_at: new Date().toISOString(),
+  };
+  if (eventDateId !== null) {
+    const existingMeta =
+      typeof session.metadata === "object" && session.metadata !== null
+        ? (session.metadata as Record<string, unknown>)
+        : {};
+    sessionUpdate.metadata = { ...existingMeta, event_date_id: eventDateId };
+  }
   const { error: statusTokenError } = await supabase
     .from("ticket_checkout_sessions")
-    .update({
-      buyer_status_token_hash: await sha256Hex(buyerStatusToken),
-      updated_at: new Date().toISOString(),
-    })
+    .update(sessionUpdate)
     .eq("id", checkoutSessionId);
   if (statusTokenError) {
     console.error(
@@ -1519,6 +1579,11 @@ serve(async (req) => {
         mingla_tax_calculation_id: taxCalculation.id,
         // ORCH-0869: deposit PI marker for finalize RPC discrimination.
         ...(isInstallmentPlan ? { mingla_installment_plan_root: "true" } : {}),
+        // ORCH-1072: record the booked experience occurrence on the PaymentIntent
+        // (Stripe metadata is a free-form string map — keys ≤40 chars, values
+        // ≤500 chars: https://docs.stripe.com/api/metadata). Omitted when null →
+        // PI metadata byte-identical for events/trips/one-off experiences.
+        ...(eventDateId !== null ? { mingla_event_date_id: eventDateId } : {}),
       },
     };
     // ORCH-0869 [Tr3] installment plans MUST be card-only because off_session

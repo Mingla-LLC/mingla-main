@@ -5,6 +5,12 @@ import {
   resolveBrandOwnerUserId,
 } from "./appsFlyerS2S.ts";
 import { sendOpsAlertEmail } from "./stripeOpsAlertEmail.ts";
+import { formatMoneyCents } from "./stripeEdgeAuth.ts";
+// META-ORCH-1074 Sub-A: brand-facing dispute notifications (today this handler
+// only emails the OPERATOR, never the brand). dispute_opened = FYI;
+// dispute_action_needed = "you must submit evidence." Recipients: owner +
+// finance. business.* routes to the business OneSignal app automatically.
+import { notifyBrandRoles } from "./businessNotifyTriggers.ts";
 
 export interface StripeDisputeWebhookEvent {
   id: string;
@@ -58,6 +64,23 @@ function disputePaymentIntentId(
     return stringValue(paymentIntent as Record<string, unknown>, "id");
   }
   return null;
+}
+
+// META-ORCH-1074 Sub-A: human-readable evidence-due date for the
+// dispute_action_needed copy. Falls back to "the deadline" when absent
+// (Sub-D §3.6 fallback) so the string never shows a raw null.
+function formatDueDate(iso: string | null): string {
+  if (!iso) return "the deadline";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "the deadline";
+  try {
+    return new Intl.DateTimeFormat(undefined, {
+      month: "short",
+      day: "numeric",
+    }).format(d);
+  } catch {
+    return iso.slice(0, 10);
+  }
 }
 
 function evidenceDueBy(dispute: Record<string, unknown>): string | null {
@@ -355,6 +378,65 @@ export async function handleChargeDispute(
       currency,
       effects,
     });
+
+    // META-ORCH-1074 Sub-A: notify the brand. dispute_opened is always sent
+    // (FYI); dispute_action_needed is the distinct "submit evidence" alert,
+    // sent when the dispute needs a response. Both keyed for idempotency.
+    if (brandId) {
+      try {
+        const dueIso = evidenceDueBy(dispute);
+        const dueBy = formatDueDate(dueIso);
+        const amountStr = formatMoneyCents(amount, currency);
+        await notifyBrandRoles(supabase as never, {
+          brandId,
+          roles: ["brand_owner", "finance_manager"],
+          type: "business.dispute_opened",
+          title: "Dispute opened",
+          body: `A ${amountStr} charge is disputed. Tap to review.`,
+          data: {
+            disputeId,
+            orderId,
+            amount,
+            currency,
+            reason,
+            evidenceDueBy: dueIso,
+          },
+          relatedId: disputeId,
+          relatedType: "dispute",
+          idempotencyKey: `business.dispute_opened:${disputeId}`,
+          deepLink: `mingla-business://payments`,
+        });
+
+        if (status === "needs_response" || status === "warning_needs_response") {
+          await notifyBrandRoles(supabase as never, {
+            brandId,
+            roles: ["brand_owner", "finance_manager"],
+            type: "business.dispute_action_needed",
+            title: "Evidence due soon",
+            body: `Submit evidence by ${dueBy} to contest a ${amountStr} dispute.`,
+            data: {
+              disputeId,
+              orderId,
+              amount,
+              currency,
+              status,
+              evidenceDueBy: dueIso,
+            },
+            relatedId: disputeId,
+            relatedType: "dispute",
+            idempotencyKey: `business.dispute_action_needed:${disputeId}:${status}`,
+            deepLink: `mingla-business://payments`,
+          });
+        }
+      } catch (disputeNotifyErr) {
+        console.warn(
+          "[stripe-dispute] brand dispute notify threw (non-fatal):",
+          disputeNotifyErr instanceof Error
+            ? disputeNotifyErr.message
+            : String(disputeNotifyErr),
+        );
+      }
+    }
   }
   if (event.type === "charge.dispute.closed" && status === "lost") {
     await alertDisputeLost({

@@ -1251,6 +1251,78 @@ function checkNoNewBackendFiles() {
     // antimeridian/equidistant-tiebreak/corner-coords) + the index.ts NULL guard.
     "supabase/functions/check-launch-city/__tests__/check_launch_city_adversarial.test.ts",
   ];
+  // META-ORCH-1059 [experiences-business-parity] Sub-A — creation foundation.
+  // Adds the experience_stops table + events location/pricing-mode columns +
+  // the biz_create_experience RPC (one migration) and the mapbox-geocode edge
+  // fn (Mapbox Search Box proxy for the experience stops-builder address
+  // picker). Also lists the two source-level RPC regression tests + the
+  // modified agentTools.ts (AI create_experience now writes a draft shell).
+  // C7 is scoped to ORCH-0863 marketing; these are experience-parity backend
+  // touches. Per COMMS-0002 (allowlist lands in the SAME commit as the
+  // migration + edge fn).
+  const META_ORCH_1059_BACKEND_ALLOWLIST = [
+    "supabase/migrations/20260824000000_meta_orch_1059_sub_a_experience_stops.sql",
+    "supabase/functions/mapbox-geocode/index.ts",
+    "supabase/functions/__tests__/biz_create_experience.happy.test.ts",
+    "supabase/functions/__tests__/biz_create_experience.one_ticket_invariant.test.ts",
+    "supabase/functions/_shared/agentTools.ts",
+    // Sub-B — draft lifecycle: biz_publish_experience RPC (UPDATE existing draft
+    // → publish/re-save; one ticket at resolved total; publish-time dates). One
+    // migration + its source-level regression test. Per COMMS-0002 (allowlist
+    // lands in the SAME commit as the migration).
+    "supabase/migrations/20260825000000_meta_orch_1059_sub_b_publish_experience.sql",
+    "supabase/functions/__tests__/biz_publish_experience.draft_lifecycle.test.ts",
+    // Wizard CHANGES 1+2+3 (post Sub-A/B forward migration): draft-gated
+    // stop name/description validation + events.experience_intent column +
+    // publish-time intent/description gates. Per COMMS-0002 — allowlist lands in
+    // the SAME commit as the migration + its source-level regression test.
+    "supabase/migrations/20260827000000_meta_orch_1059_wizard_intent_desc_validation.sql",
+    "supabase/functions/__tests__/biz_experience_wizard_changes.test.ts",
+    // Intent picker → 4 ids + MULTI-select (forward migration; 20260827 is
+    // already on remote + immutable): new events.experience_intents text[]
+    // column + CHECK, backfill, RPC array read/validate/write. Per COMMS-0002 —
+    // allowlist lands in the SAME commit as the migration + its regression test.
+    "supabase/migrations/20260828000000_meta_orch_1059_experience_intents_multi.sql",
+    "supabase/functions/__tests__/biz_experience_intents_multi.test.ts",
+    // META-ORCH-1059 draft round-trip + cover persistence + recurrence
+    // never-ends: both biz RPCs persist theme.experience_meta.when_draft on
+    // every save + write the 7 cover_media_* columns; 'never' termination
+    // materialises a single master event_date. Per COMMS-0002 — allowlist lands
+    // in the SAME commit as the migration + its regression test.
+    "supabase/migrations/20260829000000_meta_orch_1059_draft_roundtrip_cover_neverends.sql",
+    "supabase/functions/__tests__/biz_experience_draft_roundtrip.test.ts",
+    // Sub-E — edit-after-publish buyer-protection guards: experience_edit_log
+    // table + biz_experience_sold_count helper + biz_update_live_experience RPC
+    // (refund-gate mirroring biz_update_live_trip, adapted to stops + one ticket
+    // + dates). One migration + its source-level regression test. Per COMMS-0002
+    // — allowlist lands in the SAME commit as the migration.
+    "supabase/migrations/20260902000000_meta_orch_1059_sub_e_update_live_experience.sql",
+    "supabase/functions/__tests__/biz_update_live_experience.refund_gate.test.ts",
+  ];
+  // META-ORCH-1062 [venue onboarding → admin vetting → deck pipeline repair].
+  // C7 is scoped to ORCH-0863 marketing; these backend touches are venue-claim
+  // deck-pipeline-repair scope: Phase 0 source reconcile (run-business-place-
+  // authoring-pipeline v37 + admin-review-venue-claim v92 WS7 + the already-
+  // applied Sub-F migration) + the approval→servable→scorer wiring (Phase 2/3/4)
+  // + the new admin-vetting RPCs (Phase 1). Per COMMS-0002 + COMMS-0018.
+  const META_ORCH_1062_BACKEND_ALLOWLIST = [
+    "supabase/functions/run-business-place-authoring-pipeline/index.ts",
+    "supabase/functions/run-business-place-authoring-pipeline/__tests__/isUuid.test.ts",
+    "supabase/functions/run-business-place-authoring-pipeline/__tests__/pipeline_behavioral.test.ts",
+    "supabase/functions/run-business-place-authoring-pipeline/__tests__/stage_contract.test.ts",
+    "supabase/functions/run-business-place-authoring-pipeline/__tests__/meta_orch_1062_no_demotion.test.ts",
+    "supabase/functions/admin-review-venue-claim/index.ts",
+    "supabase/functions/admin-review-venue-claim/reviewLogic.ts",
+    "supabase/functions/admin-review-venue-claim/index.test.ts",
+    "supabase/functions/admin-review-venue-claim/__tests__/meta_orch_1062_approve_scorer_loop.test.ts",
+    // META-ORCH-1062 QA: tester adversarial regression for the approve
+    // orchestration (Q1 partial-vs-total rollback, Q3 bounce-fail off-deck,
+    // servable-flip-before-scorer ordering).
+    "supabase/functions/admin-review-venue-claim/__tests__/meta_orch_1062_approve_orchestration.adversarial.test.ts",
+    "supabase/migrations/20260813000000_meta_orch_1009_sub_f_recommend_review.sql",
+    "supabase/migrations/20260831000000_meta_orch_1062_admin_vetting_rpcs.sql",
+    "supabase/migrations/__tests__/meta_orch_1062_admin_vetting_rpcs.test.sql",
+  ];
   // ORCH-1045 [Business "Get Beta Access" lead-capture]: adds the beta-lead
   // migration (beta_access_leads table + admin_beta_leads_list RPC) and the
   // public beta-access-lead-submit edge fn (+ its Deno tests). C7 is scoped to
@@ -1364,6 +1436,100 @@ function checkNoNewBackendFiles() {
     // no-drift). New backend file — allowlisted same-commit per COMMS-0002.
     "supabase/functions/discover-cards/__tests__/orch_1062_vibe_category_adversarial.test.ts",
   ];
+  // ORCH-1065 [consumer-experience-deck-card]: surfaces brand-authored
+  // experiences on the consumer swipe deck. Adds a SECURITY DEFINER deck-supply
+  // RPC migration + edits discover-cards/index.ts (SOLO path only — new
+  // fetchEligibleExperiences source + interleave; the edit is a modification,
+  // not a new file, but C7 flags any supabase/functions/ touch so it is listed)
+  // + the implementor happy-path Deno tests. Bypasses
+  // place_pool/ai_signal_scores/run-signal-scorer (COMMS-0018). Per COMMS-0002 —
+  // lands in the SAME commit as the backend files. C7 is scoped to ORCH-0863
+  // marketing; these are experience-deck backend touches.
+  const ORCH_1065_BACKEND_ALLOWLIST = [
+    "supabase/migrations/20260903000000_orch_1065_eligible_experiences_for_deck.sql",
+    "supabase/functions/discover-cards/index.ts",
+    "supabase/functions/discover-cards/__tests__/orch_1065_experience_supply.test.ts",
+    "supabase/functions/ticket-checkout-create/__tests__/orch1065_experience_checkout.test.ts",
+    // ORCH-1065 TESTER adversarial supply set (T-04/T-06/T-10/T-11 + interleave
+    // executable boundaries + COMMS-0018 bypass + no-parallel-money-fn). New
+    // backend test file → allowlisted in the SAME commit (COMMS-0002).
+    "supabase/functions/discover-cards/__tests__/orch1065_experience_supply_adversarial.test.ts",
+  ];
+  // ORCH-1071 [experiences-on-curated-path]: front-loads brand experiences on the
+  // "See curated experiences" path (generate-curated-experiences/index.ts) via the
+  // EXISTING pg_eligible_experiences_for_deck RPC (ORCH-1065/1070) — NO new migration,
+  // NO new edge fn. generate-curated-experiences/index.ts is a MODIFY already
+  // allowlisted under ORCH_0902_0903_BACKEND_ALLOWLIST; re-listed here for clarity
+  // plus the new backend regression test. C7 is scoped to ORCH-0863 marketing; these
+  // are curated-deck backend touches. Per COMMS-0002 (same commit as the change).
+  const ORCH_1071_BACKEND_ALLOWLIST = [
+    "supabase/functions/generate-curated-experiences/index.ts",
+    "supabase/functions/generate-curated-experiences/__tests__/orch_1071_experiences_on_curated_path.test.ts",
+  ];
+  // ORCH-1072 [experience-detail-cover-availability]: ONE new migration
+  // (additive CREATE OR REPLACE of pg_eligible_experiences_for_deck adding
+  // cover_media_url/cover_media_type/description/upcoming_occurrences) plus its
+  // backend regression tests. The two edge fns it threads through
+  // (discover-cards/index.ts, generate-curated-experiences/index.ts) are
+  // MODIFICATIONS of already-allowlisted files (ORCH_1065 / ORCH_0902_0903 /
+  // ORCH_1071), so only the migration + the two new test files need listing.
+  // C7 is scoped to ORCH-0863 marketing; these are consumer-deck backend
+  // touches. Per COMMS-0002 — lands in the SAME commit as the migration.
+  // NOTE (ORCH-1073): this entry collided with the brand-experiences ORCH-1072
+  // below — two `const ORCH_1072_BACKEND_ALLOWLIST` in one scope crashed the gate
+  // (SyntaxError) on main. Renamed to a unique identifier to unbreak CI; the
+  // migration file retains its on-disk orch_1072 name (renumber was incomplete).
+  const ORCH_1072_EXPERIENCE_DETAIL_BACKEND_ALLOWLIST = [
+    "supabase/migrations/20260908000000_orch_1072_experience_detail_cover_availability.sql",
+    "supabase/functions/discover-cards/__tests__/orch_1072_experience_detail_supply.test.ts",
+    "supabase/functions/ticket-checkout-create/__tests__/orch1072_experience_occurrence_checkout.test.ts",
+  ];
+  // ORCH-1064 [admin↔business venue-listing feedback loop]: one NEW migration
+  // (venue_claim_feedback table + RLS + view + 3 RPCs + admin bundle extension)
+  // plus its backend regression tests. The edge fn (admin-review-venue-claim/
+  // index.ts) is a MODIFICATION of an existing file (already allowlisted under
+  // ORCH_0101_VE3), so only the migration + new test files need listing. Per
+  // COMMS-0002 — lands in the same commit as the migration.
+  const ORCH_1064_BACKEND_ALLOWLIST = [
+    "supabase/migrations/20260901000000_orch_1064_venue_claim_feedback.sql",
+    "supabase/migrations/__tests__/orch_1064_venue_claim_feedback.test.sql",
+    "supabase/migrations/__tests__/orch_1064_feedback_owner_rls.adversarial.test.sql",
+    "supabase/functions/admin-review-venue-claim/__tests__/orch_1064_feedback_loop.test.ts",
+  ];
+  // ORCH-1067 [Bouncer accepts business-authored uploaded photos]: skips deck
+  // bouncer rule B7 (Google-photos gate) ONLY for fetched_via='business_authored'
+  // rows, so a self-listed venue with real uploaded photos (stored_photo_urls /
+  // B8) reaches the deck. Edge-function-logic-only — NO migration, NO new edge
+  // fn source. The four bounce() callers (run-bouncer, run-pre-photo-bouncer,
+  // admin-review-venue-claim, run-business-place-authoring-pipeline index.ts +
+  // their two adversarial/behavioral tests) are already allowlisted under the
+  // ORCH-0100/0101/META-ORCH-1009/ORCH-1062/ORCH-1064 blocks above; only the
+  // canonical _shared/bouncer.ts (MODIFY), its existing Deno unit test (MODIFY),
+  // and the tester's NEW adversarial regression test need listing here. C7 is
+  // scoped to ORCH-0863 marketing; these are bouncer backend touches. Per
+  // COMMS-0002.
+  const ORCH_1067_BACKEND_ALLOWLIST = [
+    "supabase/functions/_shared/bouncer.ts",
+    "supabase/functions/_shared/__tests__/bouncer.test.ts",
+    "supabase/functions/_shared/__tests__/bouncer_orch1067_adversarial.test.ts",
+  ];
+  // ORCH-1072 [venue-card brand experiences section]: single additive RPC
+  // (pg_brand_experiences_for_place) that resolves a venue's claimed-brand
+  // published experiences for the consumer expanded venue card. C7 is scoped to
+  // ORCH-0863 marketing; this is a Discover/venue backend touch. Per COMMS-0002.
+  // (ORCH-1071 was already allocated to a separate effort; this work is 1072.)
+  const ORCH_1072_BACKEND_ALLOWLIST = [
+    "supabase/migrations/20260906000000_orch_1072_brand_experiences_for_place.sql",
+  ];
+  // ORCH-1073 [admin suspend/delete venue listing + owner messaging]: one
+  // additive migration (soft-delete cols + invariant trigger + claim_status &
+  // action_type CHECK widen + admin_suspend/soft_delete/restore RPCs + the
+  // biz_resubmit_venue_claim patch to accept a suspended brand). No new edge
+  // function source. C7 is scoped to ORCH-0863 marketing; this is an admin/
+  // venue-listing backend touch. Per COMMS-0002 — same commit as the migration.
+  const ORCH_1073_BACKEND_ALLOWLIST = [
+    "supabase/migrations/20260909000000_orch_1073_admin_suspend_delete_listing.sql",
+  ];
   // ORCH-1032 [Intelligence pipeline concurrency cap + chunked enqueue]:
   // adds the additive 'queued'-status migration (status CHECK widen + per-city
   // unique active index widen + tg_kick_pending_trial_runs promotion built on
@@ -1455,13 +1621,22 @@ function checkNoNewBackendFiles() {
     "supabase/migrations/20260826000000_orch_1058b_post_collab_dead_end_banner.sql",
     "supabase/migrations/20260826000001_orch_1058b_allow_system_message_type.sql",
   ];
+  // META-ORCH-1074 Sub-A [Backend dual-app push routing + business notification
+  // triggers]. C7 is scoped to ORCH-0863 marketing; these are notification-
+  // routing + trigger backend touches. Per COMMS-0002 this allowlist lands in
+  // the SAME commit as the backend change. New files: the new_review pg_net
+  // trigger migration, the shared businessNotifyTriggers module, and the
+  // implementor regression tests. MODIFIED existing files (push-utils,
+  // notify-dispatch, stripeEdgeAuth, stripeWebhookRouter, stripeDisputeHandlers,
+  // ticket-checkout-confirm, admin-review-venue-claim, accept-brand-invitation)
+  // are edits not new files, but are listed for a complete audit trail and to
+  // stay byte-identical to the ORCH-1064/1066 precedent.
   // META-ORCH-1076 [Paystack Africa] Phase 1 — Paystack buyer checkout (NGN).
-  // C7 is scoped to ORCH-0863 marketing; these are the Paystack money-rail
-  // backend touches (provider migration, the (provider,country) resolver, the
-  // Paystack client, the webhook router, the NG-VAT engine extension, the
-  // ticket-checkout-create branch + webhook upgrade) + the proof-slice files
-  // that were never allowlisted. Per COMMS-0002 — lands in the SAME commit as
-  // the backend diff. Also covers the new Deno tests under __tests__/.
+  // Paystack money-rail backend touches (provider migration, the (provider,country)
+  // resolver, the Paystack client + webhook router, the NG-VAT engine extension,
+  // the ticket-checkout-create branch + webhook upgrade) + the proof-slice files
+  // that were never allowlisted. Per COMMS-0002 — lands in the SAME commit as the
+  // backend diff. Also covers the new Deno tests under __tests__/.
   const META_ORCH_1076_BACKEND_ALLOWLIST = [
     "supabase/migrations/20260915000000_meta_orch_1076_p1_payment_provider.sql",
     "supabase/functions/_shared/paymentProvider.ts",
@@ -1475,8 +1650,75 @@ function checkNoNewBackendFiles() {
     "supabase/functions/_shared/__tests__/allInPricingEngineNgVat.test.ts",
     "supabase/functions/_shared/__tests__/paymentProvider.test.ts",
   ];
+  const META_ORCH_1074_BACKEND_ALLOWLIST = [
+    "supabase/migrations/20260910000000_meta_orch_1074_new_review_notify.sql",
+    "supabase/functions/_shared/businessNotifyTriggers.ts",
+    "supabase/functions/_shared/push-utils.ts",
+    "supabase/functions/notify-dispatch/index.ts",
+    "supabase/functions/_shared/stripeEdgeAuth.ts",
+    "supabase/functions/_shared/stripeWebhookRouter.ts",
+    "supabase/functions/_shared/stripeDisputeHandlers.ts",
+    "supabase/functions/ticket-checkout-confirm/index.ts",
+    "supabase/functions/admin-review-venue-claim/index.ts",
+    "supabase/functions/accept-brand-invitation/index.ts",
+    "supabase/functions/_shared/__tests__/meta_orch_1074_push_routing.test.ts",
+    "supabase/functions/_shared/__tests__/meta_orch_1074_order_paid_payload.test.ts",
+  ];
+  // ORCH-1066 [admin deck score tuner + card preview]: adds the new 4-RPC
+  // deck-score-tuner migration + its SQL-shape migration test + the
+  // sticky-through-approval Deno regression test. run-signal-scorer/index.ts and
+  // admin-review-venue-claim/index.ts are MODIFIES (sticky-skip + new tuner
+  // actions) — C7 flags modified backend files too, so they are listed here.
+  // C7 is scoped to ORCH-0863 marketing; these are venue-scoring/admin backend
+  // touches. Per COMMS-0002 — lands in the same commit as the migration.
+  const ORCH_1066_BACKEND_ALLOWLIST = [
+    "supabase/migrations/20260904000000_orch_1066_deck_score_tuner.sql",
+    "supabase/migrations/__tests__/orch_1066_deck_score_tuner.test.sql",
+    "supabase/functions/_shared/stickyOverride.ts",
+    "supabase/functions/run-signal-scorer/index.ts",
+    "supabase/functions/run-signal-scorer/__tests__/orch_1066_sticky_override.test.ts",
+    "supabase/functions/run-signal-scorer/__tests__/orch_1066_sticky_mixed_batch.adversarial.test.ts",
+    "supabase/functions/admin-review-venue-claim/index.ts",
+    "supabase/functions/admin-review-venue-claim/__tests__/orch_1066_tuner_actions.test.ts",
+  ];
+  // ORCH-1068 [business-authored venues render on the consumer deck] — normalize
+  // the wizard hours ARRAY → Google {periods} object at write + backfill, plus a
+  // defensive reader branch and an image-hero picker. NEW shared converter +
+  // backfill migration + the converter's Deno test; discover-cards/index.ts,
+  // _shared/curatedStopHours.ts, and run-business-place-authoring-pipeline/index.ts
+  // are MODIFIES (C7 flags modified backend files too). C7 is scoped to ORCH-0863
+  // marketing; these are consumer-deck/authoring backend touches. Per COMMS-0002 —
+  // this allowlist lands in the SAME commit as the migration.
+  const ORCH_1068_BACKEND_ALLOWLIST = [
+    "supabase/migrations/20260905000000_orch_1068_normalize_business_hours.sql",
+    "supabase/functions/_shared/businessHoursToGoogle.ts",
+    "supabase/functions/_shared/__tests__/businessHoursToGoogle.test.ts",
+    "supabase/functions/_shared/__tests__/businessHoursToGoogle.adversarial.test.ts",
+    "supabase/functions/discover-cards/index.ts",
+    "supabase/functions/_shared/curatedStopHours.ts",
+    "supabase/functions/run-business-place-authoring-pipeline/index.ts",
+  ];
+  // ORCH-1069 [experience live-edit drops vibe]: one CREATE-OR-REPLACE migration
+  // fixing biz_update_live_experience to persist experience_intents on edit.
+  // No new edge fn, no new test files. Per COMMS-0002 — same commit as migration.
+  const ORCH_1069_BACKEND_ALLOWLIST = [
+    "supabase/migrations/20260906000000_orch_1069_live_edit_persists_experience_intents.sql",
+  ];
+  // ORCH-1070 [deck experiences strict-intent]: one CREATE-OR-REPLACE migration
+  // tightening pg_eligible_experiences_for_deck to strict intent-overlap (no
+  // permissive empty-p_intents pass). No edge fn, no new tests. COMMS-0002.
+  const ORCH_1070_BACKEND_ALLOWLIST = [
+    "supabase/migrations/20260907000000_orch_1070_deck_experiences_strict_intent.sql",
+  ];
   const ALLOWLIST = [
     ...META_ORCH_1076_BACKEND_ALLOWLIST,
+    ...META_ORCH_1074_BACKEND_ALLOWLIST,
+    ...ORCH_1070_BACKEND_ALLOWLIST,
+    ...ORCH_1069_BACKEND_ALLOWLIST,
+    ...ORCH_1068_BACKEND_ALLOWLIST,
+    ...ORCH_1066_BACKEND_ALLOWLIST,
+    ...META_ORCH_1059_BACKEND_ALLOWLIST,
+    ...META_ORCH_1062_BACKEND_ALLOWLIST,
     ...ORCH_1058B_BACKEND_ALLOWLIST,
     ...ORCH_1060_BACKEND_ALLOWLIST,
     ...ORCH_1054_BACKEND_ALLOWLIST,
@@ -1561,6 +1803,18 @@ function checkNoNewBackendFiles() {
     ...ORCH_1040_BACKEND_ALLOWLIST,
     ...ORCH_1061_BACKEND_ALLOWLIST,
     ...ORCH_1062_BACKEND_ALLOWLIST,
+    ...ORCH_1065_BACKEND_ALLOWLIST,
+    ...ORCH_1071_BACKEND_ALLOWLIST,
+    ...ORCH_1072_EXPERIENCE_DETAIL_BACKEND_ALLOWLIST,
+    ...ORCH_1064_BACKEND_ALLOWLIST,
+    ...ORCH_1067_BACKEND_ALLOWLIST,
+    ...ORCH_1072_BACKEND_ALLOWLIST,
+    ...ORCH_1073_BACKEND_ALLOWLIST,
+    // Schedule-edit buyer protection + "Refund all & proceed" (separate PR;
+    // shares the ORCH-1047 work id used in code). New migration recording the
+    // already-live business_patch_event_when change — not ORCH-0863 marketing
+    // scope; same C7-scoping caveat as the allowlists above.
+    "supabase/migrations/20260820000000_schedule_change_buyer_protection_refund_all.sql",
   ];
   const forbidden = changed.filter(
     (p) =>

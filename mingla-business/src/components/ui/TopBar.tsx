@@ -35,6 +35,10 @@ import {
 } from "../../constants/designSystem";
 import { useCurrentBrand } from "../../hooks/useCurrentBrand";
 import { useResponsiveLayout } from "../../hooks/useResponsiveLayout";
+// META-ORCH-1073 Sub-A — the TopBar search icon opens the global search sheet
+// (mounted once at the (tabs) root). `getState().open()` avoids subscribing
+// the whole TopBar to the sheet store. The bell stays unwired (out of scope).
+import { useGlobalSearchSheet } from "../../hooks/useGlobalSearchSheet";
 
 import { GlassChrome } from "./GlassChrome";
 import { Icon } from "./Icon";
@@ -120,9 +124,15 @@ const DefaultRightSlotInner: React.FC<{ unreadCount: number | undefined }> = ({
   unreadCount,
 }) => (
   <>
-    {/* [TRANSITIONAL] right-slot icons render but onPress is unwired in
-        Cycle 0a — Cycle 1+ wires search + notifications navigation. */}
-    <IconChrome icon="search" size={36} accessibilityLabel="Search" />
+    {/* META-ORCH-1073 Sub-A: the search icon opens the global search sheet. */}
+    <IconChrome
+      icon="search"
+      size={36}
+      accessibilityLabel="Search"
+      onPress={() => useGlobalSearchSheet.getState().open()}
+    />
+    {/* [TRANSITIONAL] the bell's onPress is unwired in Cycle 0a — a later
+        cycle wires notifications navigation (out of scope for Sub-A). */}
     <IconChrome
       icon="bell"
       size={36}

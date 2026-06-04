@@ -11,6 +11,8 @@
  */
 
 import { supabase } from "./supabase";
+import { randomId } from "../utils/randomId";
+import type { OrderRecord } from "../store/orderStore";
 
 export interface RefundOrderInput {
   orderId: string;
@@ -162,4 +164,65 @@ const userMessageFor = (code: string): string => {
     default:
       return "Couldn't issue the refund. Tap to try again.";
   }
+};
+
+// ============================================================
+// ORCH-1047 — "Refund all & proceed" bulk refund
+// ============================================================
+
+export interface BulkRefundResult {
+  refundedOrderIds: string[];
+  failed: Array<{ orderId: string; buyerName: string; error: string }>;
+}
+
+/**
+ * Full-refund line set for an order — every line's remaining (unrefunded)
+ * quantity at its purchase unit price. Mirrors RefundSheet's "full" mode line
+ * builder verbatim so the per-line cents match the tested single-refund path.
+ */
+const fullRefundLines = (order: OrderRecord): RefundOrderInput["lines"] =>
+  order.lines
+    .filter((l) => l.quantity - l.refundedQuantity > 0)
+    .map((l) => ({
+      orderLineItemId: l.orderLineItemId ?? "",
+      quantity: l.quantity - l.refundedQuantity,
+      amountCents: Math.round(
+        (l.quantity - l.refundedQuantity) * l.unitPriceGbpAtPurchase * 100,
+      ),
+    }));
+
+/**
+ * Refund every still-live order for an event in full, sequentially (respects
+ * Stripe rate limits; each call gets its own idempotency key so a retry of the
+ * whole batch doesn't double-charge a refund that already succeeded — failed
+ * ones simply re-attempt). Returns which orders refunded and which failed; the
+ * caller (EditPublishedScreen "Refund all & proceed") decides whether to apply
+ * the schedule change and how to report partial failure.
+ */
+export const refundAllEventOrders = async (
+  orders: OrderRecord[],
+  reason: string,
+): Promise<BulkRefundResult> => {
+  const result: BulkRefundResult = { refundedOrderIds: [], failed: [] };
+  for (const order of orders) {
+    if (order.status !== "paid" && order.status !== "refunded_partial") continue;
+    const lines = fullRefundLines(order);
+    if (lines.length === 0) continue;
+    try {
+      await issueOrderRefund({
+        orderId: order.id,
+        lines,
+        reason,
+        idempotencyKey: randomId(),
+      });
+      result.refundedOrderIds.push(order.id);
+    } catch (e) {
+      result.failed.push({
+        orderId: order.id,
+        buyerName: order.buyer?.name ?? "Buyer",
+        error: e instanceof Error ? e.message : String(e),
+      });
+    }
+  }
+  return result;
 };

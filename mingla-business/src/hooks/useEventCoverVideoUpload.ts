@@ -34,7 +34,12 @@ export type EventCoverVideoUploadFile = {
 
 // ORCH-0989: cover-video target. "event" (default) → events.cover_media_url;
 // "brand" → brands.cover_media_url (the apply step writes brands on ready).
-export type CoverVideoTargetKind = "event" | "brand";
+// META-ORCH-1059 Sub-B: "experience" is an events-table row using the SAME
+// events.cover_media_* columns, so it behaves identically to "event" through
+// the whole pipeline (intent/source/apply all keyed on the events-row id).
+// We accept it as a distinct kind for call-site clarity, then normalize to
+// "event" for every server-facing decision below.
+export type CoverVideoTargetKind = "event" | "brand" | "experience";
 
 export function useEventCoverVideoUpload(
   eventId: string,
@@ -51,6 +56,10 @@ export function useEventCoverVideoUpload(
   error: Error | null;
 } {
   const queryClient = useQueryClient();
+  // META-ORCH-1059 Sub-B: experiences ride the event-cover pipeline verbatim
+  // (same events.cover_media_* columns + events-row id). Normalize the target
+  // for every server-facing call + cache-invalidation decision.
+  const serverTarget: "event" | "brand" = target === "brand" ? "brand" : "event";
   const abortControllerRef = useRef<AbortController | null>(null);
   const jobIdRef = useRef<string | null>(null);
   const [stage, setStage] = useState<EventCoverVideoUploadStage>(idleStage);
@@ -60,7 +69,7 @@ export function useEventCoverVideoUpload(
   const [error, setError] = useState<Error | null>(null);
 
   const invalidateEventCaches = useCallback((): void => {
-    if (target === "brand") {
+    if (serverTarget === "brand") {
       // ORCH-0989: brand-target writes brands.cover_media_url — invalidate
       // brand caches, not event caches (eventId is absent).
       void queryClient.invalidateQueries({ queryKey: brandKeys.detail(brandId) });
@@ -73,7 +82,7 @@ export function useEventCoverVideoUpload(
     void queryClient.invalidateQueries({ queryKey: eventDraftKeys.list(brandId) });
     void queryClient.invalidateQueries({ queryKey: publicEventKeys.detailById(eventId) });
     void queryClient.invalidateQueries({ queryKey: upcomingKeys.all });
-  }, [brandId, eventId, queryClient, target]);
+  }, [brandId, eventId, queryClient, serverTarget]);
 
   const start = useCallback(
     async (file: EventCoverVideoUploadFile): Promise<void> => {
@@ -104,11 +113,11 @@ export function useEventCoverVideoUpload(
         const trimStartMs = file.trimStartMs ?? 0;
         const trimEndMs = file.trimEndMs ?? compressed.durationMs;
         const intent = await createEventCoverVideoUploadIntent({
-          target,
+          target: serverTarget,
           applyMode,
           brandId,
           // ORCH-0989: brand-target carries no eventId.
-          eventId: target === "brand" ? undefined : eventId,
+          eventId: serverTarget === "brand" ? undefined : eventId,
           sourceBytes: compressed.bytes,
           sourceDurationMs: compressed.durationMs,
           sourceFileName: file.fileName ?? null,
@@ -134,9 +143,9 @@ export function useEventCoverVideoUpload(
         if (abortController.signal.aborted) return;
 
         const acknowledged = await acknowledgeEventCoverVideoSourceUploaded({
-          target,
+          target: serverTarget,
           brandId,
-          eventId: target === "brand" ? undefined : eventId,
+          eventId: serverTarget === "brand" ? undefined : eventId,
           jobId: intent.jobId,
           providerUploadResponse,
         });
@@ -158,7 +167,7 @@ export function useEventCoverVideoUpload(
         // brands.cover_media_url + cover_media_type='video'). Event-target
         // keeps its existing apply path (draft_auto auto-applies in the
         // webhook; published_manual applies through the event publish flow).
-        if (target === "brand") {
+        if (serverTarget === "brand") {
           await applyEventCoverVideoJob(intent.jobId);
         }
         setStatus(ready);
@@ -192,7 +201,7 @@ export function useEventCoverVideoUpload(
         });
       }
     },
-    [applyMode, brandId, eventId, invalidateEventCaches, target],
+    [applyMode, brandId, eventId, invalidateEventCaches, serverTarget],
   );
 
   const cancel = useCallback(async (): Promise<void> => {

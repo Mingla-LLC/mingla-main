@@ -51,6 +51,10 @@ export interface NativeCheckoutInput {
   };
   idempotencyKey?: string;
   taxCalculationId?: string | null;
+  // ORCH-1072: the chosen experience occurrence (event_dates.id). Forwarded to
+  // ticket-checkout-create so a recurring/multi-date experience books the right
+  // date. Omitted for events/trips/one-off → request shape byte-identical.
+  eventDateId?: string | null;
   // ORCH-1016: trip intake answers ride the existing ticket-checkout-create body
   // key → orders.intake_form_data. The key is already supported server-side
   // (ticket-checkout-create reads it for trip checkouts); this just forwards it
@@ -187,6 +191,10 @@ export const useNativeCheckoutFlow = (): ((
             ? { intake_form_data: input.intakeFormData }
             : {}),
           ...(input.taxCalculationId ? { taxCalculationId: input.taxCalculationId } : {}),
+          // ORCH-1072: forward the chosen occurrence only when present — the
+          // edge fn validates it (future + belongs to event + not sold out) and
+          // persists it; absent → unchanged single-date path.
+          ...(input.eventDateId ? { eventDateId: input.eventDateId } : {}),
           ...(input.idempotencyKey !== undefined
             ? { idempotencyKey: input.idempotencyKey }
             : {}),

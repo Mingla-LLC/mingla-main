@@ -135,7 +135,8 @@ export type UpdateLiveEventRejection =
   | "tier_free_toggle_with_sales"
   | "multi_date_remove_with_sales"
   | "when_mode_drops_active_date"
-  | "recurrence_drops_occurrence";
+  | "recurrence_drops_occurrence"
+  | "time_change_with_sales";
 
 export type UpdateLiveEventResult =
   | { ok: true; editLogEntryId: string }

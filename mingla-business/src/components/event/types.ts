@@ -65,6 +65,12 @@ export interface StepBodyProps {
   coverMediaApplyMode?: "draft_auto" | "published_manual";
   /** Lets parent flows block publish/save while a video cover is still processing. */
   onCoverVideoProcessingChange?: (isProcessing: boolean) => void;
+  /**
+   * META-ORCH-1059 — when true, the recurring "Ends" picker offers a third
+   * "Never ends" option (open-ended recurrence). Only the EXPERIENCE wizard
+   * passes this; events still require a bounded end (count<=52 / until-date).
+   */
+  allowNeverEnds?: boolean;
   // ORCH-0892-A: legacy wizard-scroll-ref prop removed. CoverPicker
   // now relies on the keyboard-controller library's KeyboardAvoidingView
   // wrap for search-input visibility above the keyboard.

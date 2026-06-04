@@ -42,6 +42,12 @@ import { visibleTabsForRank } from "../../src/utils/navTabGate";
 // Same `.tsx + .web.tsx` Metro split pattern as `richEditor.tsx` from M1.
 import { CommandPalette } from "../../src/components/ui/CommandPalette";
 
+// META-ORCH-1073 Sub-A: the global search sheet mounts ONCE here so it is
+// reachable from every screen rendering the default TopBar cluster. Opened
+// via useGlobalSearchSheet().isOpen (the TopBar search icon calls open()).
+// COEXIST (R-5): the web-desktop ⌘K CommandPalette above is UNTOUCHED.
+import { GlobalSearchSheet } from "../../src/components/ui/GlobalSearchSheet";
+
 const TABS: BottomNavTab[] = [
   { id: "home", icon: "home", label: "Home" },
   // ORCH-0826 (Mingla Business 1.2 M0): tab id `events` renamed to `hub`,
@@ -135,6 +141,11 @@ export default function TabsLayout(): React.ReactElement {
           isWideDesktop gate inside the palette itself decides whether
           to actually open. Native: noop (CommandPalette.tsx is null). */}
       {Platform.OS === "web" && isWideDesktop ? <CommandPalette /> : null}
+      {/* META-ORCH-1073 Sub-A: the global search sheet — single mount,
+          reachable from every default-cluster screen on all surfaces
+          (native bottom sheet / narrow-web bottom sheet / wide-desktop
+          centred card, resolved by the Sheet primitive). */}
+      <GlobalSearchSheet />
     </View>
   );
 }
