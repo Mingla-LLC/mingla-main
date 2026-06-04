@@ -1450,6 +1450,10 @@ function checkNoNewBackendFiles() {
     "supabase/functions/discover-cards/index.ts",
     "supabase/functions/discover-cards/__tests__/orch_1065_experience_supply.test.ts",
     "supabase/functions/ticket-checkout-create/__tests__/orch1065_experience_checkout.test.ts",
+    // ORCH-1065 TESTER adversarial supply set (T-04/T-06/T-10/T-11 + interleave
+    // executable boundaries + COMMS-0018 bypass + no-parallel-money-fn). New
+    // backend test file → allowlisted in the SAME commit (COMMS-0002).
+    "supabase/functions/discover-cards/__tests__/orch1065_experience_supply_adversarial.test.ts",
   ];
   // ORCH-1032 [Intelligence pipeline concurrency cap + chunked enqueue]:
   // adds the additive 'queued'-status migration (status CHECK widen + per-city
