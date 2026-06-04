@@ -64,18 +64,19 @@ END $$;
 --   15 US + 2 EU + 1 CH live brands (pricing_currency USD/EUR/CHF). A narrow
 --   IN ('GB','NG') CHECK would REJECT those 18 existing rows and ABORT db push.
 --   Therefore we widen to the UNION of the current remote allowlist + NG/NGN.
---   This is the COMMS-0004 / ORCH-1034 coordination point: whoever lands first
---   wins; we union. DROP IF EXISTS then re-ADD as a strict superset → no existing
---   row can violate it (region_violations=0, currency_violations=0 against the
---   union, verified by probe).
+--   This is the COMMS-0004 / ORCH-1034 coordination point. We widen ONLY the
+--   region allowlist (it still exists on remote at 4 values) as a strict superset
+--   → no existing row can violate it (region_violations=0, verified by probe).
+--   SAFETY-AUDIT FIX (2026-06-04): we do NOT re-add brands_pricing_currency_allowlist.
+--   ORCH-1034 deliberately DROPPED that constraint (confirmed live: it does not
+--   exist) so brands can charge in ANY currency. NGN is therefore ALREADY allowed
+--   with no CHECK. Re-adding a 5-currency CHECK would silently regress ORCH-1034
+--   and block future non-union-currency brands — so it is intentionally omitted.
 -- =====================================================================
 ALTER TABLE public.brands DROP CONSTRAINT IF EXISTS brands_pricing_region_allowlist;
 ALTER TABLE public.brands ADD  CONSTRAINT brands_pricing_region_allowlist
   CHECK (pricing_region IN ('GB', 'US', 'EU', 'CH', 'NG'));
-
-ALTER TABLE public.brands DROP CONSTRAINT IF EXISTS brands_pricing_currency_allowlist;
-ALTER TABLE public.brands ADD  CONSTRAINT brands_pricing_currency_allowlist
-  CHECK (pricing_currency IN ('GBP', 'USD', 'EUR', 'CHF', 'NGN'));
+-- (currency allowlist intentionally NOT re-added — see note above)
 
 -- =====================================================================
 -- 3.1.c — config-driven VAT per country (new table, service-role-only RLS)
