@@ -1713,6 +1713,8 @@ function checkNoNewBackendFiles() {
   // the migration.
   const ORCH_1075_BACKEND_ALLOWLIST = [
     "supabase/migrations/20260909000000_orch_1075_paid_publish_integrity_guards.sql",
+    "supabase/migrations/__tests__/orch_1075_paid_publish_integrity_guards.test.sql",
+    "supabase/migrations/__tests__/orch_1075_paid_publish_integrity_guards.test.ts",
   ];
   const ALLOWLIST = [
     ...ORCH_1075_BACKEND_ALLOWLIST,

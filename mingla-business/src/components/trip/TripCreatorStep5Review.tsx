@@ -152,6 +152,23 @@ export function mapPublishErrorToState(
         message: "This trip is no longer in draft state. Refresh and try again.",
         pointsToStep: 5,
       };
+    // ORCH-1075 — paid-publish integrity guards (locked copy, SPEC §3.7). The
+    // wizard's catch ALSO routes stripe_charges_disabled to Stripe onboarding;
+    // offering_date_past points back to the dates step.
+    case "stripe_charges_disabled":
+      return {
+        code,
+        message:
+          "You can't publish a paid listing until your Stripe payouts are switched on. It takes a couple of minutes.",
+        pointsToStep: 5,
+      };
+    case "offering_date_past":
+      return {
+        code,
+        message:
+          "This date has already passed. Choose a date that's still ahead so people can book it.",
+        pointsToStep: 1,
+      };
     default:
       return {
         code,
