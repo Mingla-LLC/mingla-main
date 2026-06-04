@@ -1436,6 +1436,25 @@ function checkNoNewBackendFiles() {
     // no-drift). New backend file — allowlisted same-commit per COMMS-0002.
     "supabase/functions/discover-cards/__tests__/orch_1062_vibe_category_adversarial.test.ts",
   ];
+  // ORCH-1065 [consumer-experience-deck-card]: surfaces brand-authored
+  // experiences on the consumer swipe deck. Adds a SECURITY DEFINER deck-supply
+  // RPC migration + edits discover-cards/index.ts (SOLO path only — new
+  // fetchEligibleExperiences source + interleave; the edit is a modification,
+  // not a new file, but C7 flags any supabase/functions/ touch so it is listed)
+  // + the implementor happy-path Deno tests. Bypasses
+  // place_pool/ai_signal_scores/run-signal-scorer (COMMS-0018). Per COMMS-0002 —
+  // lands in the SAME commit as the backend files. C7 is scoped to ORCH-0863
+  // marketing; these are experience-deck backend touches.
+  const ORCH_1065_BACKEND_ALLOWLIST = [
+    "supabase/migrations/20260903000000_orch_1065_eligible_experiences_for_deck.sql",
+    "supabase/functions/discover-cards/index.ts",
+    "supabase/functions/discover-cards/__tests__/orch_1065_experience_supply.test.ts",
+    "supabase/functions/ticket-checkout-create/__tests__/orch1065_experience_checkout.test.ts",
+    // ORCH-1065 TESTER adversarial supply set (T-04/T-06/T-10/T-11 + interleave
+    // executable boundaries + COMMS-0018 bypass + no-parallel-money-fn). New
+    // backend test file → allowlisted in the SAME commit (COMMS-0002).
+    "supabase/functions/discover-cards/__tests__/orch1065_experience_supply_adversarial.test.ts",
+  ];
   // ORCH-1064 [admin↔business venue-listing feedback loop]: one NEW migration
   // (venue_claim_feedback table + RLS + view + 3 RPCs + admin bundle extension)
   // plus its backend regression tests. The edge fn (admin-review-venue-claim/
@@ -1679,6 +1698,7 @@ function checkNoNewBackendFiles() {
     ...ORCH_1040_BACKEND_ALLOWLIST,
     ...ORCH_1061_BACKEND_ALLOWLIST,
     ...ORCH_1062_BACKEND_ALLOWLIST,
+    ...ORCH_1065_BACKEND_ALLOWLIST,
     ...ORCH_1064_BACKEND_ALLOWLIST,
     ...ORCH_1067_BACKEND_ALLOWLIST,
     // Schedule-edit buyer protection + "Refund all & proceed" (separate PR;
