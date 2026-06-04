@@ -1691,7 +1691,20 @@ function checkNoNewBackendFiles() {
   const ORCH_1070_BACKEND_ALLOWLIST = [
     "supabase/migrations/20260907000000_orch_1070_deck_experiences_strict_intent.sql",
   ];
+  // ORCH-1077 [prod↔main migration-drift reconciliation]: file-only history
+  // housekeeping — commits the orphaned (already-applied+recorded) orch_1047
+  // source onto main, and renumbers 3 collision-loser migration files to unique
+  // timestamps (their objects are already live on remote; recorded via
+  // `supabase migration repair --status applied`, which runs NO SQL). C7 flags
+  // these supabase/migrations paths as new; allowlisted here per COMMS-0002.
+  const ORCH_1077_BACKEND_ALLOWLIST = [
+    "supabase/migrations/20260602000000_orch_1047_schedule_change_with_sales.sql",
+    "supabase/migrations/20260816000001_orch_1043_auto_run_triggered_by_nullable.sql",
+    "supabase/migrations/20260820000001_schedule_change_buyer_protection_refund_all.sql",
+    "supabase/migrations/20260906000001_orch_1072_brand_experiences_for_place.sql",
+  ];
   const ALLOWLIST = [
+    ...ORCH_1077_BACKEND_ALLOWLIST,
     ...META_ORCH_1074_BACKEND_ALLOWLIST,
     ...ORCH_1070_BACKEND_ALLOWLIST,
     ...ORCH_1069_BACKEND_ALLOWLIST,
