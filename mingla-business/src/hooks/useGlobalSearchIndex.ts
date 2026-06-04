@@ -59,14 +59,22 @@ export const useGlobalSearchIndex = (): GlobalSearchIndexResult => {
   const experiences = experiencesQuery.data;
 
   const index = useMemo<SearchIndexEntry[]>(() => {
-    const full = buildSearchIndex({
-      events,
-      drafts,
-      trips,
-      experiences,
-      brandId,
-    });
-    return filterIndexByRank(full, rank);
+    // Defense-in-depth (META-ORCH-1073 Sub-A QA F-1): the adapters are
+    // coalesce-guarded so they never throw on type-unfaithful cache rows, but
+    // wrap the whole build so any unforeseen throw degrades the sheet to an
+    // empty index instead of crashing the mounted tabs root.
+    try {
+      const full = buildSearchIndex({
+        events,
+        drafts,
+        trips,
+        experiences,
+        brandId,
+      });
+      return filterIndexByRank(full, rank);
+    } catch {
+      return [];
+    }
   }, [events, drafts, trips, experiences, brandId, rank]);
 
   const isOfferingsLoading =

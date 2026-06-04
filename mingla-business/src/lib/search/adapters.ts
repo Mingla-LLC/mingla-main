@@ -51,25 +51,33 @@ function iconForOffering(type: SearchResultType): SearchIndexEntry["iconName"] {
   }
 }
 
-/** Build the normalized searchText block from raw parts. */
+/** Build the normalized searchText block from raw parts.
+ *
+ * Defensive (META-ORCH-1073 Sub-A QA F-1): the SPEC invariant is "adapters
+ * never throw". Inputs are typed `string`/`string | null`, but a cache row
+ * carrying `undefined` (type-unfaithful data) must NOT crash the search sheet.
+ * Every field coalesces to a safe value and uses `typeof === "string"` guards
+ * so `undefined` can never reach `.length` or `normalizeSearchText`. */
 function buildSearchText(parts: {
-  title: string;
-  keywords: string[];
-  body: string | null;
-  location: string | null;
+  title: string | null | undefined;
+  keywords: readonly (string | null | undefined)[] | null | undefined;
+  body: string | null | undefined;
+  location: string | null | undefined;
 }): SearchIndexEntry["searchText"] {
   return {
-    title: normalizeSearchText(parts.title),
-    keywords: parts.keywords
+    title: normalizeSearchText(
+      typeof parts.title === "string" ? parts.title : "",
+    ),
+    keywords: (Array.isArray(parts.keywords) ? parts.keywords : [])
       .filter((k): k is string => typeof k === "string" && k.length > 0)
       .map(normalizeSearchText)
       .filter((k) => k.length > 0),
     body:
-      parts.body !== null && parts.body.length > 0
+      typeof parts.body === "string" && parts.body.length > 0
         ? normalizeSearchText(parts.body)
         : null,
     location:
-      parts.location !== null && parts.location.length > 0
+      typeof parts.location === "string" && parts.location.length > 0
         ? normalizeSearchText(parts.location)
         : null,
   };
