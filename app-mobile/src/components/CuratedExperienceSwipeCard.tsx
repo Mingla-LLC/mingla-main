@@ -1,5 +1,10 @@
 import React from 'react';
 import { View, Text, StyleSheet, Platform, AccessibilityInfo } from 'react-native';
+// ORCH-1072: the experience card hero renders the brand's REAL cover (image OR
+// video) via the SAME shared component the detail sheet + public event page use
+// (expo-video, muted/autoplay per the event-card contract). One source of truth
+// for cover rendering — never a parallel video player.
+import { EventCoverMedia } from '@mingla/event-rendering';
 // ORCH-1042: curated stop photos render via expo-image (NOT react-native <Image>)
 // so each stop gets a placeholder + fade transition + memory-disk cache +
 // recyclingKey + an onError fallback (this path previously had NO fallback at all
@@ -212,7 +217,16 @@ interface Props {
   currencyCode?: string;
   // ORCH-1065: present ONLY for brand experiences. Curated callers omit both →
   // byte-identical render (SC-13).
-  brandExperience?: { brandName: string; brandLogoUrl: string | null };
+  // ORCH-1072: carries the experience's REAL cover so the card hero shows the
+  // cover (image/video) with the stop photos as a strip below — not the stop
+  // strip AS the hero. Curated callers omit it → unchanged stop-strip hero.
+  brandExperience?: {
+    brandName: string;
+    brandLogoUrl: string | null;
+    coverMediaUrl?: string | null;
+    coverMediaType?: 'image' | 'video' | 'gif' | null;
+    coverHue?: number;
+  };
   ctaOverride?: string;
 }
 
@@ -295,28 +309,80 @@ export function CuratedExperienceSwipeCard({ card, onSeePlan, travelMode, measur
     ? categoryLabel
     : `${categoryLabel} · ${visibleStops.length} stops`;
 
+  // ORCH-1072: an experience with a real cover renders the COVER as the hero
+  // (image/video via the shared EventCoverMedia) with the stop photos as a
+  // smaller strip BELOW it. Curated cards (no cover prop) keep the full-bleed
+  // stop strip hero unchanged (SC-13). The experience cover-fallback (no cover
+  // url) also keeps the stop-strip hero so a cover-less experience still renders.
+  const coverUrl = brandExperience?.coverMediaUrl ?? null;
+  const coverType = brandExperience?.coverMediaType ?? null;
+  const showCoverHero =
+    isBrandExperience && typeof coverUrl === 'string' && coverUrl.length > 0;
+
   return (
     <View style={styles.card}>
-      {/* Image section (88%) — multi-photo strip with overlay chrome */}
+      {/* Image section (88%) — cover hero + stop strip (experience) OR full stop
+          strip (curated / cover-less experience). */}
       <View style={styles.imageContainer}>
-        <View style={styles.imageStrip}>
-          {visibleStops.map((stop, idx) => (
-            <View key={`${stop.placeId}_${idx}`} style={styles.imageWrapper}>
-              {stop.imageUrl ? (
-                <CuratedStopImage uri={stop.imageUrl} />
-              ) : (
-                <View style={[styles.stopImage, styles.imagePlaceholder]} />
-              )}
-              {!isSingleStop && (
-                <View style={[styles.stopBadgeWrapper, { top: stopBadgeTop }]}>
-                  <GlassBadge variant="circular" accessibilityLabel={`Stop ${idx + 1}`}>
-                    {idx + 1}
-                  </GlassBadge>
-                </View>
-              )}
+        {showCoverHero ? (
+          <View style={styles.coverHeroSection}>
+            {/* Cover hero — the experience's real cover (image/video/gif). */}
+            <View style={styles.coverHeroMedia}>
+              <EventCoverMedia
+                hue={brandExperience?.coverHue}
+                mediaUrl={coverUrl}
+                mediaType={coverType}
+                autoplay
+                muted
+                loop
+                radius={0}
+                height="100%"
+                width="100%"
+                label={card.title}
+              />
             </View>
-          ))}
-        </View>
+            {/* Stop strip — smaller row of stop photos beneath the cover. */}
+            {visibleStops.length > 0 ? (
+              <View style={styles.stopStripRow}>
+                {visibleStops.map((stop, idx) => (
+                  <View key={`${stop.placeId}_${idx}`} style={styles.stopStripCell}>
+                    {stop.imageUrl ? (
+                      <CuratedStopImage uri={stop.imageUrl} />
+                    ) : (
+                      <View style={[styles.stopImage, styles.imagePlaceholder]} />
+                    )}
+                    {!isSingleStop && (
+                      <View style={styles.stopStripBadge}>
+                        <GlassBadge variant="circular" accessibilityLabel={`Stop ${idx + 1}`}>
+                          {idx + 1}
+                        </GlassBadge>
+                      </View>
+                    )}
+                  </View>
+                ))}
+              </View>
+            ) : null}
+          </View>
+        ) : (
+          <View style={styles.imageStrip}>
+            {visibleStops.map((stop, idx) => (
+              <View key={`${stop.placeId}_${idx}`} style={styles.imageWrapper}>
+                {stop.imageUrl ? (
+                  <CuratedStopImage uri={stop.imageUrl} />
+                ) : (
+                  <View style={[styles.stopImage, styles.imagePlaceholder]} />
+                )}
+                {!isSingleStop && (
+                  <View style={[styles.stopBadgeWrapper, { top: stopBadgeTop }]}>
+                    <GlassBadge variant="circular" accessibilityLabel={`Stop ${idx + 1}`}>
+                      {idx + 1}
+                    </GlassBadge>
+                  </View>
+                )}
+              </View>
+            ))}
+          </View>
+        )}
 
         {/* ORCH-1065: brand badge (top-left, below the stop-badge baseline) —
             only when this is a brand experience. */}
@@ -422,6 +488,32 @@ const styles = StyleSheet.create({
   imageStrip: {
     ...StyleSheet.absoluteFillObject,
     flexDirection: 'row',
+  },
+  // ORCH-1072: cover hero (top) + stop strip (bottom) for brand experiences.
+  coverHeroSection: {
+    ...StyleSheet.absoluteFillObject,
+    flexDirection: 'column',
+  },
+  coverHeroMedia: {
+    flex: 0.74, // cover takes ~3/4 of the image section
+    width: '100%',
+    backgroundColor: '#1C1C1E',
+    overflow: 'hidden',
+  },
+  stopStripRow: {
+    flex: 0.26, // stop photos as a smaller strip beneath the cover
+    flexDirection: 'row',
+  },
+  stopStripCell: {
+    flex: 1,
+    position: 'relative',
+    borderRightWidth: StyleSheet.hairlineWidth,
+    borderRightColor: 'rgba(0,0,0,0.25)',
+  },
+  stopStripBadge: {
+    position: 'absolute',
+    top: 6,
+    left: 6,
   },
   imageWrapper: {
     flex: 1,
