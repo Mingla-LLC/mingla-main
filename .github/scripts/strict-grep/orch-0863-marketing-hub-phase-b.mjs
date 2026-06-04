@@ -1539,7 +1539,24 @@ function checkNoNewBackendFiles() {
     "supabase/migrations/20260826000000_orch_1058b_post_collab_dead_end_banner.sql",
     "supabase/migrations/20260826000001_orch_1058b_allow_system_message_type.sql",
   ];
+  // ORCH-1066 [admin deck score tuner + card preview]: adds the new 4-RPC
+  // deck-score-tuner migration + its SQL-shape migration test + the
+  // sticky-through-approval Deno regression test. run-signal-scorer/index.ts and
+  // admin-review-venue-claim/index.ts are MODIFIES (sticky-skip + new tuner
+  // actions) — C7 flags modified backend files too, so they are listed here.
+  // C7 is scoped to ORCH-0863 marketing; these are venue-scoring/admin backend
+  // touches. Per COMMS-0002 — lands in the same commit as the migration.
+  const ORCH_1066_BACKEND_ALLOWLIST = [
+    "supabase/migrations/20260904000000_orch_1066_deck_score_tuner.sql",
+    "supabase/migrations/__tests__/orch_1066_deck_score_tuner.test.sql",
+    "supabase/functions/_shared/stickyOverride.ts",
+    "supabase/functions/run-signal-scorer/index.ts",
+    "supabase/functions/run-signal-scorer/__tests__/orch_1066_sticky_override.test.ts",
+    "supabase/functions/admin-review-venue-claim/index.ts",
+    "supabase/functions/admin-review-venue-claim/__tests__/orch_1066_tuner_actions.test.ts",
+  ];
   const ALLOWLIST = [
+    ...ORCH_1066_BACKEND_ALLOWLIST,
     ...META_ORCH_1059_BACKEND_ALLOWLIST,
     ...META_ORCH_1062_BACKEND_ALLOWLIST,
     ...ORCH_1058B_BACKEND_ALLOWLIST,
