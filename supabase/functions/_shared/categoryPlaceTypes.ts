@@ -326,6 +326,20 @@ const CATEGORY_ALIASES: Record<string, string> = {
   'play_move': 'Play',
   'screen_relax': 'Movies',  // ORCH-0598: cinema intent → Movies chip
   'creative': 'Creative & Arts',
+
+  // ORCH-1062 Part 2 serving-gap fix: the three "vibe" categories
+  // (romantic / scenic / lively) are SIGNAL-served via CATEGORY_TO_SIGNAL in
+  // discover-cards — they are quality-grounded, NOT place-type-grounded, so they
+  // were intentionally never added to MINGLA_CATEGORY_PLACE_TYPES. But that left
+  // resolveCategory() returning null for them, so discover-cards' front-door
+  // resolveCategories() stripped them and returned a 400 "No recognized
+  // categories" → empty deck for every user who picked Romantic/Scenic/Lively
+  // (confirmed via edge-function 400s + 400+ qualifying Raleigh places per vibe).
+  // Map each slug/display name to its exact CATEGORY_TO_SIGNAL key so the request
+  // survives validation and routes to query_servable_places_by_signal.
+  'romantic': 'Romantic',
+  'scenic': 'Scenic',
+  'lively': 'Lively',
 };
 
 /**
