@@ -35,6 +35,8 @@ import {
 } from "../../constants/designSystem";
 import { useCurrentBrand } from "../../hooks/useCurrentBrand";
 import { useResponsiveLayout } from "../../hooks/useResponsiveLayout";
+import { useAuth } from "../../context/AuthContext";
+import { useBusinessNotificationsInbox } from "../../hooks/useBusinessNotifications";
 // META-ORCH-1073 Sub-A — the TopBar search icon opens the global search sheet
 // (mounted once at the (tabs) root). `getState().open()` avoids subscribing
 // the whole TopBar to the sheet store. The bell stays unwired (out of scope).
@@ -122,25 +124,41 @@ const truncate = (value: string, max: number): string =>
  */
 const DefaultRightSlotInner: React.FC<{ unreadCount: number | undefined }> = ({
   unreadCount,
-}) => (
-  <>
-    {/* META-ORCH-1073 Sub-A: the search icon opens the global search sheet. */}
-    <IconChrome
-      icon="search"
-      size={36}
-      accessibilityLabel="Search"
-      onPress={() => useGlobalSearchSheet.getState().open()}
-    />
-    {/* [TRANSITIONAL] the bell's onPress is unwired in Cycle 0a — a later
-        cycle wires notifications navigation (out of scope for Sub-A). */}
-    <IconChrome
-      icon="bell"
-      size={36}
-      badge={unreadCount}
-      accessibilityLabel="Notifications"
-    />
-  </>
-);
+}) => {
+  const router = useRouter();
+  const { user } = useAuth();
+  // META-ORCH-1074 Sub-C: the bell self-sources its unread badge from the
+  // notifications inbox hook (no TopBar consumer passes `unreadCount`, so the
+  // badge would otherwise always be empty). An explicit `unreadCount` prop, if
+  // ever passed, still wins. I-37 safe: this lives INSIDE the default cluster.
+  const { unreadCount: derivedUnread } = useBusinessNotificationsInbox(
+    user?.id ?? null,
+  );
+  const badge = unreadCount ?? derivedUnread;
+  return (
+    <>
+      {/* META-ORCH-1073 Sub-A: the search icon opens the global search sheet. */}
+      <IconChrome
+        icon="search"
+        size={36}
+        accessibilityLabel="Search"
+        onPress={() => useGlobalSearchSheet.getState().open()}
+      />
+      {/* META-ORCH-1074 Sub-C: the bell opens the notifications inbox route.
+          Badge caps at 9+ (operator noise reduction; other call-sites keep 99). */}
+      <IconChrome
+        icon="bell"
+        size={36}
+        badge={badge}
+        badgeCap={9}
+        onPress={() => router.push("/notifications" as never)}
+        accessibilityLabel={
+          badge > 0 ? `Notifications, ${badge} unread` : "Notifications"
+        }
+      />
+    </>
+  );
+};
 
 export const TopBar: React.FC<TopBarProps> = ({
   leftKind,
