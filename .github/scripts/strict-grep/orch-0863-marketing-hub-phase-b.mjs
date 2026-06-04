@@ -1615,7 +1615,14 @@ function checkNoNewBackendFiles() {
   const ORCH_1069_BACKEND_ALLOWLIST = [
     "supabase/migrations/20260906000000_orch_1069_live_edit_persists_experience_intents.sql",
   ];
+  // ORCH-1070 [deck experiences strict-intent]: one CREATE-OR-REPLACE migration
+  // tightening pg_eligible_experiences_for_deck to strict intent-overlap (no
+  // permissive empty-p_intents pass). No edge fn, no new tests. COMMS-0002.
+  const ORCH_1070_BACKEND_ALLOWLIST = [
+    "supabase/migrations/20260907000000_orch_1070_deck_experiences_strict_intent.sql",
+  ];
   const ALLOWLIST = [
+    ...ORCH_1070_BACKEND_ALLOWLIST,
     ...ORCH_1069_BACKEND_ALLOWLIST,
     ...ORCH_1068_BACKEND_ALLOWLIST,
     ...ORCH_1066_BACKEND_ALLOWLIST,
