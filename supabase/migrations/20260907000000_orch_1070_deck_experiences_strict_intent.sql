@@ -150,6 +150,6 @@ AS $function$
   WHERE b.deleted_at IS NULL
   ORDER BY el.next_start_at ASC NULLS LAST, el.published_at DESC
   LIMIT LEAST(GREATEST(p_limit, 0), 30);
-$function$
+$function$;
 
 GRANT EXECUTE ON FUNCTION public.pg_eligible_experiences_for_deck(double precision, double precision, double precision, text[], timestamptz, uuid[], integer) TO service_role;
