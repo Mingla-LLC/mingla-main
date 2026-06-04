@@ -1552,6 +1552,7 @@ function checkNoNewBackendFiles() {
     "supabase/functions/_shared/stickyOverride.ts",
     "supabase/functions/run-signal-scorer/index.ts",
     "supabase/functions/run-signal-scorer/__tests__/orch_1066_sticky_override.test.ts",
+    "supabase/functions/run-signal-scorer/__tests__/orch_1066_sticky_mixed_batch.adversarial.test.ts",
     "supabase/functions/admin-review-venue-claim/index.ts",
     "supabase/functions/admin-review-venue-claim/__tests__/orch_1066_tuner_actions.test.ts",
   ];
