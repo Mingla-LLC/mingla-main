@@ -162,3 +162,62 @@ Asserts: `resolveOneSignalApp("business.order_paid")==="business"`; `sendPush(ap
 - **SC-A2 / I-BUSINESS-PUSH-APP-ROUTING (new, DRAFT)** — enforced in `push-utils.ts` (per-app skip, no fallback) + the routing test.
 - **I-BUSINESS-NOTIFY-IDEMPOTENT (new, DRAFT)** — every trigger passes an idempotencyKey.
 - Touched fns' `verify_jwt` settings preserved; no out-of-scope edits.
+
+---
+
+## 9. Main integration (origin/main catch-up merge)
+
+**Date:** 2026-06-04 · **Merge commit:** `e708310a3` · **Strategy:** `git merge origin/main` (no-rebase, preserves Sub-A + COMMS-recovery commits). Branch was 20 commits behind main; merge-base `5e1f81798`.
+
+### 9.1 Conflicted files + resolution
+
+| File | Conflict | Resolution |
+|---|---|---|
+| `supabase/functions/admin-review-venue-claim/index.ts` | Import block only (HEAD added `dispatchNotification` import; main added bouncer import). The Ve3 serve-body that Sub-A had grafted into was wholly replaced by main's WS7/scorer-fix rewrite. | **Union of imports** (kept both `bounce`/`PlaceRow` AND `dispatchNotification`). The Sub-A `business.claim_decision` dispatch BLOCK auto-re-applied cleanly onto main's new serve-body (recursive merge matched the surrounding `pushCopyForReview`/`return json` context). Verified placement + variable binding by hand (see 9.2). |
+| `.github/scripts/strict-grep/orch-0863-marketing-hub-phase-b.mjs` | Both sides inserted new `*_BACKEND_ALLOWLIST` consts after `ORCH_1058B_BACKEND_ALLOWLIST` and both spread into `ALLOWLIST`. | **Union:** kept `META_ORCH_1074_BACKEND_ALLOWLIST` AND all of main's new consts (1066/1068/1069/1070; 1059/1062 were added higher up and merged cleanly). Spread all into `ALLOWLIST`. |
+| `COMMS_LEDGER.md` | Region 1: rows COMMS-0003/0004/0002 diverged. Region 2: COMMS-0019 add. | **Took origin/main side** — proven a strict SUPERSET of HEAD via base→HEAD vs base→main word-diff: main contains every ORCH-1064/1066 ack HEAD has, PLUS the META-ORCH-1072 SPEC ack; COMMS-0004 byte-identical all sides; COMMS-0019 exists only on main (orchestrator wrote it direct-to-main). No HEAD content dropped. All 19 COMMS rows present, zero duplicates. |
+| `Mingla_Artifacts/WORLD_MAP.md` | (auto-merged by git, no markers) | Union confirmed: both META-ORCH-1074 and main's entries (META-ORCH-1062, ORCH-1070, etc.) present. |
+
+### 9.2 admin-review-venue-claim graft — exact WS7 preservation + claim_decision re-insertion
+
+**WS7 / scorer-fix logic preserved INTACT (all of main's):**
+- `runApproveGoLive()` — Phase 2 re-bounce gate (`bounce()` over current `place_pool` data) + Phase 4 `place_pool.is_servable=true,is_active=true` go-live flip (committed BEFORE scoring).
+- `buildScorerInvokeBody(signalId, placePoolId)` — the keystone 1062-A fix: passes BOTH `signal_id` + `place_ids` (the live v92 bug passed `place_ids` only → scorer 400'd → place_scores never produced).
+- Per-signal loop: reads active `signal_definitions`, invokes `run-signal-scorer` ONCE PER SIGNAL.
+- `ai_signal_scores_veto` patch (`scoreVetoes` from `score_vetoes` body) applied at go-live.
+- Q1 total-failure rollback (all signals fail → `is_servable=false`, `bouncer_reason='scoring_failed_on_approve'`).
+- Reject branch: `business_recommend_edit_count = 0` reset.
+- `go_live: GoLiveResult` surfaced in the response (Constitution #5 no-silent-failure).
+- The ORCH-1064 `add_feedback` and ORCH-1066 `set_place_score`/`pin_place_score`/`score_place_preview` early-return branches — untouched.
+
+**Sub-A `business.claim_decision` re-inserted at the canonical point** — AFTER main's email + WS7 go-live + legacy `sendPush(venue_claim_review)` block, BEFORE the final `return json({..., go_live})`. Adapted to main's variable names:
+- `decision = parsed.action === "approve" ? "approved" : "rejected"`.
+- `rejectionReason` sourced from `brandRow.rejection_reason` (already in main's brands select) with `parsed.rejectionReason` fallback, only on reject.
+- `dispatchNotification({ userId: brandRow.account_id, brandId: parsed.brandId, type: "business.claim_decision", data:{decision, rejectionReason}, relatedId/relatedType:"brand", idempotencyKey: \`business.claim_decision:${brandId}:${decision}\`, deepLink: \`mingla-business://brand/${brandId}/listing\` })`.
+- Guarded by `!noop && typeof brandRow.account_id === "string"`; wrapped in non-fatal try/catch (never fails the review). Single recipient = brand owner (`brandRow.account_id`), per Sub-A's actual shipped implementation. `business.*` type → notify-dispatch routes to the Business OneSignal app automatically.
+
+The result: admin-review-venue-claim now has **BOTH** main's full WS7 + per-signal scorer-fix go-live orchestration AND Sub-A's `business.claim_decision` inbox+push dispatch.
+
+### 9.3 Pre-existing main defect fixed in-merge (strict-grep parse crash)
+
+Running the gate after merge surfaced a `SyntaxError: Identifier 'ORCH_1072_BACKEND_ALLOWLIST' has already been declared` — **pre-existing on pristine origin/main** (verified: the gate crashes on `origin/main` alone), caused by the ORCH-1072 ID multi-booking (COMMS-0019): two distinct efforts each shipped an `ORCH_1072_BACKEND_ALLOWLIST` const. Fix (behavior-preserving, no allowlist entry dropped): renamed the `experience-detail-cover-availability` block to `ORCH_1072B_BACKEND_ALLOWLIST` (+ its spread); the brand-experiences block keeps the canonical `ORCH_1072_BACKEND_ALLOWLIST` name per COMMS-0019. Both allowlists remain active.
+
+### 9.4 Post-merge verification
+
+| Check | Result |
+|---|---|
+| `node .github/scripts/strict-grep/orch-0863-marketing-hub-phase-b.mjs` | **exit 0** — all C1–C7 PASS; C7 "zero unallowlisted backend touches (20 files changed total)". |
+| `deno test meta_orch_1074_push_routing.test.ts meta_orch_1074_order_paid_payload.test.ts` | **7 passed, 0 failed** (SC-A1/SC-A2 routing + order_paid/event_sold_out/low_inventory payload). |
+| `deno check admin-review-venue-claim/index.ts` | **exit 0** (clean). |
+| `deno check notify-dispatch/index.ts` | **exit 0**. |
+| `deno check _shared/{push-utils,stripeEdgeAuth,businessNotifyTriggers}.ts` | **all exit 0**. |
+| `git rev-list --count HEAD..origin/main` | **0** — fully caught up. |
+| Migration delta (HEAD vs origin/main) | only `20260910000000_meta_orch_1074_new_review_notify.sql` (Sub-A's own, highest timestamp, monotonic). Zero main migrations missing on HEAD. |
+| `verify_jwt` / config.toml | **zero drift** (`git diff origin/main HEAD -- supabase/config.toml` empty) — every touched fn's verify_jwt preserved. admin-review-venue-claim keeps its in-function `is_admin_user` gate (untouched). |
+| Conflict markers anywhere | **none** (`git grep '<<<<<<< '` clean). |
+
+### 9.5 db push cleanliness + edge deploy list (for orchestrator)
+
+- **db push:** clean. Single pending migration = `20260910000000_meta_orch_1074_new_review_notify.sql` (Sub-A's `new_review` pg_net trigger; no schema change to notifications/notification_preferences). Monotonic (after main's `20260908000000`). No remote-only versions introduced by the merge. Orchestrator/operator runs:
+  `cd "/Users/sethogieva/Desktop/mingla-orchs/META-ORCH-1074-[business-notifications]" && /Users/sethogieva/bin/supabase db push --linked`
+- **Edge functions to deploy** (Sub-A backend, now safe to include admin-review-venue-claim post-reconcile): `admin-review-venue-claim`, `notify-dispatch`, `ticket-checkout-confirm`, `accept-brand-invitation` (+ their `_shared` deps: `push-utils`, `stripeEdgeAuth`, `stripeWebhookRouter`, `stripeDisputeHandlers`, `businessNotifyTriggers`). admin-review-venue-claim deploy now lands BOTH WS7 + claim_decision; it no longer risks clobbering main's WS7 because the branch IS main's WS7 + the additive dispatch.
