@@ -1573,7 +1573,25 @@ function checkNoNewBackendFiles() {
     "supabase/functions/admin-review-venue-claim/index.ts",
     "supabase/functions/admin-review-venue-claim/__tests__/orch_1066_tuner_actions.test.ts",
   ];
+  // ORCH-1068 [business-authored venues render on the consumer deck] — normalize
+  // the wizard hours ARRAY → Google {periods} object at write + backfill, plus a
+  // defensive reader branch and an image-hero picker. NEW shared converter +
+  // backfill migration + the converter's Deno test; discover-cards/index.ts,
+  // _shared/curatedStopHours.ts, and run-business-place-authoring-pipeline/index.ts
+  // are MODIFIES (C7 flags modified backend files too). C7 is scoped to ORCH-0863
+  // marketing; these are consumer-deck/authoring backend touches. Per COMMS-0002 —
+  // this allowlist lands in the SAME commit as the migration.
+  const ORCH_1068_BACKEND_ALLOWLIST = [
+    "supabase/migrations/20260905000000_orch_1068_normalize_business_hours.sql",
+    "supabase/functions/_shared/businessHoursToGoogle.ts",
+    "supabase/functions/_shared/__tests__/businessHoursToGoogle.test.ts",
+    "supabase/functions/_shared/__tests__/businessHoursToGoogle.adversarial.test.ts",
+    "supabase/functions/discover-cards/index.ts",
+    "supabase/functions/_shared/curatedStopHours.ts",
+    "supabase/functions/run-business-place-authoring-pipeline/index.ts",
+  ];
   const ALLOWLIST = [
+    ...ORCH_1068_BACKEND_ALLOWLIST,
     ...ORCH_1066_BACKEND_ALLOWLIST,
     ...META_ORCH_1059_BACKEND_ALLOWLIST,
     ...META_ORCH_1062_BACKEND_ALLOWLIST,
