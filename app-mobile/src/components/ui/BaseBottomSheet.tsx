@@ -339,16 +339,18 @@ function BaseBottomSheetComponent(props: BaseBottomSheetProps): React.ReactEleme
 
   const effectiveBackdropOpacity = useEffectiveBackdropOpacity(theme, backdropOpacity);
 
-  // Open/close mirror of the proven pattern (SPEC §3.3): snapToIndex on open,
-  // close on hide. Declarative `index` covers first mount; this covers
-  // mid-life visible toggles.
-  useEffect(() => {
-    if (visible) {
-      sheetRef.current?.snapToIndex(initialIndex);
-    } else {
-      sheetRef.current?.close();
-    }
-  }, [visible, initialIndex]);
+  // ORCH-1064 (replay-confirmed "half-open stall" freeze, release-only): the
+  // declarative `index={visible ? initialIndex : -1}` prop on <BottomSheet>
+  // ALREADY drives open/close — gorhom reacts to an index-prop change internally
+  // (BottomSheet.tsx ~L1773 `handleSnapToIndex(_providedIndex)` on _providedIndex
+  // change). The previous imperative snapToIndex/close effect here was a SECOND,
+  // redundant drive that raced gorhom's own animation on the same `visible` tick.
+  // On a fast release build the default spring got interrupted mid-flight and
+  // STALLED the sheet half-open, leaving its dimmed full-screen backdrop
+  // capturing every touch — "app frozen, no crash, no hang" (Sentry replay
+  // 6a970e63: "Tapped repeatedly on Modal view" 00:15→03:06 on a half-drawn
+  // sheet). Removed: the single declarative drive opens/closes cleanly, no race.
+  // DO NOT re-add an imperative snapToIndex/close keyed on `visible`.
 
   // ORCH-1016 — hide the floating GlassBottomNav while a full detail/checkout sheet
   // is open, so its bottom content/CTA isn't painted over by the nav. Ref-counted
