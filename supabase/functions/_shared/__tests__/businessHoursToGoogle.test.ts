@@ -21,6 +21,7 @@ import {
   normalizeBusinessHoursForPool,
   parseHm,
   type BusinessHourRow,
+  type GoogleOpeningHours,
 } from '../businessHoursToGoogle.ts';
 import { isStopOpenAtHour } from '../curatedStopHours.ts';
 
@@ -29,8 +30,12 @@ import { isStopOpenAtHour } from '../curatedStopHours.ts';
 //    branch + hasOpeningData) so the include/exclude behaviour can be asserted in
 //    isolation. The array branch under test is the production path: array →
 //    businessHoursToGoogleOpeningHours(...).periods → evalPeriods. ───────────────
-function evalPeriods(periodsArr: any[], day: number, hourFrac: number): boolean {
-  return periodsArr.some((period: any) => {
+interface Period {
+  open?: { day?: number; hour?: number; minute?: number };
+  close?: { hour?: number; minute?: number };
+}
+function evalPeriods(periodsArr: Period[], day: number, hourFrac: number): boolean {
+  return periodsArr.some((period) => {
     if (period.open?.day !== day) return false;
     const openH = (period.open?.hour ?? 0) + (period.open?.minute ?? 0) / 60;
     let closeH = (period.close?.hour ?? 24) + (period.close?.minute ?? 0) / 60;
@@ -44,7 +49,7 @@ function deckIsOpenAtHour(oh: unknown, day: number, hourFrac: number): boolean {
     if (isBusinessHoursArray(oh)) {
       return evalPeriods(businessHoursToGoogleOpeningHours(oh).periods, day, hourFrac);
     }
-    const ohObj = oh as any;
+    const ohObj = oh as { periods?: Period[] };
     if (Array.isArray(ohObj.periods) && ohObj.periods.length > 0) {
       return evalPeriods(ohObj.periods, day, hourFrac);
     }
@@ -56,7 +61,7 @@ function deckHasOpeningData(oh: unknown): boolean {
     if (isBusinessHoursArray(oh)) {
       return businessHoursToGoogleOpeningHours(oh).periods.length > 0;
     }
-    const ohObj = oh as any;
+    const ohObj = oh as { periods?: Period[] };
     if (Array.isArray(ohObj.periods) && ohObj.periods.length > 0) return true;
   }
   return false;
@@ -124,7 +129,11 @@ Deno.test('T-05 isBusinessHoursArray: array=true, Google object=false', () => {
   assertEquals(isBusinessHoursArray(null), false);
   assertEquals(isBusinessHoursArray('x'), false);
   // normalizeBusinessHoursForPool passes a Google object through unchanged.
-  const google: any = { openNow: null, periods: [{ open: { day: 1, hour: 9, minute: 0 } }] };
+  const google: GoogleOpeningHours = {
+    openNow: null,
+    periods: [{ open: { day: 1, hour: 9, minute: 0 }, close: { day: 1, hour: 17, minute: 0 } }],
+    weekdayDescriptions: [],
+  };
   assertEquals(normalizeBusinessHoursForPool(google), google);
   assertEquals(normalizeBusinessHoursForPool(null), null);
   assertEquals(normalizeBusinessHoursForPool(undefined), null);
