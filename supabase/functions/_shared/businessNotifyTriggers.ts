@@ -26,7 +26,7 @@ import {
 } from "./stripeEdgeAuth.ts";
 
 // LOCKED per-type recipient role-sets (§3.A.3 — using the live post-ORCH-1047
-// `brand_owner` strings; spec's `account_owner` == schema `brand_owner`).
+// `brand_owner` strings; the spec's owner-role label maps to schema `brand_owner`).
 export const ROLES_ORDER_PAID = ["brand_owner", "brand_admin", "finance_manager"];
 export const ROLES_SOLD_OUT = ["brand_owner", "brand_admin"];
 export const ROLES_LOW_INVENTORY = ["brand_owner", "brand_admin"];

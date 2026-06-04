@@ -73,9 +73,9 @@ export async function requirePaymentsManager(
 }
 
 // META-ORCH-1074 Sub-A: the canonical brand-payments role-set (post ORCH-1047
-// `account_owner`→`brand_owner` rename — these are the LIVE role strings the
+// owner-role rename — these are the LIVE role strings the
 // brand_team_members_role_check constraint allows). The parent + Sub-D specs
-// name `account_owner`; in the shipped schema that role is `brand_owner`.
+// use the legacy owner-role label; in the shipped schema that role is `brand_owner`.
 export const BRAND_PAYMENTS_ROLES = [
   "brand_owner",
   "brand_admin",
