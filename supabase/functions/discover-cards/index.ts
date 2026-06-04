@@ -31,6 +31,15 @@ import {
   isStopOpenAtHour,
   filterCuratedByStopHours,
 } from '../_shared/curatedStopHours.ts';
+// ORCH-1068 [business-authored venues render on deck]: business venues persist
+// hours as a top-level array [{weekday(0=Mon),isClosed,openTime,closeTime}], not
+// the Google {periods} object. Normalize-at-write + the backfill migration fix
+// new/existing rows, but the readers below ALSO accept the array shape defensively
+// so a stray un-normalized array never silently excludes a servable venue.
+import {
+  businessHoursToGoogleOpeningHours,
+  isBusinessHoursArray,
+} from '../_shared/businessHoursToGoogle.ts';
 
 // ─── ORCH-0588 Slice 1: cohort cache for signal-serving rollout ───────────────
 // Module-scoped 60s cache for the admin-config cohort pct. 60s = balance between
@@ -266,6 +275,13 @@ function filterByDateTime(
           return hourFrac >= openH && hourFrac < closeH;
         });
       };
+      // ORCH-1068: business-authored array shape [{weekday(0=Mon),isClosed,…}].
+      // Convert to Google-day periods (day = (weekday+1)%7) then eval normally.
+      // `day` here is the JS/Google 0=Sunday index, and the converter emits
+      // Google-day periods, so the comparison is correct (no double-shift).
+      if (isBusinessHoursArray(oh)) {
+        return evalPeriods(businessHoursToGoogleOpeningHours(oh).periods);
+      }
       // Path B.1a: Primary shape — `periods` array (place_pool canonical, Google v1).
       if (Array.isArray(oh.periods) && oh.periods.length > 0) {
         return evalPeriods(oh.periods);
@@ -294,6 +310,10 @@ function filterByDateTime(
     if (place.regularOpeningHours?.periods?.length > 0) return true;
     const oh = place.openingHours;
     if (oh && typeof oh === 'object') {
+      // ORCH-1068: business-authored array shape → has data iff ≥1 open period.
+      if (isBusinessHoursArray(oh)) {
+        return businessHoursToGoogleOpeningHours(oh).periods.length > 0;
+      }
       // Path B.1a: Primary shape — `periods` (no underscore) per admin-seed-places:314.
       if (Array.isArray(oh.periods) && oh.periods.length > 0) return true;
       // Path B.1b: Legacy underscore-prefixed fallback.
@@ -329,6 +349,12 @@ function filterByDateTime(
     // Path B: Pool format — openingHours is the unwrapped Google v1 shape.
     const oh = place.openingHours;
     if (oh && typeof oh === 'object') {
+      // ORCH-1068: business-authored array shape → open on any day with a period.
+      if (isBusinessHoursArray(oh)) {
+        return businessHoursToGoogleOpeningHours(oh).periods.some(
+          (period) => period.open.day === day,
+        );
+      }
       // Path B.1a: Primary shape — `periods` array (canonical, no underscore).
       if (Array.isArray(oh.periods) && oh.periods.length > 0) {
         return oh.periods.some((period: any) => period.open?.day === day);
@@ -471,6 +497,17 @@ function transformServablePlaceToCard(
   const storedPhotos = Array.isArray(row.stored_photo_urls) ? row.stored_photo_urls : [];
   const tier = googleLevelToTierSlug(row.price_level);
 
+  // ORCH-1068 (F-5): a business-authored venue's stored_photo_urls[0] can be a
+  // Cloudinary cover VIDEO (.mp4) that the deck's still-image hero (ExpoImage)
+  // can't decode → it falls back to a generic stock photo. Pick the first IMAGE
+  // url for the hero (`image`); keep the FULL ordered list in `images` so a
+  // future cover-video player can still reach the video. Image URLs win over
+  // video — never show a stock fallback for a venue we have a real photo for.
+  const VIDEO_EXT = /\.(mp4|mov|webm|m4v)(\?|$)/i;
+  const isVideoUrl = (u: string): boolean => VIDEO_EXT.test(u) || /\/video\/upload\//.test(u);
+  const heroImage: string | null =
+    storedPhotos.find((u: unknown) => typeof u === 'string' && !isVideoUrl(u)) ?? null;
+
   // ORCH-0659/0660: honest distance + per-mode travel-time computation.
   // I-DECK-CARD-CONTRACT-DISTANCE-AND-TIME — never 0-sentinel; if either
   // place lat/lng is null, both fields drop to null so mobile hides the
@@ -495,8 +532,8 @@ function transformServablePlaceToCard(
     reviewCount: row.review_count,
     priceLevel: row.price_level,
     priceTier: tier,
-    image: storedPhotos[0] ?? null,
-    images: storedPhotos,
+    image: heroImage, // ORCH-1068: first non-video url (real photo, not stock fallback)
+    images: storedPhotos, // full ordered list unchanged (cover-video stays available)
     openingHours: row.opening_hours ?? null,
     utcOffsetMinutes: row.utc_offset_minutes ?? null,
     isOpenNow: null, // computed downstream — mirrors today's behavior
