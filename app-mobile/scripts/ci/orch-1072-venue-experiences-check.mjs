@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /* eslint-disable no-console */
 /**
- * ORCH-1071 [venue-card brand experiences section] regression check.
+ * ORCH-1072 [venue-card brand experiences section] regression check.
  *
  * Goal: the consumer expanded VENUE card renders the experiences authored by
  * the VERIFIED brand that claimed that venue, as compact price rows positioned
@@ -10,7 +10,7 @@
  * (ExpandedBusinessEventSheet) — the proven native-checkout surface.
  *
  * This repo uses structural + behavioral `.mjs` checks for app-mobile ORCH
- * gates. Set ORCH1071_SIMULATE_REVERT=1 to strip the section insertion + the
+ * gates. Set ORCH1072_SIMULATE_REVERT=1 to strip the section insertion + the
  * verified-brand gate; the script must then FAIL, proving the checks bite.
  */
 import fs from "node:fs";
@@ -20,7 +20,7 @@ import assert from "node:assert/strict";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(__dirname, "../../..");
-const simulateRevert = process.env.ORCH1071_SIMULATE_REVERT === "1";
+const simulateRevert = process.env.ORCH1072_SIMULATE_REVERT === "1";
 
 const read = (rel) => {
   try {
@@ -32,13 +32,13 @@ const read = (rel) => {
 };
 
 const MIGRATION =
-  "supabase/migrations/20260906000000_orch_1071_brand_experiences_for_place.sql";
+  "supabase/migrations/20260906000000_orch_1072_brand_experiences_for_place.sql";
 const HOOK = "app-mobile/src/hooks/useVenueExperiences.ts";
 const SECTION = "app-mobile/src/components/expandedCard/VenueExperiencesSection.tsx";
 const MAPPER = "app-mobile/src/utils/venueExperienceMapping.ts";
 const MODAL = "app-mobile/src/components/ExpandedCardModal.tsx";
 
-// Simulated revert = restore the pre-1071 state: no section in the modal and a
+// Simulated revert = restore the pre-1072 state: no section in the modal and a
 // loosened brand gate (any claim status) in the RPC.
 const maybeRevert = (source, kind) => {
   if (!simulateRevert) return source;
@@ -196,18 +196,18 @@ console.log("");
 if (simulateRevert) {
   if (failures > 0) {
     console.log(
-      `ORCH-1071 SIMULATE_REVERT: ${failures} check(s) failed as expected — gate bites. ✓`,
+      `ORCH-1072 SIMULATE_REVERT: ${failures} check(s) failed as expected — gate bites. ✓`,
     );
     process.exit(0);
   }
   console.error(
-    "ORCH-1071 SIMULATE_REVERT: expected failures but all checks passed — gate is hollow.",
+    "ORCH-1072 SIMULATE_REVERT: expected failures but all checks passed — gate is hollow.",
   );
   process.exit(1);
 }
 
 if (failures > 0) {
-  console.error(`ORCH-1071: ${failures} check(s) failed.`);
+  console.error(`ORCH-1072: ${failures} check(s) failed.`);
   process.exit(1);
 }
-console.log("ORCH-1071: all venue-experiences checks passed. ✓");
+console.log("ORCH-1072: all venue-experiences checks passed. ✓");

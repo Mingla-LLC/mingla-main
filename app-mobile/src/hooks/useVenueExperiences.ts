@@ -3,7 +3,7 @@ import { useQuery, type UseQueryResult } from "@tanstack/react-query";
 import { supabase } from "../services/supabase";
 
 /**
- * ORCH-1071 [venue-card brand experiences section]
+ * ORCH-1072 [venue-card brand experiences section]
  * ---------------------------------------------------------------------------
  * Fetches the published experiences authored by the VERIFIED brand that has
  * claimed a given place_pool venue. Powers the compact "Experiences" rows on

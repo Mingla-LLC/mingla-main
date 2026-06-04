@@ -41,7 +41,7 @@ import TimelineSection from "./expandedCard/TimelineSection";
 import EventDetailLayout from "./expandedCard/EventDetailLayout";
 import CompanionStopsSection from "./expandedCard/CompanionStopsSection";
 import { StopImageGallery } from "./expandedCard/StopImageGallery";
-// ORCH-1071: brand experiences claimed-to-this-venue, rendered as compact rows
+// ORCH-1072: brand experiences claimed-to-this-venue, rendered as compact rows
 // beneath the stars/miles/price block and above the weather section.
 import VenueExperiencesSection from "./expandedCard/VenueExperiencesSection";
 import { ImageLightbox } from "./ImageLightbox";
@@ -1415,7 +1415,7 @@ export default function ExpandedCardModal({
     images: [],
     initialIndex: 0,
   });
-  // ORCH-1071 — the experience opened from the VenueExperiencesSection. The
+  // ORCH-1072 — the experience opened from the VenueExperiencesSection. The
   // ExpandedBusinessEventSheet renders as a SIBLING of the root sheet (below);
   // while it is open the root sheet is gated off, mirroring the browser/share
   // child-surface pattern.
@@ -2063,7 +2063,7 @@ export default function ExpandedCardModal({
                   </View>
                 )}
 
-                {/* ORCH-1071: Experiences at this venue (claimed-brand only).
+                {/* ORCH-1072: Experiences at this venue (claimed-brand only).
                     Renders nothing for unclaimed venues or non-uuid card ids
                     (stroll/picnic/curated/Ticketmaster). */}
                 <VenueExperiencesSection
@@ -2250,7 +2250,7 @@ export default function ExpandedCardModal({
             ))}
       </BaseBottomSheet>
 
-      {/* ORCH-1071 — experience opened from the VenueExperiencesSection. Renders
+      {/* ORCH-1072 — experience opened from the VenueExperiencesSection. Renders
           as a SIBLING of the root sheet (the proven sub-sheet pattern: a second
           gorhom sheet must not be nested in the root sheet's scroll content).
           The root sheet is gated off (anyChildModalOpen) while this is open;

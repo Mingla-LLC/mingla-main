@@ -1,4 +1,4 @@
--- ORCH-1071 [venue-card brand experiences section]
+-- ORCH-1072 [venue-card brand experiences section]
 -- ---------------------------------------------------------------------------
 -- Surfaces the experiences authored by the VERIFIED brand that has claimed a
 -- given place_pool venue, so the consumer expanded venue card can render them
