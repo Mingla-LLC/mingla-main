@@ -28,6 +28,7 @@ import {
 import {
   buildPricingBreakdown,
   computeBuyerSubtotal,
+  computeConfigVat,
   inclusiveVatDivisorForRegion,
   MINGLA_SERVICE_FEE_BPS,
   taxBehaviorForRegion,
@@ -37,6 +38,15 @@ import {
   type PricingSwitches,
   type TaxBasis,
 } from "../_shared/allInPricingEngine.ts";
+// META-ORCH-1076 [Paystack Africa] — provider routing + the Paystack
+// transaction client (additive; the Stripe arm below is byte-for-byte
+// unchanged and never imports these). The Paystack arm activates ONLY when
+// resolveProviderRouting(...).provider === "paystack".
+import {
+  paystackChannelsForCountry,
+  resolveProviderRouting,
+} from "../_shared/paymentProvider.ts";
+import { paystackInitializeTransaction } from "../_shared/paystack.ts";
 
 type CheckoutLine = { ticketTypeId: string; quantity: number };
 type CheckoutMode = "create" | "preview";
@@ -539,6 +549,200 @@ serve(async (req) => {
       buyerStatusToken,
     });
   }
+
+  // ===================================================================
+  // META-ORCH-1076 [Paystack Africa] — PAYSTACK ARM (NGN), additive branch.
+  // ===================================================================
+  // Resolve the brand pricing/provider row ONCE here (the resolver is STABLE /
+  // idempotent — the Stripe arm below re-resolves it byte-for-byte, so the
+  // Stripe path is unchanged). If this is a Paystack brand, run the entire
+  // Paystack flow and return; otherwise fall through to the untouched Stripe
+  // arm. The Paystack arm runs BEFORE the Stripe-specific stripe_account_not_ready
+  // gate because a Paystack brand has no connected account (stripeAccountId is
+  // NULL by design — the session RPC, post-migration, sets it NULL for Paystack).
+  const { data: providerProbeRows } = await supabase.rpc(
+    "resolve_event_pricing_inputs",
+    { p_event_id: eventId },
+  );
+  const providerProbe = Array.isArray(providerProbeRows) && providerProbeRows.length > 0
+    ? (providerProbeRows[0] as {
+      payment_provider: string | null;
+      payment_country: string | null;
+      pricing_currency: string | null;
+    })
+    : null;
+  const providerRouting = providerProbe
+    ? resolveProviderRouting(providerProbe)
+    : { provider: "stripe" as const, country: "", currency: "" };
+
+  if (providerRouting.provider === "paystack") {
+    // Full Paystack create flow. All-in math via the SAME engine
+    // (computeBuyerSubtotal + computeConfigVat); finalize is deferred to
+    // paystack-webhook → biz_ticket_checkout_finalize (no order minted here).
+    const pricing = (providerProbe as unknown) as {
+      pass_tax: boolean;
+      pass_mingla_fee: boolean;
+      pass_service_fee: boolean;
+      pricing_region: string | null;
+      pricing_currency: string | null;
+      effective_take_rate_bps: number;
+      take_rate_source: "brand_override" | "platform_default";
+      payment_provider: string | null;
+      payment_country: string | null;
+      paystack_subaccount_code: string | null;
+      vat_rate_bps: number | null;
+    };
+
+    // Currency must be NGN (Phase 1 = Nigeria only). Fail clean otherwise.
+    const psCurrency = (providerRouting.currency || "NGN").toUpperCase();
+    if (psCurrency !== "NGN") {
+      console.error(
+        "[ticket-checkout-create] paystack brand with non-NGN currency",
+        { eventId, currency: psCurrency },
+      );
+      return jsonResponse(
+        { error: "pricing_config_unavailable", detail: "paystack_currency_must_be_ngn" },
+        409,
+      );
+    }
+
+    const psSwitches: PricingSwitches = {
+      pass_tax: pricing.pass_tax,
+      pass_mingla_fee: pricing.pass_mingla_fee,
+      pass_service_fee: pricing.pass_service_fee,
+    };
+    // region "NG" → exclusive VAT, computed in-engine (no Stripe round-trip).
+    const psEngineInput: ComputeAllInInput = {
+      baseCents: totalCents, // engine works in minor units; NGN minor unit = kobo
+      switches: psSwitches,
+      region: "NG",
+      currency: "NGN",
+      effectiveTakeRateBps: pricing.effective_take_rate_bps,
+      takeRateSource: pricing.take_rate_source,
+      serviceFeeBps: MINGLA_SERVICE_FEE_BPS,
+    };
+    const psSubtotal = computeBuyerSubtotal(psEngineInput);
+    const { taxCents: psTaxCents, buyerTotalCents: psBuyerTotalCents } = computeConfigVat(
+      psSubtotal.buyerSubtotalCents,
+      pricing.vat_rate_bps ?? 0,
+      psSwitches.pass_tax,
+    );
+    const psBreakdown: PricingBreakdown = buildPricingBreakdown({
+      input: psEngineInput,
+      amountTotalCents: psBuyerTotalCents,
+      taxCents: psTaxCents,
+      taxBasis: "config_vat",
+      stripeTaxCalculationId: null,
+    });
+    const psApplicationFeeCents = psSubtotal.miglaFeeCents;
+
+    // Unique reference tied to the session (charset alnum + - . = per
+    // https://paystack.com/docs/payments/accept-payments/ §1.8). We persist it
+    // as ticket_checkout_sessions.stripe_payment_intent_id (text, UNIQUE → free
+    // idempotency) BEFORE calling Paystack, and flip status to
+    // awaiting_web_redirect (existing enum value). Include a short random suffix
+    // so a retry after a transient Paystack failure mints a NEW unique ref
+    // (Paystack rejects reused references).
+    const psReference = `mingla_${checkoutSessionId}_${Date.now().toString(36)}`;
+    const { error: psPersistError } = await supabase
+      .from("ticket_checkout_sessions")
+      .update({
+        stripe_payment_intent_id: psReference,
+        stripe_application_fee_amount_cents: psApplicationFeeCents,
+        total_cents: psBuyerTotalCents, // the all-in NGN total the buyer is charged (kobo)
+        status: "awaiting_web_redirect",
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", checkoutSessionId);
+    if (psPersistError) {
+      console.error(
+        "[ticket-checkout-create] paystack reference persist failed",
+        psPersistError,
+      );
+      return jsonResponse(
+        { error: "checkout_session_failed", detail: "paystack_reference_persist_failed" },
+        409,
+      );
+    }
+
+    // Callback the in-app browser intercepts. The buyer never parses payment
+    // state from this URL — the client polls ticket-checkout-status, driven by
+    // the verified charge.success webhook (the source of truth). The dashboard
+    // default is https://business.usemingla.com/pay/callback; we pass a
+    // per-transaction callback_url that overrides it and carries the session id
+    // + status token so the success screen can resolve.
+    //   https://paystack.com/docs/payments/accept-payments/ (callback_url)
+    const callbackBase = Deno.env.get("PAYSTACK_CALLBACK_BASE") ??
+      "https://business.usemingla.com/pay/callback";
+    const callbackUrl =
+      `${callbackBase}?cs=${encodeURIComponent(checkoutSessionId)}&bst=${encodeURIComponent(buyerStatusToken)}`;
+
+    // Channels: NG = card|bank|ussd|bank_transfer — NEVER mobile_money
+    // (Ghana-only). https://paystack.com/docs/payments/payment-channels/
+    const psChannels = paystackChannelsForCountry("NG");
+
+    // amount = psBuyerTotalCents, ALREADY in kobo (the engine works in minor
+    // units; NGN minor unit is kobo). DO NOT multiply by 100 again — the
+    // proof-slice harness multiplies because it takes MAJOR units; this branch
+    // passes the already-minor engine total. (SC-7.)
+    //   https://paystack.com/docs/api/transaction/#initialize
+    let psInit: { authorization_url: string; reference: string; access_code: string };
+    try {
+      psInit = await paystackInitializeTransaction({
+        email: buyerEmail,
+        amountSubunits: psBuyerTotalCents,
+        currency: "NGN",
+        reference: psReference,
+        callbackUrl,
+        channels: psChannels,
+        metadata: {
+          mingla_checkout_session_id: checkoutSessionId,
+          mingla_event_id: eventId,
+          mingla_buyer_email: buyerEmail,
+        },
+        // Phase 1 deferred-split: if the brand already has a subaccount, pass it
+        // + the flat Mingla take (transaction_charge in kobo). Absent → full
+        // settle to the main Mingla account (brand payout is Phase 2). Either
+        // way the buyer is charged the same all-in total.
+        //   https://paystack.com/docs/api/subaccount/
+        ...(pricing.paystack_subaccount_code
+          ? {
+            subaccount: pricing.paystack_subaccount_code,
+            transactionChargeSubunits: psApplicationFeeCents,
+          }
+          : {}),
+      });
+    } catch (err) {
+      console.error(
+        "[ticket-checkout-create] paystack initialize failed",
+        String((err as Error)?.message ?? err),
+      );
+      // Mark the session failed so a retry mints a fresh reference.
+      await supabase
+        .from("ticket_checkout_sessions")
+        .update({ status: "failed", failed_at: new Date().toISOString(), updated_at: new Date().toISOString() })
+        .eq("id", checkoutSessionId);
+      return jsonResponse(
+        { error: "paystack_initialize_failed", detail: String((err as Error)?.message ?? err) },
+        502,
+      );
+    }
+
+    return jsonResponse({
+      kind: "requires_paystack_redirect",
+      checkoutSessionId,
+      buyerStatusToken,
+      authorizationUrl: psInit.authorization_url,
+      reference: psInit.reference,
+      // buyer_total is the inclusive all-in NGN total (kobo).
+      totalCents: psBuyerTotalCents,
+      currency: "NGN",
+      pricingBreakdown: psBreakdown,
+    });
+  }
+  // ===================================================================
+  // END META-ORCH-1076 Paystack arm. Stripe arm below is UNCHANGED.
+  // ===================================================================
 
   const stripeAccountId = typeof session.stripeAccountId === "string"
     ? session.stripeAccountId

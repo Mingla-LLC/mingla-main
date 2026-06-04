@@ -1455,7 +1455,28 @@ function checkNoNewBackendFiles() {
     "supabase/migrations/20260826000000_orch_1058b_post_collab_dead_end_banner.sql",
     "supabase/migrations/20260826000001_orch_1058b_allow_system_message_type.sql",
   ];
+  // META-ORCH-1076 [Paystack Africa] Phase 1 — Paystack buyer checkout (NGN).
+  // C7 is scoped to ORCH-0863 marketing; these are the Paystack money-rail
+  // backend touches (provider migration, the (provider,country) resolver, the
+  // Paystack client, the webhook router, the NG-VAT engine extension, the
+  // ticket-checkout-create branch + webhook upgrade) + the proof-slice files
+  // that were never allowlisted. Per COMMS-0002 — lands in the SAME commit as
+  // the backend diff. Also covers the new Deno tests under __tests__/.
+  const META_ORCH_1076_BACKEND_ALLOWLIST = [
+    "supabase/migrations/20260908000000_meta_orch_1076_p1_payment_provider.sql",
+    "supabase/functions/_shared/paymentProvider.ts",
+    "supabase/functions/_shared/paystack.ts",
+    "supabase/functions/_shared/paystackWebhookRouter.ts",
+    "supabase/functions/_shared/allInPricingEngine.ts",
+    "supabase/functions/ticket-checkout-create/index.ts",
+    "supabase/functions/paystack-checkout-create/index.ts",
+    "supabase/functions/paystack-webhook/index.ts",
+    "supabase/functions/paystack-webhook/__tests__/paystackWebhook.test.ts",
+    "supabase/functions/_shared/__tests__/allInPricingEngineNgVat.test.ts",
+    "supabase/functions/_shared/__tests__/paymentProvider.test.ts",
+  ];
   const ALLOWLIST = [
+    ...META_ORCH_1076_BACKEND_ALLOWLIST,
     ...ORCH_1058B_BACKEND_ALLOWLIST,
     ...ORCH_1060_BACKEND_ALLOWLIST,
     ...ORCH_1054_BACKEND_ALLOWLIST,
