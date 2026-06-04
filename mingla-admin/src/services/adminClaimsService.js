@@ -77,16 +77,84 @@ export async function listRejectedClaims() {
 }
 
 /**
+ * META-ORCH-1062 Q4 — fetch the full claim-review bundle (brand identity +
+ * linked place_pool vetting fields + place_scores array) via the admin-gated
+ * SECURITY DEFINER RPC. The RPC enforces is_admin_user() server-side; this is
+ * the single round-trip the modal uses for photos + scores + missing fields.
+ * @param {string} brandId
+ */
+export async function getClaimReviewBundle(brandId) {
+  const { data, error } = await supabase.rpc("admin_get_claim_review_bundle", {
+    p_brand_id: brandId,
+  });
+  if (error) throw error;
+  return data ?? null;
+}
+
+/**
+ * META-ORCH-1062 Phase 1 — tweak whitelisted submitted fields (address /
+ * venue_category / price_level / price_tiers) on a pending_review claim. Routed
+ * through the admin-review edge wrapper as action:"tweak_fields" so the admin
+ * gate + admin_audit_log path is shared with reviews.
+ * @param {string} brandId
+ * @param {{ address?: string, venue_category?: string, price_level?: string, price_tiers?: unknown }} patch
+ */
+export async function tweakClaimFields(brandId, patch) {
+  const { data, error } = await supabase.functions.invoke(
+    "admin-review-venue-claim",
+    { body: { brand_id: brandId, action: "tweak_fields", patch } },
+  );
+  if (error) throw error;
+  if (data?.error) throw new Error(data.error);
+  return data;
+}
+
+/**
+ * META-ORCH-1062 Q2 — bidirectional admin score override. Writes the deck-
+ * ranking place_scores.score (UPSERT, clamped 0–200) + the audit slice. Routed
+ * through the edge wrapper as action:"score_override".
+ * @param {string} brandId
+ * @param {string} signalId
+ * @param {number} score 0–200
+ * @param {string} [reason]
+ */
+export async function overrideClaimScore(brandId, signalId, score, reason) {
+  const { data, error } = await supabase.functions.invoke(
+    "admin-review-venue-claim",
+    {
+      body: {
+        brand_id: brandId,
+        action: "score_override",
+        signal_id: signalId,
+        score,
+        reason: reason ?? null,
+      },
+    },
+  );
+  if (error) throw error;
+  if (data?.error) throw new Error(data.error);
+  return data;
+}
+
+/**
  * @param {string} brandId
  * @param {"mark_called"|"approve"|"reject"|"need_more_info"} action
  * @param {{ rejectionReason?: string, scoreVetoes?: Record<string, unknown> }} [opts]
+ *   NOTE (META-ORCH-1062 / #299 merge): `scoreVetoes` is the legacy #299 WS7
+ *   reduce-only channel. The admin UI no longer sends it on approve (score
+ *   editing is now the bidirectional `overrideClaimScore` path, go-live is the
+ *   Phase 4 servable→scorer path). The pass-through below is retained ONLY for
+ *   backward-compat: admin-review-venue-claim still accepts `score_vetoes`.
  */
 export async function reviewClaim(brandId, action, opts = {}) {
   const body = { brand_id: brandId, action };
   if (action === "reject") {
     body.rejection_reason = opts.rejectionReason ?? "";
   }
-  // META-ORCH-1009 Sub-F WS7: optional admin reduce-only score vetoes on approve.
+  // Backward-compat (#299 WS7): if a caller still supplies non-empty scoreVetoes
+  // on approve, pass them through to the edge wrapper's score_vetoes channel. The
+  // current admin UI does NOT send these (see overrideClaimScore + Phase 4 go-live),
+  // but admin-review-venue-claim still accepts the field, so we keep the channel.
   if (action === "approve" && opts.scoreVetoes && Object.keys(opts.scoreVetoes).length > 0) {
     body.score_vetoes = opts.scoreVetoes;
   }
@@ -99,6 +167,120 @@ export async function reviewClaim(brandId, action, opts = {}) {
   if (error) throw error;
   if (data?.error) throw new Error(data.error);
   return data;
+}
+
+/**
+ * ORCH-1064 — admin sends a feedback round on a pending claim. Routed through
+ * the admin-review edge wrapper (action:"add_feedback") so the business push +
+ * admin_audit_log fire server-side. Each call opens a fresh round and moves the
+ * claim to need_more_info (pending_review + claim_follow_up_at stamp).
+ * @param {string} brandId
+ * @param {Array<{ category: string, note: string }>} items
+ * @param {string|null} [overallMessage]
+ * @returns {Promise<{ ok: boolean, round: number, item_count: number, push_sent: boolean }>}
+ */
+export async function addClaimFeedback(brandId, items, overallMessage) {
+  const { data, error } = await supabase.functions.invoke(
+    "admin-review-venue-claim",
+    {
+      body: {
+        brand_id: brandId,
+        action: "add_feedback",
+        items,
+        overall_message: overallMessage ?? null,
+      },
+    },
+  );
+  if (error) throw error;
+  if (data?.error) throw new Error(data.error);
+  return data;
+}
+
+/**
+ * ORCH-1066 — seed all 16 active signals at neutral 100 for a place so an admin
+ * can tune a non-servable pending venue from zero ("Score this venue now").
+ * Idempotent (ON CONFLICT DO NOTHING server-side). Routed through the edge
+ * wrapper (action:"score_place_preview") so the seed is admin-gated + audit-logged.
+ * @param {string} placePoolId
+ * @returns {Promise<{ ok: boolean, result: { seeded_count: number, existing_count: number, total_signals: number } }>}
+ */
+export async function scorePlacePreview(placePoolId) {
+  const { data, error } = await supabase.functions.invoke(
+    "admin-review-venue-claim",
+    { body: { action: "score_place_preview", place_pool_id: placePoolId } },
+  );
+  if (error) throw error;
+  if (data?.error) throw new Error(data.error);
+  return data;
+}
+
+/**
+ * ORCH-1066 — place-keyed manual score dial (works for ANY place_pool row,
+ * servable or pending). UPSERTs place_scores with the _admin_set sticky marker.
+ * @param {string} placePoolId
+ * @param {string} signalId
+ * @param {number} score 0–200
+ * @param {string|null} [reason]
+ */
+export async function setPlaceSignalScore(placePoolId, signalId, score, reason) {
+  const { data, error } = await supabase.functions.invoke(
+    "admin-review-venue-claim",
+    {
+      body: {
+        action: "set_place_score",
+        place_pool_id: placePoolId,
+        signal_id: signalId,
+        score,
+        reason: reason ?? null,
+      },
+    },
+  );
+  if (error) throw error;
+  if (data?.error) throw new Error(data.error);
+  return data;
+}
+
+/**
+ * ORCH-1066 — pin a place's signal score just above the current local #1 within
+ * radius (computed LEAST(200, local_max+1); 200 if the radius is empty). Stamps
+ * the _admin_pin sticky marker.
+ * @param {string} placePoolId
+ * @param {string} signalId
+ * @param {number} [radiusM] default 16000
+ */
+export async function pinPlaceToTop(placePoolId, signalId, radiusM = 16000) {
+  const { data, error } = await supabase.functions.invoke(
+    "admin-review-venue-claim",
+    {
+      body: {
+        action: "pin_place_score",
+        place_pool_id: placePoolId,
+        signal_id: signalId,
+        radius_m: radiusM,
+      },
+    },
+  );
+  if (error) throw error;
+  if (data?.error) throw new Error(data.error);
+  return data;
+}
+
+/**
+ * ORCH-1066 — read-only projected deck rank for a (place, signal, radius). Direct
+ * SECURITY DEFINER RPC (read-only, no audit needed). Returns
+ * { rank, total, score, top_score, is_servable, is_active, projected, gated_reason }.
+ * @param {string} placePoolId
+ * @param {string} signalId
+ * @param {number} [radiusM] default 16000
+ */
+export async function getPlaceDeckRank(placePoolId, signalId, radiusM = 16000) {
+  const { data, error } = await supabase.rpc("admin_place_deck_rank", {
+    p_place_pool_id: placePoolId,
+    p_signal_id: signalId,
+    p_radius_m: radiusM,
+  });
+  if (error) throw error;
+  return data ?? null;
 }
 
 /**

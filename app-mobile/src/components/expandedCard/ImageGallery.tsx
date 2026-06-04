@@ -11,6 +11,14 @@ import {
   Text,
 } from 'react-native';
 import { Icon } from '../ui/Icon';
+// ORCH-1069: reuse the shared video-capable cover renderer (image + GIF + video,
+// muted autoplay, reduce-motion aware) for `.mp4` gallery entries. Same renderer
+// the event/trip grid + hero use (COMMS-0007); do NOT add a parallel player or a
+// direct expo-video call site here.
+import { EventCoverMedia } from '@mingla/event-rendering';
+// ORCH-1069: single owner of video-URL detection, mirrors discover-cards isVideoUrl
+// (I-1069-VIDEO-DETECTION-MATCHES-EDGE).
+import { isVideoUrl } from '../../utils/videoUrl';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
@@ -100,16 +108,39 @@ export default function ImageGallery({
         scrollEventThrottle={16}
         style={styles.scrollView}
       >
-        {images.map((imageUri, index) => (
-          <View 
-            key={index} 
+        {images.map((mediaUri, index) => (
+          <View
+            key={index}
             style={[styles.imageContainer, { width: containerWidth }]}
           >
-            <Image
-              source={{ uri: imageUri }}
-              style={styles.image}
-              resizeMode="cover"
-            />
+            {isVideoUrl(mediaUri) ? (
+              // ORCH-1069: a `.mp4`/video entry plays via the shared renderer.
+              // Only the visible page plays (playbackActive/autoplay gated on
+              // currentIndex) so paging away pauses the video — no N simultaneous
+              // decodes in a multi-media venue (I-1069-ONE-PLAYING-DECK-VIDEO,
+              // gallery arm). The gallery is a deliberate-attention surface, so it
+              // exposes the unmute control (OQ-1: show it here, keep the deck muted).
+              <EventCoverMedia
+                mediaUrl={mediaUri}
+                mediaType="video"
+                radius={0}
+                label="Cover video"
+                videoContentFit="cover"
+                autoplay={index === currentIndex}
+                playbackActive={index === currentIndex}
+                muted
+                loop
+                showAudioControl
+                audioControlPosition="bottomRight"
+                style={styles.image}
+              />
+            ) : (
+              <Image
+                source={{ uri: mediaUri }}
+                style={styles.image}
+                resizeMode="cover"
+              />
+            )}
           </View>
         ))}
       </ScrollView>

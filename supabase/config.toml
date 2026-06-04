@@ -130,6 +130,14 @@ verify_jwt = true
 [functions.get-paired-profile-cards]
 verify_jwt = true
 
+# META-ORCH-1059 Sub-A — Mapbox Search Box proxy for the experience stops
+# builder's address picker. Keeps MAPBOX_ACCESS_TOKEN server-side. Auth-gated:
+# the experience creation wizard is always authenticated; anonymous geocode
+# traffic is not a legitimate use. Coexists with places-autocomplete (Google)
+# which events keep using.
+[functions.mapbox-geocode]
+verify_jwt = true
+
 # ORCH-1050 [Brand team invite + accept + ownership transfer]
 # META-ORCH-1048 sub-B. Both endpoints require an authenticated caller — the
 # invite endpoint reads auth.uid() for the brand_admin+ rank check, and the

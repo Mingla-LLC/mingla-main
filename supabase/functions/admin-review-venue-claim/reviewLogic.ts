@@ -57,6 +57,75 @@ export function auditActionForReview(action: ReviewAction): string {
   }
 }
 
+// ORCH-1064 — pure builder for the venue-claim-feedback push (admin left a
+// structured punch-list). Unit-testable without Deno env. F-2 fix: the old
+// need_more_info copy ("We need more information about X") was vague + had no
+// fix surface; this points the business owner straight at the new feedback tile.
+export function feedbackPushCopy(
+  brandName: string,
+): { title: string; body: string } {
+  return {
+    title: "Your venue listing needs a few updates",
+    body: `${brandName}: tap to see what to fix and re-submit.`,
+  };
+}
+
+// ORCH-1064 — validate + normalize the add_feedback action body (pure). Mirrors
+// admin_add_venue_claim_feedback's input contract so the edge wrapper rejects a
+// malformed payload before the RPC round-trip.
+export function normalizeFeedbackBody(
+  body: unknown,
+):
+  | {
+    ok: true;
+    brandId: string;
+    items: Array<{ category: string; note: string }>;
+    overallMessage: string | null;
+  }
+  | { ok: false; error: string } {
+  if (body === null || typeof body !== "object") {
+    return { ok: false, error: "invalid_body" };
+  }
+  const b = body as Record<string, unknown>;
+  const brandId = typeof b.brand_id === "string" ? b.brand_id.trim() : "";
+  if (brandId.length === 0) return { ok: false, error: "brand_id_required" };
+
+  if (!Array.isArray(b.items) || b.items.length === 0) {
+    return { ok: false, error: "items_required" };
+  }
+  const VALID = new Set([
+    "photos",
+    "address",
+    "hours",
+    "category",
+    "description",
+    "quality",
+    "other",
+  ]);
+  const items: Array<{ category: string; note: string }> = [];
+  for (const raw of b.items) {
+    if (raw === null || typeof raw !== "object") {
+      return { ok: false, error: "invalid_item" };
+    }
+    const it = raw as Record<string, unknown>;
+    const category = typeof it.category === "string" ? it.category.trim() : "";
+    const note = typeof it.note === "string" ? it.note.trim() : "";
+    if (!VALID.has(category)) return { ok: false, error: "invalid_category" };
+    if (note.length === 0) return { ok: false, error: "note_required" };
+    items.push({ category, note });
+  }
+
+  const rawMsg = typeof b.overall_message === "string"
+    ? b.overall_message.trim()
+    : "";
+  return {
+    ok: true,
+    brandId,
+    items,
+    overallMessage: rawMsg.length > 0 ? rawMsg : null,
+  };
+}
+
 export function pushCopyForReview(
   action: ReviewAction,
   brandName: string,

@@ -296,6 +296,9 @@ const validateRecurrenceRule = (
         message: "Number of occurrences must be 1–52.",
       });
     }
+  } else if (r.termination.kind === "never") {
+    // META-ORCH-1059 — open-ended recurrence: nothing to validate. The master
+    // occurrence (first date) is the only materialised date; the rule repeats.
   } else {
     // until kind
     const untilDate = parseDateString(r.termination.until);

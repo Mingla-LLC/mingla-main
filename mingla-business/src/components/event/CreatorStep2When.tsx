@@ -180,6 +180,9 @@ export const CreatorStep2When: React.FC<StepBodyProps> = ({
   updateDraft,
   errors,
   showErrors,
+  // META-ORCH-1059 — experience wizard opts in to the open-ended "Never ends"
+  // recurrence option; events leave it false (bounded end required).
+  allowNeverEnds = false,
 }) => {
   // ---- Picker state (date + time + termination-until) ----
   const [pickerMode, setPickerMode] = useState<PickerMode>(null);
@@ -633,12 +636,15 @@ export const CreatorStep2When: React.FC<StepBodyProps> = ({
   );
 
   const handleTerminationKindToggle = useCallback(
-    (kind: "count" | "until"): void => {
+    (kind: "count" | "until" | "never"): void => {
       if (draft.recurrenceRule === null) return;
       if (draft.recurrenceRule.termination.kind === kind) return;
       const next: RecurrenceRule = { ...draft.recurrenceRule };
       if (kind === "count") {
         next.termination = { kind: "count", count: 4 };
+      } else if (kind === "never") {
+        // META-ORCH-1059 — open-ended recurrence (no count, no until).
+        next.termination = { kind: "never" };
       } else {
         // Default until = first occurrence + 30 days
         const start =
@@ -1035,7 +1041,9 @@ export const CreatorStep2When: React.FC<StepBodyProps> = ({
               <Text style={styles.helperError}>{recurrenceUntilError}</Text>
             ) : null}
             <Text style={styles.helperHint}>
-              Recurring events must end. Up to 52 occurrences or 1 year out.
+              {allowNeverEnds
+                ? "Up to 52 occurrences, a fixed end date, or never ends."
+                : "Recurring events must end. Up to 52 occurrences or 1 year out."}
             </Text>
           </View>
         </>
@@ -1335,7 +1343,40 @@ export const CreatorStep2When: React.FC<StepBodyProps> = ({
                 On a date
               </Text>
             </Pressable>
+            {/* META-ORCH-1059 — experience-only open-ended recurrence. */}
+            {allowNeverEnds ? (
+              <Pressable
+                onPress={() => handleTerminationKindToggle("never")}
+                accessibilityRole="button"
+                accessibilityState={{
+                  selected: draft.recurrenceRule?.termination.kind === "never",
+                }}
+                accessibilityLabel="Never ends — repeats with no end"
+                style={[
+                  styles.terminationSegment,
+                  draft.recurrenceRule?.termination.kind === "never" &&
+                    styles.terminationSegmentActive,
+                ]}
+              >
+                <Text
+                  style={[
+                    styles.terminationSegmentLabel,
+                    draft.recurrenceRule?.termination.kind === "never" &&
+                      styles.terminationSegmentLabelActive,
+                  ]}
+                >
+                  Never ends
+                </Text>
+              </Pressable>
+            ) : null}
           </View>
+
+          {draft.recurrenceRule?.termination.kind === "never" ? (
+            <Text style={styles.helperHint}>
+              This experience repeats with no end date. The next occurrence
+              stays bookable; we&apos;ll roll it forward automatically.
+            </Text>
+          ) : null}
 
           {draft.recurrenceRule?.termination.kind === "count" ? (
             <View style={styles.field}>

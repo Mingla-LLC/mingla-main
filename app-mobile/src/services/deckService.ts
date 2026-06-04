@@ -246,6 +246,153 @@ export function unifiedCardToRecommendation(card: any): Recommendation {
   };
 }
 
+// ORCH-1065: a brand-authored experience envelope. Checked BEFORE isCuratedPayload
+// because an experience envelope ALSO has stops[] + experienceType + tagline; the
+// discriminator is the explicit cardType:'experience' + brand attribution.
+function isExperiencePayload(card: any): boolean {
+  // Primary: the explicit discriminator the supply always sets.
+  if (card?.cardType === 'experience') return true;
+  // ORCH-1072 tag-loss hardening (investigation §A/B): a brand experience is
+  // structurally distinguishable from an AI-curated card — it carries a
+  // non-empty brandId + eventId + a stops[] array, whereas curated AI cards
+  // have stops + experienceType + tagline but NO brand attribution. If the
+  // explicit tag is ever lost upstream, recover it here so the card still
+  // routes to ExpandedBusinessEventSheet (Book), never the place/curated
+  // Save/Schedule branch. Curated cards (empty brandId) are NOT matched.
+  return (
+    card?.cardType !== 'curated' &&
+    typeof card?.brandId === 'string' &&
+    card.brandId.length > 0 &&
+    typeof card?.eventId === 'string' &&
+    card.eventId.length > 0 &&
+    Array.isArray(card?.stops)
+  );
+}
+
+// ORCH-1065: intent id → consumer-facing label (parity with curated intents).
+const EXPERIENCE_INTENT_LABEL: Record<string, string> = {
+  adventurous: 'Adventurous',
+  'first-date': 'First Dates',
+  romantic: 'Romantic',
+  'group-fun': 'Group Fun',
+};
+
+// ORCH-1065: derive a CuratedStop.stopLabel from index (parity with curated).
+function experienceStopLabel(index: number, total: number): 'Start Here' | 'Then' | 'End With' {
+  if (index === 0) return 'Start Here';
+  if (index === total - 1) return 'End With';
+  return 'Then';
+}
+
+// ORCH-1065: convert the server ExperienceDeckCard envelope into a Recommendation
+// whose runtime shape is a CuratedExperienceCard superset PLUS the cardType
+// discriminator + brand-attribution fields read off the runtime object in
+// SwipeableCards (no Recommendation interface bloat — mirrors curated cards).
+// experiences book via ticket-checkout-create — NO parallel money fn (COMMS-0014/0016).
+function experienceCardToRecommendation(card: any): Recommendation {
+  const rawStops: any[] = Array.isArray(card?.stops) ? card.stops : [];
+  const total = rawStops.length;
+  const stops = rawStops.map((s: any, idx: number) => {
+    const imageUrls: string[] = Array.isArray(s?.imageUrls) ? s.imageUrls : [];
+    const priceMin = typeof s?.priceMin === 'number' ? s.priceMin : 0;
+    const priceMax = typeof s?.priceMax === 'number' ? s.priceMax : 0;
+    return {
+      stopNumber: typeof s?.stopNumber === 'number' ? s.stopNumber : idx + 1,
+      stopLabel: experienceStopLabel(idx, total),
+      placeId: typeof s?.placeId === 'string' ? s.placeId : '',
+      placeName: typeof s?.placeName === 'string' ? s.placeName : '',
+      placeType: '',
+      address: typeof s?.address === 'string' ? s.address : '',
+      rating: 0,
+      reviewCount: 0,
+      imageUrl: typeof s?.imageUrl === 'string' ? s.imageUrl : '',
+      imageUrls,
+      priceLevelLabel: '',
+      priceTier: (priceMin === 0 && priceMax === 0 ? 'free' : 'budget') as PriceTierSlug,
+      priceMin,
+      priceMax,
+      openingHours: null,
+      isOpenNow: null,
+      website: null,
+      lat: typeof s?.lat === 'number' ? s.lat : 0,
+      lng: typeof s?.lng === 'number' ? s.lng : 0,
+      distanceFromUserKm: typeof s?.distanceFromUserKm === 'number' ? s.distanceFromUserKm : 0,
+      travelTimeFromUserMin: typeof s?.travelTimeFromUserMin === 'number' ? s.travelTimeFromUserMin : 0,
+      travelTimeFromPreviousStopMin: null,
+      travelModeFromPreviousStop: null,
+      aiDescription: typeof s?.aiDescription === 'string' ? s.aiDescription : '',
+      estimatedDurationMinutes: 0,
+    };
+  });
+
+  const intentId = typeof card?.experienceType === 'string' ? card.experienceType : 'adventurous';
+  const categoryLabel = EXPERIENCE_INTENT_LABEL[intentId] ?? 'Adventurous';
+  const firstStop = stops[0];
+
+  return {
+    // Discriminator + brand attribution + experience fields — carried verbatim
+    // for the renderer (read via runtime cast in SwipeableCards).
+    cardType: 'experience',
+    id: String(card?.id ?? card?.eventId ?? ''),
+    eventId: String(card?.eventId ?? card?.id ?? ''),
+    experienceType: intentId,
+    title: typeof card?.title === 'string' ? card.title : '',
+    tagline: typeof card?.tagline === 'string' ? card.tagline : '',
+    // ORCH-1072: carry the experience's REAL description + cover + upcoming
+    // occurrences verbatim onto the Recommendation (read via runtime cast in
+    // SwipeableCards.experienceRecToBusinessEventCard). These replace the
+    // fabricated first-stop cover + tagline-as-description in the mapper.
+    description: typeof card?.description === 'string' ? card.description : '',
+    coverMediaUrl: typeof card?.coverMediaUrl === 'string' ? card.coverMediaUrl : null,
+    coverMediaType:
+      card?.coverMediaType === 'image' ||
+      card?.coverMediaType === 'video' ||
+      card?.coverMediaType === 'gif'
+        ? card.coverMediaType
+        : null,
+    upcomingOccurrences: Array.isArray(card?.upcomingOccurrences)
+      ? card.upcomingOccurrences.map((o: any) => ({
+          eventDateId: typeof o?.eventDateId === 'string' ? o.eventDateId : '',
+          startAt: typeof o?.startAt === 'string' ? o.startAt : '',
+          endAt: typeof o?.endAt === 'string' ? o.endAt : '',
+          capacity: typeof o?.capacity === 'number' ? o.capacity : null,
+          sold: typeof o?.sold === 'number' ? o.sold : 0,
+          remaining: typeof o?.remaining === 'number' ? o.remaining : null,
+        }))
+      : [],
+    brandId: typeof card?.brandId === 'string' ? card.brandId : '',
+    brandName: typeof card?.brandName === 'string' ? card.brandName : '',
+    brandSlug: typeof card?.brandSlug === 'string' ? card.brandSlug : '',
+    brandLogoUrl: typeof card?.brandLogoUrl === 'string' ? card.brandLogoUrl : null,
+    eventSlug: typeof card?.eventSlug === 'string' ? card.eventSlug : '',
+    currency: typeof card?.currency === 'string' ? card.currency : 'USD',
+    masterDateUtc: card?.masterDateUtc ?? null,
+    masterEndAtUtc: card?.masterEndAtUtc ?? null,
+    timezone: typeof card?.timezone === 'string' ? card.timezone : 'UTC',
+    totalPriceMin: typeof card?.totalPriceMin === 'number' ? card.totalPriceMin : 0,
+    totalPriceMax: typeof card?.totalPriceMax === 'number' ? card.totalPriceMax : 0,
+    estimatedDurationMinutes: typeof card?.estimatedDurationMinutes === 'number' ? card.estimatedDurationMinutes : 0,
+    matchScore: typeof card?.matchScore === 'number' ? card.matchScore : 85,
+    stops,
+    // Base Recommendation fields the deck list needs (honest defaults):
+    category: categoryLabel,
+    categoryIcon: getCategoryIcon(categoryLabel) || 'compass',
+    image: firstStop?.imageUrl ?? '',
+    images: firstStop?.imageUrls?.length ? firstStop.imageUrls : [firstStop?.imageUrl].filter(Boolean),
+    lat: firstStop?.lat ?? null,
+    lng: firstStop?.lng ?? null,
+    address: firstStop?.address ?? '',
+    distance: firstStop?.distanceFromUserKm != null && firstStop.distanceFromUserKm > 0
+      ? `${firstStop.distanceFromUserKm.toFixed(1)} km`
+      : null,
+    travelTime: null,
+    rating: 0,
+    reviewCount: 0,
+    socialStats: { views: 0, likes: 0, saves: 0, shares: 0 },
+    matchFactors: { location: 0.5, budget: 0.5, category: 1.0, time: 0.5, popularity: 0.5 },
+  } as unknown as Recommendation;
+}
+
 function isCuratedPayload(card: any): boolean {
   return (
     card?.cardType === 'curated' ||
@@ -267,6 +414,11 @@ function isSinglePlacePayload(card: any): boolean {
 export function discoverCardsPayloadToRecommendations(data: any): Recommendation[] {
   const isCuratedEnvelope = data?.card_type === 'curated';
   return ((data?.cards as any[]) ?? []).map((card) => {
+    // ORCH-1065: brand experiences route FIRST (an experience envelope also has
+    // stops[], so it must be matched before the curated branch).
+    if (isExperiencePayload(card)) {
+      return experienceCardToRecommendation(card);
+    }
     if (isCuratedPayload(card) || (isCuratedEnvelope && !isSinglePlacePayload(card))) {
       return { ...card, cardType: 'curated' } as unknown as Recommendation;
     }
@@ -602,7 +754,20 @@ class DeckService {
             if (response.cards.length === 0 && response.summary) {
               pillEmptyReasons.set(pill.id, response.summary.emptyReason);
             }
-            return response.cards.map(curatedToRecommendation);
+            // ORCH-1071 [experiences-on-curated-path]: generate-curated-experiences
+            // now front-loads brand-authored experience envelopes (cardType:'experience')
+            // ahead of the AI cardType:'curated' cards for the 4 brand intents. Route
+            // those through the SAME brand-experience converter ORCH-1065 uses on the
+            // places path (experienceCardToRecommendation) instead of the AI-curated
+            // converter — keeping them FRONT-of-array (server already front-loaded).
+            // Cross-path dedupe (an experience that also arrives via discover-cards
+            // when "popular options" is also on) is handled by the final interleave's
+            // `seen` Set keyed by id, so each experience renders once, not twice.
+            return response.cards.map((card) =>
+              isExperiencePayload(card)
+                ? experienceCardToRecommendation(card)
+                : curatedToRecommendation(card),
+            );
           } catch (err) {
             console.warn(`[DeckService] Curated pill ${pill.id} failed:`, err);
             // ORCH-0677 RC-2: caught throws are treated as pipeline errors so

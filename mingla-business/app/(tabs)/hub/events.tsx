@@ -41,7 +41,9 @@ import {
 } from "../../../src/constants/designSystem";
 import { DESKTOP_HUB_GRID_COLUMNS } from "../../../src/constants/desktopLayout";
 import { useCurrentBrand } from "../../../src/hooks/useCurrentBrand";
+import { useBrandOfferingCounts } from "../../../src/hooks/useBrandOfferingCounts";
 import { useResponsiveLayout } from "../../../src/hooks/useResponsiveLayout";
+import { useHubCreatorStore } from "../../../src/store/hubCreatorStore";
 import {
   useDraftEventStore,
   useDraftsForBrand,
@@ -147,6 +149,19 @@ export default function EventsTab(): React.ReactElement {
   // (event_manager+). Hooks run on every render before any early-return shell.
   const { rank: currentRank } = useCurrentBrandRole(currentBrand?.id ?? null);
   const canCreateEvent = canPerformAction(currentRank, "CREATE_EVENT");
+
+  // META-ORCH-1059 (bug #5): the Hub lands on /hub/events, so when a brand has
+  // created NOTHING at all (no events, trips, OR experiences) the events-tab
+  // empty state must be UNIVERSAL — "Nothing created yet" + "Create your first
+  // offering" → the shared offering chooser — not event-biased. When the brand
+  // HAS other offerings (just no events), keep the event-specific copy.
+  const offeringCounts = useBrandOfferingCounts(currentBrand?.id ?? null);
+  const hasNoOfferingsAtAll =
+    offeringCounts.data !== undefined &&
+    offeringCounts.data.events === 0 &&
+    offeringCounts.data.trips === 0 &&
+    offeringCounts.data.experiences === 0;
+  const openOfferingChooser = useHubCreatorStore((s) => s.open);
 
   // ORCH-0826 M0-rework: brand-switcher / brand-delete / universal-creator
   // state lives in hub/_layout.tsx now. This screen only holds content state.
@@ -556,30 +571,54 @@ export default function EventsTab(): React.ReactElement {
       >
         {/* List */}
         {filteredItems.length === 0 ? (
-          <GlassCard variant="elevated" padding={spacing.lg}>
-            <Text style={styles.emptyTitle}>
-              {filter === "all"
-                ? "No events yet"
-                : "No events here"}
-            </Text>
-            <Text style={styles.emptyBody}>
-              {filter === "all"
-                ? 'Tap the + button above to start your first event.'
-                : filter === "draft"
-                  ? "No drafts in progress. Tap + to build one."
-                  : `Tap "All" to see everything.`}
-            </Text>
-            {(filter === "all" || filter === "draft") && canCreateEvent ? (
-              <Pressable
-                onPress={handleBuildEvent}
-                accessibilityRole="button"
-                accessibilityLabel="Build a new event"
-                style={styles.emptyCta}
-              >
-                <Text style={styles.emptyCtaLabel}>Build a new event</Text>
-              </Pressable>
-            ) : null}
-          </GlassCard>
+          filter === "all" && hasNoOfferingsAtAll ? (
+            // META-ORCH-1059 (bug #5) — UNIVERSAL empty state: the brand has
+            // created nothing of ANY kind. No event bias; the CTA opens the
+            // shared offering chooser (Event / Experience / Trip).
+            <GlassCard variant="elevated" padding={spacing.lg}>
+              <Text style={styles.emptyTitle}>Nothing created yet</Text>
+              <Text style={styles.emptyBody}>
+                Create your first offering — an event, an experience, or a trip — and
+                it&apos;ll show up here.
+              </Text>
+              {canCreateEvent ? (
+                <Pressable
+                  onPress={openOfferingChooser}
+                  accessibilityRole="button"
+                  accessibilityLabel="Create your first offering"
+                  style={styles.emptyCta}
+                  testID="hub-empty-create-offering"
+                >
+                  <Text style={styles.emptyCtaLabel}>Create your first offering</Text>
+                </Pressable>
+              ) : null}
+            </GlassCard>
+          ) : (
+            <GlassCard variant="elevated" padding={spacing.lg}>
+              <Text style={styles.emptyTitle}>
+                {filter === "all"
+                  ? "No events yet"
+                  : "No events here"}
+              </Text>
+              <Text style={styles.emptyBody}>
+                {filter === "all"
+                  ? 'Tap the + button above to start your first event.'
+                  : filter === "draft"
+                    ? "No drafts in progress. Tap + to build one."
+                    : `Tap "All" to see everything.`}
+              </Text>
+              {(filter === "all" || filter === "draft") && canCreateEvent ? (
+                <Pressable
+                  onPress={handleBuildEvent}
+                  accessibilityRole="button"
+                  accessibilityLabel="Build a new event"
+                  style={styles.emptyCta}
+                >
+                  <Text style={styles.emptyCtaLabel}>Build a new event</Text>
+                </Pressable>
+              ) : null}
+            </GlassCard>
+          )
         ) : currentBrand !== null ? (
           <View style={[styles.list, isWideDesktop && styles.desktopListGrid]}>
             {filteredItems.map((item) => (

@@ -80,6 +80,12 @@ export const brandKeys = {
     brandId: string,
   ): readonly ["brand", string, "offeringCounts"] =>
     ["brand", brandId, "offeringCounts"] as const,
+  // ORCH-1064 — venue-claim feedback (active round) for a brand. One key per
+  // entity, from the factory (Constitution #4).
+  feedback: (
+    brandId: string,
+  ): readonly ["brands", "feedback", string] =>
+    [...brandKeys.all, "feedback", brandId] as const,
 };
 
 const DISABLED_KEY = ["brands-disabled"] as const;

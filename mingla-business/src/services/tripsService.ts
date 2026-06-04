@@ -131,6 +131,17 @@ export interface Trip {
    */
   ticketsSoldCount: number;
   /**
+   * META-ORCH-1059 Pass 1 — total paid revenue (sum of orders.total_cents where
+   * payment_status='paid') for this trip, in minor units of `revenueCurrency`.
+   * Populated by the list query (`getTripsByBrand`) via one batched orders
+   * aggregation so the Hub list-card can show a money/revenue strip with parity
+   * to the events list. 0 when no paid orders exist. The detail read paths leave
+   * it 0 (the dashboard derives revenue from useTripOrders).
+   */
+  revenueCents?: number;
+  /** Currency code for `revenueCents` (defaults to the first paid order's currency). */
+  revenueCurrency?: string | null;
+  /**
    * ORCH-1006 — per-offering all-in pricing switches. Each NULL = inherit the
    * brand default; explicit boolean = override. Read from events.pass_*.
    * Optional: `mapTrip` (the authoring read path) always populates it; public
@@ -413,6 +424,7 @@ function mapTrip(
   ticketTypes: TicketTypeRow[],
   ticketsSoldCount: number,
   masterDate: EventDateRow | null = null,
+  revenue: { cents: number; currency: string | null } = { cents: 0, currency: null },
 ): Trip {
   const ticketTypesById = new Map(ticketTypes.map((tt) => [tt.id, tt]));
   return {
@@ -454,6 +466,9 @@ function mapTrip(
     bookingsClosed: event.bookings_closed === true,
     bookingsClosedAt: event.bookings_closed_at,
     ticketsSoldCount,
+    // META-ORCH-1059 Pass 1 — batched list-query revenue (0 on detail reads).
+    revenueCents: revenue.cents,
+    revenueCurrency: revenue.currency,
     // ORCH-1006 — pricing switches from events.pass_*. NULL = inherit.
     pricingSwitches: {
       passTax: event.pass_tax ?? null,
@@ -700,8 +715,10 @@ export async function getTripsByBrand(brandId: string): Promise<Trip[]> {
   if (events.length === 0) return [];
 
   // For list view, fetch tickets + master date only (days/inclusions/tiers shown on detail).
+  // META-ORCH-1059 Pass 1: also batch-aggregate paid orders so the Hub list-card
+  // can show the per-trip travelers count + revenue with parity to the events list.
   const ids = events.map((e) => e.id);
-  const [ticketsResp, datesResp] = await Promise.all([
+  const [ticketsResp, datesResp, ordersAgg] = await Promise.all([
     supabase
       .from("ticket_types")
       .select("*")
@@ -712,6 +729,7 @@ export async function getTripsByBrand(brandId: string): Promise<Trip[]> {
       .select("event_id,start_at,end_at,is_master")
       .in("event_id", ids)
       .eq("is_master", true),
+    aggregatePaidOrdersByEvent(ids),
   ]);
   if (ticketsResp.error) throw ticketsResp.error;
   if (datesResp.error) throw datesResp.error;
@@ -725,18 +743,75 @@ export async function getTripsByBrand(brandId: string): Promise<Trip[]> {
   }
   const datesByEvent = new Map(dates.map((d) => [d.event_id, d]));
 
-  return events.map((e) =>
-    mapTrip(
+  return events.map((e) => {
+    const agg = ordersAgg.get(e.id);
+    return mapTrip(
       e,
       null,
       [],
       [],
       [],
       ticketsByEvent.get(e.id) ?? [],
-      0,
+      agg?.ticketsSold ?? 0,
       datesByEvent.get(e.id) ?? null,
-    ),
-  );
+      { cents: agg?.revenueCents ?? 0, currency: agg?.revenueCurrency ?? null },
+    );
+  });
+}
+
+/**
+ * META-ORCH-1059 Pass 1 — batched paid-order aggregation for Hub list cards.
+ *
+ * One query over `orders` (RLS organiser-scoped) with nested
+ * `order_line_items(quantity)`, filtered to the given event ids and
+ * payment_status='paid'. Returns, per event id, the summed ticket quantity
+ * (travelers / spots sold) and total paid revenue in minor units + currency.
+ * No schema change — mirrors how the events Hub derives card metrics from
+ * paid orders. Returns an empty map (never throws to the card) on read error.
+ */
+export interface PaidOrdersAggregate {
+  ticketsSold: number;
+  revenueCents: number;
+  revenueCurrency: string | null;
+}
+
+export async function aggregatePaidOrdersByEvent(
+  eventIds: string[],
+): Promise<Map<string, PaidOrdersAggregate>> {
+  const out = new Map<string, PaidOrdersAggregate>();
+  if (eventIds.length === 0) return out;
+  const { data, error } = await supabase
+    .from("orders")
+    .select("event_id, payment_status, total_cents, currency, order_line_items(quantity)")
+    .in("event_id", eventIds)
+    .eq("payment_status", "paid");
+  if (error) {
+    // List cards degrade gracefully to "no metric" rather than failing the list.
+    return out;
+  }
+  type AggRow = {
+    event_id: string;
+    total_cents: number | null;
+    currency: string | null;
+    order_line_items: { quantity: number | null }[] | null;
+  };
+  for (const row of (data ?? []) as AggRow[]) {
+    const prev = out.get(row.event_id) ?? {
+      ticketsSold: 0,
+      revenueCents: 0,
+      revenueCurrency: null,
+    };
+    const qty = (row.order_line_items ?? []).reduce(
+      (sum, li) => sum + Math.max(0, li.quantity ?? 0),
+      0,
+    );
+    out.set(row.event_id, {
+      ticketsSold: prev.ticketsSold + qty,
+      revenueCents: prev.revenueCents + Math.max(0, row.total_cents ?? 0),
+      revenueCurrency: prev.revenueCurrency ?? row.currency ?? null,
+    });
+  }
+  return out;
 }
 
 // ---------------------- updateTripBasics ----------------------

@@ -33,6 +33,13 @@
       "channel": "production",
       "autoIncrement": true,
       "android": {}
+    },
+    "production-simulator": {
+      "extends": "production",
+      "ios": {
+        "simulator": true,
+        "buildConfiguration": "Release"
+      }
     }
   },
   "submit": {

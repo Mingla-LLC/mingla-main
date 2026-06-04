@@ -35,7 +35,12 @@ import {
 } from "../../../src/constants/designSystem";
 import { DESKTOP_HUB_GRID_COLUMNS } from "../../../src/constants/desktopLayout";
 import { GlassCard } from "../../../src/components/ui/GlassCard";
+import { ShareModal } from "../../../src/components/ui/ShareModal";
 import { TripListCard } from "../../../src/components/trip/TripListCard";
+import {
+  OfferingManageSheet,
+  buildOfferingManageActions,
+} from "../../../src/components/offering/OfferingManageSheet";
 import { useCurrentBrand } from "../../../src/hooks/useCurrentBrand";
 import { useResponsiveLayout } from "../../../src/hooks/useResponsiveLayout";
 import { useTripsByBrand } from "../../../src/hooks/useTrips";
@@ -113,6 +118,9 @@ export default function HubTripsRoute(): React.ReactElement {
   }, [counts]);
 
   const [filter, setFilter] = useState<TripFilter>(defaultFilter);
+  // META-ORCH-1059 Pass 1 — Hub list-card 3-dot opens the shared manage sheet.
+  const [manageTrip, setManageTrip] = useState<Trip | null>(null);
+  const [shareTrip, setShareTrip] = useState<Trip | null>(null);
 
   const filteredTrips = useMemo<Trip[]>(() => {
     if (filter === "all") {
@@ -249,12 +257,70 @@ export default function HubTripsRoute(): React.ReactElement {
                 <TripListCard
                   trip={trip}
                   onOpen={() => handleOpenTrip(trip)}
+                  onManageOpen={() => setManageTrip(trip)}
                 />
               </View>
             ))}
           </View>
         )}
       </ScrollView>
+
+      {/* META-ORCH-1059 Pass 1 — shared per-kind manage sheet opened from a
+          list-card 3-dot. Same Edit · View public · Orders · Share · Cancel set
+          as the trip dashboard. Tapping Cancel routes to the trip dashboard's
+          cancel flow (the typeToConfirm dialog lives there); the Hub list keeps
+          only the non-destructive actions inline + opens the dashboard for the
+          destructive confirm. */}
+      {manageTrip !== null ? (
+        <OfferingManageSheet
+          visible
+          onClose={() => setManageTrip(null)}
+          kind="trip"
+          actions={buildOfferingManageActions(
+            "trip",
+            {
+              onEdit: () =>
+                router.push(`/trip/${manageTrip.id}/edit` as never),
+              onViewPublic:
+                manageTrip.brandSlug !== null && manageTrip.brandSlug.length > 0
+                  ? () =>
+                      router.push(
+                        `/t/${manageTrip.brandSlug}/${manageTrip.slug}` as never,
+                      )
+                  : undefined,
+              onOrders: () =>
+                router.push(`/trip/${manageTrip.id}/travelers` as never),
+              onShare:
+                manageTrip.brandSlug !== null && manageTrip.brandSlug.length > 0
+                  ? () => setShareTrip(manageTrip)
+                  : undefined,
+              onCancel:
+                manageTrip.status !== "draft" &&
+                manageTrip.status !== "ended" &&
+                manageTrip.status !== "cancelled"
+                  ? () => router.push(`/trip/${manageTrip.id}` as never)
+                  : undefined,
+            },
+            () => setManageTrip(null),
+          )}
+        />
+      ) : null}
+
+      {shareTrip !== null &&
+      shareTrip.brandSlug !== null &&
+      shareTrip.brandSlug.length > 0 ? (
+        <ShareModal
+          visible
+          onClose={() => setShareTrip(null)}
+          url={`https://business.usemingla.com/t/${shareTrip.brandSlug}/${shareTrip.slug}`}
+          title={`${shareTrip.title} on Mingla`}
+          description={
+            shareTrip.description !== null && shareTrip.description.length > 0
+              ? shareTrip.description.slice(0, 200)
+              : shareTrip.title
+          }
+        />
+      ) : null}
     </View>
   );
 }

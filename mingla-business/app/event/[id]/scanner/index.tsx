@@ -55,6 +55,11 @@ import {
 import { useAuth } from "../../../../src/context/AuthContext";
 import { useManagedEventRoute } from "../../../../src/hooks/useManagedEventRoute";
 import {
+  capitalizeNoun,
+  offeringKindConfig,
+  offeringKindFromEventType,
+} from "../../../../src/components/offering/offeringKind";
+import {
   ScanTicketError,
   scanTicket,
 } from "../../../../src/services/scanTicketService";
@@ -186,6 +191,10 @@ export default function ScannerCameraRoute(): React.ReactElement {
     typeof eventId === "string" ? eventId : null,
   );
   const event = routeEvent.event;
+  // META-ORCH-1059 — kind-aware copy lens for the shared scanner screen.
+  const kindCfg = offeringKindConfig(
+    offeringKindFromEventType(event?.event_type),
+  );
 
   useEffect(() => {
     if (routeEvent.replacementEventId !== null) {
@@ -378,7 +387,7 @@ export default function ScannerCameraRoute(): React.ReactElement {
           if (kind === "duplicate") {
             message = "Already checked in";
           } else if (kind === "wrong_event") {
-            message = "Different event";
+            message = `Different ${kindCfg.noun}`;
           } else if (kind === "void") {
             message = "Ticket not valid";
           } else if (kind === "not_yet_open") {
@@ -388,9 +397,9 @@ export default function ScannerCameraRoute(): React.ReactElement {
               : "Try again closer to start time";
           } else if (kind === "event_ended") {
             message = result.lastEndAt
-              ? `Event ended ${formatRelativeTime(result.lastEndAt)}`
-              : "Event has ended";
-            detail = "Ticket can't be used after the event";
+              ? `${capitalizeNoun(kindCfg.noun)} ended ${formatRelativeTime(result.lastEndAt)}`
+              : `${capitalizeNoun(kindCfg.noun)} has ended`;
+            detail = `Ticket can't be used after the ${kindCfg.noun}`;
           } else {
             message = "Ticket not found";
           }
@@ -415,8 +424,8 @@ export default function ScannerCameraRoute(): React.ReactElement {
               : undefined;
           if (error instanceof ScanTicketError) {
             if (error.code === "scanner_not_authorized") {
-              message = "You're not authorized to scan this event";
-              detail = "Ask the event owner to add you as a scanner.";
+              message = `You're not authorized to scan this ${kindCfg.noun}`;
+              detail = `Ask the ${kindCfg.noun} owner to add you as a scanner.`;
             } else if (error.code === "auth_required") {
               message = "Please sign in again";
               detail = "Your session expired.";
@@ -433,7 +442,7 @@ export default function ScannerCameraRoute(): React.ReactElement {
         }
       })();
     },
-    [event, showResult, recordServerScan],
+    [event, showResult, recordServerScan, kindCfg.noun],
   );
 
   // ---- Not-found shell ---------------------------------------------
@@ -453,6 +462,10 @@ export default function ScannerCameraRoute(): React.ReactElement {
           <View style={styles.chromeRightSlot} />
         </View>
         <View style={styles.emptyHost}>
+          {/* META-ORCH-1059 — kept generic "Loading event..." on purpose: the
+              row is still resolving here (event === null), so kind is unknown;
+              also the locked shared-route-recovery marker. Kind-aware copy
+              applies on the steady-state strings below. */}
           <Text style={styles.loadingText}>Loading event...</Text>
         </View>
       </View>
@@ -477,7 +490,7 @@ export default function ScannerCameraRoute(): React.ReactElement {
         <View style={styles.emptyHost}>
           <EmptyState
             illustration="ticket"
-            title="Event not found"
+            title={`${capitalizeNoun(kindCfg.noun)} not found`}
             description="It may have been deleted."
           />
         </View>

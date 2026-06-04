@@ -32,6 +32,11 @@ import type { ScannerInvitationRow } from "../../../../src/services/scannerInvit
 import { useAuth } from "../../../../src/context/AuthContext";
 import { useManagedEventRoute } from "../../../../src/hooks/useManagedEventRoute";
 import {
+  capitalizeNoun,
+  offeringKindConfig,
+  offeringKindFromEventType,
+} from "../../../../src/components/offering/offeringKind";
+import {
   useScannerInvitationsForEvent,
   useRevokeScannerInvitation,
 } from "../../../../src/hooks/useScannerInvitations";
@@ -127,6 +132,10 @@ export default function EventScannersListRoute(): React.ReactElement {
   );
   const event = routeEvent.event;
   const brand = routeEvent.brand;
+  // META-ORCH-1059 — kind-aware copy lens for the shared scanners screen.
+  const kindCfg = offeringKindConfig(
+    offeringKindFromEventType(event?.event_type),
+  );
 
   const { rank: currentRank } = useCurrentBrandRole(brand?.id ?? null);
   const canManageScanners = canPerformAction(currentRank, "MANAGE_SCANNERS");
@@ -226,6 +235,10 @@ export default function EventScannersListRoute(): React.ReactElement {
           <View style={styles.chromeRightSlot} />
         </View>
         <View style={styles.emptyHost}>
+          {/* META-ORCH-1059 — kept generic "Loading event..." on purpose: the
+              row is still resolving here (event === null), so kind is unknown;
+              also the locked shared-route-recovery marker. Kind-aware copy
+              applies on the steady-state strings below. */}
           <Text style={styles.emptyLoadingText}>Loading event...</Text>
         </View>
       </View>
@@ -253,7 +266,7 @@ export default function EventScannersListRoute(): React.ReactElement {
         <View style={styles.emptyHost}>
           <EmptyState
             illustration="ticket"
-            title="Event not found"
+            title={`${capitalizeNoun(kindCfg.noun)} not found`}
             description="It may have been deleted."
           />
         </View>

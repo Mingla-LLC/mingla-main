@@ -912,6 +912,13 @@ export interface PatchEventWhenInput {
   };
   reason: string;
   clientRevision: number | null;
+  /**
+   * ORCH-1047 "Refund all & proceed": when true, the server bypasses the
+   * sold-ticket structural blocks (the organiser has refunded all buyers and
+   * chosen to change the schedule anyway). Defaults to undefined → false →
+   * conservative refund-first behaviour for every normal save.
+   */
+  acknowledgeSoldImpact?: boolean;
 }
 
 export interface PatchEventWhenResponse {
@@ -939,7 +946,13 @@ export const patchPublishedEventWhen = async (
 ): Promise<PatchEventWhenResponse> => {
   const { data, error } = await supabase.rpc("business_patch_event_when", {
     p_event_id: input.eventId,
-    p_when_payload: input.whenPayload,
+    // ORCH-1047: carry the "Refund all & proceed" sold-impact bypass inside the
+    // payload JSON (not a new RPC param) so the server change stays a plain
+    // CREATE OR REPLACE with no signature change / DROP.
+    p_when_payload: {
+      ...input.whenPayload,
+      acknowledgeSoldImpact: input.acknowledgeSoldImpact ?? false,
+    },
     p_reason: input.reason,
     p_client_revision: input.clientRevision,
   });

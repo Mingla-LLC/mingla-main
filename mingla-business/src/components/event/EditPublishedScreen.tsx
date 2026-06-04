@@ -68,7 +68,8 @@ import {
   type LiveEvent,
   type UpdateLiveEventResult,
 } from "../../store/liveEventStore";
-import { getSoldCountContextForEvent } from "../../store/orderStoreHelpers";
+import { buildSoldCountContextFromOrders } from "../../services/eventOrdersService";
+import { refundAllEventOrders } from "../../services/orderRefundService";
 import {
   computeRichFieldDiffs,
   computeTicketDiffs,
@@ -119,7 +120,10 @@ import {
 } from "../../services/businessEvents";
 import { businessEventKeys } from "../../hooks/useBusinessEvents";
 import { publicEventKeys } from "../../hooks/usePublicEvents";
-import { useEventHasWebPurchases } from "../../hooks/useEventOrders";
+import {
+  useEventHasWebPurchases,
+  useEventReconciliation,
+} from "../../hooks/useEventOrders";
 import { ThemeEditorSection } from "../theme/ThemeEditorSection";
 
 // ---- Section configuration -----------------------------------------
@@ -152,6 +156,12 @@ const SECTIONS: readonly SectionConfig[] = [
 
 const SAVE_PROCESSING_MS = 800;
 const TOAST_NAV_DELAY_MS = 600;
+// ORCH-1047 — iOS cannot present a second native Modal while the reason sheet
+// (ChangeSummaryModal → Sheet → RN Modal) is still dismissing; the OS silently
+// drops it. We therefore close the reason sheet, wait for its dismiss animation
+// to finish, THEN present the "Refund first" reject dialog (ConfirmDialog → RN
+// Modal) so it reliably appears instead of vanishing into a silent no-op.
+const REJECT_DIALOG_HANDOFF_MS = 450;
 const COVER_MEDIA_PATCH_KEYS = new Set<keyof EditableLiveEventFields>([
   "coverMediaUrl",
   "coverMediaType",
@@ -265,6 +275,11 @@ interface RejectDialogContent {
   body: string;
   primaryLabel: string;
   primaryAction: () => void;
+  /** ORCH-1047 — schedule-with-sales reject uses a hold-to-confirm destructive
+   * variant so "Refund all & change" can't be fat-fingered. Other rejects stay
+   * the simple "Open Orders" dialog. */
+  variant?: "simple" | "holdToConfirm";
+  destructive?: boolean;
 }
 
 export const EditPublishedScreen: React.FC<EditPublishedScreenProps> = ({
@@ -326,10 +341,18 @@ export const EditPublishedScreen: React.FC<EditPublishedScreenProps> = ({
     });
   }, []);
 
-  // ---- Sold-count context (ORCH-0704: stub returns zeros; 9c flips live) ----
+  // ---- Sold-count context (server-backed) ----------------------------------
+  // Was an ORCH-0704 stub that read the empty client order store and returned
+  // zeros for server-loaded events, leaving the buyer-protection edit guards
+  // blind (they let date moves / tier changes on sold events reach the server,
+  // which then rejected with a bare toast). Now sourced from the live event
+  // orders so validateLiveEventFieldUpdate reliably fires the "Refund first"
+  // dialog. serverEventId === null → query disabled → empty (the server RPC
+  // still backstops every structural change).
+  const serverOrders = useEventReconciliation(liveEvent.serverEventId);
   const soldCountCtx = useMemo(
-    () => getSoldCountContextForEvent(liveEvent),
-    [liveEvent],
+    () => buildSoldCountContextFromOrders(serverOrders),
+    [serverOrders],
   );
 
   // Cycle 13a J-T6 G2: ticket price editability gated on EDIT_TICKET_PRICE
@@ -484,6 +507,103 @@ export const EditPublishedScreen: React.FC<EditPublishedScreenProps> = ({
     queryClient,
   ]);
 
+  // ORCH-1047 — captured reason for the "Refund all & proceed" path (the
+  // reject dialog is presented after the reason sheet closes, so the reason
+  // text must be stashed when the save is blocked).
+  const reasonRef = useRef<string>("");
+
+  // ORCH-1047 — "Refund all & proceed": refund every buyer for this event in
+  // full, then re-apply the schedule change with the server's
+  // acknowledge_sold_impact bypass. Operator-chosen partial-failure policy:
+  // change anyway, and surface any buyer whose refund failed so they can be
+  // refunded manually in Orders. This fires REAL refunds — it is only reachable
+  // behind the hold-to-confirm destructive dialog.
+  const runRefundAllAndProceed = useCallback(
+    async (reason: string): Promise<void> => {
+      setRejectDialog(null);
+      if (liveEvent.serverEventId === null) {
+        showToast("Can't change — this event is missing its server id.");
+        return;
+      }
+      setSubmitting(true);
+      const patch = currentPatch;
+      try {
+        const refund = await refundAllEventOrders(serverOrders, reason);
+        // All-or-nothing (buyer protection): if ANY refund failed, do NOT change
+        // the schedule — moving the event would strand the un-refunded buyers.
+        // Abort, leave the schedule untouched, and report who still needs a
+        // refund + the actual Stripe reason so the operator can act.
+        if (refund.failed.length > 0) {
+          setSubmitting(false);
+          setModal((prev) => ({ ...prev, visible: false }));
+          const names = refund.failed.map((f) => f.buyerName).join(", ");
+          const why = refund.failed[0]?.error ?? "";
+          showToast(
+            `Refunds incomplete — ${refund.failed.length} failed (${names}). Schedule NOT changed. ${why}`.trim(),
+          );
+          return;
+        }
+        // Every buyer refunded → now it's safe to apply the schedule change.
+        await patchPublishedEventWhen({
+          eventId: liveEvent.serverEventId,
+          whenPayload: {
+            whenMode: patch.whenMode ?? liveEvent.whenMode,
+            timezone: patch.timezone ?? liveEvent.timezone,
+            when: {
+              date: patch.date !== undefined ? patch.date : liveEvent.date,
+              doorsOpen:
+                patch.doorsOpen !== undefined
+                  ? patch.doorsOpen
+                  : liveEvent.doorsOpen,
+              endsAt:
+                patch.endsAt !== undefined ? patch.endsAt : liveEvent.endsAt,
+            },
+            multiDates:
+              patch.multiDates !== undefined
+                ? patch.multiDates
+                : liveEvent.multiDates,
+            recurrenceRule:
+              patch.recurrenceRule !== undefined
+                ? patch.recurrenceRule
+                : liveEvent.recurrenceRule,
+          },
+          reason,
+          clientRevision: null,
+          acknowledgeSoldImpact: true,
+        });
+        invalidateServerEventCaches();
+        setSubmitting(false);
+        setModal((prev) => ({ ...prev, visible: false }));
+        const okCount = refund.refundedOrderIds.length;
+        showToast(
+          `Refunded all ${okCount} buyer${okCount === 1 ? "" : "s"}. Schedule updated.`,
+        );
+        setTimeout(() => {
+          if (router.canGoBack()) {
+            router.back();
+          } else {
+            // orch-strict-grep-allow route-by-event-type — events-only screen
+            router.replace(`/event/${liveEvent.id}` as never);
+          }
+        }, TOAST_NAV_DELAY_MS);
+      } catch (error) {
+        setSubmitting(false);
+        const code = error instanceof Error ? error.message : "save_failed";
+        showToast(
+          `Refunds attempted but the schedule change failed (${code}). Check Orders.`,
+        );
+      }
+    },
+    [
+      currentPatch,
+      invalidateServerEventCaches,
+      liveEvent,
+      router,
+      serverOrders,
+      showToast,
+    ],
+  );
+
   // ---- Map rejection result to dialog content ----
   const buildRejectDialog = useCallback(
     (result: Extract<UpdateLiveEventResult, { ok: false }>): RejectDialogContent => {
@@ -495,6 +615,23 @@ export const EditPublishedScreen: React.FC<EditPublishedScreenProps> = ({
       };
 
       const closeOnly = (): void => setRejectDialog(null);
+
+      // ORCH-1047 — schedule-with-sales: offer "Refund all & change" as a
+      // hold-to-confirm destructive action. Per-order manual refunds remain
+      // reachable from the event's Orders screen.
+      const refundAllAndChange = (
+        n: number,
+        whatChanges: string,
+      ): RejectDialogContent => ({
+        title: "Refund all & change?",
+        body: `${n} ${n === 1 ? "buyer has" : "buyers have"} tickets for this event. To ${whatChanges}, all ${n} ${n === 1 ? "buyer" : "buyers"} are refunded in full first — this is permanent. If any refund fails, nothing changes and you'll see who still needs refunding. Hold to confirm.`,
+        primaryLabel: "Refund all & change",
+        variant: "holdToConfirm",
+        destructive: true,
+        primaryAction: () => {
+          void runRefundAllAndProceed(reasonRef.current);
+        },
+      });
 
       switch (result.reason) {
         case "event_not_found":
@@ -555,60 +692,41 @@ export const EditPublishedScreen: React.FC<EditPublishedScreenProps> = ({
             primaryAction: closeAndOpenOrders,
           };
         }
-        case "multi_date_remove_with_sales": {
-          const dropped = result.droppedDates ?? [];
-          const n = result.affectedOrderCount ?? 0;
-          const dateText =
-            dropped.length === 1
-              ? `the date ${dropped[0]}`
-              : `${dropped.length} dates`;
-          return {
-            title: "Refund first",
-            body: `Tickets sold for this event grant access to all dates. Refund ${n} order${n === 1 ? "" : "s"} before removing ${dateText}.`,
-            primaryLabel: "Open Orders",
-            primaryAction: closeAndOpenOrders,
-          };
-        }
-        case "when_mode_drops_active_date": {
-          const dropped = result.droppedDates ?? [];
-          const n = result.affectedOrderCount ?? 0;
-          const dateText =
-            dropped.length === 1
-              ? `the date ${dropped[0]}`
-              : `${dropped.length} dates`;
-          return {
-            title: "Refund first",
-            body: `Switching mode would drop ${dateText} from your schedule. ${n} buyer${n === 1 ? "" : "s"} paid for this event — refund them before switching.`,
-            primaryLabel: "Open Orders",
-            primaryAction: closeAndOpenOrders,
-          };
-        }
-        case "recurrence_drops_occurrence": {
-          const dropped = result.droppedDates ?? [];
-          const n = result.affectedOrderCount ?? 0;
-          const dateText =
-            dropped.length === 1
-              ? `the date ${dropped[0]}`
-              : `${dropped.length} occurrence${dropped.length === 1 ? "" : "s"}`;
-          return {
-            title: "Refund first",
-            body: `Your new recurrence rule drops ${dateText}. ${n} buyer${n === 1 ? "" : "s"} paid for this event — refund them first.`,
-            primaryLabel: "Open Orders",
-            primaryAction: closeAndOpenOrders,
-          };
-        }
+        case "multi_date_remove_with_sales":
+          return refundAllAndChange(
+            result.affectedOrderCount ?? 0,
+            "change the dates",
+          );
+        case "time_change_with_sales":
+          return refundAllAndChange(
+            result.affectedOrderCount ?? 0,
+            "change the time",
+          );
+        case "when_mode_drops_active_date":
+          return refundAllAndChange(
+            result.affectedOrderCount ?? 0,
+            "change the schedule",
+          );
+        case "recurrence_drops_occurrence":
+          return refundAllAndChange(
+            result.affectedOrderCount ?? 0,
+            "change the recurrence",
+          );
         default: {
           const _exhaust: never = result.reason;
           return _exhaust;
         }
       }
     },
-    [liveEvent.id, router],
+    [liveEvent.id, router, runRefundAllAndProceed],
   );
 
   const handleConfirmSave = useCallback(
     async (reason: string): Promise<void> => {
       if (submitting) return;
+      // ORCH-1047 — stash the reason so "Refund all & proceed" (fired from the
+      // deferred reject dialog) can reuse it for the refunds + re-save.
+      reasonRef.current = reason;
       setSubmitting(true);
       await sleep(SAVE_PROCESSING_MS);
       const patch = currentPatch;
@@ -621,7 +739,10 @@ export const EditPublishedScreen: React.FC<EditPublishedScreenProps> = ({
       if (!validation.ok) {
         setSubmitting(false);
         setModal((prev) => ({ ...prev, visible: false }));
-        setRejectDialog(buildRejectDialog(validation));
+        // Defer so the reject dialog isn't dropped while the reason sheet is
+        // still dismissing on iOS (see REJECT_DIALOG_HANDOFF_MS).
+        const pendingReject = buildRejectDialog(validation);
+        setTimeout(() => setRejectDialog(pendingReject), REJECT_DIALOG_HANDOFF_MS);
         return;
       }
       const explicitCoverSet =
@@ -872,6 +993,8 @@ export const EditPublishedScreen: React.FC<EditPublishedScreenProps> = ({
                             code === "recurrence_drops_occurrence" ||
                             code === "multi_date_remove_with_sales"
                           ? "This change would drop a date with active tickets. Cancel or refund those tickets first."
+                          : code === "schedule_change_with_sales"
+                            ? "This event has sold tickets. Refund those buyers before changing its time."
                           : code === "stale_client_revision" ||
                               code === "event_not_editable_race"
                             ? "Someone else updated this event. Tap to reload."
@@ -980,8 +1103,10 @@ export const EditPublishedScreen: React.FC<EditPublishedScreenProps> = ({
         }, TOAST_NAV_DELAY_MS);
         return;
       }
-      // Guard-rail rejection — open dialog
-      setRejectDialog(buildRejectDialog(result));
+      // Guard-rail rejection — open dialog (deferred so it isn't dropped while
+      // the reason sheet dismisses on iOS; see REJECT_DIALOG_HANDOFF_MS).
+      const pendingReject = buildRejectDialog(result);
+      setTimeout(() => setRejectDialog(pendingReject), REJECT_DIALOG_HANDOFF_MS);
     },
     [
       submitting,
@@ -1253,7 +1378,8 @@ export const EditPublishedScreen: React.FC<EditPublishedScreenProps> = ({
         description={rejectDialog?.body ?? ""}
         confirmLabel={rejectDialog?.primaryLabel ?? "OK"}
         cancelLabel="Close"
-        variant="simple"
+        variant={rejectDialog?.variant ?? "simple"}
+        destructive={rejectDialog?.destructive ?? false}
       />
 
       {/* Toast (self-positioning portal) */}

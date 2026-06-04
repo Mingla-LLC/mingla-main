@@ -20,7 +20,11 @@ export interface ExperienceReviewCardsProps {
   isExecuting: boolean;
   onAccept: (id: string, editedArgs?: Record<string, unknown>) => Promise<void>;
   onReject: (id: string) => Promise<void>;
-  onAcceptAll: () => Promise<void>;
+  // META-ORCH-1059 Sub-A intent: AI proposals are DRAFT shells the brand
+  // finishes individually, so bulk "Accept all" is omitted. Optional so the
+  // Hub (which no longer passes it) type-checks; the button only renders when
+  // a handler is supplied.
+  onAcceptAll?: () => Promise<void>;
   // META-ORCH-1009 Sub-E (C2): invoked when Sarah taps Regenerate on an expired
   // proposal so the Hub clears the stale card + prompts a fresh re-snap.
   onRegenerate?: (id: string, parserSource: string | null) => Promise<void>;
@@ -79,16 +83,18 @@ export const ExperienceReviewCards: React.FC<ExperienceReviewCardsProps> = ({
   return (
     <View style={styles.host}>
       <View style={styles.headerRow}>
-        <Text style={styles.heading}>Review suggested experiences</Text>
-        <Pressable
-          onPress={() => void onAcceptAll()}
-          disabled={isExecuting}
-          style={({ pressed }) => [styles.acceptAll, pressed && styles.pressed]}
-          accessibilityRole="button"
-          accessibilityLabel="Accept all suggested experiences"
-        >
-          <Text style={styles.acceptAllText}>Accept all</Text>
-        </Pressable>
+        <Text style={styles.heading}>Suggested experiences</Text>
+        {onAcceptAll !== undefined ? (
+          <Pressable
+            onPress={() => void onAcceptAll()}
+            disabled={isExecuting}
+            style={({ pressed }) => [styles.acceptAll, pressed && styles.pressed]}
+            accessibilityRole="button"
+            accessibilityLabel="Accept all suggested experiences"
+          >
+            <Text style={styles.acceptAllText}>Accept all</Text>
+          </Pressable>
+        ) : null}
       </View>
       {pending.map((row) => (
         <ExperienceConfirmationCard
