@@ -1712,7 +1712,7 @@ function checkNoNewBackendFiles() {
   // audit trail. Per COMMS-0002 — this allowlist lands in the SAME commit as
   // the migration.
   const ORCH_1075_BACKEND_ALLOWLIST = [
-    "supabase/migrations/20260909000000_orch_1075_paid_publish_integrity_guards.sql",
+    "supabase/migrations/20260911000000_orch_1075_paid_publish_integrity_guards.sql",
     "supabase/migrations/__tests__/orch_1075_paid_publish_integrity_guards.test.sql",
     "supabase/migrations/__tests__/orch_1075_paid_publish_integrity_guards.test.ts",
   ];

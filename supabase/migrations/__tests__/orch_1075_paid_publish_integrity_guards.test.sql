@@ -1,6 +1,6 @@
 -- ORCH-1075 — behavioral post-apply probe for the paid-publish integrity guards.
 -- Hand-run AFTER `supabase db push --linked` lands
--- 20260909000000_orch_1075_paid_publish_integrity_guards.sql.
+-- 20260911000000_orch_1075_paid_publish_integrity_guards.sql.
 --
 -- This file is WRITE-SAFE: every behavioral case runs inside its own
 -- transaction that ROLLBACKs, so no fixture data survives. It exercises the

@@ -9,7 +9,7 @@
  * so a caller need only pass whichever string it has.
  *
  * Reasons (MUST match the RPC bodies in
- * supabase/migrations/20260909000000_orch_1075_paid_publish_integrity_guards.sql):
+ * supabase/migrations/20260911000000_orch_1075_paid_publish_integrity_guards.sql):
  *   - stripe_charges_disabled → "Finish your payment setup" → route to the
  *     brand's Stripe Connect onboarding (`/brand/{brandId}/payments/onboard`,
  *     the same entry BrandOnboardView uses to reach charges_enabled=true).

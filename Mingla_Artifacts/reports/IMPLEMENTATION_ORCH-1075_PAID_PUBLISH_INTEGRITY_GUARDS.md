@@ -38,7 +38,7 @@ detached_at = NULL,              stripe_account_id = acct_1Tdu4cPjlZvMV1oP
 ```
 → `pg_brand_can_charge` returns **false** for this brand (charges_enabled is `false`, fails `IS DISTINCT FROM false`). The guard would correctly reject this brand's paid publish. EXPECTATION MET.
 
-**Migration monotonicity:** max migration timestamp anywhere (origin/main + all worktrees) = `20260908000000`; remote `schema_migrations` head = `20260908000000`. New migration `20260909000000` is strictly greater. No remote-only versions to clobber.
+**Migration monotonicity:** max migration timestamp on origin/main + all worktrees = `20260908000000`, BUT the orchestrator's remote re-scan (MCP `list_migrations`, 2026-06-04) found the TRUE remote `schema_migrations` head is `20260910000000` (`meta_orch_1074_new_review_notify` — applied to remote but not yet on main, a COMMS-0018-class remote-only divergence the worktree scan could not see). Migration version bumped from the implementor's `20260909000000` to `20260911000000` so it is strictly greater than the true remote head per the SKILL monotonic-prefix rule. Applied via MCP `apply_migration` by the orchestrator (records the version; future `db push` from a linked checkout skips it idempotently).
 
 ---
 
@@ -46,7 +46,7 @@ detached_at = NULL,              stripe_account_id = acct_1Tdu4cPjlZvMV1oP
 
 ### Commit `e2c58f9bd` — migration + strict-grep gate + C7 allowlist (backend bundle, COMMS-0002 same-commit)
 
-#### `supabase/migrations/20260909000000_orch_1075_paid_publish_integrity_guards.sql` (NEW, ~3,516 lines)
+#### `supabase/migrations/20260911000000_orch_1075_paid_publish_integrity_guards.sql` (NEW, ~3,516 lines)
 - **Before:** no publish-time Stripe/date guard anywhere; readiness enforced only at checkout (`20260727000000_orch_0955:380-382`).
 - **Now:** new `pg_brand_can_charge(uuid)` STABLE sql helper mirroring the checkout SOURCE predicate (`stripe_connect_accounts.charges_enabled WHERE detached_at IS NULL AND stripe_account_id IS NOT NULL AND charges_enabled IS DISTINCT FROM false`); the 6 money RPCs + `business_patch_event_when` re-emitted verbatim + guard blocks. Guard A (`RAISE/return stripe_charges_disabled`) + Guard B (`RAISE/return offering_date_past`) on PAID offerings only. `business_patch_event_when` gets Guard B only. Trailing self-verify DO block asserts every RPC carries its markers (fails-on-revert at apply).
 - **Why:** SPEC §3.0–§3.5; moves the money fail-close from checkout-time to publish/edit-time.
@@ -139,7 +139,7 @@ In-person-only paid (`available_online=false`) is exempt everywhere (T-16) — o
 ```
 orch-1075 --self-test         → SELF-TEST PASSED
 orch-1075 (real)              → gate passed (all paid-publish/edit RPCs carry the required guards)
-orch-0792-A                   → passed (verified 20260909000000_orch_1075_paid_publish_integrity_guards.sql; INSERT INTO public.event_dates present)
+orch-0792-A                   → passed (verified 20260911000000_orch_1075_paid_publish_integrity_guards.sql; INSERT INTO public.event_dates present)
 orch-0792-B                   → passed
 orch-0863 C7 no-new-backend   → OK [C7] zero touches outside allowlist (18 files changed total)
 orch-0863 --self-test         → Self-test PASSED

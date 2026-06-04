@@ -18,7 +18,7 @@
 import { assert, assertEquals } from "jsr:@std/assert@1";
 
 const MIGRATION =
-  "supabase/migrations/20260909000000_orch_1075_paid_publish_integrity_guards.sql";
+  "supabase/migrations/20260911000000_orch_1075_paid_publish_integrity_guards.sql";
 
 const sql = await Deno.readTextFile(MIGRATION);
 

@@ -40,8 +40,11 @@
 -- guard block(s). The event_dates INSERT blocks (I-PUBLISH-WRITES-EVENT-DATES /
 -- orch-0792) and trg_events_enforce_master_date are preserved untouched.
 --
--- Monotonic: 20260909000000 > remote head (20260908000000) and > all sibling
--- worktree + origin/main migrations (scanned 2026-06-04).
+-- Monotonic: 20260911000000 > TRUE remote head (20260910000000 = META-ORCH-1074
+-- new_review_notify, applied-to-remote-but-not-yet-on-main) and > all sibling
+-- worktree + origin/main migrations (orchestrator re-scanned remote via MCP
+-- list_migrations 2026-06-04; bumped from the implementor's 20260909000000 which
+-- missed the remote-only 20260910000000 per the SKILL monotonic-prefix rule).
 -- C7 backend allowlist (ORCH_1075_BACKEND_ALLOWLIST) updated in the SAME commit
 -- (COMMS-0002).
 -- ===========================================================================
