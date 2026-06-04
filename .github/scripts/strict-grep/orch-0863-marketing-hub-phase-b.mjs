@@ -1585,6 +1585,7 @@ function checkNoNewBackendFiles() {
     "supabase/migrations/20260905000000_orch_1068_normalize_business_hours.sql",
     "supabase/functions/_shared/businessHoursToGoogle.ts",
     "supabase/functions/_shared/__tests__/businessHoursToGoogle.test.ts",
+    "supabase/functions/_shared/__tests__/businessHoursToGoogle.adversarial.test.ts",
     "supabase/functions/discover-cards/index.ts",
     "supabase/functions/_shared/curatedStopHours.ts",
     "supabase/functions/run-business-place-authoring-pipeline/index.ts",
