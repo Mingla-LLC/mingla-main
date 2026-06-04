@@ -68,8 +68,9 @@ export function VenueClaimStatusBanner({
   const copy = venueClaimBannerCopy(variant, brand.rejectionReason);
   if (copy === null) return null;
 
-  // ── ORCH-1064 — interactive follow_up tile ─────────────────────────────────
-  if (variant === "follow_up") {
+  // ── ORCH-1064 — interactive follow_up tile (ORCH-1073: `suspended` shares it
+  //    — same to-do checklist + resubmit loop, just suspension copy) ───────────
+  if (variant === "follow_up" || variant === "suspended") {
     const allFixed = openCount === 0;
     // DESIGN §2.4 — openCount===0 (all addressed, not yet re-submitted) swaps to
     // the "Ready" success badge + check icon + the re-submit nudge body.
@@ -117,9 +118,9 @@ export function VenueClaimStatusBanner({
     );
   }
 
-  // ── unchanged static variants (byte-identical to pre-ORCH-1064) ────────────
+  // ── static variants. ORCH-1073: `revoked` (removed) shares the error tone. ──
   const toneStyle =
-    variant === "rejected"
+    variant === "rejected" || variant === "revoked"
       ? styles.toneError
       : styles.toneInfo;
 
