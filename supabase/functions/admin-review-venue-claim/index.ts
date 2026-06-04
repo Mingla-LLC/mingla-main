@@ -23,6 +23,11 @@ import { sendPush } from "../_shared/push-utils.ts";
 // on approve. The approval wrapper is already the sole go-live writer for claims
 // (Constitution #2 preserved — no third uncoordinated is_servable writer added).
 import { bounce, type PlaceRow } from "../_shared/bouncer.ts";
+// META-ORCH-1074 Sub-A: write a business.claim_decision notification row
+// (inbox + business-app push) alongside the existing email + legacy raw push.
+// Single recipient = the brand owner (brandRow.account_id). business.* routes
+// to the business OneSignal app automatically via notify-dispatch.
+import { dispatchNotification } from "../_shared/stripeEdgeAuth.ts";
 import {
   auditActionForReview,
   feedbackPushCopy,
@@ -635,6 +640,42 @@ serve(async (req) => {
         },
         androidChannelId: "system",
       });
+    }
+
+    // META-ORCH-1074 Sub-A: business.claim_decision — write an inbox row +
+    // business-app push for the brand owner. Branches copy on the decision
+    // (approve → info; reject → warning). Idempotent on brandId:decision so a
+    // re-run of the same decision collapses. Non-fatal — never fails the review.
+    if (!noop && typeof brandRow.account_id === "string") {
+      const decision = parsed.action === "approve" ? "approved" : "rejected";
+      const rejectionReason = decision === "rejected"
+        ? ((brandRow.rejection_reason as string | null) ?? parsed.rejectionReason ?? "")
+        : "";
+      const title = decision === "approved" ? "Claim approved" : "Claim update";
+      const body = decision === "approved"
+        ? `${brandName} is yours. Tap to finish setup.`
+        : `We couldn't approve your ${brandName} claim. Tap for next steps.`;
+      try {
+        await dispatchNotification({
+          userId: brandRow.account_id,
+          brandId: parsed.brandId,
+          type: "business.claim_decision",
+          title,
+          body,
+          data: { decision, rejectionReason: rejectionReason || undefined },
+          relatedId: parsed.brandId,
+          relatedType: "brand",
+          idempotencyKey: `business.claim_decision:${parsed.brandId}:${decision}`,
+          deepLink: `mingla-business://brand/${parsed.brandId}/listing`,
+        });
+      } catch (claimNotifyErr) {
+        console.warn(
+          "[admin-review-venue-claim] business.claim_decision dispatch threw (non-fatal):",
+          claimNotifyErr instanceof Error
+            ? claimNotifyErr.message
+            : String(claimNotifyErr),
+        );
+      }
     }
 
     return json({

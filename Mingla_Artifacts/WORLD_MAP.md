@@ -1049,6 +1049,7 @@ Friend discovery → Pair requests → DM → Map presence → Activity feed
 
 | ID | Title | Surface | Severity | Class | Status | Grade | Verified | Evidence |
 |----|-------|---------|----------|-------|--------|-------|----------|----------|
+| META-ORCH-1074 | Mingla Business notifications feature (truly notify brand users) | business-iOS, business-Android (push+inbox), business-web-preview (inbox-only), backend | S1 | missing-feature | INTAKE+INVESTIGATE done → SPEC | F | 2026-06-04 | INVESTIGATION_META-ORCH-1074 + TAXONOMY_META-ORCH-1074. v1=12 notifications (operator-locked). 4 sub-ORCHs: A backend dual-app push routing + triggers, B client receive path, C inbox finish, D copy/prefs. Keystone gap: backend push-utils targets consumer OneSignal app only; business is a SEPARATE app needing ONESIGNAL_BUSINESS_APP_ID + REST key secrets. Reuse: notifications table (brand_id/deep_link), notify-dispatch, useBusinessNotifications hook, BusinessNotificationsScreen. |
 | ORCH-0001 | Phone OTP verification (onboarding) | Auth | S1 | quality-gap | verified | B | 2026-03-31 | INVESTIGATION_AUTH_WAVE1.md — backend solid, client in onboarding scope |
 | ORCH-0002 | Session persistence | Auth | S1 | quality-gap | verified | B | 2026-03-25 | _hasHydrated gate + Zustand persistence |
 | ORCH-0003 | Token refresh / expiry handling | Auth | S0 | bug | closed | A | 2026-03-24 | Commit aa9cfd68 |

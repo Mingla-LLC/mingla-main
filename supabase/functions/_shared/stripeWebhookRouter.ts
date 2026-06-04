@@ -9,9 +9,15 @@ import {
 import { generateIdempotencyKey } from "./idempotency.ts";
 import { writeAudit } from "./audit.ts";
 import {
+  BRAND_PAYMENTS_ROLES,
   dispatchNotification,
-  getBrandPaymentManagerUserIds,
+  formatMoneyCents,
+  getBrandTeamUserIdsByRoles,
 } from "./stripeEdgeAuth.ts";
+// META-ORCH-1074 Sub-A: shared order-finalize triggers (order_paid /
+// event_sold_out / low_inventory). Same helper the slow-path edge calls;
+// idempotency collapses the confirm-vs-webhook double-fire.
+import { fireOrderFinalizeNotifications } from "./businessNotifyTriggers.ts";
 import { qrTokenPepper } from "./ticketCheckout.ts";
 // ORCH-0869 [Tr3 Installment Payments]: discriminator + handlers for
 // installment PaymentIntent events. See SPEC §3.2.3.
@@ -170,11 +176,15 @@ async function notifyBrandManagers(
     relatedType?: string | null;
     idempotencyKey: string;
     deepLink?: string | null;
+    // META-ORCH-1074 Sub-A: optional recipient role-set (default = the 3
+    // payments-manager roles). Existing call-sites omit it and stay byte-stable.
+    roles?: readonly string[];
   },
 ): Promise<void> {
-  const userIds = await getBrandPaymentManagerUserIds(
+  const userIds = await getBrandTeamUserIdsByRoles(
     supabase as never,
     input.brandId,
+    input.roles ?? BRAND_PAYMENTS_ROLES,
   );
   for (const userId of userIds) {
     await dispatchNotification({
@@ -264,6 +274,59 @@ async function syncAccount(
       remediation: getKycRemediationForRequirements(requirements),
     },
   });
+
+  // META-ORCH-1074 Sub-A: notify the brand when payments capability actually
+  // TRANSITIONS (restricted ↔ active), not on every account.updated. We key off
+  // the prior snapshot's charges_enabled vs the new value. Recipients: owner +
+  // finance. Copy branches on data.status (Sub-D §3.8). Idempotent on
+  // stripeAccountId:stateHash (the from→to boolean pair) so a re-delivery of
+  // the same transition collapses. A brand with no prior row (first sync) is
+  // NOT a transition — skip to avoid a spurious "reactivated" on connect.
+  {
+    const priorCharges = prior.data?.charges_enabled === true;
+    const nowCharges = account.charges_enabled === true;
+    const hadPriorRow = prior.data !== null && prior.data !== undefined;
+    if (hadPriorRow && priorCharges !== nowCharges) {
+      try {
+        const status = nowCharges ? "reactivated" : "restricted";
+        const stateHash = `${priorCharges ? 1 : 0}${nowCharges ? 1 : 0}`;
+        const { data: brandRow } = await supabase
+          .from("brands")
+          .select("name")
+          .eq("id", brandId)
+          .maybeSingle();
+        const brandName = (brandRow?.name as string | null) ?? "Your account";
+        const title = status === "restricted" ? "Payments paused" : "Payments back on";
+        const body = status === "restricted"
+          ? `${brandName}: Stripe paused payments. Tap to resolve.`
+          : `${brandName} can accept payments again.`;
+        await notifyBrandManagers(supabase, {
+          brandId,
+          type: "business.account_status_changed",
+          title,
+          body,
+          data: {
+            stripeAccountId,
+            status,
+            chargesEnabled: nowCharges,
+            payoutsEnabled: account.payouts_enabled === true,
+          },
+          relatedId: stripeAccountId,
+          relatedType: "stripe_account",
+          idempotencyKey: `business.account_status_changed:${stripeAccountId}:${stateHash}`,
+          deepLink: `mingla-business://payments`,
+          roles: ["brand_owner", "finance_manager"],
+        });
+      } catch (statusNotifyErr) {
+        console.warn(
+          "[stripe-webhook] business.account_status_changed notify threw (non-fatal):",
+          statusNotifyErr instanceof Error
+            ? statusNotifyErr.message
+            : String(statusNotifyErr),
+        );
+      }
+    }
+  }
 
   // ORCH-0808 — AppsFlyer S2S: fire mingla_stripe_connect_activated exactly
   // once per brand on the first charges_enabled true. Idempotent via
@@ -467,6 +530,30 @@ async function handlePayout(
   // canceled, in_transit) do NOT trigger the milestone. Idempotent via
   // brand_appsflyer_milestones. Never propagates failure to Stripe.
   if (event.type === "payout.paid") {
+    // META-ORCH-1074 Sub-A: notify the brand that a payout landed (today only
+    // payout.failed notified). Recipients: owner + finance. Idempotent on
+    // payoutId. business.* routes to the business OneSignal app automatically.
+    const payoutAmountCents = Number(payout.amount ?? 0);
+    const payoutCurrency = char3(payout.currency, "USD");
+    const arrivalDate = dateFromUnixSeconds(payout.arrival_date);
+    await notifyBrandManagers(supabase, {
+      brandId,
+      type: "business.payout_paid",
+      title: "You got paid",
+      body: `${formatMoneyCents(payoutAmountCents, payoutCurrency)} is on its way to your bank.`,
+      data: {
+        payoutId,
+        amountCents: payoutAmountCents,
+        currency: payoutCurrency,
+        arrivalDate,
+      },
+      relatedId: payoutId,
+      relatedType: "payout",
+      idempotencyKey: `business.payout_paid:${payoutId}`,
+      deepLink: `mingla-business://payments`,
+      roles: ["brand_owner", "finance_manager"],
+    });
+
     try {
       const isFirst = await claimBrandMilestone(
         supabase,
@@ -681,6 +768,57 @@ async function handleRefundEvent(
 
   if (commitError) {
     throw new Error(`refund webhook commit failed: ${commitError.message}`);
+  }
+
+  // META-ORCH-1074 Sub-A: notify the brand that a refund was processed.
+  // Recipients: owner + finance. Idempotent on refundId so webhook replays +
+  // the refund.* event family (charge.refunded / refund.updated all hit this
+  // handler) collapse to one row per recipient. Reads event title for the copy.
+  if (brandId) {
+    try {
+      const { data: refundOrder } = await supabase
+        .from("orders")
+        .select("event_id, currency, events(title)")
+        .eq("id", orderId)
+        .maybeSingle();
+      const eventId = (refundOrder?.event_id as string | null) ?? null;
+      const eventsJoin = refundOrder?.events as
+        | { title?: string }
+        | Array<{ title?: string }>
+        | null
+        | undefined;
+      const eventTitle =
+        (Array.isArray(eventsJoin) ? eventsJoin[0]?.title : eventsJoin?.title) ??
+          "a recent order";
+      const refundCurrency = (refundOrder?.currency as string | null) ?? currency;
+      await notifyBrandManagers(supabase, {
+        brandId,
+        type: "business.refund_processed",
+        title: "Refund processed",
+        body: `${formatMoneyCents(amountCents, refundCurrency)} refunded for ${eventTitle}.`,
+        data: {
+          orderId,
+          refundId,
+          amountCents,
+          currency: refundCurrency,
+          eventId,
+        },
+        relatedId: orderId,
+        relatedType: "order",
+        idempotencyKey: `business.refund_processed:${refundId}`,
+        deepLink: eventId
+          ? `mingla-business://event/${eventId}`
+          : `mingla-business://payments`,
+        roles: ["brand_owner", "finance_manager"],
+      });
+    } catch (refundNotifyErr) {
+      console.warn(
+        "[stripe-webhook] business refund notify threw (non-fatal):",
+        refundNotifyErr instanceof Error
+          ? refundNotifyErr.message
+          : String(refundNotifyErr),
+      );
+    }
   }
 
   if (stripeAccountId) {
@@ -1028,6 +1166,43 @@ async function handleTicketCheckoutPaymentIntent(
           },
           body: JSON.stringify({ orderId }),
         });
+      }
+
+      // META-ORCH-1074 Sub-A: fire business.order_paid (+ sold_out /
+      // low_inventory) from the webhook race-winner. Idempotency-keyed on
+      // orderId/eventId so the parallel ticket-checkout-confirm fire collapses
+      // to one notification row per recipient. Non-fatal — never fails the
+      // webhook. Reads the canonical order totals + ticket count.
+      try {
+        const brandId = session.brand_id as string | null;
+        const eventId = session.event_id as string | null;
+        if (brandId && eventId) {
+          const { data: orderRow } = await supabase
+            .from("orders")
+            .select("total_cents, currency")
+            .eq("id", orderId)
+            .maybeSingle();
+          const { count: ticketCount } = await supabase
+            .from("tickets")
+            .select("id", { count: "exact", head: true })
+            .eq("order_id", orderId);
+          await fireOrderFinalizeNotifications(supabase as never, {
+            brandId,
+            eventId,
+            orderId,
+            totalCents: Number(orderRow?.total_cents ?? paymentIntent.amount ?? 0),
+            currency: (orderRow?.currency as string | null) ??
+              (typeof paymentIntent.currency === "string"
+                ? paymentIntent.currency
+                : null),
+            qty: ticketCount ?? 0,
+          });
+        }
+      } catch (notifyErr) {
+        console.warn(
+          "[stripe-webhook] business order-finalize notify threw (non-fatal):",
+          notifyErr instanceof Error ? notifyErr.message : String(notifyErr),
+        );
       }
     }
 

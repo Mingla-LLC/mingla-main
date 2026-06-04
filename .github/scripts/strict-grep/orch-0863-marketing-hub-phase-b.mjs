@@ -1621,6 +1621,30 @@ function checkNoNewBackendFiles() {
     "supabase/migrations/20260826000000_orch_1058b_post_collab_dead_end_banner.sql",
     "supabase/migrations/20260826000001_orch_1058b_allow_system_message_type.sql",
   ];
+  // META-ORCH-1074 Sub-A [Backend dual-app push routing + business notification
+  // triggers]. C7 is scoped to ORCH-0863 marketing; these are notification-
+  // routing + trigger backend touches. Per COMMS-0002 this allowlist lands in
+  // the SAME commit as the backend change. New files: the new_review pg_net
+  // trigger migration, the shared businessNotifyTriggers module, and the
+  // implementor regression tests. MODIFIED existing files (push-utils,
+  // notify-dispatch, stripeEdgeAuth, stripeWebhookRouter, stripeDisputeHandlers,
+  // ticket-checkout-confirm, admin-review-venue-claim, accept-brand-invitation)
+  // are edits not new files, but are listed for a complete audit trail and to
+  // stay byte-identical to the ORCH-1064/1066 precedent.
+  const META_ORCH_1074_BACKEND_ALLOWLIST = [
+    "supabase/migrations/20260910000000_meta_orch_1074_new_review_notify.sql",
+    "supabase/functions/_shared/businessNotifyTriggers.ts",
+    "supabase/functions/_shared/push-utils.ts",
+    "supabase/functions/notify-dispatch/index.ts",
+    "supabase/functions/_shared/stripeEdgeAuth.ts",
+    "supabase/functions/_shared/stripeWebhookRouter.ts",
+    "supabase/functions/_shared/stripeDisputeHandlers.ts",
+    "supabase/functions/ticket-checkout-confirm/index.ts",
+    "supabase/functions/admin-review-venue-claim/index.ts",
+    "supabase/functions/accept-brand-invitation/index.ts",
+    "supabase/functions/_shared/__tests__/meta_orch_1074_push_routing.test.ts",
+    "supabase/functions/_shared/__tests__/meta_orch_1074_order_paid_payload.test.ts",
+  ];
   // ORCH-1066 [admin deck score tuner + card preview]: adds the new 4-RPC
   // deck-score-tuner migration + its SQL-shape migration test + the
   // sticky-through-approval Deno regression test. run-signal-scorer/index.ts and
@@ -1668,6 +1692,7 @@ function checkNoNewBackendFiles() {
     "supabase/migrations/20260907000000_orch_1070_deck_experiences_strict_intent.sql",
   ];
   const ALLOWLIST = [
+    ...META_ORCH_1074_BACKEND_ALLOWLIST,
     ...ORCH_1070_BACKEND_ALLOWLIST,
     ...ORCH_1069_BACKEND_ALLOWLIST,
     ...ORCH_1068_BACKEND_ALLOWLIST,
