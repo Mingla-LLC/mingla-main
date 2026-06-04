@@ -41,6 +41,11 @@ Sentry.init({
   // 10% session-replay coverage caused ~5-15% sustained CPU on Snapdragon 6xx
   // Android during scroll. 1% is plenty for diagnostic sampling pre-launch.
   // DO NOT raise without ORCH approval — Android perf cost.
+  // ORCH-1064: 100% session-replay diagnostic was used to capture the device-only
+  // input-capture freeze (no crash/hang/error to surface it otherwise). Freeze
+  // root-caused (BaseBottomSheet half-open stall) + fixed (double-drive removal +
+  // deterministic timing animation) + operator-confirmed on device 2026-06-03.
+  // Reverted to 0.01 per the Android-perf rule above.
   replaysSessionSampleRate: 0.01,
   replaysOnErrorSampleRate: 1,
   integrations: [Sentry.mobileReplayIntegration()],
@@ -51,6 +56,13 @@ Sentry.init({
   // Capture 100% of errors — we need every crash right now (no perf trace sampling).
   tracesSampleRate: 0,
   maxBreadcrumbs: 50,
+
+  // ORCH-1064: capture main-thread freezes (app hangs / ANRs) with a stack trace.
+  // The intermittent expanded-sheet freeze leaves no fatal crash, so without this
+  // we get no diagnostics. iOS app-hang fires after the main thread stalls >2s;
+  // the event flushes on recovery or the next launch.
+  enableAppHangTracking: true,
+  appHangTimeoutInterval: 2,
 
   // CRITICAL: Sentry disabled in dev. Preserved from the deleted app/index.tsx
   // init so collection only fires in production builds.
