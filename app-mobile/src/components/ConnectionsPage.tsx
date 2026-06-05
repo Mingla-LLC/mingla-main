@@ -2086,8 +2086,45 @@ function ConnectionsPageRefactored({
           }
         }
 
+        if (!rawConversation && deepLinkParams.sessionId) {
+          // ORCH-1077: collab/session notifications resolve sessionId → the
+          // session's group chat, mirroring the eventId branch above. The deck is
+          // reached via the in-chat CTA (META-ORCH-0929). `session_id` +
+          // `linked_entity_type:'session'` MUST be carried so MessageInterface
+          // detects isCollabSessionGroupChat and surfaces that CTA.
+          const { conversation, error } =
+            await messagingService.getOrCreateGroupConversationForSession(
+              deepLinkParams.sessionId,
+            );
+          if (error) throw new Error(error);
+          if (conversation) {
+            rawConversation = {
+              id: conversation.id,
+              created_by: conversation.created_by ?? '',
+              created_at: conversation.created_at,
+              participants: conversation.participants.map((p) => ({
+                id: p.user_id,
+                username: 'user',
+              })),
+              last_message: undefined,
+              unread_count: 0,
+              messages: [],
+              type: conversation.type,
+              name: conversation.name ?? 'Session chat',
+              session_id: conversation.session_id ?? deepLinkParams.sessionId,
+              linked_entity_type: conversation.linked_entity_type,
+            } as Conversation;
+          }
+        }
+
         if (!cancelled && rawConversation) {
           await handleSelectConversation(rawConversation);
+          onDeepLinkHandled?.();
+        } else if (!cancelled) {
+          // ORCH-1077 SC-5/SC-6: no conversation resolved (missing group chat for
+          // the session, or a malformed link with no id/eventId). Land on the
+          // Messages tab without crashing and clear the pending deep link so it
+          // doesn't re-fire — no infinite spinner, no stuck deepLinkParams.
           onDeepLinkHandled?.();
         }
       } catch (err) {

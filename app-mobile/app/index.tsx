@@ -267,14 +267,13 @@ function AppContent() {
     useState<number>(0);
   const [isCreatingSession, setIsCreatingSession] = useState<boolean>(false);
   const [showPaywall, setShowPaywall] = useState<boolean>(false);
-  // ORCH-1030: session deep-link target. A session notification lands on Home
-  // (fixing the F-01 wrong-tab-to-Connections misroute) and records the session
-  // id here. NOTE: auto-opening the specific CollabDeckSheet is a documented v2
-  // gap — collab decks mount ONLY inside the session's group chat per the active
-  // [[collab-deck-lives-in-group-chat]] product rule and Home is solo-only, so
-  // there is no Home primitive to auto-open the deck. The pill/Home landing is
-  // the correct v1 container.
-  const [pendingSessionOpen, setPendingSessionOpen] = useState<string | null>(null);
+  // ORCH-1077: session deep-link target removed. A session/collab notification
+  // now lands in the session's GROUP CHAT (Messages tab) via the `session`
+  // executor branch in deepLinkService (setDeepLinkParams({tab:'messages',
+  // sessionId}) + setCurrentPage('connections')), where ConnectionsPage resolves
+  // sessionId → group conversation and the in-chat CTA reaches the deck
+  // (META-ORCH-0929: deck lives in CollabDeckSheet, not Home). The former
+  // ORCH-1030 Home-landing session seam was a no-op and is deleted.
   const [pendingOpenDmUserId, setPendingOpenDmUserId] = useState<string | null>(null);
   const [pendingConnectionsPanel, setPendingConnectionsPanel] = useState<"friends" | "add" | "blocked" | null>(null);
   const [collabPreferencesTarget, setCollabPreferencesTarget] = useState<{
@@ -415,13 +414,14 @@ function AppContent() {
   // Registered once on mount. Uses userIdRef for current auth state.
   useEffect(() => {
     // ORCH-1030: the push routing handlers — same NavigationHandlers shape as the
-    // in-app `notificationHandlers`, including setPendingSessionOpen +
+    // in-app `notificationHandlers`, including setDeepLinkParams +
     // setViewingFriendProfileId (previously absent here, which is why push
     // session/profile taps silently failed). All members are React-stable
     // setState setters, safe to capture in this mount-once effect closure.
+    // ORCH-1077: the session-open handler was removed — session taps now route
+    // to the group chat via setDeepLinkParams({tab:'messages', sessionId}).
     const pushNavigationHandlers: NavigationHandlers = {
       setCurrentPage: setCurrentPage as (page: string) => void,
-      setPendingSessionOpen: (sessionId: string) => setPendingSessionOpen(sessionId),
       setViewingFriendProfileId: (id: string) => setViewingFriendProfileId(id),
       setShowPaywall: (show: boolean) => setShowPaywall(show),
       setDeepLinkParams: (params: Record<string, string>) => setDeepLinkParams(params),
@@ -738,9 +738,10 @@ function AppContent() {
   // V2: Process pending deep link after auth resolves (warm-process login —
   // the user was signed out when the push arrived but did NOT cold-launch, so
   // the in-memory ref survived). ORCH-1030: routes through the ONE canonical
-  // pipeline with the FULL handler set (setPendingSessionOpen +
+  // pipeline with the FULL handler set (setDeepLinkParams +
   // setViewingFriendProfileId included) so a deferred session/profile tap
-  // reaches its container instead of silently no-op'ing. The legacy ORCH-0435
+  // reaches its container instead of silently no-op'ing. ORCH-1077: session taps
+  // route to the group chat via setDeepLinkParams. The legacy ORCH-0435
   // paired→notificationId-lookup branch is removed: no producer emits
   // `notificationId` in the deepLink, and `mingla://discover?paired=true` now
   // parses to the typed `pairedDeck` Destination directly.
@@ -749,7 +750,6 @@ function AppContent() {
       const dest = parseDeepLink(pendingDeepLinkRef.current);
       executeDeepLink(dest, {
         setCurrentPage: setCurrentPage as (page: string) => void,
-        setPendingSessionOpen: (sessionId: string) => setPendingSessionOpen(sessionId),
         setViewingFriendProfileId: (id: string) => setViewingFriendProfileId(id),
         setShowPaywall: (show: boolean) => setShowPaywall(show),
         setDeepLinkParams: (params: Record<string, string>) => setDeepLinkParams(params),
@@ -983,25 +983,15 @@ function AppContent() {
   // All members are React-stable setState setters, so this memo never changes.
   const notificationHandlers = useMemo<NavigationHandlers>(() => ({
     setCurrentPage: setCurrentPage as (page: string) => void,
-    setPendingSessionOpen: (sessionId: string) => setPendingSessionOpen(sessionId),
     setViewingFriendProfileId: (id: string) => setViewingFriendProfileId(id),
     setShowPaywall: (show: boolean) => setShowPaywall(show),
     setDeepLinkParams: (params: Record<string, string>) => setDeepLinkParams(params),
   }), [setCurrentPage, setViewingFriendProfileId, setShowPaywall, setDeepLinkParams]);
 
-  // ORCH-1030: a session notification records its id in `pendingSessionOpen` and
-  // lands the user on Home (the correct container — fixes F-01's wrong-tab
-  // misroute to Connections). Auto-opening the specific CollabDeckSheet is a
-  // documented v2 follow-up: collab decks mount ONLY inside the session's group
-  // chat per [[collab-deck-lives-in-group-chat]] and Home is solo-only, so there
-  // is no Home primitive to auto-open the deck. We clear the pending id once Home
-  // is reached so a later tap re-triggers cleanly. This effect is the v2 seam.
-  useEffect(() => {
-    if (pendingSessionOpen && currentPage === 'home') {
-      // v2 hook point: open the CollabDeckSheet for `pendingSessionOpen` here.
-      setPendingSessionOpen(null);
-    }
-  }, [pendingSessionOpen, currentPage]);
+  // ORCH-1077: the former ORCH-1030 Home-landing session effect is
+  // deleted. Session/collab notifications now route to the session's group chat
+  // (Messages tab) via deepLinkService's `session` executor branch; the deck is
+  // reached via the in-chat CTA (META-ORCH-0929). No Home seam remains.
 
   // Handle notification tap → navigate to the relevant page (V2: ServerNotification)
   // ORCH-0679 Wave 2.5: useCallback-wrapped — all closure deps are setState
@@ -1703,13 +1693,12 @@ function AppContent() {
 
     // ORCH-1030: OS Linking + the F-13 cold-start deferred replay (which calls
     // handleDeepLink with the persisted URL) route through the ONE canonical
-    // pipeline with the FULL handler set — including setPendingSessionOpen +
-    // setViewingFriendProfileId — so a `mingla://session/{id}` or
-    // `mingla://profile/{id}` cold-start tap reaches its container (SC-6).
+    // pipeline with the FULL handler set — including setDeepLinkParams +
+    // setViewingFriendProfileId — so a `mingla://session/{id}` (→ group chat,
+    // ORCH-1077) or `mingla://profile/{id}` cold-start tap reaches its container.
     const action = parseDeepLink(url);
     executeDeepLink(action, {
       setCurrentPage: setCurrentPage as (page: string) => void,
-      setPendingSessionOpen: (sessionId: string) => setPendingSessionOpen(sessionId),
       setViewingFriendProfileId: (id: string) => setViewingFriendProfileId(id),
       setShowPaywall: (show: boolean) => setShowPaywall(show),
       setDeepLinkParams: (params: Record<string, string>) => setDeepLinkParams(params),

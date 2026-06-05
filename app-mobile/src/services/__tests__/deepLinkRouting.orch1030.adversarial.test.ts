@@ -1,4 +1,12 @@
 // @ts-nocheck
+// [TEST-MOD-APPROVED ORCH-1077] — the SESSION-routing assertions here were
+// updated from the ORCH-1030 "session → HOME" target to the ORCH-1077
+// "session → GROUP CHAT (connections/messages)" target (operator-locked
+// 2026-06-04). A session/collab notification now lands in the session's group
+// chat, where the in-chat CTA reaches the deck (META-ORCH-0929 immutable). All
+// NON-session adversarial assertions (stale ids for calendar/profile, garbage
+// nulls, special-case-killer, profile boundary, null-input no-op) are unchanged.
+//
 // ORCH-1030 [Consumer app notification deep-linking] — ADVERSARIAL regression test (tester-authored).
 //
 // This is the tester's INDEPENDENT gate. Unlike the implementor's happy-path
@@ -25,9 +33,9 @@
 //      and NO ids, must yield a Destination whose executor lands on a real page
 //      (never null, never a kind the executor has no branch for).
 //
-// fails-on-revert anchor: re-introducing the F-01
-//   collaboration_/session_ → { kind:'page', page:'connections' }
-// branch into typeFallbackDestination breaks tests in section (4) + (6).
+// fails-on-revert anchor: ORCH-1077 routes a session Destination to the group
+// chat (connections/messages). Reverting the executor `session` branch back to
+// the dead Home seam breaks the session assertions in sections (1) + (4).
 import {
   assertEquals,
   assertNotEquals,
@@ -78,17 +86,19 @@ function landedSomewhere(calls) {
 }
 
 // ── (1) Stale / deleted entity id — graceful degrade, never null ─────────────
-Deno.test("ADV-1a: mingla://session/{deleted-id} still parses to a session Destination (executor lands Home, never blank)", () => {
+Deno.test("ADV-1a: mingla://session/{deleted-id} still parses to a session Destination (executor lands the GROUP CHAT, never blank)", () => {
   const dest = parseDeepLink("mingla://session/deleted-sess-404");
   assertEquals(dest.kind, "session");
   assertEquals(dest.sessionId, "deleted-sess-404");
   const { handlers, calls } = makeHandlers();
   executeDeepLink(dest, handlers);
-  // Lands Home (the correct container) + records the pending session open.
-  // A non-existent session can never blank: index.tsx's pendingSessionOpen
-  // effect just lands Home and clears the id.
-  assertEquals(calls.page, "home");
-  assertEquals(calls.sessionOpened, "deleted-sess-404");
+  // ORCH-1077: lands the Messages tab carrying the sessionId. A non-existent
+  // session can never blank: ConnectionsPage resolves nothing, clears the deep
+  // link, and the user stays on the Connections/Messages tab (SC-5).
+  assertEquals(calls.page, "connections");
+  assertEquals(calls.deepLinkParams.tab, "messages");
+  assertEquals(calls.deepLinkParams.sessionId, "deleted-sess-404");
+  assertEquals(calls.sessionOpened, null);
   assertEquals(landedSomewhere(calls), true);
 });
 
@@ -199,11 +209,14 @@ Deno.test("ADV-4: in-app, push, and deferred-replay reach the IDENTICAL Destinat
   executeDeepLink(deferred, c.handlers);
   assertEquals(a.calls.page, b.calls.page);
   assertEquals(b.calls.page, c.calls.page);
-  assertEquals(a.calls.sessionOpened, c.calls.sessionOpened);
-  assertEquals(a.calls.page, "home");
-  // The bug regression assertion: NONE of the three may land Connections.
+  assertEquals(a.calls.deepLinkParams?.sessionId, c.calls.deepLinkParams?.sessionId);
+  // ORCH-1077: all three land the session's group chat (Messages tab), and the
+  // dead Home seam never fires.
+  assertEquals(a.calls.page, "connections");
   for (const calls of [a.calls, b.calls, c.calls]) {
-    assertNotEquals(calls.page, "connections");
+    assertEquals(calls.page, "connections");
+    assertEquals(calls.deepLinkParams.tab, "messages");
+    assertEquals(calls.sessionOpened, null);
   }
 });
 

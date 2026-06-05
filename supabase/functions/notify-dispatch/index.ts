@@ -183,6 +183,11 @@ const typeToPreference: Record<string, string> = {
   "re_engagement_3d": "marketing",
   "re_engagement_7d": "marketing",
   "weekly_digest": "marketing",
+  // ORCH-1077 S-2: referral_credited was missing from the map, so it bypassed
+  // the opt-out gate (typeToPreference[type] === undefined → always sent).
+  // "marketing" is the closest existing bucket (no dedicated referral pref
+  // column). The mingla://profile?tab=subscription deep link is unchanged.
+  "referral_credited": "marketing",
   // REMINDERS PREFERENCE (Block 3 Pass 2 — hardened 2026-03-21)
   // Calendar + holiday reminders gated under "reminders" preference.
   // Previously calendar reminders had no preference key (always sent push).

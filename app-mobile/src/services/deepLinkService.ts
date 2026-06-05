@@ -24,7 +24,11 @@
  * F-02/F-11 param-dropped-at-screen class).
  */
 export type Destination =
-  | { kind: 'session'; sessionId: string }
+  // ORCH-1077: a session Destination lands in the session's GROUP CHAT (Messages),
+  // not Home. `card` (from `mingla://session/{id}?card={cardId}`) is carried through
+  // so it survives into ConnectionsPage's deepLinkParams (board_card_message). The
+  // deck stays one tap away via the in-chat CTA (META-ORCH-0929 immutable).
+  | { kind: 'session'; sessionId: string; card?: string }
   | {
       kind: 'conversation';
       conversationId?: string;
@@ -46,7 +50,6 @@ export type Destination =
 
 export interface NavigationHandlers {
   setCurrentPage: (page: string) => void;
-  setPendingSessionOpen?: (sessionId: string) => void;
   setShowPreferences?: (show: boolean) => void;
   setShowPaywall?: (show: boolean) => void;
   setViewingFriendProfileId?: (id: string) => void;
@@ -100,13 +103,21 @@ export function parseDeepLink(url: string): Destination | null {
         return { kind: 'page', page: 'connections', params };
 
       case 'session': {
-        // Path-form mingla://session/{id} AND query-form mingla://session?id={id}
-        // (the tag-along producer emits the query-form — F-12 latent fix).
+        // ORCH-1077: collab/session notifications land in the session's GROUP CHAT
+        // (deck is one tap away via the in-chat CTA). META-ORCH-0929: there is no
+        // home-mounted session deck anymore. Accept BOTH shapes:
+        //   mingla://session/{id}        (collab lifecycle: invite/accept/match/lock/card-msg)
+        //   mingla://session?id={id}     (tag_along_accepted / tag_along_match)
         const sessionId = pathSegments[1] ?? params.id;
         if (!sessionId) {
+          // Malformed link with no id → land Home (never a dead tap), but no
+          // session/group-chat routing happens. ConnectionsPage short-circuits.
           return { kind: 'page', page: 'home' };
         }
-        return { kind: 'session', sessionId };
+        // Carry the `card` param (board_card_message) through to the group chat.
+        return params.card
+          ? { kind: 'session', sessionId, card: params.card }
+          : { kind: 'session', sessionId };
       }
 
       case 'messages':
@@ -276,10 +287,17 @@ export function executeDeepLink(
   if (!dest) return;
 
   switch (dest.kind) {
-    case 'session':
-      handlers.setPendingSessionOpen?.(dest.sessionId);
-      handlers.setCurrentPage('home');
+    case 'session': {
+      // ORCH-1077: route to the session's GROUP CHAT (Messages tab), NOT Home.
+      // ConnectionsPage resolves sessionId → getOrCreateGroupConversationForSession
+      // and opens that conversation; the in-chat CTA surfaces the deck
+      // (META-ORCH-0929: the deck sheet is reached from inside the group chat).
+      const params: Record<string, string> = { tab: 'messages', sessionId: dest.sessionId };
+      if (dest.card) params.card = dest.card;
+      handlers.setDeepLinkParams?.(params);
+      handlers.setCurrentPage('connections');
       break;
+    }
 
     case 'conversation': {
       const params: Record<string, string> = { tab: 'messages' };
