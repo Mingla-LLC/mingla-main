@@ -2,6 +2,9 @@ import { resolveCategories, mapPrimaryTypeToMinglaCategory, mapCategoryToSlug, S
 import { googleLevelToTierSlug, type PriceTierSlug } from "./priceTiers.ts";
 import { getCompositionForHolidayKey, COMBO_EMPTY_REASON, type CompositionRule } from "./personHeroComposition.ts";
 import { TRAVEL_CONFIG } from "./distanceMath.ts";
+// META-ORCH-1060 §4: the paired-view 4th fallback — forward-geocode the
+// friend's text `profiles.location` when they have no GPS/custom/discover coords.
+import { forwardGeocodeText } from "./mapboxGeocode.ts";
 
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -322,6 +325,9 @@ export async function resolveFriendLocation(
   viewerId: string,
   friendId: string,
 ): Promise<FriendLocation | null> {
+  // CONSENT GATE: get_paired_friend_last_location enforces the active-pairing
+  // check internally (either direction). It resolves the friend's location in
+  // priority order: recent GPS history → custom_lat/lng → discover_city_lat/lng.
   const { data, error } = await adminClient.rpc("get_paired_friend_last_location", {
     p_viewer_id: viewerId,
     p_friend_id: friendId,
@@ -329,16 +335,51 @@ export async function resolveFriendLocation(
   if (error) throw error;
   const row = Array.isArray(data) ? data[0] : null;
   if (
-    !row ||
-    typeof row.latitude !== "number" ||
-    typeof row.longitude !== "number"
+    row &&
+    typeof row.latitude === "number" &&
+    typeof row.longitude === "number"
   ) {
+    return {
+      lat: row.latitude,
+      lng: row.longitude,
+      capturedAt: typeof row.captured_at === "string" ? row.captured_at : null,
+    };
+  }
+
+  // META-ORCH-1060 §4 — 4th fallback (was: empty "no recent location" state):
+  // the friend has no numeric coords from any tier, but may have a CITY text in
+  // profiles.location. Forward-geocode that text server-side so the deck centers
+  // where the hero says. This path is reached ONLY after the consent-gated RPC
+  // above ran for THIS (viewer, friend) pair and returned no coords — we never
+  // add a separate un-gated read path (SPEC §4.5). Best-effort: a geocode failure
+  // or empty text degrades to the existing null → "missing" state (never fabricate
+  // a location, Constitution #3). The forward helper caches text→coords to cap
+  // Mapbox calls (SPEC §4.6).
+  let locationText: string | null = null;
+  try {
+    const { data: profileRow, error: profileError } = await adminClient
+      .from("profiles")
+      .select("location")
+      .eq("id", friendId)
+      .maybeSingle();
+    if (profileError) {
+      console.warn("[resolveFriendLocation] profile read failed:", profileError.message);
+      return null;
+    }
+    locationText =
+      profileRow && typeof profileRow.location === "string" ? profileRow.location : null;
+  } catch (e) {
+    // Defensive: degrade to the existing null → "missing" state if the admin
+    // client cannot read profiles (Constitution #3 — never fabricate a location).
+    console.warn("[resolveFriendLocation] profile read threw:", e);
     return null;
   }
+  const coords = await forwardGeocodeText(locationText);
+  if (!coords) return null;
   return {
-    lat: row.latitude,
-    lng: row.longitude,
-    capturedAt: typeof row.captured_at === "string" ? row.captured_at : null,
+    lat: coords.lat,
+    lng: coords.lng,
+    capturedAt: null, // geocoded from text — no capture timestamp
   };
 }
 

@@ -32,6 +32,12 @@
 
 import { useStripePaymentSheet } from "@mingla/payments-native";
 import { initStripe } from "@stripe/stripe-react-native";
+// META-ORCH-1076 [Paystack Africa] — in-app browser for the Paystack hosted
+// checkout redirect (mirror of app-mobile). We never parse payment state from
+// the redirect; we poll ticket-checkout-status (driven by the verified
+// charge.success webhook — the source of truth).
+//   https://paystack.com/docs/guides/using_the_paystack_checkout_in_a_mobile_webview/
+import * as WebBrowser from "expo-web-browser";
 
 import { supabase } from "../services/supabase";
 
@@ -98,9 +104,44 @@ type CheckoutCreateResponse =
     hostedCheckoutUrl: string | null;
     totalCents: number;
     currency: string;
+  }
+  // META-ORCH-1076 [Paystack Africa] — Nigerian (NGN) brands. Mirror of the
+  // app-mobile consumer arm; the in-app browser opens Paystack hosted checkout
+  // and we poll the server for the finalized order.
+  | {
+    kind: "requires_paystack_redirect";
+    checkoutSessionId: string;
+    buyerStatusToken: string;
+    authorizationUrl: string;
+    reference: string;
+    totalCents: number;
+    currency: string;
   };
 
 const MERCHANT_DISPLAY_NAME = "Mingla";
+
+// META-ORCH-1076 — bounded poll for the Paystack order (webhook is the truth;
+// the redirect is unreliable). ~25s budget at 1.5s intervals. Mirror of the
+// app-mobile consumer helper.
+const PAYSTACK_POLL_INTERVAL_MS = 1500;
+const PAYSTACK_POLL_MAX_ATTEMPTS = 17;
+
+async function pollPaystackOrder(
+  checkoutSessionId: string,
+  buyerStatusToken: string,
+): Promise<string | null> {
+  for (let attempt = 0; attempt < PAYSTACK_POLL_MAX_ATTEMPTS; attempt++) {
+    const { data } = await supabase.functions.invoke<{
+      order: { orderId: string } | null;
+    }>("ticket-checkout-status", {
+      body: { checkoutSessionId, buyerStatusToken },
+    });
+    const orderId = data?.order?.orderId;
+    if (orderId) return orderId;
+    await new Promise((resolve) => setTimeout(resolve, PAYSTACK_POLL_INTERVAL_MS));
+  }
+  return null;
+}
 
 // ORCH-0849: business merchant identifier + URL scheme. Must match the
 // Stripe Dashboard registration AND the <StripeNativeProvider> mount in
@@ -317,7 +358,34 @@ export const useNativeCheckoutFlow = (): (
       return { outcome: "succeeded", orderId: data.checkoutSessionId };
     }
 
-    // 2c. Web redirect from a native client is a server/client mismatch
+    // 2c. META-ORCH-1076 — Paystack (NGN). Open Paystack's hosted checkout in
+    // an in-app browser, then poll the server for the finalized order.
+    if (data.kind === "requires_paystack_redirect") {
+      try {
+        await WebBrowser.openAuthSessionAsync(
+          data.authorizationUrl,
+          "https://business.usemingla.com/pay/callback",
+        );
+      } catch (err) {
+        console.warn("[nativeCheckoutFlow:business] paystack browser error", err);
+        // Still poll — the buyer may have paid before the browser errored.
+      }
+
+      const orderId = await pollPaystackOrder(
+        data.checkoutSessionId,
+        data.buyerStatusToken,
+      );
+      if (orderId) {
+        return { outcome: "succeeded", orderId };
+      }
+      return {
+        outcome: "failed",
+        message:
+          "We couldn't confirm your payment yet. If you completed it, your tickets will appear shortly.",
+      };
+    }
+
+    // 2d. Web redirect from a native client is a server/client mismatch
     // post-ORCH-0849 (business no longer requests surface: "mobile-web").
     return {
       outcome: "failed",

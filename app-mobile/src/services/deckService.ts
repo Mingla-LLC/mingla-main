@@ -250,7 +250,23 @@ export function unifiedCardToRecommendation(card: any): Recommendation {
 // because an experience envelope ALSO has stops[] + experienceType + tagline; the
 // discriminator is the explicit cardType:'experience' + brand attribution.
 function isExperiencePayload(card: any): boolean {
-  return card?.cardType === 'experience';
+  // Primary: the explicit discriminator the supply always sets.
+  if (card?.cardType === 'experience') return true;
+  // ORCH-1072 tag-loss hardening (investigation §A/B): a brand experience is
+  // structurally distinguishable from an AI-curated card — it carries a
+  // non-empty brandId + eventId + a stops[] array, whereas curated AI cards
+  // have stops + experienceType + tagline but NO brand attribution. If the
+  // explicit tag is ever lost upstream, recover it here so the card still
+  // routes to ExpandedBusinessEventSheet (Book), never the place/curated
+  // Save/Schedule branch. Curated cards (empty brandId) are NOT matched.
+  return (
+    card?.cardType !== 'curated' &&
+    typeof card?.brandId === 'string' &&
+    card.brandId.length > 0 &&
+    typeof card?.eventId === 'string' &&
+    card.eventId.length > 0 &&
+    Array.isArray(card?.stops)
+  );
 }
 
 // ORCH-1065: intent id → consumer-facing label (parity with curated intents).
@@ -322,6 +338,28 @@ function experienceCardToRecommendation(card: any): Recommendation {
     experienceType: intentId,
     title: typeof card?.title === 'string' ? card.title : '',
     tagline: typeof card?.tagline === 'string' ? card.tagline : '',
+    // ORCH-1072: carry the experience's REAL description + cover + upcoming
+    // occurrences verbatim onto the Recommendation (read via runtime cast in
+    // SwipeableCards.experienceRecToBusinessEventCard). These replace the
+    // fabricated first-stop cover + tagline-as-description in the mapper.
+    description: typeof card?.description === 'string' ? card.description : '',
+    coverMediaUrl: typeof card?.coverMediaUrl === 'string' ? card.coverMediaUrl : null,
+    coverMediaType:
+      card?.coverMediaType === 'image' ||
+      card?.coverMediaType === 'video' ||
+      card?.coverMediaType === 'gif'
+        ? card.coverMediaType
+        : null,
+    upcomingOccurrences: Array.isArray(card?.upcomingOccurrences)
+      ? card.upcomingOccurrences.map((o: any) => ({
+          eventDateId: typeof o?.eventDateId === 'string' ? o.eventDateId : '',
+          startAt: typeof o?.startAt === 'string' ? o.startAt : '',
+          endAt: typeof o?.endAt === 'string' ? o.endAt : '',
+          capacity: typeof o?.capacity === 'number' ? o.capacity : null,
+          sold: typeof o?.sold === 'number' ? o.sold : 0,
+          remaining: typeof o?.remaining === 'number' ? o.remaining : null,
+        }))
+      : [],
     brandId: typeof card?.brandId === 'string' ? card.brandId : '',
     brandName: typeof card?.brandName === 'string' ? card.brandName : '',
     brandSlug: typeof card?.brandSlug === 'string' ? card.brandSlug : '',

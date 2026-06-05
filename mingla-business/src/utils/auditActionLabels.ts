@@ -116,6 +116,18 @@ export const KNOWN_STATIC_SLUGS: readonly string[] = [
   "trip_intake_schema_edited",
   "intake_form_data_purged",
   "buyer_intake_form_re_answer_required",
+  // META-ORCH-1076 — Paystack (NG) webhook anomaly audit actions.
+  "paystack.charge_verify_not_success",
+  "paystack.charge_orphan_reference",
+  "paystack.charge_amount_mismatch",
+  "paystack.charge_currency_mismatch",
+  "paystack.webhook_unhandled_event",
+  // META-ORCH-1076 Phase 2 — Paystack (NG) payout onboarding + management.
+  "paystack.subaccount_created",
+  "paystack.subaccount_updated",
+  "paystack.subaccount_disconnected",
+  "paystack.provider_selected",
+  "paystack.provider_cleared",
 ];
 
 const humanizeSlug = (slug: string): string => {
@@ -136,6 +148,76 @@ const formatRefundStatusTitle = (status: string): string => {
 export const resolveAuditActionLabel = (action: string): AuditActionLabel => {
   // ----- Static exact-match slugs (cheaper + safer than regex) -----
   switch (action) {
+    // META-ORCH-1076 — Paystack (NG) webhook anomaly events.
+    case "paystack.charge_verify_not_success":
+      return {
+        title: "Paystack charge not verified",
+        detail: "A charge.success webhook arrived but the verify call did not return success; no order was created.",
+        category: "orders",
+        iconHint: "shield",
+      };
+    case "paystack.charge_orphan_reference":
+      return {
+        title: "Paystack charge with no matching checkout",
+        detail: "A verified Paystack charge referenced no known checkout session.",
+        category: "orders",
+        iconHint: "flag",
+      };
+    case "paystack.charge_amount_mismatch":
+      return {
+        title: "Paystack charge amount mismatch",
+        detail: "The paid amount did not match the checkout total; no order was created.",
+        category: "orders",
+        iconHint: "shield",
+      };
+    case "paystack.charge_currency_mismatch":
+      return {
+        title: "Paystack charge currency mismatch",
+        detail: "The paid currency was not NGN; no order was created.",
+        category: "orders",
+        iconHint: "shield",
+      };
+    case "paystack.webhook_unhandled_event":
+      return {
+        title: "Unhandled Paystack webhook event",
+        category: "ops",
+        iconHint: "flag",
+      };
+    case "paystack.subaccount_created":
+      return {
+        title: "Paystack payout account connected",
+        detail: "A bank account was connected and a Paystack subaccount created; this brand can now receive payouts.",
+        category: "ops",
+        iconHint: "shield",
+      };
+    case "paystack.subaccount_updated":
+      return {
+        title: "Paystack payout bank updated",
+        detail: "The settlement bank account on this brand's Paystack subaccount was changed.",
+        category: "ops",
+        iconHint: "shield",
+      };
+    case "paystack.subaccount_disconnected":
+      return {
+        title: "Paystack payout account disconnected",
+        detail: "The brand's Paystack payout bank was disconnected; it will not receive payouts until reconnected.",
+        category: "ops",
+        iconHint: "flag",
+      };
+    case "paystack.provider_selected":
+      return {
+        title: "Nigeria payouts selected",
+        detail: "The brand chose to get paid in Nigeria via Paystack; bank connection is the next step.",
+        category: "ops",
+        iconHint: "shield",
+      };
+    case "paystack.provider_cleared":
+      return {
+        title: "Nigeria payouts cancelled",
+        detail: "The brand backed out of Nigeria payouts before connecting a bank; reverted to the default payout rail.",
+        category: "ops",
+        iconHint: "flag",
+      };
     case "stripe_connect.onboard_initiated":
       return {
         title: "Started Stripe onboarding",

@@ -19,7 +19,7 @@
  */
 
 import React, { useCallback, useMemo, useState } from "react";
-import { ScrollView, StyleSheet, Text, View } from "react-native";
+import { Alert, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import * as WebBrowser from "expo-web-browser";
 
@@ -58,6 +58,13 @@ import { BrandStripeDeadlineBanner } from "./BrandStripeDeadlineBanner";
 // investigation — detach hook+service shipped in B2a Path C V3 without a
 // UI surface).
 import { BrandStripeDetachConfirmSheet } from "./BrandStripeDetachConfirmSheet";
+// META-ORCH-1076 Phase 2 — Paystack (NG) payout onboarding surface.
+import { BrandPaystackOnboardView } from "./BrandPaystackOnboardView";
+import {
+  useBrandPaystackStatus,
+  useClearPaystackProvider,
+  useDisconnectPaystack,
+} from "../../hooks/useBrandPaystack";
 import { useBrandStripeStatus } from "../../hooks/useBrandStripeStatus";
 import { useBrandStripeBalances } from "../../hooks/useBrandStripeBalances";
 import { useBrandStripeTaxAccountSession } from "../../hooks/useBrandStripeTaxAccountSession";
@@ -88,9 +95,9 @@ const BANNER_CONFIG: Record<BrandStripeStatus, BannerConfig | null> = {
   not_connected: {
     icon: "bank",
     iconColor: accent.warm,
-    title: "Connect Stripe to sell tickets",
+    title: "Connect bank to sell tickets",
     sub: "Get paid for your events. Setup takes 5 minutes.",
-    ctaLabel: "Connect Stripe",
+    ctaLabel: "Connect bank",
     ctaVariant: "primary",
     destructive: false,
   },
@@ -98,7 +105,7 @@ const BANNER_CONFIG: Record<BrandStripeStatus, BannerConfig | null> = {
     icon: "bank",
     iconColor: accent.warm,
     title: "Onboarding submitted — verifying",
-    sub: "Stripe is reviewing your details. We'll email you when verified.",
+    sub: "We're reviewing your details. We'll email you when verified.",
     ctaLabel: "Finish onboarding",
     ctaVariant: "primary",
     destructive: false,
@@ -117,7 +124,7 @@ const BANNER_CONFIG: Record<BrandStripeStatus, BannerConfig | null> = {
     icon: "flag", // W-1: alert/info absent in kit; flag = action-needed
     iconColor: semantic.error,
     title: "Action required — your account is limited",
-    sub: "Stripe needs additional information before you can sell tickets.",
+    sub: "We need additional information before you can sell tickets.",
     ctaLabel: "Continue verification",
     ctaVariant: "destructive",
     destructive: true,
@@ -174,6 +181,15 @@ export const BrandPaymentsView: React.FC<BrandPaymentsViewProps> = ({
   const stripeBalancesQuery = useBrandStripeBalances(brand?.id ?? null, {
     stripeStatus,
   });
+  // META-ORCH-1076 — Paystack rail. Enabled only for paystack brands; harmless
+  // (disabled) for every Stripe brand. Hook runs unconditionally per React rules.
+  const isPaystackBrand = brand?.paymentProvider === "paystack";
+  const paystackStatusQuery = useBrandPaystackStatus(
+    isPaystackBrand ? (brand?.id ?? null) : null,
+  );
+  const disconnectPaystackMutation = useDisconnectPaystack();
+  const clearPaystackMutation = useClearPaystackProvider();
+  const [paystackEditing, setPaystackEditing] = useState<boolean>(false);
   // ORCH-0955 — Tax CTA opens new brand-stripe-tax-account-session that mints
   // an AccountSession with tax_registrations + tax_settings GA components,
   // rendered in the Mingla-hosted /connect-tax-registrations page via
@@ -263,6 +279,113 @@ export const BrandPaymentsView: React.FC<BrandPaymentsViewProps> = ({
     );
   }
 
+  // ----- Paystack rail (META-ORCH-1076 Phase 2) -----
+  // Nigerian brands settle through Paystack, not Stripe Connect. Render the
+  // bank-details onboarding form until a subaccount exists, then a readiness
+  // card. Entirely separate from the Stripe surface below.
+  if (isPaystackBrand) {
+    const connected = brand.paystackSubaccountCode != null ||
+      paystackStatusQuery.data?.connected === true;
+    const ps = paystackStatusQuery.data;
+    const handleDisconnect = (): void => {
+      Alert.alert(
+        "Disconnect payout bank?",
+        "This brand will stop receiving payouts until you connect a bank again.",
+        [
+          { text: "Cancel", style: "cancel" },
+          {
+            text: "Disconnect",
+            style: "destructive",
+            onPress: () => {
+              disconnectPaystackMutation.mutate(brand.id, {
+                onSuccess: () => {
+                  setPaystackEditing(false);
+                  paystackStatusQuery.refetch();
+                },
+                onError: () =>
+                  Alert.alert(
+                    "Couldn't disconnect",
+                    "Please try again in a moment.",
+                  ),
+              });
+            },
+          },
+        ],
+      );
+    };
+    return (
+      <View style={styles.host}>
+        <View style={styles.barWrap}>
+          <TopBar
+            leftKind="back"
+            title="Payments"
+            onBack={onBack}
+            rightSlot={<View />}
+          />
+        </View>
+        <ScrollView
+          contentContainerStyle={[
+            styles.scroll,
+            { paddingBottom: spacing.xl + Math.max(insets.bottom, spacing.md) },
+          ]}
+          showsVerticalScrollIndicator={false}
+        >
+          {connected && !paystackEditing
+            ? (
+              <GlassCard variant="elevated" padding={spacing.lg}>
+                <Text style={styles.notFoundTitle}>Bank connected</Text>
+                <Text style={styles.notFoundBody}>
+                  {ps?.account_number_masked != null
+                    ? `Payouts settle to ${ps.account_number_masked}, usually the next business day.`
+                    : "Your payout account is connected. Sales settle to your bank, usually the next business day."}
+                  {ps?.is_verified === false
+                    ? " Your bank is still being verified — your first payout may take a little longer."
+                    : ""}
+                </Text>
+                <View style={styles.notFoundBtnRow}>
+                  <Button
+                    label="Change bank account"
+                    onPress={() => setPaystackEditing(true)}
+                    variant="secondary"
+                    size="md"
+                  />
+                </View>
+                <View style={{ marginTop: spacing.sm }}>
+                  <Button
+                    label={disconnectPaystackMutation.isPending
+                      ? "Disconnecting…"
+                      : "Disconnect bank"}
+                    onPress={handleDisconnect}
+                    variant="destructive"
+                    size="md"
+                    loading={disconnectPaystackMutation.isPending}
+                  />
+                </View>
+              </GlassCard>
+            )
+            : (
+              <BrandPaystackOnboardView
+                brandId={brand.id}
+                brandName={brand.displayName}
+                mode={connected ? "update" : "create"}
+                onConnected={() => {
+                  setPaystackEditing(false);
+                  paystackStatusQuery.refetch();
+                }}
+                onCancel={connected
+                  ? () => setPaystackEditing(false)
+                  : () =>
+                    clearPaystackMutation.mutate(brand.id, {
+                      // Revert to Stripe, then open the country picker to re-pick.
+                      onSuccess: () => onOpenOnboard(),
+                    })}
+              />
+            )}
+        </ScrollView>
+      </View>
+    );
+  }
+
   // ----- Populated state -----
 
   const liveBalances = stripeBalancesQuery.data;
@@ -284,7 +407,7 @@ export const BrandPaymentsView: React.FC<BrandPaymentsViewProps> = ({
     ? "Ready to pay out"
     : stripeStatus === "active"
     ? "Balance unavailable"
-    : "Connect Stripe";
+    : "Connect bank";
   const lastPayoutAmount = sortedPayouts[0]?.amountGbp;
   const lastPayoutCurrency = sortedPayouts[0]?.currency;
   const lastPayoutDisplay = brand.lastPayoutAt !== undefined &&

@@ -352,7 +352,7 @@ serve(async (req: Request): Promise<Response> => {
         city, party_types, vibe_tags, music_genres,
         brand:brands!inner ( id, slug, name, profile_photo_url, deleted_at ),
         ${eventDatesEmbed},
-        ticket_types!left ( price_cents, currency, deleted_at, is_hidden, is_disabled )
+        ticket_types!left ( price_cents, currency, deleted_at, is_hidden, is_disabled, available_online )
       `,
       { count: "exact" },
     )
@@ -406,7 +406,7 @@ serve(async (req: Request): Promise<Response> => {
 
   q = q.range(businessOffset, businessOffset + size - 1);
 
-  const { data: rawRows, error: dbError, count: businessTotal } = await q;
+  const { data: rawRowsUngated, error: dbError, count: businessTotal } = await q;
   if (dbError) {
     console.error("[discover-merged-events] DB error:", dbError);
     return jsonResponse({ error: "db_error", detail: dbError.message }, 500);
@@ -414,6 +414,72 @@ serve(async (req: Request): Promise<Response> => {
 
   // Normalize business events to BusinessEventCard shape + filter brands.deleted_at.
   type RawRow = Record<string, any>;
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // ORCH-1076 I-PAID-SUPPLY-REQUIRES-CHARGES-ENABLED — buyer-supply suppression.
+  // A PAID business-event from a brand that cannot charge (Stripe
+  // charges_enabled=false / no attached account) must never appear in the
+  // consumer feed — it would only dead-end at the ticket-checkout-create 409
+  // (stripe_account_not_ready). This mirrors the publish-time guard (ORCH-1075)
+  // + the checkout 409 + the supply RPCs (deck / place-card / brand-page).
+  //   Stripe charges_enabled = "Whether the account can process charges."
+  //     https://docs.stripe.com/api/accounts/object
+  //   Accounts with outstanding requirements have charges_enabled=false and must
+  //     finish onboarding: https://docs.stripe.com/connect/onboarding.md
+  // PAID = a ticket_types row with available_online=true AND price_cents>0 (the
+  // checkout definition). FREE + in-person-only-paid events are NEVER gated.
+  // Readiness is resolved in ONE batched round-trip via the pg_brands_can_charge
+  // helper RPC (no per-row function call). The keyed price side-fetch below
+  // (business_public_events_view) is left UNTOUCHED — it only enriches the rows
+  // that survive this gate.
+  const isPaidRow = (row: RawRow): boolean =>
+    (row.ticket_types ?? []).some(
+      (t: RawRow) =>
+        t &&
+        t.deleted_at == null &&
+        t.is_hidden !== true &&
+        t.is_disabled !== true &&
+        t.available_online === true &&
+        (t.price_cents ?? 0) > 0,
+    );
+
+  const allRawRows = (rawRowsUngated ?? []) as RawRow[];
+  const paidBrandIds = Array.from(
+    new Set(
+      allRawRows
+        .filter(isPaidRow)
+        .map((r) => r.brand_id)
+        .filter((id: unknown): id is string => typeof id === "string"),
+    ),
+  );
+
+  let rawRows: RawRow[] = allRawRows;
+  if (paidBrandIds.length > 0) {
+    const { data: readyRows, error: readyError } = await supabase.rpc(
+      "pg_brands_can_charge",
+      { p_brand_ids: paidBrandIds },
+    );
+    if (readyError) {
+      // Fail-CLOSED on a paid-supply readiness error: drop ALL paid rows rather
+      // than risk surfacing a non-bookable paid listing (the checkout would 409).
+      // Free events are unaffected.
+      console.error(
+        "[discover-merged-events] pg_brands_can_charge error (failing closed for paid rows):",
+        readyError,
+      );
+      rawRows = allRawRows.filter((r) => !isPaidRow(r));
+    } else {
+      const readyBrandIds = new Set<string>(
+        ((readyRows ?? []) as RawRow[])
+          .map((r) => r.brand_id)
+          .filter((id: unknown): id is string => typeof id === "string"),
+      );
+      rawRows = allRawRows.filter(
+        (r) => !isPaidRow(r) || readyBrandIds.has(r.brand_id),
+      );
+    }
+  }
+  // ──────────────────────────────────────────────────────────────────────────
 
   // ORCH-1006 Slice 3 Wave 2 — side-fetch the server-computed all-in price
   // from business_public_events_view, keyed by event id. Kept SEPARATE from

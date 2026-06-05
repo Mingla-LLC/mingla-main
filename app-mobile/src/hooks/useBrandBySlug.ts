@@ -65,6 +65,7 @@ interface TicketTypeRow {
   currency: string;
   is_free: boolean;
   is_hidden: boolean;
+  available_online: boolean;
 }
 
 interface PublicTripRow {
@@ -203,7 +204,7 @@ const fetchTickets = async (
   if (eventIds.length === 0) return new Map();
   const { data, error } = await supabase
     .from("ticket_types")
-    .select("event_id,price_cents,currency,is_free,is_hidden")
+    .select("event_id,price_cents,currency,is_free,is_hidden,available_online")
     .in("event_id", eventIds)
     .is("deleted_at", null);
   if (error !== null) throw error;
@@ -334,10 +335,50 @@ const getBrandBySlug = async (
   if (experienceResult.error !== null) throw experienceResult.error;
   if (upcomingResult.error !== null) throw upcomingResult.error;
 
-  const rows = ((eventResult.data ?? []) as PublicEventRow[]).filter(
+  const allEventRows = ((eventResult.data ?? []) as PublicEventRow[]).filter(
     (row) => row.event_type === "event",
   );
-  const ticketMap = await fetchTickets(rows.map((row) => row.id));
+  const ticketMap = await fetchTickets(allEventRows.map((row) => row.id));
+
+  // ORCH-1076 I-PAID-SUPPLY-REQUIRES-CHARGES-ENABLED — drop PAID events from a
+  // brand that can't charge from the consumer brand-page flat-events feed. The
+  // view (business_public_events_view) is NOT gated (it also serves keyed
+  // enrich), so we filter here, buyer-only. trips/experiences/upcoming come from
+  // the server RPCs (A-3/A-4/A-5) and are already gated. One batched
+  // pg_brands_can_charge round-trip over the distinct paid brand ids; free
+  // events are never dropped. mirrors fetchPublicBrandEvents (mingla-business).
+  const isPaidOnline = (tickets: TicketTypeRow[]): boolean =>
+    tickets.some(
+      (t) => t.available_online === true && !t.is_free && t.price_cents > 0,
+    );
+  const paidBrandIds = Array.from(
+    new Set(
+      allEventRows
+        .filter((row) => isPaidOnline(ticketMap.get(row.id) ?? []))
+        .map((row) => row.brand_id)
+        .filter((id): id is string => typeof id === "string"),
+    ),
+  );
+  let readyBrandIds = new Set<string>();
+  if (paidBrandIds.length > 0) {
+    const { data: readyData, error: readyError } = await supabase.rpc(
+      "pg_brands_can_charge",
+      { p_brand_ids: paidBrandIds },
+    );
+    // Fail closed for paid rows on error (empty set ⇒ all paid rows dropped).
+    if (readyError === null) {
+      readyBrandIds = new Set<string>(
+        ((readyData ?? []) as { brand_id: string }[])
+          .map((r) => r.brand_id)
+          .filter((id): id is string => typeof id === "string"),
+      );
+    }
+  }
+  const rows = allEventRows.filter(
+    (row) =>
+      !isPaidOnline(ticketMap.get(row.id) ?? []) ||
+      readyBrandIds.has(row.brand_id),
+  );
   const events = rows.map((row) => mapEvent(row, ticketMap.get(row.id) ?? []));
   const trips = ((tripResult.data ?? []) as PublicTripRow[]).map(mapTrip);
   const experiences = ((experienceResult.data ?? []) as PublicExperienceRow[])

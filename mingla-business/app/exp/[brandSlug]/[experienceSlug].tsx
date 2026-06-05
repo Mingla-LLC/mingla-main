@@ -171,6 +171,21 @@ export default function PublicExperienceRoute(): React.ReactElement {
               </Text>
             </GlassCard>
           </View>
+        ) : !experience.bookable ? (
+          // ORCH-1076 I-PAID-SUPPLY-REQUIRES-CHARGES-ENABLED — graceful
+          // unavailable for a PAID experience whose brand can't charge yet.
+          // Details still render read-only above; only the checkout flow is
+          // replaced (no 404, no checkout 409 toast). Reuses the sold-out
+          // visual language.
+          <View style={styles.bannerWrap}>
+            <GlassCard variant="elevated" padding={spacing.md} radius="lg">
+              <Text style={styles.bannerTitle}>Booking unavailable right now</Text>
+              <Text style={styles.bannerBody}>
+                This organizer is finishing their payment setup. Check back soon —
+                or explore their other offerings.
+              </Text>
+            </GlassCard>
+          </View>
         ) : (
           <ExperienceCheckoutFlow
             experience={experience}

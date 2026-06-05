@@ -18,6 +18,13 @@
 
 import { useStripePaymentSheet } from "@mingla/payments-native";
 import { initStripe } from "@stripe/stripe-react-native";
+// META-ORCH-1076 [Paystack Africa] — in-app browser for the Paystack hosted
+// checkout redirect (the pre-ORCH-0849 hosted-checkout primitive). The buyer
+// pays on Paystack's page; we never parse payment state from the redirect URL —
+// we poll ticket-checkout-status, which is driven by the verified charge.success
+// webhook (the source of truth).
+//   https://paystack.com/docs/guides/using_the_paystack_checkout_in_a_mobile_webview/
+import * as WebBrowser from "expo-web-browser";
 
 import { supabase } from "../services/supabase";
 import { extractFunctionError } from "../utils/edgeFunctionError";
@@ -44,6 +51,10 @@ export interface NativeCheckoutInput {
   };
   idempotencyKey?: string;
   taxCalculationId?: string | null;
+  // ORCH-1072: the chosen experience occurrence (event_dates.id). Forwarded to
+  // ticket-checkout-create so a recurring/multi-date experience books the right
+  // date. Omitted for events/trips/one-off → request shape byte-identical.
+  eventDateId?: string | null;
   // ORCH-1016: trip intake answers ride the existing ticket-checkout-create body
   // key → orders.intake_form_data. The key is already supported server-side
   // (ticket-checkout-create reads it for trip checkouts); this just forwards it
@@ -99,9 +110,47 @@ type CheckoutCreateResponse =
       hostedCheckoutUrl: string | null;
       totalCents: number;
       currency: string;
+    }
+  // META-ORCH-1076 [Paystack Africa] — Nigerian (NGN) brands. The buyer is sent
+  // to Paystack's hosted checkout in an in-app browser, then we poll the server
+  // for the finalized order (driven by the verified charge.success webhook).
+  | {
+      kind: "requires_paystack_redirect";
+      checkoutSessionId: string;
+      buyerStatusToken: string;
+      authorizationUrl: string;
+      reference: string;
+      totalCents: number;
+      currency: string;
     };
 
 const MERCHANT_DISPLAY_NAME = "Mingla";
+
+// META-ORCH-1076 — bounded poll for the Paystack order (webhook is the truth;
+// the redirect is unreliable). ~25s budget at 1.5s intervals.
+const PAYSTACK_POLL_INTERVAL_MS = 1500;
+const PAYSTACK_POLL_MAX_ATTEMPTS = 17;
+
+// META-ORCH-1076 — poll ticket-checkout-status until the order finalizes.
+// Returns the orderId once order_id != null, else null on timeout. NEVER
+// fabricates success — a timeout returns null and the caller surfaces a
+// "couldn't confirm yet" message.
+async function pollPaystackOrder(
+  checkoutSessionId: string,
+  buyerStatusToken: string,
+): Promise<string | null> {
+  for (let attempt = 0; attempt < PAYSTACK_POLL_MAX_ATTEMPTS; attempt++) {
+    const { data } = await supabase.functions.invoke<{
+      order: { orderId: string } | null;
+    }>("ticket-checkout-status", {
+      body: { checkoutSessionId, buyerStatusToken },
+    });
+    const orderId = data?.order?.orderId;
+    if (orderId) return orderId;
+    await new Promise((resolve) => setTimeout(resolve, PAYSTACK_POLL_INTERVAL_MS));
+  }
+  return null;
+}
 
 export const isStripeGooglePayTestEnv = (): boolean =>
   process.env.EAS_BUILD_PROFILE !== "production";
@@ -142,6 +191,10 @@ export const useNativeCheckoutFlow = (): ((
             ? { intake_form_data: input.intakeFormData }
             : {}),
           ...(input.taxCalculationId ? { taxCalculationId: input.taxCalculationId } : {}),
+          // ORCH-1072: forward the chosen occurrence only when present — the
+          // edge fn validates it (future + belongs to event + not sold out) and
+          // persists it; absent → unchanged single-date path.
+          ...(input.eventDateId ? { eventDateId: input.eventDateId } : {}),
           ...(input.idempotencyKey !== undefined
             ? { idempotencyKey: input.idempotencyKey }
             : {}),
@@ -283,7 +336,40 @@ export const useNativeCheckoutFlow = (): ((
       return { outcome: "succeeded", orderId: data.checkoutSessionId };
     }
 
-    // 2c. Web redirect from a native client is a server/client mismatch.
+    // 2c. META-ORCH-1076 — Paystack (NGN). Open Paystack's hosted checkout in
+    // an in-app browser, then poll the server for the finalized order.
+    if (data.kind === "requires_paystack_redirect") {
+      // openAuthSessionAsync resolves on the redirect to callback_url?trxref=…
+      // (or on cancel/dismiss). We do NOT read payment state from the result —
+      // the webhook is the source of truth; we always poll the server.
+      try {
+        await WebBrowser.openAuthSessionAsync(
+          data.authorizationUrl,
+          // Paystack's success callback (the in-app browser intercepts + closes
+          // on the redirect to this prefix). The server is the truth source.
+          "https://business.usemingla.com/pay/callback",
+        );
+      } catch (err) {
+        console.warn("[nativeCheckoutFlow] paystack browser error", err);
+        // Still poll — the buyer may have paid before the browser errored.
+      }
+
+      // Poll ticket-checkout-status until the order finalizes (or timeout).
+      const orderId = await pollPaystackOrder(
+        data.checkoutSessionId,
+        data.buyerStatusToken,
+      );
+      if (orderId) {
+        return { outcome: "succeeded", orderId };
+      }
+      return {
+        outcome: "failed",
+        message:
+          "We couldn't confirm your payment yet. If you completed it, your tickets will appear shortly.",
+      };
+    }
+
+    // 2d. Web redirect from a native client is a server/client mismatch.
     return {
       outcome: "failed",
       message: "Unexpected web checkout response on native client.",

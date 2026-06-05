@@ -42,7 +42,7 @@ export function getBrandProfileStripeBannerCopy(
   switch (status) {
     case "not_connected":
       return {
-        title: "Connect Stripe to sell tickets",
+        title: "Connect bank to sell tickets",
         sub: "Get paid for your events. Setup takes 5 minutes.",
       };
     case "onboarding":

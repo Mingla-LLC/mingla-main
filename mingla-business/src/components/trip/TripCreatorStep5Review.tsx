@@ -20,6 +20,7 @@ import {
   typography,
 } from "../../constants/designSystem";
 import type { Trip } from "../../services/tripsService";
+import { StripeBlockedCard } from "../offering/StripeBlockedCard";
 import { TripPreview, type TripPreviewBrand } from "./TripPreview";
 
 export interface TripCreatorStep5ReviewProps {
@@ -31,6 +32,15 @@ export interface TripCreatorStep5ReviewProps {
    * no error or before first publish attempt.
    */
   publishError: PublishErrorState | null;
+  /**
+   * ORCH-1076 Stream B — proactive Stripe gate: true when this is a PAID trip
+   * on a brand whose Stripe is not active. Shows the StripeBlockedCard banner
+   * (the same proactive guidance events have on Step 7). Defaults to false so
+   * existing call sites / the public preview are unaffected.
+   */
+  needsStripe?: boolean;
+  /** Connect-Stripe CTA handler — routes to the brand's Stripe onboarding. */
+  onConnectStripe?: () => void;
 }
 
 export interface PublishErrorState {
@@ -46,6 +56,8 @@ export const TripCreatorStep5Review: React.FC<TripCreatorStep5ReviewProps> = ({
   trip,
   brand,
   publishError,
+  needsStripe = false,
+  onConnectStripe,
 }) => {
   return (
     <ScrollView
@@ -64,6 +76,21 @@ export const TripCreatorStep5Review: React.FC<TripCreatorStep5ReviewProps> = ({
           <Text style={styles.errorBannerStep}>
             Go back to Step {publishError.pointsToStep} to fix.
           </Text>
+        </View>
+      ) : null}
+
+      {/* ORCH-1076 Stream B — proactive Stripe banner. Renders BELOW any
+          reactive publishError (they describe different things and must not
+          suppress each other) and ABOVE the preview. */}
+      {needsStripe ? (
+        <View style={styles.stripeBannerWrap}>
+          <StripeBlockedCard
+            title="Bank required for paid trips"
+            body="Connect a bank to publish this paid trip. Free trips can be published any time."
+            ctaLabel="Connect bank"
+            onConnectStripe={onConnectStripe ?? (() => undefined)}
+            testID="trip-step5-stripe-blocked"
+          />
         </View>
       ) : null}
 
@@ -152,6 +179,23 @@ export function mapPublishErrorToState(
         message: "This trip is no longer in draft state. Refresh and try again.",
         pointsToStep: 5,
       };
+    // ORCH-1075 — paid-publish integrity guards (locked copy, SPEC §3.7). The
+    // wizard's catch ALSO routes stripe_charges_disabled to Stripe onboarding;
+    // offering_date_past points back to the dates step.
+    case "stripe_charges_disabled":
+      return {
+        code,
+        message:
+          "You can't publish a paid listing until your Stripe payouts are switched on. It takes a couple of minutes.",
+        pointsToStep: 5,
+      };
+    case "offering_date_past":
+      return {
+        code,
+        message:
+          "This date has already passed. Choose a date that's still ahead so people can book it.",
+        pointsToStep: 1,
+      };
     default:
       return {
         code,
@@ -198,6 +242,10 @@ const styles = StyleSheet.create({
     fontSize: typography.caption.fontSize,
     color: textTokens.tertiary,
     marginTop: spacing.xs,
+  },
+  stripeBannerWrap: {
+    marginHorizontal: spacing.lg,
+    marginTop: spacing.md,
   },
   previewWrap: {
     marginTop: spacing.xs,

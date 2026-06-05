@@ -16,7 +16,7 @@
  */
 
 import React, { useCallback, useMemo, useState } from "react";
-import { Linking, Platform, View, StyleSheet } from "react-native";
+import { Linking, Platform, Text, View, StyleSheet } from "react-native";
 import { useRouter } from "expo-router";
 import Head from "expo-router/head";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -36,7 +36,11 @@ import {
   eventOgImageUrl,
   eventPublicUrl,
 } from "../../constants/publicUrls";
-import { spacing } from "../../constants/designSystem";
+import {
+  semantic,
+  spacing,
+  text as textTokens,
+} from "../../constants/designSystem";
 import { useAuth } from "../../context/AuthContext";
 import { useBrandList, type Brand } from "../../store/currentBrandStore";
 import type { LiveEvent } from "../../store/liveEventStore";
@@ -57,6 +61,14 @@ import { JoinWaitlistSheet } from "../waitlist/JoinWaitlistSheet";
 interface PublicEventPageAdapterProps {
   event: LiveEvent;
   brand: Brand | null;
+  /**
+   * ORCH-1076 I-PAID-SUPPLY-REQUIRES-CHARGES-ENABLED — when false, this is a
+   * PAID event whose brand cannot charge yet; the page renders the event
+   * details read-only with a "Booking unavailable right now" banner and the
+   * Get-tickets / claim CTA is neutralized (no dead-end checkout 409). Defaults
+   * to true for back-compat with every existing caller.
+   */
+  bookable?: boolean;
 }
 
 const mapTicket = (t: TicketStub): PublicTicketProps => ({
@@ -183,6 +195,7 @@ const canonicalUrl = (event: LiveEvent): string =>
 export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
   event,
   brand,
+  bookable = true,
 }) => {
   const router = useRouter();
   const insets = useSafeAreaInsets();
@@ -253,9 +266,24 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
       onClose: handleClose,
       onShare: handleShare,
       onBuyTicket: (_ticketId: string) => {
+        // ORCH-1076 — a PAID not-ready event must not reach the checkout 409.
+        if (!bookable) {
+          showToast(
+            "Booking unavailable right now — the organizer is finishing payment setup.",
+          );
+          return;
+        }
         router.push(checkoutPublicPath(event.id) as never);
       },
       onClaimFreeTicket: (_ticketId: string) => {
+        // Free claims are never gated (bookable is true for free offerings),
+        // but guard defensively so a mixed-state row can't dead-end.
+        if (!bookable) {
+          showToast(
+            "Booking unavailable right now — the organizer is finishing payment setup.",
+          );
+          return;
+        }
         router.push(checkoutPublicPath(event.id) as never);
       },
       onJoinWaitlist: (ticketId: string) => {
@@ -277,7 +305,15 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
         return validPasswords.includes(password);
       },
     }),
-    [router, event.id, event.tickets, showToast, handleClose, handleShare],
+    [
+      router,
+      event.id,
+      event.tickets,
+      showToast,
+      handleClose,
+      handleShare,
+      bookable,
+    ],
   );
 
   return (
@@ -324,6 +360,30 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
           />
           <link rel="canonical" href={canonicalUrl(event)} />
         </Head>
+      ) : null}
+
+      {/* ORCH-1076 I-PAID-SUPPLY-REQUIRES-CHARGES-ENABLED — graceful
+          "Booking unavailable" banner for a PAID event whose brand can't charge
+          yet. Details still render read-only below; the Get-tickets CTA is
+          neutralized in the callbacks. Reuses the sold-out/ended visual
+          register (semantic.error title + secondary body). */}
+      {!bookable ? (
+        <View
+          style={[
+            styles.unavailableBanner,
+            { top: insets.top + spacing.md + 52 },
+          ]}
+          pointerEvents="none"
+          testID="orch-1076-event-booking-unavailable"
+        >
+          <Text style={styles.unavailableTitle}>
+            Booking unavailable right now
+          </Text>
+          <Text style={styles.unavailableBody}>
+            This organizer is finishing their payment setup. Check back soon — or
+            explore their other offerings.
+          </Text>
+        </View>
       ) : null}
 
       <SharedPublicEventPage
@@ -385,6 +445,29 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
 const styles = StyleSheet.create({
   host: {
     flex: 1,
+  },
+  // ORCH-1076 — booking-unavailable banner (graceful, non-punitive). Floats
+  // under the close/share chrome row over the hero, column-width.
+  unavailableBanner: {
+    position: "absolute",
+    left: spacing.md,
+    right: spacing.md,
+    zIndex: 5,
+    backgroundColor: "rgba(12,14,18,0.92)",
+    borderRadius: 14,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+  },
+  unavailableTitle: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: semantic.error,
+  },
+  unavailableBody: {
+    fontSize: 13,
+    color: textTokens.secondary,
+    marginTop: spacing.xs,
+    lineHeight: 18,
   },
   floatingChrome: {
     position: "absolute",

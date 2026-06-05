@@ -93,9 +93,16 @@ import {
   isStripeCountryPickerLocked,
 } from "../../utils/brandStripeUiState";
 import { BrandStripeCountryLockedError } from "../../services/brandStripeService";
+import { BrandPaystackOnboardView } from "./BrandPaystackOnboardView";
 
 const RETURN_DEEP_LINK = "mingla-business://onboarding-complete" as const;
 const DEFAULT_COUNTRY = "GB" as const;
+// META-ORCH-1076 — Nigeria is a Paystack (not Stripe) payout region, surfaced as
+// an extra picker option. orch-strict-grep-allow stripe-country-out-of-scope —
+// NG routes to Paystack, never the Stripe allowlist.
+const PAYSTACK_PICKER_OPTIONS = [
+  { code: "NG", name: "Nigeria", currency: "NGN", sublabel: "Bank transfer via Paystack" },
+] as const;
 // B2a Path C V3 forensics C-3: was support@mingla.com — domain not Mingla-owned.
 const SUPPORT_EMAIL = "support@usemingla.com" as const;
 const SUPPORT_MAILTO = `mailto:${SUPPORT_EMAIL}` as const;
@@ -189,7 +196,22 @@ export const BrandOnboardView: React.FC<BrandOnboardViewProps> = ({
   const { user } = useAuth();
   const [tosPassed, setTosPassed] = useState(false);
   const handleTosPassed = useCallback((): void => setTosPassed(true), []);
+  // META-ORCH-1076 — picking Nigeria switches to the inline Paystack bank-details
+  // form instantly (no network call — the form's "Connect bank" step commits the
+  // provider). The Stripe onboarding path below is never entered for NG, and the
+  // form offers "Choose a different country" to return here.
+  const [paystackSelected, setPaystackSelected] = useState(false);
+  // When the user returns from the Nigeria bank form, re-open the country sheet
+  // so they can immediately re-pick (rather than landing on the closed picker).
+  const [reopenPickerOnReturn, setReopenPickerOnReturn] = useState(false);
   const handleCountryChange = useCallback((countryCode: string): void => {
+    setReopenPickerOnReturn(false);
+    // orch-strict-grep-allow stripe-country-out-of-scope — NG routes to the
+    // Paystack rail, never Stripe; it is intentionally not in the Stripe allowlist.
+    if (countryCode === "NG") {
+      setPaystackSelected(true);
+      return;
+    }
     setCountryTouched(true);
     setSelectedCountry(countryCode);
   }, []);
@@ -495,15 +517,18 @@ export const BrandOnboardView: React.FC<BrandOnboardViewProps> = ({
 
   // ----- Render helpers -------------------------------------------------
 
-  const renderTopBar = (): React.ReactElement => (
+  const renderTopBar = (opts?: {
+    onBack?: () => void;
+    backLabel?: string;
+  }): React.ReactElement => (
     <View style={[styles.topBarRow, { paddingTop: spacing.sm }]}>
       <View style={styles.topBarSlot}>
         <Button
-          label="Cancel"
-          onPress={onCancel}
+          label={opts?.backLabel ?? "Cancel"}
+          onPress={opts?.onBack ?? onCancel}
           variant="ghost"
           size="sm"
-          accessibilityLabel="Cancel onboarding"
+          accessibilityLabel={opts?.backLabel ?? "Cancel onboarding"}
         />
       </View>
       <Text style={styles.topBarTitle}>Set up payments</Text>
@@ -512,6 +537,36 @@ export const BrandOnboardView: React.FC<BrandOnboardViewProps> = ({
   );
 
   // ----- Populated states -----------------------------------------------
+
+  // META-ORCH-1076 — Nigeria selected: render the Paystack bank-details form
+  // inline (instant). "Choose a different country" returns to the picker.
+  if (brand !== null && paystackSelected) {
+    const backToPicker = (): void => {
+      setReopenPickerOnReturn(true);
+      setPaystackSelected(false);
+    };
+    return (
+      <View style={styles.host}>
+        {renderTopBar({ onBack: backToPicker, backLabel: "Back" })}
+        <View
+          style={{
+            flex: 1,
+            paddingHorizontal: spacing.md,
+            paddingTop: spacing.md,
+            paddingBottom: Math.max(insets.bottom, spacing.lg),
+          }}
+        >
+          <BrandPaystackOnboardView
+            brandId={brand.id}
+            brandName={brand.displayName}
+            mode="create"
+            onConnected={onAfterDone}
+            onCancel={backToPicker}
+          />
+        </View>
+      </View>
+    );
+  }
 
   return (
     <View style={styles.host}>
@@ -590,7 +645,7 @@ export const BrandOnboardView: React.FC<BrandOnboardViewProps> = ({
           <>
             <View style={styles.stateBlock}>
               <Text style={styles.stateTitle}>
-                Connect Stripe to start selling tickets
+                Connect bank to start selling tickets
               </Text>
               <Text style={styles.stateSub}>
                 Set up payments to publish events and receive money from ticket
@@ -609,6 +664,8 @@ export const BrandOnboardView: React.FC<BrandOnboardViewProps> = ({
                   disabled={countryPickerLocked}
                   helperText={countryPickerHelper}
                   warningText={countryPickerWarning}
+                  extraOptions={PAYSTACK_PICKER_OPTIONS}
+                  defaultOpen={reopenPickerOnReturn}
                 />
               </View>
 

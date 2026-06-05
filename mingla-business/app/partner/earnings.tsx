@@ -618,7 +618,7 @@ function StatusBlock(props: {
         />
       </View>
       <Pressable
-        accessibilityLabel="Connect Stripe"
+        accessibilityLabel="Connect bank"
         style={[styles.primaryBtn, connectDisabled && styles.primaryBtnDisabled]}
         onPress={onStart}
         disabled={connectDisabled}
@@ -628,7 +628,7 @@ function StatusBlock(props: {
             ? "Opening…"
             : selectedCountry === null
               ? "Pick a country first"
-              : "Connect Stripe"}
+              : "Connect bank"}
         </Text>
       </Pressable>
       {startError ? (

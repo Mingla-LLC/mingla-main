@@ -201,6 +201,10 @@ export default function TripEditRoute(): React.ReactElement {
         name: currentBrand.displayName,
         bio: currentBrand.bio ?? null,
         coverMediaUrl: currentBrand.coverMediaUrl ?? null,
+        // ORCH-1076 Stream B — thread Stripe-readiness so the wizard can
+        // proactively gate a paid trip's Publish (the narrow TripPreviewBrand
+        // dropped it before).
+        stripeStatus: currentBrand.stripeStatus ?? null,
       }}
       isCreateMode={isCreateMode}
       onDiscardTrip={async () => {

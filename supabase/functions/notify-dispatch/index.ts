@@ -1,6 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { sendPush } from "../_shared/push-utils.ts";
+import { resolveOneSignalApp, sendPush } from "../_shared/push-utils.ts";
 import { getTranslatedNotification } from "../_shared/push-translations.ts";
 import {
   assertNotResendSandbox,
@@ -486,11 +486,18 @@ serve(async (req) => {
     // Merge notificationId and type into push data so client can mark-as-read and route
     const pushData = { ...data, notificationId, type };
 
+    // META-ORCH-1074 Sub-A: route the push to the correct OneSignal application
+    // by notification `type` prefix (business.*/stripe.* → business app; else
+    // consumer). The in-app `notifications` row written above is identical
+    // regardless of app — the inbox is a shared table and the client
+    // prefix-filters at read time per I-PROPOSED-W. Only the push DELIVERY
+    // target is parameterized here. — https://documentation.onesignal.com/docs/keys-and-ids
     const pushPayload: Record<string, unknown> = {
       targetUserId: userId,
       title,
       body,
       data: pushData,
+      app: resolveOneSignalApp(type),
     };
 
     // DISABLED: android_channel_id causes OneSignal 400 error when channels

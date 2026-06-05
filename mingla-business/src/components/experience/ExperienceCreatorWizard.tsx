@@ -43,6 +43,11 @@ import type { PricingSwitchOverrides } from "../../services/pricingSwitchesServi
 import { useBrandTaxRegistration } from "../../hooks/useBrandTaxRegistration";
 import { ExperienceStopsStep } from "./ExperienceStopsStep";
 import { ExperiencePricingStep } from "./ExperiencePricingStep";
+import { StripeBlockedCard } from "../offering/StripeBlockedCard";
+import {
+  experienceDraftIsPaid,
+  offeringNeedsStripeToPublish,
+} from "../offering/publishStripeReadiness";
 import {
   emptyStop,
   stopHasValidatedLocation,
@@ -63,6 +68,10 @@ import {
   type LiveExperiencePatch,
   type UpdateLiveExperienceRejectReason,
 } from "../../utils/publishedExperienceEditGuards";
+import {
+  brandStripeOnboardingRoute,
+  resolvePaidPublishGuardCopy,
+} from "../../utils/paidPublishGuards";
 import type { ExperienceDetail } from "../../services/experienceDetailService";
 
 export interface ExperienceCreatorWizardProps {
@@ -283,6 +292,28 @@ export const ExperienceCreatorWizard: React.FC<ExperienceCreatorWizardProps> = (
     }, 0);
   }, [isFree, pricingMode, stops, wholePriceMajor]);
 
+  // ORCH-1076 Stream B — proactive Stripe gate. A paid experience
+  // (!isFree && resolvedTotalMajor > 0, mirroring the ORCH-1075 server
+  // predicate across whole + per-stop modes) on a brand that can't yet charge
+  // needs Stripe before it can publish. Live-edit experiences keep ONLY the
+  // reactive ORCH-1075 catch (D-1: no proactive banner on edit-to-paid). The
+  // reactive RPC catch in handleSubmit stays the canonical fail-close.
+  const experienceNeedsStripe = useMemo(
+    () =>
+      !isLiveEdit &&
+      offeringNeedsStripeToPublish({
+        isPaid: experienceDraftIsPaid({ isFree, resolvedTotalMajor }),
+        stripeStatus: brand?.stripeStatus ?? null,
+      }),
+    [isLiveEdit, isFree, resolvedTotalMajor, brand?.stripeStatus],
+  );
+
+  const handleConnectStripe = useCallback((): void => {
+    if (brand !== null) {
+      router.push(brandStripeOnboardingRoute(brand.id) as never);
+    }
+  }, [brand, router]);
+
   // Per-step Continue gate.
   const stopsValid = useMemo(() => {
     if (stops.length < 2 || stops.length > 5) return false;
@@ -443,9 +474,42 @@ export const ExperienceCreatorWizard: React.FC<ExperienceCreatorWizardProps> = (
     setStep((prev) => Math.min(5, prev + 1) as StepIndex);
   }, [canContinue, ensureDraft, experienceId, step, whenAdapter]);
 
+  // ORCH-1075 — surface the two paid-publish guard reasons as actionable copy
+  // and route to Stripe onboarding (Guard A) or the When step (Guard B).
+  // Returns true when the raw reason WAS an ORCH-1075 guard (so the caller
+  // skips its generic error copy); false otherwise.
+  const handlePaidPublishGuard = useCallback(
+    (raw: string | null | undefined): boolean => {
+      const copy = resolvePaidPublishGuardCopy(raw);
+      if (copy === null) return false;
+      setToast(copy.body);
+      if (copy.action === "stripe_onboarding") {
+        if (brand !== null) {
+          router.push(brandStripeOnboardingRoute(brand.id) as never);
+        }
+      } else {
+        // Guard B — jump to the When step (step 3) and reveal its errors.
+        setStep(3);
+        setShowStepErrors(true);
+        whenAdapter.setShowErrors(true);
+      }
+      return true;
+    },
+    [brand, router, whenAdapter],
+  );
+
   const handleSubmit = useCallback(
     async (publish: boolean): Promise<void> => {
       if (brand === null || user?.id === undefined) return;
+      // ORCH-1076 Stream B — proactive Stripe pre-check. A paid experience on a
+      // Stripe-unready brand can't publish; surface the blocking toast and
+      // return BEFORE the biz_publish_experience RPC. Draft saves
+      // (publish=false) are exempt — they never gate. The Publish button is
+      // also disabled, so this is the belt-and-suspenders path.
+      if (publish && experienceNeedsStripe) {
+        setToast("Connect a bank to publish this paid experience.");
+        return;
+      }
       if (
         publish &&
         (intents.length === 0 || !stopsValid || !pricingValid || !whenAdapter.isValid)
@@ -484,6 +548,11 @@ export const ExperienceCreatorWizard: React.FC<ExperienceCreatorWizardProps> = (
           // otherwise surface the raw reason so the operator sees SOMETHING
           // actionable instead of a no-op publish.
           const code = (error.message ?? "").trim();
+          // ORCH-1075 — paid-publish integrity guards (Stripe readiness /
+          // past date) get actionable copy + a route, not a raw error.
+          if (handlePaidPublishGuard(code)) {
+            return;
+          }
           const mapped = RPC_ERROR_COPY[code];
           throw new Error(
             mapped ??
@@ -505,6 +574,8 @@ export const ExperienceCreatorWizard: React.FC<ExperienceCreatorWizardProps> = (
       brand,
       buildPayload,
       ensureDraft,
+      experienceNeedsStripe,
+      handlePaidPublishGuard,
       intents,
       onComplete,
       pricingValid,
@@ -579,6 +650,11 @@ export const ExperienceCreatorWizard: React.FC<ExperienceCreatorWizardProps> = (
       });
       if (error !== null) {
         const code = (error.message ?? "").trim();
+        // ORCH-1075 — paid-edit integrity guards (defense-in-depth: this RPC
+        // returns them via data.reason, but a future RAISE path is covered too).
+        if (handlePaidPublishGuard(code)) {
+          return;
+        }
         throw new Error(
           RPC_ERROR_COPY[code] ??
             (code.length > 0
@@ -589,6 +665,14 @@ export const ExperienceCreatorWizard: React.FC<ExperienceCreatorWizardProps> = (
       const result = data as
         | { ok?: boolean; reason?: string; affected_order_count?: number; event?: { id?: string } }
         | null;
+      // ORCH-1075 — Stripe-readiness / past-date guard (structured return).
+      if (
+        result !== null &&
+        result.ok === false &&
+        handlePaidPublishGuard(result.reason)
+      ) {
+        return;
+      }
       // Server-side refund-gate rejection (canonical).
       if (result !== null && result.ok === false && typeof result.reason === "string") {
         const copy = liveExperienceRejectCopy(
@@ -610,6 +694,7 @@ export const ExperienceCreatorWizard: React.FC<ExperienceCreatorWizardProps> = (
     brand,
     buildPayload,
     capacity,
+    handlePaidPublishGuard,
     intents,
     isFree,
     liveEditReason,
@@ -784,6 +869,21 @@ export const ExperienceCreatorWizard: React.FC<ExperienceCreatorWizardProps> = (
           />
         ) : null}
 
+        {/* ORCH-1076 Stream B — proactive Stripe banner on the Pricing step, at
+            the bottom of the step body so the brand sees it the moment they set
+            a non-zero price. */}
+        {step === 4 && experienceNeedsStripe ? (
+          <View style={styles.stripeBannerWrap}>
+            <StripeBlockedCard
+              title="Bank required for paid experiences"
+              body="Connect a bank to publish this paid experience. Free experiences can be published any time."
+              ctaLabel="Connect bank"
+              onConnectStripe={handleConnectStripe}
+              testID="experience-pricing-stripe-blocked"
+            />
+          </View>
+        ) : null}
+
         {step === 5 ? (
           <ExperienceCoverStep
             brandId={brandId}
@@ -793,6 +893,21 @@ export const ExperienceCreatorWizard: React.FC<ExperienceCreatorWizardProps> = (
             onCoverChange={setCover}
             onShowToast={setToast}
           />
+        ) : null}
+
+        {/* ORCH-1076 Stream B — proactive Stripe banner on the FINAL (Cover)
+            step, at the bottom of the scroll body so it sits directly above the
+            footer Publish CTA. */}
+        {step === 5 && experienceNeedsStripe ? (
+          <View style={styles.stripeBannerWrap}>
+            <StripeBlockedCard
+              title="Bank required for paid experiences"
+              body="Connect a bank to publish this paid experience. Free experiences can be published any time."
+              ctaLabel="Connect bank"
+              onConnectStripe={handleConnectStripe}
+              testID="experience-cover-stripe-blocked"
+            />
+          </View>
         ) : null}
       </ScrollView>
       <View style={[styles.footer, { paddingBottom: insets.bottom + spacing.lg }]}>
@@ -827,7 +942,12 @@ export const ExperienceCreatorWizard: React.FC<ExperienceCreatorWizardProps> = (
               variant="primary"
               size="lg"
               loading={submitting}
+              // ORCH-1076 Stream B — disable Publish for a paid experience on a
+              // Stripe-unready brand (proactive gate; "Save as draft" stays
+              // enabled because drafts are server-exempt).
+              disabled={experienceNeedsStripe}
               style={styles.footerButton}
+              testID="experience-footer-publish"
             />
           </View>
         )}
@@ -859,6 +979,9 @@ const styles = StyleSheet.create({
     borderColor: glass.border.profileBase,
   },
   scrollContent: { paddingHorizontal: spacing.lg, paddingBottom: spacing.lg },
+  // ORCH-1076 Stream B — proactive Stripe banner spacing (inherits the
+  // scrollContent horizontal padding; only needs top separation).
+  stripeBannerWrap: { marginTop: spacing.md },
   stepBody: { gap: spacing.md },
   title: {
     fontSize: typography.h2.fontSize,
