@@ -102,6 +102,10 @@ import {
   mapPublishErrorToState,
 } from "./TripCreatorStep5Review";
 import { brandStripeOnboardingRoute } from "../../utils/paidPublishGuards";
+import {
+  offeringNeedsStripeToPublish,
+  tripDraftIsPaid,
+} from "../offering/publishStripeReadiness";
 // ORCH-0880 [Tr5 Traveler Intake Forms] — NEW Step 6 component (intake
 // schema builder + live preview, per-tier scope).
 import { TripCreatorStep6Intake } from "./TripCreatorStep6Intake";
@@ -394,6 +398,25 @@ export const TripCreatorWizard: React.FC<TripCreatorWizardProps> = ({
   const dismissToast = useCallback((): void => {
     setToast((p) => ({ ...p, visible: false }));
   }, []);
+
+  // ORCH-1076 Stream B — proactive Stripe gate. A paid trip (single online
+  // tier price > 0) on a brand that can't yet charge needs Stripe before it
+  // can publish. tripDraftIsPaid mirrors the ORCH-1075 server predicate
+  // (max(price_cents) WHERE available_online > 0); brand.stripeStatus mirrors
+  // pg_brand_can_charge. The reactive RPC catch in handleConfirmPublish stays
+  // the canonical fail-close.
+  const tripNeedsStripe = useMemo(
+    () =>
+      offeringNeedsStripeToPublish({
+        isPaid: tripDraftIsPaid(step4Draft),
+        stripeStatus: brand.stripeStatus ?? null,
+      }),
+    [step4Draft, brand.stripeStatus],
+  );
+
+  const handleConnectStripe = useCallback((): void => {
+    router.push(brandStripeOnboardingRoute(trip.brandId) as never);
+  }, [router, trip.brandId]);
 
   // ORCH-0892-B v2: keyboard listener + keyboardVisible/keyboardHeight state
   // DELETED. KAS via SmartScrollView handles focused-input scroll. dock-hide
@@ -823,9 +846,17 @@ export const TripCreatorWizard: React.FC<TripCreatorWizardProps> = ({
 
   // ----- Publish -----
   const handlePublishTap = useCallback((): void => {
+    // ORCH-1076 Stream B — proactive Stripe pre-check. A paid trip on a
+    // Stripe-unready brand can't publish; surface the blocking toast and do
+    // NOT open the confirm dialog (the dock Publish is also disabled, so this
+    // is the belt-and-suspenders path matching EventCreatorWizard).
+    if (tripNeedsStripe) {
+      showToast("Connect Stripe to publish this paid trip.");
+      return;
+    }
     // Open ConfirmDialog; actual publish runs in handleConfirmPublish.
     setPublishConfirmVisible(true);
-  }, []);
+  }, [tripNeedsStripe, showToast]);
 
   const handleConfirmPublish = useCallback(async (): Promise<void> => {
     setPublishError(null);
@@ -1202,6 +1233,8 @@ export const TripCreatorWizard: React.FC<TripCreatorWizardProps> = ({
               trip={previewTrip}
               brand={brand}
               publishError={publishError}
+              needsStripe={tripNeedsStripe}
+              onConnectStripe={handleConnectStripe}
             />
           ) : null}
         </View>
@@ -1260,7 +1293,9 @@ export const TripCreatorWizard: React.FC<TripCreatorWizardProps> = ({
                   size="md"
                   onPress={handlePublishTap}
                   loading={submitting}
-                  disabled={submitting}
+                  // ORCH-1076 Stream B — disable Publish for a paid trip on a
+                  // Stripe-unready brand (proactive gate; mirrors events).
+                  disabled={submitting || tripNeedsStripe}
                   fullWidth
                   testID="trip-wizard-footer-cta"
                 />
