@@ -58,6 +58,10 @@ export interface InviteBrandMemberInput {
   inviteeEmail: string;
   inviteeName: string;
   role: BrandRole;
+  // ORCH-1081 — partner-mode extensions. Both optional; either or both can
+  // accompany a non-partner invite as well (the edge fn just renders the note).
+  personalNote?: string;
+  partnerSetup?: boolean;
 }
 
 export interface InviteBrandMemberResult {
@@ -70,6 +74,10 @@ export interface AcceptBrandInvitationResult {
   transferred: boolean;
   previousOwnerAccountId: string | null;
   newOwnerAccountId: string | null;
+  // ORCH-1081 — surfaced for the celebration screen.
+  brandSlug: string | null;
+  newOwnerFirstName: string | null;
+  partnerSetup: boolean;
 }
 
 export class BrandInvitationServiceError extends Error {
@@ -106,6 +114,11 @@ export const brandTeamMemberKeys = {
 export async function inviteBrandMember(
   input: InviteBrandMemberInput,
 ): Promise<InviteBrandMemberResult> {
+  // ORCH-1081 — personal_note + partner_setup flow through to the edge fn
+  // which renders them in the Mingla brand-shell-wrapped email.
+  const note = typeof input.personalNote === "string"
+    ? input.personalNote.trim()
+    : "";
   const { data, error } = await supabase.functions.invoke(
     "invite-brand-member",
     {
@@ -114,6 +127,8 @@ export async function inviteBrandMember(
         invitee_email: input.inviteeEmail.trim().toLowerCase(),
         invitee_name: input.inviteeName.trim(),
         role: input.role,
+        ...(note.length > 0 ? { personal_note: note } : {}),
+        ...(input.partnerSetup === true ? { partner_setup: true } : {}),
       },
     },
   );
@@ -157,6 +172,10 @@ export async function acceptBrandInvitation(
       typeof d.new_owner_account_id === "string"
         ? d.new_owner_account_id
         : null,
+    brandSlug: typeof d.brand_slug === "string" ? d.brand_slug : null,
+    newOwnerFirstName:
+      typeof d.new_owner_first_name === "string" ? d.new_owner_first_name : null,
+    partnerSetup: d.partner_setup === true,
   };
 }
 

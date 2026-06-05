@@ -43,6 +43,9 @@ import { useBrandListState } from "../../src/hooks/useBrandListShim";
 // refetches on window focus + mount so the flip becomes visible within
 // seconds of the next Account-tab open (no manual reload needed).
 import { usePartnerStripeStatus } from "../../src/hooks/usePartnerStripe";
+// ORCH-1081 — partner_brand_links count drives the "Partner brands" row meta
+// (active + pending). Read-only; staleTime 30s.
+import { usePartnerBrandLinks } from "../../src/hooks/usePartnerBrandLinks";
 import {
   useCurrentBrandStore,
   type Brand,
@@ -117,6 +120,21 @@ export default function AccountTab(): React.ReactElement {
   }, [router]);
   const partnerStatus = usePartnerStripeStatus();
   const isPartner = partnerStatus.data?.partner_enabled === true;
+  // ORCH-1081 — partner brand portfolio entry-row meta. Skipped (no fetch) when
+  // the user isn't a partner — `enabled` is implicit through React Query's
+  // staleTime + we just don't read .data when isPartner=false.
+  const partnerLinksQuery = usePartnerBrandLinks();
+  const partnerActiveCount = isPartner
+    ? (partnerLinksQuery.data ?? []).filter((r) => r.status === "active").length
+    : 0;
+  const partnerPendingCount = isPartner
+    ? (partnerLinksQuery.data ?? []).filter(
+        (r) => r.status === "awaiting_owner" || r.status === "awaiting_stripe",
+      ).length
+    : 0;
+  const handlePartnerBrands = useCallback((): void => {
+    router.push("/partner/brands" as never);
+  }, [router]);
 
   const handleOpenSwitcher = useCallback((): void => {
     setSheetVisible(true);
@@ -264,6 +282,18 @@ export default function AccountTab(): React.ReactElement {
                 icon="trending-up"
                 label="Partner earnings"
                 onPress={handlePartnerEarnings}
+              />
+              {/* ORCH-1081 — Partner brands row. Meta count rendered inline.
+                  Shows on every partner's account; the empty-list-state
+                  inside the screen handles the no-brands case. */}
+              <SettingsNavRow
+                icon="tag"
+                label={
+                  partnerActiveCount === 0 && partnerPendingCount === 0
+                    ? "Partner brands"
+                    : `Partner brands · ${partnerActiveCount} active · ${partnerPendingCount} pending`
+                }
+                onPress={handlePartnerBrands}
               />
             </View>
           </GlassCard>

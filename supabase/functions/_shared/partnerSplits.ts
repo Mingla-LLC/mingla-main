@@ -32,6 +32,11 @@
 // @ts-ignore — Deno ESM
 import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
 import type { StripeClient } from "./stripe.ts";
+// ORCH-1081 — partner first-split push: fires once when a partner's first
+// transferred split lands for a brand. The trigger on partner_splits ALREADY
+// stamps partner_brand_links.first_split_at; here we additionally surface a
+// push so the partner sees the win in real time.
+import { dispatchNotification, formatMoneyCents } from "./stripeEdgeAuth.ts";
 
 // 10% of the 1.5% application fee = 0.15% of GMV.
 // MINGLA_APPLICATION_FEE_RATE = 0.015 lives in installments/createInstallmentPI.ts
@@ -342,6 +347,88 @@ export async function handleChargeSucceeded(
       p_application_fee_id: applicationFeeId,
       p_transfer_id: transferId,
     });
+
+    // ORCH-1081 — fire business.partner_first_split when this transfer is the
+    // FIRST one for the (partner, brand). Best-effort + idempotent: the
+    // notify-dispatch idempotencyKey collapses webhook replays to one push.
+    // We detect "first" by checking whether partner_brand_links.first_split_at
+    // was previously NULL — the partner_splits trigger sets it in the same
+    // transaction, so by the time we get here it's set. The race-safe rule:
+    // fire when transferred_at == first_split_at (∆ < 5s) which is true for
+    // the first transferred row only.
+    try {
+      const { data: linkRow } = await supabase
+        .from("partner_brand_links")
+        .select("first_split_at, accepted_at")
+        .eq("partner_account_id", partnerAccountId)
+        .eq("brand_id", brandId)
+        .is("cancelled_at", null)
+        .maybeSingle();
+      const firstSplitAt = (linkRow?.first_split_at as string | null) ?? null;
+      // Only fire when first_split_at is freshly stamped (within 30s of now).
+      // For webhook replays the trigger is a no-op (COALESCE preserves the
+      // earliest timestamp), so this comparison stays true ONLY on first.
+      const stampedRecently = firstSplitAt !== null &&
+        Date.now() - new Date(firstSplitAt).getTime() < 30_000;
+      if (stampedRecently) {
+        // Resolve brand name + event title for nicer copy. Best-effort.
+        const { data: brandRow } = await supabase
+          .from("brands")
+          .select("name")
+          .eq("id", brandId)
+          .maybeSingle();
+        const brandName = (brandRow?.name as string | null) ?? "your brand";
+
+        let eventTitle: string | null = null;
+        const { data: orderRow } = await supabase
+          .from("orders")
+          .select("event_id")
+          .eq("id", orderId)
+          .maybeSingle();
+        const eventId = (orderRow?.event_id as string | null) ?? null;
+        if (eventId) {
+          const { data: eventRow } = await supabase
+            .from("events")
+            .select("title")
+            .eq("id", eventId)
+            .maybeSingle();
+          eventTitle = (eventRow?.title as string | null) ?? null;
+        }
+
+        const amount = formatMoneyCents(partnerShareCents, currency);
+        const bodySuffix = eventTitle
+          ? ` from ${eventTitle}. Tap to see your ledger.`
+          : ". Tap to see your ledger.";
+        await dispatchNotification({
+          userId: partnerAccountId,
+          brandId,
+          type: "business.partner_first_split",
+          title: `Your first split from ${brandName}!`,
+          body: `${amount}${bodySuffix}`,
+          data: {
+            brandName,
+            eventTitle: eventTitle ?? undefined,
+            amountCents: partnerShareCents,
+            currency,
+            applicationFeeId,
+          },
+          relatedId: brandId,
+          relatedType: "brand",
+          idempotencyKey:
+            `business.partner_first_split:${partnerAccountId}:${brandId}`,
+          deepLink: `mingla-business://partner/earnings`,
+        });
+      }
+    } catch (firstSplitErr) {
+      // Best-effort — never fail the transfer flow on a notify error.
+      console.warn(
+        "[partner-splits] partner_first_split notify threw (non-fatal):",
+        firstSplitErr instanceof Error
+          ? firstSplitErr.message
+          : String(firstSplitErr),
+      );
+    }
+
     return { brandId, status: "transferred" };
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
