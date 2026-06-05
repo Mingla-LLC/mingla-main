@@ -69,6 +69,9 @@ interface BrandStripeCountryPickerProps {
     currency: string;
     sublabel?: string;
   }>;
+  /** Open the country sheet immediately on mount (e.g. returning from a region's
+   * own onboarding to re-pick). */
+  defaultOpen?: boolean;
 }
 
 export function BrandStripeCountryPicker({
@@ -78,8 +81,9 @@ export function BrandStripeCountryPicker({
   helperText = null,
   warningText = null,
   extraOptions = [],
+  defaultOpen = false,
 }: BrandStripeCountryPickerProps): React.ReactElement {
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(defaultOpen);
   const [search, setSearch] = useState("");
   const countriesQuery = useBrandStripeCountries();
 

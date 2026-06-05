@@ -154,6 +154,16 @@ export const BrandPaystackOnboardView: React.FC<Props> = ({
 
   return (
     <GlassCard variant="elevated" padding={spacing.lg}>
+      {onCancel != null && !isUpdate ? (
+        <View style={styles.backRow}>
+          <Button
+            label="‹ Choose a different country"
+            variant="ghost"
+            size="sm"
+            onPress={onCancel}
+          />
+        </View>
+      ) : null}
       <Text style={styles.title}>
         {isUpdate ? "Change payout bank" : "Get paid in Nigeria"}
       </Text>
@@ -225,10 +235,10 @@ export const BrandPaystackOnboardView: React.FC<Props> = ({
             onPress={handleConnect}
           />
         )}
-        {onCancel != null ? (
+        {onCancel != null && isUpdate ? (
           <View style={{ marginTop: spacing.sm }}>
             <Button
-              label={isUpdate ? "Cancel" : "Choose a different country"}
+              label="Cancel"
               variant="ghost"
               size="md"
               fullWidth
@@ -298,6 +308,11 @@ export const BrandPaystackOnboardView: React.FC<Props> = ({
 };
 
 const styles = StyleSheet.create({
+  backRow: {
+    alignItems: "flex-start",
+    marginBottom: spacing.xs,
+    marginLeft: -spacing.xs,
+  },
   title: {
     ...typography.h3,
     color: textTokens.primary,

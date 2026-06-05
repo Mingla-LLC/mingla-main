@@ -201,7 +201,11 @@ export const BrandOnboardView: React.FC<BrandOnboardViewProps> = ({
   // provider). The Stripe onboarding path below is never entered for NG, and the
   // form offers "Choose a different country" to return here.
   const [paystackSelected, setPaystackSelected] = useState(false);
+  // When the user returns from the Nigeria bank form, re-open the country sheet
+  // so they can immediately re-pick (rather than landing on the closed picker).
+  const [reopenPickerOnReturn, setReopenPickerOnReturn] = useState(false);
   const handleCountryChange = useCallback((countryCode: string): void => {
+    setReopenPickerOnReturn(false);
     // orch-strict-grep-allow stripe-country-out-of-scope — NG routes to the
     // Paystack rail, never Stripe; it is intentionally not in the Stripe allowlist.
     if (countryCode === "NG") {
@@ -537,7 +541,10 @@ export const BrandOnboardView: React.FC<BrandOnboardViewProps> = ({
   // META-ORCH-1076 — Nigeria selected: render the Paystack bank-details form
   // inline (instant). "Choose a different country" returns to the picker.
   if (brand !== null && paystackSelected) {
-    const backToPicker = (): void => setPaystackSelected(false);
+    const backToPicker = (): void => {
+      setReopenPickerOnReturn(true);
+      setPaystackSelected(false);
+    };
     return (
       <View style={styles.host}>
         {renderTopBar({ onBack: backToPicker, backLabel: "Back" })}
@@ -656,6 +663,7 @@ export const BrandOnboardView: React.FC<BrandOnboardViewProps> = ({
                   helperText={countryPickerHelper}
                   warningText={countryPickerWarning}
                   extraOptions={PAYSTACK_PICKER_OPTIONS}
+                  defaultOpen={reopenPickerOnReturn}
                 />
               </View>
 
