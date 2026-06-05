@@ -11,7 +11,6 @@
 import React, { useMemo, useState } from "react";
 import {
   ActivityIndicator,
-  KeyboardAvoidingView,
   Modal,
   Platform,
   Pressable,
@@ -20,6 +19,9 @@ import {
   Text,
   View,
 } from "react-native";
+// ORCH-0892: KeyboardAvoidingView must come from react-native-keyboard-controller
+// (frame-perfect native animation; drop-in for the RN one).
+import { KeyboardAvoidingView } from "react-native-keyboard-controller";
 
 import {
   accent,
