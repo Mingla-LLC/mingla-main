@@ -1,16 +1,17 @@
 /**
  * META-ORCH-1059 [experiences-business-parity] · SUB-A · LAYER 3
  *
- * mapbox-geocode — server-side Mapbox Search Box proxy for the experience
- * stops builder's address picker. Keeps MAPBOX_ACCESS_TOKEN strictly
- * server-side (never shipped in the client bundle), mirroring the
- * places-autocomplete (Google) edge fn's single-function action-discriminated
- * design + CORS + verify_jwt=true + { error: "<code>" } contract.
+ * mapbox-geocode — server-side Mapbox Search Box proxy for every business
+ * address picker (experience stops, event venue, trip, brand, venue claim).
+ * Keeps MAPBOX_ACCESS_TOKEN strictly server-side (never shipped in the client
+ * bundle) via a single-function action-discriminated design + CORS +
+ * verify_jwt=true + { error: "<code>" } contract.
  *
- * Coexists with places-autocomplete: EVENTS keep Google; EXPERIENCES use
- * Mapbox (operator-locked provider). The normalized output shape is a
- * structural drop-in for googlePlacesService.PlaceDetails so the client
- * MapboxAddressInput is a drop-in for AddressAutocompleteInput.
+ * ORCH-1079 [Business-venue Google→Mapbox sweep] retired the legacy Google
+ * `places-autocomplete` edge fn; ALL business address autocomplete now flows
+ * through this Mapbox proxy. The normalized output shape remains a structural
+ * superset of the old googlePlacesService.PlaceDetails so the client
+ * MapboxAddressInput is a drop-in for the deleted AddressAutocompleteInput.
  *
  * ── API surface (action-discriminated) ──────────────────────────────────
  *   POST { action: "suggest",  query: string, session_token?: string }
@@ -246,10 +247,21 @@ export function featureToDetails(
   const props = feature?.properties ?? {};
   const ctx = props.context ?? {};
 
-  // City: context.place.name → locality.name → district.name. Honest error if
-  // none (matches the Google PlaceDetails "city required" contract).
+  // City: context.place.name → locality.name → district.name → region.name.
+  // ORCH-1079 §3.D.1 — a POI feature whose Mapbox context lacks place/locality/
+  // district (e.g. a remote venue) previously returned `no_locality` → HTTP 500
+  // and the user's real pick failed loudly. Add ctx.region.name as a last-resort
+  // human-readable locality so the pick resolves instead of 500ing. Additive:
+  // the new branch only fires when the prior three are all null; PlaceDetails.city
+  // stays non-null (Google contract preserved). region_code derivation below is
+  // unaffected (it reads structured region.region_code, not this display name).
+  // https://docs.mapbox.com/api/search/search-box/#retrieve-a-suggested-feature
   const city =
-    ctx.place?.name ?? ctx.locality?.name ?? ctx.district?.name ?? null;
+    ctx.place?.name ??
+    ctx.locality?.name ??
+    ctx.district?.name ??
+    ctx.region?.name ??
+    null;
   if (!city) {
     return { error: "no_locality" };
   }

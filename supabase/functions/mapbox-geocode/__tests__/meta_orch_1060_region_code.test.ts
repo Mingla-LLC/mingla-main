@@ -96,12 +96,19 @@ Deno.test("keystone honest error: no coordinates → no_location", () => {
   if ("error" in details) assertEquals(details.error, "no_location");
 });
 
-Deno.test("keystone honest error: no derivable city → no_locality", () => {
+// [TEST-MOD-APPROVED ORCH-1079] §3.D.1 changed this premise: a feature with only
+// a region (no place/locality/district) used to error `no_locality`; it now
+// falls back to region.name as the city so a real POI pick resolves instead of
+// 500ing. Updated to assert the new contract; the honest-error path now requires
+// NO region either (covered by orch_1079_poi_region_fallback.test.ts T-4A-c).
+Deno.test("ORCH-1079: region-only feature → city falls back to region.name", () => {
   const feature = {
     geometry: { coordinates: [1, 2] as [number, number] },
     properties: { context: { region: { name: "X", region_code: "X1" } } },
   };
   const details = featureToDetails(feature as any, "x");
-  assert("error" in details);
-  if ("error" in details) assertEquals(details.error, "no_locality");
+  assert(!("error" in details), "region-only now resolves via the fallback");
+  if ("error" in details) return;
+  assertEquals(details.city, "X");
+  assertEquals(details.regionCode, "X1");
 });

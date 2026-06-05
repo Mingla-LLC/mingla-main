@@ -1542,6 +1542,21 @@ function checkNoNewBackendFiles() {
   const ORCH_1073_BACKEND_ALLOWLIST = [
     "supabase/migrations/20260909000000_orch_1073_admin_suspend_delete_listing.sql",
   ];
+  // ORCH-1079 [Business-venue Google→Mapbox sweep]. C7 is scoped to ORCH-0863
+  // marketing; these backend touches are the business-venue Mapbox sweep:
+  // (1) the POI-without-city region fallback on the shared mapbox-geocode edge
+  // fn, and (2) the RETIRED Google places-autocomplete proxy (both its index.ts
+  // and index.test.ts are DELETED — deleted paths still appear in
+  // `git diff --name-only`, so they must be allowlisted). GOOGLE_MAPS_API_KEY is
+  // RETAINED (6 other edge fns use it). A future close that drops these
+  // allowlists should re-scope C7 to fire only on `Close ORCH-0863`.
+  const ORCH_1079_BACKEND_ALLOWLIST = [
+    "supabase/functions/mapbox-geocode/index.ts",
+    "supabase/functions/mapbox-geocode/__tests__/orch_1079_poi_region_fallback.test.ts",
+    "supabase/functions/mapbox-geocode/__tests__/meta_orch_1060_region_code.test.ts",
+    "supabase/functions/places-autocomplete/index.ts",
+    "supabase/functions/places-autocomplete/index.test.ts",
+  ];
   // ORCH-1032 [Intelligence pipeline concurrency cap + chunked enqueue]:
   // adds the additive 'queued'-status migration (status CHECK widen + per-city
   // unique active index widen + tg_kick_pending_trial_runs promotion built on
@@ -1888,6 +1903,7 @@ function checkNoNewBackendFiles() {
     ...ORCH_1072_BACKEND_ALLOWLIST,
     ...ORCH_1080_BACKEND_ALLOWLIST,
     ...ORCH_1073_BACKEND_ALLOWLIST,
+    ...ORCH_1079_BACKEND_ALLOWLIST,
     // Schedule-edit buyer protection + "Refund all & proceed" (separate PR;
     // shares the ORCH-1047 work id used in code). New migration recording the
     // already-live business_patch_event_when change — not ORCH-0863 marketing

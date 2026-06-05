@@ -24,12 +24,11 @@ verify_jwt = false
 [functions.discover-merged-events]
 verify_jwt = false
 
-# ORCH-0824: Google Places autocomplete + place-details proxy. Keeps the
-# GOOGLE_MAPS_API_KEY server-side (not in the client bundle). Auth-gated
-# because the wizard flow that calls this is already authenticated;
-# anonymous traffic is not a legitimate use case.
-[functions.places-autocomplete]
-verify_jwt = true
+# ORCH-1079: the Google `places-autocomplete` proxy was RETIRED (business address
+# autocomplete now flows through `mapbox-geocode`). GOOGLE_MAPS_API_KEY is RETAINED
+# — six other edge fns still consume it (admin-seed-places / admin-refresh-places /
+# admin-place-search / backfill-place-photos / get-companion-stops /
+# get-picnic-grocery). Do NOT delete the key.
 
 # Ve2 — place_pool name search for venue claim comparison (public-safe fields).
 [functions.claim-search-pool]
@@ -130,11 +129,12 @@ verify_jwt = true
 [functions.get-paired-profile-cards]
 verify_jwt = true
 
-# META-ORCH-1059 Sub-A — Mapbox Search Box proxy for the experience stops
-# builder's address picker. Keeps MAPBOX_ACCESS_TOKEN server-side. Auth-gated:
-# the experience creation wizard is always authenticated; anonymous geocode
-# traffic is not a legitimate use. Coexists with places-autocomplete (Google)
-# which events keep using.
+# META-ORCH-1059 Sub-A — Mapbox Search Box proxy for every business address
+# picker (experiences, events, trips, brand, venue claim). Keeps
+# MAPBOX_ACCESS_TOKEN server-side. Auth-gated: the creation wizards are always
+# authenticated; anonymous geocode traffic is not a legitimate use. ORCH-1079
+# retired the legacy Google places-autocomplete proxy — this is the sole
+# business address-autocomplete edge fn now.
 [functions.mapbox-geocode]
 verify_jwt = true
 
