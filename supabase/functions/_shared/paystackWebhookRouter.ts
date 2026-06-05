@@ -151,6 +151,9 @@ export async function handlePaystackChargeSuccess(
       p_stripe_charge_id: txnId,
       p_stripe_payment_method_type: channel,
       p_qr_token_pepper: qrTokenPepper(),
+      // Paystack Phase 1 has no installment plans — single full payment only
+      // (ORCH-0921 gate: finalize callers must pass p_installment_plan_root).
+      p_installment_plan_root: false,
     },
   );
   if (finalizeError || !finalized) {
