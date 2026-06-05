@@ -183,7 +183,7 @@ const typeToPreference: Record<string, string> = {
   "re_engagement_3d": "marketing",
   "re_engagement_7d": "marketing",
   "weekly_digest": "marketing",
-  // ORCH-1077 S-2: referral_credited was missing from the map, so it bypassed
+  // ORCH-1080 S-2: referral_credited was missing from the map, so it bypassed
   // the opt-out gate (typeToPreference[type] === undefined → always sent).
   // "marketing" is the closest existing bucket (no dedicated referral pref
   // column). The mingla://profile?tab=subscription deep link is unchanged.

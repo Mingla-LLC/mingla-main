@@ -1503,7 +1503,7 @@ function checkNoNewBackendFiles() {
   const ORCH_1072_BACKEND_ALLOWLIST = [
     "supabase/migrations/20260906000000_orch_1072_brand_experiences_for_place.sql",
   ];
-  // ORCH-1077 [Notification deep-link map + collab→group-chat routing gap]:
+  // ORCH-1080 [Notification deep-link map + collab→group-chat routing gap]:
   // the core fix is client-only (deepLinkService.ts + ConnectionsPage.tsx +
   // app/index.tsx), but two secondary lifecycle items MODIFY existing edge
   // functions — S-2 adds `referral_credited` to notify-dispatch's
@@ -1511,7 +1511,7 @@ function checkNoNewBackendFiles() {
   // deep link from `mingla://messages/{id}` to `mingla://chat/{id}?type=direct`
   // in notify-message. No NEW backend files. C7 also flags MODIFIED backend
   // files, so both are listed here. Per COMMS-0002.
-  const ORCH_1077_BACKEND_ALLOWLIST = [
+  const ORCH_1080_BACKEND_ALLOWLIST = [
     "supabase/functions/notify-dispatch/index.ts",
     "supabase/functions/notify-message/index.ts",
   ];
@@ -1748,7 +1748,7 @@ function checkNoNewBackendFiles() {
     ...ORCH_1064_BACKEND_ALLOWLIST,
     ...ORCH_1067_BACKEND_ALLOWLIST,
     ...ORCH_1072_BACKEND_ALLOWLIST,
-    ...ORCH_1077_BACKEND_ALLOWLIST,
+    ...ORCH_1080_BACKEND_ALLOWLIST,
     // Schedule-edit buyer protection + "Refund all & proceed" (separate PR;
     // shares the ORCH-1047 work id used in code). New migration recording the
     // already-live business_patch_event_when change — not ORCH-0863 marketing

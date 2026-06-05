@@ -1,6 +1,6 @@
 // @ts-nocheck
-// [TEST-MOD-APPROVED ORCH-1077] — the SESSION-routing assertions here were
-// updated from the ORCH-1030 "session → HOME" target to the ORCH-1077
+// [TEST-MOD-APPROVED ORCH-1080] — the SESSION-routing assertions here were
+// updated from the ORCH-1030 "session → HOME" target to the ORCH-1080
 // "session → GROUP CHAT (connections/messages)" target (operator-locked
 // 2026-06-04). A session/collab notification now lands in the session's group
 // chat, where the in-chat CTA reaches the deck (META-ORCH-0929 immutable). All
@@ -33,7 +33,7 @@
 //      and NO ids, must yield a Destination whose executor lands on a real page
 //      (never null, never a kind the executor has no branch for).
 //
-// fails-on-revert anchor: ORCH-1077 routes a session Destination to the group
+// fails-on-revert anchor: ORCH-1080 routes a session Destination to the group
 // chat (connections/messages). Reverting the executor `session` branch back to
 // the dead Home seam breaks the session assertions in sections (1) + (4).
 import {
@@ -92,7 +92,7 @@ Deno.test("ADV-1a: mingla://session/{deleted-id} still parses to a session Desti
   assertEquals(dest.sessionId, "deleted-sess-404");
   const { handlers, calls } = makeHandlers();
   executeDeepLink(dest, handlers);
-  // ORCH-1077: lands the Messages tab carrying the sessionId. A non-existent
+  // ORCH-1080: lands the Messages tab carrying the sessionId. A non-existent
   // session can never blank: ConnectionsPage resolves nothing, clears the deep
   // link, and the user stays on the Connections/Messages tab (SC-5).
   assertEquals(calls.page, "connections");
@@ -210,7 +210,7 @@ Deno.test("ADV-4: in-app, push, and deferred-replay reach the IDENTICAL Destinat
   assertEquals(a.calls.page, b.calls.page);
   assertEquals(b.calls.page, c.calls.page);
   assertEquals(a.calls.deepLinkParams?.sessionId, c.calls.deepLinkParams?.sessionId);
-  // ORCH-1077: all three land the session's group chat (Messages tab), and the
+  // ORCH-1080: all three land the session's group chat (Messages tab), and the
   // dead Home seam never fires.
   assertEquals(a.calls.page, "connections");
   for (const calls of [a.calls, b.calls, c.calls]) {

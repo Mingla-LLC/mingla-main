@@ -482,7 +482,7 @@ serve(async (req) => {
         title: `${senderName} shared an experience`,
         body: `🔖 ${titleTrunc}`,
         data: {
-          // ORCH-1077 S-3: normalize the lossy legacy `mingla://messages/{id}`
+          // ORCH-1080 S-3: normalize the lossy legacy `mingla://messages/{id}`
           // shape to the canonical `mingla://chat/{id}?type=direct`, so the
           // client `chat` parser preserves the `type` param (the `messages`
           // parser is the deprecated lossy alias). Cosmetic for direct card

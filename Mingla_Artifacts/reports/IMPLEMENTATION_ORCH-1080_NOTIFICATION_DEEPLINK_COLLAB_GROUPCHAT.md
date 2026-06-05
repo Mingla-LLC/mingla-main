@@ -1,9 +1,9 @@
-# IMPLEMENTATION — ORCH-1077 [Notification deep-link map + collab→group-chat routing gap]
+# IMPLEMENTATION — ORCH-1080 [Notification deep-link map + collab→group-chat routing gap]
 
 **Skill:** mingla-implementor (Claude parity mirror)
-**Worktree:** `~/Desktop/mingla-orchs/ORCH-1077-[notification-deeplink-collab-groupchat]/` on branch `ORCH-1077-notification-deeplink-collab-groupchat`
+**Worktree:** `~/Desktop/mingla-orchs/ORCH-1080-[notification-deeplink-collab-groupchat]/` on branch `ORCH-1080-notification-deeplink-collab-groupchat`
 **Base:** `98f34ff15` (main HEAD at dispatch)
-**Spec:** `Mingla_Artifacts/specs/SPEC_ORCH-1077_NOTIFICATION_DEEPLINK_COLLAB_GROUPCHAT.md`
+**Spec:** `Mingla_Artifacts/specs/SPEC_ORCH-1080_NOTIFICATION_DEEPLINK_COLLAB_GROUPCHAT.md`
 **Date:** 2026-06-04
 **Status:** implemented and verified (client core), implemented + deno-checked (edge S-2/S-3, NOT deployed)
 
@@ -23,7 +23,7 @@ The spec's **intent and all 11 success criteria are still correct and achievable
 | §0/SC-7: `grep setPendingSessionOpen` returns matches "only inside deepLinkService.ts (zero external consumers)" | FALSE — `app/index.tsx` had 4 call sites supplying `setPendingSessionOpen`, a `pendingSessionOpen` useState, and a dead clearing effect (1000-1004). | Removed ALL of them in `index.tsx` (required to satisfy SC-7's "zero matches in app-mobile" for production code). |
 | §3.D S-1: `notify-birthday-reminder:212` emits `mingla://discover` | FALSE — already emits `mingla://profile/{id}` (ORCH-1030 retargeted it). | **S-1 NO CHANGE NEEDED** — already a meaningful destination. SC-9 satisfied by existing code (asserted, see §6). |
 | §3.D S-3: `notify-message:476` emits `mingla://messages/{conversationId}` | TRUE for `direct_card_message` (line 485). | Normalized to `mingla://chat/{id}?type=direct` (S-3 valid). |
-| ORCH-1030 locked tests assert `session → home` | Two immutable test files (`deepLinkRouting.orch1030.test.ts` + `.adversarial.test.ts`) assert F-01 "session must land Home, never Connections" — the exact opposite of ORCH-1077. | Updated the **session-routing assertions only** under `[TEST-MOD-APPROVED ORCH-1077]` (authorized by the append-only gate; ORCH-1077's entire purpose is to invert this routing). All non-session assertions untouched. |
+| ORCH-1030 locked tests assert `session → home` | Two immutable test files (`deepLinkRouting.orch1030.test.ts` + `.adversarial.test.ts`) assert F-01 "session must land Home, never Connections" — the exact opposite of ORCH-1080. | Updated the **session-routing assertions only** under `[TEST-MOD-APPROVED ORCH-1080]` (authorized by the append-only gate; ORCH-1080's entire purpose is to invert this routing). All non-session assertions untouched. |
 
 **Net effect:** the spec's behavioral contract (SC-1..SC-11) is delivered exactly; the file-level mechanics differ from the spec's stale snippets because the live architecture differs. No success criterion was dropped or reinterpreted.
 
@@ -62,18 +62,18 @@ The spec's **intent and all 11 success criteria are still correct and achievable
 **Lines:** ~7.
 
 ### .github/scripts/strict-grep/orch-0863-marketing-hub-phase-b.mjs (CI gate, REQUIRED with edge change)
-**Before:** no ORCH-1077 backend allowlist.
-**Now:** `ORCH_1077_BACKEND_ALLOWLIST = ["supabase/functions/notify-dispatch/index.ts", "supabase/functions/notify-message/index.ts"]` + spread into the aggregated `ALLOWLIST`.
+**Before:** no ORCH-1080 backend allowlist.
+**Now:** `ORCH_1080_BACKEND_ALLOWLIST = ["supabase/functions/notify-dispatch/index.ts", "supabase/functions/notify-message/index.ts"]` + spread into the aggregated `ALLOWLIST`.
 **Why:** COMMS-0002 / C7 also flags MODIFIED backend files. Both are modifications (no new files). Gate verified green (§5).
 **Lines:** ~13.
 
-### app-mobile/src/services/__tests__/deepLinkRouting.orch1030.test.ts + .adversarial.test.ts ([TEST-MOD-APPROVED ORCH-1077])
+### app-mobile/src/services/__tests__/deepLinkRouting.orch1030.test.ts + .adversarial.test.ts ([TEST-MOD-APPROVED ORCH-1080])
 **Before:** asserted `session → home` + `setPendingSessionOpen` called (F-01 "never Connections").
 **Now:** the **session-routing assertions only** assert `session → connections/messages` carrying `sessionId`, and `sessionOpened === null`. Non-session assertions (profile, calendar, review, paywall, garbage-null, parity, special-case-killer, profile-boundary, null-no-op, exhaustive-no-id) untouched. 22/22 Deno tests pass post-edit.
-**Why:** unavoidable — ORCH-1077 inverts the exact routing these locked tests pinned. Authorized via the append-only token in the commit body.
+**Why:** unavoidable — ORCH-1080 inverts the exact routing these locked tests pinned. Authorized via the append-only token in the commit body.
 
-### NEW: app-mobile/src/services/__tests__/orch-1077-session-deeplink-to-group-chat.test.ts (happy-path, fails-on-revert)
-### NEW: app-mobile/src/services/__tests__/orch-1077-session-deeplink-adversarial.test.ts (adversarial)
+### NEW: app-mobile/src/services/__tests__/orch-1080-session-deeplink-to-group-chat.test.ts (happy-path, fails-on-revert)
+### NEW: app-mobile/src/services/__tests__/orch-1080-session-deeplink-adversarial.test.ts (adversarial)
 
 ---
 
@@ -113,21 +113,21 @@ supabase functions deploy notify-message --project-ref gqnoajqerqhnvulmnyvv
 
 ## 4. Regression test (the mandatory gate)
 
-**Happy-path:** `app-mobile/src/services/__tests__/orch-1077-session-deeplink-to-group-chat.test.ts`
-- Run: `node ./src/services/__tests__/orch-1077-session-deeplink-to-group-chat.test.ts` → `PASS ORCH-1077 happy-path: session deep link → group chat (parser+executor+ConnectionsPage)`
+**Happy-path:** `app-mobile/src/services/__tests__/orch-1080-session-deeplink-to-group-chat.test.ts`
+- Run: `node ./src/services/__tests__/orch-1080-session-deeplink-to-group-chat.test.ts` → `PASS ORCH-1080 happy-path: session deep link → group chat (parser+executor+ConnectionsPage)`
 - **fails-on-revert verified at `98f34ff15`** (branch base, pre-fix):
   - Reverting the `deepLinkService.ts` executor `session` branch back to the Home seam → `AssertionError: SC-1: the 'session' executor must route to connections/messages carrying the sessionId`. Restored → PASS.
   - Reverting the `ConnectionsPage.tsx` `sessionId` branch → `AssertionError: SC-1: ConnectionsPage must resolve deepLinkParams.sessionId → group conversation`. Restored → PASS.
 
-**Adversarial (distinct surface):** `app-mobile/src/services/__tests__/orch-1077-session-deeplink-adversarial.test.ts`
-- Run → `PASS ORCH-1077 adversarial: dead-code absence + query-form parsing + no deck auto-open`
+**Adversarial (distinct surface):** `app-mobile/src/services/__tests__/orch-1080-session-deeplink-adversarial.test.ts`
+- Run → `PASS ORCH-1080 adversarial: dead-code absence + query-form parsing + no deck auto-open`
 - Attacks: (1) dead-code eradication across BOTH `deepLinkService.ts` AND `app/index.tsx` (not just the parser); (2) query-form `?id=` parsing via the LIVE `parseDeepLink`; (3) no `CollabDeckSheet` reference in the deep-link path + session executor must route connections, never home. NOT a renamed copy of the happy-path.
 
 ---
 
 ## 5. Local checks
 
-- `tsc --noEmit` (app-mobile): **0 errors total**, 0 on touched files. (captured `/tmp/orch1077_tsc2.txt`)
+- `tsc --noEmit` (app-mobile): **0 errors total**, 0 on touched files. (captured `/tmp/orch1080_tsc2.txt`)
 - `deno check` notify-dispatch/index.ts → `Check` exit 0; notify-message/index.ts → `Check` exit 0.
 - strict-grep `orch-0863-marketing-hub-phase-b.mjs`: **all checks PASS**, `C7: no-new-backend-files` OK (allowlist covers both modified edge files).
 - ORCH-1030 Deno suites (post `[TEST-MOD-APPROVED]` edit): **22 passed, 0 failed**.
@@ -153,12 +153,12 @@ Covered: Consumer iOS + Consumer Android (shared RN code; parity automatic). Not
 ## 8. Discoveries for orchestrator
 
 1. **Spec was stale (pre-ORCH-1030).** Documented in §0. The orchestrator should note the spec's §3 snippets do not match shipped code; future ORCHs touching `deepLinkService.ts` must read the typed-Destination architecture, not the spec's `{page:'home'}` shape.
-2. **eslint hangs in this worktree (env, not code).** eslint v9.37 times out on ANY file in `~/Desktop/mingla-orchs/ORCH-1077-[…]/app-mobile` — including untouched files — so it could not be used to lint the touched files. Two contributing factors observed: (a) the flat `eslint.config.js` resolves the whole project through the shared anchor node_modules under a bracketed worktree path; (b) running multiple eslint processes in parallel against the SHARED anchor node_modules left `/Users/sethogieva/Desktop/mingla-main/app-mobile/node_modules/globals/globals.json` readable-as-0-bytes (metadata said 47996 bytes; `cat` yielded 0 — APFS read anomaly under concurrent access), which I restored by repacking `globals@14.0.0`. **Lessons:** never run parallel eslint against the shared anchor node_modules from a worktree; CI/`expo lint` on merged main is the authoritative lint gate. tsc clean substitutes for type safety here. Not a code issue.
-3. **`direct_card_message` deepLink is nested-only (`data.deepLink`), not top-level.** Per the in-file comment, notify-dispatch nulls a nested-only deepLink (`deepLink: deepLink || null` override). The S-3 normalize fixes the STRING shape as the spec scoped, but if `direct_card_message` push deep links are observed not routing at all, the real fix is to pass `deepLink` top-level (out of ORCH-1077 scope — register if needed).
+2. **eslint hangs in this worktree (env, not code).** eslint v9.37 times out on ANY file in `~/Desktop/mingla-orchs/ORCH-1080-[…]/app-mobile` — including untouched files — so it could not be used to lint the touched files. Two contributing factors observed: (a) the flat `eslint.config.js` resolves the whole project through the shared anchor node_modules under a bracketed worktree path; (b) running multiple eslint processes in parallel against the SHARED anchor node_modules left `/Users/sethogieva/Desktop/mingla-main/app-mobile/node_modules/globals/globals.json` readable-as-0-bytes (metadata said 47996 bytes; `cat` yielded 0 — APFS read anomaly under concurrent access), which I restored by repacking `globals@14.0.0`. **Lessons:** never run parallel eslint against the shared anchor node_modules from a worktree; CI/`expo lint` on merged main is the authoritative lint gate. tsc clean substitutes for type safety here. Not a code issue.
+3. **`direct_card_message` deepLink is nested-only (`data.deepLink`), not top-level.** Per the in-file comment, notify-dispatch nulls a nested-only deepLink (`deepLink: deepLink || null` override). The S-3 normalize fixes the STRING shape as the spec scoped, but if `direct_card_message` push deep links are observed not routing at all, the real fix is to pass `deepLink` top-level (out of ORCH-1080 scope — register if needed).
 
 ---
 
 ## 9. Comms-ledger acks (this turn)
 
-- **COMMS-0002 (WARN, ALL):** acked — `ORCH_1077_BACKEND_ALLOWLIST` added in the SAME commit as the two edge modifications; C7 verified green. No new backend files.
+- **COMMS-0002 (WARN, ALL):** acked — `ORCH_1080_BACKEND_ALLOWLIST` added in the SAME commit as the two edge modifications; C7 verified green. No new backend files.
 - **COMMS-0003 (WARN, ALL):** acked — no external-API enums/payloads/endpoints introduced; only `deepLink` string values + one preference-map entry. OneSignal payload shapes unchanged. N/A.

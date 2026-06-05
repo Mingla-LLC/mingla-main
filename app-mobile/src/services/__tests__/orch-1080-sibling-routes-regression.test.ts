@@ -1,8 +1,8 @@
 // @ts-nocheck
-// ORCH-1077 [Notification deep-link map + collab→group-chat routing gap]
+// ORCH-1080 [Notification deep-link map + collab→group-chat routing gap]
 // TESTER-AUTHORED adversarial regression test — independent of the two
-// implementor-authored suites (orch-1077-session-deeplink-to-group-chat +
-// orch-1077-session-deeplink-adversarial). This is the CLOSE-gate Step 0.5(b)
+// implementor-authored suites (orch-1080-session-deeplink-to-group-chat +
+// orch-1080-session-deeplink-adversarial). This is the CLOSE-gate Step 0.5(b)
 // tester artifact.
 //
 // DISTINCT ANGLE — SIBLING-ROUTE COLLATERAL DAMAGE.
@@ -187,7 +187,7 @@ if (invokedDirectly) {
   try {
     runOrch1077SiblingRoutesRegression();
     console.log(
-      "PASS ORCH-1077 sibling-routes regression (tester-authored): DM + group-chat + connections-tab + bare-session-Home + no session/chat merge — session-case edit did not break sibling routes",
+      "PASS ORCH-1080 sibling-routes regression (tester-authored): DM + group-chat + connections-tab + bare-session-Home + no session/chat merge — session-case edit did not break sibling routes",
     );
   } catch (error) {
     console.error(error);

@@ -1,5 +1,5 @@
 // @ts-nocheck
-// ORCH-1077 [Notification deep-link map + collab→group-chat routing gap]
+// ORCH-1080 [Notification deep-link map + collab→group-chat routing gap]
 // ADVERSARIAL regression test — a DIFFERENT failure surface from the happy-path.
 //
 // The happy-path test proves the functional repoint (session → group chat) in
@@ -116,7 +116,7 @@ if (invokedDirectly) {
   try {
     runOrch1077AdversarialTest();
     console.log(
-      "PASS ORCH-1077 adversarial: dead-code absence + query-form parsing + no deck auto-open",
+      "PASS ORCH-1080 adversarial: dead-code absence + query-form parsing + no deck auto-open",
     );
   } catch (error) {
     console.error(error);

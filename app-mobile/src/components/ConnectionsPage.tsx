@@ -2087,7 +2087,7 @@ function ConnectionsPageRefactored({
         }
 
         if (!rawConversation && deepLinkParams.sessionId) {
-          // ORCH-1077: collab/session notifications resolve sessionId → the
+          // ORCH-1080: collab/session notifications resolve sessionId → the
           // session's group chat, mirroring the eventId branch above. The deck is
           // reached via the in-chat CTA (META-ORCH-0929). `session_id` +
           // `linked_entity_type:'session'` MUST be carried so MessageInterface
@@ -2121,7 +2121,7 @@ function ConnectionsPageRefactored({
           await handleSelectConversation(rawConversation);
           onDeepLinkHandled?.();
         } else if (!cancelled) {
-          // ORCH-1077 SC-5/SC-6: no conversation resolved (missing group chat for
+          // ORCH-1080 SC-5/SC-6: no conversation resolved (missing group chat for
           // the session, or a malformed link with no id/eventId). Land on the
           // Messages tab without crashing and clear the pending deep link so it
           // doesn't re-fire — no infinite spinner, no stuck deepLinkParams.

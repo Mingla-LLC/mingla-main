@@ -24,7 +24,7 @@
  * F-02/F-11 param-dropped-at-screen class).
  */
 export type Destination =
-  // ORCH-1077: a session Destination lands in the session's GROUP CHAT (Messages),
+  // ORCH-1080: a session Destination lands in the session's GROUP CHAT (Messages),
   // not Home. `card` (from `mingla://session/{id}?card={cardId}`) is carried through
   // so it survives into ConnectionsPage's deepLinkParams (board_card_message). The
   // deck stays one tap away via the in-chat CTA (META-ORCH-0929 immutable).
@@ -103,7 +103,7 @@ export function parseDeepLink(url: string): Destination | null {
         return { kind: 'page', page: 'connections', params };
 
       case 'session': {
-        // ORCH-1077: collab/session notifications land in the session's GROUP CHAT
+        // ORCH-1080: collab/session notifications land in the session's GROUP CHAT
         // (deck is one tap away via the in-chat CTA). META-ORCH-0929: there is no
         // home-mounted session deck anymore. Accept BOTH shapes:
         //   mingla://session/{id}        (collab lifecycle: invite/accept/match/lock/card-msg)
@@ -288,7 +288,7 @@ export function executeDeepLink(
 
   switch (dest.kind) {
     case 'session': {
-      // ORCH-1077: route to the session's GROUP CHAT (Messages tab), NOT Home.
+      // ORCH-1080: route to the session's GROUP CHAT (Messages tab), NOT Home.
       // ConnectionsPage resolves sessionId → getOrCreateGroupConversationForSession
       // and opens that conversation; the in-chat CTA surfaces the deck
       // (META-ORCH-0929: the deck sheet is reached from inside the group chat).

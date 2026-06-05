@@ -1,8 +1,8 @@
-# SPEC — ORCH-1077 [Notification deep-link map + collab→group-chat routing gap]
+# SPEC — ORCH-1080 [Notification deep-link map + collab→group-chat routing gap]
 
 **Mode:** SPEC (fix contract). Investigation complete; root cause proven.
-**Worktree:** `~/Desktop/mingla-orchs/ORCH-1077-[notification-deeplink-collab-groupchat]/` on branch `ORCH-1077-notification-deeplink-collab-groupchat`.
-**Source of truth:** `Mingla_Artifacts/reports/ANALYSIS_ORCH-1077_NOTIFICATION_DEEPLINK_MAP.md` (anchor `main`).
+**Worktree:** `~/Desktop/mingla-orchs/ORCH-1080-[notification-deeplink-collab-groupchat]/` on branch `ORCH-1080-notification-deeplink-collab-groupchat`.
+**Source of truth:** `Mingla_Artifacts/reports/ANALYSIS_ORCH-1080_NOTIFICATION_DEEPLINK_MAP.md` (anchor `main`).
 **Land target (operator-locked 2026-06-04):** the session's **GROUP CHAT** (Messages). Deck stays one tap away via the existing in-chat CTA. Do **NOT** auto-open `CollabDeckSheet`.
 **Date:** 2026-06-04.
 
@@ -95,7 +95,7 @@ Parity is **automatic** across the two covered surfaces (iOS + Android) because 
 **AFTER:**
 ```ts
       case 'session': {
-        // ORCH-1077: collab/session notifications land in the session's GROUP CHAT
+        // ORCH-1080: collab/session notifications land in the session's GROUP CHAT
         // (deck is one tap away via the in-chat CTA). META-ORCH-0929: there is no
         // home-mounted session deck anymore. Accept BOTH shapes:
         //   mingla://session/{id}        (collab lifecycle: invite/accept/match/lock/card-msg)
@@ -147,7 +147,7 @@ Add a `sessionId` branch to the existing deep-link effect (lines 2036-2094), par
 
 ```ts
         if (!rawConversation && deepLinkParams.sessionId) {
-          // ORCH-1077: collab/session notifications resolve sessionId → group chat,
+          // ORCH-1080: collab/session notifications resolve sessionId → group chat,
           // mirroring the eventId branch above. Deck is reached via the in-chat CTA.
           const { conversation, error } =
             await messagingService.getOrCreateGroupConversationForSession(
@@ -195,7 +195,7 @@ These three cannot be done client-only; each is justified below. They are **inde
 | **S-2 (e)** | `referral_credited` not opt-out-able | `supabase/functions/notify-dispatch/index.ts:158-194` (`typeToPreference` map) | Add `"referral_credited": "marketing",` (or a dedicated key if the prefs schema has one; `marketing` is the closest existing bucket — confirm against the `notification_preferences` columns before choosing). The deep link `mingla://profile?tab=subscription` already exists and works. | The opt-out gate is server-side (`notify-dispatch` reads `typeToPreference[type]` at :399 to decide whether to send). The client cannot add an opt-out gate. |
 | **S-3 (f)** | `direct_card_message` uses `messages` not `chat` | `supabase/functions/notify-message/index.ts:476` | Change `deepLink: \`mingla://messages/${conversationId}\`` → `deepLink: \`mingla://chat/${conversationId}?type=direct\``. | The emitted string is server-side. The client `chat` parser case (`deepLinkService.ts:68-78`) already preserves group/session/type params; `messages` (`:63-67`) is the lossy legacy shape. Cosmetic for direct card messages (no session), but aligns the contract and keeps `type` flowing. |
 
-> S-2 backend allowlist note (COMMS-0002): if the implementor touches any file under `supabase/functions/`, the ORCH-0863 strict-grep C7 `no-new-backend-files` gate applies. S-1/S-2/S-3 only **modify** existing files (no new files), so C7 should not trip — but the implementor MUST run the strict-grep gate locally and add an `ORCH_1077_BACKEND_ALLOWLIST` entry only if a new backend file is introduced (it should not be). COMMS-0003 (external-API docs): no external API enums/payloads are introduced; OneSignal payload shapes are unchanged. Acked below.
+> S-2 backend allowlist note (COMMS-0002): if the implementor touches any file under `supabase/functions/`, the ORCH-0863 strict-grep C7 `no-new-backend-files` gate applies. S-1/S-2/S-3 only **modify** existing files (no new files), so C7 should not trip — but the implementor MUST run the strict-grep gate locally and add an `ORCH_1080_BACKEND_ALLOWLIST` entry only if a new backend file is introduced (it should not be). COMMS-0003 (external-API docs): no external API enums/payloads are introduced; OneSignal payload shapes are unchanged. Acked below.
 
 ### 3.E — VERIFY-1 (d): `trial_ending` → paywall 🔒 LOCKED (assert-only, no code)
 
@@ -251,7 +251,7 @@ NEW invariant proposed for the registry: **I-1077-SESSION-DEEPLINK-TO-GROUP-CHAT
 Both follow the existing **source-assertion** pattern (`app-mobile/src/services/__tests__/*.test.ts` — standalone node files using `node:assert/strict`, guarded by `import.meta.url === \`file://${process.argv[1]}\``, run via `node <file>`). This matches `collabDeadEndBannerService.test.ts` exactly.
 
 **Regression #1 — happy-path that FAILS-ON-REVERT**
-**Path:** `app-mobile/src/services/__tests__/orch-1077-session-deeplink-to-group-chat.test.ts`
+**Path:** `app-mobile/src/services/__tests__/orch-1080-session-deeplink-to-group-chat.test.ts`
 Imports/reads `src/services/deepLinkService.ts` source AND `src/components/ConnectionsPage.tsx` source and asserts the new contract:
 - `[FAILS-ON-REVERT KEY]` the `session` case maps to `page: 'connections'` with `tab: 'messages'` and a `sessionId` derived from `pathSegments[1] ?? params.id` — `assert.match(deepLinkSrc, /case 'session':[\s\S]*?page:\s*'connections'[\s\S]*?tab:\s*'messages'[\s\S]*?sessionId/)` and `assert.match(deepLinkSrc, /pathSegments\[1\]\s*\?\?\s*params\.id/)`.
 - `assert.doesNotMatch(deepLinkSrc, /case 'session':[\s\S]*?page:\s*'home'/)` — the dead Home route is gone.
@@ -259,7 +259,7 @@ Imports/reads `src/services/deepLinkService.ts` source AND `src/components/Conne
 - Reverting EITHER edit (parser repoint or ConnectionsPage branch) fails this test.
 
 **Regression #2 — distinct adversarial angle (dead-code + query-form + no-deck-autoopen)**
-**Path:** `app-mobile/src/services/__tests__/orch-1077-session-deeplink-adversarial.test.ts`
+**Path:** `app-mobile/src/services/__tests__/orch-1080-session-deeplink-adversarial.test.ts`
 Different failure surface from #1:
 - **Dead-code eradication:** read `deepLinkService.ts` AND every `executeDeepLink` call site in `app/index.tsx`; `assert.doesNotMatch` for `setPendingSessionOpen` and `openSessionId` in BOTH (catches a partial fix that repoints the parser but leaves the dead executor branch / interface).
 - **Query-form coverage:** assert the parser source contains the `params.id` fallback so `mingla://session?id=X` (tag_along) is honored — guards the analysis-missed 6th/7th case (§0.1.1). A pure path-form fix would pass #1 but fail here.
@@ -299,5 +299,5 @@ Both tests are pure source-assertion (no RN render harness), runnable in CI exac
 
 ## 10. Comms-ledger acks (this entry)
 
-- **COMMS-0002 (strict-grep backend allowlist):** factored — client-only core fix touches no `supabase/functions/` files; S-1/S-2/S-3 only modify existing backend files (no new files), so C7 should not trip. Implementor runs the gate; adds `ORCH_1077_BACKEND_ALLOWLIST` only if a new backend file is introduced (not expected).
+- **COMMS-0002 (strict-grep backend allowlist):** factored — client-only core fix touches no `supabase/functions/` files; S-1/S-2/S-3 only modify existing backend files (no new files), so C7 should not trip. Implementor runs the gate; adds `ORCH_1080_BACKEND_ALLOWLIST` only if a new backend file is introduced (not expected).
 - **COMMS-0003 (external-API docs cited inline):** factored — no external-API enums, payload shapes, or endpoints are introduced or modified (OneSignal push payload shapes unchanged; only `deepLink` string values and one preference-map entry). N/A.

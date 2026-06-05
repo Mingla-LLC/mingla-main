@@ -267,7 +267,7 @@ function AppContent() {
     useState<number>(0);
   const [isCreatingSession, setIsCreatingSession] = useState<boolean>(false);
   const [showPaywall, setShowPaywall] = useState<boolean>(false);
-  // ORCH-1077: session deep-link target removed. A session/collab notification
+  // ORCH-1080: session deep-link target removed. A session/collab notification
   // now lands in the session's GROUP CHAT (Messages tab) via the `session`
   // executor branch in deepLinkService (setDeepLinkParams({tab:'messages',
   // sessionId}) + setCurrentPage('connections')), where ConnectionsPage resolves
@@ -418,7 +418,7 @@ function AppContent() {
     // setViewingFriendProfileId (previously absent here, which is why push
     // session/profile taps silently failed). All members are React-stable
     // setState setters, safe to capture in this mount-once effect closure.
-    // ORCH-1077: the session-open handler was removed — session taps now route
+    // ORCH-1080: the session-open handler was removed — session taps now route
     // to the group chat via setDeepLinkParams({tab:'messages', sessionId}).
     const pushNavigationHandlers: NavigationHandlers = {
       setCurrentPage: setCurrentPage as (page: string) => void,
@@ -740,7 +740,7 @@ function AppContent() {
   // the in-memory ref survived). ORCH-1030: routes through the ONE canonical
   // pipeline with the FULL handler set (setDeepLinkParams +
   // setViewingFriendProfileId included) so a deferred session/profile tap
-  // reaches its container instead of silently no-op'ing. ORCH-1077: session taps
+  // reaches its container instead of silently no-op'ing. ORCH-1080: session taps
   // route to the group chat via setDeepLinkParams. The legacy ORCH-0435
   // paired→notificationId-lookup branch is removed: no producer emits
   // `notificationId` in the deepLink, and `mingla://discover?paired=true` now
@@ -988,7 +988,7 @@ function AppContent() {
     setDeepLinkParams: (params: Record<string, string>) => setDeepLinkParams(params),
   }), [setCurrentPage, setViewingFriendProfileId, setShowPaywall, setDeepLinkParams]);
 
-  // ORCH-1077: the former ORCH-1030 Home-landing session effect is
+  // ORCH-1080: the former ORCH-1030 Home-landing session effect is
   // deleted. Session/collab notifications now route to the session's group chat
   // (Messages tab) via deepLinkService's `session` executor branch; the deck is
   // reached via the in-chat CTA (META-ORCH-0929). No Home seam remains.
@@ -1695,7 +1695,7 @@ function AppContent() {
     // handleDeepLink with the persisted URL) route through the ONE canonical
     // pipeline with the FULL handler set — including setDeepLinkParams +
     // setViewingFriendProfileId — so a `mingla://session/{id}` (→ group chat,
-    // ORCH-1077) or `mingla://profile/{id}` cold-start tap reaches its container.
+    // ORCH-1080) or `mingla://profile/{id}` cold-start tap reaches its container.
     const action = parseDeepLink(url);
     executeDeepLink(action, {
       setCurrentPage: setCurrentPage as (page: string) => void,

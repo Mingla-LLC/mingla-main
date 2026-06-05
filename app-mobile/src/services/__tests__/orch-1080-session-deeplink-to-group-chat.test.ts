@@ -1,5 +1,5 @@
 // @ts-nocheck
-// ORCH-1077 [Notification deep-link map + collab→group-chat routing gap]
+// ORCH-1080 [Notification deep-link map + collab→group-chat routing gap]
 // HAPPY-PATH regression test (implementor-authored). FAILS-ON-REVERT anchor.
 //
 // Source-assertion pattern (mirrors collabDeadEndBannerService.test.ts): pure
@@ -103,7 +103,7 @@ if (invokedDirectly) {
   try {
     runOrch1077HappyPathTest();
     console.log(
-      "PASS ORCH-1077 happy-path: session deep link → group chat (parser+executor+ConnectionsPage)",
+      "PASS ORCH-1080 happy-path: session deep link → group chat (parser+executor+ConnectionsPage)",
     );
   } catch (error) {
     console.error(error);
