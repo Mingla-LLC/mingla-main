@@ -51,6 +51,11 @@ export interface BrandRow {
   stripe_connect_id: string | null;
   stripe_payouts_enabled: boolean;
   stripe_charges_enabled: boolean;
+  // META-ORCH-1076 — money rail this brand settles through. DEFAULT 'stripe';
+  // 'paystack' + a subaccount code means the brand is on the NG Paystack rail.
+  payment_provider?: "stripe" | "paystack" | null;
+  payment_country?: string | null;
+  paystack_subaccount_code?: string | null;
   // Cycle 17e-A — migration 20260506000000 added address/cover/profile columns.
   address: string | null;
   cover_hue: number;
@@ -283,6 +288,10 @@ export function mapBrandRowToUi(row: BrandRow, options: MapBrandRowToUiOptions):
           }
         : null,
     stripeStatus,
+    // META-ORCH-1076 — payout rail. Defaults to 'stripe' for every existing brand.
+    paymentProvider: row.payment_provider ?? "stripe",
+    paymentCountry: row.payment_country ?? undefined,
+    paystackSubaccountCode: row.paystack_subaccount_code ?? undefined,
     // ORCH-0769: expose brands.default_currency only once Stripe/brand setup
     // has actually set it. Undefined means "currency not set" — do not imply GBP.
     defaultCurrency: row.default_currency || undefined,

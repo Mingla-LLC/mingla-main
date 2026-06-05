@@ -222,6 +222,17 @@ export type Brand = {
    */
   stripeStatus?: BrandStripeStatus;
   /**
+   * META-ORCH-1076 — the payout rail this brand settles through. Defaults to
+   * `"stripe"` for every existing brand. `"paystack"` (with a non-null
+   * paystackSubaccountCode) means the brand onboarded onto the Nigeria Paystack
+   * rail; the payments tab renders the Paystack flow instead of Stripe Connect.
+   */
+  paymentProvider?: "stripe" | "paystack";
+  /** ISO-2 payout country code (Nigeria) set when the brand picks Paystack. */
+  paymentCountry?: string;
+  /** Paystack subaccount code (`ACCT_…`); non-null once a bank is connected. */
+  paystackSubaccountCode?: string;
+  /**
    * ISO 4217 default currency for this brand's payouts + ticket pricing.
    * NEW in B2a Path C V3 (Sub-C Session B). Drives multi-currency formatting
    * across the dashboard per Constitution #10 + I-PROPOSED-T. Mapped from
@@ -324,12 +335,16 @@ export type Brand = {
   hasPhysicalLocation?: boolean;
 };
 
-/** Ve1 — `brands.claim_status` + optional UI-only states. */
+/** Ve1 — `brands.claim_status` + optional UI-only states.
+ *  ORCH-1073 added `suspended` (admin took a live listing off the deck; fixable
+ *  + resubmittable) and `revoked` (admin removed the listing from the pool). */
 export type BrandClaimStatus =
   | "none"
   | "pending_review"
   | "verified"
-  | "rejected";
+  | "rejected"
+  | "suspended"
+  | "revoked";
 
 export type VenueCategory = "restaurant" | "play" | "creative_and_arts";
 

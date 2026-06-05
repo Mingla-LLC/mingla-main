@@ -63,6 +63,7 @@ import { ScrollView } from "../../wrappers/SmartScrollView";
 import { useKeyboardIsVisible } from "../../wrappers/useKeyboardIsVisible";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
+import { brandStripeOnboardingRoute } from "../../utils/paidPublishGuards";
 
 import {
   accent,
@@ -868,6 +869,24 @@ export const EditPublishedTripScreen: React.FC<EditPublishedTripScreenProps> = (
             primaryAction: closeAndOpenOrders,
           };
         }
+        // ORCH-1075 — paid-edit integrity guards (locked copy, SPEC §3.7).
+        case "stripe_charges_disabled":
+          return {
+            title: "Finish your payment setup",
+            body: "You can't publish a paid listing until your Stripe payouts are switched on. It takes a couple of minutes.",
+            primaryLabel: "Finish Stripe setup",
+            primaryAction: () => {
+              setRejectDialog(null);
+              router.push(brandStripeOnboardingRoute(trip.brandId) as never);
+            },
+          };
+        case "offering_date_past":
+          return {
+            title: "Pick a future date",
+            body: "This date has already passed. Choose a date that's still ahead so people can book it.",
+            primaryLabel: "Got it",
+            primaryAction: closeOnly,
+          };
         default: {
           const _exhaust: never = result.reason;
           return _exhaust;

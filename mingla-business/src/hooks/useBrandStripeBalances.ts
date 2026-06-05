@@ -66,7 +66,7 @@ export function useBrandStripeBalances(
       if (brandId === null) {
         throw new Error("useBrandStripeBalances: brandId is null but enabled");
       }
-      return fetchBrandStripeBalances(brandId, session?.access_token ?? null);
+      return fetchBrandStripeBalances(brandId);
     },
   });
 }

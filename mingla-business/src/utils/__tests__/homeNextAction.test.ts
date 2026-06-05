@@ -71,7 +71,7 @@ describe("META-ORCH-0972 pickHomeNextAction — universal authoring ladder", () 
     expect(result?.rung).toBe(1);
     expect(result?.kind).toBe("stripe_inactive");
     expect(result?.ctaRoute).toBe("/brand/brand-1/payments");
-    expect(result?.title).toBe("Connect Stripe to take payments");
+    expect(result?.title).toBe("Connect bank to take payments");
   });
 
   test("Stripe inactive with only free draft → rung 3", () => {
