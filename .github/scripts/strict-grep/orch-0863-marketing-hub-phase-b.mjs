@@ -1636,6 +1636,7 @@ function checkNoNewBackendFiles() {
   // — lands in the SAME commit as the backend diff. Covers the new __tests__/ too.
   const META_ORCH_1076_BACKEND_ALLOWLIST = [
     "supabase/migrations/20260915000000_meta_orch_1076_p1_payment_provider.sql",
+    "supabase/migrations/20260916000000_meta_orch_1076_p1b_event_currency_ngn.sql",
     "supabase/functions/_shared/paymentProvider.ts",
     "supabase/functions/_shared/paystack.ts",
     "supabase/functions/_shared/paystackWebhookRouter.ts",
