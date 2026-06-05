@@ -49,3 +49,10 @@ src/hooks/useBrands.ts | src/hooks/useEventOrders.ts | src/store/draftEventStore
 src/hooks/useBrandListShim.ts | src/hooks/useBrands.ts | src/hooks/usePublicEvents.ts | src/services/brandMapping.ts | src/services/publicEventsService.ts | src/store/currentBrandStore.ts | src/utils/deriveBrandStripeStatus.ts
 src/hooks/useBrandListShim.ts | src/hooks/useBrands.ts | src/hooks/usePublicEvents.ts | src/services/publicEventsService.ts | src/services/tripsService.ts | src/store/currentBrandStore.ts
 src/hooks/useBrandListShim.ts | src/hooks/useBrands.ts | src/store/currentBrandStore.ts
+# META-ORCH-1073 Sub-A (global search): the new search index hook imports
+# useCurrentBrandRole + the offering hooks, which shifted madge's traversal so it
+# now emits this minimal 3-node representative of the already-baselined brand-hook
+# tangle (all three edges pre-exist: useBrandListShim→useBrands→useCurrentBrandRole
+# →useBrandListShim; none touched by this PR). Baselined per the gate's "not yours
+# to fix → baseline with rationale" instruction. Cycle-breaking refactor tracked separately.
+src/hooks/useBrandListShim.ts | src/hooks/useBrands.ts | src/hooks/useCurrentBrandRole.ts

@@ -52,6 +52,10 @@ import {
   ticketCorsHeaders,
 } from "../_shared/ticketCheckout.ts";
 import { qrPayloadToDataUrl } from "../_shared/ticketQrImage.ts";
+// META-ORCH-1074 Sub-A: fire business.order_paid / event_sold_out /
+// low_inventory after a newly-finalized order. Idempotency keys collapse the
+// confirm-vs-webhook double-fire to one notification row per recipient.
+import { fireOrderFinalizeNotifications } from "../_shared/businessNotifyTriggers.ts";
 
 interface ConfirmRequest {
   checkoutSessionId: string;
@@ -450,7 +454,7 @@ serve(async (req) => {
     // the order payload from the canonical tables.
     const { data: refreshedSession } = await supabase
       .from("ticket_checkout_sessions")
-      .select("id, order_id, event_id, total_cents, currency")
+      .select("id, order_id, event_id, total_cents, currency, brand_id")
       .eq("id", session.id)
       .maybeSingle();
     if (!refreshedSession || !refreshedSession.order_id) {
@@ -470,6 +474,20 @@ serve(async (req) => {
       total_cents: refreshedSession.total_cents,
       currency: refreshedSession.currency,
     });
+
+    // META-ORCH-1074 Sub-A: fire business.order_paid (+ sold_out / low_inventory
+    // when capacity warrants). Idempotency-keyed on orderId/eventId so the
+    // webhook's parallel fire collapses to one row per recipient. Non-fatal —
+    // never blocks the buyer's confirmation.
+    await fireOrderFinalizeNotifications(supabase as never, {
+      brandId: (refreshedSession.brand_id as string | null) ?? null,
+      eventId: refreshedSession.event_id,
+      orderId: refreshedSession.order_id,
+      totalCents: Number(refreshedSession.total_cents ?? 0),
+      currency: refreshedSession.currency,
+      qty: order?.tickets?.length ?? 0,
+    });
+
     return jsonResponse({
       checkoutSessionId: session.id,
       status: "paid" as FinalizeStatus,

@@ -45,6 +45,12 @@ export interface IconChromeProps {
   icon: IconName;
   /** Numeric badge (top-right corner). Hidden when `0` or `undefined`. */
   badge?: number;
+  /**
+   * Cap above which the badge renders `{cap}+`. Defaults to 99 (back-compat
+   * for every existing call-site). META-ORCH-1074 passes `badgeCap={9}` on the
+   * notifications bell to reduce operator noise (SUB-C_DESIGN §6).
+   */
+  badgeCap?: number;
   active?: boolean;
   onPress?: () => void | Promise<void>;
   size?: number;
@@ -76,6 +82,7 @@ const DEFAULT_HIT_SLOP = { top: 4, bottom: 4, left: 4, right: 4 } as const;
 export const IconChrome: React.FC<IconChromeProps> = ({
   icon,
   badge,
+  badgeCap = 99,
   active = false,
   onPress,
   size = DEFAULT_SIZE,
@@ -129,7 +136,8 @@ export const IconChrome: React.FC<IconChromeProps> = ({
 
   const iconSize = Math.round(size * ICON_SIZE_RATIO);
   const showBadge = badge !== undefined && badge > 0;
-  const badgeLabel = badge !== undefined && badge > 99 ? "99+" : String(badge);
+  const badgeLabel =
+    badge !== undefined && badge > badgeCap ? `${badgeCap}+` : String(badge);
 
   const renderInteractive = (
     _state: PressableStateCallbackType,

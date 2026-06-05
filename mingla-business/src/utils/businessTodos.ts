@@ -218,7 +218,7 @@ export function buildBusinessTodos(input: BusinessTodoInput): BusinessTodo[] {
   if (!input.stripeActive) {
     todos.push({
       id: "connect_stripe",
-      label: "Connect Stripe to take payments",
+      label: "Connect bank to take payments",
       sublabel: input.hasDraftPaidOffering
         ? "You have a paid offering ready"
         : "Set up payouts so you can sell",

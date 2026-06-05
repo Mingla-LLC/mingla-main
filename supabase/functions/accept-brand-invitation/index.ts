@@ -31,6 +31,13 @@
 
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+// META-ORCH-1074 Sub-A: notify the EXISTING owner/admins that a teammate
+// joined (excluding the just-joined member). business.* routes to the business
+// OneSignal app automatically via notify-dispatch.
+import {
+  dispatchNotification,
+  getBrandTeamUserIdsByRoles,
+} from "../_shared/stripeEdgeAuth.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -43,6 +50,27 @@ function json(body: unknown, status = 200): Response {
     status,
     headers: { ...corsHeaders, "Content-Type": "application/json" },
   });
+}
+
+// META-ORCH-1074 Sub-A (Sub-D §3.11): humanize the brand role for copy.
+// Falls back to "a teammate" for unknown/missing roles.
+export function humanizeRole(role: string | null | undefined): string {
+  switch (role) {
+    case "brand_owner":
+      return "owner";
+    case "brand_admin":
+      return "admin";
+    case "finance_manager":
+      return "finance manager";
+    case "event_manager":
+      return "event manager";
+    case "marketing_manager":
+      return "marketing manager";
+    case "scanner":
+      return "scanner";
+    default:
+      return "a teammate";
+  }
 }
 
 export async function sha256Hex(input: string): Promise<string> {
@@ -219,6 +247,77 @@ export async function handler(req: Request): Promise<Response> {
         rpcErr.message,
       );
       return json({ error: "server" }, 500);
+    }
+
+    // META-ORCH-1074 Sub-A: business.team_member_joined — notify the existing
+    // owner + admins (EXCLUDING the member who just joined). Idempotent on
+    // brandId:memberUserId. Best-effort: a notify failure never fails the
+    // accept (the invitation is already committed by the RPC above).
+    try {
+      const result = (rpcResult ?? {}) as Record<string, unknown>;
+      const brandId = typeof result.brand_id === "string" ? result.brand_id : null;
+      const memberRole = typeof result.role === "string" ? result.role : null;
+      if (brandId) {
+        // Resolve the joining member's display name (nicer copy; falls back to
+        // the anonymous form when unavailable per Sub-D F1).
+        let memberName: string | null = null;
+        const { data: nameRow } = await service
+          .from("creator_accounts")
+          .select("display_name, business_name")
+          .eq("id", account.id)
+          .maybeSingle();
+        memberName = (nameRow?.display_name as string | null) ??
+          (nameRow?.business_name as string | null) ?? null;
+
+        const { data: brandRow } = await service
+          .from("brands")
+          .select("name")
+          .eq("id", brandId)
+          .maybeSingle();
+        const brandName = (brandRow?.name as string | null) ?? "your brand";
+        const roleLabel = humanizeRole(memberRole);
+
+        const recipients = await getBrandTeamUserIdsByRoles(
+          service as never,
+          brandId,
+          ["brand_owner", "brand_admin"],
+        );
+        const namePart = memberName ?? "A new teammate";
+        const title = "Teammate joined";
+        const body = memberName
+          ? `${memberName} joined ${brandName} as ${roleLabel}.`
+          : `Someone joined ${brandName} as ${roleLabel}.`;
+        for (const recipientId of recipients) {
+          if (recipientId === account.id) continue; // exclude the just-joined member
+          await dispatchNotification({
+            userId: recipientId,
+            brandId,
+            type: "business.team_member_joined",
+            title,
+            body,
+            data: {
+              memberUserId: account.id,
+              memberRole,
+              memberName: memberName ?? undefined,
+              brandName,
+            },
+            relatedId: account.id,
+            relatedType: "team_member",
+            idempotencyKey:
+              `business.team_member_joined:${brandId}:${account.id}:${recipientId}`,
+            deepLink: `mingla-business://brand/${brandId}/team`,
+          });
+        }
+        // namePart kept for parity with Sub-D fallback copy intent.
+        void namePart;
+      }
+    } catch (teamNotifyErr) {
+      console.warn(
+        "[accept-brand-invitation] team_member_joined notify threw (non-fatal):",
+        teamNotifyErr instanceof Error
+          ? teamNotifyErr.message
+          : String(teamNotifyErr),
+      );
     }
 
     return json(rpcResult ?? {}, 200);
