@@ -72,9 +72,10 @@ if (
 if (
   home.includes("Fast mobile home") ||
   home.includes("Browser mode") ||
-  home.includes("heavy app boot")
+  home.includes("heavy app boot") ||
+  home.includes("Stripe account")
 ) {
-  fail("public/home.html must not regress to the placeholder stabilization copy");
+  fail("public/home.html must not regress to placeholder or provider-specific copy");
 }
 if (home.includes("/_expo/static/js/") || home.includes("expo-metro-runtime")) {
   fail("public/home.html must not load the Expo/RN web bundle");
