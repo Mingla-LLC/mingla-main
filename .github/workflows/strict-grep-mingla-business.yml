@@ -59,6 +59,7 @@ on:
 #   - I-PROPOSED-M (i-proposed-m-persist-key-whitelist.mjs) — persist-key whitelist sync (META-ORCH-0744)
 #   - I-PROPOSED-N (i-proposed-n-transitional-exit-condition.mjs) — TRANSITIONAL exit-condition lint (META-ORCH-0744)
 #   - I-PROPOSED-X (i-proposed-x-web-deprecation.mjs) — web-export deprecation parser (META-ORCH-0744)
+#   - ORCH-1085 (mingla-business/scripts/ci/orch-1085-mobile-web-signin-home.mjs) — mobile browser sign-in lands on static /home before Expo boot
 #   - ORCH-0785-A (orch-0785-resend-attachment-aware.mjs) — Resend POST must declare attachments or opt out (ORCH-0785)
 #   - ORCH-0785-B (orch-0785-no-resend-sandbox-fallback.mjs) — no onboarding@resend.dev fallback in source (ORCH-0785)
 #   - ORCH-0785-C (orch-0785-buyer-string-escape.mjs) — buyer/event/order strings must flow through escapeHtml (ORCH-0785)
@@ -737,6 +738,18 @@ jobs:
         run: npx expo export -p web 2>/tmp/expo-export-web.stderr || true
       - name: Run I-PROPOSED-X parser
         run: node .github/scripts/strict-grep/i-proposed-x-web-deprecation.mjs /tmp/expo-export-web.stderr
+
+  orch-1085-mobile-web-signin-home:
+    name: "ORCH-1085: mobile web sign-in Home guard"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Run ORCH-1085 mobile web sign-in Home guard
+        working-directory: mingla-business
+        run: npm run test:orch-1085
 
   orch-0776d-cancelled-at-schema:
     name: "ORCH-0776D: event cover video cancelled_at schema/code parity"
