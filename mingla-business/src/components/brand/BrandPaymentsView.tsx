@@ -94,9 +94,9 @@ const BANNER_CONFIG: Record<BrandStripeStatus, BannerConfig | null> = {
   not_connected: {
     icon: "bank",
     iconColor: accent.warm,
-    title: "Connect Stripe to sell tickets",
+    title: "Connect bank to sell tickets",
     sub: "Get paid for your events. Setup takes 5 minutes.",
-    ctaLabel: "Connect Stripe",
+    ctaLabel: "Connect bank",
     ctaVariant: "primary",
     destructive: false,
   },
@@ -104,7 +104,7 @@ const BANNER_CONFIG: Record<BrandStripeStatus, BannerConfig | null> = {
     icon: "bank",
     iconColor: accent.warm,
     title: "Onboarding submitted — verifying",
-    sub: "Stripe is reviewing your details. We'll email you when verified.",
+    sub: "We're reviewing your details. We'll email you when verified.",
     ctaLabel: "Finish onboarding",
     ctaVariant: "primary",
     destructive: false,
@@ -123,7 +123,7 @@ const BANNER_CONFIG: Record<BrandStripeStatus, BannerConfig | null> = {
     icon: "flag", // W-1: alert/info absent in kit; flag = action-needed
     iconColor: semantic.error,
     title: "Action required — your account is limited",
-    sub: "Stripe needs additional information before you can sell tickets.",
+    sub: "We need additional information before you can sell tickets.",
     ctaLabel: "Continue verification",
     ctaVariant: "destructive",
     destructive: true,
@@ -399,7 +399,7 @@ export const BrandPaymentsView: React.FC<BrandPaymentsViewProps> = ({
     ? "Ready to pay out"
     : stripeStatus === "active"
     ? "Balance unavailable"
-    : "Connect Stripe";
+    : "Connect bank";
   const lastPayoutAmount = sortedPayouts[0]?.amountGbp;
   const lastPayoutCurrency = sortedPayouts[0]?.currency;
   const lastPayoutDisplay = brand.lastPayoutAt !== undefined &&

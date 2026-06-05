@@ -320,7 +320,7 @@ export const BrandProfileView: React.FC<BrandProfileViewProps> = ({
     rows.push(
       {
         icon: "bank",
-        label: "Payments & Stripe",
+        label: "Payments & Bank",
         sub: getBrandProfileStripeOperationsSub(stripeStatus),
         onPress: () => {
           if (brand !== null) onPayments(brand.id);
