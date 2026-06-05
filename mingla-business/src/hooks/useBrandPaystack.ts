@@ -22,6 +22,7 @@ import {
   listPaystackBanks,
   refreshPaystackStatus,
   resolvePaystackAccount,
+  selectPaystackProvider,
   updatePaystackSubaccount,
   type PaystackBankOption,
   type PaystackOnboardStatus,
@@ -115,6 +116,19 @@ export function useUpdatePaystackSubaccount(): UseMutationResult<
     onSuccess: (_data, { brandId }) => {
       queryClient.invalidateQueries({ queryKey: brandPaystackKeys.status(brandId) });
       queryClient.invalidateQueries({ queryKey: brandKeys.detail(brandId) });
+    },
+  });
+}
+
+/** Flip the brand onto the Paystack rail (Nigeria) from the country picker. */
+export function useSelectPaystackProvider(): UseMutationResult<void, Error, string> {
+  const queryClient = useQueryClient();
+  return useMutation<void, Error, string>({
+    mutationFn: (brandId) => selectPaystackProvider(brandId),
+    onSuccess: (_data, brandId) => {
+      queryClient.invalidateQueries({ queryKey: brandKeys.detail(brandId) });
+      queryClient.invalidateQueries({ queryKey: brandKeys.lists() });
+      queryClient.invalidateQueries({ queryKey: brandPaystackKeys.status(brandId) });
     },
   });
 }

@@ -130,6 +130,19 @@ export async function updatePaystackSubaccount(
   return data;
 }
 
+/**
+ * Flip the brand onto the Paystack rail (Nigeria) without a subaccount yet —
+ * the entry point from the payout country picker. The Payments tab then shows
+ * the bank-details form.
+ */
+export async function selectPaystackProvider(brandId: string): Promise<void> {
+  const { error } = await supabase.functions.invoke(
+    "brand-paystack-onboard",
+    { body: { action: "select_provider", brand_id: brandId } },
+  );
+  if (error) throw await unwrapError("selectPaystackProvider", error);
+}
+
 /** Disconnect the brand's payout bank (clears the subaccount link). */
 export async function disconnectPaystack(brandId: string): Promise<void> {
   const { error } = await supabase.functions.invoke(

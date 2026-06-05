@@ -58,6 +58,17 @@ interface BrandStripeCountryPickerProps {
   helperText?: string | null;
   /** Optional warning/locked copy below the picker. */
   warningText?: string | null;
+  /**
+   * Non-Stripe payout regions shown as a separate top section (e.g. Nigeria →
+   * Paystack). Kept out of the Stripe allowlist so the Stripe-country invariant
+   * is preserved; selecting one fires onChange(code) like any other row.
+   */
+  extraOptions?: ReadonlyArray<{
+    code: string;
+    name: string;
+    currency: string;
+    sublabel?: string;
+  }>;
 }
 
 export function BrandStripeCountryPicker({
@@ -66,6 +77,7 @@ export function BrandStripeCountryPicker({
   disabled = false,
   helperText = null,
   warningText = null,
+  extraOptions = [],
 }: BrandStripeCountryPickerProps): React.ReactElement {
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState("");
@@ -196,6 +208,34 @@ export function BrandStripeCountryPicker({
             contentContainerStyle={styles.listContent}
             keyboardShouldPersistTaps="handled"
           >
+            {search.trim().length === 0 && extraOptions.length > 0 ? (
+              <>
+                {extraOptions.map((o) => (
+                  <Pressable
+                    key={o.code}
+                    onPress={(): void => handlePick(o.code)}
+                    accessibilityRole="button"
+                    accessibilityLabel={`${o.name} (${o.currency})`}
+                    style={({ pressed }) => [
+                      styles.row,
+                      pressed ? styles.rowPressed : null,
+                    ]}
+                  >
+                    <View style={styles.rowLeft}>
+                      <Text style={styles.rowCode}>{o.code}</Text>
+                      <View>
+                        <Text style={styles.rowName}>{o.name}</Text>
+                        {o.sublabel != null ? (
+                          <Text style={styles.rowSublabel}>{o.sublabel}</Text>
+                        ) : null}
+                      </View>
+                    </View>
+                    <Text style={styles.rowCurrency}>{o.currency}</Text>
+                  </Pressable>
+                ))}
+                <Text style={styles.sectionLabel}>Stripe countries</Text>
+              </>
+            ) : null}
             {filtered.map((c) => {
               const isSelected = c.country === selectedCode;
               return (
@@ -388,6 +428,21 @@ const styles = StyleSheet.create({
     fontSize: typography.body.fontSize,
     color: textTokens.primary,
     fontWeight: "500",
+  },
+  rowSublabel: {
+    fontSize: typography.caption.fontSize,
+    color: textTokens.tertiary,
+    marginTop: 1,
+  },
+  sectionLabel: {
+    fontSize: typography.caption.fontSize,
+    fontWeight: "700",
+    color: textTokens.tertiary,
+    letterSpacing: 0.6,
+    textTransform: "uppercase",
+    marginTop: spacing.md,
+    marginBottom: spacing.xs,
+    paddingHorizontal: spacing.xs,
   },
   rowRight: {
     flexDirection: "row",

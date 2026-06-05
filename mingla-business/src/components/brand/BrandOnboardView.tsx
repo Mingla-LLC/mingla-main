@@ -48,6 +48,7 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   AccessibilityInfo,
+  Alert,
   Linking,
   Pressable,
   StyleSheet,
@@ -93,9 +94,16 @@ import {
   isStripeCountryPickerLocked,
 } from "../../utils/brandStripeUiState";
 import { BrandStripeCountryLockedError } from "../../services/brandStripeService";
+import { useSelectPaystackProvider } from "../../hooks/useBrandPaystack";
 
 const RETURN_DEEP_LINK = "mingla-business://onboarding-complete" as const;
 const DEFAULT_COUNTRY = "GB" as const;
+// META-ORCH-1076 — Nigeria is a Paystack (not Stripe) payout region, surfaced as
+// an extra picker option. orch-strict-grep-allow stripe-country-out-of-scope —
+// NG routes to Paystack, never the Stripe allowlist.
+const PAYSTACK_PICKER_OPTIONS = [
+  { code: "NG", name: "Nigeria", currency: "NGN", sublabel: "Bank transfer via Paystack" },
+] as const;
 // B2a Path C V3 forensics C-3: was support@mingla.com — domain not Mingla-owned.
 const SUPPORT_EMAIL = "support@usemingla.com" as const;
 const SUPPORT_MAILTO = `mailto:${SUPPORT_EMAIL}` as const;
@@ -189,10 +197,28 @@ export const BrandOnboardView: React.FC<BrandOnboardViewProps> = ({
   const { user } = useAuth();
   const [tosPassed, setTosPassed] = useState(false);
   const handleTosPassed = useCallback((): void => setTosPassed(true), []);
+  // META-ORCH-1076 — picking Nigeria flips the brand onto the Paystack rail and
+  // returns to the Payments tab, which then renders the bank-details form. The
+  // Stripe onboarding path below is never entered for NG.
+  const selectPaystackMutation = useSelectPaystackProvider();
   const handleCountryChange = useCallback((countryCode: string): void => {
+    // orch-strict-grep-allow stripe-country-out-of-scope — NG routes to the
+    // Paystack rail, never Stripe; it is intentionally not in the Stripe allowlist.
+    if (countryCode === "NG") {
+      if (brand === null || selectPaystackMutation.isPending) return;
+      selectPaystackMutation.mutate(brand.id, {
+        onSuccess: () => onCancel(),
+        onError: () =>
+          Alert.alert(
+            "Couldn't switch to Nigeria payouts",
+            "Please try again in a moment.",
+          ),
+      });
+      return;
+    }
     setCountryTouched(true);
     setSelectedCountry(countryCode);
-  }, []);
+  }, [brand, selectPaystackMutation, onCancel]);
 
   const savedStripeCountry = statusQuery.data?.country ?? null;
   const countryPickerLocked = isStripeCountryPickerLocked({
@@ -609,6 +635,7 @@ export const BrandOnboardView: React.FC<BrandOnboardViewProps> = ({
                   disabled={countryPickerLocked}
                   helperText={countryPickerHelper}
                   warningText={countryPickerWarning}
+                  extraOptions={PAYSTACK_PICKER_OPTIONS}
                 />
               </View>
 

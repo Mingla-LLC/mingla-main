@@ -126,6 +126,7 @@ export const KNOWN_STATIC_SLUGS: readonly string[] = [
   "paystack.subaccount_created",
   "paystack.subaccount_updated",
   "paystack.subaccount_disconnected",
+  "paystack.provider_selected",
 ];
 
 const humanizeSlug = (slug: string): string => {
@@ -201,6 +202,13 @@ export const resolveAuditActionLabel = (action: string): AuditActionLabel => {
         detail: "The brand's Paystack payout bank was disconnected; it will not receive payouts until reconnected.",
         category: "ops",
         iconHint: "flag",
+      };
+    case "paystack.provider_selected":
+      return {
+        title: "Nigeria payouts selected",
+        detail: "The brand chose to get paid in Nigeria via Paystack; bank connection is the next step.",
+        category: "ops",
+        iconHint: "shield",
       };
     case "stripe_connect.onboard_initiated":
       return {
