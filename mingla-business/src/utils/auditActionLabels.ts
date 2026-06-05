@@ -116,6 +116,12 @@ export const KNOWN_STATIC_SLUGS: readonly string[] = [
   "trip_intake_schema_edited",
   "intake_form_data_purged",
   "buyer_intake_form_re_answer_required",
+  // META-ORCH-1076 — Paystack (NG) webhook anomaly audit actions.
+  "paystack.charge_verify_not_success",
+  "paystack.charge_orphan_reference",
+  "paystack.charge_amount_mismatch",
+  "paystack.charge_currency_mismatch",
+  "paystack.webhook_unhandled_event",
 ];
 
 const humanizeSlug = (slug: string): string => {
@@ -136,6 +142,41 @@ const formatRefundStatusTitle = (status: string): string => {
 export const resolveAuditActionLabel = (action: string): AuditActionLabel => {
   // ----- Static exact-match slugs (cheaper + safer than regex) -----
   switch (action) {
+    // META-ORCH-1076 — Paystack (NG) webhook anomaly events.
+    case "paystack.charge_verify_not_success":
+      return {
+        title: "Paystack charge not verified",
+        detail: "A charge.success webhook arrived but the verify call did not return success; no order was created.",
+        category: "orders",
+        iconHint: "shield",
+      };
+    case "paystack.charge_orphan_reference":
+      return {
+        title: "Paystack charge with no matching checkout",
+        detail: "A verified Paystack charge referenced no known checkout session.",
+        category: "orders",
+        iconHint: "flag",
+      };
+    case "paystack.charge_amount_mismatch":
+      return {
+        title: "Paystack charge amount mismatch",
+        detail: "The paid amount did not match the checkout total; no order was created.",
+        category: "orders",
+        iconHint: "shield",
+      };
+    case "paystack.charge_currency_mismatch":
+      return {
+        title: "Paystack charge currency mismatch",
+        detail: "The paid currency was not NGN; no order was created.",
+        category: "orders",
+        iconHint: "shield",
+      };
+    case "paystack.webhook_unhandled_event":
+      return {
+        title: "Unhandled Paystack webhook event",
+        category: "ops",
+        iconHint: "flag",
+      };
     case "stripe_connect.onboard_initiated":
       return {
         title: "Started Stripe onboarding",

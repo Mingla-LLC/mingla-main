@@ -24,7 +24,7 @@ export type PaymentProvider = "stripe" | "paystack";
 
 export interface ProviderRouting {
   provider: PaymentProvider;
-  country: string; // ISO-2, e.g. "NG"; "" when unknown
+  country: string; // ISO-2 country code (e.g. Nigeria); "" when unknown
   currency: string; // "NGN" | "GBP" | ...; "" when unknown
 }
 
