@@ -2083,6 +2083,19 @@ jobs:
       - name: Run ORCH-1075 paid-publish integrity-guards gate
         run: node .github/scripts/strict-grep/orch-1075-paid-publish-integrity-guards.mjs
 
+  orch-1076-paid-supply-requires-charges-enabled:
+    name: "ORCH-1076: paid buyer-supply requires charges enabled"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Self-test the gate
+        run: node .github/scripts/strict-grep/orch-1076-paid-supply-requires-charges-enabled.mjs --self-test
+      - name: Run ORCH-1076 paid-supply-requires-charges-enabled gate
+        run: node .github/scripts/strict-grep/orch-1076-paid-supply-requires-charges-enabled.mjs
+
   # ORCH-0962 brand-field-map-coverage gate RETIRED at META-ORCH-0972 CLOSE
   # (2026-05-26). The gate asserted that `viewRowToBrand` reads `row.brand_kind`
   # from `business_public_events_view`. META-ORCH-0972 Sub-C removed `brand_kind`

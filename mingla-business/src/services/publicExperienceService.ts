@@ -76,6 +76,16 @@ export interface PublicExperience {
   stops: PublicExperienceStop[];
   ticket: PublicExperienceTicket | null;
   dates: PublicExperienceDate[];
+  /**
+   * ORCH-1076 I-PAID-SUPPLY-REQUIRES-CHARGES-ENABLED — false when this is a
+   * PAID experience (available_online ticket with price_cents>0) whose brand
+   * cannot charge (Stripe charges_enabled=false). The deep-link page renders a
+   * graceful "Booking unavailable right now" banner in place of the checkout
+   * flow instead of a broken Book button (which would dead-end at the
+   * ticket-checkout-create 409). FREE experiences are always bookable.
+   * Defaults to true when absent (back-compat).
+   */
+  bookable: boolean;
 }
 
 export interface PublicExperienceBrand {
@@ -131,6 +141,43 @@ interface MapInput {
   tickets: any[];
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   dates: any[];
+  /** ORCH-1076 — resolved buyer-readiness; defaults to true (back-compat). */
+  bookable?: boolean;
+}
+
+/**
+ * ORCH-1076 — a tickets array is PAID for online checkout when ANY ticket is
+ * sellable online (available_online=true) with price_cents>0. Mirrors the
+ * checkout 409 + ORCH-1075 publish-guard PAID definition exactly.
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function ticketsArePaidOnline(tickets: any[]): boolean {
+  return tickets.some(
+    (t) => t?.available_online === true && (t?.price_cents ?? 0) > 0,
+  );
+}
+
+/**
+ * ORCH-1076 — resolve whether a PAID offering's brand can charge via the
+ * canonical pg_brand_can_charge RPC (anon-granted by the Stream A migration).
+ * Returns true (bookable) immediately when the offering is FREE. On RPC error
+ * we fail OPEN here (render the page bookable) because the checkout 409 is still
+ * the terminal guard — a graceful banner that wrongly hides a bookable listing
+ * would be worse than the existing terminal 409 for the rare resolver error.
+ */
+async function resolveBookable(
+  brandId: string,
+  isPaid: boolean,
+): Promise<boolean> {
+  if (!isPaid) return true;
+  const { data, error } = await supabase.rpc("pg_brand_can_charge", {
+    p_brand_id: brandId,
+  });
+  if (error !== null) {
+    // Non-fatal: keep the page bookable; the checkout 409 remains the backstop.
+    return true;
+  }
+  return data === true;
 }
 
 function mapExperience(input: MapInput): PublicExperience {
@@ -194,6 +241,8 @@ function mapExperience(input: MapInput): PublicExperience {
       timezone: d.timezone,
       isMaster: d.is_master === true,
     })),
+    // ORCH-1076 — default true when the caller did not resolve readiness.
+    bookable: input.bookable !== false,
   };
 }
 
@@ -219,7 +268,7 @@ async function loadExperienceSidecars(eventId: string): Promise<{
     supabase
       .from("ticket_types")
       .select(
-        "id, name, price_cents, currency, quantity_total, is_unlimited, is_free, display_order",
+        "id, name, price_cents, currency, quantity_total, is_unlimited, is_free, display_order, available_online",
       )
       .eq("event_id", eventId)
       .is("deleted_at", null)
@@ -282,8 +331,11 @@ export async function getPublicExperienceBySlug(
     bio: b.description ?? null,
     coverMediaUrl: b.cover_media_url ?? null,
   };
+  // ORCH-1076 — resolve buyer-readiness for PAID experiences.
+  const isPaid = ticketsArePaidOnline(sidecars.tickets);
+  const bookable = await resolveBookable(b.id as string, isPaid);
   return {
-    experience: mapExperience({ event, brand, ...sidecars }),
+    experience: mapExperience({ event, brand, ...sidecars, bookable }),
     brand,
   };
 }
@@ -321,8 +373,11 @@ export async function getPublicExperienceById(
   };
 
   const sidecars = await loadExperienceSidecars(eventId);
+  // ORCH-1076 — resolve buyer-readiness for PAID experiences.
+  const isPaid = ticketsArePaidOnline(sidecars.tickets);
+  const bookable = await resolveBookable(brand.id, isPaid);
   return {
-    experience: mapExperience({ event, brand, ...sidecars }),
+    experience: mapExperience({ event, brand, ...sidecars, bookable }),
     brand,
   };
 }
