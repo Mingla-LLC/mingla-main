@@ -1632,11 +1632,8 @@ function checkNoNewBackendFiles() {
   // are edits not new files, but are listed for a complete audit trail and to
   // stay byte-identical to the ORCH-1064/1066 precedent.
   // META-ORCH-1076 [Paystack Africa] Phase 1 — Paystack buyer checkout (NGN).
-  // Paystack money-rail backend touches (provider migration, the (provider,country)
-  // resolver, the Paystack client + webhook router, the NG-VAT engine extension,
-  // the ticket-checkout-create branch + webhook upgrade) + the proof-slice files
-  // that were never allowlisted. Per COMMS-0002 — lands in the SAME commit as the
-  // backend diff. Also covers the new Deno tests under __tests__/.
+  // Paystack money-rail backend touches + the proof-slice files. Per COMMS-0002
+  // — lands in the SAME commit as the backend diff. Covers the new __tests__/ too.
   const META_ORCH_1076_BACKEND_ALLOWLIST = [
     "supabase/migrations/20260915000000_meta_orch_1076_p1_payment_provider.sql",
     "supabase/functions/_shared/paymentProvider.ts",
@@ -1710,8 +1707,21 @@ function checkNoNewBackendFiles() {
   const ORCH_1070_BACKEND_ALLOWLIST = [
     "supabase/migrations/20260907000000_orch_1070_deck_experiences_strict_intent.sql",
   ];
+  // ORCH-1077 [prod↔main migration-drift reconciliation]: file-only history
+  // housekeeping — commits the orphaned (already-applied+recorded) orch_1047
+  // source onto main, and renumbers 3 collision-loser migration files to unique
+  // timestamps (their objects are already live on remote; recorded via
+  // `supabase migration repair --status applied`, which runs NO SQL). C7 flags
+  // these supabase/migrations paths as new; allowlisted here per COMMS-0002.
+  const ORCH_1077_BACKEND_ALLOWLIST = [
+    "supabase/migrations/20260602000000_orch_1047_schedule_change_with_sales.sql",
+    "supabase/migrations/20260816000001_orch_1043_auto_run_triggered_by_nullable.sql",
+    "supabase/migrations/20260820000001_schedule_change_buyer_protection_refund_all.sql",
+    "supabase/migrations/20260906000001_orch_1072_brand_experiences_for_place.sql",
+  ];
   const ALLOWLIST = [
     ...META_ORCH_1076_BACKEND_ALLOWLIST,
+    ...ORCH_1077_BACKEND_ALLOWLIST,
     ...META_ORCH_1074_BACKEND_ALLOWLIST,
     ...ORCH_1070_BACKEND_ALLOWLIST,
     ...ORCH_1069_BACKEND_ALLOWLIST,

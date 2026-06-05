@@ -31,8 +31,9 @@ import {
   InteractionManager,
   type AppStateStatus,
 } from "react-native";
-import { Stack } from "expo-router";
+import { Stack, useRouter } from "expo-router";
 import { useFonts } from "expo-font";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { focusManager, QueryClientProvider } from "@tanstack/react-query";
@@ -54,8 +55,22 @@ import { KeyboardRoot } from "../src/wrappers/KeyboardRoot";
 import { initializeAppsFlyer } from "../src/services/appsFlyerService";
 import { mixpanelService } from "../src/services/mixpanelService";
 import { revenueCatService } from "../src/services/revenueCatService";
-import { initializeOneSignal } from "../src/services/oneSignalService";
+import {
+  initializeOneSignal,
+  onForegroundNotification,
+  onNotificationClicked,
+} from "../src/services/oneSignalService";
+import {
+  processBusinessNotification,
+  type BusinessNavTarget,
+} from "../src/services/businessNotificationRouting";
+import { usePushPermissionMoment } from "../src/hooks/usePushPermissionMoment";
 import { verifyStripeModeAlignment } from "../src/services/stripeModeHandshake";
+
+// Sub-B: a tap that arrives before auth is stashed here + replayed post-login
+// (mirrors the consumer deferred-deeplink pattern). Keyed in AsyncStorage so a
+// cold-launch from a tap survives the auth gate.
+const DEFERRED_PUSH_TARGET_KEY = "mingla-business.deferredPushTarget.v1";
 
 // J-X3 — Sentry init (DEC-098 D-16-2). Guarded by env-absent so dev/build
 // without DSN is a no-op, not a runtime error. EXIT condition: operator
@@ -103,7 +118,8 @@ function RootLayoutInner(): React.ReactElement {
   // indefinitely. We accept "idle" as ready because there's no fetch to wait
   // for. The `currentBrandId === null` short-circuit also handles this case;
   // both paths converge on `brandReady=true` (defensive belt-and-suspenders).
-  const { loading } = useAuth();
+  const { loading, user } = useAuth();
+  const router = useRouter();
   const currentBrandId = useCurrentBrandId();
   const { isFetched: brandFetched, fetchStatus: brandFetchStatus } =
     useBrand(currentBrandId);
@@ -192,6 +208,71 @@ function RootLayoutInner(): React.ReactElement {
       if (timer !== null) clearTimeout(timer);
     };
   }, []); // intentionally once
+
+  // META-ORCH-1074 Sub-B — OS push-permission prompt at the value moment
+  // (authenticated + a brand exists), one-shot, never on boot/account-only.
+  usePushPermissionMoment(user !== null, currentBrandId);
+
+  // META-ORCH-1074 Sub-B — foreground display + click handlers. Registered
+  // after initializeOneSignal() (above). On web these are guarded no-ops
+  // (the service never initializes the native module). Re-registers when the
+  // signed-in user changes so the auth gate + deferred replay see fresh state.
+  const userId = user?.id ?? null;
+  useEffect(() => {
+    // Foreground: show the system banner for every business push (consumer
+    // chose "app feels alive"; SDK v5 needs an explicit display()).
+    const removeForeground = onForegroundNotification((_data, _prevent, display) => {
+      display();
+    });
+
+    // Tap (tray / lock screen / banner): mark read + track + navigate. When
+    // unauthenticated, stash the resolved target for post-login replay.
+    const removeClicked = onNotificationClicked((data) => {
+      if (typeof data.type !== "string") return;
+      processBusinessNotification(data, {
+        router,
+        isAuthenticated: userId !== null,
+        stashDeferred: (target: BusinessNavTarget) => {
+          void AsyncStorage.setItem(
+            DEFERRED_PUSH_TARGET_KEY,
+            JSON.stringify({ target, ts: Date.now() }),
+          );
+        },
+      });
+    });
+
+    return () => {
+      removeForeground();
+      removeClicked();
+    };
+  }, [router, userId]);
+
+  // META-ORCH-1074 Sub-B — replay a deferred push target once auth is ready.
+  // A tap while logged out stashed a path; navigate to it after sign-in, then
+  // clear the stash so it fires at most once.
+  useEffect(() => {
+    if (userId === null) return;
+    let cancelled = false;
+    void (async (): Promise<void> => {
+      try {
+        const raw = await AsyncStorage.getItem(DEFERRED_PUSH_TARGET_KEY);
+        if (raw === null || cancelled) return;
+        await AsyncStorage.removeItem(DEFERRED_PUSH_TARGET_KEY);
+        const parsed = JSON.parse(raw) as { target?: string };
+        if (typeof parsed.target === "string" && parsed.target.length > 0) {
+          router.push(parsed.target as never);
+        }
+      } catch (err) {
+        if (__DEV__) {
+          // eslint-disable-next-line no-console
+          console.warn("[_layout] deferred push replay failed:", err);
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [userId, router]);
 
   // ORCH-0740 Cycle 1: AppState → React Query focusManager wiring.
   // When the app comes back to foreground, tell React Query to refetch
