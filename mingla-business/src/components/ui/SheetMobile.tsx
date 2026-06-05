@@ -124,6 +124,14 @@ export interface SheetProps {
   snapPoint?: SheetSnapValue;
   /** Tap on scrim closes sheet. Default `true`. */
   dismissOnScrimTap?: boolean;
+  /**
+   * Wide-desktop web only: vertical placement of the centred card.
+   * `"center"` (default) vertically centres it; `"top"` anchors it near the
+   * top so the card can grow/shrink with content without the whole sheet
+   * re-centring (e.g. a search palette whose result count changes as you type).
+   * Ignored by the mobile bottom sheet, which is always bottom-anchored.
+   */
+  verticalAlign?: "center" | "top";
   testID?: string;
   style?: StyleProp<ViewStyle>;
 }
