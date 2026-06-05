@@ -28,11 +28,11 @@ describe("ORCH-1076 — trip review banner (T-17 / T-18)", () => {
     const src = reviewSource();
     expect(src).toContain("import { StripeBlockedCard }");
     expect(src).toContain("{needsStripe ? (");
-    expect(src).toContain('title="Stripe required for paid trips"');
+    expect(src).toContain('title="Bank required for paid trips"');
     expect(src).toContain(
-      "Connect Stripe to publish this paid trip. Free trips can be published any time.",
+      "Connect a bank to publish this paid trip. Free trips can be published any time.",
     );
-    expect(src).toContain('ctaLabel="Finish Stripe setup"');
+    expect(src).toContain('ctaLabel="Connect bank"');
     expect(src).toContain('testID="trip-step5-stripe-blocked"');
   });
 
@@ -71,8 +71,8 @@ describe("ORCH-1076 — trip wizard gate + disabled Publish + toast (T-19)", () 
     const tapIdx = src.indexOf("const handlePublishTap");
     const block = src.slice(tapIdx, tapIdx + 600);
     expect(block).toContain("if (tripNeedsStripe)");
-    expect(block).toContain("Connect Stripe to publish this paid trip.");
-    const toastIdx = block.indexOf("Connect Stripe to publish this paid trip.");
+    expect(block).toContain("Connect a bank to publish this paid trip.");
+    const toastIdx = block.indexOf("Connect a bank to publish this paid trip.");
     const returnIdx = block.indexOf("return;", toastIdx);
     const confirmIdx = block.indexOf("setPublishConfirmVisible(true)");
     expect(returnIdx).toBeGreaterThan(toastIdx);

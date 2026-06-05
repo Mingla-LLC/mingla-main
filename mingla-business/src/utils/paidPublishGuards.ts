@@ -46,8 +46,8 @@ const PAID_PUBLISH_GUARD_COPY: Record<
   stripe_charges_disabled: {
     reason: "stripe_charges_disabled",
     title: "Finish your payment setup",
-    body: "You can't publish a paid listing until your Stripe payouts are switched on. It takes a couple of minutes.",
-    actionLabel: "Finish Stripe setup",
+    body: "You can't publish a paid listing until your bank payouts are switched on. It takes a couple of minutes.",
+    actionLabel: "Finish bank setup",
     action: "stripe_onboarding",
   },
   offering_date_past: {

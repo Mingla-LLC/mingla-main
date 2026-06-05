@@ -75,6 +75,7 @@ import {
   type ValidationError,
 } from "../../utils/draftEventValidation";
 import { isDraftEventPristine } from "../../utils/draftEventPristine";
+import { payoutGateStatus } from "../../utils/brandPayout";
 import { resolvePaidPublishGuardCopy } from "../../utils/paidPublishGuards";
 import { expandRecurrenceToDates } from "../../utils/recurrenceRule";
 
@@ -312,8 +313,9 @@ export const EventCreatorWizard: React.FC<EventCreatorWizardProps> = ({
     });
   }, []);
 
-  const stripeStatus: BrandStripeStatus =
-    brand?.stripeStatus ?? "not_connected";
+  // META-ORCH-1076 — provider-neutral payout readiness drives the paid-publish
+  // gate, so a connected Paystack brand publishes like a Stripe-active one.
+  const stripeStatus: BrandStripeStatus = payoutGateStatus(brand);
 
   const stepErrors: ValidationError[] = useMemo(
     () => validateStep(currentStep, liveDraft),
@@ -519,7 +521,7 @@ export const EventCreatorWizard: React.FC<EventCreatorWizardProps> = ({
       // here surfaces the same block as a Toast + leaves the user on Step
       // 7 to tap Connect Stripe via the in-page Step 7 card. We DON'T
       // open the errors sheet for Stripe-only blocking.
-      handleShowToast("Connect Stripe to publish paid tickets.");
+      handleShowToast("Connect a bank to publish paid tickets.");
       return;
     }
     // J-E2: happy path → confirm dialog.

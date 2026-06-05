@@ -507,7 +507,7 @@ export const ExperienceCreatorWizard: React.FC<ExperienceCreatorWizardProps> = (
       // (publish=false) are exempt — they never gate. The Publish button is
       // also disabled, so this is the belt-and-suspenders path.
       if (publish && experienceNeedsStripe) {
-        setToast("Connect Stripe to publish this paid experience.");
+        setToast("Connect a bank to publish this paid experience.");
         return;
       }
       if (
@@ -875,9 +875,9 @@ export const ExperienceCreatorWizard: React.FC<ExperienceCreatorWizardProps> = (
         {step === 4 && experienceNeedsStripe ? (
           <View style={styles.stripeBannerWrap}>
             <StripeBlockedCard
-              title="Stripe required for paid experiences"
-              body="Connect Stripe to publish this paid experience. Free experiences can be published any time."
-              ctaLabel="Finish Stripe setup"
+              title="Bank required for paid experiences"
+              body="Connect a bank to publish this paid experience. Free experiences can be published any time."
+              ctaLabel="Connect bank"
               onConnectStripe={handleConnectStripe}
               testID="experience-pricing-stripe-blocked"
             />
@@ -901,9 +901,9 @@ export const ExperienceCreatorWizard: React.FC<ExperienceCreatorWizardProps> = (
         {step === 5 && experienceNeedsStripe ? (
           <View style={styles.stripeBannerWrap}>
             <StripeBlockedCard
-              title="Stripe required for paid experiences"
-              body="Connect Stripe to publish this paid experience. Free experiences can be published any time."
-              ctaLabel="Finish Stripe setup"
+              title="Bank required for paid experiences"
+              body="Connect a bank to publish this paid experience. Free experiences can be published any time."
+              ctaLabel="Connect bank"
               onConnectStripe={handleConnectStripe}
               testID="experience-cover-stripe-blocked"
             />

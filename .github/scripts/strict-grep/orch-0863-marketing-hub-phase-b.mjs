@@ -1631,6 +1631,27 @@ function checkNoNewBackendFiles() {
   // ticket-checkout-confirm, admin-review-venue-claim, accept-brand-invitation)
   // are edits not new files, but are listed for a complete audit trail and to
   // stay byte-identical to the ORCH-1064/1066 precedent.
+  // META-ORCH-1076 [Paystack Africa] Phase 1 — Paystack buyer checkout (NGN).
+  // Paystack money-rail backend touches + the proof-slice files. Per COMMS-0002
+  // — lands in the SAME commit as the backend diff. Covers the new __tests__/ too.
+  const META_ORCH_1076_BACKEND_ALLOWLIST = [
+    "supabase/migrations/20260915000000_meta_orch_1076_p1_payment_provider.sql",
+    "supabase/migrations/20260916000000_meta_orch_1076_p1b_event_currency_ngn.sql",
+    "supabase/functions/_shared/paymentProvider.ts",
+    "supabase/functions/_shared/paystack.ts",
+    "supabase/functions/_shared/paystackWebhookRouter.ts",
+    "supabase/functions/_shared/allInPricingEngine.ts",
+    "supabase/functions/ticket-checkout-create/index.ts",
+    "supabase/functions/paystack-checkout-create/index.ts",
+    "supabase/functions/paystack-webhook/index.ts",
+    "supabase/functions/paystack-webhook/__tests__/paystackWebhook.test.ts",
+    "supabase/functions/_shared/__tests__/allInPricingEngineNgVat.test.ts",
+    "supabase/functions/_shared/__tests__/paymentProvider.test.ts",
+    // Phase 2 — brand payout onboarding (subaccounts + splits). New onboarding
+    // edge function; _shared/paystack.ts (already listed) gains the bank/subaccount
+    // helpers. Per COMMS-0002 — lands in the SAME commit as the backend diff.
+    "supabase/functions/brand-paystack-onboard/index.ts",
+  ];
   const META_ORCH_1074_BACKEND_ALLOWLIST = [
     "supabase/migrations/20260910000000_meta_orch_1074_new_review_notify.sql",
     "supabase/functions/_shared/businessNotifyTriggers.ts",
@@ -1732,6 +1753,7 @@ function checkNoNewBackendFiles() {
     "supabase/functions/discover-merged-events/index.ts",
   ];
   const ALLOWLIST = [
+    ...META_ORCH_1076_BACKEND_ALLOWLIST,
     ...ORCH_1075_BACKEND_ALLOWLIST,
     ...ORCH_1076_BACKEND_ALLOWLIST,
     ...ORCH_1077_BACKEND_ALLOWLIST,

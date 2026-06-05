@@ -35,6 +35,7 @@ import {
   type BrandStripeStatus,
 } from "../../store/currentBrandStore";
 import { computePublishability } from "../../utils/draftEventValidation";
+import { payoutGateStatus } from "../../utils/brandPayout";
 import { formatCurrencyRound } from "../../utils/currency";
 import { effectiveDraftCurrency } from "../../utils/moneySummary";
 import {
@@ -84,7 +85,9 @@ export const CreatorStep7Preview: React.FC<CreatorStep7PreviewProps> = ({
   onTapMiniCard,
   onConnectStripe,
 }) => {
-  const stripeStatus: BrandStripeStatus = brand?.stripeStatus ?? "not_connected";
+  // META-ORCH-1076 — provider-neutral payout readiness: a connected Paystack
+  // brand publishes paid tickets just like a Stripe-active brand.
+  const stripeStatus: BrandStripeStatus = payoutGateStatus(brand);
   const publishability = computePublishability(draft, stripeStatus);
 
   const handleMiniCardPress = useCallback((): void => {

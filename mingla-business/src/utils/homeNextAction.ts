@@ -18,6 +18,7 @@
  */
 
 import type { Brand } from "../store/currentBrandStore";
+import { isBrandPayoutReady } from "./brandPayout";
 import type { DraftEvent } from "../store/draftEventStore";
 import { routeForEventRowDefensive } from "./routeForEventRow";
 import type { EventTypeForRouting } from "./routeForEventRow";
@@ -82,14 +83,15 @@ export function pickHomeNextAction(
   counts: UpcomingCounts,
   drafts: DraftEvent[],
 ): HomeNextActionRung | null {
-  // Rung 1 — Stripe upsell only after a paid draft exists.
-  if (brand.stripeStatus !== "active" && hasAnyDraftPaidOffering(drafts)) {
+  // Rung 1 — payout upsell only after a paid draft exists. Provider-neutral:
+  // hidden once Stripe is active OR a Paystack bank is connected.
+  if (!isBrandPayoutReady(brand) && hasAnyDraftPaidOffering(drafts)) {
     return {
       rung: 1,
       kind: "stripe_inactive",
-      title: "Connect Stripe to take payments",
-      body: "You have a paid offering ready to publish. Connect Stripe to start selling.",
-      ctaLabel: "Connect Stripe",
+      title: "Connect bank to take payments",
+      body: "You have a paid offering ready to publish. Connect a bank to start selling.",
+      ctaLabel: "Connect bank",
       ctaRoute: `/brand/${brand.id}/payments`,
     };
   }

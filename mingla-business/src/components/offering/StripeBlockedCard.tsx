@@ -32,7 +32,7 @@ export interface StripeBlockedCardProps {
   title?: string;
   /** Card body. Defaults to the event copy. */
   body?: string;
-  /** CTA button label. Defaults to the event copy ("Connect Stripe"). */
+  /** CTA button label. Defaults to the event copy ("Connect bank"). */
   ctaLabel?: string;
   /** Connect-Stripe CTA handler. */
   onConnectStripe: () => void;
@@ -40,9 +40,9 @@ export interface StripeBlockedCardProps {
 }
 
 export const StripeBlockedCard: React.FC<StripeBlockedCardProps> = ({
-  title = "Stripe required for paid tickets",
-  body = "Connect Stripe to publish. Free tickets can be published any time.",
-  ctaLabel = "Connect Stripe",
+  title = "Bank required for paid tickets",
+  body = "Connect a bank to publish. Free tickets can be published any time.",
+  ctaLabel = "Connect bank",
   onConnectStripe,
   testID,
 }) => (

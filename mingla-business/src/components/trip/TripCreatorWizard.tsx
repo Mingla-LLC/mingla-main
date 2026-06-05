@@ -851,7 +851,7 @@ export const TripCreatorWizard: React.FC<TripCreatorWizardProps> = ({
     // NOT open the confirm dialog (the dock Publish is also disabled, so this
     // is the belt-and-suspenders path matching EventCreatorWizard).
     if (tripNeedsStripe) {
-      showToast("Connect Stripe to publish this paid trip.");
+      showToast("Connect a bank to publish this paid trip.");
       return;
     }
     // Open ConfirmDialog; actual publish runs in handleConfirmPublish.

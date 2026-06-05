@@ -49,13 +49,13 @@ describe("ORCH-1076 — T-6 banner mounts (Pricing + Cover)", () => {
     expect(src).toContain('testID="experience-cover-stripe-blocked"');
   });
 
-  test("both banners carry the experience copy + Finish Stripe setup CTA", () => {
+  test("both banners carry the experience copy + Connect bank CTA", () => {
     const src = wizardSource();
-    expect(src).toContain('title="Stripe required for paid experiences"');
+    expect(src).toContain('title="Bank required for paid experiences"');
     expect(src).toContain(
-      "Connect Stripe to publish this paid experience. Free experiences can be published any time.",
+      "Connect a bank to publish this paid experience. Free experiences can be published any time.",
     );
-    expect(src).toContain('ctaLabel="Finish Stripe setup"');
+    expect(src).toContain('ctaLabel="Connect bank"');
     expect(src).toContain("onConnectStripe={handleConnectStripe}");
     expect(src).toContain("brandStripeOnboardingRoute(brand.id)");
   });
@@ -91,7 +91,7 @@ describe("ORCH-1076 — T-21 / T-22 publish pre-check vs draft bypass", () => {
     const block = src.slice(submitIdx, rpcIdx);
     // The pre-check exists and gates on publish && experienceNeedsStripe.
     expect(block).toContain("if (publish && experienceNeedsStripe)");
-    expect(block).toContain("Connect Stripe to publish this paid experience.");
+    expect(block).toContain("Connect a bank to publish this paid experience.");
     // The pre-check returns BEFORE the supabase.rpc call (block ends at the RPC).
     const guardIdx = block.indexOf("if (publish && experienceNeedsStripe)");
     const returnIdx = block.indexOf("return;", guardIdx);

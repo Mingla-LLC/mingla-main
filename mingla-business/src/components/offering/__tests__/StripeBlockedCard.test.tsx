@@ -23,11 +23,11 @@ const cardSource = (): string =>
 describe("ORCH-1076 — StripeBlockedCard default (event) copy (T-13)", () => {
   test("default props reproduce the event copy byte-for-byte", () => {
     const src = cardSource();
-    expect(src).toContain('title = "Stripe required for paid tickets"');
+    expect(src).toContain('title = "Bank required for paid tickets"');
     expect(src).toContain(
-      'body = "Connect Stripe to publish. Free tickets can be published any time."',
+      'body = "Connect a bank to publish. Free tickets can be published any time."',
     );
-    expect(src).toContain('ctaLabel = "Connect Stripe"');
+    expect(src).toContain('ctaLabel = "Connect bank"');
   });
 
   test("title / body / CTA label all render from props", () => {

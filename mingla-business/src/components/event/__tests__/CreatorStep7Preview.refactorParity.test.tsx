@@ -30,11 +30,13 @@ const sharedCardSource = (): string =>
 
 describe("ORCH-1076 — event Step-7 refactor identity (T-15)", () => {
   test("shared card DEFAULT copy === the original event StripeBlockedCard copy", () => {
-    // Characterization snapshot of the EXACT pre-refactor strings.
-    const EVENT_TITLE = "Stripe required for paid tickets";
+    // Characterization snapshot of the EXACT event StripeBlockedCard copy
+    // (main rebranded "Stripe" → "bank" user-facing wording; the shared
+    // primitive defaults mirror that so the event refactor stays faithful).
+    const EVENT_TITLE = "Bank required for paid tickets";
     const EVENT_BODY =
-      "Connect Stripe to publish. Free tickets can be published any time.";
-    const EVENT_CTA = "Connect Stripe";
+      "Connect a bank to publish. Free tickets can be published any time.";
+    const EVENT_CTA = "Connect bank";
 
     const card = sharedCardSource();
     expect(card).toContain(`title = "${EVENT_TITLE}"`);
@@ -58,8 +60,8 @@ describe("ORCH-1076 — event Step-7 refactor identity (T-15)", () => {
     );
     expect(src).not.toContain("interface StripeBlockedCardProps");
     // No event-side override of the trip/experience copy leaked in.
-    expect(src).not.toContain("Finish Stripe setup");
-    expect(src).not.toContain("Stripe required for paid trips");
+    expect(src).not.toContain("Connect a bank to publish this paid trip");
+    expect(src).not.toContain("Bank required for paid trips");
     // Still gated on the blocked-stripe publishability status.
     expect(src).toContain('publishability.status === "blocked-stripe"');
   });
