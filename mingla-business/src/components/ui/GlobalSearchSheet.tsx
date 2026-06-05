@@ -340,6 +340,10 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     paddingTop: spacing.sm,
+    // Edge gutter so the search input, group headings ("JUMP TO") and rows
+    // are not flush to the sheet edge (META-ORCH-1073 Sub-A2 QA). Matches the
+    // standard sheet content inset used across mingla-business UI.
+    paddingHorizontal: spacing.md,
   },
   divider: {
     height: 1,
