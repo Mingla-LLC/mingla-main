@@ -36,21 +36,6 @@ export function listingStatusView(input: {
       hint: "Make the requested changes and resubmit to go live.",
     };
   }
-  // ORCH-1073 — admin took a live listing down.
-  if (input.claimStatus === "suspended") {
-    return {
-      label: "Suspended",
-      tone: "warning",
-      hint: "An admin suspended your listing. Open it to see what to fix, then resubmit to go live again.",
-    };
-  }
-  if (input.claimStatus === "revoked") {
-    return {
-      label: "Removed",
-      tone: "warning",
-      hint: "Your listing was removed from Mingla. Reach out to support if you think this was a mistake.",
-    };
-  }
   if (input.claimStatus === "verified") {
     return {
       label: "Live on Mingla",

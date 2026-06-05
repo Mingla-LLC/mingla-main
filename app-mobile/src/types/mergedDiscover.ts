@@ -78,33 +78,6 @@ export interface BusinessEventCard {
   currency: string;
   /** The anon-tolerant buyer route in mingla-business. Opened via in-app WebView. */
   publicBuyerUrl: string;
-  /**
-   * ORCH-1072 — present ONLY for brand experiences (event_type='experience').
-   * The multi-stop itinerary, rendered by the detail sheet beneath the cover +
-   * description. Undefined for events/trips → no itinerary section (byte-safe).
-   */
-  experienceStops?: Array<{
-    stopNumber: number;
-    placeName: string | null;
-    address: string | null;
-    imageUrl: string | null;
-    aiDescription: string | null;
-  }>;
-  /**
-   * ORCH-1072 — present ONLY for brand experiences. The experience's upcoming
-   * bookable occurrences (from event_dates), each with remaining capacity.
-   * A one-off experience carries a single element (auto-selected in the Book
-   * sheet); sold-out occurrences (remaining === 0) render disabled. remaining
-   * === null ⇒ unlimited. Undefined for events/trips (no occurrence picker).
-   */
-  upcomingOccurrences?: Array<{
-    eventDateId: string;
-    startAt: string;
-    endAt: string;
-    capacity: number | null;
-    sold: number;
-    remaining: number | null;
-  }>;
 }
 
 export type MergedDiscoverItem =

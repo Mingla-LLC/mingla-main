@@ -1176,10 +1176,7 @@ export type UpdateLiveTripRejectReason =
   | "tier_price_change_with_sales"
   | "dates_shifted_with_sales"
   | "days_dropped_with_sales"
-  | "inclusions_removed_with_sales"
-  // ORCH-1075 — paid-edit integrity guards.
-  | "stripe_charges_disabled"
-  | "offering_date_past";
+  | "inclusions_removed_with_sales";
 
 export type UpdateLiveTripResult =
   | {

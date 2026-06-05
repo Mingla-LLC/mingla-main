@@ -15,8 +15,7 @@
         "buildConfiguration": "Debug"
       },
       "env": {
-        "SENTRY_DISABLE_AUTO_UPLOAD": "true",
-        "EXPO_PUBLIC_ONESIGNAL_APP_ID": "4505e476-6b2a-424d-906f-d751614980bf"
+        "SENTRY_DISABLE_AUTO_UPLOAD": "true"
       }
     },
     "development-sim": {
@@ -38,8 +37,7 @@
       "distribution": "internal",
       "channel": "production",
       "env": {
-        "SENTRY_DISABLE_AUTO_UPLOAD": "true",
-        "EXPO_PUBLIC_ONESIGNAL_APP_ID": "4505e476-6b2a-424d-906f-d751614980bf"
+        "SENTRY_DISABLE_AUTO_UPLOAD": "true"
       }
     },
     "preview-sim": {
@@ -56,8 +54,7 @@
       "autoIncrement": true,
       "channel": "production",
       "env": {
-        "SENTRY_DISABLE_AUTO_UPLOAD": "false",
-        "EXPO_PUBLIC_ONESIGNAL_APP_ID": "4505e476-6b2a-424d-906f-d751614980bf"
+        "SENTRY_DISABLE_AUTO_UPLOAD": "false"
       }
     },
     "production-apk": {
@@ -67,8 +64,7 @@
         "buildType": "apk"
       },
       "env": {
-        "SENTRY_DISABLE_AUTO_UPLOAD": "false",
-        "EXPO_PUBLIC_ONESIGNAL_APP_ID": "4505e476-6b2a-424d-906f-d751614980bf"
+        "SENTRY_DISABLE_AUTO_UPLOAD": "false"
       }
     }
   },

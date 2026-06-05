@@ -85,7 +85,7 @@ export const validatePublish = (
     errors.push({
       fieldKey: "stripeNotConnected",
       step: 4,
-      message: "Connect a bank to publish paid tickets.",
+      message: "Connect Stripe to publish paid tickets.",
     });
   }
   // ORCH-1052 partner money-gate bundle: same screen, additive ask.
@@ -97,7 +97,7 @@ export const validatePublish = (
     errors.push({
       fieldKey: "partnerStripeNotConnected",
       step: 4,
-      message: "Connect partner bank to receive partner earnings.",
+      message: "Connect partner Stripe to receive partner earnings.",
     });
   }
   return errors;

@@ -80,7 +80,6 @@ import {
   type TicketDiff,
 } from "../../utils/liveEventAdapter";
 import { validateLiveEventFieldUpdate } from "../../utils/publishedEventEditGuards";
-import { resolvePaidPublishGuardCopy } from "../../utils/paidPublishGuards";
 import type { EditSeverity } from "../../store/eventEditLogStore";
 import {
   validateStep,
@@ -977,14 +976,6 @@ export const EditPublishedScreen: React.FC<EditPublishedScreenProps> = ({
           setModal((prev) => ({ ...prev, visible: false }));
           const code =
             error instanceof Error ? error.message : "patch_event_when_failed";
-          // ORCH-1075 — block shifting a PAID event onto an already-past date
-          // (Guard B only on this RPC). Surface the locked "Pick a future date"
-          // copy + leave the inline date field focused for the fix.
-          const guardCopy = resolvePaidPublishGuardCopy(code);
-          if (guardCopy !== null) {
-            showToast(guardCopy.body);
-            return;
-          }
           const message =
             code === "missing_edit_reason" || code === "invalid_edit_reason"
               ? "Add a brief reason (10–200 characters) for this change."

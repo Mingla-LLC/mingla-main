@@ -192,17 +192,15 @@ export async function startBrandStripeOnboarding(
  */
 export async function refreshBrandStripeStatus(
   brandId: string,
+  accessToken?: string | null,
 ): Promise<RefreshStatusResult> {
-  // No custom Authorization header: let supabase.functions.invoke use the
-  // client's CURRENT (auto-refreshed) session token. META-ORCH-1073 Sub-A5:
-  // passing useAuth()'s `session.access_token` here sent a STALE token (the
-  // Supabase client refreshes silently but the React session snapshot lags),
-  // which the edge fn's `auth.getUser` rejected with 401 — surfacing as
-  // "Couldn't reach Stripe" on the onboarding shell's first load.
   const { data, error } = await supabase.functions.invoke<RefreshStatusResult>(
     "brand-stripe-refresh-status",
     {
       body: { brand_id: brandId },
+      headers: typeof accessToken === "string" && accessToken.length > 0
+        ? { Authorization: `Bearer ${accessToken}` }
+        : undefined,
     },
   );
   if (error) {

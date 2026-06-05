@@ -35,7 +35,6 @@ import {
   type BrandStripeStatus,
 } from "../../store/currentBrandStore";
 import { computePublishability } from "../../utils/draftEventValidation";
-import { payoutGateStatus } from "../../utils/brandPayout";
 import { formatCurrencyRound } from "../../utils/currency";
 import { effectiveDraftCurrency } from "../../utils/moneySummary";
 import {
@@ -80,9 +79,7 @@ export const CreatorStep7Preview: React.FC<CreatorStep7PreviewProps> = ({
   onTapMiniCard,
   onConnectStripe,
 }) => {
-  // META-ORCH-1076 — provider-neutral payout readiness: a connected Paystack
-  // brand publishes paid tickets just like a Stripe-active brand.
-  const stripeStatus: BrandStripeStatus = payoutGateStatus(brand);
+  const stripeStatus: BrandStripeStatus = brand?.stripeStatus ?? "not_connected";
   const publishability = computePublishability(draft, stripeStatus);
 
   const handleMiniCardPress = useCallback((): void => {
@@ -232,19 +229,19 @@ const StripeBlockedCard: React.FC<StripeBlockedCardProps> = ({
     <View style={styles.statusRow}>
       <Icon name="flag" size={20} color={accent.warm} />
       <View style={styles.statusTextCol}>
-        <Text style={styles.statusTitle}>Bank required for paid tickets</Text>
+        <Text style={styles.statusTitle}>Stripe required for paid tickets</Text>
         <Text style={styles.statusSub}>
-          Connect a bank to publish. Free tickets can be published any time.
+          Connect Stripe to publish. Free tickets can be published any time.
         </Text>
       </View>
     </View>
     <Pressable
       onPress={onConnectStripe}
       accessibilityRole="button"
-      accessibilityLabel="Connect bank"
+      accessibilityLabel="Connect Stripe"
       style={styles.connectStripeBtn}
     >
-      <Text style={styles.connectStripeLabel}>Connect bank</Text>
+      <Text style={styles.connectStripeLabel}>Connect Stripe</Text>
       <Icon name="chevR" size={14} color={accent.warm} />
     </Pressable>
   </GlassCard>

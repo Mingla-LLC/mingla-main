@@ -80,11 +80,6 @@ interface CuratedExperienceDeckCard {
   experienceType: string;
   title: string;
   tagline: string;
-  // ORCH-1072: IDENTICAL to discover-cards ExperienceDeckCard — real cover +
-  // description + upcoming occurrences threaded through the curated path too.
-  description: string;
-  coverMediaUrl: string | null;
-  coverMediaType: 'image' | 'video' | 'gif' | null;
   brandId: string;
   brandName: string;
   brandSlug: string;
@@ -96,14 +91,6 @@ interface CuratedExperienceDeckCard {
   masterDateUtc: string | null;
   masterEndAtUtc: string | null;
   timezone: string;
-  upcomingOccurrences: Array<{
-    eventDateId: string;
-    startAt: string;
-    endAt: string;
-    capacity: number | null;
-    sold: number;
-    remaining: number | null;
-  }>;
   stops: Array<{
     stopNumber: number;
     placeId: string;
@@ -123,42 +110,6 @@ interface CuratedExperienceDeckCard {
   }>;
   estimatedDurationMinutes: number;
   matchScore: number;
-}
-
-// ORCH-1072: decode upcoming_occurrences jsonb → camelCase envelope shape.
-// IDENTICAL to discover-cards.mapExperienceOccurrences (no parallel system —
-// both paths decode the SAME RPC output the SAME way).
-function mapExperienceOccurrences(raw: unknown): Array<{
-  eventDateId: string;
-  startAt: string;
-  endAt: string;
-  capacity: number | null;
-  sold: number;
-  remaining: number | null;
-}> {
-  const arr = Array.isArray(raw) ? raw : [];
-  return arr
-    .map((o: any) => {
-      const eventDateId = typeof o?.event_date_id === 'string' ? o.event_date_id : '';
-      const startAt = o?.start_at ? String(o.start_at) : '';
-      if (eventDateId.length === 0 || startAt.length === 0) return null;
-      return {
-        eventDateId,
-        startAt,
-        endAt: o?.end_at ? String(o.end_at) : '',
-        capacity: typeof o?.capacity === 'number' ? o.capacity : null,
-        sold: typeof o?.sold === 'number' ? o.sold : 0,
-        remaining: typeof o?.remaining === 'number' ? o.remaining : null,
-      };
-    })
-    .filter((o): o is {
-      eventDateId: string;
-      startAt: string;
-      endAt: string;
-      capacity: number | null;
-      sold: number;
-      remaining: number | null;
-    } => o !== null);
 }
 
 // Single service-role round-trip to pg_eligible_experiences_for_deck for ONE
@@ -237,19 +188,6 @@ async function fetchEligibleExperiencesForCurated(args: {
         : (intentsArr[0] ?? args.experienceType),
       title: typeof row.title === 'string' ? row.title : '',
       tagline: typeof row.tagline === 'string' ? row.tagline : '',
-      // ORCH-1072: real description + cover + occurrences (same as discover-cards).
-      description: typeof row.description === 'string' ? row.description : '',
-      coverMediaUrl:
-        typeof row.cover_media_url === 'string' && row.cover_media_url.length > 0
-          ? row.cover_media_url
-          : null,
-      coverMediaType:
-        row.cover_media_type === 'image' ||
-        row.cover_media_type === 'video' ||
-        row.cover_media_type === 'gif'
-          ? row.cover_media_type
-          : null,
-      upcomingOccurrences: mapExperienceOccurrences(row.upcoming_occurrences),
       brandId: String(row.brand_id),
       brandName: typeof row.brand_name === 'string' ? row.brand_name : '',
       brandSlug: typeof row.brand_slug === 'string' ? row.brand_slug : '',

@@ -590,7 +590,7 @@ export const BrandOnboardView: React.FC<BrandOnboardViewProps> = ({
           <>
             <View style={styles.stateBlock}>
               <Text style={styles.stateTitle}>
-                Connect bank to start selling tickets
+                Connect Stripe to start selling tickets
               </Text>
               <Text style={styles.stateSub}>
                 Set up payments to publish events and receive money from ticket

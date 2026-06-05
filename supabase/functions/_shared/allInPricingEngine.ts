@@ -41,21 +41,13 @@ export const MINGLA_SERVICE_FEE_BPS = 300 as const;
 // calculator — Stripe Tax (venue-sourced, ORCH-0955) owns the charged AMOUNT; the
 // engine only relays inclusive|exclusive to Stripe and re-derives the display split.
 // Investigation: Mingla_Artifacts/reports/INVESTIGATION_ORCH-1034_TAX_TIE_IN.md.
-// META-ORCH-1076 [Paystack Africa] — NG joins the region union. NG VAT is
-// EXCLUSIVE (added on top, Nigerian invoicing convention) and is computed
-// in-engine from country_vat_config (Paystack has no Tax API), NOT via a Stripe
-// round-trip. The GB/US/EU/CH paths are untouched — the NG branch is reached
-// only when region==="NG", which only a Paystack brand can have.
-export type PricingRegion = "GB" | "US" | "EU" | "CH" | "NG";
+export type PricingRegion = "GB" | "US" | "EU" | "CH";
 export type TaxBehavior = "inclusive" | "exclusive";
 export type TaxBasis =
   | "venue_resolved"
   | "unresolved_flat_absorb"
   | "country_unsupported_flat_absorb"
-  | "calc_failed_flat_absorb"
-  // META-ORCH-1076 — NG VAT computed in-engine from country_vat_config (no
-  // Stripe Tax round-trip). Self-describing receipt basis for the Paystack arm.
-  | "config_vat";
+  | "calc_failed_flat_absorb";
 
 // ORCH-1034 — per-region inclusive-VAT divisor (1 + VAT rate) used ONLY to
 // re-derive the display tax portion from Stripe's amount_total for INCLUSIVE
@@ -72,7 +64,6 @@ export const INCLUSIVE_VAT_DIVISOR: Record<PricingRegion, number> = {
   EU: 1.2, // 20% baseline (venue-sourced Stripe amount is authoritative)
   CH: 1.081, // 8.1% VAT
   US: 1.0, // exclusive — divisor unused (kept for exhaustiveness)
-  NG: 1.0, // META-ORCH-1076 — EXCLUSIVE (VAT added on top); divisor unused.
 };
 
 // GB/EU/CH → inclusive VAT (market convention); US → exclusive sales tax.
@@ -88,13 +79,6 @@ export function taxBehaviorForRegion(region: PricingRegion): TaxBehavior {
     case "CH":
       return "inclusive";
     case "US":
-    // META-ORCH-1076 — NG VAT is EXCLUSIVE (added on top of the price before
-    // Paystack initialize, matching Nigerian invoicing; avoids the inclusive
-    // divisor re-derivation entirely). Doc basis: Paystack charges `amount`
-    // exactly as given (PAYSTACK_INTEGRATION_REFERENCE.md §2.4 / §1.5;
-    // https://paystack.com/docs/api/transaction/) — VAT is Mingla-computed
-    // and added pre-initialize.
-    case "NG":
       return "exclusive";
     default: {
       // Exhaustive guard: any unmapped region literal is a programming error.
@@ -188,29 +172,6 @@ export function computeBuyerSubtotal(input: ComputeAllInInput): {
     serviceFeeCents,
     buyerSubtotalCents: buyerSubtotal,
   };
-}
-
-// META-ORCH-1076 [Paystack Africa] — config-driven NG VAT (the Paystack arm has
-// NO Stripe Tax round-trip). EXCLUSIVE: VAT is added ON TOP of the grossed-up
-// buyer subtotal, so the buyer's all-in NGN total = subtotal + VAT (when the
-// brand passes tax) or = subtotal (when the brand absorbs it — the brand still
-// owes the VAT, recorded in pricing_breakdown.absorbed.tax_cents). Integer
-// basis-point math via the existing feeFromBps helper (no float on the money
-// path). This is the ENTIRE tax computation for NG — deterministic, WYSIWYP.
-// vatRateBps comes from country_vat_config (NG=750=7.5%).
-//   Paystack amount semantics: https://paystack.com/docs/api/transaction/
-//   (amount in subunits, charged exactly as given).
-export function computeConfigVat(
-  subtotalCents: number,
-  vatRateBps: number,
-  passTax: boolean,
-): { taxCents: number; buyerTotalCents: number } {
-  // The VAT the brand owes on this sale, regardless of pass/absorb — used for
-  // the breakdown's passed/absorbed partition (mirrors the GB absorbed-tax
-  // reporting). When passTax is false, the buyer total excludes it.
-  const taxCents = feeFromBps(subtotalCents, vatRateBps);
-  const buyerTotalCents = passTax ? subtotalCents + taxCents : subtotalCents;
-  return { taxCents, buyerTotalCents };
 }
 
 // Assemble the canonical pricing_breakdown once tax is known.

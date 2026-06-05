@@ -75,8 +75,6 @@ import {
   type ValidationError,
 } from "../../utils/draftEventValidation";
 import { isDraftEventPristine } from "../../utils/draftEventPristine";
-import { payoutGateStatus } from "../../utils/brandPayout";
-import { resolvePaidPublishGuardCopy } from "../../utils/paidPublishGuards";
 import { expandRecurrenceToDates } from "../../utils/recurrenceRule";
 
 import { Button } from "../ui/Button";
@@ -313,9 +311,8 @@ export const EventCreatorWizard: React.FC<EventCreatorWizardProps> = ({
     });
   }, []);
 
-  // META-ORCH-1076 — provider-neutral payout readiness drives the paid-publish
-  // gate, so a connected Paystack brand publishes like a Stripe-active one.
-  const stripeStatus: BrandStripeStatus = payoutGateStatus(brand);
+  const stripeStatus: BrandStripeStatus =
+    brand?.stripeStatus ?? "not_connected";
 
   const stepErrors: ValidationError[] = useMemo(
     () => validateStep(currentStep, liveDraft),
@@ -521,7 +518,7 @@ export const EventCreatorWizard: React.FC<EventCreatorWizardProps> = ({
       // here surfaces the same block as a Toast + leaves the user on Step
       // 7 to tap Connect Stripe via the in-page Step 7 card. We DON'T
       // open the errors sheet for Stripe-only blocking.
-      handleShowToast("Connect a bank to publish paid tickets.");
+      handleShowToast("Connect Stripe to publish paid tickets.");
       return;
     }
     // J-E2: happy path → confirm dialog.
@@ -554,26 +551,9 @@ export const EventCreatorWizard: React.FC<EventCreatorWizardProps> = ({
         name: draftName,
         slug,
       });
-    } catch (error) {
+    } catch {
       setIsPublishing(false);
       setPublishConfirmVisible(false);
-      // ORCH-1075 — paid-publish integrity guards. The publish RPC raises
-      // stripe_charges_disabled / offering_date_past on error.message; surface
-      // the locked copy + route (Stripe onboarding / When step) instead of a
-      // generic failure.
-      const code = error instanceof Error ? error.message : String(error ?? "");
-      const guardCopy = resolvePaidPublishGuardCopy(code);
-      if (guardCopy !== null) {
-        handleShowToast(guardCopy.body);
-        if (guardCopy.action === "stripe_onboarding") {
-          onOpenStripeOnboard();
-        } else {
-          // Guard B — jump to the When step (index 1) and reveal step errors.
-          setShowStepErrors(true);
-          setCurrentStep(1);
-        }
-        return;
-      }
       handleShowToast("Could not save this publish. Try again.");
     }
   }, [
@@ -583,7 +563,6 @@ export const EventCreatorWizard: React.FC<EventCreatorWizardProps> = ({
     onPublishDraft,
     deleteDraft,
     handleShowToast,
-    onOpenStripeOnboard,
   ]);
 
   const handleFixJump = useCallback((step: number): void => {

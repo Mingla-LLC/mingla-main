@@ -103,13 +103,11 @@ export function useBrandStripeStatus(
     enabled,
     staleTime: STALE_TIME_MS,
     refetchInterval: STALE_TIME_MS, // 30s poll fallback per D-B2-11
-    // (Sub-A4's retry:4 cold-start band-aid removed — the real cause was a
-    //  stale token, fixed in refreshBrandStripeStatus; global retry:2 is fine.)
     queryFn: async (): Promise<RefreshStatusResult> => {
       if (brandId === null) {
         throw new Error("useBrandStripeStatus: brandId is null but enabled");
       }
-      return refreshBrandStripeStatus(brandId);
+      return refreshBrandStripeStatus(brandId, session?.access_token ?? null);
     },
   });
 }

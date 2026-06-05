@@ -3,68 +3,15 @@
 // Sends push notifications via OneSignal REST API.
 // Targets users by external_id (= Supabase auth.users.id).
 // OneSignal manages FCM/APNs tokens internally — no token storage needed.
-//
-// META-ORCH-1074 Sub-A [dual-app routing]: Mingla runs TWO separate OneSignal
-// applications — one for the consumer app, one for the Mingla Business app.
-// Each application has its own (app_id, REST API Key) pair; there is NO
-// cross-app send — to reach business devices you MUST send with the business
-// app's app_id + business key.
-//   - https://documentation.onesignal.com/docs/keys-and-ids
-//   - https://documentation.onesignal.com/reference/create-message
-// A push's target application is a pure function of the notification `type`
-// prefix (see resolveOneSignalApp): `business.*`/`stripe.*` → business app;
-// everything else → consumer app. Business-credential absence MUST NOT fall
-// back to the consumer app (a business push delivered to the consumer app
-// reaches nobody — SC-A2).
 
-export type OneSignalAppType = "consumer" | "business";
-
-// META-ORCH-1074 Sub-A: credentials are read at CALL time (not module-top) so a
-// secret change between invocations is picked up, and so each app's pair is
-// resolved independently. Consumer: ONESIGNAL_APP_ID / ONESIGNAL_REST_API_KEY.
-// Business: ONESIGNAL_BUSINESS_APP_ID / ONESIGNAL_BUSINESS_REST_API_KEY — the
-// business app_id MUST equal the OneSignal application the business client
-// registers against via EXPO_PUBLIC_ONESIGNAL_APP_ID.
-// — https://documentation.onesignal.com/docs/keys-and-ids
-function resolveAppCredentials(
-  appType: OneSignalAppType,
-): { appId: string; restKey: string } {
-  if (appType === "business") {
-    return {
-      appId: Deno.env.get("ONESIGNAL_BUSINESS_APP_ID") ?? "",
-      restKey: Deno.env.get("ONESIGNAL_BUSINESS_REST_API_KEY") ?? "",
-    };
-  }
-  return {
-    appId: Deno.env.get("ONESIGNAL_APP_ID") ?? "",
-    restKey: Deno.env.get("ONESIGNAL_REST_API_KEY") ?? "",
-  };
-}
-
-/**
- * META-ORCH-1074 Sub-A — routing decision: the OneSignal *application* a push
- * targets is a pure function of the notification `type` prefix. `business.*`
- * and `stripe.*` types are Mingla-Business-only (per I-PROPOSED-W) and MUST be
- * delivered through the business OneSignal application; every other type goes
- * to the consumer application. There is no cross-app send in OneSignal.
- * — https://documentation.onesignal.com/docs/keys-and-ids
- */
-export function resolveOneSignalApp(type: string | undefined | null): OneSignalAppType {
-  if (typeof type === "string" && (type.startsWith("business.") || type.startsWith("stripe."))) {
-    return "business";
-  }
-  return "consumer";
-}
+const ONESIGNAL_APP_ID = Deno.env.get("ONESIGNAL_APP_ID") ?? "";
+const ONESIGNAL_REST_API_KEY = Deno.env.get("ONESIGNAL_REST_API_KEY") ?? "";
 
 interface PushPayload {
   targetUserId: string;           // Supabase UUID — maps to OneSignal external_id
   title: string;
   body: string;
   data?: Record<string, unknown>;
-  // META-ORCH-1074 Sub-A: which OneSignal application to deliver through.
-  // Defaults to "consumer" when omitted so every existing consumer call-site
-  // is byte-stable. notify-dispatch sets this from resolveOneSignalApp(type).
-  app?: OneSignalAppType;
   androidChannelId?: string;      // Android notification channel
   buttons?: Array<{ id: string; text: string }>;  // Action buttons (max 3)
   collapseId?: string;            // Replaces previous notification with same collapse ID
@@ -93,24 +40,13 @@ interface OneSignalResponse {
  * Every call produces exactly one log line with the outcome.
  */
 export async function sendPush(payload: PushPayload): Promise<boolean> {
-  // META-ORCH-1074 Sub-A: select the target OneSignal application by
-  // payload.app (default "consumer"). Each app has its own (app_id, REST key).
-  // — https://documentation.onesignal.com/docs/keys-and-ids
-  const appType: OneSignalAppType = payload.app ?? "consumer";
-  const { appId, restKey } = resolveAppCredentials(appType);
-
-  // SC-A2 (LOCKED): if the SELECTED app's credentials are missing, skip+warn
-  // and return false — per-app, never a silent cross-app fallback. A business
-  // push delivered to the consumer app reaches nobody.
-  if (!appId || !restKey) {
-    console.warn(
-      `[push-utils] OneSignal credentials not configured for app "${appType}". Skipping push.`,
-    );
+  if (!ONESIGNAL_APP_ID || !ONESIGNAL_REST_API_KEY) {
+    console.warn("[push-utils] OneSignal credentials not configured. Skipping push.");
     return false;
   }
 
   const oneSignalPayload = {
-    app_id: appId,
+    app_id: ONESIGNAL_APP_ID,
     target_channel: "push",
     include_aliases: {
       external_id: [payload.targetUserId],
@@ -151,9 +87,7 @@ export async function sendPush(payload: PushPayload): Promise<boolean> {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          // META-ORCH-1074 Sub-A: per-app REST API Key (canonical "Key" scheme).
-          // — https://documentation.onesignal.com/docs/rest-api-overview
-          Authorization: `Key ${restKey}`,
+          Authorization: `Key ${ONESIGNAL_REST_API_KEY}`,
         },
         body: JSON.stringify(oneSignalPayload),
         signal: controller.signal,
@@ -213,7 +147,7 @@ export async function sendPush(payload: PushPayload): Promise<boolean> {
   // Success — OneSignal accepted the notification with a valid ID
   console.log(
     "[push-utils] ✓ Push sent:",
-    { id: body.id, user: payload.targetUserId, app: appType, appId },
+    { id: body.id, user: payload.targetUserId }
   );
   return true;
 }
@@ -227,14 +161,11 @@ export async function sendPushToMany(
   title: string,
   body: string,
   data?: Record<string, unknown>,
-  androidChannelId?: string,
-  // META-ORCH-1074 Sub-A: optional target app (default "consumer"); passes
-  // through to sendPush so a business fan-out reaches the business app.
-  app?: OneSignalAppType,
+  androidChannelId?: string
 ): Promise<boolean[]> {
   return Promise.all(
     userIds.map((userId) =>
-      sendPush({ targetUserId: userId, title, body, data, androidChannelId, app }).catch((err) => { console.warn('[push-utils] sendPushToMany: push failed for user:', userId, err); return false; })
+      sendPush({ targetUserId: userId, title, body, data, androidChannelId }).catch((err) => { console.warn('[push-utils] sendPushToMany: push failed for user:', userId, err); return false; })
     )
   );
 }

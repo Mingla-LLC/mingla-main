@@ -91,11 +91,8 @@ export default function BrandListingRoute(): React.ReactElement {
   // mount). openCount drives the tile badge; the sheet + a single Toast host are
   // mounted at the bottom of this screen.
   const followUpAt = brand?.claimFollowUpAt ?? null;
-  // ORCH-1073 — a `suspended` listing also carries a follow-up stamp + to-do
-  // round; surface the same interactive banner + feedback sheet + resubmit loop.
   const hasFollowUp =
-    (brand?.claimStatus === "pending_review" ||
-      brand?.claimStatus === "suspended") && Boolean(followUpAt);
+    brand?.claimStatus === "pending_review" && Boolean(followUpAt);
   const openFeedbackCount = useVenueClaimOpenCount(brandId, followUpAt);
   const [feedbackVisible, setFeedbackVisible] = useState<boolean>(false);
   const [toast, setToast] = useState<{

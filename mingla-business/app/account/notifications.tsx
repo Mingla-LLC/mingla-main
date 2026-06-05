@@ -1,26 +1,20 @@
 /**
- * Notification settings route — Cycle 14 J-A2 + META-ORCH-1074 Sub-C/Sub-D.
+ * Notification settings route — Cycle 14 J-A2 (DEC-096 D-14-4..D-14-7).
  *
- * Cycle 14 shipped 4 coarse master toggles (Zustand-backed). META-ORCH-1074
- * extends this to the 6-master layout (SUB-C_DESIGN §8 / SUB-D §5):
- *   - Order activity (existing master) → order_paid, event_sold_out,
- *     low_inventory, refund_processed
- *   - Payments & trust (NEW master) → dispute_opened, dispute_action_needed,
- *     payout_paid, account_status_changed
- *   - Audience & content (NEW master) → new_review
- *   - Brand team (existing master) → team_member_joined, claim_decision
- *   - Scanner activity (existing, no v1 child types) — unchanged
- *   - Marketing (existing, creator_accounts-backed) — unchanged
- *
- * Master-with-children rows expand to reveal per-type child rows, each with a
- * Push + In-app toggle persisting to `notification_preferences` (so
- * notify-dispatch honors them — NOT only Zustand). Master OFF disables +
- * writes opt_in=false for every child (SUB-C_DESIGN §8.1). The two NEW masters
- * (Payments & trust, Audience & content) are derived ON when any child is on.
+ * D-14-4: 4 categories (Order activity / Scanner activity / Brand team / Marketing)
+ * D-14-5: TRANSITIONAL toggles only — B-cycle wires real delivery
+ * D-14-6: GDPR-favored defaults — transactional ON · marketing OFF
+ * D-14-7: Zustand persist + sync marketing to creator_accounts.marketing_opt_in only
  *
  * I-21: operator-side route. NEVER imported by anon-tolerant buyer routes.
  *
- * Per Cycle 14 SPEC §4.7.3 + SPEC_META-ORCH-1074_SUB-C_DESIGN.md §8.
+ * ORCH-0710: ALL hooks declared BEFORE any conditional early-return.
+ *
+ * [TRANSITIONAL] Toggles save to local Zustand store + (marketing only)
+ * creator_accounts.marketing_opt_in. Real push/email delivery wires up in
+ * B-cycle (OneSignal SDK + Resend + edge fn + user_notification_prefs table).
+ *
+ * Per Cycle 14 SPEC §4.7.3.
  */
 
 import React, { useCallback, useEffect, useState } from "react";
@@ -38,6 +32,8 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import {
   accent,
   canvas,
+  glass,
+  radius as radiusTokens,
   spacing,
   text as textTokens,
 } from "../../src/constants/designSystem";
@@ -49,54 +45,14 @@ import {
   useNotificationPrefsStore,
   type NotificationPrefs,
 } from "../../src/store/notificationPrefsStore";
-import {
-  useNotificationTypePrefs,
-  type PrefChannel,
-} from "../../src/hooks/useNotificationTypePrefs";
-import { useAuth } from "../../src/context/AuthContext";
-import type { BusinessNotificationType } from "../../src/constants/businessNotificationTemplates";
 
 import { GlassCard } from "../../src/components/ui/GlassCard";
-import { Icon } from "../../src/components/ui/Icon";
 import { IconChrome } from "../../src/components/ui/IconChrome";
 import { Toast } from "../../src/components/ui/Toast";
-
-// ── Master + child config (SUB-C_DESIGN §8.2) ────────────────────────────────
-
-interface ChildType {
-  readonly type: BusinessNotificationType;
-  readonly label: string;
-  readonly description: string;
-}
-
-const ORDER_CHILDREN: readonly ChildType[] = [
-  { type: "business.order_paid", label: "New sale", description: "When a ticket sells" },
-  { type: "business.event_sold_out", label: "Sold out", description: "When a listing sells out" },
-  { type: "business.low_inventory", label: "Almost gone", description: "When inventory runs low" },
-  { type: "business.refund_processed", label: "Refunds", description: "When a refund is processed" },
-];
-
-const PAYMENTS_CHILDREN: readonly ChildType[] = [
-  { type: "business.dispute_opened", label: "Disputes opened", description: "When a buyer disputes a charge" },
-  { type: "business.dispute_action_needed", label: "Evidence due", description: "When you must submit dispute evidence" },
-  { type: "business.payout_paid", label: "Payouts", description: "When money lands in your bank" },
-  { type: "business.account_status_changed", label: "Account status", description: "When Stripe pauses or restores payments" },
-];
-
-const AUDIENCE_CHILDREN: readonly ChildType[] = [
-  { type: "business.new_review", label: "New reviews", description: "When someone reviews your brand" },
-];
-
-const TEAM_CHILDREN: readonly ChildType[] = [
-  { type: "business.team_member_joined", label: "Teammate joined", description: "When an invited teammate accepts" },
-  { type: "business.claim_decision", label: "Claim decisions", description: "When a venue claim is approved or declined" },
-];
 
 export default function NotificationsRoute(): React.ReactElement {
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { user } = useAuth();
-  const userId = user?.id ?? null;
   const { data: account } = useCreatorAccount();
   const { mutateAsync: updateAccount } = useUpdateCreatorAccount();
   const prefs = useNotificationPrefsStore((s) => s.prefs);
@@ -104,14 +60,12 @@ export default function NotificationsRoute(): React.ReactElement {
   const hydrateMarketing = useNotificationPrefsStore(
     (s) => s.hydrateMarketingFromBackend,
   );
-  const typePrefs = useNotificationTypePrefs(userId);
-
   const [toast, setToast] = useState<{ visible: boolean; message: string }>({
     visible: false,
     message: "",
   });
-  const [expanded, setExpanded] = useState<Record<string, boolean>>({});
 
+  // Hydrate marketing toggle from canonical schema column once
   useEffect(() => {
     if (account !== null) {
       hydrateMarketing(account.marketing_opt_in);
@@ -130,73 +84,22 @@ export default function NotificationsRoute(): React.ReactElement {
     }
   }, [router]);
 
-  const toggleExpand = useCallback((key: string): void => {
-    setExpanded((prev) => ({ ...prev, [key]: !prev[key] }));
-  }, []);
-
-  // Zustand master toggle (Order / Scanner / Brand team / Marketing).
-  const handleZustandToggle = useCallback(
+  const handleToggle = useCallback(
     async (key: keyof NotificationPrefs, value: boolean): Promise<void> => {
       setPref(key, value);
       if (key === "marketing") {
+        // DOUBLE-WIRE per D-14-7: also persist to creator_accounts.marketing_opt_in.
         try {
           await updateAccount({ marketing_opt_in: value });
-        } catch {
+        } catch (_err) {
           showToast("Couldn't save. Tap to try again.");
+          // Revert local toggle on backend failure (single source of truth = backend)
           setPref(key, !value);
         }
       }
     },
     [setPref, updateAccount, showToast],
   );
-
-  // A master with children gates them: master OFF writes opt_in=false for
-  // every child (push + in_app) so the backend honors the master too.
-  const handleMasterWithChildren = useCallback(
-    async (
-      zustandKey: keyof NotificationPrefs | null,
-      children: readonly ChildType[],
-      value: boolean,
-    ): Promise<void> => {
-      if (zustandKey !== null) {
-        setPref(zustandKey, value);
-      }
-      try {
-        await typePrefs.setMany(
-          children.map((c) => c.type),
-          value,
-        );
-      } catch {
-        showToast("Couldn't save. Tap to try again.");
-        if (zustandKey !== null) setPref(zustandKey, !value);
-      }
-    },
-    [setPref, typePrefs, showToast],
-  );
-
-  const handleChildToggle = useCallback(
-    async (
-      type: BusinessNotificationType,
-      channel: PrefChannel,
-      value: boolean,
-    ): Promise<void> => {
-      try {
-        await typePrefs.setPref(type, channel, value);
-      } catch {
-        showToast("Couldn't save. Tap to try again.");
-      }
-    },
-    [typePrefs, showToast],
-  );
-
-  // Derived master-ON for the two NEW masters: ON when ANY child push/in-app on.
-  const anyChildOn = (children: readonly ChildType[]): boolean =>
-    children.some(
-      (c) => typePrefs.isOn(c.type, "push") || typePrefs.isOn(c.type, "in_app"),
-    );
-
-  const paymentsMasterOn = anyChildOn(PAYMENTS_CHILDREN);
-  const audienceMasterOn = anyChildOn(AUDIENCE_CHILDREN);
 
   return (
     <View
@@ -224,83 +127,51 @@ export default function NotificationsRoute(): React.ReactElement {
         ]}
         showsVerticalScrollIndicator={false}
       >
-        {/* Order activity (master ON gates 4 children) */}
-        <MasterCard
-          label="Order activity"
-          description="Sales, sold-out, low inventory, and refunds"
-          masterOn={prefs.orderActivity}
-          expanded={!!expanded.order}
-          onToggleExpand={() => toggleExpand("order")}
-          onToggleMaster={(v) =>
-            void handleMasterWithChildren("orderActivity", ORDER_CHILDREN, v)
-          }
-          children_={ORDER_CHILDREN}
-          isOn={typePrefs.isOn}
-          onChild={handleChildToggle}
-        />
+        {/* TRANSITIONAL banner — D-14-5 */}
+        <View style={styles.banner}>
+          <Text style={styles.bannerTitle}>NOTIFICATION SETTINGS</Text>
+          <Text style={styles.bannerBody}>
+            Toggles save now; delivery wires up when the backend ships in
+            B-cycle.
+          </Text>
+        </View>
 
-        {/* Payments & trust (NEW master) */}
-        <MasterCard
-          label="Payments & trust"
-          description="Disputes, payouts, and account status"
-          masterOn={paymentsMasterOn}
-          expanded={!!expanded.payments}
-          onToggleExpand={() => toggleExpand("payments")}
-          onToggleMaster={(v) =>
-            void handleMasterWithChildren(null, PAYMENTS_CHILDREN, v)
-          }
-          children_={PAYMENTS_CHILDREN}
-          isOn={typePrefs.isOn}
-          onChild={handleChildToggle}
-        />
-
-        {/* Audience & content (NEW master) */}
-        <MasterCard
-          label="Audience & content"
-          description="Reviews and audience activity"
-          masterOn={audienceMasterOn}
-          expanded={!!expanded.audience}
-          onToggleExpand={() => toggleExpand("audience")}
-          onToggleMaster={(v) =>
-            void handleMasterWithChildren(null, AUDIENCE_CHILDREN, v)
-          }
-          children_={AUDIENCE_CHILDREN}
-          isOn={typePrefs.isOn}
-          onChild={handleChildToggle}
-        />
-
-        {/* Brand team (master ON gates 2 children) */}
-        <MasterCard
-          label="Brand team"
-          description="Teammates joining and venue-claim decisions"
-          masterOn={prefs.brandTeam}
-          expanded={!!expanded.team}
-          onToggleExpand={() => toggleExpand("team")}
-          onToggleMaster={(v) =>
-            void handleMasterWithChildren("brandTeam", TEAM_CHILDREN, v)
-          }
-          children_={TEAM_CHILDREN}
-          isOn={typePrefs.isOn}
-          onChild={handleChildToggle}
-        />
-
-        {/* Scanner activity (existing, no v1 children) */}
+        {/* 4 category toggles */}
         <GlassCard variant="elevated" radius="md" padding={spacing.md}>
-          <SimpleToggleRow
+          <ToggleRow
+            label="Order activity"
+            description="When buyers purchase, refund, or cancel"
+            value={prefs.orderActivity}
+            onToggle={(v) => {
+              void handleToggle("orderActivity", v);
+            }}
+          />
+          <View style={styles.divider} />
+          <ToggleRow
             label="Scanner activity"
             description="When scanners check in guests at the door"
             value={prefs.scannerActivity}
-            onToggle={(v) => void handleZustandToggle("scannerActivity", v)}
+            onToggle={(v) => {
+              void handleToggle("scannerActivity", v);
+            }}
           />
-        </GlassCard>
-
-        {/* Marketing (existing, creator_accounts-backed) */}
-        <GlassCard variant="elevated" radius="md" padding={spacing.md}>
-          <SimpleToggleRow
+          <View style={styles.divider} />
+          <ToggleRow
+            label="Brand team"
+            description="When team invitations are accepted or roles change"
+            value={prefs.brandTeam}
+            onToggle={(v) => {
+              void handleToggle("brandTeam", v);
+            }}
+          />
+          <View style={styles.divider} />
+          <ToggleRow
             label="Marketing"
             description="Newsletter and product updates from Mingla"
             value={prefs.marketing}
-            onToggle={(v) => void handleZustandToggle("marketing", v)}
+            onToggle={(v) => {
+              void handleToggle("marketing", v);
+            }}
           />
         </GlassCard>
       </ScrollView>
@@ -317,149 +188,18 @@ export default function NotificationsRoute(): React.ReactElement {
   );
 }
 
-// ── Master card with expandable children ─────────────────────────────────────
+// ============================================================
+// ToggleRow (composed inline)
+// ============================================================
 
-interface MasterCardProps {
-  label: string;
-  description: string;
-  masterOn: boolean;
-  expanded: boolean;
-  onToggleExpand: () => void;
-  onToggleMaster: (value: boolean) => void;
-  children_: readonly ChildType[];
-  isOn: (type: BusinessNotificationType, channel: PrefChannel) => boolean;
-  onChild: (
-    type: BusinessNotificationType,
-    channel: PrefChannel,
-    value: boolean,
-  ) => void;
-}
-
-const MasterCard: React.FC<MasterCardProps> = ({
-  label,
-  description,
-  masterOn,
-  expanded,
-  onToggleExpand,
-  onToggleMaster,
-  children_,
-  isOn,
-  onChild,
-}) => (
-  <GlassCard variant="elevated" radius="md" padding={spacing.md}>
-    <View style={styles.masterRow}>
-      <Pressable
-        onPress={onToggleExpand}
-        accessibilityRole="button"
-        accessibilityLabel={`${label}, ${expanded ? "collapse" : "expand"} options`}
-        style={styles.masterText}
-      >
-        <Text style={styles.toggleLabel}>{label}</Text>
-        <Text style={styles.toggleDescription} numberOfLines={2}>
-          {description}
-        </Text>
-      </Pressable>
-      <Pressable
-        onPress={onToggleExpand}
-        accessibilityRole="button"
-        accessibilityLabel={expanded ? "Collapse" : "Expand"}
-        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-      >
-        <Icon
-          name={expanded ? "chevU" : "chevD"}
-          size={16}
-          color={textTokens.tertiary}
-        />
-      </Pressable>
-      <Switch
-        value={masterOn}
-        onValueChange={onToggleMaster}
-        trackColor={{ false: "rgba(255, 255, 255, 0.12)", true: accent.warm }}
-        thumbColor="#ffffff"
-        accessibilityLabel={`${label} master toggle`}
-      />
-    </View>
-
-    {expanded ? (
-      <View>
-        {!masterOn ? (
-          <Text style={styles.masterOffNote}>
-            Turn on {label} to choose which alerts you get.
-          </Text>
-        ) : null}
-        {children_.map((child) => (
-          <View
-            key={child.type}
-            style={[styles.childRow, !masterOn ? styles.childDisabled : null]}
-          >
-            <View style={styles.childTextCol}>
-              <Text style={styles.childLabel}>{child.label}</Text>
-              <Text style={styles.childDescription} numberOfLines={1}>
-                {child.description}
-              </Text>
-            </View>
-            <View style={styles.childToggles}>
-              <ChannelToggle
-                label="PUSH"
-                value={isOn(child.type, "push")}
-                disabled={!masterOn}
-                onToggle={(v) => onChild(child.type, "push", v)}
-                a11y={`${child.label} push`}
-              />
-              <ChannelToggle
-                label="IN-APP"
-                value={isOn(child.type, "in_app")}
-                disabled={!masterOn}
-                onToggle={(v) => onChild(child.type, "in_app", v)}
-                a11y={`${child.label} in-app`}
-              />
-            </View>
-          </View>
-        ))}
-      </View>
-    ) : null}
-  </GlassCard>
-);
-
-interface ChannelToggleProps {
-  label: string;
-  value: boolean;
-  disabled: boolean;
-  onToggle: (value: boolean) => void;
-  a11y: string;
-}
-
-const ChannelToggle: React.FC<ChannelToggleProps> = ({
-  label,
-  value,
-  disabled,
-  onToggle,
-  a11y,
-}) => (
-  <View style={styles.channelCol}>
-    <Text style={styles.channelLabel}>{label}</Text>
-    <Switch
-      value={value}
-      onValueChange={onToggle}
-      disabled={disabled}
-      trackColor={{ false: "rgba(255, 255, 255, 0.12)", true: accent.warm }}
-      thumbColor="#ffffff"
-      accessibilityLabel={a11y}
-      accessibilityState={{ checked: value, disabled }}
-    />
-  </View>
-);
-
-// ── Simple single-toggle row (Scanner / Marketing) ───────────────────────────
-
-interface SimpleToggleRowProps {
+interface ToggleRowProps {
   label: string;
   description: string;
   value: boolean;
   onToggle: (value: boolean) => void;
 }
 
-const SimpleToggleRow: React.FC<SimpleToggleRowProps> = ({
+const ToggleRow: React.FC<ToggleRowProps> = ({
   label,
   description,
   value,
@@ -486,6 +226,10 @@ const SimpleToggleRow: React.FC<SimpleToggleRowProps> = ({
     />
   </Pressable>
 );
+
+// ============================================================
+// Styles
+// ============================================================
 
 const styles = StyleSheet.create({
   host: {
@@ -519,71 +263,28 @@ const styles = StyleSheet.create({
     gap: spacing.md,
   },
 
-  // Master row
-  masterRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.md,
-    paddingVertical: spacing.sm,
+  // TRANSITIONAL banner ----------------------------------------------
+  banner: {
+    padding: spacing.md - 2,
+    borderRadius: radiusTokens.md,
+    backgroundColor: "rgba(235, 120, 37, 0.10)",
+    borderWidth: 1,
+    borderColor: "rgba(235, 120, 37, 0.30)",
   },
-  masterText: {
-    flex: 1,
-    minWidth: 0,
+  bannerTitle: {
+    fontSize: 11,
+    fontWeight: "700",
+    letterSpacing: 1.4,
+    color: accent.warm,
+    marginBottom: 4,
   },
-  masterOffNote: {
+  bannerBody: {
     fontSize: 12,
-    lineHeight: 16,
-    color: textTokens.tertiary,
-    paddingTop: spacing.xs,
-    paddingBottom: spacing.sm,
-  },
-
-  // Child rows
-  childRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.md,
-    paddingVertical: spacing.sm,
-    paddingLeft: spacing.lg,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: "rgba(255, 255, 255, 0.08)",
-  },
-  childDisabled: {
-    opacity: 0.4,
-  },
-  childTextCol: {
-    flex: 1,
-    minWidth: 0,
-  },
-  childLabel: {
-    fontSize: 14,
-    fontWeight: "600",
-    color: textTokens.primary,
-    marginBottom: 2,
-  },
-  childDescription: {
-    fontSize: 12,
-    lineHeight: 16,
+    lineHeight: 17,
     color: textTokens.secondary,
   },
-  childToggles: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    gap: spacing.sm,
-  },
-  channelCol: {
-    alignItems: "center",
-    gap: 2,
-  },
-  channelLabel: {
-    fontSize: 11,
-    lineHeight: 14,
-    fontWeight: "600",
-    letterSpacing: 1.4,
-    color: textTokens.tertiary,
-  },
 
-  // Simple toggle rows
+  // Toggle rows ------------------------------------------------------
   toggleRow: {
     flexDirection: "row",
     alignItems: "center",
@@ -605,7 +306,13 @@ const styles = StyleSheet.create({
     lineHeight: 16,
     color: textTokens.secondary,
   },
+  divider: {
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: "rgba(255, 255, 255, 0.08)",
+    marginVertical: 2,
+  },
 
+  // Toast ------------------------------------------------------------
   toastWrap: {
     position: "absolute",
     top: 80,

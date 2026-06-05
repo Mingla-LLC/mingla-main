@@ -39,11 +39,7 @@ describe("brandStripeBalancesService", () => {
     ).toThrow("malformed payload");
   });
 
-  // [TEST-MOD-APPROVED META-ORCH-1073-Sub-A5] — the function no longer passes a
-  // custom Authorization header (that sent a stale useAuth() token → 401). It
-  // now relies on supabase.functions.invoke's own auto-refreshed session token,
-  // so the invoke must be called with NO custom headers.
-  test("invokes the balances edge fn without a custom auth header (uses client session)", async () => {
+  test("passes explicit bearer token to the balances edge function", async () => {
     const invoke = supabase.functions.invoke as jest.MockedFunction<
       typeof supabase.functions.invoke
     >;
@@ -58,10 +54,11 @@ describe("brandStripeBalancesService", () => {
     });
 
     await expect(
-      fetchBrandStripeBalances("brand-1"),
+      fetchBrandStripeBalances("brand-1", "access-token-1"),
     ).resolves.toMatchObject({ currency: "USD" });
     expect(invoke).toHaveBeenCalledWith("brand-stripe-balances", {
       body: { brand_id: "brand-1" },
+      headers: { Authorization: "Bearer access-token-1" },
     });
   });
 });

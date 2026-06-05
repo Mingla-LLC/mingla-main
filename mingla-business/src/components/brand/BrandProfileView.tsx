@@ -48,7 +48,6 @@ import type { Brand, BrandStripeStatus } from "../../store/currentBrandStore";
 import { formatCurrencyRound, formatCount } from "../../utils/currency";
 import { useCurrentBrandRole } from "../../hooks/useCurrentBrandRole";
 import { canPerformAction } from "../../utils/permissionGates";
-import { isBrandPayoutReady } from "../../utils/brandPayout";
 import {
   getBrandProfileStripeBannerCopy,
   getBrandProfileStripeOperationsSub,
@@ -294,12 +293,8 @@ export const BrandProfileView: React.FC<BrandProfileViewProps> = ({
   // before this hook (preserves ORCH-0710 hook ordering).
   const { rank: currentRank } = useCurrentBrandRole(brand?.id ?? null);
   const canViewAuditLog = canPerformAction(currentRank, "VIEW_AUDIT_LOG");
-  // META-ORCH-1076 — provider-neutral: a connected Paystack brand is payout-ready,
-  // so the "Connect bank to sell tickets" banner + Operations sub treat it as
-  // active even though its Stripe status is "not_connected".
-  const stripeStatus = isBrandPayoutReady(brand)
-    ? "active"
-    : (effectiveStripeStatus ?? brand?.stripeStatus ?? "not_connected");
+  const stripeStatus =
+    effectiveStripeStatus ?? brand?.stripeStatus ?? "not_connected";
 
   // ORCH-1040 — the "Venue listing" row only shows for brands with a physical
   // location (opt-in flag) OR that already have a linked venue (placePoolId) —
@@ -325,7 +320,7 @@ export const BrandProfileView: React.FC<BrandProfileViewProps> = ({
     rows.push(
       {
         icon: "bank",
-        label: "Payments & Bank",
+        label: "Payments & Stripe",
         sub: getBrandProfileStripeOperationsSub(stripeStatus),
         onPress: () => {
           if (brand !== null) onPayments(brand.id);

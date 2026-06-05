@@ -1466,24 +1466,6 @@ function checkNoNewBackendFiles() {
     "supabase/functions/generate-curated-experiences/index.ts",
     "supabase/functions/generate-curated-experiences/__tests__/orch_1071_experiences_on_curated_path.test.ts",
   ];
-  // ORCH-1072 [experience-detail-cover-availability]: ONE new migration
-  // (additive CREATE OR REPLACE of pg_eligible_experiences_for_deck adding
-  // cover_media_url/cover_media_type/description/upcoming_occurrences) plus its
-  // backend regression tests. The two edge fns it threads through
-  // (discover-cards/index.ts, generate-curated-experiences/index.ts) are
-  // MODIFICATIONS of already-allowlisted files (ORCH_1065 / ORCH_0902_0903 /
-  // ORCH_1071), so only the migration + the two new test files need listing.
-  // C7 is scoped to ORCH-0863 marketing; these are consumer-deck backend
-  // touches. Per COMMS-0002 — lands in the SAME commit as the migration.
-  // NOTE (ORCH-1073): this entry collided with the brand-experiences ORCH-1072
-  // below — two `const ORCH_1072_BACKEND_ALLOWLIST` in one scope crashed the gate
-  // (SyntaxError) on main. Renamed to a unique identifier to unbreak CI; the
-  // migration file retains its on-disk orch_1072 name (renumber was incomplete).
-  const ORCH_1072_EXPERIENCE_DETAIL_BACKEND_ALLOWLIST = [
-    "supabase/migrations/20260908000000_orch_1072_experience_detail_cover_availability.sql",
-    "supabase/functions/discover-cards/__tests__/orch_1072_experience_detail_supply.test.ts",
-    "supabase/functions/ticket-checkout-create/__tests__/orch1072_experience_occurrence_checkout.test.ts",
-  ];
   // ORCH-1064 [admin↔business venue-listing feedback loop]: one NEW migration
   // (venue_claim_feedback table + RLS + view + 3 RPCs + admin bundle extension)
   // plus its backend regression tests. The edge fn (admin-review-venue-claim/
@@ -1520,15 +1502,6 @@ function checkNoNewBackendFiles() {
   // (ORCH-1071 was already allocated to a separate effort; this work is 1072.)
   const ORCH_1072_BACKEND_ALLOWLIST = [
     "supabase/migrations/20260906000000_orch_1072_brand_experiences_for_place.sql",
-  ];
-  // ORCH-1073 [admin suspend/delete venue listing + owner messaging]: one
-  // additive migration (soft-delete cols + invariant trigger + claim_status &
-  // action_type CHECK widen + admin_suspend/soft_delete/restore RPCs + the
-  // biz_resubmit_venue_claim patch to accept a suspended brand). No new edge
-  // function source. C7 is scoped to ORCH-0863 marketing; this is an admin/
-  // venue-listing backend touch. Per COMMS-0002 — same commit as the migration.
-  const ORCH_1073_BACKEND_ALLOWLIST = [
-    "supabase/migrations/20260909000000_orch_1073_admin_suspend_delete_listing.sql",
   ];
   // ORCH-1032 [Intelligence pipeline concurrency cap + chunked enqueue]:
   // adds the additive 'queued'-status migration (status CHECK widen + per-city
@@ -1621,51 +1594,6 @@ function checkNoNewBackendFiles() {
     "supabase/migrations/20260826000000_orch_1058b_post_collab_dead_end_banner.sql",
     "supabase/migrations/20260826000001_orch_1058b_allow_system_message_type.sql",
   ];
-  // META-ORCH-1074 Sub-A [Backend dual-app push routing + business notification
-  // triggers]. C7 is scoped to ORCH-0863 marketing; these are notification-
-  // routing + trigger backend touches. Per COMMS-0002 this allowlist lands in
-  // the SAME commit as the backend change. New files: the new_review pg_net
-  // trigger migration, the shared businessNotifyTriggers module, and the
-  // implementor regression tests. MODIFIED existing files (push-utils,
-  // notify-dispatch, stripeEdgeAuth, stripeWebhookRouter, stripeDisputeHandlers,
-  // ticket-checkout-confirm, admin-review-venue-claim, accept-brand-invitation)
-  // are edits not new files, but are listed for a complete audit trail and to
-  // stay byte-identical to the ORCH-1064/1066 precedent.
-  // META-ORCH-1076 [Paystack Africa] Phase 1 — Paystack buyer checkout (NGN).
-  // Paystack money-rail backend touches + the proof-slice files. Per COMMS-0002
-  // — lands in the SAME commit as the backend diff. Covers the new __tests__/ too.
-  const META_ORCH_1076_BACKEND_ALLOWLIST = [
-    "supabase/migrations/20260915000000_meta_orch_1076_p1_payment_provider.sql",
-    "supabase/migrations/20260916000000_meta_orch_1076_p1b_event_currency_ngn.sql",
-    "supabase/functions/_shared/paymentProvider.ts",
-    "supabase/functions/_shared/paystack.ts",
-    "supabase/functions/_shared/paystackWebhookRouter.ts",
-    "supabase/functions/_shared/allInPricingEngine.ts",
-    "supabase/functions/ticket-checkout-create/index.ts",
-    "supabase/functions/paystack-checkout-create/index.ts",
-    "supabase/functions/paystack-webhook/index.ts",
-    "supabase/functions/paystack-webhook/__tests__/paystackWebhook.test.ts",
-    "supabase/functions/_shared/__tests__/allInPricingEngineNgVat.test.ts",
-    "supabase/functions/_shared/__tests__/paymentProvider.test.ts",
-    // Phase 2 — brand payout onboarding (subaccounts + splits). New onboarding
-    // edge function; _shared/paystack.ts (already listed) gains the bank/subaccount
-    // helpers. Per COMMS-0002 — lands in the SAME commit as the backend diff.
-    "supabase/functions/brand-paystack-onboard/index.ts",
-  ];
-  const META_ORCH_1074_BACKEND_ALLOWLIST = [
-    "supabase/migrations/20260910000000_meta_orch_1074_new_review_notify.sql",
-    "supabase/functions/_shared/businessNotifyTriggers.ts",
-    "supabase/functions/_shared/push-utils.ts",
-    "supabase/functions/notify-dispatch/index.ts",
-    "supabase/functions/_shared/stripeEdgeAuth.ts",
-    "supabase/functions/_shared/stripeWebhookRouter.ts",
-    "supabase/functions/_shared/stripeDisputeHandlers.ts",
-    "supabase/functions/ticket-checkout-confirm/index.ts",
-    "supabase/functions/admin-review-venue-claim/index.ts",
-    "supabase/functions/accept-brand-invitation/index.ts",
-    "supabase/functions/_shared/__tests__/meta_orch_1074_push_routing.test.ts",
-    "supabase/functions/_shared/__tests__/meta_orch_1074_order_paid_payload.test.ts",
-  ];
   // ORCH-1066 [admin deck score tuner + card preview]: adds the new 4-RPC
   // deck-score-tuner migration + its SQL-shape migration test + the
   // sticky-through-approval Deno regression test. run-signal-scorer/index.ts and
@@ -1712,38 +1640,7 @@ function checkNoNewBackendFiles() {
   const ORCH_1070_BACKEND_ALLOWLIST = [
     "supabase/migrations/20260907000000_orch_1070_deck_experiences_strict_intent.sql",
   ];
-  // ORCH-1077 [prod↔main migration-drift reconciliation]: file-only history
-  // housekeeping — commits the orphaned (already-applied+recorded) orch_1047
-  // source onto main, and renumbers 3 collision-loser migration files to unique
-  // timestamps (their objects are already live on remote; recorded via
-  // `supabase migration repair --status applied`, which runs NO SQL). C7 flags
-  // these supabase/migrations paths as new; allowlisted here per COMMS-0002.
-  const ORCH_1077_BACKEND_ALLOWLIST = [
-    "supabase/migrations/20260602000000_orch_1047_schedule_change_with_sales.sql",
-    "supabase/migrations/20260816000001_orch_1043_auto_run_triggered_by_nullable.sql",
-    "supabase/migrations/20260820000001_schedule_change_buyer_protection_refund_all.sql",
-    "supabase/migrations/20260906000001_orch_1072_brand_experiences_for_place.sql",
-  ];
-  // ORCH-1075 [paid-publish integrity guards]: one CREATE-OR-REPLACE migration
-  // adding pg_brand_can_charge() + re-emitting the 6 money RPCs +
-  // business_patch_event_when with publish-time Stripe-readiness + past-date
-  // guards. No edge-fn change (ticket-checkout-create 409 stays as last-line
-  // defense). The new strict-grep .mjs lives under .github/scripts (not
-  // supabase/**) so it is NOT subject to C7, but it is listed here for the
-  // audit trail. Per COMMS-0002 — this allowlist lands in the SAME commit as
-  // the migration.
-  const ORCH_1075_BACKEND_ALLOWLIST = [
-    "supabase/migrations/20260911000000_orch_1075_paid_publish_integrity_guards.sql",
-    "supabase/migrations/__tests__/orch_1075_paid_publish_integrity_guards.test.sql",
-    "supabase/migrations/__tests__/orch_1075_paid_publish_integrity_guards.test.ts",
-    // ORCH-1075 TESTER adversarial behavioral regression (COMMS-0002, same-commit).
-    "supabase/migrations/__tests__/orch_1075_paid_publish_guards_behavioral.test.ts",
-  ];
   const ALLOWLIST = [
-    ...META_ORCH_1076_BACKEND_ALLOWLIST,
-    ...ORCH_1075_BACKEND_ALLOWLIST,
-    ...ORCH_1077_BACKEND_ALLOWLIST,
-    ...META_ORCH_1074_BACKEND_ALLOWLIST,
     ...ORCH_1070_BACKEND_ALLOWLIST,
     ...ORCH_1069_BACKEND_ALLOWLIST,
     ...ORCH_1068_BACKEND_ALLOWLIST,
@@ -1836,11 +1733,9 @@ function checkNoNewBackendFiles() {
     ...ORCH_1062_BACKEND_ALLOWLIST,
     ...ORCH_1065_BACKEND_ALLOWLIST,
     ...ORCH_1071_BACKEND_ALLOWLIST,
-    ...ORCH_1072_EXPERIENCE_DETAIL_BACKEND_ALLOWLIST,
     ...ORCH_1064_BACKEND_ALLOWLIST,
     ...ORCH_1067_BACKEND_ALLOWLIST,
     ...ORCH_1072_BACKEND_ALLOWLIST,
-    ...ORCH_1073_BACKEND_ALLOWLIST,
     // Schedule-edit buyer protection + "Refund all & proceed" (separate PR;
     // shares the ORCH-1047 work id used in code). New migration recording the
     // already-live business_patch_event_when change — not ORCH-0863 marketing

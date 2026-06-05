@@ -16,7 +16,6 @@ import { useCurrentBrand } from "./useCurrentBrand";
 import { useCurrentBrandRecovery } from "./useCurrentBrandRecovery";
 import { useServerDraftsForBrand } from "./useServerDraftEvents";
 import { useUpcomingForBrand } from "./useUpcomingForBrand";
-import { isBrandPayoutReady } from "../utils/brandPayout";
 import { useCurrentBrandStore } from "../store/currentBrandStore";
 import { useDraftsForBrand } from "../store/draftEventStore";
 import { useDraftVenueStore } from "../store/draftVenueStore";
@@ -114,7 +113,7 @@ export function useBusinessTodos(): BusinessTodo[] {
           live: upcoming.counts.live,
           draft: upcoming.counts.draft,
         },
-        stripeActive: isBrandPayoutReady(currentBrand),
+        stripeActive: currentBrand?.stripeStatus === "active",
         hasDraftPaidOffering: hasAnyDraftPaidOffering(drafts),
         stripeRoute:
           currentBrand !== null ? `/brand/${currentBrand.id}/payments` : "",

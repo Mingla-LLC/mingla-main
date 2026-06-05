@@ -115,7 +115,6 @@ const DesktopCenteredCard: React.FC<SheetProps> = ({
   onClose,
   children,
   dismissOnScrimTap = true,
-  verticalAlign = "center",
   testID,
   style,
 }) => {
@@ -231,20 +230,7 @@ const DesktopCenteredCard: React.FC<SheetProps> = ({
             inner Animated.View carries the fade + scale-in. Sub-sheets
             MUST live inside `children` here — never as Fragment siblings
             of this <Sheet> (I-SUB-SHEET-INSIDE-PARENT). */}
-        <View
-          style={[
-            styles.cardWrap,
-            verticalAlign === "top"
-              ? {
-                  justifyContent: "flex-start",
-                  // Anchor near the top (~12vh) so the card grows/shrinks with
-                  // content without the whole sheet re-centring as you type.
-                  paddingTop: Math.max(viewportHeight * 0.12, 48),
-                }
-              : null,
-          ]}
-          pointerEvents="box-none"
-        >
+        <View style={styles.cardWrap} pointerEvents="box-none">
           <Animated.View
             style={[
               styles.card,

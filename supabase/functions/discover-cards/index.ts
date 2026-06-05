@@ -148,12 +148,6 @@ interface ExperienceDeckCard {
   experienceType: string;
   title: string;
   tagline: string;
-  // ORCH-1072: the experience's REAL description + cover (events.description /
-  // cover_media_url / cover_media_type) so the detail sheet renders the actual
-  // story + cover image/video, not the fabricated first-stop image + tagline.
-  description: string;
-  coverMediaUrl: string | null;
-  coverMediaType: 'image' | 'video' | 'gif' | null;
   brandId: string;
   brandName: string;
   brandSlug: string;
@@ -165,17 +159,6 @@ interface ExperienceDeckCard {
   masterDateUtc: string | null;
   masterEndAtUtc: string | null;
   timezone: string;
-  // ORCH-1072: upcoming occurrences for the Book sheet date picker. One-off
-  // experiences carry a single element (auto-selected); sold-out occurrences
-  // (remaining === 0) render disabled. remaining === null ⇒ unlimited.
-  upcomingOccurrences: Array<{
-    eventDateId: string;
-    startAt: string;
-    endAt: string;
-    capacity: number | null;
-    sold: number;
-    remaining: number | null;
-  }>;
   stops: Array<{
     stopNumber: number;
     placeId: string;
@@ -217,43 +200,6 @@ function resolveExperienceIntents(signalIds: string[]): string[] {
     if (intent) out.add(intent);
   }
   return [...out];
-}
-
-// ORCH-1072: decode the RPC's upcoming_occurrences jsonb into the camelCase
-// envelope shape. Drops malformed rows (no event_date_id / no start_at) so the
-// client never renders an unbookable occurrence. Honest passthrough — no
-// fabricated capacity (remaining stays null when the RPC said unlimited).
-function mapExperienceOccurrences(raw: unknown): Array<{
-  eventDateId: string;
-  startAt: string;
-  endAt: string;
-  capacity: number | null;
-  sold: number;
-  remaining: number | null;
-}> {
-  const arr = Array.isArray(raw) ? raw : [];
-  return arr
-    .map((o: any) => {
-      const eventDateId = typeof o?.event_date_id === 'string' ? o.event_date_id : '';
-      const startAt = o?.start_at ? String(o.start_at) : '';
-      if (eventDateId.length === 0 || startAt.length === 0) return null;
-      return {
-        eventDateId,
-        startAt,
-        endAt: o?.end_at ? String(o.end_at) : '',
-        capacity: typeof o?.capacity === 'number' ? o.capacity : null,
-        sold: typeof o?.sold === 'number' ? o.sold : 0,
-        remaining: typeof o?.remaining === 'number' ? o.remaining : null,
-      };
-    })
-    .filter((o): o is {
-      eventDateId: string;
-      startAt: string;
-      endAt: string;
-      capacity: number | null;
-      sold: number;
-      remaining: number | null;
-    } => o !== null);
 }
 
 // Single service-role round-trip to the deck-eligibility RPC. Throws on error
@@ -327,20 +273,6 @@ async function fetchEligibleExperiences(args: {
       experienceType: intentsArr[0] ?? 'adventurous',
       title: typeof row.title === 'string' ? row.title : '',
       tagline: typeof row.tagline === 'string' ? row.tagline : '',
-      // ORCH-1072: carry the real description + cover (honest defaults — '' /
-      // null when absent; the client shows an empty-state, never the tagline).
-      description: typeof row.description === 'string' ? row.description : '',
-      coverMediaUrl:
-        typeof row.cover_media_url === 'string' && row.cover_media_url.length > 0
-          ? row.cover_media_url
-          : null,
-      coverMediaType:
-        row.cover_media_type === 'image' ||
-        row.cover_media_type === 'video' ||
-        row.cover_media_type === 'gif'
-          ? row.cover_media_type
-          : null,
-      upcomingOccurrences: mapExperienceOccurrences(row.upcoming_occurrences),
       brandId: String(row.brand_id),
       brandName: typeof row.brand_name === 'string' ? row.brand_name : '',
       brandSlug: typeof row.brand_slug === 'string' ? row.brand_slug : '',

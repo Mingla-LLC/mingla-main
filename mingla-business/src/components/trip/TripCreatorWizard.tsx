@@ -101,7 +101,6 @@ import {
   type PublishErrorState,
   mapPublishErrorToState,
 } from "./TripCreatorStep5Review";
-import { brandStripeOnboardingRoute } from "../../utils/paidPublishGuards";
 // ORCH-0880 [Tr5 Traveler Intake Forms] — NEW Step 6 component (intake
 // schema builder + live preview, per-tier scope).
 import { TripCreatorStep6Intake } from "./TripCreatorStep6Intake";
@@ -859,13 +858,8 @@ export const TripCreatorWizard: React.FC<TripCreatorWizardProps> = ({
       const err = e as TripPublishValidationError;
       setPublishConfirmVisible(false);
       setPublishError(mapPublishErrorToState(err.code ?? "publish_failed", err.message));
-      // ORCH-1075 — a paid trip on a Stripe-unready brand can't publish; route
-      // the operator to the brand's Stripe Connect onboarding to finish setup.
-      if ((err.message ?? "").includes("stripe_charges_disabled")) {
-        router.push(brandStripeOnboardingRoute(trip.brandId) as never);
-      }
     }
-  }, [publishMutation, router, step1Draft, trip.id, trip.brandId, trip.timezone, onPublished]);
+  }, [publishMutation, step1Draft, trip.id, trip.brandId, trip.timezone, onPublished]);
 
   // Suppress autosave-error toast surfacing via setPublishError; show via
   // the persistent banner in Step 5. Show toast for discard errors only.

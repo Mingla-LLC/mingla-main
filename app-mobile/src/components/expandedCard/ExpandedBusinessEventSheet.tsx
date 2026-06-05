@@ -67,13 +67,6 @@ import { glass } from "../../constants/designSystem";
 import TicketCartSheet, {
   type TicketCartCheckoutPayload,
 } from "./TicketCartSheet";
-// ORCH-1072 — experience occurrence picker (PICK FROM UPCOMING DATES) +
-// the multi-stop itinerary section rendered beneath the cover/description.
-import {
-  ExperienceOccurrencePicker,
-  type ExperienceOccurrence,
-} from "./ExperienceOccurrencePicker";
-import { ExperienceItinerary } from "./ExperienceItinerary";
 
 interface ExpandedBusinessEventSheetProps {
   visible: boolean;
@@ -115,37 +108,7 @@ export const mapCardToPublicEvent = (
     timezone: card.timezone,
   }),
   dateSubline: null,
-  // ORCH-1072 — for a brand experience with upcoming occurrences, render the
-  // real upcoming dates in PublicEventPage's existing dates list (the consumer
-  // sheet previously hardcoded []). Events/trips (no upcomingOccurrences) keep
-  // the empty list → unchanged. Multi-date booking happens via the dedicated
-  // occurrence picker that opens on the Book tap (operator-locked flow).
-  datesList: Array.isArray(card.upcomingOccurrences)
-    ? card.upcomingOccurrences
-        .map((o) => {
-          const d = new Date(o.startAt);
-          if (Number.isNaN(d.getTime())) return null;
-          try {
-            return new Intl.DateTimeFormat(undefined, {
-              weekday: "short",
-              day: "numeric",
-              month: "short",
-              hour: "numeric",
-              minute: "2-digit",
-              timeZone: card.timezone || "UTC",
-            }).format(d);
-          } catch {
-            return new Intl.DateTimeFormat(undefined, {
-              weekday: "short",
-              day: "numeric",
-              month: "short",
-              hour: "numeric",
-              minute: "2-digit",
-            }).format(d);
-          }
-        })
-        .filter((s): s is string => s !== null)
-    : [],
+  datesList: [],
   status: "published",
   endedAt: null,
   // ORCH-0846: honor server-derived format instead of hardcoding "in-person".
@@ -214,30 +177,6 @@ export const ExpandedBusinessEventSheet: React.FC<
   const [cartSheetVisible, setCartSheetVisible] = useState<boolean>(false);
   const [initialTicketTypeId, setInitialTicketTypeId] = useState<string | null>(
     null,
-  );
-  // ORCH-1072 — occurrence-picker state. For a brand experience with >1 upcoming
-  // occurrence, the Book tap opens the date picker; the chosen event_date_id is
-  // threaded into ticket-checkout-create. A one-off experience auto-selects its
-  // single date and skips the picker. Events/trips (no upcomingOccurrences)
-  // never touch this state → unchanged path.
-  const [occurrencePickerVisible, setOccurrencePickerVisible] =
-    useState<boolean>(false);
-  const [selectedEventDateId, setSelectedEventDateId] = useState<string | null>(
-    null,
-  );
-
-  // ORCH-1072 — the experience's bookable upcoming occurrences (undefined for
-  // events/trips). Sold-out occurrences (remaining === 0) are excluded from the
-  // auto-select / "single occurrence" logic but still shown disabled in the
-  // picker so the buyer sees them.
-  const occurrences: ExperienceOccurrence[] = useMemo(
-    () =>
-      Array.isArray(data.upcomingOccurrences) ? data.upcomingOccurrences : [],
-    [data.upcomingOccurrences],
-  );
-  const bookableOccurrences = useMemo(
-    () => occurrences.filter((o) => o.remaining === null || o.remaining > 0),
-    [occurrences],
   );
 
   const ticketsQuery = usePublicEventTickets(visible ? data.eventId : null);
@@ -338,12 +277,6 @@ export const ExpandedBusinessEventSheet: React.FC<
           ...(payload.intakeFormData.length > 0
             ? { intakeFormData: payload.intakeFormData }
             : {}),
-          // ORCH-1072 — thread the chosen occurrence into ticket-checkout-create
-          // so a recurring/multi-date experience books the right date. Omitted
-          // for events/trips/one-off-with-no-id → byte-identical to today.
-          ...(selectedEventDateId !== null
-            ? { eventDateId: selectedEventDateId }
-            : {}),
         });
       } catch (err) {
         // ORCH-0829-B D-1 H-2: runNativeCheckout's contract is to return a
@@ -401,7 +334,6 @@ export const ExpandedBusinessEventSheet: React.FC<
       profile,
       runNativeCheckout,
       data.eventId,
-      selectedEventDateId,
       queryClient,
       onClose,
     ],
@@ -421,43 +353,6 @@ export const ExpandedBusinessEventSheet: React.FC<
   const handleCartCancel = useCallback((): void => {
     setCartSheetVisible(false);
     setInitialTicketTypeId(null);
-  }, []);
-
-  // ORCH-1072 — Book tap entry point. Decides the occurrence step:
-  //   • >1 bookable occurrence → open the date picker (buyer picks, then cart).
-  //   • exactly 1 occurrence    → auto-select it, skip straight to the cart
-  //                               (one-off experience — operator-locked).
-  //   • 0 occurrences (event/trip, or experience the supply didn't carry dates
-  //     for) → open the cart with no event_date_id (byte-identical to today).
-  const beginBooking = useCallback(
-    (ticketId: string): void => {
-      setInitialTicketTypeId(ticketId);
-      if (bookableOccurrences.length > 1) {
-        setSelectedEventDateId(null);
-        setOccurrencePickerVisible(true);
-        return;
-      }
-      if (bookableOccurrences.length === 1) {
-        setSelectedEventDateId(bookableOccurrences[0].eventDateId);
-      } else {
-        setSelectedEventDateId(null);
-      }
-      setCartSheetVisible(true);
-    },
-    [bookableOccurrences],
-  );
-
-  // ORCH-1072 — the picker chose a date → carry it + open the cart for qty/pay.
-  const handleOccurrenceSelect = useCallback((eventDateId: string): void => {
-    setSelectedEventDateId(eventDateId);
-    setOccurrencePickerVisible(false);
-    setCartSheetVisible(true);
-  }, []);
-
-  const handleOccurrenceCancel = useCallback((): void => {
-    setOccurrencePickerVisible(false);
-    setInitialTicketTypeId(null);
-    setSelectedEventDateId(null);
   }, []);
 
   const callbacks: PublicEventCallbacks = useMemo(
@@ -480,13 +375,13 @@ export const ExpandedBusinessEventSheet: React.FC<
       // the assembled cart payload. I-PROPOSED-TICKET-CLAIM-CONFIRMATION-REQUIRED
       // is preserved — the sheet IS the confirmation step (richer surface
       // than the prior single-ticket modal).
-      // ORCH-1072 — route through beginBooking so a multi-date experience opens
-      // the occurrence picker first; one-off + events/trips go straight to cart.
       onBuyTicket: (ticketId: string) => {
-        beginBooking(ticketId);
+        setInitialTicketTypeId(ticketId);
+        setCartSheetVisible(true);
       },
       onClaimFreeTicket: (ticketId: string) => {
-        beginBooking(ticketId);
+        setInitialTicketTypeId(ticketId);
+        setCartSheetVisible(true);
       },
       onJoinWaitlist: (_ticketId: string) => {
         toastManager.show("Waitlist coming soon.", "info");
@@ -495,7 +390,7 @@ export const ExpandedBusinessEventSheet: React.FC<
         toastManager.show("Request-to-attend coming soon.", "info");
       },
     }),
-    [router, onClose, beginBooking],
+    [router, onClose],
   );
 
   // META-ORCH-0991 (sheet rework — Bug 2): inject gorhom's BottomSheetScrollView
@@ -512,13 +407,6 @@ export const ExpandedBusinessEventSheet: React.FC<
   // ScrollComponent is now a NON-scroll passthrough (a plain View carrying
   // PublicEventPage's contentContainerStyle + a home-indicator spacer). The page
   // content thus renders directly inside the primitive's bare scroll.
-  // ORCH-1072 — the experience's multi-stop itinerary, rendered beneath
-  // PublicEventPage's content inside the same scroll host. Empty for events/trips
-  // (experienceStops undefined) → nothing renders → unchanged layout.
-  const itineraryStops = useMemo(
-    () => (Array.isArray(data.experienceStops) ? data.experienceStops : []),
-    [data.experienceStops],
-  );
   const SheetScrollHost = useMemo(() => {
     const bottomPad =
       Math.max(8, bottomContentInset) + Math.max(0, bottomSheetInset);
@@ -528,14 +416,12 @@ export const ExpandedBusinessEventSheet: React.FC<
     }) => (
       <View style={contentContainerStyle}>
         {children}
-        {/* ORCH-1072 — itinerary section (experience-only). */}
-        <ExperienceItinerary stops={itineraryStops} />
         <View style={{ height: bottomPad }} pointerEvents="none" />
       </View>
     );
     Host.displayName = "EbesPassthroughHost";
     return Host;
-  }, [bottomContentInset, bottomSheetInset, itineraryStops]);
+  }, [bottomContentInset, bottomSheetInset]);
 
   // META-ORCH-0991 Wave A — migrated onto BaseBottomSheet. Declarative
   // `visible` + initialIndex=1 (90% snap) replicate the proven inline
@@ -599,16 +485,6 @@ export const ExpandedBusinessEventSheet: React.FC<
         clearFloatingNav={false}
         onCancel={handleCartCancel}
         onCheckout={handleCartCheckout}
-      />
-      {/* ORCH-1072 — occurrence picker (PICK FROM UPCOMING DATES). Renders as a
-          sibling BaseBottomSheet; only opened for an experience with >1 bookable
-          occurrence. One-off experiences + events/trips never open it. */}
-      <ExperienceOccurrencePicker
-        visible={occurrencePickerVisible}
-        occurrences={occurrences}
-        timezone={data.timezone}
-        onCancel={handleOccurrenceCancel}
-        onSelect={handleOccurrenceSelect}
       />
     </>
   );

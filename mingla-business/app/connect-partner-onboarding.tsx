@@ -24,7 +24,7 @@ export default function ConnectPartnerOnboardingNativeRoute(): React.ReactElemen
   return (
     <NativeConnectWebOnlyFallback
       title="Open partner onboarding in the browser"
-      body="Partner bank onboarding runs in Mingla's hosted web page. Return to Partner Earnings and tap Connect bank again to open it in the in-app browser."
+      body="Partner Stripe onboarding runs in Mingla's hosted web page. Return to Partner Earnings and tap Connect Stripe again to open it in the in-app browser."
     />
   );
 }
