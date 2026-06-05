@@ -513,15 +513,18 @@ export const BrandOnboardView: React.FC<BrandOnboardViewProps> = ({
 
   // ----- Render helpers -------------------------------------------------
 
-  const renderTopBar = (): React.ReactElement => (
+  const renderTopBar = (opts?: {
+    onBack?: () => void;
+    backLabel?: string;
+  }): React.ReactElement => (
     <View style={[styles.topBarRow, { paddingTop: spacing.sm }]}>
       <View style={styles.topBarSlot}>
         <Button
-          label="Cancel"
-          onPress={onCancel}
+          label={opts?.backLabel ?? "Cancel"}
+          onPress={opts?.onBack ?? onCancel}
           variant="ghost"
           size="sm"
-          accessibilityLabel="Cancel onboarding"
+          accessibilityLabel={opts?.backLabel ?? "Cancel onboarding"}
         />
       </View>
       <Text style={styles.topBarTitle}>Set up payments</Text>
@@ -534,9 +537,10 @@ export const BrandOnboardView: React.FC<BrandOnboardViewProps> = ({
   // META-ORCH-1076 — Nigeria selected: render the Paystack bank-details form
   // inline (instant). "Choose a different country" returns to the picker.
   if (brand !== null && paystackSelected) {
+    const backToPicker = (): void => setPaystackSelected(false);
     return (
       <View style={styles.host}>
-        {renderTopBar()}
+        {renderTopBar({ onBack: backToPicker, backLabel: "Back" })}
         <View
           style={[
             styles.body,
@@ -548,7 +552,7 @@ export const BrandOnboardView: React.FC<BrandOnboardViewProps> = ({
             brandName={brand.displayName}
             mode="create"
             onConnected={onAfterDone}
-            onCancel={(): void => setPaystackSelected(false)}
+            onCancel={backToPicker}
           />
         </View>
       </View>
