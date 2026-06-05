@@ -106,6 +106,30 @@ const STRIPE_CONNECT_NATIVE_STUB = path.join(
   "shims",
   "stripeConnectNativeStub.js",
 );
+const LOTTIE_WEB_STUB = path.join(
+  __dirname,
+  "src",
+  "shims",
+  "lottieReactNativeWebStub.js",
+);
+const REACT_NATIVE_COMPRESSOR_WEB_STUB = path.join(
+  __dirname,
+  "src",
+  "shims",
+  "reactNativeCompressorWebStub.js",
+);
+const LUCIDE_REACT_NATIVE_WEB_STUB = path.join(
+  __dirname,
+  "src",
+  "shims",
+  "lucideReactNativeWebStub.js",
+);
+const REACT_NATIVE_REANIMATED_WEB_STUB = path.join(
+  __dirname,
+  "src",
+  "shims",
+  "reactNativeReanimatedWebStub.js",
+);
 
 const originalResolveRequest = config.resolver.resolveRequest;
 
@@ -150,6 +174,30 @@ config.resolver.resolveRequest = (context, moduleName, platform) => {
       const subpath = moduleName.slice("zustand/".length);
       return {
         filePath: path.join(ZUSTAND_CJS_ROOT, `${subpath}.js`),
+        type: "sourceFile",
+      };
+    }
+    if (moduleName === "lottie-react-native") {
+      return {
+        filePath: LOTTIE_WEB_STUB,
+        type: "sourceFile",
+      };
+    }
+    if (moduleName === "react-native-compressor") {
+      return {
+        filePath: REACT_NATIVE_COMPRESSOR_WEB_STUB,
+        type: "sourceFile",
+      };
+    }
+    if (moduleName === "lucide-react-native") {
+      return {
+        filePath: LUCIDE_REACT_NATIVE_WEB_STUB,
+        type: "sourceFile",
+      };
+    }
+    if (moduleName === "react-native-reanimated") {
+      return {
+        filePath: REACT_NATIVE_REANIMATED_WEB_STUB,
         type: "sourceFile",
       };
     }

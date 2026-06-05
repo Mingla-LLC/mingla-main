@@ -20,8 +20,8 @@ import { AppleLogo } from "../ui/BrandIcons";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
 import * as WebBrowser from "expo-web-browser";
-import { Ionicons } from "@expo/vector-icons";
 import { HapticFeedback } from "../../utils/hapticFeedback";
+import { Icon } from "../ui/Icon";
 import {
   spacing,
   radius,
@@ -481,7 +481,7 @@ export default function BusinessWelcomeScreen({
               accessibilityLabel="Go back"
               accessibilityRole="button"
             >
-              <Ionicons name="chevron-back" size={28} color={colors.text.primary} />
+              <Icon name="chevL" size={28} color={colors.text.primary} />
             </TouchableOpacity>
           </View>
         ) : null}
@@ -684,11 +684,7 @@ export default function BusinessWelcomeScreen({
                   accessibilityLabel="Continue with Email"
                   accessibilityRole="button"
                 >
-                  <Ionicons
-                    name="mail-outline"
-                    size={22}
-                    color={colors.text.primary}
-                  />
+                  <Icon name="mail" size={22} color={colors.text.primary} />
                   <Text style={styles.emailButtonText}>Continue with Email</Text>
                 </TouchableOpacity>
               </Animated.View>

@@ -15,8 +15,8 @@ import ConnectLoadingFallback from "../../src/components/stripe/connect-pages/Co
 
 const ConnectTaxRegistrationsBody = React.lazy(
   () =>
-    import(
-      "../../src/components/stripe/connect-pages/ConnectTaxRegistrationsBody.web"
+    import("../../src/components/stripe/connect-pages/StripeConnectPages.web").then(
+      (mod) => ({ default: mod.ConnectTaxRegistrationsBody }),
     ),
 );
 

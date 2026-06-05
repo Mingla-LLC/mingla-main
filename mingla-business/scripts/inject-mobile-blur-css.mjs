@@ -16,9 +16,11 @@ import { existsSync, readFileSync, writeFileSync } from "node:fs";
 
 const HTML_PATH = "dist/index.html";
 const MARKER = "mingla-mobile-web-no-blur";
+const PREBOOT_MARKER = "mingla-mobile-web-home-preboot";
 const STYLE_TAG =
   `<style id="${MARKER}">@media (max-width:767px){*,*::before,*::after{` +
   `-webkit-backdrop-filter:none !important;backdrop-filter:none !important}}</style>`;
+const PREBOOT_SCRIPT = `<script id="${PREBOOT_MARKER}">(function(){try{var p=location.pathname;if(p!=="/"&&p!=="/index.html")return;var isPhone=matchMedia&&matchMedia("(max-width: 767px)").matches;if(!isPhone)return;var raw=localStorage.getItem("sb-gqnoajqerqhnvulmnyvv-auth-token");if(!raw)return;var session=JSON.parse(raw);if(session&&session.access_token){location.replace("/home");}}catch(_e){}})();</script>`;
 
 try {
   if (!existsSync(HTML_PATH)) {
@@ -26,7 +28,7 @@ try {
     process.exit(0);
   }
   let html = readFileSync(HTML_PATH, "utf8");
-  if (html.includes(MARKER)) {
+  if (html.includes(MARKER) && html.includes(PREBOOT_MARKER)) {
     console.log("[mobile-blur-fix] already present — skipping.");
     process.exit(0);
   }
@@ -34,9 +36,10 @@ try {
     console.warn("[mobile-blur-fix] no </head> in dist/index.html — skipping.");
     process.exit(0);
   }
-  html = html.replace("</head>", `${STYLE_TAG}</head>`);
+  const headInsert = `${html.includes(PREBOOT_MARKER) ? "" : PREBOOT_SCRIPT}${html.includes(MARKER) ? "" : STYLE_TAG}`;
+  html = html.replace("</head>", `${headInsert}</head>`);
   writeFileSync(HTML_PATH, html);
-  console.log("[mobile-blur-fix] injected blur-kill <style> into dist/index.html <head>.");
+  console.log("[mobile-blur-fix] injected mobile preboot + blur-kill into dist/index.html <head>.");
 } catch (err) {
   console.warn(`[mobile-blur-fix] failed (non-fatal): ${err?.message ?? err}`);
 }

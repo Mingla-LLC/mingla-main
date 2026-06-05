@@ -20,8 +20,8 @@ import ConnectLoadingFallback from "../src/components/stripe/connect-pages/Conne
 
 const ConnectPartnerAccountManagementBody = React.lazy(
   () =>
-    import(
-      "../src/components/stripe/connect-pages/ConnectPartnerAccountManagementBody.web"
+    import("../src/components/stripe/connect-pages/StripeConnectPages.web").then(
+      (mod) => ({ default: mod.ConnectPartnerAccountManagementBody }),
     ),
 );
 

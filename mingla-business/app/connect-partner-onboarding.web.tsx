@@ -19,8 +19,8 @@ import ConnectLoadingFallback from "../src/components/stripe/connect-pages/Conne
 
 const ConnectPartnerOnboardingBody = React.lazy(
   () =>
-    import(
-      "../src/components/stripe/connect-pages/ConnectPartnerOnboardingBody.web"
+    import("../src/components/stripe/connect-pages/StripeConnectPages.web").then(
+      (mod) => ({ default: mod.ConnectPartnerOnboardingBody }),
     ),
 );
 
