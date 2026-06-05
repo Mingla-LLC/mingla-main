@@ -131,6 +131,147 @@ export async function paystackVerifyTransaction(
   return json.data as Record<string, unknown>;
 }
 
+// ───────────────────────────────────────────────────────────────────────────
+// META-ORCH-1076 Phase 2 — Marketplace: subaccounts + bank resolution.
+// The brand's settlement identity is a Paystack Subaccount (≈ Stripe connected
+// account). Onboarding = List Banks → Resolve Account (verify name) → Create
+// Subaccount. Mingla's per-txn cut rides as the flat `transaction_charge` on
+// initialize (set at checkout), which OVERRIDES the subaccount percentage_charge.
+//   - Subaccount API:   https://paystack.com/docs/api/subaccount/
+//   - Verification API: https://paystack.com/docs/api/verification/#resolve-account
+//   - Miscellaneous API (List Banks): https://paystack.com/docs/api/miscellaneous/#bank
+// ───────────────────────────────────────────────────────────────────────────
+
+export interface PaystackBank {
+  name: string;
+  code: string;
+  currency: string;
+  type: string;
+}
+
+/**
+ * GET /bank — list settlement banks for a country.
+ * https://paystack.com/docs/api/miscellaneous/#bank
+ * For Nigeria NUBAN accounts: country="nigeria", currency="NGN", type="nuban".
+ */
+export async function paystackListBanks(params: {
+  country?: string; // "nigeria" (lowercase slug per Paystack)
+  currency?: string; // "NGN"
+  type?: string; // "nuban"
+}): Promise<PaystackBank[]> {
+  const secret = resolvePaystackSecretKey();
+  const qs = new URLSearchParams();
+  qs.set("country", params.country ?? "nigeria");
+  qs.set("currency", params.currency ?? "NGN");
+  if (params.type) qs.set("type", params.type);
+  qs.set("perPage", "100");
+  const res = await fetch(`${PAYSTACK_BASE_URL}/bank?${qs.toString()}`, {
+    headers: { Authorization: `Bearer ${secret}` },
+  });
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok || json?.status !== true) {
+    throw new Error(
+      `Paystack list-banks failed (${res.status}): ${json?.message ?? "unknown error"}`,
+    );
+  }
+  return (json.data as PaystackBank[]) ?? [];
+}
+
+export interface PaystackResolvedAccount {
+  account_number: string;
+  account_name: string;
+}
+
+/**
+ * GET /bank/resolve — verify an account number against a bank code; returns the
+ * verified account holder name. MUST be shown to the brand for confirmation
+ * before creating the subaccount (Paystack disclaims wrong-account liability).
+ * https://paystack.com/docs/api/verification/#resolve-account
+ */
+export async function paystackResolveAccount(params: {
+  accountNumber: string;
+  bankCode: string;
+}): Promise<PaystackResolvedAccount> {
+  const secret = resolvePaystackSecretKey();
+  const qs = new URLSearchParams({
+    account_number: params.accountNumber,
+    bank_code: params.bankCode,
+  });
+  const res = await fetch(`${PAYSTACK_BASE_URL}/bank/resolve?${qs.toString()}`, {
+    headers: { Authorization: `Bearer ${secret}` },
+  });
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok || json?.status !== true) {
+    throw new Error(
+      `Paystack resolve-account failed (${res.status}): ${json?.message ?? "unknown error"}`,
+    );
+  }
+  return json.data as PaystackResolvedAccount;
+}
+
+export interface PaystackSubaccount {
+  subaccount_code: string;
+  account_number: string;
+  settlement_bank: string;
+  percentage_charge: number;
+  is_verified?: boolean;
+  active?: boolean;
+}
+
+/**
+ * POST /subaccount — create the brand's settlement subaccount.
+ * https://paystack.com/docs/api/subaccount/
+ * `percentage_charge` is the % of each split txn that goes to the MAIN (Mingla)
+ * account; it is a REQUIRED field but is overridden per-transaction by the flat
+ * `transaction_charge` we pass on initialize, so it acts only as a fallback.
+ */
+export async function paystackCreateSubaccount(params: {
+  businessName: string;
+  settlementBank: string; // bank code from paystackListBanks
+  accountNumber: string;
+  percentageCharge: number; // Mingla take-rate %, fallback only
+}): Promise<PaystackSubaccount> {
+  const secret = resolvePaystackSecretKey();
+  const res = await fetch(`${PAYSTACK_BASE_URL}/subaccount`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${secret}`, "Content-Type": "application/json" },
+    body: JSON.stringify({
+      business_name: params.businessName,
+      settlement_bank: params.settlementBank,
+      account_number: params.accountNumber,
+      percentage_charge: params.percentageCharge,
+    }),
+  });
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok || json?.status !== true) {
+    throw new Error(
+      `Paystack create-subaccount failed (${res.status}): ${json?.message ?? "unknown error"}`,
+    );
+  }
+  return json.data as PaystackSubaccount;
+}
+
+/**
+ * GET /subaccount/{id_or_code} — re-poll a subaccount's verification/active state.
+ * https://paystack.com/docs/api/subaccount/#fetch
+ */
+export async function paystackFetchSubaccount(
+  codeOrId: string,
+): Promise<PaystackSubaccount> {
+  const secret = resolvePaystackSecretKey();
+  const res = await fetch(
+    `${PAYSTACK_BASE_URL}/subaccount/${encodeURIComponent(codeOrId)}`,
+    { headers: { Authorization: `Bearer ${secret}` } },
+  );
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok || json?.status !== true) {
+    throw new Error(
+      `Paystack fetch-subaccount failed (${res.status}): ${json?.message ?? "unknown error"}`,
+    );
+  }
+  return json.data as PaystackSubaccount;
+}
+
 /**
  * Verify the x-paystack-signature header.
  * HMAC-SHA512 of the RAW request body using the SECRET key, hex-encoded.

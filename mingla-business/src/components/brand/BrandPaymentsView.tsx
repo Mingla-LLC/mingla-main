@@ -58,6 +58,9 @@ import { BrandStripeDeadlineBanner } from "./BrandStripeDeadlineBanner";
 // investigation — detach hook+service shipped in B2a Path C V3 without a
 // UI surface).
 import { BrandStripeDetachConfirmSheet } from "./BrandStripeDetachConfirmSheet";
+// META-ORCH-1076 Phase 2 — Paystack (NG) payout onboarding surface.
+import { BrandPaystackOnboardView } from "./BrandPaystackOnboardView";
+import { useBrandPaystackStatus } from "../../hooks/useBrandPaystack";
 import { useBrandStripeStatus } from "../../hooks/useBrandStripeStatus";
 import { useBrandStripeBalances } from "../../hooks/useBrandStripeBalances";
 import { useBrandStripeTaxAccountSession } from "../../hooks/useBrandStripeTaxAccountSession";
@@ -174,6 +177,12 @@ export const BrandPaymentsView: React.FC<BrandPaymentsViewProps> = ({
   const stripeBalancesQuery = useBrandStripeBalances(brand?.id ?? null, {
     stripeStatus,
   });
+  // META-ORCH-1076 — Paystack rail. Enabled only for paystack brands; harmless
+  // (disabled) for every Stripe brand. Hook runs unconditionally per React rules.
+  const isPaystackBrand = brand?.paymentProvider === "paystack";
+  const paystackStatusQuery = useBrandPaystackStatus(
+    isPaystackBrand ? (brand?.id ?? null) : null,
+  );
   // ORCH-0955 — Tax CTA opens new brand-stripe-tax-account-session that mints
   // an AccountSession with tax_registrations + tax_settings GA components,
   // rendered in the Mingla-hosted /connect-tax-registrations page via
@@ -258,6 +267,57 @@ export const BrandPaymentsView: React.FC<BrandPaymentsViewProps> = ({
               />
             </View>
           </GlassCard>
+        </ScrollView>
+      </View>
+    );
+  }
+
+  // ----- Paystack rail (META-ORCH-1076 Phase 2) -----
+  // Nigerian brands settle through Paystack, not Stripe Connect. Render the
+  // bank-details onboarding form until a subaccount exists, then a readiness
+  // card. Entirely separate from the Stripe surface below.
+  if (isPaystackBrand) {
+    const connected = brand.paystackSubaccountCode != null ||
+      paystackStatusQuery.data?.connected === true;
+    const ps = paystackStatusQuery.data;
+    return (
+      <View style={styles.host}>
+        <View style={styles.barWrap}>
+          <TopBar
+            leftKind="back"
+            title="Payments"
+            onBack={onBack}
+            rightSlot={<View />}
+          />
+        </View>
+        <ScrollView
+          contentContainerStyle={[
+            styles.scroll,
+            { paddingBottom: spacing.xl + Math.max(insets.bottom, spacing.md) },
+          ]}
+          showsVerticalScrollIndicator={false}
+        >
+          {connected
+            ? (
+              <GlassCard variant="elevated" padding={spacing.lg}>
+                <Text style={styles.notFoundTitle}>Bank connected</Text>
+                <Text style={styles.notFoundBody}>
+                  {ps?.account_number_masked != null
+                    ? `Payouts settle to ${ps.account_number_masked}, usually the next business day.`
+                    : "Your payout account is connected. Sales settle to your bank, usually the next business day."}
+                  {ps?.is_verified === false
+                    ? " Your bank is still being verified — your first payout may take a little longer."
+                    : ""}
+                </Text>
+              </GlassCard>
+            )
+            : (
+              <BrandPaystackOnboardView
+                brandId={brand.id}
+                brandName={brand.displayName}
+                onConnected={() => paystackStatusQuery.refetch()}
+              />
+            )}
         </ScrollView>
       </View>
     );
