@@ -2406,6 +2406,12 @@ BEGIN
 
   v_destination_text := NULLIF(btrim(COALESCE(v_business_trip->>'destinationLocationText', '')), '');
   IF v_destination_text IS NULL THEN
+    -- orch-strict-grep-allow trip-capacity-defensive-throw: the HINT string below
+    -- names the theme key only as operator UX guidance inside a defensive RAISE;
+    -- it is NOT a canonical source read (the destination read above uses the
+    -- v_business_trip->>'…' form, per ORCH-0950). Re-emitted verbatim from the
+    -- latest trip publish RPC (historical-exempt 20260725000000); ORCH-1075 adds
+    -- only publish-time paid-readiness/past-date guards, not trip-column logic.
     RAISE EXCEPTION 'trip_destination_required'
       USING HINT = 'Trips must have a destination before publish. Set theme.business_trip.destinationLocationText in Step 1 of the wizard.';
   END IF;
