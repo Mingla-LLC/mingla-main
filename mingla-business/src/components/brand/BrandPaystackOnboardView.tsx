@@ -225,10 +225,10 @@ export const BrandPaystackOnboardView: React.FC<Props> = ({
             onPress={handleConnect}
           />
         )}
-        {isUpdate && onCancel != null ? (
+        {onCancel != null ? (
           <View style={{ marginTop: spacing.sm }}>
             <Button
-              label="Cancel"
+              label={isUpdate ? "Cancel" : "Choose a different country"}
               variant="ghost"
               size="md"
               fullWidth

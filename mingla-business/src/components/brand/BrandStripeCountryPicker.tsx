@@ -106,17 +106,34 @@ export function BrandStripeCountryPicker({
     [onChange],
   );
 
+  // Unified, alphabetically-sorted list: Stripe countries + any extra (Paystack)
+  // regions interleaved by name (not pinned to the top).
+  const allRows = useMemo(() => {
+    const stripe = (countriesQuery.data ?? []).map((c) => ({
+      code: c.country,
+      name: c.displayName,
+      currency: c.defaultCurrency,
+      sublabel: undefined as string | undefined,
+    }));
+    const extras = extraOptions.map((o) => ({
+      code: o.code,
+      name: o.name,
+      currency: o.currency,
+      sublabel: o.sublabel,
+    }));
+    return [...stripe, ...extras].sort((a, b) => a.name.localeCompare(b.name));
+  }, [countriesQuery.data, extraOptions]);
+
   const filtered = useMemo(() => {
-    const list = countriesQuery.data ?? [];
-    if (search.trim().length === 0) return list;
     const needle = search.trim().toLowerCase();
-    return list.filter(
-      (c) =>
-        c.country.toLowerCase().includes(needle) ||
-        c.displayName.toLowerCase().includes(needle) ||
-        c.defaultCurrency.toLowerCase().includes(needle),
+    if (needle.length === 0) return allRows;
+    return allRows.filter(
+      (r) =>
+        r.code.toLowerCase().includes(needle) ||
+        r.name.toLowerCase().includes(needle) ||
+        r.currency.toLowerCase().includes(needle),
     );
-  }, [countriesQuery.data, search]);
+  }, [allRows, search]);
 
   const triggerLabel = selected
     ? `${selected.displayName} · ${selected.defaultCurrency}`
@@ -208,42 +225,14 @@ export function BrandStripeCountryPicker({
             contentContainerStyle={styles.listContent}
             keyboardShouldPersistTaps="handled"
           >
-            {search.trim().length === 0 && extraOptions.length > 0 ? (
-              <>
-                {extraOptions.map((o) => (
-                  <Pressable
-                    key={o.code}
-                    onPress={(): void => handlePick(o.code)}
-                    accessibilityRole="button"
-                    accessibilityLabel={`${o.name} (${o.currency})`}
-                    style={({ pressed }) => [
-                      styles.row,
-                      pressed ? styles.rowPressed : null,
-                    ]}
-                  >
-                    <View style={styles.rowLeft}>
-                      <Text style={styles.rowCode}>{o.code}</Text>
-                      <View>
-                        <Text style={styles.rowName}>{o.name}</Text>
-                        {o.sublabel != null ? (
-                          <Text style={styles.rowSublabel}>{o.sublabel}</Text>
-                        ) : null}
-                      </View>
-                    </View>
-                    <Text style={styles.rowCurrency}>{o.currency}</Text>
-                  </Pressable>
-                ))}
-                <Text style={styles.sectionLabel}>Stripe countries</Text>
-              </>
-            ) : null}
-            {filtered.map((c) => {
-              const isSelected = c.country === selectedCode;
+            {filtered.map((r) => {
+              const isSelected = r.code === selectedCode;
               return (
                 <Pressable
-                  key={c.country}
-                  onPress={(): void => handlePick(c.country)}
+                  key={r.code}
+                  onPress={(): void => handlePick(r.code)}
                   accessibilityRole="button"
-                  accessibilityLabel={`${c.displayName} (${c.defaultCurrency})`}
+                  accessibilityLabel={`${r.name} (${r.currency})`}
                   accessibilityState={{ selected: isSelected }}
                   style={({ pressed }) => [
                     styles.row,
@@ -252,11 +241,16 @@ export function BrandStripeCountryPicker({
                   ]}
                 >
                   <View style={styles.rowLeft}>
-                    <Text style={styles.rowCode}>{c.country}</Text>
-                    <Text style={styles.rowName}>{c.displayName}</Text>
+                    <Text style={styles.rowCode}>{r.code}</Text>
+                    <View>
+                      <Text style={styles.rowName}>{r.name}</Text>
+                      {r.sublabel != null ? (
+                        <Text style={styles.rowSublabel}>{r.sublabel}</Text>
+                      ) : null}
+                    </View>
                   </View>
                   <View style={styles.rowRight}>
-                    <Text style={styles.rowCurrency}>{c.defaultCurrency}</Text>
+                    <Text style={styles.rowCurrency}>{r.currency}</Text>
                     {isSelected ? <Text style={styles.rowCheck}>✓</Text> : null}
                   </View>
                 </Pressable>
@@ -433,16 +427,6 @@ const styles = StyleSheet.create({
     fontSize: typography.caption.fontSize,
     color: textTokens.tertiary,
     marginTop: 1,
-  },
-  sectionLabel: {
-    fontSize: typography.caption.fontSize,
-    fontWeight: "700",
-    color: textTokens.tertiary,
-    letterSpacing: 0.6,
-    textTransform: "uppercase",
-    marginTop: spacing.md,
-    marginBottom: spacing.xs,
-    paddingHorizontal: spacing.xs,
   },
   rowRight: {
     flexDirection: "row",

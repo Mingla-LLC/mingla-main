@@ -48,7 +48,6 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   AccessibilityInfo,
-  Alert,
   Linking,
   Pressable,
   StyleSheet,
@@ -94,7 +93,7 @@ import {
   isStripeCountryPickerLocked,
 } from "../../utils/brandStripeUiState";
 import { BrandStripeCountryLockedError } from "../../services/brandStripeService";
-import { useSelectPaystackProvider } from "../../hooks/useBrandPaystack";
+import { BrandPaystackOnboardView } from "./BrandPaystackOnboardView";
 
 const RETURN_DEEP_LINK = "mingla-business://onboarding-complete" as const;
 const DEFAULT_COUNTRY = "GB" as const;
@@ -197,28 +196,21 @@ export const BrandOnboardView: React.FC<BrandOnboardViewProps> = ({
   const { user } = useAuth();
   const [tosPassed, setTosPassed] = useState(false);
   const handleTosPassed = useCallback((): void => setTosPassed(true), []);
-  // META-ORCH-1076 — picking Nigeria flips the brand onto the Paystack rail and
-  // returns to the Payments tab, which then renders the bank-details form. The
-  // Stripe onboarding path below is never entered for NG.
-  const selectPaystackMutation = useSelectPaystackProvider();
+  // META-ORCH-1076 — picking Nigeria switches to the inline Paystack bank-details
+  // form instantly (no network call — the form's "Connect bank" step commits the
+  // provider). The Stripe onboarding path below is never entered for NG, and the
+  // form offers "Choose a different country" to return here.
+  const [paystackSelected, setPaystackSelected] = useState(false);
   const handleCountryChange = useCallback((countryCode: string): void => {
     // orch-strict-grep-allow stripe-country-out-of-scope — NG routes to the
     // Paystack rail, never Stripe; it is intentionally not in the Stripe allowlist.
     if (countryCode === "NG") {
-      if (brand === null || selectPaystackMutation.isPending) return;
-      selectPaystackMutation.mutate(brand.id, {
-        onSuccess: () => onCancel(),
-        onError: () =>
-          Alert.alert(
-            "Couldn't switch to Nigeria payouts",
-            "Please try again in a moment.",
-          ),
-      });
+      setPaystackSelected(true);
       return;
     }
     setCountryTouched(true);
     setSelectedCountry(countryCode);
-  }, [brand, selectPaystackMutation, onCancel]);
+  }, []);
 
   const savedStripeCountry = statusQuery.data?.country ?? null;
   const countryPickerLocked = isStripeCountryPickerLocked({
@@ -538,6 +530,30 @@ export const BrandOnboardView: React.FC<BrandOnboardViewProps> = ({
   );
 
   // ----- Populated states -----------------------------------------------
+
+  // META-ORCH-1076 — Nigeria selected: render the Paystack bank-details form
+  // inline (instant). "Choose a different country" returns to the picker.
+  if (brand !== null && paystackSelected) {
+    return (
+      <View style={styles.host}>
+        {renderTopBar()}
+        <View
+          style={[
+            styles.body,
+            { paddingBottom: Math.max(insets.bottom, spacing.lg) },
+          ]}
+        >
+          <BrandPaystackOnboardView
+            brandId={brand.id}
+            brandName={brand.displayName}
+            mode="create"
+            onConnected={onAfterDone}
+            onCancel={(): void => setPaystackSelected(false)}
+          />
+        </View>
+      </View>
+    );
+  }
 
   return (
     <View style={styles.host}>
