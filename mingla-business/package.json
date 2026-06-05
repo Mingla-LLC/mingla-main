@@ -47,7 +47,8 @@
     "test:orch-0892": "node ../.github/scripts/strict-grep/orch-0892-no-bespoke-keyboard-plumbing.mjs && npx jest src/wrappers/__tests__/KeyboardRoot.test.tsx",
     "test:orch-1001": "node ../.github/scripts/strict-grep/orch-1001-no-native-turbomodule-in-web-bundle.mjs --self-test && node ../.github/scripts/strict-grep/orch-1001-no-native-turbomodule-in-web-bundle.mjs && npx jest orch1001CoverPickerWebSplit orch1001NativeTurbomoduleGate",
     "test:orch-1004": "node ../.github/scripts/strict-grep/orch-1004-auth-scoped-query-readiness.mjs --self-test && node ../.github/scripts/strict-grep/orch-1004-auth-scoped-query-readiness.mjs && npx jest authScopedQueryReadiness orch1004AuthScopedQueryGate",
-    "test:orch-1005": "node scripts/ci/orch-1005-dead-code-removed.mjs --self-test && node scripts/ci/orch-1005-dead-code-removed.mjs"
+    "test:orch-1005": "node scripts/ci/orch-1005-dead-code-removed.mjs --self-test && node scripts/ci/orch-1005-dead-code-removed.mjs",
+    "test:orch-1086": "npx jest __tests__/authCallbackStatic.test.ts --runInBand"
   },
   "dependencies": {
     "@expo-google-fonts/anton": "^0.4.2",
