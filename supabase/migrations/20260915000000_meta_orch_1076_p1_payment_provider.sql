@@ -118,6 +118,10 @@ END $$;
 --   same order (so the Stripe arm reads them unchanged), then APPEND four new
 --   columns. LEFT JOIN country_vat_config on the brand's payment_country.
 -- =====================================================================
+-- DROP first: adding output columns to a RETURNS TABLE changes the return type,
+-- which CREATE OR REPLACE forbids (Postgres 42P13). No DB object hard-depends on
+-- this function (verified live), so the drop is safe + non-cascading.
+DROP FUNCTION IF EXISTS public.resolve_event_pricing_inputs(uuid);
 CREATE OR REPLACE FUNCTION public.resolve_event_pricing_inputs(p_event_id uuid)
 RETURNS TABLE (
   pass_tax boolean,
