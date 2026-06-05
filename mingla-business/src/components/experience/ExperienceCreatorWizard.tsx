@@ -63,6 +63,10 @@ import {
   type LiveExperiencePatch,
   type UpdateLiveExperienceRejectReason,
 } from "../../utils/publishedExperienceEditGuards";
+import {
+  brandStripeOnboardingRoute,
+  resolvePaidPublishGuardCopy,
+} from "../../utils/paidPublishGuards";
 import type { ExperienceDetail } from "../../services/experienceDetailService";
 
 export interface ExperienceCreatorWizardProps {
@@ -443,6 +447,30 @@ export const ExperienceCreatorWizard: React.FC<ExperienceCreatorWizardProps> = (
     setStep((prev) => Math.min(5, prev + 1) as StepIndex);
   }, [canContinue, ensureDraft, experienceId, step, whenAdapter]);
 
+  // ORCH-1075 — surface the two paid-publish guard reasons as actionable copy
+  // and route to Stripe onboarding (Guard A) or the When step (Guard B).
+  // Returns true when the raw reason WAS an ORCH-1075 guard (so the caller
+  // skips its generic error copy); false otherwise.
+  const handlePaidPublishGuard = useCallback(
+    (raw: string | null | undefined): boolean => {
+      const copy = resolvePaidPublishGuardCopy(raw);
+      if (copy === null) return false;
+      setToast(copy.body);
+      if (copy.action === "stripe_onboarding") {
+        if (brand !== null) {
+          router.push(brandStripeOnboardingRoute(brand.id) as never);
+        }
+      } else {
+        // Guard B — jump to the When step (step 3) and reveal its errors.
+        setStep(3);
+        setShowStepErrors(true);
+        whenAdapter.setShowErrors(true);
+      }
+      return true;
+    },
+    [brand, router, whenAdapter],
+  );
+
   const handleSubmit = useCallback(
     async (publish: boolean): Promise<void> => {
       if (brand === null || user?.id === undefined) return;
@@ -484,6 +512,11 @@ export const ExperienceCreatorWizard: React.FC<ExperienceCreatorWizardProps> = (
           // otherwise surface the raw reason so the operator sees SOMETHING
           // actionable instead of a no-op publish.
           const code = (error.message ?? "").trim();
+          // ORCH-1075 — paid-publish integrity guards (Stripe readiness /
+          // past date) get actionable copy + a route, not a raw error.
+          if (handlePaidPublishGuard(code)) {
+            return;
+          }
           const mapped = RPC_ERROR_COPY[code];
           throw new Error(
             mapped ??
@@ -505,6 +538,7 @@ export const ExperienceCreatorWizard: React.FC<ExperienceCreatorWizardProps> = (
       brand,
       buildPayload,
       ensureDraft,
+      handlePaidPublishGuard,
       intents,
       onComplete,
       pricingValid,
@@ -579,6 +613,11 @@ export const ExperienceCreatorWizard: React.FC<ExperienceCreatorWizardProps> = (
       });
       if (error !== null) {
         const code = (error.message ?? "").trim();
+        // ORCH-1075 — paid-edit integrity guards (defense-in-depth: this RPC
+        // returns them via data.reason, but a future RAISE path is covered too).
+        if (handlePaidPublishGuard(code)) {
+          return;
+        }
         throw new Error(
           RPC_ERROR_COPY[code] ??
             (code.length > 0
@@ -589,6 +628,14 @@ export const ExperienceCreatorWizard: React.FC<ExperienceCreatorWizardProps> = (
       const result = data as
         | { ok?: boolean; reason?: string; affected_order_count?: number; event?: { id?: string } }
         | null;
+      // ORCH-1075 — Stripe-readiness / past-date guard (structured return).
+      if (
+        result !== null &&
+        result.ok === false &&
+        handlePaidPublishGuard(result.reason)
+      ) {
+        return;
+      }
       // Server-side refund-gate rejection (canonical).
       if (result !== null && result.ok === false && typeof result.reason === "string") {
         const copy = liveExperienceRejectCopy(
@@ -610,6 +657,7 @@ export const ExperienceCreatorWizard: React.FC<ExperienceCreatorWizardProps> = (
     brand,
     buildPayload,
     capacity,
+    handlePaidPublishGuard,
     intents,
     isFree,
     liveEditReason,
