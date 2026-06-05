@@ -1715,6 +1715,8 @@ function checkNoNewBackendFiles() {
     "supabase/migrations/20260911000000_orch_1075_paid_publish_integrity_guards.sql",
     "supabase/migrations/__tests__/orch_1075_paid_publish_integrity_guards.test.sql",
     "supabase/migrations/__tests__/orch_1075_paid_publish_integrity_guards.test.ts",
+    // ORCH-1075 TESTER adversarial behavioral regression (COMMS-0002, same-commit).
+    "supabase/migrations/__tests__/orch_1075_paid_publish_guards_behavioral.test.ts",
   ];
   const ALLOWLIST = [
     ...ORCH_1075_BACKEND_ALLOWLIST,
