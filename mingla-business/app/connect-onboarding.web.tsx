@@ -19,7 +19,10 @@ import React, { Suspense } from "react";
 import ConnectLoadingFallback from "../src/components/stripe/connect-pages/ConnectLoadingFallback.web";
 
 const ConnectOnboardingBody = React.lazy(
-  () => import("../src/components/stripe/connect-pages/ConnectOnboardingBody.web"),
+  () =>
+    import("../src/components/stripe/connect-pages/StripeConnectPages.web").then(
+      (mod) => ({ default: mod.ConnectOnboardingBody }),
+    ),
 );
 
 export default function ConnectOnboardingPage(): React.ReactElement {

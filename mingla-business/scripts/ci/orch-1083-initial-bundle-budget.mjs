@@ -26,7 +26,7 @@
  * Refs: SPEC §6 M-3, §8 I-PROPOSED-1083-A.
  */
 
-import { readFileSync, readdirSync, statSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 
 const WEB_BUILD = process.env.ORCH_1083_WEB_BUILD ?? "web-build";
@@ -38,7 +38,11 @@ const CEILING_RAW_BYTES = Number(process.env.ORCH_1083_CEILING ?? 9_405_478);
 
 // Eager __common shared-chunk cap. Measured AFTER = 17,651 bytes; cap at 50 KB
 // so the heavy deferred bulk can never re-enter the boot path via __common.
-const COMMON_CAP_BYTES = Number(process.env.ORCH_1083_COMMON_CAP ?? 50_000);
+const HAS_ORCH_1085_STATIC_HOME = existsSync(join(WEB_BUILD, "home.html"));
+const COMMON_CAP_BYTES = Number(
+  process.env.ORCH_1083_COMMON_CAP ??
+    (HAS_ORCH_1085_STATIC_HOME ? 2_250_000 : 50_000),
+);
 
 // The four deferred specifiers (must NOT appear in the initial-payload scripts).
 const DEFERRED_SPECIFIERS = [
@@ -119,6 +123,25 @@ if (mainOffenders.length > 0) {
   fail(
     `deferred specifier(s) leaked back into the MAIN entry chunk ${mainRel.rel}:\n  ` +
       mainOffenders.join("\n  "),
+  );
+}
+
+// ORCH-1085: async route splitting can legitimately create a larger shared
+// runtime chunk, so protect ORCH-1083's original deferrals across every eager
+// script instead of relying only on the old tiny __common cap.
+const eagerOffenders = [];
+for (const rel of scriptRels) {
+  const src = readFileSync(join(WEB_BUILD, rel.replace(/^\//, "")), "utf8");
+  for (const specifier of DEFERRED_SPECIFIERS) {
+    if (src.includes(specifier)) {
+      eagerOffenders.push(`${rel}: ${specifier}`);
+    }
+  }
+}
+if (eagerOffenders.length > 0) {
+  fail(
+    `deferred specifier(s) leaked back into eager script(s):\n  ` +
+      eagerOffenders.join("\n  "),
   );
 }
 
