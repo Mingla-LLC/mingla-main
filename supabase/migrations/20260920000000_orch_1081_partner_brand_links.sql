@@ -93,17 +93,17 @@ CREATE POLICY partner_brand_links_self_select
 -- 4. partner_brand_link_status — derived status column-function.
 -- =============================================================
 CREATE OR REPLACE FUNCTION public.partner_brand_link_status(
-  row public.partner_brand_links
+  link_row public.partner_brand_links
 )
 RETURNS text
 LANGUAGE sql
 STABLE
 AS $function$
   SELECT CASE
-    WHEN row.cancelled_at IS NOT NULL THEN 'cancelled'
-    WHEN row.first_split_at IS NOT NULL THEN 'active'
-    WHEN row.owner_stripe_connected_at IS NOT NULL THEN 'active'
-    WHEN row.accepted_at IS NOT NULL THEN 'awaiting_stripe'
+    WHEN link_row.cancelled_at IS NOT NULL THEN 'cancelled'
+    WHEN link_row.first_split_at IS NOT NULL THEN 'active'
+    WHEN link_row.owner_stripe_connected_at IS NOT NULL THEN 'active'
+    WHEN link_row.accepted_at IS NOT NULL THEN 'awaiting_stripe'
     ELSE 'awaiting_owner'
   END;
 $function$;
