@@ -64,6 +64,7 @@ export default function PublicEventRoute(): React.ReactElement {
     <PublicEventPage
       event={publicEventQuery.data.event}
       brand={publicEventQuery.data.brand}
+      bookable={publicEventQuery.data.bookable}
     />
   );
 }

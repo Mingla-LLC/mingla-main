@@ -218,6 +218,15 @@ export interface PublicEventDetail {
   event: PublicEventRecord;
   brand: PublicBrandRecord;
   tickets: PublicTicketTypeRecord[];
+  /**
+   * ORCH-1076 I-PAID-SUPPLY-REQUIRES-CHARGES-ENABLED — false when this is a
+   * PAID event (an online-available ticket priced > 0) whose brand cannot
+   * charge (Stripe charges_enabled=false). The deep-link page swaps the
+   * Get-tickets CTA for a graceful "Booking unavailable right now" banner
+   * instead of dead-ending at the ticket-checkout-create 409. FREE events are
+   * always bookable. Defaults to true when absent (back-compat).
+   */
+  bookable: boolean;
 }
 
 export interface PublicBrandDetail {
@@ -886,14 +895,64 @@ const fetchTickets = async (
   });
 };
 
+// ORCH-1076 I-PAID-SUPPLY-REQUIRES-CHARGES-ENABLED helpers.
+// A ticket set is PAID for online checkout when ANY ticket is sellable online
+// (availableAt "online"|"both") with a non-zero price (priceGbp != null ⇒ paid;
+// isFree ⇒ priceGbp is null). Mirrors the checkout 409 + ORCH-1075 PAID def.
+const ticketsArePaidOnline = (tickets: PublicTicketTypeRecord[]): boolean =>
+  tickets.some(
+    (t) =>
+      !t.isFree &&
+      (t.availableAt === "online" || t.availableAt === "both") &&
+      t.priceGbp !== null &&
+      t.priceGbp > 0,
+  );
+
+// Resolve whether a PAID offering's brand can charge via the canonical
+// pg_brand_can_charge RPC (anon-granted by the Stream A migration). FREE ⇒ true.
+// On RPC error fail OPEN (page stays bookable; the checkout 409 is the backstop).
+const resolveEventBookable = async (
+  brandId: string,
+  isPaid: boolean,
+): Promise<boolean> => {
+  if (!isPaid) return true;
+  const { data, error } = await supabase.rpc("pg_brand_can_charge", {
+    p_brand_id: brandId,
+  });
+  if (error !== null) return true;
+  return data === true;
+};
+
+// Batched readiness for a set of brand ids (the brand-page event feed drop).
+// Returns the subset that CAN charge. On error returns an empty set so the
+// caller can fail closed for paid rows.
+const fetchReadyBrandIds = async (
+  brandIds: string[],
+): Promise<Set<string>> => {
+  if (brandIds.length === 0) return new Set<string>();
+  const { data, error } = await supabase.rpc("pg_brands_can_charge", {
+    p_brand_ids: brandIds,
+  });
+  if (error !== null) return new Set<string>();
+  return new Set<string>(
+    ((data ?? []) as { brand_id: string }[])
+      .map((r) => r.brand_id)
+      .filter((id): id is string => typeof id === "string"),
+  );
+};
+
 const detailFromRow = async (
   row: BusinessPublicEventViewRow,
 ): Promise<PublicEventDetail> => {
   const tickets = await fetchTickets(row.id);
+  // ORCH-1076 — resolve buyer-readiness for PAID events (deep-link graceful CTA).
+  const isPaid = ticketsArePaidOnline(tickets);
+  const bookable = await resolveEventBookable(row.brand_id, isPaid);
   return {
     event: publicEventViewRowToEvent(row, tickets),
     brand: viewRowToBrand(row),
     tickets,
+    bookable,
   };
 };
 
@@ -943,7 +1002,8 @@ export const getPublicEventById = async (
   return row.event_type === "event" ? detailFromRow(row) : null;
 };
 
-const fetchPublicBrandEvents = async (
+// Exported for the ORCH-1076 regression test (buyer-supply readiness drop).
+export const fetchPublicBrandEvents = async (
   brandSlug: string,
 ): Promise<PublicEventRecord[]> => {
   // orch-strict-grep-allow events-type-filter — META-ORCH-0972 Sub-C: brand events list filtered by row.event_type === "event" at JS layer immediately after fetch.
@@ -959,8 +1019,30 @@ const fetchPublicBrandEvents = async (
   );
 
   const eventTickets = await Promise.all(rows.map((row) => fetchTickets(row.id)));
-  return rows.map((row, idx) =>
-    publicEventViewRowToEvent(row, eventTickets[idx] ?? []),
+
+  // ORCH-1076 I-PAID-SUPPLY-REQUIRES-CHARGES-ENABLED — drop PAID events from a
+  // brand that can't charge from the public brand-page event feed (the view is
+  // NOT gated — it also serves keyed enrich — so we filter here, buyer-only).
+  // The owner never reads fetchPublicBrandEvents. One batched pg_brands_can_charge
+  // round-trip over the distinct paid brand ids; free events are never dropped.
+  const paidBrandIds = Array.from(
+    new Set(
+      rows
+        .filter((_row, idx) => ticketsArePaidOnline(eventTickets[idx] ?? []))
+        .map((row) => row.brand_id)
+        .filter((id): id is string => typeof id === "string"),
+    ),
+  );
+  const readyBrandIds = await fetchReadyBrandIds(paidBrandIds);
+  const visible = rows
+    .map((row, idx) => ({ row, tickets: eventTickets[idx] ?? [] }))
+    .filter(
+      ({ row, tickets }) =>
+        !ticketsArePaidOnline(tickets) || readyBrandIds.has(row.brand_id),
+    );
+
+  return visible.map(({ row, tickets }) =>
+    publicEventViewRowToEvent(row, tickets),
   );
 };
 

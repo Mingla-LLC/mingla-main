@@ -43,6 +43,7 @@ import type {
   TripInclusion,
   TripPricingTier,
 } from "../../services/tripsService";
+import type { BrandStripeStatus } from "../../store/currentBrandStore";
 
 export interface TripPreviewBrand {
   id: string;
@@ -50,6 +51,14 @@ export interface TripPreviewBrand {
   name: string;
   bio?: string | null;
   coverMediaUrl?: string | null;
+  /**
+   * ORCH-1076 Stream B — brand Stripe-readiness, threaded ONLY from the
+   * authenticated trip creator route (app/trip/[id]/edit.tsx) so the wizard can
+   * proactively gate a paid trip's Publish. OPTIONAL + additive: the public
+   * buyer-anon /t/{slug} route never passes it (and never publishes), so this
+   * keeps TripPreviewBrand anon-tolerant.
+   */
+  stripeStatus?: BrandStripeStatus | null;
 }
 
 export interface TripPreviewProps {

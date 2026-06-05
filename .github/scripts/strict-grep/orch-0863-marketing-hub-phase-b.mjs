@@ -1739,9 +1739,23 @@ function checkNoNewBackendFiles() {
     // ORCH-1075 TESTER adversarial behavioral regression (COMMS-0002, same-commit).
     "supabase/migrations/__tests__/orch_1075_paid_publish_guards_behavioral.test.ts",
   ];
+  // ORCH-1076 [paid-readiness-supply-and-publish-banners] Stream A: one
+  // CREATE-OR-REPLACE migration adding the batched pg_brands_can_charge() helper
+  // + an anon grant on pg_brand_can_charge() + re-emitting the 5 buyer-supply
+  // RPCs with the paid-only Stripe-readiness WHERE branch, plus the
+  // discover-merged-events edge fn post-fetch readiness drop. The strict-grep
+  // .mjs gate + workflow .yml live under .github/** (NOT supabase/**) so they
+  // are NOT subject to C7, but the migration + edge fn + SQL/TS tests are. Per
+  // COMMS-0002 — this allowlist lands in the SAME commit as the migration.
+  const ORCH_1076_BACKEND_ALLOWLIST = [
+    "supabase/migrations/20260917000000_orch_1076_paid_supply_requires_charges_enabled.sql",
+    "supabase/migrations/__tests__/orch_1076_paid_supply_suppression.test.sql",
+    "supabase/functions/discover-merged-events/index.ts",
+  ];
   const ALLOWLIST = [
     ...META_ORCH_1076_BACKEND_ALLOWLIST,
     ...ORCH_1075_BACKEND_ALLOWLIST,
+    ...ORCH_1076_BACKEND_ALLOWLIST,
     ...ORCH_1077_BACKEND_ALLOWLIST,
     ...META_ORCH_1074_BACKEND_ALLOWLIST,
     ...ORCH_1070_BACKEND_ALLOWLIST,
