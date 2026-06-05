@@ -1,0 +1,14 @@
+{
+  "name": "@mingla/location-input",
+  "version": "0.0.0",
+  "private": true,
+  "main": "index.ts",
+  "types": "index.ts",
+  "react-native": "index.ts",
+  "license": "UNLICENSED",
+  "description": "Shared Mapbox Search Box address/city picker (field + suggestion list + geocode service) between mingla-business (experience stops, META-ORCH-1059) and app-mobile (consumer discover/preferences/onboarding, META-ORCH-1060). Pure presentational + service seam — host injects tokens, Icon, supabase.functions.invoke, copy, and a gorhom BottomSheetTextInput.",
+  "peerDependencies": {
+    "react": "*",
+    "react-native": "*"
+  }
+}
