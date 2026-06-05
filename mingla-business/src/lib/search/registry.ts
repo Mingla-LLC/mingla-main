@@ -260,7 +260,11 @@ export const FEATURE_REGISTRY: readonly SearchRegistryItem[] = [
     type: "setting",
     title: "Tax registrations",
     subtitle: "VAT, sales tax and tax IDs",
-    route: "/connect-tax-registrations",
+    // The embedded /connect-tax-registrations page needs a Stripe account
+    // session token generated server-side (useBrandStripeTaxAccountSession);
+    // visiting it directly shows "Invalid tax tools link". Route to the brand
+    // payments hub, which launches the tax tools with a valid token.
+    route: `/brand/${BRAND_ID_TOKEN}/payments`,
     group: "settings",
     minRank: 50,
     synonyms: ["vat", "sales tax", "tax settings", "tax id"],
@@ -337,7 +341,10 @@ export const FEATURE_REGISTRY: readonly SearchRegistryItem[] = [
     type: "setting",
     title: "Manage payout account",
     subtitle: "Update bank in the Stripe dashboard",
-    route: "/connect-account-management",
+    // The embedded /connect-account-management page needs a Stripe account
+    // session token (shows "Invalid management link" without one). Route to
+    // the brand payments hub, which launches it with a valid token.
+    route: `/brand/${BRAND_ID_TOKEN}/payments`,
     group: "settings",
     minRank: 30,
     synonyms: ["stripe dashboard", "update bank", "manage account"],

@@ -103,6 +103,13 @@ export function useBrandStripeStatus(
     enabled,
     staleTime: STALE_TIME_MS,
     refetchInterval: STALE_TIME_MS, // 30s poll fallback per D-B2-11
+    // META-ORCH-1073 Sub-A4: ride out the `brand-stripe-refresh-status`
+    // edge-function cold-start on first load. The global retry:2 (~3s window)
+    // is too short, so a cold start surfaced a false "Couldn't reach Stripe"
+    // on the onboarding shell until a manual retry hit the now-warm function.
+    // 4 retries with backoff (~1+2+4+8 = 15s) absorbs the cold start.
+    retry: 4,
+    retryDelay: (attempt) => Math.min(1000 * 2 ** attempt, 8000),
     queryFn: async (): Promise<RefreshStatusResult> => {
       if (brandId === null) {
         throw new Error("useBrandStripeStatus: brandId is null but enabled");
