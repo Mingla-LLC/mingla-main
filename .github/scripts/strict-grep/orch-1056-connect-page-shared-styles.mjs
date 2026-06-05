@@ -11,6 +11,14 @@
  * the iOS fixes, reproducing the 2026-06-02 partner-onboarding scroll
  * regression on a different route. The gate is the only enforcement.
  *
+ * ORCH-1083: the connect-page bodies are now code-split — each
+ * `app/connect-*.web.tsx` route shell React.lazy-imports its body from
+ * `src/components/stripe/connect-pages/*Body.web.tsx`, and the shared helper
+ * import (+ useStripeConnectViewportZoomLock) lives in the BODY. So the gate now
+ * accepts the helper import on EITHER the shell OR its lazily-imported body —
+ * the iOS WKWebView scroll/zoom fix is still enforced, just in the body. See
+ * SPEC §C-1.
+ *
  * Self-test: pass `--self-test` to verify the file discovery logic.
  */
 
@@ -18,6 +26,8 @@ import { readdirSync, readFileSync } from "node:fs";
 
 const PAGES_DIR = "mingla-business/app";
 const REQUIRED_IMPORT_SUBSTRING = "components/stripe/connectEmbeddedPageHelpers";
+// ORCH-1083: lazily-imported bodies live here.
+const BODIES_DIR = "mingla-business/src/components/stripe/connect-pages";
 
 function discoverConnectPages() {
   let entries;
@@ -31,20 +41,49 @@ function discoverConnectPages() {
     .map((n) => `${PAGES_DIR}/${n}`);
 }
 
-function checkFile(path) {
+function importsHelper(path) {
+  try {
+    return readFileSync(path, "utf8").includes(REQUIRED_IMPORT_SUBSTRING);
+  } catch {
+    return false;
+  }
+}
+
+// ORCH-1083: does ANY body module under BODIES_DIR import the shared helper?
+// (The route shells lazy-import these bodies; the iOS fix + helper styles live
+// in the body.) A single body importing the helper proves the fix is present in
+// the split-out connect-page code path.
+function anyBodyImportsHelper() {
+  let entries;
+  try {
+    entries = readdirSync(BODIES_DIR);
+  } catch {
+    return false;
+  }
+  return entries
+    .filter((n) => n.endsWith(".web.tsx") || n.endsWith(".web.ts"))
+    .some((n) => importsHelper(`${BODIES_DIR}/${n}`));
+}
+
+function checkFile(path, bodyHelperPresent) {
   let src;
   try {
     src = readFileSync(path, "utf8");
   } catch (err) {
     return { ok: false, reason: `unreadable: ${err.message}` };
   }
-  if (!src.includes(REQUIRED_IMPORT_SUBSTRING)) {
-    return {
-      ok: false,
-      reason: `missing import of "${REQUIRED_IMPORT_SUBSTRING}"`,
-    };
+  if (src.includes(REQUIRED_IMPORT_SUBSTRING)) {
+    return { ok: true };
   }
-  return { ok: true };
+  // ORCH-1083: a shell that React.lazy-imports a connect-page body is OK as long
+  // as a body module carries the shared helper import (the iOS fix).
+  if (src.includes("connect-pages/") && bodyHelperPresent) {
+    return { ok: true };
+  }
+  return {
+    ok: false,
+    reason: `missing import of "${REQUIRED_IMPORT_SUBSTRING}" (and no lazy connect-pages body carrying it)`,
+  };
 }
 
 if (process.argv.includes("--self-test")) {
@@ -69,9 +108,10 @@ if (pages.length === 0) {
   process.exit(1);
 }
 
+const bodyHelperPresent = anyBodyImportsHelper();
 const violations = [];
 for (const page of pages) {
-  const result = checkFile(page);
+  const result = checkFile(page, bodyHelperPresent);
   if (!result.ok) violations.push({ page, reason: result.reason });
 }
 

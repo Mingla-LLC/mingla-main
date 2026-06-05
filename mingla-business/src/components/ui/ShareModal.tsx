@@ -15,8 +15,9 @@
  * Per Cycle 7 spec §2.6 + DEC-079 additive carve-out style.
  */
 
-import React, { useCallback } from "react";
+import React, { Suspense, useCallback } from "react";
 import {
+  ActivityIndicator,
   Linking,
   type LayoutChangeEvent,
   Platform,
@@ -26,7 +27,13 @@ import {
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import QRCode from "react-native-qrcode-svg";
+// ORCH-1083: the QR renderer (react-native-qrcode-svg, ~644 KB) is deferred out
+// of the initial web bundle. It loads only when the share modal opens. DO NOT
+// re-add a static `import QRCode from "react-native-qrcode-svg"` — that pulls the
+// SVG-QR code back into the boot path (breaks the mobile boot budget). See SPEC §C-3.
+const QRCode = React.lazy(() => import("react-native-qrcode-svg"));
+
+const QR_SIZE = 160;
 
 import {
   accent,
@@ -252,15 +259,24 @@ export const ShareModal: React.FC<ShareModalProps> = ({
           </Text>
         </Pressable>
 
-        {/* QR code */}
+        {/* QR code — ORCH-1083: lazily loaded; fallback reserves the QR footprint
+            so the modal does not jump when the chunk resolves. */}
         <View style={styles.qrWrap}>
           <View style={styles.qrInner}>
-            <QRCode
-              value={url}
-              size={160}
-              backgroundColor="#FFFFFF"
-              color="#000000"
-            />
+            <Suspense
+              fallback={
+                <View style={styles.qrFallback}>
+                  <ActivityIndicator color="#000000" />
+                </View>
+              }
+            >
+              <QRCode
+                value={url}
+                size={QR_SIZE}
+                backgroundColor="#FFFFFF"
+                color="#000000"
+              />
+            </Suspense>
           </View>
           <Text style={styles.qrCaption}>Scan to open</Text>
         </View>
@@ -353,6 +369,14 @@ const styles = StyleSheet.create({
     padding: spacing.sm,
     backgroundColor: "#FFFFFF",
     borderRadius: radiusTokens.lg,
+  },
+  // ORCH-1083: reserves the exact QR footprint (QR_SIZE) so the Suspense fallback
+  // does not cause a layout jump when the lazy QR chunk resolves.
+  qrFallback: {
+    width: QR_SIZE,
+    height: QR_SIZE,
+    alignItems: "center",
+    justifyContent: "center",
   },
   qrCaption: {
     marginTop: spacing.xs,

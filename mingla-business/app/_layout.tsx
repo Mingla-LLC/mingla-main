@@ -32,14 +32,12 @@ import {
   type AppStateStatus,
 } from "react-native";
 import { Stack, useRouter } from "expo-router";
-import { useFonts } from "expo-font";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { focusManager, QueryClientProvider } from "@tanstack/react-query";
 import * as Sentry from "../src/diagnostics/sentry";
 import * as SplashScreen from "expo-splash-screen";
-import { MINGLA_THEME_FONTS } from "../src/theme/themeFonts";
 
 import { AuthProvider, useAuth } from "../src/context/AuthContext";
 import { queryClient } from "../src/config/queryClient";
@@ -361,7 +359,11 @@ function RootLayoutInner(): React.ReactElement {
 }
 
 export default function RootLayout(): React.ReactElement {
-  useFonts(MINGLA_THEME_FONTS);
+  // ORCH-1083: the 14 theme fonts are NO LONGER loaded here. They render only on
+  // the 3 themed surfaces (PublicBrandPage/PublicEventPage/ThemeEditorSection),
+  // which load the needed family on demand via `useThemeFont`. Do NOT re-add a
+  // root `useFonts(...)` — it pulls all 14 @expo-google-fonts/* modules into the
+  // boot bundle + fires 14 boot-time fetches on the login path. See SPEC §C-2.
 
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>

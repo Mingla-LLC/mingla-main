@@ -103,9 +103,20 @@ try {
 // may import them (that's Path B per I-PROPOSED-O). Importing them from RN
 // source code would either fail to bundle natively or signal an accidental
 // Path A attempt.
+//
+// ORCH-1083 exemption: `.web.tsx` / `.web.ts` files under src/ are web-only by
+// Metro's platform-extension resolution — they are bundled ONLY into the web
+// build and CANNOT enter the native RN bundle. ORCH-1083 §C-1 extracts the
+// connect-page bodies into `src/components/stripe/connect-pages/*Body.web.tsx`
+// so the route shells under app/ can React.lazy them out of the initial web
+// bundle. These extracted bodies still carry the Path-B Web JS SDK, but because
+// the `.web` infix guarantees web-only bundling, the Check-1 hazard (Web JS in
+// NATIVE code) does not apply. See SPEC §C-1 + INVARIANT I-PROPOSED-1083-A.
 const CHECK1_PATTERN = /from\s+["']@stripe\/(react-)?connect-js["']/;
+const WEB_ONLY_EXT = /\.web\.(tsx?|jsx?)$/;
 for (const file of files) {
   if (!file.startsWith(BUSINESS_SRC)) continue;
+  if (WEB_ONLY_EXT.test(file)) continue; // web-only file → never in native bundle
   const src = readOrEmpty(file);
   if (CHECK1_PATTERN.test(src)) {
     const rel = relative(REPO_ROOT, file);

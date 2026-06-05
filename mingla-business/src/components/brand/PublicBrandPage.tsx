@@ -28,6 +28,7 @@ import type {
 import type { Brand } from "../../store/currentBrandStore";
 import type { LiveEvent } from "../../store/liveEventStore";
 import { formatDraftDateLine } from "../../utils/eventDateDisplay";
+import { useThemeFont } from "../../theme/useThemeFont";
 
 import { ShareModal } from "../ui/ShareModal";
 
@@ -163,6 +164,8 @@ export const PublicBrandPage: React.FC<PublicBrandPageProps> = ({
     () => resolvedTheme ?? resolveTheme(brand.theme, null),
     [brand.theme, resolvedTheme],
   );
+  // ORCH-1083: load this brand's theme font on demand (no longer eager at root).
+  useThemeFont(theme.fontFamilyValue);
   const sharedBrand = useMemo(() => mapBrand(brand), [brand]);
   const sharedEvents = useMemo(() => events.map(mapEvent), [events]);
   const sharedPastEvents = useMemo(() => pastEvents.map(mapEvent), [pastEvents]);
