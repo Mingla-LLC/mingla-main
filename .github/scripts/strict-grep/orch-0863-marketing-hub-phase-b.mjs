@@ -1752,12 +1752,32 @@ function checkNoNewBackendFiles() {
     "supabase/migrations/__tests__/orch_1076_paid_supply_suppression.test.sql",
     "supabase/functions/discover-merged-events/index.ts",
   ];
+  // META-ORCH-1060 [Mapbox consumer migration]: the mapbox-geocode edge fn
+  // keystone (region_code structured fields + reverse/forward actions) is a
+  // MODIFY of an existing edge fn (C7 flags modified backend files too); plus a
+  // NEW server-to-server helper _shared/mapboxGeocode.ts (paired-view 4th
+  // fallback), a MODIFY of _shared/personHeroCards.ts (text-geocode fallback +
+  // its Deno test), the edge-fn keystone Deno test, and 3 NEW strict-grep gate
+  // files. C7 is scoped to ORCH-0863 marketing; these are consumer-location
+  // backend touches. Per COMMS-0002 — lands in the SAME commit as the change.
+  const META_ORCH_1060_BACKEND_ALLOWLIST = [
+    "supabase/functions/mapbox-geocode/index.ts",
+    "supabase/functions/mapbox-geocode/__tests__/meta_orch_1060_region_code.test.ts",
+    "supabase/functions/_shared/mapboxGeocode.ts",
+    "supabase/functions/_shared/__tests__/meta_orch_1060_mapbox_geocode.test.ts",
+    "supabase/functions/_shared/personHeroCards.ts",
+    "supabase/functions/_shared/__tests__/meta_orch_1060_paired_text_fallback.test.ts",
+    ".github/scripts/strict-grep/i-consumer-location-no-nominatim.mjs",
+    ".github/scripts/strict-grep/i-consumer-location-uses-shared-mapbox.mjs",
+    ".github/scripts/strict-grep/i-discover-city-codes-from-mapbox-context.mjs",
+  ];
   const ALLOWLIST = [
     ...META_ORCH_1076_BACKEND_ALLOWLIST,
     ...ORCH_1075_BACKEND_ALLOWLIST,
     ...ORCH_1076_BACKEND_ALLOWLIST,
     ...ORCH_1077_BACKEND_ALLOWLIST,
     ...META_ORCH_1074_BACKEND_ALLOWLIST,
+    ...META_ORCH_1060_BACKEND_ALLOWLIST,
     ...ORCH_1070_BACKEND_ALLOWLIST,
     ...ORCH_1069_BACKEND_ALLOWLIST,
     ...ORCH_1068_BACKEND_ALLOWLIST,

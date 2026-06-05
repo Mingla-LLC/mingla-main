@@ -1,9 +1,43 @@
+/**
+ * geocodingService — META-ORCH-1060 [Mapbox consumer migration] §3.9
+ *
+ * Thin Mapbox adapter over the shared @mingla/location-input service. ALL
+ * legacy free-OSM geocoding usage has been removed (clean sweep — INV-1).
+ * The public signatures + caches are PRESERVED so every script-style caller
+ * (localeDetection, DiscoverScreen night-out, useUserLocation legacy fallback,
+ * PreferencesSheet ORCH-0943 auto-resolve, OnboardingFlow) keeps compiling and
+ * moves to Mapbox at once.
+ *
+ * Adapter mapping (SPEC §3.9):
+ *   - autocomplete(query)  → Mapbox FORWARD geocode (edge `forward` action,
+ *     ONE call per query, returns the best match WITH coords). We do NOT
+ *     eager-retrieve top-N (that would be N billed sessions). Surfaces that
+ *     need a full multi-row suggest→retrieve dropdown (CityPicker) use the
+ *     shared MapboxAddressInput field directly, bypassing this adapter.
+ *   - reverseGeocode(lat,lng) → Mapbox REVERSE geocode (edge `reverse` action).
+ *
+ * Calls proxy through the `mapbox-geocode` Supabase edge fn (token stays
+ * server-side). Mapbox docs:
+ *   forward https://docs.mapbox.com/api/search/search-box/
+ *   reverse https://docs.mapbox.com/api/search/search-box/
+ *   v6 fallback https://docs.mapbox.com/api/search/geocoding/
+ */
+
+import {
+  forwardGeocodeMapbox,
+  reverseGeocodeMapbox,
+  type InvokeFn,
+  type PlaceDetails,
+} from "@mingla/location-input";
+import { supabase } from "./supabase";
 import { formatCoordinates } from "../utils/numberFormatter";
 
 interface GeocodingResult {
   city?: string;
   state?: string;
   country?: string;
+  /** META-ORCH-1060: ISO 3166-1 alpha-2 (e.g. "GB") — structured from Mapbox. */
+  countryCode?: string;
   formattedAddress?: string;
   error?: string;
 }
@@ -13,6 +47,9 @@ export interface AutocompleteSuggestion {
   fullAddress: string;
   location?: { lat: number; lng: number };
 }
+
+const invoke: InvokeFn = (fn, options) =>
+  supabase.functions.invoke(fn, options);
 
 class GeocodingService {
   private cache: Map<string, GeocodingResult> = new Map();
@@ -42,44 +79,34 @@ class GeocodingService {
         return cached;
       }
 
-      // Check for common locations first (fallback)
+      // Check for common locations first (offline fallback — no network)
       const commonLocation = this.getCommonLocation(latitude, longitude);
       if (commonLocation) {
         const result: GeocodingResult = {
           city: commonLocation.city,
           state: commonLocation.state,
           country: commonLocation.country,
+          countryCode: commonLocation.countryCode,
           formattedAddress: commonLocation.formattedAddress,
         };
         this.cache.set(cacheKey, result);
         return result;
       }
 
-      // Use a free geocoding service (OpenStreetMap Nominatim)
-      const response = await fetch(
-        `https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}&zoom=10&addressdetails=1`,
-        {
-          headers: {
-            "User-Agent": "Mingla-Mobile-App/1.0",
-          },
-        }
+      // META-ORCH-1060: Mapbox reverse geocode via the edge fn (replaces the
+      // legacy OSM reverse path). Returns structured city/region/regionCode/countryCode.
+      const details: PlaceDetails = await reverseGeocodeMapbox(
+        latitude,
+        longitude,
+        { invoke }
       );
 
-      if (!response.ok) {
-        throw new Error(`Geocoding API error: ${response.status}`);
-      }
-
-      const data = await response.json();
-
-      if (!data || data.error) {
-        throw new Error("Invalid geocoding response");
-      }
-
       const result: GeocodingResult = {
-        city: this.extractCity(data),
-        state: this.extractState(data),
-        country: this.extractCountry(data),
-        formattedAddress: this.formatAddress(data),
+        city: details.city || undefined,
+        state: details.region || undefined,
+        country: details.countryCode || undefined, // ISO code (callers prefer countryCode)
+        countryCode: details.countryCode || undefined,
+        formattedAddress: details.formattedAddress || undefined,
       };
 
       // Cache the result
@@ -97,130 +124,17 @@ class GeocodingService {
     }
   }
 
-  private extractCity(data: any): string | undefined {
-    const address = data.address;
-    if (!address) return undefined;
-
-    // Try different city fields in order of preference
-    return (
-      address.city ||
-      address.town ||
-      address.village ||
-      address.municipality ||
-      address.county ||
-      address.state_district
-    );
-  }
-
-  private extractState(data: any): string | undefined {
-    const address = data.address;
-    if (!address) return undefined;
-
-    return address.state || address.province || address.region;
-  }
-
-  private extractCountry(data: any): string | undefined {
-    const address = data.address;
-    if (!address) return undefined;
-
-    return address.country;
-  }
-
-  private formatAddress(data: any): string {
-    const city = this.extractCity(data);
-    const state = this.extractState(data);
-    const country = this.extractCountry(data);
-
-    if (city && state && country) {
-      return `${city}, ${state}, ${country}`;
-    } else if (city && country) {
-      return `${city}, ${country}`;
-    } else if (city) {
-      return city;
-    } else if (state && country) {
-      return `${state}, ${country}`;
-    } else if (country) {
-      return country;
-    } else {
-      return data.display_name || "Unknown location";
-    }
-  }
-
   private getCommonLocation(latitude: number, longitude: number): any | null {
-    // Common locations with approximate coordinates
+    // Common locations with approximate coordinates (offline fallback).
     const commonLocations = [
-      {
-        lat: 40.7128,
-        lng: -74.006,
-        city: "New York",
-        state: "NY",
-        country: "USA",
-        formattedAddress: "New York, NY, USA",
-        tolerance: 0.1,
-      },
-      {
-        lat: 34.0522,
-        lng: -118.2437,
-        city: "Los Angeles",
-        state: "CA",
-        country: "USA",
-        formattedAddress: "Los Angeles, CA, USA",
-        tolerance: 0.1,
-      },
-      {
-        lat: 51.5074,
-        lng: -0.1278,
-        city: "London",
-        state: "England",
-        country: "UK",
-        formattedAddress: "London, England, UK",
-        tolerance: 0.1,
-      },
-      {
-        lat: 48.8566,
-        lng: 2.3522,
-        city: "Paris",
-        state: "Île-de-France",
-        country: "France",
-        formattedAddress: "Paris, France",
-        tolerance: 0.1,
-      },
-      {
-        lat: 35.6762,
-        lng: 139.6503,
-        city: "Tokyo",
-        state: "Tokyo",
-        country: "Japan",
-        formattedAddress: "Tokyo, Japan",
-        tolerance: 0.1,
-      },
-      {
-        lat: 37.7749,
-        lng: -122.4194,
-        city: "San Francisco",
-        state: "CA",
-        country: "USA",
-        formattedAddress: "San Francisco, CA, USA",
-        tolerance: 0.1,
-      },
-      {
-        lat: 41.8781,
-        lng: -87.6298,
-        city: "Chicago",
-        state: "IL",
-        country: "USA",
-        formattedAddress: "Chicago, IL, USA",
-        tolerance: 0.1,
-      },
-      {
-        lat: 25.7617,
-        lng: -80.1918,
-        city: "Miami",
-        state: "FL",
-        country: "USA",
-        formattedAddress: "Miami, FL, USA",
-        tolerance: 0.1,
-      },
+      { lat: 40.7128, lng: -74.006, city: "New York", state: "NY", country: "US", countryCode: "US", formattedAddress: "New York, NY, USA", tolerance: 0.1 },
+      { lat: 34.0522, lng: -118.2437, city: "Los Angeles", state: "CA", country: "US", countryCode: "US", formattedAddress: "Los Angeles, CA, USA", tolerance: 0.1 },
+      { lat: 51.5074, lng: -0.1278, city: "London", state: "England", country: "GB", countryCode: "GB", formattedAddress: "London, England, UK", tolerance: 0.1 },
+      { lat: 48.8566, lng: 2.3522, city: "Paris", state: "Île-de-France", country: "FR", countryCode: "FR", formattedAddress: "Paris, France", tolerance: 0.1 },
+      { lat: 35.6762, lng: 139.6503, city: "Tokyo", state: "Tokyo", country: "JP", countryCode: "JP", formattedAddress: "Tokyo, Japan", tolerance: 0.1 },
+      { lat: 37.7749, lng: -122.4194, city: "San Francisco", state: "CA", country: "US", countryCode: "US", formattedAddress: "San Francisco, CA, USA", tolerance: 0.1 },
+      { lat: 41.8781, lng: -87.6298, city: "Chicago", state: "IL", country: "US", countryCode: "US", formattedAddress: "Chicago, IL, USA", tolerance: 0.1 },
+      { lat: 25.7617, lng: -80.1918, city: "Miami", state: "FL", country: "US", countryCode: "US", formattedAddress: "Miami, FL, USA", tolerance: 0.1 },
     ];
 
     for (const location of commonLocations) {
@@ -278,7 +192,14 @@ class GeocodingService {
     };
   }
 
-  // Autocomplete location suggestions
+  /**
+   * Autocomplete location suggestions.
+   *
+   * META-ORCH-1060: uses Mapbox FORWARD geocode (one edge call per query) and
+   * returns the single best match WITH coords. Multi-row suggest→retrieve UX is
+   * served by the shared MapboxAddressInput field (CityPicker), not this adapter
+   * — keeping this path to ONE billed Mapbox request per query (SPEC §3.9/§10).
+   */
   async autocomplete(query: string): Promise<AutocompleteSuggestion[]> {
     if (!query || query.length < 3) {
       return [];
@@ -292,53 +213,14 @@ class GeocodingService {
     }
 
     try {
-      // OpenStreetMap Nominatim (free, rate-limited, no API key required).
-      // Each result carries lat/lng directly, so downstream callers never need
-      // a separate place-details lookup.
-      const response = await fetch(
-        `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(
-          query
-        )}&limit=5&addressdetails=1`,
+      const details: PlaceDetails = await forwardGeocodeMapbox(query, { invoke });
+      const results: AutocompleteSuggestion[] = [
         {
-          headers: {
-            "User-Agent": "Mingla-Mobile-App/1.0",
-          },
-        }
-      );
-
-      if (!response.ok) {
-        throw new Error(`Autocomplete API error: ${response.status}`);
-      }
-
-      const data = await response.json();
-
-      const results = (data || []).map((item: any) => {
-        const address = item.address || {};
-        const city = address.city || address.town || address.village || "";
-        const state = address.state || address.province || "";
-        const country = address.country || "";
-
-        // Create a display name (city, state or city, country)
-        let displayName = "";
-        if (city && state) {
-          displayName = `${city}, ${state}`;
-        } else if (city && country) {
-          displayName = `${city}, ${country}`;
-        } else if (city) {
-          displayName = city;
-        } else {
-          displayName = item.display_name.split(",")[0];
-        }
-
-        return {
-          displayName: displayName,
-          fullAddress: item.display_name,
-          location: {
-            lat: parseFloat(item.lat),
-            lng: parseFloat(item.lon),
-          },
-        };
-      });
+          displayName: details.city || details.formattedAddress,
+          fullAddress: details.formattedAddress,
+          location: { lat: details.location.lat, lng: details.location.lng },
+        },
+      ];
 
       if (results.length > 0) {
         this.cacheAutocompleteResult(cacheKey, results);

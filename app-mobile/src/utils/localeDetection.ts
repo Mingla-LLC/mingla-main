@@ -1,6 +1,7 @@
 import { geocodingService } from '../services/geocodingService'
 import {
   getCurrencyByCountryName,
+  getCurrencyByCountryCode,
   type CountryCurrency,
 } from '../services/countryCurrencyService'
 
@@ -59,16 +60,19 @@ export async function detectLocaleFromCoordinates(
   try {
     const geocodeResult = await geocodingService.reverseGeocode(latitude, longitude)
 
-    if (!geocodeResult.country) {
-      return DEFAULT_LOCALE
+    // META-ORCH-1060 §3.7: prefer the STRUCTURED ISO country code that Mapbox
+    // returns directly (cleaner + more reliable than country-name matching).
+    // Fall back to the legacy name lookup only if no code is present.
+    let detectedCountry: CountryCurrency | undefined
+    if (geocodeResult.countryCode) {
+      detectedCountry = getCurrencyByCountryCode(geocodeResult.countryCode)
+    }
+    if (!detectedCountry && geocodeResult.country) {
+      detectedCountry = getCurrencyByCountryName(geocodeResult.country)
     }
 
-    const detectedCountry: CountryCurrency | undefined =
-      getCurrencyByCountryName(geocodeResult.country)
-
-    // Country not in currency DB — fall back to USD/Imperial (matches spec §3.8)
     if (!detectedCountry) {
-      console.warn('Locale detection: country not in currency DB, falling back to USD/Imperial', geocodeResult.country)
+      console.warn('Locale detection: country not in currency DB, falling back to USD/Imperial', geocodeResult.countryCode ?? geocodeResult.country)
       return DEFAULT_LOCALE
     }
 
@@ -78,7 +82,7 @@ export async function detectLocaleFromCoordinates(
       currency: detectedCountry.currencyCode,
       measurementSystem: usesImperial ? 'Imperial' : 'Metric',
       measurementSystemDb: usesImperial ? 'imperial' : 'metric',
-      countryName: geocodeResult.country,
+      countryName: detectedCountry.countryName ?? geocodeResult.country ?? null,
       countryCode: detectedCountry.countryCode,
     }
   } catch (err) {

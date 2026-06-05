@@ -343,6 +343,45 @@ jobs:
       - name: Run META-ORCH-0991 BaseBottomSheet sole-consumer gate
         run: node .github/scripts/strict-grep/meta-orch-0991-base-bottom-sheet-sole-consumer.mjs
 
+  meta-orch-1060-consumer-location-no-nominatim:
+    name: "META-ORCH-1060: INV-1 consumer location has no Nominatim/OSM"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Self-test the gate
+        run: node .github/scripts/strict-grep/i-consumer-location-no-nominatim.mjs --self-test
+      - name: Run META-ORCH-1060 INV-1 no-nominatim gate
+        run: node .github/scripts/strict-grep/i-consumer-location-no-nominatim.mjs
+
+  meta-orch-1060-consumer-location-uses-shared-mapbox:
+    name: "META-ORCH-1060: INV-2 consumer location uses shared Mapbox package"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Self-test the gate
+        run: node .github/scripts/strict-grep/i-consumer-location-uses-shared-mapbox.mjs --self-test
+      - name: Run META-ORCH-1060 INV-2 shared-package gate
+        run: node .github/scripts/strict-grep/i-consumer-location-uses-shared-mapbox.mjs
+
+  meta-orch-1060-discover-city-codes-from-mapbox-context:
+    name: "META-ORCH-1060: INV-3 discover-city codes from structured Mapbox fields"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Self-test the gate
+        run: node .github/scripts/strict-grep/i-discover-city-codes-from-mapbox-context.mjs --self-test
+      - name: Run META-ORCH-1060 INV-3 structured-codes gate
+        run: node .github/scripts/strict-grep/i-discover-city-codes-from-mapbox-context.mjs
+
   orch-0978-video-upload-optimistic-preview:
     name: "ORCH-0978: video upload optimistic preview"
     runs-on: ubuntu-latest
