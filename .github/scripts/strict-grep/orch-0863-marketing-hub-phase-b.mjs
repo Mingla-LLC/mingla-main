@@ -1798,7 +1798,18 @@ function checkNoNewBackendFiles() {
     ".github/scripts/strict-grep/i-consumer-location-uses-shared-mapbox.mjs",
     ".github/scripts/strict-grep/i-discover-city-codes-from-mapbox-context.mjs",
   ];
+  // ORCH-1082 [business notification deep-link handlers — residual routing fixes]:
+  // MODIFIES partner-stripe-detach (re-prefix type → stripe.* so it reaches the
+  // business OneSignal app + correct deepLink) and admin-review-venue-claim
+  // (app:"business" on the venue_claim_review/feedback direct sendPush calls).
+  // C7 flags MODIFIED backend files too. Per COMMS-0002 — lands in the SAME commit.
+  const ORCH_1082_BACKEND_ALLOWLIST = [
+    "supabase/functions/partner-stripe-detach/index.ts",
+    "supabase/functions/admin-review-venue-claim/index.ts",
+    "supabase/functions/admin-review-venue-claim/__tests__/orch_1082_push_app_routing.test.ts",
+  ];
   const ALLOWLIST = [
+    ...ORCH_1082_BACKEND_ALLOWLIST,
     ...META_ORCH_1076_BACKEND_ALLOWLIST,
     ...ORCH_1075_BACKEND_ALLOWLIST,
     ...ORCH_1076_BACKEND_ALLOWLIST,

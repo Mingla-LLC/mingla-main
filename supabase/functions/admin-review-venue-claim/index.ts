@@ -321,8 +321,17 @@ serve(async (req) => {
             type: "venue_claim_feedback",
             brand_id: parsed.brandId,
             round,
+            // ORCH-1082 Gap VC: land on the venue listing (matches the
+            // business.claim_decision sibling) instead of the account tab.
+            deepLink: `mingla-business://brand/${parsed.brandId}/listing`,
           },
           androidChannelId: "system",
+          // ORCH-1082 Gap VC: this is a direct sendPush (bypasses notify-dispatch),
+          // so resolveOneSignalApp is never invoked. The target is the organiser
+          // (brand owner = a business-app user); without app:"business" sendPush
+          // defaults to the consumer app and the push reaches nobody.
+          //   - https://documentation.onesignal.com/docs/keys-and-ids
+          app: "business",
         });
       }
 
@@ -637,8 +646,16 @@ serve(async (req) => {
           type: "venue_claim_review",
           brand_id: parsed.brandId,
           action: parsed.action,
+          // ORCH-1082 Gap VC: land on the venue listing (matches the
+          // business.claim_decision sibling) instead of the account tab.
+          deepLink: `mingla-business://brand/${parsed.brandId}/listing`,
         },
         androidChannelId: "system",
+        // ORCH-1082 Gap VC: direct sendPush (bypasses notify-dispatch) targeting
+        // the organiser (brand owner = a business-app user). Without app:"business"
+        // sendPush defaults to the consumer app and the push reaches nobody.
+        //   - https://documentation.onesignal.com/docs/keys-and-ids
+        app: "business",
       });
     }
 

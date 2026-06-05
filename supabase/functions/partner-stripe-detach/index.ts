@@ -122,16 +122,26 @@ serve(async (req) => {
     after: { detached_at: detachedAt, stripe_delete_error: stripeDeleteError },
   });
 
+  // ORCH-1082 Gap 17: re-prefix the type from `partner_stripe.detach_completed`
+  // to `stripe.partner_detach_completed` so notify-dispatch's resolveOneSignalApp
+  // (push-utils.ts) routes it to the BUSINESS OneSignal app — a partner is a
+  // business-app user, and the old `partner_stripe.` prefix matched neither
+  // `business.` nor `stripe.`, so it fell to the consumer app and reached nobody.
+  // There is no cross-app send in OneSignal.
+  //   - https://documentation.onesignal.com/docs/keys-and-ids
+  // The deep link is also corrected to the real route `/partner/earnings`
+  // (mingla-business/app/partner/earnings.tsx); the prior account-tab partner
+  // deep link had no route file + no parser head, so the tap fell to /(tabs)/account.
   await dispatchNotification({
     userId,
     brandId: null,
-    type: "partner_stripe.detach_completed",
+    type: "stripe.partner_detach_completed",
     title: "Stripe disconnected",
     body: "Your partner Stripe account is no longer linked. Reconnect anytime from Partner Earnings.",
     relatedId: stripeAccountId,
     relatedType: "partner_stripe_connect_account",
-    idempotencyKey: `partner_stripe.detach_completed:${stripeAccountId}:${userId}`,
-    deepLink: "mingla-business://account/partner-earnings",
+    idempotencyKey: `stripe.partner_detach_completed:${stripeAccountId}:${userId}`,
+    deepLink: "mingla-business://partner/earnings",
   });
 
   return jsonResponse({

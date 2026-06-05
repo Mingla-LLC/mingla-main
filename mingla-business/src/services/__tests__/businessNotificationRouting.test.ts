@@ -85,6 +85,47 @@ describe("parseBusinessDeepLink", () => {
   test("non-mingla scheme → null", () => {
     expect(parseBusinessDeepLink("https://example.com")).toBeNull();
   });
+
+  // ORCH-1082 Gap 15 + 17b — happy-path FAILS-on-revert cases. Reverting the
+  // `payments` sub-branch makes brand/{id}/payments/onboard fall through to
+  // `/brand/{id}` (RED); reverting the `partner` head case makes
+  // partner/earnings return null (RED).
+  describe("ORCH-1082 residual routing", () => {
+    test("Gap 15: brand payments/onboard → onboarding screen", () => {
+      expect(
+        parseBusinessDeepLink("mingla-business://brand/B/payments/onboard"),
+      ).toBe("/brand/B/payments/onboard");
+    });
+    test("Gap 15: brand payments (bare) → payments hub", () => {
+      expect(parseBusinessDeepLink("mingla-business://brand/B/payments")).toBe(
+        "/brand/B/payments",
+      );
+    });
+    test("Gap 17b: partner/earnings → /partner/earnings", () => {
+      expect(parseBusinessDeepLink("mingla-business://partner/earnings")).toBe(
+        "/partner/earnings",
+      );
+    });
+    test("Gap 17b: unknown partner sub → null", () => {
+      expect(parseBusinessDeepLink("mingla-business://partner/bogus")).toBeNull();
+    });
+    // Regression guards: pre-existing brand cases unchanged by the new branches.
+    test("regression: brand team/listing + bare brand unchanged", () => {
+      expect(parseBusinessDeepLink("mingla-business://brand/B/team")).toBe(
+        "/brand/B/team",
+      );
+      expect(parseBusinessDeepLink("mingla-business://brand/B/listing")).toBe(
+        "/brand/B/listing",
+      );
+      expect(parseBusinessDeepLink("mingla-business://brand/B")).toBe("/brand/B");
+    });
+    test("regression: missing brandId → null", () => {
+      expect(parseBusinessDeepLink("mingla-business://brand")).toBeNull();
+    });
+    test("regression: unknown head → null", () => {
+      expect(parseBusinessDeepLink("mingla-business://account/foo")).toBeNull();
+    });
+  });
 });
 
 describe("resolveBusinessNavTarget — per type", () => {
