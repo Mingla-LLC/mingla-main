@@ -47,6 +47,11 @@ import { EventCoverMedia } from "../ui/EventCoverMedia";
 import { GlassCard } from "../ui/GlassCard";
 import { Icon } from "../ui/Icon";
 import { Pill } from "../ui/Pill";
+// ORCH-1076 Stream B — the Stripe-blocked status card is now the shared
+// offering primitive; this Step-7 render is a byte-identical refactor (the
+// shared card's defaults reproduce the event copy + look). Pinned by
+// CreatorStep7Preview.refactorParity.test.ts (T-15).
+import { StripeBlockedCard } from "../offering/StripeBlockedCard";
 
 import { type StepBodyProps } from "./types";
 
@@ -218,35 +223,6 @@ const ReadyCard: React.FC<ReadyCardProps> = ({
   );
 };
 
-interface StripeBlockedCardProps {
-  onConnectStripe: () => void;
-}
-
-const StripeBlockedCard: React.FC<StripeBlockedCardProps> = ({
-  onConnectStripe,
-}) => (
-  <GlassCard variant="base" padding={spacing.md} style={styles.warnCard}>
-    <View style={styles.statusRow}>
-      <Icon name="flag" size={20} color={accent.warm} />
-      <View style={styles.statusTextCol}>
-        <Text style={styles.statusTitle}>Stripe required for paid tickets</Text>
-        <Text style={styles.statusSub}>
-          Connect Stripe to publish. Free tickets can be published any time.
-        </Text>
-      </View>
-    </View>
-    <Pressable
-      onPress={onConnectStripe}
-      accessibilityRole="button"
-      accessibilityLabel="Connect Stripe"
-      style={styles.connectStripeBtn}
-    >
-      <Text style={styles.connectStripeLabel}>Connect Stripe</Text>
-      <Icon name="chevR" size={14} color={accent.warm} />
-    </Pressable>
-  </GlassCard>
-);
-
 interface ErrorsBlockedCardProps {
   count: number;
 }
@@ -369,24 +345,5 @@ const styles = StyleSheet.create({
   warnCard: {
     borderColor: accent.border,
     borderWidth: 1,
-  },
-  connectStripeBtn: {
-    marginTop: spacing.md,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 4,
-    paddingVertical: spacing.sm,
-    paddingHorizontal: spacing.md,
-    borderRadius: radiusTokens.md,
-    overflow: "hidden",
-    backgroundColor: accent.tint,
-    borderWidth: 1,
-    borderColor: accent.border,
-  },
-  connectStripeLabel: {
-    fontSize: typography.bodySm.fontSize,
-    fontWeight: "600",
-    color: accent.warm,
   },
 });
