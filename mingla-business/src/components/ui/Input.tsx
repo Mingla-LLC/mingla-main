@@ -31,6 +31,7 @@ import { Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } fr
 import type {
   StyleProp,
   TextInputProps,
+  TextStyle,
   ViewStyle,
 } from "react-native";
 
@@ -633,6 +634,17 @@ export const Input: React.FC<InputProps> = ({
             },
             Platform.OS === "android"
               ? styles.inputAndroid
+              : null,
+            // Search variant on web (META-ORCH-1073 Sub-A3): drop the browser's
+            // default blue focus outline (the design's accent.warm border is the
+            // focus indicator) and give the blinking caret the accent colour so
+            // typing is clearly indicated.
+            variant === "search" && Platform.OS === "web"
+              ? ({
+                  outlineWidth: 0,
+                  outlineStyle: "none",
+                  caretColor: accent.warm,
+                } as unknown as TextStyle)
               : null,
           ]}
           {...behaviour}

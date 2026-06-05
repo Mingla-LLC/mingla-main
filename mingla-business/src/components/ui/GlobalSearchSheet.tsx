@@ -181,7 +181,13 @@ export const GlobalSearchSheet: React.FC = () => {
   );
 
   return (
-    <Sheet visible={isOpen} onClose={close} snapPoint="full" testID="global-search-sheet">
+    <Sheet
+      visible={isOpen}
+      onClose={close}
+      snapPoint="full"
+      verticalAlign="top"
+      testID="global-search-sheet"
+    >
       <View style={styles.container}>
         <Input
           variant="search"
