@@ -62,7 +62,20 @@ export const BrandPaystackOnboardView: React.FC<Props> = ({
   const [resolvedName, setResolvedName] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const banks = banksQuery.data ?? [];
+  // Paystack's /bank list can return multiple entries that share a `code`
+  // (same settlement code listed under different slugs). Dedupe by code so the
+  // picker shows each bank once and React keys stay unique.
+  const banks = useMemo(() => {
+    const raw = banksQuery.data ?? [];
+    const seen = new Set<string>();
+    const out: typeof raw = [];
+    for (const b of raw) {
+      if (seen.has(b.code)) continue;
+      seen.add(b.code);
+      out.push(b);
+    }
+    return out;
+  }, [banksQuery.data]);
   const filteredBanks = useMemo(() => {
     const q = bankSearch.trim().toLowerCase();
     if (q.length === 0) return banks;
@@ -220,9 +233,9 @@ export const BrandPaystackOnboardView: React.FC<Props> = ({
             <ActivityIndicator color={accent.warm} style={{ marginTop: spacing.lg }} />
           ) : (
             <ScrollView style={styles.bankList} keyboardShouldPersistTaps="handled">
-              {filteredBanks.map((b) => (
+              {filteredBanks.map((b, i) => (
                 <Pressable
-                  key={b.code}
+                  key={`${b.code}-${i}`}
                   accessibilityRole="button"
                   accessibilityLabel={b.name}
                   onPress={() => onPickBank(b.code, b.name)}
