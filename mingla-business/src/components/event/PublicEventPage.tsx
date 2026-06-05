@@ -52,6 +52,7 @@ import {
 } from "../../utils/eventDateDisplay";
 import { isLegacyUnsafeEventCoverVideoUrl } from "../../utils/eventCoverMediaRules";
 import { eventCoverProviderCreditLabel } from "../../types/eventCoverProvider";
+import { useThemeFont } from "../../theme/useThemeFont";
 
 import { ShareModal } from "../ui/ShareModal";
 import { Toast } from "../ui/Toast";
@@ -230,6 +231,8 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
       ),
     [publicBrand?.theme, publicEvent.themeOverrides],
   );
+  // ORCH-1083: load this event's theme font on demand (no longer eager at root).
+  useThemeFont(resolvedTheme.fontFamilyValue);
   const waitlistTicket = useMemo(
     () =>
       publicEvent.tickets.find((ticket) => ticket.id === waitlistTicketId) ??

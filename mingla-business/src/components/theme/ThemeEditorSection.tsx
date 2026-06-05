@@ -20,6 +20,7 @@ import {
 } from "../../constants/designSystem";
 
 import { normalizeHexColor } from "./normalizeHexColor";
+import { useThemeFont } from "../../theme/useThemeFont";
 
 interface ThemeEditorSectionProps {
   value: ThemeInput | null | undefined;
@@ -53,6 +54,9 @@ export const ThemeEditorSection: React.FC<ThemeEditorSectionProps> = ({
   resetLabel = "Reset to Mingla default",
 }) => {
   const theme = useMemo(() => resolveTheme(value ?? null, null), [value]);
+  // ORCH-1083: the preview renders the SELECTED font, so load only that family on
+  // demand as the user cycles slugs — NOT all 14 eagerly. See SPEC §C-2.
+  useThemeFont(theme.fontFamilyValue);
 
   // ORCH-0964 hot-fix (post-operator-smoke-test): the hex input must allow
   // free typing. Prior shape `value={value?.color ?? ""}` + on-keystroke
