@@ -1,5 +1,7 @@
 # Open Investigations
 
+> **2026-06-05 — ORCH-1084 [Mingla Business logo wordmark] CLOSED PASS — no open investigation/rework remains.** The official logo is visible on production business web and shipped via business-app iOS/Android OTA from merged main. Evidence lives in `Mingla_Artifacts/reports/IMPLEMENTATION_REWORK_ORCH-1084_BUSINESS_LOGO_WORDMARK.md`, `Mingla_Artifacts/reports/QA_ORCH-1084_BUSINESS_LOGO_WORDMARK_REWORK.md`, and `Mingla_Artifacts/CLOSE_NOTE_ORCH-1084_BUSINESS_LOGO_WORDMARK.md`.
+
 > **2026-06-02 — META-ORCH-1048 [Mingla Partner Program] FULLY SHIPPED, all 6 sub-ORCHs closed. ORCH-1055 [scanner-only app shell] CLOSED PASS — PR #323.** No open investigation remains across the entire partner program. Awaiting operator end-to-end smoke + Stripe Connect webhook subscription for charge.succeeded.
 
 > **2026-06-02 — ORCH-1054 [Partner splits + Stripe Transfer pipeline] CLOSED PASS — PR #322.** Next dispatch: ORCH-1055 [scanner-only app shell sanity check — investigate whether rank-10 scanner sees stripped-down nav or design one].
