@@ -75,6 +75,7 @@ import {
   type ValidationError,
 } from "../../utils/draftEventValidation";
 import { isDraftEventPristine } from "../../utils/draftEventPristine";
+import { resolvePaidPublishGuardCopy } from "../../utils/paidPublishGuards";
 import { expandRecurrenceToDates } from "../../utils/recurrenceRule";
 
 import { Button } from "../ui/Button";
@@ -551,9 +552,26 @@ export const EventCreatorWizard: React.FC<EventCreatorWizardProps> = ({
         name: draftName,
         slug,
       });
-    } catch {
+    } catch (error) {
       setIsPublishing(false);
       setPublishConfirmVisible(false);
+      // ORCH-1075 — paid-publish integrity guards. The publish RPC raises
+      // stripe_charges_disabled / offering_date_past on error.message; surface
+      // the locked copy + route (Stripe onboarding / When step) instead of a
+      // generic failure.
+      const code = error instanceof Error ? error.message : String(error ?? "");
+      const guardCopy = resolvePaidPublishGuardCopy(code);
+      if (guardCopy !== null) {
+        handleShowToast(guardCopy.body);
+        if (guardCopy.action === "stripe_onboarding") {
+          onOpenStripeOnboard();
+        } else {
+          // Guard B — jump to the When step (index 1) and reveal step errors.
+          setShowStepErrors(true);
+          setCurrentStep(1);
+        }
+        return;
+      }
       handleShowToast("Could not save this publish. Try again.");
     }
   }, [
@@ -563,6 +581,7 @@ export const EventCreatorWizard: React.FC<EventCreatorWizardProps> = ({
     onPublishDraft,
     deleteDraft,
     handleShowToast,
+    onOpenStripeOnboard,
   ]);
 
   const handleFixJump = useCallback((step: number): void => {
