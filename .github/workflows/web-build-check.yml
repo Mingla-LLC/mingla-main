@@ -32,3 +32,10 @@ jobs:
       - name: Build web bundle (fails on duplicate import/export + syntax errors)
         working-directory: mingla-business
         run: npx expo export -p web --output-dir /tmp/web-build-check
+      # ORCH-1083: initial-web-bundle budget guard (M-3 / I-PROPOSED-1083-A).
+      # Fails if any deferred heavy dep (Stripe Connect web SDK, QR renderer, the
+      # 14 theme fonts) reappears in the main entry chunk, the eager __common
+      # grows past its cap, or the initial payload exceeds the ceiling.
+      - name: ORCH-1083 initial-bundle budget guard
+        working-directory: mingla-business
+        run: ORCH_1083_WEB_BUILD=/tmp/web-build-check node scripts/ci/orch-1083-initial-bundle-budget.mjs
