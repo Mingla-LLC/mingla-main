@@ -1,5 +1,5 @@
 /**
- * Ve1 wizard — Step 1: Address (Google Places proxy).
+ * Ve1 wizard — Step 1: Address (Mapbox proxy, ORCH-1079).
  */
 
 import React from "react";
@@ -10,10 +10,10 @@ import {
   text as textTokens,
   typography,
 } from "../../constants/designSystem";
-import { parseGooglePlaceResult } from "../../utils/parseGooglePlaceResult";
+import { parseVenuePlaceResult } from "../../utils/parseVenuePlaceResult";
 import { useDraftVenueStore } from "../../store/draftVenueStore";
-import { AddressAutocompleteInput } from "../event/AddressAutocompleteInput";
-import type { PlaceDetails } from "../../services/googlePlacesService";
+import { MapboxAddressInput } from "../location/MapboxAddressInput";
+import type { PlaceDetails } from "../../services/mapboxGeocodeService";
 
 export interface VenueStep1AddressProps {
   showErrors: boolean;
@@ -37,14 +37,20 @@ export const VenueStep1Address: React.FC<VenueStep1AddressProps> = ({
       <Text style={styles.helper}>
         Start typing and choose a result when you see one.
       </Text>
-      <AddressAutocompleteInput
+      <MapboxAddressInput
         value={formattedAddress}
         onChangeText={(t) => patch({ formattedAddress: t })}
         onPick={(details: PlaceDetails): void => {
-          const p = parseGooglePlaceResult(details);
+          const p = parseVenuePlaceResult(details);
+          // ORCH-1079 LOCKED dedup guard (§3.C): patch ONLY the address/geo —
+          // NEVER `googlePlaceId`. On the CLAIM path the pool-derived Google id
+          // (set by prefillDraftFromPoolMatch) MUST survive a Step-1 address
+          // re-pick so `biz_create_venue_brand_authoring` doesn't throw
+          // `place_pool_google_place_id_mismatch`. On the CREATE-NEW path the
+          // store's default `googlePlaceId: null` is preserved → no mapbox_id
+          // (`p.placeId`) ever reaches `brands.google_place_id`.
           patch({
             formattedAddress: p.formattedAddress,
-            googlePlaceId: p.googlePlaceId,
             lat: p.lat,
             lng: p.lng,
             city: p.city,
@@ -52,9 +58,11 @@ export const VenueStep1Address: React.FC<VenueStep1AddressProps> = ({
           });
         }}
         onClear={(): void => {
+          // ORCH-1079 LOCKED (§3.C): clearing the field MUST NOT null
+          // `googlePlaceId` — that would wipe the pool-derived dedup key on the
+          // claim path. Only address/geo reset.
           patch({
             formattedAddress: "",
-            googlePlaceId: null,
             lat: null,
             lng: null,
             city: null,

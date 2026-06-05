@@ -33,7 +33,13 @@ import {
   typography,
 } from "../../constants/designSystem";
 import { Button } from "../ui/Button";
-import { AddressAutocompleteInput } from "../event/AddressAutocompleteInput";
+// ORCH-1079 [Business-venue Google→Mapbox sweep] — swapped the legacy Google
+// address autocomplete for the shared Mapbox picker (drop-in, same props).
+// place.placeId now carries an opaque mapbox_id, stored in the SAME
+// theme.business_trip.{departure,destination}PlaceId keys (no downstream
+// consumer reads it as a Google id). Mapbox Search Box /suggest returns POIs
+// by name (no `types` filter): https://docs.mapbox.com/api/search/search-box/#get-suggestions
+import { MapboxAddressInput } from "../location/MapboxAddressInput";
 import { type CoverPatch } from "../ui/CoverPicker";
 import { CoverPickerSheet } from "../ui/CoverPickerSheet";
 import { EventCoverMedia } from "../ui/EventCoverMedia";
@@ -350,11 +356,12 @@ export const TripCreatorStep1Basics: React.FC<TripCreatorStep1BasicsProps> = ({
         </View>
       </View>
 
-      {/* ORCH-1016 — Departing from (origin city) via Google Places. Sits ABOVE
-          Destination: the mental model is "leave here → go there". Optional. */}
+      {/* ORCH-1016 — Departing from (origin city) via the Mapbox picker
+          (ORCH-1079). Sits ABOVE Destination: the mental model is "leave here →
+          go there". Optional. */}
       <View style={styles.fieldGroup}>
         <Text style={styles.fieldLabel}>Departing from</Text>
-        <AddressAutocompleteInput
+        <MapboxAddressInput
           value={draft.departureLocationText ?? ""}
           onChangeText={(v) => onChange({ departureLocationText: v })}
           onPick={(place) => {
@@ -377,10 +384,10 @@ export const TripCreatorStep1Basics: React.FC<TripCreatorStep1BasicsProps> = ({
         />
       </View>
 
-      {/* Destination via Google Places */}
+      {/* Destination via the Mapbox picker (ORCH-1079) */}
       <View style={styles.fieldGroup}>
         <Text style={styles.fieldLabel}>Destination</Text>
-        <AddressAutocompleteInput
+        <MapboxAddressInput
           value={draft.destinationLocationText ?? ""}
           onChangeText={(v) => onChange({ destinationLocationText: v })}
           onPick={(place) => {

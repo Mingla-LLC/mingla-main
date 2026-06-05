@@ -41,9 +41,14 @@ import {
 } from "./OfferingChooser";
 import { CoverPickerSheet } from "../ui/CoverPickerSheet";
 // META-ORCH-1009 Sub-F (WS1+WS2): validated address autocomplete + cover preview.
-import { AddressAutocompleteInput } from "../event/AddressAutocompleteInput";
-import { parseGooglePlaceResult } from "../../utils/parseGooglePlaceResult";
-import type { PlaceDetails } from "../../services/googlePlacesService";
+// ORCH-1079 [Business-venue Google→Mapbox sweep]: swapped to the shared Mapbox
+// picker. The Mapbox `placeId` (a mapbox_id) is IGNORED for persistence — we set
+// `googlePlaceId: null` so a mapbox_id never lands in `brands.google_place_id`.
+// Mapbox Search Box /suggest returns POIs/businesses by name (no `types` filter):
+// https://docs.mapbox.com/api/search/search-box/#get-suggestions
+import { MapboxAddressInput } from "../location/MapboxAddressInput";
+import { parseVenuePlaceResult } from "../../utils/parseVenuePlaceResult";
+import type { PlaceDetails } from "../../services/mapboxGeocodeService";
 import { EventCoverMedia } from "../ui/EventCoverMedia";
 
 export interface BrandCreationFlowProps {
@@ -334,7 +339,7 @@ export const BrandCreationFlow: React.FC<BrandCreationFlowProps> = ({
             {/* WS1: validated autocomplete. Free-text typing clears the geo meta so
                 Continue stays gated until a real result is picked; Skip handles
                 brands with no fixed address. */}
-            <AddressAutocompleteInput
+            <MapboxAddressInput
               value={address}
               onChangeText={(t) => {
                 setAddress(t);
@@ -347,14 +352,17 @@ export const BrandCreationFlow: React.FC<BrandCreationFlowProps> = ({
                 });
               }}
               onPick={(details: PlaceDetails): void => {
-                const p = parseGooglePlaceResult(details);
+                const p = parseVenuePlaceResult(details);
                 setAddress(p.formattedAddress);
+                // ORCH-1079 LOCKED (§3.B): write geo identically but set
+                // googlePlaceId: null — the Mapbox mapbox_id (`p.placeId`) is
+                // IGNORED so it never pollutes `brands.google_place_id`.
                 setAddrMeta({
                   lat: p.lat,
                   lng: p.lng,
                   city: p.city,
                   countryCode: p.countryCode,
-                  googlePlaceId: p.googlePlaceId,
+                  googlePlaceId: null,
                 });
               }}
               onClear={(): void => {

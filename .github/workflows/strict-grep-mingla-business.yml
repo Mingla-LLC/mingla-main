@@ -122,6 +122,9 @@ on:
 #   - G-CIRCLE-BADGE-DUAL-APP (circle-badge-dual-app.sh) — Your Circle briefcase badge means dual-app user only (ORCH-0933)
 #   - I-COMMS-LEDGER-ENTRY-STANZA + I-RESPONSE-2-SECTION-SHAPE (meta-orch-0954-comms-ledger-stanza.mjs) — every Claude SKILL.md + AGENTS.md carries ledger + 2-section output stanzas (META-ORCH-0954)
 #   - I-PROPOSED-BASE-BOTTOM-SHEET-SOLE-GORHOM-CONSUMER (meta-orch-0991-base-bottom-sheet-sole-consumer.mjs) — only BaseBottomSheet.tsx imports @gorhom/bottom-sheet under app-mobile/src; matches IMPORT statements not comments; self-tested (META-ORCH-0991 Wave A)
+#   - I-BIZ-VENUE-INPUT-USES-MAPBOX (i-biz-venue-input-uses-mapbox.mjs) — venue/brand/trip pickers import the shared MapboxAddressInput + zero Google AddressAutocompleteInput/googlePlacesService/parseGooglePlaceResult tokens; self-tested (ORCH-1079 INV-1)
+#   - I-NO-BIZ-GOOGLE-PLACES-AUTOCOMPLETE (i-no-biz-google-places-autocomplete.mjs) — the 4 dead Google files are gone + no mingla-business/src ref, BUT GOOGLE_MAPS_API_KEY still present in a keep-list edge fn (P0 guard); self-tested (ORCH-1079 INV-2)
+#   - I-MAPBOX-SUGGEST-NO-TYPES-FILTER (i-mapbox-suggest-no-types-filter.mjs) — mapbox-geocode suggest call stays filter-free so POIs/venues resolve by name; self-tested (ORCH-1079 INV-3)
 #
 # Future gates to register (proposed but not yet implemented):
 #   - I-32 rank parity (Cycle 13a proposal)
@@ -2134,6 +2137,49 @@ jobs:
         run: node .github/scripts/strict-grep/orch-1076-paid-supply-requires-charges-enabled.mjs --self-test
       - name: Run ORCH-1076 paid-supply-requires-charges-enabled gate
         run: node .github/scripts/strict-grep/orch-1076-paid-supply-requires-charges-enabled.mjs
+
+  # ORCH-1079 [Business-venue Google→Mapbox sweep] — three invariants:
+  #   INV-1 the 3 business venue/brand/trip pickers use the shared Mapbox input
+  #   INV-2 the retired Google plumbing is gone + un-referenced (key retained)
+  #   INV-3 the mapbox-geocode suggest call stays filter-free (POIs by name)
+  orch-1079-biz-venue-input-uses-mapbox:
+    name: "ORCH-1079: business venue/brand/trip pickers use shared Mapbox input (INV-1)"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Self-test the gate
+        run: node .github/scripts/strict-grep/i-biz-venue-input-uses-mapbox.mjs --self-test
+      - name: Run ORCH-1079 biz-venue-uses-mapbox gate
+        run: node .github/scripts/strict-grep/i-biz-venue-input-uses-mapbox.mjs
+
+  orch-1079-no-biz-google-places-autocomplete:
+    name: "ORCH-1079: Google places-autocomplete retired, GOOGLE_MAPS_API_KEY retained (INV-2)"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Self-test the gate
+        run: node .github/scripts/strict-grep/i-no-biz-google-places-autocomplete.mjs --self-test
+      - name: Run ORCH-1079 no-biz-google-places-autocomplete gate
+        run: node .github/scripts/strict-grep/i-no-biz-google-places-autocomplete.mjs
+
+  orch-1079-mapbox-suggest-no-types-filter:
+    name: "ORCH-1079: mapbox-geocode suggest stays filter-free for POI/name search (INV-3)"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Self-test the gate
+        run: node .github/scripts/strict-grep/i-mapbox-suggest-no-types-filter.mjs --self-test
+      - name: Run ORCH-1079 mapbox-suggest-no-types-filter gate
+        run: node .github/scripts/strict-grep/i-mapbox-suggest-no-types-filter.mjs
 
   # ORCH-0962 brand-field-map-coverage gate RETIRED at META-ORCH-0972 CLOSE
   # (2026-05-26). The gate asserted that `viewRowToBrand` reads `row.brand_kind`
