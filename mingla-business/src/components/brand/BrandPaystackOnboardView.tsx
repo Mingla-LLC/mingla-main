@@ -11,7 +11,9 @@
 import React, { useMemo, useState } from "react";
 import {
   ActivityIndicator,
+  KeyboardAvoidingView,
   Modal,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -213,43 +215,53 @@ export const BrandPaystackOnboardView: React.FC<Props> = ({
         animationType="slide"
         onRequestClose={() => setPickerOpen(false)}
       >
-        <Pressable
-          style={styles.backdrop}
-          accessibilityRole="button"
-          accessibilityLabel="Close bank picker"
-          onPress={() => setPickerOpen(false)}
-        />
-        <View style={styles.sheet}>
-          <Text style={styles.sheetTitle}>Choose your bank</Text>
-          <Input
-            variant="search"
-            value={bankSearch}
-            onChangeText={setBankSearch}
-            placeholder="Search banks"
-            clearable
-            accessibilityLabel="Search banks"
+        <KeyboardAvoidingView
+          style={styles.modalRoot}
+          behavior={Platform.OS === "ios" ? "padding" : undefined}
+        >
+          <Pressable
+            style={styles.backdrop}
+            accessibilityRole="button"
+            accessibilityLabel="Close bank picker"
+            onPress={() => setPickerOpen(false)}
           />
-          {banksQuery.isLoading ? (
-            <ActivityIndicator color={accent.warm} style={{ marginTop: spacing.lg }} />
-          ) : (
-            <ScrollView style={styles.bankList} keyboardShouldPersistTaps="handled">
-              {filteredBanks.map((b, i) => (
-                <Pressable
-                  key={`${b.code}-${i}`}
-                  accessibilityRole="button"
-                  accessibilityLabel={b.name}
-                  onPress={() => onPickBank(b.code, b.name)}
-                  style={styles.bankRow}
-                >
-                  <Text style={styles.bankRowText}>{b.name}</Text>
-                </Pressable>
-              ))}
-              {filteredBanks.length === 0 ? (
-                <Text style={styles.bankEmpty}>No banks match “{bankSearch}”.</Text>
-              ) : null}
-            </ScrollView>
-          )}
-        </View>
+          <View style={styles.sheet}>
+            <Text style={styles.sheetTitle}>Choose your bank</Text>
+            <Input
+              variant="search"
+              value={bankSearch}
+              onChangeText={setBankSearch}
+              placeholder="Search banks"
+              clearable
+              autoFocus
+              accessibilityLabel="Search banks"
+            />
+            {banksQuery.isLoading ? (
+              <ActivityIndicator color={accent.warm} style={{ marginTop: spacing.lg }} />
+            ) : (
+              <ScrollView
+                style={styles.bankList}
+                keyboardShouldPersistTaps="handled"
+                showsVerticalScrollIndicator={false}
+              >
+                {filteredBanks.map((b, i) => (
+                  <Pressable
+                    key={`${b.code}-${i}`}
+                    accessibilityRole="button"
+                    accessibilityLabel={b.name}
+                    onPress={() => onPickBank(b.code, b.name)}
+                    style={styles.bankRow}
+                  >
+                    <Text style={styles.bankRowText}>{b.name}</Text>
+                  </Pressable>
+                ))}
+                {filteredBanks.length === 0 ? (
+                  <Text style={styles.bankEmpty}>No banks match “{bankSearch}”.</Text>
+                ) : null}
+              </ScrollView>
+            )}
+          </View>
+        </KeyboardAvoidingView>
       </Modal>
     </GlassCard>
   );
@@ -306,13 +318,10 @@ const styles = StyleSheet.create({
     marginTop: spacing.md,
   },
   actions: { marginTop: spacing.lg },
+  modalRoot: { flex: 1, justifyContent: "flex-end" },
   backdrop: { flex: 1, backgroundColor: "rgba(0, 0, 0, 0.5)" },
   sheet: {
-    position: "absolute",
-    bottom: 0,
-    left: 0,
-    right: 0,
-    maxHeight: "70%",
+    height: "64%",
     padding: spacing.lg,
     borderTopLeftRadius: radius.xl,
     borderTopRightRadius: radius.xl,
@@ -323,7 +332,7 @@ const styles = StyleSheet.create({
     color: textTokens.primary,
     marginBottom: spacing.md,
   },
-  bankList: { marginTop: spacing.md },
+  bankList: { flex: 1, marginTop: spacing.md },
   bankRow: {
     paddingVertical: spacing.md,
     borderBottomWidth: StyleSheet.hairlineWidth,
