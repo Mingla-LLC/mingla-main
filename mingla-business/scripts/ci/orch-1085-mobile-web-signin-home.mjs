@@ -53,8 +53,28 @@ if (!callback.includes("sb-gqnoajqerqhnvulmnyvv-auth-token")) {
 }
 
 const home = read("public/home.html");
-if (!home.includes("Fast mobile home")) {
-  fail("public/home.html must render the static mobile Home shell");
+if (!home.includes("Business Home") || !home.includes("Run your next drop.")) {
+  fail("public/home.html must render a branded mobile Business Home shell");
+}
+for (const tab of ["Home", "Hub", "Ari", "Blast", "Account"]) {
+  if (!home.includes(`>${tab}<`)) {
+    fail(`public/home.html must render the ${tab} tab`);
+  }
+}
+if (
+  !home.includes('role="tablist"') ||
+  !home.includes('data-panel="hub"') ||
+  !home.includes('data-panel="marketing"') ||
+  !home.includes("activate(")
+) {
+  fail("public/home.html must include lightweight tab switching without Expo");
+}
+if (
+  home.includes("Fast mobile home") ||
+  home.includes("Browser mode") ||
+  home.includes("heavy app boot")
+) {
+  fail("public/home.html must not regress to the placeholder stabilization copy");
 }
 if (home.includes("/_expo/static/js/") || home.includes("expo-metro-runtime")) {
   fail("public/home.html must not load the Expo/RN web bundle");
