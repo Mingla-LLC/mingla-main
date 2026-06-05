@@ -62,6 +62,7 @@ import { BrandStripeDetachConfirmSheet } from "./BrandStripeDetachConfirmSheet";
 import { BrandPaystackOnboardView } from "./BrandPaystackOnboardView";
 import {
   useBrandPaystackStatus,
+  useClearPaystackProvider,
   useDisconnectPaystack,
 } from "../../hooks/useBrandPaystack";
 import { useBrandStripeStatus } from "../../hooks/useBrandStripeStatus";
@@ -187,6 +188,7 @@ export const BrandPaymentsView: React.FC<BrandPaymentsViewProps> = ({
     isPaystackBrand ? (brand?.id ?? null) : null,
   );
   const disconnectPaystackMutation = useDisconnectPaystack();
+  const clearPaystackMutation = useClearPaystackProvider();
   const [paystackEditing, setPaystackEditing] = useState<boolean>(false);
   // ORCH-0955 — Tax CTA opens new brand-stripe-tax-account-session that mints
   // an AccountSession with tax_registrations + tax_settings GA components,
@@ -370,7 +372,13 @@ export const BrandPaymentsView: React.FC<BrandPaymentsViewProps> = ({
                   setPaystackEditing(false);
                   paystackStatusQuery.refetch();
                 }}
-                onCancel={connected ? () => setPaystackEditing(false) : undefined}
+                onCancel={connected
+                  ? () => setPaystackEditing(false)
+                  : () =>
+                    clearPaystackMutation.mutate(brand.id, {
+                      // Revert to Stripe, then open the country picker to re-pick.
+                      onSuccess: () => onOpenOnboard(),
+                    })}
               />
             )}
         </ScrollView>

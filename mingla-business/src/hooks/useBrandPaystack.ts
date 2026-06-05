@@ -17,6 +17,7 @@ import {
 } from "@tanstack/react-query";
 
 import {
+  clearPaystackProvider,
   createPaystackSubaccount,
   disconnectPaystack,
   listPaystackBanks,
@@ -125,6 +126,19 @@ export function useSelectPaystackProvider(): UseMutationResult<void, Error, stri
   const queryClient = useQueryClient();
   return useMutation<void, Error, string>({
     mutationFn: (brandId) => selectPaystackProvider(brandId),
+    onSuccess: (_data, brandId) => {
+      queryClient.invalidateQueries({ queryKey: brandKeys.detail(brandId) });
+      queryClient.invalidateQueries({ queryKey: brandKeys.lists() });
+      queryClient.invalidateQueries({ queryKey: brandPaystackKeys.status(brandId) });
+    },
+  });
+}
+
+/** Revert a not-yet-connected Paystack brand back to Stripe (re-pick country). */
+export function useClearPaystackProvider(): UseMutationResult<void, Error, string> {
+  const queryClient = useQueryClient();
+  return useMutation<void, Error, string>({
+    mutationFn: (brandId) => clearPaystackProvider(brandId),
     onSuccess: (_data, brandId) => {
       queryClient.invalidateQueries({ queryKey: brandKeys.detail(brandId) });
       queryClient.invalidateQueries({ queryKey: brandKeys.lists() });

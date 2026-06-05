@@ -110,7 +110,7 @@ serve(async (req) => {
       action !== "list_banks" && action !== "resolve_account" &&
       action !== "create_subaccount" && action !== "update_subaccount" &&
       action !== "disconnect" && action !== "refresh_status" &&
-      action !== "select_provider"
+      action !== "select_provider" && action !== "clear_provider"
     ) {
       return jsonResponse({ error: "validation_error", detail: "unknown_action" }, 400);
     }
@@ -250,6 +250,34 @@ serve(async (req) => {
         after: { payment_provider: "paystack", payment_country: "NG" },
       });
       return jsonResponse({ payment_provider: "paystack", payment_country: "NG" });
+    }
+
+    // ── action: clear_provider ───────────────────────────────────────────────
+    // Reverse of select_provider: a brand that picked Nigeria but hasn't
+    // connected a bank chooses a different country. Revert to the Stripe rail
+    // (payment_provider='stripe', payment_country=null). Refuses once a
+    // subaccount exists (use disconnect first).
+    if (action === "clear_provider") {
+      if (brand.paystack_subaccount_code != null) {
+        return jsonResponse({ error: "conflict", detail: "disconnect_first" }, 409);
+      }
+      const { error: updErr } = await supabase
+        .from("brands")
+        .update({ payment_provider: "stripe", payment_country: null })
+        .eq("id", brandId);
+      if (updErr) {
+        console.error("[brand-paystack-onboard] clear_provider update failed:", updErr);
+        return jsonResponse({ error: "internal_error", detail: "brand_update_failed" }, 500);
+      }
+      await writeAudit(supabase, {
+        user_id: userId,
+        brand_id: brandId,
+        action: "paystack.provider_cleared",
+        target_type: "brand",
+        target_id: brandId,
+        after: { payment_provider: "stripe", payment_country: null },
+      });
+      return jsonResponse({ payment_provider: "stripe", payment_country: null });
     }
 
     // ── action: disconnect ───────────────────────────────────────────────────
