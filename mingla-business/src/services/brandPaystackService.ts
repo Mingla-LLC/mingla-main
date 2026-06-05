@@ -108,6 +108,37 @@ export async function createPaystackSubaccount(
   return data;
 }
 
+/** Change the settlement bank on the EXISTING subaccount (same code). */
+export async function updatePaystackSubaccount(
+  brandId: string,
+  accountNumber: string,
+  bankCode: string,
+): Promise<PaystackSubaccountResult> {
+  const { data, error } = await supabase.functions.invoke<PaystackSubaccountResult>(
+    "brand-paystack-onboard",
+    {
+      body: {
+        action: "update_subaccount",
+        brand_id: brandId,
+        account_number: accountNumber,
+        bank_code: bankCode,
+      },
+    },
+  );
+  if (error) throw await unwrapError("updatePaystackSubaccount", error);
+  if (!data) throw new Error("updatePaystackSubaccount: edge fn returned null");
+  return data;
+}
+
+/** Disconnect the brand's payout bank (clears the subaccount link). */
+export async function disconnectPaystack(brandId: string): Promise<void> {
+  const { error } = await supabase.functions.invoke(
+    "brand-paystack-onboard",
+    { body: { action: "disconnect", brand_id: brandId } },
+  );
+  if (error) throw await unwrapError("disconnectPaystack", error);
+}
+
 /** Re-poll the subaccount's verification/active state for the readiness card. */
 export async function refreshPaystackStatus(
   brandId: string,

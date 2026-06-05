@@ -252,6 +252,41 @@ export async function paystackCreateSubaccount(params: {
 }
 
 /**
+ * PUT /subaccount/{id_or_code} — update a subaccount (change settlement bank /
+ * account number, or toggle active). Used for "change bank" + "disconnect".
+ * https://paystack.com/docs/api/subaccount/#update
+ */
+export async function paystackUpdateSubaccount(
+  codeOrId: string,
+  params: {
+    settlementBank?: string;
+    accountNumber?: string;
+    active?: boolean;
+  },
+): Promise<PaystackSubaccount> {
+  const secret = resolvePaystackSecretKey();
+  const body: Record<string, unknown> = {};
+  if (params.settlementBank !== undefined) body.settlement_bank = params.settlementBank;
+  if (params.accountNumber !== undefined) body.account_number = params.accountNumber;
+  if (params.active !== undefined) body.active = params.active;
+  const res = await fetch(
+    `${PAYSTACK_BASE_URL}/subaccount/${encodeURIComponent(codeOrId)}`,
+    {
+      method: "PUT",
+      headers: { Authorization: `Bearer ${secret}`, "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    },
+  );
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok || json?.status !== true) {
+    throw new Error(
+      `Paystack update-subaccount failed (${res.status}): ${json?.message ?? "unknown error"}`,
+    );
+  }
+  return json.data as PaystackSubaccount;
+}
+
+/**
  * GET /subaccount/{id_or_code} — re-poll a subaccount's verification/active state.
  * https://paystack.com/docs/api/subaccount/#fetch
  */

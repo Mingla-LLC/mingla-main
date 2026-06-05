@@ -18,9 +18,11 @@ import {
 
 import {
   createPaystackSubaccount,
+  disconnectPaystack,
   listPaystackBanks,
   refreshPaystackStatus,
   resolvePaystackAccount,
+  updatePaystackSubaccount,
   type PaystackBankOption,
   type PaystackOnboardStatus,
   type PaystackResolvedAccount,
@@ -96,6 +98,36 @@ export function useCreatePaystackSubaccount(): UseMutationResult<
         message: error.message,
         brandId,
       });
+    },
+  });
+}
+
+/** Change the settlement bank on the existing subaccount. */
+export function useUpdatePaystackSubaccount(): UseMutationResult<
+  PaystackSubaccountResult,
+  Error,
+  ResolveInput
+> {
+  const queryClient = useQueryClient();
+  return useMutation<PaystackSubaccountResult, Error, ResolveInput>({
+    mutationFn: ({ brandId, accountNumber, bankCode }) =>
+      updatePaystackSubaccount(brandId, accountNumber, bankCode),
+    onSuccess: (_data, { brandId }) => {
+      queryClient.invalidateQueries({ queryKey: brandPaystackKeys.status(brandId) });
+      queryClient.invalidateQueries({ queryKey: brandKeys.detail(brandId) });
+    },
+  });
+}
+
+/** Disconnect the brand's payout bank. */
+export function useDisconnectPaystack(): UseMutationResult<void, Error, string> {
+  const queryClient = useQueryClient();
+  return useMutation<void, Error, string>({
+    mutationFn: (brandId) => disconnectPaystack(brandId),
+    onSuccess: (_data, brandId) => {
+      queryClient.invalidateQueries({ queryKey: brandPaystackKeys.status(brandId) });
+      queryClient.invalidateQueries({ queryKey: brandKeys.detail(brandId) });
+      queryClient.invalidateQueries({ queryKey: brandKeys.lists() });
     },
   });
 }

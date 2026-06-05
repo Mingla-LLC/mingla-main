@@ -36,13 +36,18 @@ import {
   useBrandBanks,
   useCreatePaystackSubaccount,
   useResolvePaystackAccount,
+  useUpdatePaystackSubaccount,
 } from "../../hooks/useBrandPaystack";
 
 interface Props {
   brandId: string;
   brandName: string;
-  /** Fired after the subaccount is created and the brand is on Paystack. */
+  /** "create" = first-time onboarding; "update" = change the settlement bank. */
+  mode?: "create" | "update";
+  /** Fired after the subaccount is created/updated. */
   onConnected?: () => void;
+  /** Optional cancel affordance (shown in update mode). */
+  onCancel?: () => void;
 }
 
 const ACCOUNT_LEN = 10;
@@ -50,11 +55,16 @@ const ACCOUNT_LEN = 10;
 export const BrandPaystackOnboardView: React.FC<Props> = ({
   brandId,
   brandName,
+  mode = "create",
   onConnected,
+  onCancel,
 }) => {
+  const isUpdate = mode === "update";
   const banksQuery = useBrandBanks();
   const resolveMutation = useResolvePaystackAccount();
   const createMutation = useCreatePaystackSubaccount();
+  const updateMutation = useUpdatePaystackSubaccount();
+  const submitMutation = isUpdate ? updateMutation : createMutation;
 
   const [pickerOpen, setPickerOpen] = useState(false);
   const [bankSearch, setBankSearch] = useState("");
@@ -86,7 +96,7 @@ export const BrandPaystackOnboardView: React.FC<Props> = ({
 
   const accountComplete = accountNumber.length === ACCOUNT_LEN;
   const canVerify = bankCode !== null && accountComplete && !resolveMutation.isPending;
-  const canConnect = resolvedName !== null && !createMutation.isPending;
+  const canConnect = resolvedName !== null && !submitMutation.isPending;
 
   // Re-entering details invalidates a prior verification.
   const onAccountChange = (next: string): void => {
@@ -125,7 +135,7 @@ export const BrandPaystackOnboardView: React.FC<Props> = ({
   const handleConnect = async (): Promise<void> => {
     setError(null);
     try {
-      await createMutation.mutateAsync({
+      await submitMutation.mutateAsync({
         brandId,
         accountNumber,
         bankCode: bankCode as string,
@@ -133,17 +143,22 @@ export const BrandPaystackOnboardView: React.FC<Props> = ({
       onConnected?.();
     } catch (e) {
       setError(
-        "We couldn't connect this bank account. Please try again in a moment.",
+        isUpdate
+          ? "We couldn't update this bank account. Please try again in a moment."
+          : "We couldn't connect this bank account. Please try again in a moment.",
       );
     }
   };
 
   return (
     <GlassCard variant="elevated" padding={spacing.lg}>
-      <Text style={styles.title}>Get paid in Nigeria</Text>
+      <Text style={styles.title}>
+        {isUpdate ? "Change payout bank" : "Get paid in Nigeria"}
+      </Text>
       <Text style={styles.subtitle}>
-        Connect your bank account to receive payouts. Sales settle directly to
-        this account, usually the next business day.
+        {isUpdate
+          ? "Enter the new bank account that should receive your payouts."
+          : "Connect your bank account to receive payouts. Sales settle directly to this account, usually the next business day."}
       </Text>
 
       {/* Bank picker */}
@@ -197,15 +212,28 @@ export const BrandPaystackOnboardView: React.FC<Props> = ({
           />
         ) : (
           <Button
-            label={createMutation.isPending ? "Connecting…" : "Connect bank & get paid"}
+            label={submitMutation.isPending
+              ? (isUpdate ? "Updating…" : "Connecting…")
+              : (isUpdate ? "Update bank account" : "Connect bank & get paid")}
             variant="primary"
             size="lg"
             fullWidth
             disabled={!canConnect}
-            loading={createMutation.isPending}
+            loading={submitMutation.isPending}
             onPress={handleConnect}
           />
         )}
+        {isUpdate && onCancel != null ? (
+          <View style={{ marginTop: spacing.sm }}>
+            <Button
+              label="Cancel"
+              variant="ghost"
+              size="md"
+              fullWidth
+              onPress={onCancel}
+            />
+          </View>
+        ) : null}
       </View>
 
       {/* Bank picker overlay */}

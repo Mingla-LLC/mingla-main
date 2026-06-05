@@ -19,7 +19,7 @@
  */
 
 import React, { useCallback, useMemo, useState } from "react";
-import { ScrollView, StyleSheet, Text, View } from "react-native";
+import { Alert, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import * as WebBrowser from "expo-web-browser";
 
@@ -60,7 +60,10 @@ import { BrandStripeDeadlineBanner } from "./BrandStripeDeadlineBanner";
 import { BrandStripeDetachConfirmSheet } from "./BrandStripeDetachConfirmSheet";
 // META-ORCH-1076 Phase 2 — Paystack (NG) payout onboarding surface.
 import { BrandPaystackOnboardView } from "./BrandPaystackOnboardView";
-import { useBrandPaystackStatus } from "../../hooks/useBrandPaystack";
+import {
+  useBrandPaystackStatus,
+  useDisconnectPaystack,
+} from "../../hooks/useBrandPaystack";
 import { useBrandStripeStatus } from "../../hooks/useBrandStripeStatus";
 import { useBrandStripeBalances } from "../../hooks/useBrandStripeBalances";
 import { useBrandStripeTaxAccountSession } from "../../hooks/useBrandStripeTaxAccountSession";
@@ -183,6 +186,8 @@ export const BrandPaymentsView: React.FC<BrandPaymentsViewProps> = ({
   const paystackStatusQuery = useBrandPaystackStatus(
     isPaystackBrand ? (brand?.id ?? null) : null,
   );
+  const disconnectPaystackMutation = useDisconnectPaystack();
+  const [paystackEditing, setPaystackEditing] = useState<boolean>(false);
   // ORCH-0955 — Tax CTA opens new brand-stripe-tax-account-session that mints
   // an AccountSession with tax_registrations + tax_settings GA components,
   // rendered in the Mingla-hosted /connect-tax-registrations page via
@@ -280,6 +285,32 @@ export const BrandPaymentsView: React.FC<BrandPaymentsViewProps> = ({
     const connected = brand.paystackSubaccountCode != null ||
       paystackStatusQuery.data?.connected === true;
     const ps = paystackStatusQuery.data;
+    const handleDisconnect = (): void => {
+      Alert.alert(
+        "Disconnect payout bank?",
+        "This brand will stop receiving payouts until you connect a bank again.",
+        [
+          { text: "Cancel", style: "cancel" },
+          {
+            text: "Disconnect",
+            style: "destructive",
+            onPress: () => {
+              disconnectPaystackMutation.mutate(brand.id, {
+                onSuccess: () => {
+                  setPaystackEditing(false);
+                  paystackStatusQuery.refetch();
+                },
+                onError: () =>
+                  Alert.alert(
+                    "Couldn't disconnect",
+                    "Please try again in a moment.",
+                  ),
+              });
+            },
+          },
+        ],
+      );
+    };
     return (
       <View style={styles.host}>
         <View style={styles.barWrap}>
@@ -297,7 +328,7 @@ export const BrandPaymentsView: React.FC<BrandPaymentsViewProps> = ({
           ]}
           showsVerticalScrollIndicator={false}
         >
-          {connected
+          {connected && !paystackEditing
             ? (
               <GlassCard variant="elevated" padding={spacing.lg}>
                 <Text style={styles.notFoundTitle}>Bank connected</Text>
@@ -309,13 +340,37 @@ export const BrandPaymentsView: React.FC<BrandPaymentsViewProps> = ({
                     ? " Your bank is still being verified — your first payout may take a little longer."
                     : ""}
                 </Text>
+                <View style={styles.notFoundBtnRow}>
+                  <Button
+                    label="Change bank account"
+                    onPress={() => setPaystackEditing(true)}
+                    variant="secondary"
+                    size="md"
+                  />
+                </View>
+                <View style={{ marginTop: spacing.sm }}>
+                  <Button
+                    label={disconnectPaystackMutation.isPending
+                      ? "Disconnecting…"
+                      : "Disconnect bank"}
+                    onPress={handleDisconnect}
+                    variant="destructive"
+                    size="md"
+                    loading={disconnectPaystackMutation.isPending}
+                  />
+                </View>
               </GlassCard>
             )
             : (
               <BrandPaystackOnboardView
                 brandId={brand.id}
                 brandName={brand.displayName}
-                onConnected={() => paystackStatusQuery.refetch()}
+                mode={connected ? "update" : "create"}
+                onConnected={() => {
+                  setPaystackEditing(false);
+                  paystackStatusQuery.refetch();
+                }}
+                onCancel={connected ? () => setPaystackEditing(false) : undefined}
               />
             )}
         </ScrollView>

@@ -43,6 +43,7 @@ import {
   paystackFetchSubaccount,
   paystackListBanks,
   paystackResolveAccount,
+  paystackUpdateSubaccount,
 } from "../_shared/paystack.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
@@ -107,7 +108,8 @@ serve(async (req) => {
     const action = body?.action;
     if (
       action !== "list_banks" && action !== "resolve_account" &&
-      action !== "create_subaccount" && action !== "refresh_status"
+      action !== "create_subaccount" && action !== "update_subaccount" &&
+      action !== "disconnect" && action !== "refresh_status"
     ) {
       return jsonResponse({ error: "validation_error", detail: "unknown_action" }, 400);
     }
@@ -219,7 +221,40 @@ serve(async (req) => {
       });
     }
 
-    // ── action: create_subaccount ────────────────────────────────────────────
+    // ── action: disconnect ───────────────────────────────────────────────────
+    // Stop receiving payouts: null the brand's subaccount code (checkout then
+    // full-settles to the Mingla main account, as before onboarding) and
+    // best-effort deactivate the Paystack subaccount so it isn't reused.
+    if (action === "disconnect") {
+      const code = brand.paystack_subaccount_code as string | null;
+      if (code) {
+        try {
+          await paystackUpdateSubaccount(code, { active: false });
+        } catch (err) {
+          // Non-fatal: still clear the local link so the brand can re-onboard.
+          console.error("[brand-paystack-onboard] deactivate subaccount failed:", err);
+        }
+      }
+      const { error: updErr } = await supabase
+        .from("brands")
+        .update({ paystack_subaccount_code: null })
+        .eq("id", brandId);
+      if (updErr) {
+        console.error("[brand-paystack-onboard] disconnect update failed:", updErr);
+        return jsonResponse({ error: "internal_error", detail: "brand_update_failed" }, 500);
+      }
+      await writeAudit(supabase, {
+        user_id: userId,
+        brand_id: brandId,
+        action: "paystack.subaccount_disconnected",
+        target_type: "brand",
+        target_id: brandId,
+        before: { paystack_subaccount_code: code },
+      });
+      return jsonResponse({ disconnected: true });
+    }
+
+    // Both create_subaccount + update_subaccount require bank details.
     if (!isValidNuban(body?.account_number)) {
       return jsonResponse(
         { error: "validation_error", detail: "account_number_must_be_10_digits" },
@@ -233,6 +268,55 @@ serve(async (req) => {
       );
     }
 
+    // ── action: update_subaccount ────────────────────────────────────────────
+    // Change the settlement bank/account on the EXISTING subaccount (same code).
+    if (action === "update_subaccount") {
+      const code = brand.paystack_subaccount_code as string | null;
+      if (!code) {
+        // Nothing to update — caller should create instead.
+        return jsonResponse({ error: "conflict", detail: "no_subaccount_to_update" }, 409);
+      }
+      let accountName: string;
+      try {
+        const resolved = await paystackResolveAccount({
+          accountNumber: body.account_number as string,
+          bankCode: body.bank_code,
+        });
+        accountName = resolved.account_name;
+      } catch (err) {
+        return jsonResponse(
+          { error: "account_unresolved", detail: String((err as Error)?.message ?? err) },
+          422,
+        );
+      }
+      try {
+        await paystackUpdateSubaccount(code, {
+          settlementBank: body.bank_code,
+          accountNumber: body.account_number as string,
+          active: true,
+        });
+      } catch (err) {
+        return jsonResponse(
+          { error: "subaccount_update_failed", detail: String((err as Error)?.message ?? err) },
+          502,
+        );
+      }
+      await writeAudit(supabase, {
+        user_id: userId,
+        brand_id: brandId,
+        action: "paystack.subaccount_updated",
+        target_type: "brand",
+        target_id: brandId,
+        after: { account_number_last4: (body.account_number as string).slice(-4) },
+      });
+      return jsonResponse({
+        subaccount_code: code,
+        account_name: accountName,
+        account_number_masked: `••••${(body.account_number as string).slice(-4)}`,
+      });
+    }
+
+    // ── action: create_subaccount ────────────────────────────────────────────
     // Guard: do not silently clobber an existing Stripe-active brand. A brand
     // already on Stripe cannot reach Nigeria (Stripe has no NG payouts), but be
     // explicit — only an unconfigured or already-Paystack brand may onboard here.
