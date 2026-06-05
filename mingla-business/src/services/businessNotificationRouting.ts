@@ -81,7 +81,25 @@ export function parseBusinessDeepLink(deepLink: string): BusinessNavTarget | nul
       if (!brandId) return null;
       if (sub === "team") return `/brand/${brandId}/team`;
       if (sub === "listing") return `/brand/${brandId}/listing`;
+      // ORCH-1082 Gap 15: the KYC-stall reminder + deadline warnings emit
+      // `mingla-business://brand/{id}/payments/onboard` (stripe-kyc-stall-reminder
+      // notifyBrand deepLink). Without this branch the `payments` sub fell through
+      // to the bare brand hub, so "Finish Stripe verification" never reached the
+      // onboarding screen. rest[2] === "onboard" → onboarding; bare → payments hub.
+      if (sub === "payments") {
+        return rest[2] === "onboard"
+          ? `/brand/${brandId}/payments/onboard`
+          : `/brand/${brandId}/payments`;
+      }
       return `/brand/${brandId}`;
+    }
+    // ORCH-1082 Gap 17b: partner-detach notification deep-links to
+    // `mingla-business://partner/earnings` (partner-stripe-detach). The old
+    // `mingla-business://account/partner-earnings` had no parser head AND no
+    // route file; this case maps the real `/partner/earnings` route.
+    case "partner": {
+      const sub = rest[0];
+      return sub === "earnings" ? `/partner/earnings` : null;
     }
     case "(tabs)": {
       // e.g. mingla-business://(tabs)/marketing
