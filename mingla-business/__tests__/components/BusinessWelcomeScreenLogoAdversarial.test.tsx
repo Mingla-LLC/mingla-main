@@ -10,17 +10,22 @@ import path from "node:path";
 //
 // This test instead attacks the failure modes that a future edit could
 // reintroduce WITHOUT tripping the implementor's exact-string checks:
-//   A. The squashing aspect-ratio regression — ANY non-square ratio in the
+//   A. The RN Web image-box regression — the logo wrapper AND image need
+//      explicit equal width+height so the 2000px PNG natural height cannot leak
+//      into the rendered <img> box while opacity/visibility remain style-safe.
+//      The web path must use a real DOM <img> with opacity:1 because RN Web's
+//      Image internals can keep its internal <img> opacity-zero.
+//   B. The squashing aspect-ratio regression — ANY non-square ratio in the
 //      `logo` style (not only the one literal `1356 / 480` spelling) re-sliver
 //      the square 2000x2000 lockup. Catches `2.83`, `1356/480`, `2.825`, etc.
-//   B. Duplicate brand mark — the brand name must render at most ONCE as a
+//   C. Duplicate brand mark — the brand name must render at most ONCE as a
 //      visible <Text> node (the old <Text>Mingla Business</Text> badge AND the
 //      logo Image both showed = double mark). Count-based, not style-name-based.
-//   C. Source-asset identity — the consumer wide wordmark
+//   D. Source-asset identity — the consumer wide wordmark
 //      (`mingla_official_logo.png`, 1356x480) must NOT be the logo source; the
 //      business asset on disk must be a genuine SQUARE PNG so `aspectRatio:1`
 //      is physically correct (self-validating against the real file header).
-//   D. Binding integrity — the <Image source={logo}> must actually wear
+//   E. Binding integrity — the <Image source={logo}> must actually wear
 //      `styles.logo`, so the square ratio is applied to the rendered Image.
 //
 // fails-on-revert: verified to FAIL against the pre-fix parent commit
@@ -30,20 +35,55 @@ const componentDir = path.resolve(__dirname, "../..");
 const SCREEN = "src/components/auth/BusinessWelcomeScreen.tsx";
 const source = fs.readFileSync(path.join(componentDir, SCREEN), "utf8");
 
-/** Extract the body of `logo: { ... }` from the StyleSheet.create block. */
-function extractLogoStyleBody(src: string): string {
-  // Match `logo:` as a style key (preceded by whitespace/newline, followed by
-  // `: {`), not `logoContainer:` and not `accessibilityLabel`/comments.
-  const m = src.match(/\n\s*logo:\s*\{([\s\S]*?)\n\s*\},/);
+/** Extract the body of `styleKey: { ... }` from the StyleSheet.create block. */
+function extractStyleBody(src: string, styleKey: string): string {
+  const m = src.match(new RegExp(`\\n\\s*${styleKey}:\\s*\\{([\\s\\S]*?)\\n\\s*\\},`));
   if (!m) {
-    throw new Error("Could not locate `logo:` style block in BusinessWelcomeScreen");
+    throw new Error(`Could not locate \`${styleKey}:\` style block in BusinessWelcomeScreen`);
   }
   return m[1];
 }
 
+function extractStyleValue(styleBody: string, property: string): string | null {
+  const m = styleBody.match(new RegExp(`${property}:\\s*([^,\\n]+)`));
+  return m ? m[1].trim() : null;
+}
+
 describe("ORCH-1084 BusinessWelcomeScreen — adversarial logo regression", () => {
-  test("A. logo style declares a SQUARE aspect ratio — no wide/sliver ratio can regress", () => {
-    const body = extractLogoStyleBody(source);
+  test("A. logo wrapper and Image declare explicit equal dimensions — no 2000px web box leak", () => {
+    expect(source).toContain("const LOGO_SIZE = Math.min(s(220), 220);");
+    expect(source).toContain('const WEB_LOGO_SRC = "/brand/mingla-business-logo.png";');
+    expect(source).toContain('React.createElement("img"');
+    expect(source).toContain("src: WEB_LOGO_SRC");
+    expect(source).toContain('alt: "Mingla Business"');
+    expect(source).toContain('objectFit: "contain"');
+    expect(source).toContain("opacity: 1");
+
+    const containerBody = extractStyleBody(source, "logoContainer");
+    const logoBody = extractStyleBody(source, "logo");
+
+    for (const [name, body] of [
+      ["logoContainer", containerBody],
+      ["logo", logoBody],
+    ] as const) {
+      const width = extractStyleValue(body, "width");
+      const height = extractStyleValue(body, "height");
+      expect(width).toBe("LOGO_SIZE");
+      expect(height).toBe("LOGO_SIZE");
+      expect(width).toBe(height);
+
+      // Production failure signature: width was constrained but height leaked
+      // from the 2000px natural PNG. Percent max dimensions are not enough.
+      expect(body).not.toMatch(/maxWidth:\s*["']/);
+      expect(body).not.toMatch(/maxHeight:\s*["']/);
+      expect(body).not.toMatch(/height:\s*2000/);
+      expect(body).not.toMatch(/opacity:\s*0/);
+      expect(name).toBeTruthy();
+    }
+  });
+
+  test("B. logo style declares a SQUARE aspect ratio — no wide/sliver ratio can regress", () => {
+    const body = extractStyleBody(source, "logo");
 
     // There must be an aspectRatio declaration at all.
     const aspectMatch = body.match(/aspectRatio:\s*([^,\n]+)/);
@@ -73,7 +113,7 @@ describe("ORCH-1084 BusinessWelcomeScreen — adversarial logo regression", () =
     expect(/aspectRatio:\s*2\.8/.test(source)).toBe(false);
   });
 
-  test("B. the brand name renders as a visible <Text> AT MOST once (no duplicate mark)", () => {
+  test("C. the brand name renders as a visible <Text> AT MOST once (no duplicate mark)", () => {
     // Count rendered <Text>...Mingla Business...</Text> NODES (the old badge was
     // `<Text style={styles.businessBadge}>Mingla Business</Text>`). The logo
     // Image carries the brand name only via accessibilityLabel, which is an
@@ -82,14 +122,17 @@ describe("ORCH-1084 BusinessWelcomeScreen — adversarial logo regression", () =
       source.match(/<Text[^>]*>\s*Mingla Business\s*<\/Text>/g) || [];
     expect(textNodeMatches.length).toBe(0);
 
-    // And the brand name must appear exactly once as an accessibilityLabel
-    // (on the single Image) — proving there is one, and only one, brand mark.
+    // Native has one accessibilityLabel; web has one alt. The visible text
+    // duplicate remains banned above.
     const a11yLabelMatches =
       source.match(/accessibilityLabel="Mingla Business"/g) || [];
     expect(a11yLabelMatches.length).toBe(1);
+
+    const webAltMatches = source.match(/alt:\s*"Mingla Business"/g) || [];
+    expect(webAltMatches.length).toBe(1);
   });
 
-  test("C. logo source is the SQUARE business asset, not the wide consumer wordmark", () => {
+  test("D. logo source is the SQUARE business asset, not the wide consumer wordmark", () => {
     // The wide consumer mark must never be the welcome-screen logo source.
     expect(source).not.toContain("mingla_official_logo.png");
 
@@ -110,12 +153,19 @@ describe("ORCH-1084 BusinessWelcomeScreen — adversarial logo regression", () =
     expect(width).toBeGreaterThan(0);
   });
 
-  test("D. the <Image source={logo}> actually wears styles.logo (square ratio is applied)", () => {
-    // The Image element binding the logo must reference styles.logo so the
-    // square aspectRatio is applied to what renders.
+  test("E. native Image wears styles.logo and web img uses the public logo URI", () => {
+    // The native Image element binding the logo must reference styles.logo so
+    // the square dimensions are applied to what renders on iOS/Android.
     const imageBlock = source.match(/<Image\s+source=\{logo\}[\s\S]*?\/>/);
     expect(imageBlock).not.toBeNull();
     expect(imageBlock![0]).toContain("style={styles.logo}");
     expect(imageBlock![0]).toContain('resizeMode="contain"');
+
+    const webImageBlock = source.match(/React\.createElement\("img"[\s\S]*?\}\)/);
+    expect(webImageBlock).not.toBeNull();
+    expect(webImageBlock![0]).toContain("src: WEB_LOGO_SRC");
+    expect(webImageBlock![0]).toContain("width: LOGO_SIZE");
+    expect(webImageBlock![0]).toContain("height: LOGO_SIZE");
+    expect(webImageBlock![0]).toContain("opacity: 1");
   });
 });

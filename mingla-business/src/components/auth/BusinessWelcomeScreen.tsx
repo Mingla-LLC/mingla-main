@@ -37,6 +37,8 @@ const logo = require("../../../assets/brand/mingla-business-logo.png");
 
 const TERMS_URL = "https://mingla.app/terms";
 const PRIVACY_URL = "https://mingla.app/privacy";
+const LOGO_SIZE = Math.min(s(220), 220);
+const WEB_LOGO_SRC = "/brand/mingla-business-logo.png";
 
 export interface BusinessWelcomeScreenProps {
   onGoogleSignIn: () => Promise<void>;
@@ -494,13 +496,28 @@ export default function BusinessWelcomeScreen({
               },
             ]}
           >
-            <Image
-              source={logo}
-              style={styles.logo}
-              resizeMode="contain"
-              accessibilityLabel="Mingla Business"
-              accessibilityRole="image"
-            />
+            {Platform.OS === "web" ? (
+              React.createElement("img", {
+                src: WEB_LOGO_SRC,
+                alt: "Mingla Business",
+                role: "img",
+                style: {
+                  width: LOGO_SIZE,
+                  height: LOGO_SIZE,
+                  objectFit: "contain",
+                  display: "block",
+                  opacity: 1,
+                },
+              })
+            ) : (
+              <Image
+                source={logo}
+                style={styles.logo}
+                resizeMode="contain"
+                accessibilityLabel="Mingla Business"
+                accessibilityRole="image"
+              />
+            )}
           </Animated.View>
 
           {mode === "idle" && (
@@ -846,19 +863,22 @@ const styles = StyleSheet.create({
     paddingBottom: vs(48),
   },
   logoContainer: {
+    width: LOGO_SIZE,
+    height: LOGO_SIZE,
     alignItems: "center",
+    justifyContent: "center",
     marginBottom: vs(18),
-    flexShrink: 1,
+    flexShrink: 0,
   },
-  // ORCH-1084 — official square Mingla Business logo lockup
+  // ORCH-1084 — official square Mingla Business logo lockup (native path)
   // (assets/brand/mingla-business-logo.png, 2000x2000, "Mingla" wordmark +
-  // pretzel symbol + "BUSINESS" pill). aspectRatio:1 matches the source so it
-  // renders un-squashed; the prior 1356/480 ratio was for the wide consumer
-  // wordmark and letterboxed this square asset. Replaces the orange
-  // "Mingla Business" text badge — the logo IS the brand mark.
+  // pretzel symbol + "BUSINESS" pill). The web path above uses a plain DOM
+  // image because RN Web's Image internals can keep the actual <img>
+  // opacity-zero. Replaces the orange "Mingla Business" text badge — the logo
+  // IS the brand mark.
   logo: {
-    width: s(220),
-    maxWidth: "62%",
+    width: LOGO_SIZE,
+    height: LOGO_SIZE,
     aspectRatio: 1,
   },
   headlineRow: {
