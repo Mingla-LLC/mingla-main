@@ -31,12 +31,21 @@
 
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+// ORCH-1081 — wrap the invite email through the Mingla brand shell
+// (header/hero/footer). renderShell handles the outer wrapper; we provide the
+// inner bodyHtml. escapeHtml is the canonical escape; reuse it here so any
+// caller-provided string (brand name, inviter name, personal note) is
+// rendered safely.
+import { renderShell } from "../_shared/email/shell.ts";
+import { escapeHtml as sharedEscapeHtml } from "../_shared/email/escape.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, apikey, content-type",
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
+
+const PERSONAL_NOTE_MAX = 280;
 
 function json(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
@@ -68,6 +77,11 @@ export interface InvitePayload {
   invitee_email: string;
   invitee_name: string;
   role: string;
+  // ORCH-1081 — optional partner-attribution payload. personal_note appears in
+  // the email body when present. partner_setup tells the renderer to switch
+  // to the "Set up for you by X" attribution + "Accept & set up X" CTA.
+  personal_note?: string;
+  partner_setup?: boolean;
 }
 
 export type ValidationOutcome =
@@ -97,6 +111,12 @@ export function validateInvite(raw: unknown): ValidationOutcome {
   }
   if (!VALID_ROLES.has(role)) fields.push("role");
 
+  // ORCH-1081 — optional personal_note (≤280 chars) + partner_setup flag.
+  const rawNote = typeof body.personal_note === "string" ? body.personal_note : "";
+  const personalNote = rawNote.trim();
+  if (personalNote.length > PERSONAL_NOTE_MAX) fields.push("personal_note");
+  const partnerSetup = body.partner_setup === true;
+
   if (fields.length > 0) return { ok: false, fields };
   return {
     ok: true,
@@ -105,6 +125,8 @@ export function validateInvite(raw: unknown): ValidationOutcome {
       invitee_email: inviteeEmail,
       invitee_name: inviteeName,
       role,
+      personal_note: personalNote.length > 0 ? personalNote : undefined,
+      partner_setup: partnerSetup,
     },
   };
 }
@@ -129,13 +151,25 @@ export async function sha256Hex(input: string): Promise<string> {
 }
 
 function escHtml(s: string): string {
-  return s
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
+  // Local alias kept in case existing tests reference it. Delegates to the
+  // canonical shared escapeHtml so we don't ship two implementations.
+  return sharedEscapeHtml(s);
 }
 
+/**
+ * ORCH-1081 — Build the invite email, wrapped through the shared Mingla
+ * email shell (renderShell). When `partnerSetup=true`, the layout swaps to
+ * partner-attribution copy and the brand cover image renders as the email
+ * hero banner. Falls back to the standard Mingla logo header when no cover.
+ *
+ * Inputs added beyond the ORCH-1050 shape:
+ *   - brandCoverUrl       — direct URL to the brand's cover (image only, no
+ *                            video — shell hero won't render a video tag).
+ *   - personalNote        — optional message from the inviter (≤280 chars).
+ *   - partnerSetup        — when true, partner-mode body + CTA copy.
+ *   - logoUrl/supportEmail/footerAddress — shell config; sourced from
+ *                            env in the caller and threaded through here.
+ */
 export function buildInviteEmail(input: {
   inviteeName: string;
   inviteeEmail: string;
@@ -144,28 +178,140 @@ export function buildInviteEmail(input: {
   role: string;
   acceptUrl: string;
   from: string;
+  brandCoverUrl?: string | null;
+  brandCoverMediaType?: string | null;
+  personalNote?: string | null;
+  partnerSetup?: boolean;
+  logoUrl?: string;
+  supportEmail?: string;
+  footerAddress?: string;
 }): { from: string; to: string[]; subject: string; html: string; text: string } {
   const roleLabel = roleDisplay(input.role);
-  const subject = `${input.brandName} invited you to join their team on Mingla`;
-  const html = `<div style="font-family:system-ui,-apple-system,sans-serif;font-size:15px;color:#0e0e10;max-width:560px;">
-  <p>Hi ${escHtml(input.inviteeName)},</p>
-  <p><strong>${escHtml(input.inviterName)}</strong> invited you to join
-  <strong>${escHtml(input.brandName)}</strong> on Mingla as
-  <strong>${escHtml(roleLabel)}</strong>.</p>
-  <p style="margin:24px 0;">
-    <a href="${escHtml(input.acceptUrl)}"
-       style="background:#EB7825;color:#fff;text-decoration:none;padding:12px 20px;border-radius:8px;font-weight:600;display:inline-block;">
-      Accept invitation
-    </a>
-  </p>
-  <p style="color:#6b7280;font-size:13px;">This link expires in ${EXPIRY_DAYS} days.
-  If the button doesn't work, copy and paste this URL into your browser:</p>
-  <p style="word-break:break-all;font-size:12px;color:#6b7280;">${escHtml(input.acceptUrl)}</p>
-</div>`;
-  const text =
-    `Hi ${input.inviteeName},\n\n${input.inviterName} invited you to join ` +
-    `${input.brandName} on Mingla as ${roleLabel}.\n\nAccept: ${input.acceptUrl}\n\n` +
-    `This link expires in ${EXPIRY_DAYS} days.`;
+  const partnerSetup = input.partnerSetup === true;
+
+  // Shell config — fall back to defaults that match the rest of the codebase.
+  // Production paths inject MINGLA_LOGO_URL / MINGLA_FOOTER_ADDRESS from env;
+  // tests can override.
+  const logoUrl = input.logoUrl ??
+    "https://usemingla.com/email-assets/mingla-logo.png";
+  const supportEmail = input.supportEmail ?? "support@usemingla.com";
+  const footerAddress = input.footerAddress ?? "Mingla, hello@usemingla.com";
+
+  // Only use the brand cover as the email hero when it's a still image.
+  // Skip video covers (and gifs are okay — most mail clients render them).
+  const useBrandHero = typeof input.brandCoverUrl === "string" &&
+    input.brandCoverUrl.length > 0 &&
+    input.brandCoverMediaType !== "video";
+
+  const subject = partnerSetup
+    ? `${input.brandName} — your Mingla brand is ready to claim`
+    : `${input.brandName} invited you to join their team on Mingla`;
+
+  const preheader = partnerSetup
+    ? `${input.inviterName} built ${input.brandName} for you on Mingla. Accept to become the owner.`
+    : `${input.inviterName} invited you to ${input.brandName} as ${roleLabel}.`;
+
+  // Body content — paragraph + CTA + optional personal note + fine print.
+  // Every interpolation flows through sharedEscapeHtml so the ORCH-0785-C
+  // buyer-string-escape gate sees an escapeHtml(...) form at every call site.
+  const ctaLabel = partnerSetup
+    ? `Accept & set up ${input.brandName}`
+    : "Accept invitation";
+
+  const attributionChip = partnerSetup
+    ? `<p style="margin:0 0 16px 0;">
+        <span style="display:inline-block;padding:6px 12px;border-radius:999px;background:#FFF6F1;color:#FF6B2C;font-size:12px;font-weight:600;letter-spacing:0.3px;text-transform:uppercase;">
+          Set up for you by ${sharedEscapeHtml(input.inviterName)}
+        </span>
+      </p>`
+    : "";
+
+  const bodyParagraph = partnerSetup
+    ? `<p style="margin:0 0 16px 0;font-size:15px;line-height:1.55;color:#0F1115;">
+        ${sharedEscapeHtml(input.inviterName)} has built
+        <strong>${sharedEscapeHtml(input.brandName)}</strong>
+        for you on Mingla — events, cover photos, description. Accept to become
+        the owner and connect your bank so customers can buy tickets and you can
+        get paid.
+      </p>`
+    : `<p style="margin:0 0 16px 0;font-size:15px;line-height:1.55;color:#0F1115;">
+        <strong>${sharedEscapeHtml(input.inviterName)}</strong> invited you to join
+        <strong>${sharedEscapeHtml(input.brandName)}</strong> on Mingla as
+        <strong>${sharedEscapeHtml(roleLabel)}</strong>.
+      </p>`;
+
+  const personalNoteBlock =
+    typeof input.personalNote === "string" && input.personalNote.length > 0
+      ? `<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="width:100%;margin:0 0 16px 0;">
+          <tr>
+            <td style="padding:14px 16px;background:#FFF6F1;border-left:3px solid #FF6B2C;border-radius:6px;">
+              <p style="margin:0;font-size:14px;line-height:1.5;color:#0F1115;font-style:italic;">
+                "${sharedEscapeHtml(input.personalNote)}"
+              </p>
+              <p style="margin:6px 0 0 0;font-size:12px;color:#5B6172;">
+                — ${sharedEscapeHtml(input.inviterName)}
+              </p>
+            </td>
+          </tr>
+        </table>`
+      : "";
+
+  // CTA button — table-based for client compatibility.
+  const cta = `<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:24px 0;">
+    <tr>
+      <td style="background:#FF6B2C;border-radius:8px;">
+        <a href="${sharedEscapeHtml(input.acceptUrl)}"
+           style="display:inline-block;padding:14px 24px;color:#FFFFFF;text-decoration:none;font-weight:600;font-size:15px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
+          ${sharedEscapeHtml(ctaLabel)}
+        </a>
+      </td>
+    </tr>
+  </table>`;
+
+  const finePrint = `<p style="margin:16px 0 0 0;font-size:13px;line-height:1.5;color:#5B6172;">
+      This link expires in ${EXPIRY_DAYS} days. If the button doesn't work, copy
+      and paste this URL into your browser:
+    </p>
+    <p style="margin:6px 0 0 0;word-break:break-all;font-size:12px;color:#5B6172;">
+      ${sharedEscapeHtml(input.acceptUrl)}
+    </p>
+    <p style="margin:18px 0 0 0;font-size:12px;color:#5B6172;">
+      Your bank details go directly to Stripe — Mingla never sees them.
+    </p>`;
+
+  // Hi line — render only when we don't lean on the hero (the hero is itself
+  // a brand-name overlay equivalent).
+  const greeting = `<p style="margin:0 0 12px 0;font-size:15px;line-height:1.55;color:#0F1115;">
+      Hi ${sharedEscapeHtml(input.inviteeName)},
+    </p>`;
+
+  const bodyHtml = `${greeting}
+    ${attributionChip}
+    ${bodyParagraph}
+    ${personalNoteBlock}
+    ${cta}
+    ${finePrint}`;
+
+  const html = renderShell({
+    preheader,
+    bodyHtml,
+    supportEmail,
+    logoUrl,
+    footerAddress,
+    brandHeaderImageUrl: useBrandHero ? (input.brandCoverUrl ?? null) : null,
+  });
+
+  // Plain-text fallback — keep it short, mirror the body copy.
+  const textBody = partnerSetup
+    ? `Hi ${input.inviteeName},\n\n${input.inviterName} has built ${input.brandName} for you on Mingla. ` +
+      `Accept to become the owner and connect your bank so customers can buy tickets.\n\n`
+    : `Hi ${input.inviteeName},\n\n${input.inviterName} invited you to join ${input.brandName} on Mingla as ${roleLabel}.\n\n`;
+  const noteLine =
+    typeof input.personalNote === "string" && input.personalNote.length > 0
+      ? `Note: "${input.personalNote}"\n\n`
+      : "";
+  const text = `${textBody}${noteLine}Accept: ${input.acceptUrl}\n\nThis link expires in ${EXPIRY_DAYS} days.`;
+
   return {
     from: input.from,
     to: [input.inviteeEmail],
@@ -299,9 +445,13 @@ export async function handler(req: Request): Promise<Response> {
     }
 
     // Brand lookup for the email template + 404 surface.
+    // ORCH-1081 — also pull cover_media_url + cover_media_type so the email
+    // shell can render the brand cover as a hero banner; and partner_setup so
+    // we know which copy variant the email should use even if the caller
+    // forgot the partner_setup flag in the request body.
     const { data: brandRow, error: brandErr } = await service
       .from("brands")
-      .select("id, display_name")
+      .select("id, name, cover_media_url, cover_media_type, partner_setup")
       .eq("id", payload.brand_id)
       .is("deleted_at", null)
       .maybeSingle();
@@ -373,8 +523,32 @@ export async function handler(req: Request): Promise<Response> {
       businessOrigin.replace(/\/+$/, "")
     }/accept-brand-invitation?token=${encodeURIComponent(token)}`;
 
-    const inviterDisplay = inviterEmail || "A teammate";
-    const brandDisplay = brandRow.display_name as string ?? "your brand";
+    // ORCH-1081 — inviter display: pull the inviter's display_name from
+    // creator_accounts when available so the email reads "Seth invited you"
+    // rather than "seth@example.com invited you". Falls back to email.
+    let inviterDisplay = inviterEmail || "A teammate";
+    try {
+      const { data: inviterRow } = await service
+        .from("creator_accounts")
+        .select("display_name, business_name")
+        .eq("id", userId)
+        .maybeSingle();
+      const name = (inviterRow?.display_name as string | null) ??
+        (inviterRow?.business_name as string | null) ?? null;
+      if (name && name.trim().length > 0) inviterDisplay = name.trim();
+    } catch {
+      /* fall back to email */
+    }
+
+    const brandDisplay = brandRow.name as string ?? "your brand";
+    const brandCoverUrl = (brandRow.cover_media_url as string | null) ?? null;
+    const brandCoverMediaType = (brandRow.cover_media_type as string | null) ??
+      null;
+    // Effective partner_setup: client flag wins, but if brand has partner_setup
+    // already persisted we respect that too (covers the case where an admin
+    // toggles flag client-side without the wizard).
+    const effectivePartnerSetup = payload.partner_setup === true ||
+      brandRow.partner_setup === true;
 
     const resendKey = Deno.env.get("RESEND_API_KEY") ?? "";
     if (!resendKey) {
@@ -397,6 +571,15 @@ export async function handler(req: Request): Promise<Response> {
       role: payload.role,
       acceptUrl,
       from,
+      brandCoverUrl,
+      brandCoverMediaType,
+      personalNote: payload.personal_note ?? null,
+      partnerSetup: effectivePartnerSetup,
+      // ORCH-0785 shell env — share the same env keys the rest of the
+      // transactional email pipeline uses.
+      logoUrl: Deno.env.get("MINGLA_LOGO_URL") ?? undefined,
+      supportEmail: Deno.env.get("SUPPORT_EMAIL") ?? undefined,
+      footerAddress: Deno.env.get("MINGLA_FOOTER_ADDRESS") ?? undefined,
     });
 
     const sent = await sendInviteEmail(resendKey, emailPayload);
@@ -417,10 +600,39 @@ export async function handler(req: Request): Promise<Response> {
         after: {
           role: payload.role,
           invitee_email: payload.invitee_email,
+          partner_setup: effectivePartnerSetup,
         },
       });
     } catch {
       /* ignore audit failures */
+    }
+
+    // ORCH-1081 — partner_brand_links insert. Only when this is an OWNERSHIP
+    // invite (role=brand_owner) for a partner-setup brand. ON CONFLICT
+    // DO NOTHING handles re-invite-after-cancel races (the unique index is
+    // partial WHERE cancelled_at IS NULL, so two cancelled rows coexist).
+    if (effectivePartnerSetup && payload.role === "brand_owner") {
+      try {
+        const { error: linkErr } = await service
+          .from("partner_brand_links")
+          .insert({
+            partner_account_id: userId,
+            brand_id: payload.brand_id,
+            invited_owner_email: payload.invitee_email,
+            personal_note: payload.personal_note ?? null,
+          });
+        if (linkErr && linkErr.code !== PG_UNIQUE_VIOLATION) {
+          console.warn(
+            "[invite-brand-member] partner_brand_links insert non-fatal failure",
+            linkErr.message,
+          );
+        }
+      } catch (linkThrow) {
+        console.warn(
+          "[invite-brand-member] partner_brand_links insert threw (non-fatal)",
+          linkThrow instanceof Error ? linkThrow.message : String(linkThrow),
+        );
+      }
     }
 
     return json({ invitation_id: inserted.id }, 201);

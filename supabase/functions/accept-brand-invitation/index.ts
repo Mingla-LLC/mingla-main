@@ -253,6 +253,13 @@ export async function handler(req: Request): Promise<Response> {
     // owner + admins (EXCLUDING the member who just joined). Idempotent on
     // brandId:memberUserId. Best-effort: a notify failure never fails the
     // accept (the invitation is already committed by the RPC above).
+    //
+    // ORCH-1081 — surface brand_slug + new_owner_first_name to the client so
+    // the post-accept celebration page can render the right copy. Also fire
+    // business.partner_transfer_completed to the partner who set up the brand
+    // (when partner_brand_links has a matching row).
+    let resolvedBrandSlug: string | null = null;
+    let resolvedNewOwnerFirstName: string | null = null;
     try {
       const result = (rpcResult ?? {}) as Record<string, unknown>;
       const brandId = typeof result.brand_id === "string" ? result.brand_id : null;
@@ -269,12 +276,19 @@ export async function handler(req: Request): Promise<Response> {
         memberName = (nameRow?.display_name as string | null) ??
           (nameRow?.business_name as string | null) ?? null;
 
+        // ORCH-1081 — also pull slug + partner_setup so the celebration
+        // screen redirect can use the slug and we know whether to fire the
+        // partner-transfer notification.
         const { data: brandRow } = await service
           .from("brands")
-          .select("name")
+          .select("name, slug, partner_setup")
           .eq("id", brandId)
           .maybeSingle();
         const brandName = (brandRow?.name as string | null) ?? "your brand";
+        resolvedBrandSlug = (brandRow?.slug as string | null) ?? null;
+        resolvedNewOwnerFirstName = memberName
+          ? memberName.split(/\s+/)[0]
+          : null;
         const roleLabel = humanizeRole(memberRole);
 
         const recipients = await getBrandTeamUserIdsByRoles(
@@ -310,6 +324,67 @@ export async function handler(req: Request): Promise<Response> {
         }
         // namePart kept for parity with Sub-D fallback copy intent.
         void namePart;
+
+        // ORCH-1081 — business.partner_transfer_completed: notify the partner
+        // who set up the brand. Idempotent on brandId:partner_account_id.
+        // We resolve the partner from partner_brand_links (matched by brand_id
+        // + invitee email = invitation.email). The accept-RPC already stamped
+        // accepted_at; the partner row exists.
+        try {
+          // The invitation's email is the canonical match key. Pull it off
+          // brand_invitations via the rpc payload's brand_id + accepted_by
+          // chain, but the simpler path: read the most recent accepted partner
+          // link for this brand whose invited_owner_email matches the joining
+          // member's email.
+          const { data: memberEmailRow } = await service
+            .from("creator_accounts")
+            .select("id")
+            .eq("id", account.id)
+            .maybeSingle();
+          // Auth-user email lookup is needed because creator_accounts doesn't
+          // carry email; the JWT does. We already have it via userResult.
+          const memberEmail = (userResult.user.email ?? "").toLowerCase();
+          if (memberEmail.length > 0) {
+            const { data: linkRow } = await service
+              .from("partner_brand_links")
+              .select("partner_account_id, accepted_at, cancelled_at")
+              .eq("brand_id", brandId)
+              .eq("invited_owner_email", memberEmail)
+              .is("cancelled_at", null)
+              .maybeSingle();
+            const partnerAccountId = (linkRow?.partner_account_id as string | null) ??
+              null;
+            if (partnerAccountId && partnerAccountId !== account.id) {
+              const newOwnerLabel = memberName ?? "The owner";
+              await dispatchNotification({
+                userId: partnerAccountId,
+                brandId,
+                type: "business.partner_transfer_completed",
+                title: `${brandName} accepted your invite`,
+                body:
+                  `${newOwnerLabel} is now the owner. Keep creating events — you'll earn 0.15% on every ticket sold.`,
+                data: {
+                  brandName,
+                  newOwnerUserId: account.id,
+                  newOwnerName: memberName ?? undefined,
+                },
+                relatedId: brandId,
+                relatedType: "brand",
+                idempotencyKey:
+                  `business.partner_transfer_completed:${brandId}:${partnerAccountId}`,
+                deepLink: `mingla-business://partner/brands`,
+              });
+            }
+          }
+          void memberEmailRow;
+        } catch (partnerNotifyErr) {
+          console.warn(
+            "[accept-brand-invitation] partner_transfer_completed notify threw (non-fatal):",
+            partnerNotifyErr instanceof Error
+              ? partnerNotifyErr.message
+              : String(partnerNotifyErr),
+          );
+        }
       }
     } catch (teamNotifyErr) {
       console.warn(
@@ -320,7 +395,15 @@ export async function handler(req: Request): Promise<Response> {
       );
     }
 
-    return json(rpcResult ?? {}, 200);
+    // ORCH-1081 — extend response with the slug + first name so the celebration
+    // page can render without an extra round-trip. partner_setup already flows
+    // back from the RPC (added in the migration); we pass it through.
+    const responseBody = {
+      ...(rpcResult as Record<string, unknown> | null ?? {}),
+      brand_slug: resolvedBrandSlug,
+      new_owner_first_name: resolvedNewOwnerFirstName,
+    };
+    return json(responseBody, 200);
   } catch (err) {
     console.error(
       "[accept-brand-invitation] unexpected error",

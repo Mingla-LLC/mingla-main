@@ -28,6 +28,8 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Stack, useRouter } from "expo-router";
 import * as WebBrowser from "expo-web-browser";
+// ORCH-1081 — AsyncStorage for the one-time welcome-to-portfolio toast.
+import AsyncStorage from "@react-native-async-storage/async-storage";
 
 import {
   useDetachPartnerStripe,
@@ -39,6 +41,9 @@ import {
   usePartnerEarningsSummary,
   usePartnerSplits,
 } from "../../src/hooks/usePartnerSplits";
+// ORCH-1081 — partner_brand_links drives the "Ready to earn" nudge + the
+// smarter splits empty-state copy.
+import { usePartnerBrandLinks } from "../../src/hooks/usePartnerBrandLinks";
 import type {
   PartnerSplitRow,
   PartnerSplitStatus,
@@ -202,6 +207,11 @@ export default function PartnerEarningsScreen(): React.ReactElement {
         />
       </View>
 
+      {/* ORCH-1081 — welcome-to-portfolio toast: fires once per (partner,
+          brand_id) pair when the link first goes accepted. Tracks dismissal
+          via AsyncStorage so it never replays. */}
+      <PortfolioWelcomeToast />
+
       <ScrollView contentContainerStyle={styles.scroll}>
         {statusQuery.isLoading ? (
           <View style={styles.center}>
@@ -253,11 +263,135 @@ export default function PartnerEarningsScreen(): React.ReactElement {
               onDisconnect={handleDisconnectStripe}
               disconnecting={detachStripe.isPending}
             />
+            {/* ORCH-1081 — Ready-to-earn nudge. Visible only when the partner is
+                connected (status=active) AND has zero partner_brand_links. */}
+            {statusQuery.data?.status === "active" ? <ReadyToEarnNudge /> : null}
             <PartnerSplitsSection />
           </>
         )}
       </ScrollView>
     </SafeAreaView>
+  );
+}
+
+/**
+ * ORCH-1081 — Ready-to-earn nudge card. Renders only when the active partner
+ * has ZERO partner_brand_links. CTA drives them to the brand-creation wizard
+ * with partner_mode=client so step 1 lands with mode='client' already set.
+ */
+function ReadyToEarnNudge(): React.ReactElement | null {
+  const router = useRouter();
+  const linksQuery = usePartnerBrandLinks();
+  if (linksQuery.isLoading) return null;
+  const links = linksQuery.data ?? [];
+  if (links.length > 0) return null;
+  return (
+    <GlassCard variant="elevated" padding={spacing.lg}>
+      <Text style={styles.nudgeEyebrow}>✨ READY TO START EARNING?</Text>
+      <Text style={styles.cardTitle}>Set up your first partner brand</Text>
+      <Text style={styles.cardBody}>
+        Partners earn 0.15% of every ticket sold on brands you help set up.
+      </Text>
+      <Text style={styles.nudgeStep}>① Create a brand for a venue you know</Text>
+      <Text style={styles.nudgeStep}>② Build it out (events, cover, etc.)</Text>
+      <Text style={styles.nudgeStep}>③ Invite the real owner</Text>
+      <Pressable
+        accessibilityLabel="Set up your first partner brand"
+        style={styles.primaryBtn}
+        onPress={() => router.push("/brand/new?partner_mode=client" as never)}
+      >
+        <Text style={styles.primaryBtnText}>
+          Set up your first partner brand →
+        </Text>
+      </Pressable>
+    </GlassCard>
+  );
+}
+
+/**
+ * ORCH-1081 — Welcome-to-portfolio toast. On first /partner/earnings open
+ * AFTER a partner_brand_links row went accepted, we surface a celebratory
+ * dismissable toast. Dismissal is persisted per (link.id) so it never
+ * replays — we treat each accepted link as a one-shot.
+ */
+const WELCOME_DISMISSED_KEY = "mingla-business:partner:portfolio:welcomeDismissed:v1";
+
+function PortfolioWelcomeToast(): React.ReactElement | null {
+  const linksQuery = usePartnerBrandLinks();
+  const [showLink, setShowLink] = useState<{ id: string; brand: string } | null>(
+    null,
+  );
+  const [dismissedIds, setDismissedIds] = useState<Set<string> | null>(null);
+
+  // Load dismissed ids once.
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const raw = await AsyncStorage.getItem(WELCOME_DISMISSED_KEY);
+        if (cancelled) return;
+        if (raw === null) {
+          setDismissedIds(new Set());
+          return;
+        }
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) {
+          setDismissedIds(new Set(parsed.filter((v): v is string => typeof v === "string")));
+        } else {
+          setDismissedIds(new Set());
+        }
+      } catch {
+        if (!cancelled) setDismissedIds(new Set());
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // Pick the first un-dismissed accepted link.
+  useEffect(() => {
+    if (dismissedIds === null) return;
+    const links = linksQuery.data ?? [];
+    const accepted = links.find(
+      (r) => r.accepted_at !== null && !dismissedIds.has(r.id),
+    );
+    if (accepted) {
+      setShowLink({
+        id: accepted.id,
+        brand: accepted.brand?.name ?? "your brand",
+      });
+    }
+  }, [linksQuery.data, dismissedIds]);
+
+  const handleDismiss = useCallback((): void => {
+    if (showLink === null || dismissedIds === null) return;
+    const next = new Set(dismissedIds);
+    next.add(showLink.id);
+    setDismissedIds(next);
+    setShowLink(null);
+    void AsyncStorage.setItem(
+      WELCOME_DISMISSED_KEY,
+      JSON.stringify(Array.from(next)),
+    ).catch(() => undefined);
+  }, [showLink, dismissedIds]);
+
+  if (showLink === null) return null;
+  return (
+    <View style={styles.welcomeToastWrap}>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel="Dismiss welcome message"
+        onPress={handleDismiss}
+        style={styles.welcomeToast}
+      >
+        <Text style={styles.welcomeToastText}>
+          🎉 Welcome aboard, partner of {showLink.brand}. You'll see splits
+          here once they connect Stripe and sell their first ticket.
+        </Text>
+        <Text style={styles.welcomeToastClose}>Tap to dismiss</Text>
+      </Pressable>
+    </View>
   );
 }
 
@@ -277,6 +411,9 @@ function PartnerSplitsSection(): React.ReactElement {
   const splitsQuery = usePartnerSplits(
     currencyFilter ? { currency: currencyFilter } : {},
   );
+  // ORCH-1081 — varies the empty-state copy depending on whether the partner
+  // already has brands in flight.
+  const linksQuery = usePartnerBrandLinks();
 
   const availableCurrencies = useMemo(() => {
     const set = new Set<string>();
@@ -312,13 +449,19 @@ function PartnerSplitsSection(): React.ReactElement {
   const splits = splitsQuery.data ?? [];
 
   if (totals.length === 0) {
+    // ORCH-1081 — copy varies based on partner_brand_links state.
+    const links = linksQuery.data ?? [];
+    const hasLinks = links.length > 0;
+    const firstBrandName = hasLinks
+      ? (links[0].brand?.name ?? "your brand")
+      : null;
+    const copy = hasLinks
+      ? `Almost there. You've set up ${firstBrandName}. You'll see your first split as soon as their Stripe is connected and tickets sell.`
+      : "You'll see your first split as soon as a brand you set up makes a sale.";
     return (
       <GlassCard variant="elevated" padding={spacing.lg}>
         <Text style={styles.cardTitle}>Splits</Text>
-        <Text style={styles.cardBody}>
-          No splits yet. As soon as a partnered event sells tickets, your
-          share lands here automatically.
-        </Text>
+        <Text style={styles.cardBody}>{copy}</Text>
       </GlassCard>
     );
   }
@@ -853,5 +996,37 @@ const styles = StyleSheet.create({
   },
   badgeText: {
     ...typography.micro,
+  },
+  // ORCH-1081 — Ready-to-earn nudge typography.
+  nudgeEyebrow: {
+    ...typography.labelCap,
+    color: accent.warm,
+    marginBottom: spacing.xs,
+  },
+  nudgeStep: {
+    ...typography.body,
+    color: textTokens.secondary,
+    marginTop: 4,
+  },
+  welcomeToastWrap: {
+    paddingHorizontal: spacing.md,
+    paddingTop: spacing.sm,
+  },
+  welcomeToast: {
+    backgroundColor: accent.tint,
+    borderRadius: radius.md,
+    paddingVertical: spacing.sm + 2,
+    paddingHorizontal: spacing.md,
+    borderWidth: 1,
+    borderColor: accent.border,
+  },
+  welcomeToastText: {
+    ...typography.body,
+    color: textTokens.primary,
+  },
+  welcomeToastClose: {
+    ...typography.caption,
+    color: textTokens.tertiary,
+    marginTop: 4,
   },
 });

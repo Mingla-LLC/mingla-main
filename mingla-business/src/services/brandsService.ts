@@ -229,6 +229,10 @@ export interface CreateBrandInput {
   tagline?: string;
   contact?: { email?: string; phone?: string };
   links?: Brand["links"];
+  // ORCH-1081 — when true, brands.partner_setup is set at insert time so the
+  // brand is permanently flagged as a partner-initiated setup. Flag is one-way
+  // (set at create; never edited).
+  partnerSetup?: boolean;
 }
 
 export interface SoftDeleteRejection {
@@ -273,6 +277,14 @@ export async function createBrand(
       links: input.links,
     },
   });
+  // ORCH-1081 — partner_setup flag is column-direct (not on the Brand UI type)
+  // so we set it on the raw insert payload rather than threading it through
+  // mapUiToBrandInsert / Brand. Column added in migration 20260920000000.
+  if (input.partnerSetup === true) {
+    // The DB column default is false; only stamp when true so the insert payload
+    // shape stays minimal.
+    (insertPayload as Record<string, unknown>).partner_setup = true;
+  }
 
   const { data, error } = await supabase
     .from("brands")

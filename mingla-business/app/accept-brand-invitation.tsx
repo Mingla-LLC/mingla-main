@@ -91,6 +91,26 @@ export default function AcceptBrandInvitationRoute(): React.ReactElement {
     router.replace(`/brand/${phase.result.brandId}/team` as never);
   }, [phase, router]);
 
+  // ORCH-1081 — once accept succeeds AND the brand was a partner setup, route
+  // immediately to the celebration screen instead of staying on the inline
+  // success card. This is the path most new owners take (link from email →
+  // sign in → accept → celebration). For non-partner-setup accepts, we keep
+  // the existing inline success card.
+  useEffect(() => {
+    if (phase.kind !== "success") return;
+    if (!phase.result.partnerSetup) return;
+    if (!phase.result.transferred) return;
+    const params = new URLSearchParams();
+    params.set("brand_id", phase.result.brandId);
+    if (phase.result.brandSlug) params.set("brand", phase.result.brandSlug);
+    if (phase.result.newOwnerFirstName) {
+      params.set("owner_name", phase.result.newOwnerFirstName);
+    }
+    router.replace(
+      `/accept-brand-invitation/success?${params.toString()}` as never,
+    );
+  }, [phase, router]);
+
   const handleGoHome = useCallback((): void => {
     router.replace("/(tabs)/home" as never);
   }, [router]);
