@@ -56,16 +56,15 @@ export function parseBrandStripeBalancesResponse(
 
 export async function fetchBrandStripeBalances(
   brandId: string,
-  accessToken?: string | null,
 ): Promise<BrandStripeBalancesResult> {
+  // No custom Authorization header: let supabase.functions.invoke use the
+  // client's CURRENT (auto-refreshed) session token. META-ORCH-1073 Sub-A5:
+  // passing useAuth()'s `session.access_token` sent a STALE token rejected by
+  // the edge fn's auth.getUser with 401 (same bug as refreshBrandStripeStatus).
   const { data, error } = await supabase.functions.invoke<RawBalancesResponse>(
     "brand-stripe-balances",
     {
       body: { brand_id: brandId },
-      headers:
-        typeof accessToken === "string" && accessToken.length > 0
-          ? { Authorization: `Bearer ${accessToken}` }
-          : undefined,
     },
   );
   if (error) throw error;
