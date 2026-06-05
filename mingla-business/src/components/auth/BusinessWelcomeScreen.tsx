@@ -498,12 +498,10 @@ export default function BusinessWelcomeScreen({
               source={logo}
               style={styles.logo}
               resizeMode="contain"
-              accessibilityLabel="Mingla logo"
+              accessibilityLabel="Mingla Business"
               accessibilityRole="image"
             />
           </Animated.View>
-
-          <Text style={styles.businessBadge}>Mingla Business</Text>
 
           {mode === "idle" && (
             <View
@@ -849,21 +847,19 @@ const styles = StyleSheet.create({
   },
   logoContainer: {
     alignItems: "center",
-    marginBottom: vs(12),
+    marginBottom: vs(18),
     flexShrink: 1,
   },
+  // ORCH-1084 — official square Mingla Business logo lockup
+  // (assets/brand/mingla-business-logo.png, 2000x2000, "Mingla" wordmark +
+  // pretzel symbol + "BUSINESS" pill). aspectRatio:1 matches the source so it
+  // renders un-squashed; the prior 1356/480 ratio was for the wide consumer
+  // wordmark and letterboxed this square asset. Replaces the orange
+  // "Mingla Business" text badge — the logo IS the brand mark.
   logo: {
-    width: s(180),
-    maxWidth: "50%",
-    aspectRatio: 1356 / 480,
-  },
-  businessBadge: {
-    fontSize: 13,
-    fontWeight: fontWeights.semibold,
-    color: colors.accent,
-    letterSpacing: 0.8,
-    textTransform: "uppercase",
-    marginBottom: vs(10),
+    width: s(220),
+    maxWidth: "62%",
+    aspectRatio: 1,
   },
   headlineRow: {
     flexDirection: "row",
