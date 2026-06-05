@@ -18,7 +18,15 @@ ORCH-1083 shipped the Phase 1 safe cut for Mingla Business web load reliability:
 - QA: `Mingla_Artifacts/reports/QA_ORCH-1083_BUSINESS_WEB_LOAD_PERF.md`
 - DIAG reap: zero diagnostic markers.
 - Orphan sweep: no scoped throwaway files besides the QA report added for close.
-- Deploy source: web deploy and native OTA must happen only from merged `main` per COMMS-0015/0018.
+- Deploy source: web deploy and native OTA happened only from merged `main` per COMMS-0015/0018.
+
+## Deploy Receipt
+
+- PR: #380 `Close ORCH-1083 [deploy]: business web Phase 1 load safe cut`
+- Merge commit: `1581e72700b1e08679737aeea1ed7e78c4ed36b7`
+- Vercel business deploy: PASS
+- iOS OTA: group `556b2924-f66b-40ff-92da-dbadc68d77c1`, update `019e995b-e173-7755-8e2d-e042eb642b74`
+- Android OTA: group `951aec9d-a62b-4304-9df8-3a873cdd6cad`, update `019e995c-3268-71f3-b5c6-b0d26f6fe1d7`
 
 ## Commit Message
 
