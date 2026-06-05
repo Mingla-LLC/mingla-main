@@ -200,7 +200,12 @@ export const BrandPaystackOnboardView: React.FC<Props> = ({
         animationType="slide"
         onRequestClose={() => setPickerOpen(false)}
       >
-        <Pressable style={styles.backdrop} onPress={() => setPickerOpen(false)} />
+        <Pressable
+          style={styles.backdrop}
+          accessibilityRole="button"
+          accessibilityLabel="Close bank picker"
+          onPress={() => setPickerOpen(false)}
+        />
         <View style={styles.sheet}>
           <Text style={styles.sheetTitle}>Choose your bank</Text>
           <Input
@@ -219,6 +224,7 @@ export const BrandPaystackOnboardView: React.FC<Props> = ({
                 <Pressable
                   key={b.code}
                   accessibilityRole="button"
+                  accessibilityLabel={b.name}
                   onPress={() => onPickBank(b.code, b.name)}
                   style={styles.bankRow}
                 >
