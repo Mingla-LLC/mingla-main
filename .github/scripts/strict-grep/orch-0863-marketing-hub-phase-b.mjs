@@ -1807,6 +1807,9 @@ function checkNoNewBackendFiles() {
     "supabase/functions/partner-stripe-detach/index.ts",
     "supabase/functions/admin-review-venue-claim/index.ts",
     "supabase/functions/admin-review-venue-claim/__tests__/orch_1082_push_app_routing.test.ts",
+    // ORCH-1082 TESTER adversarial backend test (routing-breadth no-regression
+    // sweep on resolveOneSignalApp): test-only, ships with the closing PR.
+    "supabase/functions/_shared/__tests__/orch_1082_resolve_app_no_regression.test.ts",
   ];
   const ALLOWLIST = [
     ...ORCH_1082_BACKEND_ALLOWLIST,
