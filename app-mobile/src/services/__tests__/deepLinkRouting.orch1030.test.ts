@@ -1,22 +1,23 @@
 // @ts-nocheck
+// [TEST-MOD-APPROVED ORCH-1080] — the SESSION-routing assertions in this file
+// were updated from the ORCH-1030 "session → HOME" target to the ORCH-1080
+// "session → GROUP CHAT (connections/messages)" target. ORCH-1080 is the
+// operator-locked (2026-06-04) evolution: a session/collab notification now
+// lands in the session's group chat (Messages tab), where the in-chat CTA
+// reaches the deck (META-ORCH-0929 immutable: the deck lives in CollabDeckSheet,
+// not Home). The old ORCH-1030 `setPendingSessionOpen` Home-landing seam was a
+// proven no-op (index.tsx just cleared the id). The NON-session assertions
+// (profile, calendar, review, paywall, malformed-null, parity) are unchanged.
+//
 // ORCH-1030 [Consumer app notification deep-linking] regression test.
 //
 // Deno-runnable: deepLinkService.ts is a PURE module (zero RN deps), so the
-// whole router can be exercised without a device. This is the fails-on-revert
-// anchor for the PRIMARY acceptance gate (SC-1 / T-01 / T-02):
+// whole router can be exercised without a device.
 //
-//   A collaboration_/session_ notification with NO data.deepLink must route to
-//   the HOME container (with the session opened via setPendingSessionOpen),
-//   NOT to Connections — both for the in-app sheet tap AND the OneSignal push
-//   tap (they share one parseDeepLink ?? typeFallbackDestination ladder).
-//
-// Before the fix, index.tsx had an explicit
-//   else if (type.startsWith('collaboration_') || type.startsWith('session_'))
-//     setCurrentPage('connections')
-// branch (F-01) and NAV_TARGETS as a third routing authority. The fix folds
-// both into typeFallbackDestination, which returns the SAME Destination kinds
-// the parser produces. This test reproduces the exact unified ladder and proves
-// the destination is Home/session, never Connections.
+// The fix folds the old 3-authority routing into typeFallbackDestination, which
+// returns the SAME Destination kinds the parser produces. This test reproduces
+// the exact unified ladder. Post-ORCH-1080, a session Destination routes to
+// connections (group chat), never Home and never the wrong tab.
 import {
   assertEquals,
 } from "https://deno.land/std@0.190.0/testing/asserts.ts";
@@ -66,24 +67,27 @@ function makeHandlers() {
 }
 
 // ── PRIMARY GATE (SC-1 / T-01): session, no deepLink, in-app tap ──────────────
-Deno.test("ORCH-1030 SC-1 PRIMARY: session_member_joined (no deepLink) routes to HOME+session, NOT Connections", () => {
+Deno.test("ORCH-1080 SC-1 PRIMARY: session_member_joined (no deepLink) routes to GROUP CHAT (connections/messages), NOT Home", () => {
   const dest = route("session_member_joined", { sessionId: "sess-123" });
-  // Fallback must produce a session Destination, not a connections page.
+  // Fallback must produce a session Destination.
   assertEquals(dest.kind, "session");
   assertEquals(dest.sessionId, "sess-123");
 
   const { handlers, calls } = makeHandlers();
   executeDeepLink(dest, handlers);
-  assertEquals(calls.page, "home"); // lands Home — the correct container
-  assertEquals(calls.sessionOpened, "sess-123"); // session opened
-  // The bug regression assertion: it must NEVER land Connections.
-  if (calls.page === "connections") {
-    throw new Error("F-01 regression: session notification routed to Connections");
+  // ORCH-1080: lands the session's group chat (Messages tab), NOT Home.
+  assertEquals(calls.page, "connections");
+  assertEquals(calls.deepLinkParams.tab, "messages");
+  assertEquals(calls.deepLinkParams.sessionId, "sess-123");
+  // ORCH-1080 regression: the dead Home seam must never fire again.
+  assertEquals(calls.sessionOpened, null);
+  if (calls.page === "home") {
+    throw new Error("ORCH-1080 regression: session notification routed to Home");
   }
 });
 
 // ── PARITY (SC-1 push leg / T-02): same ladder, identical result ──────────────
-Deno.test("ORCH-1030 SC-1 push parity: push tap of the same session notification lands HOME+session identically", () => {
+Deno.test("ORCH-1080 SC-1 push parity: push tap of the same session notification lands GROUP CHAT identically", () => {
   // Both call paths run the identical ladder, so routing the same input twice
   // must yield identical effects (kills the 3-authority drift).
   const inApp = route("session_member_joined", { sessionId: "sess-123" });
@@ -95,8 +99,8 @@ Deno.test("ORCH-1030 SC-1 push parity: push tap of the same session notification
   const b = makeHandlers();
   executeDeepLink(push, b.handlers);
   assertEquals(a.calls.page, b.calls.page);
-  assertEquals(a.calls.sessionOpened, b.calls.sessionOpened);
-  assertEquals(a.calls.page, "home");
+  assertEquals(a.calls.deepLinkParams.sessionId, b.calls.deepLinkParams.sessionId);
+  assertEquals(a.calls.page, "connections");
 });
 
 // ── collaboration_ prefix (F-01 sibling): same Home routing ──────────────────
@@ -115,14 +119,16 @@ Deno.test("ORCH-1030 collaboration_invite_received (no deepLink, no sessionId) r
 });
 
 // ── SC-2: session WITH a deepLink resolves identically through the parser ─────
-Deno.test("ORCH-1030 SC-2: mingla://session/{id} deepLink routes to HOME+session", () => {
+Deno.test("ORCH-1080 SC-2: mingla://session/{id} deepLink routes to GROUP CHAT (connections/messages)", () => {
   const dest = route("board_card_saved", { deepLink: "mingla://session/sess-999" });
   assertEquals(dest.kind, "session");
   assertEquals(dest.sessionId, "sess-999");
   const { calls, handlers } = makeHandlers();
   executeDeepLink(dest, handlers);
-  assertEquals(calls.page, "home");
-  assertEquals(calls.sessionOpened, "sess-999");
+  assertEquals(calls.page, "connections");
+  assertEquals(calls.deepLinkParams.tab, "messages");
+  assertEquals(calls.deepLinkParams.sessionId, "sess-999");
+  assertEquals(calls.sessionOpened, null);
 });
 
 // ── T-04: query-form session?id= (tag-along producer) ─────────────────────────
