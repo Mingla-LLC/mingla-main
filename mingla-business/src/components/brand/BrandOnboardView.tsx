@@ -549,10 +549,12 @@ export const BrandOnboardView: React.FC<BrandOnboardViewProps> = ({
       <View style={styles.host}>
         {renderTopBar({ onBack: backToPicker, backLabel: "Back" })}
         <View
-          style={[
-            styles.body,
-            { paddingBottom: Math.max(insets.bottom, spacing.lg) },
-          ]}
+          style={{
+            flex: 1,
+            paddingHorizontal: spacing.md,
+            paddingTop: spacing.md,
+            paddingBottom: Math.max(insets.bottom, spacing.lg),
+          }}
         >
           <BrandPaystackOnboardView
             brandId={brand.id}
