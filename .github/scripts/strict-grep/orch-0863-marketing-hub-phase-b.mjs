@@ -1647,6 +1647,10 @@ function checkNoNewBackendFiles() {
     "supabase/functions/paystack-webhook/__tests__/paystackWebhook.test.ts",
     "supabase/functions/_shared/__tests__/allInPricingEngineNgVat.test.ts",
     "supabase/functions/_shared/__tests__/paymentProvider.test.ts",
+    // Phase 2 — brand payout onboarding (subaccounts + splits). New onboarding
+    // edge function; _shared/paystack.ts (already listed) gains the bank/subaccount
+    // helpers. Per COMMS-0002 — lands in the SAME commit as the backend diff.
+    "supabase/functions/brand-paystack-onboard/index.ts",
   ];
   const META_ORCH_1074_BACKEND_ALLOWLIST = [
     "supabase/migrations/20260910000000_meta_orch_1074_new_review_notify.sql",

@@ -61,9 +61,9 @@ describe("paidPublishGuards — locked copy (SPEC §3.7)", () => {
     const copy = paidPublishGuardCopy("stripe_charges_disabled");
     expect(copy.title).toBe("Finish your payment setup");
     expect(copy.body).toBe(
-      "You can't publish a paid listing until your Stripe payouts are switched on. It takes a couple of minutes.",
+      "You can't publish a paid listing until your bank payouts are switched on. It takes a couple of minutes.",
     );
-    expect(copy.actionLabel).toBe("Finish Stripe setup");
+    expect(copy.actionLabel).toBe("Finish bank setup");
     expect(copy.action).toBe("stripe_onboarding");
   });
 

@@ -122,6 +122,10 @@ export const KNOWN_STATIC_SLUGS: readonly string[] = [
   "paystack.charge_amount_mismatch",
   "paystack.charge_currency_mismatch",
   "paystack.webhook_unhandled_event",
+  // META-ORCH-1076 Phase 2 — Paystack (NG) payout onboarding + management.
+  "paystack.subaccount_created",
+  "paystack.subaccount_updated",
+  "paystack.subaccount_disconnected",
 ];
 
 const humanizeSlug = (slug: string): string => {
@@ -174,6 +178,27 @@ export const resolveAuditActionLabel = (action: string): AuditActionLabel => {
     case "paystack.webhook_unhandled_event":
       return {
         title: "Unhandled Paystack webhook event",
+        category: "ops",
+        iconHint: "flag",
+      };
+    case "paystack.subaccount_created":
+      return {
+        title: "Paystack payout account connected",
+        detail: "A bank account was connected and a Paystack subaccount created; this brand can now receive payouts.",
+        category: "ops",
+        iconHint: "shield",
+      };
+    case "paystack.subaccount_updated":
+      return {
+        title: "Paystack payout bank updated",
+        detail: "The settlement bank account on this brand's Paystack subaccount was changed.",
+        category: "ops",
+        iconHint: "shield",
+      };
+    case "paystack.subaccount_disconnected":
+      return {
+        title: "Paystack payout account disconnected",
+        detail: "The brand's Paystack payout bank was disconnected; it will not receive payouts until reconnected.",
         category: "ops",
         iconHint: "flag",
       };
