@@ -153,3 +153,17 @@ Coverage gap:
 - No migration, edge function, provider payload, Vercel rewrite, `web.output`, or `asyncRoutes` change is present.
 - Do not deploy from this ORCH worktree.
 - Per COMMS-0015/0018, deploy only after PR merge to clean `main`, and only after the real-account Step 1-7 gate above is completed or explicitly accepted by Seth/orchestrator.
+
+## Orchestrator Follow-Up — 2026-06-06
+
+Post-QA PR pipeline status:
+
+- PR #393 opened: `[deploy] ORCH-1089 business web signed-in event creator wizard`.
+- Branch was rebased onto current `origin/main`; stale branch-level `COMMS_LEDGER.md` diff was removed.
+- CI repair commit `72cac4cb4` preserved the ORCH-1088 Home reopen marker while keeping the ORCH-1089 marker, so append-only test protection remains intact.
+- Local gates after the repair: `node .github/scripts/test-append-only-check.js` PASS; `npm run test:orch-1089` PASS.
+- GitHub gates observed after push: `Test files: append-only` PASS; `mingla-business: web build (expo export)` PASS; docs artifact regression PASS.
+- Vercel status for `mingla-business` remained `Canceled by Ignored Build Step`, so no usable PR preview URL was produced.
+- `adb devices -l` still showed no attached Android device rows, so physical Android Chrome proof remains unverified.
+
+This does not change the verdict: ORCH-1089 remains CONDITIONAL PASS until the real signed-in phone-browser Step 1-7 walkthrough is completed or explicitly accepted as a post-merge production gate.
