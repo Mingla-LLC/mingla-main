@@ -39,14 +39,16 @@ const home = read("public/home.html");
 const createIsReopened =
   home.includes('href="/event/create"') || home.includes("href='/event/create'");
 const unsafeRoutes = [
-  "/hub/events",
   "/hub/experiences",
   "/hub/trips",
   "/ari",
-  "/marketing",
-  "/marketing/campaigns/compose",
-  "/account",
   "/connect-account-management",
+];
+const orch1092ReopenedRoutes = [
+  ["/hub/events", "data-orch-1092-hub-events-reopened"],
+  ["/marketing", "data-orch-1092-marketing-overview-reopened"],
+  ["/marketing/campaigns/compose", "data-orch-1092-compose-shell-reopened"],
+  ["/account", "data-orch-1092-account-reopened"],
 ];
 
 if (createIsReopened) {
@@ -60,19 +62,19 @@ for (const route of unsafeRoutes) {
   assertNotIncludes(home, `href="${route}"`, "public/home.html");
   assertNotIncludes(home, `href='${route}'`, "public/home.html");
 }
+for (const [route, marker] of orch1092ReopenedRoutes) {
+  assertIncludes(home, `href="${route}"`, "public/home.html");
+  assertIncludes(home, marker, "public/home.html");
+}
 
 for (const token of ["/_expo/static/js/", "expo-metro-runtime", "Stripe account"]) {
   assertNotIncludes(home, token, "public/home.html");
 }
 
 const shellTargets = [
-  "hub-events",
   "hub-experiences",
   "hub-trips",
   "ari-assistant",
-  "marketing-overview",
-  "compose-blast",
-  "account-settings",
   "payout-account",
 ];
 
@@ -115,6 +117,10 @@ if (existsSync(join("dist", "home.html"))) {
   }
   for (const route of unsafeRoutes) {
     assertNotIncludes(distHome, `href="${route}"`, "dist/home.html");
+  }
+  for (const [route, marker] of orch1092ReopenedRoutes) {
+    assertIncludes(distHome, `href="${route}"`, "dist/home.html");
+    assertIncludes(distHome, marker, "dist/home.html");
   }
   for (const target of shellTargets) {
     assertIncludes(distHome, `href="#${target}"`, "dist/home.html");

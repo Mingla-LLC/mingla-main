@@ -455,12 +455,12 @@ export const BrandPaymentsView: React.FC<BrandPaymentsViewProps> = ({
                     Manage payouts & tax
                   </Text>
                   <Text style={styles.manageStripeBody}>
-                    Update payout details and resolve Stripe account alerts.
+                    Update payout details and resolve payout account alerts.
                   </Text>
                   {accountSession.isError
                     ? (
                       <Text style={styles.manageStripeError}>
-                        Couldn{"’"}t open Stripe account management. Try again.
+                        Couldn{"’"}t open payout account management. Try again.
                       </Text>
                     )
                     : null}
@@ -469,7 +469,7 @@ export const BrandPaymentsView: React.FC<BrandPaymentsViewProps> = ({
               <View style={styles.manageStripeBtnRow}>
                 <Button
                   label={accountSession.isPending
-                    ? "Opening Stripe..."
+                    ? "Opening..."
                     : "Manage payouts & tax"}
                   onPress={handleOpenAccountManagement}
                   variant="primary"

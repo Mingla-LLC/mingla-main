@@ -1,0 +1,265 @@
+#!/usr/bin/env node
+/**
+ * ORCH-1092 — Business Web restoration wave guard.
+ *
+ * Static Home may reopen only the approved phone-browser routes, and each
+ * reopened route must carry an ORCH-1092 marker. Payout management stays
+ * shelled unless a future generated-session proof marker is added.
+ */
+
+import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
+import { join } from "node:path";
+
+function fail(message) {
+  console.error(`ORCH-1092 business web restoration wave FAIL: ${message}`);
+  process.exit(1);
+}
+
+function read(path) {
+  try {
+    return readFileSync(path, "utf8");
+  } catch (error) {
+    fail(`cannot read ${path}: ${error.message}`);
+  }
+}
+
+function assertIncludes(source, token, label) {
+  if (!source.includes(token)) fail(`${label} missing required token: ${token}`);
+}
+
+function assertNotIncludes(source, token, label) {
+  if (source.includes(token)) fail(`${label} must not include forbidden token: ${token}`);
+}
+
+function stripComments(source) {
+  return source
+    .replace(/\/\*[\s\S]*?\*\//g, "")
+    .split("\n")
+    .filter((line) => !/^\s*\/\//.test(line))
+    .join("\n");
+}
+
+function assertNoStaticImport(source, moduleName, label) {
+  const stripped = stripComments(source);
+  const importPattern = new RegExp(`(?:import[\\s\\S]*?from\\s*|import\\s*\\()([\"'])${moduleName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\1`);
+  const requirePattern = new RegExp(`require\\((['"])${moduleName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\1\\)`);
+  if (importPattern.test(stripped) || requirePattern.test(stripped)) {
+    fail(`${label} must not statically import ${moduleName}`);
+  }
+}
+
+function walkFiles(root, predicate, acc = []) {
+  if (!existsSync(root)) return acc;
+  for (const name of readdirSync(root)) {
+    const path = join(root, name);
+    const stat = statSync(path);
+    if (stat.isDirectory()) walkFiles(path, predicate, acc);
+    else if (predicate(path)) acc.push(path);
+  }
+  return acc;
+}
+
+const reopenedRoutes = [
+  {
+    route: "/hub/events",
+    marker: "data-orch-1092-hub-events-reopened",
+    label: "Hub Events",
+  },
+  {
+    route: "/marketing",
+    marker: "data-orch-1092-marketing-overview-reopened",
+    label: "Marketing overview",
+  },
+  {
+    route: "/marketing/campaigns/compose",
+    marker: "data-orch-1092-compose-shell-reopened",
+    label: "Marketing Composer shell",
+  },
+  {
+    route: "/account",
+    marker: "data-orch-1092-account-reopened",
+    label: "Account settings",
+  },
+];
+
+const stillShelledTargets = [
+  "hub-experiences",
+  "hub-trips",
+  "ari-assistant",
+  "payout-account",
+];
+
+const forbiddenDirectRoutes = [
+  "/hub/experiences",
+  "/hub/trips",
+  "/ari",
+  "/connect-account-management",
+];
+
+const forbiddenCopy = ["Stripe account", "Connect Stripe", "Payments & Stripe"];
+const forbiddenNativeModules = [
+  "react-native-keyboard-controller",
+  "expo-camera",
+  "expo-image-picker",
+  "expo-file-system",
+  "expo-file-system/legacy",
+  "@react-native-community/datetimepicker",
+  "@stripe/connect-js",
+  "@stripe/react-connect-js",
+  "react-native-video-trim",
+  "react-native-compressor",
+];
+
+const home = read("public/home.html");
+for (const { route, marker, label } of reopenedRoutes) {
+  assertIncludes(home, `href="${route}"`, `public/home.html ${label}`);
+  assertIncludes(home, marker, `public/home.html ${label}`);
+}
+
+for (const route of forbiddenDirectRoutes) {
+  assertNotIncludes(home, `href="${route}"`, "public/home.html");
+  assertNotIncludes(home, `href='${route}'`, "public/home.html");
+}
+
+for (const target of stillShelledTargets) {
+  assertIncludes(home, `href="#${target}"`, "public/home.html");
+  assertIncludes(home, `data-shell-link="${target}"`, "public/home.html");
+}
+
+assertIncludes(home, "Payout account", "public/home.html");
+assertIncludes(home, "generated secure session", "public/home.html");
+assertNotIncludes(home, "data-orch-1092-payout-session-reopened", "public/home.html");
+for (const copy of forbiddenCopy) assertNotIncludes(home, copy, "public/home.html");
+
+const directHrefMatches = [...home.matchAll(/\shref=["']([^#"'][^"']*)["']/g)]
+  .map((match) => match[1])
+  .filter((href) => href.startsWith("/"));
+const allowedDirectRoutes = new Set(["/event/create", ...reopenedRoutes.map((r) => r.route)]);
+for (const href of directHrefMatches) {
+  if (!allowedDirectRoutes.has(href)) {
+    fail(`public/home.html has unapproved direct route href: ${href}`);
+  }
+}
+
+const vercel = JSON.parse(read("vercel.json"));
+const homeRewriteIndex = (vercel.rewrites ?? []).findIndex((rewrite) => rewrite.source === "/home");
+const catchAllIndex = (vercel.rewrites ?? []).findIndex((rewrite) => rewrite.source === "/(.*)");
+if (homeRewriteIndex < 0 || catchAllIndex < 0 || homeRewriteIndex > catchAllIndex) {
+  fail("vercel.json must keep /home -> /home.html before the SPA catch-all");
+}
+const broadExpoStaticHeaderIndex = (vercel.headers ?? []).findIndex(
+  (header) => header.source === "/_expo/static/(.*)",
+);
+const webJsHeaderIndex = (vercel.headers ?? []).findIndex(
+  (header) => header.source === "/_expo/static/js/web/(.*)",
+);
+const webJsHeader = (vercel.headers ?? [])[webJsHeaderIndex];
+if (
+  broadExpoStaticHeaderIndex < 0 ||
+  webJsHeaderIndex < broadExpoStaticHeaderIndex ||
+  !JSON.stringify(webJsHeader?.headers ?? []).includes("public, max-age=0, must-revalidate")
+) {
+  fail("Vercel web JS cache header must override broad immutable Expo static header");
+}
+
+const injectScript = read("scripts/inject-mobile-blur-css.mjs");
+for (const token of [
+  "orch1091-js-cache-bust",
+  "?v=${JS_CACHE_BUST_PARAM}",
+  "mingla-mobile-web-chunk-recovery",
+  "mingla-mobile-web-home-preboot",
+  "mingla-mobile-web-no-blur",
+]) {
+  assertIncludes(injectScript, token, "scripts/inject-mobile-blur-css.mjs");
+}
+
+const appJson = JSON.parse(read("app.json"));
+const expoRouterPlugin = appJson.expo?.plugins?.find((plugin) =>
+  Array.isArray(plugin) && plugin[0] === "expo-router"
+);
+if (expoRouterPlugin?.[1]?.asyncRoutes?.web !== true) {
+  fail("Expo Router asyncRoutes.web must remain enabled");
+}
+
+const routeSourceFiles = [
+  "app/(tabs)/hub/events.tsx",
+  "app/(tabs)/marketing/index.tsx",
+  "app/(tabs)/marketing/campaigns/compose.tsx",
+  "app/(tabs)/account.tsx",
+  "src/components/marketing/ComposerV2/SchedulePickerSheet.tsx",
+  "src/components/ui/ShareModal.tsx",
+  "src/wrappers/KeyboardRoot.tsx",
+  "src/wrappers/SmartScrollView.tsx",
+];
+
+for (const file of routeSourceFiles) {
+  const source = read(file);
+  for (const moduleName of forbiddenNativeModules) {
+    assertNoStaticImport(source, moduleName, file);
+  }
+}
+
+const scheduleWeb = read("src/components/marketing/ComposerV2/SchedulePickerSheet.tsx");
+const scheduleNative = read("src/components/marketing/ComposerV2/SchedulePickerSheet.native.tsx");
+assertIncludes(scheduleWeb, 'type="date"', "SchedulePickerSheet.tsx");
+assertIncludes(scheduleWeb, 'type="time"', "SchedulePickerSheet.tsx");
+assertIncludes(scheduleWeb, "showPicker", "SchedulePickerSheet.tsx");
+assertNotIncludes(stripComments(scheduleWeb), "@react-native-community/datetimepicker", "SchedulePickerSheet.tsx runtime source");
+assertIncludes(scheduleNative, "@react-native-community/datetimepicker", "SchedulePickerSheet.native.tsx");
+
+const shareModal = stripComments(read("src/components/ui/ShareModal.tsx"));
+assertIncludes(shareModal, 'React.lazy(() => import("react-native-qrcode-svg"))', "ShareModal");
+assertNotIncludes(shareModal, 'import QRCode from "react-native-qrcode-svg"', "ShareModal");
+
+if (existsSync(join("dist", "home.html"))) {
+  const distHome = read(join("dist", "home.html"));
+  for (const { route, marker } of reopenedRoutes) {
+    assertIncludes(distHome, `href="${route}"`, "dist/home.html");
+    assertIncludes(distHome, marker, "dist/home.html");
+  }
+  for (const route of forbiddenDirectRoutes) {
+    assertNotIncludes(distHome, `href="${route}"`, "dist/home.html");
+  }
+  for (const copy of forbiddenCopy) assertNotIncludes(distHome, copy, "dist/home.html");
+}
+
+if (existsSync(join("dist", "index.html"))) {
+  const distIndex = read(join("dist", "index.html"));
+  for (const token of [
+    "orch1091-js-cache-bust",
+    "?v=orch1091",
+    "mingla-mobile-web-chunk-recovery",
+    "mingla-mobile-web-home-preboot",
+    "mingla-mobile-web-no-blur",
+  ]) {
+    assertIncludes(distIndex, token, "dist/index.html");
+  }
+}
+
+const jsDir = join("dist", "_expo", "static", "js", "web");
+if (existsSync(jsDir)) {
+  const chunks = walkFiles(jsDir, (path) => path.endsWith(".js"));
+  const reopenedChunkTokens = [
+    "ComposeCampaignRoute",
+    "MarketingOverviewRoute",
+    "EventsTab",
+    "AccountTab",
+    "SchedulePickerSheet",
+  ];
+  for (const chunkPath of chunks) {
+    const chunk = read(chunkPath);
+    if (!reopenedChunkTokens.some((token) => chunk.includes(token))) continue;
+    for (const token of [
+      "@react-native-community/datetimepicker",
+      "react-native-keyboard-controller",
+      "expo-image-picker",
+      "expo-file-system/legacy",
+      "@stripe/connect-js",
+      "@stripe/react-connect-js",
+    ]) {
+      assertNotIncludes(chunk, token, chunkPath);
+    }
+  }
+}
+
+console.log("ORCH-1092 business web restoration wave PASS.");

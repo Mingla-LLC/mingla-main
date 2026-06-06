@@ -1,14 +1,21 @@
 /**
- * ORCH-1092: web schedule picker for Marketing Composer.
+ * ORCH-0864 [Marketing Composer V2] Stage F.10b — SchedulePickerSheet.
  *
- * Native keeps the spinner implementation in SchedulePickerSheet.native.tsx.
- * Web uses hidden browser-native date/time inputs triggered from the same
- * visible pills, keeping @react-native-community/datetimepicker out of the
- * reopened composer route.
+ * Bottom sheet with a date + time picker. Opens from the new footer
+ * "Schedule" button. After the operator picks a date and time and taps
+ * Continue, the parent (compose.tsx) sets sendMode="schedule" + the
+ * scheduledForIso, then opens the review-confirmation sheet.
+ *
+ * Mirrors the picker UX from the legacy ComposerStepWhen (iOS spinner
+ * + date / time pill toggle) but isolated as a one-shot sheet rather
+ * than always-mounted form. Compact + dismissible.
  */
 
-import React, { useEffect, useMemo, useRef, useState } from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import React, { useEffect, useMemo, useState } from "react";
+import { Platform, Pressable, StyleSheet, Text, View } from "react-native";
+import DateTimePicker, {
+  type DateTimePickerEvent,
+} from "@react-native-community/datetimepicker";
 
 import { Sheet } from "../../ui/Sheet";
 import {
@@ -22,20 +29,14 @@ import {
 
 export interface SchedulePickerSheetProps {
   visible: boolean;
+  /** Existing scheduledForIso (if any) — seeds the picker on open. */
   initialIso: string;
   onClose: () => void;
+  /** Fires when operator taps Continue. Receives a local ISO string. */
   onContinue: (iso: string) => void;
 }
 
 type PickerMode = "date" | "time";
-
-const HIDDEN_WEB_INPUT_STYLE = {
-  position: "absolute",
-  width: 1,
-  height: 1,
-  opacity: 0,
-  pointerEvents: "none",
-} as const;
 
 function defaultDate(): Date {
   const d = new Date();
@@ -71,30 +72,6 @@ function toLocalIso(d: Date): string {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
-function dateInputValue(d: Date): string {
-  const pad = (n: number): string => `${n}`.padStart(2, "0");
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-}
-
-function timeInputValue(d: Date): string {
-  const pad = (n: number): string => `${n}`.padStart(2, "0");
-  return `${pad(d.getHours())}:${pad(d.getMinutes())}`;
-}
-
-function openNativeInput(input: HTMLInputElement | null): void {
-  if (input === null) return;
-  if (typeof input.showPicker === "function") {
-    try {
-      input.showPicker();
-      return;
-    } catch {
-      input.click();
-      return;
-    }
-  }
-  input.click();
-}
-
 export const SchedulePickerSheet: React.FC<SchedulePickerSheetProps> = ({
   visible,
   initialIso,
@@ -103,9 +80,9 @@ export const SchedulePickerSheet: React.FC<SchedulePickerSheetProps> = ({
 }) => {
   const [value, setValue] = useState<Date>(() => parseOrDefault(initialIso));
   const [mode, setMode] = useState<PickerMode>("date");
-  const dateInputRef = useRef<HTMLInputElement | null>(null);
-  const timeInputRef = useRef<HTMLInputElement | null>(null);
 
+  // Re-seed when the sheet reopens — operator may have picked a different
+  // date in a prior session and the parent passed the new initialIso.
   useEffect(() => {
     if (visible) {
       setValue(parseOrDefault(initialIso));
@@ -115,17 +92,32 @@ export const SchedulePickerSheet: React.FC<SchedulePickerSheetProps> = ({
 
   const dateLabel = useMemo(() => formatDateLabel(value), [value]);
   const timeLabel = useMemo(() => formatTimeLabel(value), [value]);
-  const dateValue = useMemo(() => dateInputValue(value), [value]);
-  const timeValue = useMemo(() => timeInputValue(value), [value]);
 
-  const handleOpenPicker = (nextMode: PickerMode): void => {
-    setMode(nextMode);
-    openNativeInput(nextMode === "date" ? dateInputRef.current : timeInputRef.current);
+  const handleChange = (
+    event: DateTimePickerEvent,
+    selected?: Date,
+  ): void => {
+    if (event.type === "dismissed") return;
+    if (selected === undefined) return;
+    const next = new Date(value);
+    if (mode === "date") {
+      next.setFullYear(
+        selected.getFullYear(),
+        selected.getMonth(),
+        selected.getDate(),
+      );
+    } else {
+      next.setHours(selected.getHours(), selected.getMinutes(), 0, 0);
+    }
+    setValue(next);
   };
 
   return (
     <Sheet visible={visible} onClose={onClose} snapPoint="half">
       <View style={styles.host}>
+        {/* F.10b: pinned-top header with Cancel / Continue so the actions
+            stay visible regardless of how tall the iOS spinner expands.
+            Mirrors iOS native picker UX (Cancel left, Done right). */}
         <View style={styles.headerRow}>
           <Pressable
             onPress={onClose}
@@ -156,7 +148,7 @@ export const SchedulePickerSheet: React.FC<SchedulePickerSheetProps> = ({
 
         <View style={styles.pillRow}>
           <Pressable
-            onPress={() => handleOpenPicker("date")}
+            onPress={() => setMode("date")}
             accessibilityRole="button"
             accessibilityLabel={`Send date: ${dateLabel}`}
             style={({ pressed }) => [
@@ -169,7 +161,7 @@ export const SchedulePickerSheet: React.FC<SchedulePickerSheetProps> = ({
             <Text style={styles.pickerPillValue}>{dateLabel}</Text>
           </Pressable>
           <Pressable
-            onPress={() => handleOpenPicker("time")}
+            onPress={() => setMode("time")}
             accessibilityRole="button"
             accessibilityLabel={`Send time: ${timeLabel}`}
             style={({ pressed }) => [
@@ -183,37 +175,14 @@ export const SchedulePickerSheet: React.FC<SchedulePickerSheetProps> = ({
           </Pressable>
         </View>
 
-        <View style={styles.webInputHost}>
-          <input
-            ref={dateInputRef}
-            type="date"
-            value={dateValue}
-            min={dateInputValue(new Date())}
-            onChange={(event) => {
-              const nextValue = (event.target as HTMLInputElement).value;
-              if (nextValue.length === 0) return;
-              const [year, month, day] = nextValue.split("-").map(Number);
-              const next = new Date(value);
-              next.setFullYear(year, month - 1, day);
-              setValue(next);
-            }}
-            aria-label="Send date"
-            style={HIDDEN_WEB_INPUT_STYLE}
-          />
-          <input
-            ref={timeInputRef}
-            type="time"
-            value={timeValue}
-            onChange={(event) => {
-              const nextValue = (event.target as HTMLInputElement).value;
-              if (nextValue.length === 0) return;
-              const [hour, minute] = nextValue.split(":").map(Number);
-              const next = new Date(value);
-              next.setHours(hour, minute, 0, 0);
-              setValue(next);
-            }}
-            aria-label="Send time"
-            style={HIDDEN_WEB_INPUT_STYLE}
+        <View style={styles.pickerHost}>
+          <DateTimePicker
+            value={value}
+            mode={mode}
+            display={Platform.OS === "ios" ? "spinner" : "default"}
+            onChange={handleChange}
+            themeVariant="dark"
+            minimumDate={mode === "date" ? new Date() : undefined}
           />
         </View>
       </View>
@@ -228,6 +197,9 @@ const styles = StyleSheet.create({
     paddingBottom: spacing.md,
     gap: spacing.md,
   },
+  // F.10b: pinned-top action header replacing the old title + subtitle +
+  // bottom actions row pattern. Keeps Cancel / Continue always visible
+  // even when the iOS spinner picker takes ~250pt vertical space.
   headerRow: {
     flexDirection: "row",
     alignItems: "center",
@@ -290,7 +262,8 @@ const styles = StyleSheet.create({
     color: textTokens.primary,
     fontWeight: "600",
   },
-  webInputHost: {
-    minHeight: 1,
+  pickerHost: {
+    alignItems: "center",
+    justifyContent: "center",
   },
 });
