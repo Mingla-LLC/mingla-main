@@ -7,7 +7,8 @@
  * shelled unless a future generated-session proof marker is added.
  */
 
-import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
+import { createReadStream, existsSync, readFileSync, readdirSync, statSync } from "node:fs";
+import { createServer } from "node:http";
 import { basename, join } from "node:path";
 
 function fail(message) {
@@ -69,6 +70,99 @@ function normalizeDistScriptPath(src) {
   const withoutQuery = src.split("?")[0];
   if (!withoutQuery.startsWith("/_expo/static/js/web/")) return null;
   return join("dist", withoutQuery.replace(/^\//, ""));
+}
+
+function contentTypeFor(path) {
+  if (path.endsWith(".html")) return "text/html; charset=utf-8";
+  if (path.endsWith(".js")) return "application/javascript; charset=utf-8";
+  if (path.endsWith(".css")) return "text/css; charset=utf-8";
+  if (path.endsWith(".json")) return "application/json; charset=utf-8";
+  if (path.endsWith(".png")) return "image/png";
+  if (path.endsWith(".jpg") || path.endsWith(".jpeg")) return "image/jpeg";
+  if (path.endsWith(".svg")) return "image/svg+xml";
+  if (path.endsWith(".ico")) return "image/x-icon";
+  if (path.endsWith(".woff")) return "font/woff";
+  if (path.endsWith(".woff2")) return "font/woff2";
+  return "application/octet-stream";
+}
+
+async function withDistServer(callback) {
+  const server = createServer((request, response) => {
+    const url = new URL(request.url ?? "/", "http://localhost");
+    let filePath;
+    if (url.pathname === "/home") {
+      filePath = join("dist", "home.html");
+    } else {
+      const candidate = join("dist", decodeURIComponent(url.pathname));
+      filePath =
+        existsSync(candidate) && statSync(candidate).isFile()
+          ? candidate
+          : join("dist", "index.html");
+    }
+    response.setHeader("Content-Type", contentTypeFor(filePath));
+    if (url.pathname.startsWith("/_expo/static/js/web/")) {
+      response.setHeader("Cache-Control", "public, max-age=0, must-revalidate");
+    }
+    createReadStream(filePath).pipe(response);
+  });
+
+  await new Promise((resolve) => {
+    server.listen(0, "127.0.0.1", resolve);
+  });
+  const address = server.address();
+  if (address === null || typeof address === "string") {
+    server.close();
+    fail("could not allocate local dist server for ORCH-1092 runtime smoke");
+  }
+  try {
+    await callback(`http://127.0.0.1:${address.port}`);
+  } finally {
+    await new Promise((resolve) => server.close(resolve));
+  }
+}
+
+async function assertSignedOutRecoveryRuntime() {
+  const { chromium } = await import("playwright");
+  const routes = [
+    ["/hub/events", "Sign in to open Hub Events."],
+    ["/marketing", "Sign in to open Marketing overview."],
+    ["/marketing/campaigns/compose", "Sign in to open Compose blast."],
+    ["/account", "Sign in to open Account settings."],
+  ];
+
+  await withDistServer(async (origin) => {
+    const browser = await chromium.launch({ headless: true });
+    try {
+      const context = await browser.newContext({
+        viewport: { width: 393, height: 852 },
+        isMobile: true,
+        hasTouch: true,
+        userAgent:
+          "Mozilla/5.0 (Linux; Android 12; Pixel 5) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0 Mobile Safari/537.36",
+      });
+      for (const [route, expected] of routes) {
+        const page = await context.newPage();
+        const failures = [];
+        page.on("pageerror", (error) => failures.push(`pageerror:${error.message}`));
+        page.on("requestfailed", (request) => {
+          failures.push(`requestfailed:${request.url()}:${request.failure()?.errorText ?? ""}`);
+        });
+        await page.goto(`${origin}${route}`, {
+          waitUntil: "domcontentloaded",
+          timeout: 15000,
+        });
+        await page.getByText(expected, { exact: true }).waitFor({ timeout: 6000 });
+        await page.getByText("Return to Home", { exact: true }).waitFor({ timeout: 1000 });
+        if (failures.length > 0) {
+          fail(`${route} unsigned recovery had runtime failures: ${failures.join("; ")}`);
+        }
+        await page.close();
+      }
+      await context.close();
+    } finally {
+      await browser.close();
+    }
+  });
 }
 
 const reopenedRoutes = [
@@ -312,6 +406,10 @@ if (existsSync(jsDir)) {
       assertNotIncludes(chunk, token, chunkPath);
     }
   }
+}
+
+if (existsSync(join("dist", "index.html"))) {
+  await assertSignedOutRecoveryRuntime();
 }
 
 console.log("ORCH-1092 business web restoration wave PASS.");

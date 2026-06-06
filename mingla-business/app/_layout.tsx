@@ -120,6 +120,36 @@ const ORCH_1092_SIGNED_OUT_ROUTES = new Set([
   "/account",
 ]);
 
+const SUPABASE_AUTH_STORAGE_KEY = /^sb-.+-auth-token$/;
+
+function normalizeWebPathname(pathname: string): string {
+  if (pathname.length > 1 && pathname.endsWith("/")) {
+    return pathname.slice(0, -1);
+  }
+  return pathname;
+}
+
+function getCurrentWebPathname(): string {
+  if (Platform.OS !== "web" || typeof window === "undefined") return "";
+  return normalizeWebPathname(window.location.pathname);
+}
+
+function hasStoredSupabaseWebSession(): boolean {
+  if (Platform.OS !== "web" || typeof window === "undefined") return false;
+  try {
+    const { localStorage } = window;
+    for (let index = 0; index < localStorage.length; index += 1) {
+      const key = localStorage.key(index);
+      if (key === null || !SUPABASE_AUTH_STORAGE_KEY.test(key)) continue;
+      const value = localStorage.getItem(key);
+      if (value !== null && value.includes("access_token")) return true;
+    }
+  } catch {
+    return false;
+  }
+  return false;
+}
+
 function Orch1092SignedOutRecovery({
   pathname,
   onReturnHome,
@@ -179,7 +209,7 @@ function RootLayoutInner(): React.ReactElement {
   // both paths converge on `brandReady=true` (defensive belt-and-suspenders).
   const { loading, user } = useAuth();
   const router = useRouter();
-  const pathname = usePathname();
+  const pathname = normalizeWebPathname(usePathname());
   const currentBrandId = useCurrentBrandId();
   const { isFetched: brandFetched, fetchStatus: brandFetchStatus } =
     useBrand(currentBrandId);
@@ -496,6 +526,26 @@ export default function RootLayout(): React.ReactElement {
   // which load the needed family on demand via `useThemeFont`. Do NOT re-add a
   // root `useFonts(...)` — it pulls all 14 @expo-google-fonts/* modules into the
   // boot bundle + fires 14 boot-time fetches on the login path. See SPEC §C-2.
+  const webPathname = getCurrentWebPathname();
+  const shouldShowOuterOrch1092Recovery =
+    Platform.OS === "web" &&
+    ORCH_1092_SIGNED_OUT_ROUTES.has(webPathname) &&
+    !hasStoredSupabaseWebSession();
+
+  if (shouldShowOuterOrch1092Recovery) {
+    return (
+      <GestureHandlerRootView style={{ flex: 1 }}>
+        <SafeAreaProvider>
+          <Orch1092SignedOutRecovery
+            pathname={webPathname}
+            onReturnHome={() => {
+              window.location.assign("/home");
+            }}
+          />
+        </SafeAreaProvider>
+      </GestureHandlerRootView>
+    );
+  }
 
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>

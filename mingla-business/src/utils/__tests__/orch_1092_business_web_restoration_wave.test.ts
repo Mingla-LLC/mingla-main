@@ -152,5 +152,9 @@ describe("ORCH-1092 business web restoration wave", () => {
     expect(rootLayout).toContain("Return to Home");
     expect(rootLayout).toContain('Platform.OS === "web"');
     expect(rootLayout).toContain("user === null");
+    expect(rootLayout).toContain("shouldShowOuterOrch1092Recovery");
+    expect(rootLayout).toContain("hasStoredSupabaseWebSession");
+    expect(rootLayout).toContain("SUPABASE_AUTH_STORAGE_KEY");
+    expect(rootLayout).toContain("window.location.assign(\"/home\")");
   });
 });

@@ -237,6 +237,54 @@ Therefore, browser proof is **blocked by local Playwright/browser instability**,
 - Native picker/filesystem behavior is preserved through `.native` splits by source/export proof, but native runtime was not re-smoked because this ORCH is Business Web scoped.
 - Local Playwright instability limited runtime proof; use a stable preview/real phone for retest.
 
+## 18. RETEST-FAIL Rework - 2026-06-06
+
+### Rework Outcome
+
+The remaining P1 signed-out blank/crash is fixed. The prior recovery lived inside `QueryClientProvider -> AuthProvider -> KeyboardRoot -> RootLayoutInner`, so an unsigned direct hit to `/hub/events`, `/marketing`, `/marketing/campaigns/compose`, or `/account` could still blank before the recovery screen committed. The recovery gate now runs at the outer web root for those four URLs and synchronously checks browser localStorage for a Supabase `sb-*-auth-token` session before mounting the heavy provider tree.
+
+If no stored session exists, the user immediately sees `Sign in to open <route>.` with `Return to Home`. If a stored session exists, the app proceeds through the real provider/auth/route path, preserving signed-in behavior.
+
+### Files Changed In Second Rework
+
+| File | Change | Why |
+|---|---|---|
+| `app/_layout.tsx` | Added outer web-only ORCH-1092 recovery gate before providers, plus Supabase auth-storage detection. | Prevents unsigned reopened routes from blanking/crashing before fallback UI can render. |
+| `scripts/ci/orch-1092-business-web-restoration-wave.mjs` | Added a post-export local dist server and mobile Chromium smoke for the four unsigned reopened routes. | Turns the exact tester failure into a repo-running regression gate. |
+| `src/utils/__tests__/orch_1092_business_web_restoration_wave.test.ts` | Pinned the outer recovery gate and storage-check contract. | Keeps source-level coverage for the early fallback path. |
+
+### Verification Receipts
+
+```bash
+cd "/Users/sethogieva/Desktop/mingla-orchs/ORCH-1092-[business-web-restoration-wave]/mingla-business"
+npm run test:orch-1092
+```
+
+Result: PASS. ORCH-1085/1087/1088/1089, strengthened ORCH-1092 guard, post-export runtime smoke when `dist/` exists, and six ORCH-1092 Jest checks passed.
+
+```bash
+cd "/Users/sethogieva/Desktop/mingla-orchs/ORCH-1092-[business-web-restoration-wave]/mingla-business"
+rm -rf dist && npx expo export -p web --output-dir dist && node scripts/inject-mobile-blur-css.mjs && npm run test:orch-1092
+```
+
+Result: PASS. Expo emitted 128 web bundles; injection logged `mobile chunk recovery + preboot + blur-kill`; the ORCH-1092 guard parsed eager boot chunks, verified `__common`, and opened the four unsigned reopened routes in mobile Chromium.
+
+Manual local Chromium probe after fresh export:
+
+```text
+/hub/events -> Sign in to open Hub Events. + Return to Home
+/marketing -> Sign in to open Marketing overview. + Return to Home
+/marketing/campaigns/compose -> Sign in to open Compose blast. + Return to Home
+/account -> Sign in to open Account settings. + Return to Home
+```
+
+No console/page errors were observed in that probe.
+
+### Remaining Risks
+
+- Signed-in useful first screens for Events, Marketing overview, Composer, and Account still require tester/Seth browser proof with a real business session.
+- The outer recovery detects stored Supabase web sessions via localStorage `sb-*-auth-token`; this matches the current Supabase client storage path but should be retested after any future auth-storage migration.
+
 ## Suggested Commit Message
 
 ```text
