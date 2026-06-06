@@ -1,8 +1,8 @@
 # Agent Handoffs
 
-## 2026-06-06 - ORCH-1092 [Business web restoration wave] registered -> Codex `forensic-mingla` investigate/spec dispatch
+## 2026-06-06 - ORCH-1092 [Business web restoration wave] CLOSED PASS Grade A
 
-Forensics owns the route-family investigation and implementation contract only; no product-code implementation is authorized until the spec is reviewed. Inputs are ORCH-1085 Phase 3 inventory, ORCH-1087 static route firewall, ORCH-1089/1090/1091 Create + cache close evidence, static Home `public/home.html`, Hub routes, Account/Payout routes, Marketing/Blast composer routes, `mingla-business/vercel.json`, `scripts/inject-mobile-blur-css.mjs`, and the ORCH-1085/1088/1089/1091 guards. Working tree: `~/Desktop/mingla-orchs/ORCH-1092-[business-web-restoration-wave]/` on branch `ORCH-1092-business-web-restoration-wave`. Expected outputs: `Mingla_Artifacts/reports/INVESTIGATION_ORCH-1092_BUSINESS_WEB_RESTORATION_WAVE.md` and `Mingla_Artifacts/specs/SPEC_ORCH-1092_BUSINESS_WEB_RESTORATION_WAVE.md`. Hard guards: keep Expo Web, no scratch rewrite, no deploy/OTA from worktree, no weakening ORCH-1091 cache guards, preserve provider-neutral payout copy, and require Chrome + Safari phone-browser proof before reopening any static Home handoff.
+No downstream handoff remains for this ORCH. The bounded restoration wave reopened `/hub/events`, `/marketing`, `/marketing/campaigns/compose`, and `/account` from static Home; preserved Create; kept Payout account, Hub Experiences, Hub Trips, and Ari shelled; and verified production phone-browser recovery on `business.usemingla.com`. Evidence is in `Mingla_Artifacts/reports/CLOSE_ORCH-1092_BUSINESS_WEB_RESTORATION_WAVE.md`. Next business-web work should start as a fresh ORCH for the next route-family wave, using ORCH-1092's native-quarantine and production-proof pattern.
 
 ## 2026-06-06 - ORCH-1091 [Business web mobile cache invalidation] closed after production cache proof
 
