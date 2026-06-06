@@ -189,3 +189,71 @@ The temporary local server was stopped after the probe. No deploy, merge, reap, 
 ### Readiness After Rework
 
 Ready for tester: yes, for the scoped rework blocker and the still-closed static Home state. Static Home Create remains intentionally unreopened until tester/orchestrator explicitly authorizes the next runtime reopen pass.
+
+## Rework - 2026-06-06 Draggable Flatlist/Reanimated Web Shim Blocker
+
+Status: implemented and verified on the physical Android browser.
+
+### Blocker
+
+After the Ari `Easing.bezier` shim fix, the orchestrator's physical Samsung A72 Chrome probe for:
+
+```text
+http://127.0.0.1:8088/event/create?orch1088nosession=2
+```
+
+still crashed before `/event/create` could render, this time with:
+
+```text
+(0 , _reactNativeReanimated.runOnUI) is not a function
+node_modules/react-native-draggable-flatlist/lib/module/components/CellRendererComponent.js:161
+```
+
+This was another shared web-route evaluation failure: the business web bundle imports `react-native-draggable-flatlist`, and that package expects Reanimated's `runOnUI` export even when the Event Creator route itself is trying to show a no-session recovery screen.
+
+### Rework Changes
+
+| File | Change |
+|---|---|
+| `mingla-business/src/shims/reactNativeReanimatedWebStub.js` | Added a minimal web-safe `runOnUI` export that mirrors the existing `runOnJS` fallback shape by returning a callable wrapper. |
+| `mingla-business/scripts/ci/orch-1088-event-creator-phone-parity.mjs` | Added source guards that the Reanimated web alias target exports `runOnUI`. |
+| `mingla-business/src/utils/__tests__/orch_1088_event_creator_phone_parity.test.ts` | Broadened the shim regression from Ari-only to route-wide animation/list imports and added runtime proof that `runOnUI` is callable. |
+
+### Verification - Rework 2
+
+Passed:
+
+```bash
+cd mingla-business && npm run test:orch-1088
+cd mingla-business && npx expo export -p web
+cd mingla-business && node scripts/inject-mobile-blur-css.mjs
+cd mingla-business && npm run test:orch-1088
+```
+
+Physical Android Chrome proof:
+
+```text
+Device: Samsung Galaxy A72, adb serial R58R54YV7JT
+URL: http://127.0.0.1:8088/event/create?orch1088nosession=3
+```
+
+CDP result:
+
+```json
+{
+  "finalUrl": "http://127.0.0.1:8088/event/create?orch1088nosession=3",
+  "title": "Business",
+  "bodyFirst1200": "Sign in to create an event.\nYour browser session is not available on this route.\nSign in again\nBack to Home",
+  "hasSignInTerminal": true,
+  "hasStuckFinishingOnly": false,
+  "hasSomethingWrong": false
+}
+```
+
+Fatal logcat grep for `V8 javascript OOM`, `CrRendererMain`, `Aw, Snap`, `fatal exception`, `SIGSEGV`, `Render process`, `Easing.bezier`, and `runOnUI` returned no matches after the passing probe.
+
+No deploy, merge, reap, OTA, backend, schema, or provider change was performed.
+
+### Readiness After Rework 2
+
+Ready for tester: yes, for Android phone-browser no-session route stability, source/export guards, static Home remaining shelled, and the provider-neutral copy constraint. Full Event Creator web parity still requires a signed-in phone-browser wizard pass before static Home's Create action can be reopened.

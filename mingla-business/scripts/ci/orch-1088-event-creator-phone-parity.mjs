@@ -101,6 +101,8 @@ for (const token of [
   "const bezier",
   "RNEasing?.bezier",
   "bezier,",
+  "const runOnUI",
+  "runOnUI,",
 ]) {
   assertIncludes(reanimatedWebStub, token, "src/shims/reactNativeReanimatedWebStub.js");
 }

@@ -48,6 +48,7 @@ const withRepeat = (value) => value;
 const withSequence = (...values) => values[values.length - 1];
 const cancelAnimation = () => {};
 const runOnJS = (fn) => (...args) => fn(...args);
+const runOnUI = (fn) => (...args) => fn(...args);
 const interpolate = (value) => value;
 const interpolateColor = (_value, _input, output) => output?.[0] ?? "transparent";
 
@@ -69,6 +70,7 @@ module.exports = {
   interpolate,
   interpolateColor,
   runOnJS,
+  runOnUI,
   useAnimatedProps,
   useAnimatedStyle,
   useDerivedValue,

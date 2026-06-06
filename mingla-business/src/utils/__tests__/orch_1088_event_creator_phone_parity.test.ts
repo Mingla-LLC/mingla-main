@@ -44,15 +44,19 @@ describe("ORCH-1088 business web event creator phone parity", () => {
     expect(source).toContain("Loading local drafts");
   });
 
-  test("web Reanimated shim supports Ari bezier easing before /event/create recovery renders", () => {
+  test("web Reanimated shim supports route-wide animation/list imports before /event/create recovery renders", () => {
     const shim = repoFile("src/shims/reactNativeReanimatedWebStub.js");
     const createRoute = repoFile("app/event/create.tsx");
     const ariOrb = repoFile("src/components/ari/AriOrb.tsx");
+    const packageJson = repoFile("package.json");
 
     expect(ariOrb).toContain("Easing.bezier(0.4, 0.0, 0.2, 1)");
+    expect(packageJson).toContain("react-native-draggable-flatlist");
     expect(shim).toContain("RNEasing?.bezier");
     expect(shim).toContain("const bezier");
     expect(shim).toContain("bezier,");
+    expect(shim).toContain("const runOnUI");
+    expect(shim).toContain("runOnUI,");
     expect(createRoute).toContain("Sign in to create an event.");
     expect(createRoute).toContain("We could not finish sign-in.");
     expect(createRoute).toContain("Create or select a brand before starting an event.");
@@ -85,10 +89,13 @@ describe("ORCH-1088 business web event creator phone parity", () => {
         "src/shims/reactNativeReanimatedWebStub.js",
       ));
       const easing = shim.Easing.bezier(0.4, 0.0, 0.2, 1);
+      const uiWorkletResult = shim.runOnUI((value: number) => value + 1)(41);
 
       expect(typeof shim.Easing.bezier).toBe("function");
       expect(typeof easing).toBe("function");
+      expect(typeof shim.runOnUI).toBe("function");
       expect(easing(0.5)).toBe(0.5);
+      expect(uiWorkletResult).toBe(42);
     });
   });
 
