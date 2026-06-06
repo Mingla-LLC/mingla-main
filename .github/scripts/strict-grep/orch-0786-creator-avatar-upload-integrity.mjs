@@ -56,6 +56,7 @@ for (const file of [
   "mingla-business/app/account/edit-profile.tsx",
   "mingla-business/src/services/creatorAvatarService.ts",
   "mingla-business/src/services/creatorAvatarFileReader.ts",
+  "mingla-business/src/services/creatorAvatarFileReader.native.ts",
   "mingla-business/src/utils/creatorAvatarRules.ts",
 ]) {
   assertRegexAbsent(
@@ -71,19 +72,34 @@ for (const file of [
 }
 
 // 3. Required reader
-const readerPath = "mingla-business/src/services/creatorAvatarFileReader.ts";
+const readerPath = "mingla-business/src/services/creatorAvatarFileReader.native.ts";
+const webReaderPath = "mingla-business/src/services/creatorAvatarFileReader.ts";
 if (!exists(readerPath)) {
-  failures.push(`${readerPath}: required file is missing`);
+  failures.push(`${readerPath}: required native file reader is missing`);
 } else {
   assertIncludes(
     readerPath,
     'from "expo-file-system"',
-    "reader must import from expo-file-system",
+    "native reader must import from expo-file-system",
   );
   assertIncludes(
     readerPath,
     "readCreatorAvatarFileBytes",
-    "reader must export readCreatorAvatarFileBytes",
+    "native reader must export readCreatorAvatarFileBytes",
+  );
+}
+if (!exists(webReaderPath)) {
+  failures.push(`${webReaderPath}: required web file reader is missing`);
+} else {
+  assertIncludes(
+    webReaderPath,
+    "readCreatorAvatarFileBytes",
+    "web reader must export readCreatorAvatarFileBytes",
+  );
+  assertRegexAbsent(
+    webReaderPath,
+    /from\s+["']expo-file-system["']/,
+    "web reader must not import expo-file-system into the web bundle",
   );
 }
 
