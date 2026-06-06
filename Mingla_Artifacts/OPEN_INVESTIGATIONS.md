@@ -1,6 +1,6 @@
 # Open Investigations
 
-> **2026-06-05 - ORCH-1087 [Business web full-route phone-browser gate] OPEN - FORENSICS DISPATCHED.** Investigation target: every static Home link must be classified as PASS_NOW, FIX_REQUIRED, STATIC_SHELL_REQUIRED, UNSUPPORTED_WITH_COPY, or NEEDS_CREDENTIAL_OR_DATA based on source hazards plus phone-browser runtime proof where possible. Worktree: `/Users/sethogieva/Desktop/mingla-orchs/ORCH-1087-[business-web-route-gate]`; prompt: `Mingla_Artifacts/prompts/FORENSIC_ORCH-1087_BUSINESS_WEB_FULL_ROUTE_PHONE_BROWSER_GATE.md`.
+> **2026-06-06 - ORCH-1087 [Business web full-route phone-browser gate] CLOSED - remove from open investigations.** Forensics produced the route truth table and S1 spec; implementation installed the static Home route firewall; QA and production gates passed for S1. Follow-on investigations should be opened as new ORCHs for full creator, Hub, Ari, marketing/composer, Account, and payout-management web parity rather than reopening this static firewall.
 
 > **2026-06-05 - ORCH-1085 [Mobile browser business web sign-in/Home] Phase 2 investigation closed; Phase 3 inventory complete.** No open investigation remains for the original sign-in crash: static callback/Home is implemented, merged, deployed, and Android-verified. Open follow-up is the full-web Phase 3 program, now grounded in `Mingla_Artifacts/reports/INVENTORY_ORCH-1085_PHASE_3_BUSINESS_WEB_FULL_WEB_COMPLETION.md`; start with Wave 1 slices rather than re-investigating the crash-stop path.
 

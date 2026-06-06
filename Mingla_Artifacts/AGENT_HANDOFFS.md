@@ -1,8 +1,8 @@
 # Agent Handoffs
 
-## 2026-06-05 - ORCH-1087 [Business web full-route phone-browser gate] dispatched to Codex `forensic-mingla`
+## 2026-06-06 - ORCH-1087 [Business web full-route phone-browser gate] closed after forensic -> implementor -> tester -> production gate
 
-Goal: produce the Phase 3 route truth table and implementation spec for every static Home link on business web phone browsers. Inputs: `Mingla_Artifacts/reports/INVENTORY_ORCH-1085_PHASE_3_BUSINESS_WEB_FULL_WEB_COMPLETION.md`, ORCH-1085 implementation/rework reports, `mingla-business/public/home.html`, `mingla-business/vercel.json`, `mingla-business/scripts/inject-mobile-blur-css.mjs`, and `mingla-business/src/diagnostics/chunkReloadGuard.ts`. Worktree: `/Users/sethogieva/Desktop/mingla-orchs/ORCH-1087-[business-web-route-gate]` on branch `ORCH-1087-business-web-route-gate`. Hard constraints: no product-code edit, deploy, OTA, merge, or reap; use physical Android Chrome where available; mark mobile Safari as a manual gate if unavailable. Expected outputs: `Mingla_Artifacts/reports/INVESTIGATION_ORCH-1087_BUSINESS_WEB_FULL_ROUTE_PHONE_BROWSER_GATE.md` and `Mingla_Artifacts/specs/SPEC_ORCH-1087_BUSINESS_WEB_FULL_ROUTE_PHONE_BROWSER_GATE.md`, then route back to orchestrator review before implementor dispatch.
+Result: CLOSED-PASS-GradeA for S1. Forensics produced the route truth table/spec, implementor installed the static Home route firewall, tester issued conditional pass before merge, PR #390 merged at `93d3248db8631f45563e4dfef862c3e2aa0acb1e`, and production smoke cleared the deploy condition. Evidence: `Mingla_Artifacts/reports/CLOSE_ORCH-1087_BUSINESS_WEB_STATIC_ROUTE_FIREWALL.md`. Downstream routing: open new ORCHs for full phone-browser parity on creator, Hub, Ari, marketing/composer, Account, and payout management; do not treat this static firewall as full web completion.
 
 ## 2026-06-05 - ORCH-1085 [Mobile browser business web sign-in/Home] Phase 2 completed; Phase 3 inventory returned
 
