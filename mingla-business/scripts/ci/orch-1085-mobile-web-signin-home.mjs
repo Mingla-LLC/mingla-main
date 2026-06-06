@@ -56,6 +56,12 @@ const home = read("public/home.html");
 if (!home.includes("Business Home") || !home.includes("Run your next drop.")) {
   fail("public/home.html must render a branded mobile Business Home shell");
 }
+if (!home.includes('id="session-label">Signed out</p>')) {
+  fail("public/home.html must not claim Signed in without a real browser session");
+}
+if (!home.includes('session.access_token') || !home.includes('email || "Signed in"')) {
+  fail("public/home.html must switch the session label only after reading a usable auth session");
+}
 for (const tab of ["Home", "Hub", "Ari", "Blast", "Account"]) {
   if (!home.includes(`>${tab}<`)) {
     fail(`public/home.html must render the ${tab} tab`);
@@ -99,6 +105,14 @@ if (
 ) {
   fail("post-export injection must include the signed-in mobile / -> /home preboot redirect");
 }
+if (
+  !injectScript.includes("mingla-mobile-web-chunk-recovery") ||
+  !injectScript.includes("/_expo/static/js/web/") ||
+  !injectScript.includes("location.reload()") ||
+  !injectScript.includes("/home?recovered=chunk")
+) {
+  fail("post-export injection must include stale async chunk recovery before Expo app boot");
+}
 
 if (existsSync(join(WEB_BUILD, "index.html"))) {
   const indexHtml = read(join(WEB_BUILD, "index.html"));
@@ -127,6 +141,9 @@ if (existsSync(join("dist", "index.html"))) {
   const distIndex = read(join("dist", "index.html"));
   if (!distIndex.includes("mingla-mobile-web-home-preboot")) {
     fail("dist/index.html must contain the mobile signed-in preboot redirect");
+  }
+  if (!distIndex.includes("mingla-mobile-web-chunk-recovery")) {
+    fail("dist/index.html must contain stale async chunk recovery");
   }
   if (!distIndex.includes("mingla-mobile-web-no-blur")) {
     fail("dist/index.html must contain the mobile no-blur style");

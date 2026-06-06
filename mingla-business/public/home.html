@@ -421,7 +421,7 @@
           <img class="brand-mark" src="/brand/mingla-business-logo.png" alt="Mingla Business" />
           <div class="brand-copy">
             <p class="brand-name">Mingla Business</p>
-            <p class="session" id="session-label">Signed in</p>
+            <p class="session" id="session-label">Signed out</p>
           </div>
         </div>
         <a class="chip" href="#account" data-tab-link="account">Account</a>
@@ -753,8 +753,8 @@
           if (raw) {
             var session = JSON.parse(raw);
             var email = session && session.user && session.user.email;
-            if (email) {
-              document.getElementById("session-label").textContent = email;
+            if (session && session.access_token) {
+              document.getElementById("session-label").textContent = email || "Signed in";
             }
           }
         } catch (_error) {}
