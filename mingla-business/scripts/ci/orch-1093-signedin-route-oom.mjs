@@ -360,6 +360,8 @@ function assertSourceGuards() {
   for (const route of ["/hub/events", "/marketing", "/marketing/campaigns/compose", "/account", "/hub/trips"]) {
     assertIncludes(inject, `"${route}":"pending-proof"`, "scripts/inject-mobile-blur-css.mjs");
   }
+  assertIncludes(inject, 'status!=="approved"', "scripts/inject-mobile-blur-css.mjs");
+  assertNotIncludes(inject, "hasSession()", "scripts/inject-mobile-blur-css.mjs");
 
   const vercel = JSON.parse(read("vercel.json"));
   const webJsHeader = (vercel.headers ?? []).find((header) => header.source === "/_expo/static/js/web/(.*)");

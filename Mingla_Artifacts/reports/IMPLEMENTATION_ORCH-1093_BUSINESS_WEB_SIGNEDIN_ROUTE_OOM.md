@@ -7,7 +7,7 @@
 
 ## 1. Layman Summary
 
-Signed-in Mingla Business web routes that physically OOMed on Android Chrome now fail closed before Expo boot loads. `/hub/events`, `/marketing`, `/marketing/campaigns/compose`, `/account`, and `/hub/trips` show deliberate protected recovery on signed-in phone direct entry with zero Expo JS resources; `/event/create` remains the only approved signed-in phone route because it reached the real wizard on the Samsung A72.
+Mingla Business web routes that physically OOMed on Android Chrome now fail closed before Expo boot loads, regardless of whether the browser has a stored session. `/hub/events`, `/marketing`, `/marketing/campaigns/compose`, `/account`, and `/hub/trips` show deliberate protected recovery on phone direct entry with zero Expo JS resources; `/event/create` remains the only approved signed-in phone route because it reached the real wizard on the Samsung A72.
 
 The CI guard no longer treats `eager=0` as success when Expo boot scripts are deferred. It counts the deferred phone boot payload (`2,884,313` raw bytes, `__common=1,881,530`) against approved-route safety and self-tests the previous false-pass shape. Physical Android Chrome passed; mobile Safari remains a manual gate.
 
@@ -96,7 +96,7 @@ The CI guard no longer treats `eager=0` as success when Expo boot scripts are de
 ### `mingla-business/scripts/inject-mobile-blur-css.mjs`
 
 - **Before:** Added ORCH-1091 cache busting, mobile recovery, home preboot, and blur-kill CSS while leaving Expo scripts as static eager tags.
-- **After:** Preserves those markers and converts Expo web script tags into a guarded deferred loader. Signed-in phone browsers on pending/blocked routes render recovery and do not load Expo scripts; signed-out pending routes can still load Expo and reach ORCH-1092 sign-in recovery.
+- **After:** Preserves those markers and converts Expo web script tags into a guarded deferred loader. Phone browsers on any non-approved route render recovery before Expo scripts, with or without a stored session.
 - **Why:** Meet eager direct-route byte budgets after the required post-export path.
 - **Approx lines changed:** 24.
 
@@ -131,14 +131,14 @@ The CI guard no longer treats `eager=0` as success when Expo boot scripts are de
 | Add failing-first `test:orch-1093` and CI script with self-test chained to ORCH-1092 | Yes | `npm run test:orch-1093` | PASS |
 | Lazy-load tab-global `GlobalSearchSheet` and desktop `CommandPalette` | Yes | Source guard forbids eager tokens; bundle guard passes | PASS |
 | Lazy-load route action sheets/bodies where not first-paint | Yes | Source guard and route chunk budgets pass | PASS |
-| Preserve/add fail-closed route safety | Yes | Root mobile recovery plus Playwright smoke on protected routes | PASS for automated smoke |
+| Preserve/add fail-closed route safety | Yes | Root mobile recovery plus pre-Expo injector guard on protected routes | PASS for automated smoke |
 | Keep Expo Web, `web.output`, and `asyncRoutes.web` | Yes | ORCH-1093 and ORCH-1092 source guards | PASS |
 | Preserve ORCH-1091 recovery/cache and Vercel must-revalidate | Yes | Chained ORCH-1092 plus ORCH-1093 token checks | PASS |
 | Preserve ORCH-1092 provider-neutral/native-module quarantine | Yes | `npm run test:orch-1093` chains ORCH-1092 | PASS |
 | Eager direct-route raw JS <= 2,100,000 bytes after production injection | Reworked | ORCH-1093 guard now reports deferred phone boot too | PASS fail-closed: `phoneBoot=2,884,313`, only `/event/create` approved |
 | Eager `__common` <= 1,200,000 bytes after production injection | Reworked | ORCH-1093 guard now reports deferred phone boot too | PASS fail-closed: `__common=1,881,530`, only `/event/create` approved |
 | Route chunk budgets | Yes | ORCH-1093 budget guard | PASS |
-| Physical Android Chrome direct route first screen or recovery <= 8s | Yes for current route statuses | Samsung A72 Chrome 148 seeded local session | PASS |
+| Physical Android Chrome direct route first screen or recovery <= 8s | Yes for current route statuses | Samsung A72 Chrome 148 seeded local session plus no-session export smoke for `/hub/events` | PASS |
 | Mobile Safari useful first screen or recovery <= 8s | Not physically proven | Not available in this run | MANUAL GATE |
 
 ## 9. Invariant Verification
@@ -169,7 +169,7 @@ The CI guard no longer treats `eager=0` as success when Expo boot scripts are de
 - **Invalidations added:** None.
 - **Data shape changes:** None.
 - **AsyncStorage/Zustand impact:** Existing sheet stores are read by lightweight hosts; no persistence change.
-- **Cold start behavior:** Protected phone direct-entry routes can render recovery before app providers/scripts load; approved routes defer Expo scripts through the injected loader instead of static script tags.
+- **Cold start behavior:** Protected phone direct-entry routes render recovery before app providers/scripts load, regardless of stored session; approved routes defer Expo scripts through the injected loader instead of static script tags.
 
 ## 12. Verification
 
@@ -180,6 +180,7 @@ The CI guard no longer treats `eager=0` as success when Expo boot scripts are de
 | Expo web export | `npx expo export -p web` | PASS | Sentry config warning only; export completed. |
 | Post-export injection | `node scripts/inject-mobile-blur-css.mjs` | PASS | Injected ORCH-1091 recovery/cache markers and ORCH-1093 script deferral. |
 | ORCH-1093 budget guard | `node scripts/ci/orch-1093-signedin-route-oom.mjs` | PASS | `phoneBoot=2,884,313; __common=1,881,530; deferred=true; approved=/event/create`. |
+| No-session pre-Expo protected route smoke | Local injected export at `/hub/events` with phone-shaped browser and empty storage | PASS | Protected recovery rendered and no Expo JS resources loaded. |
 | Route chunk budgets | ORCH-1093 guard output | PASS | `/hub/trips` 12,661; `/hub/events` 18,954; `/marketing` 11,952; `/marketing/campaigns/compose` 570,122; `/account` 9,055; `/event/create` 4,522 bytes. |
 | Before bundle baseline | Runtime proof/export baseline | FAIL baseline | Static eager boot payload was about 2,884,148 bytes with `__common` about 1,881,365 bytes. |
 | After export before injection | Fresh export size probe | Still over direct-eager budget | Deferred payload files total 2,884,313 bytes, `__common` 1,881,530 bytes, index 998,981 bytes, runtime 3,802 bytes. |
@@ -203,7 +204,7 @@ The CI guard no longer treats `eager=0` as success when Expo boot scripts are de
 | Item | Risk / temporary state | Exit condition | Location |
 |---|---|---|---|
 | Deferred app payload still totals about 2.88 MB | Only `/event/create` is approved to load it because Android Chrome reached the real wizard; OOM-proven routes are fail-closed | Further code-splitting or physical proof for each route before reopening | `dist/index.html` deferred script list |
-| `/hub/events`, `/marketing`, `/marketing/campaigns/compose`, `/account`, `/hub/trips` pending-proof routes | They intentionally return recovery on signed-in phone direct entry | Deeper boot split plus physical Android Chrome and mobile Safari proof under 8s | `app/_layout.tsx` and injector route guard |
+| `/hub/events`, `/marketing`, `/marketing/campaigns/compose`, `/account`, `/hub/trips` pending-proof routes | They intentionally return recovery on phone direct entry before Expo boot, regardless of session | Deeper boot split plus physical Android Chrome and mobile Safari proof under 8s | `app/_layout.tsx` and injector route guard |
 | Mobile Safari gate unrun | Android Chrome passed but Safari was not available to Codex in this run | Tester/Seth run Safari gate | Manual QA |
 | Full TypeScript gate fails | Existing repo-wide type debt can hide unrelated regressions | Separate cleanup/ORCH fixes typecheck debt | `npx tsc --noEmit --pretty false` output |
 
@@ -233,7 +234,7 @@ Deploy: business web export + post-export injection only; no deploy performed
 
 ## Ready-To-Test Checklist
 
-1. On physical Android Chrome, open the deployed or local business web build at `/hub/events`, `/marketing`, `/marketing/campaigns/compose`, `/account`, and `/hub/trips`; expected for a signed-in phone session: protected recovery in <= 8 seconds, zero Expo JS resources before recovery, and no crash/OOM.
+1. On physical Android Chrome, open the deployed or local business web build at `/hub/events`, `/marketing`, `/marketing/campaigns/compose`, `/account`, and `/hub/trips`; expected for signed-in and signed-out phone sessions: protected recovery in <= 8 seconds, zero Expo JS resources before recovery, and no crash/OOM.
 2. On physical Android Chrome, open `/event/create`; expected: the real event creator wizard loads without crash/OOM.
 3. On mobile Safari, repeat the same routes; expected: protected recovery for pending routes and real wizard for `/event/create`, no crash/OOM.
 4. On desktop web, press Cmd/Ctrl+K; expected: command palette opens after lazy load.

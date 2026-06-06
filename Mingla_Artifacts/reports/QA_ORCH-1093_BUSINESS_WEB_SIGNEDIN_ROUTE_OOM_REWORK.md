@@ -14,6 +14,10 @@ The implementation now honestly fails closed instead of pretending full signed-i
 
 The remaining condition is mobile Safari. Codex could not run an authenticated mobile Safari route inspection in this environment: no connected iPhone/iPad was present, no iOS simulator was booted for a usable authenticated Safari run, and `ios_webkit_debug_proxy` was unavailable. This is a manual gate before close/deploy language may say route parity is restored.
 
+## Addendum: Pre-Expo No-Session Hardening
+
+The orchestrator review hardening gap is fixed after the QA commit under test. The injected ORCH-1093 loader now renders protected recovery before loading Expo scripts for any phone route whose status is not `approved`, regardless of stored session. A local injected-export smoke opened `/hub/events` with a phone-shaped, empty-storage browser and verified protected recovery with `expoResourceCount=0` and `expoRequestCount=0`.
+
 ## Findings
 
 | Severity | Finding | Status | Evidence |
@@ -148,7 +152,7 @@ which ios_webkit_debug_proxy
 | Expo Web path retained | PASS | `app.json` has `web.output: "single"`. |
 | Expo Router async routes retained | PASS | `app.json` has `asyncRoutes.web: true`. |
 | ORCH-1093 route status is honest | PASS | `app/_layout.tsx` maps `/event/create` to `approved`; `/hub/events`, `/marketing`, `/marketing/campaigns/compose`, `/account`, and `/hub/trips` to `pending-proof`; `/hub/experiences`, `/ari`, and payout route to `blocked`. |
-| Static/injected route guard matches source route status | PASS | `scripts/inject-mobile-blur-css.mjs` uses the same pending/blocked route map and renders recovery before Expo scripts on signed-in phone pending routes. |
+| Static/injected route guard matches source route status | PASS | `scripts/inject-mobile-blur-css.mjs` uses the same pending/blocked route map and renders recovery before Expo scripts on phone pending routes regardless of stored session. |
 | Tab-global heavy UI is lazy | PASS | `(tabs)/_layout.tsx` imports `GlobalSearchSheetHost` and `CommandPaletteHost`; hosts lazy-load bodies only when opened. |
 | Action sheets are lazy on target routes | PASS | Trips/events/account/hub/marketing layouts use `React.lazy` for share/manage/switch/create/delete bodies. |
 | Native-module quarantine retained | PASS | ORCH-1092 guard passed and ORCH-1093 eager-token guard passed against generated boot chunks. |
