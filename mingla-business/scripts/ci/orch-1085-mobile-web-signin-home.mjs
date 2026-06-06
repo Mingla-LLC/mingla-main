@@ -100,11 +100,20 @@ if (homeRewriteIndex < 0 || catchAllIndex < 0 || homeRewriteIndex > catchAllInde
 const webJsHeader = (vercel.headers ?? []).find(
   (header) => header.source === "/_expo/static/js/web/(.*)",
 );
+const broadExpoStaticHeaderIndex = (vercel.headers ?? []).findIndex(
+  (header) => header.source === "/_expo/static/(.*)",
+);
+const webJsHeaderIndex = (vercel.headers ?? []).findIndex(
+  (header) => header.source === "/_expo/static/js/web/(.*)",
+);
 if (
   !webJsHeader ||
   !JSON.stringify(webJsHeader.headers ?? []).includes("max-age=0, must-revalidate")
 ) {
   fail("web JS bundles must not be served immutable because async route manifests can stale across deploys");
+}
+if (broadExpoStaticHeaderIndex < 0 || webJsHeaderIndex < broadExpoStaticHeaderIndex) {
+  fail("web JS cache header must appear after the broad Expo static immutable header so Vercel applies must-revalidate");
 }
 
 const injectScript = read("scripts/inject-mobile-blur-css.mjs");

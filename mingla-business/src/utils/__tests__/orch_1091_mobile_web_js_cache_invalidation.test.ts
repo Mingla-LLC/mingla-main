@@ -19,6 +19,19 @@ describe("ORCH-1091 mobile web JS cache invalidation", () => {
     );
   });
 
+  test("Vercel web JS header overrides the broad immutable static header", () => {
+    const vercel = JSON.parse(repoFile("vercel.json"));
+    const broadStaticIndex = vercel.headers.findIndex(
+      (header: { source?: string }) => header.source === "/_expo/static/(.*)",
+    );
+    const webJsIndex = vercel.headers.findIndex(
+      (header: { source?: string }) => header.source === "/_expo/static/js/web/(.*)",
+    );
+
+    expect(broadStaticIndex).toBeGreaterThanOrEqual(0);
+    expect(webJsIndex).toBeGreaterThan(broadStaticIndex);
+  });
+
   test("post-export injection cache-busts eager Expo JS script URLs", () => {
     const source = repoFile("scripts/inject-mobile-blur-css.mjs");
 
