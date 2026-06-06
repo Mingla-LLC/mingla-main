@@ -21,6 +21,7 @@ Reference: [WORKTREE_STRATEGY.md](WORKTREE_STRATEGY.md).
 | `~/Desktop/mingla-orchs/ORCH-1020-[collab-deck-prefs-swipe-freeze]` | `ORCH-1020-collab-deck-prefs-swipe-freeze` | ORCH-1020 | WATCH / NOT REPRODUCED after INVESTIGATE | iPhone 17 Pro Max sim `2C3312D9-EE52-4EBD-9704-15811D49A2EC`; Android emulator available but parity unresolved | 8088 intended; investigation used app-mobile Metro 8082 when 8088 was occupied | 2026-05-30 | Codex `orchestrator-mingla` (review) -> parked unless Seth can reproduce with exact device/build/session/video |
 | `~/Desktop/mingla-orchs/META-ORCH-1074-[business-notifications]` | `META-ORCH-1074-business-notifications` | META-ORCH-1074 | INTAKE+INVESTIGATE done → SPEC dispatch (v1 = 12 notifications) | TBD (business iOS dev build) | 8111 | 2026-06-04 | Claude `mingla-orchestrator` (dispatch) → Claude `mingla-forensics` (SPEC) |
 | `~/Desktop/mingla-orchs/ORCH-1085-[business-web-code-splitting]` | `ORCH-1085-business-web-code-splitting` | ORCH-1085 | SPEC dispatch - architecture plan only | no sim - business web Playwright + mobile browser validation | 8107 | 2026-06-05 | Codex `orchestrator-mingla` (takeover) -> Codex `forensic-mingla` (SPEC) |
+| `~/Desktop/mingla-orchs/ORCH-1089-[business-web-event-creator-signedin-wizard]` | `ORCH-1089-business-web-event-creator-signedin-wizard` | ORCH-1089 | FORENSICS investigate/spec dispatch | physical Android Chrome if connected + Safari-equivalent browser proof | 8109 | 2026-06-06 | Codex `orchestrator-mingla` (dispatch) -> Codex `forensic-mingla` (investigate/spec) |
 
 ---
 
