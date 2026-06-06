@@ -190,6 +190,21 @@ The CI guard no longer treats `eager=0` as success when Expo boot scripts are de
 | Physical Android Chrome | Samsung Galaxy A72 `R58R54YV7JT`, Chrome `148.0.7778.215`, local `http://127.0.0.1:56815` with stored business session | PASS for current route statuses | `/hub/events`, `/marketing`, `/marketing/campaigns/compose`, `/account`, `/hub/trips` rendered protected recovery with `expoResourceCount=0`; `/event/create` reached real wizard at `/event/d_mq2ll83qzmzu1e/edit?step=0` with 15 Expo resources; logcat had no `V8 javascript OOM`, `CrRendererMain`, OOM service disconnect, or `Aw, Snap!`. |
 | Mobile Safari | Not run | MANUAL GATE | Required before labeling route restored. |
 
+### 12.1 Latest Orchestrator Retest Addendum
+
+After commit `e2ab5202d`, `npm run test:orch-1093` initially exposed one stale guard expectation: ORCH-1092 still required signed-out copy on pending phone routes even though ORCH-1093 now deliberately protects every non-approved phone route before Expo boot. The guard was updated so the old signed-out recovery remains valid only when ORCH-1093's pre-Expo `status!=="approved"` protection is absent; when the protection is present, the runtime expectation is `This route is staying protected.` plus `Return to Home`.
+
+Latest verification:
+
+| Check | Command / method | Result | Notes |
+|---|---|---|---|
+| ORCH-1093 chained guard after ORCH-1092 contract update | `npm run test:orch-1093` | PASS | Includes ORCH-1092 runtime guard, Jest tests, ORCH-1093 self-test, and deferred false-pass self-test. |
+| Fresh production export | `npx expo export -p web` | PASS | Sentry organization/project warning only. |
+| Post-export injection | `node scripts/inject-mobile-blur-css.mjs` | PASS | `dist/index.html` contains ORCH-1093 script deferral and `status!=="approved"` pre-Expo protection. |
+| Generated-output budget guard | `node scripts/ci/orch-1093-signedin-route-oom.mjs` | PASS | `phoneBoot=2884313; __common=1881530; deferred=true; approved=/event/create`. |
+| Physical Android Chrome protected routes | Samsung A72 `R58R54YV7JT`, Chrome `148.0.7778.215`, local injected export on `http://127.0.0.1:56816` | PASS | `/hub/events`, `/marketing`, `/marketing/campaigns/compose`, `/account`, and `/hub/trips` each rendered protected recovery with `expoResourceCount=0`. |
+| Android crash-signature check | `adb -s R58R54YV7JT shell logcat -d -t 2000 \| rg -i 'V8 javascript OOM\|CrRendererMain\|Aw, Snap\|onServiceDisconnected \(crash or killed by oom\)'` | PASS | No matching OOM, renderer-death, or Aw Snap lines after the protected-route run. |
+
 ## 13. Regression Surface
 
 1. **Global search open path:** Lazy host must still open the sheet when the top-bar search trigger flips the store state.

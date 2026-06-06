@@ -196,3 +196,37 @@ Run after the same export/injection shape is deployed or served locally:
 5. Expected: real event creator wizard appears within 8 seconds; no blank screen, crash, repeated reload, or memory failure.
 
 If Safari fails any pending route recovery or `/event/create`, route back to implementor with this QA report and the failing route evidence.
+
+## Retest Addendum: 2026-06-06 Latest Hardening Commit
+
+Commit under retest: `e2ab5202d` plus the scoped ORCH-1092 guard-contract update in this branch.
+
+Verdict remains CONDITIONAL PASS. The latest hardening intentionally changed the phone-route contract for pending ORCH-1092 routes: when the ORCH-1093 pre-Expo guard is present, `/hub/events`, `/marketing`, `/marketing/campaigns/compose`, and `/account` now show protected recovery before Expo boot instead of the older signed-out recovery copy. The ORCH-1092 runtime guard was updated to allow the old signed-out copy only when the ORCH-1093 protection marker is absent, and to require protected recovery when `status!=="approved"` is injected.
+
+Latest commands:
+
+```text
+npm run test:orch-1093
+# PASS; includes ORCH-1085, ORCH-1087, ORCH-1088, ORCH-1089, ORCH-1092, ORCH-1093 self-test, and ORCH-1093 deferred false-pass self-test.
+
+npx expo export -p web
+# PASS; Sentry organization/project warning only.
+
+node scripts/inject-mobile-blur-css.mjs
+# PASS; injected ORCH-1091 recovery/cache markers and ORCH-1093 script deferral.
+
+node scripts/ci/orch-1093-signedin-route-oom.mjs
+# PASS; phoneBoot=2884313; __common=1881530; deferred=true; approved=/event/create.
+```
+
+Latest physical Android Chrome evidence on Samsung A72 `R58R54YV7JT`, Chrome `148.0.7778.215`, local injected export `http://127.0.0.1:56816`:
+
+| Route | Result | Expo JS resources |
+|---|---|---:|
+| `/hub/events` | Protected recovery visible; `Return to Home` visible | 0 |
+| `/marketing` | Protected recovery visible; `Return to Home` visible | 0 |
+| `/marketing/campaigns/compose` | Protected recovery visible; `Return to Home` visible | 0 |
+| `/account` | Protected recovery visible; `Return to Home` visible | 0 |
+| `/hub/trips` | Protected recovery visible; `Return to Home` visible | 0 |
+
+Post-run logcat grep returned no `V8 javascript OOM`, `CrRendererMain`, `Aw, Snap`, or renderer-death lines. Production-tab DevTools storage access timed out, so the latest retest did not reseed the local signed-in `/event/create` leg; the prior QA proof for `/event/create` remains the current runtime evidence because this addendum changed only the protected pending-route test contract.

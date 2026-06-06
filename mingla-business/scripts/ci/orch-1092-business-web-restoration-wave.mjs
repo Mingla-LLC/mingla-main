@@ -132,8 +132,13 @@ async function withDistServer(callback) {
   }
 }
 
-async function assertSignedOutRecoveryRuntime() {
+async function assertPhoneRouteRecoveryRuntime() {
   const { chromium } = await import("playwright");
+  const distIndex = read(join("dist", "index.html"));
+  const orch1093ProtectsPendingRoutes =
+    distIndex.includes("orch1093-mobile-route-script-deferral") &&
+    distIndex.includes('status!=="approved"');
+  const pendingProofRecovery = "This route is staying protected.";
   const routes = [
     ["/hub/events", "Sign in to open Hub Events."],
     ["/marketing", "Sign in to open Marketing overview."],
@@ -162,10 +167,12 @@ async function assertSignedOutRecoveryRuntime() {
           waitUntil: "domcontentloaded",
           timeout: 15000,
         });
-        await page.getByText(expected, { exact: true }).waitFor({ timeout: 6000 });
+        await page
+          .getByText(orch1093ProtectsPendingRoutes ? pendingProofRecovery : expected, { exact: true })
+          .waitFor({ timeout: 6000 });
         await page.getByText("Return to Home", { exact: true }).waitFor({ timeout: 1000 });
         if (failures.length > 0) {
-          fail(`${route} unsigned recovery had runtime failures: ${failures.join("; ")}`);
+          fail(`${route} phone recovery had runtime failures: ${failures.join("; ")}`);
         }
         await page.close();
       }
@@ -422,7 +429,7 @@ if (existsSync(jsDir)) {
 }
 
 if (existsSync(join("dist", "index.html"))) {
-  await assertSignedOutRecoveryRuntime();
+  await assertPhoneRouteRecoveryRuntime();
 }
 
 console.log("ORCH-1092 business web restoration wave PASS.");
