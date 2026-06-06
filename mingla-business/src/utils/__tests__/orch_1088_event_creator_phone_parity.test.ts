@@ -116,7 +116,7 @@ describe("ORCH-1088 business web event creator phone parity", () => {
       source.includes('href="/event/create"') || source.includes("href='/event/create'");
 
     if (createIsReopened) {
-      expect(source).toContain("data-orch-1088-create-reopened");
+      expect(source).toMatch(/data-orch-108[89]-create-reopened/);
     } else {
       expect(source).toContain('href="#create-event"');
       expect(source).toContain('data-shell-link="create-event"');

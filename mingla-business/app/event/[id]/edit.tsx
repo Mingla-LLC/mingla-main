@@ -257,9 +257,15 @@ export default function EventEditRoute(): React.ReactElement {
           }
         }
       }
-      // Draft not found — bounce home (existing behaviour).
+      // Draft not found — use the same static-safe recovery surface as the
+      // timed-out branch on web, rather than routing phone browsers into the
+      // full tabs Home route.
       const t = setTimeout(() => {
-        router.replace("/(tabs)/home" as never);
+        if (Platform.OS === "web") {
+          setMissingDraftTimedOut(true);
+          return;
+        }
+        router.replace(safeEventsExitRoute() as never);
       }, 0);
       return (): void => clearTimeout(t);
     }
@@ -311,7 +317,7 @@ export default function EventEditRoute(): React.ReactElement {
             `/e/${ctx.slug.brandSlug}/${ctx.slug.eventSlug}` as never,
           );
         } else {
-          router.replace("/(tabs)/home" as never);
+          router.replace(safeEventsExitRoute() as never);
         }
       } else {
         // Discarded / abandoned (chrome X close) — route to Events tab

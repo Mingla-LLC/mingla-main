@@ -51,7 +51,8 @@
     "test:orch-1086": "npx jest __tests__/authCallbackStatic.test.ts --runInBand",
     "test:orch-1085": "node scripts/ci/orch-1085-mobile-web-signin-home.mjs",
     "test:orch-1087": "npm run test:orch-1085 && node scripts/ci/orch-1087-static-route-firewall.mjs",
-    "test:orch-1088": "npm run test:orch-1087 && node scripts/ci/orch-1088-event-creator-phone-parity.mjs && npx jest src/utils/__tests__/orch_1088_event_creator_phone_parity.test.ts --runInBand"
+    "test:orch-1088": "npm run test:orch-1087 && node scripts/ci/orch-1088-event-creator-phone-parity.mjs && npx jest src/utils/__tests__/orch_1088_event_creator_phone_parity.test.ts --runInBand",
+    "test:orch-1089": "npm run test:orch-1088 && node scripts/ci/orch-1089-signedin-event-creator-wizard.mjs && npx jest src/utils/__tests__/orch_1089_signedin_event_creator_wizard.test.ts --runInBand"
   },
   "dependencies": {
     "@expo-google-fonts/anton": "^0.4.2",

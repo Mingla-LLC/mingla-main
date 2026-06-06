@@ -6,6 +6,15 @@ import { useCurrentBrandStore } from "../store/currentBrandStore";
 import { resolveCurrentBrandId } from "../utils/currentBrandResolver";
 import { useBrands } from "./useBrands";
 import { useCreatorAccount } from "./useCreatorAccount";
+import {
+  CURRENT_BRAND_QUERY_ERROR,
+  hasCurrentBrandRecoveryQueryError,
+} from "../utils/currentBrandRecoveryErrors";
+
+export {
+  CURRENT_BRAND_QUERY_ERROR,
+  hasCurrentBrandRecoveryQueryError,
+} from "../utils/currentBrandRecoveryErrors";
 
 export interface CurrentBrandRecoveryState {
   isResolving: boolean;
@@ -37,13 +46,16 @@ export const useCurrentBrandRecovery = (): CurrentBrandRecoveryState => {
     [brands],
   );
   const defaultBrandId = creatorAccount.data?.default_brand_id ?? null;
+  const hasQueryError = hasCurrentBrandRecoveryQueryError(
+    brandsQuery.isError,
+    creatorAccount.isError,
+  );
   const dataReady =
     isAuthReady &&
     userId !== null &&
     brandsQuery.isFetched &&
-    !brandsQuery.isError &&
     creatorAccount.isFetched &&
-    !creatorAccount.isError;
+    !hasQueryError;
   const resolution = useMemo(
     () =>
       dataReady
@@ -112,7 +124,7 @@ export const useCurrentBrandRecovery = (): CurrentBrandRecoveryState => {
 
   return {
     isResolving,
-    isError: errorMessage !== null,
-    errorMessage,
+    isError: hasQueryError || errorMessage !== null,
+    errorMessage: hasQueryError ? CURRENT_BRAND_QUERY_ERROR : errorMessage,
   };
 };

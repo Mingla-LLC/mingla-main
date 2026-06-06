@@ -36,8 +36,9 @@ function assertNotIncludes(source, token, label) {
 }
 
 const home = read("public/home.html");
+const createIsReopened =
+  home.includes('href="/event/create"') || home.includes("href='/event/create'");
 const unsafeRoutes = [
-  "/event/create",
   "/hub/events",
   "/hub/experiences",
   "/hub/trips",
@@ -47,6 +48,13 @@ const unsafeRoutes = [
   "/account",
   "/connect-account-management",
 ];
+
+if (createIsReopened) {
+  assertIncludes(home, "data-orch-1089-create-reopened", "public/home.html");
+} else {
+  assertNotIncludes(home, 'href="/event/create"', "public/home.html");
+  assertNotIncludes(home, "href='/event/create'", "public/home.html");
+}
 
 for (const route of unsafeRoutes) {
   assertNotIncludes(home, `href="${route}"`, "public/home.html");
@@ -58,7 +66,6 @@ for (const token of ["/_expo/static/js/", "expo-metro-runtime", "Stripe account"
 }
 
 const shellTargets = [
-  "create-event",
   "hub-events",
   "hub-experiences",
   "hub-trips",
@@ -68,6 +75,11 @@ const shellTargets = [
   "account-settings",
   "payout-account",
 ];
+
+if (!createIsReopened) {
+  assertIncludes(home, 'href="#create-event"', "public/home.html");
+  assertIncludes(home, 'data-shell-link="create-event"', "public/home.html");
+}
 
 for (const target of shellTargets) {
   assertIncludes(home, `href="#${target}"`, "public/home.html");
@@ -92,6 +104,15 @@ assertIncludes(home, "shellCopy", "public/home.html");
 
 if (existsSync(join("dist", "home.html"))) {
   const distHome = read(join("dist", "home.html"));
+  const distCreateIsReopened =
+    distHome.includes('href="/event/create"') ||
+    distHome.includes("href='/event/create'");
+  if (distCreateIsReopened) {
+    assertIncludes(distHome, "data-orch-1089-create-reopened", "dist/home.html");
+  } else {
+    assertNotIncludes(distHome, 'href="/event/create"', "dist/home.html");
+    assertIncludes(distHome, 'href="#create-event"', "dist/home.html");
+  }
   for (const route of unsafeRoutes) {
     assertNotIncludes(distHome, `href="${route}"`, "dist/home.html");
   }

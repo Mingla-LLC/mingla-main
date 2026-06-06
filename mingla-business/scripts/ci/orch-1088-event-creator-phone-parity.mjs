@@ -51,7 +51,9 @@ const createIsReopened =
   home.includes('href="/event/create"') ||
   home.includes("href='/event/create'");
 if (createIsReopened && !home.includes("data-orch-1088-create-reopened")) {
-  fail("static Home may link Create to /event/create only with the ORCH-1088 reopen marker");
+  if (!home.includes("data-orch-1089-create-reopened")) {
+    fail("static Home may link Create to /event/create only with an ORCH reopen marker");
+  }
 }
 if (!createIsReopened) {
   assertIncludes(home, 'href="#create-event"', "public/home.html");
