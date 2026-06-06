@@ -97,6 +97,15 @@ const catchAllIndex = (vercel.rewrites ?? []).findIndex((r) => r.source === "/(.
 if (homeRewriteIndex < 0 || catchAllIndex < 0 || homeRewriteIndex > catchAllIndex) {
   fail("/home rewrite must appear before the SPA catch-all rewrite");
 }
+const webJsHeader = (vercel.headers ?? []).find(
+  (header) => header.source === "/_expo/static/js/web/(.*)",
+);
+if (
+  !webJsHeader ||
+  !JSON.stringify(webJsHeader.headers ?? []).includes("max-age=0, must-revalidate")
+) {
+  fail("web JS bundles must not be served immutable because async route manifests can stale across deploys");
+}
 
 const injectScript = read("scripts/inject-mobile-blur-css.mjs");
 if (
@@ -112,6 +121,13 @@ if (
   !injectScript.includes("/home?recovered=chunk")
 ) {
   fail("post-export injection must include stale async chunk recovery before Expo app boot");
+}
+if (
+  !injectScript.includes("orch1091-js-cache-bust") ||
+  !injectScript.includes("?v=${JS_CACHE_BUST_PARAM}") ||
+  !injectScript.includes("/_expo/static/js/web/")
+) {
+  fail("post-export injection must cache-bust eager Expo JS script URLs");
 }
 
 if (existsSync(join(WEB_BUILD, "index.html"))) {
@@ -144,6 +160,9 @@ if (existsSync(join("dist", "index.html"))) {
   }
   if (!distIndex.includes("mingla-mobile-web-chunk-recovery")) {
     fail("dist/index.html must contain stale async chunk recovery");
+  }
+  if (!distIndex.includes("orch1091-js-cache-bust") || !distIndex.includes("?v=orch1091")) {
+    fail("dist/index.html must cache-bust eager Expo JS script URLs");
   }
   if (!distIndex.includes("mingla-mobile-web-no-blur")) {
     fail("dist/index.html must contain the mobile no-blur style");
