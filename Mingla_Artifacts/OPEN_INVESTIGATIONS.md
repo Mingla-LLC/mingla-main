@@ -1,5 +1,7 @@
 # Open Investigations
 
+> **2026-06-05 - ORCH-1087 [Business web full-route phone-browser gate] OPEN - FORENSICS DISPATCHED.** Investigation target: every static Home link must be classified as PASS_NOW, FIX_REQUIRED, STATIC_SHELL_REQUIRED, UNSUPPORTED_WITH_COPY, or NEEDS_CREDENTIAL_OR_DATA based on source hazards plus phone-browser runtime proof where possible. Worktree: `/Users/sethogieva/Desktop/mingla-orchs/ORCH-1087-[business-web-route-gate]`; prompt: `Mingla_Artifacts/prompts/FORENSIC_ORCH-1087_BUSINESS_WEB_FULL_ROUTE_PHONE_BROWSER_GATE.md`.
+
 > **2026-06-05 - ORCH-1085 [Mobile browser business web sign-in/Home] Phase 2 investigation closed; Phase 3 inventory complete.** No open investigation remains for the original sign-in crash: static callback/Home is implemented, merged, deployed, and Android-verified. Open follow-up is the full-web Phase 3 program, now grounded in `Mingla_Artifacts/reports/INVENTORY_ORCH-1085_PHASE_3_BUSINESS_WEB_FULL_WEB_COMPLETION.md`; start with Wave 1 slices rather than re-investigating the crash-stop path.
 
 > **2026-06-05 — ORCH-1084 [Mingla Business logo wordmark] CLOSED PASS — no open investigation/rework remains.** The official logo is visible on production business web and shipped via business-app iOS/Android OTA from merged main. Evidence lives in `Mingla_Artifacts/reports/IMPLEMENTATION_REWORK_ORCH-1084_BUSINESS_LOGO_WORDMARK.md`, `Mingla_Artifacts/reports/QA_ORCH-1084_BUSINESS_LOGO_WORDMARK_REWORK.md`, and `Mingla_Artifacts/CLOSE_NOTE_ORCH-1084_BUSINESS_LOGO_WORDMARK.md`.
