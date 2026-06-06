@@ -182,6 +182,10 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
   const { isAuthReady } = useAuth();
   const isBrand = target.kind === "brand";
   const isNative = Platform.OS !== "web";
+  const isPhoneWeb =
+    Platform.OS === "web" &&
+    typeof window !== "undefined" &&
+    window.innerWidth < 768;
 
   const [activeTab, setActiveTab] = useState<CoverTabId>("library");
   const [uploading, setUploading] = useState(false);
@@ -373,6 +377,10 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
 
   const pickImageOrGifCover = useCallback(async (): Promise<void> => {
     if (uploading || disabled || activeVideoUpload) return;
+    if (isPhoneWeb) {
+      onShowToast("Device cover uploads are available on desktop or in the app for now.");
+      return;
+    }
     if (!isAuthReady) {
       onShowToast("Finishing sign-in before upload. Try again in a moment.");
       return;
@@ -463,6 +471,7 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
     emitChange,
     ensureMediaPermission,
     isAuthReady,
+    isPhoneWeb,
     localCover.coverMediaUrl,
     onShowToast,
     showUploadError,
@@ -473,6 +482,10 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
 
   const pickVideoCover = useCallback(async (): Promise<void> => {
     if (uploading || disabled || activeVideoUpload) return;
+    if (isPhoneWeb) {
+      onShowToast("Video cover uploads are available on desktop or in the app for now.");
+      return;
+    }
     if (!isAuthReady) {
       onShowToast("Finishing sign-in before upload. Try again in a moment.");
       return;
@@ -547,6 +560,7 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
     ensureMediaPermission,
     isAuthReady,
     isNative,
+    isPhoneWeb,
     onShowToast,
     uploading,
     validateEventRowId,
@@ -898,6 +912,7 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
           }
           canRetryVideo={lastVideoUploadFileRef.current !== null}
           disabled={disabled}
+          isPhoneWeb={isPhoneWeb}
           onPickImage={pickImageOrGifCover}
           onPickVideo={() => {
             void pickVideoCover();
@@ -975,6 +990,7 @@ const LibraryTab: React.FC<{
   videoErrorMessage: string | null;
   canRetryVideo: boolean;
   disabled: boolean;
+  isPhoneWeb: boolean;
   onPickImage: () => void;
   onPickVideo: () => void;
   onRemove: () => void;
@@ -996,6 +1012,7 @@ const LibraryTab: React.FC<{
   videoErrorMessage,
   canRetryVideo,
   disabled,
+  isPhoneWeb,
   onPickImage,
   onPickVideo,
   onRemove,
@@ -1061,7 +1078,7 @@ const LibraryTab: React.FC<{
             shape="square"
             onPress={onPickImage}
             loading={uploading}
-            disabled={uploading || disabled}
+            disabled={uploading || disabled || isPhoneWeb}
             style={styles.actionButton}
           />
           <Button
@@ -1071,7 +1088,7 @@ const LibraryTab: React.FC<{
             size="md"
             shape="square"
             onPress={onPickVideo}
-            disabled={uploading || disabled}
+            disabled={uploading || disabled || isPhoneWeb}
             style={styles.actionButton}
           />
           {hasCover ? (
@@ -1088,7 +1105,13 @@ const LibraryTab: React.FC<{
           ) : null}
         </View>
 
-        {Platform.OS === "web" ? (
+        {isPhoneWeb ? (
+          <Text style={styles.helperText}>
+            Device image and video uploads are available on desktop or in the
+            Mingla Business app for now. GIFs, stock photos, and color covers
+            still work here.
+          </Text>
+        ) : Platform.OS === "web" ? (
           <Text style={styles.helperText}>
             On the web, video uploads use the clip as-is. For trimming, use the
             Mingla Business app.
