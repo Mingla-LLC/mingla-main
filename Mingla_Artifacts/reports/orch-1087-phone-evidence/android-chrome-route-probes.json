@@ -1,0 +1,165 @@
+{
+  "base": "https://business.usemingla.com",
+  "capturedAt": "2026-06-06T00:44:39.905Z",
+  "results": [
+    {
+      "route": "/home",
+      "url": "https://business.usemingla.com/home",
+      "value": {
+        "href": "https://business.usemingla.com/home",
+        "title": "Home | Mingla Business",
+        "readyState": "complete",
+        "bodyText": "Mingla Bu ine \n\nSigned in\n\nAccount\n\nBUSINESS HOME\n\nRun your next drop.\n\nCreate li ting , manage campaign , a k Ari, and keep your account ready from one place.\n\n1\n\nCreate, promote, or check in buyer .\n\nChoo e the next bu ine  move and keep momentum.\n\nTODAY\n\nReady\n\nYour bu ine  work pace i  open.\n\nNEXT\n\nCreate\n\nStart an event or jump into Hub.\n\nCreate event\nStart a new li ting\n›\nOpen Hub\nEvent , trip , and experience \n›\n\nHome, Hub, Ari, Bla t, and Account  tay available from the bottom tab .\n\nH\nHome\nC\nHub\nA\nAri\nB\nBla t\nU\nAccount",
+        "bodyLength": 536,
+        "errorText": "",
+        "expoScripts": 0,
+        "nav": {
+          "domContentLoaded": 307,
+          "load": 320,
+          "transferSize": 300
+        }
+      },
+      "consoleLogs": [],
+      "netFails": [],
+      "chunks": [],
+      "screenshotPath": "Mingla_Artifacts/reports/orch-1087-phone-evidence/home-adb.png"
+    },
+    {
+      "route": "/event/create",
+      "url": "https://business.usemingla.com/event/create",
+      "value": {
+        "href": "https://business.usemingla.com/event/create",
+        "title": "Business",
+        "readyState": "complete",
+        "bodyText": "Fini hing  ign-in…",
+        "bodyLength": 18,
+        "errorText": "",
+        "expoScripts": 3,
+        "nav": {
+          "domContentLoaded": 365,
+          "load": 367,
+          "transferSize": 1359
+        }
+      },
+      "consoleLogs": [],
+      "netFails": [],
+      "chunks": [],
+      "screenshotPath": "Mingla_Artifacts/reports/orch-1087-phone-evidence/event-create-adb.png"
+    },
+    {
+      "route": "/hub/events",
+      "url": "https://business.usemingla.com/hub/events",
+      "value": {
+        "evalError": "timeout"
+      },
+      "consoleLogs": [],
+      "netFails": [],
+      "chunks": [],
+      "screenshotPath": "Mingla_Artifacts/reports/orch-1087-phone-evidence/hub-events-adb.png"
+    },
+    {
+      "route": "/hub/experiences",
+      "url": "https://business.usemingla.com/hub/experiences",
+      "value": {
+        "evalError": "timeout"
+      },
+      "consoleLogs": [],
+      "netFails": [],
+      "chunks": [],
+      "screenshotPath": "Mingla_Artifacts/reports/orch-1087-phone-evidence/hub-experiences-adb.png"
+    },
+    {
+      "route": "/hub/trips",
+      "url": "https://business.usemingla.com/hub/trips",
+      "value": {
+        "evalError": "timeout"
+      },
+      "consoleLogs": [],
+      "netFails": [],
+      "chunks": [],
+      "screenshotPath": "Mingla_Artifacts/reports/orch-1087-phone-evidence/hub-trips-adb.png"
+    },
+    {
+      "route": "/ari",
+      "url": "https://business.usemingla.com/ari",
+      "value": {
+        "href": "https://business.usemingla.com/ari",
+        "title": "Business",
+        "readyState": "complete",
+        "bodyText": "Something broke.\nWe're on it.\nTry again\nGet help",
+        "bodyLength": 48,
+        "errorText": "",
+        "expoScripts": 3,
+        "nav": {
+          "domContentLoaded": 327,
+          "load": 329,
+          "transferSize": 1359
+        }
+      },
+      "consoleLogs": [
+        {
+          "type": "error",
+          "text": "TypeError: c.Easing.bezier is not a function\n    at https://business.usemingla.com/_expo/static/js/web/ari-1e960d5917d10305d94f1dc202bc2281.js:3:486\n    at f (https://business.usemingla.com/_expo/static/js/web/__expo-metro-runtime-0c48b0beee2d3ce6030b475fcc5b1846.js:2:2060)\n    at a (https://business.usemingla.com/_expo/static/js/web/__expo-metro-runtime-0c48b0beee2d3ce6030b475fcc5b1846.js:2:1556)\n    at i (https://business.usemingla.com/_expo/static/js/web/__expo-metro-runtime-0c48b0beee2d3ce6030b475fcc5b1846.js:2:586)\n    at https://business.usemingla.com/_expo/static/js/web/ari-1e960d5917d10305d94f1dc202bc2281.js:2:438\n    at f (https://business.usemingla.com/_expo/static/js/web/__expo-metro-runtime-0c48b0beee2d3ce6030b475fcc5b1846.js:2:2060)\n    at a (https://business.usemingla.com/_expo/static/js/web/__expo-metro-runtime-0c48b0beee2d3ce6030b475fcc5b1846.js:2:1556)\n    at i (https://business.usemingla.com/_expo/static/js/web/__expo-metro-runtime-0c48b0beee2d3ce6030b475fcc5b1846.js:2:586)\n    at https://business.usemingla.com/_expo/static/js/web/ari-1e960d5917d10305d94f1dc202bc2281.js:1:181\n    at f (https://business.usemingla.com/_expo/static/js/web/__expo-metro-runtime-0c48b0beee2d3ce6030b475fcc5b1846.js:2:2060)"
+        }
+      ],
+      "netFails": [],
+      "chunks": [],
+      "screenshotPath": "Mingla_Artifacts/reports/orch-1087-phone-evidence/ari-adb.png"
+    },
+    {
+      "route": "/marketing",
+      "url": "https://business.usemingla.com/marketing",
+      "value": {
+        "evalError": "timeout"
+      },
+      "consoleLogs": [],
+      "netFails": [],
+      "chunks": [],
+      "screenshotPath": "Mingla_Artifacts/reports/orch-1087-phone-evidence/marketing-adb.png"
+    },
+    {
+      "route": "/marketing/campaigns/compose",
+      "url": "https://business.usemingla.com/marketing/campaigns/compose",
+      "value": {
+        "evalError": "timeout"
+      },
+      "consoleLogs": [],
+      "netFails": [],
+      "chunks": [],
+      "screenshotPath": "Mingla_Artifacts/reports/orch-1087-phone-evidence/marketing-campaigns-compose-adb.png"
+    },
+    {
+      "route": "/account",
+      "url": "https://business.usemingla.com/account",
+      "value": {
+        "evalError": "timeout"
+      },
+      "consoleLogs": [],
+      "netFails": [],
+      "chunks": [],
+      "screenshotPath": "Mingla_Artifacts/reports/orch-1087-phone-evidence/account-adb.png"
+    },
+    {
+      "route": "/connect-account-management",
+      "url": "https://business.usemingla.com/connect-account-management",
+      "value": {
+        "href": "https://business.usemingla.com/connect-account-management",
+        "title": "Business",
+        "readyState": "complete",
+        "bodyText": "Invalid management link\n\nThi  link i  mi ing a required parameter. Return to Mingla Bu ine  and tap “Manage payout  & tax” again.",
+        "bodyLength": 131,
+        "errorText": "",
+        "expoScripts": 3,
+        "nav": {
+          "domContentLoaded": 344,
+          "load": 346,
+          "transferSize": 1359
+        }
+      },
+      "consoleLogs": [],
+      "netFails": [],
+      "chunks": [],
+      "screenshotPath": "Mingla_Artifacts/reports/orch-1087-phone-evidence/connect-account-management-adb.png"
+    }
+  ]
+}
