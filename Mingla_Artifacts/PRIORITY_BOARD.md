@@ -1,6 +1,6 @@
 # Priority Board
 
-> **2026-06-06 - ORCH-1092 [Business web restoration wave] TOP WEB PROGRAM - FORENSICS/SPEC NOW.** Seth approved moving in greater chunks after Create opened instantly on Chrome and Safari. Recommended wave: Hub + Account/Payouts + Marketing Composer shell, using the proven pattern from ORCH-1089/1090/1091: cache-safe Expo Web, native-module quarantine, phone Chrome/Safari proof, and honest degraded copy only where web truly cannot support native features. Hard guard: no scratch rebuild and no route reopen without proof.
+> **2026-06-06 - ORCH-1092 [Business web restoration wave] CLOSED; next web priority is the next bounded parity wave.** Shipped wave: Events Hub, Marketing overview, Marketing compose, and Account reopen from static Home with production phone-browser proof. Preserve the proven pattern for the next wave: keep Expo Web, move in larger route chunks, quarantine native modules, keep ORCH-1091 cache guards, and require live phone-browser proof before marking a route family restored.
 
 > **2026-06-06 - ORCH-1091 [Business web mobile cache invalidation] OFF BOARD (CLOSED PASS Grade A).** The inconsistent phone-browser failure is closed: production web JS now revalidates and the exported HTML carries a cache-bust, so old route maps cannot keep pointing at deleted chunks after deploy. Seth smoke confirmed signed-in Create opens instantly on Chrome and Safari; no further Create-route repair is pending.
 
