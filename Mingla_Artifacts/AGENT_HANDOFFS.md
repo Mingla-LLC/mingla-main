@@ -1,5 +1,21 @@
 # Agent Handoffs
 
+## 2026-06-06 - ORCH-1092 [Business web restoration wave] registered -> Codex `forensic-mingla` investigate/spec dispatch
+
+Forensics owns the route-family investigation and implementation contract only; no product-code implementation is authorized until the spec is reviewed. Inputs are ORCH-1085 Phase 3 inventory, ORCH-1087 static route firewall, ORCH-1089/1090/1091 Create + cache close evidence, static Home `public/home.html`, Hub routes, Account/Payout routes, Marketing/Blast composer routes, `mingla-business/vercel.json`, `scripts/inject-mobile-blur-css.mjs`, and the ORCH-1085/1088/1089/1091 guards. Working tree: `~/Desktop/mingla-orchs/ORCH-1092-[business-web-restoration-wave]/` on branch `ORCH-1092-business-web-restoration-wave`. Expected outputs: `Mingla_Artifacts/reports/INVESTIGATION_ORCH-1092_BUSINESS_WEB_RESTORATION_WAVE.md` and `Mingla_Artifacts/specs/SPEC_ORCH-1092_BUSINESS_WEB_RESTORATION_WAVE.md`. Hard guards: keep Expo Web, no scratch rewrite, no deploy/OTA from worktree, no weakening ORCH-1091 cache guards, preserve provider-neutral payout copy, and require Chrome + Safari phone-browser proof before reopening any static Home handoff.
+
+## 2026-06-06 - ORCH-1091 [Business web mobile cache invalidation] closed after production cache proof
+
+Completed chain: Codex implementation/rework closed the post-ORCH-1089 production defect where mobile browsers could keep an immutable stale Expo entry script and request deleted route chunks. PR #395 and PR #396 merged with `[deploy]`; the second PR fixed Vercel header precedence so `/_expo/static/js/web/*` now returns `Cache-Control: public, max-age=0, must-revalidate`, while export injection adds `?v=orch1091` to eager JS. Production Android Chrome proof loaded current `create-c6d99...js`, did not request stale `create-c0a9...js`, rendered `/event/create` sign-in recovery, and showed `/home` tabs. Seth then confirmed signed-in Create opened instantly on Chrome and Safari phone browsers; route-open gate accepted. Downstream routing: ORCH-1092 restores the next route-family wave instead of more Create repair.
+
+## 2026-06-06 - ORCH-1090 [Business web mobile chunk auth recovery] completed
+
+Completed chain: PR #394 merged with `[deploy]` and added signed-out-by-default static Home labeling plus mobile stale-chunk retry/fallback recovery. Local export/injection guards and Android smoke proved `/home` and `/event/create` no longer hang in the invalid-session path. Follow-on production cache-header gap was discovered and closed under ORCH-1091. No native OTA or backend deploy is attached to this web-only layer.
+
+## 2026-06-06 - ORCH-1089 [Business web signed-in Event Creator wizard parity] merged with conditional QA
+
+Completed chain: forensics/spec -> implementor -> tester conditional pass -> PR #393 `[deploy]` merge. Static Home Create now links to `/event/create`, the real wizard wiring remains, web missing-draft recovery is bounded, and mocked signed-in Step 1 boot passed; full real-account Step 1-7 remained unavailable to the agent. Post-merge browser failures were not a stripped-down Home choice; they came from stale chunk/cache behavior and were fixed by ORCH-1090/1091. Downstream routing: Seth production smoke on a real account, then new targeted ORCH only if the live authenticated path still fails.
+
 ## 2026-06-06 - ORCH-1089 [Business web signed-in Event Creator wizard parity] spec reviewed -> Codex `implementor-mingla` implementation dispatch
 
 Orchestrator review accepts the investigation/spec for implementation because it keeps the real seven-step wizard and does not authorize a stripped-down replacement. Implementor must add `test:orch-1089` first, fix the signed-in web missing-draft exit, harden current-brand query-error classification, prove signed-in `/event/create -> /event/{draftId}/edit?step=0`, traverse Step 1-7 on mobile browser/WebKit, and only relink static Home Create after that proof. Working tree: `~/Desktop/mingla-orchs/ORCH-1089-[business-web-event-creator-signedin-wizard]` on branch `ORCH-1089-business-web-event-creator-signedin-wizard`; expected output: `Mingla_Artifacts/reports/IMPLEMENTATION_ORCH-1089_BUSINESS_WEB_EVENT_CREATOR_SIGNEDIN_WIZARD.md`. Downstream routing: Codex/Claude tester independent QA, then orchestrator close only after pass and deploy gates.

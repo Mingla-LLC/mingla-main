@@ -6,6 +6,21 @@
 
 ## Root Causes
 
+### RC-1091: Immutable Expo web entry script cached stale route chunk map
+- **Discovery date:** 2026-06-06
+- **Proof:** After ORCH-1089/1090 were merged, Android Chrome production still hung on `/event/create` because the browser reused `/_expo/static/js/web/index-673ede93709fe16629641db487c64add.js` from an older deploy. That stale entry script requested a deleted `create-c0a9...js` route chunk. Production `curl -I` initially showed `Cache-Control: public, max-age=31536000, immutable` for the JS entry even after the first ORCH-1091 header rule, because the broad `/_expo/static/(.*)` immutable header overrode the JS-specific rule.
+- **Symptoms caused:** Different phone browsers behaved differently after deploy: one loaded the current app, another white-screened or showed recovery failure because it held an old route map.
+- **Causal chain:**
+  1. Expo web route chunk filenames changed between deploys.
+  2. The eager entry script filename stayed stable enough for mobile browsers to reuse it.
+  3. Vercel served the entry JS as immutable for one year.
+  4. The stale entry script asked for deleted route chunks.
+  5. Mobile browsers failed before the intended route UI could render.
+- **Structural fix:** PR #396 moved the web-JS header rule after the broad static rule so `/_expo/static/js/web/*` wins with `Cache-Control: public, max-age=0, must-revalidate`; the export injector appends `?v=orch1091` to eager Expo JS scripts and adds an `orch1091-js-cache-bust` marker; CI guards header order and export markers.
+- **Status:** **CLOSED PASS 2026-06-06.** Evidence: `reports/CLOSE_ORCH-1091_BUSINESS_WEB_MOBILE_CACHE_INVALIDATION.md`; PR #395 `3726c183f`; PR #396 `0422351b2`; production Android Chrome loaded current `create-c6d99...js` and did not request stale `create-c0a9...js`.
+- **Invariant / regression guard:** Business web entry JS that contains route maps must not be served as long-lived immutable. Route-map-bearing JS must revalidate, and export HTML must carry an explicit deploy cache-bust marker until a stronger manifest/versioning strategy replaces it.
+- **Causal cluster:** Cluster 6: deployment/cache configuration drift can masquerade as auth or route-code failure.
+
 ### RC-PR69: Admin Vercel deployment payload excluded the admin package
 - **Discovery date:** 2026-05-09
 - **Proof:** Failed admin Vercel deployment logged `ENOENT: no such file or directory, open '/vercel/path0/mingla-admin/package.json'` while running `npm run build`. PR 69 final status then showed `Vercel - mingla-admin` SUCCESS after commit `466d98f2`, and PR 69 merged at `89e107340920e39f9546d7947419d014d6a9d517` with all checks successful. Close report: `reports/CLOSE_PR-69_ADMIN_VERCEL_AND_CI_CHECKS.md`.
