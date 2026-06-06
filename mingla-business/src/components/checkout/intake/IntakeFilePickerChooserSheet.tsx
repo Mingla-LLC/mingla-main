@@ -24,7 +24,6 @@
 
 import React, { useCallback, useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
-import * as ImagePicker from "expo-image-picker";
 import * as DocumentPicker from "expo-document-picker";
 
 import {
@@ -38,6 +37,12 @@ import {
 } from "../../../constants/designSystem";
 import { Icon } from "../../ui/Icon";
 import type { IconName } from "../../ui/Icon";
+import {
+  launchCameraAsync,
+  launchImageLibraryAsync,
+  requestCameraPermissionsAsync,
+  requestMediaLibraryPermissionsAsync,
+} from "../../../utils/platformImagePicker";
 import { Sheet } from "../../ui/Sheet";
 
 export interface IntakePickedFile {
@@ -88,15 +93,15 @@ export const IntakeFilePickerChooserSheet: React.FC<
   const handleTakePhoto = useCallback(async () => {
     setErrorMessage(null);
     try {
-      const perm = await ImagePicker.requestCameraPermissionsAsync();
+      const perm = await requestCameraPermissionsAsync();
       if (!perm.granted) {
         setErrorMessage(
           "Camera permission was denied. Enable it in Settings to take a photo.",
         );
         return;
       }
-      const result = await ImagePicker.launchCameraAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      const result = await launchCameraAsync({
+        mediaTypes: ["images"],
         quality: 0.8,
       });
       if (result.canceled) return;
@@ -121,15 +126,15 @@ export const IntakeFilePickerChooserSheet: React.FC<
   const handlePickFromLibrary = useCallback(async () => {
     setErrorMessage(null);
     try {
-      const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      const perm = await requestMediaLibraryPermissionsAsync();
       if (!perm.granted) {
         setErrorMessage(
           "Photo library permission was denied. Enable it in Settings.",
         );
         return;
       }
-      const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      const result = await launchImageLibraryAsync({
+        mediaTypes: ["images"],
         quality: 0.8,
       });
       if (result.canceled) return;

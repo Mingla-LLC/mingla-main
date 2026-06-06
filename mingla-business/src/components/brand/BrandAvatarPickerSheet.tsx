@@ -33,7 +33,6 @@ import {
   Text,
   View,
 } from "react-native";
-import * as ImagePicker from "expo-image-picker";
 import * as Haptics from "expo-haptics";
 
 import { Button } from "../ui/Button";
@@ -49,6 +48,11 @@ import {
 } from "../../constants/designSystem";
 import { useBrandAvatarUpload } from "../../hooks/useBrandAvatarUpload";
 import { BrandAvatarError } from "../../utils/brandAvatarRules";
+import {
+  launchImageLibraryAsync,
+  requestMediaLibraryPermissionsAsync,
+  type PlatformImagePickerResult,
+} from "../../utils/platformImagePicker";
 
 type Step = "idle" | "picking" | "processing" | "uploading" | "error";
 
@@ -90,7 +94,7 @@ export const BrandAvatarPickerSheet: React.FC<BrandAvatarPickerSheetProps> = ({
     void Haptics.selectionAsync().catch(() => undefined);
 
     // Permission gate — request only when needed.
-    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    const permission = await requestMediaLibraryPermissionsAsync();
     if (!permission.granted) {
       setStep("error");
       setErrorMessage(
@@ -102,9 +106,9 @@ export const BrandAvatarPickerSheet: React.FC<BrandAvatarPickerSheetProps> = ({
     setStep("picking");
     setErrorMessage(null);
 
-    let pickerResult: ImagePicker.ImagePickerResult;
+    let pickerResult: PlatformImagePickerResult;
     try {
-      pickerResult = await ImagePicker.launchImageLibraryAsync({
+      pickerResult = await launchImageLibraryAsync({
         mediaTypes: ["images"],
         // Native crop UI — Android enforces 1:1 from `aspect`; iOS shows
         // a 1:1 overlay hint as advisory. We trust the user with whatever

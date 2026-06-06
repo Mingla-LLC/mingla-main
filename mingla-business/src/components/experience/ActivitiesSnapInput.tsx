@@ -5,8 +5,6 @@
 import React, { useCallback, useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import * as DocumentPicker from "expo-document-picker";
-import * as FileSystem from "expo-file-system/legacy";
-import * as ImagePicker from "expo-image-picker";
 
 import {
   glass,
@@ -17,6 +15,13 @@ import {
   typography,
 } from "../../constants/designSystem";
 import type { ExperienceFilePayload } from "../../services/experienceGenerationService";
+import { readAsStringBase64Async } from "../../utils/platformFileSystem";
+import {
+  launchCameraAsync,
+  launchImageLibraryAsync,
+  requestCameraPermissionsAsync,
+  requestMediaLibraryPermissionsAsync,
+} from "../../utils/platformImagePicker";
 import { Sheet } from "../ui/Sheet";
 import { Icon } from "../ui/Icon";
 
@@ -40,9 +45,7 @@ async function uriToExperienceFile(
   uri: string,
   mime: ExperienceFilePayload["mime_type"],
 ): Promise<ExperienceFilePayload> {
-  const data_base64 = await FileSystem.readAsStringAsync(uri, {
-    encoding: FileSystem.EncodingType.Base64,
-  });
+  const data_base64 = await readAsStringBase64Async(uri);
   const padding = data_base64.endsWith("==") ? 2 : data_base64.endsWith("=") ? 1 : 0;
   const size = Math.floor((data_base64.length * 3) / 4) - padding;
   if (size > MAX_TOTAL_BYTES) {
@@ -78,13 +81,13 @@ export const ActivitiesSnapInput: React.FC<ActivitiesSnapInputProps> = ({
   );
 
   const handleCamera = useCallback(async () => {
-    const perm = await ImagePicker.requestCameraPermissionsAsync();
+    const perm = await requestCameraPermissionsAsync();
     if (!perm.granted) {
       setErrorMessage("Camera permission is required to photograph your activities list.");
       return;
     }
-    const result = await ImagePicker.launchCameraAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+    const result = await launchCameraAsync({
+      mediaTypes: ["images"],
       quality: 0.85,
     });
     if (result.canceled || !result.assets[0]) return;
@@ -96,13 +99,13 @@ export const ActivitiesSnapInput: React.FC<ActivitiesSnapInputProps> = ({
   }, [finishWithUri]);
 
   const handleLibrary = useCallback(async () => {
-    const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    const perm = await requestMediaLibraryPermissionsAsync();
     if (!perm.granted) {
       setErrorMessage("Photo library permission is required.");
       return;
     }
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+    const result = await launchImageLibraryAsync({
+      mediaTypes: ["images"],
       quality: 0.85,
     });
     if (result.canceled || !result.assets[0]) return;

@@ -1,12 +1,17 @@
 /**
- * brandCoverFileReader — web reader for chosen device files.
+ * brandCoverFileReader — reads the chosen device file into a Uint8Array via
+ * expo-file-system (RN iOS-safe).
  *
- * Native keeps the RN iOS-safe filesystem implementation in the `.native`
- * split; web reads browser object/data URLs without eagerly importing Expo
- * filesystem packages into app boot chunks.
+ * Why expo-file-system instead of `fetch(uri).blob()`? Per ORCH-0786 — the
+ * RN iOS implementation of `fetch(uri).blob()` silently returns a size-0
+ * blob for some content:// URIs, surfacing as "empty upload" minutes later
+ * with no actionable error. expo-file-system's `File.arrayBuffer()` reads
+ * actual bytes.
  *
  * Per ORCH-0805 SPEC §6.2.
  */
+
+import { File } from "expo-file-system";
 
 import { BrandCoverError } from "../utils/brandCoverRules";
 
@@ -21,8 +26,7 @@ export const readBrandCoverFileBytes = async (
   uri: string,
 ): Promise<BrandCoverFileBytes> => {
   try {
-    const response = await fetch(uri);
-    const buffer = await response.arrayBuffer();
+    const buffer = await new File(uri).arrayBuffer();
     const bytes = toUint8Array(buffer);
     return {
       bytes,

@@ -29,11 +29,14 @@ const walkFiles = (dirPath) => {
 };
 
 const coverPickerPath = "mingla-business/src/components/ui/CoverPicker.tsx";
+const deviceMediaPath = "mingla-business/src/components/ui/coverPickerDeviceMedia.native.ts";
 // ORCH-1001: the native trim wiring (react-native-video-trim import + showEditor
 // + cancel handler) moved out of CoverPicker.tsx into a Metro platform-split
 // module so the native-only package never lands in the web bundle (white-page
-// crash). C1/C12 below check that wiring in the split module; CoverPicker.tsx
-// still owns the video picker, the source ceiling, and the trimmed-upload build.
+// crash). ORCH-1092 also moved the native ImagePicker calls into a platform
+// split device-media module for the same reason. C1/C12 below check that native
+// wiring in the split modules; CoverPicker.tsx still owns the source ceiling
+// and trimmed-upload build.
 const trimEditorPath = "mingla-business/src/components/ui/coverPickerVideoTrimEditor.ts";
 const processingServicePath =
   "mingla-business/src/services/eventCoverVideoProcessingService.ts";
@@ -44,6 +47,7 @@ const uploadIntentPath = "supabase/functions/event-cover-video-upload-intent/ind
 const webhookPath = "supabase/functions/event-cover-video-webhook/index.ts";
 
 const coverPicker = read(coverPickerPath);
+const deviceMedia = read(deviceMediaPath);
 const trimEditor = read(trimEditorPath);
 if (
   !coverPicker.includes(
@@ -53,8 +57,8 @@ if (
   fail("C1", `${coverPickerPath} must pass EVENT_COVER_MAX_VIDEO_DURATION_MS to the trim editor`);
 } else if (!trimEditor.includes("maxDuration: maxDurationMs")) {
   fail("C1", `${trimEditorPath} must forward the duration cap to showEditor`);
-} else if (coverPicker.includes("videoMaxDuration")) {
-  fail("C1", `${coverPickerPath} must not rely on ImagePicker videoMaxDuration`);
+} else if (coverPicker.includes("videoMaxDuration") || deviceMedia.includes("videoMaxDuration")) {
+  fail("C1", "video picker must not rely on ImagePicker videoMaxDuration");
 } else {
   ok("C1", "Dedicated trimmer receives the 29s cap; picker videoMaxDuration is dead");
 }
@@ -195,15 +199,15 @@ if (!processingService.includes("EVENT_COVER_SOURCE_CEILING_MS = 33_000")) {
   ok("C11", "Client source ceiling is 33s and remains above the 30s processed cap");
 }
 
-const videoPickerCall = coverPicker.match(
+const videoPickerCall = deviceMedia.match(
   /ImagePicker\.launchImageLibraryAsync\(\{\s*mediaTypes:\s*\["videos"\][\s\S]*?\n\s*\}\);/,
 )?.[0];
 if (videoPickerCall === undefined) {
-  fail("C12", `${coverPickerPath} must keep a video launchImageLibraryAsync call`);
+  fail("C12", `${deviceMediaPath} must keep a native video launchImageLibraryAsync call`);
 } else if (videoPickerCall.includes("allowsEditing")) {
-  fail("C12", `${coverPickerPath} video picker must not pass allowsEditing`);
+  fail("C12", `${deviceMediaPath} video picker must not pass allowsEditing`);
 } else if (videoPickerCall.includes("videoMaxDuration")) {
-  fail("C12", `${coverPickerPath} video picker must not pass videoMaxDuration`);
+  fail("C12", `${deviceMediaPath} video picker must not pass videoMaxDuration`);
 } else if (!trimEditor.includes('from "react-native-video-trim"')) {
   fail("C12", `${trimEditorPath} must import react-native-video-trim`);
 } else if (!trimEditor.includes("showEditor(uri")) {

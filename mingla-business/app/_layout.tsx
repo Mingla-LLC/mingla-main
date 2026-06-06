@@ -29,9 +29,14 @@ import React, { useEffect, useRef, useState } from "react";
 import {
   AppState,
   InteractionManager,
+  Platform,
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
   type AppStateStatus,
 } from "react-native";
-import { Stack, useRouter } from "expo-router";
+import { Stack, usePathname, useRouter } from "expo-router";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { SafeAreaProvider } from "react-native-safe-area-context";
@@ -50,6 +55,15 @@ import { useCurrentBrandId } from "../src/store/currentBrandStore";
 // keyboard events. Web variant is a passthrough Fragment (library has no
 // web entry point). Per SPEC_ORCH-0892-A §7.3.
 import { KeyboardRoot } from "../src/wrappers/KeyboardRoot";
+import {
+  accent,
+  canvas,
+  glass,
+  radius as radiusTokens,
+  spacing,
+  text as textTokens,
+  typography,
+} from "../src/constants/designSystem";
 import { initializeAppsFlyer } from "../src/services/appsFlyerService";
 import { mixpanelService } from "../src/services/mixpanelService";
 import { revenueCatService } from "../src/services/revenueCatService";
@@ -99,6 +113,83 @@ const SPLASH_MIN_VISIBLE_MS = 500;
 // to ORCH-0742 baseline behavior. Prevents indefinite splash on bad networks.
 const BRAND_FETCH_TIMEOUT_MS = 2000;
 
+const ORCH_1092_SIGNED_OUT_ROUTES = new Set([
+  "/hub/events",
+  "/marketing",
+  "/marketing/campaigns/compose",
+  "/account",
+]);
+
+const SUPABASE_AUTH_STORAGE_KEY = /^sb-.+-auth-token$/;
+
+function normalizeWebPathname(pathname: string): string {
+  if (pathname.length > 1 && pathname.endsWith("/")) {
+    return pathname.slice(0, -1);
+  }
+  return pathname;
+}
+
+function getCurrentWebPathname(): string {
+  if (Platform.OS !== "web" || typeof window === "undefined") return "";
+  return normalizeWebPathname(window.location.pathname);
+}
+
+function hasStoredSupabaseWebSession(): boolean {
+  if (Platform.OS !== "web" || typeof window === "undefined") return false;
+  try {
+    const { localStorage } = window;
+    for (let index = 0; index < localStorage.length; index += 1) {
+      const key = localStorage.key(index);
+      if (key === null || !SUPABASE_AUTH_STORAGE_KEY.test(key)) continue;
+      const value = localStorage.getItem(key);
+      if (value !== null && value.includes("access_token")) return true;
+    }
+  } catch {
+    return false;
+  }
+  return false;
+}
+
+function Orch1092SignedOutRecovery({
+  pathname,
+  onReturnHome,
+}: {
+  pathname: string;
+  onReturnHome: () => void;
+}): React.ReactElement {
+  const routeLabel =
+    pathname === "/hub/events"
+      ? "Hub Events"
+      : pathname === "/marketing"
+        ? "Marketing overview"
+        : pathname === "/marketing/campaigns/compose"
+          ? "Compose blast"
+          : "Account settings";
+  return (
+    <View style={orch1092Styles.host}>
+      <View style={orch1092Styles.card}>
+        <Text style={orch1092Styles.eyebrow}>Mingla Business</Text>
+        <Text style={orch1092Styles.title}>Sign in to open {routeLabel}.</Text>
+        <Text style={orch1092Styles.body}>
+          This phone-browser route is ready, but it needs a business session
+          before it can load your brand data.
+        </Text>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Return to Business Home"
+          onPress={onReturnHome}
+          style={({ pressed }) => [
+            orch1092Styles.button,
+            pressed && orch1092Styles.buttonPressed,
+          ]}
+        >
+          <Text style={orch1092Styles.buttonText}>Return to Home</Text>
+        </Pressable>
+      </View>
+    </View>
+  );
+}
+
 function RootLayoutInner(): React.ReactElement {
   // J-X5 — splash hide synchronized with TWO gates:
   //   1. AuthContext bootstrap completes (loading: false)
@@ -118,6 +209,7 @@ function RootLayoutInner(): React.ReactElement {
   // both paths converge on `brandReady=true` (defensive belt-and-suspenders).
   const { loading, user } = useAuth();
   const router = useRouter();
+  const pathname = normalizeWebPathname(usePathname());
   const currentBrandId = useCurrentBrandId();
   const { isFetched: brandFetched, fetchStatus: brandFetchStatus } =
     useBrand(currentBrandId);
@@ -183,6 +275,20 @@ function RootLayoutInner(): React.ReactElement {
     // Re-throw during render so the surrounding ErrorBoundary catches it
     // and Sentry captures the mismatch context.
     throw stripeModeError;
+  }
+
+  if (
+    Platform.OS === "web" &&
+    !loading &&
+    user === null &&
+    ORCH_1092_SIGNED_OUT_ROUTES.has(pathname)
+  ) {
+    return (
+      <Orch1092SignedOutRecovery
+        pathname={pathname}
+        onReturnHome={() => router.replace("/home" as never)}
+      />
+    );
   }
 
   // ORCH-0808 — optional install/analytics SDK init runs after first paint.
@@ -358,12 +464,88 @@ function RootLayoutInner(): React.ReactElement {
   );
 }
 
+const orch1092Styles = StyleSheet.create({
+  host: {
+    flex: 1,
+    justifyContent: "center",
+    padding: spacing.xl,
+    backgroundColor: canvas.discover,
+  },
+  card: {
+    width: "100%",
+    maxWidth: 440,
+    alignSelf: "center",
+    borderWidth: 1,
+    borderColor: glass.border.profileElevated,
+    borderRadius: radiusTokens.lg,
+    padding: spacing.xl,
+    backgroundColor: glass.tint.profileElevated,
+  },
+  eyebrow: {
+    color: accent.warm,
+    fontSize: typography.caption.fontSize,
+    fontWeight: "700",
+    textTransform: "uppercase",
+    marginBottom: spacing.sm,
+  },
+  title: {
+    color: textTokens.primary,
+    fontSize: typography.h2.fontSize,
+    lineHeight: typography.h2.lineHeight,
+    fontWeight: typography.h2.fontWeight,
+    marginBottom: spacing.md,
+  },
+  body: {
+    color: textTokens.secondary,
+    fontSize: typography.body.fontSize,
+    lineHeight: typography.body.lineHeight,
+    marginBottom: spacing.lg,
+  },
+  button: {
+    minHeight: 48,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: radiusTokens.md,
+    backgroundColor: accent.warm,
+    paddingHorizontal: spacing.lg,
+  },
+  buttonPressed: {
+    opacity: 0.86,
+  },
+  buttonText: {
+    color: textTokens.inverse,
+    fontSize: typography.buttonLg.fontSize,
+    lineHeight: typography.buttonLg.lineHeight,
+    fontWeight: typography.buttonLg.fontWeight,
+  },
+});
+
 export default function RootLayout(): React.ReactElement {
   // ORCH-1083: the 14 theme fonts are NO LONGER loaded here. They render only on
   // the 3 themed surfaces (PublicBrandPage/PublicEventPage/ThemeEditorSection),
   // which load the needed family on demand via `useThemeFont`. Do NOT re-add a
   // root `useFonts(...)` — it pulls all 14 @expo-google-fonts/* modules into the
   // boot bundle + fires 14 boot-time fetches on the login path. See SPEC §C-2.
+  const webPathname = getCurrentWebPathname();
+  const shouldShowOuterOrch1092Recovery =
+    Platform.OS === "web" &&
+    ORCH_1092_SIGNED_OUT_ROUTES.has(webPathname) &&
+    !hasStoredSupabaseWebSession();
+
+  if (shouldShowOuterOrch1092Recovery) {
+    return (
+      <GestureHandlerRootView style={{ flex: 1 }}>
+        <SafeAreaProvider>
+          <Orch1092SignedOutRecovery
+            pathname={webPathname}
+            onReturnHome={() => {
+              window.location.assign("/home");
+            }}
+          />
+        </SafeAreaProvider>
+      </GestureHandlerRootView>
+    );
+  }
 
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>

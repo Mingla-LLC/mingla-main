@@ -15,7 +15,6 @@ import {
 // orch-strict-grep-allow orch-0892 — chat composer needs sticky-above-keyboard lift
 import { KeyboardAvoidingView } from "react-native-keyboard-controller";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import * as ImagePicker from "expo-image-picker";
 import { ScrollView } from "../../wrappers/SmartScrollView";
 import { useRouter } from "expo-router";
 
@@ -28,6 +27,10 @@ import { Button } from "../ui/Button";
 import { Icon } from "../ui/Icon";
 import { SafeScreen } from "../ui/SafeScreen";
 import { GroupChatModerationSheet } from "./GroupChatModerationSheet";
+import {
+  launchImageLibraryAsync,
+  requestMediaLibraryPermissionsAsync,
+} from "../../utils/platformImagePicker";
 
 interface GroupChatPanelProps {
   eventId: string;
@@ -72,15 +75,15 @@ export const GroupChatPanel: React.FC<GroupChatPanelProps> = ({ eventId }) => {
   };
 
   const handlePickImage = async () => {
-    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (status !== "granted") {
+    const { status, granted } = await requestMediaLibraryPermissionsAsync();
+    if (status !== "granted" && !granted) {
       Alert.alert(
         "Photo access needed",
         "Grant Mingla access to your photos in iOS Settings to attach an image.",
       );
       return;
     }
-    const result = await ImagePicker.launchImageLibraryAsync({
+    const result = await launchImageLibraryAsync({
       mediaTypes: "images",
       allowsEditing: false,
       quality: 0.7,

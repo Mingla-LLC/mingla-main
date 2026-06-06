@@ -1,3 +1,5 @@
+import { File } from "expo-file-system";
+
 import { CreatorAvatarError } from "../utils/creatorAvatarRules";
 
 export interface CreatorAvatarFileBytes {
@@ -12,8 +14,7 @@ export const readCreatorAvatarFileBytes = async (
   uri: string,
 ): Promise<CreatorAvatarFileBytes> => {
   try {
-    const response = await fetch(uri);
-    const buffer = await response.arrayBuffer();
+    const buffer = await new File(uri).arrayBuffer();
     const bytes = toUint8Array(buffer);
     return {
       bytes,

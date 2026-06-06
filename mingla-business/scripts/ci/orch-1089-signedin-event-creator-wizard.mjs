@@ -64,18 +64,19 @@ if (!createIsReopened) {
 assertIncludes(home, "data-orch-1089-create-reopened", "public/home.html");
 assertNotIncludes(home, 'data-shell-link="create-event"', "public/home.html reopened Create action");
 
-for (const route of [
-  "/hub/events",
-  "/hub/experiences",
-  "/hub/trips",
-  "/ari",
-  "/marketing",
-  "/marketing/campaigns/compose",
-  "/account",
-  "/connect-account-management",
-]) {
+for (const route of ["/hub/experiences", "/hub/trips", "/ari", "/connect-account-management"]) {
   assertNotIncludes(home, `href="${route}"`, "public/home.html");
   assertNotIncludes(home, `href='${route}'`, "public/home.html");
+}
+for (const [route, marker] of [
+  ["/hub/events", "data-orch-1092-hub-events-reopened"],
+  ["/marketing", "data-orch-1092-marketing-overview-reopened"],
+  ["/marketing/campaigns/compose", "data-orch-1092-compose-shell-reopened"],
+  ["/account", "data-orch-1092-account-reopened"],
+]) {
+  if (home.includes(`href="${route}"`) || home.includes(`href='${route}'`)) {
+    assertIncludes(home, marker, "public/home.html");
+  }
 }
 for (const token of ["/_expo/static/js/", "expo-metro-runtime", "Stripe account"]) {
   assertNotIncludes(home, token, "public/home.html");

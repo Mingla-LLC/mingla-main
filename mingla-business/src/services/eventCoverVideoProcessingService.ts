@@ -1,7 +1,10 @@
 import { supabase } from "./supabase";
 import { BusinessAuthNotReadyError } from "../utils/authReadiness";
-import * as FileSystem from "expo-file-system/legacy";
 import { Platform } from "react-native";
+import {
+  createMultipartUploadTask,
+  getFileInfoAsync,
+} from "../utils/platformFileSystem";
 
 declare const require: (moduleName: string) => {
   Video?: {
@@ -387,7 +390,7 @@ const statFileSize = async (
   fallbackBytes: number,
 ): Promise<number> => {
   try {
-    const info = await FileSystem.getInfoAsync(uri);
+    const info = await getFileInfoAsync(uri);
     const size = (info as { exists?: boolean; size?: unknown }).size;
     if (info.exists && typeof size === "number" && size > 0) return size;
   } catch {
@@ -801,7 +804,7 @@ export const uploadEventCoverVideoSource = async (input: {
       );
     }
     input.signal?.addEventListener("abort", abort, { once: true });
-    task = FileSystem.createUploadTask(
+    task = await createMultipartUploadTask(
       input.upload.url,
       input.uri,
       {
@@ -809,8 +812,6 @@ export const uploadEventCoverVideoSource = async (input: {
         httpMethod: "POST",
         mimeType: input.mimeType ?? "video/quicktime",
         parameters,
-        sessionType: FileSystem.FileSystemSessionType.FOREGROUND,
-        uploadType: FileSystem.FileSystemUploadType.MULTIPART,
       },
       (event) => {
         emitUploadProgress(

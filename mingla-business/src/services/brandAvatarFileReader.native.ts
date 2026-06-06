@@ -1,12 +1,16 @@
 /**
- * brandAvatarFileReader — web reader for a manipulated avatar file.
+ * brandAvatarFileReader — reads a manipulated avatar file into a Uint8Array
+ * via expo-file-system (RN iOS-safe).
  *
- * Native keeps the RN iOS-safe filesystem implementation in the `.native`
- * split; web reads browser object/data URLs without importing Expo filesystem
- * packages into app boot chunks.
+ * Mirrors `brandCoverFileReader` verbatim. Reasoning: `fetch(uri).blob()` on
+ * RN iOS silently returns size-0 blobs for some content:// URIs; the
+ * expo-file-system File.arrayBuffer() reads actual bytes. ORCH-0786
+ * precedent.
  *
  * Per ORCH-0807 SPEC §6.2 (composition step inside `brandAvatarService`).
  */
+
+import { File } from "expo-file-system";
 
 import { BrandAvatarError } from "../utils/brandAvatarRules";
 
@@ -21,8 +25,7 @@ export const readBrandAvatarFileBytes = async (
   uri: string,
 ): Promise<BrandAvatarFileBytes> => {
   try {
-    const response = await fetch(uri);
-    const buffer = await response.arrayBuffer();
+    const buffer = await new File(uri).arrayBuffer();
     const bytes = toUint8Array(buffer);
     return {
       bytes,
