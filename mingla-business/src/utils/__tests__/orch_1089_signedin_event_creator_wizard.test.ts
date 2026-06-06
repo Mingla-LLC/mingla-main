@@ -19,7 +19,7 @@ const stripCommentLines = (source: string): string =>
     .join("\n");
 
 describe("ORCH-1089 signed-in Event Creator wizard parity", () => {
-  test("static Home Create is reopened with the ORCH-1089 marker only", () => {
+  test("static Home Create is reopened with the ORCH-1089 marker", () => {
     const source = repoFile("public/home.html");
 
     expect(source).toContain('href="/event/create"');
