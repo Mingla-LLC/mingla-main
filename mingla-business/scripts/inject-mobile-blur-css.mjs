@@ -18,6 +18,8 @@ const HTML_PATH = "dist/index.html";
 const MARKER = "mingla-mobile-web-no-blur";
 const PREBOOT_MARKER = "mingla-mobile-web-home-preboot";
 const CHUNK_RECOVERY_MARKER = "mingla-mobile-web-chunk-recovery";
+const JS_CACHE_BUST_MARKER = "orch1091-js-cache-bust";
+const JS_CACHE_BUST_PARAM = "orch1091";
 const STYLE_TAG =
   `<style id="${MARKER}">@media (max-width:767px){*,*::before,*::after{` +
   `-webkit-backdrop-filter:none !important;backdrop-filter:none !important}}</style>`;
@@ -39,6 +41,12 @@ try {
     process.exit(0);
   }
   const headInsert = `${html.includes(CHUNK_RECOVERY_MARKER) ? "" : CHUNK_RECOVERY_SCRIPT}${html.includes(PREBOOT_MARKER) ? "" : PREBOOT_SCRIPT}${html.includes(MARKER) ? "" : STYLE_TAG}`;
+  if (!html.includes(JS_CACHE_BUST_MARKER)) {
+    html = html.replace(
+      /src="(\/_expo\/static\/js\/web\/[^"?]+\.js)"/g,
+      `src="$1?v=${JS_CACHE_BUST_PARAM}" data-${JS_CACHE_BUST_MARKER}="true"`,
+    );
+  }
   html = html.replace("</head>", `${headInsert}</head>`);
   writeFileSync(HTML_PATH, html);
   console.log("[mobile-blur-fix] injected mobile chunk recovery + preboot + blur-kill into dist/index.html <head>.");
