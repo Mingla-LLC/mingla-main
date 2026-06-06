@@ -1,5 +1,7 @@
 # Priority Board
 
+> **2026-06-06 - ORCH-1093 [Business web signed-in route OOM on mobile browsers] TOP WEB BLOCKER - FORENSICS/SPEC NOW.** The connected Android phone proved the current blocker is not the static Home shell; it is Chrome renderer OOM when signed-in users enter full Expo routes. Recommended action: investigate and spec the smallest deterministic fix that reduces signed-in route boot memory enough to pass physical Android Chrome and mobile Safari. Hard rule: do not call any route family restored until the real phone browsers pass; static Home can stay fast while deeper routes are fixed.
+
 > **2026-06-06 - ORCH-1092 [Business web restoration wave] CLOSED; next web priority is the next bounded parity wave.** Shipped wave: Events Hub, Marketing overview, Marketing compose, and Account reopen from static Home with production phone-browser proof. Preserve the proven pattern for the next wave: keep Expo Web, move in larger route chunks, quarantine native modules, keep ORCH-1091 cache guards, and require live phone-browser proof before marking a route family restored.
 
 > **2026-06-06 - ORCH-1091 [Business web mobile cache invalidation] OFF BOARD (CLOSED PASS Grade A).** The inconsistent phone-browser failure is closed: production web JS now revalidates and the exported HTML carries a cache-bust, so old route maps cannot keep pointing at deleted chunks after deploy. Seth smoke confirmed signed-in Create opens instantly on Chrome and Safari; no further Create-route repair is pending.

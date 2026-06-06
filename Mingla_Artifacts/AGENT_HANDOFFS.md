@@ -1,5 +1,9 @@
 # Agent Handoffs
 
+## 2026-06-06 - ORCH-1093 [Business web signed-in route OOM on mobile browsers] registered -> Codex `forensic-mingla` investigate/spec dispatch
+
+Forensics owns proof and the implementation contract only; no product-code implementation is authorized yet. Inputs are ORCH-1083 load-perf root cause, ORCH-1085 code-splitting spec and Phase 3 inventory, ORCH-1087 route-gate investigation, ORCH-1089/1090/1091 Create/auth/cache fixes, ORCH-1092 close report, and the fresh Android evidence: Samsung A72 Chrome renders `/home` signed in as `sethogieva@gmail.com` but `/hub/trips` crashes to `Aw, Snap!` with logcat `V8 javascript OOM` + `CrRendererMain`. Working tree: `~/Desktop/mingla-orchs/ORCH-1093-[business-web-signedin-route-oom]/` on branch `ORCH-1093-business-web-signedin-route-oom`. Expected outputs: `Mingla_Artifacts/reports/INVESTIGATION_ORCH-1093_BUSINESS_WEB_SIGNEDIN_ROUTE_OOM.md` and `Mingla_Artifacts/specs/SPEC_ORCH-1093_BUSINESS_WEB_SIGNEDIN_ROUTE_OOM.md`. Hard guards: keep Expo Web; preserve ORCH-1091 cache/chunk guards, ORCH-1092 provider-neutral payout copy, and native-module quarantine; never deploy/OTA/merge/reap from the worktree; no route is restored until physical Android Chrome and mobile Safari pass.
+
 ## 2026-06-06 - ORCH-1092 [Business web restoration wave] CLOSED PASS Grade A
 
 No downstream handoff remains for this ORCH. The bounded restoration wave reopened `/hub/events`, `/marketing`, `/marketing/campaigns/compose`, and `/account` from static Home; preserved Create; kept Payout account, Hub Experiences, Hub Trips, and Ari shelled; and verified production phone-browser recovery on `business.usemingla.com`. Evidence is in `Mingla_Artifacts/reports/CLOSE_ORCH-1092_BUSINESS_WEB_RESTORATION_WAVE.md`. Next business-web work should start as a fresh ORCH for the next route-family wave, using ORCH-1092's native-quarantine and production-proof pattern.
