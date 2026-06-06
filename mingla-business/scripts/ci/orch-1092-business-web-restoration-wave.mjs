@@ -66,6 +66,17 @@ function scriptSrcsFromHtml(html) {
   );
 }
 
+function deferredScriptSrcsFromHtml(html) {
+  const match = html.match(/var scripts=(\[[^\]]*\]);function isPhone/);
+  if (match === null) return [];
+  try {
+    const parsed = JSON.parse(match[1]);
+    return Array.isArray(parsed) ? parsed.filter((src) => typeof src === "string") : [];
+  } catch {
+    return [];
+  }
+}
+
 function normalizeDistScriptPath(src) {
   const withoutQuery = src.split("?")[0];
   if (!withoutQuery.startsWith("/_expo/static/js/web/")) return null;
@@ -275,6 +286,7 @@ for (const token of [
   "mingla-mobile-web-chunk-recovery",
   "mingla-mobile-web-home-preboot",
   "mingla-mobile-web-no-blur",
+  "orch1093-mobile-route-script-deferral",
 ]) {
   assertIncludes(injectScript, token, "scripts/inject-mobile-blur-css.mjs");
 }
@@ -357,27 +369,28 @@ if (existsSync(join("dist", "index.html"))) {
     "mingla-mobile-web-chunk-recovery",
     "mingla-mobile-web-home-preboot",
     "mingla-mobile-web-no-blur",
+    "orch1093-mobile-route-script-deferral",
   ]) {
     assertIncludes(distIndex, token, "dist/index.html");
   }
 
-  const eagerBootChunks = scriptSrcsFromHtml(distIndex)
+  const bootChunks = [...scriptSrcsFromHtml(distIndex), ...deferredScriptSrcsFromHtml(distIndex)]
     .map(normalizeDistScriptPath)
     .filter((path) => path !== null);
-  if (eagerBootChunks.length === 0) {
-    fail("dist/index.html must eagerly load Expo web JS chunks for boot inspection");
+  if (bootChunks.length === 0) {
+    fail("dist/index.html must load or defer Expo web JS chunks for boot inspection");
   }
 
-  for (const chunkPath of eagerBootChunks) {
+  for (const chunkPath of bootChunks) {
     const chunk = read(chunkPath);
     for (const token of forbiddenNativeModules) {
-      assertNotIncludes(chunk, token, `${chunkPath} (eager boot chunk from dist/index.html)`);
+      assertNotIncludes(chunk, token, `${chunkPath} (boot chunk from dist/index.html)`);
     }
   }
 
-  const commonChunk = eagerBootChunks.find((chunkPath) => basename(chunkPath).startsWith("__common"));
+  const commonChunk = bootChunks.find((chunkPath) => basename(chunkPath).startsWith("__common"));
   if (commonChunk === undefined) {
-    fail("dist/index.html eager boot chunks must include __common for ORCH-1092 inspection");
+    fail("dist/index.html boot chunks must include __common for ORCH-1092 inspection");
   }
 }
 

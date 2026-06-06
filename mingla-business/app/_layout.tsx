@@ -120,6 +120,21 @@ const ORCH_1092_SIGNED_OUT_ROUTES = new Set([
   "/account",
 ]);
 
+const ORCH_1093_SIGNED_IN_ROUTE_STATUS = {
+  "/hub/events": "approved",
+  "/marketing": "approved",
+  "/marketing/campaigns/compose": "approved",
+  "/account": "approved",
+  "/event/create": "approved",
+  "/hub/trips": "pending-proof",
+  "/hub/experiences": "blocked",
+  "/ari": "blocked",
+  "/connect-account-management": "blocked",
+} as const;
+
+type Orch1093RouteStatus =
+  (typeof ORCH_1093_SIGNED_IN_ROUTE_STATUS)[keyof typeof ORCH_1093_SIGNED_IN_ROUTE_STATUS];
+
 const SUPABASE_AUTH_STORAGE_KEY = /^sb-.+-auth-token$/;
 
 function normalizeWebPathname(pathname: string): string {
@@ -132,6 +147,31 @@ function normalizeWebPathname(pathname: string): string {
 function getCurrentWebPathname(): string {
   if (Platform.OS !== "web" || typeof window === "undefined") return "";
   return normalizeWebPathname(window.location.pathname);
+}
+
+function isMobileWebRouteEntry(): boolean {
+  if (Platform.OS !== "web" || typeof window === "undefined") return false;
+  const nav = window.navigator;
+  const ua = nav.userAgent.toLowerCase();
+  const uaDataMobile =
+    "userAgentData" in nav &&
+    typeof nav.userAgentData === "object" &&
+    nav.userAgentData !== null &&
+    "mobile" in nav.userAgentData &&
+    nav.userAgentData.mobile === true;
+  return (
+    uaDataMobile ||
+    /android|iphone|ipad|ipod|mobile/.test(ua) ||
+    window.matchMedia("(max-width: 767px), (pointer: coarse)").matches
+  );
+}
+
+function orch1093RouteStatus(pathname: string): Orch1093RouteStatus {
+  return (
+    ORCH_1093_SIGNED_IN_ROUTE_STATUS[
+      pathname as keyof typeof ORCH_1093_SIGNED_IN_ROUTE_STATUS
+    ] ?? "approved"
+  );
 }
 
 function hasStoredSupabaseWebSession(): boolean {
@@ -148,6 +188,51 @@ function hasStoredSupabaseWebSession(): boolean {
     return false;
   }
   return false;
+}
+
+function Orch1093MobileRouteRecovery({
+  pathname,
+  status,
+  onReturnHome,
+}: {
+  pathname: string;
+  status: Exclude<Orch1093RouteStatus, "approved">;
+  onReturnHome: () => void;
+}): React.ReactElement {
+  const routeLabel =
+    pathname === "/hub/trips"
+      ? "Hub Trips"
+      : pathname === "/hub/experiences"
+        ? "Hub Experiences"
+        : pathname === "/ari"
+          ? "Ari"
+          : pathname === "/connect-account-management"
+            ? "Payout account"
+            : "this route";
+  return (
+    <View style={orch1092Styles.host}>
+      <View style={orch1092Styles.card}>
+        <Text style={orch1092Styles.eyebrow}>Mingla Business</Text>
+        <Text style={orch1092Styles.title}>{routeLabel} is staying protected.</Text>
+        <Text style={orch1092Styles.body}>
+          {status === "pending-proof"
+            ? "This phone-browser route is being slimmed down and still needs physical Android Chrome and mobile Safari proof before direct entry opens."
+            : "This phone-browser route is not ready for direct entry yet, so Mingla is sending you back to the stable Home launcher."}
+        </Text>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Return to Business Home"
+          onPress={onReturnHome}
+          style={({ pressed }) => [
+            orch1092Styles.button,
+            pressed && orch1092Styles.buttonPressed,
+          ]}
+        >
+          <Text style={orch1092Styles.buttonText}>Return to Home</Text>
+        </Pressable>
+      </View>
+    </View>
+  );
 }
 
 function Orch1092SignedOutRecovery({
@@ -286,6 +371,21 @@ function RootLayoutInner(): React.ReactElement {
     return (
       <Orch1092SignedOutRecovery
         pathname={pathname}
+        onReturnHome={() => router.replace("/home" as never)}
+      />
+    );
+  }
+
+  const orch1093Status = orch1093RouteStatus(pathname);
+  if (
+    Platform.OS === "web" &&
+    isMobileWebRouteEntry() &&
+    orch1093Status !== "approved"
+  ) {
+    return (
+      <Orch1093MobileRouteRecovery
+        pathname={pathname}
+        status={orch1093Status}
         onReturnHome={() => router.replace("/home" as never)}
       />
     );
@@ -527,10 +627,31 @@ export default function RootLayout(): React.ReactElement {
   // root `useFonts(...)` — it pulls all 14 @expo-google-fonts/* modules into the
   // boot bundle + fires 14 boot-time fetches on the login path. See SPEC §C-2.
   const webPathname = getCurrentWebPathname();
+  const orch1093WebStatus = orch1093RouteStatus(webPathname);
+  const shouldShowOuterOrch1093Recovery =
+    Platform.OS === "web" &&
+    isMobileWebRouteEntry() &&
+    orch1093WebStatus !== "approved";
   const shouldShowOuterOrch1092Recovery =
     Platform.OS === "web" &&
     ORCH_1092_SIGNED_OUT_ROUTES.has(webPathname) &&
     !hasStoredSupabaseWebSession();
+
+  if (shouldShowOuterOrch1093Recovery) {
+    return (
+      <GestureHandlerRootView style={{ flex: 1 }}>
+        <SafeAreaProvider>
+          <Orch1093MobileRouteRecovery
+            pathname={webPathname}
+            status={orch1093WebStatus}
+            onReturnHome={() => {
+              window.location.assign("/home");
+            }}
+          />
+        </SafeAreaProvider>
+      </GestureHandlerRootView>
+    );
+  }
 
   if (shouldShowOuterOrch1092Recovery) {
     return (

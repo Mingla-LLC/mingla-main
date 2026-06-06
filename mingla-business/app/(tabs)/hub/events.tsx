@@ -15,7 +15,7 @@
  * Per Cycle 9 spec §3.A.2.
  */
 
-import React, { useCallback, useMemo, useState } from "react";
+import React, { Suspense, useCallback, useMemo, useState } from "react";
 import {
   Pressable,
   ScrollView,
@@ -28,7 +28,6 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { ConfirmDialog } from "../../../src/components/ui/ConfirmDialog";
 import { GlassCard } from "../../../src/components/ui/GlassCard";
-import { ShareModal } from "../../../src/components/ui/ShareModal";
 import { Toast } from "../../../src/components/ui/Toast";
 import {
   accent,
@@ -59,8 +58,6 @@ import {
   EventListCard,
   type EventCardStatus,
 } from "../../../src/components/event/EventListCard";
-import { EndSalesSheet } from "../../../src/components/event/EndSalesSheet";
-import { EventManageMenu } from "../../../src/components/event/EventManageMenu";
 import { useCurrentBrandRole } from "../../../src/hooks/useCurrentBrandRole";
 import {
   useDiscardServerDraft,
@@ -83,6 +80,21 @@ import { routeForEventRowDefensive } from "../../../src/utils/routeForEventRow";
 // 8pm EDT on its start day. The wrapper lives in `./eventCardStatus.ts` so
 // the regression test can import it without pulling this screen's JSX.
 import { deriveCardStatus } from "./eventCardStatus";
+
+const LazyEventManageMenu = React.lazy(async () => {
+  const mod = await import("../../../src/components/event/EventManageMenu");
+  return { default: mod.EventManageMenu };
+});
+
+const LazyEndSalesSheet = React.lazy(async () => {
+  const mod = await import("../../../src/components/event/EndSalesSheet");
+  return { default: mod.EndSalesSheet };
+});
+
+const LazyShareModal = React.lazy(async () => {
+  const mod = await import("../../../src/components/ui/ShareModal");
+  return { default: mod.ShareModal };
+});
 
 type EventFilter = "all" | "live" | "upcoming" | "draft" | "past";
 
@@ -647,42 +659,46 @@ export default function EventsTab(): React.ReactElement {
 
       {/* Manage menu — Sheet primitive */}
       {manageCtx !== null && currentBrand !== null ? (
-        <EventManageMenu
-          visible
-          onClose={handleManageClose}
-          event={manageCtx.event}
-          status={manageCtx.status}
-          brand={currentBrand}
-          onShare={handleManageShare}
-          onEdit={handleManageEdit}
-          onViewPublic={handleManageViewPublic}
-          onEndSales={handleManageEndSales}
-          onCancelEvent={handleManageCancelEvent}
-          onDeleteDraft={handleManageDeleteDraft}
-          onOpenOrders={() => {
-            handleManageClose();
-            router.push(
-              `/event/${manageCtx.event.id}/orders` as never,
-            );
-          }}
-          onTransitionalToast={showTransitionalToast}
-          canEditEvent={canPerformAction(currentRank, "EDIT_EVENT")}
-          canUseLifecycleActions
-        />
+        <Suspense fallback={null}>
+          <LazyEventManageMenu
+            visible
+            onClose={handleManageClose}
+            event={manageCtx.event}
+            status={manageCtx.status}
+            brand={currentBrand}
+            onShare={handleManageShare}
+            onEdit={handleManageEdit}
+            onViewPublic={handleManageViewPublic}
+            onEndSales={handleManageEndSales}
+            onCancelEvent={handleManageCancelEvent}
+            onDeleteDraft={handleManageDeleteDraft}
+            onOpenOrders={() => {
+              handleManageClose();
+              router.push(
+                `/event/${manageCtx.event.id}/orders` as never,
+              );
+            }}
+            onTransitionalToast={showTransitionalToast}
+            canEditEvent={canPerformAction(currentRank, "EDIT_EVENT")}
+            canUseLifecycleActions
+          />
+        </Suspense>
       ) : null}
 
       {/* End sales sheet — opened from manage menu's End ticket sales */}
       {endSalesEvent !== null ? (
-        <EndSalesSheet
-          visible
-          onClose={() => setEndSalesEvent(null)}
-          onConfirm={handleEndSalesConfirm}
-          eventName={
-            endSalesEvent.name.trim().length > 0
-              ? endSalesEvent.name
-              : "this event"
-          }
-        />
+        <Suspense fallback={null}>
+          <LazyEndSalesSheet
+            visible
+            onClose={() => setEndSalesEvent(null)}
+            onConfirm={handleEndSalesConfirm}
+            eventName={
+              endSalesEvent.name.trim().length > 0
+                ? endSalesEvent.name
+                : "this event"
+            }
+          />
+        </Suspense>
       ) : null}
 
       {/* Delete draft ConfirmDialog — opened from manage menu's Delete event (drafts only) */}
@@ -735,16 +751,18 @@ export default function EventsTab(): React.ReactElement {
 
       {/* Share modal — opened from manage menu */}
       {shareEvent !== null ? (
-        <ShareModal
-          visible
-          onClose={() => setShareEvent(null)}
-          url={eventPublicUrl({
-            brandSlug: shareEvent.brandSlug,
-            eventSlug: shareEvent.eventSlug,
-          })}
-          title={`${shareEvent.name} on Mingla`}
-          description={shareEvent.description.slice(0, 200) || shareEvent.name}
-        />
+        <Suspense fallback={null}>
+          <LazyShareModal
+            visible
+            onClose={() => setShareEvent(null)}
+            url={eventPublicUrl({
+              brandSlug: shareEvent.brandSlug,
+              eventSlug: shareEvent.eventSlug,
+            })}
+            title={`${shareEvent.name} on Mingla`}
+            description={shareEvent.description.slice(0, 200) || shareEvent.name}
+          />
+        </Suspense>
       ) : null}
 
       {/* Toast wrap — absolute-positioned per memory rule */}

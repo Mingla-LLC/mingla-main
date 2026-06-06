@@ -17,13 +17,11 @@
  * Mingla_Artifacts/specs/SPEC_ORCH-0826_M0_HUB_FOUNDATION.md §6.5
  */
 
-import React, { useCallback, useEffect, useState } from "react";
+import React, { Suspense, useCallback, useEffect, useState } from "react";
 import { StyleSheet, View } from "react-native";
 import { Slot, usePathname, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { BrandDeleteSheet } from "../../../src/components/brand/BrandDeleteSheet";
-import { BrandSwitcherSheet } from "../../../src/components/brand/BrandSwitcherSheet";
 import { BusinessTodoToggle } from "../../../src/components/home/BusinessTodoToggle";
 import { HubSubNav } from "../../../src/components/hub/HubSubNav";
 import { useBusinessTodos } from "../../../src/hooks/useBusinessTodos";
@@ -37,7 +35,6 @@ import {
 import { useVenueClaimRefresh } from "../../../src/hooks/useVenueClaimRefresh";
 import { IconChrome } from "../../../src/components/ui/IconChrome";
 import { TopBar } from "../../../src/components/ui/TopBar";
-import { UniversalCreatorSheet } from "../../../src/components/ui/UniversalCreatorSheet";
 import { canvas, spacing } from "../../../src/constants/designSystem";
 import { useAuth } from "../../../src/context/AuthContext";
 import {
@@ -46,6 +43,21 @@ import {
 } from "../../../src/store/currentBrandStore";
 import { useHubCreatorStore } from "../../../src/store/hubCreatorStore";
 import type { BusinessTodo } from "../../../src/utils/businessTodos";
+
+const LazyBrandSwitcherSheet = React.lazy(async () => {
+  const mod = await import("../../../src/components/brand/BrandSwitcherSheet");
+  return { default: mod.BrandSwitcherSheet };
+});
+
+const LazyBrandDeleteSheet = React.lazy(async () => {
+  const mod = await import("../../../src/components/brand/BrandDeleteSheet");
+  return { default: mod.BrandDeleteSheet };
+});
+
+const LazyUniversalCreatorSheet = React.lazy(async () => {
+  const mod = await import("../../../src/components/ui/UniversalCreatorSheet");
+  return { default: mod.UniversalCreatorSheet };
+});
 
 export default function HubTabLayout(): React.ReactElement {
   const insets = useSafeAreaInsets();
@@ -202,23 +214,35 @@ export default function HubTabLayout(): React.ReactElement {
           shows claim status). A pending/under-review claim now surfaces as a
           smart row in the shared to-do toggle above (see buildBusinessTodos). */}
       <Slot />
-      <BrandSwitcherSheet
-        visible={brandSheetVisible}
-        onClose={handleCloseSwitcher}
-        onBrandCreated={handleBrandCreated}
-        onRequestDeleteBrand={handleRequestDeleteBrand}
-      />
-      <UniversalCreatorSheet
-        visible={isUniversalCreatorOpen}
-        onClose={() => setIsUniversalCreatorOpen(false)}
-      />
-      <BrandDeleteSheet
-        visible={deleteSheetVisible}
-        brand={brandPendingDelete}
-        accountId={user?.id ?? null}
-        onClose={handleCloseDeleteSheet}
-        onDeleted={handleBrandDeleted}
-      />
+      {brandSheetVisible ? (
+        <Suspense fallback={null}>
+          <LazyBrandSwitcherSheet
+            visible
+            onClose={handleCloseSwitcher}
+            onBrandCreated={handleBrandCreated}
+            onRequestDeleteBrand={handleRequestDeleteBrand}
+          />
+        </Suspense>
+      ) : null}
+      {isUniversalCreatorOpen ? (
+        <Suspense fallback={null}>
+          <LazyUniversalCreatorSheet
+            visible
+            onClose={() => setIsUniversalCreatorOpen(false)}
+          />
+        </Suspense>
+      ) : null}
+      {deleteSheetVisible ? (
+        <Suspense fallback={null}>
+          <LazyBrandDeleteSheet
+            visible
+            brand={brandPendingDelete}
+            accountId={user?.id ?? null}
+            onClose={handleCloseDeleteSheet}
+            onDeleted={handleBrandDeleted}
+          />
+        </Suspense>
+      ) : null}
     </View>
   );
 }

@@ -13,7 +13,7 @@
  * Per SPEC §4.10 file 26 (ORCH-0859) + SPEC §3.3.3 (ORCH-0874).
  */
 
-import React, { useCallback, useMemo, useState } from "react";
+import React, { Suspense, useCallback, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   Pressable,
@@ -35,17 +35,23 @@ import {
 } from "../../../src/constants/designSystem";
 import { DESKTOP_HUB_GRID_COLUMNS } from "../../../src/constants/desktopLayout";
 import { GlassCard } from "../../../src/components/ui/GlassCard";
-import { ShareModal } from "../../../src/components/ui/ShareModal";
 import { TripListCard } from "../../../src/components/trip/TripListCard";
-import {
-  OfferingManageSheet,
-  buildOfferingManageActions,
-} from "../../../src/components/offering/OfferingManageSheet";
+import { buildOfferingManageActions } from "../../../src/components/offering/offeringManageActions";
 import { useCurrentBrand } from "../../../src/hooks/useCurrentBrand";
 import { useResponsiveLayout } from "../../../src/hooks/useResponsiveLayout";
 import { useTripsByBrand } from "../../../src/hooks/useTrips";
 import type { Trip } from "../../../src/services/tripsService";
 import { routeForEventRowDefensive } from "../../../src/utils/routeForEventRow";
+
+const LazyOfferingManageSheet = React.lazy(async () => {
+  const mod = await import("../../../src/components/offering/OfferingManageSheet");
+  return { default: mod.OfferingManageSheet };
+});
+
+const LazyShareModal = React.lazy(async () => {
+  const mod = await import("../../../src/components/ui/ShareModal");
+  return { default: mod.ShareModal };
+});
 
 type TripFilter = "all" | "upcoming" | "past" | "draft";
 
@@ -272,54 +278,58 @@ export default function HubTripsRoute(): React.ReactElement {
           only the non-destructive actions inline + opens the dashboard for the
           destructive confirm. */}
       {manageTrip !== null ? (
-        <OfferingManageSheet
-          visible
-          onClose={() => setManageTrip(null)}
-          kind="trip"
-          actions={buildOfferingManageActions(
-            "trip",
-            {
-              onEdit: () =>
-                router.push(`/trip/${manageTrip.id}/edit` as never),
-              onViewPublic:
-                manageTrip.brandSlug !== null && manageTrip.brandSlug.length > 0
-                  ? () =>
-                      router.push(
-                        `/t/${manageTrip.brandSlug}/${manageTrip.slug}` as never,
-                      )
-                  : undefined,
-              onOrders: () =>
-                router.push(`/trip/${manageTrip.id}/travelers` as never),
-              onShare:
-                manageTrip.brandSlug !== null && manageTrip.brandSlug.length > 0
-                  ? () => setShareTrip(manageTrip)
-                  : undefined,
-              onCancel:
-                manageTrip.status !== "draft" &&
-                manageTrip.status !== "ended" &&
-                manageTrip.status !== "cancelled"
-                  ? () => router.push(`/trip/${manageTrip.id}` as never)
-                  : undefined,
-            },
-            () => setManageTrip(null),
-          )}
-        />
+        <Suspense fallback={null}>
+          <LazyOfferingManageSheet
+            visible
+            onClose={() => setManageTrip(null)}
+            kind="trip"
+            actions={buildOfferingManageActions(
+              "trip",
+              {
+                onEdit: () =>
+                  router.push(`/trip/${manageTrip.id}/edit` as never),
+                onViewPublic:
+                  manageTrip.brandSlug !== null && manageTrip.brandSlug.length > 0
+                    ? () =>
+                        router.push(
+                          `/t/${manageTrip.brandSlug}/${manageTrip.slug}` as never,
+                        )
+                    : undefined,
+                onOrders: () =>
+                  router.push(`/trip/${manageTrip.id}/travelers` as never),
+                onShare:
+                  manageTrip.brandSlug !== null && manageTrip.brandSlug.length > 0
+                    ? () => setShareTrip(manageTrip)
+                    : undefined,
+                onCancel:
+                  manageTrip.status !== "draft" &&
+                  manageTrip.status !== "ended" &&
+                  manageTrip.status !== "cancelled"
+                    ? () => router.push(`/trip/${manageTrip.id}` as never)
+                    : undefined,
+              },
+              () => setManageTrip(null),
+            )}
+          />
+        </Suspense>
       ) : null}
 
       {shareTrip !== null &&
       shareTrip.brandSlug !== null &&
       shareTrip.brandSlug.length > 0 ? (
-        <ShareModal
-          visible
-          onClose={() => setShareTrip(null)}
-          url={`https://business.usemingla.com/t/${shareTrip.brandSlug}/${shareTrip.slug}`}
-          title={`${shareTrip.title} on Mingla`}
-          description={
-            shareTrip.description !== null && shareTrip.description.length > 0
-              ? shareTrip.description.slice(0, 200)
-              : shareTrip.title
-          }
-        />
+        <Suspense fallback={null}>
+          <LazyShareModal
+            visible
+            onClose={() => setShareTrip(null)}
+            url={`https://business.usemingla.com/t/${shareTrip.brandSlug}/${shareTrip.slug}`}
+            title={`${shareTrip.title} on Mingla`}
+            description={
+              shareTrip.description !== null && shareTrip.description.length > 0
+                ? shareTrip.description.slice(0, 200)
+                : shareTrip.title
+            }
+          />
+        </Suspense>
       ) : null}
     </View>
   );

@@ -11,7 +11,7 @@
  * via the existing `startsWith(prefix + "/")` clause.
  */
 
-import React, { useMemo } from "react";
+import React, { Suspense, useMemo } from "react";
 import { Platform, StyleSheet, View } from "react-native";
 import { Slot, useRouter, usePathname } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -36,17 +36,8 @@ import { useCurrentBrandRole } from "../../src/hooks/useCurrentBrandRole";
 import { useCurrentBrandStore } from "../../src/store/currentBrandStore";
 import { visibleTabsForRank } from "../../src/utils/navTabGate";
 
-// ORCH-0891 M2: ⌘K command palette. Metro picks
-// `CommandPalette.web.tsx` on web (cmdk-backed dialog with global ⌘K
-// keydown listener) and `CommandPalette.tsx` on native (null stub).
-// Same `.tsx + .web.tsx` Metro split pattern as `richEditor.tsx` from M1.
-import { CommandPalette } from "../../src/components/ui/CommandPalette";
-
-// META-ORCH-1073 Sub-A: the global search sheet mounts ONCE here so it is
-// reachable from every screen rendering the default TopBar cluster. Opened
-// via useGlobalSearchSheet().isOpen (the TopBar search icon calls open()).
-// COEXIST (R-5): the web-desktop ⌘K CommandPalette above is UNTOUCHED.
-import { GlobalSearchSheet } from "../../src/components/ui/GlobalSearchSheet";
+import { CommandPaletteHost } from "../../src/components/ui/CommandPaletteHost";
+import { GlobalSearchSheetHost } from "../../src/components/ui/GlobalSearchSheetHost";
 
 const TABS: BottomNavTab[] = [
   { id: "home", icon: "home", label: "Home" },
@@ -134,18 +125,15 @@ export default function TabsLayout(): React.ReactElement {
           <BottomNav tabs={visibleTabs} active={activeId} onChange={handleChange} />
         </View>
       )}
-      {/* ORCH-0891 M2: CommandPalette mounts on wide-desktop only. The
-          underlying CommandPalette.web.tsx installs the global ⌘K
-          keydown listener internally; the wrapper is null on native.
-          We render it unconditionally at the layout root — the
-          isWideDesktop gate inside the palette itself decides whether
-          to actually open. Native: noop (CommandPalette.tsx is null). */}
-      {Platform.OS === "web" && isWideDesktop ? <CommandPalette /> : null}
+      {/* ORCH-1093: keep desktop command UI out of phone route entry. */}
+      {Platform.OS === "web" && isWideDesktop ? <CommandPaletteHost /> : null}
       {/* META-ORCH-1073 Sub-A: the global search sheet — single mount,
           reachable from every default-cluster screen on all surfaces
           (native bottom sheet / narrow-web bottom sheet / wide-desktop
           centred card, resolved by the Sheet primitive). */}
-      <GlobalSearchSheet />
+      <Suspense fallback={null}>
+        <GlobalSearchSheetHost />
+      </Suspense>
     </View>
   );
 }

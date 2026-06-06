@@ -13,20 +13,17 @@
  * Cycle 14 lands real Account features (profile, settings, delete-flow).
  */
 
-import React, { useCallback, useEffect, useState } from "react";
+import React, { Suspense, useCallback, useEffect, useState } from "react";
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { BrandDeleteSheet } from "../../src/components/brand/BrandDeleteSheet";
-import { BrandSwitcherSheet } from "../../src/components/brand/BrandSwitcherSheet";
 import { GlassCard } from "../../src/components/ui/GlassCard";
 import { Icon } from "../../src/components/ui/Icon";
 import type { IconName } from "../../src/components/ui/Icon";
 import { IconChrome } from "../../src/components/ui/IconChrome";
 import { Toast } from "../../src/components/ui/Toast";
 import { TopBar } from "../../src/components/ui/TopBar";
-import { UniversalCreatorSheet } from "../../src/components/ui/UniversalCreatorSheet";
 import {
   accent,
   glass,
@@ -50,6 +47,21 @@ import {
   useCurrentBrandStore,
   type Brand,
 } from "../../src/store/currentBrandStore";
+
+const LazyBrandSwitcherSheet = React.lazy(async () => {
+  const mod = await import("../../src/components/brand/BrandSwitcherSheet");
+  return { default: mod.BrandSwitcherSheet };
+});
+
+const LazyBrandDeleteSheet = React.lazy(async () => {
+  const mod = await import("../../src/components/brand/BrandDeleteSheet");
+  return { default: mod.BrandDeleteSheet };
+});
+
+const LazyUniversalCreatorSheet = React.lazy(async () => {
+  const mod = await import("../../src/components/ui/UniversalCreatorSheet");
+  return { default: mod.UniversalCreatorSheet };
+});
 
 interface ToastState {
   visible: boolean;
@@ -279,7 +291,7 @@ export default function AccountTab(): React.ReactElement {
             </Text>
             <View style={styles.navRowsCol}>
               <SettingsNavRow
-                icon="trending-up"
+                icon="trending"
                 label="Partner earnings"
                 onPress={handlePartnerEarnings}
               />
@@ -328,26 +340,38 @@ export default function AccountTab(): React.ReactElement {
             Operators create real brands via BrandSwitcherSheet → useCreateBrand. */}
       </ScrollView>
 
-      <BrandSwitcherSheet
-        visible={sheetVisible}
-        onClose={handleCloseSheet}
-        onBrandCreated={handleBrandCreated}
-        onRequestDeleteBrand={handleRequestDeleteBrand}
-      />
+      {sheetVisible ? (
+        <Suspense fallback={null}>
+          <LazyBrandSwitcherSheet
+            visible
+            onClose={handleCloseSheet}
+            onBrandCreated={handleBrandCreated}
+            onRequestDeleteBrand={handleRequestDeleteBrand}
+          />
+        </Suspense>
+      ) : null}
 
       {/* ORCH-0826 M0: universal creator sheet (Create event/experience/trip) */}
-      <UniversalCreatorSheet
-        visible={isUniversalCreatorOpen}
-        onClose={() => setIsUniversalCreatorOpen(false)}
-      />
+      {isUniversalCreatorOpen ? (
+        <Suspense fallback={null}>
+          <LazyUniversalCreatorSheet
+            visible
+            onClose={() => setIsUniversalCreatorOpen(false)}
+          />
+        </Suspense>
+      ) : null}
 
-      <BrandDeleteSheet
-        visible={deleteSheetVisible}
-        brand={brandPendingDelete}
-        accountId={user?.id ?? null}
-        onClose={handleCloseDeleteSheet}
-        onDeleted={handleBrandDeleted}
-      />
+      {deleteSheetVisible ? (
+        <Suspense fallback={null}>
+          <LazyBrandDeleteSheet
+            visible
+            brand={brandPendingDelete}
+            accountId={user?.id ?? null}
+            onClose={handleCloseDeleteSheet}
+            onDeleted={handleBrandDeleted}
+          />
+        </Suspense>
+      ) : null}
 
       <View style={styles.toastWrap} pointerEvents="box-none">
         <Toast
