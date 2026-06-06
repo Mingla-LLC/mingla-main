@@ -376,6 +376,36 @@
         margin: 18px 0 0;
       }
 
+      .shell-meta {
+        color: #eb7825;
+        font-size: 12px;
+        font-weight: 850;
+        letter-spacing: 0;
+        margin: 0 0 8px;
+        text-transform: uppercase;
+      }
+
+      .shell-body {
+        color: rgba(255, 255, 255, 0.68);
+        font-size: 15px;
+        font-weight: 650;
+        line-height: 1.48;
+        margin: 0;
+      }
+
+      .shell-list {
+        color: rgba(255, 255, 255, 0.62);
+        font-size: 13px;
+        font-weight: 700;
+        line-height: 1.45;
+        margin: 14px 0 0;
+        padding-left: 18px;
+      }
+
+      .shell-list li + li {
+        margin-top: 6px;
+      }
+
       @media (min-width: 680px) {
         .app {
           padding-left: 24px;
@@ -394,7 +424,7 @@
             <p class="session" id="session-label">Signed in</p>
           </div>
         </div>
-        <a class="chip" href="/account">Account</a>
+        <a class="chip" href="#account" data-tab-link="account">Account</a>
       </header>
 
       <section class="hero" aria-labelledby="page-title">
@@ -428,7 +458,7 @@
         </div>
 
         <nav class="actions" aria-label="Primary Home actions">
-          <a class="action primary" href="/event/create">
+          <a class="action primary" href="#create-event" data-shell-link="create-event">
             <span>
               <strong>Create event</strong>
               <span>Start a new listing</span>
@@ -449,21 +479,21 @@
         <p class="section-label">Hub</p>
         <h2 class="section-title">Manage what you sell.</h2>
         <div class="stack">
-          <a class="action primary" href="/hub/events">
+          <a class="action primary" href="#hub-events" data-shell-link="hub-events">
             <span>
               <strong>Events</strong>
               <span>View live, draft, and past events</span>
             </span>
             <span class="arrow">›</span>
           </a>
-          <a class="action" href="/hub/experiences">
+          <a class="action" href="#hub-experiences" data-shell-link="hub-experiences">
             <span>
               <strong>Experiences</strong>
               <span>Curated offerings and bookable moments</span>
             </span>
             <span class="arrow">›</span>
           </a>
-          <a class="action" href="/hub/trips">
+          <a class="action" href="#hub-trips" data-shell-link="hub-trips">
             <span>
               <strong>Trips</strong>
               <span>Planner-led trips and itineraries</span>
@@ -481,7 +511,7 @@
           <p>Use Ari for listing copy, launch plans, audience ideas, and next-step decisions.</p>
         </div>
         <div class="actions" style="margin-top: 12px">
-          <a class="action primary" href="/ari">
+          <a class="action primary" href="#ari-assistant" data-shell-link="ari-assistant">
             <span>
               <strong>Open Ari</strong>
               <span>Continue in the full assistant</span>
@@ -495,14 +525,14 @@
         <p class="section-label">Blast</p>
         <h2 class="section-title">Reach your buyers.</h2>
         <div class="stack">
-          <a class="action primary" href="/marketing">
+          <a class="action primary" href="#marketing-overview" data-shell-link="marketing-overview">
             <span>
               <strong>Marketing overview</strong>
               <span>Campaigns, templates, and audiences</span>
             </span>
             <span class="arrow">›</span>
           </a>
-          <a class="action" href="/marketing/campaigns/compose">
+          <a class="action" href="#compose-blast" data-shell-link="compose-blast">
             <span>
               <strong>Compose blast</strong>
               <span>Start a campaign</span>
@@ -516,17 +546,40 @@
         <p class="section-label">Account</p>
         <h2 class="section-title">Brand and payments.</h2>
         <div class="stack">
-          <a class="action primary" href="/account">
+          <a class="action primary" href="#account-settings" data-shell-link="account-settings">
             <span>
               <strong>Account settings</strong>
               <span>Profile, team, and brand controls</span>
             </span>
             <span class="arrow">›</span>
           </a>
-          <a class="action" href="/connect-account-management">
+          <a class="action" href="#payout-account" data-shell-link="payout-account">
             <span>
               <strong>Payout account</strong>
               <span>Manage payouts and verification</span>
+            </span>
+            <span class="arrow">›</span>
+          </a>
+        </div>
+      </section>
+
+      <section id="panel-shell" class="panel" data-panel="shell" aria-label="Phone browser status">
+        <p class="shell-meta" id="shell-meta">Phone browser</p>
+        <h2 class="section-title" id="shell-title">Use desktop or the app for this workflow.</h2>
+        <div class="card">
+          <p class="shell-body" id="shell-body">
+            This workflow is not ready for phone browsers yet. Use desktop or the Mingla Business app for now.
+          </p>
+          <ul class="shell-list" id="shell-list">
+            <li>The static Home stays available from the tabs below.</li>
+            <li>This route is blocked here so the browser does not open a heavy page that can crash.</li>
+          </ul>
+        </div>
+        <div class="actions" style="margin-top: 12px">
+          <a class="action primary" href="#home" data-tab-link="home">
+            <span>
+              <strong>Back to Home</strong>
+              <span>Return to the static launcher</span>
             </span>
             <span class="arrow">›</span>
           </a>
@@ -568,9 +621,75 @@
         "use strict";
         var panels = Array.prototype.slice.call(document.querySelectorAll("[data-panel]"));
         var tabs = Array.prototype.slice.call(document.querySelectorAll("[data-tab]"));
+        var shellCopy = {
+          "create-event": {
+            meta: "Create event",
+            title: "Create listings on desktop or in the app for now.",
+            body:
+              "The event creator is blocked on phone browsers until the full web workflow is proven stable. Use desktop or the Mingla Business app to create listings for now.",
+            bullets: ["Your static Home is still available.", "This avoids the sign-in spinner seen on the full creator route."]
+          },
+          "hub-events": {
+            meta: "Hub",
+            title: "Events are paused on phone browsers.",
+            body:
+              "The full Events Hub is not ready for phone browsers yet. Use desktop or the Mingla Business app to view live, draft, and past events.",
+            bullets: ["Hub remains available from the static tab.", "This prevents the known Android Chrome renderer crash."]
+          },
+          "hub-experiences": {
+            meta: "Hub",
+            title: "Experiences are paused on phone browsers.",
+            body:
+              "The full Experiences Hub is not ready for phone browsers yet. Use desktop or the Mingla Business app to manage curated offerings and bookable moments.",
+            bullets: ["No file picker or heavy web route loads here.", "This keeps the phone browser in the static shell."]
+          },
+          "hub-trips": {
+            meta: "Hub",
+            title: "Trips are paused on phone browsers.",
+            body:
+              "The full Trips Hub is not ready for phone browsers yet. Use desktop or the Mingla Business app to manage trips and itineraries.",
+            bullets: ["The static Home tabs still work.", "This avoids opening the crashing full Trips route."]
+          },
+          "ari-assistant": {
+            meta: "Ari",
+            title: "Ari is paused on phone browsers.",
+            body:
+              "Ari's full assistant route is blocked here until its browser build is proven stable. Use desktop or the Mingla Business app to continue with Ari for now.",
+            bullets: ["This S1 slice shells Ari instead of loading the full route.", "The static launcher remains available below."]
+          },
+          "marketing-overview": {
+            meta: "Blast",
+            title: "Marketing overview is paused on phone browsers.",
+            body:
+              "The full marketing overview is not ready for phone browsers yet. Use desktop or the Mingla Business app to review campaigns, templates, and audiences.",
+            bullets: ["No full marketing route loads from static Home.", "This prevents the known Android Chrome crash."]
+          },
+          "compose-blast": {
+            meta: "Blast",
+            title: "Compose blasts on desktop or in the app for now.",
+            body:
+              "The campaign composer is blocked on phone browsers until the rich editor, schedule picker, and send flow are proven stable.",
+            bullets: ["Use desktop or the Mingla Business app to start a campaign.", "This avoids loading the heavy composer route."]
+          },
+          "account-settings": {
+            meta: "Account",
+            title: "Account settings are paused on phone browsers.",
+            body:
+              "The full Account screen is not ready for phone browsers yet. Use desktop or the Mingla Business app to manage profile, team, and brand controls.",
+            bullets: ["Provider-neutral payout copy is preserved.", "This prevents the known full Account route crash."]
+          },
+          "payout-account": {
+            meta: "Payout account",
+            title: "Manage payouts from desktop or the app for now.",
+            body:
+              "Payout account management needs a generated secure session link, so static Home does not open the missing-parameter management route.",
+            bullets: ["Use desktop or the Mingla Business app for payouts and verification.", "This avoids the invalid management link from static Home."]
+          }
+        };
         var validTabs = tabs.map(function (tab) {
           return tab.getAttribute("data-tab");
         });
+        validTabs.push("shell");
 
         function normaliseTab(value) {
           if (!value) return "home";
@@ -593,6 +712,22 @@
           }
         }
 
+        function showShell(shellId, writeHash) {
+          var copy = shellCopy[shellId] || shellCopy["create-event"];
+          document.getElementById("shell-meta").textContent = copy.meta;
+          document.getElementById("shell-title").textContent = copy.title;
+          document.getElementById("shell-body").textContent = copy.body;
+          document.getElementById("shell-list").innerHTML = copy.bullets
+            .map(function (item) {
+              return "<li>" + item + "</li>";
+            })
+            .join("");
+          activate("shell", false);
+          if (writeHash && window.location.hash !== "#" + shellId) {
+            history.replaceState(null, "", "#" + shellId);
+          }
+        }
+
         tabs.forEach(function (tab) {
           tab.addEventListener("click", function () {
             activate(tab.getAttribute("data-tab"), true);
@@ -603,6 +738,13 @@
           link.addEventListener("click", function (event) {
             event.preventDefault();
             activate(link.getAttribute("data-tab-link"), true);
+          });
+        });
+
+        Array.prototype.slice.call(document.querySelectorAll("[data-shell-link]")).forEach(function (link) {
+          link.addEventListener("click", function (event) {
+            event.preventDefault();
+            showShell(link.getAttribute("data-shell-link"), true);
           });
         });
 
@@ -617,9 +759,18 @@
           }
         } catch (_error) {}
 
-        activate(window.location.hash, false);
-        window.addEventListener("hashchange", function () {
+        if (shellCopy[normaliseTab(window.location.hash) === "home" ? String(window.location.hash).replace(/^#/, "") : ""]) {
+          showShell(String(window.location.hash).replace(/^#/, ""), false);
+        } else {
           activate(window.location.hash, false);
+        }
+        window.addEventListener("hashchange", function () {
+          var hash = String(window.location.hash).replace(/^#/, "");
+          if (shellCopy[hash]) {
+            showShell(hash, false);
+          } else {
+            activate(hash, false);
+          }
         });
       })();
     </script>
