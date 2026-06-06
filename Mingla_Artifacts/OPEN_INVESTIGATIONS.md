@@ -1,5 +1,7 @@
 # Open Investigations
 
+> **2026-06-05 - ORCH-1085 [Mobile browser business web sign-in/Home] Phase 2 investigation closed; Phase 3 inventory complete.** No open investigation remains for the original sign-in crash: static callback/Home is implemented, merged, deployed, and Android-verified. Open follow-up is the full-web Phase 3 program, now grounded in `Mingla_Artifacts/reports/INVENTORY_ORCH-1085_PHASE_3_BUSINESS_WEB_FULL_WEB_COMPLETION.md`; start with Wave 1 slices rather than re-investigating the crash-stop path.
+
 > **2026-06-05 — ORCH-1084 [Mingla Business logo wordmark] CLOSED PASS — no open investigation/rework remains.** The official logo is visible on production business web and shipped via business-app iOS/Android OTA from merged main. Evidence lives in `Mingla_Artifacts/reports/IMPLEMENTATION_REWORK_ORCH-1084_BUSINESS_LOGO_WORDMARK.md`, `Mingla_Artifacts/reports/QA_ORCH-1084_BUSINESS_LOGO_WORDMARK_REWORK.md`, and `Mingla_Artifacts/CLOSE_NOTE_ORCH-1084_BUSINESS_LOGO_WORDMARK.md`.
 > **2026-06-05 - ORCH-1083 [Business web app slow/unreliable load] CLOSED CONDITIONAL PASS.** No open investigation remains for Phase 1 safe cut. Residual architecture work is intentionally routed to ORCH-1085 [business web code-splitting]; authenticated native feature taps remain a manual smoke gate, not an ORCH-1083 blocker.
 > **2026-06-05 - ORCH-1083 deploy receipt.** PR #380 and production OTA are complete from merged `main`; no new investigation opened from close.
