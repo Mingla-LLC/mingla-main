@@ -121,10 +121,10 @@ const ORCH_1092_SIGNED_OUT_ROUTES = new Set([
 ]);
 
 const ORCH_1093_SIGNED_IN_ROUTE_STATUS = {
-  "/hub/events": "approved",
-  "/marketing": "approved",
-  "/marketing/campaigns/compose": "approved",
-  "/account": "approved",
+  "/hub/events": "pending-proof",
+  "/marketing": "pending-proof",
+  "/marketing/campaigns/compose": "pending-proof",
+  "/account": "pending-proof",
   "/event/create": "approved",
   "/hub/trips": "pending-proof",
   "/hub/experiences": "blocked",
@@ -188,6 +188,10 @@ function hasStoredSupabaseWebSession(): boolean {
     return false;
   }
   return false;
+}
+
+function shouldBlockOrch1093BeforeAuth(status: Orch1093RouteStatus): boolean {
+  return status === "blocked" || (status === "pending-proof" && hasStoredSupabaseWebSession());
 }
 
 function Orch1093MobileRouteRecovery({
@@ -631,7 +635,7 @@ export default function RootLayout(): React.ReactElement {
   const shouldShowOuterOrch1093Recovery =
     Platform.OS === "web" &&
     isMobileWebRouteEntry() &&
-    orch1093WebStatus !== "approved";
+    shouldBlockOrch1093BeforeAuth(orch1093WebStatus);
   const shouldShowOuterOrch1092Recovery =
     Platform.OS === "web" &&
     ORCH_1092_SIGNED_OUT_ROUTES.has(webPathname) &&

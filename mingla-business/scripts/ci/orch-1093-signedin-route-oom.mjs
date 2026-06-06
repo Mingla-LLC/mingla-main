@@ -18,41 +18,49 @@ const COMMON_LIMIT = 1_200_000;
 const ROUTES = [
   {
     label: "/hub/trips",
+    status: "pending-proof",
     source: "app/(tabs)/hub/trips.tsx",
     budget: 80_000,
     tokens: ["No trips yet", "Select a brand to see its trips."],
   },
   {
     label: "/hub/events",
+    status: "pending-proof",
     source: "app/(tabs)/hub/events.tsx",
     budget: 120_000,
     tokens: ["Nothing created yet", "Build a new event"],
   },
   {
     label: "/marketing",
+    status: "pending-proof",
     source: "app/(tabs)/marketing/index.tsx",
     budget: 150_000,
     tokens: ["Blast these", "Marketing"],
   },
   {
     label: "/marketing/campaigns/compose",
+    status: "pending-proof",
     source: "app/(tabs)/marketing/campaigns/compose.tsx",
     budget: 600_000,
     tokens: ["Compose blast", "campaigns/compose"],
   },
   {
     label: "/account",
+    status: "pending-proof",
     source: "app/(tabs)/account.tsx",
     budget: 120_000,
     tokens: ["Sign out everywhere", "Your brands"],
   },
   {
     label: "/event/create",
+    status: "approved",
     source: "app/event/create.tsx",
     budget: 80_000,
     tokens: ["CreateRouteTerminalState", "Getting your brand ready"],
   },
 ];
+
+const PHYSICALLY_PROVEN_OVERSIZE_BOOT_ROUTES = new Set(["/event/create"]);
 
 const FORBIDDEN_EAGER_TOKENS = [
   "expo-image-picker",
@@ -210,7 +218,19 @@ function readDirSafe(path) {
   }
 }
 
-async function assertBundleBudgets(root = "dist") {
+function routeStatusMap(overrides = {}) {
+  return new Map(ROUTES.map((route) => [route.label, overrides[route.label] ?? route.status]));
+}
+
+function approvedRoutesWithoutOversizeProof(statuses) {
+  return ROUTES.filter(
+    (route) =>
+      statuses.get(route.label) === "approved" &&
+      !PHYSICALLY_PROVEN_OVERSIZE_BOOT_ROUTES.has(route.label),
+  ).map((route) => route.label);
+}
+
+async function assertBundleBudgets(root = "dist", options = {}) {
   const indexPath = join(root, "index.html");
   let html;
   try {
@@ -221,20 +241,31 @@ async function assertBundleBudgets(root = "dist") {
   }
 
   const scriptPaths = scriptSrcsFromHtml(html).map((src) => distPathForScript(src, root));
+  const deferredScriptPaths = deferredScriptSrcsFromHtml(html).map((src) => distPathForScript(src, root));
   const deferredByOrch1093 =
-    scriptPaths.length === 0 && html.includes("orch1093-mobile-route-script-deferral");
+    deferredScriptPaths.length > 0 && html.includes("orch1093-mobile-route-script-deferral");
   if (scriptPaths.length === 0 && !deferredByOrch1093) {
     fail("dist/index.html has no eager Expo web scripts and no ORCH-1093 deferral marker");
   }
 
-  const eagerTotal = scriptPaths.reduce((sum, path) => sum + rawBytes(path), 0);
-  const commonPath = scriptPaths.find((path) => basename(path).startsWith("__common-"));
+  const phoneBootScriptPaths = scriptPaths.length > 0 ? scriptPaths : deferredScriptPaths;
+  const phoneBootTotal = phoneBootScriptPaths.reduce((sum, path) => sum + rawBytes(path), 0);
+  const commonPath = phoneBootScriptPaths.find((path) => basename(path).startsWith("__common-"));
   const commonBytes = commonPath === undefined ? 0 : rawBytes(commonPath);
-  if (eagerTotal > EAGER_TOTAL_LIMIT) {
-    fail(`eager direct-route raw JS ${eagerTotal} exceeds ${EAGER_TOTAL_LIMIT}`);
+  const statuses = routeStatusMap(options.routeStatusOverride ?? {});
+  const unprovenApprovedRoutes = approvedRoutesWithoutOversizeProof(statuses);
+  const bootOverBudget = phoneBootTotal > EAGER_TOTAL_LIMIT || commonBytes > COMMON_LIMIT;
+  if (bootOverBudget && unprovenApprovedRoutes.length > 0) {
+    fail(
+      `approved mobile route(s) ${unprovenApprovedRoutes.join(", ")} still load Expo boot JS ` +
+        `${phoneBootTotal} bytes (__common=${commonBytes}); mark them pending-proof or reduce boot payload`,
+    );
   }
-  if (commonPath === undefined && !deferredByOrch1093) fail("eager __common chunk not found");
-  if (commonBytes > COMMON_LIMIT) {
+  if (commonPath === undefined) fail("phone boot __common chunk not found");
+  if (scriptPaths.length > 0 && phoneBootTotal > EAGER_TOTAL_LIMIT) {
+    fail(`eager direct-route raw JS ${phoneBootTotal} exceeds ${EAGER_TOTAL_LIMIT}`);
+  }
+  if (scriptPaths.length > 0 && commonBytes > COMMON_LIMIT) {
     fail(`eager __common raw JS ${commonBytes} exceeds ${COMMON_LIMIT}`);
   }
 
@@ -257,7 +288,7 @@ async function assertBundleBudgets(root = "dist") {
   }
 
   console.log(
-    `ORCH-1093 bundle budgets PASS. eager=${eagerTotal}; __common=${commonBytes}; deferred=${deferredByOrch1093}`,
+    `ORCH-1093 bundle budgets PASS. phoneBoot=${phoneBootTotal}; __common=${commonBytes}; deferred=${deferredByOrch1093}; approved=${ROUTES.filter((route) => statuses.get(route.label) === "approved").map((route) => route.label).join(",") || "none"}`,
   );
   for (const row of routeRows) console.log(`ORCH-1093 route chunk ${row}`);
 }
@@ -275,7 +306,10 @@ function assertSourceGuards() {
   const rootLayout = read("app/_layout.tsx");
   for (const token of [
     "ORCH_1093_SIGNED_IN_ROUTE_STATUS",
-    "\"/hub/trips\": \"pending-proof\"",
+    "\"/hub/events\": \"pending-proof\"",
+    "\"/marketing\": \"pending-proof\"",
+    "\"/marketing/campaigns/compose\": \"pending-proof\"",
+    "\"/account\": \"pending-proof\"",
     "\"/hub/experiences\": \"blocked\"",
     "\"/ari\": \"blocked\"",
     "\"/connect-account-management\": \"blocked\"",
@@ -323,6 +357,9 @@ function assertSourceGuards() {
   ]) {
     assertIncludes(inject, token, "scripts/inject-mobile-blur-css.mjs");
   }
+  for (const route of ["/hub/events", "/marketing", "/marketing/campaigns/compose", "/account", "/hub/trips"]) {
+    assertIncludes(inject, `"${route}":"pending-proof"`, "scripts/inject-mobile-blur-css.mjs");
+  }
 
   const vercel = JSON.parse(read("vercel.json"));
   const webJsHeader = (vercel.headers ?? []).find((header) => header.source === "/_expo/static/js/web/(.*)");
@@ -364,17 +401,50 @@ function runSelfTest() {
     }
     if (!failed) fail("--self-test expected production-equivalent eager payload to fail");
     console.log("ORCH-1093 self-test PASS.");
+    writeFileSync(
+      join(dir, "dist/index.html"),
+      '<script id="orch1093-mobile-route-script-deferral">(function(){var scripts=["/_expo/static/js/web/__expo-metro-runtime-test.js","/_expo/static/js/web/__common-test.js","/_expo/static/js/web/index-test.js"];function isPhone(){return true}})();</script>',
+    );
+    const previousDeferred = process.cwd();
+    process.chdir(dir);
+    let failedDeferredFalsePass = false;
+    try {
+      awaitableAssertBundleBudgets("dist", {
+        "/hub/events": "approved",
+        "/marketing": "approved",
+        "/marketing/campaigns/compose": "approved",
+        "/account": "approved",
+      });
+    } catch {
+      failedDeferredFalsePass = true;
+    } finally {
+      process.chdir(previousDeferred);
+    }
+    if (!failedDeferredFalsePass) fail("--self-test expected deferred oversized approved-route payload to fail");
+    console.log("ORCH-1093 deferred false-pass self-test PASS.");
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
 }
 
-function awaitableAssertBundleBudgets(root) {
+function awaitableAssertBundleBudgets(root, routeStatusOverride = {}) {
   const indexPath = join(root, "index.html");
   const html = readFileSync(indexPath, "utf8");
   const scriptPaths = scriptSrcsFromHtml(html).map((src) => distPathForScript(src, root));
-  const eagerTotal = scriptPaths.reduce((sum, path) => sum + rawBytes(path), 0);
-  if (eagerTotal > EAGER_TOTAL_LIMIT) {
+  const deferredScriptPaths = deferredScriptSrcsFromHtml(html).map((src) => distPathForScript(src, root));
+  const phoneBootScriptPaths = scriptPaths.length > 0 ? scriptPaths : deferredScriptPaths;
+  const phoneBootTotal = phoneBootScriptPaths.reduce((sum, path) => sum + rawBytes(path), 0);
+  const commonPath = phoneBootScriptPaths.find((path) => basename(path).startsWith("__common-"));
+  const commonBytes = commonPath === undefined ? 0 : rawBytes(commonPath);
+  const statuses = routeStatusMap(routeStatusOverride);
+  const unprovenApprovedRoutes = approvedRoutesWithoutOversizeProof(statuses);
+  if (
+    scriptPaths.length > 0 &&
+    (phoneBootTotal > EAGER_TOTAL_LIMIT || commonBytes > COMMON_LIMIT)
+  ) {
+    throw new Error("self-test eager budget failure");
+  }
+  if ((phoneBootTotal > EAGER_TOTAL_LIMIT || commonBytes > COMMON_LIMIT) && unprovenApprovedRoutes.length > 0) {
     throw new Error("self-test budget failure");
   }
 }

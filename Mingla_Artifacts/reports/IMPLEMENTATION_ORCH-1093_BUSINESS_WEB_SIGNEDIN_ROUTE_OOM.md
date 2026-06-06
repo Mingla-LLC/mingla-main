@@ -3,13 +3,13 @@
 > Date: 2026-06-06
 > Mode: Spec Execute
 > Spec: `Mingla_Artifacts/specs/SPEC_ORCH-1093_BUSINESS_WEB_SIGNEDIN_ROUTE_OOM.md`
-> Status: implemented, partially verified
+> Status: implemented, partially verified after rework
 
 ## 1. Layman Summary
 
-Signed-in Mingla Business web routes now avoid forcing phone browsers to load the whole app shell before the first useful screen. Tab-global search/command UI and route action sheets are lazy-loaded, unsafe phone direct-entry routes fail closed with deliberate recovery, and the post-export web HTML now defers Expo boot scripts behind an ORCH-1093 mobile route guard while preserving Expo Web, `web.output`, async web routes, ORCH-1091 recovery/cache behavior, and ORCH-1092 native-module quarantine.
+Signed-in Mingla Business web routes that physically OOMed on Android Chrome now fail closed before Expo boot loads. `/hub/events`, `/marketing`, `/marketing/campaigns/compose`, `/account`, and `/hub/trips` show deliberate protected recovery on signed-in phone direct entry with zero Expo JS resources; `/event/create` remains the only approved signed-in phone route because it reached the real wizard on the Samsung A72.
 
-The automated bundle guard passes, but physical Android Chrome and mobile Safari proof were not available in this run, so no route is labeled fully restored.
+The CI guard no longer treats `eager=0` as success when Expo boot scripts are deferred. It counts the deferred phone boot payload (`2,884,313` raw bytes, `__common=1,881,530`) against approved-route safety and self-tests the previous false-pass shape. Physical Android Chrome passed; mobile Safari remains a manual gate.
 
 ## 2. Request And Context
 
@@ -17,6 +17,7 @@ The automated bundle guard passes, but physical Android Chrome and mobile Safari
 - **Source:** User dispatch, spec commit `5a57e78f5`, investigation report, and runtime proof report.
 - **Affected surfaces:** `mingla-business` Expo Web export, business web route entry, web tab layout, route action-sheet loading, generated `dist/index.html` post-processing, ORCH-specific CI guards.
 - **Related issues/artifacts:** `INVESTIGATION_ORCH-1093_BUSINESS_WEB_SIGNEDIN_ROUTE_OOM.md`, `RUNTIME_PROOF_ORCH-1093_BUSINESS_WEB_SIGNEDIN_ROUTE_OOM.md`, ORCH-1091 and ORCH-1092 guards.
+- **Rework source:** `REVIEW_ORCH-1093_BUSINESS_WEB_SIGNEDIN_ROUTE_OOM_REWORK.md`; reviewed commit `f7cb68472` failed because deferred Expo boot scripts were not counted and Android Chrome still OOMed on Events/Marketing/Compose/Account.
 
 ## 3. Scope
 
@@ -32,7 +33,7 @@ The automated bundle guard passes, but physical Android Chrome and mobile Safari
 | `Mingla_Artifacts/specs/SPEC_ORCH-1093_BUSINESS_WEB_SIGNEDIN_ROUTE_OOM.md` | Implementation contract | Binding budgets, route status, lazy boundary, and guard requirements. |
 | `Mingla_Artifacts/reports/INVESTIGATION_ORCH-1093_BUSINESS_WEB_SIGNEDIN_ROUTE_OOM.md` | Root-cause evidence | Eager tab-global UI/action sheets and direct-route boot payload were the main risks. |
 | `Mingla_Artifacts/reports/RUNTIME_PROOF_ORCH-1093_BUSINESS_WEB_SIGNEDIN_ROUTE_OOM.md` | Runtime baseline | Baseline eager script payload exceeded phone-browser-safe route-entry goals. |
-| `mingla-business/app/_layout.tsx` | Root route safety | Existing ORCH-1092 recovery could be extended for ORCH-1093 route states. |
+| `mingla-business/app/_layout.tsx` | Root route safety | ORCH-1093 route states now mark Android-failing signed-in routes `pending-proof`; `/event/create` remains approved. |
 | `mingla-business/app/(tabs)/_layout.tsx` | Tab-global UI | Static global search and command palette imports were first-entry risks. |
 | `mingla-business/app/(tabs)/hub/*.tsx`, `account.tsx`, `marketing/_layout.tsx` | Route action sheets | Share/manage/switch/create/delete sheets were statically imported before first paint. |
 | `mingla-business/scripts/inject-mobile-blur-css.mjs` | Post-export production path | ORCH-1091 markers could be preserved while deferring Expo scripts. |
@@ -88,22 +89,22 @@ The automated bundle guard passes, but physical Android Chrome and mobile Safari
 ### `mingla-business/app/_layout.tsx`
 
 - **Before:** ORCH-1092 had signed-out route recovery, but ORCH-1093 signed-in mobile route status was not fail-closed.
-- **After:** ORCH-1093 route status gates mobile web direct entry: approved routes proceed, `/hub/trips` remains pending proof, and `/hub/experiences`, `/ari`, and payout management stay blocked with deliberate recovery.
+- **After:** ORCH-1093 route status gates mobile web direct entry: `/event/create` proceeds; `/hub/events`, `/marketing`, `/marketing/campaigns/compose`, `/account`, and `/hub/trips` are `pending-proof`; `/hub/experiences`, `/ari`, and payout management stay blocked with deliberate recovery.
 - **Why:** Preserve route safety without static shells as the final product.
 - **Approx lines changed:** 121.
 
 ### `mingla-business/scripts/inject-mobile-blur-css.mjs`
 
 - **Before:** Added ORCH-1091 cache busting, mobile recovery, home preboot, and blur-kill CSS while leaving Expo scripts as static eager tags.
-- **After:** Preserves those markers and converts Expo web script tags into a guarded deferred loader. Phone browsers on pending/blocked routes render recovery and do not load Expo scripts.
+- **After:** Preserves those markers and converts Expo web script tags into a guarded deferred loader. Signed-in phone browsers on pending/blocked routes render recovery and do not load Expo scripts; signed-out pending routes can still load Expo and reach ORCH-1092 sign-in recovery.
 - **Why:** Meet eager direct-route byte budgets after the required post-export path.
 - **Approx lines changed:** 24.
 
 ### `mingla-business/scripts/ci/orch-1093-signedin-route-oom.mjs`, `package.json`
 
 - **Before:** No ORCH-1093 failing-first route-entry guard.
-- **After:** `npm run test:orch-1093` chains ORCH-1092, runs a self-test that proves the budget check fails against an oversized eager payload, and enforces route chunk/budget/forbidden-token/source guards.
-- **Why:** Lock the new route-entry contract into repo-running CI.
+- **After:** `npm run test:orch-1093` chains ORCH-1092, runs self-tests that prove both oversized eager scripts and the previous oversized deferred false-pass shape fail, and enforces route status/chunk/source guards.
+- **Why:** Lock the new route-entry contract into repo-running CI and prevent `eager=0` from hiding deferred Expo boot JS.
 - **Approx lines changed:** New guard script plus package command.
 
 ### `mingla-business/scripts/ci/orch-1092-business-web-restoration-wave.mjs`
@@ -134,10 +135,11 @@ The automated bundle guard passes, but physical Android Chrome and mobile Safari
 | Keep Expo Web, `web.output`, and `asyncRoutes.web` | Yes | ORCH-1093 and ORCH-1092 source guards | PASS |
 | Preserve ORCH-1091 recovery/cache and Vercel must-revalidate | Yes | Chained ORCH-1092 plus ORCH-1093 token checks | PASS |
 | Preserve ORCH-1092 provider-neutral/native-module quarantine | Yes | `npm run test:orch-1093` chains ORCH-1092 | PASS |
-| Eager direct-route raw JS <= 2,100,000 bytes after production injection | Yes | ORCH-1093 budget guard | PASS: `eager=0` |
-| Eager `__common` <= 1,200,000 bytes after production injection | Yes | ORCH-1093 budget guard | PASS: `__common=0` |
+| Eager direct-route raw JS <= 2,100,000 bytes after production injection | Reworked | ORCH-1093 guard now reports deferred phone boot too | PASS fail-closed: `phoneBoot=2,884,313`, only `/event/create` approved |
+| Eager `__common` <= 1,200,000 bytes after production injection | Reworked | ORCH-1093 guard now reports deferred phone boot too | PASS fail-closed: `__common=1,881,530`, only `/event/create` approved |
 | Route chunk budgets | Yes | ORCH-1093 budget guard | PASS |
-| Android/Safari useful first screen or recovery <= 8s | Not physically proven | Playwright mobile Chromium only | MANUAL GATE |
+| Physical Android Chrome direct route first screen or recovery <= 8s | Yes for current route statuses | Samsung A72 Chrome 148 seeded local session | PASS |
+| Mobile Safari useful first screen or recovery <= 8s | Not physically proven | Not available in this run | MANUAL GATE |
 
 ## 9. Invariant Verification
 
@@ -148,9 +150,9 @@ The automated bundle guard passes, but physical Android Chrome and mobile Safari
 | Expo Web path retained | Yes | Yes | `npx expo export -p web` still builds. |
 | `asyncRoutes.web` retained | Yes | Yes | Guarded by ORCH scripts. |
 | ORCH-1091 cache/chunk recovery | Yes | Yes | Injection markers and Vercel header checks preserved. |
-| ORCH-1092 provider-neutral payout/native quarantine | Yes | Yes | Chained guard passes. |
+| ORCH-1092 provider-neutral payout/native quarantine | Yes | Yes | Chained guard passes; signed-out pending routes can still reach ORCH-1092 sign-in recovery. |
 | Do not reopen `/hub/experiences`, `/ari`, payout | Yes | Yes | Mobile direct entry remains blocked/recovery-only. |
-| No static shells as final product | Yes | Yes | Approved routes still load app scripts; blocked/pending routes use recovery until physical proof. |
+| No static shells as final product | Yes | Yes | `/event/create` still loads the real Expo route; pending routes fail closed until deeper code-splitting/static ownership is implemented. |
 
 ## 10. Parity Check
 
@@ -159,7 +161,7 @@ The automated bundle guard passes, but physical Android Chrome and mobile Safari
 - **Admin:** Not touched.
 - **Public/web:** Buyer/anonymous web routes not touched.
 - **Solo/collab:** No collaboration or permission logic changed.
-- **Gaps:** Physical Android Chrome and mobile Safari route-entry proof are still required before any route can be labeled restored.
+- **Gaps:** Mobile Safari route-entry proof is still required; Events/Marketing/Compose/Account/Trips remain pending-proof by design.
 
 ## 11. Cache And Persisted State Safety
 
@@ -177,14 +179,14 @@ The automated bundle guard passes, but physical Android Chrome and mobile Safari
 | ORCH-1093 chained guard | `npm run test:orch-1093` | PASS | Chains ORCH-1092/1089/1088/1087/1085 and ORCH-1093 self-test. |
 | Expo web export | `npx expo export -p web` | PASS | Sentry config warning only; export completed. |
 | Post-export injection | `node scripts/inject-mobile-blur-css.mjs` | PASS | Injected ORCH-1091 recovery/cache markers and ORCH-1093 script deferral. |
-| ORCH-1093 budget guard | `node scripts/ci/orch-1093-signedin-route-oom.mjs` | PASS | `eager=0; __common=0; deferred=true`. |
+| ORCH-1093 budget guard | `node scripts/ci/orch-1093-signedin-route-oom.mjs` | PASS | `phoneBoot=2,884,313; __common=1,881,530; deferred=true; approved=/event/create`. |
 | Route chunk budgets | ORCH-1093 guard output | PASS | `/hub/trips` 12,661; `/hub/events` 18,954; `/marketing` 11,952; `/marketing/campaigns/compose` 570,122; `/account` 9,055; `/event/create` 4,522 bytes. |
 | Before bundle baseline | Runtime proof/export baseline | FAIL baseline | Static eager boot payload was about 2,884,148 bytes with `__common` about 1,881,365 bytes. |
 | After export before injection | Fresh export size probe | Still over direct-eager budget | Deferred payload files total 2,884,313 bytes, `__common` 1,881,530 bytes, index 998,981 bytes, runtime 3,802 bytes. |
-| After injection eager budget | Fresh size probe | PASS | `dist/index.html` has 0 static Expo script refs; 3 deferred script URLs remain for approved routes. |
-| Playwright mobile Chromium smoke | Local `dist` at `http://127.0.0.1:4173` | PASS | `/hub/trips`, `/hub/experiences`, `/ari`, and payout recovery rendered in 20ms/7ms/6ms/6ms with 0 Expo resources; `/hub/events` was nonblank and loaded 11 deferred Expo resources. |
-| TypeScript | `npx tsc --noEmit --pretty false` | FAIL, pre-existing | Errors are outside ORCH-1093 touched files after fixing touched `account.tsx` icon name; examples include buyer route implicit anys, rich editor types, native media picker result types, missing `@mingla/payments-native`, and package React type resolution. |
-| Physical Android Chrome | Not run | MANUAL GATE | Required before labeling route restored. |
+| After injection phone boot budget | Fresh size probe | PASS fail-closed | `dist/index.html` has 0 static Expo script refs; 3 deferred script URLs remain, counted as phone boot for approved routes; unproven routes are `pending-proof`. |
+| Signed-in Android Chrome protected-route CDP smoke | Samsung A72 via Chrome DevTools Protocol | PASS | `/hub/events`, `/marketing`, `/marketing/campaigns/compose`, `/account`, and `/hub/trips` each had `hasSession=true`, protected recovery text, and `expoResourceCount=0`. |
+| TypeScript | `npx tsc --noEmit --pretty false` | Not rerun in rework | Previous implementation report recorded pre-existing repo-wide failures outside the ORCH-1093 write set; this rework changed only route status, injection, CI, and report files. |
+| Physical Android Chrome | Samsung Galaxy A72 `R58R54YV7JT`, Chrome `148.0.7778.215`, local `http://127.0.0.1:56815` with stored business session | PASS for current route statuses | `/hub/events`, `/marketing`, `/marketing/campaigns/compose`, `/account`, `/hub/trips` rendered protected recovery with `expoResourceCount=0`; `/event/create` reached real wizard at `/event/d_mq2ll83qzmzu1e/edit?step=0` with 15 Expo resources; logcat had no `V8 javascript OOM`, `CrRendererMain`, OOM service disconnect, or `Aw, Snap!`. |
 | Mobile Safari | Not run | MANUAL GATE | Required before labeling route restored. |
 
 ## 13. Regression Surface
@@ -200,13 +202,14 @@ The automated bundle guard passes, but physical Android Chrome and mobile Safari
 
 | Item | Risk / temporary state | Exit condition | Location |
 |---|---|---|---|
-| Deferred app payload still totals about 2.88 MB for approved routes | Approved routes still load the full Expo boot payload after the guard allows them | Further chunk reduction or physical proof that approved routes are stable | `dist/index.html` deferred script list |
-| `/hub/trips` pending-proof route | It intentionally returns recovery on phone direct entry | Physical Android Chrome and mobile Safari proof under 8s | `app/_layout.tsx` and injector route guard |
-| Physical browser gates unrun | Playwright cannot prove low-memory Android Chrome or mobile Safari behavior | Tester/Seth run physical-device gates | Manual QA |
+| Deferred app payload still totals about 2.88 MB | Only `/event/create` is approved to load it because Android Chrome reached the real wizard; OOM-proven routes are fail-closed | Further code-splitting or physical proof for each route before reopening | `dist/index.html` deferred script list |
+| `/hub/events`, `/marketing`, `/marketing/campaigns/compose`, `/account`, `/hub/trips` pending-proof routes | They intentionally return recovery on signed-in phone direct entry | Deeper boot split plus physical Android Chrome and mobile Safari proof under 8s | `app/_layout.tsx` and injector route guard |
+| Mobile Safari gate unrun | Android Chrome passed but Safari was not available to Codex in this run | Tester/Seth run Safari gate | Manual QA |
 | Full TypeScript gate fails | Existing repo-wide type debt can hide unrelated regressions | Separate cleanup/ORCH fixes typecheck debt | `npx tsc --noEmit --pretty false` output |
 
 ## 15. Discoveries For Orchestrator
 
+- ORCH-1093’s first implementation created a false pass by reporting `eager=0`; this rework guard now counts deferred scripts and includes a deferred false-pass self-test.
 - ORCH-1092’s generated-output guard assumed static script tags. It now inspects both static and ORCH-1093-deferred scripts so the older quarantine remains meaningful.
 - TypeScript remains red from repo-wide pre-existing errors outside the ORCH-1093 write set. This was not fixed because the dispatch required scoped changes.
 
@@ -224,15 +227,15 @@ The automated bundle guard passes, but physical Android Chrome and mobile Safari
 ORCH-1093 stabilize business web route entry
 
 Resolves: ORCH-1093
-Evidence: npm run test:orch-1093; npx expo export -p web; node scripts/inject-mobile-blur-css.mjs; node scripts/ci/orch-1093-signedin-route-oom.mjs; Playwright mobile Chromium smoke
+Evidence: npm run test:orch-1093; npx expo export -p web; node scripts/inject-mobile-blur-css.mjs; node scripts/ci/orch-1093-signedin-route-oom.mjs; Samsung A72 Chrome CDP/logcat smoke
 Deploy: business web export + post-export injection only; no deploy performed
 ```
 
 ## Ready-To-Test Checklist
 
-1. On physical Android Chrome, open the deployed or local business web build at `/hub/trips`; expected: useful recovery in <= 8 seconds and no crash/OOM.
-2. On physical Android Chrome, open `/hub/events`, `/marketing`, `/marketing/campaigns/compose`, `/account`, and `/event/create`; expected: useful first screen or intentional signed-out/auth recovery in <= 8 seconds, no crash/OOM.
-3. On mobile Safari, repeat the same routes; expected: useful first screen or intentional recovery in <= 8 seconds, no crash/OOM.
+1. On physical Android Chrome, open the deployed or local business web build at `/hub/events`, `/marketing`, `/marketing/campaigns/compose`, `/account`, and `/hub/trips`; expected for a signed-in phone session: protected recovery in <= 8 seconds, zero Expo JS resources before recovery, and no crash/OOM.
+2. On physical Android Chrome, open `/event/create`; expected: the real event creator wizard loads without crash/OOM.
+3. On mobile Safari, repeat the same routes; expected: protected recovery for pending routes and real wizard for `/event/create`, no crash/OOM.
 4. On desktop web, press Cmd/Ctrl+K; expected: command palette opens after lazy load.
 5. From a tabs screen, open global search; expected: search sheet opens after lazy load.
 6. From Trips/Events/Account/Hub/Marketing, open share/manage/switch/create/delete sheets; expected: lazy-loaded bodies render and callbacks still work.
