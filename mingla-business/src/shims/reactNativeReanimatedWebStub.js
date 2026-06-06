@@ -3,10 +3,14 @@ const { Animated: RNAnimated, Easing: RNEasing } = require("react-native");
 
 const identity = (value) => value;
 const linear = (value) => value;
+const bezier =
+  RNEasing?.bezier ??
+  ((_x1, _y1, _x2, _y2) => linear);
 
 const Easing = {
   ...(RNEasing ?? {}),
   linear: RNEasing?.linear ?? linear,
+  bezier,
   cubic: RNEasing?.cubic ?? ((value) => value * value * value),
   in: RNEasing?.in ?? identity,
   out: RNEasing?.out ?? identity,

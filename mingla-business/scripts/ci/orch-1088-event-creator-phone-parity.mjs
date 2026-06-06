@@ -45,6 +45,7 @@ const wizard = read("src/components/event/EventCreatorWizard.tsx");
 const preview = read("src/components/event/CreatorStep7Preview.tsx");
 const stripeBlockedCard = read("src/components/offering/StripeBlockedCard.tsx");
 const coverPicker = read("src/components/ui/CoverPicker.tsx");
+const reanimatedWebStub = read("src/shims/reactNativeReanimatedWebStub.js");
 
 const createIsReopened =
   home.includes('href="/event/create"') ||
@@ -95,6 +96,14 @@ for (const token of [
   assertIncludes(createRoute, token, "app/event/create.tsx");
 }
 assertIncludes(createRoute, "goToStaticHome", "app/event/create.tsx");
+
+for (const token of [
+  "const bezier",
+  "RNEasing?.bezier",
+  "bezier,",
+]) {
+  assertIncludes(reanimatedWebStub, token, "src/shims/reactNativeReanimatedWebStub.js");
+}
 
 for (const token of [
   "MISSING_DRAFT_TIMEOUT_MS",

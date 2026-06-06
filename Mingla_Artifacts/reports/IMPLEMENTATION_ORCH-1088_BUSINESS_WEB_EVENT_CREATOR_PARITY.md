@@ -109,3 +109,83 @@ Required next runtime gates:
 ## Readiness
 
 Ready for tester: conditional. Tester can verify the implemented safety slice and source/export guards now, but full PASS for ORCH-1088 requires a later phone-browser runtime pass and static Home reopen commit.
+
+## Rework - 2026-06-06 Ari/Reanimated Web Shim Blocker
+
+Status: implemented and verified for the scoped rework blocker.
+
+### Blocker
+
+The orchestrator's local Android Chrome route probe for `http://127.0.0.1:8088/event/create?orch1088nosession=1` crashed before the `/event/create` terminal UI could render with:
+
+```text
+_reactNativeReanimated.Easing.bezier is not a function
+src/components/ari/AriOrb.tsx:57 -> app/(tabs)/ari.tsx
+```
+
+This matched the earlier ORCH-1087 F-4 finding. The crash was global web-route evaluation, not an Event Creator product-flow bug.
+
+### Rework Changes
+
+| File | Change |
+|---|---|
+| `mingla-business/src/shims/reactNativeReanimatedWebStub.js` | Added minimal web-safe `Easing.bezier` support. It uses React Native's easing when present and otherwise returns the existing linear fallback function. |
+| `mingla-business/scripts/ci/orch-1088-event-creator-phone-parity.mjs` | Added a guard that the actual Reanimated web alias target exports the `bezier` support required by Ari and other web-evaluated components. |
+| `mingla-business/src/utils/__tests__/orch_1088_event_creator_phone_parity.test.ts` | Added regression coverage proving Ari still calls `Easing.bezier`, the web shim exports it, the fallback is callable at runtime with a mocked React Native module, and `/event/create` keeps its no-session/recovery copy without importing Ari. |
+
+### Cross-Surface Rework Matrix
+
+| Surface | Result |
+|---|---|
+| Business Web phone browser | Primary target. The exported route now reaches the no-session terminal UI without the Ari `Easing.bezier` crash. |
+| Business Web desktop | Shared web shim improved; no route/copy behavior changed. |
+| Business iOS native | Not affected; Metro aliases this shim only on `platform === "web"`. |
+| Business Android native | Not affected; Metro aliases this shim only on `platform === "web"`. |
+| Consumer iOS / Android | Not touched. |
+| Buyer / anonymous Web | Not touched. |
+| Admin Web | Not touched. |
+| Backend schema/RLS/provider payloads | Not touched. |
+
+### Verification - Rework
+
+Passed:
+
+```bash
+cd mingla-business && npm run test:orch-1088
+cd mingla-business && npx expo export -p web
+cd mingla-business && node scripts/inject-mobile-blur-css.mjs
+cd mingla-business && npm run test:orch-1088
+```
+
+Local exported-route probe:
+
+```bash
+cd mingla-business && npx serve dist -l 8088 --single
+```
+
+Port `8088` was already in use, so `serve` selected `http://localhost:59426`. I then probed:
+
+```text
+http://localhost:59426/event/create?orch1088nosession=1
+```
+
+Playwright mobile Chrome-shaped result:
+
+```json
+{
+  "url": "http://localhost:59426/event/create?orch1088nosession=1",
+  "text": "Sign in to create an event.\nYour browser session is not available on this route.\nSign in again\nBack to Home",
+  "errors": [],
+  "bezierErrors": [],
+  "consoleBezier": [],
+  "consoleSample": [
+    "warning: [event/create] terminal-state {terminalState: signed_out, authStatus: signed_out, brandError: null}"
+  ]
+}
+```
+
+The temporary local server was stopped after the probe. No deploy, merge, reap, OTA, backend, schema, or provider change was performed.
+
+### Readiness After Rework
+
+Ready for tester: yes, for the scoped rework blocker and the still-closed static Home state. Static Home Create remains intentionally unreopened until tester/orchestrator explicitly authorizes the next runtime reopen pass.

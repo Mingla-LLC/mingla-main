@@ -1,4 +1,4 @@
-import { describe, expect, test } from "@jest/globals";
+import { describe, expect, jest, test } from "@jest/globals";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
@@ -42,6 +42,54 @@ describe("ORCH-1088 business web event creator phone parity", () => {
     expect(source).toContain("This browser cannot save drafts right now.");
     expect(source).toContain("Getting your brand ready");
     expect(source).toContain("Loading local drafts");
+  });
+
+  test("web Reanimated shim supports Ari bezier easing before /event/create recovery renders", () => {
+    const shim = repoFile("src/shims/reactNativeReanimatedWebStub.js");
+    const createRoute = repoFile("app/event/create.tsx");
+    const ariOrb = repoFile("src/components/ari/AriOrb.tsx");
+
+    expect(ariOrb).toContain("Easing.bezier(0.4, 0.0, 0.2, 1)");
+    expect(shim).toContain("RNEasing?.bezier");
+    expect(shim).toContain("const bezier");
+    expect(shim).toContain("bezier,");
+    expect(createRoute).toContain("Sign in to create an event.");
+    expect(createRoute).toContain("We could not finish sign-in.");
+    expect(createRoute).toContain("Create or select a brand before starting an event.");
+    expect(createRoute).not.toContain("AriOrb");
+    expect(createRoute).not.toContain('from "../../src/components/ari');
+  });
+
+  test("web Reanimated shim exports callable Easing.bezier at runtime", () => {
+    jest.isolateModules(() => {
+      jest.doMock("react-native", () => ({
+        Animated: {
+          View: "View",
+          Text: "Text",
+          ScrollView: "ScrollView",
+          Image: "Image",
+          createAnimatedComponent: (component: unknown) => component,
+        },
+        Easing: {
+          linear: (value: number) => value,
+          cubic: (value: number) => value * value * value,
+          in: (easing: (value: number) => number) => easing,
+          out: (easing: (value: number) => number) => easing,
+          inOut: (easing: (value: number) => number) => easing,
+        },
+      }));
+
+      const shim = require(join(
+        REPO_ROOT,
+        "mingla-business",
+        "src/shims/reactNativeReanimatedWebStub.js",
+      ));
+      const easing = shim.Easing.bezier(0.4, 0.0, 0.2, 1);
+
+      expect(typeof shim.Easing.bezier).toBe("function");
+      expect(typeof easing).toBe("function");
+      expect(easing(0.5)).toBe(0.5);
+    });
   });
 
   test("edit-route exits are static-safe on web and missing drafts terminate", () => {
