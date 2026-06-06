@@ -45,7 +45,6 @@ import {
 import * as Haptics from "expo-haptics";
 import { Platform } from "react-native";
 import { ScrollView } from "../../wrappers/SmartScrollView";
-import * as ImagePicker from "expo-image-picker";
 
 import {
   accent,
@@ -58,6 +57,10 @@ import {
 } from "../../constants/designSystem";
 import { Sheet } from "../ui/Sheet";
 import { Icon } from "../ui/Icon";
+import {
+  launchImageLibraryAsync,
+  requestMediaLibraryPermissionsAsync,
+} from "../../utils/platformImagePicker";
 import { Button } from "../ui/Button";
 import { uploadExperienceStopImage } from "../../services/experienceStopImageService";
 import { BrandCoverError } from "../../utils/brandCoverRules";
@@ -266,12 +269,12 @@ export const ExperienceStopPhotoSheet: React.FC<
     if (uploading || atCap) return;
     try {
       const permission =
-        await ImagePicker.requestMediaLibraryPermissionsAsync();
+        await requestMediaLibraryPermissionsAsync();
       if (!permission.granted) {
         onShowToast("Photo library permission is needed to add a photo.");
         return;
       }
-      const result = await ImagePicker.launchImageLibraryAsync({
+      const result = await launchImageLibraryAsync({
         mediaTypes: ["images"],
         allowsEditing: false,
         quality: 1,

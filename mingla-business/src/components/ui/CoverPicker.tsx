@@ -41,13 +41,17 @@ import * as Haptics from "expo-haptics";
 // native, plain ScrollView on web) so the GIF/Stock search input scrolls
 // above the keyboard without bespoke listeners (orch-0892 gate).
 import { ScrollView } from "../../wrappers/SmartScrollView";
-import * as FileSystem from "expo-file-system/legacy";
-import * as ImagePicker from "expo-image-picker";
 // ORCH-1001 [Business web white-page crash]: the native video-trim editor is
 // imported through a Metro platform split (.native vs .web) so the native-only
 // `react-native-video-trim` TurboModule never lands in the web bundle. A raw
 // top-level import here ran `getEnforcing('VideoTrim')` at web-eval time and
 // crashed the entire app to a blank page.
+import {
+  launchCoverImagePicker,
+  launchCoverVideoPicker,
+  requestCoverMediaLibraryPermission,
+} from "./coverPickerDeviceMedia";
+import { getCoverPickerFileInfoAsync } from "./coverPickerFileInfo";
 import { trimVideoWithDedicatedEditor } from "./coverPickerVideoTrimEditor";
 
 import {
@@ -354,7 +358,7 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
   );
 
   const ensureMediaPermission = useCallback(async (): Promise<boolean> => {
-    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    const permission = await requestCoverMediaLibraryPermission();
     if (!permission.granted) {
       showUploadError(
         new EventCoverMediaError("permission_denied", "Photo library permission denied."),
@@ -390,13 +394,7 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
 
     setUploading(true);
     try {
-      const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ["images"],
-        allowsEditing: false,
-        preferredAssetRepresentationMode:
-          ImagePicker.UIImagePickerPreferredAssetRepresentationMode.Compatible,
-        quality: 1,
-      });
+      const result = await launchCoverImagePicker();
       if (result.canceled || result.assets.length === 0) return;
       const asset = result.assets[0];
 
@@ -495,12 +493,7 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
 
     setUploading(true);
     try {
-      const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ["videos"],
-        preferredAssetRepresentationMode:
-          ImagePicker.UIImagePickerPreferredAssetRepresentationMode.Compatible,
-        quality: 1,
-      });
+      const result = await launchCoverVideoPicker();
       if (result.canceled || result.assets.length === 0) return;
       const asset = result.assets[0];
       // Web has no native trimmer (SC-7-Web-4): use the raw asset, no crash.
@@ -515,7 +508,7 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
           ? await buildTrimmedVideoUploadFile({
               originalFileName: asset.fileName,
               originalMimeType: asset.mimeType,
-              statFile: (uri) => FileSystem.getInfoAsync(uri),
+              statFile: (uri) => getCoverPickerFileInfoAsync(uri),
               trimResult,
             })
           : {

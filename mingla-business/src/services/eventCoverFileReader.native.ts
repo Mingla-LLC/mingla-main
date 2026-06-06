@@ -1,3 +1,5 @@
+import { File } from "expo-file-system";
+
 import { EventCoverMediaError } from "../utils/eventCoverMediaRules";
 
 export interface EventCoverFileBytes {
@@ -12,8 +14,7 @@ export const readEventCoverFileBytes = async (
   uri: string,
 ): Promise<EventCoverFileBytes> => {
   try {
-    const response = await fetch(uri);
-    const buffer = await response.arrayBuffer();
+    const buffer = await new File(uri).arrayBuffer();
     const bytes = toUint8Array(buffer);
     return {
       bytes,

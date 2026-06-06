@@ -3,7 +3,7 @@
 > Date: 2026-06-06
 > Mode: Spec Execute
 > Spec: `Mingla_Artifacts/specs/SPEC_ORCH-1092_BUSINESS_WEB_RESTORATION_WAVE.md`
-> Status: implemented and verified for automated/export gates; runtime phone Chrome/Safari remains a tester manual gate
+> Status: reworked and verified for automated/export gates; signed-in phone Chrome/Safari remains a tester manual gate
 
 ## 1. Layman Summary
 
@@ -170,6 +170,72 @@ Business Web static Home now opens the next approved phone-browser routes: Hub E
 - **Mobile OTA/native:** None.
 - **Business/admin web:** Do not deploy from this worktree. Merge PR to `main`, verify `origin/main` contains the squash commit and changed files, then deploy Business Web from merged `main` only.
 - **Env vars/secrets:** None.
+
+## 17. FAIL-QA Rework - 2026-06-06
+
+### Rework Outcome
+
+The P1 exported-boot blocker is fixed by real quarantine, not allowlisting. `test:orch-1092` now parses `dist/index.html`, follows the eager boot scripts, requires `__common` to be inspected, and fails if any eager boot chunk contains the forbidden native/provider module set. A stale pre-rework export reproduced QA's failure exactly: `__common-d9f97e2fbdb5d37a3cce7b864b0d8057.js` contained `expo-image-picker`.
+
+The P1 local unsigned-route blank state is partially addressed in code with a narrow web-only signed-out recovery branch for `/hub/events`, `/marketing`, `/marketing/campaigns/compose`, and `/account`. It renders after auth bootstrap when `user === null`, shows `Sign in to open <route label>.`, and returns to `/home`; signed-in sessions still flow to the real route. Local Playwright browser proof remained blocked because Chromium crashed the page target and WebKit/Chromium contexts closed before stable evaluation; tester should retest on a stable branch preview or real phone browser with a valid business session.
+
+### Files Changed In Rework
+
+| File / group | Change | Why |
+|---|---|---|
+| `scripts/ci/orch-1092-business-web-restoration-wave.mjs` | Added eager `dist/index.html` script parsing, `__common` inspection, all-web-source static picker/filesystem import scan, and expanded route-family source scan. | Closes the QA gap where route-token scans missed `__common`. |
+| `src/utils/__tests__/orch_1092_business_web_restoration_wave.test.ts` | Added checks for media quarantine helpers and signed-out route recovery. | Encodes the new failure contract in repo-running tests. |
+| `src/utils/platformImagePicker.*`, `src/utils/platformFileSystem.*` | Added web stubs and native implementations. | Keeps Expo picker/filesystem packages out of web boot while preserving native behavior. |
+| `src/components/ui/coverPickerDeviceMedia.*`, `src/components/ui/coverPickerFileInfo.*` | Added CoverPicker-specific platform helpers. | Prevents CoverPicker media code from pulling picker/filesystem into web common chunks. |
+| File readers: `eventCoverFileReader.*`, `brandCoverFileReader.*`, `creatorAvatarFileReader.*`, `brandAvatarFileReader.*` | Split native Expo filesystem reads from web `fetch(...).arrayBuffer()` readers. | Removes shared static `expo-file-system` imports from web bundle paths. |
+| Picker call sites in account/profile, avatar, venue gallery, experience snap/photo, group chat, intake, and CoverPicker | Replaced direct `expo-image-picker` / filesystem imports with platform helpers. | Quarantines all non-native static picker/filesystem imports under `app/` and `src/`. |
+| `app/_layout.tsx` | Added ORCH-1092 web-only signed-out recovery for the four reopened routes. | Ensures unsigned local route access has bounded recovery instead of an empty root in source contract. |
+
+### Verification Receipts
+
+```bash
+cd "/Users/sethogieva/Desktop/mingla-orchs/ORCH-1092-[business-web-restoration-wave]/mingla-business"
+npm run test:orch-1092
+```
+
+Result: PASS. ORCH-1085, ORCH-1087, ORCH-1088, ORCH-1089, the strengthened ORCH-1092 guard, and six ORCH-1092 Jest checks passed.
+
+```bash
+cd "/Users/sethogieva/Desktop/mingla-orchs/ORCH-1092-[business-web-restoration-wave]/mingla-business"
+rm -rf dist && npx expo export -p web --output-dir dist && node scripts/inject-mobile-blur-css.mjs && npm run test:orch-1092
+```
+
+Result: PASS. Expo emitted 128 web bundles; injection logged `mobile chunk recovery + preboot + blur-kill`; the strengthened test passed after export.
+
+```bash
+rg -l "expo-image-picker|expo-file-system|expo-file-system/legacy" dist/_expo/static/js/web/*.js || true
+```
+
+Result: no output.
+
+```text
+dist/_expo/static/js/web/__expo-metro-runtime-0c48b0beee2d3ce6030b475fcc5b1846.js: clean
+dist/_expo/static/js/web/__common-bade1a263843bb5d6943459ee1a92391.js: clean
+dist/_expo/static/js/web/index-673ede93709fe16629641db487c64add.js: clean
+```
+
+The clean check above covers `expo-image-picker`, `expo-file-system`, `expo-file-system/legacy`, `@react-native-community/datetimepicker`, `react-native-keyboard-controller`, Stripe Connect web SDKs, `react-native-video-trim`, and `react-native-compressor` across every eager script loaded by `dist/index.html`.
+
+### Browser Smoke Status
+
+Local static Home and closed shell links rendered before the rework; after the rework, local browser automation became unstable:
+
+- Chromium Pixel 5 route evaluation crashed with `page.evaluate: Target crashed`.
+- Chromium/WebKit longer runs closed the page/context before evaluation.
+- No signed-in session fixture was available in this worktree.
+
+Therefore, browser proof is **blocked by local Playwright/browser instability**, not claimed as pass. Tester retest must verify a stable branch preview or local export server with signed-in Chrome/Safari: Events, Marketing overview, Compose, and Account should reach useful signed-in first screens; signed-out direct route access should show the new recovery screen; Payout, Hub Experiences, Hub Trips, and Ari must remain shelled.
+
+### Remaining Risks
+
+- The signed-in route first-screen proof is still pending independent tester verification.
+- Native picker/filesystem behavior is preserved through `.native` splits by source/export proof, but native runtime was not re-smoked because this ORCH is Business Web scoped.
+- Local Playwright instability limited runtime proof; use a stable preview/real phone for retest.
 
 ## Suggested Commit Message
 

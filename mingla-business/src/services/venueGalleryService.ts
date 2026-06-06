@@ -18,10 +18,12 @@
  * brandAvatarService (operator chose no manipulator dep, ORCH-0807).
  */
 
-import * as ImagePicker from "expo-image-picker";
-
 import { supabase } from "./supabase";
 import { readBrandAvatarFileBytes } from "./brandAvatarFileReader";
+import {
+  launchImageLibraryAsync,
+  type PlatformImagePickerResult,
+} from "../utils/platformImagePicker";
 import { generateBrandAvatarPathToken } from "../utils/brandAvatarRules";
 
 export const VENUE_GALLERY_BUCKET = "brand_covers";
@@ -86,9 +88,9 @@ export async function pickGalleryPhotos(
   remainingSlots: number,
 ): Promise<GalleryPickAsset[]> {
   if (remainingSlots <= 0) return [];
-  let result: ImagePicker.ImagePickerResult;
+  let result: PlatformImagePickerResult;
   try {
-    result = await ImagePicker.launchImageLibraryAsync({
+    result = await launchImageLibraryAsync({
       mediaTypes: ["images"],
       allowsMultipleSelection: true,
       selectionLimit: remainingSlots,

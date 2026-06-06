@@ -31,7 +31,6 @@ import {
 import { ScrollView } from "../../src/wrappers/SmartScrollView";
 import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import * as ImagePicker from "expo-image-picker";
 
 import {
   accent,
@@ -56,6 +55,10 @@ import { IconChrome } from "../../src/components/ui/IconChrome";
 import { Pill } from "../../src/components/ui/Pill";
 import { Toast } from "../../src/components/ui/Toast";
 import { usePermissionWithFallback } from "../../src/hooks/usePermissionWithFallback";
+import {
+  launchImageLibraryAsync,
+  requestMediaLibraryPermissionsAsync,
+} from "../../src/utils/platformImagePicker";
 
 const NAME_MAX_LENGTH = 80;
 
@@ -136,7 +139,7 @@ export default function EditProfileRoute(): React.ReactElement {
   // settings-deeplink path so users can recover from earlier denial.
   const photoGate = usePermissionWithFallback({
     request: async () => {
-      const result = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      const result = await requestMediaLibraryPermissionsAsync();
       return {
         granted: result.granted,
         canAskAgain: result.canAskAgain ?? true,
@@ -161,8 +164,8 @@ export default function EditProfileRoute(): React.ReactElement {
       }
       return;
     }
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+    const result = await launchImageLibraryAsync({
+      mediaTypes: ["images"],
       allowsEditing: true,
       aspect: [1, 1],
       quality: 0.8,

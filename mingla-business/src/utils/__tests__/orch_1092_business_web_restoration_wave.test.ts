@@ -71,11 +71,14 @@ describe("ORCH-1092 business web restoration wave", () => {
   test("reopened route-family source avoids native-only eager imports", () => {
     const files = [
       "app/(tabs)/hub/events.tsx",
+      "app/(tabs)/hub/_layout.tsx",
       "app/(tabs)/marketing/index.tsx",
+      "app/(tabs)/marketing/_layout.tsx",
       "app/(tabs)/marketing/campaigns/compose.tsx",
       "app/(tabs)/account.tsx",
       "src/components/marketing/ComposerV2/SchedulePickerSheet.tsx",
       "src/components/ui/ShareModal.tsx",
+      "src/components/ui/UniversalCreatorSheet.tsx",
       "src/wrappers/KeyboardRoot.tsx",
       "src/wrappers/SmartScrollView.tsx",
     ];
@@ -102,5 +105,52 @@ describe("ORCH-1092 business web restoration wave", () => {
     const shareModal = stripCommentLines(repoFile("src/components/ui/ShareModal.tsx"));
     expect(shareModal).toContain('React.lazy(() => import("react-native-qrcode-svg"))');
     expect(shareModal).not.toContain('import QRCode from "react-native-qrcode-svg"');
+  });
+
+  test("shared web media readers and cover picker helpers quarantine Expo picker/filesystem imports", () => {
+    const webFiles = [
+      "src/components/ui/CoverPicker.tsx",
+      "src/components/ui/coverPickerDeviceMedia.ts",
+      "src/components/ui/coverPickerFileInfo.ts",
+      "src/utils/platformImagePicker.ts",
+      "src/utils/platformFileSystem.ts",
+      "src/services/eventCoverFileReader.ts",
+      "src/services/brandCoverFileReader.ts",
+      "src/services/creatorAvatarFileReader.ts",
+      "src/services/brandAvatarFileReader.ts",
+    ];
+
+    for (const file of webFiles) {
+      const source = stripCommentLines(repoFile(file));
+      expect(source).not.toContain("expo-image-picker");
+      expect(source).not.toContain("expo-file-system");
+    }
+
+    expect(repoFile("src/components/ui/coverPickerDeviceMedia.native.ts")).toContain("expo-image-picker");
+    expect(repoFile("src/components/ui/coverPickerFileInfo.native.ts")).toContain("expo-file-system/legacy");
+    expect(repoFile("src/services/eventCoverFileReader.native.ts")).toContain("expo-file-system");
+    expect(repoFile("src/services/brandCoverFileReader.native.ts")).toContain("expo-file-system");
+    expect(repoFile("src/services/creatorAvatarFileReader.native.ts")).toContain("expo-file-system");
+    expect(repoFile("src/services/brandAvatarFileReader.native.ts")).toContain("expo-file-system");
+    expect(repoFile("src/utils/platformImagePicker.native.ts")).toContain("expo-image-picker");
+    expect(repoFile("src/utils/platformFileSystem.native.ts")).toContain("expo-file-system/legacy");
+  });
+
+  test("reopened web routes have a bounded signed-out recovery fallback", () => {
+    const rootLayout = repoFile("app/_layout.tsx");
+
+    for (const route of [
+      "/hub/events",
+      "/marketing",
+      "/marketing/campaigns/compose",
+      "/account",
+    ]) {
+      expect(rootLayout).toContain(route);
+    }
+    expect(rootLayout).toContain("ORCH_1092_SIGNED_OUT_ROUTES");
+    expect(rootLayout).toContain("Sign in to open");
+    expect(rootLayout).toContain("Return to Home");
+    expect(rootLayout).toContain('Platform.OS === "web"');
+    expect(rootLayout).toContain("user === null");
   });
 });

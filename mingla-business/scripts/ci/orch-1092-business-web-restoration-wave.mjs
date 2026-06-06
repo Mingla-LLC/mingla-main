@@ -8,7 +8,7 @@
  */
 
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 
 function fail(message) {
   console.error(`ORCH-1092 business web restoration wave FAIL: ${message}`);
@@ -57,6 +57,18 @@ function walkFiles(root, predicate, acc = []) {
     else if (predicate(path)) acc.push(path);
   }
   return acc;
+}
+
+function scriptSrcsFromHtml(html) {
+  return [...html.matchAll(/<script\b[^>]*\bsrc=["']([^"']+)["'][^>]*>/g)].map(
+    (match) => match[1],
+  );
+}
+
+function normalizeDistScriptPath(src) {
+  const withoutQuery = src.split("?")[0];
+  if (!withoutQuery.startsWith("/_expo/static/js/web/")) return null;
+  return join("dist", withoutQuery.replace(/^\//, ""));
 }
 
 const reopenedRoutes = [
@@ -183,11 +195,14 @@ if (expoRouterPlugin?.[1]?.asyncRoutes?.web !== true) {
 
 const routeSourceFiles = [
   "app/(tabs)/hub/events.tsx",
+  "app/(tabs)/hub/_layout.tsx",
   "app/(tabs)/marketing/index.tsx",
+  "app/(tabs)/marketing/_layout.tsx",
   "app/(tabs)/marketing/campaigns/compose.tsx",
   "app/(tabs)/account.tsx",
   "src/components/marketing/ComposerV2/SchedulePickerSheet.tsx",
   "src/components/ui/ShareModal.tsx",
+  "src/components/ui/UniversalCreatorSheet.tsx",
   "src/wrappers/KeyboardRoot.tsx",
   "src/wrappers/SmartScrollView.tsx",
 ];
@@ -195,6 +210,23 @@ const routeSourceFiles = [
 for (const file of routeSourceFiles) {
   const source = read(file);
   for (const moduleName of forbiddenNativeModules) {
+    assertNoStaticImport(source, moduleName, file);
+  }
+}
+
+const webSourceFiles = [
+  ...walkFiles("app", (path) => /\.(ts|tsx|js|jsx)$/.test(path)),
+  ...walkFiles("src", (path) => /\.(ts|tsx|js|jsx)$/.test(path)),
+].filter(
+  (path) =>
+    !path.includes("__tests__") &&
+    !path.includes(".native.") &&
+    !path.includes(".test.") &&
+    !path.includes(".spec."),
+);
+for (const file of webSourceFiles) {
+  const source = read(file);
+  for (const moduleName of ["expo-image-picker", "expo-file-system", "expo-file-system/legacy"]) {
     assertNoStaticImport(source, moduleName, file);
   }
 }
@@ -234,6 +266,25 @@ if (existsSync(join("dist", "index.html"))) {
   ]) {
     assertIncludes(distIndex, token, "dist/index.html");
   }
+
+  const eagerBootChunks = scriptSrcsFromHtml(distIndex)
+    .map(normalizeDistScriptPath)
+    .filter((path) => path !== null);
+  if (eagerBootChunks.length === 0) {
+    fail("dist/index.html must eagerly load Expo web JS chunks for boot inspection");
+  }
+
+  for (const chunkPath of eagerBootChunks) {
+    const chunk = read(chunkPath);
+    for (const token of forbiddenNativeModules) {
+      assertNotIncludes(chunk, token, `${chunkPath} (eager boot chunk from dist/index.html)`);
+    }
+  }
+
+  const commonChunk = eagerBootChunks.find((chunkPath) => basename(chunkPath).startsWith("__common"));
+  if (commonChunk === undefined) {
+    fail("dist/index.html eager boot chunks must include __common for ORCH-1092 inspection");
+  }
 }
 
 const jsDir = join("dist", "_expo", "static", "js", "web");
@@ -253,6 +304,7 @@ if (existsSync(jsDir)) {
       "@react-native-community/datetimepicker",
       "react-native-keyboard-controller",
       "expo-image-picker",
+      "expo-file-system",
       "expo-file-system/legacy",
       "@stripe/connect-js",
       "@stripe/react-connect-js",
