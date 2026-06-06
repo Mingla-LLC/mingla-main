@@ -26,7 +26,7 @@
  */
 
 import React, { useEffect, useRef, useState } from "react";
-import { StyleSheet, Text, View } from "react-native";
+import { Platform, StyleSheet, Text, View } from "react-native";
 import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -37,18 +37,49 @@ import {
   typography,
 } from "../../src/constants/designSystem";
 import { Spinner } from "../../src/components/ui/Spinner";
+import { Button } from "../../src/components/ui/Button";
 import { useCurrentBrandId } from "../../src/store/currentBrandStore";
 import { useDraftEventStore } from "../../src/store/draftEventStore";
 import { useAuth } from "../../src/context/AuthContext";
 import { useCurrentBrandRecovery } from "../../src/hooks/useCurrentBrandRecovery";
 
+const ROUTE_BOOT_TIMEOUT_MS = 6000;
+const DRAFT_HYDRATION_TIMEOUT_MS = 6000;
+
+type CreateRouteTerminalState =
+  | "signed_out"
+  | "auth_timeout"
+  | "auth_error"
+  | "brand_error"
+  | "no_brand"
+  | "draft_hydration_timeout";
+
+const goToStaticHome = (router: ReturnType<typeof useRouter>): void => {
+  if (Platform.OS === "web" && typeof window !== "undefined") {
+    window.location.assign("/home");
+    return;
+  }
+  router.replace("/(tabs)/home" as never);
+};
+
+const retryRoute = (router: ReturnType<typeof useRouter>): void => {
+  if (Platform.OS === "web" && typeof window !== "undefined") {
+    window.location.reload();
+    return;
+  }
+  router.replace("/event/create" as never);
+};
+
 export default function EventCreateRoute(): React.ReactElement {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const currentBrandId = useCurrentBrandId();
-  const { isAuthReady } = useAuth();
+  const { authError, authStatus, isAuthReady, loading } = useAuth();
   const currentBrandRecovery = useCurrentBrandRecovery();
   const startedRef = useRef<boolean>(false);
+  const warnedStateRef = useRef<CreateRouteTerminalState | null>(null);
+  const [routeTimedOut, setRouteTimedOut] = useState<boolean>(false);
+  const [hydrationTimedOut, setHydrationTimedOut] = useState<boolean>(false);
 
   // ORCH-0893 REWORK Part A — Zustand persist hydration gate.
   // Pre-rework, `/event/create` minted the d_<ts36> draft synchronously
@@ -84,7 +115,58 @@ export default function EventCreateRoute(): React.ReactElement {
   }, [hydrated]);
 
   useEffect(() => {
+    const timer = setTimeout(() => {
+      setRouteTimedOut(true);
+    }, ROUTE_BOOT_TIMEOUT_MS);
+    return (): void => clearTimeout(timer);
+  }, []);
+
+  useEffect(() => {
+    if (hydrated) {
+      setHydrationTimedOut(false);
+      return undefined;
+    }
+    const timer = setTimeout(() => {
+      if (!useDraftEventStore.persist.hasHydrated()) {
+        setHydrationTimedOut(true);
+      }
+    }, DRAFT_HYDRATION_TIMEOUT_MS);
+    return (): void => clearTimeout(timer);
+  }, [hydrated]);
+
+  const terminalState: CreateRouteTerminalState | null =
+    authError !== null
+      ? "auth_error"
+      : !loading && authStatus === "signed_out"
+        ? "signed_out"
+        : routeTimedOut && !isAuthReady
+          ? "auth_timeout"
+          : currentBrandRecovery.isError
+            ? "brand_error"
+            : isAuthReady &&
+                !currentBrandRecovery.isResolving &&
+                hydrated &&
+                currentBrandId === null
+              ? "no_brand"
+              : hydrationTimedOut
+                ? "draft_hydration_timeout"
+                : null;
+
+  useEffect(() => {
+    if (terminalState === null || warnedStateRef.current === terminalState) {
+      return;
+    }
+    warnedStateRef.current = terminalState;
+    console.warn("[event/create] terminal-state", {
+      terminalState,
+      authStatus,
+      brandError: currentBrandRecovery.errorMessage,
+    });
+  }, [authStatus, currentBrandRecovery.errorMessage, terminalState]);
+
+  useEffect(() => {
     if (startedRef.current) return;
+    if (terminalState !== null) return;
     if (!isAuthReady || currentBrandRecovery.isResolving) return;
     // ORCH-0893 REWORK Part A: do not mint a client-side draft until
     // Zustand persist hydration has completed — otherwise the persisted
@@ -92,7 +174,6 @@ export default function EventCreateRoute(): React.ReactElement {
     // bounces home.
     if (!hydrated) return;
     if (currentBrandId === null) {
-      router.replace("/(tabs)/home" as never);
       return;
     }
     startedRef.current = true;
@@ -108,7 +189,48 @@ export default function EventCreateRoute(): React.ReactElement {
     hydrated,
     isAuthReady,
     router,
+    terminalState,
   ]);
+
+  if (terminalState !== null) {
+    const copy = terminalCopy[terminalState];
+    return (
+      <View
+        style={[
+          styles.host,
+          { paddingTop: insets.top, backgroundColor: canvas.discover },
+        ]}
+      >
+        <View style={styles.card}>
+          <Text style={styles.title}>{copy.title}</Text>
+          <Text style={styles.body}>{copy.body}</Text>
+          <View style={styles.buttonStack}>
+            <Button
+              label={copy.primaryLabel}
+              onPress={() => {
+                if (terminalState === "signed_out" || terminalState === "auth_timeout") {
+                  router.replace("/auth?next=/event/create" as never);
+                  return;
+                }
+                retryRoute(router);
+              }}
+              fullWidth
+              size="md"
+              shape="square"
+            />
+            <Button
+              label="Back to Home"
+              onPress={() => goToStaticHome(router)}
+              fullWidth
+              size="md"
+              shape="square"
+              variant="secondary"
+            />
+          </View>
+        </View>
+      </View>
+    );
+  }
 
   return (
     <View
@@ -120,16 +242,54 @@ export default function EventCreateRoute(): React.ReactElement {
       <View style={styles.center}>
         <Spinner size={36} />
         <Text style={styles.label}>
-          {!isAuthReady || currentBrandRecovery.isResolving
+          {!isAuthReady
             ? "Finishing sign-in…"
-            : !hydrated
-              ? "Getting things ready…"
-              : "Loading…"}
+            : currentBrandRecovery.isResolving
+              ? "Getting your brand ready…"
+              : !hydrated
+                ? "Loading local drafts…"
+                : "Loading…"}
         </Text>
       </View>
     </View>
   );
 }
+
+const terminalCopy: Record<
+  CreateRouteTerminalState,
+  { title: string; body: string; primaryLabel: string }
+> = {
+  signed_out: {
+    title: "Sign in to create an event.",
+    body: "Your browser session is not available on this route.",
+    primaryLabel: "Sign in again",
+  },
+  auth_timeout: {
+    title: "We could not finish sign-in.",
+    body: "Refresh or sign in again before starting an event.",
+    primaryLabel: "Sign in again",
+  },
+  auth_error: {
+    title: "We could not finish sign-in.",
+    body: "Refresh or sign in again before starting an event.",
+    primaryLabel: "Try again",
+  },
+  brand_error: {
+    title: "We could not load your brand.",
+    body: "Try again before starting an event.",
+    primaryLabel: "Try again",
+  },
+  no_brand: {
+    title: "Create or select a brand before starting an event.",
+    body: "Use desktop or the Mingla Business app if brand setup is not available on this phone browser.",
+    primaryLabel: "Try again",
+  },
+  draft_hydration_timeout: {
+    title: "This browser cannot save drafts right now.",
+    body: "Refresh, use desktop, or use the Mingla Business app before creating this listing.",
+    primaryLabel: "Try again",
+  },
+};
 
 const styles = StyleSheet.create({
   host: {
@@ -144,5 +304,26 @@ const styles = StyleSheet.create({
   label: {
     fontSize: typography.bodySm.fontSize,
     color: textTokens.secondary,
+  },
+  card: {
+    flex: 1,
+    justifyContent: "center",
+    paddingHorizontal: spacing.xl,
+    gap: spacing.md,
+  },
+  title: {
+    fontSize: typography.h3.fontSize,
+    lineHeight: typography.h3.lineHeight,
+    fontWeight: typography.h3.fontWeight,
+    color: textTokens.primary,
+  },
+  body: {
+    fontSize: typography.body.fontSize,
+    lineHeight: typography.body.lineHeight,
+    color: textTokens.secondary,
+  },
+  buttonStack: {
+    gap: spacing.sm,
+    marginTop: spacing.sm,
   },
 });

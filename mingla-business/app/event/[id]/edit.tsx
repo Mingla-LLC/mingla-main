@@ -15,7 +15,7 @@
  */
 
 import React, { useEffect, useMemo } from "react";
-import { StyleSheet, Text, View } from "react-native";
+import { Platform, StyleSheet, Text, View } from "react-native";
 import { useQueryClient } from "@tanstack/react-query";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -28,6 +28,7 @@ import {
 } from "../../../src/constants/designSystem";
 import { Spinner } from "../../../src/components/ui/Spinner";
 import { Toast } from "../../../src/components/ui/Toast";
+import { Button } from "../../../src/components/ui/Button";
 import {
   EventCreatorWizard,
   type WizardExitMode,
@@ -60,6 +61,11 @@ import { isDraftDirty } from "../../../src/utils/draftDirtyCheck";
 
 const isLocalOnlyDraft = (draft: DraftEvent): boolean =>
   draft.id.startsWith("d_") || draft.serverSlug === null;
+
+const safeEventsExitRoute = (): "/home#hub-events" | "/(tabs)/hub/events" =>
+  Platform.OS === "web" ? "/home#hub-events" : "/(tabs)/hub/events";
+
+const MISSING_DRAFT_TIMEOUT_MS = 6000;
 
 export default function EventEditRoute(): React.ReactElement {
   const insets = useSafeAreaInsets();
@@ -144,6 +150,19 @@ export default function EventEditRoute(): React.ReactElement {
   const [toast, setToast] = React.useState<{ visible: boolean; message: string }>(
     { visible: false, message: "" },
   );
+  const [missingDraftTimedOut, setMissingDraftTimedOut] = React.useState(false);
+
+  useEffect(() => {
+    if (isEditPublished || draft !== null) {
+      setMissingDraftTimedOut(false);
+      return undefined;
+    }
+    const timer = setTimeout(() => {
+      setMissingDraftTimedOut(true);
+      console.warn("[event/edit] missing-draft-timeout", { idParam });
+    }, MISSING_DRAFT_TIMEOUT_MS);
+    return (): void => clearTimeout(timer);
+  }, [draft, idParam, isEditPublished]);
 
   useEffect(() => {
     // ORCH-0893: the previous eager `d_<ts36>` → server-draft migration on
@@ -151,7 +170,7 @@ export default function EventEditRoute(): React.ReactElement {
     // `isDraftDirty`). Untouched client-only drafts no longer insert a
     // ghost row on mount.
     if (typeof idParam !== "string" || idParam.length === 0) {
-      router.replace("/(tabs)/hub/events" as never);
+      router.replace(safeEventsExitRoute() as never);
       return;
     }
     if (isEditPublished) {
@@ -168,7 +187,7 @@ export default function EventEditRoute(): React.ReactElement {
       if (resolvedLiveEvent === null && !businessEventQuery.isLoading) {
         // Published event not found — bounce to events tab.
         const t = setTimeout(() => {
-          router.replace("/(tabs)/hub/events" as never);
+          router.replace(safeEventsExitRoute() as never);
         }, 0);
         return (): void => clearTimeout(t);
       }
@@ -185,7 +204,7 @@ export default function EventEditRoute(): React.ReactElement {
       const recoveryRoute =
         businessEventQuery.data?.event !== undefined
           ? `/event/${draft.id}/edit?mode=edit-published`
-          : "/(tabs)/hub/events";
+          : safeEventsExitRoute();
       deleteDraft(draft.id);
       queryClient.removeQueries({ queryKey: eventDraftKeys.detail(draft.id) });
       queryClient.setQueryData<DraftEvent[]>(
@@ -301,7 +320,7 @@ export default function EventEditRoute(): React.ReactElement {
         if (mode === "discarded") {
           setToast({ visible: true, message: "Draft discarded." });
         }
-        router.replace("/(tabs)/hub/events" as never);
+        router.replace(safeEventsExitRoute() as never);
       }
     },
     [router],
@@ -469,6 +488,37 @@ export default function EventEditRoute(): React.ReactElement {
     );
   }
 
+  if (draft === null && missingDraftTimedOut) {
+    return (
+      <View
+        style={[
+          styles.host,
+          { paddingTop: insets.top, backgroundColor: canvas.discover },
+        ]}
+      >
+        <View style={styles.recoveryCard}>
+          <Text style={styles.recoveryTitle}>We could not load this draft.</Text>
+          <Text style={styles.recoveryBody}>
+            Refresh, return to Home, or use desktop/the app if this phone browser cannot restore the draft.
+          </Text>
+          <Button
+            label="Back to Home"
+            onPress={() => router.replace(safeEventsExitRoute() as never)}
+            fullWidth
+            size="md"
+            shape="square"
+          />
+        </View>
+        <Toast
+          visible={toast.visible}
+          kind="info"
+          message={toast.message}
+          onDismiss={() => setToast((p) => ({ ...p, visible: false }))}
+        />
+      </View>
+    );
+  }
+
   if (draft === null) {
     return (
       <View
@@ -555,6 +605,23 @@ const styles = StyleSheet.create({
   },
   label: {
     fontSize: typography.bodySm.fontSize,
+    color: textTokens.secondary,
+  },
+  recoveryCard: {
+    flex: 1,
+    justifyContent: "center",
+    paddingHorizontal: spacing.xl,
+    gap: spacing.md,
+  },
+  recoveryTitle: {
+    fontSize: typography.h3.fontSize,
+    lineHeight: typography.h3.lineHeight,
+    fontWeight: typography.h3.fontWeight,
+    color: textTokens.primary,
+  },
+  recoveryBody: {
+    fontSize: typography.body.fontSize,
+    lineHeight: typography.body.lineHeight,
     color: textTokens.secondary,
   },
 });
