@@ -56,7 +56,8 @@
     "test:orch-1092": "npm run test:orch-1089 && node scripts/ci/orch-1092-business-web-restoration-wave.mjs && npx jest src/utils/__tests__/orch_1092_business_web_restoration_wave.test.ts --runInBand",
     "test:orch-1093": "npm run test:orch-1092 && node scripts/ci/orch-1093-signedin-route-oom.mjs --self-test && node scripts/ci/orch-1093-signedin-route-oom.mjs",
     "test:orch-1094": "npm run test:orch-1093 && node scripts/ci/orch-1094-business-web-core-parity-wave.mjs",
-    "test:orch-1095": "npm run test:orch-1094 && node scripts/ci/orch-1095-business-web-interactive-parity-wave.mjs && npx jest src/utils/__tests__/orch_1095_business_web_interactive_parity_wave.test.ts --runInBand"
+    "test:orch-1095": "npm run test:orch-1094 && node scripts/ci/orch-1095-business-web-interactive-parity-wave.mjs && npx jest src/utils/__tests__/orch_1095_business_web_interactive_parity_wave.test.ts --runInBand",
+    "test:orch-1096": "npm run test:orch-1095 && node scripts/ci/orch-1096-business-web-marketing-composer-parity.mjs && npx jest src/utils/__tests__/orch_1096_business_web_marketing_composer_parity.test.ts --runInBand"
   },
   "dependencies": {
     "@expo-google-fonts/anton": "^0.4.2",
