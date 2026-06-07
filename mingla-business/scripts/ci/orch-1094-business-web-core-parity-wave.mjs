@@ -166,6 +166,10 @@ function findRouteChunk(root, routeSource, tokens) {
 const home = read("public/home.html");
 const rootLayout = read("app/_layout.tsx");
 const injector = read("scripts/inject-mobile-blur-css.mjs");
+const indexRoute = read("app/index.tsx");
+const authRoute = read("app/auth/index.tsx");
+const authCallbackRoute = read("app/auth/callback.tsx");
+const mobileWebRedirect = read("src/utils/mobileWebStaticHomeRedirect.ts");
 
 for (const [route, marker] of APPROVED_ROUTES) {
   assertIncludes(home, `href="${route}"`, "public/home.html");
@@ -204,7 +208,19 @@ for (const route of [...APPROVED_ROUTES.map(([route]) => route), ...BLOCKED_ROUT
 assertIncludes(rootLayout, '"/hub/trips"', "app/_layout.tsx signed-out recovery routes");
 assertIncludes(rootLayout, "Sign in to open {routeLabel}.", "app/_layout.tsx signed-out recovery");
 assertIncludes(injector, 'status!=="approved"', "scripts/inject-mobile-blur-css.mjs");
-assertNotIncludes(injector, "hasSession()", "scripts/inject-mobile-blur-css.mjs");
+assertIncludes(injector, "function hasSession()", "scripts/inject-mobile-blur-css.mjs");
+assertIncludes(injector, '"/marketing/campaigns/compose":"compose-blast"', "scripts/inject-mobile-blur-css.mjs");
+assertIncludes(injector, 'location.replace("/home#"+target)', "scripts/inject-mobile-blur-css.mjs");
+assertIncludes(mobileWebRedirect, 'Platform.OS !== "web"', "src/utils/mobileWebStaticHomeRedirect.ts");
+assertIncludes(mobileWebRedirect, 'window.location.replace("/home")', "src/utils/mobileWebStaticHomeRedirect.ts");
+assertIncludes(mobileWebRedirect, "(max-width: 767px), (pointer: coarse)", "src/utils/mobileWebStaticHomeRedirect.ts");
+for (const [source, label] of [
+  [indexRoute, "app/index.tsx"],
+  [authRoute, "app/auth/index.tsx"],
+  [authCallbackRoute, "app/auth/callback.tsx"],
+]) {
+  assertIncludes(source, "redirectMobileBusinessWebToStaticHome", label);
+}
 
 if (existsSync(join("dist", "home.html"))) {
   const distHome = read(join("dist", "home.html"));

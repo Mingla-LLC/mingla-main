@@ -215,3 +215,85 @@ Route to orchestrator for conditional-close review only if Seth accepts the resi
 1. A signed-in business web session or credentials for physical Android Chrome.
 2. A physical iPhone Safari session, or a booted iOS simulator plus explicit acceptance that Safari-equivalent simulator proof is enough for this wave.
 3. Permission to run the same local export server URL, `http://127.0.0.1:51094`, against those sessions.
+
+## Retest Addendum: Physical Android Signed-In Rework
+
+Date: 2026-06-07
+Retested by: tester-mingla parity mirror after orchestrator-directed rework
+Tested head: pending final commit on `ORCH-1094-business-web-core-parity-wave`
+
+### Updated Verdict
+
+CONDITIONAL PASS for the current phone-browser safety contract.
+
+The prior Android signed-in gap is now closed: physical Android Chrome was driven through Google sign-in with `sethpgieva@gmail.com`, landed on the static signed-in Home launcher, and opened the real Event Create wizard without blanking or crashing. The remaining condition is honest scope, not a blocker for this safety wave: Hub, Marketing, Account, and Campaign Compose on phone browsers are safe static launch/deep-link sections, not full interactive mobile-web parity yet; physical iPhone Safari remains untested in this session.
+
+### Updated Findings
+
+| Severity | Finding | Evidence | Required action |
+|---|---|---|---|
+| P2 | Physical iPhone Safari signed-in behavior remains unverified in this branch. | No physical iPhone was connected during the rework pass. Earlier Playwright iPhone-equivalent smoke passed, but physical Safari was not driven after the signed-in Android rework. | Treat as residual manual gate before production deploy if Seth wants physical iPhone proof for this wave. |
+| P2 | Full interactive mobile-web parity is not restored for Hub, Marketing, Account, or Campaign Compose. | Signed-in Android now redirects those heavy routes to static Home sections: `/home#hub`, `/home#marketing`, `/home#compose-blast`, and `/home#account`. This prevents blank/crash behavior but does not expose every desktop web control on phone browsers. | Open a follow-up parity ORCH for full phone-browser functionality route by route after this crash/safety wave closes. |
+
+No P0/P1 blockers remain for the signed-in Android browser safety goal.
+
+### Retest Claim Table
+
+| Claim | Result | Evidence |
+|---|---|---|
+| Google sign-in on Android no longer falls into a white screen after callback. | Verified | Physical Android Chrome selected `sethpgieva@gmail.com`, redirected through `/auth/callback`, and rendered static `/home` with the signed-in email. Evidence: `Mingla_Artifacts/reports/orch-1094-physical-confirmation/android-authfallback-home.png` and `.xml`. |
+| Signed-in Event Create opens the real wizard on Android phone browser. | Verified | `/event/create?storedbrand=1` rendered the real Step 1 wizard and minted a draft edit URL. Evidence: `android-storedbrand-event_create.png` and `.xml`. |
+| Signed-in heavy Hub/Marketing/Account routes do not blank or crash on Android phone browser. | Verified for safety shell | `/hub/events`, `/hub/trips`, `/marketing`, `/marketing/campaigns/compose`, and `/account` redirected to static Home section targets and rendered stable content. Evidence: `android-storedbrand-*.png` and `.xml` files. |
+| Auth bootstrap timeout has automated coverage for stored web sessions. | Verified | `npx jest src/context/__tests__/AuthContext.timeout.test.ts src/utils/__tests__/orch_1088_event_creator_phone_parity.test.ts --runInBand` passed, 2 suites and 26 tests. |
+| ORCH-1091/1092/1093/1094 route safety gates still pass after rework. | Verified | Fresh export plus injector plus `npm run test:orch-1094` passed. |
+
+### Retest Platform Matrix
+
+| Surface | Result | Notes |
+|---|---|---|
+| Physical Android Chrome | PASS for signed-in safety contract | Google sign-in, signed-in static Home, real Event Create wizard, and static section redirects verified on device `R58R54YV7JT`. |
+| Desktop Chromium local export | PASS by regression chain | No desktop route behavior was intentionally changed in the rework; ORCH-1094 export/browser gates still pass. |
+| iPhone Safari-equivalent Playwright | PASS from prior QA for signed-out/protected behavior | Not rerun as physical iPhone after signed-in rework. |
+| Physical iPhone Safari | CONDITIONAL / UNVERIFIED | Device not connected. |
+| Backend/Supabase/provider | N/A | No DB, RLS, edge, migration, Stripe/provider, deploy, OTA, merge, or reap changes. |
+
+### Retest Commands
+
+From `mingla-business`:
+
+```bash
+npx jest src/context/__tests__/AuthContext.timeout.test.ts src/utils/__tests__/orch_1088_event_creator_phone_parity.test.ts --runInBand
+```
+
+Result:
+
+```text
+PASS src/context/__tests__/AuthContext.timeout.test.ts
+PASS src/utils/__tests__/orch_1088_event_creator_phone_parity.test.ts
+Test Suites: 2 passed, 2 total
+Tests: 26 passed, 26 total
+```
+
+```bash
+rm -rf dist && npx expo export -p web --output-dir dist && node scripts/inject-mobile-blur-css.mjs && npm run test:orch-1094
+```
+
+Result excerpt:
+
+```text
+ORCH-1085 mobile-web sign-in PASS.
+ORCH-1087 static route firewall PASS.
+ORCH-1088 event creator phone parity PASS.
+ORCH-1089 signed-in Event Creator wizard PASS.
+ORCH-1092 business web restoration wave PASS.
+ORCH-1093 self-test PASS.
+ORCH-1093 deferred false-pass self-test PASS.
+ORCH-1093 bundle budgets PASS. phoneBoot=2885700; __common=1882545; deferred=true; approved=/hub/trips,/hub/events,/marketing,/marketing/campaigns/compose,/account,/event/create
+ORCH-1094 business web core parity PASS.
+```
+
+Physical Android route evidence was captured under `Mingla_Artifacts/reports/orch-1094-physical-confirmation/`.
+
+### Retest Recommendation
+
+This branch can proceed to orchestrator close review for the signed-in Android crash/safety goal if Seth accepts that full phone-browser feature parity for Hub, Marketing, Account, and Compose is deliberately deferred. Do not describe this as the complete mobile-web app; describe it as the stable signed-in phone-browser foundation with real Event Create restored.

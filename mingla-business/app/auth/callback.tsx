@@ -16,14 +16,25 @@
  */
 
 // orch-strict-grep-allow safearea-on-fullscreen-routes — web-only OAuth-callback brief loader before Redirect to "/"; not user-visible on iOS/Android (native uses ID-token flow)
-import React from "react";
+import React, { useEffect } from "react";
 import { ActivityIndicator, StyleSheet, View } from "react-native";
 import { Redirect } from "expo-router";
 
 import { useAuth } from "../../src/context/AuthContext";
+import {
+  isMobileBusinessWeb,
+  redirectMobileBusinessWebToStaticHome,
+} from "../../src/utils/mobileWebStaticHomeRedirect";
 
 export default function AuthCallback(): React.ReactElement {
   const { user, loading } = useAuth();
+  const shouldUseStaticHome = !loading && Boolean(user) && isMobileBusinessWeb();
+
+  useEffect(() => {
+    if (shouldUseStaticHome) {
+      redirectMobileBusinessWebToStaticHome();
+    }
+  }, [shouldUseStaticHome]);
 
   if (loading) {
     return (
@@ -37,6 +48,13 @@ export default function AuthCallback(): React.ReactElement {
   // If user is set OR null (sign-in failed / cancelled), route back to `/`.
   // Index then either renders WelcomeScreen (no user) or redirects to home (user).
   if (user) {
+    if (shouldUseStaticHome) {
+      return (
+        <View style={styles.host}>
+          <ActivityIndicator size="large" color="#eb7825" />
+        </View>
+      );
+    }
     return <Redirect href="/" />;
   }
 

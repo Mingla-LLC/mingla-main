@@ -50,6 +50,7 @@ type CreateRouteTerminalState =
   | "signed_out"
   | "auth_timeout"
   | "auth_error"
+  | "brand_timeout"
   | "brand_error"
   | "no_brand"
   | "draft_hydration_timeout";
@@ -100,6 +101,8 @@ export default function EventCreateRoute(): React.ReactElement {
   const [hydrated, setHydrated] = useState<boolean>(() =>
     useDraftEventStore.persist.hasHydrated(),
   );
+  const canUseStoredBrandForWeb =
+    Platform.OS === "web" && currentBrandId !== null;
 
   useEffect(() => {
     if (hydrated) return undefined;
@@ -141,6 +144,10 @@ export default function EventCreateRoute(): React.ReactElement {
         ? "signed_out"
         : routeTimedOut && !isAuthReady
           ? "auth_timeout"
+          : routeTimedOut &&
+              currentBrandRecovery.isResolving &&
+              !canUseStoredBrandForWeb
+            ? "brand_timeout"
           : currentBrandRecovery.isError
             ? "brand_error"
             : isAuthReady &&
@@ -167,7 +174,8 @@ export default function EventCreateRoute(): React.ReactElement {
   useEffect(() => {
     if (startedRef.current) return;
     if (terminalState !== null) return;
-    if (!isAuthReady || currentBrandRecovery.isResolving) return;
+    if (!isAuthReady) return;
+    if (currentBrandRecovery.isResolving && !canUseStoredBrandForWeb) return;
     // ORCH-0893 REWORK Part A: do not mint a client-side draft until
     // Zustand persist hydration has completed — otherwise the persisted
     // state overwrites the just-minted draft and the edit route
@@ -185,6 +193,7 @@ export default function EventCreateRoute(): React.ReactElement {
     router.replace(`/event/${draft.id}/edit?step=0` as never);
   }, [
     currentBrandId,
+    canUseStoredBrandForWeb,
     currentBrandRecovery.isResolving,
     hydrated,
     isAuthReady,
@@ -277,6 +286,11 @@ const terminalCopy: Record<
   brand_error: {
     title: "We could not load your brand.",
     body: "Try again before starting an event.",
+    primaryLabel: "Try again",
+  },
+  brand_timeout: {
+    title: "We could not load your brand.",
+    body: "This phone browser could not finish brand setup quickly enough. Try again or return to Home.",
     primaryLabel: "Try again",
   },
   no_brand: {

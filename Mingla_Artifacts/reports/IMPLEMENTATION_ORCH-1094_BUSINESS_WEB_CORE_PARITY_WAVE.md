@@ -226,3 +226,69 @@ No independent tester pass happened before the full 1-4 implementation. This rep
 - No migration created.
 
 Future deploy must happen only from merged main per COMMS-0015.
+
+## Rework Addendum: Signed-In Physical Android Confirmation
+
+Date: 2026-06-07
+Status after rework: implemented and Android-verified for the current phone-browser safety contract.
+
+After the first conditional QA pass, Seth provided a signed-in Google path on the physical Android device. Chrome was driven through Google sign-in using the available `sethpgieva@gmail.com` account, then the route set was retested against a fresh local export.
+
+### Root Causes Found After QA
+
+1. Signed-in mobile web was still navigating into the full Expo tabs home route after auth callback. That route can load the heavy signed-in app shell on phone browsers and produced the white screen / browser crash path Seth reported. The fix sends signed-in mobile business web users to the static `/home` launcher from `app/index.tsx`, `app/auth/index.tsx`, and `app/auth/callback.tsx` via `src/utils/mobileWebStaticHomeRedirect.ts`.
+2. Approved heavy signed-in routes could still start the full Expo route on phone browsers before the safe static shell took over. The preboot injector now redirects signed-in phone-browser requests for `/hub/events`, `/hub/trips`, `/marketing`, `/marketing/campaigns/compose`, and `/account` to static Home sections before Expo JS loads.
+3. Supabase `getSession()` can hang behind the GoTrue browser lock on mobile Chrome. `AuthContext` now falls back to the stored web session on bootstrap timeout when a usable business session exists, instead of treating the user as anonymous.
+4. Event Create could wait forever on brand recovery even when the browser already had a stored `currentBrandId`. `app/event/create.tsx` now allows the signed-in web wizard to mint from the stored brand and has a bounded `brand_timeout` recovery state.
+
+### Current End-User Contract
+
+- Phone browser Google sign-in lands on fast static `/home`, not the full Expo tabs home.
+- Signed-in physical Android Chrome opens the real Event Create wizard.
+- Signed-in physical Android Chrome routes Hub Events, Hub Trips, Marketing overview, Campaign Compose, and Account to the static Home section/deep-link shell instead of a blank page or crash.
+- Campaign Compose on phone browser is intentionally static-shell only in this wave; full interactive mobile-web composer parity is still future work.
+- `/hub/experiences`, `/ari`, and `/connect-account-management` remain protected.
+- Desktop web and native app routing were not intentionally changed.
+
+### Additional Files Changed In Rework
+
+- `mingla-business/app/auth/callback.tsx`
+- `mingla-business/app/auth/index.tsx`
+- `mingla-business/app/event/create.tsx`
+- `mingla-business/app/index.tsx`
+- `mingla-business/src/context/AuthContext.tsx`
+- `mingla-business/src/context/__tests__/AuthContext.timeout.test.ts`
+- `mingla-business/src/utils/mobileWebStaticHomeRedirect.ts`
+- `mingla-business/src/utils/__tests__/orch_1088_event_creator_phone_parity.test.ts`
+- `mingla-business/scripts/inject-mobile-blur-css.mjs`
+- `mingla-business/scripts/ci/orch-1093-signedin-route-oom.mjs`
+- `mingla-business/scripts/ci/orch-1094-business-web-core-parity-wave.mjs`
+- `Mingla_Artifacts/reports/orch-1094-physical-confirmation/`
+
+### Additional Verification
+
+Commands rerun after rework:
+
+```bash
+npx jest src/context/__tests__/AuthContext.timeout.test.ts src/utils/__tests__/orch_1088_event_creator_phone_parity.test.ts --runInBand
+```
+
+Result: PASS, 2 suites and 26 tests.
+
+```bash
+rm -rf dist && npx expo export -p web --output-dir dist && node scripts/inject-mobile-blur-css.mjs && npm run test:orch-1094
+```
+
+Result: PASS. The chained gate again passed ORCH-1085, ORCH-1087, ORCH-1088, ORCH-1089, ORCH-1092, ORCH-1093, and ORCH-1094. Final bundle evidence included `phoneBoot=2885700`, `__common=1882545`, `deferred=true`, and approved route chunks for `/event/create`, `/hub/events`, `/hub/trips`, `/marketing`, `/marketing/campaigns/compose`, and `/account`.
+
+Physical Android Chrome evidence, device `R58R54YV7JT`, after Google sign-in:
+
+- `/auth` with Google account selection redirected to `/home`; static Home rendered and showed the signed-in email. Evidence: `Mingla_Artifacts/reports/orch-1094-physical-confirmation/android-authfallback-home.png` and `.xml`.
+- `/event/create?storedbrand=1` opened the real 7-step wizard on Step 1 and minted a draft edit route. Evidence: `android-storedbrand-event_create.png` and `.xml`.
+- `/hub/events?storedbrand=1` redirected to `/home#hub` and rendered the static Hub section. Evidence: `android-storedbrand-hub_events.png` and `.xml`.
+- `/hub/trips?storedbrand=1` redirected to `/home#hub` and rendered the static Hub section. Evidence: `android-storedbrand-hub_trips.png` and `.xml`.
+- `/marketing?storedbrand=1` redirected to `/home#marketing` and rendered the static Blast section. Evidence: `android-storedbrand-marketing.png` and `.xml`.
+- `/marketing/campaigns/compose?storedbrand=1` redirected to `/home#compose-blast` and rendered the static Compose Blast shell. Evidence: `android-storedbrand-marketing_campaigns_compose.png` and `.xml`.
+- `/account?storedbrand=1` redirected to `/home#account` and rendered the static Account section. Evidence: `android-storedbrand-account.png` and `.xml`.
+
+Residual manual gate: physical iPhone Safari was not connected in this rework pass. Playwright iPhone-equivalent evidence remains the available iPhone coverage for this branch.

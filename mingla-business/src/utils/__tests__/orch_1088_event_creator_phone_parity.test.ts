@@ -21,10 +21,12 @@ describe("ORCH-1088 business web event creator phone parity", () => {
 
     expect(source).toContain("ROUTE_BOOT_TIMEOUT_MS");
     expect(source).toContain("DRAFT_HYDRATION_TIMEOUT_MS");
+    expect(source).toContain("canUseStoredBrandForWeb");
     expect(source).toContain("CreateRouteTerminalState");
     expect(source).toContain('"signed_out"');
     expect(source).toContain('"auth_timeout"');
     expect(source).toContain('"auth_error"');
+    expect(source).toContain('"brand_timeout"');
     expect(source).toContain('"brand_error"');
     expect(source).toContain('"no_brand"');
     expect(source).toContain('"draft_hydration_timeout"');
@@ -38,6 +40,7 @@ describe("ORCH-1088 business web event creator phone parity", () => {
 
     expect(source).toContain("Sign in to create an event.");
     expect(source).toContain("We could not finish sign-in.");
+    expect(source).toContain("This phone browser could not finish brand setup quickly enough.");
     expect(source).toContain("Create or select a brand before starting an event.");
     expect(source).toContain("This browser cannot save drafts right now.");
     expect(source).toContain("Getting your brand ready");

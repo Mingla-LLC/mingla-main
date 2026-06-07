@@ -370,7 +370,9 @@ function assertSourceGuards() {
     assertIncludes(inject, `"${route}":"approved"`, "scripts/inject-mobile-blur-css.mjs");
   }
   assertIncludes(inject, 'status!=="approved"', "scripts/inject-mobile-blur-css.mjs");
-  assertNotIncludes(inject, "hasSession()", "scripts/inject-mobile-blur-css.mjs");
+  assertIncludes(inject, "function hasSession()", "scripts/inject-mobile-blur-css.mjs");
+  assertIncludes(inject, "function staticTarget(path)", "scripts/inject-mobile-blur-css.mjs");
+  assertIncludes(inject, 'location.replace("/home#"+target)', "scripts/inject-mobile-blur-css.mjs");
 
   const vercel = JSON.parse(read("vercel.json"));
   const webJsHeader = (vercel.headers ?? []).find((header) => header.source === "/_expo/static/js/web/(.*)");
