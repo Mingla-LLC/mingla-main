@@ -135,12 +135,11 @@ async function withDistServer(callback) {
 async function assertPhoneRouteRecoveryRuntime() {
   const { chromium } = await import("playwright");
   const distIndex = read(join("dist", "index.html"));
-  const orch1093ProtectsPendingRoutes =
-    distIndex.includes("orch1093-mobile-route-script-deferral") &&
-    distIndex.includes('status!=="approved"');
-  const pendingProofRecovery = "This route is staying protected.";
+  assertIncludes(distIndex, "orch1093-mobile-route-script-deferral", "dist/index.html");
+  assertIncludes(distIndex, 'status!=="approved"', "dist/index.html");
   const routes = [
     ["/hub/events", "Sign in to open Hub Events."],
+    ["/hub/trips", "Sign in to open Hub Trips."],
     ["/marketing", "Sign in to open Marketing overview."],
     ["/marketing/campaigns/compose", "Sign in to open Compose blast."],
     ["/account", "Sign in to open Account settings."],
@@ -168,7 +167,7 @@ async function assertPhoneRouteRecoveryRuntime() {
           timeout: 15000,
         });
         await page
-          .getByText(orch1093ProtectsPendingRoutes ? pendingProofRecovery : expected, { exact: true })
+          .getByText(expected, { exact: true })
           .waitFor({ timeout: 6000 });
         await page.getByText("Return to Home", { exact: true }).waitFor({ timeout: 1000 });
         if (failures.length > 0) {
@@ -190,6 +189,11 @@ const reopenedRoutes = [
     label: "Hub Events",
   },
   {
+    route: "/hub/trips",
+    marker: "data-orch-1094-core-route=\"hub-trips\"",
+    label: "Hub Trips",
+  },
+  {
     route: "/marketing",
     marker: "data-orch-1092-marketing-overview-reopened",
     label: "Marketing overview",
@@ -208,14 +212,12 @@ const reopenedRoutes = [
 
 const stillShelledTargets = [
   "hub-experiences",
-  "hub-trips",
   "ari-assistant",
   "payout-account",
 ];
 
 const forbiddenDirectRoutes = [
   "/hub/experiences",
-  "/hub/trips",
   "/ari",
   "/connect-account-management",
 ];
