@@ -115,7 +115,8 @@ describe("ORCH-1089 signed-in Event Creator wizard parity", () => {
     const reanimatedWebStub = repoFile("src/shims/reactNativeReanimatedWebStub.js");
 
     expect(coverPicker).toContain("isPhoneWeb");
-    expect(coverPicker).toContain("Device cover uploads are available on desktop or in the app for now.");
+    expect(coverPicker).toContain("Device image uploads are available in this browser.");
+    expect(coverPicker).toContain("Video cover uploads are available on desktop or in the app for now.");
     expect(sheetWeb).toContain('from "./SheetMobile"');
     expect(reanimatedWebStub).toContain("const bezier");
     expect(reanimatedWebStub).toContain("const runOnUI");

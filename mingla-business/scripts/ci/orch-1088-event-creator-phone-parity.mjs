@@ -4,7 +4,7 @@
  *
  * Locks the static Home route firewall, the bounded /event/create state
  * machine, static-safe web exits, provider-neutral publish copy, and the
- * launch-approved phone-web cover upload degradation.
+ * ORCH-1097 browser image / phone-video cover picker split.
  */
 
 import { existsSync, readFileSync } from "node:fs";
@@ -127,7 +127,9 @@ assertIncludes(wizard, 'href: "/(tabs)/hub/events"', "EventCreatorWizard desktop
 
 for (const token of [
   "isPhoneWeb",
-  "Device cover uploads are available on desktop or in the app for now.",
+  "Device image uploads are available in this browser.",
+  "Video cover uploads are available on desktop or in the app for now.",
+  "disabled={uploading || disabled}",
   "disabled={uploading || disabled || isPhoneWeb}",
 ]) {
   assertIncludes(coverPicker, token, "src/components/ui/CoverPicker.tsx");

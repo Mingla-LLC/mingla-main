@@ -20,6 +20,7 @@ import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   Image,
+  Platform,
   Pressable,
   StyleSheet,
   Text,
@@ -46,7 +47,15 @@ import {
   useUpdateCreatorAccount,
 } from "../../src/hooks/useCreatorAccount";
 import { uploadCreatorAvatar } from "../../src/services/creatorAvatarService";
-import { CreatorAvatarError } from "../../src/utils/creatorAvatarRules";
+import {
+  CREATOR_AVATAR_MAX_BYTES,
+  CreatorAvatarError,
+} from "../../src/utils/creatorAvatarRules";
+import {
+  pickBrowserFiles,
+  revokeBrowserPickedFiles,
+  type BrowserPickedFile,
+} from "../../src/utils/browserFilePicker";
 
 import { Button } from "../../src/components/ui/Button";
 import { ConfirmDialog } from "../../src/components/ui/ConfirmDialog";
@@ -152,26 +161,60 @@ export default function EditProfileRoute(): React.ReactElement {
 
   const handlePickPhoto = useCallback(async (): Promise<void> => {
     if (user === null) return;
-    const granted = await photoGate.requestWithFallback();
-    if (!granted) {
-      // Two paths handled here:
-      //  - Denied with canAskAgain=true: hook returned false, no dialog;
-      //    show toast so user knows why nothing happened.
-      //  - Denied with canAskAgain=false: hook opened settings dialog;
-      //    user sees the dialog (no toast needed; dialog tells them what to do).
-      if (!photoGate.settingsDialogVisible) {
-        showToast("Photo permission required.");
+    if (Platform.OS !== "web") {
+      const granted = await photoGate.requestWithFallback();
+      if (!granted) {
+        // Two paths handled here:
+        //  - Denied with canAskAgain=true: hook returned false, no dialog;
+        //    show toast so user knows why nothing happened.
+        //  - Denied with canAskAgain=false: hook opened settings dialog;
+        //    user sees the dialog (no toast needed; dialog tells them what to do).
+        if (!photoGate.settingsDialogVisible) {
+          showToast("Photo permission required.");
+        }
+        return;
       }
+    }
+    let browserFiles: BrowserPickedFile[] = [];
+    let asset:
+      | {
+          uri: string;
+          mimeType?: string | null;
+          fileName?: string | null;
+          fileSize?: number | null;
+        }
+      | undefined;
+    try {
+      if (Platform.OS === "web") {
+        const result = await pickBrowserFiles({
+          accept: "image/jpeg,image/png,image/webp",
+          maxBytes: CREATOR_AVATAR_MAX_BYTES,
+          maxFiles: 1,
+        });
+        if (result.canceled || result.files.length === 0) return;
+        browserFiles = result.files;
+        const picked = result.files[0];
+        asset = {
+          fileName: picked.name,
+          fileSize: picked.size,
+          mimeType: picked.mimeType,
+          uri: picked.uri,
+        };
+      } else {
+        const result = await launchImageLibraryAsync({
+          mediaTypes: ["images"],
+          allowsEditing: true,
+          aspect: [1, 1],
+          quality: 0.8,
+        });
+        if (result.canceled || result.assets.length === 0) return;
+        asset = result.assets[0];
+      }
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : "Couldn't open photos. Try again.");
       return;
     }
-    const result = await launchImageLibraryAsync({
-      mediaTypes: ["images"],
-      allowsEditing: true,
-      aspect: [1, 1],
-      quality: 0.8,
-    });
-    if (result.canceled || result.assets.length === 0) return;
-    const asset = result.assets[0];
+    if (asset === undefined) return;
     setUploadingPhoto(true);
     try {
       const { publicUrl } = await uploadCreatorAvatar(
@@ -201,6 +244,7 @@ export default function EditProfileRoute(): React.ReactElement {
         showToast("Couldn't upload photo. Tap to try again.");
       }
     } finally {
+      revokeBrowserPickedFiles(browserFiles);
       setUploadingPhoto(false);
     }
   }, [user, photoGate, account, name, updateAccount, showToast]);

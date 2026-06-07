@@ -29,6 +29,7 @@
 import React, { useCallback, useEffect, useState } from "react";
 import {
   ActivityIndicator,
+  Platform,
   StyleSheet,
   Text,
   View,
@@ -47,7 +48,12 @@ import {
   typography,
 } from "../../constants/designSystem";
 import { useBrandAvatarUpload } from "../../hooks/useBrandAvatarUpload";
-import { BrandAvatarError } from "../../utils/brandAvatarRules";
+import { BRAND_AVATAR_MAX_BYTES, BrandAvatarError } from "../../utils/brandAvatarRules";
+import {
+  pickBrowserFiles,
+  revokeBrowserPickedFiles,
+  type BrowserPickedFile,
+} from "../../utils/browserFilePicker";
 import {
   launchImageLibraryAsync,
   requestMediaLibraryPermissionsAsync,
@@ -93,35 +99,56 @@ export const BrandAvatarPickerSheet: React.FC<BrandAvatarPickerSheetProps> = ({
   const handlePick = useCallback(async (): Promise<void> => {
     void Haptics.selectionAsync().catch(() => undefined);
 
-    // Permission gate — request only when needed.
-    const permission = await requestMediaLibraryPermissionsAsync();
-    if (!permission.granted) {
-      setStep("error");
-      setErrorMessage(
-        "We need permission to your photo library to pick an avatar.",
-      );
-      return;
+    if (Platform.OS !== "web") {
+      // Permission gate — request only when needed.
+      const permission = await requestMediaLibraryPermissionsAsync();
+      if (!permission.granted) {
+        setStep("error");
+        setErrorMessage(
+          "We need permission to your photo library to pick an avatar.",
+        );
+        return;
+      }
     }
 
     setStep("picking");
     setErrorMessage(null);
 
     let pickerResult: PlatformImagePickerResult;
+    let browserFiles: BrowserPickedFile[] = [];
     try {
-      pickerResult = await launchImageLibraryAsync({
-        mediaTypes: ["images"],
-        // Native crop UI — Android enforces 1:1 from `aspect`; iOS shows
-        // a 1:1 overlay hint as advisory. We trust the user with whatever
-        // they crop; no service-side square enforcement (operator decision
-        // 2026-05-12 — see DEC entry for ORCH-0807 + I-PROPOSED-BG
-        // BRAND_AVATAR_NATIVE_CROP_OFFERED).
-        allowsEditing: true,
-        aspect: [1, 1],
-        quality: 1,
-      });
-    } catch {
+      if (Platform.OS === "web") {
+        const result = await pickBrowserFiles({
+          accept: "image/jpeg,image/png,image/webp",
+          maxBytes: BRAND_AVATAR_MAX_BYTES,
+          maxFiles: 1,
+        });
+        browserFiles = result.files;
+        pickerResult = {
+          canceled: result.canceled,
+          assets: result.files.map((file) => ({
+            fileName: file.name,
+            fileSize: file.size,
+            mimeType: file.mimeType,
+            uri: file.uri,
+          })),
+        };
+      } else {
+        pickerResult = await launchImageLibraryAsync({
+          mediaTypes: ["images"],
+          // Native crop UI — Android enforces 1:1 from `aspect`; iOS shows
+          // a 1:1 overlay hint as advisory. We trust the user with whatever
+          // they crop; no service-side square enforcement (operator decision
+          // 2026-05-12 — see DEC entry for ORCH-0807 + I-PROPOSED-BG
+          // BRAND_AVATAR_NATIVE_CROP_OFFERED).
+          allowsEditing: true,
+          aspect: [1, 1],
+          quality: 1,
+        });
+      }
+    } catch (error) {
       setStep("error");
-      setErrorMessage("Couldn't open photos. Try again.");
+      setErrorMessage(error instanceof Error ? error.message : "Couldn't open photos. Try again.");
       void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error).catch(
         () => undefined,
       );
@@ -172,6 +199,8 @@ export const BrandAvatarPickerSheet: React.FC<BrandAvatarPickerSheetProps> = ({
       void Haptics.notificationAsync(
         Haptics.NotificationFeedbackType.Error,
       ).catch(() => undefined);
+    } finally {
+      revokeBrowserPickedFiles(browserFiles);
     }
   }, [
     brandId,

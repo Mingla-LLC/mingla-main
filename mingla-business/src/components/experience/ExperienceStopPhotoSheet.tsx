@@ -40,10 +40,10 @@ import {
   StyleSheet,
   Text,
   TextInput,
+  Platform,
   View,
 } from "react-native";
 import * as Haptics from "expo-haptics";
-import { Platform } from "react-native";
 import { ScrollView } from "../../wrappers/SmartScrollView";
 
 import {
@@ -61,9 +61,15 @@ import {
   launchImageLibraryAsync,
   requestMediaLibraryPermissionsAsync,
 } from "../../utils/platformImagePicker";
+import {
+  pickBrowserFiles,
+  revokeBrowserPickedFiles,
+  validateBrowserFile,
+  type BrowserPickedFile,
+} from "../../utils/browserFilePicker";
 import { Button } from "../ui/Button";
 import { uploadExperienceStopImage } from "../../services/experienceStopImageService";
-import { BrandCoverError } from "../../utils/brandCoverRules";
+import { BRAND_COVER_MAX_BYTES, BrandCoverError } from "../../utils/brandCoverRules";
 import { EventCoverProviderError } from "../../services/eventCoverProviderError";
 import {
   searchGiphyEventCovers,
@@ -83,11 +89,11 @@ const MAX_STOP_PHOTOS = 5;
 type StopTabId = "library" | "gif" | "stock";
 type ProviderStatus = "idle" | "loading" | "populated" | "empty" | "error";
 
-const TAB_DEFS: ReadonlyArray<{
+const TAB_DEFS: readonly {
   id: StopTabId;
   label: string;
   icon: Parameters<typeof Icon>[0]["name"];
-}> = [
+}[] = [
   { id: "library", label: "Library", icon: "grid" },
   { id: "gif", label: "GIFs", icon: "sparkle" },
   { id: "stock", label: "Photos", icon: "search" },
@@ -267,26 +273,70 @@ export const ExperienceStopPhotoSheet: React.FC<
 
   const pickFromLibrary = useCallback(async (): Promise<void> => {
     if (uploading || atCap) return;
+    let browserFiles: BrowserPickedFile[] = [];
     try {
-      const permission =
-        await requestMediaLibraryPermissionsAsync();
-      if (!permission.granted) {
-        onShowToast("Photo library permission is needed to add a photo.");
-        return;
+      let assets: {
+        uri: string;
+        mimeType?: string | null;
+        fileName?: string | null;
+        fileSize?: number | null;
+      }[];
+      if (Platform.OS === "web") {
+        const result = await pickBrowserFiles({
+          accept: "image/jpeg,image/png,image/webp,image/gif",
+          maxFiles: remaining,
+          multiple: remaining > 1,
+          validate: false,
+        });
+        if (result.canceled || result.files.length === 0) return;
+        browserFiles = result.files;
+        assets = result.files
+          .map((file) => {
+            try {
+              validateBrowserFile(file.file, {
+                accept: "image/jpeg,image/png,image/webp,image/gif",
+                maxBytes: BRAND_COVER_MAX_BYTES,
+              });
+              return {
+                fileName: file.name,
+                fileSize: file.size,
+                mimeType: file.mimeType,
+                uri: file.uri,
+              };
+            } catch {
+              return null;
+            }
+          })
+          .filter((asset): asset is NonNullable<typeof asset> => asset !== null);
+        if (assets.length === 0) {
+          onShowToast("Choose a JPEG, PNG, WebP, or GIF under 8 MB.");
+          return;
+        }
+        if (assets.length < result.files.length) {
+          onShowToast("Some files were skipped. Use JPEG, PNG, WebP, or GIF under 8 MB.");
+        }
+      } else {
+        const permission =
+          await requestMediaLibraryPermissionsAsync();
+        if (!permission.granted) {
+          onShowToast("Photo library permission is needed to add a photo.");
+          return;
+        }
+        const result = await launchImageLibraryAsync({
+          mediaTypes: ["images"],
+          allowsEditing: false,
+          quality: 1,
+          // Multi-select up to the remaining slots where the OS supports it.
+          allowsMultipleSelection: remaining > 1,
+          selectionLimit: remaining,
+        });
+        if (result.canceled || result.assets.length === 0) return;
+        assets = result.assets;
       }
-      const result = await launchImageLibraryAsync({
-        mediaTypes: ["images"],
-        allowsEditing: false,
-        quality: 1,
-        // Multi-select up to the remaining slots where the OS supports it.
-        allowsMultipleSelection: remaining > 1,
-        selectionLimit: remaining,
-      });
-      if (result.canceled || result.assets.length === 0) return;
       setUploading(true);
       // Upload sequentially; append each verified URL, never exceed the cap.
       let added = 0;
-      for (const asset of result.assets) {
+      for (const asset of assets) {
         if (added >= remaining) break;
         const url = await uploadExperienceStopImage(brandId, {
           uri: asset.uri,
@@ -314,6 +364,7 @@ export const ExperienceStopPhotoSheet: React.FC<
         );
       }
     } finally {
+      revokeBrowserPickedFiles(browserFiles);
       setUploading(false);
     }
   }, [atCap, brandId, onAddPhoto, onClose, onShowToast, remaining, uploading]);

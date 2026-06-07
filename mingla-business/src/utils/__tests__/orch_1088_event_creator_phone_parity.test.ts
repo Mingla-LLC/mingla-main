@@ -128,13 +128,14 @@ describe("ORCH-1088 business web event creator phone parity", () => {
     expect(source).not.toContain("/_expo/static/js/");
   });
 
-  test("phone-web cover upload is honestly degraded while provider/color paths remain", () => {
+  test("phone-web cover image upload is browser-safe while video stays degraded", () => {
     const source = repoFile("src/components/ui/CoverPicker.tsx");
 
     expect(source).toContain("isPhoneWeb");
-    expect(source).toContain("Device cover uploads are available on desktop or in the app for now.");
+    expect(source).toContain("Device image uploads are available in this browser.");
+    expect(source).toContain("Video cover uploads are available on desktop or in the app for now.");
+    expect(source).toContain("disabled={uploading || disabled}");
     expect(source).toContain("disabled={uploading || disabled || isPhoneWeb}");
-    expect(source).toContain("GIFs, stock photos, and color covers");
     expect(source).toContain("searchGiphyEventCovers");
     expect(source).toContain("searchPexelsEventCovers");
   });

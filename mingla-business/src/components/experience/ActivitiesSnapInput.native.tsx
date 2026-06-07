@@ -4,6 +4,7 @@
 
 import React, { useCallback, useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
+import * as DocumentPicker from "expo-document-picker";
 
 import {
   glass,
@@ -14,18 +15,17 @@ import {
   typography,
 } from "../../constants/designSystem";
 import type { ExperienceFilePayload } from "../../services/experienceGenerationService";
+import { readAsStringBase64Async } from "../../utils/platformFileSystem";
 import {
-  pickBrowserFiles,
-  readBrowserFileAsBase64,
-  revokeBrowserPickedFiles,
-  validateBrowserFile,
-  type BrowserPickedFile,
-} from "../../utils/browserFilePicker";
+  launchCameraAsync,
+  launchImageLibraryAsync,
+  requestCameraPermissionsAsync,
+  requestMediaLibraryPermissionsAsync,
+} from "../../utils/platformImagePicker";
 import { Sheet } from "../ui/Sheet";
 import { Icon } from "../ui/Icon";
 
 const MAX_TOTAL_BYTES = 10 * 1024 * 1024;
-const ACCEPTED_FILE_TYPES = "image/jpeg,image/png,image/webp,application/pdf";
 
 export interface ActivitiesSnapInputProps {
   visible: boolean;
@@ -33,29 +33,25 @@ export interface ActivitiesSnapInputProps {
   onCancel: () => void;
 }
 
-function inferMime(file: BrowserPickedFile): ExperienceFilePayload["mime_type"] {
-  const mime = file.mimeType;
-  if (mime === "image/png" || mime === "image/jpeg" || mime === "application/pdf") {
-    return mime;
-  }
-  const lower = file.name.toLowerCase();
+function inferMime(uri: string, fallback: string): ExperienceFilePayload["mime_type"] {
+  const lower = uri.toLowerCase();
   if (lower.endsWith(".png")) return "image/png";
   if (lower.endsWith(".pdf")) return "application/pdf";
-  return "image/jpeg";
+  if (lower.includes(".jpg") || lower.includes(".jpeg")) return "image/jpeg";
+  return fallback as ExperienceFilePayload["mime_type"];
 }
 
-async function browserFileToExperienceFile(
-  file: BrowserPickedFile,
+async function uriToExperienceFile(
+  uri: string,
+  mime: ExperienceFilePayload["mime_type"],
 ): Promise<ExperienceFilePayload> {
-  validateBrowserFile(file.file, {
-    accept: ACCEPTED_FILE_TYPES,
-    maxBytes: MAX_TOTAL_BYTES,
-  });
-  if (file.size > MAX_TOTAL_BYTES) {
+  const data_base64 = await readAsStringBase64Async(uri);
+  const padding = data_base64.endsWith("==") ? 2 : data_base64.endsWith("=") ? 1 : 0;
+  const size = Math.floor((data_base64.length * 3) / 4) - padding;
+  if (size > MAX_TOTAL_BYTES) {
     throw new Error("Upload exceeds 10 MB. Try fewer pages or a smaller photo.");
   }
-  const data_base64 = await readBrowserFileAsBase64(file.file);
-  return { mime_type: inferMime(file), data_base64 };
+  return { mime_type: mime, data_base64 };
 }
 
 export const ActivitiesSnapInput: React.FC<ActivitiesSnapInputProps> = ({
@@ -66,34 +62,18 @@ export const ActivitiesSnapInput: React.FC<ActivitiesSnapInputProps> = ({
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isBusy, setIsBusy] = useState(false);
 
-  const finishWithBrowserPick = useCallback(
-    async (options: {
-      accept: string;
-      capture?: "environment";
-      label: "photo" | "file";
-    }) => {
-      let files: BrowserPickedFile[] = [];
+  const finishWithUri = useCallback(
+    async (uri: string, mime: ExperienceFilePayload["mime_type"]) => {
       setIsBusy(true);
       setErrorMessage(null);
       try {
-        const result = await pickBrowserFiles({
-          accept: options.accept,
-          capture: options.capture,
-          maxFiles: 1,
-        });
-        if (result.canceled || result.files.length === 0) return;
-        files = result.files;
-        const file = result.files[0];
-        if (file === undefined) return;
-        onFilesReady([await browserFileToExperienceFile(file)]);
+        const file = await uriToExperienceFile(uri, mime);
+        onFilesReady([file]);
       } catch (e) {
         setErrorMessage(
-          e instanceof Error
-            ? e.message
-            : `Couldn't read that ${options.label}. Try again.`,
+          e instanceof Error ? e.message : "Couldn't read that file. Try again.",
         );
       } finally {
-        revokeBrowserPickedFiles(files);
         setIsBusy(false);
       }
     },
@@ -101,26 +81,50 @@ export const ActivitiesSnapInput: React.FC<ActivitiesSnapInputProps> = ({
   );
 
   const handleCamera = useCallback(async () => {
-    await finishWithBrowserPick({
-      accept: "image/jpeg,image/png,image/webp",
-      capture: "environment",
-      label: "photo",
+    const perm = await requestCameraPermissionsAsync();
+    if (!perm.granted) {
+      setErrorMessage("Camera permission is required to photograph your activities list.");
+      return;
+    }
+    const result = await launchCameraAsync({
+      mediaTypes: ["images"],
+      quality: 0.85,
     });
-  }, [finishWithBrowserPick]);
+    if (result.canceled || !result.assets[0]) return;
+    const asset = result.assets[0];
+    const mime = (asset.mimeType === "image/png"
+      ? "image/png"
+      : "image/jpeg") as ExperienceFilePayload["mime_type"];
+    await finishWithUri(asset.uri, mime);
+  }, [finishWithUri]);
 
   const handleLibrary = useCallback(async () => {
-    await finishWithBrowserPick({
-      accept: "image/jpeg,image/png,image/webp",
-      label: "photo",
+    const perm = await requestMediaLibraryPermissionsAsync();
+    if (!perm.granted) {
+      setErrorMessage("Photo library permission is required.");
+      return;
+    }
+    const result = await launchImageLibraryAsync({
+      mediaTypes: ["images"],
+      quality: 0.85,
     });
-  }, [finishWithBrowserPick]);
+    if (result.canceled || !result.assets[0]) return;
+    const asset = result.assets[0];
+    const mime = (asset.mimeType === "image/png"
+      ? "image/png"
+      : "image/jpeg") as ExperienceFilePayload["mime_type"];
+    await finishWithUri(asset.uri, mime);
+  }, [finishWithUri]);
 
   const handlePdf = useCallback(async () => {
-    await finishWithBrowserPick({
-      accept: "application/pdf,.pdf",
-      label: "file",
+    const result = await DocumentPicker.getDocumentAsync({
+      type: "application/pdf",
+      copyToCacheDirectory: true,
     });
-  }, [finishWithBrowserPick]);
+    if (result.canceled || !result.assets[0]) return;
+    const asset = result.assets[0];
+    await finishWithUri(asset.uri, inferMime(asset.uri, "application/pdf"));
+  }, [finishWithUri]);
 
   return (
     <Sheet visible={visible} onClose={onCancel} snapPoint="half">
