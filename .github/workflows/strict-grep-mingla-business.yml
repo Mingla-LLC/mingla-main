@@ -739,17 +739,13 @@ jobs:
       - name: Run I-PROPOSED-X parser
         run: node .github/scripts/strict-grep/i-proposed-x-web-deprecation.mjs /tmp/expo-export-web.stderr
 
-  orch-1085-mobile-web-signin-home:
-    name: "ORCH-1085: mobile web sign-in Home guard"
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "20"
-      - name: Run ORCH-1085 mobile web sign-in Home guard
-        working-directory: mingla-business
-        run: npm run test:orch-1085
+  # ORCH-1098: the ORCH-1085→1096 static-home/route-firewall gates were retired.
+  # Their root cause (a react-native-reanimated re-render loop in the BottomNav)
+  # was fixed, so the real Expo app now boots on phone browsers and the static
+  # stand-in + firewall they guarded was deleted. The job that ran the chained
+  # `test:orch-1085..1096` gate scripts is removed here in lockstep with the
+  # script + npm-script deletions. See AUDIT_BUSINESS_WEB_MOBILE_PATH_1085_1097.md
+  # and IMPLEMENTATION_ORCH-1098_STAGE3_REAL_APP_ON_PHONE.md.
 
   orch-0776d-cancelled-at-schema:
     name: "ORCH-0776D: event cover video cancelled_at schema/code parity"
