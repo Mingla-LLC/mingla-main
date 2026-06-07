@@ -93,6 +93,10 @@ export const browserFileToPickedFile = (
   options: BrowserFileValidation = {},
 ): BrowserPickedFile => {
   validateBrowserFile(file, options);
+  return browserFileToPickedFileWithoutValidation(file);
+};
+
+const browserFileToPickedFileWithoutValidation = (file: File): BrowserPickedFile => {
   const objectUrl =
     typeof URL !== "undefined" && typeof URL.createObjectURL === "function"
       ? URL.createObjectURL(file)
@@ -186,7 +190,9 @@ export const pickBrowserFiles = async (
         resolve({
           canceled: false,
           files: limited.map((file) =>
-            browserFileToPickedFile(file, options.validate === false ? {} : options),
+            options.validate === false
+              ? browserFileToPickedFileWithoutValidation(file)
+              : browserFileToPickedFile(file, options),
           ),
         });
       } catch (error) {
