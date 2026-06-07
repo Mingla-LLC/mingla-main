@@ -18,35 +18,35 @@ const COMMON_LIMIT = 1_200_000;
 const ROUTES = [
   {
     label: "/hub/trips",
-    status: "pending-proof",
+    status: "approved",
     source: "app/(tabs)/hub/trips.tsx",
     budget: 80_000,
     tokens: ["No trips yet", "Select a brand to see its trips."],
   },
   {
     label: "/hub/events",
-    status: "pending-proof",
+    status: "approved",
     source: "app/(tabs)/hub/events.tsx",
     budget: 120_000,
     tokens: ["Nothing created yet", "Build a new event"],
   },
   {
     label: "/marketing",
-    status: "pending-proof",
+    status: "approved",
     source: "app/(tabs)/marketing/index.tsx",
     budget: 150_000,
     tokens: ["Blast these", "Marketing"],
   },
   {
     label: "/marketing/campaigns/compose",
-    status: "pending-proof",
+    status: "approved",
     source: "app/(tabs)/marketing/campaigns/compose.tsx",
     budget: 600_000,
     tokens: ["Compose blast", "campaigns/compose"],
   },
   {
     label: "/account",
-    status: "pending-proof",
+    status: "approved",
     source: "app/(tabs)/account.tsx",
     budget: 120_000,
     tokens: ["Sign out everywhere", "Your brands"],
@@ -60,7 +60,14 @@ const ROUTES = [
   },
 ];
 
-const PHYSICALLY_PROVEN_OVERSIZE_BOOT_ROUTES = new Set(["/event/create"]);
+const PHYSICALLY_PROVEN_OVERSIZE_BOOT_ROUTES = new Set([
+  "/event/create",
+  "/hub/events",
+  "/hub/trips",
+  "/marketing",
+  "/marketing/campaigns/compose",
+  "/account",
+]);
 
 const FORBIDDEN_EAGER_TOKENS = [
   "expo-image-picker",
@@ -222,11 +229,11 @@ function routeStatusMap(overrides = {}) {
   return new Map(ROUTES.map((route) => [route.label, overrides[route.label] ?? route.status]));
 }
 
-function approvedRoutesWithoutOversizeProof(statuses) {
+function approvedRoutesWithoutOversizeProof(statuses, provenRoutes = PHYSICALLY_PROVEN_OVERSIZE_BOOT_ROUTES) {
   return ROUTES.filter(
     (route) =>
       statuses.get(route.label) === "approved" &&
-      !PHYSICALLY_PROVEN_OVERSIZE_BOOT_ROUTES.has(route.label),
+      !provenRoutes.has(route.label),
   ).map((route) => route.label);
 }
 
@@ -306,10 +313,11 @@ function assertSourceGuards() {
   const rootLayout = read("app/_layout.tsx");
   for (const token of [
     "ORCH_1093_SIGNED_IN_ROUTE_STATUS",
-    "\"/hub/events\": \"pending-proof\"",
-    "\"/marketing\": \"pending-proof\"",
-    "\"/marketing/campaigns/compose\": \"pending-proof\"",
-    "\"/account\": \"pending-proof\"",
+    "\"/hub/events\": \"approved\"",
+    "\"/marketing\": \"approved\"",
+    "\"/marketing/campaigns/compose\": \"approved\"",
+    "\"/account\": \"approved\"",
+    "\"/hub/trips\": \"approved\"",
     "\"/hub/experiences\": \"blocked\"",
     "\"/ari\": \"blocked\"",
     "\"/connect-account-management\": \"blocked\"",
@@ -340,11 +348,12 @@ function assertSourceGuards() {
   }
 
   const home = read("public/home.html");
-  for (const route of ["/hub/experiences", "/hub/trips", "/ari", "/connect-account-management"]) {
+  for (const route of ["/hub/experiences", "/ari", "/connect-account-management"]) {
     assertNotIncludes(home, `href="${route}"`, "public/home.html");
     assertNotIncludes(home, `href='${route}'`, "public/home.html");
   }
-  assertIncludes(home, 'data-shell-link="hub-trips"', "public/home.html");
+  assertIncludes(home, 'href="/hub/trips"', "public/home.html");
+  assertIncludes(home, 'data-orch-1094-core-route="hub-trips"', "public/home.html");
 
   const inject = read("scripts/inject-mobile-blur-css.mjs");
   for (const token of [
@@ -358,10 +367,12 @@ function assertSourceGuards() {
     assertIncludes(inject, token, "scripts/inject-mobile-blur-css.mjs");
   }
   for (const route of ["/hub/events", "/marketing", "/marketing/campaigns/compose", "/account", "/hub/trips"]) {
-    assertIncludes(inject, `"${route}":"pending-proof"`, "scripts/inject-mobile-blur-css.mjs");
+    assertIncludes(inject, `"${route}":"approved"`, "scripts/inject-mobile-blur-css.mjs");
   }
   assertIncludes(inject, 'status!=="approved"', "scripts/inject-mobile-blur-css.mjs");
-  assertNotIncludes(inject, "hasSession()", "scripts/inject-mobile-blur-css.mjs");
+  assertIncludes(inject, "function hasSession()", "scripts/inject-mobile-blur-css.mjs");
+  assertIncludes(inject, "function staticTarget(path)", "scripts/inject-mobile-blur-css.mjs");
+  assertIncludes(inject, 'location.replace("/home#"+target)', "scripts/inject-mobile-blur-css.mjs");
 
   const vercel = JSON.parse(read("vercel.json"));
   const webJsHeader = (vercel.headers ?? []).find((header) => header.source === "/_expo/static/js/web/(.*)");
@@ -439,7 +450,7 @@ function awaitableAssertBundleBudgets(root, routeStatusOverride = {}) {
   const commonPath = phoneBootScriptPaths.find((path) => basename(path).startsWith("__common-"));
   const commonBytes = commonPath === undefined ? 0 : rawBytes(commonPath);
   const statuses = routeStatusMap(routeStatusOverride);
-  const unprovenApprovedRoutes = approvedRoutesWithoutOversizeProof(statuses);
+  const unprovenApprovedRoutes = approvedRoutesWithoutOversizeProof(statuses, new Set());
   if (
     scriptPaths.length > 0 &&
     (phoneBootTotal > EAGER_TOTAL_LIMIT || commonBytes > COMMON_LIMIT)

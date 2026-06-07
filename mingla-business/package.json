@@ -54,7 +54,8 @@
     "test:orch-1088": "npm run test:orch-1087 && node scripts/ci/orch-1088-event-creator-phone-parity.mjs && npx jest src/utils/__tests__/orch_1088_event_creator_phone_parity.test.ts --runInBand",
     "test:orch-1089": "npm run test:orch-1088 && node scripts/ci/orch-1089-signedin-event-creator-wizard.mjs && npx jest src/utils/__tests__/orch_1089_signedin_event_creator_wizard.test.ts --runInBand",
     "test:orch-1092": "npm run test:orch-1089 && node scripts/ci/orch-1092-business-web-restoration-wave.mjs && npx jest src/utils/__tests__/orch_1092_business_web_restoration_wave.test.ts --runInBand",
-    "test:orch-1093": "npm run test:orch-1092 && node scripts/ci/orch-1093-signedin-route-oom.mjs --self-test && node scripts/ci/orch-1093-signedin-route-oom.mjs"
+    "test:orch-1093": "npm run test:orch-1092 && node scripts/ci/orch-1093-signedin-route-oom.mjs --self-test && node scripts/ci/orch-1093-signedin-route-oom.mjs",
+    "test:orch-1094": "npm run test:orch-1093 && node scripts/ci/orch-1094-business-web-core-parity-wave.mjs"
   },
   "dependencies": {
     "@expo-google-fonts/anton": "^0.4.2",

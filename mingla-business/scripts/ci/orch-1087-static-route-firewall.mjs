@@ -40,12 +40,12 @@ const createIsReopened =
   home.includes('href="/event/create"') || home.includes("href='/event/create'");
 const unsafeRoutes = [
   "/hub/experiences",
-  "/hub/trips",
   "/ari",
   "/connect-account-management",
 ];
 const orch1092ReopenedRoutes = [
   ["/hub/events", "data-orch-1092-hub-events-reopened"],
+  ["/hub/trips", 'data-orch-1094-core-route="hub-trips"'],
   ["/marketing", "data-orch-1092-marketing-overview-reopened"],
   ["/marketing/campaigns/compose", "data-orch-1092-compose-shell-reopened"],
   ["/account", "data-orch-1092-account-reopened"],
@@ -73,7 +73,6 @@ for (const token of ["/_expo/static/js/", "expo-metro-runtime", "Stripe account"
 
 const shellTargets = [
   "hub-experiences",
-  "hub-trips",
   "ari-assistant",
   "payout-account",
 ];

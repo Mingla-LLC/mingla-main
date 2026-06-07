@@ -64,9 +64,12 @@ if (!createIsReopened) {
 assertIncludes(home, "data-orch-1089-create-reopened", "public/home.html");
 assertNotIncludes(home, 'data-shell-link="create-event"', "public/home.html reopened Create action");
 
-for (const route of ["/hub/experiences", "/hub/trips", "/ari", "/connect-account-management"]) {
+for (const route of ["/hub/experiences", "/ari", "/connect-account-management"]) {
   assertNotIncludes(home, `href="${route}"`, "public/home.html");
   assertNotIncludes(home, `href='${route}'`, "public/home.html");
+}
+if (home.includes('href="/hub/trips"') || home.includes("href='/hub/trips'")) {
+  assertIncludes(home, 'data-orch-1094-core-route="hub-trips"', "public/home.html");
 }
 for (const [route, marker] of [
   ["/hub/events", "data-orch-1092-hub-events-reopened"],

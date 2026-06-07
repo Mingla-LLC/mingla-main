@@ -57,11 +57,24 @@ import { queryClient } from "../config/queryClient";
 // worst case; catches stalled promises without false-positives on slow
 // networks). I-AUTH-BOOTSTRAP-TIMEOUT (NEW invariant per ORCH-0887-A).
 export const AUTH_BOOTSTRAP_TIMEOUT_MS = 3000;
+const WEB_AUTH_STORAGE_KEY = "sb-gqnoajqerqhnvulmnyvv-auth-token";
 // SPEC §2.1: Symbol sentinel (NOT { __timedOut: true } flag) —
 // referentially unique, impossible to collide with any legitimate
 // getSession() return shape.
 const AUTH_BOOTSTRAP_TIMEOUT = Symbol("auth-bootstrap-timeout");
 type AuthBootstrapTimeout = typeof AUTH_BOOTSTRAP_TIMEOUT;
+
+const readStoredWebSession = (): Session | null => {
+  if (Platform.OS !== "web" || typeof window === "undefined") return null;
+  try {
+    const raw = window.localStorage.getItem(WEB_AUTH_STORAGE_KEY);
+    if (raw === null) return null;
+    const parsed = JSON.parse(raw) as Session;
+    return hasUsableBusinessSession(parsed) ? parsed : null;
+  } catch (_error) {
+    return null;
+  }
+};
 
 const webClientId =
   Constants.expoConfig?.extra?.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID ||
@@ -186,13 +199,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         await Promise.race([supabase.auth.getSession(), timeoutPromise]);
       if (raceResult === AUTH_BOOTSTRAP_TIMEOUT) {
         console.warn(
-          `[auth] bootstrap-timeout: getSession() did not resolve within ${AUTH_BOOTSTRAP_TIMEOUT_MS}ms — falling through as anon`,
+          `[auth] bootstrap-timeout: getSession() did not resolve within ${AUTH_BOOTSTRAP_TIMEOUT_MS}ms — using stored web session when available`,
         );
         if (!mounted) return;
+        const storedWebSession = readStoredWebSession();
         bootstrapTimedOutRef.current = true;
         setAuthError(null);
-        setSession(null);
-        setUser(null);
+        setSession(storedWebSession);
+        setUser(storedWebSession?.user ?? null);
         setLoading(false);
         return;
       }

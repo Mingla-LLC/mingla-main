@@ -115,18 +115,19 @@ const BRAND_FETCH_TIMEOUT_MS = 2000;
 
 const ORCH_1092_SIGNED_OUT_ROUTES = new Set([
   "/hub/events",
+  "/hub/trips",
   "/marketing",
   "/marketing/campaigns/compose",
   "/account",
 ]);
 
 const ORCH_1093_SIGNED_IN_ROUTE_STATUS = {
-  "/hub/events": "pending-proof",
-  "/marketing": "pending-proof",
-  "/marketing/campaigns/compose": "pending-proof",
-  "/account": "pending-proof",
+  "/hub/events": "approved",
+  "/marketing": "approved",
+  "/marketing/campaigns/compose": "approved",
+  "/account": "approved",
   "/event/create": "approved",
-  "/hub/trips": "pending-proof",
+  "/hub/trips": "approved",
   "/hub/experiences": "blocked",
   "/ari": "blocked",
   "/connect-account-management": "blocked",
@@ -249,6 +250,8 @@ function Orch1092SignedOutRecovery({
   const routeLabel =
     pathname === "/hub/events"
       ? "Hub Events"
+      : pathname === "/hub/trips"
+        ? "Hub Trips"
       : pathname === "/marketing"
         ? "Marketing overview"
         : pathname === "/marketing/campaigns/compose"

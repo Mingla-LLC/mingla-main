@@ -1,9 +1,14 @@
 // orch-strict-grep-allow safearea-on-fullscreen-routes — Index renders BusinessWelcomeScreen (handles SafeArea internally via SafeAreaView at BusinessWelcomeScreen.tsx:463) or brief boot ActivityIndicator; intentional thin wrapper
+import { useEffect } from "react";
 import { ActivityIndicator, StyleSheet, View } from "react-native";
 import { Redirect } from "expo-router";
 import AppRoutes from "../src/config/routes";
 import { useAuth } from "../src/context/AuthContext";
 import BusinessWelcomeScreen from "../src/components/auth/BusinessWelcomeScreen";
+import {
+  isMobileBusinessWeb,
+  redirectMobileBusinessWebToStaticHome,
+} from "../src/utils/mobileWebStaticHomeRedirect";
 
 export default function Index() {
   const {
@@ -14,6 +19,13 @@ export default function Index() {
     signInWithEmail,
     verifyEmailOtp,
   } = useAuth();
+  const shouldUseStaticHome = !loading && Boolean(user) && isMobileBusinessWeb();
+
+  useEffect(() => {
+    if (shouldUseStaticHome) {
+      redirectMobileBusinessWebToStaticHome();
+    }
+  }, [shouldUseStaticHome]);
 
   if (loading) {
     return (
@@ -32,6 +44,14 @@ export default function Index() {
         onEmailSignIn={signInWithEmail}
         onVerifyEmailOtp={verifyEmailOtp}
       />
+    );
+  }
+
+  if (shouldUseStaticHome) {
+    return (
+      <View style={styles.boot}>
+        <ActivityIndicator size="large" color="#eb7825" />
+      </View>
     );
   }
 

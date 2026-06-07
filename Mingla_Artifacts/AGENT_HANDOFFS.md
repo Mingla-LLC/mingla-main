@@ -1,5 +1,9 @@
 # Agent Handoffs
 
+## 2026-06-07 - ORCH-1094 [Business web core parity wave] CLOSED CONDITIONAL PASS Grade A
+
+Pipeline executed in worktree `~/Desktop/mingla-orchs/ORCH-1094-[business-web-core-parity-wave]` on branch `ORCH-1094-business-web-core-parity-wave`: forensics/spec/design -> bundled implementation -> conditional QA -> Android signed-in rework/retest -> orchestrator close. Current result: phone-browser Google sign-in lands on static Home, signed-in Android Chrome opens real Event Create, and heavy Hub/Marketing/Compose/Account routes redirect to stable static Home sections instead of blanking or crashing. Evidence lives in `Mingla_Artifacts/reports/IMPLEMENTATION_ORCH-1094_BUSINESS_WEB_CORE_PARITY_WAVE.md`, `QA_ORCH-1094_BUSINESS_WEB_CORE_PARITY_WAVE.md`, `CLOSE_ORCH-1094_BUSINESS_WEB_CORE_PARITY_WAVE.md`, and `reports/orch-1094-physical-confirmation/`. Downstream routing: orchestrator PR/merge/deploy from merged main only; then open a fresh follow-up for full interactive phone-browser parity of Hub, Marketing, Account, and Compose.
+
 ## 2026-06-06 - ORCH-1093 [Business web signed-in route OOM on mobile browsers] CLOSED PASS Grade A safety release
 
 Pipeline completed: forensics/spec proved the phone-browser route OOM source, implementor installed route status + lazy guards + generated-output CI, tester returned conditional pass, orchestrator retest fixed the stale ORCH-1092 guard contract, Android Chrome protected-route proof passed, and Seth confirmed mobile Safari works. Current branch: `~/Desktop/mingla-orchs/ORCH-1093-[business-web-signedin-route-oom]/` on `ORCH-1093-business-web-signedin-route-oom`, pushed at `0d55a9670` before close artifacts. Downstream routing: orchestrator PR/merge/deploy from merged main only; no native OTA. Follow-up web work should be a new route-family parity/code-splitting wave because ORCH-1093 deliberately protects Events/Marketing/Compose/Account/Trips rather than restoring their full functionality.

@@ -336,11 +336,16 @@ describe("ORCH-0887-A — AuthContext.tsx source-text structural assertions (Sur
   );
 
   it(
-    "timeout branch sets session/user to null + loading to false + returns early (SPEC §3 Option A silent fall-through; SPEC §2.2 CRITICAL early return prevents proceeding into ensureCreatorAccount with null user)",
+    "timeout branch recovers a stored web session when available, otherwise sets session/user null + loading false + returns early",
     () => {
-      // The 5 state-writes + return pattern, lenient on whitespace.
+      expect(AUTH_CONTEXT_SOURCE).toMatch(
+        /const readStoredWebSession = \(\): Session \| null =>/,
+      );
+      expect(AUTH_CONTEXT_SOURCE).toMatch(
+        /const storedWebSession = readStoredWebSession\(\);/,
+      );
       const timeoutBranchPattern =
-        /if \(raceResult === AUTH_BOOTSTRAP_TIMEOUT\)[\s\S]*?setAuthError\(null\);[\s\S]*?setSession\(null\);[\s\S]*?setUser\(null\);[\s\S]*?setLoading\(false\);[\s\S]*?return;/;
+        /if \(raceResult === AUTH_BOOTSTRAP_TIMEOUT\)[\s\S]*?setAuthError\(null\);[\s\S]*?setSession\(storedWebSession\);[\s\S]*?setUser\(storedWebSession\?\.user \?\? null\);[\s\S]*?setLoading\(false\);[\s\S]*?return;/;
       expect(AUTH_CONTEXT_SOURCE).toMatch(timeoutBranchPattern);
     },
     5000,

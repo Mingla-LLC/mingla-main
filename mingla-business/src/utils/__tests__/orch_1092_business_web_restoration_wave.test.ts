@@ -20,6 +20,7 @@ describe("ORCH-1092 business web restoration wave", () => {
 
     for (const [route, marker] of [
       ["/hub/events", "data-orch-1092-hub-events-reopened"],
+      ["/hub/trips", 'data-orch-1094-core-route="hub-trips"'],
       ["/marketing", "data-orch-1092-marketing-overview-reopened"],
       ["/marketing/campaigns/compose", "data-orch-1092-compose-shell-reopened"],
       ["/account", "data-orch-1092-account-reopened"],
@@ -28,12 +29,11 @@ describe("ORCH-1092 business web restoration wave", () => {
       expect(source).toContain(marker);
     }
 
-    for (const route of ["/hub/experiences", "/hub/trips", "/ari", "/connect-account-management"]) {
+    for (const route of ["/hub/experiences", "/ari", "/connect-account-management"]) {
       expect(source).not.toContain(`href="${route}"`);
     }
 
     expect(source).toContain('href="#hub-experiences"');
-    expect(source).toContain('href="#hub-trips"');
     expect(source).toContain('href="#payout-account"');
     expect(source).toContain('data-shell-link="payout-account"');
     expect(source).not.toContain("data-orch-1092-payout-session-reopened");
@@ -141,6 +141,7 @@ describe("ORCH-1092 business web restoration wave", () => {
 
     for (const route of [
       "/hub/events",
+      "/hub/trips",
       "/marketing",
       "/marketing/campaigns/compose",
       "/account",
