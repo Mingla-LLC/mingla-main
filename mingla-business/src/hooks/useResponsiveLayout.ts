@@ -14,6 +14,19 @@
  * - Resize-responsive: `useWindowDimensions()` re-renders on every browser
  *   resize event on web, so consumers re-evaluate at every 1024 crossing.
  *
+ * ORCH-1098 note: a value-stability rewrite of this hook (bypass
+ * `useWindowDimensions` on web, keep only the boolean `isWideDesktop` in
+ * reactive state) was prototyped during the Stage-2b spike to dampen a
+ * secondary `visualViewport` resize-churn contributor. It was DEFERRED from
+ * Stage 3 because (a) the device bisect proved it is NOT load-bearing — the
+ * BottomNav reanimated capsule was the dominant OOM driver and the
+ * non-reanimated `MobileWebCapsule` fix in BottomNav.web.tsx boots the real
+ * Home flat at ~10 MB on its own — and (b) the rewrite required a
+ * useState/useEffect form that cannot be exercised by this hook's existing
+ * node-env, bare-call regression test. The simple, node-testable hook is
+ * retained; the BottomNav fix carries the cure. See
+ * SPIKE_ORCH-1098_STAGE2B_HEAP_BISECT.md (rows 12 vs 13).
+ *
  * Invariant I-DESKTOP-GATE-VIA-HOOK (ORCH-0885-A §10): every desktop-gated
  * branch in `mingla-business/src/` or `mingla-business/app/` must read
  * from this hook. Inlining `Platform.OS === 'web' && width >= 1024` is

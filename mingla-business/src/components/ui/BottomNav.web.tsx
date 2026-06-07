@@ -7,10 +7,10 @@
  * + `.native.tsx` at `app/_layout.tsx:40` (ORCH-0849).
  *
  * # Runtime behaviour
- * - On `isWideDesktop === false` → renders the canonical mobile capsule
- *   (`MobileBottomNav` re-exported below). This keeps narrow web viewports
- *   (tablet portrait, mobile browser, dev resize ≤1023px) bit-identical to
- *   the iOS/Android capsule.
+ * - On `isWideDesktop === false` → renders `MobileWebCapsule`, a
+ *   non-reanimated mobile-web capsule (tablet portrait, mobile browser, dev
+ *   resize ≤1023px). See the ORCH-1098 note on that component for why the
+ *   canonical reanimated capsule (`BottomNav.tsx`) is NOT used on web.
  * - On `isWideDesktop === true` → renders the **left vertical rail**: a
  *   `position: 'fixed'` 80px-wide column anchored to the left edge of the
  *   viewport, with the brand-mark badge at the top, the 5 tabs stacked
@@ -61,7 +61,6 @@ import {
 import { DESKTOP_RAIL_WIDTH } from "../../constants/desktopLayout";
 import { useResponsiveLayout } from "../../hooks/useResponsiveLayout";
 
-import { BottomNav as MobileBottomNav } from "./BottomNav";
 import { Icon } from "./Icon";
 import type { IconName } from "./Icon";
 
@@ -103,12 +102,24 @@ export const BottomNav: React.FC<BottomNavProps> = ({
 }) => {
   const { isWideDesktop } = useResponsiveLayout();
 
-  // Narrow web viewport (tablet portrait, mobile browser, <1024px desktop):
-  // fall through to the canonical glass-capsule. Visual contract identical
-  // to iOS/Android because we re-export the same component.
+  // Narrow web viewport (tablet portrait, mobile browser, <1024px desktop).
+  //
+  // ORCH-1098 root-cause fix (device-proven, Samsung SM-A725F Chrome): the
+  // canonical mobile capsule (`BottomNav.tsx`) mounts react-native-reanimated
+  // (useSharedValue / useAnimatedStyle / useReducedMotion + an
+  // onLayout→withSpring spotlight). On a phone browser that machinery drives an
+  // unbounded re-render / fiber-allocation loop the instant it mounts (no resize
+  // event needed) that climbs the V8 heap ~200 MB/s to ~1 GB and SIGSEGVs the
+  // renderer ("Aw, Snap"). Because the capsule lives in the tabs layout, this
+  // crashed EVERY signed-in tab route — it is THE reason the real Expo Business
+  // app could not boot on a phone browser. `MobileWebCapsule` below is the same
+  // layout / tokens with a STATIC active highlight (no Animated.View spotlight,
+  // no onLayout measurement, no reanimated hooks) and boots at a flat ~10 MB.
+  // This file is web-only (Metro picks `.web.tsx`), so iOS/Android keep the full
+  // reanimated capsule in `BottomNav.tsx` — native is byte-unchanged.
   if (!isWideDesktop) {
     return (
-      <MobileBottomNav
+      <MobileWebCapsule
         tabs={tabs}
         active={active}
         onChange={onChange}
@@ -120,6 +131,108 @@ export const BottomNav: React.FC<BottomNavProps> = ({
 
   return <DesktopRail tabs={tabs} active={active} onChange={onChange} testID={testID} />;
 };
+
+// ORCH-1098 root-cause fix — non-reanimated mobile-web capsule. Mirrors the
+// canonical capsule's layout / tokens but uses a STATIC per-tab highlight (no
+// spotlight Animated.View, no onLayout measurement, no reanimated hooks) so the
+// phone renderer never enters the OOM feedback loop. Native + wide-desktop are
+// unaffected (native uses BottomNav.tsx; desktop uses the rail below).
+const CAPSULE_HEIGHT = 64;
+const CAPSULE_PAD = 8;
+const MOBILE_INACTIVE_ICON = "rgba(255, 255, 255, 0.55)";
+
+const MobileWebCapsule: React.FC<BottomNavProps> = ({
+  tabs,
+  active,
+  onChange,
+  testID,
+  style,
+}) => {
+  const handlePress = useCallback(
+    (id: string) => (): void => {
+      // No haptics on web — mirror Platform.OS !== 'web' gate in mobile file.
+      onChange(id);
+    },
+    [onChange],
+  );
+  return (
+    <View testID={testID} style={[mwStyles.host, style]}>
+      <View style={mwStyles.bar}>
+        <View style={mwStyles.row}>
+          {tabs.map((tab) => {
+            const isActive = tab.id === active;
+            return (
+              <Pressable
+                key={tab.id}
+                onPress={handlePress(tab.id)}
+                accessibilityRole="tab"
+                accessibilityState={{ selected: isActive }}
+                accessibilityLabel={tab.label}
+                style={[mwStyles.tab, isActive ? mwStyles.tabActive : null]}
+              >
+                <Icon
+                  name={tab.icon}
+                  size={22}
+                  color={isActive ? "#ffffff" : MOBILE_INACTIVE_ICON}
+                />
+                <Text
+                  style={[
+                    mwStyles.label,
+                    {
+                      color: isActive ? "#ffffff" : MOBILE_INACTIVE_ICON,
+                      fontWeight: isActive ? "600" : "500",
+                    },
+                  ]}
+                  numberOfLines={1}
+                >
+                  {tab.label}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </View>
+      </View>
+    </View>
+  );
+};
+
+const mwStyles = StyleSheet.create({
+  host: { paddingHorizontal: spacing.md },
+  bar: {
+    height: CAPSULE_HEIGHT,
+    borderRadius: CAPSULE_HEIGHT / 2,
+    backgroundColor: "rgba(12, 14, 18, 0.92)",
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: "rgba(255, 255, 255, 0.08)",
+    overflow: "hidden",
+  },
+  row: {
+    height: CAPSULE_HEIGHT,
+    paddingHorizontal: CAPSULE_PAD,
+    paddingVertical: CAPSULE_PAD,
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  tab: {
+    flex: 1,
+    alignSelf: "stretch",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 2,
+    borderRadius: (CAPSULE_HEIGHT - CAPSULE_PAD * 2) / 2,
+    borderWidth: 1,
+    borderColor: "transparent",
+  },
+  tabActive: {
+    backgroundColor: accent.tint,
+    borderColor: accent.border,
+  },
+  label: {
+    fontSize: 9,
+    lineHeight: 11,
+    letterSpacing: typography.micro.letterSpacing,
+  },
+});
 
 interface DesktopRailProps {
   tabs: BottomNavTab[];

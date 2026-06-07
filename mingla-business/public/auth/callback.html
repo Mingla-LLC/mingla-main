@@ -219,17 +219,13 @@
           });
 
           window.history.replaceState(null, "", "/auth/callback");
-          // ORCH-1098: the static /home is a PHONE-ONLY safety page. Desktop /
-          // large browsers run the real Expo app fine, so send them straight to
-          // "/" (the real app), which client-side routes to the real home.
-          var isPhoneClient = false;
-          try {
-            isPhoneClient =
-              (typeof matchMedia === "function" &&
-                matchMedia("(max-width: 767px), (pointer: coarse)").matches) ||
-              /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent || "");
-          } catch (_e) {}
-          window.location.replace(isPhoneClient ? "/home" : "/");
+          // ORCH-1098 Stage 3: the static /home safety page is gone — phones now
+          // boot the real Expo app exactly like desktop (the BottomNav OOM is
+          // fixed). After persisting the session, send EVERY device to "/" (the
+          // real app), which client-side routes a signed-in user to the real
+          // home. This static callback page solves a real OAuth/App-Links token
+          // handoff issue, so it stays — only its post-handoff target simplifies.
+          window.location.replace("/");
         }
 
         run().catch(function (error) {

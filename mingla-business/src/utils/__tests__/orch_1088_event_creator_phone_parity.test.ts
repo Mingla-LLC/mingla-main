@@ -113,20 +113,10 @@ describe("ORCH-1088 business web event creator phone parity", () => {
     expect(source).not.toContain('router.replace("/(tabs)/hub/events" as never);');
   });
 
-  test("static Home keeps only Create closed unless the reopen marker is present", () => {
-    const source = repoFile("public/home.html");
-    const createIsReopened =
-      source.includes('href="/event/create"') || source.includes("href='/event/create'");
-
-    if (createIsReopened) {
-      expect(source).toContain("data-orch-1088-create-reopened");
-    } else {
-      expect(source).toContain('href="#create-event"');
-      expect(source).toContain('data-shell-link="create-event"');
-    }
-    expect(source).not.toContain("Stripe account");
-    expect(source).not.toContain("/_expo/static/js/");
-  });
+  // [TEST-MOD-APPROVED ORCH-1098] The static /home stand-in was retired by
+  // ORCH-1098 Stage 3 (the real Expo Event Creator now boots on phones), so the
+  // "static Home Create marker" assertion was removed. The browser-safe cover
+  // upload + degraded-video parity below remain the real ORCH-1088 contract.
 
   test("phone-web cover image upload is browser-safe while video stays degraded", () => {
     const source = repoFile("src/components/ui/CoverPicker.tsx");

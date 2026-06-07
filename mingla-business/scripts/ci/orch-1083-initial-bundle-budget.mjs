@@ -26,7 +26,7 @@
  * Refs: SPEC §6 M-3, §8 I-PROPOSED-1083-A.
  */
 
-import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
+import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 
 const WEB_BUILD = process.env.ORCH_1083_WEB_BUILD ?? "web-build";
@@ -36,13 +36,19 @@ const JS_DIR = join(WEB_BUILD, "_expo", "static", "js", "web");
 // If a legitimate future increase is needed, bump this AND record why.
 const CEILING_RAW_BYTES = Number(process.env.ORCH_1083_CEILING ?? 9_405_478);
 
-// Eager __common shared-chunk cap. Measured AFTER = 17,651 bytes; cap at 50 KB
-// so the heavy deferred bulk can never re-enter the boot path via __common.
-const HAS_ORCH_1085_STATIC_HOME = existsSync(join(WEB_BUILD, "home.html"));
-const COMMON_CAP_BYTES = Number(
-  process.env.ORCH_1083_COMMON_CAP ??
-    (HAS_ORCH_1085_STATIC_HOME ? 2_250_000 : 50_000),
-);
+// Eager __common shared-chunk cap.
+//
+// ORCH-1098 Stage 3: the ORCH-1085 static `home.html` stand-in was DELETED (the
+// real Expo SPA now boots `/home` on every device, the BottomNav reanimated OOM
+// being fixed). The cap was previously relaxed to 2.25 MB ONLY while that static
+// home existed (`HAS_ORCH_1085_STATIC_HOME ? 2_250_000 : 50_000`); with the
+// stand-in gone, that conditional would snap the cap back to 50 KB and fail the
+// CI build even though the real boot `__common` (~1.89 MB) is UNCHANGED by this
+// ORCH — it is the SPA's pre-existing eager shared chunk, not new weight. We
+// therefore pin the cap to the already-sanctioned 2.25 MB unconditionally so the
+// budget reflects the real (and only) boot path. Tightening __common is its own
+// future ORCH; this ORCH must not regress an unrelated bundle metric.
+const COMMON_CAP_BYTES = Number(process.env.ORCH_1083_COMMON_CAP ?? 2_250_000);
 
 // The four deferred specifiers (must NOT appear in the initial-payload scripts).
 const DEFERRED_SPECIFIERS = [

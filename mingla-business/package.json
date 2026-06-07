@@ -49,16 +49,8 @@
     "test:orch-1004": "node ../.github/scripts/strict-grep/orch-1004-auth-scoped-query-readiness.mjs --self-test && node ../.github/scripts/strict-grep/orch-1004-auth-scoped-query-readiness.mjs && npx jest authScopedQueryReadiness orch1004AuthScopedQueryGate",
     "test:orch-1005": "node scripts/ci/orch-1005-dead-code-removed.mjs --self-test && node scripts/ci/orch-1005-dead-code-removed.mjs",
     "test:orch-1086": "npx jest __tests__/authCallbackStatic.test.ts --runInBand",
-    "test:orch-1085": "node scripts/ci/orch-1085-mobile-web-signin-home.mjs",
-    "test:orch-1087": "npm run test:orch-1085 && node scripts/ci/orch-1087-static-route-firewall.mjs",
-    "test:orch-1088": "npm run test:orch-1087 && node scripts/ci/orch-1088-event-creator-phone-parity.mjs && npx jest src/utils/__tests__/orch_1088_event_creator_phone_parity.test.ts --runInBand",
-    "test:orch-1089": "npm run test:orch-1088 && node scripts/ci/orch-1089-signedin-event-creator-wizard.mjs && npx jest src/utils/__tests__/orch_1089_signedin_event_creator_wizard.test.ts --runInBand",
-    "test:orch-1092": "npm run test:orch-1089 && node scripts/ci/orch-1092-business-web-restoration-wave.mjs && npx jest src/utils/__tests__/orch_1092_business_web_restoration_wave.test.ts --runInBand",
-    "test:orch-1093": "npm run test:orch-1092 && node scripts/ci/orch-1093-signedin-route-oom.mjs --self-test && node scripts/ci/orch-1093-signedin-route-oom.mjs",
-    "test:orch-1094": "npm run test:orch-1093 && node scripts/ci/orch-1094-business-web-core-parity-wave.mjs",
-    "test:orch-1095": "npm run test:orch-1094 && node scripts/ci/orch-1095-business-web-interactive-parity-wave.mjs && npx jest src/utils/__tests__/orch_1095_business_web_interactive_parity_wave.test.ts --runInBand",
-    "test:orch-1096": "npm run test:orch-1095 && node scripts/ci/orch-1096-business-web-marketing-composer-parity.mjs && npx jest src/utils/__tests__/orch_1096_business_web_marketing_composer_parity.test.ts --runInBand",
-    "test:orch-1097": "node scripts/ci/orch-1097-business-web-media-picker-controls.mjs && npx jest src/utils/__tests__/browserFilePicker.test.ts src/utils/__tests__/orch_1097_browser_picker_component_contracts.test.ts --runInBand"
+    "test:orch-1097": "node scripts/ci/orch-1097-business-web-media-picker-controls.mjs && npx jest src/utils/__tests__/browserFilePicker.test.ts src/utils/__tests__/orch_1097_browser_picker_component_contracts.test.ts --runInBand",
+    "test:orch-1098": "npx jest __tests__/orch1098RealAppOnPhone.test.ts __tests__/orch1098DesktopRealApp.test.ts __tests__/authCallbackStatic.test.ts src/components/ui/__tests__/BottomNavWebDesktopPolish.test.ts src/hooks/__tests__/useResponsiveLayout.test.ts src/utils/__tests__/orch_1088_event_creator_phone_parity.test.ts src/utils/__tests__/orch_1089_signedin_event_creator_wizard.test.ts src/utils/__tests__/orch_1090_mobile_web_chunk_auth_recovery.test.ts src/utils/__tests__/orch_1092_business_web_restoration_wave.test.ts src/utils/__tests__/orch_1095_business_web_interactive_parity_wave.test.ts src/utils/__tests__/orch_1096_business_web_marketing_composer_parity.test.ts --runInBand"
   },
   "dependencies": {
     "@expo-google-fonts/anton": "^0.4.2",

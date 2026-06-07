@@ -1,15 +1,12 @@
 // orch-strict-grep-allow safearea-on-fullscreen-routes — BusinessWelcomeScreen renders its own SafeAreaView internally (BusinessWelcomeScreen.tsx:463 with edges={["top", "left", "right"]}); wrapping at the route level would double-pad
 import { useEffect } from "react";
-import { ActivityIndicator, StyleSheet, View } from "react-native";
 import { useRouter } from "expo-router";
 import BusinessWelcomeScreen from "../../src/components/auth/BusinessWelcomeScreen";
 import AppRoutes from "../../src/config/routes";
 import { useAuth } from "../../src/context/AuthContext";
-import {
-  isMobileBusinessWeb,
-  redirectMobileBusinessWebToStaticHome,
-} from "../../src/utils/mobileWebStaticHomeRedirect";
 
+// ORCH-1098 Stage 3: the mobile→static-home redirect is GONE. Phones boot the
+// real Expo app, so a signed-in user is routed straight to the real home.
 export default function AuthIndex() {
   const router = useRouter();
   const {
@@ -20,27 +17,12 @@ export default function AuthIndex() {
     signInWithEmail,
     verifyEmailOtp,
   } = useAuth();
-  const shouldUseStaticHome = !loading && Boolean(user) && isMobileBusinessWeb();
 
   useEffect(() => {
-    if (!loading && user && !shouldUseStaticHome) {
+    if (!loading && user) {
       router.replace(AppRoutes.home);
     }
-  }, [loading, user, router, shouldUseStaticHome]);
-
-  useEffect(() => {
-    if (shouldUseStaticHome) {
-      redirectMobileBusinessWebToStaticHome();
-    }
-  }, [shouldUseStaticHome]);
-
-  if (shouldUseStaticHome) {
-    return (
-      <View style={styles.boot}>
-        <ActivityIndicator size="large" color="#eb7825" />
-      </View>
-    );
-  }
+  }, [loading, user, router]);
 
   return (
     <BusinessWelcomeScreen
@@ -56,12 +38,3 @@ export default function AuthIndex() {
     />
   );
 }
-
-const styles = StyleSheet.create({
-  boot: {
-    flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-    backgroundColor: "#fff9f5",
-  },
-});
