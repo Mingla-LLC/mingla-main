@@ -121,18 +121,32 @@ const ORCH_1092_SIGNED_OUT_ROUTES = new Set([
   "/account",
 ]);
 
+// ORCH-1098 Stage 3: the mobile-web route firewall existed because the
+// BottomNav reanimated machinery OOM-crashed EVERY signed-in tab route on a
+// phone browser (the capsule lives in the tabs layout). That root cause is now
+// fixed in BottomNav.web.tsx, so the real Expo routes boot on phones — every
+// route below is promoted to "interactive". The firewall MECHANISM is retained
+// (status map + Orch1093MobileRouteRecovery) so a single route can be re-gated
+// to "blocked"/"static-section" if it is ever found to still OOM on device,
+// per the ORCH-1098 safety rule — never re-ship a crashing route.
+//
+// `/connect-account-management` stays "blocked" on phone web: it mounts the
+// Stripe Connect embedded iframe (a separate heavy surface, not in ORCH-1098's
+// scope and not part of the BottomNav fix). Promoting it needs its own device
+// proof in a later ORCH.
 const ORCH_1093_SIGNED_IN_ROUTE_STATUS = {
   "/": "interactive",
   "/auth": "interactive",
   "/auth/callback": "interactive",
+  "/home": "interactive",
   "/hub/events": "interactive",
   "/marketing": "interactive",
   "/marketing/campaigns/compose": "interactive",
   "/account": "interactive",
   "/event/create": "interactive",
   "/hub/trips": "interactive",
-  "/hub/experiences": "blocked",
-  "/ari": "blocked",
+  "/hub/experiences": "interactive",
+  "/ari": "interactive",
   "/connect-account-management": "blocked",
 } as const;
 

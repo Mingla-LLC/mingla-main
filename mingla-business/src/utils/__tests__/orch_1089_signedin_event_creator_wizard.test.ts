@@ -19,15 +19,11 @@ const stripCommentLines = (source: string): string =>
     .join("\n");
 
 describe("ORCH-1089 signed-in Event Creator wizard parity", () => {
-  test("static Home Create is reopened with the ORCH-1089 marker", () => {
-    const source = repoFile("public/home.html");
-
-    expect(source).toContain('href="/event/create"');
-    expect(source).toContain("data-orch-1089-create-reopened");
-    expect(source).not.toContain('data-shell-link="create-event"');
-    expect(source).not.toContain("Stripe account");
-    expect(source).not.toContain("/_expo/static/js/");
-  });
+  // [TEST-MOD-APPROVED ORCH-1098] The static /home stand-in (and its Create
+  // reopen marker) was retired by ORCH-1098 Stage 3 — the real Expo Event
+  // Creator wizard now boots directly on phone browsers. The static-Home marker
+  // test was removed; the current-brand recovery contract below is the
+  // load-bearing ORCH-1089 assertion and is preserved.
 
   test("current-brand recovery classifies brand/account query failures as retryable errors", () => {
     expect(hasCurrentBrandRecoveryQueryError(true, false)).toBe(true);

@@ -8,14 +8,11 @@ const repoFile = (relativePath: string): string =>
   readFileSync(join(REPO_ROOT, "mingla-business", relativePath), "utf8");
 
 describe("ORCH-1090 mobile web chunk/auth recovery", () => {
-  test("static Home does not claim signed-in state without a real session", () => {
-    const source = repoFile("public/home.html");
-
-    expect(source).toContain('id="session-label">Signed out</p>');
-    expect(source).toContain("session && session.access_token");
-    expect(source).toContain('email || "Signed in"');
-    expect(source).not.toContain('id="session-label">Signed in</p>');
-  });
+  // [TEST-MOD-APPROVED ORCH-1098] The static /home stand-in was retired by
+  // ORCH-1098 Stage 3 (the real Expo app now boots on phones), so the
+  // "static Home session-label" assertion was removed. The stale-chunk recovery
+  // contract — the genuinely orthogonal, KEPT part of ORCH-1090 — is preserved
+  // in the two tests below.
 
   test("post-export HTML injection recovers stale async route chunks before app boot", () => {
     const source = repoFile("scripts/inject-mobile-blur-css.mjs");
@@ -28,11 +25,7 @@ describe("ORCH-1090 mobile web chunk/auth recovery", () => {
     expect(source).toContain("ChunkLoadError");
   });
 
-  test("mobile-web CI guard pins the Home auth label and chunk recovery contracts", () => {
-    const source = repoFile("scripts/ci/orch-1085-mobile-web-signin-home.mjs");
-
-    expect(source).toContain("must not claim Signed in without a real browser session");
-    expect(source).toContain("must include stale async chunk recovery before Expo app boot");
-    expect(source).toContain("dist/index.html must contain stale async chunk recovery");
-  });
+  // [TEST-MOD-APPROVED ORCH-1098] The orch-1085 static-Home CI gate was retired
+  // with the static /home stand-in. The stale-chunk recovery contract it pinned
+  // is now asserted directly against the inject script in the test above.
 });

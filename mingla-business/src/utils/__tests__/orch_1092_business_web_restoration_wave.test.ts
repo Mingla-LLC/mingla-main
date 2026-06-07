@@ -15,40 +15,17 @@ const stripCommentLines = (source: string): string =>
     .join("\n");
 
 describe("ORCH-1092 business web restoration wave", () => {
-  test("static Home reopens only the approved ORCH-1092 routes with markers", () => {
-    const source = repoFile("public/home.html");
-
-    for (const [route, marker] of [
-      ["/hub/events", "data-orch-1092-hub-events-reopened"],
-      ["/hub/trips", 'data-orch-1094-core-route="hub-trips"'],
-      ["/marketing", "data-orch-1092-marketing-overview-reopened"],
-      ["/marketing/campaigns/compose", "data-orch-1092-compose-shell-reopened"],
-      ["/account", "data-orch-1092-account-reopened"],
-    ]) {
-      expect(source).toContain(`href="${route}"`);
-      expect(source).toContain(marker);
-    }
-
-    for (const route of ["/hub/experiences", "/ari", "/connect-account-management"]) {
-      expect(source).not.toContain(`href="${route}"`);
-    }
-
-    expect(source).toContain('href="#hub-experiences"');
-    expect(source).toContain('href="#payout-account"');
-    expect(source).toContain('data-shell-link="payout-account"');
-    expect(source).not.toContain("data-orch-1092-payout-session-reopened");
-  });
+  // [TEST-MOD-APPROVED ORCH-1098] The static /home stand-in and its per-route
+  // "reopen marker" scaffolding were RETIRED by ORCH-1098 Stage 3 (the real Expo
+  // app now boots on phones, so there is no static Home to mark up). The
+  // home.html-marker test was removed. The genuinely-kept ORCH-1092 work —
+  // provider-neutral payout copy, browser-safe pickers, native-module
+  // quarantine, and the signed-out recovery guard — is preserved below.
 
   test("payout and seller copy stay provider-neutral", () => {
-    const home = repoFile("public/home.html");
     const brandPayout = repoFile("src/utils/brandPayout.ts");
     const brandPayments = repoFile("src/components/brand/BrandPaymentsView.tsx");
 
-    expect(home).toContain("Payout account");
-    expect(home).toContain("generated secure session");
-    expect(home).not.toContain("Stripe account");
-    expect(home).not.toContain("Connect Stripe");
-    expect(home).not.toContain("Payments & Stripe");
     expect(brandPayout).toContain("payoutGateStatus");
     expect(brandPayments).toContain("payout account alerts");
     expect(brandPayments).toContain("payout account management");

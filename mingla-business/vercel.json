@@ -45,7 +45,6 @@
     },
     { "source": "/stripe-onboarding-return", "destination": "/stripe-onboarding-return.html" },
     { "source": "/auth/callback", "destination": "/auth/callback.html" },
-    { "source": "/home", "destination": "/home.html" },
     { "source": "/(.*)", "destination": "/" }
   ],
   "headers": [

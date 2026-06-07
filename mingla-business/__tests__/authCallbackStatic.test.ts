@@ -35,9 +35,11 @@ describe("ORCH-1086 static web auth callback", () => {
     expect(html).toContain("normalized.padEnd");
     expect(html).toContain("window.localStorage.setItem");
     expect(html).toContain("JSON.stringify(session)");
-    // [TEST-MOD-APPROVED ORCH-1098] callback is now device-gated: phones land on
-    // the static /home safety page; desktop goes to "/" (the real Expo app).
-    expect(html).toContain('window.location.replace(isPhoneClient ? "/home" : "/")');
+    // [TEST-MOD-APPROVED ORCH-1098] Stage 3: the static /home is retired and the
+    // real Expo app boots on every device, so the callback now sends EVERYONE to
+    // "/" (no phone→/home device gate).
+    expect(html).toContain('window.location.replace("/");');
+    expect(html).not.toContain('isPhoneClient ? "/home" : "/"');
     expect(html).not.toContain("__expo");
     expect(html).not.toContain("expo-router");
     expect(html).not.toContain("id=\"root\"");
