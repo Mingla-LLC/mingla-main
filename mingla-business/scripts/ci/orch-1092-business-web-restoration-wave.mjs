@@ -2,7 +2,7 @@
 /**
  * ORCH-1092 — Business Web restoration wave guard.
  *
- * Static Home may reopen only the approved phone-browser routes, and each
+ * Static Home may reopen only the interactive phone-browser routes, and each
  * reopened route must carry an ORCH-1092 marker. Payout management stays
  * shelled unless a future generated-session proof marker is added.
  */
@@ -136,7 +136,7 @@ async function assertPhoneRouteRecoveryRuntime() {
   const { chromium } = await import("playwright");
   const distIndex = read(join("dist", "index.html"));
   assertIncludes(distIndex, "orch1093-mobile-route-script-deferral", "dist/index.html");
-  assertIncludes(distIndex, 'status!=="approved"', "dist/index.html");
+  assertIncludes(distIndex, 'status!=="interactive"', "dist/index.html");
   const routes = [
     ["/hub/events", "Sign in to open Hub Events."],
     ["/hub/trips", "Sign in to open Hub Trips."],

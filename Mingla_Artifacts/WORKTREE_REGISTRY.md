@@ -23,6 +23,7 @@ Reference: [WORKTREE_STRATEGY.md](WORKTREE_STRATEGY.md).
 | `~/Desktop/mingla-orchs/ORCH-1085-[business-web-code-splitting]` | `ORCH-1085-business-web-code-splitting` | ORCH-1085 | SPEC dispatch - architecture plan only | no sim - business web Playwright + mobile browser validation | 8107 | 2026-06-05 | Codex `orchestrator-mingla` (takeover) -> Codex `forensic-mingla` (SPEC) |
 | `~/Desktop/mingla-orchs/ORCH-1089-[business-web-event-creator-signedin-wizard]` | `ORCH-1089-business-web-event-creator-signedin-wizard` | ORCH-1089 | FORENSICS investigate/spec dispatch | physical Android Chrome if connected + Safari-equivalent browser proof | 8109 | 2026-06-06 | Codex `orchestrator-mingla` (dispatch) -> Codex `forensic-mingla` (investigate/spec) |
 | `~/Desktop/mingla-orchs/ORCH-1094-[business-web-core-parity-wave]` | `ORCH-1094-business-web-core-parity-wave` | ORCH-1094 | REGISTERED -> forensics/spec + UI/UX direction | physical Android Chrome + iPhone Safari after bundled implementation completes | 8110 | 2026-06-07 | Codex `orchestrator-mingla` (dispatch) -> specialist pipeline |
+| `~/Desktop/mingla-orchs/ORCH-1095-[business-web-interactive-parity-wave]` | `ORCH-1095-business-web-interactive-parity-wave` | ORCH-1095 | REGISTERED -> forensics/spec dispatch | physical Android Chrome + iPhone Safari production confidence after implementation | 8112 | 2026-06-07 | Codex `orchestrator-mingla` (dispatch) -> Codex `forensic-mingla` (investigate/spec) |
 
 ---
 

@@ -75,7 +75,7 @@ function extractRootStatuses(source) {
 }
 
 function extractInjectorStatuses(source) {
-  const match = source.match(/var map=\{([^}]+)\};return map\[path\]\|\|"approved"/);
+  const match = source.match(/var map=\{([^}]+)\};return map\[path\]\|\|"static-section"/);
   if (match === null) fail("injector route status map not found");
   const statuses = new Map();
   for (const row of match[1].matchAll(/"([^"]+)":"([^"]+)"/g)) {
@@ -192,8 +192,8 @@ for (const copy of ["Stripe account", "Connect Stripe", "Payments & Stripe"]) {
 const rootStatuses = extractRootStatuses(rootLayout);
 const injectorStatuses = extractInjectorStatuses(injector);
 for (const [route] of APPROVED_ROUTES) {
-  if (rootStatuses.get(route) !== "approved") fail(`${route} is not approved in app/_layout.tsx`);
-  if (injectorStatuses.get(route) !== "approved") fail(`${route} is not approved in injector`);
+  if (rootStatuses.get(route) !== "interactive") fail(`${route} is not interactive in app/_layout.tsx`);
+  if (injectorStatuses.get(route) !== "interactive") fail(`${route} is not interactive in injector`);
 }
 for (const route of BLOCKED_ROUTES) {
   if (rootStatuses.get(route) !== "blocked") fail(`${route} is not blocked in app/_layout.tsx`);
@@ -207,10 +207,10 @@ for (const route of [...APPROVED_ROUTES.map(([route]) => route), ...BLOCKED_ROUT
 
 assertIncludes(rootLayout, '"/hub/trips"', "app/_layout.tsx signed-out recovery routes");
 assertIncludes(rootLayout, "Sign in to open {routeLabel}.", "app/_layout.tsx signed-out recovery");
-assertIncludes(injector, 'status!=="approved"', "scripts/inject-mobile-blur-css.mjs");
-assertIncludes(injector, "function hasSession()", "scripts/inject-mobile-blur-css.mjs");
-assertIncludes(injector, '"/marketing/campaigns/compose":"compose-blast"', "scripts/inject-mobile-blur-css.mjs");
-assertIncludes(injector, 'location.replace("/home#"+target)', "scripts/inject-mobile-blur-css.mjs");
+assertIncludes(injector, 'status!=="interactive"', "scripts/inject-mobile-blur-css.mjs");
+assertIncludes(injector, 'status==="static-section"', "scripts/inject-mobile-blur-css.mjs");
+assertIncludes(injector, 'return map[path]||"static-section"', "scripts/inject-mobile-blur-css.mjs");
+assertNotIncludes(injector, 'location.replace("/home#"+target)', "scripts/inject-mobile-blur-css.mjs");
 assertIncludes(mobileWebRedirect, 'Platform.OS !== "web"', "src/utils/mobileWebStaticHomeRedirect.ts");
 assertIncludes(mobileWebRedirect, 'window.location.replace("/home")', "src/utils/mobileWebStaticHomeRedirect.ts");
 assertIncludes(mobileWebRedirect, "(max-width: 767px), (pointer: coarse)", "src/utils/mobileWebStaticHomeRedirect.ts");

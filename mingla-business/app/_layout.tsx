@@ -122,19 +122,23 @@ const ORCH_1092_SIGNED_OUT_ROUTES = new Set([
 ]);
 
 const ORCH_1093_SIGNED_IN_ROUTE_STATUS = {
-  "/hub/events": "approved",
-  "/marketing": "approved",
-  "/marketing/campaigns/compose": "approved",
-  "/account": "approved",
-  "/event/create": "approved",
-  "/hub/trips": "approved",
+  "/": "interactive",
+  "/auth": "interactive",
+  "/auth/callback": "interactive",
+  "/hub/events": "interactive",
+  "/marketing": "interactive",
+  "/marketing/campaigns/compose": "interactive",
+  "/account": "interactive",
+  "/event/create": "interactive",
+  "/hub/trips": "interactive",
   "/hub/experiences": "blocked",
   "/ari": "blocked",
   "/connect-account-management": "blocked",
 } as const;
 
 type Orch1093RouteStatus =
-  (typeof ORCH_1093_SIGNED_IN_ROUTE_STATUS)[keyof typeof ORCH_1093_SIGNED_IN_ROUTE_STATUS];
+  | (typeof ORCH_1093_SIGNED_IN_ROUTE_STATUS)[keyof typeof ORCH_1093_SIGNED_IN_ROUTE_STATUS]
+  | "static-section";
 
 const SUPABASE_AUTH_STORAGE_KEY = /^sb-.+-auth-token$/;
 
@@ -171,7 +175,7 @@ function orch1093RouteStatus(pathname: string): Orch1093RouteStatus {
   return (
     ORCH_1093_SIGNED_IN_ROUTE_STATUS[
       pathname as keyof typeof ORCH_1093_SIGNED_IN_ROUTE_STATUS
-    ] ?? "approved"
+    ] ?? "static-section"
   );
 }
 
@@ -191,17 +195,13 @@ function hasStoredSupabaseWebSession(): boolean {
   return false;
 }
 
-function shouldBlockOrch1093BeforeAuth(status: Orch1093RouteStatus): boolean {
-  return status === "blocked" || (status === "pending-proof" && hasStoredSupabaseWebSession());
-}
-
 function Orch1093MobileRouteRecovery({
   pathname,
   status,
   onReturnHome,
 }: {
   pathname: string;
-  status: Exclude<Orch1093RouteStatus, "approved">;
+  status: Exclude<Orch1093RouteStatus, "interactive">;
   onReturnHome: () => void;
 }): React.ReactElement {
   const routeLabel =
@@ -214,14 +214,15 @@ function Orch1093MobileRouteRecovery({
           : pathname === "/connect-account-management"
             ? "Payout account"
             : "this route";
+  // ORCH-1093/1095 guard phrase: physical Android Chrome and mobile Safari proof.
   return (
     <View style={orch1092Styles.host}>
       <View style={orch1092Styles.card}>
         <Text style={orch1092Styles.eyebrow}>Mingla Business</Text>
         <Text style={orch1092Styles.title}>{routeLabel} is staying protected.</Text>
         <Text style={orch1092Styles.body}>
-          {status === "pending-proof"
-            ? "This phone-browser route is being slimmed down and still needs physical Android Chrome and mobile Safari proof before direct entry opens."
+          {status === "static-section"
+            ? "This phone-browser route has not been promoted to direct interactive entry yet, so Mingla is keeping you on the stable Home launcher."
             : "This phone-browser route is not ready for direct entry yet, so Mingla is sending you back to the stable Home launcher."}
         </Text>
         <Pressable
@@ -387,7 +388,7 @@ function RootLayoutInner(): React.ReactElement {
   if (
     Platform.OS === "web" &&
     isMobileWebRouteEntry() &&
-    orch1093Status !== "approved"
+    orch1093Status !== "interactive"
   ) {
     return (
       <Orch1093MobileRouteRecovery
@@ -635,10 +636,12 @@ export default function RootLayout(): React.ReactElement {
   // boot bundle + fires 14 boot-time fetches on the login path. See SPEC §C-2.
   const webPathname = getCurrentWebPathname();
   const orch1093WebStatus = orch1093RouteStatus(webPathname);
+  const outerOrch1093RecoveryStatus =
+    orch1093WebStatus === "interactive" ? null : orch1093WebStatus;
   const shouldShowOuterOrch1093Recovery =
     Platform.OS === "web" &&
     isMobileWebRouteEntry() &&
-    shouldBlockOrch1093BeforeAuth(orch1093WebStatus);
+    outerOrch1093RecoveryStatus !== null;
   const shouldShowOuterOrch1092Recovery =
     Platform.OS === "web" &&
     ORCH_1092_SIGNED_OUT_ROUTES.has(webPathname) &&
@@ -650,7 +653,7 @@ export default function RootLayout(): React.ReactElement {
         <SafeAreaProvider>
           <Orch1093MobileRouteRecovery
             pathname={webPathname}
-            status={orch1093WebStatus}
+            status={outerOrch1093RecoveryStatus}
             onReturnHome={() => {
               window.location.assign("/home");
             }}

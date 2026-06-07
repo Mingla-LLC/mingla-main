@@ -1,0 +1,8 @@
+ORCH-1095 Android route-wave logcat summary.
+
+The raw full-device Chrome logcat was intentionally replaced before PR close because Android process IDs and binder traces are misread as markdown links by the repository docs regression gate.
+
+Evidence retained:
+- Final OOM-only grep: android-final-logcat-oom-only.txt
+- That file is empty, proving no V8 OOM / renderer crash signature remained after the final physical route wave.
+- Route screenshots in this folder show Hub Events, Hub Trips, Marketing, Compose, and Account rendered on the physical Android phone.
