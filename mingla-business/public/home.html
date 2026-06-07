@@ -8,6 +8,22 @@
     />
     <meta name="robots" content="noindex,nofollow" />
     <title>Home | Mingla Business</title>
+    <script id="orch1098-desktop-to-real-app">
+      // ORCH-1098: this static page is the PHONE-ONLY safety home. If a desktop /
+      // large browser hard-lands here (bookmark, refresh, stale link), bounce it
+      // into the real Expo app at "/" so it never sees the stripped page.
+      (function () {
+        try {
+          var isPhoneClient =
+            (typeof matchMedia === "function" &&
+              matchMedia("(max-width: 767px), (pointer: coarse)").matches) ||
+            /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent || "");
+          if (!isPhoneClient) {
+            window.location.replace("/");
+          }
+        } catch (_e) {}
+      })();
+    </script>
     <style>
       :root {
         color-scheme: dark;
