@@ -45,6 +45,15 @@ rm -rf dist && npx expo export -p web --output-dir dist && node scripts/inject-m
 
 Result: PASS. The chained gate passed ORCH-1085, ORCH-1087, ORCH-1088, ORCH-1089, ORCH-1092, ORCH-1093, and ORCH-1094. Final bundle evidence included `phoneBoot=2885700`, `__common=1882545`, `deferred=true`, and route chunks for `/event/create`, `/hub/events`, `/hub/trips`, `/marketing`, `/marketing/campaigns/compose`, and `/account`.
 
+## Test Modification Approval
+
+[TEST-MOD-APPROVED ORCH-1094]
+
+Two existing test assertions were intentionally replaced because this ORCH changed the guarded behavior:
+
+- `AuthContext.timeout.test.ts`: the old timeout contract required `getSession()` timeout to fall through as anonymous. ORCH-1094 changes that contract for web by recovering a stored browser session when present, because physical Android Chrome proved Supabase `getSession()` can hang behind the browser lock even while a valid Supabase session is stored.
+- `orch_1092_business_web_restoration_wave.test.ts`: the old ORCH-1092 contract required `/hub/trips` to remain shelled. ORCH-1094 moves `/hub/trips` into the approved core route set and guards it through the signed-in phone static-section redirect contract.
+
 Physical Android Chrome on Samsung A72 `R58R54YV7JT`:
 
 - Google sign-in with `sethpgieva@gmail.com` reached static signed-in `/home`.
