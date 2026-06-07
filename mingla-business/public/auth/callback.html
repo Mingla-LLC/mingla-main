@@ -219,7 +219,17 @@
           });
 
           window.history.replaceState(null, "", "/auth/callback");
-          window.location.replace("/home");
+          // ORCH-1098: the static /home is a PHONE-ONLY safety page. Desktop /
+          // large browsers run the real Expo app fine, so send them straight to
+          // "/" (the real app), which client-side routes to the real home.
+          var isPhoneClient = false;
+          try {
+            isPhoneClient =
+              (typeof matchMedia === "function" &&
+                matchMedia("(max-width: 767px), (pointer: coarse)").matches) ||
+              /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent || "");
+          } catch (_e) {}
+          window.location.replace(isPhoneClient ? "/home" : "/");
         }
 
         run().catch(function (error) {
