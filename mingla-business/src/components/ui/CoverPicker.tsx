@@ -50,6 +50,7 @@ import {
   launchCoverImagePicker,
   launchCoverVideoPicker,
   requestCoverMediaLibraryPermission,
+  revokeCoverPickedAssets,
 } from "./coverPickerDeviceMedia";
 import { getCoverPickerFileInfoAsync } from "./coverPickerFileInfo";
 import { trimVideoWithDedicatedEditor } from "./coverPickerVideoTrimEditor";
@@ -381,10 +382,6 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
 
   const pickImageOrGifCover = useCallback(async (): Promise<void> => {
     if (uploading || disabled || activeVideoUpload) return;
-    if (isPhoneWeb) {
-      onShowToast("Device cover uploads are available on desktop or in the app for now.");
-      return;
-    }
     if (!isAuthReady) {
       onShowToast("Finishing sign-in before upload. Try again in a moment.");
       return;
@@ -393,9 +390,11 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
     if (!validateEventRowId()) return;
 
     setUploading(true);
+    let pickedAssets: Parameters<typeof revokeCoverPickedAssets>[0] = [];
     try {
       const result = await launchCoverImagePicker();
       if (result.canceled || result.assets.length === 0) return;
+      pickedAssets = result.assets;
       const asset = result.assets[0];
 
       if (target.kind === "brand") {
@@ -460,6 +459,7 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
     } catch (error) {
       showUploadError(error);
     } finally {
+      revokeCoverPickedAssets(pickedAssets);
       setUploading(false);
     }
   }, [
@@ -469,7 +469,6 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
     emitChange,
     ensureMediaPermission,
     isAuthReady,
-    isPhoneWeb,
     localCover.coverMediaUrl,
     onShowToast,
     showUploadError,
@@ -492,9 +491,11 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
     if (!validateEventRowId()) return;
 
     setUploading(true);
+    let pickedAssets: Parameters<typeof revokeCoverPickedAssets>[0] = [];
     try {
       const result = await launchCoverVideoPicker();
       if (result.canceled || result.assets.length === 0) return;
+      pickedAssets = result.assets;
       const asset = result.assets[0];
       // Web has no native trimmer (SC-7-Web-4): use the raw asset, no crash.
       // On web `trimVideoWithDedicatedEditor` resolves to a no-op stub, but we
@@ -545,6 +546,7 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
         error instanceof Error ? error.message : "Video cover upload failed. Try again.",
       );
     } finally {
+      revokeCoverPickedAssets(pickedAssets);
       setUploading(false);
     }
   }, [
@@ -1071,7 +1073,7 @@ const LibraryTab: React.FC<{
             shape="square"
             onPress={onPickImage}
             loading={uploading}
-            disabled={uploading || disabled || isPhoneWeb}
+            disabled={uploading || disabled}
             style={styles.actionButton}
           />
           <Button
@@ -1100,9 +1102,8 @@ const LibraryTab: React.FC<{
 
         {isPhoneWeb ? (
           <Text style={styles.helperText}>
-            Device image and video uploads are available on desktop or in the
-            Mingla Business app for now. GIFs, stock photos, and color covers
-            still work here.
+            Device image uploads are available in this browser. Video covers are
+            available on desktop or in the Mingla Business app for now.
           </Text>
         ) : Platform.OS === "web" ? (
           <Text style={styles.helperText}>

@@ -200,7 +200,7 @@ if (!processingService.includes("EVENT_COVER_SOURCE_CEILING_MS = 33_000")) {
 }
 
 const videoPickerCall = deviceMedia.match(
-  /ImagePicker\.launchImageLibraryAsync\(\{\s*mediaTypes:\s*\["videos"\][\s\S]*?\n\s*\}\);/,
+  /ImagePicker\.launchImageLibraryAsync\(\{\s*mediaTypes:\s*\["videos"\][\s\S]*?\n\s*\}\s*\)/,
 )?.[0];
 if (videoPickerCall === undefined) {
   fail("C12", `${deviceMediaPath} must keep a native video launchImageLibraryAsync call`);

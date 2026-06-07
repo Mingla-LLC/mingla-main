@@ -139,8 +139,9 @@ assertIncludes(ticketTierSheet, 'type="datetime-local"', "TicketTierEditSheet");
 assertIncludes(step6, "Visibility", "CreatorStep6Settings");
 assertIncludes(step7, "StripeBlockedCard", "CreatorStep7Preview");
 
-assertIncludes(coverPicker, "isPhoneWeb", "CoverPicker phone-web degradation");
-assertIncludes(coverPicker, "Device cover uploads are available on desktop or in the app for now.", "CoverPicker phone-web degradation");
+assertIncludes(coverPicker, "isPhoneWeb", "CoverPicker phone-web media split");
+assertIncludes(coverPicker, "Device image uploads are available in this browser.", "CoverPicker phone-web media split");
+assertIncludes(coverPicker, "Video cover uploads are available on desktop or in the app for now.", "CoverPicker phone-web media split");
 assertIncludes(sheetWeb, "from \"./SheetMobile\"", "Sheet.web import boundary");
 assertIncludes(reanimatedWebStub, "const bezier", "Reanimated web stub");
 assertIncludes(reanimatedWebStub, "const runOnUI", "Reanimated web stub");

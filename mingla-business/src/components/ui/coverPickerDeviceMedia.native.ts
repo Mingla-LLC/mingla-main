@@ -12,6 +12,14 @@ type CoverPickerResult = {
   assets: CoverPickerAsset[];
 };
 
+const normalizePickerResult = (result: {
+  canceled: boolean;
+  assets?: CoverPickerAsset[] | null;
+}): CoverPickerResult => ({
+  canceled: result.canceled,
+  assets: result.assets ?? [],
+});
+
 export const requestCoverMediaLibraryPermission = async (): Promise<{
   granted: boolean;
 }> => {
@@ -21,21 +29,23 @@ export const requestCoverMediaLibraryPermission = async (): Promise<{
 
 export const launchCoverImagePicker = async (): Promise<CoverPickerResult> => {
   const ImagePicker = await import("expo-image-picker");
-  return ImagePicker.launchImageLibraryAsync({
+  return normalizePickerResult(await ImagePicker.launchImageLibraryAsync({
     mediaTypes: ["images"],
     allowsEditing: false,
     preferredAssetRepresentationMode:
       ImagePicker.UIImagePickerPreferredAssetRepresentationMode.Compatible,
     quality: 1,
-  });
+  }));
 };
 
 export const launchCoverVideoPicker = async (): Promise<CoverPickerResult> => {
   const ImagePicker = await import("expo-image-picker");
-  return ImagePicker.launchImageLibraryAsync({
+  return normalizePickerResult(await ImagePicker.launchImageLibraryAsync({
     mediaTypes: ["videos"],
     preferredAssetRepresentationMode:
       ImagePicker.UIImagePickerPreferredAssetRepresentationMode.Compatible,
     quality: 1,
-  });
+  }));
 };
+
+export const revokeCoverPickedAssets = (_assets: readonly CoverPickerAsset[]): void => {};
