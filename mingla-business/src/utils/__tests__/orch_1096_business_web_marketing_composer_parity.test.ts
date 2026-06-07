@@ -75,6 +75,55 @@ describe("ORCH-1096 business web Marketing Composer parity", () => {
     }
   });
 
+  test("phone schedule review rejects past or current scheduled times before review and confirm", () => {
+    const runtime = repoFile("scripts/mobile-web-marketing-composer-runtime.js");
+    const validation = sourceBetween(runtime, "function validationMessage()", "function syncFieldsFromDom()");
+    const review = sourceBetween(runtime, "function openReview(mode)", "function confirmSchedule()");
+    const confirm = sourceBetween(runtime, "function confirmSchedule()", "function formatScheduledLabel()");
+
+    expect(runtime).toContain("function scheduledTimeIsFuture()");
+    expect(runtime).toContain("date.getTime() > Date.now()");
+    expect(validation).toContain("Pick a send time in the future.");
+    expect(validation).toContain("!scheduledTimeIsFuture()");
+    expect(review).toContain('state.scheduledFor = new Date(date.value + "T" + time.value).toISOString();');
+    expect(review).toContain("validationMessage()");
+    expect(confirm).toContain("syncFieldsFromDom()");
+    expect(confirm).toContain("validationMessage()");
+    expect(confirm).toContain('state.activePanel = "composer";');
+  });
+
+  test("phone schedule cancels draft autosave and blocks post-schedule draft-only PATCH races", () => {
+    const runtime = repoFile("scripts/mobile-web-marketing-composer-runtime.js");
+    const cancelHelper = sourceBetween(runtime, "function cancelPendingAutosave()", "function autosaveBlocked()");
+    const autosaveHelper = sourceBetween(runtime, "function autosaveBlocked()", "function loadAudiences()");
+    const markDirty = sourceBetween(runtime, "function markDirty()", "function updateStatusOnly()");
+    const saveDraft = sourceBetween(runtime, "function saveDraft(showSuccess, options)", "function insertHtml(html)");
+    const confirm = sourceBetween(runtime, "function confirmSchedule()", "function formatScheduledLabel()");
+
+    expect(cancelHelper).toContain("clearTimeout(saveTimer)");
+    expect(cancelHelper).toContain("saveTimer = null");
+    expect(autosaveHelper).toContain("state.submitting");
+    expect(autosaveHelper).toContain('state.activePanel === "success"');
+    expect(markDirty).toContain("cancelPendingAutosave()");
+    expect(markDirty).toContain("autosaveBlocked()");
+    expect(markDirty).toContain("saveDraft(false, { autosave: true })");
+    expect(saveDraft).toContain("options && options.autosave && autosaveBlocked()");
+    expect(saveDraft).toContain("cancelPendingAutosave()");
+    expect(confirm).toContain("cancelPendingAutosave()");
+    expect(confirm).toContain("state.submitting = true");
+    expect(confirm).toContain('state.activePanel = "success"');
+  });
+
+  test("ORCH-1096 CI guard pins past-date and autosave-race regressions", () => {
+    const guard = repoFile("scripts/ci/orch-1096-business-web-marketing-composer-parity.mjs");
+
+    expect(guard).toContain("Pick a send time in the future.");
+    expect(guard).toContain("scheduledTimeIsFuture");
+    expect(guard).toContain("cancelPendingAutosave");
+    expect(guard).toContain("autosaveBlocked");
+    expect(guard).toContain("saveDraft(false, { autosave: true })");
+  });
+
   test("ORCH-1095 route protections remain while compose gets a distinct real runtime", () => {
     const injector = stripComments(repoFile("scripts/inject-mobile-blur-css.mjs"));
 

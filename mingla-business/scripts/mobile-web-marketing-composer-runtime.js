@@ -210,6 +210,28 @@ function renderMarketingComposerRoute(path, session, chosen, uid, email) {
     });
   }
 
+  function scheduledDateValue() {
+    if (!state.scheduledFor) return null;
+    var date = new Date(state.scheduledFor);
+    return Number.isNaN(date.getTime()) ? null : date;
+  }
+
+  function scheduledTimeIsFuture() {
+    var date = scheduledDateValue();
+    return date !== null && date.getTime() > Date.now();
+  }
+
+  function cancelPendingAutosave() {
+    if (saveTimer) {
+      clearTimeout(saveTimer);
+      saveTimer = null;
+    }
+  }
+
+  function autosaveBlocked() {
+    return state.submitting || state.activePanel === "success";
+  }
+
   function ensureAudience(kind, targetId) {
     var existingParams = "select=id,query_definition&brand_id=eq." + queryValue(state.brandId) + "&is_system_generated=eq.true";
     return composerRest("marketing_audiences", existingParams).then(function (rows) {
@@ -365,7 +387,8 @@ function renderMarketingComposerRoute(path, session, chosen, uid, email) {
     if (!bodyText(state.bodyHtml)) return "Write a message before sending.";
     if (state.sendMode === "schedule") {
       if (!state.scheduledFor) return "Pick a send time.";
-      if (Number.isNaN(new Date(state.scheduledFor).getTime())) return "Pick a valid send time.";
+      if (scheduledDateValue() === null) return "Pick a valid send time.";
+      if (!scheduledTimeIsFuture()) return "Pick a send time in the future.";
     }
     return null;
   }
@@ -379,9 +402,14 @@ function renderMarketingComposerRoute(path, session, chosen, uid, email) {
   function markDirty() {
     state.dirty = true;
     state.success = null;
-    if (saveTimer) clearTimeout(saveTimer);
+    cancelPendingAutosave();
+    if (autosaveBlocked()) {
+      updateStatusOnly();
+      return;
+    }
     saveTimer = setTimeout(function () {
-      void saveDraft(false);
+      saveTimer = null;
+      void saveDraft(false, { autosave: true });
     }, 800);
     updateStatusOnly();
   }
@@ -398,7 +426,9 @@ function renderMarketingComposerRoute(path, session, chosen, uid, email) {
           : "Ready";
   }
 
-  function saveDraft(showSuccess) {
+  function saveDraft(showSuccess, options) {
+    if (options && options.autosave && autosaveBlocked()) return Promise.resolve();
+    cancelPendingAutosave();
     syncFieldsFromDom();
     if (state.saving) return Promise.resolve();
     state.saving = true;
@@ -481,6 +511,7 @@ function renderMarketingComposerRoute(path, session, chosen, uid, email) {
   }
 
   function confirmSchedule() {
+    syncFieldsFromDom();
     var message = validationMessage();
     if (message !== null) {
       state.error = message;
@@ -488,6 +519,7 @@ function renderMarketingComposerRoute(path, session, chosen, uid, email) {
       render();
       return;
     }
+    cancelPendingAutosave();
     state.submitting = true;
     state.error = null;
     render();
@@ -501,6 +533,7 @@ function renderMarketingComposerRoute(path, session, chosen, uid, email) {
         ? "Campaign queued to send now."
         : "Campaign scheduled for " + formatScheduledLabel() + ".";
       state.activePanel = "success";
+      cancelPendingAutosave();
       render();
     }).catch(function (error) {
       state.submitting = false;

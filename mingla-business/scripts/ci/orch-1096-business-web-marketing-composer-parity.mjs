@@ -124,9 +124,24 @@ for (const token of [
   "scheduleSend",
   "createDraft",
   "updateDraft",
+  "scheduledTimeIsFuture",
+  "Pick a send time in the future.",
+  "cancelPendingAutosave",
+  "autosaveBlocked",
+  "saveDraft(false, { autosave: true })",
 ]) {
   assertIncludes(runtime, token, RUNTIME);
 }
+const validationBlock = sourceBetween(runtime, "function validationMessage()", "function syncFieldsFromDom()");
+assertIncludes(validationBlock, "scheduledTimeIsFuture()", "schedule validation");
+assertIncludes(validationBlock, "Pick a send time in the future.", "schedule validation");
+const markDirtyBlock = sourceBetween(runtime, "function markDirty()", "function updateStatusOnly()");
+assertIncludes(markDirtyBlock, "autosaveBlocked()", "autosave guard");
+assertIncludes(markDirtyBlock, "saveDraft(false, { autosave: true })", "autosave guard");
+const confirmBlock = sourceBetween(runtime, "function confirmSchedule()", "function formatScheduledLabel()");
+assertIncludes(confirmBlock, "syncFieldsFromDom()", "schedule confirmation validation");
+assertIncludes(confirmBlock, "cancelPendingAutosave()", "schedule confirmation autosave guard");
+assertIncludes(confirmBlock, 'state.activePanel = "success"', "schedule confirmation autosave guard");
 for (const token of FORBIDDEN_NATIVE_TOKENS) {
   assertNotIncludes(runtime, token, RUNTIME);
 }
