@@ -1,6 +1,6 @@
 # Product Snapshot
 
-> **2026-06-07 - ORCH-1094 [Business web core parity wave] closed the signed-in phone-browser safety foundation.** Product reality: users can sign in on a phone browser without falling into the white-screen crash path, and Android Chrome can open the real Event Create wizard. **What's strong:** auth callback/index routing now keeps phones on static Home, auth bootstrap can recover a stored session, Event Create can use the stored brand, and heavy routes route to safe static sections instead of crashing. **What's still fragile:** Hub, Marketing, Account, and Compose are not full interactive phone-browser parity yet; they are safe launch/deep-link sections until the next web-parity pass restores deeper functionality. **Launch posture:** safer and faster for signed-in phone browsers, but not the final complete mobile web product.
+> **2026-06-07 - ORCH-1095 [Business web interactive parity wave] closed the five-route Android phone-browser OOM entry gap.** Product reality: after sign-in, Android Chrome can now open Hub Events, Hub Trips, Marketing, Compose, and Account at their real URLs without white-screening or crashing the browser renderer. **What's strong:** the app avoids the heavy Expo boot on those phone routes, renders real signed-in brand/campaign/account data, preserves static Home/auth/blocked-route safety, and CI now guards both the old crash path and new unpromoted dead-tap risk. **What's still fragile:** this is not every desktop/app control on mobile web; iPhone Safari signed-in proof and deeper route workflows still need follow-up completion work. **Launch posture:** materially better for phone-browser organisers, but full mobile web remains a staged program.
 
 > **2026-06-06 - ORCH-1093 [Business web signed-in route OOM on mobile browsers] closed the immediate mobile-browser crash class.** Product reality: phone browsers now fail safely on risky signed-in business-web routes instead of crashing the renderer. Events, Marketing, Compose, Account, and Trips show protected recovery before Expo loads; Create remains the only real Expo phone route approved by this slice. **What's strong now:** static Home is fast, route-entry OOM is blocked, Android Chrome and Safari smoke passed, and CI catches both oversized eager boot and the previous deferred false-pass. **What's still fragile:** this is not full web parity; route-family functionality still has to be restored in larger optimized waves before business web can be called complete.
 
@@ -235,11 +235,11 @@
 | Metric | Value |
 |--------|-------|
 | Total items tracked | 303 |
-| Grade A (launch-ready) | 101 (33%) |
+| Grade A (launch-ready) | 102 (34%) |
 | Grade B (solid, minor gaps) | 24 (8%) |
 | Grade C (functional, incomplete) | 4 (1%) |
 | Grade D (fragile) | 4 (1%) |
-| Grade F (broken/unaudited) | 170 (56%) |
+| Grade F (broken/unaudited) | 169 (56%) |
 | Deferred | 1 (<1%) |
 | Deck hardening passes complete | 12 (46 bugs fixed) |
 | Place-pipeline passes complete | 1 (8 bugs fixed in single ORCH-0460 bundle) |

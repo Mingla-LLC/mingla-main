@@ -18,42 +18,42 @@ const COMMON_LIMIT = 1_200_000;
 const ROUTES = [
   {
     label: "/hub/trips",
-    status: "approved",
+    status: "interactive",
     source: "app/(tabs)/hub/trips.tsx",
     budget: 80_000,
     tokens: ["No trips yet", "Select a brand to see its trips."],
   },
   {
     label: "/hub/events",
-    status: "approved",
+    status: "interactive",
     source: "app/(tabs)/hub/events.tsx",
     budget: 120_000,
     tokens: ["Nothing created yet", "Build a new event"],
   },
   {
     label: "/marketing",
-    status: "approved",
+    status: "interactive",
     source: "app/(tabs)/marketing/index.tsx",
     budget: 150_000,
     tokens: ["Blast these", "Marketing"],
   },
   {
     label: "/marketing/campaigns/compose",
-    status: "approved",
+    status: "interactive",
     source: "app/(tabs)/marketing/campaigns/compose.tsx",
     budget: 600_000,
     tokens: ["Compose blast", "campaigns/compose"],
   },
   {
     label: "/account",
-    status: "approved",
+    status: "interactive",
     source: "app/(tabs)/account.tsx",
     budget: 120_000,
     tokens: ["Sign out everywhere", "Your brands"],
   },
   {
     label: "/event/create",
-    status: "approved",
+    status: "interactive",
     source: "app/event/create.tsx",
     budget: 80_000,
     tokens: ["CreateRouteTerminalState", "Getting your brand ready"],
@@ -229,10 +229,10 @@ function routeStatusMap(overrides = {}) {
   return new Map(ROUTES.map((route) => [route.label, overrides[route.label] ?? route.status]));
 }
 
-function approvedRoutesWithoutOversizeProof(statuses, provenRoutes = PHYSICALLY_PROVEN_OVERSIZE_BOOT_ROUTES) {
+function interactiveRoutesWithoutOversizeProof(statuses, provenRoutes = PHYSICALLY_PROVEN_OVERSIZE_BOOT_ROUTES) {
   return ROUTES.filter(
     (route) =>
-      statuses.get(route.label) === "approved" &&
+      statuses.get(route.label) === "interactive" &&
       !provenRoutes.has(route.label),
   ).map((route) => route.label);
 }
@@ -260,11 +260,11 @@ async function assertBundleBudgets(root = "dist", options = {}) {
   const commonPath = phoneBootScriptPaths.find((path) => basename(path).startsWith("__common-"));
   const commonBytes = commonPath === undefined ? 0 : rawBytes(commonPath);
   const statuses = routeStatusMap(options.routeStatusOverride ?? {});
-  const unprovenApprovedRoutes = approvedRoutesWithoutOversizeProof(statuses);
+  const unprovenApprovedRoutes = interactiveRoutesWithoutOversizeProof(statuses);
   const bootOverBudget = phoneBootTotal > EAGER_TOTAL_LIMIT || commonBytes > COMMON_LIMIT;
   if (bootOverBudget && unprovenApprovedRoutes.length > 0) {
     fail(
-      `approved mobile route(s) ${unprovenApprovedRoutes.join(", ")} still load Expo boot JS ` +
+      `interactive mobile route(s) ${unprovenApprovedRoutes.join(", ")} still load Expo boot JS ` +
         `${phoneBootTotal} bytes (__common=${commonBytes}); mark them pending-proof or reduce boot payload`,
     );
   }
@@ -295,7 +295,7 @@ async function assertBundleBudgets(root = "dist", options = {}) {
   }
 
   console.log(
-    `ORCH-1093 bundle budgets PASS. phoneBoot=${phoneBootTotal}; __common=${commonBytes}; deferred=${deferredByOrch1093}; approved=${ROUTES.filter((route) => statuses.get(route.label) === "approved").map((route) => route.label).join(",") || "none"}`,
+    `ORCH-1093 bundle budgets PASS. phoneBoot=${phoneBootTotal}; __common=${commonBytes}; deferred=${deferredByOrch1093}; interactive=${ROUTES.filter((route) => statuses.get(route.label) === "interactive").map((route) => route.label).join(",") || "none"}`,
   );
   for (const row of routeRows) console.log(`ORCH-1093 route chunk ${row}`);
 }
@@ -313,11 +313,11 @@ function assertSourceGuards() {
   const rootLayout = read("app/_layout.tsx");
   for (const token of [
     "ORCH_1093_SIGNED_IN_ROUTE_STATUS",
-    "\"/hub/events\": \"approved\"",
-    "\"/marketing\": \"approved\"",
-    "\"/marketing/campaigns/compose\": \"approved\"",
-    "\"/account\": \"approved\"",
-    "\"/hub/trips\": \"approved\"",
+    "\"/hub/events\": \"interactive\"",
+    "\"/marketing\": \"interactive\"",
+    "\"/marketing/campaigns/compose\": \"interactive\"",
+    "\"/account\": \"interactive\"",
+    "\"/hub/trips\": \"interactive\"",
     "\"/hub/experiences\": \"blocked\"",
     "\"/ari\": \"blocked\"",
     "\"/connect-account-management\": \"blocked\"",
@@ -367,12 +367,11 @@ function assertSourceGuards() {
     assertIncludes(inject, token, "scripts/inject-mobile-blur-css.mjs");
   }
   for (const route of ["/hub/events", "/marketing", "/marketing/campaigns/compose", "/account", "/hub/trips"]) {
-    assertIncludes(inject, `"${route}":"approved"`, "scripts/inject-mobile-blur-css.mjs");
+    assertIncludes(inject, `"${route}":"interactive"`, "scripts/inject-mobile-blur-css.mjs");
   }
-  assertIncludes(inject, 'status!=="approved"', "scripts/inject-mobile-blur-css.mjs");
-  assertIncludes(inject, "function hasSession()", "scripts/inject-mobile-blur-css.mjs");
-  assertIncludes(inject, "function staticTarget(path)", "scripts/inject-mobile-blur-css.mjs");
-  assertIncludes(inject, 'location.replace("/home#"+target)', "scripts/inject-mobile-blur-css.mjs");
+  assertIncludes(inject, 'status!=="interactive"', "scripts/inject-mobile-blur-css.mjs");
+  assertIncludes(inject, 'return map[path]||"static-section"', "scripts/inject-mobile-blur-css.mjs");
+  assertNotIncludes(inject, 'location.replace("/home#"+target)', "scripts/inject-mobile-blur-css.mjs");
 
   const vercel = JSON.parse(read("vercel.json"));
   const webJsHeader = (vercel.headers ?? []).find((header) => header.source === "/_expo/static/js/web/(.*)");
@@ -423,17 +422,17 @@ function runSelfTest() {
     let failedDeferredFalsePass = false;
     try {
       awaitableAssertBundleBudgets("dist", {
-        "/hub/events": "approved",
-        "/marketing": "approved",
-        "/marketing/campaigns/compose": "approved",
-        "/account": "approved",
+        "/hub/events": "interactive",
+        "/marketing": "interactive",
+        "/marketing/campaigns/compose": "interactive",
+        "/account": "interactive",
       });
     } catch {
       failedDeferredFalsePass = true;
     } finally {
       process.chdir(previousDeferred);
     }
-    if (!failedDeferredFalsePass) fail("--self-test expected deferred oversized approved-route payload to fail");
+    if (!failedDeferredFalsePass) fail("--self-test expected deferred oversized interactive-route payload to fail");
     console.log("ORCH-1093 deferred false-pass self-test PASS.");
   } finally {
     rmSync(dir, { recursive: true, force: true });
@@ -450,7 +449,7 @@ function awaitableAssertBundleBudgets(root, routeStatusOverride = {}) {
   const commonPath = phoneBootScriptPaths.find((path) => basename(path).startsWith("__common-"));
   const commonBytes = commonPath === undefined ? 0 : rawBytes(commonPath);
   const statuses = routeStatusMap(routeStatusOverride);
-  const unprovenApprovedRoutes = approvedRoutesWithoutOversizeProof(statuses, new Set());
+  const unprovenApprovedRoutes = interactiveRoutesWithoutOversizeProof(statuses, new Set());
   if (
     scriptPaths.length > 0 &&
     (phoneBootTotal > EAGER_TOTAL_LIMIT || commonBytes > COMMON_LIMIT)

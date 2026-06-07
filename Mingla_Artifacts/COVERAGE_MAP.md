@@ -1,6 +1,6 @@
 # Coverage Map
 
-> **2026-06-07 - ORCH-1094 [Business web core parity wave] coverage closed conditionally for signed-in phone-browser safety.** Coverage added: mobile auth redirect guard, stored web-session fallback on auth bootstrap timeout, stored-brand Event Create fast path, preboot static-section redirects for signed-in heavy phone routes, focused Jest coverage, export/injector/route-chain gates, and physical Android Chrome Google sign-in proof. Android coverage now proves signed-in `/home`, real `/event/create`, and static section redirects for Hub/Marketing/Compose/Account do not blank or crash. Residual coverage gap: physical iPhone Safari signed-in proof and full interactive phone-browser parity for Hub, Marketing, Account, and Compose remain follow-up work.
+> **2026-06-07 - ORCH-1095 [Business web interactive parity wave] coverage closed for five signed-in Android phone-browser routes.** Coverage added: `/hub/events`, `/hub/trips`, `/marketing`, `/marketing/campaigns/compose`, and `/account` now have a guarded lightweight signed-in route entry before Expo boot, with source/export/Jest guards against the old static redirect, blocked-route promotion, unpromoted direct-entry taps, native/provider module leakage, and oversized route chunks. Runtime coverage: physical Samsung A72 Chrome rendered all five real URLs after fresh export, static `/home` stayed Expo-free, `/hub/experiences`, `/ari`, and `/connect-account-management` stayed blocked, and rebuilt logcat showed zero V8 OOM / renderer-crash signatures. Residual coverage gap: iPhone Safari live signed-in proof and deeper full-route functionality beyond this lightweight entry remain future web-completion work.
 
 > **2026-06-06 - ORCH-1093 [Business web signed-in route OOM on mobile browsers] coverage closed for safety release.** Coverage added: generated-output guard now counts deferred phone boot bytes instead of allowing an `eager=0` false pass; ORCH-1092's route-recovery guard understands ORCH-1093 protected recovery; and physical phone-browser coverage proves risky signed-in routes recover before Expo boot. Android Chrome on Samsung A72 verified `/hub/events`, `/marketing`, `/marketing/campaigns/compose`, `/account`, and `/hub/trips` render protected recovery with `expoResourceCount=0` and no OOM/Aw Snap logcat signatures; Seth confirmed mobile Safari works. Residual coverage gap: full feature parity for those routes remains unproven and must be covered by later route-family/code-splitting waves before reopening them.
 
@@ -200,7 +200,7 @@
 | Analytics & Tracking | 11 | 1 | 0 | 2 | 2 | 6 | 55% | 0% | Weak |
 | Weather & External | 6 | 0 | 0 | 0 | 0 | 6 | 100% | 0% | Unaudited |
 | UI Components | 10 | 3 | 0 | 0 | 0 | 7 | 70% | 0% | Weak |
-| **TOTAL** | **303** | **101** | **24** | **4** | **4** | **170** | **56%** | **0%** | **Weak → Slightly improving** |
+| **TOTAL** | **303** | **102** | **24** | **4** | **4** | **169** | **56%** | **0%** | **Weak → Improving** |
 
 ## Heatmap Summary
 
