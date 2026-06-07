@@ -13,17 +13,25 @@
  * hide pattern from `(tabs)/_layout.tsx`).
  */
 
-import React, { useCallback, useState } from "react";
+import React, { Suspense, useCallback, useState } from "react";
 import { StyleSheet, View } from "react-native";
 import { Slot, usePathname } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { BrandSwitcherSheet } from "../../../src/components/brand/BrandSwitcherSheet";
 import { MarketingSubNav } from "../../../src/components/marketing/MarketingSubNav";
 import { IconChrome } from "../../../src/components/ui/IconChrome";
 import { TopBar } from "../../../src/components/ui/TopBar";
-import { UniversalCreatorSheet } from "../../../src/components/ui/UniversalCreatorSheet";
 import { canvas, spacing } from "../../../src/constants/designSystem";
+
+const LazyBrandSwitcherSheet = React.lazy(async () => {
+  const mod = await import("../../../src/components/brand/BrandSwitcherSheet");
+  return { default: mod.BrandSwitcherSheet };
+});
+
+const LazyUniversalCreatorSheet = React.lazy(async () => {
+  const mod = await import("../../../src/components/ui/UniversalCreatorSheet");
+  return { default: mod.UniversalCreatorSheet };
+});
 
 export default function MarketingTabLayout(): React.ReactElement {
   const insets = useSafeAreaInsets();
@@ -62,15 +70,23 @@ export default function MarketingTabLayout(): React.ReactElement {
       </View>
       <MarketingSubNav />
       <Slot />
-      <BrandSwitcherSheet
-        visible={brandSheetVisible}
-        onClose={() => setBrandSheetVisible(false)}
-      />
+      {brandSheetVisible ? (
+        <Suspense fallback={null}>
+          <LazyBrandSwitcherSheet
+            visible
+            onClose={() => setBrandSheetVisible(false)}
+          />
+        </Suspense>
+      ) : null}
       {/* ORCH-0826 M0: universal creator sheet */}
-      <UniversalCreatorSheet
-        visible={isUniversalCreatorOpen}
-        onClose={() => setIsUniversalCreatorOpen(false)}
-      />
+      {isUniversalCreatorOpen ? (
+        <Suspense fallback={null}>
+          <LazyUniversalCreatorSheet
+            visible
+            onClose={() => setIsUniversalCreatorOpen(false)}
+          />
+        </Suspense>
+      ) : null}
     </View>
   );
 }

@@ -1,5 +1,9 @@
 # Agent Handoffs
 
+## 2026-06-06 - ORCH-1093 [Business web signed-in route OOM on mobile browsers] CLOSED PASS Grade A safety release
+
+Pipeline completed: forensics/spec proved the phone-browser route OOM source, implementor installed route status + lazy guards + generated-output CI, tester returned conditional pass, orchestrator retest fixed the stale ORCH-1092 guard contract, Android Chrome protected-route proof passed, and Seth confirmed mobile Safari works. Current branch: `~/Desktop/mingla-orchs/ORCH-1093-[business-web-signedin-route-oom]/` on `ORCH-1093-business-web-signedin-route-oom`, pushed at `0d55a9670` before close artifacts. Downstream routing: orchestrator PR/merge/deploy from merged main only; no native OTA. Follow-up web work should be a new route-family parity/code-splitting wave because ORCH-1093 deliberately protects Events/Marketing/Compose/Account/Trips rather than restoring their full functionality.
+
 ## 2026-06-06 - ORCH-1092 [Business web restoration wave] CLOSED PASS Grade A
 
 No downstream handoff remains for this ORCH. The bounded restoration wave reopened `/hub/events`, `/marketing`, `/marketing/campaigns/compose`, and `/account` from static Home; preserved Create; kept Payout account, Hub Experiences, Hub Trips, and Ari shelled; and verified production phone-browser recovery on `business.usemingla.com`. Evidence is in `Mingla_Artifacts/reports/CLOSE_ORCH-1092_BUSINESS_WEB_RESTORATION_WAVE.md`. Next business-web work should start as a fresh ORCH for the next route-family wave, using ORCH-1092's native-quarantine and production-proof pattern.

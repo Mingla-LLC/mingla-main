@@ -1,5 +1,7 @@
 # Priority Board
 
+> **2026-06-06 - ORCH-1093 [Business web signed-in route OOM on mobile browsers] OFF BOARD as CLOSED PASS Grade A safety release.** The crash blocker is closed: risky signed-in phone routes now show protected recovery before Expo boot, Android Chrome proves zero Expo JS loaded on protected routes, and Seth confirmed Safari works. Next priority is full business-web parity by route family, not another crash-stop patch: restore Events/Marketing/Account/Trips/Ari/payouts through deeper boot reduction or route-family code-splitting, with phone-browser proof before each family is reopened.
+
 > **2026-06-06 - ORCH-1092 [Business web restoration wave] CLOSED; next web priority is the next bounded parity wave.** Shipped wave: Events Hub, Marketing overview, Marketing compose, and Account reopen from static Home with production phone-browser proof. Preserve the proven pattern for the next wave: keep Expo Web, move in larger route chunks, quarantine native modules, keep ORCH-1091 cache guards, and require live phone-browser proof before marking a route family restored.
 
 > **2026-06-06 - ORCH-1091 [Business web mobile cache invalidation] OFF BOARD (CLOSED PASS Grade A).** The inconsistent phone-browser failure is closed: production web JS now revalidates and the exported HTML carries a cache-bust, so old route maps cannot keep pointing at deleted chunks after deploy. Seth smoke confirmed signed-in Create opens instantly on Chrome and Safari; no further Create-route repair is pending.

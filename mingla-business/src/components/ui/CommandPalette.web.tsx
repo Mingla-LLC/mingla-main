@@ -41,7 +41,7 @@
  * Per SPEC_ORCH-0891 §3.5.6 + DESIGN_SPEC §5.
  */
 
-import React, { useEffect } from "react";
+import React from "react";
 import { Command } from "cmdk";
 import { useRouter } from "expo-router";
 
@@ -66,7 +66,7 @@ export const CommandPalette: React.FC = () => {
   const { user } = useAuth();
   const accountId = user?.id ?? null;
 
-  const { isOpen, query, open, close, toggle, setQuery } = useCommandPalette();
+  const { isOpen, query, open, close, setQuery } = useCommandPalette();
 
   // Fetch recent items. React Query handles caching + auto-refetch on
   // window focus, so the palette always reflects current state.
@@ -77,22 +77,6 @@ export const CommandPalette: React.FC = () => {
   const recentCampaigns = (campaignsQuery.data ?? []).slice(0, RECENT_LIMIT);
   const recentAudiences = audiencesQuery.entries.slice(0, RECENT_LIMIT);
   const recentTemplates = (templatesQuery.data ?? []).slice(0, RECENT_LIMIT);
-
-  // Global ⌘K / Ctrl+K listener.
-  useEffect(() => {
-    if (typeof window === "undefined") return; // SSR safety
-
-    const onKeyDown = (e: KeyboardEvent): void => {
-      const cmd = e.metaKey || e.ctrlKey;
-      if (cmd && e.key.toLowerCase() === "k") {
-        e.preventDefault();
-        toggle();
-      }
-    };
-
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, [toggle]);
 
   const navigateAndClose = (path: string): void => {
     close();
