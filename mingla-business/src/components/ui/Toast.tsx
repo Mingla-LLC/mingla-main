@@ -66,7 +66,6 @@ import Animated, {
 } from "react-native-reanimated";
 import {
   Gesture,
-  GestureDetector,
   GestureHandlerRootView,
 } from "react-native-gesture-handler";
 import { BlurView } from "expo-blur";
@@ -80,6 +79,7 @@ import {
   typography,
 } from "../../constants/designSystem";
 
+import { WebSafeGestureDetector } from "./WebSafeGestureDetector";
 import { Icon } from "./Icon";
 import type { IconName } from "./Icon";
 import { AUTO_DISMISS, type ToastKind } from "./toastTimings";
@@ -363,7 +363,7 @@ export const Toast: React.FC<ToastProps> = ({
           on Android either no-ops OR freezes the entire screen because
           the gesture system thinks a pan is still in flight. */}
       <GestureHandlerRootView style={styles.portalRoot} pointerEvents="box-none">
-        <GestureDetector gesture={panGesture}>
+        <WebSafeGestureDetector gesture={panGesture}>
           <Animated.View
             pointerEvents={visible ? "auto" : "none"}
             style={[
@@ -452,7 +452,7 @@ export const Toast: React.FC<ToastProps> = ({
             </View>
           </Pressable>
           </Animated.View>
-        </GestureDetector>
+        </WebSafeGestureDetector>
       </GestureHandlerRootView>
     </Modal>
   );
