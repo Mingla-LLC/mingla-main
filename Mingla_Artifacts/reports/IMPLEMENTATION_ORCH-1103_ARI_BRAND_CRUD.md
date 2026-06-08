@@ -136,3 +136,77 @@ UNVERIFIED-on-device (orchestrator live test after deploy): the end-to-end Gemin
 2. **`app/event/create.tsx` `no_brand` dead-end (SPEC §12.2).** Untouched. Routing it INTO Ari is a separate UX follow-on.
 3. **`BrandCoverPickerSheet.tsx` dead orphan (SPEC §12.3).** Untouched; orchestrator cleanup note.
 4. **Two PRE-EXISTING jest failures (NOT ORCH-1103).** `src/hooks/__tests__/orch1004AllowlistIntegrity.test.ts` (expects `usePublicExperience.ts` in an allowlist) and `src/hooks/__tests__/brandListState.test.ts` (expects a `!isError && brand === null` substring) both fail on the current branch. Neither file is touched by ORCH-1103; both belong to other in-flight work. Flagged for triage.
+
+---
+
+# REWORK 1 — Add-cover create-time dead tap (P1) + per-element dead-tap audit
+
+**Date:** 2026-06-08 · **Trigger:** live device test (physical iPhone, Metro :8130) — "Add cover" on a CREATE-brand proposal did nothing.
+**Commit:** `feb4c2a25` (on branch `ORCH-1103-ari-brand-crud-smart`) · base `4493cb91d`.
+**Status:** implemented and verified (tsc clean on all touched files; 21/21 ORCH-1103 jest assertions green incl. 6 new REWORK assertions; full ari suite 106/106 green; fails-on-revert proven at `4493cb91d`). Cover PERSISTENCE on create cannot round-trip until the new edge functions deploy — but the picker OPENING and the create-and-attach client sequencing work now under Fast Refresh.
+
+## The exact bug + fix
+
+**Root cause (confirmed):** `ToolProposalCard.tsx` built `coverTarget` only for `update_brand`:
+```ts
+// BEFORE
+const coverTarget = isBrandUpdate && typeof args.brand_id === "string" && accountId ? { ... } : null;
+```
+The `CoverPickerSheet` was mounted only `when isBrandWithCover && coverTarget`. On a CREATE there is no `brand_id`, so `coverTarget` was `null`, the sheet never mounted, and the Add-cover `Pressable` (`onOpen={() => setCoverSheetVisible(true)}`) flipped a visibility flag against a non-existent sheet → dead tap. The prior comment admitted create-time was deferred — violating the Q7 override (device + video MUST work at create).
+
+**Architectural constraint discovered (drives the fix):** the reused `CoverPicker` persists EVERY brand-target media — device image, device VIDEO, Pexels, AND GIPHY — live to a real `brandId` (`CoverPicker.tsx:400, :437, :688, :731` all call `brandCover.uploadCover(...)` / `videoUpload.start(...)`). There is NO emit-only-without-persist mode for a brand target. So the design's "thread provider picks via args with no brandId" cannot be done while reusing the picker verbatim — every tab needs a real brand row. The honest, RLS-correct, verbatim-reuse resolution is to mint the brand FIRST for the whole picker (design §3.2/§3.5's preferred close+reopen simplification), which delivers all four tabs at create.
+
+**Fix (design §3 create-row-first / attach-second, Q7):**
+1. `coverTarget` now derives from `effectiveBrandId = createdBrandId ?? updateBrandId` and mounts for `isBrandWithCover && effectiveBrandId && accountId` — no longer update-only.
+2. New `handleAddCoverPress`: EDIT (real `brand_id`) opens the picker directly; CREATE with no brand yet surfaces an inline **"Create & attach"** confirm ("We'll create *<name>* so your cover has a home.") instead of a dead tap; CREATE with a brand already minted this session opens directly.
+3. `handleCreateAndAttach`: shows the **"Creating brand…"** band state, calls `onConfirm(editedArgs, /*keepPending*/ true)` to commit `create_brand` WITHOUT clearing the pending action (so the card survives to host the picker), captures the returned `brandId` from the executed result, sets `createdBrandId` (which rebuilds `coverTarget`), and opens the full picker against the real brand. The picker can't swap targets while mounted, so this is the close+reopen path the design approved.
+4. `onAttachDone` (new prop, wired `MessageList → AriChatScreen → chat.clearPendingAction`): when the picker closes after a create-for-cover attach, the pending action resolves and the executed `create_brand` tool_result renders the brand receipt (Surface 4).
+5. Chain typing: `onConfirm` now returns `Promise<ConfirmOutcome>` (`{ ok, brandId? }`) end-to-end; `AriChatScreen.handleConfirm` reads `result.result.brand.id` and accepts a `keepPending` flag.
+
+EDIT path is unchanged (it already worked). No new sheet, bucket, migration, or edge function. Honors `ANDROID_GLASS_USES_OPAQUE_FALLBACK` (reused band styles + opaque `#16181b`), reduced-motion (inherited), accessibility labels on every new control, the delete zero-bypass guard, and the de-GBP create — all untouched.
+
+## Per-element dead-tap audit (every interactive element in the brand flows)
+
+| Element | Where | Verdict | Wiring proof |
+|---|---|---|---|
+| **Add cover — CREATE** | ToolProposalCard CoverBand | **FIXED** | `onOpen={handleAddCoverPress}` → on create with no brand, opens the inline "Create & attach" confirm (was: dead `setCoverSheetVisible(true)` against an unmounted sheet). |
+| **Add cover — EDIT** | ToolProposalCard CoverBand | works (unchanged) | `coverTarget` from `args.brand_id` → picker mounts + opens. Verified mount condition `isBrandWithCover && coverTarget`. |
+| **Create & attach** (new) | ToolProposalCard inline confirm | works | `onPress={() => void handleCreateAndAttach()}` → commits `create_brand` (keepPending), opens picker against new brand. |
+| **Not now** (new, in the inline confirm) | ToolProposalCard | works | `onPress={() => setCreateAttachVisible(false)}` → dismisses the confirm; band returns to empty Add-cover. |
+| **Change cover** (Pencil disc) | ToolProposalCard CoverBand filled | works | `onPress={onOpen}` → `handleAddCoverPress` → opens picker (real target present once a cover exists). |
+| **Remove cover** (X disc) | ToolProposalCard CoverBand filled | works | `onPress={onRemove}` → `handleRemoveCover` deletes `cover_media_url/_type` from `editedArgs`. |
+| **Cancel** | ToolProposalCard actions | works | `onPress={onCancel}` → `handleCancelProposal` → `confirm.cancel(...)` + clears pending. |
+| **Edit** | ToolProposalCard actions | works | `onPress={() => setEditing(e => !e)}` → toggles `ToolEditForm`. |
+| **Confirm** | ToolProposalCard actions | works | `onPress={() => onConfirm(editing ? editedArgs : undefined)}` → commits; now returns `ConfirmOutcome` (no behavior change for non-create-cover path). |
+| **Delete brand** (type-name gate) | ToolProposalCard delete variant | works | `disabled={isExecuting || !canDelete}`; `canDelete = typedName.trim().toLowerCase() === deleteName...`. Enabled only on case-insensitive name match. |
+| **Type-the-name field** | ToolProposalCard delete variant | works | `value={typedName} onChangeText={setTypedName}`, gates Delete. |
+| **Receipt next-action** ("Add your first event?" / "Edit") | MessageList ResponseCard | works | `onAction` → `onSeedMessage("Create an event for <brand>")` / `("Edit <brand>")`; seeds a composer message only, NEVER auto-creates (asserted in test). |
+| **"Which brand?" disambiguation chips** | (Surface 3) | NOT RENDERED CLIENT-SIDE — no tap exists | `QuickReplyChips` is NOT imported/rendered in `MessageList`; disambiguation is prompt-driven and not wired this ORCH. No dead tap because no element exists. Flagged below. |
+| **No-brand → "create one?" handoff chips** | (Surface 5) | NOT RENDERED CLIENT-SIDE — no tap exists | Same as above: prompt-driven, `QuickReplyChips` not wired into `MessageList`. No dead tap because no element exists. Flagged below. |
+
+Result: the one real dead tap (Add cover on create) is fixed; every other interactive element in the touched brand flows performs exactly its claimed action. Surfaces 3 and 5 have no client-rendered interactive elements yet (they're prompt-driven and were never wired into `MessageList` in the original implementation), so they cannot be dead taps — but their absence is flagged for the orchestrator as a spec-vs-impl gap.
+
+## Backend-deploy dependency (client wiring proven, round-trip pending deploy)
+
+- **Create-time cover PERSISTENCE** requires the new `create_brand` edge function to return `{ brand: { id, ... } }` (read at `AriChatScreen` `result.result.brand.id`) AND the `brand_covers` bucket/RLS to be live for the post-create upload. Both are NOT yet deployed to the linked project. Until then: on create-and-attach the brand commits, but `outcome.brandId` may be absent (handled — the card resolves to the receipt and the user adds the cover from the brand's edit path) or, once deployed, the picker opens against the real brand and the cover persists. The client sequencing (Create & attach → Creating brand… → picker opens → onAttachDone → receipt) runs entirely client-side and is proven by the regression test + tsc.
+
+## Regression test
+
+- **Path:** `mingla-business/src/components/ari/__tests__/orch_1103_ari_brand_crud_ui.test.ts` — extended with a new `describe("ORCH-1103 REWORK — Add-cover on CREATE is never a dead tap (Q7)")` block (6 assertions: target not update-only gated; Add-cover routes through `handleAddCoverPress` → Create & attach; keepPending mint + picker open; generic mount condition; `ConfirmOutcome` chain; `AriChatScreen` reads back the brandId).
+- **Append-only respected:** existing assertions untouched; only added.
+- **Passing run:** `Tests: 21 passed, 21 total` (full ari suite `106 passed, 106 total`).
+- **fails-on-revert:** verified at `4493cb91d` — reverting the three source files (keeping the test) flips 5 of the 6 new assertions red (`5 failed, 16 passed`); restoring the fix returns `21 passed`.
+
+## Files changed (rework)
+
+| File | Before | After | Lines |
+|---|---|---|---|
+| `mingla-business/src/components/ari/ToolProposalCard.tsx` | `coverTarget` update-only; Add-cover dead on create | `effectiveBrandId` target; `handleAddCoverPress`; inline "Create & attach" + "Creating brand…" state; `handleCreateAndAttach` (keepPending mint → picker open); `handleCoverSheetClose` (onAttachDone); `onConfirm` returns `ConfirmOutcome`; new styles | ~+200 |
+| `mingla-business/src/components/ari/MessageList.tsx` | `onConfirm: () => void` | exports `ConfirmOutcome`; `onConfirm: (..., keepPending?) => Promise<ConfirmOutcome>`; new `onAttachDone` prop threaded to the card | ~+21 |
+| `mingla-business/src/screens/ari/AriChatScreen.tsx` | `handleConfirm` returns void; always clears pending | returns `ConfirmOutcome`; reads `result.result.brand.id`; `keepPending` skips clear; `onAttachDone={() => chat.clearPendingAction()}` | ~+26 |
+| `mingla-business/src/components/ari/__tests__/orch_1103_ari_brand_crud_ui.test.ts` | — | +6 REWORK assertions | +56 |
+
+## Discoveries for orchestrator (rework)
+
+5. **Surfaces 3 ("which brand?" disambiguation) and 5 (no-brand handoff) are not wired into `MessageList`.** The design specs both via `QuickReplyChips` CHOICE, but `MessageList` never imports/renders `QuickReplyChips` — these surfaces are entirely prompt-driven and have no client render path yet. Not a dead tap (no element exists), but a spec-vs-impl gap. Register a follow-up if these are expected to render client-side.
+6. **Provider picks (Pexels/GIPHY) cannot thread without a brandId while reusing `CoverPicker` verbatim.** The picker persists every brand-target media to a real `brandId`. The design's "Phase 0 — thread provider picks via args, no commit" is impossible without a non-persisting brand mode in the picker. The rework resolves this by minting the brand first for the WHOLE picker (design §3.2/§3.5's approved close+reopen). If a true no-commit provider path is wanted at create, it needs a new emit-only picker mode (separate ORCH).
