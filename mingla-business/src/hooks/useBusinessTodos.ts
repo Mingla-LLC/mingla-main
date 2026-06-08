@@ -17,7 +17,10 @@ import { useCurrentBrandRecovery } from "./useCurrentBrandRecovery";
 import { useServerDraftsForBrand } from "./useServerDraftEvents";
 import { useUpcomingForBrand } from "./useUpcomingForBrand";
 import { isBrandPayoutReady } from "../utils/brandPayout";
-import { useCurrentBrandStore } from "../store/currentBrandStore";
+import {
+  useCurrentBrandStore,
+  useCurrentBrandHasHydrated,
+} from "../store/currentBrandStore";
 import { useDraftsForBrand } from "../store/draftEventStore";
 import { useDraftVenueStore } from "../store/draftVenueStore";
 import {
@@ -38,6 +41,11 @@ export function useBusinessTodos(): BusinessTodo[] {
   const brands = brandsQuery.data ?? [];
   const currentBrand = useCurrentBrand();
   const currentBrandId = useCurrentBrandStore((s) => s.currentBrandId);
+  // ORCH-1100 Wave 1A (RC-1) — until the persisted store rehydrates, a null
+  // currentBrandId is ambiguous; treat it as resolving so the to-do list does
+  // not flash a "create your first brand" / no-selection row during the
+  // multi-tab auth-lock hydration window.
+  const hasBrandHydrated = useCurrentBrandHasHydrated();
   const brandRecovery = useCurrentBrandRecovery();
   useServerDraftsForBrand(currentBrand?.id ?? null);
   const pipelineState = useBrandPlacePipelineState(currentBrand?.id ?? null);
@@ -50,11 +58,17 @@ export function useBusinessTodos(): BusinessTodo[] {
       s.step > 0,
   );
 
-  const hasNoBrands = brandsQuery.isFetched && brands.length === 0;
   const isBrandResolving =
+    !hasBrandHydrated ||
     !brandsQuery.isFetched ||
     brandRecovery.isResolving ||
     (brands.length > 0 && currentBrandId !== null && currentBrand === null);
+  // ORCH-1100 Wave 1A (RC-1) — only assert "no brands" once resolution has
+  // genuinely settled. `buildBusinessTodos` checks hasNoBrands BEFORE the
+  // brandResolving early-return, so without this guard a transient
+  // mid-hydration empty read would flash "Create a brand".
+  const hasNoBrands =
+    brandsQuery.isFetched && brands.length === 0 && !isBrandResolving;
   const hasBrandsButNoSelection =
     brandsQuery.isFetched &&
     brands.length > 0 &&

@@ -31,20 +31,45 @@ import { useAuth } from "../context/AuthContext";
 import { useBrand } from "./useBrands";
 import { useCurrentBrandStore } from "../store/currentBrandStore";
 import type { Brand } from "../types/brand";
+// ORCH-1100 Wave 1A (RC-1) — hardened auto-clear predicate lives in a leaf util
+// (zero RN imports) so it is unit-testable in the node jest environment.
+import { shouldClearCurrentBrandId } from "../utils/currentBrandAutoClear";
+
+export { shouldClearCurrentBrandId } from "../utils/currentBrandAutoClear";
 
 export const useCurrentBrand = (): Brand | null => {
   const { isAuthReady } = useAuth();
   const currentBrandId = useCurrentBrandStore((s) => s.currentBrandId);
+  const hasHydrated = useCurrentBrandStore((s) => s.hasHydrated);
   const setCurrentBrandId = useCurrentBrandStore((s) => s.setCurrentBrandId);
   const { data: brand, isError, isFetched } = useBrand(
     isAuthReady ? currentBrandId : null,
   );
 
   useEffect(() => {
-    if (isAuthReady && currentBrandId !== null && isFetched && !isError && brand === null) {
+    // ORCH-1100 Wave 1A (RC-1) — harden the auto-clear against the multi-tab
+    // auth-lock token gap via the extracted shouldClearCurrentBrandId predicate.
+    if (
+      shouldClearCurrentBrandId({
+        hasHydrated,
+        isAuthReady,
+        currentBrandId,
+        isFetched,
+        isError,
+        brandIsNull: brand === null,
+      })
+    ) {
       setCurrentBrandId(null);
     }
-  }, [isAuthReady, currentBrandId, isFetched, isError, brand, setCurrentBrandId]);
+  }, [
+    hasHydrated,
+    isAuthReady,
+    currentBrandId,
+    isFetched,
+    isError,
+    brand,
+    setCurrentBrandId,
+  ]);
 
   return brand ?? null;
 };
