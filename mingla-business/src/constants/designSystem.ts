@@ -183,6 +183,59 @@ export const ariPalette = {
   proposalShadow: "hsla(20, 72%, 64%, 0.28)",
   // Glow color for the orb's halo
   glow: "hsla(22, 75%, 68%, 0.4)",
+  // ORCH-1101 — Ari thread brand accent. Operator decision (2026-06-08): the
+  // send button + user bubble + Confirm button + §5 cards use the canonical
+  // Mingla brand action color from the dev style guide (accent.warm #eb7825),
+  // paired with white text (colors.text.inverse) exactly like every other
+  // brand action button app-wide. This supersedes the earlier Ari-specific
+  // deep ember (#a85a44): brand consistency was chosen over the Ari-only 4.5:1
+  // target; white-on-#eb7825 (~2.9:1) is the established app-wide action pairing.
+  userBubble: accent.warm, // #eb7825 — Mingla brand action color
+} as const;
+
+// ORCH-1101 — Ari thread density spine. One vertical-rhythm + type + geometry
+// system applied across ChatBubble / MessageList / InputBar / cards. Promotes
+// the proven ORCH-0821 literals to named tokens and tightens 1–2px. Zero magic
+// numbers downstream; every Ari layout value resolves here.
+export const ariThread = {
+  // Vertical rhythm
+  gapTurn: 10, // between different-speaker turns
+  gapGroup: 4, // between same-speaker consecutive bubbles (iMessage cluster)
+  orbGap: 6, // orb → bubble gap on Ari rows
+  // Bubble geometry + padding
+  bubblePadH: 12,
+  bubblePadV: 8,
+  bubbleRadius: 16, // 3 non-tail corners (was 18)
+  bubbleTail: 4, // tail corner
+  bodyFont: 14,
+  bodyLine: 19,
+  // Cards
+  cardPad: 12,
+  cardTitleFont: 15,
+  cardTitleLine: 21,
+  btnHeight: 34,
+  // Composer
+  composerMinH: 48,
+  composerPadV: 8,
+  inputPadV: 6,
+  inputMinH: 30,
+  // Send button
+  sendSize: 34,
+  // Chips
+  chipFont: 13,
+  chipLine: 17,
+  // Android opaque-glass equivalent for the Ari bubble fill (composited value).
+  ariBubbleAndroid: "#16181b",
+  // ORCH-1101 REWORK Bug #4 — OPAQUE composer surface. The composer host used
+  // the translucent glass.tint.profileBase (rgba .04), so the empty-state hint
+  // ("Tap + for things to try") and any thread content showed THROUGH the input
+  // field. This is a solid, slightly-elevated fill over the dark discover canvas
+  // (#0c0e12) on EVERY platform (no rgba/hsla → satisfies
+  // ANDROID_GLASS_USES_OPAQUE_FALLBACK; nothing can bleed through).
+  composerSurface: "#191c21",
+  // Success / cancelled ribbon padding (matches new bubble density).
+  ribbonPadH: 10,
+  ribbonPadV: 5,
 } as const;
 
 export const canvas = {

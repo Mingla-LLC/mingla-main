@@ -3,12 +3,23 @@
  * Renders Ari messages in a FlatList. Auto-scrolls to bottom on new message.
  * Renders user bubbles, Ari prose bubbles, tool-result success ribbons, and
  * (when a pending action is live) a ToolProposalCard inline.
+ *
+ * ORCH-1101 — density spine: speaker grouping. Consecutive same-speaker
+ * bubbles cluster with a 4pt gap (gapGroup) instead of the 10pt turn gap
+ * (gapTurn); the orb renders only on the first Ari bubble of a group; only the
+ * last bubble of a group keeps its tail. Ribbon padding adopts ariThread; the
+ * success glyph is lucide Check (crisp on web). The §5 response components
+ * (chips / clarifying / multiselect / structured) are presentational and
+ * wired by the downstream smart-Ari ORCH — they render as Ari-lane items under
+ * the same single-live-at-tail rule.
  */
 
 import React, { useEffect, useRef } from "react";
 import { FlatList, StyleSheet, Text, View } from "react-native";
+import { Check } from "lucide-react-native";
 
 import {
+  ariThread,
   glass,
   radius,
   semantic,
@@ -31,9 +42,19 @@ export interface MessageListProps {
 }
 
 type ListItem =
-  | { kind: "message"; message: AgentMessage }
+  | { kind: "message"; message: AgentMessage; speaker: "user" | "ari"; hideOrb: boolean; tail: boolean }
   | { kind: "pending"; pendingAction: PendingActionView }
   | { kind: "thinking" };
+
+/** The speaker lane of a rendered row, or null for non-bubble rows (ribbons,
+ *  cards, thinking) — those always take the full turn gap. */
+function speakerOf(item: ListItem | null | undefined): "user" | "ari" | null {
+  if (!item) return null;
+  if (item.kind === "message") return item.speaker;
+  if (item.kind === "pending") return "ari";
+  if (item.kind === "thinking") return "ari";
+  return null;
+}
 
 export const MessageList: React.FC<MessageListProps> = ({
   messages,
@@ -56,7 +77,11 @@ export const MessageList: React.FC<MessageListProps> = ({
   //      inline ribbon would be the third indicator for one event.
   //      We keep the row in the DB (Gemini reads it for next-turn context)
   //      but hide it from the visual thread.
-  const items: ListItem[] = [];
+  //
+  // First pass builds the visible rows; a second pass annotates each bubble
+  // with grouping flags (hideOrb / tail) by comparing it to its visible
+  // bubble neighbours of the same speaker.
+  const raw: ListItem[] = [];
   for (const m of messages) {
     if (m.role === "assistant" && m.tool_calls && !(m.content as any)?.text) {
       const pendingId = (m.tool_calls as any).pending_action_id;
@@ -68,8 +93,41 @@ export const MessageList: React.FC<MessageListProps> = ({
     if (m.role === "tool" && (m.tool_results as any)?.outcome === "failed") {
       continue; // hidden — toast + Ari follow-up cover this
     }
-    items.push({ kind: "message", message: m });
+    if (m.role === "tool") {
+      // Tool-result ribbon — not a bubble, never grouped.
+      raw.push({ kind: "message", message: m, speaker: "ari", hideOrb: false, tail: true });
+      continue;
+    }
+    const text = (m.content as any)?.text ?? "";
+    if (!text) continue; // empty rows shouldn't render an empty bubble
+    raw.push({
+      kind: "message",
+      message: m,
+      speaker: m.role === "user" ? "user" : "ari",
+      hideOrb: false,
+      tail: true,
+    });
   }
+
+  // Grouping pass: a bubble is grouped with its previous sibling when the same
+  // speaker AND both are bubble rows (tool ribbons break a group). For an Ari
+  // group, follow-ups hideOrb; the non-last bubble in a group drops its tail.
+  const isBubble = (it: ListItem): boolean =>
+    it.kind === "message" && it.message.role !== "tool";
+  for (let i = 0; i < raw.length; i++) {
+    const cur = raw[i];
+    if (cur.kind !== "message" || cur.message.role === "tool") continue;
+    const prev = raw[i - 1];
+    const next = raw[i + 1];
+    const groupedWithPrev =
+      !!prev && isBubble(prev) && speakerOf(prev) === cur.speaker;
+    const groupedWithNext =
+      !!next && isBubble(next) && speakerOf(next) === cur.speaker;
+    if (groupedWithPrev && cur.speaker === "ari") cur.hideOrb = true;
+    if (groupedWithNext) cur.tail = false; // interior bubble — smooth column
+  }
+
+  const items: ListItem[] = [...raw];
   if (pendingAction) items.push({ kind: "pending", pendingAction });
   if (isThinking) items.push({ kind: "thinking" });
 
@@ -90,7 +148,20 @@ export const MessageList: React.FC<MessageListProps> = ({
         return `t-${idx}`;
       }}
       contentContainerStyle={styles.content}
-      ItemSeparatorComponent={() => <View style={styles.sep} />}
+      ItemSeparatorComponent={({ leadingItem }) => {
+        // FlatList only provides leadingItem (trailingItem is a SectionList
+        // prop and is always undefined here). The grouping pass already marked
+        // an interior bubble with tail === false, which means it groups with
+        // the next row — so the gap after it is the tight group gap (4);
+        // everything else takes the turn gap (10).
+        const lead = leadingItem as ListItem | undefined;
+        const grouped =
+          !!lead &&
+          lead.kind === "message" &&
+          lead.message.role !== "tool" &&
+          lead.tail === false;
+        return <View style={{ height: grouped ? ariThread.gapGroup : ariThread.gapTurn }} />;
+      }}
       keyboardShouldPersistTaps="handled"
       keyboardDismissMode="on-drag"
       renderItem={({ item }) => {
@@ -114,7 +185,14 @@ export const MessageList: React.FC<MessageListProps> = ({
         }
         const text = (m.content as any)?.text ?? "";
         if (!text) return null; // empty rows shouldn't render an empty bubble
-        return <ChatBubble role={m.role === "user" ? "user" : "assistant"} text={text} />;
+        return (
+          <ChatBubble
+            role={m.role === "user" ? "user" : "assistant"}
+            text={text}
+            hideOrb={item.hideOrb}
+            tail={item.tail}
+          />
+        );
       }}
     />
   );
@@ -150,7 +228,8 @@ function renderToolResult(m: AgentMessage): React.ReactElement | null {
   }
   return (
     <View style={styles.successRibbon} accessibilityRole="text" accessibilityLabel={label}>
-      <Text style={styles.successText}>✓ {label}</Text>
+      <Check size={13} color={semantic.success} strokeWidth={2.5} />
+      <Text style={styles.successText}>{label}</Text>
     </View>
   );
 }
@@ -158,23 +237,22 @@ function renderToolResult(m: AgentMessage): React.ReactElement | null {
 const styles = StyleSheet.create({
   content: {
     paddingHorizontal: spacing.md,
-    paddingVertical: spacing.md,
-    paddingBottom: spacing.xxl,
-  },
-  sep: {
-    // Tighter than spacing.md (16) — premium chat surfaces use ~10pt
-    // between messages so the conversation reads as one continuous flow.
-    height: 10,
+    // ORCH-1101: tighter top; bottom keeps scroll clearance above the composer.
+    paddingTop: spacing.sm,
+    paddingBottom: spacing.xl,
   },
   successRibbon: {
     alignSelf: "flex-start",
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
     backgroundColor: semantic.successTint,
     borderWidth: 1,
     borderColor: "rgba(34, 197, 94, 0.4)",
     borderRadius: radius.full,
     overflow: "hidden",
-    paddingHorizontal: 12,
-    paddingVertical: 6,
+    paddingHorizontal: ariThread.ribbonPadH, // 10
+    paddingVertical: ariThread.ribbonPadV, // 5
   },
   successText: {
     fontSize: typography.bodySm.fontSize,
@@ -188,8 +266,8 @@ const styles = StyleSheet.create({
     borderColor: glass.border.profileBase,
     borderRadius: radius.full,
     overflow: "hidden",
-    paddingHorizontal: 12,
-    paddingVertical: 6,
+    paddingHorizontal: ariThread.ribbonPadH,
+    paddingVertical: ariThread.ribbonPadV,
   },
   cancelledText: {
     fontSize: typography.bodySm.fontSize,

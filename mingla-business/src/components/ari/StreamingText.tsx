@@ -6,7 +6,7 @@
  */
 
 import React, { useEffect } from "react";
-import { StyleSheet, View } from "react-native";
+import { Platform, StyleSheet, View } from "react-native";
 import Animated, {
   cancelAnimation,
   Easing,
@@ -19,8 +19,8 @@ import Animated, {
 
 import {
   ariPalette,
+  ariThread,
   glass,
-  spacing,
 } from "../../constants/designSystem";
 import { AriOrb } from "./AriOrb";
 
@@ -75,18 +75,22 @@ const styles = StyleSheet.create({
   },
   orbWrap: {
     marginTop: 2,
-    marginRight: spacing.sm,
+    marginRight: ariThread.orbGap, // 6 (matches ChatBubble)
   },
   bubble: {
-    backgroundColor: glass.tint.profileBase,
-    borderTopLeftRadius: 4,
-    borderTopRightRadius: 18,
-    borderBottomLeftRadius: 18,
-    borderBottomRightRadius: 18,
-    paddingHorizontal: 14,
-    paddingVertical: 9,
-    borderWidth: 1,
-    borderColor: glass.border.profileBase,
+    // Android opaque equivalent; iOS/web keep glass + hairline (matches ChatBubble).
+    backgroundColor:
+      Platform.OS === "android" ? ariThread.ariBubbleAndroid : glass.tint.profileBase,
+    borderTopLeftRadius: ariThread.bubbleTail, // 4 tail
+    borderTopRightRadius: ariThread.bubbleRadius, // 16
+    borderBottomLeftRadius: ariThread.bubbleRadius,
+    borderBottomRightRadius: ariThread.bubbleRadius,
+    paddingHorizontal: ariThread.bubblePadH, // 12 (was 14)
+    paddingVertical: ariThread.bubblePadV, // 8 (was 9)
+    overflow: "hidden",
+    ...(Platform.OS === "android"
+      ? {}
+      : { borderWidth: 1, borderColor: glass.border.profileBase }),
     minWidth: 36,
     justifyContent: "center",
   },

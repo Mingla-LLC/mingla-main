@@ -68,18 +68,23 @@ describe("ORCH-1057 adversarial · Item A — Ember Send invariants", () => {
     expect(inputBar).not.toMatch(/elevation\s*:/);
   });
 
-  it("ADV-3 the SVG send fill is fully opaque (no translucent fill on the circle)", () => {
-    // Both radial stops must be opacity 1...
-    const stopOpacities = [...inputBar.matchAll(/stopOpacity=["']([0-9.]+)["']/g)].map(
-      (m) => Number(m[1]),
-    );
-    expect(stopOpacities.length).toBeGreaterThanOrEqual(2);
-    stopOpacities.forEach((o) => expect(o).toBe(1));
-    // ...and the send circle styles must not carry a translucent rgba/hsla fill.
+  it("ADV-3 the send fill is a flat OPAQUE disc (no SVG gradient, no translucent fill)", () => {
+    // [TEST-MOD-APPROVED ORCH-1101] ORCH-1101 §4.2 deletes the SVG
+    // radial-gradient circle (the desktop-web "blob" defect) and replaces it
+    // with a flat opaque ember disc. The opaque-fill INVARIANT is preserved,
+    // just expressed as a flat backgroundColor instead of opaque SVG stops.
+    // No SVG composition may return.
+    expect(inputBar).not.toMatch(/stopOpacity=/);
+    expect(inputBar).not.toMatch(/<RadialGradient\b/);
+    expect(inputBar).not.toMatch(/<Circle\b/);
+    expect(inputBar).not.toMatch(/from\s*["']react-native-svg["']/);
+    // The send disc fill must be the opaque token (a hex), never a translucent
+    // rgba/hsla — the Android opaque-glass policy is about the FILL being opaque.
     const sendBtnBlock = inputBar.slice(
       inputBar.indexOf("sendBtn:"),
-      inputBar.indexOf("sendFill:"),
+      inputBar.indexOf("suggestBtn:"),
     );
+    expect(sendBtnBlock).toMatch(/backgroundColor:\s*ariPalette\.userBubble/);
     expect(sendBtnBlock).not.toMatch(/backgroundColor:\s*["']?(rgba|hsla)/);
   });
 

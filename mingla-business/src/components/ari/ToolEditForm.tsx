@@ -9,6 +9,7 @@ import React from "react";
 import { StyleSheet, Text, TextInput, View } from "react-native";
 
 import {
+  ariThread,
   glass,
   spacing,
   text as textTokens,
@@ -132,9 +133,12 @@ const styles = StyleSheet.create({
     letterSpacing: typography.caption.letterSpacing,
   },
   input: {
-    fontSize: typography.body.fontSize,
+    // ORCH-1101: 13pt density (was body 16) to match the proposal-card field
+    // values; hairline underline + a11y labels preserved verbatim.
+    fontSize: 13,
+    lineHeight: 17,
     color: textTokens.primary,
-    paddingVertical: 8,
+    paddingVertical: ariThread.inputPadV, // 6 (was 8)
     borderBottomWidth: 1,
     borderBottomColor: glass.border.pending,
   },
