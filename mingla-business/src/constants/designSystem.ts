@@ -183,10 +183,14 @@ export const ariPalette = {
   proposalShadow: "hsla(20, 72%, 64%, 0.28)",
   // Glow color for the orb's halo
   glow: "hsla(22, 75%, 68%, 0.4)",
-  // ORCH-1101 — legible deep ember. White text on this computes to 4.6:1
-  // (clears WCAG body 4.5), fixing the old white-on-flame (#e69869 = 2.32:1)
-  // contrast failure on the user bubble + Confirm button + send disc.
-  userBubble: "hsl(10, 55%, 42%)", // #a85a44
+  // ORCH-1101 — Ari thread brand accent. Operator decision (2026-06-08): the
+  // send button + user bubble + Confirm button + §5 cards use the canonical
+  // Mingla brand action color from the dev style guide (accent.warm #eb7825),
+  // paired with white text (colors.text.inverse) exactly like every other
+  // brand action button app-wide. This supersedes the earlier Ari-specific
+  // deep ember (#a85a44): brand consistency was chosen over the Ari-only 4.5:1
+  // target; white-on-#eb7825 (~2.9:1) is the established app-wide action pairing.
+  userBubble: accent.warm, // #eb7825 — Mingla brand action color
 } as const;
 
 // ORCH-1101 — Ari thread density spine. One vertical-rhythm + type + geometry

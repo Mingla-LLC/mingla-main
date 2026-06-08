@@ -186,55 +186,30 @@ describe("ORCH-1101 ADV-5 · no send/primary fill is translucent (Android opaque
     expect(sendBtnBlock).not.toMatch(/\bopacity:\s*0?\.\d/);
   });
 
-  it("ariPalette.userBubble resolves to a fully-opaque hsl (no alpha channel)", () => {
-    const m = designSystem.match(/userBubble:\s*["']([^"']+)["']/);
+  it("ariPalette.userBubble uses the opaque Mingla brand token accent.warm (#eb7825) [TEST-MOD-APPROVED ORCH-1101]", () => {
+    // Operator brand-consistency decision 2026-06-08: the thread accent
+    // references accent.warm (the dev style-guide brand action color), which
+    // must remain a fully-opaque hex — an alpha channel would let the thread
+    // bleed through the send disc / user bubble.
+    expect(designSystem).toMatch(/userBubble:\s*accent\.warm/);
+    const m = designSystem.match(/warm:\s*["']([^"']+)["']/);
     expect(m).not.toBeNull();
-    const val = m![1];
-    // hsl(...) with three comps only — an hsla/4th-arg would carry transparency.
-    expect(val).toMatch(/^hsl\(\s*\d+\s*,\s*\d+%\s*,\s*\d+%\s*\)$/);
-    expect(val).not.toMatch(/hsla|rgba/i);
+    expect(m![1]).toBe("#eb7825");
+    expect(m![1]).not.toMatch(/hsla|rgba/i);
   });
 });
 
-describe("ORCH-1101 ADV-6 · white-on-ember meets WCAG AA 4.5:1 (computed, not asserted)", () => {
-  // Parse hsl(10, 55%, 42%) → sRGB and compute the real contrast ratio.
-  const hslToRgb = (h: number, s: number, l: number): [number, number, number] => {
-    s /= 100;
-    l /= 100;
-    const c = (1 - Math.abs(2 * l - 1)) * s;
-    const x = c * (1 - Math.abs(((h / 60) % 2) - 1));
-    const m = l - c / 2;
-    let r = 0,
-      g = 0,
-      b = 0;
-    if (h < 60) [r, g, b] = [c, x, 0];
-    else if (h < 120) [r, g, b] = [x, c, 0];
-    else if (h < 180) [r, g, b] = [0, c, x];
-    else if (h < 240) [r, g, b] = [0, x, c];
-    else if (h < 300) [r, g, b] = [x, 0, c];
-    else [r, g, b] = [c, 0, x];
-    return [
-      Math.round((r + m) * 255),
-      Math.round((g + m) * 255),
-      Math.round((b + m) * 255),
-    ];
-  };
-  const relLum = (rgb: [number, number, number]): number => {
-    const f = (v: number): number => {
-      const c = v / 255;
-      return c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
-    };
-    return 0.2126 * f(rgb[0]) + 0.7152 * f(rgb[1]) + 0.0722 * f(rgb[2]);
-  };
-
-  it("contrast(white, userBubble) >= 4.5:1", () => {
-    const m = designSystem.match(/userBubble:\s*["']hsl\((\d+),\s*(\d+)%,\s*(\d+)%\)["']/);
-    expect(m).not.toBeNull();
-    const [h, s, l] = [Number(m![1]), Number(m![2]), Number(m![3])];
-    const bg = relLum(hslToRgb(h, s, l));
-    const fg = relLum([255, 255, 255]);
-    const ratio = (Math.max(bg, fg) + 0.05) / (Math.min(bg, fg) + 0.05);
-    expect(ratio).toBeGreaterThanOrEqual(4.5);
+describe("ORCH-1101 ADV-6 · Ari thread accent stays on the Mingla brand token [TEST-MOD-APPROVED ORCH-1101]", () => {
+  // Operator brand-consistency decision (2026-06-08): the Ari thread accent is
+  // pinned to the dev style-guide brand action color (accent.warm = #eb7825),
+  // paired with white text exactly like every other brand action button
+  // app-wide. This intentionally supersedes the earlier Ari-only WCAG-AA 4.5:1
+  // target (deep ember #a85a44) — brand consistency was chosen over the
+  // Ari-specific contrast goal. The invariant now guarded is the brand-token
+  // linkage, so a stray "tweak" away from the canonical brand color trips here.
+  it("userBubble === accent.warm (#eb7825), the canonical Mingla brand action color", () => {
+    expect(designSystem).toMatch(/userBubble:\s*accent\.warm/);
+    expect(designSystem).toMatch(/warm:\s*["']#eb7825["']/);
   });
 });
 

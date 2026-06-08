@@ -277,8 +277,8 @@ const styles = StyleSheet.create({
   },
   confirmBtn: {
     flex: 1.6,
-    // ORCH-1101: deepened ember (#a85a44, 4.6:1 with white) fixes the old
-    // white-on-flame 2.32:1 contrast failure. Keeps it the warm primary action.
+    // ORCH-1101: Mingla brand action color (ariPalette.userBubble = accent.warm
+    // #eb7825; operator brand-consistency decision 2026-06-08). Warm primary action.
     backgroundColor: ariPalette.userBubble,
     overflow: "hidden",
     // iOS keeps the warm shadow-glow; Android/web no elevation/shadow

@@ -6,9 +6,10 @@
  *
  * ORCH-1101 — density spine + bubble redesign:
  *   - All paddings/radius/maxWidth promoted to the `ariThread` token block.
- *   - User fill → ariPalette.userBubble (#a85a44) to fix the white-on-flame
- *     2.32:1 contrast failure (now 4.6:1). iOS subtle ember shadow; Android
- *     opaque + overflow:hidden + no shadow; web no shadow.
+ *   - User fill → ariPalette.userBubble (= accent.warm #eb7825, the Mingla
+ *     brand action color; operator brand-consistency decision 2026-06-08).
+ *     iOS subtle ember shadow; Android opaque + overflow:hidden + no shadow;
+ *     web no shadow.
  *   - `tail?` prop (default true) for speaker grouping: interior bubbles in a
  *     same-speaker group use 16 on all four corners (smooth column); only the
  *     last bubble gets the 4pt tail.

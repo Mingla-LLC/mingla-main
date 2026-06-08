@@ -126,8 +126,12 @@ describe("ORCH-1101 · Bug A — composer is one line tall on web (no bottom gap
 });
 
 describe("ORCH-1101 · density tokens exist", () => {
-  it("adds ariPalette.userBubble (#a85a44) — the legible deep ember", () => {
-    expect(designSystem).toMatch(/userBubble:\s*["']hsl\(10, 55%, 42%\)["']/);
+  it("ariPalette.userBubble uses the Mingla brand token accent.warm (#eb7825) [TEST-MOD-APPROVED ORCH-1101]", () => {
+    // Operator brand-consistency decision 2026-06-08: the Ari thread accent
+    // (send button + user bubble + Confirm + §5 cards) references the dev
+    // style-guide brand action color accent.warm, not an Ari-only ember.
+    expect(designSystem).toMatch(/userBubble:\s*accent\.warm/);
+    expect(designSystem).toMatch(/warm:\s*["']#eb7825["']/);
   });
 
   it("adds the ariThread density token block with the load-bearing values", () => {
