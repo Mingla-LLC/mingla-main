@@ -229,10 +229,36 @@ describe("ORCH-1102 Wave 2 — _layout.tsx routes a deadlocked gate to sign-in b
     expect(expiredReturnIdx).toBeLessThan(spinnerReturnIdx);
   });
 
-  test("arms a deadline setTimeout while resolving with no user", () => {
+  test("uses a REMOUNT- AND RENDER-LOOP-IMMUNE module-level anchor read AT RENDER TIME (a deadlock remounts the tree AND spins a render loop that clears any per-mount timer)", () => {
+    // Module-level monotonic anchor that survives React remounts.
+    expect(layoutNoComments).toMatch(/let authResolveStartedAt: number \| null = null;/);
+    expect(layoutNoComments).toMatch(/function markAuthResolveStart\(\): void/);
+    expect(layoutNoComments).toMatch(/function hasAuthResolutionDeadlinePassed\(\): boolean/);
+    // The anchor is stamped at RENDER TIME while resolving with no user (not
+    // only in an effect that a remount/render-loop could clear).
     expect(layoutNoComments).toMatch(
-      /setTimeout\([\s\S]{0,300}?setAuthDeadlineExpired\(true\);[\s\S]{0,100}?\}, AUTH_RESOLUTION_CEILING_MS\);/,
+      /if \(isWeb && authResolving && user === null\)\s*\{[\s\S]{0,120}?markAuthResolveStart\(\);/,
     );
+    // The deadline is computed at RENDER TIME via the pure predicate, reading
+    // live wall-clock elapsed since the anchor.
+    expect(layoutNoComments).toMatch(/const authResolutionExpired = isAuthResolutionExpired\(\{/);
+    expect(layoutNoComments).toMatch(
+      /elapsedMs: authResolveStartedAt === null \? 0 : Date\.now\(\) - authResolveStartedAt/,
+    );
+    // Elapsed check compares wall-clock against the ceiling.
+    expect(layoutNoComments).toMatch(
+      /Date\.now\(\) - authResolveStartedAt >= AUTH_RESOLUTION_CEILING_MS/,
+    );
+  });
+
+  test("keeps a wakeup interval for the OPPOSITE case (a quiet deadlock with no render loop) to force a re-render near the ceiling", () => {
+    expect(layoutNoComments).toMatch(
+      /setInterval\([\s\S]{0,400}?hasAuthResolutionDeadlinePassed\(\)[\s\S]{0,200}?forceDeadlineTick/,
+    );
+  });
+
+  test("clears the anchor when auth resolves (a later cold load starts a fresh window — no stale carry-over)", () => {
+    expect(layoutNoComments).toMatch(/clearAuthResolveStart\(\);/);
   });
 });
 
@@ -251,7 +277,17 @@ describe("ORCH-1102 Wave 2 — index.tsx boot spinner is bounded", () => {
   test("the boot spinner is gated on (loading && !bootDeadlineExpired) so it can never be permanent", () => {
     expect(indexNoComments).toMatch(/if \(loading && !bootDeadlineExpired\)/);
     // After the deadline, with no user, it falls through to BusinessWelcomeScreen.
-    expect(indexNoComments).toMatch(/setBootDeadlineExpired\(true\);/);
+    expect(indexNoComments).toMatch(/const bootDeadlineExpired = isWeb && hasBootDeadlinePassed\(\);/);
     expect(indexNoComments).toMatch(/BusinessWelcomeScreen/);
+  });
+
+  test("uses the same REMOUNT- AND RENDER-LOOP-IMMUNE module-level anchor read at render time as _layout", () => {
+    expect(indexNoComments).toMatch(/let bootLoadingStartedAt: number \| null = null;/);
+    expect(indexNoComments).toMatch(/function hasBootDeadlinePassed\(\): boolean/);
+    expect(indexNoComments).toMatch(/const bootDeadlineExpired = isWeb && hasBootDeadlinePassed\(\);/);
+    expect(indexNoComments).toMatch(/setInterval\(/);
+    expect(indexNoComments).toMatch(
+      /Date\.now\(\) - bootLoadingStartedAt >= AUTH_RESOLUTION_CEILING_MS/,
+    );
   });
 });

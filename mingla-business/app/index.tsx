@@ -7,6 +7,24 @@ import { useAuth } from "../src/context/AuthContext";
 import BusinessWelcomeScreen from "../src/components/auth/BusinessWelcomeScreen";
 import { AUTH_RESOLUTION_CEILING_MS } from "../src/utils/coldLoadAuthGates";
 
+// ORCH-1102 Wave 2 — REMOUNT-IMMUNE boot-loading deadline anchor (mirrors the
+// _layout backstop). A deadlock can remount this route faster than the ceiling,
+// resetting a per-mount timer forever; a module-level timestamp survives
+// remounts. Stamped once while loading, cleared when loading resolves, polled
+// against the ceiling. Web-only.
+const BOOT_DEADLINE_POLL_MS = 500;
+let bootLoadingStartedAt: number | null = null;
+function markBootLoadingStart(): void {
+  if (bootLoadingStartedAt === null) bootLoadingStartedAt = Date.now();
+}
+function clearBootLoadingStart(): void {
+  bootLoadingStartedAt = null;
+}
+function hasBootDeadlinePassed(): boolean {
+  if (bootLoadingStartedAt === null) return false;
+  return Date.now() - bootLoadingStartedAt >= AUTH_RESOLUTION_CEILING_MS;
+}
+
 // ORCH-1098 Stage 3: the mobile→static-home redirect is GONE. The BottomNav
 // reanimated OOM (the reason phones could not boot the real app) is fixed in
 // BottomNav.web.tsx, so signed-in phones now run the real Expo app exactly like
@@ -29,22 +47,34 @@ export default function Index() {
   // logged-out — somewhere actionable, never an infinite spinner). The ceiling
   // is well above the normal warm + 3s race so a slow-but-valid session
   // resolves first (no false sign-in flash). Native never arms this.
-  const [bootDeadlineExpired, setBootDeadlineExpired] = useState(false);
+  // ORCH-1102 Wave 2 — render-time deadline read against the persistent anchor
+  // (remount- AND render-loop-immune; see _layout for the full rationale).
+  const isWeb = Platform.OS === "web";
+  // Stamp once loading begins; clear ONLY when a real user appears (see _layout:
+  // do not reset the window on a transient non-loading render under a deadlock
+  // render loop, or it never accumulates to the ceiling).
+  if (isWeb && loading) {
+    markBootLoadingStart(); // idempotent: persists across remounts
+  } else if (isWeb && user !== null) {
+    clearBootLoadingStart();
+  }
+  const bootDeadlineExpired = isWeb && hasBootDeadlinePassed();
+
+  // Wakeup interval for a QUIET deadlock with no render loop — forces a single
+  // re-render near the ceiling so the render-time check runs.
+  const [, forceBootTick] = useState(0);
   useEffect(() => {
-    if (Platform.OS !== "web") return;
-    if (!loading) {
-      if (bootDeadlineExpired) setBootDeadlineExpired(false);
-      return;
-    }
-    if (bootDeadlineExpired) return;
-    const timer = setTimeout(() => {
-      console.warn(
-        `[index] boot-loading-deadline: still loading after ${AUTH_RESOLUTION_CEILING_MS}ms — showing sign-in (no infinite spinner)`,
-      );
-      setBootDeadlineExpired(true);
-    }, AUTH_RESOLUTION_CEILING_MS);
-    return () => clearTimeout(timer);
-  }, [loading, bootDeadlineExpired]);
+    if (!isWeb || !loading || bootDeadlineExpired) return;
+    const interval = setInterval(() => {
+      if (hasBootDeadlinePassed()) {
+        console.warn(
+          `[index] boot-loading-deadline: still loading after ${AUTH_RESOLUTION_CEILING_MS}ms — showing sign-in (no infinite spinner)`,
+        );
+        forceBootTick((n) => n + 1);
+      }
+    }, BOOT_DEADLINE_POLL_MS);
+    return () => clearInterval(interval);
+  }, [isWeb, loading, bootDeadlineExpired]);
 
   if (loading && !bootDeadlineExpired) {
     return (

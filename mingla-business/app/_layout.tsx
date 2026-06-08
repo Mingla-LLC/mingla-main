@@ -129,6 +129,27 @@ const BRAND_FETCH_TIMEOUT_MS = 2000;
 // is route-agnostic (no route list, no firewall, no per-route card): see
 // `shouldRedirectToSignIn` + `isWebAuthResolving` in coldLoadAuthGates.ts.
 
+// ORCH-1102 Wave 2 — REMOUNT-IMMUNE auth-resolution deadline anchor.
+//
+// A deadlock can remount the layout tree faster than the ceiling, which would
+// reset any per-mount timer forever. We anchor the resolving-start in a
+// MODULE-LEVEL timestamp (the module stays loaded across React remounts) and
+// poll elapsed wall-clock against the ceiling. `markAuthResolveStart` stamps
+// once (idempotent), `clearAuthResolveStart` resets the window when auth
+// resolves, and `hasAuthResolutionDeadlinePassed` is the pure elapsed check.
+const AUTH_RESOLUTION_DEADLINE_POLL_MS = 500;
+let authResolveStartedAt: number | null = null;
+function markAuthResolveStart(): void {
+  if (authResolveStartedAt === null) authResolveStartedAt = Date.now();
+}
+function clearAuthResolveStart(): void {
+  authResolveStartedAt = null;
+}
+function hasAuthResolutionDeadlinePassed(): boolean {
+  if (authResolveStartedAt === null) return false;
+  return Date.now() - authResolveStartedAt >= AUTH_RESOLUTION_CEILING_MS;
+}
+
 const SUPABASE_AUTH_STORAGE_KEY = /^sb-.+-auth-token$/;
 
 function hasStoredSupabaseWebSession(): boolean {
@@ -291,37 +312,54 @@ function RootLayoutInner(): React.ReactElement {
   // normal warm + race + lock-self-heal budget, so a genuinely slow-but-valid
   // session resolves (user appears → app renders) BEFORE this ever fires — no
   // false logged-out flash. Web-only; native never reaches the resolving gate.
-  const [authDeadlineExpired, setAuthDeadlineExpired] = useState(false);
-  useEffect(() => {
-    if (!isWeb) return;
-    // Only run the deadline while genuinely still resolving with no user; a
-    // present user (or a fully-resolved logged-out state) needs no backstop.
-    if (!authResolving || user !== null) {
-      if (authDeadlineExpired) setAuthDeadlineExpired(false);
-      return;
-    }
-    if (authDeadlineExpired) return;
-    const timer = setTimeout(() => {
-      console.warn(
-        `[_layout] auth-resolution-deadline: still resolving after ${AUTH_RESOLUTION_CEILING_MS}ms — routing to sign-in (no infinite spinner)`,
-      );
-      setAuthDeadlineExpired(true);
-    }, AUTH_RESOLUTION_CEILING_MS);
-    return () => clearTimeout(timer);
-    // `mountedAt` anchors elapsed time conceptually; the timer itself measures
-    // the window from when resolving began (effect arm). Re-runs if resolving
-    // toggles or the user appears.
-  }, [isWeb, authResolving, user, authDeadlineExpired]);
-
-  // The deadline-expired backstop is computed via the pure predicate so it is
-  // unit-testable and fails-on-revert. When expired we force the redirect even
-  // if `authResolving` would still be true (the deadlock case).
+  //
+  // REMOUNT- AND RENDER-LOOP-IMMUNE: a deadlock can remount the tree AND spin a
+  // tight re-render loop (observed on the offline static build: ~66 renders/sec,
+  // which clears any per-mount setTimeout/setInterval before it can fire). So the
+  // deadline is anchored in a MODULE-LEVEL monotonic timestamp (survives
+  // remounts) and EVALUATED AT RENDER TIME — every render re-reads the anchor, so
+  // even a render loop converges on the deadline within milliseconds of the
+  // ceiling. The interval below is only a wakeup for the OPPOSITE case (a quiet
+  // deadlock with NO render loop) so a re-render is forced once near the ceiling.
+  // Stamp the resolving-start once it begins; clear ONLY when a real user
+  // appears. We deliberately do NOT clear on a transient non-resolving render:
+  // under the deadlock render loop `authResolving` can flicker, and clearing on
+  // every flicker would reset the window forever (the window must accumulate to
+  // the ceiling). A genuinely logged-out resolved state hides the spinner via
+  // `authResolving === false` anyway, so a lingering anchor is harmless and is
+  // reset on the next real sign-in.
+  if (isWeb && authResolving && user === null) {
+    markAuthResolveStart(); // idempotent: stamps once, persists across remounts
+  } else if (isWeb && user !== null) {
+    clearAuthResolveStart(); // real session → fresh window for a later cold load
+  }
+  // Pure, unit-tested predicate (fails-on-revert). `elapsedMs` is the live
+  // wall-clock since the persistent anchor, read at render time.
   const authResolutionExpired = isAuthResolutionExpired({
     isWeb,
     hasUser: user !== null,
     stillResolving: authResolving,
-    elapsedMs: authDeadlineExpired ? AUTH_RESOLUTION_CEILING_MS : 0,
+    elapsedMs: authResolveStartedAt === null ? 0 : Date.now() - authResolveStartedAt,
   });
+
+  // Wakeup interval for a QUIET deadlock (no render loop to re-evaluate the
+  // anchor): forces a single re-render shortly after the ceiling so the
+  // render-time check above runs. Harmless under a render loop (the check
+  // already runs every render). Cleared once expired or no longer resolving.
+  const [, forceDeadlineTick] = useState(0);
+  useEffect(() => {
+    if (!isWeb) return;
+    if (!authResolving || user !== null || authResolutionExpired) return;
+    const interval = setInterval(() => {
+      if (hasAuthResolutionDeadlinePassed()) {
+        console.warn(
+          `[_layout] auth-resolution-deadline: still resolving after ${AUTH_RESOLUTION_CEILING_MS}ms — routing to sign-in (no infinite spinner)`,
+        );
+        forceDeadlineTick((n) => n + 1);
+      }
+    }, AUTH_RESOLUTION_DEADLINE_POLL_MS);
+    return () => clearInterval(interval);
+  }, [isWeb, authResolving, user, authResolutionExpired]);
 
   // ORCH-0808 — optional install/analytics SDK init runs after first paint.
   // Auth identity binding + first-event fire happen in AuthContext on
