@@ -37,7 +37,7 @@
  */
 
 import React from "react";
-import { Platform, Pressable, StyleSheet, Text, View } from "react-native";
+import { Pressable, StyleSheet, Text, useWindowDimensions, View } from "react-native";
 import { BlurView } from "expo-blur";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -51,6 +51,7 @@ import {
   text as textTokens,
   typography,
 } from "../../constants/designSystem";
+import { shouldUseRealBlur } from "../../utils/glassBlur";
 
 export type BlastAudienceKind = "brand" | "event" | "audience";
 
@@ -76,11 +77,13 @@ const UNIT_BY_KIND: Record<BlastAudienceKind, { singular: string; plural: string
 
 const CTA_HEIGHT = 60;
 
-// META-ORCH-1002 Sub-D: Android glass policy = opaque frosted fallback. The L1
-// BlurView renders near-transparent on Android, leaking busy content through
-// the accent tint floor. On Android we replace it with the kit's solid
-// `rgba(20,22,26,0.92)` (the GlassChrome fallback) so the L2 accent tint floor
-// composites over a solid base → a confident solid capsule. iOS keeps real blur.
+// META-ORCH-1002 Sub-D / ORCH-1100: the L1 BlurView renders near-transparent on
+// Android (and on phone web below 768px where the blur-kill media rule strips
+// `backdrop-filter`), leaking busy content through the accent tint floor. In
+// those cases we replace it with the kit's solid `rgba(20,22,26,0.92)` (the
+// GlassChrome fallback) so the L2 accent tint floor composites over a solid base
+// → a confident solid capsule. iOS + wide desktop web keep real blur. The
+// width-aware decision lives in the shared `shouldUseRealBlur(windowWidth)`.
 const FALLBACK_BACKGROUND = "rgba(20, 22, 26, 0.92)";
 
 // Custom accent tint — stronger than `accent.tint` (0.28) for confident
@@ -96,6 +99,10 @@ export const BlastCustomersCta: React.FC<BlastCustomersCtaProps> = ({
   testID,
 }) => {
   const insets = useSafeAreaInsets();
+  const { width: windowWidth } = useWindowDimensions();
+  // ORCH-1100: width-aware so the mobile-web (< 768px) blur-kill paints the
+  // opaque fallback instead of a see-through CTA capsule.
+  const blurOk = shouldUseRealBlur(windowWidth);
   const isDisabled = disabled === true || reachableCount === 0;
   // Unit kept available for any future kind-specific copy variant; current
   // label is universal per operator directive 2026-05-12.
@@ -140,18 +147,19 @@ export const BlastCustomersCta: React.FC<BlastCustomersCtaProps> = ({
           accessibilityState={{ disabled: isDisabled }}
           testID={testID}
         >
-          {/* L1 — Blur base (real backdrop blur on iOS, web shim). Android =
-              opaque fallback (META-ORCH-1002 Sub-D). */}
-          {Platform.OS === "android" ? (
-            <View
-              style={[StyleSheet.absoluteFill, { backgroundColor: FALLBACK_BACKGROUND }]}
-              pointerEvents="none"
-            />
-          ) : (
+          {/* L1 — Blur base (real backdrop blur on iOS + wide desktop web).
+              Android + phone web (< 768px blur-kill) = opaque fallback
+              (META-ORCH-1002 Sub-D / ORCH-1100). */}
+          {blurOk ? (
             <BlurView
               intensity={blurIntensity.chrome}
               tint="dark"
               style={StyleSheet.absoluteFill}
+            />
+          ) : (
+            <View
+              style={[StyleSheet.absoluteFill, { backgroundColor: FALLBACK_BACKGROUND }]}
+              pointerEvents="none"
             />
           )}
           {/* L2 — Tint floor */}
