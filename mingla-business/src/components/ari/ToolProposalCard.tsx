@@ -8,10 +8,11 @@
  */
 
 import React, { useState } from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { Platform, Pressable, StyleSheet, Text, View } from "react-native";
 
 import {
   ariPalette,
+  ariThread,
   glass,
   radius,
   spacing,
@@ -23,14 +24,15 @@ import { GlassChrome } from "../ui/GlassChrome";
 
 // Premium proposal-card metrics — tighter than the default kit values.
 // The card should read as a glanceable confirmation, not a form.
-const CARD_PADDING = 14;
-const IDENTITY_FONT = 16;
-const IDENTITY_LINE = 22;
+// ORCH-1101: density + Confirm contrast fix — values promoted to ariThread.
+const CARD_PADDING = ariThread.cardPad; // 12 (was 14)
+const IDENTITY_FONT = ariThread.cardTitleFont; // 15 (was 16)
+const IDENTITY_LINE = ariThread.cardTitleLine; // 21 (was 22)
 const FIELD_LABEL_FONT = 11;
 const FIELD_VALUE_FONT = 13;
 const VERB_FONT = 10;
 const VERB_LETTER_SPACING = 1.1;
-const BUTTON_HEIGHT = 36;
+const BUTTON_HEIGHT = ariThread.btnHeight; // 34 (was 36)
 const BUTTON_FONT = 13;
 
 export interface ToolProposalCardProps {
@@ -152,6 +154,7 @@ export const ToolProposalCard: React.FC<ToolProposalCardProps> = ({
           <Pressable
             onPress={onCancel}
             disabled={isExecuting}
+            hitSlop={{ top: 5, bottom: 5 }}
             style={({ pressed }) => [
               styles.actionBtn,
               styles.cancelBtn,
@@ -166,6 +169,7 @@ export const ToolProposalCard: React.FC<ToolProposalCardProps> = ({
           <Pressable
             onPress={() => setEditing((e) => !e)}
             disabled={isExecuting}
+            hitSlop={{ top: 5, bottom: 5 }}
             style={({ pressed }) => [
               styles.actionBtn,
               styles.editBtn,
@@ -180,6 +184,7 @@ export const ToolProposalCard: React.FC<ToolProposalCardProps> = ({
           <Pressable
             onPress={() => onConfirm(editing ? editedArgs : undefined)}
             disabled={isExecuting}
+            hitSlop={{ top: 5, bottom: 5 }}
             style={({ pressed }) => [
               styles.actionBtn,
               styles.confirmBtn,
@@ -272,12 +277,21 @@ const styles = StyleSheet.create({
   },
   confirmBtn: {
     flex: 1.6,
-    backgroundColor: ariPalette.flame,
-    shadowColor: ariPalette.flame,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.35,
-    shadowRadius: 8,
-    elevation: 0,
+    // ORCH-1101: deepened ember (#a85a44, 4.6:1 with white) fixes the old
+    // white-on-flame 2.32:1 contrast failure. Keeps it the warm primary action.
+    backgroundColor: ariPalette.userBubble,
+    overflow: "hidden",
+    // iOS keeps the warm shadow-glow; Android/web no elevation/shadow
+    // (ANDROID_GLASS_USES_OPAQUE_FALLBACK).
+    ...Platform.select({
+      ios: {
+        shadowColor: ariPalette.ember,
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.35,
+        shadowRadius: 8,
+      },
+      default: {},
+    }),
   },
   cancelText: {
     fontSize: BUTTON_FONT,
