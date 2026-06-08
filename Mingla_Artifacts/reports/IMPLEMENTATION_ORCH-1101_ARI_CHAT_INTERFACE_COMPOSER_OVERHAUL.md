@@ -221,3 +221,128 @@ No behavioral deviations on the two bug fixes — both are implemented exactly p
 
 - DO NOT deploy / OTA / merge (per dispatch). REVIEW gate is the orchestrator's.
 - Seth: Fast-Refresh on the physical iPhone (Metro on 8129) to confirm the send button + composer feel; eyeball the desktop-web build for the two bug fixes (the web branches only fire on react-native-web).
+
+---
+
+# REWORK PASS — 2026-06-08 (live-test bugs #2–#6)
+
+Seth live-tested on his physical iPhone (Business dev build, Metro :8129) and found 6 bugs.
+Bug #1 (send-time crash — FlatList separator read the always-undefined `trailingItem`)
+was already fixed + committed by the orchestrator at `87d6e6cd3` (speakerOf guard +
+precomputed `tail` flag). This rework fixes the remaining five (#2–#6) on top of it.
+
+Scope expansion was operator-approved to touch `useAgentChat` / `AriChatScreen` /
+`useAriPreferences`-adjacent service for #2/#3/#6. Edge functions + agent prompts untouched.
+The dev-preview scaffolding (`app/(tabs)/ari.tsx`, `src/components/ari/AriDevPreview.tsx`)
+was left UNCOMMITTED and untouched.
+
+## Per-bug fixes
+
+### #2 — Lag between sending and seeing your message (optimistic insert)
+**Root cause (matches hypothesis):** `useAgentChat.sendMessage` only `mutateAsync`'d the
+edge call; the user's bubble appeared only after the server round-trip + `agent_messages`
+refetch. From the empty state it was worse — `AriChatScreen.noMessages` stayed true
+(messages empty + conversationId null) so `MessageList` (which hosts every bubble AND the
+thinking indicator) never even mounted until the server returned a conversationId.
+**Fix:** `useAgentChat.ts` now inserts a crash-safe optimistic `AgentMessage`
+(`makeOptimisticMessage` — `role:"user"`, `content:{text}`, `tool_calls:null`,
+`tool_results:null`, `optimistic-…` id) synchronously in `sendMessage` before
+`mutateAsync`. `messages` merges `serverMessages + liveOptimistic` (text-dedupe guards
+against a double bubble if the real echo lands before the placeholder clears). On success
+the hook **awaits** the thread `invalidateQueries` (which refetches), THEN drops the
+placeholder — so the bubble never blinks out between clear and refetch. On error/edge-error
+the placeholder is dropped (no stranded unsent message). Because `messages.length` is now
+> 0 the instant you send, `noMessages` flips false and `MessageList` mounts immediately —
+which is also what enables #3 from the empty state.
+**Files:** `mingla-business/src/hooks/useAgentChat.ts`. **Commit:** see "send path" below.
+
+### #3 — No processing/loading signal while Ari works (thinking indicator)
+**Root cause (differs slightly from hypothesis):** the wiring
+`isThinking={chat.isSending && !chat.pendingAction}` + `renderThinking={() =>
+<StreamingText visible/>}` was ALREADY present in `AriChatScreen` (and `StreamingText`
+already gates its blink behind `useReducedMotion`). The real reason Seth saw no signal on a
+first message was the same mount gap as #2: from the empty state `MessageList` wasn't
+mounted during the in-flight window, so its thinking row never rendered. #2's optimistic
+insert mounts `MessageList` on send, so the thinking bubble now shows from send until Ari's
+reply/proposal arrives, animated, reduced-motion-respecting. No new code was needed beyond
+#2; this rework adds regression coverage asserting the wiring stays.
+**Files:** none beyond #2 (coverage added in the rework test). **Commit:** with #2.
+
+### #4 — Composer transparent; empty-state hint bled through the input
+**Root cause (matches hypothesis):** `InputBar` `host` filled with
+`glass.tint.profileBase` (rgba 255/.04) — a near-transparent glass tint — so the centered
+empty-state hint and thread content showed through the field.
+**Fix:** (a) added an opaque `ariThread.composerSurface` token (`#191c21`, solid hex, no
+rgba/hsla → honors ANDROID_GLASS_USES_OPAQUE_FALLBACK on every platform) and switched the
+`host` fill to it; border + radius preserved so it still reads as a glass-edged input.
+(b) The empty-overlay already reserves `paddingBottom = inset + BOTTOM_NAV_CLEARANCE_PX +
+60` to sit the hero/hint above the resting composer; with the opaque fill there is no
+longer any bleed-through even at the seam. Verified visually that the field reads solid.
+**Files:** `mingla-business/src/constants/designSystem.ts`,
+`mingla-business/src/components/ari/InputBar.tsx`.
+
+### #5 — Empty-state hint should reference the actual + button, not a literal "+"
+**Root cause (matches hypothesis):** `EmptyState` printed the plain string
+`Tap + for things to try`.
+**Fix:** the sentence is now split around an inline chip that visually quotes the InputBar
+"+" suggestions button — a bordered circle (`hintChip`, `radius.full` + 1px
+`glass.border.profileBase`) wrapping a lucide `Plus` glyph: `Tap [＋] for things to try`.
+The glyph keeps the low-emphasis `textTokens.tertiary` color (preserves the ORCH-1057
+empty-state-hierarchy invariant ADV-6). A natural spoken `accessibilityLabel`
+("Tap the plus button for things to try") is set on the row; the chip is hidden from the
+a11y tree so it isn't double-announced. Still non-tappable (no Pressable / button role).
+**Files:** `mingla-business/src/components/ari/EmptyState.tsx`.
+
+### #6 — First-open disclosure sheet CTA did nothing
+**Root cause (differs from hypothesis):** NOT a tap-swallow — the footer Pressable was
+already moved out of the ScrollView in a 2026-05-12 fix and receives taps. The real cause
+is a state-flip gap: `onAccept` only fired `prefs.acknowledge()` (an upsert + profile
+`invalidateQueries`), but the modal's `visible` is derived from
+`disclosureNeeded = !prefs.isLoading && profile?.ai_disclosure_acknowledged_at == null`.
+The sheet stays up until the profile query REFETCHES and returns a non-null timestamp — so
+on any latency (or if the ack write/refetch is slow) the button appears to "do nothing."
+The old handler also swallowed every failure with `.catch(() => undefined)`.
+**Fix:** `AriChatScreen` adds a local `disclosureDismissed` flag set to true the instant the
+CTA is tapped; `disclosureNeeded` now also requires `!disclosureDismissed`, so the sheet
+closes immediately, decoupled from the network round-trip. The `acknowledge()` mutation
+still persists in the background; its error is now surfaced via the existing error toast
+(`setLocalError`) instead of being swallowed.
+**Files:** `mingla-business/src/screens/ari/AriChatScreen.tsx`.
+
+## Compilation
+`tsc --noEmit` is clean on every touched product file (`useAgentChat.ts`,
+`AriChatScreen.tsx`, `InputBar.tsx`, `EmptyState.tsx`, `designSystem.ts`) and the new test.
+The ~258 pre-existing `tsc` errors in unrelated files (checkout-trip buyer, ComposerV2,
+payments-native, etc.) are the documented baseline and unchanged by this rework. The
+`AriDevPreview.tsx` scaffolding has one pre-existing error (`ChoiceState` enum) — it is
+orchestrator scaffolding, intentionally not touched/committed.
+
+## Regression test
+`mingla-business/src/components/ari/__tests__/orch_1101_rework_ari_chat_bugs.test.ts`
+(new file, append-only safe). 17 assertions across #1-guard, #2, #3, #4, #5, #6.
+- PASS on fixed code: 17/17.
+- fails-on-revert verified @ `87d6e6cd3` (base commit, all five product files stashed):
+  12 assertions fail (every #2/#4/#5/#6 clause); the 5 that stay green are the #1-guard
+  (correctly already fixed at base) and the #3 wiring (pre-existing; enabled by #2's mount).
+
+## Append-only test modification
+Two stale ORCH-1057 happy-path assertions on `EmptyState` (the old literal
+`Tap + for things to try` copy + the old `<Plus size={14} … strokeWidth={2}/>` glyph shape)
+were updated in `orch_1057_ari_composer_icons_emptystate.test.ts` to match ORCH-1101's #5
+redesign, cited `[TEST-MOD-APPROVED ORCH-1101]` in the test commit body. The 1057 intent
+(single non-tappable Plus-bearing hint) is preserved. The 1057 **adversarial** test needed
+NO change — the chip glyph keeps `textTokens.tertiary`, satisfying ADV-6.
+
+## Cross-surface impact
+- Business iOS / Business Android: all five fixes apply (shared component code; opaque
+  composer + optimistic send + thinking + hint chip + disclosure dismiss).
+- Business Web preview: #2/#3/#6 apply (shared); #4 opaque fill + #5 chip render on web too.
+- Consumer iOS/Android, Buyer-anon Web, Admin Web: UNAFFECTED — Ari is a Business-app surface
+  with no equivalent on those surfaces.
+
+## Constraints honored
+- Every intermediate state compiles (no broken imports/syntax — Metro stays live).
+- ANDROID_GLASS_USES_OPAQUE_FALLBACK: new composer fill is solid hex (no rgba/hsla).
+- accessibilityLabels preserved/added; reduced-motion gate on StreamingText intact.
+- Dev-preview scaffolding NOT committed, NOT deleted.
+- No deploy / OTA / merge.

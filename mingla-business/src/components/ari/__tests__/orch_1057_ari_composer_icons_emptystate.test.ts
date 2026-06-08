@@ -120,10 +120,17 @@ describe("ORCH-1057 · Item C — empty state chip wall removed", () => {
   });
 
   it("renders the single non-tappable hint row (lucide Plus + caption)", () => {
+    // [TEST-MOD-APPROVED ORCH-1101] ORCH-1101 REWORK Bug #5 superseded the literal
+    // "+"-in-text copy: the hint now renders the ACTUAL + button glyph as an
+    // inline chip ("Tap [＋] for things to try") so it points at the real button
+    // rather than printing a plain "+". The 1057 intent — a single, non-tappable,
+    // Plus-bearing hint row — is preserved; only the glyph framing + split copy
+    // changed. Operator-directed scope expansion for ORCH-1101.
     expect(emptyState).toMatch(/import\s*\{\s*Plus\s*\}\s*from\s*["']lucide-react-native["']/);
-    expect(emptyState).toMatch(/<Plus\s+size=\{14\}\s+color=\{textTokens\.tertiary\}\s+strokeWidth=\{2\}\s*\/>/);
-    expect(emptyState).toContain("Tap + for things to try");
-    // The hint is a pointer, not an action — never a Pressable / button role.
+    expect(emptyState).toMatch(/<Plus\s+size=\{13\}/);
+    expect(emptyState).toContain("Tap ");
+    expect(emptyState).toContain(" for things to try");
+    // The hint chip is presentational, not an action — never a Pressable / button role.
     expect(emptyState).not.toContain("Pressable");
     expect(emptyState).not.toContain('accessibilityRole="button"');
   });
