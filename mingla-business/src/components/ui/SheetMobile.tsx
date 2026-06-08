@@ -38,7 +38,6 @@ import React, { useEffect, useRef, useState } from "react";
 import {
   Dimensions,
   Modal,
-  Platform,
   Pressable,
   StyleSheet,
   useWindowDimensions,
@@ -68,6 +67,7 @@ import {
 } from "../../constants/designSystem";
 
 import { WebSafeGestureDetector } from "./WebSafeGestureDetector";
+import { shouldUseRealBlur } from "../../utils/glassBlur";
 
 // Inline glass-stack background — mirrors GlassChrome's L1-L4 visual layers
 // but with each layer absolute-filled at the body level so the body can be
@@ -77,23 +77,6 @@ import { WebSafeGestureDetector } from "./WebSafeGestureDetector";
 // `position: relative` with no flex, so `flex: 1` children inside collapse).
 // Same pattern that TopSheet uses for the same reason.
 const FALLBACK_BACKGROUND = "rgba(20, 22, 26, 0.92)";
-
-const supportsBackdropFilter: boolean =
-  Platform.OS === "web" &&
-  typeof globalThis !== "undefined" &&
-  typeof (globalThis as { CSS?: { supports?: (prop: string, value: string) => boolean } }).CSS?.supports === "function" &&
-  ((globalThis as { CSS?: { supports?: (prop: string, value: string) => boolean } }).CSS!.supports!("backdrop-filter", "blur(10px)") ||
-    (globalThis as { CSS?: { supports?: (prop: string, value: string) => boolean } }).CSS!.supports!("-webkit-backdrop-filter", "blur(10px)"));
-
-// iOS uses real UIVisualEffectView blur. Web uses CSS backdrop-filter when
-// supported. Android's expo-blur backdrop is too thin to read against busy
-// content (renders near-transparent), so we route Android to the same solid
-// fallback the web path uses when backdrop-filter is unavailable.
-const shouldUseRealBlur = (): boolean => {
-  if (Platform.OS === "ios") return true;
-  if (Platform.OS === "android") return false;
-  return supportsBackdropFilter;
-};
 
 export type SheetSnapPoint = "peek" | "half" | "full";
 
@@ -282,14 +265,14 @@ export const Sheet: React.FC<SheetProps> = ({
 
   if (!mounted) return null;
 
-  // ORCH-0964: on mobile web (< 768px) `backdrop-filter` is globally disabled
-  // (GlassBlur injects a `@media (max-width:767px){*{backdrop-filter:none}}`
-  // rule to dodge the mobile-web blur crash). A BlurView there renders FULLY
-  // transparent — the sheet's page content shows straight through it. Fall back
-  // to the solid panel background in that case so the sheet reads as opaque.
-  const blurOk =
-    shouldUseRealBlur() &&
-    !(Platform.OS === "web" && windowWidth < 768);
+  // ORCH-0964 / ORCH-1100: on mobile web (< 768px) `backdrop-filter` is globally
+  // disabled (inject-mobile-blur-css injects a `@media (max-width:767px){*{
+  // backdrop-filter:none}}` rule to dodge the mobile-web blur crash). A BlurView
+  // there renders FULLY transparent — the sheet's page content shows straight
+  // through it. The shared `shouldUseRealBlur(windowWidth)` helper encapsulates
+  // that width-aware blur-kill awareness (plus the iOS/Android/desktop-web
+  // cases) so it can't drift per-component.
+  const blurOk = shouldUseRealBlur(windowWidth);
   const blurIntensity = blurIntensityTokens.cardElevated;
 
   return (

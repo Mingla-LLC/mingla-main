@@ -18,7 +18,7 @@
  */
 
 import React from "react";
-import { Platform, StyleSheet, View } from "react-native";
+import { StyleSheet, useWindowDimensions, View } from "react-native";
 import type { StyleProp, ViewStyle } from "react-native";
 import { BlurView } from "expo-blur";
 
@@ -28,6 +28,7 @@ import {
   radius as radiusTokens,
   shadows,
 } from "../../constants/designSystem";
+import { shouldUseRealBlur } from "../../utils/glassBlur";
 
 export type GlassChromeIntensity = keyof typeof blurIntensityTokens;
 export type GlassChromeRadius = keyof typeof radiusTokens;
@@ -53,34 +54,12 @@ export interface GlassChromeProps {
   style?: StyleProp<ViewStyle>;
 }
 
-/**
- * Detected once at module scope. `true` when the host browser supports
- * `backdrop-filter` so we can rely on `<BlurView>`'s web shim. On unsupported
- * browsers we render a solid-rgba fallback (visible degradation, no null).
- */
-const supportsBackdropFilter: boolean =
-  Platform.OS === "web" &&
-  typeof globalThis !== "undefined" &&
-  typeof (globalThis as { CSS?: { supports?: (prop: string, value: string) => boolean } }).CSS?.supports === "function" &&
-  ((globalThis as { CSS?: { supports?: (prop: string, value: string) => boolean } }).CSS!.supports!("backdrop-filter", "blur(10px)") ||
-    (globalThis as { CSS?: { supports?: (prop: string, value: string) => boolean } }).CSS!.supports!("-webkit-backdrop-filter", "blur(10px)"));
-
 const FALLBACK_BACKGROUND = "rgba(20, 22, 26, 0.92)";
 
 const TINT_COLOUR: Record<GlassChromeTint, string> = {
   idle: glass.tint.chrome.idle,
   pressed: glass.tint.chrome.pressed,
   backdrop: glass.tint.backdrop,
-};
-
-// iOS uses real UIVisualEffectView blur. Web uses CSS backdrop-filter when
-// supported. Android's expo-blur backdrop is too thin to read against busy
-// content (renders near-transparent), so we route Android to the same solid
-// fallback the web path uses when backdrop-filter is unavailable.
-const shouldUseRealBlur = (): boolean => {
-  if (Platform.OS === "ios") return true;
-  if (Platform.OS === "android") return false;
-  return supportsBackdropFilter;
 };
 
 export const GlassChrome: React.FC<GlassChromeProps> = ({
@@ -95,10 +74,13 @@ export const GlassChrome: React.FC<GlassChromeProps> = ({
   testID,
   style,
 }) => {
+  const { width: windowWidth } = useWindowDimensions();
   const intensityValue = blurIntensityTokens[intensity];
   const borderRadius = radiusTokens[radius];
   const resolvedTint = tintColor ?? TINT_COLOUR[tint];
-  const blurOk = shouldUseRealBlur();
+  // ORCH-1100: width-aware so the mobile-web (< 768px) blur-kill paints the
+  // opaque fallback instead of a see-through chrome surface.
+  const blurOk = shouldUseRealBlur(windowWidth);
 
   return (
     <View

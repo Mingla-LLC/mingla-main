@@ -47,18 +47,28 @@ const styleBlock = (code: string, name: string): string | null => {
 // Half 1 — Symptom-B stragglers
 // ---------------------------------------------------------------------------
 
-describe("Sub-D Symptom-B — ui/Toast.tsx inverted blur guard fixed", () => {
+// [TEST-MOD-APPROVED ORCH-1100] — RC-2 generalized the per-component
+// `Platform.OS === "android"` opaque-fallback decision into the shared
+// `utils/glassBlur.shouldUseRealBlur(windowWidth)` helper (so the mobile-web
+// < 768px blur-kill is also covered, not just Android). The BEHAVIORAL
+// guarantees these tests protect — iOS keeps real blur, Android opaque ≥0.92,
+// the kit `rgba(20,22,26,0.92)` fallback fill — are unchanged; only the location
+// of the decision moved. Assertions updated to track the shared helper while
+// still pinning the same behavior. The shared helper itself is independently
+// covered by `utils/__tests__/glassBlur.test.ts` + the ORCH-1100 regression
+// suite. See `Mingla_Artifacts/INVARIANT_REGISTRY.md` (ANDROID glass opaque
+// fallback) — generalized, not retired.
+
+describe("Sub-D Symptom-B — ui/Toast.tsx blur guard (via shared shouldUseRealBlur)", () => {
   const code = stripComments(read("ui/Toast.tsx"));
 
   test("blurOk no longer uses the inverted `Platform.OS !== 'web'` guard", () => {
     expect(code).not.toMatch(/blurOk\s*=\s*Platform\.OS\s*!==\s*["']web["']/);
   });
 
-  test("Android takes the opaque fallback (blurOk false on android)", () => {
-    // iOS true, android false, web by backdrop-filter — mirrors GlassChrome.
-    expect(code).toMatch(
-      /blurOk[\s\S]{0,160}Platform\.OS\s*===\s*["']ios["'][\s\S]{0,160}Platform\.OS\s*===\s*["']android["'][\s\S]{0,40}false/,
-    );
+  test("blurOk is computed from the shared shouldUseRealBlur(windowWidth) helper", () => {
+    expect(code).toMatch(/import\s*\{[^}]*shouldUseRealBlur[^}]*\}\s*from\s*["'][^"']*glassBlur["']/);
+    expect(code).toMatch(/blurOk\s*=\s*shouldUseRealBlur\(windowWidth\)/);
   });
 
   test("opaque FALLBACK_BACKGROUND is the kit fallback rgba(20, 22, 26, 0.92)", () => {
@@ -66,24 +76,19 @@ describe("Sub-D Symptom-B — ui/Toast.tsx inverted blur guard fixed", () => {
       /FALLBACK_BACKGROUND\s*=\s*["']rgba\(20,\s*22,\s*26,\s*0\.92\)["']/,
     );
   });
-
-  test("web path preserved via backdrop-filter detection", () => {
-    expect(code).toMatch(/supportsBackdropFilter/);
-  });
 });
 
-describe("Sub-D Symptom-B — ari/AiDisclosureModal.tsx guarded", () => {
+describe("Sub-D Symptom-B — ari/AiDisclosureModal.tsx guarded (via shared helper)", () => {
   const code = stripComments(read("ari/AiDisclosureModal.tsx"));
 
-  test("Platform imported", () => {
-    expect(code).toMatch(
-      /import\s+\{[^}]*\bPlatform\b[^}]*\}\s+from\s+["']react-native["']/,
-    );
+  test("uses the shared shouldUseRealBlur(windowWidth) helper", () => {
+    expect(code).toMatch(/import\s*\{[^}]*shouldUseRealBlur[^}]*\}\s*from\s*["'][^"']*glassBlur["']/);
+    expect(code).toMatch(/shouldUseRealBlur\(windowWidth\)/);
   });
 
-  test("Android renders an opaque sheet instead of the raw BlurView", () => {
+  test("opaque branch renders an opaque sheet instead of the raw BlurView", () => {
     expect(code).toMatch(
-      /Platform\.OS\s*===\s*["']android["'][\s\S]{0,120}styles\.opaqueSheet/,
+      /!\s*shouldUseRealBlur\(windowWidth\)[\s\S]{0,120}styles\.opaqueSheet/,
     );
   });
 
@@ -93,23 +98,22 @@ describe("Sub-D Symptom-B — ari/AiDisclosureModal.tsx guarded", () => {
     expect(block!).toMatch(/backgroundColor:\s*["']#[0-9a-fA-F]{6}["']/);
   });
 
-  test("iOS still renders a real BlurView", () => {
+  test("real-blur path still renders a real BlurView", () => {
     expect(code).toMatch(/<BlurView\s+intensity=\{40\}/);
   });
 });
 
-describe("Sub-D Symptom-B — marketing/BlastCustomersCta.tsx guarded", () => {
+describe("Sub-D Symptom-B — marketing/BlastCustomersCta.tsx guarded (via shared helper)", () => {
   const code = stripComments(read("marketing/BlastCustomersCta.tsx"));
 
-  test("Platform imported", () => {
-    expect(code).toMatch(
-      /import\s+\{[^}]*\bPlatform\b[^}]*\}\s+from\s+["']react-native["']/,
-    );
+  test("uses the shared shouldUseRealBlur(windowWidth) helper", () => {
+    expect(code).toMatch(/import\s*\{[^}]*shouldUseRealBlur[^}]*\}\s*from\s*["'][^"']*glassBlur["']/);
+    expect(code).toMatch(/blurOk\s*=\s*shouldUseRealBlur\(windowWidth\)/);
   });
 
-  test("Android L1 renders opaque fallback, iOS/web keeps BlurView", () => {
+  test("L1 renders BlurView when blurOk, opaque fallback otherwise", () => {
     expect(code).toMatch(
-      /Platform\.OS\s*===\s*["']android["'][\s\S]{0,200}FALLBACK_BACKGROUND[\s\S]{0,200}<BlurView/,
+      /blurOk\s*\?[\s\S]{0,120}<BlurView[\s\S]{0,400}FALLBACK_BACKGROUND/,
     );
   });
 

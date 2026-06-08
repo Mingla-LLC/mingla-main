@@ -148,7 +148,14 @@ export const ComposerV2Editor = forwardRef<ComposerV2EditorHandle, ComposerV2Edi
     } = props;
 
     const richEditorRef = useRef<RichEditorHandle>(null);
-    const { isWideDesktop } = useResponsiveLayout();
+    const { isWideDesktop, isWeb } = useResponsiveLayout();
+    // ORCH-1100 RC-3: phone/tablet web (web, < 1024px). The fixed-height
+    // arithmetic below is iPhone-pell-tuned; on phone web the extra TopBar +
+    // MarketingSubNav + browser URL bar overflow the height budget and collapse
+    // the contenteditable to a ~23px strip. We web-gate a robust minimum height
+    // + a scrollable column for this case ONLY; native iOS/Android pell layout
+    // is byte-unchanged.
+    const isPhoneWeb = isWeb && !isWideDesktop;
 
     // Stage F.7b: compute a concrete numeric height for pell's WebView.
     // Pell's WebView with `flex:1` collapses to 0 height inside a flex
@@ -190,13 +197,24 @@ export const ComposerV2Editor = forwardRef<ComposerV2EditorHandle, ComposerV2Edi
     const CHROME_CONTENT_PX = 376;
     const rawBodyHeight =
       windowHeight - insets.top - insets.bottom - CHROME_CONTENT_PX - keyboardHeight;
+    // ORCH-1100 RC-3: on phone web, `CHROME_CONTENT_PX` (iPhone-pell tuned)
+    // under-counts the chrome (TopBar + MarketingSubNav + browser URL bar), so
+    // `rawBodyHeight` over-shoots the real viewport and the body strip ends up
+    // unreachable/collapsed. Give phone web a generous fixed body height with a
+    // 360pt floor (so the contenteditable always has real, tappable height) and
+    // let the surrounding column scroll (see `isPhoneWeb` host wrap in render).
+    // 60% of viewport is a comfortable composing area; floored at 360 so even a
+    // very short browser window keeps a usable editor.
+    const PHONE_WEB_BODY_MIN_PX = 360;
     const bodyHeight = isWideDesktop
       ? Math.max(400, Math.min(rawBodyHeight - 44, 700))
-      : Math.max(
-          120, // F.9e: keyboard-up minimum (small but still usable to see what
-          //         was just typed). When keyboard's closed, body is ~432pt.
-          rawBodyHeight,
-        );
+      : isPhoneWeb
+        ? Math.max(PHONE_WEB_BODY_MIN_PX, Math.round(windowHeight * 0.6))
+        : Math.max(
+            120, // F.9e: keyboard-up minimum (small but still usable to see what
+            //         was just typed). When keyboard's closed, body is ~432pt.
+            rawBodyHeight,
+          );
 
     // Initial HTML rendered into the editor once at mount. Subsequent body_html
     // changes from the parent are NOT pushed back into the editor (would
