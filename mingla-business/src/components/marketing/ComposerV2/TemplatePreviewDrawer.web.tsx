@@ -59,10 +59,8 @@ import {
 import { useResponsiveLayout } from "../../../hooks/useResponsiveLayout";
 import type { MarketingTemplateRow } from "../../../types/marketing";
 
-import {
-  TemplatePreviewDrawer as MobileDrawer,
-  type TemplatePreviewDrawerProps,
-} from "./TemplatePreviewDrawer";
+import type { TemplatePreviewDrawerProps } from "./TemplatePreviewDrawer";
+import { sortTemplatesStarterFirst } from "./templateDrawerHelpers";
 
 // Re-export the props type so consumers can import everything from the
 // canonical specifier `./TemplatePreviewDrawer` (Metro picks the right
@@ -72,13 +70,112 @@ export type { TemplatePreviewDrawerProps };
 export const TemplatePreviewDrawer: React.FC<TemplatePreviewDrawerProps> = (props) => {
   const { isWideDesktop } = useResponsiveLayout();
 
-  // Narrow web + native fall-through.
+  // ORCH-1098 Stage 5: narrow MOBILE web must NOT delegate to the native
+  // base `TemplatePreviewDrawer` (`MobileDrawer`). That native-targeted
+  // component drives an unbounded re-render / allocation loop the instant
+  // it mounts on phone Chrome under React 19 — even while `visible === false`
+  // (it returns null but its hooks still run). Device-proven on a physical
+  // Samsung SM-A725F (ORCH-1098 Stage 5 heap bisect): with the drawer
+  // present the compose route climbs ~12 MB → ~870 MB in ~5 s and SIGSEGVs
+  // ("Aw, Snap"); with it removed the route is flat at ~18 MB. So narrow
+  // web gets its OWN loop-free `MobileWebDrawer` (plain Views, no native
+  // Modal, no native base component). Mirrors the BottomNav.web.tsx fix.
   if (!isWideDesktop) {
-    return <MobileDrawer {...props} />;
+    return <MobileWebDrawer {...props} />;
   }
 
   // Wide-desktop: render the right-rail pane.
   return <DesktopRightRail {...props} />;
+};
+
+/**
+ * Narrow-mobile-web template drawer — ORCH-1098 Stage 5.
+ *
+ * A loop-free, web-safe bottom-sheet overlay. Renders NOTHING until
+ * `visible` (so its mount is free and it never runs the native base
+ * drawer's looping hooks). When opened, it shows the template list with the
+ * same Apply / At-cursor actions as the desktop rail, in a plain
+ * absolute-positioned overlay (no native `Modal`, no `useWindowDimensions`,
+ * no debounce/preview-version effects). The full-fidelity native swipe +
+ * live-preview drawer remains on iOS/Android via the base
+ * `TemplatePreviewDrawer.tsx`.
+ */
+const MobileWebDrawer: React.FC<TemplatePreviewDrawerProps> = ({
+  visible,
+  onClose,
+  templates,
+  onApplyReplace,
+  onApplyAtCursor,
+  currentDraftIsDirty,
+}) => {
+  const [appliedId, setAppliedId] = useState<string | null>(null);
+  const sorted = useMemo(
+    () => sortTemplatesStarterFirst(templates),
+    [templates],
+  );
+
+  // Render nothing while closed — no hooks-driven work at mount.
+  if (!visible) return null;
+
+  const handleApply = (template: MarketingTemplateRow): void => {
+    setAppliedId(template.id);
+    onApplyReplace(template);
+  };
+  const handleApplyAtCursor = (template: MarketingTemplateRow): void => {
+    setAppliedId(template.id);
+    onApplyAtCursor(template);
+  };
+
+  return (
+    <View style={styles.mobileOverlay} testID="composer-v2-template-drawer">
+      <Pressable
+        style={styles.mobileScrim}
+        onPress={onClose}
+        accessibilityRole="button"
+        accessibilityLabel="Close template drawer"
+      />
+      <View style={styles.mobileSheet} accessibilityViewIsModal>
+        <View style={styles.header}>
+          <Text style={styles.title}>Templates</Text>
+          <Pressable
+            onPress={onClose}
+            accessibilityRole="button"
+            accessibilityLabel="Close templates"
+            hitSlop={8}
+            style={({ pressed }) => [
+              styles.closeBtn,
+              pressed ? styles.closeBtnPressed : null,
+            ]}
+          >
+            <Text style={styles.closeBtnText}>×</Text>
+          </Pressable>
+        </View>
+        <ScrollView
+          style={styles.body}
+          contentContainerStyle={styles.bodyContent}
+          keyboardShouldPersistTaps="handled"
+        >
+          {sorted.length === 0 ? (
+            <Text style={styles.emptyHint}>
+              Save a template to find it here. Tap any blast you've composed →
+              Save as template.
+            </Text>
+          ) : (
+            sorted.map((t) => (
+              <TemplateRow
+                key={t.id}
+                template={t}
+                isApplied={appliedId === t.id}
+                onApply={handleApply}
+                onApplyAtCursor={handleApplyAtCursor}
+                draftIsDirty={currentDraftIsDirty}
+              />
+            ))
+          )}
+        </ScrollView>
+      </View>
+    </View>
+  );
 };
 
 interface DesktopRightRailProps extends TemplatePreviewDrawerProps {}
@@ -270,6 +367,33 @@ const TemplateRow: React.FC<TemplateRowProps> = ({
 };
 
 const styles = StyleSheet.create({
+  // ORCH-1098 Stage 5 — narrow-mobile-web overlay drawer (loop-free).
+  mobileOverlay: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    justifyContent: "flex-end",
+    zIndex: 1000,
+  },
+  mobileScrim: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: "rgba(0, 0, 0, 0.55)",
+  },
+  mobileSheet: {
+    maxHeight: "80%",
+    backgroundColor: "rgba(20, 22, 28, 0.98)",
+    borderTopLeftRadius: radius.lg,
+    borderTopRightRadius: radius.lg,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderColor: glass.border.profileElevated,
+    overflow: "hidden",
+  },
   rail: {
     flex: 1,
     flexDirection: "column",

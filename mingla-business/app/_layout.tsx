@@ -384,34 +384,30 @@ function RootLayoutInner(): React.ReactElement {
     throw stripeModeError;
   }
 
-  if (
+  // ORCH-1098 Stage 5 — HOOKS-ORDER FIX (React error #300).
+  // The signed-out + mobile-web-route recovery EARLY RETURNS used to live
+  // HERE, BEFORE ~9 hooks below (push-permission moment, notification
+  // handlers, deferred-push replay, AppState focus, eviction/reap). When the
+  // auth/route gate flipped between renders (e.g. `loading`→resolved, or a
+  // route-status change) React saw a DIFFERENT hook count between renders →
+  // "Minified React error #300" (rendered fewer hooks than the previous
+  // render) → the app error boundary ("Something broke") → redirect to `/`.
+  // Device-repro on the Samsung at `/event/create` (deep-link AND in-app CTA),
+  // because that route mounts the wizard tree right as auth resolves.
+  // FIX: compute the recovery decision here (NO hooks) but DEFER the actual
+  // `return` until AFTER every hook has run (just before the JSX return). All
+  // hooks now run unconditionally on every render — Rules-of-Hooks satisfied.
+  const shouldShowSignedOutRecovery =
     Platform.OS === "web" &&
     !loading &&
     user === null &&
-    ORCH_1092_SIGNED_OUT_ROUTES.has(pathname)
-  ) {
-    return (
-      <Orch1092SignedOutRecovery
-        pathname={pathname}
-        onReturnHome={() => router.replace("/home" as never)}
-      />
-    );
-  }
+    ORCH_1092_SIGNED_OUT_ROUTES.has(pathname);
 
   const orch1093Status = orch1093RouteStatus(pathname);
-  if (
+  const shouldShowMobileRouteRecovery =
     Platform.OS === "web" &&
     isMobileWebRouteEntry() &&
-    orch1093Status !== "interactive"
-  ) {
-    return (
-      <Orch1093MobileRouteRecovery
-        pathname={pathname}
-        status={orch1093Status}
-        onReturnHome={() => router.replace("/home" as never)}
-      />
-    );
-  }
+    orch1093Status !== "interactive";
 
   // ORCH-0808 — optional install/analytics SDK init runs after first paint.
   // Auth identity binding + first-event fire happen in AuthContext on
@@ -564,6 +560,26 @@ function RootLayoutInner(): React.ReactElement {
       setReapRan(true);
     })();
   }, [loading, reapRan]);
+
+  // ORCH-1098 Stage 5 — recovery returns DEFERRED to here so every hook above
+  // runs unconditionally on every render (Rules-of-Hooks / React #300 fix).
+  if (shouldShowSignedOutRecovery) {
+    return (
+      <Orch1092SignedOutRecovery
+        pathname={pathname}
+        onReturnHome={() => router.replace("/home" as never)}
+      />
+    );
+  }
+  if (shouldShowMobileRouteRecovery) {
+    return (
+      <Orch1093MobileRouteRecovery
+        pathname={pathname}
+        status={orch1093Status}
+        onReturnHome={() => router.replace("/home" as never)}
+      />
+    );
+  }
 
   return (
     <ErrorBoundary
