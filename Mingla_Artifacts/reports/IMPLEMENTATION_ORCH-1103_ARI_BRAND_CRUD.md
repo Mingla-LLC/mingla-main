@@ -210,3 +210,79 @@ Result: the one real dead tap (Add cover on create) is fixed; every other intera
 
 5. **Surfaces 3 ("which brand?" disambiguation) and 5 (no-brand handoff) are not wired into `MessageList`.** The design specs both via `QuickReplyChips` CHOICE, but `MessageList` never imports/renders `QuickReplyChips` — these surfaces are entirely prompt-driven and have no client render path yet. Not a dead tap (no element exists), but a spec-vs-impl gap. Register a follow-up if these are expected to render client-side.
 6. **Provider picks (Pexels/GIPHY) cannot thread without a brandId while reusing `CoverPicker` verbatim.** The picker persists every brand-target media to a real `brandId`. The design's "Phase 0 — thread provider picks via args, no commit" is impossible without a non-persisting brand mode in the picker. The rework resolves this by minting the brand first for the WHOLE picker (design §3.2/§3.5's approved close+reopen). If a true no-commit provider path is wanted at create, it needs a new emit-only picker mode (separate ORCH).
+
+---
+
+# REWORK 2 — wire the disambiguation + no-brand-handoff chips into `MessageList` (Surfaces 3 & 5)
+
+**Date:** 2026-06-08 · **Trigger:** the REWORK-1 dead-tap audit (Discovery #5) — `MessageList` had ZERO `QuickReplyChips` references; the two designed conversational flows ("which brand?" disambiguation and no-brand → "create one?") only happened in Ari's prose. The tappable chips the design specifies (DESIGN §5, §7; SPEC §6.ii, §6.v) never rendered client-side.
+**Commit:** `0b408fb85` (on branch `ORCH-1103-ari-brand-crud-smart`) · base `20a610ff4`.
+**Status:** implemented and verified (Deno check clean on both touched edge modules; tsc clean on all touched `src/` files; 8 new Deno + 11 new jest assertions green; full ari jest suite 117/117 green; fails-on-revert proven for both sides at `20a610ff4`). The CLIENT render + tap-dispatch work NOW under Fast Refresh with no deploy. The AGENT side (the choices payload on the `agent-chat` response) needs the `agent-chat` edge fn redeployed to round-trip.
+
+## What was missing vs what REWORK 2 adds
+- **Before:** Surfaces 3 & 5 were prompt-only. Ari's prose asked "which brand?" or offered to create one, but the user had to TYPE the answer — no chips, no tap path. `MessageList` never imported `QuickReplyChips`.
+- **After:** `agent-chat` attaches a presentational `choices` payload to the relevant TEXT turns; `MessageList` renders `QuickReplyChips` CHOICE beneath that Ari bubble; tapping a chip sends its label as a normal user turn (Q2) and visually resolves (selected pill, siblings unmount). The prose is UNCHANGED, so the flow still degrades gracefully if chips aren't shown.
+
+## How the choices payload is shaped (the contract)
+A purely-presentational payload, attached ONLY to a `kind:"text"` response (never the `pending_action`/tool-confirm path — that contract is untouched):
+```ts
+interface AgentChoices {
+  kind: "brand_disambiguation" | "no_brand_handoff";
+  prompt: string;                          // short a11y/fallback heading; the visible question is Ari's prose
+  options: { id: string; label: string }[]; // tapping option N sends options[N].label as the next user turn
+}
+```
+- It is returned on the `agent-chat` response (`{ kind:"text", ..., choices }`) AND persisted in the assistant message's `content.structured.choices`, so the chips survive a thread refetch and re-render from history (single source of truth = the stored message).
+- **Disambiguation:** `options` = the user's candidate brands (`{id: brandId, label: brandName}`, capped at 8). Tapping sends the brand NAME as a user turn → Gemini re-proposes `update_brand`/`delete_brand` with the resolved target (client never pre-fills `brand_id`, per Q2).
+- **No-brand handoff:** `options` = `[{id:"yes", label:"Yes, create a brand"}, {id:"no", label:"Not now"}]`. "Yes…" sends a create-a-brand turn; "Not now" backs off (non-chaining respected).
+
+## Agent side (needs `agent-chat` redeploy to round-trip)
+- **NEW `supabase/functions/_shared/agentChoices.ts`** — `detectChoices(userMessage, ariText, brands)` returns the payload or `undefined`. Detection is intent-keyword + state based and intentionally conservative: it only fires when Gemini answered with TEXT (it's asking a question, not proposing a write) AND the state matches. A miss = prose-only (graceful); a false-positive = harmless extra chips whose labels just re-send as a turn. Disambiguation requires ≥2 brands + edit/delete intent + "brand" + Ari's reply contains a `?`. Handoff requires 0 brands + create-event intent + an event/experience/trip object word. Extracted into `_shared` (not inline in `agent-chat`) so it's importable + Deno-testable without invoking `Deno.serve`.
+- **`supabase/functions/agent-chat/index.ts`** — imports `detectChoices` + `AgentChoices`; on the text-response branch, computes `choices = detectChoices(...)`, persists `content.structured.choices` when present, and adds `choices` to the response. No other behaviour changed; the tool-call/pending-action branch is untouched.
+
+## Client side (works NOW, no deploy)
+- **NEW `mingla-business/src/components/ari/agentChoices.ts`** — pure `choicesOf(message)` (extracts a well-formed payload off an assistant message; defensive shape-check; legacy/malformed rows degrade to a plain bubble) + `resolveChoiceLabel(choices, optionId)` (the exact label a tap sends; `null` for an unknown id → handler no-ops, never an empty turn). Extracted so the tap-dispatch contract is unit-testable in the node jest env without importing the RN component tree.
+- **`mingla-business/src/services/agentChatService.ts`** — `AgentChoices` interface exported; `AgentChatResponse` `text` variant gains optional `choices`.
+- **`mingla-business/src/components/ari/MessageList.tsx`** — imports `QuickReplyChips` + the two helpers; new `onSendChoice` prop; `resolvedChoice` state (the tapped option, keyed by message id); `lastChoiceMessageId` computed (single-live-at-tail — only the latest choices row is interactive, and a live pending proposal supersedes choices); under an Ari bubble carrying choices it renders `<QuickReplyChips options state="default"|"submitted" onSelectId>` in a `choicesRow` (indented past the orb gutter). On tap: resolve the label, set `resolvedChoice` (chip collapses to the selected pill, siblings unmount per the CHOICE "submitted" state), and `sendChoice(label)`. `sendChoice = onSendChoice ?? onSeedMessage`.
+- **`mingla-business/src/screens/ari/AriChatScreen.tsx`** — `onSendChoice={(label) => void handleSend(label)}` — a chip tap is a normal user-turn send (same path as typing it).
+
+## No dead taps
+Tap → `resolveChoiceLabel(choices, optionId)` → `sendChoice(label)` → `handleSend` → `chat.sendMessage` → real edge round-trip. Asserted in both the behavioral unit test (the dispatched text equals the chip label; a bad id is a no-op) and the source assertions. The chip is `QuickReplyChips` CHOICE reused verbatim (no new component); its `accessibilityRole="radio"`/`"radiogroup"` + labels carry over; Android opaque-fallback branch carries over.
+
+## Which parts need the edge-fn deploy vs work now
+- **Works client-side NOW (Fast Refresh, no deploy):** the render of chips from a stored `content.structured.choices`, the tap → user-turn dispatch, the visual resolve (selected pill + siblings unmount), single-live-at-tail. Any assistant message that already carries a choices payload renders + taps immediately.
+- **Needs `agent-chat` redeploy to round-trip:** the SERVER attaching the `choices` payload to new text turns. Until `agent-chat` is redeployed, Ari's prose still drives both flows (graceful degrade — the original prompt-driven behaviour), just without the chips. After deploy, the chips appear on the matching turns.
+
+**Edge functions to (re)deploy** (from MERGED main per COMMS-0015, `--project-ref gqnoajqerqhnvulmnyvv`):
+- `agent-chat` — now bundles `_shared/agentChoices.ts` + attaches the payload.
+- `supabase functions deploy agent-chat --project-ref gqnoajqerqhnvulmnyvv`
+- (`agent-confirm-action` is NOT affected by REWORK 2; no new migration.)
+
+## Regression tests (REWORK 2)
+- **Client (jest):** `mingla-business/src/components/ari/__tests__/orch_1103_choices_chips.test.ts` (NEW, 11 assertions) — `choicesOf` extracts both payload kinds + degrades on malformed/legacy/non-assistant rows; `resolveChoiceLabel` maps a tapped id to the brand-name/yes-no label; a simulated tap → send proves the dispatched text equals the chip label and a bad id is a no-op (no dead tap); source assertions that `MessageList` imports + renders `QuickReplyChips` CHOICE, routes the tap through `resolveChoiceLabel`→`sendChoice`, enforces single-live-at-tail, and that `AriChatScreen` wires `onSendChoice` to a normal send. Run: `Tests: 11 passed`; full ari suite `117 passed, 117 total`.
+- **Agent (Deno):** `supabase/functions/_shared/__tests__/orch_1103_choices.test.ts` (NEW, 8 tests) — `detectChoices` emits disambiguation chips (edit/delete intent + ≥2 brands + Ari asks), the no-brand yes/no handoff (0 brands + event-create intent), caps at 8 chips, and correctly returns `undefined` for: Ari not asking (flat statement), a single brand, a user who already has a brand. Run: `8 passed | 0 failed`.
+- **fails-on-revert verified at `20a610ff4`:** reverting the 3 client source files + removing the new `src/components/ari/agentChoices.ts` makes the jest suite fail (missing `AgentChoices` export / missing module); removing `_shared/agentChoices.ts` makes the Deno test fail type-checking (import not found). Both restored → both green again.
+
+## Files changed (REWORK 2)
+| File | Change |
+|---|---|
+| `supabase/functions/_shared/agentChoices.ts` | NEW — `detectChoices` + `AgentChoices` type (the presentational payload detector) |
+| `supabase/functions/agent-chat/index.ts` | import + attach `choices` to the text response + persist in `content.structured` |
+| `mingla-business/src/components/ari/agentChoices.ts` | NEW — pure `choicesOf` + `resolveChoiceLabel` (testable) |
+| `mingla-business/src/services/agentChatService.ts` | export `AgentChoices`; `text` response gains optional `choices` |
+| `mingla-business/src/components/ari/MessageList.tsx` | render `QuickReplyChips` CHOICE for choices payloads; `onSendChoice` prop; `resolvedChoice` state; single-live-at-tail; tap → `sendChoice(label)` |
+| `mingla-business/src/screens/ari/AriChatScreen.tsx` | `onSendChoice` → normal user-turn send |
+| `supabase/functions/_shared/__tests__/orch_1103_choices.test.ts` | NEW — 8 Deno tests for `detectChoices` |
+| `mingla-business/src/components/ari/__tests__/orch_1103_choices_chips.test.ts` | NEW — 11 jest tests (render payload→chips + tap→dispatch) |
+
+## Invariant / constraint preservation (REWORK 2)
+- **Tool-confirm contract untouched** — `choices` attach ONLY to `kind:"text"` responses; the `pending_action` branch is byte-for-byte unchanged.
+- **I-ARI-USER-JWT-ONLY** — `detectChoices` is pure (no DB, no client); the existing JWT-only reads are unchanged.
+- **I-ARI-USER-DATA-WRAP** — chip labels are brand names that ride back to the client as plain `options[].label`; they are NOT re-interpolated into the system prompt. When a chip is tapped, its label becomes a user message wrapped in `<user_data>` like any user turn — no new injection vector.
+- **No dead taps** — proven (tap → real send; bad id no-ops).
+- **`ANDROID_GLASS_USES_OPAQUE_FALLBACK`** — `QuickReplyChips` CHOICE (reused verbatim) already declares the Android opaque branch.
+- **Accessibility** — `QuickReplyChips` CHOICE labels/roles preserved (reused verbatim).
+- **Untouched (per dispatch constraints):** the delete zero-bypass guard, de-GBP create, the Add-cover create-and-attach flow (REWORK 1), all pre-existing brand-CRUD behaviour.
+
+## Discoveries for orchestrator (REWORK 2)
+7. **`detectChoices` is heuristic, not model-emitted.** The agent side infers the two situations from intent keywords + state rather than having Gemini emit a structured `choices` block (Gemini's tool schema is the confirm contract, which the dispatch said not to change). This is robust and degrades gracefully, but it's a heuristic: an unusual phrasing that doesn't match the keyword sets shows prose-only (no chips), and the prose still carries the flow. If a future ORCH wants model-authored suggested replies, that's a structured-output change to the Gemini call (separate scope).

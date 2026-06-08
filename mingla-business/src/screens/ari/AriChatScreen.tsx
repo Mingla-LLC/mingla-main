@@ -255,6 +255,10 @@ export const AriChatScreen: React.FC = () => {
             brandNamesById={brandNamesById}
             accountId={accountId}
             onSeedMessage={(text) => void handleSend(text)}
+            // ORCH-1103 REWORK 2 — a disambiguation / no-brand-handoff chip tap
+            // sends the chip label as a normal user turn (Q2 conversational
+            // feedback; Gemini re-proposes with the resolved target).
+            onSendChoice={(label) => void handleSend(label)}
             onAttachDone={() => chat.clearPendingAction()}
           />
         )}

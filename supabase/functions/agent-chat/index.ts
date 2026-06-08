@@ -17,6 +17,7 @@ import { detectPromptInjection } from "../_shared/agentPromptInjection.ts";
 import { callGemini, ARI_MODEL_VERSION, GeminiContentMessage } from "../_shared/agentGemini.ts";
 import { AGENT_TOOLS, READ_ONLY_TOOL_NAMES, findTool, ToolError } from "../_shared/agentTools.ts";
 import { buildServiceClient, enforceTurnRateLimit } from "../_shared/agentRateLimit.ts";
+import { detectChoices, AgentChoices } from "../_shared/agentChoices.ts";
 
 const MAX_MESSAGE_LENGTH = 4096;
 const HISTORY_WINDOW = 10;
@@ -29,7 +30,7 @@ interface RequestBody {
 }
 
 type Response_ =
-  | { kind: "text"; text: string; conversation_id: string; message_id: string }
+  | { kind: "text"; text: string; conversation_id: string; message_id: string; choices?: AgentChoices }
   | { kind: "pending_action"; pending_action_id: string; tool_name: string; tool_args: Record<string, unknown>; conversation_id: string; message_id: string }
   | { kind: "error"; code: string; message: string };
 
@@ -491,13 +492,21 @@ async function handle(req: Request): Promise<Response> {
     return errorResponse(502, "MODEL_EMPTY", "Ari didn't respond — try again");
   }
   const text = gemini.textResponse.trim();
+
+  // ORCH-1103 REWORK 2 — attach the presentational choices payload (if this text
+  // turn is a disambiguation or a no-brand handoff). Persisted in
+  // content.structured so it survives a thread refetch and the chips re-render
+  // from history (single source of truth = the stored message).
+  const choices = detectChoices(body.message, text, brandsList);
+  const content = choices ? { text, structured: { choices } } : { text };
+
   const { data: asstMsg, error: asstErr } = await userClient
     .from("agent_messages")
     .insert({
       conversation_id: conversationId,
       user_id: userId,
       role: "assistant",
-      content: { text },
+      content,
       prompt_version: PROMPT_VERSION,
       model_version: ARI_MODEL_VERSION,
     })
@@ -518,5 +527,6 @@ async function handle(req: Request): Promise<Response> {
     text,
     conversation_id: conversationId,
     message_id: asstMsg.id,
+    ...(choices ? { choices } : {}),
   });
 }

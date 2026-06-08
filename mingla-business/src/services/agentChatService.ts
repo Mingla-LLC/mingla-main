@@ -11,8 +11,17 @@ import { supabase } from "./supabase";
 // Types
 // ----------------------------------------------------------------------------
 
+// ORCH-1103 REWORK 2 — presentational suggested-replies payload. Tapping a chip
+// sends its `label` as a normal user turn (Q2 conversational feedback); it does
+// NOT pre-fill a tool arg. Purely additive to a text turn.
+export interface AgentChoices {
+  kind: "brand_disambiguation" | "no_brand_handoff";
+  prompt: string;
+  options: { id: string; label: string }[];
+}
+
 export type AgentChatResponse =
-  | { kind: "text"; text: string; conversation_id: string; message_id: string }
+  | { kind: "text"; text: string; conversation_id: string; message_id: string; choices?: AgentChoices }
   | {
       kind: "pending_action";
       pending_action_id: string;

@@ -14,7 +14,7 @@
  * the same single-live-at-tail rule.
  */
 
-import React, { useEffect, useRef } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { FlatList, StyleSheet, Text, View } from "react-native";
 import { Check } from "lucide-react-native";
 
@@ -30,6 +30,8 @@ import { AgentMessage } from "../../services/agentChatService";
 import { ChatBubble } from "./ChatBubble";
 import { ToolProposalCard } from "./ToolProposalCard";
 import { ResponseCard } from "./ResponseCard";
+import { QuickReplyChips } from "./QuickReplyChips";
+import { choicesOf, resolveChoiceLabel } from "./agentChoices";
 import type { PendingActionView } from "../../hooks/useAgentChat";
 
 /**
@@ -63,6 +65,13 @@ export interface MessageListProps {
   accountId?: string | null;
   /** ORCH-1103 — receipt action pill seeds a composer message (never auto-creates). */
   onSeedMessage?: (text: string) => void;
+  /**
+   * ORCH-1103 REWORK 2 — a disambiguation / no-brand-handoff chip was tapped.
+   * The chip's label is sent as a normal user turn (Q2 conversational feedback;
+   * Gemini re-proposes with the resolved target). The client NEVER pre-fills a
+   * tool arg. Defaults to onSeedMessage when omitted.
+   */
+  onSendChoice?: (label: string) => void;
 }
 
 type ListItem =
@@ -91,9 +100,16 @@ export const MessageList: React.FC<MessageListProps> = ({
   brandNamesById = {},
   accountId = null,
   onSeedMessage,
+  onSendChoice,
   onAttachDone,
 }) => {
   const listRef = useRef<FlatList<ListItem>>(null);
+
+  // ORCH-1103 REWORK 2 — the tapped chip, keyed by message id. Once tapped, the
+  // row collapses to the selected pill (siblings unmount, per QuickReplyChips
+  // CHOICE "submitted" state) and stays that way — the follow-up user turn has
+  // been sent and re-asking with the same chip would be redundant.
+  const [resolvedChoice, setResolvedChoice] = useState<{ messageId: string; optionId: string } | null>(null);
 
   // Compose the rendered list. Two classes of rows are skipped entirely so
   // they don't leave empty separators in the FlatList:
@@ -159,6 +175,19 @@ export const MessageList: React.FC<MessageListProps> = ({
   if (pendingAction) items.push({ kind: "pending", pendingAction });
   if (isThinking) items.push({ kind: "thinking" });
 
+  // ORCH-1103 REWORK 2 — single-live-at-tail for choices: only the LATEST
+  // assistant message carrying a choices payload renders interactive chips. Any
+  // earlier disambiguation rows are stale (the user already answered or moved on)
+  // and must not keep offering taps. A pending proposal also supersedes choices.
+  let lastChoiceMessageId: string | null = null;
+  if (!pendingAction) {
+    for (const it of raw) {
+      if (it.kind === "message" && choicesOf(it.message)) lastChoiceMessageId = it.message.id;
+    }
+  }
+
+  const sendChoice = onSendChoice ?? onSeedMessage;
+
   useEffect(() => {
     if (items.length === 0) return;
     requestAnimationFrame(() => {
@@ -216,13 +245,46 @@ export const MessageList: React.FC<MessageListProps> = ({
         }
         const text = (m.content as any)?.text ?? "";
         if (!text) return null; // empty rows shouldn't render an empty bubble
-        return (
+
+        // ORCH-1103 REWORK 2 — render disambiguation / no-brand-handoff chips
+        // beneath an Ari bubble that carries a choices payload (SPEC §6.ii/§6.v,
+        // DESIGN §5/§7). Only the latest such row is interactive; tapping a chip
+        // sends its label as a normal user turn (Q2 conversational feedback).
+        const choices = choicesOf(m);
+        const bubble = (
           <ChatBubble
             role={m.role === "user" ? "user" : "assistant"}
             text={text}
             hideOrb={item.hideOrb}
             tail={item.tail}
           />
+        );
+        if (!choices) return bubble;
+
+        const isResolved = resolvedChoice?.messageId === m.id;
+        const isLatest = lastChoiceMessageId === m.id;
+        // Stale rows (superseded by a newer turn / pending proposal) collapse to
+        // nothing extra — just the bubble — so they can't be tapped again.
+        if (!isLatest && !isResolved) return bubble;
+        return (
+          <View>
+            {bubble}
+            <View style={styles.choicesRow}>
+              <QuickReplyChips
+                options={choices.options}
+                selectedId={isResolved ? resolvedChoice?.optionId : undefined}
+                state={isResolved ? "submitted" : "default"}
+                onSelectId={(optionId) => {
+                  const label = resolveChoiceLabel(choices, optionId);
+                  if (label == null) return;
+                  // Visually resolve (selected pill, siblings unmount) and send
+                  // the label as a normal user turn — never a tool pre-fill.
+                  setResolvedChoice({ messageId: m.id, optionId });
+                  sendChoice?.(label);
+                }}
+              />
+            </View>
+          </View>
         );
       }}
     />
@@ -332,6 +394,13 @@ const styles = StyleSheet.create({
     // ORCH-1101: tighter top; bottom keeps scroll clearance above the composer.
     paddingTop: spacing.sm,
     paddingBottom: spacing.xl,
+  },
+  // ORCH-1103 REWORK 2 — chips sit under the Ari bubble, indented past the orb
+  // gutter (24px orb + orbGap, matching ChatBubble's orbWrap) so they align with
+  // the bubble text, with a small breath above.
+  choicesRow: {
+    marginTop: ariThread.gapGroup,
+    marginLeft: 24 + ariThread.orbGap,
   },
   successRibbon: {
     alignSelf: "flex-start",
