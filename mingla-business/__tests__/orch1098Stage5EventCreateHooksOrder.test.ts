@@ -46,7 +46,8 @@ describe("ORCH-1098 Stage 5 — _layout hooks-order fix (Residual 2 / React #300
   // `export default function RootLayout`.
   const innerStart = src.search(/function RootLayoutInner\b/);
   const innerEndCandidates = [
-    src.indexOf("const orch1092Styles", innerStart),
+    // [TEST-MOD-APPROVED ORCH-1102] styles renamed orch1092Styles→authRoutingStyles
+    src.indexOf("const authRoutingStyles", innerStart),
     src.search(/export default function RootLayout\b/),
   ].filter((n) => n > innerStart);
   const innerEnd = Math.min(...innerEndCandidates);
@@ -66,28 +67,34 @@ describe("ORCH-1098 Stage 5 — _layout hooks-order fix (Residual 2 / React #300
     return last;
   }
 
-  test("both recovery returns are DEFERRED to after the last hook call (no hooks after an early return)", () => {
+  // [TEST-MOD-APPROVED ORCH-1102] The two recovery CARDS
+  // (<Orch1092SignedOutRecovery> / <Orch1093MobileRouteRecovery>) were REMOVED by
+  // ORCH-1102. The hooks-order invariant they motivated still matters: the new
+  // auth-routing early returns (the AuthResolvingScreen spinner + the
+  // <Redirect href="/" /> to sign-in) must STILL be DEFERRED to after every
+  // React-hook call so all renders call the same hooks in the same order
+  // (React #300 fix preserved). These tests now assert that against the new
+  // returns instead of the deleted cards.
+  test("both auth-routing returns are DEFERRED to after the last hook call (no hooks after an early return)", () => {
     const lastHook = lastHookCallIndex(inner);
     expect(lastHook).toBeGreaterThan(-1);
 
-    const signedOutReturn = inner.indexOf("return (\n        <Orch1092SignedOutRecovery") >= 0
-      ? inner.indexOf("<Orch1092SignedOutRecovery")
-      : inner.indexOf("<Orch1092SignedOutRecovery");
-    const mobileRouteReturn = inner.indexOf("<Orch1093MobileRouteRecovery");
+    const resolvingReturn = inner.indexOf("<AuthResolvingScreen");
+    const redirectReturn = inner.indexOf('<Redirect href="/" />');
 
-    expect(signedOutReturn).toBeGreaterThan(-1);
-    expect(mobileRouteReturn).toBeGreaterThan(-1);
+    expect(resolvingReturn).toBeGreaterThan(-1);
+    expect(redirectReturn).toBeGreaterThan(-1);
 
-    // The recovery JSX returns must come AFTER the last hook call.
-    expect(signedOutReturn).toBeGreaterThan(lastHook);
-    expect(mobileRouteReturn).toBeGreaterThan(lastHook);
+    // The auth-routing returns must come AFTER the last hook call.
+    expect(resolvingReturn).toBeGreaterThan(lastHook);
+    expect(redirectReturn).toBeGreaterThan(lastHook);
   });
 
-  test("the recovery decisions are computed as deferred booleans (returns gated on shouldShow*)", () => {
-    expect(inner).toMatch(/const\s+shouldShowSignedOutRecovery\s*=/);
-    expect(inner).toMatch(/const\s+shouldShowMobileRouteRecovery\s*=/);
-    expect(inner).toMatch(/if\s*\(\s*shouldShowSignedOutRecovery\s*\)/);
-    expect(inner).toMatch(/if\s*\(\s*shouldShowMobileRouteRecovery\s*\)/);
+  test("the auth-routing decisions are computed as deferred booleans (returns gated on the predicates)", () => {
+    expect(inner).toMatch(/const\s+authResolving\s*=/);
+    expect(inner).toMatch(/const\s+redirectToSignIn\s*=/);
+    expect(inner).toMatch(/if\s*\(\s*authResolving\s*\)/);
+    expect(inner).toMatch(/if\s*\(\s*redirectToSignIn\s*\)/);
   });
 
   test("the key deferred hooks still run unconditionally (present in the body)", () => {

@@ -27,16 +27,15 @@ import "../src/diagnostics/chunkReloadGuard";
 import "../src/diagnostics/silenceStripeForwardRef";
 import React, { useEffect, useRef, useState } from "react";
 import {
+  ActivityIndicator,
   AppState,
   InteractionManager,
   Platform,
-  Pressable,
   StyleSheet,
-  Text,
   View,
   type AppStateStatus,
 } from "react-native";
-import { Stack, usePathname, useRouter } from "expo-router";
+import { Redirect, Stack, useRouter } from "expo-router";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { SafeAreaProvider } from "react-native-safe-area-context";
@@ -55,15 +54,7 @@ import { useCurrentBrandId } from "../src/store/currentBrandStore";
 // keyboard events. Web variant is a passthrough Fragment (library has no
 // web entry point). Per SPEC_ORCH-0892-A §7.3.
 import { KeyboardRoot } from "../src/wrappers/KeyboardRoot";
-import {
-  accent,
-  canvas,
-  glass,
-  radius as radiusTokens,
-  spacing,
-  text as textTokens,
-  typography,
-} from "../src/constants/designSystem";
+import { canvas } from "../src/constants/designSystem";
 import { initializeAppsFlyer } from "../src/services/appsFlyerService";
 import { mixpanelService } from "../src/services/mixpanelService";
 import { revenueCatService } from "../src/services/revenueCatService";
@@ -78,9 +69,16 @@ import {
 } from "../src/services/businessNotificationRouting";
 import { usePushPermissionMoment } from "../src/hooks/usePushPermissionMoment";
 import { verifyStripeModeAlignment } from "../src/services/stripeModeHandshake";
-// ORCH-1100 Wave 3 — cold-direct-load auth-readiness flash fix. Pure predicate
-// for the signed-out recovery gate (shared, unit-tested).
-import { shouldShowSignedOutRecovery as resolveShouldShowSignedOutRecovery } from "../src/utils/coldLoadAuthGates";
+// ORCH-1102 — route-agnostic auth routing with no dead-ends. Pure, unit-tested
+// predicates: an unauthenticated user on ANY web route redirects to the real
+// sign-in screen; while auth is still resolving we show a LOADING state. These
+// supersede the ORCH-1092 `shouldShowSignedOutRecovery` route-list gate.
+import {
+  AUTH_RESOLUTION_CEILING_MS,
+  isAuthResolutionExpired,
+  isWebAuthResolving,
+  shouldRedirectToSignIn,
+} from "../src/utils/coldLoadAuthGates";
 
 // Sub-B: a tap that arrives before auth is stashed here + replayed post-login
 // (mirrors the consumer deferred-deeplink pattern). Keyed in AsyncStorage so a
@@ -116,89 +114,43 @@ const SPLASH_MIN_VISIBLE_MS = 500;
 // to ORCH-0742 baseline behavior. Prevents indefinite splash on bad networks.
 const BRAND_FETCH_TIMEOUT_MS = 2000;
 
-const ORCH_1092_SIGNED_OUT_ROUTES = new Set([
-  "/hub/events",
-  "/hub/trips",
-  "/marketing",
-  "/marketing/campaigns/compose",
-  "/account",
-]);
+// ORCH-1102 — ALL route-stub gates removed.
+//
+// History: ORCH-1092 added a signed-out RECOVERY card (a per-route dead-end
+// landing) for 5 web routes, and ORCH-1093 added a mobile-web route FIREWALL
+// stub. ORCH-1100 emptied the firewall block-list (so it never fired — dormant
+// dead code). Both were route-stub gates that left users hanging: the signed-out
+// card dead-ended back to Home, redundant with the real sign-in screen.
+//
+// Operator intent (ORCH-1102): remove all of it. If a user becomes
+// unauthenticated — on ANY route — route them back to the real sign-in screen
+// (`BusinessWelcomeScreen`, via `/`). If a user cancels an authentication
+// mid-process, route them back too. Users are never left hanging. The decision
+// is route-agnostic (no route list, no firewall, no per-route card): see
+// `shouldRedirectToSignIn` + `isWebAuthResolving` in coldLoadAuthGates.ts.
 
-// ORCH-1100 Wave 1A — RETIRE the mobile-web route firewall.
+// ORCH-1102 Wave 2 — REMOUNT-IMMUNE auth-resolution deadline anchor.
 //
-// History: the firewall existed (ORCH-1093) because the BottomNav reanimated
-// machinery OOM-crashed signed-in tab routes on phone web. ORCH-1098 Stage 3
-// fixed that root cause in BottomNav.web.tsx and promoted ~12 routes one at a
-// time, but kept the DEFAULT as "static-section" so the other ~79 routes still
-// rendered the recovery stub on a phone browser — the dominant business-web
-// parity gap.
-//
-// The ORCH-1100 parity-baseline harness (tools/parity-harness/, signed in on a
-// physical Samsung) proved that with the firewall bypassed, 88/91 routes BOOT
-// the real app + 3/91 render a correct data-guard, with ZERO crashes / ZERO OOM
-// / peak heap 41 MB. See PARITY_BASELINE_ORCH-1100.md. The firewall was masking
-// ~79 routes that already work.
-//
-// FIX: flip the DEFAULT from blocked → interactive. The REAL app now renders for
-// every signed-in mobile-web route by default. The safety valve is RETAINED but
-// inverted: instead of a whitelist of allowed routes, we keep a narrow, explicit
-// BLOCK-LIST of routes with a PROVEN live crash on device. Per the baseline,
-// that list is currently EMPTY. A route found to genuinely crash later can be
-// re-gated by adding its pathname here (with the offender logged) — without
-// reintroducing the all-routes firewall.
-//
-// Desktop web was never firewalled (isMobileWebRouteEntry() gate) and is
-// untouched by this change.
-const ORCH_1100_BLOCKED_MOBILE_WEB_ROUTES = new Set<string>([
-  // Empty by design (ORCH-1100 baseline: 0 routes crash on device). Add a
-  // pathname here ONLY with device proof that the REAL route hard-crashes on a
-  // phone browser, and log the offender + failure class in the commit message.
-]);
-
-type Orch1093RouteStatus = "interactive" | "blocked";
+// A deadlock can remount the layout tree faster than the ceiling, which would
+// reset any per-mount timer forever. We anchor the resolving-start in a
+// MODULE-LEVEL timestamp (the module stays loaded across React remounts) and
+// poll elapsed wall-clock against the ceiling. `markAuthResolveStart` stamps
+// once (idempotent), `clearAuthResolveStart` resets the window when auth
+// resolves, and `hasAuthResolutionDeadlinePassed` is the pure elapsed check.
+const AUTH_RESOLUTION_DEADLINE_POLL_MS = 500;
+let authResolveStartedAt: number | null = null;
+function markAuthResolveStart(): void {
+  if (authResolveStartedAt === null) authResolveStartedAt = Date.now();
+}
+function clearAuthResolveStart(): void {
+  authResolveStartedAt = null;
+}
+function hasAuthResolutionDeadlinePassed(): boolean {
+  if (authResolveStartedAt === null) return false;
+  return Date.now() - authResolveStartedAt >= AUTH_RESOLUTION_CEILING_MS;
+}
 
 const SUPABASE_AUTH_STORAGE_KEY = /^sb-.+-auth-token$/;
-
-function normalizeWebPathname(pathname: string): string {
-  if (pathname.length > 1 && pathname.endsWith("/")) {
-    return pathname.slice(0, -1);
-  }
-  return pathname;
-}
-
-function getCurrentWebPathname(): string {
-  if (Platform.OS !== "web" || typeof window === "undefined") return "";
-  return normalizeWebPathname(window.location.pathname);
-}
-
-function isMobileWebRouteEntry(): boolean {
-  if (Platform.OS !== "web" || typeof window === "undefined") return false;
-  const nav = window.navigator;
-  const ua = nav.userAgent.toLowerCase();
-  const uaDataMobile =
-    "userAgentData" in nav &&
-    typeof nav.userAgentData === "object" &&
-    nav.userAgentData !== null &&
-    "mobile" in nav.userAgentData &&
-    nav.userAgentData.mobile === true;
-  return (
-    uaDataMobile ||
-    /android|iphone|ipad|ipod|mobile/.test(ua) ||
-    window.matchMedia("(max-width: 767px), (pointer: coarse)").matches
-  );
-}
-
-// ORCH-1100 Wave 1A — the route-status resolver. Default is now "interactive"
-// (the real app renders); only a pathname explicitly placed in the proven-crash
-// block-list returns "blocked". The ORCH-1100 diagnostic env bypass
-// (EXPO_PUBLIC_ORCH1100_FIREWALL_BYPASS) is removed — it was a throwaway
-// measurement toggle that is redundant now that the production default is
-// interactive.
-function orch1093RouteStatus(pathname: string): Orch1093RouteStatus {
-  return ORCH_1100_BLOCKED_MOBILE_WEB_ROUTES.has(pathname)
-    ? "blocked"
-    : "interactive";
-}
 
 function hasStoredSupabaseWebSession(): boolean {
   if (Platform.OS !== "web" || typeof window === "undefined") return false;
@@ -216,83 +168,15 @@ function hasStoredSupabaseWebSession(): boolean {
   return false;
 }
 
-function Orch1093MobileRouteRecovery({
-  pathname: _pathname,
-  status: _status,
-  onReturnHome,
-}: {
-  // ORCH-1100 Wave 1A: this stub is now the NARROW safety valve — it renders
-  // only for a route explicitly placed in ORCH_1100_BLOCKED_MOBILE_WEB_ROUTES
-  // (a proven device crash), which is currently an empty set. `status` is always
-  // "blocked" when this renders; `pathname` is retained for a future per-route
-  // message but unused while the block-list is empty.
-  pathname?: string;
-  status?: Exclude<Orch1093RouteStatus, "interactive">;
-  onReturnHome: () => void;
-}): React.ReactElement {
+// ORCH-1102 — the shared LOADING screen shown while web auth is still resolving
+// (cold direct-load / bookmark / refresh of an authed route, session warming).
+// NOT a dead-end card and NOT a flash of sign-in — a plain spinner that gives
+// way to the real screen once the session warms or to sign-in once it is clear
+// the user is logged out. Native never renders this (the splash covers boot).
+function AuthResolvingScreen(): React.ReactElement {
   return (
-    <View style={orch1092Styles.host}>
-      <View style={orch1092Styles.card}>
-        <Text style={orch1092Styles.eyebrow}>Mingla Business</Text>
-        <Text style={orch1092Styles.title}>This screen is taking a detour.</Text>
-        <Text style={orch1092Styles.body}>
-          We hit a snag opening this screen on your phone browser, so Mingla is
-          sending you back to the stable Home launcher.
-        </Text>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Return to Business Home"
-          onPress={onReturnHome}
-          style={({ pressed }) => [
-            orch1092Styles.button,
-            pressed && orch1092Styles.buttonPressed,
-          ]}
-        >
-          <Text style={orch1092Styles.buttonText}>Return to Home</Text>
-        </Pressable>
-      </View>
-    </View>
-  );
-}
-
-function Orch1092SignedOutRecovery({
-  pathname,
-  onReturnHome,
-}: {
-  pathname: string;
-  onReturnHome: () => void;
-}): React.ReactElement {
-  const routeLabel =
-    pathname === "/hub/events"
-      ? "Hub Events"
-      : pathname === "/hub/trips"
-        ? "Hub Trips"
-      : pathname === "/marketing"
-        ? "Marketing overview"
-        : pathname === "/marketing/campaigns/compose"
-          ? "Compose blast"
-          : "Account settings";
-  return (
-    <View style={orch1092Styles.host}>
-      <View style={orch1092Styles.card}>
-        <Text style={orch1092Styles.eyebrow}>Mingla Business</Text>
-        <Text style={orch1092Styles.title}>Sign in to open {routeLabel}.</Text>
-        <Text style={orch1092Styles.body}>
-          This phone-browser route is ready, but it needs a business session
-          before it can load your brand data.
-        </Text>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Return to Business Home"
-          onPress={onReturnHome}
-          style={({ pressed }) => [
-            orch1092Styles.button,
-            pressed && orch1092Styles.buttonPressed,
-          ]}
-        >
-          <Text style={orch1092Styles.buttonText}>Return to Home</Text>
-        </Pressable>
-      </View>
+    <View style={authRoutingStyles.host}>
+      <ActivityIndicator size="large" color="#eb7825" />
     </View>
   );
 }
@@ -316,7 +200,6 @@ function RootLayoutInner(): React.ReactElement {
   // both paths converge on `brandReady=true` (defensive belt-and-suspenders).
   const { loading, user } = useAuth();
   const router = useRouter();
-  const pathname = normalizeWebPathname(usePathname());
   const currentBrandId = useCurrentBrandId();
   const { isFetched: brandFetched, fetchStatus: brandFetchStatus } =
     useBrand(currentBrandId);
@@ -384,45 +267,99 @@ function RootLayoutInner(): React.ReactElement {
     throw stripeModeError;
   }
 
-  // ORCH-1098 Stage 5 — HOOKS-ORDER FIX (React error #300).
-  // The signed-out + mobile-web-route recovery EARLY RETURNS used to live
-  // HERE, BEFORE ~9 hooks below (push-permission moment, notification
-  // handlers, deferred-push replay, AppState focus, eviction/reap). When the
-  // auth/route gate flipped between renders (e.g. `loading`→resolved, or a
-  // route-status change) React saw a DIFFERENT hook count between renders →
-  // "Minified React error #300" (rendered fewer hooks than the previous
-  // render) → the app error boundary ("Something broke") → redirect to `/`.
-  // Device-repro on the Samsung at `/event/create` (deep-link AND in-app CTA),
-  // because that route mounts the wizard tree right as auth resolves.
-  // FIX: compute the recovery decision here (NO hooks) but DEFER the actual
-  // `return` until AFTER every hook has run (just before the JSX return). All
-  // hooks now run unconditionally on every render — Rules-of-Hooks satisfied.
-  // ORCH-1100 Wave 3 — cold-direct-load auth-readiness flash fix.
-  // The signed-out recovery (the "Sign in to open …" landing) must fire ONLY
-  // for a GENUINELY logged-out user, never during the cold-load warming window.
-  // On a refresh/bookmark of /account (or a sibling authed route) the 3s auth
-  // bootstrap can time out and flip `loading`→false while `user` is still null
-  // because the stored session restores a beat later (late SIGNED_IN /
-  // TOKEN_REFRESHED). Showing the recovery in that window is the residual flash.
-  // Suppress it while a stored Supabase web session exists (auth still
-  // resolving) — the route then renders its own LOADING state until the session
-  // warms. `hasStoredSupabaseWebSession()` is false for real logged-out users,
-  // so they still correctly see the recovery (no spinner trap).
-  const shouldShowSignedOutRecovery = resolveShouldShowSignedOutRecovery({
-    isWeb: Platform.OS === "web",
+  // ORCH-1102 — route-agnostic auth routing with NO dead-ends.
+  //
+  // Two decisions, both decoupled from the pathname (no route list, no
+  // firewall, no per-route card). Computed here with NO hooks; the actual
+  // returns are DEFERRED to after every hook runs (Rules-of-Hooks — preserves
+  // the ORCH-1098 Stage 5 React #300 fix: all hooks call unconditionally).
+  //
+  //   1. RESOLVING — auth is still warming (bootstrap in flight, OR finished
+  //      but a stored web session is restoring a beat later via a late
+  //      SIGNED_IN / TOKEN_REFRESHED). Show a LOADING spinner — never a flash
+  //      of sign-in, never a dead-end. (Native: false; the splash covers boot.)
+  //   2. REDIRECT — auth has RESOLVED and there is genuinely no user (logout,
+  //      token expiry, session loss, RLS 401). On ANY web route, send the user
+  //      to `/`, which renders the real BusinessWelcomeScreen. No card, no
+  //      blank screen, no infinite spinner.
+  //
+  // `hasStoredSupabaseWebSession()` is false for real logged-out users, so they
+  // redirect immediately (no spinner trap); true during the warming window, so
+  // a warming session shows LOADING (no false-logged-out flash).
+  const isWeb = Platform.OS === "web";
+  const hasStoredWebSession = hasStoredSupabaseWebSession();
+  const authResolving = isWebAuthResolving({
+    isWeb,
     loading,
-    // `user === null` (kept inline so the shared predicate's gate is fed the
-    // exact GoTrue user-resolution signal the original gate used).
-    hasUser: !(user === null),
-    hasStoredWebSession: hasStoredSupabaseWebSession(),
-    routeIsSignedOutGated: ORCH_1092_SIGNED_OUT_ROUTES.has(pathname),
+    hasUser: user !== null,
+    hasStoredWebSession,
+  });
+  const redirectToSignIn = shouldRedirectToSignIn({
+    isWeb,
+    loading,
+    hasUser: user !== null,
+    hasStoredWebSession,
   });
 
-  const orch1093Status = orch1093RouteStatus(pathname);
-  const shouldShowMobileRouteRecovery =
-    Platform.OS === "web" &&
-    isMobileWebRouteEntry() &&
-    orch1093Status !== "interactive";
+  // ORCH-1102 Wave 2 — BOUNDED-LOADING backstop at the UI gate. The AuthContext
+  // hard ceiling (AUTH_RESOLUTION_HARD_CEILING_MS) releases `loading` if the
+  // GoTrue web-lock deadlocks; this is the belt-and-suspenders companion for the
+  // residual case where a stale stored web session lingers (so `authResolving`
+  // would otherwise keep the spinner up even after `loading` flips). Once auth
+  // has been RESOLVING past the ceiling with no user, we stop spinning and treat
+  // it as logged-out → redirect to the real sign-in screen. Seth's hard rule: a
+  // user is NEVER left on an infinite spinner. The ceiling is well above the
+  // normal warm + race + lock-self-heal budget, so a genuinely slow-but-valid
+  // session resolves (user appears → app renders) BEFORE this ever fires — no
+  // false logged-out flash. Web-only; native never reaches the resolving gate.
+  //
+  // REMOUNT- AND RENDER-LOOP-IMMUNE: a deadlock can remount the tree AND spin a
+  // tight re-render loop (observed on the offline static build: ~66 renders/sec,
+  // which clears any per-mount setTimeout/setInterval before it can fire). So the
+  // deadline is anchored in a MODULE-LEVEL monotonic timestamp (survives
+  // remounts) and EVALUATED AT RENDER TIME — every render re-reads the anchor, so
+  // even a render loop converges on the deadline within milliseconds of the
+  // ceiling. The interval below is only a wakeup for the OPPOSITE case (a quiet
+  // deadlock with NO render loop) so a re-render is forced once near the ceiling.
+  // Stamp the resolving-start once it begins; clear ONLY when a real user
+  // appears. We deliberately do NOT clear on a transient non-resolving render:
+  // under the deadlock render loop `authResolving` can flicker, and clearing on
+  // every flicker would reset the window forever (the window must accumulate to
+  // the ceiling). A genuinely logged-out resolved state hides the spinner via
+  // `authResolving === false` anyway, so a lingering anchor is harmless and is
+  // reset on the next real sign-in.
+  if (isWeb && authResolving && user === null) {
+    markAuthResolveStart(); // idempotent: stamps once, persists across remounts
+  } else if (isWeb && user !== null) {
+    clearAuthResolveStart(); // real session → fresh window for a later cold load
+  }
+  // Pure, unit-tested predicate (fails-on-revert). `elapsedMs` is the live
+  // wall-clock since the persistent anchor, read at render time.
+  const authResolutionExpired = isAuthResolutionExpired({
+    isWeb,
+    hasUser: user !== null,
+    stillResolving: authResolving,
+    elapsedMs: authResolveStartedAt === null ? 0 : Date.now() - authResolveStartedAt,
+  });
+
+  // Wakeup interval for a QUIET deadlock (no render loop to re-evaluate the
+  // anchor): forces a single re-render shortly after the ceiling so the
+  // render-time check above runs. Harmless under a render loop (the check
+  // already runs every render). Cleared once expired or no longer resolving.
+  const [, forceDeadlineTick] = useState(0);
+  useEffect(() => {
+    if (!isWeb) return;
+    if (!authResolving || user !== null || authResolutionExpired) return;
+    const interval = setInterval(() => {
+      if (hasAuthResolutionDeadlinePassed()) {
+        console.warn(
+          `[_layout] auth-resolution-deadline: still resolving after ${AUTH_RESOLUTION_CEILING_MS}ms — routing to sign-in (no infinite spinner)`,
+        );
+        forceDeadlineTick((n) => n + 1);
+      }
+    }, AUTH_RESOLUTION_DEADLINE_POLL_MS);
+    return () => clearInterval(interval);
+  }, [isWeb, authResolving, user, authResolutionExpired]);
 
   // ORCH-0808 — optional install/analytics SDK init runs after first paint.
   // Auth identity binding + first-event fire happen in AuthContext on
@@ -576,25 +513,24 @@ function RootLayoutInner(): React.ReactElement {
     })();
   }, [loading, reapRan]);
 
-  // ORCH-1098 Stage 5 — recovery returns DEFERRED to here so every hook above
-  // runs unconditionally on every render (Rules-of-Hooks / React #300 fix).
-  if (shouldShowSignedOutRecovery) {
-    return (
-      <Orch1092SignedOutRecovery
-        pathname={pathname}
-        onReturnHome={() => router.replace("/home" as never)}
-      />
-    );
+  // ORCH-1102 — auth-routing returns DEFERRED to here so every hook above runs
+  // unconditionally on every render (Rules-of-Hooks / React #300 fix, ORCH-1098
+  // Stage 5). Order matters: RESOLVING (spinner) is checked before REDIRECT so
+  // a warming session never flashes sign-in.
+  // ORCH-1102 Wave 2 — BOUNDED LOADING: if auth has been resolving past the
+  // hard ceiling (deadlock), stop spinning and route to sign-in. Checked BEFORE
+  // the spinner so a deadlocked session never traps the user on an infinite
+  // spinner — it lands them somewhere actionable (the real sign-in screen).
+  if (authResolutionExpired) {
+    return <Redirect href="/" />;
   }
-  if (shouldShowMobileRouteRecovery) {
-    // Only reachable when orch1093Status === "blocked" (see the guard above).
-    return (
-      <Orch1093MobileRouteRecovery
-        pathname={pathname}
-        status="blocked"
-        onReturnHome={() => router.replace("/home" as never)}
-      />
-    );
+  if (authResolving) {
+    return <AuthResolvingScreen />;
+  }
+  if (redirectToSignIn) {
+    // Genuinely logged out on a web route → the real sign-in screen. `/` renders
+    // BusinessWelcomeScreen for a no-user session. A no-op when already at `/`.
+    return <Redirect href="/" />;
   }
 
   return (
@@ -618,59 +554,12 @@ function RootLayoutInner(): React.ReactElement {
   );
 }
 
-const orch1092Styles = StyleSheet.create({
+const authRoutingStyles = StyleSheet.create({
   host: {
     flex: 1,
-    justifyContent: "center",
-    padding: spacing.xl,
-    backgroundColor: canvas.discover,
-  },
-  card: {
-    width: "100%",
-    maxWidth: 440,
-    alignSelf: "center",
-    borderWidth: 1,
-    borderColor: glass.border.profileElevated,
-    borderRadius: radiusTokens.lg,
-    padding: spacing.xl,
-    backgroundColor: glass.tint.profileElevated,
-  },
-  eyebrow: {
-    color: accent.warm,
-    fontSize: typography.caption.fontSize,
-    fontWeight: "700",
-    textTransform: "uppercase",
-    marginBottom: spacing.sm,
-  },
-  title: {
-    color: textTokens.primary,
-    fontSize: typography.h2.fontSize,
-    lineHeight: typography.h2.lineHeight,
-    fontWeight: typography.h2.fontWeight,
-    marginBottom: spacing.md,
-  },
-  body: {
-    color: textTokens.secondary,
-    fontSize: typography.body.fontSize,
-    lineHeight: typography.body.lineHeight,
-    marginBottom: spacing.lg,
-  },
-  button: {
-    minHeight: 48,
     alignItems: "center",
     justifyContent: "center",
-    borderRadius: radiusTokens.md,
-    backgroundColor: accent.warm,
-    paddingHorizontal: spacing.lg,
-  },
-  buttonPressed: {
-    opacity: 0.86,
-  },
-  buttonText: {
-    color: textTokens.inverse,
-    fontSize: typography.buttonLg.fontSize,
-    lineHeight: typography.buttonLg.lineHeight,
-    fontWeight: typography.buttonLg.fontWeight,
+    backgroundColor: canvas.discover,
   },
 });
 
@@ -680,48 +569,12 @@ export default function RootLayout(): React.ReactElement {
   // which load the needed family on demand via `useThemeFont`. Do NOT re-add a
   // root `useFonts(...)` — it pulls all 14 @expo-google-fonts/* modules into the
   // boot bundle + fires 14 boot-time fetches on the login path. See SPEC §C-2.
-  const webPathname = getCurrentWebPathname();
-  const orch1093WebStatus = orch1093RouteStatus(webPathname);
-  const shouldShowOuterOrch1093Recovery =
-    Platform.OS === "web" &&
-    isMobileWebRouteEntry() &&
-    orch1093WebStatus === "blocked";
-  const shouldShowOuterOrch1092Recovery =
-    Platform.OS === "web" &&
-    ORCH_1092_SIGNED_OUT_ROUTES.has(webPathname) &&
-    !hasStoredSupabaseWebSession();
-
-  if (shouldShowOuterOrch1093Recovery) {
-    return (
-      <GestureHandlerRootView style={{ flex: 1 }}>
-        <SafeAreaProvider>
-          <Orch1093MobileRouteRecovery
-            pathname={webPathname}
-            status="blocked"
-            onReturnHome={() => {
-              window.location.assign("/home");
-            }}
-          />
-        </SafeAreaProvider>
-      </GestureHandlerRootView>
-    );
-  }
-
-  if (shouldShowOuterOrch1092Recovery) {
-    return (
-      <GestureHandlerRootView style={{ flex: 1 }}>
-        <SafeAreaProvider>
-          <Orch1092SignedOutRecovery
-            pathname={webPathname}
-            onReturnHome={() => {
-              window.location.assign("/home");
-            }}
-          />
-        </SafeAreaProvider>
-      </GestureHandlerRootView>
-    );
-  }
-
+  //
+  // ORCH-1102: the OUTER pre-provider route-stub recovery checks are GONE. All
+  // auth routing now lives INSIDE the provider tree in RootLayoutInner, where
+  // AuthContext is the source of truth — an unauthenticated user on any web
+  // route redirects to the real sign-in screen, and a warming session shows a
+  // loading spinner (no dead-end card, ever).
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       <SafeAreaProvider>

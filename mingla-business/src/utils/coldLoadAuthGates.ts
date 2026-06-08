@@ -44,32 +44,105 @@ export const isBrandRouteResolving = ({
 };
 
 /**
- * `/account` (and siblings) — should the signed-out RECOVERY landing render?
+ * ROUTE-AGNOSTIC unauthenticated redirect — ORCH-1102.
  *
- * Fires ONLY for a genuinely logged-out user on a signed-out-gated web route:
- * auth bootstrap finished (`!loading`), no user, NO stored web session, and the
- * route is in the signed-out set. When a stored session exists (cold warming
- * window) this returns false so the route renders its own LOADING state instead
- * of flashing the sign-in landing.
+ * Replaces the ORCH-1092 `shouldShowSignedOutRecovery` route-list predicate.
+ * Operator intent (ORCH-1102): a user who becomes unauthenticated on ANY web
+ * route is routed back to the real sign-in screen — never a dead-end card,
+ * never a blank screen, never an infinite spinner. There is NO route list:
+ * every authed web route redirects to `/` (which renders BusinessWelcomeScreen)
+ * once auth has RESOLVED and there is genuinely no user.
+ *
+ * Fires ONLY for a genuinely logged-out user: web, auth bootstrap finished
+ * (`!loading`), no user, AND no stored web session. When a stored session
+ * exists (the cold warming window) this returns false so the root shows a
+ * LOADING state instead of a false-logged-out flash — the session warms a beat
+ * later via a late SIGNED_IN / TOKEN_REFRESHED event and the route renders.
+ *
+ * `hasStoredWebSession` is false for real logged-out users, so they are
+ * redirected immediately (no spinner trap). The decision is intentionally
+ * decoupled from the pathname so no route can be "left hanging".
  */
-export const shouldShowSignedOutRecovery = ({
+export const shouldRedirectToSignIn = ({
   isWeb,
   loading,
   hasUser,
   hasStoredWebSession,
-  routeIsSignedOutGated,
 }: {
   isWeb: boolean;
   loading: boolean;
   hasUser: boolean;
   hasStoredWebSession: boolean;
-  routeIsSignedOutGated: boolean;
-}): boolean =>
-  isWeb &&
-  !loading &&
-  !hasUser &&
-  !hasStoredWebSession &&
-  routeIsSignedOutGated;
+}): boolean => isWeb && !loading && !hasUser && !hasStoredWebSession;
+
+/**
+ * The companion LOADING gate — ORCH-1102.
+ *
+ * True while auth is still RESOLVING on a web route: either the bootstrap is
+ * in flight (`loading`), OR it finished but a stored web session exists while
+ * `user` has not yet been applied (the cold warming window). In this state the
+ * root shows a loading spinner — NOT a flash of sign-in, NOT a dead-end. This
+ * is route-agnostic: any authed web route shows LOADING while resolving.
+ *
+ * False once a user is present (render the app) or once it is clear the user is
+ * genuinely logged out (no stored session → `shouldRedirectToSignIn` fires).
+ */
+export const isWebAuthResolving = ({
+  isWeb,
+  loading,
+  hasUser,
+  hasStoredWebSession,
+}: {
+  isWeb: boolean;
+  loading: boolean;
+  hasUser: boolean;
+  hasStoredWebSession: boolean;
+}): boolean => {
+  if (!isWeb) return false;
+  if (hasUser) return false;
+  if (loading) return true;
+  // Bootstrap finished, no user, but a stored session is still warming.
+  return hasStoredWebSession;
+};
+
+/**
+ * BOUNDED-LOADING hard ceiling — ORCH-1102 Wave 2.
+ *
+ * Seth's hard rule: a user must NEVER be left hanging on an infinite spinner.
+ * The ORCH-1100 web GoTrue lock can DEADLOCK (orphaned-lock thrash / microtask
+ * starvation), and a deadlock can hold the loading gate true even though the
+ * ORCH-0887-A 3s race + the AuthContext hard-ceiling normally release it. This
+ * predicate is the LAST-RESORT backstop at the UI gate: once auth has been
+ * resolving for longer than the ceiling, treat an unresolvable session as
+ * logged-out and route to sign-in instead of spinning forever.
+ *
+ * `elapsedMs` is measured from first mount of the auth gate; `ceilingMs` is the
+ * wall-clock budget (default well above the normal warm path + the 3s race +
+ * the 2.3s lock self-heal so it never pre-empts a real, merely-slow session and
+ * never causes a false logged-out flash). Fires ONLY while still resolving and
+ * with no user — a present user always wins (render the app), and a resolved
+ * (non-spinning) state never trips it.
+ */
+export const AUTH_RESOLUTION_CEILING_MS = 7000;
+
+export const isAuthResolutionExpired = ({
+  isWeb,
+  hasUser,
+  stillResolving,
+  elapsedMs,
+  ceilingMs = AUTH_RESOLUTION_CEILING_MS,
+}: {
+  isWeb: boolean;
+  hasUser: boolean;
+  stillResolving: boolean;
+  elapsedMs: number;
+  ceilingMs?: number;
+}): boolean => {
+  if (!isWeb) return false;
+  if (hasUser) return false;
+  if (!stillResolving) return false;
+  return elapsedMs >= ceilingMs;
+};
 
 /**
  * `/account` brand-area — is auth still WARMING (show "Loading your brands…")?
