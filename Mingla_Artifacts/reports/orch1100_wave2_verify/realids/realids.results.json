@@ -1,0 +1,225 @@
+{
+  "generatedAt": "2026-06-08T05:11:32.654Z",
+  "results": [
+    {
+      "pathname": "/brand/22a18413-bfbf-4087-9ba7-45f70deba0f3",
+      "status": "BOOTS",
+      "rootLen": 5527,
+      "heapMB": 12.2,
+      "netFails": [],
+      "consoleErrors": [],
+      "abortErrors": [],
+      "bodyHead": "Brand Brand not found The brand you tried to open doesn’t exist or has been removed. Go back to your account to pick another. Back to Account",
+      "screenshot": "shot-timeout"
+    },
+    {
+      "pathname": "/brand/22a18413-bfbf-4087-9ba7-45f70deba0f3/edit",
+      "status": "BOOTS",
+      "rootLen": 5532,
+      "heapMB": 10.4,
+      "netFails": [],
+      "consoleErrors": [],
+      "abortErrors": [],
+      "bodyHead": "Edit brand Brand not found The brand you tried to edit doesn’t exist or has been removed. Go back to your account to pick another. Back to Account",
+      "screenshot": "shot-timeout"
+    },
+    {
+      "pathname": "/brand/22a18413-bfbf-4087-9ba7-45f70deba0f3/team",
+      "status": "BOOTS",
+      "rootLen": 3871,
+      "heapMB": 10.5,
+      "netFails": [],
+      "consoleErrors": [],
+      "abortErrors": [],
+      "bodyHead": "Team Brand not found This brand isn't in your list. Switch back and try again.",
+      "screenshot": "shot-timeout"
+    },
+    {
+      "pathname": "/brand/22a18413-bfbf-4087-9ba7-45f70deba0f3/scanners",
+      "status": "BOOTS",
+      "rootLen": 2904,
+      "heapMB": 10.5,
+      "netFails": [],
+      "consoleErrors": [],
+      "abortErrors": [],
+      "bodyHead": "Brand scanners Brand-wide scanners can scan tickets at every event you own — now and later. Add door staff who work multiple shows here. Loading scanners...",
+      "screenshot": "shot-timeout"
+    },
+    {
+      "pathname": "/brand/22a18413-bfbf-4087-9ba7-45f70deba0f3/listing",
+      "status": "BOOTS",
+      "rootLen": 3390,
+      "heapMB": 10.1,
+      "netFails": [],
+      "consoleErrors": [],
+      "abortErrors": [],
+      "bodyHead": "Your listing No listing yet Add your venue so Mingla can recommend it to people deciding where to go. Add your venue",
+      "screenshot": "shot-timeout"
+    },
+    {
+      "pathname": "/brand/22a18413-bfbf-4087-9ba7-45f70deba0f3/blasts",
+      "status": "BOOTS",
+      "rootLen": 3771,
+      "heapMB": 10.2,
+      "netFails": [],
+      "consoleErrors": [],
+      "abortErrors": [],
+      "bodyHead": "Blasts",
+      "screenshot": "shot-timeout"
+    },
+    {
+      "pathname": "/brand/22a18413-bfbf-4087-9ba7-45f70deba0f3/payments",
+      "status": "BOOTS",
+      "rootLen": 5530,
+      "heapMB": 11.3,
+      "netFails": [],
+      "consoleErrors": [],
+      "abortErrors": [],
+      "bodyHead": "Payments Brand not found The brand you tried to open doesn’t exist or has been removed. Go back to your account to pick another. Back to Account",
+      "screenshot": "shot-timeout"
+    },
+    {
+      "pathname": "/brand/22a18413-bfbf-4087-9ba7-45f70deba0f3/pricing-defaults",
+      "status": "BOOTS",
+      "rootLen": 1800,
+      "heapMB": 9.8,
+      "netFails": [],
+      "consoleErrors": [],
+      "abortErrors": [],
+      "bodyHead": "Pricing",
+      "screenshot": "shot-timeout"
+    },
+    {
+      "pathname": "/event/61980280-ff31-4e84-a169-ea97bd07eff4",
+      "status": "THIN",
+      "rootLen": 621,
+      "heapMB": 10.8,
+      "netFails": [],
+      "consoleErrors": [],
+      "abortErrors": [],
+      "bodyHead": "",
+      "screenshot": "shot-timeout"
+    },
+    {
+      "pathname": "/event/61980280-ff31-4e84-a169-ea97bd07eff4/edit",
+      "status": "BOOTS",
+      "rootLen": 1171,
+      "heapMB": 11.1,
+      "netFails": [],
+      "consoleErrors": [],
+      "abortErrors": [],
+      "bodyHead": "Loading…",
+      "screenshot": "shot-timeout"
+    },
+    {
+      "pathname": "/event/61980280-ff31-4e84-a169-ea97bd07eff4/door",
+      "status": "BOOTS",
+      "rootLen": 2326,
+      "heapMB": 10.5,
+      "netFails": [],
+      "consoleErrors": [],
+      "abortErrors": [],
+      "bodyHead": "Door Sales Loading event...",
+      "screenshot": "shot-timeout"
+    },
+    {
+      "pathname": "/event/61980280-ff31-4e84-a169-ea97bd07eff4/scanner",
+      "status": "BOOTS",
+      "rootLen": 2340,
+      "heapMB": 10.2,
+      "netFails": [],
+      "consoleErrors": [],
+      "abortErrors": [],
+      "bodyHead": "Scan tickets Loading event...",
+      "screenshot": "shot-timeout"
+    },
+    {
+      "pathname": "/event/61980280-ff31-4e84-a169-ea97bd07eff4/guests",
+      "status": "BOOTS",
+      "rootLen": 2322,
+      "heapMB": 10.2,
+      "netFails": [],
+      "consoleErrors": [],
+      "abortErrors": [],
+      "bodyHead": "Guests Loading event...",
+      "screenshot": "shot-timeout"
+    },
+    {
+      "pathname": "/event/61980280-ff31-4e84-a169-ea97bd07eff4/orders",
+      "status": "BOOTS",
+      "rootLen": 2322,
+      "heapMB": 10.4,
+      "netFails": [],
+      "consoleErrors": [],
+      "abortErrors": [],
+      "bodyHead": "Orders Loading event...",
+      "screenshot": "shot-timeout"
+    },
+    {
+      "pathname": "/event/61980280-ff31-4e84-a169-ea97bd07eff4/group-chat",
+      "status": "BOOTS",
+      "rootLen": 2752,
+      "heapMB": 10.7,
+      "netFails": [],
+      "consoleErrors": [],
+      "abortErrors": [],
+      "bodyHead": "Group chat Read, reply, and moderate buyer chat",
+      "screenshot": "shot-timeout"
+    },
+    {
+      "pathname": "/event/61980280-ff31-4e84-a169-ea97bd07eff4/preview",
+      "status": "BOOTS",
+      "rootLen": 1171,
+      "heapMB": 11,
+      "netFails": [],
+      "consoleErrors": [],
+      "abortErrors": [],
+      "bodyHead": "Loading…",
+      "screenshot": "shot-timeout"
+    },
+    {
+      "pathname": "/event/61980280-ff31-4e84-a169-ea97bd07eff4/blasts",
+      "status": "BOOTS",
+      "rootLen": 3771,
+      "heapMB": 10.4,
+      "netFails": [],
+      "consoleErrors": [],
+      "abortErrors": [],
+      "bodyHead": "Blasts",
+      "screenshot": "shot-timeout"
+    },
+    {
+      "pathname": "/event/61980280-ff31-4e84-a169-ea97bd07eff4/reconciliation",
+      "status": "BOOTS",
+      "rootLen": 2330,
+      "heapMB": 10.3,
+      "netFails": [],
+      "consoleErrors": [],
+      "abortErrors": [],
+      "bodyHead": "Reconciliation Loading event...",
+      "screenshot": "shot-timeout"
+    },
+    {
+      "pathname": "/b/leggothis",
+      "status": "BOOTS",
+      "rootLen": 1256,
+      "heapMB": 10.3,
+      "netFails": [],
+      "consoleErrors": [],
+      "abortErrors": [],
+      "bodyHead": "Loading brand...",
+      "screenshot": "shot-timeout"
+    },
+    {
+      "pathname": "/e/leggothis/61980280-ff31-4e84-a169-ea97bd07eff4",
+      "status": "BOOTS",
+      "rootLen": 1256,
+      "heapMB": 10,
+      "netFails": [],
+      "consoleErrors": [],
+      "abortErrors": [],
+      "bodyHead": "Loading event...",
+      "screenshot": "shot-timeout"
+    }
+  ]
+}

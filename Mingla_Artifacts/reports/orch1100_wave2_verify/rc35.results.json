@@ -1,0 +1,41 @@
+{
+  "rc3_composer": {
+    "blastMenu": "Leggo This Overview Audiences Campaigns Templates CAMPAIGNS SENT 13 in the last 30 days SENT 65 DELIVERED 1 2% CLICKED 1 2% FAILED 0 0% RECENT CAMPAIGNS Hello {first_name}, We are ",
+    "composerHead": "Leggo This New campaign Save draft Pick an audience › { } B I U Link + Event Personalize ⋮ Preview Send now Schedule",
+    "editor": {
+      "found": true,
+      "tag": "DIV",
+      "height": 23,
+      "width": 325,
+      "top": 298,
+      "viewportH": 718
+    },
+    "focus": "FOCUSED ok h=23",
+    "scroll": "SCROLLABLE 683>602",
+    "beforeBack": "/marketing/campaigns/compose",
+    "back": "CLICKED Back",
+    "afterBack": {},
+    "historyBack": null,
+    "shotCompose": "rc3_composer.png",
+    "shotAfterBack": "rc3_after_back.png",
+    "consoleErrors": []
+  },
+  "rc5_scanner": {
+    "grant": "ok",
+    "before": {
+      "head": "Scan tickets Camera access needed Camera access needed to scan tickets at the door. Allow camera access",
+      "hasPermGate": true,
+      "hasScanUi": true,
+      "hasVideo": false
+    },
+    "click": "CLICKED Allow camera access",
+    "after": {
+      "head": "Scan tickets Camera access needed Camera access needed to scan tickets at the door. Allow camera access",
+      "hasVideo": false,
+      "video": null,
+      "hasScanUi": true
+    },
+    "shot": "rc5_scanner.png",
+    "consoleErrors": []
+  }
+}

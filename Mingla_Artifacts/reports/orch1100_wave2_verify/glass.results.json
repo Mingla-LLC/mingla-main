@@ -1,0 +1,25 @@
+{
+  "rc2_brandSwitcher": {
+    "trigger": "CLICKED Brand: Create brand",
+    "measure": {
+      "anchorFound": true,
+      "sheetBgChain": []
+    },
+    "opacity": [],
+    "screenshot": "rc2_brand_switcher.png"
+  },
+  "rc2_toast": {
+    "probe": {
+      "found": false
+    },
+    "note": "Toast is event-driven; opacity governed by shared shouldUseRealBlur(windowWidth) helper (Wave 1B). Phone-web width<768 => opaque rgba(20,22,26,0.92). Validated via source+helper test; live toast not deterministically triggerable via CDP."
+  },
+  "rc2_disclosure": {
+    "measure": {
+      "found": false,
+      "bodyHead": "Ari\nHi, I'm Ari.\nI can create events, manage brands, and answer questions about your business.\nTap + for things to try\nHome\nAccount\nMeet Ari.\nAri is your AI co-"
+    },
+    "opacity": null,
+    "screenshot": "rc2_ai_disclosure.png"
+  }
+}

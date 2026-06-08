@@ -1,0 +1,190 @@
+{
+  "generatedAt": "2026-06-08T05:35:36.358Z",
+  "findings": [
+    {
+      "screen": "Home",
+      "route": "/home",
+      "before": {},
+      "controlCount": 13,
+      "controls": [
+        {
+          "name": "Brand: Leggo This",
+          "effect": "NAV->undefined",
+          "errs": []
+        },
+        {
+          "name": "Search",
+          "effect": "NAV->undefined",
+          "errs": []
+        },
+        {
+          "name": "Notifications",
+          "effect": "NAV->undefined",
+          "errs": []
+        },
+        {
+          "name": "Create event, experience, or trip",
+          "effect": "NAV->undefined",
+          "errs": []
+        },
+        {
+          "name": "See all upcoming events",
+          "effect": "NAV->undefined",
+          "errs": []
+        },
+        {
+          "name": "Open event: Vibes and Stuff. 44 / 50 sol",
+          "effect": "NAV->undefined",
+          "errs": []
+        },
+        {
+          "name": "Open event: A life in vegas. 13 sold. $0",
+          "effect": "NAV->undefined",
+          "errs": []
+        },
+        {
+          "name": "Open event: The party block. 4 / 20 sold",
+          "effect": "NAV->undefined",
+          "errs": []
+        },
+        {
+          "name": "Home",
+          "effect": "NAV->undefined",
+          "errs": []
+        },
+        {
+          "name": "Hub",
+          "effect": "NAV->undefined",
+          "errs": []
+        },
+        {
+          "name": "Ari",
+          "effect": "NAV->undefined",
+          "errs": []
+        },
+        {
+          "name": "Blast",
+          "effect": "GONE",
+          "errs": []
+        },
+        {
+          "name": "Account",
+          "effect": "NAV->undefined",
+          "errs": []
+        }
+      ]
+    },
+    {
+      "screen": "Hub",
+      "route": "/hub",
+      "before": {},
+      "controlCount": 4,
+      "controls": [
+        {
+          "name": "List experiences, reach guests, and grow",
+          "effect": "NAV->undefined",
+          "errs": []
+        },
+        {
+          "name": "Continue with Apple",
+          "effect": "NAV->undefined",
+          "errs": []
+        },
+        {
+          "name": "Continue with Google",
+          "effect": "NAV->undefined",
+          "errs": []
+        },
+        {
+          "name": "Continue with Email",
+          "effect": "NAV->undefined",
+          "errs": []
+        }
+      ]
+    },
+    {
+      "screen": "Ari",
+      "route": "/ari",
+      "before": {},
+      "controlCount": 10,
+      "controls": [
+        {
+          "name": "Show conversations",
+          "effect": "NAV->undefined",
+          "errs": []
+        },
+        {
+          "name": "Open Ari settings",
+          "effect": "NAV->undefined",
+          "errs": []
+        },
+        {
+          "name": "Dismiss keyboard",
+          "effect": "NAV->undefined",
+          "errs": []
+        },
+        {
+          "name": "Ari",
+          "effect": "NAV->undefined",
+          "errs": []
+        },
+        {
+          "name": "Ask Ari",
+          "effect": "NAV->undefined",
+          "errs": []
+        },
+        {
+          "name": "Show example prompts",
+          "effect": "NAV->undefined",
+          "errs": []
+        },
+        {
+          "name": "Send message to Ari",
+          "effect": "NAV->undefined",
+          "errs": []
+        },
+        {
+          "name": "Home",
+          "effect": "NAV->undefined",
+          "errs": []
+        },
+        {
+          "name": "Account",
+          "effect": "NAV->undefined",
+          "errs": []
+        },
+        {
+          "name": "Acknowledge and continue to Ari",
+          "effect": "NAV->undefined",
+          "errs": []
+        }
+      ]
+    },
+    {
+      "screen": "Blast/Marketing",
+      "route": "/marketing",
+      "before": {},
+      "controlCount": 1,
+      "controls": [
+        {
+          "name": "Return to Business Home",
+          "effect": "NAV->undefined",
+          "errs": []
+        }
+      ]
+    },
+    {
+      "screen": "Account",
+      "route": "/account",
+      "before": {},
+      "controlCount": 1,
+      "controls": [
+        {
+          "name": "Return to Business Home",
+          "effect": "NAV->undefined",
+          "errs": []
+        }
+      ]
+    }
+  ]
+}
