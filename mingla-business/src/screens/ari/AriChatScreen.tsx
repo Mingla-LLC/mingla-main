@@ -208,13 +208,21 @@ export const AriChatScreen: React.FC = () => {
           style={[
             styles.inputWrap,
             {
-              // When keyboard is up, sit JUST above the keyboard with a
-              // small breath (spacing.sm). When closed, clear the floating
-              // BottomNav capsule + safe-area inset.
+              // ORCH-1101 Bug A (screen side): on desktop web there is no soft
+              // keyboard (keyboardHeight stays 0) and no floating BottomNav
+              // capsule (the business web nav is a side rail), so the old
+              // `insets.bottom + BOTTOM_NAV_CLEARANCE_PX` reserved a phantom
+              // 80px gap below the composer. Web → spacing.sm only.
+              //
+              // Native unchanged: when the keyboard is up, sit JUST above it
+              // with a small breath (spacing.sm); when closed, clear the
+              // floating BottomNav capsule + safe-area inset.
               paddingBottom:
-                keyboardHeight > 0
-                  ? keyboardHeight + spacing.sm
-                  : Math.max(insets.bottom, spacing.md) + BOTTOM_NAV_CLEARANCE_PX,
+                Platform.OS === "web"
+                  ? spacing.sm
+                  : keyboardHeight > 0
+                    ? keyboardHeight + spacing.sm
+                    : Math.max(insets.bottom, spacing.md) + BOTTOM_NAV_CLEARANCE_PX,
             },
           ]}
         >

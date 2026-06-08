@@ -12,11 +12,27 @@
  * Ari orb. iOS-only ember glow; Android opaque + overflow:hidden + no
  * elevation per ANDROID_GLASS_USES_OPAQUE_FALLBACK. Send-moment scale spring
  * + glow pulse gated behind useReducedMotion().
+ *
+ * ORCH-1101 — composer + send overhaul (fixes the two desktop-web defects):
+ *   Bug B (send "blob"): the old react-native-svg radial-gradient circle block
+ *   stacked a gradient circle BEHIND the glyph; react-native-web mis-composited
+ *   it into an amorphous orange blob (gradient-id collisions made it worse).
+ *   It is DELETED. The send button is now a flat ember disc
+ *   (ariPalette.userBubble) with a single lucide ArrowUp as its only child —
+ *   renders identically on iOS/Android/web (single-path SVG, no gradient, no
+ *   sibling). The Animated.View (scale + iOS shadowOpacity glow) + the send
+ *   micro-interaction + reduced-motion gate are kept verbatim — they were
+ *   never the blob.
+ *   Bug A (web bottom gap): the input is explicitly one line tall on every
+ *   surface — fontSize 14 / lineHeight 19 / paddingVertical 6 / minHeight 30,
+ *   host minHeight 48 — and on react-native-web the <textarea> gets
+ *   rows={1} + resize:'none' + height:'auto' so the browser's intrinsic
+ *   multi-row height can't open dead space below the single line. (The
+ *   AriChatScreen paddingBottom phantom-80px half of Bug A is fixed there.)
  */
 
 import React, { useState } from "react";
 import { Platform, Pressable, StyleSheet, TextInput, View } from "react-native";
-import Svg, { Circle, Defs, RadialGradient, Stop } from "react-native-svg";
 import Animated, {
   useAnimatedStyle,
   useReducedMotion,
@@ -30,12 +46,25 @@ import * as Haptics from "expo-haptics";
 
 import {
   ariPalette,
+  ariThread,
   glass,
   radius,
   spacing,
   text as textTokens,
-  typography,
 } from "../../constants/designSystem";
+
+// Web-only TextInput props: on react-native-web a multiline TextInput renders
+// as a <textarea> whose browser-default rows (~2) + larger default line-height
+// open dead space below the single text line. Force a one-line box: explicit
+// lineHeight, rows={1}, height:'auto', no manual resize. Native ignores these.
+const WEB_INPUT_PROPS =
+  Platform.OS === "web"
+    ? ({
+        rows: 1,
+        // react-native-web forwards unknown style keys to the DOM node.
+        style: { height: "auto", resize: "none", overflowY: "auto" },
+      } as unknown as Record<string, unknown>)
+    : {};
 
 export interface InputBarProps {
   onSend: (text: string) => void;
@@ -107,9 +136,10 @@ export const InputBar: React.FC<InputBarProps> = ({
         placeholderTextColor={textTokens.tertiary}
         editable={!disabled}
         multiline
-        style={styles.input}
+        style={[styles.input, Platform.OS === "web" && (WEB_INPUT_PROPS.style as object)]}
         accessibilityLabel="Ask Ari"
         maxLength={4096}
+        {...(Platform.OS === "web" ? { rows: WEB_INPUT_PROPS.rows } : {})}
       />
       {onShowSuggestions ? (
         <Pressable
@@ -142,31 +172,11 @@ export const InputBar: React.FC<InputBarProps> = ({
         <Animated.View
           style={[styles.sendBtn, !canSend && styles.btnDisabled, sendAnimStyle]}
         >
-          <Svg
-            width={38}
-            height={38}
-            viewBox="0 0 100 100"
-            style={styles.sendFill}
-          >
-            <Defs>
-              {/* Warm radial echoing the Ari orb — lit from above, ember bottom. */}
-              <RadialGradient
-                id="ari-send-fill"
-                cx="50"
-                cy="36"
-                rx="60"
-                ry="60"
-                fx="50"
-                fy="32"
-                gradientUnits="userSpaceOnUse"
-              >
-                <Stop offset="0%" stopColor={ariPalette.flame} stopOpacity="1" />
-                <Stop offset="100%" stopColor={ariPalette.ember} stopOpacity="1" />
-              </RadialGradient>
-            </Defs>
-            <Circle cx="50" cy="50" r="50" fill="url(#ari-send-fill)" />
-          </Svg>
-          <ArrowUp size={20} color="#ffffff" strokeWidth={2.5} />
+          {/* ORCH-1101: flat ember disc + a single lucide ArrowUp as the ONLY
+              child (no SVG gradient, no two-layer composition) — renders
+              identically on iOS/Android/web. lucide-react-native is a
+              single-path stroke glyph; with no gradient sibling it never blobs. */}
+          <ArrowUp size={18} color="#ffffff" strokeWidth={2.75} />
         </Animated.View>
       </Pressable>
     </View>
@@ -183,22 +193,27 @@ const styles = StyleSheet.create({
     borderRadius: radius.xl,
     overflow: "hidden",
     paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
+    // Web has no soft keyboard + tighter chrome → 6; native keeps 8.
+    paddingVertical: Platform.OS === "web" ? 6 : ariThread.composerPadV,
     gap: spacing.sm,
-    minHeight: 52,
+    minHeight: ariThread.composerMinH, // 48 (was 52)
   },
   input: {
     flex: 1,
-    fontSize: typography.body.fontSize,
-    lineHeight: typography.body.lineHeight,
+    fontSize: ariThread.bodyFont, // 14 (was body 16 → align to thread)
+    lineHeight: ariThread.bodyLine, // 19 (explicit — overrides the web textarea's taller default)
     color: textTokens.primary,
-    paddingVertical: 8,
+    paddingVertical: ariThread.inputPadV, // 6 (was 8)
+    minHeight: ariThread.inputMinH, // 30 — caps the empty box to one line
     maxHeight: 120,
   },
   sendBtn: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
+    width: ariThread.sendSize, // 34 (was 38)
+    height: ariThread.sendSize,
+    borderRadius: ariThread.sendSize / 2,
+    // ORCH-1101: flat deepened ember disc (no SVG gradient). Same fill as the
+    // user bubble — "Ari's warmth, owned by me". white ArrowUp = 4.6:1.
+    backgroundColor: ariPalette.userBubble,
     alignItems: "center",
     justifyContent: "center",
     ...Platform.select({
@@ -212,22 +227,18 @@ const styles = StyleSheet.create({
         shadowRadius: 7,
       },
       // Android: NO elevation/shadow (draws a hard rectangle through rounded
-      // fills). Clip the SVG fill to the round shape (ANDROID_GLASS_USES_OPAQUE_FALLBACK).
+      // fills). Clip the flat fill to the round shape (ANDROID_GLASS_USES_OPAQUE_FALLBACK).
+      // Web also lands here: flat fill, no shadow (react-native-web shadow is
+      // unreliable and can itself read as a halo-blob).
       default: {
         overflow: "hidden",
       },
     }),
   },
-  // The SVG radial fill sits behind the glyph, filling the circle.
-  sendFill: {
-    position: "absolute",
-    top: 0,
-    left: 0,
-  },
   suggestBtn: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
+    width: 30, // ORCH-1101: 30 to pair with the 34 send + tighter composer (was 32)
+    height: 30,
+    borderRadius: 15,
     backgroundColor: "transparent",
     borderWidth: 1,
     borderColor: glass.border.profileBase,

@@ -36,7 +36,9 @@ const chatScreen = read(path.join(SCREEN_DIR, "AriChatScreen.tsx"));
 describe("ORCH-1057 · Item A — Ember Send button", () => {
   it("uses the lucide ArrowUp glyph", () => {
     expect(inputBar).toMatch(/import\s*\{\s*ArrowUp\s*\}\s*from\s*["']lucide-react-native["']/);
-    expect(inputBar).toMatch(/<ArrowUp\b[^>]*color=["']#ffffff["'][^>]*strokeWidth=\{2\.5\}/);
+    // [TEST-MOD-APPROVED ORCH-1101] ORCH-1101 §4.2 deepens the glyph to
+    // size 18 / strokeWidth 2.75 (was 20 / 2.5) on the flat ember disc.
+    expect(inputBar).toMatch(/<ArrowUp\b[^>]*color=["']#ffffff["'][^>]*strokeWidth=\{2\.75\}/);
   });
 
   it("removes the old CSS-border triangle send mark", () => {
