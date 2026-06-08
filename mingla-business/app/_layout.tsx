@@ -185,7 +185,20 @@ function isMobileWebRouteEntry(): boolean {
   );
 }
 
+// ORCH-1100 DIAGNOSTIC — do not ship as default. When the parity-baseline
+// harness builds the web export with EXPO_PUBLIC_ORCH1100_FIREWALL_BYPASS="1",
+// EVERY signed-in mobile-web route is forced to "interactive" so the harness can
+// see each route's REAL boot/crash state instead of the firewall stub. This flag
+// MUST remain unset (the var is absent) in every production/Vercel build. It is a
+// throwaway measurement toggle, NOT a product change. See
+// tools/parity-harness/ + PARITY_BASELINE_ORCH-1100.md.
+const ORCH_1100_FIREWALL_BYPASS_DIAGNOSTIC =
+  process.env.EXPO_PUBLIC_ORCH1100_FIREWALL_BYPASS === "1";
+
 function orch1093RouteStatus(pathname: string): Orch1093RouteStatus {
+  if (ORCH_1100_FIREWALL_BYPASS_DIAGNOSTIC) {
+    return "interactive";
+  }
   return (
     ORCH_1093_SIGNED_IN_ROUTE_STATUS[
       pathname as keyof typeof ORCH_1093_SIGNED_IN_ROUTE_STATUS

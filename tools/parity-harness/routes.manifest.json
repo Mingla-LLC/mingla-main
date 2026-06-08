@@ -1,0 +1,664 @@
+{
+  "generatedAt": "2026-06-08T02:58:53.265Z",
+  "orch": "ORCH-1100",
+  "note": "DIAGNOSTIC route manifest for the business-web parity baseline harness. Not a product artifact.",
+  "total": 91,
+  "routes": [
+    {
+      "pathname": "/",
+      "sourceFile": "app/index.tsx",
+      "dynamic": false,
+      "dynamicParams": []
+    },
+    {
+      "pathname": "/accept-brand-invitation",
+      "sourceFile": "app/accept-brand-invitation.tsx",
+      "dynamic": false,
+      "dynamicParams": []
+    },
+    {
+      "pathname": "/accept-brand-invitation/success",
+      "sourceFile": "app/accept-brand-invitation/success.tsx",
+      "dynamic": false,
+      "dynamicParams": []
+    },
+    {
+      "pathname": "/accept-scanner-invitation",
+      "sourceFile": "app/accept-scanner-invitation.tsx",
+      "dynamic": false,
+      "dynamicParams": []
+    },
+    {
+      "pathname": "/account",
+      "sourceFile": "app/(tabs)/account.tsx",
+      "dynamic": false,
+      "dynamicParams": []
+    },
+    {
+      "pathname": "/account/delete",
+      "sourceFile": "app/account/delete.tsx",
+      "dynamic": false,
+      "dynamicParams": []
+    },
+    {
+      "pathname": "/account/edit-profile",
+      "sourceFile": "app/account/edit-profile.tsx",
+      "dynamic": false,
+      "dynamicParams": []
+    },
+    {
+      "pathname": "/account/notifications",
+      "sourceFile": "app/account/notifications.tsx",
+      "dynamic": false,
+      "dynamicParams": []
+    },
+    {
+      "pathname": "/ari",
+      "sourceFile": "app/(tabs)/ari.tsx",
+      "dynamic": false,
+      "dynamicParams": []
+    },
+    {
+      "pathname": "/ari/settings",
+      "sourceFile": "app/ari/settings.tsx",
+      "dynamic": false,
+      "dynamicParams": []
+    },
+    {
+      "pathname": "/auth",
+      "sourceFile": "app/auth/index.tsx",
+      "dynamic": false,
+      "dynamicParams": []
+    },
+    {
+      "pathname": "/auth/callback",
+      "sourceFile": "app/auth/callback.tsx",
+      "dynamic": false,
+      "dynamicParams": []
+    },
+    {
+      "pathname": "/b/leggo-this",
+      "sourceFile": "app/b/[brandSlug]/index.tsx",
+      "dynamic": true,
+      "dynamicParams": [
+        "brandSlug"
+      ]
+    },
+    {
+      "pathname": "/booking/00000000-0000-0000-0000-000000000001/cancel",
+      "sourceFile": "app/booking/[orderId]/cancel.tsx",
+      "dynamic": true,
+      "dynamicParams": [
+        "orderId"
+      ]
+    },
+    {
+      "pathname": "/brand/00000000-0000-0000-0000-000000000000",
+      "sourceFile": "app/brand/[id]/index.tsx",
+      "dynamic": true,
+      "dynamicParams": [
+        "id"
+      ]
+    },
+    {
+      "pathname": "/brand/00000000-0000-0000-0000-000000000000/audit-log",
+      "sourceFile": "app/brand/[id]/audit-log.tsx",
+      "dynamic": true,
+      "dynamicParams": [
+        "id"
+      ]
+    },
+    {
+      "pathname": "/brand/00000000-0000-0000-0000-000000000000/blasts",
+      "sourceFile": "app/brand/[id]/blasts.tsx",
+      "dynamic": true,
+      "dynamicParams": [
+        "id"
+      ]
+    },
+    {
+      "pathname": "/brand/00000000-0000-0000-0000-000000000000/edit",
+      "sourceFile": "app/brand/[id]/edit.tsx",
+      "dynamic": true,
+      "dynamicParams": [
+        "id"
+      ]
+    },
+    {
+      "pathname": "/brand/00000000-0000-0000-0000-000000000000/listing",
+      "sourceFile": "app/brand/[id]/listing.tsx",
+      "dynamic": true,
+      "dynamicParams": [
+        "id"
+      ]
+    },
+    {
+      "pathname": "/brand/00000000-0000-0000-0000-000000000000/payments",
+      "sourceFile": "app/brand/[id]/payments/index.tsx",
+      "dynamic": true,
+      "dynamicParams": [
+        "id"
+      ]
+    },
+    {
+      "pathname": "/brand/00000000-0000-0000-0000-000000000000/payments/onboard",
+      "sourceFile": "app/brand/[id]/payments/onboard.tsx",
+      "dynamic": true,
+      "dynamicParams": [
+        "id"
+      ]
+    },
+    {
+      "pathname": "/brand/00000000-0000-0000-0000-000000000000/payments/reports",
+      "sourceFile": "app/brand/[id]/payments/reports.tsx",
+      "dynamic": true,
+      "dynamicParams": [
+        "id"
+      ]
+    },
+    {
+      "pathname": "/brand/00000000-0000-0000-0000-000000000000/pricing-defaults",
+      "sourceFile": "app/brand/[id]/pricing-defaults.tsx",
+      "dynamic": true,
+      "dynamicParams": [
+        "id"
+      ]
+    },
+    {
+      "pathname": "/brand/00000000-0000-0000-0000-000000000000/scanners",
+      "sourceFile": "app/brand/[id]/scanners.tsx",
+      "dynamic": true,
+      "dynamicParams": [
+        "id"
+      ]
+    },
+    {
+      "pathname": "/brand/00000000-0000-0000-0000-000000000000/team",
+      "sourceFile": "app/brand/[id]/team.tsx",
+      "dynamic": true,
+      "dynamicParams": [
+        "id"
+      ]
+    },
+    {
+      "pathname": "/checkout-experience/sample",
+      "sourceFile": "app/checkout-experience/[experienceEventId]/index.tsx",
+      "dynamic": true,
+      "dynamicParams": [
+        "experienceEventId"
+      ]
+    },
+    {
+      "pathname": "/checkout-experience/sample/buyer",
+      "sourceFile": "app/checkout-experience/[experienceEventId]/buyer.tsx",
+      "dynamic": true,
+      "dynamicParams": [
+        "experienceEventId"
+      ]
+    },
+    {
+      "pathname": "/checkout-experience/sample/confirm",
+      "sourceFile": "app/checkout-experience/[experienceEventId]/confirm.tsx",
+      "dynamic": true,
+      "dynamicParams": [
+        "experienceEventId"
+      ]
+    },
+    {
+      "pathname": "/checkout-experience/sample/payment",
+      "sourceFile": "app/checkout-experience/[experienceEventId]/payment.tsx",
+      "dynamic": true,
+      "dynamicParams": [
+        "experienceEventId"
+      ]
+    },
+    {
+      "pathname": "/checkout-trip/sample",
+      "sourceFile": "app/checkout-trip/[tripEventId]/index.tsx",
+      "dynamic": true,
+      "dynamicParams": [
+        "tripEventId"
+      ]
+    },
+    {
+      "pathname": "/checkout-trip/sample/buyer",
+      "sourceFile": "app/checkout-trip/[tripEventId]/buyer.tsx",
+      "dynamic": true,
+      "dynamicParams": [
+        "tripEventId"
+      ]
+    },
+    {
+      "pathname": "/checkout-trip/sample/confirm",
+      "sourceFile": "app/checkout-trip/[tripEventId]/confirm.tsx",
+      "dynamic": true,
+      "dynamicParams": [
+        "tripEventId"
+      ]
+    },
+    {
+      "pathname": "/checkout-trip/sample/intake",
+      "sourceFile": "app/checkout-trip/[tripEventId]/intake.tsx",
+      "dynamic": true,
+      "dynamicParams": [
+        "tripEventId"
+      ]
+    },
+    {
+      "pathname": "/checkout-trip/sample/payment",
+      "sourceFile": "app/checkout-trip/[tripEventId]/payment.tsx",
+      "dynamic": true,
+      "dynamicParams": [
+        "tripEventId"
+      ]
+    },
+    {
+      "pathname": "/checkout/00000000-0000-0000-0000-000000000002",
+      "sourceFile": "app/checkout/[eventId]/index.tsx",
+      "dynamic": true,
+      "dynamicParams": [
+        "eventId"
+      ]
+    },
+    {
+      "pathname": "/checkout/00000000-0000-0000-0000-000000000002/buyer",
+      "sourceFile": "app/checkout/[eventId]/buyer.tsx",
+      "dynamic": true,
+      "dynamicParams": [
+        "eventId"
+      ]
+    },
+    {
+      "pathname": "/checkout/00000000-0000-0000-0000-000000000002/confirm",
+      "sourceFile": "app/checkout/[eventId]/confirm.tsx",
+      "dynamic": true,
+      "dynamicParams": [
+        "eventId"
+      ]
+    },
+    {
+      "pathname": "/checkout/00000000-0000-0000-0000-000000000002/payment",
+      "sourceFile": "app/checkout/[eventId]/payment.tsx",
+      "dynamic": true,
+      "dynamicParams": [
+        "eventId"
+      ]
+    },
+    {
+      "pathname": "/connect-account-management",
+      "sourceFile": "app/connect-account-management.tsx",
+      "dynamic": false,
+      "dynamicParams": []
+    },
+    {
+      "pathname": "/connect-onboarding",
+      "sourceFile": "app/connect-onboarding.tsx",
+      "dynamic": false,
+      "dynamicParams": []
+    },
+    {
+      "pathname": "/connect-partner-account-management",
+      "sourceFile": "app/connect-partner-account-management.tsx",
+      "dynamic": false,
+      "dynamicParams": []
+    },
+    {
+      "pathname": "/connect-partner-onboarding",
+      "sourceFile": "app/connect-partner-onboarding.tsx",
+      "dynamic": false,
+      "dynamicParams": []
+    },
+    {
+      "pathname": "/connect-tax-registrations",
+      "sourceFile": "app/connect-tax-registrations/index.tsx",
+      "dynamic": false,
+      "dynamicParams": []
+    },
+    {
+      "pathname": "/e/leggo-this/sample",
+      "sourceFile": "app/e/[brandSlug]/[eventSlug].tsx",
+      "dynamic": true,
+      "dynamicParams": [
+        "brandSlug",
+        "eventSlug"
+      ]
+    },
+    {
+      "pathname": "/event/00000000-0000-0000-0000-000000000000",
+      "sourceFile": "app/event/[id]/index.tsx",
+      "dynamic": true,
+      "dynamicParams": [
+        "id"
+      ]
+    },
+    {
+      "pathname": "/event/00000000-0000-0000-0000-000000000000/blasts",
+      "sourceFile": "app/event/[id]/blasts/index.tsx",
+      "dynamic": true,
+      "dynamicParams": [
+        "id"
+      ]
+    },
+    {
+      "pathname": "/event/00000000-0000-0000-0000-000000000000/door",
+      "sourceFile": "app/event/[id]/door/index.tsx",
+      "dynamic": true,
+      "dynamicParams": [
+        "id"
+      ]
+    },
+    {
+      "pathname": "/event/00000000-0000-0000-0000-000000000000/door/sample",
+      "sourceFile": "app/event/[id]/door/[saleId].tsx",
+      "dynamic": true,
+      "dynamicParams": [
+        "id",
+        "saleId"
+      ]
+    },
+    {
+      "pathname": "/event/00000000-0000-0000-0000-000000000000/edit",
+      "sourceFile": "app/event/[id]/edit.tsx",
+      "dynamic": true,
+      "dynamicParams": [
+        "id"
+      ]
+    },
+    {
+      "pathname": "/event/00000000-0000-0000-0000-000000000000/group-chat",
+      "sourceFile": "app/event/[id]/group-chat.tsx",
+      "dynamic": true,
+      "dynamicParams": [
+        "id"
+      ]
+    },
+    {
+      "pathname": "/event/00000000-0000-0000-0000-000000000000/guests",
+      "sourceFile": "app/event/[id]/guests/index.tsx",
+      "dynamic": true,
+      "dynamicParams": [
+        "id"
+      ]
+    },
+    {
+      "pathname": "/event/00000000-0000-0000-0000-000000000000/guests/sample",
+      "sourceFile": "app/event/[id]/guests/[guestId].tsx",
+      "dynamic": true,
+      "dynamicParams": [
+        "id",
+        "guestId"
+      ]
+    },
+    {
+      "pathname": "/event/00000000-0000-0000-0000-000000000000/orders",
+      "sourceFile": "app/event/[id]/orders/index.tsx",
+      "dynamic": true,
+      "dynamicParams": [
+        "id"
+      ]
+    },
+    {
+      "pathname": "/event/00000000-0000-0000-0000-000000000000/orders/sample",
+      "sourceFile": "app/event/[id]/orders/[oid]/index.tsx",
+      "dynamic": true,
+      "dynamicParams": [
+        "id",
+        "oid"
+      ]
+    },
+    {
+      "pathname": "/event/00000000-0000-0000-0000-000000000000/preview",
+      "sourceFile": "app/event/[id]/preview.tsx",
+      "dynamic": true,
+      "dynamicParams": [
+        "id"
+      ]
+    },
+    {
+      "pathname": "/event/00000000-0000-0000-0000-000000000000/reconciliation",
+      "sourceFile": "app/event/[id]/reconciliation.tsx",
+      "dynamic": true,
+      "dynamicParams": [
+        "id"
+      ]
+    },
+    {
+      "pathname": "/event/00000000-0000-0000-0000-000000000000/scanner",
+      "sourceFile": "app/event/[id]/scanner/index.tsx",
+      "dynamic": true,
+      "dynamicParams": [
+        "id"
+      ]
+    },
+    {
+      "pathname": "/event/00000000-0000-0000-0000-000000000000/scanners",
+      "sourceFile": "app/event/[id]/scanners/index.tsx",
+      "dynamic": true,
+      "dynamicParams": [
+        "id"
+      ]
+    },
+    {
+      "pathname": "/event/create",
+      "sourceFile": "app/event/create.tsx",
+      "dynamic": false,
+      "dynamicParams": []
+    },
+    {
+      "pathname": "/exp/leggo-this/sample",
+      "sourceFile": "app/exp/[brandSlug]/[experienceSlug].tsx",
+      "dynamic": true,
+      "dynamicParams": [
+        "brandSlug",
+        "experienceSlug"
+      ]
+    },
+    {
+      "pathname": "/experience/00000000-0000-0000-0000-000000000000",
+      "sourceFile": "app/experience/[id]/index.tsx",
+      "dynamic": true,
+      "dynamicParams": [
+        "id"
+      ]
+    },
+    {
+      "pathname": "/experience/00000000-0000-0000-0000-000000000000/edit",
+      "sourceFile": "app/experience/[id]/edit.tsx",
+      "dynamic": true,
+      "dynamicParams": [
+        "id"
+      ]
+    },
+    {
+      "pathname": "/experience/coming-soon",
+      "sourceFile": "app/experience/coming-soon.tsx",
+      "dynamic": false,
+      "dynamicParams": []
+    },
+    {
+      "pathname": "/experience/create",
+      "sourceFile": "app/experience/create.tsx",
+      "dynamic": false,
+      "dynamicParams": []
+    },
+    {
+      "pathname": "/home",
+      "sourceFile": "app/(tabs)/home.tsx",
+      "dynamic": false,
+      "dynamicParams": []
+    },
+    {
+      "pathname": "/hub",
+      "sourceFile": "app/(tabs)/hub/index.tsx",
+      "dynamic": false,
+      "dynamicParams": []
+    },
+    {
+      "pathname": "/hub/events",
+      "sourceFile": "app/(tabs)/hub/events.tsx",
+      "dynamic": false,
+      "dynamicParams": []
+    },
+    {
+      "pathname": "/hub/experiences",
+      "sourceFile": "app/(tabs)/hub/experiences.tsx",
+      "dynamic": false,
+      "dynamicParams": []
+    },
+    {
+      "pathname": "/hub/getstarted",
+      "sourceFile": "app/(tabs)/hub/getstarted.tsx",
+      "dynamic": false,
+      "dynamicParams": []
+    },
+    {
+      "pathname": "/hub/trips",
+      "sourceFile": "app/(tabs)/hub/trips.tsx",
+      "dynamic": false,
+      "dynamicParams": []
+    },
+    {
+      "pathname": "/marketing",
+      "sourceFile": "app/(tabs)/marketing/index.tsx",
+      "dynamic": false,
+      "dynamicParams": []
+    },
+    {
+      "pathname": "/marketing/audiences",
+      "sourceFile": "app/(tabs)/marketing/audiences/index.tsx",
+      "dynamic": false,
+      "dynamicParams": []
+    },
+    {
+      "pathname": "/marketing/campaigns",
+      "sourceFile": "app/(tabs)/marketing/campaigns/index.tsx",
+      "dynamic": false,
+      "dynamicParams": []
+    },
+    {
+      "pathname": "/marketing/campaigns/00000000-0000-0000-0000-000000000000",
+      "sourceFile": "app/(tabs)/marketing/campaigns/[id].tsx",
+      "dynamic": true,
+      "dynamicParams": [
+        "id"
+      ]
+    },
+    {
+      "pathname": "/marketing/campaigns/compose",
+      "sourceFile": "app/(tabs)/marketing/campaigns/compose.tsx",
+      "dynamic": false,
+      "dynamicParams": []
+    },
+    {
+      "pathname": "/marketing/templates",
+      "sourceFile": "app/(tabs)/marketing/templates/index.tsx",
+      "dynamic": false,
+      "dynamicParams": []
+    },
+    {
+      "pathname": "/marketing/templates/00000000-0000-0000-0000-000000000000",
+      "sourceFile": "app/(tabs)/marketing/templates/[id].tsx",
+      "dynamic": true,
+      "dynamicParams": [
+        "id"
+      ]
+    },
+    {
+      "pathname": "/notifications",
+      "sourceFile": "app/notifications.tsx",
+      "dynamic": false,
+      "dynamicParams": []
+    },
+    {
+      "pathname": "/o/00000000-0000-0000-0000-000000000001",
+      "sourceFile": "app/o/[orderId].tsx",
+      "dynamic": true,
+      "dynamicParams": [
+        "orderId"
+      ]
+    },
+    {
+      "pathname": "/partner/brands",
+      "sourceFile": "app/partner/brands.tsx",
+      "dynamic": false,
+      "dynamicParams": []
+    },
+    {
+      "pathname": "/partner/earnings",
+      "sourceFile": "app/partner/earnings.tsx",
+      "dynamic": false,
+      "dynamicParams": []
+    },
+    {
+      "pathname": "/stripe-onboarding-return",
+      "sourceFile": "app/stripe-onboarding-return.tsx",
+      "dynamic": false,
+      "dynamicParams": []
+    },
+    {
+      "pathname": "/t/leggo-this/sample",
+      "sourceFile": "app/t/[brandSlug]/[tripSlug].tsx",
+      "dynamic": true,
+      "dynamicParams": [
+        "brandSlug",
+        "tripSlug"
+      ]
+    },
+    {
+      "pathname": "/trip/00000000-0000-0000-0000-000000000000",
+      "sourceFile": "app/trip/[id]/index.tsx",
+      "dynamic": true,
+      "dynamicParams": [
+        "id"
+      ]
+    },
+    {
+      "pathname": "/trip/00000000-0000-0000-0000-000000000000/edit",
+      "sourceFile": "app/trip/[id]/edit.tsx",
+      "dynamic": true,
+      "dynamicParams": [
+        "id"
+      ]
+    },
+    {
+      "pathname": "/trip/00000000-0000-0000-0000-000000000000/money",
+      "sourceFile": "app/trip/[id]/money/index.tsx",
+      "dynamic": true,
+      "dynamicParams": [
+        "id"
+      ]
+    },
+    {
+      "pathname": "/trip/00000000-0000-0000-0000-000000000000/travelers",
+      "sourceFile": "app/trip/[id]/travelers/index.tsx",
+      "dynamic": true,
+      "dynamicParams": [
+        "id"
+      ]
+    },
+    {
+      "pathname": "/trip/coming-soon",
+      "sourceFile": "app/trip/coming-soon.tsx",
+      "dynamic": false,
+      "dynamicParams": []
+    },
+    {
+      "pathname": "/trip/create",
+      "sourceFile": "app/trip/create.tsx",
+      "dynamic": false,
+      "dynamicParams": []
+    },
+    {
+      "pathname": "/venue/create",
+      "sourceFile": "app/venue/create.tsx",
+      "dynamic": false,
+      "dynamicParams": []
+    },
+    {
+      "pathname": "/venue/deck-readiness",
+      "sourceFile": "app/venue/deck-readiness.tsx",
+      "dynamic": false,
+      "dynamicParams": []
+    }
+  ]
+}
