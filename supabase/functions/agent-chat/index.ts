@@ -193,14 +193,44 @@ async function handle(req: Request): Promise<Response> {
     .maybeSingle();
   const profile = profileRow as AgentUserProfile | null;
 
-  // Load brands summary
+  // Load brands summary (ORCH-1103 — widened for edit/delete targeting +
+  // disambiguation: currency, cover presence, and a per-brand deletable hint).
   const { data: brandsRows } = await userClient
     .from("brands")
-    .select("id, name")
+    .select("id, name, slug, default_currency, cover_media_url")
     .is("deleted_at", null)
     .order("created_at", { ascending: false })
     .limit(20);
-  const brandsList: BrandSummary[] = (brandsRows ?? []).map((b: any) => ({ id: b.id, name: b.name }));
+
+  // hasBlockingEvents (Q1 = grouped count, no migration) — mirrors the
+  // delete-guard semantics EXACTLY so the prompt's "deletable" hint and the
+  // delete_brand executor's actual guard cannot drift: scheduled/live events
+  // with a future event_dates.end_at, type-agnostic.
+  // orch-strict-grep-allow events-type-filter — intentionally NO event_type filter.
+  const brandIds = (brandsRows ?? []).map((b: any) => b.id as string);
+  const blockingBrandIds = new Set<string>();
+  if (brandIds.length > 0) {
+    const nowIso = new Date().toISOString();
+    const { data: blockingRows } = await userClient
+      .from("events")
+      .select("brand_id, event_dates!inner(end_at)")
+      .in("brand_id", brandIds)
+      .in("status", ["scheduled", "live"])
+      .is("deleted_at", null)
+      .gt("event_dates.end_at", nowIso);
+    for (const r of (blockingRows ?? []) as any[]) {
+      if (r?.brand_id) blockingBrandIds.add(r.brand_id as string);
+    }
+  }
+
+  const brandsList: BrandSummary[] = (brandsRows ?? []).map((b: any) => ({
+    id: b.id,
+    name: b.name,
+    slug: b.slug,
+    defaultCurrency: b.default_currency ?? null,
+    hasCover: b.cover_media_url != null,
+    hasBlockingEvents: blockingBrandIds.has(b.id),
+  }));
 
   // Auto-title: if this is the first user message in the conversation and
   // the title is still null, derive a short title from the message text so

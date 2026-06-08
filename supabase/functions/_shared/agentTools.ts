@@ -94,10 +94,61 @@ export class ToolError extends Error {
 // 1. create_brand
 // ----------------------------------------------------------------------------
 
+// Cover-media helpers (ORCH-1103). Cover url+type arrive ONLY from the
+// Add-cover picker via edited_args — the MODEL is instructed never to invent
+// them. They are written as an ATOMIC PAIR (both present + valid) or ignored.
+const COVER_MEDIA_TYPES = new Set(["image", "gif", "video"]);
+
+function isHttpsUrl(v: unknown): v is string {
+  return typeof v === "string" && /^https:\/\//i.test(v.trim());
+}
+
+function resolveCoverPair(
+  args: Record<string, unknown>,
+): { cover_media_url: string; cover_media_type: string } | null {
+  const url = args.cover_media_url;
+  const type = args.cover_media_type;
+  if (
+    isHttpsUrl(url) &&
+    typeof type === "string" &&
+    COVER_MEDIA_TYPES.has(type)
+  ) {
+    return { cover_media_url: url.trim(), cover_media_type: type };
+  }
+  return null; // atomic — if only one is present, ignore both
+}
+
+/**
+ * Resolve the create-time default currency WITHOUT writing a literal "GBP".
+ * Order: (a) explicit valid 3-letter arg → uppercased; (b) the user's
+ * agent_user_profile.preferred_currency; (c) null → OMIT the column so the
+ * `brands` column DEFAULT applies. ORCH-1103 de-GBP ([[orch-1034]]): the
+ * string "GBP" is NEVER written by this executor. (Strict-grep gate G-1.)
+ */
+async function resolveCreateCurrency(
+  args: Record<string, unknown>,
+  client: SupabaseClient,
+  userId: string,
+): Promise<string | null> {
+  if (isString(args.default_currency) && args.default_currency.trim().length >= 3) {
+    return args.default_currency.toUpperCase().slice(0, 3);
+  }
+  const { data } = await client
+    .from("agent_user_profile")
+    .select("preferred_currency")
+    .eq("user_id", userId)
+    .maybeSingle();
+  const pref = (data as { preferred_currency?: string | null } | null)?.preferred_currency;
+  if (isString(pref) && pref.trim().length >= 3) {
+    return pref.toUpperCase().slice(0, 3);
+  }
+  return null; // let the column default decide — do NOT write a literal code
+}
+
 const createBrand: AgentTool = {
   name: "create_brand",
   description:
-    "Create a new brand owned by the user. Brand name is the public-facing organiser name. Slug is auto-derived from name if not provided.",
+    "Create a new brand owned by the user. Brand name is the public-facing organiser name. Slug is auto-derived from name if not provided. Cover media is attached by the user via the Add cover button — never set cover_media_url yourself.",
   // Schema scoped to Gemini's OpenAPI subset (type/description/properties/
   // required/enum). Length/pattern/format constraints re-validated in the
   // executor — the model schema is for shape only.
@@ -109,7 +160,9 @@ const createBrand: AgentTool = {
       slug: { type: "string", description: "URL slug, lowercase hyphenated. Auto-derived from name if omitted." },
       description: { type: "string", description: "Optional short description (<=500 chars)" },
       contact_email: { type: "string", description: "Optional brand contact email" },
-      default_currency: { type: "string", description: "3-letter ISO currency code (e.g., GBP, USD). Defaults to GBP." },
+      default_currency: { type: "string", description: "3-letter ISO currency code (e.g. USD, GBP, NGN). If omitted, uses the user's preferred currency." },
+      cover_media_url: { type: "string", description: "Cover media URL — set by the Add cover picker, NOT by you. Leave unset; the user attaches it via the card." },
+      cover_media_type: { type: "string", enum: ["image", "gif", "video"], description: "Cover media type. Set by the picker alongside cover_media_url." },
     },
   },
   executor: async (args, client, userId) => {
@@ -122,19 +175,33 @@ const createBrand: AgentTool = {
       throw new ToolError("INVALID_ARGS", "Could not derive a valid slug from name");
     }
 
-    const row = {
+    // ORCH-1103 — de-GBP: resolve currency or OMIT so the column default
+    // applies. The executor never writes a hard-coded currency string.
+    const resolvedCurrency = await resolveCreateCurrency(args, client, userId);
+    const cover = resolveCoverPair(args);
+
+    const row: Record<string, unknown> = {
       account_id: userId,
       name: name.trim(),
       slug,
       description: isString(args.description) ? args.description : null,
       contact_email: isString(args.contact_email) ? args.contact_email : null,
-      default_currency: isString(args.default_currency) ? args.default_currency : "GBP",
     };
+    // Only set default_currency when explicitly resolved — otherwise omit the
+    // key entirely so the `brands.default_currency` column DEFAULT decides.
+    if (resolvedCurrency !== null) {
+      row.default_currency = resolvedCurrency;
+    }
+    // ORCH-1103 — optional cover, atomic pair only (picker-sourced).
+    if (cover !== null) {
+      row.cover_media_url = cover.cover_media_url;
+      row.cover_media_type = cover.cover_media_type;
+    }
 
     const { data, error } = await client
       .from("brands")
       .insert(row)
-      .select("id, name, slug, default_currency, created_at")
+      .select("id, name, slug, default_currency, cover_media_url, cover_media_type, created_at")
       .single();
     if (error) {
       // 23505 = Postgres unique_violation. The manual create-brand UI
@@ -150,7 +217,36 @@ const createBrand: AgentTool = {
       }
       throw new ToolError("WRITE_FAILED", error.message);
     }
-    return { brand: data };
+
+    const newBrandId = (data as { id: string }).id;
+
+    // ORCH-1103 — set as default on the user's FIRST brand (wizard parity,
+    // BrandCreationFlow.commitDefaultBrand). Non-fatal fire-and-forget per
+    // I-PROPOSED-B: a failure here must NOT fail the create.
+    let setAsDefault = false;
+    try {
+      const { count } = await client
+        .from("brands")
+        .select("id", { count: "exact", head: true })
+        .eq("account_id", userId)
+        .is("deleted_at", null);
+      if (count === 1) {
+        const { error: defaultErr } = await client
+          .from("creator_accounts")
+          .update({ default_brand_id: newBrandId })
+          .eq("id", userId);
+        if (defaultErr) {
+          console.warn("[create_brand] set default_brand_id failed:", defaultErr.message);
+        } else {
+          setAsDefault = true;
+        }
+      }
+    } catch (e) {
+      // Non-fatal — brand is already created. Surface, do not throw.
+      console.warn("[create_brand] default-brand check failed:", (e as Error)?.message ?? e);
+    }
+
+    return { brand: data, set_as_default: setAsDefault };
   },
 };
 
@@ -348,6 +444,196 @@ const updateEvent: AgentTool = {
 };
 
 // ----------------------------------------------------------------------------
+// update_brand (ORCH-1103) — sparse owner-editable brand update
+// ----------------------------------------------------------------------------
+
+const updateBrand: AgentTool = {
+  name: "update_brand",
+  description:
+    "Modify fields on a brand owned by the user. Only the provided fields are updated. Cover media is set via the Add cover button, not by you.",
+  parameters: {
+    type: "object",
+    required: ["brand_id"],
+    properties: {
+      brand_id: { type: "string", description: "UUID of the brand to update" },
+      name: { type: "string", description: "New public-facing brand name (1-80 chars)" },
+      description: { type: "string", description: "New short description (<=500 chars)" },
+      contact_email: { type: "string", description: "New brand contact email" },
+      default_currency: { type: "string", description: "New 3-letter ISO currency code" },
+      cover_media_url: { type: "string", description: "Cover media URL — set by the Add cover picker, NOT by you." },
+      cover_media_type: { type: "string", enum: ["image", "gif", "video"], description: "Cover media type, set by the picker alongside cover_media_url." },
+    },
+  },
+  executor: async (args, client, userId) => {
+    if (!isUuid(args.brand_id)) {
+      throw new ToolError("INVALID_ARGS", "brand_id must be a uuid");
+    }
+    // FK/ownership pre-check under the user JWT (RLS is the final wall).
+    await assertBrandOwned(client, args.brand_id, userId);
+
+    const updates: Record<string, unknown> = {};
+    if (args.name !== undefined) {
+      if (!isString(args.name) || args.name.trim().length === 0 || args.name.length > 80) {
+        throw new ToolError("INVALID_ARGS", "name must be 1-80 chars");
+      }
+      updates.name = args.name.trim();
+    }
+    if (args.description !== undefined) {
+      if (typeof args.description !== "string" || args.description.length > 500) {
+        throw new ToolError("INVALID_ARGS", "description must be <=500 chars");
+      }
+      // Q3: brands.description is a single physical column; the app splits it
+      // into tagline+bio via double-newline (splitBrandDescription). A single
+      // Ari description writes the SAME column the wizard's bio field persists
+      // (a one-part description splits to `bio`), so Ari + wizard edits are
+      // interchangeable. We write brands.description directly.
+      updates.description = args.description.trim().length > 0 ? args.description.trim() : null;
+    }
+    if (args.contact_email !== undefined) {
+      if (!isString(args.contact_email)) {
+        throw new ToolError("INVALID_ARGS", "contact_email must be a non-empty string");
+      }
+      updates.contact_email = args.contact_email.trim();
+    }
+    if (args.default_currency !== undefined) {
+      if (!isString(args.default_currency) || args.default_currency.trim().length < 3) {
+        throw new ToolError("INVALID_ARGS", "default_currency must be a 3-letter ISO code");
+      }
+      updates.default_currency = args.default_currency.toUpperCase().slice(0, 3);
+    }
+    // Cover — atomic pair only (picker-sourced). On update a real brandId
+    // exists so the picker has already persisted live; we still thread the
+    // pair so the row reflects it idempotently (same URL).
+    const cover = resolveCoverPair(args);
+    if (cover !== null) {
+      updates.cover_media_url = cover.cover_media_url;
+      updates.cover_media_type = cover.cover_media_type;
+    }
+
+    if (Object.keys(updates).length === 0) {
+      throw new ToolError("INVALID_ARGS", "No fields provided to update");
+    }
+    updates.updated_at = new Date().toISOString();
+
+    const { data, error } = await client
+      .from("brands")
+      .update(updates)
+      .eq("id", args.brand_id)
+      .is("deleted_at", null)
+      .select("id, name, slug, default_currency, cover_media_url, cover_media_type, updated_at")
+      .single();
+    if (error) {
+      if ((error as { code?: string }).code === "23505") {
+        throw new ToolError(
+          "SLUG_TAKEN",
+          `A brand with that name already exists. Try a small variation.`,
+        );
+      }
+      throw new ToolError("WRITE_FAILED", error.message);
+    }
+    return { brand: data };
+  },
+};
+
+// ----------------------------------------------------------------------------
+// delete_brand (ORCH-1103) — ZERO-BYPASS owner soft-delete
+//
+// Replicates softDeleteBrand(brandId) (brandsService.ts:673-753) guard order
+// EXACTLY, under the user JWT. NO hard delete. NO admin RPC (admin_suspend_-
+// listing is admin listing-moderation, not owner-delete — ORCH-1073). NO
+// service role. The blocking-events count runs BEFORE any deleted_at stamp.
+// Invariants: I-ARI-BRAND-DELETE-GUARD, I-ARI-NO-HARD-DELETE, I-ARI-USER-JWT-ONLY.
+// ----------------------------------------------------------------------------
+
+const BRAND_DELETE_BLOCKING_EVENT_STATUSES = ["scheduled", "live"] as const;
+const BRAND_RECOVERY_WINDOW_DAYS = 30;
+
+const deleteBrand: AgentTool = {
+  name: "delete_brand",
+  description:
+    "Delete a brand the user owns. Soft-delete only — recoverable for 30 days via support. REFUSED if the brand has any scheduled or live future-dated event/trip/experience; the user must cancel or transfer those first. The user must type the brand name to confirm.",
+  parameters: {
+    type: "object",
+    required: ["brand_id"],
+    properties: {
+      brand_id: { type: "string", description: "UUID of the brand to delete" },
+    },
+  },
+  executor: async (args, client, userId) => {
+    // 1 — shape
+    if (!isUuid(args.brand_id)) {
+      throw new ToolError("INVALID_ARGS", "brand_id must be a uuid");
+    }
+    const brandId = args.brand_id;
+
+    // 2 — ownership + not-already-deleted (under the user JWT)
+    await assertBrandOwned(client, brandId, userId);
+
+    // 3 — GUARD: blocking-events count BEFORE any write (softDeleteBrand step 1).
+    // Type-agnostic by design (a brand with scheduled trips/experiences also
+    // blocks delete). Mirrors the canonical guard's date-aware end_at filter.
+    // orch-strict-grep-allow events-type-filter — intentionally NO event_type filter.
+    const nowIso = new Date().toISOString();
+    const { count, error: countError } = await client
+      .from("events")
+      .select("id, event_dates!inner(end_at)", { count: "exact", head: true })
+      .eq("brand_id", brandId)
+      .in("status", BRAND_DELETE_BLOCKING_EVENT_STATUSES)
+      .is("deleted_at", null)
+      .gt("event_dates.end_at", nowIso);
+    if (countError) {
+      throw new ToolError("OWNERSHIP_CHECK_FAILED", countError.message);
+    }
+    if (count !== null && count > 0) {
+      // Recoverable refusal — surfaced as a clear Ari message (409), NOT a crash.
+      throw new ToolError(
+        "DELETE_BLOCKED_BY_EVENTS",
+        `This brand has ${count} upcoming or live event${count === 1 ? "" : "s"}. Cancel or transfer them before deleting.`,
+      );
+    }
+
+    // 4 — soft-delete (softDeleteBrand step 2). Rowcount-verified +
+    // idempotent via .is("deleted_at", null).
+    const { data, error: updateError } = await client
+      .from("brands")
+      .update({ deleted_at: nowIso })
+      .eq("id", brandId)
+      .is("deleted_at", null)
+      .select("id")
+      .maybeSingle();
+    if (updateError) {
+      throw new ToolError("WRITE_FAILED", updateError.message);
+    }
+    if (!data) {
+      throw new ToolError(
+        "WRITE_FAILED",
+        "Brand could not be deleted (already removed or not permitted).",
+      );
+    }
+
+    // 5 — clear default_brand_id pointer (softDeleteBrand step 3, I-PROPOSED-B).
+    // Non-fatal fire-and-forget — the brand is already soft-deleted.
+    try {
+      const { error: clearErr } = await client
+        .from("creator_accounts")
+        .update({ default_brand_id: null })
+        .eq("default_brand_id", brandId);
+      if (clearErr) {
+        console.warn("[delete_brand] clear default_brand_id failed:", clearErr.message);
+      }
+    } catch (e) {
+      console.warn("[delete_brand] clear default_brand_id threw:", (e as Error)?.message ?? e);
+    }
+
+    return {
+      brand: { id: brandId },
+      deleted: true,
+      recovery_window_days: BRAND_RECOVERY_WINDOW_DAYS,
+    };
+  },
+};
+
+// ----------------------------------------------------------------------------
 // 6. create_experience (ORCH-0881 Ve5)
 // ----------------------------------------------------------------------------
 
@@ -537,6 +823,8 @@ export const AGENT_TOOLS: AgentTool[] = [
   listBrands,
   listEvents,
   updateEvent,
+  updateBrand,
+  deleteBrand,
 ];
 
 export function findTool(name: string): AgentTool | undefined {

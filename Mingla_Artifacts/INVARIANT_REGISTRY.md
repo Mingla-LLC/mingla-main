@@ -7,6 +7,20 @@
 
 ---
 
+## ACTIVE (post ORCH-1103 [Ari smart brand CRUD + in-chat media] IMPLEMENT 2026-06-08)
+
+### I-ARI-BRAND-DELETE-GUARD
+- **Rule:** Ari's `delete_brand` tool can NEVER soft-delete a brand that has any `events` row with `status IN ('scheduled','live')` joined to an `event_dates` row whose `end_at > now()`. The blocking-events count runs BEFORE any `deleted_at` stamp, is TYPE-AGNOSTIC (no `event_type` filter — a brand with scheduled trips/experiences also blocks delete), and on a non-zero count the executor THROWS `ToolError("DELETE_BLOCKED_BY_EVENTS", …)` (mapped to HTTP 409 in `agent-confirm-action`) — it does not write. Mirrors `softDeleteBrand` step 1 (`brandsService.ts:688-707`) exactly.
+- **Enforcement:** `supabase/functions/_shared/agentTools.ts` `deleteBrand.executor` guard order (assertBrandOwned → blocking-count → stamp). `agent-chat`'s prompt `hasBlockingEvents` hint mirrors the SAME query so the advisory "deletable" flag and the executor guard cannot drift.
+- **Test:** `supabase/functions/_shared/__tests__/orch_1103_ari_brand_crud.test.ts` G-4 — a seeded blocking count of 2 throws `DELETE_BLOCKED_BY_EVENTS` and asserts ZERO `brands` updates (no `deleted_at` stamp). SC-2 proves the happy path stamps + clears default.
+
+### I-ARI-NO-HARD-DELETE
+- **Rule:** No Ari code path issues `.delete()` / `DELETE FROM` against `brands`; `delete_brand` is soft-delete ONLY (stamps `deleted_at`), never calls `admin_suspend_listing` (that is admin listing-moderation, ORCH-1073, not owner-delete), and never uses a service-role client (I-ARI-USER-JWT-ONLY).
+- **Enforcement:** `delete_brand` executor + strict-grep gate G-2.
+- **Test:** `orch_1103_ari_brand_crud.test.ts` G-2 — greps the `delete_brand` executor body for `.delete(`, `DELETE FROM`, `admin_suspend_listing`, `service.?role` → all must be absent.
+
+---
+
 ## ACTIVE (post META-ORCH-1009 Sub-A + Sub-B + Sub-D CLOSE 2026-05-30)
 
 Six invariants total. Sub-A landed three (sole-owner ACTIVE + shape contract ACTIVE + prompt-version-discriminated DRAFT). Sub-B flipped the discriminator ACTIVE + added two new ACTIVE invariants (consumer-reads-not-trial-table + collab-determinism-preserved-under-AI-blend). Sub-D adds one new ACTIVE invariant (I-AI-SCORE-STALENESS-AUTO-RECOVERED) covering the 15-min rescore-sweep cron + sole-writer contract for the new `place_scores.ai_signal_scores_at` column.
