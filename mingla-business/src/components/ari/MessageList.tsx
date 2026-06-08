@@ -32,12 +32,29 @@ import { ToolProposalCard } from "./ToolProposalCard";
 import { ResponseCard } from "./ResponseCard";
 import type { PendingActionView } from "../../hooks/useAgentChat";
 
+/**
+ * ORCH-1103 — the result of committing a pending action. `brandId` is set when
+ * the executed tool returned a brand (create_brand / update_brand), which the
+ * proposal card uses to re-target the cover picker in the create-row-first /
+ * attach-second flow (Q7). `ok:false` means the commit errored (toast shown).
+ */
+export interface ConfirmOutcome {
+  ok: boolean;
+  brandId?: string;
+}
+
 export interface MessageListProps {
   messages: AgentMessage[];
   pendingAction: PendingActionView | null;
   isExecuting: boolean;
-  onConfirm: (editedArgs?: Record<string, unknown>) => void;
+  onConfirm: (editedArgs?: Record<string, unknown>, keepPending?: boolean) => Promise<ConfirmOutcome>;
   onCancel: () => void;
+  /**
+   * ORCH-1103 Q7 — the proposal card calls this after the create-for-cover
+   * commit + cover attach finishes, so the host clears the now-resolved pending
+   * action (the executed tool_result then renders the brand receipt).
+   */
+  onAttachDone?: () => void;
   isThinking?: boolean;
   renderThinking?: () => React.ReactNode;
   /** ORCH-1103 — brand name lookup (prompt-known brands) for delete/update display. */
@@ -74,6 +91,7 @@ export const MessageList: React.FC<MessageListProps> = ({
   brandNamesById = {},
   accountId = null,
   onSeedMessage,
+  onAttachDone,
 }) => {
   const listRef = useRef<FlatList<ListItem>>(null);
 
@@ -188,6 +206,7 @@ export const MessageList: React.FC<MessageListProps> = ({
               onCancel={onCancel}
               brandNamesById={brandNamesById}
               accountId={accountId}
+              onAttachDone={onAttachDone}
             />
           );
         }

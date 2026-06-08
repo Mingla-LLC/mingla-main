@@ -68,6 +68,62 @@ describe("ORCH-1103 Surface 1 — cover band (create + update brand)", () => {
   });
 });
 
+describe("ORCH-1103 REWORK — Add-cover on CREATE is never a dead tap (Q7)", () => {
+  // The original regression: on create_brand, coverTarget was gated update-only
+  // (`isBrandUpdate && ...`), so the picker never mounted and tapping "Add cover"
+  // flipped coverSheetVisible with nothing to show. These lock the create-time
+  // create-row-first / attach-second flow.
+
+  it("the brand cover target is NOT gated to update-only", () => {
+    // The dead-tap root cause was `isBrandUpdate && typeof args.brand_id ...`.
+    // The fix derives the target from an effectiveBrandId (update OR created).
+    expect(proposalCard).toContain("effectiveBrandId");
+    expect(proposalCard).toMatch(/coverTarget[^=]*=\s*\n?\s*isBrandWithCover\s*&&\s*effectiveBrandId/);
+    // It must NOT re-introduce the update-only gate on the target.
+    expect(proposalCard).not.toMatch(/coverTarget[^=]*=\s*\n?\s*isBrandUpdate\s*&&/);
+  });
+
+  it("Add cover on a create proposal opens the Create & attach confirm, never a no-op", () => {
+    // The Add-cover press routes through handleAddCoverPress (not a raw
+    // setCoverSheetVisible(true) that would do nothing on create).
+    expect(proposalCard).toContain("handleAddCoverPress");
+    expect(proposalCard).toContain("onOpen={handleAddCoverPress}");
+    // On a create with no brand yet, it surfaces the inline Create & attach.
+    expect(proposalCard).toMatch(/if\s*\(isBrandCreate\)\s*\{\s*\n?\s*setCreateAttachVisible\(true\)/);
+    expect(proposalCard).toContain("Create &amp; attach");
+    expect(proposalCard).toContain("so your");
+  });
+
+  it("Create & attach mints the brand (keepPending) then opens the full picker", () => {
+    expect(proposalCard).toContain("handleCreateAndAttach");
+    // keepPending=true keeps the card mounted to host the picker post-commit.
+    expect(proposalCard).toMatch(/onConfirm\(editing \? editedArgs : undefined,\s*true\)/);
+    // The minted brandId builds the target and opens the picker.
+    expect(proposalCard).toContain("setCreatedBrandId(outcome.brandId)");
+    expect(proposalCard).toMatch(/setCoverSheetVisible\(true\)/);
+    // CREATING band state is shown during the commit.
+    expect(proposalCard).toContain("Creating brand…");
+  });
+
+  it("the picker mounts for create+update whenever a real target exists", () => {
+    // Mount condition is the generic brand-with-cover + target, NOT update-only.
+    expect(proposalCard).toMatch(/isBrandWithCover\s*&&\s*coverTarget\s*\?/);
+  });
+
+  it("onConfirm returns a ConfirmOutcome with an optional brandId (chain wired)", () => {
+    expect(proposalCard).toMatch(/onConfirm:\s*\([^)]*keepPending\?:\s*boolean\)\s*=>\s*Promise<ConfirmOutcome>/);
+    expect(messageList).toContain("export interface ConfirmOutcome");
+    expect(messageList).toMatch(/brandId\?:\s*string/);
+  });
+
+  it("AriChatScreen reads the created brandId back from the executed result", () => {
+    const screen = read("src/screens/ari/AriChatScreen.tsx");
+    expect(screen).toMatch(/r\?\.brand\?\.id/);
+    expect(screen).toContain("keepPending");
+    expect(screen).toContain("onAttachDone");
+  });
+});
+
 describe("ORCH-1103 Surface 2 — delete-variant card", () => {
   it("uses live cascade counts via useBrandCascadePreview (Q6 = live)", () => {
     expect(proposalCard).toMatch(/import\s*\{\s*useBrandCascadePreview\s*\}/);

@@ -39,6 +39,7 @@ import { ConversationDrawer } from "../../components/ari/ConversationDrawer";
 import { EmptyState } from "../../components/ari/EmptyState";
 import { InputBar } from "../../components/ari/InputBar";
 import { MessageList } from "../../components/ari/MessageList";
+import type { ConfirmOutcome } from "../../components/ari/MessageList";
 import { QuickReplyChips } from "../../components/ari/QuickReplyChips";
 import { StreamingText } from "../../components/ari/StreamingText";
 import { Toast } from "../../components/ui/Toast";
@@ -135,15 +136,31 @@ export const AriChatScreen: React.FC = () => {
 
   const handleConfirm = async (
     editedArgs?: Record<string, unknown>,
-  ): Promise<void> => {
-    if (!chat.pendingAction) return;
+    // ORCH-1103 Q7 — when the create commit is fired ONLY to obtain a brandId
+    // for the cover picker (create-row-first / attach-second), the proposal card
+    // must stay mounted so it can host the picker and transition to the receipt
+    // itself. In that case we DON'T clear the pending action here; the card
+    // clears it via onAttachDone once the cover attach finishes.
+    keepPending?: boolean,
+  ): Promise<ConfirmOutcome> => {
+    if (!chat.pendingAction) return { ok: false };
     setLocalError(null);
     const result = await confirm.confirm(chat.pendingAction.pending_action_id, editedArgs);
     if (result.kind === "error") {
       setLocalError(result.message);
-    } else {
-      chat.clearPendingAction();
+      return { ok: false };
     }
+    // ORCH-1103 — surface the freshly-created/updated brand id to the proposal
+    // card so the Q7 create-row-first / attach-second cover flow can re-target
+    // the picker to a real brandId. The executed result shape is
+    // { brand: { id, ... } } for create_brand / update_brand.
+    let brandId: string | undefined;
+    if (result.kind === "executed") {
+      const r = result.result as { brand?: { id?: string } } | null | undefined;
+      if (typeof r?.brand?.id === "string") brandId = r.brand.id;
+    }
+    if (!keepPending) chat.clearPendingAction();
+    return { ok: true, brandId };
   };
 
   const handleCancelProposal = async (): Promise<void> => {
@@ -238,6 +255,7 @@ export const AriChatScreen: React.FC = () => {
             brandNamesById={brandNamesById}
             accountId={accountId}
             onSeedMessage={(text) => void handleSend(text)}
+            onAttachDone={() => chat.clearPendingAction()}
           />
         )}
 

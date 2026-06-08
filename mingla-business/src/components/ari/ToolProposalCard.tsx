@@ -45,6 +45,7 @@ import { CoverPickerSheet } from "../ui/CoverPickerSheet";
 import type { CoverPatch } from "../ui/CoverPicker";
 import type { CoverTarget } from "../ui/coverTarget";
 import { useBrandCascadePreview } from "../../hooks/useBrands";
+import type { ConfirmOutcome } from "./MessageList";
 
 // Premium proposal-card metrics — tighter than the default kit values.
 const CARD_PADDING = ariThread.cardPad; // 12
@@ -71,7 +72,12 @@ export interface ToolProposalCardProps {
   toolName: string;
   args: Record<string, unknown>;
   isExecuting: boolean;
-  onConfirm: (editedArgs?: Record<string, unknown>) => void;
+  /**
+   * ORCH-1103 — returns the commit outcome so the create-time cover flow can
+   * read back the newly-created brandId and re-target the picker (Q7
+   * create-row-first / attach-second). Resolves `{ ok, brandId? }`.
+   */
+  onConfirm: (editedArgs?: Record<string, unknown>, keepPending?: boolean) => Promise<ConfirmOutcome>;
   onCancel: () => void;
   /**
    * Brand-name lookup for delete/update target display + type-to-confirm
@@ -81,6 +87,12 @@ export interface ToolProposalCardProps {
   brandNamesById?: Record<string, string>;
   /** The signed-in account id — needed to construct the brand CoverTarget. */
   accountId?: string | null;
+  /**
+   * ORCH-1103 Q7 — called after the create-for-cover commit + cover attach
+   * resolves, so the host clears the now-executed pending action and the
+   * brand receipt renders in its place.
+   */
+  onAttachDone?: () => void;
 }
 
 interface Field {
@@ -168,7 +180,7 @@ function fieldsFor(toolName: string, args: Record<string, unknown>): Field[] {
 // uploading / error. Whole band pressable; "Add cover" pill the visible affordance.
 // ----------------------------------------------------------------------------
 
-type CoverUploadState = "idle" | "uploading" | "processing" | "error";
+type CoverUploadState = "idle" | "creating" | "uploading" | "processing" | "error";
 
 interface CoverBandProps {
   url: string | null;
@@ -187,13 +199,22 @@ const CoverBand: React.FC<CoverBandProps> = ({
   onRemove,
   disabled,
 }) => {
-  if (uploadState === "uploading" || uploadState === "processing") {
+  if (uploadState === "creating" || uploadState === "uploading" || uploadState === "processing") {
+    const busyLabel =
+      uploadState === "creating"
+        ? "Creating brand…"
+        : uploadState === "processing"
+          ? "Processing video…"
+          : "Uploading cover…";
     return (
-      <View style={[styles.coverBand, styles.coverBandBusy]} accessibilityLabel="Uploading cover, please wait.">
+      <View
+        style={[styles.coverBand, styles.coverBandBusy]}
+        accessibilityLabel={
+          uploadState === "creating" ? "Creating your brand, please wait." : "Uploading cover, please wait."
+        }
+      >
         <ActivityIndicator size="large" color={textTokens.inverse} />
-        <Text style={styles.coverBusyLabel}>
-          {uploadState === "processing" ? "Processing video…" : "Uploading cover…"}
-        </Text>
+        <Text style={styles.coverBusyLabel}>{busyLabel}</Text>
       </View>
     );
   }
@@ -278,12 +299,23 @@ export const ToolProposalCard: React.FC<ToolProposalCardProps> = ({
   onCancel,
   brandNamesById = {},
   accountId = null,
+  onAttachDone,
 }) => {
   const [editing, setEditing] = useState(false);
   const [editedArgs, setEditedArgs] = useState<Record<string, unknown>>(args);
   const [coverSheetVisible, setCoverSheetVisible] = useState(false);
   const [coverUploadState, setCoverUploadState] = useState<CoverUploadState>("idle");
   const [typedName, setTypedName] = useState("");
+  // ORCH-1103 Q7 — create-row-first / attach-second. On a create proposal the
+  // reused CoverPicker persists EVERY brand media (device, video, Pexels, GIPHY)
+  // live to a real brandId — so the brand row must exist before the picker can
+  // open. When the user taps "Add cover" on a create proposal we surface an
+  // inline "Create & attach" confirm; committing it mints the brand, captures
+  // the new id here, then opens the full picker against the real brand.
+  const [createAttachVisible, setCreateAttachVisible] = useState(false);
+  const [createdBrandId, setCreatedBrandId] = useState<string | null>(null);
+  const [createDescription, setCreateDescription] = useState<string | null>(null);
+  const [creatingForCover, setCreatingForCover] = useState(false);
 
   const verb = humanizeToolName(toolName);
   const liveArgs = editing ? editedArgs : args;
@@ -322,22 +354,98 @@ export const ToolProposalCard: React.FC<ToolProposalCardProps> = ({
     });
   };
 
-  // The brand CoverTarget — requires a real brandId (only on update).
+  // The brand CoverTarget — requires a real brandId. On UPDATE the id comes
+  // from args.brand_id. On CREATE the id only exists AFTER the brand is minted
+  // (Q7), captured in `createdBrandId`. Either path yields a real, RLS-valid
+  // brand target the reused CoverPicker can persist against.
+  const updateBrandId = isBrandUpdate && typeof args.brand_id === "string" ? args.brand_id : null;
+  const effectiveBrandId = createdBrandId ?? updateBrandId;
   const coverTarget: CoverTarget | null =
-    isBrandUpdate && typeof args.brand_id === "string" && accountId
+    isBrandWithCover && effectiveBrandId && accountId
       ? {
           kind: "brand",
-          brandId: args.brand_id,
+          brandId: effectiveBrandId,
           accountId,
-          existingDescription: (args.description as string | null) ?? null,
+          existingDescription:
+            createdBrandId !== null
+              ? createDescription
+              : (args.description as string | null) ?? null,
         }
       : null;
+
+  // ORCH-1103 — what happens when the user taps "Add cover".
+  //   - EDIT (real brand_id already): open the picker directly.
+  //   - CREATE, brand already minted this session (createdBrandId set): open
+  //     the picker directly against the minted brand.
+  //   - CREATE, no brand yet: surface the inline "Create & attach" confirm
+  //     INSTEAD of a dead tap. Committing it mints the brand, then opens the
+  //     picker (handled in handleCreateAndAttach).
+  const handleAddCoverPress = (): void => {
+    if (coverTarget) {
+      setCoverSheetVisible(true);
+      return;
+    }
+    if (isBrandCreate) {
+      setCreateAttachVisible(true);
+      return;
+    }
+    // isBrandUpdate but no accountId / brand_id — nothing to attach to. Leave
+    // the affordance inert rather than opening an empty sheet (defensive; the
+    // host always passes accountId + brand_id for an update proposal).
+  };
+
+  // ORCH-1103 Q7 — mint the brand, then open the full picker against it. The
+  // picker can't have its target swapped while mounted, so we close it (it is
+  // not yet open here), set the new brandId (which builds coverTarget), and
+  // open it fresh against the real brand — the design-approved close+reopen
+  // path. The "Creating brand…" band state covers the ~300–800ms commit.
+  const handleCreateAndAttach = async (): Promise<void> => {
+    setCreateAttachVisible(false);
+    setCreatingForCover(true);
+    try {
+      // Persist the description we send so the post-create cover upload (which
+      // round-trips brands.description via useBrandCoverUpload) keeps it.
+      const desc =
+        typeof editedArgs.description === "string"
+          ? (editedArgs.description as string)
+          : null;
+      setCreateDescription(desc);
+      // keepPending = true → the host does NOT clear the pending action, so this
+      // card stays mounted to host the picker and run the attach. We clear it
+      // ourselves (onAttachDone) once the cover sheet closes.
+      const outcome = await onConfirm(editing ? editedArgs : undefined, true);
+      if (outcome.ok && outcome.brandId) {
+        setCreatedBrandId(outcome.brandId);
+        // Open the full picker against the freshly-minted brand. coverTarget is
+        // rebuilt from createdBrandId on the next render before the sheet mounts.
+        setCoverSheetVisible(true);
+      } else if (outcome.ok) {
+        // Commit succeeded but no brandId came back (e.g. edge fn not yet
+        // deployed). The brand exists; resolve the proposal so the receipt
+        // renders — the user can add a cover from the brand's edit path.
+        onAttachDone?.();
+      }
+      // If the commit failed (outcome.ok false) the screen toast already shows;
+      // the card stays put with the Add-cover affordance still live.
+    } finally {
+      setCreatingForCover(false);
+    }
+  };
+
+  // When the picker closes after a create-for-cover attach, resolve the pending
+  // action so the receipt (with the attached cover) replaces this card.
+  const handleCoverSheetClose = (): void => {
+    setCoverSheetVisible(false);
+    if (createdBrandId !== null) {
+      onAttachDone?.();
+    }
+  };
 
   const initialPatch: CoverPatch = coverUrl
     ? { ...EMPTY_COVER_PATCH, coverMediaUrl: coverUrl, coverMediaType: (coverType as CoverPatch["coverMediaType"]) ?? null }
     : EMPTY_COVER_PATCH;
 
-  const confirmDisabled = isExecuting || coverUploadState !== "idle";
+  const confirmDisabled = isExecuting || creatingForCover || coverUploadState !== "idle";
 
   return (
     <GlassChrome
@@ -418,11 +526,44 @@ export const ToolProposalCard: React.FC<ToolProposalCardProps> = ({
             <CoverBand
               url={coverUrl}
               type={coverType}
-              uploadState={coverUploadState}
-              onOpen={() => setCoverSheetVisible(true)}
+              uploadState={creatingForCover ? "creating" : coverUploadState}
+              onOpen={handleAddCoverPress}
               onRemove={handleRemoveCover}
-              disabled={isExecuting}
+              disabled={isExecuting || creatingForCover}
             />
+            {/* Q7 — create-time inline "Create & attach" confirm. Shown only on a
+                create proposal with no brand yet, when the user reaches for a
+                cover. It explains the order of operations (we mint the brand so
+                the cover — device, video, Pexels, or GIPHY — has a home) and is
+                the ONLY moment create differs from edit. Never a dead tap. */}
+            {createAttachVisible && isBrandCreate ? (
+              <View style={styles.createAttachRow}>
+                <Text style={styles.createAttachText}>
+                  We&apos;ll create <Text style={styles.createAttachName}>{identity}</Text> so your
+                  cover has a home.
+                </Text>
+                <View style={styles.createAttachActions}>
+                  <Pressable
+                    onPress={() => setCreateAttachVisible(false)}
+                    hitSlop={{ top: 5, bottom: 5 }}
+                    style={({ pressed }) => [styles.createAttachCancel, pressed && styles.btnPressed]}
+                    accessibilityRole="button"
+                    accessibilityLabel="Not now"
+                  >
+                    <Text style={styles.cancelText}>Not now</Text>
+                  </Pressable>
+                  <Pressable
+                    onPress={() => void handleCreateAndAttach()}
+                    hitSlop={{ top: 5, bottom: 5 }}
+                    style={({ pressed }) => [styles.createAttachConfirm, pressed && styles.btnPressed]}
+                    accessibilityRole="button"
+                    accessibilityLabel="Create the brand and add a cover"
+                  >
+                    <Text style={styles.confirmText}>Create &amp; attach</Text>
+                  </Pressable>
+                </View>
+              </View>
+            ) : null}
           </View>
         ) : null}
 
@@ -521,15 +662,20 @@ export const ToolProposalCard: React.FC<ToolProposalCardProps> = ({
       </View>
 
       {/* ORCH-1103 — cover picker, mounted as a JSX child of the host
-          (I-SUB-SHEET-INSIDE-PARENT). On UPDATE the picker persists live to
-          brands.cover_media_url; the threaded patch keeps the card in sync.
-          On CREATE there is no brandId yet, so only provider/remote covers
-          are available here (device/video at create is the Q7 create-row-first
-          path, surfaced once a real brandId exists on edit). */}
+          (I-SUB-SHEET-INSIDE-PARENT). The picker requires a real brandId for
+          ALL brand media (device, video, Pexels, GIPHY) because it persists
+          live to brands.cover_media_url. So it mounts whenever a real target
+          exists:
+            - UPDATE: target from args.brand_id (always present).
+            - CREATE: target from createdBrandId AFTER the Q7 "Create & attach"
+              commit mints the brand (create-row-first / attach-second). The
+              picker can't swap targets while mounted, so we open it fresh
+              against the new brand (close+reopen), covered by the "Creating
+              brand…" band state. */}
       {isBrandWithCover && coverTarget ? (
         <CoverPickerSheet
           visible={coverSheetVisible}
-          onClose={() => setCoverSheetVisible(false)}
+          onClose={handleCoverSheetClose}
           target={coverTarget}
           initial={initialPatch}
           onCoverChange={handleCoverChange}
@@ -700,6 +846,56 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(0,0,0,0.55)",
     alignItems: "center",
     justifyContent: "center",
+  },
+  // ----- Q7 create-time "Create & attach" inline confirm -------------------
+  createAttachRow: {
+    marginTop: 8,
+    backgroundColor: glass.tint.profileBase,
+    borderRadius: radius.md,
+    padding: spacing.md,
+    gap: 8,
+  },
+  createAttachText: {
+    fontSize: typography.micro.fontSize,
+    lineHeight: typography.micro.lineHeight,
+    color: textTokens.secondary,
+  },
+  createAttachName: {
+    fontWeight: "600",
+    color: textTokens.primary,
+  },
+  createAttachActions: {
+    flexDirection: "row",
+    justifyContent: "flex-end",
+    gap: 6,
+  },
+  createAttachCancel: {
+    height: 34,
+    paddingHorizontal: spacing.md,
+    borderRadius: 10,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "transparent",
+    borderWidth: 1,
+    borderColor: glass.border.chrome,
+  },
+  createAttachConfirm: {
+    height: 34,
+    paddingHorizontal: spacing.md,
+    borderRadius: 10,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: ariPalette.userBubble,
+    overflow: "hidden",
+    ...Platform.select({
+      ios: {
+        shadowColor: ariPalette.ember,
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.35,
+        shadowRadius: 8,
+      },
+      default: {},
+    }),
   },
   // ----- delete variant ----------------------------------------------------
   assuranceRow: {
