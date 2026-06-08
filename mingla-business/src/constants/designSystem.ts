@@ -214,6 +214,8 @@ export const ariThread = {
   cardTitleFont: 15,
   cardTitleLine: 21,
   btnHeight: 34,
+  // ORCH-1103 — Ari brand-proposal cover band height (one shared band, all states).
+  coverBandH: 132,
   // Composer
   composerMinH: 48,
   composerPadV: 8,

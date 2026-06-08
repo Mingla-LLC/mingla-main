@@ -38,7 +38,11 @@ export function useConfirmPendingAction(
         // Invalidate downstream caches that other parts of the app rely on.
         // (These keys are owned by elsewhere in the app; we invalidate broadly
         // because tool writes may affect brands or events lists.)
-        if (response.tool_name === "create_brand") {
+        if (
+          response.tool_name === "create_brand" ||
+          response.tool_name === "update_brand" ||
+          response.tool_name === "delete_brand"
+        ) {
           qc.invalidateQueries({ queryKey: ["brands"] });
         }
         if (response.tool_name === "create_event" || response.tool_name === "update_event") {

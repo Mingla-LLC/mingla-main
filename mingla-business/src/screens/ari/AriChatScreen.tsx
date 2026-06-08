@@ -47,6 +47,8 @@ import { useAgentChat } from "../../hooks/useAgentChat";
 import { useAriPreferences } from "../../hooks/useAriPreferences";
 import { useConfirmPendingAction } from "../../hooks/useConfirmPendingAction";
 import { useConversationList } from "../../hooks/useConversationList";
+import { useBrands } from "../../hooks/useBrands";
+import { useAuth } from "../../context/AuthContext";
 
 // Height the floating BottomNav capsule occupies above the safe-area bottom.
 // Matches NAV_HEIGHT (64) + paddingTop (8) + paddingBottom (≥8) in
@@ -91,6 +93,16 @@ export const AriChatScreen: React.FC = () => {
 
   const prefs = useAriPreferences();
   const conversations = useConversationList();
+  const { user } = useAuth();
+  const accountId = user?.id ?? null;
+  // ORCH-1103 — brand name lookup for delete/update target display +
+  // type-to-confirm matching. Mirrors the prompt-known brand list.
+  const brands = useBrands(accountId);
+  const brandNamesById = React.useMemo<Record<string, string>>(() => {
+    const out: Record<string, string> = {};
+    for (const b of brands.data ?? []) out[b.id] = b.displayName;
+    return out;
+  }, [brands.data]);
 
   const chat = useAgentChat(null, null);
   const confirm = useConfirmPendingAction(chat.conversationId);
@@ -223,6 +235,9 @@ export const AriChatScreen: React.FC = () => {
             onCancel={handleCancelProposal}
             isThinking={chat.isSending && !chat.pendingAction}
             renderThinking={() => <StreamingText visible />}
+            brandNamesById={brandNamesById}
+            accountId={accountId}
+            onSeedMessage={(text) => void handleSend(text)}
           />
         )}
 

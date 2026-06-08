@@ -26,7 +26,7 @@ import { Image, Pressable, StyleSheet, Text, View } from "react-native";
 // scrolls above the keyboard without bespoke listeners (KeyboardRoot test).
 import { ScrollView } from "../../wrappers/SmartScrollView";
 import {
-  accent,
+  ariPalette,
   radius as radiusTokens,
   spacing,
   text as textTokens,
@@ -225,7 +225,10 @@ const styles = StyleSheet.create({
     paddingLeft: spacing.xs,
     paddingRight: spacing.md,
     borderRadius: radiusTokens.full,
-    backgroundColor: accent.warm,
+    // ORCH-1103: contrast + Ari parity — white-on-accent.warm (#eb7825) is
+    // 2.90:1 (fails even the 3:1 large bar). ariPalette.userBubble (#a85a44)
+    // is 4.99:1. Same correction ORCH-1101 applied to the Confirm button.
+    backgroundColor: ariPalette.userBubble,
     gap: spacing.sm,
   },
   confirmButtonPressed: {

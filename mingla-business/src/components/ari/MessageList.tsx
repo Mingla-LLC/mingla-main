@@ -29,6 +29,7 @@ import {
 import { AgentMessage } from "../../services/agentChatService";
 import { ChatBubble } from "./ChatBubble";
 import { ToolProposalCard } from "./ToolProposalCard";
+import { ResponseCard } from "./ResponseCard";
 import type { PendingActionView } from "../../hooks/useAgentChat";
 
 export interface MessageListProps {
@@ -39,6 +40,12 @@ export interface MessageListProps {
   onCancel: () => void;
   isThinking?: boolean;
   renderThinking?: () => React.ReactNode;
+  /** ORCH-1103 — brand name lookup (prompt-known brands) for delete/update display. */
+  brandNamesById?: Record<string, string>;
+  /** ORCH-1103 — signed-in account id, needed to build the brand CoverTarget. */
+  accountId?: string | null;
+  /** ORCH-1103 — receipt action pill seeds a composer message (never auto-creates). */
+  onSeedMessage?: (text: string) => void;
 }
 
 type ListItem =
@@ -64,6 +71,9 @@ export const MessageList: React.FC<MessageListProps> = ({
   onCancel,
   isThinking = false,
   renderThinking,
+  brandNamesById = {},
+  accountId = null,
+  onSeedMessage,
 }) => {
   const listRef = useRef<FlatList<ListItem>>(null);
 
@@ -176,12 +186,14 @@ export const MessageList: React.FC<MessageListProps> = ({
               isExecuting={isExecuting}
               onConfirm={onConfirm}
               onCancel={onCancel}
+              brandNamesById={brandNamesById}
+              accountId={accountId}
             />
           );
         }
         const m = item.message;
         if (m.role === "tool") {
-          return renderToolResult(m);
+          return renderToolResult(m, onSeedMessage);
         }
         const text = (m.content as any)?.text ?? "";
         if (!text) return null; // empty rows shouldn't render an empty bubble
@@ -198,7 +210,10 @@ export const MessageList: React.FC<MessageListProps> = ({
   );
 };
 
-function renderToolResult(m: AgentMessage): React.ReactElement | null {
+function renderToolResult(
+  m: AgentMessage,
+  onSeedMessage?: (text: string) => void,
+): React.ReactElement | null {
   const tr = m.tool_results as any;
   const outcome = tr?.outcome ?? "executed";
 
@@ -216,15 +231,73 @@ function renderToolResult(m: AgentMessage): React.ReactElement | null {
       </View>
     );
   }
-  // executed — derive a short label
-  let label = "Done";
+
+  // executed
   const r = tr?.result;
-  if (tr?.tool_name === "create_brand" && r?.brand?.name) {
-    label = `Created brand "${r.brand.name}"`;
-  } else if (tr?.tool_name === "create_event" && r?.event?.title) {
+
+  // ORCH-1103 — brand create/update render a ResponseCard receipt (real cover
+  // thumbnail + rows + next-action) INSTEAD of the thin ribbon. Other tools
+  // keep the ribbon.
+  if (
+    (tr?.tool_name === "create_brand" || tr?.tool_name === "update_brand") &&
+    r?.brand?.name
+  ) {
+    const created = tr.tool_name === "create_brand";
+    const brand = r.brand as {
+      name: string;
+      slug?: string;
+      default_currency?: string | null;
+      cover_media_url?: string | null;
+      cover_media_type?: string | null;
+    };
+    const rows: { label: string; value: string }[] = [];
+    if (brand.default_currency) rows.push({ label: "Currency", value: brand.default_currency });
+    if (brand.slug) rows.push({ label: "Slug", value: brand.slug });
+    const coverType =
+      brand.cover_media_type === "video"
+        ? "Video"
+        : brand.cover_media_type === "gif"
+          ? "GIF"
+          : brand.cover_media_type === "image"
+            ? "Image"
+            : null;
+    if (coverType) rows.push({ label: "Cover", value: coverType });
+
+    // Anti-slop: REAL cover URI only; video → no thumbnail (no still frame).
+    const thumbnail =
+      brand.cover_media_url && brand.cover_media_type !== "video"
+        ? brand.cover_media_url
+        : undefined;
+
+    const actionLabel = created ? "Add your first event?" : "Edit";
+    return (
+      <ResponseCard
+        title={`${created ? "Created" : "Updated"} ${brand.name}`}
+        rows={rows}
+        thumbnail={thumbnail}
+        actions={[{ id: created ? "add_event" : "edit", label: actionLabel }]}
+        state="default"
+        onAction={() => {
+          // Seeds a composer message only — NEVER auto-creates an event
+          // (non-goal chaining respected).
+          if (created) {
+            onSeedMessage?.(`Create an event for ${brand.name}`);
+          } else {
+            onSeedMessage?.(`Edit ${brand.name}`);
+          }
+        }}
+      />
+    );
+  }
+
+  // executed — derive a short label (ribbon for non-brand tools)
+  let label = "Done";
+  if (tr?.tool_name === "create_event" && r?.event?.title) {
     label = `Created "${r.event.title}"`;
   } else if (tr?.tool_name === "update_event") {
     label = "Updated event";
+  } else if (tr?.tool_name === "delete_brand") {
+    label = "Deleted brand";
   }
   return (
     <View style={styles.successRibbon} accessibilityRole="text" accessibilityLabel={label}>
