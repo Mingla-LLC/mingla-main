@@ -187,7 +187,11 @@ const styles = StyleSheet.create({
   host: {
     flexDirection: "row",
     alignItems: "flex-end",
-    backgroundColor: glass.tint.profileBase,
+    // ORCH-1101 REWORK Bug #4: OPAQUE fill. Was glass.tint.profileBase (rgba .04)
+    // which let the empty-state hint + thread bleed through the field. Solid
+    // surface on every platform (no rgba/hsla → ANDROID_GLASS_USES_OPAQUE_FALLBACK
+    // honored); border + radius preserved so it still reads as a glass-edged input.
+    backgroundColor: ariThread.composerSurface,
     borderWidth: 1,
     borderColor: glass.border.profileBase,
     borderRadius: radius.xl,

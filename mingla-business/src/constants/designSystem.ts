@@ -222,6 +222,13 @@ export const ariThread = {
   chipLine: 17,
   // Android opaque-glass equivalent for the Ari bubble fill (composited value).
   ariBubbleAndroid: "#16181b",
+  // ORCH-1101 REWORK Bug #4 — OPAQUE composer surface. The composer host used
+  // the translucent glass.tint.profileBase (rgba .04), so the empty-state hint
+  // ("Tap + for things to try") and any thread content showed THROUGH the input
+  // field. This is a solid, slightly-elevated fill over the dark discover canvas
+  // (#0c0e12) on EVERY platform (no rgba/hsla → satisfies
+  // ANDROID_GLASS_USES_OPAQUE_FALLBACK; nothing can bleed through).
+  composerSurface: "#191c21",
   // Success / cancelled ribbon padding (matches new bubble density).
   ribbonPadH: 10,
   ribbonPadV: 5,

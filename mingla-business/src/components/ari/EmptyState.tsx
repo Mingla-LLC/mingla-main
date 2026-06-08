@@ -13,6 +13,8 @@ import { StyleSheet, Text, View } from "react-native";
 import { Plus } from "lucide-react-native";
 
 import {
+  glass,
+  radius,
   spacing,
   text as textTokens,
   typography,
@@ -28,9 +30,21 @@ export const EmptyState: React.FC = () => (
     <Text style={styles.body}>
       I can create events, manage brands, and answer questions about your business.
     </Text>
-    <View style={styles.hintRow}>
-      <Plus size={14} color={textTokens.tertiary} strokeWidth={2} />
-      <Text style={styles.hintText}>Tap + for things to try</Text>
+    {/* ORCH-1101 REWORK Bug #5: the hint must reference the ACTUAL + button, not
+        a literal "+" character. The "word" is the button glyph itself, rendered
+        as a chip that mirrors the InputBar "+" suggestions button (bordered
+        circle, lucide Plus) inline in the sentence. accessibilityLabel keeps the
+        spoken sentence natural ("Tap plus for things to try"). */}
+    <View
+      style={styles.hintRow}
+      accessibilityRole="text"
+      accessibilityLabel="Tap the plus button for things to try"
+    >
+      <Text style={styles.hintText}>Tap </Text>
+      <View style={styles.hintChip} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
+        <Plus size={13} color={textTokens.tertiary} strokeWidth={2.25} />
+      </View>
+      <Text style={styles.hintText}> for things to try</Text>
     </View>
   </View>
 );
@@ -65,7 +79,18 @@ const styles = StyleSheet.create({
     marginTop: spacing.xl,
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.xs,
+  },
+  // ORCH-1101 REWORK Bug #5: a bordered circle chip that visually quotes the
+  // InputBar "+" suggestions button so the hint literally points at it.
+  hintChip: {
+    width: 22,
+    height: 22,
+    borderRadius: radius.full,
+    borderWidth: 1,
+    borderColor: glass.border.profileBase,
+    alignItems: "center",
+    justifyContent: "center",
+    marginHorizontal: 2,
   },
   hintText: {
     fontSize: typography.caption.fontSize,
