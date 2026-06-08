@@ -220,8 +220,13 @@ describe("ORCH-1102 Wave 2 — _layout.tsx routes a deadlocked gate to sign-in b
 
   test("computes authResolutionExpired and returns <Redirect href=\"/\"/> for it BEFORE the AuthResolvingScreen spinner", () => {
     expect(layoutNoComments).toMatch(/const authResolutionExpired =/);
-    const expiredReturnIdx = layoutNoComments.indexOf("if (authResolutionExpired)");
-    const spinnerReturnIdx = layoutNoComments.indexOf("if (authResolving)");
+    // [TEST-MOD-APPROVED ORCH-1103] prefix-match (drop the closing paren): the
+    // backstop returns are now loop-guarded — `if (authResolutionExpired && !atSignInRoute)`
+    // / `if (authResolving && !(atSignInRoute && authResolutionExpired))` — to kill
+    // the `/`→`/` self-redirect #185 loop. The invariant this test protects (expired
+    // backstop checked BEFORE the spinner) is unchanged; only the condition grew.
+    const expiredReturnIdx = layoutNoComments.indexOf("if (authResolutionExpired");
+    const spinnerReturnIdx = layoutNoComments.indexOf("if (authResolving");
     expect(expiredReturnIdx).toBeGreaterThan(-1);
     expect(spinnerReturnIdx).toBeGreaterThan(-1);
     // The expired backstop MUST be checked before the spinner return, else the

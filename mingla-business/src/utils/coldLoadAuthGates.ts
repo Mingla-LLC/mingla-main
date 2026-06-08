@@ -76,6 +76,68 @@ export const shouldRedirectToSignIn = ({
 }): boolean => isWeb && !loading && !hasUser && !hasStoredWebSession;
 
 /**
+ * SIGN-IN ROUTE IDENTITY — ORCH-1103 [Sign-out white screen / React #185].
+ *
+ * The unauthenticated redirect target is `/`, which renders BusinessWelcomeScreen
+ * (the real sign-in screen). The root `_layout` governs EVERY route, INCLUDING
+ * `/` itself. ORCH-1102 had the layout return `<Redirect href="/" />` whenever
+ * `shouldRedirectToSignIn` / `isAuthResolutionExpired` fired — with NO check for
+ * whether the current route was ALREADY `/`. On sign-out (or any unauthenticated
+ * landing on `/`) the layout therefore redirected `/` → `/` on every render: the
+ * `<Redirect>` re-triggers navigation, the layout re-renders, returns `<Redirect>`
+ * again — an unbounded navigation/render loop. React aborts it with #185
+ * ("Maximum update depth exceeded") and tears the tree down → empty `#root` =
+ * WHITE SCREEN. The Stack (so `index.tsx` → BusinessWelcomeScreen) never mounts.
+ *
+ * This predicate identifies when the current pathname IS the sign-in route, so
+ * the layout can render the normal Stack (letting `index.tsx` show the welcome
+ * screen) INSTEAD of redirecting to the route it is already on. Expo Router
+ * normalizes the root to `/` (and tolerates an empty string on first frame);
+ * a trailing-slash variant is treated as the same route defensively.
+ *
+ * Pure + RN-import-free so it is unit-testable and fails-on-revert.
+ */
+export const SIGN_IN_ROUTE = "/";
+
+export const isSignInRoute = (pathname: string | null | undefined): boolean => {
+  if (pathname === null || pathname === undefined) return true;
+  const trimmed = pathname.trim();
+  if (trimmed === "") return true;
+  // Strip a single trailing slash (but keep the root "/" itself).
+  const normalized =
+    trimmed.length > 1 && trimmed.endsWith("/")
+      ? trimmed.slice(0, -1)
+      : trimmed;
+  return normalized === "" || normalized === SIGN_IN_ROUTE;
+};
+
+/**
+ * REDIRECT-TO-SIGN-IN, loop-safe — ORCH-1103.
+ *
+ * Combines the ORCH-1102 `shouldRedirectToSignIn` decision with the
+ * already-at-sign-in guard: only emit the `<Redirect href="/" />` when the user
+ * genuinely needs to leave the CURRENT route to reach sign-in. When already on
+ * `/`, return false so the layout renders the Stack (welcome screen) instead of
+ * redirecting to itself — killing the #185 self-redirect loop. Native is never
+ * web, so this is a no-op off-web (matches `shouldRedirectToSignIn`).
+ */
+export const shouldRedirectToSignInFromRoute = ({
+  isWeb,
+  loading,
+  hasUser,
+  hasStoredWebSession,
+  pathname,
+}: {
+  isWeb: boolean;
+  loading: boolean;
+  hasUser: boolean;
+  hasStoredWebSession: boolean;
+  pathname: string | null | undefined;
+}): boolean =>
+  shouldRedirectToSignIn({ isWeb, loading, hasUser, hasStoredWebSession }) &&
+  !isSignInRoute(pathname);
+
+/**
  * The companion LOADING gate — ORCH-1102.
  *
  * True while auth is still RESOLVING on a web route: either the bootstrap is
