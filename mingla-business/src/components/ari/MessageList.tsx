@@ -48,7 +48,8 @@ type ListItem =
 
 /** The speaker lane of a rendered row, or null for non-bubble rows (ribbons,
  *  cards, thinking) — those always take the full turn gap. */
-function speakerOf(item: ListItem): "user" | "ari" | null {
+function speakerOf(item: ListItem | null | undefined): "user" | "ari" | null {
+  if (!item) return null;
   if (item.kind === "message") return item.speaker;
   if (item.kind === "pending") return "ari";
   if (item.kind === "thinking") return "ari";
@@ -147,16 +148,18 @@ export const MessageList: React.FC<MessageListProps> = ({
         return `t-${idx}`;
       }}
       contentContainerStyle={styles.content}
-      ItemSeparatorComponent={({ leadingItem, trailingItem }) => {
-        // Same-speaker consecutive bubbles → tight group gap (4); everything
-        // else → the turn gap (10).
-        const a = speakerOf(leadingItem as ListItem);
-        const b = speakerOf(trailingItem as ListItem);
+      ItemSeparatorComponent={({ leadingItem }) => {
+        // FlatList only provides leadingItem (trailingItem is a SectionList
+        // prop and is always undefined here). The grouping pass already marked
+        // an interior bubble with tail === false, which means it groups with
+        // the next row — so the gap after it is the tight group gap (4);
+        // everything else takes the turn gap (10).
+        const lead = leadingItem as ListItem | undefined;
         const grouped =
-          a != null &&
-          a === b &&
-          isBubble(leadingItem as ListItem) &&
-          isBubble(trailingItem as ListItem);
+          !!lead &&
+          lead.kind === "message" &&
+          lead.message.role !== "tool" &&
+          lead.tail === false;
         return <View style={{ height: grouped ? ariThread.gapGroup : ariThread.gapTurn }} />;
       }}
       keyboardShouldPersistTaps="handled"
