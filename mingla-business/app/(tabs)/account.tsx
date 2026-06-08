@@ -35,6 +35,8 @@ import {
 } from "../../src/constants/designSystem";
 import { useAuth } from "../../src/context/AuthContext";
 import { useBrandListState } from "../../src/hooks/useBrandListShim";
+import { hasStoredSupabaseWebSession } from "../../src/utils/storedWebSession";
+import { isAccountAuthWarming } from "../../src/utils/coldLoadAuthGates";
 // ORCH-1052 hotfix — surface the partner earnings entry on the Account tab
 // when an admin flips creator_accounts.partner_enabled=true. The hook
 // refetches on window focus + mount so the flip becomes visible within
@@ -77,6 +79,21 @@ export default function AccountTab(): React.ReactElement {
   const { user, signOut, lastRecoveryEvent, clearLastRecoveryEvent } = useAuth();
   const brandList = useBrandListState();
   const brands = brandList.brands;
+
+  // ORCH-1100 Wave 3 — cold-direct-load auth-readiness flash fix.
+  // On a refresh/bookmark of /account the 3s auth bootstrap can time out and
+  // resolve to a transient "signed_out"/"query_disabled" brand-list status while
+  // the persisted session is still warming (late SIGNED_IN / TOKEN_REFRESHED).
+  // The signed-out RECOVERY landing is suppressed in app/_layout.tsx during that
+  // window (a stored token exists), so this route renders instead — and without
+  // this guard it would briefly show a BLANK brand area (those statuses hit no
+  // branch). Treat "auth not yet resolved but a stored web session exists" as a
+  // LOADING state. A genuinely logged-out user never reaches this route (the
+  // _layout recovery gate fires first), and has no stored token anyway.
+  const isAuthWarming = isAccountAuthWarming({
+    brandListStatus: brandList.status,
+    hasStoredWebSession: hasStoredSupabaseWebSession(),
+  });
   const setCurrentBrand = useCurrentBrandStore((s) => s.setCurrentBrand);
 
   const [sheetVisible, setSheetVisible] = useState<boolean>(false);
@@ -257,7 +274,8 @@ export default function AccountTab(): React.ReactElement {
             </View>
           </GlassCard>
         ) : brandList.status === "auth_loading" ||
-          brandList.status === "query_loading" ? (
+          brandList.status === "query_loading" ||
+          isAuthWarming ? (
           <GlassCard variant="elevated" padding={spacing.lg}>
             <Text style={styles.title}>Your brands</Text>
             <Text style={styles.body}>Loading your brands…</Text>

@@ -1,0 +1,139 @@
+{
+  "generatedAt": "2026-06-08T06:11:56.220Z",
+  "device": "R58R54YV7JT",
+  "webBuild": "mingla-business/web-build-w3",
+  "results": [
+    {
+      "route": "/account",
+      "run": 1,
+      "sawSignedOut": false,
+      "sawNotFound": false,
+      "sawLoading": true,
+      "settledReal": false,
+      "frames": [
+        {
+          "ms": 420,
+          "signInLanding": false,
+          "notFound": false,
+          "loading": true,
+          "realContent": false
+        },
+        {
+          "ms": 554,
+          "signInLanding": false,
+          "notFound": false,
+          "loading": true,
+          "realContent": false
+        },
+        {
+          "ms": 685,
+          "signInLanding": false,
+          "notFound": false,
+          "loading": true,
+          "realContent": false
+        }
+      ],
+      "earlyShot": null,
+      "settledShot": null
+    },
+    {
+      "route": "/account",
+      "run": 2,
+      "sawSignedOut": false,
+      "sawNotFound": false,
+      "sawLoading": true,
+      "settledReal": false,
+      "frames": [
+        {
+          "ms": 395,
+          "signInLanding": false,
+          "notFound": false,
+          "loading": true,
+          "realContent": false
+        },
+        {
+          "ms": 531,
+          "signInLanding": false,
+          "notFound": false,
+          "loading": true,
+          "realContent": false
+        },
+        {
+          "ms": 660,
+          "signInLanding": false,
+          "notFound": false,
+          "loading": true,
+          "realContent": false
+        }
+      ],
+      "earlyShot": null,
+      "settledShot": null
+    },
+    {
+      "route": "/account",
+      "run": 3,
+      "sawSignedOut": false,
+      "sawNotFound": false,
+      "sawLoading": true,
+      "settledReal": false,
+      "frames": [
+        {
+          "ms": 438,
+          "signInLanding": false,
+          "notFound": false,
+          "loading": true,
+          "realContent": false
+        },
+        {
+          "ms": 575,
+          "signInLanding": false,
+          "notFound": false,
+          "loading": true,
+          "realContent": false
+        },
+        {
+          "ms": 701,
+          "signInLanding": false,
+          "notFound": false,
+          "loading": true,
+          "realContent": false
+        }
+      ],
+      "earlyShot": null,
+      "settledShot": null
+    },
+    {
+      "route": "/brand/22a18413-bfbf-4087-9ba7-45f70deba0f3",
+      "run": 1,
+      "sawSignedOut": false,
+      "sawNotFound": false,
+      "sawLoading": true,
+      "settledReal": false,
+      "frames": [
+        {
+          "ms": 435,
+          "signInLanding": false,
+          "notFound": false,
+          "loading": true,
+          "realContent": false
+        },
+        {
+          "ms": 572,
+          "signInLanding": false,
+          "notFound": false,
+          "loading": true,
+          "realContent": false
+        },
+        {
+          "ms": 704,
+          "signInLanding": false,
+          "notFound": false,
+          "loading": true,
+          "realContent": false
+        }
+      ],
+      "earlyShot": null,
+      "settledShot": null
+    }
+  ]
+}

@@ -78,6 +78,9 @@ import {
 } from "../src/services/businessNotificationRouting";
 import { usePushPermissionMoment } from "../src/hooks/usePushPermissionMoment";
 import { verifyStripeModeAlignment } from "../src/services/stripeModeHandshake";
+// ORCH-1100 Wave 3 — cold-direct-load auth-readiness flash fix. Pure predicate
+// for the signed-out recovery gate (shared, unit-tested).
+import { shouldShowSignedOutRecovery as resolveShouldShowSignedOutRecovery } from "../src/utils/coldLoadAuthGates";
 
 // Sub-B: a tap that arrives before auth is stashed here + replayed post-login
 // (mirrors the consumer deferred-deeplink pattern). Keyed in AsyncStorage so a
@@ -394,11 +397,26 @@ function RootLayoutInner(): React.ReactElement {
   // FIX: compute the recovery decision here (NO hooks) but DEFER the actual
   // `return` until AFTER every hook has run (just before the JSX return). All
   // hooks now run unconditionally on every render — Rules-of-Hooks satisfied.
-  const shouldShowSignedOutRecovery =
-    Platform.OS === "web" &&
-    !loading &&
-    user === null &&
-    ORCH_1092_SIGNED_OUT_ROUTES.has(pathname);
+  // ORCH-1100 Wave 3 — cold-direct-load auth-readiness flash fix.
+  // The signed-out recovery (the "Sign in to open …" landing) must fire ONLY
+  // for a GENUINELY logged-out user, never during the cold-load warming window.
+  // On a refresh/bookmark of /account (or a sibling authed route) the 3s auth
+  // bootstrap can time out and flip `loading`→false while `user` is still null
+  // because the stored session restores a beat later (late SIGNED_IN /
+  // TOKEN_REFRESHED). Showing the recovery in that window is the residual flash.
+  // Suppress it while a stored Supabase web session exists (auth still
+  // resolving) — the route then renders its own LOADING state until the session
+  // warms. `hasStoredSupabaseWebSession()` is false for real logged-out users,
+  // so they still correctly see the recovery (no spinner trap).
+  const shouldShowSignedOutRecovery = resolveShouldShowSignedOutRecovery({
+    isWeb: Platform.OS === "web",
+    loading,
+    // `user === null` (kept inline so the shared predicate's gate is fed the
+    // exact GoTrue user-resolution signal the original gate used).
+    hasUser: !(user === null),
+    hasStoredWebSession: hasStoredSupabaseWebSession(),
+    routeIsSignedOutGated: ORCH_1092_SIGNED_OUT_ROUTES.has(pathname),
+  });
 
   const orch1093Status = orch1093RouteStatus(pathname);
   const shouldShowMobileRouteRecovery =

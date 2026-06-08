@@ -19,6 +19,7 @@
 
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
+  ActivityIndicator,
   Image as RNImage,
   Platform,
   Pressable,
@@ -104,6 +105,18 @@ const normalizeSocialUrl = (raw: string, base: string): string => {
  */
 export interface BrandProfileViewProps {
   brand: Brand | null;
+  /**
+   * ORCH-1100 Wave 3 — cold-direct-load auth-readiness flash fix.
+   * True while the brand is still being RESOLVED (auth/session warming on a
+   * cold direct load, or the brand query has not yet fetched). When true the
+   * view renders a LOADING state instead of the "Brand not found" empty branch,
+   * so a refresh/bookmark of `/brand/{id}` no longer flashes "not found" before
+   * the row resolves. Genuinely-missing brands (resolved + null) still render
+   * the not-found state. Defaults to false → behaviour unchanged for callers
+   * that don't pass it (e.g. tests / public-page consumers that already have
+   * the brand).
+   */
+  isResolving?: boolean;
   /**
    * Live Stripe status wins over cached brand.stripeStatus when provided.
    * This prevents the profile banner/operations row from showing stale
@@ -193,6 +206,7 @@ export interface BrandProfileViewProps {
 
 export const BrandProfileView: React.FC<BrandProfileViewProps> = ({
   brand,
+  isResolving = false,
   effectiveStripeStatus,
   onBack,
   onEdit,
@@ -397,6 +411,30 @@ export const BrandProfileView: React.FC<BrandProfileViewProps> = ({
     canViewAuditLog,
     stripeStatus,
   ]);
+
+  // ----- Loading state (ORCH-1100 Wave 3) -----
+  // On a COLD direct load (refresh / bookmark) of /brand/{id} the session is
+  // not yet warm and the brand query has not fetched, so `brand` is null for a
+  // beat before the real row resolves. Render a spinner here instead of letting
+  // the not-found branch below flash "Brand not found". Once the resolve settles
+  // (auth ready + query fetched) a still-null brand falls through to not-found.
+  if (brand === null && isResolving) {
+    return (
+      <View style={styles.host}>
+        <View style={styles.barWrap}>
+          <TopBar leftKind="back" title="Brand" onBack={onBack} rightSlot={<View />} />
+        </View>
+        <View style={styles.loadingHost}>
+          <ActivityIndicator
+            size="large"
+            color={accent.warm}
+            accessibilityLabel="Loading brand"
+            testID="brand-profile-loading"
+          />
+        </View>
+      </View>
+    );
+  }
 
   // ----- Not Found state -----
   if (brand === null) {
@@ -747,6 +785,14 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.md,
     paddingTop: spacing.sm,
     gap: spacing.md,
+  },
+
+  // Loading state (ORCH-1100 Wave 3) -------------------------------------
+  loadingHost: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: spacing.xl * 2,
   },
 
   // Not Found state ------------------------------------------------------

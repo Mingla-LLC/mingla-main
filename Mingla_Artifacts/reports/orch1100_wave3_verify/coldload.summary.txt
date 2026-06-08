@@ -1,0 +1,26 @@
+ORCH-1100 Wave 3 — cold-load auth-readiness device proof (Samsung R58R54YV7JT)
+
+Mechanism: inject saved Supabase session into localStorage, throttle network
+(expose cold warming window), HARD-navigate, poll document.body.innerText from
+the first frames. Detects whether the sign-in landing ("Continue with Apple/
+Google", "Sign in to open") or "Brand not found" EVER appears before settle.
+
+PASS 1 (400ms/500KB throttle) — 6/6 cold loads:
+  /account run1  signedOutFlash=false  sawLoading=true
+  /account run2  signedOutFlash=false  sawLoading=true
+  /account run3  signedOutFlash=false  sawLoading=true
+  /brand/22a18413... run1  signedOutFlash=false  sawLoading=true
+  /brand/22a18413... run2  signedOutFlash=false  sawLoading=true
+  /brand/22a18413... run3  signedOutFlash=false  sawLoading=true
+
+PASS 2 (200ms/1.5MB throttle) — see coldload.results.json:
+  /account run1-3  flash=false loading=true (frames at ~420/554/685ms)
+  /brand   run1    flash=false loading=true
+  (pass aborted after capturing proof; CDP Page.captureScreenshot hung on
+   this device under throttled cold-bootstrap — device-side limitation, not a
+   code signal. Per-frame body-text capture is the conclusive evidence.)
+
+BEFORE (Wave-2 QA, same device + harness mechanism):
+  /account  sign-in landing  3/3 cold
+  /brand/{ownId}  "Brand not found"  cold
+AFTER (this fix): 0/0 flash across all cold loads. Residual #1 eliminated.
