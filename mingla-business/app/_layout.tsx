@@ -35,7 +35,7 @@ import {
   View,
   type AppStateStatus,
 } from "react-native";
-import { Redirect, Stack, useRouter } from "expo-router";
+import { Redirect, Stack, useRouter, usePathname } from "expo-router";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { SafeAreaProvider } from "react-native-safe-area-context";
@@ -76,8 +76,9 @@ import { verifyStripeModeAlignment } from "../src/services/stripeModeHandshake";
 import {
   AUTH_RESOLUTION_CEILING_MS,
   isAuthResolutionExpired,
+  isSignInRoute,
   isWebAuthResolving,
-  shouldRedirectToSignIn,
+  shouldRedirectToSignInFromRoute,
 } from "../src/utils/coldLoadAuthGates";
 
 // Sub-B: a tap that arrives before auth is stashed here + replayed post-login
@@ -200,6 +201,11 @@ function RootLayoutInner(): React.ReactElement {
   // both paths converge on `brandReady=true` (defensive belt-and-suspenders).
   const { loading, user } = useAuth();
   const router = useRouter();
+  // ORCH-1103 — the current route, so the unauthenticated redirect never targets
+  // the route it is already on (the `/` → `/` self-redirect loop that produced
+  // React #185 + the sign-out white screen). Read unconditionally before any
+  // deferred return (Rules-of-Hooks; preserves the ORCH-1098 all-hooks-run fix).
+  const pathname = usePathname();
   const currentBrandId = useCurrentBrandId();
   const { isFetched: brandFetched, fetchStatus: brandFetchStatus } =
     useBrand(currentBrandId);
@@ -294,11 +300,16 @@ function RootLayoutInner(): React.ReactElement {
     hasUser: user !== null,
     hasStoredWebSession,
   });
-  const redirectToSignIn = shouldRedirectToSignIn({
+  // ORCH-1103 — loop-safe: do NOT redirect to `/` when already on `/`. A layout
+  // that redirects to the route it governs re-triggers navigation every render
+  // → React #185 → torn-down tree → white screen. When already at sign-in we
+  // render the Stack so `index.tsx` shows BusinessWelcomeScreen instead.
+  const redirectToSignIn = shouldRedirectToSignInFromRoute({
     isWeb,
     loading,
     hasUser: user !== null,
     hasStoredWebSession,
+    pathname,
   });
 
   // ORCH-1102 Wave 2 — BOUNDED-LOADING backstop at the UI gate. The AuthContext
@@ -521,15 +532,27 @@ function RootLayoutInner(): React.ReactElement {
   // hard ceiling (deadlock), stop spinning and route to sign-in. Checked BEFORE
   // the spinner so a deadlocked session never traps the user on an infinite
   // spinner — it lands them somewhere actionable (the real sign-in screen).
-  if (authResolutionExpired) {
+  // ORCH-1103 — the ceiling-expired redirect ALSO targets `/`; guard it with the
+  // same already-at-sign-in check so a deadlocked session that resolves to "no
+  // user" while sitting on `/` does not enter the `/` → `/` self-redirect loop.
+  // When already at `/`, fall through to render the Stack (welcome screen).
+  const atSignInRoute = isSignInRoute(pathname);
+  if (authResolutionExpired && !atSignInRoute) {
     return <Redirect href="/" />;
   }
-  if (authResolving) {
+  // ORCH-1103 — never spin (or self-redirect) ON the sign-in route once the
+  // resolution ceiling has passed with no user: render the Stack so
+  // BusinessWelcomeScreen shows. A genuinely warming session before the ceiling
+  // still shows the spinner (no false sign-in flash); this only fires after the
+  // deadlock backstop, honoring Seth's "never an infinite spinner" rule at `/`.
+  if (authResolving && !(atSignInRoute && authResolutionExpired)) {
     return <AuthResolvingScreen />;
   }
   if (redirectToSignIn) {
-    // Genuinely logged out on a web route → the real sign-in screen. `/` renders
-    // BusinessWelcomeScreen for a no-user session. A no-op when already at `/`.
+    // Genuinely logged out on a NON-sign-in web route → the real sign-in screen.
+    // `/` renders BusinessWelcomeScreen for a no-user session. `redirectToSignIn`
+    // is already false when at `/` (ORCH-1103 loop guard), so this never targets
+    // the route it is on.
     return <Redirect href="/" />;
   }
 
