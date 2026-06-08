@@ -113,26 +113,32 @@ describe("ORCH-1092 business web restoration wave", () => {
     expect(repoFile("src/utils/platformFileSystem.native.ts")).toContain("expo-file-system/legacy");
   });
 
-  test("reopened web routes have a bounded signed-out recovery fallback", () => {
+  // [TEST-MOD-APPROVED ORCH-1102] The ORCH-1092 signed-out recovery CARD (a
+  // dead-end "Sign in to open {route} / Return to Home" landing for 5 routes) was
+  // REMOVED entirely by ORCH-1102. Operator intent: an unauthenticated user on
+  // ANY web route is routed to the real sign-in screen — no card, no route list,
+  // no "Return to Home" dead end. This test now asserts the stub is GONE and the
+  // route-agnostic redirect is in place. The stored-session detection (which
+  // distinguishes a warming session from a real logout) is preserved.
+  test("unauthenticated web routes redirect to the real sign-in screen (no dead-end card)", () => {
     const rootLayout = repoFile("app/_layout.tsx");
 
-    for (const route of [
-      "/hub/events",
-      "/hub/trips",
-      "/marketing",
-      "/marketing/campaigns/compose",
-      "/account",
-    ]) {
-      expect(rootLayout).toContain(route);
-    }
-    expect(rootLayout).toContain("ORCH_1092_SIGNED_OUT_ROUTES");
-    expect(rootLayout).toContain("Sign in to open");
-    expect(rootLayout).toContain("Return to Home");
+    // The dead-end card, its route list, and the outer pre-provider stubs are GONE.
+    expect(rootLayout).not.toContain("ORCH_1092_SIGNED_OUT_ROUTES");
+    expect(rootLayout).not.toContain("Orch1092SignedOutRecovery");
+    expect(rootLayout).not.toContain("Orch1093MobileRouteRecovery");
+    expect(rootLayout).not.toContain("Sign in to open");
+    expect(rootLayout).not.toContain("Return to Home");
+    expect(rootLayout).not.toContain("shouldShowOuterOrch1092Recovery");
+    expect(rootLayout).not.toContain('window.location.assign("/home")');
+
+    // Route-agnostic redirect to the real sign-in screen is in place, gated on
+    // the same stored-session signal that tells a warming session from a logout.
+    expect(rootLayout).toContain("shouldRedirectToSignIn");
+    expect(rootLayout).toContain("isWebAuthResolving");
+    expect(rootLayout).toContain('<Redirect href="/" />');
     expect(rootLayout).toContain('Platform.OS === "web"');
-    expect(rootLayout).toContain("user === null");
-    expect(rootLayout).toContain("shouldShowOuterOrch1092Recovery");
     expect(rootLayout).toContain("hasStoredSupabaseWebSession");
     expect(rootLayout).toContain("SUPABASE_AUTH_STORAGE_KEY");
-    expect(rootLayout).toContain("window.location.assign(\"/home\")");
   });
 });

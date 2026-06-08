@@ -31,40 +31,34 @@ const stripComments = (source: string): string =>
     .filter((line) => !/^\s*(\/\/|\*)/.test(line))
     .join("\n");
 
-describe("ORCH-1100 Wave 1A — TASK 1: mobile-web route firewall is retired", () => {
+// [TEST-MOD-APPROVED ORCH-1102] ORCH-1100 emptied the mobile-web route firewall
+// block-list (it never fired — dormant dead code). ORCH-1102 REMOVES the firewall
+// machinery entirely (the block-list, the route-status resolver, the
+// `isMobileWebRouteEntry()` UA sniff, and both stub render sites). This describe
+// block is rewritten to assert the firewall is GONE rather than that its
+// block-list is empty. The TASK 2 auth-lock / brand-hydration block below is
+// unrelated to the firewall and is preserved verbatim.
+describe("ORCH-1102 — TASK 1: mobile-web route firewall is REMOVED entirely", () => {
   const layout = stripComments(businessFile("app/_layout.tsx"));
 
-  test("the route-status resolver DEFAULTS to interactive (not static-section/blocked)", () => {
-    // The default must be interactive — the real app renders for any signed-in
-    // mobile-web route unless explicitly block-listed. Revert (default
-    // "static-section") would reintroduce the firewall and fail this.
-    expect(layout).toContain('? "blocked"\n    : "interactive";');
-    // The old whitelist default that gated ~79 routes is GONE.
-    expect(layout).not.toContain('?? "static-section"');
+  test("the firewall block-list and route-status resolver are gone", () => {
+    expect(layout).not.toContain("ORCH_1100_BLOCKED_MOBILE_WEB_ROUTES");
+    expect(layout).not.toContain("orch1093RouteStatus");
     expect(layout).not.toContain("ORCH_1093_SIGNED_IN_ROUTE_STATUS");
+    expect(layout).not.toContain('?? "static-section"');
   });
 
-  test("the safety valve is an explicit BLOCK-LIST and it is currently EMPTY", () => {
-    expect(layout).toContain("ORCH_1100_BLOCKED_MOBILE_WEB_ROUTES");
-    // Extract the Set literal body and assert it contains no string entries.
-    const match = layout.match(
-      /ORCH_1100_BLOCKED_MOBILE_WEB_ROUTES = new Set<string>\(\[([\s\S]*?)\]\)/,
-    );
-    expect(match).not.toBeNull();
-    const body = match ? match[1] : "FAILED_TO_MATCH";
-    // No quoted pathname entries inside the block-list (baseline: 0 crashes).
-    expect(body).not.toMatch(/["'`]\//);
-  });
-
-  test("the throwaway diagnostic firewall-bypass env toggle is removed", () => {
+  test("the mobile-web UA sniff and the route-recovery stubs are gone", () => {
+    expect(layout).not.toContain("isMobileWebRouteEntry");
+    expect(layout).not.toContain("Orch1093MobileRouteRecovery");
+    expect(layout).not.toContain("shouldShowMobileRouteRecovery");
     expect(layout).not.toContain("EXPO_PUBLIC_ORCH1100_FIREWALL_BYPASS");
-    expect(layout).not.toContain("ORCH_1100_FIREWALL_BYPASS_DIAGNOSTIC");
   });
 
-  test("desktop web is still NOT firewalled (the recovery is mobile-web gated)", () => {
-    // Both firewall checkpoints still gate on isMobileWebRouteEntry() so a
-    // desktop browser never sees the stub — this change must not regress that.
-    expect(layout).toContain("isMobileWebRouteEntry()");
+  test("auth routing is route-agnostic — every route redirects to the real sign-in screen", () => {
+    expect(layout).toContain("shouldRedirectToSignIn");
+    expect(layout).toContain("isWebAuthResolving");
+    expect(layout).toContain('<Redirect href="/" />');
   });
 });
 

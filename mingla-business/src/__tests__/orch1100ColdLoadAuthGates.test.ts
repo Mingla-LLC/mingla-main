@@ -2,10 +2,16 @@ import { describe, expect, test } from "@jest/globals";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
+// [TEST-MOD-APPROVED ORCH-1102] The route-coupled `shouldShowSignedOutRecovery`
+// predicate was REMOVED by ORCH-1102 (all route-stub gates retired; auth routing
+// is now route-agnostic via `shouldRedirectToSignIn` + `isWebAuthResolving`).
+// The signed-out-recovery describe block below is rewritten to exercise the new
+// route-agnostic redirect predicate. The /brand and /account warming predicates
+// are unchanged and their tests are preserved verbatim.
 import {
   isAccountAuthWarming,
   isBrandRouteResolving,
-  shouldShowSignedOutRecovery,
+  shouldRedirectToSignIn,
 } from "../utils/coldLoadAuthGates";
 
 // ORCH-1100 Wave 3 — cold-direct-load auth-readiness flash regression tests.
@@ -95,67 +101,68 @@ describe("ORCH-1100 Wave 3 — /brand/{id} cold-load shows LOADING not not-found
   });
 });
 
-describe("ORCH-1100 Wave 3 — /account signed-out recovery only for real logged-out users", () => {
-  test("does NOT show recovery during the cold warming window (stored session exists)", () => {
-    // The residual: bootstrap timed out (loading=false), user null because the
-    // stored session restores a beat later. A stored web session exists → must
-    // NOT flash the sign-in landing. Revert (no stored-session clause) fails.
+// [TEST-MOD-APPROVED ORCH-1102] Rewritten for the route-agnostic redirect
+// predicate (`shouldRedirectToSignIn`) that replaced the route-coupled
+// `shouldShowSignedOutRecovery`. The behavioral contract is the same — only a
+// GENUINELY logged-out user is sent to sign-in; a warming session is NOT — but
+// there is no longer a `routeIsSignedOutGated` route list (any web route
+// redirects, so no route can be "left hanging").
+describe("ORCH-1102 — redirect-to-sign-in only for real logged-out users (route-agnostic)", () => {
+  test("does NOT redirect during the cold warming window (stored session exists)", () => {
+    // Bootstrap timed out (loading=false), user null because the stored session
+    // restores a beat later. A stored web session exists → must NOT redirect
+    // (the root shows LOADING). Revert (no stored-session clause) fails.
     expect(
-      shouldShowSignedOutRecovery({
+      shouldRedirectToSignIn({
         isWeb: true,
         loading: false,
         hasUser: false,
         hasStoredWebSession: true,
-        routeIsSignedOutGated: true,
       }),
     ).toBe(false);
   });
 
-  test("DOES show recovery for a genuinely logged-out user (no stored session)", () => {
-    // Don't trap real logged-out users on a spinner — they still get the landing.
+  test("DOES redirect for a genuinely logged-out user (no stored session) — on ANY route", () => {
+    // Real logged-out users go straight to the sign-in screen, not a dead-end.
     expect(
-      shouldShowSignedOutRecovery({
+      shouldRedirectToSignIn({
         isWeb: true,
         loading: false,
         hasUser: false,
         hasStoredWebSession: false,
-        routeIsSignedOutGated: true,
       }),
     ).toBe(true);
   });
 
-  test("does NOT show recovery while still loading (auth bootstrap in flight)", () => {
+  test("does NOT redirect while still loading (auth bootstrap in flight)", () => {
     expect(
-      shouldShowSignedOutRecovery({
+      shouldRedirectToSignIn({
         isWeb: true,
         loading: true,
         hasUser: false,
         hasStoredWebSession: false,
-        routeIsSignedOutGated: true,
       }),
     ).toBe(false);
   });
 
-  test("does NOT show recovery for a route outside the signed-out set", () => {
+  test("does NOT redirect when a user is present", () => {
     expect(
-      shouldShowSignedOutRecovery({
+      shouldRedirectToSignIn({
         isWeb: true,
         loading: false,
-        hasUser: false,
+        hasUser: true,
         hasStoredWebSession: false,
-        routeIsSignedOutGated: false,
       }),
     ).toBe(false);
   });
 
-  test("does NOT run on native (no web localStorage / recovery concept)", () => {
+  test("does NOT run on native (no web localStorage / redirect concept)", () => {
     expect(
-      shouldShowSignedOutRecovery({
+      shouldRedirectToSignIn({
         isWeb: false,
         loading: false,
         hasUser: false,
         hasStoredWebSession: false,
-        routeIsSignedOutGated: true,
       }),
     ).toBe(false);
   });
@@ -200,10 +207,17 @@ describe("ORCH-1100 Wave 3 — /account brand area shows LOADING (not blank) whi
 });
 
 describe("ORCH-1100 Wave 3 — route wiring (the fix is actually mounted)", () => {
-  test("app/_layout.tsx gates the signed-out recovery on the stored-session predicate", () => {
+  // [TEST-MOD-APPROVED ORCH-1102] _layout.tsx no longer renders a signed-out
+  // recovery CARD; it now redirects to the real sign-in screen via the
+  // route-agnostic predicates. Assert the new wiring instead.
+  test("app/_layout.tsx routes unauthenticated users via the route-agnostic predicates", () => {
     const layout = businessFile("app/_layout.tsx");
-    expect(layout).toContain("resolveShouldShowSignedOutRecovery");
-    expect(layout).toContain("hasStoredWebSession: hasStoredSupabaseWebSession()");
+    expect(layout).toContain("shouldRedirectToSignIn");
+    expect(layout).toContain("isWebAuthResolving");
+    expect(layout).toContain('<Redirect href="/" />');
+    // The dead-end card components and route lists are GONE.
+    expect(layout).not.toContain("Orch1092SignedOutRecovery");
+    expect(layout).not.toContain("ORCH_1092_SIGNED_OUT_ROUTES");
   });
 
   test("app/brand/[id]/index.tsx passes isResolving to BrandProfileView", () => {

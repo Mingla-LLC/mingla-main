@@ -44,32 +44,66 @@ export const isBrandRouteResolving = ({
 };
 
 /**
- * `/account` (and siblings) — should the signed-out RECOVERY landing render?
+ * ROUTE-AGNOSTIC unauthenticated redirect — ORCH-1102.
  *
- * Fires ONLY for a genuinely logged-out user on a signed-out-gated web route:
- * auth bootstrap finished (`!loading`), no user, NO stored web session, and the
- * route is in the signed-out set. When a stored session exists (cold warming
- * window) this returns false so the route renders its own LOADING state instead
- * of flashing the sign-in landing.
+ * Replaces the ORCH-1092 `shouldShowSignedOutRecovery` route-list predicate.
+ * Operator intent (ORCH-1102): a user who becomes unauthenticated on ANY web
+ * route is routed back to the real sign-in screen — never a dead-end card,
+ * never a blank screen, never an infinite spinner. There is NO route list:
+ * every authed web route redirects to `/` (which renders BusinessWelcomeScreen)
+ * once auth has RESOLVED and there is genuinely no user.
+ *
+ * Fires ONLY for a genuinely logged-out user: web, auth bootstrap finished
+ * (`!loading`), no user, AND no stored web session. When a stored session
+ * exists (the cold warming window) this returns false so the root shows a
+ * LOADING state instead of a false-logged-out flash — the session warms a beat
+ * later via a late SIGNED_IN / TOKEN_REFRESHED event and the route renders.
+ *
+ * `hasStoredWebSession` is false for real logged-out users, so they are
+ * redirected immediately (no spinner trap). The decision is intentionally
+ * decoupled from the pathname so no route can be "left hanging".
  */
-export const shouldShowSignedOutRecovery = ({
+export const shouldRedirectToSignIn = ({
   isWeb,
   loading,
   hasUser,
   hasStoredWebSession,
-  routeIsSignedOutGated,
 }: {
   isWeb: boolean;
   loading: boolean;
   hasUser: boolean;
   hasStoredWebSession: boolean;
-  routeIsSignedOutGated: boolean;
-}): boolean =>
-  isWeb &&
-  !loading &&
-  !hasUser &&
-  !hasStoredWebSession &&
-  routeIsSignedOutGated;
+}): boolean => isWeb && !loading && !hasUser && !hasStoredWebSession;
+
+/**
+ * The companion LOADING gate — ORCH-1102.
+ *
+ * True while auth is still RESOLVING on a web route: either the bootstrap is
+ * in flight (`loading`), OR it finished but a stored web session exists while
+ * `user` has not yet been applied (the cold warming window). In this state the
+ * root shows a loading spinner — NOT a flash of sign-in, NOT a dead-end. This
+ * is route-agnostic: any authed web route shows LOADING while resolving.
+ *
+ * False once a user is present (render the app) or once it is clear the user is
+ * genuinely logged out (no stored session → `shouldRedirectToSignIn` fires).
+ */
+export const isWebAuthResolving = ({
+  isWeb,
+  loading,
+  hasUser,
+  hasStoredWebSession,
+}: {
+  isWeb: boolean;
+  loading: boolean;
+  hasUser: boolean;
+  hasStoredWebSession: boolean;
+}): boolean => {
+  if (!isWeb) return false;
+  if (hasUser) return false;
+  if (loading) return true;
+  // Bootstrap finished, no user, but a stored session is still warming.
+  return hasStoredWebSession;
+};
 
 /**
  * `/account` brand-area — is auth still WARMING (show "Loading your brands…")?

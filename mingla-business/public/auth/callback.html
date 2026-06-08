@@ -77,6 +77,12 @@
       <img src="/brand/mingla-business-logo.png" alt="Mingla Business" />
       <h1 id="title">Signing you in</h1>
       <p id="message">Finishing the secure handoff.</p>
+      <!-- ORCH-1102 — no dead-ends: on the error / empty-session path this link
+           is revealed so the user always has a one-tap way back to the real
+           sign-in screen (in addition to the automatic redirect below). -->
+      <p id="action" style="display: none; margin-top: 18px">
+        <a id="retry" href="/">Back to sign in</a>
+      </p>
     </main>
     <script>
       (function () {
@@ -89,10 +95,24 @@
 
         var title = document.getElementById("title");
         var message = document.getElementById("message");
+        var action = document.getElementById("action");
 
         function setStatus(nextTitle, nextMessage) {
           if (title) title.textContent = nextTitle;
           if (message) message.textContent = nextMessage;
+        }
+
+        // ORCH-1102 — never leave the user hanging on the callback page. When the
+        // OAuth handoff errors or returns no session (e.g. the user cancelled in
+        // the provider screen), reveal a "Back to sign in" link AND auto-redirect
+        // to "/" (the real BusinessWelcomeScreen) after a brief moment so the
+        // message is readable but no manual action is required.
+        var REDIRECT_AFTER_ERROR_MS = 2500;
+        function recoverToSignIn() {
+          if (action) action.style.display = "block";
+          window.setTimeout(function () {
+            window.location.replace("/");
+          }, REDIRECT_AFTER_ERROR_MS);
         }
 
         function parseParams(value) {
@@ -233,8 +253,10 @@
           setStatus(
             "Sign-in needs another try",
             (error && error.message ? error.message : "Something went wrong.") +
-              " Refresh, then sign in again.",
+              " Taking you back to sign in…",
           );
+          // ORCH-1102 — actionable recovery instead of a dead end.
+          recoverToSignIn();
         });
       })();
     </script>

@@ -823,6 +823,21 @@ export default function BusinessWelcomeScreen({
                   Wrong email? Edit
                 </Text>
               </TouchableOpacity>
+              {/* ORCH-1102 — never leave the user hanging mid-OTP. A direct
+                  "Back to sign-in options" resets the state machine to idle so
+                  the Apple/Google/Email buttons are immediately usable again,
+                  without the otp → edit → email → back detour. */}
+              <TouchableOpacity
+                onPress={handleBackToIdle}
+                style={styles.linkButton}
+                hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+                accessibilityLabel="Back to sign-in options"
+                accessibilityRole="button"
+              >
+                <Text style={styles.linkButtonTextSubtle}>
+                  Back to sign-in options
+                </Text>
+              </TouchableOpacity>
             </View>
           )}
 
