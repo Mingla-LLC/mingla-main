@@ -37,6 +37,7 @@ import {
   logoutOneSignal,
 } from "../services/oneSignalService";
 import {
+  classifyBootSessionProbe,
   deriveBusinessAuthStatus,
   hasUsableBusinessSession,
   isBusinessAuthReady,
@@ -191,6 +192,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   // analytics-identities. Any subsequent non-INITIAL_SESSION event clears
   // the gate so the listener resumes normal processing.
   const bootstrapTimedOutRef = useRef(false);
+  // ORCH-1106 [native authenticated, no-brand degraded shell] — run the
+  // boot-time authenticated probe AT MOST ONCE per cold start. `getSession()`
+  // trusts the cached token without server validation, so a server-revoked
+  // (but locally-unexpired) session deserializes to a truthy `user` and
+  // strands the app on a brand-less degraded shell with no `SIGNED_OUT`.
+  // After a locally-trusted session resolves, we hit the server ONCE with
+  // `getUser()`; on an explicit auth invalidation we sign out (which routes
+  // to the sign-in screen). This ref prevents re-probing on later
+  // onAuthStateChange echoes / re-renders (no #185-style loop).
+  const bootSessionProbedRef = useRef(false);
 
   useEffect(() => {
     let mounted = true;
@@ -271,6 +282,73 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         console.info(s?.user ? "[auth] bootstrap-ready" : "[auth] bootstrap-no-session");
       }
       if (s?.user) {
+        // ORCH-1106 [native authenticated, no-brand degraded shell] — the
+        // session above came from `getSession()`, a LOCAL read that trusts
+        // the cached access token's `expires_at` without ever contacting the
+        // server. A session killed server-side (revoked / signed-out-elsewhere
+        // / password change) but whose cached token has not locally expired
+        // deserializes here into a truthy `s.user`, so the app routes to Home,
+        // the brand list comes back empty under the dead JWT, and the user is
+        // stranded on a brand-less degraded shell — NO `SIGNED_OUT` ever fires.
+        //
+        // Validate the locally-trusted session with ONE real authenticated
+        // network call (`getUser()` → `GET /user`). Run it AT MOST ONCE per
+        // cold start (ref-guarded; onAuthStateChange echoes never re-probe).
+        // De-gated: this runs on native AND web (web shares the same latent
+        // stale-valid-session gap — its existing guards only handle "no user
+        // at all", never a stale-but-present session).
+        //
+        // HARD GUARD: sign out ONLY on a POSITIVELY-identified auth/token
+        // invalidation (401/403, session_not_found, AuthSessionMissingError,
+        // bad_jwt, …). A network / offline / timeout / 5xx error MUST keep the
+        // user signed in (classifier fails OPEN). We NEVER key the sign-out off
+        // empty brand data — a legitimately brand-less new user with a VALID
+        // session stays signed in and sees the normal "Create brand" home.
+        if (!bootSessionProbedRef.current) {
+          bootSessionProbedRef.current = true;
+          try {
+            const { error: probeError } = await supabase.auth.getUser();
+            if (!mounted) return;
+            if (classifyBootSessionProbe(probeError) === "invalid_session") {
+              console.warn(
+                "[auth] boot-session-probe: stored session rejected by server",
+                `(${probeError?.message ?? "auth error"})`,
+                "— signing out and routing to sign-in (ORCH-1106)",
+              );
+              // signOut() clears stores + RQ cache and fires SIGNED_OUT, which
+              // sets user=null so index.tsx lands on BusinessWelcomeScreen.
+              await supabase.auth.signOut();
+              if (!mounted) return;
+              clearAllStores();
+              queryClient.clear();
+              clearAppsFlyerUserId();
+              resetAppsFlyerDeviceCache();
+              afEventFiredRef.current = false;
+              mixpanelService.trackLogout();
+              revenueCatService.logOut();
+              logoutOneSignal();
+              setAuthError(null);
+              setSession(null);
+              setUser(null);
+              setLoading(false);
+              return;
+            }
+            if (__DEV__) {
+              console.info("[auth] boot-session-probe: session valid");
+            }
+          } catch (probeException) {
+            // A thrown exception here is a transport-level failure (the auth-js
+            // contract returns auth errors in `{ error }`, not by throwing).
+            // Fail OPEN — keep the user signed in; the normal app paths retry.
+            if (!mounted) return;
+            console.warn(
+              "[auth] boot-session-probe: probe threw (transport) — keeping session (ORCH-1106):",
+              probeException instanceof Error
+                ? probeException.message
+                : String(probeException),
+            );
+          }
+        }
         // ORCH-0743 / Note A: wrap ensureCreatorAccount so a creator_accounts
         // upsert error is surfaced (Const #3) without aborting auth bootstrap.
         // Mirrors the getSession error pattern above (line 119).
