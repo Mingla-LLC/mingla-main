@@ -2190,6 +2190,58 @@ jobs:
       - name: Run ORCH-1079 mapbox-suggest-no-types-filter gate
         run: node .github/scripts/strict-grep/i-mapbox-suggest-no-types-filter.mjs
 
+  orch-1105-no-route-stub-gates:
+    name: "ORCH-1105: firewall-era signed-out route stubs stay DELETED (I-NO-ROUTE-STUB-GATES)"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Run ORCH-1105 no-route-stub-gates self-test
+        run: node .github/scripts/strict-grep/orch-1105-no-route-stub-gates.mjs --self-test
+      - name: Run ORCH-1105 no-route-stub-gates gate
+        run: node .github/scripts/strict-grep/orch-1105-no-route-stub-gates.mjs
+
+  orch-1105-layout-no-self-redirect:
+    name: "ORCH-1105: root layout keeps the ORCH-1103 sign-out loop guard (I-LAYOUT-NO-SELF-REDIRECT)"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Run ORCH-1105 layout-no-self-redirect self-test
+        run: node .github/scripts/strict-grep/orch-1105-layout-no-self-redirect.mjs --self-test
+      - name: Run ORCH-1105 layout-no-self-redirect gate
+        run: node .github/scripts/strict-grep/orch-1105-layout-no-self-redirect.mjs
+
+  orch-1105-web-glass-opaque-fallback:
+    name: "ORCH-1105: glass surfaces route blur through shouldUseRealBlur (I-WEB-GLASS-OPAQUE-FALLBACK)"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Run ORCH-1105 web-glass-opaque-fallback self-test
+        run: node .github/scripts/strict-grep/orch-1105-web-glass-opaque-fallback.mjs --self-test
+      - name: Run ORCH-1105 web-glass-opaque-fallback gate
+        run: node .github/scripts/strict-grep/orch-1105-web-glass-opaque-fallback.mjs
+
+  orch-1105-web-gesture-safe:
+    name: "ORCH-1105: sheets use WebSafeGestureDetector, not raw GestureDetector (I-WEB-GESTURE-SAFE)"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Run ORCH-1105 web-gesture-safe self-test
+        run: node .github/scripts/strict-grep/orch-1105-web-gesture-safe.mjs --self-test
+      - name: Run ORCH-1105 web-gesture-safe gate
+        run: node .github/scripts/strict-grep/orch-1105-web-gesture-safe.mjs
+
   # ORCH-0962 brand-field-map-coverage gate RETIRED at META-ORCH-0972 CLOSE
   # (2026-05-26). The gate asserted that `viewRowToBrand` reads `row.brand_kind`
   # from `business_public_events_view`. META-ORCH-0972 Sub-C removed `brand_kind`
