@@ -55,8 +55,11 @@ export interface MessageListProps {
    * ORCH-1103 Q7 — the proposal card calls this after the create-for-cover
    * commit + cover attach finishes, so the host clears the now-resolved pending
    * action (the executed tool_result then renders the brand receipt).
+   *
+   * ORCH-1103 REWORK 3 — carries the cover attached after the create commit so
+   * the host can overlay it onto the receipt (the executed row's cover is null).
    */
-  onAttachDone?: () => void;
+  onAttachDone?: (cover?: { url: string | null; type: string | null }) => void;
   isThinking?: boolean;
   renderThinking?: () => React.ReactNode;
   /** ORCH-1103 — brand name lookup (prompt-known brands) for delete/update display. */
@@ -72,6 +75,13 @@ export interface MessageListProps {
    * tool arg. Defaults to onSeedMessage when omitted.
    */
   onSendChoice?: (label: string) => void;
+  /**
+   * ORCH-1103 REWORK 3 — covers attached AFTER a create-and-attach commit, keyed
+   * by the executed pending_action_id. The executed create_brand tool_result row
+   * carries a null cover (it was written before the picker persisted the cover),
+   * so the receipt overlays the attached cover from this map when present.
+   */
+  attachedCovers?: Record<string, { url: string | null; type: string | null }>;
 }
 
 type ListItem =
@@ -102,6 +112,7 @@ export const MessageList: React.FC<MessageListProps> = ({
   onSeedMessage,
   onSendChoice,
   onAttachDone,
+  attachedCovers = {},
 }) => {
   const listRef = useRef<FlatList<ListItem>>(null);
 
@@ -136,6 +147,21 @@ export const MessageList: React.FC<MessageListProps> = ({
     }
     if (m.role === "tool" && (m.tool_results as any)?.outcome === "failed") {
       continue; // hidden — toast + Ari follow-up cover this
+    }
+    // ORCH-1103 REWORK 3 — mutual-exclusion between the live proposal card and
+    // the executed receipt. During the create-and-attach window the host KEEPS
+    // the pending action live (keepPending) so the ToolProposalCard stays
+    // mounted to host the cover picker. The executed tool_result for that SAME
+    // pending action also lands in the thread — if we rendered it now the card
+    // and its receipt would both show (double representation, ORCH-1103 REWORK 3
+    // defect #2). The card OWNS the representation until onAttachDone clears the
+    // pending action; only THEN does this receipt render (exactly once).
+    if (
+      m.role === "tool" &&
+      pendingAction &&
+      (m.tool_results as any)?.pending_action_id === pendingAction.pending_action_id
+    ) {
+      continue; // suppressed while the live card owns this action
     }
     if (m.role === "tool") {
       // Tool-result ribbon — not a bubble, never grouped.
@@ -241,7 +267,7 @@ export const MessageList: React.FC<MessageListProps> = ({
         }
         const m = item.message;
         if (m.role === "tool") {
-          return renderToolResult(m, onSeedMessage);
+          return renderToolResult(m, onSeedMessage, attachedCovers);
         }
         const text = (m.content as any)?.text ?? "";
         if (!text) return null; // empty rows shouldn't render an empty bubble
@@ -294,6 +320,7 @@ export const MessageList: React.FC<MessageListProps> = ({
 function renderToolResult(
   m: AgentMessage,
   onSeedMessage?: (text: string) => void,
+  attachedCovers: Record<string, { url: string | null; type: string | null }> = {},
 ): React.ReactElement | null {
   const tr = m.tool_results as any;
   const outcome = tr?.outcome ?? "executed";
@@ -324,12 +351,26 @@ function renderToolResult(
     r?.brand?.name
   ) {
     const created = tr.tool_name === "create_brand";
-    const brand = r.brand as {
+    const rawBrand = r.brand as {
       name: string;
       slug?: string;
       default_currency?: string | null;
       cover_media_url?: string | null;
       cover_media_type?: string | null;
+    };
+    // ORCH-1103 REWORK 3 — the executed create_brand row was written BEFORE the
+    // create-and-attach cover landed, so its cover is null. Overlay the cover the
+    // user actually attached (keyed by this row's pending_action_id) so the
+    // receipt shows the real cover thumbnail / video badge (defect #3). The
+    // tool_result value wins when present (UPDATE path or future-deployed edge
+    // fn that echoes the cover); the override is the fallback for create-attach.
+    // We merge onto the brand object so the downstream cover logic stays a single
+    // read of brand.cover_media_url / brand.cover_media_type.
+    const attached = tr?.pending_action_id ? attachedCovers[tr.pending_action_id as string] : undefined;
+    const brand = {
+      ...rawBrand,
+      cover_media_url: rawBrand.cover_media_url ?? attached?.url ?? null,
+      cover_media_type: rawBrand.cover_media_type ?? attached?.type ?? null,
     };
     const rows: { label: string; value: string }[] = [];
     if (brand.default_currency) rows.push({ label: "Currency", value: brand.default_currency });

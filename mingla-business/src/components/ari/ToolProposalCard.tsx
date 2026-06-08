@@ -91,8 +91,15 @@ export interface ToolProposalCardProps {
    * ORCH-1103 Q7 — called after the create-for-cover commit + cover attach
    * resolves, so the host clears the now-executed pending action and the
    * brand receipt renders in its place.
+   *
+   * ORCH-1103 REWORK 3 — the cover is attached AFTER the create commit (the
+   * picker persists to brands.cover_media_url), so the executed tool_result row
+   * written at create-time has a NULL cover. The card passes the final attached
+   * cover up here so the host can overlay it onto the receipt — otherwise the
+   * receipt shows only the slug (defect #3). `cover` is omitted/null when the
+   * user finished without choosing a cover (coverless receipt, no error).
    */
-  onAttachDone?: () => void;
+  onAttachDone?: (cover?: { url: string | null; type: string | null }) => void;
 }
 
 interface Field {
@@ -318,7 +325,11 @@ export const ToolProposalCard: React.FC<ToolProposalCardProps> = ({
   const [creatingForCover, setCreatingForCover] = useState(false);
 
   const verb = humanizeToolName(toolName);
-  const liveArgs = editing ? editedArgs : args;
+  // ORCH-1103 REWORK 3 — after a "Create & attach" commit the picker writes the
+  // chosen cover into editedArgs, so the band must read editedArgs (not the
+  // original proposal args) to reflect the freshly-attached cover.
+  const committedForArgs = createdBrandId !== null;
+  const liveArgs = editing || committedForArgs ? editedArgs : args;
   const identity = primaryIdentity(toolName, liveArgs, brandNamesById);
   const isBrandCreate = toolName === "create_brand";
   const isBrandUpdate = toolName === "update_brand";
@@ -432,18 +443,48 @@ export const ToolProposalCard: React.FC<ToolProposalCardProps> = ({
     }
   };
 
-  // When the picker closes after a create-for-cover attach, resolve the pending
-  // action so the receipt (with the attached cover) replaces this card.
+  // ORCH-1103 REWORK 3 — closing the picker no longer auto-resolves the card.
+  // After a create-and-attach commit the card stays in its committed state
+  // (cover band reflecting the chosen cover, "Done" the single live action) so
+  // the user can review or change the cover before finishing. Tapping "Done"
+  // (handleDone) is the one path that resolves the pending action and renders
+  // the receipt — exactly once. (On UPDATE there is no committed state; the
+  // picker close just dismisses the sheet, the proposal is still pending and is
+  // confirmed via the normal Confirm button.)
   const handleCoverSheetClose = (): void => {
     setCoverSheetVisible(false);
-    if (createdBrandId !== null) {
-      onAttachDone?.();
-    }
   };
 
   const initialPatch: CoverPatch = coverUrl
     ? { ...EMPTY_COVER_PATCH, coverMediaUrl: coverUrl, coverMediaType: (coverType as CoverPatch["coverMediaType"]) ?? null }
     : EMPTY_COVER_PATCH;
+
+  // ORCH-1103 REWORK 3 — once the brand has been minted via "Create & attach"
+  // (createdBrandId set), the underlying pending action is already EXECUTED.
+  // The card stays mounted ONLY to host the cover picker (attach) and to let
+  // the user finish. It MUST NOT expose any control that re-confirms the
+  // executed action — re-confirming returns a 400 "Cannot confirm — current
+  // status: executed". So after commit the primary Confirm + Edit + Cancel are
+  // replaced by a single "Done" affordance; the only other live control is the
+  // cover band (attach). This makes an already-executed re-confirm impossible
+  // from the UI (P1 headline defect).
+  const committed = createdBrandId !== null;
+
+  // ORCH-1103 REWORK 3 — the final attached cover (or null) captured from the
+  // picker's live writes into editedArgs, handed to the host so the receipt can
+  // show the cover the executed tool_result row doesn't carry.
+  const finishCover = (): { url: string | null; type: string | null } => ({
+    url: (editedArgs.cover_media_url as string | undefined) ?? null,
+    type: (editedArgs.cover_media_type as string | undefined) ?? null,
+  });
+
+  const handleDone = (): void => {
+    // Finish the create-and-attach lifecycle. If the picker is open it is closed
+    // first; resolving the pending action lets the host render the receipt with
+    // whatever cover was attached (or none).
+    setCoverSheetVisible(false);
+    onAttachDone?.(finishCover());
+  };
 
   const confirmDisabled = isExecuting || creatingForCover || coverUploadState !== "idle";
 
@@ -587,6 +628,30 @@ export const ToolProposalCard: React.FC<ToolProposalCardProps> = ({
         )}
 
         <View style={styles.actions}>
+          {/* ORCH-1103 REWORK 3 — POST-COMMIT (create-and-attach minted the
+              brand): the pending action is EXECUTED. The ONLY action is "Done"
+              (finish + render the receipt). No Cancel / Edit / Confirm — every
+              one of those would re-touch the executed action. The cover band
+              above stays live so the user can still attach/change a cover. */}
+          {committed ? (
+            <Pressable
+              onPress={handleDone}
+              disabled={isExecuting || creatingForCover || coverUploadState !== "idle"}
+              hitSlop={{ top: 5, bottom: 5 }}
+              style={({ pressed }) => [
+                styles.actionBtn,
+                styles.confirmBtn,
+                pressed && styles.btnPressed,
+                (isExecuting || creatingForCover || coverUploadState !== "idle") && styles.btnDisabled,
+              ]}
+              accessibilityRole="button"
+              accessibilityLabel="Done"
+              accessibilityState={{ disabled: isExecuting || creatingForCover || coverUploadState !== "idle" }}
+            >
+              <Text style={styles.confirmText}>Done</Text>
+            </Pressable>
+          ) : (
+          <>
           <Pressable
             onPress={onCancel}
             disabled={isExecuting}
@@ -657,6 +722,8 @@ export const ToolProposalCard: React.FC<ToolProposalCardProps> = ({
                 <Text style={styles.confirmText}>{isExecuting ? "Working…" : "Confirm"}</Text>
               </Pressable>
             </>
+          )}
+          </>
           )}
         </View>
       </View>

@@ -286,3 +286,73 @@ Tap → `resolveChoiceLabel(choices, optionId)` → `sendChoice(label)` → `han
 
 ## Discoveries for orchestrator (REWORK 2)
 7. **`detectChoices` is heuristic, not model-emitted.** The agent side infers the two situations from intent keywords + state rather than having Gemini emit a structured `choices` block (Gemini's tool schema is the confirm contract, which the dispatch said not to change). This is robust and degrades gracefully, but it's a heuristic: an unusual phrasing that doesn't match the keyword sets shows prose-only (no chips), and the prose still carries the flow. If a future ORCH wants model-authored suggested replies, that's a structured-output change to the Gemini call (separate scope).
+
+---
+
+# REWORK 3 — create-and-attach lifecycle (P1, device-reproduced)
+
+## The defect (as reproduced on device)
+Create brand with VIDEO cover → prompt "Create a brand called Night Market" → Add cover → "Create & attach". After commit, the brand committed (receipt + followup appeared) BUT:
+1. **Headline:** the original CREATE BRAND proposal card stayed mounted with its primary **Confirm** still ACTIVE; tapping Confirm re-confirmed the now-EXECUTED pending action → red toast "Cannot confirm — current status: executed".
+2. The resolved receipt AND the still-live proposal card rendered simultaneously (double representation).
+3. The attached video cover did not appear on the receipt (slug only).
+
+## Root cause
+`ToolProposalCard.handleCreateAndAttach` commits with `keepPending=true` to keep the card mounted to host the cover picker, sets `createdBrandId`, opens the picker. After the commit, `confirmDisabled` (`isExecuting || creatingForCover || coverUploadState !== "idle"`) goes back to FALSE, so the card's main **Confirm** (and **Edit**, **Cancel**) were live again and pointed at the now-executed pending action. Separately, the host kept `pendingAction` live (card mounted) while the executed `tool_result` row also landed in the thread — `MessageList` rendered the receipt from that row at the same time (double representation). And the executed `tool_result` row was written at create-time, BEFORE the picker persisted `brands.cover_media_url`, so its cover was null → coverless receipt.
+
+## The lifecycle fix (airtight — no dead/duplicate/already-executed states)
+
+### Fix #1 — post-commit exposes NO re-confirm of the executed action
+`ToolProposalCard.tsx`: derive `const committed = createdBrandId !== null` (true the moment the brand is minted via Create & attach). When `committed`, the action row renders a SINGLE **Done** button (`handleDone`) and nothing else — no Cancel, Edit, or Confirm. `handleDone` resolves only via `onAttachDone` and never calls `onConfirm`. The cover band above stays live (the user can still attach/change a cover), but no control re-touches the executed pending action. Confirming an already-executed action is now impossible from the UI.
+
+### Fix #2 — card and receipt are mutually exclusive (single ownership)
+`MessageList.tsx`: in the raw-row build loop, skip a `tool` row whose `tool_results.pending_action_id === pendingAction.pending_action_id` while that pending action is still live. Ownership rule: **the live ToolProposalCard owns the representation until `onAttachDone` clears the pending action; only THEN does the executed receipt render — exactly once.** The executed `tool_result` carries `pending_action_id` (written by `agent-confirm-action`), so the correlation is exact.
+
+### Fix #3 — the attached cover reaches the receipt
+The cover is attached AFTER the create commit (picker persists `brands.cover_media_url` + emits the patch into `editedArgs`), so the executed `tool_result.result.brand` has a null cover. `onAttachDone` now carries `{ url, type }` (`ToolProposalCard.finishCover()` reads the live `editedArgs` cover). `AriChatScreen` stashes it in `attachedCovers` keyed by the resolving `pending_action_id`, then clears the pending action. `MessageList.renderToolResult` overlays the attached cover onto the receipt: `cover_media_url: rawBrand.cover_media_url ?? attached?.url ?? null` (the tool_result wins when present — UPDATE path / future edge-fn echo; the override is the create-attach fallback). The receipt then shows the real image thumbnail or the video badge. Closing the picker WITHOUT choosing leaves `editedArgs` cover null → Done resolves to a coverless receipt cleanly (no error).
+
+### Fix #4 — already-executed / expired / raced confirm is a soft no-op
+`AriChatScreen.tsx`: `isAlreadyResolvedError(message)` matches the server's WRONG_STATE phrasings ("current status: executed|cancelled|expired") and the race phrasing ("already handled"). In `handleConfirm`, when the confirm errors with one of these, the screen silently clears the now-stale card (`chat.clearPendingAction()`) and returns — it does NOT raise the alarming red error toast. (Cancel already cleared regardless of result, so no change there.) This is the belt-and-suspenders guard; Fix #1 already makes the re-confirm affordance unreachable.
+
+## Old → New receipts
+
+### mingla-business/src/components/ari/ToolProposalCard.tsx
+- **Before:** post-commit (`createdBrandId` set) the card kept Confirm/Edit/Cancel live; `confirmDisabled` returned to false; closing the picker auto-resolved via `onAttachDone()`; `onAttachDone` took no args; `liveArgs = editing ? editedArgs : args` (band didn't reflect post-commit cover).
+- **After:** `committed` flag gates the action row → single **Done** (`handleDone`) post-commit, no re-confirm path; `liveArgs = editing || committedForArgs ? editedArgs : args` so the band reflects the attached cover; `onAttachDone?: (cover?: {url; type}) => void`; `finishCover()` reads the live editedArgs cover; `handleCoverSheetClose` no longer auto-resolves (Done is the only resolve path).
+- **Why:** Fix #1 + #3. **Lines:** ~45.
+
+### mingla-business/src/components/ari/MessageList.tsx
+- **Before:** every executed `tool` row rendered (receipt/ribbon) even while its pending action was still live; receipt read cover straight off `tool_result.result.brand` (null for create-attach).
+- **After:** suppress the executed `tool` row whose `pending_action_id` matches the live `pendingAction` (mutual exclusion); `attachedCovers` prop + overlay merge onto the brand object so the receipt shows the attached cover.
+- **Why:** Fix #2 + #3. **Lines:** ~30.
+
+### mingla-business/src/screens/ari/AriChatScreen.tsx
+- **Before:** `handleConfirm` set the red error toast for any confirm error (including already-executed); no cover threading.
+- **After:** `isAlreadyResolvedError` soft-no-op branch; `attachedCovers` state keyed by `pending_action_id`; `onAttachDone(cover)` stashes the cover then clears the pending action; passes `attachedCovers` to `MessageList`.
+- **Why:** Fix #3 + #4. **Lines:** ~25.
+
+## Regression test
+`mingla-business/src/components/ari/__tests__/orch_1103_rework3_create_attach_lifecycle.test.ts` (new file — append-only safe). 11 assertions across the four fixes (committed→Done only; receipt suppressed while card live; cover threaded commit→host→receipt; already-resolved soft no-op).
+- Passing run: 11/11 PASS.
+- `fails-on-revert` verified at `f38c2450e2aa662c8324f6e6ca91ea0068cc0408` (stashed the three fix files → 11/11 FAIL; `git stash pop` → 11/11 PASS again).
+- Full ARI suite green after the change: 128/128 (10 suites). Existing `orch_1103_ari_brand_crud_ui.test.ts` "anti-slop video thumbnail" assertion preserved (kept the literal `brand.cover_media_type !== "video"` read by merging the cover override onto the brand object rather than into a renamed local).
+
+## Verification matrix
+| Goal | How verified | Status |
+|------|--------------|--------|
+| No re-confirm of executed action post-commit | Source structure (committed→Done only); regression test fix #1 | PASS |
+| Card + receipt mutually exclusive | pending_action_id correlation suppresses receipt while card live; test fix #2 | PASS |
+| Cover attaches + appears on receipt (image AND video) | onAttachDone(cover) → attachedCovers → receipt overlay; coverType→Image/GIF/Video, thumbnail omitted for video (badge); test fix #3 | PASS (logic), UNVERIFIED on-device (Seth's live iPhone Fast-Refreshes the client) |
+| Close picker without choosing → coverless receipt, no error | finishCover() returns null cover; Done resolves cleanly | PASS (logic) |
+| Already-executed/expired confirm = soft no-op, never red toast | isAlreadyResolvedError branch clears + returns before setLocalError; test fix #4 | PASS |
+| tsc clean on touched ari files | `npx tsc --noEmit` — zero errors in src/components/ari + src/screens/ari | PASS |
+| lint clean | `npx eslint` on 4 touched files — no output | PASS |
+
+## Constraints honored
+Reused `CoverPickerSheet` / `useEventCoverVideoUpload` verbatim (no new sheet). `ANDROID_GLASS_USES_OPAQUE_FALLBACK` untouched (Done reuses `confirmBtn` styling; no new translucent Android fills). a11y labels preserved ("Done" label + disabled state). No regression to edit/delete flows, delete zero-bypass guard, de-GBP create, or the disambiguation/no-brand chips (full ARI suite green). NO dead taps, NO already-executed re-confirms.
+
+## Deploy / OTA note
+**Client-only fix** — Fast-Refreshes to Seth's live iPhone (Metro :8130 on this worktree). NO edge-function redeploy needed: the fix relies only on the existing `tool_results.pending_action_id` and `result.brand` fields `agent-confirm-action` already returns. No migration. Do NOT deploy/OTA/merge.
+
+## Discoveries for orchestrator (REWORK 3)
+8. **The executed create_brand tool_result carries a null cover for the create-attach flow** because the picker persists `brands.cover_media_url` AFTER the commit row is written. The client overlay (attachedCovers) fixes the receipt display, but the persisted `agent_messages` tool_result row remains cover-null in the DB. If a future surface re-reads that historical row (e.g. conversation reload before refetch), the cover would not show on the reloaded receipt. A durable fix would be for `agent-confirm-action` (or a post-attach patch) to update the tool_result row's `result.brand.cover_media_url` once the cover lands — out of scope for this client REWORK; flag for a backend follow-up if conversation-reload receipt fidelity matters.

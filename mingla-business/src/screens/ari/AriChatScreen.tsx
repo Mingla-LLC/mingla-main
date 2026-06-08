@@ -57,6 +57,22 @@ import { useAuth } from "../../context/AuthContext";
 // so the input bar doesn't tuck behind the nav.
 const BOTTOM_NAV_CLEARANCE_PX = 80;
 
+/**
+ * ORCH-1103 REWORK 3 — true when a confirm error means the pending action was
+ * simply no longer "pending" (executed / cancelled / expired / raced), as
+ * opposed to a real failure. The edge fn's confirmAgentAction collapses the
+ * server `code` to "EDGE_ERROR" but preserves the human message verbatim, so we
+ * match the WRONG_STATE / race phrasings. Such taps are a no-op (clear the stale
+ * card silently), never the alarming red error toast.
+ */
+function isAlreadyResolvedError(message: string): boolean {
+  const m = message.toLowerCase();
+  return (
+    m.includes("current status:") || // "Cannot confirm — current status: executed|cancelled|expired"
+    m.includes("already handled") // "Race detected — this action was already handled"
+  );
+}
+
 export const AriChatScreen: React.FC = () => {
   const router = useRouter();
   const insets = useSafeAreaInsets();
@@ -71,6 +87,14 @@ export const AriChatScreen: React.FC = () => {
   // failed) refetch the button "did nothing". This local flag is the source of
   // truth for dismissal; the mutation still persists in the background.
   const [disclosureDismissed, setDisclosureDismissed] = useState(false);
+  // ORCH-1103 REWORK 3 — cover attached AFTER a create-and-attach commit, keyed
+  // by the (now-executed) pending_action_id. The executed tool_result row was
+  // written before the cover landed, so its cover is null; this override lets
+  // the receipt render the cover the user actually attached. Keyed (not a single
+  // slot) so a stale override can never bleed onto a different brand's receipt.
+  const [attachedCovers, setAttachedCovers] = useState<
+    Record<string, { url: string | null; type: string | null }>
+  >({});
 
   // Cycle 3 wizard pattern — manual keyboard listeners so we can tighten
   // the bottom padding when the keyboard is up. KeyboardAvoidingView's
@@ -147,6 +171,18 @@ export const AriChatScreen: React.FC = () => {
     setLocalError(null);
     const result = await confirm.confirm(chat.pendingAction.pending_action_id, editedArgs);
     if (result.kind === "error") {
+      // ORCH-1103 REWORK 3 — guard the already-executed / expired / raced case.
+      // If the pending action is no longer "pending" the edge fn returns
+      // WRONG_STATE ("Cannot confirm — current status: executed" / "…cancelled"
+      // / "…expired") or a race ("already handled"). A normal tap must NOT raise
+      // the alarming red error toast for an action that was simply already
+      // resolved — it's a no-op: silently clear the now-stale card. (The primary
+      // fix removes the re-confirm affordance entirely; this is the belt for any
+      // other path that lands on a non-pending action.)
+      if (isAlreadyResolvedError(result.message)) {
+        chat.clearPendingAction();
+        return { ok: false };
+      }
       setLocalError(result.message);
       return { ok: false };
     }
@@ -259,7 +295,17 @@ export const AriChatScreen: React.FC = () => {
             // sends the chip label as a normal user turn (Q2 conversational
             // feedback; Gemini re-proposes with the resolved target).
             onSendChoice={(label) => void handleSend(label)}
-            onAttachDone={() => chat.clearPendingAction()}
+            attachedCovers={attachedCovers}
+            onAttachDone={(cover) => {
+              // ORCH-1103 REWORK 3 — stash the attached cover against the
+              // resolving pending action so the receipt renders it, THEN clear
+              // the pending action (which mounts the receipt exactly once).
+              const pid = chat.pendingAction?.pending_action_id;
+              if (pid && cover && cover.url) {
+                setAttachedCovers((prev) => ({ ...prev, [pid]: cover }));
+              }
+              chat.clearPendingAction();
+            }}
           />
         )}
 
