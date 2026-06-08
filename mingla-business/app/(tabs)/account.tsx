@@ -143,6 +143,11 @@ export default function AccountTab(): React.ReactElement {
     router.push("/account/notifications" as never);
   }, [router]);
 
+  // META-ORCH-1104 Phase 1 — Help & Support (business requester entry).
+  const handleSupport = useCallback((): void => {
+    router.push("/account/support" as never);
+  }, [router]);
+
   // ORCH-1052 hotfix — partner section navigation.
   const handlePartnerEarnings = useCallback((): void => {
     router.push("/partner/earnings" as never);
@@ -345,6 +350,11 @@ export default function AccountTab(): React.ReactElement {
               icon="bell"
               label="Notifications"
               onPress={handleNotifications}
+            />
+            <SettingsNavRow
+              icon="chat"
+              label="Help & Support"
+              onPress={handleSupport}
             />
             <SettingsNavRow
               icon="shield"
