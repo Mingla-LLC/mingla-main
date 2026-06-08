@@ -55,7 +55,7 @@ import {
 } from "react-native";
 import type { LayoutChangeEvent, StyleProp, ViewStyle } from "react-native";
 import { BlurView } from "expo-blur";
-import { Gesture, GestureDetector } from "react-native-gesture-handler";
+import { Gesture } from "react-native-gesture-handler";
 import Animated, {
   Easing,
   cancelAnimation,
@@ -74,6 +74,8 @@ import {
   shadows,
   spacing,
 } from "../../constants/designSystem";
+
+import { WebSafeGestureDetector } from "./WebSafeGestureDetector";
 
 // Inline glass-stack — mirrors GlassChrome's L1-L4 visual layers but with
 // each layer absolute-filled at the panel level so heights are
@@ -350,7 +352,7 @@ export const TopSheet: React.FC<TopSheetProps> = ({
         ]}
         pointerEvents="box-none"
       >
-        <GestureDetector gesture={panGesture}>
+        <WebSafeGestureDetector gesture={panGesture}>
           <Animated.View
             style={[
               styles.panel,
@@ -429,7 +431,7 @@ export const TopSheet: React.FC<TopSheetProps> = ({
               <View style={styles.handle} />
             </View>
           </Animated.View>
-        </GestureDetector>
+        </WebSafeGestureDetector>
       </View>
     </View>
   );
