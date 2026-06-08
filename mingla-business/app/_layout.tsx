@@ -312,6 +312,23 @@ function RootLayoutInner(): React.ReactElement {
     pathname,
   });
 
+  // ORCH-1106 [native authenticated, no-brand degraded shell] — NATIVE
+  // unauth → sign-in route guard. On web, `shouldRedirectToSignInFromRoute`
+  // (above) already bounces a no-user session on a non-sign-in route back to
+  // `/`. Native had NO such guard: when AuthContext signs the user out AFTER
+  // boot (e.g. the ORCH-1106 boot-session-probe detecting a server-revoked
+  // stale session, or any server-fired SIGNED_OUT) while the user is mounted
+  // inside `(tabs)`, nothing navigated away — the user was stranded on the
+  // brand-less degraded shell ("Create brand" + Home/Account-only nav). This
+  // redirect closes that gap on native, mirroring the web behaviour.
+  //
+  // GUARDS: only when bootstrap has FINISHED (`!loading`) — never redirect
+  // mid-bootstrap (would race the splash / cause a sign-in flash on a warming
+  // session). Only when there is genuinely NO user. Loop-safe: never redirect
+  // to `/` while already at `/` (same React-#185 protection as the web path).
+  const nativeRedirectToSignIn =
+    !isWeb && !loading && user === null && !isSignInRoute(pathname);
+
   // ORCH-1102 Wave 2 — BOUNDED-LOADING backstop at the UI gate. The AuthContext
   // hard ceiling (AUTH_RESOLUTION_HARD_CEILING_MS) releases `loading` if the
   // GoTrue web-lock deadlocks; this is the belt-and-suspenders companion for the
@@ -553,6 +570,13 @@ function RootLayoutInner(): React.ReactElement {
     // `/` renders BusinessWelcomeScreen for a no-user session. `redirectToSignIn`
     // is already false when at `/` (ORCH-1103 loop guard), so this never targets
     // the route it is on.
+    return <Redirect href="/" />;
+  }
+  if (nativeRedirectToSignIn) {
+    // ORCH-1106 — NATIVE: bootstrap finished with no user (signed out post-boot,
+    // including the boot-session-probe self-heal) while NOT on the sign-in route
+    // → route to `/` so index.tsx renders BusinessWelcomeScreen. Loop-safe:
+    // `nativeRedirectToSignIn` is false when already at `/`.
     return <Redirect href="/" />;
   }
 
