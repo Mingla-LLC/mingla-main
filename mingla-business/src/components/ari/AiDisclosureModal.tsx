@@ -14,7 +14,7 @@
  */
 
 import React, { useEffect } from "react";
-import { Modal, Platform, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { Modal, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from "react-native";
 import { BlurView } from "expo-blur";
 import Animated, {
   Easing,
@@ -31,6 +31,7 @@ import {
   text as textTokens,
   typography,
 } from "../../constants/designSystem";
+import { shouldUseRealBlur } from "../../utils/glassBlur";
 import { AriOrb } from "./AriOrb";
 
 export interface AiDisclosureModalProps {
@@ -38,11 +39,14 @@ export interface AiDisclosureModalProps {
   onAccept: () => void;
 }
 
-// META-ORCH-1002 Sub-D: on Android, expo-blur renders a thin near-transparent
-// view, so the sheet leaked busy content through the 0.78 tint. Route Android
-// to a solid opaque frosted surface; iOS keeps the real UIVisualEffectView blur.
+// META-ORCH-1002 Sub-D / ORCH-1100: on Android expo-blur renders a thin
+// near-transparent view, and on phone web (< 768px) the blur-kill media rule
+// strips `backdrop-filter` — both leak busy content through the 0.78 tint. Route
+// those cases to a solid opaque frosted surface; iOS + wide desktop web keep the
+// real blur. The width-aware decision lives in `shouldUseRealBlur(windowWidth)`.
 const BlurViewOrOpaque: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  if (Platform.OS === "android") {
+  const { width: windowWidth } = useWindowDimensions();
+  if (!shouldUseRealBlur(windowWidth)) {
     return <View style={styles.opaqueSheet}>{children}</View>;
   }
   return (

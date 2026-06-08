@@ -1,0 +1,59 @@
+{
+  "generatedAt": "2026-06-08T05:19:59.109Z",
+  "tabsOpened": 4,
+  "reloadResults": [
+    {
+      "attempt": 1,
+      "brandHydrated": true,
+      "createBrandFlash": false,
+      "navLabels": [
+        "Home",
+        "Hub",
+        "Ari",
+        "Blast",
+        "Account"
+      ],
+      "navCount": 5,
+      "rootLen": 477,
+      "abortErrors": [],
+      "bodyHead": "Leggo This To-do 1 thing to do Finish your draft Publish it to go live ACTIVE EVENTS 5 0 live · 3 upcoming · 2 drafts Upcoming See"
+    },
+    {
+      "attempt": 2,
+      "brandHydrated": true,
+      "createBrandFlash": false,
+      "navLabels": [
+        "Home",
+        "Hub",
+        "Ari",
+        "Blast",
+        "Account"
+      ],
+      "navCount": 5,
+      "rootLen": 477,
+      "abortErrors": [],
+      "bodyHead": "Leggo This To-do 1 thing to do Finish your draft Publish it to go live ACTIVE EVENTS 5 0 live · 3 upcoming · 2 drafts Upcoming See"
+    },
+    {
+      "attempt": 3,
+      "brandHydrated": true,
+      "createBrandFlash": false,
+      "navLabels": [
+        "Home",
+        "Hub",
+        "Ari",
+        "Blast",
+        "Account"
+      ],
+      "navCount": 5,
+      "rootLen": 477,
+      "abortErrors": [],
+      "bodyHead": "Leggo This To-do 1 thing to do Finish your draft Publish it to go live ACTIVE EVENTS 5 0 live · 3 upcoming · 2 drafts Upcoming See"
+    }
+  ],
+  "groupChat": {
+    "abort": [],
+    "errs": [],
+    "bodyHead": "Group chat\nRead, reply, and moderate buyer chat\nNo group chat exists for this event yet."
+  }
+}

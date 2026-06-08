@@ -1,0 +1,3 @@
+# Live Supabase auth tokens captured during the harness run — NEVER commit.
+session.token.json
+**/session.token.json

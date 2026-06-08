@@ -32,8 +32,13 @@ import { useResponsiveLayout } from "../../src/hooks/useResponsiveLayout";
 // per-action `MIN_RANK` chokepoint in `permissionGates.ts` still gates
 // destructive actions inside surviving surfaces; RLS remains the ultimate
 // safety net.
+import { useAuth } from "../../src/context/AuthContext";
 import { useCurrentBrandRole } from "../../src/hooks/useCurrentBrandRole";
-import { useCurrentBrandStore } from "../../src/store/currentBrandStore";
+import { useCurrentBrandRecovery } from "../../src/hooks/useCurrentBrandRecovery";
+import {
+  useCurrentBrandStore,
+  useCurrentBrandHasHydrated,
+} from "../../src/store/currentBrandStore";
 import { visibleTabsForRank } from "../../src/utils/navTabGate";
 
 import { CommandPaletteHost } from "../../src/components/ui/CommandPaletteHost";
@@ -92,7 +97,29 @@ export default function TabsLayout(): React.ReactElement {
   // full set hydrates on the next render once the query resolves.
   const currentBrandId = useCurrentBrandStore((s) => s.currentBrandId);
   const { rank } = useCurrentBrandRole(currentBrandId);
-  const visibleTabs = useMemo(() => visibleTabsForRank(TABS, rank), [rank]);
+
+  // ORCH-1100 Wave 1A (RC-1) — do NOT collapse to the rank-0 (Home + Account)
+  // shape while the active brand is still being RESOLVED. Under multi-tab
+  // auth-lock contention the persisted `currentBrandId` is null on the first
+  // frame(s) before the store rehydrates / the recovery hook lands a brand. The
+  // old code read that transient null as rank 0 → 2-tab nav (the degraded-shell
+  // symptom). We treat "session present + brand pointer not yet resolved + store
+  // not hydrated OR recovery still resolving" as a LOADING state and keep the
+  // full tab set until resolution settles. Once a real brand id exists the role
+  // query governs the rank (scanner-safe behaviour preserved); a genuinely
+  // brandless signed-in user falls through to rank 0 only AFTER resolution.
+  const { isAuthReady } = useAuth();
+  const hasBrandHydrated = useCurrentBrandHasHydrated();
+  const { isResolving: brandResolving } = useCurrentBrandRecovery();
+  const brandPointerPending =
+    isAuthReady &&
+    currentBrandId === null &&
+    (!hasBrandHydrated || brandResolving);
+
+  const visibleTabs = useMemo(
+    () => visibleTabsForRank(TABS, brandPointerPending ? Number.MAX_SAFE_INTEGER : rank),
+    [rank, brandPointerPending],
+  );
 
   const activeId = useMemo(() => detectActiveTab(pathname), [pathname]);
 

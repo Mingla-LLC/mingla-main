@@ -179,25 +179,33 @@ describe("Sub-D adversarial A — no clipped surface was flattened to opaque", (
 // B + C. Straggler iOS-freeze + opaque-Android correctness.
 // ---------------------------------------------------------------------------
 
-describe("Sub-D adversarial B/C — stragglers opaque on Android only, iOS frozen", () => {
-  test("Toast: opaque-fallback branch is reachable, inverted guard is gone, iOS keeps blur", () => {
+// [TEST-MOD-APPROVED ORCH-1100] — RC-2 generalized the Android opaque-fallback
+// decision into `utils/glassBlur.shouldUseRealBlur(windowWidth)` (so the
+// mobile-web < 768px blur-kill is covered too). The adversarial guarantees here
+// — iOS keeps real blur, opaque fallback is ≥0.92, no iOS-reachable opaque path
+// — are preserved; the decision just moved to the shared helper. The "iOS never
+// opaque" cross-file assertion below is UNCHANGED (still load-bearing). The
+// no-flatten diff harness (Part A) and shadow-clip detector (Part D) are
+// untouched. The shared helper's own iOS=blur / Android=opaque / web<768=opaque
+// behavior is independently pinned in `utils/__tests__/glassBlur.test.ts`.
+describe("Sub-D adversarial B/C — stragglers opaque via shared helper, iOS frozen", () => {
+  test("Toast: blurOk via shared shouldUseRealBlur, inverted guard gone, kit fallback ≥0.92", () => {
     const code = stripComments(readComp("ui/Toast.tsx"));
     // Inverted guard removed.
     expect(code).not.toMatch(/blurOk\s*=\s*Platform\.OS\s*!==\s*["']web["']/);
-    // Android is explicitly false (opaque fallback), and an iOS branch exists.
-    expect(code).toMatch(/Platform\.OS\s*===\s*["']android["']/);
-    expect(code).toMatch(/Platform\.OS\s*===\s*["']ios["']/);
+    // Decision delegated to the shared helper (which keeps iOS=blur, Android=opaque).
+    expect(code).toMatch(/blurOk\s*=\s*shouldUseRealBlur\(windowWidth\)/);
     // The opaque fallback is >=0.92.
     expect(code).toMatch(
       /FALLBACK_BACKGROUND\s*=\s*["']rgba\(20,\s*22,\s*26,\s*0\.92\)["']/,
     );
   });
 
-  test("AiDisclosureModal: Android opaque sheet is gated behind Platform.OS==='android', iOS keeps real BlurView", () => {
+  test("AiDisclosureModal: opaque sheet gated behind !shouldUseRealBlur, iOS keeps real BlurView", () => {
     const code = stripComments(readComp("ari/AiDisclosureModal.tsx"));
-    // Android-gated opaque branch (NOT an unconditional or !== 'ios' branch).
+    // Opaque branch is reached only when the shared helper says no real blur.
     expect(code).toMatch(
-      /Platform\.OS\s*===\s*["']android["'][\s\S]{0,160}styles\.opaqueSheet/,
+      /!\s*shouldUseRealBlur\(windowWidth\)[\s\S]{0,160}styles\.opaqueSheet/,
     );
     // No `Platform.OS !== 'ios'` style negation that would also flip web.
     expect(code).not.toMatch(/Platform\.OS\s*!==\s*["']ios["']/);
@@ -205,15 +213,15 @@ describe("Sub-D adversarial B/C — stragglers opaque on Android only, iOS froze
     const block = styleBlock(code, "opaqueSheet");
     expect(block).not.toBeNull();
     expect(block!).toMatch(/backgroundColor:\s*["']#[0-9a-fA-F]{6}["']/);
-    // iOS path still renders the real blur.
+    // Real-blur path still renders the real blur.
     expect(code).toMatch(/<BlurView\s+intensity=\{40\}/);
   });
 
-  test("BlastCustomersCta: Android L1 opaque, iOS/web keep BlurView, behind Platform guard", () => {
+  test("BlastCustomersCta: L1 BlurView when blurOk else opaque, via shared helper", () => {
     const code = stripComments(readComp("marketing/BlastCustomersCta.tsx"));
-    expect(code).toMatch(/\bPlatform\b/);
+    expect(code).toMatch(/blurOk\s*=\s*shouldUseRealBlur\(windowWidth\)/);
     expect(code).toMatch(
-      /Platform\.OS\s*===\s*["']android["'][\s\S]{0,220}FALLBACK_BACKGROUND[\s\S]{0,220}<BlurView/,
+      /blurOk\s*\?[\s\S]{0,120}<BlurView[\s\S]{0,400}FALLBACK_BACKGROUND/,
     );
     expect(code).toMatch(
       /FALLBACK_BACKGROUND\s*=\s*["']rgba\(20,\s*22,\s*26,\s*0\.92\)["']/,

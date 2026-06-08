@@ -44,3 +44,8 @@ app-example
 /ios
 /android
 .vercel
+web-build/
+web-build2/
+*.token.json
+*session.token*
+**/orch1100_*_verify/*token*

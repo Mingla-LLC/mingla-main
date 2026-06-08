@@ -51,6 +51,7 @@ import {
   Platform,
   Pressable,
   StyleSheet,
+  useWindowDimensions,
   View,
 } from "react-native";
 import type { LayoutChangeEvent, StyleProp, ViewStyle } from "react-native";
@@ -76,29 +77,13 @@ import {
 } from "../../constants/designSystem";
 
 import { WebSafeGestureDetector } from "./WebSafeGestureDetector";
+import { shouldUseRealBlur } from "../../utils/glassBlur";
 
 // Inline glass-stack — mirrors GlassChrome's L1-L4 visual layers but with
 // each layer absolute-filled at the panel level so heights are
 // panel-driven, not content-driven (GlassChrome's content-driven sizing
 // breaks when used as a background-only layer — see D-IMPL-44).
 const FALLBACK_BACKGROUND = "rgba(20, 22, 26, 0.92)";
-
-const supportsBackdropFilter: boolean =
-  Platform.OS === "web" &&
-  typeof globalThis !== "undefined" &&
-  typeof (globalThis as { CSS?: { supports?: (prop: string, value: string) => boolean } }).CSS?.supports === "function" &&
-  ((globalThis as { CSS?: { supports?: (prop: string, value: string) => boolean } }).CSS!.supports!("backdrop-filter", "blur(10px)") ||
-    (globalThis as { CSS?: { supports?: (prop: string, value: string) => boolean } }).CSS!.supports!("-webkit-backdrop-filter", "blur(10px)"));
-
-// iOS uses real UIVisualEffectView blur. Web uses CSS backdrop-filter when
-// supported. Android's expo-blur backdrop is too thin to read against busy
-// content (renders near-transparent), so we route Android to the same solid
-// fallback the web path uses when backdrop-filter is unavailable.
-const shouldUseRealBlur = (): boolean => {
-  if (Platform.OS === "ios") return true;
-  if (Platform.OS === "android") return false;
-  return supportsBackdropFilter;
-};
 
 export type TopSheetHeightMode = "fixed-70" | "compact";
 
@@ -147,6 +132,10 @@ export const TopSheet: React.FC<TopSheetProps> = ({
 }) => {
   const insets = useSafeAreaInsets();
   const screenHeight = Dimensions.get("window").height;
+  // ORCH-1100: width-aware so the mobile-web (< 768px) blur-kill triggers the
+  // opaque fallback (the brand-switcher TopSheet was the worst RC-2 offender —
+  // it rendered `background-color: rgba(0,0,0,0)` on phone web).
+  const { width: windowWidth } = useWindowDimensions();
 
   // ORCH-0826: heightMode="compact" uses content-measured height via
   // onLayout. Before first measurement, panel renders invisibly (opacity 0)
@@ -319,7 +308,7 @@ export const TopSheet: React.FC<TopSheetProps> = ({
 
   const handleAreaHeight = HANDLE_AREA_HEIGHT;
   const bodyHeight = panelHeight - handleAreaHeight;
-  const blurOk = shouldUseRealBlur();
+  const blurOk = shouldUseRealBlur(windowWidth);
   const blurIntensity = blurIntensityTokens.cardElevated;
 
   return (

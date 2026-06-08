@@ -51,7 +51,7 @@
  */
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { Modal, Platform, Pressable, StyleSheet, Text, View } from "react-native";
+import { Modal, Pressable, StyleSheet, Text, useWindowDimensions, View } from "react-native";
 import type { StyleProp, ViewStyle } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Animated, {
@@ -80,6 +80,7 @@ import {
 } from "../../constants/designSystem";
 
 import { WebSafeGestureDetector } from "./WebSafeGestureDetector";
+import { shouldUseRealBlur } from "../../utils/glassBlur";
 import { Icon } from "./Icon";
 import type { IconName } from "./Icon";
 import { AUTO_DISMISS, type ToastKind } from "./toastTimings";
@@ -171,28 +172,13 @@ const KIND_TOKENS: Record<ToastKind, KindTokens> = {
 // fallback paired with the close icon + tap-anywhere affordances below
 // so an error toast can never strand a buyer.
 
-// Web backdrop-filter detection (mirrors GlassChrome pattern).
-const supportsBackdropFilter: boolean =
-  Platform.OS === "web" &&
-  typeof globalThis !== "undefined" &&
-  typeof (globalThis as { CSS?: { supports?: (prop: string, value: string) => boolean } }).CSS?.supports === "function" &&
-  ((globalThis as { CSS?: { supports?: (prop: string, value: string) => boolean } }).CSS!.supports!("backdrop-filter", "blur(10px)") ||
-    (globalThis as { CSS?: { supports?: (prop: string, value: string) => boolean } }).CSS!.supports!("-webkit-backdrop-filter", "blur(10px)"));
-
-// META-ORCH-1002 Sub-D: Android glass policy = OPAQUE frosted fallback.
-// Mirrors GlassChrome.shouldUseRealBlur(): iOS uses real UIVisualEffectView
-// blur; Android's expo-blur backdrop renders near-transparent against busy
-// content, so route Android to the solid `FALLBACK_BACKGROUND` (the same
-// fallback the rest of the kit uses); web uses real blur only when
-// backdrop-filter is supported. The prior `Platform.OS !== "web" || ...`
-// evaluated true on Android, leaving the toast washed-out (inverted guard).
-const blurOk =
-  Platform.OS === "ios"
-    ? true
-    : Platform.OS === "android"
-      ? false
-      : supportsBackdropFilter;
-
+// META-ORCH-1002 Sub-D / ORCH-1100: glass blur fallback decision is now
+// centralized in `utils/glassBlur.shouldUseRealBlur(windowWidth)`. iOS uses real
+// UIVisualEffectView blur; Android's expo-blur backdrop renders near-transparent
+// against busy content → solid `FALLBACK_BACKGROUND`; web uses real blur only
+// when backdrop-filter is supported AND the viewport is wide enough to be above
+// the mobile-web (< 768px) blur-kill media rule. Computed per-render (not at
+// module scope) so the width is live.
 const FALLBACK_BACKGROUND = "rgba(20, 22, 26, 0.92)";
 
 export const Toast: React.FC<ToastProps> = ({
@@ -205,6 +191,10 @@ export const Toast: React.FC<ToastProps> = ({
   autoDismissMs,
 }) => {
   const insets = useSafeAreaInsets();
+  const { width: windowWidth } = useWindowDimensions();
+  // ORCH-1100: width-aware so the mobile-web (< 768px) blur-kill paints the
+  // opaque fallback instead of a see-through toast card.
+  const blurOk = shouldUseRealBlur(windowWidth);
   const opacity = useSharedValue(0);
   const translateY = useSharedValue(TRANSLATE_FROM);
   // Independent shared value for swipe drag offset — added to translateY at render.

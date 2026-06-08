@@ -23,6 +23,7 @@ import { canvas } from "../../../src/constants/designSystem";
 import { useAuth } from "../../../src/context/AuthContext";
 import { useBrandStripeStatus } from "../../../src/hooks/useBrandStripeStatus";
 import { useBrand } from "../../../src/hooks/useBrands";
+import { isBrandRouteResolving } from "../../../src/utils/coldLoadAuthGates";
 import {
   useCurrentBrandStore,
   type Brand,
@@ -32,13 +33,28 @@ import { getEffectiveBrandStripeStatus } from "../../../src/utils/stripeOnboardi
 export default function BrandProfileRoute(): React.ReactElement {
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { user } = useAuth();
+  const { user, isAuthReady } = useAuth();
   const params = useLocalSearchParams<{ id: string | string[] }>();
   const idParam = Array.isArray(params.id) ? params.id[0] : params.id;
   const brandId =
     typeof idParam === "string" && idParam.length > 0 ? idParam : null;
   const brandQuery = useBrand(brandId);
   const brand = brandQuery.data ?? null;
+
+  // ORCH-1100 Wave 3 — cold-direct-load auth-readiness flash fix.
+  // On a refresh/bookmark of /brand/{id} the session is still warming and the
+  // brand query has not fetched, so `brand` is null for a beat. Treat that
+  // window as RESOLVING so BrandProfileView shows a spinner instead of flashing
+  // "Brand not found". Once auth is ready AND the query has settled (fetched,
+  // not fetching), a still-null brand is a genuine not-found. A valid `brandId`
+  // is required — a missing id segment is an immediate not-found, not loading.
+  const isBrandResolving = isBrandRouteResolving({
+    hasBrandId: brandId !== null,
+    brandIsNull: brand === null,
+    isAuthReady,
+    queryIsFetched: brandQuery.isFetched,
+    queryIsLoading: brandQuery.isLoading,
+  });
   const stripeStatusQuery = useBrandStripeStatus(brandId);
   const effectiveStripeStatus = getEffectiveBrandStripeStatus({
     liveStatus: stripeStatusQuery.data?.status,
@@ -142,6 +158,7 @@ export default function BrandProfileRoute(): React.ReactElement {
     <View style={{ flex: 1, paddingTop: insets.top, backgroundColor: canvas.discover }}>
       <BrandProfileView
         brand={brand}
+        isResolving={isBrandResolving}
         effectiveStripeStatus={effectiveStripeStatus}
         onBack={handleBack}
         onEdit={handleOpenEdit}

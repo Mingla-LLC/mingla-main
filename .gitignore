@@ -131,3 +131,5 @@ vercel-token.md
 
 # Local-only personal secrets file — never commit
 TokensNeeded.md
+*.token.json
+*session.token*

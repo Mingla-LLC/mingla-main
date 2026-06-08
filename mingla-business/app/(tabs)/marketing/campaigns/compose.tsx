@@ -412,11 +412,25 @@ export default function ComposeCampaignRoute(): React.ReactElement {
   }, [campaignId, sendMode, scheduledForIso, subject, body, scheduleMutation]);
 
   // Back-block — intercept exits if dirty.
+  //
+  // ORCH-1100 RC-3: `Alert.alert` is a NO-OP on react-native-web. On web the
+  // old path would `preventDefault()` the navigation and then call
+  // `Alert.alert(...)`, which never renders a dialog — so Back stayed cancelled
+  // forever (the button looked dead). On web we instead rely on the existing
+  // debounced autosave (`useComposerDraft` + `flushDraft`): fire a final flush
+  // and let the navigation proceed, so the draft is preserved without a
+  // no-op dialog. The native Alert.alert dirty-guard below is unchanged.
   useEffect(() => {
     const unsubscribe = navigation.addListener("beforeRemove" as never, (event: unknown) => {
       const ev = event as { preventDefault: () => void; data?: { action?: unknown } };
       if (sanctionedExitRef.current) return;
       if (!isDirty) return;
+      if (Platform.OS === "web") {
+        // Don't block the exit — autosave already persists edits. Fire one last
+        // flush (fire-and-forget) in case the debounced save hasn't run yet.
+        void flushDraft();
+        return;
+      }
       ev.preventDefault?.();
       Alert.alert(
         "Save your draft?",

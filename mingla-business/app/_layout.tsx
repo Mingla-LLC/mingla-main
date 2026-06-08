@@ -78,6 +78,9 @@ import {
 } from "../src/services/businessNotificationRouting";
 import { usePushPermissionMoment } from "../src/hooks/usePushPermissionMoment";
 import { verifyStripeModeAlignment } from "../src/services/stripeModeHandshake";
+// ORCH-1100 Wave 3 — cold-direct-load auth-readiness flash fix. Pure predicate
+// for the signed-out recovery gate (shared, unit-tested).
+import { shouldShowSignedOutRecovery as resolveShouldShowSignedOutRecovery } from "../src/utils/coldLoadAuthGates";
 
 // Sub-B: a tap that arrives before auth is stashed here + replayed post-login
 // (mirrors the consumer deferred-deeplink pattern). Keyed in AsyncStorage so a
@@ -121,38 +124,38 @@ const ORCH_1092_SIGNED_OUT_ROUTES = new Set([
   "/account",
 ]);
 
-// ORCH-1098 Stage 3: the mobile-web route firewall existed because the
-// BottomNav reanimated machinery OOM-crashed EVERY signed-in tab route on a
-// phone browser (the capsule lives in the tabs layout). That root cause is now
-// fixed in BottomNav.web.tsx, so the real Expo routes boot on phones — every
-// route below is promoted to "interactive". The firewall MECHANISM is retained
-// (status map + Orch1093MobileRouteRecovery) so a single route can be re-gated
-// to "blocked"/"static-section" if it is ever found to still OOM on device,
-// per the ORCH-1098 safety rule — never re-ship a crashing route.
+// ORCH-1100 Wave 1A — RETIRE the mobile-web route firewall.
 //
-// `/connect-account-management` stays "blocked" on phone web: it mounts the
-// Stripe Connect embedded iframe (a separate heavy surface, not in ORCH-1098's
-// scope and not part of the BottomNav fix). Promoting it needs its own device
-// proof in a later ORCH.
-const ORCH_1093_SIGNED_IN_ROUTE_STATUS = {
-  "/": "interactive",
-  "/auth": "interactive",
-  "/auth/callback": "interactive",
-  "/home": "interactive",
-  "/hub/events": "interactive",
-  "/marketing": "interactive",
-  "/marketing/campaigns/compose": "interactive",
-  "/account": "interactive",
-  "/event/create": "interactive",
-  "/hub/trips": "interactive",
-  "/hub/experiences": "interactive",
-  "/ari": "interactive",
-  "/connect-account-management": "blocked",
-} as const;
+// History: the firewall existed (ORCH-1093) because the BottomNav reanimated
+// machinery OOM-crashed signed-in tab routes on phone web. ORCH-1098 Stage 3
+// fixed that root cause in BottomNav.web.tsx and promoted ~12 routes one at a
+// time, but kept the DEFAULT as "static-section" so the other ~79 routes still
+// rendered the recovery stub on a phone browser — the dominant business-web
+// parity gap.
+//
+// The ORCH-1100 parity-baseline harness (tools/parity-harness/, signed in on a
+// physical Samsung) proved that with the firewall bypassed, 88/91 routes BOOT
+// the real app + 3/91 render a correct data-guard, with ZERO crashes / ZERO OOM
+// / peak heap 41 MB. See PARITY_BASELINE_ORCH-1100.md. The firewall was masking
+// ~79 routes that already work.
+//
+// FIX: flip the DEFAULT from blocked → interactive. The REAL app now renders for
+// every signed-in mobile-web route by default. The safety valve is RETAINED but
+// inverted: instead of a whitelist of allowed routes, we keep a narrow, explicit
+// BLOCK-LIST of routes with a PROVEN live crash on device. Per the baseline,
+// that list is currently EMPTY. A route found to genuinely crash later can be
+// re-gated by adding its pathname here (with the offender logged) — without
+// reintroducing the all-routes firewall.
+//
+// Desktop web was never firewalled (isMobileWebRouteEntry() gate) and is
+// untouched by this change.
+const ORCH_1100_BLOCKED_MOBILE_WEB_ROUTES = new Set<string>([
+  // Empty by design (ORCH-1100 baseline: 0 routes crash on device). Add a
+  // pathname here ONLY with device proof that the REAL route hard-crashes on a
+  // phone browser, and log the offender + failure class in the commit message.
+]);
 
-type Orch1093RouteStatus =
-  | (typeof ORCH_1093_SIGNED_IN_ROUTE_STATUS)[keyof typeof ORCH_1093_SIGNED_IN_ROUTE_STATUS]
-  | "static-section";
+type Orch1093RouteStatus = "interactive" | "blocked";
 
 const SUPABASE_AUTH_STORAGE_KEY = /^sb-.+-auth-token$/;
 
@@ -185,12 +188,16 @@ function isMobileWebRouteEntry(): boolean {
   );
 }
 
+// ORCH-1100 Wave 1A — the route-status resolver. Default is now "interactive"
+// (the real app renders); only a pathname explicitly placed in the proven-crash
+// block-list returns "blocked". The ORCH-1100 diagnostic env bypass
+// (EXPO_PUBLIC_ORCH1100_FIREWALL_BYPASS) is removed — it was a throwaway
+// measurement toggle that is redundant now that the production default is
+// interactive.
 function orch1093RouteStatus(pathname: string): Orch1093RouteStatus {
-  return (
-    ORCH_1093_SIGNED_IN_ROUTE_STATUS[
-      pathname as keyof typeof ORCH_1093_SIGNED_IN_ROUTE_STATUS
-    ] ?? "static-section"
-  );
+  return ORCH_1100_BLOCKED_MOBILE_WEB_ROUTES.has(pathname)
+    ? "blocked"
+    : "interactive";
 }
 
 function hasStoredSupabaseWebSession(): boolean {
@@ -210,34 +217,27 @@ function hasStoredSupabaseWebSession(): boolean {
 }
 
 function Orch1093MobileRouteRecovery({
-  pathname,
-  status,
+  pathname: _pathname,
+  status: _status,
   onReturnHome,
 }: {
-  pathname: string;
-  status: Exclude<Orch1093RouteStatus, "interactive">;
+  // ORCH-1100 Wave 1A: this stub is now the NARROW safety valve — it renders
+  // only for a route explicitly placed in ORCH_1100_BLOCKED_MOBILE_WEB_ROUTES
+  // (a proven device crash), which is currently an empty set. `status` is always
+  // "blocked" when this renders; `pathname` is retained for a future per-route
+  // message but unused while the block-list is empty.
+  pathname?: string;
+  status?: Exclude<Orch1093RouteStatus, "interactive">;
   onReturnHome: () => void;
 }): React.ReactElement {
-  const routeLabel =
-    pathname === "/hub/trips"
-      ? "Hub Trips"
-      : pathname === "/hub/experiences"
-        ? "Hub Experiences"
-        : pathname === "/ari"
-          ? "Ari"
-          : pathname === "/connect-account-management"
-            ? "Payout account"
-            : "this route";
-  // ORCH-1093/1095 guard phrase: physical Android Chrome and mobile Safari proof.
   return (
     <View style={orch1092Styles.host}>
       <View style={orch1092Styles.card}>
         <Text style={orch1092Styles.eyebrow}>Mingla Business</Text>
-        <Text style={orch1092Styles.title}>{routeLabel} is staying protected.</Text>
+        <Text style={orch1092Styles.title}>This screen is taking a detour.</Text>
         <Text style={orch1092Styles.body}>
-          {status === "static-section"
-            ? "This phone-browser route has not been promoted to direct interactive entry yet, so Mingla is keeping you on the stable Home launcher."
-            : "This phone-browser route is not ready for direct entry yet, so Mingla is sending you back to the stable Home launcher."}
+          We hit a snag opening this screen on your phone browser, so Mingla is
+          sending you back to the stable Home launcher.
         </Text>
         <Pressable
           accessibilityRole="button"
@@ -397,11 +397,26 @@ function RootLayoutInner(): React.ReactElement {
   // FIX: compute the recovery decision here (NO hooks) but DEFER the actual
   // `return` until AFTER every hook has run (just before the JSX return). All
   // hooks now run unconditionally on every render — Rules-of-Hooks satisfied.
-  const shouldShowSignedOutRecovery =
-    Platform.OS === "web" &&
-    !loading &&
-    user === null &&
-    ORCH_1092_SIGNED_OUT_ROUTES.has(pathname);
+  // ORCH-1100 Wave 3 — cold-direct-load auth-readiness flash fix.
+  // The signed-out recovery (the "Sign in to open …" landing) must fire ONLY
+  // for a GENUINELY logged-out user, never during the cold-load warming window.
+  // On a refresh/bookmark of /account (or a sibling authed route) the 3s auth
+  // bootstrap can time out and flip `loading`→false while `user` is still null
+  // because the stored session restores a beat later (late SIGNED_IN /
+  // TOKEN_REFRESHED). Showing the recovery in that window is the residual flash.
+  // Suppress it while a stored Supabase web session exists (auth still
+  // resolving) — the route then renders its own LOADING state until the session
+  // warms. `hasStoredSupabaseWebSession()` is false for real logged-out users,
+  // so they still correctly see the recovery (no spinner trap).
+  const shouldShowSignedOutRecovery = resolveShouldShowSignedOutRecovery({
+    isWeb: Platform.OS === "web",
+    loading,
+    // `user === null` (kept inline so the shared predicate's gate is fed the
+    // exact GoTrue user-resolution signal the original gate used).
+    hasUser: !(user === null),
+    hasStoredWebSession: hasStoredSupabaseWebSession(),
+    routeIsSignedOutGated: ORCH_1092_SIGNED_OUT_ROUTES.has(pathname),
+  });
 
   const orch1093Status = orch1093RouteStatus(pathname);
   const shouldShowMobileRouteRecovery =
@@ -572,10 +587,11 @@ function RootLayoutInner(): React.ReactElement {
     );
   }
   if (shouldShowMobileRouteRecovery) {
+    // Only reachable when orch1093Status === "blocked" (see the guard above).
     return (
       <Orch1093MobileRouteRecovery
         pathname={pathname}
-        status={orch1093Status}
+        status="blocked"
         onReturnHome={() => router.replace("/home" as never)}
       />
     );
@@ -666,12 +682,10 @@ export default function RootLayout(): React.ReactElement {
   // boot bundle + fires 14 boot-time fetches on the login path. See SPEC §C-2.
   const webPathname = getCurrentWebPathname();
   const orch1093WebStatus = orch1093RouteStatus(webPathname);
-  const outerOrch1093RecoveryStatus =
-    orch1093WebStatus === "interactive" ? null : orch1093WebStatus;
   const shouldShowOuterOrch1093Recovery =
     Platform.OS === "web" &&
     isMobileWebRouteEntry() &&
-    outerOrch1093RecoveryStatus !== null;
+    orch1093WebStatus === "blocked";
   const shouldShowOuterOrch1092Recovery =
     Platform.OS === "web" &&
     ORCH_1092_SIGNED_OUT_ROUTES.has(webPathname) &&
@@ -683,7 +697,7 @@ export default function RootLayout(): React.ReactElement {
         <SafeAreaProvider>
           <Orch1093MobileRouteRecovery
             pathname={webPathname}
-            status={outerOrch1093RecoveryStatus}
+            status="blocked"
             onReturnHome={() => {
               window.location.assign("/home");
             }}

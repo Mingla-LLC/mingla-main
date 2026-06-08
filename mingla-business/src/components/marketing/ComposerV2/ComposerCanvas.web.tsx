@@ -35,7 +35,7 @@
  */
 
 import React from "react";
-import { StyleSheet, View } from "react-native";
+import { ScrollView, StyleSheet, View } from "react-native";
 
 import {
   glass,
@@ -138,10 +138,29 @@ export const ComposerCanvas: React.FC<ComposerCanvasProps> = ({
 }) => {
   const { isWideDesktop, width } = useResponsiveLayout();
 
-  // Narrow web fall-through. Mobile is covered by the sibling
-  // `ComposerCanvas.tsx` Fragment passthrough (Metro picks .tsx on native).
+  // Narrow web fall-through (phone/tablet web, < 1024px). Mobile native is
+  // covered by the sibling `ComposerCanvas.tsx` Fragment passthrough (Metro
+  // picks .tsx on native).
+  //
+  // ORCH-1100 RC-3: previously this returned a bare `<>{editor}</>`. On phone
+  // web the editor column (subject + toolbar + fixed-height body + footer) is
+  // taller than the browser viewport once the TopBar + MarketingSubNav + URL
+  // bar are subtracted, so the bottom of the body and the footer were
+  // unreachable and the editor read as a thin untappable strip. Wrap the column
+  // in a ScrollView so the whole composer body is scrollable and tappable. This
+  // is WEB-ONLY (this file is `.web.tsx`); the native pell "no ScrollView around
+  // the editor" constraint is untouched (that path uses `ComposerCanvas.tsx`).
   if (!isWideDesktop) {
-    return <>{editor}</>;
+    return (
+      <ScrollView
+        style={styles.narrowScroll}
+        contentContainerStyle={styles.narrowScrollContent}
+        keyboardShouldPersistTaps="handled"
+        testID="composer-canvas-narrow-web-scroll"
+      >
+        {editor}
+      </ScrollView>
+    );
   }
 
   const spec = resolvePaneSpec(width, drawerOpen);
@@ -189,6 +208,16 @@ export const ComposerCanvas: React.FC<ComposerCanvasProps> = ({
 };
 
 const styles = StyleSheet.create({
+  // ORCH-1100 RC-3: phone/tablet-web scroll container so the editor column is
+  // fully reachable below the chrome. `flex: 1` claims the available area;
+  // `flexGrow: 1` on the content lets a short composer still fill the viewport
+  // while a tall one scrolls.
+  narrowScroll: {
+    flex: 1,
+  },
+  narrowScrollContent: {
+    flexGrow: 1,
+  },
   host: {
     flex: 1,
     flexDirection: "row",

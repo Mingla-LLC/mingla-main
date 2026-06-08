@@ -84,9 +84,14 @@ assertIncludes(
 );
 
 // ---- §2 + §3 — dismiss affordances rendered ----
-assertIncludes(
+// ORCH-1100: reorder-robust — enforce the INVARIANT (Pressable imported from
+// react-native for the close button + tap-to-dismiss) without pinning the exact
+// import-line spelling (ORCH-1100 dropped the now-unused `Platform` + added
+// `useWindowDimensions` for the web-width glass fallback; the dismiss affordances
+// below are unchanged).
+assertRegexPresent(
   TOAST,
-  "import { Modal, Platform, Pressable, StyleSheet, Text, View } from \"react-native\"",
+  /import\s*\{[^}]*\bPressable\b[^}]*\}\s*from\s*["']react-native["']/,
   "Toast.tsx must import Pressable from react-native (close button + tap-to-dismiss).",
 );
 assertRegexPresent(

@@ -1,0 +1,128 @@
+{
+  "generatedAt": "2026-06-08T03:19:54.061Z",
+  "orch": "ORCH-1100",
+  "note": "REAL-ID targeted re-probe subset (populated-screen + native-module surfacing). DIAGNOSTIC.",
+  "total": 20,
+  "routes": [
+    {
+      "pathname": "/brand/22a18413-bfbf-4087-9ba7-45f70deba0f3",
+      "sourceFile": "(real-id probe)",
+      "dynamic": true,
+      "dynamicParams": []
+    },
+    {
+      "pathname": "/brand/22a18413-bfbf-4087-9ba7-45f70deba0f3/edit",
+      "sourceFile": "(real-id probe)",
+      "dynamic": true,
+      "dynamicParams": []
+    },
+    {
+      "pathname": "/brand/22a18413-bfbf-4087-9ba7-45f70deba0f3/team",
+      "sourceFile": "(real-id probe)",
+      "dynamic": true,
+      "dynamicParams": []
+    },
+    {
+      "pathname": "/brand/22a18413-bfbf-4087-9ba7-45f70deba0f3/scanners",
+      "sourceFile": "(real-id probe)",
+      "dynamic": true,
+      "dynamicParams": []
+    },
+    {
+      "pathname": "/brand/22a18413-bfbf-4087-9ba7-45f70deba0f3/listing",
+      "sourceFile": "(real-id probe)",
+      "dynamic": true,
+      "dynamicParams": []
+    },
+    {
+      "pathname": "/brand/22a18413-bfbf-4087-9ba7-45f70deba0f3/blasts",
+      "sourceFile": "(real-id probe)",
+      "dynamic": true,
+      "dynamicParams": []
+    },
+    {
+      "pathname": "/brand/22a18413-bfbf-4087-9ba7-45f70deba0f3/payments",
+      "sourceFile": "(real-id probe)",
+      "dynamic": true,
+      "dynamicParams": []
+    },
+    {
+      "pathname": "/brand/22a18413-bfbf-4087-9ba7-45f70deba0f3/pricing-defaults",
+      "sourceFile": "(real-id probe)",
+      "dynamic": true,
+      "dynamicParams": []
+    },
+    {
+      "pathname": "/event/61980280-ff31-4e84-a169-ea97bd07eff4",
+      "sourceFile": "(real-id probe)",
+      "dynamic": true,
+      "dynamicParams": []
+    },
+    {
+      "pathname": "/event/61980280-ff31-4e84-a169-ea97bd07eff4/edit",
+      "sourceFile": "(real-id probe)",
+      "dynamic": true,
+      "dynamicParams": []
+    },
+    {
+      "pathname": "/event/61980280-ff31-4e84-a169-ea97bd07eff4/door",
+      "sourceFile": "(real-id probe)",
+      "dynamic": true,
+      "dynamicParams": []
+    },
+    {
+      "pathname": "/event/61980280-ff31-4e84-a169-ea97bd07eff4/scanner",
+      "sourceFile": "(real-id probe)",
+      "dynamic": true,
+      "dynamicParams": []
+    },
+    {
+      "pathname": "/event/61980280-ff31-4e84-a169-ea97bd07eff4/guests",
+      "sourceFile": "(real-id probe)",
+      "dynamic": true,
+      "dynamicParams": []
+    },
+    {
+      "pathname": "/event/61980280-ff31-4e84-a169-ea97bd07eff4/orders",
+      "sourceFile": "(real-id probe)",
+      "dynamic": true,
+      "dynamicParams": []
+    },
+    {
+      "pathname": "/event/61980280-ff31-4e84-a169-ea97bd07eff4/group-chat",
+      "sourceFile": "(real-id probe)",
+      "dynamic": true,
+      "dynamicParams": []
+    },
+    {
+      "pathname": "/event/61980280-ff31-4e84-a169-ea97bd07eff4/preview",
+      "sourceFile": "(real-id probe)",
+      "dynamic": true,
+      "dynamicParams": []
+    },
+    {
+      "pathname": "/event/61980280-ff31-4e84-a169-ea97bd07eff4/blasts",
+      "sourceFile": "(real-id probe)",
+      "dynamic": true,
+      "dynamicParams": []
+    },
+    {
+      "pathname": "/event/61980280-ff31-4e84-a169-ea97bd07eff4/reconciliation",
+      "sourceFile": "(real-id probe)",
+      "dynamic": true,
+      "dynamicParams": []
+    },
+    {
+      "pathname": "/b/leggothis",
+      "sourceFile": "(real-id probe)",
+      "dynamic": true,
+      "dynamicParams": []
+    },
+    {
+      "pathname": "/e/leggothis/61980280-ff31-4e84-a169-ea97bd07eff4",
+      "sourceFile": "(real-id probe)",
+      "dynamic": true,
+      "dynamicParams": []
+    }
+  ]
+}

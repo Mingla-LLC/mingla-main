@@ -1,0 +1,1464 @@
+{
+  "generatedAt": "2026-06-08T05:00:30.768Z",
+  "device": "R58R54YV7JT",
+  "results": [
+    {
+      "pathname": "/",
+      "sourceFile": "app/index.tsx",
+      "dynamic": false,
+      "status": "BOOTS",
+      "failureClass": "other",
+      "heapMB": 16.1,
+      "rootHtmlLen": 7988,
+      "bodyHead": "Create brand Home Account",
+      "consoleErrors": [
+        "screenshot failed: Error: CDP timeout: Page.captureScreenshot"
+      ],
+      "screenshot": null,
+      "crashed": false,
+      "oom": false
+    },
+    {
+      "pathname": "/accept-brand-invitation",
+      "sourceFile": "app/accept-brand-invitation.tsx",
+      "dynamic": false,
+      "status": "BOOTS",
+      "failureClass": "other",
+      "heapMB": 10.7,
+      "rootHtmlLen": 1665,
+      "bodyHead": "Invalid link The invitation link is malformed. Open the email and click the button again. Back to Mingla",
+      "consoleErrors": [
+        "screenshot failed: Error: CDP timeout: Page.captureScreenshot"
+      ],
+      "screenshot": null,
+      "crashed": false,
+      "oom": false
+    },
+    {
+      "pathname": "/accept-brand-invitation/success",
+      "sourceFile": "app/accept-brand-invitation/success.tsx",
+      "dynamic": false,
+      "status": "BOOTS",
+      "failureClass": "other",
+      "heapMB": 10.4,
+      "rootHtmlLen": 3510,
+      "bodyHead": "🎉 Welcome to your brand Mingla has built it out for you. The next step is connecting your bank so customers can buy tickets. Set up your brand on the web → Download for iOS Download for Android Or come back to your email anytime.",
+      "consoleErrors": [
+        "screenshot failed: Error: CDP timeout: Page.captureScreenshot"
+      ],
+      "screenshot": null,
+      "crashed": false,
+      "oom": false
+    },
+    {
+      "pathname": "/accept-scanner-invitation",
+      "sourceFile": "app/accept-scanner-invitation.tsx",
+      "dynamic": false,
+      "status": "BOOTS",
+      "failureClass": "other",
+      "heapMB": 10,
+      "rootHtmlLen": 1665,
+      "bodyHead": "Invalid link The invitation link is malformed. Open the email and click the button again. Back to Mingla",
+      "consoleErrors": [
+        "screenshot failed: Error: CDP timeout: Page.captureScreenshot"
+      ],
+      "screenshot": null,
+      "crashed": false,
+      "oom": false
+    },
+    {
+      "pathname": "/account",
+      "sourceFile": "app/(tabs)/account.tsx",
+      "dynamic": false,
+      "status": "BOOTS",
+      "failureClass": "other",
+      "heapMB": 15.1,
+      "rootHtmlLen": 13000,
+      "bodyHead": "Create brand Your brands Loading your brands… Settings Manage your profile, notifications, and session. Edit profile Notifications Sign out everywhere Home Account",
+      "consoleErrors": [
+        "screenshot failed: Error: CDP timeout: Page.captureScreenshot"
+      ],
+      "screenshot": null,
+      "crashed": false,
+      "oom": false
+    },
+    {
+      "pathname": "/account/delete",
+      "sourceFile": "app/account/delete.tsx",
+      "dynamic": false,
+      "status": "BOOTS",
+      "failureClass": "other",
+      "heapMB": 10.9,
+      "rootHtmlLen": 4763,
+      "bodyHead": "Delete account Delete your Mingla Business account? You'll lose access to all your brands, events, ticket data, team memberships, and history. You have 30 days to recover by signing in again — after that, everything is permanently erased. C",
+      "consoleErrors": [
+        "screenshot failed: Error: CDP timeout: Page.captureScreenshot"
+      ],
+      "screenshot": null,
+      "crashed": false,
+      "oom": false
+    },
+    {
+      "pathname": "/account/edit-profile",
+      "sourceFile": "app/account/edit-profile.tsx",
+      "dynamic": false,
+      "status": "BOOTS",
+      "failureClass": "other",
+      "heapMB": 10.8,
+      "rootHtmlLen": 2782,
+      "bodyHead": "Edit profile",
+      "consoleErrors": [
+        "screenshot failed: Error: CDP timeout: Page.captureScreenshot"
+      ],
+      "screenshot": null,
+      "crashed": false,
+      "oom": false
+    },
+    {
+      "pathname": "/account/notifications",
+      "sourceFile": "app/account/notifications.tsx",
+      "dynamic": false,
+      "status": "BOOTS",
+      "failureClass": "other",
+      "heapMB": 11.7,
+      "rootHtmlLen": 15697,
+      "bodyHead": "Notifications Order activity Sales, sold-out, low inventory, and refunds Payments & trust Disputes, payouts, and account status Audience & content Reviews and audience activity Brand team Teammates joining and venue-claim decisions Scanner ",
+      "consoleErrors": [
+        "screenshot failed: Error: CDP timeout: Page.captureScreenshot"
+      ],
+      "screenshot": null,
+      "crashed": false,
+      "oom": false
+    },
+    {
+      "pathname": "/ari",
+      "sourceFile": "app/(tabs)/ari.tsx",
+      "dynamic": false,
+      "status": "BOOTS",
+      "failureClass": "other",
+      "heapMB": 15.9,
+      "rootHtmlLen": 7898,
+      "bodyHead": "Ari Hi, I'm Ari. I can create events, manage brands, and answer questions about your business. Tap + for things to try Home Account",
+      "consoleErrors": [
+        "screenshot failed: Error: CDP timeout: Page.captureScreenshot"
+      ],
+      "screenshot": null,
+      "crashed": false,
+      "oom": false
+    },
+    {
+      "pathname": "/ari/settings",
+      "sourceFile": "app/ari/settings.tsx",
+      "dynamic": false,
+      "status": "BOOTS",
+      "failureClass": "other",
+      "heapMB": 10.8,
+      "rootHtmlLen": 4305,
+      "bodyHead": "‹ Back Ari Settings MODE Co-pilot (always ask before writes) Active Autopilot for reads is coming in a future update. WHAT ARI KNOWS ABOUT YOU Display name Preferred timezone Save PRIVACY Delete all Ari data ABOUT Ari uses Google Gemini. Yo",
+      "consoleErrors": [
+        "screenshot failed: Error: CDP timeout: Page.captureScreenshot"
+      ],
+      "screenshot": null,
+      "crashed": false,
+      "oom": false
+    },
+    {
+      "pathname": "/auth",
+      "sourceFile": "app/auth/index.tsx",
+      "dynamic": false,
+      "status": "BOOTS",
+      "failureClass": "other",
+      "heapMB": 12.2,
+      "rootHtmlLen": 7988,
+      "bodyHead": "Create brand Home Account",
+      "consoleErrors": [
+        "screenshot failed: Error: CDP timeout: Page.captureScreenshot"
+      ],
+      "screenshot": null,
+      "crashed": false,
+      "oom": false
+    },
+    {
+      "pathname": "/auth/callback",
+      "sourceFile": "app/auth/callback.tsx",
+      "dynamic": false,
+      "status": "BOOTS",
+      "failureClass": "other",
+      "heapMB": 12,
+      "rootHtmlLen": 572,
+      "bodyHead": "",
+      "consoleErrors": [
+        "screenshot failed: Error: CDP timeout: Page.captureScreenshot"
+      ],
+      "screenshot": null,
+      "crashed": false,
+      "oom": false
+    },
+    {
+      "pathname": "/b/leggo-this",
+      "sourceFile": "app/b/[brandSlug]/index.tsx",
+      "dynamic": true,
+      "status": "BOOTS",
+      "failureClass": "other",
+      "heapMB": 11.5,
+      "rootHtmlLen": 1256,
+      "bodyHead": "Loading brand...",
+      "consoleErrors": [
+        "screenshot failed: Error: CDP timeout: Page.captureScreenshot"
+      ],
+      "screenshot": null,
+      "crashed": false,
+      "oom": false
+    },
+    {
+      "pathname": "/booking/00000000-0000-0000-0000-000000000001/cancel",
+      "sourceFile": "app/booking/[orderId]/cancel.tsx",
+      "dynamic": true,
+      "status": "BOOTS",
+      "failureClass": "other",
+      "heapMB": 14.9,
+      "rootHtmlLen": 2722,
+      "bodyHead": "Loading cancellation preview…",
+      "consoleErrors": [
+        "screenshot failed: Error: CDP timeout: Page.captureScreenshot"
+      ],
+      "screenshot": null,
+      "crashed": false,
+      "oom": false
+    },
+    {
+      "pathname": "/brand/00000000-0000-0000-0000-000000000000",
+      "sourceFile": "app/brand/[id]/index.tsx",
+      "dynamic": true,
+      "status": "BOOTS",
+      "failureClass": "other",
+      "heapMB": 11.2,
+      "rootHtmlLen": 5527,
+      "bodyHead": "Brand Brand not found The brand you tried to open doesn’t exist or has been removed. Go back to your account to pick another. Back to Account",
+      "consoleErrors": [
+        "screenshot failed: Error: CDP timeout: Page.captureScreenshot"
+      ],
+      "screenshot": null,
+      "crashed": false,
+      "oom": false
+    },
+    {
+      "pathname": "/brand/00000000-0000-0000-0000-000000000000/audit-log",
+      "sourceFile": "app/brand/[id]/audit-log.tsx",
+      "dynamic": true,
+      "status": "BOOTS",
+      "failureClass": "other",
+      "heapMB": 11.2,
+      "rootHtmlLen": 8944,
+      "bodyHead": "Audit log You see audit events tied to your account on this brand. ALL STRIPE CONNECT PAYOUTS & REFUNDS ORDERS LEGAL OPS OTHER",
+      "consoleErrors": [
+        "screenshot failed: Error: CDP timeout: Page.captureScreenshot"
+      ],
+      "screenshot": null,
+      "crashed": false,
+      "oom": false
+    },
+    {
+      "pathname": "/brand/00000000-0000-0000-0000-000000000000/blasts",
+      "sourceFile": "app/brand/[id]/blasts.tsx",
+      "dynamic": true,
+      "status": "BOOTS",
+      "failureClass": "other",
+      "heapMB": 10.7,
+      "rootHtmlLen": 3771,
+      "bodyHead": "Blasts",
+      "consoleErrors": [
+        "screenshot failed: Error: CDP timeout: Page.captureScreenshot"
+      ],
+      "screenshot": null,
+      "crashed": false,
+      "oom": false
+    },
+    {
+      "pathname": "/brand/00000000-0000-0000-0000-000000000000/edit",
+      "sourceFile": "app/brand/[id]/edit.tsx",
+      "dynamic": true,
+      "status": "BOOTS",
+      "failureClass": "other",
+      "heapMB": 11.4,
+      "rootHtmlLen": 5532,
+      "bodyHead": "Edit brand Brand not found The brand you tried to edit doesn’t exist or has been removed. Go back to your account to pick another. Back to Account",
+      "consoleErrors": [
+        "screenshot failed: Error: CDP timeout: Page.captureScreenshot"
+      ],
+      "screenshot": null,
+      "crashed": false,
+      "oom": false
+    },
+    {
+      "pathname": "/brand/00000000-0000-0000-0000-000000000000/listing",
+      "sourceFile": "app/brand/[id]/listing.tsx",
+      "dynamic": true,
+      "status": "BOOTS",
+      "failureClass": "other",
+      "heapMB": 11,
+      "rootHtmlLen": 3390,
+      "bodyHead": "Your listing No listing yet Add your venue so Mingla can recommend it to people deciding where to go. Add your venue",
+      "consoleErrors": [
+        "screenshot failed: Error: CDP timeout: Page.captureScreenshot"
+      ],
+      "screenshot": null,
+      "crashed": false,
+      "oom": false
+    },
+    {
+      "pathname": "/brand/00000000-0000-0000-0000-000000000000/payments",
+      "sourceFile": "app/brand/[id]/payments/index.tsx",
+      "dynamic": true,
+      "status": "BOOTS",
+      "failureClass": "other",
+      "heapMB": 11.7,
+      "rootHtmlLen": 5530,
+      "bodyHead": "Payments Brand not found The brand you tried to open doesn’t exist or has been removed. Go back to your account to pick another. Back to Account",
+      "consoleErrors": [
+        "screenshot failed: Error: CDP timeout: Page.captureScreenshot"
+      ],
+      "screenshot": null,
+      "crashed": false,
+      "oom": false
+    },
+    {
+      "pathname": "/brand/00000000-0000-0000-0000-000000000000/payments/onboard",
+      "sourceFile": "app/brand/[id]/payments/onboard.tsx",
+      "dynamic": true,
+      "status": "BOOTS",
+      "failureClass": "other",
+      "heapMB": 14.9,
+      "rootHtmlLen": 3805,
+      "bodyHead": "Cancel Set up payments Brand not found The brand you tried to onboard doesn’t exist or has been removed. Back",
+      "consoleErrors": [
+        "screenshot failed: Error: CDP timeout: Page.captureScreenshot"
+      ],
+      "screenshot": null,
+      "crashed": false,
+      "oom": false
+    },
+    {
+      "pathname": "/brand/00000000-0000-0000-0000-000000000000/payments/reports",
+      "sourceFile": "app/brand/[id]/payments/reports.tsx",
+      "dynamic": true,
+      "status": "BOOTS",
+      "failureClass": "other",
+      "heapMB": 11.2,
+      "rootHtmlLen": 5529,
+      "bodyHead": "Finance Brand not found The brand you tried to open doesn’t exist or has been removed. Go back to your account to pick another. Back to Account",
+      "consoleErrors": [
+        "screenshot failed: Error: CDP timeout: Page.captureScreenshot"
+      ],
+      "screenshot": null,
+      "crashed": false,
+      "oom": false
+    },
+    {
+      "pathname": "/brand/00000000-0000-0000-0000-000000000000/pricing-defaults",
+      "sourceFile": "app/brand/[id]/pricing-defaults.tsx",
+      "dynamic": true,
+      "status": "BOOTS",
+      "failureClass": "other",
+      "heapMB": 10.6,
+      "rootHtmlLen": 1800,
+      "bodyHead": "Pricing",
+      "consoleErrors": [
+        "screenshot failed: Error: CDP timeout: Page.captureScreenshot"
+      ],
+      "screenshot": null,
+      "crashed": false,
+      "oom": false
+    },
+    {
+      "pathname": "/brand/00000000-0000-0000-0000-000000000000/scanners",
+      "sourceFile": "app/brand/[id]/scanners.tsx",
+      "dynamic": true,
+      "status": "BOOTS",
+      "failureClass": "other",
+      "heapMB": 10.8,
+      "rootHtmlLen": 2904,
+      "bodyHead": "Brand scanners Brand-wide scanners can scan tickets at every event you own — now and later. Add door staff who work multiple shows here. Loading scanners...",
+      "consoleErrors": [
+        "screenshot failed: Error: CDP timeout: Page.captureScreenshot"
+      ],
+      "screenshot": null,
+      "crashed": false,
+      "oom": false
+    },
+    {
+      "pathname": "/brand/00000000-0000-0000-0000-000000000000/team",
+      "sourceFile": "app/brand/[id]/team.tsx",
+      "dynamic": true,
+      "status": "ERROR_BOUNDARY",
+      "failureClass": "other",
+      "heapMB": 10.9,
+      "rootHtmlLen": 3871,
+      "bodyHead": "Team Brand not found This brand isn't in your list. Switch back and try again.",
+      "consoleErrors": [
+        "screenshot failed: Error: CDP timeout: Page.captureScreenshot"
+      ],
+      "screenshot": null,
+      "crashed": false,
+      "oom": false
+    },
+    {
+      "pathname": "/checkout-experience/sample",
+      "sourceFile": "app/checkout-experience/[experienceEventId]/index.tsx",
+      "dynamic": true,
+      "status": "BOOTS",
+      "failureClass": "other",
+      "heapMB": 11.2,
+      "rootHtmlLen": 3406,
+      "bodyHead": "Get your spot 1 OF 3 Loading experience…",
+      "consoleErrors": [
+        "screenshot failed: Error: CDP timeout: Page.captureScreenshot"
+      ],
+      "screenshot": null,
+      "crashed": false,
+      "oom": false
+    },
+    {
+      "pathname": "/checkout-experience/sample/buyer",
+      "sourceFile": "app/checkout-experience/[experienceEventId]/buyer.tsx",
+      "dynamic": true,
+      "status": "BOOTS",
+      "failureClass": "other",
+      "heapMB": 12,
+      "rootHtmlLen": 3406,
+      "bodyHead": "Get your spot 1 OF 3 Loading experience…",
+      "consoleErrors": [
+        "screenshot failed: Error: CDP timeout: Page.captureScreenshot"
+      ],
+      "screenshot": null,
+      "crashed": false,
+      "oom": false
+    },
+    {
+      "pathname": "/checkout-experience/sample/confirm",
+      "sourceFile": "app/checkout-experience/[experienceEventId]/confirm.tsx",
+      "dynamic": true,
+      "status": "BOOTS",
+      "failureClass": "other",
+      "heapMB": 11.3,
+      "rootHtmlLen": 981,
+      "bodyHead": "",
+      "consoleErrors": [
+        "screenshot failed: Error: CDP timeout: Page.captureScreenshot"
+      ],
+      "screenshot": null,
+      "crashed": false,
+      "oom": false
+    },
+    {
+      "pathname": "/checkout-experience/sample/payment",
+      "sourceFile": "app/checkout-experience/[experienceEventId]/payment.tsx",
+      "dynamic": true,
+      "status": "BOOTS",
+      "failureClass": "other",
+      "heapMB": 15.1,
+      "rootHtmlLen": 3406,
+      "bodyHead": "Get your spot 1 OF 3 Loading experience…",
+      "consoleErrors": [
+        "screenshot failed: Error: CDP timeout: Page.captureScreenshot"
+      ],
+      "screenshot": null,
+      "crashed": false,
+      "oom": false
+    },
+    {
+      "pathname": "/checkout-trip/sample",
+      "sourceFile": "app/checkout-trip/[tripEventId]/index.tsx",
+      "dynamic": true,
+      "status": "BOOTS",
+      "failureClass": "other",
+      "heapMB": 11.2,
+      "rootHtmlLen": 3404,
+      "bodyHead": "Reserve your spot 1 OF 3 Loading trip…",
+      "consoleErrors": [
+        "screenshot failed: Error: CDP timeout: Page.captureScreenshot"
+      ],
+      "screenshot": null,
+      "crashed": false,
+      "oom": false
+    },
+    {
+      "pathname": "/checkout-trip/sample/buyer",
+      "sourceFile": "app/checkout-trip/[tripEventId]/buyer.tsx",
+      "dynamic": true,
+      "status": "BOOTS",
+      "failureClass": "other",
+      "heapMB": 11.9,
+      "rootHtmlLen": 3404,
+      "bodyHead": "Reserve your spot 1 OF 3 Loading trip…",
+      "consoleErrors": [
+        "screenshot failed: Error: CDP timeout: Page.captureScreenshot"
+      ],
+      "screenshot": null,
+      "crashed": false,
+      "oom": false
+    },
+    {
+      "pathname": "/checkout-trip/sample/confirm",
+      "sourceFile": "app/checkout-trip/[tripEventId]/confirm.tsx",
+      "dynamic": true,
+      "status": "BOOTS",
+      "failureClass": "other",
+      "heapMB": 11.7,
+      "rootHtmlLen": 981,
+      "bodyHead": "",
+      "consoleErrors": [
+        "screenshot failed: Error: CDP timeout: Page.captureScreenshot"
+      ],
+      "screenshot": null,
+      "crashed": false,
+      "oom": false
+    },
+    {
+      "pathname": "/checkout-trip/sample/intake",
+      "sourceFile": "app/checkout-trip/[tripEventId]/intake.tsx",
+      "dynamic": true,
+      "status": "BOOTS",
+      "failureClass": "other",
+      "heapMB": 12,
+      "rootHtmlLen": 3404,
+      "bodyHead": "Reserve your spot 1 OF 3 Loading trip…",
+      "consoleErrors": [
+        "screenshot failed: Error: CDP timeout: Page.captureScreenshot"
+      ],
+      "screenshot": null,
+      "crashed": false,
+      "oom": false
+    },
+    {
+      "pathname": "/checkout-trip/sample/payment",
+      "sourceFile": "app/checkout-trip/[tripEventId]/payment.tsx",
+      "dynamic": true,
+      "status": "BOOTS",
+      "failureClass": "other",
+      "heapMB": 11.8,
+      "rootHtmlLen": 3404,
+      "bodyHead": "Reserve your spot 1 OF 3 Loading trip…",
+      "consoleErrors": [
+        "screenshot failed: Error: CDP timeout: Page.captureScreenshot"
+      ],
+      "screenshot": null,
+      "crashed": false,
+      "oom": false
+    },
+    {
+      "pathname": "/checkout/00000000-0000-0000-0000-000000000002",
+      "sourceFile": "app/checkout/[eventId]/index.tsx",
+      "dynamic": true,
+      "status": "BOOTS",
+      "failureClass": "other",
+      "heapMB": 11.2,
+      "rootHtmlLen": 3403,
+      "bodyHead": "Get tickets 1 OF 3 Loading tickets...",
+      "consoleErrors": [
+        "screenshot failed: Error: CDP timeout: Page.captureScreenshot"
+      ],
+      "screenshot": null,
+      "crashed": false,
+      "oom": false
+    },
+    {
+      "pathname": "/checkout/00000000-0000-0000-0000-000000000002/buyer",
+      "sourceFile": "app/checkout/[eventId]/buyer.tsx",
+      "dynamic": true,
+      "status": "BOOTS",
+      "failureClass": "other",
+      "heapMB": 12.3,
+      "rootHtmlLen": 3403,
+      "bodyHead": "Get tickets 1 OF 3 Loading tickets...",
+      "consoleErrors": [
+        "screenshot failed: Error: CDP timeout: Page.captureScreenshot"
+      ],
+      "screenshot": null,
+      "crashed": false,
+      "oom": false
+    },
+    {
+      "pathname": "/checkout/00000000-0000-0000-0000-000000000002/confirm",
+      "sourceFile": "app/checkout/[eventId]/confirm.tsx",
+      "dynamic": true,
+      "status": "BOOTS",
+      "failureClass": "other",
+      "heapMB": 15.2,
+      "rootHtmlLen": 981,
+      "bodyHead": "",
+      "consoleErrors": [
+        "screenshot failed: Error: CDP timeout: Page.captureScreenshot"
+      ],
+      "screenshot": null,
+      "crashed": false,
+      "oom": false
+    },
+    {
+      "pathname": "/checkout/00000000-0000-0000-0000-000000000002/payment",
+      "sourceFile": "app/checkout/[eventId]/payment.tsx",
+      "dynamic": true,
+      "status": "BOOTS",
+      "failureClass": "other",
+      "heapMB": 12.2,
+      "rootHtmlLen": 3403,
+      "bodyHead": "Get tickets 1 OF 3 Loading tickets...",
+      "consoleErrors": [
+        "screenshot failed: Error: CDP timeout: Page.captureScreenshot"
+      ],
+      "screenshot": null,
+      "crashed": false,
+      "oom": false
+    },
+    {
+      "pathname": "/connect-account-management",
+      "sourceFile": "app/connect-account-management.tsx",
+      "dynamic": false,
+      "status": "BOOTS",
+      "failureClass": "other",
+      "heapMB": 14.8,
+      "rootHtmlLen": 1336,
+      "bodyHead": "Invalid management link This link is missing a required parameter. Return to Mingla Business and tap “Manage payouts & tax” again.",
+      "consoleErrors": [
+        "screenshot failed: Error: CDP timeout: Page.captureScreenshot"
+      ],
+      "screenshot": null,
+      "crashed": false,
+      "oom": false
+    },
+    {
+      "pathname": "/connect-onboarding",
+      "sourceFile": "app/connect-onboarding.tsx",
+      "dynamic": false,
+      "status": "BOOTS",
+      "failureClass": "other",
+      "heapMB": 14.2,
+      "rootHtmlLen": 1353,
+      "bodyHead": "Invalid onboarding link This onboarding link is missing a required parameter. Return to Mingla Business and tap “Set up payments” again to start fresh.",
+      "consoleErrors": [
+        "screenshot failed: Error: CDP timeout: Page.captureScreenshot"
+      ],
+      "screenshot": null,
+      "crashed": false,
+      "oom": false
+    },
+    {
+      "pathname": "/connect-partner-account-management",
+      "sourceFile": "app/connect-partner-account-management.tsx",
+      "dynamic": false,
+      "status": "BOOTS",
+      "failureClass": "other",
+      "heapMB": 14.4,
+      "rootHtmlLen": 1324,
+      "bodyHead": "Invalid management link This link is missing a required parameter. Return to Mingla and tap “Manage Stripe account” again.",
+      "consoleErrors": [
+        "screenshot failed: Error: CDP timeout: Page.captureScreenshot"
+      ],
+      "screenshot": null,
+      "crashed": false,
+      "oom": false
+    },
+    {
+      "pathname": "/connect-partner-onboarding",
+      "sourceFile": "app/connect-partner-onboarding.tsx",
+      "dynamic": false,
+      "status": "BOOTS",
+      "failureClass": "other",
+      "heapMB": 14.4,
+      "rootHtmlLen": 1368,
+      "bodyHead": "Invalid onboarding link This partner-onboarding link is missing a required parameter. Return to Mingla Business and tap “Set up partner payouts” again to start fresh.",
+      "consoleErrors": [
+        "screenshot failed: Error: CDP timeout: Page.captureScreenshot"
+      ],
+      "screenshot": null,
+      "crashed": false,
+      "oom": false
+    },
+    {
+      "pathname": "/connect-tax-registrations",
+      "sourceFile": "app/connect-tax-registrations/index.tsx",
+      "dynamic": false,
+      "status": "ERROR_BOUNDARY",
+      "failureClass": "other",
+      "heapMB": 12.3,
+      "rootHtmlLen": 1140,
+      "bodyHead": "Invalid tax tools link Close this window and try again from the app.",
+      "consoleErrors": [
+        "screenshot failed: Error: CDP timeout: Page.captureScreenshot"
+      ],
+      "screenshot": null,
+      "crashed": false,
+      "oom": false
+    },
+    {
+      "pathname": "/e/leggo-this/sample",
+      "sourceFile": "app/e/[brandSlug]/[eventSlug].tsx",
+      "dynamic": true,
+      "status": "BOOTS",
+      "failureClass": "other",
+      "heapMB": 12.4,
+      "rootHtmlLen": 1256,
+      "bodyHead": "Loading event...",
+      "consoleErrors": [
+        "screenshot failed: Error: CDP timeout: Page.captureScreenshot"
+      ],
+      "screenshot": null,
+      "crashed": false,
+      "oom": false
+    },
+    {
+      "pathname": "/event/00000000-0000-0000-0000-000000000000",
+      "sourceFile": "app/event/[id]/index.tsx",
+      "dynamic": true,
+      "status": "BOOTS",
+      "failureClass": "other",
+      "heapMB": 12.5,
+      "rootHtmlLen": 621,
+      "bodyHead": "",
+      "consoleErrors": [
+        "screenshot failed: Error: CDP timeout: Page.captureScreenshot"
+      ],
+      "screenshot": null,
+      "crashed": false,
+      "oom": false
+    },
+    {
+      "pathname": "/event/00000000-0000-0000-0000-000000000000/blasts",
+      "sourceFile": "app/event/[id]/blasts/index.tsx",
+      "dynamic": true,
+      "status": "BOOTS",
+      "failureClass": "other",
+      "heapMB": 10.9,
+      "rootHtmlLen": 3771,
+      "bodyHead": "Blasts",
+      "consoleErrors": [
+        "screenshot failed: Error: CDP timeout: Page.captureScreenshot"
+      ],
+      "screenshot": null,
+      "crashed": false,
+      "oom": false
+    },
+    {
+      "pathname": "/event/00000000-0000-0000-0000-000000000000/door",
+      "sourceFile": "app/event/[id]/door/index.tsx",
+      "dynamic": true,
+      "status": "BOOTS",
+      "failureClass": "other",
+      "heapMB": 10.9,
+      "rootHtmlLen": 2326,
+      "bodyHead": "Door Sales Loading event...",
+      "consoleErrors": [
+        "screenshot failed: Error: CDP timeout: Page.captureScreenshot"
+      ],
+      "screenshot": null,
+      "crashed": false,
+      "oom": false
+    },
+    {
+      "pathname": "/event/00000000-0000-0000-0000-000000000000/door/sample",
+      "sourceFile": "app/event/[id]/door/[saleId].tsx",
+      "dynamic": true,
+      "status": "BOOTS",
+      "failureClass": "other",
+      "heapMB": 10.8,
+      "rootHtmlLen": 2325,
+      "bodyHead": "Door sale Loading event...",
+      "consoleErrors": [
+        "screenshot failed: Error: CDP timeout: Page.captureScreenshot"
+      ],
+      "screenshot": null,
+      "crashed": false,
+      "oom": false
+    },
+    {
+      "pathname": "/event/00000000-0000-0000-0000-000000000000/edit",
+      "sourceFile": "app/event/[id]/edit.tsx",
+      "dynamic": true,
+      "status": "BOOTS",
+      "failureClass": "other",
+      "heapMB": 12,
+      "rootHtmlLen": 1171,
+      "bodyHead": "Loading…",
+      "consoleErrors": [
+        "screenshot failed: Error: CDP timeout: Page.captureScreenshot"
+      ],
+      "screenshot": null,
+      "crashed": false,
+      "oom": false
+    },
+    {
+      "pathname": "/event/00000000-0000-0000-0000-000000000000/group-chat",
+      "sourceFile": "app/event/[id]/group-chat.tsx",
+      "dynamic": true,
+      "status": "BOOTS",
+      "failureClass": "other",
+      "heapMB": 11.4,
+      "rootHtmlLen": 2752,
+      "bodyHead": "Group chat Read, reply, and moderate buyer chat",
+      "consoleErrors": [
+        "screenshot failed: Error: CDP timeout: Page.captureScreenshot"
+      ],
+      "screenshot": null,
+      "crashed": false,
+      "oom": false
+    },
+    {
+      "pathname": "/event/00000000-0000-0000-0000-000000000000/guests",
+      "sourceFile": "app/event/[id]/guests/index.tsx",
+      "dynamic": true,
+      "status": "BOOTS",
+      "failureClass": "other",
+      "heapMB": 12,
+      "rootHtmlLen": 2322,
+      "bodyHead": "Guests Loading event...",
+      "consoleErrors": [
+        "screenshot failed: Error: CDP timeout: Page.captureScreenshot"
+      ],
+      "screenshot": null,
+      "crashed": false,
+      "oom": false
+    },
+    {
+      "pathname": "/event/00000000-0000-0000-0000-000000000000/guests/sample",
+      "sourceFile": "app/event/[id]/guests/[guestId].tsx",
+      "dynamic": true,
+      "status": "BOOTS",
+      "failureClass": "other",
+      "heapMB": 11,
+      "rootHtmlLen": 2321,
+      "bodyHead": "Guest Loading event...",
+      "consoleErrors": [
+        "screenshot failed: Error: CDP timeout: Page.captureScreenshot"
+      ],
+      "screenshot": null,
+      "crashed": false,
+      "oom": false
+    },
+    {
+      "pathname": "/event/00000000-0000-0000-0000-000000000000/orders",
+      "sourceFile": "app/event/[id]/orders/index.tsx",
+      "dynamic": true,
+      "status": "BOOTS",
+      "failureClass": "other",
+      "heapMB": 10.8,
+      "rootHtmlLen": 2322,
+      "bodyHead": "Orders Loading event...",
+      "consoleErrors": [
+        "screenshot failed: Error: CDP timeout: Page.captureScreenshot"
+      ],
+      "screenshot": null,
+      "crashed": false,
+      "oom": false
+    },
+    {
+      "pathname": "/event/00000000-0000-0000-0000-000000000000/orders/sample",
+      "sourceFile": "app/event/[id]/orders/[oid]/index.tsx",
+      "dynamic": true,
+      "status": "BOOTS",
+      "failureClass": "other",
+      "heapMB": 10.8,
+      "rootHtmlLen": 2322,
+      "bodyHead": "Order Loading event...",
+      "consoleErrors": [
+        "screenshot failed: Error: CDP timeout: Page.captureScreenshot"
+      ],
+      "screenshot": null,
+      "crashed": false,
+      "oom": false
+    },
+    {
+      "pathname": "/event/00000000-0000-0000-0000-000000000000/preview",
+      "sourceFile": "app/event/[id]/preview.tsx",
+      "dynamic": true,
+      "status": "BOOTS",
+      "failureClass": "other",
+      "heapMB": 11.2,
+      "rootHtmlLen": 1171,
+      "bodyHead": "Loading…",
+      "consoleErrors": [
+        "screenshot failed: Error: CDP timeout: Page.captureScreenshot"
+      ],
+      "screenshot": null,
+      "crashed": false,
+      "oom": false
+    },
+    {
+      "pathname": "/event/00000000-0000-0000-0000-000000000000/reconciliation",
+      "sourceFile": "app/event/[id]/reconciliation.tsx",
+      "dynamic": true,
+      "status": "BOOTS",
+      "failureClass": "other",
+      "heapMB": 10.8,
+      "rootHtmlLen": 2330,
+      "bodyHead": "Reconciliation Loading event...",
+      "consoleErrors": [
+        "screenshot failed: Error: CDP timeout: Page.captureScreenshot"
+      ],
+      "screenshot": null,
+      "crashed": false,
+      "oom": false
+    },
+    {
+      "pathname": "/event/00000000-0000-0000-0000-000000000000/scanner",
+      "sourceFile": "app/event/[id]/scanner/index.tsx",
+      "dynamic": true,
+      "status": "BOOTS",
+      "failureClass": "other",
+      "heapMB": 11.3,
+      "rootHtmlLen": 2340,
+      "bodyHead": "Scan tickets Loading event...",
+      "consoleErrors": [
+        "screenshot failed: Error: CDP timeout: Page.captureScreenshot"
+      ],
+      "screenshot": null,
+      "crashed": false,
+      "oom": false
+    },
+    {
+      "pathname": "/event/00000000-0000-0000-0000-000000000000/scanners",
+      "sourceFile": "app/event/[id]/scanners/index.tsx",
+      "dynamic": true,
+      "status": "BOOTS",
+      "failureClass": "other",
+      "heapMB": 10.8,
+      "rootHtmlLen": 2324,
+      "bodyHead": "Scanners Loading event...",
+      "consoleErrors": [
+        "screenshot failed: Error: CDP timeout: Page.captureScreenshot"
+      ],
+      "screenshot": null,
+      "crashed": false,
+      "oom": false
+    },
+    {
+      "pathname": "/event/create",
+      "sourceFile": "app/event/create.tsx",
+      "dynamic": false,
+      "status": "BOOTS",
+      "failureClass": "other",
+      "heapMB": 12.5,
+      "rootHtmlLen": 26904,
+      "bodyHead": "1 Basics 2 When 3 Where 4 Cover 5 Tickets 6 Settings 7 Preview 1/7 Brand · Step 1 of 7 Server draft STEP 1 OF 7 Basics Name, format, and category Event name Format In person Online Hybrid Party Type * Birthday Party Rooftop Party Club Night",
+      "consoleErrors": [
+        "screenshot failed: Error: CDP timeout: Page.captureScreenshot"
+      ],
+      "screenshot": null,
+      "crashed": false,
+      "oom": false
+    },
+    {
+      "pathname": "/exp/leggo-this/sample",
+      "sourceFile": "app/exp/[brandSlug]/[experienceSlug].tsx",
+      "dynamic": true,
+      "status": "BOOTS",
+      "failureClass": "other",
+      "heapMB": 11.3,
+      "rootHtmlLen": 1277,
+      "bodyHead": "Loading experience…",
+      "consoleErrors": [
+        "screenshot failed: Error: CDP timeout: Page.captureScreenshot"
+      ],
+      "screenshot": null,
+      "crashed": false,
+      "oom": false
+    },
+    {
+      "pathname": "/experience/00000000-0000-0000-0000-000000000000",
+      "sourceFile": "app/experience/[id]/index.tsx",
+      "dynamic": true,
+      "status": "BOOTS",
+      "failureClass": "other",
+      "heapMB": 11.6,
+      "rootHtmlLen": 1225,
+      "bodyHead": "",
+      "consoleErrors": [
+        "screenshot failed: Error: CDP timeout: Page.captureScreenshot"
+      ],
+      "screenshot": null,
+      "crashed": false,
+      "oom": false
+    },
+    {
+      "pathname": "/experience/00000000-0000-0000-0000-000000000000/edit",
+      "sourceFile": "app/experience/[id]/edit.tsx",
+      "dynamic": true,
+      "status": "BOOTS",
+      "failureClass": "other",
+      "heapMB": 11.7,
+      "rootHtmlLen": 1324,
+      "bodyHead": "Loading experience…",
+      "consoleErrors": [
+        "screenshot failed: Error: CDP timeout: Page.captureScreenshot"
+      ],
+      "screenshot": null,
+      "crashed": false,
+      "oom": false
+    },
+    {
+      "pathname": "/experience/coming-soon",
+      "sourceFile": "app/experience/coming-soon.tsx",
+      "dynamic": false,
+      "status": "BOOTS",
+      "failureClass": "other",
+      "heapMB": 11.3,
+      "rootHtmlLen": 4556,
+      "bodyHead": "Create experience Coming soon. Single-intent experiences let verified venue brands publish offerings like “Bottomless brunch Saturdays” or “Date-night tasting menu.” They're powered by AI that reads your menu and generates candidates for yo",
+      "consoleErrors": [
+        "screenshot failed: Error: CDP timeout: Page.captureScreenshot"
+      ],
+      "screenshot": null,
+      "crashed": false,
+      "oom": false
+    },
+    {
+      "pathname": "/experience/create",
+      "sourceFile": "app/experience/create.tsx",
+      "dynamic": false,
+      "status": "BOOTS",
+      "failureClass": "other",
+      "heapMB": 11.4,
+      "rootHtmlLen": 1291,
+      "bodyHead": "Loading brand…",
+      "consoleErrors": [
+        "screenshot failed: Error: CDP timeout: Page.captureScreenshot"
+      ],
+      "screenshot": null,
+      "crashed": false,
+      "oom": false
+    },
+    {
+      "pathname": "/home",
+      "sourceFile": "app/(tabs)/home.tsx",
+      "dynamic": false,
+      "status": "BOOTS",
+      "failureClass": "other",
+      "heapMB": 12.7,
+      "rootHtmlLen": 7988,
+      "bodyHead": "Create brand Home Account",
+      "consoleErrors": [
+        "screenshot failed: Error: CDP timeout: Page.captureScreenshot"
+      ],
+      "screenshot": null,
+      "crashed": false,
+      "oom": false
+    },
+    {
+      "pathname": "/hub",
+      "sourceFile": "app/(tabs)/hub/index.tsx",
+      "dynamic": false,
+      "status": "BOOTS",
+      "failureClass": "other",
+      "heapMB": 13.4,
+      "rootHtmlLen": 12282,
+      "bodyHead": "Create brand Events Experiences Trips All 0 Live 0 Upcoming 0 Drafts 0 Past 0 No events yet Tap the + button above to start your first event. Home Account",
+      "consoleErrors": [
+        "screenshot failed: Error: CDP timeout: Page.captureScreenshot"
+      ],
+      "screenshot": null,
+      "crashed": false,
+      "oom": false
+    },
+    {
+      "pathname": "/hub/events",
+      "sourceFile": "app/(tabs)/hub/events.tsx",
+      "dynamic": false,
+      "status": "BOOTS",
+      "failureClass": "other",
+      "heapMB": 13.9,
+      "rootHtmlLen": 12282,
+      "bodyHead": "Create brand Events Experiences Trips All 0 Live 0 Upcoming 0 Drafts 0 Past 0 No events yet Tap the + button above to start your first event. Home Account",
+      "consoleErrors": [
+        "screenshot failed: Error: CDP timeout: Page.captureScreenshot"
+      ],
+      "screenshot": null,
+      "crashed": false,
+      "oom": false
+    },
+    {
+      "pathname": "/hub/experiences",
+      "sourceFile": "app/(tabs)/hub/experiences.tsx",
+      "dynamic": false,
+      "status": "BOOTS",
+      "failureClass": "other",
+      "heapMB": 13,
+      "rootHtmlLen": 9152,
+      "bodyHead": "Create brand Events Experiences Trips Select a brand to see its experiences. Home Account",
+      "consoleErrors": [
+        "screenshot failed: Error: CDP timeout: Page.captureScreenshot"
+      ],
+      "screenshot": null,
+      "crashed": false,
+      "oom": false
+    },
+    {
+      "pathname": "/hub/getstarted",
+      "sourceFile": "app/(tabs)/hub/getstarted.tsx",
+      "dynamic": false,
+      "status": "ERROR_BOUNDARY",
+      "failureClass": "other",
+      "heapMB": 14,
+      "rootHtmlLen": 2068,
+      "bodyHead": "Something broke. We're on it. Try again Get help",
+      "consoleErrors": [
+        "SyntaxError: Unexpected token '<'",
+        "Error: Requiring unknown module \"674\".\n    at p (http://127.0.0.1:56815/_expo/static/js/web/__expo-metro-runtime-0c48b0beee2d3ce6030b475fcc5b1846.js:2:2249)\n    at f (http://127.0.0.1:56815/_expo/static/js/web/__expo-metro-runtime-0c48b0beee2d3ce6030b475fcc5b1846.js:2:1921)\n    at a (http://127.0.0.1:56815/_expo/static/js/web/__expo-metro-runtime-0c48b0beee2d3ce6030b475fcc5b1846.js:2:1484)\n    at i (http://127.0.0.1:56815/_expo/static/js/web/__expo-metro-runtime-0c48b0beee2d3ce6030b475fcc5b1846.js:2:586)\n    at i.u [as importAll] (http://127.0.0.1:56815/_expo/static/js/web/__expo-metro-runtime-0c48b0beee2d3ce6030b475fcc5b1846.js:2:902)\n    at u (http://127.0.0.1:56815/_expo/static/js/web/index-ac9f69540137b2c1083ddc8d4981837a.js:23:221)",
+        "screenshot failed: Error: CDP timeout: Page.captureScreenshot"
+      ],
+      "screenshot": null,
+      "crashed": false,
+      "oom": false
+    },
+    {
+      "pathname": "/hub/trips",
+      "sourceFile": "app/(tabs)/hub/trips.tsx",
+      "dynamic": false,
+      "status": "BOOTS",
+      "failureClass": "other",
+      "heapMB": 13,
+      "rootHtmlLen": 9165,
+      "bodyHead": "Create brand Events Experiences Trips Select a brand to see its trips. Home Account",
+      "consoleErrors": [
+        "screenshot failed: Error: CDP timeout: Page.captureScreenshot"
+      ],
+      "screenshot": null,
+      "crashed": false,
+      "oom": false
+    },
+    {
+      "pathname": "/marketing",
+      "sourceFile": "app/(tabs)/marketing/index.tsx",
+      "dynamic": false,
+      "status": "BOOTS",
+      "failureClass": "other",
+      "heapMB": 12.2,
+      "rootHtmlLen": 10743,
+      "bodyHead": "Create brand Overview Audiences Campaigns Templates Home Account",
+      "consoleErrors": [
+        "screenshot failed: Error: CDP timeout: Page.captureScreenshot"
+      ],
+      "screenshot": null,
+      "crashed": false,
+      "oom": false
+    },
+    {
+      "pathname": "/marketing/audiences",
+      "sourceFile": "app/(tabs)/marketing/audiences/index.tsx",
+      "dynamic": false,
+      "status": "BOOTS",
+      "failureClass": "other",
+      "heapMB": 11.8,
+      "rootHtmlLen": 10127,
+      "bodyHead": "Create brand Overview Audiences Campaigns Templates YOUR AUDIENCES Auto-updated as people buy tickets. Home Account",
+      "consoleErrors": [
+        "screenshot failed: Error: CDP timeout: Page.captureScreenshot"
+      ],
+      "screenshot": null,
+      "crashed": false,
+      "oom": false
+    },
+    {
+      "pathname": "/marketing/campaigns",
+      "sourceFile": "app/(tabs)/marketing/campaigns/index.tsx",
+      "dynamic": false,
+      "status": "BOOTS",
+      "failureClass": "other",
+      "heapMB": 12,
+      "rootHtmlLen": 12473,
+      "bodyHead": "Create brand Overview Audiences Campaigns Templates All Scheduled Sent Drafts Failed New campaign Home Account",
+      "consoleErrors": [
+        "screenshot failed: Error: CDP timeout: Page.captureScreenshot"
+      ],
+      "screenshot": null,
+      "crashed": false,
+      "oom": false
+    },
+    {
+      "pathname": "/marketing/campaigns/00000000-0000-0000-0000-000000000000",
+      "sourceFile": "app/(tabs)/marketing/campaigns/[id].tsx",
+      "dynamic": true,
+      "status": "BOOTS",
+      "failureClass": "other",
+      "heapMB": 11.7,
+      "rootHtmlLen": 10774,
+      "bodyHead": "Create brand Overview Audiences Campaigns Templates Campaign Home Account",
+      "consoleErrors": [
+        "screenshot failed: Error: CDP timeout: Page.captureScreenshot"
+      ],
+      "screenshot": null,
+      "crashed": false,
+      "oom": false
+    },
+    {
+      "pathname": "/marketing/campaigns/compose",
+      "sourceFile": "app/(tabs)/marketing/campaigns/compose.tsx",
+      "dynamic": false,
+      "status": "BOOTS",
+      "failureClass": "other",
+      "heapMB": 19.5,
+      "rootHtmlLen": 12730,
+      "bodyHead": "Create brand New campaign Save draft Pick an audience › No audiences yet — your buyers fill in as people purchase tickets. { } B I U Link + Event Personalize ⋮ Preview Send now Schedule",
+      "consoleErrors": [
+        "screenshot failed: Error: CDP timeout: Page.captureScreenshot"
+      ],
+      "screenshot": null,
+      "crashed": false,
+      "oom": false
+    },
+    {
+      "pathname": "/marketing/templates",
+      "sourceFile": "app/(tabs)/marketing/templates/index.tsx",
+      "dynamic": false,
+      "status": "BOOTS",
+      "failureClass": "other",
+      "heapMB": 13.3,
+      "rootHtmlLen": 10065,
+      "bodyHead": "Create brand Overview Audiences Campaigns Templates Home Account",
+      "consoleErrors": [
+        "screenshot failed: Error: CDP timeout: Page.captureScreenshot"
+      ],
+      "screenshot": null,
+      "crashed": false,
+      "oom": false
+    },
+    {
+      "pathname": "/marketing/templates/00000000-0000-0000-0000-000000000000",
+      "sourceFile": "app/(tabs)/marketing/templates/[id].tsx",
+      "dynamic": true,
+      "status": "BOOTS",
+      "failureClass": "other",
+      "heapMB": 13,
+      "rootHtmlLen": 10774,
+      "bodyHead": "Create brand Overview Audiences Campaigns Templates Template Home Account",
+      "consoleErrors": [
+        "screenshot failed: Error: CDP timeout: Page.captureScreenshot"
+      ],
+      "screenshot": null,
+      "crashed": false,
+      "oom": false
+    },
+    {
+      "pathname": "/notifications",
+      "sourceFile": "app/notifications.tsx",
+      "dynamic": false,
+      "status": "BOOTS",
+      "failureClass": "other",
+      "heapMB": 11,
+      "rootHtmlLen": 4210,
+      "bodyHead": "Notifications",
+      "consoleErrors": [
+        "screenshot failed: Error: CDP timeout: Page.captureScreenshot"
+      ],
+      "screenshot": null,
+      "crashed": false,
+      "oom": false
+    },
+    {
+      "pathname": "/o/00000000-0000-0000-0000-000000000001",
+      "sourceFile": "app/o/[orderId].tsx",
+      "dynamic": true,
+      "status": "BOOTS",
+      "failureClass": "other",
+      "heapMB": 10.9,
+      "rootHtmlLen": 2120,
+      "bodyHead": "Order Order not found If you have your confirmation email, the link there is the canonical reference. Contact the organiser if needed.",
+      "consoleErrors": [
+        "screenshot failed: Error: CDP timeout: Page.captureScreenshot"
+      ],
+      "screenshot": null,
+      "crashed": false,
+      "oom": false
+    },
+    {
+      "pathname": "/partner/brands",
+      "sourceFile": "app/partner/brands.tsx",
+      "dynamic": false,
+      "status": "BOOTS",
+      "failureClass": "other",
+      "heapMB": 11.1,
+      "rootHtmlLen": 3102,
+      "bodyHead": "MINGLA PARTNER Brands",
+      "consoleErrors": [
+        "screenshot failed: Error: CDP timeout: Page.captureScreenshot"
+      ],
+      "screenshot": null,
+      "crashed": false,
+      "oom": false
+    },
+    {
+      "pathname": "/partner/earnings",
+      "sourceFile": "app/partner/earnings.tsx",
+      "dynamic": false,
+      "status": "BOOTS",
+      "failureClass": "other",
+      "heapMB": 11.1,
+      "rootHtmlLen": 3107,
+      "bodyHead": "MINGLA PARTNER Earnings",
+      "consoleErrors": [
+        "screenshot failed: Error: CDP timeout: Page.captureScreenshot"
+      ],
+      "screenshot": null,
+      "crashed": false,
+      "oom": false
+    },
+    {
+      "pathname": "/stripe-onboarding-return",
+      "sourceFile": "app/stripe-onboarding-return.tsx",
+      "dynamic": false,
+      "status": "BOOTS",
+      "failureClass": "other",
+      "heapMB": 12.1,
+      "rootHtmlLen": 7988,
+      "bodyHead": "Create brand Home Account",
+      "consoleErrors": [
+        "screenshot failed: Error: CDP timeout: Page.captureScreenshot"
+      ],
+      "screenshot": null,
+      "crashed": false,
+      "oom": false
+    },
+    {
+      "pathname": "/t/leggo-this/sample",
+      "sourceFile": "app/t/[brandSlug]/[tripSlug].tsx",
+      "dynamic": true,
+      "status": "BOOTS",
+      "failureClass": "other",
+      "heapMB": 11.2,
+      "rootHtmlLen": 1271,
+      "bodyHead": "Loading trip…",
+      "consoleErrors": [
+        "screenshot failed: Error: CDP timeout: Page.captureScreenshot"
+      ],
+      "screenshot": null,
+      "crashed": false,
+      "oom": false
+    },
+    {
+      "pathname": "/trip/00000000-0000-0000-0000-000000000000",
+      "sourceFile": "app/trip/[id]/index.tsx",
+      "dynamic": true,
+      "status": "BOOTS",
+      "failureClass": "other",
+      "heapMB": 11.6,
+      "rootHtmlLen": 1225,
+      "bodyHead": "",
+      "consoleErrors": [
+        "screenshot failed: Error: CDP timeout: Page.captureScreenshot"
+      ],
+      "screenshot": null,
+      "crashed": false,
+      "oom": false
+    },
+    {
+      "pathname": "/trip/00000000-0000-0000-0000-000000000000/edit",
+      "sourceFile": "app/trip/[id]/edit.tsx",
+      "dynamic": true,
+      "status": "BOOTS",
+      "failureClass": "other",
+      "heapMB": 12.2,
+      "rootHtmlLen": 1271,
+      "bodyHead": "Loading trip…",
+      "consoleErrors": [
+        "screenshot failed: Error: CDP timeout: Page.captureScreenshot"
+      ],
+      "screenshot": null,
+      "crashed": false,
+      "oom": false
+    },
+    {
+      "pathname": "/trip/00000000-0000-0000-0000-000000000000/money",
+      "sourceFile": "app/trip/[id]/money/index.tsx",
+      "dynamic": true,
+      "status": "BOOTS",
+      "failureClass": "other",
+      "heapMB": 11.6,
+      "rootHtmlLen": 1225,
+      "bodyHead": "",
+      "consoleErrors": [
+        "screenshot failed: Error: CDP timeout: Page.captureScreenshot"
+      ],
+      "screenshot": null,
+      "crashed": false,
+      "oom": false
+    },
+    {
+      "pathname": "/trip/00000000-0000-0000-0000-000000000000/travelers",
+      "sourceFile": "app/trip/[id]/travelers/index.tsx",
+      "dynamic": true,
+      "status": "BOOTS",
+      "failureClass": "other",
+      "heapMB": 10.9,
+      "rootHtmlLen": 1225,
+      "bodyHead": "",
+      "consoleErrors": [
+        "screenshot failed: Error: CDP timeout: Page.captureScreenshot"
+      ],
+      "screenshot": null,
+      "crashed": false,
+      "oom": false
+    },
+    {
+      "pathname": "/trip/coming-soon",
+      "sourceFile": "app/trip/coming-soon.tsx",
+      "dynamic": false,
+      "status": "BOOTS",
+      "failureClass": "other",
+      "heapMB": 11.5,
+      "rootHtmlLen": 1319,
+      "bodyHead": "Loading brand…",
+      "consoleErrors": [
+        "screenshot failed: Error: CDP timeout: Page.captureScreenshot"
+      ],
+      "screenshot": null,
+      "crashed": false,
+      "oom": false
+    },
+    {
+      "pathname": "/trip/create",
+      "sourceFile": "app/trip/create.tsx",
+      "dynamic": false,
+      "status": "BOOTS",
+      "failureClass": "other",
+      "heapMB": 10.5,
+      "rootHtmlLen": 1319,
+      "bodyHead": "Loading brand…",
+      "consoleErrors": [
+        "screenshot failed: Error: CDP timeout: Page.captureScreenshot"
+      ],
+      "screenshot": null,
+      "crashed": false,
+      "oom": false
+    },
+    {
+      "pathname": "/venue/create",
+      "sourceFile": "app/venue/create.tsx",
+      "dynamic": false,
+      "status": "BOOTS",
+      "failureClass": "other",
+      "heapMB": 11.6,
+      "rootHtmlLen": 3874,
+      "bodyHead": "Add a venue What’s your venue called? We’ll check our directory so we can prefill your listing when we know you. Continue without a match",
+      "consoleErrors": [
+        "screenshot failed: Error: CDP timeout: Page.captureScreenshot"
+      ],
+      "screenshot": null,
+      "crashed": false,
+      "oom": false
+    },
+    {
+      "pathname": "/venue/deck-readiness",
+      "sourceFile": "app/venue/deck-readiness.tsx",
+      "dynamic": false,
+      "status": "BOOTS",
+      "failureClass": "other",
+      "heapMB": 11.1,
+      "rootHtmlLen": 2451,
+      "bodyHead": "Deck readiness Venue setup not found Create or link a venue before reviewing deck readiness.",
+      "consoleErrors": [
+        "screenshot failed: Error: CDP timeout: Page.captureScreenshot"
+      ],
+      "screenshot": null,
+      "crashed": false,
+      "oom": false
+    }
+  ]
+}

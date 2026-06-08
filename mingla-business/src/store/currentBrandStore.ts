@@ -102,6 +102,15 @@ import type { Brand } from "../types/brand";
 
 export type CurrentBrandState = {
   currentBrandId: string | null;
+  // ORCH-1100 Wave 1A (RC-1) — true once the persisted store has rehydrated from
+  // AsyncStorage (or rehydration errored, in which case there is nothing to wait
+  // for). Until then, a first-frame `currentBrandId === null` is AMBIGUOUS: it
+  // may simply be that the persisted pointer hasn't loaded yet. Consumers MUST
+  // treat `currentBrandId === null && !hasHydrated` as LOADING, not "no brand",
+  // to avoid the false degraded-shell flash (empty Home + 2-tab nav + "Create
+  // brand") under multi-tab auth-lock contention.
+  hasHydrated: boolean;
+  setHasHydrated: (value: boolean) => void;
   setCurrentBrand: (brand: Brand | null) => void;
   setCurrentBrandId: (id: string | null) => void;
   reset: () => void;
@@ -131,6 +140,14 @@ const persistOptions: PersistOptions<CurrentBrandState, PersistedState> = {
     currentBrandId: state.currentBrandId,
   }),
   version: 14,
+  // ORCH-1100 Wave 1A (RC-1) — flip the hydration flag once persist finishes
+  // reading from AsyncStorage. Fires with an error arg if rehydration threw; we
+  // still mark hydrated (nothing left to wait for — fall back to the in-memory
+  // default of `currentBrandId: null`, which the recovery hook then resolves
+  // from the server). The returned fn runs AFTER the persisted state is merged.
+  onRehydrateStorage: () => (_state, _error) => {
+    useCurrentBrandStore.getState().setHasHydrated(true);
+  },
   migrate: (persistedState, version) => {
     // Cycle 2 / ORCH-0742 v13 → v14 — drops `currentBrand: Brand | null`
     // server snapshot. Extracts only the ID. Server data refreshes on next
@@ -154,6 +171,11 @@ export const useCurrentBrandStore = create<CurrentBrandState>()(
   persist(
     (set) => ({
       currentBrandId: null,
+      // ORCH-1100 Wave 1A (RC-1) — default false; flipped true by
+      // onRehydrateStorage. `hasHydrated` is NOT persisted (excluded from
+      // partialize) so it always starts false on a fresh load.
+      hasHydrated: false,
+      setHasHydrated: (value) => set({ hasHydrated: value }),
       // Option A — preserved API. Internally extracts the ID; full Brand
       // objects no longer live in persisted state.
       setCurrentBrand: (brand) => set({ currentBrandId: brand?.id ?? null }),
@@ -178,6 +200,16 @@ export const useCurrentBrandStore = create<CurrentBrandState>()(
  */
 export const useCurrentBrandId = (): string | null =>
   useCurrentBrandStore((s) => s.currentBrandId);
+
+/**
+ * useCurrentBrandHasHydrated — true once the persisted currentBrand store has
+ * finished rehydrating from AsyncStorage. ORCH-1100 Wave 1A (RC-1): consumers
+ * gate "no brand" UX (empty Home, 2-tab nav, "Create brand" prompt) on this so a
+ * first-frame `currentBrandId === null` during rehydration / auth-lock contention
+ * reads as LOADING, not "no brand".
+ */
+export const useCurrentBrandHasHydrated = (): boolean =>
+  useCurrentBrandStore((s) => s.hasHydrated);
 
 // [TRANSITIONAL] Cycle 17e-A — `useBrandList` kept as a re-export of a thin
 // wrapper that delegates to `useBrands(authUserId)`. The underlying state
