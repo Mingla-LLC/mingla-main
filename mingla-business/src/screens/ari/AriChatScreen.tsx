@@ -61,6 +61,13 @@ export const AriChatScreen: React.FC = () => {
   const [localError, setLocalError] = useState<string | null>(null);
   const [keyboardHeight, setKeyboardHeight] = useState(0);
   const [suggestionsOpen, setSuggestionsOpen] = useState(false);
+  // ORCH-1101 REWORK Bug #6 — dismiss the AI-disclosure sheet the instant the
+  // CTA is tapped, decoupled from the acknowledge mutation's network round-trip
+  // + profile-query refetch. Previously the sheet only closed when the refetched
+  // profile reported a non-null ai_disclosure_acknowledged_at — so on a slow (or
+  // failed) refetch the button "did nothing". This local flag is the source of
+  // truth for dismissal; the mutation still persists in the background.
+  const [disclosureDismissed, setDisclosureDismissed] = useState(false);
 
   // Cycle 3 wizard pattern — manual keyboard listeners so we can tighten
   // the bottom padding when the keyboard is up. KeyboardAvoidingView's
@@ -89,7 +96,22 @@ export const AriChatScreen: React.FC = () => {
   const confirm = useConfirmPendingAction(chat.conversationId);
 
   const disclosureNeeded =
-    !prefs.isLoading && prefs.profile?.ai_disclosure_acknowledged_at == null;
+    !disclosureDismissed &&
+    !prefs.isLoading &&
+    prefs.profile?.ai_disclosure_acknowledged_at == null;
+
+  const handleAcceptDisclosure = (): void => {
+    // Dismiss immediately (Bug #6) — the sheet must close on tap regardless of
+    // network latency. Persist in the background; if it fails, surface the error
+    // via the existing toast so the consent silently-lost case is visible rather
+    // than swallowed (the old `.catch(() => undefined)` hid every failure).
+    setDisclosureDismissed(true);
+    prefs.acknowledge().catch((err: unknown) => {
+      const message =
+        err instanceof Error ? err.message : "Couldn't save your preference — it'll ask again next time.";
+      setLocalError(message);
+    });
+  };
 
   const handleSend = async (text: string): Promise<void> => {
     setLocalError(null);
@@ -260,9 +282,7 @@ export const AriChatScreen: React.FC = () => {
 
       <AiDisclosureModal
         visible={disclosureNeeded}
-        onAccept={() => {
-          prefs.acknowledge().catch(() => undefined);
-        }}
+        onAccept={handleAcceptDisclosure}
       />
     </View>
   );
