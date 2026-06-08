@@ -53,6 +53,7 @@ const GUARD_PATTERNS = [
   /!\s*atSignInRoute/, // `if (... && !atSignInRoute)`
   /!\s*isSignInRoute\s*\(/, // `if (!isSignInRoute(pathname))`
   /\bredirectToSignIn\b/, // derived from shouldRedirectToSignInFromRoute (false at /)
+  /\bnativeRedirectToSignIn\b/, // ORCH-1106 native guard var, defined with !isSignInRoute (asserted loop-safe below)
 ];
 
 function analyze(source) {
@@ -72,6 +73,19 @@ function analyze(source) {
     failures.push(
       "layout does not reference `shouldRedirectToSignInFromRoute` — the ORCH-1103 loop-safe redirect predicate is missing.",
     );
+  }
+
+  // (1b) ORCH-1106 — if the native guard variable `nativeRedirectToSignIn` is
+  // used (it is an accepted GUARD_PATTERN), its DEFINITION must itself be
+  // sign-in-route aware (`!isSignInRoute`), else accepting it as a guard would
+  // be hollow. Keeps the gate strict against an unsafe future redefinition.
+  if (/\bnativeRedirectToSignIn\b/.test(source)) {
+    const def = /const\s+nativeRedirectToSignIn\s*=([^;]*);/.exec(source);
+    if (!def || !/!\s*isSignInRoute\s*\(/.test(def[1])) {
+      failures.push(
+        "`nativeRedirectToSignIn` is used as a redirect guard but its definition is not `!isSignInRoute(...)`-guarded — would reintroduce the ORCH-1103 `/`→`/` loop on native.",
+      );
+    }
   }
 
   // (2) + (3) used as calls
