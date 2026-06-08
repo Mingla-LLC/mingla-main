@@ -3,7 +3,7 @@
  *
  * Asserts the rank-aware filter in `navTabGate.ts` produces the correct
  * scanner-only nav surface (rank 10 → Home + Account) and the full
- * surface for account_owner (rank 60).
+ * surface for brand_owner (rank 60).
  *
  * Per SPEC §5 / Step 0.5 regression tests.
  */
@@ -55,10 +55,10 @@ describe("visibleTabsForRank", () => {
     expect(ids).toEqual(["home", "hub", "ari", "marketing", "account"]);
   });
 
-  it("surfaces every tab for account_owner (rank 60)", () => {
+  it("surfaces every tab for brand_owner (rank 60)", () => {
     const visible = visibleTabsForRank(
       FULL_TABS,
-      BRAND_ROLE_RANK.account_owner,
+      BRAND_ROLE_RANK.brand_owner,
     );
     expect(visible.map((t) => t.id)).toEqual([
       "home",
@@ -77,7 +77,7 @@ describe("visibleTabsForRank", () => {
     ];
     const visible = visibleTabsForRank(
       tabsWithUnknown,
-      BRAND_ROLE_RANK.account_owner,
+      BRAND_ROLE_RANK.brand_owner,
     );
     expect(visible.map((t) => t.id)).not.toContain("rogue");
   });
@@ -106,7 +106,7 @@ describe("isScannerOnlyRank", () => {
     expect(isScannerOnlyRank(BRAND_ROLE_RANK.finance_manager)).toBe(false);
     expect(isScannerOnlyRank(BRAND_ROLE_RANK.event_manager)).toBe(false);
     expect(isScannerOnlyRank(BRAND_ROLE_RANK.brand_admin)).toBe(false);
-    expect(isScannerOnlyRank(BRAND_ROLE_RANK.account_owner)).toBe(false);
+    expect(isScannerOnlyRank(BRAND_ROLE_RANK.brand_owner)).toBe(false);
   });
 });
 
