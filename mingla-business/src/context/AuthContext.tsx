@@ -57,6 +57,24 @@ import { queryClient } from "../config/queryClient";
 // worst case; catches stalled promises without false-positives on slow
 // networks). I-AUTH-BOOTSTRAP-TIMEOUT (NEW invariant per ORCH-0887-A).
 export const AUTH_BOOTSTRAP_TIMEOUT_MS = 3000;
+// ORCH-1102 Wave 2 [bounded loading — never an infinite spinner] — hard
+// wall-clock CEILING on the loading gate. The ORCH-0887-A Promise.race above
+// normally flips `loading` false within 3s, but the ORCH-1100 web GoTrue lock
+// (`navigatorLock`) can DEADLOCK in pathological contexts (orphaned-lock
+// thrash / microtask starvation / a StrictMode unmount-bail that skips the
+// race's setLoading(false)), leaving `loading` stuck true → an INFINITE
+// spinner at `_layout`/`index`. Seth's hard rule: a user must NEVER be left
+// hanging. This backstop is an INDEPENDENT setTimeout (NOT a Promise.race arm
+// living inside the locked auth subsystem, so it can't be starved by the lock)
+// that force-resolves `loading` false if bootstrap has not resolved by the
+// ceiling. An unresolvable session is then treated as logged-out and the
+// route gates send the user to the real sign-in screen — somewhere actionable,
+// never a permanent spinner. The ceiling is deliberately well ABOVE the normal
+// warm path + the 3s race + the 2.3s lock self-heal budget so it is a true
+// LAST-RESORT backstop that NEVER pre-empts a real (slow) session and never
+// causes a false logged-out flash. Web-only (native already resolves; the
+// splash covers native boot — do not regress native).
+export const AUTH_RESOLUTION_HARD_CEILING_MS = 7000;
 const WEB_AUTH_STORAGE_KEY = "sb-gqnoajqerqhnvulmnyvv-auth-token";
 // SPEC §2.1: Symbol sentinel (NOT { __timedOut: true } flag) —
 // referentially unique, impossible to collide with any legitimate
@@ -176,6 +194,31 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     let mounted = true;
+
+    // ORCH-1102 Wave 2 — bounded-loading hard ceiling (web only). Independent
+    // wall-clock backstop: if neither the Promise.race timeout branch nor a
+    // resolved getSession() has flipped `loading` false by the ceiling (a
+    // GoTrue web-lock deadlock the race can't escape), force it false here so
+    // the spinner can never be permanent. Treats an unresolvable session as
+    // logged-out (the route gates redirect to sign-in). Cleared on unmount and
+    // implicitly superseded by any real resolution (setLoading(false) is
+    // idempotent; bootstrapTimedOutRef already gates late real sessions). Not
+    // armed on native — native bootstrap resolves and the splash covers boot.
+    let hardCeilingTimer: ReturnType<typeof setTimeout> | null = null;
+    if (Platform.OS === "web") {
+      hardCeilingTimer = setTimeout(() => {
+        if (!mounted) return;
+        console.warn(
+          `[auth] resolution-hard-ceiling: auth did not resolve within ${AUTH_RESOLUTION_HARD_CEILING_MS}ms — releasing the loading gate (treating as logged-out so the user lands on sign-in, never an infinite spinner)`,
+        );
+        // Preserve any stored web session so a genuinely slow-but-valid session
+        // still warms via a late SIGNED_IN/TOKEN_REFRESHED event; only the
+        // spinner is released. With no stored session, user stays null and the
+        // route gates send the user to the real sign-in screen.
+        bootstrapTimedOutRef.current = true;
+        setLoading(false);
+      }, AUTH_RESOLUTION_HARD_CEILING_MS);
+    }
 
     const bootstrap = async () => {
       if (__DEV__) {
@@ -441,6 +484,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     return () => {
       mounted = false;
+      if (hardCeilingTimer !== null) clearTimeout(hardCeilingTimer);
       subscription.unsubscribe();
     };
   }, []);

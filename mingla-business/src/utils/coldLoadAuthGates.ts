@@ -106,6 +106,45 @@ export const isWebAuthResolving = ({
 };
 
 /**
+ * BOUNDED-LOADING hard ceiling — ORCH-1102 Wave 2.
+ *
+ * Seth's hard rule: a user must NEVER be left hanging on an infinite spinner.
+ * The ORCH-1100 web GoTrue lock can DEADLOCK (orphaned-lock thrash / microtask
+ * starvation), and a deadlock can hold the loading gate true even though the
+ * ORCH-0887-A 3s race + the AuthContext hard-ceiling normally release it. This
+ * predicate is the LAST-RESORT backstop at the UI gate: once auth has been
+ * resolving for longer than the ceiling, treat an unresolvable session as
+ * logged-out and route to sign-in instead of spinning forever.
+ *
+ * `elapsedMs` is measured from first mount of the auth gate; `ceilingMs` is the
+ * wall-clock budget (default well above the normal warm path + the 3s race +
+ * the 2.3s lock self-heal so it never pre-empts a real, merely-slow session and
+ * never causes a false logged-out flash). Fires ONLY while still resolving and
+ * with no user — a present user always wins (render the app), and a resolved
+ * (non-spinning) state never trips it.
+ */
+export const AUTH_RESOLUTION_CEILING_MS = 7000;
+
+export const isAuthResolutionExpired = ({
+  isWeb,
+  hasUser,
+  stillResolving,
+  elapsedMs,
+  ceilingMs = AUTH_RESOLUTION_CEILING_MS,
+}: {
+  isWeb: boolean;
+  hasUser: boolean;
+  stillResolving: boolean;
+  elapsedMs: number;
+  ceilingMs?: number;
+}): boolean => {
+  if (!isWeb) return false;
+  if (hasUser) return false;
+  if (!stillResolving) return false;
+  return elapsedMs >= ceilingMs;
+};
+
+/**
  * `/account` brand-area — is auth still WARMING (show "Loading your brands…")?
  *
  * True when the brand-list status resolved to a transient signed-out shape on a

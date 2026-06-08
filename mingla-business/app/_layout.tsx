@@ -74,6 +74,8 @@ import { verifyStripeModeAlignment } from "../src/services/stripeModeHandshake";
 // sign-in screen; while auth is still resolving we show a LOADING state. These
 // supersede the ORCH-1092 `shouldShowSignedOutRecovery` route-list gate.
 import {
+  AUTH_RESOLUTION_CEILING_MS,
+  isAuthResolutionExpired,
   isWebAuthResolving,
   shouldRedirectToSignIn,
 } from "../src/utils/coldLoadAuthGates";
@@ -278,6 +280,49 @@ function RootLayoutInner(): React.ReactElement {
     hasStoredWebSession,
   });
 
+  // ORCH-1102 Wave 2 — BOUNDED-LOADING backstop at the UI gate. The AuthContext
+  // hard ceiling (AUTH_RESOLUTION_HARD_CEILING_MS) releases `loading` if the
+  // GoTrue web-lock deadlocks; this is the belt-and-suspenders companion for the
+  // residual case where a stale stored web session lingers (so `authResolving`
+  // would otherwise keep the spinner up even after `loading` flips). Once auth
+  // has been RESOLVING past the ceiling with no user, we stop spinning and treat
+  // it as logged-out → redirect to the real sign-in screen. Seth's hard rule: a
+  // user is NEVER left on an infinite spinner. The ceiling is well above the
+  // normal warm + race + lock-self-heal budget, so a genuinely slow-but-valid
+  // session resolves (user appears → app renders) BEFORE this ever fires — no
+  // false logged-out flash. Web-only; native never reaches the resolving gate.
+  const [authDeadlineExpired, setAuthDeadlineExpired] = useState(false);
+  useEffect(() => {
+    if (!isWeb) return;
+    // Only run the deadline while genuinely still resolving with no user; a
+    // present user (or a fully-resolved logged-out state) needs no backstop.
+    if (!authResolving || user !== null) {
+      if (authDeadlineExpired) setAuthDeadlineExpired(false);
+      return;
+    }
+    if (authDeadlineExpired) return;
+    const timer = setTimeout(() => {
+      console.warn(
+        `[_layout] auth-resolution-deadline: still resolving after ${AUTH_RESOLUTION_CEILING_MS}ms — routing to sign-in (no infinite spinner)`,
+      );
+      setAuthDeadlineExpired(true);
+    }, AUTH_RESOLUTION_CEILING_MS);
+    return () => clearTimeout(timer);
+    // `mountedAt` anchors elapsed time conceptually; the timer itself measures
+    // the window from when resolving began (effect arm). Re-runs if resolving
+    // toggles or the user appears.
+  }, [isWeb, authResolving, user, authDeadlineExpired]);
+
+  // The deadline-expired backstop is computed via the pure predicate so it is
+  // unit-testable and fails-on-revert. When expired we force the redirect even
+  // if `authResolving` would still be true (the deadlock case).
+  const authResolutionExpired = isAuthResolutionExpired({
+    isWeb,
+    hasUser: user !== null,
+    stillResolving: authResolving,
+    elapsedMs: authDeadlineExpired ? AUTH_RESOLUTION_CEILING_MS : 0,
+  });
+
   // ORCH-0808 — optional install/analytics SDK init runs after first paint.
   // Auth identity binding + first-event fire happen in AuthContext on
   // SIGNED_IN; env-missing cases are no-op + logged warn. Deferring keeps
@@ -434,6 +479,13 @@ function RootLayoutInner(): React.ReactElement {
   // unconditionally on every render (Rules-of-Hooks / React #300 fix, ORCH-1098
   // Stage 5). Order matters: RESOLVING (spinner) is checked before REDIRECT so
   // a warming session never flashes sign-in.
+  // ORCH-1102 Wave 2 — BOUNDED LOADING: if auth has been resolving past the
+  // hard ceiling (deadlock), stop spinning and route to sign-in. Checked BEFORE
+  // the spinner so a deadlocked session never traps the user on an infinite
+  // spinner — it lands them somewhere actionable (the real sign-in screen).
+  if (authResolutionExpired) {
+    return <Redirect href="/" />;
+  }
   if (authResolving) {
     return <AuthResolvingScreen />;
   }
