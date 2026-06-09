@@ -578,7 +578,7 @@ export const BrandCreationFlow: React.FC<BrandCreationFlowProps> = ({
         {state.step === 1 ? (
           <View style={styles.stepBody}>
             <View style={styles.titleRow}>
-              <Text style={styles.title}>
+              <Text style={[styles.title, styles.titleFlex]}>
                 {state.mode === "client"
                   ? BRAND_CREATION_COPY.step1.titleClient
                   : BRAND_CREATION_COPY.step1.title}
@@ -723,7 +723,7 @@ export const BrandCreationFlow: React.FC<BrandCreationFlowProps> = ({
         {state.step === 5 ? (
           <View style={styles.stepBody}>
             <View style={styles.titleRow}>
-              <Text style={styles.title}>
+              <Text style={[styles.title, styles.titleFlex]}>
                 {BRAND_CREATION_COPY.step5.title}
               </Text>
               <Text style={styles.partnerChip}>🤝 Client setup</Text>
@@ -1014,19 +1014,31 @@ const styles = StyleSheet.create({
   titleRow: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "space-between",
+    // ORCH-1081 hotfix: title can be long (e.g. "Create the client's brand")
+    // and was pushing the partner chip past the sheet edge. Allow wrap so the
+    // chip falls to a second line on narrow screens instead of clipping.
+    flexWrap: "wrap",
     gap: spacing.sm,
   },
   partnerChip: {
-    fontSize: typography.caption.fontSize,
-    fontWeight: "600",
-    color: accent.warm,
-    backgroundColor: glass.tint.profileBase,
-    borderWidth: 1,
-    borderColor: glass.border.profileBase,
+    // ORCH-1081 hotfix: caption-size was too small to read at-a-glance and the
+    // tint-on-tint contrast made "Client setup" look like a placeholder. Bump
+    // to bodySm with a solid Mingla-orange tint background + white text so it
+    // reads as an unambiguous status pill, not decoration.
+    fontSize: typography.bodySm.fontSize,
+    fontWeight: "700",
+    color: "#FFFFFF",
+    backgroundColor: accent.warm,
     borderRadius: radius.full,
-    paddingHorizontal: spacing.sm + 2,
-    paddingVertical: 4,
+    paddingHorizontal: spacing.md,
+    paddingVertical: 6,
+    overflow: "hidden",
+  },
+  // ORCH-1081 hotfix: title shrinks first so it never pushes the chip out of
+  // the sheet boundary. flexShrink:1 + flexBasis:auto = wrap-then-shrink.
+  titleFlex: {
+    flexShrink: 1,
+    flexBasis: "auto",
   },
   modeCardWrap: {
     // Pressable wrapping a GlassCard so the entire surface is tappable.

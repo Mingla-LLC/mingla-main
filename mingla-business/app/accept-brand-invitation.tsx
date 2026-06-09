@@ -41,6 +41,7 @@ import {
   BrandInvitationServiceError,
   type AcceptBrandInvitationResult,
 } from "../src/services/brandInvitationsService";
+import { supabase } from "../src/services/supabase";
 
 type Phase =
   | { kind: "loading" }
@@ -74,6 +75,22 @@ export default function AcceptBrandInvitationRoute(): React.ReactElement {
     setHasRun(true);
     void (async () => {
       try {
+        // ORCH-1081 hotfix: AuthContext can report `user` as soon as the auth
+        // event fires, but supabase-js's storage might not have flushed the
+        // session yet — the next supabase.functions.invoke call would attach
+        // the anon key as bearer and the edge fn would 401. Explicitly wait
+        // for getSession() to return a real access_token before firing the
+        // accept call.
+        for (let attempt = 0; attempt < 10; attempt += 1) {
+          const { data: sessionData } = await supabase.auth.getSession();
+          if (
+            sessionData.session?.access_token &&
+            sessionData.session.access_token.length > 0
+          ) {
+            break;
+          }
+          await new Promise((resolve) => setTimeout(resolve, 150));
+        }
         const result = await acceptAsync(token);
         setPhase({ kind: "success", result });
       } catch (err) {
