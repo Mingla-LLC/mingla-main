@@ -23,6 +23,8 @@ import { PricingPage } from "./pages/PricingPage";
 import { LaunchCitiesPage } from "./pages/LaunchCitiesPage";
 import { BetaLeadsPage } from "./pages/BetaLeadsPage";
 import { StripeModePage } from "./pages/StripeModePage";
+// META-ORCH-1104 Phase 2 — admin support desk (queue + thread + agents).
+import { SupportDeskPage } from "./pages/SupportDeskPage";
 // ORCH-1008: 6 pages deleted (Seed, ContentModeration, Analytics, Reports,
 //   BetaFeedback, TableBrowser). Sidebar flattened; System dropdown removed.
 //   See SPEC_ORCH-1008_ADMIN_SHELL_PRUNE_INTELLIGENCE_OVERVIEW.md §2 + §3.
@@ -40,6 +42,8 @@ const PAGES = {
   "launch-cities": LaunchCitiesPage,
   "beta-leads": BetaLeadsPage,
   claims: ClaimsPage,
+  // META-ORCH-1104 Phase 2 — #/support support desk.
+  support: SupportDeskPage,
   // ORCH-0671: 'photos' route deleted — getTabFromHash falls back to 'overview' via PAGES[hash] guard.
   email: EmailPage,
   pricing: PricingPage,

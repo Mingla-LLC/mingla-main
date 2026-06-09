@@ -1,5 +1,11 @@
 // ORCH-1008 Phase 1 regression test — flat sidebar + 6 deleted pages absent.
 // Fails on revert (verified at commit hash recorded in implementation report).
+//
+// [TEST-MOD-APPROVED META-ORCH-1104] 2026-06-08: added the "support" nav id
+// (Support desk, Phase 2) between "claims" and "users", and reconciled EXPECTED_IDS
+// to the real nav (prior ORCHs added launch-cities/deck-tuner/beta-leads/pricing/
+// stripe-mode without updating this locked test, so it was already failing on main).
+// Nav count 10 -> 16. The flat-sidebar + 6-deleted-pages invariants are unchanged.
 
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
@@ -28,11 +34,17 @@ const EXPECTED_IDS = [
   "subscriptions",
   "admin",
   "placepool",
+  "launch-cities",
   "signals",
+  "deck-tuner",
   "place-intelligence-trial",
   "email",
+  "beta-leads",
+  "pricing",
   "claims",
+  "support",
   "users",
+  "stripe-mode",
   "settings",
 ];
 
@@ -43,7 +55,7 @@ describe("ORCH-1008 Phase 1 — sidebar prune + flatten", () => {
     assert.notEqual(NAV_GROUPS[0].collapsible, true, "the single group must not be collapsible");
   });
 
-  it("NAV_GROUPS has exactly 10 items in the locked SPEC order", () => {
+  it("NAV_GROUPS has exactly 16 items in the locked SPEC order", () => {
     const ids = NAV_GROUPS[0].items.map((i) => i.id);
     assert.deepEqual(ids, EXPECTED_IDS);
   });
@@ -55,8 +67,8 @@ describe("ORCH-1008 Phase 1 — sidebar prune + flatten", () => {
     }
   });
 
-  it("NAV_ITEMS is the flat 10-item list (no group splits)", () => {
-    assert.equal(NAV_ITEMS.length, 10);
+  it("NAV_ITEMS is the flat 16-item list (no group splits)", () => {
+    assert.equal(NAV_ITEMS.length, 16);
     assert.deepEqual(NAV_ITEMS.map((i) => i.id), EXPECTED_IDS);
   });
 

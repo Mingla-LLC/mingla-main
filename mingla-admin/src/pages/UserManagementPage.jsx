@@ -27,6 +27,17 @@ import { exportCsv } from "../lib/exportCsv";
 const PAGE_SIZE = 20;
 const SEARCH_DEBOUNCE_MS = 400;
 
+// META-ORCH-1104 Phase 2 (segmentation) — derived-segment tabs above the Users
+// table. Segment is read from the `profiles_with_segment` view's `segment`
+// column (derive_user_segment: admin → business → explorer), NOT the legacy
+// `account_type` guess. "all" shows every non-admin/null row exactly as before.
+const SEGMENT_TABS = [
+  { id: "all", label: "All" },
+  { id: "explorer", label: "Explorer" },
+  { id: "business", label: "Business" },
+  { id: "admin", label: "Admin" },
+];
+
 // ─── Main Component ───────────────────────────────────────────────────────────
 
 export function UserManagementPage() {
@@ -56,6 +67,9 @@ export function UserManagementPage() {
     dateFrom: "",
     dateTo: "",
   });
+  // META-ORCH-1104 Phase 2 — active derived-segment tab ("all" | "explorer" |
+  // "business" | "admin"). Resolves against profiles_with_segment.segment.
+  const [segment, setSegment] = useState("all");
   const [listLoading, setListLoading] = useState(true);
   const [listError, setListError] = useState(null);
 
@@ -72,7 +86,11 @@ export function UserManagementPage() {
   const [betaTogglingIds, setBetaTogglingIds] = useState(new Set());
 
   // Stats state
+  // META-ORCH-1104 Phase 2 — explorer/business/admin head-counts from the
+  // derived-segment view feed the segment-tab badges. null = "not yet loaded"
+  // (render a placeholder, never a fabricated 0).
   const [stats, setStats] = useState({ total: 0, active: 0, banned: 0, onboarded: 0, newThisWeek: 0 });
+  const [segmentCounts, setSegmentCounts] = useState({ explorer: null, business: null, admin: null });
   const [statsLoading, setStatsLoading] = useState(true);
 
   // Detail state
@@ -180,6 +198,16 @@ export function UserManagementPage() {
       const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
       const newRes = await supabase.from("profiles").select("*", { count: "exact", head: true }).or('account_type.neq.admin,account_type.is.null').gte("created_at", weekAgo).eq("is_seed", false);
 
+      // META-ORCH-1104 Phase 2 — derived-segment head-counts from the view.
+      // The Admin tab counts REAL active admins (derive_user_segment → admin),
+      // independent of the is_seed / account_type filters the legacy stats use.
+      // Excludes seed rows so the Explorer/Business counts line up with the list.
+      const [explorerRes, businessRes, adminRes] = await Promise.all([
+        supabase.from("profiles_with_segment").select("*", { count: "exact", head: true }).eq("segment", "explorer").eq("is_seed", false),
+        supabase.from("profiles_with_segment").select("*", { count: "exact", head: true }).eq("segment", "business").eq("is_seed", false),
+        supabase.from("profiles_with_segment").select("*", { count: "exact", head: true }).eq("segment", "admin").eq("is_seed", false),
+      ]);
+
       if (!mountedRef.current) return;
       setStats({
         total: totalRes.count ?? 0,
@@ -187,6 +215,11 @@ export function UserManagementPage() {
         banned: bannedRes.count ?? 0,
         onboarded: onboardedRes.count ?? 0,
         newThisWeek: newRes.count ?? 0,
+      });
+      setSegmentCounts({
+        explorer: explorerRes.error ? null : explorerRes.count ?? 0,
+        business: businessRes.error ? null : businessRes.count ?? 0,
+        admin: adminRes.error ? null : adminRes.count ?? 0,
       });
     } catch (err) {
       addToast({ variant: "error", title: "Failed to load user stats", description: err.message });
@@ -202,13 +235,27 @@ export function UserManagementPage() {
     setListError(null);
     try {
       const ascending = sortDir === "asc";
+      // META-ORCH-1104 Phase 2 — when a derived-segment tab is active, read the
+      // `profiles_with_segment` view (same columns + a `segment` column) and
+      // filter on the authoritative derived segment. The legacy
+      // `.or(account_type…)` admin-hide guard is dropped under an explicit
+      // segment (it would hide the Admin tab's own rows); the view's
+      // `.eq('segment', …)` is the real, non-lying filter. "all" preserves the
+      // exact pre-1104 behavior (read profiles + the account_type guard).
+      const segmentActive = segment !== "all";
+      const source = segmentActive ? "profiles_with_segment" : "profiles";
       let query = supabase
-        .from("profiles")
+        .from(source)
         .select("id, display_name, username, email, phone, has_completed_onboarding, active, country, account_type, avatar_url, created_at, first_name, last_name, gender, birthday, visibility_mode, updated_at, is_beta_tester", { count: "exact" })
-        .or('account_type.neq.admin,account_type.is.null')
         .eq("is_seed", false)
         .order(sortKey || "created_at", { ascending })
         .range(page * PAGE_SIZE, (page + 1) * PAGE_SIZE - 1);
+
+      if (segmentActive) {
+        query = query.eq("segment", segment);
+      } else {
+        query = query.or('account_type.neq.admin,account_type.is.null');
+      }
 
       if (debouncedSearch) {
         const safe = escapeLike(debouncedSearch.trim());
@@ -238,7 +285,7 @@ export function UserManagementPage() {
     } finally {
       if (mountedRef.current) setListLoading(false);
     }
-  }, [page, debouncedSearch, filters, sortKey, sortDir, addToast]);
+  }, [page, debouncedSearch, filters, sortKey, sortDir, segment, addToast]);
 
   // ─── User Detail Fetching ──────────────────────────────────────────────────
 
@@ -996,6 +1043,42 @@ export function UserManagementPage() {
               <StatCard icon={Activity} label="New This Week" value={stats.newThisWeek.toLocaleString()} />
             </>
           )}
+        </div>
+
+        {/* META-ORCH-1104 Phase 2 — derived-segment tabs (All / Explorer /
+            Business / Admin) with live counts from profiles_with_segment.
+            Selecting a tab filters the list via the view's `segment` column. */}
+        <div className="flex flex-wrap gap-2" role="tablist" aria-label="User segment">
+          {SEGMENT_TABS.map((tab) => {
+            const count =
+              tab.id === "all" ? null : segmentCounts[tab.id];
+            const isActive = segment === tab.id;
+            return (
+              <button
+                key={tab.id}
+                type="button"
+                role="tab"
+                aria-selected={isActive}
+                onClick={() => { setSegment(tab.id); setPage(0); }}
+                className={`rounded-full border px-4 py-2 text-sm font-medium transition ${
+                  isActive
+                    ? "border-[var(--color-brand-500)] bg-[var(--color-brand-500)] text-white"
+                    : "border-[var(--gray-300)] bg-[var(--color-background-primary)] text-[var(--color-text-secondary)] hover:bg-[var(--gray-50)]"
+                }`}
+              >
+                {tab.label}
+                {tab.id !== "all" && (
+                  <span
+                    className={`ml-2 text-xs ${
+                      isActive ? "text-white/80" : "text-[var(--color-text-tertiary)]"
+                    }`}
+                  >
+                    {statsLoading || count == null ? "·" : count}
+                  </span>
+                )}
+              </button>
+            );
+          })}
         </div>
 
         {/* Filters */}

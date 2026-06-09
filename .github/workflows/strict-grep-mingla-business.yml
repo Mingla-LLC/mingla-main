@@ -386,6 +386,19 @@ jobs:
       - name: Run META-ORCH-1060 INV-3 structured-codes gate
         run: node .github/scripts/strict-grep/i-discover-city-codes-from-mapbox-context.mjs
 
+  meta-orch-1104-support-backend-invariants:
+    name: "META-ORCH-1104: support backend invariants (NO-KBC-ON-WEB / no bare tickets-agents / support-scoped RLS / is_admin-retired-safe)"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Self-test the gate
+        run: node .github/scripts/strict-grep/i-meta-orch-1104-support-backend-invariants.mjs --self-test
+      - name: Run META-ORCH-1104 support backend invariants gate
+        run: node .github/scripts/strict-grep/i-meta-orch-1104-support-backend-invariants.mjs
+
   orch-0978-video-upload-optimistic-preview:
     name: "ORCH-0978: video upload optimistic preview"
     runs-on: ubuntu-latest

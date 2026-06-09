@@ -179,6 +179,11 @@ const typeToPreference: Record<string, string> = {
   "board_message_received": "messages",
   "board_message_mention": "messages",
   "board_card_message": "messages",
+  // META-ORCH-1104 D6 (Option α): support reply / new-ticket pushes ride the
+  // existing `messages` boolean — a support reply IS a message. No dedicated
+  // support_replies column in v1 (D6 Option β deferred).
+  "business.support_message": "messages",
+  "business.support_new_ticket": "messages",
   "re_engagement": "marketing",
   "re_engagement_3d": "marketing",
   "re_engagement_7d": "marketing",
@@ -390,14 +395,25 @@ serve(async (req) => {
     }
 
     // ── Check notification preferences ──────────────────────────────────────
+    // META-ORCH-1104 D6 (Lane A F5.5b): the notification_preferences table is
+    // boolean-column-per-category (push_enabled, messages, marketing,
+    // friend_requests, reminders, collaboration_invites, …) — NOT a
+    // channel/type/opt_in row schema. The previous gate read those non-existent
+    // columns, so the entire type-preference gate was a SILENT NO-OP. This now
+    // reads the real columns: push_enabled (global push toggle) + the mapped
+    // category boolean (false = opted out → suppress).
     const { data: prefsRows } = await adminClient
       .from("notification_preferences")
       .select("*")
       .eq("user_id", userId);
     const prefs = Array.isArray(prefsRows) ? prefsRows : [];
+    // One row per user; absent row = all defaults on (deny nothing).
+    const pref = prefs.length > 0
+      ? (prefs[0] as Record<string, unknown>)
+      : null;
 
-    // Global push toggle
-    if (prefs.some((row) => row.channel === "push" && row.type === "*" && row.opt_in === false)) {
+    // Global push toggle: push_enabled === false → suppress all push.
+    if (pref && pref.push_enabled === false) {
       return jsonResponse({
         success: true,
         notificationId,
@@ -407,15 +423,11 @@ serve(async (req) => {
       });
     }
 
-    // Type-specific preference check
+    // Type-specific preference check: map the type to its category boolean
+    // column; if that column is explicitly false, the user opted out of this
+    // category → suppress. Types with no mapping are always sent (no opt-out).
     const prefKey = typeToPreference[type];
-    if (
-      prefs.some((row) =>
-        row.channel === "push" &&
-        (row.type === type || (prefKey && row.type === prefKey)) &&
-        row.opt_in === false
-      )
-    ) {
+    if (pref && prefKey && pref[prefKey] === false) {
       return jsonResponse({
         success: true,
         notificationId,

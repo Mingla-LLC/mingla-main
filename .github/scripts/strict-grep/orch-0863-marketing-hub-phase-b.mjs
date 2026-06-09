@@ -1811,7 +1811,30 @@ function checkNoNewBackendFiles() {
     // sweep on resolveOneSignalApp): test-only, ships with the closing PR.
     "supabase/functions/_shared/__tests__/orch_1082_resolve_app_no_regression.test.ts",
   ];
+  // META-ORCH-1104 Phase 0 [Support live-chat + tickets + segmentation] backend
+  // foundation. C7 is scoped to ORCH-0863 marketing; these are the new support
+  // backend files (migrations + edge fns + their Deno tests) + the MODIFIED
+  // notify-dispatch (D6 dead-gate fix). Per COMMS-0002 — lands in the SAME commit
+  // as the files it lists (SPEC §2.11). The operator-gated drop migration (Step B)
+  // is listed even though Seth applies it separately.
+  const META_ORCH_1104_BACKEND_ALLOWLIST = [
+    "supabase/migrations/20260921000000_meta_orch_1104_support_foundation.sql",
+    "supabase/migrations/20260922000000_meta_orch_1104_drop_profiles_is_admin.sql",
+    "supabase/migrations/__tests__/meta_orch_1104_support_foundation.test.ts",
+    "supabase/migrations/__tests__/meta_orch_1104_support_rls_probe.sql",
+    "supabase/functions/support-claim/index.ts",
+    "supabase/functions/support-send/index.ts",
+    "supabase/functions/support-set-status/index.ts",
+    "supabase/functions/support-set-status/statusLogic.ts",
+    "supabase/functions/support-set-status/statusLogic.test.ts",
+    "supabase/functions/support-grant-staff/index.ts",
+    "supabase/functions/notify-support/index.ts",
+    // MODIFIED existing fn — C7 flags modified backend files too (D6 dead-gate fix).
+    "supabase/functions/notify-dispatch/index.ts",
+    "supabase/functions/notify-dispatch/__tests__/meta_orch_1104_d6_pref_gate.test.ts",
+  ];
   const ALLOWLIST = [
+    ...META_ORCH_1104_BACKEND_ALLOWLIST,
     ...ORCH_1082_BACKEND_ALLOWLIST,
     ...META_ORCH_1076_BACKEND_ALLOWLIST,
     ...ORCH_1075_BACKEND_ALLOWLIST,

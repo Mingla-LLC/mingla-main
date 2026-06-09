@@ -28,6 +28,7 @@ import {
   Percent,
   Inbox,
   SlidersHorizontal,
+  LifeBuoy,
 } from "lucide-react";
 import { useAuth } from "../../context/AuthContext";
 import { NAV_GROUPS } from "../../lib/constants";
@@ -37,6 +38,9 @@ const ICON_MAP = {
   LayoutDashboard, Database, Terminal, Globe, Flag, Shield, Users, Layers,
   BarChart3, Mail, Settings, CreditCard, Mic, Rocket, Brain, Activity, Camera, Sparkles, Microscope,
   ClipboardList, Percent, Inbox, SlidersHorizontal,
+  // META-ORCH-1104 Phase 2 — Support nav. Without this entry the LifeBuoy icon
+  // silently falls back to LayoutDashboard (renderNavItem `:77`).
+  LifeBuoy,
 };
 
 export function Sidebar({

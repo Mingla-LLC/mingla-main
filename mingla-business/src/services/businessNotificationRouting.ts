@@ -101,6 +101,12 @@ export function parseBusinessDeepLink(deepLink: string): BusinessNavTarget | nul
       const sub = rest[0];
       return sub === "earnings" ? `/partner/earnings` : null;
     }
+    // META-ORCH-1104: support push deep-links to mingla-business://support/{ticketId}
+    // (notify-support). Lands on the shared support thread route /support/[ticketId].
+    case "support": {
+      const ticketId = rest[0];
+      return ticketId ? `/support/${ticketId}` : null;
+    }
     case "(tabs)": {
       // e.g. mingla-business://(tabs)/marketing
       return `/(tabs)/${rest.join("/")}`;
@@ -153,6 +159,14 @@ export function resolveBusinessNavTarget(data: BusinessPushData): BusinessNavTar
 
     case "business.team_member_joined":
       return brandId ? `/brand/${brandId}/team` : ACCOUNT_FALLBACK;
+
+    // META-ORCH-1104: support reply / new-ticket → the support thread. The
+    // ticket id rides data.ticketId (notify-support payload) or relatedId.
+    case "business.support_message":
+    case "business.support_new_ticket": {
+      const ticketId = (data.ticketId ?? data.relatedId) as string | undefined;
+      return ticketId ? `/support/${ticketId}` : ACCOUNT_FALLBACK;
+    }
 
     default:
       // stripe.* compliance types → payments; anything else → account.

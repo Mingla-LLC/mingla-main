@@ -144,6 +144,10 @@ export const NAV_GROUPS = [
       // ORCH-1006: Mingla take-rate admin screen (global default + per-brand override).
       { id: "pricing",                   label: "Pricing",            icon: "Percent" },
       { id: "claims",                    label: "Venue claims",       icon: "ClipboardList" },
+      // META-ORCH-1104 Phase 2 — admin support desk (tickets + agents). The
+      // LifeBuoy icon MUST be registered in Sidebar.jsx ICON_MAP or the nav
+      // item silently falls back to LayoutDashboard (Lane B finding).
+      { id: "support",                   label: "Support",            icon: "LifeBuoy" },
       { id: "users",                     label: "Users",              icon: "Users" },
       // ORCH-1056: unified Stripe mode dashboard — verifies the three Stripe
       // signals (Supabase backend / web client pk / Vercel env) agree.

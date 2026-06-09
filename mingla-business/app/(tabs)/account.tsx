@@ -45,6 +45,9 @@ import { usePartnerStripeStatus } from "../../src/hooks/usePartnerStripe";
 // ORCH-1081 — partner_brand_links count drives the "Partner brands" row meta
 // (active + pending). Read-only; staleTime 30s.
 import { usePartnerBrandLinks } from "../../src/hooks/usePartnerBrandLinks";
+// META-ORCH-1104 Phase 3 — support-staff capability (brand-DECOUPLED, keyed on
+// user.id). Gates the "Support — Live Chats" card; RLS is the real boundary.
+import { useSupportStaff } from "../../src/hooks/useSupportStaff";
 import {
   useCurrentBrandStore,
   type Brand,
@@ -143,6 +146,11 @@ export default function AccountTab(): React.ReactElement {
     router.push("/account/notifications" as never);
   }, [router]);
 
+  // META-ORCH-1104 Phase 1 — Help & Support (business requester entry).
+  const handleSupport = useCallback((): void => {
+    router.push("/account/support" as never);
+  }, [router]);
+
   // ORCH-1052 hotfix — partner section navigation.
   const handlePartnerEarnings = useCallback((): void => {
     router.push("/partner/earnings" as never);
@@ -163,6 +171,14 @@ export default function AccountTab(): React.ReactElement {
     : 0;
   const handlePartnerBrands = useCallback((): void => {
     router.push("/partner/brands" as never);
+  }, [router]);
+
+  // META-ORCH-1104 Phase 3 — support-staff console gate. Brand-DECOUPLED: keyed
+  // on user.id (NOT the current brand). The card shows ONLY for an enabled
+  // staffer; RLS is the real boundary (a forced /support/inbox reads 0 rows).
+  const supportStaff = useSupportStaff();
+  const handleOpenSupportInbox = useCallback((): void => {
+    router.push("/support/inbox" as never);
   }, [router]);
 
   const handleOpenSwitcher = useCallback((): void => {
@@ -329,6 +345,29 @@ export default function AccountTab(): React.ReactElement {
           </GlassCard>
         ) : null}
 
+        {/* META-ORCH-1104 Phase 3 — Support staff console. Brand-DECOUPLED:
+            rendered ONLY when useSupportStaff().isStaff (an admin-granted,
+            enabled support_staff row keyed on user.id — NOT brand membership).
+            A non-staff user never sees this card; a forced /support/inbox still
+            reads zero rows via is_support_staff() RLS (SPEC §3.3 / §7.1, CF-C3:
+            a sub-page card, never a bottom tab). */}
+        {supportStaff.isStaff ? (
+          <GlassCard variant="elevated" padding={spacing.lg}>
+            <Text style={styles.title}>Support — Live Chats</Text>
+            <Text style={styles.body}>
+              You&apos;re a Mingla support staffer. Answer live chats, set your
+              availability, and claim tickets here.
+            </Text>
+            <View style={styles.navRowsCol}>
+              <SettingsNavRow
+                icon="inbox"
+                label="Open support inbox"
+                onPress={handleOpenSupportInbox}
+              />
+            </View>
+          </GlassCard>
+        ) : null}
+
         {/* Cycle 14 — Settings hub: 3 sub-route nav rows per SPEC §4.7.1 + DEC-096 D-14-17. */}
         <GlassCard variant="elevated" padding={spacing.lg}>
           <Text style={styles.title}>Settings</Text>
@@ -345,6 +384,11 @@ export default function AccountTab(): React.ReactElement {
               icon="bell"
               label="Notifications"
               onPress={handleNotifications}
+            />
+            <SettingsNavRow
+              icon="chat"
+              label="Help & Support"
+              onPress={handleSupport}
             />
             <SettingsNavRow
               icon="shield"

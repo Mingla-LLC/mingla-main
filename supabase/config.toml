@@ -177,3 +177,25 @@ verify_jwt = false
 # sandbox calls); Phase 1 folds this into the auth-gated ticket-checkout-create.
 [functions.paystack-checkout-create]
 verify_jwt = false
+
+# META-ORCH-1104 Phase 0 [Support live-chat + tickets]. The caller-facing support
+# fns require an authenticated caller (auth.uid() → is_support_staff()/is_admin_user()
+# gate, or requester = own ticket). verify_jwt = true.
+[functions.support-claim]
+verify_jwt = true
+
+[functions.support-send]
+verify_jwt = true
+
+[functions.support-set-status]
+verify_jwt = true
+
+[functions.support-grant-staff]
+verify_jwt = true
+
+# notify-support is an INTERNAL push fan-out producer invoked server-to-server by
+# support-send (and later support-claim) with the service-role bearer. Like the
+# webhook fns, the gateway does not require a Supabase user JWT — the fn
+# authenticates the producer itself by matching the service-role bearer.
+[functions.notify-support]
+verify_jwt = false
