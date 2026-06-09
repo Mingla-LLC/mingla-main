@@ -23,12 +23,13 @@ import React, { useCallback, useState } from "react";
 import {
   ActivityIndicator,
   Pressable,
-  ScrollView,
   StyleSheet,
   Text,
   TextInput,
   View,
 } from "react-native";
+// orch-strict-grep-allow orch-0892 — web-exported requester screen; plain ScrollView over a short ticket list, single subject input sits above the fold (no focused-input keyboard scroll). The chat-thread keyboard handling lives in the quarantined SupportThread.native (keyboard-controller), not here.
+import { ScrollView } from "react-native";
 import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
