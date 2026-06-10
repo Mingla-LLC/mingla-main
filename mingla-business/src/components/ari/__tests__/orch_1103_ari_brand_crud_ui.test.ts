@@ -32,6 +32,7 @@ function read(rel: string): string {
 
 const proposalCard = read("src/components/ari/ToolProposalCard.tsx");
 const messageList = read("src/components/ari/MessageList.tsx");
+const toolProposalTypes = read("src/components/ari/toolProposalTypes.ts");
 const coverSheet = read("src/components/ui/CoverPickerSheet.tsx");
 const designSystem = read("src/constants/designSystem.ts");
 
@@ -112,8 +113,11 @@ describe("ORCH-1103 REWORK — Add-cover on CREATE is never a dead tap (Q7)", ()
 
   it("onConfirm returns a ConfirmOutcome with an optional brandId (chain wired)", () => {
     expect(proposalCard).toMatch(/onConfirm:\s*\([^)]*keepPending\?:\s*boolean\)\s*=>\s*Promise<ConfirmOutcome>/);
-    expect(messageList).toContain("export interface ConfirmOutcome");
-    expect(messageList).toMatch(/brandId\?:\s*string/);
+    // ConfirmOutcome lives in the neutral toolProposalTypes module so
+    // ToolProposalCard doesn't import back into MessageList (require-cycle break).
+    expect(toolProposalTypes).toContain("export interface ConfirmOutcome");
+    expect(toolProposalTypes).toMatch(/brandId\?:\s*string/);
+    expect(proposalCard).toMatch(/ConfirmOutcome.*from ["']\.\/toolProposalTypes["']/);
   });
 
   it("AriChatScreen reads the created brandId back from the executed result", () => {

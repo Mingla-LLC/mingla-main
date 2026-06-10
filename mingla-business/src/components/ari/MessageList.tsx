@@ -40,10 +40,8 @@ import type { PendingActionView } from "../../hooks/useAgentChat";
  * proposal card uses to re-target the cover picker in the create-row-first /
  * attach-second flow (Q7). `ok:false` means the commit errored (toast shown).
  */
-export interface ConfirmOutcome {
-  ok: boolean;
-  brandId?: string;
-}
+export type { ConfirmOutcome } from "./toolProposalTypes";
+import type { ConfirmOutcome } from "./toolProposalTypes";
 
 export interface MessageListProps {
   messages: AgentMessage[];

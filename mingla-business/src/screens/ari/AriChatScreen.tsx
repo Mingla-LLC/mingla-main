@@ -39,7 +39,7 @@ import { ConversationDrawer } from "../../components/ari/ConversationDrawer";
 import { EmptyState } from "../../components/ari/EmptyState";
 import { InputBar } from "../../components/ari/InputBar";
 import { MessageList } from "../../components/ari/MessageList";
-import type { ConfirmOutcome } from "../../components/ari/MessageList";
+import type { ConfirmOutcome } from "../../components/ari/toolProposalTypes";
 import { QuickReplyChips } from "../../components/ari/QuickReplyChips";
 import { StreamingText } from "../../components/ari/StreamingText";
 import { Toast } from "../../components/ui/Toast";
