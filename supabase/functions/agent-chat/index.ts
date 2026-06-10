@@ -17,6 +17,7 @@ import { detectPromptInjection } from "../_shared/agentPromptInjection.ts";
 import { callGemini, ARI_MODEL_VERSION, GeminiContentMessage } from "../_shared/agentGemini.ts";
 import { AGENT_TOOLS, READ_ONLY_TOOL_NAMES, findTool, ToolError } from "../_shared/agentTools.ts";
 import { buildServiceClient, enforceTurnRateLimit } from "../_shared/agentRateLimit.ts";
+import { detectChoices, AgentChoices } from "../_shared/agentChoices.ts";
 
 const MAX_MESSAGE_LENGTH = 4096;
 const HISTORY_WINDOW = 10;
@@ -29,7 +30,7 @@ interface RequestBody {
 }
 
 type Response_ =
-  | { kind: "text"; text: string; conversation_id: string; message_id: string }
+  | { kind: "text"; text: string; conversation_id: string; message_id: string; choices?: AgentChoices }
   | { kind: "pending_action"; pending_action_id: string; tool_name: string; tool_args: Record<string, unknown>; conversation_id: string; message_id: string }
   | { kind: "error"; code: string; message: string };
 
@@ -193,14 +194,44 @@ async function handle(req: Request): Promise<Response> {
     .maybeSingle();
   const profile = profileRow as AgentUserProfile | null;
 
-  // Load brands summary
+  // Load brands summary (ORCH-1103 — widened for edit/delete targeting +
+  // disambiguation: currency, cover presence, and a per-brand deletable hint).
   const { data: brandsRows } = await userClient
     .from("brands")
-    .select("id, name")
+    .select("id, name, slug, default_currency, cover_media_url")
     .is("deleted_at", null)
     .order("created_at", { ascending: false })
     .limit(20);
-  const brandsList: BrandSummary[] = (brandsRows ?? []).map((b: any) => ({ id: b.id, name: b.name }));
+
+  // hasBlockingEvents (Q1 = grouped count, no migration) — mirrors the
+  // delete-guard semantics EXACTLY so the prompt's "deletable" hint and the
+  // delete_brand executor's actual guard cannot drift: scheduled/live events
+  // with a future event_dates.end_at, type-agnostic.
+  // orch-strict-grep-allow events-type-filter — intentionally NO event_type filter.
+  const brandIds = (brandsRows ?? []).map((b: any) => b.id as string);
+  const blockingBrandIds = new Set<string>();
+  if (brandIds.length > 0) {
+    const nowIso = new Date().toISOString();
+    const { data: blockingRows } = await userClient
+      .from("events")
+      .select("brand_id, event_dates!inner(end_at)")
+      .in("brand_id", brandIds)
+      .in("status", ["scheduled", "live"])
+      .is("deleted_at", null)
+      .gt("event_dates.end_at", nowIso);
+    for (const r of (blockingRows ?? []) as any[]) {
+      if (r?.brand_id) blockingBrandIds.add(r.brand_id as string);
+    }
+  }
+
+  const brandsList: BrandSummary[] = (brandsRows ?? []).map((b: any) => ({
+    id: b.id,
+    name: b.name,
+    slug: b.slug,
+    defaultCurrency: b.default_currency ?? null,
+    hasCover: b.cover_media_url != null,
+    hasBlockingEvents: blockingBrandIds.has(b.id),
+  }));
 
   // Auto-title: if this is the first user message in the conversation and
   // the title is still null, derive a short title from the message text so
@@ -461,13 +492,21 @@ async function handle(req: Request): Promise<Response> {
     return errorResponse(502, "MODEL_EMPTY", "Ari didn't respond — try again");
   }
   const text = gemini.textResponse.trim();
+
+  // ORCH-1103 REWORK 2 — attach the presentational choices payload (if this text
+  // turn is a disambiguation or a no-brand handoff). Persisted in
+  // content.structured so it survives a thread refetch and the chips re-render
+  // from history (single source of truth = the stored message).
+  const choices = detectChoices(body.message, text, brandsList);
+  const content = choices ? { text, structured: { choices } } : { text };
+
   const { data: asstMsg, error: asstErr } = await userClient
     .from("agent_messages")
     .insert({
       conversation_id: conversationId,
       user_id: userId,
       role: "assistant",
-      content: { text },
+      content,
       prompt_version: PROMPT_VERSION,
       model_version: ARI_MODEL_VERSION,
     })
@@ -488,5 +527,6 @@ async function handle(req: Request): Promise<Response> {
     text,
     conversation_id: conversationId,
     message_id: asstMsg.id,
+    ...(choices ? { choices } : {}),
   });
 }

@@ -227,6 +227,9 @@ Deno.serve(async (req) => {
       let status: number;
       if (err.code === "OWNERSHIP_DENIED") status = 403;
       else if (err.code === "INVALID_ARGS" || err.code === "SLUG_TAKEN") status = 400;
+      // ORCH-1103 — delete refused because the brand has upcoming/live events.
+      // Recoverable, user-actionable conflict (cancel/transfer first) → 409.
+      else if (err.code === "DELETE_BLOCKED_BY_EVENTS") status = 409;
       else status = 500;
       return errorResponse(status, err.code, err.message);
     }
@@ -289,7 +292,19 @@ function buildFollowupText(toolName: string, result: unknown): string | undefine
   try {
     if (toolName === "create_brand") {
       const name = (result as any)?.brand?.name;
-      return name ? `Created brand "${name}". Want to schedule an event under it?` : undefined;
+      if (!name) return undefined;
+      const base = `Created brand "${name}". Want to schedule an event under it?`;
+      // ORCH-1103 — if this became the user's current brand, say so.
+      return (result as any)?.set_as_default
+        ? `${base} It's now your current brand.`
+        : base;
+    }
+    if (toolName === "update_brand") {
+      const name = (result as any)?.brand?.name;
+      return name ? `Updated "${name}". Anything else?` : `Updated. Anything else?`;
+    }
+    if (toolName === "delete_brand") {
+      return `Deleted that brand. It's recoverable for 30 days through support if you change your mind.`;
     }
     if (toolName === "create_event") {
       const title = (result as any)?.event?.title;
