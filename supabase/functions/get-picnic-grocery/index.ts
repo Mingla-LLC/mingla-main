@@ -1,7 +1,6 @@
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { batchSearchPlaces } from '../_shared/placesCache.ts';
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -9,12 +8,89 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type",
 };
 
-const GOOGLE_API_KEY = Deno.env.get("GOOGLE_MAPS_API_KEY");
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
 const supabaseAdmin = createClient(SUPABASE_URL ?? '', SUPABASE_SERVICE_ROLE_KEY ?? '');
 
-serve(async (req) => {
+// ORCH-1107 — picnic grocery stops now come from the scored, servable
+// place_pool via the live solo-deck RPC `query_servable_places_by_signal` (the
+// same RPC discover-cards uses), NOT live Google Places. The RPC enforces
+// is_servable + is_active + place_scores.score >= p_filter_min + real
+// stored_photo_urls + a haversine radius, so the three serving gates come free.
+const GROCERY_SIGNAL_ID = "groceries";
+const GROCERY_FILTER_MIN = 120;
+const GROCERY_RPC_LIMIT = 10;
+
+// Build the RPC params for a grocery lookup around the picnic location.
+// Exported for the regression test (ORCH-1107).
+export function buildGroceryRpcParams(
+  picnicLocation: { lat: number; lng: number },
+  maxDistance: number,
+): {
+  p_signal_id: string;
+  p_filter_min: number;
+  p_lat: number;
+  p_lng: number;
+  p_radius_m: number;
+  p_limit: number;
+} {
+  return {
+    p_signal_id: GROCERY_SIGNAL_ID,
+    p_filter_min: GROCERY_FILTER_MIN,
+    p_lat: picnicLocation.lat,
+    p_lng: picnicLocation.lng,
+    p_radius_m: maxDistance,
+    p_limit: GROCERY_RPC_LIMIT,
+  };
+}
+
+// Map a query_servable_places_by_signal row → the grocery-store shape the
+// client (stopReplacementService / ExpandedCardModal / picnic timeline) already
+// expects. imageUrl is the first real stored photo — NO Unsplash placeholder
+// (ORCH-1107 killed it). Exported for the regression test.
+export function mapServableRowToGroceryStore(
+  row: any,
+  picnicLocation: { lat: number; lng: number },
+): {
+  id: any;
+  name: string;
+  location: { lat: number; lng: number };
+  address: string;
+  rating: number;
+  reviewCount: number;
+  imageUrl: string | null;
+  placeId: any;
+  type: string;
+  types: string[];
+  distance: number;
+} {
+  const storedPhotos = Array.isArray(row.stored_photo_urls)
+    ? row.stored_photo_urls
+    : [];
+  const lat = typeof row.lat === "number" ? row.lat : picnicLocation.lat;
+  const lng = typeof row.lng === "number" ? row.lng : picnicLocation.lng;
+  const distance = calculateDistance(
+    picnicLocation.lat,
+    picnicLocation.lng,
+    lat,
+    lng
+  );
+  return {
+    id: row.place_id,
+    name: row.name || "Unknown Store",
+    location: { lat, lng },
+    address: row.address || "",
+    rating: row.rating ?? 0,
+    reviewCount: row.review_count ?? 0,
+    imageUrl: storedPhotos[0] ?? null,
+    placeId: row.google_place_id ?? row.place_id,
+    type: row.primary_type || GROCERY_SIGNAL_ID,
+    types: Array.isArray(row.types) ? row.types : [],
+    distance,
+  };
+}
+
+export async function handleRequest(req: Request): Promise<Response> {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }
@@ -39,20 +115,7 @@ serve(async (req) => {
       );
     }
 
-    if (!GOOGLE_API_KEY) {
-      console.warn("⚠️ Google API key not available for picnic grocery search");
-      return new Response(
-        JSON.stringify({
-          error: "Google Maps API key is not configured",
-        }),
-        {
-          status: 500,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        }
-      );
-    }
-
-    // Find grocery stores and markets near the picnic location
+    // Find a grocery store near the picnic location from the scored place_pool
     const groceryStore = await findGroceryStore(picnicLocation, maxDistance);
 
     if (!groceryStore) {
@@ -107,157 +170,51 @@ serve(async (req) => {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   }
-});
+}
 
-// Find grocery stores and markets near a picnic location
+// Only bind the HTTP server when running as an edge function — NOT when this
+// module is imported by the ORCH-1107 regression test (which exercises the
+// exported pure helpers without a listening socket).
+if (!Deno.env.get("ORCH_TEST_NO_SERVE")) {
+  serve(handleRequest);
+}
+
+// Find a grocery store near a picnic location from the scored, servable
+// place_pool. The RPC ranks by signal_score; among the returned servable rows
+// we prefer the closest (then higher rating), matching prior UX. Graceful empty
+// (no Google fallback, no throw) when the RPC returns 0 rows.
 async function findGroceryStore(
   picnicLocation: { lat: number; lng: number },
   maxDistance: number = 2000 // meters
 ): Promise<any | null> {
-  const groceryTypes = [
-    "supermarket",
-    "food_store",
-    "convenience_store",
-    "store",
-    "grocery_store",
-    "meal_takeaway",
-    "ice_cream_shop",
-    "bakery",
-    "deli",
-  ];
-
   try {
-    const { results: typeResults } = await batchSearchPlaces(
-      supabaseAdmin,
-      GOOGLE_API_KEY!,
-      groceryTypes,
-      picnicLocation.lat,
-      picnicLocation.lng,
-      maxDistance,
-      { maxResultsPerType: 5, ttlHours: 24 }
+    const { data, error } = await supabaseAdmin.rpc(
+      "query_servable_places_by_signal",
+      buildGroceryRpcParams(picnicLocation, maxDistance)
     );
 
-    // Merge all results
-    const allRawPlaces: any[] = [];
-    for (const places of Object.values(typeResults)) {
-      allRawPlaces.push(...places);
-    }
-
-    if (allRawPlaces.length === 0) {
+    if (error) {
+      console.error("Error fetching grocery stores:", error.message);
       return null;
     }
 
-    // Filter and map places to grocery stores
-    // When "store" type is used, filter to only include grocery-related stores
-    const groceryRelatedKeywords = [
-      "grocery",
-      "supermarket",
-      "market",
-      "food",
-      "convenience",
-      "deli",
-      "butcher",
-      "bakery",
-      "produce",
-    ];
-
-    const allGroceryStores = allRawPlaces
-      .filter((place: any) => {
-        // If place has explicit grocery types, include it
-        const hasGroceryType = place.types?.some((type: string) =>
-          [
-            "grocery_store",
-            "supermarket",
-            "food_store",
-            "convenience_store",
-          ].includes(type)
-        );
-        if (hasGroceryType) return true;
-
-        // If place only has "store" type, check if it's grocery-related
-        const isOnlyStore =
-          place.types?.includes("store") &&
-          !place.types?.some((type: string) =>
-            [
-              "grocery_store",
-              "supermarket",
-              "food_store",
-              "convenience_store",
-            ].includes(type)
-          );
-
-        if (isOnlyStore) {
-          // Check if name or types suggest it's a grocery store
-          const name = (place.displayName?.text || "").toLowerCase();
-          const typesString = (place.types || []).join(" ").toLowerCase();
-          return groceryRelatedKeywords.some(
-            (keyword) => name.includes(keyword) || typesString.includes(keyword)
-          );
-        }
-
-        return true; // Include other explicitly requested types
-      })
-      .map((place: any) => {
-        // Extract photo reference from new API format
-        const primaryPhoto = place.photos?.[0];
-        const imageUrl = 'https://images.unsplash.com/photo-1441986300917-64674bd600d8?w=800&q=80';
-
-        // Calculate distance from picnic location
-        const distance = calculateDistance(
-          picnicLocation.lat,
-          picnicLocation.lng,
-          place.location?.latitude || picnicLocation.lat,
-          place.location?.longitude || picnicLocation.lng
-        );
-
-        // Determine the primary type from the place's types array
-        const primaryType =
-          place.types?.find((type: string) =>
-            [
-              "grocery_store",
-              "supermarket",
-              "food_store",
-              "convenience_store",
-            ].includes(type)
-          ) ||
-          place.types?.find((type: string) => groceryTypes.includes(type)) ||
-          place.types?.[0] ||
-          "grocery_store";
-
-        return {
-          id: place.id,
-          name: place.displayName?.text || "Unknown Store",
-          location: {
-            lat: place.location?.latitude || picnicLocation.lat,
-            lng: place.location?.longitude || picnicLocation.lng,
-          },
-          address: place.formattedAddress || "",
-          rating: place.rating || 0,
-          reviewCount: place.userRatingCount || 0,
-          imageUrl: imageUrl,
-          placeId: place.id,
-          type: primaryType,
-          types: place.types || [],
-          distance: distance, // distance in meters
-        };
-      });
-
-    if (allGroceryStores.length === 0) {
+    const rows: any[] = Array.isArray(data) ? data : [];
+    if (rows.length === 0) {
       return null;
     }
 
-    // Sort by distance (closest first), then by rating
-    const sortedStores = allGroceryStores.sort((a, b) => {
-      // First prioritize by distance
+    const stores = rows.map((row) =>
+      mapServableRowToGroceryStore(row, picnicLocation)
+    );
+
+    // Prefer the closest store; if distances are within 100m, prefer higher rating.
+    const sortedStores = stores.sort((a, b) => {
       if (Math.abs(a.distance - b.distance) > 100) {
-        // If distance difference is more than 100m, prefer closer one
         return a.distance - b.distance;
       }
-      // If distances are similar, prefer higher rating
       return (b.rating || 0) - (a.rating || 0);
     });
 
-    // Return the closest grocery store
     return sortedStores[0];
   } catch (error) {
     console.error("Error fetching grocery stores:", error);

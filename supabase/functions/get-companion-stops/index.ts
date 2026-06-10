@@ -1,7 +1,6 @@
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { batchSearchPlaces } from '../_shared/placesCache.ts';
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -9,12 +8,80 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type",
 };
 
-const GOOGLE_API_KEY = Deno.env.get("GOOGLE_MAPS_API_KEY");
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
 const supabaseAdmin = createClient(SUPABASE_URL ?? '', SUPABASE_SERVICE_ROLE_KEY ?? '');
 
-serve(async (req) => {
+// ORCH-1107 — companion stops now come from the scored, servable place_pool via
+// the live solo-deck RPC `query_servable_places_by_signal` (the same RPC
+// discover-cards uses), NOT live Google Places. The RPC enforces is_servable +
+// is_active + place_scores.score >= p_filter_min + real stored_photo_urls + a
+// haversine radius, so the three serving gates come for free.
+const COMPANION_SIGNAL_ID = "casual_food";
+const COMPANION_FILTER_MIN = 120;
+const COMPANION_RPC_LIMIT = 10;
+
+// Build the RPC params for a companion-stop lookup around the stroll anchor.
+// Exported for the regression test (ORCH-1107).
+export function buildCompanionRpcParams(
+  anchorLocation: { lat: number; lng: number },
+  maxDistance: number,
+): {
+  p_signal_id: string;
+  p_filter_min: number;
+  p_lat: number;
+  p_lng: number;
+  p_radius_m: number;
+  p_limit: number;
+} {
+  return {
+    p_signal_id: COMPANION_SIGNAL_ID,
+    p_filter_min: COMPANION_FILTER_MIN,
+    p_lat: anchorLocation.lat,
+    p_lng: anchorLocation.lng,
+    p_radius_m: maxDistance,
+    p_limit: COMPANION_RPC_LIMIT,
+  };
+}
+
+// Map a query_servable_places_by_signal row → the companion-stop shape the
+// client (stopReplacementService / ExpandedCardModal / CompanionStopsSection)
+// already expects. imageUrl is the first real stored photo — NO Unsplash
+// placeholder (ORCH-1107 killed it). Exported for the regression test.
+export function mapServableRowToCompanionStop(
+  row: any,
+  anchorLocation: { lat: number; lng: number },
+): {
+  id: any;
+  name: string;
+  location: { lat: number; lng: number };
+  address: string;
+  rating: number;
+  reviewCount: number;
+  imageUrl: string | null;
+  placeId: any;
+  type: string;
+} {
+  const storedPhotos = Array.isArray(row.stored_photo_urls)
+    ? row.stored_photo_urls
+    : [];
+  return {
+    id: row.place_id,
+    name: row.name || "Unknown Place",
+    location: {
+      lat: typeof row.lat === "number" ? row.lat : anchorLocation.lat,
+      lng: typeof row.lng === "number" ? row.lng : anchorLocation.lng,
+    },
+    address: row.address || "",
+    rating: row.rating ?? 0,
+    reviewCount: row.review_count ?? 0,
+    imageUrl: storedPhotos[0] ?? null,
+    placeId: row.google_place_id ?? row.place_id,
+    type: row.primary_type || COMPANION_SIGNAL_ID,
+  };
+}
+
+export async function handleRequest(req: Request): Promise<Response> {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }
@@ -36,20 +103,7 @@ serve(async (req) => {
       );
     }
 
-    if (!GOOGLE_API_KEY) {
-      console.warn("⚠️ Google API key not available for companion stops");
-      return new Response(
-        JSON.stringify({
-          error: "Google Maps API key is not configured",
-        }),
-        {
-          status: 500,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        }
-      );
-    }
-
-    // Fetch companion stops in parallel and keep only the top result
+    // Fetch companion stops from the scored place_pool and keep only the top result
     const companionStops = await findCompanionStops(
       anchor.location,
       maxDistance
@@ -98,77 +152,45 @@ serve(async (req) => {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   }
-});
+}
 
-// Find companion stops (café/bakery/ice cream/food truck) near a stroll anchor
+// Only bind the HTTP server when running as an edge function — NOT when this
+// module is imported by the ORCH-1107 regression test (which exercises the
+// exported pure helpers without a listening socket).
+if (!Deno.env.get("ORCH_TEST_NO_SERVE")) {
+  serve(handleRequest);
+}
+
+// Find companion stops near a stroll anchor from the scored, servable place_pool.
+// Sorted by signal_score desc; returns the top 1. Graceful empty (no Google
+// fallback, no throw) when the RPC returns 0 rows.
 async function findCompanionStops(
   anchorLocation: { lat: number; lng: number },
   maxDistance: number = 500 // meters
 ): Promise<any[]> {
-  const companionTypes = [
-    "supermarket",
-    "food_store",
-    "convenience_store",
-    "store",
-    "grocery_store",
-    "meal_takeaway",
-    "ice_cream_shop",
-    "bakery",
-    "deli",
-  ];
-
   try {
-    const { results: typeResults } = await batchSearchPlaces(
-      supabaseAdmin,
-      GOOGLE_API_KEY!,
-      companionTypes,
-      anchorLocation.lat,
-      anchorLocation.lng,
-      maxDistance,
-      { maxResultsPerType: 5, ttlHours: 24 }
+    const { data, error } = await supabaseAdmin.rpc(
+      "query_servable_places_by_signal",
+      buildCompanionRpcParams(anchorLocation, maxDistance)
     );
 
-    // Merge all results
-    const allRawPlaces: any[] = [];
-    for (const places of Object.values(typeResults)) {
-      allRawPlaces.push(...places);
-    }
-
-    if (allRawPlaces.length === 0) {
+    if (error) {
+      console.error("Error fetching companion stops:", error.message);
       return [];
     }
 
-    // Map places to our format
-    const allCompanions = allRawPlaces.map((place: any) => {
-      // Extract photo reference from new API format
-      const primaryPhoto = place.photos?.[0];
-      const imageUrl = 'https://images.unsplash.com/photo-1441986300917-64674bd600d8?w=800&q=80';
+    const rows: any[] = Array.isArray(data) ? data : [];
+    if (rows.length === 0) {
+      return [];
+    }
 
-      // Determine the type by matching place types with companion types
-      const placeTypes = place.types || [];
-      const matchedType =
-        companionTypes.find((type) => placeTypes.includes(type)) ||
-        companionTypes[0]; // Fallback to first type if no match
+    const sorted = [...rows].sort(
+      (a, b) => Number(b.signal_score ?? 0) - Number(a.signal_score ?? 0)
+    );
 
-      return {
-        id: place.id,
-        name: place.displayName?.text || "Unknown Place",
-        location: {
-          lat: place.location?.latitude || anchorLocation.lat,
-          lng: place.location?.longitude || anchorLocation.lng,
-        },
-        address: place.formattedAddress || "",
-        rating: place.rating || 0,
-        reviewCount: place.userRatingCount || 0,
-        imageUrl: imageUrl,
-        placeId: place.id, // In new API, place.id is the identifier
-        type: matchedType,
-      };
-    });
-
-    return allCompanions
-      .sort((a, b) => (b.rating || 0) - (a.rating || 0))
-      .slice(0, 1);
+    return sorted
+      .slice(0, 1)
+      .map((row) => mapServableRowToCompanionStop(row, anchorLocation));
   } catch (error) {
     console.error(`Error fetching companion stops:`, error);
     return [];

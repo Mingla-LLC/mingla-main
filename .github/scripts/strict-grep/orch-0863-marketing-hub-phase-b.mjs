@@ -1572,6 +1572,17 @@ function checkNoNewBackendFiles() {
     "supabase/functions/agent-chat/index.ts",
     "supabase/functions/agent-confirm-action/index.ts",
   ];
+  // ORCH-1107 [De-Google companion-stops + picnic-grocery onto the scored
+  // place_pool]. C7 is scoped to ORCH-0863 marketing; these are the two
+  // EXISTING companion/picnic edge functions re-sourced from live Google
+  // Places to the `query_servable_places_by_signal` RPC, plus the happy-path
+  // Deno regression test. No new edge function, no migration. Per COMMS-0002.
+  const ORCH_1107_BACKEND_ALLOWLIST = [
+    "supabase/functions/get-companion-stops/index.ts",
+    "supabase/functions/get-picnic-grocery/index.ts",
+    "supabase/functions/__tests__/orch_1107_companion_picnic_place_pool.test.ts",
+    "supabase/functions/__tests__/orch_1107_rpc_error_adversarial.test.ts",
+  ];
   // Issue #426 [Production-readiness foundation] PR #427. C7 is scoped to
   // ORCH-0863 marketing; structuredLog.ts is #426 observability scaffolding
   // (not yet wired into edge functions), not marketing scope.
@@ -1968,6 +1979,7 @@ function checkNoNewBackendFiles() {
     ...ORCH_1073_BACKEND_ALLOWLIST,
     ...ORCH_1079_BACKEND_ALLOWLIST,
     ...ORCH_1103_BACKEND_ALLOWLIST,
+    ...ORCH_1107_BACKEND_ALLOWLIST,
     ...ORCH_426_BACKEND_ALLOWLIST,
     // Schedule-edit buyer protection + "Refund all & proceed" (separate PR;
     // shares the ORCH-1047 work id used in code). New migration recording the
