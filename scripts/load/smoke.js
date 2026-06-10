@@ -87,5 +87,20 @@ export default function smoke() {
     check(agent, { "agent-chat auth gate": (r) => r.status === 401 });
   }
 
+  const marketingBody = {
+    campaign_id: optionalEnv(
+      "LOAD_TEST_CAMPAIGN_ID",
+      "00000000-0000-4000-8000-000000000099",
+    ),
+  };
+  const marketing = jwt
+    ? postJsonAuthed("marketing-send", marketingBody, jwt)
+    : postJson("marketing-send", marketingBody);
+  if (jwt) {
+    check(marketing, checkNot5xx("marketing-send"));
+  } else {
+    check(marketing, { "marketing-send auth gate": (r) => r.status === 403 });
+  }
+
   sleep(0.5);
 }

@@ -24,7 +24,7 @@ Adjust these with real Mixpanel/Supabase metrics before launch.
 | Buyer checkout status | `ticket-checkout-status` | Anon token | `scripts/load/ticket-checkout-status.js` |
 | Checkout create | `ticket-checkout-create` | Anon / mixed | `scripts/load/ticket-checkout-create.js` |
 | Ari chat | `agent-chat` | JWT | `scripts/load/agent-chat.js` |
-| Marketing send | `marketing-send` | JWT | Future (rate-limited; queue) |
+| Marketing send | `marketing-send` | JWT | `scripts/load/marketing-send.js` |
 | Stripe webhooks | `stripe-webhook` | Signature | Stripe load tests only |
 
 ## SLO targets (staging / production)

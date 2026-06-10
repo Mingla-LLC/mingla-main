@@ -23,7 +23,8 @@ Completed via repo/CI:
 - Feature flags / kill switches (`mingla-business/src/config/featureFlags.ts`)
 - Incident runbooks + cost model template
 - Structured logging helper for edge functions
-- Grade A evidence (per domain): [checkout](./evidence/grade-a-checkout.md), [hub](./evidence/grade-a-hub.md) — CI contracts in `scripts/audit/`
+- Grade A evidence (per domain): [checkout](./evidence/grade-a-checkout.md), [hub](./evidence/grade-a-hub.md), [marketing](./evidence/grade-a-marketing.md), [trip checkout](./evidence/grade-a-trip-checkout.md) — CI contracts in `scripts/audit/`
+- Load harness: 6 k6 scripts including `marketing-send.js` — `node scripts/load/validate-k6-scripts.mjs`
 
 ## Related
 
