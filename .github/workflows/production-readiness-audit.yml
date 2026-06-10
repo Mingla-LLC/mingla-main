@@ -1,7 +1,7 @@
 name: Production Readiness Audit (#426)
 
 # Tier 1 engineering gates: RLS coverage, secrets scan, swallowed errors,
-# N+1 heuristic (informational). No platform secrets required.
+# N+1 heuristic (informational), RLS perf heuristic (warn-only). No secrets.
 
 on:
   push:
@@ -33,6 +33,8 @@ jobs:
         run: node scripts/audit/run-all.mjs --self-test
       - name: Run production readiness audits
         run: node scripts/audit/run-all.mjs
+      - name: DB perf contract (#426 PR4)
+        run: node scripts/audit/orch-429-db-perf-contract.mjs
       - name: Validate k6 script structure
         run: node scripts/load/validate-k6-scripts.mjs
 

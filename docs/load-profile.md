@@ -47,5 +47,6 @@ Adjust these with real Mixpanel/Supabase metrics before launch.
 
 - Scripts: `scripts/load/`
 - Fixtures: [load-test-fixtures.md](./load-test-fixtures.md)
+- DB hot queries: [db-hot-queries.md](./db-hot-queries.md)
 - Validation: `node scripts/load/validate-k6-scripts.mjs`
 - Workflow: `.github/workflows/load-smoke.yml`
