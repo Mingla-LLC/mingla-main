@@ -1581,6 +1581,7 @@ function checkNoNewBackendFiles() {
     "supabase/functions/get-companion-stops/index.ts",
     "supabase/functions/get-picnic-grocery/index.ts",
     "supabase/functions/__tests__/orch_1107_companion_picnic_place_pool.test.ts",
+    "supabase/functions/__tests__/orch_1107_rpc_error_adversarial.test.ts",
   ];
   // Issue #426 [Production-readiness foundation] PR #427. C7 is scoped to
   // ORCH-0863 marketing; structuredLog.ts is #426 observability scaffolding
