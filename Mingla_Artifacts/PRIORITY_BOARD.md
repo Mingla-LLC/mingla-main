@@ -698,3 +698,6 @@ On PASS → Post-PASS protocol → ORCH-0489 closes A, ORCH-0481 promotes D→A,
 **Alternative to consider:** Before dispatching, run ORCH-0480's migration against production to learn whether prod I/O is fast enough to make it a partial win (admin loads slowly but doesn't 500). Low-cost info-gathering; doesn't delay ORCH-0481.
 
 **Top launch priorities (unchanged):** ORCH-0336 (app stuck loading), ORCH-0008 (onboarding state machine), ORCH-0102 (account deletion). These remain the highest-impact items blocking launch. Admin RPC cluster is operational, not launch-gating, but blocks internal place-curation work today.
+
+
+> **2026-06-10 — ORCH-1081 [Partner workflow polish] off the board (CLOSED PASS Grade A).** See WORLD_MAP + MASTER_BUG_LIST for the close banner. Three pre-existing bugs caught + regression-tested with fails-on-revert hashes.

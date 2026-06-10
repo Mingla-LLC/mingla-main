@@ -1261,3 +1261,6 @@ Hard guard: investigation only. No product code, migrations, edge deploys, dashb
 ## Historical (Pre-Orchestrator)
 
 Extensive investigation, spec, implementation, and test work was completed across 10+ deck hardening passes, full card pipeline audit (5 passes), notification system audit (2 passes), and multiple targeted fix cycles. See LAUNCH_READINESS_TRACKER.md for the full evidence chain.
+
+
+> **2026-06-10 — ORCH-1081 [Partner workflow polish] CLOSED PASS.** PR #376 (45ef0aa16) + 5 hotfixes on origin/main. 3 pre-existing bugs caught E2E + regression tests with fails-on-revert. Worktree reaped. Full close banner in WORLD_MAP + MASTER_BUG_LIST.

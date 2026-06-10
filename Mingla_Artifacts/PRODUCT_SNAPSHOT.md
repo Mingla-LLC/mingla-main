@@ -322,3 +322,6 @@
 - **9 cross-cutting passes** completed (2026-03-23)
 - Last commit with hardening work: 2026-03-26 (AI Quality Gate Phase 2)
 - Wave 1b payment fixes: 7 bugs closed 2026-03-31 (ORCH-0143/0144/0145/0146/0147/0148/0149)
+
+
+> **2026-06-10 — Partner workflow Grade A.** Mingla partners can now (a) set up brands in 'client mode' for owners, (b) invite the real owner via branded email + celebration screen, (c) keep ongoing access to the brand as brand_admin in the main switcher after handoff so they can keep creating events that earn the 0.15% split. Closes ORCH-1081.

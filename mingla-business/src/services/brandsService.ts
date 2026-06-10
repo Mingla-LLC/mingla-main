@@ -451,7 +451,7 @@ export async function getBrands(accountId: string): Promise<Brand[]> {
   const seen = new Set<string>();
   type MembershipRow = { role: string; brand: BrandRow };
   const rows: MembershipRow[] = [];
-  for (const r of ((data ?? []) as EmbeddedRow[])) {
+  for (const r of ((data ?? []) as unknown as EmbeddedRow[])) {
     if (!r.brand) continue;
     if (seen.has(r.brand.id)) continue;
     seen.add(r.brand.id);

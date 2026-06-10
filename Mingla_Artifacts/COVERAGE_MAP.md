@@ -249,3 +249,6 @@ All evidence dates are within 7 days (latest: 2026-03-31). No stale items.
 Security Wave 2: 4 items regraded (D/B/C/D → D/A/C/D), 3 closed (ORCH-0253, ORCH-0258, ORCH-0252), 8 new bugs registered 2026-03-31.
 Deterministic Deck Contract: 5 closed (ORCH-0266/0267/0268/0038/0048), 2 upgraded (ORCH-0065 F→B, ORCH-0066 C→B). Discovery now 81% A+B.
 State Persistence: 4 closed (ORCH-0209 F→A, ORCH-0240 B→A, ORCH-0270 new→A, ORCH-0271 new→A). State & Cache now 63% A. App Lifecycle loses its only B, now 2A/9F.
+
+
+> **2026-06-10 — ORCH-1081 partner workflow coverage now Grade A.** Brand creation Step 0 partner-mode + invite-owner step + /partner/brands list + celebration screen + branded email + partner brand switcher all verified end-to-end on physical Samsung. Regression tests with fails-on-revert hashes pin the surface against drift.

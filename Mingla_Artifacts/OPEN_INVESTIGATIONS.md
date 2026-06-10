@@ -704,3 +704,6 @@
 | INV-010 | ORCH-0336: Deep-dive — SDK internals, full UI trace | 2026-04-08 | INVESTIGATION_BACKGROUND_RESUME_DEEP_DIVE.md |
 | INV-011 | ORCH-0352: Feedback recording error freezes profile | 2026-04-09 | INVESTIGATION_FEEDBACK_RECORDING_FREEZE_REPORT.md |
 | INV-015 | ORCH-0355/0358/0359/0361/0362/0363/0364 — Map & reporting (7 issues + 1 side) | 2026-04-10 | INVESTIGATION_MAP_AND_REPORTING_ORCH-0355-0358-0359-0361-0362-0363-0364.md |
+
+
+> **2026-06-10 — ORCH-1081 [Partner workflow polish] no longer open.** Resolved + closed Grade A. Investigation surfaced 3 pre-existing bugs (immutability trigger, RPC schema, getBrands membership filter) that are now fixed + regression-tested. Full close banner in WORLD_MAP.
