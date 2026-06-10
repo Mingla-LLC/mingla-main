@@ -1,4 +1,5 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { wrapEdgeHandler } from "../_shared/structuredLog.ts";
 import { STRIPE_API_VERSION, stripeTicketCheckout } from "../_shared/stripe.ts";
 import { getPaymentMethodTypes } from "../_shared/stripePaymentMethods.ts";
 // ORCH-0869 [Tr3 Installment Payments] — separate-line import so the
@@ -191,7 +192,7 @@ function isIntakeAnswerEmpty(type: string, answer: unknown): boolean {
   }
 }
 
-serve(async (req) => {
+serve(wrapEdgeHandler("ticket-checkout-create", async (req) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: ticketCorsHeaders });
   }
@@ -1698,4 +1699,7 @@ serve(async (req) => {
     customerId,
     customerEphemeralKeySecret,
   });
-});
+}, {
+  onError: (_err, requestId) =>
+    jsonResponse({ error: "internal_error", requestId }, 500),
+}));
