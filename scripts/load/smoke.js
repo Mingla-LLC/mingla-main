@@ -8,7 +8,13 @@
  */
 
 import { check, sleep } from "k6";
-import { postJson, check2xx } from "./lib/supabase-edge.js";
+import {
+  optionalEnv,
+  postJson,
+  postJsonAuthed,
+  check2xx,
+  checkNot5xx,
+} from "./lib/supabase-edge.js";
 
 export const options = {
   scenarios: {
@@ -41,9 +47,45 @@ export default function smoke() {
   const status = postJson("ticket-checkout-status", {
     buyerStatusToken: `smoke-${__VU}-${Date.now()}`,
   });
-  check(status, {
-    "checkout-status not 5xx": (r) => r.status < 500,
+  check(status, checkNot5xx("checkout-status"));
+
+  const checkoutCreate = postJson("ticket-checkout-create", {
+    eventId: optionalEnv(
+      "LOAD_TEST_EVENT_ID",
+      "00000000-0000-4000-8000-000000000001",
+    ),
+    surface: "web",
+    mode: "preview",
+    buyer: {
+      name: "Smoke Test",
+      email: `smoke-${__VU}-${Date.now()}@example.com`,
+      phone: "+12025550100",
+    },
+    lines: [
+      {
+        ticketTypeId: optionalEnv(
+          "LOAD_TEST_TICKET_TYPE_ID",
+          "00000000-0000-4000-8000-000000000002",
+        ),
+        quantity: 1,
+      },
+    ],
   });
+  check(checkoutCreate, checkNot5xx("checkout-create"));
+
+  const jwt = optionalEnv("LOAD_TEST_USER_JWT");
+  const agentBody = {
+    conversation_id: null,
+    message: "smoke ping",
+  };
+  const agent = jwt
+    ? postJsonAuthed("agent-chat", agentBody, jwt)
+    : postJson("agent-chat", agentBody);
+  if (jwt) {
+    check(agent, checkNot5xx("agent-chat"));
+  } else {
+    check(agent, { "agent-chat auth gate": (r) => r.status === 401 });
+  }
 
   sleep(0.5);
 }
