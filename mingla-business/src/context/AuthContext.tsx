@@ -29,7 +29,6 @@ import {
 } from "../services/appsFlyerService";
 // ORCH-0808-FOLLOWUP — Mixpanel identity binding.
 import { reportNonFatal } from "../diagnostics/reportNonFatal";
-import { reportNonFatal } from "../diagnostics/reportNonFatal";
 import { mixpanelService } from "../services/mixpanelService";
 // ORCH-0808-FOLLOWUP — RevenueCat identity binding (install-only scope).
 import { revenueCatService } from "../services/revenueCatService";
