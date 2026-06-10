@@ -423,24 +423,60 @@ export async function createVenueBrandPendingReview(
 // ----- getBrands (list) --------------------------------------------------
 
 export async function getBrands(accountId: string): Promise<Brand[]> {
+  // ORCH-1081 hotfix: source from brand_team_members instead of
+  // brands.account_id so brands you're a non-owner member of (brand_admin,
+  // event_manager, finance_manager, marketing_manager, scanner) still appear
+  // in the switcher. The original implementation only returned brands you
+  // OWN, which silently broke the partner workflow: after a partner hands
+  // off ownership of a brand they set up, they become brand_admin but lose
+  // switcher access — they can no longer create events under that brand,
+  // even though that's exactly the partner economics model (0.15% of every
+  // ticket sold on brands they admin).
+  //
+  // Note: brand_team_members has 1 row per (brand_id, user_id), so a
+  // brand_owner appears here too via the
+  // biz_brand_owner_team_member_after_insert trigger that fires on brand
+  // insert. We de-dupe defensively in case any pre-trigger brand has both
+  // an `owner` row and a separate `admin` row.
+  type EmbeddedRow = { role: string; brand: BrandRow | null };
   const { data, error } = await supabase
-    .from("brands")
-    .select("*")
-    .eq("account_id", accountId)
-    .is("deleted_at", null)
-    .order("created_at", { ascending: false });
+    .from("brand_team_members")
+    .select("role, brand:brands!inner(*)")
+    .eq("user_id", accountId)
+    .is("removed_at", null)
+    .is("brand.deleted_at", null);
 
   if (error) throw error;
-  const rows = data as BrandRow[];
-  const brandIds = rows.map((row) => row.id);
+
+  const seen = new Set<string>();
+  type MembershipRow = { role: string; brand: BrandRow };
+  const rows: MembershipRow[] = [];
+  for (const r of ((data ?? []) as EmbeddedRow[])) {
+    if (!r.brand) continue;
+    if (seen.has(r.brand.id)) continue;
+    seen.add(r.brand.id);
+    rows.push({ role: r.role, brand: r.brand });
+  }
+
+  // Newest brand first — matches the pre-hotfix ordering.
+  rows.sort((a, b) => {
+    const aTime = a.brand.created_at ?? "";
+    const bTime = b.brand.created_at ?? "";
+    return bTime.localeCompare(aTime);
+  });
+
+  const brandIds = rows.map(({ brand }) => brand.id);
   const [eventCounts, statsAgg] = await Promise.all([
     getEventCountsByBrandIds(brandIds),
     aggregateBrandStatsByBrandIds(brandIds),
   ]);
-  return rows.map((row) => {
-    // Default role "owner" — useCurrentBrandRole resolves real role per brand.
-    // Service layer cannot know caller's role per-brand without a join.
-    const brand = mapBrandRowToUi(row, { role: "owner" });
+  return rows.map(({ role: rawRole, brand: row }) => {
+    // Map brand_team_members.role (6-value enum) to the UI BrandRole
+    // (legacy 2-value "owner" | "admin"). brand_owner → owner; all others
+    // → admin. useCurrentBrandRole resolves the precise role per brand for
+    // any UI that needs the finer-grained distinction.
+    const uiRole = rawRole === "brand_owner" ? "owner" : "admin";
+    const brand = mapBrandRowToUi(row, { role: uiRole });
     const agg = statsAgg.get(row.id);
     return {
       ...brand,
