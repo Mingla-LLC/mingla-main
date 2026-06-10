@@ -7,6 +7,18 @@
 
 ---
 
+## DRAFT (pending close)
+
+### I-ENV-HYGIENE-OWNERSHIP-SCOPED (DRAFT — flips ACTIVE on the close that ships the orchestrator Environment Hygiene Sweep)
+
+- **Rule:** The orchestrator's environment hygiene sweep (CLOSE Step 1.9 / SWEEP-HYGIENE mode) deletes only artifacts the closing ORCH provably owns; all unowned items (other sessions' worktrees, shared `/tmp`/`~/Downloads`/screenshots, an off-main anchor, iCloud residue) are FLAGGED, never deleted. No blanket surface deletion. No destructive anchor ops (`reset --hard` / `checkout -- .` / `add -A` / `clean -fd`). No global `pkill` / port-range kill.
+- **Rationale:** Mingla runs MULTIPLE concurrent chat sessions sharing the anchor, the `~/Desktop/mingla-orchs/` worktree root, `/tmp`, `~/Downloads`, and screenshot surfaces. A surface-wide cleanup by one session destroys another session's in-flight work. Ownership-scoped deletion + flag-the-rest is the only cross-session-safe cleanup. Extends the Step 1.8 anchor-cleanup discipline to five more surfaces.
+- **Enforcement:** Skill definition `.claude/skills/mingla-orchestrator/SKILL.md` CLOSE Step 1.9 + SWEEP-HYGIENE mode + Working-Branch Discipline forward convention (ORCH-namespaced scratch: `/tmp/orch-<ID>/`, `Mingla_Artifacts/evidence/<ORCH>/`, ORCH-ID-tagged downloads); detailed per-surface rules in `references/review-close-protocol.md` Step 1.9 and `references/operating-system.md` § Cleanup. A CI gate may be added in a follow-up.
+- **Test that catches a regression:** any orchestrator cleanup path that deletes a shared-surface item without proving closing-ORCH ownership, or that runs a destructive anchor op / global `pkill`, violates this invariant (caught at REVIEW by inspecting the cited `Hygiene: <N owned removed>, <M unowned flagged>, anchor on <branch>` banner against the actual deletions).
+- **Established:** registered DRAFT 2026-06-10 by the Environment Hygiene Sweep addition to mingla-orchestrator.
+
+---
+
 ## ACTIVE (post ORCH-1103 [Ari smart brand CRUD + in-chat media] IMPLEMENT 2026-06-08)
 
 ### I-ARI-BRAND-DELETE-GUARD
