@@ -1,4 +1,5 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { logError, wrapEdgeHandler } from "../_shared/structuredLog.ts";
 import {
   jsonResponse,
   serviceClient,
@@ -7,7 +8,7 @@ import {
 } from "../_shared/ticketCheckout.ts";
 import { qrPayloadToDataUrl } from "../_shared/ticketQrImage.ts";
 
-serve(async (req) => {
+serve(wrapEdgeHandler("ticket-checkout-status", async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: ticketCorsHeaders });
   if (req.method !== "POST") return jsonResponse({ error: "method_not_allowed" }, 405);
 
@@ -25,7 +26,13 @@ serve(async (req) => {
     .select("id, status, order_id, event_id, total_cents, currency, buyer_status_token_hash")
     .eq("id", checkoutSessionId)
     .maybeSingle();
-  if (error) return jsonResponse({ error: "status_lookup_failed", detail: error.message }, 500);
+  if (error) {
+    logError("ticket-checkout-status session lookup failed", error, {
+      fn: "ticket-checkout-status",
+      checkoutSessionId,
+    });
+    return jsonResponse({ error: "status_lookup_failed", detail: error.message }, 500);
+  }
   if (!session) return jsonResponse({ error: "checkout_session_not_found" }, 404);
   if (session.buyer_status_token_hash !== await sha256Hex(buyerStatusToken)) {
     return jsonResponse({ error: "buyer_status_token_invalid" }, 403);
@@ -51,6 +58,10 @@ serve(async (req) => {
     .eq("order_id", session.order_id)
     .order("created_at", { ascending: true });
   if (ticketError) {
+    logError("ticket-checkout-status ticket lookup failed", ticketError, {
+      fn: "ticket-checkout-status",
+      orderId: session.order_id,
+    });
     return jsonResponse({ error: "ticket_lookup_failed", detail: ticketError.message }, 500);
   }
 
@@ -86,4 +97,7 @@ serve(async (req) => {
       notificationStatus: "queued",
     },
   });
-});
+}, {
+  onError: (_err, requestId) =>
+    jsonResponse({ error: "internal_error", requestId }, 500),
+}));

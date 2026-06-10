@@ -18,6 +18,7 @@ import { callGemini, ARI_MODEL_VERSION, GeminiContentMessage } from "../_shared/
 import { AGENT_TOOLS, READ_ONLY_TOOL_NAMES, findTool, ToolError } from "../_shared/agentTools.ts";
 import { buildServiceClient, enforceTurnRateLimit } from "../_shared/agentRateLimit.ts";
 import { detectChoices, AgentChoices } from "../_shared/agentChoices.ts";
+import { logError } from "../_shared/structuredLog.ts";
 
 const MAX_MESSAGE_LENGTH = 4096;
 const HISTORY_WINDOW = 10;
@@ -67,8 +68,7 @@ Deno.serve(async (req) => {
   // exception message in a typed response so we can debug from the toast.
   const wrapped = handle(req).catch((err: unknown) => {
     const message = err instanceof Error ? err.message : String(err);
-    const stack = err instanceof Error ? err.stack : undefined;
-    console.error("[agent-chat] UNCAUGHT:", message, stack);
+    logError("agent-chat uncaught handler error", err, { fn: "agent-chat" });
     return errorResponse(500, "HANDLER_THREW", `agent-chat threw: ${message}`);
   });
 

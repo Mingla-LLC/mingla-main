@@ -28,6 +28,7 @@ import {
   logAppsFlyerEvent,
 } from "../services/appsFlyerService";
 // ORCH-0808-FOLLOWUP — Mixpanel identity binding.
+import { reportNonFatal } from "../diagnostics/reportNonFatal";
 import { mixpanelService } from "../services/mixpanelService";
 // ORCH-0808-FOLLOWUP — RevenueCat identity binding (install-only scope).
 import { revenueCatService } from "../services/revenueCatService";
@@ -355,10 +356,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         try {
           await ensureCreatorAccount(s.user);
         } catch (ensureError) {
-          console.warn(
-            "[auth] ensureCreatorAccount failed:",
-            ensureError instanceof Error ? ensureError.message : String(ensureError),
-          );
+          reportNonFatal("auth.ensureCreatorAccount", ensureError, {
+            userId: s.user.id,
+          });
         }
         // Cycle 14 — recover-on-sign-in auto-clear (D-CYCLE14-FOR-6 + I-35).
         // If creator_accounts.deleted_at is non-null, clear it and emit
@@ -461,10 +461,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         try {
           await ensureCreatorAccount(s.user);
         } catch (ensureError) {
-          console.warn(
-            "[auth] ensureCreatorAccount failed:",
-            ensureError instanceof Error ? ensureError.message : String(ensureError),
-          );
+          reportNonFatal("auth.ensureCreatorAccount", ensureError, {
+            userId: s.user.id,
+          });
         }
         // Cycle 14 — recover-on-sign-in auto-clear (D-CYCLE14-FOR-6 + I-35).
         // GATE to SIGNED_IN only — TOKEN_REFRESHED + USER_UPDATED + INITIAL_SESSION

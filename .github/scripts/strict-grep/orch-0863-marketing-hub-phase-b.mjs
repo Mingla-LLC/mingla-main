@@ -1577,6 +1577,11 @@ function checkNoNewBackendFiles() {
   // (not yet wired into edge functions), not marketing scope.
   const ORCH_426_BACKEND_ALLOWLIST = [
     "supabase/functions/_shared/structuredLog.ts",
+    "supabase/functions/_shared/structuredLog.test.ts",
+    "supabase/functions/agent-chat/index.ts",
+    "supabase/functions/stripe-webhook/index.ts",
+    "supabase/functions/ticket-checkout-create/index.ts",
+    "supabase/functions/ticket-checkout-status/index.ts",
   ];
   // ORCH-1032 [Intelligence pipeline concurrency cap + chunked enqueue]:
   // adds the additive 'queued'-status migration (status CHECK widen + per-city

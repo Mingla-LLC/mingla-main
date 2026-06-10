@@ -18,6 +18,7 @@ import {
   verifyStripeWebhookSignature,
 } from "../_shared/stripeWebhookSignature.ts";
 import { sendOpsAlertEmail } from "../_shared/stripeOpsAlertEmail.ts";
+import { logError } from "../_shared/structuredLog.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -70,7 +71,7 @@ export async function stripeWebhookHandler(req: Request): Promise<Response> {
   try {
     rawBody = await req.text();
   } catch (err) {
-    console.error("[stripe-webhook] body read failed:", err);
+    logError("stripe-webhook body read failed", err, { fn: "stripe-webhook" });
     return plainResponse({ error: "body_read_failed" }, 400);
   }
 
@@ -90,14 +91,15 @@ export async function stripeWebhookHandler(req: Request): Promise<Response> {
     );
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    console.error("[stripe-webhook] signature verification failed:", message);
+    logError("stripe-webhook signature verification failed", err, {
+      fn: "stripe-webhook",
+    });
     try {
       await notifyWebhookSignatureFailure(signature);
     } catch (notifyErr) {
-      console.error(
-        "[stripe-webhook] signature-failure alert failed:",
-        notifyErr,
-      );
+      logError("stripe-webhook signature-failure alert failed", notifyErr, {
+        fn: "stripe-webhook",
+      });
     }
     return plainResponse({ error: "invalid_signature", detail: message }, 400);
   }
@@ -126,7 +128,10 @@ export async function stripeWebhookHandler(req: Request): Promise<Response> {
         after: { source_ip: sourceIp, event_type: event.type },
       });
     } catch (auditErr) {
-      console.error("[stripe-webhook] IP soft-fail audit failed:", auditErr);
+      logError("stripe-webhook IP soft-fail audit failed", auditErr, {
+        fn: "stripe-webhook",
+        eventId: event.id,
+      });
     }
   }
 
@@ -137,7 +142,10 @@ export async function stripeWebhookHandler(req: Request): Promise<Response> {
     .maybeSingle();
 
   if (selectError) {
-    console.error("[stripe-webhook] select existing failed:", selectError);
+    logError("stripe-webhook select existing failed", selectError, {
+      fn: "stripe-webhook",
+      eventId: event.id,
+    });
     return plainResponse({ status: "select_failed" }, 200);
   }
 
@@ -179,7 +187,10 @@ export async function stripeWebhookHandler(req: Request): Promise<Response> {
       .select("id")
       .single();
     if (insertError || !insertedRow) {
-      console.error("[stripe-webhook] insert failed:", insertError);
+      logError("stripe-webhook insert failed", insertError, {
+        fn: "stripe-webhook",
+        eventId: event.id,
+      });
       return plainResponse({ status: "insert_failed" }, 200);
     }
     eventRowId = insertedRow.id;
@@ -190,10 +201,11 @@ export async function stripeWebhookHandler(req: Request): Promise<Response> {
     await routeStripeEvent(supabase, stripe, event);
   } catch (err) {
     processingError = err instanceof Error ? err.message : String(err);
-    console.error(
-      `[stripe-webhook] processing failed for ${event.type} event_id=${event.id}:`,
-      processingError,
-    );
+    logError("stripe-webhook processing failed", err, {
+      fn: "stripe-webhook",
+      eventId: event.id,
+      eventType: event.type,
+    });
   }
 
   const nextRetryCount = priorRetryCount + 1;
@@ -212,7 +224,10 @@ export async function stripeWebhookHandler(req: Request): Promise<Response> {
     .update(updatePayload)
     .eq("id", eventRowId);
   if (markError) {
-    console.error("[stripe-webhook] mark processed failed:", markError);
+    logError("stripe-webhook mark processed failed", markError, {
+      fn: "stripe-webhook",
+      eventId: event.id,
+    });
   }
 
   return plainResponse({
