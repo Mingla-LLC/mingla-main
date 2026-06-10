@@ -23,7 +23,7 @@ Completed via repo/CI:
 - Feature flags / kill switches (`mingla-business/src/config/featureFlags.ts`)
 - Incident runbooks + cost model template
 - Structured logging helper for edge functions
-- Grade A evidence (per domain): [checkout](./evidence/grade-a-checkout.md), [hub](./evidence/grade-a-hub.md) — CI contracts in `scripts/audit/`
+- Grade A evidence (per domain): [checkout](./evidence/grade-a-checkout.md), [hub](./evidence/grade-a-hub.md), [marketing](./evidence/grade-a-marketing.md) — CI contracts in `scripts/audit/`
 
 ## Related
 

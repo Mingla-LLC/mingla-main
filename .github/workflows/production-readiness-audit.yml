@@ -39,6 +39,8 @@ jobs:
         run: node scripts/audit/checkout-grade-a-contract.mjs
       - name: Hub Grade A contract (#426 PR6)
         run: node scripts/audit/hub-grade-a-contract.mjs
+      - name: Marketing Grade A contract (#426 PR7)
+        run: node scripts/audit/marketing-grade-a-contract.mjs
       - name: Validate k6 script structure
         run: node scripts/load/validate-k6-scripts.mjs
 

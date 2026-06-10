@@ -57,7 +57,8 @@
     "test:orch-428": "node ../scripts/load/validate-k6-scripts.mjs && node ../scripts/load/orch-428-load-harness-contract.mjs",
     "test:orch-429": "node ../scripts/audit/rls-perf-heuristic.mjs --self-test && node ../scripts/audit/orch-429-db-perf-contract.mjs",
     "test:orch-430": "node ../scripts/audit/checkout-grade-a-contract.mjs",
-    "test:orch-431": "node ../scripts/audit/hub-grade-a-contract.mjs"
+    "test:orch-431": "node ../scripts/audit/hub-grade-a-contract.mjs",
+    "test:orch-432": "node ../scripts/audit/marketing-grade-a-contract.mjs"
   },
   "dependencies": {
     "@expo-google-fonts/anton": "^0.4.2",
