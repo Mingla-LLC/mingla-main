@@ -1,0 +1,57 @@
+name: Load Smoke (#426)
+
+# Optional k6 smoke against Supabase edge functions when repo secrets are set.
+# Always validates k6 script structure (no secrets).
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [Seth, main]
+    paths:
+      - "scripts/load/**"
+      - "docs/load-profile.md"
+      - ".github/workflows/load-smoke.yml"
+  pull_request:
+    paths:
+      - "scripts/load/**"
+      - ".github/workflows/load-smoke.yml"
+
+jobs:
+  validate-scripts:
+    name: "Validate k6 scripts"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - run: node scripts/load/validate-k6-scripts.mjs
+
+  k6-smoke:
+    name: "k6 smoke (optional)"
+    runs-on: ubuntu-latest
+    needs: validate-scripts
+    steps:
+      - uses: actions/checkout@v4
+      - name: Skip if load secrets not configured
+        id: precheck
+        env:
+          BASE: ${{ secrets.LOAD_BASE_URL }}
+          ANON: ${{ secrets.SUPABASE_ANON_KEY_LOAD_TEST }}
+        run: |
+          if [ -z "$BASE" ] || [ -z "$ANON" ]; then
+            echo "::warning::LOAD_BASE_URL or SUPABASE_ANON_KEY_LOAD_TEST not set — skipping k6 smoke."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Run k6 smoke
+        if: steps.precheck.outputs.skip != 'true'
+        uses: grafana/k6-action@v0.3.1
+        with:
+          filename: scripts/load/smoke.js
+        env:
+          LOAD_BASE_URL: ${{ secrets.LOAD_BASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY_LOAD_TEST }}
+          LOAD_VUS: "2"
+          LOAD_DURATION: "15s"
