@@ -138,20 +138,20 @@ export default function AcceptBrandInvitationSuccess(): React.ReactElement {
           size="lg"
           fullWidth
         />
-        <View style={styles.storeRow}>
+        <View style={styles.storeStack}>
           <Button
             label="Download for iOS"
             onPress={() => handleOpenStore(IOS_STORE_URL)}
             variant="secondary"
-            size="md"
-            style={styles.storeButton}
+            size="lg"
+            fullWidth
           />
           <Button
             label="Download for Android"
             onPress={() => handleOpenStore(ANDROID_STORE_URL)}
             variant="secondary"
-            size="md"
-            style={styles.storeButton}
+            size="lg"
+            fullWidth
           />
         </View>
         <Text style={styles.footnote}>
@@ -208,13 +208,13 @@ const styles = StyleSheet.create({
     color: textTokens.secondary,
     textAlign: "center",
   },
-  storeRow: {
-    flexDirection: "row",
+  // ORCH-1081 hotfix: stack the store buttons vertically full-width
+  // (was side-by-side row, which cramped "Download for Android" past the
+  // button edge on phone widths).
+  storeStack: {
+    flexDirection: "column",
     gap: spacing.sm,
     marginTop: spacing.sm,
-  },
-  storeButton: {
-    flex: 1,
   },
   footnote: {
     ...typography.caption,
