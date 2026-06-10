@@ -1557,6 +1557,21 @@ function checkNoNewBackendFiles() {
     "supabase/functions/places-autocomplete/index.ts",
     "supabase/functions/places-autocomplete/index.test.ts",
   ];
+  // ORCH-1103 [Ari smart brand CRUD + in-chat media]. C7 is scoped to ORCH-0863
+  // marketing; these backend touches are Ari brand-CRUD scope (new update_brand/
+  // delete_brand tools, the presentational choices payload, system-prompt v3),
+  // not ORCH-0863. C7 flags MODIFIED backend files too, so the extended
+  // agentTools/agentSystemPrompt/agent-chat/agent-confirm-action are listed.
+  const ORCH_1103_BACKEND_ALLOWLIST = [
+    "supabase/functions/_shared/agentChoices.ts",
+    "supabase/functions/_shared/__tests__/orch_1103_ari_brand_crud.test.ts",
+    "supabase/functions/_shared/__tests__/orch_1103_choices.test.ts",
+    "supabase/functions/_shared/__tests__/orch_1103_ari_brand_crud.tester-adversarial.test.ts",
+    "supabase/functions/_shared/agentSystemPrompt.ts",
+    "supabase/functions/_shared/agentTools.ts",
+    "supabase/functions/agent-chat/index.ts",
+    "supabase/functions/agent-confirm-action/index.ts",
+  ];
   // ORCH-1032 [Intelligence pipeline concurrency cap + chunked enqueue]:
   // adds the additive 'queued'-status migration (status CHECK widen + per-city
   // unique active index widen + tg_kick_pending_trial_runs promotion built on
@@ -1941,6 +1956,7 @@ function checkNoNewBackendFiles() {
     ...ORCH_1080_BACKEND_ALLOWLIST,
     ...ORCH_1073_BACKEND_ALLOWLIST,
     ...ORCH_1079_BACKEND_ALLOWLIST,
+    ...ORCH_1103_BACKEND_ALLOWLIST,
     // Schedule-edit buyer protection + "Refund all & proceed" (separate PR;
     // shares the ORCH-1047 work id used in code). New migration recording the
     // already-live business_patch_event_when change — not ORCH-0863 marketing
