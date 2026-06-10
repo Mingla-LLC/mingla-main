@@ -54,7 +54,8 @@
     "test:orch-1105": "node ../.github/scripts/strict-grep/orch-1105-no-route-stub-gates.mjs --self-test && node ../.github/scripts/strict-grep/orch-1105-no-route-stub-gates.mjs && node ../.github/scripts/strict-grep/orch-1105-layout-no-self-redirect.mjs --self-test && node ../.github/scripts/strict-grep/orch-1105-layout-no-self-redirect.mjs && node ../.github/scripts/strict-grep/orch-1105-web-glass-opaque-fallback.mjs --self-test && node ../.github/scripts/strict-grep/orch-1105-web-glass-opaque-fallback.mjs && node ../.github/scripts/strict-grep/orch-1105-web-gesture-safe.mjs --self-test && node ../.github/scripts/strict-grep/orch-1105-web-gesture-safe.mjs && npx jest src/utils/__tests__/navTabGate.test.ts --runInBand",
     "test:orch-426": "node ../scripts/audit/run-all.mjs --self-test && node ../scripts/load/validate-k6-scripts.mjs && npx jest src/config/__tests__/featureFlags.test.ts --runInBand",
     "test:orch-427": "npx jest src/diagnostics/__tests__/reportNonFatal.test.ts --runInBand",
-    "test:orch-428": "node ../scripts/load/validate-k6-scripts.mjs && node ../scripts/load/orch-428-load-harness-contract.mjs"
+    "test:orch-428": "node ../scripts/load/validate-k6-scripts.mjs && node ../scripts/load/orch-428-load-harness-contract.mjs",
+    "test:orch-429": "node ../scripts/audit/rls-perf-heuristic.mjs --self-test && node ../scripts/audit/orch-429-db-perf-contract.mjs"
   },
   "dependencies": {
     "@expo-google-fonts/anton": "^0.4.2",

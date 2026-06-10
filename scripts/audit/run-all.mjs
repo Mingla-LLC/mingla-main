@@ -18,6 +18,7 @@ const AUDITS = [
   "secrets-scan.mjs",
   "swallowed-errors.mjs",
   "n-plus-one-heuristic.mjs",
+  "rls-perf-heuristic.mjs",
 ];
 
 function run(script, extraArgs = []) {
