@@ -7,6 +7,7 @@ k6 scripts for Mingla Business production-readiness. See [docs/load-profile.md](
 - [k6](https://grafana.com/docs/k6/latest/set-up/install-k6/) installed locally
 - `LOAD_BASE_URL` — Supabase functions base, e.g. `https://<project-ref>.supabase.co/functions/v1`
 - `SUPABASE_ANON_KEY` — project anon key
+- Optional fixtures — see [docs/load-test-fixtures.md](../../docs/load-test-fixtures.md)
 
 ## Run locally
 
@@ -19,6 +20,17 @@ export LOAD_DURATION=30s
 k6 run scripts/load/smoke.js
 k6 run scripts/load/discover-merged-events.js
 k6 run scripts/load/ticket-checkout-status.js
+k6 run scripts/load/ticket-checkout-create.js
+k6 run scripts/load/agent-chat.js   # 401 without JWT; full path with LOAD_TEST_USER_JWT
+```
+
+### JWT helper (staging)
+
+```bash
+export SUPABASE_URL="https://YOUR_REF.supabase.co"
+export LOAD_TEST_EMAIL="load-test@example.com"
+export LOAD_TEST_PASSWORD="..."
+node scripts/load/fetch-test-jwt.mjs
 ```
 
 ## CI

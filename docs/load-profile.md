@@ -22,8 +22,8 @@ Adjust these with real Mixpanel/Supabase metrics before launch.
 |------|----------------|------|-------------|
 | Public discover merge | `discover-merged-events` | Anon | `scripts/load/discover-merged-events.js` |
 | Buyer checkout status | `ticket-checkout-status` | Anon token | `scripts/load/ticket-checkout-status.js` |
-| Checkout create | `ticket-checkout-create` | Anon / mixed | Future (needs test fixtures) |
-| Ari chat | `agent-chat` | JWT | Future (needs test user JWT) |
+| Checkout create | `ticket-checkout-create` | Anon / mixed | `scripts/load/ticket-checkout-create.js` |
+| Ari chat | `agent-chat` | JWT | `scripts/load/agent-chat.js` |
 | Marketing send | `marketing-send` | JWT | Future (rate-limited; queue) |
 | Stripe webhooks | `stripe-webhook` | Signature | Stripe load tests only |
 
@@ -46,5 +46,6 @@ Adjust these with real Mixpanel/Supabase metrics before launch.
 ## Harness
 
 - Scripts: `scripts/load/`
+- Fixtures: [load-test-fixtures.md](./load-test-fixtures.md)
 - Validation: `node scripts/load/validate-k6-scripts.mjs`
 - Workflow: `.github/workflows/load-smoke.yml`
