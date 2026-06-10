@@ -1,0 +1,53 @@
+name: Production Readiness Audit (#426)
+
+# Tier 1 engineering gates: RLS coverage, secrets scan, swallowed errors,
+# N+1 heuristic (informational). No platform secrets required.
+
+on:
+  push:
+    branches: [Seth, main]
+    paths:
+      - "scripts/audit/**"
+      - "supabase/migrations/**"
+      - "mingla-business/app/**"
+      - "mingla-business/src/**"
+      - ".github/workflows/production-readiness-audit.yml"
+  pull_request:
+    paths:
+      - "scripts/audit/**"
+      - "supabase/migrations/**"
+      - "mingla-business/app/**"
+      - "mingla-business/src/**"
+      - ".github/workflows/production-readiness-audit.yml"
+
+jobs:
+  audit:
+    name: "Production readiness audits"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Self-test audit scripts
+        run: node scripts/audit/run-all.mjs --self-test
+      - name: Run production readiness audits
+        run: node scripts/audit/run-all.mjs
+      - name: Validate k6 script structure
+        run: node scripts/load/validate-k6-scripts.mjs
+
+  feature-flags:
+    name: "Feature flags unit tests"
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: mingla-business
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: mingla-business/package-lock.json
+      - run: npm ci
+      - run: npx jest src/config/__tests__/featureFlags.test.ts --runInBand

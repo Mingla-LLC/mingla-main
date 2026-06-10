@@ -1,0 +1,14 @@
+{
+  "_comment": "Tables intentionally without RLS (service-role-only, archive, or extension-owned). Issue #426 foundation audit.",
+  "tables": [
+    "_backup_friends",
+    "_backup_messages",
+    "_backup_profiles",
+    "_backup_user_sessions",
+    "_orch_0588_dead_cards_backup",
+    "_orch_0588_dead_stops_backup",
+    "spatial_ref_sys",
+    "seed_map_presence",
+    "used_trial_phones"
+  ]
+}

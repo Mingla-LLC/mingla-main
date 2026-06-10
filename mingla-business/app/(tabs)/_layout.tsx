@@ -23,6 +23,7 @@ import type { BottomNavTab } from "../../src/components/ui/BottomNav";
 // it paints the Tier-1 ambient gradient + centres content inside a
 // max-width 640px column. Per SPEC_ORCH-0885-A §3.
 import { DesktopCanvas } from "../../src/components/ui/DesktopCanvas";
+import { isTabVisible } from "../../src/config/featureFlags";
 import { canvas, spacing } from "../../src/constants/designSystem";
 import { useResponsiveLayout } from "../../src/hooks/useResponsiveLayout";
 // ORCH-1055 (META-ORCH-1048 sub-F): rank-aware tab filtering. The TABS
@@ -68,22 +69,6 @@ const TABS: BottomNavTab[] = [
 
 const DEFAULT_TAB_ID = "home";
 
-const detectActiveTab = (pathname: string): string => {
-  // ORCH-0815-B fix: nested tab routes (e.g. `/marketing/audiences`,
-  // `/marketing/campaigns`) MUST resolve to their parent tab — previous
-  // `endsWith` check failed because the path ends with the sub-route id,
-  // not the tab id, and fell through to DEFAULT_TAB_ID="home" so the
-  // active dot jumped to Home when the user switched Marketing sub-tabs.
-  // New rule: a tab is active if the pathname is exactly `/${tabId}` OR
-  // starts with `/${tabId}/` (nested route boundary).
-  const lower = pathname.toLowerCase();
-  const match = TABS.find((tab) => {
-    const prefix = `/${tab.id}`;
-    return lower === prefix || lower.startsWith(`${prefix}/`);
-  });
-  return match?.id ?? DEFAULT_TAB_ID;
-};
-
 export default function TabsLayout(): React.ReactElement {
   const router = useRouter();
   const pathname = usePathname();
@@ -117,11 +102,22 @@ export default function TabsLayout(): React.ReactElement {
     (!hasBrandHydrated || brandResolving);
 
   const visibleTabs = useMemo(
-    () => visibleTabsForRank(TABS, brandPointerPending ? Number.MAX_SAFE_INTEGER : rank),
+    () =>
+      visibleTabsForRank(TABS, brandPointerPending ? Number.MAX_SAFE_INTEGER : rank).filter(
+        (tab) => isTabVisible(tab.id),
+      ),
     [rank, brandPointerPending],
   );
 
-  const activeId = useMemo(() => detectActiveTab(pathname), [pathname]);
+  const activeId = useMemo(() => {
+    // ORCH-0815-B: nested tab routes resolve to parent tab id.
+    const lower = pathname.toLowerCase();
+    const match = visibleTabs.find((tab) => {
+      const prefix = `/${tab.id}`;
+      return lower === prefix || lower.startsWith(`${prefix}/`);
+    });
+    return match?.id ?? DEFAULT_TAB_ID;
+  }, [pathname, visibleTabs]);
 
   // Focused authoring surfaces hide the mobile bottom capsule so the route's
   // own sticky footer is not covered. Desktop web keeps the left rail visible
