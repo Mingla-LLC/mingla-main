@@ -1572,6 +1572,12 @@ function checkNoNewBackendFiles() {
     "supabase/functions/agent-chat/index.ts",
     "supabase/functions/agent-confirm-action/index.ts",
   ];
+  // Issue #426 [Production-readiness foundation] PR #427. C7 is scoped to
+  // ORCH-0863 marketing; structuredLog.ts is #426 observability scaffolding
+  // (not yet wired into edge functions), not marketing scope.
+  const ORCH_426_BACKEND_ALLOWLIST = [
+    "supabase/functions/_shared/structuredLog.ts",
+  ];
   // ORCH-1032 [Intelligence pipeline concurrency cap + chunked enqueue]:
   // adds the additive 'queued'-status migration (status CHECK widen + per-city
   // unique active index widen + tg_kick_pending_trial_runs promotion built on
@@ -1957,6 +1963,7 @@ function checkNoNewBackendFiles() {
     ...ORCH_1073_BACKEND_ALLOWLIST,
     ...ORCH_1079_BACKEND_ALLOWLIST,
     ...ORCH_1103_BACKEND_ALLOWLIST,
+    ...ORCH_426_BACKEND_ALLOWLIST,
     // Schedule-edit buyer protection + "Refund all & proceed" (separate PR;
     // shares the ORCH-1047 work id used in code). New migration recording the
     // already-live business_patch_event_when change — not ORCH-0863 marketing
