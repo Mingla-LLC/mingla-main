@@ -36,17 +36,18 @@ Composer (`/marketing/campaigns/compose`) and campaign report (`/marketing/campa
 
 | Item | Path / note |
 |------|-------------|
-| Load profile row | `docs/load-profile.md` — `marketing-send` JWT, future harness |
+| Load profile row | `docs/load-profile.md` — `marketing-send` JWT |
+| Load script | `scripts/load/marketing-send.js` |
 | Edge function | `supabase/functions/marketing-send/index.ts` |
 | Checkout → audiences | Buyers from ticket checkout feed `marketing_audiences` |
 
-k6 script for `marketing-send` is **not yet shipped** (Tier 1 gap — queue/rate-limit burst proof is Tier 2).
+k6 script: `scripts/load/marketing-send.js` (CI structural validation; burst proof at 500 RPS is Tier 2).
 
 ## Known gaps (honest)
 
 | Gap | Follow-up |
 |-----|-----------|
-| No k6 `marketing-send` harness yet | PR after queue semantics locked |
+| Burst load proof (500 RPS) not run on staging | Tier 2 operator gate |
 | Composer full state matrix (draft save errors, schedule failures) | Separate composer Grade A ORCH |
 | Marketing send API kill switch not wired in `featureFlags.ts` | Workstream F |
 | Runtime device proof not attached | Operator smoke on staging |

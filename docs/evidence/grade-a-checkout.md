@@ -59,8 +59,11 @@ After deploy, on staging:
 
 Attach screenshots or load output to epic #426 when closing Workstream E checkout box.
 
-## Out of scope (follow-up PRs)
+## Related funnels
 
-- Trip checkout (`/checkout-trip/…`)
-- Hub organiser surfaces
+- Trip checkout: [grade-a-trip-checkout.md](./grade-a-trip-checkout.md)
+- Hub organiser surfaces: [grade-a-hub.md](./grade-a-hub.md)
+
+## Out of scope (follow-up)
+
 - Full Maestro matrix expansion

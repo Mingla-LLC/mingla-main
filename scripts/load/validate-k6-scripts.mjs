@@ -19,6 +19,7 @@ const REQUIRED_SCRIPT_NAMES = [
   "ticket-checkout-status.js",
   "ticket-checkout-create.js",
   "agent-chat.js",
+  "marketing-send.js",
 ];
 
 const LIB_EXPORTS = ["postJsonAuthed", "edgeHeadersWithJwt", "checkNot5xx"];

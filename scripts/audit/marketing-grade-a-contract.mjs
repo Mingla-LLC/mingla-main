@@ -93,8 +93,11 @@ const evidence = readFileSync(
   join(ROOT, "docs/evidence/grade-a-marketing.md"),
   "utf8",
 );
-if (!evidence.includes("marketing-send") || !evidence.includes("test:orch-432")) {
-  fail("grade-a-marketing.md must reference marketing-send and test:orch-432");
+if (
+  !evidence.includes("marketing-send.js") ||
+  !evidence.includes("test:orch-432")
+) {
+  fail("grade-a-marketing.md must reference marketing-send.js and test:orch-432");
 }
 
 console.log("PASS: marketing Grade A contract (5 marketing routes + evidence)");
