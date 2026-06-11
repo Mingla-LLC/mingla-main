@@ -31,10 +31,16 @@ describe("visibleTabsForRank", () => {
     expect(ids).toEqual(["home", "account"]);
   });
 
-  it("hides everything but home/account when rank=0 (no membership)", () => {
+  // ORCH-1109 — SANCTIONED behavior change: a brand-less rank-0 user now sees
+  // the Ari tab (the non-monotonic carve-out lets them create their first
+  // brand via Ari's create_brand tool). This replaces the prior ORCH-1055
+  // assertion that rank-0 saw Home + Account only. Recorded against the
+  // tests-append-only invariant as the single sanctioned existing-test edit
+  // (I-PROPOSED-1055-AMEND DRAFT).
+  it("surfaces ari for a brand-less rank-0 user (ORCH-1109)", () => {
     const visible = visibleTabsForRank(FULL_TABS, 0);
     const ids = visible.map((t) => t.id);
-    expect(ids).toEqual(["home", "account"]);
+    expect(ids).toEqual(["home", "ari", "account"]);
   });
 
   it("surfaces marketing for marketing_manager (rank 20)", () => {
@@ -44,6 +50,24 @@ describe("visibleTabsForRank", () => {
     );
     const ids = visible.map((t) => t.id);
     expect(ids).toEqual(["home", "marketing", "account"]);
+  });
+
+  // ORCH-1109 — the carve-out must NOT re-grant Ari to a rank-10 scanner; the
+  // ORCH-1055 scanner lockout (Home + Account only) is preserved. Reverting the
+  // carve-out to a naive `ari:0` scalar would regain ari here → this fails.
+  it("rank-10 scanner still does NOT see ari after the ORCH-1109 carve-out", () => {
+    const visible = visibleTabsForRank(FULL_TABS, BRAND_ROLE_RANK.scanner);
+    expect(visible.map((t) => t.id)).toEqual(["home", "account"]);
+  });
+
+  // ORCH-1109 — a rank-20 marketing manager sees Home + Blast + Account, NOT
+  // ari. The non-monotonic carve-out is scoped to rank 0 and rank>=30 only.
+  it("rank-20 marketing manager does NOT see ari (ORCH-1109)", () => {
+    const visible = visibleTabsForRank(
+      FULL_TABS,
+      BRAND_ROLE_RANK.marketing_manager,
+    );
+    expect(visible.map((t) => t.id)).toEqual(["home", "marketing", "account"]);
   });
 
   it("surfaces hub + ari for finance_manager (rank 30)", () => {

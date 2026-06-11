@@ -39,8 +39,21 @@ export interface BrandInvitationRow {
   accepted_at: string | null;
   accepted_by_account_id: string | null;
   revoked_at: string | null;
-  status: "pending" | "accepted" | "revoked" | "expired";
+  // ORCH-1108 — 'declined' is the new invitee-driven terminal state.
+  status: "pending" | "accepted" | "revoked" | "expired" | "declined";
   created_at?: string;
+}
+
+/**
+ * ORCH-1108 — curated invitee-side projection returned by
+ * `list-my-pending-invites`. NEVER carries token_hash / invited_by / email.
+ */
+export interface PendingInviteRow {
+  id: string;
+  brand_id: string;
+  brand_name: string;
+  role: BrandRole;
+  expires_at: string;
 }
 
 export interface BrandTeamMemberRow {
@@ -101,6 +114,12 @@ export const brandInvitationKeys = {
     invitationId: string,
   ): readonly ["brand-invitations", "detail", string] =>
     ["brand-invitations", "detail", invitationId] as const,
+  // ORCH-1108 — the signed-in user's own pending invites (email-keyed,
+  // resolved server-side). Keyed by userId so it invalidates per-account.
+  myPending: (
+    userId: string,
+  ): readonly ["brand-invitations", "my-pending", string] =>
+    ["brand-invitations", "my-pending", userId] as const,
 };
 
 export const brandTeamMemberKeys = {
@@ -179,6 +198,72 @@ export async function acceptBrandInvitation(
   };
 }
 
+/**
+ * ORCH-1108 — accept one of the signed-in user's OWN pending invites from
+ * in-app (email-trusted, tokenless). Reuses the `accept-brand-invitation` edge
+ * fn's new `{ invitationId }` branch (the server resolves the stored token_hash
+ * and runs the SAME accept RPC). Lower blast than overloading the web token
+ * caller (OQ-3 preferred shape).
+ */
+export async function acceptMyPendingInvitation(
+  invitationId: string,
+): Promise<AcceptBrandInvitationResult> {
+  const { data, error } = await supabase.functions.invoke(
+    "accept-brand-invitation",
+    { body: { invitationId } },
+  );
+  if (error) {
+    const status = extractStatus(error);
+    const code = extractErrorCode(data, error) ?? "server";
+    throw new BrandInvitationServiceError(code, status, error.message);
+  }
+  if (!data || typeof data !== "object") {
+    throw new BrandInvitationServiceError("server", 500, "invalid response");
+  }
+  const d = data as Record<string, unknown>;
+  return {
+    brandId: typeof d.brand_id === "string" ? d.brand_id : "",
+    role: d.role as BrandRole,
+    transferred: d.transferred === true,
+    previousOwnerAccountId:
+      typeof d.previous_owner_account_id === "string"
+        ? d.previous_owner_account_id
+        : null,
+    newOwnerAccountId:
+      typeof d.new_owner_account_id === "string"
+        ? d.new_owner_account_id
+        : null,
+    brandSlug: typeof d.brand_slug === "string" ? d.brand_slug : null,
+    newOwnerFirstName:
+      typeof d.new_owner_first_name === "string" ? d.new_owner_first_name : null,
+    partnerSetup: d.partner_setup === true,
+  };
+}
+
+/**
+ * ORCH-1108 — decline one of the signed-in user's OWN pending invites. On a
+ * `410 invite_not_actionable` (already declined / no longer pending) we treat
+ * the call as resolved (return normally) — the decline goal (not pending) is
+ * already met. Any other non-2xx throws.
+ */
+export async function declineBrandInvitation(
+  invitationId: string,
+): Promise<void> {
+  const { data, error } = await supabase.functions.invoke(
+    "decline-brand-invitation",
+    { body: { invitationId } },
+  );
+  if (error) {
+    const status = extractStatus(error);
+    const code = extractErrorCode(data, error) ?? "server";
+    // A no-longer-pending invite is the decline goal — treat as success.
+    if (status === 410 || code === "invite_not_actionable") {
+      return;
+    }
+    throw new BrandInvitationServiceError(code, status, error.message);
+  }
+}
+
 export async function revokeBrandInvitation(
   invitationId: string,
 ): Promise<void> {
@@ -203,6 +288,44 @@ export async function revokeBrandInvitation(
 }
 
 // ---------- Queries ----------
+
+/**
+ * ORCH-1108 — list the signed-in user's OWN pending invites (email-keyed,
+ * resolved server-side from the JWT email). Returns the curated projection;
+ * never throws on empty (non-object data → []). Same error envelope as the
+ * accept/decline calls.
+ */
+export async function listMyPendingInvites(): Promise<PendingInviteRow[]> {
+  const { data, error } = await supabase.functions.invoke(
+    "list-my-pending-invites",
+    { body: {} },
+  );
+  if (error) {
+    const status = extractStatus(error);
+    const code = extractErrorCode(data, error) ?? "server";
+    throw new BrandInvitationServiceError(code, status, error.message);
+  }
+  if (!data || typeof data !== "object") {
+    return [];
+  }
+  const invites = (data as { invites?: unknown }).invites;
+  if (!Array.isArray(invites)) {
+    return [];
+  }
+  return invites.map((raw) => {
+    const r = (raw && typeof raw === "object" ? raw : {}) as Record<
+      string,
+      unknown
+    >;
+    return {
+      id: typeof r.id === "string" ? r.id : "",
+      brand_id: typeof r.brand_id === "string" ? r.brand_id : "",
+      brand_name: typeof r.brand_name === "string" ? r.brand_name : "your brand",
+      role: r.role as BrandRole,
+      expires_at: typeof r.expires_at === "string" ? r.expires_at : "",
+    };
+  });
+}
 
 export async function listBrandInvitations(
   brandId: string,

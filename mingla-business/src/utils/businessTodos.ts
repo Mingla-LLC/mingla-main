@@ -18,7 +18,9 @@ import type { BrandPlacePipelineState } from "../services/businessPlaceAuthoring
 export type BusinessTodoAction =
   | { kind: "open_brand_switcher" }
   | { kind: "open_universal_creator" }
-  | { kind: "route"; route: string };
+  | { kind: "route"; route: string }
+  // ORCH-1108 — open the Accept/Decline sheet for a pending brand invitation.
+  | { kind: "open_pending_invite"; invitationId: string; brandName: string };
 
 export interface BusinessTodo {
   id: string;
@@ -34,6 +36,15 @@ export interface BusinessTodo {
 }
 
 export interface BusinessTodoInput {
+  /**
+   * ORCH-1108 — pending brand invitations for the signed-in email (already
+   * flash-gated by the hook; [] / omitted when none or still resolving).
+   * Rendered as the highest-priority rows, ABOVE the brand-gate early-returns,
+   * soonest-expiring first (the hook supplies expires_at ASC order). Optional so
+   * pre-1108 callers/tests that never pass invites compile unchanged; treated as
+   * [] when absent.
+   */
+  pendingInvites?: { id: string; brandName: string }[];
   /** brandsQuery resolved + zero brands. */
   hasNoBrands: boolean;
   /** Brands exist but none is selected (and not mid-resolve). */
@@ -108,10 +119,27 @@ function venueLiveSublabel(
 }
 
 export function buildBusinessTodos(input: BusinessTodoInput): BusinessTodo[] {
+  // 0 — ORCH-1108 — pending brand invitations. ALWAYS first (an invite is a
+  // one-tap relationship decision and must not be stranded behind the
+  // "Create a brand" empty-state). The hook supplies them already flash-gated
+  // and expires_at ASC; each row vanishes the instant accept/decline drops it
+  // from `pendingInvites` (no per-row local state).
+  const inviteTodos: BusinessTodo[] = (input.pendingInvites ?? []).map((inv) => ({
+    id: `pending_invite_${inv.id}`,
+    label: `You've been invited to ${inv.brandName}`,
+    sublabel: "Tap to accept or decline",
+    action: {
+      kind: "open_pending_invite",
+      invitationId: inv.id,
+      brandName: inv.brandName,
+    },
+  }));
+
   // 1 — Brand gate. Without a usable brand, the only thing to do is create/select
-  // one; nothing downstream applies, so we return early.
+  // one; nothing downstream applies, so we return early — but invite(s) first.
   if (input.hasNoBrands) {
     return [
+      ...inviteTodos,
       {
         id: "create_brand",
         label: "Create a brand",
@@ -122,6 +150,7 @@ export function buildBusinessTodos(input: BusinessTodoInput): BusinessTodo[] {
   }
   if (input.hasBrandsButNoSelection) {
     return [
+      ...inviteTodos,
       {
         id: "select_brand",
         label: "Select a brand",
@@ -131,10 +160,11 @@ export function buildBusinessTodos(input: BusinessTodoInput): BusinessTodo[] {
     ];
   }
   if (input.brandResolving || !input.hasBrand) {
-    return [];
+    // Still surface invites even while the brand resolves (hook-gated already).
+    return inviteTodos;
   }
 
-  const todos: BusinessTodo[] = [];
+  const todos: BusinessTodo[] = [...inviteTodos];
 
   // 2 — Venue. ORCH-1040: "Add/Finish your venue" only shows for brands that
   // have toggled ON a physical location (opt-in) — online-only brands, event

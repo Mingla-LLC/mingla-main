@@ -47,6 +47,7 @@ import { Toast } from "../../src/components/ui/Toast";
 import { IconChrome } from "../../src/components/ui/IconChrome";
 import { TopBar } from "../../src/components/ui/TopBar";
 import { UniversalCreatorSheet } from "../../src/components/ui/UniversalCreatorSheet";
+import { InvitePendingSheet } from "../../src/components/team/InvitePendingSheet";
 import {
   accent,
   glass,
@@ -135,6 +136,12 @@ export default function HomeTab(): React.ReactElement {
   const [sheetVisible, setSheetVisible] = useState<boolean>(false);
   // ORCH-0826 M0: universal creator sheet (Create event/experience/trip)
   const [isUniversalCreatorOpen, setIsUniversalCreatorOpen] = useState<boolean>(false);
+  // ORCH-1108 — pending-invite Accept/Decline sheet, opened from the invite
+  // To-Do row. Null when closed.
+  const [pendingInvite, setPendingInvite] = useState<{
+    invitationId: string;
+    brandName: string;
+  } | null>(null);
   // Cycle 17e-A REWORK: BrandDeleteSheet state — opens from BrandSwitcherSheet
   // trash icon taps. Mirrors account.tsx pattern per ORCH-0734-RW SPEC §3.3.
   const [deleteSheetVisible, setDeleteSheetVisible] = useState<boolean>(false);
@@ -379,6 +386,13 @@ export default function HomeTab(): React.ReactElement {
           return;
         case "route":
           router.push(todo.action.route as never);
+          return;
+        case "open_pending_invite":
+          // ORCH-1108 — open the Accept/Decline sheet for this invite.
+          setPendingInvite({
+            invitationId: todo.action.invitationId,
+            brandName: todo.action.brandName,
+          });
           return;
         default: {
           const _exhaustive: never = todo.action;
@@ -859,6 +873,25 @@ export default function HomeTab(): React.ReactElement {
         visible={isUniversalCreatorOpen}
         onClose={() => setIsUniversalCreatorOpen(false)}
       />
+
+      {/* ORCH-1108 — pending-invite Accept/Decline sheet. */}
+      {pendingInvite !== null ? (
+        <InvitePendingSheet
+          visible
+          invitationId={pendingInvite.invitationId}
+          brandName={pendingInvite.brandName}
+          onClose={() => setPendingInvite(null)}
+          onResolved={(kind, brandName) => {
+            setToast({
+              visible: true,
+              message:
+                kind === "accepted"
+                  ? `You've joined ${brandName}`
+                  : "Invitation declined",
+            });
+          }}
+        />
+      ) : null}
 
       <BrandDeleteSheet
         visible={deleteSheetVisible}

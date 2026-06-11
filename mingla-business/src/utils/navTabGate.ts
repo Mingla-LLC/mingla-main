@@ -28,7 +28,7 @@
  */
 
 import type { BottomNavTab } from "../components/ui/BottomNav";
-import { BRAND_ROLE_RANK } from "./brandRole";
+import { BRAND_ROLE_RANK, NO_MEMBERSHIP_RANK } from "./brandRole";
 
 /**
  * Per-tab minimum rank to surface the tab in the bottom-nav capsule.
@@ -65,6 +65,16 @@ export const visibleTabsForRank = <T extends BottomNavTab>(
   tabs.filter((tab) => {
     const min = (MIN_RANK_FOR_TAB as Record<string, number | undefined>)[tab.id];
     if (min === undefined) return false;
+    // ORCH-1109 — non-monotonic carve-out: Ari is reachable for a BRAND-LESS
+    // user (rank 0) so they can create their first brand via Ari's create_brand
+    // tool, AND for finance_manager+ (rank>=30). It stays HIDDEN for rank-10
+    // scanners and rank-20 marketing managers, preserving the ORCH-1055 scanner
+    // nav lockout. This is the ONLY tab with a non-monotonic rule. The literal
+    // MIN_RANK_FOR_TAB.ari stays a scalar (30) so the strict-grep + jest value
+    // assertions stay green — the non-monotonic logic lives ONLY here.
+    if (tab.id === "ari") {
+      return rank === NO_MEMBERSHIP_RANK || rank >= min;
+    }
     return rank >= min;
   });
 

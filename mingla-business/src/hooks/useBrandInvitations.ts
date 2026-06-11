@@ -21,10 +21,13 @@ import {
 
 import {
   acceptBrandInvitation,
+  acceptMyPendingInvitation,
   brandInvitationKeys,
   brandTeamMemberKeys,
+  declineBrandInvitation,
   inviteBrandMember,
   listBrandInvitations,
+  listMyPendingInvites,
   listBrandTeamMembers,
   revokeBrandInvitation,
   type AcceptBrandInvitationResult,
@@ -32,8 +35,11 @@ import {
   type BrandTeamMemberRow,
   type InviteBrandMemberInput,
   type InviteBrandMemberResult,
+  type PendingInviteRow,
 } from "../services/brandInvitationsService";
 import { brandRoleKeys } from "./useCurrentBrandRole";
+import { brandKeys } from "./useBrands";
+import { businessNotificationKeys } from "./useBusinessNotifications";
 
 // 30s — fresh enough that revoke/accept flips show up quickly; long enough
 // that re-renders don't refetch.
@@ -100,6 +106,84 @@ export const useRevokeBrandInvitation = (
       if (brandId !== null) {
         qc.invalidateQueries({
           queryKey: brandInvitationKeys.list(brandId),
+        });
+      }
+    },
+  });
+  return { mutateAsync: mutation.mutateAsync, isPending: mutation.isPending };
+};
+
+/**
+ * ORCH-1108 — the signed-in user's own pending invites (email-keyed, resolved
+ * server-side). `enabled` carries the flash-safe gate computed by the caller
+ * (auth + brand-resolution settled). Disabled when userId is null.
+ */
+export const useMyPendingInvites = (
+  userId: string | null,
+  enabled: boolean,
+): UseQueryResult<PendingInviteRow[]> => {
+  return useQuery<PendingInviteRow[]>({
+    queryKey: userId !== null
+      ? brandInvitationKeys.myPending(userId)
+      : ["brand-invitations-my-pending-disabled"],
+    enabled: userId !== null && enabled,
+    staleTime: STALE_TIME_MS,
+    queryFn: () => listMyPendingInvites(),
+  });
+};
+
+/**
+ * ORCH-1108 — accept one of the signed-in user's OWN pending invites in-app.
+ * Invalidates the pending list, the brand list (new membership), the brand's
+ * role cache, and the notification list (the bell row clears).
+ */
+export const useAcceptMyInvitation = (
+  userId: string | null,
+): {
+  mutateAsync: (invitationId: string) => Promise<AcceptBrandInvitationResult>;
+  isPending: boolean;
+} => {
+  const qc = useQueryClient();
+  const mutation = useMutation<AcceptBrandInvitationResult, Error, string>({
+    mutationFn: (invitationId) => acceptMyPendingInvitation(invitationId),
+    onSuccess: (result) => {
+      if (userId !== null) {
+        qc.invalidateQueries({
+          queryKey: brandInvitationKeys.myPending(userId),
+        });
+        qc.invalidateQueries({ queryKey: brandKeys.list(userId) });
+        qc.invalidateQueries({
+          queryKey: businessNotificationKeys.all(userId),
+        });
+      }
+      qc.invalidateQueries({
+        queryKey: brandRoleKeys.allForBrand(result.brandId),
+      });
+    },
+  });
+  return { mutateAsync: mutation.mutateAsync, isPending: mutation.isPending };
+};
+
+/**
+ * ORCH-1108 — decline one of the signed-in user's OWN pending invites in-app.
+ * Invalidates the pending list + the notification list so the row + bell clear.
+ */
+export const useDeclineMyInvitation = (
+  userId: string | null,
+): {
+  mutateAsync: (invitationId: string) => Promise<void>;
+  isPending: boolean;
+} => {
+  const qc = useQueryClient();
+  const mutation = useMutation<void, Error, string>({
+    mutationFn: (invitationId) => declineBrandInvitation(invitationId),
+    onSuccess: () => {
+      if (userId !== null) {
+        qc.invalidateQueries({
+          queryKey: brandInvitationKeys.myPending(userId),
+        });
+        qc.invalidateQueries({
+          queryKey: businessNotificationKeys.all(userId),
         });
       }
     },
