@@ -1,8 +1,8 @@
-# IMPLEMENT — ORCH-1108 / ORCH-1109 [partner-invite-surface-and-ari-gate]
+# IMPLEMENT — ORCH-1111 / ORCH-1112 [partner-invite-surface-and-ari-gate]
 
 > NOTE: This report file did not exist in the worktree at loop-back time; it is
 > created here to carry the loop-back fix section. The primary IMPLEMENT/TEST
-> history for ORCH-1108/1109 lives in the branch commits
+> history for ORCH-1111/1109 lives in the branch commits
 > `d252669d4` (implement) and `00c0167ab` (tester adversarial nav-gate).
 
 ---
