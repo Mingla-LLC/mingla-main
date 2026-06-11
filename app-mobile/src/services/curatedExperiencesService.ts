@@ -8,6 +8,12 @@ interface GenerateCuratedParams {
   travelConstraintType: 'time';
   travelConstraintValue: number;
   datetimePref?: string;
+  // ORCH-1113 [curated-experience-empty-deck-regression]: the user's date choice
+  // ("Now/Today/This Weekend/Pick a Date") + any picked dates. Threaded to the
+  // edge fn so the open-hours cascade honors the date option (live clock for
+  // today) instead of the stale stored datetime_pref.
+  dateOption?: string;
+  selectedDates?: string[] | null;
   limit?: number;
   skipDescriptions?: boolean;
   sessionId?: string;
@@ -25,7 +31,7 @@ export interface CuratedResponse {
 
 class CuratedExperiencesService {
   async generateCuratedExperiences(params: GenerateCuratedParams): Promise<CuratedResponse> {
-    const { sessionId, selectedCategories, ...edgeParams } = params;
+    const { sessionId, selectedCategories, dateOption, selectedDates, ...edgeParams } = params;
     const body: Record<string, any> = {
       ...edgeParams,
     };
@@ -36,6 +42,15 @@ class CuratedExperiencesService {
     // Only include selectedCategories if there are actual filters
     if (selectedCategories && selectedCategories.length > 0) {
       body.selectedCategories = selectedCategories;
+    }
+    // ORCH-1113: forward date context only when present (don't send undefined /
+    // empty). The edge fn defaults dateOption→undefined (→ live-clock 'today'
+    // policy) and selectedDates→null when omitted.
+    if (dateOption) {
+      body.dateOption = dateOption;
+    }
+    if (selectedDates && selectedDates.length > 0) {
+      body.selectedDates = selectedDates;
     }
 
     // Timeout handled by global fetchWithTimeout (20s) in supabase.ts.

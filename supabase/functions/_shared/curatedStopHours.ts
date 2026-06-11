@@ -208,6 +208,110 @@ export function isStopOpenAtHour(stop: any, hour: number, dayOfWeek: number): bo
   return hourInRanges(hour, parsed);
 }
 
+// ── ORCH-1113 [curated-experience-empty-deck-regression] ─────────────────────
+// Is this curated stop open at ANY hour on `dayOfWeek` (0=Sun)? Used by the
+// 'anyHourOnDays' policy mode (this_weekend / pick_dates), which is NOT anchored
+// to a wall-clock arrival time. Mirrors discover-cards filterByDateTime's
+// isOpenAnyTimeOnDay (discover-cards:609-645): ALWAYS_OPEN → true; no data → true
+// (honest-unknown, Constitution #9); else the stop has ≥1 period (or parseable
+// text range) on that day. Reuses the SAME cascade branches as isStopOpenAtHour
+// (business-array → periods → _periods → text); only the "any period on this
+// day" predicate differs from the "open at this hour" predicate.
+export function isStopOpenAtHourAnyTime(stop: any, dayOfWeek: number): boolean {
+  // 1. Always-open outdoor types.
+  const pType = stop.placeType || '';
+  if (ALWAYS_OPEN_TYPES.has(pType)) return true;
+
+  // 2. No data → assume open (honest-unknown, Constitution #9 — LOCKED).
+  const oh = stop.openingHours;
+  if (!oh || typeof oh !== 'object') return true;
+
+  // 2b. ORCH-1068 — business-authored array shape: open on any day with a period.
+  if (isBusinessHoursArray(oh)) {
+    return businessHoursToGoogleOpeningHours(oh).periods.some(
+      (period) => period.open.day === dayOfWeek,
+    );
+  }
+
+  // 3. Path A — canonical Google v1 `periods`.
+  if (Array.isArray(oh.periods) && oh.periods.length > 0) {
+    return oh.periods.some((period: any) => period.open?.day === dayOfWeek);
+  }
+
+  // 4. Path B — legacy underscore-prefixed `_periods`.
+  if (Array.isArray(oh._periods) && oh._periods.length > 0) {
+    return oh._periods.some((period: any) => period.open?.day === dayOfWeek);
+  }
+
+  // 5. Path C — text shape (legacy lowercase-day rows). Missing day text →
+  //    honest-unknown → open (parity with the hour cascade's text branch).
+  const dayName = DAY_NAMES[dayOfWeek];
+  const dayText = oh[dayName];
+  if (!dayText) return true;
+  const parsed = parseHoursText(dayText);
+  return parsed !== null && parsed.length > 0;
+}
+
+/**
+ * ORCH-1113 — The single date-option authority for the curated open-hours
+ * cascade, used by BOTH the solo (generate-curated-experiences) and collab
+ * (discover-cards) call sites. Brings the curated cascade to parity with single
+ * cards' filterByDateTime (discover-cards:509-707):
+ *   - 'today' / 'now' / empty → instant mode with the LIVE clock (NOT the stale
+ *     stored datetime_pref). This is the ROOT-CAUSE-v4 fix: a stored instant
+ *     that is afternoon in Raleigh but late-night in Brussels no longer empties
+ *     the Brussels deck. Mirrors discover-cards:654 `const utcNow = new Date()`.
+ *   - 'this_weekend' / 'weekend' → open-at-ANY-hour on Sat(6) OR Sun(0)
+ *     (mirror isOpenAnyTimeOnDay at discover-cards:673-677).
+ *   - 'pick_dates' / 'custom' → open-at-ANY-hour on each selected date's weekday
+ *     (noon-UTC day derivation, mirror discover-cards:696-700), falling back to
+ *     [datetimePref] then [now] when selectedDates is absent.
+ *   - unknown → safe default 'instant' with `now` (never trust a stale pref).
+ */
+export type CuratedHoursPolicy =
+  | { mode: 'instant'; utcNow: Date }
+  | { mode: 'anyHourOnDays'; days: number[] };
+
+export function resolveCuratedHoursPolicy(opts: {
+  dateOption?: string;
+  datetimePref?: string;
+  selectedDates?: string[] | null;
+  now?: Date;
+}): CuratedHoursPolicy {
+  const now = opts.now ?? new Date();
+  // Normalize EXACTLY as discover-cards index.ts:648 (lowercase, -/space → _).
+  const dOpt = (opts.dateOption || '').toLowerCase().replace(/-/g, '_').replace(/ /g, '_');
+
+  if (dOpt === 'today' || dOpt === 'now' || !opts.dateOption) {
+    return { mode: 'instant', utcNow: now };
+  }
+
+  if (dOpt === 'this_weekend' || dOpt === 'weekend') {
+    return { mode: 'anyHourOnDays', days: [6, 0] };
+  }
+
+  if (dOpt === 'pick_dates' || dOpt === 'custom') {
+    const dateStrs =
+      opts.selectedDates && opts.selectedDates.length > 0
+        ? opts.selectedDates
+        : (opts.datetimePref ? [opts.datetimePref] : [now.toISOString()]);
+    const days: number[] = [];
+    for (const dateStr of dateStrs) {
+      const d = new Date(dateStr);
+      if (isNaN(d.getTime())) continue;
+      // Same noon-UTC day derivation as filterByDateTime (discover-cards:697-699).
+      const noonUtc = new Date(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), 12, 0, 0);
+      days.push(noonUtc.getDay());
+    }
+    // If every selected date was unparseable, fall back to the live-clock day.
+    if (days.length === 0) days.push(now.getDay());
+    return { mode: 'anyHourOnDays', days };
+  }
+
+  // Unknown dateOption — safe default: live clock, never the stale stored pref.
+  return { mode: 'instant', utcNow: now };
+}
+
 /**
  * Drop curated cards whose any non-optional stop is CLOSED at the time the user
  * would actually arrive there (start time + cumulative prior-stop duration +
@@ -216,8 +320,41 @@ export function isStopOpenAtHour(stop: any, hour: number, dayOfWeek: number): bo
  * Extracted byte-for-behavior from discover-cards/index.ts:504-532 (it now calls
  * the D-1-fixed isStopOpenAtHour above). utcOffsetMinutes fallback, per-stop
  * duration accumulation, and optional-stop skip are unchanged.
+ *
+ * ORCH-1113: accepts a CuratedHoursPolicy. A bare `Date` (legacy callers / tests)
+ * is treated as `{ mode: 'instant', utcNow: <date> }` — preserving the existing
+ * fails-on-revert contract (T-2-01) and idempotence.
+ *   - mode 'instant'   → the unchanged multi-stop arrival cascade from utcNow.
+ *   - mode 'anyHourOnDays' → a non-optional stop passes if it is open at ANY hour
+ *     on ANY day in policy.days; no wall-clock arrival cascade (a future-day
+ *     plan has no "now" to anchor arrival times to — same rationale
+ *     filterByDateTime uses isOpenAnyTimeOnDay, not the hour cascade, for these
+ *     modes). Idempotent in both modes.
  */
-export function filterCuratedByStopHours(cards: any[], utcNow: Date): any[] {
+export function filterCuratedByStopHours(
+  cards: any[],
+  policy: CuratedHoursPolicy | Date,
+): any[] {
+  // Back-compat: a bare Date is an 'instant' policy at that instant.
+  const resolved: CuratedHoursPolicy =
+    policy instanceof Date ? { mode: 'instant', utcNow: policy } : policy;
+
+  if (resolved.mode === 'anyHourOnDays') {
+    return cards.filter((card) => {
+      if (card.cardType !== 'curated' || !card.stops?.length) return true;
+      for (let i = 0; i < card.stops.length; i++) {
+        const stop = card.stops[i];
+        if (stop.optional) continue;
+        const openOnSomeDay = resolved.days.some((day) =>
+          isStopOpenAtHourAnyTime(stop, day),
+        );
+        if (!openOnSomeDay) return false;
+      }
+      return true;
+    });
+  }
+
+  const utcNow = resolved.utcNow;
   return cards.filter((card) => {
     if (card.cardType !== 'curated' || !card.stops?.length) return true;
 

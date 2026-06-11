@@ -59,7 +59,12 @@ export interface CuratedStop {
 // ORCH-0677 RC-2: surfaced by `generate-curated-experiences` when the response
 // has zero cards. Mobile uses this to route to EMPTY UI state instead of
 // staying on INITIAL_LOADING. Optional — legacy edge fn responses omit it.
-export type CuratedEmptyReason = 'pool_empty' | 'no_viable_anchor' | 'pipeline_error';
+// ORCH-1113 [curated-experience-empty-deck-regression]: `all_closed_at_time` =
+// the candidate pool was non-empty (cards were built); every assembled itinerary
+// had a stop closed at the evaluated time. Distinct from `pool_empty` (no cards
+// could be built at all) so the empty-state copy can say "Everything's closed
+// right now" instead of "No spots match right now".
+export type CuratedEmptyReason = 'pool_empty' | 'no_viable_anchor' | 'pipeline_error' | 'all_closed_at_time';
 export interface CuratedSummary {
   emptyReason: CuratedEmptyReason;
   candidateAnchorCount: number;
