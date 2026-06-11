@@ -4311,3 +4311,17 @@ Every chat response from every skill uses Section A (what just happened) + Secti
 **Enforcement:** strict-grep gate `.github/scripts/strict-grep/orch-0990-flower-stop-florist-gate.mjs` (registered in `.github/workflows/strict-grep-mingla-business.yml`) + Deno test `supabase/functions/_shared/signalRankFetch.flowers.test.ts` + live RPC probe (tester T-01/T-03/T-08).
 
 **Cross-references:** SPEC_ORCH-0990_FLOWER_STOP_REAL_FLORISTS.md §10, COMMS-0002, COMMS-0003.
+
+### I-DELETE-ACCOUNT-REACHABLE-EMPTY-EMAIL (ACTIVE — flipped at ORCH-1110 CLOSE 2026-06-11; device-verified, Seth deleted end-to-end)
+
+**Invariant:** The business-app delete-account confirmation (`mingla-business/app/account/delete.tsx` Step 3) MUST remain reachable regardless of the stored email's state. The confirm gate is the pure helper `computeConfirmMatches(mode, resolvedEmail, typed)` in `mingla-business/src/utils/resolveUserEmail.ts`: (a) the account email is resolved via `resolveUserEmail(user)` = first non-empty-after-trim of `user.email` → `user_metadata.email` → `identities[].identity_data.email` (empty-string/whitespace is treated as ABSENT, never a match target); (b) when a real email resolves, `email` mode requires a non-empty case-insensitive match and the "YOUR EMAIL" box displays the resolved email (NEVER blank); (c) when NO real email resolves, the gate falls to `keyword` mode requiring the literal `DELETE`, so the destructive action is never deadlocked; (d) in BOTH modes an empty/whitespace input returns false (never mis-enables). Provisioning (`creatorAccount.ts`) MUST seed `creator_accounts.email` via `resolveUserEmail(user)` — a real email or NULL, NEVER `""`.
+
+**Forbidden reverts (fail the build):** (a) gating the delete button directly on `user.email`/stored email with no empty/null fallback (re-introduces the permanent-disable trap); (b) seeding `creator_accounts.email` with `user.email ?? null` or any path that can persist `""`; (c) rendering the "YOUR EMAIL" box from a raw possibly-empty value such that it can show blank when a real email is resolvable; (d) any change that makes an empty input enable the Delete button.
+
+**Why this matters:** GoTrue serializes a NULL `auth.users.email` as `""` on `User.email`; provisioning persisted that `""`, and the delete gate compared the typed real email against the empty stored value → the button was permanently disabled and the account un-deletable (a store-compliance / Constitution #1 "no dead control on its own happy path" violation). Proven on the real account `332e1733-…` (Google OAuth).
+
+**Applies to:** business-iOS + business-Android, `app/account/delete.tsx` + `src/utils/resolveUserEmail.ts` + `src/services/creatorAccount.ts`.
+
+**Enforcement:** unit/regression tests `mingla-business/src/utils/__tests__/resolveUserEmail.test.ts` + `deleteAccountGate.test.ts` (T-G1 fails-on-revert proven at `4b6d9480a`; T-A1 blank-input-no-enable; T-A2 NULL-email-still-deletable-via-keyword) + `creatorAccountEnsure.test.ts` extension. Append-only.
+
+**Cross-references:** SPEC_ORCH-1110_blank-email-undeletable-account.md §4.1/§4.3, PR #437 (`9c7e6bdd0`), backfill migration `20260925000000`.

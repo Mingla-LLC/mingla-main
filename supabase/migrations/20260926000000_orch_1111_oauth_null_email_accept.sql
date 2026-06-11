@@ -9,7 +9,7 @@
 -- ownership transfer / accept could never complete.
 --
 -- FIX: CREATE OR REPLACE the function VERBATIM from the latest definition in
--- 20260924000000_orch_1108_brand_invite_declined.sql (keeping the P0007 declined
+-- 20260924000000_orch_1111_brand_invite_declined.sql (keeping the P0007 declined
 -- guard, the app.allow_brand_owner_transfer bypass, accepted_by_account_id,
 -- audit_log shape, partner_brand_links stamp, partner_setup return — ALL
 -- unchanged) and change ONLY the v_acceptor_email resolution: when the
