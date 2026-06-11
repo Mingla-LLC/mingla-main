@@ -30,6 +30,7 @@ import {
   ALWAYS_OPEN_TYPES,
   isStopOpenAtHour,
   filterCuratedByStopHours,
+  resolveCuratedHoursPolicy,
 } from '../_shared/curatedStopHours.ts';
 // ORCH-1068 [business-authored venues render on deck]: business venues persist
 // hours as a top-level array [{weekday(0=Mon),isClosed,openTime,closeTime}], not
@@ -1554,8 +1555,17 @@ async function handleDeterministicV2(args: {
           'today',
           agg.selectedDates ?? undefined,
         );
-  const curatedUtcNow = agg.datetimePref ? new Date(agg.datetimePref) : new Date();
-  const hoursFilteredCards = filterCuratedByStopHours(timeFilteredCards, curatedUtcNow);
+  // ORCH-1113: route the curated cascade through the date-option policy so it no
+  // longer evaluates against the stale stored datetime_pref for 'today'. The
+  // collab aggregate (pg_aggregate_collab_prefs) does not expose a date option,
+  // so this aggregate path uses 'today' (live clock) — matching the 'today' that
+  // filterByDateTime is already called with at line 1554.
+  const curatedHoursPolicy = resolveCuratedHoursPolicy({
+    dateOption: 'today',
+    datetimePref: agg.datetimePref ?? undefined,
+    selectedDates: agg.selectedDates ?? undefined,
+  });
+  const hoursFilteredCards = filterCuratedByStopHours(timeFilteredCards, curatedHoursPolicy);
   const picked = candidateCards.find((item) =>
     hoursFilteredCards.some((card: any) => card.id === item.card.id),
   );
@@ -2393,8 +2403,12 @@ serve(async (req: Request) => {
     const timeFilteredCards = dateWindows && dateWindows.length > 0
       ? filterByDateWindows(constraintFilteredCards, dateWindows, datetimePref, selectedDates)
       : filterByDateTime(constraintFilteredCards, datetimePref, dateOption, selectedDates);
-    const curatedUtcNow = datetimePref ? new Date(datetimePref) : new Date();
-    const hoursFilteredCards = filterCuratedByStopHours(timeFilteredCards, curatedUtcNow);
+    // ORCH-1113: honor the date option in the curated cascade (live clock for
+    // 'today'; open-at-any-hour for weekend/pick-dates) instead of evaluating
+    // against the stale stored datetime_pref. dateOption + selectedDates are in
+    // scope here (passed to filterByDateTime above), so reuse them.
+    const curatedHoursPolicy = resolveCuratedHoursPolicy({ dateOption, datetimePref, selectedDates });
+    const hoursFilteredCards = filterCuratedByStopHours(timeFilteredCards, curatedHoursPolicy);
 
     // Step 11: keep signal-score ranked order. ORCH-0902 CR-9: legacy collab
     // branch (place_id sort + zero matchScore for sessionId presence) was

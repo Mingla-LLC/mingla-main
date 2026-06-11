@@ -5,6 +5,8 @@
   "swipeable.seen_everything": "You've seen everything available",
   "swipeable.no_matches_title": "No spots match right now",
   "swipeable.no_matches_subtitle": "Try widening your categories, distance, or date to see more options.",
+  "swipeable.all_closed_title": "Everything's closed right now",
+  "swipeable.all_closed_subtitle": "These spots are great but closed at this time. Try \"This Weekend\" or pick a date to plan ahead.",
   "swipeable.shift_vibe": "Shift your vibe to unlock new spots, or look back at what you've been through.",
   "swipeable.shift_preferences": "Shift preferences",
   "swipeable.review_all_cards": "Review all cards",

@@ -124,6 +124,11 @@ interface RecommendationsContextType {
    *  resolved yet (loading, disabled, or pre-first-fetch). */
   serverPath?: import('../services/deckService').DeckServerPath;
   collabDeckDeadEndReason?: string;
+  /** ORCH-1113 [curated-experience-empty-deck-regression]: the curated-only
+   *  empty verdict for BOTH solo and collab, surfaced so SwipeableCards can
+   *  branch the empty-state copy (e.g. 'all_closed_at_time' → "Everything's
+   *  closed right now"). Undefined when the deck is non-empty or not curated. */
+  curatedEmptyReason?: import('../services/deckService').CuratedEmptyReason;
   collabDeadEndPayload?: CollabDeadEndPayload;
   /** ORCH-0490 Phase 2.3: expansion signal. True when the current deck swap
    *  is a same-context pref expansion (not a mode/session switch). Drives
@@ -1918,6 +1923,11 @@ export const RecommendationsProvider: React.FC<
     collabDeckDeadEndReason: isCollaborationMode
       ? soloCuratedEmptyReason
       : undefined,
+    // ORCH-1113: surface the curated empty verdict for BOTH solo and collab so
+    // SwipeableCards can branch the empty-state copy on 'all_closed_at_time'.
+    // (collabDeckDeadEndReason above remains collab-only for the existing
+    // notify-group dead-end UX; this field is purely the copy-branch signal.)
+    curatedEmptyReason: soloCuratedEmptyReason,
     collabDeadEndPayload: isCollaborationMode
       ? collabDeadEndPayload
       : undefined,

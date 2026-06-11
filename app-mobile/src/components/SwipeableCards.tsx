@@ -692,6 +692,9 @@ export default function SwipeableCards({
     showPipelineErrorToast,
     serverPath,
     collabDeckDeadEndReason,
+    // ORCH-1113 [curated-experience-empty-deck-regression]: solo+collab curated
+    // empty verdict, used to branch the empty-state copy for 'all_closed_at_time'.
+    curatedEmptyReason,
     collabDeadEndPayload,
     // ORCH-0490 Phase 2.3: expansion signal. True when a deck swap is a
     // same-context pref-change expansion (new cards streaming into the same
@@ -2363,8 +2366,17 @@ export default function SwipeableCards({
         lastViewedCardIdRef.current = analyticsSentinel;
       }
 
+      // ORCH-1113: when a curated-only deck empties because every assembled
+      // itinerary had a stop closed at the evaluated time, the title/subtitle
+      // are honest ("Everything's closed right now") instead of the generic
+      // "No spots match right now". Any other empty reason keeps the original
+      // copy. The collab dead-end copy (getCollabDeadEndCopy) still takes
+      // precedence below; this only affects the plain-empty case.
+      const isAllClosedAtTime = isEmpty && curatedEmptyReason === 'all_closed_at_time';
       const titleKey = isEmpty
-        ? 'cards:swipeable.no_matches_title'
+        ? (isAllClosedAtTime
+            ? 'cards:swipeable.all_closed_title'
+            : 'cards:swipeable.no_matches_title')
         : 'cards:swipeable.seen_everything';
       const collabDeadEndCopy = getCollabDeadEndCopy();
 
@@ -2398,7 +2410,9 @@ export default function SwipeableCards({
                     ? collabDeadEndCopy.subtitle
                     : undefined) ??
                     (isEmpty
-                    ? t('cards:swipeable.no_matches_subtitle')
+                    ? (isAllClosedAtTime
+                        ? t('cards:swipeable.all_closed_subtitle')
+                        : t('cards:swipeable.no_matches_subtitle'))
                     : (() => {
                         const hour = new Date().getHours();
                         const isLateNight = hour >= 21 || hour < 6;

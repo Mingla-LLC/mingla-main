@@ -22,7 +22,7 @@ import {
 // (this fn, called directly by deckService.ts) previously applied NO open-hours
 // filter — solo users could be served a plan whose stop was closed on arrival.
 // Now solo inherits the SAME gate collab already gets via discover-cards.
-import { filterCuratedByStopHours } from '../_shared/curatedStopHours.ts';
+import { filterCuratedByStopHours, resolveCuratedHoursPolicy } from '../_shared/curatedStopHours.ts';
 
 /* ─────────────────────────────────────────────────────────────────────────────
  * generate-curated-experiences  –  Pool-Only Curated Card Generator
@@ -451,7 +451,9 @@ interface ExperienceTypeDef {
 // curated-only empty results to the EMPTY UI state instead of stuck-loading.
 // `pool_empty` = no anchor candidates; `no_viable_anchor` = anchors existed but
 // every reverse-anchor candidate failed; `pipeline_error` = caught exception.
-export type CuratedEmptyReason = 'pool_empty' | 'no_viable_anchor' | 'pipeline_error';
+// ORCH-1113: `all_closed_at_time` = candidate pool was non-empty (cards built)
+// but every assembled itinerary had a stop closed at the evaluated time.
+export type CuratedEmptyReason = 'pool_empty' | 'no_viable_anchor' | 'pipeline_error' | 'all_closed_at_time';
 export interface CuratedSummary {
   emptyReason: CuratedEmptyReason;
   candidateAnchorCount: number;
@@ -1631,12 +1633,28 @@ export const handler = async (req: Request): Promise<Response> => {
       // is not re-fetched here. Optional; the curated client does not send it
       // today, so it defaults to [] and is a no-op until wired.
       excludeCardIds = [],
+      // ORCH-1113 [curated-experience-empty-deck-regression]: the user's date
+      // choice ("Now/Today/This Weekend/Pick a Date") + any picked dates. Used
+      // by resolveCuratedHoursPolicy so the open-hours cascade honors the date
+      // option (live clock for today; open-at-any-hour for weekend/pick-dates)
+      // instead of evaluating against the stale stored datetime_pref.
+      dateOption,
+      selectedDates = null,
     } = body;
     if (!Array.isArray(excludePlacePoolIds)) {
       excludePlacePoolIds = [];
     }
     if (!Array.isArray(excludeCardIds)) {
       excludeCardIds = [];
+    }
+    // ORCH-1113: defensive shape — array of strings or null (drop non-strings;
+    // coerce non-array to null), same pattern as excludePlacePoolIds above.
+    if (Array.isArray(selectedDates)) {
+      selectedDates = selectedDates.filter(
+        (v: unknown): v is string => typeof v === 'string' && v.length > 0,
+      );
+    } else {
+      selectedDates = null;
     }
     const warmPool = body.warmPool ?? false;
 
@@ -1731,15 +1749,31 @@ export const handler = async (req: Request): Promise<Response> => {
     );
 
     // ORCH-1061 PART 2: open-during-outing filter — solo path inherits the SAME
-    // cascade collab gets via discover-cards. Start time mirrors discover-cards
-    // (datetimePref ? new Date(datetimePref) : new Date()). filterCuratedByStopHours
-    // is idempotent, so the collab path filtering again downstream is a no-op.
-    const curatedUtcNow = datetimePref ? new Date(datetimePref) : new Date();
-    cards = filterCuratedByStopHours(cards, curatedUtcNow);
+    // cascade collab gets via discover-cards. filterCuratedByStopHours is
+    // idempotent, so the collab path filtering again downstream is a no-op.
+    //
+    // ORCH-1113 [curated-experience-empty-deck-regression]: the policy now
+    // honors the user's date_option. For 'today'/'now' it evaluates from the
+    // LIVE clock (NOT the stale stored datetime_pref) — parity with single
+    // cards' filterByDateTime today mode (discover-cards:654). For
+    // 'this_weekend'/'pick_dates' it evaluates open-at-any-hour on the target
+    // day(s). Collab note (SPEC §10): aggregateSessionPreferences exposes neither
+    // dateOption nor selectedDates (only datetimePref), and this fn's collab
+    // branch is the teaser/aggregate path (the primary collab curated supply
+    // runs through discover-cards' deterministic handler), so we use the body
+    // values here — no new aggregation field is added.
+    const hoursPolicy = resolveCuratedHoursPolicy({ dateOption, datetimePref, selectedDates });
+    // ORCH-1113: capture the pre-filter count so the empty reason is honest —
+    // cards built then hours-dropped ⇒ 'all_closed_at_time'; genuinely empty
+    // candidate pool ⇒ 'pool_empty'.
+    const builtCount = cards.length;
+    cards = filterCuratedByStopHours(cards, hoursPolicy);
     // If hours-filtering emptied the deck, surface the existing empty verdict
     // shape so mobile routes to the EMPTY UI state instead of stuck-loading.
     if (cards.length === 0 && !summary) {
-      summary = { emptyReason: 'pool_empty', candidateAnchorCount: 0, failedAnchorCount: 0 };
+      summary = builtCount > 0
+        ? { emptyReason: 'all_closed_at_time', candidateAnchorCount: builtCount, failedAnchorCount: builtCount }
+        : { emptyReason: 'pool_empty', candidateAnchorCount: 0, failedAnchorCount: 0 };
     }
 
     console.log(`[curated-v2] Generated ${cards.length} ${experienceType} cards`);

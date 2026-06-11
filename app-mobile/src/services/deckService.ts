@@ -71,6 +71,10 @@ export interface DeckParams {
   travelConstraintValue: number;
   datetimePref?: string;
   dateOption?: string;
+  // ORCH-1113 [curated-experience-empty-deck-regression]: picked dates for the
+  // 'pick_dates' date option; forwarded to the curated edge fn so its open-hours
+  // cascade evaluates the selected day(s) rather than the stale datetime_pref.
+  selectedDates?: string[];
   batchSeed?: number;
   limit?: number;
   excludeCardIds?: string[];
@@ -737,6 +741,11 @@ class DeckService {
               travelConstraintType: params.travelConstraintType,
               travelConstraintValue: params.travelConstraintValue,
               datetimePref: params.datetimePref,
+              // ORCH-1113: thread the date option + picked dates so the curated
+              // open-hours cascade honors them (live clock for today) instead of
+              // the stale stored datetime_pref.
+              dateOption: params.dateOption,
+              selectedDates: params.selectedDates,
               batchSeed: params.batchSeed,
               selectedCategories: categoryFilters.length > 0 ? categoryFilters : undefined,
               limit: curatedLimit,
@@ -957,7 +966,12 @@ class DeckService {
     // ORCH-0677 RC-2: when curated-only deck returns empty, route to EMPTY
     // UI state instead of INITIAL_LOADING. Pre-fix, hasMoreFromEdge stayed
     // true and the EMPTY branch in RecommendationsContext never fired.
-    // Aggregation precedence: pipeline_error > no_viable_anchor > pool_empty.
+    // Aggregation precedence (ORCH-1113):
+    //   pipeline_error > no_viable_anchor > all_closed_at_time > pool_empty.
+    // `all_closed_at_time` ranks above `pool_empty` so that if ANY pill emptied
+    // because its assembled itineraries were all closed at the evaluated time
+    // (cards built then hours-dropped) while another genuinely had no pool, the
+    // user gets the more actionable "everything is closed" message.
     // Mixed decks (categoryPills.length > 0) are unaffected — pagination
     // contract stays in place.
     const isCuratedOnly = curatedPills.length > 0 && categoryPills.length === 0;
@@ -966,6 +980,7 @@ class DeckService {
       const reasons = Array.from(pillEmptyReasons.values());
       if (reasons.includes('pipeline_error')) curatedEmptyReason = 'pipeline_error';
       else if (reasons.includes('no_viable_anchor')) curatedEmptyReason = 'no_viable_anchor';
+      else if (reasons.includes('all_closed_at_time')) curatedEmptyReason = 'all_closed_at_time';
       else curatedEmptyReason = 'pool_empty'; // covers pool_empty + legacy responses without summary
       hasMoreFromEdge = false;
     }

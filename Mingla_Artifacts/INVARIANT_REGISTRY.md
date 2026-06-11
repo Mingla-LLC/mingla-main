@@ -19,6 +19,16 @@
 
 ---
 
+## ACTIVE (post ORCH-1113 [curated-experience-empty-deck-regression] CLOSE 2026-06-11)
+
+### I-PROPOSED-CURATED-HONORS-DATE-OPTION
+- **Rule:** The curated multi-stop open-hours evaluation MUST honor `date_option`: use the LIVE clock for `today`/`now` (parity with single-card `filterByDateTime`'s `today` mode), and open-at-ANY-hour-on-target-day(s) for `this_weekend`/`pick_dates`. The curated cascade MUST NOT evaluate stop open/closed against a stored `datetime_pref` instant for `today`. Both the solo (`generate-curated-experiences`) and collab (`discover-cards`) curated paths compute the policy via the shared `resolveCuratedHoursPolicy` in `supabase/functions/_shared/curatedStopHours.ts`. Preserves ORCH-1061's same-day "don't serve a closed venue right now" intent (I-CURATED-HOURS-VIA-CANONICAL-READER) and Constitution #9 honest-unknown (no-hours venues assume open).
+- **Enforcement:** the §9 regression tests — implementor happy-path `supabase/functions/_shared/__tests__/curatedStopHours.test.ts` and tester adversarial `supabase/functions/_shared/__tests__/curatedStopHours.adversarial.test.ts`; both assert `policy.mode==='instant'` carries the LIVE clock (never the parsed stale pref) under `today`, and the day-set policy under `this_weekend`/`pick_dates`. The shared module is also exercised by `generate-curated-experiences` + `discover-cards` test suites.
+- **Test that catches a regression:** T-01 (Brussels +120, policy-only) fails-on-revert at `b87804932`; tester T-3-01 (Tokyo +540, end-to-end filter) fails-on-revert at `cb9ccf1a1` — reverting the `today` policy line drops the live-local-noon-open remote card.
+- **Established:** flipped DRAFT → ACTIVE 2026-06-11 at ORCH-1113 CLOSE (registered DRAFT in the ORCH-1113 SPEC §6).
+
+---
+
 ## ACTIVE (post ORCH-1103 [Ari smart brand CRUD + in-chat media] IMPLEMENT 2026-06-08)
 
 ### I-ARI-BRAND-DELETE-GUARD
