@@ -12,6 +12,7 @@ import { useMemo } from "react";
 import { useAuth } from "../context/AuthContext";
 import { useBrandPlacePipelineState } from "./useBrandPlacePipelineState";
 import { useBrands } from "./useBrands";
+import { useMyPendingInvites } from "./useBrandInvitations";
 import { useCurrentBrand } from "./useCurrentBrand";
 import { useCurrentBrandRecovery } from "./useCurrentBrandRecovery";
 import { useServerDraftsForBrand } from "./useServerDraftEvents";
@@ -36,7 +37,7 @@ import { venueClaimBannerVariant } from "../services/venueClaimBannerLogic";
 import { useVenueClaimOpenCount } from "./useVenueClaimFeedback";
 
 export function useBusinessTodos(): BusinessTodo[] {
-  const { user } = useAuth();
+  const { user, isAuthReady } = useAuth();
   const brandsQuery = useBrands(user?.id ?? null);
   const brands = brandsQuery.data ?? [];
   const currentBrand = useCurrentBrand();
@@ -76,6 +77,25 @@ export function useBusinessTodos(): BusinessTodo[] {
     currentBrand === null &&
     !isBrandResolving;
 
+  // ORCH-1111 — pending-invite detection. Flash-safe gate (mirrors ORCH-1100
+  // RC-1 + the hasNoBrands guard above): only query once auth has settled, we
+  // have an account id, the brand list has resolved, and the brand pointer is
+  // not mid-hydration. Gating on the SAME isBrandResolving the to-do list
+  // trusts keeps the invite row's appearance atomic with the rest of the list,
+  // structurally preventing a one-frame invite-row flash.
+  const inviteDetectionReady =
+    isAuthReady === true &&
+    user?.id != null &&
+    brandsQuery.isFetched &&
+    !isBrandResolving;
+  const myPending = useMyPendingInvites(user?.id ?? null, inviteDetectionReady);
+  const myPendingData = myPending.data;
+  const pendingInvites = useMemo(
+    () =>
+      (myPendingData ?? []).map((p) => ({ id: p.id, brandName: p.brand_name })),
+    [myPendingData],
+  );
+
   // META-ORCH-1059 — the venue-claim "under review" to-do row (replaces the Hub
   // blue banner). Reuse the SAME variant logic the banner used so the row shows
   // for exactly the pending/under-review states (pending_review + admin follow-up).
@@ -114,6 +134,7 @@ export function useBusinessTodos(): BusinessTodo[] {
   return useMemo(
     () =>
       buildBusinessTodos({
+        pendingInvites,
         hasNoBrands,
         hasBrandsButNoSelection,
         brandResolving: isBrandResolving,
@@ -143,6 +164,7 @@ export function useBusinessTodos(): BusinessTodo[] {
             : "",
       }),
     [
+      pendingInvites,
       hasNoBrands,
       hasBrandsButNoSelection,
       isBrandResolving,

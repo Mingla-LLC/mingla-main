@@ -38,6 +38,14 @@ import {
   dispatchNotification,
   getBrandTeamUserIdsByRoles,
 } from "../_shared/stripeEdgeAuth.ts";
+// ORCH-1111 loop-back fix — OAuth users can have auth.users.email = NULL; the
+// verified email lives only on auth.identities. Resolve a TRUSTED caller email
+// (users.email → verified OAuth identity) for the email-match check. NEVER
+// trust user_metadata.
+import {
+  makeAuthIdentitiesFetcher,
+  resolveTrustedCallerEmail,
+} from "../_shared/trustedCallerEmail.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -51,6 +59,10 @@ function json(body: unknown, status = 200): Response {
     headers: { ...corsHeaders, "Content-Type": "application/json" },
   });
 }
+
+// ORCH-1111 — uuid shape for the email-trusted tokenless accept branch.
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 // META-ORCH-1074 Sub-A (Sub-D §3.11): humanize the brand role for copy.
 // Falls back to "a teammate" for unknown/missing roles.
@@ -99,6 +111,10 @@ export function mapRpcError(code: string | undefined): {
       return { status: 410, error: "invite_revoked" };
     case "P0006":
       return { status: 409, error: "invite_currency_mismatch" };
+    case "P0007":
+      // ORCH-1111 — a declined invite is terminal (the RPC refuses it even on
+      // the raw token / web path so a stale email link can't resurrect it).
+      return { status: 410, error: "invite_declined" };
     default:
       return null;
   }
@@ -145,8 +161,16 @@ export async function handler(req: Request): Promise<Response> {
     string,
     unknown
   >;
+  // ORCH-1111 — accept EITHER { token } (web path, unchanged) OR
+  // { invitationId } (new in-app, email-trusted, tokenless path). The token
+  // branch is preferred when present so the existing web flow is byte-identical.
   const token = typeof body.token === "string" ? body.token.trim() : "";
-  if (token.length < 16 || token.length > 256) {
+  const invitationId = typeof body.invitationId === "string"
+    ? body.invitationId.trim()
+    : "";
+  const hasToken = token.length >= 16 && token.length <= 256;
+  const hasInvitationId = UUID_RE.test(invitationId);
+  if (!hasToken && !hasInvitationId) {
     return json({ error: "validation" }, 400);
   }
 
@@ -171,6 +195,15 @@ export async function handler(req: Request): Promise<Response> {
       auth: { persistSession: false, autoRefreshToken: false },
     });
 
+    // ORCH-1111 loop-back fix — resolve the caller email ONCE from the TRUSTED
+    // chain (auth.users.email → verified auth.identities OAuth email). Google
+    // OAuth users have a NULL users.email; without this the email-match below
+    // 403'd. user_metadata is user-writable → NEVER consulted.
+    const trustedCallerEmail = await resolveTrustedCallerEmail(
+      userResult.user,
+      makeAuthIdentitiesFetcher(service),
+    );
+
     // Resolve creator_accounts.id for this auth user.
     const { data: account, error: accountErr } = await service
       .from("creator_accounts")
@@ -189,7 +222,53 @@ export async function handler(req: Request): Promise<Response> {
       return json({ error: "invite_email_mismatch" }, 403);
     }
 
-    const tokenHash = await sha256Hex(token);
+    // ORCH-1111 — resolve the token_hash to pass to the RPC. Two paths:
+    //   (web)    { token } → SHA-256(token) directly (unchanged).
+    //   (in-app) { invitationId } → look the invite up by id, prove identity by
+    //            JWT email == stored email, refuse any non-pending invite
+    //            (declined included) BEFORE the RPC, then reuse its stored
+    //            token_hash so the SINGLE accept RPC runs verbatim. The invitee
+    //            never sees the one-way-hashed raw token.
+    let tokenHash: string;
+    if (hasToken) {
+      tokenHash = await sha256Hex(token);
+    } else {
+      const { data: inviteRow, error: inviteLookupErr } = await service
+        .from("brand_invitations")
+        .select("token_hash, email, status")
+        .eq("id", invitationId)
+        .maybeSingle();
+      if (inviteLookupErr) {
+        console.error(
+          "[accept-brand-invitation] invite lookup failed",
+          inviteLookupErr.message,
+        );
+        return json({ error: "server" }, 500);
+      }
+      if (!inviteRow) {
+        return json({ error: "invite_not_found" }, 404);
+      }
+      const callerEmail = trustedCallerEmail;
+      const storedEmail = ((inviteRow as { email?: unknown }).email ?? "");
+      if (
+        callerEmail.length === 0 ||
+        (typeof storedEmail === "string" &&
+          storedEmail.trim().toLowerCase() !== callerEmail)
+      ) {
+        // The login email IS the identity proof (locked access model).
+        return json({ error: "invite_email_mismatch" }, 403);
+      }
+      if ((inviteRow as { status?: unknown }).status !== "pending") {
+        // Refuse any non-pending invite (declined/accepted/revoked/expired)
+        // BEFORE the RPC — terminal-state guard for the in-app path.
+        return json({ error: "invite_not_actionable" }, 410);
+      }
+      const resolvedHash = (inviteRow as { token_hash?: unknown }).token_hash;
+      if (typeof resolvedHash !== "string" || resolvedHash.length === 0) {
+        return json({ error: "invite_not_found" }, 404);
+      }
+      tokenHash = resolvedHash;
+    }
 
     const { data: rpcResult, error: rpcErr } = await service.rpc(
       "accept_invite_and_transfer_brand_ownership",
@@ -342,8 +421,10 @@ export async function handler(req: Request): Promise<Response> {
             .eq("id", account.id)
             .maybeSingle();
           // Auth-user email lookup is needed because creator_accounts doesn't
-          // carry email; the JWT does. We already have it via userResult.
-          const memberEmail = (userResult.user.email ?? "").toLowerCase();
+          // carry email; the JWT does. ORCH-1111 loop-back — use the TRUSTED
+          // resolution (handles Google null-email users) so the partner-link
+          // match works for OAuth owners too.
+          const memberEmail = trustedCallerEmail;
           if (memberEmail.length > 0) {
             const { data: linkRow } = await service
               .from("partner_brand_links")
