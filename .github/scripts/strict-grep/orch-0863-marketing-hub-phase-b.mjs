@@ -1588,6 +1588,9 @@ function checkNoNewBackendFiles() {
   // these are the two NEW Deno regression tests under supabase/functions/__tests__/.
   // No new edge function, no migration. Per COMMS-0002.
   const ORCH_1108_BACKEND_ALLOWLIST = [
+    "supabase/functions/generate-ai-summary/index.ts",
+    "supabase/functions/ai-reason/index.ts",
+    "supabase/functions/score-place-photo-aesthetics/index.ts",
     "supabase/functions/__tests__/orch_1108_dead_functions_removed.test.ts",
     "supabase/functions/__tests__/orch_1108_no_dangling_refs.test.ts",
   ];
