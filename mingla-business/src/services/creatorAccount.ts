@@ -1,5 +1,6 @@
 import type { User } from "@supabase/supabase-js";
 import { supabase } from "./supabase";
+import { resolveUserEmail } from "../utils/resolveUserEmail";
 
 export interface CreatorAccountUpdatePatch {
   display_name?: string;
@@ -34,7 +35,11 @@ export async function ensureCreatorAccount(user: User): Promise<void> {
   const { error } = await supabase.from("creator_accounts").upsert(
     {
       id: user.id,
-      email: user.email ?? null,
+      // ORCH-1110: never persist the empty string. `user.email` is `""` (not
+      // null) when auth.users.email is NULL; resolveUserEmail treats "" as
+      // absent and falls back to user_metadata/identity email, else NULL.
+      // Do NOT revert to `user.email ?? null` (re-introduces the "" seed).
+      email: resolveUserEmail(user),
       display_name: displayName,
       avatar_url: avatarUrl,
     },
