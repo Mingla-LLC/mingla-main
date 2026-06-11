@@ -1594,6 +1594,12 @@ function checkNoNewBackendFiles() {
     "supabase/functions/ticket-checkout-create/index.ts",
     "supabase/functions/ticket-checkout-status/index.ts",
   ];
+  // ORCH-1110 [Business-app blank email + un-deletable account] PR #437. C7 is
+  // scoped to ORCH-0863 marketing; this is the one-time creator_accounts.email
+  // backfill migration (delete-gate-hardening ORCH), not marketing scope.
+  const ORCH_1110_BACKEND_ALLOWLIST = [
+    "supabase/migrations/20260925000000_orch_1110_backfill_creator_account_email.sql",
+  ];
   // ORCH-1032 [Intelligence pipeline concurrency cap + chunked enqueue]:
   // adds the additive 'queued'-status migration (status CHECK widen + per-city
   // unique active index widen + tg_kick_pending_trial_runs promotion built on
@@ -1981,6 +1987,7 @@ function checkNoNewBackendFiles() {
     ...ORCH_1103_BACKEND_ALLOWLIST,
     ...ORCH_1107_BACKEND_ALLOWLIST,
     ...ORCH_426_BACKEND_ALLOWLIST,
+    ...ORCH_1110_BACKEND_ALLOWLIST,
     // Schedule-edit buyer protection + "Refund all & proceed" (separate PR;
     // shares the ORCH-1047 work id used in code). New migration recording the
     // already-live business_patch_event_when change — not ORCH-0863 marketing
