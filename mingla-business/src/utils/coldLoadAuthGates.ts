@@ -112,14 +112,92 @@ export const isSignInRoute = (pathname: string | null | undefined): boolean => {
 };
 
 /**
- * REDIRECT-TO-SIGN-IN, loop-safe — ORCH-1103.
+ * PUBLIC-BUYER-ROUTE ALLOWLIST — ORCH-1115 [anon-buyer web funnel restored].
+ *
+ * THE P0 SYMPTOM: ORCH-1102 moved the unauthenticated "no dead-end" sign-in
+ * redirect from a route-list / `(tabs)`-scoped gate to the ROOT layout, which
+ * wraps EVERY route — with no allowlist for the intentionally-public buyer
+ * routes. A genuinely logged-out guest opening a share link (`/e/ /t/ /b/
+ * /exp/`), a guest checkout (`/checkout/ /checkout-trip/ /checkout-experience/`),
+ * or a post-purchase receipt / emailed cancel link (`/o/ /booking/`) was bounced
+ * to the business sign-in wall; the buyer page + checkout never rendered. RLS is
+ * fully permissive to anon — this is purely a client route-gate bug.
+ *
+ * THIS CONSTANT is the SINGLE SOURCE OF TRUTH for the anon-tolerant public buyer
+ * routes (`feedback_anon_buyer_routes.md`). Any NEW public buyer route MUST be
+ * added HERE (and to `orch_1115_anon_buyer_route_allowlist.test.ts`) and ONLY
+ * here — do not duplicate the prefix list anywhere else. Carries
+ * I-PROPOSED-1115-PUBLIC-BUYER-ROUTE-ALLOWLIST.
+ *
+ * Each entry is matched as a path-SEGMENT prefix by `isPublicBuyerRoute` (so
+ * `/checkout/x` matches but `/checkouter` does NOT).
+ */
+export const PUBLIC_BUYER_ROUTE_PREFIXES = [
+  "/e/", // /e/[brandSlug]/[eventSlug] — public event page (share link)
+  "/t/", // /t/[brandSlug]/[tripSlug] — public trip page (share link)
+  "/b/", // /b/[brandSlug] — public brand page (share link)
+  "/exp/", // /exp/[brandSlug]/[experienceSlug] — public experience page (share link)
+  "/checkout/", // /checkout/[eventId]/… — event guest checkout
+  "/checkout-trip/", // /checkout-trip/[tripEventId]/… — trip guest checkout
+  "/checkout-experience/", // /checkout-experience/[experienceEventId]/… — experience guest checkout
+  "/o/", // /o/[orderId] — buyer order receipt (post-purchase, anon-tolerant per I-21)
+  "/booking/", // /booking/[orderId]/cancel — buyer cancel-from-email (anon-buyer-tolerant)
+] as const;
+
+/**
+ * Is the current pathname an anon-tolerant PUBLIC BUYER route — ORCH-1115?
+ *
+ * Pure, RN-import-free (same discipline as the rest of the file so it is
+ * node-jest-unit-testable and fails-on-revert). Used to EXEMPT a public buyer
+ * route from the root-layout unauthenticated redirect (the exemption can only
+ * ever turn a redirect OFF on a public route — never ON).
+ *
+ * Matching (segment-safe prefix match on the pathname only — no query string):
+ * - null / undefined / empty / whitespace-only → false (a missing pathname is
+ *   NOT a public route; it falls through to the existing `isSignInRoute`
+ *   behavior, which treats empty as `/`).
+ * - Trim; strip a single trailing slash for `length > 1` (mirrors
+ *   `isSignInRoute` normalization) so `/checkout/` and `/checkout` both behave.
+ * - For each prefix `P`, let `base = P` without its trailing slash (e.g.
+ *   `/checkout`). Match iff `normalized === base` OR
+ *   `normalized.startsWith(base + "/")`. The `+ "/"` keeps it SEGMENT-SAFE:
+ *   `/checkouter` does NOT match `/checkout/`.
+ */
+export const isPublicBuyerRoute = (
+  pathname: string | null | undefined,
+): boolean => {
+  if (pathname === null || pathname === undefined) return false;
+  const trimmed = pathname.trim();
+  if (trimmed === "") return false;
+  // Strip a single trailing slash (but never the root "/" itself).
+  const normalized =
+    trimmed.length > 1 && trimmed.endsWith("/")
+      ? trimmed.slice(0, -1)
+      : trimmed;
+  return PUBLIC_BUYER_ROUTE_PREFIXES.some((prefix) => {
+    const base = prefix.endsWith("/") ? prefix.slice(0, -1) : prefix;
+    return normalized === base || normalized.startsWith(`${base}/`);
+  });
+};
+
+/**
+ * REDIRECT-TO-SIGN-IN, loop-safe + public-buyer-aware — ORCH-1103 + ORCH-1115.
  *
  * Combines the ORCH-1102 `shouldRedirectToSignIn` decision with the
- * already-at-sign-in guard: only emit the `<Redirect href="/" />` when the user
- * genuinely needs to leave the CURRENT route to reach sign-in. When already on
- * `/`, return false so the layout renders the Stack (welcome screen) instead of
- * redirecting to itself — killing the #185 self-redirect loop. Native is never
- * web, so this is a no-op off-web (matches `shouldRedirectToSignIn`).
+ * already-at-sign-in guard (ORCH-1103): only emit the `<Redirect href="/" />`
+ * when the user genuinely needs to leave the CURRENT route to reach sign-in.
+ * When already on `/`, return false so the layout renders the Stack (welcome
+ * screen) instead of redirecting to itself — killing the #185 self-redirect
+ * loop. Native is never web, so this is a no-op off-web (matches
+ * `shouldRedirectToSignIn`).
+ *
+ * ORCH-1115: ALSO returns false when the pathname is a PUBLIC BUYER route
+ * (`isPublicBuyerRoute` / `PUBLIC_BUYER_ROUTE_PREFIXES`), so a logged-out guest
+ * on a share-link / guest-checkout / receipt route is NOT bounced to the sign-in
+ * wall. This clause composes BEFORE the existing ORCH-1102 + ORCH-1103 logic and
+ * can ONLY flip a `true` to `false` (suppress a redirect on a public route) — it
+ * NEVER causes a redirect that did not already fire, so no authed-only route's
+ * behavior can change.
  */
 export const shouldRedirectToSignInFromRoute = ({
   isWeb,
@@ -135,7 +213,8 @@ export const shouldRedirectToSignInFromRoute = ({
   pathname: string | null | undefined;
 }): boolean =>
   shouldRedirectToSignIn({ isWeb, loading, hasUser, hasStoredWebSession }) &&
-  !isSignInRoute(pathname);
+  !isSignInRoute(pathname) &&
+  !isPublicBuyerRoute(pathname);
 
 /**
  * The companion LOADING gate — ORCH-1102.

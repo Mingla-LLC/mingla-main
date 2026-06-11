@@ -4,9 +4,13 @@
  * full-bleed cover hero, X-close + share IconChrome overlays, a ScrollView of
  * ExperiencePreview + ExperienceCheckoutFlow.
  *
- * Anon-tolerant per feedback_anon_buyer_routes.md: no useAuth, no sign-in
- * redirect — anyone with the share link sees the page. Lives OUTSIDE
- * app/(tabs)/ (same as /t/, /e/, /b/, /checkout-trip/).
+ * Anon-tolerant per feedback_anon_buyer_routes.md: no useAuth on this page.
+ * The "no sign-in redirect" guarantee is enforced at the ROOT layout by the
+ * `PUBLIC_BUYER_ROUTE_PREFIXES` allowlist in coldLoadAuthGates.ts (ORCH-1115) —
+ * the `/exp/` prefix is exempted from the ORCH-1102 unauthenticated redirect, so
+ * a logged-out guest with the share link sees the page (NOT the sign-in wall).
+ * (Living OUTSIDE app/(tabs)/ is no longer sufficient on its own — ORCH-1102
+ * moved the redirect to the root layout that wraps every route.)
  *
  * ExperienceMiniCard already pushes /exp/{brandSlug}/{experienceSlug}; this
  * route resolves it.

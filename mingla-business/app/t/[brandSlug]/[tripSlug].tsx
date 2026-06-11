@@ -4,8 +4,13 @@
  * adds the X-close + share IconChrome overlays mirroring the public event
  * page hero pattern. Per SPEC §4.5 + SPEC_ORCH-0874 §3.3.7.
  *
- * Anon-tolerant per feedback_anon_buyer_routes.md: no useAuth, no
- * sign-in redirect. Anyone with the share link sees this page.
+ * Anon-tolerant per feedback_anon_buyer_routes.md: no useAuth on this page.
+ * The "no sign-in redirect" guarantee is enforced at the ROOT layout by the
+ * `PUBLIC_BUYER_ROUTE_PREFIXES` allowlist in coldLoadAuthGates.ts (ORCH-1115) —
+ * the `/t/` prefix is exempted from the ORCH-1102 unauthenticated redirect, so a
+ * logged-out guest with the share link sees this page (NOT the sign-in wall).
+ * (Living OUTSIDE app/(tabs)/ is no longer sufficient on its own — ORCH-1102
+ * moved the redirect to the root layout that wraps every route.)
  *
  * Renders TripPreview (full trip detail) + TripCheckoutFlow (Reserve CTA +
  * tier picker that routes to the existing /checkout/{tripEventId} chain).
