@@ -1,4 +1,4 @@
-// ORCH-1108 loop-back fix — OAuth null-email resolution (append-only).
+// ORCH-1111 loop-back fix — OAuth null-email resolution (append-only).
 //
 // Proves the DB-observed defect is fixed: a Google-OAuth user whose
 // `auth.users.email` is NULL but who has a VERIFIED `auth.identities` email

@@ -1,5 +1,5 @@
 /**
- * ORCH-1109 — navTabGate TESTER ADVERSARIAL (append-only; tester-owned).
+ * ORCH-1112 — navTabGate TESTER ADVERSARIAL (append-only; tester-owned).
  *
  * Different angle from the implementor's targeted cases: instead of asserting a
  * handful of named ranks, this enumerates the ENTIRE meaningful rank space
@@ -16,10 +16,10 @@
  * monotonic `rank>=30` fails the rank-0 row. The carve-out is the ONLY shape
  * that passes the whole enumeration.
  *
- * Backed by live-fire: the ORCH-1108 edge-fn adversarial matrix (wrong-email
+ * Backed by live-fire: the ORCH-1111 edge-fn adversarial matrix (wrong-email
  * 403, revoked/expired/declined exclusion, decline-terminal P0007) was proven
  * against the deployed backend in the TEST report; this file is the gate-side
- * regression for the ORCH-1109 nav predicate.
+ * regression for the ORCH-1112 nav predicate.
  */
 
 import type { BottomNavTab } from "../../components/ui/BottomNav";
@@ -39,7 +39,7 @@ const ariVisibleAt = (rank: number): boolean =>
     .map((t) => t.id)
     .includes("ari");
 
-describe("ORCH-1109 — Ari nav predicate over the full rank enumeration", () => {
+describe("ORCH-1112 — Ari nav predicate over the full rank enumeration", () => {
   // The authoritative predicate the carve-out must satisfy exactly.
   const expectedAriVisible = (rank: number): boolean =>
     rank === NO_MEMBERSHIP_RANK || rank >= BRAND_ROLE_RANK.finance_manager;

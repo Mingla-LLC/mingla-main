@@ -1,6 +1,6 @@
 /**
  * InvitePendingSheet — invitee-side Accept / Decline for a pending brand
- * invitation (ORCH-1108).
+ * invitation (ORCH-1111).
  *
  * Opened from the "You've been invited to {brand}" smart To-Do row. Both
  * actions are login-email-trusted, tokenless service calls:
@@ -13,7 +13,7 @@
  * invalidates useMyPendingInvites (no per-row local state). A 410
  * invite_not_actionable (race / double-tap) is treated as resolved.
  *
- * Status: ACTIVE post-ORCH-1108.
+ * Status: ACTIVE post-ORCH-1111.
  */
 
 import React, { useCallback, useState } from "react";

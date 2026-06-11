@@ -1,4 +1,4 @@
-// ORCH-1108 [Surface pending invites in-app] — decline-brand-invitation.
+// ORCH-1111 [Surface pending invites in-app] — decline-brand-invitation.
 //
 // AUTHENTICATED edge function (verify_jwt=true in config.toml). Lets the
 // invitee DECLINE a pending brand invitation addressed to their login email.
@@ -25,7 +25,7 @@
 
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-// ORCH-1108 loop-back fix — OAuth users can have auth.users.email = NULL; the
+// ORCH-1111 loop-back fix — OAuth users can have auth.users.email = NULL; the
 // verified email lives only on auth.identities. Resolve a TRUSTED caller email
 // (users.email → verified OAuth identity) for the email-match check. NEVER
 // trust user_metadata.
@@ -101,7 +101,7 @@ export async function handler(req: Request): Promise<Response> {
       auth: { persistSession: false, autoRefreshToken: false },
     });
 
-    // ORCH-1108 loop-back fix — resolve the caller email from the TRUSTED chain
+    // ORCH-1111 loop-back fix — resolve the caller email from the TRUSTED chain
     // (auth.users.email → verified auth.identities OAuth email). Google OAuth
     // users have a NULL users.email; without this the email-match below 403'd.
     // user_metadata is user-writable → NEVER consulted.

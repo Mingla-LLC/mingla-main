@@ -1,4 +1,4 @@
--- ORCH-1108 loop-back fix [OAuth null-email] — accept RPC trusted-email fallback.
+-- ORCH-1111 loop-back fix [OAuth null-email] — accept RPC trusted-email fallback.
 --
 -- DEFECT: Google-OAuth users can have `auth.users.email = NULL` while their
 -- verified email lives only on the OAuth identity row
@@ -48,7 +48,7 @@ BEGIN
 
   SELECT u.email INTO v_acceptor_email FROM auth.users u WHERE u.id = v_acceptor_user_id;
 
-  -- ORCH-1108 loop-back fix [OAuth null-email] — Google-OAuth users have a NULL
+  -- ORCH-1111 loop-back fix [OAuth null-email] — Google-OAuth users have a NULL
   -- auth.users.email; their verified email lives only on auth.identities. Fall
   -- back to the most-recent VERIFIED OAuth identity email. identity_data is
   -- provider-asserted + GoTrue-written (trusted); user_metadata is NOT consulted.
@@ -67,7 +67,7 @@ BEGIN
   IF NOT FOUND THEN RAISE EXCEPTION 'invite_not_found' USING ERRCODE = 'P0001'; END IF;
   IF v_invitation.status = 'accepted' THEN RAISE EXCEPTION 'invite_already_used' USING ERRCODE = 'P0002'; END IF;
   IF v_invitation.status = 'revoked' THEN RAISE EXCEPTION 'invite_revoked' USING ERRCODE = 'P0005'; END IF;
-  -- ORCH-1108 OQ-1 — a declined invite is terminal; refuse it even on the raw
+  -- ORCH-1111 OQ-1 — a declined invite is terminal; refuse it even on the raw
   -- token (web) path so a stale email link cannot resurrect it.
   IF v_invitation.status = 'declined' THEN RAISE EXCEPTION 'invite_declined' USING ERRCODE = 'P0007'; END IF;
   IF v_invitation.expires_at <= now() THEN RAISE EXCEPTION 'invite_expired' USING ERRCODE = 'P0003'; END IF;
@@ -160,6 +160,6 @@ BEGIN
       AND pg_get_functiondef(p.oid) LIKE '%auth.identities%'
       AND pg_get_functiondef(p.oid) LIKE '%email_verified%'
   ) THEN
-    RAISE EXCEPTION 'ORCH-1108 probe failed: accept RPC missing OAuth null-email identity fallback';
+    RAISE EXCEPTION 'ORCH-1111 probe failed: accept RPC missing OAuth null-email identity fallback';
   END IF;
 END$$;

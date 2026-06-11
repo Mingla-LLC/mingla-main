@@ -19,7 +19,7 @@ export type BusinessTodoAction =
   | { kind: "open_brand_switcher" }
   | { kind: "open_universal_creator" }
   | { kind: "route"; route: string }
-  // ORCH-1108 — open the Accept/Decline sheet for a pending brand invitation.
+  // ORCH-1111 — open the Accept/Decline sheet for a pending brand invitation.
   | { kind: "open_pending_invite"; invitationId: string; brandName: string };
 
 export interface BusinessTodo {
@@ -37,7 +37,7 @@ export interface BusinessTodo {
 
 export interface BusinessTodoInput {
   /**
-   * ORCH-1108 — pending brand invitations for the signed-in email (already
+   * ORCH-1111 — pending brand invitations for the signed-in email (already
    * flash-gated by the hook; [] / omitted when none or still resolving).
    * Rendered as the highest-priority rows, ABOVE the brand-gate early-returns,
    * soonest-expiring first (the hook supplies expires_at ASC order). Optional so
@@ -119,7 +119,7 @@ function venueLiveSublabel(
 }
 
 export function buildBusinessTodos(input: BusinessTodoInput): BusinessTodo[] {
-  // 0 — ORCH-1108 — pending brand invitations. ALWAYS first (an invite is a
+  // 0 — ORCH-1111 — pending brand invitations. ALWAYS first (an invite is a
   // one-tap relationship decision and must not be stranded behind the
   // "Create a brand" empty-state). The hook supplies them already flash-gated
   // and expires_at ASC; each row vanishes the instant accept/decline drops it

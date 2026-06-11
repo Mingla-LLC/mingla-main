@@ -38,7 +38,7 @@ import {
   dispatchNotification,
   getBrandTeamUserIdsByRoles,
 } from "../_shared/stripeEdgeAuth.ts";
-// ORCH-1108 loop-back fix — OAuth users can have auth.users.email = NULL; the
+// ORCH-1111 loop-back fix — OAuth users can have auth.users.email = NULL; the
 // verified email lives only on auth.identities. Resolve a TRUSTED caller email
 // (users.email → verified OAuth identity) for the email-match check. NEVER
 // trust user_metadata.
@@ -60,7 +60,7 @@ function json(body: unknown, status = 200): Response {
   });
 }
 
-// ORCH-1108 — uuid shape for the email-trusted tokenless accept branch.
+// ORCH-1111 — uuid shape for the email-trusted tokenless accept branch.
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -112,7 +112,7 @@ export function mapRpcError(code: string | undefined): {
     case "P0006":
       return { status: 409, error: "invite_currency_mismatch" };
     case "P0007":
-      // ORCH-1108 — a declined invite is terminal (the RPC refuses it even on
+      // ORCH-1111 — a declined invite is terminal (the RPC refuses it even on
       // the raw token / web path so a stale email link can't resurrect it).
       return { status: 410, error: "invite_declined" };
     default:
@@ -161,7 +161,7 @@ export async function handler(req: Request): Promise<Response> {
     string,
     unknown
   >;
-  // ORCH-1108 — accept EITHER { token } (web path, unchanged) OR
+  // ORCH-1111 — accept EITHER { token } (web path, unchanged) OR
   // { invitationId } (new in-app, email-trusted, tokenless path). The token
   // branch is preferred when present so the existing web flow is byte-identical.
   const token = typeof body.token === "string" ? body.token.trim() : "";
@@ -195,7 +195,7 @@ export async function handler(req: Request): Promise<Response> {
       auth: { persistSession: false, autoRefreshToken: false },
     });
 
-    // ORCH-1108 loop-back fix — resolve the caller email ONCE from the TRUSTED
+    // ORCH-1111 loop-back fix — resolve the caller email ONCE from the TRUSTED
     // chain (auth.users.email → verified auth.identities OAuth email). Google
     // OAuth users have a NULL users.email; without this the email-match below
     // 403'd. user_metadata is user-writable → NEVER consulted.
@@ -222,7 +222,7 @@ export async function handler(req: Request): Promise<Response> {
       return json({ error: "invite_email_mismatch" }, 403);
     }
 
-    // ORCH-1108 — resolve the token_hash to pass to the RPC. Two paths:
+    // ORCH-1111 — resolve the token_hash to pass to the RPC. Two paths:
     //   (web)    { token } → SHA-256(token) directly (unchanged).
     //   (in-app) { invitationId } → look the invite up by id, prove identity by
     //            JWT email == stored email, refuse any non-pending invite
@@ -421,7 +421,7 @@ export async function handler(req: Request): Promise<Response> {
             .eq("id", account.id)
             .maybeSingle();
           // Auth-user email lookup is needed because creator_accounts doesn't
-          // carry email; the JWT does. ORCH-1108 loop-back — use the TRUSTED
+          // carry email; the JWT does. ORCH-1111 loop-back — use the TRUSTED
           // resolution (handles Google null-email users) so the partner-link
           // match works for OAuth owners too.
           const memberEmail = trustedCallerEmail;

@@ -114,7 +114,7 @@ export const useRevokeBrandInvitation = (
 };
 
 /**
- * ORCH-1108 — the signed-in user's own pending invites (email-keyed, resolved
+ * ORCH-1111 — the signed-in user's own pending invites (email-keyed, resolved
  * server-side). `enabled` carries the flash-safe gate computed by the caller
  * (auth + brand-resolution settled). Disabled when userId is null.
  */
@@ -133,7 +133,7 @@ export const useMyPendingInvites = (
 };
 
 /**
- * ORCH-1108 — accept one of the signed-in user's OWN pending invites in-app.
+ * ORCH-1111 — accept one of the signed-in user's OWN pending invites in-app.
  * Invalidates the pending list, the brand list (new membership), the brand's
  * role cache, and the notification list (the bell row clears).
  */
@@ -165,7 +165,7 @@ export const useAcceptMyInvitation = (
 };
 
 /**
- * ORCH-1108 — decline one of the signed-in user's OWN pending invites in-app.
+ * ORCH-1111 — decline one of the signed-in user's OWN pending invites in-app.
  * Invalidates the pending list + the notification list so the row + bell clear.
  */
 export const useDeclineMyInvitation = (

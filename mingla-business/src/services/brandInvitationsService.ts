@@ -39,13 +39,13 @@ export interface BrandInvitationRow {
   accepted_at: string | null;
   accepted_by_account_id: string | null;
   revoked_at: string | null;
-  // ORCH-1108 — 'declined' is the new invitee-driven terminal state.
+  // ORCH-1111 — 'declined' is the new invitee-driven terminal state.
   status: "pending" | "accepted" | "revoked" | "expired" | "declined";
   created_at?: string;
 }
 
 /**
- * ORCH-1108 — curated invitee-side projection returned by
+ * ORCH-1111 — curated invitee-side projection returned by
  * `list-my-pending-invites`. NEVER carries token_hash / invited_by / email.
  */
 export interface PendingInviteRow {
@@ -114,7 +114,7 @@ export const brandInvitationKeys = {
     invitationId: string,
   ): readonly ["brand-invitations", "detail", string] =>
     ["brand-invitations", "detail", invitationId] as const,
-  // ORCH-1108 — the signed-in user's own pending invites (email-keyed,
+  // ORCH-1111 — the signed-in user's own pending invites (email-keyed,
   // resolved server-side). Keyed by userId so it invalidates per-account.
   myPending: (
     userId: string,
@@ -199,7 +199,7 @@ export async function acceptBrandInvitation(
 }
 
 /**
- * ORCH-1108 — accept one of the signed-in user's OWN pending invites from
+ * ORCH-1111 — accept one of the signed-in user's OWN pending invites from
  * in-app (email-trusted, tokenless). Reuses the `accept-brand-invitation` edge
  * fn's new `{ invitationId }` branch (the server resolves the stored token_hash
  * and runs the SAME accept RPC). Lower blast than overloading the web token
@@ -241,7 +241,7 @@ export async function acceptMyPendingInvitation(
 }
 
 /**
- * ORCH-1108 — decline one of the signed-in user's OWN pending invites. On a
+ * ORCH-1111 — decline one of the signed-in user's OWN pending invites. On a
  * `410 invite_not_actionable` (already declined / no longer pending) we treat
  * the call as resolved (return normally) — the decline goal (not pending) is
  * already met. Any other non-2xx throws.
@@ -290,7 +290,7 @@ export async function revokeBrandInvitation(
 // ---------- Queries ----------
 
 /**
- * ORCH-1108 — list the signed-in user's OWN pending invites (email-keyed,
+ * ORCH-1111 — list the signed-in user's OWN pending invites (email-keyed,
  * resolved server-side from the JWT email). Returns the curated projection;
  * never throws on empty (non-object data → []). Same error envelope as the
  * accept/decline calls.

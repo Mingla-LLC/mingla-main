@@ -93,7 +93,7 @@ export default function HubTabLayout(): React.ReactElement {
   }, [creatorRequestOpen, closeCreatorRequest]);
   const [deleteSheetVisible, setDeleteSheetVisible] = useState<boolean>(false);
   const [brandPendingDelete, setBrandPendingDelete] = useState<Brand | null>(null);
-  // ORCH-1108 — pending-invite Accept/Decline sheet (Hub shares the same
+  // ORCH-1111 — pending-invite Accept/Decline sheet (Hub shares the same
   // smart To-Do list as Home, so the invite row + its action must work here too).
   const [pendingInvite, setPendingInvite] = useState<{
     invitationId: string;
@@ -175,7 +175,7 @@ export default function HubTabLayout(): React.ReactElement {
           router.push(todo.action.route as never);
           return;
         case "open_pending_invite":
-          // ORCH-1108 — open the Accept/Decline sheet for this invite.
+          // ORCH-1111 — open the Accept/Decline sheet for this invite.
           setPendingInvite({
             invitationId: todo.action.invitationId,
             brandName: todo.action.brandName,

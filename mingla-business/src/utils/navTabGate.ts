@@ -65,7 +65,7 @@ export const visibleTabsForRank = <T extends BottomNavTab>(
   tabs.filter((tab) => {
     const min = (MIN_RANK_FOR_TAB as Record<string, number | undefined>)[tab.id];
     if (min === undefined) return false;
-    // ORCH-1109 — non-monotonic carve-out: Ari is reachable for a BRAND-LESS
+    // ORCH-1112 — non-monotonic carve-out: Ari is reachable for a BRAND-LESS
     // user (rank 0) so they can create their first brand via Ari's create_brand
     // tool, AND for finance_manager+ (rank>=30). It stays HIDDEN for rank-10
     // scanners and rank-20 marketing managers, preserving the ORCH-1055 scanner

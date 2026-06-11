@@ -1605,12 +1605,14 @@ function checkNoNewBackendFiles() {
     "supabase/functions/ticket-checkout-create/index.ts",
     "supabase/functions/ticket-checkout-status/index.ts",
   ];
-  // ORCH-1108 + ORCH-1109 [Surface pending invites in-app + Ari reachable with
-  // no brand] PR #436. C7 is scoped to ORCH-0863 marketing; these backend
-  // touches are the in-app invite surface (list/accept/decline + declined
-  // terminal state + OAuth-null-email trusted-email resolution), NOT marketing
-  // scope. Same C7-scoping caveat as the allowlists above.
-  const ORCH_1108_BACKEND_ALLOWLIST = [
+  // ORCH-1111 + ORCH-1112 [Surface pending invites in-app + Ari reachable with
+  // no brand] PR #436. (Renumbered from 1108/1109 — ORCH-1108 collided with a
+  // parallel session's shipped dead-AI-fn deletion #438; shipped-first kept the
+  // number.) C7 is scoped to ORCH-0863 marketing; these backend touches are the
+  // in-app invite surface (list/accept/decline + declined terminal state +
+  // OAuth-null-email trusted-email resolution), NOT marketing scope. Same
+  // C7-scoping caveat as the allowlists above.
+  const ORCH_1111_BACKEND_ALLOWLIST = [
     "supabase/functions/_shared/trustedCallerEmail.ts",
     "supabase/functions/accept-brand-invitation/index.ts",
     "supabase/functions/decline-brand-invitation/index.ts",
@@ -2009,7 +2011,7 @@ function checkNoNewBackendFiles() {
     ...ORCH_1107_BACKEND_ALLOWLIST,
     ...ORCH_1108_BACKEND_ALLOWLIST,
     ...ORCH_426_BACKEND_ALLOWLIST,
-    ...ORCH_1108_BACKEND_ALLOWLIST,
+    ...ORCH_1111_BACKEND_ALLOWLIST,
     // Schedule-edit buyer protection + "Refund all & proceed" (separate PR;
     // shares the ORCH-1047 work id used in code). New migration recording the
     // already-live business_patch_event_when change — not ORCH-0863 marketing

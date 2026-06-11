@@ -1,4 +1,4 @@
-// ORCH-1108 — list-my-pending-invites ADVERSARIAL guards (tester-owned).
+// ORCH-1111 — list-my-pending-invites ADVERSARIAL guards (tester-owned).
 //
 // The TESTER owns the runtime/seeded-row version of these (driving the real
 // query path with seeded brand_invitations rows to prove that a wrong-email,

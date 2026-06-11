@@ -136,7 +136,7 @@ export default function HomeTab(): React.ReactElement {
   const [sheetVisible, setSheetVisible] = useState<boolean>(false);
   // ORCH-0826 M0: universal creator sheet (Create event/experience/trip)
   const [isUniversalCreatorOpen, setIsUniversalCreatorOpen] = useState<boolean>(false);
-  // ORCH-1108 — pending-invite Accept/Decline sheet, opened from the invite
+  // ORCH-1111 — pending-invite Accept/Decline sheet, opened from the invite
   // To-Do row. Null when closed.
   const [pendingInvite, setPendingInvite] = useState<{
     invitationId: string;
@@ -388,7 +388,7 @@ export default function HomeTab(): React.ReactElement {
           router.push(todo.action.route as never);
           return;
         case "open_pending_invite":
-          // ORCH-1108 — open the Accept/Decline sheet for this invite.
+          // ORCH-1111 — open the Accept/Decline sheet for this invite.
           setPendingInvite({
             invitationId: todo.action.invitationId,
             brandName: todo.action.brandName,
@@ -874,7 +874,7 @@ export default function HomeTab(): React.ReactElement {
         onClose={() => setIsUniversalCreatorOpen(false)}
       />
 
-      {/* ORCH-1108 — pending-invite Accept/Decline sheet. */}
+      {/* ORCH-1111 — pending-invite Accept/Decline sheet. */}
       {pendingInvite !== null ? (
         <InvitePendingSheet
           visible

@@ -1,4 +1,4 @@
-// ORCH-1108 — list-my-pending-invites projection-leak guard (SC-8).
+// ORCH-1111 — list-my-pending-invites projection-leak guard (SC-8).
 //
 // Implementor happy-path: the source MUST NOT select or return token_hash /
 // invited_by / email, MUST select only the curated projection, and MUST derive
@@ -42,7 +42,7 @@ Deno.test("list-my-pending-invites never selects token_hash / invited_by", async
 Deno.test("list-my-pending-invites derives email from the JWT, not a param", async () => {
   const source = await Deno.readTextFile(new URL("./index.ts", import.meta.url));
 
-  // ORCH-1108 loop-back fix — the email is now derived from the JWT user via
+  // ORCH-1111 loop-back fix — the email is now derived from the JWT user via
   // the TRUSTED resolver (auth.users.email → verified auth.identities OAuth
   // email), still server-side and still with NO email parameter. The seam moved
   // into resolveTrustedCallerEmail; the security property (JWT-derived, no

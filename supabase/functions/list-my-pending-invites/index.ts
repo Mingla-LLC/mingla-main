@@ -1,4 +1,4 @@
-// ORCH-1108 [Surface pending invites in-app] — list-my-pending-invites.
+// ORCH-1111 [Surface pending invites in-app] — list-my-pending-invites.
 //
 // AUTHENTICATED edge function (verify_jwt=true in config.toml). Returns the
 // pending brand invitations addressed to the CALLER'S OWN login email, keyed
@@ -26,7 +26,7 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { dispatchNotification } from "../_shared/stripeEdgeAuth.ts";
-// ORCH-1108 loop-back fix — OAuth users can have auth.users.email = NULL; the
+// ORCH-1111 loop-back fix — OAuth users can have auth.users.email = NULL; the
 // verified email lives only on auth.identities. Resolve a TRUSTED email
 // (users.email → verified OAuth identity) and NEVER user_metadata.
 import {
@@ -89,7 +89,7 @@ export async function handler(req: Request): Promise<Response> {
       auth: { persistSession: false, autoRefreshToken: false },
     });
 
-    // ORCH-1108 loop-back fix — resolve the caller email from a TRUSTED chain:
+    // ORCH-1111 loop-back fix — resolve the caller email from a TRUSTED chain:
     // auth.users.email → verified auth.identities OAuth email (Google users
     // have a NULL users.email). user_metadata is user-writable → NEVER trusted.
     // No trusted email = nothing to match. Never 500 (no leak).

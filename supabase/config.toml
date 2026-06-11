@@ -145,7 +145,7 @@ verify_jwt = true
 [functions.accept-brand-invitation]
 verify_jwt = true
 
-# ORCH-1108 [Surface pending invites in-app]
+# ORCH-1111 [Surface pending invites in-app]
 # Both require an authenticated caller. list-my-pending-invites resolves the
 # JWT email → that user's pending invites (service-role; invitee has no
 # membership so RLS can't serve them). decline-brand-invitation writes the new

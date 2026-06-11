@@ -77,7 +77,7 @@ export function useBusinessTodos(): BusinessTodo[] {
     currentBrand === null &&
     !isBrandResolving;
 
-  // ORCH-1108 — pending-invite detection. Flash-safe gate (mirrors ORCH-1100
+  // ORCH-1111 — pending-invite detection. Flash-safe gate (mirrors ORCH-1100
   // RC-1 + the hasNoBrands guard above): only query once auth has settled, we
   // have an account id, the brand list has resolved, and the brand pointer is
   // not mid-hydration. Gating on the SAME isBrandResolving the to-do list

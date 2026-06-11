@@ -1,4 +1,4 @@
-// ORCH-1108 loop-back fix [OAuth null-email] — trusted caller-email resolution.
+// ORCH-1111 loop-back fix [OAuth null-email] — trusted caller-email resolution.
 //
 // PROBLEM: Google-OAuth users can have `auth.users.email = NULL` while their
 // verified email lives only on the OAuth identity row

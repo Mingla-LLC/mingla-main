@@ -1,4 +1,4 @@
--- ORCH-1108 [Surface pending invites in-app] — add invitee-driven 'declined'
+-- ORCH-1111 [Surface pending invites in-app] — add invitee-driven 'declined'
 -- terminal state to brand_invitations.
 --
 -- Two parts:
@@ -43,7 +43,7 @@ ALTER TABLE public.brand_invitations
 --   P0003  invite_expired
 --   P0004  invite_email_mismatch
 --   P0005  invite_revoked
---   P0007  invite_declined  (ORCH-1108)
+--   P0007  invite_declined  (ORCH-1111)
 -- =============================================================
 CREATE OR REPLACE FUNCTION public.accept_invite_and_transfer_brand_ownership(
   p_token_hash text,
@@ -77,7 +77,7 @@ BEGIN
   IF NOT FOUND THEN RAISE EXCEPTION 'invite_not_found' USING ERRCODE = 'P0001'; END IF;
   IF v_invitation.status = 'accepted' THEN RAISE EXCEPTION 'invite_already_used' USING ERRCODE = 'P0002'; END IF;
   IF v_invitation.status = 'revoked' THEN RAISE EXCEPTION 'invite_revoked' USING ERRCODE = 'P0005'; END IF;
-  -- ORCH-1108 OQ-1 — a declined invite is terminal; refuse it even on the raw
+  -- ORCH-1111 OQ-1 — a declined invite is terminal; refuse it even on the raw
   -- token (web) path so a stale email link cannot resurrect it.
   IF v_invitation.status = 'declined' THEN RAISE EXCEPTION 'invite_declined' USING ERRCODE = 'P0007'; END IF;
   IF v_invitation.expires_at <= now() THEN RAISE EXCEPTION 'invite_expired' USING ERRCODE = 'P0003'; END IF;
@@ -165,6 +165,6 @@ BEGIN
     WHERE table_schema='public' AND table_name='brand_invitations'
       AND column_name='declined_at'
   ) THEN
-    RAISE EXCEPTION 'ORCH-1108 probe failed: brand_invitations.declined_at missing';
+    RAISE EXCEPTION 'ORCH-1111 probe failed: brand_invitations.declined_at missing';
   END IF;
 END$$;

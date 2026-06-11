@@ -1,5 +1,5 @@
 /**
- * ORCH-1108 — buildBusinessTodos pending-invite row.
+ * ORCH-1111 — buildBusinessTodos pending-invite row.
  *
  * Implementor happy-path regression. Asserts that a pending invite for the
  * signed-in email surfaces as the FIRST To-Do row (above the brand-gate
@@ -36,7 +36,7 @@ const base: BusinessTodoInput = {
   venueFeedbackRoute: "/brand/b1/listing?focus=feedback",
 };
 
-describe("buildBusinessTodos — ORCH-1108 pending invite row", () => {
+describe("buildBusinessTodos — ORCH-1111 pending invite row", () => {
   test("a pending invite surfaces as the FIRST row, with create_brand following", () => {
     const todos = buildBusinessTodos({
       ...base,
