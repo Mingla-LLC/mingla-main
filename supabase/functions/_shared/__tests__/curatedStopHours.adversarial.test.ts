@@ -215,3 +215,213 @@ Deno.test('T-2-01 (adversarial / solo-wiring fails-on-revert): solo handler appl
   assert(/cards\.length\s*===\s*0\s*&&\s*!summary/.test(code),
     'empty-after-filter must set a summary verdict so mobile does not stick on loading');
 });
+
+// ═════════════════════════════════════════════════════════════════════════════
+// ORCH-1113 [curated-experience-empty-deck-regression] — TESTER adversarial set.
+//
+// These attack DIFFERENT angles than the implementor's T-01..T-12 (which use a
+// single Brussels +120 card and mostly call the policy resolver directly):
+//   T-3-01 — stale-pref-leak at the END-TO-END FILTER level on a FAR-EAST
+//            positive offset (Tokyo +540). Proves the stale stored instant can
+//            NOT reach filterCuratedByStopHours under 'today' even when its sign
+//            and magnitude differ from the implementor's case.
+//   T-3-02 — 'today' STILL drops a closed-now stop via a MULTI-STOP card
+//            (different angle from the implementor's single-stop T-02): the
+//            ORCH-1061 same-day arrival cascade must survive the policy rewrite.
+//   T-3-03 — 'this_weekend' retains a Sat-only stop while datetimePref AND a
+//            weekday selectedDates BOTH point at non-weekend days — proving the
+//            weekend policy ignores both stored signals.
+//   T-3-04 — 'all_closed_at_time' FALSE-SIGNAL guard: the handler's empty-reason
+//            branch must be gated so a genuinely-empty pool (no cards built)
+//            keeps 'pool_empty' and never reports 'all_closed_at_time'. Proven
+//            via the structural precondition (filter returning [] on a non-empty
+//            input means cards were dropped) + a handler source-grep that the
+//            pool_empty/no_viable_anchor summary is set BEFORE the new branch.
+//   T-3-05 — idempotence on a MIXED list (some kept, some dropped): re-running
+//            the filter on the survivors drops nothing further, in BOTH modes
+//            (stronger than the implementor's all-passing T-11).
+//   T-3-06 — pick_dates with MULTIPLE selected dates spanning different weekdays:
+//            a stop open on ANY one of the selected days is retained (union),
+//            and a stop open on none is dropped.
+// ═════════════════════════════════════════════════════════════════════════════
+
+import {
+  resolveCuratedHoursPolicy,
+  isStopOpenAtHourAnyTime,
+} from '../curatedStopHours.ts';
+
+// Canonical Google v1 periods entry helper (local to this block).
+function p(day: number, openHour: number, closeHour: number) {
+  return { periods: [{ open: { day, hour: openHour, minute: 0 }, close: { day, hour: closeHour, minute: 0 } }] };
+}
+
+// A weeks-stale stored instant: 2026-04-15 (Wed) 21:20 UTC.
+const STALE_PREF_WED_NIGHT = '2026-04-15T21:20:44.492Z';
+
+// ─── T-3-01: stale-pref does NOT leak end-to-end on a FAR-EAST offset ─────────
+Deno.test("T-3-01 (adversarial): 'today' ignores the stale datetime_pref on a Tokyo +540 card (end-to-end filter)", () => {
+  // Tokyo = UTC+540 min (+9h). The stale stored instant 2026-04-15 21:20 UTC maps
+  // to 06:20 Tokyo-local the NEXT day (Thu) — BEFORE an 11:00 open. The live clock
+  // we feed is 2026-06-03 04:00 UTC → 13:00 Tokyo-local (Wed, day=3) → OPEN.
+  // The stop is open Wed 11:00–23:00 ONLY (no Thu period), so if the stale instant
+  // leaked (Thu 06:20) the day would be wrong (Thu, no period) → dropped. The fix
+  // uses the live clock (Wed 13:00) → retained. The verdict flips on which clock.
+  const tokyoCard = {
+    cardType: 'curated', utcOffsetMinutes: 540, lng: 139.69,
+    stops: [{ placeType: 'restaurant', openingHours: p(3, 11, 23), travelTimeFromPreviousStopMin: 0 }],
+  };
+  const liveNow = new Date(Date.UTC(2026, 5, 3, 4, 0, 0)); // Wed 04:00 UTC → 13:00 Tokyo
+  const policy = resolveCuratedHoursPolicy({ dateOption: 'today', datetimePref: STALE_PREF_WED_NIGHT, now: liveNow });
+  // Sanity: the resolved policy must be instant-at-live-clock, never the stale pref.
+  assertEquals(policy.mode, 'instant');
+  assertEquals((policy as { mode: 'instant'; utcNow: Date }).utcNow.getTime(), liveNow.getTime(),
+    'policy must carry the LIVE clock, never the parsed stale datetime_pref');
+  const result = filterCuratedByStopHours([tokyoCard], policy);
+  assertEquals(result.length, 1, "today must evaluate the Tokyo card at the live 13:00 local clock → RETAINED (stale Thu-06:20 pref would have dropped it)");
+});
+
+// ─── T-3-02: 'today' STILL drops a closed-now stop (multi-stop, ORCH-1061) ────
+Deno.test("T-3-02 (adversarial): 'today' STILL drops a closed-now stop on a MULTI-STOP card (ORCH-1061 same-day cascade survives)", () => {
+  // Live clock: Wed 22:30 local (utcOffsetMinutes=0, 22:30 UTC). Stop 0 (restaurant)
+  // open 11:00–23:00 → open at 22:30. Stop 1 (museum) open 09:00–18:00 → after
+  // stop0 60min dwell + 15min travel ≈ 23:45 → CLOSED → whole card DROPPED.
+  // If the policy rewrite had weakened the same-day arrival cascade to any-hour,
+  // the museum would falsely pass (open SOMETIME Wed) and the card would survive.
+  const liveNow2230 = new Date(Date.UTC(2026, 5, 3, 22, 30, 0));
+  const card = {
+    cardType: 'curated', utcOffsetMinutes: 0, lng: 0,
+    stops: [
+      { placeType: 'restaurant', openingHours: p(3, 11, 23), travelTimeFromPreviousStopMin: 0 },
+      { placeType: 'museum', openingHours: p(3, 9, 18), travelTimeFromPreviousStopMin: 15 },
+    ],
+  };
+  const policy = resolveCuratedHoursPolicy({ dateOption: 'today', datetimePref: STALE_PREF_WED_NIGHT, now: liveNow2230 });
+  const result = filterCuratedByStopHours([card], policy);
+  assertEquals(result.length, 0, "today must keep the ORCH-1061 same-day arrival cascade: a downstream stop closed by projected arrival drops the card");
+
+  // Control: same card, early enough that the museum is still open on arrival.
+  const liveNowNoon = new Date(Date.UTC(2026, 5, 3, 12, 0, 0)); // Wed 12:00; museum reached ~13:15, still < 18:00
+  const policyNoon = resolveCuratedHoursPolicy({ dateOption: 'today', now: liveNowNoon });
+  assertEquals(filterCuratedByStopHours([card], policyNoon).length, 1,
+    'control: at noon the multi-stop card is retained (filter is not over-pruning today)');
+});
+
+// ─── T-3-03: 'this_weekend' ignores BOTH datetimePref and weekday selectedDates ─
+Deno.test("T-3-03 (adversarial): 'this_weekend' retains a Sat-only stop while datetime_pref AND a weekday selectedDates both point off-weekend", () => {
+  // Stop open ONLY Saturday (day=6) 14:00–18:00. We pass a Wed-night datetimePref
+  // AND a selectedDates of a WEEKDAY (2026-06-17 = Wednesday). Under this_weekend
+  // the policy must be anyHourOnDays:[6,0] — IGNORING both off-weekend signals —
+  // so the Sat-only stop is RETAINED.
+  const card = {
+    cardType: 'curated', utcOffsetMinutes: 120, lng: 4.35,
+    stops: [{ placeType: 'restaurant', openingHours: p(6, 14, 18), travelTimeFromPreviousStopMin: 0 }],
+  };
+  const policy = resolveCuratedHoursPolicy({
+    dateOption: 'this_weekend',
+    datetimePref: STALE_PREF_WED_NIGHT,
+    selectedDates: ['2026-06-17'], // a Wednesday — must be ignored under this_weekend
+  });
+  assertEquals(policy.mode, 'anyHourOnDays');
+  assertEquals((policy as { mode: 'anyHourOnDays'; days: number[] }).days, [6, 0],
+    'this_weekend must resolve to Sat+Sun, ignoring datetimePref AND a weekday selectedDates');
+  assertEquals(filterCuratedByStopHours([card], policy).length, 1,
+    'a Sat-only stop survives this_weekend regardless of the stored weekday signals');
+
+  // And a Tuesday-only stop is DROPPED under this_weekend (no weekend period).
+  const tueOnly = {
+    cardType: 'curated', utcOffsetMinutes: 120, lng: 4.35,
+    stops: [{ placeType: 'restaurant', openingHours: p(2, 14, 18), travelTimeFromPreviousStopMin: 0 }],
+  };
+  assertEquals(filterCuratedByStopHours([tueOnly], policy).length, 0,
+    'a Tuesday-only stop is dropped under this_weekend (no Sat/Sun period)');
+});
+
+// ─── T-3-04: 'all_closed_at_time' false-signal guard ──────────────────────────
+Deno.test("T-3-04 (adversarial): all_closed_at_time can ONLY follow a non-empty built pool (no false signal on a genuinely empty pool)", async () => {
+  // Structural precondition: filterCuratedByStopHours can only return [] on a
+  // NON-EMPTY input by DROPPING cards. So 'all_closed_at_time' (which the handler
+  // gates on builtCount > 0) is impossible to reach from a 0-card built pool.
+  // (1) Empty input → empty output, with NO card ever dropped (builtCount === 0).
+  const emptyOut = filterCuratedByStopHours([], resolveCuratedHoursPolicy({ dateOption: 'today' }));
+  assertEquals(emptyOut.length, 0, 'empty input → empty output (no cards to drop)');
+
+  // (2) A non-empty pool of all-closed cards → empty output (builtCount > 0 → the
+  //     branch that yields all_closed_at_time). This is the ONLY path to it.
+  const closedCard = {
+    cardType: 'curated', utcOffsetMinutes: 0, lng: 0,
+    stops: [{ placeType: 'restaurant', openingHours: p(3, 9, 17), travelTimeFromPreviousStopMin: 0 }],
+  };
+  const droppedOut = filterCuratedByStopHours([closedCard], WED_1800_UTC); // 18:00 > 17:00 close
+  assertEquals(droppedOut.length, 0, 'a non-empty all-closed pool empties → builtCount>0 path');
+
+  // (3) Handler source-grep: the genuinely-empty verdicts (pool_empty /
+  //     no_viable_anchor) are produced by generateCardsForType BEFORE the
+  //     all_closed_at_time branch, and that branch is gated `builtCount > 0`.
+  const src = await Deno.readTextFile(
+    new URL('../../generate-curated-experiences/index.ts', import.meta.url),
+  );
+  const code = src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '');
+  // builtCount is captured from cards.length BEFORE the hours filter reassigns cards.
+  assert(/const\s+builtCount\s*=\s*cards\.length\s*;[\s\S]*?cards\s*=\s*filterCuratedByStopHours\s*\(\s*cards\s*,/.test(code),
+    'builtCount must be captured from cards.length BEFORE the hours filter');
+  // The all_closed_at_time branch is gated on builtCount > 0 (never on an empty pool).
+  assert(/builtCount\s*>\s*0[\s\S]*?emptyReason:\s*'all_closed_at_time'/.test(code),
+    "all_closed_at_time must be gated builtCount > 0 (false-signal guard) — else fall to pool_empty");
+  // And the empty branch only runs when no prior summary exists (genuine pool_empty/
+  // no_viable_anchor from generateCardsForType short-circuit it via && !summary).
+  assert(/cards\.length\s*===\s*0\s*&&\s*!summary/.test(code),
+    'the empty-after-filter branch only runs when generateCardsForType produced no prior summary');
+});
+
+// ─── T-3-05: idempotence on a MIXED list (survivors re-filter to themselves) ──
+Deno.test('T-3-05 (adversarial): re-filtering a MIXED list (some kept, some dropped) drops nothing further — both modes', () => {
+  // instant mode: card A open at 18:00 (retained), card B closed at 18:00 (dropped).
+  const open18 = { cardType: 'curated', utcOffsetMinutes: 0, lng: 0,
+    stops: [{ placeType: 'restaurant', openingHours: p(3, 11, 23), travelTimeFromPreviousStopMin: 0 }] };
+  const closed18 = { cardType: 'curated', utcOffsetMinutes: 0, lng: 0,
+    stops: [{ placeType: 'restaurant', openingHours: p(3, 9, 17), travelTimeFromPreviousStopMin: 0 }] };
+  const onceI = filterCuratedByStopHours([open18, closed18], WED_1800_UTC);
+  assertEquals(onceI.length, 1, 'instant: mixed list → exactly the open card survives the first pass');
+  const twiceI = filterCuratedByStopHours(onceI, WED_1800_UTC);
+  assertEquals(twiceI.length, onceI.length, 'instant: re-filtering the survivors drops nothing further (idempotent)');
+
+  // anyHourOnDays mode: card C open Sat (retained under this_weekend), card D open Tue only (dropped).
+  const satOpen = { cardType: 'curated', utcOffsetMinutes: 0, lng: 0,
+    stops: [{ placeType: 'restaurant', openingHours: p(6, 14, 18), travelTimeFromPreviousStopMin: 0 }] };
+  const tueOpen = { cardType: 'curated', utcOffsetMinutes: 0, lng: 0,
+    stops: [{ placeType: 'restaurant', openingHours: p(2, 14, 18), travelTimeFromPreviousStopMin: 0 }] };
+  const weekend = resolveCuratedHoursPolicy({ dateOption: 'this_weekend' });
+  const onceW = filterCuratedByStopHours([satOpen, tueOpen], weekend);
+  assertEquals(onceW.length, 1, 'anyHourOnDays: mixed list → only the Sat-open card survives');
+  const twiceW = filterCuratedByStopHours(onceW, weekend);
+  assertEquals(twiceW.length, onceW.length, 'anyHourOnDays: re-filtering the survivors is a no-op (idempotent)');
+});
+
+// ─── T-3-06: pick_dates union across MULTIPLE selected weekdays ───────────────
+Deno.test("T-3-06 (adversarial): 'pick_dates' takes the UNION of selected weekdays (open on ANY one → retained)", () => {
+  // 2026-06-17 = Wednesday (day=3); 2026-06-20 = Saturday (day=6). A stop open
+  // ONLY Saturday must be retained (Sat is in the union); a stop open ONLY
+  // Friday (day=5) must be dropped (neither selected day is Friday).
+  const policy = resolveCuratedHoursPolicy({
+    dateOption: 'pick_dates',
+    selectedDates: ['2026-06-17', '2026-06-20'],
+    datetimePref: STALE_PREF_WED_NIGHT,
+  });
+  assertEquals(policy.mode, 'anyHourOnDays');
+  const days = (policy as { mode: 'anyHourOnDays'; days: number[] }).days.slice().sort();
+  assertEquals(days, [3, 6], 'pick_dates resolves to the weekdays of the selected dates (Wed + Sat)');
+
+  const satOnly = { cardType: 'curated', utcOffsetMinutes: 0, lng: 0,
+    stops: [{ placeType: 'restaurant', openingHours: p(6, 14, 18), travelTimeFromPreviousStopMin: 0 }] };
+  assertEquals(filterCuratedByStopHours([satOnly], policy).length, 1,
+    'a Sat-only stop is retained (Sat ∈ {Wed,Sat})');
+
+  const friOnly = { cardType: 'curated', utcOffsetMinutes: 0, lng: 0,
+    stops: [{ placeType: 'restaurant', openingHours: p(5, 14, 18), travelTimeFromPreviousStopMin: 0 }] };
+  assertEquals(filterCuratedByStopHours([friOnly], policy).length, 0,
+    'a Fri-only stop is dropped (Fri ∉ {Wed,Sat})');
+
+  // Direct unit check of the any-time predicate underpinning the union.
+  assert(isStopOpenAtHourAnyTime({ placeType: 'restaurant', openingHours: p(6, 14, 18) }, 6), 'Sat-open any-time true on Sat');
+  assert(!isStopOpenAtHourAnyTime({ placeType: 'restaurant', openingHours: p(6, 14, 18) }, 5), 'Sat-open any-time false on Fri');
+});
