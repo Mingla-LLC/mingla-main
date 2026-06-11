@@ -67,6 +67,10 @@ import {
   type AccountDeletionPreview,
 } from "../../src/utils/accountDeletionPreview";
 import { formatCurrency } from "../../src/utils/currency";
+import {
+  computeConfirmMatches,
+  resolveUserEmail,
+} from "../../src/utils/resolveUserEmail";
 
 import { Button } from "../../src/components/ui/Button";
 import { Icon } from "../../src/components/ui/Icon";
@@ -134,13 +138,21 @@ export default function DeleteAccountRoute(): React.ReactElement {
     allScans,
   ]);
 
-  const emailMatches = useMemo<boolean>(() => {
-    if (user?.email === null || user?.email === undefined) return false;
-    return (
-      confirmEmailInput.trim().toLowerCase() ===
-      user.email.trim().toLowerCase()
-    );
-  }, [confirmEmailInput, user]);
+  // ORCH-1110: resolve the best REAL email (auth.users.email may be NULL →
+  // serialized as "" by GoTrue). When none is resolvable, fall back to a
+  // typed-DELETE keyword so the destructive action is always reachable.
+  // Do NOT revert to `user.email ?? ""` (re-introduces the blank-email trap).
+  const resolvedEmail = useMemo<string | null>(
+    () => resolveUserEmail(user),
+    [user],
+  );
+  const confirmMode: "email" | "keyword" =
+    resolvedEmail === null ? "keyword" : "email";
+
+  const confirmMatches = useMemo<boolean>(
+    () => computeConfirmMatches(confirmMode, resolvedEmail, confirmEmailInput),
+    [confirmMode, resolvedEmail, confirmEmailInput],
+  );
 
   const showToast = useCallback((message: string): void => {
     setToast({ visible: true, message });
@@ -168,7 +180,7 @@ export default function DeleteAccountRoute(): React.ReactElement {
   }, [deleting, router]);
 
   const handleConfirmDelete = useCallback(async (): Promise<void> => {
-    if (!emailMatches || deleting) return;
+    if (!confirmMatches || deleting) return;
     try {
       await requestDeletion();
       setStep(4);
@@ -187,7 +199,7 @@ export default function DeleteAccountRoute(): React.ReactElement {
       setStep(3);
       setConfirmEmailInput("");
     }
-  }, [emailMatches, deleting, requestDeletion, signOut, router, showToast]);
+  }, [confirmMatches, deleting, requestDeletion, signOut, router, showToast]);
 
   // ---- Render ----
 
@@ -236,10 +248,11 @@ export default function DeleteAccountRoute(): React.ReactElement {
         ) : null}
         {step === 3 ? (
           <Step3Confirm
-            email={user?.email ?? ""}
+            confirmMode={confirmMode}
+            resolvedEmail={resolvedEmail}
             input={confirmEmailInput}
             onChangeInput={setConfirmEmailInput}
-            emailMatches={emailMatches}
+            confirmMatches={confirmMatches}
             deleting={deleting}
             onConfirm={() => {
               void handleConfirmDelete();
@@ -435,70 +448,92 @@ const Step2Preview: React.FC<Step2PreviewProps> = ({
 // Step 3 — Type-to-confirm
 // ============================================================
 
+// ORCH-1110: dual-mode confirmation. `email` mode shows the resolved real
+// email and requires a case-insensitive match. `keyword` mode (no resolvable
+// email) shows NO "YOUR EMAIL" box (it would be blank — Constitution rule 1)
+// and requires typing DELETE so the account is always deletable.
 interface Step3ConfirmProps {
-  email: string;
+  confirmMode: "email" | "keyword";
+  resolvedEmail: string | null;
   input: string;
   onChangeInput: (value: string) => void;
-  emailMatches: boolean;
+  confirmMatches: boolean;
   deleting: boolean;
   onConfirm: () => void;
   onBack: () => void;
 }
 
 const Step3Confirm: React.FC<Step3ConfirmProps> = ({
-  email,
+  confirmMode,
+  resolvedEmail,
   input,
   onChangeInput,
-  emailMatches,
+  confirmMatches,
   deleting,
   onConfirm,
   onBack,
-}) => (
-  <View style={styles.confirmHost}>
-    <Text style={styles.confirmTitle}>Type your email to confirm</Text>
-    <Text style={styles.confirmSubtitle}>
-      Confirm that you really want to delete your account.
-    </Text>
-    <View style={styles.confirmEmailBox}>
-      <Text style={styles.confirmEmailLabel}>YOUR EMAIL</Text>
-      <Text style={styles.confirmEmail} numberOfLines={1}>
-        {email}
+}) => {
+  const isEmailMode = confirmMode === "email";
+  return (
+    <View style={styles.confirmHost}>
+      <Text style={styles.confirmTitle}>
+        {isEmailMode
+          ? "Type your email to confirm"
+          : "Type DELETE to confirm"}
       </Text>
-    </View>
-    <TextInput
-      style={styles.confirmInput}
-      placeholder="Type your email"
-      placeholderTextColor={textTokens.tertiary}
-      value={input}
-      onChangeText={onChangeInput}
-      autoCapitalize="none"
-      autoCorrect={false}
-      keyboardType="email-address"
-      editable={!deleting}
-    />
-    <View style={styles.ctaRow}>
-      <Button
-        label="Back"
-        variant="ghost"
-        size="md"
-        fullWidth
-        onPress={onBack}
-        disabled={deleting}
+      <Text style={styles.confirmSubtitle}>
+        {isEmailMode
+          ? "Confirm that you really want to delete your account."
+          : "We couldn't find an email on file for your account. Type the word DELETE to confirm you want to delete it."}
+      </Text>
+      {isEmailMode && resolvedEmail !== null ? (
+        <View style={styles.confirmEmailBox}>
+          <Text style={styles.confirmEmailLabel}>YOUR EMAIL</Text>
+          <Text style={styles.confirmEmail} numberOfLines={1}>
+            {resolvedEmail}
+          </Text>
+        </View>
+      ) : null}
+      <TextInput
+        style={styles.confirmInput}
+        placeholder={isEmailMode ? "Type your email" : "Type DELETE"}
+        placeholderTextColor={textTokens.tertiary}
+        value={input}
+        onChangeText={onChangeInput}
+        autoCapitalize={isEmailMode ? "none" : "characters"}
+        autoCorrect={false}
+        keyboardType={isEmailMode ? "email-address" : "default"}
+        editable={!deleting}
+        accessibilityLabel={
+          isEmailMode
+            ? "Type your email to confirm"
+            : "Type DELETE to confirm"
+        }
       />
+      <View style={styles.ctaRow}>
+        <Button
+          label="Back"
+          variant="ghost"
+          size="md"
+          fullWidth
+          onPress={onBack}
+          disabled={deleting}
+        />
+      </View>
+      <View style={styles.ctaRow}>
+        <Button
+          label={deleting ? "Deleting..." : "Delete my account"}
+          variant="secondary"
+          size="md"
+          fullWidth
+          disabled={!confirmMatches || deleting}
+          onPress={onConfirm}
+          accessibilityLabel="Delete my account"
+        />
+      </View>
     </View>
-    <View style={styles.ctaRow}>
-      <Button
-        label={deleting ? "Deleting..." : "Delete my account"}
-        variant="secondary"
-        size="md"
-        fullWidth
-        disabled={!emailMatches || deleting}
-        onPress={onConfirm}
-        accessibilityLabel="Delete my account"
-      />
-    </View>
-  </View>
-);
+  );
+};
 
 // ============================================================
 // Step 4 — Success

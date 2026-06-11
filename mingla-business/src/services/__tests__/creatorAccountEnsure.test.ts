@@ -72,4 +72,41 @@ describe("ensureCreatorAccount — seed-only contract (ORCH-0786 follow-up)", ()
     const [row] = upsertMock.mock.calls[0] ?? [];
     expect(row).toMatchObject({ display_name: "newuser", avatar_url: null });
   });
+
+  // ORCH-1110: never persist the empty string. auth.users.email NULL is
+  // serialized as "" on User.email; the seed must resolve the real email
+  // from user_metadata/identity, or write NULL — never "".
+  test("T-P1 seeds resolved real email when auth email is blank but metadata has it", async () => {
+    await ensureCreatorAccount(
+      makeUser({
+        email: "",
+        user_metadata: { email: "a@b.com" },
+      } as Partial<User>),
+    );
+
+    const [row] = upsertMock.mock.calls[0] ?? [];
+    expect((row as { email: string | null }).email).toBe("a@b.com");
+  });
+
+  test("T-P2 seeds NULL (never empty string) when no real email anywhere", async () => {
+    await ensureCreatorAccount(
+      makeUser({
+        email: "",
+        user_metadata: {},
+        identities: [],
+      } as unknown as Partial<User>),
+    );
+
+    const [row] = upsertMock.mock.calls[0] ?? [];
+    expect((row as { email: string | null }).email).toBeNull();
+  });
+
+  test("T-P3 seeds real user.email unchanged when present", async () => {
+    await ensureCreatorAccount(
+      makeUser({ email: "x@y.com", user_metadata: {} } as Partial<User>),
+    );
+
+    const [row] = upsertMock.mock.calls[0] ?? [];
+    expect((row as { email: string | null }).email).toBe("x@y.com");
+  });
 });
