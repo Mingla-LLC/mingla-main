@@ -194,17 +194,22 @@ Deno.test('T-2-01 (adversarial / solo-wiring fails-on-revert): solo handler appl
   // Strip comments so we assert against EXECUTABLE wiring, not the explanatory header.
   const code = src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '');
 
-  // (a) the import exists.
-  assert(/import\s*\{\s*filterCuratedByStopHours\s*\}\s*from\s*'\.\.\/_shared\/curatedStopHours\.ts'/.test(code),
+  // (a) the import exists. [ORCH-1113] relaxed from a sole-import shape: the
+  // handler now ALSO imports resolveCuratedHoursPolicy from the same module, so
+  // assert the named import appears (not that it is the only one).
+  assert(/import\s*\{[^}]*\bfilterCuratedByStopHours\b[^}]*\}\s*from\s*'\.\.\/_shared\/curatedStopHours\.ts'/.test(code),
     'solo handler must import filterCuratedByStopHours');
 
   // (b) the handler reassigns cards through the filter (the load-bearing wiring).
   assert(/cards\s*=\s*filterCuratedByStopHours\s*\(\s*cards\s*,/.test(code),
     'solo handler must call cards = filterCuratedByStopHours(cards, ...) — removing this reverts the solo gap');
 
-  // (c) the start-time source mirrors discover-cards (datetimePref ? new Date(...) : new Date()).
-  assert(/datetimePref\s*\?\s*new Date\(datetimePref\)\s*:\s*new Date\(\)/.test(code),
-    'solo filter start time must mirror discover-cards (datetimePref || now)');
+  // (c) [ORCH-1113] the start-time source is now the date-option policy resolver
+  // (live clock for 'today', NOT the stale stored datetime_pref). The old
+  // assertion (datetimePref ? new Date(datetimePref) : new Date()) asserted the
+  // exact line this ORCH removes; replaced with the new policy wiring.
+  assert(/resolveCuratedHoursPolicy\s*\(\s*\{\s*dateOption\s*,\s*datetimePref\s*,\s*selectedDates\s*\}\s*\)/.test(code),
+    'solo filter start time must come from resolveCuratedHoursPolicy({ dateOption, datetimePref, selectedDates }) (ORCH-1113 date-option parity)');
 
   // (d) the empty-after-filter summary fallback is present (mobile routes to EMPTY UI).
   assert(/cards\.length\s*===\s*0\s*&&\s*!summary/.test(code),
