@@ -1,4 +1,6 @@
 # Agent Handoffs
+## 2026-06-11 - ORCH-1111 [Surface pending invites in-app] + ORCH-1112 [Ari tab reachable with no brand] CLOSED PASS Grade A
+No downstream specialist handoff remains. Chain (conductor model, all dispatched from the main session): registration -> forensics INVESTIGATE (invite plumbing + Ari capability) -> orchestrator REVIEW -> forensics SPEC (one wave) -> implementor IMPLEMENT -> orchestrator REVIEW + DEPLOY (migration via Management API + edge fns) -> tester live-fire PASS -> device smoke caught the OAuth-null-email defect -> implementor loop-back fix -> redeploy + re-smoke PASS -> orchestrator CLOSE. Renumbered 1108/1109 -> 1111/1112 mid-pipeline (ID collision with shipped #438/#437); merged `970cc2026` ([deploy], PR #436), iOS+Android OTA'd. Result: in-app pending-invite surface (To-Do Accept/Decline + bell, terminal Decline) + Ari reachable for brand-less accounts + trusted-email (auth.identities) resolver. Downstream routing: none open. Optional follow-ups (NOT dispatched): live Android device drive of the invite UI; non-owner team-role accept device-drive. Evidence under `Mingla_Artifacts/{investigations,specs,reports}/*ORCH-1111-1112*`; close marker in WORLD_MAP + MASTER_BUG_LIST; cross-ORCH note COMMS-0023.
 
 ## 2026-06-07 - ORCH-1097 [Business web media picker controls] CLOSED PASS Grade A
 
