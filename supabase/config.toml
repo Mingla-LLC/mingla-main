@@ -3,9 +3,6 @@ project_id = "gqnoajqerqhnvulmnyvv"
 [functions.weather]
 verify_jwt = false
 
-[functions.ai-reason]
-verify_jwt = true
-
 [functions.events]
 verify_jwt = false
 
