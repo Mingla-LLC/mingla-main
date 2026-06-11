@@ -63,6 +63,9 @@ const ALLOWLIST = new Set([
   // (ORCH-1060 CI green-up; type imports are erased at build, never render.)
   "mingla-business/src/utils/navTabGate.ts",
   "mingla-business/src/utils/__tests__/navTabGate.test.ts",
+  // ORCH-1109 [Ari reachable with no brand] tester adversarial nav-gate test —
+  // same type-only `BottomNavTab` import as its sibling above; no runtime mount.
+  "mingla-business/src/utils/__tests__/navTabGate.tester_adversarial.test.ts",
 ]);
 
 const failures = [];

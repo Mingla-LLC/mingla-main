@@ -1594,6 +1594,22 @@ function checkNoNewBackendFiles() {
     "supabase/functions/ticket-checkout-create/index.ts",
     "supabase/functions/ticket-checkout-status/index.ts",
   ];
+  // ORCH-1108 + ORCH-1109 [Surface pending invites in-app + Ari reachable with
+  // no brand] PR #436. C7 is scoped to ORCH-0863 marketing; these backend
+  // touches are the in-app invite surface (list/accept/decline + declined
+  // terminal state + OAuth-null-email trusted-email resolution), NOT marketing
+  // scope. Same C7-scoping caveat as the allowlists above.
+  const ORCH_1108_BACKEND_ALLOWLIST = [
+    "supabase/functions/_shared/trustedCallerEmail.ts",
+    "supabase/functions/accept-brand-invitation/index.ts",
+    "supabase/functions/decline-brand-invitation/index.ts",
+    "supabase/functions/list-my-pending-invites/index.ts",
+    "supabase/functions/list-my-pending-invites/index.test.ts",
+    "supabase/functions/list-my-pending-invites/index.adversarial.test.ts",
+    "supabase/functions/list-my-pending-invites/oauthNullEmail.test.ts",
+    "supabase/migrations/20260924000000_orch_1108_brand_invite_declined.sql",
+    "supabase/migrations/20260925000000_orch_1108_oauth_null_email_accept.sql",
+  ];
   // ORCH-1032 [Intelligence pipeline concurrency cap + chunked enqueue]:
   // adds the additive 'queued'-status migration (status CHECK widen + per-city
   // unique active index widen + tg_kick_pending_trial_runs promotion built on
@@ -1981,6 +1997,7 @@ function checkNoNewBackendFiles() {
     ...ORCH_1103_BACKEND_ALLOWLIST,
     ...ORCH_1107_BACKEND_ALLOWLIST,
     ...ORCH_426_BACKEND_ALLOWLIST,
+    ...ORCH_1108_BACKEND_ALLOWLIST,
     // Schedule-edit buyer protection + "Refund all & proceed" (separate PR;
     // shares the ORCH-1047 work id used in code). New migration recording the
     // already-live business_patch_event_when change — not ORCH-0863 marketing
