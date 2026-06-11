@@ -42,9 +42,13 @@ Deno.test("list-my-pending-invites never selects token_hash / invited_by", async
 Deno.test("list-my-pending-invites derives email from the JWT, not a param", async () => {
   const source = await Deno.readTextFile(new URL("./index.ts", import.meta.url));
 
-  // Email is read off the authenticated user and lowercased (both sides).
-  assertStringIncludes(source, "userResult.user.email");
-  assertStringIncludes(source, ".trim().toLowerCase()");
+  // ORCH-1108 loop-back fix — the email is now derived from the JWT user via
+  // the TRUSTED resolver (auth.users.email → verified auth.identities OAuth
+  // email), still server-side and still with NO email parameter. The seam moved
+  // into resolveTrustedCallerEmail; the security property (JWT-derived, no
+  // injectable email) is preserved and asserted here.
+  assertStringIncludes(source, "resolveTrustedCallerEmail");
+  assertStringIncludes(source, "userResult.user");
   // The match filters status=pending + non-expired.
   assertStringIncludes(source, '.eq("status", "pending")');
   assertStringIncludes(source, '.gt("expires_at", nowIso)');

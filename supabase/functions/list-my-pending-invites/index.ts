@@ -26,6 +26,13 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { dispatchNotification } from "../_shared/stripeEdgeAuth.ts";
+// ORCH-1108 loop-back fix — OAuth users can have auth.users.email = NULL; the
+// verified email lives only on auth.identities. Resolve a TRUSTED email
+// (users.email → verified OAuth identity) and NEVER user_metadata.
+import {
+  makeAuthIdentitiesFetcher,
+  resolveTrustedCallerEmail,
+} from "../_shared/trustedCallerEmail.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -78,17 +85,21 @@ export async function handler(req: Request): Promise<Response> {
     }
     const userId = userResult.user.id;
 
-    // Normalize BOTH sides: stored side is lowercased on write, but the JWT
-    // email may carry mixed case from the IdP. lower(trim(...)) defensively.
-    const email = (userResult.user.email ?? "").trim().toLowerCase();
-    if (email.length === 0) {
-      // No email = nothing to match. Never 500.
-      return json({ invites: [] }, 200);
-    }
-
     const service = createClient(SUPABASE_URL, SERVICE_KEY, {
       auth: { persistSession: false, autoRefreshToken: false },
     });
+
+    // ORCH-1108 loop-back fix — resolve the caller email from a TRUSTED chain:
+    // auth.users.email → verified auth.identities OAuth email (Google users
+    // have a NULL users.email). user_metadata is user-writable → NEVER trusted.
+    // No trusted email = nothing to match. Never 500 (no leak).
+    const email = await resolveTrustedCallerEmail(
+      userResult.user,
+      makeAuthIdentitiesFetcher(service),
+    );
+    if (email.length === 0) {
+      return json({ invites: [] }, 200);
+    }
 
     const nowIso = new Date().toISOString();
 

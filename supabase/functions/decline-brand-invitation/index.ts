@@ -25,6 +25,14 @@
 
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+// ORCH-1108 loop-back fix — OAuth users can have auth.users.email = NULL; the
+// verified email lives only on auth.identities. Resolve a TRUSTED caller email
+// (users.email → verified OAuth identity) for the email-match check. NEVER
+// trust user_metadata.
+import {
+  makeAuthIdentitiesFetcher,
+  resolveTrustedCallerEmail,
+} from "../_shared/trustedCallerEmail.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -88,11 +96,19 @@ export async function handler(req: Request): Promise<Response> {
       return json({ error: "unauthenticated" }, 401);
     }
     const userId = userResult.user.id;
-    const email = (userResult.user.email ?? "").trim().toLowerCase();
 
     const service = createClient(SUPABASE_URL, SERVICE_KEY, {
       auth: { persistSession: false, autoRefreshToken: false },
     });
+
+    // ORCH-1108 loop-back fix — resolve the caller email from the TRUSTED chain
+    // (auth.users.email → verified auth.identities OAuth email). Google OAuth
+    // users have a NULL users.email; without this the email-match below 403'd.
+    // user_metadata is user-writable → NEVER consulted.
+    const email = await resolveTrustedCallerEmail(
+      userResult.user,
+      makeAuthIdentitiesFetcher(service),
+    );
 
     // Resolve the invitation; prove identity by email; check actionability.
     const { data: inviteRow, error: lookupErr } = await service

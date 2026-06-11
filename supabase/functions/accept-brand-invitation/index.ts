@@ -38,6 +38,14 @@ import {
   dispatchNotification,
   getBrandTeamUserIdsByRoles,
 } from "../_shared/stripeEdgeAuth.ts";
+// ORCH-1108 loop-back fix — OAuth users can have auth.users.email = NULL; the
+// verified email lives only on auth.identities. Resolve a TRUSTED caller email
+// (users.email → verified OAuth identity) for the email-match check. NEVER
+// trust user_metadata.
+import {
+  makeAuthIdentitiesFetcher,
+  resolveTrustedCallerEmail,
+} from "../_shared/trustedCallerEmail.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -187,6 +195,15 @@ export async function handler(req: Request): Promise<Response> {
       auth: { persistSession: false, autoRefreshToken: false },
     });
 
+    // ORCH-1108 loop-back fix — resolve the caller email ONCE from the TRUSTED
+    // chain (auth.users.email → verified auth.identities OAuth email). Google
+    // OAuth users have a NULL users.email; without this the email-match below
+    // 403'd. user_metadata is user-writable → NEVER consulted.
+    const trustedCallerEmail = await resolveTrustedCallerEmail(
+      userResult.user,
+      makeAuthIdentitiesFetcher(service),
+    );
+
     // Resolve creator_accounts.id for this auth user.
     const { data: account, error: accountErr } = await service
       .from("creator_accounts")
@@ -231,7 +248,7 @@ export async function handler(req: Request): Promise<Response> {
       if (!inviteRow) {
         return json({ error: "invite_not_found" }, 404);
       }
-      const callerEmail = (userResult.user.email ?? "").trim().toLowerCase();
+      const callerEmail = trustedCallerEmail;
       const storedEmail = ((inviteRow as { email?: unknown }).email ?? "");
       if (
         callerEmail.length === 0 ||
@@ -404,8 +421,10 @@ export async function handler(req: Request): Promise<Response> {
             .eq("id", account.id)
             .maybeSingle();
           // Auth-user email lookup is needed because creator_accounts doesn't
-          // carry email; the JWT does. We already have it via userResult.
-          const memberEmail = (userResult.user.email ?? "").toLowerCase();
+          // carry email; the JWT does. ORCH-1108 loop-back — use the TRUSTED
+          // resolution (handles Google null-email users) so the partner-link
+          // match works for OAuth owners too.
+          const memberEmail = trustedCallerEmail;
           if (memberEmail.length > 0) {
             const { data: linkRow } = await service
               .from("partner_brand_links")
