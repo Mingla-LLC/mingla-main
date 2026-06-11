@@ -283,9 +283,7 @@ export function resolveCuratedHoursPolicy(opts: {
   const dOpt = (opts.dateOption || '').toLowerCase().replace(/-/g, '_').replace(/ /g, '_');
 
   if (dOpt === 'today' || dOpt === 'now' || !opts.dateOption) {
-    // [ORCH-1113-DIAG] TEMPORARY REVERT to prove fails-on-revert — restores the
-    // pre-fix behavior (prefer the stale stored datetime_pref). MUST be reverted.
-    return { mode: 'instant', utcNow: opts.datetimePref ? new Date(opts.datetimePref) : now };
+    return { mode: 'instant', utcNow: now };
   }
 
   if (dOpt === 'this_weekend' || dOpt === 'weekend') {
