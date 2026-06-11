@@ -1583,6 +1583,17 @@ function checkNoNewBackendFiles() {
     "supabase/functions/__tests__/orch_1107_companion_picnic_place_pool.test.ts",
     "supabase/functions/__tests__/orch_1107_rpc_error_adversarial.test.ts",
   ];
+  // ORCH-1108 [Delete 3 dead AI edge functions]. The deletions of
+  // generate-ai-summary/ai-reason/score-place-photo-aesthetics don't trip C7;
+  // these are the two NEW Deno regression tests under supabase/functions/__tests__/.
+  // No new edge function, no migration. Per COMMS-0002.
+  const ORCH_1108_BACKEND_ALLOWLIST = [
+    "supabase/functions/generate-ai-summary/index.ts",
+    "supabase/functions/ai-reason/index.ts",
+    "supabase/functions/score-place-photo-aesthetics/index.ts",
+    "supabase/functions/__tests__/orch_1108_dead_functions_removed.test.ts",
+    "supabase/functions/__tests__/orch_1108_no_dangling_refs.test.ts",
+  ];
   // Issue #426 [Production-readiness foundation] PR #427. C7 is scoped to
   // ORCH-0863 marketing; structuredLog.ts is #426 observability scaffolding
   // (not yet wired into edge functions), not marketing scope.
@@ -1980,6 +1991,7 @@ function checkNoNewBackendFiles() {
     ...ORCH_1079_BACKEND_ALLOWLIST,
     ...ORCH_1103_BACKEND_ALLOWLIST,
     ...ORCH_1107_BACKEND_ALLOWLIST,
+    ...ORCH_1108_BACKEND_ALLOWLIST,
     ...ORCH_426_BACKEND_ALLOWLIST,
     // Schedule-edit buyer protection + "Refund all & proceed" (separate PR;
     // shares the ORCH-1047 work id used in code). New migration recording the
