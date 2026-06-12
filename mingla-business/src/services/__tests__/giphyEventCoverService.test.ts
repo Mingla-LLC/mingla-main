@@ -1,5 +1,12 @@
 import { afterAll, beforeEach, describe, expect, jest, test } from "@jest/globals";
 
+// ORCH-1127: the service now imports expo-constants (extra-first key read).
+// These suites exercise the process.env fallback path, so `extra` is empty.
+jest.mock("expo-constants", () => ({
+  __esModule: true,
+  default: { expoConfig: { extra: {} } },
+}));
+
 import { EventCoverProviderError } from "../eventCoverProviderError";
 import { searchGiphyEventCovers } from "../giphyEventCoverService";
 

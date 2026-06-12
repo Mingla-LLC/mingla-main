@@ -1,3 +1,5 @@
+import Constants from "expo-constants";
+
 import { EventCoverProviderError } from "./eventCoverProviderError";
 
 export interface GiphyCoverSearchResult {
@@ -26,11 +28,31 @@ type GiphyResult = {
   };
 };
 
-const envValue = (name: string): string | null => {
-  const maybeProcess = globalThis as typeof globalThis & {
-    process?: { env?: Record<string, string | undefined> };
-  };
-  const value = maybeProcess.process?.env?.[name];
+// ORCH-1127: read the GIPHY key from Constants.expoConfig.extra FIRST (mirror
+// supabase.ts). Dynamic process.env[name] is NOT inlined by babel-preset-expo
+// and is undefined in Hermes standalone/OTA builds — extra is the
+// manifest-backed, build-safe path. Do NOT revert to process.env[<var>].
+type GiphyKeyName = "EXPO_PUBLIC_GIPHY_API_KEY" | "EXPO_PUBLIC_GIPHY_KEY";
+
+// `extra` is a runtime object materialized from the resolved app.config.ts and
+// baked into the app manifest at build time, so a dynamic key read here is safe
+// (it does not depend on babel inlining).
+const readExtra = (name: GiphyKeyName): string | undefined => {
+  const extra = Constants.expoConfig?.extra as
+    | Record<string, string | undefined>
+    | undefined;
+  return extra?.[name];
+};
+
+// The process.env fallback MUST use STATIC member access so babel-preset-expo
+// inlines it for the Metro-dev / web-export path (where `extra` may be absent).
+const readStaticProcessEnv = (name: GiphyKeyName): string | undefined =>
+  name === "EXPO_PUBLIC_GIPHY_API_KEY"
+    ? process.env.EXPO_PUBLIC_GIPHY_API_KEY
+    : process.env.EXPO_PUBLIC_GIPHY_KEY;
+
+const envValue = (name: GiphyKeyName): string | null => {
+  const value = readExtra(name) ?? readStaticProcessEnv(name);
   return typeof value === "string" && value.trim().length > 0
     ? value.trim()
     : null;
