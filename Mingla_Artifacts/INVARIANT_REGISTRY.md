@@ -4348,7 +4348,7 @@ Every chat response from every skill uses Section A (what just happened) + Secti
 
 **Cross-references:** INVESTIGATE/SPEC/IMPLEMENTATION/TEST_ORCH-1116_BOOKING_GATE_RLS.md, PR #443 (`6dc51ae62`), migration `20260927000000`.
 
-### I-PROPOSED-ORCH-1123-MULTISELECT-DRAFTS-ONLY (PROPOSED — ORCH-1123 IMPLEMENT 2026-06-12)
+### I-PROPOSED-ORCH-1123-MULTISELECT-DRAFTS-ONLY (ACTIVE — ratified by ORCH-1123 CLOSE 2026-06-12)
 
 **Invariant:** Long-press selection mode + the `DraftSelectBar` may target ONLY rows whose status is `draft`. A non-draft row passes `selectable={false}` (no long-press entry, no toggle, no checkbox; dimmed + inert) and a non-draft long-press plays the honest null-shake no-op (never silently dead). The batch RPC `business_discard_offering_drafts` defends in depth: any non-draft id returns `skipped_not_draft`, never `deleted`.
 
@@ -4356,7 +4356,7 @@ Every chat response from every skill uses Section A (what just happened) + Secti
 
 **Applies to:** business-iOS + business-Android, `app/(tabs)/hub/{events,trips,experiences}.tsx` + the 3 list cards + `business_discard_offering_drafts`.
 
-### I-PROPOSED-ORCH-1123-BATCH-RPC-RANK-GATED (PROPOSED — ORCH-1123 IMPLEMENT 2026-06-12)
+### I-PROPOSED-ORCH-1123-BATCH-RPC-RANK-GATED (ACTIVE — ratified by ORCH-1123 CLOSE 2026-06-12)
 
 **Invariant:** `business_discard_offering_drafts(p_event_ids uuid[])` MUST enforce `biz_brand_effective_rank(brand_id, auth.uid()) >= biz_role_rank('event_manager')` PER ROW (a sub-rank or other-brand caller gets `forbidden`, row NOT deleted), be `SECURITY DEFINER` with `SET search_path TO 'public','pg_temp'`, and be `REVOKE`'d from PUBLIC + anon and `GRANT`'d to authenticated + service_role only. The `$function$;` terminator precedes the GRANT.
 
@@ -4366,7 +4366,7 @@ Every chat response from every skill uses Section A (what just happened) + Secti
 
 **Applies to:** `supabase/migrations/20260928000002_orch_1123_batch_discard_offering_drafts.sql`.
 
-### I-PROPOSED-ORCH-1123-NO-SILENT-PARTIAL-FAILURE (PROPOSED — ORCH-1123 IMPLEMENT 2026-06-12)
+### I-PROPOSED-ORCH-1123-NO-SILENT-PARTIAL-FAILURE (ACTIVE — ratified by ORCH-1123 CLOSE 2026-06-12)
 
 **Invariant:** A partial batch (some rows `forbidden`/`skipped_*`) MUST surface a toast naming the counts; the RPC MUST return per-row outcomes (SKIP-and-report, never an all-or-nothing rollback that hides the user's intent). Toast copy is verbatim: `Deleted N drafts.` (success) / `Deleted N, M couldn't be deleted.` (warn) / `Couldn't delete N drafts. You may not have permission.` (error).
 
@@ -4374,7 +4374,7 @@ Every chat response from every skill uses Section A (what just happened) + Secti
 
 **Applies to:** business-iOS + business-Android, the 3 Hub tabs + the RPC.
 
-### I-PROPOSED-ORCH-1123-EVENTS-LOCAL-SERVER-SPLIT (PROPOSED — ORCH-1123 IMPLEMENT 2026-06-12)
+### I-PROPOSED-ORCH-1123-EVENTS-LOCAL-SERVER-SPLIT (ACTIVE — ratified by ORCH-1123 CLOSE 2026-06-12)
 
 **Invariant:** An events bulk delete MUST partition selected ids: local-only (`id.startsWith("d_") || serverSlug === null`) → Zustand `deleteDraft` ONLY; server-backed → batch RPC + Zustand removal + RQ invalidate. A local-only id MUST NEVER be sent to the RPC (it would 404). One confirm, one combined toast tally.
 
@@ -4382,7 +4382,7 @@ Every chat response from every skill uses Section A (what just happened) + Secti
 
 **Applies to:** business-iOS + business-Android, `app/(tabs)/hub/events.tsx` + `useDiscardOfferingDrafts.ts`.
 
-### I-PROPOSED-ORCH-1123-LONGPRESS-FIRES (PROPOSED — ORCH-1123 IMPLEMENT 2026-06-12) [Constitution #1 no-dead-tap]
+### I-PROPOSED-ORCH-1123-LONGPRESS-FIRES (ACTIVE — ratified by ORCH-1123 CLOSE 2026-06-12) [Constitution #1 no-dead-tap]
 
 **Invariant:** Long-press on a draft row MUST enter selection mode AT RUNTIME (not merely "wired in source"). The body Pressable carries `onLongPress` + `delayLongPress={350}` and the tab passes a real `enterWith` (plus the Medium `HapticFeedback.selectionEnter()`); tapping rows then toggles checkboxes and updates the bar count.
 
