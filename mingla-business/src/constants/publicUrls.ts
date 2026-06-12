@@ -67,6 +67,21 @@ export const tripCheckoutPath = (tripEventId: string): string =>
 export const tripCheckoutUrl = (tripEventId: string): string =>
   `${BUSINESS_PUBLIC_ORIGIN}${tripCheckoutPath(tripEventId)}`;
 
+// ORCH-1117: experience-specific buyer-anon checkout entry, mirror of
+// tripCheckoutPath. Experiences route into their own chain at
+// /checkout-experience/[experienceEventId]/* (event-side /checkout/[eventId]
+// hard-rejects non-event rows by audit-test invariant). The floating Buy bar
+// on the public experience page uses this single helper instead of an inline
+// template string (parity with tripCheckoutPath/checkoutPublicPath).
+export const experienceCheckoutPath = (experienceEventId: string): string =>
+  `/checkout-experience/${requireSegment(
+    experienceEventId,
+    "experienceEventId",
+  )}`;
+
+export const experienceCheckoutUrl = (experienceEventId: string): string =>
+  `${BUSINESS_PUBLIC_ORIGIN}${experienceCheckoutPath(experienceEventId)}`;
+
 // ORCH-0876: public trip page path helper (mirror of eventPublicPath).
 export const tripPublicPath = (input: {
   brandSlug: string;

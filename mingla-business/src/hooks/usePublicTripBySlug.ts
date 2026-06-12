@@ -34,7 +34,32 @@ interface PublicTripPayload {
     bio: string | null;
     coverMediaUrl: string | null;
   };
+  /**
+   * ORCH-1117 / ORCH-1076 I-PAID-SUPPLY-REQUIRES-CHARGES-ENABLED — when false,
+   * this is a PAID trip whose brand can't charge yet; the public page renders
+   * the floating Buy bar as a NON-tappable "Booking unavailable" info strip
+   * instead of the Reserve action. Free trips (and resolver errors) are
+   * `true` (fail-open; the checkout 409 remains the terminal backstop).
+   */
+  bookable: boolean;
 }
+
+// ORCH-1117 — mirror resolveEventBookable (publicEventsService.ts) /
+// resolveBookable (publicExperienceService.ts): a PAID trip is bookable iff its
+// brand can charge (anon-granted pg_brand_can_charge RPC). FREE ⇒ true. On RPC
+// error fail OPEN (page stays bookable; the checkout 409 is the backstop) so a
+// transient error never wrongly hides a bookable listing.
+const resolveTripBookable = async (
+  brandId: string,
+  isPaid: boolean,
+): Promise<boolean> => {
+  if (!isPaid) return true;
+  const { data, error } = await supabase.rpc("pg_brand_can_charge", {
+    p_brand_id: brandId,
+  });
+  if (error !== null) return true;
+  return data === true;
+};
 
 const DISABLED_KEY = ["trips", "__public_disabled__"] as const;
 
@@ -233,6 +258,12 @@ export const usePublicTripBySlug = (
         ticketsSoldCount: 0,
       };
 
+      // ORCH-1117 — a trip is PAID when its first pricing tier costs > 0
+      // (mirrors the trip price source above). Resolve the brand's
+      // charge-readiness so the floating bar can render its unavailable state.
+      const isPaid = (trip.pricingTiers[0]?.priceCents ?? 0) > 0;
+      const bookable = await resolveTripBookable(brand.id, isPaid);
+
       return {
         trip,
         brand: {
@@ -242,6 +273,7 @@ export const usePublicTripBySlug = (
           bio: brand.description ?? null,
           coverMediaUrl: brand.cover_media_url ?? null,
         },
+        bookable,
       };
     },
   });
