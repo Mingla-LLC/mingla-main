@@ -70,7 +70,8 @@
     "test:orch-1043-tester-adv": "node ./scripts/ci/orch-1043-tester-adversarial-check.mjs",
     "test:orch-1049": "node ./scripts/ci/orch-1049-matches-sheet-bottom-inset-check.mjs",
     "test:orch-1054": "node ./scripts/ci/orch-1054-matches-expanded-card-parity-check.mjs",
-    "test:orch-1072": "node ./scripts/ci/orch-1072-venue-experiences-check.mjs"
+    "test:orch-1072": "node ./scripts/ci/orch-1072-venue-experiences-check.mjs",
+    "test:orch-1125": "node ./scripts/ci/orch-1125-regression-check.mjs && node --experimental-strip-types --test app/__tests__/coldRouteQueryProvider.orch1125.test.ts"
   },
   "dependencies": {
     "@expo-google-fonts/anton": "^0.4.2",

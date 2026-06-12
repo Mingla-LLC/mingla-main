@@ -66,18 +66,19 @@ import { initializeAppsFlyer, setAppsFlyerUserId, registerAppsFlyerDevice, logAp
 import { useCustomerInfoListener } from "../src/hooks/useRevenueCat";
 import { useTrialExpiryTracking } from "../src/hooks/useSubscription";
 import * as SplashScreen from 'expo-splash-screen';
-import AnimatedSplashScreen from '../src/components/AnimatedSplashScreen';
 import AppLoadingScreen from '../src/components/AppLoadingScreen';
 
 
-import { PersistQueryClientProvider } from "@tanstack/react-query-persist-client";
-import { queryClient, asyncStoragePersister } from "../src/config/queryClient";
+// ORCH-1125: PersistQueryClientProvider + AnimatedSplashScreen + asyncStoragePersister
+// + shouldDehydrateMinglaQuery imports were removed here when the provider/gate/splash
+// apparatus moved to app/_layout.tsx. `queryClient` is retained — it is still used by
+// this route (prefetchQuery + dismissCollaborationInviteNotifications).
+import { queryClient } from "../src/config/queryClient";
 import { BoardSessionService } from "../src/services/boardSessionService";
 import { supabase } from "../src/services/supabase";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { colors } from "../src/constants/colors";
 import { logger } from "../src/utils/logger";
-import { shouldDehydrateMinglaQuery } from "../src/utils/queryPersistence";
 // V2: inAppNotificationService is no longer imported — server-synced notifications
 // are handled by useNotifications hook + Supabase Realtime. The old service file
 // stays in place but is no longer referenced from the app root.
@@ -2694,57 +2695,13 @@ const styles = StyleSheet.create({
   },
 });
 
-function App() {
-  // Gate: clear oversized React Query persisted cache BEFORE provider mounts.
-  // PersistQueryClientProvider crashes on mount if the cache exceeds Android's 2MB CursorWindow.
-  // Only clear if the cache actually exceeds the safety threshold (1.5MB).
-  // The shouldDehydrateQuery filter already excludes heavy queries, so the cache
-  // should stay small. Preserving it enables instant startup with cached prefs/location.
-  const [cacheReady, setCacheReady] = React.useState(false);
-  const [splashDone, setSplashDone] = React.useState(false);
-
-  React.useEffect(() => {
-    const MAX_CACHE_BYTES = 1_500_000; // 1.5MB — below Android's 2MB CursorWindow limit
-    AsyncStorage.getItem('REACT_QUERY_OFFLINE_CACHE')
-      .then((cached) => {
-        if (cached && cached.length > MAX_CACHE_BYTES) {
-          return AsyncStorage.removeItem('REACT_QUERY_OFFLINE_CACHE');
-        }
-      })
-      .catch(() => {})
-      .finally(() => setCacheReady(true));
-  }, []);
-
-  // AnimatedSplashScreen renders immediately (before cacheReady) so that
-  // its own useEffect fires as soon as it's painted — that's when it calls
-  // SplashScreen.hideAsync(). This guarantees the native splash is never
-  // dismissed before the React replacement is committed to screen.
-  return (
-    <>
-      {cacheReady && (
-        <PersistQueryClientProvider
-          client={queryClient}
-          persistOptions={{
-            persister: asyncStoragePersister,
-            maxAge: 24 * 60 * 60 * 1000, // 24 hours
-
-            dehydrateOptions: {
-              // Exclude large/transient queries from persistence to prevent
-              // Android CursorWindow overflow (2MB SQLite row limit)
-              shouldDehydrateQuery: (query) => {
-                return shouldDehydrateMinglaQuery(query, useAppStore.getState().user?.id ?? null);
-              },
-            },
-          }}
-        >
-          <AppContent />
-        </PersistQueryClientProvider>
-      )}
-      {!splashDone && (
-        <AnimatedSplashScreen onDone={() => setSplashDone(true)} />
-      )}
-    </>
-  );
-}
-
-export default Sentry.wrap(App);
+// ORCH-1125 [cold deep-link "No QueryClient set" crash]: the App() wrapper that
+// previously owned the PersistQueryClientProvider, the cacheReady cache-size
+// gate, the persist options, and the AnimatedSplashScreen overlay was MOVED to
+// the expo-router root layout (app/_layout.tsx) so the provider wraps <Stack/>
+// and therefore EVERY route — including cold-routed public deep-links (/t/, /b/,
+// /brand/) that never mount this Home route. AppContent now simply consumes the
+// ambient root-level providers (StripeNativeProvider + PersistQueryClientProvider).
+// Do NOT re-add a QueryClient provider here — the strict-grep gate
+// scripts/ci/check-rq-provider-at-root-layout.sh enforces single-ownership at root.
+export default Sentry.wrap(AppContent);
