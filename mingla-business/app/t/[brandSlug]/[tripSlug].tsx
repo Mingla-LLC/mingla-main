@@ -15,12 +15,10 @@
 
 // orch-strict-grep-allow safearea-on-fullscreen-routes — design-intent full-bleed cover on the public trip share-link page (mirrors /e/{brandSlug}/{eventSlug}); the buyer-facing banner aesthetic is intentional. TripPreview renders the cover full-bleed to the screen edge by design; status-bar overlap is the chosen look. Per ORCH-0859 [Tr2 Minimum Viable Trip] REWORK 5b operator design ruling 2026-05-17 (QA report §1, pattern parity with screenshot 17-PUBLIC-EVENT-PAGE.png). ORCH-0874 preserves this; X-close + share overlays absolute-position over the cover but do not introduce SafeScreen wrapping.
 
-import React, { useCallback } from "react";
+import React, { useCallback, useState } from "react";
 import {
   ActivityIndicator,
-  Platform,
   ScrollView,
-  Share,
   StyleSheet,
   Text,
   View,
@@ -39,6 +37,8 @@ import {
 } from "../../../src/constants/designSystem";
 import { GlassCard } from "../../../src/components/ui/GlassCard";
 import { IconChrome } from "../../../src/components/ui/IconChrome";
+import { ShareModal } from "../../../src/components/ui/ShareModal";
+import { tripPublicUrl } from "../../../src/constants/publicUrls";
 import { usePublicTripBySlug } from "../../../src/hooks/usePublicTripBySlug";
 import { TripPreview } from "../../../src/components/trip/TripPreview";
 import { TripCheckoutFlow } from "../../../src/components/trip/TripCheckoutFlow";
@@ -60,6 +60,8 @@ export default function PublicTripRoute(): React.ReactElement {
     ? params.tripSlug[0]
     : params.tripSlug;
 
+  const [shareModalVisible, setShareModalVisible] = useState<boolean>(false);
+
   const query = usePublicTripBySlug(
     typeof brandSlug === "string" ? brandSlug : null,
     typeof tripSlug === "string" ? tripSlug : null,
@@ -77,22 +79,12 @@ export default function PublicTripRoute(): React.ReactElement {
     }
   }, [router, brandSlug]);
 
-  // ORCH-0874: share → native share sheet with the public trip URL.
-  const handleShare = useCallback(async (): Promise<void> => {
-    if (typeof brandSlug !== "string" || typeof tripSlug !== "string") return;
-    const url = `https://business.usemingla.com/t/${brandSlug}/${tripSlug}`;
-    const title = query.data?.trip.title ?? "Mingla trip";
-    try {
-      await Share.share(
-        Platform.OS === "ios"
-          ? { url, message: title }
-          : { message: `${title} ${url}`, title },
-      );
-    } catch {
-      // Native Share rejection (user cancels) is non-actionable;
-      // do not surface a toast. Constitution #3 exempts user-cancelled flows.
-    }
-  }, [brandSlug, tripSlug, query.data?.trip.title]);
+  // ORCH-1114: share → web-aware ShareModal (copy-link/QR/native-share-via).
+  // NEVER revert to the bare react-native share API — it dead-taps on
+  // react-native-web (navigator.share undefined). See SPEC_ORCH-1114.
+  const handleShare = useCallback((): void => {
+    setShareModalVisible(true);
+  }, []);
 
   if (query.isLoading || query.isFetching) {
     return (
@@ -233,12 +225,20 @@ export default function PublicTripRoute(): React.ReactElement {
         <IconChrome
           icon="share"
           size={36}
-          onPress={() => {
-            void handleShare();
-          }}
+          onPress={handleShare}
           accessibilityLabel="Share"
         />
       </View>
+
+      {typeof brandSlug === "string" && typeof tripSlug === "string" && (
+        <ShareModal
+          visible={shareModalVisible}
+          onClose={() => setShareModalVisible(false)}
+          url={tripPublicUrl({ brandSlug, tripSlug })}
+          title={payload.trip.title}
+          description={payload.trip.description?.slice(0, 200)}
+        />
+      )}
     </View>
   );
 }

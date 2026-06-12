@@ -71,4 +71,18 @@ describe("ORCH-0859 — /t/{brandSlug}/{tripSlug} public anon route contract", (
       /\.in\(\s*"status"\s*,\s*\[\s*"scheduled"\s*,\s*"live"\s*\]/,
     );
   });
+
+  // ORCH-1114 — the Share control must route through the web-aware ShareModal,
+  // NOT bare react-native Share.share (which dead-taps on react-native-web when
+  // navigator.share is undefined). Fails-on-revert: reverting to Share.share
+  // flips both the .toMatch(<ShareModal) and the .not.toMatch(Share.share).
+  test("A-PUBLIC-9: trip share routes through ShareModal, not bare Share.share", () => {
+    expect(publicRouteSource).toMatch(/<ShareModal/);
+    expect(publicRouteSource).toMatch(/setShareModalVisible/);
+    expect(publicRouteSource).toMatch(/tripPublicUrl\(/);
+    expect(publicRouteSource).not.toMatch(/\bShare\.share\b/);
+    expect(publicRouteSource).not.toMatch(
+      /^import[\s\S]*\bShare\b[\s\S]*from ["']react-native["']/m,
+    );
+  });
 });

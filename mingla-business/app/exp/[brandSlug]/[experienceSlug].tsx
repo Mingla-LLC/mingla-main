@@ -14,12 +14,10 @@
 
 // orch-strict-grep-allow safearea-on-fullscreen-routes — design-intent full-bleed cover on the public experience share-link page (mirrors /t/{brandSlug}/{tripSlug}); the buyer-facing banner aesthetic is intentional. ExperiencePreview renders the cover full-bleed to the screen edge by design; the X-close + share overlays absolute-position over the cover but do not introduce SafeScreen wrapping. Per META-ORCH-1059 Sub-C (mirror of ORCH-0859/0874 trip public page).
 
-import React, { useCallback } from "react";
+import React, { useCallback, useState } from "react";
 import {
   ActivityIndicator,
-  Platform,
   ScrollView,
-  Share,
   StyleSheet,
   Text,
   View,
@@ -35,6 +33,8 @@ import {
 } from "../../../src/constants/designSystem";
 import { GlassCard } from "../../../src/components/ui/GlassCard";
 import { IconChrome } from "../../../src/components/ui/IconChrome";
+import { ShareModal } from "../../../src/components/ui/ShareModal";
+import { experiencePublicUrl } from "../../../src/constants/publicUrls";
 import { usePublicExperienceBySlug } from "../../../src/hooks/usePublicExperience";
 import { ExperiencePreview } from "../../../src/components/experience/ExperiencePreview";
 import { ExperienceCheckoutFlow } from "../../../src/components/experience/ExperienceCheckoutFlow";
@@ -61,6 +61,8 @@ export default function PublicExperienceRoute(): React.ReactElement {
     ? params.experienceSlug[0]
     : params.experienceSlug;
 
+  const [shareModalVisible, setShareModalVisible] = useState<boolean>(false);
+
   const query = usePublicExperienceBySlug(
     typeof brandSlug === "string" ? brandSlug : null,
     typeof experienceSlug === "string" ? experienceSlug : null,
@@ -76,22 +78,12 @@ export default function PublicExperienceRoute(): React.ReactElement {
     }
   }, [router, brandSlug]);
 
-  const handleShare = useCallback(async (): Promise<void> => {
-    if (typeof brandSlug !== "string" || typeof experienceSlug !== "string") {
-      return;
-    }
-    const url = `https://business.usemingla.com/exp/${brandSlug}/${experienceSlug}`;
-    const title = query.data?.experience.title ?? "Mingla experience";
-    try {
-      await Share.share(
-        Platform.OS === "ios"
-          ? { url, message: title }
-          : { message: `${title} ${url}`, title },
-      );
-    } catch {
-      // User-cancelled native Share is non-actionable; Constitution #3 exempts.
-    }
-  }, [brandSlug, experienceSlug, query.data?.experience.title]);
+  // ORCH-1114: share → web-aware ShareModal (copy-link/QR/native-share-via).
+  // NEVER revert to the bare react-native share API — it dead-taps on
+  // react-native-web (navigator.share undefined). See SPEC_ORCH-1114.
+  const handleShare = useCallback((): void => {
+    setShareModalVisible(true);
+  }, []);
 
   if (query.isLoading || query.isFetching) {
     return (
@@ -213,12 +205,20 @@ export default function PublicExperienceRoute(): React.ReactElement {
         <IconChrome
           icon="share"
           size={36}
-          onPress={() => {
-            void handleShare();
-          }}
+          onPress={handleShare}
           accessibilityLabel="Share"
         />
       </View>
+
+      {typeof brandSlug === "string" && typeof experienceSlug === "string" && (
+        <ShareModal
+          visible={shareModalVisible}
+          onClose={() => setShareModalVisible(false)}
+          url={experiencePublicUrl({ brandSlug, experienceSlug })}
+          title={experience.title}
+          description={experience.description?.slice(0, 200) ?? undefined}
+        />
+      )}
     </View>
   );
 }

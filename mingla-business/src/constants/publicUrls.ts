@@ -82,6 +82,21 @@ export const tripPublicUrl = (input: {
   tripSlug: string;
 }): string => `${BUSINESS_PUBLIC_ORIGIN}${tripPublicPath(input)}`;
 
+// ORCH-1114: experience public-URL helper, mirror of tripPublicPath/tripPublicUrl.
+export const experiencePublicPath = (input: {
+  brandSlug: string;
+  experienceSlug: string;
+}): string =>
+  `/exp/${requireSegment(input.brandSlug, "brandSlug")}/${requireSegment(
+    input.experienceSlug,
+    "experienceSlug",
+  )}`;
+
+export const experiencePublicUrl = (input: {
+  brandSlug: string;
+  experienceSlug: string;
+}): string => `${BUSINESS_PUBLIC_ORIGIN}${experiencePublicPath(input)}`;
+
 export const eventOgImageUrl = (input: {
   eventId: string;
   coverMediaUrl?: string | null;

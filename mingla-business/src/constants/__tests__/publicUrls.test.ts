@@ -22,6 +22,9 @@ import {
   eventOgImageUrl,
   eventPublicPath,
   eventPublicUrl,
+  experiencePublicPath,
+  experiencePublicUrl,
+  tripPublicUrl,
 } from "../publicUrls";
 
 describe("public business URL builders", () => {
@@ -49,6 +52,31 @@ describe("public business URL builders", () => {
     ).toThrow(PublicUrlError);
     expect(() => brandPublicUrl("   ")).toThrow(PublicUrlError);
     expect(() => checkoutPublicUrl("")).toThrow(PublicUrlError);
+  });
+
+  // ORCH-1114 — trip + experience public share-link URL builders.
+  test("T-1/T-2: builds canonical public trip and experience URLs", () => {
+    expect(tripPublicUrl({ brandSlug: "acme", tripSlug: "bali" })).toBe(
+      "https://business.usemingla.com/t/acme/bali",
+    );
+    expect(
+      experiencePublicUrl({ brandSlug: "acme", experienceSlug: "sunset-sail" }),
+    ).toBe("https://business.usemingla.com/exp/acme/sunset-sail");
+  });
+
+  test("T-3: experience helper encodes path segments", () => {
+    expect(
+      experiencePublicPath({ brandSlug: "my brand", experienceSlug: "sail one" }),
+    ).toBe("/exp/my%20brand/sail%20one");
+  });
+
+  test("T-4/T-5: experience helper rejects empty/whitespace segments (fails-on-revert)", () => {
+    expect(() =>
+      experiencePublicUrl({ brandSlug: "", experienceSlug: "x" }),
+    ).toThrow(PublicUrlError);
+    expect(() =>
+      experiencePublicUrl({ brandSlug: "a", experienceSlug: "  " }),
+    ).toThrow(PublicUrlError);
   });
 
   test("uses public absolute media when present and canonical fallbacks otherwise", () => {
