@@ -20,6 +20,44 @@ import type { BrandRole } from "../store/currentBrandStore";
 
 // ---------------------- Types ----------------------
 
+/**
+ * ORCH-1119 [trip-day-media-gallery] — one item in a trip DAY's optional ordered
+ * media gallery. Every item carries an EXPLICIT `type` so the renderer never
+ * auto-detects (ORCH-1069/0978 rule). Persisted as jsonb on trip_days.media.
+ */
+export interface TripDayMedia {
+  url: string;
+  type: "image" | "video";
+  provider?: string;
+  width?: number;
+  height?: number;
+}
+
+/**
+ * ORCH-1119 — defensively coerce raw jsonb (`trip_days.media`) into a clean
+ * TripDayMedia[]. Drops any item missing a string `url` or a valid
+ * "image"|"video" `type` (the renderer must never be handed a typeless/malformed
+ * item). Mirrors the `extractInstallmentSchedule` defensive pattern.
+ */
+export function coerceTripDayMedia(raw: unknown): TripDayMedia[] {
+  if (!Array.isArray(raw)) return [];
+  const out: TripDayMedia[] = [];
+  for (const item of raw) {
+    if (item === null || typeof item !== "object") continue;
+    const o = item as Record<string, unknown>;
+    const url = o.url;
+    const type = o.type;
+    if (typeof url !== "string" || url.length === 0) continue;
+    if (type !== "image" && type !== "video") continue;
+    const next: TripDayMedia = { url, type };
+    if (typeof o.provider === "string") next.provider = o.provider;
+    if (typeof o.width === "number") next.width = o.width;
+    if (typeof o.height === "number") next.height = o.height;
+    out.push(next);
+  }
+  return out;
+}
+
 export interface TripDay {
   id: string;
   eventId: string;
@@ -28,6 +66,8 @@ export interface TripDay {
   narrative: string | null;
   date: string | null;
   stops: unknown[];
+  // ORCH-1119 — optional ordered per-day media gallery (default []).
+  media: TripDayMedia[];
 }
 
 export interface TripPricingTier {
@@ -173,6 +213,9 @@ export interface TripDayInput {
   title: string;
   narrative?: string | null;
   date?: string | null;
+  // ORCH-1119 — optional per-day media gallery; rides draft (upsertTripDays) +
+  // published-edit (biz_update_live_trip §5b) writes.
+  media?: TripDayMedia[];
 }
 
 export interface TripInclusionInput {
@@ -233,6 +276,8 @@ interface TripDayRow {
   narrative: string | null;
   date: string | null;
   stops: unknown[];
+  // ORCH-1119 — raw jsonb media gallery (coerced via coerceTripDayMedia).
+  media: unknown;
 }
 
 interface TripPricingTierRow {
@@ -307,6 +352,8 @@ function mapTripDay(row: TripDayRow): TripDay {
     narrative: row.narrative,
     date: row.date,
     stops: Array.isArray(row.stops) ? row.stops : [],
+    // ORCH-1119 — coerce raw jsonb to a clean typed gallery (drops malformed).
+    media: coerceTripDayMedia(row.media),
   };
 }
 
@@ -916,6 +963,10 @@ export async function upsertTripDays(
     narrative: d.narrative ?? null,
     date: d.date ?? null,
     stops: [],
+    // ORCH-1119: per-day media MUST persist on both draft (upsertTripDays, here)
+    // and published-edit (biz_update_live_trip §5b) — reverting either silently
+    // drops galleries (see orch1119_trip_day_media_persistence.test.ts).
+    media: d.media ?? [],
   }));
 
   const { data, error } = await supabase

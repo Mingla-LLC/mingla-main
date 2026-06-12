@@ -231,6 +231,8 @@ function tripToDaysDraft(trip: Trip): TripDayDraft[] {
     ordinal: d.ordinal,
     title: d.title,
     narrative: d.narrative ?? "",
+    // ORCH-1119 — seed the day's media gallery from the persisted trip.
+    media: d.media ?? [],
   }));
 }
 
@@ -304,11 +306,15 @@ function isTripWizardPristine(
   // Step 2: days length + every (ordinal, title, narrative) equal
   const initDays = tripToDaysDraft(trip);
   if (daysDraft.length !== initDays.length) return false;
+  const mediaSig = (m: TripDayDraft["media"]): string =>
+    (m ?? []).map((x) => `${x.url}|${x.type}`).join(",");
   for (let i = 0; i < daysDraft.length; i += 1) {
     if (
       daysDraft[i].ordinal !== initDays[i].ordinal ||
       daysDraft[i].title !== initDays[i].title ||
-      daysDraft[i].narrative !== initDays[i].narrative
+      daysDraft[i].narrative !== initDays[i].narrative ||
+      // ORCH-1119 — a media change marks the day dirty (autosave + discard guard).
+      mediaSig(daysDraft[i].media) !== mediaSig(initDays[i].media)
     ) {
       return false;
     }
@@ -525,6 +531,7 @@ export const TripCreatorWizard: React.FC<TripCreatorWizardProps> = ({
             ordinal: i + 1,
             title: `Day ${i + 1}`,
             narrative: "",
+            media: [],
           });
         }
         return next;
@@ -559,6 +566,8 @@ export const TripCreatorWizard: React.FC<TripCreatorWizardProps> = ({
         narrative: d.narrative.length > 0 ? d.narrative : null,
         date: null,
         stops: [],
+        // ORCH-1119 — preview the in-flight day gallery.
+        media: d.media ?? [],
       })),
       inclusions: inclusionsDraft.map((i, idx) => ({
         id: `preview-inc-${idx}`,
@@ -638,6 +647,8 @@ export const TripCreatorWizard: React.FC<TripCreatorWizardProps> = ({
         ordinal: d.ordinal,
         title: d.title.trim(),
         narrative: d.narrative.trim().length > 0 ? d.narrative.trim() : null,
+        // ORCH-1119 — persist the per-day media gallery on draft autosave.
+        media: d.media ?? [],
       })),
     });
   }, [daysDraft, trip.id, upsertDaysMutation]);
@@ -1220,6 +1231,9 @@ export const TripCreatorWizard: React.FC<TripCreatorWizardProps> = ({
               days={daysDraft}
               onChange={setDaysDraft}
               disabled={submitting}
+              brandId={trip.brandId}
+              eventId={trip.id}
+              onShowToast={showToast}
             />
           ) : null}
           {step === 3 ? (

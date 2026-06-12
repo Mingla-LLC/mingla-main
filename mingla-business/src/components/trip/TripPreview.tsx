@@ -19,10 +19,12 @@
  * passes the in-flight draft Trip + currentBrand.
  */
 
-import React from "react";
+import React, { useState } from "react";
 import {
   Image,
+  Platform,
   Pressable,
+  ScrollView,
   StyleSheet,
   Text,
   View,
@@ -36,6 +38,7 @@ import {
   typography,
 } from "../../constants/designSystem";
 import { formatTripDateRange } from "@mingla/event-rendering";
+import { EventCoverMedia } from "../ui/EventCoverMedia";
 import { Icon } from "../ui/Icon";
 import { CollapsibleDescription } from "../offering/CollapsibleDescription";
 import type {
@@ -102,6 +105,10 @@ export const TripPreview: React.FC<TripPreviewProps> = ({
   const includedItems = trip.inclusions.filter((i) => i.kind === "included");
   const excludedItems = trip.inclusions.filter((i) => i.kind === "excluded");
   const tier = trip.pricingTiers[0];
+  // ORCH-1119 — one-playing guard for per-day gallery videos. On web,
+  // EventCoverMedia's useInViewport already lazy-mounts off-screen videos; this
+  // bounds concurrent autoplay to the tapped/first tile.
+  const [activeVideoKey, setActiveVideoKey] = useState<string | null>(null);
 
   return (
     <View style={styles.host} testID={testID}>
@@ -177,15 +184,87 @@ export const TripPreview: React.FC<TripPreviewProps> = ({
           <View style={styles.section}>
             <Text style={styles.sectionLabel}>Day by day</Text>
             <View style={styles.daysList}>
-              {trip.days.map((day: TripDay) => (
-                <View key={day.id} style={styles.dayCard}>
-                  <Text style={styles.dayOrdinal}>DAY {day.ordinal}</Text>
-                  <Text style={styles.dayTitle}>{day.title}</Text>
-                  {day.narrative !== null && day.narrative.trim().length > 0 ? (
-                    <Text style={styles.dayNarrative}>{day.narrative}</Text>
-                  ) : null}
-                </View>
-              ))}
+              {trip.days.map((day: TripDay) => {
+                // First video in the gallery auto-plays by default (web lazy-mount
+                // still gates off-screen). Tapping any video tile switches play.
+                const firstVideoIndex = day.media.findIndex(
+                  (m) => m.type === "video",
+                );
+                const defaultKey =
+                  firstVideoIndex >= 0
+                    ? `${day.id}-${firstVideoIndex}`
+                    : null;
+                return (
+                  <View key={day.id} style={styles.dayCard}>
+                    <Text style={styles.dayOrdinal}>DAY {day.ordinal}</Text>
+                    <Text style={styles.dayTitle}>{day.title}</Text>
+                    {day.narrative !== null &&
+                    day.narrative.trim().length > 0 ? (
+                      <Text style={styles.dayNarrative}>{day.narrative}</Text>
+                    ) : null}
+                    {/* ORCH-1119 — per-day gallery. Constitution #9: NO media ⇒
+                        zero gallery nodes (no empty frame). */}
+                    {day.media.length > 0 ? (
+                      <ScrollView
+                        horizontal
+                        showsHorizontalScrollIndicator={false}
+                        contentContainerStyle={styles.dayMediaRow}
+                        accessibilityLabel={`Day ${day.ordinal} media gallery`}
+                      >
+                        {day.media.map((m, mi) => {
+                          const key = `${day.id}-${mi}`;
+                          const isActive =
+                            activeVideoKey === null
+                              ? key === defaultKey
+                              : activeVideoKey === key;
+                          return m.type === "video" ? (
+                            <Pressable
+                              key={key}
+                              onPress={() =>
+                                setActiveVideoKey((cur) =>
+                                  cur === key ? null : key,
+                                )
+                              }
+                              accessibilityRole="imagebutton"
+                              accessibilityLabel={`Day ${day.ordinal} media ${mi + 1}, video`}
+                              style={styles.dayMediaTile}
+                            >
+                              <EventCoverMedia
+                                mediaUrl={m.url}
+                                mediaType="video"
+                                autoplay
+                                playbackActive={isActive}
+                                muted
+                                loop
+                                radius={12}
+                                height="100%"
+                                width="100%"
+                              />
+                              {!isActive ? (
+                                <View
+                                  style={styles.dayMediaPlayBadge}
+                                  pointerEvents="none"
+                                >
+                                  <Icon name="play" size={12} color="#FFFFFF" />
+                                </View>
+                              ) : null}
+                            </Pressable>
+                          ) : (
+                            <Image
+                              key={key}
+                              source={{ uri: m.url }}
+                              style={styles.dayMediaTile}
+                              resizeMode="cover"
+                              accessibilityRole="image"
+                              accessibilityLabel={`Day ${day.ordinal} media ${mi + 1}, image`}
+                            />
+                          );
+                        })}
+                      </ScrollView>
+                    ) : null}
+                  </View>
+                );
+              })}
             </View>
           </View>
         ) : null}
@@ -346,6 +425,35 @@ const styles = StyleSheet.create({
     fontSize: typography.bodySm.fontSize,
     lineHeight: typography.bodySm.lineHeight,
     color: textTokens.secondary,
+  },
+  // ORCH-1119 — per-day gallery
+  dayMediaRow: {
+    flexDirection: "row",
+    gap: spacing.sm,
+    marginTop: spacing.sm,
+    paddingVertical: 2,
+  },
+  dayMediaTile: {
+    width: 96,
+    height: 96,
+    borderRadius: radiusTokens.md,
+    overflow: "hidden",
+    // ANDROID_GLASS_USES_OPAQUE_FALLBACK — opaque Android fill.
+    backgroundColor: Platform.select({
+      android: "#1A1A1C",
+      default: "rgba(255,255,255,0.06)",
+    }),
+  },
+  dayMediaPlayBadge: {
+    position: "absolute",
+    left: 6,
+    bottom: 6,
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(0,0,0,0.6)",
   },
   itemsList: {
     gap: spacing.xs,
