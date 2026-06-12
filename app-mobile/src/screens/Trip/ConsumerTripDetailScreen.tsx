@@ -42,13 +42,23 @@
  * BaseBottomSheet root in the same fragment (feedback_rn_sub_sheet_must_render_inside_parent).
  */
 
-import React, { useMemo, useState, type ReactElement } from "react";
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+  type ReactElement,
+} from "react";
 import {
+  AccessibilityInfo,
   ActivityIndicator,
+  LayoutAnimation,
+  Platform,
   Pressable,
   Share,
   StyleSheet,
   Text,
+  UIManager,
   View,
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
@@ -92,6 +102,16 @@ interface ConsumerTripDetailScreenProps {
 
 const ACCENT = "#FF6B35";
 const WARM = "#eb7825";
+
+// ORCH-1117 — collapsible description: copy ≤ this length renders full, no toggle.
+const ABOUT_COLLAPSE_THRESHOLD = 160;
+
+if (
+  Platform.OS === "android" &&
+  UIManager.setLayoutAnimationEnabledExperimental !== undefined
+) {
+  UIManager.setLayoutAnimationEnabledExperimental(true);
+}
 
 // Canonical sheet snap tokens — same as ExpandedBusinessEventSheet (the
 // gold-standard detail sheet). Two snaps give a 50% preview + 90% full view.
@@ -184,6 +204,35 @@ export default function ConsumerTripDetailScreen({
     seed,
   );
   const [reserveSheetVisible, setReserveSheetVisible] = useState(false);
+  // ORCH-1117 — collapsible description (collapsed by default for long copy).
+  const [aboutCollapsed, setAboutCollapsed] = useState<boolean>(true);
+  const [reduceMotion, setReduceMotion] = useState<boolean>(false);
+  useEffect(() => {
+    let mounted = true;
+    void AccessibilityInfo.isReduceMotionEnabled().then((value) => {
+      if (mounted) setReduceMotion(value);
+    });
+    const sub = AccessibilityInfo.addEventListener(
+      "reduceMotionChanged",
+      (value: boolean) => setReduceMotion(value),
+    );
+    return () => {
+      mounted = false;
+      sub.remove();
+    };
+  }, []);
+  const toggleAbout = useCallback((): void => {
+    if (!reduceMotion) {
+      LayoutAnimation.configureNext(
+        LayoutAnimation.create(
+          200,
+          LayoutAnimation.Types.easeInEaseOut,
+          LayoutAnimation.Properties.opacity,
+        ),
+      );
+    }
+    setAboutCollapsed((c) => !c);
+  }, [reduceMotion]);
 
   // ORCH-1016 — the SheetOverlayCarrier (RN Modal) is removed: it broke Android
   // scroll gestures and did NOT fix the z-order. The sheets now hide the nav
@@ -387,10 +436,52 @@ export default function ConsumerTripDetailScreen({
           </View>
         ) : null}
 
-        {/* Description */}
-        {detail.description !== null && detail.description.trim().length > 0 ? (
-          <Text style={styles.description}>{detail.description}</Text>
-        ) : null}
+        {/* Description — ORCH-1117 collapsible (collapsed by default; copy ≤160
+            chars renders full with no toggle). State signaled by the word +
+            chevron, never color alone. */}
+        {detail.description !== null && detail.description.trim().length > 0
+          ? (() => {
+              const aboutText = detail.description;
+              const canCollapse = aboutText.length > ABOUT_COLLAPSE_THRESHOLD;
+              const collapsed = canCollapse && aboutCollapsed;
+              return (
+                <View>
+                  <Text
+                    style={styles.description}
+                    numberOfLines={collapsed ? 3 : undefined}
+                    ellipsizeMode="tail"
+                  >
+                    {aboutText}
+                  </Text>
+                  {canCollapse ? (
+                    <Pressable
+                      onPress={toggleAbout}
+                      accessibilityRole="button"
+                      accessibilityState={{ expanded: !collapsed }}
+                      accessibilityLabel={collapsed ? "Read more" : "Show less"}
+                      accessibilityHint={
+                        collapsed
+                          ? "Expands the description"
+                          : "Collapses the description"
+                      }
+                      style={styles.aboutToggleRow}
+                    >
+                      <Text style={styles.aboutToggleText}>
+                        {collapsed ? "Read more" : "Show less"}
+                      </Text>
+                      <Icon
+                        name={
+                          collapsed ? "chevron-down" : "chevron-up"
+                        }
+                        size={16}
+                        color={WARM}
+                      />
+                    </Pressable>
+                  ) : null}
+                </View>
+              );
+            })()
+          : null}
 
         {/* Itinerary */}
         {detail.days.length > 0 ? (
@@ -464,29 +555,57 @@ export default function ConsumerTripDetailScreen({
   // is hidden while it's open and the Reserve CTA has no floating nav to clear.
   const footerNavClearance = Math.max(insets.bottom, 16);
   const scrollBottomClearance = footerNavClearance;
-  const reserveFooter: ReactElement = (
-    <View style={[styles.reserveBar, { paddingBottom: footerNavClearance }]}>
-      <View style={styles.reservePriceCol}>
-        <Text style={styles.reservePriceLabel}>
-          {detail.hasFreeTier && priceLabel === null
-            ? "Free"
-            : priceLabel !== null
-              ? `From ${priceLabel}`
-              : ""}
-        </Text>
-      </View>
-      <Pressable
-        style={[styles.reserveBtn, reserveDisabled && styles.reserveBtnDisabled]}
-        disabled={reserveDisabled}
-        onPress={() => setReserveSheetVisible(true)}
-        accessibilityLabel="Reserve this trip"
+  // ORCH-1117 — standardized Reserve bar (price-left / action-right anatomy).
+  // When the PAID brand can't charge yet (detail.bookable === false), render a
+  // NON-tappable "Booking unavailable" info strip instead of the Reserve action
+  // (no dead taps, Constitution #1). The existing "Bookings closed" disabled
+  // state is preserved. F-E: this UPGRADES the existing scroll-sibling bar — it
+  // is NOT BaseBottomSheet.stickyFooter (which froze the scroll in ORCH-1016).
+  const reserveFooter: ReactElement =
+    detail.bookable === false ? (
+      <View
+        style={[
+          styles.reserveBar,
+          styles.reserveBarUnavailable,
+          { paddingBottom: footerNavClearance },
+        ]}
+        accessibilityRole="text"
+        accessibilityLabel="Booking unavailable. The organizer is finishing payment setup."
       >
-        <Text style={styles.reserveBtnText}>
-          {reserveDisabled ? "Bookings closed" : "Reserve"}
-        </Text>
-      </Pressable>
-    </View>
-  );
+        <Text style={styles.reserveStripGlyph}>ⓘ</Text>
+        <View style={styles.reserveStripTextCol}>
+          <Text style={styles.reserveStripTitle}>Booking unavailable</Text>
+          <Text style={styles.reserveStripSubline}>
+            The organizer is finishing payment setup.
+          </Text>
+        </View>
+      </View>
+    ) : (
+      <View style={[styles.reserveBar, { paddingBottom: footerNavClearance }]}>
+        <View style={styles.reservePriceCol}>
+          <Text style={styles.reservePriceLabel}>
+            {detail.hasFreeTier && priceLabel === null
+              ? "Free"
+              : priceLabel !== null
+                ? `From ${priceLabel}`
+                : ""}
+          </Text>
+        </View>
+        <Pressable
+          style={[
+            styles.reserveBtn,
+            reserveDisabled && styles.reserveBtnDisabled,
+          ]}
+          disabled={reserveDisabled}
+          onPress={() => setReserveSheetVisible(true)}
+          accessibilityLabel="Reserve this trip"
+        >
+          <Text style={styles.reserveBtnText}>
+            {reserveDisabled ? "Bookings closed" : "Reserve"}
+          </Text>
+        </Pressable>
+      </View>
+    );
 
   // ORCH-1016 ROOT-CAUSE FIX (measured on-device): use a BARE scrollMode="scroll"
   // so the gorhom BottomSheetScrollView is the DIRECT child of BottomSheetContent —
@@ -612,6 +731,31 @@ const styles = StyleSheet.create({
   },
   reserveBtnDisabled: { opacity: 0.4 },
   reserveBtnText: { fontSize: 16, fontWeight: "600", color: "#FFFFFF" },
+  // ORCH-1117 — collapsible-description toggle row.
+  aboutToggleRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    minHeight: 44,
+  },
+  aboutToggleText: { fontSize: 14, fontWeight: "600", color: WARM },
+  // ORCH-1117 — Reserve bar "Booking unavailable" info strip (non-tappable).
+  reserveBarUnavailable: {
+    justifyContent: "flex-start",
+    gap: 10,
+  },
+  reserveStripGlyph: { fontSize: 18, color: "rgba(255,255,255,0.52)" },
+  reserveStripTextCol: { flex: 1 },
+  reserveStripTitle: {
+    fontSize: 14,
+    fontWeight: "700",
+    color: "rgba(255,255,255,0.72)",
+  },
+  reserveStripSubline: {
+    fontSize: 12,
+    color: "rgba(255,255,255,0.52)",
+    marginTop: 2,
+  },
   stateBody: {
     alignItems: "center",
     justifyContent: "center",
