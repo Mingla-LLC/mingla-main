@@ -223,3 +223,107 @@ returned **EMPTY**. The 4 business desktop-web contract gates (`test:orch-0885-a
 ---
 
 *Implementation complete. Routed back to orchestrator for REVIEW → tester (runtime dead-tap + DB-persist proof). No deploy / merge / close performed.*
+
+---
+
+## REWORK — 2026-06-12 (P1-EDIT-STALE-ERROR, tester runtime render-proof)
+
+### Defect (tester)
+
+`mingla-business/src/components/trip/EditPublishedTripScreen.tsx` — the basics render
+reads `showEditAddressErrors` to drive each `MapboxAddressInput`'s `error` prop (departure
+~L1172, destination ~L1215), but `renderSectionBody`'s `useCallback` dependency array
+(L1441–1453) **omitted `showEditAddressErrors`**. After `handleSavePress` called
+`setShowEditAddressErrors(true)`, the memoized section body retained the stale `false`, so
+the SPEC-required inline per-field "Pick the … from the suggestions." errors (SC-6 / SC-7)
+**never rendered**. The save-block + toast already worked; only the inline field hint was
+missing. Caught by the tester's runtime react-native-testing-library render-proof
+(`EditPublishedTripScreen.render.test.tsx`, case `(b1-inline-error)` RED).
+
+### Fix (one line — minimal, no logic/gate/refactor change)
+
+Added `showEditAddressErrors` to the `renderSectionBody` `useCallback` dependency array.
+
+**Dep array — before (L1441–1453):**
+
+```
+    [
+      editState,
+      updateBasics,
+      handleDaysChange,
+      handleInclusionsChange,
+      handlePricingChange,
+      handleCoverChange,
+      submitting,
+      totalConfirmedOrders,
+      soldCountByTier,
+      trip,
+      showToast,
+    ],
+```
+
+**Dep array — after:**
+
+```
+    [
+      editState,
+      showEditAddressErrors,
+      updateBasics,
+      handleDaysChange,
+      handleInclusionsChange,
+      handlePricingChange,
+      handleCoverChange,
+      submitting,
+      totalConfirmedOrders,
+      soldCountByTier,
+      trip,
+      showToast,
+    ],
+```
+
+Diff is exactly one inserted line (`git diff origin/main` over the source file = `+      showEditAddressErrors,`).
+
+### Other-stale-read audit (same callback)
+
+Inspected every state read inside `renderSectionBody`. The only ORCH-1118-relevant state
+read missing from the dep array was `showEditAddressErrors`. One UNRELATED pre-existing
+omission exists — `coverPickerVisible` (read in the `cover` case at ~L1352) is also absent
+from the dep array — but it is OUTSIDE ORCH-1118 scope (cover-picker visibility, not address
+validation) and pre-dates this ORCH on origin/main, so it was deliberately NOT touched.
+Flagged below as a discovery for the orchestrator.
+
+### Verification
+
+- **Render-proof** (`npx jest --config jest.orch1118.render.cjs --runInBand`):
+  **5 passed, 5 total** — `(b1-inline-error)` flipped GREEN; the other 4 cases stayed green.
+- **Fails-on-revert proof:** deleted the `showEditAddressErrors,` line (true line deletion)
+  → re-ran render-proof → `(b1-inline-error)` FAILS (`1 failed, 4 passed, 5 total`) while the
+  other 4 stay green → restored the line → all 5 green again. The render-proof exercises the
+  exact bug.
+- **Standard ORCH-1118 suites** (`jest.config.cjs`, 5 files: tripLocationValidated /
+  tripLocationGate.adversarial / TripCreatorStep1Basics.mapbox /
+  EditPublishedTripScreen.mapbox / orch1118Backfill.dryrun): **5 passed, 36 total** — green.
+- **4 desktop-web contract gates:** `test:orch-0885-a` (strict-grep + useResponsiveLayout)
+  PASS · `BottomNavWebDesktopPolish` PASS · `wizardDesktopLayout` PASS ·
+  `homeKpiPresentation` PASS — no desktop-contract regression.
+
+### Hard-guard compliance
+
+DO-NOT-TOUCH list untouched (`packages/location-input`, business `MapboxAddressInput`
+wrapper, `ExperienceStopCard`, the ORCH-1016 trigger, `biz_update_live_trip`, migrations,
+edge functions). No scope widening. No deploy / merge / OTA.
+
+### REWORK discoveries for orchestrator
+
+- **D-3 (pre-existing, out of ORCH-1118 scope):** `renderSectionBody`'s dep array also omits
+  `coverPickerVisible` (cover case ~L1352). Same class of stale-memo bug, but unrelated to
+  address validation and present on origin/main. NOT fixed here to honor the minimal-change
+  REWORK guard. Recommend a future hygiene ORCH (or an `eslint-plugin-react-hooks`
+  exhaustive-deps gate) to catch this whole class.
+- **D-4 (env, not introduced here):** `src/components/__tests__/desktopWebLayoutContracts.test.ts`
+  has a failing case (`keeps Home desktop KPIs fixed … scrollEnabled={!isWideDesktop}`) that
+  fails identically on a clean origin/main checkout — the expected substring is absent from
+  `app/(tabs)/home.tsx` on origin/main (grep count 0). It is NOT one of the report's named
+  4 contract gates and is unrelated to this fix; flagged as pre-existing.
+
+*REWORK complete. Routed back to orchestrator for RETEST → CLOSE.*

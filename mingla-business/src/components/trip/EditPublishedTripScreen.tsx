@@ -1440,6 +1440,7 @@ export const EditPublishedTripScreen: React.FC<EditPublishedTripScreenProps> = (
     },
     [
       editState,
+      showEditAddressErrors,
       updateBasics,
       handleDaysChange,
       handleInclusionsChange,
