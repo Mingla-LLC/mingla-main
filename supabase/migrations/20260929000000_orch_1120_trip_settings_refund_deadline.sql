@@ -2,14 +2,24 @@
 -- ORCH-1120 [Published-trip Settings tab → editable refund tiers + booking
 -- deadline + bookings-closed (sales-gated)] — extend biz_update_live_trip.
 --
--- Re-emits the AUTHORITATIVE biz_update_live_trip body VERBATIM from migration
--- 20260911000000_orch_1075_paid_publish_integrity_guards.sql (the newest
--- migration that defines this function; ORCH-1118 has NOT yet merged a
--- migration touching it — confirmed at IMPLEMENT time 2026-06-12 by
--- `grep -rln biz_update_live_trip supabase/migrations` across the anchor +
--- all active worktrees: 1075 is the newest definer). If a later ORCH (e.g.
--- 1118) merges a biz_update_live_trip rewrite BEFORE this lands, the
--- whichever-merges-second migration MUST re-emit from THAT body, not 1075
+-- RECOMPOSE (2026-06-12, per COMMS-0029): this migration's function body is now
+-- composed off the LIVE-PROD biz_update_live_trip body (project
+-- gqnoajqerqhnvulmnyvv, captured via `pg_get_functiondef`), NOT off the 1075
+-- migration body. The reason: ORCH-1119 applied its day-media logic STRAIGHT TO
+-- PROD ahead of merge — the live function carries 3 "ORCH-1119" markers and a
+-- §5b trip_days upsert that writes the per-day `media` column. ORCH-1119's
+-- migrations (20260928000000/000001) are on prod but NOT yet on origin/main. A
+-- naive re-emit from the pre-1119 (1075) body would SILENTLY CLOBBER 1119's
+-- live-trip day-media feature on prod (last-writer-wins on CREATE OR REPLACE).
+-- So the body below = LIVE-PROD-BODY (all 1119 day-media preserved verbatim in
+-- §5b) + ONLY the ORCH-1120 refund/deadline/bookings-closed gate grafted on.
+--
+-- HOLD-MERGE CONSTRAINT (COMMS-0029): do NOT merge this PR to origin/main until
+-- ORCH-1119's migrations merge to main — else a git-fresh CI build re-emits this
+-- function referencing 1119 columns (trip_days.media) that are not yet in the
+-- git migration history. Prod itself is safe to apply NOW (prod already has the
+-- 1119 schema). If a later ORCH (e.g. 1118) re-emits biz_update_live_trip after
+-- 2026-06-12, whoever applies LAST must re-emit from the OTHER's body too
 -- (clobber hazard — feedback_edge_deploy_and_migration_apply_hazards).
 --
 -- ADDED on top of the verbatim 1075 body (and ONLY these):
@@ -592,21 +602,27 @@ BEGIN
     WHERE id = p_event_id;
   END IF;
 
-  -- 5b. trip_days upsert + delete
+  -- 5b. trip_days upsert + delete  (ORCH-1119: now carries media)
+  -- ORCH-1119: per-day media MUST persist on both draft (upsertTripDays) and
+  -- published-edit (this §5b upsert) — reverting either silently drops galleries
+  -- (see orch1119_trip_day_media_persistence.test.ts).
   IF p_patch ? 'days' THEN
     IF v_dropped_ordinals IS NOT NULL AND array_length(v_dropped_ordinals, 1) > 0 THEN
       DELETE FROM public.trip_days
         WHERE event_id = p_event_id
           AND ordinal = ANY (v_dropped_ordinals);
     END IF;
-    INSERT INTO public.trip_days (event_id, ordinal, title, narrative)
+    INSERT INTO public.trip_days (event_id, ordinal, title, narrative, media)
       SELECT p_event_id,
              (d->>'ordinal')::int,
              d->>'title',
-             NULLIF(d->>'narrative', '')
+             NULLIF(d->>'narrative', ''),
+             COALESCE(d->'media', '[]'::jsonb)
         FROM jsonb_array_elements(p_patch->'days') d
       ON CONFLICT (event_id, ordinal)
-      DO UPDATE SET title = EXCLUDED.title, narrative = EXCLUDED.narrative;
+      DO UPDATE SET title = EXCLUDED.title,
+                    narrative = EXCLUDED.narrative,
+                    media = EXCLUDED.media;
   END IF;
 
   -- 5c. trip_inclusions: replace-all (safe because dropped-with-sales gated above)

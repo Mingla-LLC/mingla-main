@@ -11,6 +11,8 @@
 
 > **The design is DONE.** This SPEC embeds it; it does not re-open it. The locked product decision (Seth, this session) is enforced verbatim in §2.1.
 
+> **RECOMPOSE (2026-06-12, per COMMS-0029): migration body now composed off the live-prod (1119-preserving) base.** The §6 migration that extends `biz_update_live_trip` originally re-emitted the function from the pre-1119 (1075) body. Forensics on prod proved the LIVE function already carries ORCH-1119's per-day-media §5b upsert (applied to prod ahead of merge, NOT yet on origin/main), so a naive apply would have clobbered 1119. The migration `20260929000000` was recomposed: function body = LIVE-PROD-BODY (1119 day-media preserved verbatim — 3 `1119` markers + `media = EXCLUDED.media`) + the ORCH-1120 §4g gate / §5f apply / §6 severity / 3 reasons. Behavioral contract below is UNCHANGED. HOLD-MERGE until ORCH-1119 merges to origin/main; prod is safe to apply now (it already has the 1119 schema).
+
 ---
 
 ## REWORK — consolidated to a single standard Save button (Seth device feedback, 2026-06-12)
