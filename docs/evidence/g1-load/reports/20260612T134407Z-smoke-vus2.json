@@ -1,0 +1,161 @@
+{
+    "metrics": {
+        "http_reqs": {
+            "count": 95,
+            "rate": 5.797862249801401
+        },
+        "vus_max": {
+            "max": 2,
+            "value": 2,
+            "min": 2
+        },
+        "http_req_tls_handshaking": {
+            "p(90)": 0,
+            "p(95)": 0,
+            "avg": 1.0174236842105262,
+            "min": 0,
+            "med": 0,
+            "max": 49.396708
+        },
+        "http_req_connecting": {
+            "p(95)": 0,
+            "avg": 0.36517850526315787,
+            "min": 0,
+            "med": 0,
+            "max": 17.346125,
+            "p(90)": 0
+        },
+        "http_req_blocked": {
+            "med": 0.001541,
+            "max": 135.003958,
+            "p(90)": 0.0021082,
+            "p(95)": 0.002516199999999999,
+            "avg": 2.822346515789473,
+            "min": 0.000542
+        },
+        "http_req_waiting": {
+            "p(95)": 467.7276001999999,
+            "avg": 227.7552731789474,
+            "min": 107.08225,
+            "med": 153.403333,
+            "max": 1536.281417,
+            "p(90)": 438.7244332
+        },
+        "data_received": {
+            "count": 414535,
+            "rate": 25299.124502330775
+        },
+        "iteration_duration": {
+            "avg": 1664.0356584736842,
+            "min": 1421.754834,
+            "med": 1552.783251,
+            "max": 2804.643293,
+            "p(90)": 1934.9231508000005,
+            "p(95)": 2797.5964055
+        },
+        "http_req_failed": {
+            "passes": 76,
+            "fails": 19,
+            "thresholds": {
+                "rate<0.10": true
+            },
+            "value": 0.8
+        },
+        "http_req_sending": {
+            "p(95)": 0.5049835999999999,
+            "avg": 0.3049411789473684,
+            "min": 0.122625,
+            "med": 0.292459,
+            "max": 0.685334,
+            "p(90)": 0.461908
+        },
+        "http_req_receiving": {
+            "p(90)": 1.954500000000001,
+            "p(95)": 3.898691899999999,
+            "avg": 0.924552631578948,
+            "min": 0.049375,
+            "med": 0.174417,
+            "max": 15.518584
+        },
+        "data_sent": {
+            "count": 26146,
+            "rate": 1595.693751403236
+        },
+        "iterations": {
+            "count": 19,
+            "rate": 1.1595724499602802
+        },
+        "http_req_duration": {
+            "avg": 228.98476698947366,
+            "min": 107.549458,
+            "med": 153.757292,
+            "max": 1540.268376,
+            "p(90)": 442.93128360000003,
+            "p(95)": 474.12196259999996,
+            "thresholds": {
+                "p(95)<3000": false
+            }
+        },
+        "http_req_duration{expected_response:true}": {
+            "med": 442.828959,
+            "max": 1540.268376,
+            "p(90)": 669.5105920000002,
+            "p(95)": 1121.0357003999995,
+            "avg": 536.0170016315791,
+            "min": 359.177
+        },
+        "checks": {
+            "passes": 76,
+            "fails": 19,
+            "value": 0.8
+        },
+        "vus": {
+            "value": 1,
+            "min": 1,
+            "max": 2
+        }
+    },
+    "root_group": {
+        "id": "d41d8cd98f00b204e9800998ecf8427e",
+        "groups": {},
+        "checks": {
+                "discover status 2xx": {
+                    "fails": 0,
+                    "name": "discover status 2xx",
+                    "path": "::discover status 2xx",
+                    "id": "df612070718f0fe430852349bfc73e21",
+                    "passes": 19
+                },
+                "checkout-status not 5xx": {
+                    "name": "checkout-status not 5xx",
+                    "path": "::checkout-status not 5xx",
+                    "id": "e46c899ef8389a35f2e49323ac6cdcb7",
+                    "passes": 19,
+                    "fails": 0
+                },
+                "checkout-create not 5xx": {
+                    "name": "checkout-create not 5xx",
+                    "path": "::checkout-create not 5xx",
+                    "id": "f6671daf80e9d4fa18b15dd88fd97220",
+                    "passes": 19,
+                    "fails": 0
+                },
+                "agent-chat auth gate": {
+                    "fails": 0,
+                    "name": "agent-chat auth gate",
+                    "path": "::agent-chat auth gate",
+                    "id": "328ccfd7674a9c17149f53bfb54bc5a3",
+                    "passes": 19
+                },
+                "marketing-send auth gate": {
+                    "id": "3a0c28edd7038a7f86307f996d28e782",
+                    "passes": 0,
+                    "fails": 19,
+                    "name": "marketing-send auth gate",
+                    "path": "::marketing-send auth gate"
+                }
+            },
+        "name": "",
+        "path": ""
+    }
+}

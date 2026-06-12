@@ -7,17 +7,13 @@
 
 import { check, sleep } from "k6";
 import { postJson } from "./lib/supabase-edge.js";
+import { vuScenario } from "./lib/scenario.js";
 
 export const options = {
-  scenarios: {
-    checkout_status: {
-      executor: "constant-vus",
-      vus: Number(__ENV.LOAD_VUS || 3),
-      duration: __ENV.LOAD_DURATION || "20s",
-    },
-  },
+  ...vuScenario("checkout_status"),
   thresholds: {
-    http_req_failed: ["rate<0.01"],
+    // Synthetic tokens return 4xx — k6 counts those as http_req_failed; use checks for 5xx gate.
+    checks: ["rate>0.995"],
     http_req_duration: ["p(95)<1500"],
   },
 };

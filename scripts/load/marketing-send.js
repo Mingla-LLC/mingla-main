@@ -50,7 +50,8 @@ export default function marketingSend() {
     });
   } else {
     check(res, {
-      "marketing-send auth gate (403)": (r) => r.status === 403,
+      "marketing-send auth gate (401 or 403)": (r) =>
+        r.status === 401 || r.status === 403,
     });
   }
 

@@ -58,7 +58,7 @@ Or sign in via mingla-business staging, then copy the access token from browser 
 | `LOAD_TEST_USER_JWT` | Organizer access token (same as agent-chat) |
 | `LOAD_TEST_CAMPAIGN_ID` | Draft or scheduled campaign UUID owned by that user |
 
-Without JWT, `marketing-send.js` validates the **403 auth gate** (CI-safe, no Resend calls).
+Without JWT, `marketing-send.js` validates the **401/403 auth gate** (CI-safe, no Resend calls).
 
 With JWT but a synthetic `LOAD_TEST_CAMPAIGN_ID`, expect **403** (not owned) or **2xx** with `preview_skipped` when `MARKETING_SEND_LIVE_ENABLED=false` on staging.
 

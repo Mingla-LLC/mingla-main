@@ -10,20 +10,15 @@
 
 import { check, sleep } from "k6";
 import { optionalEnv, postJson, checkNot5xx } from "./lib/supabase-edge.js";
+import { vuScenario } from "./lib/scenario.js";
 
 const DEFAULT_EVENT_ID = "00000000-0000-4000-8000-000000000001";
 const DEFAULT_TICKET_TYPE_ID = "00000000-0000-4000-8000-000000000002";
 
 export const options = {
-  scenarios: {
-    checkout_create: {
-      executor: "constant-vus",
-      vus: Number(__ENV.LOAD_VUS || 3),
-      duration: __ENV.LOAD_DURATION || "20s",
-    },
-  },
+  ...vuScenario("checkout_create"),
   thresholds: {
-    http_req_failed: ["rate<0.01"],
+    checks: ["rate>0.995"],
     http_req_duration: ["p(95)<2500"],
   },
 };

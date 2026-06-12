@@ -19,6 +19,7 @@ const AUDITS = [
   "swallowed-errors.mjs",
   "n-plus-one-heuristic.mjs",
   "rls-perf-heuristic.mjs",
+  "discover-scale-contract.mjs",
 ];
 
 function run(script, extraArgs = []) {

@@ -2,6 +2,7 @@
 .env
 .env.local
 .env*.local
+scripts/load/fixtures/.env.load
 
 # === Operator credential stashes (never commit) ===
 *Appsflyer Dev Key*
