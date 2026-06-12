@@ -17,6 +17,13 @@ import { readFileSync } from "fs";
 import path from "path";
 import { afterEach, beforeEach, describe, expect, jest, test } from "@jest/globals";
 
+// ORCH-1127: the service now imports expo-constants (extra-first key read).
+// This suite exercises the process.env fallback path, so `extra` is empty.
+jest.mock("expo-constants", () => ({
+  __esModule: true,
+  default: { expoConfig: { extra: {} } },
+}));
+
 // Mock the supabase client BEFORE importing the service so the curated path
 // resolves to a controllable functions.invoke.
 const invokeMock = jest.fn<(...args: unknown[]) => Promise<unknown>>();

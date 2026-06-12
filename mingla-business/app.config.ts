@@ -181,9 +181,15 @@ export default ({ config }: ConfigContext): ExpoConfig => {
       // ORCH-1116: fail the build (not the user) if the client-direct GIPHY key
       // is missing on a release-bound profile. GIPHY cannot be edge-proxied
       // (ToS); a missing key silently breaks the cover-picker GIF tab. Mirrors
-      // the EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY guard above. The runtime services
-      // read process.env.EXPO_PUBLIC_GIPHY_API_KEY directly (EAS inlines it), so
-      // this IIFE is a build-time validation GATE, not a new plumbing path.
+      // the EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY guard above.
+      // ORCH-1127 correction: this IIFE both (a) fails the build when the key is
+      // missing on a release-bound profile AND (b) emits the resolved key into
+      // `extra` below — and THAT emission IS the runtime plumbing path. The
+      // giphy services read Constants.expoConfig.extra.EXPO_PUBLIC_GIPHY_API_KEY
+      // FIRST (mirroring supabase.ts). The earlier assumption that the services
+      // read process.env directly and "EAS inlines it" was WRONG: a DYNAMIC
+      // process.env[name] read is NOT inlined by babel-preset-expo and is
+      // undefined in Hermes standalone/OTA builds — only `extra` survives.
       EXPO_PUBLIC_GIPHY_API_KEY: (() => {
         const fromEnv =
           process.env.EXPO_PUBLIC_GIPHY_API_KEY ??

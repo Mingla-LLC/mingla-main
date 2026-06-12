@@ -13,10 +13,15 @@
  *      guard — it references EXPO_PUBLIC_GIPHY_API_KEY AND throws when the key
  *      is absent on a release-bound profile.
  *   2. mingla-business/.env.example documents EXPO_PUBLIC_GIPHY_API_KEY.
+ *   3. (ORCH-1127) BOTH giphy services read the key from
+ *      `Constants.expoConfig.extra` FIRST (manifest-backed, build-safe) and do
+ *      NOT regress to a dynamic-only `process.env[<var>]` / `globalThis.process
+ *      ?.env?.[<var>]` read — which babel-preset-expo never inlines, leaving the
+ *      key undefined in every Hermes standalone / OTA / production build.
  *
  * The build-time PRESENCE of the key in the EAS environment is enforced by the
  * config-eval guard itself (§4.B); this gate enforces the SOURCE wiring so the
- * guard + docs can't be reverted without CI catching it.
+ * guard + docs + extra-first read can't be reverted without CI catching it.
  *
  * Exit codes: 0 pass · 1 fail · 2 fs error
  * Self-test mode (--self-test) validates the detectors against fixtures.
@@ -32,6 +37,11 @@ const REPO_ROOT = path.resolve(__dirname, "..", "..", "..");
 
 const APP_CONFIG = path.join(REPO_ROOT, "mingla-business/app.config.ts");
 const ENV_EXAMPLE = path.join(REPO_ROOT, "mingla-business/.env.example");
+// ORCH-1127 — the two client-direct GIPHY services that read the public key.
+const GIPHY_SERVICES = [
+  "mingla-business/src/services/giphyEventCoverService.ts",
+  "mingla-business/src/services/coverProviderBrowseService.ts",
+];
 
 // The guard must (a) reference the key name and (b) throw referencing the same
 // key — a `throw new Error("...EXPO_PUBLIC_GIPHY_API_KEY...required...")`. We
@@ -43,6 +53,15 @@ const GUARD_THROW_RE =
 const KEY_REF_RE = /EXPO_PUBLIC_GIPHY_API_KEY/;
 // .env.example documents the key as a top-level entry (`EXPO_PUBLIC_GIPHY_API_KEY=`).
 const ENV_EXAMPLE_RE = /^EXPO_PUBLIC_GIPHY_API_KEY=/m;
+
+// ORCH-1127 — each giphy service MUST read the manifest-backed extra first.
+const EXTRA_READ_RE = /Constants\.expoConfig\??\.extra/;
+// ...and MUST NOT regress to a dynamic-only process.env bracket read with a
+// VARIABLE key (`process.env[name]` / `process.env?.[name]` / `.env?.[name]`).
+// A STATIC member read (`process.env.EXPO_PUBLIC_GIPHY_API_KEY`) is fine — it is
+// inlined by babel-preset-expo — so this only matches the bracket form whose
+// subscript is NOT a quoted string literal.
+const DYNAMIC_ENV_BRACKET_RE = /\.env\??\.?\[\s*(?!['"`])[^\]]+\]/;
 
 let failures = 0;
 function fail(check, msg) {
@@ -60,6 +79,15 @@ function readSource(filePath) {
     console.error(`fs error reading ${filePath}: ${e.message}`);
     process.exit(2);
   }
+}
+
+// Strip // line comments and /* */ block comments so the dynamic-bracket
+// detector only inspects executable code — the protective ORCH-1127 comments
+// intentionally name `process.env[<var>]` and must not self-trip the gate.
+function stripComments(src) {
+  return src
+    .replace(/\/\*[\s\S]*?\*\//g, "")
+    .replace(/(^|[^:])\/\/.*$/gm, "$1");
 }
 
 function runSelfTest() {
@@ -97,6 +125,49 @@ function runSelfTest() {
     console.error("SELF-TEST FAIL: .env.example false-positive on missing entry");
     selfFail++;
   }
+
+  // ORCH-1127 — extra-first read + no dynamic-bracket regression.
+  const goodService = `
+    import Constants from "expo-constants";
+    const readExtra = (name) => {
+      const extra = Constants.expoConfig?.extra;
+      return extra?.[name];
+    };
+    const readStatic = (name) =>
+      name === "EXPO_PUBLIC_GIPHY_API_KEY"
+        ? process.env.EXPO_PUBLIC_GIPHY_API_KEY
+        : process.env.EXPO_PUBLIC_GIPHY_KEY;
+    const envValue = (name) => readExtra(name) ?? readStatic(name);
+  `;
+  const dynamicOnlyService = `
+    const envValue = (name) => {
+      const value = globalThis.process?.env?.[name];
+      return value ?? null;
+    };
+  `;
+  if (!EXTRA_READ_RE.test(goodService)) {
+    console.error("SELF-TEST FAIL: extra-first read not detected in a correct service");
+    selfFail++;
+  }
+  if (DYNAMIC_ENV_BRACKET_RE.test(goodService)) {
+    console.error(
+      "SELF-TEST FAIL: dynamic-bracket detector false-positives on a correct (static + extra) service",
+    );
+    selfFail++;
+  }
+  if (EXTRA_READ_RE.test(dynamicOnlyService)) {
+    console.error(
+      "SELF-TEST FAIL: extra-read detector false-positives on a dynamic-only service",
+    );
+    selfFail++;
+  }
+  if (!DYNAMIC_ENV_BRACKET_RE.test(dynamicOnlyService)) {
+    console.error(
+      "SELF-TEST FAIL: dynamic-bracket detector missed the regressed dynamic-only reader",
+    );
+    selfFail++;
+  }
+
   if (selfFail > 0) {
     console.error(`SELF-TEST: ${selfFail} expectation(s) failed`);
     process.exit(1);
@@ -140,6 +211,31 @@ if (!fs.existsSync(ENV_EXAMPLE)) {
     fail(
       "INV-2: env-example-documents-key",
       ".env.example does NOT document EXPO_PUBLIC_GIPHY_API_KEY — see SPEC_ORCH-1116 §4.A2",
+    );
+  }
+}
+
+// Check 3 — ORCH-1127: both giphy services read Constants.expoConfig.extra
+// first and do NOT regress to a dynamic-only process.env bracket read.
+for (const rel of GIPHY_SERVICES) {
+  const abs = path.join(REPO_ROOT, rel);
+  if (!fs.existsSync(abs)) {
+    fail("INV-3: giphy-service-present", `${rel} missing`);
+    continue;
+  }
+  const src = readSource(abs);
+  const code = stripComments(src);
+  const hasExtraRead = EXTRA_READ_RE.test(code);
+  const hasDynamicBracket = DYNAMIC_ENV_BRACKET_RE.test(code);
+  if (hasExtraRead && !hasDynamicBracket) {
+    ok(
+      "INV-3: giphy-extra-first-read",
+      `${rel} reads Constants.expoConfig.extra and has no dynamic process.env[<var>] read`,
+    );
+  } else {
+    fail(
+      "INV-3: giphy-extra-first-read",
+      `${rel} must read Constants.expoConfig.extra (found=${hasExtraRead}) and must NOT use a dynamic process.env[<var>] read (foundDynamic=${hasDynamicBracket}) — see SPEC_AMENDMENT_ORCH-1127 §A2/§A3.4`,
     );
   }
 }
