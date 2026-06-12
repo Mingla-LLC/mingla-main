@@ -183,3 +183,79 @@ No P1/P2 defects to accept. Zero REWORK items.
 ---
 
 *TEST complete. Verdict CONDITIONAL PASS pending the §7 HITL on-screen confirmation (or explicit acceptance of probable-level runtime evidence). Adversarial test committed `54da7708b`. No product code modified; all revert edits restored; do-not-touch clean.*
+
+---
+
+# RETEST (2026-06-12) — runtime render-proof of the published-edit screen
+
+**Skill:** mingla-tester (business side) · RETEST mode · gap-closer for the prior CONDITIONAL PASS
+**Goal given:** convert SC-5/6/7/8 from `probable` → `proven` with a genuine RUNTIME mount of `EditPublishedTripScreen` (kill the dead-tap / conditional-unmount class) instead of source-grep; drive the sim as far as auth legitimately allows. No auth bypass / no key exfiltration.
+**Render-proof test:** `mingla-business/src/components/trip/__tests__/EditPublishedTripScreen.render.test.tsx` — committed `b6385ec71`.
+**Comms ledger:** re-read on entry. COMMS-0024 (WARN/ALL, ORCH-1116 three-way ID collision) re-factored — ORCH-1118 keeps its number (own worktree, no renumber). No BLOCK rows for tester / ORCH-1118 / ALL. The P1 found below is internal to ORCH-1118 (no cross-ORCH blast) → no new ledger entry.
+
+## R0. REVISED VERDICT
+
+**FAIL** — P0: 0 · **P1: 1** · P2: 0 · P3: 0 · P4: 2 (carried)
+
+The runtime render-proof did what source-grep could not: it MOUNTED the real screen and **found a genuine P1 dead-render defect** the prior (source-only) pass missed. The swap is structurally correct and the save GATE fires, BUT the SPEC-required **inline field errors are a dead path on the edit screen after a blocked save** — `renderSectionBody`'s `useCallback` dependency array omits `showEditAddressErrors`, so the picker's `error` prop is computed from a stale closure and never updates when the gate sets the flag. Toast + gate-block both work; the inline error does not. This violates SC-6/SC-7 ("type-without-pick → inline error fires" / "save blocked … inline error") on the edit screen specifically.
+
+→ **Routes to REWORK (implementor)**, not CLOSE. One-line fix (add `showEditAddressErrors` to the dep array). This supersedes the prior CONDITIONAL PASS.
+
+## R1. What the render-proof PROVED (the dead-tap class is killed)
+
+The test mounts the REAL `EditPublishedTripScreen` via `@testing-library/react-native` (RTL 14) with only the network/native boundary stubbed (supabase invoke, expo-router, safe-area, the non-basics accordion bodies, the react-query mutation hook, native-heavy chrome primitives Button/Toast/Icon/ConfirmDialog/Sheet). **NOT** mocked: the `MapboxAddressInput` chain (business wrapper → shared `@mingla/location-input` package), `tripLocationValidated`, the basics render JSX, `handleSavePress`, and the Save button. `react`/`react-native` are pinned to the business install (single-copy); only the renderer + RTL come from a worktree-local `.orch1118-testdeps` overlay (gitignored; never touches the anchor symlink).
+
+Runtime results (dedicated config `jest.orch1118.render.cjs`):
+
+| Case | Result | What it proves at runtime |
+|------|--------|---------------------------|
+| (a) MOUNTS both fields as MapboxAddressInput (combobox), not plain TextInput | **PASS** | `getAllByRole("combobox").length === 2`; both labelled "Departing from"/"Destination" with the picker's `accessibilityHint` ("…then pick one."). The swapped pickers MOUNT on the basics path — **the dead-tap / conditionally-unmounted-on-own-path risk is killed** |
+| (b1-gate) free-text dest (no pick) + empty departure → Save blocks | **PASS** | tapping the real `edit-trip-save` does NOT open `ChangeSummaryModal`; the block toast fires. Gate FIRES at runtime |
+| (b2-gate) validly-picked dest + EMPTY departure → Save still blocks | **PASS** | hard-required departure blocks even with a valid destination; modal stays shut |
+| (c) both validly picked → Save proceeds | **PASS** | `ChangeSummaryModal` opens; no blocking errors |
+| (b1-inline-error) blocked save reveals INLINE field errors [SPEC SC-6/7] | **FAIL** | the inline "Pick the … from the suggestions." errors do NOT render after a blocked save — **the P1 below** |
+
+The "render-has-not-been-called"/empty-return symptom early on was RTL 14's async API (`render`/`fireEvent` are `async`); resolved by `await`. The screen mounts fully (no heavy-native-dep wall) once the boundary is stubbed.
+
+## R2. P1-EDIT-STALE-ERROR (NEW — runtime-proven)
+
+- **Evidence (runtime):** `EditPublishedTripScreen.render.test.tsx` case (b1-inline-error) FAILS — `Unable to find an element with text: "Pick the destination from the suggestions."` after a blocked Save, even though the gate fired (modal blocked) and the toast rendered. A direct runtime probe confirmed the mechanism: after a blocked press, departure-error count = **0**; after a SUBSEQUENT picker-field `changeText` (which mutates `editState`, a dep that IS in the array → recreates the callback), departure-error count = **1**.
+- **Root cause (source, confirmed by the runtime probe):** `EditPublishedTripScreen.tsx:1097` `const renderSectionBody = useCallback(…, [editState, updateBasics, handleDaysChange, handleInclusionsChange, handlePricingChange, handleCoverChange, submitting, totalConfirmedOrders, soldCountByTier, trip, showToast])` — **lines 1441–1453 OMIT `showEditAddressErrors`**. The basics body reads `showEditAddressErrors` to compute each picker's `error` prop (lines 1172, 1215). Because the memoized callback is only recreated when a listed dep changes, after `handleSavePress` calls `setShowEditAddressErrors(true)` the body keeps rendering with the stale captured `false`, so `error` stays `undefined` and the inline error never appears.
+- **Why source-grep QA missed it:** the prior pass marked SC-6/SC-7 "PASS (source)" because the `error={…showEditAddressErrors && !validated…}` JSX is literally present and correct in isolation. The defect is a React render-memoization stale-closure — invisible to grep, visible only at runtime mount. This is precisely the "interactive elements must fire — runtime proof, not source wiring" class.
+- **Contrast (proves it's edit-screen-specific):** the CREATE wizard renders the same errors via `TripCreatorStep1Basics`, a real component that takes `showAddressErrors` as a **prop** and computes `departureError`/`destinationError` in render scope — so it re-renders correctly (create-side T-4/T-5 + the adversarial test stay green). Only the edit screen's memoized `renderSectionBody` is affected.
+- **Impact (user):** on the published-trip Edit → Basics screen, a planner who taps Save with a dirty/empty departure or destination is correctly BLOCKED (modal won't open) and sees the toast, but the **per-field red "Pick the … from the suggestions." hint never appears** — so they're told "something's wrong" without the field-level pointer the SPEC requires. Degraded, not catastrophic (save is still correctly gated; money/data are safe), but it's a stated SC and a dead-render path.
+- **Required fix:** add `showEditAddressErrors` to the `renderSectionBody` `useCallback` dep array (`EditPublishedTripScreen.tsx:~1453`). One line. (Optionally also `setOpenSection`/`setShowEditAddressErrors` are stable setters — only the read value `showEditAddressErrors` must be added.)
+- **Retest:** re-run `npx jest --config jest.orch1118.render.cjs --runInBand` — case (b1-inline-error) must go green (and the other 4 stay green).
+
+## R3. Fails-on-revert (the gate assertions genuinely exercise runtime)
+
+I reverted the location gate in `handleSavePress` (replaced the `if (!destValid || !depValid)` condition with `if (false)`), re-ran the render-proof, and **(b1-gate) + (b2-gate) FLIPPED to FAIL** (the `ChangeSummaryModal` now opens because nothing blocks) while (a) and (c) stayed green (mount + valid-path are gate-independent). Restored the file → `git diff` empty → the 4 stable cases pass again. **Gate fails-on-revert verified at branch HEAD `73b3c29b4`.** (The b1-inline-error case is the standing P1 marker, red on HEAD by design until the dep is fixed.)
+
+## R4. Sim drive (secondary evidence)
+
+- Foreground-closed + relaunched the business dev-client (`com.sethogieva.minglabusiness`) on the iPhone 17 Pro sim (`17091E60-…`) pointed at the **worktree** Metro on **port 8085** (`exp+mingla-business://expo-development-client/?url=http://localhost:8085`). Screenshot: `Mingla_Artifacts/reports/orch1118_retest/sim_business_bundle.png` — the Mingla Business sign-in screen rendered (worktree bundle live).
+- Served-bundle grep (HTTP 200, 31,067,122 bytes) confirms the device runs the ORCH-1118 swap: `"Pick the departure city from the suggestions"` ×1, `"Pick the destination from the suggestions"` ×1, `edit-trip-departure` testID ×1, save-toast ×2.
+- On-pixel navigation past sign-in is still gated on Seth's interactive login (Apple/Google/Email OTP) — **not bypassed** (no key exfiltration, no forged session). This is no longer the gating residual: the render-proof exercised the edit-screen runtime behaviour directly (and the on-pixel path could not have revealed the stale-closure inline-error bug at all without a deep manual repro). The dead-tap / mount risk the HITL step was reserved for is now closed by R1.
+
+## R5. Regression suites re-run (all green except the P1 marker)
+
+- **5 existing ORCH-1118 default suites** (`tripLocationValidated` + `TripCreatorStep1Basics.mapbox` + `EditPublishedTripScreen.mapbox` + `orch1118Backfill.dryrun` + `tripLocationGate.adversarial`) → **36 passed / 36** under the default config (now with a `testPathIgnorePatterns` so the new RTL `.render.test.tsx` does NOT run under the node/ts-jest default — it has no RTL there — and runs only under the dedicated config).
+- **Render-proof** (dedicated config) → 4 passed / 1 failed (the P1 marker).
+- **4 business desktop-web contract gates** (`useResponsiveLayout` + `BottomNavWebDesktopPolish` + `wizardDesktopLayout` + `homeKpiPresentation`) → **17 passed**; strict-grep `orch-0885-a-no-bottomnav-on-wide-desktop.mjs` → "gate passed". No desktop-contract regression.
+
+## R6. Hygiene / what was added (no product code touched)
+
+- **Committed (`b6385ec71`):** the render-proof test + its README, the dedicated `jest.orch1118.render.cjs` + `jest.orch1118.babel.cjs`, a `testPathIgnorePatterns` line in `jest.config.cjs`, and a `.gitignore` entry for the overlay. Append-only-safe (new test file = status A; README under `__tests__` = status A; configs are not test files).
+- **NOT committed / gitignored:** `mingla-business/.orch1118-testdeps/` (262-package overlay installed via `npm install --no-save` into a worktree-local dir — the business `node_modules` is a symlink to the anchor, so the overlay deliberately avoids polluting the shared anchor).
+- **Product code:** byte-unchanged. The gate-revert was on a working copy and restored (`git diff` empty). Do-not-touch paths (`packages/location-input`, business `MapboxAddressInput` wrapper, `ExperienceStopCard`, ORCH-1016 trigger, `biz_update_live_trip`, migrations, edge fns) untouched.
+
+## R7. Honest limits
+
+- The render-proof mounts the screen with the **network/native boundary stubbed** (supabase invoke, expo-router, safe-area, react-query mutation, and the native-heavy chrome primitives + non-basics accordion bodies). The MapboxAddressInput chain, the gate, and the basics render are REAL. A real Mapbox suggestion network round-trip + a real `biz_update_live_trip` DB persist are NOT exercised by this test (those remain covered by the backfill dryrun fixtures + the create-side flow + the served-bundle proof) — but they were never the dead-tap risk.
+- The business package genuinely has **no RTL / react-test-renderer / RN jest preset installed** and its `node_modules` is an anchor symlink. The proof therefore runs under a dedicated config + a gitignored worktree-local overlay rather than the package's default node/ts-jest jest. This is a faithful runtime mount (React 19.1 + RTL 14 `test-renderer`), not a simulated one — but it is NOT wired into the default `npm test` and would need the overlay re-installed to re-run (steps in the README).
+
+## R8. FINAL verdict (supersedes §1)
+
+**FAIL — 1×P1 (P1-EDIT-STALE-ERROR), runtime-proven.** The swap mounts correctly and the save gate fires (the dead-tap/unmount risk is dead), but the SPEC-required inline field errors are a stale-closure dead-render on the published-edit screen. Route to REWORK: add `showEditAddressErrors` to the `renderSectionBody` `useCallback` dep array in `EditPublishedTripScreen.tsx` (~L1453), then re-run the render-proof (b1-inline-error must go green). The on-pixel HITL behind Seth's login is no longer required to reach a verdict — the render-proof exercised and falsified the runtime behaviour directly.
+
+*RETEST complete. Render-proof committed `b6385ec71`; gate fails-on-revert verified at `73b3c29b4`. No product code modified.*
