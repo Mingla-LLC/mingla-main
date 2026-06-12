@@ -1441,6 +1441,15 @@ export const EditPublishedTripScreen: React.FC<EditPublishedTripScreenProps> = (
     [
       editState,
       showEditAddressErrors,
+      // ORCH-1122 [trip-edit cover dead-tap] — the cover section body renders
+      // <CoverPickerSheet visible={coverPickerVisible}> and the "Change cover"
+      // button inside this memoized callback. Omitting coverPickerVisible left
+      // the memoized body closed over the stale `false`, so tapping the button
+      // (setCoverPickerVisible(true)) re-rendered the screen but served the
+      // cached body with visible={false} → the sheet never opened (dead tap).
+      // Adding it as a dep re-mints the body when the flag flips. (The
+      // setCoverPickerVisible setter is referentially stable and needs no dep.)
+      coverPickerVisible,
       updateBasics,
       handleDaysChange,
       handleInclusionsChange,
