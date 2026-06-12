@@ -17,8 +17,7 @@
  */
 
 import React from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
-import { useRouter } from "expo-router";
+import { StyleSheet, Text, View } from "react-native";
 
 import {
   accent,
@@ -66,18 +65,14 @@ export const ExperienceCheckoutFlow: React.FC<ExperienceCheckoutFlowProps> = ({
   brand,
   testID,
 }) => {
-  const router = useRouter();
   const ticket = experience.ticket;
   const dateIsos = experience.dates.map((d) => d.startAt);
   const isEnded = allDatesPast(dateIsos);
-  const isFree = ticket !== null && (ticket.isFree || ticket.priceCents === 0);
 
-  const handleGetSpot = (): void => {
-    // Own chain. The buyer→payment→confirm screens POST to the EXISTING
-    // ticket-checkout-create with the experience's events-row id + the single
-    // ticket line (COMMS-0014/0016).
-    router.push(`/checkout-experience/${experience.id}` as never);
-  };
+  // ORCH-1117 — the inline Get-spot CTA is REMOVED (locked single-ticket rule).
+  // The floating Buy bar on /exp/[brandSlug]/[experienceSlug] is now the ONLY
+  // get-spot action and owns navigation to `/checkout-experience/{id}`
+  // (experienceCheckoutPath). This flow keeps the ticket recap + helper only.
 
   if (ticket === null) {
     return (
@@ -119,28 +114,6 @@ export const ExperienceCheckoutFlow: React.FC<ExperienceCheckoutFlowProps> = ({
           <Text style={styles.endedText}>This experience has ended.</Text>
         </View>
       ) : null}
-
-      <Pressable
-        onPress={handleGetSpot}
-        disabled={isEnded}
-        accessibilityRole="button"
-        accessibilityState={{ disabled: isEnded }}
-        accessibilityLabel={`Get your spot at ${experience.title}`}
-        style={({ pressed }) => [
-          styles.cta,
-          pressed && styles.ctaPressed,
-          isEnded && styles.ctaDisabled,
-        ]}
-        testID="experience-checkout-get-spot"
-      >
-        <Text style={styles.ctaText}>
-          {isEnded
-            ? "Ended"
-            : isFree
-              ? "Get my free spot"
-              : "Get my spot"}
-        </Text>
-      </Pressable>
 
       <Text style={styles.helper}>
         You&rsquo;ll enter your details + pay securely on the next screen.
@@ -212,23 +185,6 @@ const styles = StyleSheet.create({
   endedText: {
     fontSize: typography.bodySm.fontSize,
     color: textTokens.secondary,
-  },
-  cta: {
-    paddingVertical: spacing.md,
-    borderRadius: radiusTokens.md,
-    backgroundColor: accent.warm,
-    alignItems: "center",
-  },
-  ctaPressed: {
-    opacity: 0.85,
-  },
-  ctaDisabled: {
-    opacity: 0.4,
-  },
-  ctaText: {
-    fontSize: typography.body.fontSize,
-    fontWeight: "700",
-    color: "#FFFFFF",
   },
   helper: {
     fontSize: typography.caption.fontSize,

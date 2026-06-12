@@ -24,6 +24,7 @@ import {
   typography,
 } from "../../constants/designSystem";
 import { Icon } from "../ui/Icon";
+import { CollapsibleDescription } from "../offering/CollapsibleDescription";
 import { EventCoverMedia } from "../ui/EventCoverMedia";
 import { formatExperienceDateSubline } from "../../utils/experienceDateSubline";
 import type {
@@ -122,10 +123,15 @@ export const ExperiencePreview: React.FC<ExperiencePreviewProps> = ({
           </Text>
         </View>
 
-        {/* Description / narrative. */}
+        {/* Description / narrative — ORCH-1117 collapsible (collapsed default). */}
         {experience.description !== null &&
         experience.description.trim().length > 0 ? (
-          <Text style={styles.description}>{experience.description}</Text>
+          <View style={styles.descriptionWrap}>
+            <CollapsibleDescription
+              text={experience.description}
+              testID="experience-preview-description"
+            />
+          </View>
         ) : null}
 
         {/* STOPS itinerary. */}
@@ -208,6 +214,11 @@ const styles = StyleSheet.create({
     fontSize: typography.body.fontSize,
     lineHeight: typography.body.lineHeight,
     color: textTokens.secondary,
+    marginTop: spacing.md,
+  },
+  // ORCH-1117 — carries the prior description marginTop now that the body text
+  // lives inside the CollapsibleDescription block.
+  descriptionWrap: {
     marginTop: spacing.md,
   },
   section: {

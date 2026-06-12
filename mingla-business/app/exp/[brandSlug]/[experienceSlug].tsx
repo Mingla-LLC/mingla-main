@@ -38,7 +38,12 @@ import {
 import { GlassCard } from "../../../src/components/ui/GlassCard";
 import { IconChrome } from "../../../src/components/ui/IconChrome";
 import { ShareModal } from "../../../src/components/ui/ShareModal";
-import { experiencePublicUrl } from "../../../src/constants/publicUrls";
+import { FloatingOfferingBar } from "../../../src/components/offering/FloatingOfferingBar";
+import type { CtaState } from "@mingla/event-rendering";
+import {
+  experienceCheckoutPath,
+  experiencePublicUrl,
+} from "../../../src/constants/publicUrls";
 import { usePublicExperienceBySlug } from "../../../src/hooks/usePublicExperience";
 import { ExperiencePreview } from "../../../src/components/experience/ExperiencePreview";
 import { ExperienceCheckoutFlow } from "../../../src/components/experience/ExperienceCheckoutFlow";
@@ -140,9 +145,58 @@ export default function PublicExperienceRoute(): React.ReactElement {
     ticket.ticketsRemaining !== null &&
     ticket.ticketsRemaining <= 0;
 
+  // ORCH-1117 — floating Buy bar CTA. Single-ticket; the inline Get-spot CTA was
+  // removed (locked rule) so this bar is the ONLY get-spot action and owns nav to
+  // /checkout-experience/{id}. Precedence mirrors the page's banner states:
+  //   ended → "Ended" · sold out → "Sold out" · !bookable → "Booking unavailable"
+  //   · ticket null → "Not on sale yet" · else → "Get my spot" + "From {price}".
+  const expPrice =
+    ticket !== null && ticket.priceCents > 0
+      ? formatExpPrice(ticket.priceCents, ticket.currency)
+      : "Free";
+  const expCta: CtaState = isEnded
+    ? { kind: "unavailable", title: "Ended", subline: null, tappable: false }
+    : isSoldOut
+      ? {
+          kind: "unavailable",
+          title: "Sold out",
+          subline: null,
+          tappable: false,
+        }
+      : !experience.bookable
+        ? {
+            kind: "unavailable",
+            title: "Booking unavailable",
+            subline: "The organizer is finishing payment setup.",
+            tappable: false,
+          }
+        : ticket === null
+          ? {
+              kind: "unavailable",
+              title: "Not on sale yet",
+              subline: null,
+              tappable: false,
+            }
+          : expPrice === "Free"
+            ? { kind: "free", label: "Get my spot", tappable: true }
+            : {
+                kind: "buy",
+                label: "Get my spot",
+                price: `From ${expPrice}`,
+                tappable: true,
+              };
+  const handleExpGetSpot = (): void => {
+    router.push(experienceCheckoutPath(experience.id) as never);
+  };
+
   return (
     <View style={styles.host}>
-      <ScrollView contentContainerStyle={styles.scrollContent}>
+      <ScrollView
+        contentContainerStyle={[
+          styles.scrollContent,
+          { paddingBottom: spacing.xl + 96 + insets.bottom },
+        ]}
+      >
         <ExperiencePreview
           experience={experience}
           brand={payload.brand}
@@ -223,8 +277,31 @@ export default function PublicExperienceRoute(): React.ReactElement {
           description={experience.description?.slice(0, 200) ?? undefined}
         />
       )}
+
+      {/* ORCH-1117 — floating get-spot bar (the ONLY get-spot action; inline CTA
+          removed). NON-tappable info strip when ended/sold-out/not-bookable. */}
+      <FloatingOfferingBar
+        cta={expCta}
+        onPress={handleExpGetSpot}
+        surface="dark"
+        testID="orch-1117-experience-floating-bar"
+      />
     </View>
   );
+}
+
+// ORCH-1117 — minor-unit price formatter for the floating bar (mirrors
+// ExperienceCheckoutFlow.formatPriceMajor; never recomputes fees).
+function formatExpPrice(priceCents: number, currency: string): string {
+  try {
+    return new Intl.NumberFormat(undefined, {
+      style: "currency",
+      currency: currency || "USD",
+      maximumFractionDigits: 0,
+    }).format(priceCents / 100);
+  } catch {
+    return `${(priceCents / 100).toFixed(0)} ${currency}`;
+  }
 }
 
 const styles = StyleSheet.create({

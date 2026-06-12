@@ -43,7 +43,12 @@ import {
 import { GlassCard } from "../../../src/components/ui/GlassCard";
 import { IconChrome } from "../../../src/components/ui/IconChrome";
 import { ShareModal } from "../../../src/components/ui/ShareModal";
-import { tripPublicUrl } from "../../../src/constants/publicUrls";
+import { FloatingOfferingBar } from "../../../src/components/offering/FloatingOfferingBar";
+import type { CtaState } from "@mingla/event-rendering";
+import {
+  tripCheckoutPath,
+  tripPublicUrl,
+} from "../../../src/constants/publicUrls";
 import { usePublicTripBySlug } from "../../../src/hooks/usePublicTripBySlug";
 import { TripPreview } from "../../../src/components/trip/TripPreview";
 import { TripCheckoutFlow } from "../../../src/components/trip/TripCheckoutFlow";
@@ -162,9 +167,61 @@ export default function PublicTripRoute(): React.ReactElement {
     }
   }
 
+  // ORCH-1117 — floating Buy bar CTA for the trip. Single-ticket; the inline
+  // Reserve CTA was removed (locked rule) so this bar is the ONLY Reserve action
+  // and owns navigation to /checkout-trip/{id}. States (precedence):
+  //   !bookable          → "Booking unavailable" info strip (NON-tappable)
+  //   bookings closed     → "Bookings closed" info strip (NON-tappable)
+  //   else                → "Reserve my spot" + "From {price}"
+  const tripTier = trip.pricingTiers[0];
+  const tripPrice =
+    tripTier !== undefined && tripTier.priceCents > 0
+      ? formatTripPrice(tripTier.priceCents, tripTier.currency)
+      : tripTier !== undefined && tripTier.priceCents === 0
+        ? "Free"
+        : "";
+  const tripCta: CtaState =
+    payload.bookable === false
+      ? {
+          kind: "unavailable",
+          title: "Booking unavailable",
+          subline: "The organizer is finishing payment setup.",
+          tappable: false,
+        }
+      : isClosed
+        ? {
+            kind: "unavailable",
+            title: "Bookings closed",
+            subline: null,
+            tappable: false,
+          }
+        : tripTier === undefined
+          ? {
+              kind: "unavailable",
+              title: "Not bookable yet",
+              subline: null,
+              tappable: false,
+            }
+          : tripPrice === "Free"
+            ? { kind: "free", label: "Reserve my spot", tappable: true }
+            : {
+                kind: "buy",
+                label: "Reserve my spot",
+                price: `From ${tripPrice}`,
+                tappable: true,
+              };
+  const handleTripReserve = (): void => {
+    router.push(tripCheckoutPath(trip.id) as never);
+  };
+
   return (
     <View style={styles.host}>
-      <ScrollView contentContainerStyle={styles.scrollContent}>
+      <ScrollView
+        contentContainerStyle={[
+          styles.scrollContent,
+          { paddingBottom: spacing.xl + 96 + insets.bottom },
+        ]}
+      >
         <TripPreview
           trip={payload.trip}
           brand={payload.brand}
@@ -244,8 +301,31 @@ export default function PublicTripRoute(): React.ReactElement {
           description={payload.trip.description?.slice(0, 200)}
         />
       )}
+
+      {/* ORCH-1117 — floating Reserve bar (the ONLY Reserve action; inline CTA
+          removed). NON-tappable info strip when not bookable / bookings closed. */}
+      <FloatingOfferingBar
+        cta={tripCta}
+        onPress={handleTripReserve}
+        surface="dark"
+        testID="orch-1117-trip-floating-bar"
+      />
     </View>
   );
+}
+
+// ORCH-1117 — minor-unit price formatter for the floating bar (mirrors
+// TripCheckoutFlow.formatPriceMajor; never recomputes fees — reads priceCents).
+function formatTripPrice(priceCents: number, currency: string): string {
+  try {
+    return new Intl.NumberFormat(undefined, {
+      style: "currency",
+      currency: currency || "USD",
+      maximumFractionDigits: 0,
+    }).format(priceCents / 100);
+  } catch {
+    return `${(priceCents / 100).toFixed(0)} ${currency}`;
+  }
 }
 
 const styles = StyleSheet.create({
