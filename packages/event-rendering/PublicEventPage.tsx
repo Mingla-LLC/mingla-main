@@ -589,7 +589,11 @@ const PublishedBody: React.FC<PublishedBodyProps> = ({
                 style={StyleSheet.absoluteFill}
                 onAspectRatio={setHeroAspect}
                 showAudioControl={event.coverMediaType === "video"}
-                audioControlPosition="topRight"
+                // ORCH-1124 — inherit EventCoverMedia's "bottomRight" default so
+                // the Sound/Mute pill clears the top-right floating close+share
+                // chrome (the prior "topRight" override sat directly under it and
+                // was an unreachable dead tap). Consumer app already uses
+                // "bottomRight" via expandedCard/ImageGallery.
               />
             ) : (
               <View
