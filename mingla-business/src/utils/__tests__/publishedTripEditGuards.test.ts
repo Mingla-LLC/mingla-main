@@ -45,8 +45,8 @@ const trip = (patch: Partial<Trip> = {}): Trip => ({
     capacity: 12,
   },
   days: [
-    { id: "day-1", eventId: "trip-1", ordinal: 1, title: "Arrival", narrative: null, date: null, stops: [] },
-    { id: "day-2", eventId: "trip-1", ordinal: 2, title: "Day 2", narrative: null, date: null, stops: [] },
+    { id: "day-1", eventId: "trip-1", ordinal: 1, title: "Arrival", narrative: null, date: null, stops: [], media: [] },
+    { id: "day-2", eventId: "trip-1", ordinal: 2, title: "Day 2", narrative: null, date: null, stops: [], media: [] },
   ],
   pricingTiers: [
     {

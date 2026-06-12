@@ -1223,6 +1223,10 @@ import type {
   TripInclusion,
   TripPricingTier,
 } from "./tripsService";
+// ORCH-1119 — TripDay now carries a media gallery; coerce the raw jsonb here so
+// this buyer-checkout trip read stays type-complete (and the gallery rides
+// through to any buyer-side render).
+import { coerceTripDayMedia } from "./tripsService";
 
 export interface PublicTripBrand {
   id: string;
@@ -1368,6 +1372,7 @@ export const getPublicTripById = async (
         narrative: d.narrative,
         date: d.date,
         stops: Array.isArray(d.stops) ? d.stops : [],
+        media: coerceTripDayMedia(d.media),
       }),
     ),
     pricingTiers: tiers.map((t): TripPricingTier => {

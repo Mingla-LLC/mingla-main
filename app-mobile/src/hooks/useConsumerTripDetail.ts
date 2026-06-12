@@ -21,11 +21,47 @@ import {
   type DiscoverTripRow,
 } from "../services/tripsDiscoveryService";
 
+/**
+ * ORCH-1119 — one item in a trip DAY's optional media gallery. Explicit `type`
+ * (the renderer NEVER auto-detects — ORCH-1069/0978). Sourced from the
+ * anon-readable `trip_days.media` jsonb column.
+ */
+export interface TripDayMedia {
+  url: string;
+  type: "image" | "video";
+  provider?: string;
+  width?: number;
+  height?: number;
+}
+
+/** ORCH-1119 — defensively coerce raw jsonb to a clean TripDayMedia[]; drops any
+ *  item missing a string url or a valid "image"|"video" type. */
+export function coerceTripDayMedia(raw: unknown): TripDayMedia[] {
+  if (!Array.isArray(raw)) return [];
+  const out: TripDayMedia[] = [];
+  for (const item of raw) {
+    if (item === null || typeof item !== "object") continue;
+    const o = item as Record<string, unknown>;
+    const url = o.url;
+    const type = o.type;
+    if (typeof url !== "string" || url.length === 0) continue;
+    if (type !== "image" && type !== "video") continue;
+    const next: TripDayMedia = { url, type };
+    if (typeof o.provider === "string") next.provider = o.provider;
+    if (typeof o.width === "number") next.width = o.width;
+    if (typeof o.height === "number") next.height = o.height;
+    out.push(next);
+  }
+  return out;
+}
+
 export interface TripDetailDay {
   id: string;
   ordinal: number;
   title: string;
   narrative: string | null;
+  // ORCH-1119 — optional per-day media gallery (default []).
+  media: TripDayMedia[];
 }
 export interface TripDetailInclusion {
   id: string;
@@ -189,7 +225,7 @@ async function fetchTripDetail(
       )
       .eq("id", tripId)
       .maybeSingle(),
-    supabase.from("trip_days").select("id, ordinal, title, narrative").eq("event_id", tripId).order("ordinal"),
+    supabase.from("trip_days").select("id, ordinal, title, narrative, media").eq("event_id", tripId).order("ordinal"),
     supabase
       .from("trip_inclusions")
       .select("id, kind, item, ordinal")
@@ -213,6 +249,8 @@ async function fetchTripDetail(
     ordinal: (d as { ordinal: number }).ordinal,
     title: (d as { title: string }).title,
     narrative: (d as { narrative: string | null }).narrative ?? null,
+    // ORCH-1119 — coerce the per-day gallery from the anon-readable jsonb column.
+    media: coerceTripDayMedia((d as { media?: unknown }).media),
   }));
 
   const inclusions: TripDetailInclusion[] = (inclResp.data ?? []).map((i) => ({

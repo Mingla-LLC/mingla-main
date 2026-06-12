@@ -116,6 +116,12 @@ export interface TripDayDiff {
   oldNarrative: string | null;
   newNarrative: string | null;
   status: "added" | "removed" | "modified";
+  // ORCH-1119 — a day whose ONLY change is its media gallery still surfaces as a
+  // `modified` diff (additive severity). These counts drive the change-summary
+  // copy ("Photos/videos updated").
+  mediaChanged?: boolean;
+  oldMediaCount?: number;
+  newMediaCount?: number;
 }
 
 export interface TripInclusionDiff {
@@ -186,6 +192,12 @@ export const classifyTripSeverity = (
 // Diff computers
 // ============================================================
 
+// ORCH-1119 — order-sensitive media fingerprint (url|type per item). A reorder,
+// add, or remove changes the string; identical galleries match exactly.
+const mediaFingerprint = (
+  media: ReadonlyArray<{ url: string; type: "image" | "video" }> | undefined,
+): string => (media ?? []).map((m) => `${m.url}|${m.type}`).join(",");
+
 export const computeTripDayDiffs = (
   oldDays: TripDay[],
   newDays: TripDayInput[],
@@ -205,19 +217,28 @@ export const computeTripDayDiffs = (
         oldNarrative: null,
         newNarrative: n.narrative ?? null,
         status: "added",
+        mediaChanged: (n.media ?? []).length > 0,
+        oldMediaCount: 0,
+        newMediaCount: (n.media ?? []).length,
       });
-    } else if (
-      o.title !== n.title ||
-      (o.narrative ?? null) !== (n.narrative ?? null)
-    ) {
-      out.push({
-        ordinal,
-        oldTitle: o.title,
-        newTitle: n.title,
-        oldNarrative: o.narrative,
-        newNarrative: n.narrative ?? null,
-        status: "modified",
-      });
+    } else {
+      const mediaChanged =
+        mediaFingerprint(o.media) !== mediaFingerprint(n.media);
+      const textChanged =
+        o.title !== n.title || (o.narrative ?? null) !== (n.narrative ?? null);
+      if (textChanged || mediaChanged) {
+        out.push({
+          ordinal,
+          oldTitle: o.title,
+          newTitle: n.title,
+          oldNarrative: o.narrative,
+          newNarrative: n.narrative ?? null,
+          status: "modified",
+          mediaChanged,
+          oldMediaCount: (o.media ?? []).length,
+          newMediaCount: (n.media ?? []).length,
+        });
+      }
     }
   }
   // Removed
@@ -429,13 +450,39 @@ export const computeRichTripFieldDiffs = (
     const isMaterial = ctx.droppedDayOrdinals.length > 0;
     const oldCount = oldTrip.days.length;
     const newCount = patch.days.length;
-    out.push({
-      fieldKey: "days",
-      fieldLabel: labelOf("days"),
-      oldValue: `${oldCount} day${oldCount === 1 ? "" : "s"}`,
-      newValue: `${newCount} day${newCount === 1 ? "" : "s"}`,
-      severity: isMaterial ? "material" : "additive",
-    });
+    // ORCH-1119 — when the day COUNT and every title/narrative are unchanged but
+    // a gallery differs, the count-vs-count copy reads as a no-op. Surface a
+    // media-aware row so the change-summary isn't empty/confusing. Always
+    // additive (media never enters MATERIAL_KEYS / the refund gate).
+    const dayDiffs = computeTripDayDiffs(oldTrip.days, patch.days);
+    const onlyMediaChanged =
+      oldCount === newCount &&
+      ctx.droppedDayOrdinals.length === 0 &&
+      dayDiffs.length > 0 &&
+      dayDiffs.every(
+        (d) =>
+          d.status === "modified" &&
+          d.mediaChanged === true &&
+          d.oldTitle === d.newTitle &&
+          (d.oldNarrative ?? null) === (d.newNarrative ?? null),
+      );
+    if (onlyMediaChanged) {
+      out.push({
+        fieldKey: "days",
+        fieldLabel: labelOf("days"),
+        oldValue: "—",
+        newValue: "Photos/videos updated",
+        severity: "additive",
+      });
+    } else {
+      out.push({
+        fieldKey: "days",
+        fieldLabel: labelOf("days"),
+        oldValue: `${oldCount} day${oldCount === 1 ? "" : "s"}`,
+        newValue: `${newCount} day${newCount === 1 ? "" : "s"}`,
+        severity: isMaterial ? "material" : "additive",
+      });
+    }
   }
   if (patch.inclusions !== undefined) {
     const isMaterial = ctx.droppedInclusionKeys.length > 0;

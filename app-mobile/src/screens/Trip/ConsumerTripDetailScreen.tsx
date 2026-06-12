@@ -52,9 +52,11 @@ import React, {
 import {
   AccessibilityInfo,
   ActivityIndicator,
+  Image,
   LayoutAnimation,
   Platform,
   Pressable,
+  ScrollView,
   Share,
   StyleSheet,
   Text,
@@ -233,6 +235,9 @@ export default function ConsumerTripDetailScreen({
     }
     setAboutCollapsed((c) => !c);
   }, [reduceMotion]);
+  // ORCH-1119 — one-playing guard for per-day gallery videos: only the tapped
+  // tile's key plays; every other video tile stays paused. Null = none playing.
+  const [activeVideoKey, setActiveVideoKey] = useState<string | null>(null);
 
   // ORCH-1016 — the SheetOverlayCarrier (RN Modal) is removed: it broke Android
   // scroll gestures and did NOT fix the z-order. The sheets now hide the nav
@@ -494,6 +499,59 @@ export default function ConsumerTripDetailScreen({
                 {day.narrative !== null && day.narrative.trim().length > 0 ? (
                   <Text style={styles.dayNarrative}>{day.narrative}</Text>
                 ) : null}
+                {/* ORCH-1119 — per-day media gallery. Constitution #9: a day with
+                    NO media renders ZERO gallery nodes (no empty frame). */}
+                {day.media.length > 0 ? (
+                  <ScrollView
+                    horizontal
+                    showsHorizontalScrollIndicator={false}
+                    contentContainerStyle={styles.dayMediaRow}
+                    accessibilityLabel={`Day ${day.ordinal} media gallery`}
+                  >
+                    {day.media.map((m, mi) => {
+                      const key = `${day.id}-${mi}`;
+                      return m.type === "video" ? (
+                        <Pressable
+                          key={key}
+                          onPress={() =>
+                            setActiveVideoKey((cur) =>
+                              cur === key ? null : key,
+                            )
+                          }
+                          accessibilityRole="imagebutton"
+                          accessibilityLabel={`Day ${day.ordinal} media ${mi + 1}, video`}
+                          style={styles.dayMediaTile}
+                        >
+                          <EventCoverMedia
+                            mediaUrl={m.url}
+                            mediaType="video"
+                            autoplay
+                            playbackActive={activeVideoKey === key}
+                            muted
+                            loop
+                            radius={12}
+                            height="100%"
+                            width="100%"
+                          />
+                          {activeVideoKey !== key ? (
+                            <View style={styles.dayMediaPlayBadge} pointerEvents="none">
+                              <Icon name="play" size={12} color="#FFFFFF" />
+                            </View>
+                          ) : null}
+                        </Pressable>
+                      ) : (
+                        <Image
+                          key={key}
+                          source={{ uri: m.url }}
+                          style={styles.dayMediaTile}
+                          resizeMode="cover"
+                          accessibilityRole="image"
+                          accessibilityLabel={`Day ${day.ordinal} media ${mi + 1}, image`}
+                        />
+                      );
+                    })}
+                  </ScrollView>
+                ) : null}
               </View>
             ))}
           </View>
@@ -697,6 +755,26 @@ const styles = StyleSheet.create({
   dayOrdinal: { fontSize: 11, fontWeight: "700", letterSpacing: 0.3, color: WARM },
   dayTitle: { fontSize: 16, fontWeight: "600", color: "#FFFFFF", marginTop: 2 },
   dayNarrative: { fontSize: 14, color: "rgba(255,255,255,0.65)", lineHeight: 20, marginTop: 4 },
+  // ORCH-1119 — per-day gallery
+  dayMediaRow: { flexDirection: "row", gap: 8, marginTop: 8, paddingVertical: 2 },
+  dayMediaTile: {
+    width: 96,
+    height: 96,
+    borderRadius: 12,
+    overflow: "hidden",
+    backgroundColor: "rgba(255,255,255,0.06)",
+  },
+  dayMediaPlayBadge: {
+    position: "absolute",
+    left: 6,
+    bottom: 6,
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(0,0,0,0.6)",
+  },
   inclRow: { flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 6 },
   inclText: { fontSize: 15, color: "rgba(255,255,255,0.9)", flexShrink: 1 },
   inclTextMuted: { color: "rgba(255,255,255,0.5)" },

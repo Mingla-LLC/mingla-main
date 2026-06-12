@@ -238,6 +238,8 @@ function tripToLocalEditState(trip: Trip): LocalTripEditState {
       ordinal: d.ordinal,
       title: d.title,
       narrative: d.narrative ?? "",
+      // ORCH-1119 — seed the per-day media gallery from the live trip.
+      media: d.media ?? [],
     })),
     inclusions: trip.inclusions.map((i) => ({
       kind: i.kind,
@@ -362,12 +364,19 @@ function buildLiveTripPatch(
 
   // Days — full DELETE-then-INSERT semantics on the server; emit when any
   // field changed, ordinal added or removed.
+  // ORCH-1119 — order-sensitive media fingerprint so a media-only change (add,
+  // remove, reorder) sets daysChanged → patch.days → biz_update_live_trip §5b
+  // persists media. Media is additive (never a refund-gate ordinal drop).
+  const mediaSig = (
+    m: ReadonlyArray<{ url: string; type: "image" | "video" }> | undefined,
+  ): string => (m ?? []).map((x) => `${x.url}|${x.type}`).join(",");
   const oldDaysSig = JSON.stringify(
     trip.days
       .map((d) => ({
         ordinal: d.ordinal,
         title: d.title,
         narrative: d.narrative ?? "",
+        media: mediaSig(d.media),
       }))
       .sort((a, b) => a.ordinal - b.ordinal),
   );
@@ -375,10 +384,16 @@ function buildLiveTripPatch(
     ordinal: d.ordinal,
     title: d.title.trim(),
     narrative: d.narrative.trim().length > 0 ? d.narrative.trim() : "",
+    media: d.media ?? [],
   }));
   const newDaysSig = JSON.stringify(
     newDaysCanonical
-      .map((d) => ({ ordinal: d.ordinal, title: d.title, narrative: d.narrative }))
+      .map((d) => ({
+        ordinal: d.ordinal,
+        title: d.title,
+        narrative: d.narrative,
+        media: mediaSig(d.media),
+      }))
       .sort((a, b) => a.ordinal - b.ordinal),
   );
   const daysChanged = oldDaysSig !== newDaysSig;
@@ -387,6 +402,8 @@ function buildLiveTripPatch(
       ordinal: d.ordinal,
       title: d.title,
       narrative: d.narrative.length > 0 ? d.narrative : null,
+      // ORCH-1119 — carry media into the published-edit patch.
+      media: d.media,
     }));
   }
   const dayDiffs = daysChanged
@@ -1253,6 +1270,9 @@ export const EditPublishedTripScreen: React.FC<EditPublishedTripScreenProps> = (
               onChange={handleDaysChange}
               disabled={submitting}
               editMode={{ totalConfirmedOrders }}
+              brandId={trip.brandId}
+              eventId={trip.id}
+              onShowToast={showToast}
             />
           );
         case "inclusions":
