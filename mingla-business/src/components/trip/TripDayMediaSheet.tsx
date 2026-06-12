@@ -389,8 +389,12 @@ export const TripDayMediaSheet: React.FC<TripDayMediaSheetProps> = ({
             : firstError,
         );
       }
-      // Close once all uploads have resolved — no selection is lost mid-flight.
-      if (uploaded.length > 0) onClose();
+      // Close once the batch has resolved — on full success AND on a 0-success
+      // batch — so the wizard-root error toast (onShowToast above) is no longer
+      // occluded by this native-Modal sheet (Constitution #3). The partial-success
+      // toast still fires before this close. Pre-upload throws (catch below) keep
+      // the sheet open so the user can retry the picker.
+      onClose();
     } catch (error) {
       // Pre-upload failures (permission denied, picker error) — friendly toast.
       onShowToast(
