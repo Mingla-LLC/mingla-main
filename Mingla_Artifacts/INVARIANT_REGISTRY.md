@@ -4400,3 +4400,26 @@ Every chat response from every skill uses Section A (what just happened) + Secti
 **Enforcement:** strict-grep gate `.github/scripts/strict-grep/orch-1117-no-raw-white-on-palette-surface.mjs` (registered in `.github/workflows/strict-grep-mingla-business.yml`) + contrast unit test `mingla-business/src/components/offering/__tests__/offeringLegibility.orch1117.test.ts` (fails-on-revert). Append-only.
 
 **Cross-references:** SPEC/DESIGN/IMPLEMENTATION/TEST_ORCH-1117_OFFERING_PAGE_POLISH.md, PR #445 (`a7ab3da39`).
+
+### I-PROPOSED-TRIP-LOCATION-MAPBOX-VALIDATED (ACTIVE — ratified by ORCH-1118 CLOSE 2026-06-12)
+
+**Invariant:** On BOTH trip authoring UIs in the business app — the create wizard (`TripCreatorWizard` Step 1 / `TripCreatorStep1Basics`) and the published-trip edit screen (`EditPublishedTripScreen`) — the "Departing from" AND "Destination" fields MUST be a confirmed Mapbox pick (`placeId` + `lat` + `lng` all non-null) before the trip can be PUBLISHED (create) or SAVED (edit). Empty is INVALID for BOTH (departure is hard-required, per Seth's explicit override of ORCH-1016's optional-departure design); typed-but-unpicked free text is INVALID and must clear the field's structured coords. Both fields MUST render via the shared `MapboxAddressInput` (never a plain `TextInput`), and validity is gated through the single-source predicate `mingla-business/src/components/trip/tripLocationValidated.ts` (mirroring the experiences `stopHasValidatedLocation` pattern). Do NOT reintroduce a free-text fall-through or relax departure back to optional.
+
+**Why this matters:** ORCH-1118 — both authoring screens leaked free typed text with no coordinates (DB-proven: 5/5 trips with a destination had text but null placeId/lat/lng), silently desyncing the canonical `events.departure_geo`/`location_geo` points consumer discovery depends on. The edit screen had never been brought to Mapbox parity (plain TextInputs since ORCH-0876). Pinning the rule to one predicate + both authoring surfaces prevents either screen from regressing to free text or dropping the departure requirement.
+
+**Applies to:** business iOS + Android (trip authoring only; adjacent business-web preview). Not consumer apps / buyer-web / admin (no trip authoring).
+
+**Enforcement:** single-source predicate `mingla-business/src/components/trip/tripLocationValidated.ts` (empty=INVALID for both fields); implementor happy-path tests `tripLocationValidated.test.ts` + `TripCreatorStep1Basics.mapbox.test.ts` (fails-on-revert @ `4134676e2`); tester adversarial `tripLocationGate.adversarial.test.ts` (@ `54da7708b`) + runtime RTL render-proof `EditPublishedTripScreen.render.test.tsx` (mounts the real screen; @ `73b3c29b4`). Append-only.
+
+**Cross-references:** INVESTIGATE/SPEC/IMPLEMENTATION/TEST_ORCH-1118_TRIP_ADDRESS_MAPBOX.md, PR #446 (`f16527285`).
+### I-RECENT-EVENTS-LIVE-QUERY (ACTIVE — ratified by ORCH-1121 CLOSE 2026-06-12)
+
+**Invariant:** The business brand-profile "Recent events" section (`mingla-business/src/components/brand/BrandProfileView.tsx` SECTION E, and any future owner-facing brand-events glance) MUST derive its contents from a live brand-scoped events query (`useBusinessEventsForBrand(brand.id)`), NEVER a hardcoded empty-state. The "No events yet / Create your first event" empty card MUST render ONLY when that query is settled, non-error, and genuinely zero-length — it MUST NOT render while the query is loading/undefined (false-empty flash) or on error (which must surface a retry, not a fabricated empty). Constitution #9 (no lying empty-state) + #3 (no silent failure).
+
+**Why this matters:** ORCH-1121 — the section was a 100% hardcoded empty `GlassCard` wired to no query at all, so it showed "Create your first event" for every brand even with live + past events. Pinning the section to a live query with a settled-only empty branch prevents any future regression to a static or loading-state empty.
+
+**Applies to:** business iOS + Android (`mingla-business` owner brand profile). The shared public `packages/brand-rendering/PublicBrandPage.tsx` is out of scope (it already gates its empty state on real data).
+
+**Enforcement:** append-only regression tests — implementor happy-path `mingla-business/src/components/brand/__tests__/BrandProfileView.orch_1121.test.tsx` (events present → rows render, empty card absent; fails-on-revert @ `6167c9b0a`) + tester adversarial render-ladder/false-empty-flash matrix `mingla-business/src/components/brand/__tests__/BrandProfileView.recentEventsFlash.adversarial.orch_1121.test.ts` (`dd06e552e`, drives all cold-load/error/refetch states). No strict-grep gate (the rule is behavioral, not a string-pattern).
+
+**Cross-references:** INVESTIGATE/SPEC/DESIGN/IMPLEMENTATION/TEST_ORCH-1121_BRAND_PROFILE_REDESIGN.md, PR #447 (`518e468d6`).
