@@ -19,6 +19,23 @@ import { StripeNativeProvider } from "@mingla/payments-native";
 import { MINGLA_THEME_FONTS } from "../src/theme/themeFonts";
 import { verifyStripeModeAlignment } from "../src/services/stripeModeHandshake";
 
+// ORCH-1125 [cold deep-link "No QueryClient set" crash]: the React Query
+// provider was previously mounted inside the `/` (Home) route in app/index.tsx,
+// making it a SIBLING of public deep-link routes (/t/, /b/, /brand/). A cold
+// deep-link opened in a fresh process routed straight to one of those siblings
+// before Home ever mounted, so its first useQuery ran with no QueryClient in
+// context and crashed. The provider (+ its cacheReady cache-size gate, persist
+// options, and the AnimatedSplashScreen overlay) is hoisted here to the root
+// layout so it wraps <Stack/> and therefore EVERY route — cold or warm.
+// Invariant: I-PROPOSED-RQ-PROVIDER-AT-ROOT-LAYOUT.
+// CI gate: scripts/ci/check-rq-provider-at-root-layout.sh.
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { PersistQueryClientProvider } from "@tanstack/react-query-persist-client";
+import { queryClient, asyncStoragePersister } from "../src/config/queryClient";
+import { shouldDehydrateMinglaQuery } from "../src/utils/queryPersistence";
+import { useAppStore } from "../src/store/appStore";
+import AnimatedSplashScreen from "../src/components/AnimatedSplashScreen";
+
 // ORCH-0679 Wave 2B-2: SINGLE source of truth for Sentry init.
 // I-SENTRY-SINGLE-INIT — duplicate Sentry.init in app/index.tsx was deleted as
 // part of this wave. Configs from both files are merged here.
@@ -91,6 +108,29 @@ export default Sentry.wrap(function RootLayout() {
     throw stripeModeError;
   }
 
+  // ORCH-1125: hoisted from app/index.tsx's App(). Gate: clear oversized React
+  // Query persisted cache BEFORE the provider mounts. PersistQueryClientProvider
+  // crashes on mount if the cache exceeds Android's 2MB CursorWindow. Only clear
+  // if the cache actually exceeds the safety threshold (1.5MB). The
+  // shouldDehydrateQuery filter already excludes heavy queries, so the cache
+  // should stay small. Preserving it enables instant startup with cached
+  // prefs/location. This effect MUST resolve (cacheReady=true) before the
+  // provider below mounts — load-bearing for Android.
+  const [cacheReady, setCacheReady] = React.useState(false);
+  const [splashDone, setSplashDone] = React.useState(false);
+
+  React.useEffect(() => {
+    const MAX_CACHE_BYTES = 1_500_000; // 1.5MB — below Android's 2MB CursorWindow limit
+    AsyncStorage.getItem('REACT_QUERY_OFFLINE_CACHE')
+      .then((cached) => {
+        if (cached && cached.length > MAX_CACHE_BYTES) {
+          return AsyncStorage.removeItem('REACT_QUERY_OFFLINE_CACHE');
+        }
+      })
+      .catch(() => {})
+      .finally(() => setCacheReady(true));
+  }, []);
+
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       {/* META-ORCH-0827 Pass 2 — Stripe PaymentSheet provider for native
@@ -116,7 +156,41 @@ export default Sentry.wrap(function RootLayout() {
             a provider — `<BottomSheet>` mounts in-tree and floats
             absolutely. New invariant:
             I-PROPOSED-BOTTOMSHEET-INLINE-FOR-EXPANDED-SHEETS. */}
-        <Stack screenOptions={{ headerShown: false }} />
+        {/* ORCH-1125: the PersistQueryClientProvider wraps <Stack/> here at the
+            root layout so EVERY route (cold deep-link or warm in-app nav) is a
+            descendant and can call useQuery. It stays INSIDE StripeNativeProvider
+            so route-level + AppContent useStripe() usage stays valid, and is
+            gated by `cacheReady` so the Android 2MB-CursorWindow pre-clear above
+            resolves before the provider mounts. Exactly ONE provider app-wide —
+            do NOT re-add one in any route file (index.tsx). */}
+        {cacheReady && (
+          <PersistQueryClientProvider
+            client={queryClient}
+            persistOptions={{
+              persister: asyncStoragePersister,
+              maxAge: 24 * 60 * 60 * 1000, // 24 hours
+
+              dehydrateOptions: {
+                // Exclude large/transient queries from persistence to prevent
+                // Android CursorWindow overflow (2MB SQLite row limit)
+                shouldDehydrateQuery: (query) => {
+                  return shouldDehydrateMinglaQuery(query, useAppStore.getState().user?.id ?? null);
+                },
+              },
+            }}
+          >
+            <Stack screenOptions={{ headerShown: false }} />
+          </PersistQueryClientProvider>
+        )}
+        {/* ORCH-1125: AnimatedSplashScreen renders immediately (independent of
+            cacheReady) so its own useEffect fires as soon as it's painted — that's
+            when it calls SplashScreen.hideAsync(). This guarantees the native
+            splash is never dismissed before the React replacement is committed.
+            Moved to root so the splash plays on EVERY cold launch, including cold
+            deep-links (which never mount Home). */}
+        {!splashDone && (
+          <AnimatedSplashScreen onDone={() => setSplashDone(true)} />
+        )}
       </StripeNativeProvider>
     </GestureHandlerRootView>
   );
