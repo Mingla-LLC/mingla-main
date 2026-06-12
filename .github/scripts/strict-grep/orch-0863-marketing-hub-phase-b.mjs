@@ -1641,6 +1641,11 @@ function checkNoNewBackendFiles() {
   const ORCH_1116_BACKEND_ALLOWLIST = [
     "supabase/migrations/20260927000000_orch_1116_booking_gate_rls.sql",
     "supabase/migrations/__tests__/orch_1116_booking_gate_rls.test.sql",
+    // Tester adversarial regression test (different angle: anon batched-subset
+    // true-negative + no-row-leak security boundary). New file under
+    // supabase/migrations/__tests__/ — allowlisted so the ORCH-0863 C7
+    // no-new-backend-files gate stays green on this PR (COMMS-0002 convention).
+    "supabase/migrations/__tests__/orch_1116_booking_gate_rls_tester_adversarial.test.sql",
   ];
   // ORCH-1032 [Intelligence pipeline concurrency cap + chunked enqueue]:
   // adds the additive 'queued'-status migration (status CHECK widen + per-city
