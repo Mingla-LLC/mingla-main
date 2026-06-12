@@ -119,9 +119,7 @@ export const FloatingOfferingBar: React.FC<FloatingOfferingBarProps> = ({
                     {cta.price}
                   </Text>
                 </View>
-              ) : (
-                <View style={styles.priceCol} />
-              )}
+              ) : null}
               <Pressable
                 onPress={handlePress}
                 accessibilityRole="button"
@@ -132,6 +130,11 @@ export const FloatingOfferingBar: React.FC<FloatingOfferingBarProps> = ({
                 }
                 style={({ pressed }) => [
                   styles.button,
+                  // ORCH-1128 — no price slot (free / waitlist) → the sole CTA
+                  // spans the full bar width instead of hugging content on the
+                  // right of an empty flex:1 column. Paid "buy" keeps the
+                  // price-left / button-right split (no buttonFull).
+                  cta.kind !== "buy" && styles.buttonFull,
                   pressed && styles.buttonPressed,
                 ]}
                 testID={
@@ -225,6 +228,12 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     marginLeft: spacing.md,
+  },
+  // ORCH-1128 — full-width sole CTA (free / waitlist): fill the bar, drop the
+  // left margin that only exists to separate the button from the price column.
+  buttonFull: {
+    flex: 1,
+    marginLeft: 0,
   },
   buttonPressed: {
     opacity: 0.85,
