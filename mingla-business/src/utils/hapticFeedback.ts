@@ -24,4 +24,15 @@ export class HapticFeedback {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     });
   }
+
+  // ORCH-1116 [Hub multi-select draft delete] — Medium-impact "you grabbed
+  // something" haptic fired once at the long-press delayLongPress threshold
+  // (select-mode enter). Distinct from buttonPress() (Light, reused for every
+  // per-row toggle). Additive; mirrors the existing safe-wrap. Native-only —
+  // safeHaptic no-ops on web.
+  static selectionEnter() {
+    HapticFeedback.safeHaptic(() => {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    });
+  }
 }

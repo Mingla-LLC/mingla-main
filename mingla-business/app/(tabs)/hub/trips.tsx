@@ -35,13 +35,43 @@ import {
 } from "../../../src/constants/designSystem";
 import { DESKTOP_HUB_GRID_COLUMNS } from "../../../src/constants/desktopLayout";
 import { GlassCard } from "../../../src/components/ui/GlassCard";
+import { ConfirmDialog } from "../../../src/components/ui/ConfirmDialog";
+import { Toast } from "../../../src/components/ui/Toast";
 import { TripListCard } from "../../../src/components/trip/TripListCard";
+import { DraftSelectBar } from "../../../src/components/offering/DraftSelectBar";
 import { buildOfferingManageActions } from "../../../src/components/offering/offeringManageActions";
 import { useCurrentBrand } from "../../../src/hooks/useCurrentBrand";
+import { useDraftMultiSelect } from "../../../src/hooks/useDraftMultiSelect";
+import { useDiscardOfferingDrafts } from "../../../src/hooks/useDiscardOfferingDrafts";
 import { useResponsiveLayout } from "../../../src/hooks/useResponsiveLayout";
 import { useTripsByBrand } from "../../../src/hooks/useTrips";
 import type { Trip } from "../../../src/services/tripsService";
+import { HapticFeedback } from "../../../src/utils/hapticFeedback";
 import { routeForEventRowDefensive } from "../../../src/utils/routeForEventRow";
+
+// ORCH-1116 — combined no-silent-failure toast tally (verbatim DESIGN §6.2).
+const bulkToastMessage = (deleted: number, failed: number): string => {
+  if (failed === 0) {
+    return `Deleted ${deleted} draft${deleted === 1 ? "" : "s"}.`;
+  }
+  if (deleted > 0) {
+    return `Deleted ${deleted}, ${failed} couldn't be deleted.`;
+  }
+  return `Couldn't delete ${failed} draft${failed === 1 ? "" : "s"}. You may not have permission.`;
+};
+
+const bulkDeleteErrorMessage = (error: unknown): string => {
+  const message =
+    error instanceof Error
+      ? error.message
+      : typeof error === "string"
+        ? error
+        : "";
+  if (message.includes("insufficient_event_permission")) {
+    return "You do not have permission to delete these drafts for this brand.";
+  }
+  return "Could not delete these drafts. Try again.";
+};
 
 const LazyOfferingManageSheet = React.lazy(async () => {
   const mod = await import("../../../src/components/offering/OfferingManageSheet");
@@ -128,6 +158,36 @@ export default function HubTripsRoute(): React.ReactElement {
   const [manageTrip, setManageTrip] = useState<Trip | null>(null);
   const [shareTrip, setShareTrip] = useState<Trip | null>(null);
 
+  // ORCH-1116 [Hub multi-select draft delete] — long-press multi-select +
+  // bulk soft-delete for DRAFT trips only (converges on the rank-checked RPC).
+  const selection = useDraftMultiSelect();
+  const discardOfferings = useDiscardOfferingDrafts();
+  const [bulkConfirmOpen, setBulkConfirmOpen] = useState<boolean>(false);
+  const [bulkError, setBulkError] = useState<string | null>(null);
+  const [toast, setToast] = useState<string | null>(null);
+
+  const handleBulkDeleteConfirm = useCallback(async (): Promise<void> => {
+    if (currentBrand === null) return;
+    const serverIds = trips
+      .filter((t) => t.status === "draft" && selection.isSelected(t.id))
+      .map((t) => t.id);
+    setBulkError(null);
+    try {
+      const result = await discardOfferings.mutateAsync({
+        kind: "trip",
+        brandId: currentBrand.id,
+        serverEventIds: serverIds,
+      });
+      const deleted = result.rows.filter((r) => r.outcome === "deleted").length;
+      const failed = result.rows.filter((r) => r.outcome !== "deleted").length;
+      setBulkConfirmOpen(false);
+      selection.exit();
+      setToast(bulkToastMessage(deleted, failed));
+    } catch (error) {
+      setBulkError(bulkDeleteErrorMessage(error));
+    }
+  }, [currentBrand, trips, selection, discardOfferings]);
+
   const filteredTrips = useMemo<Trip[]>(() => {
     if (filter === "all") {
       // upcoming → draft → past
@@ -211,7 +271,10 @@ export default function HubTripsRoute(): React.ReactElement {
           return (
             <Pressable
               key={p.key}
-              onPress={() => setFilter(p.key)}
+              onPress={() => {
+                if (p.key !== "draft") selection.exit();
+                setFilter(p.key);
+              }}
               accessibilityRole="tab"
               accessibilityState={{ selected: active }}
               accessibilityLabel={`${p.label}, ${p.count}`}
@@ -254,20 +317,46 @@ export default function HubTripsRoute(): React.ReactElement {
             </Text>
           </GlassCard>
         ) : (
-          <View style={[styles.list, isWideDesktop && styles.desktopListGrid]}>
-            {filteredTrips.map((trip) => (
-              <View
-                key={trip.id}
-                style={isWideDesktop ? styles.desktopListCell : undefined}
-              >
-                <TripListCard
-                  trip={trip}
-                  onOpen={() => handleOpenTrip(trip)}
-                  onManageOpen={() => setManageTrip(trip)}
-                />
-              </View>
-            ))}
-          </View>
+          <>
+            {!selection.selectionMode &&
+            filteredTrips.some((t) => t.status === "draft") ? (
+              <Text style={styles.selectHint}>
+                Press and hold a draft to select multiple
+              </Text>
+            ) : null}
+            <View style={[styles.list, isWideDesktop && styles.desktopListGrid]}>
+              {filteredTrips.map((trip) => {
+                const isDraftRow = trip.status === "draft";
+                return (
+                  <View
+                    key={trip.id}
+                    style={isWideDesktop ? styles.desktopListCell : undefined}
+                  >
+                    <TripListCard
+                      trip={trip}
+                      onOpen={
+                        selection.selectionMode && isDraftRow
+                          ? () => selection.toggle(trip.id)
+                          : () => handleOpenTrip(trip)
+                      }
+                      onManageOpen={() => setManageTrip(trip)}
+                      selectionMode={selection.selectionMode}
+                      selectable={isDraftRow}
+                      selected={selection.isSelected(trip.id)}
+                      onLongPress={
+                        isDraftRow
+                          ? () => {
+                              HapticFeedback.selectionEnter();
+                              selection.enterWith(trip.id);
+                            }
+                          : undefined
+                      }
+                    />
+                  </View>
+                );
+              })}
+            </View>
+          </>
         )}
       </ScrollView>
 
@@ -331,6 +420,60 @@ export default function HubTripsRoute(): React.ReactElement {
           />
         </Suspense>
       ) : null}
+
+      {/* ORCH-1116 — bulk-delete ConfirmDialog (simple destructive variant). */}
+      <ConfirmDialog
+        visible={bulkConfirmOpen}
+        onClose={() => {
+          if (!discardOfferings.isPending) {
+            setBulkConfirmOpen(false);
+            setBulkError(null);
+          }
+        }}
+        onConfirm={handleBulkDeleteConfirm}
+        title={
+          selection.count === 1
+            ? "Delete this draft?"
+            : `Delete ${selection.count} drafts?`
+        }
+        description={
+          selection.count === 1
+            ? "This draft will be permanently removed. This can't be undone."
+            : `These ${selection.count} drafts will be permanently removed. This can't be undone.`
+        }
+        variant="simple"
+        confirmLabel={
+          selection.count === 1 ? "Delete draft" : `Delete ${selection.count}`
+        }
+        cancelLabel="Keep"
+        confirmLoading={discardOfferings.isPending}
+        confirmDisabled={discardOfferings.isPending}
+        closeDisabled={discardOfferings.isPending}
+        errorMessage={bulkError}
+        testID="bulk-delete-confirm"
+        confirmTestID="bulk-delete-confirm-button"
+        cancelTestID="bulk-delete-cancel-button"
+        destructive
+      />
+
+      {/* ORCH-1116 — sticky bulk-select action bar (drafts only). */}
+      {selection.selectionMode ? (
+        <DraftSelectBar
+          count={selection.count}
+          deleting={discardOfferings.isPending}
+          onCancel={selection.exit}
+          onDelete={() => setBulkConfirmOpen(true)}
+          bottomInset={insets.bottom}
+        />
+      ) : null}
+
+      {/* ORCH-1116 — Toast surface (trips had none); bulk tally lands here. */}
+      <Toast
+        visible={toast !== null}
+        kind="info"
+        message={toast ?? ""}
+        onDismiss={() => setToast(null)}
+      />
     </View>
   );
 }
@@ -338,6 +481,16 @@ export default function HubTripsRoute(): React.ReactElement {
 const styles = StyleSheet.create({
   host: {
     flex: 1,
+  },
+  // ORCH-1116 — long-press discoverability caption.
+  selectHint: {
+    fontSize: typography.caption.fontSize,
+    lineHeight: typography.caption.lineHeight,
+    fontWeight: typography.caption.fontWeight,
+    letterSpacing: typography.caption.letterSpacing,
+    color: textTokens.tertiary,
+    paddingHorizontal: spacing.md,
+    paddingBottom: spacing.sm,
   },
   scrollContent: {
     padding: spacing.lg,
