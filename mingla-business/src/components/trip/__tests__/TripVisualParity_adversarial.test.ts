@@ -221,8 +221,13 @@ describe("ORCH-0874 Trip surfaces visual parity with Events — TESTER adversari
       // so the manage icon should not render at all. Test ensures the
       // conditional guard is present so when onManageOpen IS added later
       // it works correctly.
+      // [TEST-MOD-APPROVED ORCH-1123] regex made tolerant of the spec-mandated
+      // `&& !selectionMode` term added before the `?` (manage icon hidden during
+      // multi-select). Gate is STRONGER, not weaker: still requires the
+      // `onManageOpen !== undefined` guard + `<Pressable onPress={onManageOpen}>`,
+      // so removing the onManageOpen gate still fails this assertion.
       expect(SRC).toMatch(
-        /onManageOpen !== undefined \?[\s\S]*?<Pressable[\s\S]*?onPress=\{onManageOpen\}/,
+        /onManageOpen !== undefined(?:\s*&&\s*!selectionMode)? \?[\s\S]*?<Pressable[\s\S]*?onPress=\{onManageOpen\}/,
       );
     });
   });

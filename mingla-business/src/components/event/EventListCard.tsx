@@ -15,7 +15,14 @@
  */
 
 import React, { useMemo } from "react";
-import { Platform, Pressable, StyleSheet, Text, View } from "react-native";
+import {
+  Animated,
+  Platform,
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
 
 import {
   accent,
@@ -34,6 +41,11 @@ import { useEventOrders } from "../../hooks/useEventOrders";
 import { EventCoverMedia } from "../ui/EventCoverMedia";
 import { Icon } from "../ui/Icon";
 import { Pill } from "../ui/Pill";
+import { DraftSelectCheckbox } from "../offering/DraftSelectCheckbox";
+import {
+  DraftSelectOverlay,
+  useDraftHoldRing,
+} from "../offering/DraftSelectOverlay";
 
 export type EventCardStatus = "live" | "upcoming" | "draft" | "past";
 
@@ -46,6 +58,14 @@ export interface EventListCardProps {
   onOpen: () => void;
   /** Tap manage IconChrome → open EventManageMenu. */
   onManageOpen: () => void;
+  // ORCH-1123 [Hub multi-select draft delete] — additive selection props.
+  /** When true, the row is in selection mode: tap toggles instead of opening. */
+  selectionMode?: boolean;
+  selected?: boolean;
+  /** Long-press to enter selection mode (drafts only). */
+  onLongPress?: () => void;
+  /** When false, this row is NOT a draft → long-press no-op + no checkbox + dim. */
+  selectable?: boolean;
 }
 
 const isLiveEvent = (
@@ -63,6 +83,10 @@ export const EventListCard: React.FC<EventListCardProps> = ({
   status,
   onOpen,
   onManageOpen,
+  selectionMode = false,
+  selected = false,
+  onLongPress,
+  selectable = true,
 }) => {
   // ORCH-0865 REWORK 5 — defensive: this card is event-only. If a trip row
   // somehow reaches here (stale cache, future regression past the
@@ -122,13 +146,51 @@ export const EventListCard: React.FC<EventListCardProps> = ({
   // Past + 0 sold → fade per Q-9-9.
   const isFaded = status === "past" && salesSummary.soldCount === 0;
 
+  // ORCH-1123 — selection affordances. A non-selectable row under "All" while
+  // selection mode is active dims + goes inert (drafts-only enforced visually).
+  const holdRing = useDraftHoldRing(selectable);
+  const dimmedInert = selectionMode && !selectable;
+  const showCheckbox = selectionMode && selectable;
+  const isCheckboxRow = selectionMode && selectable;
+
   // ----- Render -----------------------------------------------------
   return (
-    <View style={[styles.host, isFaded && styles.hostFaded]}>
+    <Animated.View
+      style={[
+        styles.host,
+        isFaded && styles.hostFaded,
+        selected && styles.hostSelected,
+        dimmedInert && styles.hostDimmedInert,
+        { transform: [{ translateX: holdRing.shakeX }] },
+      ]}
+      pointerEvents={dimmedInert ? "none" : "auto"}
+      {...(dimmedInert
+        ? {
+            accessibilityElementsHidden: true,
+            importantForAccessibility: "no-hide-descendants" as const,
+          }
+        : {})}
+    >
       <Pressable
         onPress={onOpen}
-        accessibilityRole="button"
+        onLongPress={
+          selectable
+            ? onLongPress
+            : () => {
+                holdRing.playNullShake();
+              }
+        }
+        delayLongPress={350}
+        onPressIn={holdRing.pressHandlers.onPressIn}
+        onPressOut={holdRing.pressHandlers.onPressOut}
+        accessibilityRole={isCheckboxRow ? "checkbox" : "button"}
         accessibilityLabel={cardAccessibilityLabel}
+        accessibilityState={isCheckboxRow ? { checked: selected } : undefined}
+        accessibilityHint={
+          selectable && !selectionMode
+            ? "Double tap and hold to select multiple"
+            : undefined
+        }
         style={({ pressed }) => [
           styles.cardBody,
           pressed && styles.cardBodyPressed,
@@ -148,6 +210,11 @@ export const EventListCard: React.FC<EventListCardProps> = ({
           {kind === "draft" ? (
             <View style={styles.draftOverlay}>
               <Text style={styles.draftOverlayText}>DRAFT</Text>
+            </View>
+          ) : null}
+          {showCheckbox ? (
+            <View style={styles.checkboxSlot} pointerEvents="none">
+              <DraftSelectCheckbox selected={selected} />
             </View>
           ) : null}
         </View>
@@ -207,21 +274,24 @@ export const EventListCard: React.FC<EventListCardProps> = ({
         </View>
       </Pressable>
 
-      {/* Right rail: manage icon + revenue/delta footer */}
-      <View style={styles.rightRail} pointerEvents="box-none">
-        <Pressable
-          onPress={onManageOpen}
-          accessibilityRole="button"
-          accessibilityLabel={`Manage ${title}`}
-          style={({ pressed }) => [
-            styles.manageBtn,
-            pressed && styles.manageBtnPressed,
-          ]}
-          hitSlop={6}
-        >
-          <Icon name="moreH" size={16} color={textTokens.primary} />
-        </Pressable>
-      </View>
+      {/* Right rail: manage icon + revenue/delta footer.
+          ORCH-1123 — hidden while in selection mode (no managing during select). */}
+      {!selectionMode ? (
+        <View style={styles.rightRail} pointerEvents="box-none">
+          <Pressable
+            onPress={onManageOpen}
+            accessibilityRole="button"
+            accessibilityLabel={`Manage ${title}`}
+            style={({ pressed }) => [
+              styles.manageBtn,
+              pressed && styles.manageBtnPressed,
+            ]}
+            hitSlop={6}
+          >
+            <Icon name="moreH" size={16} color={textTokens.primary} />
+          </Pressable>
+        </View>
+      ) : null}
 
       {/* Revenue strip (non-draft only) */}
       {kind !== "draft" ? (
@@ -229,7 +299,18 @@ export const EventListCard: React.FC<EventListCardProps> = ({
           <Text style={styles.revenueValue}>{salesSummary.revenueLabel}</Text>
         </View>
       ) : null}
-    </View>
+
+      {/* ORCH-1123 — selected wash + press-and-hold ring overlays (clipped to
+          radius by the host's overflow:'hidden'). */}
+      {selectionMode || selected ? (
+        <DraftSelectOverlay
+          selected={selected}
+          selectable={selectable}
+          ringOpacity={holdRing.ringOpacity}
+          ringScale={holdRing.ringScale}
+        />
+      ) : null}
+    </Animated.View>
   );
 };
 
@@ -291,6 +372,15 @@ const styles = StyleSheet.create({
   hostFaded: {
     opacity: 0.7,
   },
+  // ORCH-1123 — selected-row treatment (accent border @1.5 + warm wash overlay).
+  hostSelected: {
+    borderColor: accent.border,
+    borderWidth: 1.5,
+  },
+  // ORCH-1123 — non-draft row, inert + dimmed while selection mode is active.
+  hostDimmedInert: {
+    opacity: 0.4,
+  },
   cardBody: {
     flexDirection: "row",
     gap: spacing.sm,
@@ -306,6 +396,13 @@ const styles = StyleSheet.create({
     borderRadius: radiusTokens.md,
     overflow: "hidden",
     flexShrink: 0,
+  },
+  // ORCH-1123 — checkbox overlay, top-left over the cover (inset spacing.xs).
+  checkboxSlot: {
+    position: "absolute",
+    top: spacing.xs,
+    left: spacing.xs,
+    zIndex: 2,
   },
   draftOverlay: {
     position: "absolute",

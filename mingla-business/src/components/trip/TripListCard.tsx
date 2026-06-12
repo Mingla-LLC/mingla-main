@@ -13,7 +13,14 @@
  */
 
 import React, { useMemo } from "react";
-import { Platform, Pressable, StyleSheet, Text, View } from "react-native";
+import {
+  Animated,
+  Platform,
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
 
 import {
   accent,
@@ -26,6 +33,11 @@ import type { Trip } from "../../services/tripsService";
 import { EventCoverMedia } from "../ui/EventCoverMedia";
 import { Icon } from "../ui/Icon";
 import { Pill } from "../ui/Pill";
+import { DraftSelectCheckbox } from "../offering/DraftSelectCheckbox";
+import {
+  DraftSelectOverlay,
+  useDraftHoldRing,
+} from "../offering/DraftSelectOverlay";
 
 export interface TripListCardProps {
   trip: Trip;
@@ -33,6 +45,11 @@ export interface TripListCardProps {
   onOpen: () => void;
   /** Optional manage icon (right-rail moreH). Only rendered when provided. */
   onManageOpen?: () => void;
+  // ORCH-1123 [Hub multi-select draft delete] — additive selection props.
+  selectionMode?: boolean;
+  selected?: boolean;
+  onLongPress?: () => void;
+  selectable?: boolean;
 }
 
 const COVER_W = 76;
@@ -90,6 +107,10 @@ export const TripListCard: React.FC<TripListCardProps> = ({
   trip,
   onOpen,
   onManageOpen,
+  selectionMode = false,
+  selected = false,
+  onLongPress,
+  selectable = true,
 }) => {
   const title = trip.title.trim().length > 0 ? trip.title : "Untitled trip";
   const status = deriveTripCardStatus(trip);
@@ -116,6 +137,12 @@ export const TripListCard: React.FC<TripListCardProps> = ({
   const cardAccessibilityLabel = `${title}, ${status}, ${subline}`;
   const isFaded = status === "ended" || status === "cancelled";
 
+  // ORCH-1123 — selection affordances.
+  const holdRing = useDraftHoldRing(selectable);
+  const dimmedInert = selectionMode && !selectable;
+  const showCheckbox = selectionMode && selectable;
+  const isCheckboxRow = selectionMode && selectable;
+
   // Capacity / sold ratio: not directly on Trip; show capacity-only label if set.
   // (True sold-count would require useTripOrders, which is too heavy for a list
   // card and not in scope per SPEC §3.3.1; capacity label only is honest.)
@@ -126,11 +153,38 @@ export const TripListCard: React.FC<TripListCardProps> = ({
   }, [trip.businessTrip.capacity]);
 
   return (
-    <View style={[styles.host, isFaded && styles.hostFaded]}>
+    <Animated.View
+      style={[
+        styles.host,
+        isFaded && styles.hostFaded,
+        selected && styles.hostSelected,
+        dimmedInert && styles.hostDimmedInert,
+        { transform: [{ translateX: holdRing.shakeX }] },
+      ]}
+      pointerEvents={dimmedInert ? "none" : "auto"}
+      {...(dimmedInert
+        ? {
+            accessibilityElementsHidden: true,
+            importantForAccessibility: "no-hide-descendants" as const,
+          }
+        : {})}
+    >
       <Pressable
         onPress={onOpen}
-        accessibilityRole="button"
+        onLongPress={
+          selectable ? onLongPress : () => holdRing.playNullShake()
+        }
+        delayLongPress={350}
+        onPressIn={holdRing.pressHandlers.onPressIn}
+        onPressOut={holdRing.pressHandlers.onPressOut}
+        accessibilityRole={isCheckboxRow ? "checkbox" : "button"}
         accessibilityLabel={cardAccessibilityLabel}
+        accessibilityState={isCheckboxRow ? { checked: selected } : undefined}
+        accessibilityHint={
+          selectable && !selectionMode
+            ? "Double tap and hold to select multiple"
+            : undefined
+        }
         style={({ pressed }) => [
           styles.cardBody,
           pressed && styles.cardBodyPressed,
@@ -149,6 +203,11 @@ export const TripListCard: React.FC<TripListCardProps> = ({
           {status === "draft" ? (
             <View style={styles.draftOverlay}>
               <Text style={styles.draftOverlayText}>DRAFT</Text>
+            </View>
+          ) : null}
+          {showCheckbox ? (
+            <View style={styles.checkboxSlot} pointerEvents="none">
+              <DraftSelectCheckbox selected={selected} />
             </View>
           ) : null}
         </View>
@@ -175,7 +234,8 @@ export const TripListCard: React.FC<TripListCardProps> = ({
         </View>
       </Pressable>
 
-      {onManageOpen !== undefined ? (
+      {/* ORCH-1123 — manage hidden while in selection mode. */}
+      {onManageOpen !== undefined && !selectionMode ? (
         <View style={styles.rightRail} pointerEvents="box-none">
           <Pressable
             onPress={onManageOpen}
@@ -191,7 +251,17 @@ export const TripListCard: React.FC<TripListCardProps> = ({
           </Pressable>
         </View>
       ) : null}
-    </View>
+
+      {/* ORCH-1123 — selected wash + press-and-hold ring overlays. */}
+      {selectionMode || selected ? (
+        <DraftSelectOverlay
+          selected={selected}
+          selectable={selectable}
+          ringOpacity={holdRing.ringOpacity}
+          ringScale={holdRing.ringScale}
+        />
+      ) : null}
+    </Animated.View>
   );
 };
 
@@ -263,6 +333,14 @@ const styles = StyleSheet.create({
   hostFaded: {
     opacity: 0.7,
   },
+  // ORCH-1123 — selection visuals.
+  hostSelected: {
+    borderColor: accent.border,
+    borderWidth: 1.5,
+  },
+  hostDimmedInert: {
+    opacity: 0.4,
+  },
   cardBody: {
     flexDirection: "row",
     gap: spacing.sm,
@@ -278,6 +356,12 @@ const styles = StyleSheet.create({
     borderRadius: radiusTokens.md,
     overflow: "hidden",
     flexShrink: 0,
+  },
+  checkboxSlot: {
+    position: "absolute",
+    top: spacing.xs,
+    left: spacing.xs,
+    zIndex: 2,
   },
   draftOverlay: {
     position: "absolute",

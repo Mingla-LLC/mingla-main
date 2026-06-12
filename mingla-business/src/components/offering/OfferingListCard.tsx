@@ -21,7 +21,14 @@
  */
 
 import React from "react";
-import { Platform, Pressable, StyleSheet, Text, View } from "react-native";
+import {
+  Animated,
+  Platform,
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
 
 import {
   accent,
@@ -33,6 +40,8 @@ import {
 import { EventCoverMedia } from "../ui/EventCoverMedia";
 import { Icon } from "../ui/Icon";
 import { Pill } from "../ui/Pill";
+import { DraftSelectCheckbox } from "./DraftSelectCheckbox";
+import { DraftSelectOverlay, useDraftHoldRing } from "./DraftSelectOverlay";
 import type { OfferingKind } from "./offeringKind";
 import type {
   OfferingCardStatus,
@@ -53,6 +62,11 @@ export interface OfferingListCardProps {
   onManageOpen?: () => void;
   /** Optional testID for QA / Maestro. */
   testID?: string;
+  // ORCH-1123 [Hub multi-select draft delete] — additive selection props.
+  selectionMode?: boolean;
+  selected?: boolean;
+  onLongPress?: () => void;
+  selectable?: boolean;
 }
 
 const COVER_W = 76;
@@ -72,9 +86,19 @@ export const OfferingListCard: React.FC<OfferingListCardProps> = ({
   onOpen,
   onManageOpen,
   testID,
+  selectionMode = false,
+  selected = false,
+  onLongPress,
+  selectable = true,
 }) => {
   const title = model.title.trim().length > 0 ? model.title : untitledFor(kind);
   const isDraft = model.status === "draft";
+
+  // ORCH-1123 — selection affordances.
+  const holdRing = useDraftHoldRing(selectable);
+  const dimmedInert = selectionMode && !selectable;
+  const showCheckbox = selectionMode && selectable;
+  const isCheckboxRow = selectionMode && selectable;
 
   // Faded: a past offering with no headcount, or a cancelled one (mirrors the
   // events Q-9-9 fade rule generalized across kinds).
@@ -89,11 +113,39 @@ export const OfferingListCard: React.FC<OfferingListCardProps> = ({
       : `Open ${title}`;
 
   return (
-    <View style={[styles.host, isFaded && styles.hostFaded]} testID={testID}>
+    <Animated.View
+      style={[
+        styles.host,
+        isFaded && styles.hostFaded,
+        selected && styles.hostSelected,
+        dimmedInert && styles.hostDimmedInert,
+        { transform: [{ translateX: holdRing.shakeX }] },
+      ]}
+      testID={testID}
+      pointerEvents={dimmedInert ? "none" : "auto"}
+      {...(dimmedInert
+        ? {
+            accessibilityElementsHidden: true,
+            importantForAccessibility: "no-hide-descendants" as const,
+          }
+        : {})}
+    >
       <Pressable
         onPress={onOpen}
-        accessibilityRole="button"
+        onLongPress={
+          selectable ? onLongPress : () => holdRing.playNullShake()
+        }
+        delayLongPress={350}
+        onPressIn={holdRing.pressHandlers.onPressIn}
+        onPressOut={holdRing.pressHandlers.onPressOut}
+        accessibilityRole={isCheckboxRow ? "checkbox" : "button"}
         accessibilityLabel={accessibilityLabel}
+        accessibilityState={isCheckboxRow ? { checked: selected } : undefined}
+        accessibilityHint={
+          selectable && !selectionMode
+            ? "Double tap and hold to select multiple"
+            : undefined
+        }
         style={({ pressed }) => [
           styles.cardBody,
           pressed && styles.cardBodyPressed,
@@ -113,6 +165,11 @@ export const OfferingListCard: React.FC<OfferingListCardProps> = ({
           {isDraft ? (
             <View style={styles.draftOverlay}>
               <Text style={styles.draftOverlayText}>DRAFT</Text>
+            </View>
+          ) : null}
+          {showCheckbox ? (
+            <View style={styles.checkboxSlot} pointerEvents="none">
+              <DraftSelectCheckbox selected={selected} />
             </View>
           ) : null}
         </View>
@@ -161,8 +218,9 @@ export const OfferingListCard: React.FC<OfferingListCardProps> = ({
         </View>
       </Pressable>
 
-      {/* Right rail: 3-dot manage trigger */}
-      {onManageOpen !== undefined ? (
+      {/* Right rail: 3-dot manage trigger.
+          ORCH-1123 — hidden while in selection mode. */}
+      {onManageOpen !== undefined && !selectionMode ? (
         <View style={styles.rightRail} pointerEvents="box-none">
           <Pressable
             onPress={onManageOpen}
@@ -185,7 +243,17 @@ export const OfferingListCard: React.FC<OfferingListCardProps> = ({
           <Text style={styles.revenueValue}>{model.revenueLabel}</Text>
         </View>
       ) : null}
-    </View>
+
+      {/* ORCH-1123 — selected wash + press-and-hold ring overlays. */}
+      {selectionMode || selected ? (
+        <DraftSelectOverlay
+          selected={selected}
+          selectable={selectable}
+          ringOpacity={holdRing.ringOpacity}
+          ringScale={holdRing.ringScale}
+        />
+      ) : null}
+    </Animated.View>
   );
 };
 
@@ -249,6 +317,14 @@ const styles = StyleSheet.create({
   hostFaded: {
     opacity: 0.7,
   },
+  // ORCH-1123 — selection visuals.
+  hostSelected: {
+    borderColor: accent.border,
+    borderWidth: 1.5,
+  },
+  hostDimmedInert: {
+    opacity: 0.4,
+  },
   cardBody: {
     flexDirection: "row",
     gap: spacing.sm,
@@ -264,6 +340,12 @@ const styles = StyleSheet.create({
     borderRadius: radiusTokens.md,
     overflow: "hidden",
     flexShrink: 0,
+  },
+  checkboxSlot: {
+    position: "absolute",
+    top: spacing.xs,
+    left: spacing.xs,
+    zIndex: 2,
   },
   draftOverlay: {
     position: "absolute",

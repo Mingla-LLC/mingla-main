@@ -24,8 +24,10 @@ import {
 } from "../../../src/components/offering/OfferingManageSheet";
 import { GlassCard } from "../../../src/components/ui/GlassCard";
 import { Button } from "../../../src/components/ui/Button";
+import { ConfirmDialog } from "../../../src/components/ui/ConfirmDialog";
 import { ShareModal } from "../../../src/components/ui/ShareModal";
 import { Toast } from "../../../src/components/ui/Toast";
+import { DraftSelectBar } from "../../../src/components/offering/DraftSelectBar";
 import {
   accent,
   glass,
@@ -36,8 +38,11 @@ import {
 } from "../../../src/constants/designSystem";
 import { DESKTOP_HUB_GRID_COLUMNS } from "../../../src/constants/desktopLayout";
 import { useCurrentBrand } from "../../../src/hooks/useCurrentBrand";
+import { useDraftMultiSelect } from "../../../src/hooks/useDraftMultiSelect";
+import { useDiscardOfferingDrafts } from "../../../src/hooks/useDiscardOfferingDrafts";
 import { useResponsiveLayout } from "../../../src/hooks/useResponsiveLayout";
 import { useExperiencesByBrand } from "../../../src/hooks/useExperiencesByBrand";
+import { HapticFeedback } from "../../../src/utils/hapticFeedback";
 import {
   usePendingExperiences,
   type ExperienceParseMode,
@@ -108,6 +113,30 @@ function normalizeExperienceStatus(status: string): EventStatusForRouting {
   }
 }
 
+// ORCH-1123 — combined no-silent-failure toast tally (verbatim DESIGN §6.2).
+const bulkToastMessage = (deleted: number, failed: number): string => {
+  if (failed === 0) {
+    return `Deleted ${deleted} draft${deleted === 1 ? "" : "s"}.`;
+  }
+  if (deleted > 0) {
+    return `Deleted ${deleted}, ${failed} couldn't be deleted.`;
+  }
+  return `Couldn't delete ${failed} draft${failed === 1 ? "" : "s"}. You may not have permission.`;
+};
+
+const bulkDeleteErrorMessage = (error: unknown): string => {
+  const message =
+    error instanceof Error
+      ? error.message
+      : typeof error === "string"
+        ? error
+        : "";
+  if (message.includes("insufficient_event_permission")) {
+    return "You do not have permission to delete these drafts for this brand.";
+  }
+  return "Could not delete these drafts. Try again.";
+};
+
 interface ExperienceGenerationSurfaceProps {
   brandId: string;
   /** META-ORCH-1059 — current brand slug, for the manage-sheet public/share routes. */
@@ -153,6 +182,36 @@ function ExperienceGenerationSurface({
 
   const experiences = experiencesQuery.data ?? [];
   const showReview = phase === "review" || pending.length > 0;
+
+  // ORCH-1123 [Hub multi-select draft delete] — long-press multi-select +
+  // bulk soft-delete for DRAFT experiences only (first-ever experience delete,
+  // server rank-gated). No filter pills here → selection auto-scopes via the
+  // per-row `selectable` flag.
+  const selection = useDraftMultiSelect();
+  const discardOfferings = useDiscardOfferingDrafts();
+  const [bulkConfirmOpen, setBulkConfirmOpen] = useState<boolean>(false);
+  const [bulkError, setBulkError] = useState<string | null>(null);
+
+  const handleBulkDeleteConfirm = useCallback(async (): Promise<void> => {
+    const serverIds = experiences
+      .filter((e) => e.status === "draft" && selection.isSelected(e.id))
+      .map((e) => e.id);
+    setBulkError(null);
+    try {
+      const result = await discardOfferings.mutateAsync({
+        kind: "experience",
+        brandId,
+        serverEventIds: serverIds,
+      });
+      const deleted = result.rows.filter((r) => r.outcome === "deleted").length;
+      const failed = result.rows.filter((r) => r.outcome !== "deleted").length;
+      setBulkConfirmOpen(false);
+      selection.exit();
+      setToast(bulkToastMessage(deleted, failed));
+    } catch (error) {
+      setBulkError(bulkDeleteErrorMessage(error));
+    }
+  }, [experiences, selection, discardOfferings, brandId]);
 
   const handleFilesReady = useCallback(
     async (files: ExperienceFilePayload[]) => {
@@ -267,36 +326,59 @@ function ExperienceGenerationSurface({
             </View>
           </GlassCard>
         ) : (
-          <View style={[styles.expList, isWideDesktop && styles.desktopListGrid]}>
-            {experiences.map((exp) => {
-              const statusForRouting = normalizeExperienceStatus(exp.status);
-              return (
-                <View
-                  key={exp.id}
-                  style={isWideDesktop ? styles.desktopListCell : undefined}
-                >
-                  {/* META-ORCH-1059 — proper offering-card row (cover thumb +
-                      status pill + title + date·venue subline + price), matching
-                      the events + trips lists. Tap opens the DASHBOARD via
-                      routeForEventRow (experiences always resolve to
-                      /experience/{id}); the dashboard owns the edit action. */}
-                  <ExperienceListCard
-                    experience={exp}
-                    onOpen={() =>
-                      router.push(
-                        routeForEventRow({
-                          id: exp.id,
-                          event_type: "experience",
-                          status: statusForRouting,
-                        }) as never,
-                      )
-                    }
-                    onManageOpen={() => setManageExp(exp)}
-                  />
-                </View>
-              );
-            })}
-          </View>
+          <>
+            {!selection.selectionMode &&
+            experiences.some((e) => e.status === "draft") ? (
+              <Text style={styles.selectHint}>
+                Press and hold a draft to select multiple
+              </Text>
+            ) : null}
+            <View style={[styles.expList, isWideDesktop && styles.desktopListGrid]}>
+              {experiences.map((exp) => {
+                const statusForRouting = normalizeExperienceStatus(exp.status);
+                const isDraftRow = exp.status === "draft";
+                return (
+                  <View
+                    key={exp.id}
+                    style={isWideDesktop ? styles.desktopListCell : undefined}
+                  >
+                    {/* META-ORCH-1059 — proper offering-card row (cover thumb +
+                        status pill + title + date·venue subline + price), matching
+                        the events + trips lists. Tap opens the DASHBOARD via
+                        routeForEventRow (experiences always resolve to
+                        /experience/{id}); the dashboard owns the edit action. */}
+                    <ExperienceListCard
+                      experience={exp}
+                      onOpen={
+                        selection.selectionMode && isDraftRow
+                          ? () => selection.toggle(exp.id)
+                          : () =>
+                              router.push(
+                                routeForEventRow({
+                                  id: exp.id,
+                                  event_type: "experience",
+                                  status: statusForRouting,
+                                }) as never,
+                              )
+                      }
+                      onManageOpen={() => setManageExp(exp)}
+                      selectionMode={selection.selectionMode}
+                      selectable={isDraftRow}
+                      selected={selection.isSelected(exp.id)}
+                      onLongPress={
+                        isDraftRow
+                          ? () => {
+                              HapticFeedback.selectionEnter();
+                              selection.enterWith(exp.id);
+                            }
+                          : undefined
+                      }
+                    />
+                  </View>
+                );
+              })}
+            </View>
+          </>
         )}
       </ScrollView>
 
@@ -312,6 +394,52 @@ function ExperienceGenerationSurface({
         message={toast ?? ""}
         onDismiss={() => setToast(null)}
       />
+
+      {/* ORCH-1123 — bulk-delete ConfirmDialog (simple destructive variant). */}
+      <ConfirmDialog
+        visible={bulkConfirmOpen}
+        onClose={() => {
+          if (!discardOfferings.isPending) {
+            setBulkConfirmOpen(false);
+            setBulkError(null);
+          }
+        }}
+        onConfirm={handleBulkDeleteConfirm}
+        title={
+          selection.count === 1
+            ? "Delete this draft?"
+            : `Delete ${selection.count} drafts?`
+        }
+        description={
+          selection.count === 1
+            ? "This draft will be permanently removed. This can't be undone."
+            : `These ${selection.count} drafts will be permanently removed. This can't be undone.`
+        }
+        variant="simple"
+        confirmLabel={
+          selection.count === 1 ? "Delete draft" : `Delete ${selection.count}`
+        }
+        cancelLabel="Keep"
+        confirmLoading={discardOfferings.isPending}
+        confirmDisabled={discardOfferings.isPending}
+        closeDisabled={discardOfferings.isPending}
+        errorMessage={bulkError}
+        testID="bulk-delete-confirm"
+        confirmTestID="bulk-delete-confirm-button"
+        cancelTestID="bulk-delete-cancel-button"
+        destructive
+      />
+
+      {/* ORCH-1123 — sticky bulk-select action bar (drafts only). */}
+      {selection.selectionMode ? (
+        <DraftSelectBar
+          count={selection.count}
+          deleting={discardOfferings.isPending}
+          onCancel={selection.exit}
+          onDelete={() => setBulkConfirmOpen(true)}
+          bottomInset={insets.bottom}
+        />
+      ) : null}
 
       {/* META-ORCH-1059 Pass 1 — shared per-kind manage sheet opened from a
           list-card 3-dot. Edit · View public · Share · Cancel (Orders +
@@ -501,6 +629,16 @@ const styles = StyleSheet.create({
     color: textTokens.primary,
   },
   listLoader: { marginVertical: spacing.lg },
+  // ORCH-1123 — long-press discoverability caption.
+  selectHint: {
+    fontSize: typography.caption.fontSize,
+    lineHeight: typography.caption.lineHeight,
+    fontWeight: typography.caption.fontWeight,
+    letterSpacing: typography.caption.letterSpacing,
+    color: textTokens.tertiary,
+    paddingHorizontal: spacing.md,
+    paddingBottom: spacing.sm,
+  },
   expList: {
     gap: spacing.sm,
   },

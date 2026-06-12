@@ -27,12 +27,21 @@ export interface ExperienceListCardProps {
   onOpen: () => void;
   /** Optional 3-dot manage trigger. Only rendered when provided. */
   onManageOpen?: () => void;
+  // ORCH-1123 [Hub multi-select draft delete] — pass-through selection props.
+  selectionMode?: boolean;
+  selected?: boolean;
+  onLongPress?: () => void;
+  selectable?: boolean;
 }
 
 export const ExperienceListCard: React.FC<ExperienceListCardProps> = ({
   experience,
   onOpen,
   onManageOpen,
+  selectionMode,
+  selected,
+  onLongPress,
+  selectable,
 }) => {
   const model = useMemo<OfferingListCardModel>(
     () => experienceToOfferingModel(experience),
@@ -44,6 +53,10 @@ export const ExperienceListCard: React.FC<ExperienceListCardProps> = ({
       model={model}
       onOpen={onOpen}
       onManageOpen={onManageOpen}
+      selectionMode={selectionMode}
+      selected={selected}
+      onLongPress={onLongPress}
+      selectable={selectable}
     />
   );
 };

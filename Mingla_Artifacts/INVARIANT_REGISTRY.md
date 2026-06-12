@@ -4348,6 +4348,47 @@ Every chat response from every skill uses Section A (what just happened) + Secti
 
 **Cross-references:** INVESTIGATE/SPEC/IMPLEMENTATION/TEST_ORCH-1116_BOOKING_GATE_RLS.md, PR #443 (`6dc51ae62`), migration `20260927000000`.
 
+### I-PROPOSED-ORCH-1123-MULTISELECT-DRAFTS-ONLY (PROPOSED — ORCH-1123 IMPLEMENT 2026-06-12)
+
+**Invariant:** Long-press selection mode + the `DraftSelectBar` may target ONLY rows whose status is `draft`. A non-draft row passes `selectable={false}` (no long-press entry, no toggle, no checkbox; dimmed + inert) and a non-draft long-press plays the honest null-shake no-op (never silently dead). The batch RPC `business_discard_offering_drafts` defends in depth: any non-draft id returns `skipped_not_draft`, never `deleted`.
+
+**Enforcement:** each tab passes `selectable={isDraftRow}` (`item.kind==="draft"` / `trip.status==="draft"` / `exp.status==="draft"`); cards gate the checkbox + long-press on `selectable`; RPC guards `status='draft'` server-side. Jest `src/utils/__tests__/orch_1123_batch_rpc_source.test.ts` + SQL probe `supabase/migrations/__tests__/orch_1123_batch_discard.test.sql` (B-02). Tester drives the live-id-mixed-with-drafts adversarial bypass.
+
+**Applies to:** business-iOS + business-Android, `app/(tabs)/hub/{events,trips,experiences}.tsx` + the 3 list cards + `business_discard_offering_drafts`.
+
+### I-PROPOSED-ORCH-1123-BATCH-RPC-RANK-GATED (PROPOSED — ORCH-1123 IMPLEMENT 2026-06-12)
+
+**Invariant:** `business_discard_offering_drafts(p_event_ids uuid[])` MUST enforce `biz_brand_effective_rank(brand_id, auth.uid()) >= biz_role_rank('event_manager')` PER ROW (a sub-rank or other-brand caller gets `forbidden`, row NOT deleted), be `SECURITY DEFINER` with `SET search_path TO 'public','pg_temp'`, and be `REVOKE`'d from PUBLIC + anon and `GRANT`'d to authenticated + service_role only. The `$function$;` terminator precedes the GRANT.
+
+**Forbidden reverts (fail the build):** removing the per-row rank check; widening GRANT to PUBLIC/anon; an all-or-nothing rollback shape that hides per-row outcomes.
+
+**Enforcement:** migration-source jest `orch_1123_batch_rpc_source.test.ts` (rank check + GRANT order); SQL adversarial (tester) — sub-rank/other-brand caller → `forbidden`.
+
+**Applies to:** `supabase/migrations/20260928000002_orch_1123_batch_discard_offering_drafts.sql`.
+
+### I-PROPOSED-ORCH-1123-NO-SILENT-PARTIAL-FAILURE (PROPOSED — ORCH-1123 IMPLEMENT 2026-06-12)
+
+**Invariant:** A partial batch (some rows `forbidden`/`skipped_*`) MUST surface a toast naming the counts; the RPC MUST return per-row outcomes (SKIP-and-report, never an all-or-nothing rollback that hides the user's intent). Toast copy is verbatim: `Deleted N drafts.` (success) / `Deleted N, M couldn't be deleted.` (warn) / `Couldn't delete N drafts. You may not have permission.` (error).
+
+**Enforcement:** RPC `RETURN NEXT` per id; client `bulkToastMessage(deleted, failed)` tally in all 3 tabs. Jest `useDraftMultiSelect.test.ts` (tally strings) + `orch_1123_batch_rpc_source.test.ts` (source strings present).
+
+**Applies to:** business-iOS + business-Android, the 3 Hub tabs + the RPC.
+
+### I-PROPOSED-ORCH-1123-EVENTS-LOCAL-SERVER-SPLIT (PROPOSED — ORCH-1123 IMPLEMENT 2026-06-12)
+
+**Invariant:** An events bulk delete MUST partition selected ids: local-only (`id.startsWith("d_") || serverSlug === null`) → Zustand `deleteDraft` ONLY; server-backed → batch RPC + Zustand removal + RQ invalidate. A local-only id MUST NEVER be sent to the RPC (it would 404). One confirm, one combined toast tally.
+
+**Enforcement:** `events.tsx` partition (`selected.filter(isLocalOnlyDraft)`) feeding `useDiscardOfferingDrafts` (`localOnlyDraftIds` vs `serverEventIds`). Jest `useDraftMultiSelect.test.ts` partition cases (no `d_*` in `serverEventIds`).
+
+**Applies to:** business-iOS + business-Android, `app/(tabs)/hub/events.tsx` + `useDiscardOfferingDrafts.ts`.
+
+### I-PROPOSED-ORCH-1123-LONGPRESS-FIRES (PROPOSED — ORCH-1123 IMPLEMENT 2026-06-12) [Constitution #1 no-dead-tap]
+
+**Invariant:** Long-press on a draft row MUST enter selection mode AT RUNTIME (not merely "wired in source"). The body Pressable carries `onLongPress` + `delayLongPress={350}` and the tab passes a real `enterWith` (plus the Medium `HapticFeedback.selectionEnter()`); tapping rows then toggles checkboxes and updates the bar count.
+
+**Enforcement:** source presence asserted by `orch_1123_batch_rpc_source.test.ts` (cards: `delayLongPress={350}`, `onLongPress`); RUNTIME proof is the tester's device/sim deliverable (source-only reasoning caps at "suspected").
+
+**Applies to:** business-iOS + business-Android, the 3 list cards + the 3 Hub tabs.
 ### I-NO-RAW-WHITE-ON-PALETTE-SURFACE (ACTIVE — ratified by ORCH-1117 CLOSE 2026-06-12)
 
 **Invariant:** On the shared offering-rendering surfaces (`packages/event-rendering/PublicEventPage.tsx` and the offering components it composes), theme-colored foreground text that can land on a brand/event-themed surface MUST resolve through a luminance-safe palette token (e.g. `palette.accent` / `palette.primaryText`), NEVER a raw `#ffffff` / hardcoded white. A near-white brand theme made the date eyebrow + recurrence pill white-on-white (illegible). Intentional white-on-ACCENT text (venue icon disk / pill, where the background is the accent color, not the page) is explicitly exempt and must be kept distinguishable.
