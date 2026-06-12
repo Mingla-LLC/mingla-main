@@ -6,7 +6,7 @@
 //
 // Per META-ORCH-0827 Pass 2 (Option C). Established 2026-05-13.
 
-export { PublicEventPage } from "./PublicEventPage";
+export { PublicEventPage, resolveOfferingSurface } from "./PublicEventPage";
 export { PublicEventNotFound } from "./PublicEventNotFound";
 export { EventCoverMedia } from "./EventCoverMedia";
 export { ThemeEntranceAnimation } from "./ThemeEntranceAnimation";
@@ -56,6 +56,20 @@ export type {
 // ORCH-0964 — BlurView wrapper that skips backdrop-filter on mobile web (where
 // stacked blur hard-crashes the renderer). Used by public brand + event pages.
 export { GlassBlur } from "./GlassBlur";
+// ORCH-1117 — the single buy/unavailable state machine consumed by BOTH the
+// inline ticket row AND the per-host floating Buy bar (no forked gate logic).
+export {
+  resolveOfferingCta,
+  computeOfferingVariant,
+  ticketSaleEnded,
+  ticketIsSoldOut,
+  ticketIsDoorOnly,
+} from "./offeringCta";
+export type {
+  CtaState,
+  OfferingVariant,
+  ResolveOfferingCtaInput,
+} from "./offeringCta";
 export type {
   PublicEventProps,
   PublicBrandProps,

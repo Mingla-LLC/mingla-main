@@ -22,15 +22,18 @@
 //   - true: venue NAME shown; address replaced with "Address shared after
 //     ticket purchase"
 //   - false: full address visible
-import React, { useCallback, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
+  AccessibilityInfo,
   Image,
+  LayoutAnimation,
   Platform,
   Pressable,
   ScrollView,
   StyleSheet,
   Text,
   TextInput,
+  UIManager,
   View,
 } from "react-native";
 import { GlassBlur } from "./GlassBlur";
@@ -48,6 +51,15 @@ import {
   typography,
 } from "./designTokens";
 import { resolveTheme } from "./themeResolver";
+// ORCH-1117 — the single buy/unavailable gate logic. PublicTicketRow reuses the
+// shared per-tier sub-predicates so the inline row and the host floating bar
+// can never disagree about sold-out / sale-ended / door-only.
+import {
+  computeOfferingVariant,
+  ticketIsDoorOnly,
+  ticketIsSoldOut,
+  ticketSaleEnded,
+} from "./offeringCta";
 import { ThemeEntranceAnimation } from "./ThemeEntranceAnimation";
 import { EventCoverMedia } from "./EventCoverMedia";
 import type {
@@ -57,6 +69,41 @@ import type {
 } from "./types";
 
 const SHOW_INITIAL_DATES = 10;
+
+// ORCH-1117 — collapsible About. Copy ≤ this length fits the 3-line peek, so it
+// renders fully expanded with NO toggle (a toggle for 2 lines is noise). Mirrors
+// the existing EVT-NATIVE 160-char threshold.
+const ABOUT_COLLAPSE_THRESHOLD = 160;
+
+// ORCH-1117 — enable LayoutAnimation on Android (no-op on iOS/web where it is
+// already on). Guarded so it runs once at module load.
+if (
+  Platform.OS === "android" &&
+  UIManager.setLayoutAnimationEnabledExperimental !== undefined
+) {
+  UIManager.setLayoutAnimationEnabledExperimental(true);
+}
+
+// ORCH-1117 — track the OS reduce-motion preference so the About toggle skips
+// the height settle when the user asked for reduced motion.
+const useReduceMotion = (): boolean => {
+  const [reduce, setReduce] = useState<boolean>(false);
+  useEffect(() => {
+    let mounted = true;
+    void AccessibilityInfo.isReduceMotionEnabled().then((value) => {
+      if (mounted) setReduce(value);
+    });
+    const sub = AccessibilityInfo.addEventListener(
+      "reduceMotionChanged",
+      (value: boolean) => setReduce(value),
+    );
+    return () => {
+      mounted = false;
+      sub.remove();
+    };
+  }, []);
+  return reduce;
+};
 
 type Variant =
   | "published"
@@ -224,32 +271,31 @@ const createThemePalette = (theme: ResolvedTheme): ThemePalette => {
   };
 };
 
+// ORCH-1117 — delegates to the shared `computeOfferingVariant` (one owner) so
+// the inline page and the host floating bar compute the SAME variant.
+// ORCH-1117 — surface tone (light vs dark page) for a host-mounted floating bar.
+// Mirrors createThemePalette's `useDark` decision EXACTLY so the bar fill matches
+// the page it sits over (a light brand theme → "light" near-white bar fill).
+export const resolveOfferingSurface = (
+  theme: ResolvedTheme,
+): "light" | "dark" => {
+  const darkBase = "#07070a";
+  const lightBase = "#f8fafc";
+  const accentOnDark = contrastRatio(theme.color, darkBase);
+  const accentOnLight = contrastRatio(theme.color, lightBase);
+  const useDark =
+    accentOnDark >= 3 && accentOnLight < 3
+      ? true
+      : accentOnLight >= 3 && accentOnDark < 3
+        ? false
+        : theme.foregroundColor === "#ffffff";
+  return useDark ? "dark" : "light";
+};
+
 const computeVariant = (
   event: PublicEventProps,
   passwordUnlocked: boolean,
-): Variant => {
-  if (event.status === "cancelled") return "cancelled";
-  const isPast =
-    event.status === "ended" ||
-    (event.endedAt !== null && new Date(event.endedAt).getTime() < Date.now());
-  if (isPast) return "past";
-  const visibleTickets = event.tickets.filter((t) => t.visibility !== "hidden");
-  const requiresPassword = visibleTickets.some((t) => t.passwordProtected);
-  if (requiresPassword && !passwordUnlocked) return "password-gate";
-  const allPreSale =
-    visibleTickets.length > 0 &&
-    visibleTickets.every(
-      (t) =>
-        t.saleStartAt !== null &&
-        new Date(t.saleStartAt).getTime() > Date.now(),
-    );
-  if (allPreSale) return "pre-sale";
-  const allSoldOut =
-    visibleTickets.length > 0 &&
-    visibleTickets.every((t) => !t.isUnlimited && (t.capacity ?? 0) === 0);
-  if (allSoldOut) return "sold-out";
-  return "published";
-};
+): Variant => computeOfferingVariant(event, passwordUnlocked);
 
 const computePreSaleStart = (event: PublicEventProps): string | null => {
   const candidates = event.tickets
@@ -310,6 +356,8 @@ export const PublicEventPage: React.FC<PublicEventPageProps> = ({
   // web/business behavior is unchanged; app-mobile's sheet host injects gorhom's
   // BottomSheetScrollView to collapse the double-scroll into a single host.
   ScrollComponent = ScrollView,
+  // ORCH-1117 — host-mounted floating-bar clearance (0 = no bar).
+  contentBottomInset = 0,
 }) => {
   const [passwordUnlocked, setPasswordUnlocked] = useState<boolean>(false);
   const resolvedTheme = useMemo<ResolvedTheme>(
@@ -351,6 +399,7 @@ export const PublicEventPage: React.FC<PublicEventPageProps> = ({
           callbacks={callbacks}
           theme={resolvedTheme}
           ScrollComponent={ScrollComponent}
+          contentBottomInset={contentBottomInset}
         />
       )}
 
@@ -417,6 +466,8 @@ interface PublishedBodyProps {
   // default; gorhom BottomSheetScrollView when sheet-hosted). Always defined —
   // PublicEventPage supplies its default before passing down.
   ScrollComponent: NonNullable<PublicEventPageProps["ScrollComponent"]>;
+  // ORCH-1117 — extra scroll-bottom clearance for a host-mounted floating bar.
+  contentBottomInset: number;
 }
 
 const PublishedBody: React.FC<PublishedBodyProps> = ({
@@ -426,9 +477,29 @@ const PublishedBody: React.FC<PublishedBodyProps> = ({
   callbacks,
   theme,
   ScrollComponent,
+  contentBottomInset,
 }) => {
   const [showAllDates, setShowAllDates] = useState<boolean>(false);
   const [showOverflowDates, setShowOverflowDates] = useState<boolean>(false);
+  // ORCH-1117 — collapsible About (collapsed by default for copy over the
+  // 160-char threshold; short copy renders full with no toggle).
+  const [aboutCollapsed, setAboutCollapsed] = useState<boolean>(true);
+  const reduceMotion = useReduceMotion();
+  const toggleAbout = useCallback((): void => {
+    if (!reduceMotion) {
+      // Content-driven height settle (3-line ↔ full). No measured height inside
+      // the gorhom sheet scroll (F-B) — numberOfLines swap avoids the scroll
+      // jump a measured-height animation would cause.
+      LayoutAnimation.configureNext(
+        LayoutAnimation.create(
+          200,
+          LayoutAnimation.Types.easeInEaseOut,
+          LayoutAnimation.Properties.opacity,
+        ),
+      );
+    }
+    setAboutCollapsed((c) => !c);
+  }, [reduceMotion]);
 
   const titleLine = event.name.length > 0 ? event.name : "Untitled event";
   const brandLetter = (brand?.displayName?.charAt(0) ?? "?").toUpperCase();
@@ -494,7 +565,14 @@ const PublishedBody: React.FC<PublishedBodyProps> = ({
           the sheet's gorhom scroll (single scroll host). */}
       <ScrollComponent
         style={styles.scroll}
-        contentContainerStyle={styles.scrollContent}
+        contentContainerStyle={[
+          styles.scrollContent,
+          // ORCH-1117 — reserve clearance for a host-mounted floating Buy bar so
+          // the last inline element scrolls clear of it. 0 when no bar.
+          contentBottomInset > 0
+            ? { paddingBottom: spacing.xl * 2 + contentBottomInset }
+            : null,
+        ]}
         showsVerticalScrollIndicator={false}
       >
         {/* Hero cover — column-width, aspect-adaptive, cover-filled */}
@@ -577,10 +655,14 @@ const PublishedBody: React.FC<PublishedBodyProps> = ({
           {/* Title block */}
           <View style={styles.titleBlock}>
             <View style={styles.titleBlockText}>
+              {/* ORCH-1117 R1 — the date eyebrow takes the luminance-aware
+                  accent (NOT raw #ffffff). On a light brand theme the page is
+                  near-white, so white text here was invisible; palette.accent
+                  is contrast-adjusted ≥4.5:1 as text on `page`. */}
               <Text
                 style={[
                   styles.dateLine,
-                  { color: "#ffffff", fontFamily: theme.fontFamilyValue },
+                  { color: palette.accent, fontFamily: theme.fontFamilyValue },
                 ]}
               >
                 {event.dateLine}
@@ -613,8 +695,16 @@ const PublishedBody: React.FC<PublishedBodyProps> = ({
                       },
                     ]}
                   >
+                    {/* ORCH-1117 R1 — recurrence pill label takes
+                        palette.primaryText (NOT raw #ffffff). The pill bg is a
+                        thin accentWash over `page`, so the effective bg ≈ page;
+                        primaryText = readableTextFor(page) ⇒ ~19:1 on a light
+                        page (was invisible white-on-near-white). */}
                     <Text
-                      style={[styles.recurrencePillLabel, { color: "#ffffff" }]}
+                      style={[
+                        styles.recurrencePillLabel,
+                        { color: palette.primaryText },
+                      ]}
                     >
                       {event.dateSubline} · {showAllDates ? "Hide" : "Show all"}
                     </Text>
@@ -853,23 +943,85 @@ const PublishedBody: React.FC<PublishedBodyProps> = ({
             </View>
           ) : null}
 
-          {/* About */}
-          <Text
-            style={[
-              styles.sectionTitle,
-              {
-                color: palette.primaryText,
-                fontFamily: theme.fontFamilyValue,
-              },
-            ]}
-          >
-            About
-          </Text>
-          <Text style={[styles.aboutBody, { color: palette.secondaryText }]}>
-            {event.description.length > 0
-              ? event.description
-              : "Details coming soon."}
-          </Text>
+          {/* About — ORCH-1117 collapsible (collapsed by default). The whole
+              header row is one ≥44pt tap target; the chevron text-glyph (F-C —
+              no Icon import in the package) + the "Read more"/"Show less" word
+              both signal state (never color alone). Copy ≤160 chars renders
+              full with no toggle. */}
+          {(() => {
+            const aboutText =
+              event.description.length > 0
+                ? event.description
+                : "Details coming soon.";
+            const canCollapse = aboutText.length > ABOUT_COLLAPSE_THRESHOLD;
+            const collapsed = canCollapse && aboutCollapsed;
+            return (
+              <>
+                <Pressable
+                  onPress={canCollapse ? toggleAbout : undefined}
+                  disabled={!canCollapse}
+                  accessibilityRole={canCollapse ? "button" : undefined}
+                  accessibilityLabel="About"
+                  accessibilityState={
+                    canCollapse ? { expanded: !collapsed } : undefined
+                  }
+                  accessibilityHint={
+                    canCollapse
+                      ? collapsed
+                        ? "Expands the description"
+                        : "Collapses the description"
+                      : undefined
+                  }
+                  style={styles.aboutHeaderRow}
+                >
+                  <Text
+                    style={[
+                      styles.sectionTitle,
+                      {
+                        color: palette.primaryText,
+                        fontFamily: theme.fontFamilyValue,
+                      },
+                    ]}
+                  >
+                    About
+                  </Text>
+                  {canCollapse ? (
+                    <Text
+                      style={[
+                        styles.aboutChevron,
+                        { color: palette.tertiaryText },
+                      ]}
+                      importantForAccessibility="no"
+                      accessibilityElementsHidden
+                    >
+                      {collapsed ? "⌄" : "⌃"}
+                    </Text>
+                  ) : null}
+                </Pressable>
+                <Text
+                  style={[styles.aboutBody, { color: palette.secondaryText }]}
+                  numberOfLines={collapsed ? 3 : undefined}
+                  ellipsizeMode="tail"
+                >
+                  {aboutText}
+                </Text>
+                {canCollapse ? (
+                  <Pressable
+                    onPress={toggleAbout}
+                    accessibilityRole="button"
+                    accessibilityLabel={collapsed ? "Read more" : "Show less"}
+                    style={styles.aboutToggleRow}
+                  >
+                    <Text
+                      style={[styles.aboutToggle, { color: palette.accent }]}
+                    >
+                      {collapsed ? "Read more" : "Show less"}
+                    </Text>
+                  </Pressable>
+                ) : null}
+              </>
+            );
+          })()}
 
           {/* Tickets */}
           <Text
@@ -941,12 +1093,12 @@ const PublicTicketRow: React.FC<PublicTicketRowProps> = ({
 }) => {
   const priceLabel = formatTicketPrice(ticket, fallbackCurrency);
   const isVisDisabled = ticket.visibility === "disabled";
-  const saleEnded =
-    ticket.saleEndAt !== null &&
-    Number.isFinite(new Date(ticket.saleEndAt).getTime()) &&
-    new Date(ticket.saleEndAt).getTime() <= Date.now();
-  const isSoldOutTicket = !ticket.isUnlimited && (ticket.capacity ?? 0) === 0;
-  const isDoorOnly = ticket.availableAt === "door";
+  // ORCH-1117 — shared sub-predicates (one owner; same logic the floating bar
+  // reads via resolveOfferingCta). Behavior is byte-identical to the prior
+  // inline checks.
+  const saleEnded = ticketSaleEnded(ticket);
+  const isSoldOutTicket = ticketIsSoldOut(ticket);
+  const isDoorOnly = ticketIsDoorOnly(ticket);
 
   const handleTap = (): void => {
     if (variant === "past" || isVisDisabled || saleEnded) return;
@@ -1346,9 +1498,11 @@ const styles = StyleSheet.create({
     fontWeight: "900",
     color: text.primary,
     marginBottom: spacing.sm,
-    textShadowColor: "rgba(0,0,0,0.28)",
-    textShadowOffset: { width: 0, height: 2 },
-    textShadowRadius: 10,
+    // ORCH-1117 R4 — title sits inside the solid body card (palette.page), so
+    // the heavy 0,2 / radius-10 / 28%-black text shadow did no legibility work
+    // and read as smudged on a light theme. Removed (primaryText on page is
+    // already AA-safe). Do NOT reintroduce a textShadow* here while the title
+    // sits on a solid surface.
   },
   recurrencePillRow: {
     flexDirection: "row",
@@ -1540,6 +1694,29 @@ const styles = StyleSheet.create({
     fontSize: 15,
     color: text.secondary,
     lineHeight: 24,
+  },
+  // ORCH-1117 — collapsible About header row (whole row is the tap target).
+  aboutHeaderRow: {
+    flexDirection: "row",
+    alignItems: "flex-end",
+    justifyContent: "space-between",
+    minHeight: 44,
+  },
+  aboutChevron: {
+    fontSize: 20,
+    fontWeight: "900",
+    lineHeight: 26,
+    marginBottom: spacing.sm,
+    paddingHorizontal: spacing.xs,
+  },
+  aboutToggleRow: {
+    minHeight: 44,
+    justifyContent: "center",
+  },
+  aboutToggle: {
+    fontSize: 14,
+    fontWeight: "600",
+    marginTop: spacing.xs,
   },
 
   // Tickets
