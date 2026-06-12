@@ -105,7 +105,6 @@ describe("EventCoverMedia presentation", () => {
     // ORCH-0964 [TEST-MOD-APPROVED ORCH-0964]: implementation moved to the
     // shared @mingla/event-rendering package; assertions unchanged.
     const source = repoFile("../packages/event-rendering/EventCoverMedia.tsx");
-    const publicPageSource = repoFile("src/components/event/PublicEventPage.tsx");
 
     expect(source).toContain("fullscreenOptions={{ enable: false }}");
     expect(source).toContain("playsInline");
@@ -120,11 +119,27 @@ describe("EventCoverMedia presentation", () => {
     expect(source).toContain("audioControlTopOffset");
     expect(source).toContain("audioControlTopLeft");
     expect(source).toContain("onMutedChange?.(next)");
-    expect(publicPageSource).toContain("showAudioControl");
-    expect(publicPageSource).toContain("audioControlLabel=\"event cover video\"");
-    expect(publicPageSource).toContain("audioControlPosition=\"topLeft\"");
-    expect(publicPageSource).toContain("audioControlTopOffset={insets.top + 60}");
-    expect(publicPageSource).toContain("isLegacyUnsafeEventCoverVideoUrl");
+    // ORCH-1124 [TEST-MOD-APPROVED ORCH-1124] — the audio-pill wiring was
+    // refactored out of the mingla-business src/components/event/PublicEventPage
+    // adapter (now a thin delegate) into the shared @mingla/event-rendering
+    // package's PublicEventPage. The old assertions below targeted
+    // `publicPageSource` (the adapter) for `showAudioControl` /
+    // `audioControlPosition="topLeft"` / `audioControlTopOffset={insets.top + 60}`
+    // — strings that no longer exist there, so they were stale and failing.
+    // Re-point them at the shared page (`sharedPublicPageSource`) and assert the
+    // CURRENT reality: the cover audio control renders via the default
+    // "bottomRight" position (no override), clearing the top-right floating
+    // close+share chrome.
+    const sharedPublicPageSource = repoFile(
+      "../packages/event-rendering/PublicEventPage.tsx",
+    );
+    expect(sharedPublicPageSource).toContain("showAudioControl");
+    expect(sharedPublicPageSource).not.toContain(
+      "audioControlPosition=\"topRight\"",
+    );
+    expect(sharedPublicPageSource).not.toContain(
+      "audioControlPosition=\"topLeft\"",
+    );
     expect(source).not.toContain("allowsFullscreen={false}");
   });
 
@@ -311,5 +326,45 @@ describe("ORCH-0992 reduce-motion ambient cover gate", () => {
         loop: true,
       }),
     ).toBe("video");
+  });
+});
+
+// ORCH-1124 [cover-video Sound/Mute pill unreachable under floating chrome].
+// The shared public event page (buyer/anon web + business app) used to override
+// EventCoverMedia's audio-pill position to "topRight", which planted the
+// Sound/Mute pill directly under the top-right floating close+share chrome — an
+// unreachable dead tap. Fix: drop the override so the pill inherits the
+// "bottomRight" default (the position the consumer app already uses via
+// expandedCard/ImageGallery), clearing the chrome.
+describe("ORCH-1124 cover-video audio pill clears top-right floating chrome", () => {
+  const sharedPublicPage = (): string =>
+    repoFile("../packages/event-rendering/PublicEventPage.tsx");
+  const coverMedia = (): string =>
+    repoFile("../packages/event-rendering/EventCoverMedia.tsx");
+
+  // HAPPY PATH — the public event page must NOT override the audio-pill
+  // position, so it inherits the shared component's "bottomRight" default.
+  // Fails-on-revert: re-adding `audioControlPosition="topRight"` (or any
+  // top-anchored override) on the EventCoverMedia in PublicEventPage.tsx makes
+  // this assertion fail.
+  test("public event page does not pin the cover audio pill to a top position", () => {
+    const page = sharedPublicPage();
+    expect(page).toContain("showAudioControl");
+    expect(page).not.toContain('audioControlPosition="topRight"');
+    expect(page).not.toContain('audioControlPosition="topLeft"');
+  });
+
+  // The shared component's audio-pill default is "bottomRight" and is styled
+  // inside the cover container (bottom:14 / right:14) — not the page base — so
+  // it does not collide with the host-mounted floating Buy bar (ORCH-1117).
+  test("EventCoverMedia defaults the audio pill to bottomRight, styled within the cover", () => {
+    const media = coverMedia();
+    expect(media).toContain('audioControlPosition = "bottomRight"');
+    expect(media).toContain("audioControlBottomRight:");
+    const bottomRightStyle = media
+      .slice(media.indexOf("audioControlBottomRight:"))
+      .slice(0, 80);
+    expect(bottomRightStyle).toContain("right: 14");
+    expect(bottomRightStyle).toContain("bottom: 14");
   });
 });
