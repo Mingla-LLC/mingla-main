@@ -172,3 +172,60 @@ No simulator/device run this pass (implementor self-verify focused on DB live-fi
 1. **T6 vs §4.2 spec contradiction (D-2)** — server `severity` for media-only edits is `material` (spec-mandated "§6 stays"); T6/SC-6 imply additive. Adjudicate whether a §6 amendment is warranted.
 2. **`publicEventsService.ts` compile-coupling (D-1)** — any new field on `TripDay` forces a touch here; candidate for the future shared `OfferingMediaGallery` consolidation noted in the investigation (Discovery #3).
 3. **Pre-existing trip jest failures** — `tripsService.test.ts` (`publishTrip` mock missing `.maybeSingle()`), `publicEventsService.tripFetch.test.ts` (`@mingla/event-rendering` unresolved in jest), and several `TripMiniCard`/`EditPublishedTripScreen.save` suites fail on clean origin/main too (verified via `git stash`). NOT introduced by ORCH-1119; worth a cleanup ORCH.
+
+---
+
+# REWORK — multi-select Library picks are lost (device-caught, pre-merge) — 2026-06-12
+
+**Trigger:** Seth, on the `development`-channel dev build: trip CREATE wizard → Step 2 → a day's "+ Add media" → Library → "Choose from library" → MULTI-SELECT several assets → sheet closes but the selections do NOT appear in the day's gallery. Single-select worked.
+
+**Rework branch state:** rebased onto `origin/main` (was 12 behind — all ORCH-1116/1117/1118/1121 merges; one conflict in `ConsumerTripDetailScreen.tsx` resolved by keeping BOTH the ORCH-1117 collapsible-About state and the ORCH-1119 `activeVideoKey` state + the `Image` import). My three ORCH-1119 commits replayed cleanly on top; all DO-NOT-TOUCH files remain untouched vs origin/main.
+
+## R1. Proven root cause (runtime evidence — stale-closure clobber, suspect (c))
+
+The picker (`TripDayMediaSheet.pickFromLibrary`) uploaded each chosen asset and called the parent's `onAddMedia(media)` **once per asset inside a tight synchronous `for` loop** (old lines 337-350). The parent handler `TripCreatorStep2Itinerary.handleAddMediaToDay` rebuilt the day's media from the **render-time `days`** on every call:
+
+```
+const next = [...days];                 // <- same render-time base every call
+const current = next[dayIndex].media ?? [];
+next[dayIndex] = { ...next[dayIndex], media: [...current, media] };
+onChange(next);                         // value-set; no re-render mid-loop
+```
+
+`onChange` is value-based (`setDaysDraft` in the wizard; `handleDaysChange` → `setEditState` in `EditPublishedTripScreen`). React does NOT re-render the parent between the synchronous loop iterations, so the `days` the handler closes over never updates mid-loop. Each iteration appends ONE item to the SAME stale base and calls `onChange` with it — so only the **last** asset survives. N selections collapse to 1. Single-select (N=1) is unaffected, exactly matching "multi-select only".
+
+**Runtime proof (deterministic, no HITL):** a standalone replica of the exact data flow (parent owns `days`, value-only `onChange`, handler closes over render-time `days`, sheet calls per-item in a loop) with 3 picks `[u1,u2,u3]` → `final media count: 1 -> ["u3"]` → **BUG REPRODUCED: clobbered to 1**. This is encoded as the REWORK-A behavioral test (`appendOneBuggy` path asserts length 1, url `u3`; `appendBatch` path asserts all 3 survive).
+
+NOT suspect (a) (the loop did iterate all assets), NOT (b) (uploads resolved fine — the items were uploaded to storage; only the parent append clobbered), NOT (d) (no silent upload error — uploads succeeded). The defect is purely the per-item-against-stale-base parent append.
+
+**Bundle-compile proof of the authoring path:** the iOS business bundle compiles end-to-end from this worktree's Metro (port 8089), HTTP 200, 31.2 MB, zero transform errors, with `TripDayMediaSheet`/`handleAddMediaToDay`/`trip-day-media` present (248 hits) — the path is reachable, not a dead tap. The authenticated wizard walkthrough + sim photo-library multi-video pick remains human-in-the-loop (brand-owner auth), unchanged from the original CONDITIONAL.
+
+## R2. The fix (file:line + what + why)
+
+**`mingla-business/src/components/trip/TripDayMediaSheet.tsx`**
+- Prop contract: `onAddMedia: (media: TripDayMedia) => void` → `onAddMedia: (media: TripDayMedia[])  => void` (batch). *Why:* a single batched append is the only clobber-proof shape given the value-only `onChange` on both surfaces.
+- Library upload loop: now ACCUMULATES each successful upload into `const uploaded: TripDayMedia[] = []` (per-item `try/catch` so one bad file doesn't abort the batch; first error captured in `firstError`), then calls `onAddMedia(uploaded)` **once** after the loop; closes only after all uploads resolve. A failed item surfaces a friendly toast even on partial success (`Some media couldn't be added. <msg>`) — no silent failure (Constitution #3). *Why:* keeps the sheet open with the existing `loading={uploading}` spinner until every selection resolves, then hands them all to the parent atomically — no lost picks.
+- Provider (GIF/Pexels) single picks: `onAddMedia({...})` → `onAddMedia([{...}])` (one-item array).
+
+**`mingla-business/src/components/trip/TripCreatorStep2Itinerary.tsx`**
+- `handleAddMediaToDay(dayIndex, media: TripDayMedia)` → `handleAddMediaToDay(dayIndex, media: TripDayMedia[])`: appends the WHOLE batch in one `onChange` — `[...current, ...media].slice(0, MAX_TRIP_DAY_MEDIA)` (cap re-enforced as a backstop; empty-batch no-op). *Why:* one `onChange` with all N items can't be clobbered by a stale base. Imports `MAX_TRIP_DAY_MEDIA`.
+- The sheet wiring `onAddMedia={(media) => handleAddMediaToDay(mediaSheetDayIndex, media)}` is unchanged — `media` is now the array, flows straight through.
+
+Both authoring surfaces (create wizard + `EditPublishedTripScreen`, which reuses `TripCreatorStep2Itinerary`) are fixed by these two files. No DB / service / RPC / display change — the persistence + render layers were already correct; only the in-memory multi-append was lost before save.
+
+## R3. Re-proof on the simulator / gates
+
+- **REWORK regression test** `mingla-business/src/components/trip/__tests__/orch1119_trip_day_media_multiselect.rework.test.ts` (NEW, append-only): 9/9 PASS. REWORK-A behavioral (3-pick batch keeps all 3; one-by-one clobbers to 1; append-not-replace onto existing; cap at 8; empty no-op). REWORK-B source-contract anchors (sheet prop is array; loop collects + single `onAddMedia(uploaded)`; no `onAddMedia(media)` single-call in-loop; parent batch signature; provider one-item arrays; partial-failure toast).
+- **fails-on-revert verified at `92fbb9944`:** TRUE LINE DELETION — reverted the parent handler to the single-item `(dayIndex, media: TripDayMedia)` append AND the sheet loop to per-item `onAddMedia(media)` → the two REWORK-B source-anchor assertions ("Library loop hands the COLLECTED batch in ONE call" + "parent handler accepts a batch") **FAILED** (2 failed / 7 passed). Restored the fix → **9/9 PASS**.
+- **No new failures vs baseline:** the touched-scope (`src/components/trip` + `orch1119` + `tripAdapter`) failing-suite set is identical pre- and post-rework (verified by stashing the two fix files and re-running) — all 11 failing suites are the pre-existing drifted contract/`@mingla/event-rendering`-unresolved tests documented in §12.3 + the QA report §6; the rework adds zero new failures. All 3 ORCH-1119 suites pass (25 tests).
+- **Bundle re-compile:** iOS business bundle re-bundled with the rework — HTTP 200, 31.2 MB, zero errors, batch fix (`uploaded.push`/`handleAddMediaToDay`) compiled in.
+- **Trip strict-grep gates:** `i-proposed-trip-canonical-columns`, `orch-0947-trip-spots-tickets-not-orders`, `orch-0963-public-trip-rpc-and-route-segregation` all PASS.
+- **DO-NOT-TOUCH clean:** `git diff origin/main` of `ExperienceStopPhotoSheet.tsx`, `experienceStopImageService.ts`, `useEventCoverVideoUpload.ts`, `packages/event-rendering/*` = empty.
+
+## R4. Updated SC-2 status
+
+**SC-2-iOS / SC-2-Android (authoring round-trip incl. multi-select):** the multi-select clobber is FIXED and proven by deterministic logic reproduction (3→1 before, 3→3 after) + fails-on-revert regression test + bundle-compile. The on-device authenticated multi-select round-trip (pick multiple images AND a video → all appear → reorder/remove → autosave persist → publish → reopen) remains the human-in-the-loop device gate (brand-owner auth + sim photo-library media), unchanged from the original CONDITIONAL — `probable → proven` pending Seth's device re-verify after OTA.
+
+## R5. Discoveries (rework)
+
+- No new side issues. The value-only `onChange` contract on both authoring surfaces is the structural reason a per-item loop append is unsafe — the batch contract is the correct long-term shape and is now enforced by the REWORK-B source anchors.

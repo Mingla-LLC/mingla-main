@@ -114,8 +114,15 @@ export interface TripDayMediaSheetProps {
   eventId: string;
   /** How many media items the day already has — gates remaining selectable slots. */
   currentCount: number;
-  /** Append one chosen media item into the day's gallery (max MAX_TRIP_DAY_MEDIA). */
-  onAddMedia: (media: TripDayMedia) => void;
+  /**
+   * Append the chosen media item(s) into the day's gallery (max
+   * MAX_TRIP_DAY_MEDIA). ORCH-1119 REWORK: takes an ARRAY so a multi-select
+   * Library pick appends ALL chosen assets in ONE parent state update. A
+   * per-item call inside a tight loop clobbered every selection but the last
+   * (the parent's `onChange` rebuilds from the same render-time `days`); a
+   * single batched append is immune. Single-item provider picks pass `[media]`.
+   */
+  onAddMedia: (media: TripDayMedia[]) => void;
   onShowToast: (msg: string) => void;
 }
 
@@ -334,36 +341,65 @@ export const TripDayMediaSheet: React.FC<TripDayMediaSheetProps> = ({
         assets = result.assets;
       }
       setUploading(true);
-      let added = 0;
+      // ORCH-1119 REWORK: upload each chosen asset, COLLECT the successes, and
+      // hand the parent the whole batch in ONE onAddMedia call. A per-item
+      // onAddMedia in this loop clobbered every pick but the last (the parent
+      // rebuilds the day from the same stale render-time `days`); a single
+      // batched append is clobber-proof. A failed item surfaces a friendly
+      // toast and is skipped — partial success is preserved (Constitution #3).
+      const uploaded: TripDayMedia[] = [];
+      let firstError: string | null = null;
       for (const asset of assets) {
-        if (added >= remaining) break;
-        const media = await uploadTripDayMedia(brandId, eventId, {
-          uri: asset.uri,
-          mimeType: asset.mimeType,
-          fileName: asset.fileName,
-          fileSize: asset.fileSize,
-          width: asset.width,
-          height: asset.height,
-        });
-        onAddMedia(media);
-        added += 1;
+        if (uploaded.length >= remaining) break;
+        try {
+          const media = await uploadTripDayMedia(brandId, eventId, {
+            uri: asset.uri,
+            mimeType: asset.mimeType,
+            fileName: asset.fileName,
+            fileSize: asset.fileSize,
+            width: asset.width,
+            height: asset.height,
+          });
+          uploaded.push(media);
+        } catch (itemError) {
+          if (firstError === null) {
+            firstError =
+              itemError instanceof BrandCoverError
+                ? itemError.message
+                : itemError instanceof Error
+                  ? itemError.message
+                  : "Couldn't upload that file. Tap to retry.";
+          }
+        }
       }
-      if (Platform.OS !== "web") {
-        void Haptics.notificationAsync(
-          Haptics.NotificationFeedbackType.Success,
-        ).catch(() => {});
+      if (uploaded.length > 0) {
+        onAddMedia(uploaded);
+        if (Platform.OS !== "web") {
+          void Haptics.notificationAsync(
+            Haptics.NotificationFeedbackType.Success,
+          ).catch(() => {});
+        }
       }
-      onClose();
-    } catch (error) {
-      if (error instanceof BrandCoverError) {
-        onShowToast(error.message);
-      } else {
+      // Surface any failure (even on partial success) so nothing fails silently.
+      if (firstError !== null) {
+        warnHaptic();
         onShowToast(
-          error instanceof Error
-            ? error.message
-            : "Couldn't upload that file. Tap to retry.",
+          uploaded.length > 0
+            ? `Some media couldn't be added. ${firstError}`
+            : firstError,
         );
       }
+      // Close once all uploads have resolved — no selection is lost mid-flight.
+      if (uploaded.length > 0) onClose();
+    } catch (error) {
+      // Pre-upload failures (permission denied, picker error) — friendly toast.
+      onShowToast(
+        error instanceof BrandCoverError
+          ? error.message
+          : error instanceof Error
+            ? error.message
+            : "Couldn't add that media. Tap to retry.",
+      );
     } finally {
       revokeBrowserPickedFiles(browserFiles);
       setUploading(false);
@@ -385,7 +421,7 @@ export const TripDayMediaSheet: React.FC<TripDayMediaSheetProps> = ({
     (result: GiphyCoverSearchResult): void => {
       if (atCap) return;
       lightHaptic();
-      onAddMedia({ url: result.mediaUrl, type: "image", provider: "giphy" });
+      onAddMedia([{ url: result.mediaUrl, type: "image", provider: "giphy" }]);
       onShowToast("GIF added.");
       onClose();
     },
@@ -396,7 +432,7 @@ export const TripDayMediaSheet: React.FC<TripDayMediaSheetProps> = ({
     (result: PexelsCoverSearchResult): void => {
       if (atCap) return;
       lightHaptic();
-      onAddMedia({ url: result.mediaUrl, type: "image", provider: "pexels" });
+      onAddMedia([{ url: result.mediaUrl, type: "image", provider: "pexels" }]);
       onShowToast("Photo added.");
       onClose();
     },

@@ -20,6 +20,7 @@ import { Icon } from "../ui/Icon";
 import { TripDayEditor, type TripDayDraft } from "./TripDayEditor";
 import { TripDayMediaSheet } from "./TripDayMediaSheet";
 import type { TripDayMedia } from "../../services/tripsService";
+import { MAX_TRIP_DAY_MEDIA } from "../../services/tripDayMediaService";
 
 export interface TripCreatorStep2ItineraryProps {
   days: TripDayDraft[];
@@ -70,10 +71,21 @@ export const TripCreatorStep2Itinerary: React.FC<TripCreatorStep2ItineraryProps>
   };
 
   // ORCH-1119 — media mutations on a specific day (immutable).
-  const handleAddMediaToDay = (dayIndex: number, media: TripDayMedia): void => {
+  // REWORK: takes the FULL batch of chosen media and appends them all in ONE
+  // onChange. The sheet previously called this once per asset inside a tight
+  // synchronous loop; because onChange rebuilds the day from the same
+  // render-time `days`, every pick but the last was clobbered (multi-select
+  // selections were silently lost). A single batched append is clobber-proof.
+  // The cap is re-enforced here (slice to MAX_TRIP_DAY_MEDIA) as a backstop.
+  const handleAddMediaToDay = (
+    dayIndex: number,
+    media: TripDayMedia[],
+  ): void => {
+    if (media.length === 0) return;
     const next = [...days];
     const current = next[dayIndex].media ?? [];
-    next[dayIndex] = { ...next[dayIndex], media: [...current, media] };
+    const appended = [...current, ...media].slice(0, MAX_TRIP_DAY_MEDIA);
+    next[dayIndex] = { ...next[dayIndex], media: appended };
     onChange(next);
   };
   const handleRemoveMediaFromDay = (
