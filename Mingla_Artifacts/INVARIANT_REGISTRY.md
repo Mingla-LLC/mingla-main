@@ -4347,3 +4347,15 @@ Every chat response from every skill uses Section A (what just happened) + Secti
 **Enforcement:** strict-grep gate `.github/scripts/strict-grep/orch-1116-booking-gate-security-definer.mjs` (registered in `.github/workflows/strict-grep-mingla-business.yml`) asserting both predicates stay `SECURITY DEFINER` + `SET search_path = ''`; anon-role behavioral regression test `supabase/migrations/__tests__/orch_1116_booking_gate_rls.test.sql` (asserts RETURN VALUE under `SET ROLE anon`, fails-on-revert) + tester adversarial `..._tester_adversarial.test.sql` (batched-subset true-negative + no-row-leak). Append-only.
 
 **Cross-references:** INVESTIGATE/SPEC/IMPLEMENTATION/TEST_ORCH-1116_BOOKING_GATE_RLS.md, PR #443 (`6dc51ae62`), migration `20260927000000`.
+
+### I-NO-RAW-WHITE-ON-PALETTE-SURFACE (ACTIVE — ratified by ORCH-1117 CLOSE 2026-06-12)
+
+**Invariant:** On the shared offering-rendering surfaces (`packages/event-rendering/PublicEventPage.tsx` and the offering components it composes), theme-colored foreground text that can land on a brand/event-themed surface MUST resolve through a luminance-safe palette token (e.g. `palette.accent` / `palette.primaryText`), NEVER a raw `#ffffff` / hardcoded white. A near-white brand theme made the date eyebrow + recurrence pill white-on-white (illegible). Intentional white-on-ACCENT text (venue icon disk / pill, where the background is the accent color, not the page) is explicitly exempt and must be kept distinguishable.
+
+**Why this matters:** ORCH-1117 — Seth reported dates rendering invisible on white-themed brand/event pages. The fix is a contrast rule, not a one-off color; pinning it to palette tokens + a CI guard prevents any future raw-white regression on these buyer-facing surfaces.
+
+**Applies to:** buyer/anonymous web (`mingla-business` public `/e/`, `/t/`, `/exp/`) + consumer iOS/Android offering detail; shared code in `packages/event-rendering/`.
+
+**Enforcement:** strict-grep gate `.github/scripts/strict-grep/orch-1117-no-raw-white-on-palette-surface.mjs` (registered in `.github/workflows/strict-grep-mingla-business.yml`) + contrast unit test `mingla-business/src/components/offering/__tests__/offeringLegibility.orch1117.test.ts` (fails-on-revert). Append-only.
+
+**Cross-references:** SPEC/DESIGN/IMPLEMENTATION/TEST_ORCH-1117_OFFERING_PAGE_POLISH.md, PR #445 (`a7ab3da39`).
