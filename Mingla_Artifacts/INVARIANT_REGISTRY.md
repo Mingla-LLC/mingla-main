@@ -4435,3 +4435,17 @@ Every chat response from every skill uses Section A (what just happened) + Secti
 **Enforcement:** append-only regression tests — implementor happy-path `mingla-business/src/components/brand/__tests__/BrandProfileView.orch_1121.test.tsx` (events present → rows render, empty card absent; fails-on-revert @ `6167c9b0a`) + tester adversarial render-ladder/false-empty-flash matrix `mingla-business/src/components/brand/__tests__/BrandProfileView.recentEventsFlash.adversarial.orch_1121.test.ts` (`dd06e552e`, drives all cold-load/error/refetch states). No strict-grep gate (the rule is behavioral, not a string-pattern).
 
 **Cross-references:** INVESTIGATE/SPEC/DESIGN/IMPLEMENTATION/TEST_ORCH-1121_BRAND_PROFILE_REDESIGN.md, PR #447 (`518e468d6`).
+
+---
+
+### I-GIPHY-KEY-FAIL-LOUD (ACTIVE — flipped at ORCH-1127 CLOSE 2026-06-12)
+**Rule:** A release-bound business build (`production`/`production-apk`/`preview`/`preview-sim`, or a Vercel `production`/`preview` web export) MUST FAIL at config-eval in `mingla-business/app.config.ts` if `EXPO_PUBLIC_GIPHY_API_KEY` (or `EXPO_PUBLIC_GIPHY_KEY`) is absent — never ship a release build whose cover-picker GIF tab silently degrades. Local/`development` profile warns only (a keyless dev still boots). Modeled on the `pk_live` guard ([[feedback_mingla_business_pk_live_in_production]]).
+**Enforcement:** strict-grep `mingla-business`/`.github/scripts/strict-grep/i-giphy-key-wired.mjs` + the config-eval throw; fails-on-revert @ `70f799e15`.
+
+### I-GIPHY-KEY-WIRED (ACTIVE — flipped at ORCH-1127 CLOSE 2026-06-12)
+**Rule:** `mingla-business/app.config.ts` MUST carry the GIPHY fail-loud guard AND emit `EXPO_PUBLIC_GIPHY_API_KEY` into `expo.extra`, and `mingla-business/.env.example` MUST document the key. The key value is a PUBLIC client key (GIPHY ToS forbids edge-proxying — it rides the client by design) provisioned in EAS `development`/`preview`/`production` + Vercel `production`/`preview`.
+**Enforcement:** `i-giphy-key-wired.mjs` (FAILS on removal of the guard or the `.env.example` entry).
+
+### I-GIPHY-KEY-REACHABLE-VIA-EXTRA (ACTIVE — flipped at ORCH-1127 CLOSE 2026-06-12)
+**Rule:** The GIPHY client-direct key MUST be read via `Constants.expoConfig?.extra?.[name]` first, then a STATIC `process.env.EXPO_PUBLIC_GIPHY_API_KEY`/`EXPO_PUBLIC_GIPHY_KEY` fallback (mirroring `mingla-business/src/services/supabase.ts`). A DYNAMIC `process.env?.[name]` (bracket-variable) read is FORBIDDEN — Expo/babel only inlines STATIC `process.env.EXPO_PUBLIC_X`, so a dynamic read resolves `undefined` in every standalone/OTA/production Hermes bundle (works only under Metro dev). This was the deeper root cause of ORCH-1127. Applies to both `giphyEventCoverService.ts` and `coverProviderBrowseService.ts`.
+**Enforcement:** `i-giphy-key-wired.mjs` INV-3 (bans dynamic-only reads in these services) + reachability regression tests (`giphyKeyReachability*.test.ts`, empty `process.env` + populated `extra`); fails-on-revert @ `70f799e15`. Proof: standalone `expo export` key-value count 0 (dynamic) → 1 (extra-first). See COMMS-0028.
