@@ -4371,3 +4371,14 @@ Every chat response from every skill uses Section A (what just happened) + Secti
 **Enforcement:** single-source predicate `mingla-business/src/components/trip/tripLocationValidated.ts` (empty=INVALID for both fields); implementor happy-path tests `tripLocationValidated.test.ts` + `TripCreatorStep1Basics.mapbox.test.ts` (fails-on-revert @ `4134676e2`); tester adversarial `tripLocationGate.adversarial.test.ts` (@ `54da7708b`) + runtime RTL render-proof `EditPublishedTripScreen.render.test.tsx` (mounts the real screen; @ `73b3c29b4`). Append-only.
 
 **Cross-references:** INVESTIGATE/SPEC/IMPLEMENTATION/TEST_ORCH-1118_TRIP_ADDRESS_MAPBOX.md, PR #446 (`f16527285`).
+### I-RECENT-EVENTS-LIVE-QUERY (ACTIVE — ratified by ORCH-1121 CLOSE 2026-06-12)
+
+**Invariant:** The business brand-profile "Recent events" section (`mingla-business/src/components/brand/BrandProfileView.tsx` SECTION E, and any future owner-facing brand-events glance) MUST derive its contents from a live brand-scoped events query (`useBusinessEventsForBrand(brand.id)`), NEVER a hardcoded empty-state. The "No events yet / Create your first event" empty card MUST render ONLY when that query is settled, non-error, and genuinely zero-length — it MUST NOT render while the query is loading/undefined (false-empty flash) or on error (which must surface a retry, not a fabricated empty). Constitution #9 (no lying empty-state) + #3 (no silent failure).
+
+**Why this matters:** ORCH-1121 — the section was a 100% hardcoded empty `GlassCard` wired to no query at all, so it showed "Create your first event" for every brand even with live + past events. Pinning the section to a live query with a settled-only empty branch prevents any future regression to a static or loading-state empty.
+
+**Applies to:** business iOS + Android (`mingla-business` owner brand profile). The shared public `packages/brand-rendering/PublicBrandPage.tsx` is out of scope (it already gates its empty state on real data).
+
+**Enforcement:** append-only regression tests — implementor happy-path `mingla-business/src/components/brand/__tests__/BrandProfileView.orch_1121.test.tsx` (events present → rows render, empty card absent; fails-on-revert @ `6167c9b0a`) + tester adversarial render-ladder/false-empty-flash matrix `mingla-business/src/components/brand/__tests__/BrandProfileView.recentEventsFlash.adversarial.orch_1121.test.ts` (`dd06e552e`, drives all cold-load/error/refetch states). No strict-grep gate (the rule is behavioral, not a string-pattern).
+
+**Cross-references:** INVESTIGATE/SPEC/DESIGN/IMPLEMENTATION/TEST_ORCH-1121_BRAND_PROFILE_REDESIGN.md, PR #447 (`518e468d6`).
