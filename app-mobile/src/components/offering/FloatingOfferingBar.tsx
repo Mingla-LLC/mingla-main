@@ -79,9 +79,7 @@ export const FloatingOfferingBar: React.FC<FloatingOfferingBarProps> = ({
         <View style={styles.priceCol}>
           <Text style={styles.priceValue}>{cta.price}</Text>
         </View>
-      ) : (
-        <View style={styles.priceCol} />
-      )}
+      ) : null}
       <Pressable
         onPress={handlePress}
         accessibilityRole="button"
@@ -90,7 +88,14 @@ export const FloatingOfferingBar: React.FC<FloatingOfferingBarProps> = ({
             ? `${cta.label}, ${cta.price}`
             : cta.label
         }
-        style={({ pressed }) => [styles.button, pressed && styles.buttonPressed]}
+        style={({ pressed }) => [
+          styles.button,
+          // ORCH-1128 — no price slot (free / waitlist) → the sole CTA spans the
+          // full bar width instead of hugging content on the right of an empty
+          // flex:1 column. Paid "buy" keeps the price-left / button-right split.
+          cta.kind !== "buy" && styles.buttonFull,
+          pressed && styles.buttonPressed,
+        ]}
         testID={testID !== undefined ? `${testID}-action` : undefined}
       >
         <Text style={styles.buttonLabel}>{cta.label}</Text>
@@ -126,6 +131,9 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     marginLeft: 16,
   },
+  // ORCH-1128 — full-width sole CTA (free / waitlist): fill the bar, drop the
+  // left margin that only exists to separate the button from the price column.
+  buttonFull: { flex: 1, marginLeft: 0 },
   buttonPressed: { opacity: 0.85, transform: [{ scale: 0.98 }] },
   buttonLabel: { fontSize: 17, fontWeight: "900", color: "#FFFFFF" },
   stripGlyph: { fontSize: 18, color: "rgba(255,255,255,0.52)" },
