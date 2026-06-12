@@ -59,6 +59,7 @@ import {
   TRIP_DAY_MEDIA_MAX_BYTES,
 } from "../../services/tripDayMediaService";
 import { BrandCoverError } from "../../utils/brandCoverRules";
+import { normalizeTripDayImage } from "../../utils/normalizeTripDayImage";
 import type { TripDayMedia } from "../../services/tripsService";
 import { EventCoverProviderError } from "../../services/eventCoverProviderError";
 import {
@@ -352,13 +353,29 @@ export const TripDayMediaSheet: React.FC<TripDayMediaSheetProps> = ({
       for (const asset of assets) {
         if (uploaded.length >= remaining) break;
         try {
+          // ORCH-1119C: iPhones shoot HEIC; convert HEIC/HEIF -> JPEG on-device
+          // BEFORE upload (the upload service hard-rejects image/heic, and HEIC
+          // doesn't render on Android or the public web trip page). jpeg/png/webp/
+          // GIF/video pass through unchanged. Native picker only — the web branch
+          // above doesn't hand back HEIC the same way.
+          const normalized =
+            Platform.OS === "web"
+              ? asset
+              : await normalizeTripDayImage({
+                  uri: asset.uri,
+                  mimeType: asset.mimeType,
+                  fileName: asset.fileName,
+                  fileSize: asset.fileSize,
+                  width: asset.width,
+                  height: asset.height,
+                });
           const media = await uploadTripDayMedia(brandId, eventId, {
-            uri: asset.uri,
-            mimeType: asset.mimeType,
-            fileName: asset.fileName,
-            fileSize: asset.fileSize,
-            width: asset.width,
-            height: asset.height,
+            uri: normalized.uri,
+            mimeType: normalized.mimeType,
+            fileName: normalized.fileName,
+            fileSize: normalized.fileSize,
+            width: normalized.width,
+            height: normalized.height,
           });
           uploaded.push(media);
         } catch (itemError) {
