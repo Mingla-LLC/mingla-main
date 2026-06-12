@@ -4401,6 +4401,18 @@ Every chat response from every skill uses Section A (what just happened) + Secti
 
 **Cross-references:** SPEC/DESIGN/IMPLEMENTATION/TEST_ORCH-1117_OFFERING_PAGE_POLISH.md, PR #445 (`a7ab3da39`).
 
+### I-RQ-PROVIDER-AT-ROOT-LAYOUT (ACTIVE — ratified by ORCH-1125 CLOSE 2026-06-12)
+
+**Invariant:** In the consumer native app (`app-mobile`), the React Query `PersistQueryClientProvider` (and its single `queryClient` singleton) MUST be mounted in the ROOT layout `app-mobile/app/_layout.tsx` (wrapping `<Stack/>`), NOT inside any individual route/screen (e.g. `app/index.tsx`'s `App()`). Mounting it on a single route leaves cold-routed deep-links (`/t/`, `/b/`, `/brand/`, any share-link target) rendered WITHOUT a QueryClient → "No QueryClient set" crash before anything paints. Exactly ONE provider/one client (no double-mount — Constitution #11 one-owner). The Android 2MB-CursorWindow `cacheReady` pre-clear gate MUST still gate the provider mount, and the animated splash sequencing MUST be preserved.
+
+**Why this matters:** ORCH-1125 — cold-opening a shared trip/brand link crashed first-touch buyers (undermining the ORCH-1114/1115-restored anon share→checkout funnel) because the provider lived on the Home route and never wrapped cold deep-link routes. Pinning the provider to the root layout guarantees every cold-routed entry is wrapped.
+
+**Applies to:** consumer iOS/Android (`app-mobile`); `app/_layout.tsx` + `app/index.tsx`.
+
+**Enforcement:** strict-grep gate `check-rq-provider-at-root-layout.sh` + `.mjs` regression check (assert provider in `_layout.tsx`, absent from `index.tsx`; fails-on-revert) + cold-route render test (`npm run test:orch-1125`, reproduces the real "No QueryClient set" string pre-fix). Append-only. NOTE: device cold-link runtime acceptance requires a RELEASE/standalone build (dev-client hijacks the URL scheme).
+
+**Cross-references:** INVESTIGATE/SPEC/IMPLEMENTATION/TEST_ORCH-1125_COLD_TRIP_LINK_QUERYCLIENT_CRASH.md, PR #450 (`4bfb28318`).
+
 ### I-PROPOSED-TRIP-LOCATION-MAPBOX-VALIDATED (ACTIVE — ratified by ORCH-1118 CLOSE 2026-06-12)
 
 **Invariant:** On BOTH trip authoring UIs in the business app — the create wizard (`TripCreatorWizard` Step 1 / `TripCreatorStep1Basics`) and the published-trip edit screen (`EditPublishedTripScreen`) — the "Departing from" AND "Destination" fields MUST be a confirmed Mapbox pick (`placeId` + `lat` + `lng` all non-null) before the trip can be PUBLISHED (create) or SAVED (edit). Empty is INVALID for BOTH (departure is hard-required, per Seth's explicit override of ORCH-1016's optional-departure design); typed-but-unpicked free text is INVALID and must clear the field's structured coords. Both fields MUST render via the shared `MapboxAddressInput` (never a plain `TextInput`), and validity is gated through the single-source predicate `mingla-business/src/components/trip/tripLocationValidated.ts` (mirroring the experiences `stopHasValidatedLocation` pattern). Do NOT reintroduce a free-text fall-through or relax departure back to optional.
