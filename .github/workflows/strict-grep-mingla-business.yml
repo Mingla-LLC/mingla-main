@@ -2268,6 +2268,19 @@ jobs:
       - name: Run ORCH-1105 web-gesture-safe gate
         run: node .github/scripts/strict-grep/orch-1105-web-gesture-safe.mjs
 
+  orch-1117-no-raw-white-on-palette-surface:
+    name: "ORCH-1117: PublicEventPage text reads from luminance-aware palette, no raw white on palette surface (I-PROPOSED-NO-RAW-WHITE-ON-PALETTE-SURFACE)"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Run ORCH-1117 no-raw-white-on-palette-surface self-test
+        run: node .github/scripts/strict-grep/orch-1117-no-raw-white-on-palette-surface.mjs --self-test
+      - name: Run ORCH-1117 no-raw-white-on-palette-surface gate
+        run: node .github/scripts/strict-grep/orch-1117-no-raw-white-on-palette-surface.mjs
+
   # ORCH-0962 brand-field-map-coverage gate RETIRED at META-ORCH-0972 CLOSE
   # (2026-05-26). The gate asserted that `viewRowToBrand` reads `row.brand_kind`
   # from `business_public_events_view`. META-ORCH-0972 Sub-C removed `brand_kind`

@@ -20,8 +20,7 @@
  */
 
 import React, { useMemo } from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
-import { useRouter } from "expo-router";
+import { StyleSheet, Text, View } from "react-native";
 
 import {
   accent,
@@ -59,7 +58,6 @@ export const TripCheckoutFlow: React.FC<TripCheckoutFlowProps> = ({
   brand,
   testID,
 }) => {
-  const router = useRouter();
   const tier = trip.pricingTiers[0];
 
   // ORCH-0882 [Render Payment Plan Disclosure on Trip Buyer + Planner
@@ -74,14 +72,16 @@ export const TripCheckoutFlow: React.FC<TripCheckoutFlowProps> = ({
     [tier],
   );
 
-  const handleReserve = (): void => {
-    // ORCH-0876: trip-specific chain. Event-side /checkout/[eventId]/*
-    // hard-rejects trips by audit-test invariant — see
-    // mingla-business/src/services/__tests__/eventType.filter.audit.test.ts.
-    // The underlying biz_ticket_checkout_create_session RPC stays shared
-    // (branches on event_type='trip' per Tr3 [ORCH-0869] migration).
-    router.push(`/checkout-trip/${trip.id}` as never);
-  };
+  // ORCH-1117 — the inline Reserve CTA is REMOVED (locked single-ticket rule).
+  // The floating Buy bar on /t/[brandSlug]/[tripSlug] is now the ONLY Reserve
+  // action and owns navigation to `/checkout-trip/{trip.id}` (tripCheckoutPath).
+  // TripCheckoutFlow keeps the tier/plan recap + helper copy only.
+  //
+  // ORCH-0876 trip-specific chain invariant PRESERVED (moved, not dropped): the
+  // Reserve nav still targets `/checkout-trip/{trip.id}`, never the events-side
+  // `/checkout/{id}` chain (getPublicEventById hard-rejects trip rows by
+  // audit-test invariant — eventType.filter.audit.test.ts). The nav now lives in
+  // the route's floating bar via tripCheckoutPath(trip.id).
 
   if (tier === undefined) {
     return (
@@ -122,16 +122,6 @@ export const TripCheckoutFlow: React.FC<TripCheckoutFlowProps> = ({
           />
         </View>
       ) : null}
-
-      <Pressable
-        onPress={handleReserve}
-        accessibilityRole="button"
-        accessibilityLabel={`Reserve your spot on ${trip.title}`}
-        style={styles.cta}
-        testID="trip-checkout-reserve"
-      >
-        <Text style={styles.ctaText}>Reserve my spot</Text>
-      </Pressable>
 
       <Text style={styles.helper}>
         You&rsquo;ll enter your details + pay securely on the next screen.
@@ -192,17 +182,6 @@ const styles = StyleSheet.create({
   // and the Reserve CTA with consistent vertical spacing.
   planWrap: {
     width: "100%",
-  },
-  cta: {
-    paddingVertical: spacing.md,
-    borderRadius: radiusTokens.md,
-    backgroundColor: accent.warm,
-    alignItems: "center",
-  },
-  ctaText: {
-    fontSize: typography.body.fontSize,
-    fontWeight: "700",
-    color: "#FFFFFF",
   },
   helper: {
     fontSize: typography.caption.fontSize,

@@ -37,6 +37,7 @@ import {
 } from "../../constants/designSystem";
 import { formatTripDateRange } from "@mingla/event-rendering";
 import { Icon } from "../ui/Icon";
+import { CollapsibleDescription } from "../offering/CollapsibleDescription";
 import type {
   Trip,
   TripDay,
@@ -161,9 +162,14 @@ export const TripPreview: React.FC<TripPreviewProps> = ({
           </View>
         ) : null}
 
-        {/* Description */}
+        {/* Description — ORCH-1117 collapsible (collapsed by default). */}
         {trip.description !== null && trip.description.trim().length > 0 ? (
-          <Text style={styles.description}>{trip.description}</Text>
+          <View style={styles.descriptionWrap}>
+            <CollapsibleDescription
+              text={trip.description}
+              testID="trip-preview-description"
+            />
+          </View>
         ) : null}
 
         {/* Itinerary */}
@@ -291,6 +297,11 @@ const styles = StyleSheet.create({
     fontSize: typography.body.fontSize,
     lineHeight: typography.body.lineHeight,
     color: textTokens.secondary,
+    marginTop: spacing.md,
+  },
+  // ORCH-1117 — carries the prior description marginTop now that the body text
+  // lives inside the CollapsibleDescription block.
+  descriptionWrap: {
     marginTop: spacing.md,
   },
   section: {

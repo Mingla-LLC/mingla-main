@@ -29,7 +29,12 @@ import {
   type PublicTicketProps,
   type ViewerRole,
   resolveTheme,
+  resolveOfferingCta,
+  resolveOfferingSurface,
+  computeOfferingVariant,
 } from "@mingla/event-rendering";
+
+import { FloatingOfferingBar } from "../offering/FloatingOfferingBar";
 
 import {
   checkoutPublicPath,
@@ -248,6 +253,51 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
     setToast((prev) => ({ ...prev, visible: false }));
   }, []);
 
+  // ORCH-1117 — floating Buy bar state. PURE projection of the shared
+  // resolveOfferingCta (same machine the inline ticket rows read). The bar is
+  // the always-reachable primary action; the per-ticket inline rows stay (multi
+  // tier). Tapping the bar reuses the SAME navigation the row CTA uses
+  // (checkoutPublicPath → the cart page that lists all tickets — LOCKED).
+  const offeringCta = useMemo(
+    () =>
+      resolveOfferingCta({
+        variant: computeOfferingVariant(publicEvent, false),
+        bookable,
+        tickets: publicEvent.tickets,
+        currency: publicEvent.currency,
+      }),
+    [publicEvent, bookable],
+  );
+  const offeringSurface = useMemo(
+    () => resolveOfferingSurface(resolvedTheme),
+    [resolvedTheme],
+  );
+  const handleFloatingBarPress = useCallback((): void => {
+    if (offeringCta.kind === "waitlist") {
+      const wlTicket = publicEvent.tickets.find(
+        (t) => t.visibility !== "hidden" && t.waitlistEnabled,
+      );
+      if (wlTicket !== undefined) setWaitlistTicketId(wlTicket.id);
+      return;
+    }
+    // buy / free → the existing checkout/cart page (or the toast guard when the
+    // brand can't charge — never a dead-end). Mirrors callbacks.onBuyTicket.
+    if (!bookable) {
+      showToast(
+        "Booking unavailable right now — the organizer is finishing payment setup.",
+      );
+      return;
+    }
+    router.push(checkoutPublicPath(event.id) as never);
+  }, [
+    offeringCta.kind,
+    publicEvent.tickets,
+    bookable,
+    router,
+    event.id,
+    showToast,
+  ]);
+
   const handleClose = useCallback((): void => {
     if (router.canGoBack()) {
       router.back();
@@ -396,6 +446,19 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
         callbacks={callbacks}
         hideFloatingChrome
         theme={resolvedTheme}
+        // ORCH-1117 — reserve clearance so the last inline ticket row scrolls
+        // clear of the floating bar (bar height ≈ 96 + bottom safe area).
+        contentBottomInset={96 + insets.bottom}
+      />
+
+      {/* ORCH-1117 — floating Buy bar (primary action). Non-tappable info strip
+          in every unavailable state (no dead taps); the multi-tier inline rows
+          coexist and route to the same /checkout/{eventId} cart. */}
+      <FloatingOfferingBar
+        cta={offeringCta}
+        onPress={handleFloatingBarPress}
+        surface={offeringSurface}
+        testID="orch-1117-event-floating-bar"
       />
 
       <View
