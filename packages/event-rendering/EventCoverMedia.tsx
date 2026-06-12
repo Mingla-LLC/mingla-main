@@ -605,7 +605,9 @@ const styles = StyleSheet.create({
   },
   audioControlBottomRight: {
     right: 14,
-    bottom: 14,
+    // ORCH-1128 — 14 → 22: clears the cover seam so the pill stops bleeding
+    // into the details section below the public hero (radius:0 + absoluteFill).
+    bottom: 22,
   },
   audioControlPressed: {
     backgroundColor: "rgba(0, 0, 0, 0.72)",
