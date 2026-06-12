@@ -2160,6 +2160,19 @@ jobs:
       - name: Run ORCH-1076 paid-supply-requires-charges-enabled gate
         run: node .github/scripts/strict-grep/orch-1076-paid-supply-requires-charges-enabled.mjs
 
+  orch-1116-booking-gate-security-definer:
+    name: "ORCH-1116: buyer-readiness predicates stay SECURITY DEFINER (booking-gate RLS)"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Self-test the gate
+        run: node .github/scripts/strict-grep/orch-1116-booking-gate-security-definer.mjs --self-test
+      - name: Run ORCH-1116 booking-gate-security-definer gate
+        run: node .github/scripts/strict-grep/orch-1116-booking-gate-security-definer.mjs
+
   # ORCH-1079 [Business-venue Google→Mapbox sweep] — three invariants:
   #   INV-1 the 3 business venue/brand/trip pickers use the shared Mapbox input
   #   INV-2 the retired Google plumbing is gone + un-referenced (key retained)

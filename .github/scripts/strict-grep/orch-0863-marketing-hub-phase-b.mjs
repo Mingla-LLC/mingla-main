@@ -1630,6 +1630,23 @@ function checkNoNewBackendFiles() {
   const ORCH_1110_BACKEND_ALLOWLIST = [
     "supabase/migrations/20260925000000_orch_1110_backfill_creator_account_email.sql",
   ];
+  // ORCH-1116 [Public paid-event booking gate false-positive — booking-gate RLS].
+  // C7 is scoped to ORCH-0863 marketing; these backend touches convert the shared
+  // buyer-readiness predicates pg_brand_can_charge / pg_brands_can_charge from
+  // SECURITY INVOKER -> SECURITY DEFINER + locked search_path (so anon / non-owner
+  // buyers get the correct bookable flag over RLS-protected stripe_connect_accounts)
+  // plus the anon-role behavioral regression test. New backend files — allowlisted
+  // in the SAME commit per COMMS-0002. Same C7-scoping caveat as the allowlists
+  // above (a future close that drops these should re-scope C7 to `Close ORCH-0863`).
+  const ORCH_1116_BACKEND_ALLOWLIST = [
+    "supabase/migrations/20260927000000_orch_1116_booking_gate_rls.sql",
+    "supabase/migrations/__tests__/orch_1116_booking_gate_rls.test.sql",
+    // Tester adversarial regression test (different angle: anon batched-subset
+    // true-negative + no-row-leak security boundary). New file under
+    // supabase/migrations/__tests__/ — allowlisted so the ORCH-0863 C7
+    // no-new-backend-files gate stays green on this PR (COMMS-0002 convention).
+    "supabase/migrations/__tests__/orch_1116_booking_gate_rls_tester_adversarial.test.sql",
+  ];
   // ORCH-1032 [Intelligence pipeline concurrency cap + chunked enqueue]:
   // adds the additive 'queued'-status migration (status CHECK widen + per-city
   // unique active index widen + tg_kick_pending_trial_runs promotion built on
@@ -2020,6 +2037,7 @@ function checkNoNewBackendFiles() {
     ...ORCH_426_BACKEND_ALLOWLIST,
     ...ORCH_1111_BACKEND_ALLOWLIST,
     ...ORCH_1110_BACKEND_ALLOWLIST,
+    ...ORCH_1116_BACKEND_ALLOWLIST,
     // Schedule-edit buyer protection + "Refund all & proceed" (separate PR;
     // shares the ORCH-1047 work id used in code). New migration recording the
     // already-live business_patch_event_when change — not ORCH-0863 marketing
