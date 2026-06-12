@@ -275,9 +275,7 @@ export const EditPublishedTripSettingsAccordion: React.FC<
               strokeWidth={2}
             />
             <Text style={styles.warningText}>
-              {affectedOrderCount} traveler{salesLabel} already booked.
-              More-generous refunds, an extra tier, or a later deadline save
-              instantly — but you can't make terms worse for them here.
+              {`${affectedOrderCount} traveler${salesLabel} already booked. More-generous refunds, an extra tier, or a later deadline save instantly — but you can't make terms worse for them here.`}
             </Text>
           </View>
         </GlassCard>
