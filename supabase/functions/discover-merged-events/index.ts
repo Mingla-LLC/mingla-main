@@ -49,6 +49,11 @@ import {
   extractBusinessEventFormat,
   deriveSharedFormat,
 } from "./_helpers.ts";
+import {
+  buildDiscoverCacheKey,
+  discoverCacheExpiresAt,
+  type DiscoverCacheParams,
+} from "./_cache.ts";
 
 // ─── CORS ────────────────────────────────────────────────────────────────────
 const corsHeaders = {
@@ -290,6 +295,58 @@ serve(async (req: Request): Promise<Response> => {
     auth: { persistSession: false },
   });
 
+  // ── TM gate (independent of DB — compute before parallel fan-out) ─────
+  const tmSuppressedByMinglaFacet =
+    partyTypeSlugs.length > 0 || vibeTagSlugs.length > 0;
+  const { tmMappable, minglaOnly } = mapMinglaMusicGenresToTmSlugs(musicGenreSlugs);
+  const tmSuppressedByMinglaOnlyGenres =
+    musicGenreSlugs.length > 0 && tmMappable.length === 0;
+  const tmGate = !tmSuppressedByMinglaFacet && !tmSuppressedByMinglaOnlyGenres;
+
+  const cacheParams: DiscoverCacheParams = {
+    cityName,
+    stateCode: body.city.stateCode,
+    countryCode: body.city.countryCode,
+    page,
+    size,
+    partyTypeSlugs,
+    vibeTagSlugs,
+    musicGenreSlugs,
+    dateWindowUtc,
+    segmentSlug: body.segmentSlug,
+    genreSlugs: body.genreSlugs,
+    localStartEndDateTime: body.localStartEndDateTime,
+    keywords: body.keywords,
+    sort: body.sort,
+    timezone: requestTimezone,
+  };
+  const cacheKey = buildDiscoverCacheKey(cacheParams);
+
+  const { data: cachedDiscover, error: cacheReadError } = await supabase
+    .from("discover_merged_events_cache")
+    .select("response")
+    .eq("cache_key", cacheKey)
+    .gt("expires_at", new Date().toISOString())
+    .maybeSingle();
+
+  if (cacheReadError) {
+    console.warn(
+      "[discover-merged-events] cache read skipped:",
+      cacheReadError.message,
+    );
+  } else if (cachedDiscover?.response) {
+    const cached = cachedDiscover.response as DiscoverMergedResponse;
+    return jsonResponse({
+      ...cached,
+      meta: { ...cached.meta, fromCache: true },
+    });
+  }
+
+  // ── Parallel fan-out: business Postgres + Ticketmaster proxy ───────────
+  const businessPromise = (async (): Promise<{
+    businessItems: BusinessEventCard[];
+    businessTotal: number;
+  }> => {
   // ── Query business events ───────────────────────────────────────────────
   // Build dynamic conditions; use array overlap (&&) for taxonomy facets.
   const businessOffset = (page - 1) * size;
@@ -354,7 +411,8 @@ serve(async (req: Request): Promise<Response> => {
         ${eventDatesEmbed},
         ticket_types!left ( price_cents, currency, deleted_at, is_hidden, is_disabled, available_online )
       `,
-      { count: "exact" },
+      // ORCH-426 G1: estimated count avoids expensive exact count on nested embed.
+      { count: "estimated" },
     )
     .is("deleted_at", null)
     .eq("visibility", "public")
@@ -409,7 +467,7 @@ serve(async (req: Request): Promise<Response> => {
   const { data: rawRowsUngated, error: dbError, count: businessTotal } = await q;
   if (dbError) {
     console.error("[discover-merged-events] DB error:", dbError);
-    return jsonResponse({ error: "db_error", detail: dbError.message }, 500);
+    throw new Error(`db_error:${dbError.message}`);
   }
 
   // Normalize business events to BusinessEventCard shape + filter brands.deleted_at.
@@ -615,29 +673,26 @@ serve(async (req: Request): Promise<Response> => {
       return aT - bT;
     });
 
-  // ── Decide TM call gate ─────────────────────────────────────────────────
-  let tmCalled = false;
-  let tmError: string | null = null;
-  let tmItems: Record<string, unknown>[] = [];
-  let tmTotal = 0;
+    return {
+      businessItems,
+      businessTotal: businessTotal ?? businessItems.length,
+    };
+  })();
 
-  // Suppression rule: any Party Type or Vibe filter → no TM.
-  const tmSuppressedByMinglaFacet =
-    partyTypeSlugs.length > 0 || vibeTagSlugs.length > 0;
+  const ticketmasterPromise = (async (): Promise<{
+    tmCalled: boolean;
+    tmError: string | null;
+    tmItems: Record<string, unknown>[];
+    tmTotal: number;
+  }> => {
+    if (!tmGate) {
+      return { tmCalled: false, tmError: null, tmItems: [], tmTotal: 0 };
+    }
 
-  // For music genres: if filter is non-empty AND every value is Mingla-only,
-  // skip TM. If at least one maps to TM, forward only the TM-mappable ones.
-  const { tmMappable, minglaOnly } = mapMinglaMusicGenresToTmSlugs(musicGenreSlugs);
-  const tmSuppressedByMinglaOnlyGenres =
-    musicGenreSlugs.length > 0 && tmMappable.length === 0;
+    let tmError: string | null = null;
+    let tmItems: Record<string, unknown>[] = [];
+    let tmTotal = 0;
 
-  const tmGate = !tmSuppressedByMinglaFacet && !tmSuppressedByMinglaOnlyGenres;
-
-  if (tmGate) {
-    tmCalled = true;
-    // Forward existing TM facets + the TM-mappable music genres (if any
-    // were Mingla-mapped). If the caller already passed genreSlugs (legacy
-    // TM path), append the mapped Mingla genres rather than replacing.
     const mergedTmGenreSlugs = [
       ...(body.genreSlugs ?? []),
       ...tmMappable,
@@ -670,14 +725,6 @@ serve(async (req: Request): Promise<Response> => {
         tmItems = tmRes.data.events;
         tmTotal = tmRes.data.meta?.totalResults ?? tmItems.length;
 
-        // ORCH-0839-A F-2: when upstream reports totalResults > 0 but
-        // returns events=[], treat as an upstream cache/pagination defect
-        // and surface as tmError so the client banner fires. The F-1 fix
-        // in ticketmaster-events should eliminate the observed case (cache
-        // slice off-by-one); this defense-in-depth catches future
-        // regressions in any TM-events path that drops events while
-        // reporting non-zero totalResults.
-        // Invariant: I-PROPOSED-DISCOVER-META-MATCHES-ITEMS.
         if (tmItems.length === 0 && tmTotal > 0) {
           console.warn(
             "[discover-merged-events] TM upstream reported totalResults=" +
@@ -692,11 +739,33 @@ serve(async (req: Request): Promise<Response> => {
       console.warn("[discover-merged-events] TM throw:", tmError);
     }
 
-    // If the filter required at least one Mingla-only genre alongside TM-mappable
-    // ones, FURTHER filter the TM results: TM cannot satisfy the Mingla-only
-    // value, but we still allow TM through the TM-mappable side. This is the
-    // honest behavior — see SPEC §3.4.2.
-    void minglaOnly; // intentional: documented but not enforced beyond suppression gate
+    void minglaOnly;
+    return { tmCalled: true, tmError, tmItems, tmTotal };
+  })();
+
+  let businessItems: BusinessEventCard[];
+  let businessTotal: number;
+  let tmCalled: boolean;
+  let tmError: string | null;
+  let tmItems: Record<string, unknown>[];
+  let tmTotal: number;
+
+  try {
+    const [businessResult, tmResult] = await Promise.all([
+      businessPromise,
+      ticketmasterPromise,
+    ]);
+    ({ businessItems, businessTotal } = businessResult);
+    ({ tmCalled, tmError, tmItems, tmTotal } = tmResult);
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    if (msg.startsWith("db_error:")) {
+      return jsonResponse(
+        { error: "db_error", detail: msg.slice("db_error:".length) },
+        500,
+      );
+    }
+    throw e;
   }
 
   // ── Merge: strict partition, business first ─────────────────────────────
@@ -724,7 +793,7 @@ serve(async (req: Request): Promise<Response> => {
       // Invariant: I-PROPOSED-DISCOVER-META-MATCHES-ITEMS.
       businessCount: businessSpread.length,
       ticketmasterCount: tmSpread.length,
-      businessTotalAvailable: businessTotal ?? businessItems.length,
+      businessTotalAvailable: businessTotal,
       ticketmasterTotalAvailable: tmTotal,
       tmCalled,
       tmError,
@@ -733,6 +802,29 @@ serve(async (req: Request): Promise<Response> => {
       fromCache: false,
     },
   };
+
+  // Fire-and-forget cache write (same pattern as ticketmaster-events).
+  (async () => {
+    try {
+      await supabase
+        .from("discover_merged_events_cache")
+        .upsert(
+          {
+            cache_key: cacheKey,
+            response,
+            fetched_at: new Date().toISOString(),
+            expires_at: discoverCacheExpiresAt(),
+          },
+          { onConflict: "cache_key" },
+        );
+      await supabase
+        .from("discover_merged_events_cache")
+        .delete()
+        .lt("expires_at", new Date().toISOString());
+    } catch (err) {
+      console.warn("[discover-merged-events] cache upsert error:", err);
+    }
+  })();
 
   return jsonResponse(response);
 });

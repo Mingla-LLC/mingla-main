@@ -4,15 +4,10 @@
 
 import { check, sleep } from "k6";
 import { postJson, check2xx } from "./lib/supabase-edge.js";
+import { vuScenario } from "./lib/scenario.js";
 
 export const options = {
-  scenarios: {
-    discover: {
-      executor: "constant-vus",
-      vus: Number(__ENV.LOAD_VUS || 5),
-      duration: __ENV.LOAD_DURATION || "30s",
-    },
-  },
+  ...vuScenario("discover"),
   thresholds: {
     http_req_failed: ["rate<0.05"],
     http_req_duration: ["p(95)<2000"],

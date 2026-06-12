@@ -8,7 +8,7 @@ Full 100k proof still requires staging `EXPLAIN ANALYZE` — see [scripts/db/exp
 
 | Path | Edge / RPC | Tables | Migration indexes |
 |------|------------|--------|-------------------|
-| Discover merge | `discover-merged-events` | `events`, `brands`, `event_dates`, `ticket_types` | `idx_events_city_published` (ORCH-0824) |
+| Discover merge | `discover-merged-events` | `events`, `brands`, `event_dates`, `ticket_types`, `discover_merged_events_cache` | `idx_events_discover_feed`, `idx_event_dates_master_end_at` (ORCH-426 G1) |
 | Checkout create | `ticket-checkout-create` | `event_dates`, `ticket_types`, `events` | `idx_event_dates_event_id_end_at` (ORCH-426) |
 | Checkout status | `ticket-checkout-status` | `ticket_checkout_sessions`, `tickets`, `orders` | `idx_tickets_order_id_created_at` (ORCH-426) |
 | Ari chat | `agent-chat` | `agent_conversations`, `agent_messages`, `agent_pending_actions` | `idx_agent_messages_user_role_created` (ORCH-426) |
