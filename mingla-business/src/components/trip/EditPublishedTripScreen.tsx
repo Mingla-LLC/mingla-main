@@ -120,6 +120,15 @@ import {
   notifyTripChanged,
 } from "../../services/tripChangeNotifier";
 
+// ORCH-1118 — published-edit departure + destination must be confirmed Mapbox
+// picks before save. Swap the legacy plain TextInputs for the shared picker.
+import { MapboxAddressInput } from "../location/MapboxAddressInput";
+import {
+  departureLocationValidated,
+  destinationLocationValidated,
+  TRIP_DEPARTURE_PICK_ERROR,
+  TRIP_DESTINATION_PICK_ERROR,
+} from "./tripLocationValidated";
 import { TripCreatorStep2Itinerary } from "./TripCreatorStep2Itinerary";
 import { TripCreatorStep3Inclusions } from "./TripCreatorStep3Inclusions";
 import {
@@ -574,6 +583,11 @@ export const EditPublishedTripScreen: React.FC<EditPublishedTripScreenProps> = (
 
   const [openSection, setOpenSection] = useState<SectionKey | null>("basics");
 
+  // ORCH-1118 — reveal the inline "pick from suggestions" error on a
+  // departure/destination field after a blocked Save attempt.
+  const [showEditAddressErrors, setShowEditAddressErrors] =
+    useState<boolean>(false);
+
   // Modal + submitting
   const [modal, setModal] = useState<ModalState>({
     visible: false,
@@ -746,6 +760,30 @@ export const EditPublishedTripScreen: React.FC<EditPublishedTripScreenProps> = (
       showToast("Trip title can't be empty.");
       return;
     }
+    // ORCH-1118 — trip location must be a confirmed Mapbox pick before save.
+    // BOTH departure AND destination are hard-required — an empty OR dirty
+    // (typed-but-unpicked) value on either field blocks save. Reveal the inline
+    // errors + expand the basics section. Do not loosen
+    // (I-PROPOSED-TRIP-LOCATION-MAPBOX-VALIDATED).
+    if (
+      !destinationLocationValidated(
+        editState.destinationLocationText,
+        editState.destinationPlaceId,
+        editState.destinationLat,
+        editState.destinationLng,
+      ) ||
+      !departureLocationValidated(
+        editState.departureLocationText,
+        editState.departurePlaceId,
+        editState.departureLat,
+        editState.departureLng,
+      )
+    ) {
+      setShowEditAddressErrors(true);
+      setOpenSection("basics");
+      showToast("Pick the trip's departure and destination from the suggestions.");
+      return;
+    }
     const changedKeys = Object.keys(patch);
     // Refine severity using the per-section drop indicators we computed.
     const severity = classifyTripSeverity(changedKeys, {
@@ -761,7 +799,7 @@ export const EditPublishedTripScreen: React.FC<EditPublishedTripScreenProps> = (
       pricingTierDiffs: computed.pricingTierDiffs,
       severity,
     });
-  }, [computed, tripFieldDiffs, showToast]);
+  }, [computed, tripFieldDiffs, showToast, editState]);
 
   // ---- Map rejection result to dialog content ----
   const buildRejectDialog = useCallback(
@@ -1092,40 +1130,98 @@ export const EditPublishedTripScreen: React.FC<EditPublishedTripScreenProps> = (
                   testID="edit-trip-description"
                 />
               </View>
-              {/* ORCH-1016 — Departing from (origin), ABOVE Destination. Text-only
-                  edit (mirrors the destination edit field's plain TextInput). The
-                  ORCH-1016 trigger syncs theme.business_trip.departureLocationText →
-                  events.departure_text. Additive — no refund gate. */}
-              <View style={styles.fieldGroup}>
+              {/* ORCH-1118 — Departing from (origin), ABOVE Destination. Swapped
+                  the legacy plain TextInput for the shared Mapbox picker so the
+                  planner must confirm a real pick (placeId + lat + lng); typing
+                  nulls the structured fields. The ORCH-1016 trigger syncs
+                  theme.business_trip.departureLocationText/Lat/Lng →
+                  events.departure_text/geo (unchanged). Do not loosen
+                  (I-PROPOSED-TRIP-LOCATION-MAPBOX-VALIDATED). testID lives on the
+                  wrapping View (the picker wrapper takes no testID prop). */}
+              <View style={styles.fieldGroup} testID="edit-trip-departure">
                 <Text style={styles.fieldLabel}>Departing from</Text>
-                <TextInput
+                <MapboxAddressInput
                   value={editState.departureLocationText ?? ""}
+                  accessibilityLabel="Departing from"
+                  placeholder="e.g. Washington, DC, USA"
                   onChangeText={(v) =>
                     updateBasics({
                       departureLocationText: v.trim().length === 0 ? null : v,
+                      departurePlaceId: null,
+                      departureLat: null,
+                      departureLng: null,
                     })
                   }
-                  placeholder="e.g. Washington, DC, USA"
-                  placeholderTextColor={textTokens.tertiary}
-                  style={styles.textInput}
-                  accessibilityLabel="Departing from"
-                  testID="edit-trip-departure"
+                  onPick={(place) =>
+                    updateBasics({
+                      departurePlaceId: place.placeId,
+                      departureLocationText: place.formattedAddress,
+                      departureLat: place.location.lat,
+                      departureLng: place.location.lng,
+                    })
+                  }
+                  onClear={() =>
+                    updateBasics({
+                      departurePlaceId: null,
+                      departureLocationText: null,
+                      departureLat: null,
+                      departureLng: null,
+                    })
+                  }
+                  error={
+                    showEditAddressErrors &&
+                    !departureLocationValidated(
+                      editState.departureLocationText,
+                      editState.departurePlaceId,
+                      editState.departureLat,
+                      editState.departureLng,
+                    )
+                      ? TRIP_DEPARTURE_PICK_ERROR
+                      : undefined
+                  }
                 />
               </View>
-              <View style={styles.fieldGroup}>
+              <View style={styles.fieldGroup} testID="edit-trip-destination">
                 <Text style={styles.fieldLabel}>Destination</Text>
-                <TextInput
+                <MapboxAddressInput
                   value={editState.destinationLocationText ?? ""}
+                  accessibilityLabel="Destination"
+                  placeholder="e.g. Tulum, Quintana Roo, Mexico"
                   onChangeText={(v) =>
                     updateBasics({
                       destinationLocationText: v.trim().length === 0 ? null : v,
+                      destinationPlaceId: null,
+                      destinationLat: null,
+                      destinationLng: null,
                     })
                   }
-                  placeholder="e.g. Tulum, Quintana Roo, Mexico"
-                  placeholderTextColor={textTokens.tertiary}
-                  style={styles.textInput}
-                  accessibilityLabel="Destination"
-                  testID="edit-trip-destination"
+                  onPick={(place) =>
+                    updateBasics({
+                      destinationPlaceId: place.placeId,
+                      destinationLocationText: place.formattedAddress,
+                      destinationLat: place.location.lat,
+                      destinationLng: place.location.lng,
+                    })
+                  }
+                  onClear={() =>
+                    updateBasics({
+                      destinationPlaceId: null,
+                      destinationLocationText: null,
+                      destinationLat: null,
+                      destinationLng: null,
+                    })
+                  }
+                  error={
+                    showEditAddressErrors &&
+                    !destinationLocationValidated(
+                      editState.destinationLocationText,
+                      editState.destinationPlaceId,
+                      editState.destinationLat,
+                      editState.destinationLng,
+                    )
+                      ? TRIP_DESTINATION_PICK_ERROR
+                      : undefined
+                  }
                 />
               </View>
               <View style={styles.fieldGroup}>
@@ -1344,6 +1440,7 @@ export const EditPublishedTripScreen: React.FC<EditPublishedTripScreenProps> = (
     },
     [
       editState,
+      showEditAddressErrors,
       updateBasics,
       handleDaysChange,
       handleInclusionsChange,

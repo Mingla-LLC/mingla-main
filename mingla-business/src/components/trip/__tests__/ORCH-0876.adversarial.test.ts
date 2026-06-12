@@ -202,18 +202,34 @@ describe("ORCH-0876 adversarial — A1: editState re-seed on prop change", () =>
 
 describe("ORCH-0876 adversarial — A2: TripCheckoutFlow S-3 fix pinned", () => {
   const SRC = read("components/trip/TripCheckoutFlow.tsx");
+  // [TEST-MOD-APPROVED by orchestrator, ORCH-1117 CLOSE] — ORCH-1117's LOCKED
+  // decision (§4.5) removed the LOUD inline Reserve nav from TripCheckoutFlow
+  // and moved it to the public trip route's floating Buy bar. The S-3
+  // destination invariant (route to /checkout-trip/{id}, NEVER the events
+  // /checkout/{id} chain that hard-rejects trip rows) is UNCHANGED — it simply
+  // lives in app/t/[brandSlug]/[tripSlug].tsx now. The A2 source read is
+  // re-pointed at the route; the destination invariant assertion is preserved
+  // verbatim. Authorized by the ORCH-1117 TEST dispatch.
+  const ROUTE = readApp("t/[brandSlug]/[tripSlug].tsx");
 
-  test("handleReserve routes to /checkout-trip/${trip.id} (NOT the events chain)", () => {
-    // Pre-ORCH-0876 the same callsite pushed to `/checkout/${trip.id}`
+  test("trip floating-bar reserve routes to /checkout-trip/{id} (NOT the events chain)", () => {
+    // Pre-ORCH-0876 the same buyer action pushed to `/checkout/${trip.id}`
     // and buyers saw "Event not found" because getPublicEventById
-    // hard-rejects trip rows by audit-test invariant.
-    expect(SRC).toMatch(/router\.push\(`\/checkout-trip\/\$\{trip\.id\}` as never\)/);
-    // And explicitly NOT the broken pattern.
-    expect(SRC).not.toMatch(/router\.push\(`\/checkout\/\$\{trip\.id\}` as never\)/);
+    // hard-rejects trip rows by audit-test invariant. ORCH-1117 moved the
+    // action to the floating bar in the route, still via tripCheckoutPath.
+    // DESTINATION INVARIANT (preserved): the route navigates to the
+    // trip-specific checkout chain, never the events /checkout/{id} chain.
+    expect(ROUTE).toMatch(/router\.push\(tripCheckoutPath\(trip\.id\) as never\)/);
+    // And explicitly NOT the broken events chain (raw or via helper).
+    expect(ROUTE).not.toMatch(/router\.push\(`\/checkout\/\$\{trip\.id\}` as never\)/);
+    expect(ROUTE).not.toMatch(/router\.push\(checkoutPublicPath\(trip\.id\)/);
   });
 
   test("handleReserve callsite cites ORCH-0876 + audit-test invariant in a comment", () => {
     // Future refactors deserve a sign that says "do not revert this line."
+    // The comment stays in TripCheckoutFlow.tsx (ORCH-1117 preserved it when
+    // it moved the LOUD nav out) so the trip-chain invariant rationale is
+    // documented at the surface the original investigation pointed at.
     expect(SRC).toMatch(/ORCH-0876.*trip-specific chain/);
     expect(SRC).toMatch(/eventType\.filter\.audit\.test\.ts/);
   });

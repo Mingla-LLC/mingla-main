@@ -40,6 +40,14 @@ import { Button } from "../ui/Button";
 // consumer reads it as a Google id). Mapbox Search Box /suggest returns POIs
 // by name (no `types` filter): https://docs.mapbox.com/api/search/search-box/#get-suggestions
 import { MapboxAddressInput } from "../location/MapboxAddressInput";
+// ORCH-1118 — trip location must be a confirmed Mapbox pick before publish/save
+// (I-PROPOSED-TRIP-LOCATION-MAPBOX-VALIDATED). Do not loosen.
+import {
+  departureLocationValidated,
+  destinationLocationValidated,
+  TRIP_DEPARTURE_PICK_ERROR,
+  TRIP_DESTINATION_PICK_ERROR,
+} from "./tripLocationValidated";
 import { type CoverPatch } from "../ui/CoverPicker";
 import { CoverPickerSheet } from "../ui/CoverPickerSheet";
 import { EventCoverMedia } from "../ui/EventCoverMedia";
@@ -83,6 +91,10 @@ export interface TripCreatorStep1BasicsProps {
   brandId: string;
   tripEventId: string;
   onShowToast?: (msg: string) => void;
+  // ORCH-1118 — when true, reveal the inline "pick from suggestions" error on a
+  // departure/destination field that is empty or typed-but-unvalidated. The
+  // wizard flips this on a blocked publish attempt. Default false.
+  showAddressErrors?: boolean;
   // ORCH-0892-A: legacy wizard-scroll-ref prop removed. CoverPicker now
   // uses the keyboard-controller library's KAV wrap instead.
 }
@@ -150,7 +162,30 @@ export const TripCreatorStep1Basics: React.FC<TripCreatorStep1BasicsProps> = ({
   brandId,
   tripEventId,
   onShowToast,
+  showAddressErrors = false,
 }) => {
+  // ORCH-1118 — inline "pick from suggestions" errors. Revealed only after a
+  // blocked publish attempt (showAddressErrors). Empty OR dirty → error.
+  const departureError =
+    showAddressErrors &&
+    !departureLocationValidated(
+      draft.departureLocationText,
+      draft.departurePlaceId,
+      draft.departureLat,
+      draft.departureLng,
+    )
+      ? TRIP_DEPARTURE_PICK_ERROR
+      : undefined;
+  const destinationError =
+    showAddressErrors &&
+    !destinationLocationValidated(
+      draft.destinationLocationText,
+      draft.destinationPlaceId,
+      draft.destinationLat,
+      draft.destinationLng,
+    )
+      ? TRIP_DESTINATION_PICK_ERROR
+      : undefined;
   const handleCoverChange = useCallback(
     (patch: CoverPatch): void => {
       onChange({
@@ -363,7 +398,17 @@ export const TripCreatorStep1Basics: React.FC<TripCreatorStep1BasicsProps> = ({
         <Text style={styles.fieldLabel}>Departing from</Text>
         <MapboxAddressInput
           value={draft.departureLocationText ?? ""}
-          onChangeText={(v) => onChange({ departureLocationText: v })}
+          accessibilityLabel="Departing from"
+          // ORCH-1118 — typing nulls the structured fields so the planner must
+          // confirm a real Mapbox pick (mirrors ExperienceStopCard). Do not loosen.
+          onChangeText={(v) =>
+            onChange({
+              departureLocationText: v,
+              departurePlaceId: null,
+              departureLat: null,
+              departureLng: null,
+            })
+          }
           onPick={(place) => {
             onChange({
               departurePlaceId: place.placeId,
@@ -380,6 +425,7 @@ export const TripCreatorStep1Basics: React.FC<TripCreatorStep1BasicsProps> = ({
               departureLng: null,
             });
           }}
+          error={departureError}
           placeholder="e.g. Washington, DC, USA"
         />
       </View>
@@ -389,7 +435,17 @@ export const TripCreatorStep1Basics: React.FC<TripCreatorStep1BasicsProps> = ({
         <Text style={styles.fieldLabel}>Destination</Text>
         <MapboxAddressInput
           value={draft.destinationLocationText ?? ""}
-          onChangeText={(v) => onChange({ destinationLocationText: v })}
+          accessibilityLabel="Destination"
+          // ORCH-1118 — typing nulls the structured fields so the planner must
+          // confirm a real Mapbox pick (mirrors ExperienceStopCard). Do not loosen.
+          onChangeText={(v) =>
+            onChange({
+              destinationLocationText: v,
+              destinationPlaceId: null,
+              destinationLat: null,
+              destinationLng: null,
+            })
+          }
           onPick={(place) => {
             onChange({
               destinationPlaceId: place.placeId,
@@ -406,6 +462,7 @@ export const TripCreatorStep1Basics: React.FC<TripCreatorStep1BasicsProps> = ({
               destinationLng: null,
             });
           }}
+          error={destinationError}
           placeholder="e.g. Tulum, Quintana Roo, Mexico"
         />
       </View>

@@ -33,10 +33,13 @@ import * as Haptics from "expo-haptics";
 
 import {
   type PublicBrandProps,
+  type CtaState,
   type PublicEventCallbacks,
   PublicEventPage,
   type PublicEventProps,
   type ViewerRole,
+  computeOfferingVariant,
+  resolveOfferingCta,
   resolveTheme,
 } from "@mingla/event-rendering";
 
@@ -74,6 +77,10 @@ import {
   type ExperienceOccurrence,
 } from "./ExperienceOccurrencePicker";
 import { ExperienceItinerary } from "./ExperienceItinerary";
+// ORCH-1117 — the floating Buy bar pinned at the END of the sheet's bare scroll
+// (F-B scroll-sibling, NEVER stickyFooter). State from the shared
+// resolveOfferingCta (one owner).
+import { FloatingOfferingBar } from "../offering/FloatingOfferingBar";
 
 interface ExpandedBusinessEventSheetProps {
   visible: boolean;
@@ -447,6 +454,35 @@ export const ExpandedBusinessEventSheet: React.FC<
     [bookableOccurrences],
   );
 
+  // ORCH-1117 — floating Buy bar state. PURE projection of resolveOfferingCta
+  // (same machine the inline rows read). OQ-B: the BusinessEventCard supply has
+  // no `bookable`, so v1 passes bookable=true and relies on the existing
+  // checkout 409 → cart toast for the not-ready case (never dead-ends). The bar's
+  // tappable Buy opens the cart at the first sellable ticket via beginBooking;
+  // the inline per-tier rows stay for multi-tier picking.
+  const floatingCta: CtaState = useMemo(() => {
+    const tickets = ticketsQuery.data ?? [];
+    return resolveOfferingCta({
+      variant: computeOfferingVariant(publicEvent, false),
+      bookable: true,
+      tickets,
+      currency: publicEvent.currency,
+    });
+  }, [ticketsQuery.data, publicEvent]);
+  const handleFloatingBarPress = useCallback((): void => {
+    const tickets = ticketsQuery.data ?? [];
+    // Open the cart at the first sellable, non-hidden ticket (the inline rows
+    // remain for explicit per-tier selection).
+    const sellable = tickets.find(
+      (t) =>
+        t.visibility !== "hidden" &&
+        !(t.availableAt === "door") &&
+        (t.isUnlimited || (t.capacity ?? 0) > 0),
+    );
+    const target = sellable ?? tickets.find((t) => t.visibility !== "hidden");
+    if (target !== undefined) beginBooking(target.id);
+  }, [ticketsQuery.data, beginBooking]);
+
   // ORCH-1072 — the picker chose a date → carry it + open the cart for qty/pay.
   const handleOccurrenceSelect = useCallback((eventDateId: string): void => {
     setSelectedEventDateId(eventDateId);
@@ -530,12 +566,26 @@ export const ExpandedBusinessEventSheet: React.FC<
         {children}
         {/* ORCH-1072 — itinerary section (experience-only). */}
         <ExperienceItinerary stops={itineraryStops} />
-        <View style={{ height: bottomPad }} pointerEvents="none" />
+        {/* ORCH-1117 — floating Buy bar pinned at the END of the bare scroll
+            (F-B scroll-sibling; NEVER stickyFooter). It carries its own bottom
+            inset, so it replaces the old spacer as the last in-flow element. */}
+        <FloatingOfferingBar
+          cta={floatingCta}
+          onPress={handleFloatingBarPress}
+          bottomInset={bottomPad}
+          testID="orch-1117-brand-event-floating-bar"
+        />
       </View>
     );
     Host.displayName = "EbesPassthroughHost";
     return Host;
-  }, [bottomContentInset, bottomSheetInset, itineraryStops]);
+  }, [
+    bottomContentInset,
+    bottomSheetInset,
+    itineraryStops,
+    floatingCta,
+    handleFloatingBarPress,
+  ]);
 
   // META-ORCH-0991 Wave A — migrated onto BaseBottomSheet. Declarative
   // `visible` + initialIndex=1 (90% snap) replicate the proven inline

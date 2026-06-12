@@ -17,27 +17,36 @@
  * Per spec §3.4. Sticky shelf renders absolute-positioned above safe-area.
  */
 
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
 import {
   ActivityIndicator,
-  Image as RNImage,
+  LayoutAnimation,
   Platform,
   Pressable,
   RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
+  useWindowDimensions,
   View,
 } from "react-native";
-import { Image as ExpoImage } from "expo-image";
+import { LinearGradient } from "expo-linear-gradient";
+import { useReducedMotion } from "react-native-reanimated";
 import { useQueryClient } from "@tanstack/react-query";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { brandKeys } from "../../hooks/useBrands";
 import { eventOrdersKeys } from "../../hooks/useEventOrders";
+import { useBusinessEventsForBrand } from "../../hooks/useBusinessEvents";
 
 import {
   accent,
+  canvas,
   glass,
   radius as radiusTokens,
   semantic,
@@ -46,6 +55,7 @@ import {
   typography,
 } from "../../constants/designSystem";
 import type { Brand, BrandStripeStatus } from "../../store/currentBrandStore";
+import type { LiveEvent } from "../../store/liveEventStore";
 import { formatCurrencyRound, formatCount } from "../../utils/currency";
 import { useCurrentBrandRole } from "../../hooks/useCurrentBrandRole";
 import { canPerformAction } from "../../utils/permissionGates";
@@ -54,13 +64,17 @@ import {
   getBrandProfileStripeBannerCopy,
   getBrandProfileStripeOperationsSub,
 } from "../../utils/brandStripeUiState";
+import { deriveCardStatus } from "../../../app/(tabs)/hub/eventCardStatus";
 
 import { Avatar } from "../ui/Avatar";
 import { Button } from "../ui/Button";
+import { EventCoverMedia } from "../ui/EventCoverMedia";
 import { GlassCard } from "../ui/GlassCard";
 import { Icon } from "../ui/Icon";
 import type { IconName } from "../ui/Icon";
 import { KpiTile } from "../ui/KpiTile";
+import { OfferingListCard } from "../offering/OfferingListCard";
+import { liveEventToOfferingModel } from "../offering/offeringCardModels";
 import { TopBar } from "../ui/TopBar";
 
 interface OperationsRow {
@@ -190,6 +204,19 @@ export interface BrandProfileViewProps {
    */
   onCreateEvent: () => void;
   /**
+   * ORCH-1121 — called when user taps a Recent-Events row. Receives the
+   * event id, its event_type, and its derived status so the route file can
+   * dispatch via `routeForEventRowDefensive` (event → /event/{id},
+   * experience → /experience/{id}). NOT a dead tap.
+   */
+  onOpenEvent: (eventId: string, eventType?: string, status?: string) => void;
+  /**
+   * ORCH-1121 — called when user taps the "See all" header link (only shown
+   * when the brand has more than the 5 most-recent events shown). Routes to
+   * the Hub events list.
+   */
+  onSeeAllEvents: () => void;
+  /**
    * Called when user taps a social chip on the brand profile. Receives
    * the normalized full URL. Caller wires to `Linking.openURL`.
    * NEW in Cycle 7 FX1 — replaces Cycle-2 J-A7 TRANSITIONAL Toast.
@@ -220,11 +247,15 @@ export const BrandProfileView: React.FC<BrandProfileViewProps> = ({
   onViewPublic,
   onListing,
   onCreateEvent,
+  onOpenEvent,
+  onSeeAllEvents,
   onOpenLink,
   onRequestDelete,
 }) => {
   const insets = useSafeAreaInsets();
   const queryClient = useQueryClient();
+  const { width: windowWidth } = useWindowDimensions();
+  const reduceMotion = useReducedMotion();
 
   // ORCH-0816 — pull-to-refresh as a manual freshness signal alongside the
   // Realtime subscription on `orders` in useBrand. Invalidates the detail
@@ -245,12 +276,13 @@ export const BrandProfileView: React.FC<BrandProfileViewProps> = ({
     }
   }, [queryClient, brand]);
 
-  // ORCH-0807 Rev 3 — Brand cover band on the hero card. 3-state fallback
-  // chain mirrors PublicBrandPage.tsx:259-304 verbatim: (1) coverMediaUrl
-  // present + load succeeds → image element (expo-image on Android for
-  // correct GIF animation; RN core <Image> on iOS+web per ORCH-0805-WEB
-  // hotfix); (2) coverMediaUrl present + load fails → hue gradient via
-  // onError flip; (3) coverMediaUrl null → hue gradient.
+  // ORCH-1121 — Brand cover hero. 3-state fallback chain (PRESERVED from the
+  // earlier ORCH-0807 implementation): (1) coverMediaUrl present + load
+  // succeeds → EventCoverMedia (image / GIF / VIDEO, per-platform element +
+  // motion-gated animation owned by ECM); (2) coverMediaUrl present + load
+  // fails → hue gradient via the coverMediaFailed flip; (3) coverMediaUrl
+  // null → hue gradient. The business hero intentionally diverges from the
+  // buyer-facing PublicBrandPage (ORCH-1121, Seth-accepted).
   const coverMediaUrl =
     typeof brand?.coverMediaUrl === "string" ? brand.coverMediaUrl : null;
   const [coverMediaFailed, setCoverMediaFailed] = useState<boolean>(false);
@@ -258,6 +290,52 @@ export const BrandProfileView: React.FC<BrandProfileViewProps> = ({
   useEffect(() => {
     setCoverMediaFailed(false);
   }, [coverMediaUrl]);
+
+  // ORCH-1121 — About-us read-more toggle (only shown when the bio is long
+  // enough to clip; see the render branch). TOP-LEVEL hook (ORCH-0710
+  // ordering): declared above the early returns.
+  const [aboutExpanded, setAboutExpanded] = useState<boolean>(false);
+  const toggleAboutExpanded = useCallback((): void => {
+    if (!reduceMotion) {
+      LayoutAnimation.configureNext(
+        LayoutAnimation.Presets.easeInEaseOut,
+      );
+    }
+    setAboutExpanded((prev) => !prev);
+  }, [reduceMotion]);
+
+  // ORCH-1121 — Recent Events live data. Brand-scoped query at TOP LEVEL
+  // (ORCH-0710 hook ordering): passes `brand?.id ?? null` so the hook is
+  // NEVER conditional — a null brand yields an empty, disabled query that
+  // returns []. The hook returns PUBLISHED events (scheduled/live/ended/
+  // cancelled, including past) and already excludes trips; drafts come from
+  // a separate source and are intentionally NOT merged here.
+  const {
+    data: brandEvents = [],
+    isLoading: eventsLoading,
+    isError: eventsError,
+    refetch: refetchEvents,
+  } = useBusinessEventsForBrand(brand?.id ?? null);
+
+  const recentEvents = useMemo<
+    { event: LiveEvent; status: ReturnType<typeof deriveCardStatus> }[]
+  >(() => {
+    return brandEvents
+      .map((e) => ({ event: e, status: deriveCardStatus(e) }))
+      .sort((a, b) => {
+        // Most-recent first by event date; null dates sort last.
+        const ta =
+          a.event.date !== null ? new Date(a.event.date).getTime() : null;
+        const tb =
+          b.event.date !== null ? new Date(b.event.date).getTime() : null;
+        if (ta === null && tb === null) return 0;
+        if (ta === null) return 1;
+        if (tb === null) return -1;
+        return tb - ta;
+      })
+      .slice(0, 5);
+  }, [brandEvents]);
+  const totalEventCount = brandEvents.length;
 
   const handleEdit = useCallback((): void => {
     if (brand !== null) {
@@ -467,6 +545,23 @@ export const BrandProfileView: React.FC<BrandProfileViewProps> = ({
 
   // ----- Populated state -----
   const hasBio = typeof brand.bio === "string" && brand.bio.trim().length > 0;
+  const bioText = typeof brand.bio === "string" ? brand.bio : "";
+
+  // ORCH-1121 — full-bleed 16:9 cover (Direction 1). The hero card spans the
+  // content column: window width minus the page's horizontal padding on each
+  // side (scroll uses `paddingHorizontal: spacing.md`). Height clamps to
+  // [176, 240] — floor so the avatar overlap never eats the whole cover,
+  // ceiling for tall screens.
+  const coverWidth = Math.max(0, windowWidth - spacing.md * 2);
+  const COVER_H = Math.min(240, Math.max(176, Math.round((coverWidth * 9) / 16)));
+
+  // ORCH-1121 — show the About read-more toggle only when the bio is long
+  // enough to clip the 4-line collapsed paragraph (cheap length heuristic).
+  const aboutIsLong = hasBio && bioText.length > 160;
+
+  // ORCH-1121 — has the events query settled into a genuine zero-result?
+  const eventsSettledEmpty =
+    !eventsLoading && !eventsError && brandEvents.length === 0;
 
   return (
     <View style={styles.host}>
@@ -486,75 +581,125 @@ export const BrandProfileView: React.FC<BrandProfileViewProps> = ({
           <RefreshControl refreshing={isRefreshing} onRefresh={handleRefresh} />
         }
       >
-        {/* SECTION A — Hero card with cover band + half-overlap avatar.
-            ORCH-0807 Rev 3 — mirrors the PublicBrandPage.tsx:259-346 pattern
-            so the internal Brand Profile view shows the same hero treatment
-            buyers see on the public page. Cover band fills the top of the
-            card edge-to-edge (GlassCard padding=0); the round avatar sits
-            on top with -42px margin-top so half-of-it overlaps the cover. */}
+        {/* SECTION A — Direction-1 full-bleed hero (ORCH-1121).
+            16:9 cover (EventCoverMedia: image/GIF/video, motion-gated) with a
+            required bottom scrim, a 96px page-color ring avatar half-overlapping
+            the cover seam, centered name/tagline/location, an About-us block
+            with read-more, then centered social chips. The business hero
+            intentionally diverges from the buyer-facing PublicBrandPage
+            (Seth-accepted). GlassCard padding={0} is load-bearing for the
+            edge-to-edge cover. */}
         <GlassCard variant="elevated" padding={0}>
-          <View style={styles.heroCoverBand} pointerEvents="none">
-            {coverMediaUrl !== null && coverMediaUrl.length > 0 && !coverMediaFailed ? (
-              Platform.OS === "android" ? (
-                <ExpoImage
-                  source={{ uri: coverMediaUrl }}
-                  style={styles.heroCoverFill}
-                  contentFit="cover"
-                  onError={() => setCoverMediaFailed(true)}
-                  accessibilityLabel="Brand cover"
-                />
-              ) : (
-                <RNImage
-                  source={{ uri: coverMediaUrl }}
-                  // ORCH-0805-WEB hotfix — explicit width/height "100%"
-                  // because react-native-web's <img> doesn't honor
-                  // position: absolute; inset: 0 the way RN native does.
-                  style={[
-                    styles.heroCoverFill,
-                    { width: "100%", height: "100%" },
-                  ]}
-                  resizeMode="cover"
-                  onError={() => setCoverMediaFailed(true)}
-                  accessibilityLabel="Brand cover"
-                />
-              )
+          <View
+            style={[styles.heroCover, { height: COVER_H }]}
+            pointerEvents="none"
+          >
+            {coverMediaUrl !== null &&
+            coverMediaUrl.length > 0 &&
+            !coverMediaFailed ? (
+              <EventCoverMedia
+                hue={brand.coverHue}
+                mediaUrl={coverMediaUrl}
+                mediaType={brand.coverMediaType ?? null}
+                radius={0}
+                width="100%"
+                height={COVER_H}
+                videoContentFit="cover"
+                label=""
+                autoplay={!reduceMotion}
+                playbackActive={!reduceMotion}
+                loop
+                muted
+                onMediaError={() => setCoverMediaFailed(true)}
+              />
             ) : (
-              <View
-                style={[
-                  styles.heroCoverFill,
-                  { backgroundColor: `hsl(${brand.coverHue}, 60%, 45%)` },
+              <LinearGradient
+                colors={[
+                  `hsl(${brand.coverHue}, 60%, 48%)`,
+                  `hsl(${brand.coverHue}, 55%, 38%)`,
                 ]}
+                style={styles.heroCoverFill}
               />
             )}
+            {/* Scrim — legibility insurance on every media state. */}
+            <LinearGradient
+              colors={["rgba(0,0,0,0)", "rgba(0,0,0,0.55)"]}
+              style={styles.heroCoverScrim}
+              pointerEvents="none"
+            />
           </View>
           <View style={styles.heroBody}>
-            <View style={styles.heroAvatarRow}>
-              {/* ORCH-0807 — wires profile_photo_url to the read-side Avatar.
-                  The negative marginTop on heroAvatarRow pulls half the
-                  84×84 avatar up over the cover band (mirrors
-                  PublicBrandPage's half-in/half-out overlap). */}
+            <View style={styles.heroAvatarRing}>
+              {/* ORCH-1121 — 84×84 shared Avatar centered inside a 96px disc in
+                  the page color → reads as a 6px ring + crisp cutout over the
+                  cover. No Avatar fork (it carries no border prop). */}
               <Avatar name={brand.displayName} size="hero" photo={brand.photo} />
             </View>
-            <Text style={styles.heroName}>{brand.displayName}</Text>
-          {typeof brand.tagline === "string" && brand.tagline.length > 0 ? (
-            <Text style={styles.heroTagline}>{brand.tagline}</Text>
-          ) : null}
 
-          {hasBio ? (
-            <Text style={styles.heroBio}>{brand.bio}</Text>
-          ) : (
-            <Pressable
-              onPress={handleEmptyBio}
-              accessibilityRole="button"
-              accessibilityLabel="Add a brand description"
-              style={styles.emptyBioCta}
-            >
-              <Text style={styles.emptyBioText}>
-                Add a description so people know what you{"’"}re about
+            <View style={styles.heroNameRow}>
+              <Text style={styles.heroName} numberOfLines={2}>
+                {brand.displayName}
               </Text>
-              <Icon name="chevR" size={16} color={accent.warm} />
-            </Pressable>
-          )}
+            </View>
+
+            {typeof brand.tagline === "string" && brand.tagline.length > 0 ? (
+              <Text style={styles.heroTagline} numberOfLines={2}>
+                {brand.tagline}
+              </Text>
+            ) : null}
+
+            {typeof brand.address === "string" && brand.address.length > 0 ? (
+              <View style={styles.heroLocationRow}>
+                <Icon name="location" size={13} color={textTokens.tertiary} />
+                <Text style={styles.heroLocation} numberOfLines={1}>
+                  {brand.address}
+                </Text>
+              </View>
+            ) : null}
+
+            <View style={styles.heroDivider} />
+
+            {hasBio ? (
+              <>
+                <Text style={styles.heroAboutEyebrow}>ABOUT US</Text>
+                <Text
+                  style={styles.heroAboutBody}
+                  numberOfLines={aboutExpanded ? undefined : 4}
+                >
+                  {brand.bio}
+                </Text>
+                {aboutIsLong ? (
+                  <Pressable
+                    onPress={toggleAboutExpanded}
+                    accessibilityRole="button"
+                    accessibilityLabel={
+                      aboutExpanded ? "Show less" : "Read more"
+                    }
+                    hitSlop={8}
+                    style={({ pressed }) => [
+                      styles.heroReadMore,
+                      pressed && styles.heroReadMorePressed,
+                    ]}
+                  >
+                    <Text style={styles.heroReadMoreText}>
+                      {aboutExpanded ? "Show less" : "Read more"}
+                    </Text>
+                  </Pressable>
+                ) : null}
+              </>
+            ) : (
+              <Pressable
+                onPress={handleEmptyBio}
+                accessibilityRole="button"
+                accessibilityLabel="Add a brand description"
+                style={styles.emptyBioCta}
+              >
+                <Text style={styles.emptyBioText}>
+                  Add a description so people know what you{"’"}re about
+                </Text>
+                <Icon name="chevR" size={16} color={accent.warm} />
+              </Pressable>
+            )}
 
           {(() => {
             // Build the icon-chip list — only render chips for non-empty fields.
@@ -604,7 +749,11 @@ export const BrandProfileView: React.FC<BrandProfileViewProps> = ({
                     onPress={() => handleOpenLink(chip.url)}
                     accessibilityRole="button"
                     accessibilityLabel={chip.aria}
-                    style={styles.socialChip}
+                    hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+                    style={({ pressed }) => [
+                      styles.socialChip,
+                      pressed && styles.socialChipPressed,
+                    ]}
                   >
                     <Icon name={chip.icon} size={18} color={accent.warm} />
                   </Pressable>
@@ -695,25 +844,91 @@ export const BrandProfileView: React.FC<BrandProfileViewProps> = ({
           })}
         </GlassCard>
 
-        {/* SECTION E — Recent Events */}
+        {/* SECTION E — Recent Events (ORCH-1121).
+            ORCH-1121 (Constitution #9 / I-PROPOSED-1121-RECENT-EVENTS-LIVE-QUERY):
+            this empty card is gated on a SETTLED, non-error, zero-length live
+            query. Never make it unconditional again — see
+            BrandProfileView.orch_1121.test.tsx (T-1). */}
         <View style={styles.sectionHeaderRow}>
           <Text style={styles.sectionTitle}>Recent events</Text>
+          {totalEventCount > 5 ? (
+            <Pressable
+              onPress={onSeeAllEvents}
+              accessibilityRole="button"
+              accessibilityLabel="See all events"
+              hitSlop={8}
+              style={({ pressed }) => [
+                styles.seeAllRow,
+                pressed && styles.seeAllRowPressed,
+              ]}
+            >
+              <Text style={styles.seeAllText}>See all</Text>
+              <Icon name="chevR" size={14} color={accent.warm} />
+            </Pressable>
+          ) : null}
         </View>
-        <GlassCard variant="base" padding={spacing.lg}>
-          <Text style={styles.emptyEventsTitle}>No events yet</Text>
-          <Text style={styles.emptyEventsBody}>
-            Events you create will show here.
-          </Text>
-          <View style={styles.emptyEventsBtnRow}>
-            <Button
-              label="Create your first event"
-              onPress={handleCreateEvent}
-              variant="primary"
-              size="md"
-              leadingIcon="plus"
-            />
+
+        {eventsError ? (
+          <GlassCard variant="base" padding={spacing.lg}>
+            <Text style={styles.emptyEventsTitle}>
+              Couldn{"’"}t load your events.
+            </Text>
+            <Text style={styles.emptyEventsBody}>
+              Something went wrong fetching your events.
+            </Text>
+            <View style={styles.emptyEventsBtnRow}>
+              <Button
+                label="Tap to retry"
+                onPress={() => {
+                  void refetchEvents();
+                }}
+                variant="secondary"
+                size="md"
+                leadingIcon="swap"
+              />
+            </View>
+          </GlassCard>
+        ) : recentEvents.length > 0 ? (
+          <View style={styles.recentEventsList}>
+            {recentEvents.map(({ event, status }) => (
+              <OfferingListCard
+                key={event.id}
+                kind="event"
+                model={liveEventToOfferingModel(event, status)}
+                onOpen={() =>
+                  onOpenEvent(event.id, event.event_type, event.status)
+                }
+                // onManageOpen OMITTED → hides the 3-dot manage trigger; the
+                // brand profile is a glanceable summary (management is in the Hub).
+              />
+            ))}
           </View>
-        </GlassCard>
+        ) : eventsSettledEmpty ? (
+          <GlassCard variant="base" padding={spacing.lg}>
+            <Text style={styles.emptyEventsTitle}>No events yet</Text>
+            <Text style={styles.emptyEventsBody}>
+              Events you create will show here.
+            </Text>
+            <View style={styles.emptyEventsBtnRow}>
+              <Button
+                label="Create your first event"
+                onPress={handleCreateEvent}
+                variant="primary"
+                size="md"
+                leadingIcon="plus"
+              />
+            </View>
+          </GlassCard>
+        ) : (
+          // Loading (query fetching, no cached rows yet): render nothing until
+          // the query settles. staleTime 30s makes cached loads instant, so the
+          // false-empty flash is impossible — we never show the empty card mid-
+          // load (the exact bug this ORCH kills).
+          <View style={styles.recentEventsLoading} pointerEvents="none">
+            <View style={styles.recentEventsSkeletonRow} />
+            <View style={styles.recentEventsSkeletonRow} />
+          </View>
+        )}
 
         {/* Cycle 17e-A — Danger zone (delete brand) */}
         {onRequestDelete !== undefined && brand !== null ? (
@@ -815,16 +1030,16 @@ const styles = StyleSheet.create({
     marginTop: spacing.sm,
   },
 
-  // Hero -----------------------------------------------------------------
-  // ORCH-0807 Rev 3 — cover band on top of the hero card, padded content
-  // body below, avatar pulled up -42px so half of its 84×84 frame overlaps
-  // the cover band (matches PublicBrandPage half-in/half-out pattern).
-  heroCoverBand: {
-    height: 140,
+  // Hero (ORCH-1121 — Direction 1 full-bleed) ----------------------------
+  // 16:9 cover region (height supplied inline via COVER_H), padded body
+  // below, 96px ring avatar half-overlapping the cover seam (-48px).
+  heroCover: {
     width: "100%",
     overflow: "hidden",
-    borderTopLeftRadius: radiusTokens.lg,
-    borderTopRightRadius: radiusTokens.lg,
+    borderTopLeftRadius: radiusTokens.xl,
+    borderTopRightRadius: radiusTokens.xl,
+    // No Android shadow/elevation on the cover (square-halo bug); the clip +
+    // scrim are the legibility mechanism.
   },
   heroCoverFill: {
     position: "absolute",
@@ -833,13 +1048,33 @@ const styles = StyleSheet.create({
     right: 0,
     bottom: 0,
   },
-  heroBody: {
-    padding: spacing.lg,
+  heroCoverScrim: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    bottom: 0,
+    height: "50%",
   },
-  heroAvatarRow: {
+  heroBody: {
+    paddingHorizontal: spacing.lg,
+    paddingBottom: spacing.lg,
+  },
+  heroAvatarRing: {
+    width: 96,
+    height: 96,
+    borderRadius: 999,
     alignItems: "center",
-    marginTop: -42, // half of Avatar hero size (84) → 50% overlap on cover band
-    marginBottom: spacing.md,
+    justifyContent: "center",
+    backgroundColor: canvas.profile, // page-color ring → crisp cutout over cover
+    alignSelf: "center",
+    marginTop: -48, // 50% of 96 overlaps the cover seam
+    marginBottom: spacing.sm,
+  },
+  heroNameRow: {
+    flexDirection: "row",
+    justifyContent: "center",
+    alignItems: "center",
+    gap: spacing.xs,
   },
   heroName: {
     fontSize: typography.h2.fontSize,
@@ -854,13 +1089,55 @@ const styles = StyleSheet.create({
     lineHeight: typography.bodySm.lineHeight,
     color: textTokens.secondary,
     textAlign: "center",
+    marginTop: 2,
+  },
+  heroLocationRow: {
+    flexDirection: "row",
+    justifyContent: "center",
+    alignItems: "center",
+    gap: 4,
     marginTop: 4,
   },
-  heroBio: {
+  heroLocation: {
+    fontSize: typography.caption.fontSize,
+    lineHeight: typography.caption.lineHeight,
+    letterSpacing: typography.caption.letterSpacing,
+    color: textTokens.tertiary,
+    flexShrink: 1,
+  },
+  heroDivider: {
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: glass.border.profileBase,
+    marginTop: spacing.md,
+  },
+  heroAboutEyebrow: {
+    fontSize: typography.labelCap.fontSize,
+    lineHeight: typography.labelCap.lineHeight,
+    fontWeight: typography.labelCap.fontWeight,
+    letterSpacing: typography.labelCap.letterSpacing,
+    textTransform: "uppercase",
+    color: textTokens.tertiary,
+    marginTop: spacing.md,
+    marginBottom: spacing.xs,
+  },
+  heroAboutBody: {
     fontSize: typography.body.fontSize,
     lineHeight: typography.body.lineHeight,
     color: textTokens.secondary,
-    marginTop: spacing.md,
+    textAlign: "left",
+  },
+  heroReadMore: {
+    marginTop: spacing.xs,
+    alignSelf: "flex-start",
+  },
+  heroReadMorePressed: {
+    opacity: 0.7,
+  },
+  heroReadMoreText: {
+    fontSize: typography.caption.fontSize,
+    lineHeight: typography.caption.lineHeight,
+    fontWeight: "600",
+    color: accent.warm,
   },
   emptyBioCta: {
     flexDirection: "row",
@@ -884,11 +1161,13 @@ const styles = StyleSheet.create({
   },
 
   // Socials row (J-A8 polish — replaces contactCol + linksRow) -----------
+  // ORCH-1121 — centered to match Direction-1 identity column.
   socialsRow: {
     flexDirection: "row",
     flexWrap: "wrap",
     gap: spacing.sm,
     marginTop: spacing.md,
+    justifyContent: "center",
   },
   socialChip: {
     width: 36,
@@ -900,6 +1179,9 @@ const styles = StyleSheet.create({
     borderColor: accent.border,
     alignItems: "center",
     justifyContent: "center",
+  },
+  socialChipPressed: {
+    opacity: 0.7,
   },
 
   // Stats Strip ----------------------------------------------------------
@@ -1025,6 +1307,44 @@ const styles = StyleSheet.create({
   emptyEventsBtnRow: {
     flexDirection: "row",
     marginTop: spacing.md,
+  },
+
+  // Recent events — populated list + "See all" + loading skeleton (ORCH-1121)
+  recentEventsList: {
+    gap: spacing.sm,
+    marginTop: spacing.sm,
+  },
+  seeAllRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 2,
+  },
+  seeAllRowPressed: {
+    opacity: 0.7,
+  },
+  seeAllText: {
+    fontSize: typography.caption.fontSize,
+    lineHeight: typography.caption.lineHeight,
+    fontWeight: "600",
+    color: accent.warm,
+  },
+  recentEventsLoading: {
+    gap: spacing.sm,
+    marginTop: spacing.sm,
+  },
+  recentEventsSkeletonRow: {
+    height: 92 + spacing.sm * 2,
+    borderRadius: radiusTokens.lg,
+    borderWidth: 1,
+    borderColor: glass.border.profileBase,
+    // Opaque Android fill (ANDROID_GLASS_USES_OPAQUE_FALLBACK); translucent on
+    // iOS. No Android shadow under the rounded fill.
+    backgroundColor: Platform.select({
+      ios: glass.tint.profileBase,
+      android: "rgba(20, 22, 26, 0.92)",
+      default: glass.tint.profileBase,
+    }),
+    overflow: "hidden",
   },
 
   // Sticky shelf ---------------------------------------------------------

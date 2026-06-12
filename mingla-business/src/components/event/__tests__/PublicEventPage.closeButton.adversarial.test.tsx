@@ -72,6 +72,12 @@ jest.mock("react-native-safe-area-context", () => ({
 
 jest.mock("@mingla/event-rendering", () => ({
   PublicEventPage: "SharedPublicEventPage",
+  // ORCH-1117 — the adapter now also pulls the shared theme + offering-CTA
+  // helpers + the floating bar. Stub them so the close-callback evaluator runs.
+  resolveTheme: () => ({ color: "#eb7825", foregroundColor: "#ffffff", fontFamilyValue: undefined }),
+  resolveOfferingCta: () => ({ kind: "buy", label: "Buy ticket", price: "£25", tappable: true }),
+  resolveOfferingSurface: () => "dark",
+  computeOfferingVariant: () => "published",
 }), { virtual: true });
 
 jest.mock("../../../context/AuthContext", () => ({
@@ -249,6 +255,13 @@ const renderPublicEventPage = (
         return { IconChrome: "IconChrome" };
       case "../waitlist/JoinWaitlistSheet":
         return { JoinWaitlistSheet: "JoinWaitlistSheet" };
+      // ORCH-1117 — the adapter mounts the floating Buy bar.
+      case "../offering/FloatingOfferingBar":
+        return { FloatingOfferingBar: "FloatingOfferingBar" };
+      // ORCH-1117 — pre-existing ORCH-1083 dependency the evaluator didn't stub
+      // (this adversarial test was already red on origin/main before ORCH-1117).
+      case "../../theme/useThemeFont":
+        return { useThemeFont: () => undefined };
       default:
         throw new Error(`Unexpected PublicEventPage dependency: ${request}`);
     }

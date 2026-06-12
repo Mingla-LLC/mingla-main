@@ -53,3 +53,57 @@ describe("ORCH-1079 — TripCreatorStep1Basics uses the shared Mapbox picker", (
     expect(s).toContain("destinationLocationText: null");
   });
 });
+
+// ---------------------------------------------------------------------------
+// ORCH-1118 [trip from/destination fields must be Mapbox-validated addresses]
+// ---------------------------------------------------------------------------
+
+const wizardSrc = (): string =>
+  readFileSync(
+    path.join(process.cwd(), "src/components/trip/TripCreatorWizard.tsx"),
+    "utf8",
+  );
+
+describe("ORCH-1118 — create wizard requires confirmed Mapbox picks", () => {
+  test("T-4: typing into either field nulls placeId/lat/lng (both onChangeText)", () => {
+    const s = src();
+    // Departure onChangeText nulls its structured fields.
+    expect(s).toMatch(
+      /onChangeText=\{\(v\)\s*=>\s*\n?\s*onChange\(\{\s*\n?\s*departureLocationText:\s*v,\s*\n?\s*departurePlaceId:\s*null,\s*\n?\s*departureLat:\s*null,\s*\n?\s*departureLng:\s*null,/,
+    );
+    // Destination onChangeText nulls its structured fields.
+    expect(s).toMatch(
+      /onChangeText=\{\(v\)\s*=>\s*\n?\s*onChange\(\{\s*\n?\s*destinationLocationText:\s*v,\s*\n?\s*destinationPlaceId:\s*null,\s*\n?\s*destinationLat:\s*null,\s*\n?\s*destinationLng:\s*null,/,
+    );
+    // The old text-only handlers must be GONE (fails-on-revert).
+    expect(s).not.toContain("onChangeText={(v) => onChange({ departureLocationText: v })}");
+    expect(s).not.toContain("onChangeText={(v) => onChange({ destinationLocationText: v })}");
+  });
+
+  test("T-4: both fields pass an inline error prop", () => {
+    const s = src();
+    expect(s).toContain("error={departureError}");
+    expect(s).toContain("error={destinationError}");
+  });
+
+  test("T-5: publish gate references tripLocationValid and blocks before the confirm dialog", () => {
+    const w = wizardSrc();
+    // tripLocationValid memo built from both field predicates.
+    expect(w).toContain("const tripLocationValid = useMemo(");
+    expect(w).toContain("destinationLocationValidated(");
+    expect(w).toContain("departureLocationValidated(");
+    // handlePublishTap returns before opening the confirm dialog when invalid.
+    const handler = w.slice(
+      w.indexOf("const handlePublishTap"),
+      w.indexOf("setPublishConfirmVisible(true);"),
+    );
+    expect(handler).toContain("if (!tripLocationValid)");
+    expect(handler).toContain("setStep(1)");
+    expect(handler).toContain("setShowStep1AddressErrors(true)");
+  });
+
+  test("T-5: Publish button is disabled while location is unvalidated (suspenders)", () => {
+    const w = wizardSrc();
+    expect(w).toContain("disabled={submitting || tripNeedsStripe || !tripLocationValid}");
+  });
+});

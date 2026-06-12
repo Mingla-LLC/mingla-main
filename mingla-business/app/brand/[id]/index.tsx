@@ -24,6 +24,7 @@ import { useAuth } from "../../../src/context/AuthContext";
 import { useBrandStripeStatus } from "../../../src/hooks/useBrandStripeStatus";
 import { useBrand } from "../../../src/hooks/useBrands";
 import { isBrandRouteResolving } from "../../../src/utils/coldLoadAuthGates";
+import { routeForEventRowDefensive } from "../../../src/utils/routeForEventRow";
 import {
   useCurrentBrandStore,
   type Brand,
@@ -146,6 +147,31 @@ export default function BrandProfileRoute(): React.ReactElement {
     router.push("/event/create" as never);
   };
 
+  // ORCH-1121 — Recent-Events row tap. Routes through the canonical
+  // routeForEventRowDefensive helper (NEVER a hardcoded `/event/${id}` —
+  // strict-grep `route-by-event-type` bans that outside the helper). The
+  // helper dispatches by event_type: event → /event/{id}, experience →
+  // /experience/{id}. Status drives draft-vs-live; Recent Events surfaces
+  // published rows only, so the non-edit destination is the norm.
+  const handleOpenEvent = (
+    eventId: string,
+    eventType?: string,
+    status?: string,
+  ): void => {
+    const route = routeForEventRowDefensive({
+      id: eventId,
+      eventType,
+      status,
+    });
+    router.push(route as never);
+  };
+
+  // ORCH-1121 — "See all" header link → the canonical owner events list (the
+  // Hub events tab), matching app/(tabs)/home.tsx's existing navigation.
+  const handleSeeAllEvents = (): void => {
+    router.push("/(tabs)/hub/events" as never);
+  };
+
   const handleOpenLink = (url: string): void => {
     // Linking.openURL is async + user-cancellable. We swallow rejections
     // because there's no useful surface — most failures (no app installed,
@@ -172,6 +198,8 @@ export default function BrandProfileRoute(): React.ReactElement {
         onViewPublic={handleViewPublic}
         onListing={handleOpenListing}
         onCreateEvent={handleCreateEvent}
+        onOpenEvent={handleOpenEvent}
+        onSeeAllEvents={handleSeeAllEvents}
         onOpenLink={handleOpenLink}
         onRequestDelete={handleRequestDelete}
       />

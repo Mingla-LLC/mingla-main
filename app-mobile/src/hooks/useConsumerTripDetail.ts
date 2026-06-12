@@ -73,10 +73,33 @@ export interface ConsumerTripDetail {
   minPriceCents: number | null;
   currency: string | null;
   hasFreeTier: boolean;
+  /**
+   * ORCH-1117 / ORCH-1076 — when false this is a PAID trip whose brand can't
+   * charge yet; the floating Reserve bar renders a NON-tappable "Booking
+   * unavailable" info strip. Free trips (and resolver errors) are true
+   * (fail-open; the checkout 409 / cart-toast remains the backstop).
+   */
+  bookable: boolean;
   refundPolicy: RefundPolicyShape | null;
   days: TripDetailDay[];
   inclusions: TripDetailInclusion[];
   tiers: TripDetailTier[];
+}
+
+// ORCH-1117 (OQ-C) — the native trip-detail hook gains the SAME pg_brand_can_charge
+// gate the web trip/event/experience resolvers have. PAID ⇒ gated; FREE ⇒ true;
+// RPC error ⇒ true (fail-open). Uses ev.brand_id from the anon-direct events read
+// (NOT the discover-cards supply — that stays out of scope per OQ-B).
+async function resolveTripBookable(
+  brandId: string | null,
+  isPaid: boolean,
+): Promise<boolean> {
+  if (!isPaid || brandId === null) return true;
+  const { data, error } = await supabase.rpc("pg_brand_can_charge", {
+    p_brand_id: brandId,
+  });
+  if (error !== null) return true;
+  return data === true;
 }
 
 export const consumerTripDetailKeys = {
@@ -227,6 +250,11 @@ async function fetchTripDetail(
     })
     .filter((t): t is TripDetailTier => t !== null);
 
+  // ORCH-1117 — a trip is PAID when its cheapest tier costs > 0. Resolve the
+  // brand's charge-readiness for the floating Reserve bar's unavailable state.
+  const isPaid = (feedRow.minPriceCents ?? 0) > 0;
+  const bookable = await resolveTripBookable(ev?.brand_id ?? null, isPaid);
+
   return {
     tripId,
     tripSlug: feedRow.tripSlug,
@@ -249,6 +277,7 @@ async function fetchTripDetail(
     minPriceCents: feedRow.minPriceCents,
     currency: feedRow.currency,
     hasFreeTier: feedRow.hasFreeTier,
+    bookable,
     refundPolicy: coerceRefundPolicy(ev?.refund_policy ?? null),
     days,
     inclusions,

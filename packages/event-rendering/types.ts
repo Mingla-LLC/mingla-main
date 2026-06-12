@@ -131,6 +131,15 @@ export interface PublicEventPageProps {
    * props (`style`, `contentContainerStyle`, `showsVerticalScrollIndicator`).
    */
   ScrollComponent?: ComponentType<ScrollViewProps>;
+  /**
+   * ORCH-1117 — extra bottom padding (px) added to the scroll content so the
+   * last inline element clears a host-mounted floating Buy bar. The bar itself
+   * is built per host (it needs safe-area + router + Icon), but it overlaps the
+   * scroll; the host passes its measured bar height + safe area here so the
+   * package reserves clearance without the host forking the package style.
+   * Defaults to 0 (no bar → unchanged layout).
+   */
+  contentBottomInset?: number;
 }
 
 export interface PublicEventNotFoundProps {

@@ -81,6 +81,12 @@ import {
   TripCreatorStep1Basics,
   type Step1Draft,
 } from "./TripCreatorStep1Basics";
+// ORCH-1118 — trip departure + destination must be confirmed Mapbox picks before
+// publish (I-PROPOSED-TRIP-LOCATION-MAPBOX-VALIDATED). Do not loosen.
+import {
+  departureLocationValidated,
+  destinationLocationValidated,
+} from "./tripLocationValidated";
 import { TripCreatorStep2Itinerary } from "./TripCreatorStep2Itinerary";
 import type { TripDayDraft } from "./TripDayEditor";
 import {
@@ -413,6 +419,38 @@ export const TripCreatorWizard: React.FC<TripCreatorWizardProps> = ({
       }),
     [step4Draft, brand.stripeStatus],
   );
+
+  // ORCH-1118 — BOTH departure and destination must be confirmed Mapbox picks
+  // (placeId + lat + lng) before publish. Empty or dirty (typed-but-unpicked)
+  // text on EITHER field blocks publish. Do not loosen
+  // (I-PROPOSED-TRIP-LOCATION-MAPBOX-VALIDATED).
+  const tripLocationValid = useMemo(
+    () =>
+      destinationLocationValidated(
+        step1Draft.destinationLocationText,
+        step1Draft.destinationPlaceId,
+        step1Draft.destinationLat,
+        step1Draft.destinationLng,
+      ) &&
+      departureLocationValidated(
+        step1Draft.departureLocationText,
+        step1Draft.departurePlaceId,
+        step1Draft.departureLat,
+        step1Draft.departureLng,
+      ),
+    [
+      step1Draft.destinationLocationText,
+      step1Draft.destinationPlaceId,
+      step1Draft.destinationLat,
+      step1Draft.destinationLng,
+      step1Draft.departureLocationText,
+      step1Draft.departurePlaceId,
+      step1Draft.departureLat,
+      step1Draft.departureLng,
+    ],
+  );
+  const [showStep1AddressErrors, setShowStep1AddressErrors] =
+    useState<boolean>(false);
 
   const handleConnectStripe = useCallback((): void => {
     router.push(brandStripeOnboardingRoute(trip.brandId) as never);
@@ -846,6 +884,17 @@ export const TripCreatorWizard: React.FC<TripCreatorWizardProps> = ({
 
   // ----- Publish -----
   const handlePublishTap = useCallback((): void => {
+    // ORCH-1118 — trip location must be a confirmed Mapbox pick before publish
+    // (belt; the dock Publish disabled is the suspenders). Both departure AND
+    // destination are hard-required — empty or dirty text blocks publish. Reveal
+    // the inline errors + jump back to Step 1. Do not loosen
+    // (I-PROPOSED-TRIP-LOCATION-MAPBOX-VALIDATED).
+    if (!tripLocationValid) {
+      setShowStep1AddressErrors(true);
+      setStep(1);
+      showToast("Pick the trip's departure and destination from the suggestions.");
+      return;
+    }
     // ORCH-1076 Stream B — proactive Stripe pre-check. A paid trip on a
     // Stripe-unready brand can't publish; surface the blocking toast and do
     // NOT open the confirm dialog (the dock Publish is also disabled, so this
@@ -856,7 +905,7 @@ export const TripCreatorWizard: React.FC<TripCreatorWizardProps> = ({
     }
     // Open ConfirmDialog; actual publish runs in handleConfirmPublish.
     setPublishConfirmVisible(true);
-  }, [tripNeedsStripe, showToast]);
+  }, [tripLocationValid, tripNeedsStripe, showToast]);
 
   const handleConfirmPublish = useCallback(async (): Promise<void> => {
     setPublishError(null);
@@ -1163,6 +1212,7 @@ export const TripCreatorWizard: React.FC<TripCreatorWizardProps> = ({
               brandId={trip.brandId}
               tripEventId={trip.id}
               onShowToast={showToast}
+              showAddressErrors={showStep1AddressErrors}
             />
           ) : null}
           {step === 2 ? (
@@ -1295,7 +1345,9 @@ export const TripCreatorWizard: React.FC<TripCreatorWizardProps> = ({
                   loading={submitting}
                   // ORCH-1076 Stream B — disable Publish for a paid trip on a
                   // Stripe-unready brand (proactive gate; mirrors events).
-                  disabled={submitting || tripNeedsStripe}
+                  // ORCH-1118 — also disable until departure + destination are
+                  // confirmed Mapbox picks (suspenders; belt in handlePublishTap).
+                  disabled={submitting || tripNeedsStripe || !tripLocationValid}
                   fullWidth
                   testID="trip-wizard-footer-cta"
                 />

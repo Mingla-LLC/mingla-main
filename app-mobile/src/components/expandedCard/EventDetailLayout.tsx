@@ -344,12 +344,25 @@ export default function EventDetailLayout({
               onPress={() => setAboutCollapsed((c) => !c)}
               activeOpacity={0.7}
               accessibilityRole="button"
+              accessibilityState={{ expanded: !aboutCollapsed }}
+              accessibilityHint={
+                aboutCollapsed
+                  ? "Expands the description"
+                  : "Collapses the description"
+              }
+              style={styles.moreToggleRow}
             >
+              {/* ORCH-1117 — standardized copy ("Read more"/"Show less") +
+                  chevron glyph. EXTERNAL event detail (F-A) gets only this
+                  copy/chevron standardization — no Mingla floating Buy bar. */}
               <Text style={styles.moreToggle}>
-                {aboutCollapsed
-                  ? t("cards:expanded.show_more")
-                  : t("cards:expanded.show_less")}
+                {aboutCollapsed ? "Read more" : "Show less"}
               </Text>
+              <Icon
+                name={aboutCollapsed ? "chevron-down" : "chevron-up"}
+                size={16}
+                color={colors.primary}
+              />
             </TouchableOpacity>
           )}
         </View>
@@ -559,11 +572,17 @@ const styles = StyleSheet.create({
     color: colors.primary,
     marginTop: 4,
   },
+  moreToggleRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    marginTop: 6,
+    minHeight: 44,
+  },
   moreToggle: {
     fontSize: 13,
     fontWeight: "600",
     color: colors.primary,
-    marginTop: 6,
   },
   metaItem: {
     flexDirection: "row",
