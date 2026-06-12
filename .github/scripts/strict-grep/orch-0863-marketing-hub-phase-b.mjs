@@ -2053,6 +2053,15 @@ function checkNoNewBackendFiles() {
     // already-live business_patch_event_when change — not ORCH-0863 marketing
     // scope; same C7-scoping caveat as the allowlists above.
     "supabase/migrations/20260820000000_schedule_change_buyer_protection_refund_all.sql",
+    // ORCH-1119 [trip-day-media-gallery] CLOSE (2026-06-12). C7 is scoped to
+    // ORCH-0863 marketing; these are the ORCH-1119 trip-day-media schema +
+    // live-trip + Storage-RLS migrations (prod-applied-but-unmerged per
+    // COMMS-0029) and the 1119B RLS regression test, on a separate ORCH-1119
+    // PR — not marketing scope. Same C7-scoping caveat as the allowlists above.
+    "supabase/migrations/20260928000000_orch_1119_trip_day_media.sql",
+    "supabase/migrations/20260928000001_orch_1119_live_trip_media.sql",
+    "supabase/migrations/20260930000000_orch_1119b_trip_day_media_storage_rls.sql",
+    "supabase/migrations/__tests__/orch_1119b_trip_day_media_storage_rls.test.ts",
   ];
   const forbidden = changed.filter(
     (p) =>

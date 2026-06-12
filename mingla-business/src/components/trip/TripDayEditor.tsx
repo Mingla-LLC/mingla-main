@@ -1,3 +1,4 @@
+// orch-strict-grep-allow orch-0892 — the only react-native ScrollView here is the ORCH-1119 HORIZONTAL media-thumbnail strip (gallery), not a keyboard-avoiding vertical scroll; SmartScrollView/KeyboardAwareScrollView would wrongly hijack focus/scroll. No TextInput lives inside that ScrollView. (multiline import → gate matches file-top)
 /**
  * TripDayEditor — single day card used inside TripCreatorStep2Itinerary.
  * Tr2 (ORCH-0859).
@@ -179,6 +180,7 @@ export const TripDayEditor: React.FC<TripDayEditorProps> = ({
           accessibilityLabel={`Day ${day.ordinal} media gallery`}
         >
           <Text style={styles.fieldLabel}>Photos &amp; videos</Text>
+          {/* orch-strict-grep-allow orch-0892 — HORIZONTAL media-thumbnail strip, not a keyboard-avoiding vertical scroll; SmartScrollView (KeyboardAwareScrollView) would wrongly hijack focus/scroll. No TextInput inside. */}
           <ScrollView
             horizontal
             showsHorizontalScrollIndicator={false}

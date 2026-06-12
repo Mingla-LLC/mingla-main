@@ -71,19 +71,17 @@ if (!existsSync(SHEET_PATH)) {
   }
 }
 
-// Check 2 — no manipulator dependency (operator decision 2026-05-12).
-if (!existsSync(PACKAGE_JSON_PATH)) {
-  failures.push(
-    "Check 2 FAIL: mingla-business/package.json missing — cannot verify dependency list.",
-  );
-} else {
-  const pkg = readOrEmpty(PACKAGE_JSON_PATH);
-  if (/"expo-image-manipulator"\s*:/.test(pkg)) {
-    failures.push(
-      "Check 2 FAIL: mingla-business/package.json contains `expo-image-manipulator` — operator decision 2026-05-12 was to NOT add this dependency. Trust the user with the native picker crop. If this dep is needed for a different feature, register a new ORCH and re-evaluate I-PROPOSED-BG.",
-    );
-  }
-}
+// Check 2 — RETIRED 2026-06-12 (ORCH-1119 [trip-day-media-gallery]).
+// The 2026-05-12 operator decision forbade adding `expo-image-manipulator`
+// JUST for brand-avatar cropping (Check 1 enforces the avatar picker still
+// offers the native crop UI — that guard remains ACTIVE below). On 2026-06-12
+// the operator explicitly approved adding `expo-image-manipulator` for a
+// DIFFERENT feature — ORCH-1119 trip-day media: iOS HEIC photos must be
+// converted to JPEG client-side so they render on iOS/Android/web. Per this
+// gate's own instruction ("if needed for a different feature, re-evaluate
+// I-PROPOSED-BG"), the blanket dependency prohibition is superseded. The
+// brand-avatar invariant (native crop offered) is unaffected and still gated
+// by Check 1. The dependency-presence check is therefore retired.
 
 if (failures.length > 0) {
   console.error("ORCH-0807 strict-grep FAIL:");
