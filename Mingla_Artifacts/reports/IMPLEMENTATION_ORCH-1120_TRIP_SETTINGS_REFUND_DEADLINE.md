@@ -199,7 +199,7 @@ cd "/Users/sethogieva/Desktop/mingla-orchs/orch-1120-[trip-settings-refund-deadl
 - `eslint` (4 files) — 0 errors (7 pre-existing warnings, none on new code).
 - Strict-grep `i-proposed-1120-published-refund-via-gated-rpc.mjs` — PASS.
 - Jest `EditPublishedTripSettings_orch_1120_regression.test.ts` — 27/27 PASS.
-- **fails-on-revert (true line-deletion):** deleted `patch.refund_policy = state.refundPolicy` in `buildLiveTripPatch` → regression test FAILED (1 failed / 26 passed: "buildLiveTripPatch diffs the three settings fields into the patch"); restored → 27/27 PASS. **fails-on-revert verified at commit `<see closing branch HEAD>`** (test: `mingla-business/src/components/trip/__tests__/EditPublishedTripSettings_orch_1120_regression.test.ts`).
+- **fails-on-revert (true line-deletion):** deleted `patch.refund_policy = state.refundPolicy` in `buildLiveTripPatch` → regression test FAILED (1 failed / 26 passed: "buildLiveTripPatch diffs the three settings fields into the patch"); restored → 27/27 PASS. **fails-on-revert verified at commit `1b2e9a74a`** (test: `mingla-business/src/components/trip/__tests__/EditPublishedTripSettings_orch_1120_regression.test.ts`).
 - `publishedTripEditGuards` suite (14/14) + `ORCH-0876.adversarial` (PASS) unaffected.
 
 **The two-button duplication is GONE** — there is now exactly one save button (the screen's bottom `edit-trip-save`), one reason prompt (`ChangeSummaryModal`), one gate (`biz_update_live_trip`), one reject path (`buildRejectDialog`). The published path STILL writes only through `biz_update_live_trip`; DISC-1120-A landmine stays closed.
