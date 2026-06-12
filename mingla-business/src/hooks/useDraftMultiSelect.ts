@@ -1,4 +1,4 @@
-// ORCH-1116 [Hub multi-select draft delete] — shared selection-mode hook.
+// ORCH-1123 [Hub multi-select draft delete] — shared selection-mode hook.
 //
 // One owner of selection mechanics across all three Hub tabs (events, trips,
 // experiences). Generic over the id type (string). Long-press is the SOLE entry

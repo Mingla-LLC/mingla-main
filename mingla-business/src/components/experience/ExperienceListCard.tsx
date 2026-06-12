@@ -27,7 +27,7 @@ export interface ExperienceListCardProps {
   onOpen: () => void;
   /** Optional 3-dot manage trigger. Only rendered when provided. */
   onManageOpen?: () => void;
-  // ORCH-1116 [Hub multi-select draft delete] — pass-through selection props.
+  // ORCH-1123 [Hub multi-select draft delete] — pass-through selection props.
   selectionMode?: boolean;
   selected?: boolean;
   onLongPress?: () => void;

@@ -1,10 +1,10 @@
--- ORCH-1116 [Hub multi-select draft delete] — behavioral probe for
--- migration 20260928000000_orch_1116_batch_discard_offering_drafts.sql.
+-- ORCH-1123 [Hub multi-select draft delete] — behavioral probe for
+-- migration 20260928000000_orch_1123_batch_discard_offering_drafts.sql.
 --
 -- USAGE (manual; this repo's SQL probe convention is hand-run psql against
 -- the linked remote via the Supabase Management API or `supabase db remote`):
 --
---   cat supabase/migrations/__tests__/orch_1116_batch_discard.test.sql \
+--   cat supabase/migrations/__tests__/orch_1123_batch_discard.test.sql \
 --     | /Users/sethogieva/bin/supabase db remote sql --linked
 --
 -- This probe is TRANSACTIONAL (wrapped in a savepoint-style anonymous block
@@ -44,8 +44,8 @@ BEGIN
   -- Minimal brand owned by v_user. Column set is intentionally narrow; if the
   -- live brands table requires more NOT NULL columns, extend here.
   INSERT INTO public.brands (id, account_id, name, slug, created_at, updated_at)
-    VALUES (v_brand, v_user, 'ORCH-1116 probe brand',
-            'orch-1116-probe-' || substr(v_brand::text, 1, 8), now(), now());
+    VALUES (v_brand, v_user, 'ORCH-1123 probe brand',
+            'orch-1123-probe-' || substr(v_brand::text, 1, 8), now(), now());
 
   -- Three drafts of distinct event_type. status='draft', not deleted.
   INSERT INTO public.events (id, brand_id, created_by, title, slug, status, event_type, created_at, updated_at)
@@ -111,7 +111,7 @@ BEGIN
   END IF;
   RAISE NOTICE 'B-04 PASS: idempotent re-discard skipped_not_found';
 
-  RAISE NOTICE 'ORCH-1116 batch-discard probe: ALL PASS';
+  RAISE NOTICE 'ORCH-1123 batch-discard probe: ALL PASS';
 
   -- ---- Teardown — undo everything --------------------------------------
   DELETE FROM public.events WHERE brand_id = v_brand;

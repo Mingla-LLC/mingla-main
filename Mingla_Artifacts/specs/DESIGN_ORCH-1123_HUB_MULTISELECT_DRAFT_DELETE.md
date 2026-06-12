@@ -1,11 +1,11 @@
-# DESIGN — ORCH-1116 [Hub multi-select draft delete]
+# DESIGN — ORCH-1123 [Hub multi-select draft delete]
 
 **Mode:** mingla-designer (pixel-precise build contract for the visual / interaction / motion layer)
 **App:** mingla-business (React Native / Expo, dark glass system)
-**Worktree:** `/Users/sethogieva/Desktop/mingla-orchs/ORCH-1116-[hub-multiselect-draft-delete]` (branch `ORCH-1116-hub-multiselect-draft-delete`)
+**Worktree:** `/Users/sethogieva/Desktop/mingla-orchs/ORCH-1123-[hub-multiselect-draft-delete]` (branch `ORCH-1123-hub-multiselect-draft-delete`)
 **Date:** 2026-06-11
-**Pairs with:** `SPEC_ORCH-1116_HUB_MULTISELECT_DRAFT_DELETE.md` — DESIGN owns ONLY visual/interaction/motion. Every locked engineering decision (data contract, scope, RPC, partition logic, copy strings) is honored verbatim; nothing here changes scope or the data contract.
-**COMMS_LEDGER:** read on entry. No `BLOCK`/`WARN` row targets ORCH-1116 or `mingla-designer`. COMMS-0003 (ALL/WARN, external-API docs) read — not applicable (a soft-delete feature, no external-API integration). No new cross-ORCH discovery → no ledger write.
+**Pairs with:** `SPEC_ORCH-1123_HUB_MULTISELECT_DRAFT_DELETE.md` — DESIGN owns ONLY visual/interaction/motion. Every locked engineering decision (data contract, scope, RPC, partition logic, copy strings) is honored verbatim; nothing here changes scope or the data contract.
+**COMMS_LEDGER:** read on entry. No `BLOCK`/`WARN` row targets ORCH-1123 or `mingla-designer`. COMMS-0003 (ALL/WARN, external-API docs) read — not applicable (a soft-delete feature, no external-API integration). No new cross-ORCH discovery → no ledger write.
 
 This spec is buildable without guessing. Every value is a token from `mingla-business/src/constants/designSystem.ts` or an explicit px/ms/easing. Tokens referenced: `spacing`, `radius`, `text`, `glass`, `accent`, `semantic`, `typography`, `durations`, `easings`, `shadows`, `colors`. Two new components (`DraftSelectCheckbox`, `DraftSelectBar`) and one new haptic helper are fully tokenized below — the implementor builds them once.
 
@@ -453,4 +453,4 @@ All durations/easings resolve to `durations` / `easings` tokens in `designSystem
 
 Long-press multi-select for drafts gets a **two-part discoverability solution** — a persistent `text.tertiary` caption ("Press and hold a draft to select multiple") above the drafts list, plus a **press-and-hold accent-warm ring** that charges over the 350ms `delayLongPress` so the gesture teaches itself, with a **Medium-impact entry haptic** (new `selectionEnter` helper). The **checkbox** is a 24pt circle, top-left over the cover: unchecked = `rgba(12,14,18,0.55)` fill + `rgba(255,255,255,0.85)` 1.5px ring; checked = solid `accent.warm` + white `check` glyph (shape change, not hue-only), with a spring bounce on toggle. **Selected rows** get an `accent.tint` wash overlay + `accent.border` 1.5px border (matching the BottomNav spotlight language); non-draft rows dim to 0.4 + inert. The **`DraftSelectBar`** is a `radius.full` capsule floating `bottomInset + 80pt` up (clearing the 64pt BottomNav + 8 + 8): left `Cancel` (secondary), right `Delete (N)` in brand warm (NOT red — red is reserved for the dialog's irreversible confirm; two-tier escalation), disabled-but-present at N=0, slide-up entry. **Copy** is verbatim per SPEC: dialog `Delete this draft?` / `Delete ${N} drafts?` with `Keep` / `Delete ${N}`; toasts `Deleted N drafts.` (success) / `Deleted N, M couldn't be deleted.` (**warn**, 6s dwell) / `Couldn't delete N drafts. You may not have permission.` (**error**, 12s). Android opaque-glass policy honored (bar `#16181b` opaque, `overflow:'hidden'`, no shadow). Full a11y: row becomes `role="checkbox"` with `checked` state, ≥44pt targets, mode-enter announcement, every animation has a reduced-motion fallback. Net-new primitives (`DraftSelectCheckbox`, `DraftSelectBar`, `selectionEnter` haptic) are fully tokenized in §9 for one-time build.
 
-**Artifact:** `Mingla_Artifacts/specs/DESIGN_ORCH-1116_HUB_MULTISELECT_DRAFT_DELETE.md`
+**Artifact:** `Mingla_Artifacts/specs/DESIGN_ORCH-1123_HUB_MULTISELECT_DRAFT_DELETE.md`

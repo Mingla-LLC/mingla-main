@@ -1,4 +1,4 @@
-// ORCH-1116 [Hub multi-select draft delete] — batch delete-dispatch hook.
+// ORCH-1123 [Hub multi-select draft delete] — batch delete-dispatch hook.
 //
 // ONE owner of the bulk-delete dispatch (one-owner-per-truth). It (a) calls the
 // batch RPC for server-backed ids, (b) applies kind-specific cache invalidation,

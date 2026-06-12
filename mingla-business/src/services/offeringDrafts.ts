@@ -1,4 +1,4 @@
-// ORCH-1116 [Hub multi-select draft delete] — batch draft-discard service.
+// ORCH-1123 [Hub multi-select draft delete] — batch draft-discard service.
 //
 // Thin wrapper over the business_discard_offering_drafts RPC (event/trip/
 // experience — one events table). The server SKIPs-and-reports per row and

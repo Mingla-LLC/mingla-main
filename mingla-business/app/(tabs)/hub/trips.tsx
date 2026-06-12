@@ -49,7 +49,7 @@ import type { Trip } from "../../../src/services/tripsService";
 import { HapticFeedback } from "../../../src/utils/hapticFeedback";
 import { routeForEventRowDefensive } from "../../../src/utils/routeForEventRow";
 
-// ORCH-1116 — combined no-silent-failure toast tally (verbatim DESIGN §6.2).
+// ORCH-1123 — combined no-silent-failure toast tally (verbatim DESIGN §6.2).
 const bulkToastMessage = (deleted: number, failed: number): string => {
   if (failed === 0) {
     return `Deleted ${deleted} draft${deleted === 1 ? "" : "s"}.`;
@@ -158,7 +158,7 @@ export default function HubTripsRoute(): React.ReactElement {
   const [manageTrip, setManageTrip] = useState<Trip | null>(null);
   const [shareTrip, setShareTrip] = useState<Trip | null>(null);
 
-  // ORCH-1116 [Hub multi-select draft delete] — long-press multi-select +
+  // ORCH-1123 [Hub multi-select draft delete] — long-press multi-select +
   // bulk soft-delete for DRAFT trips only (converges on the rank-checked RPC).
   const selection = useDraftMultiSelect();
   const discardOfferings = useDiscardOfferingDrafts();
@@ -421,7 +421,7 @@ export default function HubTripsRoute(): React.ReactElement {
         </Suspense>
       ) : null}
 
-      {/* ORCH-1116 — bulk-delete ConfirmDialog (simple destructive variant). */}
+      {/* ORCH-1123 — bulk-delete ConfirmDialog (simple destructive variant). */}
       <ConfirmDialog
         visible={bulkConfirmOpen}
         onClose={() => {
@@ -456,7 +456,7 @@ export default function HubTripsRoute(): React.ReactElement {
         destructive
       />
 
-      {/* ORCH-1116 — sticky bulk-select action bar (drafts only). */}
+      {/* ORCH-1123 — sticky bulk-select action bar (drafts only). */}
       {selection.selectionMode ? (
         <DraftSelectBar
           count={selection.count}
@@ -467,7 +467,7 @@ export default function HubTripsRoute(): React.ReactElement {
         />
       ) : null}
 
-      {/* ORCH-1116 — Toast surface (trips had none); bulk tally lands here. */}
+      {/* ORCH-1123 — Toast surface (trips had none); bulk tally lands here. */}
       <Toast
         visible={toast !== null}
         kind="info"
@@ -482,7 +482,7 @@ const styles = StyleSheet.create({
   host: {
     flex: 1,
   },
-  // ORCH-1116 — long-press discoverability caption.
+  // ORCH-1123 — long-press discoverability caption.
   selectHint: {
     fontSize: typography.caption.fontSize,
     lineHeight: typography.caption.lineHeight,

@@ -1,5 +1,5 @@
 /**
- * DraftSelectCheckbox — ORCH-1116 [Hub multi-select draft delete].
+ * DraftSelectCheckbox — ORCH-1123 [Hub multi-select draft delete].
  *
  * Purely presentational circular check control overlaid on a draft card's cover
  * while selection mode is active. It does NOT own the press — the card body is

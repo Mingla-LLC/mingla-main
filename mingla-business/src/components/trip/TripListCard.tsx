@@ -45,7 +45,7 @@ export interface TripListCardProps {
   onOpen: () => void;
   /** Optional manage icon (right-rail moreH). Only rendered when provided. */
   onManageOpen?: () => void;
-  // ORCH-1116 [Hub multi-select draft delete] — additive selection props.
+  // ORCH-1123 [Hub multi-select draft delete] — additive selection props.
   selectionMode?: boolean;
   selected?: boolean;
   onLongPress?: () => void;
@@ -137,7 +137,7 @@ export const TripListCard: React.FC<TripListCardProps> = ({
   const cardAccessibilityLabel = `${title}, ${status}, ${subline}`;
   const isFaded = status === "ended" || status === "cancelled";
 
-  // ORCH-1116 — selection affordances.
+  // ORCH-1123 — selection affordances.
   const holdRing = useDraftHoldRing(selectable);
   const dimmedInert = selectionMode && !selectable;
   const showCheckbox = selectionMode && selectable;
@@ -234,7 +234,7 @@ export const TripListCard: React.FC<TripListCardProps> = ({
         </View>
       </Pressable>
 
-      {/* ORCH-1116 — manage hidden while in selection mode. */}
+      {/* ORCH-1123 — manage hidden while in selection mode. */}
       {onManageOpen !== undefined && !selectionMode ? (
         <View style={styles.rightRail} pointerEvents="box-none">
           <Pressable
@@ -252,7 +252,7 @@ export const TripListCard: React.FC<TripListCardProps> = ({
         </View>
       ) : null}
 
-      {/* ORCH-1116 — selected wash + press-and-hold ring overlays. */}
+      {/* ORCH-1123 — selected wash + press-and-hold ring overlays. */}
       {selectionMode || selected ? (
         <DraftSelectOverlay
           selected={selected}
@@ -333,7 +333,7 @@ const styles = StyleSheet.create({
   hostFaded: {
     opacity: 0.7,
   },
-  // ORCH-1116 — selection visuals.
+  // ORCH-1123 — selection visuals.
   hostSelected: {
     borderColor: accent.border,
     borderWidth: 1.5,

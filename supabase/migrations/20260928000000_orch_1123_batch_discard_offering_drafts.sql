@@ -1,4 +1,4 @@
--- ORCH-1116 [Hub multi-select draft delete] — batch draft-discard RPC.
+-- ORCH-1123 [Hub multi-select draft delete] — batch draft-discard RPC.
 -- Replicates business_discard_event_draft's guards PER ROW, event_type-agnostic
 -- (works for event/trip/experience — all rows in public.events). SKIP-and-report:
 -- the batch never aborts on a bad row; returns a per-row outcome so the client
@@ -6,7 +6,7 @@
 -- Source single-row RPC: 20260515000006_orch_0763d_draft_discard_rpc.sql
 --
 -- Migration version note: SPEC §2.1 specified 20260927000000, but a sibling
--- worktree (ORCH-1116-[booking-gate-rls]) already claimed that prefix. Bumped
+-- worktree (ORCH-1123-[booking-gate-rls]) already claimed that prefix. Bumped
 -- to 20260928000000 to stay strictly monotonic across all worktrees + anchor
 -- + the linked remote head (latest local/anchor = 20260926000000).
 
@@ -90,4 +90,4 @@ REVOKE ALL ON FUNCTION public.business_discard_offering_drafts(uuid[]) FROM anon
 GRANT EXECUTE ON FUNCTION public.business_discard_offering_drafts(uuid[]) TO authenticated, service_role;
 
 COMMENT ON FUNCTION public.business_discard_offering_drafts(uuid[]) IS
-  'ORCH-1116: batch server-authoritative soft-delete for business offering drafts (event/trip/experience), SKIP-and-report per row, restricted to event_manager rank or above.';
+  'ORCH-1123: batch server-authoritative soft-delete for business offering drafts (event/trip/experience), SKIP-and-report per row, restricted to event_manager rank or above.';

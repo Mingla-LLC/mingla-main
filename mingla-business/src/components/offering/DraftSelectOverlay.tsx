@@ -1,5 +1,5 @@
 /**
- * DraftSelectOverlay — ORCH-1116 [Hub multi-select draft delete].
+ * DraftSelectOverlay — ORCH-1123 [Hub multi-select draft delete].
  *
  * Shared selection-affordance layer for the 3 Hub list cards (event/trip/
  * experience). Keeps all three cards visually identical and DRY. Renders, as

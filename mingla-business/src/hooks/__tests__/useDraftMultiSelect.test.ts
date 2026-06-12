@@ -1,12 +1,12 @@
 /**
- * ORCH-1116 [Hub multi-select draft delete] — happy-path regression tests.
+ * ORCH-1123 [Hub multi-select draft delete] — happy-path regression tests.
  *
  * Covers (SPEC §5 implementor):
  *   1. useDraftMultiSelect mechanics (enterWith / toggle / clear / exit).
  *   2. Events partition: a mixed [d_x, uuid1, uuid2] selection → server vs
- *      local-only split (I-PROPOSED-ORCH-1116-EVENTS-LOCAL-SERVER-SPLIT).
+ *      local-only split (I-PROPOSED-ORCH-1123-EVENTS-LOCAL-SERVER-SPLIT).
  *   3. Toast tally strings (bulkToastMessage) for the §3.8 outcome combos
- *      (I-PROPOSED-ORCH-1116-NO-SILENT-PARTIAL-FAILURE).
+ *      (I-PROPOSED-ORCH-1123-NO-SILENT-PARTIAL-FAILURE).
  *
  * useDraftMultiSelect uses only useState + useCallback, so it is exercised with
  * the codebase's slot-based React hook harness (mirrors
@@ -54,7 +54,7 @@ import { useDraftMultiSelect } from "../useDraftMultiSelect";
 // Mirror of the screens' exported bulkToastMessage (verbatim DESIGN §6.2). The
 // screen module can't be imported here (its JSX/RN imports break the node test
 // env), so the source copy is independently asserted by the migration-source
-// grep test (orch_1116_batch_rpc_source.test.ts) to keep this in lockstep.
+// grep test (orch_1123_batch_rpc_source.test.ts) to keep this in lockstep.
 const bulkToastMessage = (deleted: number, failed: number): string => {
   if (failed === 0) {
     return `Deleted ${deleted} draft${deleted === 1 ? "" : "s"}.`;

@@ -1,5 +1,5 @@
 /**
- * DraftSelectBar — ORCH-1116 [Hub multi-select draft delete].
+ * DraftSelectBar — ORCH-1123 [Hub multi-select draft delete].
  *
  * Shared sticky action bar shown only while selection mode is active. Floats as
  * a radius.full capsule above the floating BottomNav (DESIGN §2.2/§9.2):

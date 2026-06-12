@@ -132,7 +132,7 @@ const draftDeleteErrorMessage = (error: unknown): string => {
   return "Could not delete this draft. Try again.";
 };
 
-// ORCH-1116 — combined no-silent-failure toast tally (verbatim DESIGN §6.2).
+// ORCH-1123 — combined no-silent-failure toast tally (verbatim DESIGN §6.2).
 export const bulkToastMessage = (deleted: number, failed: number): string => {
   if (failed === 0) {
     return `Deleted ${deleted} draft${deleted === 1 ? "" : "s"}.`;
@@ -216,7 +216,7 @@ export default function EventsTab(): React.ReactElement {
   const cancelServerEvent = useCancelBusinessEvent();
   const endServerTicketSales = useEndBusinessEventTicketSales();
 
-  // ORCH-1116 [Hub multi-select draft delete] — long-press multi-select + bulk
+  // ORCH-1123 [Hub multi-select draft delete] — long-press multi-select + bulk
   // soft-delete for DRAFT rows only.
   const selection = useDraftMultiSelect();
   const discardOfferings = useDiscardOfferingDrafts();
@@ -541,7 +541,7 @@ export default function EventsTab(): React.ReactElement {
     }
   }, [deleteDraftCtx, deleteLocalDraft, discardServerDraft, drafts]);
 
-  // ORCH-1116 — bulk-delete confirm: partition local-only vs server drafts,
+  // ORCH-1123 — bulk-delete confirm: partition local-only vs server drafts,
   // fire ONE mutation, one combined no-silent-failure toast tally.
   const handleBulkDeleteConfirm = useCallback(async (): Promise<void> => {
     if (currentBrand === null) return;
@@ -592,7 +592,7 @@ export default function EventsTab(): React.ReactElement {
             <Pressable
               key={p.key}
               onPress={() => {
-                // ORCH-1116 — switching away from Drafts must exit selection
+                // ORCH-1123 — switching away from Drafts must exit selection
                 // mode so it can't leak onto a non-draft view.
                 if (p.key !== "draft") selection.exit();
                 setFilter(p.key);
@@ -689,7 +689,7 @@ export default function EventsTab(): React.ReactElement {
           )
         ) : currentBrand !== null ? (
           <>
-            {/* ORCH-1116 — long-press discoverability caption (drafts present,
+            {/* ORCH-1123 — long-press discoverability caption (drafts present,
                 not already selecting). */}
             {!selection.selectionMode &&
             filteredItems.some((i) => i.kind === "draft") ? (
@@ -809,7 +809,7 @@ export default function EventsTab(): React.ReactElement {
         destructive
       />
 
-      {/* ORCH-1116 — bulk-delete ConfirmDialog (reuses the simple destructive
+      {/* ORCH-1123 — bulk-delete ConfirmDialog (reuses the simple destructive
           variant, count-aware copy verbatim per SPEC §3.8). */}
       <ConfirmDialog
         visible={bulkConfirmOpen}
@@ -885,7 +885,7 @@ export default function EventsTab(): React.ReactElement {
         </Suspense>
       ) : null}
 
-      {/* ORCH-1116 — sticky bulk-select action bar (drafts only). */}
+      {/* ORCH-1123 — sticky bulk-select action bar (drafts only). */}
       {selection.selectionMode ? (
         <DraftSelectBar
           count={selection.count}
@@ -1017,7 +1017,7 @@ const styles = StyleSheet.create({
   list: {
     gap: spacing.sm,
   },
-  // ORCH-1116 — long-press discoverability caption (DESIGN §5.1A / §4.4).
+  // ORCH-1123 — long-press discoverability caption (DESIGN §5.1A / §4.4).
   selectHint: {
     fontSize: typography.caption.fontSize,
     lineHeight: typography.caption.lineHeight,

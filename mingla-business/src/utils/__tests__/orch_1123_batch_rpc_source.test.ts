@@ -1,16 +1,16 @@
 /**
- * ORCH-1116 [Hub multi-select draft delete] — migration + wiring source guards.
+ * ORCH-1123 [Hub multi-select draft delete] — migration + wiring source guards.
  *
  * Mirrors serverDraftLifecycleGuards.test.ts:200's migration-source grep style.
  * Asserts:
  *   - the batch RPC replicates the single-RPC's auth/rank/draft-status/brand
  *     guards PER ROW, is SKIP-and-report, and is REVOKE'd PUBLIC/anon +
  *     GRANT'd authenticated/service_role only
- *     (I-PROPOSED-ORCH-1116-BATCH-RPC-RANK-GATED / -MULTISELECT-DRAFTS-ONLY).
+ *     (I-PROPOSED-ORCH-1123-BATCH-RPC-RANK-GATED / -MULTISELECT-DRAFTS-ONLY).
  *   - $function$; terminator appears BEFORE the GRANT (migration-baseline CI).
  *   - each Hub tab wires long-press → enterWith, drafts-only selectable, the
  *     DraftSelectBar, the count-aware ConfirmDialog copy, and the verbatim
- *     bulk toast tally (I-PROPOSED-ORCH-1116-NO-SILENT-PARTIAL-FAILURE /
+ *     bulk toast tally (I-PROPOSED-ORCH-1123-NO-SILENT-PARTIAL-FAILURE /
  *     -EVENTS-LOCAL-SERVER-SPLIT / -LONGPRESS-FIRES).
  *
  * fails-on-revert: deleting the RPC body / the partition wiring / the toast
@@ -26,9 +26,9 @@ const repoFile = (relativePath: string): string =>
   readFileSync(path.join(process.cwd(), relativePath), "utf8");
 
 const MIGRATION =
-  "../supabase/migrations/20260928000000_orch_1116_batch_discard_offering_drafts.sql";
+  "../supabase/migrations/20260928000000_orch_1123_batch_discard_offering_drafts.sql";
 
-describe("ORCH-1116 batch discard RPC — source guards", () => {
+describe("ORCH-1123 batch discard RPC — source guards", () => {
   test("RPC replicates per-row auth/draft/rank/brand guards, SKIP-and-report", () => {
     const sql = repoFile(MIGRATION);
 
@@ -92,7 +92,7 @@ describe("ORCH-1116 batch discard RPC — source guards", () => {
   });
 });
 
-describe("ORCH-1116 Hub tab wiring — source guards", () => {
+describe("ORCH-1123 Hub tab wiring — source guards", () => {
   const eventsSource = repoFile("app/(tabs)/hub/events.tsx");
   const tripsSource = repoFile("app/(tabs)/hub/trips.tsx");
   const experiencesSource = repoFile("app/(tabs)/hub/experiences.tsx");

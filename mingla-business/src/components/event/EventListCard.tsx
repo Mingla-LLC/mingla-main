@@ -58,7 +58,7 @@ export interface EventListCardProps {
   onOpen: () => void;
   /** Tap manage IconChrome → open EventManageMenu. */
   onManageOpen: () => void;
-  // ORCH-1116 [Hub multi-select draft delete] — additive selection props.
+  // ORCH-1123 [Hub multi-select draft delete] — additive selection props.
   /** When true, the row is in selection mode: tap toggles instead of opening. */
   selectionMode?: boolean;
   selected?: boolean;
@@ -146,7 +146,7 @@ export const EventListCard: React.FC<EventListCardProps> = ({
   // Past + 0 sold → fade per Q-9-9.
   const isFaded = status === "past" && salesSummary.soldCount === 0;
 
-  // ORCH-1116 — selection affordances. A non-selectable row under "All" while
+  // ORCH-1123 — selection affordances. A non-selectable row under "All" while
   // selection mode is active dims + goes inert (drafts-only enforced visually).
   const holdRing = useDraftHoldRing(selectable);
   const dimmedInert = selectionMode && !selectable;
@@ -275,7 +275,7 @@ export const EventListCard: React.FC<EventListCardProps> = ({
       </Pressable>
 
       {/* Right rail: manage icon + revenue/delta footer.
-          ORCH-1116 — hidden while in selection mode (no managing during select). */}
+          ORCH-1123 — hidden while in selection mode (no managing during select). */}
       {!selectionMode ? (
         <View style={styles.rightRail} pointerEvents="box-none">
           <Pressable
@@ -300,7 +300,7 @@ export const EventListCard: React.FC<EventListCardProps> = ({
         </View>
       ) : null}
 
-      {/* ORCH-1116 — selected wash + press-and-hold ring overlays (clipped to
+      {/* ORCH-1123 — selected wash + press-and-hold ring overlays (clipped to
           radius by the host's overflow:'hidden'). */}
       {selectionMode || selected ? (
         <DraftSelectOverlay
@@ -372,12 +372,12 @@ const styles = StyleSheet.create({
   hostFaded: {
     opacity: 0.7,
   },
-  // ORCH-1116 — selected-row treatment (accent border @1.5 + warm wash overlay).
+  // ORCH-1123 — selected-row treatment (accent border @1.5 + warm wash overlay).
   hostSelected: {
     borderColor: accent.border,
     borderWidth: 1.5,
   },
-  // ORCH-1116 — non-draft row, inert + dimmed while selection mode is active.
+  // ORCH-1123 — non-draft row, inert + dimmed while selection mode is active.
   hostDimmedInert: {
     opacity: 0.4,
   },
@@ -397,7 +397,7 @@ const styles = StyleSheet.create({
     overflow: "hidden",
     flexShrink: 0,
   },
-  // ORCH-1116 — checkbox overlay, top-left over the cover (inset spacing.xs).
+  // ORCH-1123 — checkbox overlay, top-left over the cover (inset spacing.xs).
   checkboxSlot: {
     position: "absolute",
     top: spacing.xs,

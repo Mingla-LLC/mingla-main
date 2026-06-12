@@ -1,10 +1,10 @@
-# SPEC — ORCH-1116 [Hub multi-select draft delete]
+# SPEC — ORCH-1123 [Hub multi-select draft delete]
 
 **Mode:** mingla-forensics SPEC (binding build contract)
-**Worktree:** `/Users/sethogieva/Desktop/mingla-orchs/ORCH-1116-[hub-multiselect-draft-delete]` (branch `ORCH-1116-hub-multiselect-draft-delete`)
+**Worktree:** `/Users/sethogieva/Desktop/mingla-orchs/ORCH-1123-[hub-multiselect-draft-delete]` (branch `ORCH-1123-hub-multiselect-draft-delete`)
 **Date:** 2026-06-11
-**Investigation read:** `Mingla_Artifacts/investigations/INVESTIGATE_ORCH-1116_HUB_MULTISELECT_DRAFT_DELETE.md` (all five truth layers + the 8 open questions)
-**COMMS_LEDGER:** read on entry — no BLOCK/WARN row targets ORCH-1116 or mingla-forensics. No new cross-ORCH discovery requiring a ledger write.
+**Investigation read:** `Mingla_Artifacts/investigations/INVESTIGATE_ORCH-1123_HUB_MULTISELECT_DRAFT_DELETE.md` (all five truth layers + the 8 open questions)
+**COMMS_LEDGER:** read on entry — no BLOCK/WARN row targets ORCH-1123 or mingla-forensics. No new cross-ORCH discovery requiring a ledger write.
 **Scope guard:** DRAFTS-ONLY bulk delete across the 3 business-app Hub tabs (events, trips, experiences). NOT a redesign of any tab, NOT a new filter system, NOT a refactor of the 3 existing single-delete paths.
 
 ---
@@ -49,13 +49,13 @@
 ## 2. Database — Batch RPC
 
 ### 2.1 New migration file
-`supabase/migrations/20260927000000_orch_1116_batch_discard_offering_drafts.sql`
+`supabase/migrations/20260927000000_orch_1123_batch_discard_offering_drafts.sql`
 (version strictly `> 20260926000000`, the current latest on origin/main).
 
 ### 2.2 Exact SQL (full, idempotent)
 
 ```sql
--- ORCH-1116 [Hub multi-select draft delete] — batch draft-discard RPC.
+-- ORCH-1123 [Hub multi-select draft delete] — batch draft-discard RPC.
 -- Replicates business_discard_event_draft's guards PER ROW, event_type-agnostic
 -- (works for event/trip/experience — all rows in public.events). SKIP-and-report:
 -- the batch never aborts on a bad row; returns a per-row outcome so the client
@@ -527,27 +527,27 @@ Then `setConfirmOpen(false)` + `selection.exit()` on success.
 
 Add to `Mingla_Artifacts/INVARIANT_REGISTRY.md` (PROPOSED, promoted at close):
 
-1. **I-PROPOSED-ORCH-1116-MULTISELECT-DRAFTS-ONLY**
+1. **I-PROPOSED-ORCH-1123-MULTISELECT-DRAFTS-ONLY**
    - Rule: long-press selection mode + the `DraftSelectBar` may target ONLY rows whose status is `draft`. A non-draft row must be `selectable={false}` (no long-press, no toggle, no checkbox). The batch RPC must `skip_not_draft` any non-draft id.
    - Enforcement: card passes `selectable={isDraftRow}`; RPC guards `status='draft'` server-side (defense in depth).
    - Test: jest — assert each tab computes `selectable` from a draft predicate; SQL — a non-draft id returns `skipped_not_draft`, never `deleted`.
 
-2. **I-PROPOSED-ORCH-1116-BATCH-RPC-RANK-GATED**
+2. **I-PROPOSED-ORCH-1123-BATCH-RPC-RANK-GATED**
    - Rule: `business_discard_offering_drafts` must enforce `biz_brand_effective_rank >= biz_role_rank('event_manager')` PER ROW and must be REVOKE'd from PUBLIC/anon, GRANT'd to authenticated/service_role only.
    - Enforcement: SQL body + GRANT lines.
    - Test: migration-source jest grep (mirror `serverDraftLifecycleGuards.test.ts:200`) asserting the rank check + GRANT line are present; SQL adversarial — a sub-rank/other-brand caller gets `forbidden`.
 
-3. **I-PROPOSED-ORCH-1116-NO-SILENT-PARTIAL-FAILURE**
+3. **I-PROPOSED-ORCH-1123-NO-SILENT-PARTIAL-FAILURE**
    - Rule: a partial batch (some `forbidden`/`skipped`) MUST surface a toast naming counts; the RPC MUST return per-row outcomes (never all-or-nothing rollback that hides intent).
    - Enforcement: RPC `RETURN NEXT` per id; client toast tally (§3.8).
    - Test: jest — given a mixed-outcome result, the toast string contains "couldn't be deleted".
 
-4. **I-PROPOSED-ORCH-1116-EVENTS-LOCAL-SERVER-SPLIT**
+4. **I-PROPOSED-ORCH-1123-EVENTS-LOCAL-SERVER-SPLIT**
    - Rule: an events bulk delete must route local-only ids (`d_*`/`serverSlug===null`) to Zustand `deleteDraft` only, and server ids to the RPC + Zustand removal + RQ invalidate. A local-only id must NEVER be sent to the RPC (it would 404).
    - Enforcement: `events.tsx` partition (§3.6) + hook split (§3.2).
    - Test: jest — partition fn sends zero `d_*` ids in `serverEventIds`; deletes all local ids from the store.
 
-5. **I-PROPOSED-ORCH-1116-LONGPRESS-FIRES** (Constitution #1 no-dead-tap)
+5. **I-PROPOSED-ORCH-1123-LONGPRESS-FIRES** (Constitution #1 no-dead-tap)
    - Rule: long-press on a draft row MUST enter selection mode at runtime (not "wired in source").
    - Enforcement: `onLongPress`+`delayLongPress` on the body Pressable; tab passes a real `enterWith`.
    - Test: device/sim runtime proof at TEST (source caps at "suspected").
@@ -562,7 +562,7 @@ Add to `Mingla_Artifacts/INVARIANT_REGISTRY.md` (PROPOSED, promoted at close):
   - Events partition unit: a mixed `[d_x, uuid1, uuid2]` selection → `serverEventIds=[uuid1,uuid2]`, `localOnlyDraftIds=[d_x]`.
   - Toast tally unit: `deleted/failed` combinations produce the §3.8 strings.
   - Migration-source grep test (new, mirror `serverDraftLifecycleguards.test.ts`): asserts `CREATE OR REPLACE FUNCTION public.business_discard_offering_drafts`, the per-row rank check, `$function$;` before GRANT, and the GRANT line.
-- SQL behavioral (new `supabase/migrations/__tests__/orch_1116_batch_discard.test.sql`): seed 3 drafts (event/trip/experience) for a brand the caller manages → all return `deleted` + `deleted_at` set; a non-draft id → `skipped_not_draft`; a missing id → `skipped_not_found`; re-run on already-deleted → `skipped_not_found` (idempotent).
+- SQL behavioral (new `supabase/migrations/__tests__/orch_1123_batch_discard.test.sql`): seed 3 drafts (event/trip/experience) for a brand the caller manages → all return `deleted` + `deleted_at` set; a non-draft id → `skipped_not_draft`; a missing id → `skipped_not_found`; re-run on already-deleted → `skipped_not_found` (idempotent).
 - Must prove **fails-on-revert**: revert the RPC migration → SQL test fails; revert the partition → events jest fails.
 
 **Tester (adversarial — different angle):**
@@ -588,15 +588,15 @@ Add to `Mingla_Artifacts/INVARIANT_REGISTRY.md` (PROPOSED, promoted at close):
 ## 7. File-by-file change list (authoritative)
 
 **New:**
-1. `supabase/migrations/20260927000000_orch_1116_batch_discard_offering_drafts.sql` (§2.2)
-2. `supabase/migrations/__tests__/orch_1116_batch_discard.test.sql` (§5)
+1. `supabase/migrations/20260927000000_orch_1123_batch_discard_offering_drafts.sql` (§2.2)
+2. `supabase/migrations/__tests__/orch_1123_batch_discard.test.sql` (§5)
 3. `mingla-business/src/services/offeringDrafts.ts` (§3.1)
 4. `mingla-business/src/hooks/useDiscardOfferingDrafts.ts` (§3.2)
 5. `mingla-business/src/hooks/useDraftMultiSelect.ts` (§3.3)
 6. `mingla-business/src/components/offering/DraftSelectBar.tsx` (§3.4)
 7. `mingla-business/src/components/offering/DraftSelectCheckbox.tsx` (§3.5)
 8. `mingla-business/src/hooks/__tests__/useDraftMultiSelect.test.ts` (+ partition/toast unit tests; §5)
-9. `mingla-business/src/utils/__tests__/orch_1116_batch_rpc_source.test.ts` (migration-source grep; §5)
+9. `mingla-business/src/utils/__tests__/orch_1123_batch_rpc_source.test.ts` (migration-source grep; §5)
 
 **Edited (additive):**
 10. `mingla-business/src/components/event/EventListCard.tsx` — add selection props + onLongPress + checkbox overlay + selected style (§3.7.1)
@@ -627,6 +627,6 @@ DESIGN must spec, pixel-precise, for mingla-business (React Native, dark glass s
 
 ## Summary
 
-ORCH-1116 ships long-press multi-select + bulk soft-delete for DRAFT offerings across all three business-app Hub tabs, anchored on ONE batch RPC and ONE delete-dispatch hook (one-owner-per-truth). **RPC:** `public.business_discard_offering_drafts(p_event_ids uuid[]) RETURNS TABLE(event_id uuid, outcome text)`, migration `20260927000000`, `SECURITY DEFINER`, per-row guards copied from `business_discard_event_draft` (auth · `status='draft'` · `event_manager` rank · brand-exists · `FOR UPDATE` · idempotent), `event_type`-agnostic, GRANT'd to authenticated/service_role only. **Result shape = SKIP-and-report (NOT all-or-nothing)** so partial failures surface as "Deleted N, M couldn't be deleted" (no silent failure). **Selection = shared `useDraftMultiSelect` hook + shared `DraftSelectBar` + `DraftSelectCheckbox`**, each tab keeping its own card + data source. **Experiences-drafts surfacing = no new filter / no tab redesign**: long-press is gated to `status==='draft'` rows inside the existing `ExperienceGenerationSurface` (restaurant/play), the first-ever experience delete, rank-gated. The events Zustand trap is handled by partitioning local-only (`d_*`/`serverSlug===null` → Zustand `deleteDraft` only) from server (RPC + Zustand + RQ invalidate). Trips bulk-delete now routes through the rank-checked RPC (stricter, accepted; single path untouched). Counts invalidated on every kind. Five I-PROPOSED invariants pre-staged; tester drives the adversarial authz/drafts-only/dead-tap angles live.
+ORCH-1123 ships long-press multi-select + bulk soft-delete for DRAFT offerings across all three business-app Hub tabs, anchored on ONE batch RPC and ONE delete-dispatch hook (one-owner-per-truth). **RPC:** `public.business_discard_offering_drafts(p_event_ids uuid[]) RETURNS TABLE(event_id uuid, outcome text)`, migration `20260927000000`, `SECURITY DEFINER`, per-row guards copied from `business_discard_event_draft` (auth · `status='draft'` · `event_manager` rank · brand-exists · `FOR UPDATE` · idempotent), `event_type`-agnostic, GRANT'd to authenticated/service_role only. **Result shape = SKIP-and-report (NOT all-or-nothing)** so partial failures surface as "Deleted N, M couldn't be deleted" (no silent failure). **Selection = shared `useDraftMultiSelect` hook + shared `DraftSelectBar` + `DraftSelectCheckbox`**, each tab keeping its own card + data source. **Experiences-drafts surfacing = no new filter / no tab redesign**: long-press is gated to `status==='draft'` rows inside the existing `ExperienceGenerationSurface` (restaurant/play), the first-ever experience delete, rank-gated. The events Zustand trap is handled by partitioning local-only (`d_*`/`serverSlug===null` → Zustand `deleteDraft` only) from server (RPC + Zustand + RQ invalidate). Trips bulk-delete now routes through the rank-checked RPC (stricter, accepted; single path untouched). Counts invalidated on every kind. Five I-PROPOSED invariants pre-staged; tester drives the adversarial authz/drafts-only/dead-tap angles live.
 
-**Artifact:** `Mingla_Artifacts/specs/SPEC_ORCH-1116_HUB_MULTISELECT_DRAFT_DELETE.md`
+**Artifact:** `Mingla_Artifacts/specs/SPEC_ORCH-1123_HUB_MULTISELECT_DRAFT_DELETE.md`

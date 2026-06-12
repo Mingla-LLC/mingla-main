@@ -62,7 +62,7 @@ export interface OfferingListCardProps {
   onManageOpen?: () => void;
   /** Optional testID for QA / Maestro. */
   testID?: string;
-  // ORCH-1116 [Hub multi-select draft delete] — additive selection props.
+  // ORCH-1123 [Hub multi-select draft delete] — additive selection props.
   selectionMode?: boolean;
   selected?: boolean;
   onLongPress?: () => void;
@@ -94,7 +94,7 @@ export const OfferingListCard: React.FC<OfferingListCardProps> = ({
   const title = model.title.trim().length > 0 ? model.title : untitledFor(kind);
   const isDraft = model.status === "draft";
 
-  // ORCH-1116 — selection affordances.
+  // ORCH-1123 — selection affordances.
   const holdRing = useDraftHoldRing(selectable);
   const dimmedInert = selectionMode && !selectable;
   const showCheckbox = selectionMode && selectable;
@@ -219,7 +219,7 @@ export const OfferingListCard: React.FC<OfferingListCardProps> = ({
       </Pressable>
 
       {/* Right rail: 3-dot manage trigger.
-          ORCH-1116 — hidden while in selection mode. */}
+          ORCH-1123 — hidden while in selection mode. */}
       {onManageOpen !== undefined && !selectionMode ? (
         <View style={styles.rightRail} pointerEvents="box-none">
           <Pressable
@@ -244,7 +244,7 @@ export const OfferingListCard: React.FC<OfferingListCardProps> = ({
         </View>
       ) : null}
 
-      {/* ORCH-1116 — selected wash + press-and-hold ring overlays. */}
+      {/* ORCH-1123 — selected wash + press-and-hold ring overlays. */}
       {selectionMode || selected ? (
         <DraftSelectOverlay
           selected={selected}
@@ -317,7 +317,7 @@ const styles = StyleSheet.create({
   hostFaded: {
     opacity: 0.7,
   },
-  // ORCH-1116 — selection visuals.
+  // ORCH-1123 — selection visuals.
   hostSelected: {
     borderColor: accent.border,
     borderWidth: 1.5,

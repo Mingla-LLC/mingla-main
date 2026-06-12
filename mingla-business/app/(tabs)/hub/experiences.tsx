@@ -113,7 +113,7 @@ function normalizeExperienceStatus(status: string): EventStatusForRouting {
   }
 }
 
-// ORCH-1116 — combined no-silent-failure toast tally (verbatim DESIGN §6.2).
+// ORCH-1123 — combined no-silent-failure toast tally (verbatim DESIGN §6.2).
 const bulkToastMessage = (deleted: number, failed: number): string => {
   if (failed === 0) {
     return `Deleted ${deleted} draft${deleted === 1 ? "" : "s"}.`;
@@ -183,7 +183,7 @@ function ExperienceGenerationSurface({
   const experiences = experiencesQuery.data ?? [];
   const showReview = phase === "review" || pending.length > 0;
 
-  // ORCH-1116 [Hub multi-select draft delete] — long-press multi-select +
+  // ORCH-1123 [Hub multi-select draft delete] — long-press multi-select +
   // bulk soft-delete for DRAFT experiences only (first-ever experience delete,
   // server rank-gated). No filter pills here → selection auto-scopes via the
   // per-row `selectable` flag.
@@ -395,7 +395,7 @@ function ExperienceGenerationSurface({
         onDismiss={() => setToast(null)}
       />
 
-      {/* ORCH-1116 — bulk-delete ConfirmDialog (simple destructive variant). */}
+      {/* ORCH-1123 — bulk-delete ConfirmDialog (simple destructive variant). */}
       <ConfirmDialog
         visible={bulkConfirmOpen}
         onClose={() => {
@@ -430,7 +430,7 @@ function ExperienceGenerationSurface({
         destructive
       />
 
-      {/* ORCH-1116 — sticky bulk-select action bar (drafts only). */}
+      {/* ORCH-1123 — sticky bulk-select action bar (drafts only). */}
       {selection.selectionMode ? (
         <DraftSelectBar
           count={selection.count}
@@ -629,7 +629,7 @@ const styles = StyleSheet.create({
     color: textTokens.primary,
   },
   listLoader: { marginVertical: spacing.lg },
-  // ORCH-1116 — long-press discoverability caption.
+  // ORCH-1123 — long-press discoverability caption.
   selectHint: {
     fontSize: typography.caption.fontSize,
     lineHeight: typography.caption.lineHeight,
