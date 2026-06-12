@@ -3,27 +3,36 @@
  * deadline + bookings-closed (sales-gated)] — implementor happy-path
  * regression test (per ORCH-0840 regression-test enforcement + append-only CI).
  *
- * Pins the THREE load-bearing contracts of ORCH-1120 in source:
- *   1. The new EditPublishedTripSettingsAccordion saves ONLY through the
- *      sales-gated biz_update_live_trip path (useUpdateLiveTripFields /
- *      updateLiveTripFields), NEVER the sales-unaware refundPolicyService
- *      updateRefundPolicy / updateBookingDeadline. (SC-3, §6 audit invariant.)
- *   2. The accordion mounts the live (NON-disabled) "Bookings closed" Switch
- *      with onValueChange + carries ONLY the dirty fields into the patch.
- *      (SC-1, SC-2.)
- *   3. The parent screen's buildRejectDialog exhaustively handles the 4 new
- *      refund-class reject reasons with the "Refund first" copy + "Open Orders"
- *      CTA, and the read-only Settings snapshot + dead-end "use the wizard"
- *      hint are GONE. (SC-4, SC-7, T-13.)
+ * REWORK (2026-06-12, Seth device feedback): the Settings accordion was showing
+ * its OWN "Save changes" button + its OWN reason dialog — a duplicate save path
+ * on top of the screen's standard bottom button. The accordion is now a PURE
+ * CONTROLLED EDITOR; the single standard bottom Save button owns the save,
+ * reason prompt, gate, and reject path. This test now pins the CONSOLIDATED
+ * single-save contract.
  *
- * fails-on-revert: deleting any of the 4 new buildRejectDialog cases, the
- * gated-save call, the live Switch, or re-introducing the dead-end hint makes
- * a matching assertion fail.
+ * Pins the load-bearing contracts of ORCH-1120 (post-REWORK):
+ *   1. The accordion is a CONTROLLED editor — NO internal Save button, NO
+ *      reason dialog, NO mutation, NO onReject prop. Its three values are
+ *      lifted via controlled props (value + onChange). (REWORK SC.)
+ *   2. The PARENT screen folds refund_policy / booking_deadline /
+ *      bookings_closed into its LocalTripEditState → buildLiveTripPatch diff →
+ *      the single biz_update_live_trip RPC (useUpdateLiveTripFields), NEVER the
+ *      sales-unaware refundPolicyService writers. (SC-3, §6 audit invariant.)
+ *   3. The diff/severity path treats the three fields as MATERIAL. (SPEC §6.)
+ *   4. The parent's buildRejectDialog exhaustively handles the 4 refund-class
+ *      reject reasons with the "Refund first" copy + "Open Orders" CTA, and the
+ *      read-only Settings snapshot + dead-end "use the wizard" hint are GONE.
+ *      (SC-4, SC-7, T-13.)
+ *
+ * fails-on-revert: deleting the parent's settings diff (patch.refund_policy /
+ * booking_deadline / bookings_closed), the MATERIAL_KEYS settings entries, any
+ * of the 4 buildRejectDialog cases, or re-introducing an internal accordion
+ * save button makes a matching assertion fail.
  *
  * The tester layers the adversarial different-angle suite (live SQL gate drive,
  * device dead-tap proof, Android opaque-glass) per SPEC §13.
  *
- * Spec: SPEC_ORCH-1120_TRIP_SETTINGS_REFUND_DEADLINE.md §8, §9.
+ * Spec: SPEC_ORCH-1120_TRIP_SETTINGS_REFUND_DEADLINE.md §8, §9 + REWORK note.
  */
 
 import { readFileSync } from "node:fs";
@@ -49,60 +58,117 @@ describe("ORCH-1120 — published-trip Settings editable refund/deadline/booking
     "components/trip/EditPublishedTripSettingsAccordion.tsx",
   );
   const SERVICE = read("services/tripsService.ts");
+  const ADAPTER = read("utils/tripAdapter.ts");
 
-  // ---- 1. Gated-RPC routing (SC-3) ----
-  describe("saves route through the sales-gated biz_update_live_trip RPC", () => {
-    test("accordion calls the gated mutation hook", () => {
-      expect(ACCORDION).toMatch(/useUpdateLiveTripFields\(\)/);
-      expect(ACCORDION).toMatch(/\.mutateAsync\(\{/);
+  // ---- 1. Accordion is a PURE CONTROLLED EDITOR (REWORK) ----
+  describe("accordion is a controlled editor with NO internal save path", () => {
+    const code = stripComments(ACCORDION);
+
+    test("accordion has NO internal Save button (single bottom button only)", () => {
+      // No "Save changes" label inside the accordion at all.
+      expect(ACCORDION).not.toMatch(/label="Save changes"/);
+      // No save-button testIDs.
+      expect(ACCORDION).not.toMatch(/settings-accordion-save/);
+      expect(ACCORDION).not.toMatch(/settings-accordion-reason-confirm/);
     });
 
-    test("accordion NEVER calls the sales-unaware refundPolicyService writers", () => {
-      const code = stripComments(ACCORDION);
-      expect(code).not.toMatch(/updateRefundPolicy/);
-      expect(code).not.toMatch(/updateBookingDeadline/);
+    test("accordion has NO reason dialog / banner of its own", () => {
+      expect(code).not.toMatch(/reasonDialogVisible/);
+      expect(code).not.toMatch(/onConfirmSave/);
+      expect(code).not.toMatch(/onSavePressed/);
+      expect(ACCORDION).not.toMatch(/Save settings changes\?/);
     });
 
-    test("the published screen NEVER calls the sales-unaware refundPolicyService writers", () => {
-      const code = stripComments(SCREEN);
-      expect(code).not.toMatch(/updateRefundPolicy/);
-      expect(code).not.toMatch(/updateBookingDeadline/);
+    test("accordion does NOT own the mutation or onReject prop", () => {
+      expect(code).not.toMatch(/useUpdateLiveTripFields/);
+      expect(code).not.toMatch(/\.mutateAsync/);
+      expect(code).not.toMatch(/onReject/);
     });
-  });
 
-  // ---- 2. Live controls + dirty-only patch (SC-1, SC-2) ----
-  describe("live controls + dirty-only patch", () => {
-    test("Bookings-closed Switch is live (onValueChange + native disabled only during submit)", () => {
-      expect(ACCORDION).toMatch(/onValueChange=\{setClosed\}/);
-      // The switch must NOT be hardcoded disabled — only disabled while submitting.
-      expect(ACCORDION).toMatch(/disabled=\{submitting\}/);
+    test("accordion exposes controlled value + onChange props", () => {
+      expect(ACCORDION).toMatch(/onRefundPolicyChange/);
+      expect(ACCORDION).toMatch(/onBookingDeadlineChange/);
+      expect(ACCORDION).toMatch(/onBookingsClosedChange/);
+    });
+
+    test("editors stay mounted + wired to the controlled props", () => {
+      expect(ACCORDION).toMatch(
+        /<RefundPolicyEditor[\s\S]*?value=\{refundPolicy\}[\s\S]*?onChange=\{onRefundPolicyChange\}/,
+      );
+      expect(ACCORDION).toMatch(/<BookingDeadlinePicker/);
+      expect(ACCORDION).toMatch(/onValueChange=\{onBookingsClosedChange\}/);
       expect(ACCORDION).toMatch(/accessibilityRole="switch"/);
     });
 
-    test("mounts the ORCH-0875 editors UNMODIFIED, each wrapped for submit-disable (FORK 2)", () => {
-      expect(ACCORDION).toMatch(/<RefundPolicyEditor value=\{policy\} onChange=\{setPolicy\} \/>/);
-      expect(ACCORDION).toMatch(/<BookingDeadlinePicker/);
-      expect(ACCORDION).toMatch(
-        /pointerEvents=\{submitting \? "none" : "auto"\}/,
-      );
-    });
-
-    test("patch carries ONLY the dirty fields", () => {
-      expect(ACCORDION).toMatch(/patch\.refund_policy = policy/);
-      expect(ACCORDION).toMatch(/patch\.booking_deadline = deadline/);
-      expect(ACCORDION).toMatch(/patch\.bookings_closed = closed/);
-    });
-
-    test("ok:false business rejects route to the parent via onReject (FORK 1)", () => {
-      // Strip comments so this exercises the actual CALL, not the JSDoc mention.
-      const code = stripComments(ACCORDION);
-      expect(code).toMatch(/onReject\(result\)/);
-      // And the call lives in the ok:false branch (not ok:true success path).
-      expect(code).toMatch(/if \(result\.ok\)[\s\S]*?else \{[\s\S]*?onReject\(result\)/);
+    test("never calls the sales-unaware refundPolicyService writers", () => {
+      expect(code).not.toMatch(/updateRefundPolicy/);
+      expect(code).not.toMatch(/updateBookingDeadline/);
     });
   });
 
-  // ---- 3. Service union extension ----
+  // ---- 2. Parent owns the single save path (SC-3) ----
+  describe("parent screen saves the 3 settings fields through the single RPC", () => {
+    const code = stripComments(SCREEN);
+
+    test("buildLiveTripPatch diffs the three settings fields into the patch", () => {
+      expect(code).toMatch(/patch\.refund_policy = state\.refundPolicy/);
+      expect(code).toMatch(/patch\.booking_deadline = state\.bookingDeadline/);
+      expect(code).toMatch(/patch\.bookings_closed = state\.bookingsClosed/);
+    });
+
+    test("LocalTripEditState seeds the three settings fields from the trip", () => {
+      expect(code).toMatch(/refundPolicy: trip\.refundPolicy/);
+      expect(code).toMatch(/bookingDeadline: trip\.bookingDeadline/);
+      expect(code).toMatch(/bookingsClosed: trip\.bookingsClosed/);
+    });
+
+    test("the single bottom Save button drives handleSavePress", () => {
+      expect(SCREEN).toMatch(/testID="edit-trip-save"/);
+      expect(SCREEN).toMatch(/onPress=\{handleSavePress\}/);
+    });
+
+    test("the parent saves through the gated mutation, never refundPolicyService", () => {
+      expect(SCREEN).toMatch(/useUpdateLiveTripFields\(\)/);
+      expect(SCREEN).toMatch(/updateLiveTripMutation\.mutateAsync/);
+      expect(code).not.toMatch(/updateRefundPolicy/);
+      expect(code).not.toMatch(/updateBookingDeadline/);
+    });
+
+    test("editedSectionKeys lights the Settings badge from the patch diff", () => {
+      expect(code).toMatch(/p\.refund_policy !== undefined/);
+      expect(code).toMatch(/out\.add\("settings"\)/);
+      // The old accordion-owned dirtiness lift is gone.
+      expect(code).not.toMatch(/settingsDirty/);
+    });
+  });
+
+  // ---- 3. Diff + severity treat settings fields as MATERIAL (SPEC §6) ----
+  describe("settings fields are MATERIAL in the diff/severity path", () => {
+    test("MATERIAL_KEYS includes the three settings keys", () => {
+      const block = ADAPTER.match(
+        /MATERIAL_KEYS:[\s\S]*?\];/,
+      );
+      expect(block).not.toBeNull();
+      const FN = block?.[0] ?? "";
+      expect(FN).toContain('"refund_policy"');
+      expect(FN).toContain('"booking_deadline"');
+      expect(FN).toContain('"bookings_closed"');
+    });
+
+    test("computeRichTripFieldDiffs emits MATERIAL diffs for the three fields", () => {
+      expect(ADAPTER).toMatch(
+        /fieldKey: "refund_policy"[\s\S]*?severity: "material"/,
+      );
+      expect(ADAPTER).toMatch(
+        /fieldKey: "booking_deadline"[\s\S]*?severity: "material"/,
+      );
+      expect(ADAPTER).toMatch(
+        /fieldKey: "bookings_closed"[\s\S]*?severity: "material"/,
+      );
+    });
+  });
+
+  // ---- 4. Service union extension ----
   describe("service contract", () => {
     test("LiveTripPatch carries the 3 new keys", () => {
       expect(SERVICE).toMatch(/refund_policy\?:/);
@@ -123,8 +189,8 @@ describe("ORCH-1120 — published-trip Settings editable refund/deadline/booking
     }
   });
 
-  // ---- 4. Parent reject dialog (SC-4, SC-7) ----
-  describe("buildRejectDialog exhaustively handles the 4 new refund-class reasons", () => {
+  // ---- 5. Parent reject dialog (single reject path — SC-4, SC-7) ----
+  describe("buildRejectDialog exhaustively handles the 4 refund-class reasons", () => {
     const fnMatch = SCREEN.match(
       /const buildRejectDialog = useCallback\([\s\S]*?\[router,\s*showToast\],\s*\);/,
     );
@@ -156,30 +222,31 @@ describe("ORCH-1120 — published-trip Settings editable refund/deadline/booking
     });
   });
 
-  // ---- 5. Dead-end hint gone + accordion mounted (T-13, SC-1) ----
+  // ---- 6. Dead-end hint gone + accordion mounted controlled (T-13, SC-1) ----
   describe("read-only snapshot + dead-end hint removed", () => {
     test("the 'use the wizard' dead-end hint is GONE", () => {
       expect(SCREEN).not.toMatch(/Open the wizard from the draft trip menu/);
       expect(SCREEN).not.toMatch(/managed from the trip\s*wizard/);
     });
 
-    test("the case 'settings' renders the new accordion + wires onReject/onDirtyChange", () => {
+    test("the case 'settings' renders the controlled accordion", () => {
       expect(SCREEN).toMatch(/<EditPublishedTripSettingsAccordion/);
+      expect(SCREEN).toMatch(/onRefundPolicyChange=\{handleRefundPolicyChange\}/);
       expect(SCREEN).toMatch(
-        /onReject=\{\(r\) => setRejectDialog\(buildRejectDialog\(r\)\)\}/,
+        /onBookingDeadlineChange=\{handleBookingDeadlineChange\}/,
       );
-      expect(SCREEN).toMatch(/onDirtyChange=\{setSettingsDirty\}/);
+      expect(SCREEN).toMatch(
+        /onBookingsClosedChange=\{handleBookingsClosedChange\}/,
+      );
       expect(SCREEN).toMatch(/affectedOrderCount=\{totalConfirmedOrders\}/);
+      // No more onDirtyChange / onReject wiring on the accordion (single path).
+      expect(SCREEN).not.toMatch(/onDirtyChange=\{setSettingsDirty\}/);
     });
 
     test("the dead settings styles are removed", () => {
       expect(SCREEN).not.toMatch(/settingsHint:\s*\{/);
       expect(SCREEN).not.toMatch(/settingsField:\s*\{/);
       expect(SCREEN).not.toMatch(/settingsValue:\s*\{/);
-    });
-
-    test("editedSectionKeys lights the Settings 'Edited' badge from settingsDirty", () => {
-      expect(SCREEN).toMatch(/if \(settingsDirty\) out\.add\("settings"\)/);
     });
   });
 });

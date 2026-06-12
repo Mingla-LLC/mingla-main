@@ -174,5 +174,40 @@ export const validateLiveTripFieldUpdate = (
     }
   }
 
+  // ---------- ORCH-1120 Settings checks ----------
+  // The biz_update_live_trip RPC is canonical for all three. This client
+  // fast-path only pre-blocks the two UNAMBIGUOUS buyer-unfavorable edits that
+  // need no realized-% math (earlier deadline; false→true bookings-closed).
+  // refund_policy downgrades are classified by realized refund_pct_at on the
+  // SERVER (SPEC §4.1.A "classify by realized refund_pct_at, not literal tier
+  // shape") — we do NOT mirror that money math client-side to avoid a
+  // false-positive block; the server returns refund_policy_downgrade_with_sales
+  // and handleConfirmSave routes it to buildRejectDialog via the !result.ok path.
+  if (
+    patch.booking_deadline !== undefined &&
+    totalConfirmedOrders > 0 &&
+    trip.bookingDeadline !== null &&
+    patch.booking_deadline !== null &&
+    new Date(patch.booking_deadline).getTime() <
+      new Date(trip.bookingDeadline).getTime()
+  ) {
+    return {
+      ok: false,
+      reason: "booking_deadline_earlier_with_sales",
+      affectedOrderCount: totalConfirmedOrders,
+    };
+  }
+  if (
+    patch.bookings_closed === true &&
+    trip.bookingsClosed === false &&
+    totalConfirmedOrders > 0
+  ) {
+    return {
+      ok: false,
+      reason: "bookings_closed_harms_active",
+      affectedOrderCount: totalConfirmedOrders,
+    };
+  }
+
   return { ok: true, trimmedReason };
 };

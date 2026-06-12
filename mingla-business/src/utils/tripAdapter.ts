@@ -38,6 +38,7 @@ import type {
   TripInclusionInput,
   TripPricingTierInput,
 } from "../services/tripsService";
+import type { RefundPolicy } from "../services/refundPolicyService";
 
 export type TripEditSeverity = "additive" | "material";
 
@@ -62,6 +63,10 @@ export const FIELD_LABELS: Record<string, string> = {
   cover_media_credit: "Cover credit",
   cover_media_credit_url: "Cover credit URL",
   cover_media_alt: "Cover alt text",
+  // ORCH-1120 — published-trip Settings.
+  refund_policy: "Refund policy",
+  booking_deadline: "Booking deadline",
+  bookings_closed: "Bookings closed",
 };
 
 // ============================================================
@@ -74,6 +79,10 @@ export const MATERIAL_KEYS: ReadonlyArray<string> = [
   "days",
   "inclusions",
   "pricing_tiers",
+  // ORCH-1120 — Settings edits change buyer-relied-upon terms → MATERIAL (SPEC §6).
+  "refund_policy",
+  "booking_deadline",
+  "bookings_closed",
 ];
 
 /** Material keys inside theme.business_trip (notify buyers when any changes). */
@@ -370,6 +379,10 @@ export const computeRichTripFieldDiffs = (
     cover_media_credit?: string | null;
     cover_media_credit_url?: string | null;
     cover_media_alt?: string | null;
+    // ORCH-1120 — published-trip Settings.
+    refund_policy?: import("../services/refundPolicyService").RefundPolicy | null;
+    booking_deadline?: string | null;
+    bookings_closed?: boolean;
   },
   ctx: {
     droppedDayOrdinals: number[];
@@ -530,6 +543,40 @@ export const computeRichTripFieldDiffs = (
       oldValue: fmt(oldTrip.coverMediaUrl),
       newValue: fmt(patch.cover_media_url ?? oldTrip.coverMediaUrl),
       severity: "additive",
+    });
+  }
+  // ORCH-1120 — Settings (refund_policy / booking_deadline / bookings_closed).
+  // All three are MATERIAL (they change buyer-relied-upon terms — SPEC §6).
+  const policyLabel = (p: RefundPolicy | null | undefined): string => {
+    if (p === null || p === undefined) return "—";
+    const n = p.tiers.length;
+    return `${p.kind} (${n} tier${n === 1 ? "" : "s"})`;
+  };
+  if (patch.refund_policy !== undefined) {
+    out.push({
+      fieldKey: "refund_policy",
+      fieldLabel: labelOf("refund_policy"),
+      oldValue: policyLabel(oldTrip.refundPolicy),
+      newValue: policyLabel(patch.refund_policy),
+      severity: "material",
+    });
+  }
+  if (patch.booking_deadline !== undefined) {
+    out.push({
+      fieldKey: "booking_deadline",
+      fieldLabel: labelOf("booking_deadline"),
+      oldValue: fmt(oldTrip.bookingDeadline),
+      newValue: fmt(patch.booking_deadline),
+      severity: "material",
+    });
+  }
+  if (patch.bookings_closed !== undefined) {
+    out.push({
+      fieldKey: "bookings_closed",
+      fieldLabel: labelOf("bookings_closed"),
+      oldValue: oldTrip.bookingsClosed ? "Closed" : "Open",
+      newValue: patch.bookings_closed ? "Closed" : "Open",
+      severity: "material",
     });
   }
   return out;

@@ -13,11 +13,20 @@
  * would let a planner silently downgrade refund terms out from under paid
  * buyers).
  *
+ * REWORK (2026-06-12, Seth device feedback): the Settings accordion was a
+ * duplicate save path (its own button + reason dialog + mutation). It is now a
+ * PURE CONTROLLED EDITOR; the gated save was consolidated into the parent
+ * EditPublishedTripScreen.tsx (the single bottom Save button). The invariant is
+ * UNCHANGED — published refund/deadline/closed edits still route through the
+ * sales-gated biz_update_live_trip RPC — but the required gated-save call now
+ * lives in the SCREEN, not the accordion.
+ *
  * FAILS if:
  *   - EditPublishedTripScreen.tsx OR EditPublishedTripSettingsAccordion.tsx
  *     imports or calls `updateRefundPolicy` / `updateBookingDeadline`.
- *   - EditPublishedTripSettingsAccordion.tsx does not call `updateLiveTripFields`
- *     (directly or via the `useUpdateLiveTripFields` hook).
+ *   - EditPublishedTripScreen.tsx does not call `updateLiveTripFields`
+ *     (directly or via the `useUpdateLiveTripFields` hook) — the single
+ *     sales-gated write path for published-trip Settings edits.
  *
  * Comments are stripped before scanning so historical references in headers
  * don't cause false positives.
@@ -47,7 +56,9 @@ const BANNED_DIRECT_WRITERS = [
   /\bupdateBookingDeadline\b/,
 ];
 
-const REQUIRED_IN_ACCORDION = [
+// Post-REWORK the gated save lives in the parent screen (single Save button),
+// not the accordion (now a pure controlled editor).
+const REQUIRED_IN_SCREEN = [
   /\bupdateLiveTripFields\b/,
   /\buseUpdateLiveTripFields\b/,
 ];
@@ -79,16 +90,16 @@ for (const rel of NO_DIRECT_REFUND_SERVICE_FILES) {
   }
 }
 
-// The accordion must save through the gated RPC path.
+// The parent screen must save through the gated RPC path (single Save button).
 {
-  const abs = join(ROOT, ACCORDION);
+  const abs = join(ROOT, SCREEN);
   if (existsSync(abs)) {
     const stripped = stripComments(readFileSync(abs, "utf8"));
-    const hasGatedSave = REQUIRED_IN_ACCORDION.some((p) => p.test(stripped));
+    const hasGatedSave = REQUIRED_IN_SCREEN.some((p) => p.test(stripped));
     if (!hasGatedSave) {
       violations.push({
-        file: ACCORDION,
-        msg: "Must save via `updateLiveTripFields` (or the `useUpdateLiveTripFields` hook) — the only sales-gated write path for published trips.",
+        file: SCREEN,
+        msg: "Must save via `updateLiveTripFields` (or the `useUpdateLiveTripFields` hook) — the single sales-gated write path for published-trip Settings edits.",
       });
     }
   }

@@ -88,6 +88,7 @@ import { EditAfterPublishTripBanner } from "./EditAfterPublishTripBanner";
 import { EditPublishedTripIntakeAccordion } from "./EditPublishedTripIntakeAccordion";
 import { EditPublishedTripSettingsAccordion } from "./EditPublishedTripSettingsAccordion";
 
+import type { RefundPolicy } from "../../services/refundPolicyService";
 import type {
   Trip,
   LiveTripPatch,
@@ -209,6 +210,12 @@ interface LocalTripEditState {
   coverMediaCredit: string | null;
   coverMediaCreditUrl: string | null;
   coverMediaAlt: string | null;
+  // ORCH-1120 — Settings (published-trip refund/deadline/closed). Lifted from
+  // the (now controlled) EditPublishedTripSettingsAccordion so the single
+  // bottom Save button owns the edit state, diff, reason prompt, and gate.
+  refundPolicy: RefundPolicy | null;
+  bookingDeadline: string | null; // ISO timestamptz, or null to clear
+  bookingsClosed: boolean;
 }
 
 function tripToLocalEditState(trip: Trip): LocalTripEditState {
@@ -268,6 +275,10 @@ function tripToLocalEditState(trip: Trip): LocalTripEditState {
     coverMediaCredit: null,
     coverMediaCreditUrl: null,
     coverMediaAlt: null,
+    // ORCH-1120 — Settings server snapshot.
+    refundPolicy: trip.refundPolicy,
+    bookingDeadline: trip.bookingDeadline,
+    bookingsClosed: trip.bookingsClosed,
   };
 }
 
@@ -525,6 +536,19 @@ function buildLiveTripPatch(
       ? newSwitches
       : null;
 
+  // ORCH-1120 — Settings (refund_policy / booking_deadline / bookings_closed).
+  // Carry ONLY the dirty fields so the biz_update_live_trip RPC's favorable/
+  // unfavorable classifier evaluates only what changed (omit unchanged keys).
+  if (JSON.stringify(state.refundPolicy) !== JSON.stringify(trip.refundPolicy)) {
+    patch.refund_policy = state.refundPolicy;
+  }
+  if (state.bookingDeadline !== trip.bookingDeadline) {
+    patch.booking_deadline = state.bookingDeadline;
+  }
+  if (state.bookingsClosed !== trip.bookingsClosed) {
+    patch.bookings_closed = state.bookingsClosed;
+  }
+
   return {
     patch,
     dayDiffs,
@@ -622,11 +646,6 @@ export const EditPublishedTripScreen: React.FC<EditPublishedTripScreenProps> = (
     null,
   );
 
-  // ORCH-1120 — the Settings accordion owns its own edit state + save; it
-  // lifts dirtiness here so the Settings section-header "Edited" badge fires
-  // like every other section (computed.patch does NOT carry settings fields).
-  const [settingsDirty, setSettingsDirty] = useState<boolean>(false);
-
   // Toast
   const [toast, setToast] = useState<ToastState>({ visible: false, message: "" });
   const showToast = useCallback((message: string): void => {
@@ -717,11 +736,17 @@ export const EditPublishedTripScreen: React.FC<EditPublishedTripScreenProps> = (
     ) {
       out.add("cover");
     }
-    // ORCH-1120 — settings dirtiness is tracked by the accordion, not the
-    // parent patch diff.
-    if (settingsDirty) out.add("settings");
+    // ORCH-1120 — Settings dirtiness now flows through the parent patch diff
+    // (controlled editor); the single bottom Save button owns the save.
+    if (
+      p.refund_policy !== undefined ||
+      p.booking_deadline !== undefined ||
+      p.bookings_closed !== undefined
+    ) {
+      out.add("settings");
+    }
     return out;
-  }, [computed, settingsDirty]);
+  }, [computed]);
 
   // ---- Update handlers ----
   const updateBasics = useCallback(
@@ -762,6 +787,24 @@ export const EditPublishedTripScreen: React.FC<EditPublishedTripScreenProps> = (
       coverMediaCreditUrl: patch.coverMediaCreditUrl,
       coverMediaAlt: patch.coverMediaAlt,
     }));
+  }, []);
+
+  // ORCH-1120 — Settings (controlled editor): lift the three values into
+  // editState so the single bottom Save button diffs + saves them.
+  const handleRefundPolicyChange = useCallback(
+    (next: RefundPolicy | null): void => {
+      setEditState((prev) => ({ ...prev, refundPolicy: next }));
+    },
+    [],
+  );
+  const handleBookingDeadlineChange = useCallback(
+    (next: string | null): void => {
+      setEditState((prev) => ({ ...prev, bookingDeadline: next }));
+    },
+    [],
+  );
+  const handleBookingsClosedChange = useCallback((next: boolean): void => {
+    setEditState((prev) => ({ ...prev, bookingsClosed: next }));
   }, []);
 
   const handleToggleSection = useCallback((key: SectionKey): void => {
@@ -1457,20 +1500,25 @@ export const EditPublishedTripScreen: React.FC<EditPublishedTripScreenProps> = (
         case "settings":
           // ORCH-1120 [Settings refund/deadline editable] — the dead-end
           // read-only snapshot + "use the wizard" hint is replaced by a live,
-          // sales-gated editor. All writes route through biz_update_live_trip
-          // (the accordion never calls refundPolicyService). FORK 1: refund-
-          // class rejects route to this screen's ConfirmDialog via onReject.
+          // sales-gated editor. REWORK (2026-06-12): the accordion is now a
+          // PURE CONTROLLED EDITOR — its three values lift into editState and
+          // the screen's single bottom Save button owns the diff, reason prompt
+          // (ChangeSummaryModal), gate (biz_update_live_trip), and reject path
+          // (buildRejectDialog). All writes route through biz_update_live_trip
+          // (the accordion never calls refundPolicyService); refund-class
+          // rejects render through this screen's ConfirmDialog via handleConfirmSave.
           return (
             <EditPublishedTripSettingsAccordion
-              eventId={trip.id}
-              refundPolicy={trip.refundPolicy}
-              bookingDeadline={trip.bookingDeadline}
-              bookingsClosed={trip.bookingsClosed}
+              refundPolicy={editState.refundPolicy}
+              onRefundPolicyChange={handleRefundPolicyChange}
+              bookingDeadline={editState.bookingDeadline}
+              onBookingDeadlineChange={handleBookingDeadlineChange}
+              bookingsClosed={editState.bookingsClosed}
+              onBookingsClosedChange={handleBookingsClosedChange}
               tripStartIso={trip.businessTrip.startAt}
               brandTimezone={trip.timezone}
               affectedOrderCount={totalConfirmedOrders}
-              onDirtyChange={setSettingsDirty}
-              onReject={(r) => setRejectDialog(buildRejectDialog(r))}
+              submitting={submitting}
             />
           );
         default: {
@@ -1501,10 +1549,10 @@ export const EditPublishedTripScreen: React.FC<EditPublishedTripScreenProps> = (
       soldCountByTier,
       trip,
       showToast,
-      // ORCH-1120 — Settings accordion wiring.
-      buildRejectDialog,
-      setSettingsDirty,
-      setRejectDialog,
+      // ORCH-1120 — Settings controlled-editor wiring.
+      handleRefundPolicyChange,
+      handleBookingDeadlineChange,
+      handleBookingsClosedChange,
     ],
   );
 
