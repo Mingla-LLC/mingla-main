@@ -4335,3 +4335,15 @@ Every chat response from every skill uses Section A (what just happened) + Secti
 **Enforcement:** unit/regression tests `mingla-business/src/utils/__tests__/resolveUserEmail.test.ts` + `deleteAccountGate.test.ts` (T-G1 fails-on-revert proven at `4b6d9480a`; T-A1 blank-input-no-enable; T-A2 NULL-email-still-deletable-via-keyword) + `creatorAccountEnsure.test.ts` extension. Append-only.
 
 **Cross-references:** SPEC_ORCH-1110_blank-email-undeletable-account.md §4.1/§4.3, PR #437 (`9c7e6bdd0`), backfill migration `20260925000000`.
+
+### I-BUYER-READINESS-PREDICATE-IS-DEFINER (ACTIVE — ratified by ORCH-1116 CLOSE 2026-06-12)
+
+**Invariant:** Any DB predicate that answers "can this brand take money?" for a BUYER-facing surface — `public.pg_brand_can_charge(uuid)`, `public.pg_brands_can_charge(uuid[])`, and any future buyer-readiness predicate — MUST be `SECURITY DEFINER` with `SET search_path = ''`, returning ONLY a boolean / id-subset (never any `stripe_connect_accounts` row field). It MUST NOT be `SECURITY INVOKER`, because the underlying `stripe_connect_accounts` read policy is owner-scoped, so an INVOKER predicate returns a false negative for anon / non-owner buyers (the brand looks unable to charge when it can). Its regression test MUST exercise the predicate under `SET ROLE anon` and assert the RETURN VALUE — asserting only that anon has the `EXECUTE` grant is INSUFFICIENT (that exact gap let the bug ship green).
+
+**Why this matters:** ORCH-1116 — the public paid-event page showed "Booking unavailable — finishing payment setup" with a dead Get-Tickets CTA for fully-chargeable brands (e.g. "Leggo This") because the predicate was INVOKER and RLS hid the Stripe-account row from buyers. Publish guards (already DEFINER) disagreed, so brands published but buyers were gated — a silent revenue-blocker. The same predicate is the single shared authority across buyer web + consumer brand-feed, so the structural rule prevents any future buyer-readiness RPC from regressing to INVOKER.
+
+**Applies to:** buyer/anonymous web (`mingla-business` public pages) + consumer-app brand feed; the predicates live in `supabase/migrations` (latest authoritative def `20260927000000_orch_1116_booking_gate_rls.sql`).
+
+**Enforcement:** strict-grep gate `.github/scripts/strict-grep/orch-1116-booking-gate-security-definer.mjs` (registered in `.github/workflows/strict-grep-mingla-business.yml`) asserting both predicates stay `SECURITY DEFINER` + `SET search_path = ''`; anon-role behavioral regression test `supabase/migrations/__tests__/orch_1116_booking_gate_rls.test.sql` (asserts RETURN VALUE under `SET ROLE anon`, fails-on-revert) + tester adversarial `..._tester_adversarial.test.sql` (batched-subset true-negative + no-row-leak). Append-only.
+
+**Cross-references:** INVESTIGATE/SPEC/IMPLEMENTATION/TEST_ORCH-1116_BOOKING_GATE_RLS.md, PR #443 (`6dc51ae62`), migration `20260927000000`.
