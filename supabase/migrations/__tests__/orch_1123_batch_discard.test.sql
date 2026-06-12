@@ -1,5 +1,5 @@
 -- ORCH-1123 [Hub multi-select draft delete] — behavioral probe for
--- migration 20260928000000_orch_1123_batch_discard_offering_drafts.sql.
+-- migration 20260928000002_orch_1123_batch_discard_offering_drafts.sql.
 --
 -- USAGE (manual; this repo's SQL probe convention is hand-run psql against
 -- the linked remote via the Supabase Management API or `supabase db remote`):

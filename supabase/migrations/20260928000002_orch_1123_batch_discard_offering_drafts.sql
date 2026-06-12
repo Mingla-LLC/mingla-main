@@ -7,7 +7,7 @@
 --
 -- Migration version note: SPEC §2.1 specified 20260927000000, but a sibling
 -- worktree (ORCH-1123-[booking-gate-rls]) already claimed that prefix. Bumped
--- to 20260928000000 to stay strictly monotonic across all worktrees + anchor
+-- to 20260928000002 to stay strictly monotonic across all worktrees + anchor
 -- + the linked remote head (latest local/anchor = 20260926000000).
 
 CREATE OR REPLACE FUNCTION public.business_discard_offering_drafts(

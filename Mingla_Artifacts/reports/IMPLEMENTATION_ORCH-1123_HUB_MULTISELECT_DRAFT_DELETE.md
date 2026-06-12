@@ -21,7 +21,7 @@ Founders can now long-press a DRAFT row on any of the three business-app Hub tab
 |----|-----------|--------|----------------------------|
 | Q1 | Shared `useDraftMultiSelect` + `DraftSelectBar` + `DraftSelectCheckbox` | ✓ | `src/hooks/useDraftMultiSelect.ts`, `src/components/offering/DraftSelectBar.tsx`, `DraftSelectCheckbox.tsx` |
 | Q2 | Experiences: long-press gated to `status==="draft"`, NO new filter pills / tab redesign | ✓ | `app/(tabs)/hub/experiences.tsx` (selectable=isDraftRow inside `ExperienceGenerationSurface` only) |
-| Q3 | Batch RPC SKIP-and-report per row (`deleted`/`skipped_not_draft`/`skipped_not_found`/`forbidden`) | ✓ | `supabase/migrations/20260928000000_…sql` |
+| Q3 | Batch RPC SKIP-and-report per row (`deleted`/`skipped_not_draft`/`skipped_not_found`/`forbidden`) | ✓ | `supabase/migrations/20260928000002_…sql` |
 | Q4 | Events local-only vs server partition (one confirm, one combined toast) | ✓ | `events.tsx` `handleBulkDeleteConfirm` + `useDiscardOfferingDrafts.ts` |
 | Q5 | Counts invalidation (`brandKeys.offeringCounts`) all kinds | ✓ | `useDiscardOfferingDrafts.ts` onSuccess |
 | Q6 | Trip bulk converges on rank-checked RPC; single path untouched | ✓ | `trips.tsx` (`kind:"trip"` → RPC); `softDeleteTrip`/`useSoftDeleteTrip` not touched |
@@ -40,7 +40,7 @@ All criteria **implemented and verified by jest + project tsc**; the long-press/
 ## 3. Files changed (19 files, commit `040abb870`)
 
 **New (9):**
-1. `supabase/migrations/20260928000000_orch_1123_batch_discard_offering_drafts.sql` (+93) — batch RPC
+1. `supabase/migrations/20260928000002_orch_1123_batch_discard_offering_drafts.sql` (+93) — batch RPC
 2. `supabase/migrations/__tests__/orch_1123_batch_discard.test.sql` (+119) — SQL behavioral probe
 3. `mingla-business/src/services/offeringDrafts.ts` (+43)
 4. `mingla-business/src/hooks/useDiscardOfferingDrafts.ts` (+112)
@@ -164,7 +164,7 @@ Parity across the 3 business surfaces is **automatic** (one shared RN codebase +
 ```bash
 cd "/Users/sethogieva/Desktop/mingla-orchs/ORCH-1123-[hub-multiselect-draft-delete]" && /Users/sethogieva/bin/supabase db push --linked
 ```
-- Migration `20260928000000_orch_1123_batch_discard_offering_drafts.sql` is strictly monotonic (> latest local/anchor `20260926000000`; the SPEC's `20260927000000` was already claimed by sibling worktree `ORCH-1123-[booking-gate-rls]`).
+- Migration `20260928000002_orch_1123_batch_discard_offering_drafts.sql` is strictly monotonic (> latest local/anchor `20260926000000`; the SPEC's `20260927000000` was already claimed by sibling worktree `ORCH-1123-[booking-gate-rls]`).
 - Per memory (CLI drift-wedged in this worktree; this worktree's `supabase` is not linked), the actual apply may need the Supabase Management API path. The SQL is idempotent (`CREATE OR REPLACE`); a guarded `DROP FUNCTION IF EXISTS public.business_discard_offering_drafts(uuid[]);` may be prepended if a dirty-env signature conflict occurs (additive, safe).
 - **Read-only probe not run by implementor:** the RPC has no pre-flight backfill/RAISE-EXCEPTION guards against existing rows (it only acts on ids the caller passes), so no destructive-guard probe is required before `db push`. The behavioral probe `__tests__/orch_1123_batch_discard.test.sql` is for post-apply verification.
 
@@ -177,7 +177,7 @@ cd "/Users/sethogieva/Desktop/mingla-orchs/ORCH-1123-[hub-multiselect-draft-dele
 ## 12. Discoveries for Orchestrator
 
 1. **Pre-existing test rot (NOT ORCH-1123):** `serverDraftLifecycleGuards.test.ts` reads `app/(tabs)/events.tsx` (moved to `app/(tabs)/hub/events.tsx` long ago) → 6 stale-path failures; `OfferingParity`/`TripVisualParity` assert pre-META-ORCH-1002 `backgroundColor: glass.tint.profileBase` (now `Platform.select`) + old `TripCreatorWizard` chrome → 7 failures. These are on `origin/main` today. Worth registering a cleanup ORCH (append-only requires `[TEST-MOD-APPROVED]` to fix).
-2. **ORCH-ID collision in flight:** three live worktrees share the `ORCH-1123-` prefix (`[hub-multiselect-draft-delete]`, `[booking-gate-rls]`, `[gif-cover-key]`), and `[booking-gate-rls]` already used migration `20260927000000`. I bumped to `20260928000000`. The orchestrator should confirm these are distinct registered ORCHs (or a numbering collision to reconcile at INTAKE) before two of them merge with the same ID.
+2. **ORCH-ID collision in flight:** three live worktrees share the `ORCH-1123-` prefix (`[hub-multiselect-draft-delete]`, `[booking-gate-rls]`, `[gif-cover-key]`), and `[booking-gate-rls]` already used migration `20260927000000`. I bumped to `20260928000002`. The orchestrator should confirm these are distinct registered ORCHs (or a numbering collision to reconcile at INTAKE) before two of them merge with the same ID.
 
 ---
 

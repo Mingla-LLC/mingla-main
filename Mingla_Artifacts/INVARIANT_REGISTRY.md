@@ -4364,7 +4364,7 @@ Every chat response from every skill uses Section A (what just happened) + Secti
 
 **Enforcement:** migration-source jest `orch_1123_batch_rpc_source.test.ts` (rank check + GRANT order); SQL adversarial (tester) — sub-rank/other-brand caller → `forbidden`.
 
-**Applies to:** `supabase/migrations/20260928000000_orch_1123_batch_discard_offering_drafts.sql`.
+**Applies to:** `supabase/migrations/20260928000002_orch_1123_batch_discard_offering_drafts.sql`.
 
 ### I-PROPOSED-ORCH-1123-NO-SILENT-PARTIAL-FAILURE (PROPOSED — ORCH-1123 IMPLEMENT 2026-06-12)
 

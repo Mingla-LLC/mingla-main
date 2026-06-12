@@ -26,7 +26,7 @@ const repoFile = (relativePath: string): string =>
   readFileSync(path.join(process.cwd(), relativePath), "utf8");
 
 const MIGRATION =
-  "../supabase/migrations/20260928000000_orch_1123_batch_discard_offering_drafts.sql";
+  "../supabase/migrations/20260928000002_orch_1123_batch_discard_offering_drafts.sql";
 
 describe("ORCH-1123 batch discard RPC — source guards", () => {
   test("RPC replicates per-row auth/draft/rank/brand guards, SKIP-and-report", () => {
