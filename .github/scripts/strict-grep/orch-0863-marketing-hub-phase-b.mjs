@@ -1647,6 +1647,15 @@ function checkNoNewBackendFiles() {
     // no-new-backend-files gate stays green on this PR (COMMS-0002 convention).
     "supabase/migrations/__tests__/orch_1116_booking_gate_rls_tester_adversarial.test.sql",
   ];
+  // ORCH-1123 [Hub multi-select draft delete] (renumbered from ORCH-1116 per
+  // COMMS-0024 stale-anchor triple-collision; booking-gate-rls keeps 1116).
+  // Backend touch = the batch draft-discard RPC migration + its SQL probe. C7
+  // is scoped to ORCH-0863 marketing; these are unrelated — allowlisted per the
+  // COMMS-0002 convention so the no-new-backend-files gate stays green.
+  const ORCH_1123_BACKEND_ALLOWLIST = [
+    "supabase/migrations/20260928000002_orch_1123_batch_discard_offering_drafts.sql",
+    "supabase/migrations/__tests__/orch_1123_batch_discard.test.sql",
+  ];
   // ORCH-1032 [Intelligence pipeline concurrency cap + chunked enqueue]:
   // adds the additive 'queued'-status migration (status CHECK widen + per-city
   // unique active index widen + tg_kick_pending_trial_runs promotion built on
@@ -2038,6 +2047,7 @@ function checkNoNewBackendFiles() {
     ...ORCH_1111_BACKEND_ALLOWLIST,
     ...ORCH_1110_BACKEND_ALLOWLIST,
     ...ORCH_1116_BACKEND_ALLOWLIST,
+    ...ORCH_1123_BACKEND_ALLOWLIST,
     // Schedule-edit buyer protection + "Refund all & proceed" (separate PR;
     // shares the ORCH-1047 work id used in code). New migration recording the
     // already-live business_patch_event_when change — not ORCH-0863 marketing
