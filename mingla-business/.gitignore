@@ -50,3 +50,6 @@ web-build2/
 *session.token*
 **/orch1100_*_verify/*token*
 web-build-fixed/
+
+# ORCH-1118 render-proof worktree-local test-deps overlay (not committed)
+.orch1118-testdeps/
