@@ -8,8 +8,10 @@
  */
 
 import { formatCurrencyRound } from "../../utils/currency";
+import { formatDraftDateLine } from "../../utils/eventDateDisplay";
 import type { Trip } from "../../services/tripsService";
 import type { VenueExperience } from "../../services/experiencesService";
+import type { LiveEvent } from "../../store/liveEventStore";
 import { formatOfferingMetric } from "./offeringKind";
 import type {
   OfferingCardStatus,
@@ -145,6 +147,51 @@ export function experienceToOfferingModel(
     coverHue: hueFromId(exp.id),
     metricLabel,
     revenueLabel,
+    capacityPct: null,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// LiveEvent → OfferingListCardModel  (ORCH-1121)
+// ---------------------------------------------------------------------------
+
+/**
+ * ORCH-1121 — pure mapper from a published `LiveEvent` to the normalized
+ * OfferingListCardModel rendered by the shared `OfferingListCard`. Used by the
+ * business brand profile's Recent-Events glance surface.
+ *
+ * `status` is passed in (the caller derives it via `deriveCardStatus`, the
+ * canonical Hub bucketing — `OfferingCardStatus` is a superset of that
+ * `EventCardStatus`, so the value is directly assignable).
+ *
+ * The subline mirrors `EventListCard`'s derivation: date line (via the shared
+ * `formatDraftDateLine` — `LiveEvent` satisfies `EventDateLike`) plus ` · venue`
+ * when a venue name is present.
+ *
+ * metric/capacity/revenue are intentionally `null`: this is a glanceable
+ * summary, so the brand profile does NOT mount a per-row `useEventOrders` fetch
+ * (would be up to 5 network hooks). `OfferingListCard` renders cleanly with all
+ * three null (no progress bar, no metric subtext, no revenue strip). Live
+ * sold-counts here would be an additive follow-on ORCH.
+ */
+export function liveEventToOfferingModel(
+  event: LiveEvent,
+  status: OfferingCardStatus,
+): OfferingListCardModel {
+  const dateLine = formatDraftDateLine(event);
+  const venue = event.venueName;
+  const subline =
+    venue !== null && venue.length > 0 ? `${dateLine} · ${venue}` : dateLine;
+  return {
+    id: event.id,
+    title: event.name,
+    status,
+    subline,
+    coverMediaUrl: event.coverMediaUrl,
+    coverMediaType: normalizeCoverType(event.coverMediaType),
+    coverHue: event.coverHue,
+    metricLabel: null,
+    revenueLabel: null,
     capacityPct: null,
   };
 }
