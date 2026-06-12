@@ -94,7 +94,11 @@ describe("ORCH-1120 — published-trip Settings editable refund/deadline/booking
     });
 
     test("ok:false business rejects route to the parent via onReject (FORK 1)", () => {
-      expect(ACCORDION).toMatch(/onReject\(result\)/);
+      // Strip comments so this exercises the actual CALL, not the JSDoc mention.
+      const code = stripComments(ACCORDION);
+      expect(code).toMatch(/onReject\(result\)/);
+      // And the call lives in the ok:false branch (not ok:true success path).
+      expect(code).toMatch(/if \(result\.ok\)[\s\S]*?else \{[\s\S]*?onReject\(result\)/);
     });
   });
 
