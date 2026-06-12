@@ -13,6 +13,24 @@
 
 ---
 
+## REWORK — consolidated to a single standard Save button (Seth device feedback, 2026-06-12)
+
+After the first implementation shipped to device, Seth found the published-trip Edit screen showed **TWO** "Save changes" buttons: the new Settings accordion had its OWN save button + its OWN reason dialog (a duplicate save path) on top of the screen's standard bottom "Save changes". **Locked rework decision (Seth-confirmed this session): ONE save button (the standard bottom one), ONE reason prompt (the screen's existing `ChangeSummaryModal`), ONE gate (already on the standard path). The Settings tab becomes a pure CONTROLLED EDITOR.**
+
+**New component contract — `EditPublishedTripSettingsAccordion` (post-REWORK):**
+- It is a **pure controlled editor**. It owns **NO** save button, **NO** reason dialog/banner, **NO** mutation, **NO** `submitting`/`reason` state, **NO** `onReject`/`onDirtyChange`/`eventId` props.
+- Its three edited values are **lifted to the parent** via controlled props: `refundPolicy`/`onRefundPolicyChange`, `bookingDeadline`/`onBookingDeadlineChange`, `bookingsClosed`/`onBookingsClosedChange`. Plus `tripStartIso`, `brandTimezone`, `affectedOrderCount`, `submitting` (display/disable only).
+- The editors (`RefundPolicyEditor`, `BookingDeadlinePicker`, the bookings-closed `Switch`) stay mounted, wired to the controlled props.
+- The proactive sales-aware banner remains as **read-only context** — it is NOT a save/reason control.
+
+**Parent `EditPublishedTripScreen` (post-REWORK):**
+- `refund_policy` / `booking_deadline` / `bookings_closed` are added to `LocalTripEditState` + `tripToLocalEditState` + `buildLiveTripPatch`'s dirty-diff (carry-only-dirty), so the **single bottom Save button**'s existing flow (diff → `ChangeSummaryModal` reason → `biz_update_live_trip` RPC → `buildRejectDialog` reject switch) now covers these three fields. `editedSectionKeys` derives the Settings "Edited" badge from the patch diff (the old `settingsDirty` lift is removed).
+- Client diff/severity path: the three keys are **MATERIAL** (`MATERIAL_KEYS` + `computeRichTripFieldDiffs` + `FIELD_LABELS` in `tripAdapter.ts`). `validateLiveTripFieldUpdate` pre-blocks the two unambiguous unfavorable edits (earlier deadline; false→true bookings-closed); refund-policy realized-% downgrades are left to the canonical server classifier (no client money-math) and surface via the `!result.ok` → `buildRejectDialog` path.
+
+**Unchanged:** the `biz_update_live_trip` RPC + migration + the 4 reject reasons + the tester's adversarial SQL test (the RPC gate is identical — only the client wiring changed). The published path STILL writes ONLY through `biz_update_live_trip`, never `refundPolicyService` (DISC-1120-A landmine stays closed); the strict-grep gate `i-proposed-1120-published-refund-via-gated-rpc.mjs` was updated to require the gated save in the SCREEN (parent) rather than the accordion.
+
+---
+
 ## 1. Executive summary
 
 Today a planner who opens a PUBLISHED trip → Edit → **Settings** sees a read-only snapshot plus a **lie**: "Refund tiers and booking deadline are managed from the trip wizard… Open the wizard from the draft trip menu to edit these." That wizard path **does not exist for a published trip** (proven: INVESTIGATE F-2 — status-based routing always lands published trips on the read-only `EditPublishedTripScreen`; no revert-to-draft mutation exists anywhere). The refund policy is a tier-count, the booking deadline is static text, and the "Bookings closed" switch is hardcoded `disabled`.

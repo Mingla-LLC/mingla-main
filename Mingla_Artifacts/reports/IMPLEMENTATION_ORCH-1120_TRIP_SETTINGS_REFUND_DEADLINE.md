@@ -2,7 +2,7 @@
 
 **Skill:** mingla-implementor (business side). **Date:** 2026-06-12.
 **Worktree:** `~/Desktop/mingla-orchs/orch-1120-[trip-settings-refund-deadline]/` on branch `orch-1120-trip-settings-refund-deadline` (rebased on origin/main at start).
-**Status:** implemented and verified (source + gate level). Device/runtime dead-tap + live-SQL gate drive deferred to the tester per SPEC §13.
+**Status:** implemented and verified (source + gate level). Device/runtime dead-tap + live-SQL gate drive deferred to the tester per SPEC §13. **REWORK applied 2026-06-12 — see the REWORK section below.**
 **Binding inputs read in full:** SPEC_ORCH-1120, UI_UX_ORCH-1120 (design), INVESTIGATE_ORCH-1120 + ENUMERATE_REFUND_BUYER_PROTECTION_RULES (context), the 1075 `biz_update_live_trip` body, TR4 `validate_refund_policy` + `biz_compute_refund_for_cancel`, the intake-accordion skeleton, both ORCH-0875 editors, `tripsService.ts`, `EditPublishedTripScreen.tsx`.
 
 ---
@@ -173,3 +173,35 @@ cd "/Users/sethogieva/Desktop/mingla-orchs/orch-1120-[trip-settings-refund-deadl
 2. **Repo-wide typecheck has 257 pre-existing errors** (checkout buyer files, marketing ComposerV2, `@mingla/payments-native` module resolution, packages/brand-rendering) — none in 1120's scope. Flagging the baseline rot.
 3. **Q-1 resolved with the SPEC default** (single `refund_policy_downgrade_with_sales` reason for all refund downgrades; `refund_tier_removed_with_sales` RESERVED-but-unused — added to the type + dialog for exhaustiveness/design-table fidelity, not emitted by the RPC). Documented in the migration COMMENT + the type comment. If Seth wants the literal-tier-count branch, it's a one-block follow-up.
 4. **Q-2 resolved favorably without scope-widen:** the proactive sales banner consumes the parent's existing `totalConfirmedOrders` (derived from `soldCountByTier`) — no new query. Graceful-hide when 0/undefined.
+
+---
+
+## REWORK — consolidated to a single standard Save button (Seth device feedback, 2026-06-12)
+
+**Why:** the device build showed **TWO** "Save changes" buttons on the published-trip Edit screen — the new Settings accordion had its OWN save button + its OWN reason dialog (a duplicate save path) on top of the screen's standard bottom "Save changes". Seth's locked rework: ONE save button (the standard bottom one), ONE reason prompt (the screen's `ChangeSummaryModal`), ONE gate. The Settings tab becomes a pure CONTROLLED EDITOR.
+
+**Changes (client wiring only — RPC/migration UNCHANGED):**
+
+1. **`EditPublishedTripSettingsAccordion.tsx`** — rewritten as a pure controlled editor. DELETED: its `useUpdateLiveTripFields` mutation, `onSavePressed`/`onConfirmSave`, the reason dialog/banner + both internal "Save changes" buttons, the `reason`/`reasonDialogVisible`/`reasonError`/`submitting`/`toast` state, the `onReject`/`onDirtyChange`/`eventId` props, the now-dead imports (`Button`, `Toast`, `TextInput`, `useUpdateLiveTripFields`, `UpdateLiveTripPermissionError`, `LiveTripPatch`/`UpdateLiveTripResult` types) and the dead reason/save/toast styles. ADDED: controlled props `refundPolicy`/`onRefundPolicyChange`, `bookingDeadline`/`onBookingDeadlineChange`, `bookingsClosed`/`onBookingsClosedChange` + `submitting` (display/disable only). The 3 editors stay mounted; the sales banner stays as read-only context. ~510 → ~250 lines.
+
+2. **`EditPublishedTripScreen.tsx`** — `refund_policy`/`booking_deadline`/`bookings_closed` added to `LocalTripEditState` + `tripToLocalEditState` (seeded from `trip`) + `buildLiveTripPatch` (carry-only-dirty diff). New `handleRefundPolicyChange`/`handleBookingDeadlineChange`/`handleBookingsClosedChange` lift edits into `editState`. `editedSectionKeys` derives the Settings badge from the patch diff; the `settingsDirty` state is removed. `case "settings"` now renders the accordion with controlled props + `submitting`. The single bottom Save (`handleSavePress` → `ChangeSummaryModal` → `handleConfirmSave` → `validateLiveTripFieldUpdate` → `biz_update_live_trip` → `buildRejectDialog`) now covers the three fields. Added `import type { RefundPolicy }`. ~+45 lines net.
+
+3. **`utils/tripAdapter.ts`** — `FIELD_LABELS` + `MATERIAL_KEYS` extended with `refund_policy`/`booking_deadline`/`bookings_closed` (all MATERIAL per SPEC §6); `computeRichTripFieldDiffs` emits MATERIAL diffs for the three (so they show in the modal). `classifyTripSeverity` returns `material` automatically via `MATERIAL_KEYS`. `import type { RefundPolicy }` added.
+
+4. **`utils/publishedTripEditGuards.ts`** — `validateLiveTripFieldUpdate` pre-blocks the two unambiguous unfavorable settings edits (earlier `booking_deadline` with sales → `booking_deadline_earlier_with_sales`; false→true `bookings_closed` with sales → `bookings_closed_harms_active`). Refund-policy realized-% downgrades are NOT mirrored client-side (money-math; server is canonical per SPEC §4.1.A) → they surface via `!result.ok` → `buildRejectDialog`.
+
+5. **`.github/scripts/strict-grep/i-proposed-1120-published-refund-via-gated-rpc.mjs`** — the required gated-save assertion moved from the ACCORDION to the SCREEN (the gated save was consolidated into the parent). The banned-direct-writer ban (`updateRefundPolicy`/`updateBookingDeadline`) stays on BOTH files. Gate PASSES.
+
+6. **`EditPublishedTripSettings_orch_1120_regression.test.ts`** — rewritten (net-new vs origin/main, so append-only `A` status, no `[TEST-MOD-APPROVED]` needed) to pin the consolidated contract: accordion has NO internal save/reason/mutation/onReject; parent diffs the three fields into the single RPC; the three fields are MATERIAL; the 4 reject reasons still render the "Refund first" copy via the single `buildRejectDialog`. **27/27 pass.**
+
+**Gates (post-REWORK):**
+- `tsc --noEmit` — ZERO errors in the 4 touched product files (`EditPublishedTripScreen`, `EditPublishedTripSettingsAccordion`, `tripAdapter`, `publishedTripEditGuards`). Repo-wide 255 pre-existing errors unrelated (marketing/payments-native/DraftEvent fixtures).
+- `eslint` (4 files) — 0 errors (7 pre-existing warnings, none on new code).
+- Strict-grep `i-proposed-1120-published-refund-via-gated-rpc.mjs` — PASS.
+- Jest `EditPublishedTripSettings_orch_1120_regression.test.ts` — 27/27 PASS.
+- **fails-on-revert (true line-deletion):** deleted `patch.refund_policy = state.refundPolicy` in `buildLiveTripPatch` → regression test FAILED (1 failed / 26 passed: "buildLiveTripPatch diffs the three settings fields into the patch"); restored → 27/27 PASS. **fails-on-revert verified at commit `<see closing branch HEAD>`** (test: `mingla-business/src/components/trip/__tests__/EditPublishedTripSettings_orch_1120_regression.test.ts`).
+- `publishedTripEditGuards` suite (14/14) + `ORCH-0876.adversarial` (PASS) unaffected.
+
+**The two-button duplication is GONE** — there is now exactly one save button (the screen's bottom `edit-trip-save`), one reason prompt (`ChangeSummaryModal`), one gate (`biz_update_live_trip`), one reject path (`buildRejectDialog`). The published path STILL writes only through `biz_update_live_trip`; DISC-1120-A landmine stays closed.
+
+**Pre-existing test failures re-confirmed (NOT introduced by the REWORK, NOT in scope):** `EditPublishedTripScreen.save.test.ts` (asserts 6 sections; ORCH-0880 made it 7 by adding `intake`) and `EditPublishedTripScreen.refundGate.test.ts` (asserts a single-line `UpdateLiveTripPermissionError` import that is multi-line — broken since the ORCH-1006 import merge). Both fail identically on the pre-REWORK branch baseline. Orchestrator should register a `[TEST-MOD-APPROVED]` follow-up to refresh them.
