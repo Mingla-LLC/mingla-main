@@ -178,6 +178,51 @@ export default ({ config }: ConfigContext): ExpoConfig => {
         }
         return localValue;
       })(),
+      // ORCH-1116: fail the build (not the user) if the client-direct GIPHY key
+      // is missing on a release-bound profile. GIPHY cannot be edge-proxied
+      // (ToS); a missing key silently breaks the cover-picker GIF tab. Mirrors
+      // the EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY guard above. The runtime services
+      // read process.env.EXPO_PUBLIC_GIPHY_API_KEY directly (EAS inlines it), so
+      // this IIFE is a build-time validation GATE, not a new plumbing path.
+      EXPO_PUBLIC_GIPHY_API_KEY: (() => {
+        const fromEnv =
+          process.env.EXPO_PUBLIC_GIPHY_API_KEY ??
+          process.env.EXPO_PUBLIC_GIPHY_KEY ??
+          null;
+        // EAS sets EAS_BUILD_PROFILE at build time; VERCEL_ENV is set for the
+        // web export. A release-bound profile is one a tester/user actually
+        // touches: production, production-apk, preview, preview-sim, plus the
+        // Vercel production/preview web exports.
+        const easProfile = process.env.EAS_BUILD_PROFILE;
+        const vercelEnv = process.env.VERCEL_ENV;
+        const releaseBoundEasProfiles = [
+          "production",
+          "production-apk",
+          "preview",
+          "preview-sim",
+        ];
+        const isReleaseBound =
+          (easProfile !== undefined &&
+            releaseBoundEasProfiles.includes(easProfile)) ||
+          vercelEnv === "production" ||
+          vercelEnv === "preview";
+        if (isReleaseBound && (fromEnv === null || fromEnv.length === 0)) {
+          const profileLabel = easProfile ?? vercelEnv ?? "release";
+          throw new Error(
+            `EXPO_PUBLIC_GIPHY_API_KEY is required for the ${profileLabel} build (cover-picker GIF tab). Provision it in the matching EAS environment.`,
+          );
+        }
+        // Development profile / local (EAS_BUILD_PROFILE + VERCEL_ENV undefined):
+        // do NOT throw — a developer without a key still gets a working dev
+        // build with a degraded GIF tab (friendly copy), not a hard config
+        // crash. Mirrors the Stripe guard's local-vs-production asymmetry.
+        if (fromEnv === null || fromEnv.length === 0) {
+          console.warn(
+            "[app.config] EXPO_PUBLIC_GIPHY_API_KEY is not set — the cover-picker GIF tab will show the friendly degraded state. Set it in .env for local GIF browsing.",
+          );
+        }
+        return fromEnv;
+      })(),
       // B2a Path C V3 forensics R-1: canonical Mingla Business public web URL.
       // Single source of truth read by mingla-business/src/constants/platformUrl.ts.
       // Production canonical: https://business.usemingla.com (Vercel-hosted Expo Web export).

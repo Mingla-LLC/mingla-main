@@ -126,6 +126,7 @@ on:
 #   - I-BIZ-VENUE-INPUT-USES-MAPBOX (i-biz-venue-input-uses-mapbox.mjs) — venue/brand/trip pickers import the shared MapboxAddressInput + zero Google AddressAutocompleteInput/googlePlacesService/parseGooglePlaceResult tokens; self-tested (ORCH-1079 INV-1)
 #   - I-NO-BIZ-GOOGLE-PLACES-AUTOCOMPLETE (i-no-biz-google-places-autocomplete.mjs) — the 4 dead Google files are gone + no mingla-business/src ref, BUT GOOGLE_MAPS_API_KEY still present in a keep-list edge fn (P0 guard); self-tested (ORCH-1079 INV-2)
 #   - I-MAPBOX-SUGGEST-NO-TYPES-FILTER (i-mapbox-suggest-no-types-filter.mjs) — mapbox-geocode suggest call stays filter-free so POIs/venues resolve by name; self-tested (ORCH-1079 INV-3)
+#   - I-GIPHY-KEY-WIRED (i-giphy-key-wired.mjs) — app.config.ts carries the GIPHY fail-loud config-eval guard + .env.example documents EXPO_PUBLIC_GIPHY_API_KEY; self-tested (ORCH-1116 — DRAFT until CLOSE)
 #
 # Future gates to register (proposed but not yet implemented):
 #   - I-32 rank parity (Cycle 13a proposal)
@@ -2280,6 +2281,19 @@ jobs:
         run: node .github/scripts/strict-grep/orch-1117-no-raw-white-on-palette-surface.mjs --self-test
       - name: Run ORCH-1117 no-raw-white-on-palette-surface gate
         run: node .github/scripts/strict-grep/orch-1117-no-raw-white-on-palette-surface.mjs
+
+  orch-1116-giphy-key-wired:
+    name: "ORCH-1116: GIPHY key wired — app.config fail-loud guard + .env.example documented (I-GIPHY-KEY-WIRED)"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Run ORCH-1116 giphy-key-wired self-test
+        run: node .github/scripts/strict-grep/i-giphy-key-wired.mjs --self-test
+      - name: Run ORCH-1116 giphy-key-wired gate
+        run: node .github/scripts/strict-grep/i-giphy-key-wired.mjs
 
   # ORCH-0962 brand-field-map-coverage gate RETIRED at META-ORCH-0972 CLOSE
   # (2026-05-26). The gate asserted that `viewRowToBrand` reads `row.brand_kind`

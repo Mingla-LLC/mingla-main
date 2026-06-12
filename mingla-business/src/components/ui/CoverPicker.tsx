@@ -96,6 +96,7 @@ import {
   trendingGiphyCovers,
 } from "../../services/coverProviderBrowseService";
 import { EventCoverProviderError } from "../../services/eventCoverProviderError";
+import { reportNonFatal } from "../../diagnostics/reportNonFatal";
 import {
   eventCoverProviderCreditLabel,
   UPLOAD_EVENT_COVER_PROVIDER_METADATA,
@@ -116,6 +117,24 @@ export type { CoverTarget } from "./coverTarget";
 // LOCKED tab ids (SPEC §4.3); display labels are designer-owned copy (DESIGN §3.1).
 type CoverTabId = "library" | "gif" | "stock";
 type ProviderStatus = "idle" | "loading" | "populated" | "empty" | "error";
+
+/**
+ * ORCH-1116: route a provider (GIF/Stock) error to engineering telemetry ONLY
+ * when it is a non-transient CONFIG fault (`not_configured`) — i.e. the build is
+ * mis-provisioned (e.g. a missing client-direct GIPHY key). Transient faults
+ * (`provider_unavailable`/`rate_limited`/`invalid_response`) stay user-facing
+ * only (friendly copy) to avoid alert noise. The friendly UI copy is unchanged;
+ * this only adds an alert for the silent-config case. Single telemetry call-site.
+ */
+export const reportProviderError = (
+  kind: "gif" | "stock",
+  error: unknown,
+): void => {
+  const code =
+    error instanceof EventCoverProviderError ? error.code : "provider_unavailable";
+  if (code !== "not_configured") return;
+  reportNonFatal("coverPicker.provider", error, { provider: kind, code });
+};
 
 /** Full 7-field cover patch emitted on every change. Mirror of the events
  *  table cover_media_* column family. UNCHANGED from prior CoverPicker. */
@@ -592,6 +611,7 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
         error instanceof EventCoverProviderError ? error.code : "provider_unavailable";
       setGiphyError(code);
       setGiphyStatus("error");
+      reportProviderError("gif", error);
       warnHaptic();
     }
   }, [giphyStatus]);
@@ -610,6 +630,7 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
         error instanceof EventCoverProviderError ? error.code : "provider_unavailable";
       setPexelsError(code);
       setPexelsStatus("error");
+      reportProviderError("stock", error);
       warnHaptic();
     }
   }, [pexelsStatus]);
@@ -641,6 +662,7 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
           error instanceof EventCoverProviderError ? error.code : "provider_unavailable";
         setGiphyError(code);
         setGiphyStatus("error");
+        reportProviderError("gif", error);
         warnHaptic();
       }
     } else if (activeTab === "stock") {
@@ -655,6 +677,7 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
           error instanceof EventCoverProviderError ? error.code : "provider_unavailable";
         setPexelsError(code);
         setPexelsStatus("error");
+        reportProviderError("stock", error);
         warnHaptic();
       }
     }
