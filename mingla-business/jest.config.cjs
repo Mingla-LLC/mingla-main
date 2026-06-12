@@ -12,6 +12,8 @@ module.exports = {
     "/node_modules/",
     "EditPublishedTripScreen\\.render\\.test\\.tsx$",
     "EditPublishedTripScreen\\.coverDeadTap\\.render\\.test\\.tsx$",
+    // ORCH-1122 tester-owned adversarial render-proof (two-way close binding).
+    "EditPublishedTripScreen\\.coverClose\\.adversarial\\.render\\.test\\.tsx$",
   ],
   moduleFileExtensions: ["ts", "tsx", "js", "jsx", "json"],
   transform: {
