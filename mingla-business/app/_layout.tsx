@@ -76,6 +76,7 @@ import { verifyStripeModeAlignment } from "../src/services/stripeModeHandshake";
 import {
   AUTH_RESOLUTION_CEILING_MS,
   isAuthResolutionExpired,
+  isPublicBuyerRoute,
   isSignInRoute,
   isWebAuthResolving,
   shouldRedirectToSignInFromRoute,
@@ -129,6 +130,15 @@ const BRAND_FETCH_TIMEOUT_MS = 2000;
 // mid-process, route them back too. Users are never left hanging. The decision
 // is route-agnostic (no route list, no firewall, no per-route card): see
 // `shouldRedirectToSignIn` + `isWebAuthResolving` in coldLoadAuthGates.ts.
+//
+// ORCH-1115 [anon-buyer web funnel restored]: the ONE intentional exception to
+// "route-agnostic" is the PUBLIC BUYER allowlist (`PUBLIC_BUYER_ROUTE_PREFIXES`
+// in coldLoadAuthGates.ts). A genuinely logged-out guest on a share-link /
+// guest-checkout / receipt route (`/e/ /t/ /b/ /exp/ /checkout* /o/ /booking/`)
+// must NOT be bounced to the sign-in wall — `shouldRedirectToSignInFromRoute`
+// (web) and `nativeRedirectToSignIn` (native) both consult `isPublicBuyerRoute`
+// so the exemption lives in exactly one place. The exemption can ONLY suppress a
+// redirect on a public route; every authed-only route still redirects.
 
 // ORCH-1102 Wave 2 — REMOUNT-IMMUNE auth-resolution deadline anchor.
 //
@@ -326,8 +336,19 @@ function RootLayoutInner(): React.ReactElement {
   // mid-bootstrap (would race the splash / cause a sign-in flash on a warming
   // session). Only when there is genuinely NO user. Loop-safe: never redirect
   // to `/` while already at `/` (same React-#185 protection as the web path).
+  //
+  // ORCH-1115 [anon-buyer web funnel restored]: ALSO exempt the PUBLIC BUYER
+  // routes (`isPublicBuyerRoute` / `PUBLIC_BUYER_ROUTE_PREFIXES` — the SINGLE
+  // source of truth shared with the web path above). This is a NO-OP on native
+  // today (business native serves none of these routes), but routing the
+  // public-route exemption through the one shared helper keeps the allowlist in
+  // exactly one place and hardens against a future native public route.
   const nativeRedirectToSignIn =
-    !isWeb && !loading && user === null && !isSignInRoute(pathname);
+    !isWeb &&
+    !loading &&
+    user === null &&
+    !isSignInRoute(pathname) &&
+    !isPublicBuyerRoute(pathname);
 
   // ORCH-1102 Wave 2 — BOUNDED-LOADING backstop at the UI gate. The AuthContext
   // hard ceiling (AUTH_RESOLUTION_HARD_CEILING_MS) releases `loading` if the
