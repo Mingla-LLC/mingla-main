@@ -51,7 +51,6 @@ import React, {
 import {
   Pressable,
   StyleSheet,
-  Switch,
   Text,
   TextInput,
   View,
@@ -87,6 +86,7 @@ import { ChangeSummaryModal } from "../event/ChangeSummaryModal";
 import { EditAfterPublishTripBanner } from "./EditAfterPublishTripBanner";
 // ORCH-0880 [Tr5 Traveler Intake Forms] — new accordion section body.
 import { EditPublishedTripIntakeAccordion } from "./EditPublishedTripIntakeAccordion";
+import { EditPublishedTripSettingsAccordion } from "./EditPublishedTripSettingsAccordion";
 
 import type {
   Trip,
@@ -622,6 +622,11 @@ export const EditPublishedTripScreen: React.FC<EditPublishedTripScreenProps> = (
     null,
   );
 
+  // ORCH-1120 — the Settings accordion owns its own edit state + save; it
+  // lifts dirtiness here so the Settings section-header "Edited" badge fires
+  // like every other section (computed.patch does NOT carry settings fields).
+  const [settingsDirty, setSettingsDirty] = useState<boolean>(false);
+
   // Toast
   const [toast, setToast] = useState<ToastState>({ visible: false, message: "" });
   const showToast = useCallback((message: string): void => {
@@ -712,8 +717,11 @@ export const EditPublishedTripScreen: React.FC<EditPublishedTripScreenProps> = (
     ) {
       out.add("cover");
     }
+    // ORCH-1120 — settings dirtiness is tracked by the accordion, not the
+    // parent patch diff.
+    if (settingsDirty) out.add("settings");
     return out;
-  }, [computed]);
+  }, [computed, settingsDirty]);
 
   // ---- Update handlers ----
   const updateBasics = useCallback(
@@ -942,6 +950,48 @@ export const EditPublishedTripScreen: React.FC<EditPublishedTripScreenProps> = (
             primaryLabel: "Got it",
             primaryAction: closeOnly,
           };
+        // ORCH-1120 — Settings buyer-protection blocks (SPEC §4.4.3). All
+        // reuse the "Refund first" shape + the closeAndOpenOrders CTA. Both
+        // refund_policy_downgrade_with_sales and the RESERVED
+        // refund_tier_removed_with_sales are handled (the RPC emits only the
+        // former under the realized-% classifier; the latter case keeps the
+        // exhaustive switch satisfied if Q-1 ever flips).
+        case "refund_policy_downgrade_with_sales": {
+          const n = result.affectedOrderCount ?? 0;
+          return {
+            title: "Refund first",
+            body: `${n} traveler${n === 1 ? "" : "s"} booked under the current refund terms. You can make refunds MORE generous, but to lower them, refund existing buyers first.`,
+            primaryLabel: "Open Orders",
+            primaryAction: closeAndOpenOrders,
+          };
+        }
+        case "refund_tier_removed_with_sales": {
+          const n = result.affectedOrderCount ?? 0;
+          return {
+            title: "Refund first",
+            body: `${n} traveler${n === 1 ? "" : "s"} are protected by your current refund tiers. Add a tier freely, but removing one means refunding them first.`,
+            primaryLabel: "Open Orders",
+            primaryAction: closeAndOpenOrders,
+          };
+        }
+        case "booking_deadline_earlier_with_sales": {
+          const n = result.affectedOrderCount ?? 0;
+          return {
+            title: "Refund first",
+            body: `Moving the deadline earlier can strand people mid-booking. You can push it LATER any time; to pull it in, refund the ${n} affected first.`,
+            primaryLabel: "Open Orders",
+            primaryAction: closeAndOpenOrders,
+          };
+        }
+        case "bookings_closed_harms_active": {
+          const n = result.affectedOrderCount ?? 0;
+          return {
+            title: "Refund first",
+            body: `Closing bookings this way affects ${n} active booking${n === 1 ? "" : "s"}. Refund them first, or leave bookings open.`,
+            primaryLabel: "Open Orders",
+            primaryAction: closeAndOpenOrders,
+          };
+        }
         default: {
           const _exhaust: never = result.reason;
           return _exhaust;
@@ -1405,52 +1455,23 @@ export const EditPublishedTripScreen: React.FC<EditPublishedTripScreenProps> = (
             />
           );
         case "settings":
+          // ORCH-1120 [Settings refund/deadline editable] — the dead-end
+          // read-only snapshot + "use the wizard" hint is replaced by a live,
+          // sales-gated editor. All writes route through biz_update_live_trip
+          // (the accordion never calls refundPolicyService). FORK 1: refund-
+          // class rejects route to this screen's ConfirmDialog via onReject.
           return (
-            <View style={styles.settingsWrap}>
-              <Text style={styles.settingsHint}>
-                Refund tiers and booking deadline are managed from the trip
-                wizard (Step 5: Cancellation & deadline). Open the wizard
-                from the draft trip menu to edit these.
-              </Text>
-              <View style={styles.settingsField}>
-                <Text style={styles.settingsLabel}>Booking deadline</Text>
-                <Text style={styles.settingsValue}>
-                  {trip.bookingDeadline === null
-                    ? "No deadline set"
-                    : new Date(trip.bookingDeadline).toLocaleString(undefined, {
-                        month: "short",
-                        day: "numeric",
-                        year: "numeric",
-                        hour: "2-digit",
-                        minute: "2-digit",
-                      })}
-                </Text>
-              </View>
-              <View style={styles.settingsField}>
-                <Text style={styles.settingsLabel}>Bookings closed</Text>
-                <Switch
-                  value={trip.bookingsClosed}
-                  disabled
-                  trackColor={{
-                    false: "rgba(255,255,255,0.16)",
-                    true: accent.warm,
-                  }}
-                  thumbColor="#ffffff"
-                  ios_backgroundColor="rgba(255,255,255,0.16)"
-                />
-              </View>
-              <View style={styles.settingsField}>
-                <Text style={styles.settingsLabel}>Refund policy</Text>
-                <Text style={styles.settingsValue}>
-                  {trip.refundPolicy === null ||
-                  trip.refundPolicy.tiers.length === 0
-                    ? "Non-refundable (no tiers set)"
-                    : `${trip.refundPolicy.tiers.length} tier${
-                        trip.refundPolicy.tiers.length === 1 ? "" : "s"
-                      }`}
-                </Text>
-              </View>
-            </View>
+            <EditPublishedTripSettingsAccordion
+              eventId={trip.id}
+              refundPolicy={trip.refundPolicy}
+              bookingDeadline={trip.bookingDeadline}
+              bookingsClosed={trip.bookingsClosed}
+              tripStartIso={trip.businessTrip.startAt}
+              brandTimezone={trip.timezone}
+              affectedOrderCount={totalConfirmedOrders}
+              onDirtyChange={setSettingsDirty}
+              onReject={(r) => setRejectDialog(buildRejectDialog(r))}
+            />
           );
         default: {
           const _exhaust: never = key;
@@ -1480,6 +1501,10 @@ export const EditPublishedTripScreen: React.FC<EditPublishedTripScreenProps> = (
       soldCountByTier,
       trip,
       showToast,
+      // ORCH-1120 — Settings accordion wiring.
+      buildRejectDialog,
+      setSettingsDirty,
+      setRejectDialog,
     ],
   );
 
@@ -1744,35 +1769,9 @@ const styles = StyleSheet.create({
     width: "100%",
     marginTop: spacing.lg,
   },
-  settingsWrap: {
-    gap: spacing.md,
-    paddingTop: spacing.sm,
-  },
-  settingsHint: {
-    fontSize: typography.bodySm.fontSize,
-    lineHeight: typography.bodySm.lineHeight,
-    color: textTokens.secondary,
-  },
-  settingsField: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: spacing.sm,
-    paddingVertical: spacing.sm,
-    borderTopWidth: 1,
-    borderTopColor: "rgba(255, 255, 255, 0.06)",
-  },
-  settingsLabel: {
-    fontSize: typography.bodySm.fontSize,
-    color: textTokens.secondary,
-    flex: 1,
-  },
-  settingsValue: {
-    fontSize: typography.bodySm.fontSize,
-    fontWeight: "600",
-    color: textTokens.primary,
-    textAlign: "right",
-  },
+  // ORCH-1120 — settingsWrap/settingsHint/settingsField/settingsLabel/
+  // settingsValue deleted: the read-only Settings snapshot + dead-end hint is
+  // replaced by <EditPublishedTripSettingsAccordion />.
   dock: {
     position: "absolute",
     left: 0,
