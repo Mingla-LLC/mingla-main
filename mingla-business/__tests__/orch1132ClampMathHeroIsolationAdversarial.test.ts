@@ -3,36 +3,36 @@ import fs from "node:fs";
 import path from "node:path";
 
 // ORCH-1132 [cover-fullframe-sound-inset] round 2 — TESTER adversarial regression.
+// ORCH-1133 [TEST-MOD-APPROVED ORCH-1133] round 3 — INVERTED.
 //
-// DIFFERENT ANGLE from the implementor's two tests. The implementor's
-// orch1131CoverCropSoundInset.test.ts + orch1131SiblingInsetNonRegressionAdversarial.test.ts
-// do STATIC source-string matching: they assert the *presence* of the strings
-// `videoContentFit="contain"`, `onAspectRatio=`, `right: 24`, `bottom: 22`, and
-// the *absence* of a numeric `height:` in miniCover.
+// Round 2 (ORCH-1132) introduced an adaptive checkout cover whose box aspectRatio
+// was driven by an in-screen `Math.min(Math.max(coverAspect, 0.6), 1.91)` clamp.
+// This file EXECUTED that clamp and asserted its math.
 //
-// That static approach has a real blind spot: it never EXECUTES the clamp math.
-// A "tidy" refactor that accidentally copies the public hero's bounds into the
-// checkout clamp — `Math.min(Math.max(coverAspect, 0.75), 16/9)` instead of
-// `(..., 0.6), 1.91` — would keep every implementor-asserted string intact
-// (`videoContentFit="contain"` is still there) yet SILENTLY RE-CROP portrait
-// covers: a 0.5625 portrait would clamp to 0.75 (the public-hero bound), and
-// since the box is now 0.75 while the media is 0.5625, even `contain` shows
-// side bars and the *visible block* matches the hero's slightly-cropped shape —
-// re-introducing the exact ORCH-1131 miss this ORCH exists to fix.
+// ORCH-1133 REVERTS the checkout cover to the e90875dda~1 compact fixed 64px band
+// (Seth round-3 reject: "The cover fills the entire screen. Revert to original.").
+// The checkout clamp NO LONGER EXISTS — so the old `extractClamp(checkoutSrc)`
+// would throw, and asserting the clamp's math is meaningless. The append-only CI
+// gate (ORCH-0840) forbids DELETING a test file outright (no token bypasses a
+// deletion), so this file is INVERTED in place (MODIFY, token-covered) into the
+// durable guard that the clamp must STAY gone, while preserving the still-valid
+// SC-6 public-hero isolation + SC-7 EventCoverMedia default-safety checks.
 //
-// This test EXTRACTS the actual clamp expression from each of the three
-// checkout routes, evaluates it at runtime against the SC-1/2/3 inputs
-// (portrait 0.5625, square 1.0, landscape 1.78, panorama 3.0) and degenerate
-// inputs (NaN/0/negative from a broken onAspectRatio callback), and asserts the
-// RESULTING box aspect — the thing the user actually sees — is correct. It also
-// proves SC-6/SC-7 ISOLATION by extracting the public hero's clamp and asserting
-// it is a STRUCTURALLY DIFFERENT range (0.75..16/9) that the checkout did NOT
-// inherit, and that EventCoverMedia's videoContentFit default is still "cover".
+//   (A) NO checkout route may re-introduce a `Math.min(Math.max(...))` cover-
+//       aspect clamp, a `coverAspect`/`clampedCoverAspect` state, an
+//       `onAspectRatio=` cover prop, a `videoContentFit=` cover prop, or an inline
+//       cover `aspectRatio` — the exact ORCH-1131/1132 additions the revert undid.
+//       Each route's miniCover must declare the fixed `height: 64` band.
+//   (B) The public-event HERO clamp (PublicEventPage) is UNCHANGED — it still
+//       uses its OWN 0.75..16/9 range. The revert was scoped away from the hero
+//       (spec §2 DO-NOT-TOUCH); a "tidy" that drags the hero clamp out with the
+//       checkout clamp would break the public page. This stays a live guard.
+//   (C) EventCoverMedia's `videoContentFit` default stays "cover" (no consumer
+//       silently gets "contain").
 //
-// fails-on-revert: if the checkout clamp lower bound is reverted toward the hero
-// bound (0.6 -> 0.75) OR the upper bound changes (1.91 -> 16/9), the portrait /
-// panorama assertions FAIL; if the hero clamp is widened to match checkout the
-// isolation assertion FAILS. (Verified by the tester — see TEST report §Step-0.5.)
+// fails-on-revert: if any checkout route re-adds the clamp / onAspectRatio /
+// videoContentFit / inline aspectRatio (i.e. a future ORCH-1132-style change),
+// the (A) assertions FAIL; if the public hero clamp is removed/changed, (B) FAILS.
 
 const businessDir = path.resolve(__dirname, "..");
 const repoRoot = path.resolve(businessDir, "..");
@@ -46,11 +46,10 @@ const CHECKOUT_ROUTES = [
 /**
  * Extract the literal `lower` and `upper` numbers from a
  * `Math.min(Math.max(<var>, <lower>), <upper>)` clamp and rebuild the SAME
- * clamp as an executable function. This evaluates the ACTUAL committed bounds —
- * a true line edit of either bound changes the function's behaviour.
+ * clamp as an executable function. Used ONLY for the public hero now (the
+ * checkout clamp is gone — see this file's header).
  */
 function extractClamp(src: string): (input: number) => number {
-  // Tolerant of whitespace; <upper> may be a number or a `a / b` expression.
   const m = src.match(
     /Math\.min\(\s*Math\.max\(\s*[A-Za-z0-9_]+\s*,\s*([0-9.]+)\s*\)\s*,\s*([0-9.]+(?:\s*\/\s*[0-9.]+)?)\s*\)/,
   );
@@ -58,135 +57,88 @@ function extractClamp(src: string): (input: number) => number {
     throw new Error("Could not locate a Math.min(Math.max(...)) clamp");
   }
   const lower = Number(m[1]);
-  // upper may be "16 / 9"
-  const upperRaw = m[2].replace(/\s+/g, "");
-  const upper = upperRaw.includes("/")
-    ? Number(upperRaw.split("/")[0]) / Number(upperRaw.split("/")[1])
-    : Number(upperRaw);
+  const upper = eval(m[2]) as number; // safe: regex-restricted to digits/`/`
   return (input: number): number => Math.min(Math.max(input, lower), upper);
 }
 
-/** The runtime initial-state seed for `useState(<n>)`. */
-function extractInitialAspect(src: string): number {
-  const m = src.match(/useState\(\s*(0?\.\d+|\d+(?:\.\d+)?)\s*\)/);
-  // there are several useState calls; the cover one is seeded with a float < 2.
-  // Find the FIRST useState seeded with a bare numeric literal in 0.5..2 range.
-  const all = [...src.matchAll(/useState\(\s*(\d+(?:\.\d+)?)\s*\)/g)];
-  for (const a of all) {
-    const v = Number(a[1]);
-    if (v >= 0.5 && v <= 2) return v;
+/** Extract the body of `styleKey: { ... }` from a StyleSheet.create block. */
+function extractStyleBody(src: string, styleKey: string): string {
+  const m = src.match(new RegExp(`\\n\\s*${styleKey}:\\s*\\{([\\s\\S]*?)\\n\\s*\\},`));
+  if (!m) {
+    throw new Error(`Could not locate \`${styleKey}:\` style block`);
   }
-  if (m) return Number(m[1]);
-  throw new Error("Could not locate the cover-aspect useState seed");
+  return m[1];
 }
 
-describe("ORCH-1132 adversarial — checkout clamp EXECUTES to full-frame bounds (not hero bounds)", () => {
+/** Extract the first `<EventCoverMedia ... />` JSX call body from source. */
+function extractEventCoverMediaCall(src: string): string {
+  const m = src.match(/<EventCoverMedia([\s\S]*?)\/>/);
+  if (!m) {
+    throw new Error("Could not locate an `<EventCoverMedia ... />` call");
+  }
+  return m[1];
+}
+
+describe("ORCH-1133 inverted (A) — the ORCH-1132 checkout cover-aspect clamp is GONE and stays gone", () => {
   for (const route of CHECKOUT_ROUTES) {
     const src = fs.readFileSync(path.join(businessDir, route), "utf8");
-    const clamp = extractClamp(src);
 
-    test(`${route}: portrait 0.5625 clamps to a TALL box (>= 0.6, NOT the hero's 0.75)`, () => {
-      const boxAspect = clamp(0.5625);
-      // SC-1: portrait must get a near-edge-to-edge tall box at the 0.6 floor.
-      expect(boxAspect).toBeCloseTo(0.6, 5);
-      // Adversarial guard: if someone copied the hero bound (0.75) the box would
-      // be 0.75 and re-crop a 0.5625 portrait. Prove that did NOT happen.
-      expect(boxAspect).toBeLessThan(0.75);
+    test(`${route}: NO Math.min(Math.max(...)) cover-aspect clamp`, () => {
+      expect(src).not.toMatch(/Math\.min\(\s*Math\.max\(/);
     });
 
-    test(`${route}: square 1.0 passes through UNCLAMPED (exact-fit box)`, () => {
-      // SC-3: 1.0 is in range -> exact box -> contain == perfect fill.
-      expect(clamp(1.0)).toBe(1.0);
+    test(`${route}: NO coverAspect / clampedCoverAspect state`, () => {
+      expect(src).not.toMatch(/coverAspect/);
+      expect(src).not.toMatch(/clampedCoverAspect/);
     });
 
-    test(`${route}: landscape 1.78 passes through (full landscape frame, not a sliver)`, () => {
-      // SC-2: 1.78 < 1.91 upper bound -> unclamped -> box tracks real shape.
-      expect(clamp(1.78)).toBeCloseTo(1.78, 5);
+    test(`${route}: the EventCoverMedia cover call has NO onAspectRatio / videoContentFit / inline aspectRatio`, () => {
+      const call = extractEventCoverMediaCall(src);
+      expect(call).not.toMatch(/onAspectRatio=/);
+      expect(call).not.toMatch(/videoContentFit=/);
+      expect(call).not.toMatch(/aspectRatio:/);
     });
 
-    test(`${route}: panorama 3.0 clamps to 1.91 upper (box not a sliver; NOT 16/9)`, () => {
-      const boxAspect = clamp(3.0);
-      expect(boxAspect).toBeCloseTo(1.91, 5);
-      // Adversarial guard: hero upper is 16/9 ≈ 1.778; checkout upper is 1.91.
-      // If the checkout clamp were reverted to the hero's 16/9 this fails.
-      expect(boxAspect).toBeGreaterThan(16 / 9);
-    });
-
-    test(`${route}: degenerate onAspectRatio (NaN / 0 / negative) cannot produce a broken box`, () => {
-      // Math.max(NaN, 0.6) === NaN in JS — the clamp does NOT sanitise NaN.
-      // This documents the runtime truth: a NaN ratio yields a NaN aspectRatio,
-      // which RN/web treats as "no aspectRatio" -> the box falls back to its
-      // intrinsic/last layout rather than collapsing. We assert the NON-NaN
-      // degenerate inputs (0, negative) are floored to the 0.6 lower bound so a
-      // broken-but-numeric callback can never collapse the card to a sliver.
-      expect(clamp(0)).toBeCloseTo(0.6, 5);
-      expect(clamp(-5)).toBeCloseTo(0.6, 5);
-      // NaN path: documents that the clamp passes NaN through (caller-safe
-      // because RN ignores a NaN aspectRatio). If a future change wraps the
-      // clamp in a Number.isFinite guard, update this expectation deliberately.
-      expect(Number.isNaN(clamp(NaN))).toBe(true);
-    });
-
-    test(`${route}: first-paint useState seed is in-range (no first-frame clamp jump)`, () => {
-      const seed = extractInitialAspect(src);
-      // The 0.75 seed must itself survive the clamp unchanged (0.6 <= 0.75 <= 1.91)
-      // so the first paint is stable, then settles to the media's true shape.
-      expect(clamp(seed)).toBe(seed);
-      expect(seed).toBeGreaterThanOrEqual(0.6);
-      expect(seed).toBeLessThanOrEqual(1.91);
+    test(`${route}: miniCover declares the fixed compact height: 64 band`, () => {
+      const body = extractStyleBody(src, "miniCover");
+      expect(body).toMatch(/^\s*height:\s*64,/m);
     });
   }
 });
 
-describe("ORCH-1132 adversarial — SC-6 isolation: public hero clamp is a DIFFERENT range, NOT inherited", () => {
+describe("ORCH-1133 inverted (B) — public hero clamp UNCHANGED (revert scoped away from the hero)", () => {
   const heroSrc = fs.readFileSync(
     path.join(repoRoot, "packages/event-rendering/PublicEventPage.tsx"),
     "utf8",
   );
   const heroClamp = extractClamp(heroSrc);
 
-  test("public hero clamps a 0.5625 portrait to 0.75 (its OWN bound — checkout floors to 0.6)", () => {
-    // Proves the hero still uses 0.75..16/9. If the hero were accidentally
-    // widened to the checkout's 0.6..1.91 this would read 0.6 and FAIL.
+  test("public hero still clamps a 0.5625 portrait to its OWN 0.75 bound", () => {
     expect(heroClamp(0.5625)).toBeCloseTo(0.75, 5);
   });
 
-  test("public hero upper bound is 16/9 (≈1.778), NOT the checkout's 1.91", () => {
+  test("public hero upper bound is still 16/9 (≈1.778), not the old checkout 1.91", () => {
     expect(heroClamp(3.0)).toBeCloseTo(16 / 9, 5);
     expect(heroClamp(3.0)).toBeLessThan(1.91);
   });
-
-  test("the checkout floor (0.6) and the hero floor (0.75) are genuinely different values", () => {
-    // Cross-file structural isolation: read both floors, assert they diverge.
-    const checkoutSrc = fs.readFileSync(
-      path.join(businessDir, CHECKOUT_ROUTES[0]),
-      "utf8",
-    );
-    const checkoutClamp = extractClamp(checkoutSrc);
-    // A portrait the hero clamps to 0.75, checkout clamps lower (0.6).
-    expect(checkoutClamp(0.5625)).toBeLessThan(heroClamp(0.5625));
-  });
 });
 
-describe("ORCH-1132 adversarial — SC-7 default-safety: EventCoverMedia videoContentFit default stays 'cover'", () => {
+describe("ORCH-1133 inverted (C) — EventCoverMedia videoContentFit default stays 'cover'", () => {
   const ecmSrc = fs.readFileSync(
     path.join(repoRoot, "packages/event-rendering/EventCoverMedia.tsx"),
     "utf8",
   );
 
-  test("videoContentFit prop default is exactly \"cover\" (no consumer gets contain by accident)", () => {
-    // The destructured default in the component signature.
+  test('videoContentFit prop default is exactly "cover" (no consumer gets contain by accident)', () => {
     expect(ecmSrc).toMatch(/videoContentFit\s*=\s*"cover"/);
-    // And there is NO `videoContentFit = "contain"` default anywhere.
     expect(ecmSrc).not.toMatch(/videoContentFit\s*=\s*"contain"/);
   });
 
-  test("the web <video> objectFit is driven by the contentFit prop (passthrough, not hardcoded contain)", () => {
-    // Proves contain is opt-in per call-site, not baked into the render path.
+  test("the web <video> objectFit is driven by the contentFit prop (passthrough)", () => {
     expect(ecmSrc).toMatch(/objectFit:\s*contentFit/);
   });
 
-  test("image covers remain resizeMode=\"cover\" (videoContentFit does not affect images — spec §4.4)", () => {
+  test('image covers remain resizeMode="cover"', () => {
     expect(ecmSrc).toMatch(/resizeMode="cover"/);
   });
 });
