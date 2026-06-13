@@ -328,7 +328,12 @@ const styles = StyleSheet.create({
   },
   miniCard: { marginBottom: spacing.lg },
   miniCover: {
-    height: 64,
+    // ORCH-1131 — 64 → 120: a 64pt band sliced a PORTRAIT cover video
+    // (EventCoverMedia fills contentFit:"cover") to an unrecognizable
+    // mid-frame strip. 120pt (~2.85:1 at 342pt content width) reveals the
+    // cover while keeping the checkout summary compact. Kept "cover" (no
+    // letterbox bars on the dark card). Do NOT switch to contain.
+    height: 120,
     borderRadius: radiusTokens.md,
     marginBottom: spacing.sm,
   },
