@@ -36,6 +36,7 @@ import {
 import { tripPublicPath } from "../../../src/constants/publicUrls";
 import { usePublicTripById } from "../../../src/hooks/usePublicTripById";
 import { formatCurrency } from "../../../src/utils/currency";
+import { projectInstallmentSchedule } from "../../../src/utils/installmentScheduleProjection";
 import type { TripPricingTier } from "../../../src/services/tripsService";
 import type {
   TicketAvailableAt,
@@ -131,8 +132,38 @@ export default function CheckoutTripTicketsScreen(): React.ReactElement {
   const trip = publicTripQuery.data?.trip ?? null;
   const brand = publicTripQuery.data?.brand ?? null;
 
-  const { lines, setLineQuantity, setPaymentPlanChoice } = useCart();
+  const { lines, paymentPlanChoice, setLineQuantity, setPaymentPlanChoice } =
+    useCart();
   const totals = useCartTotals();
+
+  // ORCH-1130 ADDENDUM (Seth-BINDING) — the price shown beside the Continue CTA
+  // (the Subtotal) follows the current pay-full vs pay-over-time selection
+  // (seeded from the public-page route param). When pay-over-time is selected
+  // and the cart holds a plan-active tier, the Subtotal reads the DEPOSIT DUE
+  // TODAY (read from the same projected schedule the toggle renders, never
+  // recomputed); otherwise it reads the full cart total. No-plan / pay-in-full
+  // → full total, unchanged.
+  const dueTodayCents = React.useMemo<number | null>(() => {
+    if (paymentPlanChoice !== "installments" || trip === null) return null;
+    for (const line of lines) {
+      const sourceTier = trip.pricingTiers.find(
+        (t) => t.ticketTypeId === line.ticketTypeId,
+      );
+      if (
+        sourceTier !== undefined &&
+        sourceTier.installmentSchedule !== null &&
+        line.quantity >= 1
+      ) {
+        const projected = projectInstallmentSchedule(
+          sourceTier,
+          new Date(),
+          line.quantity,
+        );
+        if (projected !== null) return projected.depositCents;
+      }
+    }
+    return null;
+  }, [paymentPlanChoice, trip, lines]);
 
   // ORCH-1130 — seed the cart's payment-plan choice from the public-page param.
   useEffect(() => {
@@ -407,13 +438,19 @@ export default function CheckoutTripTicketsScreen(): React.ReactElement {
         ]}
       >
         <View style={styles.subtotalRow}>
-          <Text style={styles.subtotalLabel}>Subtotal</Text>
+          <Text style={styles.subtotalLabel}>
+            {dueTodayCents !== null && !totals.isEmpty && !totals.isFree
+              ? "Due today"
+              : "Subtotal"}
+          </Text>
           <Text style={styles.subtotalValue}>
             {totals.isEmpty
               ? "—"
               : totals.isFree
                 ? "Free"
-                : formatCurrency(totals.total, totals.currency)}
+                : dueTodayCents !== null
+                  ? formatCurrency(dueTodayCents, totals.currency, true)
+                  : formatCurrency(totals.total, totals.currency)}
           </Text>
         </View>
         <Button
@@ -428,7 +465,9 @@ export default function CheckoutTripTicketsScreen(): React.ReactElement {
               ? "Add a tier above"
               : totals.isFree
                 ? "Reserve free spot"
-                : `Continue to buyer details, total ${formatCurrency(totals.total, totals.currency)}`
+                : dueTodayCents !== null
+                  ? `Continue to buyer details, due today ${formatCurrency(dueTodayCents, totals.currency, true)}`
+                  : `Continue to buyer details, total ${formatCurrency(totals.total, totals.currency)}`
           }
         />
       </View>

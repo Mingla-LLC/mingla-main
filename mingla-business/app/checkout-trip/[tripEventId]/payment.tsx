@@ -771,9 +771,17 @@ function CheckoutTripPaymentScreenContent({
           </Text>
         </View>
         <Button
-          label={Platform.OS !== "web"
-            ? `Pay ${formatCurrency(displayTotalCents, totals.currency)}`
-            : isUsingInstallments && projectedSchedule !== null
+          // ORCH-1130 ADDENDUM (Seth-BINDING) — the Pay CTA amount follows the
+          // current pay-full vs pay-over-time selection on BOTH paths. When
+          // pay-over-time is selected the button reads "Pay {deposit} deposit"
+          // (the amount due today, read from the projected schedule, never
+          // recomputed). When pay-in-full is selected it reads "Pay {full}".
+          // Native previously hardcoded the tax-inclusive full total even under
+          // the over-time selection, contradicting its own "charged {deposit}
+          // today" banner — fixed here. (Stripe still charges only the deposit
+          // first; the deposit is tax-exclusive at this preview stage, matching
+          // the web path's deposit copy.)
+          label={isUsingInstallments && projectedSchedule !== null
             ? `Pay ${
               formatCurrency(
                 projectedSchedule.depositCents,
@@ -781,6 +789,8 @@ function CheckoutTripPaymentScreenContent({
                 true,
               )
             } deposit`
+            : Platform.OS !== "web"
+            ? `Pay ${formatCurrency(displayTotalCents, totals.currency)}`
             : `Pay ${formatCurrency(totals.total, totals.currency)}`}
           onPress={handlePay}
           variant="primary"
@@ -789,11 +799,7 @@ function CheckoutTripPaymentScreenContent({
           loading={processing}
           disabled={processing ||
             (Platform.OS !== "web" && taxPreview === null)}
-          accessibilityLabel={Platform.OS !== "web"
-            ? `Pay ${
-              formatCurrency(displayTotalCents, totals.currency)
-            } with card`
-            : isUsingInstallments && projectedSchedule !== null
+          accessibilityLabel={isUsingInstallments && projectedSchedule !== null
             ? `Pay ${
               formatCurrency(
                 projectedSchedule.depositCents,
@@ -801,6 +807,10 @@ function CheckoutTripPaymentScreenContent({
                 true,
               )
             } deposit with card`
+            : Platform.OS !== "web"
+            ? `Pay ${
+              formatCurrency(displayTotalCents, totals.currency)
+            } with card`
             : `Pay ${formatCurrency(totals.total, totals.currency)} with card`}
         />
       </View>

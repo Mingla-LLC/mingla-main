@@ -873,12 +873,21 @@ export default function ConsumerTripDetailScreen({
     ) : (
       <View style={[styles.reserveBar, { paddingBottom: footerNavClearance }]}>
         <View style={styles.reservePriceCol}>
+          {/* ORCH-1130 ADDENDUM (Seth-BINDING) — the Reserve price reflects the
+              amount DUE TODAY for the current pay-full vs pay-over-time
+              selection, mirroring Path A. When "Pay over time" is selected on a
+              plan trip the bar leads with the deposit due today
+              ("{deposit} today", read from the same projected schedule the
+              module renders, never recomputed); otherwise it shows the full
+              "From {price}". No-plan / pay-in-full → unchanged. */}
           <Text style={styles.reservePriceLabel}>
-            {detail.hasFreeTier && priceLabel === null
-              ? "Free"
-              : priceLabel !== null
-                ? `From ${priceLabel}`
-                : ""}
+            {planSchedule !== null && paymentPlanChoice === "installments"
+              ? `${formatMoneyExact(planSchedule.depositCents, planSchedule.currency)} today`
+              : detail.hasFreeTier && priceLabel === null
+                ? "Free"
+                : priceLabel !== null
+                  ? `From ${priceLabel}`
+                  : ""}
           </Text>
         </View>
         <Pressable
@@ -936,6 +945,17 @@ export default function ConsumerTripDetailScreen({
           // request stays byte-identical and the edge-fn default path is
           // untouched. NEVER let a plan trip resolve to a silent 'auto'.
           paymentPlanChoice={detail.hasPlan ? paymentPlanChoice : undefined}
+          // ORCH-1130 ADDENDUM (Seth-BINDING) — when the buyer picked "Pay over
+          // time", forward the deposit DUE TODAY (from the same projected
+          // schedule the on-screen toggle renders) so the cart sheet's sticky
+          // bar leads with it, mirroring Path A + the Reserve bar above.
+          dueTodayCents={
+            detail.hasPlan &&
+            paymentPlanChoice === "installments" &&
+            planSchedule !== null
+              ? planSchedule.depositCents
+              : undefined
+          }
           // ORCH-1016: EBES hides the nav itself. The scroll viewport extends ~46px
           // below the visible screen edge, so the spacer must clear that overshoot +
           // a small gap for the Buy CTA — without over-scrolling. ~58.

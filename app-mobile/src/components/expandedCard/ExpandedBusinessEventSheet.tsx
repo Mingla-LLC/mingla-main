@@ -96,6 +96,14 @@ interface ExpandedBusinessEventSheetProps {
    * callers (events/experiences) and no-plan trips → request byte-identical.
    */
   paymentPlanChoice?: "full" | "installments";
+  /**
+   * ORCH-1130 ADDENDUM (Seth-BINDING) — when `paymentPlanChoice` is
+   * "installments" on a plan trip, the deposit DUE TODAY (cents) the cart
+   * sheet's sticky bar should lead with (read from the projected schedule by the
+   * trip detail screen, never recomputed). Undefined for events / no-plan /
+   * pay-in-full → the cart bar shows the all-in total unchanged.
+   */
+  dueTodayCents?: number;
 }
 
 // ORCH-0828 REWORK: canonical bottomSheet snapPoints from design tokens,
@@ -215,6 +223,7 @@ export const ExpandedBusinessEventSheet: React.FC<
   bottomContentInset = 32,
   bottomSheetInset = 0,
   paymentPlanChoice,
+  dueTodayCents,
 }) => {
   const router = useRouter();
   const user = useAppStore((s) => s.user);
@@ -662,6 +671,13 @@ export const ExpandedBusinessEventSheet: React.FC<
         buyerPhone={profile?.phone ?? ""}
         isSubmitting={checkoutInFlight}
         clearFloatingNav={false}
+        // ORCH-1130 ADDENDUM — forward the deposit-due-today so the cart bar
+        // mirrors Path A when the buyer picked "Pay over time". Only meaningful
+        // (and only passed) when the choice is "installments"; the trip detail
+        // screen sends undefined otherwise.
+        dueTodayCents={
+          paymentPlanChoice === "installments" ? dueTodayCents : undefined
+        }
         onCancel={handleCartCancel}
         onCheckout={handleCartCheckout}
       />

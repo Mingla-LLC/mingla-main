@@ -53,6 +53,7 @@ import { usePublicTripBySlug } from "../../../src/hooks/usePublicTripBySlug";
 import { TripPreview } from "../../../src/components/trip/TripPreview";
 import { TripCheckoutFlow } from "../../../src/components/trip/TripCheckoutFlow";
 import type { TripPaymentChoiceValue } from "../../../src/components/trip/TripPaymentChoice";
+import { projectInstallmentSchedule } from "../../../src/utils/installmentScheduleProjection";
 // ORCH-0875 [Tr4 Refund Tiers + Booking Deadline] — public-facing refund
 // policy ladder + countdown/closed-banner per DESIGN_ORCH-0875 §4.4 + §5.2.
 import { RefundPolicyDisplay } from "../../../src/components/trip/RefundPolicyDisplay";
@@ -188,14 +189,33 @@ export default function PublicTripRoute(): React.ReactElement {
         ? "Free"
         : "";
   // ORCH-1130 — does this trip have an installment plan? The bar's price label
-  // must disambiguate the full-vs-deposit ambiguity: a plan trip reads
-  // "{price} total" (not "From {price}") so a buyer knows the bar is the full
-  // trip price, never the deposit. The deposit number lives only inside the
-  // module. Single-tier (prod-universal) uses the exact price, no "From".
-  const tripHasPlan = tripTier?.installmentSchedule != null;
+  // must disambiguate the full-vs-deposit ambiguity. The deposit number is read
+  // from the SAME projected schedule the TripPaymentChoice module renders
+  // (projectInstallmentSchedule), never recomputed.
+  //
+  // ORCH-1130 ADDENDUM (Seth-BINDING): the CTA amount follows the live toggle
+  // selection on this page —
+  //   pay-over-time → the bar LEADS with the deposit due today
+  //                   ("Reserve · {deposit} today"); full price stays
+  //                   discoverable inside the module.
+  //   pay-in-full   → "{full} total" (the whole trip price).
+  // Updates live because `paymentPlanChoice` is this component's state, threaded
+  // into TripCheckoutFlow's toggle. Single-tier (prod-universal) full path uses
+  // the exact price; multi-tier (no prod data) keeps the "From {price}" hint.
+  const barSchedule =
+    tripTier !== undefined
+      ? projectInstallmentSchedule(tripTier, new Date())
+      : null;
+  const tripHasPlan = barSchedule !== null;
   const multiTier = trip.pricingTiers.length > 1;
+  const depositLabel =
+    barSchedule !== null
+      ? formatTripPrice(barSchedule.depositCents, tripTier?.currency ?? "USD")
+      : "";
   const barPrice = tripHasPlan
-    ? `${tripPrice} total`
+    ? paymentPlanChoice === "installments"
+      ? `${depositLabel} today`
+      : `${tripPrice} total`
     : multiTier
       ? `From ${tripPrice}`
       : tripPrice;
