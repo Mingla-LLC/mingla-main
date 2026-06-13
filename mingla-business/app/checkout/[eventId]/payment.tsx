@@ -85,14 +85,11 @@ import {
   useCartTotals,
 } from "../../../src/components/checkout/CartContext";
 import {
-  CartTaxPreview,
-  type CartTaxPreviewResult,
-} from "../../../src/components/checkout/CartTaxPreview";
-import {
   readCheckoutResumePayload,
   writeCheckoutResumePayload,
 } from "../../../src/components/checkout/checkoutPersistence";
 import { CheckoutHeader } from "../../../src/components/checkout/CheckoutHeader";
+import { supabase } from "../../../src/services/supabase";
 
 // ORCH-0849 (2026-05-15): CHECKOUT_RETURN_URL_SCHEME removed — native
 // PaymentSheet handles return-URL internally via the StripeNativeProvider's
@@ -158,9 +155,20 @@ function CheckoutPaymentScreenContent({
   // app-mobile/src/components/expandedCard/ExpandedBusinessEventSheet.tsx.
   const [successToast, setSuccessToast] = useState<boolean>(false);
   const [paymentError, setPaymentError] = useState<string | null>(null);
-  const [taxPreview, setTaxPreview] = useState<CartTaxPreviewResult | null>(
+  // ORCH-1130 Fix #2 — the vestigial CartTaxPreview billing-address form +
+  // "Calculate tax" Pay-gate are REMOVED (MINGLA-WIDE all-in / WYSIWYP: the
+  // buyer never types an address; tax is venue-sourced server-side). Instead
+  // we silently fetch the server-computed all-in total (incl. tax) via a
+  // NO-ADDRESS mode:"preview" create on mount, purely to DISPLAY the all-in
+  // upfront and to forward the tax calculationId into the charge. Pay is
+  // NEVER blocked on this — if the preview hasn't resolved, the base Total
+  // shows and the no-address create still charges the server-computed all-in.
+  const [allInPreviewCents, setAllInPreviewCents] = useState<number | null>(
     null,
   );
+  const [previewCalculationId, setPreviewCalculationId] = useState<
+    string | null
+  >(null);
 
   // ----- ORCH-0789/0790 REWORK: web sessionStorage restore -----
   // Runs once on mount (web only). If cart context is empty but we have
@@ -255,6 +263,55 @@ function CheckoutPaymentScreenContent({
     };
   }, []);
 
+  // ----- ORCH-1130 Fix #2: silent no-address all-in preview (native) -----
+  // Fetches the server-computed venue-sourced all-in (incl. tax) so the
+  // order-summary box shows the all-in upfront (WYSIWYP) without a buyer
+  // address form. Web shows the all-in on Stripe's hosted page, so it skips
+  // this. Non-blocking: any failure leaves the base Total + a no-address
+  // create (which still charges the all-in). Re-runs when the cart changes.
+  useEffect(() => {
+    if (Platform.OS === "web") return;
+    if (eventId === null) return;
+    if (lines.length === 0) return;
+    if (buyer.name.trim().length < 2 || buyer.email.trim().length === 0) return;
+    let cancelled = false;
+    void (async () => {
+      const { data, error } = await supabase.functions.invoke<{
+        calculationId: string | null;
+        totalCents: number;
+      }>("ticket-checkout-create", {
+        body: {
+          eventId,
+          surface: "native",
+          mode: "preview",
+          buyer: {
+            name: buyer.name,
+            email: buyer.email,
+            phone: buyer.phone,
+            marketingOptIn: buyer.marketingOptIn === true,
+          },
+          lines: lines.map((l) => ({
+            ticketTypeId: l.ticketTypeId,
+            quantity: l.quantity,
+          })),
+        },
+      });
+      if (cancelled) return;
+      if (error || !data) {
+        // Non-fatal — Pay is not gated on the preview; the base Total shows
+        // and the no-address create still charges the server-computed all-in.
+        setAllInPreviewCents(null);
+        setPreviewCalculationId(null);
+        return;
+      }
+      setAllInPreviewCents(data.totalCents);
+      setPreviewCalculationId(data.calculationId);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [eventId, lines, buyer.name, buyer.email, buyer.phone, buyer.marketingOptIn]);
+
   // ----- Handlers -------------------------------------------------
   const handleBack = useCallback((): void => {
     if (router.canGoBack()) {
@@ -267,10 +324,9 @@ function CheckoutPaymentScreenContent({
   const handlePay = useCallback(async (): Promise<void> => {
     if (processing) return;
     if (eventId === null) return;
-    if (Platform.OS !== "web" && taxPreview === null) {
-      setPaymentError("Calculate tax before paying.");
-      return;
-    }
+    // ORCH-1130 Fix #2 — no "Calculate tax" gate. Pay is available immediately
+    // with the server-computed all-in (incl. tax, venue-sourced). The buyer
+    // never types an address.
 
     // ORCH-0849: two distinct code paths, retained from ORCH-0839-B for web
     // (Platform.OS === "web"; mingla-business has a web build for the
@@ -350,11 +406,10 @@ function CheckoutPaymentScreenContent({
     }
 
     // ---------- NATIVE PATH (ORCH-0849 native PaymentSheet) ----------
-    if (taxPreview === null) {
-      setPaymentError("Calculate tax before paying.");
-      return;
-    }
-    const readyTaxPreview = taxPreview;
+    // ORCH-1130 Fix #2 — no buyer address; tax is venue-sourced server-side.
+    // Forward the silently-fetched no-address preview calculationId when
+    // available (lets the charge reuse the previewed Stripe Tax calculation);
+    // otherwise the no-address create recomputes the same venue-sourced all-in.
     const surface: "native" = "native";
 
     try {
@@ -373,9 +428,10 @@ function CheckoutPaymentScreenContent({
           email: buyer.email,
           phone: buyer.phone,
           marketingOptIn: buyer.marketingOptIn === true,
-          address: readyTaxPreview.address,
         },
-        taxCalculationId: readyTaxPreview.calculationId,
+        ...(previewCalculationId
+          ? { taxCalculationId: previewCalculationId }
+          : {}),
       });
 
       mixpanelService.track("ticket_checkout_sheet_opened", {
@@ -490,22 +546,19 @@ function CheckoutPaymentScreenContent({
     eventId,
     lines,
     nativeCheckout,
+    previewCalculationId,
     processing,
     router,
-    taxPreview,
   ]);
 
-  const handleTaxPreviewChange = useCallback(
-    (result: CartTaxPreviewResult | null): void => {
-      setTaxPreview(result);
-      if (result !== null) setBuyer({ address: result.address });
-    },
-    [setBuyer],
-  );
-
-  const displayTotalCents = Platform.OS === "web" || taxPreview === null
-    ? totals.total
-    : taxPreview.totalCents;
+  // ORCH-1130 Fix #2 — display the server-computed all-in (incl. tax) when the
+  // silent no-address preview has resolved (native); otherwise the base Total.
+  // Web shows the all-in on Stripe's hosted page. The all-in is in MINOR units
+  // (cents) when sourced from the preview, MAJOR units from totals.total.
+  const displayTotalCents = totals.total;
+  const displayAllIn = Platform.OS !== "web" && allInPreviewCents !== null
+    ? formatCurrency(allInPreviewCents, totals.currency, true)
+    : formatCurrency(displayTotalCents, totals.currency);
 
   // Render an empty shell while defensive guards redirect.
   if (
@@ -571,25 +624,15 @@ function CheckoutPaymentScreenContent({
           <View style={styles.summaryTotalRow}>
             <Text style={styles.summaryTotalLabel}>Total</Text>
             <Text style={styles.summaryTotalValue}>
-              {formatCurrency(displayTotalCents, totals.currency)}
+              {displayAllIn}
             </Text>
           </View>
         </GlassCard>
 
-        {Platform.OS !== "web"
-          ? (
-            <GlassCard variant="base" radius="lg" padding={spacing.md}>
-              <CartTaxPreview
-                eventId={eventId}
-                lines={lines}
-                buyer={buyer}
-                currency={totals.currency}
-                disabled={processing}
-                onPreviewChange={handleTaxPreviewChange}
-              />
-            </GlassCard>
-          )
-          : null}
+        {/* ORCH-1130 Fix #2 — the CartTaxPreview billing-address + "Calculate
+            tax" form was REMOVED. Tax is venue-sourced server-side and the
+            all-in (incl. tax) is shown above (WYSIWYP); the buyer types no
+            address. */}
 
         <GlassCard variant="base" radius="lg" padding={spacing.md}>
           <Text style={styles.summaryLabel}>PAYMENT</Text>
@@ -629,21 +672,20 @@ function CheckoutPaymentScreenContent({
         <View style={styles.totalRow}>
           <Text style={styles.totalLabel}>Total</Text>
           <Text style={styles.totalValue}>
-            {formatCurrency(displayTotalCents, totals.currency)}
+            {displayAllIn}
           </Text>
         </View>
         <Button
-          label={`Pay ${formatCurrency(displayTotalCents, totals.currency)}`}
+          label={`Pay ${displayAllIn}`}
           onPress={handlePay}
           variant="primary"
           size="lg"
           fullWidth
           loading={processing}
-          disabled={processing ||
-            (Platform.OS !== "web" && taxPreview === null)}
-          accessibilityLabel={`Pay ${
-            formatCurrency(displayTotalCents, totals.currency)
-          } with card`}
+          // ORCH-1130 Fix #2 — no "Calculate tax" gate; Pay is enabled
+          // immediately (only blocked while a charge is in flight).
+          disabled={processing}
+          accessibilityLabel={`Pay ${displayAllIn} with card`}
         />
       </View>
 

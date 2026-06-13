@@ -59,6 +59,7 @@ import {
 import { usePublicTripById } from "../../../src/hooks/usePublicTripById";
 import { useTripIntakeSchemasByEvent } from "../../../src/hooks/useIntakeSchema";
 import { formatCurrency } from "../../../src/utils/currency";
+import { projectInstallmentSchedule } from "../../../src/utils/installmentScheduleProjection";
 import { isValidE164, composeE164 } from "../../../src/utils/phone";
 import { createTicketCheckout } from "../../../src/services/ticketCheckoutService";
 
@@ -172,12 +173,36 @@ export default function CheckoutTripBuyerScreen(): React.ReactElement {
 
   const publicTripQuery = usePublicTripById(tripEventId);
   const trip = publicTripQuery.data?.trip ?? null;
-  const { lines, buyer, setBuyer, recordResult } = useCart();
+  const { lines, buyer, setBuyer, recordResult, paymentPlanChoice } = useCart();
   const totals = useCartTotals();
 
-  // ORCH-1130 — the passive installment projection was REMOVED from this
-  // pure data-entry step. The pay-full vs pay-over-time choice + schedule live
-  // on the public page + the Review & pay step now.
+  // ORCH-1130 Fix #1 — "Total due today" (deposit) line for the order-summary
+  // box. When pay-over-time is selected AND the cart holds a plan-active tier,
+  // surface the DEPOSIT DUE TODAY alongside the full Total. Read from the SAME
+  // projectInstallmentSchedule(...).depositCents the public page + Review step
+  // use (mirror of index.tsx's dueTodayCents memo) — NEVER recomputed here.
+  // null → no due-today line (pay-in-full / no-plan), Total only (unchanged).
+  const dueTodayCents = useMemo<number | null>(() => {
+    if (paymentPlanChoice !== "installments" || trip === null) return null;
+    for (const line of lines) {
+      const sourceTier = trip.pricingTiers.find(
+        (t) => t.ticketTypeId === line.ticketTypeId,
+      );
+      if (
+        sourceTier !== undefined &&
+        sourceTier.installmentSchedule !== null &&
+        line.quantity >= 1
+      ) {
+        const projected = projectInstallmentSchedule(
+          sourceTier,
+          new Date(),
+          line.quantity,
+        );
+        if (projected !== null) return projected.depositCents;
+      }
+    }
+    return null;
+  }, [paymentPlanChoice, trip, lines]);
 
   // ORCH-0880 [Tr5 Traveler Intake Forms] — fetch per-tier intake schemas to
   // decide whether to route Continue → /intake (before /payment) when any
@@ -467,6 +492,17 @@ export default function CheckoutTripBuyerScreen(): React.ReactElement {
                 {totals.isFree ? "Free" : formatCurrency(totals.total, totals.currency)}
               </Text>
             </View>
+            {/* ORCH-1130 Fix #1 — pay-over-time only: full Total stays above;
+                the amount charged TODAY (deposit) shows as its own labeled
+                line. Hidden for pay-in-full / no-plan. */}
+            {dueTodayCents !== null ? (
+              <View style={styles.summaryDueTodayRow}>
+                <Text style={styles.summaryDueTodayLabel}>Total due today</Text>
+                <Text style={styles.summaryDueTodayValue}>
+                  {formatCurrency(dueTodayCents, totals.currency, true)}
+                </Text>
+              </View>
+            ) : null}
           </GlassCard>
         </Pressable>
 
@@ -609,6 +645,16 @@ export default function CheckoutTripBuyerScreen(): React.ReactElement {
             {totals.isFree ? "Free" : formatCurrency(totals.total, totals.currency)}
           </Text>
         </View>
+        {/* ORCH-1130 Fix #1 — due-today (deposit) line in the sticky bar under
+            pay-over-time; mirrors the order-summary box above. */}
+        {dueTodayCents !== null ? (
+          <View style={styles.dueTodayRow}>
+            <Text style={styles.dueTodayLabel}>Total due today</Text>
+            <Text style={styles.dueTodayValue}>
+              {formatCurrency(dueTodayCents, totals.currency, true)}
+            </Text>
+          </View>
+        ) : null}
         <Button
           label={continueLabel}
           onPress={handleContinue}
@@ -685,6 +731,39 @@ const styles = StyleSheet.create({
   summaryTotalValue: {
     fontSize: 17,
     color: textTokens.primary,
+    fontWeight: "700",
+    letterSpacing: -0.2,
+  },
+  // ORCH-1130 Fix #1 — due-today (deposit) rows on the order-summary box +
+  // sticky bar. Subordinate weight to the full Total so the full price stays
+  // the dominant headline number.
+  summaryDueTodayRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "baseline",
+    marginTop: 6,
+  },
+  summaryDueTodayLabel: {
+    fontSize: 13,
+    color: accent.warm,
+    fontWeight: "600",
+  },
+  summaryDueTodayValue: {
+    fontSize: 15,
+    color: accent.warm,
+    fontWeight: "700",
+    letterSpacing: -0.2,
+  },
+  dueTodayRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "baseline",
+    marginBottom: spacing.sm,
+  },
+  dueTodayLabel: { fontSize: 13, color: accent.warm, fontWeight: "600" },
+  dueTodayValue: {
+    fontSize: 16,
+    color: accent.warm,
     fontWeight: "700",
     letterSpacing: -0.2,
   },
