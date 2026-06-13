@@ -657,6 +657,10 @@ export const ExpandedBusinessEventSheet: React.FC<
       {/* ORCH-0847 Phase C — multi-tier cart sheet. Renders as a sibling
           BaseBottomSheet so it overlays the parent sheet without
           competing for the same Modal root. */}
+      {/* ORCH-1130 ADDENDUM — forward the deposit-due-today (dueTodayCents
+          below) so the cart bar mirrors Path A when the buyer picked "Pay over
+          time". Only meaningful (and only passed) when the choice is
+          "installments"; the trip detail screen sends undefined otherwise. */}
       <TicketCartSheet
         visible={cartSheetVisible}
         eventId={data.eventId}
@@ -671,10 +675,6 @@ export const ExpandedBusinessEventSheet: React.FC<
         buyerPhone={profile?.phone ?? ""}
         isSubmitting={checkoutInFlight}
         clearFloatingNav={false}
-        // ORCH-1130 ADDENDUM — forward the deposit-due-today so the cart bar
-        // mirrors Path A when the buyer picked "Pay over time". Only meaningful
-        // (and only passed) when the choice is "installments"; the trip detail
-        // screen sends undefined otherwise.
         dueTodayCents={
           paymentPlanChoice === "installments" ? dueTodayCents : undefined
         }

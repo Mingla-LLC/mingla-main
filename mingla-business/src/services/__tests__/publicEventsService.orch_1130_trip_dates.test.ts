@@ -4,8 +4,8 @@
  * the event_dates master row, NOT the stripped theme.business_trip mirror.
  *
  * Root cause (INVESTIGATE_ORCH-1130): ORCH-0950 moved canonical trip dates onto
- * the event_dates master row and biz_update_live_trip strips
- * theme.business_trip.startAt|endAt on every live edit. The public trip getter
+ * the event_dates master row and biz_update_live_trip strips the
+ * theme business-trip start/end mirror on every live edit. The public trip getter
  * still read theme → "Dates to be set" on every edited/published trip even
  * though dates exist. The event public page already reads event_dates.
  *
