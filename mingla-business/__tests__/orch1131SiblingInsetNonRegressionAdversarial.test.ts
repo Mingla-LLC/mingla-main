@@ -79,13 +79,14 @@ describe("ORCH-1131 adversarial — sibling pill insets NOT shifted by FIX 2", (
     expect(allNumericValues(body, "top")).toEqual([14]);
   });
 
-  // ORCH-1132 [TEST-MOD-APPROVED ORCH-1132] round 2 — the bottomRight pill moved
-  // 16 → 24 (spacing.lg, visible breathing room). Still exactly ONE right:
-  // declaration (no shadow override re-shadows it). bottom:22 unchanged.
+  // ORCH-1133 [TEST-MOD-APPROVED ORCH-1133] round 3 — the bottomRight pill bottom
+  // moved 22 → 40 (round-3 clearance from the public-event details panel). right
+  // stays 24 (kept from ORCH-1132). Still exactly ONE right: and ONE bottom:
+  // declaration (no shadow override re-shadows either).
   test("audioControlBottomRight has exactly ONE right: declaration (no shadow override)", () => {
     const body = extractStyleBody(src, "audioControlBottomRight");
     expect(allNumericValues(body, "right")).toEqual([24]);
-    expect(allNumericValues(body, "bottom")).toEqual([22]);
+    expect(allNumericValues(body, "bottom")).toEqual([40]);
   });
 });
 

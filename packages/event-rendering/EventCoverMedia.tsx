@@ -614,9 +614,14 @@ const styles = StyleSheet.create({
     // by +8px (safe; no consumer relies on 16). Raw literal matches this file's
     // convention (topLeft/topRight all use raw numbers).
     right: 24,
-    // ORCH-1128 — 14 → 22: clears the cover seam so the pill stops bleeding
-    // into the details section below the public hero (radius:0 + absoluteFill).
-    bottom: 22,
+    // ORCH-1133 — 22 → 40: round-3 clearance from the public-event details panel.
+    // The blue details panel (PublicEventPage `bodyContent`, marginTop:-28) sits
+    // 28px above the hero bottom; at bottom:22 the pill overlapped the panel top
+    // by 6px (measured on buyer web). bottom:40 = 28 + 12px visible gap (live-
+    // verified +12.0px on /e/leggothis/vibes-and-stuff & /a-life-in-vegas).
+    // Shared style → also lifts the consumer gallery + authoring-preview pills
+    // +18px on their full-bleed covers (benign; ≥200px boxes, no panel below).
+    bottom: 40,
   },
   audioControlPressed: {
     backgroundColor: "rgba(0, 0, 0, 0.72)",

@@ -88,17 +88,23 @@ describe("ORCH-1128 item 1 — free / waitlist CTA spans the full floating bar",
 });
 
 describe("ORCH-1128 item 2 — cover mute pill clears the details below", () => {
-  test("audioControlBottomRight bottom offset is raised to 22 (clearance from details)", () => {
+  test("audioControlBottomRight bottom offset is raised to 40 (clearance from details)", () => {
     const src = coverMedia();
     const idx = src.indexOf("audioControlBottomRight:");
     expect(idx).toBeGreaterThan(-1);
-    const block = src.slice(idx, idx + 400);
-    // The bottom offset is the bumped value, not the flush ORCH-1124 default.
-    expect(block).toMatch(/bottom:\s*22/);
+    // Parse the full block (the comment bloat pushed `bottom:` past the old
+    // fixed 400-char window — DISC-1 hardening).
+    const blockMatch = src
+      .slice(idx)
+      .match(/audioControlBottomRight:\s*\{([\s\S]*?)\n\s*\},/);
+    const block = blockMatch ? blockMatch[1] : "";
+    // ORCH-1133 round 3 — the bottom offset is the bumped value, not the flush
+    // ORCH-1124 default and not the superseded ORCH-1128 value of 22.
+    expect(block).toMatch(/bottom:\s*40/);
     expect(block).not.toMatch(/bottom:\s*14\b/);
     // ORCH-1124 position contract preserved: still bottom-right (right anchor),
-    // NOT reverted to a top position.
-    expect(block).toMatch(/right:\s*14/);
+    // NOT reverted to a top position. right kept at 24 (ORCH-1132).
+    expect(block).toMatch(/right:\s*24/);
   });
 
   test("the public page still inherits the bottomRight default (no topRight regression)", () => {

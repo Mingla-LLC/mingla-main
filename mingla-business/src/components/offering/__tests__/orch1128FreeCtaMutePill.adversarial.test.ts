@@ -117,20 +117,28 @@ describe("ORCH-1128 adversarial A3 — mute pill clears the seam by a strict mar
     const src = coverMedia();
     const idx = src.indexOf("audioControlBottomRight:");
     expect(idx).toBeGreaterThan(-1);
-    const block = src.slice(idx, idx + 400);
-    // Numeric parse of the actual bottom value (not a literal-22 string match):
+    // Parse the EXACT `audioControlBottomRight: { ... }` block (the comment bloat
+    // pushed `bottom:` past the old fixed 400-char window, NULLing the parse —
+    // DISC-1 hardening). Extracting the precise block also keeps the no-`top:`
+    // assertion from leaking into the next sibling style's `top:` key.
+    const blockMatch = src
+      .slice(idx)
+      .match(/audioControlBottomRight:\s*\{([\s\S]*?)\n\s*\},/);
+    expect(blockMatch).not.toBeNull();
+    const block = blockMatch ? blockMatch[1] : "";
+    // Numeric parse of the actual bottom value (not a literal string match):
     const m = block.match(/bottom:\s*(\d+)/);
     expect(m).not.toBeNull();
     const bottom = Number(m?.[1]);
     // STRICT increase over the flush ORCH-1124 baseline — a partial bump that
-    // still bleeds (<=14) fails just as a full revert to 14 does.
+    // still bleeds (<=14) fails just as a full revert to 14 does. ORCH-1133 = 40.
     expect(bottom).toBeGreaterThan(14);
     // The bottomRight style must remain a BOTTOM anchor: no `top:` key smuggled
     // in (which would silently turn it into a top-pinned pill — the exact
     // ORCH-1124 regression this position contract forbids).
     expect(block).not.toMatch(/top:\s*\d+/);
-    // And the right anchor is preserved.
-    expect(block).toMatch(/right:\s*14/);
+    // And the right anchor is preserved (24, kept from ORCH-1132).
+    expect(block).toMatch(/right:\s*24/);
   });
 
   test("the shared default position is bottomRight (no topRight regression)", () => {
