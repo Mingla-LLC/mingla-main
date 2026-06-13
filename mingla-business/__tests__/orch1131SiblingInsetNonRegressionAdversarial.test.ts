@@ -6,7 +6,8 @@ import path from "node:path";
 //
 // DIFFERENT ANGLE from the implementor's happy-path test
 // (orch1131CoverCropSoundInset.test.ts), which only asserts the POSITIVE changed
-// values (miniCover.height===120, bottomRight.right===16, bottom===22).
+// values (miniCover full-frame: no fixed height + videoContentFit="contain";
+// bottomRight.right===24, bottom===22 — round 2, ORCH-1132).
 //
 // This test attacks the SIBLING-INVARIANT / collateral-regression surface that
 // the happy-path test does NOT guard — the spec §7 adversarial angles:
@@ -78,9 +79,12 @@ describe("ORCH-1131 adversarial — sibling pill insets NOT shifted by FIX 2", (
     expect(allNumericValues(body, "top")).toEqual([14]);
   });
 
+  // ORCH-1132 [TEST-MOD-APPROVED ORCH-1132] round 2 — the bottomRight pill moved
+  // 16 → 24 (spacing.lg, visible breathing room). Still exactly ONE right:
+  // declaration (no shadow override re-shadows it). bottom:22 unchanged.
   test("audioControlBottomRight has exactly ONE right: declaration (no shadow override)", () => {
     const body = extractStyleBody(src, "audioControlBottomRight");
-    expect(allNumericValues(body, "right")).toEqual([16]);
+    expect(allNumericValues(body, "right")).toEqual([24]);
     expect(allNumericValues(body, "bottom")).toEqual([22]);
   });
 });
