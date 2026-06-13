@@ -83,6 +83,8 @@ import { hueFromId } from "../../utils/hueFromId";
 import {
   useConsumerTripDetail,
   type ConsumerTripDetail,
+  type TripDetailTier,
+  type TripInstallmentScheduleData,
 } from "../../hooks/useConsumerTripDetail";
 import type { DiscoverTripRow } from "../../services/tripsDiscoveryService";
 import type { BusinessEventCard } from "../../types/mergedDiscover";
@@ -134,6 +136,73 @@ function formatMoney(cents: number | null, currency: string | null): string | nu
     }).format(cents / 100);
   } catch {
     return `${(cents / 100).toFixed(0)} ${code}`;
+  }
+}
+
+// ORCH-1130 — precise currency render for the installment ladder (cents → 2dp).
+// Distinct from formatMoney (which rounds to whole units for the price chips).
+function formatMoneyExact(cents: number, currency: string | null): string {
+  const code = currency ?? "USD";
+  try {
+    return new Intl.NumberFormat(undefined, {
+      style: "currency",
+      currency: code,
+      maximumFractionDigits: 2,
+    }).format(cents / 100);
+  } catch {
+    return `${(cents / 100).toFixed(2)} ${code}`;
+  }
+}
+
+// ORCH-1130 — the absolute-date schedule the consumer "HOW YOU PAY" module
+// renders. Pure projection from the tier's stored template + a now() anchor
+// (the buyer hasn't booked, so dates are projections). Mirrors the business
+// `projectInstallmentSchedule`; kept local so app-mobile has no cross-app import.
+interface ConsumerProjectedSchedule {
+  depositCents: number;
+  fullPriceCents: number;
+  currency: string;
+  installments: { ordinal: number; amountCents: number; dueAtIso: string }[];
+}
+
+function addDaysIso(anchor: Date, days: number): string {
+  const r = new Date(anchor.getTime());
+  r.setUTCDate(r.getUTCDate() + days);
+  return r.toISOString();
+}
+
+function projectConsumerSchedule(
+  tier: TripDetailTier,
+  anchor: Date,
+): ConsumerProjectedSchedule | null {
+  const s: TripInstallmentScheduleData | null = tier.installmentSchedule;
+  if (s === null) return null;
+  const fullPriceCents = tier.priceCents;
+  const depositCents = Math.round((fullPriceCents * s.deposit_pct) / 100);
+  const installments = s.installments.map((inst) => {
+    const amountCents = Math.round((fullPriceCents * inst.pct) / 100);
+    let dueAtIso: string;
+    if (typeof inst.fixed_date === "string" && inst.fixed_date.length > 0) {
+      dueAtIso = `${inst.fixed_date}T00:00:00.000Z`;
+    } else {
+      dueAtIso = addDaysIso(anchor, inst.days_after_booking ?? 0);
+    }
+    return { ordinal: inst.ordinal, amountCents, dueAtIso };
+  });
+  return { depositCents, fullPriceCents, currency: tier.currency, installments };
+}
+
+function formatScheduleDate(iso: string): string {
+  try {
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return iso;
+    return new Intl.DateTimeFormat(undefined, {
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+    }).format(d);
+  } catch {
+    return iso;
   }
 }
 
@@ -206,6 +275,12 @@ export default function ConsumerTripDetailScreen({
     seed,
   );
   const [reserveSheetVisible, setReserveSheetVisible] = useState(false);
+  // ORCH-1130 — consumer pay-full vs pay-over-time choice. Default "full" (the
+  // deliberate non-surprising default; a buyer who does nothing pays the whole
+  // price, never a silent partial). Threaded into the reserve flow so the
+  // server receives an EXPLICIT choice for plan trips (DISC-1130-A consent fix).
+  const [paymentPlanChoice, setPaymentPlanChoice] =
+    useState<"full" | "installments">("full");
   // ORCH-1117 — collapsible description (collapsed by default for long copy).
   const [aboutCollapsed, setAboutCollapsed] = useState<boolean>(true);
   const [reduceMotion, setReduceMotion] = useState<boolean>(false);
@@ -254,6 +329,23 @@ export default function ConsumerTripDetailScreen({
     () => (detail !== null ? tripToBusinessEventCard(detail) : null),
     [detail],
   );
+
+  // ORCH-1130 — project the sole/first plan tier's schedule from a now() anchor.
+  // Null when no tier has a plan → the "HOW YOU PAY" module is suppressed and
+  // the screen stays byte-identical to today.
+  const planSchedule = useMemo<ConsumerProjectedSchedule | null>(() => {
+    if (detail === null) return null;
+    for (const tier of detail.tiers) {
+      if (tier.installmentSchedule !== null) {
+        return projectConsumerSchedule(tier, new Date());
+      }
+    }
+    return null;
+  }, [detail]);
+  const planTier = useMemo<TripDetailTier | null>(() => {
+    if (detail === null) return null;
+    return detail.tiers.find((t) => t.installmentSchedule !== null) ?? null;
+  }, [detail]);
 
   // Floating close/share chrome — preserved from the prior overlay, now layered
   // over the sheet body (inside the BaseBottomSheet) instead of the full screen.
@@ -601,6 +693,146 @@ export default function ConsumerTripDetailScreen({
             ))}
           </View>
         ) : null}
+
+        {/* ORCH-1130 — "HOW YOU PAY" module. Renders ONLY for a plan trip that
+            is bookable + not closed (no choosing a payment for an unbuyable
+            trip). Segmented toggle mirrors Path A; selected = border + fill +
+            dot (3 channels). Threads the explicit choice into Reserve. */}
+        {planSchedule !== null && planTier !== null && !closed &&
+        detail.bookable !== false ? (
+          <View
+            style={styles.section}
+            testID="orch-1130-consumer-payment-choice"
+          >
+            <Text style={styles.sectionLabel}>How you pay</Text>
+            <View
+              accessibilityRole="radiogroup"
+              accessibilityLabel="How you pay"
+              style={styles.payToggleRow}
+            >
+              <Pressable
+                accessibilityRole="radio"
+                accessibilityLabel={`Pay full ${formatMoneyExact(planSchedule.fullPriceCents, planSchedule.currency)} now`}
+                accessibilityState={{ selected: paymentPlanChoice === "full" }}
+                onPress={() => setPaymentPlanChoice("full")}
+                style={[
+                  styles.paySegment,
+                  paymentPlanChoice === "full" ? styles.paySegmentSelected : null,
+                ]}
+              >
+                <View
+                  style={[
+                    styles.payDot,
+                    paymentPlanChoice === "full" ? styles.payDotSelected : null,
+                  ]}
+                  pointerEvents="none"
+                >
+                  {paymentPlanChoice === "full" ? (
+                    <View style={styles.payDotInner} />
+                  ) : null}
+                </View>
+                <Text style={styles.paySegmentTitle}>Pay in full</Text>
+              </Pressable>
+              <Pressable
+                accessibilityRole="radio"
+                accessibilityLabel={`Pay over time, ${formatMoneyExact(planSchedule.depositCents, planSchedule.currency)} deposit today plus ${planSchedule.installments.length} future payment${planSchedule.installments.length === 1 ? "" : "s"}`}
+                accessibilityState={{
+                  selected: paymentPlanChoice === "installments",
+                }}
+                onPress={() => setPaymentPlanChoice("installments")}
+                style={[
+                  styles.paySegment,
+                  paymentPlanChoice === "installments"
+                    ? styles.paySegmentSelected
+                    : null,
+                ]}
+              >
+                <View
+                  style={[
+                    styles.payDot,
+                    paymentPlanChoice === "installments"
+                      ? styles.payDotSelected
+                      : null,
+                  ]}
+                  pointerEvents="none"
+                >
+                  {paymentPlanChoice === "installments" ? (
+                    <View style={styles.payDotInner} />
+                  ) : null}
+                </View>
+                <Text style={styles.paySegmentTitle}>Pay over time</Text>
+              </Pressable>
+            </View>
+
+            {paymentPlanChoice === "full" ? (
+              <View style={styles.payBlock}>
+                <View style={styles.payAmountRow}>
+                  <Text style={styles.payAmountLabel}>Charged today</Text>
+                  <Text style={styles.payAmountValue}>
+                    {formatMoneyExact(
+                      planSchedule.fullPriceCents,
+                      planSchedule.currency,
+                    )}
+                  </Text>
+                </View>
+                <Text
+                  style={styles.payDisclosure}
+                  accessibilityRole="text"
+                >
+                  Reserve charges{" "}
+                  {formatMoneyExact(
+                    planSchedule.fullPriceCents,
+                    planSchedule.currency,
+                  )}{" "}
+                  today. No future bills for this booking.
+                </Text>
+              </View>
+            ) : (
+              <View style={styles.payBlock}>
+                <View style={styles.payScheduleCard}>
+                  <View style={styles.payScheduleRow}>
+                    <Text style={styles.payScheduleDate}>Deposit today</Text>
+                    <Text style={styles.payScheduleAmount}>
+                      {formatMoneyExact(
+                        planSchedule.depositCents,
+                        planSchedule.currency,
+                      )}
+                    </Text>
+                  </View>
+                  {planSchedule.installments.map((inst) => (
+                    <View key={inst.ordinal} style={styles.payScheduleRow}>
+                      <Text style={styles.payScheduleDate}>
+                        {formatScheduleDate(inst.dueAtIso)}
+                      </Text>
+                      <Text style={styles.payScheduleAmount}>
+                        {formatMoneyExact(inst.amountCents, planSchedule.currency)}
+                      </Text>
+                    </View>
+                  ))}
+                  <View style={styles.payScheduleDivider} />
+                  <View style={styles.payScheduleRow}>
+                    <Text style={styles.payScheduleTotalLabel}>Total</Text>
+                    <Text style={styles.payScheduleTotalAmount}>
+                      {formatMoneyExact(
+                        planSchedule.fullPriceCents,
+                        planSchedule.currency,
+                      )}
+                    </Text>
+                  </View>
+                </View>
+                <Text style={styles.payDisclosure} accessibilityRole="text">
+                  Reserve charges{" "}
+                  {formatMoneyExact(
+                    planSchedule.depositCents,
+                    planSchedule.currency,
+                  )}{" "}
+                  today. The rest auto-charges from this card on the dates above.
+                  Dates assume you book today; they lock when you pay.
+                </Text>
+              </View>
+            )}
+          </View>
+        ) : null}
       </View>
     </>
   );
@@ -699,6 +931,11 @@ export default function ConsumerTripDetailScreen({
           visible={reserveSheetVisible}
           data={card}
           onClose={() => setReserveSheetVisible(false)}
+          // ORCH-1130 / DISC-1130-A — pass the buyer's explicit choice ONLY for
+          // plan trips (detail.hasPlan). Undefined for no-plan trips → the
+          // request stays byte-identical and the edge-fn default path is
+          // untouched. NEVER let a plan trip resolve to a silent 'auto'.
+          paymentPlanChoice={detail.hasPlan ? paymentPlanChoice : undefined}
           // ORCH-1016: EBES hides the nav itself. The scroll viewport extends ~46px
           // below the visible screen edge, so the spacer must clear that overshoot +
           // a small gap for the Buy CTA — without over-scrolling. ~58.
@@ -788,6 +1025,77 @@ const styles = StyleSheet.create({
   },
   tierName: { fontSize: 15, color: "#FFFFFF" },
   tierPrice: { fontSize: 15, fontWeight: "700", color: "#FFFFFF" },
+  // ORCH-1130 — consumer "HOW YOU PAY" module. Literal hex (matches the
+  // surrounding screen; NOT the business designSystem tokens). Selected =
+  // border + fill + dot (3 channels). Solid fills compose opaque on Android
+  // (the screen body is opaque #0c0e12 family — no glass bleed-through).
+  payToggleRow: { flexDirection: "row", gap: 8, marginTop: 4 },
+  paySegment: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    minHeight: 44,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.10)",
+    backgroundColor: "rgba(255,255,255,0.04)",
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+  },
+  paySegmentSelected: {
+    borderColor: "rgba(235,120,37,0.7)",
+    backgroundColor: "rgba(235,120,37,0.14)",
+  },
+  paySegmentTitle: { flexShrink: 1, fontSize: 15, fontWeight: "700", color: "#FFFFFF" },
+  payDot: {
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    borderWidth: 1.5,
+    borderColor: "rgba(255,255,255,0.28)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  payDotSelected: { borderColor: WARM },
+  payDotInner: { width: 8, height: 8, borderRadius: 4, backgroundColor: WARM },
+  payBlock: { marginTop: 12 },
+  payAmountRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "baseline",
+    gap: 8,
+  },
+  payAmountLabel: { flexShrink: 1, fontSize: 13, fontWeight: "600", color: "rgba(255,255,255,0.72)" },
+  payAmountValue: { fontSize: 15, fontWeight: "700", color: "#FFFFFF" },
+  payDisclosure: {
+    marginTop: 8,
+    fontSize: 13,
+    lineHeight: 18,
+    color: "rgba(255,255,255,0.65)",
+  },
+  payScheduleCard: {
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.08)",
+    backgroundColor: "rgba(255,255,255,0.04)",
+    padding: 12,
+  },
+  payScheduleRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingVertical: 4,
+  },
+  payScheduleDate: { flex: 1, fontSize: 14, color: "#FFFFFF" },
+  payScheduleAmount: { fontSize: 14, fontWeight: "600", color: "#FFFFFF", textAlign: "right" },
+  payScheduleDivider: {
+    height: 1,
+    backgroundColor: "rgba(255,255,255,0.08)",
+    marginVertical: 8,
+  },
+  payScheduleTotalLabel: { flex: 1, fontSize: 14, fontWeight: "600", color: "#FFFFFF" },
+  payScheduleTotalAmount: { fontSize: 15, fontWeight: "700", color: "#FFFFFF", textAlign: "right" },
   reserveBar: {
     flexDirection: "row",
     alignItems: "center",

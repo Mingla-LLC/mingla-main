@@ -88,6 +88,14 @@ interface ExpandedBusinessEventSheetProps {
   onClose: () => void;
   bottomContentInset?: number;
   bottomSheetInset?: number;
+  /**
+   * ORCH-1130 [public trip page payment-structure] / DISC-1130-A — for a plan
+   * trip, the buyer's explicit pay-full vs pay-over-time choice picked on
+   * ConsumerTripDetailScreen. Forwarded straight into runNativeCheckout →
+   * ticket-checkout-create's `payment_plan_choice`. Undefined for non-trip
+   * callers (events/experiences) and no-plan trips → request byte-identical.
+   */
+  paymentPlanChoice?: "full" | "installments";
 }
 
 // ORCH-0828 REWORK: canonical bottomSheet snapPoints from design tokens,
@@ -206,6 +214,7 @@ export const ExpandedBusinessEventSheet: React.FC<
   onClose,
   bottomContentInset = 32,
   bottomSheetInset = 0,
+  paymentPlanChoice,
 }) => {
   const router = useRouter();
   const user = useAppStore((s) => s.user);
@@ -351,6 +360,11 @@ export const ExpandedBusinessEventSheet: React.FC<
           ...(selectedEventDateId !== null
             ? { eventDateId: selectedEventDateId }
             : {}),
+          // ORCH-1130 / DISC-1130-A — for a plan trip, forward the buyer's
+          // explicit pay-full vs pay-over-time choice so the server NEVER
+          // resolves to a silent 'auto' deposit-only charge. Omitted for
+          // events/experiences/no-plan trips → request byte-identical.
+          ...(paymentPlanChoice ? { paymentPlanChoice } : {}),
         });
       } catch (err) {
         // ORCH-0829-B D-1 H-2: runNativeCheckout's contract is to return a
@@ -409,6 +423,7 @@ export const ExpandedBusinessEventSheet: React.FC<
       runNativeCheckout,
       data.eventId,
       selectedEventDateId,
+      paymentPlanChoice,
       queryClient,
       onClose,
     ],

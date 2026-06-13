@@ -219,7 +219,16 @@ describe("ORCH-0876 adversarial — A2: TripCheckoutFlow S-3 fix pinned", () => 
     // action to the floating bar in the route, still via tripCheckoutPath.
     // DESTINATION INVARIANT (preserved): the route navigates to the
     // trip-specific checkout chain, never the events /checkout/{id} chain.
-    expect(ROUTE).toMatch(/router\.push\(tripCheckoutPath\(trip\.id\) as never\)/);
+    // [TEST-MOD-APPROVED ORCH-1130] — ORCH-1130 threads the public-page
+    // pay-full/installments choice as a route param, so the Reserve nav is now
+    // the object form `router.push({ pathname: tripCheckoutPath(trip.id),
+    // params: { plan: ... } })`. The destination invariant is UNCHANGED — the
+    // pathname is still `tripCheckoutPath(trip.id)`. The assertion is widened to
+    // accept either the bare-string OR the object form, both anchored on
+    // tripCheckoutPath(trip.id).
+    expect(ROUTE).toMatch(
+      /router\.push\(\s*(?:tripCheckoutPath\(trip\.id\) as never|\{[\s\S]*?pathname:\s*tripCheckoutPath\(trip\.id\)[\s\S]*?\} as never)/,
+    );
     // And explicitly NOT the broken events chain (raw or via helper).
     expect(ROUTE).not.toMatch(/router\.push\(`\/checkout\/\$\{trip\.id\}` as never\)/);
     expect(ROUTE).not.toMatch(/router\.push\(checkoutPublicPath\(trip\.id\)/);

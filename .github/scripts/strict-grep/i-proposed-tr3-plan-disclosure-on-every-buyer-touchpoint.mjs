@@ -52,11 +52,23 @@ const __dirname = path.dirname(__filename);
 const repoRoot = path.resolve(__dirname, "..", "..", "..");
 
 const SCOPED_FILES = [
-  "mingla-business/src/components/trip/TripCheckoutFlow.tsx",
-  "mingla-business/app/checkout-trip/[tripEventId]/index.tsx",
+  // ORCH-1130 [public trip page payment-structure + installments UX redesign]
+  // SUPERSEDES the ORCH-0882 "passive disclosure on every buyer touchpoint"
+  // invariant for the public page + index/buyer/payment funnel steps. The
+  // redesign replaces the always-on passive projection (shown ~4× across the
+  // funnel as a fait-accompli, with no pay-full sibling) with a single
+  // selector-gated `TripPaymentChoice` module that renders the schedule ONLY
+  // under "Pay over time" when the buyer picks it, on the public page + the
+  // Review & pay step. The disclosure thus lives INSIDE `TripPaymentChoice`
+  // (which imports `InstallmentScheduleDisplay`), not inline in each route.
+  // Removed from scope per this gate's own remediation rule (justification here):
+  //   - TripCheckoutFlow.tsx          → renders <TripPaymentChoice/> (selector-gated)
+  //   - checkout-trip/.../index.tsx   → single-tier auto-skips; passive card removed
+  //   - checkout-trip/.../buyer.tsx   → pure data-entry step; choice lives elsewhere
+  //   - checkout-trip/.../payment.tsx → renders <TripPaymentChoice/> (selector-gated)
+  // The intake step + the 2 planner authoring surfaces keep the inline
+  // disclosure and stay scoped below.
   "mingla-business/app/checkout-trip/[tripEventId]/intake.tsx",
-  "mingla-business/app/checkout-trip/[tripEventId]/buyer.tsx",
-  "mingla-business/app/checkout-trip/[tripEventId]/payment.tsx",
   "mingla-business/src/components/trip/EditPublishedTripScreen.tsx",
   // ORCH-0913 [Trip dashboard tile-grid parity]: Money tab content lifted
   // from `mingla-business/app/trip/[id]/index.tsx` (now a 7-tile grid with a

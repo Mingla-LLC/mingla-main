@@ -18,7 +18,7 @@
 
 // orch-strict-grep-allow safearea-on-fullscreen-routes — design-intent full-bleed checkout header mirroring /checkout/[eventId]/index.tsx; insets.bottom IS applied (bottom dock) for home-indicator clearance; the top status-bar overlap with back arrow / "Reserve your spot" header / "1 OF 3" pill is the intended banner-style buyer aesthetic. Per ORCH-0876 mirror of ORCH-0859 [Tr2] REWORK 5b operator design ruling.
 
-import React, { useCallback, useMemo } from "react";
+import React, { useCallback, useEffect } from "react";
 import {
   ScrollView,
   StyleSheet,
@@ -37,7 +37,6 @@ import { tripPublicPath } from "../../../src/constants/publicUrls";
 import { usePublicTripById } from "../../../src/hooks/usePublicTripById";
 import { formatCurrency } from "../../../src/utils/currency";
 import type { TripPricingTier } from "../../../src/services/tripsService";
-import { projectInstallmentSchedule } from "../../../src/utils/installmentScheduleProjection";
 import type {
   TicketAvailableAt,
   TicketStub,
@@ -47,11 +46,11 @@ import type {
 import { Button } from "../../../src/components/ui/Button";
 import { EmptyState } from "../../../src/components/ui/EmptyState";
 import { EventCoverMedia } from "../../../src/components/ui/EventCoverMedia";
-import { InstallmentScheduleDisplay } from "../../../src/components/trip/InstallmentScheduleDisplay";
 
 import {
   useCart,
   useCartTotals,
+  type TripPaymentPlanChoice,
 } from "../../../src/components/checkout/CartContext";
 import { CheckoutHeader } from "../../../src/components/checkout/CheckoutHeader";
 import { QuantityRow } from "../../../src/components/checkout/QuantityRow";
@@ -120,16 +119,28 @@ const formatTripDateLine = (
 export default function CheckoutTripTicketsScreen(): React.ReactElement {
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const params = useLocalSearchParams<{ tripEventId: string }>();
+  const params = useLocalSearchParams<{ tripEventId: string; plan?: string }>();
   const tripEventId =
     typeof params.tripEventId === "string" ? params.tripEventId : null;
+  // ORCH-1130 — the public-page pay-full vs pay-over-time choice arrives as a
+  // route param. Seed CartContext from it once on mount (default "full").
+  const planParam: TripPaymentPlanChoice =
+    params.plan === "installments" ? "installments" : "full";
 
   const publicTripQuery = usePublicTripById(tripEventId);
   const trip = publicTripQuery.data?.trip ?? null;
   const brand = publicTripQuery.data?.brand ?? null;
 
-  const { lines, setLineQuantity } = useCart();
+  const { lines, setLineQuantity, setPaymentPlanChoice } = useCart();
   const totals = useCartTotals();
+
+  // ORCH-1130 — seed the cart's payment-plan choice from the public-page param.
+  useEffect(() => {
+    setPaymentPlanChoice(planParam);
+    // Run once per mount with the inbound param; the Review step is the
+    // last-chance editor thereafter.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const handleBack = useCallback((): void => {
     if (router.canGoBack()) {
@@ -152,6 +163,37 @@ export default function CheckoutTripTicketsScreen(): React.ReactElement {
     if (tripEventId === null || totals.isEmpty) return;
     router.push(`/checkout-trip/${tripEventId}/buyer` as never);
   }, [router, tripEventId, totals.isEmpty]);
+
+  // ORCH-1130 — single-tier auto-skip (the prod-universal 45/45 case). When the
+  // trip has exactly ONE bookable tier and is bookable (not past / closed /
+  // sold-out / empty), the tier-select step adds nothing: auto-add the sole
+  // tier (qty 1) and replace into "Your details" so the funnel reads 2 steps.
+  // All bookability guards run BEFORE the auto-skip — a sold-out / closed /
+  // past single-tier trip still shows its EmptyState below, never auto-advances.
+  // A >1-tier trip (no prod data) falls through to the legacy tier-select.
+  useEffect(() => {
+    if (tripEventId === null || trip === null) return;
+    if (trip.bookingsClosed) return;
+    const skipTickets = trip.pricingTiers.map(tierToTicketStub);
+    if (skipTickets.length !== 1) return;
+    const sole = skipTickets[0];
+    const soldOut =
+      !sole.isUnlimited && (sole.capacity ?? 0) <= 0;
+    if (soldOut) return;
+    if (isTripPast(trip.businessTrip.endAt)) return;
+    // Already added (e.g. back-nav into this screen) → don't re-replace.
+    if (lines.some((l) => l.ticketTypeId === sole.id)) return;
+    setLineQuantity({
+      ticketTypeId: sole.id,
+      ticketName: sole.name,
+      unitPrice: sole.priceGbp ?? 0,
+      currency: sole.currency ?? trip.pricingTiers[0]?.currency ?? "USD",
+      isFree: sole.isFree,
+      quantity: 1,
+    });
+    router.replace(`/checkout-trip/${tripEventId}/buyer` as never);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tripEventId, trip, lines, router]);
 
   // ----- Trip-not-found / past / closed empty states -----
   if (publicTripQuery.isLoading || publicTripQuery.isFetching) {
@@ -326,21 +368,13 @@ export default function CheckoutTripTicketsScreen(): React.ReactElement {
 
         <Text style={styles.sectionLabel}>Select your tier</Text>
 
+        {/* ORCH-1130 — the passive per-tier installment projection is REMOVED.
+            The pay-full vs pay-over-time schedule now lives behind the selector
+            on the public page + Review step. This legacy multi-tier picker only
+            renders for >1-tier trips (no prod data); single-tier auto-skips. */}
         {tickets.map((ticket) => {
           const line = lines.find((l) => l.ticketTypeId === ticket.id);
           const qty = line?.quantity ?? 0;
-          // ORCH-0882 — find the source TripPricingTier for this ticket
-          // (mapped through tierToTicketStub above) to get the schedule
-          // template. Per-tier per-line render: only show when qty >= 1
-          // AND the tier has a plan configured. Pass `qty` so the
-          // disclosure scales with cart quantity (€500/tier × qty=2 →
-          // €250 deposit, not €125).
-          const sourceTier: TripPricingTier | undefined =
-            trip.pricingTiers.find((t) => t.ticketTypeId === ticket.id);
-          const projectedSchedule =
-            sourceTier !== undefined && qty >= 1
-              ? projectInstallmentSchedule(sourceTier, new Date(), qty)
-              : null;
           return (
             <View key={ticket.id} style={styles.tierWrap}>
               <QuantityRow
@@ -360,15 +394,6 @@ export default function CheckoutTripTicketsScreen(): React.ReactElement {
                   })
                 }
               />
-              {projectedSchedule !== null && qty >= 1 ? (
-                <View style={styles.tierPlanWrap}>
-                  <InstallmentScheduleDisplay
-                    schedule={projectedSchedule}
-                    variant="buyer"
-                    isProjection={true}
-                  />
-                </View>
-              ) : null}
             </View>
           );
         })}
@@ -454,16 +479,10 @@ const styles = StyleSheet.create({
     letterSpacing: 1.4,
     marginBottom: spacing.sm,
   },
-  // ORCH-0882 — wrap each QuantityRow + its plan disclosure so spacing
-  // between tier rows stays consistent regardless of plan presence.
+  // Wrap each QuantityRow so spacing between tier rows stays consistent.
+  // (ORCH-1130 — the per-tier passive plan card was removed.)
   tierWrap: {
     width: "100%",
-  },
-  // Tight vertical spacing between the QuantityRow and the plan card
-  // for the same tier.
-  tierPlanWrap: {
-    marginTop: spacing.xs,
-    marginBottom: spacing.sm,
   },
   emptyWrap: {
     flex: 1,

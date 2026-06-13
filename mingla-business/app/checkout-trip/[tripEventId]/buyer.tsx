@@ -58,8 +58,6 @@ import {
 } from "../../../src/constants/designSystem";
 import { usePublicTripById } from "../../../src/hooks/usePublicTripById";
 import { useTripIntakeSchemasByEvent } from "../../../src/hooks/useIntakeSchema";
-import { projectInstallmentSchedule } from "../../../src/utils/installmentScheduleProjection";
-import { InstallmentScheduleDisplay } from "../../../src/components/trip/InstallmentScheduleDisplay";
 import { formatCurrency } from "../../../src/utils/currency";
 import { isValidE164, composeE164 } from "../../../src/utils/phone";
 import { createTicketCheckout } from "../../../src/services/ticketCheckoutService";
@@ -177,31 +175,9 @@ export default function CheckoutTripBuyerScreen(): React.ReactElement {
   const { lines, buyer, setBuyer, recordResult } = useCart();
   const totals = useCartTotals();
 
-  // ORCH-0882 [Render Payment Plan Disclosure on Trip Buyer + Planner
-  // Surfaces] — FIRST plan-active tier aggregate per SPEC Q3. Renders
-  // null when no cart line has a plan.
-  const projectedSchedule = useMemo(() => {
-    if (trip === null) return null;
-    for (const line of lines) {
-      const sourceTier = trip.pricingTiers.find(
-        (t) => t.ticketTypeId === line.ticketTypeId,
-      );
-      if (
-        sourceTier !== undefined &&
-        sourceTier.installmentSchedule !== null &&
-        line.quantity >= 1
-      ) {
-        // ORCH-0882 hotfix-2 — pass line.quantity for cart-scaled
-        // disclosure.
-        return projectInstallmentSchedule(
-          sourceTier,
-          new Date(),
-          line.quantity,
-        );
-      }
-    }
-    return null;
-  }, [trip, lines]);
+  // ORCH-1130 — the passive installment projection was REMOVED from this
+  // pure data-entry step. The pay-full vs pay-over-time choice + schedule live
+  // on the public page + the Review & pay step now.
 
   // ORCH-0880 [Tr5 Traveler Intake Forms] — fetch per-tier intake schemas to
   // decide whether to route Continue → /intake (before /payment) when any
@@ -428,8 +404,8 @@ export default function CheckoutTripBuyerScreen(): React.ReactElement {
     return (
       <View style={styles.host}>
         <CheckoutHeader
-          stepIndex={1}
-          totalSteps={3}
+          stepIndex={0}
+          totalSteps={2}
           title="Your details"
           onBack={handleBack}
         />
@@ -440,8 +416,8 @@ export default function CheckoutTripBuyerScreen(): React.ReactElement {
   return (
     <View style={styles.host}>
       <CheckoutHeader
-        stepIndex={1}
-        totalSteps={3}
+        stepIndex={0}
+        totalSteps={2}
         title="Your details"
         onBack={handleBack}
       />
@@ -456,18 +432,6 @@ export default function CheckoutTripBuyerScreen(): React.ReactElement {
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
       >
-        {/* ORCH-0882 — payment plan disclosure above the order summary so
-            buyers see the schedule before reviewing the price line. */}
-        {projectedSchedule !== null ? (
-          <View style={styles.planDisclosureWrap}>
-            <InstallmentScheduleDisplay
-              schedule={projectedSchedule}
-              variant="buyer"
-              isProjection={true}
-            />
-          </View>
-        ) : null}
-
         {/* Order summary recap */}
         <Pressable
           onPress={handleBack}

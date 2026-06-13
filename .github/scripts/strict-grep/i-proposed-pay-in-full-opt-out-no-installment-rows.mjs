@@ -30,6 +30,9 @@ const REQUIRED_FILES = {
   payment: "mingla-business/app/checkout-trip/[tripEventId]/payment.tsx",
   edge: "supabase/functions/ticket-checkout-create/index.ts",
   migration: "supabase/migrations/20260724000007_orch_0915_pay_in_full_opt_out.sql",
+  // ORCH-1130 — the pay-full DEFAULT relocated from payment.tsx's local
+  // useState to the shared CartContext (seeded "full" on the public page).
+  cartContext: "mingla-business/src/components/checkout/CartContext.tsx",
 };
 
 function read(rel, root = REPO_ROOT) {
@@ -50,12 +53,14 @@ function scan(root = REPO_ROOT) {
   let payment = "";
   let edge = "";
   let migration = "";
+  let cartContext = "";
 
   try {
     service = read(REQUIRED_FILES.service, root);
     payment = read(REQUIRED_FILES.payment, root);
     edge = read(REQUIRED_FILES.edge, root);
     migration = read(REQUIRED_FILES.migration, root);
+    cartContext = read(REQUIRED_FILES.cartContext, root);
   } catch (err) {
     violations.push(err.message);
     return violations;
@@ -67,10 +72,31 @@ function scan(root = REPO_ROOT) {
   if (!has(/payment_plan_choice\s*:\s*input\.paymentPlanChoice/, service)) {
     violations.push(`${REQUIRED_FILES.service}: missing payment_plan_choice body mapping`);
   }
-  if (!has(/useState<PaymentPlanChoice>\("full"\)/, payment)) {
-    violations.push(`${REQUIRED_FILES.payment}: missing default full selection`);
+  // ORCH-1130 — the pay-full DEFAULT relocated from payment.tsx's local
+  // `useState<PaymentPlanChoice>("full")` to the shared CartContext (seeded
+  // "full" on the public page; the Review step is the last-chance editor). The
+  // pay-in-full default invariant is PRESERVED — now proven at the CartContext
+  // layer (the single shared default) instead of inline in payment.tsx.
+  // The default is the INITIAL_STATE value `paymentPlanChoice: "full"`. Also
+  // require the field be typed `TripPaymentPlanChoice` (the choice is a real
+  // first-class cart field, not an ad-hoc string).
+  if (
+    !has(/paymentPlanChoice:\s*"full"/, cartContext) ||
+    !has(/paymentPlanChoice:\s*TripPaymentPlanChoice/, cartContext)
+  ) {
+    violations.push(
+      `${REQUIRED_FILES.cartContext}: missing CartContext default full selection (ORCH-1130 relocation)`,
+    );
   }
-  if (!has(/paymentPlanChoice\s*:\s*paymentPlanChoice/, payment)) {
+  if (!has(/value=\{paymentPlanChoice\}/, payment)) {
+    violations.push(`${REQUIRED_FILES.payment}: selector not bound to the payment-plan choice`);
+  }
+  if (
+    !has(
+      /paymentPlanChoice\s*:\s*paymentPlanChoice|\{\s*paymentPlanChoice\s*\}/,
+      payment,
+    )
+  ) {
     violations.push(`${REQUIRED_FILES.payment}: checkout call does not pass paymentPlanChoice`);
   }
   if (!has(/body\.payment_plan_choice/, edge) || !edge.includes("payment_plan_choice_invalid")) {
@@ -108,9 +134,16 @@ const body = { payment_plan_choice: input.paymentPlanChoice };
 `,
   );
   writeFileSync(
+    join(root, REQUIRED_FILES.cartContext),
+    `export type TripPaymentPlanChoice = "full" | "installments";
+interface CartState { paymentPlanChoice: TripPaymentPlanChoice; }
+const INITIAL_STATE: CartState = { paymentPlanChoice: "full" };
+`,
+  );
+  writeFileSync(
     join(root, REQUIRED_FILES.payment),
-    `type PaymentPlanChoice = "full" | "installments";
-const [paymentPlanChoice] = useState<PaymentPlanChoice>("full");
+    `const { paymentPlanChoice } = useCart();
+<TripPaymentChoice value={paymentPlanChoice} onChange={setPaymentPlanChoice} />;
 createTicketCheckout({ paymentPlanChoice: paymentPlanChoice });
 `,
   );

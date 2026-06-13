@@ -23,21 +23,33 @@ import React, { useMemo } from "react";
 import { StyleSheet, Text, View } from "react-native";
 
 import {
-  accent,
-  radius as radiusTokens,
   spacing,
   text as textTokens,
   typography,
 } from "../../constants/designSystem";
-import { Icon } from "../ui/Icon";
 import type { Trip } from "../../services/tripsService";
 import type { TripPreviewBrand } from "./TripPreview";
-import { InstallmentScheduleDisplay } from "./InstallmentScheduleDisplay";
 import { projectInstallmentSchedule } from "../../utils/installmentScheduleProjection";
+import {
+  TripPaymentChoice,
+  type TripPaymentChoiceValue,
+} from "./TripPaymentChoice";
 
 export interface TripCheckoutFlowProps {
   trip: Trip;
+  /**
+   * Retained in the signature so callers (`[tripSlug].tsx`) need not change
+   * their prop list. ORCH-1130 removed the hero dupe that consumed `brand`;
+   * the value is no longer read here (the hero lives once in `TripPreview`).
+   */
   brand: TripPreviewBrand;
+  /**
+   * ORCH-1130 — the public-page pay-full vs pay-over-time choice. The public
+   * `/t/` route owns this state (it lives OUTSIDE the checkout CartProvider)
+   * and threads the value into checkout as a route param on Reserve.
+   */
+  paymentPlanChoice: TripPaymentChoiceValue;
+  onPaymentPlanChoiceChange: (value: TripPaymentChoiceValue) => void;
   testID?: string;
 }
 
@@ -55,15 +67,15 @@ function formatPriceMajor(priceCents: number, currency: string): string {
 
 export const TripCheckoutFlow: React.FC<TripCheckoutFlowProps> = ({
   trip,
-  brand,
+  paymentPlanChoice,
+  onPaymentPlanChoiceChange,
   testID,
 }) => {
   const tier = trip.pricingTiers[0];
 
-  // ORCH-0882 [Render Payment Plan Disclosure on Trip Buyer + Planner
-  // Surfaces] — project the schedule template using a now() anchor.
-  // `installmentSchedule === null` short-circuits the render (component
-  // returns null on null schedule).
+  // ORCH-1130 — project the schedule template using a now() anchor. Null when
+  // the tier has no payment plan; that short-circuits the selector and the
+  // caller renders the quiet price recap line instead.
   const projectedSchedule = useMemo(
     () =>
       tier === undefined
@@ -73,15 +85,19 @@ export const TripCheckoutFlow: React.FC<TripCheckoutFlowProps> = ({
   );
 
   // ORCH-1117 — the inline Reserve CTA is REMOVED (locked single-ticket rule).
-  // The floating Buy bar on /t/[brandSlug]/[tripSlug] is now the ONLY Reserve
+  // The floating Buy bar on /t/[brandSlug]/[tripSlug] is the ONLY Reserve
   // action and owns navigation to `/checkout-trip/{trip.id}` (tripCheckoutPath).
-  // TripCheckoutFlow keeps the tier/plan recap + helper copy only.
   //
-  // ORCH-0876 trip-specific chain invariant PRESERVED (moved, not dropped): the
-  // Reserve nav still targets `/checkout-trip/{trip.id}`, never the events-side
-  // `/checkout/{id}` chain (getPublicEventById hard-rejects trip rows by
-  // audit-test invariant — eventType.filter.audit.test.ts). The nav now lives in
-  // the route's floating bar via tripCheckoutPath(trip.id).
+  // ORCH-1130 — TripCheckoutFlow no longer repeats the hero (title + brand
+  // byline lived twice; TripPreview above already shows them once). The passive
+  // standalone installment projection is replaced by the selector-gated
+  // `TripPaymentChoice` module: pay-full vs pay-over-time at consideration time,
+  // with the schedule revealed only under the over-time option.
+  //
+  // ORCH-0876 trip-specific chain invariant PRESERVED: the Reserve nav still
+  // targets `/checkout-trip/{trip.id}`, never the events-side `/checkout/{id}`
+  // chain (eventType.filter.audit.test.ts). The nav lives in the route's
+  // floating bar via tripCheckoutPath(trip.id).
 
   if (tier === undefined) {
     return (
@@ -93,40 +109,37 @@ export const TripCheckoutFlow: React.FC<TripCheckoutFlowProps> = ({
     );
   }
 
-  return (
-    <View style={styles.host} testID={testID}>
-      <Text style={styles.brandByline}>by {brand.name}</Text>
-      <Text style={styles.tripTitle}>{trip.title}</Text>
-
-      <View style={styles.tierCard}>
-        <View style={styles.tierTextCol}>
-          <Text style={styles.tierName}>{tier.tierName}</Text>
-          <Text style={styles.tierPrice}>
+  // No-plan trip → quiet price recap line (no selector). DESIGN §2.1 wireframe 3.
+  if (projectedSchedule === null) {
+    return (
+      <View style={styles.host} testID={testID}>
+        <View style={styles.recapRow}>
+          <Text style={styles.recapTierName} numberOfLines={1}>
+            {tier.tierName}
+          </Text>
+          <Text style={styles.recapPrice}>
             {formatPriceMajor(tier.priceCents, tier.currency)}
           </Text>
         </View>
-        <View style={styles.tierSelectedBadge}>
-          <Icon name="check" size={14} color={accent.warm} />
-        </View>
+        <Text style={styles.recapHelper}>
+          One secure payment. Stripe handles it; we never see your card.
+        </Text>
       </View>
+    );
+  }
 
-      {/* ORCH-0882 — buyer-facing payment plan disclosure. Component
-          returns null when projectedSchedule is null (tier has no plan),
-          so layout stays identical for trips without plans. */}
-      {projectedSchedule !== null ? (
-        <View style={styles.planWrap}>
-          <InstallmentScheduleDisplay
-            schedule={projectedSchedule}
-            variant="buyer"
-            isProjection={true}
-          />
-        </View>
-      ) : null}
-
-      <Text style={styles.helper}>
-        You&rsquo;ll enter your details + pay securely on the next screen.
-        Stripe handles the payment; Mingla never sees your card.
-      </Text>
+  // Plan trip → the segmented toggle module.
+  return (
+    <View style={styles.host} testID={testID}>
+      <TripPaymentChoice
+        schedule={projectedSchedule}
+        fullPriceCents={tier.priceCents}
+        currency={tier.currency}
+        depositPct={tier.installmentSchedule?.deposit_pct ?? 0}
+        value={paymentPlanChoice}
+        onChange={onPaymentPlanChoiceChange}
+        testID={testID !== undefined ? `${testID}-payment-choice` : undefined}
+      />
     </View>
   );
 };
@@ -136,54 +149,26 @@ const styles = StyleSheet.create({
     padding: spacing.lg,
     gap: spacing.md,
   },
-  brandByline: {
-    fontSize: typography.bodySm.fontSize,
-    color: textTokens.secondary,
-  },
-  tripTitle: {
-    fontSize: typography.h2.fontSize,
-    lineHeight: typography.h2.lineHeight,
-    fontWeight: typography.h2.fontWeight,
-    color: textTokens.primary,
-  },
-  tierCard: {
+  // ORCH-1130 — no-plan quiet price recap (replaces the tier card + passive
+  // projection + helper for single-payment trips).
+  recapRow: {
     flexDirection: "row",
-    alignItems: "center",
+    alignItems: "baseline",
+    justifyContent: "space-between",
     gap: spacing.md,
-    padding: spacing.lg,
-    borderRadius: radiusTokens.lg,
-    backgroundColor: "rgba(235, 120, 37, 0.06)",
-    borderWidth: 1,
-    borderColor: "rgba(235, 120, 37, 0.5)",
   },
-  tierTextCol: {
-    flex: 1,
-  },
-  tierName: {
+  recapTierName: {
+    flexShrink: 1,
     fontSize: typography.bodySm.fontSize,
     color: textTokens.secondary,
   },
-  tierPrice: {
+  recapPrice: {
     fontSize: typography.h2.fontSize,
     lineHeight: typography.h2.lineHeight,
     fontWeight: "700",
     color: textTokens.primary,
-    marginTop: 2,
   },
-  tierSelectedBadge: {
-    width: 28,
-    height: 28,
-    alignItems: "center",
-    justifyContent: "center",
-    borderRadius: 14,
-    backgroundColor: "rgba(235, 120, 37, 0.16)",
-  },
-  // ORCH-0882 — wrapper so the schedule card sits between the tier card
-  // and the Reserve CTA with consistent vertical spacing.
-  planWrap: {
-    width: "100%",
-  },
-  helper: {
+  recapHelper: {
     fontSize: typography.caption.fontSize,
     color: textTokens.tertiary,
     textAlign: "center",

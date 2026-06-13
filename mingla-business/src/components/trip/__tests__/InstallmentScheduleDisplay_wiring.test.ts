@@ -70,35 +70,32 @@ describe("ORCH-0882 hotfix — usePublicTripBySlug extracts installmentSchedule"
   });
 });
 
+// [TEST-MOD-APPROVED ORCH-1130] — ORCH-1130 [public trip page payment-structure
+// + installments UX redesign] SUPERSEDES the ORCH-0882 "passive disclosure on
+// every buyer touchpoint" invariant for the public page + index/buyer/payment
+// funnel steps. The redesign replaces the always-on passive projection (shown
+// ~4× as a fait-accompli with no pay-full sibling) with a single selector-gated
+// `TripPaymentChoice` module that renders the schedule ONLY under "Pay over
+// time" — so the disclosure now lives INSIDE TripPaymentChoice (which imports
+// InstallmentScheduleDisplay), not inline in each route. The 4 redesigned files
+// are removed from this wiring list (mirroring the strict-grep gate of the same
+// name). The intake step + the 2 planner authoring surfaces keep the inline
+// disclosure. (SC-7 here pointed at the stale pre-ORCH-0913 `app/trip/[id]/
+// index.tsx` path — content moved to `app/trip/[id]/money/index.tsx` — and is
+// realigned at the same time.)
 describe("ORCH-0882 wiring — InstallmentScheduleDisplay on every plan-active surface", () => {
   const scopedFiles: Array<{ label: string; rel: string }> = [
     {
-      label: "TripCheckoutFlow.tsx (SC-1a)",
-      rel: "src/components/trip/TripCheckoutFlow.tsx",
-    },
-    {
-      label: "checkout-trip/[tripEventId]/index.tsx (SC-2a)",
-      rel: "app/checkout-trip/[tripEventId]/index.tsx",
-    },
-    {
       label: "checkout-trip/[tripEventId]/intake.tsx (SC-5e)",
       rel: "app/checkout-trip/[tripEventId]/intake.tsx",
-    },
-    {
-      label: "checkout-trip/[tripEventId]/buyer.tsx (SC-3)",
-      rel: "app/checkout-trip/[tripEventId]/buyer.tsx",
-    },
-    {
-      label: "checkout-trip/[tripEventId]/payment.tsx (SC-4a)",
-      rel: "app/checkout-trip/[tripEventId]/payment.tsx",
     },
     {
       label: "EditPublishedTripScreen.tsx (SC-6)",
       rel: "src/components/trip/EditPublishedTripScreen.tsx",
     },
     {
-      label: "app/trip/[id]/index.tsx MoneyTabBody (SC-7)",
-      rel: "app/trip/[id]/index.tsx",
+      label: "app/trip/[id]/money/index.tsx MoneyTabBody (SC-7)",
+      rel: "app/trip/[id]/money/index.tsx",
     },
   ];
 

@@ -109,11 +109,24 @@ export interface OrderResult {
   }>;
 }
 
+/**
+ * ORCH-1130 [public trip page payment-structure + installments UX] — the
+ * buyer's pay-full-vs-installments choice, picked on the public trip page and
+ * carried through the (now 2-step) checkout funnel so the Review & pay step
+ * pre-fills it and the edge call forwards it. Default `"full"` (deliberate,
+ * non-surprising; pay-in-full is always allowed). Reset to `"full"` on cart
+ * RESET. Only meaningful for plan trips; ignored for no-plan trips (the
+ * payment.tsx forwarding gate stays `isPlanActive`).
+ */
+export type TripPaymentPlanChoice = "full" | "installments";
+
 export interface CartState {
   lines: CartLine[];
   buyer: BuyerDetails;
   /** Populated by Cycle 8b after stub Stripe / free-skip path. */
   result: OrderResult | null;
+  /** ORCH-1130 — pay-full vs pay-over-time, carried public page → Review. */
+  paymentPlanChoice: TripPaymentPlanChoice;
   /**
    * ORCH-0880 [Tr5 Traveler Intake Forms] — per-tier intake answers keyed by
    * `ticket_type_id`. Populated by the intake route between buyer and
@@ -143,6 +156,7 @@ type CartAction =
   | { type: "RECORD_RESULT"; result: OrderResult }
   | { type: "SET_INTAKE_TIER"; ticketTypeId: string; data: unknown }
   | { type: "CLEAR_INTAKE_TIER"; ticketTypeId: string }
+  | { type: "SET_PAYMENT_PLAN_CHOICE"; choice: TripPaymentPlanChoice }
   | { type: "RESET" };
 
 const EMPTY_BUYER: BuyerDetails = {
@@ -164,6 +178,8 @@ const INITIAL_STATE: CartState = {
   buyer: EMPTY_BUYER,
   result: null,
   intakeFormData: {},
+  // ORCH-1130 — default to pay-in-full (deliberate non-surprising default).
+  paymentPlanChoice: "full",
 };
 
 const reducer = (state: CartState, action: CartAction): CartState => {
@@ -237,6 +253,8 @@ const reducer = (state: CartState, action: CartAction): CartState => {
       delete next[action.ticketTypeId];
       return { ...state, intakeFormData: next };
     }
+    case "SET_PAYMENT_PLAN_CHOICE":
+      return { ...state, paymentPlanChoice: action.choice };
     case "RESET":
       return INITIAL_STATE;
     default: {
@@ -268,6 +286,12 @@ export interface CartContextValue extends CartState {
    */
   setIntakeTierData: (ticketTypeId: string, data: unknown) => void;
   clearIntakeTierData: (ticketTypeId: string) => void;
+  /**
+   * ORCH-1130 — set the pay-full vs pay-over-time choice. Called by the
+   * public-page seed-from-route-param effect (checkout index) and by the
+   * Review & pay segmented toggle (payment.tsx) as the last-chance editor.
+   */
+  setPaymentPlanChoice: (choice: TripPaymentPlanChoice) => void;
   reset: () => void;
 }
 
@@ -314,6 +338,14 @@ export const CartProvider: React.FC<CartProviderProps> = ({ children }) => {
     dispatch({ type: "CLEAR_INTAKE_TIER", ticketTypeId });
   }, []);
 
+  // ORCH-1130 — pay-full vs pay-over-time setter.
+  const setPaymentPlanChoice = useCallback(
+    (choice: TripPaymentPlanChoice): void => {
+      dispatch({ type: "SET_PAYMENT_PLAN_CHOICE", choice });
+    },
+    [],
+  );
+
   const reset = useCallback((): void => {
     dispatch({ type: "RESET" });
   }, []);
@@ -326,6 +358,7 @@ export const CartProvider: React.FC<CartProviderProps> = ({ children }) => {
       recordResult,
       setIntakeTierData,
       clearIntakeTierData,
+      setPaymentPlanChoice,
       reset,
     }),
     [
@@ -335,6 +368,7 @@ export const CartProvider: React.FC<CartProviderProps> = ({ children }) => {
       recordResult,
       setIntakeTierData,
       clearIntakeTierData,
+      setPaymentPlanChoice,
       reset,
     ],
   );

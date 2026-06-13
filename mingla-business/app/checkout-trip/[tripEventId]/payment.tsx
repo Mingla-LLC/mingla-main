@@ -62,7 +62,7 @@ import type { NativeCheckoutExecutor } from "../../../src/payments/NativeCheckou
 import { Button } from "../../../src/components/ui/Button";
 import { GlassCard } from "../../../src/components/ui/GlassCard";
 import { Toast } from "../../../src/components/ui/Toast";
-import { InstallmentScheduleDisplay } from "../../../src/components/trip/InstallmentScheduleDisplay";
+import { TripPaymentChoice } from "../../../src/components/trip/TripPaymentChoice";
 import { projectInstallmentSchedule } from "../../../src/utils/installmentScheduleProjection";
 
 import {
@@ -78,8 +78,6 @@ import {
   writeCheckoutResumePayload,
 } from "../../../src/components/checkout/checkoutPersistence";
 import { CheckoutHeader } from "../../../src/components/checkout/CheckoutHeader";
-
-type PaymentPlanChoice = "full" | "installments";
 
 const NativeCheckoutPaymentBoundary = React.lazy(
   () => import("../../../src/payments/NativeCheckoutPaymentBoundary"),
@@ -113,7 +111,18 @@ function CheckoutTripPaymentScreenContent({
 
   const publicTripQuery = usePublicTripById(tripEventId);
   const trip = publicTripQuery.data?.trip ?? null;
-  const { lines, buyer, intakeFormData, setLineQuantity, setBuyer } = useCart();
+  const {
+    lines,
+    buyer,
+    intakeFormData,
+    setLineQuantity,
+    setBuyer,
+    // ORCH-1130 — the pay-full vs pay-over-time choice, pre-filled from the
+    // public-page selection (seeded by the checkout index route param). The
+    // Review & pay step is the last-chance editor.
+    paymentPlanChoice,
+    setPaymentPlanChoice,
+  } = useCart();
   const totals = useCartTotals();
 
   // ORCH-0882 [Render Payment Plan Disclosure on Trip Buyer + Planner
@@ -144,9 +153,27 @@ function CheckoutTripPaymentScreenContent({
     return null;
   }, [trip, lines]);
   const isPlanActive = projectedSchedule !== null;
-  const [paymentPlanChoice, setPaymentPlanChoice] =
-    useState<PaymentPlanChoice>("full");
   const isUsingInstallments = isPlanActive && paymentPlanChoice === "installments";
+
+  // ORCH-1130 — the source tier behind the plan-active cart line (for the
+  // selector module's depositPct). Single-tier (prod-universal); first
+  // plan-active line wins, mirroring the projectedSchedule selection above.
+  const planTier = React.useMemo(() => {
+    if (trip === null) return undefined;
+    for (const line of lines) {
+      const sourceTier = trip.pricingTiers.find(
+        (t) => t.ticketTypeId === line.ticketTypeId,
+      );
+      if (
+        sourceTier !== undefined &&
+        sourceTier.installmentSchedule !== null &&
+        line.quantity >= 1
+      ) {
+        return sourceTier;
+      }
+    }
+    return undefined;
+  }, [trip, lines]);
 
   // ORCH-0880 [Tr5 Traveler Intake Forms] — flatten per-tier intake answers
   // (keyed by ticket_type_id in CartContext) into the array shape expected
@@ -505,9 +532,9 @@ function CheckoutTripPaymentScreenContent({
     return (
       <View style={styles.host}>
         <CheckoutHeader
-          stepIndex={2}
-          totalSteps={3}
-          title="Payment"
+          stepIndex={1}
+          totalSteps={2}
+          title="Review & pay"
           onBack={handleBack}
         />
       </View>
@@ -517,9 +544,9 @@ function CheckoutTripPaymentScreenContent({
   return (
     <View style={styles.host}>
       <CheckoutHeader
-        stepIndex={2}
-        totalSteps={3}
-        title="Payment"
+        stepIndex={1}
+        totalSteps={2}
+        title="Review & pay"
         onBack={handleBack}
       />
       <ScrollView
@@ -551,7 +578,57 @@ function CheckoutTripPaymentScreenContent({
           <Text style={styles.summaryLabel}>ORDER SUMMARY</Text>
           {lines.map((l) => (
             <View key={l.ticketTypeId} style={styles.summaryLine}>
+              {/* ORCH-1130 — compact qty stepper (replaces the removed tier
+                  step's qty control). Schedule + totals recompute live (the
+                  projection util takes quantity). 44×44 hit areas, no double-tap
+                  past min 1 / disabled while processing. */}
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={`Decrease ${l.ticketName} quantity`}
+                accessibilityState={{ disabled: l.quantity <= 1 || processing }}
+                disabled={l.quantity <= 1 || processing}
+                onPress={() =>
+                  setLineQuantity({
+                    ticketTypeId: l.ticketTypeId,
+                    ticketName: l.ticketName,
+                    unitPrice: l.unitPrice,
+                    unitPriceGbp: l.unitPriceGbp,
+                    currency: l.currency,
+                    isFree: l.isFree,
+                    quantity: l.quantity - 1,
+                  })
+                }
+                style={[
+                  styles.qtyBtn,
+                  (l.quantity <= 1 || processing) ? styles.qtyBtnDisabled : null,
+                ]}
+              >
+                <Text style={styles.qtyBtnGlyph}>−</Text>
+              </Pressable>
               <Text style={styles.summaryQty}>{l.quantity}×</Text>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={`Increase ${l.ticketName} quantity`}
+                accessibilityState={{ disabled: processing }}
+                disabled={processing}
+                onPress={() =>
+                  setLineQuantity({
+                    ticketTypeId: l.ticketTypeId,
+                    ticketName: l.ticketName,
+                    unitPrice: l.unitPrice,
+                    unitPriceGbp: l.unitPriceGbp,
+                    currency: l.currency,
+                    isFree: l.isFree,
+                    quantity: l.quantity + 1,
+                  })
+                }
+                style={[
+                  styles.qtyBtn,
+                  processing ? styles.qtyBtnDisabled : null,
+                ]}
+              >
+                <Text style={styles.qtyBtnGlyph}>+</Text>
+              </Pressable>
               <Text style={styles.summaryName} numberOfLines={1}>
                 {l.ticketName}
               </Text>
@@ -571,80 +648,21 @@ function CheckoutTripPaymentScreenContent({
           </View>
         </GlassCard>
 
-        {isPlanActive && projectedSchedule !== null ? (
-          <GlassCard
-            variant="base"
-            radius="lg"
-            padding={spacing.md}
-            style={styles.paymentChoiceCard}
-          >
-            <View
-              accessibilityRole="radiogroup"
-              accessibilityLabel="Payment option"
-            >
-              <Text style={styles.summaryLabel}>PAYMENT OPTION</Text>
-              <View style={styles.choiceSegment}>
-                <Pressable
-                  accessibilityRole="radio"
-                  accessibilityLabel={`Pay full ${formatCurrency(totals.total, totals.currency)} now`}
-                  accessibilityState={{ selected: paymentPlanChoice === "full" }}
-                  onPress={() => setPaymentPlanChoice("full")}
-                  style={[
-                    styles.choiceOption,
-                    paymentPlanChoice === "full" ? styles.choiceOptionSelected : null,
-                  ]}
-                >
-                  <Text style={styles.choiceTitle}>
-                    Pay full {formatCurrency(totals.total, totals.currency)} now
-                  </Text>
-                  <Text style={styles.choiceBody}>
-                    One charge today. No future installment bills for this booking.
-                  </Text>
-                </Pressable>
-                <Pressable
-                  accessibilityRole="radio"
-                  accessibilityLabel={`Use payment plan, ${formatCurrency(projectedSchedule.depositCents, projectedSchedule.currency, true)} deposit today plus ${projectedSchedule.installments.length} future payments`}
-                  accessibilityState={{ selected: paymentPlanChoice === "installments" }}
-                  onPress={() => setPaymentPlanChoice("installments")}
-                  style={[
-                    styles.choiceOption,
-                    paymentPlanChoice === "installments"
-                      ? styles.choiceOptionSelected
-                      : null,
-                  ]}
-                >
-                  <Text style={styles.choiceTitle}>Use payment plan</Text>
-                  <Text style={styles.choiceBody}>
-                    {formatCurrency(
-                      projectedSchedule.depositCents,
-                      projectedSchedule.currency,
-                      true,
-                    )}{" "}
-                    deposit today + {projectedSchedule.installments.length} future
-                    payment
-                    {projectedSchedule.installments.length === 1 ? "" : "s"}.
-                  </Text>
-                </Pressable>
-              </View>
-              <Text style={styles.paymentTermsCopy}>
-                {paymentPlanChoice === "installments"
-                  ? `You'll be charged ${formatCurrency(projectedSchedule.depositCents, projectedSchedule.currency, true)} today. The remaining ${formatCurrency(projectedSchedule.fullPriceCents - projectedSchedule.depositCents, projectedSchedule.currency, true)} will auto-charge from the same card on the schedule shown. Cancellations follow the organiser's refund policy and may cancel future uncollected installments.`
-                  : `You'll be charged ${formatCurrency(totals.total, totals.currency)} today. No future installment bills will be scheduled for this booking. Cancellations follow the organiser's refund policy.`}
-              </Text>
-            </View>
-          </GlassCard>
-        ) : null}
-
-        {/* ORCH-0882 — payment plan schedule, between Order Summary and
-            Payment cards. Null-safe via component. */}
-        {isUsingInstallments && projectedSchedule !== null ? (
-          <View style={styles.planDisclosureWrap}>
-            <InstallmentScheduleDisplay
-              schedule={projectedSchedule}
-              variant="buyer"
-              isProjection={true}
-            />
-          </View>
+        {/* ORCH-1130 — the single shared selector module (segmented toggle +
+            full-width supporting block). Pre-filled from the public-page choice
+            (CartContext.paymentPlanChoice), editable here as the last-chance
+            editor. Renders the schedule ladder under the over-time option, so
+            the standalone passive projection card below is removed. Null-on-null
+            for no-plan trips. */}
+        {isPlanActive && projectedSchedule !== null && planTier !== undefined ? (
+          <TripPaymentChoice
+            schedule={projectedSchedule}
+            fullPriceCents={projectedSchedule.fullPriceCents}
+            currency={projectedSchedule.currency}
+            depositPct={planTier.installmentSchedule?.deposit_pct ?? 0}
+            value={paymentPlanChoice}
+            onChange={setPaymentPlanChoice}
+          />
         ) : null}
 
         {Platform.OS !== "web"
@@ -872,43 +890,25 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: textTokens.quaternary,
   },
-  paymentChoiceCard: {
-    marginBottom: spacing.lg,
-  },
-  choiceSegment: {
-    gap: spacing.sm,
-  },
-  choiceOption: {
-    borderRadius: 12,
+  // ORCH-1130 — compact qty stepper on the order-summary line. 44×44 hit areas.
+  qtyBtn: {
+    width: 44,
+    height: 44,
+    borderRadius: 10,
     borderWidth: 1,
-    borderColor: "rgba(255, 255, 255, 0.08)",
-    backgroundColor: "rgba(255, 255, 255, 0.03)",
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
+    borderColor: "rgba(255, 255, 255, 0.12)",
+    backgroundColor: "rgba(255, 255, 255, 0.04)",
+    alignItems: "center",
+    justifyContent: "center",
   },
-  choiceOptionSelected: {
-    borderColor: "rgba(235, 120, 37, 0.75)",
-    backgroundColor: "rgba(235, 120, 37, 0.12)",
+  qtyBtnDisabled: {
+    opacity: 0.4,
   },
-  choiceTitle: {
-    fontSize: 14,
-    lineHeight: 19,
-    color: textTokens.primary,
+  qtyBtnGlyph: {
+    fontSize: 20,
+    lineHeight: 22,
     fontWeight: "700",
-  },
-  choiceBody: {
-    marginTop: 3,
-    fontSize: 12,
-    lineHeight: 17,
-    color: textTokens.secondary,
-    fontWeight: "400",
-  },
-  paymentTermsCopy: {
-    marginTop: spacing.sm,
-    fontSize: 12,
-    lineHeight: 18,
-    color: textTokens.tertiary,
-    fontWeight: "400",
+    color: textTokens.primary,
   },
   errorText: {
     marginTop: spacing.sm,
@@ -916,9 +916,6 @@ const styles = StyleSheet.create({
     color: "#ef4444",
     fontWeight: "500",
   },
-  // ORCH-0882 — wrap for schedule card between Order Summary + Payment
-  // cards in the ScrollView.
-  planDisclosureWrap: { width: "100%", marginBottom: spacing.lg },
   // ORCH-0882 — pre-Stripe banner. Subtle accent.warm tint matching the
   // existing trip-buyer accent system. flexGrow:0 + flexShrink:0 to
   // honor `feedback_rn_scrollview_flex_grow_default_one_silent_footgun.md`
