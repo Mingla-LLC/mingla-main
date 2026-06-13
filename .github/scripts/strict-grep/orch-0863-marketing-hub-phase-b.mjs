@@ -2062,6 +2062,15 @@ function checkNoNewBackendFiles() {
     "supabase/migrations/20260928000001_orch_1119_live_trip_media.sql",
     "supabase/migrations/20260930000000_orch_1119b_trip_day_media_storage_rls.sql",
     "supabase/migrations/__tests__/orch_1119b_trip_day_media_storage_rls.test.ts",
+    // ORCH-1120 [published-trip Settings refund/deadline/bookings-closed editable]
+    // CLOSE (2026-06-12). C7 is scoped to ORCH-0863 marketing; these are the
+    // ORCH-1120 migration that re-emits biz_update_live_trip with the sales-gate
+    // (composed off the merged ORCH-1119 body, see COMMS-0029) + its SQL gate
+    // tests, on a separate ORCH-1120 PR — not marketing scope. Same C7-scoping
+    // caveat as the allowlists above.
+    "supabase/migrations/20260929000000_orch_1120_trip_settings_refund_deadline.sql",
+    "supabase/migrations/__tests__/orch_1120_trip_settings_refund_deadline.test.sql",
+    "supabase/migrations/__tests__/orch_1120_trip_settings_refund_deadline_tester_e2e.test.sql",
   ];
   const forbidden = changed.filter(
     (p) =>
