@@ -18,7 +18,7 @@
 
 // orch-strict-grep-allow safearea-on-fullscreen-routes — design-intent full-bleed checkout header mirroring /checkout/[eventId]/index.tsx; insets.bottom IS applied (bottom dock) for home-indicator clearance; the top status-bar overlap with back arrow / "Reserve your spot" header / "1 OF 3" pill is the intended banner-style buyer aesthetic. Per ORCH-0876 mirror of ORCH-0859 [Tr2] REWORK 5b operator design ruling.
 
-import React, { useCallback, useEffect } from "react";
+import React, { useCallback, useEffect, useRef } from "react";
 import {
   ScrollView,
   StyleSheet,
@@ -47,6 +47,7 @@ import type {
 import { Button } from "../../../src/components/ui/Button";
 import { EmptyState } from "../../../src/components/ui/EmptyState";
 import { EventCoverMedia } from "../../../src/components/ui/EventCoverMedia";
+import { decideAutoSkip } from "./autoSkipDecision";
 
 import {
   useCart,
@@ -202,26 +203,57 @@ export default function CheckoutTripTicketsScreen(): React.ReactElement {
   // All bookability guards run BEFORE the auto-skip — a sold-out / closed /
   // past single-tier trip still shows its EmptyState below, never auto-advances.
   // A >1-tier trip (no prod data) falls through to the legacy tier-select.
+  //
+  // ORCH-1130 Fix #2 — break the index⇄buyer ping-pong ("Maximum update depth").
+  // The old effect dispatched setLineQuantity AND router.replace('/buyer') in the
+  // SAME synchronous body. On a warm-cache 2nd entry the navigation raced the
+  // cart write: /buyer mounted, read an EMPTY cart, and its empty-cart guard
+  // bounced back to index → the auto-skip re-fired → infinite loop. The fix
+  // is two-fold: (a) a useRef latch that flips true once we navigate, so the
+  // effect never fires its navigation more than once per mount; and (b) gating
+  // router.replace('/buyer') on the cart write having LANDED — we only navigate
+  // on the commit where `lines` actually contains the sole tier (qty>=1), never
+  // in the same body as the dispatch. This removes the empty-cart window the
+  // pre-existing buyer.tsx guard ping-ponged against.
+  const autoSkipNavigatedRef = useRef(false);
   useEffect(() => {
     if (tripEventId === null || trip === null) return;
-    if (trip.bookingsClosed) return;
     const skipTickets = trip.pricingTiers.map(tierToTicketStub);
-    if (skipTickets.length !== 1) return;
     const sole = skipTickets[0];
-    const soldOut =
-      !sole.isUnlimited && (sole.capacity ?? 0) <= 0;
-    if (soldOut) return;
-    if (isTripPast(trip.businessTrip.endAt)) return;
-    // Already added (e.g. back-nav into this screen) → don't re-replace.
-    if (lines.some((l) => l.ticketTypeId === sole.id)) return;
-    setLineQuantity({
-      ticketTypeId: sole.id,
-      ticketName: sole.name,
-      unitPrice: sole.priceGbp ?? 0,
-      currency: sole.currency ?? trip.pricingTiers[0]?.currency ?? "USD",
-      isFree: sole.isFree,
-      quantity: 1,
+    const outcome = decideAutoSkip({
+      alreadyNavigated: autoSkipNavigatedRef.current,
+      tripPresent: true,
+      bookingsClosed: trip.bookingsClosed,
+      isPast: isTripPast(trip.businessTrip.endAt),
+      tiers: skipTickets.map((t) => ({
+        id: t.id,
+        isUnlimited: t.isUnlimited,
+        capacity: t.capacity,
+      })),
+      lines: lines.map((l) => ({
+        ticketTypeId: l.ticketTypeId,
+        quantity: l.quantity,
+      })),
     });
+    if (outcome === "noop") return;
+    if (outcome === "addLine" && sole !== undefined) {
+      // Cart write hasn't landed yet — dispatch and WAIT. We do NOT navigate in
+      // this body; the next commit (with `lines` containing the tier) re-runs
+      // the effect and yields "navigate". Idempotent: setLineQuantity sets.
+      setLineQuantity({
+        ticketTypeId: sole.id,
+        ticketName: sole.name,
+        unitPrice: sole.priceGbp ?? 0,
+        currency: sole.currency ?? trip.pricingTiers[0]?.currency ?? "USD",
+        isFree: sole.isFree,
+        quantity: 1,
+      });
+      return;
+    }
+    // outcome === "navigate": the sole tier's line is present (qty>=1) → /buyer
+    // reads a populated cart and its empty-cart guard will not bounce us back.
+    // Latch so this navigation fires EXACTLY ONCE per mount (kills the ping-pong).
+    autoSkipNavigatedRef.current = true;
     router.replace(`/checkout-trip/${tripEventId}/buyer` as never);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tripEventId, trip, lines, router]);
