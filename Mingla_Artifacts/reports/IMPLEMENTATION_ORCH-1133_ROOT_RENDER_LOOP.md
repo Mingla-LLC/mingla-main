@@ -223,6 +223,9 @@ auth instances, or what the brand recovery resolves to.
 
 # IMPLEMENTATION (2026-06-13) — APPROVED SINGLE-WRITER FIX APPLIED
 
+> **Fix commit: `cfc6917ba`** on branch `ORCH-1133-biz-root-render-loop`.
+> fails-on-revert proven at `45cfe9d7b` (HEAD at the gate-deletion proof, pre-commit).
+
 > Sections 1–10 above are the prior agent's analysis-only confirmation (no patch).
 > This block is the approved fix per the ORCH-1133 implement dispatch. The fix
 > turns §4(e)'s noted **structural smell** (5+ concurrent writers to the global
