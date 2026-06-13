@@ -28,10 +28,19 @@ jobs:
         run: |
           for dir in supabase/functions/*/; do
             func_name=$(basename "$dir")
-            if [[ "$func_name" != _* ]]; then
-              echo "Deploying $func_name..."
-              supabase functions deploy "$func_name" \
-                --project-ref ${{ secrets.SUPABASE_PROJECT_ID }} \
-                --use-api
+            if [[ "$func_name" == _* ]]; then
+              continue
             fi
+            # Skip orphaned dirs with no entrypoint (e.g. a retired function whose
+            # index.ts was deleted but a stray index.test.ts remained). Without this
+            # guard the deploy API 400s on the missing entrypoint and `set -e` reds
+            # the whole job, silently skipping every later function. See ORCH-1135.
+            if [[ ! -f "${dir}index.ts" ]]; then
+              echo "Skipping $func_name (no index.ts entrypoint)"
+              continue
+            fi
+            echo "Deploying $func_name..."
+            supabase functions deploy "$func_name" \
+              --project-ref ${{ secrets.SUPABASE_PROJECT_ID }} \
+              --use-api
           done
