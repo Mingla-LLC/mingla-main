@@ -44,7 +44,15 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const repoRoot = path.resolve(__dirname, "../../..");
 
+// ORCH-1135 (PR #466 G1 discover v2): card construction moved out of the
+// 830-line index.ts monolith into `_business-query.ts` (mapRpcRowToCard — the
+// SOLE business-card constructor). The venue/address/format resolution helpers
+// (extractVenueName / deriveSharedFormat, unchanged in _helpers.ts) are now wired
+// there. R-1/R-3/R-4 retarget to _business-query.ts; R-2 (sheet) + R-5 (type)
+// unchanged. See INVESTIGATE_ORCH-1135_DISCOVER_V2_INVARIANT_PRESERVATION.md.
+// NOTE: if a future ORCH moves card construction again, retarget BUSINESS_QUERY.
 const DISCOVER_FN = "supabase/functions/discover-merged-events/index.ts";
+const BUSINESS_QUERY = "supabase/functions/discover-merged-events/_business-query.ts";
 const SHEET = "app-mobile/src/components/expandedCard/ExpandedBusinessEventSheet.tsx";
 const CARD_TYPE = "app-mobile/src/types/mergedDiscover.ts";
 
@@ -60,6 +68,7 @@ const readSource = (relPath) => {
 };
 
 const discoverSrc = readSource(DISCOVER_FN);
+const businessQuerySrc = readSource(BUSINESS_QUERY);
 const sheetSrc = readSource(SHEET);
 const cardTypeSrc = readSource(CARD_TYPE);
 
@@ -85,15 +94,15 @@ const record = (rule, pass, detail) => {
   results.push({ rule, pass, detail });
 };
 
-// Rule 1 — venueName: null forbidden in discover edge function
+// Rule 1 — venueName: null forbidden where business cards are built (_business-query.ts)
 {
-  const hit = forbidOnNonCommentLine(discoverSrc, "venueName: null");
+  const hit = forbidOnNonCommentLine(businessQuerySrc, "venueName: null");
   record(
-    "R-1 venueName: null forbidden in discover-merged-events/index.ts",
+    "R-1 venueName: null forbidden in discover-merged-events/_business-query.ts",
     hit === null,
     hit === null
-      ? `${DISCOVER_FN}: no offending line`
-      : `${DISCOVER_FN}:${hit.lineNumber} contains forbidden literal — ${hit.text}`,
+      ? `${BUSINESS_QUERY}: no offending line`
+      : `${BUSINESS_QUERY}:${hit.lineNumber} contains forbidden literal — ${hit.text}`,
   );
 }
 
@@ -112,27 +121,43 @@ const record = (rule, pass, detail) => {
   );
 }
 
-// Rule 3 — extractVenueName referenced in discover edge function
+// Rule 3 — extractVenueName referenced where business cards are built
 {
-  const ok = requireSubstring(discoverSrc, "extractVenueName");
+  const ok = requireSubstring(businessQuerySrc, "extractVenueName");
   record(
-    "R-3 extractVenueName referenced in discover-merged-events/index.ts",
+    "R-3 extractVenueName referenced in discover-merged-events/_business-query.ts",
     ok,
     ok
-      ? `${DISCOVER_FN}: extractVenueName found`
-      : `${DISCOVER_FN}: extractVenueName helper not wired up — venueName fallback chain is missing`,
+      ? `${BUSINESS_QUERY}: extractVenueName found`
+      : `${BUSINESS_QUERY}: extractVenueName helper not wired up — venueName fallback chain is missing`,
   );
 }
 
-// Rule 4 — deriveSharedFormat referenced in discover edge function
+// Rule 4 — deriveSharedFormat referenced where business cards are built
 {
-  const ok = requireSubstring(discoverSrc, "deriveSharedFormat");
+  const ok = requireSubstring(businessQuerySrc, "deriveSharedFormat");
   record(
-    "R-4 deriveSharedFormat referenced in discover-merged-events/index.ts",
+    "R-4 deriveSharedFormat referenced in discover-merged-events/_business-query.ts",
     ok,
     ok
-      ? `${DISCOVER_FN}: deriveSharedFormat found`
-      : `${DISCOVER_FN}: deriveSharedFormat helper not wired up — format derivation is missing`,
+      ? `${BUSINESS_QUERY}: deriveSharedFormat found`
+      : `${BUSINESS_QUERY}: deriveSharedFormat helper not wired up — format derivation is missing`,
+  );
+}
+
+// Rule 6 — pin the brand-parity fallback EXPRESSION (not just the symbol), so a
+// present-but-unused import can't green the gate. Mirrors brand-side
+// `asStringOrNull(location.venueName) ?? row.location_text`.
+{
+  const ok =
+    requireSubstring(businessQuerySrc, "extractVenueName(theme) ?? (row.location_text") &&
+    requireSubstring(businessQuerySrc, "deriveSharedFormat(");
+  record(
+    "R-6 venueName/format resolved via the brand-parity fallback expression in _business-query.ts",
+    ok,
+    ok
+      ? `${BUSINESS_QUERY}: extractVenueName(theme) ?? row.location_text + deriveSharedFormat(...) present`
+      : `${BUSINESS_QUERY}: card builder no longer resolves venueName via extractVenueName(theme) ?? row.location_text fallback — brand parity broken`,
   );
 }
 

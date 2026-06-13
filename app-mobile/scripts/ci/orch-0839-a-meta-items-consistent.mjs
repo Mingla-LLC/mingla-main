@@ -39,8 +39,15 @@ const check = (name, pass, detail) => {
   checks.push({ name, pass, detail });
 };
 
+// ORCH-1135 (PR #466 G1 discover v2): the response-merge logic moved out of the
+// 830-line index.ts monolith into `_build-response.ts` (mergeDiscoverResponse).
+// The three post-slice-count contracts are unchanged; only the file they live in
+// changed. See INVESTIGATE_ORCH-1135_DISCOVER_V2_INVARIANT_PRESERVATION.md.
 const merged = readMaybe(
-  path.join(repoRoot, "supabase/functions/discover-merged-events/index.ts"),
+  path.join(
+    repoRoot,
+    "supabase/functions/discover-merged-events/_build-response.ts",
+  ),
 );
 
 // ─── T-B0: ticketmasterCount derived from tmSpread.length ────────────────

@@ -3,23 +3,19 @@
 import { assert } from "https://deno.land/std@0.190.0/testing/asserts.ts";
 
 const INDEX_URL = new URL("../index.ts", import.meta.url);
+const BUSINESS_URL = new URL("../_business-query.ts", import.meta.url);
+const MEMORY_URL = new URL("../_memory-cache.ts", import.meta.url);
 
-Deno.test("discover-merged-events uses parallel fan-out and response cache", async () => {
-  const src = await Deno.readTextFile(INDEX_URL);
+Deno.test("discover-merged-events uses L1 cache, RPC, and coalesced builds", async () => {
+  const index = await Deno.readTextFile(INDEX_URL);
+  const business = await Deno.readTextFile(BUSINESS_URL);
+  const memory = await Deno.readTextFile(MEMORY_URL);
+
+  assert(index.includes("coalesceDiscoverBuild"), "expected coalesceDiscoverBuild");
+  assert(index.includes("l1Get"), "expected l1Get");
   assert(
-    src.includes("Promise.all"),
-    "expected Promise.all parallel fan-out in discover-merged-events/index.ts",
+    business.includes("pg_discover_business_events"),
+    "expected pg_discover_business_events RPC",
   );
-  assert(
-    src.includes("discover_merged_events_cache"),
-    "expected discover_merged_events_cache table usage",
-  );
-  assert(
-    src.includes('count: "estimated"'),
-    'expected count: "estimated" instead of exact count on business query',
-  );
-  assert(
-    src.includes("buildDiscoverCacheKey"),
-    "expected buildDiscoverCacheKey import",
-  );
+  assert(memory.includes("inflight"), "expected single-flight inflight map");
 });

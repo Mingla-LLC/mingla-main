@@ -1656,6 +1656,24 @@ function checkNoNewBackendFiles() {
     "supabase/migrations/20260928000002_orch_1123_batch_discard_offering_drafts.sql",
     "supabase/migrations/__tests__/orch_1123_batch_discard.test.sql",
   ];
+  // Issue #426 [G1 discover scale v2] PR #466 — follow-up to merged #455. Moves
+  // the discover-merged-events read into the pg_discover_business_events RPC
+  // (inline ORCH-1076 paid-supply gate) + adds an L1/SWR multi-layer cache and a
+  // cross-isolate build-lock RPC for the 10k-VU Phase 3 gate. index.ts itself is
+  // already allowlisted under ORCH_1076_BACKEND_ALLOWLIST; these are the new
+  // cache/query/response helper modules + the v2 contract test + the new RPC
+  // migration. C7 is scoped to ORCH-0863 marketing; these are discover-scale
+  // backend touches, not marketing scope.
+  const ORCH_426_DISCOVER_V2_BACKEND_ALLOWLIST = [
+    "supabase/functions/discover-merged-events/__tests__/discover_scale_contract.test.ts",
+    "supabase/functions/discover-merged-events/_build-response.ts",
+    "supabase/functions/discover-merged-events/_business-query.ts",
+    "supabase/functions/discover-merged-events/_cache.ts",
+    "supabase/functions/discover-merged-events/_distributed-cache.ts",
+    "supabase/functions/discover-merged-events/_memory-cache.ts",
+    "supabase/functions/discover-merged-events/_types.ts",
+    "supabase/migrations/20261001000000_orch_426_discover_rpc.sql",
+  ];
   // ORCH-1032 [Intelligence pipeline concurrency cap + chunked enqueue]:
   // adds the additive 'queued'-status migration (status CHECK widen + per-city
   // unique active index widen + tg_kick_pending_trial_runs promotion built on
@@ -2048,6 +2066,7 @@ function checkNoNewBackendFiles() {
     ...ORCH_1110_BACKEND_ALLOWLIST,
     ...ORCH_1116_BACKEND_ALLOWLIST,
     ...ORCH_1123_BACKEND_ALLOWLIST,
+    ...ORCH_426_DISCOVER_V2_BACKEND_ALLOWLIST,
     // Schedule-edit buyer protection + "Refund all & proceed" (separate PR;
     // shares the ORCH-1047 work id used in code). New migration recording the
     // already-live business_patch_event_when change — not ORCH-0863 marketing

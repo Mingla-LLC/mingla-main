@@ -4,7 +4,11 @@
  */
 
 export const DISCOVER_CACHE_TTL_MS = Number(
-  Deno.env.get("DISCOVER_MERGED_CACHE_TTL_MS") ?? "30000",
+  Deno.env.get("DISCOVER_MERGED_CACHE_TTL_MS") ?? "120000",
+);
+
+export const DISCOVER_STALE_TTL_MS = Number(
+  Deno.env.get("DISCOVER_MERGED_STALE_MS") ?? "600000",
 );
 
 export interface DiscoverCacheParams {
@@ -48,4 +52,8 @@ export function buildDiscoverCacheKey(p: DiscoverCacheParams): string {
 
 export function discoverCacheExpiresAt(nowMs = Date.now()): string {
   return new Date(nowMs + DISCOVER_CACHE_TTL_MS).toISOString();
+}
+
+export function discoverStaleExpiresAt(nowMs = Date.now()): string {
+  return new Date(nowMs + DISCOVER_STALE_TTL_MS).toISOString();
 }
