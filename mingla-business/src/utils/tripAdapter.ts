@@ -38,6 +38,7 @@ import type {
   TripInclusionInput,
   TripPricingTierInput,
 } from "../services/tripsService";
+import type { RefundPolicy } from "../services/refundPolicyService";
 
 export type TripEditSeverity = "additive" | "material";
 
@@ -62,6 +63,10 @@ export const FIELD_LABELS: Record<string, string> = {
   cover_media_credit: "Cover credit",
   cover_media_credit_url: "Cover credit URL",
   cover_media_alt: "Cover alt text",
+  // ORCH-1120 — published-trip Settings.
+  refund_policy: "Refund policy",
+  booking_deadline: "Booking deadline",
+  bookings_closed: "Bookings closed",
 };
 
 // ============================================================
@@ -74,6 +79,10 @@ export const MATERIAL_KEYS: ReadonlyArray<string> = [
   "days",
   "inclusions",
   "pricing_tiers",
+  // ORCH-1120 — Settings edits change buyer-relied-upon terms → MATERIAL (SPEC §6).
+  "refund_policy",
+  "booking_deadline",
+  "bookings_closed",
 ];
 
 /** Material keys inside theme.business_trip (notify buyers when any changes). */
@@ -116,6 +125,12 @@ export interface TripDayDiff {
   oldNarrative: string | null;
   newNarrative: string | null;
   status: "added" | "removed" | "modified";
+  // ORCH-1119 — a day whose ONLY change is its media gallery still surfaces as a
+  // `modified` diff (additive severity). These counts drive the change-summary
+  // copy ("Photos/videos updated").
+  mediaChanged?: boolean;
+  oldMediaCount?: number;
+  newMediaCount?: number;
 }
 
 export interface TripInclusionDiff {
@@ -186,6 +201,12 @@ export const classifyTripSeverity = (
 // Diff computers
 // ============================================================
 
+// ORCH-1119 — order-sensitive media fingerprint (url|type per item). A reorder,
+// add, or remove changes the string; identical galleries match exactly.
+const mediaFingerprint = (
+  media: ReadonlyArray<{ url: string; type: "image" | "video" }> | undefined,
+): string => (media ?? []).map((m) => `${m.url}|${m.type}`).join(",");
+
 export const computeTripDayDiffs = (
   oldDays: TripDay[],
   newDays: TripDayInput[],
@@ -205,19 +226,28 @@ export const computeTripDayDiffs = (
         oldNarrative: null,
         newNarrative: n.narrative ?? null,
         status: "added",
+        mediaChanged: (n.media ?? []).length > 0,
+        oldMediaCount: 0,
+        newMediaCount: (n.media ?? []).length,
       });
-    } else if (
-      o.title !== n.title ||
-      (o.narrative ?? null) !== (n.narrative ?? null)
-    ) {
-      out.push({
-        ordinal,
-        oldTitle: o.title,
-        newTitle: n.title,
-        oldNarrative: o.narrative,
-        newNarrative: n.narrative ?? null,
-        status: "modified",
-      });
+    } else {
+      const mediaChanged =
+        mediaFingerprint(o.media) !== mediaFingerprint(n.media);
+      const textChanged =
+        o.title !== n.title || (o.narrative ?? null) !== (n.narrative ?? null);
+      if (textChanged || mediaChanged) {
+        out.push({
+          ordinal,
+          oldTitle: o.title,
+          newTitle: n.title,
+          oldNarrative: o.narrative,
+          newNarrative: n.narrative ?? null,
+          status: "modified",
+          mediaChanged,
+          oldMediaCount: (o.media ?? []).length,
+          newMediaCount: (n.media ?? []).length,
+        });
+      }
     }
   }
   // Removed
@@ -349,6 +379,10 @@ export const computeRichTripFieldDiffs = (
     cover_media_credit?: string | null;
     cover_media_credit_url?: string | null;
     cover_media_alt?: string | null;
+    // ORCH-1120 — published-trip Settings.
+    refund_policy?: import("../services/refundPolicyService").RefundPolicy | null;
+    booking_deadline?: string | null;
+    bookings_closed?: boolean;
   },
   ctx: {
     droppedDayOrdinals: number[];
@@ -429,13 +463,39 @@ export const computeRichTripFieldDiffs = (
     const isMaterial = ctx.droppedDayOrdinals.length > 0;
     const oldCount = oldTrip.days.length;
     const newCount = patch.days.length;
-    out.push({
-      fieldKey: "days",
-      fieldLabel: labelOf("days"),
-      oldValue: `${oldCount} day${oldCount === 1 ? "" : "s"}`,
-      newValue: `${newCount} day${newCount === 1 ? "" : "s"}`,
-      severity: isMaterial ? "material" : "additive",
-    });
+    // ORCH-1119 — when the day COUNT and every title/narrative are unchanged but
+    // a gallery differs, the count-vs-count copy reads as a no-op. Surface a
+    // media-aware row so the change-summary isn't empty/confusing. Always
+    // additive (media never enters MATERIAL_KEYS / the refund gate).
+    const dayDiffs = computeTripDayDiffs(oldTrip.days, patch.days);
+    const onlyMediaChanged =
+      oldCount === newCount &&
+      ctx.droppedDayOrdinals.length === 0 &&
+      dayDiffs.length > 0 &&
+      dayDiffs.every(
+        (d) =>
+          d.status === "modified" &&
+          d.mediaChanged === true &&
+          d.oldTitle === d.newTitle &&
+          (d.oldNarrative ?? null) === (d.newNarrative ?? null),
+      );
+    if (onlyMediaChanged) {
+      out.push({
+        fieldKey: "days",
+        fieldLabel: labelOf("days"),
+        oldValue: "—",
+        newValue: "Photos/videos updated",
+        severity: "additive",
+      });
+    } else {
+      out.push({
+        fieldKey: "days",
+        fieldLabel: labelOf("days"),
+        oldValue: `${oldCount} day${oldCount === 1 ? "" : "s"}`,
+        newValue: `${newCount} day${newCount === 1 ? "" : "s"}`,
+        severity: isMaterial ? "material" : "additive",
+      });
+    }
   }
   if (patch.inclusions !== undefined) {
     const isMaterial = ctx.droppedInclusionKeys.length > 0;
@@ -483,6 +543,40 @@ export const computeRichTripFieldDiffs = (
       oldValue: fmt(oldTrip.coverMediaUrl),
       newValue: fmt(patch.cover_media_url ?? oldTrip.coverMediaUrl),
       severity: "additive",
+    });
+  }
+  // ORCH-1120 — Settings (refund_policy / booking_deadline / bookings_closed).
+  // All three are MATERIAL (they change buyer-relied-upon terms — SPEC §6).
+  const policyLabel = (p: RefundPolicy | null | undefined): string => {
+    if (p === null || p === undefined) return "—";
+    const n = p.tiers.length;
+    return `${p.kind} (${n} tier${n === 1 ? "" : "s"})`;
+  };
+  if (patch.refund_policy !== undefined) {
+    out.push({
+      fieldKey: "refund_policy",
+      fieldLabel: labelOf("refund_policy"),
+      oldValue: policyLabel(oldTrip.refundPolicy),
+      newValue: policyLabel(patch.refund_policy),
+      severity: "material",
+    });
+  }
+  if (patch.booking_deadline !== undefined) {
+    out.push({
+      fieldKey: "booking_deadline",
+      fieldLabel: labelOf("booking_deadline"),
+      oldValue: fmt(oldTrip.bookingDeadline),
+      newValue: fmt(patch.booking_deadline),
+      severity: "material",
+    });
+  }
+  if (patch.bookings_closed !== undefined) {
+    out.push({
+      fieldKey: "bookings_closed",
+      fieldLabel: labelOf("bookings_closed"),
+      oldValue: oldTrip.bookingsClosed ? "Closed" : "Open",
+      newValue: patch.bookings_closed ? "Closed" : "Open",
+      severity: "material",
     });
   }
   return out;

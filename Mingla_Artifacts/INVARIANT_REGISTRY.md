@@ -19,6 +19,31 @@
 
 ---
 
+## ACTIVE (post ORCH-1129 [team-wide iOS build fix] CLOSE 2026-06-12)
+
+### I-PROPOSED-IOS-GOOGLE-PODS-MODULAR-HEADERS
+- **Rule:** The mingla-business iOS build MUST force `:modular_headers => true` for `GoogleUtilities`, `RecaptchaInterop`, and `AppCheckCore` (the Google Sign-In Swift-pod chain) so CocoaPods can integrate `AppCheckCore` as a static library under New Architecture.
+- **Enforcement:** config plugin `mingla-business/plugins/withGooglePodsModularHeaders.js` (injected before `use_expo_modules!` in the CNG Podfile) + registered in `app.config.ts`.
+- **Regression test:** `mingla-business/src/__tests__/iosGooglePodsModularHeaders.gate.test.ts` (strict-grep: registration + the 3 directives present; fails-on-revert) — plus the load-bearing GREEN EAS iOS build (local cannot reproduce; AppCheckCore mirror-capped at 11.2.0). **Parallel app-mobile equivalent tracked as ORCH-1130 (DISC-1129-A).**
+
+## ACTIVE (post ORCH-1119 [trip itinerary day media gallery] CLOSE 2026-06-12)
+
+### I-PROPOSED-TRIP-DAY-MEDIA-OPTIONAL-HIDDEN
+- **Rule:** A trip day with zero media (`trip_days.media = []`) renders NO gallery section on any surface (consumer iOS/Android, anon-web, business preview, editor shows only the "+ Add" tile). Missing is hidden, never faked (Constitution #9).
+- **Enforcement / test:** `app-mobile/.../orch1119_trip_day_media_gallery.test.tsx` asserts zero gallery nodes for `media:[]`; fails-on-revert.
+
+### I-PROPOSED-TRIP-DAY-MEDIA-EXPLICIT-TYPE
+- **Rule:** Every persisted trip-day media item carries an explicit `type:"image"|"video"`; the renderer is never asked to auto-detect (ORCH-1069/0978 rule). `coerceTripDayMedia` drops any item missing a valid type.
+- **Enforcement / test:** `orch1119_coerce_media_boundary.tester_adversarial.test.ts` (hostile inputs dropped); fails-on-revert.
+
+### I-PROPOSED-TRIP-DAY-MEDIA-UPLOAD-RLS-ALLOWED
+- **Rule:** The `event_covers` Storage bucket MUST permit the 3-segment `{brandId}/{eventId}/trip-day-media/{file}` INSERT/UPDATE/DELETE for callers with rank ≥ `event_manager` on the brand, WITHOUT loosening the existing 2-segment cover/experience-stop writes (the two policy sets are disjoint by segment count).
+- **Enforcement / test:** migration `20260930000000_orch_1119b_trip_day_media_storage_rls.sql` (3 additive policies) + `supabase/migrations/__tests__/orch_1119b_trip_day_media_storage_rls.test.ts` (3-seg passes / under-ranked denied / 2-seg cover still passes); fails-on-revert.
+
+### I-PROPOSED-NATIVE-MODAL-SHEET-FAILURE-VISIBLE
+- **Rule:** A native-`Modal` picker sheet (e.g. `TripDayMediaSheet`) MUST close on a 0-success / all-failed batch so the wizard-root error Toast is not occluded — an upload failure is always visible, never a silent haptic (Constitution #3).
+- **Enforcement / test:** `orch1119b_trip_day_media_visible_failure.test.ts` (all-failed batch → `onClose` called); fails-on-revert.
+
 ## ACTIVE (post ORCH-1113 [curated-experience-empty-deck-regression] CLOSE 2026-06-11)
 
 ### I-PROPOSED-CURATED-HONORS-DATE-OPTION
@@ -4449,3 +4474,11 @@ Every chat response from every skill uses Section A (what just happened) + Secti
 ### I-GIPHY-KEY-REACHABLE-VIA-EXTRA (ACTIVE — flipped at ORCH-1127 CLOSE 2026-06-12)
 **Rule:** The GIPHY client-direct key MUST be read via `Constants.expoConfig?.extra?.[name]` first, then a STATIC `process.env.EXPO_PUBLIC_GIPHY_API_KEY`/`EXPO_PUBLIC_GIPHY_KEY` fallback (mirroring `mingla-business/src/services/supabase.ts`). A DYNAMIC `process.env?.[name]` (bracket-variable) read is FORBIDDEN — Expo/babel only inlines STATIC `process.env.EXPO_PUBLIC_X`, so a dynamic read resolves `undefined` in every standalone/OTA/production Hermes bundle (works only under Metro dev). This was the deeper root cause of ORCH-1127. Applies to both `giphyEventCoverService.ts` and `coverProviderBrowseService.ts`.
 **Enforcement:** `i-giphy-key-wired.mjs` INV-3 (bans dynamic-only reads in these services) + reachability regression tests (`giphyKeyReachability*.test.ts`, empty `process.env` + populated `extra`); fails-on-revert @ `70f799e15`. Proof: standalone `expo export` key-value count 0 (dynamic) → 1 (extra-first). See COMMS-0028.
+
+### I-PROPOSED-1120-PUBLISHED-REFUND-DEADLINE-VIA-GATED-RPC (ACTIVE — flipped at ORCH-1120 CLOSE 2026-06-12)
+**Rule:** Published-trip refund-policy / booking-deadline / bookings-closed edits MUST route through `biz_update_live_trip` (which enforces the buyer-unfavorable sales-gate), NEVER through `refundPolicyService.updateRefundPolicy/updateBookingDeadline`. The standalone service functions remain DRAFT-WIZARD-ONLY; `EditPublishedTripScreen` / `EditPublishedTripSettingsAccordion` must not import them.
+**Enforcement:** strict-grep `.github/scripts/strict-grep/i-proposed-1120-published-refund-via-gated-rpc.mjs` (callers of `refundPolicyService.update{RefundPolicy,BookingDeadline}` ⊆ wizard files). fails-on-revert @ `1b2e9a74a`.
+
+### I-PROPOSED-1120-UNFAVORABLE-EDIT-HARD-BLOCKS-WITH-SALES (ACTIVE — flipped at ORCH-1120 CLOSE 2026-06-12)
+**Rule:** When a published trip has paid non-cancelled orders (`v_total_sold>0`), a realized-refund-% drop, an earlier booking deadline, or a false→true bookings-closed flip MUST return `ok:false` with the matching reason + `affected_order_count` and MUST NOT write; buyer-favorable edits (higher refund %, later deadline) always apply; no-sales trips are freely editable. The function body PRESERVES ORCH-1119's day-media logic (composed off the live-prod body, see COMMS-0029).
+**Enforcement:** migration SQL gate test `supabase/migrations/__tests__/orch_1120_trip_settings_refund_deadline.test.sql` + tester adversarial E2E (`*_tester_e2e.test.sql`, T-1..T-11 + 12 edge cases). fails-on-revert @ `c219d012`.

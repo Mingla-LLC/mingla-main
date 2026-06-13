@@ -1656,6 +1656,24 @@ function checkNoNewBackendFiles() {
     "supabase/migrations/20260928000002_orch_1123_batch_discard_offering_drafts.sql",
     "supabase/migrations/__tests__/orch_1123_batch_discard.test.sql",
   ];
+  // Issue #426 [G1 discover scale v2] PR #466 — follow-up to merged #455. Moves
+  // the discover-merged-events read into the pg_discover_business_events RPC
+  // (inline ORCH-1076 paid-supply gate) + adds an L1/SWR multi-layer cache and a
+  // cross-isolate build-lock RPC for the 10k-VU Phase 3 gate. index.ts itself is
+  // already allowlisted under ORCH_1076_BACKEND_ALLOWLIST; these are the new
+  // cache/query/response helper modules + the v2 contract test + the new RPC
+  // migration. C7 is scoped to ORCH-0863 marketing; these are discover-scale
+  // backend touches, not marketing scope.
+  const ORCH_426_DISCOVER_V2_BACKEND_ALLOWLIST = [
+    "supabase/functions/discover-merged-events/__tests__/discover_scale_contract.test.ts",
+    "supabase/functions/discover-merged-events/_build-response.ts",
+    "supabase/functions/discover-merged-events/_business-query.ts",
+    "supabase/functions/discover-merged-events/_cache.ts",
+    "supabase/functions/discover-merged-events/_distributed-cache.ts",
+    "supabase/functions/discover-merged-events/_memory-cache.ts",
+    "supabase/functions/discover-merged-events/_types.ts",
+    "supabase/migrations/20261001000000_orch_426_discover_rpc.sql",
+  ];
   // ORCH-1032 [Intelligence pipeline concurrency cap + chunked enqueue]:
   // adds the additive 'queued'-status migration (status CHECK widen + per-city
   // unique active index widen + tg_kick_pending_trial_runs promotion built on
@@ -2048,11 +2066,30 @@ function checkNoNewBackendFiles() {
     ...ORCH_1110_BACKEND_ALLOWLIST,
     ...ORCH_1116_BACKEND_ALLOWLIST,
     ...ORCH_1123_BACKEND_ALLOWLIST,
+    ...ORCH_426_DISCOVER_V2_BACKEND_ALLOWLIST,
     // Schedule-edit buyer protection + "Refund all & proceed" (separate PR;
     // shares the ORCH-1047 work id used in code). New migration recording the
     // already-live business_patch_event_when change — not ORCH-0863 marketing
     // scope; same C7-scoping caveat as the allowlists above.
     "supabase/migrations/20260820000000_schedule_change_buyer_protection_refund_all.sql",
+    // ORCH-1119 [trip-day-media-gallery] CLOSE (2026-06-12). C7 is scoped to
+    // ORCH-0863 marketing; these are the ORCH-1119 trip-day-media schema +
+    // live-trip + Storage-RLS migrations (prod-applied-but-unmerged per
+    // COMMS-0029) and the 1119B RLS regression test, on a separate ORCH-1119
+    // PR — not marketing scope. Same C7-scoping caveat as the allowlists above.
+    "supabase/migrations/20260928000000_orch_1119_trip_day_media.sql",
+    "supabase/migrations/20260928000001_orch_1119_live_trip_media.sql",
+    "supabase/migrations/20260930000000_orch_1119b_trip_day_media_storage_rls.sql",
+    "supabase/migrations/__tests__/orch_1119b_trip_day_media_storage_rls.test.ts",
+    // ORCH-1120 [published-trip Settings refund/deadline/bookings-closed editable]
+    // CLOSE (2026-06-12). C7 is scoped to ORCH-0863 marketing; these are the
+    // ORCH-1120 migration that re-emits biz_update_live_trip with the sales-gate
+    // (composed off the merged ORCH-1119 body, see COMMS-0029) + its SQL gate
+    // tests, on a separate ORCH-1120 PR — not marketing scope. Same C7-scoping
+    // caveat as the allowlists above.
+    "supabase/migrations/20260929000000_orch_1120_trip_settings_refund_deadline.sql",
+    "supabase/migrations/__tests__/orch_1120_trip_settings_refund_deadline.test.sql",
+    "supabase/migrations/__tests__/orch_1120_trip_settings_refund_deadline_tester_e2e.test.sql",
   ];
   const forbidden = changed.filter(
     (p) =>

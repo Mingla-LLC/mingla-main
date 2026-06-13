@@ -604,10 +604,24 @@ const styles = StyleSheet.create({
     top: 14,
   },
   audioControlBottomRight: {
-    right: 14,
-    // ORCH-1128 — 14 → 22: clears the cover seam so the pill stops bleeding
-    // into the details section below the public hero (radius:0 + absoluteFill).
-    bottom: 22,
+    // ORCH-1132 — 16 → 24 (spacing.lg): VISIBLE right-edge breathing room.
+    // ORCH-1131 aligned the pill to the public-event floating chrome column
+    // (X / share at right: spacing.md = 16), but that 2px nudge read cramped to
+    // Seth. 24 (= spacing.lg) is +8px (a perceptible 50% increase in inset) and
+    // a real token, so the pill sits one deliberate step further from the edge
+    // than the chrome — a legible offset, not a misalignment. Shared style:
+    // also moves the consumer expandedCard + business authoring-preview pills
+    // by +8px (safe; no consumer relies on 16). Raw literal matches this file's
+    // convention (topLeft/topRight all use raw numbers).
+    right: 24,
+    // ORCH-1133 — 22 → 40: round-3 clearance from the public-event details panel.
+    // The blue details panel (PublicEventPage `bodyContent`, marginTop:-28) sits
+    // 28px above the hero bottom; at bottom:22 the pill overlapped the panel top
+    // by 6px (measured on buyer web). bottom:40 = 28 + 12px visible gap (live-
+    // verified +12.0px on /e/leggothis/vibes-and-stuff & /a-life-in-vegas).
+    // Shared style → also lifts the consumer gallery + authoring-preview pills
+    // +18px on their full-bleed covers (benign; ≥200px boxes, no panel below).
+    bottom: 40,
   },
   audioControlPressed: {
     backgroundColor: "rgba(0, 0, 0, 0.72)",

@@ -355,19 +355,23 @@ describe("ORCH-1124 cover-video audio pill clears top-right floating chrome", ()
   });
 
   // The shared component's audio-pill default is "bottomRight" and is styled
-  // inside the cover container (bottom:22 / right:14) — not the page base — so
+  // inside the cover container (bottom:40 / right:24) — not the page base — so
   // it does not collide with the host-mounted floating Buy bar (ORCH-1117) and
-  // (ORCH-1128) clears the cover seam so it stops bleeding into the details
-  // section that begins immediately below the public hero.
+  // (ORCH-1133, round 3) clears the public-event blue details panel by +12px so
+  // it stops bleeding into the details section that begins below the public hero.
   test("EventCoverMedia defaults the audio pill to bottomRight, styled within the cover", () => {
     const media = coverMedia();
     expect(media).toContain('audioControlPosition = "bottomRight"');
     expect(media).toContain("audioControlBottomRight:");
-    const bottomRightStyle = media
+    // Parse the full `audioControlBottomRight: { ... }` block (the comment bloat
+    // above `bottom:` blew past the old fixed 400-char window — DISC-1 hardening).
+    const blockMatch = media
       .slice(media.indexOf("audioControlBottomRight:"))
-      .slice(0, 400);
-    expect(bottomRightStyle).toContain("right: 14");
-    // ORCH-1128 — raised from 14 → 22 for bottom clearance from the details.
-    expect(bottomRightStyle).toContain("bottom: 22");
+      .match(/audioControlBottomRight:\s*\{([\s\S]*?)\n\s*\},/);
+    const bottomRightStyle = blockMatch ? blockMatch[1] : "";
+    // ORCH-1132 — right kept at 24 (visible right-edge breathing room).
+    expect(bottomRightStyle).toContain("right: 24");
+    // ORCH-1133 — raised 22 → 40 for clearance from the public-event details panel.
+    expect(bottomRightStyle).toContain("bottom: 40");
   });
 });

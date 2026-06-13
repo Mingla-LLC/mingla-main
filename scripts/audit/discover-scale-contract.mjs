@@ -14,7 +14,7 @@ const indexPath = join(
 );
 const rpcMigration = join(
   root,
-  "supabase/migrations/20260613000000_orch_426_discover_rpc.sql",
+  "supabase/migrations/20261001000000_orch_426_discover_rpc.sql",
 );
 const scaleMigration = join(
   root,

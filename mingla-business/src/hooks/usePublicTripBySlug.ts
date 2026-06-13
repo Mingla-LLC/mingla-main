@@ -22,6 +22,7 @@ import type {
   TripInclusion,
   TripPricingTier,
 } from "../services/tripsService";
+import { coerceTripDayMedia } from "../services/tripsService";
 
 const PUBLIC_TRIP_STALE_MS = 60 * 1000; // 1 minute
 
@@ -202,6 +203,9 @@ export const usePublicTripBySlug = (
             narrative: d.narrative,
             date: d.date,
             stops: Array.isArray(d.stops) ? d.stops : [],
+            // ORCH-1119 — per-day gallery (anon-readable via the existing
+            // trip_days published-only RLS; .select("*") already returns media).
+            media: coerceTripDayMedia(d.media),
           }),
         ),
         pricingTiers: tiers.map(

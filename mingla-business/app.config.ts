@@ -108,6 +108,12 @@ export default ({ config }: ConfigContext): ExpoConfig => {
       // format-string checking. Inject FMT_USE_CONSTEVAL=0 into the generated
       // Podfile post_install so iOS dev/device builds compile on this toolchain.
       "./plugins/withIosFmtConsteval",
+      // ORCH-1129: GoogleSignIn 9.x → AppCheckCore (Swift) imports GoogleUtilities
+      // + RecaptchaInterop, which lack module maps. Under static libraries + New
+      // Architecture, CocoaPods aborts `pod install` (COMMS-0030). Inject targeted
+      // `:modular_headers => true` for those 3 pods before resolution so every iOS
+      // EAS build clears the Install pods phase. Compile-time only; no runtime change.
+      "./plugins/withGooglePodsModularHeaders",
     ],
     extra: {
       ...config.extra,
