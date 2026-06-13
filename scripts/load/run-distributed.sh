@@ -51,10 +51,12 @@ echo ":: total VUs=$((WORKERS * VUS_PER_WORKER)) :: logs=$LOG_DIR"
 
 pids=()
 for ((i = 0; i < WORKERS; i++)); do
+  SEG_START="${i}/${WORKERS}"
+  SEG_END="$((i + 1))/${WORKERS}"
   REPORT_JSON="$REPORT_DIR/${STAMP}-${SCRIPT}-seg${i}of${WORKERS}-vus${VUS_PER_WORKER}.json"
   (
     k6 run \
-      --execution-segment "${i}/${WORKERS}" \
+      --execution-segment "${SEG_START}:${SEG_END}" \
       --summary-export="$REPORT_JSON" \
       "$ROOT/scripts/load/$K6_SCRIPT" \
       >"$LOG_DIR/worker-${i}.log" 2>&1

@@ -12,20 +12,28 @@ const indexPath = join(
   root,
   "supabase/functions/discover-merged-events/index.ts",
 );
-const migrationPath = join(
+const rpcMigration = join(
+  root,
+  "supabase/migrations/20260613000000_orch_426_discover_rpc.sql",
+);
+const scaleMigration = join(
   root,
   "supabase/migrations/20260612000000_orch_426_discover_scale.sql",
 );
+const distributed = join(root, "scripts/load/run-distributed.sh");
 
 const index = readFileSync(indexPath, "utf8");
-const migration = readFileSync(migrationPath, "utf8");
+const rpcSql = readFileSync(rpcMigration, "utf8");
+const scaleSql = readFileSync(scaleMigration, "utf8");
+const distributedSh = readFileSync(distributed, "utf8");
 
 const checks = [
-  [index.includes("Promise.all"), "Promise.all parallel fan-out"],
-  [index.includes("discover_merged_events_cache"), "response cache table"],
-  [index.includes('count: "estimated"'), "estimated count"],
-  [migration.includes("idx_events_discover_feed"), "discover feed index"],
-  [migration.includes("idx_event_dates_master_end_at"), "master end_at index"],
+  [index.includes("coalesceDiscoverBuild"), "L1 single-flight coalesce"],
+  [index.includes("l1Get"), "L1 memory cache"],
+  [index.includes("pg_discover_business_events") || readFileSync(join(root, "supabase/functions/discover-merged-events/_business-query.ts"), "utf8").includes("pg_discover_business_events"), "discover RPC"],
+  [rpcSql.includes("pg_discover_business_events"), "RPC migration"],
+  [scaleSql.includes("discover_merged_events_cache"), "response cache table"],
+  [distributedSh.includes('execution-segment "${SEG_START}:${SEG_END}"'), "k6 v2 segment format"],
 ];
 
 let failed = 0;

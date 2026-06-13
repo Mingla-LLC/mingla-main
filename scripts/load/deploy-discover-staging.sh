@@ -16,4 +16,4 @@ supabase link --project-ref gqnoajqerqhnvulmnyvv --yes
 supabase db push --yes
 supabase functions deploy discover-merged-events --yes
 
-echo ":: deployed discover-merged-events + migration 20260612000000_orch_426_discover_scale.sql"
+echo ":: deployed discover-merged-events + migrations 20260612000000 + 20260613000000"
