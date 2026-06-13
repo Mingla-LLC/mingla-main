@@ -2295,6 +2295,17 @@ jobs:
       - name: Run ORCH-1116 giphy-key-wired gate
         run: node .github/scripts/strict-grep/i-giphy-key-wired.mjs
 
+  orch-1120-published-refund-via-gated-rpc:
+    name: "ORCH-1120: published refund/deadline/bookings-closed via gated RPC (I-PROPOSED-1120-PUBLISHED-REFUND-DEADLINE-VIA-GATED-RPC)"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Run ORCH-1120 published-refund-via-gated-rpc gate
+        run: node .github/scripts/strict-grep/i-proposed-1120-published-refund-via-gated-rpc.mjs
+
   # ORCH-0962 brand-field-map-coverage gate RETIRED at META-ORCH-0972 CLOSE
   # (2026-05-26). The gate asserted that `viewRowToBrand` reads `row.brand_kind`
   # from `business_public_events_view`. META-ORCH-0972 Sub-C removed `brand_kind`

@@ -1215,6 +1215,14 @@ export interface LiveTripPatch {
   cover_media_credit?: string | null;
   cover_media_credit_url?: string | null;
   cover_media_alt?: string | null;
+  // ORCH-1120 — published-trip Settings tab: refund policy / booking deadline /
+  // bookings-closed, sales-gated by the biz_update_live_trip RPC. Only present
+  // keys are evaluated; omit unchanged keys so the RPC's favorable/unfavorable
+  // classifier sees only what changed. `null` for refund_policy/booking_deadline
+  // serializes to JSON null (RPC detects via jsonb_typeof = 'null').
+  refund_policy?: import("./refundPolicyService").RefundPolicy | null;
+  booking_deadline?: string | null; // ISO timestamptz, or null to clear
+  bookings_closed?: boolean;
 }
 
 export type UpdateLiveTripRejectReason =
@@ -1230,7 +1238,17 @@ export type UpdateLiveTripRejectReason =
   | "inclusions_removed_with_sales"
   // ORCH-1075 — paid-edit integrity guards.
   | "stripe_charges_disabled"
-  | "offering_date_past";
+  | "offering_date_past"
+  // ORCH-1120 — published-trip Settings buyer-protection gate. Buyer-unfavorable
+  // refund/deadline/bookings-closed edits hard-block when paid orders exist.
+  | "refund_policy_downgrade_with_sales"
+  // RESERVED: the realized-% classifier surfaces tier removal AS a downgrade,
+  // so the RPC emits refund_policy_downgrade_with_sales for it (Q-1 default).
+  // Kept in the union + buildRejectDialog for an exhaustive type + the design
+  // table; the RPC does not emit it unless Q-1 flips to a literal-tier branch.
+  | "refund_tier_removed_with_sales"
+  | "booking_deadline_earlier_with_sales"
+  | "bookings_closed_harms_active";
 
 export type UpdateLiveTripResult =
   | {
