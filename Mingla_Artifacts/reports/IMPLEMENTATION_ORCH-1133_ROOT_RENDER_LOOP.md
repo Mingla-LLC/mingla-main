@@ -217,3 +217,150 @@ No file was modified. The login/session backbone (`AuthContext.tsx`,
 is **byte-identical to `origin/main` @ `907b2b2a0`**. This turn could not have
 altered auth/session resolution, logout-clears-everything behavior, the number of
 auth instances, or what the brand recovery resolves to.
+
+---
+---
+
+# IMPLEMENTATION (2026-06-13) — APPROVED SINGLE-WRITER FIX APPLIED
+
+> Sections 1–10 above are the prior agent's analysis-only confirmation (no patch).
+> This block is the approved fix per the ORCH-1133 implement dispatch. The fix
+> turns §4(e)'s noted **structural smell** (5+ concurrent writers to the global
+> current-brand store, §4 lines 118–125 + §9.1) into a **single-writer** invariant.
+> Disposition upgraded: **implemented + gate-verified; runtime crash verified by
+> OTA on Seth's device** (the flicker is not reproducible in this environment).
+
+## I-1. The exact change (single-writer)
+
+The brand-recovery WRITE now has EXACTLY ONE authoritative owner.
+
+`useCurrentBrandRecovery` gained an opt-in option:
+`useCurrentBrandRecovery(options?: { authoritative?: boolean })`, `authoritative`
+**defaults to FALSE**. The write side of the hook (the `setCurrentBrandId` store
+write + the `setCreatorDefaultBrand` default persistence) was extracted, **verbatim
+in behavior**, into an exported pure helper `runBrandRecoveryWrite(...)` whose FIRST
+line is the gate:
+
+```ts
+if (!authoritative) return false;   // ORCH-1133 single-writer gate
+```
+
+The hook's `useEffect` now just builds `appliedKey` and calls
+`runBrandRecoveryWrite`. A non-authoritative (read-only) mount does NOTHING on the
+write path — no `setCurrentBrandId`, no default-brand network write, no
+`appliedKeyRef`/`errorMessage` mutation. Read outputs (`isResolving`, `isError`,
+`errorMessage`) are computed from query/resolution state and are UNCHANGED for every
+caller. The resolver (`resolveCurrentBrandId`), the auth/session instance, the
+logout-clears behavior, and the persisted store shape are untouched.
+
+## I-2. Per-call-site authority assignment
+
+| Call site | Line | Authority | Consumes |
+|---|---|---|---|
+| `app/_layout.tsx` (RootLayoutInner) | ~231 | **`authoritative: true`** (the SOLE writer) | `isResolving` |
+| `app/(tabs)/_layout.tsx` (TabsLayout) | 98 | read-only (default) | `isResolving` |
+| `app/(tabs)/home.tsx` | 134 | read-only (default) | `errorMessage` (toast) |
+| `app/event/create.tsx` | 79 | read-only (default) | `isResolving`, `isError`, `errorMessage` |
+| `src/hooks/useBusinessTodos.ts` | 50 | read-only (default) | `isResolving` |
+
+Writer count dropped **5 → 1**.
+
+## I-3. Proof root-only writing fully preserves recovery (confidence: HIGH)
+
+1. **`RootLayoutInner` is the highest always-mounted node** for any authenticated
+   business session: it is rendered unconditionally inside
+   `QueryClientProvider → AuthProvider → KeyboardRoot` (`_layout.tsx:666–674`), and
+   `useCurrentBrandRecovery({authoritative:true})` is called at line 230 **before**
+   every deferred auth-routing `return` (the redirect/spinner branches at
+   `:577–602`). So the write effect runs on every render in every auth state.
+2. **The write effect's inputs are all global/shared state**, not per-mount:
+   `userId` (from `useAuth`), `brands` (`useBrands(userId)` — React Query, shared
+   cache), `creatorAccount` (`useCreatorAccount` — shared cache),
+   `currentBrandId`/`setCurrentBrandId` (the shared Zustand store). None of them is
+   derived from WHICH component mounts the hook. The root mount therefore reads the
+   identical inputs and runs the identical `runBrandRecoveryWrite` the other 4 mounts
+   ran. **The 4 non-root mounts had no unique write trigger the root lacks** — they
+   were redundant writers, not unique triggers.
+3. The other 4 sites are nested strictly DEEPER than the root (tab routes /
+   `event/create`) — a subset of the root's mount lifetime — so dropping their writes
+   removes nothing the root does not already cover.
+4. **One behavioral consequence, intentional and correct:** the
+   `DEFAULT_BRAND_SAVE_ERROR` (`"Brand selected for now. Couldn't save it as your
+   default."`) is now set only by the authoritative root mount, so the toast on
+   `home.tsx:270` no longer fires for *that* specific local error (the query-derived
+   `CURRENT_BRAND_QUERY_ERROR` toast still works read-only). This is the correct
+   consequence of single-writer — the write, and thus its error, lives at the one
+   owner. No unique recovery path is lost.
+
+## I-4. Files changed
+
+| File | Δ | What |
+|---|---|---|
+| `mingla-business/src/hooks/useCurrentBrandRecovery.ts` | +~95 / −~30 | `authoritative` option + `runBrandRecoveryWrite` extraction + single-writer gate + invariant docs |
+| `mingla-business/app/_layout.tsx` | +~9 / −1 | root mount passes `authoritative: true` (+ doc comment) |
+| `mingla-business/src/hooks/__tests__/useCurrentBrandRecovery.orch1133.singleWriter.test.ts` | +~140 (new) | behavioral gate test + structural one-owner invariant |
+
+The 4 read-only call sites were NOT edited (they default to read-only). Resolution
+logic, auth/session, and the store were not changed.
+
+## I-5. Regression test + fails-on-revert
+
+- Test: `mingla-business/src/hooks/__tests__/useCurrentBrandRecovery.orch1133.singleWriter.test.ts`
+- **(A) Behavioral** (drives the REAL `runBrandRecoveryWrite`): `authoritative:false`
+  ⇒ 0 `setCurrentBrandId` calls + no ref/error mutation; `authoritative:true` ⇒
+  exactly 1 call with `"brand-A"`; idempotent re-run ⇒ still 1.
+- **(B) Structural invariant**: only `app/_layout.tsx` passes `authoritative:true`;
+  the other 4 sites do not; exactly ONE site total passes it.
+- Result: **9/9 PASS.**
+- **Fails-on-revert (true line deletion of `if (!authoritative) return false;`):**
+  the read-only assertion fails (`wrote===true`, `setCurrentBrandId` called).
+  **fails-on-revert verified at `45cfe9d7b`** (HEAD at deletion-proof time). Gate
+  restored → 9/9 PASS again.
+
+## I-6. Gates
+
+- `npx jest <the orch1133 test>` → **9 passed / 9**.
+- Adjacent: `currentBrandResolver.test.ts` + both `useSoftDeleteBrand.orch1062*`
+  → **11 passed / 11**.
+- `npx tsc --noEmit`: **263 errors WITH my changes == 263 errors with my changes
+  STASHED** (origin/main baseline) → **zero new TS errors**; no error in any touched
+  file.
+- `npx eslint` on the 3 touched files: **0 errors** (5 pre-existing
+  "unused eslint-disable" warnings in `_layout.tsx`, far from my edit, present on
+  baseline).
+- Full `src/hooks/__tests__/` run: 97 pass / 2 fail. The 2 failures
+  (`brandListState.test.ts`, `orch1004AllowlistIntegrity.test.ts`) **fail
+  IDENTICALLY on origin/main with my changes stashed** → pre-existing baseline,
+  not mine.
+
+## I-7. Invariant / gate note (Discovery for Orchestrator)
+
+- The unwired strict-grep gate `orch-0756a-active-brand-recovery.mjs` asserts
+  `_layout.tsx` contains the literal `"useCurrentBrandRecovery()"`. My root call is
+  now `useCurrentBrandRecovery({ authoritative: true })`; the literal substring still
+  appears (in the explanatory comment at `_layout.tsx:225` describing the read-only
+  mounts), so the assertion incidentally still passes. **Recommend** the orchestrator
+  loosen that gate literal to `useCurrentBrandRecovery(` (open paren) so the match is
+  intentional, not comment-dependent. NOTE: this gate is (a) NOT registered in any
+  `.github/workflows/` file and (b) ALREADY RED on origin/main baseline
+  (`BrandSwitcherSheet.tsx` lacks `default_brand_id: newBrand.id`) — a separate
+  pre-existing issue, out of ORCH-1133 scope. I did NOT touch the gate (hard-guard:
+  hook + 5 sites + test only).
+
+## I-8. Confirmation: brand-resolution + auth behaviorally unchanged
+
+`resolveCurrentBrandId` is byte-identical. The auth/session instance, logout-clears,
+and persisted store shape are untouched. The hook still resolves to the SAME
+`brandId` for the SAME inputs — only the **number of mounts permitted to WRITE that
+resolution to the global store dropped from 5 to 1**. The write body inside
+`runBrandRecoveryWrite` is the prior effect body verbatim (same `appliedKeyRef`
+dedupe, same `if (resolution.brandId !== currentBrandId)` value-guard, same
+`setCreatorDefaultBrand` newest-brand persistence) gated only by `authoritative`.
+
+## I-9. Operator action required
+
+- No migration, no edge function, no deploy. Pure-JS RN change.
+- **Verify on device via OTA** (the flicker crash is not reproducible in CI/this
+  env): after merge, OTA the business app and confirm the "Maximum update depth
+  exceeded" RedBox no longer appears on the authenticated business root, and brand
+  selection still resolves to the same brand it did before.

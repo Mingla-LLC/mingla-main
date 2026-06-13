@@ -4,6 +4,7 @@ import { useAuth } from "../context/AuthContext";
 import { setCreatorDefaultBrand } from "../services/creatorAccount";
 import { useCurrentBrandStore } from "../store/currentBrandStore";
 import { resolveCurrentBrandId } from "../utils/currentBrandResolver";
+import type { ResolveCurrentBrandResult } from "../utils/currentBrandResolver";
 import { useBrands } from "./useBrands";
 import { useCreatorAccount } from "./useCreatorAccount";
 import {
@@ -22,12 +23,117 @@ export interface CurrentBrandRecoveryState {
   errorMessage: string | null;
 }
 
+/**
+ * ORCH-1133 — SINGLE-WRITER invariant for the global current-brand pointer.
+ *
+ * This hook is mounted in FIVE+ concurrent subscriber trees (RootLayoutInner,
+ * TabsLayout, home, event/create, and useBusinessTodos — itself fanned out).
+ * Every mount used to run the WRITE effect below, so the shared Zustand
+ * `currentBrandId` had 5+ owners — a one-owner-per-truth violation. Under
+ * auth-lock / session-flicker timing, multiple mounts re-resolving and writing
+ * `setCurrentBrandId` can ping-pong across commits, manifesting as the
+ * `useSyncExternalStore` "Maximum update depth exceeded" render loop.
+ *
+ * Fix: the WRITE effect now runs ONLY when `authoritative: true` is passed.
+ * `authoritative` defaults to FALSE, so by default the hook is READ-ONLY — it
+ * still returns `isResolving` / `isError` / `errorMessage` for UI gating but
+ * never writes the global store. EXACTLY ONE call site passes
+ * `authoritative: true`: `app/_layout.tsx` (RootLayoutInner), the highest
+ * always-mounted root for any authenticated business session. Because the
+ * write effect's inputs (userId, brands, creatorAccount, currentBrandId — all
+ * global/shared state) are independent of WHICH component mounts the hook, the
+ * root mount reproduces the identical recovery the redundant mounts performed.
+ * Do NOT pass `authoritative: true` from any other site.
+ */
+export interface CurrentBrandRecoveryOptions {
+  /**
+   * When true, this mount is the sole authoritative owner of the
+   * `setCurrentBrandId` / default-brand write. Pass ONLY from
+   * `app/_layout.tsx` (RootLayoutInner). Default false = read-only consumer.
+   */
+  authoritative?: boolean;
+}
+
 const DEFAULT_BRAND_SAVE_ERROR =
   "Brand selected for now. Couldn't save it as your default.";
 
 const inFlightDefaultWrites = new Set<string>();
 
-export const useCurrentBrandRecovery = (): CurrentBrandRecoveryState => {
+export interface BrandRecoveryWriteInput {
+  authoritative: boolean;
+  isAuthReady: boolean;
+  userId: string | null;
+  resolution: ResolveCurrentBrandResult | null;
+  appliedKey: string;
+  appliedKeyRef: { current: string | null };
+  currentBrandId: string | null;
+  setCurrentBrandId: (brandId: string | null) => void;
+  setErrorMessage: (message: string | null) => void;
+}
+
+/**
+ * ORCH-1133 — the gated write body of `useCurrentBrandRecovery`'s effect,
+ * extracted as a pure function so the single-writer invariant is directly
+ * testable without a React renderer (none is installed under the default
+ * node/ts-jest config). Behaviorally identical to the inline effect it replaced.
+ *
+ * Returns `true` iff it actually wrote the current-brand store.
+ * The FIRST line is the single-writer gate: a non-authoritative caller does
+ * NOTHING (no setCurrentBrandId, no default-brand write, no appliedKeyRef
+ * mutation).
+ */
+export const runBrandRecoveryWrite = (input: BrandRecoveryWriteInput): boolean => {
+  const {
+    authoritative,
+    isAuthReady,
+    userId,
+    resolution,
+    appliedKey,
+    appliedKeyRef,
+    currentBrandId,
+    setCurrentBrandId,
+    setErrorMessage,
+  } = input;
+
+  // ORCH-1133 — single-writer invariant: only the one authoritative owner
+  // (app/_layout.tsx / RootLayoutInner) may write the global current-brand
+  // store. Read-only mounts return before touching anything.
+  if (!authoritative) return false;
+  if (!isAuthReady || userId === null || resolution === null) return false;
+
+  if (appliedKeyRef.current === appliedKey) return false;
+  appliedKeyRef.current = appliedKey;
+  setErrorMessage(null);
+
+  let wrote = false;
+  if (resolution.brandId !== currentBrandId) {
+    setCurrentBrandId(resolution.brandId);
+    wrote = true;
+  }
+
+  if (resolution.reason !== "newest-brand" || resolution.brandId === null) {
+    return wrote;
+  }
+
+  const writeKey = `${userId}:${resolution.brandId}`;
+  if (inFlightDefaultWrites.has(writeKey)) return wrote;
+  inFlightDefaultWrites.add(writeKey);
+  void setCreatorDefaultBrand(userId, resolution.brandId)
+    .catch(() => {
+      setErrorMessage(DEFAULT_BRAND_SAVE_ERROR);
+    })
+    .finally(() => {
+      inFlightDefaultWrites.delete(writeKey);
+    });
+  return wrote;
+};
+
+export const useCurrentBrandRecovery = (
+  options?: CurrentBrandRecoveryOptions,
+): CurrentBrandRecoveryState => {
+  // ORCH-1133 single-writer gate: default read-only. Only the root mount
+  // (app/_layout.tsx) passes authoritative:true and runs the write effect.
+  const authoritative = options?.authoritative ?? false;
   const { authStatus, isAuthReady, user } = useAuth();
   const userId = user?.id ?? null;
   const brandsQuery = useBrands(userId);
@@ -69,40 +175,28 @@ export const useCurrentBrandRecovery = (): CurrentBrandRecoveryState => {
   );
 
   useEffect(() => {
-    if (!isAuthReady || userId === null || resolution === null) return;
-
     const appliedKey = [
       userId,
       currentBrandId ?? "null",
       defaultBrandId ?? "null",
       brandIdsKey,
-      resolution.brandId ?? "null",
-      resolution.reason,
+      resolution?.brandId ?? "null",
+      resolution?.reason ?? "null",
     ].join("::");
 
-    if (appliedKeyRef.current === appliedKey) return;
-    appliedKeyRef.current = appliedKey;
-    setErrorMessage(null);
-
-    if (resolution.brandId !== currentBrandId) {
-      setCurrentBrandId(resolution.brandId);
-    }
-
-    if (resolution.reason !== "newest-brand" || resolution.brandId === null) {
-      return;
-    }
-
-    const writeKey = `${userId}:${resolution.brandId}`;
-    if (inFlightDefaultWrites.has(writeKey)) return;
-    inFlightDefaultWrites.add(writeKey);
-    void setCreatorDefaultBrand(userId, resolution.brandId)
-      .catch(() => {
-        setErrorMessage(DEFAULT_BRAND_SAVE_ERROR);
-      })
-      .finally(() => {
-        inFlightDefaultWrites.delete(writeKey);
-      });
+    runBrandRecoveryWrite({
+      authoritative,
+      isAuthReady,
+      userId,
+      resolution,
+      appliedKey,
+      appliedKeyRef,
+      currentBrandId,
+      setCurrentBrandId,
+      setErrorMessage,
+    });
   }, [
+    authoritative,
     userId,
     isAuthReady,
     currentBrandId,

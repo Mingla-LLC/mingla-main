@@ -219,7 +219,17 @@ function RootLayoutInner(): React.ReactElement {
   const currentBrandId = useCurrentBrandId();
   const { isFetched: brandFetched, fetchStatus: brandFetchStatus } =
     useBrand(currentBrandId);
-  const { isResolving: brandRecoveryResolving } = useCurrentBrandRecovery();
+  // ORCH-1133 — SOLE authoritative owner of the global current-brand WRITE.
+  // RootLayoutInner is the highest always-mounted node for any authenticated
+  // business session, so this single mount fully covers brand recovery; the 4
+  // other useCurrentBrandRecovery() mounts ((tabs)/_layout, home, event/create,
+  // useBusinessTodos) are read-only consumers (no authoritative flag). This
+  // collapses the prior 5+ concurrent writers to one, killing the
+  // "Maximum update depth exceeded" store-write ping-pong. Do NOT pass
+  // authoritative:true anywhere else.
+  const { isResolving: brandRecoveryResolving } = useCurrentBrandRecovery({
+    authoritative: true,
+  });
   const mountedAt = useRef<number | null>(null);
   const [splashHidden, setSplashHidden] = useState(false);
   const [brandFetchTimedOut, setBrandFetchTimedOut] = useState(false);
