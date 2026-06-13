@@ -49,7 +49,11 @@ export interface NativeCheckoutInput {
     email: string;
     phone: string;
     marketingOptIn?: boolean;
-    address: {
+    // ORCH-1130 Fix #2 — buyer address is OPTIONAL. Tax is venue-sourced
+    // server-side (events.venue_tax_address); the buyer never types an
+    // address (MINGLA-WIDE all-in / WYSIWYP). Retained optional only for
+    // backward compat with older callers; the server ignores it.
+    address?: {
       line1: string;
       line2?: string;
       city: string;
@@ -227,7 +231,10 @@ export const useNativeCheckoutFlow = (): (
             email: input.buyer.email,
             phone: input.buyer.phone,
             marketingOptIn: input.buyer.marketingOptIn === true,
-            address: input.buyer.address,
+            // ORCH-1130 Fix #2 — only forward an address if a (legacy) caller
+            // still supplies one. The server ignores it (tax is venue-sourced);
+            // the no-address create computes the same all-in total.
+            ...(input.buyer.address ? { address: input.buyer.address } : {}),
           },
           lines: input.lines,
           ...(input.taxCalculationId

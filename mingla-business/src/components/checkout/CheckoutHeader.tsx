@@ -23,7 +23,12 @@ import { Pill } from "../ui/Pill";
 export interface CheckoutHeaderProps {
   /** 0-indexed step (0=Tickets, 1=Buyer, 2=Payment). */
   stepIndex: 0 | 1 | 2;
-  totalSteps: 3;
+  /**
+   * Total visible steps. The event-side funnel is 3; the ORCH-1130 trip funnel
+   * collapses single-tier trips to 2 ("Your details" → "Review & pay"). The
+   * multi-tier trip fallback + all event checkouts keep 3.
+   */
+  totalSteps: 2 | 3;
   title: string;
   onBack: () => void;
 }

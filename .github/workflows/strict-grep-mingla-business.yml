@@ -2306,6 +2306,17 @@ jobs:
       - name: Run ORCH-1120 published-refund-via-gated-rpc gate
         run: node .github/scripts/strict-grep/i-proposed-1120-published-refund-via-gated-rpc.mjs
 
+  orch-1130-no-buyer-tax-form:
+    name: "ORCH-1130: no buyer-facing tax/address form on checkout payment (I-PROPOSED-1130-NO-BUYER-TAX-FORM)"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Run ORCH-1130 no-buyer-tax-form gate
+        run: node .github/scripts/strict-grep/orch-1130-no-buyer-tax-form.mjs
+
   # ORCH-0962 brand-field-map-coverage gate RETIRED at META-ORCH-0972 CLOSE
   # (2026-05-26). The gate asserted that `viewRowToBrand` reads `row.brand_kind`
   # from `business_public_events_view`. META-ORCH-0972 Sub-C removed `brand_kind`

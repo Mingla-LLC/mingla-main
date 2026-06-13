@@ -200,6 +200,16 @@ export interface TicketCartSheetProps {
    * modal window and the CTA only needs OS safe-area clearance.
    */
   clearFloatingNav?: boolean;
+  /**
+   * ORCH-1130 ADDENDUM (Seth-BINDING) — the deposit DUE TODAY (in cents) when
+   * the buyer selected "Pay over time" on a plan trip. Provided by the trip
+   * detail screen (read from the same projected schedule the toggle renders,
+   * never recomputed here). When set, the sticky bar leads with the amount due
+   * today ("Due today") instead of the all-in total, mirroring Path A. Omitted
+   * (undefined) for events / no-plan / pay-in-full → the all-in total shows,
+   * byte-identical to today.
+   */
+  dueTodayCents?: number;
   onCancel: () => void;
   onCheckout: (payload: TicketCartCheckoutPayload) => void;
 }
@@ -216,6 +226,7 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
   buyerPhone,
   isSubmitting,
   clearFloatingNav = true,
+  dueTodayCents,
   onCancel,
   onCheckout,
 }) => {
@@ -478,11 +489,25 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
 
   // ORCH-1025 — the sticky bar shows the ALL-IN total (sum of server all_in_cents),
   // not the base subtotal, so the buyer sees the exact amount they'll pay upfront.
+  //
+  // ORCH-1130 ADDENDUM (Seth-BINDING) — when the buyer selected "Pay over time"
+  // on a plan trip, the parent passes `dueTodayCents` (the deposit due today from
+  // the projected schedule). The sticky bar then leads with that amount under a
+  // "Due today" label, mirroring Path A's deposit-led CTA. Falls back to the
+  // all-in total for events / no-plan / pay-in-full (dueTodayCents undefined).
+  const showsDueToday =
+    dueTodayCents !== undefined &&
+    dueTodayCents > 0 &&
+    !totals.isEmpty &&
+    !totals.isFree;
   const subtotalValueText = totals.isEmpty
     ? "—"
     : totals.isFree
     ? "Free"
+    : showsDueToday
+    ? formatCentsCurrency(dueTodayCents as number, totals.currency)
     : formatCentsCurrency(pricing.allInCents, totals.currency);
+  const subtotalLabelText = showsDueToday ? "Due today" : "Subtotal";
 
   // ORCH-1016 REWORK-4 (FIX A) — the CTA bar must clear BOTH the OS home
   // indicator AND Mingla's floating GlassBottomNav. This sheet renders BELOW the
@@ -707,7 +732,7 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
     renderState === "populated" ? (
       <View style={stickyBarStyle}>
         <View style={styles.subtotalRow}>
-          <Text style={styles.subtotalLabel}>Subtotal</Text>
+          <Text style={styles.subtotalLabel}>{subtotalLabelText}</Text>
           <Text style={styles.subtotalValue}>{subtotalValueText}</Text>
         </View>
         <Pressable
