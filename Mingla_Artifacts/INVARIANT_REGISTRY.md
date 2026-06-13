@@ -19,6 +19,31 @@
 
 ---
 
+## ACTIVE (post ORCH-1129 [team-wide iOS build fix] CLOSE 2026-06-12)
+
+### I-PROPOSED-IOS-GOOGLE-PODS-MODULAR-HEADERS
+- **Rule:** The mingla-business iOS build MUST force `:modular_headers => true` for `GoogleUtilities`, `RecaptchaInterop`, and `AppCheckCore` (the Google Sign-In Swift-pod chain) so CocoaPods can integrate `AppCheckCore` as a static library under New Architecture.
+- **Enforcement:** config plugin `mingla-business/plugins/withGooglePodsModularHeaders.js` (injected before `use_expo_modules!` in the CNG Podfile) + registered in `app.config.ts`.
+- **Regression test:** `mingla-business/src/__tests__/iosGooglePodsModularHeaders.gate.test.ts` (strict-grep: registration + the 3 directives present; fails-on-revert) — plus the load-bearing GREEN EAS iOS build (local cannot reproduce; AppCheckCore mirror-capped at 11.2.0). **Parallel app-mobile equivalent tracked as ORCH-1130 (DISC-1129-A).**
+
+## ACTIVE (post ORCH-1119 [trip itinerary day media gallery] CLOSE 2026-06-12)
+
+### I-PROPOSED-TRIP-DAY-MEDIA-OPTIONAL-HIDDEN
+- **Rule:** A trip day with zero media (`trip_days.media = []`) renders NO gallery section on any surface (consumer iOS/Android, anon-web, business preview, editor shows only the "+ Add" tile). Missing is hidden, never faked (Constitution #9).
+- **Enforcement / test:** `app-mobile/.../orch1119_trip_day_media_gallery.test.tsx` asserts zero gallery nodes for `media:[]`; fails-on-revert.
+
+### I-PROPOSED-TRIP-DAY-MEDIA-EXPLICIT-TYPE
+- **Rule:** Every persisted trip-day media item carries an explicit `type:"image"|"video"`; the renderer is never asked to auto-detect (ORCH-1069/0978 rule). `coerceTripDayMedia` drops any item missing a valid type.
+- **Enforcement / test:** `orch1119_coerce_media_boundary.tester_adversarial.test.ts` (hostile inputs dropped); fails-on-revert.
+
+### I-PROPOSED-TRIP-DAY-MEDIA-UPLOAD-RLS-ALLOWED
+- **Rule:** The `event_covers` Storage bucket MUST permit the 3-segment `{brandId}/{eventId}/trip-day-media/{file}` INSERT/UPDATE/DELETE for callers with rank ≥ `event_manager` on the brand, WITHOUT loosening the existing 2-segment cover/experience-stop writes (the two policy sets are disjoint by segment count).
+- **Enforcement / test:** migration `20260930000000_orch_1119b_trip_day_media_storage_rls.sql` (3 additive policies) + `supabase/migrations/__tests__/orch_1119b_trip_day_media_storage_rls.test.ts` (3-seg passes / under-ranked denied / 2-seg cover still passes); fails-on-revert.
+
+### I-PROPOSED-NATIVE-MODAL-SHEET-FAILURE-VISIBLE
+- **Rule:** A native-`Modal` picker sheet (e.g. `TripDayMediaSheet`) MUST close on a 0-success / all-failed batch so the wizard-root error Toast is not occluded — an upload failure is always visible, never a silent haptic (Constitution #3).
+- **Enforcement / test:** `orch1119b_trip_day_media_visible_failure.test.ts` (all-failed batch → `onClose` called); fails-on-revert.
+
 ## ACTIVE (post ORCH-1113 [curated-experience-empty-deck-regression] CLOSE 2026-06-11)
 
 ### I-PROPOSED-CURATED-HONORS-DATE-OPTION
