@@ -52,6 +52,8 @@ import {
 import { usePublicTripBySlug } from "../../../src/hooks/usePublicTripBySlug";
 import { TripPreview } from "../../../src/components/trip/TripPreview";
 import { TripCheckoutFlow } from "../../../src/components/trip/TripCheckoutFlow";
+import type { TripPaymentChoiceValue } from "../../../src/components/trip/TripPaymentChoice";
+import { projectInstallmentSchedule } from "../../../src/utils/installmentScheduleProjection";
 // ORCH-0875 [Tr4 Refund Tiers + Booking Deadline] — public-facing refund
 // policy ladder + countdown/closed-banner per DESIGN_ORCH-0875 §4.4 + §5.2.
 import { RefundPolicyDisplay } from "../../../src/components/trip/RefundPolicyDisplay";
@@ -71,6 +73,12 @@ export default function PublicTripRoute(): React.ReactElement {
     : params.tripSlug;
 
   const [shareModalVisible, setShareModalVisible] = useState<boolean>(false);
+  // ORCH-1130 — the public-page pay-full vs pay-over-time choice. The /t/ route
+  // lives OUTSIDE the checkout CartProvider, so the choice is held here and
+  // threaded into checkout as a route param on Reserve (the checkout index seeds
+  // CartContext.paymentPlanChoice from it). Default "full".
+  const [paymentPlanChoice, setPaymentPlanChoice] =
+    useState<TripPaymentChoiceValue>("full");
 
   const query = usePublicTripBySlug(
     typeof brandSlug === "string" ? brandSlug : null,
@@ -180,6 +188,37 @@ export default function PublicTripRoute(): React.ReactElement {
       : tripTier !== undefined && tripTier.priceCents === 0
         ? "Free"
         : "";
+  // ORCH-1130 — does this trip have an installment plan? The bar's price label
+  // must disambiguate the full-vs-deposit ambiguity. The deposit number is read
+  // from the SAME projected schedule the TripPaymentChoice module renders
+  // (projectInstallmentSchedule), never recomputed.
+  //
+  // ORCH-1130 ADDENDUM (Seth-BINDING): the CTA amount follows the live toggle
+  // selection on this page —
+  //   pay-over-time → the bar LEADS with the deposit due today
+  //                   ("Reserve · {deposit} today"); full price stays
+  //                   discoverable inside the module.
+  //   pay-in-full   → "{full} total" (the whole trip price).
+  // Updates live because `paymentPlanChoice` is this component's state, threaded
+  // into TripCheckoutFlow's toggle. Single-tier (prod-universal) full path uses
+  // the exact price; multi-tier (no prod data) keeps the "From {price}" hint.
+  const barSchedule =
+    tripTier !== undefined
+      ? projectInstallmentSchedule(tripTier, new Date())
+      : null;
+  const tripHasPlan = barSchedule !== null;
+  const multiTier = trip.pricingTiers.length > 1;
+  const depositLabel =
+    barSchedule !== null
+      ? formatTripPrice(barSchedule.depositCents, tripTier?.currency ?? "USD")
+      : "";
+  const barPrice = tripHasPlan
+    ? paymentPlanChoice === "installments"
+      ? `${depositLabel} today`
+      : `${tripPrice} total`
+    : multiTier
+      ? `From ${tripPrice}`
+      : tripPrice;
   const tripCta: CtaState =
     payload.bookable === false
       ? {
@@ -207,11 +246,20 @@ export default function PublicTripRoute(): React.ReactElement {
             : {
                 kind: "buy",
                 label: "Reserve my spot",
-                price: `From ${tripPrice}`,
+                price: barPrice,
                 tappable: true,
               };
   const handleTripReserve = (): void => {
-    router.push(tripCheckoutPath(trip.id) as never);
+    // ORCH-1130 — thread the public-page choice into checkout as a route param
+    // (the /t/ page is outside the CartProvider; the checkout index seeds
+    // CartContext from this param). Only meaningful for plan trips; harmless
+    // otherwise (the funnel ignores it for no-plan trips).
+    router.push(
+      {
+        pathname: tripCheckoutPath(trip.id),
+        params: { plan: paymentPlanChoice },
+      } as never,
+    );
   };
 
   return (
@@ -262,7 +310,12 @@ export default function PublicTripRoute(): React.ReactElement {
           </View>
         )}
 
-        <TripCheckoutFlow trip={payload.trip} brand={payload.brand} />
+        <TripCheckoutFlow
+          trip={payload.trip}
+          brand={payload.brand}
+          paymentPlanChoice={paymentPlanChoice}
+          onPaymentPlanChoiceChange={setPaymentPlanChoice}
+        />
       </ScrollView>
 
       {/* ORCH-0874: X-close + share IconChrome overlays on the cover hero.

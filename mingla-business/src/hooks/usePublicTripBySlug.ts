@@ -115,29 +115,40 @@ export const usePublicTripBySlug = (
       const eventId = event.id as string;
 
       // 3. Sidecar tables — anon-readable via published-only RLS policies
-      const [daysResp, tiersResp, inclusionsResp, ticketsResp] = await Promise.all([
-        supabase
-          .from("trip_days")
-          .select("*")
-          .eq("event_id", eventId)
-          .order("ordinal"),
-        supabase.from("trip_pricing_tiers").select("*").eq("event_id", eventId),
-        supabase
-          .from("trip_inclusions")
-          .select("*")
-          .eq("event_id", eventId)
-          .order("kind")
-          .order("ordinal"),
-        supabase
-          .from("ticket_types")
-          .select("*")
-          .eq("event_id", eventId)
-          .is("deleted_at", null),
-      ]);
+      const [daysResp, tiersResp, inclusionsResp, ticketsResp, masterDateResp] =
+        await Promise.all([
+          supabase
+            .from("trip_days")
+            .select("*")
+            .eq("event_id", eventId)
+            .order("ordinal"),
+          supabase.from("trip_pricing_tiers").select("*").eq("event_id", eventId),
+          supabase
+            .from("trip_inclusions")
+            .select("*")
+            .eq("event_id", eventId)
+            .order("kind")
+            .order("ordinal"),
+          supabase
+            .from("ticket_types")
+            .select("*")
+            .eq("event_id", eventId)
+            .is("deleted_at", null),
+          // ORCH-1130 Fix #1 — canonical trip dates live on the event_dates
+          // master row (ORCH-0950 moved them off theme.business_trip). Mirror
+          // the event public page, which sources dates from event_dates.
+          supabase
+            .from("event_dates")
+            .select("event_id,start_at,end_at,is_master")
+            .eq("event_id", eventId)
+            .eq("is_master", true)
+            .maybeSingle(),
+        ]);
       if (daysResp.error) throw daysResp.error;
       if (tiersResp.error) throw tiersResp.error;
       if (inclusionsResp.error) throw inclusionsResp.error;
       if (ticketsResp.error) throw ticketsResp.error;
+      if (masterDateResp.error) throw masterDateResp.error;
 
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const days = (daysResp.data ?? []) as any[];
@@ -150,6 +161,17 @@ export const usePublicTripBySlug = (
 
       const ticketsById = new Map(tickets.map((tt) => [tt.id, tt]));
       const bt = (event.theme?.business_trip as Record<string, unknown> | undefined) ?? {};
+      // ORCH-1130 Fix #1 — canonical start/end from the event_dates master row;
+      // theme mirror is fallback only (older trips never written canonically).
+      const masterDate =
+        (masterDateResp.data as {
+          start_at: string | null;
+          end_at: string | null;
+        } | null) ?? null;
+      const tripStartAt =
+        masterDate?.start_at ?? (typeof bt.startAt === "string" ? bt.startAt : null);
+      const tripEndAt =
+        masterDate?.end_at ?? (typeof bt.endAt === "string" ? bt.endAt : null);
 
       const trip: Trip = {
         id: event.id,
@@ -165,8 +187,8 @@ export const usePublicTripBySlug = (
         coverMediaUrl: event.cover_media_url,
         coverMediaType: event.cover_media_type,
         businessTrip: {
-          startAt: typeof bt.startAt === "string" ? bt.startAt : null,
-          endAt: typeof bt.endAt === "string" ? bt.endAt : null,
+          startAt: tripStartAt,
+          endAt: tripEndAt,
           destinationPlaceId:
             typeof bt.destinationPlaceId === "string" ? bt.destinationPlaceId : null,
           destinationLocationText:

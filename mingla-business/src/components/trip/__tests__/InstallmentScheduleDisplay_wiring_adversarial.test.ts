@@ -330,15 +330,17 @@ describe("A-06: mapper edge inputs (no crash, no fabrication)", () => {
 // ---------------------------------------------------------------------------
 
 describe("A-07: CI gate inversion contract", () => {
+  // [TEST-MOD-APPROVED ORCH-1130] — the simulation target moved from
+  // TripCheckoutFlow.tsx (which ORCH-1130 rebuilt to render the selector-gated
+  // <TripPaymentChoice/> instead of an inline InstallmentScheduleDisplay) to
+  // `intake.tsx`, a file that REMAINS in the disclosure-wiring scope. The gate
+  // inversion contract is unchanged; only the example file is realigned.
   test("gate's detection rule fails when InstallmentScheduleDisplay import is removed (in-memory simulation)", () => {
-    // Simulate revert by reading TripCheckoutFlow source and stripping
-    // the import — the same files-in-scope + required-markers contract
-    // the gate enforces.
     const REQUIRED_MARKERS = [
       "InstallmentScheduleDisplay",
       "installmentSchedule",
     ];
-    const original = read("src/components/trip/TripCheckoutFlow.tsx");
+    const original = read("app/checkout-trip/[tripEventId]/intake.tsx");
     // Strip every occurrence of the import marker — simulates a future
     // refactor that accidentally drops the disclosure component.
     const reverted = original.replaceAll("InstallmentScheduleDisplay", "");
@@ -499,19 +501,17 @@ describe("A-12 (hotfix-2): ScrollView paddingBottom scales with isPlanActive", (
 // schedule (€125 deposit instead of €250).
 // ---------------------------------------------------------------------------
 
+// [TEST-MOD-APPROVED ORCH-1130] — index.tsx + buyer.tsx no longer CALL
+// projectInstallmentSchedule: ORCH-1130 removed their passive per-tier/aggregate
+// projection cards (single-tier auto-skips index; buyer is pure data entry). The
+// qty-scaling contract still applies to the render sites that DO project: the
+// intake step + the payment Review step (whose projectedSchedule memo passes
+// line.quantity, so a qty=2 plan trip scales deposit + schedule + Pay label).
 describe("A-13 (hotfix-2): buyer render sites pass quantity to mapper", () => {
   const sites = [
     {
-      label: "checkout-trip/index.tsx (per-tier qty picker)",
-      rel: "app/checkout-trip/[tripEventId]/index.tsx",
-    },
-    {
       label: "checkout-trip/intake.tsx (aggregate)",
       rel: "app/checkout-trip/[tripEventId]/intake.tsx",
-    },
-    {
-      label: "checkout-trip/buyer.tsx (aggregate)",
-      rel: "app/checkout-trip/[tripEventId]/buyer.tsx",
     },
     {
       label: "checkout-trip/payment.tsx (aggregate)",

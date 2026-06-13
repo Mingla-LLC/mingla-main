@@ -69,6 +69,22 @@ export interface TripDetailInclusion {
   item: string;
   ordinal: number;
 }
+/**
+ * ORCH-1130 — the installment-plan template stored under
+ * `trip_pricing_tiers.tier_metadata.installments`. Same shape the
+ * mingla-business `TripInstallmentScheduleData` carries; mirrored locally so
+ * app-mobile has no cross-app import. Null when the tier has no plan.
+ */
+export interface TripInstallmentScheduleData {
+  deposit_pct: number;
+  installments: {
+    ordinal: number;
+    pct: number;
+    days_after_booking?: number;
+    fixed_date?: string;
+  }[];
+}
+
 export interface TripDetailTier {
   ticketTypeId: string;
   tierName: string;
@@ -77,6 +93,58 @@ export interface TripDetailTier {
   isFree: boolean;
   isUnlimited: boolean;
   quantityTotal: number | null;
+  /**
+   * ORCH-1130 — extracted from `tier_metadata.installments` (anon-readable).
+   * Null on missing/malformed metadata (same shape-guard the business
+   * `extractInstallmentSchedule` uses). Drives the consumer "HOW YOU PAY"
+   * module + the explicit `payment_plan_choice` consent fix (DISC-1130-A).
+   */
+  installmentSchedule: TripInstallmentScheduleData | null;
+}
+
+/**
+ * ORCH-1130 — defensively extract the installment template from the
+ * anon-readable `trip_pricing_tiers.tier_metadata` jsonb. Mirrors the business
+ * `extractInstallmentSchedule`: returns null on null/missing/malformed input so
+ * a plan never crashes the screen and a no-plan trip stays byte-identical.
+ */
+export function extractTripInstallmentSchedule(
+  metadata: unknown,
+): TripInstallmentScheduleData | null {
+  if (metadata === null || typeof metadata !== "object") return null;
+  const raw = (metadata as { installments?: unknown }).installments;
+  if (raw === null || raw === undefined || typeof raw !== "object") return null;
+  const obj = raw as Record<string, unknown>;
+  const depositPct = obj.deposit_pct;
+  const installments = obj.installments;
+  if (typeof depositPct !== "number" || !Array.isArray(installments)) {
+    return null;
+  }
+  const clean = installments
+    .map((inst, i) => {
+      if (typeof inst !== "object" || inst === null) return null;
+      const r = inst as Record<string, unknown>;
+      const ordinal = typeof r.ordinal === "number" ? r.ordinal : i + 1;
+      const pct = typeof r.pct === "number" ? r.pct : 0;
+      const days =
+        typeof r.days_after_booking === "number"
+          ? r.days_after_booking
+          : undefined;
+      const fixed = typeof r.fixed_date === "string" ? r.fixed_date : undefined;
+      if (days === undefined && fixed === undefined) return null;
+      return {
+        ordinal,
+        pct,
+        ...(days !== undefined ? { days_after_booking: days } : {}),
+        ...(fixed !== undefined ? { fixed_date: fixed } : {}),
+      };
+    })
+    .filter(
+      (x): x is TripInstallmentScheduleData["installments"][number] =>
+        x !== null,
+    );
+  if (clean.length === 0) return null;
+  return { deposit_pct: depositPct, installments: clean };
 }
 export interface RefundPolicyTier {
   days_before_start: number;
@@ -120,6 +188,8 @@ export interface ConsumerTripDetail {
   days: TripDetailDay[];
   inclusions: TripDetailInclusion[];
   tiers: TripDetailTier[];
+  /** ORCH-1130 — true when any tier has a non-null installment schedule. */
+  hasPlan: boolean;
 }
 
 // ORCH-1117 (OQ-C) — the native trip-detail hook gains the SAME pg_brand_can_charge
@@ -233,7 +303,9 @@ async function fetchTripDetail(
       .order("ordinal"),
     supabase
       .from("trip_pricing_tiers")
-      .select("ticket_type_id, ticket_types(id, name, price_cents, currency, is_free, is_unlimited, quantity_total, is_hidden, deleted_at)")
+      // ORCH-1130 — pull tier_metadata so the consumer "HOW YOU PAY" module can
+      // surface the installment template (anon-readable jsonb).
+      .select("ticket_type_id, tier_metadata, ticket_types(id, name, price_cents, currency, is_free, is_unlimited, quantity_total, is_hidden, deleted_at)")
       .eq("event_id", tripId),
   ]);
 
@@ -284,9 +356,16 @@ async function fetchTripDetail(
         isFree: tt.is_free === true,
         isUnlimited: tt.is_unlimited === true,
         quantityTotal: tt.quantity_total,
+        // ORCH-1130 — installment template from tier_metadata (null on no plan).
+        installmentSchedule: extractTripInstallmentSchedule(
+          (row as { tier_metadata?: unknown }).tier_metadata,
+        ),
       };
     })
     .filter((t): t is TripDetailTier => t !== null);
+
+  // ORCH-1130 — derived cheap gating flag for the consumer payment module.
+  const hasPlan = tiers.some((t) => t.installmentSchedule !== null);
 
   // ORCH-1117 — a trip is PAID when its cheapest tier costs > 0. Resolve the
   // brand's charge-readiness for the floating Reserve bar's unavailable state.
@@ -320,6 +399,7 @@ async function fetchTripDetail(
     days,
     inclusions,
     tiers,
+    hasPlan,
   };
 }
 

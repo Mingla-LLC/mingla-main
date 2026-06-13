@@ -64,6 +64,14 @@ export interface NativeCheckoutInput {
     schema_version_id: string;
     answers: Record<string, unknown>;
   }>;
+  // ORCH-1130 [public trip page payment-structure] / DISC-1130-A consent fix —
+  // the buyer's explicit pay-full vs pay-over-time choice for a plan trip.
+  // Forwarded as the `payment_plan_choice` body key (already accepted by
+  // ticket-checkout-create). When the trip has a plan the caller MUST pass an
+  // explicit "full" | "installments" — NEVER omit, or the server defaults to
+  // 'auto' (deposit-only) with no buyer consent. No-plan trips omit the key →
+  // request shape stays byte-identical (the edge-fn default path is untouched).
+  paymentPlanChoice?: "full" | "installments";
 }
 
 export type NativeCheckoutOutcome =
@@ -195,6 +203,13 @@ export const useNativeCheckoutFlow = (): ((
           // edge fn validates it (future + belongs to event + not sold out) and
           // persists it; absent → unchanged single-date path.
           ...(input.eventDateId ? { eventDateId: input.eventDateId } : {}),
+          // ORCH-1130 / DISC-1130-A — forward the explicit pay-full vs
+          // pay-over-time choice for plan trips. Omitted when absent (no-plan
+          // trips) → byte-identical request, edge-fn default 'auto' path
+          // untouched for the 99% non-plan case.
+          ...(input.paymentPlanChoice
+            ? { payment_plan_choice: input.paymentPlanChoice }
+            : {}),
           ...(input.idempotencyKey !== undefined
             ? { idempotencyKey: input.idempotencyKey }
             : {}),

@@ -15,7 +15,11 @@ export interface NativeCheckoutInput {
     email: string;
     phone: string;
     marketingOptIn?: boolean;
-    address: {
+    // ORCH-1130 Fix #2 — buyer address is OPTIONAL. Tax is venue-sourced
+    // server-side (events.venue_tax_address); the buyer never types an
+    // address (MINGLA-WIDE all-in / WYSIWYP). Retained optional only for
+    // backward compat with older callers; the server ignores it.
+    address?: {
       line1: string;
       line2?: string;
       city: string;
