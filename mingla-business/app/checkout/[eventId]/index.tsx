@@ -80,6 +80,13 @@ export default function CheckoutTicketsScreen(): React.ReactElement {
   const totals = useCartTotals();
   const [waitlistTicketId, setWaitlistTicketId] = useState<string | null>(null);
 
+  // ORCH-1132 — full-frame (no-crop) checkout cover. Drive the mini-card box's
+  // aspectRatio to the cover media's real shape via onAspectRatio, paired with
+  // videoContentFit="contain", so the WHOLE frame shows (a portrait subject's
+  // head is never cropped). 0.75 = portrait-ish first paint; clamp 0.6..1.91.
+  const [coverAspect, setCoverAspect] = useState(0.75);
+  const clampedCoverAspect = Math.min(Math.max(coverAspect, 0.6), 1.91);
+
   const handleBack = useCallback((): void => {
     if (router.canGoBack()) {
       router.back();
@@ -244,7 +251,9 @@ export default function CheckoutTicketsScreen(): React.ReactElement {
             mediaType={event.coverMediaType}
             radius={0}
             label=""
-            style={styles.miniCover}
+            onAspectRatio={setCoverAspect}
+            videoContentFit="contain"
+            style={[styles.miniCover, { aspectRatio: clampedCoverAspect }]}
           />
           <Text style={styles.miniTitle} numberOfLines={2}>
             {event.name.trim().length > 0 ? event.name : "Untitled event"}
@@ -342,12 +351,12 @@ const styles = StyleSheet.create({
     marginBottom: spacing.lg,
   },
   miniCover: {
-    // ORCH-1131 — 64 → 120: a 64pt band sliced a PORTRAIT cover video
-    // (EventCoverMedia fills contentFit:"cover") to an unrecognizable
-    // mid-frame strip. 120pt (~2.85:1 at 342pt content width) reveals the
-    // cover while keeping the checkout summary compact. Kept "cover" (no
-    // letterbox bars on the dark card). Do NOT switch to contain.
-    height: 120,
+    // ORCH-1132 — full-frame, no crop. The fixed height:120 band cropped a
+    // 360×640 portrait cover to a mid-frame strip (head cut off). Height now
+    // follows an inline aspectRatio (driven by onAspectRatio, clamped 0.6..1.91)
+    // paired with videoContentFit="contain", so the WHOLE frame shows; thin
+    // letterbox bars at clamp boundaries are near-invisible on the #0c0e12 card.
+    // No fixed height: declared here (load-bearing — see the inline aspectRatio).
     borderRadius: radiusTokens.md,
     marginBottom: spacing.sm,
   },
