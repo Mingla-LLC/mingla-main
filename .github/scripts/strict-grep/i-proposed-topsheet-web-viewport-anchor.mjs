@@ -1,28 +1,33 @@
 #!/usr/bin/env node
 
 /**
- * I-PROPOSED-TOPSHEET-WEB-VIEWPORT-ANCHOR  (ORCH-1136 Batch B / F-3)
+ * I-PROPOSED-TOPSHEET-WEB-OVERLAY-NO-FIXED  (ORCH-1136 R2 / F-2 — INVERTED)
  *
- * THE BUG (forensics-proven, deterministic CSS harness): TopSheet's root overlay
- * was a bare `StyleSheet.absoluteFill` (`position:absolute; top:0`), which on web
- * anchors to the nearest positioned ancestor — the scrollable route host. When the
- * Hub host was document-scrolled, the panel's `top: insets.top + 76` landed ABOVE
- * the browser viewport (panel top measured −524px scrolled-600 vs the correct 76px
- * unscrolled), so only the bottom row peeked. Home's host is viewport-bound, so it
- * was always correct.
+ * Supersedes the round-1 I-PROPOSED-TOPSHEET-WEB-VIEWPORT-ANCHOR gate, which
+ * REQUIRED a web-gated `position:'fixed'` on the overlay root. Round 1 was a
+ * net REGRESSION: the `position:'fixed'` "fix" targeted a problem that is
+ * physically impossible under the expo-router web reset (`body{overflow:hidden}`
+ * ⇒ the document/route host never document-scrolls), and it introduced a
+ * fixed-containing-block trap.
  *
- * THE FIX: on web ONLY, the root overlay gets `position: 'fixed'` so it anchors to
- * the browser VIEWPORT, not the scrollable host — making the anchor scroll-
- * independent at 76px. `position:'fixed'` is a valid react-native-web value but NOT
- * a valid RN native value, hence the Platform gate; native keeps bare
- * `StyleSheet.absoluteFill` UNCHANGED.
+ * THE CORRECT CONTRACT: TopSheet's web overlay MUST be a containing-block-immune
+ * `position:absolute` (`StyleSheet.absoluteFill`). `position:'fixed'` is BANNED
+ * on this overlay because it is captured by ANY ancestor with
+ * transform/filter/backdrop-filter/will-change/contain/perspective in the real
+ * Home/Hub shell — collapsing the scrim (see-through) and short-anchoring the
+ * panel (ORCH-1136 R2 F-2, harness-proven `drive4.mjs`). `position:absolute` is
+ * immune to those ancestors and was harness-proven correct on Home AND Hub
+ * under the real reset (`drive2.mjs`).
  *
- * THE RULE: TopSheet.tsx MUST apply `position: 'fixed'` to the overlay root only
- * behind a `Platform.OS === 'web'` guard, and the native path MUST still use
- * `StyleSheet.absoluteFill`. FAILS on a revert to a bare `absoluteFill` root (the
- * Hub-offset regression) or on a `position:'fixed'` that is NOT web-gated (would
- * crash/no-op on native).
+ * THE RULE (load-bearing fails-on-revert-to-regression):
+ *   1. FAIL if `position:'fixed'` appears anywhere in TopSheet.tsx executable
+ *      code (comments are stripped first so the rationale comment is allowed).
+ *   2. PASS requires `StyleSheet.absoluteFill` present (the overlay root path).
+ *   3. FAIL if a `Platform.OS === 'web'` gate is co-located (~400 chars) with a
+ *      `rootOverlayStyle` definition that yields `position:'fixed'` — i.e. the
+ *      old "web-gated fixed overlay root" construct must not reappear.
  *
+ * Investigation: Mingla_Artifacts/investigations/INVESTIGATE_ORCH-1136_R2_BIZ_WEB_SHELL_BUGS.md
  * Scope: the single shared primitive mingla-business/src/components/ui/TopSheet.tsx.
  */
 
@@ -37,74 +42,70 @@ const repoRoot = path.resolve(__dirname, "../../..");
 const REL = "mingla-business/src/components/ui/TopSheet.tsx";
 const filePath = path.join(repoRoot, REL);
 
-let src;
+let rawSrc;
 try {
-  src = fs.readFileSync(filePath, "utf8");
+  rawSrc = fs.readFileSync(filePath, "utf8");
 } catch {
   console.error(
-    `\nFAIL [I-PROPOSED-TOPSHEET-WEB-VIEWPORT-ANCHOR]: cannot read ${REL}\n`,
+    `\nFAIL [I-PROPOSED-TOPSHEET-WEB-OVERLAY-NO-FIXED]: cannot read ${REL}\n`,
   );
   process.exit(1);
 }
 
+// Strip comments so the rationale comment (which legitimately names the banned
+// `position:'fixed'` to explain WHY it is banned) does not trip the gate. Only
+// executable code is scanned for the regression marker.
+const src = rawSrc
+  // block comments /* ... */
+  .replace(/\/\*[\s\S]*?\*\//g, "")
+  // line comments // ...
+  .replace(/(^|[^:])\/\/[^\n]*/g, "$1");
+
 const violations = [];
 
-// (1) A web-gated position:'fixed' must exist. Match `Platform.OS === "web"`
-// (single or double quotes) on the same construct that yields `position: "fixed"`.
-const hasWebGate = /Platform\.OS\s*===\s*["']web["']/.test(src);
-const hasFixed = /position:\s*["']fixed["']/.test(src);
-if (!hasWebGate) {
+// (1) Load-bearing: position:'fixed' must NOT appear in executable code.
+const FIXED_RE = /position:\s*["']fixed["']/;
+if (FIXED_RE.test(src)) {
   violations.push(
-    "no `Platform.OS === \"web\"` gate found — the viewport anchor must be web-gated.",
-  );
-}
-if (!hasFixed) {
-  violations.push(
-    "no `position: \"fixed\"` found — the web overlay must anchor to the viewport (reverted to bare absoluteFill = the Hub-offset regression).",
+    "`position: \"fixed\"` is present in executable code — BANNED on the TopSheet overlay root (containing-block trap, ORCH-1136 R2 F-2). Revert the overlay to bare StyleSheet.absoluteFill.",
   );
 }
 
-// (2) The position:'fixed' must be co-located with the web gate (same expression),
-// not an un-gated native crash. Isolate the rootOverlayStyle ternary region.
-if (hasFixed && hasWebGate) {
-  const rootIdx = src.indexOf("rootOverlayStyle");
-  if (rootIdx < 0) {
+// (2) The overlay root must use StyleSheet.absoluteFill.
+if (!/StyleSheet\.absoluteFill/.test(src)) {
+  violations.push(
+    "`StyleSheet.absoluteFill` missing — the web overlay root MUST be containing-block-immune position:absolute.",
+  );
+}
+
+// (3) The old web-gated-fixed `rootOverlayStyle` construct must not reappear:
+// FAIL if a Platform.OS === 'web' gate co-locates (~400 chars) with a
+// position:'fixed' near a rootOverlayStyle definition.
+const rootIdx = src.indexOf("rootOverlayStyle");
+if (rootIdx >= 0) {
+  const region = src.slice(rootIdx, rootIdx + 400);
+  const gatedFixed =
+    /Platform\.OS\s*===\s*["']web["']/.test(region) && FIXED_RE.test(region);
+  if (gatedFixed) {
     violations.push(
-      "expected a `rootOverlayStyle` web-gated style variable carrying the position:'fixed' anchor.",
+      "a `rootOverlayStyle` web-gated `position: \"fixed\"` construct reappeared — the round-1 regression. Remove it; the overlay root is bare StyleSheet.absoluteFill on all platforms.",
     );
-  } else {
-    // Take a window around the rootOverlayStyle definition and assert BOTH the
-    // web gate and position:'fixed' co-occur there.
-    const region = src.slice(rootIdx, rootIdx + 400);
-    const gatedFixed =
-      /Platform\.OS\s*===\s*["']web["']/.test(region) &&
-      /position:\s*["']fixed["']/.test(region);
-    if (!gatedFixed) {
-      violations.push(
-        "`rootOverlayStyle` does not co-locate the `Platform.OS === \"web\"` gate with `position: \"fixed\"` — the fixed anchor must be applied ONLY on web.",
-      );
-    }
   }
 }
 
-// (3) Native path must still reference StyleSheet.absoluteFill (unchanged).
-if (!/StyleSheet\.absoluteFill/.test(src)) {
-  violations.push(
-    "`StyleSheet.absoluteFill` missing — the native overlay path must still use absoluteFill (no position:'fixed' on native).",
-  );
-}
-
 if (violations.length > 0) {
-  console.error("\nFAIL [I-PROPOSED-TOPSHEET-WEB-VIEWPORT-ANCHOR]:");
+  console.error("\nFAIL [I-PROPOSED-TOPSHEET-WEB-OVERLAY-NO-FIXED]:");
   console.error(
-    "  TopSheet must anchor its web overlay to the viewport via a web-gated position:'fixed';",
+    "  TopSheet's web overlay root MUST be position:absolute (StyleSheet.absoluteFill);",
   );
-  console.error("  native must keep bare StyleSheet.absoluteFill (ORCH-1136 F-3).");
+  console.error(
+    "  position:'fixed' is BANNED (containing-block trap — ORCH-1136 R2 F-2).",
+  );
   for (const v of violations) console.error(`  ✗ ${v}`);
   console.error("");
   process.exit(1);
 }
 
 console.log(
-  "OK [I-PROPOSED-TOPSHEET-WEB-VIEWPORT-ANCHOR]: TopSheet web overlay is viewport-anchored via web-gated position:'fixed'; native keeps absoluteFill.",
+  "OK [I-PROPOSED-TOPSHEET-WEB-OVERLAY-NO-FIXED]: TopSheet overlay root is bare StyleSheet.absoluteFill (position:absolute); no banned position:'fixed'.",
 );

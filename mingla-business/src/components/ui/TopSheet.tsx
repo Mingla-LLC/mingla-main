@@ -131,17 +131,16 @@ export const TopSheet: React.FC<TopSheetProps> = ({
   style,
 }) => {
   const insets = useSafeAreaInsets();
+  // ORCH-1136 R2: reverted the round-1 F-3 live-window-height web split. The
+  // panel height uses the original `Dimensions.get('window').height` snapshot
+  // on ALL platforms (native byte-identical to pre-round-1; removes the
+  // round-1 mobile-web URL-bar short-panel contributor). `windowWidth` below
+  // is still consumed by `shouldUseRealBlur(windowWidth)` (ORCH-1100).
+  const screenHeight = Dimensions.get("window").height;
   // ORCH-1100: width-aware so the mobile-web (< 768px) blur-kill triggers the
   // opaque fallback (the brand-switcher TopSheet was the worst RC-2 offender —
   // it rendered `background-color: rgba(0,0,0,0)` on phone web).
-  const { width: windowWidth, height: windowHeight } = useWindowDimensions();
-  // ORCH-1136 F-3: on web, drive the panel height from the LIVE viewport
-  // (useWindowDimensions) rather than the Dimensions.get('window') snapshot,
-  // so a stale snapshot can't yield a short/wrong panel. Native keeps the
-  // snapshot semantics UNCHANGED (parity: native height behavior preserved on
-  // rotation).
-  const screenHeight =
-    Platform.OS === "web" ? windowHeight : Dimensions.get("window").height;
+  const { width: windowWidth } = useWindowDimensions();
 
   // ORCH-0826: heightMode="compact" uses content-measured height via
   // onLayout. Before first measurement, panel renders invisibly (opacity 0)
@@ -317,22 +316,21 @@ export const TopSheet: React.FC<TopSheetProps> = ({
   const blurOk = shouldUseRealBlur(windowWidth);
   const blurIntensity = blurIntensityTokens.cardElevated;
 
-  // ORCH-1136 F-3: on web, anchor the overlay to the browser VIEWPORT
-  // (`position: 'fixed'`), not the scrollable page host. With bare
-  // `absoluteFill` the overlay anchors to its nearest positioned ancestor (the
-  // route host), so on a scrolled Hub host the panel's `top: insets.top + 76`
-  // landed above the viewport. `position: 'fixed'` is a valid react-native-web
-  // value but NOT a valid RN native value, hence the gate — native keeps bare
-  // `StyleSheet.absoluteFill` UNCHANGED.
-  const rootOverlayStyle =
-    Platform.OS === "web"
-      ? [StyleSheet.absoluteFill, { position: "fixed" as const }]
-      : StyleSheet.absoluteFill;
-
+  // ORCH-1136 R2: the overlay root is bare `StyleSheet.absoluteFill`
+  // (position:absolute) on ALL platforms. The round-1 web `position:'fixed'`
+  // split was a REGRESSION — `position:'fixed'` is captured by ANY ancestor
+  // with transform/filter/backdrop-filter/will-change/contain/perspective in
+  // the real Home/Hub shell, collapsing the scrim (see-through) and short-
+  // anchoring the panel (harness-proven `drive4.mjs`). `position:absolute` is
+  // immune to those ancestors and is harness-proven correct on Home AND Hub
+  // under the real expo-router `body{overflow:hidden}` reset (the page never
+  // document-scrolls, so the round-1 "scrolled host offset" premise was
+  // physically impossible). `position:'fixed'` is BANNED on this overlay root
+  // (invariant I-PROPOSED-TOPSHEET-WEB-OVERLAY-NO-FIXED).
   return (
     <View
       pointerEvents={visible ? "auto" : "none"}
-      style={rootOverlayStyle}
+      style={StyleSheet.absoluteFill}
       testID={testID}
     >
       <Animated.View
