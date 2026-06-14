@@ -162,6 +162,26 @@ export default function EventDetailScreen(): React.ReactElement {
   }, []);
 
   const handleManageOpen = useCallback((): void => {
+    // [ORCH-1136-DIAG] reap at CLOSE — web-visible discriminator for the F-1
+    // event-⋯ dead-tap (auth-blocked from the pipeline; resolved by Seth's one
+    // authed tap on the deployed build). Surfaces ALL of: (a) the press reached
+    // this handler, (b) whether `brand` is null at tap time, (c) whether the
+    // Toast actually renders on web (it is forced visible unconditionally here,
+    // BEFORE the real `brand === null` branch below — if Seth taps and sees NO
+    // toast, the Toast host itself is the defect; if he sees it, the cause is
+    // upstream-not-reached or downstream menu-mount). Web-only so the native
+    // control flow stays byte-identical. Does NOT replace the real branch below.
+    if (Platform.OS === "web") {
+      const brandState = brand === null ? "NULL" : "present";
+      console.log(
+        `[ORCH-1136-DIAG] handleManageOpen reached; brand=${brandState}`,
+      );
+      setToast({
+        visible: true,
+        message: `[DIAG] ⋯ tapped — brand=${brandState}`,
+      });
+    }
+    // [ORCH-1136-DIAG END]
     // ORCH-1136 F-2: never a silent dead tap (Const #1). EventManageMenu
     // requires a non-null brand and the line-841 mount gates on
     // `brand !== null` (ORCH-0862 unmount-on-close — preserved). When the
