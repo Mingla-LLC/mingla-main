@@ -189,6 +189,14 @@ config.resolver.resolveRequest = (context, moduleName, platform) => {
         type: "sourceFile",
       };
     }
+    // ORCH-1137: on web ONLY, route lucide-react-native -> the web shim. As of
+    // ORCH-1137 that shim renders REAL lucide icons (backed by `lucide-react`,
+    // the pure-DOM SVG sibling) via a total Proxy resolver — it is NO LONGER a
+    // `() => null` null-stub. Do not "restore" the null-stub: it blanked every
+    // web glyph (Ari + chrome) and crashed any web Ari conversation that mounted
+    // an icon outside its 12-entry list. Native (ios/android) is unaffected —
+    // this branch only fires under `platform === "web"`. See SPEC_ORCH-1137 §4.3
+    // + I-PROPOSED-1137-BIZ-WEB-LUCIDE-REAL. (Mapping unchanged; comment-only.)
     if (moduleName === "lucide-react-native") {
       return {
         filePath: LUCIDE_REACT_NATIVE_WEB_STUB,

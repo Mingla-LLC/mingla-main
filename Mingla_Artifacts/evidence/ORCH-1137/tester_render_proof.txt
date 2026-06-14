@@ -1,0 +1,19 @@
+ORCH-1137 TESTER independent render-proof — real expo export -p web (exit 0)
+Date: Sun Jun 14 10:35:36 EDT 2026
+Exported bundle: __common-66fa9b0320b70755b5203cc6674555ce.js
+
+Plus glyph paths (SC-1) — ABSENT under the () => null null-stub:
+  'M5 12h14'  present: YES
+  'M12 5v14'  present: YES
+
+SC-3 conversation-card icons (real glyph data in bundle):
+  AlertTriangle (class 'triangle-alert', path 'm21.73 18'): YES / YES
+  Check (path 'M20 6 9 17'): YES
+
+Resolver bundled:
+  createLucideIcon factory: YES
+  'lucide-react' module string: YES
+
+NOTE: HelpCircle fallback class is built at RUNTIME by lucide-react (lucide-<kebab>),
+so it is not a static literal in the bundle; the fallback is proven by the node runtime
+probe (tester_fallback_probe.txt) — 371-char <svg> output, never undefined.

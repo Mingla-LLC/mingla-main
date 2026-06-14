@@ -18,5 +18,15 @@ module.exports = {
   moduleFileExtensions: ["ts", "tsx", "js", "jsx", "json"],
   transform: {
     "^.+\\.(ts|tsx)$": ["ts-jest", { tsconfig: { jsx: "react-native" } }],
+    // ORCH-1137 (rework) — the biz-web lucide shim deep-requires per-icon ESM
+    // modules from `lucide-react/dist/esm/icons/<kebab>.js` (the tree-shakeable
+    // import form that keeps the eager web `__common` chunk under the ORCH-1083
+    // budget). Those modules use ESM `export` syntax; jest-runtime cannot load
+    // them as bare CJS, so transpile lucide-react's `.js` to CJS via babel-jest
+    // (babel-preset-expo is already a dep). Scope is narrow: only lucide-react.
+    "lucide-react/.+\\.js$": ["babel-jest", { presets: ["babel-preset-expo"] }],
   },
+  // ORCH-1137 (rework) — by default jest ignores ALL of node_modules for
+  // transforms; un-ignore lucide-react so the `.js` transform above runs on it.
+  transformIgnorePatterns: ["/node_modules/(?!lucide-react/)"],
 };

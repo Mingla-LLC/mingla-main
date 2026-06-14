@@ -1,0 +1,19 @@
+ORCH-1137 web-stub runtime probe — 2026-06-14T14:01:00.749Z
+
+metro.config.js resolveRequest: platform===web && moduleName===lucide-react-native => LUCIDE_REACT_NATIVE_WEB_STUB
+stub file: src/shims/lucideReactNativeWebStub.js
+
+IconStub = () => null
+stub.Plus typeof: function
+stub.Plus({size:13}) returns: null
+
+Stub exports (icons that render as NULL on web):
+  ArrowUp, AtSign, Facebook, Globe2, Instagram, Linkedin, Menu, Music2, Plus, Settings, X, Youtube
+
+App-referenced lucide icons MISSING from stub (resolve to undefined on web):
+  AlertTriangle => undefined
+  Check => undefined
+  CheckSquare => undefined
+  Pencil => undefined
+  Play => undefined
+  Square => undefined

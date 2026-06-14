@@ -127,6 +127,7 @@ on:
 #   - I-NO-BIZ-GOOGLE-PLACES-AUTOCOMPLETE (i-no-biz-google-places-autocomplete.mjs) — the 4 dead Google files are gone + no mingla-business/src ref, BUT GOOGLE_MAPS_API_KEY still present in a keep-list edge fn (P0 guard); self-tested (ORCH-1079 INV-2)
 #   - I-MAPBOX-SUGGEST-NO-TYPES-FILTER (i-mapbox-suggest-no-types-filter.mjs) — mapbox-geocode suggest call stays filter-free so POIs/venues resolve by name; self-tested (ORCH-1079 INV-3)
 #   - I-GIPHY-KEY-WIRED (i-giphy-key-wired.mjs) — app.config.ts carries the GIPHY fail-loud config-eval guard + .env.example documents EXPO_PUBLIC_GIPHY_API_KEY; self-tested (ORCH-1116 — DRAFT until CLOSE)
+#   - I-PROPOSED-1137-BIZ-WEB-LUCIDE-REAL (i-proposed-1137-biz-web-lucide-real.mjs) — the biz-WEB lucide shim renders REAL lucide-react icons via a Proxy and NEVER returns undefined for any name (no `() => null` null-stub); metro.config.js still aliases lucide-react-native -> the shim behind `platform === "web"`; self-tested (ORCH-1137 — DRAFT until CLOSE)
 #
 # Future gates to register (proposed but not yet implemented):
 #   - I-32 rank parity (Cycle 13a proposal)
@@ -2329,6 +2330,19 @@ jobs:
         run: node .github/scripts/strict-grep/i-proposed-topsheet-web-viewport-anchor.mjs
       - name: Run ORCH-1136 web top-bar breathing-gap gate
         run: node .github/scripts/strict-grep/i-proposed-web-topbar-breathing-gap.mjs
+
+  i-proposed-1137-biz-web-lucide-real:
+    name: "ORCH-1137: biz-web lucide shim renders real icons, never undefined (I-PROPOSED-1137-BIZ-WEB-LUCIDE-REAL)"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Self-test the gate (real-shim vs null-stub fixtures)
+        run: node .github/scripts/strict-grep/i-proposed-1137-biz-web-lucide-real.mjs --self-test
+      - name: Run ORCH-1137 biz-web lucide real-icon gate
+        run: node .github/scripts/strict-grep/i-proposed-1137-biz-web-lucide-real.mjs
 
   # ORCH-0962 brand-field-map-coverage gate RETIRED at META-ORCH-0972 CLOSE
   # (2026-05-26). The gate asserted that `viewRowToBrand` reads `row.brand_kind`
