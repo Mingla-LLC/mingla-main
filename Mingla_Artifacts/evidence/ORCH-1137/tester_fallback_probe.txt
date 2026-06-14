@@ -1,0 +1,9 @@
+F-3 crash-kill — 6 formerly-missing icons + arbitrary unknown name:
+  AlertTriangle: undefined=false renderable=true svg=true
+  Check: undefined=false renderable=true svg=true
+  CheckSquare: undefined=false renderable=true svg=true
+  Pencil: undefined=false renderable=true svg=true
+  Play: undefined=false renderable=true svg=true
+  Square: undefined=false renderable=true svg=true
+  UNKNOWN TotallyMadeUpIcon99999: undefined=false renderable=true renderLen=371 (HelpCircle fallback)
+  then guard undefined: true
