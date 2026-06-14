@@ -260,7 +260,14 @@ export default function ExperienceDashboardRoute(): React.ReactElement {
 
   return (
     <SafeScreen style={styles.host}>
-      <View style={styles.headerWrap}>
+      {/* ORCH-1136 F-1: web-only additive breathing gap (insets.top === 0 on
+          web); native uses the SafeScreen inset only (+0 here). */}
+      <View
+        style={[
+          styles.headerWrap,
+          Platform.OS === "web" ? { paddingTop: spacing.sm } : null,
+        ]}
+      >
         <TopBar
           leftKind="back"
           onBack={() => router.back()}

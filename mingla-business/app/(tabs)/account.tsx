@@ -258,7 +258,10 @@ export default function AccountTab(): React.ReactElement {
         />
       </View>
       <ScrollView contentContainerStyle={styles.scroll}>
-        {brandList.status === "ready" ? (
+        {/* ORCH-1136 F-4 defense-in-depth: render the brands list whenever it
+           is populated, even if the status machine is transiently in a loading
+           state during a background refetch. */}
+        {brandList.status === "ready" || brands.length > 0 ? (
           <GlassCard variant="elevated" padding={spacing.lg}>
             <Text style={styles.title}>Your brands</Text>
             <Text style={styles.body}>Tap a brand to open its profile.</Text>
