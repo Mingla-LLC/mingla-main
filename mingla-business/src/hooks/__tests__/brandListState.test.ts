@@ -48,6 +48,39 @@ describe("brand list state honesty", () => {
     expect(resolveBrandListStatus({ ...base, itemCount: 0 })).toBe("empty");
   });
 
+  // ORCH-1136 F-4 fails-on-revert gate: a populated, already-fetched list that
+  // is merely background-refetching must resolve to "ready"/"empty" — NOT
+  // "query_loading". This FAILS if line 34's predicate is reverted to
+  // `if (isLoading || isFetching || !isFetched) return "query_loading"`.
+  test("does not downgrade a fetched non-empty list during a background refetch", () => {
+    expect(
+      resolveBrandListStatus({
+        ...base,
+        isFetching: true,
+        isFetched: true,
+        itemCount: 3,
+      }),
+    ).toBe("ready");
+    expect(
+      resolveBrandListStatus({
+        ...base,
+        isFetching: true,
+        isFetched: true,
+        itemCount: 0,
+      }),
+    ).toBe("empty");
+    // First-load (`!isFetched`) STILL loads even while fetching (cold-boot
+    // must never flash an empty "no brands" state).
+    expect(
+      resolveBrandListStatus({
+        ...base,
+        isFetching: true,
+        isFetched: false,
+        itemCount: 0,
+      }),
+    ).toBe("query_loading");
+  });
+
   test("account and current-brand surfaces use stateful brand/auth guards", () => {
     const accountSource = repoFile("app/(tabs)/account.tsx");
     const currentBrandSource = repoFile("src/hooks/useCurrentBrand.ts");

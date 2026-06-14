@@ -90,13 +90,17 @@ export const BrandSwitcherSheet: React.FC<BrandSwitcherSheetProps> = ({
             <View style={styles.header}>
               <Text style={styles.headerTitle}>Switch brand</Text>
             </View>
-            {brandList.isLoading ? (
-              <View style={styles.loadingState}>
-                <Text style={styles.emptyText}>Loading your brands…</Text>
-              </View>
-            ) : brandList.status === "error" ? (
+            {/* ORCH-1136 F-4 defense-in-depth: render the cached brand list
+               whenever brands exist, BEFORE the loading branch — a populated
+               cache must never be hidden behind a transient/background-refetch
+               loading flag even if the status machine regresses again. */}
+            {brandList.status === "error" && brands.length === 0 ? (
               <View style={styles.loadingState}>
                 <Text style={styles.emptyText}>Couldn't load your brands.</Text>
+              </View>
+            ) : brands.length === 0 && brandList.isLoading ? (
+              <View style={styles.loadingState}>
+                <Text style={styles.emptyText}>Loading your brands…</Text>
               </View>
             ) : (
               <ScrollView

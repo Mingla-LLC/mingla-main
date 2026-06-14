@@ -162,8 +162,17 @@ export default function EventDetailScreen(): React.ReactElement {
   }, []);
 
   const handleManageOpen = useCallback((): void => {
+    // ORCH-1136 F-2: never a silent dead tap (Const #1). EventManageMenu
+    // requires a non-null brand and the line-841 mount gates on
+    // `brand !== null` (ORCH-0862 unmount-on-close — preserved). When the
+    // brand hasn't resolved yet, give explicit feedback instead of entering a
+    // no-op state that mounts nothing.
+    if (brand === null) {
+      setToast({ visible: true, message: "Loading brand… tap again in a moment." });
+      return;
+    }
     setManageMenuVisible(true);
-  }, []);
+  }, [brand]);
 
   const handleManageClose = useCallback((): void => {
     setManageMenuVisible(false);
