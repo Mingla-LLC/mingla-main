@@ -39,3 +39,18 @@ jobs:
       - name: ORCH-1083 initial-bundle budget guard
         working-directory: mingla-business
         run: ORCH_1083_WEB_BUILD=/tmp/web-build-check node scripts/ci/orch-1083-initial-bundle-budget.mjs
+      # ORCH-1137: render-proof (T-7 / I-PROPOSED-1137-BIZ-WEB-LUCIDE-REAL).
+      # The biz-web lucide shim renders REAL lucide-react icons. Assert the lucide
+      # Plus glyph path signature ("M5 12h14" + "M12 5v14") is present in the
+      # exported web JS — it ships only when the real-icon shim is used and
+      # VANISHES if the shim is reverted to the () => null null-stub (which blanked
+      # every web glyph). This is the build-side fails-on-revert catcher. See
+      # SPEC_ORCH-1137 §9.
+      - name: ORCH-1137 lucide real-glyph render-proof
+        run: |
+          if grep -rqF "M5 12h14" /tmp/web-build-check && grep -rqF "M12 5v14" /tmp/web-build-check; then
+            echo "ORCH-1137 render-proof PASS: lucide Plus glyph path signature present in the exported web bundle."
+          else
+            echo "ORCH-1137 render-proof FAIL: lucide Plus glyph path signature (M5 12h14 / M12 5v14) NOT found in the exported web bundle. The biz-web lucide shim must render REAL lucide-react icons (no null-stub)." >&2
+            exit 1
+          fi
