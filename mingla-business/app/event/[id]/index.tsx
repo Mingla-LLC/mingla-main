@@ -593,7 +593,15 @@ export default function EventDetailScreen(): React.ReactElement {
   ) {
     return (
       <View style={styles.host}>
-        <View style={[styles.headerWrap, { paddingTop: insets.top }]}>
+        <View
+          style={[
+            styles.headerWrap,
+            {
+              paddingTop:
+                insets.top + (Platform.OS === "web" ? spacing.sm : 0),
+            },
+          ]}
+        >
           <TopBar leftKind="back" onBack={handleBack} title="Event" />
         </View>
         <View style={styles.emptyWrap}>
@@ -619,7 +627,15 @@ export default function EventDetailScreen(): React.ReactElement {
   return (
     <View style={styles.host}>
       {/* Header */}
-      <View style={[styles.headerWrap, { paddingTop: insets.top }]}>
+      <View
+        style={[
+          styles.headerWrap,
+          {
+            paddingTop:
+              insets.top + (Platform.OS === "web" ? spacing.sm : 0),
+          },
+        ]}
+      >
         <TopBar
           leftKind="back"
           onBack={handleBack}

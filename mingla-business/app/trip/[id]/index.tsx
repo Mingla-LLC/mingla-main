@@ -361,7 +361,15 @@ export default function TripDashboardRoute(): React.ReactElement {
     >
       {/* ORCH-0913-B: share the event dashboard TopBar shell so trip detail
           width/chrome tracks event/[id] instead of carrying a bespoke header. */}
-      <View style={styles.headerWrap}>
+      {/* ORCH-1136 F-1: web-only additive breathing gap so the bar isn't glued
+          to the browser viewport top (insets.top === 0 on web). Native uses the
+          SafeScreen inset only (+0 here). */}
+      <View
+        style={[
+          styles.headerWrap,
+          Platform.OS === "web" ? { paddingTop: spacing.sm } : null,
+        ]}
+      >
         <TopBar
           leftKind="back"
           onBack={() => router.back()}

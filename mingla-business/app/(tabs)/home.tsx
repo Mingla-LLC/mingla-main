@@ -22,6 +22,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   FlatList,
+  Platform,
   Pressable,
   RefreshControl,
   ScrollView,
@@ -413,7 +414,14 @@ export default function HomeTab(): React.ReactElement {
   }
 
   return (
-    <View style={[styles.host, { paddingTop: insets.top }]}>
+    <View
+      style={[
+        styles.host,
+        {
+          paddingTop: insets.top + (Platform.OS === "web" ? spacing.sm : 0),
+        },
+      ]}
+    >
       <View style={styles.barWrap}>
         <TopBar
           leftKind="brand"

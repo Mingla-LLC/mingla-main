@@ -18,7 +18,7 @@
  */
 
 import React, { Suspense, useCallback, useEffect, useState } from "react";
-import { StyleSheet, View } from "react-native";
+import { Platform, StyleSheet, View } from "react-native";
 import { Slot, usePathname, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -191,7 +191,14 @@ export default function HubTabLayout(): React.ReactElement {
   );
 
   return (
-    <View style={[styles.host, { paddingTop: insets.top }]}>
+    <View
+      style={[
+        styles.host,
+        {
+          paddingTop: insets.top + (Platform.OS === "web" ? spacing.sm : 0),
+        },
+      ]}
+    >
       <View style={styles.barWrap}>
         <TopBar
           leftKind="brand"
