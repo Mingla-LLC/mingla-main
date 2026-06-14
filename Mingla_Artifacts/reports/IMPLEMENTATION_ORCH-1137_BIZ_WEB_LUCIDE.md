@@ -172,3 +172,137 @@ Parity is **automatic** (single shared web alias) — no manual per-surface dupl
 247517c33  ORCH-1137: register the biz-web lucide gate job + registry comment line
 7aabb873e  ORCH-1137: web-build render-proof — assert lucide Plus path signature in export (T-7)
 ```
+
+---
+
+## REWORK — 2026-06-14 (CI RED on the ORCH-1083 bundle-budget gate)
+
+### What was RED and why
+
+The required check `mingla-business: web build (expo export)` (run 27502138093) succeeded
+at the `expo export` step but FAILED at the downstream ORCH-1083 initial-bundle-budget gate:
+
+```
+ORCH-1083 bundle-budget FAIL: eager __common chunk is 4030203 bytes, over the 2250000-byte cap
+```
+
+**Root cause of the regression:** the first-pass shim backed its total Proxy with a FULL
+`lucide-react` barrel import (`const Lucide = require("lucide-react")`). The `"lucide-react"`
+package ENTRY is a barrel that statically references every one of the ~1700 icons; Metro's
+production minifier cannot tree-shake the unreferenced ones out of a barrel (even with the
+package's `sideEffects:false`), so the entire icon library (~1.8MB) landed in the eager web
+boot `__common` chunk → 4.03MB total, ~1.78MB over the 2.25MB cap. The local `expo export`
+the first pass ran only checked exit-0, NOT the budget gate — that was the gap.
+
+### The fix — tree-shakeable DEEP per-icon imports
+
+`mingla-business/src/shims/lucideReactNativeWebStub.js` now requires EACH used icon from its
+OWN deep module path — `lucide-react/dist/esm/icons/<kebab>.js` — instead of destructuring
+off the barrel. Each deep require pulls ONLY that one icon module, so the bundler ships ~12
+tiny icon modules instead of the whole roster. The total Proxy + `HelpCircle` fallback +
+`has`-returns-true contract is UNCHANGED — no icon name ever resolves to `undefined`, nothing
+crashes — only the import FORM changed.
+
+### Authoritative used-set (size = 11; +1 fallback = 12 deep requires)
+
+Enumerated from EVERY `lucide-react-native` import across `mingla-business/{src,app}` (no
+aliases, no namespace/default imports):
+
+```
+AlertTriangle  ArrowUp  Check  CheckSquare  Menu  Pencil  Play  Plus  Settings  Square  X
++ HelpCircle (fallback only)
+```
+
+| icon | imported by |
+|------|-------------|
+| Menu, Settings | `src/screens/ari/AriChatScreen.tsx` |
+| Check | `src/components/ari/{QuickReplyChips,MessageList,ClarifyingCard}.tsx` |
+| AlertTriangle, Pencil, Play, Plus, X | `src/components/ari/ToolProposalCard.tsx` |
+| ArrowUp | `src/components/ari/InputBar.tsx` |
+| Check, CheckSquare, Square | `src/components/ari/MultiSelectPrompt.tsx` |
+| Plus | `src/components/ari/EmptyState.tsx` |
+
+### PROOF BAR — budget gate run LOCALLY (the gap the first pass missed)
+
+```
+$ npx expo export -p web --output-dir /tmp/web-build-check        # exit 0
+$ ORCH_1083_WEB_BUILD=/tmp/web-build-check node scripts/ci/orch-1083-initial-bundle-budget.mjs
+ORCH-1083 bundle-budget PASS — initial payload 2923294 bytes (ceiling 9405478),
+134 chunk files, 0 deferred specifiers in the main entry chunk, __common within cap.
+EXIT=0
+```
+
+**Eager `__common` chunk: 4,030,203 bytes (BEFORE, RED) → 1,919,903 bytes (AFTER, GREEN).**
+Under the 2,250,000-byte cap with ~330KB headroom. `lucide` substring refs in `__common`:
+1714 (whole roster) → 23 (the 12 used icons + factory). Initial JS payload 2,923,294 bytes,
+well under the 9,405,478 ceiling.
+
+**Render-proof still holds** — the real lucide Plus SVG path signature ships in the export:
+
+```
+$ grep -rqF "M5 12h14" /tmp/web-build-check && grep -rqF "M12 5v14" /tmp/web-build-check
+PASS: M5 12h14 + M12 5v14 present
+```
+
+### Drift guard (extended the existing gate, no parallel gate)
+
+`.github/scripts/strict-grep/i-proposed-1137-biz-web-lucide-real.mjs` gained two invariants
+(plus self-test fixtures, all passing):
+
+- **INV-3 (tree-shakeable):** FORBIDS the `"lucide-react"` barrel entry in ANY form
+  (`import * as`, `import {…} from "lucide-react"`, `require("lucide-react")`). The deep
+  per-icon paths do NOT trip it. This structurally blocks the bloat regression from
+  returning.
+- **INV-4 (used-set drift):** scans every `lucide-react-native` import across
+  `mingla-business/{src,app}` and asserts each name is present in the shim's `USED_ICONS`
+  map; FAILS CI with the exact missing name(s) and how to add them if a component imports a
+  new icon (otherwise that icon would silently fall back to the HelpCircle placeholder on
+  web). Current run: `all 11 lucide-react-native icon name(s) ... present in the shim
+  used-set (12 names)`.
+
+### Tests + fails-on-revert
+
+- Happy-path `orch_1137_lucide_web_shim.test.ts` (T-1..T-5) + tester adversarial
+  `orch_1137_lucide_web_shim_adversarial.test.ts` (A-1..A-5): **43 passed** with the
+  deep-import shim. The never-undefined assertions (T-3, A-1/A-2/A-4/A-5, the `has`-trap
+  A-3) are UNCHANGED and still pass — the `HelpCircle` fallback renders a real `<svg>`, so
+  the adversarial "renders real `<svg>`" checks for non-used names are satisfied.
+- `orch_1057_*` / `orch_1101_*` (7 suites, 85 tests): pass UNMODIFIED.
+- **fails-on-revert verified at `e4d8132cf`** (post-rebase hash of the lucide-react add; the
+  rework commits sit on top): restoring the `const IconStub = () => null`
+  null-stub flips 34 of the 43 shim tests RED **and** flips the strict-grep gate RED (INV-1
+  null-stub + INV-4 unparseable map, 2 violations). Restoring the deep-import fix flips both
+  GREEN again.
+
+### jest.config.cjs (SPEC amendment — see SPEC §11 append)
+
+The deep ESM icon modules use `export` syntax jest-runtime can't load as bare CJS. A
+narrowly-scoped transform of ONLY `lucide-react` was added to `mingla-business/jest.config.cjs`
+(`lucide-react/.+\.js$` → babel-jest with babel-preset-expo, already a dep; plus
+`transformIgnorePatterns: ["/node_modules/(?!lucide-react/)"]`). Verified beneficial-only:
+full business jest suite 82→80 failing suites (the two ORCH-1137 shim suites flip GREEN),
+**ZERO newly-failing suites** (the 153 pre-existing unrelated failures — PublicBrandPage /
+brandsService / eventCoverMedia source-string drift — are unchanged and out of scope).
+
+### Rebase note
+
+The branch was rebased onto origin/main; a conflict in
+`.github/workflows/strict-grep-mingla-business.yml` (ORCH-1136 merged its own job at the same
+file tail) was resolved by keeping BOTH the ORCH-1136 and ORCH-1137 jobs.
+
+### Files changed in the rework
+
+| file | change |
+|------|--------|
+| `mingla-business/src/shims/lucideReactNativeWebStub.js` | barrel require → 12 deep per-icon `require("lucide-react/dist/esm/icons/<kebab>.js")` + `iconOf` interop helper |
+| `.github/scripts/strict-grep/i-proposed-1137-biz-web-lucide-real.mjs` | + INV-3 (no-barrel) + INV-4 (used-set drift) + self-test fixtures; INV-1 detector widened to accept deep paths |
+| `mingla-business/jest.config.cjs` | narrow lucide-react `.js` babel-jest transform + transformIgnorePatterns un-ignore (SPEC amendment) |
+| `Mingla_Artifacts/specs/SPEC_ORCH-1137_BIZ_WEB_LUCIDE_ICON_SYSTEMIC.md` | in-file SPEC amendment for jest.config.cjs |
+
+### Discoveries for Orchestrator
+
+- The `mingla-business` jest suite has **153 pre-existing failing tests across ~80 suites**
+  in this worktree, entirely unrelated to ORCH-1137 (PublicBrandPage VE4/ORCH-0962/dataDriven
+  source-string assertions, brandsService, eventCoverMedia, trip dashboard parity, etc.).
+  They fail identically with the ORIGINAL jest config (verified by stash). Not in ORCH-1137
+  scope — flagging for triage.

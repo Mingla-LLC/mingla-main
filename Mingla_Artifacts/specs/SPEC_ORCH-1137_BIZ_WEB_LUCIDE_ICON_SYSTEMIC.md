@@ -218,6 +218,28 @@ None blocking. Two notes for the implementor (not decisions to make blindly):
 
 If the implementor finds the fix needs anything outside this allowlist, STOP and request a SPEC amendment (`SPEC_AMENDMENT_ORCH-1137_*.md` or in-file append). Do not silently widen.
 
+#### SPEC AMENDMENT — 2026-06-14 (implementor, REWORK)
+
+**+ `mingla-business/jest.config.cjs` (transform + transformIgnorePatterns ONLY).**
+
+The original SPEC assumed the shim could back its Proxy with a `require("lucide-react")`
+barrel import (the form the first IMPLEMENT shipped). The REWORK proved that import
+DEFEATS Metro tree-shaking — the `"lucide-react"` barrel entry statically references all
+~1700 icons (`sideEffects:false` notwithstanding), so the whole roster lands in the eager
+web `__common` boot chunk (4,030,203 bytes, ~1.78MB over the ORCH-1083 2.25MB cap → the
+RED CI check this rework fixes). The only import form Metro CAN tree-shake is the DEEP
+per-icon module path `lucide-react/dist/esm/icons/<kebab>.js`. Those deep modules use ESM
+`export` syntax, which jest-runtime cannot load as bare CJS (the default jest config
+ignores all of `node_modules` for transforms). Making the shim testable under jest
+therefore requires a NARROWLY-SCOPED transform of ONLY `lucide-react` in
+`jest.config.cjs` (a `lucide-react/.+\.js$` → babel-jest entry + a
+`transformIgnorePatterns: ["/node_modules/(?!lucide-react/)"]`). babel-preset-expo is
+already a dependency; no new dep is added. Verified beneficial-only: the full business
+jest suite goes from 82 failing suites to 80 (the two ORCH-1137 shim suites flip GREEN),
+with ZERO newly-failing suites — the 153 pre-existing unrelated failures are unchanged.
+This is a test-infra adjustment strictly required by the budget-driven import-form change,
+not a product-scope widening.
+
 ---
 
 ## Downstream routing
