@@ -171,19 +171,21 @@ export const ConsumerTripReserveBar: React.FC<ConsumerTripReserveBarProps> = ({
   // ── ORCH-1138 [trip-page-redesign] (Seth, 2026-06-15) UNIFIED SEAM-SPLIT CTA ──
   // "Treatment B" (design/ORCH-1138/SPLIT_CTA_OPTIONS.html, recommended): ONE
   // continuous rounded control — NOT two detached buttons — folded by a crisp
-  // hairline SEAM. The LEFT segment ("Pay in full") is the accent-FILLED primary
-  // (flex 1.15, leads the eye, takes a touch more room); the RIGHT segment ("Pay
-  // over time") is a GHOST on the SAME shell (panelStrong fill). The shell owns
-  // the rounded corners + border + overflow:hidden so the two fills meet at the
-  // seam like a fold. Both segments are INDEPENDENT, real CTAs — each onPress
+  // hairline SEAM. A TWO-TONE control: the LEFT segment ("Pay in full") is the
+  // accent-FILLED primary (white/accentText text, flex 1.15, leads the eye, takes a
+  // touch more room); the RIGHT segment ("Pay over time", Seth 2026-06-15) is a
+  // SOLID WHITE half with ACCENT-COLORED text — NOT a transparent ghost — with an
+  // accent-tinted hairline so the white half still reads on a LIGHT brand page. The
+  // shell owns the rounded corners + border + overflow:hidden so the two fills meet
+  // at the seam like a fold. Both segments are INDEPENDENT, real CTAs — each onPress
   // seeds the cart with that payment choice (straight-to-cart). Each segment's
   // kicker + amount are one line + ellipsize + shrink-to-fit (no wrap, no bleed)
   // so the row never stacks at 360–390px. Disabled states never reach here (the
   // screen passes splitCtas ONLY for tappable plan trips) — the single disabled
-  // strip/pill still renders. Theme-aware: accent / accentText / panelStrong /
-  // panelBorder / primaryText / tertiaryText / secondaryText all come from the
-  // resolved palette (light + dark brand themes); the seam fold colors are the
-  // design's fixed fold tints (theme-independent, as in the mockup).
+  // strip/pill still renders. Theme-aware: the accent / accentText come from the
+  // resolved palette (light + dark brand themes); the white half's fill is a fixed
+  // literal by design (theme-independent, like the seam fold tints) and its text +
+  // hairline are the resolved `palette.accent`.
   const renderSplitSegment = (
     btn: ReserveSplitButton,
     label: string,
@@ -202,8 +204,21 @@ export const ConsumerTripReserveBar: React.FC<ConsumerTripReserveBarProps> = ({
       }
       btn.onPress();
     };
-    const textColor = isPrimary ? palette.accentText : palette.primaryText;
-    const kickerColor = isPrimary ? palette.accentText : palette.tertiaryText;
+    // ── ORCH-1138 [trip-page-redesign] (Seth, 2026-06-15) TWO-TONE SPLIT ──
+    // The "Pay over time" (secondary) segment is now a SOLID WHITE half with
+    // ACCENT-COLORED text — NOT the old too-transparent panelStrong ghost. Net: a
+    // two-tone unified control — accent half (white text) + seam + solid-white half
+    // (accent text). The accent is THEME-AWARE (`palette.accent` — orange for the
+    // default Mingla brand, but whatever each brand resolves), never a hardcoded
+    // literal. The white fill IS a fixed literal by design (theme-independent, like
+    // the seam fold tints) so the half always reads as "white". On a LIGHT brand
+    // page white-on-near-white would vanish, so the secondary segment also draws an
+    // accent-tinted hairline inset (segmentSecondaryBorder) — the white half stays
+    // defined on both dark + light brand themes. The "Pay in full" (primary) half is
+    // UNCHANGED: accent fill, white (accentText) text.
+    const SECONDARY_FILL = "#FFFFFF";
+    const textColor = isPrimary ? palette.accentText : palette.accent;
+    const kickerColor = isPrimary ? palette.accentText : palette.accent;
     return (
       <Pressable
         key={keyName}
@@ -215,8 +230,10 @@ export const ConsumerTripReserveBar: React.FC<ConsumerTripReserveBarProps> = ({
         style={({ pressed }) => [
           compact ? styles.segmentCompact : styles.segment,
           isPrimary ? styles.segmentPrimary : styles.segmentSecondary,
+          isPrimary ? null : styles.segmentSecondaryBorder,
           {
-            backgroundColor: isPrimary ? palette.accent : palette.panelStrong,
+            backgroundColor: isPrimary ? palette.accent : SECONDARY_FILL,
+            borderColor: isPrimary ? undefined : palette.accent,
           },
           pressed ? styles.segmentPressed : null,
         ]}
@@ -652,9 +669,20 @@ const styles = StyleSheet.create({
   segmentPrimary: {
     flex: 1.15,
   },
-  // The secondary segment — ghost fill (panelStrong), equal weight (flex 1).
+  // The secondary segment — SOLID WHITE fill + ACCENT text, equal weight (flex 1).
   segmentSecondary: {
     flex: 1,
+  },
+  // ORCH-1138 [trip-page-redesign] (Seth, 2026-06-15) — the white half's legibility
+  // guard. A 1px accent-tinted hairline on the OUTER edges (top/right/bottom) only —
+  // the LEFT edge is the fold-seam, left clean — so a solid-WHITE "Pay over time"
+  // half still reads against a LIGHT brand page (white-on-near-white). `borderColor`
+  // is set inline to the resolved `palette.accent` (theme-aware). The shell clips to
+  // its radius (overflow:"hidden") so this inset hairline never escapes the corners.
+  segmentSecondaryBorder: {
+    borderTopWidth: 1,
+    borderRightWidth: 1,
+    borderBottomWidth: 1,
   },
   segmentPressed: {
     opacity: 0.92,

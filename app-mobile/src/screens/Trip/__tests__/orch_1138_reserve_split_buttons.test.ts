@@ -91,13 +91,22 @@ ok(
   "the shell must be a no-wrap clipped row so the two segments can never stack",
 );
 ok(
-  "SU3 the primary segment is ACCENT-FILLED + leads (flex 1.15); secondary is a GHOST (panelStrong, flex 1)",
-  /backgroundColor:\s*isPrimary\s*\?\s*palette\.accent\s*:\s*palette\.panelStrong/.test(
-    bar,
-  ) &&
+  "SU3 the primary segment is ACCENT-FILLED + leads (flex 1.15); secondary is SOLID WHITE w/ accent hairline (flex 1)",
+  // ORCH-1138 (Seth, 2026-06-15) two-tone: primary = accent fill; secondary = solid
+  // white (#FFFFFF) with an accent-tinted hairline (borderColor: palette.accent) so
+  // it reads on a LIGHT brand page. fails-on-revert: deleting the SECONDARY_FILL /
+  // borderColor wiring flips this case red.
+  /const SECONDARY_FILL = "#FFFFFF"/.test(bar) &&
+    /backgroundColor:\s*isPrimary\s*\?\s*palette\.accent\s*:\s*SECONDARY_FILL/.test(
+      bar,
+    ) &&
+    /borderColor:\s*isPrimary\s*\?\s*undefined\s*:\s*palette\.accent/.test(bar) &&
+    /segmentSecondaryBorder:\s*\{[^}]*borderTopWidth:\s*1[^}]*borderRightWidth:\s*1[^}]*borderBottomWidth:\s*1/.test(
+      bar,
+    ) &&
     /segmentPrimary:\s*\{[^}]*flex:\s*1\.15/.test(bar) &&
     /segmentSecondary:\s*\{[^}]*flex:\s*1\b/.test(bar),
-  "primary = accent fill (lead, flex 1.15); secondary = ghost panelStrong (flex 1)",
+  "primary = accent fill (lead, flex 1.15); secondary = solid white #FFFFFF + accent hairline (flex 1)",
 );
 ok(
   "SU4 a crisp fold-SEAM (dark crease + light highlight) divides the segments",
@@ -107,10 +116,17 @@ ok(
   "the seam is the visual proof the two segments are one control",
 );
 ok(
-  "SU5 theme-aware text (primary on accentText; secondary on primaryText/tertiaryText)",
-  /isPrimary\s*\?\s*palette\.accentText\s*:\s*palette\.primaryText/.test(bar) &&
-    /isPrimary\s*\?\s*palette\.accentText\s*:\s*palette\.tertiaryText/.test(bar),
-  "text colors must come from the resolved palette (light + dark brand themes)",
+  "SU5 theme-aware text (primary on accentText; secondary WHITE-half text + kicker on the resolved palette.accent)",
+  // ORCH-1138 (Seth, 2026-06-15) two-tone: the white half's amount AND kicker are
+  // the resolved brand accent (theme-aware, NOT a hardcoded orange). fails-on-revert:
+  // reverting either ternary back to primaryText/tertiaryText flips this case red.
+  /const textColor = isPrimary \? palette\.accentText : palette\.accent/.test(
+    bar,
+  ) &&
+    /const kickerColor = isPrimary \? palette\.accentText : palette\.accent/.test(
+      bar,
+    ),
+  "the white half's text + kicker must be the resolved palette.accent (theme-aware)",
 );
 ok(
   'S2c both segments carry the "Pay in full" + "Pay over time" labels',

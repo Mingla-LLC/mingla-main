@@ -81,10 +81,20 @@ describe("ORCH-1138 — trip Reserve UNIFIED seam-split CTA (business/web)", () 
     );
   });
 
-  test("SP-U3 the primary segment is ACCENT-FILLED and leads (flex 1.15); secondary is a GHOST (panelStrong)", () => {
-    // segment fill is role-driven: accent for primary, panelStrong for secondary.
+  test("SP-U3 the primary segment is ACCENT-FILLED and leads (flex 1.15); secondary is SOLID WHITE w/ accent hairline", () => {
+    // ORCH-1138 (Seth, 2026-06-15) two-tone: primary = accent fill; secondary = solid
+    // white (#FFFFFF) with an accent-tinted hairline (borderColor: palette.accent) so
+    // it reads on a LIGHT brand page. fails-on-revert: deleting the SECONDARY_FILL /
+    // borderColor wiring flips this case red.
+    expect(reserveBarSrc).toMatch(/const SECONDARY_FILL = "#FFFFFF"/);
     expect(reserveBarSrc).toMatch(
-      /backgroundColor:\s*isPrimary\s*\?\s*palette\.accent\s*:\s*palette\.panelStrong/,
+      /backgroundColor:\s*isPrimary\s*\?\s*palette\.accent\s*:\s*SECONDARY_FILL/,
+    );
+    expect(reserveBarSrc).toMatch(
+      /borderColor:\s*isPrimary\s*\?\s*undefined\s*:\s*palette\.accent/,
+    );
+    expect(reserveBarSrc).toMatch(
+      /segmentSecondaryBorder:\s*\{[^}]*borderTopWidth:\s*1[^}]*borderRightWidth:\s*1[^}]*borderBottomWidth:\s*1/,
     );
     expect(reserveBarSrc).toMatch(/segmentPrimary:\s*\{[^}]*flex:\s*1\.15/);
     expect(reserveBarSrc).toMatch(/segmentSecondary:\s*\{[^}]*flex:\s*1\b/);
@@ -98,12 +108,15 @@ describe("ORCH-1138 — trip Reserve UNIFIED seam-split CTA (business/web)", () 
     );
   });
 
-  test("SP-U5 theme-aware text: primary on accentText, secondary on primaryText/tertiaryText", () => {
+  test("SP-U5 theme-aware text: primary on accentText, secondary WHITE-half text + kicker on the resolved palette.accent", () => {
+    // ORCH-1138 (Seth, 2026-06-15) two-tone: the white half's amount AND kicker are
+    // the resolved brand accent (theme-aware, NOT a hardcoded orange). fails-on-revert:
+    // reverting either ternary back to primaryText/tertiaryText flips this case red.
     expect(reserveBarSrc).toMatch(
-      /isPrimary\s*\?\s*palette\.accentText\s*:\s*palette\.primaryText/,
+      /const textColor = isPrimary \? palette\.accentText : palette\.accent/,
     );
     expect(reserveBarSrc).toMatch(
-      /isPrimary\s*\?\s*palette\.accentText\s*:\s*palette\.tertiaryText/,
+      /const kickerColor = isPrimary \? palette\.accentText : palette\.accent/,
     );
   });
 
