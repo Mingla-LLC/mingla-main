@@ -381,3 +381,18 @@ These three string assertions are now FALSE for `PublicEventPage.tsx` (the decla
 **Not affected (verified):** `PublicBrandPage.orch_0964_smoke_rework.test.ts` asserts against `packages/brand-rendering/PublicBrandPage.tsx` (its OWN palette copy — untouched by this leg). `offeringLegibility.orch1117.test.ts` asserts only USAGE strings in `PublicEventPage.tsx`'s render body (which remain). `eventCoverMedia.test.ts` does not assert moved symbols.
 
 **Behavior guarantee:** RT-1 (§9) independently snapshots `createThemePalette` output across a fixed `ResolvedTheme` matrix — that is the real fails-on-revert gate for byte-identical palette output. The repointed string assertions are structural only.
+
+---
+
+## 14. SPEC AMENDMENT A-2 (implementor, 2026-06-15) — route chrome migration (IconChrome → OfferingChrome) test repoint
+
+**Trigger:** §4.3 binds the route to "Replace [the bespoke `IconChrome` close/share overlays] with the foundation `OfferingChrome` (via `ParallaxCoverShell`)". The `/t/[brandSlug]/[tripSlug].tsx` route no longer renders `<IconChrome icon="close"/share>` + the `closeOverlay`/`shareOverlay` absolute styles; instead it threads `onClose={handleClose}` + `onShare={handleShare}` into `TripPreview`, which renders the chrome through `OfferingChrome` (a11y labels "Close" / "Share", preserved). Two existing route-source assertions asserted the OLD IconChrome markup and were GREEN on origin/main; they now (correctly) fail because the redesign removed that markup:
+
+- `mingla-business/src/components/trip/__tests__/TripVisualParity.test.ts` SC-17 ("X-close + share IconChrome overlays on cover hero").
+- `mingla-business/src/components/trip/__tests__/TripVisualParity_adversarial.test.ts` A-11 ("public trip page X-close + share IconChromes have accessibilityLabel").
+
+**Authorized change (outside §12 allowlist, hence this amendment):** Repoint ONLY these two route-chrome assertions to verify the SAME guarantee against the new foundation: the route threads `onClose`/`onShare` into `TripPreview`, and `OfferingChrome` (the shared chrome) carries the "Close"/"Share" accessibility labels. The close handler (`router.canGoBack()`/`back()`/`/b/{brandSlug}` fallback) and share handler (→ `ShareModal`, never bare `Share.share`) are UNCHANGED and still asserted. All OTHER assertions in both files are untouched. Modification-with-deletion → carries `[TEST-MOD-APPROVED ORCH-1138]` in the commit body.
+
+**Not a behavior regression:** the close + share affordances are preserved (the foundation chrome replaces the bespoke overlays one-for-one); ORCH-1114 (ShareModal, no dead-tap) and ORCH-1115 (anon-route, no useAuth) postures are unchanged and still asserted by their own (untouched) tests.
+
+**Pre-existing baseline note (NOT touched by this leg):** the wider trip test corpus is broadly red on origin/main already (e.g. `TripVisualParity` SC-01/SC-14 IconChrome-wizard assertions, the `Share.share()` legacy-API assertion at SC line 304 already failing post-ORCH-1114, `tripsService.test`, `PaymentPlanEditor`, `PublicEventPage.orch_0964_design_rework` BlurView/recurrence assertions). A clean origin/main baseline run of the trip suspect-suite set yields 66 failing tests; this leg yields 68 — the delta is EXACTLY the two SC-17/A-11 chrome assertions repointed above. No other test regressed.

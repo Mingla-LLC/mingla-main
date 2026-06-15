@@ -279,11 +279,16 @@ describe("ORCH-0874 Trip surfaces visual parity with Events — implementor", ()
   describe("app/t/[brandSlug]/[tripSlug].tsx — public page", () => {
     const SRC = readApp("t/[brandSlug]/[tripSlug].tsx");
 
-    it("SC-17: X-close + share IconChrome overlays on cover hero", () => {
-      expect(SRC).toMatch(/<IconChrome[^>]*icon="close"[^>]*size=\{?36/);
-      expect(SRC).toMatch(/<IconChrome[^>]*icon="share"[^>]*size=\{?36/);
-      expect(SRC).toMatch(/closeOverlay:[^}]*position:\s*"absolute"/s);
-      expect(SRC).toMatch(/shareOverlay:[^}]*position:\s*"absolute"/s);
+    // ORCH-1138 (SPEC amendment A-2) — the bespoke IconChrome close/share
+    // overlays were replaced by the shared foundation OfferingChrome rendered via
+    // ParallaxCoverShell (§4.3). The route now threads onClose/onShare into
+    // TripPreview; OfferingChrome carries the "Close"/"Share" a11y labels. The
+    // close + share affordances are preserved. [TEST-MOD-APPROVED ORCH-1138]
+    it("SC-17: close + share chrome threaded into TripPreview foundation", () => {
+      expect(SRC).toMatch(/onClose=\{handleClose\}/);
+      expect(SRC).toMatch(/onShare=\{handleShare\}/);
+      expect(SRC).toMatch(/<TripPreview[\s\S]*?onClose=\{onClose\}/);
+      expect(SRC).toMatch(/<TripPreview[\s\S]*?onShare=\{onShare\}/);
     });
 
     it("SC-18: buyer-anon posture preserved (no useAuth, no sign-in redirect)", () => {

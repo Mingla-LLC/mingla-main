@@ -64,7 +64,9 @@ interface PaletteOverrides {
   primaryText?: TextStyle;
 }
 
-const paletteOverrides = (
+// Exported for RT-2 (the ORCH-1138 additive-prop gate): when palette is absent,
+// EVERY override is undefined ⇒ the component renders byte-identical to pre-1138.
+export const paletteOverrides = (
   palette: ThemePalette | undefined,
 ): PaletteOverrides => {
   if (palette === undefined) return {};

@@ -19,6 +19,8 @@ export type {
   CountAwareGalleryProps,
   CountAwareGalleryItem,
 } from "./CountAwareGallery";
+export { pickGalleryLayout } from "./galleryLayout";
+export type { GalleryLayout } from "./galleryLayout";
 
 export { ChipGroup } from "./ChipGroup";
 export type { Chip, ChipGroupProps } from "./ChipGroup";

@@ -26,6 +26,8 @@ import Svg, { Path } from "react-native-svg";
 
 import { EventCoverMedia, type ThemePalette } from "@mingla/event-rendering";
 
+import { pickGalleryLayout } from "./galleryLayout";
+
 export interface CountAwareGalleryItem {
   url: string;
   type: "image" | "video";
@@ -68,7 +70,8 @@ export const CountAwareGallery: React.FC<CountAwareGalleryProps> = ({
   // tile switches play to it (mirrors the legacy TripPreview activeVideoKey).
   const [activeVideoKey, setActiveVideoKey] = useState<string | null>(null);
 
-  if (items.length === 0) return null;
+  const layout = pickGalleryLayout(items.length);
+  if (layout === "none") return null;
 
   const sizes = SIZES[variant];
   const firstVideoIndex = items.findIndex((m) => m.type === "video");
@@ -127,7 +130,7 @@ export const CountAwareGallery: React.FC<CountAwareGalleryProps> = ({
   };
 
   // 1 item → full width.
-  if (items.length === 1) {
+  if (layout === "one") {
     return (
       <View style={styles.block} testID={testID}>
         {renderTile(items[0], 0, { width: "100%", height: sizes.one })}
@@ -136,7 +139,7 @@ export const CountAwareGallery: React.FC<CountAwareGalleryProps> = ({
   }
 
   // 2 items → two equal columns.
-  if (items.length === 2) {
+  if (layout === "two") {
     return (
       <View style={[styles.block, styles.splitRow]} testID={testID}>
         {items.map((item, index) => (
