@@ -57,6 +57,7 @@ import {
 } from "@mingla/offering-rendering";
 import { EventCoverMedia } from "../ui/EventCoverMedia";
 import { Icon } from "../ui/Icon";
+import { buildStaticMapUrl } from "../../utils/mapboxStaticImage";
 import { CollapsibleDescription } from "../offering/CollapsibleDescription";
 import type { RefundPolicy } from "../../services/refundPolicyService";
 import type {
@@ -486,15 +487,15 @@ const FoundationTripPreview: React.FC<{
       ) : null}
 
       {/* destination map — only when lat/lng present (rule 9: no placeholder).
-          ORCH-1138 R2 (device parity fix #5): the mockup shows a STATIC MAP IMAGE
-          with a pin + caption pill. The mingla-business app has NO client-side
-          Mapbox token (MAPBOX_ACCESS_TOKEN is server-only behind the
-          `mapbox-geocode` edge fn; EXPO_PUBLIC_MAPBOX_ACCESS_TOKEN exists ONLY in
-          app-mobile, not exposed to this build), so a real Static Images URL
-          cannot be built without new infra/config (out of the §12 render-only
-          scope) — see the implementation report's STOP-AND-REPORT note. We keep
-          the HONEST gated card (accent pin + destination caption) — NOT a
-          fabricated/placeholder map tile (rule 9). */}
+          ORCH-1138 Leg 1: the mockup shows a STATIC MAP IMAGE with a themed pin
+          + caption pill. We render a Mapbox Static Images API URL (a plain
+          <Image>, NO map SDK / NO new dependency) themed to the brand accent,
+          using the client-safe PUBLIC `pk.*` token (Constants.expoConfig.extra.
+          EXPO_PUBLIC_MAPBOX_ACCESS_TOKEN — wired in app.config.ts).
+          FAIL-SAFE (rule 9): buildStaticMapUrl returns null when the token is
+          absent at runtime OR coords are missing/non-finite → we HIDE the image
+          and fall back to the HONEST pin+caption card. Never a fabricated tile,
+          never a crash. Works on native AND react-native-web. */}
       {bt.destinationLat !== null && bt.destinationLng !== null ? (
         <View style={styles.section}>
           <Text style={[styles.secTitle, surface.primaryText, { fontFamily }]}>
@@ -507,6 +508,24 @@ const FoundationTripPreview: React.FC<{
               { height: isDesktop ? 300 : 180 },
             ]}
           >
+            {(() => {
+              const mapUrl = buildStaticMapUrl({
+                lat: bt.destinationLat,
+                lng: bt.destinationLng,
+                accentHex: palette.accent,
+                height: isDesktop ? 300 : 180,
+              });
+              return mapUrl !== null ? (
+                <Image
+                  source={{ uri: mapUrl }}
+                  style={styles.mapImage}
+                  resizeMode="cover"
+                  accessibilityLabel={`Map of ${
+                    bt.destinationLocationText ?? "the destination"
+                  }`}
+                />
+              ) : null;
+            })()}
             <Icon name="location" size={28} color={palette.accent} />
             <View style={[styles.mapCapPill, { backgroundColor: palette.page }]}>
               <Text style={[styles.mapCap, surface.primaryText]}>
@@ -1212,6 +1231,12 @@ const styles = StyleSheet.create({
     gap: 8,
     marginTop: 12,
     overflow: "hidden",
+  },
+  // Mapbox static image fills the card as a background; the accent pin + caption
+  // pill overlay it (mockup `.map img` — width/height 100%, object-fit cover).
+  mapImage: {
+    ...StyleSheet.absoluteFillObject,
+    opacity: 0.9,
   },
   mapCapPill: {
     position: "absolute",
