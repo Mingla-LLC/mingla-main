@@ -187,7 +187,21 @@ export function buildUpcomingItems(
   trips: Trip[],
   drafts: DraftEvent[],
   now: number = Date.now(),
-): { items: UpcomingItem[]; counts: UpcomingCounts; primaryLiveItem: UpcomingItem | null } {
+): {
+  items: UpcomingItem[];
+  counts: UpcomingCounts;
+  primaryLiveItem: UpcomingItem | null;
+  // ORCH-1143 — one-owner-per-truth for live-state (Constitution #2). The
+  // home live carousel reads this; it must NOT re-derive "live" at the call
+  // site. Already-sorted (live-first, start-ascending) subset of `items`.
+  liveItems: UpcomingItem[];
+  // ORCH-1143 SC-7 — the Upcoming-list view: `items` MINUS the currently-live
+  // items (which are surfaced exclusively in the live carousel). Derived, not a
+  // mutation of `items` (the carousel + counts still need the full set / the
+  // live subset). One owner per truth: live-state stays single-sourced above;
+  // this is just the complementary non-live projection of the SAME sorted list.
+  nonLiveItems: UpcomingItem[];
+} {
   const mergedEvents = mergeServerAndLegacyLive(serverEvents, legacyLiveEvents);
 
   const items: UpcomingItem[] = [];
@@ -214,6 +228,13 @@ export function buildUpcomingItems(
     draft: nonPast.filter((i) => i.status === "draft").length,
   };
 
-  const primaryLiveItem = nonPast.find((i) => i.status === "live") ?? null;
-  return { items: nonPast, counts, primaryLiveItem };
+  // ORCH-1143 — `liveItems` inherits the live-first start-ascending order from
+  // the comparator sort above. `primaryLiveItem` stays `liveItems[0]` (the
+  // existing `find` is equivalent) and is kept for back-compat consumers.
+  const liveItems = nonPast.filter((i) => i.status === "live");
+  const primaryLiveItem = liveItems[0] ?? null;
+  // ORCH-1143 SC-7 — non-live projection of the same sorted set (upcoming +
+  // draft). Preserves `nonPast`'s order; never mutates `items`/`liveItems`.
+  const nonLiveItems = nonPast.filter((i) => i.status !== "live");
+  return { items: nonPast, counts, primaryLiveItem, liveItems, nonLiveItems };
 }

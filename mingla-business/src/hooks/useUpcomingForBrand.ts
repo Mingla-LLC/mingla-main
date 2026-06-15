@@ -44,6 +44,13 @@ export interface UpcomingForBrand {
   items: UpcomingItem[];
   counts: UpcomingCounts;
   primaryLiveItem: UpcomingItem | null;
+  // ORCH-1143 — ALL concurrently-live offerings (event/experience/trip),
+  // already sorted live-first start-ascending. Owner of live-state truth for
+  // the home live carousel (Constitution #2).
+  liveItems: UpcomingItem[];
+  // ORCH-1143 SC-7 — `items` minus the live items (which live in the carousel).
+  // The Upcoming list renders from this so a live offering is never duplicated.
+  nonLiveItems: UpcomingItem[];
   isLoading: boolean;
   isError: boolean;
   errors: { events?: unknown; trips?: unknown };
@@ -60,7 +67,7 @@ export const useUpcomingForBrand = (
   const serverEvents = eventsQuery.data ?? [];
   const trips = tripsQuery.data ?? [];
 
-  const { items, counts, primaryLiveItem } = useMemo(
+  const { items, counts, primaryLiveItem, liveItems, nonLiveItems } = useMemo(
     () => buildUpcomingItems(serverEvents, legacyLiveEvents, trips, drafts),
     [serverEvents, legacyLiveEvents, trips, drafts],
   );
@@ -69,6 +76,8 @@ export const useUpcomingForBrand = (
     items,
     counts,
     primaryLiveItem,
+    liveItems,
+    nonLiveItems,
     isLoading: eventsQuery.isLoading || tripsQuery.isLoading,
     isError: eventsQuery.isError || tripsQuery.isError,
     errors: {

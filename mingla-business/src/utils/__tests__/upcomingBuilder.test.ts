@@ -508,3 +508,206 @@ describe("ORCH-0965 compareUpcomingItems — comparator unit tests", () => {
     expect(compareUpcomingItems(ev("a", "upcoming", 100), ev("b", "upcoming", 50))).toBeGreaterThan(0);
   });
 });
+
+describe("ORCH-1143 liveItems — enumerate ALL live offerings (T2/T3/T4/T12)", () => {
+  beforeEach(() => {
+    jest.spyOn(Date, "now").mockReturnValue(NOW);
+  });
+  afterEach(() => {
+    jest.restoreAllMocks();
+  });
+
+  test("T12 — liveItems = only status==='live', sorted live-first start-ascending", () => {
+    const earlier = liveEvent({
+      id: "evt-earlier",
+      date: "2026-06-01",
+      doorsOpen: "06:00",
+      endsAt: "23:00",
+    });
+    const later = liveEvent({
+      id: "evt-later",
+      date: "2026-06-01",
+      doorsOpen: "11:00",
+      endsAt: "23:00",
+    });
+    const futureTrip = trip({ id: "trip-future", status: "scheduled" });
+    const localDraft = draft({ id: "draft-1" });
+    const { liveItems } = buildUpcomingItems(
+      [earlier, later],
+      [],
+      [futureTrip],
+      [localDraft],
+      NOW,
+    );
+    // only the two live events, older start first; trip(scheduled)/draft excluded.
+    expect(liveItems.map((i) => i.id)).toEqual(["evt-earlier", "evt-later"]);
+    expect(liveItems.every((i) => i.status === "live")).toBe(true);
+  });
+
+  test("T2/T3 — a live experience AND a live trip both appear in liveItems (all kinds)", () => {
+    const experience = liveEvent({
+      id: "exp-live",
+      date: "2026-06-01",
+      doorsOpen: "06:00",
+      endsAt: "23:00",
+    });
+    (experience as LiveEvent & { event_type?: string }).event_type = "experience";
+    const liveTrip = trip({
+      id: "trip-live",
+      status: "live",
+      businessTrip: {
+        startAt: "2026-05-30T09:00:00.000Z",
+        endAt: "2026-06-05T17:00:00.000Z",
+        destinationLocationText: null,
+        destinationPlaceId: null,
+        destinationLat: null,
+        destinationLng: null,
+        departurePlaceId: null,
+        departureLocationText: null,
+        departureLat: null,
+        departureLng: null,
+        capacity: null,
+      },
+    });
+    const { liveItems } = buildUpcomingItems([experience], [], [liveTrip], [], NOW);
+    const kinds = liveItems.map((i) => i.kind).sort();
+    expect(kinds).toEqual(["experience", "trip"]);
+    // every live kind is present — the scan affordance is no longer event-only.
+    expect(liveItems.find((i) => i.kind === "experience")).toBeDefined();
+    expect(liveItems.find((i) => i.kind === "trip")).toBeDefined();
+  });
+
+  test("T4 — event + experience + trip simultaneously live → all three enumerated, live-first order", () => {
+    const event = liveEvent({ id: "evt", date: "2026-06-01", doorsOpen: "08:00", endsAt: "23:00" });
+    const experience = liveEvent({ id: "exp", date: "2026-06-01", doorsOpen: "10:00", endsAt: "23:00" });
+    (experience as LiveEvent & { event_type?: string }).event_type = "experience";
+    const liveTrip = trip({
+      id: "trip",
+      status: "live",
+      businessTrip: {
+        startAt: "2026-05-29T09:00:00.000Z",
+        endAt: "2026-06-05T17:00:00.000Z",
+        destinationLocationText: null,
+        destinationPlaceId: null,
+        destinationLat: null,
+        destinationLng: null,
+        departurePlaceId: null,
+        departureLocationText: null,
+        departureLat: null,
+        departureLng: null,
+        capacity: null,
+      },
+    });
+    const { liveItems } = buildUpcomingItems([event, experience], [], [liveTrip], [], NOW);
+    expect(liveItems).toHaveLength(3);
+    // live-first start-ascending: trip(05-29) < event(06-01 08:00) < experience(06-01 10:00)
+    expect(liveItems.map((i) => i.id)).toEqual(["trip", "evt", "exp"]);
+  });
+
+  test("T5 — no live offerings → liveItems empty + primaryLiveItem null", () => {
+    const futureTrip = trip({ id: "trip-future", status: "scheduled" });
+    const { liveItems, primaryLiveItem } = buildUpcomingItems([], [], [futureTrip], [], NOW);
+    expect(liveItems).toHaveLength(0);
+    expect(primaryLiveItem).toBeNull();
+  });
+
+  test("liveItems[0] === primaryLiveItem (back-compat equivalence)", () => {
+    const earlier = liveEvent({ id: "evt-earlier", date: "2026-06-01", doorsOpen: "06:00", endsAt: "23:00" });
+    const later = liveEvent({ id: "evt-later", date: "2026-06-01", doorsOpen: "11:00", endsAt: "23:00" });
+    const { liveItems, primaryLiveItem } = buildUpcomingItems([earlier, later], [], [], [], NOW);
+    expect(liveItems[0]).toBe(primaryLiveItem);
+  });
+});
+
+describe("ORCH-1143 SC-7 nonLiveItems — live offerings excluded from the Upcoming list", () => {
+  // SC-7: a live offering belongs ONLY in the Live-now carousel; the Upcoming
+  // list (FlatList + desktop pane) renders the non-live items. These tests
+  // exercise the real buildUpcomingItems pipeline (no source-grep) and FAIL on
+  // revert (deleting the `nonLiveItems = nonPast.filter(status !== "live")`
+  // line in upcomingBuilder.ts makes `nonLiveItems` `undefined` → the `.map`
+  // expectations throw / the exclusion assertions fail).
+
+  // deriveLiveStatus reads the REAL Date.now(); pin it so the date fixtures
+  // below resolve live/upcoming deterministically (mirrors the T2/T3/T4 block).
+  beforeEach(() => {
+    jest.spyOn(Date, "now").mockReturnValue(NOW);
+  });
+  afterEach(() => {
+    jest.restoreAllMocks();
+  });
+
+  test("SC7-1 — a live event is in liveItems but NOT in nonLiveItems; a scheduled event + draft ARE in nonLiveItems", () => {
+    const live = liveEvent({ id: "evt-live", status: "live", date: "2026-06-01", doorsOpen: "08:00", endsAt: "23:00" });
+    const scheduled = liveEvent({ id: "evt-soon", status: "live", date: "2026-06-20", doorsOpen: "19:00", endsAt: "23:00" });
+    const draftRow = draft({ id: "draft-x" });
+    const { items, liveItems, nonLiveItems } = buildUpcomingItems(
+      [live, scheduled],
+      [],
+      [],
+      [draftRow],
+      NOW,
+    );
+
+    // the live event is surfaced exclusively in the carousel set...
+    expect(liveItems.map((i) => i.id)).toContain("evt-live");
+    // ...and is NOT duplicated into the Upcoming list view.
+    expect(nonLiveItems.map((i) => i.id)).not.toContain("evt-live");
+    expect(nonLiveItems.every((i) => i.status !== "live")).toBe(true);
+
+    // the non-live items (a future-dated event surfaces as "upcoming", + draft)
+    // remain in the Upcoming list.
+    expect(nonLiveItems.map((i) => i.id).sort()).toEqual(["draft-x", "evt-soon"].sort());
+
+    // nonLiveItems is a strict projection of items (never mutates items): items
+    // still carries the full set (live + non-live).
+    expect(items.map((i) => i.id)).toContain("evt-live");
+    expect(items.length).toBe(liveItems.length + nonLiveItems.length);
+  });
+
+  test("SC7-2 — ALL items live → nonLiveItems empty (Upcoming section hides, no crash)", () => {
+    const liveA = liveEvent({ id: "evt-a", status: "live", date: "2026-06-01", doorsOpen: "08:00", endsAt: "23:00" });
+    const liveTrip = trip({
+      id: "trip-live",
+      status: "live",
+      businessTrip: {
+        startAt: "2026-05-30T09:00:00.000Z",
+        endAt: "2026-06-05T17:00:00.000Z",
+        destinationLocationText: null,
+        destinationPlaceId: null,
+        destinationLat: null,
+        destinationLng: null,
+        departurePlaceId: null,
+        departureLocationText: null,
+        departureLat: null,
+        departureLng: null,
+        capacity: null,
+      },
+    });
+    const { liveItems, nonLiveItems } = buildUpcomingItems([liveA], [], [liveTrip], [], NOW);
+
+    expect(liveItems).toHaveLength(2);
+    // the Upcoming list is empty — home gates `hasUpcomingItems` on this length,
+    // so the section hides cleanly rather than rendering an empty list.
+    expect(nonLiveItems).toHaveLength(0);
+    // `.map` over the empty projection is safe (proves no crash in the consumer).
+    expect(nonLiveItems.map((i) => i.id)).toEqual([]);
+  });
+
+  test("SC7-3 — NONE live → nonLiveItems equals items (Upcoming unchanged)", () => {
+    const scheduled = liveEvent({ id: "evt-soon", status: "live", date: "2026-06-20", doorsOpen: "19:00", endsAt: "23:00" });
+    const futureTrip = trip({ id: "trip-future", status: "scheduled" });
+    const draftRow = draft({ id: "draft-y" });
+    const { items, liveItems, nonLiveItems } = buildUpcomingItems(
+      [scheduled],
+      [],
+      [futureTrip],
+      [draftRow],
+      NOW,
+    );
+
+    expect(liveItems).toHaveLength(0);
+    // with nothing live, the Upcoming list is identical to the full set, in the
+    // same (sorted) order.
+    expect(nonLiveItems.map((i) => i.id)).toEqual(items.map((i) => i.id));
+  });
+});

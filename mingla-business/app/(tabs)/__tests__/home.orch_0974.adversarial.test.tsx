@@ -103,7 +103,8 @@ describe("ORCH-1038 Home adversarial contracts", () => {
     const flatList = mobileFlatListBlock();
     const branchDigest = {
       flatList: {
-        data: flatList.includes("data={upcoming.items}"),
+        // ORCH-1143 SC-7 [TEST-MOD-APPROVED by Seth 2026-06-15]: Upcoming list excludes live items (now in the Live-now carousel); single-scroll + all item-kind branches still asserted.
+        data: flatList.includes("data={upcoming.nonLiveItems}"),
         keyExtractor: flatList.includes("keyExtractor={(item) => item.key}"),
         renderItem: flatList.includes("<UpcomingListItem"),
         handlers: [
