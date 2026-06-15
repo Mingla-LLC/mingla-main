@@ -65,18 +65,33 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import {
   boldFontFamily,
   createThemePalette,
+  EventCoverMedia,
   formatTripDateRange,
   offeringSurfaceStyles,
   resolveTheme,
+  ThemeEntranceAnimation,
   type CtaState,
 } from "@mingla/event-rendering";
 // ORCH-1138 Leg 1C — the shared Direction-A foundation primitives. The consumer
 // trip detail converges on the business/web trip page (TripPreview FOUNDATION
 // mode) by REUSING these (NOT importing TripPreview, which is business-local).
+//
+// ORCH-1138 Leg 1C FIX-1/2 (device-regression rework): we COMPOSE the
+// Direction-A native look here (pinned cover + OfferingChrome + scrolling body +
+// floating reserve) instead of mounting ParallaxCoverShell as the sheet host.
+// WHY: ParallaxCoverShell's native branch wraps its ScrollView inside a
+// `nativeHost` <View>, so the gorhom `BottomSheetScrollView` injected as its
+// `ScrollComponent` is NOT a DIRECT child of gorhom's height-bounded
+// `BottomSheetContent` → viewport==content → maxScroll 0 → the sheet body FROZE
+// on Seth's device (the exact ORCH-1016/1043 trap; SPEC §4.5 OQ-3 risk
+// materialized). Editing ParallaxCoverShell's native branch is forbidden (it
+// ships the business/web page — SPEC OQ-4 / DO-NOT-TOUCH packages/*), so we
+// compose AROUND it: the gorhom scroll host is a DIRECT child of <BaseBottomSheet>
+// and the themed cover/chrome/reserve are absolute sibling direct children.
 import {
   ChipGroup,
   CountAwareGallery,
-  ParallaxCoverShell,
+  OfferingChrome,
   useResponsiveLayout,
 } from "@mingla/offering-rendering";
 
@@ -555,9 +570,26 @@ export default function ConsumerTripDetailScreen({
         ) : null}
       </View>
 
-      {/* brand chip — brand cover not available on consumer → accentWash tile */}
+      {/* brand chip — ORCH-1138 Leg 1C FIX-3: the "Presented by" cover renders via
+          the gif/video-aware EventCoverMedia (NOT a plain <Image>), so an animated
+          brand cover shows. The consumer trip data path is anon-safe and carries
+          no brand cover today (🔒 COMMS-0009), so fnd.brandCoverMediaUrl is null →
+          EventCoverMedia draws its hue gradient fallback (rule 9 — graceful, no
+          fabricated cover). The rounded tile clips the media (overflow:hidden). */}
       <View style={[styles.brandRow, surface.card]}>
-        <View style={[styles.brandTile, { backgroundColor: palette.accentWash }]} />
+        <View style={styles.brandTile}>
+          <EventCoverMedia
+            mediaUrl={fnd.brandCoverMediaUrl}
+            mediaType={fnd.brandCoverMediaType}
+            hue={hueFromId(detail.brandSlug)}
+            autoplay
+            playbackActive
+            muted
+            loop
+            height="100%"
+            width="100%"
+          />
+        </View>
         <View style={styles.brandTextCol}>
           <Text style={[styles.brandKicker, surface.tertiaryText]}>
             Presented by
@@ -956,19 +988,28 @@ export default function ConsumerTripDetailScreen({
     />
   );
 
-  // ORCH-1138 Leg 1C — the populated body renders the Direction-A foundation via
-  // ParallaxCoverShell INSIDE a scrollMode="view" BaseBottomSheet. The shell is
-  // given the gorhom BottomSheetScrollView as its scroll host (see the JSX prop
-  // below) so gorhom owns the SINGLE registered scrollable (the ORCH-1016/1043
-  // contract — no nested raw ScrollView, no viewport==content freeze). The
-  // floating reserve bar is an ABSOLUTE overlay
-  // SIBLING of the shell inside a flex:1 host (NOT stickyFooter), so it floats over
-  // the scroll without nesting a second scrollable. The shell's native branch
-  // (isDesktop=false on native) provides the parallax cover + OfferingChrome
-  // (close/share/mute) — the hand-rolled chrome is NOT rendered here (foundation
-  // owns it). DEVICE-VERIFY scroll-not-frozen + bar-floats on iOS + Android +
-  // the cold deep-link route (OQ-3).
+  // ORCH-1138 Leg 1C FIX-1/2 (device-regression rework) — PROVEN ORCH-1016/1043
+  // sheet-scroll structure restored, themed Direction-A look kept.
+  //
+  // 🔒 LOAD-BEARING (do NOT re-wrap): the gorhom `BottomSheetScrollView` is a
+  // DIRECT child of `<BaseBottomSheet>` (scrollMode="view" passes our children
+  // verbatim as direct children of gorhom's height-bounded `BottomSheetContent`).
+  // It carries `flex:1` so it claims the bounded snap height → bounded viewport →
+  // the body SCROLLS. We compose the Direction-A native look AROUND it (NOT via
+  // ParallaxCoverShell, whose native branch nests its ScrollView inside a
+  // `nativeHost` <View>, which made the injected gorhom scroll a NON-direct child →
+  // viewport==content → maxScroll 0 → the device freeze Seth reported). The cover
+  // (EventCoverMedia, gif/video-aware), OfferingChrome (close/share/mute) and the
+  // FLOATING ConsumerTripReserveBar are ABSOLUTE sibling DIRECT children of the
+  // sheet, layered by zIndex over the scroll — the reserve bar is ALWAYS visible
+  // and floats (Seth's explicit ask), NOT a scroll-off footer and NOT
+  // BaseBottomSheet.stickyFooter (which froze the scroll in ORCH-1016). The
+  // scroll content carries a cover-height spacer + paddingBottom = bar clearance so
+  // the first/last rows clear the pinned cover + floating bar. swipe-down still
+  // dismisses (gorhom owns the single registered scrollable). DEVICE-VERIFIED:
+  // scroll-not-frozen + bar-floats on iOS sim + the cold deep-link route.
   void isDesktop; // native is always single-column immersive (asserted for parity).
+  const showMute = fnd.coverMediaType === "video";
   return renderSheetGroup(
     <>
       <BaseBottomSheet
@@ -981,38 +1022,81 @@ export default function ConsumerTripDetailScreen({
         hidesBottomNav
         accessibilityLabel={detail.title}
       >
-        <View style={styles.foundationHost}>
-          <ParallaxCoverShell
-            palette={palette}
-            theme={theme}
-            coverMediaUrl={fnd.coverMediaUrl}
-            coverMediaType={fnd.coverMediaType}
-            coverHue={hueFromId(detail.tripId)}
-            entranceAnimationKey={`trip:${detail.tripId}`}
+        {/* (1) pinned cover — absolute sibling BEHIND the scroll (zIndex below
+            the scrolling body). EventCoverMedia is gif/video/image-aware and
+            renders the hue gradient when no cover (rule 9). */}
+        <View style={styles.nativeCover} pointerEvents="none">
+          <EventCoverMedia
+            mediaUrl={fnd.coverMediaUrl}
+            mediaType={fnd.coverMediaType}
+            hue={hueFromId(detail.tripId)}
+            autoplay
+            playbackActive
             muted={muted}
-            onToggleMute={toggleMute}
-            showMute={fnd.coverMediaType === "video"}
+            loop
+            height="100%"
+            width="100%"
+          />
+          <View style={styles.coverScrim} pointerEvents="none" />
+          <ThemeEntranceAnimation
+            theme={theme}
+            sessionKey={`trip:${detail.tripId}`}
+          />
+        </View>
+
+        {/* (2) the gorhom scroll host — DIRECT child of <BaseBottomSheet>, flex:1,
+            so it claims the bounded snap height and SCROLLS. The body slides up
+            over the pinned cover via the opaque rounded seam + a cover-height
+            spacer. zIndex above the cover, below chrome + reserve. */}
+        <BottomSheetScrollView
+          style={styles.nativeScroll}
+          contentContainerStyle={[
+            styles.nativeScrollContent,
+            { paddingBottom: reserveBarClearance },
+          ]}
+          showsVerticalScrollIndicator={false}
+          testID="orch-1138-consumer-trip-scroll"
+        >
+          {/* spacer holding the pinned-cover height (4:5) */}
+          <View style={styles.coverSpacer} />
+          <View
+            style={[
+              styles.nativeBody,
+              { backgroundColor: palette.page, borderColor: palette.panelBorder },
+            ]}
+          >
+            {/* hero caption over the seam (eyebrow + title) */}
+            {fnd.heroEyebrow !== null ? (
+              <Text style={styles.heroEyebrow}>{fnd.heroEyebrow}</Text>
+            ) : null}
+            <Text style={[styles.heroTitle, { fontFamily: boldFamily }]}>
+              {fnd.title}
+            </Text>
+            {bodyChildren}
+          </View>
+        </BottomSheetScrollView>
+
+        {/* (3) chrome — absolute sibling above the cover + scroll, padded by the
+            safe-area top. Reuses the shared OfferingChrome (close/share/mute). */}
+        <View
+          style={[styles.nativeChrome, { top: insets.top + 12 }]}
+          pointerEvents="box-none"
+        >
+          <OfferingChrome
+            palette={palette}
+            showMute={showMute}
+            muted={muted}
             onClose={onBack}
             onShare={handleShare}
-            ScrollComponent={BottomSheetScrollView}
-            heroEyebrow={
-              fnd.heroEyebrow !== null ? (
-                <Text style={styles.heroEyebrow}>{fnd.heroEyebrow}</Text>
-              ) : undefined
-            }
-            heroTitle={
-              <Text style={[styles.heroTitle, { fontFamily: boldFamily }]}>
-                {fnd.title}
-              </Text>
-            }
-            contentBottomInset={reserveBarClearance}
-            safeAreaTop={insets.top}
-            testID="orch-1138-consumer-trip-shell"
-          >
-            {bodyChildren}
-          </ParallaxCoverShell>
-          {floatingReserve}
+            onToggleMute={toggleMute}
+            closeAccessibilityLabel="Close"
+            testID="orch-1138-consumer-trip-chrome"
+          />
         </View>
+
+        {/* (4) FLOATING reserve bar — absolute sibling pinned to the sheet bottom,
+            ALWAYS visible while scrolling (Seth's ask). NOT stickyFooter. */}
+        {floatingReserve}
       </BaseBottomSheet>
 
       {/* Reserve flow — reuses the proven business-event checkout sheet. Sibling
@@ -1049,11 +1133,52 @@ export default function ConsumerTripDetailScreen({
   );
 }
 
+const SEAM = 28;
+
 const styles = StyleSheet.create({
-  // ORCH-1138 Leg 1C — the flex:1 host that lets ParallaxCoverShell's native
-  // branch (flex:1 nativeHost) claim the gorhom-bounded sheet height and lets the
-  // floating reserve bar absolute-overlay over it.
-  foundationHost: { flex: 1 },
+  // ORCH-1138 Leg 1C FIX-1/2 — native Direction-A composition (mirrors the
+  // packages/offering-rendering ParallaxCoverShell NATIVE branch, but composed
+  // inline so the gorhom BottomSheetScrollView is a DIRECT child of the sheet —
+  // see the LOAD-BEARING note at the populated return). Z-order (RN native orders
+  // siblings by zIndex within the shared gorhom-bounded parent): cover 1 < scroll
+  // 2 < reserve 6 < chrome 70.
+  // ---- pinned cover behind the scroll (LOWEST) ----
+  nativeCover: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    aspectRatio: 4 / 5,
+    zIndex: 1,
+    overflow: "hidden",
+    backgroundColor: "#000",
+  },
+  coverScrim: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: "rgba(0,0,0,0.22)",
+  },
+  // ---- the gorhom scroll host (MIDDLE — must z-index above the cover so the
+  // body slides OVER the pinned cover, the native parallax fix) ----
+  nativeScroll: { zIndex: 2 },
+  nativeScrollContent: { flexGrow: 1 },
+  coverSpacer: { width: "100%", aspectRatio: 4 / 5 },
+  nativeBody: {
+    zIndex: 2,
+    marginTop: -SEAM,
+    borderTopLeftRadius: SEAM,
+    borderTopRightRadius: SEAM,
+    borderWidth: 1,
+    borderBottomWidth: 0,
+    paddingTop: 24,
+    paddingHorizontal: 20,
+  },
+  // ---- chrome (HIGHEST) — absolute box-none sibling padded by the safe-area top ----
+  nativeChrome: {
+    position: "absolute",
+    left: 16,
+    right: 16,
+    zIndex: 70,
+  },
   // ---- foundation lead / title / eyebrow (mirror business FoundationTripPreview) ----
   leadBlock: { marginBottom: 4 },
   eyebrowLead: {
@@ -1102,7 +1227,16 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     paddingVertical: 12,
   },
-  brandTile: { width: 42, height: 42, borderRadius: 999 },
+  // ORCH-1138 Leg 1C FIX-3 — overflow:"hidden" clips the gif/video-aware
+  // EventCoverMedia to the circular tile (Android opaque-clip per
+  // ANDROID_GLASS_USES_OPAQUE_FALLBACK; no translucent fill).
+  brandTile: {
+    width: 42,
+    height: 42,
+    borderRadius: 999,
+    overflow: "hidden",
+    backgroundColor: "#1a1c20",
+  },
   brandTextCol: { flexShrink: 1 },
   brandKicker: {
     fontSize: 10,

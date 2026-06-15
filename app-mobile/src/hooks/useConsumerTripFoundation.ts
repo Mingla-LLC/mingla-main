@@ -54,6 +54,16 @@ export interface ConsumerTripFoundationModel {
   destination: string | null;
   brandName: string;
   brandVerified: boolean;
+  // ORCH-1138 Leg 1C FIX-3 — the "Presented by" brand cover, rendered via the
+  // gif/video-aware EventCoverMedia (NOT a plain <Image>) so an animated brand
+  // cover shows. The anon-safe consumer trip data path (useConsumerTripDetail —
+  // 🔒 COMMS-0009, which never reads the brands table directly) does NOT carry a
+  // brand cover today, so both are null and EventCoverMedia renders its hue
+  // gradient fallback (rule 9 — graceful, never a fabricated cover). When a future
+  // anon-safe brand-cover field exists, mapping it here animates the chip with no
+  // further change.
+  brandCoverMediaUrl: string | null;
+  brandCoverMediaType: "image" | "video" | "gif" | null;
   route: FoundationRoute | null;
   description: string | null;
   days: FoundationTripDay[];
@@ -170,6 +180,10 @@ export function mapConsumerTripToFoundation(
     destination,
     brandName: detail.brandName,
     brandVerified: detail.brandVerified,
+    // ORCH-1138 Leg 1C FIX-3 — no anon-safe brand-cover field on the consumer
+    // trip data path (COMMS-0009); null → EventCoverMedia hue fallback (rule 9).
+    brandCoverMediaUrl: null,
+    brandCoverMediaType: null,
     route,
     description,
     days,

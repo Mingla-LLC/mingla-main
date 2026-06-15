@@ -57,21 +57,38 @@ ok(
 );
 ok(
   "T1c the screen imports the foundation primitives from @mingla/offering-rendering",
-  /import\s*\{[\s\S]*?ParallaxCoverShell[\s\S]*?\}\s*from\s*["']@mingla\/offering-rendering["']/.test(
+  // ORCH-1138 Leg 1C FIX-1/2 (device-regression rework): the screen now COMPOSES
+  // the Direction-A native look around the shared primitives (OfferingChrome +
+  // ChipGroup + CountAwareGallery + EventCoverMedia/ThemeEntranceAnimation) rather
+  // than mounting ParallaxCoverShell as the gorhom scroll host (which nested the
+  // scroll inside a <View> → device scroll-freeze). It still consumes the SAME
+  // shared package so parity holds.
+  /import\s*\{[\s\S]*?OfferingChrome[\s\S]*?\}\s*from\s*["']@mingla\/offering-rendering["']/.test(
     screenSrc,
   ) &&
     /ChipGroup/.test(screenSrc) &&
     /CountAwareGallery/.test(screenSrc),
-  "the consumer screen must consume ParallaxCoverShell + ChipGroup + CountAwareGallery",
+  "the consumer screen must consume OfferingChrome + ChipGroup + CountAwareGallery from @mingla/offering-rendering",
+);
+ok(
+  "T1d the screen renders the cover via the gif/video-aware EventCoverMedia + ThemeEntranceAnimation from @mingla/event-rendering",
+  /import\s*\{[\s\S]*?EventCoverMedia[\s\S]*?ThemeEntranceAnimation[\s\S]*?\}\s*from\s*["']@mingla\/event-rendering["']/.test(
+    screenSrc,
+  ),
+  "the cover must use the shared gif/video-aware EventCoverMedia (parity with the business page cover)",
 );
 
 // ── SC-2/SC-3: brand-themed foundation render (no hardcoded warm-orange) ──────
 ok(
-  "T2a the populated foundation body is rendered via <ParallaxCoverShell> with a brand palette",
-  /<ParallaxCoverShell[\s\S]*?palette=\{palette\}[\s\S]*?<\/ParallaxCoverShell>/.test(
+  "T2a the populated foundation body is rendered with a brand palette + an opaque themed body seam",
+  // ORCH-1138 Leg 1C FIX-1/2: the themed body (styles.nativeBody) is fed the
+  // resolved brand palette (palette.page / palette.panelBorder), and the chrome
+  // is fed `palette={palette}` — the Direction-A look without ParallaxCoverShell.
+  /backgroundColor:\s*palette\.page,\s*borderColor:\s*palette\.panelBorder/.test(
     screenSrc,
-  ),
-  "the populated body composes ParallaxCoverShell fed the resolved brand palette",
+  ) &&
+    /<OfferingChrome[\s\S]*?palette=\{palette\}/.test(screenSrc),
+  "the populated body composes the themed seam + chrome fed the resolved brand palette",
 );
 ok(
   "T2b the screen resolves the brand palette via the EXISTING useEventTheme (same path as business) + createThemePalette + offeringSurfaceStyles",
@@ -99,17 +116,39 @@ ok(
   "the floating reserve bar must be an absolute overlay pinned to the bottom",
 );
 ok(
-  "T3b the screen renders the floating bar as a SIBLING of the shell inside a flex:1 host (NOT stickyFooter)",
-  /<ParallaxCoverShell[\s\S]*?<\/ParallaxCoverShell>\s*\{floatingReserve\}/.test(
+  "T3b the floating bar is an absolute sibling DIRECT child of <BaseBottomSheet> (NOT stickyFooter, NOT nested in a host View)",
+  // ORCH-1138 Leg 1C FIX-1/2 (device-regression rework): {floatingReserve} renders
+  // as a direct child of <BaseBottomSheet> AFTER the scroll + chrome, NOT inside a
+  // ParallaxCoverShell/foundationHost wrapper. It must NOT use stickyFooter.
+  /<\/BottomSheetScrollView>[\s\S]*?\{floatingReserve\}\s*<\/BaseBottomSheet>/.test(
     screenSrc,
   ) &&
-    !/stickyFooter=\{/.test(screenSrc),
-  "the bar floats as an absolute overlay sibling of the shell, not via BaseBottomSheet.stickyFooter (which froze the scroll, ORCH-1016/1043)",
+    !/stickyFooter=\{/.test(screenSrc) &&
+    !/styles\.foundationHost/.test(screenSrc),
+  "the bar floats as an absolute overlay sibling of the gorhom scroll, not via BaseBottomSheet.stickyFooter and not nested in a host View (which froze the scroll, ORCH-1016/1043)",
 );
 ok(
-  "T3c ParallaxCoverShell gets ScrollComponent={BottomSheetScrollView} so gorhom owns the single registered scrollable (no scroll-freeze)",
-  /ScrollComponent=\{BottomSheetScrollView\}/.test(screenSrc),
-  "the gorhom scroll host must be the shell's ScrollComponent — the single registered scrollable",
+  "T3c the gorhom BottomSheetScrollView is a DIRECT child of <BaseBottomSheet> (the single registered scrollable — no nested host View → no scroll-freeze)",
+  // 🔒 LOAD-BEARING: the scroll host carries flex:1 (styles.nativeScroll zIndex:2
+  // + flexGrow content) and is a direct child of the sheet — restoring the proven
+  // ORCH-1016/1043 direct-child contract that the ParallaxCoverShell-as-host change
+  // broke on Seth's device.
+  /<BaseBottomSheet[\s\S]*?scrollMode="view"[\s\S]*?<BottomSheetScrollView/.test(
+    screenSrc,
+  ) &&
+    /nativeScroll:\s*\{\s*zIndex:\s*2\s*\}/.test(screenSrc) &&
+    !/ScrollComponent=\{BottomSheetScrollView\}/.test(screenSrc),
+  "the gorhom scroll host must be a direct child of <BaseBottomSheet> (NOT injected as ParallaxCoverShell's ScrollComponent, which nested it one View deeper and froze the body)",
+);
+ok(
+  "T3d FIX-3 — the 'Presented by' brand cover renders via the gif/video-aware EventCoverMedia (NOT a plain <Image>)",
+  // The brand chip mounts EventCoverMedia fed fnd.brandCoverMediaUrl/Type so an
+  // animated brand cover renders (image/gif/video), falling back to the hue
+  // gradient (rule 9) when the anon-safe consumer data carries no brand cover.
+  /brandTile[\s\S]{0,260}<EventCoverMedia[\s\S]*?mediaUrl=\{fnd\.brandCoverMediaUrl\}[\s\S]*?mediaType=\{fnd\.brandCoverMediaType\}/.test(
+    screenSrc,
+  ),
+  "the brand cover must use EventCoverMedia (gif/video-aware), not a plain <Image>",
 );
 
 // ── SC-5: checkout is UNCHANGED (the floating bar fires the existing flow) ────
@@ -241,13 +280,24 @@ ok(
   seatsLabelReplica(null, null) === null,
 );
 
-// ── DRAFT all-surface-parity invariant: 3 call sites import ParallaxCoverShell ─
+// ── DRAFT all-surface-parity invariant: both surfaces consume the shared
+// @mingla/offering-rendering foundation ──────────────────────────────────────
+// ORCH-1138 Leg 1C FIX-1/2 (device-regression rework): the business/web page
+// renders via ParallaxCoverShell (it is NOT inside a gorhom sheet, so its native
+// host View is fine). The consumer composes the SAME Direction-A look around the
+// shared primitives (OfferingChrome + CountAwareGallery + ChipGroup +
+// EventCoverMedia) because ParallaxCoverShell's native-host <View> nests the
+// gorhom scroll non-directly and froze the consumer sheet (OQ-3 risk realized).
+// Parity is still by shared-package convergence, not by re-implementation.
 ok(
-  "T9 the trip page renders via @mingla/offering-rendering's ParallaxCoverShell on all 3 surfaces (web/business via TripPreview, consumer via this screen)",
+  "T9 both trip surfaces converge on the shared @mingla/offering-rendering foundation (business via ParallaxCoverShell; consumer via the shared primitives composed around the gorhom scroll)",
   /ParallaxCoverShell/.test(
     read("../mingla-business/src/components/trip/TripPreview.tsx"),
-  ) && /ParallaxCoverShell/.test(screenSrc),
-  "the DRAFT I-PROPOSED-TRIP-PAGE-SHARED-FOUNDATION-ALL-SURFACES — consumer + business both consume the shared shell",
+  ) &&
+    /from\s*["']@mingla\/offering-rendering["']/.test(screenSrc) &&
+    /OfferingChrome/.test(screenSrc) &&
+    /CountAwareGallery/.test(screenSrc),
+  "the DRAFT I-PROPOSED-TRIP-PAGE-SHARED-FOUNDATION-ALL-SURFACES — consumer + business both consume the shared offering-rendering foundation",
 );
 
 console.log(

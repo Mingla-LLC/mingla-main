@@ -79,32 +79,40 @@ ok(
 // @mingla/offering-rendering ParallaxCoverShell to reach FULL parity with the
 // business/web trip page, AND made the Reserve bar FLOAT (Seth's explicit ask).
 //
-// The ORCH-1016/1043 scroll-freeze contract is STILL honored, by a DIFFERENT
-// proven shape (the original R1f/R1f-2/R1f-4 "bare scrollMode='scroll' + scroll-
-// sibling footer" assertions are RETARGETED here — see SPEC §9 + the ORCH-1016/
-// 1043 freeze history they protected):
-//   • The sheet runs scrollMode="view" and mounts ParallaxCoverShell as its body.
-//   • ParallaxCoverShell is given ScrollComponent={BottomSheetScrollView} so the
-//     gorhom scrollable remains the SINGLE registered scrollable (no nested raw
-//     ScrollView, no second scrollable, no viewport==content freeze).
-//   • The Reserve bar FLOATS via a position:"absolute" overlay sibling of the
-//     shell inside a flex:1 host — NOT BaseBottomSheet.stickyFooter (which would
-//     nest the gorhom scroll one BottomSheetView level deeper and re-freeze it).
-// These assertions FAIL when the foundation change is reverted, preserving the
-// scroll-freeze guard under the new structure.
+// The ORCH-1016/1043 scroll-freeze contract is STILL honored, by the PROVEN
+// direct-child shape (RETARGETED again after the ParallaxCoverShell-as-host change
+// FROZE the consumer sheet on Seth's device — SPEC §4.5 OQ-3 risk realized; see
+// SPEC §9 + the ORCH-1016/1043 freeze history these protect):
+//   • The sheet runs scrollMode="view"; the screen renders its OWN gorhom
+//     BottomSheetScrollView as a DIRECT child of <BaseBottomSheet> (NOT injected as
+//     ParallaxCoverShell's ScrollComponent, which nested the scroll inside a
+//     `nativeHost` <View> → viewport==content → maxScroll 0 → frozen body).
+//   • The themed Direction-A look (pinned EventCoverMedia cover + OfferingChrome +
+//     opaque rounded body seam) is composed AROUND the scroll as absolute sibling
+//     DIRECT children (ParallaxCoverShell ships the business/web page only — it is
+//     DO-NOT-TOUCH packages/*).
+//   • The Reserve bar FLOATS via the position:"absolute" ConsumerTripReserveBar as
+//     an absolute sibling — NOT BaseBottomSheet.stickyFooter (which would nest the
+//     gorhom scroll one BottomSheetView level deeper and re-freeze it).
+// These assertions FAIL when the fix is reverted, preserving the scroll-freeze
+// guard under the restored direct-child structure.
 ok(
-  "R1f the populated trip detail sheet renders via the shared ParallaxCoverShell + hidesBottomNav (Direction-A foundation parity)",
-  /import\s*\{[\s\S]*?ParallaxCoverShell[\s\S]*?\}\s*from\s*["']@mingla\/offering-rendering["']/.test(
+  "R1f the populated trip detail sheet renders the gorhom BottomSheetScrollView as a DIRECT child of <BaseBottomSheet> (scrollMode='view' + hidesBottomNav), composing the shared @mingla/offering-rendering primitives around it",
+  /import\s*\{[\s\S]*?OfferingChrome[\s\S]*?\}\s*from\s*["']@mingla\/offering-rendering["']/.test(
     detailSrc,
   ) &&
-    /<ParallaxCoverShell[\s\S]*?<\/ParallaxCoverShell>/.test(detailSrc) &&
+    /<BaseBottomSheet[\s\S]*?scrollMode="view"[\s\S]*?<BottomSheetScrollView/.test(
+      detailSrc,
+    ) &&
     /scrollMode="view"\s*\n\s*hidesBottomNav/.test(detailSrc),
-  "the populated body composes the shared foundation primitive (ParallaxCoverShell) inside a scrollMode='view' sheet, hiding the floating nav",
+  "the populated body mounts the gorhom scroll as a direct child of the sheet (scrollMode='view'), composing the shared foundation primitives around it, hiding the floating nav",
 );
 ok(
-  "R1f-2 ParallaxCoverShell is given ScrollComponent={BottomSheetScrollView} (gorhom owns the SINGLE registered scrollable — no viewport==content freeze)",
-  /ScrollComponent=\{BottomSheetScrollView\}/.test(detailSrc),
-  "the shell's native scroll host MUST be gorhom's BottomSheetScrollView so the gorhom scroll stays the single registered scrollable (ORCH-1016/1043 contract)",
+  "R1f-2 the gorhom BottomSheetScrollView is a DIRECT child of <BaseBottomSheet> — NOT injected as ParallaxCoverShell's ScrollComponent (which nested it one View deeper and froze the body on device)",
+  /<\/BottomSheetScrollView>/.test(detailSrc) &&
+    !/ScrollComponent=\{BottomSheetScrollView\}/.test(detailSrc) &&
+    !/<ParallaxCoverShell/.test(detailSrc),
+  "the gorhom scroll host MUST be a direct child of the sheet so it stays the single registered scrollable AND keeps a bounded viewport (ORCH-1016/1043 contract); hosting it inside ParallaxCoverShell's native View re-freezes it",
 );
 ok(
   "R1f-2b the screen does NOT use a raw RN <ScrollView> inside the sheet (raw RN scroll fights the gorhom pan)",
