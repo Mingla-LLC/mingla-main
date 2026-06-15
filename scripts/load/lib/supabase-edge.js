@@ -30,6 +30,7 @@ export function edgeHeaders(extra = {}) {
   return {
     apikey: requireEnv("SUPABASE_ANON_KEY"),
     "Content-Type": "application/json",
+    "Accept-Encoding": "gzip",
     ...extra,
   };
 }

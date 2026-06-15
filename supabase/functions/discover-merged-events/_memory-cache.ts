@@ -2,6 +2,11 @@
  * ORCH-426 G1 — L1 in-memory cache + single-flight + stale-while-revalidate.
  */
 
+import {
+  encodeDiscoverResponse,
+  withCacheMeta,
+  type DiscoverResponseBytes,
+} from "./_response-bytes.ts";
 import type { DiscoverMergedResponse } from "./_types.ts";
 
 export const DISCOVER_L1_FRESH_MS = Number(
@@ -11,14 +16,15 @@ export const DISCOVER_L1_STALE_MS = Number(
   Deno.env.get("DISCOVER_MERGED_STALE_MS") ?? "600000",
 );
 
-interface L1Entry {
+export interface L1Entry {
   response: DiscoverMergedResponse;
+  bytes: DiscoverResponseBytes;
   freshUntil: number;
   staleUntil: number;
 }
 
 const l1 = new Map<string, L1Entry>();
-const inflight = new Map<string, Promise<DiscoverMergedResponse>>();
+const inflight = new Map<string, Promise<L1Entry>>();
 
 export function l1Get(key: string, now = Date.now()): L1Entry | null {
   const hit = l1.get(key);
@@ -29,26 +35,41 @@ export function l1Get(key: string, now = Date.now()): L1Entry | null {
   return hit;
 }
 
-export function l1Set(key: string, response: DiscoverMergedResponse, now = Date.now()): void {
-  l1.set(key, {
+export async function l1Set(
+  key: string,
+  response: DiscoverMergedResponse,
+  now = Date.now(),
+): Promise<L1Entry> {
+  const cached = withCacheMeta(response);
+  const bytes = await encodeDiscoverResponse(cached);
+  return l1SetBytes(key, bytes, cached, now);
+}
+
+export function l1SetBytes(
+  key: string,
+  bytes: DiscoverResponseBytes,
+  response: DiscoverMergedResponse,
+  now = Date.now(),
+): L1Entry {
+  const entry: L1Entry = {
     response,
+    bytes,
     freshUntil: now + DISCOVER_L1_FRESH_MS,
     staleUntil: now + DISCOVER_L1_STALE_MS,
-  });
+  };
+  l1.set(key, entry);
+  return entry;
 }
 
 export async function coalesceDiscoverBuild(
   key: string,
   build: () => Promise<DiscoverMergedResponse>,
-): Promise<DiscoverMergedResponse> {
+): Promise<L1Entry> {
   const existing = inflight.get(key);
   if (existing) return existing;
 
   const promise = build()
-    .then((response) => {
-      l1Set(key, response);
-      return response;
-    })
+    .then((response) => l1Set(key, response))
     .finally(() => {
       inflight.delete(key);
     });
