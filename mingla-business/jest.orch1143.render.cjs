@@ -34,6 +34,8 @@ module.exports = {
   },
   testMatch: [
     "**/__tests__/LiveOfferingCard.orch1143.render.test.tsx",
+    // ORCH-1143 SC-7 (tester adversarial) — Upcoming/Live de-dup render proof.
+    "**/__tests__/UpcomingDedup.orch1143.render.test.tsx",
   ],
   transformIgnorePatterns: [
     "node_modules/(?!(jest-)?react-native|@react-native|@react-native-community|@testing-library|test-renderer|react-clone-referenced-element|@react-native-async-storage|expo|@expo|react-native-safe-area-context|@gorhom)",

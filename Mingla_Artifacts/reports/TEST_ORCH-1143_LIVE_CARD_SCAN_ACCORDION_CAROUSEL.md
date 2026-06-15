@@ -173,3 +173,62 @@ This verdict is CONDITIONAL pending Seth's affirmative on:
 2. **C-2 (CONDITION):** accept that the physical-device QR live-fire of a real experience/trip ticket is a post-merge device smoke owned by Seth (everything machine-verifiable is proven).
 
 With both accepted → routes to CLOSE. Without → STOP and surface to Seth (do not auto-CLOSE).
+
+---
+
+## 12. SC-7 ADDENDUM — focused adversarial pass on the live/Upcoming de-dup fix (2026-06-15)
+
+**Context:** §11 C-1 (P2) was the open condition from the prior CONDITIONAL PASS — a live offering
+appeared in BOTH the Live-now carousel and the Upcoming list. Seth authorized the `[TEST-MOD-APPROVED ORCH-1143]`
+follow-up. This addendum is the focused re-test of the resulting SC-7 fix. **The C-1 condition is now RESOLVED.**
+
+**SC-7 fix under test:** `4c6314f81` *(post-rebase onto `origin/main` @ `232dd5ea0`; pre-rebase the dispatch referenced `d0c7f0b50`)* — source change; `34c5fb0fc` — IMPLEMENT-report §13 append.
+**Re-test branch HEAD:** `34c5fb0fc`.
+
+### 12.1 SC-7 Verdict — **PASS** (P0: 0 · P1: 0 · P2: 0)
+
+The de-dup is correct, surgical, and constitutionally clean. Proven at TWO independent levels:
+the implementor's source-level array regression AND a tester-owned RENDER-level proof.
+
+### 12.2 SC-7 SC-by-SC matrix
+
+| Check | Verdict | Evidence |
+|-------|---------|----------|
+| Live offering of EACH kind absent from Upcoming, present in live set | PASS | Source: `upcomingBuilder.test.ts` SC7-1 (event); existing carousel render proof `LiveOfferingCard.orch1143.render.test.tsx` covers event/experience/trip scan render. Render: my `UpcomingDedup.orch1143.render.test.tsx` proves the live EVENT renders in the `live-carousel-host` and is ABSENT from the `upcoming-list-host` FlatList through the real `LiveOfferingCard` + `UpcomingListItem` + `buildUpcomingItems`. Trip/experience share the identical `status !== "live"` filter path (single code path; no per-kind branch in the filter). |
+| No leakage either direction (scheduled stays in Upcoming, not carousel) | PASS | Render test 2nd case: `SCHEDULED_GALA_Y` renders in `upcoming-list-host`, NULL in `live-carousel-host`. Source SC7-1: `nonLiveItems` = `["draft-x","evt-soon"]`, `liveItems` excludes them. |
+| Dedup uses a DERIVED view (`nonLiveItems`); does NOT mutate `items` or the live set (one owner per truth, Constitution #2) | PASS | `upcomingBuilder.ts:238` — `const nonLiveItems = nonPast.filter((i) => i.status !== "live")` is a fresh array; `items: nonPast` and `liveItems` unchanged. SC7-1 asserts `items.length === liveItems.length + nonLiveItems.length` and `items` still contains `evt-live`. Carousel still reads `liveItems` (home.tsx:564); live count unchanged. |
+| Edge: ALL items live → Upcoming hides cleanly (no crash, no empty-list artifact) | PASS | SC7-2: `nonLiveItems` length 0, `.map` over it safe. home.tsx:898 gates the section header on `hasUpcomingItems = upcoming.nonLiveItems.length > 0` (home.tsx:457) — header + list both suppressed, not an empty FlatList. |
+| Edge: NO items live → Upcoming identical to pre-SC-7 | PASS | SC7-3: `nonLiveItems.map(id) === items.map(id)` in the same sorted order. |
+| A-05 TEST-MOD intent-preserving; only the data-source assertion changed; `[TEST-MOD-APPROVED]` token present | PASS | `home.orch_0974.adversarial.test.tsx:106` carries `[TEST-MOD-APPROVED by Seth 2026-06-15]`; line 107 is the ONLY changed assertion (`data={upcoming.nonLiveItems}`). keyExtractor, `<UpcomingListItem`, the 3 handlers, and the draft(4)/trip(3)/event(5) branch digests (lines 148-150) are unchanged. Single-scroll + all item-kind branches still protected. Set runs GREEN (5/5). |
+
+### 12.3 Tester adversarial test (DIFFERENT ANGLE — render-level)
+
+- **Path:** `mingla-business/src/components/home/__tests__/UpcomingDedup.orch1143.render.test.tsx` (NEW, append-only).
+- **Config:** added one `testMatch` glob to the existing worktree-local `jest.orch1143.render.cjs` (RTL resolved via the `.orch1118-testdeps` overlay, same as the implementor's render proof).
+- **Angle vs implementor:** the implementor's `upcomingBuilder.test.ts` asserts on the PURE `nonLiveItems` ARRAY. This test mounts a faithful `home.tsx` slice — the Live-now carousel (`liveItems.map → <LiveOfferingCard>`) and the Upcoming `<FlatList data={nonLiveItems ?? items}> → <UpcomingListItem>` — fed by REAL `buildUpcomingItems(...)` output, and asserts on the rendered host-tree: the live row is ABSENT from the Upcoming list host and PRESENT in the carousel host; the scheduled row is the inverse. It catches a leak the user would actually see, not just an array contents mismatch.
+- **Green:** `npx jest --config jest.orch1143.render.cjs --runInBand` → 2 suites / 7 tests PASS (my 2 + the existing 5).
+- **Fails-on-revert: VERIFIED.** Deleting the `nonLiveItems = nonPast.filter((i) => i.status !== "live")` line + the return field in `upcomingBuilder.ts` makes `nonLiveItems` undefined → the FlatList's `?? items` fallback feeds the FULL set (incl. the live row) → `LIVE_CONCERT_X` LEAKS into the rendered `upcoming-list-host` → `expect(upcoming.queryByText(LIVE_NAME)).toBeNull()` FAILS (received a `Text` fiber). Restored → green. Verified at branch HEAD `34c5fb0fc` (fix commit `4c6314f81`).
+- **In closing diff:** `git diff origin/main...HEAD --name-only` includes BOTH the implementor's `upcomingBuilder.test.ts` (SC7-1/2/3) AND this new `UpcomingDedup.orch1143.render.test.tsx`.
+
+### 12.4 Step 0.5 — independent re-run of the implementor's fails-on-revert proof
+
+Checked out the branch state, then deleted the SC-7 filter + interface field in `upcomingBuilder.ts` and re-ran the implementor's `upcomingBuilder.test.ts` SC7-1: the suite **fails to run** with `error TS2339: Property 'nonLiveItems' does not exist` at test lines 643/686/700 (ts-jest strict). The implementor's source test is tightly coupled to the `nonLiveItems` API surface — it cannot compile, let alone pass, without the fix. Restored → 30/30 green. Hashes run: fix `4c6314f81`, branch HEAD `34c5fb0fc`.
+
+### 12.5 SC-7 gates
+
+- `npx jest src/utils/__tests__/upcomingBuilder.test.ts` → 30/30 PASS (incl. SC7-1/2/3).
+- `npx jest home.orch_0974.adversarial` → 5/5 PASS (A-05 retargeted, intent-preserved).
+- `npx jest --config jest.orch1143.render.cjs` → 7/7 PASS (incl. the new render proof).
+- **tsc:** the ONLY error touching the new test is `TS2307 Cannot find module '@testing-library/react-native'` — RTL is NOT a project dependency (overlay-only, runtime-resolved via the jest `moduleNameMapper`); the EXISTING `LiveOfferingCard.orch1143.render.test.tsx` and `EditPublishedTripScreen.*.render.test.tsx` emit the identical TS2307. All other tsc errors (checkout buyers, marketing composer, payments, `category`-on-`DraftEvent` service tests) are in files OUTSIDE the SC-7 diff → pre-existing, not introduced here.
+- **eslint:** the new test's `import/no-unresolved` error + `require()`-style / `import/first` warnings are byte-for-byte the same profile as the shipped `LiveOfferingCard.orch1143.render.test.tsx` (eslint exits 0; not a blocking gate for these overlay-resolved render proofs). `useUpcomingForBrand.ts` exhaustive-deps warnings are pre-existing (unrelated to the threaded `nonLiveItems` field).
+- **DISC-1143-D** (`liveEventStore` v4-v5 migrator, `version:5` vs source `version:6`) confirmed pre-existing + not in any required CI gate — NOT blocked on, per §9.
+
+### 12.6 Constitution re-check (SC-7 delta)
+
+- **#2 One owner per truth:** PASS — `nonLiveItems` is a derived projection; `liveItems` remains the sole owner of live-state, `items` the full set. No competing writer.
+- **#3 No silent failure:** PASS — all-live case hides the section via an explicit `length > 0` gate, not a swallowed empty render.
+- All other rules: N/A to this delta (no auth/data/currency/cache surface touched).
+
+**SC-7 outcome:** the §11 C-1 condition is RESOLVED. Live offerings now render exclusively in the
+Live-now carousel; the Upcoming list is the non-live projection; no leakage; edges clean; A-05
+intent preserved. SC-7 = **PASS**.
