@@ -59,6 +59,16 @@ export interface LiveOfferingCardProps {
   onScanPress: (id: string) => void;
   /** Set by the carousel parent. Undefined ⇒ full-width (single-live). */
   width?: number;
+  /**
+   * ORCH-1143 §4.4-A (continuous-section fix): when true, the card renders
+   * FLAT — without its own `GlassCard` chrome (no border/shadow/radius/air
+   * gap) — so the single-live content sits directly on the shared `base`
+   * section surface in home.tsx (header → hairline divider → flat body = ONE
+   * continuous section). The carousel (≥2 live) leaves `flat` unset so each
+   * card keeps its discrete `variant="elevated"` chrome. `width` is ignored in
+   * flat mode (single-live is full-width of the body region).
+   */
+  flat?: boolean;
   testID?: string;
 }
 
@@ -70,6 +80,7 @@ export const LiveOfferingCard: React.FC<LiveOfferingCardProps> = ({
   metrics,
   onScanPress,
   width,
+  flat = false,
   testID,
 }) => {
   // Display-only normalization. Trips adapt to a LiveEvent-shaped view for the
@@ -83,13 +94,13 @@ export const LiveOfferingCard: React.FC<LiveOfferingCardProps> = ({
   const dateLine =
     displayEvent !== null ? formatDraftDateLine(displayEvent) : "";
 
-  return (
-    <GlassCard
-      variant="elevated"
-      padding={spacing.lg}
-      style={width !== undefined ? { width } : undefined}
-      testID={testID}
-    >
+  // ORCH-1143 §4.4-A (continuous-section fix): the hero content tree is the
+  // same in both modes. In FLAT mode (single-live) it renders chrome-less so
+  // it sits directly on the shared `base` section surface in home.tsx (the
+  // surrounding `liveSectionBody` owns the inset — see A.4/A.6); in elevated
+  // mode (carousel cards) it keeps its own `GlassCard variant="elevated"`.
+  const content = (
+    <>
       <View style={styles.liveTagRow}>
         <Pill variant="live" livePulse>
           Live now
@@ -149,11 +160,42 @@ export const LiveOfferingCard: React.FC<LiveOfferingCardProps> = ({
         <Icon name="qr" size={18} color={accent.warm} />
         <Text style={styles.scanButtonText}>Scan QR codes</Text>
       </Pressable>
+    </>
+  );
+
+  // FLAT (single-live): no own glass surface / elevation / air gap. The
+  // content is laid directly on the shared section surface; `width` is ignored
+  // (single-live is full-width of liveSectionBody). The testID rides the
+  // wrapper View so render-test selectors still resolve.
+  if (flat) {
+    return (
+      <View style={styles.flatRoot} testID={testID}>
+        {content}
+      </View>
+    );
+  }
+
+  // ELEVATED (carousel, ≥2 live): each card keeps discrete chrome.
+  return (
+    <GlassCard
+      variant="elevated"
+      padding={spacing.lg}
+      style={width !== undefined ? { width } : undefined}
+      testID={testID}
+    >
+      {content}
     </GlassCard>
   );
 };
 
 const styles = StyleSheet.create({
+  // ORCH-1143 §4.4-A.6 — flat (single-live) wrapper: NO outer padding. The
+  // enclosing `liveSectionBody` in home.tsx supplies the 16/8/16 inset, so the
+  // flat content must not double-pad. No border/shadow/radius — it is laid
+  // directly on the shared `base` section surface.
+  flatRoot: {
+    padding: 0,
+  },
   liveTagRow: {
     flexDirection: "row",
     marginBottom: spacing.sm,

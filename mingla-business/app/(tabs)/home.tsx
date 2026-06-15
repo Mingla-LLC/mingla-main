@@ -505,14 +505,20 @@ export default function HomeTab(): React.ReactElement {
     if (!hasLiveItems) return null;
     return (
       <View style={styles.liveSection}>
-        {/* ORCH-1143 §4.4-A (device-feedback fix): the header is wrapped in a
-            GlassCard so it reads as an interactive surface (matching the
-            BusinessTodoToggle directly above it on Home) — the bare label row
-            looked like a static section title. GlassCard owns the inner
-            spacing.md inset and the Android opaque-glass fallback; the gutter
-            lives on the liveSection wrapper View. The card body (single card or
-            carousel) stays a SIBLING below this card, NOT inside it. */}
-        <GlassCard variant="base" padding={spacing.md}>
+        {/* ORCH-1143 §4.4-A (continuous-section fix, AUTHORITATIVE): ONE shared
+            `base` GlassCard surface wraps the WHOLE section — header row →
+            hairline divider → body — so the header and content read as one
+            continuous section parted by a divider, not two stacked cards (the
+            device-feedback fix's separate header GlassCard + separate elevated
+            body card read as "two different sections"; Seth rejected it). The
+            card uses padding={0} so each region controls its own inset and the
+            divider can run full-width inside the surface. Single-live content
+            renders FLAT (no own glass chrome) directly on this surface; the
+            carousel (≥2 live) parks discrete `elevated` cards under the divider
+            inside the same surface. The 16pt gutter still lives on the
+            liveSection wrapper View; Android opaque-glass is inherited from this
+            single base GlassCard. */}
+        <GlassCard variant="base" padding={0}>
           <Pressable
             onPress={handleToggleLiveSection}
             accessibilityRole="button"
@@ -552,42 +558,59 @@ export default function HomeTab(): React.ReactElement {
               />
             </View>
           </Pressable>
-        </GlassCard>
 
-        {showLiveOpen ? (
-          liveItems.length === 1 ? (
-            <LiveOfferingCard
-              item={liveItems[0]}
-              metrics={
-                liveMetricsById[liveItems[0].id] ?? EMPTY_LIVE_CARD_METRICS
-              }
-              onScanPress={handleScanPress}
-              testID="home-live-card"
-            />
-          ) : (
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              snapToInterval={liveCardWidth + spacing.md}
-              snapToAlignment="start"
-              decelerationRate="fast"
-              contentContainerStyle={styles.liveCarouselContent}
-              accessibilityLabel="Live offerings, swipe horizontally to see more"
-            >
-              {liveItems.map((liveItem) => (
+          {/* §4.4-A.3 — hairline divider (the seam that replaces the
+              inter-card gap), using the card's OWN border token so it reads as
+              an internal continuation of the card edge. Inset 16/16 so it does
+              not collide with the rounded corners. Rendered ONLY when open, so
+              a collapsed header sits alone as a clean rounded bar. */}
+          {showLiveOpen ? (
+            <View style={styles.liveSectionDivider} />
+          ) : null}
+
+          {/* §4.4-A.4/A.5 — body INSIDE the same surface, under the divider.
+              Single-live = flat content laid on the shared surface; carousel =
+              discrete elevated cards parked beneath the divider. */}
+          {showLiveOpen ? (
+            liveItems.length === 1 ? (
+              <View style={styles.liveSectionBody}>
                 <LiveOfferingCard
-                  key={liveItem.key}
-                  item={liveItem}
+                  flat
+                  item={liveItems[0]}
                   metrics={
-                    liveMetricsById[liveItem.id] ?? EMPTY_LIVE_CARD_METRICS
+                    liveMetricsById[liveItems[0].id] ?? EMPTY_LIVE_CARD_METRICS
                   }
                   onScanPress={handleScanPress}
-                  width={liveCardWidth}
+                  testID="home-live-card"
                 />
-              ))}
-            </ScrollView>
-          )
-        ) : null}
+              </View>
+            ) : (
+              <View style={styles.liveSectionCarouselBody}>
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  snapToInterval={liveCardWidth + spacing.md}
+                  snapToAlignment="start"
+                  decelerationRate="fast"
+                  contentContainerStyle={styles.liveCarouselContent}
+                  accessibilityLabel="Live offerings, swipe horizontally to see more"
+                >
+                  {liveItems.map((liveItem) => (
+                    <LiveOfferingCard
+                      key={liveItem.key}
+                      item={liveItem}
+                      metrics={
+                        liveMetricsById[liveItem.id] ?? EMPTY_LIVE_CARD_METRICS
+                      }
+                      onScanPress={handleScanPress}
+                      width={liveCardWidth}
+                    />
+                  ))}
+                </ScrollView>
+              </View>
+            )
+          ) : null}
+        </GlassCard>
       </View>
     );
   };
@@ -1146,13 +1169,43 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    // No paddingHorizontal/vertical — the wrapping GlassCard's padding={spacing.md}
-    // owns the content inset (adding more would double-pad). minHeight keeps the
-    // touch target ≥44pt.
+    // ORCH-1143 §4.4-A.2 (continuous-section fix): re-add the header inset
+    // because the enclosing GlassCard is now padding={0}. paddingHorizontal:16
+    // reinstates the gutter the card used to supply; paddingVertical:8 +
+    // minHeight:44 keeps the ≥44pt touch target while sitting tight to the
+    // divider.
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
     minHeight: 44,
   },
   liveHeaderRowPressed: {
     opacity: 0.6,
+  },
+  // ORCH-1143 §4.4-A.3 — hairline seam between header and body, INSIDE the
+  // shared base surface. Uses glass.border.profileBase — the EXACT token the
+  // base GlassCard draws its own perimeter with — so it reads as an internal
+  // continuation of the card edge, not a foreign line. Inset 16/16 so it does
+  // not collide with the 16-radius corners.
+  liveSectionDivider: {
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: glass.border.profileBase,
+    marginHorizontal: spacing.md,
+  },
+  // ORCH-1143 §4.4-A.4 — single-live body region inside the shared surface.
+  // Owns the flat card's inset (the flat LiveOfferingCard renders padding:0):
+  // 16 horizontal, 8 top (tight under the divider so content reads as belonging
+  // to the header), 16 bottom (comfortable base inset).
+  liveSectionBody: {
+    paddingHorizontal: spacing.md,
+    paddingTop: spacing.sm,
+    paddingBottom: spacing.md,
+  },
+  // ORCH-1143 §4.4-A.5 — carousel body region: NO horizontal padding (the
+  // ScrollView contentContainerStyle owns the 16 left/right via
+  // liveCarouselContent); 8 top under the divider, 16 bottom.
+  liveSectionCarouselBody: {
+    paddingTop: spacing.sm,
+    paddingBottom: spacing.md,
   },
   liveHeaderChevron: {
     // ORCH-1143 §4.4-A: contained circular "dropdown handle" affordance.
@@ -1189,6 +1242,10 @@ const styles = StyleSheet.create({
   },
   liveCarouselContent: {
     gap: spacing.md,
+    // ORCH-1143 §4.4-A.5 — add left inset: the enclosing GlassCard is now
+    // padding={0}, so the carousel must self-supply its 16pt left inset to
+    // align the first card's left edge with the divider's 16pt inset.
+    paddingLeft: spacing.md,
     paddingRight: spacing.md,
   },
 

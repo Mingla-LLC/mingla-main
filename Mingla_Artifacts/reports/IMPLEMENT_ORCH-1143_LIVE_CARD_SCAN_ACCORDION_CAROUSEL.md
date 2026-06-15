@@ -233,3 +233,57 @@ No new test required — pure visual token change with zero behavior/store/carou
 
 ### Commit
 `97c661ca137567ccb71d544b46225966c43d8e29`
+
+---
+
+## Continuous-section fix (device feedback v2) — 2026-06-15
+
+Seth device-tested the prior (device-feedback v1) fix and reported the "Live now" header + content read as "two different sections as opposed to one continuous section with a divider." The designer revised §4.4-A (the "REVISED 2026-06-15 (continuous-section fix) — AUTHORITATIVE" block) to bind header + divider + body into ONE shared `base` GlassCard surface. This section records the v2 delta. Scope: visual/structure ONLY — zero behavior change (collapse store, carousel cardWidth math, scan button, per-kind routing, ≥44pt header target all untouched).
+
+### Files changed (v2)
+- `mingla-business/app/(tabs)/home.tsx` — `renderLiveSection` JSX restructure + 1 style edit + 3 new style keys + 1 style key augmented (~+55 lines net incl. comments).
+- `mingla-business/src/components/home/LiveOfferingCard.tsx` — `flat?: boolean` prop + content/chrome split + `flatRoot` style (~+45 lines net incl. comments).
+- `mingla-business/jest.orch1143.render.cjs` — appended the new flat render-test to `testMatch` (config, not a test; append-only).
+- `mingla-business/src/components/home/__tests__/LiveOfferingCard.flat.orch1143.render.test.tsx` — NEW happy-path regression test (3 tests).
+
+### home.tsx — exact keys/props changed (per §4.4-A AUTHORITATIVE delta tables)
+- **JSX:** enclosing card flipped `<GlassCard variant="base" padding={spacing.md}>` → `<GlassCard variant="base" padding={0}>`. The body block (single-live `LiveOfferingCard` / carousel `ScrollView`) was MOVED from being a SIBLING of the GlassCard to INSIDE it, below the header `Pressable`, with the new `liveSectionDivider` between header and body. The single-live `<LiveOfferingCard>` now passes `flat`; the carousel cards do NOT (stay elevated). Stale "stays a SIBLING below this card, NOT inside it" comment replaced with the continuous-section note. The single-live card is wrapped in `<View style={styles.liveSectionBody}>`; the carousel in `<View style={styles.liveSectionCarouselBody}>`.
+- **`liveHeaderRow`:** re-added `paddingHorizontal: spacing.md` + `paddingVertical: spacing.sm` (the GlassCard no longer pads). `minHeight: 44` preserved.
+- **`liveSectionDivider` (NEW):** `{ height: StyleSheet.hairlineWidth, backgroundColor: glass.border.profileBase, marginHorizontal: spacing.md }`. Rendered ONLY when `showLiveOpen`.
+- **`liveSectionBody` (NEW):** `{ paddingHorizontal: spacing.md, paddingTop: spacing.sm, paddingBottom: spacing.md }`.
+- **`liveSectionCarouselBody` (NEW):** `{ paddingTop: spacing.sm, paddingBottom: spacing.md }` (no h-padding; ScrollView content owns it).
+- **`liveCarouselContent`:** added `paddingLeft: spacing.md` (GlassCard `padding:0` no longer supplies the carousel's left inset).
+- **UNCHANGED:** `liveSection`, `liveHeaderRowPressed`, `liveHeaderChevron`, `liveHeaderLeft`, `liveHeaderDot`, `liveHeaderTitle`, `liveHeaderCount`.
+
+### LiveOfferingCard.tsx — the flat-prop addition (§4.4-A.6)
+- Added `flat?: boolean` (default `false`) to `LiveOfferingCardProps` with a doc comment.
+- Extracted the hero content tree into a `content` fragment. When `flat`, the card returns `<View style={styles.flatRoot} testID={testID}>{content}</View>` (chrome-less: no GlassCard, no border/shadow/radius, no air gap; `width` ignored). When unset/false, it returns the unchanged `<GlassCard variant="elevated" padding={spacing.lg} …>{content}</GlassCard>`. `testID` rides the wrapper in BOTH modes so render-test selectors still resolve.
+- `flatRoot` style: `{ padding: 0 }` — the enclosing `liveSectionBody` (16/8/16) owns the single-live inset (no double-pad), per A.6 inset reconciliation.
+
+### Token verification (zero new tokens)
+All tokens resolve against `home.tsx`'s existing import (`{ accent, glass, radius as radiusTokens, spacing, text as textTokens, typography } from "../../src/constants/designSystem"`):
+- `glass.border.profileBase` → **RESOLVED** = `rgba(255,255,255,0.08)` (`designSystem.ts:266`); same token `VARIANT_TOKENS.base.border` uses for the card perimeter (divider reads as internal seam). `glass` imported directly — no alias.
+- `spacing.md` (16) / `spacing.sm` (8) → RESOLVED, imported directly.
+- `StyleSheet.hairlineWidth` → RESOLVED (RN core; already used at `home.tsx` scanButton-era and now `liveSectionDivider`). `StyleSheet` imported at `home.tsx:30`.
+- No new import added to either file. `flat` is the ONLY new component-API surface.
+
+### Render-test selector update
+**None required.** The two pre-existing render proofs (`LiveOfferingCard.orch1143.render`, `UpcomingDedup.orch1143.render`) mount `LiveOfferingCard` WITHOUT `flat` (default elevated path), with GlassCard stubbed — the chrome split and the added prop do not touch their selectors (`home-live-card-scan-button`, "Scan QR codes", "Scanned", a11y label). Both still pass unchanged (7/7). A NEW test file was ADDED (not modified) for the v2 behavior.
+
+### Regression test (v2)
+- **New:** `LiveOfferingCard.flat.orch1143.render.test.tsx` — 3 tests: (1) `flat` renders WITHOUT a GlassCard chrome marker (the continuous-section requirement) while the wrapper testID still resolves; (2) default/elevated mode DOES wrap in a GlassCard; (3) scan button fires in BOTH modes (behavior unchanged).
+- **Fails-on-revert PROVEN by true line-deletion:** deleted the `if (flat) { return <View style={styles.flatRoot} …> }` branch in `LiveOfferingCard.tsx` → test "flat mode renders WITHOUT a GlassCard" FAILED (`expect(queryByTestId("glasscard-marker")).toBeNull()` — the card fell through to the elevated GlassCard, marker present). Restored the branch → re-ran, GREEN (10/10 across the render config). `fails-on-revert verified at 3fa9297d7` (pre-fix-restore baseline HEAD).
+- **T10/SC-7 behavioral tests:** unchanged + still passing (behavior is unchanged by a visual restructure). `home.orch_1143` (SC-7 source assertions incl. `liveItems.length === 1 ? (`, `snapToInterval`, `width={liveCardWidth}`, chevron name, scan-button testID), `home.orch_0974` (+adversarial), `liveSectionCollapseStore` (+adversarial), `UpcomingDedup` render — ALL pass.
+
+### Gate results (v2) — ALL GREEN (pre-existing-unrelated noted)
+- `npx tsc --noEmit` → **zero errors in `app/(tabs)/home.tsx` and `LiveOfferingCard.tsx`** (confirmed by file-filtered grep). The remaining repo errors (`@testing-library/react-native` type-resolution in test files, `packages/phone-input` standalone deps) are PRE-EXISTING on the rebased origin/main baseline (35 such errors present with my change stashed) — not introduced here.
+- `npx eslint app/(tabs)/home.tsx src/components/home/LiveOfferingCard.tsx` → **exit 0**, clean.
+- `npx jest --config jest.orch1143.render.cjs` → **10 passed, 3 suites** (incl. the new flat test).
+- `npx jest home.orch_1143 home.orch_0974 upcomingBuilder liveSectionCollapseStore` → **71 passed, 1 failed**. The single failure is `upcomingBuilder.adversarial.test.ts › ADV-09` in `pickHomeNextAction` (brand-switch isolation) — **NOT touched by this change** and **fails identically on the rebased origin/main baseline** (verified by stash). Pre-existing, unrelated.
+- Strict-grep gates: `i-proposed-z-home-no-fabricated-events` PASS · `orch-1105-web-glass-opaque-fallback` PASS (Android opaque-glass inherited via the single base GlassCard — no manual Platform.select introduced) · `i-proposed-tr2-livestore-addliveevent-owner` PASS.
+
+### Smoke / verification status
+**implemented, partially verified** — runtime render evidence via jest+@testing-library/react-native (the flat-vs-elevated chrome split + scan-button fire are proven at runtime). The visual continuous-section appearance on a physical device/sim is NOT machine-verifiable here and is the tester's device step (the prior fix was the one Seth eyeballed; this v2 needs a fresh device look). No native compilation needed (pure-JS/RN style change) → ships via OTA per [[project_ota_deferred_until_new_build]], orchestrator/operator-owned.
+
+### Commit (v2)
+`318461e7ecc3887a3f18f2f22bb2c9fe9c354955` (branch `ORCH-1143-live-card-scan-accordion`). The code + tests + this report ship in this single commit; `fails-on-revert verified at 3fa9297d7`.

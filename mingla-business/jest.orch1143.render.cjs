@@ -36,6 +36,8 @@ module.exports = {
     "**/__tests__/LiveOfferingCard.orch1143.render.test.tsx",
     // ORCH-1143 SC-7 (tester adversarial) — Upcoming/Live de-dup render proof.
     "**/__tests__/UpcomingDedup.orch1143.render.test.tsx",
+    // ORCH-1143 §4.4-A continuous-section fix v2 — flat-vs-elevated chrome proof.
+    "**/__tests__/LiveOfferingCard.flat.orch1143.render.test.tsx",
   ],
   transformIgnorePatterns: [
     "node_modules/(?!(jest-)?react-native|@react-native|@react-native-community|@testing-library|test-renderer|react-clone-referenced-element|@react-native-async-storage|expo|@expo|react-native-safe-area-context|@gorhom)",
