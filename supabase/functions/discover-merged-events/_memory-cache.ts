@@ -2,11 +2,7 @@
  * ORCH-426 G1 — L1 in-memory cache + single-flight + stale-while-revalidate.
  */
 
-import {
-  encodeDiscoverResponse,
-  withCacheMeta,
-  type DiscoverResponseBytes,
-} from "./_response-bytes.ts";
+import type { DiscoverResponseBytes } from "./_response-bytes.ts";
 import type { DiscoverMergedResponse } from "./_types.ts";
 
 export const DISCOVER_L1_FRESH_MS = Number(
@@ -35,16 +31,6 @@ export function l1Get(key: string, now = Date.now()): L1Entry | null {
   return hit;
 }
 
-export async function l1Set(
-  key: string,
-  response: DiscoverMergedResponse,
-  now = Date.now(),
-): Promise<L1Entry> {
-  const cached = withCacheMeta(response);
-  const bytes = await encodeDiscoverResponse(cached);
-  return l1SetBytes(key, bytes, cached, now);
-}
-
 export function l1SetBytes(
   key: string,
   bytes: DiscoverResponseBytes,
@@ -63,16 +49,14 @@ export function l1SetBytes(
 
 export async function coalesceDiscoverBuild(
   key: string,
-  build: () => Promise<DiscoverMergedResponse>,
+  build: () => Promise<L1Entry>,
 ): Promise<L1Entry> {
   const existing = inflight.get(key);
   if (existing) return existing;
 
-  const promise = build()
-    .then((response) => l1Set(key, response))
-    .finally(() => {
-      inflight.delete(key);
-    });
+  const promise = build().finally(() => {
+    inflight.delete(key);
+  });
 
   inflight.set(key, promise);
   return promise;
@@ -80,7 +64,7 @@ export async function coalesceDiscoverBuild(
 
 export function refreshDiscoverInBackground(
   key: string,
-  build: () => Promise<DiscoverMergedResponse>,
+  build: () => Promise<L1Entry>,
 ): void {
   if (inflight.has(key)) return;
   void coalesceDiscoverBuild(key, build).catch((err) => {

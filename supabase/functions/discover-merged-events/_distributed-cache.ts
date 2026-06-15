@@ -3,12 +3,17 @@
  */
 
 import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
-import type { DiscoverResponseBytes } from "./_response-bytes.ts";
-import { encodeDiscoverResponse, gzipDecompress } from "./_response-bytes.ts";
+import {
+  bytesFromStoredGzip,
+  encodeDiscoverResponse,
+  type DiscoverResponseBytes,
+} from "./_response-bytes.ts";
 import type { DiscoverMergedResponse } from "./_types.ts";
 
-const POLL_MS = 100;
-const POLL_ATTEMPTS = 450;
+export const POLL_MS = 100;
+/** 20s max wait — stays under k6 30s client timeout with headroom for encode + response. */
+export const POLL_ATTEMPTS = 200;
+export const SHORT_POLL_ATTEMPTS = 50;
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -32,23 +37,25 @@ function base64ToBytes(encoded: string): Uint8Array {
   return out;
 }
 
-export async function readDbDiscoverCacheBytes(
+export async function readDbDiscoverCacheGzip(
   supabase: SupabaseClient,
   cacheKey: string,
+  options?: { includeStale?: boolean },
 ): Promise<DiscoverResponseBytes | null> {
-  const { data, error } = await supabase
+  let query = supabase
     .from("discover_merged_events_cache")
     .select("response_gzip_base64, response")
-    .eq("cache_key", cacheKey)
-    .gt("expires_at", new Date().toISOString())
-    .maybeSingle();
+    .eq("cache_key", cacheKey);
 
+  if (!options?.includeStale) {
+    query = query.gt("expires_at", new Date().toISOString());
+  }
+
+  const { data, error } = await query.maybeSingle();
   if (error || !data) return null;
 
   if (typeof data.response_gzip_base64 === "string" && data.response_gzip_base64.length > 0) {
-    const gzip = base64ToBytes(data.response_gzip_base64);
-    const json = await gzipDecompress(gzip);
-    return { json, gzip };
+    return bytesFromStoredGzip(base64ToBytes(data.response_gzip_base64));
   }
 
   if (!data.response) return null;
@@ -57,6 +64,14 @@ export async function readDbDiscoverCacheBytes(
     ...cached,
     meta: { ...cached.meta, fromCache: true },
   });
+}
+
+/** @deprecated Prefer readDbDiscoverCacheGzip — avoids jsonb parse on hot path. */
+export async function readDbDiscoverCacheBytes(
+  supabase: SupabaseClient,
+  cacheKey: string,
+): Promise<DiscoverResponseBytes | null> {
+  return readDbDiscoverCacheGzip(supabase, cacheKey);
 }
 
 export async function readDbDiscoverCache(
@@ -78,16 +93,27 @@ export async function readDbDiscoverCache(
   };
 }
 
-export async function waitForDbDiscoverCache(
+export async function waitForDbDiscoverCacheGzip(
   supabase: SupabaseClient,
   cacheKey: string,
-): Promise<DiscoverMergedResponse | null> {
-  for (let i = 0; i < POLL_ATTEMPTS; i++) {
-    const hit = await readDbDiscoverCache(supabase, cacheKey);
+  maxAttempts = POLL_ATTEMPTS,
+): Promise<DiscoverResponseBytes | null> {
+  for (let i = 0; i < maxAttempts; i++) {
+    const hit = await readDbDiscoverCacheGzip(supabase, cacheKey);
     if (hit) return hit;
     await sleep(POLL_MS);
   }
   return null;
+}
+
+/** @deprecated Prefer waitForDbDiscoverCacheGzip. */
+export async function waitForDbDiscoverCache(
+  supabase: SupabaseClient,
+  cacheKey: string,
+): Promise<DiscoverMergedResponse | null> {
+  const bytes = await waitForDbDiscoverCacheGzip(supabase, cacheKey);
+  if (!bytes) return null;
+  return readDbDiscoverCache(supabase, cacheKey);
 }
 
 export async function tryDistributedBuildLock(
@@ -99,8 +125,8 @@ export async function tryDistributedBuildLock(
     p_ttl_seconds: 60,
   });
   if (error) {
-    console.warn("[discover-merged-events] build lock skipped:", error.message);
-    return true;
+    console.warn("[discover-merged-events] build lock denied:", error.message);
+    return false;
   }
   return data === true;
 }
@@ -114,31 +140,25 @@ export async function releaseDistributedBuildLock(
   });
 }
 
-export function writeDbDiscoverCache(
+export async function writeDbDiscoverCache(
   supabase: SupabaseClient,
   cacheKey: string,
   response: DiscoverMergedResponse,
   discoverStaleExpiresAt: () => string,
   bytes?: DiscoverResponseBytes,
-): void {
-  (async () => {
-    try {
-      await supabase.from("discover_merged_events_cache").upsert(
-        {
-          cache_key: cacheKey,
-          response,
-          response_gzip_base64: bytes ? bytesToBase64(bytes.gzip) : null,
-          fetched_at: new Date().toISOString(),
-          expires_at: discoverStaleExpiresAt(),
-        },
-        { onConflict: "cache_key" },
-      );
-      await supabase
-        .from("discover_merged_events_cache")
-        .delete()
-        .lt("expires_at", new Date().toISOString());
-    } catch (err) {
-      console.warn("[discover-merged-events] cache upsert error:", err);
-    }
-  })();
+): Promise<void> {
+  await supabase.from("discover_merged_events_cache").upsert(
+    {
+      cache_key: cacheKey,
+      response,
+      response_gzip_base64: bytes ? bytesToBase64(bytes.gzip) : null,
+      fetched_at: new Date().toISOString(),
+      expires_at: discoverStaleExpiresAt(),
+    },
+    { onConflict: "cache_key" },
+  );
+  await supabase
+    .from("discover_merged_events_cache")
+    .delete()
+    .lt("expires_at", new Date().toISOString());
 }

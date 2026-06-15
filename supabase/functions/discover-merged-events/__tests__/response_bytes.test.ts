@@ -1,7 +1,11 @@
 // ORCH-426 G1 — pre-serialized gzip response bytes for hot-path serving.
 
-import { assert } from "https://deno.land/std@0.190.0/testing/asserts.ts";
 import {
+  assert,
+  assertEquals,
+} from "https://deno.land/std@0.190.0/testing/asserts.ts";
+import {
+  bytesFromStoredGzip,
   encodeDiscoverResponse,
   wantsGzip,
 } from "../_response-bytes.ts";
@@ -66,6 +70,13 @@ Deno.test("encodeDiscoverResponse produces smaller gzip payload", async () => {
   const { json, gzip } = await encodeDiscoverResponse(large);
   assert(gzip.length > 0);
   assert(gzip.length < json.length, "gzip should shrink repetitive JSON");
+});
+
+Deno.test("bytesFromStoredGzip avoids decompress on hot path", () => {
+  const gzip = new Uint8Array([0x1f, 0x8b, 0x08]);
+  const stored = bytesFromStoredGzip(gzip);
+  assertEquals(stored.gzip, gzip);
+  assertEquals(stored.json.length, 0);
 });
 
 Deno.test("wantsGzip respects Accept-Encoding header", () => {

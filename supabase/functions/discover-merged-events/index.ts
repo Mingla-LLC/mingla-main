@@ -14,28 +14,17 @@ import {
   isSubsetOf,
 } from "../_shared/eventTaxonomy.ts";
 import { parseLocalStartEndDateTime } from "../_shared/timezone.ts";
-import { buildDiscoverMergedResponse } from "./_build-response.ts";
 import {
   buildDiscoverCacheKey,
-  discoverStaleExpiresAt,
   type DiscoverCacheParams,
 } from "./_cache.ts";
 import {
-  readDbDiscoverCache,
-  readDbDiscoverCacheBytes,
-  releaseDistributedBuildLock,
-  tryDistributedBuildLock,
-  waitForDbDiscoverCache,
-  writeDbDiscoverCache,
-} from "./_distributed-cache.ts";
-import {
   coalesceDiscoverBuild,
   l1Get,
-  l1SetBytes,
   refreshDiscoverInBackground,
 } from "./_memory-cache.ts";
-import { discoverJsonResponse, encodeDiscoverResponse, withCacheMeta } from "./_response-bytes.ts";
-import type { DiscoverMergedResponse } from "./_types.ts";
+import { DiscoverOverloadedError, resolveDiscoverEntry } from "./_resolve-entry.ts";
+import { serveDiscoverBytes } from "./_response-bytes.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -69,10 +58,10 @@ interface DiscoverMergedRequest {
 const DEFAULT_PAGE_SIZE = 20;
 const MAX_PAGE_SIZE = 50;
 
-function jsonError(body: unknown, status = 200): Response {
+function jsonError(body: unknown, status = 200, extraHeaders: Record<string, string> = {}): Response {
   return new Response(JSON.stringify(body), {
     status,
-    headers: { ...corsHeaders, "Content-Type": "application/json" },
+    headers: { ...corsHeaders, "Content-Type": "application/json", ...extraHeaders },
   });
 }
 
@@ -187,49 +176,24 @@ serve(async (req: Request): Promise<Response> => {
     sort: body.sort,
   };
 
-  const buildFresh = async (): Promise<DiscoverMergedResponse> => {
-    const dbCached = await readDbDiscoverCache(supabase, cacheKey);
-    if (dbCached) return dbCached;
-
-    const gotLock = await tryDistributedBuildLock(supabase, cacheKey);
-    if (!gotLock) {
-      const waited = await waitForDbDiscoverCache(supabase, cacheKey);
-      if (waited) return waited;
-      const lateHit = await readDbDiscoverCache(supabase, cacheKey);
-      if (lateHit) return lateHit;
-    }
-
-    try {
-      const built = await buildDiscoverMergedResponse(buildCtx);
-      const cached = withCacheMeta(built);
-      const bytes = await encodeDiscoverResponse(cached);
-      writeDbDiscoverCache(supabase, cacheKey, built, discoverStaleExpiresAt, bytes);
-      return built;
-    } finally {
-      await releaseDistributedBuildLock(supabase, cacheKey);
-    }
-  };
+  const resolveEntry = () => resolveDiscoverEntry(supabase, cacheKey, buildCtx);
 
   const now = Date.now();
   const l1Hit = l1Get(cacheKey, now);
   if (l1Hit) {
     if (now >= l1Hit.freshUntil) {
-      refreshDiscoverInBackground(cacheKey, buildFresh);
+      refreshDiscoverInBackground(cacheKey, resolveEntry);
     }
-    return discoverJsonResponse(req, l1Hit.bytes, corsHeaders);
-  }
-
-  const dbBytes = await readDbDiscoverCacheBytes(supabase, cacheKey);
-  if (dbBytes) {
-    const cached = JSON.parse(new TextDecoder().decode(dbBytes.json)) as DiscoverMergedResponse;
-    l1SetBytes(cacheKey, dbBytes, cached, now);
-    return discoverJsonResponse(req, dbBytes, corsHeaders);
+    return serveDiscoverBytes(req, l1Hit.bytes, corsHeaders);
   }
 
   try {
-    const entry = await coalesceDiscoverBuild(cacheKey, buildFresh);
-    return discoverJsonResponse(req, entry.bytes, corsHeaders);
+    const entry = await coalesceDiscoverBuild(cacheKey, resolveEntry);
+    return serveDiscoverBytes(req, entry.bytes, corsHeaders);
   } catch (e) {
+    if (e instanceof DiscoverOverloadedError) {
+      return jsonError({ error: "discover_overloaded" }, 503, { "Retry-After": "5" });
+    }
     const msg = e instanceof Error ? e.message : String(e);
     if (msg.startsWith("db_error:")) {
       return jsonError(
