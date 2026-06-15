@@ -157,37 +157,23 @@ ok(
     /styles\.payMockSchedTotal\b/.test(screenSrc),
 );
 
-// ── FIX 5: the floating Reserve bar is safe-area-inset (no bottom bleed) ───────
+// ── FIX 5: the Reserve CTA is safe-area-inset (no bottom bleed) ────────────────
 ok(
   "FIX5a the reserve bar reads useSafeAreaInsets",
   /useSafeAreaInsets\(\)/.test(reserveBarSrc),
 );
-// FIX5b (device rework #2) — the WHOLE bar CONTAINER lifts by the safe-area
-// bottom + gap (not just the inner content padding), so the entire rounded card
-// floats above the home indicator with a gap beneath it. Fails-on-revert: if the
-// wrapper `bottom` is no longer the safe-area offset (e.g. reverts to a static
-// bottom:0 + inner-content padding), these regexes fail.
+// FIX5b (device rework #2) — both variants resolve a safe-area floor so the
+// button never bleeds under the home indicator; the FLOATING variant additionally
+// adds the gorhom overshoot + a gap to its absolute `bottom`.
 ok(
-  "FIX5b the bar resolves a safe-area wrapper bottom = max(screen inset, own inset, 34) + sheet overshoot + gap",
+  "FIX5b the bar resolves a safe-area floor = max(screen inset, own inset, 34); floating adds overshoot + gap",
   /const safeBottom\s*=\s*Math\.max\(safeAreaBottom \?\? 0, insets\.bottom, HOME_INDICATOR_FLOOR\)/.test(
     reserveBarSrc,
   ) &&
     /const wrapperBottom\s*=\s*safeBottom\s*\+\s*SHEET_BOTTOM_OVERSHOOT\s*\+\s*FLOAT_GAP/.test(
       reserveBarSrc,
     ),
-  "the bar must clear the home indicator from the screen-passed inset + a 34pt floor + the gorhom overshoot + a float gap",
-);
-ok(
-  "FIX5b-pos the wrapper CONTAINER bottom is lifted to wrapperBottom (the whole card floats)",
-  /style=\{\[styles\.wrapper,\s*\{\s*bottom:\s*wrapperBottom\s*\}\]\}/.test(
-    reserveBarSrc,
-  ),
-  "the bar's POSITION (wrapper.bottom) must be lifted, not just inner content padding",
-);
-ok(
-  "FIX5b-nostatic the wrapper style no longer pins a static bottom:0 (would re-clip)",
-  !/wrapper:\s*\{[^}]*bottom:\s*0/.test(reserveBarSrc),
-  "a static bottom:0 on the wrapper re-pins the card to the raw screen edge",
+  "the bar must clear the home indicator from the screen-passed inset + a 34pt floor; floating adds the gorhom overshoot + a float gap",
 );
 ok(
   "FIX5b2 the bar accepts the screen-level safeAreaBottom prop (gorhom inset is ~0)",
@@ -195,16 +181,78 @@ ok(
     /safeAreaBottom=\{insets\.bottom\}/.test(screenSrc),
   "the screen must pass its own inset down because the bar's own hook reads ~0 inside gorhom",
 );
+
+// ── FIX 5 device-rework #3 (Seth's screenshot feedback): DOCKED + FLOATING ──────
+// (a) the bar supports a two-mode `variant: "docked" | "floating"`.
 ok(
-  "FIX5c the scroll content reserves clearance = float-bottom (inset+overshoot+gap) + bar card height",
-  /const BAR_FLOAT_BOTTOM\s*=\s*Math\.max\(insets\.bottom,\s*34\)\s*\+\s*63\s*\+\s*16/.test(
-    screenSrc,
-  ) &&
-    /reserveBarClearance\s*=\s*BAR_FLOAT_BOTTOM\s*\+\s*BAR_CARD_HEIGHT\s*\+\s*12/.test(
-      screenSrc,
-    ) &&
-    /paddingBottom:\s*reserveBarClearance/.test(screenSrc),
-  "the last section must clear the FLOATING bar (lifted bottom incl. gorhom overshoot + card height)",
+  "DR3a the reserve bar exposes a docked|floating variant prop",
+  /variant:\s*"docked"\s*\|\s*"floating"/.test(reserveBarSrc),
+  "the CTA must render in two modes — docked (resting) and floating (pill)",
+);
+// (b) the FLOATING variant is JUST the pill — NO full-width opaque bar bg. The
+// floating branch renders styles.floatPill and there is NO page-colored
+// full-width fade band in the floating wrapper (the floatWrapper has no
+// backgroundColor). Fails-on-revert: if the floating branch reintroduces a
+// full-width page-colored band, the negative assertion fails.
+ok(
+  "DR3b the FLOATING variant renders just the pill (floatPill), not a full-width opaque bar",
+  /styles\.floatPill\b/.test(reserveBarSrc) &&
+    /styles\.floatWrapper\b/.test(reserveBarSrc),
+  "floating must be a pill, not a solid full-width bar",
+);
+ok(
+  "DR3b2 the floatWrapper has NO page-colored full-width background band",
+  /floatWrapper:\s*\{[^}]*\}/.test(reserveBarSrc) &&
+    /floatWrapper:\s*\{(?:(?!backgroundColor)[\s\S])*?\},/.test(reserveBarSrc),
+  "the floating overlay must not paint a full-width opaque bar behind the pill",
+);
+// (c) the DOCKED variant is an IN-FLOW card (the LAST scroll child), NOT absolute,
+// and reports its layout via onDockLayout so the screen can hide the pill.
+ok(
+  "DR3c the DOCKED variant is an in-flow card with onLayout reporting (dockedCard, not absolute)",
+  /if \(variant === "docked"\)/.test(reserveBarSrc) &&
+    /styles\.dockedCard\b/.test(reserveBarSrc) &&
+    /onLayout=\{onDockLayout\}/.test(reserveBarSrc) &&
+    !/dockedCard:\s*\{[^}]*position:\s*"absolute"/.test(reserveBarSrc),
+  "the docked CTA must sit in normal flow as the last scroll child (no void above it)",
+);
+// (d) the screen renders the DOCKED bar as the LAST child inside the scroll body,
+// AFTER {bodyChildren}, so it sits flush beneath "Choose how you pay".
+const bodyChildrenIdx = screenSrc.lastIndexOf("{bodyChildren}");
+const dockedReserveIdx = screenSrc.lastIndexOf("{dockedReserve}");
+ok(
+  "DR3d the screen renders {dockedReserve} as the LAST scroll child (after {bodyChildren})",
+  bodyChildrenIdx > -1 &&
+    dockedReserveIdx > -1 &&
+    dockedReserveIdx > bodyChildrenIdx,
+  "the docked CTA must be the final element inside the scroll content (flush, no gap)",
+);
+ok(
+  "DR3d2 the screen passes variant=\"docked\" with onDockLayout",
+  /variant="docked"/.test(screenSrc) && /onDockLayout=\{handleDockLayout\}/.test(screenSrc),
+);
+// (e) the FLOATING pill is CONDITIONAL on floatingPillVisible (hides when docked
+// in view), tracked via the docked layout y + scroll offset + viewport height.
+ok(
+  "DR3e the floating pill is gated by floatingPillVisible (hides when docked visible)",
+  /floatingPillVisible\s*\?\s*\(/.test(screenSrc) &&
+    /const floatingPillVisible\s*=/.test(screenSrc) &&
+    /dockTopY > scrollY \+ viewportH - REVEAL_MARGIN/.test(screenSrc),
+  "the float pill must hide once the docked button's top crosses the viewport bottom",
+);
+ok(
+  "DR3e2 the scroll wires onScroll + onLayout to track offset + viewport",
+  /onScroll=\{handleScroll\}/.test(screenSrc) &&
+    /onLayout=\{handleScrollLayout\}/.test(screenSrc) &&
+    /variant="floating"/.test(screenSrc),
+);
+// (f) NO oversized bar-sized paddingBottom void — the screen no longer reserves a
+// bar-height + overshoot clearance; the docked card carries its own bottom pad.
+ok(
+  "DR3f NO oversized paddingBottom void (reserveBarClearance is a small tail pad, not bar-sized)",
+  /const reserveBarClearance\s*=\s*8\b/.test(screenSrc) &&
+    !/BAR_FLOAT_BOTTOM\s*\+\s*BAR_CARD_HEIGHT/.test(screenSrc),
+  "the black void came from an oversized bottom padding — it must be removed",
 );
 
 // ── FIX 6 standard-order is enforced on the BUSINESS side (covered in the

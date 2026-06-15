@@ -46,6 +46,9 @@ import {
   ScrollView,
   StyleSheet,
   View,
+  type LayoutChangeEvent,
+  type NativeScrollEvent,
+  type NativeSyntheticEvent,
   type StyleProp,
   type ViewStyle,
 } from "react-native";
@@ -101,9 +104,20 @@ export interface ParallaxCoverShellProps {
     showsVerticalScrollIndicator?: boolean;
     children?: React.ReactNode;
     style?: StyleProp<ViewStyle>;
+    onScroll?: (event: NativeSyntheticEvent<NativeScrollEvent>) => void;
+    scrollEventThrottle?: number;
+    onLayout?: (event: LayoutChangeEvent) => void;
   }>;
   contentBottomInset?: number;
   safeAreaTop?: number;
+  /**
+   * ORCH-1138 device-rework #3 — OPTIONAL scroll-awareness passthrough so a caller
+   * (the public trip route) can hide its floating Reserve pill once the in-content
+   * docked CTA scrolls into view. Forwarded verbatim to the phone/native Scroll;
+   * absent ⇒ byte-identical to today (event/experience callers untouched).
+   */
+  onScroll?: (event: NativeSyntheticEvent<NativeScrollEvent>) => void;
+  onScrollViewLayout?: (event: LayoutChangeEvent) => void;
   closeAccessibilityLabel?: string;
   testID?: string;
 }
@@ -128,6 +142,8 @@ export const ParallaxCoverShell: React.FC<ParallaxCoverShellProps> = ({
   ScrollComponent,
   contentBottomInset = 0,
   safeAreaTop = 0,
+  onScroll,
+  onScrollViewLayout,
   closeAccessibilityLabel,
   testID,
 }) => {
@@ -271,6 +287,9 @@ export const ParallaxCoverShell: React.FC<ParallaxCoverShellProps> = ({
             { paddingBottom: contentBottomInset },
           ]}
           showsVerticalScrollIndicator={false}
+          onScroll={onScroll}
+          scrollEventThrottle={16}
+          onLayout={onScrollViewLayout}
         >
           {/* flow spacer holding the pinned cover height */}
           <View style={styles.webPhoneSpacer} />
@@ -317,6 +336,9 @@ export const ParallaxCoverShell: React.FC<ParallaxCoverShellProps> = ({
           { paddingBottom: contentBottomInset },
         ]}
         showsVerticalScrollIndicator={false}
+        onScroll={onScroll}
+        scrollEventThrottle={16}
+        onLayout={onScrollViewLayout}
       >
         <View style={styles.nativeSpacer} />
         <View

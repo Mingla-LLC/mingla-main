@@ -60,6 +60,9 @@ import {
   Text,
   UIManager,
   View,
+  type LayoutChangeEvent,
+  type NativeScrollEvent,
+  type NativeSyntheticEvent,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import {
@@ -383,6 +386,29 @@ export default function ConsumerTripDetailScreen({
   // video). Default muted (the immersive auto-play default).
   const [muted, setMuted] = useState<boolean>(true);
   const toggleMute = useCallback(() => setMuted((m) => !m), []);
+
+  // ORCH-1138 device-rework #3 — float→dock Reserve CTA visibility tracking. These
+  // hooks MUST be declared BEFORE any early return (loading/error/not-found) per
+  // the Rules of Hooks. The floating pill is visible ONLY while the in-content
+  // docked button's TOP has NOT yet entered the viewport bottom: we track the
+  // docked card's `y` within the scroll content (onDockLayout), the scroll offset
+  // (onScroll) + the viewport height (onLayout). The derived `floatingPillVisible`
+  // (computed below, after the early returns) consumes these.
+  const [dockTopY, setDockTopY] = useState<number | null>(null);
+  const [scrollY, setScrollY] = useState<number>(0);
+  const [viewportH, setViewportH] = useState<number>(0);
+  const handleDockLayout = useCallback((e: LayoutChangeEvent): void => {
+    setDockTopY(e.nativeEvent.layout.y);
+  }, []);
+  const handleScroll = useCallback(
+    (e: NativeSyntheticEvent<NativeScrollEvent>): void => {
+      setScrollY(e.nativeEvent.contentOffset.y);
+    },
+    [],
+  );
+  const handleScrollLayout = useCallback((e: LayoutChangeEvent): void => {
+    setViewportH(e.nativeEvent.layout.height);
+  }, []);
 
   // ORCH-1138 Leg 1C — native foundation render is always single-column immersive
   // (useResponsiveLayout returns isDesktop=false on native). Referenced so the
@@ -1073,34 +1099,58 @@ export default function ConsumerTripDetailScreen({
                 tappable: true,
               };
 
-  // ORCH-1138 [trip-page-redesign] FIX-5 (device rework #2) — clearance so the
-  // last content row clears the FLOATING bar. The bar now floats with its
-  // container lifted by `safeBottom (max(inset,34)) + 8 gap` (see
-  // ConsumerTripReserveBar) and its card is ≈ 14 (top pad) + 56 (button) + 14
-  // (bottom pad) = 84 tall. So the scroll content reserves the bar's lifted bottom
-  // + the card height + a small extra gap, keeping the bar's resolution identical
-  // to the bar component (max(inset,34) + 8) so the How-you-pay section clears the
-  // floating bar without reintroducing the ORCH-1016/1043 scroll-freeze.
-  // Mirror the bar's own lift (ConsumerTripReserveBar): safe-area floor + the
-  // ~63pt gorhom-content overshoot + the float gap, plus the bar card height.
-  const BAR_FLOAT_BOTTOM = Math.max(insets.bottom, 34) + 63 + 16;
-  const BAR_CARD_HEIGHT = 84;
-  const reserveBarClearance = BAR_FLOAT_BOTTOM + BAR_CARD_HEIGHT + 12;
+  // ORCH-1138 device-rework #3 (Seth's screenshot feedback) — the Reserve CTA now
+  // DOCKS flush beneath "Choose how you pay" as the LAST scroll child (its bg is
+  // allowed at rest) and a light FLOATING PILL (no full-width bar bg) shows ONLY
+  // while that docked button is scrolled OFF-screen. So the scroll content NO
+  // LONGER reserves a large bar-sized paddingBottom (that oversized pad was the
+  // BLACK VOID Seth flagged); the docked card carries its own safe-area bottom
+  // padding. We keep a tiny tail pad so the last pixel of the docked card clears
+  // the home indicator without reintroducing the ORCH-1016/1043 scroll-freeze.
+  const reserveBarClearance = 8;
 
-  const floatingReserve: ReactElement = (
+  // ORCH-1138 device-rework #3 — derived float-pill visibility (the hooks
+  // dockTopY/scrollY/viewportH + their setters are declared at the TOP of the
+  // component, BEFORE the early returns, per the Rules of Hooks). Show the
+  // floating pill until we KNOW the docked button is on-screen. Until the dock +
+  // viewport are measured, default to showing the pill (a long page opens with the
+  // docked button below the fold). Hide once the docked button's top crosses into
+  // the viewport (a small reveal margin avoids flicker as it appears).
+  const REVEAL_MARGIN = 24;
+  const floatingPillVisible =
+    dockTopY === null || viewportH === 0
+      ? true
+      : dockTopY > scrollY + viewportH - REVEAL_MARGIN;
+
+  const dockedReserve: ReactElement = (
     <ConsumerTripReserveBar
       cta={reserveCta}
       palette={palette}
       kicker={barKicker}
       fontFamily={boldFamily}
       onPress={() => setReserveSheetVisible(true)}
+      variant="docked"
+      safeAreaBottom={insets.bottom}
+      onDockLayout={handleDockLayout}
+      testID="orch-1138-consumer-trip-reserve"
+    />
+  );
+
+  const floatingReserve: ReactElement | null = floatingPillVisible ? (
+    <ConsumerTripReserveBar
+      cta={reserveCta}
+      palette={palette}
+      kicker={barKicker}
+      fontFamily={boldFamily}
+      onPress={() => setReserveSheetVisible(true)}
+      variant="floating"
       // ORCH-1138 FIX-5 — pass the SCREEN-LEVEL inset; the bar's own
       // useSafeAreaInsets can return 0 inside the gorhom sheet context, which let
       // the "From … today" price line bleed under the home indicator.
       safeAreaBottom={insets.bottom}
       testID="orch-1138-consumer-trip-reserve"
     />
-  );
+  ) : null;
 
   // ORCH-1138 Leg 1C FIX-1/2 (device-regression rework) — PROVEN ORCH-1016/1043
   // sheet-scroll structure restored, themed Direction-A look kept.
@@ -1169,6 +1219,11 @@ export default function ConsumerTripDetailScreen({
             { paddingBottom: reserveBarClearance },
           ]}
           showsVerticalScrollIndicator={false}
+          // ORCH-1138 device-rework #3 — track scroll offset + viewport height so
+          // the floating pill hides once the docked CTA (last child) scrolls in.
+          onScroll={handleScroll}
+          scrollEventThrottle={16}
+          onLayout={handleScrollLayout}
           testID="orch-1138-consumer-trip-scroll"
         >
           {/* spacer holding the pinned-cover height (4:5) */}
@@ -1188,6 +1243,14 @@ export default function ConsumerTripDetailScreen({
                 were a SECOND copy (Seth's device showed the eyebrow+title twice) →
                 removed. No cover overlay of eyebrow/title on consumer phone. */}
             {bodyChildren}
+
+            {/* ORCH-1138 device-rework #3 — the DOCKED Reserve CTA: the LAST scroll
+                child, in normal flow, flush just beneath the "Choose how you pay"
+                section (NO black void). Its bg is allowed at this resting position;
+                it pads its own safe-area bottom so the whole button clears the home
+                indicator. onDockLayout reports its position so the floating pill
+                hides once this is on-screen. */}
+            {dockedReserve}
           </View>
         </BottomSheetScrollView>
 
@@ -1209,8 +1272,10 @@ export default function ConsumerTripDetailScreen({
           />
         </View>
 
-        {/* (4) FLOATING reserve bar — absolute sibling pinned to the sheet bottom,
-            ALWAYS visible while scrolling (Seth's ask). NOT stickyFooter. */}
+        {/* (4) FLOATING reserve PILL — absolute sibling, JUST the button (no
+            full-width bar bg), shown ONLY while the docked CTA (last scroll child)
+            is off-screen. Hides once the docked button scrolls in → no double bar.
+            NOT stickyFooter (would re-freeze the gorhom scroll). */}
         {floatingReserve}
       </BaseBottomSheet>
 

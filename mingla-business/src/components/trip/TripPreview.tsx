@@ -32,7 +32,17 @@ import {
   StyleSheet,
   Text,
   View,
+  type LayoutChangeEvent,
+  type NativeScrollEvent,
+  type NativeSyntheticEvent,
 } from "react-native";
+
+// ORCH-1138 device-rework #3 — scroll/layout handler aliases for the float→dock
+// Reserve CTA, forwarded to ParallaxCoverShell.
+type ParallaxScrollHandler = (
+  event: NativeSyntheticEvent<NativeScrollEvent>,
+) => void;
+type ParallaxLayoutHandler = (event: LayoutChangeEvent) => void;
 
 import {
   accent,
@@ -136,6 +146,20 @@ export interface TripPreviewProps {
   contentBottomInset?: number;
   /** Native safe-area top inset for the chrome. */
   safeAreaTop?: number;
+  /**
+   * ORCH-1138 device-rework #3 — the DOCKED Reserve CTA (TripReserveBar
+   * variant="docked"), rendered as the LAST child of the PHONE body so it sits
+   * flush beneath "Choose how you pay" (no black void). Route-owned (carries the
+   * route's CTA state + onPress). Phone-only; desktop uses the sticky panel.
+   */
+  dockedReserve?: React.ReactNode;
+  /**
+   * ORCH-1138 device-rework #3 — scroll-awareness passthrough so the route can
+   * hide its floating Reserve pill once the docked CTA scrolls in. Forwarded to
+   * ParallaxCoverShell's phone/native Scroll.
+   */
+  onScroll?: ParallaxScrollHandler;
+  onScrollViewLayout?: ParallaxLayoutHandler;
 }
 
 // ORCH-1016 — date range from the shared @mingla/event-rendering helper so the
@@ -199,6 +223,9 @@ export const TripPreview: React.FC<TripPreviewProps> = ({
   onViewBrand,
   contentBottomInset = 0,
   safeAreaTop = 0,
+  dockedReserve,
+  onScroll,
+  onScrollViewLayout,
 }) => {
   // FOUNDATION mode requires both palette + theme + the chrome handlers.
   if (
@@ -224,6 +251,9 @@ export const TripPreview: React.FC<TripPreviewProps> = ({
         onViewBrand={onViewBrand}
         contentBottomInset={contentBottomInset}
         safeAreaTop={safeAreaTop}
+        dockedReserve={dockedReserve}
+        onScroll={onScroll}
+        onScrollViewLayout={onScrollViewLayout}
         testID={testID}
       />
     );
@@ -261,6 +291,9 @@ const FoundationTripPreview: React.FC<{
   onViewBrand?: () => void;
   contentBottomInset: number;
   safeAreaTop: number;
+  dockedReserve?: React.ReactNode;
+  onScroll?: ParallaxScrollHandler;
+  onScrollViewLayout?: ParallaxLayoutHandler;
   testID?: string;
 }> = ({
   trip,
@@ -277,6 +310,9 @@ const FoundationTripPreview: React.FC<{
   onViewBrand,
   contentBottomInset,
   safeAreaTop,
+  dockedReserve,
+  onScroll,
+  onScrollViewLayout,
   testID,
 }) => {
   const { isDesktop } = useResponsiveLayout();
@@ -632,6 +668,15 @@ const FoundationTripPreview: React.FC<{
           {paymentBlock}
         </View>
       ) : null}
+
+      {/* ORCH-1138 device-rework #3 — the DOCKED Reserve CTA: the LAST child of the
+          PHONE body, in normal flow, flush just beneath the "Choose how you pay"
+          section (NO black void). Its bg is allowed at this resting position; it
+          pads its own safe-area bottom so the whole button clears the home
+          indicator. onDockLayout (inside the bar) reports its position so the route
+          hides the floating pill once this is on-screen. Desktop uses the sticky
+          panel's Reserve control, so the docked bar is phone-only. */}
+      {!isDesktop && dockedReserve !== undefined ? dockedReserve : null}
     </View>
   );
 
@@ -681,6 +726,8 @@ const FoundationTripPreview: React.FC<{
       stickyPanel={stickyPanel}
       contentBottomInset={contentBottomInset}
       safeAreaTop={safeAreaTop}
+      onScroll={onScroll}
+      onScrollViewLayout={onScrollViewLayout}
       testID={testID}
     >
       {left}

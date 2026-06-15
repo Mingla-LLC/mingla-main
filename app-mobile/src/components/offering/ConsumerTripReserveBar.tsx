@@ -1,26 +1,45 @@
 /**
  * ConsumerTripReserveBar — ORCH-1138 Leg 1C (Seth's explicit floating-bar ask).
  *
- * The consumer-app floating Reserve bar for the trip detail, built to MATCH the
+ * The consumer-app Reserve CTA for the trip detail, built to MATCH the
  * business/web public trip page's `TripReserveBar` EXACTLY (DIRECTION_A_V2
- * `.floating` / `.reserve`): a brand-accent button pinned to the bottom of the
- * sheet, kicker + price on the left, "Reserve my spot →" on the right,
- * safe-area-inset bottom, sold-out / closed / unavailable → a non-tappable
- * disabled strip.
+ * `.floating` / `.reserve`): a brand-accent button, kicker + price on the left,
+ * "Reserve my spot →" on the right, sold-out / closed / unavailable → a
+ * non-tappable disabled strip.
+ *
+ * ── ORCH-1138 device-rework #3 (Seth's screenshot feedback) — TWO render modes ──
+ * Seth saw a fixed full-width OPAQUE orange bar pinned at the bottom with a large
+ * BLACK EMPTY GAP between the "Choose how you pay" card and that bar. The new
+ * behavior, driven by `variant`:
+ *
+ *   • variant="docked"  — the CTA's RESTING position. Rendered as the FINAL element
+ *     INSIDE the scroll content, in NORMAL FLOW (NOT absolute), so it sits flush
+ *     just beneath the last "Choose how you pay" section with NO black void. At the
+ *     resting position it MAY carry its background/bar (the page-colored fade card).
+ *     It carries its own bottom safe-area padding so the whole button stays above
+ *     the home indicator.
+ *
+ *   • variant="floating" — shown ONLY WHILE the in-content docked button is scrolled
+ *     OUT of view. It is JUST THE BUTTON (a pill), with NO full-width opaque bar
+ *     background — a subtle transparent-to-page scrim sits under the pill for
+ *     legibility, NOT the solid full-width bar. Absolute-positioned, lifted above
+ *     the home indicator. The screen hides it once the docked button scrolls in.
+ *
+ * Net effect: a light floating pill while scrolling → the docked button (bg ok)
+ * flush at the end → no black gap, no oversized bottom padding.
  *
  * WHY a consumer-local component (not the business TripReserveBar): TripReserveBar
  * is `mingla-business/src/`-local and cannot be imported across the app boundary
  * (I-MOR-0827-PACKAGE-ISOLATION, F-6). This is the consumer mirror around the SAME
  * shared `CtaState` (one buy-state shape) + the SAME `ThemePalette`.
  *
- * 🔒 RENDERED AS AN ABSOLUTE OVERLAY (SPEC §4.5): the bar is `position:"absolute"
- * bottom:0` so it FLOATS over the scrolling content INSIDE the ParallaxCoverShell
- * body host — NOT BaseBottomSheet's `stickyFooter` prop (which would nest the
- * gorhom scroll one BottomSheetView level deeper and re-trigger the ORCH-1016/1043
- * viewport==content scroll-freeze). The shell keeps gorhom's BottomSheetScrollView
- * as its single registered scrollable; this bar is a sibling that does not touch
- * the scroll. `contentBottomInset` on the shell reserves clearance so the last row
- * clears the bar.
+ * The floating variant is an ABSOLUTE OVERLAY (SPEC §4.5) inside the
+ * ParallaxCoverShell body host — NOT BaseBottomSheet's `stickyFooter` prop (which
+ * would nest the gorhom scroll one BottomSheetView level deeper and re-trigger the
+ * ORCH-1016/1043 viewport==content scroll-freeze). The shell keeps gorhom's
+ * BottomSheetScrollView as its single registered scrollable; the floating bar is a
+ * sibling that does not touch the scroll. The docked variant lives INSIDE that
+ * scroll content, so it never affects the scrollable registration.
  *
  * Constitution #1 (no dead taps): the press fires only for tappable states; the
  * unavailable branch has NO onPress and `accessibilityRole="text"`.
@@ -28,7 +47,14 @@
  */
 
 import React from "react";
-import { Platform, Pressable, StyleSheet, Text, View } from "react-native";
+import {
+  Platform,
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
+  type LayoutChangeEvent,
+} from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import * as Haptics from "expo-haptics";
 
@@ -44,15 +70,26 @@ export interface ConsumerTripReserveBarProps {
   /** Fired ONLY for tappable states (buy / free / waitlist). */
   onPress: () => void;
   /**
+   * ORCH-1138 device-rework #3 — render mode:
+   *   "docked"   → in-flow card placed as the LAST scroll child (flush, no void).
+   *   "floating" → absolute pill overlay shown while the docked button is off-screen.
+   */
+  variant: "docked" | "floating";
+  /**
    * ORCH-1138 [trip-page-redesign] FIX-5 — the SCREEN-LEVEL safe-area bottom
-   * inset, passed down from the screen root. The bar floats INSIDE the gorhom
+   * inset, passed down from the screen root. The bar lives INSIDE the gorhom
    * BaseBottomSheet, whose content establishes its OWN SafeAreaProvider context
    * that can resolve `useSafeAreaInsets().bottom` to ~0 — so the bar's own hook
-   * under-reports. The bar lifts its CONTAINER's `bottom` by
-   * max(screen inset, own inset, 34) + gap so the WHOLE rounded card floats above
-   * the home indicator on notched + non-notched devices.
+   * under-reports. Used by BOTH variants to keep the button above the home
+   * indicator (floating: lifts the wrapper; docked: pads its own bottom).
    */
   safeAreaBottom?: number;
+  /**
+   * ORCH-1138 device-rework #3 — fired ONLY for the docked variant: reports the
+   * docked CTA's layout (its `y`/`height` within the scroll content) so the screen
+   * can decide when the floating pill should hide (docked button scrolled in).
+   */
+  onDockLayout?: (event: LayoutChangeEvent) => void;
   testID?: string;
 }
 
@@ -62,33 +99,23 @@ export const ConsumerTripReserveBar: React.FC<ConsumerTripReserveBarProps> = ({
   kicker,
   fontFamily,
   onPress,
+  variant,
   safeAreaBottom,
+  onDockLayout,
   testID,
 }) => {
   const insets = useSafeAreaInsets();
-  // ORCH-1138 [trip-page-redesign] FIX-5 (device rework #2) — the WHOLE bar must
-  // float ABOVE the home indicator with a visible gap beneath it. The bar is an
-  // absolute overlay pinned `bottom:0` to the gorhom BottomSheetContent, whose
-  // bottom edge IS the raw window bottom (gorhom anchors the sheet to the screen
-  // bottom; at the 90% snap the content still extends to y=windowHeight). The
-  // PREVIOUS fix only padded the bar's INNER content (`fade.paddingBottom`), so
-  // the rounded button moved up but the bar's CONTAINER stayed flush at the raw
-  // screen edge and the button's lower rounded corners/edge still clipped under
-  // the home indicator on Seth's device.
-  //
-  // THE FIX: lift the bar's CONTAINER (`wrapper.bottom`) by the safe-area bottom
-  // inset + a small gap, so the ENTIRE rounded card — all four corners + its fade
-  // backdrop — sits above the home indicator with clear space below it (it FLOATS,
-  // it is not pinned to the raw edge). `useSafeAreaInsets().bottom` can resolve to
-  // ~0 inside the gorhom sheet's own SafeAreaProvider, so we take the MAX of the
-  // screen-level inset passed from the screen root, the local inset, and a 34pt
-  // home-indicator floor, then add an 8pt visible gap.
+  // ORCH-1138 device-rework #3 — the safe-area floor both variants honor so the
+  // button never bleeds under the home indicator. `useSafeAreaInsets().bottom`
+  // can resolve to ~0 inside the gorhom sheet's own SafeAreaProvider, so we take
+  // the MAX of the screen-level inset passed from the screen root, the local
+  // inset, and a 34pt home-indicator floor.
   const HOME_INDICATOR_FLOOR = 34;
-  // The gorhom BottomSheetContent extends its bottom ~63pt BELOW the visible
-  // window at the 90% snap (measured on iPhone 17 Pro: a 154pt wrapper.bottom
-  // produced a 90.7pt visible gap → ~63pt overshoot absorbed). The bar is an
-  // absolute child of that content, so its `bottom` must clear that overshoot
-  // FIRST, then the home-indicator floor, then a visible float gap.
+  // The floating variant is an absolute child of the gorhom BottomSheetContent,
+  // which extends ~63pt BELOW the visible window at the 90% snap (measured on
+  // iPhone 17 Pro). The floating pill's `bottom` must clear that overshoot FIRST,
+  // then the home-indicator floor, then a visible float gap. The docked variant
+  // is IN FLOW (no overshoot to clear) — it only pads its own bottom.
   const SHEET_BOTTOM_OVERSHOOT = 63;
   const FLOAT_GAP = 16;
   const safeBottom = Math.max(safeAreaBottom ?? 0, insets.bottom, HOME_INDICATOR_FLOOR);
@@ -105,112 +132,131 @@ export const ConsumerTripReserveBar: React.FC<ConsumerTripReserveBarProps> = ({
     onPress();
   };
 
-  const fadeColor = palette.page;
   const tappable = cta.tappable;
   const price = cta.kind === "buy" ? cta.price : "";
   const unavailableTitle = cta.kind === "unavailable" ? cta.title : "";
   const unavailableSub = cta.kind === "unavailable" ? cta.subline : null;
 
-  return (
-    <View
-      style={[styles.wrapper, { bottom: wrapperBottom }]}
-      pointerEvents="box-none"
+  // The shared button/strip body — identical for both variants so the floating +
+  // docked CTAs read identically (same accent fill, kicker, price, label).
+  const ctaBody = tappable ? (
+    <Pressable
+      onPress={handlePress}
+      accessibilityRole="button"
+      accessibilityLabel={
+        cta.kind === "buy" && price.length > 0 ? `${cta.label}, ${price}` : cta.label
+      }
+      style={({ pressed }) => [
+        styles.reserve,
+        { backgroundColor: palette.accent },
+        pressed ? styles.reservePressed : null,
+      ]}
+      testID={testID !== undefined ? `${testID}-action` : undefined}
     >
+      {kicker !== null || price.length > 0 ? (
+        <View style={styles.rLeft}>
+          {kicker !== null ? (
+            <Text style={[styles.rKicker, { color: palette.accentText }]}>{kicker}</Text>
+          ) : null}
+          {price.length > 0 ? (
+            <Text style={[styles.rPrice, { color: palette.accentText }, fontStyle]}>
+              {price}
+            </Text>
+          ) : null}
+        </View>
+      ) : null}
+      <Text style={[styles.rCta, { color: palette.accentText }, fontStyle]}>
+        {cta.label} →
+      </Text>
+    </Pressable>
+  ) : (
+    // Non-tappable info strip — NO onPress, role "text" (no dead Reserve).
+    <View
+      style={[
+        styles.reserveDisabled,
+        { backgroundColor: palette.panelStrong, borderColor: palette.panelBorder },
+      ]}
+      accessibilityRole="text"
+      accessibilityLabel={
+        unavailableSub !== null ? `${unavailableTitle}. ${unavailableSub}` : unavailableTitle
+      }
+      testID={testID !== undefined ? `${testID}-unavailable` : undefined}
+    >
+      <Text style={[styles.disabledTitle, { color: palette.tertiaryText }]}>
+        {unavailableTitle}
+      </Text>
+      {unavailableSub !== null ? (
+        <Text style={[styles.disabledSub, { color: palette.tertiaryText }]}>
+          {unavailableSub}
+        </Text>
+      ) : null}
+    </View>
+  );
+
+  // ── DOCKED — in-flow card, the CTA's resting position (flush, no void) ──
+  // Rendered as the LAST child of the scroll content. It MAY carry its background
+  // (the page-colored fade card) at rest. Pads its own bottom by the safe-area
+  // floor so the button sits above the home indicator with a clean gap, and
+  // `onDockLayout` reports its position so the screen can hide the floating pill
+  // once this docked button is on-screen.
+  if (variant === "docked") {
+    return (
       <View
         style={[
-          styles.fade,
-          { backgroundColor: fadeColor },
+          styles.dockedCard,
+          { backgroundColor: palette.page, paddingBottom: safeBottom + 8 },
         ]}
+        onLayout={onDockLayout}
+        testID={testID !== undefined ? `${testID}-docked` : undefined}
       >
-        {tappable ? (
-          <Pressable
-            onPress={handlePress}
-            accessibilityRole="button"
-            accessibilityLabel={
-              cta.kind === "buy" && price.length > 0
-                ? `${cta.label}, ${price}`
-                : cta.label
-            }
-            style={({ pressed }) => [
-              styles.reserve,
-              { backgroundColor: palette.accent },
-              pressed ? styles.reservePressed : null,
-            ]}
-            testID={testID !== undefined ? `${testID}-action` : undefined}
-          >
-            {kicker !== null || price.length > 0 ? (
-              <View style={styles.rLeft}>
-                {kicker !== null ? (
-                  <Text style={[styles.rKicker, { color: palette.accentText }]}>
-                    {kicker}
-                  </Text>
-                ) : null}
-                {price.length > 0 ? (
-                  <Text
-                    style={[styles.rPrice, { color: palette.accentText }, fontStyle]}
-                  >
-                    {price}
-                  </Text>
-                ) : null}
-              </View>
-            ) : null}
-            <Text style={[styles.rCta, { color: palette.accentText }, fontStyle]}>
-              {cta.label} →
-            </Text>
-          </Pressable>
-        ) : (
-          // Non-tappable info strip — NO onPress, role "text" (no dead Reserve).
-          <View
-            style={[
-              styles.reserveDisabled,
-              {
-                backgroundColor: palette.panelStrong,
-                borderColor: palette.panelBorder,
-              },
-            ]}
-            accessibilityRole="text"
-            accessibilityLabel={
-              unavailableSub !== null
-                ? `${unavailableTitle}. ${unavailableSub}`
-                : unavailableTitle
-            }
-            testID={testID !== undefined ? `${testID}-unavailable` : undefined}
-          >
-            <Text style={[styles.disabledTitle, { color: palette.tertiaryText }]}>
-              {unavailableTitle}
-            </Text>
-            {unavailableSub !== null ? (
-              <Text style={[styles.disabledSub, { color: palette.tertiaryText }]}>
-                {unavailableSub}
-              </Text>
-            ) : null}
-          </View>
-        )}
+        {ctaBody}
       </View>
+    );
+  }
+
+  // ── FLOATING — JUST the pill (NO full-width opaque bar bg), shown while the
+  // docked button is scrolled OFF-screen. A subtle transparent-to-page scrim sits
+  // under the pill for legibility (NOT the solid full-width bar Seth flagged). The
+  // wrapper lifts the WHOLE pill above the home indicator (gorhom overshoot +
+  // floor + gap), and `pointerEvents="box-none"` lets taps pass through the scrim
+  // to the scrolling content around the pill.
+  return (
+    <View
+      style={[styles.floatWrapper, { bottom: wrapperBottom }]}
+      pointerEvents="box-none"
+      testID={testID !== undefined ? `${testID}-floating` : undefined}
+    >
+      <View style={styles.floatPill}>{ctaBody}</View>
     </View>
   );
 };
 
 const styles = StyleSheet.create({
-  // 🔒 ABSOLUTE overlay pinned to the bottom of the shell body (mirror
-  // TripReserveBar.styles.wrapper). zIndex above the scroll content, below the
+  // ── DOCKED — in-flow card (resting position). Background = page color (its
+  // bar/bg is allowed at rest); top padding gives a small gap under the
+  // "Choose how you pay" card, bottom padding (dynamic) clears the home indicator.
+  dockedCard: {
+    width: "100%",
+    paddingTop: 18,
+    // paddingBottom is set dynamically (safe-area floor + gap).
+    marginTop: 8,
+  },
+  // ── FLOATING — absolute overlay; JUST the pill, NO full-width opaque bar bg.
+  // `bottom` is set dynamically (safe-area + gorhom overshoot + gap) so the WHOLE
+  // pill floats above the home indicator. zIndex above the scroll, below the
   // chrome (CHROME_Z=70 in ParallaxCoverShell).
-  wrapper: {
+  floatWrapper: {
     position: "absolute",
     left: 0,
     right: 0,
-    // `bottom` is set dynamically (safe-area + gap) so the WHOLE rounded card
-    // floats above the home indicator — see the FIX-5 comment in the component.
+    // `bottom` set dynamically — see the component.
     zIndex: 6,
-  },
-  // The fade is the (rounded-button + backdrop) card. It pads the button on all
-  // sides; the wrapper's dynamic `bottom` lifts the entire fade above the home
-  // indicator, so the button's bottom rounded corners + edge are fully visible
-  // with a clean gap beneath.
-  fade: {
     paddingHorizontal: 16,
-    paddingTop: 14,
-    paddingBottom: 14,
+  },
+  // The pill is just the rounded button + a small drop shadow for legibility over
+  // content — NO full-width page-colored fade band behind it.
+  floatPill: {
+    width: "100%",
   },
   reserve: {
     flexDirection: "row",
@@ -228,8 +274,8 @@ const styles = StyleSheet.create({
       android: { elevation: 0, shadowOpacity: 0 },
       default: {
         shadowColor: "#000000",
-        shadowOpacity: 0.22,
-        shadowRadius: 18,
+        shadowOpacity: 0.28,
+        shadowRadius: 20,
         shadowOffset: { width: 0, height: 8 },
       },
     }),

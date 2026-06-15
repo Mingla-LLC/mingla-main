@@ -27,6 +27,9 @@ import {
   StyleSheet,
   Text,
   View,
+  type LayoutChangeEvent,
+  type NativeScrollEvent,
+  type NativeSyntheticEvent,
 } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -162,7 +165,12 @@ export default function PublicTripRoute(): React.ReactElement {
       shareModalVisible={shareModalVisible}
       onCloseShareModal={() => setShareModalVisible(false)}
       safeAreaTop={insets.top}
-      contentBottomInset={spacing.xl + 96 + insets.bottom}
+      // ORCH-1138 device-rework #3 — the DOCKED Reserve CTA is now the LAST scroll
+      // child and carries its OWN safe-area bottom padding, so the scroll content
+      // NO LONGER reserves a full bar-sized clearance (that oversized pad was the
+      // BLACK VOID Seth flagged). A small tail keeps the last pre-dock content from
+      // hiding behind the floating pill at the transition moment.
+      contentBottomInset={spacing.md}
       router={router}
     />
   );
@@ -229,6 +237,35 @@ const ResolvedTripPage: React.FC<{
   // single-weight display faces).
   const boldFamily = boldFontFamily(theme);
   useThemeFont(boldFamily);
+
+  // ORCH-1138 device-rework #3 (Seth's screenshot feedback) — float→dock Reserve
+  // CTA visibility tracking, mirroring the consumer ConsumerTripDetailScreen 1:1.
+  // The DOCKED CTA is the LAST scroll child (flush beneath "Choose how you pay",
+  // no void); a light FLOATING PILL (no full-width bar bg) shows ONLY while that
+  // docked button is scrolled OFF-screen. We track the docked card's `y` within
+  // the scroll content (onDockLayout), the scroll offset (onScroll) + viewport
+  // height (onLayout), then hide the pill once the docked button's top crosses the
+  // viewport bottom. Default visible (the docked button starts below the fold).
+  const [dockTopY, setDockTopY] = useState<number | null>(null);
+  const [scrollY, setScrollY] = useState<number>(0);
+  const [viewportH, setViewportH] = useState<number>(0);
+  const handleDockLayout = useCallback((e: LayoutChangeEvent): void => {
+    setDockTopY(e.nativeEvent.layout.y);
+  }, []);
+  const handleScroll = useCallback(
+    (e: NativeSyntheticEvent<NativeScrollEvent>): void => {
+      setScrollY(e.nativeEvent.contentOffset.y);
+    },
+    [],
+  );
+  const handleScrollLayout = useCallback((e: LayoutChangeEvent): void => {
+    setViewportH(e.nativeEvent.layout.height);
+  }, []);
+  const REVEAL_MARGIN = 24;
+  const floatingPillVisible =
+    dockTopY === null || viewportH === 0
+      ? true
+      : dockTopY > scrollY + viewportH - REVEAL_MARGIN;
 
   // ORCH-0875 booking-deadline state.
   const deadlineIso = trip.bookingDeadline;
@@ -427,6 +464,26 @@ const ResolvedTripPage: React.FC<{
     </View>
   );
 
+  // ORCH-1138 device-rework #3 — the DOCKED Reserve CTA (variant="docked"),
+  // rendered by TripPreview as the LAST phone-body child so it sits flush beneath
+  // "Choose how you pay" (no black void). Phone-only; desktop uses the sticky
+  // panel's reserveControl. onDockLayout reports its position so the floating pill
+  // hides once it scrolls in. Same CtaState + onPress as the floating bar.
+  const dockedReserve =
+    !isDesktop ? (
+      <TripReserveBar
+        cta={tripCta}
+        palette={palette}
+        surface={surface}
+        kicker={barKicker}
+        fontFamily={boldFamily}
+        onPress={handleTripReserve}
+        variant="docked"
+        onDockLayout={handleDockLayout}
+        testID="orch-1117-trip-floating-bar"
+      />
+    ) : undefined;
+
   return (
     <View style={[styles.host, { backgroundColor: palette.page }]}>
       <TripPreview
@@ -444,6 +501,9 @@ const ResolvedTripPage: React.FC<{
         reserveControl={reserveControl}
         contentBottomInset={contentBottomInset}
         safeAreaTop={safeAreaTop}
+        dockedReserve={dockedReserve}
+        onScroll={handleScroll}
+        onScrollViewLayout={handleScrollLayout}
         testID="orch-1138-trip-preview"
       />
 
@@ -457,14 +517,13 @@ const ResolvedTripPage: React.FC<{
         />
       ) : null}
 
-      {/* ORCH-1138 R2 (device parity fix #8) — floating Reserve bar (phone).
-          Hidden on desktop (the sticky panel carries the Reserve control). The
-          bespoke TripReserveBar matches DIRECTION_A_V2's `.floating`/`.reserve`
-          EXACTLY (brand-accent fill, kicker + price on the left, "Reserve my
-          spot →" on the right, gradient-to-page wrap, safe-area inset) — the
-          shared FloatingOfferingBar was hardcoded warm-orange with no kicker.
-          surface = the resolved page tone for the gradient fade. */}
-      {!isDesktop ? (
+      {/* ORCH-1138 device-rework #3 — the FLOATING Reserve PILL (phone): JUST the
+          button (no full-width opaque bar bg), shown ONLY while the in-content
+          DOCKED CTA (last scroll child) is off-screen. Hides once the docked
+          button scrolls in (floatingPillVisible) → no double bar, no black void.
+          Hidden on desktop (the sticky panel carries the Reserve control). Same
+          CtaState + onPress as the docked bar so the copy never diverges. */}
+      {!isDesktop && floatingPillVisible ? (
         <TripReserveBar
           cta={tripCta}
           palette={palette}
@@ -472,6 +531,7 @@ const ResolvedTripPage: React.FC<{
           kicker={barKicker}
           fontFamily={boldFamily}
           onPress={handleTripReserve}
+          variant="floating"
           testID="orch-1117-trip-floating-bar"
         />
       ) : null}
