@@ -22,12 +22,15 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   FlatList,
+  LayoutAnimation,
   Platform,
   Pressable,
   RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
+  UIManager,
+  useWindowDimensions,
   View,
 } from "react-native";
 import { useRouter } from "expo-router";
@@ -38,9 +41,12 @@ import { BrandDeleteSheet } from "../../src/components/brand/BrandDeleteSheet";
 import { BrandSwitcherSheet } from "../../src/components/brand/BrandSwitcherSheet";
 import { BusinessTodoToggle } from "../../src/components/home/BusinessTodoToggle";
 import { HomeTripRow } from "../../src/components/home/HomeTripRow";
+import {
+  LiveOfferingCard,
+  type LiveCardMetrics,
+} from "../../src/components/home/LiveOfferingCard";
 import { UpcomingListItem } from "../../src/components/home/UpcomingListItem";
 import { EventCoverMedia } from "../../src/components/ui/EventCoverMedia";
-import { GlassCard } from "../../src/components/ui/GlassCard";
 import { Icon } from "../../src/components/ui/Icon";
 import { KpiTile } from "../../src/components/ui/KpiTile";
 import { Pill } from "../../src/components/ui/Pill";
@@ -76,11 +82,13 @@ import {
   upcomingKeys,
   useUpcomingForBrand,
 } from "../../src/hooks/useUpcomingForBrand";
+import { useLiveSectionCollapseStore } from "../../src/store/liveSectionCollapseStore";
 import type { DraftEvent } from "../../src/store/draftEventStore";
 import type { LiveEvent } from "../../src/store/liveEventStore";
 import type { Trip } from "../../src/services/tripsService";
 // ORCH-0865 REWORK 5 — canonical routing helper, ban hardcoded /event/{id}
 import { routeForEventRowDefensive } from "../../src/utils/routeForEventRow";
+import { tripToLiveEvent } from "../../src/utils/tripToLiveEvent";
 import type { BusinessTodo } from "../../src/utils/businessTodos";
 
 import { formatCurrencyRound } from "../../src/utils/currency";
@@ -93,6 +101,32 @@ import { formatRelativeTime } from "../../src/utils/relativeTime";
 // cleanly. The full HomeTab body below is unchanged for rank>=20.
 import { ScannerHome } from "../../src/components/scanners/ScannerHome";
 import { isScannerOnlyRank } from "../../src/utils/navTabGate";
+
+// ORCH-1143 — LayoutAnimation requires this guard on Android or the live-section
+// accordion collapse won't animate (BusinessTodoToggle.tsx:38-43 precedent).
+if (
+  Platform.OS === "android" &&
+  UIManager.setLayoutAnimationEnabledExperimental !== undefined
+) {
+  UIManager.setLayoutAnimationEnabledExperimental(true);
+}
+
+// ORCH-1143 — horizontal live-carousel sizing (§4.4-D). PEEK is the visible
+// sliver of the next card that signals "swipe for more"; CARD_MAX keeps the
+// card from over-stretching on wide phones/foldables.
+const LIVE_CARD_PEEK = 40;
+const LIVE_CARD_MAX = 360;
+
+// ORCH-1143 — inert metrics for the one-frame gap before sales resolve (the
+// card renders immediately; values fill in). Revenue "—" is honest until the
+// per-id summary lands; Scanned stays "—" forever (Constitution #9).
+const EMPTY_LIVE_CARD_METRICS: LiveCardMetrics = {
+  revenueLabel: "—",
+  soldValue: "0",
+  capacityLabel: "—",
+  capacity: null,
+  progress: 0,
+};
 
 interface ToastState {
   visible: boolean;
@@ -273,62 +307,78 @@ export default function HomeTab(): React.ReactElement {
     }
   }, [brandRecovery.errorMessage]);
 
-  const primaryLiveItem = upcoming.primaryLiveItem;
-  const primaryLiveEvent: LiveEvent | null =
-    primaryLiveItem !== null &&
-    (primaryLiveItem.kind === "event" || primaryLiveItem.kind === "experience")
-      ? (primaryLiveItem.source as LiveEvent)
-      : null;
+  // ORCH-1143 — ALL concurrently-live offerings (event/experience/trip), owned
+  // by upcomingBuilder.liveItems (one-owner-per-truth, Constitution #2). The
+  // home screen does NOT re-derive live status.
+  const liveItems = upcoming.liveItems;
 
-  // Sales summary lookup for ALL event/experience items — both live AND upcoming.
-  // Upcoming (scheduled, future-dated) events are still selling tickets, so their
-  // sold count + revenue must be fetched too. Previously this filtered to
-  // status === "live", so every upcoming row fell back to a false "0 sold" / "$0"
-  // (its orders were never fetched). Trips are excluded — they carry their own
-  // ticketsSoldCount on the Trip row; drafts have no orders.
-  const summaryEvents = useMemo<LiveEvent[]>(
+  // ORCH-1143 — a LiveEvent-shaped view per live item (trips adapt via
+  // tripToLiveEvent) for per-card metrics. tripToLiveEvent never returns null
+  // for a non-null source, but we guard for type-safety.
+  const liveEventViews = useMemo<LiveEvent[]>(
     () =>
-      upcoming.items
-        .filter((i) => i.kind === "event" || i.kind === "experience")
-        .map((i) => i.source as LiveEvent),
-    [upcoming.items],
+      liveItems
+        .map((i) =>
+          i.kind === "trip"
+            ? tripToLiveEvent(i.source as Trip)
+            : (i.source as LiveEvent),
+        )
+        .filter((v): v is LiveEvent => v !== null),
+    [liveItems],
   );
+
+  // Sales summary lookup for ALL event/experience items — both live AND upcoming —
+  // PLUS the adapted live-trip views (so live trips get currency-aware revenue
+  // in the carousel). Upcoming (scheduled, future-dated) events are still selling
+  // tickets, so their sold count + revenue must be fetched too. Deduped by id.
+  const summaryEvents = useMemo<LiveEvent[]>(() => {
+    const byId = new Map<string, LiveEvent>();
+    for (const i of upcoming.items) {
+      if (i.kind === "event" || i.kind === "experience") {
+        byId.set(i.id, i.source as LiveEvent);
+      }
+    }
+    for (const view of liveEventViews) {
+      if (!byId.has(view.id)) byId.set(view.id, view);
+    }
+    return Array.from(byId.values());
+  }, [upcoming.items, liveEventViews]);
   const eventSalesSummaries = useEventSalesSummaries(
     summaryEvents,
     currentBrand?.defaultCurrency,
   );
 
-  const liveHeroMetrics = useMemo(() => {
-    if (primaryLiveEvent === null) {
-      return {
-        revenueLabel: "—",
-        soldValue: "0",
-        capacity: null as number | null,
-        progress: 0,
+  // ORCH-1143 — per-live-card display metrics, keyed by offering id. Generalizes
+  // the former single-item `liveHeroMetrics` over the live array. Currency stays
+  // venue/brand-sourced (do NOT introduce a new `?? "GBP"` here — ORCH-1034
+  // deferred work owns the existing fallback).
+  const liveMetricsById = useMemo<Record<string, LiveCardMetrics>>(() => {
+    const map: Record<string, LiveCardMetrics> = {};
+    for (const view of liveEventViews) {
+      const capacity = finiteTicketCapacity(view);
+      const salesSummary = eventSalesSummaries[view.id];
+      const soldCount = salesSummary?.soldCount ?? 0;
+      map[view.id] = {
+        revenueLabel:
+          salesSummary?.revenueLabel ??
+          formatCurrencyRound(
+            0,
+            view.currency ?? currentBrand?.defaultCurrency ?? "GBP",
+          ),
+        soldValue:
+          salesSummary?.hasError === true
+            ? "Unable"
+            : soldCount.toLocaleString("en-GB"),
+        capacityLabel: formatCapacityLabel(view),
+        capacity,
+        progress:
+          capacity !== null && capacity > 0
+            ? Math.min(1, soldCount / capacity)
+            : 0,
       };
     }
-
-    const capacity = finiteTicketCapacity(primaryLiveEvent);
-    const salesSummary = eventSalesSummaries[primaryLiveEvent.id];
-    const soldCount = salesSummary?.soldCount ?? 0;
-    return {
-      revenueLabel:
-        salesSummary?.revenueLabel ??
-        formatCurrencyRound(
-          0,
-          primaryLiveEvent.currency ?? currentBrand?.defaultCurrency ?? "GBP",
-        ),
-      soldValue:
-        salesSummary?.hasError === true
-          ? "Unable"
-          : soldCount.toLocaleString("en-GB"),
-      capacity,
-      progress:
-        capacity !== null && capacity > 0
-          ? Math.min(1, soldCount / capacity)
-          : 0,
-    };
-  }, [primaryLiveEvent, currentBrand?.defaultCurrency, eventSalesSummaries]);
+    return map;
+  }, [liveEventViews, currentBrand?.defaultCurrency, eventSalesSummaries]);
 
   // ORCH-0965 — counts shape for the existing getActiveEventsKpiSub helper.
   // The helper consumes BrandEventSummaryCounts which has `all` + status
@@ -351,23 +401,56 @@ export default function HomeTab(): React.ReactElement {
   // rule-ladder / offering-chooser logic now lives in the shared useBusinessTodos
   // hook + handleTodoAction below.
 
-  // ORCH-0965 — scan-QR action visible ONLY when the primary live hero is
-  // an `event`-kind offering. Experiences route to a coming-soon stub
-  // (Ve series not shipped) and trips have no scanner today.
-  const showScanAction =
-    primaryLiveItem !== null && primaryLiveItem.kind === "event";
+  // ORCH-1143 — scan on EVERY live kind (event/experience/trip). The scan
+  // backend (biz_ticket_scan) + /event/[id]/scanner are event-type-agnostic
+  // (INVESTIGATE_ORCH-1143 verdict A/A/A) — /event/[id]/scanner is the SHARED
+  // scanner route for all kinds (no /experience or /trip scanner route). On web
+  // it routes to the ORCH-1099 kind-aware "Scan tickets in the app" EmptyState,
+  // NOT a dead tap. Do NOT re-add a `kind === "event"` gate here.
+  // I-PROPOSED-ORCH1143-LIVE-SCAN-ALL-KINDS.
+  const handleScanPress = useCallback(
+    (id: string): void => {
+      router.push(`/event/${id}/scanner` as never);
+    },
+    [router],
+  );
 
-  const handleScanPress = useCallback((): void => {
-    if (primaryLiveItem === null || primaryLiveItem.kind !== "event") return;
-    router.push(`/event/${primaryLiveItem.id}/scanner` as never);
-  }, [primaryLiveItem, router]);
+  // ORCH-1143 — live-section accordion collapse, persisted + hydration-gated
+  // (Constitution #14). Until `hasHydrated`, render the default (open) state and
+  // do NOT read `collapsed` for layout — prevents a flash-of-wrong-state on cold
+  // start. The toggle wraps the LayoutAnimation per the BusinessTodoToggle
+  // precedent (easeInEaseOut, ~300ms default, Android guard at module top).
+  const liveCollapsed = useLiveSectionCollapseStore((s) => s.collapsed);
+  const liveHasHydrated = useLiveSectionCollapseStore((s) => s.hasHydrated);
+  const toggleLiveCollapsed = useLiveSectionCollapseStore((s) => s.toggle);
+  const showLiveOpen = !liveHasHydrated || !liveCollapsed;
+  const handleToggleLiveSection = useCallback((): void => {
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    toggleLiveCollapsed();
+  }, [toggleLiveCollapsed]);
+
+  const windowDimensions = useWindowDimensions();
+  const liveCardWidth = useMemo(
+    () =>
+      Math.min(
+        Math.round(
+          windowDimensions.width - spacing.md * 2 - LIVE_CARD_PEEK,
+        ),
+        LIVE_CARD_MAX,
+      ),
+    [windowDimensions.width],
+  );
 
   // ORCH-1038 — analytics tiles render ONLY when there is real data to show
   // (no zero/empty placeholders); the to-do toggle carries guidance instead.
   const hasRevenueData =
     currentBrand?.defaultCurrency !== undefined &&
     (currentBrand?.stats.rev7d ?? 0) > 0;
-  const showRevenueTile = primaryLiveEvent !== null || hasRevenueData;
+  // ORCH-1143 — the live cards moved OUT of the KPI grid into their own
+  // accordion section above the locked pane; the "Last 7 days" KPI fallback now
+  // shows only when there is rev7d data (it no longer doubles as the live slot).
+  const hasLiveItems = liveItems.length > 0;
+  const showRevenueTile = hasRevenueData;
   const hasActiveEvents = upcoming.counts.total > 0;
   const hasUpcomingItems = upcoming.items.length > 0;
   const showKpiGrid = showRevenueTile || hasActiveEvents;
@@ -403,6 +486,93 @@ export default function HomeTab(): React.ReactElement {
     },
     [router],
   );
+
+  // ORCH-1143 — the "Live now" accordion section (header + body). Renders only
+  // when ≥1 offering is live. Header toggles whole-section collapse. Body:
+  // exactly 1 live → one full-width LiveOfferingCard (no carousel chrome);
+  // ≥2 live → a horizontal ScrollView of peek-width cards, each independently
+  // scannable, live-first start-ascending (ExperienceStopsGalleryTile house
+  // style). Hidden when collapsed (after hydration). Shared across the desktop
+  // pane and the mobile pane (above the locked zone, so the carousel's
+  // horizontal scroller stays outside the ORCH-0974 single-scroll lock).
+  const renderLiveSection = (): React.ReactElement | null => {
+    if (!hasLiveItems) return null;
+    return (
+      <View style={styles.liveSection}>
+        <Pressable
+          onPress={handleToggleLiveSection}
+          accessibilityRole="button"
+          accessibilityState={{ expanded: !liveCollapsed }}
+          accessibilityLabel={
+            liveItems.length === 1
+              ? `Live now, 1 offering, ${
+                  liveCollapsed ? "tap to expand" : "tap to collapse"
+                }`
+              : `Live now, ${liveItems.length} offerings, ${
+                  liveCollapsed ? "tap to expand" : "tap to collapse"
+                }`
+          }
+          style={({ pressed }) => [
+            styles.liveHeaderRow,
+            pressed && styles.liveHeaderRowPressed,
+          ]}
+          testID="home-live-section-header"
+        >
+          <View style={styles.liveHeaderLeft}>
+            <View style={styles.liveHeaderDot} />
+            <Text style={styles.liveHeaderTitle}>Live now</Text>
+            {liveItems.length > 1 ? (
+              <Text style={styles.liveHeaderCount}>{`· ${liveItems.length}`}</Text>
+            ) : null}
+          </View>
+          {/* Chevron is decorative — the expanded/collapsed state lives on the
+              parent Pressable's accessibilityState. Icon renders an inert SVG
+              (no accessibilityRole), so VoiceOver/TalkBack announce only the
+              header button. */}
+          <Icon
+            name={showLiveOpen ? "chevU" : "chevD"}
+            size={20}
+            color={textTokens.secondary}
+          />
+        </Pressable>
+
+        {showLiveOpen ? (
+          liveItems.length === 1 ? (
+            <LiveOfferingCard
+              item={liveItems[0]}
+              metrics={
+                liveMetricsById[liveItems[0].id] ?? EMPTY_LIVE_CARD_METRICS
+              }
+              onScanPress={handleScanPress}
+              testID="home-live-card"
+            />
+          ) : (
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              snapToInterval={liveCardWidth + spacing.md}
+              snapToAlignment="start"
+              decelerationRate="fast"
+              contentContainerStyle={styles.liveCarouselContent}
+              accessibilityLabel="Live offerings, swipe horizontally to see more"
+            >
+              {liveItems.map((liveItem) => (
+                <LiveOfferingCard
+                  key={liveItem.key}
+                  item={liveItem}
+                  metrics={
+                    liveMetricsById[liveItem.id] ?? EMPTY_LIVE_CARD_METRICS
+                  }
+                  onScanPress={handleScanPress}
+                  width={liveCardWidth}
+                />
+              ))}
+            </ScrollView>
+          )
+        ) : null}
+      </View>
+    );
+  };
 
   // ORCH-1055: rank-10 scanner — render the door-only surface. All hooks
   // above have run unconditionally; this is a render-time branch, safe
@@ -460,94 +630,29 @@ export default function HomeTab(): React.ReactElement {
         >
           {currentBrand === null ? null : (
             <>
+              {/* ORCH-1143 — the "Live now" accordion + carousel sits at the top
+                  of the dashboard, above the analytics grid. */}
+              {renderLiveSection()}
+
               {/* ORCH-1038 — analytics only when there's real data; the to-do
                   toggle above carries all guidance/empty-state actions. */}
               {showKpiGrid ? (
               <View style={styles.desktopKpiGrid}>
                 {showRevenueTile ? (
                 <View style={styles.desktopKpiCell}>
-                  {primaryLiveEvent !== null ? (
-                    <GlassCard variant="elevated" padding={spacing.lg}>
-                      <View style={styles.heroLiveTagRow}>
-                        <Pill variant="live" livePulse>
-                          Live now
-                        </Pill>
-                      </View>
-                      <Text style={styles.heroEventName}>
-                        {getEventName(primaryLiveEvent.name, "Untitled event")}
-                      </Text>
-                      <Text style={styles.heroEventDate}>
-                        {formatDraftDateLine(primaryLiveEvent)}
-                      </Text>
-                      <View style={styles.heroAmountRow}>
-                        <Text style={styles.heroAmountSold}>
-                          {liveHeroMetrics.revenueLabel}
-                        </Text>
-                        <Text style={styles.heroAmountGoal}> revenue</Text>
-                      </View>
-                      {liveHeroMetrics.capacity !== null ? (
-                        <View style={styles.progressBarTrack}>
-                          <View
-                            style={[
-                              styles.progressBarFill,
-                              {
-                                width: `${Math.round(
-                                  liveHeroMetrics.progress * 100,
-                                )}%`,
-                              },
-                            ]}
-                          />
-                        </View>
-                      ) : null}
-                      <View style={styles.heroStatRow}>
-                        <View style={styles.heroStatCell}>
-                          <Text style={styles.heroStatValue}>
-                            {liveHeroMetrics.soldValue}
-                          </Text>
-                          <Text style={styles.heroStatLabel}>Tickets sold</Text>
-                        </View>
-                        <View style={styles.heroStatCell}>
-                          <Text style={styles.heroStatValue}>
-                            {formatCapacityLabel(primaryLiveEvent)}
-                          </Text>
-                          <Text style={styles.heroStatLabel}>Capacity</Text>
-                        </View>
-                        <View style={styles.heroStatCell}>
-                          <Text style={styles.heroStatValue}>—</Text>
-                          <Text style={styles.heroStatLabel}>Scanned</Text>
-                        </View>
-                      </View>
-                      {/* ORCH-0965 — scan-QR action. Event-kind hero only. */}
-                      {showScanAction ? (
-                        <Pressable
-                          onPress={handleScanPress}
-                          accessibilityRole="button"
-                          accessibilityLabel={`Scan tickets for ${getEventName(primaryLiveEvent.name, "Untitled event")}`}
-                          style={styles.heroScanAction}
-                          testID="home-live-hero-scan-button"
-                        >
-                          <Icon name="qr" size={16} color={accent.warm} />
-                          <Text style={styles.heroScanActionText}>
-                            Scan QR codes
-                          </Text>
-                        </Pressable>
-                      ) : null}
-                    </GlassCard>
-                  ) : (
-                    <KpiTile
-                      label="Last 7 days"
-                      value={
-                        currentBrand.defaultCurrency !== undefined
-                          ? formatCurrencyRound(
-                              // ORCH-0816 — windowed 7-day GMV. Lifetime stays on
-                              // BrandProfileView's "GMV / all time" tile.
-                              currentBrand.stats.rev7d,
-                              currentBrand.defaultCurrency,
-                            )
-                          : "—"
-                      }
-                    />
-                  )}
+                  <KpiTile
+                    label="Last 7 days"
+                    value={
+                      currentBrand.defaultCurrency !== undefined
+                        ? formatCurrencyRound(
+                            // ORCH-0816 — windowed 7-day GMV. Lifetime stays on
+                            // BrandProfileView's "GMV / all time" tile.
+                            currentBrand.stats.rev7d,
+                            currentBrand.defaultCurrency,
+                          )
+                        : "—"
+                    }
+                  />
                 </View>
                 ) : null}
 
@@ -725,82 +830,21 @@ export default function HomeTab(): React.ReactElement {
           )}
         </ScrollView>
       ) : currentBrand === null ? null : (
-        // orch-0974-lock-pane:begin-mobile-populated; ORCH-1038 — the to-do
-        // toggle above carries no-brand / no-venue / deck-readiness / offering
-        // guidance; this pane is now analytics-only (gated on real data).
-        <View style={styles.mobileBody}>
+        <>
+          {/* ORCH-1143 — the "Live now" accordion + carousel sits ABOVE the
+              ORCH-0974 locked single-scroll pane, so the carousel's horizontal
+              ScrollView never violates that pane's one-scroll-surface lock. */}
+          {renderLiveSection()}
+          {
+            // orch-0974-lock-pane:begin-mobile-populated; ORCH-1038 — the to-do
+            // toggle above carries no-brand / no-venue / deck-readiness / offering
+            // guidance; this pane is now analytics-only (gated on real data).
+          }
+          <View style={styles.mobileBody}>
           <View style={styles.lockedZone}>
             {showKpiGrid ? (
             <View style={styles.mobileKpiStack}>
               {showRevenueTile ? (
-              primaryLiveEvent !== null ? (
-                <GlassCard variant="elevated" padding={spacing.lg}>
-                  <View style={styles.heroLiveTagRow}>
-                    <Pill variant="live" livePulse>
-                      Live now
-                    </Pill>
-                  </View>
-                  <Text style={styles.heroEventName}>
-                    {getEventName(primaryLiveEvent.name, "Untitled event")}
-                  </Text>
-                  <Text style={styles.heroEventDate}>
-                    {formatDraftDateLine(primaryLiveEvent)}
-                  </Text>
-                  <View style={styles.heroAmountRow}>
-                    <Text style={styles.heroAmountSold}>
-                      {liveHeroMetrics.revenueLabel}
-                    </Text>
-                    <Text style={styles.heroAmountGoal}> revenue</Text>
-                  </View>
-                  {liveHeroMetrics.capacity !== null ? (
-                    <View style={styles.progressBarTrack}>
-                      <View
-                        style={[
-                          styles.progressBarFill,
-                          {
-                            width: `${Math.round(
-                              liveHeroMetrics.progress * 100,
-                            )}%`,
-                          },
-                        ]}
-                      />
-                    </View>
-                  ) : null}
-                  <View style={styles.heroStatRow}>
-                    <View style={styles.heroStatCell}>
-                      <Text style={styles.heroStatValue}>
-                        {liveHeroMetrics.soldValue}
-                      </Text>
-                      <Text style={styles.heroStatLabel}>Tickets sold</Text>
-                    </View>
-                    <View style={styles.heroStatCell}>
-                      <Text style={styles.heroStatValue}>
-                        {formatCapacityLabel(primaryLiveEvent)}
-                      </Text>
-                      <Text style={styles.heroStatLabel}>Capacity</Text>
-                    </View>
-                    <View style={styles.heroStatCell}>
-                      <Text style={styles.heroStatValue}>—</Text>
-                      <Text style={styles.heroStatLabel}>Scanned</Text>
-                    </View>
-                  </View>
-                  {/* ORCH-0965 — scan-QR action. Event-kind hero only. */}
-                  {showScanAction ? (
-                    <Pressable
-                      onPress={handleScanPress}
-                      accessibilityRole="button"
-                      accessibilityLabel={`Scan tickets for ${getEventName(primaryLiveEvent.name, "Untitled event")}`}
-                      style={styles.heroScanAction}
-                      testID="home-live-hero-scan-button"
-                    >
-                      <Icon name="qr" size={16} color={accent.warm} />
-                      <Text style={styles.heroScanActionText}>
-                        Scan QR codes
-                      </Text>
-                    </Pressable>
-                  ) : null}
-                </GlassCard>
-              ) : (
                 <KpiTile
                   label="Last 7 days"
                   value={
@@ -814,7 +858,6 @@ export default function HomeTab(): React.ReactElement {
                       : "—"
                   }
                 />
-              )
               ) : null}
 
               {hasActiveEvents ? (
@@ -864,8 +907,11 @@ export default function HomeTab(): React.ReactElement {
             }
             showsVerticalScrollIndicator={false}
           />
-        </View>
-        // orch-0974-lock-pane:end-mobile-populated
+          </View>
+          {
+            // orch-0974-lock-pane:end-mobile-populated
+          }
+        </>
       )}
 
       <BrandSwitcherSheet
@@ -1063,85 +1109,51 @@ const styles = StyleSheet.create({
     textTransform: "uppercase",
   },
 
-  // Hero — live event ---------------------------------------------------
-  heroLiveTagRow: {
-    flexDirection: "row",
-    marginBottom: spacing.sm,
-  },
-  heroEventName: {
-    fontSize: typography.bodySm.fontSize,
-    lineHeight: typography.bodySm.lineHeight,
-    color: textTokens.secondary,
-    marginBottom: 2,
-  },
-  heroEventDate: {
-    fontSize: typography.caption.fontSize,
-    lineHeight: typography.caption.lineHeight,
-    color: textTokens.tertiary,
-    marginBottom: 4,
-  },
-  heroAmountRow: {
-    flexDirection: "row",
-    alignItems: "baseline",
+  // ORCH-1143 — "Live now" accordion section -------------------------------
+  // The hero render moved into the reusable <LiveOfferingCard>; these styles
+  // own only the section wrapper + the accordion header + the carousel.
+  liveSection: {
     marginBottom: spacing.md,
   },
-  heroAmountSold: {
-    fontSize: 32,
-    lineHeight: 36,
-    fontWeight: "700",
-    letterSpacing: -0.4,
-    color: textTokens.primary,
-  },
-  heroAmountGoal: {
-    fontSize: 18,
-    lineHeight: 22,
-    fontWeight: "500",
-    color: textTokens.tertiary,
-  },
-  progressBarTrack: {
-    height: 4,
-    borderRadius: 999,
-    backgroundColor: glass.tint.profileBase,
-    overflow: "hidden",
-    marginBottom: spacing.md,
-  },
-  progressBarFill: {
-    height: "100%",
-    backgroundColor: accent.warm,
-    borderRadius: 999,
-  },
-  heroStatRow: {
+  liveHeaderRow: {
     flexDirection: "row",
+    alignItems: "center",
     justifyContent: "space-between",
+    paddingHorizontal: spacing.xs,
+    paddingTop: spacing.sm,
+    paddingBottom: spacing.sm,
+    minHeight: 44,
   },
-  heroStatCell: {
-    flex: 1,
+  liveHeaderRowPressed: {
+    opacity: 0.6,
   },
-  heroStatValue: {
-    fontSize: typography.body.fontSize,
-    lineHeight: typography.body.lineHeight,
-    fontWeight: "700",
-    color: textTokens.primary,
-  },
-  heroStatLabel: {
-    fontSize: typography.caption.fontSize,
-    lineHeight: typography.caption.lineHeight,
-    color: textTokens.tertiary,
-    marginTop: 2,
-  },
-  // ORCH-0965 — scan-QR action inside live hero (event-kind only).
-  heroScanAction: {
+  liveHeaderLeft: {
     flexDirection: "row",
     alignItems: "center",
     gap: spacing.xs,
-    alignSelf: "flex-start",
-    marginTop: spacing.md,
   },
-  heroScanActionText: {
+  liveHeaderDot: {
+    width: 7,
+    height: 7,
+    borderRadius: 999,
+    backgroundColor: accent.warm,
+  },
+  liveHeaderTitle: {
     fontSize: typography.bodySm.fontSize,
     lineHeight: typography.bodySm.lineHeight,
+    fontWeight: "700",
+    color: textTokens.primary,
+  },
+  liveHeaderCount: {
+    fontSize: typography.caption.fontSize,
+    lineHeight: typography.caption.lineHeight,
     fontWeight: "600",
-    color: accent.warm,
+    color: textTokens.secondary,
+    marginLeft: 2,
+  },
+  liveCarouselContent: {
+    gap: spacing.md,
+    paddingRight: spacing.md,
   },
 
   // Section header ------------------------------------------------------

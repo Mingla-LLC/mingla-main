@@ -508,3 +508,113 @@ describe("ORCH-0965 compareUpcomingItems — comparator unit tests", () => {
     expect(compareUpcomingItems(ev("a", "upcoming", 100), ev("b", "upcoming", 50))).toBeGreaterThan(0);
   });
 });
+
+describe("ORCH-1143 liveItems — enumerate ALL live offerings (T2/T3/T4/T12)", () => {
+  beforeEach(() => {
+    jest.spyOn(Date, "now").mockReturnValue(NOW);
+  });
+  afterEach(() => {
+    jest.restoreAllMocks();
+  });
+
+  test("T12 — liveItems = only status==='live', sorted live-first start-ascending", () => {
+    const earlier = liveEvent({
+      id: "evt-earlier",
+      date: "2026-06-01",
+      doorsOpen: "06:00",
+      endsAt: "23:00",
+    });
+    const later = liveEvent({
+      id: "evt-later",
+      date: "2026-06-01",
+      doorsOpen: "11:00",
+      endsAt: "23:00",
+    });
+    const futureTrip = trip({ id: "trip-future", status: "scheduled" });
+    const localDraft = draft({ id: "draft-1" });
+    const { liveItems } = buildUpcomingItems(
+      [earlier, later],
+      [],
+      [futureTrip],
+      [localDraft],
+      NOW,
+    );
+    // only the two live events, older start first; trip(scheduled)/draft excluded.
+    expect(liveItems.map((i) => i.id)).toEqual(["evt-earlier", "evt-later"]);
+    expect(liveItems.every((i) => i.status === "live")).toBe(true);
+  });
+
+  test("T2/T3 — a live experience AND a live trip both appear in liveItems (all kinds)", () => {
+    const experience = liveEvent({
+      id: "exp-live",
+      date: "2026-06-01",
+      doorsOpen: "06:00",
+      endsAt: "23:00",
+    });
+    (experience as LiveEvent & { event_type?: string }).event_type = "experience";
+    const liveTrip = trip({
+      id: "trip-live",
+      status: "live",
+      businessTrip: {
+        startAt: "2026-05-30T09:00:00.000Z",
+        endAt: "2026-06-05T17:00:00.000Z",
+        destinationLocationText: null,
+        destinationPlaceId: null,
+        destinationLat: null,
+        destinationLng: null,
+        departurePlaceId: null,
+        departureLocationText: null,
+        departureLat: null,
+        departureLng: null,
+        capacity: null,
+      },
+    });
+    const { liveItems } = buildUpcomingItems([experience], [], [liveTrip], [], NOW);
+    const kinds = liveItems.map((i) => i.kind).sort();
+    expect(kinds).toEqual(["experience", "trip"]);
+    // every live kind is present — the scan affordance is no longer event-only.
+    expect(liveItems.find((i) => i.kind === "experience")).toBeDefined();
+    expect(liveItems.find((i) => i.kind === "trip")).toBeDefined();
+  });
+
+  test("T4 — event + experience + trip simultaneously live → all three enumerated, live-first order", () => {
+    const event = liveEvent({ id: "evt", date: "2026-06-01", doorsOpen: "08:00", endsAt: "23:00" });
+    const experience = liveEvent({ id: "exp", date: "2026-06-01", doorsOpen: "10:00", endsAt: "23:00" });
+    (experience as LiveEvent & { event_type?: string }).event_type = "experience";
+    const liveTrip = trip({
+      id: "trip",
+      status: "live",
+      businessTrip: {
+        startAt: "2026-05-29T09:00:00.000Z",
+        endAt: "2026-06-05T17:00:00.000Z",
+        destinationLocationText: null,
+        destinationPlaceId: null,
+        destinationLat: null,
+        destinationLng: null,
+        departurePlaceId: null,
+        departureLocationText: null,
+        departureLat: null,
+        departureLng: null,
+        capacity: null,
+      },
+    });
+    const { liveItems } = buildUpcomingItems([event, experience], [], [liveTrip], [], NOW);
+    expect(liveItems).toHaveLength(3);
+    // live-first start-ascending: trip(05-29) < event(06-01 08:00) < experience(06-01 10:00)
+    expect(liveItems.map((i) => i.id)).toEqual(["trip", "evt", "exp"]);
+  });
+
+  test("T5 — no live offerings → liveItems empty + primaryLiveItem null", () => {
+    const futureTrip = trip({ id: "trip-future", status: "scheduled" });
+    const { liveItems, primaryLiveItem } = buildUpcomingItems([], [], [futureTrip], [], NOW);
+    expect(liveItems).toHaveLength(0);
+    expect(primaryLiveItem).toBeNull();
+  });
+
+  test("liveItems[0] === primaryLiveItem (back-compat equivalence)", () => {
+    const earlier = liveEvent({ id: "evt-earlier", date: "2026-06-01", doorsOpen: "06:00", endsAt: "23:00" });
+    const later = liveEvent({ id: "evt-later", date: "2026-06-01", doorsOpen: "11:00", endsAt: "23:00" });
+    const { liveItems, primaryLiveItem } = buildUpcomingItems([earlier, later], [], [], [], NOW);
+    expect(liveItems[0]).toBe(primaryLiveItem);
+  });
+});

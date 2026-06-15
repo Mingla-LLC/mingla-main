@@ -31,6 +31,7 @@ const KNOWN_MINGLA_KEYS = new Set<string>([
   "mingla-business.notificationPrefsStore.v1",
   "mingla-business.doorSalesStore.v1",
   "mingla-business.scanStore.v1",
+  "mingla-business.liveSectionCollapse.v1", // ORCH-1143: home live-section accordion collapse
   // ORCH-1050: brandTeamStore.v1 was removed from the persist allowlist.
   // The store is now in-memory optimistic only (canonical state lives in
   // public.brand_invitations via React Query). The reaper now sweeps any

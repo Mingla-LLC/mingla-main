@@ -187,7 +187,15 @@ export function buildUpcomingItems(
   trips: Trip[],
   drafts: DraftEvent[],
   now: number = Date.now(),
-): { items: UpcomingItem[]; counts: UpcomingCounts; primaryLiveItem: UpcomingItem | null } {
+): {
+  items: UpcomingItem[];
+  counts: UpcomingCounts;
+  primaryLiveItem: UpcomingItem | null;
+  // ORCH-1143 — one-owner-per-truth for live-state (Constitution #2). The
+  // home live carousel reads this; it must NOT re-derive "live" at the call
+  // site. Already-sorted (live-first, start-ascending) subset of `items`.
+  liveItems: UpcomingItem[];
+} {
   const mergedEvents = mergeServerAndLegacyLive(serverEvents, legacyLiveEvents);
 
   const items: UpcomingItem[] = [];
@@ -214,6 +222,10 @@ export function buildUpcomingItems(
     draft: nonPast.filter((i) => i.status === "draft").length,
   };
 
-  const primaryLiveItem = nonPast.find((i) => i.status === "live") ?? null;
-  return { items: nonPast, counts, primaryLiveItem };
+  // ORCH-1143 — `liveItems` inherits the live-first start-ascending order from
+  // the comparator sort above. `primaryLiveItem` stays `liveItems[0]` (the
+  // existing `find` is equivalent) and is kept for back-compat consumers.
+  const liveItems = nonPast.filter((i) => i.status === "live");
+  const primaryLiveItem = liveItems[0] ?? null;
+  return { items: nonPast, counts, primaryLiveItem, liveItems };
 }
