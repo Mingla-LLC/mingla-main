@@ -1,7 +1,8 @@
 /**
  * /experience/snap (ORCH-1144) — experience snap/parse/review flow.
  *
- * Reached from the experience-create chooser (/experience/choose) options 1 & 2.
+ * Reached from the in-sheet experience chooser (UniversalCreatorSheet step
+ * "experience") options 1 & 2.
  * The `mode` query param carries the EXPLICIT parseMode chosen by the user's
  * pick — never inferred from the brand's `venueCategory`:
  *   - ?mode=menu       → Ve5 restaurant/food-menu parser  (MenuSnapInput)

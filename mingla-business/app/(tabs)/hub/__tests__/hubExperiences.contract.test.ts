@@ -14,6 +14,10 @@ import { readFileSync } from "fs";
 import { join } from "path";
 
 const EXPERIENCES_ROUTE = join(__dirname, "..", "experiences.tsx");
+// ORCH-1144 UX refinement — the 3-option experience chooser was folded INTO
+// UniversalCreatorSheet (step "experience"); the standalone
+// ExperienceCreateChooser.tsx was retired. The chooser contract now reads the
+// in-sheet EXPERIENCE_OPTIONS in UniversalCreatorSheet.tsx.
 const CHOOSER = join(
   __dirname,
   "..",
@@ -22,8 +26,8 @@ const CHOOSER = join(
   "..",
   "src",
   "components",
-  "experience",
-  "ExperienceCreateChooser.tsx",
+  "ui",
+  "UniversalCreatorSheet.tsx",
 );
 
 describe("hub/experiences create surface (ORCH-1144)", () => {

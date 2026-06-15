@@ -2,8 +2,10 @@
  * /hub/experiences — Hub > Experiences sub-route.
  *
  * ORCH-1144 — venue-category-agnostic. Both experience parsers (Ve5 food menu,
- * Ve6 activities) reach EVERY brand via the +→Create experience chooser
- * (/experience/choose → /experience/snap?mode=…). Do NOT reintroduce a
+ * Ve6 activities) reach EVERY brand via the in-sheet experience chooser
+ * (UniversalCreatorSheet step "experience" → /experience/snap?mode=…). The
+ * "New experience" empty-state CTA here opens that same sheet directly at the
+ * experience step (initialStep="experience"). Do NOT reintroduce a
  * `venueCategory` branch or a `canGenerate*` predicate to gate reaching a
  * parser — see I-PROPOSED-1144-PARSERS-CATEGORY-AGNOSTIC. The snap/parse/review
  * machinery now lives on the dedicated /experience/snap route; this tab is a
@@ -28,6 +30,7 @@ import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { ExperienceListCard } from "../../../src/components/experience/ExperienceListCard";
+import { UniversalCreatorSheet } from "../../../src/components/ui/UniversalCreatorSheet";
 import {
   OfferingManageSheet,
   buildOfferingManageActions,
@@ -181,6 +184,10 @@ export default function HubExperiencesRoute(): React.ReactElement {
   const [filter, setFilter] = useState<ExperienceFilter>(defaultFilter);
   const [manageExp, setManageExp] = useState<VenueExperience | null>(null);
   const [shareExp, setShareExp] = useState<VenueExperience | null>(null);
+  // ORCH-1144 UX refinement — the "New experience" CTA opens the shared
+  // UniversalCreatorSheet directly at its experience step (the 3-option chooser),
+  // instead of pushing a separate /experience/choose route.
+  const [creatorOpen, setCreatorOpen] = useState<boolean>(false);
 
   // ORCH-1123 [Hub multi-select draft delete] — long-press multi-select +
   // bulk soft-delete for DRAFT experiences only (server rank-gated).
@@ -326,7 +333,7 @@ export default function HubExperiencesRoute(): React.ReactElement {
               <View style={styles.emptyCtaRow}>
                 <Button
                   label="New experience"
-                  onPress={() => router.push("/experience/choose" as never)}
+                  onPress={() => setCreatorOpen(true)}
                   variant="primary"
                   size="md"
                   leadingIcon="sparkle"
@@ -483,6 +490,18 @@ export default function HubExperiencesRoute(): React.ReactElement {
         message={toast ?? ""}
         onDismiss={() => setToast(null)}
       />
+
+      {/* ORCH-1144 UX refinement — the "New experience" CTA opens the shared
+          creator sheet straight at its experience chooser step. Mounted only
+          while open; resets to the experience step on each open. The in-step
+          back affordance is omitted in this mode (no root to return to). */}
+      {creatorOpen ? (
+        <UniversalCreatorSheet
+          visible
+          initialStep="experience"
+          onClose={() => setCreatorOpen(false)}
+        />
+      ) : null}
     </View>
   );
 }

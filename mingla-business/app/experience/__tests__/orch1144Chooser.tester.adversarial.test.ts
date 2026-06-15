@@ -6,12 +6,14 @@
  * This suite attacks three failure modes the implementor's happy-path test does
  * NOT cover:
  *
- *   (A) DEAD TAPS (Constitution #1 / SC-10) — every `route:` literal the chooser
- *       can push MUST resolve to a real Expo Router route file on disk. A typo'd
- *       or unregistered route ("/experience/snapp", "/experience/build") would
- *       pass the implementor's testID grep but is a white-screen dead tap at
- *       runtime. We parse the route literals out of the OPTIONS array and stat
- *       each destination file.
+ *   (A) DEAD TAPS (Constitution #1 / SC-10) — every experience-step `route:`
+ *       literal the sheet can push MUST resolve to a real Expo Router route file
+ *       on disk. A typo'd or unregistered route ("/experience/snapp",
+ *       "/experience/build") would pass a testID grep but is a white-screen dead
+ *       tap at runtime. ORCH-1144 UX refinement folded the chooser in-sheet, so
+ *       we now parse the EXPERIENCE_OPTIONS route literals out of
+ *       UniversalCreatorSheet.tsx (the retired ExperienceCreateChooser.tsx is
+ *       gone) and stat each destination file.
  *
  *   (B) CATEGORY-AGNOSTIC PARSE-MODE (SC-8) — a `creative_and_arts` / null-
  *       category brand (previously STRANDED) must reach BOTH parsers. We prove
@@ -20,30 +22,29 @@
  *       mode from the brand, the stranded brand would silently lose a parser
  *       even though the chooser still shows three rows.
  *
- *   (C) ENTRY-POINT WIRING — the `+` sheet (UniversalCreatorSheet) experience
- *       row routes to `/experience/choose`, NOT straight to `/experience/create`
- *       (the pre-1144 behavior). If this regressed, SC-1 silently breaks while
- *       every other 1144 test still passes (they read the chooser/tab, not the
- *       entry sheet).
+ *   (C) ENTRY-POINT WIRING (ORCH-1144 UX refinement) — the `+` sheet experience
+ *       row must NOT push `/experience/choose` (a separate sheet was retired) and
+ *       must NOT route straight to `/experience/create` (pre-1144). It now
+ *       transitions the SAME sheet IN-PLACE to its "experience" step
+ *       (`step: "experience"` on the experience RootOption). If this regressed —
+ *       a re-introduced push, or a missing step transition — SC-1 silently breaks
+ *       while the other 1144 tests still pass (they read the tab/snap route, not
+ *       the entry sheet's step machine).
  *
  * fails-on-revert: re-introducing the deleted `venueCategory` parse-mode router
- * into snap.tsx flips (B); pointing UniversalCreatorSheet back at
- * `/experience/create` flips (C); a route typo flips (A).
+ * into snap.tsx flips (B); pointing the experience row back at a `/experience/*`
+ * push instead of an in-place step flips (C); a route typo flips (A).
  */
 import { describe, expect, test } from "@jest/globals";
 import { existsSync, readFileSync } from "fs";
 import { join } from "path";
 
 const APP_DIR = join(__dirname, "..", "..");
-const CHOOSER = join(
-  APP_DIR,
-  "..",
-  "src",
-  "components",
-  "experience",
-  "ExperienceCreateChooser.tsx",
-);
 const SNAP_ROUTE = join(__dirname, "..", "snap.tsx");
+// ORCH-1144 UX refinement — the 3-option experience chooser was folded INTO
+// UniversalCreatorSheet (step "experience"); ExperienceCreateChooser.tsx + the
+// /experience/choose route were retired. The experience route literals now live
+// in this file's EXPERIENCE_OPTIONS array.
 const UNIVERSAL_SHEET = join(
   APP_DIR,
   "..",
@@ -60,14 +61,20 @@ function routeFileFor(routePath: string): string {
 }
 
 describe("ORCH-1144 chooser — no dead taps (A)", () => {
-  const chooser = readFileSync(CHOOSER, "utf8");
-  // Pull every `route: "..."` literal out of the OPTIONS array.
+  const sheet = readFileSync(UNIVERSAL_SHEET, "utf8");
+  // The experience chooser now lives in-sheet. Pull route literals from the
+  // EXPERIENCE_OPTIONS array only (the root options route to /event/create +
+  // /trip/create, which are NOT experience destinations and not under test here).
+  const expBlock =
+    sheet.match(
+      /EXPERIENCE_OPTIONS:\s*readonly\s+ChooserOption\[\]\s*=\s*\[([\s\S]*?)\n\]\s*as const;/,
+    )?.[1] ?? "";
   const routeLiterals = Array.from(
-    chooser.matchAll(/route:\s*"([^"]+)"/g),
+    expBlock.matchAll(/route:\s*"([^"]+)"/g),
     (m) => m[1],
   );
 
-  test("the chooser declares exactly the 3 expected routes", () => {
+  test("the in-sheet experience chooser declares exactly the 3 expected routes", () => {
     expect(routeLiterals.sort()).toEqual(
       [
         "/experience/create",
@@ -113,13 +120,33 @@ describe("ORCH-1144 snap route — category-agnostic parse mode (B)", () => {
   });
 });
 
-describe("ORCH-1144 entry-point wiring (C)", () => {
+describe("ORCH-1144 entry-point wiring (C) — in-place experience step", () => {
   const sheet = readFileSync(UNIVERSAL_SHEET, "utf8");
 
-  test("the + sheet experience row routes to the chooser, not the manual wizard", () => {
-    // The experience CreatorOption must point at /experience/choose.
-    expect(sheet).toMatch(/route:\s*"\/experience\/choose"/);
-    // And must NOT still point straight at /experience/create (pre-1144).
-    expect(sheet).not.toMatch(/route:\s*"\/experience\/create"/);
+  test("the separate /experience/choose route is fully retired", () => {
+    // The whole point of the UX refinement: no sheet-swap to a /experience/choose
+    // route anywhere in the entry sheet.
+    expect(sheet).not.toMatch(/\/experience\/choose/);
+  });
+
+  test("the experience root option steps IN-PLACE, it does not push a route", () => {
+    // Isolate the experience RootOption block (key: "experience" ... testID).
+    const expRoot =
+      sheet.match(
+        /key:\s*"experience",[\s\S]*?testID:\s*"universal-creator-experience",/,
+      )?.[0] ?? "";
+    expect(expRoot).not.toBe("");
+    // It transitions the sheet to the "experience" step...
+    expect(expRoot).toMatch(/step:\s*"experience"/);
+    // ...and does NOT carry a `route:` literal (no close+push; no dead sheet-swap).
+    expect(expRoot).not.toMatch(/route:\s*"/);
+  });
+
+  test("the experience step actually renders the 3 chooser destinations", () => {
+    // The in-place step must mount the EXPERIENCE_OPTIONS the chooser used to own,
+    // so the row is not a step into a blank screen (a different dead-tap class).
+    expect(sheet).toMatch(/"\/experience\/snap\?mode=menu"/);
+    expect(sheet).toMatch(/"\/experience\/snap\?mode=activities"/);
+    expect(sheet).toMatch(/"\/experience\/create"/);
   });
 });
