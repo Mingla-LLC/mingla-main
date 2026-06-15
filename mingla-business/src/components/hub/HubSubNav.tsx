@@ -28,7 +28,7 @@ import {
   typography,
 } from "../../constants/designSystem";
 
-export type HubSubTabId = "events" | "experiences" | "trips";
+export type HubSubTabId = "events" | "experiences" | "trips" | "venue";
 export type HubDataDrivenTabId = HubSubTabId | "getstarted";
 
 interface HubSubTab {
@@ -41,6 +41,9 @@ const SUB_TABS: readonly HubSubTab[] = [
   { id: "events", label: "Events", route: "/(tabs)/hub/events" },
   { id: "experiences", label: "Experiences", route: "/(tabs)/hub/experiences" },
   { id: "trips", label: "Trips", route: "/(tabs)/hub/trips" },
+  // ORCH-1145 — conditional Venue pill (rightmost peer; visibility gated in
+  // deriveHubVisibleTabs on hasPhysicalLocation || placePoolId).
+  { id: "venue", label: "Venue", route: "/(tabs)/hub/listing" },
 ] as const;
 
 const LABELS: Record<HubDataDrivenTabId, string> = {
@@ -48,20 +51,32 @@ const LABELS: Record<HubDataDrivenTabId, string> = {
   events: "Events",
   trips: "Trips",
   experiences: "Experiences",
+  venue: "Venue",
 };
 
-const ROUTES: Record<HubDataDrivenTabId, string> = {
+// ORCH-1145 — single source of truth for tab-name → real route. The Hub
+// layout's nav-lock redirect (`_layout.tsx`) MUST resolve through this map
+// instead of string-concatenating the bare tab name: the Venue tab's file is
+// `listing.tsx` (route `/(tabs)/hub/listing`), so a bare `venue` would build
+// the non-existent `/(tabs)/hub/venue` → expo-router 404. Exported so there is
+// exactly ONE place that knows `venue → listing`.
+export const HUB_TAB_ROUTES: Record<HubDataDrivenTabId, string> = {
   getstarted: "/(tabs)/hub/getstarted",
   events: "/(tabs)/hub/events",
   trips: "/(tabs)/hub/trips",
   experiences: "/(tabs)/hub/experiences",
+  venue: "/(tabs)/hub/listing",
 };
+
+const ROUTES = HUB_TAB_ROUTES;
 
 export const detectActiveSubTab = (pathname: string): HubDataDrivenTabId => {
   const lower = pathname.toLowerCase();
   if (lower.includes("/hub/getstarted")) return "getstarted";
   if (lower.includes("/hub/experiences")) return "experiences";
   if (lower.includes("/hub/trips")) return "trips";
+  // ORCH-1145 — Venue tab route file is `listing.tsx` → URL `/(tabs)/hub/listing`.
+  if (lower.includes("/hub/listing")) return "venue";
   return "events"; // default: Events sub-route is the Hub landing
 };
 

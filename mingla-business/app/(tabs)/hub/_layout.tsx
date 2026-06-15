@@ -23,7 +23,10 @@ import { Slot, usePathname, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { BusinessTodoToggle } from "../../../src/components/home/BusinessTodoToggle";
-import { HubSubNav } from "../../../src/components/hub/HubSubNav";
+import {
+  HubSubNav,
+  HUB_TAB_ROUTES,
+} from "../../../src/components/hub/HubSubNav";
 import { useBusinessTodos } from "../../../src/hooks/useBusinessTodos";
 import { useCurrentBrand } from "../../../src/hooks/useCurrentBrand";
 import {
@@ -71,8 +74,24 @@ export default function HubTabLayout(): React.ReactElement {
   const setCurrentBrand = useCurrentBrandStore((s) => s.setCurrentBrand);
   const currentBrand = useCurrentBrand();
   const todos = useBusinessTodos();
-  const visibleTabs = useHubVisibleTabs(currentBrand?.id ?? null);
-  const initialTab = useHubInitialTab(
+  // ORCH-1145 — venue visibility for the conditional "Venue" pill. Computed
+  // from the already-resolved currentBrand (NO second brand fetch); mirrors the
+  // retired brand-page `showVenueListing` gate.
+  const venueVisibility = React.useMemo(
+    () => ({
+      hasPhysicalLocation: currentBrand?.hasPhysicalLocation === true,
+      hasPlacePool: currentBrand?.placePoolId != null,
+    }),
+    [currentBrand?.hasPhysicalLocation, currentBrand?.placePoolId],
+  );
+  const visibleTabs = useHubVisibleTabs(
+    currentBrand?.id ?? null,
+    venueVisibility,
+  );
+  // ORCH-1145 nav-away fix: `targetTab` is the picked HubTabName. The nav-lock
+  // redirect below resolves it to its REAL route via HUB_TAB_ROUTES (so
+  // `venue → /(tabs)/hub/listing`, never the non-existent `/(tabs)/hub/venue`).
+  const targetTab = useHubInitialTab(
     currentBrand?.id ?? null,
     visibleTabs.data ?? [],
   );
@@ -134,7 +153,7 @@ export default function HubTabLayout(): React.ReactElement {
   }, [brandPendingDelete, setCurrentBrand]);
 
   useEffect(() => {
-    if (visibleTabs.data === undefined || initialTab === null) return;
+    if (visibleTabs.data === undefined || targetTab === null) return;
     const activePath = pathname.toLowerCase();
     // META-ORCH-1059 fold-in fix: this layout stays MOUNTED while the user
     // pushes a route OUTSIDE the hub group (e.g. /experience/{id} from a hub
@@ -152,11 +171,22 @@ export default function HubTabLayout(): React.ReactElement {
         ? "trips"
         : activePath.includes("/hub/experiences")
           ? "experiences"
-          : "events";
+          : // ORCH-1145 — the Venue tab route file is `listing.tsx`.
+            activePath.includes("/hub/listing")
+            ? "venue"
+            : "events";
     if (!visibleTabs.data.includes(active)) {
+      // ORCH-1145 nav-away fix: resolve the target through HUB_TAB_ROUTES (the
+      // SAME map HubSubNav uses) instead of string-concatenating the bare tab
+      // name. The Venue tab's route FILE is `listing.tsx` (route
+      // `/(tabs)/hub/listing`), so a bare `venue` would build the non-existent
+      // `/(tabs)/hub/venue` → expo-router 404. We resolve the picked tab to its
+      // real route SEGMENT (here `initialTab`) so the redirect always targets an
+      // existing file, while the nav-lock guard ordering pin stays intact.
+      const initialTab = HUB_TAB_ROUTES[targetTab].replace("/(tabs)/hub/", "");
       router.replace(`/(tabs)/hub/${initialTab}` as never);
     }
-  }, [initialTab, pathname, router, visibleTabs.data]);
+  }, [targetTab, pathname, router, visibleTabs.data]);
 
   const handleHubTabPress = useCallback((tab: HubTabName): void => {
     persistHubLastTab(tab);
