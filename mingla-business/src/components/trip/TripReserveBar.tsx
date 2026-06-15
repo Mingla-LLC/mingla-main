@@ -142,18 +142,29 @@ export const TripReserveBar: React.FC<TripReserveBarProps> = ({
   const unavailableTitle = cta.kind === "unavailable" ? cta.title : "";
   const unavailableSub = cta.kind === "unavailable" ? cta.subline : null;
 
-  // ── ORCH-1138 (Seth, 2026-06-15) SPLIT BUTTONS (mirrors ConsumerTripReserveBar) ──
-  // When `splitCtas` is present (a bookable plan trip) the bar renders TWO buttons —
-  // "Pay in full" + "Pay over time" — each label-over-price, each tap routing
-  // straight to checkout with its payment choice. Same arrow/text-bleed discipline
-  // (label + price each one-line + ellipsis). Disabled states never reach here.
-  const renderSplitButton = (
+  // ── ORCH-1138 [trip-page-redesign] (Seth, 2026-06-15) UNIFIED SEAM-SPLIT CTA ──
+  // "Treatment B" (design/ORCH-1138/SPLIT_CTA_OPTIONS.html), mirrors the consumer
+  // ConsumerTripReserveBar 1:1. ONE continuous rounded control — NOT two detached
+  // buttons — folded by a crisp hairline SEAM. The LEFT segment ("Pay in full") is
+  // the accent-FILLED primary (flex 1.15, leads, takes a touch more room); the
+  // RIGHT segment ("Pay over time") is a GHOST on the SAME shell (panelStrong
+  // fill). The shell owns the rounded corners + border + overflow:hidden so the
+  // two fills meet at the seam like a fold. Both segments are INDEPENDENT real
+  // CTAs — each onPress routes straight to checkout with its payment choice. Each
+  // segment's kicker + amount are one line + ellipsize + shrink-to-fit (no wrap,
+  // no bleed) so the row never stacks at 360–390px. Disabled states never reach
+  // here. Theme-aware: accent / accentText / panelStrong / panelBorder /
+  // primaryText / tertiaryText from the resolved palette (light + dark themes);
+  // the seam fold colors are the design's fixed fold tints (theme-independent).
+  const renderSplitSegment = (
     btn: ReserveSplitButton,
     label: string,
-    style: object,
+    role: "primary" | "secondary",
+    compact: boolean,
     keyName: string,
   ): React.ReactElement => {
     const btnPrice = btn.cta.kind === "buy" ? btn.cta.price : "";
+    const isPrimary = role === "primary";
     const handleSplitPress = (): void => {
       if (!btn.cta.tappable) return;
       if (Platform.OS !== "web") {
@@ -163,6 +174,8 @@ export const TripReserveBar: React.FC<TripReserveBarProps> = ({
       }
       btn.onPress();
     };
+    const textColor = isPrimary ? palette.accentText : palette.primaryText;
+    const kickerColor = isPrimary ? palette.accentText : palette.tertiaryText;
     return (
       <Pressable
         key={keyName}
@@ -172,16 +185,19 @@ export const TripReserveBar: React.FC<TripReserveBarProps> = ({
           btnPrice.length > 0 ? `${label}, ${btnPrice}` : label
         }
         style={({ pressed }) => [
-          style,
-          { backgroundColor: palette.accent },
-          pressed ? styles.reservePressed : null,
+          compact ? styles.segmentCompact : styles.segment,
+          isPrimary ? styles.segmentPrimary : styles.segmentSecondary,
+          {
+            backgroundColor: isPrimary ? palette.accent : palette.panelStrong,
+          },
+          pressed ? styles.segmentPressed : null,
         ]}
         testID={
           testID !== undefined ? `${testID}-${keyName}-action` : undefined
         }
       >
         <Text
-          style={[styles.splitLabel, { color: palette.accentText }, fontStyle]}
+          style={[styles.segmentKicker, { color: kickerColor }, fontStyle]}
           numberOfLines={1}
           adjustsFontSizeToFit
           minimumFontScale={0.8}
@@ -191,7 +207,11 @@ export const TripReserveBar: React.FC<TripReserveBarProps> = ({
         </Text>
         {btnPrice.length > 0 ? (
           <Text
-            style={[styles.splitPrice, { color: palette.accentText }, fontStyle]}
+            style={[
+              compact ? styles.segmentAmountCompact : styles.segmentAmount,
+              { color: textColor },
+              fontStyle,
+            ]}
             numberOfLines={1}
             adjustsFontSizeToFit
             minimumFontScale={0.8}
@@ -203,6 +223,39 @@ export const TripReserveBar: React.FC<TripReserveBarProps> = ({
       </Pressable>
     );
   };
+
+  // The fold-seam — the visual proof the two segments are ONE control. Per
+  // Treatment B: a hairline dark crease (rgba(0,0,0,0.22)) + a 1px light fold
+  // highlight (rgba(255,255,255,0.10)). These fold tints are theme-independent.
+  const renderSeam = (): React.ReactElement => (
+    <View style={styles.seam}>
+      <View style={styles.seamHighlight} />
+    </View>
+  );
+
+  // The unified seam-split shell — ONE rounded, bordered, overflow-clipped row
+  // holding [primary | seam | secondary]. `compact` is the floating form.
+  const renderSplitShell = (
+    split: ReserveSplitCtas,
+    compact: boolean,
+  ): React.ReactElement => (
+    <View
+      style={[
+        compact ? styles.splitShellCompact : styles.splitShell,
+        { borderColor: palette.panelBorder },
+      ]}
+    >
+      {renderSplitSegment(split.full, "Pay in full", "primary", compact, "full")}
+      {renderSeam()}
+      {renderSplitSegment(
+        split.overTime,
+        "Pay over time",
+        "secondary",
+        compact,
+        "over-time",
+      )}
+    </View>
+  );
 
   // The shared button/strip body — identical for both variants so the floating +
   // docked CTAs read identically (same accent fill, kicker, price, label).
@@ -267,7 +320,9 @@ export const TripReserveBar: React.FC<TripReserveBarProps> = ({
   // `onDockLayout` reports its position so the route can hide the floating pill
   // once this docked button is on-screen.
   if (variant === "docked") {
-    // ORCH-1138 (Seth, 2026-06-15) — split-button plan trip: TWO buttons in a row.
+    // ORCH-1138 [trip-page-redesign] (Seth, 2026-06-15) — split-plan trip: the
+    // unified seam-split control (Treatment B) full-width, flush beneath "Choose
+    // how you pay".
     if (splitCtas !== undefined) {
       return (
         <View
@@ -278,20 +333,7 @@ export const TripReserveBar: React.FC<TripReserveBarProps> = ({
           onLayout={onDockLayout}
           testID={testID !== undefined ? `${testID}-docked` : undefined}
         >
-          <View style={styles.splitRow}>
-            {renderSplitButton(
-              splitCtas.full,
-              "Pay in full",
-              styles.splitButton,
-              "full",
-            )}
-            {renderSplitButton(
-              splitCtas.overTime,
-              "Pay over time",
-              styles.splitButton,
-              "over-time",
-            )}
-          </View>
+          {renderSplitShell(splitCtas, false)}
         </View>
       );
     }
@@ -354,12 +396,12 @@ export const TripReserveBar: React.FC<TripReserveBarProps> = ({
     </View>
   );
 
-  // ── FLOATING SPLIT — two compact pills SIDE BY SIDE in a horizontal row
-  // (ORCH-1138 device-fix, Seth 2026-06-15: the buttons must never stack). The row
-  // never wraps (no flexWrap); each pill flex:1 (equal halves) + minWidth:0, with
-  // the inner label+price shrinking-to-fit so they stay legible side-by-side at
-  // 360–390px. Shown while the docked split is scrolled off; taps route to
-  // checkout with the choice.
+  // ── FLOATING SPLIT — the SAME unified seam-split control (Treatment B), in its
+  // COMPACT form: ONE shell, [primary | seam | secondary] side by side, never
+  // stacking/wrapping (the shell is flexDirection:row, no flexWrap), inline amount,
+  // tighter radius. minWidth:0 + shrink-to-fit keep it legible at 360–390px. Shown
+  // while the docked split is scrolled off; each segment routes to checkout with
+  // its choice. `pointerEvents="box-none"` lets taps pass to the content around it.
   if (splitCtas !== undefined) {
     return (
       <View
@@ -367,18 +409,7 @@ export const TripReserveBar: React.FC<TripReserveBarProps> = ({
         pointerEvents="box-none"
         testID={testID !== undefined ? `${testID}-floating` : undefined}
       >
-        {renderSplitButton(
-          splitCtas.full,
-          "Pay in full",
-          styles.floatSplitButton,
-          "full",
-        )}
-        {renderSplitButton(
-          splitCtas.overTime,
-          "Pay over time",
-          styles.floatSplitButton,
-          "over-time",
-        )}
+        {renderSplitShell(splitCtas, true)}
       </View>
     );
   }
@@ -417,6 +448,16 @@ const styles = StyleSheet.create({
     zIndex: 6,
     paddingHorizontal: 16,
     alignItems: "center",
+  },
+  // FLOATING split wrapper — hosts the SINGLE compact seam-split shell (Treatment
+  // B) across the padded width. (ORCH-1138 [trip-page-redesign] — the
+  // two-detached-pills row is replaced by one unified control.)
+  floatSplitWrapper: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    zIndex: 6,
+    paddingHorizontal: 16,
   },
   // The compact floating pill — hugs its label (self-width), comfortable padding,
   // a small drop shadow for legibility over content. NO price block, NO full-width
@@ -489,82 +530,121 @@ const styles = StyleSheet.create({
     opacity: 0.9,
     transform: [{ scale: 0.99 }],
   },
-  // ── ORCH-1138 (Seth, 2026-06-15) SPLIT BUTTONS (mirrors ConsumerTripReserveBar) ──
-  // DOCKED split row — two equal-width buttons SIDE BY SIDE. flexWrap:"nowrap"
-  // guarantees they NEVER drop to a stacked column at narrow phone width
-  // (ORCH-1138 device-fix, Seth 2026-06-15).
-  splitRow: {
+  // ── ORCH-1138 [trip-page-redesign] (Seth, 2026-06-15) UNIFIED SEAM-SPLIT CTA ──
+  // "Treatment B" (mirrors ConsumerTripReserveBar). ONE rounded, bordered,
+  // overflow-clipped shell holding [primary | seam | secondary] in a single row —
+  // NOT two detached buttons. The shell owns the radius + border + clip so the
+  // accent fill (left) and ghost fill (right) meet at the fold-seam like one
+  // folded control. flexDirection:"row" + NO flexWrap → the segments can NEVER
+  // stack. Box-shadow glow on iOS/web; Android suppressed (opaque fills, no shadow
+  // under the rounded clip per ANDROID_GLASS_USES_OPAQUE_FALLBACK).
+  splitShell: {
     flexDirection: "row",
     flexWrap: "nowrap",
-    width: "100%",
-    gap: 10,
-  },
-  splitButton: {
-    flex: 1,
-    minWidth: 0,
-    borderRadius: 18,
-    paddingHorizontal: 14,
-    paddingVertical: 14,
-    minHeight: 60,
-    alignItems: "center",
-    justifyContent: "center",
-    ...Platform.select({
-      android: { elevation: 0, shadowOpacity: 0 },
-      default: {
-        shadowColor: "#000000",
-        shadowOpacity: 0.28,
-        shadowRadius: 20,
-        shadowOffset: { width: 0, height: 8 },
-      },
-    }),
-  },
-  // FLOATING split wrapper — the two pills sit SIDE BY SIDE in a horizontal ROW
-  // (ORCH-1138 device-fix, Seth 2026-06-15). flexDirection:"row" + NO flexWrap so
-  // they can never drop to a stacked column; each pill flexes to half the row.
-  floatSplitWrapper: {
-    position: "absolute",
-    left: 0,
-    right: 0,
-    zIndex: 6,
-    paddingHorizontal: 16,
-    flexDirection: "row",
     alignItems: "stretch",
-    gap: 10,
-  },
-  floatSplitButton: {
-    flex: 1,
-    minWidth: 0,
-    borderRadius: 999,
-    paddingHorizontal: 18,
-    paddingVertical: 12,
-    minHeight: 54,
-    alignItems: "center",
-    justifyContent: "center",
+    width: "100%",
+    borderRadius: 18,
+    borderWidth: 1,
+    overflow: "hidden",
     ...Platform.select({
       android: { elevation: 0, shadowOpacity: 0 },
       default: {
         shadowColor: "#000000",
-        shadowOpacity: 0.28,
-        shadowRadius: 20,
-        shadowOffset: { width: 0, height: 8 },
+        shadowOpacity: 0.24,
+        shadowRadius: 22,
+        shadowOffset: { width: 0, height: 10 },
       },
     }),
   },
-  splitLabel: {
-    fontSize: 15,
-    fontWeight: "900",
+  // The COMPACT (floating) shell — same anatomy, shorter, tighter radius.
+  splitShellCompact: {
+    flexDirection: "row",
+    flexWrap: "nowrap",
+    alignItems: "stretch",
+    width: "100%",
+    borderRadius: 15,
+    borderWidth: 1,
+    overflow: "hidden",
+    ...Platform.select({
+      android: { elevation: 0, shadowOpacity: 0 },
+      default: {
+        shadowColor: "#000000",
+        shadowOpacity: 0.3,
+        shadowRadius: 24,
+        shadowOffset: { width: 0, height: 12 },
+      },
+    }),
+  },
+  // A docked segment — left-aligned kicker over amount (Treatment B `.b-side`).
+  // No own radius (the shell clips); minWidth:0 lets it share the row + shrink.
+  segment: {
+    minWidth: 0,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    minHeight: 62,
+    justifyContent: "center",
+    alignItems: "flex-start",
+  },
+  segmentCompact: {
+    minWidth: 0,
+    paddingHorizontal: 14,
+    paddingVertical: 11,
+    minHeight: 50,
+    justifyContent: "center",
+    alignItems: "flex-start",
+  },
+  // The primary segment leads — accent FILL + a touch more room (flex 1.15).
+  segmentPrimary: {
+    flex: 1.15,
+  },
+  // The secondary segment — ghost fill (panelStrong), equal weight (flex 1).
+  segmentSecondary: {
+    flex: 1,
+  },
+  segmentPressed: {
+    opacity: 0.92,
+    transform: [{ scale: 0.985 }],
+  },
+  // The seam — a 2px fold: a 1px dark crease + a 1px light highlight so the two
+  // fills meet like one folded surface (Treatment B `.b-seam` + `::after`).
+  seam: {
+    width: 2,
+    alignSelf: "stretch",
+    flexDirection: "row",
+    backgroundColor: "rgba(0,0,0,0.22)",
+  },
+  seamHighlight: {
+    width: 1,
+    marginLeft: 1,
+    alignSelf: "stretch",
+    backgroundColor: "rgba(255,255,255,0.10)",
+  },
+  // The segment kicker ("Pay in full" / "Pay over time") — small top line; shrinks
+  // first so it can never push the amount out (no bleed/wrap).
+  segmentKicker: {
+    fontSize: 10.5,
+    fontWeight: "800",
+    letterSpacing: 0.2,
+    opacity: 0.92,
     flexShrink: 1,
     minWidth: 0,
-    textAlign: "center",
   },
-  splitPrice: {
-    fontSize: 13,
-    fontWeight: "800",
-    opacity: 0.92,
+  // The segment amount — the bold price line (Treatment B `.b-amt`).
+  segmentAmount: {
+    fontSize: 17,
+    fontWeight: "900",
+    letterSpacing: -0.3,
     marginTop: 2,
     flexShrink: 1,
     minWidth: 0,
-    textAlign: "center",
+  },
+  segmentAmountCompact: {
+    fontSize: 14,
+    fontWeight: "900",
+    letterSpacing: -0.3,
+    marginTop: 1,
+    flexShrink: 1,
+    minWidth: 0,
   },
   rLeft: {
     alignItems: "flex-start",

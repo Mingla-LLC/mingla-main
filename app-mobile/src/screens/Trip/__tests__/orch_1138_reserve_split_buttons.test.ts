@@ -1,12 +1,20 @@
 // @ts-nocheck
 /* eslint-disable @typescript-eslint/no-require-imports */
 //
-// ORCH-1138 [trip-page-redesign] — SPLIT RESERVE BUTTONS (implementor-owned
-// happy-path regression). Seth, 2026-06-15: replace the single "Reserve my spot"
-// CTA (floating AND docked) with TWO split buttons — "Pay in full" and "Pay over
-// time" — that go STRAIGHT TO THE CART with that payment choice pre-selected.
-// Rule 9: show BOTH buttons ONLY when the trip OFFERS an installment plan; a
-// no-plan trip keeps the SINGLE button; disabled states keep the single strip.
+// ORCH-1138 [trip-page-redesign] — UNIFIED SEAM-SPLIT RESERVE CTA (implementor-
+// owned happy-path regression). Seth, 2026-06-15: replace the TWO DETACHED
+// "Pay in full" / "Pay over time" buttons (floating AND docked) with ONE
+// continuous control ("Treatment B", design/ORCH-1138/SPLIT_CTA_OPTIONS.html): a
+// single rounded, bordered, overflow-clipped SHELL holding an accent-FILLED
+// primary segment + a crisp fold-SEAM + a GHOST secondary segment, side by side,
+// never stacking. Both segments stay INDEPENDENT real CTAs that go STRAIGHT TO
+// THE CART with their payment choice. Rule 9: the split control shows ONLY when
+// the trip OFFERS an installment plan; a no-plan trip keeps the SINGLE button;
+// disabled states keep the single strip.
+//
+// [TEST-MOD-APPROVED ORCH-1138] — supersedes the prior two-detached-buttons gate
+// (splitRow / splitButton / floatSplitButton / splitLabel / splitPrice), which
+// asserted the OLD layout this ORCH intentionally removes.
 //
 // app-mobile has no jest/RTL runner; the repo convention is node:assert
 // source-assertions. Every assertion FAILS on a TRUE LINE-DELETION of the wiring
@@ -25,9 +33,7 @@ const screenSrc = read("src/screens/Trip/ConsumerTripDetailScreen.tsx");
 const barSrc = read("src/components/offering/ConsumerTripReserveBar.tsx");
 
 const stripComments = (src) =>
-  src
-    .replace(/(^|[^:])\/\/.*$/gm, "$1")
-    .replace(/\/\*[\s\S]*?\*\//g, "");
+  src.replace(/(^|[^:])\/\/.*$/gm, "$1").replace(/\/\*[\s\S]*?\*\//g, "");
 const screen = stripComments(screenSrc);
 const bar = stripComments(barSrc);
 
@@ -38,7 +44,7 @@ function ok(name, cond, detail) {
   passed += 1;
 }
 
-// ── S-1 — the bar accepts a splitCtas payload (two buttons) ──
+// ── S-1 — the bar accepts a splitCtas payload (two segments) ──
 ok(
   "S1a ConsumerTripReserveBar exposes a splitCtas prop (full + overTime)",
   /splitCtas\?:\s*ReserveSplitCtas/.test(bar) &&
@@ -46,72 +52,83 @@ ok(
     /overTime:\s*ReserveSplitButton/.test(bar),
 );
 
-// ── S-2 — BOTH variants render the two split buttons when splitCtas is set ──
+// ── S-2 — BOTH variants render the unified seam-split shell when splitCtas is set ──
 ok(
-  "S2a the DOCKED variant renders the split row when splitCtas is set",
-  /if \(splitCtas !== undefined\) \{[\s\S]*?styles\.splitRow/.test(bar),
-  "docked must branch to a two-button row for plan trips",
+  "S2a the DOCKED variant renders the unified shell when splitCtas is set",
+  /if \(splitCtas !== undefined\) \{[\s\S]*?renderSplitShell\(splitCtas,\s*false\)/.test(
+    bar,
+  ),
+  "docked must branch to the unified seam-split shell for plan trips",
 );
 ok(
-  "S2b the FLOATING variant renders the split pills when splitCtas is set",
-  /if \(splitCtas !== undefined\) \{[\s\S]*?styles\.floatSplitWrapper/.test(bar),
-  "floating must branch to two side-by-side pills for plan trips",
+  "S2b the FLOATING variant renders the COMPACT shell when splitCtas is set",
+  /if \(splitCtas !== undefined\) \{[\s\S]*?renderSplitShell\(splitCtas,\s*true\)/.test(
+    bar,
+  ),
+  "floating must branch to the compact unified shell for plan trips",
 );
 
-// ── S-2.5 — ORCH-1138 device-fix (Seth, 2026-06-15): the two split buttons MUST
-// sit SIDE BY SIDE (a horizontal row), NOT stacked, in BOTH variants. Both the
-// docked splitRow and the floating floatSplitWrapper are flexDirection:"row" with
-// NO flexWrap, and each split button takes flex:1 to share the row. These FAIL
-// the instant anyone reverts a wrapper to a stacked column.
+// ── S-UNIFIED — it reads as ONE control, not two detached buttons ──
 ok(
-  "S2.5a the DOCKED splitRow is a flexDirection:row that never wraps (side by side)",
-  /splitRow:\s*\{[^}]*flexDirection:\s*"row"[^}]*flexWrap:\s*"nowrap"/.test(bar),
-  "splitRow must be a row with flexWrap:nowrap so the two buttons never stack",
+  "SU1 it is ONE shell holding [primary | seam | secondary]",
+  /const renderSplitShell =/.test(bar) &&
+    /"Pay in full",\s*"primary"/.test(bar) &&
+    /renderSeam\(\)/.test(bar) &&
+    /"Pay over time",\s*"secondary"/.test(bar),
+  "the shell must wrap both segments + the seam in a single container",
 );
 ok(
-  "S2.5b the FLOATING floatSplitWrapper is a flexDirection:row (side by side, not stacked)",
-  /floatSplitWrapper:\s*\{[^}]*flexDirection:\s*"row"/.test(bar) &&
-    !/floatSplitWrapper:\s*\{[^}]*flexWrap:\s*"wrap"/.test(bar),
-  "floatSplitWrapper must be a row (no column / no flexWrap:wrap) so the two pills never stack",
+  "SU2 the shell is a no-wrap row, rounded + bordered + overflow:hidden (one folded control)",
+  /splitShell:\s*\{[^}]*flexDirection:\s*"row"[^}]*flexWrap:\s*"nowrap"/.test(
+    bar,
+  ) &&
+    /splitShell:\s*\{[^}]*overflow:\s*"hidden"/.test(bar) &&
+    /splitShell:\s*\{[^}]*borderWidth:\s*1/.test(bar) &&
+    /splitShellCompact:\s*\{[^}]*flexDirection:\s*"row"[^}]*flexWrap:\s*"nowrap"/.test(
+      bar,
+    ) &&
+    /splitShellCompact:\s*\{[^}]*overflow:\s*"hidden"/.test(bar),
+  "the shell must be a no-wrap clipped row so the two segments can never stack",
 );
 ok(
-  "S2.5c the FLOATING split pill flexes to half the row (flex:1, minWidth:0)",
-  /floatSplitButton:\s*\{[^}]*flex:\s*1[^}]*minWidth:\s*0/.test(bar) &&
-    !/floatSplitButton:\s*\{[^}]*width:\s*"100%"/.test(bar),
-  "each floating split pill must share the row (flex:1), not be full-width (which forces a stack)",
+  "SU3 the primary segment is ACCENT-FILLED + leads (flex 1.15); secondary is a GHOST (panelStrong, flex 1)",
+  /backgroundColor:\s*isPrimary\s*\?\s*palette\.accent\s*:\s*palette\.panelStrong/.test(
+    bar,
+  ) &&
+    /segmentPrimary:\s*\{[^}]*flex:\s*1\.15/.test(bar) &&
+    /segmentSecondary:\s*\{[^}]*flex:\s*1\b/.test(bar),
+  "primary = accent fill (lead, flex 1.15); secondary = ghost panelStrong (flex 1)",
 );
 ok(
-  "S2.5d the DOCKED split button flexes to half the row (flex:1, minWidth:0)",
-  /splitButton:\s*\{[^}]*flex:\s*1[^}]*minWidth:\s*0/.test(bar),
+  "SU4 a crisp fold-SEAM (dark crease + light highlight) divides the segments",
+  /const renderSeam =/.test(bar) &&
+    /seam:\s*\{[^}]*rgba\(0,0,0,0\.22\)/.test(bar) &&
+    /seamHighlight:\s*\{[^}]*rgba\(255,255,255,0\.10\)/.test(bar),
+  "the seam is the visual proof the two segments are one control",
 );
 ok(
-  "S2.5e the split label + price shrink-to-fit at narrow width (adjustsFontSizeToFit)",
-  /styles\.splitLabel[\s\S]{0,200}adjustsFontSizeToFit/.test(bar) &&
-    /styles\.splitPrice[\s\S]{0,200}adjustsFontSizeToFit/.test(bar),
-  "the inner text must shrink to fit so the side-by-side buttons stay legible at 360px",
+  "SU5 theme-aware text (primary on accentText; secondary on primaryText/tertiaryText)",
+  /isPrimary\s*\?\s*palette\.accentText\s*:\s*palette\.primaryText/.test(bar) &&
+    /isPrimary\s*\?\s*palette\.accentText\s*:\s*palette\.tertiaryText/.test(bar),
+  "text colors must come from the resolved palette (light + dark brand themes)",
 );
 ok(
-  'S2c both split buttons carry the "Pay in full" + "Pay over time" labels',
+  'S2c both segments carry the "Pay in full" + "Pay over time" labels',
   /"Pay in full"/.test(bar) && /"Pay over time"/.test(bar),
 );
-ok(
-  "S2d each split button renders its OWN amount (full price / deposit)",
-  /splitCtas\.full,\s*"Pay in full"/.test(bar) &&
-    /splitCtas\.overTime,\s*"Pay over time"/.test(bar),
-);
 
-// ── S-3 — no text/arrow bleed: label + price each one-line + ellipsize + shrink ──
+// ── S-3 — no text/wrap bleed: kicker + amount each one-line + ellipsize + shrink ──
 ok(
-  "S3a the split label is one line + ellipsized + shrinks first (no bleed)",
-  /styles\.splitLabel[\s\S]{0,200}numberOfLines=\{1\}[\s\S]{0,160}ellipsizeMode="tail"/.test(
+  "S3a the segment kicker is one line + ellipsized + shrinks first (no bleed)",
+  /styles\.segmentKicker[\s\S]{0,220}numberOfLines=\{1\}[\s\S]{0,200}ellipsizeMode="tail"/.test(
     bar,
-  ) && /splitLabel:\s*\{[^}]*flexShrink:\s*1[^}]*minWidth:\s*0/.test(bar),
+  ) && /segmentKicker:\s*\{[^}]*flexShrink:\s*1/.test(bar),
 );
 ok(
-  "S3b the split price is one line + ellipsized + shrinks (no bleed)",
-  /styles\.splitPrice[\s\S]{0,200}numberOfLines=\{1\}[\s\S]{0,160}ellipsizeMode="tail"/.test(
+  "S3b the segment amount is one line + ellipsized + shrinks (no bleed)",
+  /styles\.segmentAmount[\s\S]{0,260}numberOfLines=\{1\}[\s\S]{0,200}ellipsizeMode="tail"/.test(
     bar,
-  ) && /splitPrice:\s*\{[^}]*flexShrink:\s*1[^}]*minWidth:\s*0/.test(bar),
+  ) && /segmentAmount:\s*\{[^}]*flexShrink:\s*1/.test(bar),
 );
 
 // ── S-4 — rule 9: split shown ONLY for a bookable plan trip ──
@@ -130,7 +147,7 @@ ok(
   "the single-button path (no-plan + disabled) must remain intact",
 );
 
-// ── S-5 — each button routes STRAIGHT TO CART with its choice pre-selected ──
+// ── S-5 — each segment routes STRAIGHT TO CART with its choice pre-selected ──
 ok(
   "S5a Pay-in-full seeds the cart with the 'full' choice (openCartWithChoice)",
   /onPress:\s*\(\)\s*=>\s*openCartWithChoice\("full"\)/.test(screen),
@@ -159,14 +176,14 @@ ok(
   /splitFullPrice =\s*[\s\S]*?priceLabel/.test(screen),
 );
 
-// ── S-7 — checkout request stays byte-identical (the choice rides the EXISTING
+// ── S-7 — checkout request stays byte-identical (choice rides the EXISTING
 // paymentPlanChoice path; no new request field) ──
 ok(
   "S7a the screen still forwards the explicit choice via the same runNativeCheckout path",
   /paymentPlanChoice:\s*detail\.hasPlan \? paymentPlanChoice : undefined/.test(
     screen,
   ),
-  "split buttons reuse the existing pay-choice plumbing — no new request shape",
+  "split segments reuse the existing pay-choice plumbing — no new request shape",
 );
 ok(
   "S7b no billing address / taxCalculationId is introduced (venue-sourced tax)",
@@ -176,5 +193,5 @@ ok(
 );
 
 console.log(
-  `\n${passed} assertions passed (ORCH-1138 split reserve buttons — consumer).`,
+  `\n${passed} assertions passed (ORCH-1138 unified seam-split reserve CTA — consumer).`,
 );
