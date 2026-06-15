@@ -105,6 +105,13 @@ interface PillSpec {
   count: number;
 }
 
+// ORCH-1144 — single UNIFIED (category-agnostic) empty-state hint. Replaces the
+// old per-category RESTAURANT_COPY/PLAY_COPY emptyListHint fields; there is now
+// exactly one experiences empty state for every brand. Do NOT reintroduce a
+// venueCategory branch (see I-PROPOSED-1144-PARSERS-CATEGORY-AGNOSTIC).
+const emptyListHint =
+  "Tap + to create your first one. Snap a menu and Mingla drafts it for you, or build it yourself.";
+
 // ORCH-1144 — experiences may lack a clean end date (the When draft can be
 // unset / per-stop). Bucket on status, treating a dateSubline that resolves to
 // "Ended" as past; everything non-draft/non-ended is upcoming. Mirrors
@@ -310,7 +317,7 @@ export default function HubExperiencesRoute(): React.ReactElement {
             </Text>
             <Text style={styles.emptyBody}>
               {filter === "all"
-                ? "Tap + to create your first one. Snap a menu and Mingla drafts it for you, or build it yourself."
+                ? emptyListHint
                 : filter === "draft"
                   ? "No drafts in progress. Tap + to build one."
                   : `Tap "All" to see everything.`}
