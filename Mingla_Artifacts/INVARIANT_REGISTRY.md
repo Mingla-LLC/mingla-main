@@ -58,6 +58,16 @@
 - **Rule:** A native-`Modal` picker sheet (e.g. `TripDayMediaSheet`) MUST close on a 0-success / all-failed batch so the wizard-root error Toast is not occluded — an upload failure is always visible, never a silent haptic (Constitution #3).
 - **Enforcement / test:** `orch1119b_trip_day_media_visible_failure.test.ts` (all-failed batch → `onClose` called); fails-on-revert.
 
+## ACTIVE (post ORCH-1143 [business Home live-card scan parity + accordion + multi-live carousel] CLOSE 2026-06-15)
+
+### I-PROPOSED-ORCH1143-LIVE-SCAN-ALL-KINDS
+- **Rule:** The business Home live card MUST render a scan affordance ("Scan QR codes") for EVERY live offering regardless of `event_type` (events, experiences AND trips alike — no `kind === "event"` gate), and that scan affordance MUST route to `/event/{id}/scanner` (the shared kind-agnostic scanner route established by META-ORCH-1059; the scanner edge fn `biz_ticket_scan` + screen + route already validate any `events.id` regardless of `event_type`). A scan button that routes nowhere = dead tap (Constitution #1) and is forbidden. On web the route resolves to the ORCH-1099 web scanner screen (camera-gated, not a dead tap).
+- **Enforcement:** the fails-on-revert regression test `mingla-business/.../home.orch_1143.test.tsx` (scan-all-kinds T10) — asserts the scan affordance renders for an event, an experience, AND a trip live offering and points at `/event/{id}/scanner`. Part of the tests-append-only family (the test may be extended but its scan-all-kinds assertion may not be weakened/removed). Backed by the supporting render test `LiveOfferingCard.orch1143.render.test.tsx` (scan button per kind).
+- **Test that catches a regression:** `home.orch_1143.test.tsx` T10 — re-introducing the `kind === "event"` gate (or otherwise hiding the scan button for experiences/trips) drops the scan affordance for the non-event kinds and fails the test.
+- **Established:** flipped DRAFT → ACTIVE 2026-06-15 at ORCH-1143 CLOSE (registered DRAFT in the ORCH-1143 SPEC; PR #489 `ebe8fb196`).
+
+---
+
 ## ACTIVE (post ORCH-1113 [curated-experience-empty-deck-regression] CLOSE 2026-06-11)
 
 ### I-PROPOSED-CURATED-HONORS-DATE-OPTION
