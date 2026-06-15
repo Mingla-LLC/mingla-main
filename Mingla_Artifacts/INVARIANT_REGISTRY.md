@@ -19,6 +19,20 @@
 
 ---
 
+## ACTIVE (post ORCH-1142 [business notification full-read + delete] CLOSE 2026-06-15)
+
+### I-PROPOSED-BH-NOTIF-SOFTDELETE-EXCLUDED-AND-SCOPED (ACTIVE post ORCH-1142 CLOSE)
+
+**Rule:** The business notifications inbox SELECT (`fetchBusinessNotifications` in `mingla-business/src/hooks/useBusinessNotifications.ts`) MUST exclude soft-deleted rows (`.is("deleted_at", null)`) AND keep the I-PROPOSED-W inclusion clause (`.or("type.like.stripe.%,type.like.business.%")`) verbatim. The "Clear read" bulk soft-delete (`clearRead`) MUST be scoped to `read_at IS NOT NULL` AND `deleted_at IS NULL` AND the business-type prefix — it can NEVER soft-delete an unread row or a consumer (non-`stripe.`/`business.`) row. Per-row `softDelete` MUST target a single primary key (`.eq("id", …)`) only — never `.eq("user_id")`/`.or(...)` (cannot degrade to a bulk delete). Delete is SOFT only — no hard `DELETE`; the row persists with `deleted_at` set so financial-record reference value is preserved (supersedes META-ORCH-1074 SUB-C_DESIGN §4.4 "NO swipe-to-dismiss" for the operator inbox VIEW only).
+
+**Why it exists:** ORCH-1142 added per-row swipe-delete + a "Clear read" header bulk action. The data-loss / cross-app-leak surface is the bulk path — an over-broad filter could wipe unread or consumer notifications, or a soft-delete could be converted to a hard delete and destroy the financial-record reference value the original design protected. This invariant locks the scope and the soft-delete-only contract so a future refactor can't silently widen it.
+
+**Enforcement:** jest source + behavioral assertions — implementor happy-path `mingla-business/src/hooks/__tests__/orch_1142_notif_softdelete_scope.test.ts` + tester adversarial `mingla-business/src/hooks/__tests__/orch_1142_clearRead_scope.tester_adversarial.test.ts` (A1 scope boundary, A2 revert-on-error, A3 realtime drop, A4 single-PK softDelete). Both fails-on-revert verified @ `e7fd81560`. The existing I-PROPOSED-W strict-grep gate (`i-proposed-w-notifications-app-type-prefix.mjs`) independently protects the inclusion clause.
+
+**Tests:** see Enforcement. Adversarial test + QA report landed via PR #486 (feature merged at `caaab1377`/#485).
+
+---
+
 ## ACTIVE (post ORCH-1129 [team-wide iOS build fix] CLOSE 2026-06-12)
 
 ### I-PROPOSED-IOS-GOOGLE-PODS-MODULAR-HEADERS
