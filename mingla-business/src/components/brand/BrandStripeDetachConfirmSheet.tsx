@@ -34,12 +34,13 @@ import {
   typography,
 } from "../../constants/designSystem";
 import { useBrandStripeDetach } from "../../hooks/useBrandStripeDetach";
+import type { BrandStripeDetachResult } from "../../services/brandStripeDetachService";
 
 import { Button } from "../ui/Button";
 import { Icon } from "../ui/Icon";
 import { Sheet } from "../ui/Sheet";
 
-type Step = "confirm" | "submitting";
+type Step = "confirm" | "submitting" | "done";
 
 export interface BrandStripeDetachConfirmSheetProps {
   visible: boolean;
@@ -60,6 +61,10 @@ export const BrandStripeDetachConfirmSheet: React.FC<
   const [step, setStep] = useState<Step>("confirm");
   const [confirmInput, setConfirmInput] = useState<string>("");
   const [submitError, setSubmitError] = useState<string | null>(null);
+  // ORCH-1140: hold the resolved detach result so the "done" step can show an
+  // honest Stripe-side outcome (succeeded/skipped → clean; rejected → reason).
+  const [detachResult, setDetachResult] =
+    useState<BrandStripeDetachResult | null>(null);
 
   const detachMutation = useBrandStripeDetach();
 
@@ -69,6 +74,7 @@ export const BrandStripeDetachConfirmSheet: React.FC<
       setStep("confirm");
       setConfirmInput("");
       setSubmitError(null);
+      setDetachResult(null);
     }
   }, [visible, brandId]);
 
@@ -85,9 +91,12 @@ export const BrandStripeDetachConfirmSheet: React.FC<
     setStep("submitting");
     setSubmitError(null);
     try {
-      await detachMutation.mutateAsync({ brandId });
-      onDetached?.(brandId);
-      onClose();
+      // ORCH-1140: capture the result and advance to the "done" confirmation
+      // step (was: dismiss silently). onDetached/onClose now fire from the
+      // "Done" button so the user sees the success before the sheet closes.
+      const result = await detachMutation.mutateAsync({ brandId });
+      setDetachResult(result);
+      setStep("done");
     } catch (error) {
       // Const #3: surface the error inline; do not silently retry.
       setStep("confirm");
@@ -97,7 +106,14 @@ export const BrandStripeDetachConfirmSheet: React.FC<
           : "Couldn't disconnect. Tap Disconnect Stripe to try again.",
       );
     }
-  }, [canConfirm, brandId, detachMutation, onDetached, onClose, step]);
+  }, [canConfirm, brandId, detachMutation, step]);
+
+  // ORCH-1140: fire parent coordination + dismiss only after the user
+  // acknowledges the "Disconnected" confirmation.
+  const handleDone = useCallback((): void => {
+    if (brandId !== null) onDetached?.(brandId);
+    onClose();
+  }, [brandId, onDetached, onClose]);
 
   if (brandId === null || brandName === null) return null;
 
@@ -193,6 +209,45 @@ export const BrandStripeDetachConfirmSheet: React.FC<
             <Text style={styles.confirmHelper}>
               Severing the Stripe connection for {brandName}.
             </Text>
+          </View>
+        ) : null}
+
+        {step === "done" ? (
+          <View style={styles.doneWrap}>
+            <View style={styles.doneHeaderRow}>
+              <Icon name="check" size={20} color={semantic.success} />
+              <Text style={styles.title}>Disconnected</Text>
+            </View>
+            <Text style={styles.confirmHelper}>
+              Stripe is disconnected for {brandName}.
+            </Text>
+            {detachResult?.stripeDeleteStatus === "rejected" ? (
+              <View style={[styles.warnCard, styles.warnCardWarn]}>
+                <Icon name="flag" size={18} color={accent.warm} />
+                <View style={styles.warnTextCol}>
+                  <Text style={styles.warnTitleWarn}>
+                    Stripe account not fully closed
+                  </Text>
+                  <Text style={styles.warnBody}>
+                    {detachResult.rejectionReason !== null
+                      ? `Stripe couldn't fully close the account (${detachResult.rejectionReason}). Your payouts are still disconnected.`
+                      : "Stripe couldn't fully close the account. Your payouts are still disconnected."}
+                  </Text>
+                </View>
+              </View>
+            ) : null}
+            <View style={styles.actionRow}>
+              <View style={styles.actionCell}>
+                <Button
+                  label="Done"
+                  variant="primary"
+                  size="md"
+                  onPress={handleDone}
+                  fullWidth
+                  accessibilityLabel="Done"
+                />
+              </View>
+            </View>
           </View>
         ) : null}
       </ScrollView>
@@ -301,5 +356,14 @@ const styles = StyleSheet.create({
   },
   submittingWrap: {
     paddingVertical: spacing.xl,
+  },
+  doneWrap: {
+    paddingVertical: spacing.lg,
+  },
+  doneHeaderRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+    marginBottom: spacing.xs,
   },
 });

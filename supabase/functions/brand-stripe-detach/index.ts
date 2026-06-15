@@ -46,10 +46,21 @@ serve(async (req) => {
     return jsonResponse({ error: "internal_error" }, 500);
   }
   if (!row) {
-    return jsonResponse({ ok: true, status: "not_connected" });
+    // ORCH-1140: every 200 body MUST carry detached_at (client guard) +
+    // stripe_delete_status (honest Stripe outcome). Do not remove.
+    return jsonResponse({
+      ok: true,
+      status: "not_connected",
+      detached_at: new Date().toISOString(),
+      stripe_delete_status: "skipped",
+      rejection_reason: null,
+    });
   }
 
   const stripeAccountId = row.stripe_account_id as string;
+  // ORCH-1140: capture whether the Stripe-delete block runs BEFORE the UPDATE
+  // re-stamps detached_at, so the derived status is revert-proof.
+  const attemptedStripeDelete = !row.detached_at;
   let stripeDeleteError: string | null = null;
   if (!row.detached_at) {
     try {
@@ -103,9 +114,26 @@ serve(async (req) => {
     });
   }
 
+  // ORCH-1140: derive the honest Stripe-side outcome for the client.
+  // skipped  → the Stripe-delete block never ran (already detached / idempotent retry).
+  // rejected → the block ran and threw (stripeDeleteError holds the message).
+  // succeeded→ the block ran and the delete succeeded.
+  const stripeDeleteStatus: "succeeded" | "rejected" | "skipped" =
+    !attemptedStripeDelete
+      ? "skipped"
+      : stripeDeleteError
+      ? "rejected"
+      : "succeeded";
+  const rejectionReason =
+    stripeDeleteStatus === "rejected" ? stripeDeleteError : null;
+
+  // ORCH-1140: every 200 body MUST carry detached_at (client guard) +
+  // stripe_delete_status (honest Stripe outcome). Do not remove.
   return jsonResponse({
     ok: true,
     status: "detached",
-    stripe_delete_error: stripeDeleteError,
+    detached_at: detachedAt,
+    stripe_delete_status: stripeDeleteStatus,
+    rejection_reason: rejectionReason,
   });
 });
