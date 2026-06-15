@@ -77,6 +77,7 @@ import {
   AUTH_RESOLUTION_CEILING_MS,
   isAuthResolutionExpired,
   isPublicBuyerRoute,
+  isSelfAuthenticatedExemptRoute,
   isSignInRoute,
   isWebAuthResolving,
   shouldRedirectToSignInFromRoute,
@@ -353,12 +354,19 @@ function RootLayoutInner(): React.ReactElement {
   // today (business native serves none of these routes), but routing the
   // public-route exemption through the one shared helper keeps the allowlist in
   // exactly one place and hardens against a future native public route.
+  //
+  // ORCH-1139 [stripe-connect-route-gate]: ALSO exempt the SELF-AUTHENTICATING
+  // routes (`isSelfAuthenticatedExemptRoute` — Stripe-Connect seller routes +
+  // invite-accept routes). A no-op on native today (business native serves none
+  // of these), but keeping the exemption in the one shared helper hardens against
+  // a future native connect/invite route — same rationale as the ORCH-1115 note.
   const nativeRedirectToSignIn =
     !isWeb &&
     !loading &&
     user === null &&
     !isSignInRoute(pathname) &&
-    !isPublicBuyerRoute(pathname);
+    !isPublicBuyerRoute(pathname) &&
+    !isSelfAuthenticatedExemptRoute(pathname);
 
   // ORCH-1102 Wave 2 — BOUNDED-LOADING backstop at the UI gate. The AuthContext
   // hard ceiling (AUTH_RESOLUTION_HARD_CEILING_MS) releases `loading` if the
