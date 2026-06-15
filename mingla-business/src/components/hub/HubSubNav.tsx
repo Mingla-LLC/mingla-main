@@ -54,13 +54,21 @@ const LABELS: Record<HubDataDrivenTabId, string> = {
   venue: "Venue",
 };
 
-const ROUTES: Record<HubDataDrivenTabId, string> = {
+// ORCH-1145 — single source of truth for tab-name → real route. The Hub
+// layout's nav-lock redirect (`_layout.tsx`) MUST resolve through this map
+// instead of string-concatenating the bare tab name: the Venue tab's file is
+// `listing.tsx` (route `/(tabs)/hub/listing`), so a bare `venue` would build
+// the non-existent `/(tabs)/hub/venue` → expo-router 404. Exported so there is
+// exactly ONE place that knows `venue → listing`.
+export const HUB_TAB_ROUTES: Record<HubDataDrivenTabId, string> = {
   getstarted: "/(tabs)/hub/getstarted",
   events: "/(tabs)/hub/events",
   trips: "/(tabs)/hub/trips",
   experiences: "/(tabs)/hub/experiences",
   venue: "/(tabs)/hub/listing",
 };
+
+const ROUTES = HUB_TAB_ROUTES;
 
 export const detectActiveSubTab = (pathname: string): HubDataDrivenTabId => {
   const lower = pathname.toLowerCase();
