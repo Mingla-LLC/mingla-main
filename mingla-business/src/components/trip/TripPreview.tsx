@@ -77,6 +77,15 @@ export interface TripPreviewBrand {
   bio?: string | null;
   coverMediaUrl?: string | null;
   /**
+   * ORCH-1138 FIX-3 — the brand cover's media type + hue so the "Presented by"
+   * chip renders gif/video covers via the media-aware EventCoverMedia and a clean
+   * themed hue fallback when there's no cover (instead of a broken <Image> alt).
+   * OPTIONAL + additive (anon-tolerant): callers that don't pass them get the hue
+   * fallback. null ⇒ no cover.
+   */
+  coverMediaType?: "image" | "video" | "gif" | null;
+  coverHue?: number | null;
+  /**
    * ORCH-1076 Stream B — brand Stripe-readiness, threaded ONLY from the
    * authenticated trip creator route (app/trip/[id]/edit.tsx) so the wizard can
    * proactively gate a paid trip's Publish. OPTIONAL + additive: the public
@@ -326,15 +335,29 @@ const FoundationTripPreview: React.FC<{
       accessibilityLabel={`View ${brand.name}`}
       style={[styles.brandRow, surface.card]}
     >
-      {brand.coverMediaUrl != null ? (
-        <Image
-          source={{ uri: brand.coverMediaUrl }}
-          style={styles.brandTile}
-          accessibilityLabel=""
+      {/* ORCH-1138 FIX-3 — render the brand cover via the media-aware
+          EventCoverMedia (image + animated gif + muted inline video) clipped to
+          the circular tile, NOT a plain <Image> (which showed a broken "COVE…"
+          alt on a gif/video URL). No cover ⇒ EventCoverMedia draws its themed hue
+          fallback (rule 9 — clean initial-less avatar, never broken alt text). */}
+      <View style={styles.brandTile}>
+        <EventCoverMedia
+          mediaUrl={brand.coverMediaUrl ?? null}
+          mediaType={brand.coverMediaType ?? null}
+          hue={brand.coverHue ?? undefined}
+          // ORCH-1138 FIX-3 — empty label so the no-cover fallback is a CLEAN
+          // themed hue gradient, NOT the default "Cover" text (which truncated to
+          // the broken "COVE…" placeholder in the 42px circle).
+          label=""
+          radius={999}
+          autoplay
+          playbackActive
+          muted
+          loop
+          height="100%"
+          width="100%"
         />
-      ) : (
-        <View style={[styles.brandTile, { backgroundColor: palette.accentWash }]} />
-      )}
+      </View>
       <View style={styles.brandTextCol}>
         <Text style={[styles.brandKicker, surface.tertiaryText]}>
           Presented by
@@ -390,8 +413,10 @@ const FoundationTripPreview: React.FC<{
           {duration !== null ? (
             <Text style={[styles.eyebrowLead, surface.primaryText]}>
               {duration}
-              {bt.destinationLocationText != null
-                ? ` · ${bt.destinationLocationText}`
+              {/* ORCH-1138 FIX-2 — normalize the eyebrow trailing destination to
+                  "City, Country" (same shared normalizer as the route + chip). */}
+              {destinationCityCountry != null
+                ? ` · ${destinationCityCountry}`
                 : ""}
             </Text>
           ) : null}
@@ -437,14 +462,17 @@ const FoundationTripPreview: React.FC<{
                 : `${capacity} max`}
           </MetaChip>
         ) : null}
-        {bt.destinationLocationText != null ? (
+        {/* ORCH-1138 FIX-2 — the 📍 location chip shows the normalized
+            "City, Country" (same shared normalizer as the eyebrow + route block)
+            instead of the raw long destination text. */}
+        {destinationCityCountry != null ? (
           <MetaChip
             palette={palette}
             surface={surface}
             icon="location"
             fontFamily={boldFamily}
           >
-            {bt.destinationLocationText}
+            {destinationCityCountry}
           </MetaChip>
         ) : null}
       </View>
@@ -588,6 +616,13 @@ const FoundationTripPreview: React.FC<{
         </View>
       ) : null}
 
+      {/* ORCH-1138 [trip-page-redesign] FIX-6 — STANDARD section order on every
+          surface: Cancellation policy renders BEFORE the How-you-pay/payment
+          block. (Consumer already does this; the business/web page previously
+          rendered payment-then-cancellation — reordered here so both match.) This
+          is the standing order for the future event/experience/brand legs too. */}
+      {refundBlock}
+
       {/* phone-only inline payment block */}
       {!isDesktop && paymentBlock !== undefined ? (
         <View style={styles.section}>
@@ -597,9 +632,6 @@ const FoundationTripPreview: React.FC<{
           {paymentBlock}
         </View>
       ) : null}
-
-      {/* refund + deadline (left column on BOTH viewports) */}
-      {refundBlock}
     </View>
   );
 
@@ -633,8 +665,9 @@ const FoundationTripPreview: React.FC<{
         duration !== null ? (
           <Text style={styles.heroEyebrow}>
             {duration}
-            {bt.destinationLocationText != null
-              ? ` · ${bt.destinationLocationText}`
+            {/* ORCH-1138 FIX-2 — desktop hero eyebrow normalized to "City, Country". */}
+            {destinationCityCountry != null
+              ? ` · ${destinationCityCountry}`
               : ""}
           </Text>
         ) : undefined
@@ -1163,6 +1196,10 @@ const styles = StyleSheet.create({
     width: 42,
     height: 42,
     borderRadius: 999,
+    // ORCH-1138 FIX-3 — clip the media-aware EventCoverMedia (image/gif/video) to
+    // the circular avatar (Android opaque-clip per ANDROID_GLASS_USES_OPAQUE_FALLBACK).
+    overflow: "hidden",
+    backgroundColor: "#1a1c20",
   },
   brandTextCol: {
     flexShrink: 1,

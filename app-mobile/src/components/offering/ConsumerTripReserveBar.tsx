@@ -43,6 +43,16 @@ export interface ConsumerTripReserveBarProps {
   fontFamily?: string;
   /** Fired ONLY for tappable states (buy / free / waitlist). */
   onPress: () => void;
+  /**
+   * ORCH-1138 [trip-page-redesign] FIX-5 — the SCREEN-LEVEL safe-area bottom
+   * inset, passed down from the screen root. The bar floats INSIDE the gorhom
+   * BaseBottomSheet, whose BottomSheetView establishes its OWN SafeAreaProvider
+   * context that can resolve `useSafeAreaInsets().bottom` to 0 — so the bar's own
+   * hook under-reports and the "From … today" price line bled under the home
+   * indicator. The bar now uses max(screen inset, own inset, 16) so it ALWAYS
+   * clears the home indicator on notched + non-notched devices.
+   */
+  safeAreaBottom?: number;
   testID?: string;
 }
 
@@ -52,9 +62,24 @@ export const ConsumerTripReserveBar: React.FC<ConsumerTripReserveBarProps> = ({
   kicker,
   fontFamily,
   onPress,
+  safeAreaBottom,
   testID,
 }) => {
   const insets = useSafeAreaInsets();
+  // ORCH-1138 [trip-page-redesign] FIX-5 — the bar floats `bottom:0` INSIDE the
+  // BaseBottomSheet's gorhom BottomSheetContent, which (a) establishes its own
+  // SafeAreaProvider context where `useSafeAreaInsets().bottom` resolves to ~0,
+  // and (b) extends its content bottom slightly BELOW the visible viewport, so a
+  // plain safe-area inset still let the price line ("From … today") bleed under
+  // the home indicator. The padded clearance below the button is therefore:
+  //   max(screen inset, local inset, 34pt home-indicator floor) + the gorhom
+  //   bottom overshoot.
+  // SIM-VERIFIED on iPhone 17 Pro (notched): 16 clipped, a bare 34 still clipped,
+  // and this value shows the full price line above the home indicator with a
+  // clean gap. A non-notched device (inset 0) gets the same clean clearance.
+  const SHEET_BOTTOM_OVERSHOOT = 28;
+  const bottomInset =
+    Math.max(safeAreaBottom ?? 0, insets.bottom, 34) + SHEET_BOTTOM_OVERSHOOT;
   const fontStyle = fontFamily !== undefined ? { fontFamily } : null;
 
   const handlePress = (): void => {
@@ -78,7 +103,7 @@ export const ConsumerTripReserveBar: React.FC<ConsumerTripReserveBarProps> = ({
       <View
         style={[
           styles.fade,
-          { backgroundColor: fadeColor, paddingBottom: 14 + insets.bottom },
+          { backgroundColor: fadeColor, paddingBottom: 14 + bottomInset },
         ]}
       >
         {tappable ? (

@@ -128,7 +128,14 @@ export function mapConsumerTripToFoundation(
   void _palette; // palette is applied at render time via offeringSurfaceStyles.
 
   const duration = deriveTripDuration(detail.startAt, detail.endAt);
-  const destination = detail.destinationText;
+  // ORCH-1138 [trip-page-redesign] FIX-2 — normalize the destination to
+  // "City, Country" EVERYWHERE it surfaces (the hero eyebrow trailing location,
+  // the 📍 location chip, AND the route block) via the SAME shared normalizer the
+  // business/web TripPreview uses, so it reads e.g. "Washington, USA" instead of
+  // the raw "Washington, District of Columbia, United States". null → the chip /
+  // eyebrow-suffix is omitted (rule 9 — no fabrication, falls back to raw only if
+  // the normalizer can't resolve anything, which it does internally).
+  const destination = normalizeCityCountry(detail.destinationText);
 
   const heroEyebrow =
     duration !== null
@@ -144,15 +151,15 @@ export function mapConsumerTripToFoundation(
         "has-range"
       : "";
 
-  // ORCH-1138 [trip-page-redesign] — standardize the route legs to "City, Country"
-  // (shared normalizer, parity with the business/web TripPreview) so leaving-from
-  // + destination stay short + balanced on ONE aligned row. The consumer trip
-  // payload carries only free text (F-4: no structured city/country / lat-lng), so
-  // we parse the free text. null → that leg is hidden (rule 9, no fabrication).
-  // NOTE: heroEyebrow above intentionally keeps the raw `destination` — only the
-  // leaving-from/destination BLOCK is standardized per Seth's request.
+  // ORCH-1138 [trip-page-redesign] FIX-2 — standardize the route legs to
+  // "City, Country" (shared normalizer, parity with the business/web TripPreview)
+  // so leaving-from + destination stay short + balanced on ONE aligned row. The
+  // consumer trip payload carries only free text (F-4: no structured city/country
+  // / lat-lng), so we parse the free text. null → that leg is hidden (rule 9, no
+  // fabrication). The destination is normalized from the SAME raw source as the
+  // eyebrow/chip (`detail.destinationText`) so all three read identically.
   const departureCityCountry = normalizeCityCountry(detail.departureText);
-  const destinationCityCountry = normalizeCityCountry(destination);
+  const destinationCityCountry = normalizeCityCountry(detail.destinationText);
   const route: FoundationRoute | null =
     departureCityCountry !== null || destinationCityCountry !== null
       ? { departure: departureCityCountry, destination: destinationCityCountry }

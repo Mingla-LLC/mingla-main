@@ -582,6 +582,11 @@ export default function ConsumerTripDetailScreen({
             mediaUrl={fnd.brandCoverMediaUrl}
             mediaType={fnd.brandCoverMediaType}
             hue={hueFromId(detail.brandSlug)}
+            // ORCH-1138 FIX-3 — empty label so the no-cover fallback is a CLEAN
+            // themed hue gradient, NOT the default "Cover" text (which truncated
+            // to the broken "COVE…" placeholder Seth saw in the 42px circle).
+            label=""
+            radius={999}
             autoplay
             playbackActive
             muted
@@ -794,146 +799,210 @@ export default function ConsumerTripDetailScreen({
         boldFamily={boldFamily}
       />
 
-      {/* HOW YOU PAY module — UNCHANGED from today (mapping table: pricing/
-          installments unchanged). Renders ONLY for a plan trip that
-            is bookable + not closed (no choosing a payment for an unbuyable
-            trip). Segmented toggle mirrors Path A; selected = border + fill +
-            dot (3 channels). Threads the explicit choice into Reserve. */}
+      {/* ORCH-1138 [trip-page-redesign] FIX-4 — "Choose how you pay" parity with
+          the business/web PaymentMockupCard (DIRECTION_A_V2 `.pay-card`): same
+          heading text/casing, the FULL-WIDTH TABBED Pay-in-full / Pay-over-time
+          toggle (dark track, active tab = accent fill + accentText — NOT the old
+          radio-dot pills), the 34px amount block ("Due today" label on plan), the
+          schedule rows + total, and the SAME sub-copy ("One payment, all-in.
+          Taxes & fees included." / "{pct}% deposit now, then N payments. {total}
+          total — no extra cost."). The toggle remains the consumer choice control
+          threaded into Reserve (paymentPlanChoice). Renders ONLY for a bookable,
+          not-closed plan trip. ORCH-1130's projection math is untouched. */}
         {planSchedule !== null && planTier !== null && !closed &&
-        detail.bookable !== false ? (
-          <View
-            style={styles.section}
-            testID="orch-1130-consumer-payment-choice"
-          >
-            <Text style={styles.sectionLabel}>How you pay</Text>
-            <View
-              accessibilityRole="radiogroup"
-              accessibilityLabel="How you pay"
-              style={styles.payToggleRow}
-            >
-              <Pressable
-                accessibilityRole="radio"
-                accessibilityLabel={`Pay full ${formatMoneyExact(planSchedule.fullPriceCents, planSchedule.currency)} now`}
-                accessibilityState={{ selected: paymentPlanChoice === "full" }}
-                onPress={() => setPaymentPlanChoice("full")}
-                style={[
-                  styles.paySegment,
-                  paymentPlanChoice === "full" ? styles.paySegmentSelected : null,
-                ]}
-              >
+        detail.bookable !== false
+          ? (() => {
+              const isFull = paymentPlanChoice === "full";
+              const fullLabel = formatMoneyExact(
+                planSchedule.fullPriceCents,
+                planSchedule.currency,
+              );
+              const depositLabel = formatMoneyExact(
+                planSchedule.depositCents,
+                planSchedule.currency,
+              );
+              const futureCount = planSchedule.installments.length;
+              // deposit pct derived from the projected amounts (never hardcoded).
+              const depositPct =
+                planSchedule.fullPriceCents > 0
+                  ? Math.round(
+                      (planSchedule.depositCents / planSchedule.fullPriceCents) *
+                        100,
+                    )
+                  : 0;
+              return (
                 <View
-                  style={[
-                    styles.payDot,
-                    paymentPlanChoice === "full" ? styles.payDotSelected : null,
-                  ]}
-                  pointerEvents="none"
+                  style={styles.section}
+                  testID="orch-1130-consumer-payment-choice"
                 >
-                  {paymentPlanChoice === "full" ? (
-                    <View style={styles.payDotInner} />
-                  ) : null}
-                </View>
-                <Text style={styles.paySegmentTitle}>Pay in full</Text>
-              </Pressable>
-              <Pressable
-                accessibilityRole="radio"
-                accessibilityLabel={`Pay over time, ${formatMoneyExact(planSchedule.depositCents, planSchedule.currency)} deposit today plus ${planSchedule.installments.length} future payment${planSchedule.installments.length === 1 ? "" : "s"}`}
-                accessibilityState={{
-                  selected: paymentPlanChoice === "installments",
-                }}
-                onPress={() => setPaymentPlanChoice("installments")}
-                style={[
-                  styles.paySegment,
-                  paymentPlanChoice === "installments"
-                    ? styles.paySegmentSelected
-                    : null,
-                ]}
-              >
-                <View
-                  style={[
-                    styles.payDot,
-                    paymentPlanChoice === "installments"
-                      ? styles.payDotSelected
-                      : null,
-                  ]}
-                  pointerEvents="none"
-                >
-                  {paymentPlanChoice === "installments" ? (
-                    <View style={styles.payDotInner} />
-                  ) : null}
-                </View>
-                <Text style={styles.paySegmentTitle}>Pay over time</Text>
-              </Pressable>
-            </View>
-
-            {paymentPlanChoice === "full" ? (
-              <View style={styles.payBlock}>
-                <View style={styles.payAmountRow}>
-                  <Text style={styles.payAmountLabel}>Charged today</Text>
-                  <Text style={styles.payAmountValue}>
-                    {formatMoneyExact(
-                      planSchedule.fullPriceCents,
-                      planSchedule.currency,
-                    )}
+                  <Text
+                    style={[styles.secTitle, surface.primaryText, { fontFamily: boldFamily }]}
+                  >
+                    Choose how you pay
                   </Text>
-                </View>
-                <Text
-                  style={styles.payDisclosure}
-                  accessibilityRole="text"
-                >
-                  Reserve charges{" "}
-                  {formatMoneyExact(
-                    planSchedule.fullPriceCents,
-                    planSchedule.currency,
-                  )}{" "}
-                  today. No future bills for this booking.
-                </Text>
-              </View>
-            ) : (
-              <View style={styles.payBlock}>
-                <View style={styles.payScheduleCard}>
-                  <View style={styles.payScheduleRow}>
-                    <Text style={styles.payScheduleDate}>Deposit today</Text>
-                    <Text style={styles.payScheduleAmount}>
-                      {formatMoneyExact(
-                        planSchedule.depositCents,
-                        planSchedule.currency,
+                  <View
+                    style={[
+                      styles.payMockCard,
+                      { backgroundColor: palette.panelStrong, borderColor: palette.panelBorder },
+                    ]}
+                  >
+                    <View
+                      style={[styles.payMockAccentBar, { backgroundColor: palette.accent }]}
+                    />
+                    <View style={styles.payMockInner}>
+                      {/* segmented TAB toggle (mockup `.seg`) */}
+                      <View
+                        accessibilityRole="tablist"
+                        accessibilityLabel="How you pay"
+                        style={[styles.payMockSeg, { borderColor: palette.panelBorder }]}
+                      >
+                        <Pressable
+                          accessibilityRole="button"
+                          accessibilityLabel={`Pay full ${fullLabel} now`}
+                          accessibilityState={{ selected: isFull }}
+                          onPress={() => setPaymentPlanChoice("full")}
+                          style={[
+                            styles.payMockSegBtn,
+                            isFull ? { backgroundColor: palette.accent } : null,
+                          ]}
+                        >
+                          <Text
+                            style={[
+                              styles.payMockSegBtnText,
+                              { color: isFull ? palette.accentText : palette.secondaryText },
+                            ]}
+                          >
+                            Pay in full
+                          </Text>
+                        </Pressable>
+                        <Pressable
+                          accessibilityRole="button"
+                          accessibilityLabel={`Pay over time, ${depositLabel} deposit today plus ${futureCount} future payment${futureCount === 1 ? "" : "s"}`}
+                          accessibilityState={{ selected: !isFull }}
+                          onPress={() => setPaymentPlanChoice("installments")}
+                          style={[
+                            styles.payMockSegBtn,
+                            !isFull ? { backgroundColor: palette.accent } : null,
+                          ]}
+                        >
+                          <Text
+                            style={[
+                              styles.payMockSegBtnText,
+                              { color: !isFull ? palette.accentText : palette.secondaryText },
+                            ]}
+                          >
+                            Pay over time
+                          </Text>
+                        </Pressable>
+                      </View>
+
+                      {/* amount block */}
+                      {isFull ? (
+                        <View>
+                          <View style={styles.payMockAmtRow}>
+                            <Text
+                              style={[styles.payMockAmt, { color: palette.primaryText }, { fontFamily: boldFamily }]}
+                            >
+                              {fullLabel}
+                            </Text>
+                          </View>
+                          <Text style={[styles.payMockSub, { color: palette.secondaryText }]}>
+                            One payment, all-in. Taxes &amp; fees included.
+                          </Text>
+                        </View>
+                      ) : (
+                        <View>
+                          <View style={styles.payMockAmtRow}>
+                            <Text
+                              style={[styles.payMockAmtLabel, { color: palette.tertiaryText }]}
+                            >
+                              Due today
+                            </Text>
+                            <Text
+                              style={[styles.payMockAmt, { color: palette.primaryText }, { fontFamily: boldFamily }]}
+                            >
+                              {depositLabel}
+                            </Text>
+                          </View>
+                          <Text style={[styles.payMockSub, { color: palette.secondaryText }]}>
+                            {depositPct}% deposit now, then {futureCount} payment
+                            {futureCount === 1 ? "" : "s"}. {fullLabel} total — no
+                            extra cost.
+                          </Text>
+                          {/* schedule rows + total */}
+                          <View
+                            style={[styles.payMockSchedule, { borderTopColor: palette.panelBorder }]}
+                          >
+                            <View style={styles.payMockSchedRow}>
+                              <View style={styles.payMockSchedWhen}>
+                                <View
+                                  style={[styles.payMockSchedDot, { backgroundColor: palette.accent }]}
+                                />
+                                <Text
+                                  style={[styles.payMockSchedWhenText, { color: palette.secondaryText }]}
+                                >
+                                  Today
+                                </Text>
+                                <Text
+                                  style={[styles.payMockSchedTag, { color: palette.accent }]}
+                                >
+                                  Deposit
+                                </Text>
+                              </View>
+                              <Text
+                                style={[styles.payMockSchedAmt, { color: palette.primaryText }]}
+                              >
+                                {depositLabel}
+                              </Text>
+                            </View>
+                            {planSchedule.installments.map((inst) => (
+                              <View
+                                key={inst.ordinal}
+                                style={[
+                                  styles.payMockSchedRow,
+                                  { borderTopWidth: 1, borderTopColor: palette.panelBorder },
+                                ]}
+                              >
+                                <View style={styles.payMockSchedWhen}>
+                                  <View
+                                    style={[styles.payMockSchedDot, { backgroundColor: palette.tertiaryText }]}
+                                  />
+                                  <Text
+                                    style={[styles.payMockSchedWhenText, { color: palette.secondaryText }]}
+                                  >
+                                    {formatScheduleDate(inst.dueAtIso)}
+                                  </Text>
+                                </View>
+                                <Text
+                                  style={[styles.payMockSchedAmt, { color: palette.primaryText }]}
+                                >
+                                  {formatMoneyExact(inst.amountCents, planSchedule.currency)}
+                                </Text>
+                              </View>
+                            ))}
+                            <View
+                              style={[styles.payMockSchedTotal, { borderTopColor: palette.panelBorder }]}
+                            >
+                              <Text
+                                style={[styles.payMockSchedTotalLabel, { color: palette.secondaryText }]}
+                              >
+                                Total
+                              </Text>
+                              <Text
+                                style={[styles.payMockSchedTotalValue, { color: palette.primaryText }]}
+                              >
+                                {fullLabel}
+                              </Text>
+                            </View>
+                          </View>
+                        </View>
                       )}
-                    </Text>
-                  </View>
-                  {planSchedule.installments.map((inst) => (
-                    <View key={inst.ordinal} style={styles.payScheduleRow}>
-                      <Text style={styles.payScheduleDate}>
-                        {formatScheduleDate(inst.dueAtIso)}
-                      </Text>
-                      <Text style={styles.payScheduleAmount}>
-                        {formatMoneyExact(inst.amountCents, planSchedule.currency)}
-                      </Text>
                     </View>
-                  ))}
-                  <View style={styles.payScheduleDivider} />
-                  <View style={styles.payScheduleRow}>
-                    <Text style={styles.payScheduleTotalLabel}>Total</Text>
-                    <Text style={styles.payScheduleTotalAmount}>
-                      {formatMoneyExact(
-                        planSchedule.fullPriceCents,
-                        planSchedule.currency,
-                      )}
-                    </Text>
                   </View>
                 </View>
-                <Text style={styles.payDisclosure} accessibilityRole="text">
-                  Reserve charges{" "}
-                  {formatMoneyExact(
-                    planSchedule.depositCents,
-                    planSchedule.currency,
-                  )}{" "}
-                  today. The rest auto-charges from this card on the dates above.
-                  Dates assume you book today; they lock when you pay.
-                </Text>
-              </View>
-            )}
-          </View>
-        ) : null}
+              );
+            })()
+          : null}
     </>
   );
 
@@ -982,8 +1051,17 @@ export default function ConsumerTripDetailScreen({
                 tappable: true,
               };
 
-  // ORCH-1138 Leg 1C — clearance so the last content row clears the floating bar.
-  const reserveBarClearance = 96 + Math.max(insets.bottom, 16);
+  // ORCH-1138 [trip-page-redesign] FIX-5 — clearance so the last content row
+  // clears the floating bar. Bar height ≈ 14 (top pad) + 56 (button) = ~70, PLUS
+  // 14 + safe-area bottom (the bar pads `paddingBottom: 14 + bottomInset`). The
+  // scroll content reserves bar-height + safe-area (16 floor) — matching the bar's
+  // own bottom-inset resolution — so the last section (How-you-pay) clears the bar.
+  // matches the bar's own bottom-inset resolution (max(inset,34) + the 28pt
+  // gorhom-sheet overshoot) so the last section clears the taller,
+  // home-indicator-safe bar. Bar ≈ 14 (top) + 56 (button) = 70 + (14 + that
+  // inset) below.
+  const safeBottom = Math.max(insets.bottom, 34) + 28;
+  const reserveBarClearance = 84 + safeBottom;
 
   const floatingReserve: ReactElement = (
     <ConsumerTripReserveBar
@@ -992,6 +1070,10 @@ export default function ConsumerTripDetailScreen({
       kicker={barKicker}
       fontFamily={boldFamily}
       onPress={() => setReserveSheetVisible(true)}
+      // ORCH-1138 FIX-5 — pass the SCREEN-LEVEL inset; the bar's own
+      // useSafeAreaInsets can return 0 inside the gorhom sheet context, which let
+      // the "From … today" price line bleed under the home indicator.
+      safeAreaBottom={insets.bottom}
       testID="orch-1138-consumer-trip-reserve"
     />
   );
@@ -1073,13 +1155,14 @@ export default function ConsumerTripDetailScreen({
               { backgroundColor: palette.page, borderColor: palette.panelBorder },
             ]}
           >
-            {/* hero caption over the seam (eyebrow + title) */}
-            {fnd.heroEyebrow !== null ? (
-              <Text style={styles.heroEyebrow}>{fnd.heroEyebrow}</Text>
-            ) : null}
-            <Text style={[styles.heroTitle, { fontFamily: boldFamily }]}>
-              {fnd.title}
-            </Text>
+            {/* ORCH-1138 [trip-page-redesign] FIX-1 — the eyebrow + title render
+                EXACTLY ONCE, in the body `leadBlock` (the first child of
+                {bodyChildren}). This matches the business PHONE behavior, where
+                ParallaxCoverShell renders the hero eyebrow/title ONLY on desktop
+                (`if (isDesktop)`) and the phone shows them solely in the body
+                `leadBlock`. The previous seam-overlaid heroEyebrow/heroTitle here
+                were a SECOND copy (Seth's device showed the eyebrow+title twice) →
+                removed. No cover overlay of eyebrow/title on consumer phone. */}
             {bodyChildren}
           </View>
         </BottomSheetScrollView>
@@ -1197,23 +1280,9 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   fndTitle: { fontSize: 32, lineHeight: 35, fontWeight: "900", letterSpacing: -0.5 },
-  heroEyebrow: {
-    color: "#ffffff",
-    opacity: 0.92,
-    fontSize: 12,
-    fontWeight: "900",
-    letterSpacing: 1.6,
-    textTransform: "uppercase",
-    marginBottom: 8,
-  },
-  heroTitle: {
-    color: "#ffffff",
-    fontSize: 40,
-    lineHeight: 44,
-    fontWeight: "900",
-    letterSpacing: -0.5,
-    maxWidth: "82%",
-  },
+  // ORCH-1138 FIX-1 — the seam heroEyebrow/heroTitle styles were removed with the
+  // duplicate cover-overlaid eyebrow/title; the in-body leadBlock (eyebrowLead +
+  // fndTitle) is the SOLE eyebrow/title render on consumer phone.
   // ---- meta chips ----
   metaChipRow: { flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 16 },
   metaChip: {
@@ -1331,79 +1400,83 @@ const styles = StyleSheet.create({
   bandBody: { fontSize: 14, color: "rgba(255,255,255,0.7)", lineHeight: 19 },
   bandCountdown: { backgroundColor: "rgba(235,120,37,0.14)", borderWidth: 1, borderColor: "rgba(235,120,37,0.4)" },
   bandCountdownText: { fontSize: 14, fontWeight: "600", color: WARM },
-  // ---- HOW YOU PAY module label (kept verbatim from pre-1138) ----
-  sectionLabel: { fontSize: 13, fontWeight: "700", letterSpacing: 0.5, color: WARM, marginBottom: 8, textTransform: "uppercase" },
-  // ORCH-1130 — consumer "HOW YOU PAY" module. Literal hex (matches the
-  // surrounding screen; NOT the business designSystem tokens). Selected =
-  // border + fill + dot (3 channels). Solid fills compose opaque on Android
-  // (the screen body is opaque #0c0e12 family — no glass bleed-through).
-  payToggleRow: { flexDirection: "row", gap: 8, marginTop: 4 },
-  paySegment: {
-    flex: 1,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-    minHeight: 44,
-    borderRadius: 12,
+  // ORCH-1138 FIX-4 — "Choose how you pay" mockup card, MIRRORING the business
+  // PaymentMockupCard (`mock.*`) styles 1:1 (DIRECTION_A_V2 `.pay-card`): accent
+  // bar, dark segmented TAB track, 34px amount, schedule rows + total. Colors are
+  // applied from the brand `palette` at the call site (NOT literal warm-orange) so
+  // the consumer + business cards read identically.
+  payMockCard: {
+    marginTop: 12,
+    borderRadius: 20,
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.10)",
-    backgroundColor: "rgba(255,255,255,0.04)",
-    paddingHorizontal: 14,
-    paddingVertical: 10,
+    overflow: "hidden",
   },
-  paySegmentSelected: {
-    borderColor: "rgba(235,120,37,0.7)",
-    backgroundColor: "rgba(235,120,37,0.14)",
+  payMockAccentBar: { height: 4 },
+  payMockInner: { padding: 18 },
+  payMockSeg: {
+    flexDirection: "row",
+    backgroundColor: "rgba(0,0,0,0.28)",
+    borderRadius: 12,
+    padding: 4,
+    gap: 4,
+    borderWidth: 1,
   },
-  paySegmentTitle: { flexShrink: 1, fontSize: 15, fontWeight: "700", color: "#FFFFFF" },
-  payDot: {
-    width: 18,
-    height: 18,
+  payMockSegBtn: {
+    flex: 1,
+    minHeight: 44,
     borderRadius: 9,
-    borderWidth: 1.5,
-    borderColor: "rgba(255,255,255,0.28)",
     alignItems: "center",
     justifyContent: "center",
+    paddingHorizontal: 8,
+    paddingVertical: 10,
   },
-  payDotSelected: { borderColor: WARM },
-  payDotInner: { width: 8, height: 8, borderRadius: 4, backgroundColor: WARM },
-  payBlock: { marginTop: 12 },
-  payAmountRow: {
+  payMockSegBtnText: { fontSize: 13, fontWeight: "800" },
+  payMockAmtRow: {
     flexDirection: "row",
-    justifyContent: "space-between",
     alignItems: "baseline",
     gap: 8,
+    marginTop: 16,
   },
-  payAmountLabel: { flexShrink: 1, fontSize: 13, fontWeight: "600", color: "rgba(255,255,255,0.72)" },
-  payAmountValue: { fontSize: 15, fontWeight: "700", color: "#FFFFFF" },
-  payDisclosure: {
-    marginTop: 8,
-    fontSize: 13,
-    lineHeight: 18,
-    color: "rgba(255,255,255,0.65)",
+  payMockAmtLabel: {
+    fontSize: 11,
+    fontWeight: "800",
+    letterSpacing: 1,
+    textTransform: "uppercase",
   },
-  payScheduleCard: {
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.08)",
-    backgroundColor: "rgba(255,255,255,0.04)",
-    padding: 12,
+  payMockAmt: { fontSize: 34, fontWeight: "900", letterSpacing: -1 },
+  payMockSub: { fontSize: 13, lineHeight: 19, marginTop: 4 },
+  payMockSchedule: { marginTop: 16, borderTopWidth: 1, paddingTop: 14 },
+  payMockSchedRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingVertical: 9,
   },
-  payScheduleRow: {
+  payMockSchedWhen: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    flexShrink: 1,
+  },
+  payMockSchedDot: { width: 8, height: 8, borderRadius: 4 },
+  payMockSchedWhenText: { fontSize: 13 },
+  payMockSchedTag: {
+    fontSize: 10,
+    fontWeight: "800",
+    textTransform: "uppercase",
+    letterSpacing: 0.6,
+    marginLeft: 8,
+  },
+  payMockSchedAmt: { fontSize: 14, fontWeight: "800" },
+  payMockSchedTotal: {
     flexDirection: "row",
     justifyContent: "space-between",
-    alignItems: "center",
-    paddingVertical: 4,
+    marginTop: 12,
+    paddingTop: 12,
+    borderTopWidth: 1,
   },
-  payScheduleDate: { flex: 1, fontSize: 14, color: "#FFFFFF" },
-  payScheduleAmount: { fontSize: 14, fontWeight: "600", color: "#FFFFFF", textAlign: "right" },
-  payScheduleDivider: {
-    height: 1,
-    backgroundColor: "rgba(255,255,255,0.08)",
-    marginVertical: 8,
-  },
-  payScheduleTotalLabel: { flex: 1, fontSize: 14, fontWeight: "600", color: "#FFFFFF" },
-  payScheduleTotalAmount: { fontSize: 15, fontWeight: "700", color: "#FFFFFF", textAlign: "right" },
+  payMockSchedTotalLabel: { fontSize: 13 },
+  payMockSchedTotalValue: { fontSize: 13, fontWeight: "900" },
   // ORCH-1117 — collapsible-description toggle row (color overridden to the
   // brand accent inline at the call site for foundation parity).
   aboutToggleRow: {

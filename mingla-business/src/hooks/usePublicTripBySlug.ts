@@ -73,6 +73,16 @@ const fetchTripTicketsRemaining = async (
   return new Map(rows.map((r) => [r.ticket_type_id, r.remaining]));
 };
 
+// ORCH-1138 FIX-3 — coerce the raw brands.cover_media_type text to the
+// EventCoverMedia union. Unknown / null ⇒ null (the chip falls back to the hue
+// avatar; rule 9 — no fabricated type, no broken alt placeholder).
+const coerceBrandCoverType = (
+  raw: unknown,
+): "image" | "video" | "gif" | null => {
+  if (raw === "video" || raw === "gif" || raw === "image") return raw;
+  return null;
+};
+
 const PUBLIC_TRIP_STALE_MS = 60 * 1000; // 1 minute
 
 interface PublicTripPayload {
@@ -83,6 +93,13 @@ interface PublicTripPayload {
     name: string;
     bio: string | null;
     coverMediaUrl: string | null;
+    /**
+     * ORCH-1138 FIX-3 — the brand cover's media type + hue so the brand chip can
+     * render gif/video covers (EventCoverMedia) and a clean themed hue fallback
+     * when there is no cover. null when the brand set no cover.
+     */
+    coverMediaType: "image" | "video" | "gif" | null;
+    coverHue: number | null;
     /**
      * ORCH-1138 B1 — the brand's Direction-A theme (color/font/animation),
      * guarded into a ThemeInput. The /t/ route resolves
@@ -154,8 +171,13 @@ export const usePublicTripBySlug = (
         // ORCH-1138 B1 — theme_color/theme_font/theme_animation added so the
         // public trip page is brand-themed (Direction A). No schema change —
         // these columns exist (20260729000002_orch_0964_brand_event_theme).
+        // ORCH-1138 FIX-3 — cover_media_type + cover_hue added so the
+        // "Presented by" brand chip can render an animated (gif/video) brand
+        // cover via the media-aware EventCoverMedia (a plain <Image> on a video
+        // URL was showing a broken "COVE…" alt placeholder). All three columns
+        // exist on `brands` and are anon-readable (verified). No schema change.
         .select(
-          "id, slug, name, description, cover_media_url, theme_color, theme_font, theme_animation",
+          "id, slug, name, description, cover_media_url, cover_media_type, cover_hue, theme_color, theme_font, theme_animation",
         )
         .eq("slug", brandSlug)
         .is("deleted_at", null)
@@ -418,6 +440,12 @@ export const usePublicTripBySlug = (
           name: brand.name,
           bio: brand.description ?? null,
           coverMediaUrl: brand.cover_media_url ?? null,
+          // ORCH-1138 FIX-3 — coerce the raw brand cover media type to the
+          // EventCoverMedia union; unknown/null → null → image render / hue
+          // fallback (rule 9, never a fabricated type).
+          coverMediaType: coerceBrandCoverType(brand.cover_media_type),
+          coverHue:
+            typeof brand.cover_hue === "number" ? brand.cover_hue : null,
           theme: brandTheme,
         },
         themeOverrides,
