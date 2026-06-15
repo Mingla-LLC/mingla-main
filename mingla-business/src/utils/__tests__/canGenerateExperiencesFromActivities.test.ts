@@ -1,47 +1,27 @@
+/**
+ * ORCH-1144 — the `canGenerateExperiencesFromActivities` predicate (a one-line
+ * `venueCategory === "play"` category gate) is DELETED. Experience parsers are
+ * venue-category-agnostic: every brand reaches the Ve6 activities parser
+ * unconditionally via the +→Create experience chooser. The user picks
+ * `parseMode="activities"` explicitly; it is never derived from the brand.
+ *
+ * This test FAILS-ON-REVERT: if the deleted predicate util is restored, the
+ * existence assertion fails. See I-PROPOSED-1144-PARSERS-CATEGORY-AGNOSTIC.
+ *
+ * (Was: a category-equality unit test for the now-removed predicate.)
+ */
 import { describe, expect, test } from "@jest/globals";
+import { existsSync } from "fs";
+import { join } from "path";
 
-import type { Brand } from "../../types/brand";
-import { canGenerateExperiencesFromActivities } from "../canGenerateExperiencesFromActivities";
+const PREDICATE = join(
+  __dirname,
+  "..",
+  "canGenerateExperiencesFromActivities.ts",
+);
 
-function brand(partial: Partial<Brand>): Brand {
-  return partial as Brand;
-}
-
-describe("canGenerateExperiencesFromActivities", () => {
-  test("true for play venue category", () => {
-    expect(
-      canGenerateExperiencesFromActivities(
-        brand({
-          venueCategory: "play",
-          claimStatus: "verified",
-        }),
-      ),
-    ).toBe(true);
-  });
-
-  test("false for verified restaurant", () => {
-    expect(
-      canGenerateExperiencesFromActivities(
-        brand({
-          venueCategory: "restaurant",
-          claimStatus: "verified",
-        }),
-      ),
-    ).toBe(false);
-  });
-
-  test("true for unverified play", () => {
-    expect(
-      canGenerateExperiencesFromActivities(
-        brand({
-          venueCategory: "play",
-          claimStatus: "pending_review",
-        }),
-      ),
-    ).toBe(true);
-  });
-
-  test("false for null brand", () => {
-    expect(canGenerateExperiencesFromActivities(null)).toBe(false);
+describe("canGenerateExperiencesFromActivities (ORCH-1144: decommissioned)", () => {
+  test("the activities category predicate util is gone", () => {
+    expect(existsSync(PREDICATE)).toBe(false);
   });
 });

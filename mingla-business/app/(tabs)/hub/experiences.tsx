@@ -1,8 +1,23 @@
 /**
- * /hub/experiences — Ve5 Restaurant menu + Ve6 Play activities AI parsers.
+ * /hub/experiences — Hub > Experiences sub-route.
+ *
+ * ORCH-1144 — venue-category-agnostic. Both experience parsers (Ve5 food menu,
+ * Ve6 activities) reach EVERY brand via the in-sheet experience chooser
+ * (UniversalCreatorSheet step "experience" → /experience/snap?mode=…). The
+ * "New experience" empty-state CTA here opens that same sheet directly at the
+ * experience step (initialStep="experience"). Do NOT reintroduce a
+ * `venueCategory` branch or a `canGenerate*` predicate to gate reaching a
+ * parser — see I-PROPOSED-1144-PARSERS-CATEGORY-AGNOSTIC. The snap/parse/review
+ * machinery now lives on the dedicated /experience/snap route; this tab is a
+ * plain drafts/live list at parity with the Trips & Events tabs (filter pills +
+ * All/Upcoming/Past/Drafts buckets + per-filter empty states + multi-select).
+ *
+ * Mirrors trips.tsx (4 pills — experiences have no "live" pulse). Reuses the
+ * shared ExperienceListCard / useDraftMultiSelect / useDiscardOfferingDrafts /
+ * DraftSelectBar / OfferingManageSheet / useExperiencesByBrand stack.
  */
 
-import React, { useCallback, useState } from "react";
+import React, { useCallback, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   Pressable,
@@ -14,10 +29,8 @@ import {
 import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { ActivitiesSnapInput } from "../../../src/components/experience/ActivitiesSnapInput";
 import { ExperienceListCard } from "../../../src/components/experience/ExperienceListCard";
-import { ExperienceReviewCards } from "../../../src/components/experience/ExperienceReviewCards";
-import { MenuSnapInput } from "../../../src/components/experience/MenuSnapInput";
+import { UniversalCreatorSheet } from "../../../src/components/ui/UniversalCreatorSheet";
 import {
   OfferingManageSheet,
   buildOfferingManageActions,
@@ -31,7 +44,7 @@ import { DraftSelectBar } from "../../../src/components/offering/DraftSelectBar"
 import {
   accent,
   glass,
-  radius,
+  radius as radiusTokens,
   spacing,
   text as textTokens,
   typography,
@@ -43,63 +56,13 @@ import { useDiscardOfferingDrafts } from "../../../src/hooks/useDiscardOfferingD
 import { useResponsiveLayout } from "../../../src/hooks/useResponsiveLayout";
 import { useExperiencesByBrand } from "../../../src/hooks/useExperiencesByBrand";
 import { HapticFeedback } from "../../../src/utils/hapticFeedback";
-import {
-  usePendingExperiences,
-  type ExperienceParseMode,
-} from "../../../src/hooks/usePendingExperiences";
-import type { ExperienceFilePayload } from "../../../src/services/experienceGenerationService";
 import type { VenueExperience } from "../../../src/services/experiencesService";
-import { canGenerateExperiencesFromActivities } from "../../../src/utils/canGenerateExperiencesFromActivities";
-import { canGenerateExperiencesFromMenu } from "../../../src/utils/canGenerateExperiencesFromMenu";
 import {
   routeForEventRow,
   type EventStatusForRouting,
 } from "../../../src/utils/routeForEventRow";
 
-type HubPhase = "idle" | "parsing" | "review";
-
-interface GenerationCopy {
-  ctaTitle: string;
-  ctaBody: string;
-  ctaA11y: string;
-  loadingText: string;
-  emptyParseToast: string;
-  parseErrorFallback: string;
-  emptyListHint: string;
-  unverifiedHint: string;
-}
-
-const RESTAURANT_COPY: GenerationCopy = {
-  ctaTitle: "Snap your menu to generate experiences",
-  ctaBody:
-    "AI reads your menu and suggests offerings you can accept, edit, or reject.",
-  ctaA11y: "Snap your menu to generate experiences",
-  loadingText: "Reading your menu\u2026",
-  emptyParseToast:
-    "We couldn't find menu items in that file. Try a clearer photo of your menu.",
-  parseErrorFallback: "Couldn't read your menu. Try again.",
-  emptyListHint: "No experiences yet",
-  unverifiedHint:
-    "Once Mingla verifies your venue claim, you can generate experiences from your menu here.",
-};
-
-const PLAY_COPY: GenerationCopy = {
-  ctaTitle: "Generate from your activities",
-  ctaBody:
-    "AI reads your activities or packages list and suggests experiences you can accept, edit, or reject.",
-  ctaA11y: "Generate experiences from your activities list",
-  loadingText: "Reading your activities\u2026",
-  emptyParseToast:
-    "We couldn't find activities in that file. Try a clearer photo of your activities list.",
-  parseErrorFallback: "Couldn't read your activities list. Try again.",
-  emptyListHint: "No experiences yet",
-  unverifiedHint:
-    "Once Mingla verifies your venue claim, you can generate experiences from your activities list here.",
-};
-
-// META-ORCH-1059 Sub-B \u2014 map the raw events.status string to the routing union.
-// (The list card derives its own status chip from exp.status; routing for
-// experiences ignores status, but we still pass the normalized value through.)
+// META-ORCH-1059 Sub-B — map the raw events.status string to the routing union.
 function normalizeExperienceStatus(status: string): EventStatusForRouting {
   switch (status) {
     case "draft":
@@ -137,62 +100,105 @@ const bulkDeleteErrorMessage = (error: unknown): string => {
   return "Could not delete these drafts. Try again.";
 };
 
-interface ExperienceGenerationSurfaceProps {
-  brandId: string;
-  /** META-ORCH-1059 — current brand slug, for the manage-sheet public/share routes. */
-  brandSlug: string | null;
-  parseMode: ExperienceParseMode;
-  copy: GenerationCopy;
-  canSnap: boolean;
-  SnapInput: React.ComponentType<{
-    visible: boolean;
-    onCancel: () => void;
-    onFilesReady: (files: ExperienceFilePayload[]) => void;
-  }>;
+type ExperienceFilter = "all" | "upcoming" | "past" | "draft";
+
+interface PillSpec {
+  key: ExperienceFilter;
+  label: string;
+  count: number;
 }
 
-function ExperienceGenerationSurface({
-  brandId,
-  brandSlug,
-  parseMode,
-  copy,
-  canSnap,
-  SnapInput,
-}: ExperienceGenerationSurfaceProps): React.ReactElement {
-  const router = useRouter();
-  const insets = useSafeAreaInsets();
-  const { isWideDesktop } = useResponsiveLayout();
-  const experiencesQuery = useExperiencesByBrand(brandId);
-  const {
-    pending,
-    parseFiles,
-    isParsing,
-    confirm,
-    reject,
-    isConfirming,
-  } = usePendingExperiences(brandId, parseMode);
+// ORCH-1144 — single UNIFIED (category-agnostic) empty-state hint. Replaces the
+// old per-category RESTAURANT_COPY/PLAY_COPY emptyListHint fields; there is now
+// exactly one experiences empty state for every brand. Do NOT reintroduce a
+// venueCategory branch (see I-PROPOSED-1144-PARSERS-CATEGORY-AGNOSTIC).
+const emptyListHint =
+  "Tap + to create your first one. Snap a menu and Mingla drafts it for you, or build it yourself.";
 
-  const [snapSheetVisible, setSnapSheetVisible] = useState(false);
-  const [phase, setPhase] = useState<HubPhase>("idle");
-  const [toast, setToast] = useState<string | null>(null);
-  // META-ORCH-1059 Pass 1 — Hub list-card 3-dot opens the shared manage sheet.
-  const [manageExp, setManageExp] = useState<VenueExperience | null>(null);
-  const [shareExp, setShareExp] = useState<VenueExperience | null>(null);
+// ORCH-1144 — experiences may lack a clean end date (the When draft can be
+// unset / per-stop). Bucket on status, treating a dateSubline that resolves to
+// "Ended" as past; everything non-draft/non-ended is upcoming. Mirrors
+// deriveTripFilterBucket (trips.tsx).
+function deriveExperienceFilterBucket(
+  exp: VenueExperience,
+): "upcoming" | "past" | "draft" {
+  if (exp.status === "draft") return "draft";
+  if (exp.status === "ended" || exp.status === "cancelled") return "past";
+  if (exp.dateSubline.includes("Ended")) return "past";
+  return "upcoming";
+}
+
+export default function HubExperiencesRoute(): React.ReactElement {
+  const insets = useSafeAreaInsets();
+  const router = useRouter();
+  const { isWideDesktop } = useResponsiveLayout();
+  const currentBrand = useCurrentBrand();
+  const experiencesQuery = useExperiencesByBrand(currentBrand?.id ?? null);
+
+  const experiences = useMemo<VenueExperience[]>(
+    () => experiencesQuery.data ?? [],
+    [experiencesQuery.data],
+  );
+
+  const brandSlug = currentBrand?.slug ?? null;
   const hasBrandSlug = brandSlug !== null && brandSlug.length > 0;
 
-  const experiences = experiencesQuery.data ?? [];
-  const showReview = phase === "review" || pending.length > 0;
+  const buckets = useMemo<
+    Record<"upcoming" | "past" | "draft", VenueExperience[]>
+  >(() => {
+    const upcoming: VenueExperience[] = [];
+    const past: VenueExperience[] = [];
+    const draft: VenueExperience[] = [];
+    for (const e of experiences) {
+      const b = deriveExperienceFilterBucket(e);
+      if (b === "upcoming") upcoming.push(e);
+      else if (b === "past") past.push(e);
+      else draft.push(e);
+    }
+    // Stable, glanceable order: drafts newest-first by createdAt.
+    draft.sort((a, b) => (b.createdAt ?? "").localeCompare(a.createdAt ?? ""));
+    upcoming.sort((a, b) =>
+      (a.createdAt ?? "").localeCompare(b.createdAt ?? ""),
+    );
+    past.sort((a, b) => (b.createdAt ?? "").localeCompare(a.createdAt ?? ""));
+    return { upcoming, past, draft };
+  }, [experiences]);
+
+  const counts = useMemo<Record<ExperienceFilter, number>>(
+    () => ({
+      all: experiences.length,
+      upcoming: buckets.upcoming.length,
+      past: buckets.past.length,
+      draft: buckets.draft.length,
+    }),
+    [experiences.length, buckets],
+  );
+
+  const defaultFilter = useMemo<ExperienceFilter>((): ExperienceFilter => {
+    if (counts.upcoming > 0) return "upcoming";
+    if (counts.draft > 0) return "draft";
+    if (counts.past > 0) return "past";
+    return "all";
+  }, [counts]);
+
+  const [filter, setFilter] = useState<ExperienceFilter>(defaultFilter);
+  const [manageExp, setManageExp] = useState<VenueExperience | null>(null);
+  const [shareExp, setShareExp] = useState<VenueExperience | null>(null);
+  // ORCH-1144 UX refinement — the "New experience" CTA opens the shared
+  // UniversalCreatorSheet directly at its experience step (the 3-option chooser),
+  // instead of pushing a separate /experience/choose route.
+  const [creatorOpen, setCreatorOpen] = useState<boolean>(false);
 
   // ORCH-1123 [Hub multi-select draft delete] — long-press multi-select +
-  // bulk soft-delete for DRAFT experiences only (first-ever experience delete,
-  // server rank-gated). No filter pills here → selection auto-scopes via the
-  // per-row `selectable` flag.
+  // bulk soft-delete for DRAFT experiences only (server rank-gated).
   const selection = useDraftMultiSelect();
   const discardOfferings = useDiscardOfferingDrafts();
   const [bulkConfirmOpen, setBulkConfirmOpen] = useState<boolean>(false);
   const [bulkError, setBulkError] = useState<string | null>(null);
+  const [toast, setToast] = useState<string | null>(null);
 
   const handleBulkDeleteConfirm = useCallback(async (): Promise<void> => {
+    if (currentBrand === null) return;
     const serverIds = experiences
       .filter((e) => e.status === "draft" && selection.isSelected(e.id))
       .map((e) => e.id);
@@ -200,7 +206,7 @@ function ExperienceGenerationSurface({
     try {
       const result = await discardOfferings.mutateAsync({
         kind: "experience",
-        brandId,
+        brandId: currentBrand.id,
         serverEventIds: serverIds,
       });
       const deleted = result.rows.filter((r) => r.outcome === "deleted").length;
@@ -211,130 +217,142 @@ function ExperienceGenerationSurface({
     } catch (error) {
       setBulkError(bulkDeleteErrorMessage(error));
     }
-  }, [experiences, selection, discardOfferings, brandId]);
+  }, [currentBrand, experiences, selection, discardOfferings]);
 
-  const handleFilesReady = useCallback(
-    async (files: ExperienceFilePayload[]) => {
-      setSnapSheetVisible(false);
-      setPhase("parsing");
-      try {
-        const result = await parseFiles(files);
-        if (result.kind === "error") {
-          setToast(result.message);
-          setPhase("idle");
-          return;
-        }
-        if (result.experiences_count === 0) {
-          setToast(copy.emptyParseToast);
-          setPhase("idle");
-          return;
-        }
-        setPhase("review");
-      } catch (e) {
-        setToast(
-          e instanceof Error ? e.message : copy.parseErrorFallback,
-        );
-        setPhase("idle");
-      }
-    },
-    [copy.emptyParseToast, copy.parseErrorFallback, parseFiles],
+  const filteredExperiences = useMemo<VenueExperience[]>(() => {
+    if (filter === "all") {
+      return [...buckets.upcoming, ...buckets.draft, ...buckets.past];
+    }
+    return buckets[filter];
+  }, [filter, buckets]);
+
+  const pillSpecs = useMemo<PillSpec[]>(
+    () => [
+      { key: "all", label: "All", count: counts.all },
+      { key: "upcoming", label: "Upcoming", count: counts.upcoming },
+      { key: "past", label: "Past", count: counts.past },
+      { key: "draft", label: "Drafts", count: counts.draft },
+    ],
+    [counts],
   );
 
-  // META-ORCH-1059 Sub-A (Layer 6): "Accept all" removed — AI proposals are
-  // now DRAFT shells the brand finishes (stops + date + price) before publish;
-  // bulk-publishing dated/stopped experiences is impossible. Each proposal is
-  // set up individually via "Set up & publish".
+  // ----- States (brand-missing / loading / error) -----
+
+  if (currentBrand === null) {
+    return (
+      <View style={styles.stateHost}>
+        <Text style={styles.body}>Select a brand to see its experiences.</Text>
+      </View>
+    );
+  }
+
+  if (experiencesQuery.isLoading) {
+    return (
+      <View style={styles.stateHost}>
+        <ActivityIndicator />
+      </View>
+    );
+  }
+
+  if (experiencesQuery.isError) {
+    return (
+      <View style={styles.stateHost}>
+        <Text style={styles.title}>Couldn&rsquo;t load experiences</Text>
+        <Text style={styles.body}>
+          {experiencesQuery.error instanceof Error
+            ? experiencesQuery.error.message
+            : "Check your connection and try again."}
+        </Text>
+      </View>
+    );
+  }
+
+  // ----- Render ----------------------------------------------------------
 
   return (
-    <>
-      {/* META-ORCH-1059 fold-in fix: the floating absolute BottomNav tab bar
-          (app/(tabs)/_layout.tsx) overlays the bottom of this ScrollView. The
-          flat `paddingBottom: 120` left the last/only experience card UNDER the
-          tab bar on devices with a gesture-nav inset (e.g. Samsung A72), so the
-          card's Pressable could never receive the tap — it read as a dead tap
-          that "freezes" the nav. Mirror the events-hub pattern
-          (app/(tabs)/hub/events.tsx:553): pad by `insets.bottom + 120`. */}
+    <View style={styles.host}>
+      {/* Filter pills row — sibling to the list ScrollView. flexGrow:0
+          mandatory per the double-ScrollView footgun
+          (feedback_rn_scrollview_flex_grow_default_one_silent_footgun.md). */}
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={styles.pillsRow}
+        style={styles.pillsScroll}
+      >
+        {pillSpecs.map((p) => {
+          const active = filter === p.key;
+          return (
+            <Pressable
+              key={p.key}
+              onPress={() => {
+                if (p.key !== "draft") selection.exit();
+                setFilter(p.key);
+              }}
+              accessibilityRole="tab"
+              accessibilityState={{ selected: active }}
+              accessibilityLabel={`${p.label}, ${p.count}`}
+              hitSlop={{ top: 5, bottom: 5, left: 0, right: 0 }}
+              style={({ pressed }) => [
+                styles.pill,
+                active && styles.pillActive,
+                pressed && styles.pillPressed,
+              ]}
+            >
+              <Text style={[styles.pillLabel, active && styles.pillLabelActive]}>
+                {p.label}
+              </Text>
+              <Text style={[styles.pillCount, active && styles.pillCountActive]}>
+                {p.count}
+              </Text>
+            </Pressable>
+          );
+        })}
+      </ScrollView>
+
       <ScrollView
         contentContainerStyle={[
-          styles.scrollContent,
+          styles.scroll,
           { paddingBottom: insets.bottom + 120 },
         ]}
+        showsVerticalScrollIndicator={false}
       >
-        {canSnap && (
-          <Pressable
-            onPress={() => setSnapSheetVisible(true)}
-            disabled={isParsing}
-            style={({ pressed }) => [
-              styles.cta,
-              pressed && styles.ctaPressed,
-              isParsing && styles.ctaDisabled,
-            ]}
-            accessibilityRole="button"
-            accessibilityLabel={copy.ctaA11y}
-          >
-            <Text style={styles.ctaTitle}>{copy.ctaTitle}</Text>
-            <Text style={styles.ctaBody}>{copy.ctaBody}</Text>
-          </Pressable>
-        )}
-
-        {(phase === "parsing" || isParsing) && (
-          <View style={styles.loadingRow}>
-            <ActivityIndicator color={accent.warm} />
-            <Text style={styles.loadingText}>{copy.loadingText}</Text>
-          </View>
-        )}
-
-        {showReview && (
-          <ExperienceReviewCards
-            pending={pending}
-            isExecuting={isConfirming}
-            onAccept={async (id, editedArgs) => {
-              const response = await confirm({ id, edited_args: editedArgs });
-              if (response.kind === "error") {
-                setToast(response.message);
-                return;
-              }
-              // META-ORCH-1059 Sub-A: the AI tool created a DRAFT shell (no
-              // stops/date/ticket). The brand finishes it from the experiences
-              // list (Sub-B wires the tap-to-edit). Surface the draft + nudge.
-              if (pending.length <= 1) setPhase("idle");
-              setToast("Draft created — add stops, a date and price to publish it.");
-            }}
-            onReject={async (id) => {
-              const response = await reject(id);
-              if (response.kind === "error") {
-                setToast(response.message);
-              }
-            }}
-          />
-        )}
-
-        <Text style={styles.sectionTitle}>Your experiences</Text>
-        {experiencesQuery.isLoading ? (
-          <ActivityIndicator style={styles.listLoader} />
-        ) : experiences.length === 0 ? (
+        {filteredExperiences.length === 0 ? (
           <GlassCard variant="elevated" padding={spacing.lg}>
-            <Text style={styles.emptyBody}>{copy.emptyListHint}</Text>
-            <View style={styles.emptyCtaRow}>
-              <Button
-                label="Create experience"
-                onPress={() => router.push("/experience/create" as never)}
-                variant="primary"
-                size="md"
-                leadingIcon="sparkle"
-              />
-            </View>
+            <Text style={styles.emptyTitle}>
+              {filter === "all" ? "No experiences yet" : "No experiences here"}
+            </Text>
+            <Text style={styles.emptyBody}>
+              {filter === "all"
+                ? emptyListHint
+                : filter === "draft"
+                  ? "No drafts in progress. Tap + to build one."
+                  : `Tap "All" to see everything.`}
+            </Text>
+            {filter === "all" || filter === "draft" ? (
+              <View style={styles.emptyCtaRow}>
+                <Button
+                  label="New experience"
+                  onPress={() => setCreatorOpen(true)}
+                  variant="primary"
+                  size="md"
+                  leadingIcon="sparkle"
+                />
+              </View>
+            ) : null}
           </GlassCard>
         ) : (
           <>
             {!selection.selectionMode &&
-            experiences.some((e) => e.status === "draft") ? (
+            filteredExperiences.some((e) => e.status === "draft") ? (
               <Text style={styles.selectHint}>
                 Press and hold a draft to select multiple
               </Text>
             ) : null}
-            <View style={[styles.expList, isWideDesktop && styles.desktopListGrid]}>
-              {experiences.map((exp) => {
+            <View
+              style={[styles.list, isWideDesktop && styles.desktopListGrid]}
+            >
+              {filteredExperiences.map((exp) => {
                 const statusForRouting = normalizeExperienceStatus(exp.status);
                 const isDraftRow = exp.status === "draft";
                 return (
@@ -342,11 +360,6 @@ function ExperienceGenerationSurface({
                     key={exp.id}
                     style={isWideDesktop ? styles.desktopListCell : undefined}
                   >
-                    {/* META-ORCH-1059 — proper offering-card row (cover thumb +
-                        status pill + title + date·venue subline + price), matching
-                        the events + trips lists. Tap opens the DASHBOARD via
-                        routeForEventRow (experiences always resolve to
-                        /experience/{id}); the dashboard owns the edit action. */}
                     <ExperienceListCard
                       experience={exp}
                       onOpen={
@@ -381,19 +394,6 @@ function ExperienceGenerationSurface({
           </>
         )}
       </ScrollView>
-
-      <SnapInput
-        visible={snapSheetVisible}
-        onCancel={() => setSnapSheetVisible(false)}
-        onFilesReady={(files) => void handleFilesReady(files)}
-      />
-
-      <Toast
-        visible={toast !== null}
-        kind="info"
-        message={toast ?? ""}
-        onDismiss={() => setToast(null)}
-      />
 
       {/* ORCH-1123 — bulk-delete ConfirmDialog (simple destructive variant). */}
       <ConfirmDialog
@@ -442,9 +442,7 @@ function ExperienceGenerationSurface({
       ) : null}
 
       {/* META-ORCH-1059 Pass 1 — shared per-kind manage sheet opened from a
-          list-card 3-dot. Edit · View public · Share · Cancel (Orders +
-          Duplicate omitted — no experience orders/duplicate route yet). Cancel
-          routes to the experience dashboard's typeToConfirm flow. */}
+          list-card 3-dot. Edit · View public · Share · Cancel. */}
       {manageExp !== null ? (
         <OfferingManageSheet
           visible
@@ -457,9 +455,7 @@ function ExperienceGenerationSurface({
                 router.push(`/experience/${manageExp.id}/edit` as never),
               onViewPublic: hasBrandSlug
                 ? () =>
-                    router.push(
-                      `/exp/${brandSlug}/${manageExp.slug}` as never,
-                    )
+                    router.push(`/exp/${brandSlug}/${manageExp.slug}` as never)
                 : undefined,
               onShare: hasBrandSlug ? () => setShareExp(manageExp) : undefined,
               onCancel:
@@ -487,148 +483,52 @@ function ExperienceGenerationSurface({
           }
         />
       ) : null}
-    </>
-  );
-}
 
-export default function HubExperiencesRoute(): React.ReactElement {
-  const router = useRouter();
-  const insets = useSafeAreaInsets();
-  const currentBrand = useCurrentBrand();
-  // META-ORCH-1059 fold-in: clear the floating tab bar so empty-state CTAs
-  // are never tappable-blocked (mirror the surface ScrollView fix).
-  const emptyContentStyle = [
-    styles.scrollContent,
-    { paddingBottom: insets.bottom + 120 },
-  ];
-
-  if (currentBrand === null) {
-    return (
-      <View style={styles.stateHost}>
-        <Text style={styles.body}>Select a brand to see its experiences.</Text>
-      </View>
-    );
-  }
-
-  if (currentBrand.venueCategory === "restaurant") {
-    return (
-      <ExperienceGenerationSurface
-        brandId={currentBrand.id}
-        brandSlug={currentBrand.slug}
-        parseMode="menu"
-        copy={RESTAURANT_COPY}
-        canSnap={canGenerateExperiencesFromMenu(currentBrand)}
-        SnapInput={MenuSnapInput}
+      <Toast
+        visible={toast !== null}
+        kind="info"
+        message={toast ?? ""}
+        onDismiss={() => setToast(null)}
       />
-    );
-  }
 
-  if (currentBrand.venueCategory === "play") {
-    return (
-      <ExperienceGenerationSurface
-        brandId={currentBrand.id}
-        brandSlug={currentBrand.slug}
-        parseMode="activities"
-        copy={PLAY_COPY}
-        canSnap={canGenerateExperiencesFromActivities(currentBrand)}
-        SnapInput={ActivitiesSnapInput}
-      />
-    );
-  }
-
-  if (currentBrand.venueCategory === "creative_and_arts") {
-    return (
-      <ScrollView contentContainerStyle={emptyContentStyle}>
-        <GlassCard variant="elevated" padding={spacing.lg}>
-          <Text style={styles.emptyTitle}>No experiences yet</Text>
-          <Text style={styles.emptyBody}>Create experience</Text>
-          <View style={styles.emptyCtaRow}>
-            <Button
-              label="Create experience"
-              onPress={() => router.push("/experience/create" as never)}
-              variant="primary"
-              size="md"
-              leadingIcon="sparkle"
-            />
-          </View>
-        </GlassCard>
-      </ScrollView>
-    );
-  }
-
-  return (
-    <ScrollView contentContainerStyle={emptyContentStyle}>
-      <GlassCard variant="elevated" padding={spacing.lg}>
-        <Text style={styles.emptyTitle}>No experiences yet</Text>
-        <Text style={styles.emptyBody}>Create experience</Text>
-        <View style={styles.emptyCtaRow}>
-          <Button
-            label="Create experience"
-            onPress={() => router.push("/experience/create" as never)}
-            variant="primary"
-            size="md"
-            leadingIcon="sparkle"
-          />
-        </View>
-      </GlassCard>
-    </ScrollView>
+      {/* ORCH-1144 UX refinement — the "New experience" CTA opens the shared
+          creator sheet straight at its experience chooser step. Mounted only
+          while open; resets to the experience step on each open. The in-step
+          back affordance is omitted in this mode (no root to return to). */}
+      {creatorOpen ? (
+        <UniversalCreatorSheet
+          visible
+          initialStep="experience"
+          onClose={() => setCreatorOpen(false)}
+        />
+      ) : null}
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  scrollContent: {
-    padding: spacing.md,
-    paddingBottom: 120,
-    gap: spacing.md,
+  host: {
+    flex: 1,
   },
   stateHost: {
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
     padding: spacing.xl,
+    gap: spacing.md,
+  },
+  title: {
+    fontSize: typography.h3.fontSize,
+    lineHeight: typography.h3.lineHeight,
+    fontWeight: typography.h3.fontWeight,
+    color: textTokens.primary,
   },
   body: {
     fontSize: typography.body.fontSize,
+    lineHeight: typography.body.lineHeight,
     color: textTokens.secondary,
     textAlign: "center",
   },
-  cta: {
-    padding: spacing.lg,
-    borderRadius: radius.xl,
-    backgroundColor: glass.tint.profileElevated,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: accent.border,
-  },
-  ctaPressed: { opacity: 0.9 },
-  ctaDisabled: { opacity: 0.5 },
-  ctaTitle: {
-    fontSize: typography.h3.fontSize,
-    fontWeight: typography.h3.fontWeight,
-    color: textTokens.primary,
-  },
-  ctaBody: {
-    marginTop: spacing.xs,
-    fontSize: typography.body.fontSize,
-    lineHeight: typography.body.lineHeight,
-    color: textTokens.secondary,
-  },
-  loadingRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.sm,
-    paddingVertical: spacing.sm,
-  },
-  loadingText: {
-    color: textTokens.secondary,
-    fontSize: typography.body.fontSize,
-  },
-  sectionTitle: {
-    marginTop: spacing.md,
-    fontSize: typography.h3.fontSize,
-    fontWeight: typography.h3.fontWeight,
-    color: textTokens.primary,
-  },
-  listLoader: { marginVertical: spacing.lg },
   // ORCH-1123 — long-press discoverability caption.
   selectHint: {
     fontSize: typography.caption.fontSize,
@@ -639,7 +539,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.md,
     paddingBottom: spacing.sm,
   },
-  expList: {
+  scroll: {
+    paddingHorizontal: spacing.md,
+    paddingTop: spacing.lg,
+    gap: spacing.md,
+  },
+  list: {
     gap: spacing.sm,
   },
   desktopListGrid: {
@@ -653,15 +558,62 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.xs,
     marginBottom: spacing.sm,
   },
+  pillsScroll: {
+    paddingVertical: spacing.sm,
+    // ORCH-0857 [Hub events list flush-with-pills] precedent — flexGrow:0
+    // mandatory to avoid double-ScrollView vertical space split.
+    flexGrow: 0,
+    flexShrink: 0,
+  },
+  pillsRow: {
+    paddingHorizontal: spacing.md,
+    gap: spacing.sm,
+  },
+  pill: {
+    height: 34,
+    paddingHorizontal: spacing.md - 2,
+    borderRadius: radiusTokens.full,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.55)",
+    backgroundColor: glass.tint.profileBase,
+  },
+  pillActive: {
+    backgroundColor: accent.tint,
+    borderColor: accent.border,
+  },
+  pillPressed: {
+    opacity: 0.7,
+  },
+  pillLabel: {
+    fontSize: 13,
+    lineHeight: 16,
+    fontWeight: "500",
+    color: textTokens.primary,
+  },
+  pillLabelActive: {
+    color: textTokens.primary,
+  },
+  pillCount: {
+    fontSize: 11,
+    fontWeight: "600",
+    color: textTokens.tertiary,
+    fontVariant: ["tabular-nums"],
+  },
+  pillCountActive: {
+    color: accent.warm,
+  },
   emptyTitle: {
     fontSize: typography.h3.fontSize,
+    lineHeight: typography.h3.lineHeight,
     fontWeight: typography.h3.fontWeight,
     color: textTokens.primary,
-    marginBottom: spacing.sm,
+    marginBottom: spacing.xs,
   },
   emptyBody: {
-    fontSize: typography.body.fontSize,
-    lineHeight: typography.body.lineHeight,
+    fontSize: typography.bodySm.fontSize,
     color: textTokens.secondary,
   },
   emptyCtaRow: {
