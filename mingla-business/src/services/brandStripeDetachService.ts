@@ -25,6 +25,7 @@ export interface BrandStripeDetachResult {
 }
 
 interface RawDetachResponse {
+  status?: "detached" | "not_connected" | string;
   detached_at?: string;
   stripe_delete_status?: StripeDeleteStatus;
   rejection_reason?: string | null;
@@ -41,11 +42,20 @@ export async function detachBrandStripe(
   if (data === null) {
     throw new Error("detachBrandStripe: edge fn returned null");
   }
-  if (typeof data.detached_at !== "string") {
-    throw new Error("detachBrandStripe: missing detached_at in response");
+  // ORCH-1140: a 200 with a recognized success status is SUCCESS even if a
+  // field is missing (defense-in-depth against future response-shape drift —
+  // the edge fn now always sends detached_at, but a missing field must never
+  // again read a completed, destructive detach as a failure). A genuinely
+  // malformed/failure body (no recognized success status) still throws;
+  // non-2xx / null bodies still throw above.
+  if (data.status !== "detached" && data.status !== "not_connected") {
+    throw new Error("detachBrandStripe: unexpected response shape");
   }
   return {
-    detachedAt: data.detached_at,
+    detachedAt:
+      typeof data.detached_at === "string"
+        ? data.detached_at
+        : new Date().toISOString(),
     stripeDeleteStatus: data.stripe_delete_status ?? "skipped",
     rejectionReason: data.rejection_reason ?? null,
   };
