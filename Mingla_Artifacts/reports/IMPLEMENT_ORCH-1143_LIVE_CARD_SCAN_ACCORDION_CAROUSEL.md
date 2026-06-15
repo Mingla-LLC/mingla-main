@@ -232,4 +232,4 @@ No invented tokens. Substitutions are alias-name only (same underlying values), 
 No new test required — pure visual token change with zero behavior/store/carousel-math/a11y change. No existing test asserts the old style keys (the only style-adjacent assertion, `home.orch_1143:63`, checks the `chevU`/`chevD` Icon-name string, which is preserved verbatim and still passes). Android opaque-glass is automatic via GlassCard's internal GlassChrome. Touch target stays ≥44pt (`liveHeaderRow.minHeight: 44`).
 
 ### Commit
-`48fe3d351479d5d8ef7149a46cd40d73ca67c212`
+`97c661ca137567ccb71d544b46225966c43d8e29`
