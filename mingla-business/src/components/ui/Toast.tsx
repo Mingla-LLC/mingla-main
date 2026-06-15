@@ -51,7 +51,7 @@
  */
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { Modal, Pressable, StyleSheet, Text, useWindowDimensions, View } from "react-native";
+import { Modal, Platform, Pressable, StyleSheet, Text, useWindowDimensions, View } from "react-native";
 import type { StyleProp, ViewStyle } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Animated, {
@@ -181,7 +181,19 @@ const KIND_TOKENS: Record<ToastKind, KindTokens> = {
 // module scope) so the width is live.
 const FALLBACK_BACKGROUND = "rgba(20, 22, 26, 0.92)";
 
-export const Toast: React.FC<ToastProps> = ({
+// ORCH-1136 R3: dispatcher. Web renders the compositor-CSS-transition variant
+// (ToastWeb — zero reanimated hooks, no pan gesture since it's a no-op on web);
+// native renders the byte-identical reanimated variant (ToastNative, incl.
+// swipeOffset + the Android pan-freeze fix). Each variant calls ONLY its own
+// hooks.
+export const Toast: React.FC<ToastProps> = (props) => {
+  if (Platform.OS === "web") {
+    return <ToastWeb {...props} />;
+  }
+  return <ToastNative {...props} />;
+};
+
+const ToastNative: React.FC<ToastProps> = ({
   visible,
   kind,
   message,
@@ -334,7 +346,6 @@ export const Toast: React.FC<ToastProps> = ({
 
   if (!mounted) return null;
 
-  const tokens = KIND_TOKENS[kind];
   const topInset = insets.top > 0 ? insets.top : spacing.md;
 
   return (
@@ -365,85 +376,260 @@ export const Toast: React.FC<ToastProps> = ({
             testID={testID}
             accessibilityHint="Swipe up or tap to dismiss"
           >
-          {/* ORCH-0789: tap-anywhere-on-card dismisses. The inner close
-              Pressable below also calls onDismiss directly; RN event
-              bubbling means the outer onPress runs after the inner one
-              fires, but onDismiss is idempotent (parent flips
-              visible→false on first call).
-              ORCH-0821 rework: also swipe-up-to-dismiss via the GestureDetector
-              wrapper above. The Pressable still handles taps; the pan
-              gesture is configured with activeOffsetY=[-8,8] so a static
-              tap never accidentally registers as a swipe. */}
-          <Pressable
-            onPress={onDismiss}
-            accessibilityRole="button"
-            accessibilityLabel="Dismiss notification"
-            style={[styles.card, shadows.glassCardElevated]}
-          >
-            {/* L1 — Blur base (or solid fallback on web w/o backdrop-filter) */}
-            {blurOk ? (
-              <BlurView
-                intensity={blurIntensityTokens.cardElevated}
-                tint="dark"
-                style={StyleSheet.absoluteFill}
-              />
-            ) : (
-              <View
-                style={[
-                  StyleSheet.absoluteFill,
-                  { backgroundColor: FALLBACK_BACKGROUND },
-                ]}
-              />
-            )}
-
-            {/* L2 — Warm/error tint floor */}
-            <View
-              style={[StyleSheet.absoluteFill, { backgroundColor: tokens.tint }]}
-            />
-
-            {/* L3 — Top-edge highlight (1px liquid sparkle) */}
-            <View
-              style={[styles.topHighlight, { backgroundColor: tokens.highlight }]}
-              pointerEvents="none"
-            />
-
-            {/* L4 — Hairline border */}
-            <View
-              style={[
-                StyleSheet.absoluteFill,
-                {
-                  borderRadius: radiusTokens.lg,
-                  borderColor: tokens.border,
-                  borderWidth: 1,
-                },
-              ]}
-              pointerEvents="none"
-            />
-
-            {/* Content row — icon badge + message + close button */}
-            <View style={styles.body}>
-              <View style={[styles.iconBadge, { backgroundColor: tokens.iconBg }]}>
-                <Icon name={tokens.icon} size={18} color="#ffffff" />
-              </View>
-              <Text style={styles.message} numberOfLines={3}>
-                {message}
-              </Text>
-              {/* ORCH-0789: explicit close affordance. 32×32 visible target
-                  with hitSlop 12 → 56×56 effective hit area (I-38). */}
-              <Pressable
-                onPress={onDismiss}
-                hitSlop={12}
-                accessibilityRole="button"
-                accessibilityLabel="Dismiss notification"
-                style={styles.closeButton}
-              >
-                <Icon name="close" size={16} color={textTokens.primary} />
-              </Pressable>
-            </View>
-          </Pressable>
+          <ToastCard
+            kind={kind}
+            message={message}
+            onDismiss={onDismiss}
+            blurOk={blurOk}
+          />
           </Animated.View>
         </WebSafeGestureDetector>
       </GestureHandlerRootView>
+    </Modal>
+  );
+};
+
+/**
+ * ORCH-1136 R3: shared toast card body (glass stack + content row). Identical
+ * between web and native variants — only the animated wrapper differs (the
+ * parent Animated.View vs the web CSS-transition View).
+ */
+interface ToastCardProps {
+  kind: ToastKind;
+  message: string;
+  onDismiss: () => void;
+  blurOk: boolean;
+}
+
+const ToastCard: React.FC<ToastCardProps> = ({ kind, message, onDismiss, blurOk }) => {
+  const tokens = KIND_TOKENS[kind];
+  return (
+    // ORCH-0789: tap-anywhere-on-card dismisses. The inner close Pressable
+    // below also calls onDismiss directly; onDismiss is idempotent.
+    <Pressable
+      onPress={onDismiss}
+      accessibilityRole="button"
+      accessibilityLabel="Dismiss notification"
+      style={[styles.card, shadows.glassCardElevated]}
+    >
+      {/* L1 — Blur base (or solid fallback on web w/o backdrop-filter) */}
+      {blurOk ? (
+        <BlurView
+          intensity={blurIntensityTokens.cardElevated}
+          tint="dark"
+          style={StyleSheet.absoluteFill}
+        />
+      ) : (
+        <View
+          style={[StyleSheet.absoluteFill, { backgroundColor: FALLBACK_BACKGROUND }]}
+        />
+      )}
+
+      {/* L2 — Warm/error tint floor */}
+      <View style={[StyleSheet.absoluteFill, { backgroundColor: tokens.tint }]} />
+
+      {/* L3 — Top-edge highlight (1px liquid sparkle) */}
+      <View
+        style={[styles.topHighlight, { backgroundColor: tokens.highlight }]}
+        pointerEvents="none"
+      />
+
+      {/* L4 — Hairline border */}
+      <View
+        style={[
+          StyleSheet.absoluteFill,
+          {
+            borderRadius: radiusTokens.lg,
+            borderColor: tokens.border,
+            borderWidth: 1,
+          },
+        ]}
+        pointerEvents="none"
+      />
+
+      {/* Content row — icon badge + message + close button */}
+      <View style={styles.body}>
+        <View style={[styles.iconBadge, { backgroundColor: tokens.iconBg }]}>
+          <Icon name={tokens.icon} size={18} color="#ffffff" />
+        </View>
+        <Text style={styles.message} numberOfLines={3}>
+          {message}
+        </Text>
+        {/* ORCH-0789: explicit close affordance. 32×32 visible target
+            with hitSlop 12 → 56×56 effective hit area (I-38). */}
+        <Pressable
+          onPress={onDismiss}
+          hitSlop={12}
+          accessibilityRole="button"
+          accessibilityLabel="Dismiss notification"
+          style={styles.closeButton}
+        >
+          <Icon name="close" size={16} color={textTokens.primary} />
+        </Pressable>
+      </View>
+    </Pressable>
+  );
+};
+
+// ORCH-1136 R3: web reduced-motion read (no reanimated hook on the web path).
+const useWebReducedMotion = (): boolean => {
+  const [reduced, setReduced] = useState<boolean>(false);
+  useEffect(() => {
+    const mql = (
+      globalThis as unknown as {
+        matchMedia?: (q: string) => {
+          matches: boolean;
+          addEventListener?: (t: string, l: () => void) => void;
+          removeEventListener?: (t: string, l: () => void) => void;
+        };
+      }
+    ).matchMedia?.("(prefers-reduced-motion: reduce)");
+    if (mql === undefined) return;
+    setReduced(mql.matches);
+    const onChange = (): void => setReduced(mql.matches);
+    mql.addEventListener?.("change", onChange);
+    return (): void => mql.removeEventListener?.("change", onChange);
+  }, []);
+  return reduced;
+};
+
+/**
+ * ORCH-1136 R3 — WEB variant of Toast.
+ *
+ * Drives entry/exit with a COMPOSITOR CSS transition on `transform:
+ * translateY(...)` + `opacity` instead of the JS-main-thread reanimated rAF
+ * (withTiming on translateY/opacity), which freezes mid-slide under a
+ * heavy-page long task on web (F-1 — a success toast right after a save that
+ * re-renders a heavy list). Entry: 220ms ease-out-cubic; exit: 160ms
+ * ease-in-cubic (matching native ENTRY_DURATION/EXIT_DURATION). Reduce-motion:
+ * opacity-only.
+ *
+ * The pan/swipe gesture is a no-op on web (WebSafeGestureDetector renders
+ * children directly), so swipeOffset is always 0 on web and is dropped here —
+ * the web variant animates translateY (entry/exit) only. Calls ZERO reanimated
+ * hooks. Animates transform/opacity ONLY.
+ */
+const TOAST_OPEN_EASE_CSS = "cubic-bezier(0.33, 1, 0.68, 1)"; // Easing.out(cubic)
+const TOAST_CLOSE_EASE_CSS = "cubic-bezier(0.33, 0, 0.67, 1)"; // Easing.in(cubic)
+
+const ToastWeb: React.FC<ToastProps> = ({
+  visible,
+  kind,
+  message,
+  onDismiss,
+  testID,
+  style,
+  autoDismissMs,
+}) => {
+  const insets = useSafeAreaInsets();
+  const { width: windowWidth } = useWindowDimensions();
+  const blurOk = shouldUseRealBlur(windowWidth);
+  const reduceMotion = useWebReducedMotion();
+
+  const [mounted, setMounted] = useState<boolean>(visible);
+  const unmountTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const [animateOpen, setAnimateOpen] = useState<boolean>(false);
+  const rafRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    if (visible) {
+      setMounted(true);
+      if (unmountTimerRef.current !== null) {
+        clearTimeout(unmountTimerRef.current);
+        unmountTimerRef.current = null;
+      }
+    } else if (mounted) {
+      unmountTimerRef.current = setTimeout(() => {
+        setMounted(false);
+        unmountTimerRef.current = null;
+      }, UNMOUNT_DELAY_MS);
+    }
+    return (): void => {
+      if (unmountTimerRef.current !== null) {
+        clearTimeout(unmountTimerRef.current);
+        unmountTimerRef.current = null;
+      }
+    };
+  }, [mounted, visible]);
+
+  useEffect(() => {
+    const cancelRaf = (): void => {
+      if (rafRef.current !== null) {
+        const caf = (globalThis as unknown as { cancelAnimationFrame?: (h: number) => void })
+          .cancelAnimationFrame;
+        caf?.(rafRef.current);
+        rafRef.current = null;
+      }
+    };
+    if (visible && mounted) {
+      setAnimateOpen(false);
+      const raf = (globalThis as unknown as { requestAnimationFrame?: (cb: () => void) => number })
+        .requestAnimationFrame;
+      if (raf !== undefined) {
+        rafRef.current = raf(() => {
+          rafRef.current = raf(() => setAnimateOpen(true));
+        });
+      } else {
+        const t = setTimeout(() => setAnimateOpen(true), 0);
+        return (): void => clearTimeout(t);
+      }
+    } else if (!visible) {
+      cancelRaf();
+      setAnimateOpen(false);
+    }
+    return cancelRaf;
+  }, [visible, mounted]);
+
+  useEffect(() => {
+    if (!visible) return;
+    const ms = autoDismissMs === undefined ? AUTO_DISMISS[kind] : autoDismissMs;
+    if (ms === null) return;
+    const timer = setTimeout(onDismiss, ms);
+    return (): void => clearTimeout(timer);
+  }, [autoDismissMs, kind, onDismiss, visible]);
+
+  if (!mounted) return null;
+
+  const topInset = insets.top > 0 ? insets.top : spacing.md;
+  const dur = animateOpen ? ENTRY_DURATION : EXIT_DURATION;
+  const ease = animateOpen ? TOAST_OPEN_EASE_CSS : TOAST_CLOSE_EASE_CSS;
+  const wrapWebStyle = {
+    transition: reduceMotion
+      ? `opacity ${dur}ms ${ease}`
+      : `transform ${dur}ms ${ease}, opacity ${dur}ms ${ease}`,
+    transform: reduceMotion
+      ? "translateY(0px)"
+      : animateOpen
+        ? "translateY(0px)"
+        : `translateY(${TRANSLATE_FROM}px)`,
+    opacity: animateOpen ? 1 : 0,
+    willChange: "transform",
+  } as unknown as ViewStyle;
+
+  return (
+    <Modal
+      transparent
+      visible
+      animationType="none"
+      onRequestClose={onDismiss}
+      statusBarTranslucent
+    >
+      <View style={styles.portalRoot} pointerEvents="box-none">
+        <View
+          pointerEvents={visible ? "auto" : "none"}
+          style={[styles.wrap, { top: topInset + spacing.sm }, wrapWebStyle, style]}
+          testID={testID}
+          accessibilityHint="Tap to dismiss"
+        >
+          <ToastCard
+            kind={kind}
+            message={message}
+            onDismiss={onDismiss}
+            blurOk={blurOk}
+          />
+        </View>
+      </View>
     </Modal>
   );
 };

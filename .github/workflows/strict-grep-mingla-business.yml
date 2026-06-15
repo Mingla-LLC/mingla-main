@@ -128,6 +128,7 @@ on:
 #   - I-MAPBOX-SUGGEST-NO-TYPES-FILTER (i-mapbox-suggest-no-types-filter.mjs) — mapbox-geocode suggest call stays filter-free so POIs/venues resolve by name; self-tested (ORCH-1079 INV-3)
 #   - I-GIPHY-KEY-WIRED (i-giphy-key-wired.mjs) — app.config.ts carries the GIPHY fail-loud config-eval guard + .env.example documents EXPO_PUBLIC_GIPHY_API_KEY; self-tested (ORCH-1116 — DRAFT until CLOSE)
 #   - I-PROPOSED-1137-BIZ-WEB-LUCIDE-REAL (i-proposed-1137-biz-web-lucide-real.mjs) — the biz-WEB lucide shim renders REAL lucide-react icons via a Proxy and NEVER returns undefined for any name (no `() => null` null-stub); metro.config.js still aliases lucide-react-native -> the shim behind `platform === "web"`; self-tested (ORCH-1137 — DRAFT until CLOSE)
+#   - I-PROPOSED-1136-WEB-SHEET-CSS-TRANSITION (i-proposed-1136-web-sheet-css-transition.mjs) — the 5 shared biz-WEB sheet/overlay primitives (TopSheet, Sheet.web, SheetMobile, Modal, Toast) drive their WEB open/close animation via a compositor CSS `transition` on transform/opacity (NOT a withTiming/withSpring useAnimatedStyle on the web main-thread rAF, which freezes under a heavy-page long task); no height/layout property is animated on the web sheet path; native keeps reanimated (web-gated via Platform.OS==='web'); self-tested (ORCH-1136 R3 — DRAFT until CLOSE)
 #
 # Future gates to register (proposed but not yet implemented):
 #   - I-32 rank parity (Cycle 13a proposal)
@@ -2343,6 +2344,19 @@ jobs:
         run: node .github/scripts/strict-grep/i-proposed-1137-biz-web-lucide-real.mjs --self-test
       - name: Run ORCH-1137 biz-web lucide real-icon gate
         run: node .github/scripts/strict-grep/i-proposed-1137-biz-web-lucide-real.mjs
+
+  i-proposed-1136-web-sheet-css-transition:
+    name: "ORCH-1136 R3: biz-web sheets animate via compositor CSS transition, not JS-rAF reanimated (I-PROPOSED-1136-WEB-SHEET-CSS-TRANSITION)"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Self-test the gate (CSS-transition vs withTiming/layout fixtures)
+        run: node .github/scripts/strict-grep/i-proposed-1136-web-sheet-css-transition.mjs --self-test
+      - name: Run ORCH-1136 R3 web-sheet CSS-transition gate
+        run: node .github/scripts/strict-grep/i-proposed-1136-web-sheet-css-transition.mjs
 
   # ORCH-0962 brand-field-map-coverage gate RETIRED at META-ORCH-0972 CLOSE
   # (2026-05-26). The gate asserted that `viewRowToBrand` reads `row.brand_kind`
