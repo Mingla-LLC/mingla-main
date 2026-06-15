@@ -452,7 +452,12 @@ export default function HomeTab(): React.ReactElement {
   const hasLiveItems = liveItems.length > 0;
   const showRevenueTile = hasRevenueData;
   const hasActiveEvents = upcoming.counts.total > 0;
-  const hasUpcomingItems = upcoming.items.length > 0;
+  // ORCH-1143 SC-7 — the "Upcoming" section header + list render the non-live
+  // items only (live offerings are surfaced exclusively in the live carousel
+  // above). When every active item is live, the Upcoming section hides cleanly
+  // instead of showing an empty list. `counts`/`hasActiveEvents` still count the
+  // full set (live included) so the KPI grid is unchanged.
+  const hasUpcomingItems = upcoming.nonLiveItems.length > 0;
   const showKpiGrid = showRevenueTile || hasActiveEvents;
 
   // ORCH-1038 — unified smart to-do list: derived from live state, ordered by
@@ -690,7 +695,9 @@ export default function HomeTab(): React.ReactElement {
                     styles.desktopEventsGrid,
                   ]}
                 >
-                {upcoming.items.map((item) => {
+                {/* ORCH-1143 SC-7 — non-live items only; live offerings are in
+                    the live carousel above, never duplicated in this list. */}
+                {upcoming.nonLiveItems.map((item) => {
                     if (item.kind === "draft") {
                       const draft = item.source as DraftEvent;
                       return (
@@ -886,7 +893,9 @@ export default function HomeTab(): React.ReactElement {
 
           <FlatList
             style={styles.mobileUpcomingList}
-            data={upcoming.items}
+            // ORCH-1143 SC-7 — non-live items only; live offerings are in the
+            // live carousel above (with the scan button), never duplicated here.
+            data={upcoming.nonLiveItems}
             keyExtractor={(item) => item.key}
             renderItem={({ item }) => (
               <UpcomingListItem

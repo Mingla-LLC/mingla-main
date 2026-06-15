@@ -618,3 +618,96 @@ describe("ORCH-1143 liveItems — enumerate ALL live offerings (T2/T3/T4/T12)", 
     expect(liveItems[0]).toBe(primaryLiveItem);
   });
 });
+
+describe("ORCH-1143 SC-7 nonLiveItems — live offerings excluded from the Upcoming list", () => {
+  // SC-7: a live offering belongs ONLY in the Live-now carousel; the Upcoming
+  // list (FlatList + desktop pane) renders the non-live items. These tests
+  // exercise the real buildUpcomingItems pipeline (no source-grep) and FAIL on
+  // revert (deleting the `nonLiveItems = nonPast.filter(status !== "live")`
+  // line in upcomingBuilder.ts makes `nonLiveItems` `undefined` → the `.map`
+  // expectations throw / the exclusion assertions fail).
+
+  // deriveLiveStatus reads the REAL Date.now(); pin it so the date fixtures
+  // below resolve live/upcoming deterministically (mirrors the T2/T3/T4 block).
+  beforeEach(() => {
+    jest.spyOn(Date, "now").mockReturnValue(NOW);
+  });
+  afterEach(() => {
+    jest.restoreAllMocks();
+  });
+
+  test("SC7-1 — a live event is in liveItems but NOT in nonLiveItems; a scheduled event + draft ARE in nonLiveItems", () => {
+    const live = liveEvent({ id: "evt-live", status: "live", date: "2026-06-01", doorsOpen: "08:00", endsAt: "23:00" });
+    const scheduled = liveEvent({ id: "evt-soon", status: "live", date: "2026-06-20", doorsOpen: "19:00", endsAt: "23:00" });
+    const draftRow = draft({ id: "draft-x" });
+    const { items, liveItems, nonLiveItems } = buildUpcomingItems(
+      [live, scheduled],
+      [],
+      [],
+      [draftRow],
+      NOW,
+    );
+
+    // the live event is surfaced exclusively in the carousel set...
+    expect(liveItems.map((i) => i.id)).toContain("evt-live");
+    // ...and is NOT duplicated into the Upcoming list view.
+    expect(nonLiveItems.map((i) => i.id)).not.toContain("evt-live");
+    expect(nonLiveItems.every((i) => i.status !== "live")).toBe(true);
+
+    // the non-live items (a future-dated event surfaces as "upcoming", + draft)
+    // remain in the Upcoming list.
+    expect(nonLiveItems.map((i) => i.id).sort()).toEqual(["draft-x", "evt-soon"].sort());
+
+    // nonLiveItems is a strict projection of items (never mutates items): items
+    // still carries the full set (live + non-live).
+    expect(items.map((i) => i.id)).toContain("evt-live");
+    expect(items.length).toBe(liveItems.length + nonLiveItems.length);
+  });
+
+  test("SC7-2 — ALL items live → nonLiveItems empty (Upcoming section hides, no crash)", () => {
+    const liveA = liveEvent({ id: "evt-a", status: "live", date: "2026-06-01", doorsOpen: "08:00", endsAt: "23:00" });
+    const liveTrip = trip({
+      id: "trip-live",
+      status: "live",
+      businessTrip: {
+        startAt: "2026-05-30T09:00:00.000Z",
+        endAt: "2026-06-05T17:00:00.000Z",
+        destinationLocationText: null,
+        destinationPlaceId: null,
+        destinationLat: null,
+        destinationLng: null,
+        departurePlaceId: null,
+        departureLocationText: null,
+        departureLat: null,
+        departureLng: null,
+        capacity: null,
+      },
+    });
+    const { liveItems, nonLiveItems } = buildUpcomingItems([liveA], [], [liveTrip], [], NOW);
+
+    expect(liveItems).toHaveLength(2);
+    // the Upcoming list is empty — home gates `hasUpcomingItems` on this length,
+    // so the section hides cleanly rather than rendering an empty list.
+    expect(nonLiveItems).toHaveLength(0);
+    // `.map` over the empty projection is safe (proves no crash in the consumer).
+    expect(nonLiveItems.map((i) => i.id)).toEqual([]);
+  });
+
+  test("SC7-3 — NONE live → nonLiveItems equals items (Upcoming unchanged)", () => {
+    const scheduled = liveEvent({ id: "evt-soon", status: "live", date: "2026-06-20", doorsOpen: "19:00", endsAt: "23:00" });
+    const futureTrip = trip({ id: "trip-future", status: "scheduled" });
+    const draftRow = draft({ id: "draft-y" });
+    const { items, liveItems, nonLiveItems } = buildUpcomingItems(
+      [scheduled],
+      [],
+      [futureTrip],
+      [draftRow],
+      NOW,
+    );
+
+    expect(liveItems).toHaveLength(0);
+    // with nothing live, the Upcoming list is identical to the full set, in the
+    // same (sorted) order.
+    expect(nonLiveItems.map((i) => i.id)).toEqual(items.map((i) => i.id));
+  });
+});
