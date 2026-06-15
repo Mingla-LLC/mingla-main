@@ -5,7 +5,9 @@
  * Renders three options as tappable rows: Create event / Create experience /
  * Create trip. Each option routes:
  *   - "Create event" → `/event/create` (existing flow, unchanged)
- *   - "Create experience" → `/experience/create`
+ *   - "Create experience" → `/experience/choose` (ORCH-1144: the universal
+ *     experience-create chooser — Snap a food menu / Snap an activities menu /
+ *     Build it yourself — NOT straight to the manual wizard)
  *   - "Create trip or otherwise" → `/trip/create`
  *
  * Uses TopSheet with `heightMode="compact"` (new in ORCH-0826) so the panel
@@ -69,7 +71,10 @@ const OPTIONS: readonly CreatorOption[] = [
     iconName: "sparkle",
     title: "Create experience",
     subtitle: "A single-intent offering for venues: brunch, tasting, class.",
-    route: "/experience/create",
+    // ORCH-1144 — route to the universal experience-create chooser (Snap a food
+    // menu / Snap an activities menu / Build it yourself), shown unconditionally
+    // to every brand, instead of straight to the manual wizard.
+    route: "/experience/choose",
     testID: "universal-creator-experience",
   },
   {
