@@ -14,6 +14,8 @@
       "expo-video": ["./node_modules/expo-video"],
       "@mingla/event-rendering": ["../packages/event-rendering"],
       "@mingla/event-rendering/*": ["../packages/event-rendering/*"],
+      "@mingla/offering-rendering": ["../packages/offering-rendering"],
+      "@mingla/offering-rendering/*": ["../packages/offering-rendering/*"],
       "@mingla/theme-animations": ["../packages/theme-animations"],
       "@mingla/theme-animations/*": ["../packages/theme-animations/*"],
       "@mingla/payments-native": ["../packages/payments-native"],

@@ -52,31 +52,44 @@ import React, {
 import {
   AccessibilityInfo,
   ActivityIndicator,
-  Image,
   LayoutAnimation,
   Platform,
   Pressable,
-  ScrollView,
   Share,
   StyleSheet,
   Text,
   UIManager,
   View,
 } from "react-native";
-import { LinearGradient } from "expo-linear-gradient";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { EventCoverMedia, formatTripDateRange, RefundPolicyDisplay } from "@mingla/event-rendering";
+import {
+  boldFontFamily,
+  createThemePalette,
+  formatTripDateRange,
+  offeringSurfaceStyles,
+  resolveTheme,
+  type CtaState,
+} from "@mingla/event-rendering";
+// ORCH-1138 Leg 1C — the shared Direction-A foundation primitives. The consumer
+// trip detail converges on the business/web trip page (TripPreview FOUNDATION
+// mode) by REUSING these (NOT importing TripPreview, which is business-local).
+import {
+  ChipGroup,
+  CountAwareGallery,
+  ParallaxCoverShell,
+  useResponsiveLayout,
+} from "@mingla/offering-rendering";
 
 import { Icon } from "../../components/ui/Icon";
 // ORCH-1016 REWORK-3 — import the gorhom scroll host re-export from the primitive
 // (the SOLE permitted gorhom importer, per
-// I-PROPOSED-BASE-BOTTOM-SHEET-SOLE-GORHOM-CONSUMER) and inject it as the trip
-// detail's OWN scroll host — the exact wiring ExpandedBusinessEventSheet uses.
+// I-PROPOSED-BASE-BOTTOM-SHEET-SOLE-GORHOM-CONSUMER) and inject it as the
+// ParallaxCoverShell's ScrollComponent — gorhom owns the single registered
+// scrollable (the exact ORCH-1016/1043 contract, no nested raw ScrollView).
 import {
   BaseBottomSheet,
   BottomSheetScrollView,
 } from "../../components/ui/BaseBottomSheet";
-import { BOTTOM_NAV_CONTENT_HEIGHT } from "../../hooks/useAppLayout";
 import { ExpandedBusinessEventSheet } from "../../components/expandedCard/ExpandedBusinessEventSheet";
 import { glass } from "../../constants/designSystem";
 import { hueFromId } from "../../utils/hueFromId";
@@ -86,6 +99,11 @@ import {
   type TripDetailTier,
   type TripInstallmentScheduleData,
 } from "../../hooks/useConsumerTripDetail";
+import { useEventTheme } from "../../hooks/useEventTheme";
+import { mapConsumerTripToFoundation } from "../../hooks/useConsumerTripFoundation";
+import { useConsumerThemeFont } from "../../theme/useConsumerThemeFont";
+import { ConsumerRefundLadder } from "../../components/offering/ConsumerRefundLadder";
+import { ConsumerTripReserveBar } from "../../components/offering/ConsumerTripReserveBar";
 import type { DiscoverTripRow } from "../../services/tripsDiscoveryService";
 import type { BusinessEventCard } from "../../types/mergedDiscover";
 
@@ -310,9 +328,9 @@ export default function ConsumerTripDetailScreen({
     }
     setAboutCollapsed((c) => !c);
   }, [reduceMotion]);
-  // ORCH-1119 — one-playing guard for per-day gallery videos: only the tapped
-  // tile's key plays; every other video tile stays paused. Null = none playing.
-  const [activeVideoKey, setActiveVideoKey] = useState<string | null>(null);
+  // ORCH-1138 Leg 1C — the per-day gallery's one-playing guard now lives INSIDE
+  // the shared CountAwareGallery primitive (it owns the active-video state), so
+  // the screen no longer hand-rolls an activeVideoKey here.
 
   // ORCH-1016 — the SheetOverlayCarrier (RN Modal) is removed: it broke Android
   // scroll gestures and did NOT fix the z-order. The sheets now hide the nav
@@ -329,6 +347,32 @@ export default function ConsumerTripDetailScreen({
     () => (detail !== null ? tripToBusinessEventCard(detail) : null),
     [detail],
   );
+
+  // ORCH-1138 Leg 1C — resolve the SAME brand palette/theme the business/web trip
+  // page uses, via the EXISTING anon-safe useEventTheme(card) (reads
+  // business_public_events_view — 🔒 COMMS-0009, NEVER .from('brands')). Default
+  // theme (MINGLA palette) when the brand set none / on error — never a crash.
+  const themeQuery = useEventTheme(card);
+  const theme = themeQuery.data ?? resolveTheme(null, null);
+  const palette = useMemo(() => createThemePalette(theme), [theme]);
+  const surface = useMemo(() => offeringSurfaceStyles(palette), [palette]);
+  const boldFamily = boldFontFamily(theme);
+  // ORCH-1138 Leg 1C — load the medium + 700-weight BOLD families on demand (the
+  // 14 theme faces are deferred out of the boot bundle; a loaded custom font
+  // ignores fontWeight on native, so bold text must point fontFamily at the
+  // weighted family). Mirrors the business trip route's useThemeFont pair.
+  useConsumerThemeFont(theme.fontFamilyValue);
+  useConsumerThemeFont(boldFamily);
+
+  // ORCH-1138 Leg 1C — cover-video sound state (only shown when the cover is a
+  // video). Default muted (the immersive auto-play default).
+  const [muted, setMuted] = useState<boolean>(true);
+  const toggleMute = useCallback(() => setMuted((m) => !m), []);
+
+  // ORCH-1138 Leg 1C — native foundation render is always single-column immersive
+  // (useResponsiveLayout returns isDesktop=false on native). Referenced so the
+  // structural parity with the business FoundationTripPreview is explicit.
+  const { isDesktop } = useResponsiveLayout();
 
   // ORCH-1130 — project the sole/first plan tier's schedule from a now() anchor.
   // Null when no tier has a plan → the "HOW YOU PAY" module is suppressed and
@@ -436,265 +480,282 @@ export default function ConsumerTripDetailScreen({
   }
 
   const { closed, countdownLabel } = deadlineState(detail);
+  const priceLabel = formatMoney(detail.minPriceCents, detail.currency);
+  const reserveDisabled = closed;
+
+  // ORCH-1138 Leg 1C — map the consumer trip onto the Direction-A foundation
+  // render inputs (pure, rule-9 guarded). The same mapping the business
+  // FoundationTripPreview reads, applied to the consumer data shape.
+  const fnd = mapConsumerTripToFoundation(detail, palette);
   const dateLabel =
     detail.startAt !== null && detail.endAt !== null
       ? formatTripDateRange(detail.startAt, detail.endAt)
       : null;
-  const priceLabel = formatMoney(detail.minPriceCents, detail.currency);
-  const reserveDisabled = closed;
-  const includedItems = detail.inclusions.filter((i) => i.kind === "included");
-  const excludedItems = detail.inclusions.filter((i) => i.kind === "excluded");
+  // sold-out derived from spotsLeft (consumer has no per-tier ticketsRemaining).
+  const isSoldOut = detail.spotsLeft !== null && detail.spotsLeft <= 0;
 
-  // ORCH-1016 REWORK-3 — the detail content is the scroll-host's children. The
-  // screen's own gorhom BottomSheetScrollView (mounted in the return below, mirror
-  // of ExpandedBusinessEventSheet) wraps this body as a flex:1 direct child of
-  // BottomSheetContent, so the day-by-day list + policy + tiers physically scroll
-  // while pan-down still dismisses. The close/share chrome rides at the top of the
-  // scroll, over the hero.
-  const detailBody: ReactElement = (
+  // ── foundation body content (mirror business FoundationTripPreview `left`) ──
+  const bodyChildren: ReactElement = (
     <>
-      {chrome}
-      {/* Hero */}
-      <View style={styles.hero}>
-        <EventCoverMedia
-          hue={hueFromId(detail.tripId)}
-          mediaUrl={detail.coverMediaUrl}
-          mediaType={detail.coverMediaType}
-          radius={0}
-          videoContentFit="cover"
-          label={detail.title}
-          style={StyleSheet.absoluteFill}
-        />
-        <LinearGradient
-          colors={["rgba(0,0,0,0)", "rgba(0,0,0,0.8)"]}
-          locations={[0.45, 1]}
-          style={StyleSheet.absoluteFill}
-          pointerEvents="none"
-        />
+      {/* phone lead: eyebrow (duration · destination) + title */}
+      <View style={styles.leadBlock}>
+        {fnd.heroEyebrow !== null ? (
+          <Text style={[styles.eyebrowLead, surface.primaryText]}>
+            {fnd.heroEyebrow}
+          </Text>
+        ) : null}
+        <Text
+          style={[styles.fndTitle, surface.primaryText, { fontFamily: boldFamily }]}
+        >
+          {fnd.title}
+        </Text>
       </View>
 
-      <View style={styles.body}>
-        <Text style={styles.title}>{detail.title}</Text>
-        <View style={styles.bylineRow}>
-          <Text style={styles.byline}>by {detail.brandName}</Text>
-          {detail.brandVerified ? (
-            <Icon name="shield-checkmark" size={14} color={ACCENT} />
+      {/* meta chips (real columns only — rule 9) */}
+      <View style={styles.metaChipRow}>
+        {dateLabel !== null ? (
+          <View style={[styles.metaChip, surface.card]}>
+            <Icon name="calendar" size={15} color={palette.accent} />
+            <Text
+              style={[styles.metaChipText, surface.secondaryText, { fontFamily: boldFamily }]}
+            >
+              {dateLabel}
+            </Text>
+          </View>
+        ) : null}
+        {fnd.duration !== null ? (
+          <View style={[styles.metaChip, surface.card]}>
+            <Icon name="time-outline" size={15} color={palette.accent} />
+            <Text
+              style={[styles.metaChipText, surface.secondaryText, { fontFamily: boldFamily }]}
+            >
+              {fnd.duration}
+            </Text>
+          </View>
+        ) : null}
+        {fnd.seatsLabel !== null ? (
+          <View style={[styles.metaChip, surface.card]}>
+            <Icon name="people-outline" size={15} color={palette.accent} />
+            <Text
+              style={[styles.metaChipText, surface.secondaryText, { fontFamily: boldFamily }]}
+            >
+              {fnd.seatsLabel}
+            </Text>
+          </View>
+        ) : null}
+        {fnd.destination !== null ? (
+          <View style={[styles.metaChip, surface.card]}>
+            <Icon name="location" size={15} color={palette.accent} />
+            <Text
+              style={[styles.metaChipText, surface.secondaryText, { fontFamily: boldFamily }]}
+            >
+              {fnd.destination}
+            </Text>
+          </View>
+        ) : null}
+      </View>
+
+      {/* brand chip — brand cover not available on consumer → accentWash tile */}
+      <View style={[styles.brandRow, surface.card]}>
+        <View style={[styles.brandTile, { backgroundColor: palette.accentWash }]} />
+        <View style={styles.brandTextCol}>
+          <Text style={[styles.brandKicker, surface.tertiaryText]}>
+            Presented by
+          </Text>
+          <View style={styles.brandNameRow}>
+            <Text
+              style={[styles.brandName, surface.primaryText, { fontFamily: boldFamily }]}
+            >
+              {fnd.brandName}
+            </Text>
+            {fnd.brandVerified ? (
+              <Icon name="shield-checkmark" size={14} color={palette.accent} />
+            ) : null}
+          </View>
+        </View>
+      </View>
+
+      {/* deadline state band (closed / countdown) */}
+      {closed ? (
+        <View style={[styles.band, styles.bandClosed]}>
+          <Text style={styles.bandClosedTitle}>Bookings closed</Text>
+          <Text style={styles.bandBody}>
+            This trip stopped taking new bookings. Reach out to the organizer
+            with questions.
+          </Text>
+        </View>
+      ) : countdownLabel !== null ? (
+        <View style={[styles.band, styles.bandCountdown]}>
+          <Text style={styles.bandCountdownText}>{countdownLabel}</Text>
+        </View>
+      ) : null}
+
+      {/* route — leaving from → destination (each leg only when present) */}
+      {fnd.route !== null ? (
+        <View style={[styles.route, surface.card]}>
+          {fnd.route.departure !== null ? (
+            <View style={styles.routeLeg}>
+              <Text style={[styles.routeLabel, surface.tertiaryText]}>
+                Leaving from
+              </Text>
+              <Text
+                style={[styles.routePlace, surface.primaryText, { fontFamily: boldFamily }]}
+              >
+                {fnd.route.departure}
+              </Text>
+            </View>
+          ) : null}
+          {fnd.route.departure !== null && fnd.route.destination !== null ? (
+            <Text style={[styles.routeArrow, { color: palette.accent }]}>→</Text>
+          ) : null}
+          {fnd.route.destination !== null ? (
+            <View style={styles.routeLeg}>
+              <Text style={[styles.routeLabel, surface.tertiaryText]}>
+                Destination
+              </Text>
+              <Text
+                style={[styles.routePlace, surface.primaryText, { fontFamily: boldFamily }]}
+              >
+                {fnd.route.destination}
+              </Text>
+            </View>
           ) : null}
         </View>
+      ) : null}
 
-        {/* Meta rows */}
-        {dateLabel !== null ? (
-          <View style={styles.metaRow}>
-            <Icon name="calendar-outline" size={16} color={WARM} />
-            <Text style={styles.metaText}>{dateLabel}</Text>
-          </View>
-        ) : null}
-        {/* Leaving from — ABOVE destination */}
-        {detail.departureText !== null ? (
-          <View style={styles.metaRow}>
-            <Icon name="paper-plane-outline" size={16} color={WARM} />
-            <Text style={styles.metaText}>Leaving from {detail.departureText}</Text>
-          </View>
-        ) : null}
-        {detail.destinationText !== null ? (
-          <View style={styles.metaRow}>
-            <Icon name="navigate-outline" size={16} color={WARM} />
-            <Text style={styles.metaText}>{detail.destinationText}</Text>
-          </View>
-        ) : null}
-        {detail.totalCapacity !== null ? (
-          <View style={styles.metaRow}>
-            <Icon name="people-outline" size={16} color={WARM} />
-            <Text style={styles.metaText}>
-              {detail.totalCapacity} traveler{detail.totalCapacity === 1 ? "" : "s"} max
-            </Text>
-          </View>
-        ) : null}
-
-        {/* Deadline state band */}
-        {closed ? (
-          <View style={[styles.band, styles.bandClosed]}>
-            <Text style={styles.bandClosedTitle}>Bookings closed</Text>
-            <Text style={styles.bandBody}>
-              This trip stopped taking new bookings. Reach out to the organizer
-              with questions.
-            </Text>
-          </View>
-        ) : countdownLabel !== null ? (
-          <View style={[styles.band, styles.bandCountdown]}>
-            <Text style={styles.bandCountdownText}>{countdownLabel}</Text>
-          </View>
-        ) : null}
-
-        {/* Refund ladder */}
-        {detail.refundPolicy !== null ? (
-          <View style={styles.section}>
-            <RefundPolicyDisplay policy={detail.refundPolicy} />
-          </View>
-        ) : null}
-
-        {/* Description — ORCH-1117 collapsible (collapsed by default; copy ≤160
-            chars renders full with no toggle). State signaled by the word +
-            chevron, never color alone. */}
-        {detail.description !== null && detail.description.trim().length > 0
-          ? (() => {
-              const aboutText = detail.description;
-              const canCollapse = aboutText.length > ABOUT_COLLAPSE_THRESHOLD;
-              const collapsed = canCollapse && aboutCollapsed;
-              return (
-                <View>
-                  <Text
-                    style={styles.description}
-                    numberOfLines={collapsed ? 3 : undefined}
-                    ellipsizeMode="tail"
-                  >
-                    {aboutText}
-                  </Text>
-                  {canCollapse ? (
-                    <Pressable
-                      onPress={toggleAbout}
-                      accessibilityRole="button"
-                      accessibilityState={{ expanded: !collapsed }}
-                      accessibilityLabel={collapsed ? "Read more" : "Show less"}
-                      accessibilityHint={
-                        collapsed
-                          ? "Expands the description"
-                          : "Collapses the description"
-                      }
-                      style={styles.aboutToggleRow}
-                    >
-                      <Text style={styles.aboutToggleText}>
-                        {collapsed ? "Read more" : "Show less"}
-                      </Text>
-                      <Icon
-                        name={
-                          collapsed ? "chevron-down" : "chevron-up"
-                        }
-                        size={16}
-                        color={WARM}
-                      />
-                    </Pressable>
-                  ) : null}
-                </View>
-              );
-            })()
-          : null}
-
-        {/* Itinerary */}
-        {detail.days.length > 0 ? (
-          <View style={styles.section}>
-            <Text style={styles.sectionLabel}>Day by day</Text>
-            {detail.days.map((day) => (
-              <View key={day.id} style={styles.dayCard}>
-                <Text style={styles.dayOrdinal}>DAY {day.ordinal}</Text>
-                <Text style={styles.dayTitle}>{day.title}</Text>
-                {day.narrative !== null && day.narrative.trim().length > 0 ? (
-                  <Text style={styles.dayNarrative}>{day.narrative}</Text>
-                ) : null}
-                {/* ORCH-1119 — per-day media gallery. Constitution #9: a day with
-                    NO media renders ZERO gallery nodes (no empty frame). */}
-                {day.media.length > 0 ? (
-                  <ScrollView
-                    horizontal
-                    showsHorizontalScrollIndicator={false}
-                    contentContainerStyle={styles.dayMediaRow}
-                    accessibilityLabel={`Day ${day.ordinal} media gallery`}
-                  >
-                    {day.media.map((m, mi) => {
-                      const key = `${day.id}-${mi}`;
-                      return m.type === "video" ? (
-                        <Pressable
-                          key={key}
-                          onPress={() =>
-                            setActiveVideoKey((cur) =>
-                              cur === key ? null : key,
-                            )
-                          }
-                          accessibilityRole="imagebutton"
-                          accessibilityLabel={`Day ${day.ordinal} media ${mi + 1}, video`}
-                          style={styles.dayMediaTile}
-                        >
-                          <EventCoverMedia
-                            mediaUrl={m.url}
-                            mediaType="video"
-                            autoplay
-                            playbackActive={activeVideoKey === key}
-                            muted
-                            loop
-                            radius={12}
-                            height="100%"
-                            width="100%"
-                          />
-                          {activeVideoKey !== key ? (
-                            <View style={styles.dayMediaPlayBadge} pointerEvents="none">
-                              <Icon name="play" size={12} color="#FFFFFF" />
-                            </View>
-                          ) : null}
-                        </Pressable>
-                      ) : (
-                        <Image
-                          key={key}
-                          source={{ uri: m.url }}
-                          style={styles.dayMediaTile}
-                          resizeMode="cover"
-                          accessibilityRole="image"
-                          accessibilityLabel={`Day ${day.ordinal} media ${mi + 1}, image`}
-                        />
-                      );
-                    })}
-                  </ScrollView>
-                ) : null}
-              </View>
-            ))}
-          </View>
-        ) : null}
-
-        {/* Inclusions */}
-        {includedItems.length > 0 || excludedItems.length > 0 ? (
-          <View style={styles.section}>
-            {includedItems.length > 0 ? (
-              <>
-                <Text style={styles.sectionLabel}>What&apos;s included</Text>
-                {includedItems.map((i) => (
-                  <View key={i.id} style={styles.inclRow}>
-                    <Icon name="checkmark-circle-outline" size={18} color="#34C759" />
-                    <Text style={styles.inclText}>{i.item}</Text>
-                  </View>
-                ))}
-              </>
-            ) : null}
-            {excludedItems.length > 0 ? (
-              <>
-                <Text style={[styles.sectionLabel, { marginTop: 12 }]}>Not included</Text>
-                {excludedItems.map((i) => (
-                  <View key={i.id} style={styles.inclRow}>
-                    <Icon name="close" size={18} color="rgba(255,255,255,0.4)" />
-                    <Text style={[styles.inclText, styles.inclTextMuted]}>{i.item}</Text>
-                  </View>
-                ))}
-              </>
-            ) : null}
-          </View>
-        ) : null}
-
-        {/* Tiers */}
-        {detail.tiers.length > 0 ? (
-          <View style={styles.section}>
-            <Text style={styles.sectionLabel}>Pricing</Text>
-            {detail.tiers.map((tier) => (
-              <View key={tier.ticketTypeId} style={styles.tierRow}>
-                <Text style={styles.tierName}>{tier.tierName}</Text>
-                <Text style={styles.tierPrice}>
-                  {tier.isFree
-                    ? "Free"
-                    : formatMoney(tier.priceCents, tier.currency) ?? ""}
+      {/* about — ORCH-1117 collapsible (collapsed by default; ≤160 chars no toggle) */}
+      {fnd.description !== null
+        ? (() => {
+            const aboutText = fnd.description;
+            const canCollapse = aboutText.length > ABOUT_COLLAPSE_THRESHOLD;
+            const collapsed = canCollapse && aboutCollapsed;
+            return (
+              <View style={styles.section}>
+                <Text
+                  style={[styles.secTitle, surface.primaryText, { fontFamily: boldFamily }]}
+                >
+                  About this trip
                 </Text>
+                <Text
+                  style={[styles.aboutText, surface.secondaryText]}
+                  numberOfLines={collapsed ? 3 : undefined}
+                  ellipsizeMode="tail"
+                >
+                  {aboutText}
+                </Text>
+                {canCollapse ? (
+                  <Pressable
+                    onPress={toggleAbout}
+                    accessibilityRole="button"
+                    accessibilityState={{ expanded: !collapsed }}
+                    accessibilityLabel={collapsed ? "Read more" : "Show less"}
+                    accessibilityHint={
+                      collapsed
+                        ? "Expands the description"
+                        : "Collapses the description"
+                    }
+                    style={styles.aboutToggleRow}
+                  >
+                    <Text style={[styles.aboutToggleText, { color: palette.accent }]}>
+                      {collapsed ? "Read more" : "Show less"}
+                    </Text>
+                    <Icon
+                      name={collapsed ? "chevron-down" : "chevron-up"}
+                      size={16}
+                      color={palette.accent}
+                    />
+                  </Pressable>
+                ) : null}
+              </View>
+            );
+          })()
+        : null}
+
+      {/* day by day — itinerary spine + count-aware galleries */}
+      {fnd.days.length > 0 ? (
+        <View style={styles.section}>
+          <Text
+            style={[styles.secTitle, surface.primaryText, { fontFamily: boldFamily }]}
+          >
+            Day by day
+          </Text>
+          <View style={styles.itin}>
+            <View style={[styles.itinSpine, { backgroundColor: palette.accentWash }]} />
+            {fnd.days.map((day) => (
+              <View key={day.id} style={styles.day}>
+                <View style={[styles.dayDot, { backgroundColor: palette.accent }]}>
+                  <Text style={[styles.dayDotText, { color: palette.accentText }]}>
+                    {day.ordinal}
+                  </Text>
+                </View>
+                <View style={[styles.dayCard, surface.card]}>
+                  <Text style={[styles.dayOrd, { color: palette.accent }]}>
+                    Day {day.ordinal}
+                  </Text>
+                  <Text
+                    style={[styles.dayTitle, surface.primaryText, { fontFamily: boldFamily }]}
+                  >
+                    {day.title}
+                  </Text>
+                  {day.narrative !== null ? (
+                    <Text style={[styles.dayNarr, surface.secondaryText]}>
+                      {day.narrative}
+                    </Text>
+                  ) : null}
+                  {/* CountAwareGallery renders ZERO nodes for 0 media (rule 9). */}
+                  <CountAwareGallery
+                    items={day.gallery}
+                    palette={palette}
+                    variant="phone"
+                    accessibilityLabelPrefix={`Day ${day.ordinal} media`}
+                  />
+                </View>
               </View>
             ))}
           </View>
-        ) : null}
+        </View>
+      ) : null}
 
-        {/* ORCH-1130 — "HOW YOU PAY" module. Renders ONLY for a plan trip that
+      {/* what's included */}
+      {fnd.includedChips.length > 0 ? (
+        <View style={styles.section}>
+          <Text
+            style={[styles.secTitle, surface.primaryText, { fontFamily: boldFamily }]}
+          >
+            What&rsquo;s included
+          </Text>
+          <ChipGroup chips={fnd.includedChips} palette={palette} />
+        </View>
+      ) : null}
+
+      {/* what's not included */}
+      {fnd.excludedChips.length > 0 ? (
+        <View style={styles.section}>
+          <Text
+            style={[styles.secTitle, surface.primaryText, { fontFamily: boldFamily }]}
+          >
+            What&rsquo;s not included
+          </Text>
+          <ChipGroup chips={fnd.excludedChips} palette={palette} />
+        </View>
+      ) : null}
+
+      {/* destination map — DEFERRED on consumer (OQ-1A): the consumer trip data
+          carries NO destination lat/lng (F-4), so the section is omitted (rule 9 —
+          no fabricated tile). Data-path parity gap vs the business/web page; see
+          the implementation report. */}
+
+      {/* cancellation policy — palette-themed ladder (OQ-2 = port for parity) */}
+      <ConsumerRefundLadder
+        policy={detail.refundPolicy}
+        bookingDeadline={detail.bookingDeadline}
+        palette={palette}
+        surface={surface}
+        boldFamily={boldFamily}
+      />
+
+      {/* HOW YOU PAY module — UNCHANGED from today (mapping table: pricing/
+          installments unchanged). Renders ONLY for a plan trip that
             is bookable + not closed (no choosing a payment for an unbuyable
             trip). Segmented toggle mirrors Path A; selected = border + fill +
             dot (3 channels). Threads the explicit choice into Reserve. */}
@@ -833,86 +894,81 @@ export default function ConsumerTripDetailScreen({
             )}
           </View>
         ) : null}
-      </View>
     </>
   );
 
-  // ORCH-1016 ROOT-CAUSE FIX — the Reserve bar is a SIBLING rendered directly
-  // below {detailBody} as the second child of the bare scrollMode="scroll" sheet
-  // (NOT BaseBottomSheet's `stickyFooter` prop, which routes the sheet into the
-  // nested BottomSheetView branch that froze the scroll). The footer only needs
-  // OS safe-area clearance: the sheet sets `hidesBottomNav`, so the GlassBottomNav
-  // is hidden while it's open and the Reserve CTA has no floating nav to clear.
-  const footerNavClearance = Math.max(insets.bottom, 16);
-  const scrollBottomClearance = footerNavClearance;
-  // ORCH-1117 — standardized Reserve bar (price-left / action-right anatomy).
-  // When the PAID brand can't charge yet (detail.bookable === false), render a
-  // NON-tappable "Booking unavailable" info strip instead of the Reserve action
-  // (no dead taps, Constitution #1). The existing "Bookings closed" disabled
-  // state is preserved. F-E: this UPGRADES the existing scroll-sibling bar — it
-  // is NOT BaseBottomSheet.stickyFooter (which froze the scroll in ORCH-1016).
-  const reserveFooter: ReactElement =
-    detail.bookable === false ? (
-      <View
-        style={[
-          styles.reserveBar,
-          styles.reserveBarUnavailable,
-          { paddingBottom: footerNavClearance },
-        ]}
-        accessibilityRole="text"
-        accessibilityLabel="Booking unavailable. The organizer is finishing payment setup."
-      >
-        <Text style={styles.reserveStripGlyph}>ⓘ</Text>
-        <View style={styles.reserveStripTextCol}>
-          <Text style={styles.reserveStripTitle}>Booking unavailable</Text>
-          <Text style={styles.reserveStripSubline}>
-            The organizer is finishing payment setup.
-          </Text>
-        </View>
-      </View>
-    ) : (
-      <View style={[styles.reserveBar, { paddingBottom: footerNavClearance }]}>
-        <View style={styles.reservePriceCol}>
-          {/* ORCH-1130 ADDENDUM (Seth-BINDING) — the Reserve price reflects the
-              amount DUE TODAY for the current pay-full vs pay-over-time
-              selection, mirroring Path A. When "Pay over time" is selected on a
-              plan trip the bar leads with the deposit due today
-              ("{deposit} today", read from the same projected schedule the
-              module renders, never recomputed); otherwise it shows the full
-              "From {price}". No-plan / pay-in-full → unchanged. */}
-          <Text style={styles.reservePriceLabel}>
-            {planSchedule !== null && paymentPlanChoice === "installments"
-              ? `${formatMoneyExact(planSchedule.depositCents, planSchedule.currency)} today`
-              : detail.hasFreeTier && priceLabel === null
-                ? "Free"
-                : priceLabel !== null
-                  ? `From ${priceLabel}`
-                  : ""}
-          </Text>
-        </View>
-        <Pressable
-          style={[
-            styles.reserveBtn,
-            reserveDisabled && styles.reserveBtnDisabled,
-          ]}
-          disabled={reserveDisabled}
-          onPress={() => setReserveSheetVisible(true)}
-          accessibilityLabel="Reserve this trip"
-        >
-          <Text style={styles.reserveBtnText}>
-            {reserveDisabled ? "Bookings closed" : "Reserve"}
-          </Text>
-        </Pressable>
-      </View>
-    );
+  // ORCH-1138 Leg 1C — the FLOATING reserve bar (Seth's explicit ask). It floats
+  // over the scrolling content via a position:"absolute" overlay INSIDE the
+  // ParallaxCoverShell body host (see the return) — NOT BaseBottomSheet's
+  // `stickyFooter` prop. The reserve resolves to the SAME buy-state shape
+  // (CtaState) the business/web TripReserveBar uses, so the consumer + business
+  // bars read identically. Price label + kicker mirror the business bar:
+  //   • plan trip + "Pay over time" → "{deposit} today" + "Due today · deposit"
+  //   • free → "Free", no kicker
+  //   • else → "From {price}" + "All-in, taxes included"
+  // checkout wiring is UNCHANGED — onPress → setReserveSheetVisible(true).
+  const barPriceLabel =
+    planSchedule !== null && paymentPlanChoice === "installments"
+      ? `${formatMoneyExact(planSchedule.depositCents, planSchedule.currency)} today`
+      : detail.hasFreeTier && priceLabel === null
+        ? "Free"
+        : priceLabel !== null
+          ? priceLabel
+          : "";
+  const barKicker =
+    barPriceLabel === "Free" || barPriceLabel === ""
+      ? null
+      : planSchedule !== null && paymentPlanChoice === "installments"
+        ? "Due today · deposit"
+        : "All-in, taxes included";
+  const reserveCta: CtaState =
+    detail.bookable === false
+      ? {
+          kind: "unavailable",
+          title: "Booking unavailable",
+          subline: "The organizer is finishing payment setup.",
+          tappable: false,
+        }
+      : reserveDisabled
+        ? { kind: "unavailable", title: "Bookings closed", subline: null, tappable: false }
+        : isSoldOut
+          ? { kind: "unavailable", title: "Sold out", subline: null, tappable: false }
+          : barPriceLabel === "Free"
+            ? { kind: "free", label: "Reserve my spot", tappable: true }
+            : {
+                kind: "buy",
+                label: "Reserve my spot",
+                price: barPriceLabel === "" ? "" : `From ${barPriceLabel}`,
+                tappable: true,
+              };
 
-  // ORCH-1016 ROOT-CAUSE FIX (measured on-device): use a BARE scrollMode="scroll"
-  // so the gorhom BottomSheetScrollView is the DIRECT child of BottomSheetContent —
-  // the ONLY structure gorhom constrains to the snap height (a header / stickyFooter
-  // / bodyContainerStyle wrapper makes gorhom size the sheet to content → viewport
-  // == content → maxScroll 0 → frozen, proven by measurement). The Reserve CTA lives
-  // at the END of the scroll content. `hidesBottomNav` hides the floating nav while
-  // open so nothing is painted over the CTA — no fragile scroll-padding needed.
+  // ORCH-1138 Leg 1C — clearance so the last content row clears the floating bar.
+  const reserveBarClearance = 96 + Math.max(insets.bottom, 16);
+
+  const floatingReserve: ReactElement = (
+    <ConsumerTripReserveBar
+      cta={reserveCta}
+      palette={palette}
+      kicker={barKicker}
+      fontFamily={boldFamily}
+      onPress={() => setReserveSheetVisible(true)}
+      testID="orch-1138-consumer-trip-reserve"
+    />
+  );
+
+  // ORCH-1138 Leg 1C — the populated body renders the Direction-A foundation via
+  // ParallaxCoverShell INSIDE a scrollMode="view" BaseBottomSheet. The shell is
+  // given the gorhom BottomSheetScrollView as its scroll host (see the JSX prop
+  // below) so gorhom owns the SINGLE registered scrollable (the ORCH-1016/1043
+  // contract — no nested raw ScrollView, no viewport==content freeze). The
+  // floating reserve bar is an ABSOLUTE overlay
+  // SIBLING of the shell inside a flex:1 host (NOT stickyFooter), so it floats over
+  // the scroll without nesting a second scrollable. The shell's native branch
+  // (isDesktop=false on native) provides the parallax cover + OfferingChrome
+  // (close/share/mute) — the hand-rolled chrome is NOT rendered here (foundation
+  // owns it). DEVICE-VERIFY scroll-not-frozen + bar-floats on iOS + Android +
+  // the cold deep-link route (OQ-3).
+  void isDesktop; // native is always single-column immersive (asserted for parity).
   return renderSheetGroup(
     <>
       <BaseBottomSheet
@@ -921,20 +977,47 @@ export default function ConsumerTripDetailScreen({
         theme="dark"
         snapPoints={SHEET_SNAP_POINTS}
         initialIndex={SHEET_INITIAL_INDEX}
-        scrollMode="scroll"
+        scrollMode="view"
         hidesBottomNav
-        scrollProps={{
-          contentContainerStyle: styles.scrollContent,
-          showsVerticalScrollIndicator: false,
-        }}
         accessibilityLabel={detail.title}
       >
-        {detailBody}
-        {reserveFooter}
+        <View style={styles.foundationHost}>
+          <ParallaxCoverShell
+            palette={palette}
+            theme={theme}
+            coverMediaUrl={fnd.coverMediaUrl}
+            coverMediaType={fnd.coverMediaType}
+            coverHue={hueFromId(detail.tripId)}
+            entranceAnimationKey={`trip:${detail.tripId}`}
+            muted={muted}
+            onToggleMute={toggleMute}
+            showMute={fnd.coverMediaType === "video"}
+            onClose={onBack}
+            onShare={handleShare}
+            ScrollComponent={BottomSheetScrollView}
+            heroEyebrow={
+              fnd.heroEyebrow !== null ? (
+                <Text style={styles.heroEyebrow}>{fnd.heroEyebrow}</Text>
+              ) : undefined
+            }
+            heroTitle={
+              <Text style={[styles.heroTitle, { fontFamily: boldFamily }]}>
+                {fnd.title}
+              </Text>
+            }
+            contentBottomInset={reserveBarClearance}
+            safeAreaTop={insets.top}
+            testID="orch-1138-consumer-trip-shell"
+          >
+            {bodyChildren}
+          </ParallaxCoverShell>
+          {floatingReserve}
+        </View>
       </BaseBottomSheet>
 
       {/* Reserve flow — reuses the proven business-event checkout sheet. Sibling
-          BaseBottomSheet root in the same fragment so it overlays this sheet. */}
+          BaseBottomSheet root in the same fragment so it overlays this sheet.
+          UNCHANGED from today (no consumer-checkout change). */}
       {card !== null ? (
         <ExpandedBusinessEventSheet
           visible={reserveSheetVisible}
@@ -967,10 +1050,113 @@ export default function ConsumerTripDetailScreen({
 }
 
 const styles = StyleSheet.create({
-  // Minimum breathing room; runtime footer/nav clearance is merged inline so
-  // the final pricing/tickets rows can scroll fully above the Reserve bar + nav.
-  scrollContent: { paddingBottom: 24 },
-  hero: { width: "100%", height: 320, backgroundColor: "#1a1c20" },
+  // ORCH-1138 Leg 1C — the flex:1 host that lets ParallaxCoverShell's native
+  // branch (flex:1 nativeHost) claim the gorhom-bounded sheet height and lets the
+  // floating reserve bar absolute-overlay over it.
+  foundationHost: { flex: 1 },
+  // ---- foundation lead / title / eyebrow (mirror business FoundationTripPreview) ----
+  leadBlock: { marginBottom: 4 },
+  eyebrowLead: {
+    fontSize: 11,
+    fontWeight: "900",
+    letterSpacing: 1.6,
+    textTransform: "uppercase",
+    marginBottom: 8,
+  },
+  fndTitle: { fontSize: 32, lineHeight: 35, fontWeight: "900", letterSpacing: -0.5 },
+  heroEyebrow: {
+    color: "#ffffff",
+    opacity: 0.92,
+    fontSize: 12,
+    fontWeight: "900",
+    letterSpacing: 1.6,
+    textTransform: "uppercase",
+    marginBottom: 8,
+  },
+  heroTitle: {
+    color: "#ffffff",
+    fontSize: 40,
+    lineHeight: 44,
+    fontWeight: "900",
+    letterSpacing: -0.5,
+    maxWidth: "82%",
+  },
+  // ---- meta chips ----
+  metaChipRow: { flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 16 },
+  metaChip: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  metaChipText: { fontSize: 13, fontWeight: "600" },
+  // ---- brand chip ----
+  brandRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    marginTop: 18,
+    borderRadius: 16,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+  },
+  brandTile: { width: 42, height: 42, borderRadius: 999 },
+  brandTextCol: { flexShrink: 1 },
+  brandKicker: {
+    fontSize: 10,
+    fontWeight: "800",
+    letterSpacing: 1.2,
+    textTransform: "uppercase",
+  },
+  brandNameRow: { flexDirection: "row", alignItems: "center", gap: 6, marginTop: 1 },
+  brandName: { fontSize: 15, fontWeight: "800" },
+  // ---- section / titles ----
+  section: { marginTop: 24 },
+  secTitle: { fontSize: 20, fontWeight: "900", letterSpacing: -0.3, marginBottom: 12 },
+  // ---- route ----
+  route: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    borderRadius: 16,
+    padding: 14,
+    marginTop: 18,
+  },
+  routeLeg: { flex: 1, minWidth: 0 },
+  routeLabel: {
+    fontSize: 10,
+    fontWeight: "800",
+    letterSpacing: 1,
+    textTransform: "uppercase",
+  },
+  routePlace: { fontSize: 14, fontWeight: "700", marginTop: 2 },
+  routeArrow: { fontSize: 18 },
+  // ---- about ----
+  aboutText: { fontSize: 16, lineHeight: 23, marginTop: 0 },
+  // ---- itinerary spine ----
+  itin: { position: "relative", paddingLeft: 30, marginTop: 4 },
+  itinSpine: { position: "absolute", left: 9, top: 6, bottom: 6, width: 2 },
+  day: { position: "relative", paddingBottom: 18 },
+  dayDot: {
+    position: "absolute",
+    left: -30,
+    top: 2,
+    width: 20,
+    height: 20,
+    borderRadius: 999,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  dayDotText: { fontSize: 10, fontWeight: "900" },
+  dayOrd: {
+    fontSize: 10,
+    fontWeight: "900",
+    letterSpacing: 1,
+    textTransform: "uppercase",
+  },
+  dayNarr: { fontSize: 13, lineHeight: 20, marginTop: 6 },
   closeChrome: {
     position: "absolute",
     left: 12,
@@ -993,58 +1179,18 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(0,0,0,0.5)",
     zIndex: 10,
   },
-  body: { padding: 20, gap: 6 },
-  title: { fontSize: 22, fontWeight: "700", color: "#FFFFFF", lineHeight: 28 },
-  bylineRow: { flexDirection: "row", alignItems: "center", gap: 6, marginBottom: 6 },
-  byline: { fontSize: 15, color: "rgba(255,255,255,0.72)" },
-  metaRow: { flexDirection: "row", alignItems: "center", gap: 8, marginTop: 2 },
-  metaText: { fontSize: 15, color: "rgba(255,255,255,0.9)", flexShrink: 1 },
+  // ---- foundation day card (palette-themed via surface.card at the call site) ----
+  dayCard: { borderRadius: 14, padding: 14 },
+  dayTitle: { fontSize: 15, fontWeight: "800", marginTop: 4 },
+  // ---- deadline state bands (kept from pre-1138) ----
   band: { borderRadius: 14, padding: 14, marginTop: 14 },
   bandClosed: { backgroundColor: "rgba(255,80,80,0.12)", borderWidth: 1, borderColor: "rgba(255,80,80,0.3)" },
   bandClosedTitle: { fontSize: 15, fontWeight: "700", color: "#FF6B6B", marginBottom: 4 },
   bandBody: { fontSize: 14, color: "rgba(255,255,255,0.7)", lineHeight: 19 },
   bandCountdown: { backgroundColor: "rgba(235,120,37,0.14)", borderWidth: 1, borderColor: "rgba(235,120,37,0.4)" },
   bandCountdownText: { fontSize: 14, fontWeight: "600", color: WARM },
-  section: { marginTop: 18 },
+  // ---- HOW YOU PAY module label (kept verbatim from pre-1138) ----
   sectionLabel: { fontSize: 13, fontWeight: "700", letterSpacing: 0.5, color: WARM, marginBottom: 8, textTransform: "uppercase" },
-  description: { fontSize: 16, color: "rgba(255,255,255,0.85)", lineHeight: 23, marginTop: 14 },
-  dayCard: { marginBottom: 12 },
-  dayOrdinal: { fontSize: 11, fontWeight: "700", letterSpacing: 0.3, color: WARM },
-  dayTitle: { fontSize: 16, fontWeight: "600", color: "#FFFFFF", marginTop: 2 },
-  dayNarrative: { fontSize: 14, color: "rgba(255,255,255,0.65)", lineHeight: 20, marginTop: 4 },
-  // ORCH-1119 — per-day gallery
-  dayMediaRow: { flexDirection: "row", gap: 8, marginTop: 8, paddingVertical: 2 },
-  dayMediaTile: {
-    width: 96,
-    height: 96,
-    borderRadius: 12,
-    overflow: "hidden",
-    backgroundColor: "rgba(255,255,255,0.06)",
-  },
-  dayMediaPlayBadge: {
-    position: "absolute",
-    left: 6,
-    bottom: 6,
-    width: 22,
-    height: 22,
-    borderRadius: 11,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "rgba(0,0,0,0.6)",
-  },
-  inclRow: { flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 6 },
-  inclText: { fontSize: 15, color: "rgba(255,255,255,0.9)", flexShrink: 1 },
-  inclTextMuted: { color: "rgba(255,255,255,0.5)" },
-  tierRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    paddingVertical: 10,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: "rgba(255,255,255,0.08)",
-  },
-  tierName: { fontSize: 15, color: "#FFFFFF" },
-  tierPrice: { fontSize: 15, fontWeight: "700", color: "#FFFFFF" },
   // ORCH-1130 — consumer "HOW YOU PAY" module. Literal hex (matches the
   // surrounding screen; NOT the business designSystem tokens). Selected =
   // border + fill + dot (3 channels). Solid fills compose opaque on Android
@@ -1116,28 +1262,8 @@ const styles = StyleSheet.create({
   },
   payScheduleTotalLabel: { flex: 1, fontSize: 14, fontWeight: "600", color: "#FFFFFF" },
   payScheduleTotalAmount: { fontSize: 15, fontWeight: "700", color: "#FFFFFF", textAlign: "right" },
-  reserveBar: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingHorizontal: 20,
-    paddingTop: 12,
-    paddingBottom: 8,
-    backgroundColor: "rgba(16,18,22,0.98)",
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: "rgba(255,255,255,0.12)",
-  },
-  reservePriceCol: { flexShrink: 1 },
-  reservePriceLabel: { fontSize: 15, fontWeight: "600", color: "#FFFFFF" },
-  reserveBtn: {
-    backgroundColor: ACCENT,
-    borderRadius: 8,
-    paddingVertical: 14,
-    paddingHorizontal: 32,
-  },
-  reserveBtnDisabled: { opacity: 0.4 },
-  reserveBtnText: { fontSize: 16, fontWeight: "600", color: "#FFFFFF" },
-  // ORCH-1117 — collapsible-description toggle row.
+  // ORCH-1117 — collapsible-description toggle row (color overridden to the
+  // brand accent inline at the call site for foundation parity).
   aboutToggleRow: {
     flexDirection: "row",
     alignItems: "center",
@@ -1145,23 +1271,6 @@ const styles = StyleSheet.create({
     minHeight: 44,
   },
   aboutToggleText: { fontSize: 14, fontWeight: "600", color: WARM },
-  // ORCH-1117 — Reserve bar "Booking unavailable" info strip (non-tappable).
-  reserveBarUnavailable: {
-    justifyContent: "flex-start",
-    gap: 10,
-  },
-  reserveStripGlyph: { fontSize: 18, color: "rgba(255,255,255,0.52)" },
-  reserveStripTextCol: { flex: 1 },
-  reserveStripTitle: {
-    fontSize: 14,
-    fontWeight: "700",
-    color: "rgba(255,255,255,0.72)",
-  },
-  reserveStripSubline: {
-    fontSize: 12,
-    color: "rgba(255,255,255,0.52)",
-    marginTop: 2,
-  },
   stateBody: {
     alignItems: "center",
     justifyContent: "center",

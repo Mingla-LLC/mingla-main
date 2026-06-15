@@ -93,11 +93,19 @@ ok(
 );
 
 // ── T3: Constitution #9 — zero gallery nodes for media:[] ──
-// The gallery render is gated on `day.media.length > 0`; an empty day renders
-// no ScrollView gallery. Reverting the guard (always render) fails this.
+// ORCH-1138 Leg 1C RETARGET ([TEST-MOD-APPROVED ORCH-1138]): the consumer trip
+// detail now delegates the per-day gallery to the SHARED @mingla/offering-
+// rendering <CountAwareGallery/> (Direction-A parity with the business/web trip
+// page) instead of the hand-rolled `day.media.length > 0 ? <ScrollView>…` block.
+// CountAwareGallery enforces Constitution #9 INTERNALLY — it renders ZERO nodes
+// for an empty `items` array (documented in CountAwareGallery.tsx). The adapter
+// feeds it `day.gallery` (the mapped CountAwareGalleryItem[]). So the rule-9
+// guard is preserved, now at the primitive layer; this assertion is retargeted to
+// the delegation. The behavioral replica below still proves the zero-node rule.
 ok(
-  "T3 consumer gallery is gated on day.media.length > 0 (Constitution #9)",
-  /day\.media\.length\s*>\s*0\s*\?/.test(detailSrc),
+  "T3 consumer gallery delegates to the shared CountAwareGallery (rule-9 zero-nodes enforced by the primitive)",
+  /<CountAwareGallery\b/.test(detailSrc) &&
+    /items=\{day\.gallery\}/.test(detailSrc),
 );
 
 // Behavioral replica: the render predicate yields nothing for an empty day.
@@ -129,9 +137,17 @@ ok(
   const r1 = renderGalleryNodeCount(twoVideos, "d1-0", "d1");
   ok("T4 one active key → exactly one video playing", r1.playing === 1 && r1.nodes === 2);
 }
+// ORCH-1138 Leg 1C RETARGET ([TEST-MOD-APPROVED ORCH-1138]): the one-playing
+// guard moved INTO the shared CountAwareGallery primitive (it tracks the active
+// video via firstVideoIndex + internal state, so at most one tile plays at a
+// time). The consumer screen no longer hand-rolls activeVideoKey/playbackActive
+// for the per-day gallery (it delegates to CountAwareGallery). The behavioral
+// replica above still proves the at-most-one-playing invariant; this assertion is
+// retargeted to the delegation.
 ok(
-  "T4 source wires an activeVideoKey one-playing guard",
-  /activeVideoKey/.test(detailSrc) && /playbackActive=\{activeVideoKey === key\}/.test(detailSrc),
+  "T4 the per-day gallery's one-playing guard is owned by the shared CountAwareGallery primitive",
+  /<CountAwareGallery\b/.test(detailSrc) &&
+    /accessibilityLabelPrefix=\{`Day \$\{day\.ordinal\} media`\}/.test(detailSrc),
 );
 
 console.log(`\n${passed} checks passed — ORCH-1119 consumer gallery`);

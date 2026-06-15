@@ -73,49 +73,60 @@ ok(
     !/position:\s*"absolute"[\s\S]{0,120}bottom:\s*0/.test(detailSrc),
   "the old full-bleed <View style={host}> + absolute-bottom reserveBar overlay must be removed",
 );
-// ── FIX 1 (ROOT-CAUSE, verified on-device iOS + Android 2026-05-31): bare
-// scrollMode="scroll" direct-child binding ──────────────────────────────────
-// The earlier REWORK-2/3 contracts (primitive-owned scrollMode="scroll"+stickyFooter,
-// then scrollMode="view" + an injected flex scroll host) both still froze on device:
-// any wrapper (stickyFooter/header/bodyContainerStyle prop, or a BottomSheetView one
-// level deeper) makes gorhom size the sheet to CONTENT, so viewport==content and
-// maxScroll=0. The proven shape is a BARE scrollMode="scroll" so BaseBottomSheet's
-// OWN gorhom BottomSheetScrollView is the DIRECT child of BottomSheetContent, with
-// {detailBody} + {reserveFooter} as its two children.
+// ── FIX 1 (ORCH-1138 Leg 1C RETARGET — Direction-A foundation + FLOATING reserve)
+// ────────────────────────────────────────────────────────────────────────────
+// ORCH-1138 Leg 1C re-rendered the populated body via the shared
+// @mingla/offering-rendering ParallaxCoverShell to reach FULL parity with the
+// business/web trip page, AND made the Reserve bar FLOAT (Seth's explicit ask).
+//
+// The ORCH-1016/1043 scroll-freeze contract is STILL honored, by a DIFFERENT
+// proven shape (the original R1f/R1f-2/R1f-4 "bare scrollMode='scroll' + scroll-
+// sibling footer" assertions are RETARGETED here — see SPEC §9 + the ORCH-1016/
+// 1043 freeze history they protected):
+//   • The sheet runs scrollMode="view" and mounts ParallaxCoverShell as its body.
+//   • ParallaxCoverShell is given ScrollComponent={BottomSheetScrollView} so the
+//     gorhom scrollable remains the SINGLE registered scrollable (no nested raw
+//     ScrollView, no second scrollable, no viewport==content freeze).
+//   • The Reserve bar FLOATS via a position:"absolute" overlay sibling of the
+//     shell inside a flex:1 host — NOT BaseBottomSheet.stickyFooter (which would
+//     nest the gorhom scroll one BottomSheetView level deeper and re-freeze it).
+// These assertions FAIL when the foundation change is reverted, preserving the
+// scroll-freeze guard under the new structure.
 ok(
-  "R1f the populated trip detail sheet uses a BARE scrollMode='scroll' (BaseBottomSheet owns the gorhom scroll as a direct child) + hidesBottomNav",
-  /scrollMode="scroll"\s*\n\s*hidesBottomNav/.test(detailSrc),
-  "bare scrollMode='scroll' makes the gorhom BottomSheetScrollView the DIRECT child of the height-bounded BottomSheetContent — the only structure gorhom constrains to the snap height",
+  "R1f the populated trip detail sheet renders via the shared ParallaxCoverShell + hidesBottomNav (Direction-A foundation parity)",
+  /import\s*\{[\s\S]*?ParallaxCoverShell[\s\S]*?\}\s*from\s*["']@mingla\/offering-rendering["']/.test(
+    detailSrc,
+  ) &&
+    /<ParallaxCoverShell[\s\S]*?<\/ParallaxCoverShell>/.test(detailSrc) &&
+    /scrollMode="view"\s*\n\s*hidesBottomNav/.test(detailSrc),
+  "the populated body composes the shared foundation primitive (ParallaxCoverShell) inside a scrollMode='view' sheet, hiding the floating nav",
 );
 ok(
-  "R1f-2 the detail body + Reserve footer are the sheet's two DIRECT children (no injected scroll host, no wrapper)",
-  /scrollMode="scroll"[\s\S]{0,260}>\s*\{detailBody\}\s*\{reserveFooter\}\s*<\/BaseBottomSheet>/.test(
-    detailSrc,
-  ),
-  "{detailBody}{reserveFooter} render straight inside the bare scroll sheet; a wrapper child re-introduces the frozen viewport==content config",
+  "R1f-2 ParallaxCoverShell is given ScrollComponent={BottomSheetScrollView} (gorhom owns the SINGLE registered scrollable — no viewport==content freeze)",
+  /ScrollComponent=\{BottomSheetScrollView\}/.test(detailSrc),
+  "the shell's native scroll host MUST be gorhom's BottomSheetScrollView so the gorhom scroll stays the single registered scrollable (ORCH-1016/1043 contract)",
 );
 ok(
   "R1f-2b the screen does NOT use a raw RN <ScrollView> inside the sheet (raw RN scroll fights the gorhom pan)",
   !/<ScrollView\b/.test(detailSrc),
-  "a raw RN ScrollView nested in a gorhom sheet fights the sheet pan; the bare scrollMode='scroll' lets gorhom own the single registered scrollable",
+  "a raw RN ScrollView nested in a gorhom sheet fights the sheet pan; the foundation lets gorhom own the single registered scrollable via ScrollComponent",
 );
 ok(
-  "R1f-3 the populated detail sheet does NOT use the stickyFooter / header / bodyContainerStyle wrapper props (each routes gorhom into the frozen viewport==content config)",
+  "R1f-3 the populated detail sheet does NOT use the stickyFooter / header / bodyContainerStyle wrapper props (each routes gorhom into the frozen viewport==content config) — the Reserve bar FLOATS as an absolute overlay instead",
   !/stickyFooter=\{/.test(detailSrc) &&
-    !/<BaseBottomSheet[\s\S]*?scrollMode="scroll"[\s\S]*?bodyContainerStyle=/.test(
-      detailSrc,
-    ),
-  "the wrapper props nest the scroll one BottomSheetView level deeper, which is exactly the height-bounded-wrapper config that froze on device; the Reserve bar is a direct sibling child instead",
+    !/<BaseBottomSheet[\s\S]*?bodyContainerStyle=/.test(detailSrc) &&
+    !/<BaseBottomSheet[\s\S]*?\bheader=/.test(detailSrc),
+  "the wrapper props nest the scroll one BottomSheetView level deeper, the exact height-bounded-wrapper config that froze on device (ORCH-1016/1043); the floating reserve is a position:absolute overlay sibling of the shell instead (ConsumerTripReserveBar)",
 );
 ok(
-  "R1f-4 the Reserve footer is a direct sibling View with OS safe-area clearance only (no faked nav-height gap — the nav is hidden by hidesBottomNav)",
-  /const\s+footerNavClearance\s*=\s*Math\.max\(insets\.bottom,\s*16\)/.test(
+  "R1f-4 the Reserve bar FLOATS via the consumer-local ConsumerTripReserveBar overlay (Seth's explicit floating-bar ask), wired to the existing checkout",
+  /import\s*\{[^}]*ConsumerTripReserveBar[^}]*\}\s*from\s*["'][^"']*offering\/ConsumerTripReserveBar["']/.test(
     detailSrc,
   ) &&
-    /<View\s+style=\{\[styles\.reserveBar,\s*\{\s*paddingBottom:\s*footerNavClearance\s*\}\]\}/.test(
+    /<ConsumerTripReserveBar[\s\S]*?onPress=\{\(\)\s*=>\s*setReserveSheetVisible\(true\)\}/.test(
       detailSrc,
     ),
-  "with hidesBottomNav hiding the floating nav, the footer only needs home-indicator clearance; it must NOT add BOTTOM_NAV_CONTENT_HEIGHT",
+  "the floating Reserve bar is the absolute-overlay ConsumerTripReserveBar, and its press still opens the existing reserve flow (setReserveSheetVisible(true)) — checkout unchanged",
 );
 
 // ── FIX 2: the detail clears the bottom nav by HIDING it (hidesBottomNav), not

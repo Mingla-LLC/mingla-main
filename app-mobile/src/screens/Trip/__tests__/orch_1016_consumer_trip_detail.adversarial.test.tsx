@@ -90,37 +90,56 @@ ok(
   "T-14d NULL deadline → open (surfaced)",
   deadlineState({ bookingsClosed: false, bookingDeadline: null }, NOW).closed === false,
 );
-// Source actually wires reserveDisabled = closed, and shows "Bookings closed".
+// ORCH-1138 Leg 1C RETARGET ([TEST-MOD-APPROVED ORCH-1138]): the consumer trip
+// detail was re-rendered onto the shared @mingla/offering-rendering foundation
+// (Direction-A parity with the business/web trip page). The deadline→Reserve
+// disabled wiring is PRESERVED but now resolves through the shared CtaState
+// (closed → a non-tappable `{ kind:"unavailable", title:"Bookings closed" }`
+// fed to <ConsumerTripReserveBar/>) instead of a `disabled={reserveDisabled}`
+// prop. The `reserveDisabled = closed` derivation from deadlineState is intact.
 ok(
-  "T-14e source: reserveDisabled derives from closed deadline state",
+  "T-14e source: closed deadline state → non-tappable Reserve CTA (deadlineState→reserveDisabled→unavailable CtaState)",
   /const\s+\{\s*closed[\s\S]*?\}\s*=\s*deadlineState\(/.test(detailSrc) &&
     /reserveDisabled\s*=\s*closed/.test(detailSrc) &&
-    /disabled=\{reserveDisabled\}/.test(detailSrc),
-  "deadlineState→reserveDisabled→disabled wiring must be intact",
+    /reserveDisabled\s*\n?\s*\?\s*\{\s*kind:\s*"unavailable",\s*title:\s*"Bookings closed"/.test(
+      detailSrc,
+    ),
+  "deadlineState→reserveDisabled→unavailable-CtaState wiring must be intact (the floating bar is non-tappable when closed)",
 );
 
 // ── T-NULL: no fabricated / literal-null leakage; optional lines gated ──
+// ORCH-1138 Leg 1C RETARGET: the route legs now flow through the adapter
+// (fnd.route.departure / fnd.route.destination), each rendered ONLY when its
+// source text is non-null (the adapter builds `route` only when ≥1 leg exists;
+// the JSX guards each leg). Behavior (rule-9: no leg without its text) preserved.
 ok(
-  "T-NULL-a detail: 'Leaving from' rendered ONLY when departureText !== null",
-  /detail\.departureText\s*!==\s*null\s*\?[\s\S]{0,400}?Leaving from \{detail\.departureText\}/.test(detailSrc),
+  "T-NULL-a detail: 'Leaving from' route leg rendered ONLY when the departure text is present",
+  /fnd\.route\.departure\s*!==\s*null\s*\?[\s\S]{0,400}?\{fnd\.route\.departure\}/.test(
+    detailSrc,
+  ) && /Leaving from/.test(detailSrc),
 );
 ok(
-  "T-NULL-b detail: destination line gated on destinationText !== null",
-  /detail\.destinationText\s*!==\s*null\s*\?/.test(detailSrc),
+  "T-NULL-b detail: destination route leg gated on its text being non-null",
+  /fnd\.route\.destination\s*!==\s*null\s*\?/.test(detailSrc),
 );
 ok(
-  "T-NULL-c detail: cover uses EventCoverMedia with a hue fallback (never a fake photo)",
-  /<EventCoverMedia[\s\S]*?hue=\{hueFromId\(detail\.tripId\)\}/.test(detailSrc),
+  "T-NULL-c detail: cover uses the foundation ParallaxCoverShell with a hue fallback (never a fake photo)",
+  /<ParallaxCoverShell[\s\S]*?coverHue=\{hueFromId\(detail\.tripId\)\}/.test(
+    detailSrc,
+  ),
 );
 ok(
-  "T-NULL-d detail: value resolution falls back to seed (ev?.x ?? feedRow.x pattern is in the hook, screen reads detail.*)",
+  "T-NULL-d detail: value resolution falls back to seed (ev?.x ?? feedRow.x pattern is in the hook, screen reads detail.* / fnd.*)",
   /detail\.title/.test(detailSrc) && !/\{null\}/.test(detailSrc),
 );
 
 // ── T-19: verified badge gated on === true / truthiness, never default-on ──
+// ORCH-1138 Leg 1C RETARGET: the verified shield now reads the adapter-mapped
+// fnd.brandVerified (sourced verbatim from detail.brandVerified) in the brand
+// chip; still gated, never default-on.
 ok(
   "T-19a detail: verified badge gated on brandVerified truthiness (shield only when true)",
-  /detail\.brandVerified\s*\?\s*\(?[\s\S]{0,80}shield-checkmark/.test(detailSrc),
+  /fnd\.brandVerified\s*\?\s*\(?[\s\S]{0,80}shield-checkmark/.test(detailSrc),
 );
 ok(
   "T-19b card: verified badge gated on brandVerified (no unconditional badge)",
