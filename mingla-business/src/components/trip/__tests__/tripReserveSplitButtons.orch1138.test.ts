@@ -40,20 +40,64 @@ describe("ORCH-1138 — trip Reserve SPLIT buttons (business/web)", () => {
     expect(docked?.[0]).toContain('"Pay over time"');
   });
 
-  test("SP3 the FLOATING variant renders two stacked split pills when splitCtas is set", () => {
+  test("SP3 the FLOATING variant renders two side-by-side split pills when splitCtas is set", () => {
     expect(reserveBarSrc).toMatch(
       /if \(splitCtas !== undefined\) \{[\s\S]*?styles\.floatSplitWrapper/,
     );
     expect(reserveBarSrc).toContain("styles.floatSplitButton");
   });
 
+  // ── SP3.5 — ORCH-1138 device-fix (Seth, 2026-06-15): the two split buttons MUST
+  // sit SIDE BY SIDE (a horizontal row), NOT stacked, in BOTH variants. Both the
+  // docked splitRow and the floating floatSplitWrapper are flexDirection:"row" with
+  // NO flexWrap, and each split button takes flex:1 to share the row. FAILS the
+  // instant anyone reverts a wrapper to a stacked column.
+  test("SP3.5a the DOCKED splitRow is a flexDirection:row that never wraps (side by side)", () => {
+    expect(reserveBarSrc).toMatch(
+      /splitRow:\s*\{[^}]*flexDirection:\s*"row"[^}]*flexWrap:\s*"nowrap"/,
+    );
+  });
+
+  test("SP3.5b the FLOATING floatSplitWrapper is a flexDirection:row (side by side, not stacked)", () => {
+    expect(reserveBarSrc).toMatch(
+      /floatSplitWrapper:\s*\{[^}]*flexDirection:\s*"row"/,
+    );
+    expect(reserveBarSrc).not.toMatch(
+      /floatSplitWrapper:\s*\{[^}]*flexWrap:\s*"wrap"/,
+    );
+  });
+
+  test("SP3.5c the FLOATING split pill flexes to half the row (flex:1, minWidth:0), not full-width", () => {
+    expect(reserveBarSrc).toMatch(
+      /floatSplitButton:\s*\{[^}]*flex:\s*1[^}]*minWidth:\s*0/,
+    );
+    expect(reserveBarSrc).not.toMatch(
+      /floatSplitButton:\s*\{[^}]*width:\s*"100%"/,
+    );
+  });
+
+  test("SP3.5d the DOCKED split button flexes to half the row (flex:1, minWidth:0)", () => {
+    expect(reserveBarSrc).toMatch(
+      /splitButton:\s*\{[^}]*flex:\s*1[^}]*minWidth:\s*0/,
+    );
+  });
+
+  test("SP3.5e the split label + price shrink-to-fit at narrow width (adjustsFontSizeToFit)", () => {
+    expect(reserveBarSrc).toMatch(
+      /styles\.splitLabel[\s\S]{0,200}adjustsFontSizeToFit/,
+    );
+    expect(reserveBarSrc).toMatch(
+      /styles\.splitPrice[\s\S]{0,200}adjustsFontSizeToFit/,
+    );
+  });
+
   test("SP4 each split button shows its label + its own amount (no bleed)", () => {
     // label + price each one-line + ellipsized + shrink-first (arrow-bleed pattern).
     expect(reserveBarSrc).toMatch(
-      /styles\.splitLabel[\s\S]{0,160}numberOfLines=\{1\}[\s\S]{0,80}ellipsizeMode="tail"/,
+      /styles\.splitLabel[\s\S]{0,200}numberOfLines=\{1\}[\s\S]{0,160}ellipsizeMode="tail"/,
     );
     expect(reserveBarSrc).toMatch(
-      /styles\.splitPrice[\s\S]{0,160}numberOfLines=\{1\}[\s\S]{0,80}ellipsizeMode="tail"/,
+      /styles\.splitPrice[\s\S]{0,200}numberOfLines=\{1\}[\s\S]{0,160}ellipsizeMode="tail"/,
     );
     expect(reserveBarSrc).toMatch(/splitLabel:\s*\{[^}]*flexShrink:\s*1/);
     expect(reserveBarSrc).toMatch(/splitPrice:\s*\{[^}]*flexShrink:\s*1/);

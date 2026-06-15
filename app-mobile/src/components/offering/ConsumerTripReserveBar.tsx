@@ -214,6 +214,8 @@ export const ConsumerTripReserveBar: React.FC<ConsumerTripReserveBarProps> = ({
         <Text
           style={[styles.splitLabel, { color: palette.accentText }, fontStyle]}
           numberOfLines={1}
+          adjustsFontSizeToFit
+          minimumFontScale={0.8}
           ellipsizeMode="tail"
         >
           {label}
@@ -222,6 +224,8 @@ export const ConsumerTripReserveBar: React.FC<ConsumerTripReserveBarProps> = ({
           <Text
             style={[styles.splitPrice, { color: palette.accentText }, fontStyle]}
             numberOfLines={1}
+            adjustsFontSizeToFit
+            minimumFontScale={0.8}
             ellipsizeMode="tail"
           >
             {btnPrice}
@@ -398,11 +402,13 @@ export const ConsumerTripReserveBar: React.FC<ConsumerTripReserveBarProps> = ({
     </View>
   );
 
-  // ── FLOATING SPLIT — two compact pills. On a narrow phone two side-by-side
-  // priced pills get cramped, so they STACK as a column (full-width within the
-  // padded wrapper, each pill capped at a comfortable max width and centered) —
-  // legible, no text/arrow bleed (label + price each ellipsize). Shown while the
-  // docked split is scrolled off; taps seed the cart with the choice.
+  // ── FLOATING SPLIT — two compact pills SIDE BY SIDE in a horizontal row
+  // (ORCH-1138 device-fix, Seth 2026-06-15: the buttons must never stack). The row
+  // never wraps (no flexWrap); each pill takes flex:1 (equal halves) with minWidth:0
+  // so the two share the padded wrapper, and the inner label+price shrink-to-fit
+  // (numberOfLines=1 + adjustsFontSizeToFit + ellipsize) so they stay legible
+  // side-by-side at 360–390px. Shown while the docked split is scrolled off; taps
+  // seed the cart with the choice.
   if (splitCtas !== undefined) {
     return (
       <View
@@ -536,11 +542,14 @@ const styles = StyleSheet.create({
     transform: [{ scale: 0.99 }],
   },
   // ── ORCH-1138 (Seth, 2026-06-15) SPLIT BUTTONS ──
-  // DOCKED split row — two equal-width buttons side by side, flush beneath
-  // "Choose how you pay". gap keeps them visually distinct; each button flexes to
-  // half the row and its inner text shrinks (no bleed).
+  // DOCKED split row — two equal-width buttons SIDE BY SIDE, flush beneath
+  // "Choose how you pay". flexWrap:"nowrap" guarantees they NEVER drop to a
+  // stacked column at narrow phone width (ORCH-1138 device-fix, Seth 2026-06-15);
+  // gap keeps them visually distinct; each button flexes to half the row and its
+  // inner text shrinks-to-fit (no bleed, no wrap).
   splitRow: {
     flexDirection: "row",
+    flexWrap: "nowrap",
     width: "100%",
     gap: 10,
   },
@@ -565,24 +574,27 @@ const styles = StyleSheet.create({
       },
     }),
   },
-  // FLOATING split wrapper — stack the two pills as a centered column (legible on
-  // a narrow phone, no cramped side-by-side priced pills), each capped + centered.
+  // FLOATING split wrapper — the two pills sit SIDE BY SIDE in a horizontal ROW
+  // (ORCH-1138 device-fix, Seth 2026-06-15). flexDirection:"row" + NO flexWrap
+  // means the pills can never drop to a stacked column; each pill flexes to half
+  // the padded row.
   floatSplitWrapper: {
     position: "absolute",
     left: 0,
     right: 0,
     zIndex: 6,
     paddingHorizontal: 16,
-    alignItems: "center",
+    flexDirection: "row",
+    alignItems: "stretch",
     gap: 10,
   },
-  // A floating split pill — self-contained, max-width capped, centered content.
+  // A floating split pill — half the row (flex:1), minWidth:0 so the two share the
+  // row without one starving the other; inner label+price shrink-to-fit.
   floatSplitButton: {
-    alignSelf: "stretch",
-    maxWidth: 360,
-    width: "100%",
+    flex: 1,
+    minWidth: 0,
     borderRadius: 999,
-    paddingHorizontal: 22,
+    paddingHorizontal: 18,
     paddingVertical: 12,
     minHeight: 54,
     alignItems: "center",

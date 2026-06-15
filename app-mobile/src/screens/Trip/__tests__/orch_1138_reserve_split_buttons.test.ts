@@ -55,7 +55,40 @@ ok(
 ok(
   "S2b the FLOATING variant renders the split pills when splitCtas is set",
   /if \(splitCtas !== undefined\) \{[\s\S]*?styles\.floatSplitWrapper/.test(bar),
-  "floating must branch to two stacked pills for plan trips",
+  "floating must branch to two side-by-side pills for plan trips",
+);
+
+// ── S-2.5 — ORCH-1138 device-fix (Seth, 2026-06-15): the two split buttons MUST
+// sit SIDE BY SIDE (a horizontal row), NOT stacked, in BOTH variants. Both the
+// docked splitRow and the floating floatSplitWrapper are flexDirection:"row" with
+// NO flexWrap, and each split button takes flex:1 to share the row. These FAIL
+// the instant anyone reverts a wrapper to a stacked column.
+ok(
+  "S2.5a the DOCKED splitRow is a flexDirection:row that never wraps (side by side)",
+  /splitRow:\s*\{[^}]*flexDirection:\s*"row"[^}]*flexWrap:\s*"nowrap"/.test(bar),
+  "splitRow must be a row with flexWrap:nowrap so the two buttons never stack",
+);
+ok(
+  "S2.5b the FLOATING floatSplitWrapper is a flexDirection:row (side by side, not stacked)",
+  /floatSplitWrapper:\s*\{[^}]*flexDirection:\s*"row"/.test(bar) &&
+    !/floatSplitWrapper:\s*\{[^}]*flexWrap:\s*"wrap"/.test(bar),
+  "floatSplitWrapper must be a row (no column / no flexWrap:wrap) so the two pills never stack",
+);
+ok(
+  "S2.5c the FLOATING split pill flexes to half the row (flex:1, minWidth:0)",
+  /floatSplitButton:\s*\{[^}]*flex:\s*1[^}]*minWidth:\s*0/.test(bar) &&
+    !/floatSplitButton:\s*\{[^}]*width:\s*"100%"/.test(bar),
+  "each floating split pill must share the row (flex:1), not be full-width (which forces a stack)",
+);
+ok(
+  "S2.5d the DOCKED split button flexes to half the row (flex:1, minWidth:0)",
+  /splitButton:\s*\{[^}]*flex:\s*1[^}]*minWidth:\s*0/.test(bar),
+);
+ok(
+  "S2.5e the split label + price shrink-to-fit at narrow width (adjustsFontSizeToFit)",
+  /styles\.splitLabel[\s\S]{0,200}adjustsFontSizeToFit/.test(bar) &&
+    /styles\.splitPrice[\s\S]{0,200}adjustsFontSizeToFit/.test(bar),
+  "the inner text must shrink to fit so the side-by-side buttons stay legible at 360px",
 );
 ok(
   'S2c both split buttons carry the "Pay in full" + "Pay over time" labels',
@@ -70,13 +103,13 @@ ok(
 // ── S-3 — no text/arrow bleed: label + price each one-line + ellipsize + shrink ──
 ok(
   "S3a the split label is one line + ellipsized + shrinks first (no bleed)",
-  /styles\.splitLabel[\s\S]{0,160}numberOfLines=\{1\}[\s\S]{0,80}ellipsizeMode="tail"/.test(
+  /styles\.splitLabel[\s\S]{0,200}numberOfLines=\{1\}[\s\S]{0,160}ellipsizeMode="tail"/.test(
     bar,
   ) && /splitLabel:\s*\{[^}]*flexShrink:\s*1[^}]*minWidth:\s*0/.test(bar),
 );
 ok(
   "S3b the split price is one line + ellipsized + shrinks (no bleed)",
-  /styles\.splitPrice[\s\S]{0,160}numberOfLines=\{1\}[\s\S]{0,80}ellipsizeMode="tail"/.test(
+  /styles\.splitPrice[\s\S]{0,200}numberOfLines=\{1\}[\s\S]{0,160}ellipsizeMode="tail"/.test(
     bar,
   ) && /splitPrice:\s*\{[^}]*flexShrink:\s*1[^}]*minWidth:\s*0/.test(bar),
 );
