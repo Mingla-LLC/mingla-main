@@ -217,6 +217,32 @@ function checkOverviewServiceExists() {
 //          introduced by this ORCH (diff-aware against origin/main when available)
 // ---------------------------------------------------------------------------
 function checkNoNewBackendFiles() {
+  // C7 SCOPE GUARD (ORCH-1141, 2026-06-15). C7 exists solely to keep the
+  // ORCH-0863 Marketing Hub Phase B change frontend-only. ORCH-0863 merged
+  // 2026-05-17 (PR #126); since then this gate — which diffs the WHOLE
+  // origin/main...HEAD range against a hard-coded allowlist — has produced
+  // only FALSE POSITIVES, forcing ~50 unrelated backend ORCHs to register
+  // their files in the allowlist below (this file's own standing TODO calls
+  // for exactly this re-scope: "fire ONLY against PRs that cite ORCH-0863").
+  // Re-scope: run C7 ONLY when the PR actually carries ORCH-0863 work (its
+  // commit messages cite ORCH-0863). Any other PR skips C7 entirely. If commit
+  // scope is unknowable (no git / no origin/main), fall through to the legacy
+  // allowlist behavior so protection is never silently lost.
+  try {
+    const commitLog = execSync("git log origin/main..HEAD --format=%B", {
+      cwd: REPO_ROOT,
+      stdio: ["ignore", "pipe", "ignore"],
+    }).toString();
+    if (!/ORCH-0863/i.test(commitLog)) {
+      ok(
+        "C7: no-new-backend-files",
+        "skipped — PR does not carry ORCH-0863 marketing work (C7 is scoped to ORCH-0863 PRs only; ORCH-1141 re-scope)",
+      );
+      return;
+    }
+  } catch (_scopeErr) {
+    // Scope undeterminable — fall through to the legacy allowlist check.
+  }
   let diffOutput = "";
   try {
     diffOutput = execSync("git diff --name-only origin/main...HEAD", {
