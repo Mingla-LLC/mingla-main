@@ -145,7 +145,10 @@ import { useEventTheme } from "../../hooks/useEventTheme";
 import { mapConsumerTripToFoundation } from "../../hooks/useConsumerTripFoundation";
 import { useConsumerThemeFont } from "../../theme/useConsumerThemeFont";
 import { ConsumerRefundLadder } from "../../components/offering/ConsumerRefundLadder";
-import { ConsumerTripReserveBar } from "../../components/offering/ConsumerTripReserveBar";
+import {
+  ConsumerTripReserveBar,
+  type ReserveSplitCtas,
+} from "../../components/offering/ConsumerTripReserveBar";
 import type { DiscoverTripRow } from "../../services/tripsDiscoveryService";
 import type { BusinessEventCard } from "../../types/mergedDiscover";
 
@@ -467,6 +470,21 @@ export default function ConsumerTripDetailScreen({
     setInitialTicketTypeId(sellable.ticketTypeId);
     setCartVisible(true);
   }, [detail]);
+
+  // ORCH-1138 (Seth, 2026-06-15) — SPLIT BUTTONS fast path. "Pay in full" /
+  // "Pay over time" open the cart with that choice ALREADY selected, skipping the
+  // scroll to the "Choose how you pay" toggle. We set `paymentPlanChoice` FIRST
+  // (state batches before paint, so the cart mounts with the matching
+  // dueTodayCents and handleBuy reads the matching choice — byte-identical to
+  // picking the toggle then Reserve), then reuse openCart's seed+open. NEVER
+  // auto-charges (the cart is still the confirmation step).
+  const openCartWithChoice = useCallback(
+    (choice: "full" | "installments"): void => {
+      setPaymentPlanChoice(choice);
+      openCart();
+    },
+    [openCart],
+  );
 
   // ORCH-1138 — handleBuy ported VERBATIM (behavior) from EBES handleBuy
   // (ExpandedBusinessEventSheet.tsx:313-432), scoped to the trip. Same buyer
@@ -1256,6 +1274,44 @@ export default function ConsumerTripDetailScreen({
                 tappable: true,
               };
 
+  // ORCH-1138 (Seth, 2026-06-15) — SPLIT BUTTONS. When the trip OFFERS an
+  // installment plan AND is bookable, the bar shows TWO buttons: "Pay in full"
+  // (the full price) and "Pay over time" ("From {deposit} today"). Each routes
+  // STRAIGHT TO THE CART with that choice pre-selected, so the buyer chooses
+  // pay-in-full vs pay-over-time WITHOUT scrolling to the "Choose how you pay"
+  // toggle (which still renders the schedule detail). Rule 9: a no-plan trip
+  // (planSchedule === null) shows the SINGLE button as today; disabled/closed
+  // states stay single too (reserveCta.tappable === false).
+  const splitFullPrice =
+    priceLabel !== null ? priceLabel : barPriceLabel === "Free" ? "Free" : "";
+  const splitDepositPrice =
+    planSchedule !== null
+      ? `From ${formatMoneyExact(planSchedule.depositCents, planSchedule.currency)} today`
+      : "";
+  const showSplit = planSchedule !== null && reserveCta.tappable;
+  const splitCtas: ReserveSplitCtas | undefined = showSplit
+    ? {
+        full: {
+          cta: {
+            kind: "buy" as const,
+            label: "Pay in full",
+            price: splitFullPrice,
+            tappable: true,
+          },
+          onPress: () => openCartWithChoice("full"),
+        },
+        overTime: {
+          cta: {
+            kind: "buy" as const,
+            label: "Pay over time",
+            price: splitDepositPrice,
+            tappable: true,
+          },
+          onPress: () => openCartWithChoice("installments"),
+        },
+      }
+    : undefined;
+
   // ORCH-1138 device-rework #3 (Seth's screenshot feedback) — the Reserve CTA now
   // DOCKS flush beneath "Choose how you pay" as the LAST scroll child (its bg is
   // allowed at rest) and a light FLOATING PILL (no full-width bar bg) shows ONLY
@@ -1286,6 +1342,7 @@ export default function ConsumerTripDetailScreen({
       kicker={barKicker}
       fontFamily={boldFamily}
       onPress={openCart}
+      splitCtas={splitCtas}
       variant="docked"
       safeAreaBottom={insets.bottom}
       onDockLayout={handleDockLayout}
@@ -1300,6 +1357,7 @@ export default function ConsumerTripDetailScreen({
       kicker={barKicker}
       fontFamily={boldFamily}
       onPress={openCart}
+      splitCtas={splitCtas}
       variant="floating"
       // ORCH-1138 FIX-5 — pass the SCREEN-LEVEL inset; the bar's own
       // useSafeAreaInsets can return 0 inside the gorhom sheet context, which let

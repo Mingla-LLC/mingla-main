@@ -59,6 +59,25 @@ import * as Haptics from "expo-haptics";
 
 import type { CtaState, ThemePalette } from "@mingla/event-rendering";
 
+/**
+ * ORCH-1138 [trip-page-redesign] (Seth, 2026-06-15) — the SPLIT-CTA payload,
+ * mirrors the consumer ConsumerTripReserveBar 1:1. When present, the bar renders
+ * TWO buttons — "Pay in full" + "Pay over time" — instead of the single `cta`.
+ * Each carries its OWN resolved CtaState (byte-correct labels/prices) + its OWN
+ * onPress (routes straight to checkout with that payment choice pre-selected).
+ * Provided ONLY for a bookable plan trip; omitted for no-plan / disabled (single).
+ */
+export interface ReserveSplitButton {
+  cta: CtaState;
+  onPress: () => void;
+}
+export interface ReserveSplitCtas {
+  /** Left button — pay the full price today. */
+  full: ReserveSplitButton;
+  /** Right button — pay the deposit today, the rest on the plan. */
+  overTime: ReserveSplitButton;
+}
+
 export interface TripReserveBarProps {
   cta: CtaState;
   palette: ThemePalette;
@@ -70,6 +89,12 @@ export interface TripReserveBarProps {
   fontFamily?: string;
   /** Fired ONLY for tappable states (buy / free / waitlist). */
   onPress: () => void;
+  /**
+   * ORCH-1138 (Seth, 2026-06-15) — when set, render TWO split buttons ("Pay in
+   * full" / "Pay over time") in BOTH variants instead of the single `cta`. Passed
+   * ONLY for a bookable plan trip; omit for no-plan / disabled (single button).
+   */
+  splitCtas?: ReserveSplitCtas;
   /**
    * ORCH-1138 device-rework #3 — render mode:
    *   "docked"   → in-flow card placed as the LAST scroll child (flush, no void).
@@ -92,6 +117,7 @@ export const TripReserveBar: React.FC<TripReserveBarProps> = ({
   kicker,
   fontFamily,
   onPress,
+  splitCtas,
   variant,
   onDockLayout,
   testID,
@@ -115,6 +141,64 @@ export const TripReserveBar: React.FC<TripReserveBarProps> = ({
   const price = cta.kind === "buy" ? cta.price : "";
   const unavailableTitle = cta.kind === "unavailable" ? cta.title : "";
   const unavailableSub = cta.kind === "unavailable" ? cta.subline : null;
+
+  // ── ORCH-1138 (Seth, 2026-06-15) SPLIT BUTTONS (mirrors ConsumerTripReserveBar) ──
+  // When `splitCtas` is present (a bookable plan trip) the bar renders TWO buttons —
+  // "Pay in full" + "Pay over time" — each label-over-price, each tap routing
+  // straight to checkout with its payment choice. Same arrow/text-bleed discipline
+  // (label + price each one-line + ellipsis). Disabled states never reach here.
+  const renderSplitButton = (
+    btn: ReserveSplitButton,
+    label: string,
+    style: object,
+    keyName: string,
+  ): React.ReactElement => {
+    const btnPrice = btn.cta.kind === "buy" ? btn.cta.price : "";
+    const handleSplitPress = (): void => {
+      if (!btn.cta.tappable) return;
+      if (Platform.OS !== "web") {
+        void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(
+          () => {},
+        );
+      }
+      btn.onPress();
+    };
+    return (
+      <Pressable
+        key={keyName}
+        onPress={handleSplitPress}
+        accessibilityRole="button"
+        accessibilityLabel={
+          btnPrice.length > 0 ? `${label}, ${btnPrice}` : label
+        }
+        style={({ pressed }) => [
+          style,
+          { backgroundColor: palette.accent },
+          pressed ? styles.reservePressed : null,
+        ]}
+        testID={
+          testID !== undefined ? `${testID}-${keyName}-action` : undefined
+        }
+      >
+        <Text
+          style={[styles.splitLabel, { color: palette.accentText }, fontStyle]}
+          numberOfLines={1}
+          ellipsizeMode="tail"
+        >
+          {label}
+        </Text>
+        {btnPrice.length > 0 ? (
+          <Text
+            style={[styles.splitPrice, { color: palette.accentText }, fontStyle]}
+            numberOfLines={1}
+            ellipsizeMode="tail"
+          >
+            {btnPrice}
+          </Text>
+        ) : null}
+      </Pressable>
+    );
+  };
 
   // The shared button/strip body — identical for both variants so the floating +
   // docked CTAs read identically (same accent fill, kicker, price, label).
@@ -179,6 +263,34 @@ export const TripReserveBar: React.FC<TripReserveBarProps> = ({
   // `onDockLayout` reports its position so the route can hide the floating pill
   // once this docked button is on-screen.
   if (variant === "docked") {
+    // ORCH-1138 (Seth, 2026-06-15) — split-button plan trip: TWO buttons in a row.
+    if (splitCtas !== undefined) {
+      return (
+        <View
+          style={[
+            styles.dockedCard,
+            { backgroundColor: palette.page, paddingBottom: insets.bottom + 8 },
+          ]}
+          onLayout={onDockLayout}
+          testID={testID !== undefined ? `${testID}-docked` : undefined}
+        >
+          <View style={styles.splitRow}>
+            {renderSplitButton(
+              splitCtas.full,
+              "Pay in full",
+              styles.splitButton,
+              "full",
+            )}
+            {renderSplitButton(
+              splitCtas.overTime,
+              "Pay over time",
+              styles.splitButton,
+              "over-time",
+            )}
+          </View>
+        </View>
+      );
+    }
     return (
       <View
         style={[
@@ -237,6 +349,32 @@ export const TripReserveBar: React.FC<TripReserveBarProps> = ({
       </Text>
     </View>
   );
+
+  // ── FLOATING SPLIT — two compact pills stacked as a centered column (legible on
+  // a narrow phone; each pill capped + centered, label + price ellipsized). Shown
+  // while the docked split is scrolled off; taps route to checkout with the choice.
+  if (splitCtas !== undefined) {
+    return (
+      <View
+        style={[styles.floatSplitWrapper, { bottom: insets.bottom + 16 }]}
+        pointerEvents="box-none"
+        testID={testID !== undefined ? `${testID}-floating` : undefined}
+      >
+        {renderSplitButton(
+          splitCtas.full,
+          "Pay in full",
+          styles.floatSplitButton,
+          "full",
+        )}
+        {renderSplitButton(
+          splitCtas.overTime,
+          "Pay over time",
+          styles.floatSplitButton,
+          "over-time",
+        )}
+      </View>
+    );
+  }
 
   return (
     <View
@@ -343,6 +481,76 @@ const styles = StyleSheet.create({
   reservePressed: {
     opacity: 0.9,
     transform: [{ scale: 0.99 }],
+  },
+  // ── ORCH-1138 (Seth, 2026-06-15) SPLIT BUTTONS (mirrors ConsumerTripReserveBar) ──
+  splitRow: {
+    flexDirection: "row",
+    width: "100%",
+    gap: 10,
+  },
+  splitButton: {
+    flex: 1,
+    minWidth: 0,
+    borderRadius: 18,
+    paddingHorizontal: 14,
+    paddingVertical: 14,
+    minHeight: 60,
+    alignItems: "center",
+    justifyContent: "center",
+    ...Platform.select({
+      android: { elevation: 0, shadowOpacity: 0 },
+      default: {
+        shadowColor: "#000000",
+        shadowOpacity: 0.28,
+        shadowRadius: 20,
+        shadowOffset: { width: 0, height: 8 },
+      },
+    }),
+  },
+  floatSplitWrapper: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    zIndex: 6,
+    paddingHorizontal: 16,
+    alignItems: "center",
+    gap: 10,
+  },
+  floatSplitButton: {
+    alignSelf: "stretch",
+    maxWidth: 360,
+    width: "100%",
+    borderRadius: 999,
+    paddingHorizontal: 22,
+    paddingVertical: 12,
+    minHeight: 54,
+    alignItems: "center",
+    justifyContent: "center",
+    ...Platform.select({
+      android: { elevation: 0, shadowOpacity: 0 },
+      default: {
+        shadowColor: "#000000",
+        shadowOpacity: 0.28,
+        shadowRadius: 20,
+        shadowOffset: { width: 0, height: 8 },
+      },
+    }),
+  },
+  splitLabel: {
+    fontSize: 15,
+    fontWeight: "900",
+    flexShrink: 1,
+    minWidth: 0,
+    textAlign: "center",
+  },
+  splitPrice: {
+    fontSize: 13,
+    fontWeight: "800",
+    opacity: 0.92,
+    marginTop: 2,
+    flexShrink: 1,
+    minWidth: 0,
+    textAlign: "center",
   },
   rLeft: {
     alignItems: "flex-start",

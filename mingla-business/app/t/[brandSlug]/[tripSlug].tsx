@@ -50,6 +50,7 @@ import { useResponsiveLayout } from "@mingla/offering-rendering";
 import { useThemeFont } from "../../../src/theme/useThemeFont";
 import { ShareModal } from "../../../src/components/ui/ShareModal";
 import { TripReserveBar } from "../../../src/components/trip/TripReserveBar";
+import type { ReserveSplitCtas } from "../../../src/components/trip/TripReserveBar";
 import {
   tripCheckoutPath,
   tripPublicUrl,
@@ -372,14 +373,48 @@ const ResolvedTripPage: React.FC<{
                   tappable: true,
                 };
 
-  const handleTripReserve = (): void => {
+  // ORCH-1138 (Seth, 2026-06-15) — Reserve routes STRAIGHT to checkout with the
+  // payment choice in the `plan` param (the checkout-trip route seeds
+  // CartContext.paymentPlanChoice from it → byte-identical request). The single
+  // bar passes the live toggle choice; the SPLIT BUTTONS pass their own explicit
+  // choice ("full" / "installments") so the buyer picks the plan WITHOUT scrolling
+  // to the "Choose how you pay" toggle.
+  const handleTripReserve = (choice?: TripPaymentChoiceValue): void => {
     router.push(
       {
         pathname: tripCheckoutPath(trip.id),
-        params: { plan: paymentPlanChoice },
+        params: { plan: choice ?? paymentPlanChoice },
       } as never,
     );
   };
+
+  // ORCH-1138 (Seth, 2026-06-15) — SPLIT BUTTONS for a bookable plan trip ONLY
+  // (rule 9: no-plan / disabled trips keep the SINGLE Reserve bar). "Pay in full"
+  // shows the full price; "Pay over time" shows the deposit due today. Each routes
+  // straight to checkout with its own choice pre-selected.
+  const tripSplitCtas: ReserveSplitCtas | undefined =
+    tripHasPlan && tripCta.tappable
+      ? {
+          full: {
+            cta: {
+              kind: "buy" as const,
+              label: "Pay in full",
+              price: tripPrice,
+              tappable: true,
+            },
+            onPress: () => handleTripReserve("full"),
+          },
+          overTime: {
+            cta: {
+              kind: "buy" as const,
+              label: "Pay over time",
+              price: depositLabel.length > 0 ? `From ${depositLabel} today` : "",
+              tappable: true,
+            },
+            onPress: () => handleTripReserve("installments"),
+          },
+        }
+      : undefined;
 
   const handleViewBrand = (): void => {
     if (brandSlug.length > 0) {
@@ -427,7 +462,7 @@ const ResolvedTripPage: React.FC<{
   const reserveControl = (
     <View>
       <Pressable
-        onPress={reserveTappable ? handleTripReserve : undefined}
+        onPress={reserveTappable ? () => handleTripReserve() : undefined}
         disabled={!reserveTappable}
         accessibilityRole="button"
         accessibilityState={{ disabled: !reserveTappable }}
@@ -477,7 +512,8 @@ const ResolvedTripPage: React.FC<{
         surface={surface}
         kicker={barKicker}
         fontFamily={boldFamily}
-        onPress={handleTripReserve}
+        onPress={() => handleTripReserve()}
+        splitCtas={tripSplitCtas}
         variant="docked"
         onDockLayout={handleDockLayout}
         testID="orch-1117-trip-floating-bar"
@@ -530,7 +566,8 @@ const ResolvedTripPage: React.FC<{
           surface={surface}
           kicker={barKicker}
           fontFamily={boldFamily}
-          onPress={handleTripReserve}
+          onPress={() => handleTripReserve()}
+          splitCtas={tripSplitCtas}
           variant="floating"
           testID="orch-1117-trip-floating-bar"
         />
