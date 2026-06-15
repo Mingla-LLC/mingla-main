@@ -159,16 +159,32 @@ export const ConsumerTripReserveBar: React.FC<ConsumerTripReserveBarProps> = ({
       {kicker !== null || price.length > 0 ? (
         <View style={styles.rLeft}>
           {kicker !== null ? (
-            <Text style={[styles.rKicker, { color: palette.accentText }]}>{kicker}</Text>
+            <Text
+              style={[styles.rKicker, { color: palette.accentText }]}
+              numberOfLines={1}
+              ellipsizeMode="tail"
+            >
+              {kicker}
+            </Text>
           ) : null}
           {price.length > 0 ? (
-            <Text style={[styles.rPrice, { color: palette.accentText }, fontStyle]}>
+            // ORCH-1138 F-4 (arrow-bleed) — the price truncates with an ellipsis
+            // rather than pushing the label+arrow (rCta) off the right edge when
+            // "Pay over time" makes it the longer "From {deposit} today" string.
+            <Text
+              style={[styles.rPrice, { color: palette.accentText }, fontStyle]}
+              numberOfLines={1}
+              ellipsizeMode="tail"
+            >
               {price}
             </Text>
           ) : null}
         </View>
       ) : null}
-      <Text style={[styles.rCta, { color: palette.accentText }, fontStyle]}>
+      <Text
+        style={[styles.rCta, { color: palette.accentText }, fontStyle]}
+        numberOfLines={1}
+      >
         {cta.label} →
       </Text>
     </Pressable>
@@ -322,9 +338,12 @@ const styles = StyleSheet.create({
       },
     }),
   },
+  // ORCH-1138 F-4 — defensive flexShrink:0 (the floating pill is label-only with
+  // no price block, but keep the same discipline so the arrow can never clip).
   floatCta: {
     fontSize: 16,
     fontWeight: "900",
+    flexShrink: 0,
   },
   // Compact disabled (closed/unavailable) floating pill — self-width, no onPress.
   floatButtonDisabled: {
@@ -369,8 +388,13 @@ const styles = StyleSheet.create({
     opacity: 0.9,
     transform: [{ scale: 0.99 }],
   },
+  // ORCH-1138 F-4 (arrow-bleed) — the price/kicker block YIELDS space first
+  // (flexShrink:1 + minWidth:0) so a long "Pay over time" price truncates
+  // instead of shoving the label+arrow (rCta) past the button's right padding.
   rLeft: {
     alignItems: "flex-start",
+    flexShrink: 1,
+    minWidth: 0,
   },
   rKicker: {
     fontSize: 11,
@@ -383,9 +407,13 @@ const styles = StyleSheet.create({
     letterSpacing: -0.3,
     marginTop: 1,
   },
+  // ORCH-1138 F-4 (arrow-bleed) — the label+arrow keep their intrinsic width and
+  // never shrink (flexShrink:0) + stay on one line, so the "→" is always pinned
+  // inside the button bounds; the price block (rLeft) absorbs the overflow.
   rCta: {
     fontSize: 16,
     fontWeight: "900",
+    flexShrink: 0,
   },
   reserveDisabled: {
     width: "100%",

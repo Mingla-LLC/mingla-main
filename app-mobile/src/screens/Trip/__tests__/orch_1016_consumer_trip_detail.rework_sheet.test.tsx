@@ -127,14 +127,17 @@ ok(
   "the wrapper props nest the scroll one BottomSheetView level deeper, the exact height-bounded-wrapper config that froze on device (ORCH-1016/1043); the floating reserve is a position:absolute overlay sibling of the shell instead (ConsumerTripReserveBar)",
 );
 ok(
-  "R1f-4 the Reserve bar FLOATS via the consumer-local ConsumerTripReserveBar overlay (Seth's explicit floating-bar ask), wired to the existing checkout",
+  // ORCH-1138 [trip-page-redesign] UPDATE [TEST-MOD-APPROVED ORCH-1138] —
+  // Reserve now opens the cart (TicketCartSheet) DIRECTLY via openCart, NOT the
+  // duplicate ExpandedBusinessEventSheet detail page (the old
+  // setReserveSheetVisible(true) hop). The floating-bar overlay structure is
+  // unchanged; only the press TARGET moved to the direct-cart path.
+  "R1f-4 the Reserve bar FLOATS via the consumer-local ConsumerTripReserveBar overlay (Seth's explicit floating-bar ask), wired to the direct cart",
   /import\s*\{[^}]*ConsumerTripReserveBar[^}]*\}\s*from\s*["'][^"']*offering\/ConsumerTripReserveBar["']/.test(
     detailSrc,
   ) &&
-    /<ConsumerTripReserveBar[\s\S]*?onPress=\{\(\)\s*=>\s*setReserveSheetVisible\(true\)\}/.test(
-      detailSrc,
-    ),
-  "the floating Reserve bar is the absolute-overlay ConsumerTripReserveBar, and its press still opens the existing reserve flow (setReserveSheetVisible(true)) — checkout unchanged",
+    /<ConsumerTripReserveBar[\s\S]*?onPress=\{openCart\}/.test(detailSrc),
+  "the floating Reserve bar is the absolute-overlay ConsumerTripReserveBar, and its press opens the cart directly (onPress={openCart}) — ORCH-1138",
 );
 
 // ── FIX 2: the detail clears the bottom nav by HIDING it (hidesBottomNav), not

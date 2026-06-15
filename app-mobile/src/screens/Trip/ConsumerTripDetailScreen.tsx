@@ -34,12 +34,17 @@
  * Reserve CTA enforcement (🔒 F.3): disabled when bookings_closed OR past deadline,
  * belt-and-suspenders with the feed RPC's WHERE (a deep-linked/stale detail re-enforces).
  *
- * Buyer flow (§F): Reserve opens the proven ExpandedBusinessEventSheet (tier
- * select → cart → tax-preview address → runNativeCheckout). The trip's tier
- * `ticket_type_id`s map onto the same `lines` contract; intake answers (when a
- * schema exists — none today) ride the nativeCheckoutFlow `intakeFormData` body
- * key → orders.intake_form_data. ExpandedBusinessEventSheet renders as a SIBLING
- * BaseBottomSheet root in the same fragment (feedback_rn_sub_sheet_must_render_inside_parent).
+ * Buyer flow (§F, ORCH-1138 [trip-page-redesign]): Reserve opens the cart
+ * (TicketCartSheet) DIRECTLY — seeded at the sole/first sellable tier — skipping
+ * the duplicate full detail page the old EBES hop showed. The trip screen owns the
+ * SAME usePublicEventTickets + useTripIntakeSchemas + useNativeCheckoutFlow wiring
+ * the shared event sheet held, scoped to the trip; the trip's tier `ticket_type_id`s
+ * map onto the same `lines` contract; intake answers (when a schema exists — none
+ * today) ride the nativeCheckoutFlow `intakeFormData` body key →
+ * orders.intake_form_data. The checkout REQUEST is byte-identical to the prior
+ * two-tap path (no address / taxCalculationId; venue-sourced tax). The cart renders
+ * as a SIBLING BaseBottomSheet root in the same fragment
+ * (feedback_rn_sub_sheet_must_render_inside_parent).
  */
 
 import React, {
@@ -108,7 +113,26 @@ import {
   BaseBottomSheet,
   BottomSheetScrollView,
 } from "../../components/ui/BaseBottomSheet";
-import { ExpandedBusinessEventSheet } from "../../components/expandedCard/ExpandedBusinessEventSheet";
+// ORCH-1138 [trip-page-redesign] — Reserve opens the cart (TicketCartSheet)
+// DIRECTLY. The shared ExpandedBusinessEventSheet is NO LONGER imported here
+// (it showed buyers a duplicate full detail page); it stays the events/
+// experiences detail+checkout sheet, mounted from ExpandedCardModal +
+// MessageInterface. The trip screen now owns the same cart + native-checkout
+// wiring EBES held, scoped to the trip.
+import TicketCartSheet, {
+  type TicketCartCheckoutPayload,
+} from "../../components/expandedCard/TicketCartSheet";
+import { usePublicEventTickets } from "../../hooks/usePublicEventTickets";
+import { useTripIntakeSchemas } from "../../hooks/useTripIntakeSchemas";
+import { circleKeys } from "../../hooks/queryKeys";
+import { useAppStore } from "../../store/appStore";
+import {
+  type NativeCheckoutOutcome,
+  useNativeCheckoutFlow,
+} from "../../payments/nativeCheckoutFlow";
+import { toastManager } from "../../components/ui/Toast";
+import { useQueryClient } from "@tanstack/react-query";
+import * as Haptics from "expo-haptics";
 import { glass } from "../../constants/designSystem";
 import { hueFromId } from "../../utils/hueFromId";
 import {
@@ -259,42 +283,13 @@ function deadlineState(detail: ConsumerTripDetail): {
   return { closed: false, countdownLabel: label };
 }
 
-// Map the trip detail onto the BusinessEventCard shape ExpandedBusinessEventSheet
-// consumes — so the proven cart → tax → runNativeCheckout path is reused verbatim.
-function tripToBusinessEventCard(d: ConsumerTripDetail): BusinessEventCard {
-  return {
-    eventId: d.tripId,
-    brandId: "",
-    brandSlug: d.brandSlug,
-    brandName: d.brandName,
-    brandProfilePhotoUrl: null,
-    eventSlug: d.tripSlug,
-    title: d.title,
-    description: d.description,
-    coverMediaUrl: d.coverMediaUrl,
-    coverMediaType: d.coverMediaType,
-    coverHue: hueFromId(d.tripId),
-    masterDateUtc: d.startAt,
-    masterEndAtUtc: d.endAt,
-    doorsOpenLocal: null,
-    endsAtLocal: null,
-    timezone: d.timezone ?? "UTC",
-    venueName: d.destinationText,
-    city: d.destinationText,
-    address: null,
-    hideAddressUntilTicket: false,
-    format: "in-person",
-    locationGeo: null,
-    partyTypes: [],
-    vibeTags: [],
-    musicGenres: [],
-    priceMin: d.minPriceCents,
-    priceMax: d.minPriceCents,
-    currency: d.currency,
-    distanceMeters: null,
-    isSaved: false,
-  } as unknown as BusinessEventCard;
-}
+// ORCH-1138 [trip-page-redesign] — the full `tripToBusinessEventCard()` adapter
+// (which mapped the trip onto the BusinessEventCard shape ExpandedBusinessEventSheet
+// consumed) is DELETED: Reserve no longer routes through EBES, so the only
+// remaining consumer of a card-shaped object is `useEventTheme`, which reads ONLY
+// `card.eventId`. A minimal `{ eventId: detail.tripId }` theme card is built inline
+// at the call site instead. The cart fetches tickets/intake by `eventId === tripId`
+// directly via usePublicEventTickets / useTripIntakeSchemas.
 
 export default function ConsumerTripDetailScreen({
   brandSlug,
@@ -310,7 +305,24 @@ export default function ConsumerTripDetailScreen({
     tripSlug,
     seed,
   );
-  const [reserveSheetVisible, setReserveSheetVisible] = useState(false);
+  // ORCH-1138 [trip-page-redesign] — direct-cart state (replaces the old
+  // reserveSheetVisible that mounted the duplicate ExpandedBusinessEventSheet
+  // detail page). Reserve now seeds + opens TicketCartSheet directly.
+  const [cartVisible, setCartVisible] = useState(false);
+  const [initialTicketTypeId, setInitialTicketTypeId] = useState<string | null>(
+    null,
+  );
+  const [checkoutInFlight, setCheckoutInFlight] = useState(false);
+  // ORCH-1138 — the cart + native-checkout wiring the trip screen now owns
+  // (ported from ExpandedBusinessEventSheet, scoped to the trip). The cart
+  // fetches its own tickets/intake by eventId === tripId, exactly as EBES did.
+  const tripId = detail !== null ? detail.tripId : null;
+  const ticketsQuery = usePublicEventTickets(tripId);
+  const intakeSchemasQuery = useTripIntakeSchemas(tripId);
+  const runNativeCheckout = useNativeCheckoutFlow();
+  const queryClient = useQueryClient();
+  const user = useAppStore((s) => s.user);
+  const profile = useAppStore((s) => s.profile);
   // ORCH-1130 — consumer pay-full vs pay-over-time choice. Default "full" (the
   // deliberate non-surprising default; a buyer who does nothing pays the whole
   // price, never a silent partial). Threaded into the reserve flow so the
@@ -361,8 +373,15 @@ export default function ConsumerTripDetailScreen({
     });
   };
 
-  const card = useMemo(
-    () => (detail !== null ? tripToBusinessEventCard(detail) : null),
+  // ORCH-1138 [trip-page-redesign] — minimal theme `card`. useEventTheme reads
+  // ONLY `card.eventId`, so the full tripToBusinessEventCard adapter (deleted with
+  // the EBES mount) is no longer needed — a one-field card suffices for theming.
+  // Kept named `card` so the existing palette-parity wiring/tests stay intact.
+  const card = useMemo<BusinessEventCard | null>(
+    () =>
+      detail !== null
+        ? ({ eventId: detail.tripId } as unknown as BusinessEventCard)
+        : null,
     [detail],
   );
 
@@ -431,6 +450,144 @@ export default function ConsumerTripDetailScreen({
     if (detail === null) return null;
     return detail.tiers.find((t) => t.installmentSchedule !== null) ?? null;
   }, [detail]);
+
+  // ORCH-1138 [trip-page-redesign] — Reserve opens the cart DIRECTLY. openCart
+  // selects the seed tier (the first SELLABLE tier — capacity>0 or unlimited;
+  // single-tier trips just use tiers[0]) and opens TicketCartSheet. Free trips
+  // take the SAME path — TicketCartSheet's CTA becomes "Get free", no separate
+  // branch. NEVER auto-charges: the cart is still the confirmation step
+  // (I-PROPOSED-TICKET-CLAIM-CONFIRMATION-REQUIRED preserved).
+  const openCart = useCallback((): void => {
+    if (detail === null || detail.tiers.length === 0) return;
+    const sellable =
+      detail.tiers.find(
+        (t) =>
+          t.isUnlimited || t.quantityTotal === null || t.quantityTotal > 0,
+      ) ?? detail.tiers[0];
+    setInitialTicketTypeId(sellable.ticketTypeId);
+    setCartVisible(true);
+  }, [detail]);
+
+  // ORCH-1138 — handleBuy ported VERBATIM (behavior) from EBES handleBuy
+  // (ExpandedBusinessEventSheet.tsx:313-432), scoped to the trip. Same buyer
+  // derivation, same guards, same byte-identical runNativeCheckout request (NO
+  // address, NO taxCalculationId — venue-sourced tax per ORCH-1025/1130), same
+  // success/cancel/failure toasts + the SAME post-success cache invalidations
+  // (businessEventOrders + circle keys, plus the 3× polling loop for paid
+  // checkouts) so a trip purchase refreshes the same surfaces (SPEC OQ-1).
+  const handleBuy = useCallback(
+    async (payload: TicketCartCheckoutPayload): Promise<void> => {
+      if (checkoutInFlight) return;
+      if (detail === null) return;
+      if (user === null) {
+        toastManager.show("Please sign in to get tickets.", "warning");
+        return;
+      }
+      const buyerName =
+        profile?.display_name?.trim() || user.email?.split("@")[0] || "Guest";
+      const buyerEmail = user.email ?? profile?.email ?? "";
+      const buyerPhone = profile?.phone ?? "";
+
+      if (buyerEmail.length === 0) {
+        toastManager.show(
+          "We need an email on your profile to issue tickets.",
+          "warning",
+        );
+        return;
+      }
+      if (buyerPhone.length === 0) {
+        toastManager.show(
+          "Add a phone number to your profile to get tickets.",
+          "warning",
+        );
+        return;
+      }
+
+      void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+      setCheckoutInFlight(true);
+
+      let result: NativeCheckoutOutcome;
+      try {
+        result = await runNativeCheckout({
+          eventId: detail.tripId,
+          lines: payload.lines,
+          buyer: {
+            name: buyerName,
+            email: buyerEmail,
+            phone: buyerPhone,
+            marketingOptIn: payload.marketingOptIn,
+          },
+          // ORCH-1025 — no taxCalculationId, no address: tax is computed
+          // server-side from the venue. ORCH-1016 (D2) — per-tier trip intake
+          // answers ride intakeFormData; empty array omitted (byte-identical).
+          ...(payload.intakeFormData.length > 0
+            ? { intakeFormData: payload.intakeFormData }
+            : {}),
+          // ORCH-1130 / DISC-1130-A — forward the buyer's EXPLICIT pay-full vs
+          // pay-over-time choice ONLY for a plan trip (detail.hasPlan). Undefined
+          // for no-plan trips → request byte-identical; NEVER a silent 'auto'.
+          paymentPlanChoice: detail.hasPlan ? paymentPlanChoice : undefined,
+        });
+      } catch (err) {
+        const message = err instanceof Error ? err.message : "Payment failed.";
+        result = { outcome: "failed", message };
+      } finally {
+        setCheckoutInFlight(false);
+      }
+
+      if (result.outcome === "succeeded") {
+        void Haptics.notificationAsync(
+          Haptics.NotificationFeedbackType.Success,
+        );
+        toastManager.show("Ticket secured! Check your calendar.", "success");
+        const userId = user.id;
+        queryClient.invalidateQueries({
+          queryKey: ["businessEventOrders", userId],
+        });
+        queryClient.invalidateQueries({ queryKey: circleKeys.all });
+        if (payload.totalCents > 0) {
+          let attempts = 0;
+          const interval = setInterval(() => {
+            attempts += 1;
+            queryClient.invalidateQueries({
+              queryKey: ["businessEventOrders", userId],
+            });
+            queryClient.invalidateQueries({ queryKey: circleKeys.all });
+            if (attempts >= 3) clearInterval(interval);
+          }, 1000);
+        }
+      } else if (result.outcome === "canceled") {
+        // Silent: user dismissed PaymentSheet.
+      } else {
+        void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+        toastManager.show(result.message, "error");
+      }
+    },
+    [
+      checkoutInFlight,
+      detail,
+      user,
+      profile,
+      runNativeCheckout,
+      paymentPlanChoice,
+      queryClient,
+    ],
+  );
+
+  // ORCH-1138 — cart Continue/Claim → close the cart first (mirror EBES
+  // handleCartCheckout :446-449), then fire the checkout.
+  const handleCartCheckout = useCallback(
+    (payload: TicketCartCheckoutPayload): void => {
+      setCartVisible(false);
+      void handleBuy(payload);
+    },
+    [handleBuy],
+  );
+
+  const handleCartCancel = useCallback((): void => {
+    setCartVisible(false);
+    setInitialTicketTypeId(null);
+  }, []);
 
   // Floating close/share chrome — preserved from the prior overlay, now layered
   // over the sheet body (inside the BaseBottomSheet) instead of the full screen.
@@ -1063,7 +1220,7 @@ export default function ConsumerTripDetailScreen({
   //   • plan trip + "Pay over time" → "{deposit} today" + "Due today · deposit"
   //   • free → "Free", no kicker
   //   • else → "From {price}" + "All-in, taxes included"
-  // checkout wiring is UNCHANGED — onPress → setReserveSheetVisible(true).
+  // ORCH-1138 — onPress → openCart (the cart DIRECTLY, no EBES detail hop).
   const barPriceLabel =
     planSchedule !== null && paymentPlanChoice === "installments"
       ? `${formatMoneyExact(planSchedule.depositCents, planSchedule.currency)} today`
@@ -1128,7 +1285,7 @@ export default function ConsumerTripDetailScreen({
       palette={palette}
       kicker={barKicker}
       fontFamily={boldFamily}
-      onPress={() => setReserveSheetVisible(true)}
+      onPress={openCart}
       variant="docked"
       safeAreaBottom={insets.bottom}
       onDockLayout={handleDockLayout}
@@ -1142,7 +1299,7 @@ export default function ConsumerTripDetailScreen({
       palette={palette}
       kicker={barKicker}
       fontFamily={boldFamily}
-      onPress={() => setReserveSheetVisible(true)}
+      onPress={openCart}
       variant="floating"
       // ORCH-1138 FIX-5 — pass the SCREEN-LEVEL inset; the bar's own
       // useSafeAreaInsets can return 0 inside the gorhom sheet context, which let
@@ -1279,36 +1436,42 @@ export default function ConsumerTripDetailScreen({
         {floatingReserve}
       </BaseBottomSheet>
 
-      {/* Reserve flow — reuses the proven business-event checkout sheet. Sibling
-          BaseBottomSheet root in the same fragment so it overlays this sheet.
-          UNCHANGED from today (no consumer-checkout change). */}
-      {card !== null ? (
-        <ExpandedBusinessEventSheet
-          visible={reserveSheetVisible}
-          data={card}
-          onClose={() => setReserveSheetVisible(false)}
-          // ORCH-1130 / DISC-1130-A — pass the buyer's explicit choice ONLY for
-          // plan trips (detail.hasPlan). Undefined for no-plan trips → the
-          // request stays byte-identical and the edge-fn default path is
-          // untouched. NEVER let a plan trip resolve to a silent 'auto'.
-          paymentPlanChoice={detail.hasPlan ? paymentPlanChoice : undefined}
-          // ORCH-1130 ADDENDUM (Seth-BINDING) — when the buyer picked "Pay over
-          // time", forward the deposit DUE TODAY (from the same projected
-          // schedule the on-screen toggle renders) so the cart sheet's sticky
-          // bar leads with it, mirroring Path A + the Reserve bar above.
-          dueTodayCents={
-            detail.hasPlan &&
-            paymentPlanChoice === "installments" &&
-            planSchedule !== null
-              ? planSchedule.depositCents
-              : undefined
-          }
-          // ORCH-1016: EBES hides the nav itself. The scroll viewport extends ~46px
-          // below the visible screen edge, so the spacer must clear that overshoot +
-          // a small gap for the Buy CTA — without over-scrolling. ~58.
-          bottomContentInset={Math.max(insets.bottom, 16) + 8}
-        />
-      ) : null}
+      {/* ORCH-1138: Reserve opens the cart DIRECTLY. Do NOT route trips through
+          ExpandedBusinessEventSheet — that showed buyers a duplicate detail page
+          (Seth, 2026-06-15). EBES stays for events/experiences only. Sibling
+          BaseBottomSheet root in the same fragment so it overlays this sheet
+          (feedback_rn_sub_sheet_must_render_inside_parent). The checkout request
+          is byte-identical to the prior two-tap EBES path (handleBuy ported
+          verbatim): same lines/buyer, same paymentPlanChoice forwarding, NO
+          address / taxCalculationId (venue-sourced tax, ORCH-1025/1130). */}
+      <TicketCartSheet
+        visible={cartVisible}
+        eventId={detail.tripId}
+        tickets={ticketsQuery.data}
+        intakeSchemasByTier={intakeSchemasQuery.data}
+        fallbackCurrency={detail.currency ?? "USD"}
+        initialTicketTypeId={initialTicketTypeId}
+        buyerName={
+          profile?.display_name?.trim() || user?.email?.split("@")[0] || "Guest"
+        }
+        buyerEmail={user?.email ?? profile?.email ?? ""}
+        buyerPhone={profile?.phone ?? ""}
+        isSubmitting={checkoutInFlight}
+        clearFloatingNav={false}
+        // ORCH-1130 ADDENDUM (Seth-BINDING) — when the buyer picked "Pay over
+        // time" on a plan trip, lead the cart's sticky bar with the deposit DUE
+        // TODAY (same projected schedule the on-screen toggle renders). Undefined
+        // for no-plan / pay-in-full → the all-in total shows, byte-identical.
+        dueTodayCents={
+          detail.hasPlan &&
+          paymentPlanChoice === "installments" &&
+          planSchedule !== null
+            ? planSchedule.depositCents
+            : undefined
+        }
+        onCancel={handleCartCancel}
+        onCheckout={handleCartCheckout}
+      />
     </>,
   );
 }
