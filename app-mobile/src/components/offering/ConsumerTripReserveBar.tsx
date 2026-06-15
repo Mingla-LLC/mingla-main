@@ -20,10 +20,13 @@
  *     the home indicator.
  *
  *   • variant="floating" — shown ONLY WHILE the in-content docked button is scrolled
- *     OUT of view. It is JUST THE BUTTON (a pill), with NO full-width opaque bar
- *     background — a subtle transparent-to-page scrim sits under the pill for
- *     legibility, NOT the solid full-width bar. Absolute-positioned, lifted above
- *     the home indicator. The screen hides it once the docked button scrolls in.
+ *     OUT of view. It is JUST THE BUTTON — a COMPACT self-width pill with ONLY the
+ *     "Reserve my spot →" label (NO kicker, NO "All-in, taxes included / From €500"
+ *     price block) and NO full-width opaque bar background. It reads as a floating
+ *     action button, not a bar. Absolute-positioned + centered, lifted above the
+ *     home indicator. The screen hides it once the docked button scrolls in.
+ *     (ORCH-1138 device-rework #4 — Seth: "just a button while floating, no
+ *     background"; the price block + bar are the DOCKED variant only.)
  *
  * Net effect: a light floating pill while scrolling → the docked button (bg ok)
  * flush at the end → no black gap, no oversized bottom padding.
@@ -214,19 +217,59 @@ export const ConsumerTripReserveBar: React.FC<ConsumerTripReserveBarProps> = ({
     );
   }
 
-  // ── FLOATING — JUST the pill (NO full-width opaque bar bg), shown while the
-  // docked button is scrolled OFF-screen. A subtle transparent-to-page scrim sits
-  // under the pill for legibility (NOT the solid full-width bar Seth flagged). The
-  // wrapper lifts the WHOLE pill above the home indicator (gorhom overshoot +
-  // floor + gap), and `pointerEvents="box-none"` lets taps pass through the scrim
-  // to the scrolling content around the pill.
+  // ── FLOATING — JUST the BUTTON, a COMPACT self-width pill (Seth's explicit ask:
+  // "just a button while floating, no background"). It is NOT the docked bar: NO
+  // full-width opaque bar bg, NO "All-in, taxes included / From €500" kicker+price
+  // block — only the tappable label ("Reserve my spot →"), hugging its own width,
+  // centered at the bottom and lifted fully above the home indicator. The disabled
+  // (closed/unavailable) state renders the SAME compact pill with the unavailable
+  // title and NO onPress (Constitution #1, no dead taps).
+  // `pointerEvents="box-none"` lets taps pass through to the scrolling content
+  // around the pill; the pill itself stays tappable.
+  const floatBody = tappable ? (
+    <Pressable
+      onPress={handlePress}
+      accessibilityRole="button"
+      accessibilityLabel={
+        cta.kind === "buy" && price.length > 0 ? `${cta.label}, ${price}` : cta.label
+      }
+      style={({ pressed }) => [
+        styles.floatButton,
+        { backgroundColor: palette.accent },
+        pressed ? styles.reservePressed : null,
+      ]}
+      testID={testID !== undefined ? `${testID}-action` : undefined}
+    >
+      <Text style={[styles.floatCta, { color: palette.accentText }, fontStyle]}>
+        {cta.label} →
+      </Text>
+    </Pressable>
+  ) : (
+    // Non-tappable compact pill — NO onPress, role "text" (no dead Reserve).
+    <View
+      style={[
+        styles.floatButtonDisabled,
+        { backgroundColor: palette.panelStrong, borderColor: palette.panelBorder },
+      ]}
+      accessibilityRole="text"
+      accessibilityLabel={
+        unavailableSub !== null ? `${unavailableTitle}. ${unavailableSub}` : unavailableTitle
+      }
+      testID={testID !== undefined ? `${testID}-unavailable` : undefined}
+    >
+      <Text style={[styles.floatDisabledTitle, { color: palette.tertiaryText }]}>
+        {unavailableTitle}
+      </Text>
+    </View>
+  );
+
   return (
     <View
       style={[styles.floatWrapper, { bottom: wrapperBottom }]}
       pointerEvents="box-none"
       testID={testID !== undefined ? `${testID}-floating` : undefined}
     >
-      <View style={styles.floatPill}>{ctaBody}</View>
+      {floatBody}
     </View>
   );
 };
@@ -241,10 +284,11 @@ const styles = StyleSheet.create({
     // paddingBottom is set dynamically (safe-area floor + gap).
     marginTop: 8,
   },
-  // ── FLOATING — absolute overlay; JUST the pill, NO full-width opaque bar bg.
-  // `bottom` is set dynamically (safe-area + gorhom overshoot + gap) so the WHOLE
-  // pill floats above the home indicator. zIndex above the scroll, below the
-  // chrome (CHROME_Z=70 in ParallaxCoverShell).
+  // ── FLOATING — absolute overlay; JUST a COMPACT self-width pill, NO full-width
+  // opaque bar bg. `bottom` is set dynamically (safe-area + gorhom overshoot + gap)
+  // so the WHOLE pill floats above the home indicator. `alignItems: "center"`
+  // hugs the pill's own width and centers it (a floating action button, not a bar).
+  // zIndex above the scroll, below the chrome (CHROME_Z=70 in ParallaxCoverShell).
   floatWrapper: {
     position: "absolute",
     left: 0,
@@ -252,11 +296,52 @@ const styles = StyleSheet.create({
     // `bottom` set dynamically — see the component.
     zIndex: 6,
     paddingHorizontal: 16,
+    alignItems: "center",
   },
-  // The pill is just the rounded button + a small drop shadow for legibility over
-  // content — NO full-width page-colored fade band behind it.
-  floatPill: {
-    width: "100%",
+  // The compact floating pill — hugs its label (self-width), comfortable padding,
+  // a small drop shadow for legibility over content. NO price block, NO full-width
+  // page-colored fade band behind it.
+  floatButton: {
+    alignSelf: "center",
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: 999,
+    paddingHorizontal: 26,
+    paddingVertical: 15,
+    minHeight: 52,
+    // iOS/web glow; Android suppressed — opaque accent fill, no shadow under the
+    // rounded fill per ANDROID_GLASS_USES_OPAQUE_FALLBACK.
+    ...Platform.select({
+      android: { elevation: 0, shadowOpacity: 0 },
+      default: {
+        shadowColor: "#000000",
+        shadowOpacity: 0.28,
+        shadowRadius: 20,
+        shadowOffset: { width: 0, height: 8 },
+      },
+    }),
+  },
+  floatCta: {
+    fontSize: 16,
+    fontWeight: "900",
+  },
+  // Compact disabled (closed/unavailable) floating pill — self-width, no onPress.
+  floatButtonDisabled: {
+    alignSelf: "center",
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: 999,
+    borderWidth: 1,
+    paddingHorizontal: 24,
+    paddingVertical: 14,
+    minHeight: 48,
+  },
+  floatDisabledTitle: {
+    fontSize: 14,
+    fontWeight: "900",
+    textAlign: "center",
   },
   reserve: {
     flexDirection: "row",

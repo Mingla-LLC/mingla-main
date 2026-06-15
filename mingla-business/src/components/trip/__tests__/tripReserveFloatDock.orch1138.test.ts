@@ -37,8 +37,8 @@ describe("ORCH-1138 DR3 — trip Reserve CTA float→dock (business/web)", () =>
   });
 
   test("DR3b the FLOATING variant is just the pill — NO full-width opaque bar bg", () => {
-    // floating branch renders styles.floatPill inside styles.floatWrapper.
-    expect(reserveBarSrc).toMatch(/styles\.floatPill\b/);
+    // floating branch renders the compact styles.floatButton inside styles.floatWrapper.
+    expect(reserveBarSrc).toMatch(/styles\.floatButton\b/);
     expect(reserveBarSrc).toMatch(/styles\.floatWrapper\b/);
     // the float wrapper carries NO page-colored full-width background band.
     const floatWrapperBlock = reserveBarSrc.match(
@@ -46,6 +46,44 @@ describe("ORCH-1138 DR3 — trip Reserve CTA float→dock (business/web)", () =>
     );
     expect(floatWrapperBlock).not.toBeNull();
     expect(floatWrapperBlock?.[0]).not.toContain("backgroundColor");
+  });
+
+  // ── ORCH-1138 device-rework #4 (Seth: "just a button while floating, no
+  // background") — the FLOATING variant is JUST THE BUTTON: a COMPACT self-width
+  // pill with ONLY the CTA label, NO kicker, NO "From {price}" price block. The
+  // price block belongs to the DOCKED variant. ──
+  test("DR4a the floating variant renders the compact floatBody (not the priced ctaBody)", () => {
+    expect(reserveBarSrc).toMatch(/const floatBody = tappable \?/);
+    expect(reserveBarSrc).toMatch(/\{floatBody\}\s*<\/View>/);
+  });
+
+  test("DR4b the floating pill shows ONLY the CTA label — no kicker, no price block", () => {
+    const floatBodyBlock = reserveBarSrc.match(
+      /const floatBody = tappable \? \([\s\S]*?\n {2}\);/,
+    );
+    expect(floatBodyBlock).not.toBeNull();
+    const floatBodyStr = floatBodyBlock?.[0] ?? "";
+    // renders the label …
+    expect(floatBodyStr).toMatch(/\{cta\.label\} →/);
+    // … but NOT the kicker or the price block (those are docked-only styles).
+    expect(floatBodyStr).not.toContain("styles.rKicker");
+    expect(floatBodyStr).not.toContain("styles.rPrice");
+  });
+
+  test("DR4c the floating pill is SELF-WIDTH (a FAB) — alignSelf center, not width 100%", () => {
+    const floatButtonBlock = reserveBarSrc.match(/floatButton:\s*\{[\s\S]*?\},/);
+    expect(floatButtonBlock).not.toBeNull();
+    expect(floatButtonBlock?.[0]).toContain('alignSelf: "center"');
+    expect(floatButtonBlock?.[0]).not.toContain('width: "100%"');
+    // the wrapper centers the pill (no full-width fill).
+    const floatWrapperBlock = reserveBarSrc.match(/floatWrapper:\s*\{[\s\S]*?\},/);
+    expect(floatWrapperBlock?.[0]).toContain('alignItems: "center"');
+  });
+
+  test("DR4d the DOCKED variant still keeps the priced ctaBody (price intact at rest)", () => {
+    expect(reserveBarSrc).toMatch(/const ctaBody = tappable \?/);
+    expect(reserveBarSrc).toContain("styles.rPrice");
+    expect(reserveBarSrc).toMatch(/\{ctaBody\}\s*<\/View>/);
   });
 
   test("DR3c the DOCKED variant is an in-flow card (not absolute) with onLayout", () => {

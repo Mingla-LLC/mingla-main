@@ -102,14 +102,68 @@ ok(
   "the black gap came from an oversized bottom padding — it must be gone",
 );
 
-// 7. The floating pill renders the SAME CTA body as the docked one (shared
-//    ctaBody) so the price/deposit copy is correct in BOTH states.
+// 7. ORCH-1138 device-rework #4 (Seth: "just a button while floating, no
+//    background") — the FLOATING variant is JUST THE BUTTON: a COMPACT self-width
+//    pill with ONLY the "{label} →" CTA, NO kicker, NO "From {price}" price block,
+//    NO full-width bar bg. The price/kicker block belongs to the DOCKED variant.
 ok(
-  "B7 both variants render the shared ctaBody (price/deposit copy correct in both)",
+  "B7 the floating variant renders the COMPACT floatBody (not the priced bar body)",
+  /const floatBody = tappable \?/.test(reserveBarSrc) &&
+    /\{floatBody\}\s*<\/View>/.test(reserveBarSrc),
+  "the floating overlay must render floatBody (the compact pill), not the priced ctaBody",
+);
+// The compact floating button shows ONLY the CTA label — no kicker, no price text.
+{
+  const floatBodyBlock = reserveBarSrc.match(
+    /const floatBody = tappable \? \([\s\S]*?\n  \);/,
+  );
+  ok(
+    "B7a floatBody block is present",
+    floatBodyBlock !== null,
+  );
+  const floatBodyStr = floatBodyBlock ? floatBodyBlock[0] : "";
+  ok(
+    "B7b the floating pill renders the CTA label",
+    /\{cta\.label\} →/.test(floatBodyStr),
+  );
+  ok(
+    "B7c the floating pill does NOT render the kicker (rKicker is docked-only)",
+    !/styles\.rKicker/.test(floatBodyStr),
+    "the floating pill must NOT show the 'All-in, taxes included' kicker",
+  );
+  ok(
+    "B7d the floating pill does NOT render the price block (rPrice is docked-only)",
+    !/styles\.rPrice/.test(floatBodyStr),
+    "the floating pill must NOT show the 'From {price}' price block",
+  );
+}
+// The floating pill is SELF-WIDTH (hugs its label) — NOT a full-width bar.
+{
+  const floatButtonBlock = reserveBarSrc.match(/floatButton:\s*\{[\s\S]*?\n  \},/);
+  ok("B7e0 floatButton style block present", floatButtonBlock !== null);
+  const floatButtonStr = floatButtonBlock ? floatButtonBlock[0] : "";
+  ok(
+    "B7e the floating button hugs its own width (alignSelf center, NOT width:'100%')",
+    /alignSelf:\s*"center"/.test(floatButtonStr) &&
+      !/width:\s*"100%"/.test(floatButtonStr),
+    "the floating pill must be self-width (a FAB), not a full-width bar",
+  );
+}
+{
+  const floatWrapperBlock = reserveBarSrc.match(/floatWrapper:\s*\{[\s\S]*?\n  \},/);
+  ok(
+    "B7f the float wrapper centers the pill (alignItems center) — no full-width fill",
+    floatWrapperBlock !== null &&
+      /alignItems:\s*"center"/.test(floatWrapperBlock[0]),
+  );
+}
+// The docked variant STILL carries the full priced bar body (unchanged).
+ok(
+  "B7g the DOCKED variant still renders the priced ctaBody (price block intact at rest)",
   /const ctaBody = tappable \?/.test(reserveBarSrc) &&
-    /<View style=\{styles\.floatPill\}>\{ctaBody\}<\/View>/.test(reserveBarSrc) &&
+    /styles\.rPrice/.test(reserveBarSrc) &&
     /\{ctaBody\}\s*<\/View>/.test(reserveBarSrc),
-  "the floating + docked CTAs must share one body so the copy never diverges",
+  "the docked bar must keep its price block — only the floating variant drops it",
 );
 
 console.log(`\n${passed} assertions passed (ORCH-1138 reserve float→dock).`);

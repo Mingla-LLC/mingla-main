@@ -189,16 +189,18 @@ ok(
   /variant:\s*"docked"\s*\|\s*"floating"/.test(reserveBarSrc),
   "the CTA must render in two modes — docked (resting) and floating (pill)",
 );
-// (b) the FLOATING variant is JUST the pill — NO full-width opaque bar bg. The
-// floating branch renders styles.floatPill and there is NO page-colored
-// full-width fade band in the floating wrapper (the floatWrapper has no
-// backgroundColor). Fails-on-revert: if the floating branch reintroduces a
+// (b) the FLOATING variant is JUST the compact button — NO full-width opaque bar
+// bg. The floating branch renders styles.floatButton (a self-width pill) and there
+// is NO page-colored full-width fade band in the floating wrapper (the floatWrapper
+// has no backgroundColor). Fails-on-revert: if the floating branch reintroduces a
 // full-width page-colored band, the negative assertion fails.
+// (ORCH-1138 device-rework #4 — Seth: "just a button while floating, no
+// background"; floatPill→floatButton, and the price block is docked-only.)
 ok(
-  "DR3b the FLOATING variant renders just the pill (floatPill), not a full-width opaque bar",
-  /styles\.floatPill\b/.test(reserveBarSrc) &&
+  "DR3b the FLOATING variant renders just the compact button (floatButton), not a full-width opaque bar",
+  /styles\.floatButton\b/.test(reserveBarSrc) &&
     /styles\.floatWrapper\b/.test(reserveBarSrc),
-  "floating must be a pill, not a solid full-width bar",
+  "floating must be a compact pill, not a solid full-width bar",
 );
 ok(
   "DR3b2 the floatWrapper has NO page-colored full-width background band",
