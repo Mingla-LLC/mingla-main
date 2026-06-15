@@ -20,19 +20,36 @@ const scaleMigration = join(
   root,
   "supabase/migrations/20260612000000_orch_426_discover_scale.sql",
 );
+const gzipMigration = join(
+  root,
+  "supabase/migrations/20260615000000_orch_426_discover_cache_gzip.sql",
+);
 const distributed = join(root, "scripts/load/run-distributed.sh");
 
 const index = readFileSync(indexPath, "utf8");
 const rpcSql = readFileSync(rpcMigration, "utf8");
 const scaleSql = readFileSync(scaleMigration, "utf8");
+const gzipSql = readFileSync(gzipMigration, "utf8");
 const distributedSh = readFileSync(distributed, "utf8");
+
+const memoryPath = join(root, "supabase/functions/discover-merged-events/_memory-cache.ts");
+const bytesPath = join(root, "supabase/functions/discover-merged-events/_response-bytes.ts");
+const supabaseEdge = join(root, "scripts/load/lib/supabase-edge.js");
+const memory = readFileSync(memoryPath, "utf8");
+const bytes = readFileSync(bytesPath, "utf8");
+const supabaseEdgeJs = readFileSync(supabaseEdge, "utf8");
 
 const checks = [
   [index.includes("coalesceDiscoverBuild"), "L1 single-flight coalesce"],
   [index.includes("l1Get"), "L1 memory cache"],
+  [index.includes("discoverJsonResponse"), "pre-serialized hot path"],
+  [memory.includes("bytes"), "L1 byte cache"],
+  [bytes.includes("encodeDiscoverResponse"), "gzip response bytes"],
+  [supabaseEdgeJs.includes('"Accept-Encoding": "gzip"'), "k6 gzip request header"],
   [index.includes("pg_discover_business_events") || readFileSync(join(root, "supabase/functions/discover-merged-events/_business-query.ts"), "utf8").includes("pg_discover_business_events"), "discover RPC"],
   [rpcSql.includes("pg_discover_business_events"), "RPC migration"],
   [scaleSql.includes("discover_merged_events_cache"), "response cache table"],
+  [gzipSql.includes("response_gzip_base64"), "gzip cache column"],
   [distributedSh.includes('execution-segment "${SEG_START}:${SEG_END}"'), "k6 v2 segment format"],
 ];
 

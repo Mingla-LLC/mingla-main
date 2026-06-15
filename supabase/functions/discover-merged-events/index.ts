@@ -22,6 +22,7 @@ import {
 } from "./_cache.ts";
 import {
   readDbDiscoverCache,
+  readDbDiscoverCacheBytes,
   releaseDistributedBuildLock,
   tryDistributedBuildLock,
   waitForDbDiscoverCache,
@@ -30,14 +31,16 @@ import {
 import {
   coalesceDiscoverBuild,
   l1Get,
+  l1SetBytes,
   refreshDiscoverInBackground,
 } from "./_memory-cache.ts";
+import { discoverJsonResponse, encodeDiscoverResponse, withCacheMeta } from "./_response-bytes.ts";
 import type { DiscoverMergedResponse } from "./_types.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers":
-    "authorization, x-client-info, apikey, content-type",
+    "authorization, x-client-info, apikey, content-type, accept-encoding",
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
@@ -66,7 +69,7 @@ interface DiscoverMergedRequest {
 const DEFAULT_PAGE_SIZE = 20;
 const MAX_PAGE_SIZE = 50;
 
-function jsonResponse(body: unknown, status = 200): Response {
+function jsonError(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
     status,
     headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -78,19 +81,19 @@ serve(async (req: Request): Promise<Response> => {
     return new Response("ok", { headers: corsHeaders });
   }
   if (req.method !== "POST") {
-    return jsonResponse({ error: "method_not_allowed" }, 405);
+    return jsonError({ error: "method_not_allowed" }, 405);
   }
 
   let body: DiscoverMergedRequest;
   try {
     body = await req.json();
   } catch {
-    return jsonResponse({ error: "invalid_json" }, 400);
+    return jsonError({ error: "invalid_json" }, 400);
   }
 
   const cityName = body.city?.name?.trim();
   if (!cityName) {
-    return jsonResponse({ error: "city_required" }, 400);
+    return jsonError({ error: "city_required" }, 400);
   }
 
   const page = Math.max(1, body.page ?? 1);
@@ -104,19 +107,19 @@ serve(async (req: Request): Promise<Response> => {
     partyTypeSlugs.length > 0 &&
     !isSubsetOf(partyTypeSlugs, PARTY_TYPE_SLUGS as readonly string[])
   ) {
-    return jsonResponse({ error: "party_type_slugs_not_canonical" }, 400);
+    return jsonError({ error: "party_type_slugs_not_canonical" }, 400);
   }
   if (
     vibeTagSlugs.length > 0 &&
     !isSubsetOf(vibeTagSlugs, VIBE_TAG_SLUGS as readonly string[])
   ) {
-    return jsonResponse({ error: "vibe_tag_slugs_not_canonical" }, 400);
+    return jsonError({ error: "vibe_tag_slugs_not_canonical" }, 400);
   }
   if (
     musicGenreSlugs.length > 0 &&
     !isSubsetOf(musicGenreSlugs, MUSIC_GENRE_SLUGS as readonly string[])
   ) {
-    return jsonResponse({ error: "music_genre_slugs_not_canonical" }, 400);
+    return jsonError({ error: "music_genre_slugs_not_canonical" }, 400);
   }
 
   const requestTimezone = (body.timezone ?? "UTC").trim() || "UTC";
@@ -129,7 +132,7 @@ serve(async (req: Request): Promise<Response> => {
       );
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      return jsonResponse(
+      return jsonError(
         {
           error: msg.startsWith("invalid_local_") ? msg : "invalid_timezone",
           detail: msg,
@@ -142,7 +145,7 @@ serve(async (req: Request): Promise<Response> => {
   const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
   const SUPABASE_SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
   if (!SUPABASE_URL || !SUPABASE_SERVICE_KEY) {
-    return jsonResponse({ error: "supabase_env_missing" }, 500);
+    return jsonError({ error: "supabase_env_missing" }, 500);
   }
   const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY, {
     auth: { persistSession: false },
@@ -192,11 +195,15 @@ serve(async (req: Request): Promise<Response> => {
     if (!gotLock) {
       const waited = await waitForDbDiscoverCache(supabase, cacheKey);
       if (waited) return waited;
+      const lateHit = await readDbDiscoverCache(supabase, cacheKey);
+      if (lateHit) return lateHit;
     }
 
     try {
       const built = await buildDiscoverMergedResponse(buildCtx);
-      writeDbDiscoverCache(supabase, cacheKey, built, discoverStaleExpiresAt);
+      const cached = withCacheMeta(built);
+      const bytes = await encodeDiscoverResponse(cached);
+      writeDbDiscoverCache(supabase, cacheKey, built, discoverStaleExpiresAt, bytes);
       return built;
     } finally {
       await releaseDistributedBuildLock(supabase, cacheKey);
@@ -209,19 +216,23 @@ serve(async (req: Request): Promise<Response> => {
     if (now >= l1Hit.freshUntil) {
       refreshDiscoverInBackground(cacheKey, buildFresh);
     }
-    return jsonResponse({
-      ...l1Hit.response,
-      meta: { ...l1Hit.response.meta, fromCache: true },
-    });
+    return discoverJsonResponse(req, l1Hit.bytes, corsHeaders);
+  }
+
+  const dbBytes = await readDbDiscoverCacheBytes(supabase, cacheKey);
+  if (dbBytes) {
+    const cached = JSON.parse(new TextDecoder().decode(dbBytes.json)) as DiscoverMergedResponse;
+    l1SetBytes(cacheKey, dbBytes, cached, now);
+    return discoverJsonResponse(req, dbBytes, corsHeaders);
   }
 
   try {
-    const response = await coalesceDiscoverBuild(cacheKey, buildFresh);
-    return jsonResponse(response);
+    const entry = await coalesceDiscoverBuild(cacheKey, buildFresh);
+    return discoverJsonResponse(req, entry.bytes, corsHeaders);
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     if (msg.startsWith("db_error:")) {
-      return jsonResponse(
+      return jsonError(
         { error: "db_error", detail: msg.slice("db_error:".length) },
         500,
       );
