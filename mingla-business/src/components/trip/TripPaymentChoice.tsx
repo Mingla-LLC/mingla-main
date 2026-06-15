@@ -29,9 +29,17 @@
  */
 
 import React from "react";
-import { StyleSheet, Text, View, Pressable } from "react-native";
+import {
+  StyleSheet,
+  Text,
+  View,
+  Pressable,
+  type TextStyle,
+  type ViewStyle,
+} from "react-native";
 
 import { spacing, text as textTokens } from "../../constants/designSystem";
+import type { ThemePalette } from "@mingla/event-rendering";
 import { GlassCard } from "../ui/GlassCard";
 import { formatCurrency } from "../../utils/currency";
 import {
@@ -40,6 +48,39 @@ import {
 } from "./InstallmentScheduleDisplay";
 
 export type TripPaymentChoiceValue = "full" | "installments";
+
+// ORCH-1138 B5 — additive palette theming. When a `palette` is passed (the
+// public trip page), the segmented track / selected fill / dots / amount / copy
+// derive from the brand palette. When ABSENT (the /checkout-trip payment route +
+// wizard Step 5), every override resolves to undefined and the component renders
+// BYTE-IDENTICAL to the pre-1138 designSystem tokens. Protected by RT-2.
+interface PaletteOverrides {
+  selectedSegment?: ViewStyle;
+  selectedSegmentTitle?: TextStyle;
+  selectedDotBorder?: ViewStyle;
+  selectedDotInner?: ViewStyle;
+  amountValue?: TextStyle;
+  amountLabel?: TextStyle;
+  primaryText?: TextStyle;
+}
+
+const paletteOverrides = (
+  palette: ThemePalette | undefined,
+): PaletteOverrides => {
+  if (palette === undefined) return {};
+  return {
+    selectedSegment: {
+      borderColor: palette.panelBorder,
+      backgroundColor: palette.accentWash,
+    },
+    selectedSegmentTitle: { color: palette.primaryText },
+    selectedDotBorder: { borderColor: palette.accent },
+    selectedDotInner: { backgroundColor: palette.accent },
+    amountValue: { color: palette.primaryText },
+    amountLabel: { color: palette.secondaryText },
+    primaryText: { color: palette.primaryText },
+  };
+};
 
 export interface TripPaymentChoiceProps {
   /**
@@ -60,6 +101,13 @@ export interface TripPaymentChoiceProps {
    * render under the supporting block while "Pay over time" is selected.
    */
   showScheduleWhenInstallments?: boolean;
+  /**
+   * ORCH-1138 B5 (additive). When present, the toggle/amount/copy derive from
+   * the brand palette. When ABSENT, renders byte-identical to pre-1138. The
+   * checkout-trip payment route + wizard Step 5 do NOT pass it (RT-2 guards
+   * this); the public trip page does.
+   */
+  palette?: ThemePalette;
   testID?: string;
 }
 
@@ -71,10 +119,13 @@ export const TripPaymentChoice: React.FC<TripPaymentChoiceProps> = ({
   value,
   onChange,
   showScheduleWhenInstallments = true,
+  palette,
   testID,
 }) => {
   // Null-on-null: no plan → caller renders the quiet recap line instead.
   if (schedule === null) return null;
+
+  const ov = paletteOverrides(palette);
 
   const fullLabel = formatCurrency(fullPriceCents, currency, true);
   const depositLabel = formatCurrency(schedule.depositCents, currency, true);
@@ -103,18 +154,29 @@ export const TripPaymentChoice: React.FC<TripPaymentChoiceProps> = ({
           accessibilityLabel={`Pay full ${fullLabel} now`}
           accessibilityState={{ selected: isFull }}
           onPress={() => onChange("full")}
-          style={[styles.segment, isFull ? styles.segmentSelected : null]}
+          style={[
+            styles.segment,
+            isFull ? styles.segmentSelected : null,
+            isFull ? ov.selectedSegment : null,
+          ]}
         >
           <View
-            style={[styles.dot, isFull ? styles.dotSelected : null]}
+            style={[
+              styles.dot,
+              isFull ? styles.dotSelected : null,
+              isFull ? ov.selectedDotBorder : null,
+            ]}
             pointerEvents="none"
           >
-            {isFull ? <View style={styles.dotInner} /> : null}
+            {isFull ? (
+              <View style={[styles.dotInner, ov.selectedDotInner]} />
+            ) : null}
           </View>
           <Text
             style={[
               styles.segmentTitle,
               isFull ? styles.segmentTitleSelected : null,
+              isFull ? ov.selectedSegmentTitle : null,
             ]}
           >
             Pay in full
@@ -131,18 +193,26 @@ export const TripPaymentChoice: React.FC<TripPaymentChoiceProps> = ({
           style={[
             styles.segment,
             isInstallments ? styles.segmentSelected : null,
+            isInstallments ? ov.selectedSegment : null,
           ]}
         >
           <View
-            style={[styles.dot, isInstallments ? styles.dotSelected : null]}
+            style={[
+              styles.dot,
+              isInstallments ? styles.dotSelected : null,
+              isInstallments ? ov.selectedDotBorder : null,
+            ]}
             pointerEvents="none"
           >
-            {isInstallments ? <View style={styles.dotInner} /> : null}
+            {isInstallments ? (
+              <View style={[styles.dotInner, ov.selectedDotInner]} />
+            ) : null}
           </View>
           <Text
             style={[
               styles.segmentTitle,
               isInstallments ? styles.segmentTitleSelected : null,
+              isInstallments ? ov.selectedSegmentTitle : null,
             ]}
           >
             Pay over time
@@ -155,8 +225,12 @@ export const TripPaymentChoice: React.FC<TripPaymentChoiceProps> = ({
         {isFull ? (
           <>
             <View style={styles.amountRow}>
-              <Text style={styles.amountLabel}>Charged today</Text>
-              <Text style={styles.amountValue}>{fullLabel}</Text>
+              <Text style={[styles.amountLabel, ov.amountLabel]}>
+                Charged today
+              </Text>
+              <Text style={[styles.amountValue, ov.amountValue]}>
+                {fullLabel}
+              </Text>
             </View>
             <Text style={styles.termsCopy}>
               You&rsquo;ll be charged {fullLabel} today. No future bills for this
@@ -166,10 +240,10 @@ export const TripPaymentChoice: React.FC<TripPaymentChoiceProps> = ({
         ) : (
           <>
             <View style={styles.amountRow}>
-              <Text style={styles.amountLabel}>
+              <Text style={[styles.amountLabel, ov.amountLabel]}>
                 {depositPct}% deposit today
               </Text>
-              <Text style={styles.amountValue}>
+              <Text style={[styles.amountValue, ov.amountValue]}>
                 {depositLabel} today + {futureCount} more
               </Text>
             </View>

@@ -8,6 +8,13 @@ const repoFile = (relativePath: string): string =>
 
 describe("ORCH-0964 design rework — public event page premium renderer", () => {
   const sharedSource = repoFile("packages/event-rendering/PublicEventPage.tsx");
+  // ORCH-1138 A1 (SPEC amendment A-1) — createThemePalette + the ThemePalette
+  // type + the color-math helpers were extracted VERBATIM out of
+  // PublicEventPage.tsx into themePalette.ts (behavior-neutral). These three
+  // structural assertions now read the new module home; the page still consumes
+  // them via `useMemo(() => createThemePalette(theme))` (asserted below against
+  // sharedSource). [TEST-MOD-APPROVED ORCH-1138]
+  const paletteSource = repoFile("packages/event-rendering/themePalette.ts");
   const typesSource = repoFile("packages/event-rendering/types.ts");
   const packageSource = repoFile("packages/event-rendering/package.json");
   const businessAdapterSource = readFileSync(
@@ -30,12 +37,12 @@ describe("ORCH-0964 design rework — public event page premium renderer", () =>
     expect(sharedSource).toContain("paddingTop: 288");
     expect(sharedSource).toContain('pointerEvents="none"');
     expect(sharedSource).toContain("style={styles.bodyGlassLayer}");
-    expect(sharedSource).toContain("type ThemePalette");
-    expect(sharedSource).toContain(
+    expect(paletteSource).toContain("type ThemePalette");
+    expect(paletteSource).toContain(
       "const createThemePalette = (theme: ResolvedTheme)",
     );
-    expect(sharedSource).toContain("const contrastAdjustedAccent = (");
-    expect(sharedSource).toContain("const contrastAdjustedForWhiteText = (");
+    expect(paletteSource).toContain("const contrastAdjustedAccent = (");
+    expect(paletteSource).toContain("const contrastAdjustedForWhiteText = (");
     expect(sharedSource).toContain(
       "const palette = useMemo(() => createThemePalette(theme)",
     );

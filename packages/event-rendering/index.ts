@@ -6,7 +6,15 @@
 //
 // Per META-ORCH-0827 Pass 2 (Option C). Established 2026-05-13.
 
-export { PublicEventPage, resolveOfferingSurface } from "./PublicEventPage";
+export { PublicEventPage } from "./PublicEventPage";
+// ORCH-1138 A1/A2 — the shared theming engine, extracted out of PublicEventPage
+// so trip/experience/brand pages derive accent/surface/text from ONE algorithm.
+export {
+  createThemePalette,
+  resolveOfferingSurface,
+  offeringSurfaceStyles,
+} from "./themePalette";
+export type { ThemePalette, OfferingSurfaceStyles } from "./themePalette";
 export { PublicEventNotFound } from "./PublicEventNotFound";
 export { EventCoverMedia } from "./EventCoverMedia";
 export { ThemeEntranceAnimation } from "./ThemeEntranceAnimation";

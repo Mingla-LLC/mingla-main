@@ -27,6 +27,7 @@ import {
   text as textTokens,
   typography,
 } from "../../constants/designSystem";
+import type { ThemePalette } from "@mingla/event-rendering";
 import type { Trip } from "../../services/tripsService";
 import type { TripPreviewBrand } from "./TripPreview";
 import { projectInstallmentSchedule } from "../../utils/installmentScheduleProjection";
@@ -50,6 +51,12 @@ export interface TripCheckoutFlowProps {
    */
   paymentPlanChoice: TripPaymentChoiceValue;
   onPaymentPlanChoiceChange: (value: TripPaymentChoiceValue) => void;
+  /**
+   * ORCH-1138 B5 (additive) — passthrough to TripPaymentChoice. The public trip
+   * page passes the resolved brand palette; the /checkout-trip payment route +
+   * wizard do NOT (so they render byte-identical to pre-1138). RT-2 guards this.
+   */
+  palette?: ThemePalette;
   testID?: string;
 }
 
@@ -69,6 +76,7 @@ export const TripCheckoutFlow: React.FC<TripCheckoutFlowProps> = ({
   trip,
   paymentPlanChoice,
   onPaymentPlanChoiceChange,
+  palette,
   testID,
 }) => {
   const tier = trip.pricingTiers[0];
@@ -138,6 +146,7 @@ export const TripCheckoutFlow: React.FC<TripCheckoutFlowProps> = ({
         depositPct={tier.installmentSchedule?.deposit_pct ?? 0}
         value={paymentPlanChoice}
         onChange={onPaymentPlanChoiceChange}
+        palette={palette}
         testID={testID !== undefined ? `${testID}-payment-choice` : undefined}
       />
     </View>
