@@ -14,7 +14,7 @@
  * I-21: operator-side route. Never imported by anon-tolerant buyer routes.
  */
 
-import React, { useCallback } from "react";
+import React, { useCallback, useState } from "react";
 import { Platform, Pressable, StyleSheet, Text, View } from "react-native";
 import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -27,6 +27,7 @@ import {
 } from "../src/constants/designSystem";
 import { Icon } from "../src/components/ui/Icon";
 import { IconChrome } from "../src/components/ui/IconChrome";
+import { ConfirmDialog } from "../src/components/ui/ConfirmDialog";
 import { BusinessNotificationsScreen } from "../src/components/notifications/BusinessNotificationsScreen";
 import { useBusinessNotificationsInbox } from "../src/hooks/useBusinessNotifications";
 import { useAuth } from "../src/context/AuthContext";
@@ -42,7 +43,14 @@ export default function NotificationsRoute(): React.ReactElement {
   const router = useRouter();
   const { user } = useAuth();
   const userId = user?.id ?? null;
-  const { unreadCount, markAllAsRead } = useBusinessNotificationsInbox(userId);
+  const { unreadCount, markAllAsRead, notifications, clearRead, hasRead } =
+    useBusinessNotificationsInbox(userId);
+
+  // ORCH-1142: "Clear read" opens a confirm (unlike "Mark all read", which is
+  // non-destructive + immediate). The read count is FROZEN at open time so a
+  // background realtime insert can't change the dialog copy mid-read.
+  const [confirmVisible, setConfirmVisible] = useState(false);
+  const [frozenReadCount, setFrozenReadCount] = useState(0);
 
   const handleBack = useCallback((): void => {
     if (router.canGoBack()) {
@@ -56,6 +64,23 @@ export default function NotificationsRoute(): React.ReactElement {
     if (Platform.OS !== "web") HapticFeedback.success();
     void markAllAsRead();
   }, [markAllAsRead]);
+
+  const handleClearReadPress = useCallback((): void => {
+    if (Platform.OS !== "web") HapticFeedback.buttonPress();
+    setFrozenReadCount(notifications.filter((n) => n.read_at !== null).length);
+    setConfirmVisible(true);
+  }, [notifications]);
+
+  const handleClearReadConfirm = useCallback((): void => {
+    if (Platform.OS !== "web") HapticFeedback.success();
+    void clearRead();
+    setConfirmVisible(false);
+  }, [clearRead]);
+
+  const clearReadDescription =
+    frozenReadCount === 1
+      ? "This removes 1 read notification from your inbox. Unread ones stay. You can’t undo this here."
+      : `This removes ${frozenReadCount} read notifications from your inbox. Unread ones stay. You can’t undo this here.`;
 
   // Tap on a row → resolve the row's deep link / type to an expo-router path
   // and navigate (the same routing map Sub-B's push tap uses). The screen
@@ -89,21 +114,45 @@ export default function NotificationsRoute(): React.ReactElement {
           accessibilityLabel="Back"
         />
         <Text style={styles.chromeTitle}>Notifications</Text>
-        {unreadCount > 0 ? (
-          <Pressable
-            onPress={handleMarkAll}
-            accessibilityRole="button"
-            accessibilityLabel="Mark all notifications as read"
-            accessibilityHint="Marks every unread notification as read"
-            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-            style={({ pressed }) => [
-              styles.markAll,
-              pressed ? styles.markAllPressed : null,
-            ]}
-          >
-            <Icon name="check" size={16} color={accent.warm} />
-            <Text style={styles.markAllLabel}>Mark all read</Text>
-          </Pressable>
+        {/* ORCH-1142 four-state header cluster (DESIGN §3.2): "Mark all read"
+            shows when unreadCount>0; "Clear read" shows when hasRead; both may
+            co-exist (Mark all read first, Clear read rightmost); when neither,
+            the 36pt spacer keeps the title centered. */}
+        {unreadCount > 0 || hasRead ? (
+          <View style={styles.headerActions}>
+            {unreadCount > 0 ? (
+              <Pressable
+                onPress={handleMarkAll}
+                accessibilityRole="button"
+                accessibilityLabel="Mark all notifications as read"
+                accessibilityHint="Marks every unread notification as read"
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                style={({ pressed }) => [
+                  styles.markAll,
+                  pressed ? styles.markAllPressed : null,
+                ]}
+              >
+                <Icon name="check" size={16} color={accent.warm} />
+                <Text style={styles.markAllLabel}>Mark all read</Text>
+              </Pressable>
+            ) : null}
+            {hasRead ? (
+              <Pressable
+                onPress={handleClearReadPress}
+                accessibilityRole="button"
+                accessibilityLabel="Clear read notifications"
+                accessibilityHint="Removes read notifications from your inbox; unread stay"
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                style={({ pressed }) => [
+                  styles.markAll,
+                  pressed ? styles.markAllPressed : null,
+                ]}
+              >
+                <Icon name="trash" size={16} color={accent.warm} />
+                <Text style={styles.markAllLabel}>Clear read</Text>
+              </Pressable>
+            ) : null}
+          </View>
         ) : (
           <View style={styles.chromeRightSlot} />
         )}
@@ -112,6 +161,18 @@ export default function NotificationsRoute(): React.ReactElement {
       <BusinessNotificationsScreen
         userId={userId}
         onOpenDeepLink={handleOpenDeepLink}
+      />
+
+      <ConfirmDialog
+        visible={confirmVisible}
+        onClose={(): void => setConfirmVisible(false)}
+        onConfirm={handleClearReadConfirm}
+        variant="simple"
+        destructive
+        title="Clear read notifications?"
+        description={clearReadDescription}
+        confirmLabel="Clear read"
+        cancelLabel="Cancel"
       />
     </View>
   );
@@ -140,6 +201,14 @@ const styles = StyleSheet.create({
   },
   chromeRightSlot: {
     width: 36,
+  },
+  // ORCH-1142 — header action cluster when both "Mark all read" and "Clear
+  // read" are present (DESIGN §3.3). Mark-all first, Clear-read rightmost.
+  headerActions: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "flex-end",
+    gap: spacing.md,
   },
   markAll: {
     flexDirection: "row",
