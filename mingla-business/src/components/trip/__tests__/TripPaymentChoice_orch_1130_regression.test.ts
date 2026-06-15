@@ -126,7 +126,13 @@ describe("ORCH-1130 — TripCheckoutFlow public page rebuild", () => {
 
   test("public page threads the choice into checkout as a route param", () => {
     const src = slugSrc();
-    expect(src).toContain("params: { plan: paymentPlanChoice }");
+    // [TEST-MOD-APPROVED ORCH-1138] assertion-drift refresh: ORCH-1138 rebuilt
+    // the /t/ route so the split-CTA path passes the tapped `choice` (falling
+    // back to the toggle's `paymentPlanChoice`). Behavior is unchanged — the
+    // buyer's explicit pay-full/pay-over-time choice is still threaded as the
+    // `plan` route param; only the source expression evolved. Still fails on
+    // revert (deleting the param drops the choice → no `params: { plan:`).
+    expect(src).toContain("params: { plan: choice ?? paymentPlanChoice }");
     // plan trips disambiguate the bar price with the word "total".
     expect(src).toContain("total");
   });

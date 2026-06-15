@@ -11,6 +11,10 @@
  *    event_dates (master), trip_days, trip_inclusions, trip_pricing_tiers +
  *    ticket_types (tiers/price/intake mapping).
  *  - Brand name/verified come from the seed (RPC-sourced) or business_public_brands_view.
+ *  - ORCH-1138 FIX-3 — the BRAND COVER (cover_media_url/type) for the "Presented
+ *    by" chip is read from the anon-safe, security-definer
+ *    `business_public_brands_view` (NEVER `.from('brands')`) — the same scoped
+ *    public read model the business /b/ + /t/ pages use. No schema/edge change.
  */
 
 import { useQuery } from "@tanstack/react-query";
@@ -167,6 +171,16 @@ export interface ConsumerTripDetail {
   departureText: string | null;
   coverMediaUrl: string | null;
   coverMediaType: "image" | "video" | "gif" | null;
+  /**
+   * ORCH-1138 [trip-page-redesign] FIX-3 (device rework) — the BRAND's cover
+   * media for the "Presented by" chip, sourced anon-safe from the
+   * security-definer `business_public_brands_view` (🔒 COMMS-0009 /
+   * I-ANON-BRANDS-VIA-DEFINER-VIEW — NEVER `.from("brands")`). null when the
+   * brand set no cover → the chip renders the clean themed hue/initial fallback
+   * (rule 9 — never a fabricated cover, never a bare red disk).
+   */
+  brandCoverMediaUrl: string | null;
+  brandCoverMediaType: "image" | "video" | "gif" | null;
   startAt: string | null;
   endAt: string | null;
   timezone: string | null;
@@ -234,6 +248,16 @@ function coerceCoverType(raw: string | null): "image" | "video" | "gif" | null {
   return raw === "image" || raw === "video" || raw === "gif" ? raw : null;
 }
 
+/**
+ * ORCH-1138 FIX-3 — coerce the raw brand cover media type (from
+ * business_public_brands_view) to the EventCoverMedia union. Unknown/null → null
+ * (the chip falls back to the themed hue/initial; rule 9 — no fabricated type).
+ * Mirrors the business usePublicTripBySlug `coerceBrandCoverType`.
+ */
+function coerceBrandCoverType(raw: unknown): "image" | "video" | "gif" | null {
+  return raw === "image" || raw === "video" || raw === "gif" ? raw : null;
+}
+
 function coerceRefundPolicy(raw: unknown): RefundPolicyShape | null {
   if (raw === null || typeof raw !== "object") return null;
   const obj = raw as { kind?: unknown; tiers?: unknown };
@@ -287,7 +311,11 @@ async function fetchTripDetail(
   const tripId = feedRow.tripId;
 
   // Anon-direct reads (events is anon-SELECT; NO brands/tickets table reads).
-  const [eventResp, daysResp, inclResp, tiersResp] = await Promise.all([
+  // ORCH-1138 FIX-3 — the BRAND COVER is read from the anon-safe, security-definer
+  // `business_public_brands_view` by slug (🔒 COMMS-0009 — NEVER `.from("brands")`).
+  // Folded into this same batch so the brand cover costs ZERO extra round trips.
+  const [eventResp, daysResp, inclResp, tiersResp, brandCoverResp] =
+    await Promise.all([
     supabase
       .from("events")
       .select(
@@ -307,12 +335,30 @@ async function fetchTripDetail(
       // surface the installment template (anon-readable jsonb).
       .select("ticket_type_id, tier_metadata, ticket_types(id, name, price_cents, currency, is_free, is_unlimited, quantity_total, is_hidden, deleted_at)")
       .eq("event_id", tripId),
+    // ORCH-1138 FIX-3 — brand cover from the anon-safe public brand read model.
+    // Fails OPEN: an error/missing row leaves the cover null → themed fallback
+    // (rule 9), it does NOT throw and break the whole trip-detail load.
+    supabase
+      .from("business_public_brands_view")
+      .select("cover_media_url, cover_media_type")
+      .eq("slug", brandSlug)
+      .maybeSingle(),
   ]);
 
   if (eventResp.error) throw eventResp.error;
   if (daysResp.error) throw daysResp.error;
   if (inclResp.error) throw inclResp.error;
   if (tiersResp.error) throw tiersResp.error;
+  // brandCoverResp intentionally NOT in the throwing fan-out (fail-open above).
+
+  const brandCover = (brandCoverResp.data ?? null) as {
+    cover_media_url: string | null;
+    cover_media_type: string | null;
+  } | null;
+  const brandCoverMediaUrl = brandCover?.cover_media_url ?? null;
+  const brandCoverMediaType = coerceBrandCoverType(
+    brandCover?.cover_media_type ?? null,
+  );
 
   const ev = (eventResp.data ?? null) as EventDetailRow | null;
 
@@ -384,6 +430,9 @@ async function fetchTripDetail(
     departureText: ev?.departure_text ?? feedRow.departureText,
     coverMediaUrl: ev?.cover_media_url ?? feedRow.coverMediaUrl,
     coverMediaType: coerceCoverType(ev?.cover_media_type ?? feedRow.coverMediaType),
+    // ORCH-1138 FIX-3 — anon-safe brand cover for the "Presented by" chip.
+    brandCoverMediaUrl,
+    brandCoverMediaType,
     startAt: feedRow.startAt,
     endAt: feedRow.endAt,
     timezone: ev?.timezone ?? feedRow.timezone,

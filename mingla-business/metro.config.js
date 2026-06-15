@@ -48,6 +48,14 @@ config.resolver.extraNodeModules = {
     "packages",
     "brand-rendering",
   ),
+  // ORCH-1138 — shared Direction-A offering layout primitives (parallax cover
+  // shell, chrome, count-aware gallery, chip group). Used by the public trip
+  // page (Leg 1) and later event/experience/brand legs.
+  "@mingla/offering-rendering": path.join(
+    WORKSPACE_ROOT,
+    "packages",
+    "offering-rendering",
+  ),
   "@mingla/theme-animations": path.join(
     WORKSPACE_ROOT,
     "packages",

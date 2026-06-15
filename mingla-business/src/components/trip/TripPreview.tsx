@@ -1,25 +1,29 @@
 /**
  * TripPreview — buyer-eye preview of a Trip. Used in:
- *   - Wizard Step 5 (review-before-publish)
- *   - Public buyer-anon route /t/{brandSlug}/{tripSlug}
+ *   - Public buyer-anon route /t/{brandSlug}/{tripSlug} (FOUNDATION mode —
+ *     ORCH-1138 Direction A: immersive parallax cover + body-level fixed chrome
+ *     + brand-themed palette + responsive desktop two-column sticky panel).
+ *   - Wizard Step 5 review-before-publish (LEGACY mode — the framed inline
+ *     preview; no shell, no chrome, no palette).
  *
- * Tr2 (ORCH-0859). Per SPEC §4.8.
+ * Tr2 (ORCH-0859) → rebuilt by ORCH-1138 onto the shared @mingla/offering-
+ * rendering foundation. The mode is chosen by whether `palette` is provided:
+ *   palette PRESENT → FOUNDATION mode (ParallaxCoverShell-composed full page).
+ *   palette ABSENT  → LEGACY mode (the prior inline framed render, byte-stable
+ *                     for the wizard Step-5 caller — TripCreatorStep5Review).
  *
- * Sections (top → bottom):
- *   1. Cover image hero (full-width)
- *   2. Title + brand byline
- *   3. Dates pill + destination line
- *   4. Day-by-day itinerary (stacked day cards)
- *   5. What's included / What's NOT included (parallel lists)
- *   6. Pricing card
- *   7. "Reserve my spot" CTA (sticky-bottom variant available via showCta prop)
+ * Anon-tolerant: this component does NOT call useAuth. The public route passes
+ * the Trip + Brand payload from usePublicTripBySlug + the resolved palette/theme
+ * + chrome handlers; the wizard caller passes the in-flight draft Trip +
+ * currentBrand with NO palette.
  *
- * Anon-tolerant: this component does NOT call useAuth. Public-page caller
- * passes the Trip + Brand payload from usePublicTripBySlug; wizard caller
- * passes the in-flight draft Trip + currentBrand.
+ * Constitution rule 9 — renders ONLY real model fields: per-day items
+ * (ordinal/date/title/narrative/media), inclusions, route legs, destination map
+ * (only when lat/lng present). NO timed stops, NO trip-level gallery, NO brand
+ * bio, NO placeholder map.
  */
 
-import React, { useState } from "react";
+import React from "react";
 import {
   Image,
   Platform,
@@ -28,7 +32,17 @@ import {
   StyleSheet,
   Text,
   View,
+  type LayoutChangeEvent,
+  type NativeScrollEvent,
+  type NativeSyntheticEvent,
 } from "react-native";
+
+// ORCH-1138 device-rework #3 — scroll/layout handler aliases for the float→dock
+// Reserve CTA, forwarded to ParallaxCoverShell.
+type ParallaxScrollHandler = (
+  event: NativeSyntheticEvent<NativeScrollEvent>,
+) => void;
+type ParallaxLayoutHandler = (event: LayoutChangeEvent) => void;
 
 import {
   accent,
@@ -37,10 +51,27 @@ import {
   text as textTokens,
   typography,
 } from "../../constants/designSystem";
-import { formatTripDateRange } from "@mingla/event-rendering";
+import {
+  boldFontFamily,
+  formatTripDateRange,
+  offeringSurfaceStyles,
+  type ResolvedTheme,
+  type ThemePalette,
+} from "@mingla/event-rendering";
+import {
+  ParallaxCoverShell,
+  CountAwareGallery,
+  ChipGroup,
+  useResponsiveLayout,
+  normalizeCityCountry,
+  type Chip,
+  type CountAwareGalleryItem,
+} from "@mingla/offering-rendering";
 import { EventCoverMedia } from "../ui/EventCoverMedia";
 import { Icon } from "../ui/Icon";
+import { buildStaticMapUrl } from "../../utils/mapboxStaticImage";
 import { CollapsibleDescription } from "../offering/CollapsibleDescription";
+import type { RefundPolicy } from "../../services/refundPolicyService";
 import type {
   Trip,
   TripDay,
@@ -56,6 +87,15 @@ export interface TripPreviewBrand {
   bio?: string | null;
   coverMediaUrl?: string | null;
   /**
+   * ORCH-1138 FIX-3 — the brand cover's media type + hue so the "Presented by"
+   * chip renders gif/video covers via the media-aware EventCoverMedia and a clean
+   * themed hue fallback when there's no cover (instead of a broken <Image> alt).
+   * OPTIONAL + additive (anon-tolerant): callers that don't pass them get the hue
+   * fallback. null ⇒ no cover.
+   */
+  coverMediaType?: "image" | "video" | "gif" | null;
+  coverHue?: number | null;
+  /**
    * ORCH-1076 Stream B — brand Stripe-readiness, threaded ONLY from the
    * authenticated trip creator route (app/trip/[id]/edit.tsx) so the wizard can
    * proactively gate a paid trip's Publish. OPTIONAL + additive: the public
@@ -68,17 +108,62 @@ export interface TripPreviewBrand {
 export interface TripPreviewProps {
   trip: Trip;
   brand: TripPreviewBrand;
-  /** When true, render the "Reserve my spot" CTA. False for wizard preview. */
+  /** When true, render the legacy "Reserve my spot" CTA. False for wizard preview. */
   showCta?: boolean;
   /** Optional body padding override for framed parent surfaces like the wizard. */
   contentPadding?: number;
-  /** Fired when buyer taps the CTA. Required when showCta=true. */
+  /** Fired when buyer taps the legacy CTA. Required when showCta=true. */
   onReserveTap?: () => void;
   testID?: string;
+
+  // ===================== ORCH-1138 FOUNDATION mode (all OPTIONAL) =====================
+  /**
+   * The resolved brand palette (from createThemePalette). PRESENT ⇒ FOUNDATION
+   * mode: TripPreview composes the immersive ParallaxCoverShell. ABSENT ⇒ LEGACY
+   * inline render (wizard preview), unchanged.
+   */
+  palette?: ThemePalette;
+  /** Resolved theme (font + entrance animation). Required in FOUNDATION mode. */
+  theme?: ResolvedTheme;
+  /** Cover-video sound state. */
+  muted?: boolean;
+  onToggleMute?: () => void;
+  /** Chrome close/share handlers (route owns them). */
+  onClose?: () => void;
+  onShare?: () => void;
+  /** sold-out / closed / deadline pill, rendered above the body content. */
+  stateBanner?: React.ReactNode | null;
+  /**
+   * Themed payment block (TripCheckoutFlow). Rendered inline on phone and inside
+   * the sticky panel on desktop. Built by the route so it carries route state.
+   */
+  paymentBlock?: React.ReactNode;
+  /** Desktop sticky-panel Reserve control + reassurance (route-owned). */
+  reserveControl?: React.ReactNode;
+  /** Brand "View" tap → brand page (route-owned). */
+  onViewBrand?: () => void;
+  /** Floating-bar clearance (phone). */
+  contentBottomInset?: number;
+  /** Native safe-area top inset for the chrome. */
+  safeAreaTop?: number;
+  /**
+   * ORCH-1138 device-rework #3 — the DOCKED Reserve CTA (TripReserveBar
+   * variant="docked"), rendered as the LAST child of the PHONE body so it sits
+   * flush beneath "Choose how you pay" (no black void). Route-owned (carries the
+   * route's CTA state + onPress). Phone-only; desktop uses the sticky panel.
+   */
+  dockedReserve?: React.ReactNode;
+  /**
+   * ORCH-1138 device-rework #3 — scroll-awareness passthrough so the route can
+   * hide its floating Reserve pill once the docked CTA scrolls in. Forwarded to
+   * ParallaxCoverShell's phone/native Scroll.
+   */
+  onScroll?: ParallaxScrollHandler;
+  onScrollViewLayout?: ParallaxLayoutHandler;
 }
 
-// ORCH-1016 — date range now from the shared @mingla/event-rendering helper so
-// the consumer card/detail and this preview/public page format identically.
+// ORCH-1016 — date range from the shared @mingla/event-rendering helper so the
+// consumer card/detail and this preview/public page format identically.
 
 function formatPrice(tier: TripPricingTier | undefined): string {
   if (tier === undefined) return "Pricing TBD";
@@ -94,6 +179,31 @@ function formatPrice(tier: TripPricingTier | undefined): string {
   }
 }
 
+// ORCH-1138 — derived "N days · M nights" from the trip date range. Returns null
+// when the range can't be derived (rule 9 — never fabricate a duration).
+function deriveDuration(startAt: string | null, endAt: string | null): string | null {
+  if (startAt === null || endAt === null) return null;
+  const s = Date.parse(startAt);
+  const e = Date.parse(endAt);
+  if (!Number.isFinite(s) || !Number.isFinite(e) || e < s) return null;
+  const dayMs = 24 * 60 * 60 * 1000;
+  const nights = Math.max(0, Math.round((e - s) / dayMs));
+  const days = nights + 1;
+  if (nights === 0) return `${days} day`;
+  return `${days} days · ${nights} night${nights === 1 ? "" : "s"}`;
+}
+
+function mediaToGalleryItems(day: TripDay): CountAwareGalleryItem[] {
+  return day.media.map((m) => ({
+    url: m.url,
+    type: m.type === "video" ? "video" : "image",
+  }));
+}
+
+// ORCH-1138 Q2 — collapse to first 2 days + "Show all N days" when 5+ days.
+const LONG_ITINERARY_THRESHOLD = 5;
+const COLLAPSED_DAY_COUNT = 2;
+
 export const TripPreview: React.FC<TripPreviewProps> = ({
   trip,
   brand,
@@ -101,77 +211,811 @@ export const TripPreview: React.FC<TripPreviewProps> = ({
   contentPadding = spacing.lg,
   onReserveTap,
   testID,
+  palette,
+  theme,
+  muted = true,
+  onToggleMute,
+  onClose,
+  onShare,
+  stateBanner = null,
+  paymentBlock,
+  reserveControl,
+  onViewBrand,
+  contentBottomInset = 0,
+  safeAreaTop = 0,
+  dockedReserve,
+  onScroll,
+  onScrollViewLayout,
 }) => {
+  // FOUNDATION mode requires both palette + theme + the chrome handlers.
+  if (
+    palette !== undefined &&
+    theme !== undefined &&
+    onClose !== undefined &&
+    onShare !== undefined &&
+    onToggleMute !== undefined
+  ) {
+    return (
+      <FoundationTripPreview
+        trip={trip}
+        brand={brand}
+        palette={palette}
+        theme={theme}
+        muted={muted}
+        onToggleMute={onToggleMute}
+        onClose={onClose}
+        onShare={onShare}
+        stateBanner={stateBanner}
+        paymentBlock={paymentBlock}
+        reserveControl={reserveControl}
+        onViewBrand={onViewBrand}
+        contentBottomInset={contentBottomInset}
+        safeAreaTop={safeAreaTop}
+        dockedReserve={dockedReserve}
+        onScroll={onScroll}
+        onScrollViewLayout={onScrollViewLayout}
+        testID={testID}
+      />
+    );
+  }
+
+  // ===================== LEGACY mode (wizard Step-5 preview) =====================
+  return (
+    <LegacyTripPreview
+      trip={trip}
+      brand={brand}
+      showCta={showCta}
+      contentPadding={contentPadding}
+      onReserveTap={onReserveTap}
+      testID={testID}
+    />
+  );
+};
+
+// =====================================================================
+// FOUNDATION mode — Direction A immersive page (ORCH-1138)
+// =====================================================================
+
+const FoundationTripPreview: React.FC<{
+  trip: Trip;
+  brand: TripPreviewBrand;
+  palette: ThemePalette;
+  theme: ResolvedTheme;
+  muted: boolean;
+  onToggleMute: () => void;
+  onClose: () => void;
+  onShare: () => void;
+  stateBanner: React.ReactNode | null;
+  paymentBlock?: React.ReactNode;
+  reserveControl?: React.ReactNode;
+  onViewBrand?: () => void;
+  contentBottomInset: number;
+  safeAreaTop: number;
+  dockedReserve?: React.ReactNode;
+  onScroll?: ParallaxScrollHandler;
+  onScrollViewLayout?: ParallaxLayoutHandler;
+  testID?: string;
+}> = ({
+  trip,
+  brand,
+  palette,
+  theme,
+  muted,
+  onToggleMute,
+  onClose,
+  onShare,
+  stateBanner,
+  paymentBlock,
+  reserveControl,
+  onViewBrand,
+  contentBottomInset,
+  safeAreaTop,
+  dockedReserve,
+  onScroll,
+  onScrollViewLayout,
+  testID,
+}) => {
+  const { isDesktop } = useResponsiveLayout();
+  const surface = offeringSurfaceStyles(palette);
+  // ORCH-1138 Leg-1 (native-parity fix #2) — the BOLD (700-weight) loaded family.
+  // On native a loaded custom font ignores `fontWeight`, so every element the
+  // mockup shows bold (title, section headings, brand name, day titles, chip
+  // VALUES like "3 seats left", the route place values) sets `fontFamily` to this
+  // weight-specific family instead of relying on the StyleSheet's `fontWeight`
+  // (which only synthesized bold on react-native-web — the native divergence).
+  // The route loads this family via useThemeFont(boldFontFamily(theme)).
+  // (The medium `theme.fontFamilyValue` is no longer referenced on this page — the
+  // mockup renders the brand face only at bold weights; small caps eyebrows/labels
+  // intentionally stay on the system font per DIRECTION_A_V2.)
+  const boldFamily = boldFontFamily(theme);
+
+  const bt = trip.businessTrip;
+  // ORCH-1138 [trip-page-redesign] — standardize the route legs to "City, Country"
+  // so leaving-from + destination stay short + balanced on ONE aligned row. The
+  // trip payload carries only free-text *LocationText (no structured city/country
+  // fields), so we parse the free text via the shared normalizer. null → that leg
+  // is hidden (rule 9, no fabrication).
+  const departureCityCountry = normalizeCityCountry(bt.departureLocationText);
+  const destinationCityCountry = normalizeCityCountry(bt.destinationLocationText);
+  const tier = trip.pricingTiers[0];
+  const includedChips: Chip[] = trip.inclusions
+    .filter((i) => i.kind === "included")
+    .map((i) => ({ label: i.item, variant: "yes" }));
+  const excludedChips: Chip[] = trip.inclusions
+    .filter((i) => i.kind === "excluded")
+    .map((i) => ({ label: i.item, variant: "no" }));
+
+  const duration = deriveDuration(bt.startAt, bt.endAt);
+  const dateLabel = formatTripDateRange(bt.startAt, bt.endAt);
+  const isSoldOut =
+    tier !== undefined &&
+    tier.isUnlimited === false &&
+    tier.ticketsRemaining !== null &&
+    tier.ticketsRemaining <= 0;
+  const capacity = bt.capacity;
+
+  const coverType =
+    trip.coverMediaType === "video"
+      ? "video"
+      : trip.coverMediaType === "gif"
+        ? "gif"
+        : trip.coverMediaUrl !== null
+          ? "image"
+          : null;
+
+  // ---- brand chip ----
+  const brandChip = (
+    <Pressable
+      onPress={onViewBrand}
+      accessibilityRole="button"
+      accessibilityLabel={`View ${brand.name}`}
+      style={[styles.brandRow, surface.card]}
+    >
+      {/* ORCH-1138 FIX-3 — render the brand cover via the media-aware
+          EventCoverMedia (image + animated gif + muted inline video) clipped to
+          the circular tile, NOT a plain <Image> (which showed a broken "COVE…"
+          alt on a gif/video URL). No cover ⇒ EventCoverMedia draws its themed hue
+          fallback (rule 9 — clean initial-less avatar, never broken alt text). */}
+      <View style={styles.brandTile}>
+        <EventCoverMedia
+          mediaUrl={brand.coverMediaUrl ?? null}
+          mediaType={brand.coverMediaType ?? null}
+          hue={brand.coverHue ?? undefined}
+          // ORCH-1138 FIX-3 — empty label so the no-cover fallback is a CLEAN
+          // themed hue gradient, NOT the default "Cover" text (which truncated to
+          // the broken "COVE…" placeholder in the 42px circle).
+          label=""
+          radius={999}
+          autoplay
+          playbackActive
+          muted
+          loop
+          height="100%"
+          width="100%"
+        />
+      </View>
+      <View style={styles.brandTextCol}>
+        <Text style={[styles.brandKicker, surface.tertiaryText]}>
+          Presented by
+        </Text>
+        <Text style={[styles.brandName, surface.primaryText, { fontFamily: boldFamily }]}>
+          {brand.name}
+        </Text>
+      </View>
+      <Text style={[styles.brandCta, { color: palette.accent }]}>View</Text>
+    </Pressable>
+  );
+
+  // ---- itinerary (collapse-aware) ----
+  const itinerary = trip.days.length > 0 ? (
+    <DayByDay
+      trip={trip}
+      palette={palette}
+      surface={surface}
+      // ORCH-1138 fix #2 — DayByDay's only themed text is the bold day title, so
+      // it receives the BOLD loaded family (native bold needs the weighted family).
+      fontFamily={boldFamily}
+      variant={isDesktop ? "desktop" : "phone"}
+    />
+  ) : null;
+
+  // ---- refund + deadline strips (left column on BOTH viewports) ----
+  // ORCH-1138 R2 (device parity fix #7) — the cancellation block is rendered to
+  // the mockup (`.strip` + `.refund-ladder` rows) and PALETTE-THEMED. The shared
+  // <RefundPolicyDisplay/> hardcodes warm-orange (#eb7825) + a white-on-dark
+  // timeline and is consumed by the consumer-app trip detail, so it is NOT
+  // re-themed here; instead the FOUNDATION path renders a bespoke palette-driven
+  // ladder from the SAME real refundPolicy.tiers (rule 9 — only when present).
+  const refundBlock =
+    trip.refundPolicy !== null || trip.bookingDeadline !== null ? (
+      <View style={styles.section}>
+        <Text style={[styles.secTitle, surface.primaryText, { fontFamily: boldFamily }]}>
+          Cancellation policy
+        </Text>
+        <RefundLadder
+          policy={trip.refundPolicy}
+          bookingDeadline={trip.bookingDeadline}
+          palette={palette}
+          surface={surface}
+        />
+      </View>
+    ) : null;
+
+  const left = (
+    <View>
+      {/* phone-only lead eyebrow + title (desktop shows them in the hero) */}
+      {!isDesktop ? (
+        <View style={styles.leadBlock}>
+          {duration !== null ? (
+            <Text style={[styles.eyebrowLead, surface.primaryText]}>
+              {duration}
+              {/* ORCH-1138 FIX-2 — normalize the eyebrow trailing destination to
+                  "City, Country" (same shared normalizer as the route + chip). */}
+              {destinationCityCountry != null
+                ? ` · ${destinationCityCountry}`
+                : ""}
+            </Text>
+          ) : null}
+          <Text style={[styles.title, surface.primaryText, { fontFamily: boldFamily }]}>
+            {trip.title}
+          </Text>
+        </View>
+      ) : null}
+
+      {/* meta chips */}
+      <View style={styles.metaRow}>
+        {dateLabel.length > 0 ? (
+          <MetaChip
+            palette={palette}
+            surface={surface}
+            icon="calendar"
+            fontFamily={boldFamily}
+          >
+            {dateLabel}
+          </MetaChip>
+        ) : null}
+        {duration !== null ? (
+          <MetaChip
+            palette={palette}
+            surface={surface}
+            icon="clock"
+            fontFamily={boldFamily}
+          >
+            {duration}
+          </MetaChip>
+        ) : null}
+        {capacity !== null ? (
+          <MetaChip
+            palette={palette}
+            surface={surface}
+            icon="users"
+            fontFamily={boldFamily}
+          >
+            {isSoldOut
+              ? `Sold out · ${capacity} of ${capacity} booked`
+              : tier?.ticketsRemaining != null
+                ? `${tier.ticketsRemaining} seats left · ${capacity} max`
+                : `${capacity} max`}
+          </MetaChip>
+        ) : null}
+        {/* ORCH-1138 FIX-2 — the 📍 location chip shows the normalized
+            "City, Country" (same shared normalizer as the eyebrow + route block)
+            instead of the raw long destination text. */}
+        {destinationCityCountry != null ? (
+          <MetaChip
+            palette={palette}
+            surface={surface}
+            icon="location"
+            fontFamily={boldFamily}
+          >
+            {destinationCityCountry}
+          </MetaChip>
+        ) : null}
+      </View>
+
+      {/* brand chip — phone shows it inline; desktop puts it in the sticky panel */}
+      {!isDesktop ? brandChip : null}
+
+      {/* route line — ORCH-1138: legs standardized to "City, Country"; each
+          routePlace is numberOfLines={1}+ellipsis on a flex:1/minWidth:0 column
+          so a long city truncates rather than WRAPS (keeps both legs balanced on
+          one aligned row). */}
+      {departureCityCountry != null || destinationCityCountry != null ? (
+        <View style={[styles.route, surface.card]}>
+          {departureCityCountry != null ? (
+            <View style={styles.routeLeg}>
+              <Text style={[styles.routeLabel, surface.tertiaryText]}>
+                Leaving from
+              </Text>
+              <Text
+                numberOfLines={1}
+                ellipsizeMode="tail"
+                style={[styles.routePlace, surface.primaryText, { fontFamily: boldFamily }]}
+              >
+                {departureCityCountry}
+              </Text>
+            </View>
+          ) : null}
+          {departureCityCountry != null &&
+          destinationCityCountry != null ? (
+            <Text style={[styles.routeArrow, { color: palette.accent }]}>→</Text>
+          ) : null}
+          {destinationCityCountry != null ? (
+            <View style={styles.routeLeg}>
+              <Text style={[styles.routeLabel, surface.tertiaryText]}>
+                Destination
+              </Text>
+              <Text
+                numberOfLines={1}
+                ellipsizeMode="tail"
+                style={[styles.routePlace, surface.primaryText, { fontFamily: boldFamily }]}
+              >
+                {destinationCityCountry}
+              </Text>
+            </View>
+          ) : null}
+        </View>
+      ) : null}
+
+      {/* about */}
+      {trip.description !== null && trip.description.trim().length > 0 ? (
+        <View style={styles.section}>
+          <Text style={[styles.secTitle, surface.primaryText, { fontFamily: boldFamily }]}>
+            About this trip
+          </Text>
+          <View style={styles.aboutWrap}>
+            <CollapsibleDescription
+              text={trip.description}
+              testID="trip-preview-description"
+            />
+          </View>
+        </View>
+      ) : null}
+
+      {/* day by day */}
+      {itinerary !== null ? (
+        <View style={styles.section}>
+          <Text style={[styles.secTitle, surface.primaryText, { fontFamily: boldFamily }]}>
+            Day by day
+          </Text>
+          {itinerary}
+        </View>
+      ) : null}
+
+      {/* what's included */}
+      {includedChips.length > 0 ? (
+        <View style={styles.section}>
+          <Text style={[styles.secTitle, surface.primaryText, { fontFamily: boldFamily }]}>
+            What&rsquo;s included
+          </Text>
+          <ChipGroup chips={includedChips} palette={palette} />
+        </View>
+      ) : null}
+
+      {/* what's not included */}
+      {excludedChips.length > 0 ? (
+        <View style={styles.section}>
+          <Text style={[styles.secTitle, surface.primaryText, { fontFamily: boldFamily }]}>
+            What&rsquo;s not included
+          </Text>
+          <ChipGroup chips={excludedChips} palette={palette} />
+        </View>
+      ) : null}
+
+      {/* destination map — only when lat/lng present (rule 9: no placeholder).
+          ORCH-1138 Leg 1: the mockup shows a STATIC MAP IMAGE with a themed pin
+          + caption pill. We render a Mapbox Static Images API URL (a plain
+          <Image>, NO map SDK / NO new dependency) themed to the brand accent,
+          using the client-safe PUBLIC `pk.*` token (Constants.expoConfig.extra.
+          EXPO_PUBLIC_MAPBOX_ACCESS_TOKEN — wired in app.config.ts).
+          FAIL-SAFE (rule 9): buildStaticMapUrl returns null when the token is
+          absent at runtime OR coords are missing/non-finite → we HIDE the image
+          and fall back to the HONEST pin+caption card. Never a fabricated tile,
+          never a crash. Works on native AND react-native-web. */}
+      {bt.destinationLat !== null && bt.destinationLng !== null ? (
+        <View style={styles.section}>
+          <Text style={[styles.secTitle, surface.primaryText, { fontFamily: boldFamily }]}>
+            Where you&rsquo;ll be
+          </Text>
+          <View
+            style={[
+              styles.mapBlock,
+              surface.card,
+              { height: isDesktop ? 300 : 180 },
+            ]}
+          >
+            {(() => {
+              const mapUrl = buildStaticMapUrl({
+                lat: bt.destinationLat,
+                lng: bt.destinationLng,
+                accentHex: palette.accent,
+                height: isDesktop ? 300 : 180,
+              });
+              return mapUrl !== null ? (
+                <Image
+                  source={{ uri: mapUrl }}
+                  style={styles.mapImage}
+                  resizeMode="cover"
+                  accessibilityLabel={`Map of ${
+                    bt.destinationLocationText ?? "the destination"
+                  }`}
+                />
+              ) : null;
+            })()}
+            <Icon name="location" size={28} color={palette.accent} />
+            <View style={[styles.mapCapPill, { backgroundColor: palette.page }]}>
+              <Text style={[styles.mapCap, surface.primaryText]}>
+                {bt.destinationLocationText ?? "Destination"}
+              </Text>
+            </View>
+          </View>
+        </View>
+      ) : null}
+
+      {/* ORCH-1138 [trip-page-redesign] FIX-6 — STANDARD section order on every
+          surface: Cancellation policy renders BEFORE the How-you-pay/payment
+          block. (Consumer already does this; the business/web page previously
+          rendered payment-then-cancellation — reordered here so both match.) This
+          is the standing order for the future event/experience/brand legs too. */}
+      {refundBlock}
+
+      {/* phone-only inline payment block */}
+      {!isDesktop && paymentBlock !== undefined ? (
+        <View style={styles.section}>
+          <Text style={[styles.secTitle, surface.primaryText, { fontFamily: boldFamily }]}>
+            Choose how you pay
+          </Text>
+          {paymentBlock}
+        </View>
+      ) : null}
+
+      {/* ORCH-1138 device-rework #3 — the DOCKED Reserve CTA: the LAST child of the
+          PHONE body, in normal flow, flush just beneath the "Choose how you pay"
+          section (NO black void). Its bg is allowed at this resting position; it
+          pads its own safe-area bottom so the whole button clears the home
+          indicator. onDockLayout (inside the bar) reports its position so the route
+          hides the floating pill once this is on-screen. Desktop uses the sticky
+          panel's Reserve control, so the docked bar is phone-only. */}
+      {!isDesktop && dockedReserve !== undefined ? dockedReserve : null}
+    </View>
+  );
+
+  // ---- desktop sticky booking panel ----
+  const stickyPanel = isDesktop ? (
+    <View style={[styles.deskPanel, surface.cardStrong]}>
+      <View style={[styles.deskAccent, { backgroundColor: palette.accent }]} />
+      <View style={styles.deskInner}>
+        {brandChip}
+        {paymentBlock !== undefined ? (
+          <View style={styles.deskPayWrap}>{paymentBlock}</View>
+        ) : null}
+        {reserveControl}
+      </View>
+    </View>
+  ) : null;
+
+  return (
+    <ParallaxCoverShell
+      palette={palette}
+      theme={theme}
+      coverMediaUrl={trip.coverMediaUrl}
+      coverMediaType={coverType}
+      entranceAnimationKey={`trip:${trip.id}`}
+      muted={muted}
+      onToggleMute={onToggleMute}
+      showMute={coverType === "video"}
+      onClose={onClose}
+      onShare={onShare}
+      heroEyebrow={
+        duration !== null ? (
+          <Text style={styles.heroEyebrow}>
+            {duration}
+            {/* ORCH-1138 FIX-2 — desktop hero eyebrow normalized to "City, Country". */}
+            {destinationCityCountry != null
+              ? ` · ${destinationCityCountry}`
+              : ""}
+          </Text>
+        ) : undefined
+      }
+      heroTitle={
+        <Text style={[styles.heroTitle, { fontFamily: boldFamily }]}>
+          {trip.title}
+        </Text>
+      }
+      stateBanner={stateBanner}
+      stickyPanel={stickyPanel}
+      contentBottomInset={contentBottomInset}
+      safeAreaTop={safeAreaTop}
+      onScroll={onScroll}
+      onScrollViewLayout={onScrollViewLayout}
+      testID={testID}
+    >
+      {left}
+    </ParallaxCoverShell>
+  );
+};
+
+// ---- meta chip ----
+const MetaChip: React.FC<{
+  palette: ThemePalette;
+  surface: ReturnType<typeof offeringSurfaceStyles>;
+  icon: React.ComponentProps<typeof Icon>["name"];
+  // ORCH-1138 Leg-1 (native-parity fix #2) — the bold loaded family so the chip
+  // VALUE ("3 seats left · 102 max", "Positano, Italy") renders bold on native
+  // (a loaded custom font ignores `fontWeight` natively).
+  fontFamily: string;
+  children: React.ReactNode;
+}> = ({ palette, surface, icon, fontFamily, children }) => (
+  <View style={[styles.metaChip, surface.card]}>
+    <Icon name={icon} size={15} color={palette.accent} />
+    <Text style={[styles.metaChipText, surface.secondaryText, { fontFamily }]}>
+      {children}
+    </Text>
+  </View>
+);
+
+// ---- day-by-day spine ----
+const DayByDay: React.FC<{
+  trip: Trip;
+  palette: ThemePalette;
+  surface: ReturnType<typeof offeringSurfaceStyles>;
+  fontFamily: string;
+  variant: "phone" | "desktop";
+}> = ({ trip, palette, surface, fontFamily, variant }) => {
+  const isLong = trip.days.length >= LONG_ITINERARY_THRESHOLD;
+  const [expanded, setExpanded] = React.useState<boolean>(false);
+  const visibleDays =
+    isLong && !expanded ? trip.days.slice(0, COLLAPSED_DAY_COUNT) : trip.days;
+
+  return (
+    <View style={styles.itin}>
+      <View style={[styles.itinSpine, { backgroundColor: palette.accentWash }]} />
+      {visibleDays.map((day: TripDay) => (
+        <View key={day.id} style={styles.day}>
+          <View style={[styles.dayDot, { backgroundColor: palette.accent }]}>
+            <Text style={[styles.dayDotText, { color: palette.accentText }]}>
+              {day.ordinal}
+            </Text>
+          </View>
+          <View style={[styles.dayCard, surface.card]}>
+            <View style={styles.dayHead}>
+              <Text style={[styles.dayOrd, { color: palette.accent }]}>
+                Day {day.ordinal}
+              </Text>
+              {day.date !== null ? (
+                <Text style={[styles.dayDate, surface.tertiaryText]}>
+                  {day.date}
+                </Text>
+              ) : null}
+            </View>
+            <Text style={[styles.dayTitle, surface.primaryText, { fontFamily }]}>
+              {day.title}
+            </Text>
+            {day.narrative !== null && day.narrative.trim().length > 0 ? (
+              <Text style={[styles.dayNarr, surface.secondaryText]}>
+                {day.narrative}
+              </Text>
+            ) : null}
+            {/* CHANGE 1 (mockup v3) — NO timed stops; the wizard does not author
+                them, rendering would fabricate data (rule 9). Day ends at media. */}
+            <CountAwareGallery
+              items={mediaToGalleryItems(day)}
+              palette={palette}
+              variant={variant}
+              accessibilityLabelPrefix={`Day ${day.ordinal} media`}
+            />
+          </View>
+        </View>
+      ))}
+      {isLong ? (
+        <Pressable
+          onPress={() => setExpanded((v) => !v)}
+          accessibilityRole="button"
+          accessibilityLabel={
+            expanded ? "Show fewer days" : `Show all ${trip.days.length} days`
+          }
+          style={styles.showAllRow}
+        >
+          <Text style={[styles.showAllText, { color: palette.accent }]}>
+            {expanded ? "Show fewer days" : `Show all ${trip.days.length} days`}
+          </Text>
+        </Pressable>
+      ) : null}
+    </View>
+  );
+};
+
+// ---- refund ladder + deadline strips (mockup `.strip` / `.refund-ladder`) ----
+// ORCH-1138 R2 (device parity fix #7). Palette-themed; built ONLY from real
+// refundPolicy.tiers + bookingDeadline (rule 9). Mirrors the shared
+// RefundPolicyDisplay's tier-label semantics but reads from the brand palette so
+// the percentages/accent match the page (the shared component is warm-orange).
+const REFUND_KIND_COPY: Record<RefundPolicy["kind"], string> = {
+  flexible:
+    "Flexible — cancel for a full or partial refund based on how early you cancel.",
+  standard:
+    "Standard — partial refunds up to the cutoff, based on how early you cancel.",
+  strict: "Strict — limited refunds; review the cancellation windows below.",
+  custom: "Cancel for a refund based on the windows below.",
+};
+
+function refundTierLabel(
+  tier: { days_before_start: number },
+  index: number,
+  tiers: ReadonlyArray<{ days_before_start: number }>,
+): string {
+  const isLast = index === tiers.length - 1;
+  if (index === 0) return `${tier.days_before_start}+ days before departure`;
+  if (isLast && tier.days_before_start === 0) {
+    const prev = tiers[index - 1];
+    return `Under ${prev.days_before_start} days`;
+  }
+  const prev = tiers[index - 1];
+  return `${tier.days_before_start}–${prev.days_before_start - 1} days before`;
+}
+
+function formatDeadline(iso: string | null): string | null {
+  if (iso === null) return null;
+  const ms = Date.parse(iso);
+  if (!Number.isFinite(ms)) return null;
+  try {
+    return new Date(ms).toLocaleDateString(undefined, {
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+    });
+  } catch {
+    return null;
+  }
+}
+
+const RefundLadder: React.FC<{
+  policy: RefundPolicy | null;
+  bookingDeadline: string | null;
+  palette: ThemePalette;
+  surface: ReturnType<typeof offeringSurfaceStyles>;
+}> = ({ policy, bookingDeadline, palette, surface }) => {
+  const tiers = policy !== null ? policy.tiers : [];
+  const deadlineLabel = formatDeadline(bookingDeadline);
+  return (
+    <View>
+      {policy !== null ? (
+        <View style={[styles.strip, surface.card]}>
+          <Icon name="check" size={16} color={palette.accent} />
+          <Text style={[styles.stripText, surface.secondaryText]}>
+            {REFUND_KIND_COPY[policy.kind]}
+          </Text>
+        </View>
+      ) : null}
+      {tiers.length > 0 ? (
+        <View style={styles.refundLadder}>
+          {tiers.map((tier, index) => {
+            const isZero = tier.refund_pct === 0;
+            return (
+              <View
+                key={`rl-${index}`}
+                style={[
+                  styles.rlRow,
+                  index > 0 ? { borderTopWidth: 1, borderTopColor: palette.panelBorder } : null,
+                ]}
+                accessibilityLabel={`${refundTierLabel(tier, index, tiers)}: ${
+                  isZero ? "no refund" : `${tier.refund_pct}% refund`
+                }`}
+              >
+                <Text style={[styles.rlLabel, surface.secondaryText]}>
+                  {refundTierLabel(tier, index, tiers)}
+                </Text>
+                <Text
+                  style={[
+                    styles.rlPct,
+                    { color: isZero ? palette.tertiaryText : palette.primaryText },
+                  ]}
+                >
+                  {isZero ? "No refund" : `${tier.refund_pct}% refund`}
+                </Text>
+              </View>
+            );
+          })}
+        </View>
+      ) : null}
+      {deadlineLabel !== null ? (
+        <View style={[styles.strip, surface.card]}>
+          <Icon name="clock" size={16} color={palette.accent} />
+          <Text style={[styles.stripText, surface.secondaryText]}>
+            Bookings close {deadlineLabel}.
+          </Text>
+        </View>
+      ) : null}
+    </View>
+  );
+};
+
+// =====================================================================
+// LEGACY mode — the prior framed inline preview (wizard Step-5), unchanged.
+// =====================================================================
+
+const LegacyTripPreview: React.FC<{
+  trip: Trip;
+  brand: TripPreviewBrand;
+  showCta: boolean;
+  contentPadding: number;
+  onReserveTap?: () => void;
+  testID?: string;
+}> = ({ trip, brand, showCta, contentPadding, onReserveTap, testID }) => {
   const includedItems = trip.inclusions.filter((i) => i.kind === "included");
   const excludedItems = trip.inclusions.filter((i) => i.kind === "excluded");
   const tier = trip.pricingTiers[0];
-  // ORCH-1119 — one-playing guard for per-day gallery videos. On web,
-  // EventCoverMedia's useInViewport already lazy-mounts off-screen videos; this
-  // bounds concurrent autoplay to the tapped/first tile.
-  const [activeVideoKey, setActiveVideoKey] = useState<string | null>(null);
+  // ORCH-1138 [trip-page-redesign] — same "City, Country" standardization on the
+  // wizard Step-5 review meta-rows (same data, same "addresses too long"
+  // complaint). This LEGACY layout is a vertical icon meta-row list (NOT the
+  // side-by-side same-line block), so only Fix-1 (shorten) applies here.
+  const legacyDeparture = normalizeCityCountry(
+    trip.businessTrip.departureLocationText,
+  );
+  const legacyDestination = normalizeCityCountry(
+    trip.businessTrip.destinationLocationText,
+  );
+  // ORCH-1119 — one-playing guard for per-day gallery videos.
+  const [activeVideoKey, setActiveVideoKey] = React.useState<string | null>(
+    null,
+  );
 
   return (
-    <View style={styles.host} testID={testID}>
+    <View style={styles.legacyHost} testID={testID}>
       {/* Cover image */}
       {trip.coverMediaUrl !== null ? (
         <Image
           source={{ uri: trip.coverMediaUrl }}
-          style={styles.cover}
+          style={styles.legacyCover}
           accessibilityLabel={`Cover image for ${trip.title}`}
         />
       ) : (
-        <View style={[styles.cover, styles.coverPlaceholder]}>
-          <Text style={styles.coverPlaceholderText}>No cover image</Text>
+        <View style={[styles.legacyCover, styles.legacyCoverPlaceholder]}>
+          <Text style={styles.legacyCoverPlaceholderText}>No cover image</Text>
         </View>
       )}
 
-      <View style={[styles.body, { padding: contentPadding }]}>
-        {/* Title + brand byline */}
-        <Text style={styles.title}>{trip.title}</Text>
-        <Text style={styles.brandByline}>by {brand.name}</Text>
+      <View style={[styles.legacyBody, { padding: contentPadding }]}>
+        <Text style={styles.legacyTitle}>{trip.title}</Text>
+        <Text style={styles.legacyBrandByline}>by {brand.name}</Text>
 
-        {/* Dates + destination */}
-        <View style={styles.metaRow}>
+        <View style={styles.legacyMetaRow}>
           <Icon name="calendar" size={16} color={accent.warm} />
-          <Text style={styles.metaText}>
+          <Text style={styles.legacyMetaText}>
             {formatTripDateRange(
               trip.businessTrip.startAt,
               trip.businessTrip.endAt,
             )}
           </Text>
         </View>
-        {/* ORCH-1016 — "Leaving from {city}" ABOVE destination ("leave here →
-            go there"). Conditional: hidden when departure not set. Mirrors the
-            consumer card + detail treatment (paper-plane icon, sentence case). */}
-        {trip.businessTrip.departureLocationText !== null ? (
-          <View style={styles.metaRow}>
+        {legacyDeparture !== null ? (
+          <View style={styles.legacyMetaRow}>
             <Icon name="send" size={16} color={accent.warm} />
-            <Text style={styles.metaText} numberOfLines={2}>
-              Leaving from {trip.businessTrip.departureLocationText}
+            <Text style={styles.legacyMetaText} numberOfLines={1}>
+              Leaving from {legacyDeparture}
             </Text>
           </View>
         ) : null}
-        {trip.businessTrip.destinationLocationText !== null ? (
-          <View style={styles.metaRow}>
+        {legacyDestination !== null ? (
+          <View style={styles.legacyMetaRow}>
             <Icon name="location" size={16} color={accent.warm} />
-            <Text style={styles.metaText} numberOfLines={2}>
-              {trip.businessTrip.destinationLocationText}
+            <Text style={styles.legacyMetaText} numberOfLines={1}>
+              {legacyDestination}
             </Text>
           </View>
         ) : null}
         {trip.businessTrip.capacity !== null ? (
-          <View style={styles.metaRow}>
+          <View style={styles.legacyMetaRow}>
             <Icon name="users" size={16} color={accent.warm} />
-            <Text style={styles.metaText}>
+            <Text style={styles.legacyMetaText}>
               {trip.businessTrip.capacity} traveler
               {trip.businessTrip.capacity === 1 ? "" : "s"} max
             </Text>
           </View>
         ) : null}
 
-        {/* Description — ORCH-1117 collapsible (collapsed by default). */}
         {trip.description !== null && trip.description.trim().length > 0 ? (
-          <View style={styles.descriptionWrap}>
+          <View style={styles.legacyDescriptionWrap}>
             <CollapsibleDescription
               text={trip.description}
               testID="trip-preview-description"
@@ -179,36 +1023,33 @@ export const TripPreview: React.FC<TripPreviewProps> = ({
           </View>
         ) : null}
 
-        {/* Itinerary */}
         {trip.days.length > 0 ? (
-          <View style={styles.section}>
-            <Text style={styles.sectionLabel}>Day by day</Text>
-            <View style={styles.daysList}>
+          <View style={styles.legacySection}>
+            <Text style={styles.legacySectionLabel}>Day by day</Text>
+            <View style={styles.legacyDaysList}>
               {trip.days.map((day: TripDay) => {
-                // First video in the gallery auto-plays by default (web lazy-mount
-                // still gates off-screen). Tapping any video tile switches play.
                 const firstVideoIndex = day.media.findIndex(
                   (m) => m.type === "video",
                 );
                 const defaultKey =
-                  firstVideoIndex >= 0
-                    ? `${day.id}-${firstVideoIndex}`
-                    : null;
+                  firstVideoIndex >= 0 ? `${day.id}-${firstVideoIndex}` : null;
                 return (
-                  <View key={day.id} style={styles.dayCard}>
-                    <Text style={styles.dayOrdinal}>DAY {day.ordinal}</Text>
-                    <Text style={styles.dayTitle}>{day.title}</Text>
+                  <View key={day.id} style={styles.legacyDayCard}>
+                    <Text style={styles.legacyDayOrdinal}>
+                      DAY {day.ordinal}
+                    </Text>
+                    <Text style={styles.legacyDayTitle}>{day.title}</Text>
                     {day.narrative !== null &&
                     day.narrative.trim().length > 0 ? (
-                      <Text style={styles.dayNarrative}>{day.narrative}</Text>
+                      <Text style={styles.legacyDayNarrative}>
+                        {day.narrative}
+                      </Text>
                     ) : null}
-                    {/* ORCH-1119 — per-day gallery. Constitution #9: NO media ⇒
-                        zero gallery nodes (no empty frame). */}
                     {day.media.length > 0 ? (
                       <ScrollView
                         horizontal
                         showsHorizontalScrollIndicator={false}
-                        contentContainerStyle={styles.dayMediaRow}
+                        contentContainerStyle={styles.legacyDayMediaRow}
                         accessibilityLabel={`Day ${day.ordinal} media gallery`}
                       >
                         {day.media.map((m, mi) => {
@@ -227,7 +1068,7 @@ export const TripPreview: React.FC<TripPreviewProps> = ({
                               }
                               accessibilityRole="imagebutton"
                               accessibilityLabel={`Day ${day.ordinal} media ${mi + 1}, video`}
-                              style={styles.dayMediaTile}
+                              style={styles.legacyDayMediaTile}
                             >
                               <EventCoverMedia
                                 mediaUrl={m.url}
@@ -242,7 +1083,7 @@ export const TripPreview: React.FC<TripPreviewProps> = ({
                               />
                               {!isActive ? (
                                 <View
-                                  style={styles.dayMediaPlayBadge}
+                                  style={styles.legacyDayMediaPlayBadge}
                                   pointerEvents="none"
                                 >
                                   <Icon name="play" size={12} color="#FFFFFF" />
@@ -253,7 +1094,7 @@ export const TripPreview: React.FC<TripPreviewProps> = ({
                             <Image
                               key={key}
                               source={{ uri: m.url }}
-                              style={styles.dayMediaTile}
+                              style={styles.legacyDayMediaTile}
                               resizeMode="cover"
                               accessibilityRole="image"
                               accessibilityLabel={`Day ${day.ordinal} media ${mi + 1}, image`}
@@ -269,17 +1110,18 @@ export const TripPreview: React.FC<TripPreviewProps> = ({
           </View>
         ) : null}
 
-        {/* Included / Excluded */}
         {includedItems.length > 0 || excludedItems.length > 0 ? (
-          <View style={styles.section}>
+          <View style={styles.legacySection}>
             {includedItems.length > 0 ? (
               <>
-                <Text style={styles.sectionLabel}>What&rsquo;s included</Text>
-                <View style={styles.itemsList}>
+                <Text style={styles.legacySectionLabel}>
+                  What&rsquo;s included
+                </Text>
+                <View style={styles.legacyItemsList}>
                   {includedItems.map((i: TripInclusion) => (
-                    <View key={i.id} style={styles.itemRow}>
+                    <View key={i.id} style={styles.legacyItemRow}>
                       <Icon name="check" size={14} color={accent.warm} />
-                      <Text style={styles.itemText}>{i.item}</Text>
+                      <Text style={styles.legacyItemText}>{i.item}</Text>
                     </View>
                   ))}
                 </View>
@@ -287,14 +1129,20 @@ export const TripPreview: React.FC<TripPreviewProps> = ({
             ) : null}
             {excludedItems.length > 0 ? (
               <>
-                <Text style={[styles.sectionLabel, styles.excludedLabel]}>
+                <Text
+                  style={[styles.legacySectionLabel, styles.legacyExcludedLabel]}
+                >
                   What&rsquo;s NOT included
                 </Text>
-                <View style={styles.itemsList}>
+                <View style={styles.legacyItemsList}>
                   {excludedItems.map((i: TripInclusion) => (
-                    <View key={i.id} style={styles.itemRow}>
-                      <Icon name="close" size={14} color={textTokens.tertiary} />
-                      <Text style={styles.itemText}>{i.item}</Text>
+                    <View key={i.id} style={styles.legacyItemRow}>
+                      <Icon
+                        name="close"
+                        size={14}
+                        color={textTokens.tertiary}
+                      />
+                      <Text style={styles.legacyItemText}>{i.item}</Text>
                     </View>
                   ))}
                 </View>
@@ -303,22 +1151,21 @@ export const TripPreview: React.FC<TripPreviewProps> = ({
           </View>
         ) : null}
 
-        {/* Pricing */}
         {tier !== undefined ? (
-          <View style={styles.pricingCard}>
+          <View style={styles.legacyPricingCard}>
             <View>
-              <Text style={styles.pricingTierName}>{tier.tierName}</Text>
-              <Text style={styles.pricingPrice}>{formatPrice(tier)}</Text>
+              <Text style={styles.legacyPricingTierName}>{tier.tierName}</Text>
+              <Text style={styles.legacyPricingPrice}>{formatPrice(tier)}</Text>
             </View>
             {showCta && onReserveTap !== undefined ? (
               <Pressable
                 onPress={onReserveTap}
                 accessibilityRole="button"
                 accessibilityLabel={`Reserve your spot on ${trip.title}`}
-                style={styles.reserveCta}
+                style={styles.legacyReserveCta}
                 testID="trip-preview-reserve-cta"
               >
-                <Text style={styles.reserveCtaText}>Reserve my spot</Text>
+                <Text style={styles.legacyReserveCtaText}>Reserve my spot</Text>
               </Pressable>
             ) : null}
           </View>
@@ -329,65 +1176,333 @@ export const TripPreview: React.FC<TripPreviewProps> = ({
 };
 
 const styles = StyleSheet.create({
-  host: {
+  // ---- foundation: lead/title/eyebrow ----
+  leadBlock: {
+    marginBottom: 4,
+  },
+  eyebrowLead: {
+    fontSize: 11,
+    fontWeight: "900",
+    letterSpacing: 1.6,
+    textTransform: "uppercase",
+    marginBottom: 8,
+  },
+  title: {
+    fontSize: 32,
+    lineHeight: 35,
+    fontWeight: "900",
+    letterSpacing: -0.5,
+  },
+  heroEyebrow: {
+    color: "#ffffff",
+    opacity: 0.92,
+    fontSize: 12,
+    fontWeight: "900",
+    letterSpacing: 1.6,
+    textTransform: "uppercase",
+    marginBottom: 8,
+  },
+  heroTitle: {
+    color: "#ffffff",
+    fontSize: 46,
+    lineHeight: 50,
+    fontWeight: "900",
+    letterSpacing: -0.5,
+    maxWidth: "72%",
+  },
+  // ---- meta chips ----
+  metaRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+    marginTop: 16,
+  },
+  metaChip: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  metaChipText: {
+    fontSize: 13,
+    fontWeight: "600",
+  },
+  // ---- brand chip ----
+  brandRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    marginTop: 18,
+    borderRadius: 16,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+  },
+  brandTile: {
+    width: 42,
+    height: 42,
+    borderRadius: 999,
+    // ORCH-1138 FIX-3 — clip the media-aware EventCoverMedia (image/gif/video) to
+    // the circular avatar (Android opaque-clip per ANDROID_GLASS_USES_OPAQUE_FALLBACK).
+    overflow: "hidden",
+    backgroundColor: "#1a1c20",
+  },
+  brandTextCol: {
+    flexShrink: 1,
+  },
+  brandKicker: {
+    fontSize: 10,
+    fontWeight: "800",
+    letterSpacing: 1.2,
+    textTransform: "uppercase",
+  },
+  brandName: {
+    fontSize: 15,
+    fontWeight: "800",
+    marginTop: 1,
+  },
+  brandCta: {
+    marginLeft: "auto",
+    fontSize: 12,
+    fontWeight: "800",
+  },
+  // ---- section / titles ----
+  section: {
+    marginTop: 24,
+  },
+  secTitle: {
+    fontSize: 20,
+    fontWeight: "900",
+    letterSpacing: -0.3,
+    marginBottom: 12,
+  },
+  // ---- route ----
+  route: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    borderRadius: 16,
+    padding: 14,
+    marginTop: 14,
+  },
+  routeLeg: {
+    flex: 1,
+    minWidth: 0,
+  },
+  routeLabel: {
+    fontSize: 10,
+    fontWeight: "800",
+    letterSpacing: 1,
+    textTransform: "uppercase",
+  },
+  routePlace: {
+    fontSize: 14,
+    fontWeight: "700",
+    marginTop: 2,
+  },
+  routeArrow: {
+    fontSize: 18,
+  },
+  // ---- about ----
+  aboutWrap: {
+    marginTop: 0,
+  },
+  // ---- itinerary ----
+  itin: {
+    position: "relative",
+    paddingLeft: 30,
+    marginTop: 4,
+  },
+  itinSpine: {
+    position: "absolute",
+    left: 9,
+    top: 6,
+    bottom: 6,
+    width: 2,
+  },
+  day: {
+    position: "relative",
+    paddingBottom: 18,
+  },
+  dayDot: {
+    position: "absolute",
+    left: -30,
+    top: 2,
+    width: 20,
+    height: 20,
+    borderRadius: 999,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  dayDotText: {
+    fontSize: 10,
+    fontWeight: "900",
+  },
+  dayCard: {
+    borderRadius: 14,
+    padding: 14,
+  },
+  dayHead: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  dayOrd: {
+    fontSize: 10,
+    fontWeight: "900",
+    letterSpacing: 1,
+    textTransform: "uppercase",
+  },
+  dayDate: {
+    fontSize: 10,
+    fontWeight: "700",
+    letterSpacing: 0.4,
+  },
+  dayTitle: {
+    fontSize: 15,
+    fontWeight: "800",
+    marginTop: 4,
+  },
+  dayNarr: {
+    fontSize: 13,
+    lineHeight: 20,
+    marginTop: 6,
+  },
+  showAllRow: {
+    paddingVertical: 8,
+  },
+  showAllText: {
+    fontSize: 14,
+    fontWeight: "800",
+  },
+  // ---- map ----
+  mapBlock: {
+    height: 180,
+    borderRadius: 16,
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    marginTop: 12,
+    overflow: "hidden",
+  },
+  // Mapbox static image fills the card as a background; the accent pin + caption
+  // pill overlay it (mockup `.map img` — width/height 100%, object-fit cover).
+  mapImage: {
+    ...StyleSheet.absoluteFillObject,
+    opacity: 0.9,
+  },
+  mapCapPill: {
+    position: "absolute",
+    left: 12,
+    bottom: 12,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 999,
+  },
+  mapCap: {
+    fontSize: 12,
+    fontWeight: "700",
+  },
+  // ---- strips + refund ladder (mockup `.strip` / `.refund-ladder`) ----
+  strip: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 10,
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    marginTop: 14,
+  },
+  stripText: {
+    flex: 1,
+    fontSize: 13,
+    lineHeight: 18,
+  },
+  refundLadder: {
+    marginTop: 8,
+  },
+  rlRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    gap: 12,
+    paddingVertical: 7,
+  },
+  rlLabel: {
+    flexShrink: 1,
+    fontSize: 13,
+  },
+  rlPct: {
+    fontSize: 13,
+    fontWeight: "800",
+  },
+  // ---- desktop sticky panel ----
+  deskPanel: {
+    borderRadius: 22,
+    overflow: "hidden",
+  },
+  deskAccent: {
+    height: 4,
+  },
+  deskInner: {
+    padding: 20,
+  },
+  deskPayWrap: {
+    marginTop: 18,
+  },
+  // ===================== LEGACY styles (unchanged from pre-1138) =====================
+  legacyHost: {
     backgroundColor: "transparent",
   },
-  cover: {
+  legacyCover: {
     width: "100%",
     height: 220,
     backgroundColor: "rgba(255, 255, 255, 0.04)",
   },
-  coverPlaceholder: {
+  legacyCoverPlaceholder: {
     alignItems: "center",
     justifyContent: "center",
   },
-  coverPlaceholderText: {
+  legacyCoverPlaceholderText: {
     color: textTokens.tertiary,
     fontSize: typography.caption.fontSize,
   },
-  body: {
+  legacyBody: {
     padding: spacing.lg,
     gap: spacing.sm,
   },
-  title: {
+  legacyTitle: {
     fontSize: typography.h1.fontSize,
     lineHeight: typography.h1.lineHeight,
     fontWeight: typography.h1.fontWeight,
     color: textTokens.primary,
   },
-  brandByline: {
+  legacyBrandByline: {
     fontSize: typography.bodySm.fontSize,
     lineHeight: typography.bodySm.lineHeight,
     color: textTokens.secondary,
   },
-  metaRow: {
+  legacyMetaRow: {
     flexDirection: "row",
     alignItems: "center",
     gap: spacing.xs,
     marginTop: spacing.xs,
   },
-  metaText: {
+  legacyMetaText: {
     fontSize: typography.body.fontSize,
     lineHeight: typography.body.lineHeight,
     color: textTokens.primary,
     flex: 1,
   },
-  description: {
-    fontSize: typography.body.fontSize,
-    lineHeight: typography.body.lineHeight,
-    color: textTokens.secondary,
+  legacyDescriptionWrap: {
     marginTop: spacing.md,
   },
-  // ORCH-1117 — carries the prior description marginTop now that the body text
-  // lives inside the CollapsibleDescription block.
-  descriptionWrap: {
-    marginTop: spacing.md,
-  },
-  section: {
+  legacySection: {
     marginTop: spacing.lg,
     gap: spacing.sm,
   },
-  sectionLabel: {
+  legacySectionLabel: {
     fontSize: typography.caption.fontSize,
     lineHeight: typography.caption.lineHeight,
     fontWeight: "700",
@@ -395,13 +1510,13 @@ const styles = StyleSheet.create({
     color: textTokens.secondary,
     textTransform: "uppercase",
   },
-  excludedLabel: {
+  legacyExcludedLabel: {
     marginTop: spacing.md,
   },
-  daysList: {
+  legacyDaysList: {
     gap: spacing.sm,
   },
-  dayCard: {
+  legacyDayCard: {
     padding: spacing.md,
     borderRadius: radiusTokens.md,
     backgroundColor: "rgba(255, 255, 255, 0.03)",
@@ -409,42 +1524,40 @@ const styles = StyleSheet.create({
     borderColor: "rgba(255, 255, 255, 0.08)",
     gap: spacing.xs,
   },
-  dayOrdinal: {
+  legacyDayOrdinal: {
     fontSize: typography.caption.fontSize,
     fontWeight: "700",
     letterSpacing: 0.6,
     color: accent.warm,
   },
-  dayTitle: {
+  legacyDayTitle: {
     fontSize: typography.body.fontSize,
     lineHeight: typography.body.lineHeight,
     fontWeight: "600",
     color: textTokens.primary,
   },
-  dayNarrative: {
+  legacyDayNarrative: {
     fontSize: typography.bodySm.fontSize,
     lineHeight: typography.bodySm.lineHeight,
     color: textTokens.secondary,
   },
-  // ORCH-1119 — per-day gallery
-  dayMediaRow: {
+  legacyDayMediaRow: {
     flexDirection: "row",
     gap: spacing.sm,
     marginTop: spacing.sm,
     paddingVertical: 2,
   },
-  dayMediaTile: {
+  legacyDayMediaTile: {
     width: 96,
     height: 96,
     borderRadius: radiusTokens.md,
     overflow: "hidden",
-    // ANDROID_GLASS_USES_OPAQUE_FALLBACK — opaque Android fill.
     backgroundColor: Platform.select({
       android: "#1A1A1C",
       default: "rgba(255,255,255,0.06)",
     }),
   },
-  dayMediaPlayBadge: {
+  legacyDayMediaPlayBadge: {
     position: "absolute",
     left: 6,
     bottom: 6,
@@ -455,21 +1568,21 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     backgroundColor: "rgba(0,0,0,0.6)",
   },
-  itemsList: {
+  legacyItemsList: {
     gap: spacing.xs,
   },
-  itemRow: {
+  legacyItemRow: {
     flexDirection: "row",
     alignItems: "center",
     gap: spacing.xs,
   },
-  itemText: {
+  legacyItemText: {
     fontSize: typography.body.fontSize,
     lineHeight: typography.body.lineHeight,
     color: textTokens.primary,
     flex: 1,
   },
-  pricingCard: {
+  legacyPricingCard: {
     marginTop: spacing.lg,
     padding: spacing.lg,
     borderRadius: radiusTokens.lg,
@@ -481,24 +1594,24 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     gap: spacing.md,
   },
-  pricingTierName: {
+  legacyPricingTierName: {
     fontSize: typography.bodySm.fontSize,
     color: textTokens.secondary,
   },
-  pricingPrice: {
+  legacyPricingPrice: {
     fontSize: typography.h2.fontSize,
     lineHeight: typography.h2.lineHeight,
     fontWeight: "700",
     color: textTokens.primary,
     marginTop: 2,
   },
-  reserveCta: {
+  legacyReserveCta: {
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
     borderRadius: radiusTokens.md,
     backgroundColor: accent.warm,
   },
-  reserveCtaText: {
+  legacyReserveCtaText: {
     fontSize: typography.body.fontSize,
     fontWeight: "700",
     color: "#FFFFFF",

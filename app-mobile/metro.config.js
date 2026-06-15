@@ -25,6 +25,16 @@ config.resolver.extraNodeModules = {
     "packages",
     "event-rendering",
   ),
+  // ORCH-1138 Leg 1C — shared Direction-A offering layout primitives
+  // (ParallaxCoverShell + ChipGroup + CountAwareGallery + useResponsiveLayout).
+  // Consumed by the consumer trip detail to converge on the business/web trip
+  // page look. Mirrors the event-rendering alias exactly (Metro uses Node
+  // resolution, not tsconfig paths).
+  "@mingla/offering-rendering": path.join(
+    WORKSPACE_ROOT,
+    "packages",
+    "offering-rendering",
+  ),
   "@mingla/brand-rendering": path.join(
     WORKSPACE_ROOT,
     "packages",

@@ -58,8 +58,12 @@ const maybeRevert = (src, kind) => {
     );
   }
   if (kind === "screen") {
+    // ORCH-1138 [trip-page-redesign] — Reserve now opens TicketCartSheet
+    // DIRECTLY; the consent choice is threaded through the screen's own
+    // handleBuy → runNativeCheckout (NOT the old EBES prop). Revert = strip
+    // that forward → the server would default to silent 'auto'.
     return src.replace(
-      /paymentPlanChoice=\{detail\.hasPlan \? paymentPlanChoice : undefined\}/,
+      /paymentPlanChoice:\s*detail\.hasPlan \? paymentPlanChoice : undefined,/,
       "/* reverted: screen never threads the choice */",
     );
   }
@@ -93,7 +97,10 @@ try {
   fail(e.message);
 }
 
-// 2. ExpandedBusinessEventSheet accepts + forwards the prop into runNativeCheckout.
+// 2. ExpandedBusinessEventSheet (events/experiences path) STILL accepts +
+//    forwards the prop into runNativeCheckout. ORCH-1138 [trip-page-redesign]
+//    removed EBES from the TRIP path only — EBES is unchanged and remains the
+//    events/experiences checkout sheet, so its consent forwarding must persist.
 try {
   assert.match(
     sheet,
@@ -109,8 +116,14 @@ try {
   fail(e.message);
 }
 
-// 3. ConsumerTripDetailScreen mounts the choice module + threads the value,
+// 3. ConsumerTripDetailScreen renders the choice module + threads the value,
 //    gated on hasPlan so non-plan trips send nothing (byte-identical request).
+//    ORCH-1138 [trip-page-redesign] — Reserve now opens TicketCartSheet DIRECTLY,
+//    so the consent choice is threaded through the screen's OWN handleBuy →
+//    runNativeCheckout (NOT the old EBES prop). The "Choose how you pay" control
+//    is the tabbed Pay-in-full / Pay-over-time toggle (accessibilityRole
+//    "tablist"; the legacy radio-dot pills + the separate "Reserve charges"
+//    disclosure were superseded by ORCH-1138's PaymentMockupCard parity legs).
 try {
   assert.match(
     screen,
@@ -119,19 +132,13 @@ try {
   );
   assert.match(
     screen,
-    /accessibilityRole="radiogroup"/,
-    "screen module must be an accessible radiogroup",
+    /accessibilityRole="tablist"/,
+    "screen module must be an accessible pay-choice toggle (tablist)",
   );
   assert.match(
     screen,
-    /paymentPlanChoice=\{detail\.hasPlan \? paymentPlanChoice : undefined\}/,
-    "screen must thread the explicit choice (hasPlan-gated) into Reserve",
-  );
-  // Pre-Reserve disclosure (WYSIWYP) — the deposit-today reality before the tap.
-  assert.match(
-    screen,
-    /Reserve charges/,
-    "screen must show the pre-Reserve charge disclosure",
+    /paymentPlanChoice:\s*detail\.hasPlan \? paymentPlanChoice : undefined,/,
+    "screen must thread the explicit choice (hasPlan-gated) into its own runNativeCheckout (direct-cart path)",
   );
 } catch (e) {
   fail(e.message);

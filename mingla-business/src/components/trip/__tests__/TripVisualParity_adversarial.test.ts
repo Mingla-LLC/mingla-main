@@ -285,14 +285,31 @@ describe("ORCH-0874 Trip surfaces visual parity with Events — TESTER adversari
       );
     });
 
-    it("public trip page X-close + share IconChromes have accessibilityLabel", () => {
+    // ORCH-1138 (SPEC amendment A-2) — the route's bespoke IconChrome close/share
+    // overlays were replaced by the shared foundation OfferingChrome (rendered via
+    // ParallaxCoverShell). The route threads onClose/onShare into TripPreview;
+    // the accessibilityLabel "Close"/"Share" now live in OfferingChrome (the
+    // shared chrome), asserted at the package source. [TEST-MOD-APPROVED ORCH-1138]
+    it("public trip page threads close/share into the foundation chrome (a11y preserved)", () => {
       const SRC = readApp("t/[brandSlug]/[tripSlug].tsx");
-      expect(SRC).toMatch(
-        /<IconChrome[^>]*icon="close"[\s\S]*?accessibilityLabel="Close"/,
+      expect(SRC).toMatch(/onClose=\{onClose\}/);
+      expect(SRC).toMatch(/onShare=\{onShare\}/);
+      const CHROME = readFileSync(
+        join(
+          __dirname,
+          "..",
+          "..",
+          "..",
+          "..",
+          "..",
+          "packages",
+          "offering-rendering",
+          "OfferingChrome.tsx",
+        ),
+        "utf8",
       );
-      expect(SRC).toMatch(
-        /<IconChrome[^>]*icon="share"[\s\S]*?accessibilityLabel="Share"/,
-      );
+      expect(CHROME).toContain('closeAccessibilityLabel = "Close"');
+      expect(CHROME).toContain('accessibilityLabel="Share"');
     });
   });
 

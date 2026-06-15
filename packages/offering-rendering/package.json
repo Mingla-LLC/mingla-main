@@ -1,0 +1,15 @@
+{
+  "name": "@mingla/offering-rendering",
+  "version": "0.0.0",
+  "private": true,
+  "main": "index.ts",
+  "types": "index.ts",
+  "license": "UNLICENSED",
+  "description": "ORCH-1138 — pure-presentational Direction-A layout primitives (parallax cover shell, offering chrome, count-aware gallery, chip group, surface theming) shared by the public trip/event/experience/brand pages. Props-only; no app src/ imports (I-MOR-0827-PACKAGE-ISOLATION). Renders on react-native-web and native RN.",
+  "peerDependencies": {
+    "react": "*",
+    "react-native": "*",
+    "react-native-svg": "*",
+    "@mingla/event-rendering": "*"
+  }
+}

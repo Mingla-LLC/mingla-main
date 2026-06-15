@@ -27,6 +27,7 @@ import {
   text as textTokens,
   typography,
 } from "../../constants/designSystem";
+import type { ThemePalette } from "@mingla/event-rendering";
 import type { Trip } from "../../services/tripsService";
 import type { TripPreviewBrand } from "./TripPreview";
 import { projectInstallmentSchedule } from "../../utils/installmentScheduleProjection";
@@ -50,6 +51,17 @@ export interface TripCheckoutFlowProps {
    */
   paymentPlanChoice: TripPaymentChoiceValue;
   onPaymentPlanChoiceChange: (value: TripPaymentChoiceValue) => void;
+  /**
+   * ORCH-1138 B5 (additive) — passthrough to TripPaymentChoice. The public trip
+   * page passes the resolved brand palette; the /checkout-trip payment route +
+   * wizard do NOT (so they render byte-identical to pre-1138). RT-2 guards this.
+   */
+  palette?: ThemePalette;
+  /**
+   * ORCH-1138 R2 (additive) — resolved brand font for the themed amount block.
+   * Passthrough to TripPaymentChoice. Absent ⇒ unused (no-palette byte-identical).
+   */
+  fontFamily?: string;
   testID?: string;
 }
 
@@ -69,6 +81,8 @@ export const TripCheckoutFlow: React.FC<TripCheckoutFlowProps> = ({
   trip,
   paymentPlanChoice,
   onPaymentPlanChoiceChange,
+  palette,
+  fontFamily,
   testID,
 }) => {
   const tier = trip.pricingTiers[0];
@@ -110,18 +124,36 @@ export const TripCheckoutFlow: React.FC<TripCheckoutFlowProps> = ({
   }
 
   // No-plan trip → quiet price recap line (no selector). DESIGN §2.1 wireframe 3.
+  // ORCH-1138 R2 (additive) — palette present (public page) themes the recap text
+  // so it reads on a light brand page; absent → byte-identical (warm-dark tokens).
   if (projectedSchedule === null) {
     return (
-      <View style={styles.host} testID={testID}>
+      <View style={palette !== undefined ? null : styles.host} testID={testID}>
         <View style={styles.recapRow}>
-          <Text style={styles.recapTierName} numberOfLines={1}>
+          <Text
+            style={[
+              styles.recapTierName,
+              palette !== undefined ? { color: palette.secondaryText } : null,
+            ]}
+            numberOfLines={1}
+          >
             {tier.tierName}
           </Text>
-          <Text style={styles.recapPrice}>
+          <Text
+            style={[
+              styles.recapPrice,
+              palette !== undefined ? { color: palette.primaryText } : null,
+            ]}
+          >
             {formatPriceMajor(tier.priceCents, tier.currency)}
           </Text>
         </View>
-        <Text style={styles.recapHelper}>
+        <Text
+          style={[
+            styles.recapHelper,
+            palette !== undefined ? { color: palette.tertiaryText } : null,
+          ]}
+        >
           One secure payment. Stripe handles it; we never see your card.
         </Text>
       </View>
@@ -129,8 +161,11 @@ export const TripCheckoutFlow: React.FC<TripCheckoutFlowProps> = ({
   }
 
   // Plan trip → the segmented toggle module.
+  // ORCH-1138 R2 (additive) — on the PUBLIC trip page (palette present) drop the
+  // host inset so the themed mockup pay card sits flush in its section; the
+  // no-palette callers keep the original `host` padding (byte-identical).
   return (
-    <View style={styles.host} testID={testID}>
+    <View style={palette !== undefined ? null : styles.host} testID={testID}>
       <TripPaymentChoice
         schedule={projectedSchedule}
         fullPriceCents={tier.priceCents}
@@ -138,6 +173,8 @@ export const TripCheckoutFlow: React.FC<TripCheckoutFlowProps> = ({
         depositPct={tier.installmentSchedule?.deposit_pct ?? 0}
         value={paymentPlanChoice}
         onChange={onPaymentPlanChoiceChange}
+        palette={palette}
+        fontFamily={fontFamily}
         testID={testID !== undefined ? `${testID}-payment-choice` : undefined}
       />
     </View>

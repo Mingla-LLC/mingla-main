@@ -235,6 +235,21 @@ export default ({ config }: ConfigContext): ExpoConfig => {
         }
         return fromEnv;
       })(),
+      // ORCH-1138 Leg 1: client-safe PUBLIC Mapbox token for the public trip
+      // page "Where you'll be" STATIC map image (Mapbox Static Images API). A
+      // `pk.*` token is client-safe by design (publishable, scoped) — unlike the
+      // server-only MAPBOX_ACCESS_TOKEN behind the `mapbox-geocode` edge fn. This
+      // is the ONLY runtime-safe path: a DYNAMIC process.env read is NOT inlined
+      // by babel-preset-expo and is undefined in Hermes standalone/OTA builds, so
+      // we emit it into `extra` here and read it via
+      // Constants.expoConfig.extra.EXPO_PUBLIC_MAPBOX_ACCESS_TOKEN FIRST (mirrors
+      // the GIPHY/supabase pattern above). NO hardcoded literal — the value is
+      // provisioned to the EAS/Vercel env + OTA shell by the operator. Absent at
+      // runtime → the trip page HIDES the map gracefully (honest pin+caption
+      // fallback), never crashes. Do NOT throw here: a missing token degrades a
+      // single page, it does not break the build.
+      EXPO_PUBLIC_MAPBOX_ACCESS_TOKEN:
+        process.env.EXPO_PUBLIC_MAPBOX_ACCESS_TOKEN ?? null,
       // B2a Path C V3 forensics R-1: canonical Mingla Business public web URL.
       // Single source of truth read by mingla-business/src/constants/platformUrl.ts.
       // Production canonical: https://business.usemingla.com (Vercel-hosted Expo Web export).

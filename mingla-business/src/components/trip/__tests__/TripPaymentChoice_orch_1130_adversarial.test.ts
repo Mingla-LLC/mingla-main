@@ -197,9 +197,15 @@ describe("ORCH-1130 adversarial — consent value reaching ticket-checkout-creat
 
   test("ConsumerTripDetailScreen passes the explicit choice ONLY for a plan trip (hasPlan gate); no-plan → undefined", () => {
     const src = screen();
-    // The hasPlan gate is what makes a no-plan trip omit the key entirely.
+    // [TEST-MOD-APPROVED ORCH-1138] assertion-drift refresh: ORCH-1138 ported
+    // the consumer reserve flow off the duplicate <ExpandedBusinessEventSheet>
+    // JSX onto an in-place `handleBuy` → `runNativeCheckout({...})` call, so the
+    // hasPlan gate moved from a JSX prop (`paymentPlanChoice={...}`) to an
+    // object property (`paymentPlanChoice: ...`). The consent invariant is
+    // IDENTICAL — explicit choice forwarded ONLY for a plan trip, undefined for
+    // no-plan. Still fails on revert (drop the gate → unconditional/auto).
     expect(src).toMatch(
-      /paymentPlanChoice=\{\s*detail\.hasPlan\s*\?\s*paymentPlanChoice\s*:\s*undefined\s*\}/,
+      /paymentPlanChoice:\s*detail\.hasPlan\s*\?\s*paymentPlanChoice\s*:\s*undefined/,
     );
     // Default is "full" — a plan buyer who never touches the toggle still
     // sends an EXPLICIT "full", not a server-defaulted deposit-only 'auto'.
