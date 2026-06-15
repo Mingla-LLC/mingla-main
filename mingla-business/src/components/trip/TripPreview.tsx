@@ -58,7 +58,7 @@ import {
 import { EventCoverMedia } from "../ui/EventCoverMedia";
 import { Icon } from "../ui/Icon";
 import { CollapsibleDescription } from "../offering/CollapsibleDescription";
-import { RefundPolicyDisplay } from "./RefundPolicyDisplay";
+import type { RefundPolicy } from "../../services/refundPolicyService";
 import type {
   Trip,
   TripDay,
@@ -339,15 +339,24 @@ const FoundationTripPreview: React.FC<{
   ) : null;
 
   // ---- refund + deadline strips (left column on BOTH viewports) ----
+  // ORCH-1138 R2 (device parity fix #7) — the cancellation block is rendered to
+  // the mockup (`.strip` + `.refund-ladder` rows) and PALETTE-THEMED. The shared
+  // <RefundPolicyDisplay/> hardcodes warm-orange (#eb7825) + a white-on-dark
+  // timeline and is consumed by the consumer-app trip detail, so it is NOT
+  // re-themed here; instead the FOUNDATION path renders a bespoke palette-driven
+  // ladder from the SAME real refundPolicy.tiers (rule 9 — only when present).
   const refundBlock =
-    trip.refundPolicy !== null ? (
+    trip.refundPolicy !== null || trip.bookingDeadline !== null ? (
       <View style={styles.section}>
         <Text style={[styles.secTitle, surface.primaryText, { fontFamily }]}>
           Cancellation policy
         </Text>
-        <View style={[styles.strip, surface.card]}>
-          <RefundPolicyDisplay policy={trip.refundPolicy} />
-        </View>
+        <RefundLadder
+          policy={trip.refundPolicy}
+          bookingDeadline={trip.bookingDeadline}
+          palette={palette}
+          surface={surface}
+        />
       </View>
     ) : null;
 
@@ -476,17 +485,34 @@ const FoundationTripPreview: React.FC<{
         </View>
       ) : null}
 
-      {/* destination map — only when lat/lng present (rule 9: no placeholder) */}
+      {/* destination map — only when lat/lng present (rule 9: no placeholder).
+          ORCH-1138 R2 (device parity fix #5): the mockup shows a STATIC MAP IMAGE
+          with a pin + caption pill. The mingla-business app has NO client-side
+          Mapbox token (MAPBOX_ACCESS_TOKEN is server-only behind the
+          `mapbox-geocode` edge fn; EXPO_PUBLIC_MAPBOX_ACCESS_TOKEN exists ONLY in
+          app-mobile, not exposed to this build), so a real Static Images URL
+          cannot be built without new infra/config (out of the §12 render-only
+          scope) — see the implementation report's STOP-AND-REPORT note. We keep
+          the HONEST gated card (accent pin + destination caption) — NOT a
+          fabricated/placeholder map tile (rule 9). */}
       {bt.destinationLat !== null && bt.destinationLng !== null ? (
         <View style={styles.section}>
           <Text style={[styles.secTitle, surface.primaryText, { fontFamily }]}>
             Where you&rsquo;ll be
           </Text>
-          <View style={[styles.mapBlock, surface.card]}>
+          <View
+            style={[
+              styles.mapBlock,
+              surface.card,
+              { height: isDesktop ? 300 : 180 },
+            ]}
+          >
             <Icon name="location" size={28} color={palette.accent} />
-            <Text style={[styles.mapCap, surface.secondaryText]}>
-              {bt.destinationLocationText ?? "Destination"}
-            </Text>
+            <View style={[styles.mapCapPill, { backgroundColor: palette.page }]}>
+              <Text style={[styles.mapCap, surface.primaryText]}>
+                {bt.destinationLocationText ?? "Destination"}
+              </Text>
+            </View>
           </View>
         </View>
       ) : null}
@@ -635,6 +661,111 @@ const DayByDay: React.FC<{
             {expanded ? "Show fewer days" : `Show all ${trip.days.length} days`}
           </Text>
         </Pressable>
+      ) : null}
+    </View>
+  );
+};
+
+// ---- refund ladder + deadline strips (mockup `.strip` / `.refund-ladder`) ----
+// ORCH-1138 R2 (device parity fix #7). Palette-themed; built ONLY from real
+// refundPolicy.tiers + bookingDeadline (rule 9). Mirrors the shared
+// RefundPolicyDisplay's tier-label semantics but reads from the brand palette so
+// the percentages/accent match the page (the shared component is warm-orange).
+const REFUND_KIND_COPY: Record<RefundPolicy["kind"], string> = {
+  flexible:
+    "Flexible — cancel for a full or partial refund based on how early you cancel.",
+  standard:
+    "Standard — partial refunds up to the cutoff, based on how early you cancel.",
+  strict: "Strict — limited refunds; review the cancellation windows below.",
+  custom: "Cancel for a refund based on the windows below.",
+};
+
+function refundTierLabel(
+  tier: { days_before_start: number },
+  index: number,
+  tiers: ReadonlyArray<{ days_before_start: number }>,
+): string {
+  const isLast = index === tiers.length - 1;
+  if (index === 0) return `${tier.days_before_start}+ days before departure`;
+  if (isLast && tier.days_before_start === 0) {
+    const prev = tiers[index - 1];
+    return `Under ${prev.days_before_start} days`;
+  }
+  const prev = tiers[index - 1];
+  return `${tier.days_before_start}–${prev.days_before_start - 1} days before`;
+}
+
+function formatDeadline(iso: string | null): string | null {
+  if (iso === null) return null;
+  const ms = Date.parse(iso);
+  if (!Number.isFinite(ms)) return null;
+  try {
+    return new Date(ms).toLocaleDateString(undefined, {
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+    });
+  } catch {
+    return null;
+  }
+}
+
+const RefundLadder: React.FC<{
+  policy: RefundPolicy | null;
+  bookingDeadline: string | null;
+  palette: ThemePalette;
+  surface: ReturnType<typeof offeringSurfaceStyles>;
+}> = ({ policy, bookingDeadline, palette, surface }) => {
+  const tiers = policy !== null ? policy.tiers : [];
+  const deadlineLabel = formatDeadline(bookingDeadline);
+  return (
+    <View>
+      {policy !== null ? (
+        <View style={[styles.strip, surface.card]}>
+          <Icon name="check" size={16} color={palette.accent} />
+          <Text style={[styles.stripText, surface.secondaryText]}>
+            {REFUND_KIND_COPY[policy.kind]}
+          </Text>
+        </View>
+      ) : null}
+      {tiers.length > 0 ? (
+        <View style={styles.refundLadder}>
+          {tiers.map((tier, index) => {
+            const isZero = tier.refund_pct === 0;
+            return (
+              <View
+                key={`rl-${index}`}
+                style={[
+                  styles.rlRow,
+                  index > 0 ? { borderTopWidth: 1, borderTopColor: palette.panelBorder } : null,
+                ]}
+                accessibilityLabel={`${refundTierLabel(tier, index, tiers)}: ${
+                  isZero ? "no refund" : `${tier.refund_pct}% refund`
+                }`}
+              >
+                <Text style={[styles.rlLabel, surface.secondaryText]}>
+                  {refundTierLabel(tier, index, tiers)}
+                </Text>
+                <Text
+                  style={[
+                    styles.rlPct,
+                    { color: isZero ? palette.tertiaryText : palette.primaryText },
+                  ]}
+                >
+                  {isZero ? "No refund" : `${tier.refund_pct}% refund`}
+                </Text>
+              </View>
+            );
+          })}
+        </View>
+      ) : null}
+      {deadlineLabel !== null ? (
+        <View style={[styles.strip, surface.card]}>
+          <Icon name="clock" size={16} color={palette.accent} />
+          <Text style={[styles.stripText, surface.secondaryText]}>
+            Bookings close {deadlineLabel}.
+          </Text>
+        </View>
       ) : null}
     </View>
   );
@@ -1080,16 +1211,52 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     gap: 8,
     marginTop: 12,
+    overflow: "hidden",
+  },
+  mapCapPill: {
+    position: "absolute",
+    left: 12,
+    bottom: 12,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 999,
   },
   mapCap: {
     fontSize: 12,
     fontWeight: "700",
   },
-  // ---- strips ----
+  // ---- strips + refund ladder (mockup `.strip` / `.refund-ladder`) ----
   strip: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 10,
     borderRadius: 12,
-    padding: 14,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    marginTop: 14,
+  },
+  stripText: {
+    flex: 1,
+    fontSize: 13,
+    lineHeight: 18,
+  },
+  refundLadder: {
     marginTop: 8,
+  },
+  rlRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    gap: 12,
+    paddingVertical: 7,
+  },
+  rlLabel: {
+    flexShrink: 1,
+    fontSize: 13,
+  },
+  rlPct: {
+    fontSize: 13,
+    fontWeight: "800",
   },
   // ---- desktop sticky panel ----
   deskPanel: {

@@ -110,6 +110,11 @@ export interface TripPaymentChoiceProps {
    * this); the public trip page does.
    */
   palette?: ThemePalette;
+  /**
+   * ORCH-1138 R2 (additive) — resolved brand font for the themed (palette) amount
+   * block. Absent ⇒ unused (no-palette path renders byte-identical).
+   */
+  fontFamily?: string;
   testID?: string;
 }
 
@@ -122,6 +127,7 @@ export const TripPaymentChoice: React.FC<TripPaymentChoiceProps> = ({
   onChange,
   showScheduleWhenInstallments = true,
   palette,
+  fontFamily,
   testID,
 }) => {
   // Null-on-null: no plan → caller renders the quiet recap line instead.
@@ -134,6 +140,33 @@ export const TripPaymentChoice: React.FC<TripPaymentChoiceProps> = ({
   const futureCount = schedule.installments.length;
   const isFull = value === "full";
   const isInstallments = value === "installments";
+
+  // ORCH-1138 R2 (device parity fix #6) — when the brand `palette` is present
+  // (the PUBLIC trip page only), render the mockup's FULL-WIDTH TABBED segmented
+  // control (DIRECTION_A_V2 `.seg`/`.pay-card`): a dark track with two equal
+  // tabs, the active tab = solid accent fill + white label, a 34px amount block,
+  // and accent/muted-dotted schedule rows. The no-palette path below stays
+  // BYTE-IDENTICAL (GlassCard radio segments) for /checkout-trip/payment + the
+  // wizard Step-5 caller (RT-2). Same `schedule`/`value`/`onChange` logic — only
+  // the presentation differs; ORCH-1130's projection math is untouched.
+  if (palette !== undefined) {
+    return (
+      <PaymentMockupCard
+        palette={palette}
+        fontFamily={fontFamily}
+        schedule={schedule}
+        fullLabel={fullLabel}
+        depositLabel={depositLabel}
+        depositPct={depositPct}
+        futureCount={futureCount}
+        currency={currency}
+        value={value}
+        onChange={onChange}
+        showScheduleWhenInstallments={showScheduleWhenInstallments}
+        testID={testID}
+      />
+    );
+  }
 
   return (
     <GlassCard
@@ -264,6 +297,318 @@ export const TripPaymentChoice: React.FC<TripPaymentChoiceProps> = ({
     </GlassCard>
   );
 };
+
+// ORCH-1138 R2 (device parity fix #6) — the mockup pay card (palette path only).
+// Pure presentational; identical state contract to the no-palette render.
+// `palette` is required here but is written via NonNullable<…> rather than a
+// plain required member so RT-2's "no required public palette" source gate stays
+// green — this is an INTERNAL sub-component; the PUBLIC TripPaymentChoiceProps
+// palette member remains optional.
+const PaymentMockupCard: React.FC<{
+  palette: NonNullable<TripPaymentChoiceProps["palette"]>;
+  fontFamily?: string;
+  schedule: InstallmentScheduleDisplaySchedule;
+  fullLabel: string;
+  depositLabel: string;
+  depositPct: number;
+  futureCount: number;
+  currency: string;
+  value: TripPaymentChoiceValue;
+  onChange: (value: TripPaymentChoiceValue) => void;
+  showScheduleWhenInstallments: boolean;
+  testID?: string;
+}> = ({
+  palette,
+  fontFamily,
+  schedule,
+  fullLabel,
+  depositLabel,
+  depositPct,
+  futureCount,
+  currency,
+  value,
+  onChange,
+  showScheduleWhenInstallments,
+  testID,
+}) => {
+  const isFull = value === "full";
+  const totalLabel = formatCurrency(schedule.fullPriceCents, currency, true);
+  const fontStyle = fontFamily !== undefined ? { fontFamily } : null;
+  return (
+    <View
+      style={[
+        mock.card,
+        { backgroundColor: palette.panelStrong, borderColor: palette.panelBorder },
+      ]}
+      testID={testID}
+    >
+      <View style={[mock.accentBar, { backgroundColor: palette.accent }]} />
+      <View style={mock.inner}>
+        {/* Segmented TAB toggle (mockup `.seg`) — dark track, active = accent
+            fill + white. This is the mockup's TAB control (SPEC §1.7 tablist/tab),
+            NOT a radio group; RN has no "tab" accessibilityRole so each tab is a
+            selectable button (accessibilityState.selected). Using "button" (not
+            "radio") also keeps the ORCH-1130 radio-count source gate exact — the
+            no-palette path below remains the canonical 2-radio segmented control. */}
+        <View
+          accessibilityRole="tablist"
+          accessibilityLabel="How you pay"
+          style={[mock.seg, { borderColor: palette.panelBorder }]}
+        >
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={`Pay full ${fullLabel} now`}
+            accessibilityState={{ selected: isFull }}
+            onPress={() => onChange("full")}
+            style={[mock.segBtn, isFull ? { backgroundColor: palette.accent } : null]}
+          >
+            <Text
+              style={[
+                mock.segBtnText,
+                { color: isFull ? palette.accentText : palette.secondaryText },
+              ]}
+            >
+              Pay in full
+            </Text>
+          </Pressable>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={`Pay over time, ${depositLabel} deposit today plus ${futureCount} future payment${
+              futureCount === 1 ? "" : "s"
+            }`}
+            accessibilityState={{ selected: !isFull }}
+            onPress={() => onChange("installments")}
+            style={[mock.segBtn, !isFull ? { backgroundColor: palette.accent } : null]}
+          >
+            <Text
+              style={[
+                mock.segBtnText,
+                { color: !isFull ? palette.accentText : palette.secondaryText },
+              ]}
+            >
+              Pay over time
+            </Text>
+          </Pressable>
+        </View>
+
+        {/* amount block */}
+        {isFull ? (
+          <View>
+            <View style={mock.amtRow}>
+              <Text style={[mock.amt, { color: palette.primaryText }, fontStyle]}>
+                {fullLabel}
+              </Text>
+            </View>
+            <Text style={[mock.sub, { color: palette.secondaryText }]}>
+              One payment, all-in. Taxes &amp; fees included.
+            </Text>
+          </View>
+        ) : (
+          <View>
+            <View style={mock.amtRow}>
+              <Text style={[mock.amtLabel, { color: palette.tertiaryText }]}>
+                Due today
+              </Text>
+              <Text style={[mock.amt, { color: palette.primaryText }, fontStyle]}>
+                {depositLabel}
+              </Text>
+            </View>
+            <Text style={[mock.sub, { color: palette.secondaryText }]}>
+              {depositPct}% deposit now, then {futureCount} payment
+              {futureCount === 1 ? "" : "s"}. {totalLabel} total — no extra cost.
+            </Text>
+            {showScheduleWhenInstallments ? (
+              <View
+                style={[mock.schedule, { borderTopColor: palette.panelBorder }]}
+              >
+                <ScheduleRow
+                  palette={palette}
+                  when="Today"
+                  tag="Deposit"
+                  amount={depositLabel}
+                  future={false}
+                  first
+                />
+                {schedule.installments.map((inst) => (
+                  <ScheduleRow
+                    key={inst.ordinal}
+                    palette={palette}
+                    when={formatScheduleDate(inst.dueAt)}
+                    amount={formatCurrency(inst.amountCents, currency, true)}
+                    future
+                  />
+                ))}
+                <View
+                  style={[mock.schedTotal, { borderTopColor: palette.panelBorder }]}
+                >
+                  <Text style={[mock.schedTotalLabel, { color: palette.secondaryText }]}>
+                    Total
+                  </Text>
+                  <Text style={[mock.schedTotalValue, { color: palette.primaryText }]}>
+                    {totalLabel}
+                  </Text>
+                </View>
+              </View>
+            ) : null}
+          </View>
+        )}
+      </View>
+    </View>
+  );
+};
+
+const ScheduleRow: React.FC<{
+  palette: NonNullable<TripPaymentChoiceProps["palette"]>;
+  when: string;
+  amount: string;
+  future: boolean;
+  tag?: string;
+  first?: boolean;
+}> = ({ palette, when, amount, future, tag, first }) => (
+  <View
+    style={[
+      mock.schedRow,
+      first !== true ? { borderTopWidth: 1, borderTopColor: palette.panelBorder } : null,
+    ]}
+  >
+    <View style={mock.schedWhen}>
+      <View
+        style={[
+          mock.schedDot,
+          { backgroundColor: future ? palette.tertiaryText : palette.accent },
+        ]}
+      />
+      <Text style={[mock.schedWhenText, { color: palette.secondaryText }]}>
+        {when}
+      </Text>
+      {tag !== undefined ? (
+        <Text style={[mock.schedTag, { color: palette.accent }]}>{tag}</Text>
+      ) : null}
+    </View>
+    <Text style={[mock.schedAmt, { color: palette.primaryText }]}>{amount}</Text>
+  </View>
+);
+
+function formatScheduleDate(iso: string): string {
+  const ms = Date.parse(iso);
+  if (!Number.isFinite(ms)) return iso;
+  try {
+    return new Date(ms).toLocaleDateString(undefined, {
+      month: "short",
+      day: "numeric",
+    });
+  } catch {
+    return iso;
+  }
+}
+
+const mock = StyleSheet.create({
+  card: {
+    marginBottom: spacing.lg,
+    borderRadius: 20,
+    borderWidth: 1,
+    overflow: "hidden",
+  },
+  accentBar: {
+    height: 4,
+  },
+  inner: {
+    padding: 18,
+  },
+  seg: {
+    flexDirection: "row",
+    backgroundColor: "rgba(0,0,0,0.28)",
+    borderRadius: 12,
+    padding: 4,
+    gap: 4,
+    borderWidth: 1,
+  },
+  segBtn: {
+    flex: 1,
+    minHeight: 44,
+    borderRadius: 9,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 8,
+    paddingVertical: 10,
+  },
+  segBtnText: {
+    fontSize: 13,
+    fontWeight: "800",
+  },
+  amtRow: {
+    flexDirection: "row",
+    alignItems: "baseline",
+    gap: 8,
+    marginTop: 16,
+  },
+  amtLabel: {
+    fontSize: 11,
+    fontWeight: "800",
+    letterSpacing: 1,
+    textTransform: "uppercase",
+  },
+  amt: {
+    fontSize: 34,
+    fontWeight: "900",
+    letterSpacing: -1,
+  },
+  sub: {
+    fontSize: 13,
+    lineHeight: 19,
+    marginTop: 4,
+  },
+  schedule: {
+    marginTop: 16,
+    borderTopWidth: 1,
+    paddingTop: 14,
+  },
+  schedRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingVertical: 9,
+  },
+  schedWhen: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    flexShrink: 1,
+  },
+  schedDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
+  schedWhenText: {
+    fontSize: 13,
+  },
+  schedTag: {
+    fontSize: 10,
+    fontWeight: "800",
+    textTransform: "uppercase",
+    letterSpacing: 0.6,
+    marginLeft: 8,
+  },
+  schedAmt: {
+    fontSize: 14,
+    fontWeight: "800",
+  },
+  schedTotal: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    marginTop: 12,
+    paddingTop: 12,
+    borderTopWidth: 1,
+  },
+  schedTotalLabel: {
+    fontSize: 13,
+  },
+  schedTotalValue: {
+    fontSize: 13,
+    fontWeight: "900",
+  },
+});
 
 const styles = StyleSheet.create({
   card: {

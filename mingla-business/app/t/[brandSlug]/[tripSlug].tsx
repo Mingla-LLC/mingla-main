@@ -43,8 +43,9 @@ import {
   type CtaState,
 } from "@mingla/event-rendering";
 import { useResponsiveLayout } from "@mingla/offering-rendering";
+import { useThemeFont } from "../../../src/theme/useThemeFont";
 import { ShareModal } from "../../../src/components/ui/ShareModal";
-import { FloatingOfferingBar } from "../../../src/components/offering/FloatingOfferingBar";
+import { TripReserveBar } from "../../../src/components/trip/TripReserveBar";
 import {
   tripCheckoutPath,
   tripPublicUrl,
@@ -210,6 +211,14 @@ const ResolvedTripPage: React.FC<{
   const palette = useMemo(() => createThemePalette(theme), [theme]);
   const surface = useMemo(() => resolveOfferingSurface(theme), [theme]);
 
+  // ORCH-1138 R2 (device parity fix #1) — LOAD the resolved brand font on demand.
+  // The FONT_FAMILY_MAP values (e.g. "Poppins_500Medium") are NOT bundled at the
+  // app root (ORCH-1083 deferred the 14 families out of the boot bundle); a themed
+  // surface MUST call useThemeFont so expo-font fetches the family. Without this,
+  // setting fontFamily on Text silently no-ops on native → the system font shows
+  // (Seth's device finding #1). Mirrors PublicEventPage / PublicBrandPage exactly.
+  useThemeFont(theme.fontFamilyValue);
+
   // ORCH-0875 booking-deadline state.
   const deadlineIso = trip.bookingDeadline;
   const isClosed = trip.bookingsClosed === true;
@@ -265,6 +274,17 @@ const ResolvedTripPage: React.FC<{
     : multiTier
       ? `From ${tripPrice}`
       : tripPrice;
+
+  // ORCH-1138 R2 (device parity fix #8) — the mockup's reserve-bar KICKER line
+  // above the price: "All-in, taxes included" in pay-full, "Due today · deposit"
+  // when paying over time (DIRECTION_A_V2 `#bar-kicker`). Free trips have no price
+  // → no kicker (the CTA spans full-width).
+  const barKicker =
+    tripPrice === "Free" || tripPrice === ""
+      ? null
+      : tripHasPlan && paymentPlanChoice === "installments"
+        ? "Due today · deposit"
+        : "All-in, taxes included";
 
   const tripCta: CtaState =
     payload.bookable === false
@@ -350,6 +370,7 @@ const ResolvedTripPage: React.FC<{
       paymentPlanChoice={paymentPlanChoice}
       onPaymentPlanChoiceChange={onPaymentPlanChoiceChange}
       palette={palette}
+      fontFamily={theme.fontFamilyValue}
     />
   );
 
@@ -379,6 +400,7 @@ const ResolvedTripPage: React.FC<{
           style={[
             styles.deskReserveText,
             { color: reserveTappable ? palette.accentText : palette.tertiaryText },
+            { fontFamily: theme.fontFamilyValue },
           ]}
         >
           {reserveTappable
@@ -424,14 +446,21 @@ const ResolvedTripPage: React.FC<{
         />
       ) : null}
 
-      {/* ORCH-1117 — floating Reserve bar (phone). Hidden on desktop (the
-          ParallaxCoverShell renders the sticky panel reserve control instead).
-          surface = the resolved page tone (NOT a hardcoded "dark"). */}
+      {/* ORCH-1138 R2 (device parity fix #8) — floating Reserve bar (phone).
+          Hidden on desktop (the sticky panel carries the Reserve control). The
+          bespoke TripReserveBar matches DIRECTION_A_V2's `.floating`/`.reserve`
+          EXACTLY (brand-accent fill, kicker + price on the left, "Reserve my
+          spot →" on the right, gradient-to-page wrap, safe-area inset) — the
+          shared FloatingOfferingBar was hardcoded warm-orange with no kicker.
+          surface = the resolved page tone for the gradient fade. */}
       {!isDesktop ? (
-        <FloatingOfferingBar
+        <TripReserveBar
           cta={tripCta}
-          onPress={handleTripReserve}
+          palette={palette}
           surface={surface}
+          kicker={barKicker}
+          fontFamily={theme.fontFamilyValue}
+          onPress={handleTripReserve}
           testID="orch-1117-trip-floating-bar"
         />
       ) : null}
