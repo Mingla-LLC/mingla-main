@@ -65,7 +65,17 @@ const EXIT_DURATION = 160;
 const SCRIM_COLOR = "rgba(0, 0, 0, 0.5)";
 const UNMOUNT_DELAY_MS = 200; // 160ms exit anim + 40ms safety
 
-export const Modal: React.FC<ModalProps> = ({
+// ORCH-1136 R3: dispatcher. Web renders the compositor-CSS-transition variant
+// (ModalWeb — zero reanimated hooks); native renders the byte-identical
+// reanimated variant (ModalNative). Each variant calls ONLY its own hooks.
+export const Modal: React.FC<ModalProps> = (props) => {
+  if (Platform.OS === "web") {
+    return <ModalWeb {...props} />;
+  }
+  return <ModalNative {...props} />;
+};
+
+const ModalNative: React.FC<ModalProps> = ({
   visible,
   onClose,
   children,
@@ -204,6 +214,182 @@ export const Modal: React.FC<ModalProps> = ({
               {children}
             </GlassCard>
           </Animated.View>
+        </View>
+      </View>
+    </RNModal>
+  );
+};
+
+// ORCH-1136 R3: web reduced-motion read (no reanimated hook on the web path).
+const useWebReducedMotion = (): boolean => {
+  const [reduced, setReduced] = useState<boolean>(false);
+  useEffect(() => {
+    const mql = (
+      globalThis as unknown as {
+        matchMedia?: (q: string) => {
+          matches: boolean;
+          addEventListener?: (t: string, l: () => void) => void;
+          removeEventListener?: (t: string, l: () => void) => void;
+        };
+      }
+    ).matchMedia?.("(prefers-reduced-motion: reduce)");
+    if (mql === undefined) return;
+    setReduced(mql.matches);
+    const onChange = (): void => setReduced(mql.matches);
+    mql.addEventListener?.("change", onChange);
+    return (): void => mql.removeEventListener?.("change", onChange);
+  }, []);
+  return reduced;
+};
+
+/**
+ * ORCH-1136 R3 — WEB variant of Modal.
+ *
+ * Drives open/close with a COMPOSITOR CSS transition on `opacity` +
+ * `transform: scale(...)` instead of the JS-main-thread reanimated rAF
+ * (withTiming on panelScale/panelOpacity/scrimOpacity), which freezes mid-anim
+ * under a heavy-page long task on web (F-1/F-2 — a ConfirmDialog over a busy
+ * wizard). Open: 200ms ease-out-cubic; close: 160ms ease-in-cubic (matching
+ * native ENTRY_DURATION/EXIT_DURATION). Reduce-motion: opacity-only (scale 1).
+ *
+ * Calls ZERO reanimated hooks. Animates transform/opacity ONLY.
+ */
+const MODAL_OPEN_EASE_CSS = "cubic-bezier(0.33, 1, 0.68, 1)"; // Easing.out(cubic)
+const MODAL_CLOSE_EASE_CSS = "cubic-bezier(0.33, 0, 0.67, 1)"; // Easing.in(cubic)
+
+const ModalWeb: React.FC<ModalProps> = ({
+  visible,
+  onClose,
+  children,
+  maxWidth = 480,
+  dismissOnScrimTap = true,
+  testID,
+  style,
+}) => {
+  const [mounted, setMounted] = useState<boolean>(visible);
+  const closeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const reduceMotion = useWebReducedMotion();
+
+  const [animateOpen, setAnimateOpen] = useState<boolean>(false);
+  const rafRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    if (visible) {
+      setMounted(true);
+      if (closeTimerRef.current !== null) {
+        clearTimeout(closeTimerRef.current);
+        closeTimerRef.current = null;
+      }
+    } else if (mounted) {
+      closeTimerRef.current = setTimeout(() => {
+        setMounted(false);
+        closeTimerRef.current = null;
+      }, UNMOUNT_DELAY_MS);
+    }
+    return (): void => {
+      if (closeTimerRef.current !== null) {
+        clearTimeout(closeTimerRef.current);
+        closeTimerRef.current = null;
+      }
+    };
+  }, [mounted, visible]);
+
+  useEffect(() => {
+    const cancelRaf = (): void => {
+      if (rafRef.current !== null) {
+        const caf = (globalThis as unknown as { cancelAnimationFrame?: (h: number) => void })
+          .cancelAnimationFrame;
+        caf?.(rafRef.current);
+        rafRef.current = null;
+      }
+    };
+    if (visible && mounted) {
+      setAnimateOpen(false);
+      const raf = (globalThis as unknown as { requestAnimationFrame?: (cb: () => void) => number })
+        .requestAnimationFrame;
+      if (raf !== undefined) {
+        rafRef.current = raf(() => {
+          rafRef.current = raf(() => setAnimateOpen(true));
+        });
+      } else {
+        const t = setTimeout(() => setAnimateOpen(true), 0);
+        return (): void => clearTimeout(t);
+      }
+    } else if (!visible) {
+      cancelRaf();
+      setAnimateOpen(false);
+    }
+    return cancelRaf;
+  }, [visible, mounted]);
+
+  // Web Escape-key handler.
+  useEffect(() => {
+    if (!visible) return;
+    const docLike = globalThis as unknown as {
+      document?: {
+        addEventListener: (type: string, listener: (event: { key: string }) => void) => void;
+        removeEventListener: (type: string, listener: (event: { key: string }) => void) => void;
+      };
+    };
+    if (docLike.document === undefined) return;
+    const handler = (event: { key: string }): void => {
+      if (event.key === "Escape") onClose();
+    };
+    docLike.document.addEventListener("keydown", handler);
+    return (): void => {
+      docLike.document!.removeEventListener("keydown", handler);
+    };
+  }, [onClose, visible]);
+
+  const handleScrimPress = (): void => {
+    if (dismissOnScrimTap) onClose();
+  };
+
+  if (!mounted) return null;
+
+  const dur = animateOpen ? ENTRY_DURATION : EXIT_DURATION;
+  const ease = animateOpen ? MODAL_OPEN_EASE_CSS : MODAL_CLOSE_EASE_CSS;
+  const scrimWebStyle = {
+    transition: `opacity ${dur}ms ${ease}`,
+    opacity: animateOpen ? 1 : 0,
+    willChange: "opacity",
+  } as unknown as ViewStyle;
+  const panelWebStyle = {
+    transition: reduceMotion
+      ? `opacity ${dur}ms ${ease}`
+      : `opacity ${dur}ms ${ease}, transform ${dur}ms ${ease}`,
+    opacity: animateOpen ? 1 : 0,
+    transform: reduceMotion ? "scale(1)" : animateOpen ? "scale(1)" : "scale(0.96)",
+    willChange: "transform",
+  } as unknown as ViewStyle;
+
+  return (
+    <RNModal
+      visible={mounted}
+      transparent
+      animationType="none"
+      statusBarTranslucent
+      onRequestClose={onClose}
+    >
+      <View
+        pointerEvents={visible ? "auto" : "none"}
+        style={StyleSheet.absoluteFill}
+        testID={testID}
+      >
+        <View style={[StyleSheet.absoluteFill, { backgroundColor: SCRIM_COLOR }, scrimWebStyle]}>
+          <Pressable
+            style={styles.scrimPress}
+            onPress={handleScrimPress}
+            accessibilityLabel="Dismiss modal"
+            accessibilityRole="button"
+          />
+        </View>
+        <View style={styles.center} pointerEvents="box-none">
+          <View style={[styles.panelWrap, { maxWidth }, panelWebStyle, style]}>
+            <GlassCard variant="elevated" radius="xl" padding={spacing.lg}>
+              {children}
+            </GlassCard>
+          </View>
         </View>
       </View>
     </RNModal>

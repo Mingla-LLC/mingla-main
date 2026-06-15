@@ -79,6 +79,32 @@ import {
 import { WebSafeGestureDetector } from "./WebSafeGestureDetector";
 import { shouldUseRealBlur } from "../../utils/glassBlur";
 
+// ORCH-1136 R3: prefers-reduced-motion read for the WEB variant. On web,
+// `react-native-reanimated`'s `useReducedMotion` is itself a JSReanimated hook;
+// the web variant must call ZERO reanimated hooks (§4.0 gating shape), so it
+// reads the media query directly. Returns false on native / SSR.
+const useWebReducedMotion = (): boolean => {
+  const [reduced, setReduced] = useState<boolean>(false);
+  useEffect(() => {
+    if (Platform.OS !== "web") return;
+    const mql = (
+      globalThis as unknown as {
+        matchMedia?: (q: string) => {
+          matches: boolean;
+          addEventListener?: (t: string, l: () => void) => void;
+          removeEventListener?: (t: string, l: () => void) => void;
+        };
+      }
+    ).matchMedia?.("(prefers-reduced-motion: reduce)");
+    if (mql === undefined) return;
+    setReduced(mql.matches);
+    const onChange = (): void => setReduced(mql.matches);
+    mql.addEventListener?.("change", onChange);
+    return (): void => mql.removeEventListener?.("change", onChange);
+  }, []);
+  return reduced;
+};
+
 // Inline glass-stack — mirrors GlassChrome's L1-L4 visual layers but with
 // each layer absolute-filled at the panel level so heights are
 // panel-driven, not content-driven (GlassChrome's content-driven sizing
@@ -121,7 +147,22 @@ const PANEL_HORIZONTAL_INSET = spacing.md; // matches topbar's barWrap padding
 const CLOSE_THRESHOLD_PX = 80;
 const CLOSE_VELOCITY = 600;
 
-export const TopSheet: React.FC<TopSheetProps> = ({
+/**
+ * ORCH-1136 R3: dispatcher. Web renders the compositor-CSS-transition variant
+ * (TopSheetWeb — zero reanimated hooks); native renders the byte-identical
+ * reanimated variant (TopSheetNative). Splitting into two components is
+ * load-bearing: React hooks cannot be conditionally called, so each variant
+ * calls ONLY its own animation hooks (the web variant calls no
+ * useSharedValue/useAnimatedStyle/withTiming — §4.0 gating shape).
+ */
+export const TopSheet: React.FC<TopSheetProps> = (props) => {
+  if (Platform.OS === "web") {
+    return <TopSheetWeb {...props} />;
+  }
+  return <TopSheetNative {...props} />;
+};
+
+const TopSheetNative: React.FC<TopSheetProps> = ({
   visible,
   onClose,
   children,
@@ -378,65 +419,357 @@ export const TopSheet: React.FC<TopSheetProps> = ({
               style,
             ]}
           >
-            {/* L1 — Blur base */}
-            {blurOk ? (
-              <BlurView
-                intensity={blurIntensity}
-                tint="dark"
-                style={StyleSheet.absoluteFill}
-              />
-            ) : (
-              <View
-                style={[
-                  StyleSheet.absoluteFill,
-                  { backgroundColor: FALLBACK_BACKGROUND },
-                ]}
-              />
-            )}
-            {/* L2 — Tint floor */}
-            <View
-              style={[
-                StyleSheet.absoluteFill,
-                { backgroundColor: glass.tint.profileElevated },
-              ]}
-            />
-            {/* L3 — Top edge highlight */}
-            <View
-              style={[
-                styles.topHighlight,
-                { backgroundColor: glass.highlight.profileElevated },
-              ]}
-            />
-            {/* L4 — Hairline border */}
-            <View
-              style={[
-                StyleSheet.absoluteFill,
-                {
-                  borderRadius: radiusTokens.xl,
-                  borderColor: glass.border.profileElevated,
-                  borderWidth: StyleSheet.hairlineWidth,
-                },
-              ]}
-              pointerEvents="none"
-            />
-            {/* Content layer.
-                - fixed-70 mode: explicit body height (panelHeight - handle).
-                - compact mode: content-driven; onLayout measures children
-                  height into measuredCompactHeight. */}
-            <View
-              style={[
-                styles.body,
-                heightMode === "compact" ? null : { height: bodyHeight },
-              ]}
-              onLayout={heightMode === "compact" ? handleCompactLayout : undefined}
+            <TopSheetPanelInner
+              blurOk={blurOk}
+              blurIntensity={blurIntensity}
+              heightMode={heightMode}
+              bodyHeight={bodyHeight}
+              handleAreaHeight={handleAreaHeight}
+              handleCompactLayout={handleCompactLayout}
             >
               {children}
-            </View>
-            <View style={[styles.handleWrap, { height: handleAreaHeight }]}>
-              <View style={styles.handle} />
-            </View>
+            </TopSheetPanelInner>
           </Animated.View>
         </WebSafeGestureDetector>
+      </View>
+    </View>
+  );
+};
+
+/**
+ * ORCH-1136 R3: shared panel glass-stack + content. Identical between the web
+ * and native variants — only the animated wrapper (the parent `Animated.View`
+ * vs the web CSS-transition View) differs. Extracted to avoid duplicating the
+ * L1-L4 stack + body + handle across both variants.
+ */
+interface TopSheetPanelInnerProps {
+  blurOk: boolean;
+  blurIntensity: number;
+  heightMode: TopSheetHeightMode;
+  bodyHeight: number;
+  handleAreaHeight: number;
+  handleCompactLayout: (event: LayoutChangeEvent) => void;
+  children: React.ReactNode;
+}
+
+const TopSheetPanelInner: React.FC<TopSheetPanelInnerProps> = ({
+  blurOk,
+  blurIntensity,
+  heightMode,
+  bodyHeight,
+  handleAreaHeight,
+  handleCompactLayout,
+  children,
+}) => (
+  <>
+    {/* L1 — Blur base */}
+    {blurOk ? (
+      <BlurView
+        intensity={blurIntensity}
+        tint="dark"
+        style={StyleSheet.absoluteFill}
+      />
+    ) : (
+      <View
+        style={[
+          StyleSheet.absoluteFill,
+          { backgroundColor: FALLBACK_BACKGROUND },
+        ]}
+      />
+    )}
+    {/* L2 — Tint floor */}
+    <View
+      style={[
+        StyleSheet.absoluteFill,
+        { backgroundColor: glass.tint.profileElevated },
+      ]}
+    />
+    {/* L3 — Top edge highlight */}
+    <View
+      style={[
+        styles.topHighlight,
+        { backgroundColor: glass.highlight.profileElevated },
+      ]}
+    />
+    {/* L4 — Hairline border */}
+    <View
+      style={[
+        StyleSheet.absoluteFill,
+        {
+          borderRadius: radiusTokens.xl,
+          borderColor: glass.border.profileElevated,
+          borderWidth: StyleSheet.hairlineWidth,
+        },
+      ]}
+      pointerEvents="none"
+    />
+    {/* Content layer.
+        - fixed-70 mode: explicit body height (panelHeight - handle).
+        - compact mode: content-driven; onLayout measures children
+          height into measuredCompactHeight. */}
+    <View
+      style={[
+        styles.body,
+        heightMode === "compact" ? null : { height: bodyHeight },
+      ]}
+      onLayout={heightMode === "compact" ? handleCompactLayout : undefined}
+    >
+      {children}
+    </View>
+    <View style={[styles.handleWrap, { height: handleAreaHeight }]}>
+      <View style={styles.handle} />
+    </View>
+  </>
+);
+
+/**
+ * ORCH-1136 R3 — WEB variant of TopSheet.
+ *
+ * Drives the open/close animation with a COMPOSITOR-THREAD CSS transition on
+ * `transform: translateY(...)` (panel) + `opacity` (scrim) — NOT a
+ * `withTiming`-driven `useAnimatedStyle` on the JS main-thread rAF. On web,
+ * reanimated 4 is JSReanimated: `withTiming` computes each frame inside the
+ * browser-native requestAnimationFrame and writes inline styles per frame, so
+ * a heavy page's long main-thread task (>50ms) FREEZES the half-open panel at
+ * a mid-slide position then snaps it to rest (F-1/F-2, harness-proven). The
+ * CSS transition advances the slide on the compositor independently of the
+ * starved main thread.
+ *
+ * This variant calls ZERO reanimated hooks (no useSharedValue /
+ * useAnimatedStyle / withTiming) — both fixing the freeze and removing the
+ * reanimated-on-web fragility for this primitive.
+ *
+ * Transitions (matching the native timings):
+ *   - Open: panel transform 280ms ease-out-cubic; scrim opacity 220ms ease-out.
+ *   - Close: panel transform 240ms ease-in-cubic; scrim opacity 220ms ease-in.
+ *   - Reduce-motion: opacity-only (no translate), matching the native contract.
+ *
+ * Animates `transform`/`opacity` ONLY — never height/top/layout (those reflow
+ * on the main thread and defeat the fix). Overlay root stays
+ * StyleSheet.absoluteFill (NO position:'fixed' — I-PROPOSED-TOPSHEET-WEB-
+ * OVERLAY-NO-FIXED).
+ */
+const TOPSHEET_OPEN_EASE = "cubic-bezier(0.33, 1, 0.68, 1)"; // Easing.out(cubic)
+const TOPSHEET_CLOSE_EASE = "cubic-bezier(0.33, 0, 0.67, 1)"; // Easing.in(cubic)
+
+const TopSheetWeb: React.FC<TopSheetProps> = ({
+  visible,
+  onClose,
+  children,
+  dismissOnScrimTap = true,
+  heightMode = "fixed-70",
+  testID,
+  style,
+}) => {
+  const insets = useSafeAreaInsets();
+  const screenHeight = Dimensions.get("window").height;
+  const { width: windowWidth } = useWindowDimensions();
+
+  const [measuredCompactHeight, setMeasuredCompactHeight] = useState<number | null>(null);
+  const fixedHeight = screenHeight * PANEL_HEIGHT_RATIO;
+  const panelHeight =
+    heightMode === "compact" ? (measuredCompactHeight ?? 0) : fixedHeight;
+
+  const handleCompactLayout = useCallback(
+    (event: LayoutChangeEvent): void => {
+      if (heightMode !== "compact") return;
+      const contentHeight = event.nativeEvent.layout.height;
+      if (contentHeight <= 0) return;
+      const total = contentHeight + HANDLE_AREA_HEIGHT;
+      setMeasuredCompactHeight((prev) => {
+        if (prev !== null && Math.abs(prev - total) < 1) return prev;
+        return total;
+      });
+    },
+    [heightMode],
+  );
+
+  const panelTop = insets.top + TOPBAR_OFFSET;
+  const closedY = -panelHeight;
+  const reduceMotion = useWebReducedMotion();
+
+  const [mounted, setMounted] = useState<boolean>(visible);
+  const closeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // The animateOpen state flip drives the CSS transition. It starts false so
+  // the panel mounts at its CLOSED transform; the next-frame flip to true fires
+  // the transition to OPEN (flipping in the same commit as mount = no
+  // transition, instant pop — the next-frame flip is load-bearing).
+  const [animateOpen, setAnimateOpen] = useState<boolean>(false);
+  const rafRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    if (visible) {
+      setMounted(true);
+      if (closeTimerRef.current !== null) {
+        clearTimeout(closeTimerRef.current);
+        closeTimerRef.current = null;
+      }
+    } else if (mounted) {
+      closeTimerRef.current = setTimeout(() => {
+        setMounted(false);
+        closeTimerRef.current = null;
+      }, UNMOUNT_DELAY_MS);
+    }
+    return (): void => {
+      if (closeTimerRef.current !== null) {
+        clearTimeout(closeTimerRef.current);
+        closeTimerRef.current = null;
+      }
+    };
+  }, [mounted, visible]);
+
+  // Open/close flip. On open, register the CLOSED start state, then flip to
+  // OPEN on the NEXT frame so the browser registers the start transform first
+  // (otherwise the transition never fires and the panel pops open). For compact
+  // mode, this re-fires when `panelHeight` transitions 0 → measured so the
+  // slide starts from the correct off-screen position (not from -0px).
+  const compactReady = heightMode !== "compact" || measuredCompactHeight !== null;
+  useEffect(() => {
+    const cancelRaf = (): void => {
+      if (rafRef.current !== null) {
+        const caf = (globalThis as unknown as { cancelAnimationFrame?: (h: number) => void })
+          .cancelAnimationFrame;
+        caf?.(rafRef.current);
+        rafRef.current = null;
+      }
+    };
+    if (visible && mounted && compactReady) {
+      // Ensure we start from CLOSED, then flip OPEN next frame.
+      setAnimateOpen(false);
+      const raf = (globalThis as unknown as { requestAnimationFrame?: (cb: () => void) => number })
+        .requestAnimationFrame;
+      if (raf !== undefined) {
+        rafRef.current = raf(() => {
+          rafRef.current = raf(() => {
+            setAnimateOpen(true);
+          });
+        });
+      } else {
+        const t = setTimeout(() => setAnimateOpen(true), 0);
+        return (): void => clearTimeout(t);
+      }
+    } else if (!visible) {
+      cancelRaf();
+      setAnimateOpen(false);
+    }
+    return cancelRaf;
+  }, [visible, mounted, compactReady]);
+
+  // Web Escape key.
+  useEffect(() => {
+    if (!visible) return;
+    const docLike = globalThis as unknown as {
+      document?: {
+        addEventListener: (type: string, listener: (event: { key: string }) => void) => void;
+        removeEventListener: (type: string, listener: (event: { key: string }) => void) => void;
+      };
+    };
+    if (docLike.document === undefined) return;
+    const handler = (event: { key: string }): void => {
+      if (event.key === "Escape") onClose();
+    };
+    docLike.document.addEventListener("keydown", handler);
+    return (): void => {
+      docLike.document!.removeEventListener("keydown", handler);
+    };
+  }, [onClose, visible]);
+
+  const handleScrimPress = (): void => {
+    if (dismissOnScrimTap) onClose();
+  };
+
+  if (!mounted) return null;
+
+  const handleAreaHeight = HANDLE_AREA_HEIGHT;
+  const bodyHeight = panelHeight - handleAreaHeight;
+  const blurOk = shouldUseRealBlur(windowWidth);
+  const blurIntensity = blurIntensityTokens.cardElevated;
+
+  // Compact pre-measurement: render at opacity 0 with NO transition fired yet
+  // (matches native's compactInvisible) so children lay out and onLayout
+  // measures their true height.
+  const compactInvisible = heightMode === "compact" && measuredCompactHeight === null;
+
+  // Compositor CSS transition. transform/opacity ONLY — never height/layout.
+  const ease = animateOpen ? TOPSHEET_OPEN_EASE : TOPSHEET_CLOSE_EASE;
+  const panelDur = animateOpen ? ENTRY_DURATION : EXIT_DURATION;
+  // Reduce-motion: opacity-only, no translate.
+  const panelWebStyle = {
+    transition: reduceMotion
+      ? `opacity ${panelDur}ms ${ease}`
+      : `transform ${panelDur}ms ${ease}`,
+    transform: reduceMotion
+      ? "translateY(0px)"
+      : animateOpen
+        ? "translateY(0px)"
+        : `translateY(${closedY}px)`,
+    opacity: reduceMotion ? (animateOpen ? 1 : 0) : 1,
+    willChange: "transform",
+  } as unknown as ViewStyle;
+  const scrimWebStyle = {
+    transition: `opacity ${SCRIM_DURATION}ms ${ease}`,
+    opacity: animateOpen ? 1 : 0,
+    willChange: "opacity",
+  } as unknown as ViewStyle;
+
+  return (
+    <View
+      pointerEvents={visible ? "auto" : "none"}
+      style={StyleSheet.absoluteFill}
+      testID={testID}
+    >
+      <View
+        style={[
+          StyleSheet.absoluteFill,
+          { backgroundColor: SCRIM_COLOR },
+          scrimWebStyle,
+        ]}
+      >
+        <Pressable
+          style={styles.scrimPress}
+          onPress={handleScrimPress}
+          accessibilityLabel="Dismiss sheet"
+          accessibilityRole="button"
+        />
+      </View>
+      <View
+        style={[
+          styles.anchor,
+          {
+            top: panelTop,
+            marginHorizontal: PANEL_HORIZONTAL_INSET,
+          },
+        ]}
+        pointerEvents="box-none"
+      >
+        <View
+          style={[
+            styles.panel,
+            heightMode === "compact"
+              ? compactInvisible
+                ? { opacity: 0 }
+                : { height: panelHeight, opacity: 1 }
+              : { height: panelHeight },
+            shadows.glassCardElevated,
+            // compactInvisible: no transition fired yet — keep it parked off
+            // screen at opacity 0 until measured, then the next-frame flip
+            // slides it in from the measured off-screen position.
+            compactInvisible ? null : panelWebStyle,
+            style,
+          ]}
+        >
+          <TopSheetPanelInner
+            blurOk={blurOk}
+            blurIntensity={blurIntensity}
+            heightMode={heightMode}
+            bodyHeight={bodyHeight}
+            handleAreaHeight={handleAreaHeight}
+            handleCompactLayout={handleCompactLayout}
+          >
+            {children}
+          </TopSheetPanelInner>
+        </View>
       </View>
     </View>
   );

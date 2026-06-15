@@ -51,14 +51,6 @@ import {
   type StyleProp,
   type ViewStyle,
 } from "react-native";
-import Animated, {
-  Easing,
-  cancelAnimation,
-  useAnimatedStyle,
-  useReducedMotion,
-  useSharedValue,
-  withTiming,
-} from "react-native-reanimated";
 
 import {
   glass,
@@ -94,10 +86,35 @@ const CARD_BACKGROUND = "rgba(20, 22, 26, 0.92)";
 const OPEN_DURATION_MS = 200;
 const CLOSE_DURATION_MS = 180;
 const UNMOUNT_DELAY_MS = 220; // close anim + 40ms safety
-const OPEN_EASING = Easing.out(Easing.cubic);
-const CLOSE_EASING = Easing.in(Easing.cubic);
-const OPEN_TIMING = { duration: OPEN_DURATION_MS, easing: OPEN_EASING } as const;
-const CLOSE_TIMING = { duration: CLOSE_DURATION_MS, easing: CLOSE_EASING } as const;
+// ORCH-1136 R3: compositor CSS transition easings (replacing the reanimated
+// withTiming path). Match the prior native timings: ease-out-cubic on open,
+// ease-in-cubic on close.
+const OPEN_EASE_CSS = "cubic-bezier(0.33, 1, 0.68, 1)"; // Easing.out(cubic)
+const CLOSE_EASE_CSS = "cubic-bezier(0.33, 0, 0.67, 1)"; // Easing.in(cubic)
+
+// ORCH-1136 R3: this file is web-only (Metro picks it on web). reanimated's
+// useReducedMotion is itself a JSReanimated hook; the CSS-transition path calls
+// ZERO reanimated hooks, so read the media query directly.
+const useWebReducedMotion = (): boolean => {
+  const [reduced, setReduced] = useState<boolean>(false);
+  useEffect(() => {
+    const mql = (
+      globalThis as unknown as {
+        matchMedia?: (q: string) => {
+          matches: boolean;
+          addEventListener?: (t: string, l: () => void) => void;
+          removeEventListener?: (t: string, l: () => void) => void;
+        };
+      }
+    ).matchMedia?.("(prefers-reduced-motion: reduce)");
+    if (mql === undefined) return;
+    setReduced(mql.matches);
+    const onChange = (): void => setReduced(mql.matches);
+    mql.addEventListener?.("change", onChange);
+    return (): void => mql.removeEventListener?.("change", onChange);
+  }, []);
+  return reduced;
+};
 
 // Narrow web (< 1024px) renders the canonical bottom sheet (MobileSheet, from
 // the neutral "./SheetMobile" — NOT "./Sheet", which would self-resolve to this
@@ -119,14 +136,19 @@ const DesktopCenteredCard: React.FC<SheetProps> = ({
   testID,
   style,
 }) => {
-  const reduceMotion = useReducedMotion();
-  const scrimOpacity = useSharedValue(0);
-  const cardOpacity = useSharedValue(0);
-  const cardScale = useSharedValue(0.96);
+  const reduceMotion = useWebReducedMotion();
 
   // Lazy-mount + delayed unmount so close animation completes.
   const [mounted, setMounted] = useState<boolean>(visible);
   const closeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // ORCH-1136 R3: animateOpen drives the compositor CSS transition. Starts
+  // false so the card mounts at the CLOSED state (opacity 0, scale 0.96); the
+  // next-frame flip to true fires the transition to OPEN. Flipping in the same
+  // commit as mount = no transition (instant pop), so the next-frame flip is
+  // load-bearing.
+  const [animateOpen, setAnimateOpen] = useState<boolean>(false);
+  const rafRef = useRef<number | null>(null);
 
   useEffect(() => {
     if (visible) {
@@ -150,34 +172,51 @@ const DesktopCenteredCard: React.FC<SheetProps> = ({
   }, [mounted, visible]);
 
   useEffect(() => {
-    if (visible) {
-      scrimOpacity.value = withTiming(1, OPEN_TIMING);
-      cardOpacity.value = withTiming(1, OPEN_TIMING);
-      // Reduce-motion: skip scale, fade only (per SPEC §5).
-      cardScale.value = reduceMotion ? 1 : withTiming(1, OPEN_TIMING);
-    } else {
-      scrimOpacity.value = withTiming(0, CLOSE_TIMING);
-      cardOpacity.value = withTiming(0, CLOSE_TIMING);
-      cardScale.value = reduceMotion ? 1 : withTiming(0.96, CLOSE_TIMING);
-    }
-  }, [cardOpacity, cardScale, reduceMotion, scrimOpacity, visible]);
-
-  useEffect(() => {
-    return (): void => {
-      cancelAnimation(scrimOpacity);
-      cancelAnimation(cardOpacity);
-      cancelAnimation(cardScale);
+    const cancelRaf = (): void => {
+      if (rafRef.current !== null) {
+        const caf = (globalThis as unknown as { cancelAnimationFrame?: (h: number) => void })
+          .cancelAnimationFrame;
+        caf?.(rafRef.current);
+        rafRef.current = null;
+      }
     };
-  }, [cardOpacity, cardScale, scrimOpacity]);
+    if (visible && mounted) {
+      setAnimateOpen(false);
+      const raf = (globalThis as unknown as { requestAnimationFrame?: (cb: () => void) => number })
+        .requestAnimationFrame;
+      if (raf !== undefined) {
+        rafRef.current = raf(() => {
+          rafRef.current = raf(() => setAnimateOpen(true));
+        });
+      } else {
+        const t = setTimeout(() => setAnimateOpen(true), 0);
+        return (): void => clearTimeout(t);
+      }
+    } else if (!visible) {
+      cancelRaf();
+      setAnimateOpen(false);
+    }
+    return cancelRaf;
+  }, [visible, mounted]);
 
-  const scrimStyle = useAnimatedStyle(() => ({
-    opacity: scrimOpacity.value,
-  }));
+  const openDur = animateOpen ? OPEN_DURATION_MS : CLOSE_DURATION_MS;
+  const ease = animateOpen ? OPEN_EASE_CSS : CLOSE_EASE_CSS;
 
-  const cardAnimatedStyle = useAnimatedStyle(() => ({
-    opacity: cardOpacity.value,
-    transform: [{ scale: cardScale.value }],
-  }));
+  const scrimWebStyle = {
+    transition: `opacity ${openDur}ms ${ease}`,
+    opacity: animateOpen ? 1 : 0,
+    willChange: "opacity",
+  } as unknown as ViewStyle;
+
+  // Reduce-motion: opacity-only (scale stays 1).
+  const cardWebStyle = {
+    transition: reduceMotion
+      ? `opacity ${openDur}ms ${ease}`
+      : `opacity ${openDur}ms ${ease}, transform ${openDur}ms ${ease}`,
+    opacity: animateOpen ? 1 : 0,
+    transform: reduceMotion ? "scale(1)" : animateOpen ? "scale(1)" : "scale(0.96)",
+    willChange: "transform",
+  } as unknown as ViewStyle;
 
   // Card width / max-height — recompute on every render so window resize
   // (which already re-renders this component via useWindowDimensions
@@ -216,8 +255,8 @@ const DesktopCenteredCard: React.FC<SheetProps> = ({
         testID={testID}
       >
         {/* Backdrop — dimmed canvas + tap-to-dismiss. */}
-        <Animated.View
-          style={[StyleSheet.absoluteFill, { backgroundColor: SCRIM_COLOR }, scrimStyle]}
+        <View
+          style={[StyleSheet.absoluteFill, { backgroundColor: SCRIM_COLOR }, scrimWebStyle]}
         >
           <Pressable
             style={styles.scrimPress as StyleProp<ViewStyle>}
@@ -225,7 +264,7 @@ const DesktopCenteredCard: React.FC<SheetProps> = ({
             accessibilityLabel="Dismiss sheet"
             accessibilityRole="button"
           />
-        </Animated.View>
+        </View>
 
         {/* Centred floating card. The outer View positions the card; the
             inner Animated.View carries the fade + scale-in. Sub-sheets
@@ -245,7 +284,7 @@ const DesktopCenteredCard: React.FC<SheetProps> = ({
           ]}
           pointerEvents="box-none"
         >
-          <Animated.View
+          <View
             style={[
               styles.card,
               {
@@ -255,12 +294,12 @@ const DesktopCenteredCard: React.FC<SheetProps> = ({
                 borderColor: glass.border.profileElevated,
               },
               shadows.glassModal,
-              cardAnimatedStyle,
+              cardWebStyle,
               style,
             ]}
           >
             <View style={styles.cardBody}>{children}</View>
-          </Animated.View>
+          </View>
         </View>
       </View>
     </Modal>

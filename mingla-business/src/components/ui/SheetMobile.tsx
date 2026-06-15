@@ -38,6 +38,7 @@ import React, { useEffect, useRef, useState } from "react";
 import {
   Dimensions,
   Modal,
+  Platform,
   Pressable,
   StyleSheet,
   useWindowDimensions,
@@ -138,7 +139,18 @@ const REDUCE_MOTION_OPEN = { duration: 200, easing: Easing.out(Easing.cubic) } a
 const TIMING_CLOSE = { duration: 240, easing: Easing.in(Easing.cubic) } as const;
 const UNMOUNT_DELAY_MS = 280; // 240ms close anim + 40ms safety
 
-export const Sheet: React.FC<SheetProps> = ({
+// ORCH-1136 R3: dispatcher. Web renders the compositor-CSS-transition variant
+// (SheetWeb — zero reanimated hooks); native renders the byte-identical
+// reanimated variant (SheetNative, with its withSpring open + withTiming
+// close). Each variant calls ONLY its own animation hooks.
+export const Sheet: React.FC<SheetProps> = (props) => {
+  if (Platform.OS === "web") {
+    return <SheetWeb {...props} />;
+  }
+  return <SheetNative {...props} />;
+};
+
+const SheetNative: React.FC<SheetProps> = ({
   visible,
   onClose,
   children,
@@ -309,65 +321,282 @@ export const Sheet: React.FC<SheetProps> = ({
                 style,
               ]}
             >
-              {/* L1 — Blur base */}
-              {blurOk ? (
-                <BlurView
-                  intensity={blurIntensity}
-                  tint="dark"
-                  style={[StyleSheet.absoluteFill, styles.bodyClip]}
-                />
-              ) : (
-                <View
-                  style={[
-                    StyleSheet.absoluteFill,
-                    styles.bodyClip,
-                    { backgroundColor: FALLBACK_BACKGROUND },
-                  ]}
-                />
-              )}
-              {/* L2 — Tint floor */}
-              <View
-                style={[
-                  StyleSheet.absoluteFill,
-                  styles.bodyClip,
-                  { backgroundColor: glass.tint.profileElevated },
-                ]}
-              />
-              {/* L3 — Top edge highlight */}
-              <View
-                style={[
-                  styles.topHighlight,
-                  { backgroundColor: glass.highlight.profileElevated },
-                ]}
-              />
-              {/* L4 — Hairline border */}
-              <View
-                style={[
-                  StyleSheet.absoluteFill,
-                  styles.bodyClip,
-                  {
-                    borderColor: glass.border.profileElevated,
-                    borderWidth: StyleSheet.hairlineWidth,
-                  },
-                ]}
-                pointerEvents="none"
-              />
-              {/* Content layer — handle + flex:1 body, layered above visuals */}
-              <View style={styles.handleWrap}>
-                <View style={styles.handle} />
-              </View>
-              {/* ORCH-0964: pad past the bottom safe-area / nav bar so sheet
-                  content doesn't bleed into the bottom edge of the screen. */}
-              <View
-                style={[
-                  styles.body,
-                  { paddingBottom: spacing.lg + insets.bottom },
-                ]}
+              <SheetMobilePanelInner
+                blurOk={blurOk}
+                blurIntensity={blurIntensity}
+                bottomInset={insets.bottom}
               >
                 {children}
-              </View>
+              </SheetMobilePanelInner>
             </Animated.View>
           </WebSafeGestureDetector>
+        </View>
+      </View>
+    </Modal>
+  );
+};
+
+/**
+ * ORCH-1136 R3: shared panel glass-stack + content for the bottom sheet.
+ * Identical between web and native variants — only the animated wrapper
+ * differs (the parent Animated.View vs the web CSS-transition View).
+ */
+interface SheetMobilePanelInnerProps {
+  blurOk: boolean;
+  blurIntensity: number;
+  bottomInset: number;
+  children: React.ReactNode;
+}
+
+const SheetMobilePanelInner: React.FC<SheetMobilePanelInnerProps> = ({
+  blurOk,
+  blurIntensity,
+  bottomInset,
+  children,
+}) => (
+  <>
+    {/* L1 — Blur base */}
+    {blurOk ? (
+      <BlurView
+        intensity={blurIntensity}
+        tint="dark"
+        style={[StyleSheet.absoluteFill, styles.bodyClip]}
+      />
+    ) : (
+      <View
+        style={[
+          StyleSheet.absoluteFill,
+          styles.bodyClip,
+          { backgroundColor: FALLBACK_BACKGROUND },
+        ]}
+      />
+    )}
+    {/* L2 — Tint floor */}
+    <View
+      style={[
+        StyleSheet.absoluteFill,
+        styles.bodyClip,
+        { backgroundColor: glass.tint.profileElevated },
+      ]}
+    />
+    {/* L3 — Top edge highlight */}
+    <View
+      style={[
+        styles.topHighlight,
+        { backgroundColor: glass.highlight.profileElevated },
+      ]}
+    />
+    {/* L4 — Hairline border */}
+    <View
+      style={[
+        StyleSheet.absoluteFill,
+        styles.bodyClip,
+        {
+          borderColor: glass.border.profileElevated,
+          borderWidth: StyleSheet.hairlineWidth,
+        },
+      ]}
+      pointerEvents="none"
+    />
+    {/* Content layer — handle + flex:1 body, layered above visuals */}
+    <View style={styles.handleWrap}>
+      <View style={styles.handle} />
+    </View>
+    {/* ORCH-0964: pad past the bottom safe-area / nav bar so sheet
+        content doesn't bleed into the bottom edge of the screen. */}
+    <View style={[styles.body, { paddingBottom: spacing.lg + bottomInset }]}>
+      {children}
+    </View>
+  </>
+);
+
+// ORCH-1136 R3: web reduced-motion read (no reanimated hook on the web path).
+const useWebReducedMotion = (): boolean => {
+  const [reduced, setReduced] = useState<boolean>(false);
+  useEffect(() => {
+    if (Platform.OS !== "web") return;
+    const mql = (
+      globalThis as unknown as {
+        matchMedia?: (q: string) => {
+          matches: boolean;
+          addEventListener?: (t: string, l: () => void) => void;
+          removeEventListener?: (t: string, l: () => void) => void;
+        };
+      }
+    ).matchMedia?.("(prefers-reduced-motion: reduce)");
+    if (mql === undefined) return;
+    setReduced(mql.matches);
+    const onChange = (): void => setReduced(mql.matches);
+    mql.addEventListener?.("change", onChange);
+    return (): void => mql.removeEventListener?.("change", onChange);
+  }, []);
+  return reduced;
+};
+
+/**
+ * ORCH-1136 R3 — WEB variant of the bottom sheet.
+ *
+ * Drives open/close with a COMPOSITOR CSS transition on `transform:
+ * translateY(...)` (panel) + `opacity` (scrim) instead of the JS-main-thread
+ * reanimated rAF (withSpring open + withTiming close), which freezes mid-slide
+ * under a heavy-page long task on web (F-1/F-2).
+ *
+ * Native opens with a withSpring (damping 22, stiffness 200, mass 1) — a CSS
+ * transition cannot reproduce a spring exactly, so web's open is a snappy
+ * ease-out approximation (cubic-bezier(0.22, 1, 0.36, 1), 280ms) that reads as
+ * a spring-like settle (§4.5; correctness/no-freeze > exact spring parity on
+ * web — web has no off-thread spring driver). Close = 240ms ease-in-cubic
+ * (matches native TIMING_CLOSE). Reduce-motion: opacity-only.
+ *
+ * Calls ZERO reanimated hooks. Animates transform/opacity ONLY.
+ */
+const SHEET_OPEN_EASE_CSS = "cubic-bezier(0.22, 1, 0.36, 1)"; // spring-like ease-out approximation
+const SHEET_CLOSE_EASE_CSS = "cubic-bezier(0.33, 0, 0.67, 1)"; // Easing.in(cubic)
+const SHEET_OPEN_DURATION = 280;
+const SHEET_CLOSE_DURATION = 240;
+
+const SheetWeb: React.FC<SheetProps> = ({
+  visible,
+  onClose,
+  children,
+  snapPoint = "half",
+  dismissOnScrimTap = true,
+  testID,
+  style,
+}) => {
+  const screenHeight = Dimensions.get("window").height;
+  const { width: windowWidth } = useWindowDimensions();
+  const insets = useSafeAreaInsets();
+  const requestedSheetHeight =
+    typeof snapPoint === "number"
+      ? Math.min(Math.max(snapPoint, MIN_SNAP_PX), screenHeight * MAX_SNAP_RATIO)
+      : screenHeight * SNAP_RATIOS[snapPoint];
+  const sheetHeight = Math.min(requestedSheetHeight, screenHeight * MAX_SNAP_RATIO);
+  const closedY = sheetHeight; // pushed fully off-screen (slides up from bottom)
+
+  const reduceMotion = useWebReducedMotion();
+
+  const [mounted, setMounted] = useState<boolean>(visible);
+  const closeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const [animateOpen, setAnimateOpen] = useState<boolean>(false);
+  const rafRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    if (visible) {
+      setMounted(true);
+      if (closeTimerRef.current !== null) {
+        clearTimeout(closeTimerRef.current);
+        closeTimerRef.current = null;
+      }
+    } else if (mounted) {
+      closeTimerRef.current = setTimeout(() => {
+        setMounted(false);
+        closeTimerRef.current = null;
+      }, UNMOUNT_DELAY_MS);
+    }
+    return (): void => {
+      if (closeTimerRef.current !== null) {
+        clearTimeout(closeTimerRef.current);
+        closeTimerRef.current = null;
+      }
+    };
+  }, [mounted, visible]);
+
+  useEffect(() => {
+    const cancelRaf = (): void => {
+      if (rafRef.current !== null) {
+        const caf = (globalThis as unknown as { cancelAnimationFrame?: (h: number) => void })
+          .cancelAnimationFrame;
+        caf?.(rafRef.current);
+        rafRef.current = null;
+      }
+    };
+    if (visible && mounted) {
+      setAnimateOpen(false);
+      const raf = (globalThis as unknown as { requestAnimationFrame?: (cb: () => void) => number })
+        .requestAnimationFrame;
+      if (raf !== undefined) {
+        rafRef.current = raf(() => {
+          rafRef.current = raf(() => setAnimateOpen(true));
+        });
+      } else {
+        const t = setTimeout(() => setAnimateOpen(true), 0);
+        return (): void => clearTimeout(t);
+      }
+    } else if (!visible) {
+      cancelRaf();
+      setAnimateOpen(false);
+    }
+    return cancelRaf;
+  }, [visible, mounted]);
+
+  const handleScrimPress = (): void => {
+    if (dismissOnScrimTap) onClose();
+  };
+
+  if (!mounted) return null;
+
+  const blurOk = shouldUseRealBlur(windowWidth);
+  const blurIntensity = blurIntensityTokens.cardElevated;
+
+  const dur = animateOpen ? SHEET_OPEN_DURATION : SHEET_CLOSE_DURATION;
+  const ease = animateOpen ? SHEET_OPEN_EASE_CSS : SHEET_CLOSE_EASE_CSS;
+  const panelWebStyle = {
+    transition: reduceMotion ? `opacity ${dur}ms ${ease}` : `transform ${dur}ms ${ease}`,
+    transform: reduceMotion
+      ? "translateY(0px)"
+      : animateOpen
+        ? "translateY(0px)"
+        : `translateY(${closedY}px)`,
+    opacity: reduceMotion ? (animateOpen ? 1 : 0) : 1,
+    willChange: "transform",
+  } as unknown as ViewStyle;
+  const scrimWebStyle = {
+    transition: `opacity ${dur}ms ${ease}`,
+    opacity: animateOpen ? 1 : 0,
+    willChange: "opacity",
+  } as unknown as ViewStyle;
+
+  return (
+    <Modal
+      visible={mounted}
+      transparent
+      animationType="none"
+      onRequestClose={onClose}
+      statusBarTranslucent
+    >
+      <View
+        pointerEvents={visible ? "auto" : "none"}
+        style={StyleSheet.absoluteFill}
+        testID={testID}
+      >
+        <View style={[StyleSheet.absoluteFill, { backgroundColor: SCRIM_COLOR }, scrimWebStyle]}>
+          <Pressable
+            style={styles.scrimPress}
+            onPress={handleScrimPress}
+            accessibilityLabel="Dismiss sheet"
+            accessibilityRole="button"
+          />
+        </View>
+        <View style={styles.bottomDock} pointerEvents="box-none">
+          <View
+            style={[
+              styles.panel,
+              { height: sheetHeight },
+              shadows.glassCardElevated,
+              panelWebStyle,
+              style,
+            ]}
+          >
+            <SheetMobilePanelInner
+              blurOk={blurOk}
+              blurIntensity={blurIntensity}
+              bottomInset={insets.bottom}
+            >
+              {children}
+            </SheetMobilePanelInner>
+          </View>
         </View>
       </View>
     </Modal>
