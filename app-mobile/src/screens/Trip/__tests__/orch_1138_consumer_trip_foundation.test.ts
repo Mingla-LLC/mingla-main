@@ -110,10 +110,15 @@ ok(
 
 // ── SC-4: the Reserve bar FLOATS (absolute overlay) + scroll stays gorhom's ──
 ok(
-  "T3a ConsumerTripReserveBar floats via position:'absolute' bottom:0 (does NOT scroll off)",
+  "T3a ConsumerTripReserveBar floats via position:'absolute' with a safe-area-lifted bottom (does NOT scroll off, does NOT bleed under the home indicator)",
+  // ORCH-1138 FIX-5 (device rework #2): the wrapper is position:'absolute' and its
+  // `bottom` is lifted to `wrapperBottom` (safe-area + gap) so the WHOLE rounded
+  // card floats above the home indicator — NOT pinned to a static bottom:0.
   /position:\s*"absolute"/.test(reserveBarSrc) &&
-    /bottom:\s*0/.test(reserveBarSrc),
-  "the floating reserve bar must be an absolute overlay pinned to the bottom",
+    /style=\{\[styles\.wrapper,\s*\{\s*bottom:\s*wrapperBottom\s*\}\]\}/.test(
+      reserveBarSrc,
+    ),
+  "the floating reserve bar must be an absolute overlay lifted by the safe-area bottom",
 );
 ok(
   "T3b the floating bar is an absolute sibling DIRECT child of <BaseBottomSheet> (NOT stickyFooter, NOT nested in a host View)",
@@ -141,14 +146,17 @@ ok(
   "the gorhom scroll host must be a direct child of <BaseBottomSheet> (NOT injected as ParallaxCoverShell's ScrollComponent, which nested it one View deeper and froze the body)",
 );
 ok(
-  "T3d FIX-3 — the 'Presented by' brand cover renders via the gif/video-aware EventCoverMedia (NOT a plain <Image>)",
+  "T3d FIX-3 — the 'Presented by' brand cover renders the REAL brand media via the gif/video-aware EventCoverMedia, with a themed-initial fallback (NOT a plain <Image>, NOT a bare red disk)",
   // The brand chip mounts EventCoverMedia fed fnd.brandCoverMediaUrl/Type so an
-  // animated brand cover renders (image/gif/video), falling back to the hue
-  // gradient (rule 9) when the anon-safe consumer data carries no brand cover.
-  /brandTile[\s\S]{0,260}<EventCoverMedia[\s\S]*?mediaUrl=\{fnd\.brandCoverMediaUrl\}[\s\S]*?mediaType=\{fnd\.brandCoverMediaType\}/.test(
+  // animated brand cover renders (image/gif/video) when the brand HAS a cover
+  // (sourced anon-safe from business_public_brands_view in useConsumerTripDetail),
+  // and falls back to a clean themed brand-initial (rule 9) when there is none.
+  /brandTile[\s\S]{0,400}<EventCoverMedia[\s\S]*?mediaUrl=\{fnd\.brandCoverMediaUrl\}[\s\S]*?mediaType=\{fnd\.brandCoverMediaType\}/.test(
     screenSrc,
-  ),
-  "the brand cover must use EventCoverMedia (gif/video-aware), not a plain <Image>",
+  ) &&
+    /fnd\.brandCoverMediaUrl !== null \? \(/.test(screenSrc) &&
+    /styles\.brandInitial/.test(screenSrc),
+  "the brand cover must use EventCoverMedia (gif/video-aware) for real media, with a themed-initial fallback",
 );
 
 // ── SC-5: checkout is UNCHANGED (the floating bar fires the existing flow) ────
@@ -188,11 +196,15 @@ ok(
 );
 
 // ── SC-8 + invariants: rule-9 adapter, anon-safe, package-isolated ───────────
+// The adapter docstring now cites the COMMS-0009 rule with the literal
+// `.from("brands")` inside BACKTICKS; strip backtick spans first so this asserts
+// on real CODE only (a real `.from("brands")` call still trips it).
+const stripBackticks = (s) => s.replace(/`[^`]*`/g, "");
 ok(
-  "T6a the data-adapter NEVER reads brands directly (🔒 COMMS-0009 / I-ANON-BRANDS-VIA-DEFINER-VIEW)",
-  !/\.from\(["']brands["']\)/.test(adapterSrc) &&
-    !/\.from\(["']brands["']\)/.test(reserveBarSrc) &&
-    !/\.from\(["']brands["']\)/.test(refundLadderSrc),
+  "T6a the data-adapter NEVER reads brands directly in CODE (🔒 COMMS-0009 / I-ANON-BRANDS-VIA-DEFINER-VIEW)",
+  !/\.from\(["']brands["']\)/.test(stripBackticks(adapterSrc)) &&
+    !/\.from\(["']brands["']\)/.test(stripBackticks(reserveBarSrc)) &&
+    !/\.from\(["']brands["']\)/.test(stripBackticks(refundLadderSrc)),
   "the adapter/bar/ladder must not query the brands table; theme resolves via the anon view (useEventTheme)",
 );
 ok(
@@ -207,7 +219,11 @@ ok(
   "T6c the adapter maps REAL fields with rule-9 null guards (duration/route/days/chips)",
   /export function deriveTripDuration/.test(adapterSrc) &&
     /export function mapConsumerTripToFoundation/.test(adapterSrc) &&
-    /detail\.departureText !== null \|\| destination !== null/.test(adapterSrc) &&
+    // route leg is built only when at least one normalized leg is present (rule 9
+    // — no empty route block). Matches the adapter's actual guard.
+    /departureCityCountry !== null \|\| destinationCityCountry !== null/.test(
+      adapterSrc,
+    ) &&
     /\.filter\(\(i\) => i\.kind === "included"\)/.test(adapterSrc),
   "the adapter must map real ConsumerTripDetail fields, omitting absent ones (rule 9)",
 );

@@ -114,7 +114,7 @@ ok(
 // broken alt text ever shows.
 ok(
   "FIX3a the brand chip uses EventCoverMedia (media-aware), inside the brandTile",
-  /styles\.brandTile[\s\S]{0,120}<EventCoverMedia/.test(screenSrc),
+  /styles\.brandTile[\s\S]{0,260}<EventCoverMedia/.test(screenSrc),
   "brand cover must render via EventCoverMedia, never a plain <Image> with broken alt",
 );
 ok(
@@ -123,7 +123,7 @@ ok(
 );
 ok(
   "FIX3c the brand EventCoverMedia passes label=\"\" (no 'COVE…' truncated 'Cover' text)",
-  /styles\.brandTile[\s\S]{0,600}label=""/.test(screenSrc),
+  /styles\.brandTile[\s\S]{0,800}label=""/.test(screenSrc),
   "the no-cover fallback must be a clean hue gradient, not the default 'Cover' label",
 );
 
@@ -162,12 +162,32 @@ ok(
   "FIX5a the reserve bar reads useSafeAreaInsets",
   /useSafeAreaInsets\(\)/.test(reserveBarSrc),
 );
+// FIX5b (device rework #2) — the WHOLE bar CONTAINER lifts by the safe-area
+// bottom + gap (not just the inner content padding), so the entire rounded card
+// floats above the home indicator with a gap beneath it. Fails-on-revert: if the
+// wrapper `bottom` is no longer the safe-area offset (e.g. reverts to a static
+// bottom:0 + inner-content padding), these regexes fail.
 ok(
-  "FIX5b the bar resolves bottomInset = max(screen inset, own inset, 34) + sheet overshoot",
-  /const bottomInset\s*=\s*\n?\s*Math\.max\(safeAreaBottom \?\? 0, insets\.bottom, 34\)\s*\+\s*SHEET_BOTTOM_OVERSHOOT/.test(
+  "FIX5b the bar resolves a safe-area wrapper bottom = max(screen inset, own inset, 34) + sheet overshoot + gap",
+  /const safeBottom\s*=\s*Math\.max\(safeAreaBottom \?\? 0, insets\.bottom, HOME_INDICATOR_FLOOR\)/.test(
     reserveBarSrc,
-  ) && /paddingBottom:\s*14\s*\+\s*bottomInset/.test(reserveBarSrc),
-  "the bar must clear the home indicator from the screen-passed inset + a 34pt floor + the gorhom overshoot (sim-verified)",
+  ) &&
+    /const wrapperBottom\s*=\s*safeBottom\s*\+\s*SHEET_BOTTOM_OVERSHOOT\s*\+\s*FLOAT_GAP/.test(
+      reserveBarSrc,
+    ),
+  "the bar must clear the home indicator from the screen-passed inset + a 34pt floor + the gorhom overshoot + a float gap",
+);
+ok(
+  "FIX5b-pos the wrapper CONTAINER bottom is lifted to wrapperBottom (the whole card floats)",
+  /style=\{\[styles\.wrapper,\s*\{\s*bottom:\s*wrapperBottom\s*\}\]\}/.test(
+    reserveBarSrc,
+  ),
+  "the bar's POSITION (wrapper.bottom) must be lifted, not just inner content padding",
+);
+ok(
+  "FIX5b-nostatic the wrapper style no longer pins a static bottom:0 (would re-clip)",
+  !/wrapper:\s*\{[^}]*bottom:\s*0/.test(reserveBarSrc),
+  "a static bottom:0 on the wrapper re-pins the card to the raw screen edge",
 );
 ok(
   "FIX5b2 the bar accepts the screen-level safeAreaBottom prop (gorhom inset is ~0)",
@@ -176,11 +196,15 @@ ok(
   "the screen must pass its own inset down because the bar's own hook reads ~0 inside gorhom",
 );
 ok(
-  "FIX5c the scroll content reserves clearance = bar height + safe-area (reserveBarClearance)",
-  /reserveBarClearance\s*=\s*\d+\s*\+\s*safeBottom/.test(screenSrc) &&
-    /safeBottom\s*=\s*Math\.max\(insets\.bottom,\s*34\)\s*\+\s*28/.test(screenSrc) &&
+  "FIX5c the scroll content reserves clearance = float-bottom (inset+overshoot+gap) + bar card height",
+  /const BAR_FLOAT_BOTTOM\s*=\s*Math\.max\(insets\.bottom,\s*34\)\s*\+\s*63\s*\+\s*16/.test(
+    screenSrc,
+  ) &&
+    /reserveBarClearance\s*=\s*BAR_FLOAT_BOTTOM\s*\+\s*BAR_CARD_HEIGHT\s*\+\s*12/.test(
+      screenSrc,
+    ) &&
     /paddingBottom:\s*reserveBarClearance/.test(screenSrc),
-  "the last section must clear the floating bar",
+  "the last section must clear the FLOATING bar (lifted bottom incl. gorhom overshoot + card height)",
 );
 
 // ── FIX 6 standard-order is enforced on the BUSINESS side (covered in the

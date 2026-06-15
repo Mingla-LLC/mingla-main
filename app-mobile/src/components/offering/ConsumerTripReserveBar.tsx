@@ -46,11 +46,11 @@ export interface ConsumerTripReserveBarProps {
   /**
    * ORCH-1138 [trip-page-redesign] FIX-5 — the SCREEN-LEVEL safe-area bottom
    * inset, passed down from the screen root. The bar floats INSIDE the gorhom
-   * BaseBottomSheet, whose BottomSheetView establishes its OWN SafeAreaProvider
-   * context that can resolve `useSafeAreaInsets().bottom` to 0 — so the bar's own
-   * hook under-reports and the "From … today" price line bled under the home
-   * indicator. The bar now uses max(screen inset, own inset, 16) so it ALWAYS
-   * clears the home indicator on notched + non-notched devices.
+   * BaseBottomSheet, whose content establishes its OWN SafeAreaProvider context
+   * that can resolve `useSafeAreaInsets().bottom` to ~0 — so the bar's own hook
+   * under-reports. The bar lifts its CONTAINER's `bottom` by
+   * max(screen inset, own inset, 34) + gap so the WHOLE rounded card floats above
+   * the home indicator on notched + non-notched devices.
    */
   safeAreaBottom?: number;
   testID?: string;
@@ -66,20 +66,33 @@ export const ConsumerTripReserveBar: React.FC<ConsumerTripReserveBarProps> = ({
   testID,
 }) => {
   const insets = useSafeAreaInsets();
-  // ORCH-1138 [trip-page-redesign] FIX-5 — the bar floats `bottom:0` INSIDE the
-  // BaseBottomSheet's gorhom BottomSheetContent, which (a) establishes its own
-  // SafeAreaProvider context where `useSafeAreaInsets().bottom` resolves to ~0,
-  // and (b) extends its content bottom slightly BELOW the visible viewport, so a
-  // plain safe-area inset still let the price line ("From … today") bleed under
-  // the home indicator. The padded clearance below the button is therefore:
-  //   max(screen inset, local inset, 34pt home-indicator floor) + the gorhom
-  //   bottom overshoot.
-  // SIM-VERIFIED on iPhone 17 Pro (notched): 16 clipped, a bare 34 still clipped,
-  // and this value shows the full price line above the home indicator with a
-  // clean gap. A non-notched device (inset 0) gets the same clean clearance.
-  const SHEET_BOTTOM_OVERSHOOT = 28;
-  const bottomInset =
-    Math.max(safeAreaBottom ?? 0, insets.bottom, 34) + SHEET_BOTTOM_OVERSHOOT;
+  // ORCH-1138 [trip-page-redesign] FIX-5 (device rework #2) — the WHOLE bar must
+  // float ABOVE the home indicator with a visible gap beneath it. The bar is an
+  // absolute overlay pinned `bottom:0` to the gorhom BottomSheetContent, whose
+  // bottom edge IS the raw window bottom (gorhom anchors the sheet to the screen
+  // bottom; at the 90% snap the content still extends to y=windowHeight). The
+  // PREVIOUS fix only padded the bar's INNER content (`fade.paddingBottom`), so
+  // the rounded button moved up but the bar's CONTAINER stayed flush at the raw
+  // screen edge and the button's lower rounded corners/edge still clipped under
+  // the home indicator on Seth's device.
+  //
+  // THE FIX: lift the bar's CONTAINER (`wrapper.bottom`) by the safe-area bottom
+  // inset + a small gap, so the ENTIRE rounded card — all four corners + its fade
+  // backdrop — sits above the home indicator with clear space below it (it FLOATS,
+  // it is not pinned to the raw edge). `useSafeAreaInsets().bottom` can resolve to
+  // ~0 inside the gorhom sheet's own SafeAreaProvider, so we take the MAX of the
+  // screen-level inset passed from the screen root, the local inset, and a 34pt
+  // home-indicator floor, then add an 8pt visible gap.
+  const HOME_INDICATOR_FLOOR = 34;
+  // The gorhom BottomSheetContent extends its bottom ~63pt BELOW the visible
+  // window at the 90% snap (measured on iPhone 17 Pro: a 154pt wrapper.bottom
+  // produced a 90.7pt visible gap → ~63pt overshoot absorbed). The bar is an
+  // absolute child of that content, so its `bottom` must clear that overshoot
+  // FIRST, then the home-indicator floor, then a visible float gap.
+  const SHEET_BOTTOM_OVERSHOOT = 63;
+  const FLOAT_GAP = 16;
+  const safeBottom = Math.max(safeAreaBottom ?? 0, insets.bottom, HOME_INDICATOR_FLOOR);
+  const wrapperBottom = safeBottom + SHEET_BOTTOM_OVERSHOOT + FLOAT_GAP;
   const fontStyle = fontFamily !== undefined ? { fontFamily } : null;
 
   const handlePress = (): void => {
@@ -99,11 +112,14 @@ export const ConsumerTripReserveBar: React.FC<ConsumerTripReserveBarProps> = ({
   const unavailableSub = cta.kind === "unavailable" ? cta.subline : null;
 
   return (
-    <View style={styles.wrapper} pointerEvents="box-none">
+    <View
+      style={[styles.wrapper, { bottom: wrapperBottom }]}
+      pointerEvents="box-none"
+    >
       <View
         style={[
           styles.fade,
-          { backgroundColor: fadeColor, paddingBottom: 14 + bottomInset },
+          { backgroundColor: fadeColor },
         ]}
       >
         {tappable ? (
@@ -183,12 +199,18 @@ const styles = StyleSheet.create({
     position: "absolute",
     left: 0,
     right: 0,
-    bottom: 0,
+    // `bottom` is set dynamically (safe-area + gap) so the WHOLE rounded card
+    // floats above the home indicator — see the FIX-5 comment in the component.
     zIndex: 6,
   },
+  // The fade is the (rounded-button + backdrop) card. It pads the button on all
+  // sides; the wrapper's dynamic `bottom` lifts the entire fade above the home
+  // indicator, so the button's bottom rounded corners + edge are fully visible
+  // with a clean gap beneath.
   fade: {
     paddingHorizontal: 16,
     paddingTop: 14,
+    paddingBottom: 14,
   },
   reserve: {
     flexDirection: "row",

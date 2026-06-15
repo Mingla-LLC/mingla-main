@@ -570,30 +570,52 @@ export default function ConsumerTripDetailScreen({
         ) : null}
       </View>
 
-      {/* brand chip — ORCH-1138 Leg 1C FIX-3: the "Presented by" cover renders via
-          the gif/video-aware EventCoverMedia (NOT a plain <Image>), so an animated
-          brand cover shows. The consumer trip data path is anon-safe and carries
-          no brand cover today (🔒 COMMS-0009), so fnd.brandCoverMediaUrl is null →
-          EventCoverMedia draws its hue gradient fallback (rule 9 — graceful, no
-          fabricated cover). The rounded tile clips the media (overflow:hidden). */}
+      {/* brand chip — ORCH-1138 FIX-3 (device rework): the "Presented by" cover
+          renders the BRAND's real media via the gif/video-aware EventCoverMedia
+          (NOT a plain <Image>) so an animated brand cover shows. The brand cover
+          is sourced anon-safe from `business_public_brands_view`
+          (useConsumerTripDetail — 🔒 COMMS-0009, never `.from("brands")`). When
+          the brand set NO cover (fnd.brandCoverMediaUrl === null) we render a
+          CLEAN themed circle with the brand INITIAL — NOT a bare striped red disk
+          and NOT the broken "COVE…" alt text Seth saw (rule 9 — graceful, no
+          fabrication). The rounded tile clips the media (overflow:hidden;
+          ANDROID_GLASS_USES_OPAQUE_FALLBACK opaque fill). */}
       <View style={[styles.brandRow, surface.card]}>
-        <View style={styles.brandTile}>
-          <EventCoverMedia
-            mediaUrl={fnd.brandCoverMediaUrl}
-            mediaType={fnd.brandCoverMediaType}
-            hue={hueFromId(detail.brandSlug)}
-            // ORCH-1138 FIX-3 — empty label so the no-cover fallback is a CLEAN
-            // themed hue gradient, NOT the default "Cover" text (which truncated
-            // to the broken "COVE…" placeholder Seth saw in the 42px circle).
-            label=""
-            radius={999}
-            autoplay
-            playbackActive
-            muted
-            loop
-            height="100%"
-            width="100%"
-          />
+        <View
+          style={[
+            styles.brandTile,
+            fnd.brandCoverMediaUrl === null
+              ? { backgroundColor: palette.accent }
+              : null,
+          ]}
+        >
+          {fnd.brandCoverMediaUrl !== null ? (
+            <EventCoverMedia
+              mediaUrl={fnd.brandCoverMediaUrl}
+              mediaType={fnd.brandCoverMediaType}
+              hue={hueFromId(detail.brandSlug)}
+              label=""
+              radius={999}
+              autoplay
+              playbackActive
+              muted
+              loop
+              height="100%"
+              width="100%"
+            />
+          ) : (
+            // No brand cover → clean themed initial (rule 9 fallback).
+            <View style={styles.brandInitialWrap}>
+              <Text
+                style={[
+                  styles.brandInitial,
+                  { color: palette.accentText, fontFamily: boldFamily },
+                ]}
+              >
+                {(fnd.brandName.trim()[0] ?? "•").toUpperCase()}
+              </Text>
+            </View>
+          )}
         </View>
         <View style={styles.brandTextCol}>
           <Text style={[styles.brandKicker, surface.tertiaryText]}>
@@ -1051,17 +1073,19 @@ export default function ConsumerTripDetailScreen({
                 tappable: true,
               };
 
-  // ORCH-1138 [trip-page-redesign] FIX-5 — clearance so the last content row
-  // clears the floating bar. Bar height ≈ 14 (top pad) + 56 (button) = ~70, PLUS
-  // 14 + safe-area bottom (the bar pads `paddingBottom: 14 + bottomInset`). The
-  // scroll content reserves bar-height + safe-area (16 floor) — matching the bar's
-  // own bottom-inset resolution — so the last section (How-you-pay) clears the bar.
-  // matches the bar's own bottom-inset resolution (max(inset,34) + the 28pt
-  // gorhom-sheet overshoot) so the last section clears the taller,
-  // home-indicator-safe bar. Bar ≈ 14 (top) + 56 (button) = 70 + (14 + that
-  // inset) below.
-  const safeBottom = Math.max(insets.bottom, 34) + 28;
-  const reserveBarClearance = 84 + safeBottom;
+  // ORCH-1138 [trip-page-redesign] FIX-5 (device rework #2) — clearance so the
+  // last content row clears the FLOATING bar. The bar now floats with its
+  // container lifted by `safeBottom (max(inset,34)) + 8 gap` (see
+  // ConsumerTripReserveBar) and its card is ≈ 14 (top pad) + 56 (button) + 14
+  // (bottom pad) = 84 tall. So the scroll content reserves the bar's lifted bottom
+  // + the card height + a small extra gap, keeping the bar's resolution identical
+  // to the bar component (max(inset,34) + 8) so the How-you-pay section clears the
+  // floating bar without reintroducing the ORCH-1016/1043 scroll-freeze.
+  // Mirror the bar's own lift (ConsumerTripReserveBar): safe-area floor + the
+  // ~63pt gorhom-content overshoot + the float gap, plus the bar card height.
+  const BAR_FLOAT_BOTTOM = Math.max(insets.bottom, 34) + 63 + 16;
+  const BAR_CARD_HEIGHT = 84;
+  const reserveBarClearance = BAR_FLOAT_BOTTOM + BAR_CARD_HEIGHT + 12;
 
   const floatingReserve: ReactElement = (
     <ConsumerTripReserveBar
@@ -1313,6 +1337,16 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     overflow: "hidden",
     backgroundColor: "#1a1c20",
+  },
+  // ORCH-1138 FIX-3 — clean themed brand-initial fallback (no cover media).
+  brandInitialWrap: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  brandInitial: {
+    fontSize: 18,
+    fontWeight: "900",
   },
   brandTextCol: { flexShrink: 1 },
   brandKicker: {
