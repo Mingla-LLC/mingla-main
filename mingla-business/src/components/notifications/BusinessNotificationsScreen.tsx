@@ -25,7 +25,7 @@
  * are the deliberate sub-grid accents the design calls out.
  */
 
-import React, { useCallback, useMemo } from "react";
+import React, { useCallback, useMemo, useState } from "react";
 import {
   Animated,
   Platform,
@@ -36,6 +36,22 @@ import {
   Text,
   View,
 } from "react-native";
+import Reanimated, {
+  Easing,
+  LinearTransition,
+  runOnJS,
+  useAnimatedReaction,
+  useAnimatedStyle,
+  useReducedMotion,
+  useSharedValue,
+  withTiming,
+} from "react-native-reanimated";
+// ReanimatedSwipeable is exposed by react-native-gesture-handler ONLY as a
+// subpath default export (the top-level barrel exports the legacy `Swipeable`).
+// gesture-handler is already installed + GestureHandlerRootView is mounted at
+// the app root — this is NOT a new dependency. Native only (web branches off).
+import ReanimatedSwipeable from "react-native-gesture-handler/ReanimatedSwipeable";
+import type { SwipeableMethods } from "react-native-gesture-handler/ReanimatedSwipeable";
 
 import { Icon } from "../ui/Icon";
 import {
@@ -48,6 +64,7 @@ import {
   glass,
   shadows,
   canvas,
+  durations,
 } from "../../constants/designSystem";
 import { useShimmer } from "../../hooks/useShimmer";
 import { HapticFeedback } from "../../utils/hapticFeedback";
@@ -113,7 +130,19 @@ const UNREAD_RAIL_WIDTH = 3;
 const UNREAD_DOT = 8;
 const WEB_MAX_WIDTH = 640;
 
+// ORCH-1142 deliberate sub-grid accents (DESIGN §5), declared alongside the
+// existing ICON_CIRCLE/UNREAD_RAIL_WIDTH/UNREAD_DOT.
+const SWIPE_ACTION_WIDTH = 80; // revealed red panel width (iOS-mail idiom)
+const SWIPE_FULL_COMMIT_RATIO = 0.4; // fraction of row width → full-swipe auto-commit
+const SWIPE_REVEAL_THRESHOLD = 40; // rightThreshold (snap-open distance)
+const CHEVRON_EXPAND_DEG = 90; // chevron rotation when expanded
+
 const isWeb = Platform.OS === "web";
+
+// `easings.out` token = cubic-bezier(0.33, 1, 0.68, 1) (decelerate). Reanimated
+// equivalent for the expand/collapse + chevron motion.
+const EASE_OUT = Easing.bezier(0.33, 1, 0.68, 1);
+const EXPAND_TRANSITION = LinearTransition.duration(durations.entry).easing(EASE_OUT);
 
 // ── Date bucketing (SUB-C_DESIGN §4.1) ───────────────────────────────────────
 
@@ -220,30 +249,104 @@ function boldTokenFor(n: BusinessNotification): string | null {
 
 interface RowProps {
   notification: BusinessNotification;
+  /** Toggle expand + mark-read on the row (tap contract — no longer navigates). */
   onPress: (n: BusinessNotification) => void;
+  /** Navigate to the row's deep-link target (fired from the expanded "Open" button). */
+  onOpenDeepLink: (n: BusinessNotification) => void;
+  /** Soft-delete the row (swipe-commit on native, trash tap on web). */
+  onDelete: (n: BusinessNotification) => void;
+  expanded: boolean;
 }
 
-const NotificationRow: React.FC<RowProps> = ({ notification, onPress }) => {
+/**
+ * Web delete fallback (DESIGN §2.6): always-visible trailing trash; color goes
+ * to semantic.error on hover/press via the typed onHoverIn/onHoverOut API (the
+ * `hovered` style-callback arg is react-native-web only and untyped). Color-only
+ * change → no layout shift. Native never mounts this (the swipe is the path).
+ */
+const WebTrashButton: React.FC<{ onPress: () => void }> = ({ onPress }) => {
+  const [active, setActive] = useState(false);
+  return (
+    <Pressable
+      onPress={onPress}
+      onHoverIn={(): void => setActive(true)}
+      onHoverOut={(): void => setActive(false)}
+      onPressIn={(): void => setActive(true)}
+      onPressOut={(): void => setActive(false)}
+      accessibilityRole="button"
+      accessibilityLabel="Delete notification"
+      hitSlop={{ top: 14, bottom: 14, left: 14, right: 14 }}
+      style={styles.webTrash}
+    >
+      <Icon
+        name="trash"
+        size={16}
+        color={active ? semantic.error : textTokens.tertiary}
+      />
+    </Pressable>
+  );
+};
+
+const NotificationRowInner: React.FC<RowProps> = ({
+  notification,
+  onPress,
+  onOpenDeepLink,
+  onDelete,
+  expanded,
+}) => {
   const visual = resolveNotificationVisual(notification.type);
   const fam = FAMILY_STYLE[visual.family];
   const unread = notification.read_at === null;
   const blockingRisk = isBlockingRisk(visual.family, visual.severity);
   const bold = boldTokenFor(notification);
+  const hasDeepLink = notification.deep_link !== null;
+
+  const reducedMotion = useReducedMotion();
+  const chevronDeg = useSharedValue(expanded ? CHEVRON_EXPAND_DEG : 0);
+
+  // ORCH-1142 chevron rotation (DESIGN §1.5 Animation B): +90° over
+  // durations.normal (200ms), easings.out. Reduced-motion → snap (no timing).
+  React.useEffect(() => {
+    const target = expanded ? CHEVRON_EXPAND_DEG : 0;
+    if (reducedMotion) {
+      chevronDeg.value = target;
+    } else {
+      chevronDeg.value = withTiming(target, {
+        duration: durations.normal,
+        easing: EASE_OUT,
+      });
+    }
+  }, [expanded, reducedMotion, chevronDeg]);
+
+  const chevronStyle = useAnimatedStyle(() => ({
+    transform: [{ rotate: `${chevronDeg.value}deg` }],
+  }));
 
   const handlePress = useCallback(() => {
     if (Platform.OS !== "web") HapticFeedback.buttonPress();
     onPress(notification);
   }, [notification, onPress]);
 
-  const a11yLabel = `${notification.title}. ${notification.body}. ${unread ? "Unread" : "Read"}. ${formatRelative(notification.created_at)} ago.`;
+  const handleOpen = useCallback(() => {
+    if (Platform.OS !== "web") HapticFeedback.buttonPress();
+    onOpenDeepLink(notification);
+  }, [notification, onOpenDeepLink]);
+
+  const handleWebDelete = useCallback(() => {
+    onDelete(notification);
+  }, [notification, onDelete]);
+
+  const a11yLabel = `${notification.title}. ${notification.body}. ${unread ? "Unread" : "Read"}. ${formatRelative(notification.created_at)} ago. ${expanded ? "Expanded." : "Collapsed."}`;
 
   // Title with the bold entity span emboldened (port of consumer
-  // renderTitleWithBoldActor, generalised to data.boldToken).
+  // renderTitleWithBoldActor, generalised to data.boldToken). When expanded,
+  // the title drops its numberOfLines cap so the full text wraps (DESIGN §1.2).
+  const titleLines = expanded ? undefined : 1;
   const renderTitle = (): React.ReactNode => {
     if (blockingRisk) {
       // Risk blocking rows render the whole title at 700 (§3.3).
       return (
-        <Text style={[styles.title, styles.titleBold]} numberOfLines={1}>
+        <Text style={[styles.title, styles.titleBold]} numberOfLines={titleLines}>
           {notification.title}
         </Text>
       );
@@ -253,7 +356,7 @@ const NotificationRow: React.FC<RowProps> = ({ notification, onPress }) => {
       const before = notification.title.slice(0, idx);
       const after = notification.title.slice(idx + bold.length);
       return (
-        <Text style={styles.title} numberOfLines={1}>
+        <Text style={styles.title} numberOfLines={titleLines}>
           {before}
           <Text style={styles.titleBold}>{bold}</Text>
           {after}
@@ -261,7 +364,7 @@ const NotificationRow: React.FC<RowProps> = ({ notification, onPress }) => {
       );
     }
     return (
-      <Text style={styles.title} numberOfLines={1}>
+      <Text style={styles.title} numberOfLines={titleLines}>
         {notification.title}
       </Text>
     );
@@ -272,6 +375,11 @@ const NotificationRow: React.FC<RowProps> = ({ notification, onPress }) => {
       onPress={handlePress}
       accessibilityRole="button"
       accessibilityLabel={a11yLabel}
+      accessibilityState={{ expanded }}
+      accessibilityActions={[{ name: "delete", label: "Delete notification" }]}
+      onAccessibilityAction={(e): void => {
+        if (e.nativeEvent.actionName === "delete") onDelete(notification);
+      }}
       style={({ pressed }) => [
         styles.card,
         {
@@ -304,32 +412,49 @@ const NotificationRow: React.FC<RowProps> = ({ notification, onPress }) => {
             {formatRelative(notification.created_at)}
           </Text>
         </View>
-        <Text style={styles.body} numberOfLines={2}>
+        <Text style={styles.body} numberOfLines={expanded ? undefined : 2}>
           {notification.body}
         </Text>
 
-        {blockingRisk ? (
+        {/* expanded / blocking-risk action row (DESIGN §1.3) */}
+        {blockingRisk || (expanded && hasDeepLink) ? (
           <View style={styles.respondRow}>
-            <Text
-              style={[styles.respondBtn, { color: semantic.warning }]}
-              accessibilityRole="button"
-              accessibilityLabel="Respond to dispute"
-            >
-              Respond
-            </Text>
+            {blockingRisk ? (
+              <Text
+                style={[styles.respondBtn, { color: semantic.warning }]}
+                accessibilityRole="button"
+                accessibilityLabel="Respond to dispute"
+              >
+                Respond
+              </Text>
+            ) : null}
+            {expanded && hasDeepLink ? (
+              <Pressable
+                onPress={handleOpen}
+                accessibilityRole="button"
+                accessibilityLabel="Open notification target"
+                accessibilityHint="Opens the related screen for this notification"
+                hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+                style={({ pressed }) => [
+                  styles.openBtn,
+                  pressed ? styles.openBtnPressed : null,
+                ]}
+              >
+                <Text style={styles.openLabel}>Open</Text>
+              </Pressable>
+            ) : null}
           </View>
         ) : null}
       </View>
 
       {/* trailing affordance + unread dot */}
       {!blockingRisk ? (
-        <Icon
-          name="chevR"
-          size={16}
-          color={textTokens.quaternary}
-          style={styles.chev}
-        />
+        <Reanimated.View style={[styles.chev, chevronStyle]}>
+          <Icon name="chevR" size={16} color={textTokens.quaternary} />
+        </Reanimated.View>
       ) : null}
+      {/* Web delete fallback: always-visible trailing trash (DESIGN §2.6). */}
+      {isWeb ? <WebTrashButton onPress={handleWebDelete} /> : null}
       {unread ? (
         <View
           style={[styles.dot, { backgroundColor: fam.rail }]}
@@ -337,6 +462,162 @@ const NotificationRow: React.FC<RowProps> = ({ notification, onPress }) => {
           importantForAccessibility="no-hide-descendants"
         />
       ) : null}
+    </Pressable>
+  );
+};
+
+/**
+ * Row shell — on native wraps the row in ReanimatedSwipeable (right→left
+ * swipe reveals a red trash panel; full-swipe auto-commits). On web renders
+ * the row directly (the always-visible trash inside the row is the delete
+ * affordance). The card spacing (marginBottom) moves to this wrapper so the
+ * card's overflow:'hidden' clips both the glass AND the red panel (DESIGN
+ * §2.2 / §4.1). ORCH-1142 — soft-delete preserves reference value; do NOT
+ * convert to hard delete or remove the deleted_at fetch filter.
+ */
+const NotificationRow: React.FC<RowProps> = (props) => {
+  const { notification, onDelete } = props;
+  const reducedMotion = useReducedMotion();
+  const swipeableRef = React.useRef<SwipeableMethods | null>(null);
+  // Set once the row knows its width (full-swipe-commit threshold is a fraction
+  // of it). Shared value so the worklet reaction can read it. `committed` guards
+  // against firing delete twice (reaction + rest-open tap).
+  const rowWidthSv = useSharedValue(0);
+  const committed = useSharedValue(false);
+  const crossedHaptic = useSharedValue(false);
+
+  const fireDelete = useCallback((): void => {
+    HapticFeedback.success();
+    swipeableRef.current?.close();
+    onDelete(notification);
+  }, [notification, onDelete]);
+
+  const fireThresholdHaptic = useCallback((): void => {
+    // Light threshold-cross tap (DESIGN §2.4 — selection/light; `selection`
+    // isn't in the util, so the light buttonPress stands in per the design).
+    HapticFeedback.buttonPress();
+  }, []);
+
+  // renderRightActions receives the live translation; a full left-swipe past
+  // SWIPE_FULL_COMMIT_RATIO of the row width auto-commits the delete without a
+  // second tap, and crossing it fires the one-shot threshold haptic. Short
+  // drags rest open at 80pt for the tap-to-delete path. (DESIGN §2.3/§2.4)
+  const renderRightActions = useCallback(
+    (
+      _progress: ReturnType<typeof useSharedValue<number>>,
+      translation: ReturnType<typeof useSharedValue<number>>,
+    ): React.ReactElement => {
+      return (
+        <SwipeRightAction
+          translation={translation}
+          rowWidthSv={rowWidthSv}
+          committed={committed}
+          crossedHaptic={crossedHaptic}
+          reducedMotion={reducedMotion}
+          onCommit={fireDelete}
+          onThresholdHaptic={fireThresholdHaptic}
+          onTapDelete={fireDelete}
+        />
+      );
+    },
+    [rowWidthSv, committed, crossedHaptic, reducedMotion, fireDelete, fireThresholdHaptic],
+  );
+
+  if (isWeb) {
+    return (
+      <Reanimated.View
+        layout={reducedMotion ? undefined : EXPAND_TRANSITION}
+        style={styles.rowWrapper}
+      >
+        <NotificationRowInner {...props} />
+      </Reanimated.View>
+    );
+  }
+
+  return (
+    <Reanimated.View
+      layout={reducedMotion ? undefined : EXPAND_TRANSITION}
+      style={styles.rowWrapper}
+      onLayout={(e): void => {
+        rowWidthSv.value = e.nativeEvent.layout.width;
+      }}
+    >
+      <ReanimatedSwipeable
+        ref={swipeableRef}
+        friction={2}
+        rightThreshold={SWIPE_REVEAL_THRESHOLD}
+        overshootRight={false}
+        renderRightActions={renderRightActions}
+        onSwipeableClose={(): void => {
+          committed.value = false;
+          crossedHaptic.value = false;
+        }}
+      >
+        <NotificationRowInner {...props} />
+      </ReanimatedSwipeable>
+    </Reanimated.View>
+  );
+};
+
+/**
+ * The red destructive swipe panel (native). Renders the trash glyph and runs a
+ * worklet reaction on the live `translation`: past SWIPE_FULL_COMMIT_RATIO of
+ * the row width → auto-commit the delete (full-swipe); a short reveal rests at
+ * SWIPE_ACTION_WIDTH for the tap-to-delete path. One-shot haptics via shared
+ * flags. DESIGN §2.2–§2.4.
+ */
+interface SwipeRightActionProps {
+  translation: ReturnType<typeof useSharedValue<number>>;
+  rowWidthSv: ReturnType<typeof useSharedValue<number>>;
+  committed: ReturnType<typeof useSharedValue<boolean>>;
+  crossedHaptic: ReturnType<typeof useSharedValue<boolean>>;
+  reducedMotion: boolean;
+  onCommit: () => void;
+  onThresholdHaptic: () => void;
+  onTapDelete: () => void;
+}
+
+const SwipeRightAction: React.FC<SwipeRightActionProps> = ({
+  translation,
+  rowWidthSv,
+  committed,
+  crossedHaptic,
+  onCommit,
+  onThresholdHaptic,
+  onTapDelete,
+}) => {
+  useAnimatedReaction(
+    () => translation.value,
+    (current) => {
+      "worklet";
+      const width = rowWidthSv.value;
+      if (width <= 0) return;
+      const commitPx = -(width * SWIPE_FULL_COMMIT_RATIO);
+      // current is negative for a left (right-action) swipe.
+      if (current <= commitPx) {
+        if (!crossedHaptic.value) {
+          crossedHaptic.value = true;
+          runOnJS(onThresholdHaptic)();
+        }
+        if (!committed.value) {
+          committed.value = true;
+          runOnJS(onCommit)();
+        }
+      } else if (current > commitPx && crossedHaptic.value && !committed.value) {
+        // dragged back under the threshold before committing — re-arm haptic.
+        crossedHaptic.value = false;
+      }
+    },
+  );
+
+  return (
+    <Pressable
+      onPress={onTapDelete}
+      accessibilityRole="button"
+      accessibilityLabel="Delete notification"
+      style={styles.swipeAction}
+    >
+      <Icon name="trash" size={22} color={textTokens.inverse} />
     </Pressable>
   );
 };
@@ -423,17 +704,45 @@ export function BusinessNotificationsScreen({
   userId,
   onOpenDeepLink,
 }: BusinessNotificationsScreenProps): React.ReactElement {
-  const { query, notifications, markAsRead } =
+  const { query, notifications, markAsRead, softDelete } =
     useBusinessNotificationsInbox(userId);
 
+  // ORCH-1142: per-row expand state (ephemeral). Multiple rows may be expanded
+  // at once (SPEC §10 Q1 / DESIGN §1.1 — no surprise auto-collapse of siblings).
+  const [expandedIds, setExpandedIds] = useState<ReadonlySet<string>>(
+    () => new Set<string>(),
+  );
+
+  // Tap contract (SPEC §4.C.4): mark-read on first interaction + toggle expand.
+  // Tapping NO LONGER navigates — navigation is via the expanded "Open" button.
   const handlePress = useCallback(
     (n: BusinessNotification): void => {
       void markAsRead(n.id);
+      setExpandedIds((prev) => {
+        const next = new Set(prev);
+        if (next.has(n.id)) next.delete(n.id);
+        else next.add(n.id);
+        return next;
+      });
+    },
+    [markAsRead],
+  );
+
+  // Secondary "Open" action (from the expanded card) — the only navigate path.
+  const handleOpen = useCallback(
+    (n: BusinessNotification): void => {
       if (n.deep_link && onOpenDeepLink) {
         onOpenDeepLink(n.deep_link, n);
       }
     },
-    [markAsRead, onOpenDeepLink],
+    [onOpenDeepLink],
+  );
+
+  const handleDelete = useCallback(
+    (n: BusinessNotification): void => {
+      void softDelete(n.id);
+    },
+    [softDelete],
   );
 
   const sections = useMemo(() => groupByDate(notifications), [notifications]);
@@ -507,7 +816,14 @@ export function BusinessNotificationsScreen({
             {section.label.toUpperCase()}
           </Text>
           {section.rows.map((n) => (
-            <NotificationRow key={n.id} notification={n} onPress={handlePress} />
+            <NotificationRow
+              key={n.id}
+              notification={n}
+              onPress={handlePress}
+              onOpenDeepLink={handleOpen}
+              onDelete={handleDelete}
+              expanded={expandedIds.has(n.id)}
+            />
           ))}
         </View>
       ))}
@@ -559,8 +875,18 @@ const styles = StyleSheet.create({
     paddingRight: spacing.md,
     borderRadius: radius.lg,
     borderWidth: 1,
-    overflow: "hidden", // Android glass clip — mandatory (SUB-C_DESIGN §7)
+    // overflow:'hidden' is load-bearing TWICE (ORCH-1142 §4.1): (a) Android
+    // glass clip (existing, SUB-C_DESIGN §7) and (b) clipping the swipe red
+    // panel to the rounded corners. Keep on BOTH the card and the wrapper.
+    overflow: "hidden",
     minHeight: 72,
+  },
+  // ORCH-1142: row spacing moved here from `card` so the swipeable wrapper owns
+  // layout + clips the red action panel to the rounded corners. marginBottom
+  // preserves the exact list rhythm the collapsed row had.
+  rowWrapper: {
+    borderRadius: radius.lg,
+    overflow: "hidden",
     marginBottom: spacing.sm,
   },
   cardPressed: {
@@ -624,6 +950,39 @@ const styles = StyleSheet.create({
     fontWeight: "600",
     paddingVertical: spacing.xs,
     paddingHorizontal: spacing.sm,
+  },
+  // ORCH-1142 — expanded "Open" secondary button (DESIGN §1.3). Text affordance
+  // mirroring `respondBtn` grammar; accent.warm; ≥44pt via padding + hitSlop.
+  openBtn: {
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.sm,
+  },
+  openBtnPressed: {
+    opacity: 0.7,
+  },
+  openLabel: {
+    fontSize: typography.buttonMd.fontSize,
+    lineHeight: typography.buttonMd.lineHeight,
+    fontWeight: typography.buttonMd.fontWeight,
+    letterSpacing: typography.buttonMd.letterSpacing,
+    color: accent.warm,
+  },
+  // ORCH-1142 — native swipe destructive panel (DESIGN §2.2). 80pt, solid red
+  // (opaque by construction — satisfies the Android opaque-glass policy), white
+  // trash glyph centered, no text label.
+  swipeAction: {
+    width: SWIPE_ACTION_WIDTH,
+    backgroundColor: semantic.error,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  // ORCH-1142 — web delete fallback (DESIGN §2.6). Always-visible trailing
+  // trash; color goes to semantic.error on hover/press (color-only, no layout
+  // shift).
+  webTrash: {
+    alignSelf: "center",
+    marginLeft: spacing.sm,
+    padding: spacing.xs,
   },
   chev: {
     alignSelf: "center",

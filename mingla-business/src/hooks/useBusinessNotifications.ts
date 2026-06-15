@@ -43,6 +43,12 @@ export interface BusinessNotification {
   body: string;
   deep_link: string | null;
   read_at: string | null;
+  /**
+   * ORCH-1142 soft-delete timestamp. NULL = active (visible); non-NULL = hidden
+   * from the operator inbox but PRESERVED server-side (reference value). The
+   * fetch + realtime patch EXCLUDE soft-deleted rows; never hard-delete.
+   */
+  deleted_at: string | null;
   created_at: string;
   /** JSONB payload from notify-dispatch (entity ids, bold token, etc.). */
   data?: Record<string, unknown> | null;
@@ -59,7 +65,7 @@ export const businessNotificationKeys = {
 const DISABLED_KEY = ["business-notifications-disabled"] as const;
 
 const SELECT_COLUMNS =
-  "id, user_id, brand_id, type, title, body, deep_link, read_at, created_at, data";
+  "id, user_id, brand_id, type, title, body, deep_link, read_at, deleted_at, created_at, data";
 
 function isBusinessType(type: string | undefined | null): boolean {
   const t = type ?? "";
@@ -109,6 +115,16 @@ function useBusinessNotificationsRealtime(userId: string | null): void {
         (payload) => {
           const updated = payload.new as BusinessNotification | null;
           if (updated === null || !isBusinessType(updated.type)) return;
+          // ORCH-1142: a soft-delete that arrives over realtime (e.g. the
+          // operator deleted on another device) must DROP the row from cache,
+          // not patch it in place — keeps multi-device inboxes consistent.
+          if (updated.deleted_at !== null && updated.deleted_at !== undefined) {
+            queryClient.setQueryData<readonly BusinessNotification[]>(
+              businessNotificationKeys.all(userId),
+              (old = []) => old.filter((n) => n.id !== updated.id),
+            );
+            return;
+          }
           queryClient.setQueryData<readonly BusinessNotification[]>(
             businessNotificationKeys.all(userId),
             (old = []) => old.map((n) => (n.id === updated.id ? updated : n)),
@@ -130,11 +146,16 @@ async function fetchBusinessNotifications(
   // business.% prefix filter. The `.or()` clause uses Postgrest syntax to
   // express the disjunction. Strict-grep gate W will fail if this clause is
   // removed or altered.
+  // ORCH-1142: exclude soft-deleted rows. The row persists server-side
+  // (reference value) but is hidden from the operator inbox. Do NOT remove
+  // this `.is("deleted_at", null)` filter — without it, swiped/cleared rows
+  // resurface on refetch (defeats the feature). I-PROPOSED-BH.
   const { data, error } = await supabase
     .from("notifications")
     .select(SELECT_COLUMNS)
     .eq("user_id", userId)
     .or("type.like.stripe.%,type.like.business.%")
+    .is("deleted_at", null)
     .order("created_at", { ascending: false })
     .limit(FETCH_LIMIT)
     .returns<BusinessNotification[]>();
@@ -175,6 +196,19 @@ export interface BusinessNotificationsInbox {
   readonly markAsRead: (id: string) => Promise<void>;
   /** Optimistically mark every unread business row read; reverts on error. */
   readonly markAllAsRead: () => Promise<void>;
+  /**
+   * ORCH-1142: optimistically soft-delete a single row (hide from inbox);
+   * reverts on error. Targets by primary key.
+   */
+  readonly softDelete: (id: string) => Promise<void>;
+  /**
+   * ORCH-1142: optimistically soft-delete every READ business row (the
+   * "Clear read" bulk action). Scoped to read + business-type ONLY — never
+   * unread, never consumer rows. Reverts on error.
+   */
+  readonly clearRead: () => Promise<void>;
+  /** True when at least one business row is read (gates the "Clear read" action). */
+  readonly hasRead: boolean;
 }
 
 /**
@@ -193,6 +227,12 @@ export function useBusinessNotificationsInbox(
 
   const unreadCount = useMemo(
     () => notifications.filter((n) => n.read_at === null).length,
+    [notifications],
+  );
+
+  // ORCH-1142: gates the header "Clear read" action — true when ≥1 read row.
+  const hasRead = useMemo(
+    () => notifications.some((n) => n.read_at !== null),
     [notifications],
   );
 
@@ -274,11 +314,92 @@ export function useBusinessNotificationsInbox(
     }
   }, [userId, queryClient]);
 
+  // ORCH-1142 — per-row soft-delete (swipe-to-delete native / web trash).
+  // Supersedes META-ORCH-1074 SUB-C_DESIGN §4.4 "NO swipe-to-dismiss" for the
+  // operator inbox VIEW only: soft-delete PRESERVES the row server-side (sets
+  // `deleted_at`), so reference value is intact. Do NOT convert to a hard
+  // delete and do NOT drop the `deleted_at IS NULL` fetch filter. I-PROPOSED-BH.
+  const softDelete = useCallback(
+    async (id: string): Promise<void> => {
+      if (userId === null) return;
+      const key = businessNotificationKeys.all(userId);
+      const prev = queryClient.getQueryData<readonly BusinessNotification[]>(key);
+      // Optimistically remove the row from cache (it disappears immediately).
+      queryClient.setQueryData<readonly BusinessNotification[]>(key, (old = []) =>
+        old.filter((n) => n.id !== id),
+      );
+      // Reset the iOS app-icon badge if no unread remain after removal.
+      const after = queryClient.getQueryData<readonly BusinessNotification[]>(key);
+      if ((after ?? []).every((n) => n.read_at !== null)) {
+        clearNotificationBadge();
+      }
+      // The strict-grep I-PROPOSED-W gate exempts `.update(` chains; this
+      // targets by primary key `id`, so it cannot cross-contaminate app types.
+      const { error } = await supabase
+        .from("notifications")
+        .update({ deleted_at: new Date().toISOString() })
+        .eq("id", id);
+      if (error) {
+        // Silent revert (transient blip isn't worth alarming an operator —
+        // same grammar as markAsRead). Restore the prior cache + order.
+        if (prev !== undefined) {
+          queryClient.setQueryData(key, prev);
+        } else {
+          void queryClient.invalidateQueries({ queryKey: key });
+        }
+        if (__DEV__) {
+          // eslint-disable-next-line no-console
+          console.warn("[useBusinessNotifications] softDelete failed:", error.message);
+        }
+      }
+    },
+    [userId, queryClient],
+  );
+
+  // ORCH-1142 — bulk soft-delete of READ business rows ("Clear read").
+  // EXACT scope: this user's rows that are read (read_at IS NOT NULL), not
+  // already soft-deleted, AND business-type only (stripe.%/business.%). NEVER
+  // touches unread rows; NEVER touches consumer rows. Same supersession +
+  // soft-delete-preserves-reference-value contract as softDelete. I-PROPOSED-BH.
+  const clearRead = useCallback(async (): Promise<void> => {
+    if (userId === null) return;
+    const key = businessNotificationKeys.all(userId);
+    const prev = queryClient.getQueryData<readonly BusinessNotification[]>(key);
+    const nowIso = new Date().toISOString();
+    // Optimistically remove all READ rows from cache (unread stay).
+    queryClient.setQueryData<readonly BusinessNotification[]>(key, (old = []) =>
+      old.filter((n) => n.read_at === null),
+    );
+    // Bulk update scoped to read + business-type. `.update(` is gate-exempt
+    // (I-PROPOSED-W); the `.or(...)` keeps it from ever hitting consumer rows.
+    const { error } = await supabase
+      .from("notifications")
+      .update({ deleted_at: nowIso })
+      .eq("user_id", userId)
+      .not("read_at", "is", null)
+      .is("deleted_at", null)
+      .or("type.like.stripe.%,type.like.business.%");
+    if (error) {
+      if (prev !== undefined) {
+        queryClient.setQueryData(key, prev);
+      } else {
+        void queryClient.invalidateQueries({ queryKey: key });
+      }
+      if (__DEV__) {
+        // eslint-disable-next-line no-console
+        console.warn("[useBusinessNotifications] clearRead failed:", error.message);
+      }
+    }
+  }, [userId, queryClient]);
+
   return {
     query,
     notifications,
     unreadCount,
     markAsRead,
     markAllAsRead,
+    softDelete,
+    clearRead,
+    hasRead,
   };
 }
