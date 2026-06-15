@@ -271,10 +271,22 @@ export const usePublicTripBySlug = (
           endAt: tripEndAt,
           destinationPlaceId:
             typeof bt.destinationPlaceId === "string" ? bt.destinationPlaceId : null,
+          // ORCH-1138 Leg-1 (native-parity fix #1) — destination from the
+          // CANONICAL `events.destination_text` column first, theme mirror only
+          // as fallback. Mirrors the authenticated `readBusinessTrip`
+          // (tripsService.ts) — the public hook previously read ONLY the
+          // theme.business_trip JSON mirror, which is NULL for trips authored via
+          // the canonical column (e.g. "The DC Adventure"). That silently hid the
+          // destination meta-chip AND the destination half of the route block on
+          // BOTH web + native (rule-9 null-guard), while departure (already
+          // canonical-first below) rendered — the exact reported divergence.
           destinationLocationText:
-            typeof bt.destinationLocationText === "string"
-              ? bt.destinationLocationText
-              : null,
+            typeof event.destination_text === "string" &&
+            (event.destination_text as string).trim().length > 0
+              ? (event.destination_text as string)
+              : typeof bt.destinationLocationText === "string"
+                ? bt.destinationLocationText
+                : null,
           destinationLat:
             typeof bt.destinationLat === "number" ? bt.destinationLat : null,
           destinationLng:
@@ -294,7 +306,18 @@ export const usePublicTripBySlug = (
             typeof bt.departureLat === "number" ? bt.departureLat : null,
           departureLng:
             typeof bt.departureLng === "number" ? bt.departureLng : null,
-          capacity: typeof bt.capacity === "number" ? bt.capacity : null,
+          // ORCH-1138 Leg-1 (native-parity fix #1) — capacity from the CANONICAL
+          // ticket-type quantity (mirrors `readBusinessTrip`: tripsService.ts uses
+          // `ticketTypes[0]?.quantity_total`), theme mirror only as fallback. The
+          // public hook previously read ONLY `bt.capacity`, which is NULL for
+          // canonical-authored trips → the "N seats left · M max" chip silently
+          // hid (rule-9) even though the ticket carried a real cap (e.g. 102).
+          capacity:
+            typeof tickets[0]?.quantity_total === "number"
+              ? (tickets[0].quantity_total as number)
+              : typeof bt.capacity === "number"
+                ? bt.capacity
+                : null,
         },
         days: days.map(
           (d): TripDay => ({

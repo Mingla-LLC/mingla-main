@@ -42,6 +42,7 @@ import {
   typography,
 } from "../../constants/designSystem";
 import {
+  boldFontFamily,
   formatTripDateRange,
   offeringSurfaceStyles,
   type ResolvedTheme,
@@ -270,7 +271,17 @@ const FoundationTripPreview: React.FC<{
 }) => {
   const { isDesktop } = useResponsiveLayout();
   const surface = offeringSurfaceStyles(palette);
-  const fontFamily = theme.fontFamilyValue;
+  // ORCH-1138 Leg-1 (native-parity fix #2) — the BOLD (700-weight) loaded family.
+  // On native a loaded custom font ignores `fontWeight`, so every element the
+  // mockup shows bold (title, section headings, brand name, day titles, chip
+  // VALUES like "3 seats left", the route place values) sets `fontFamily` to this
+  // weight-specific family instead of relying on the StyleSheet's `fontWeight`
+  // (which only synthesized bold on react-native-web — the native divergence).
+  // The route loads this family via useThemeFont(boldFontFamily(theme)).
+  // (The medium `theme.fontFamilyValue` is no longer referenced on this page — the
+  // mockup renders the brand face only at bold weights; small caps eyebrows/labels
+  // intentionally stay on the system font per DIRECTION_A_V2.)
+  const boldFamily = boldFontFamily(theme);
 
   const bt = trip.businessTrip;
   const tier = trip.pricingTiers[0];
@@ -320,7 +331,7 @@ const FoundationTripPreview: React.FC<{
         <Text style={[styles.brandKicker, surface.tertiaryText]}>
           Presented by
         </Text>
-        <Text style={[styles.brandName, surface.primaryText, { fontFamily }]}>
+        <Text style={[styles.brandName, surface.primaryText, { fontFamily: boldFamily }]}>
           {brand.name}
         </Text>
       </View>
@@ -334,7 +345,9 @@ const FoundationTripPreview: React.FC<{
       trip={trip}
       palette={palette}
       surface={surface}
-      fontFamily={fontFamily}
+      // ORCH-1138 fix #2 — DayByDay's only themed text is the bold day title, so
+      // it receives the BOLD loaded family (native bold needs the weighted family).
+      fontFamily={boldFamily}
       variant={isDesktop ? "desktop" : "phone"}
     />
   ) : null;
@@ -349,7 +362,7 @@ const FoundationTripPreview: React.FC<{
   const refundBlock =
     trip.refundPolicy !== null || trip.bookingDeadline !== null ? (
       <View style={styles.section}>
-        <Text style={[styles.secTitle, surface.primaryText, { fontFamily }]}>
+        <Text style={[styles.secTitle, surface.primaryText, { fontFamily: boldFamily }]}>
           Cancellation policy
         </Text>
         <RefundLadder
@@ -374,7 +387,7 @@ const FoundationTripPreview: React.FC<{
                 : ""}
             </Text>
           ) : null}
-          <Text style={[styles.title, surface.primaryText, { fontFamily }]}>
+          <Text style={[styles.title, surface.primaryText, { fontFamily: boldFamily }]}>
             {trip.title}
           </Text>
         </View>
@@ -383,17 +396,32 @@ const FoundationTripPreview: React.FC<{
       {/* meta chips */}
       <View style={styles.metaRow}>
         {dateLabel.length > 0 ? (
-          <MetaChip palette={palette} surface={surface} icon="calendar">
+          <MetaChip
+            palette={palette}
+            surface={surface}
+            icon="calendar"
+            fontFamily={boldFamily}
+          >
             {dateLabel}
           </MetaChip>
         ) : null}
         {duration !== null ? (
-          <MetaChip palette={palette} surface={surface} icon="clock">
+          <MetaChip
+            palette={palette}
+            surface={surface}
+            icon="clock"
+            fontFamily={boldFamily}
+          >
             {duration}
           </MetaChip>
         ) : null}
         {capacity !== null ? (
-          <MetaChip palette={palette} surface={surface} icon="users">
+          <MetaChip
+            palette={palette}
+            surface={surface}
+            icon="users"
+            fontFamily={boldFamily}
+          >
             {isSoldOut
               ? `Sold out · ${capacity} of ${capacity} booked`
               : tier?.ticketsRemaining != null
@@ -402,7 +430,12 @@ const FoundationTripPreview: React.FC<{
           </MetaChip>
         ) : null}
         {bt.destinationLocationText != null ? (
-          <MetaChip palette={palette} surface={surface} icon="location">
+          <MetaChip
+            palette={palette}
+            surface={surface}
+            icon="location"
+            fontFamily={boldFamily}
+          >
             {bt.destinationLocationText}
           </MetaChip>
         ) : null}
@@ -419,7 +452,9 @@ const FoundationTripPreview: React.FC<{
               <Text style={[styles.routeLabel, surface.tertiaryText]}>
                 Leaving from
               </Text>
-              <Text style={[styles.routePlace, surface.primaryText]}>
+              <Text
+                style={[styles.routePlace, surface.primaryText, { fontFamily: boldFamily }]}
+              >
                 {bt.departureLocationText}
               </Text>
             </View>
@@ -433,7 +468,9 @@ const FoundationTripPreview: React.FC<{
               <Text style={[styles.routeLabel, surface.tertiaryText]}>
                 Destination
               </Text>
-              <Text style={[styles.routePlace, surface.primaryText]}>
+              <Text
+                style={[styles.routePlace, surface.primaryText, { fontFamily: boldFamily }]}
+              >
                 {bt.destinationLocationText}
               </Text>
             </View>
@@ -444,7 +481,7 @@ const FoundationTripPreview: React.FC<{
       {/* about */}
       {trip.description !== null && trip.description.trim().length > 0 ? (
         <View style={styles.section}>
-          <Text style={[styles.secTitle, surface.primaryText, { fontFamily }]}>
+          <Text style={[styles.secTitle, surface.primaryText, { fontFamily: boldFamily }]}>
             About this trip
           </Text>
           <View style={styles.aboutWrap}>
@@ -459,7 +496,7 @@ const FoundationTripPreview: React.FC<{
       {/* day by day */}
       {itinerary !== null ? (
         <View style={styles.section}>
-          <Text style={[styles.secTitle, surface.primaryText, { fontFamily }]}>
+          <Text style={[styles.secTitle, surface.primaryText, { fontFamily: boldFamily }]}>
             Day by day
           </Text>
           {itinerary}
@@ -469,7 +506,7 @@ const FoundationTripPreview: React.FC<{
       {/* what's included */}
       {includedChips.length > 0 ? (
         <View style={styles.section}>
-          <Text style={[styles.secTitle, surface.primaryText, { fontFamily }]}>
+          <Text style={[styles.secTitle, surface.primaryText, { fontFamily: boldFamily }]}>
             What&rsquo;s included
           </Text>
           <ChipGroup chips={includedChips} palette={palette} />
@@ -479,7 +516,7 @@ const FoundationTripPreview: React.FC<{
       {/* what's not included */}
       {excludedChips.length > 0 ? (
         <View style={styles.section}>
-          <Text style={[styles.secTitle, surface.primaryText, { fontFamily }]}>
+          <Text style={[styles.secTitle, surface.primaryText, { fontFamily: boldFamily }]}>
             What&rsquo;s not included
           </Text>
           <ChipGroup chips={excludedChips} palette={palette} />
@@ -498,7 +535,7 @@ const FoundationTripPreview: React.FC<{
           never a crash. Works on native AND react-native-web. */}
       {bt.destinationLat !== null && bt.destinationLng !== null ? (
         <View style={styles.section}>
-          <Text style={[styles.secTitle, surface.primaryText, { fontFamily }]}>
+          <Text style={[styles.secTitle, surface.primaryText, { fontFamily: boldFamily }]}>
             Where you&rsquo;ll be
           </Text>
           <View
@@ -539,7 +576,7 @@ const FoundationTripPreview: React.FC<{
       {/* phone-only inline payment block */}
       {!isDesktop && paymentBlock !== undefined ? (
         <View style={styles.section}>
-          <Text style={[styles.secTitle, surface.primaryText, { fontFamily }]}>
+          <Text style={[styles.secTitle, surface.primaryText, { fontFamily: boldFamily }]}>
             Choose how you pay
           </Text>
           {paymentBlock}
@@ -588,7 +625,9 @@ const FoundationTripPreview: React.FC<{
         ) : undefined
       }
       heroTitle={
-        <Text style={[styles.heroTitle, { fontFamily }]}>{trip.title}</Text>
+        <Text style={[styles.heroTitle, { fontFamily: boldFamily }]}>
+          {trip.title}
+        </Text>
       }
       stateBanner={stateBanner}
       stickyPanel={stickyPanel}
@@ -606,11 +645,17 @@ const MetaChip: React.FC<{
   palette: ThemePalette;
   surface: ReturnType<typeof offeringSurfaceStyles>;
   icon: React.ComponentProps<typeof Icon>["name"];
+  // ORCH-1138 Leg-1 (native-parity fix #2) — the bold loaded family so the chip
+  // VALUE ("3 seats left · 102 max", "Positano, Italy") renders bold on native
+  // (a loaded custom font ignores `fontWeight` natively).
+  fontFamily: string;
   children: React.ReactNode;
-}> = ({ palette, surface, icon, children }) => (
+}> = ({ palette, surface, icon, fontFamily, children }) => (
   <View style={[styles.metaChip, surface.card]}>
     <Icon name={icon} size={15} color={palette.accent} />
-    <Text style={[styles.metaChipText, surface.secondaryText]}>{children}</Text>
+    <Text style={[styles.metaChipText, surface.secondaryText, { fontFamily }]}>
+      {children}
+    </Text>
   </View>
 );
 

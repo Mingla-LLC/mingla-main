@@ -14,7 +14,11 @@
 // Pure: depends ONLY on `ResolvedTheme` (from ./designTokens). No app `src/`
 // imports — preserves I-MOR-0827-PACKAGE-ISOLATION.
 
-import { type ResolvedTheme } from "./designTokens";
+import {
+  FONT_FAMILY_MAP,
+  type ResolvedTheme,
+  type ThemeFontSlug,
+} from "./designTokens";
 
 export type ThemePalette = {
   page: string;
@@ -245,3 +249,52 @@ export const offeringSurfaceStyles = (
   danger: { color: DANGER },
   dangerWash: { backgroundColor: DANGER_WASH },
 });
+
+// =====================================================================
+// ORCH-1138 Leg-1 (native-parity fix #2) — WEIGHT-AWARE theme font family.
+//
+// THE NATIVE TRAP: on iOS/Android a LOADED CUSTOM font does NOT respond to
+// `fontWeight`. `FONT_FAMILY_MAP` loads exactly ONE non-bold variant per theme
+// font (e.g. `Inter_500Medium`); a Text styled `{ fontFamily: "Inter_500Medium",
+// fontWeight: "900" }` therefore renders at MEDIUM weight on native (react-native
+// -web synthesizes bold from `font-weight`, so web looked correct — the reason
+// this was a native-only divergence). To render bold on native you must point
+// `fontFamily` at the weight-specific loaded family (`Inter_700Bold`).
+//
+// `FONT_FAMILY_BOLD_MAP` maps each slug → its 700-weight loaded family VALUE.
+// Three display faces (`dm_serif_display`, `bebas_neue`, `anton`) ship NO bold
+// variant in @expo-google-fonts (they are inherently heavy single-weight display
+// faces); for those the base family IS the display weight, so bold falls back to
+// `FONT_FAMILY_MAP[slug]` (no synthetic bold, no missing-font fallback). The
+// family VALUES here are the on-demand load keys consumed by
+// `THEME_FONT_MODULE_THUNKS` (mingla-business/src/theme/themeFonts.ts) +
+// `useThemeFont` so the bold face is actually registered with expo-font before
+// it is referenced.
+export const FONT_FAMILY_BOLD_MAP: Record<ThemeFontSlug, string> = {
+  inter: "Inter_700Bold",
+  poppins: "Poppins_700Bold",
+  space_grotesk: "SpaceGrotesk_700Bold",
+  plus_jakarta_sans: "PlusJakartaSans_700Bold",
+  manrope: "Manrope_700Bold",
+  playfair_display: "PlayfairDisplay_700Bold",
+  // No bold variant published — base IS the display weight.
+  dm_serif_display: FONT_FAMILY_MAP.dm_serif_display,
+  fraunces: "Fraunces_700Bold",
+  lora: "Lora_700Bold",
+  // No bold variant — Bebas Neue is a single heavy display weight.
+  bebas_neue: FONT_FAMILY_MAP.bebas_neue,
+  // No bold variant — Anton is a single heavy display weight.
+  anton: FONT_FAMILY_MAP.anton,
+  unbounded: "Unbounded_700Bold",
+  caveat: "Caveat_700Bold",
+  dancing_script: "DancingScript_700Bold",
+};
+
+/**
+ * The bold (700-weight) loaded font-family VALUE for a resolved theme — the
+ * family a native `<Text>` must set as `fontFamily` to actually render bold.
+ * Falls back to the medium/base family for the 3 single-weight display faces.
+ * Use this (NOT `fontWeight` alone) for every heavy/bold text on a themed page.
+ */
+export const boldFontFamily = (theme: ResolvedTheme): string =>
+  FONT_FAMILY_BOLD_MAP[theme.font] ?? theme.fontFamilyValue;

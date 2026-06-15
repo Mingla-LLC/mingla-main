@@ -37,6 +37,7 @@ import {
   typography,
 } from "../../../src/constants/designSystem";
 import {
+  boldFontFamily,
   createThemePalette,
   resolveOfferingSurface,
   resolveTheme,
@@ -218,6 +219,16 @@ const ResolvedTripPage: React.FC<{
   // setting fontFamily on Text silently no-ops on native → the system font shows
   // (Seth's device finding #1). Mirrors PublicEventPage / PublicBrandPage exactly.
   useThemeFont(theme.fontFamilyValue);
+  // ORCH-1138 Leg-1 (native-parity fix #2) — ALSO load the BOLD (700-weight)
+  // family. On native a loaded custom font ignores `fontWeight`, so every bold
+  // text on the page sets `fontFamily` to the weight-specific family
+  // (boldFontFamily(theme), e.g. "Inter_700Bold"); without registering it here
+  // expo-font has no bold face → native silently falls back to medium/system
+  // (the reported "bold not applying" divergence; web synthesized bold from
+  // font-weight so it looked correct there). No-op when bold === base (the 3
+  // single-weight display faces).
+  const boldFamily = boldFontFamily(theme);
+  useThemeFont(boldFamily);
 
   // ORCH-0875 booking-deadline state.
   const deadlineIso = trip.bookingDeadline;
@@ -370,7 +381,7 @@ const ResolvedTripPage: React.FC<{
       paymentPlanChoice={paymentPlanChoice}
       onPaymentPlanChoiceChange={onPaymentPlanChoiceChange}
       palette={palette}
-      fontFamily={theme.fontFamilyValue}
+      fontFamily={boldFamily}
     />
   );
 
@@ -400,7 +411,7 @@ const ResolvedTripPage: React.FC<{
           style={[
             styles.deskReserveText,
             { color: reserveTappable ? palette.accentText : palette.tertiaryText },
-            { fontFamily: theme.fontFamilyValue },
+            { fontFamily: boldFamily },
           ]}
         >
           {reserveTappable
@@ -459,7 +470,7 @@ const ResolvedTripPage: React.FC<{
           palette={palette}
           surface={surface}
           kicker={barKicker}
-          fontFamily={theme.fontFamilyValue}
+          fontFamily={boldFamily}
           onPress={handleTripReserve}
           testID="orch-1117-trip-floating-bar"
         />

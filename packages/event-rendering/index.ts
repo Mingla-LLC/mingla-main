@@ -13,6 +13,11 @@ export {
   createThemePalette,
   resolveOfferingSurface,
   offeringSurfaceStyles,
+  // ORCH-1138 Leg-1 (native-parity fix #2) — weight-aware theme font family.
+  // A loaded custom font ignores fontWeight on native; bold text must point
+  // fontFamily at the 700-weight loaded family. boldFontFamily(theme) returns it.
+  FONT_FAMILY_BOLD_MAP,
+  boldFontFamily,
 } from "./themePalette";
 export type { ThemePalette, OfferingSurfaceStyles } from "./themePalette";
 export { PublicEventNotFound } from "./PublicEventNotFound";
