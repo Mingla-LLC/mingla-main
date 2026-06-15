@@ -14,6 +14,10 @@ module.exports = {
     "EditPublishedTripScreen\\.coverDeadTap\\.render\\.test\\.tsx$",
     // ORCH-1122 tester-owned adversarial render-proof (two-way close binding).
     "EditPublishedTripScreen\\.coverClose\\.adversarial\\.render\\.test\\.tsx$",
+    // ORCH-1143 tester runtime render-proof — runs under jest.orch1143.render.cjs
+    // (RN preset + RTL via the .orch1118-testdeps overlay); MUST NOT run under
+    // this default node/ts-jest config (no RTL).
+    "LiveOfferingCard\\.orch1143\\.render\\.test\\.tsx$",
   ],
   moduleFileExtensions: ["ts", "tsx", "js", "jsx", "json"],
   transform: {
