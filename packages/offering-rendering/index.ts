@@ -25,6 +25,13 @@ export type { GalleryLayout } from "./galleryLayout";
 export { ChipGroup } from "./ChipGroup";
 export type { Chip, ChipGroupProps } from "./ChipGroup";
 
+// ORCH-1138 [trip-page-redesign] — shared "City, Country" route-leg normalizer
+// (departure/destination) used identically by the business/web TripPreview and
+// the consumer ConsumerTripDetailScreen so the leaving-from/destination block
+// stays standardized + balanced on one aligned row across every surface.
+export { normalizeCityCountry } from "./normalizeCityCountry";
+export type { StructuredPlaceParts } from "./normalizeCityCountry";
+
 export {
   useResponsiveLayout,
   DESKTOP_BREAKPOINT,

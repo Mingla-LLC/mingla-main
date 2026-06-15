@@ -622,7 +622,11 @@ export default function ConsumerTripDetailScreen({
         </View>
       ) : null}
 
-      {/* route — leaving from → destination (each leg only when present) */}
+      {/* route — leaving from → destination (each leg only when present).
+          ORCH-1138: legs are standardized to "City, Country" in the foundation
+          adapter; each routePlace is numberOfLines={1}+ellipsis on a flex:1/
+          minWidth:0 column so a long city truncates rather than WRAPS — keeps
+          both legs balanced on one aligned row (parity with TripPreview). */}
       {fnd.route !== null ? (
         <View style={[styles.route, surface.card]}>
           {fnd.route.departure !== null ? (
@@ -631,6 +635,8 @@ export default function ConsumerTripDetailScreen({
                 Leaving from
               </Text>
               <Text
+                numberOfLines={1}
+                ellipsizeMode="tail"
                 style={[styles.routePlace, surface.primaryText, { fontFamily: boldFamily }]}
               >
                 {fnd.route.departure}
@@ -646,6 +652,8 @@ export default function ConsumerTripDetailScreen({
                 Destination
               </Text>
               <Text
+                numberOfLines={1}
+                ellipsizeMode="tail"
                 style={[styles.routePlace, surface.primaryText, { fontFamily: boldFamily }]}
               >
                 {fnd.route.destination}

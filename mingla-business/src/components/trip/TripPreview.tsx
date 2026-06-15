@@ -53,6 +53,7 @@ import {
   CountAwareGallery,
   ChipGroup,
   useResponsiveLayout,
+  normalizeCityCountry,
   type Chip,
   type CountAwareGalleryItem,
 } from "@mingla/offering-rendering";
@@ -284,6 +285,13 @@ const FoundationTripPreview: React.FC<{
   const boldFamily = boldFontFamily(theme);
 
   const bt = trip.businessTrip;
+  // ORCH-1138 [trip-page-redesign] — standardize the route legs to "City, Country"
+  // so leaving-from + destination stay short + balanced on ONE aligned row. The
+  // trip payload carries only free-text *LocationText (no structured city/country
+  // fields), so we parse the free text via the shared normalizer. null → that leg
+  // is hidden (rule 9, no fabrication).
+  const departureCityCountry = normalizeCityCountry(bt.departureLocationText);
+  const destinationCityCountry = normalizeCityCountry(bt.destinationLocationText);
   const tier = trip.pricingTiers[0];
   const includedChips: Chip[] = trip.inclusions
     .filter((i) => i.kind === "included")
@@ -444,34 +452,41 @@ const FoundationTripPreview: React.FC<{
       {/* brand chip — phone shows it inline; desktop puts it in the sticky panel */}
       {!isDesktop ? brandChip : null}
 
-      {/* route line */}
-      {bt.departureLocationText != null || bt.destinationLocationText != null ? (
+      {/* route line — ORCH-1138: legs standardized to "City, Country"; each
+          routePlace is numberOfLines={1}+ellipsis on a flex:1/minWidth:0 column
+          so a long city truncates rather than WRAPS (keeps both legs balanced on
+          one aligned row). */}
+      {departureCityCountry != null || destinationCityCountry != null ? (
         <View style={[styles.route, surface.card]}>
-          {bt.departureLocationText != null ? (
+          {departureCityCountry != null ? (
             <View style={styles.routeLeg}>
               <Text style={[styles.routeLabel, surface.tertiaryText]}>
                 Leaving from
               </Text>
               <Text
+                numberOfLines={1}
+                ellipsizeMode="tail"
                 style={[styles.routePlace, surface.primaryText, { fontFamily: boldFamily }]}
               >
-                {bt.departureLocationText}
+                {departureCityCountry}
               </Text>
             </View>
           ) : null}
-          {bt.departureLocationText != null &&
-          bt.destinationLocationText != null ? (
+          {departureCityCountry != null &&
+          destinationCityCountry != null ? (
             <Text style={[styles.routeArrow, { color: palette.accent }]}>→</Text>
           ) : null}
-          {bt.destinationLocationText != null ? (
+          {destinationCityCountry != null ? (
             <View style={styles.routeLeg}>
               <Text style={[styles.routeLabel, surface.tertiaryText]}>
                 Destination
               </Text>
               <Text
+                numberOfLines={1}
+                ellipsizeMode="tail"
                 style={[styles.routePlace, surface.primaryText, { fontFamily: boldFamily }]}
               >
-                {bt.destinationLocationText}
+                {destinationCityCountry}
               </Text>
             </View>
           ) : null}
@@ -850,6 +865,16 @@ const LegacyTripPreview: React.FC<{
   const includedItems = trip.inclusions.filter((i) => i.kind === "included");
   const excludedItems = trip.inclusions.filter((i) => i.kind === "excluded");
   const tier = trip.pricingTiers[0];
+  // ORCH-1138 [trip-page-redesign] — same "City, Country" standardization on the
+  // wizard Step-5 review meta-rows (same data, same "addresses too long"
+  // complaint). This LEGACY layout is a vertical icon meta-row list (NOT the
+  // side-by-side same-line block), so only Fix-1 (shorten) applies here.
+  const legacyDeparture = normalizeCityCountry(
+    trip.businessTrip.departureLocationText,
+  );
+  const legacyDestination = normalizeCityCountry(
+    trip.businessTrip.destinationLocationText,
+  );
   // ORCH-1119 — one-playing guard for per-day gallery videos.
   const [activeVideoKey, setActiveVideoKey] = React.useState<string | null>(
     null,
@@ -883,19 +908,19 @@ const LegacyTripPreview: React.FC<{
             )}
           </Text>
         </View>
-        {trip.businessTrip.departureLocationText !== null ? (
+        {legacyDeparture !== null ? (
           <View style={styles.legacyMetaRow}>
             <Icon name="send" size={16} color={accent.warm} />
-            <Text style={styles.legacyMetaText} numberOfLines={2}>
-              Leaving from {trip.businessTrip.departureLocationText}
+            <Text style={styles.legacyMetaText} numberOfLines={1}>
+              Leaving from {legacyDeparture}
             </Text>
           </View>
         ) : null}
-        {trip.businessTrip.destinationLocationText !== null ? (
+        {legacyDestination !== null ? (
           <View style={styles.legacyMetaRow}>
             <Icon name="location" size={16} color={accent.warm} />
-            <Text style={styles.legacyMetaText} numberOfLines={2}>
-              {trip.businessTrip.destinationLocationText}
+            <Text style={styles.legacyMetaText} numberOfLines={1}>
+              {legacyDestination}
             </Text>
           </View>
         ) : null}

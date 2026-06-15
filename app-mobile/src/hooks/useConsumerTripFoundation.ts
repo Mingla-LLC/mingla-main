@@ -14,6 +14,7 @@
 //
 // 🔒 I-MOR-0827-PACKAGE-ISOLATION: no import from mingla-business/src.
 
+import { normalizeCityCountry } from "@mingla/offering-rendering";
 import type { Chip, CountAwareGalleryItem } from "@mingla/offering-rendering";
 import type { ThemePalette } from "@mingla/event-rendering";
 
@@ -143,9 +144,18 @@ export function mapConsumerTripToFoundation(
         "has-range"
       : "";
 
+  // ORCH-1138 [trip-page-redesign] — standardize the route legs to "City, Country"
+  // (shared normalizer, parity with the business/web TripPreview) so leaving-from
+  // + destination stay short + balanced on ONE aligned row. The consumer trip
+  // payload carries only free text (F-4: no structured city/country / lat-lng), so
+  // we parse the free text. null → that leg is hidden (rule 9, no fabrication).
+  // NOTE: heroEyebrow above intentionally keeps the raw `destination` — only the
+  // leaving-from/destination BLOCK is standardized per Seth's request.
+  const departureCityCountry = normalizeCityCountry(detail.departureText);
+  const destinationCityCountry = normalizeCityCountry(destination);
   const route: FoundationRoute | null =
-    detail.departureText !== null || destination !== null
-      ? { departure: detail.departureText, destination }
+    departureCityCountry !== null || destinationCityCountry !== null
+      ? { departure: departureCityCountry, destination: destinationCityCountry }
       : null;
 
   const days: FoundationTripDay[] = detail.days.map((d) => ({
