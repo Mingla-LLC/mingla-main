@@ -181,6 +181,98 @@ export const isPublicBuyerRoute = (
 };
 
 /**
+ * SELF-AUTHENTICATING STRIPE-CONNECT SELLER ROUTES — ORCH-1139.
+ *
+ * Exempt from the ORCH-1102 route-agnostic sign-in redirect. These are NOT
+ * anon-public buyer routes (do NOT add them to PUBLIC_BUYER_ROUTE_PREFIXES).
+ * They are served by the WEB bundle and opened by the native "Set up payments"
+ * CTA in a SESSIONLESS in-app browser (WebBrowser.openAuthSessionAsync), so they
+ * carry NO Supabase web session and the route-agnostic gate would bounce them
+ * to `/` (business sign-in) before the page can mount.
+ *
+ * CONSTITUTIONAL CAVEAT: this exemption is valid ONLY because each page carries
+ * its OWN out-of-band credential in the URL — the Stripe AccountSession
+ * client_secret (`?session=…`), minted by the auth-checked `brand-stripe-onboard`
+ * edge function — and authenticates itself against Stripe (ConnectOnboardingBody
+ * never reads a Supabase user). The exemption does NOT make seller account data
+ * public: the page renders nothing without a valid Stripe client_secret. NEVER
+ * add a route here that would instead read account data from an implicit Supabase
+ * session — that would be a real data exposure. (See ORCH-1139 F-2 / Q3.)
+ *
+ * Written WITHOUT a trailing slash; the matcher (`isSelfAuthenticatedExemptRoute`)
+ * normalizes each prefix to its no-trailing-slash `base` and matches segment-safe
+ * (`normalized === base || normalized.startsWith(base + "/")`), so the bare route
+ * (`/connect-onboarding`) AND any sub-path (`/connect-onboarding/foo`) match while
+ * a lookalike (`/connect-onboarding-evil`) does NOT.
+ */
+export const SELF_AUTHENTICATING_CONNECT_ROUTE_PREFIXES = [
+  "/connect-onboarding", // app/connect-onboarding.web.tsx — Stripe Connect onboarding
+  "/connect-account-management", // app/connect-account-management.web.tsx
+  "/connect-partner-onboarding", // app/connect-partner-onboarding.web.tsx
+  "/connect-partner-account-management", // app/connect-partner-account-management.web.tsx
+  "/connect-tax-registrations", // app/connect-tax-registrations/index.web.tsx
+  "/stripe-onboarding-return", // app/stripe-onboarding-return.tsx — hosted-onboarding HTTPS relay
+] as const;
+
+/**
+ * INVITE-ACCEPT ROUTES — ORCH-1139 (D-1, Seth-folded-in 2026-06-15).
+ *
+ * Exempt from the sign-in redirect for the SAME reason as the connect routes:
+ * a logged-OUT invitee opening an emailed invite link must reach the accept
+ * page, not the sign-in wall. CONSTITUTIONAL CAVEAT: valid ONLY because each
+ * page carries its OWN out-of-band credential — the invite TOKEN in the URL —
+ * and performs its own authorization against that token. The exemption does NOT
+ * make any brand/scanner data public; the page resolves nothing without a valid
+ * invite token. Kept DISTINCT from the connect set and the buyer set so a
+ * reviewer can reason about each class independently.
+ *
+ * `/accept-brand-invitation` also covers `/accept-brand-invitation/success`
+ * (app/accept-brand-invitation/success.tsx) via the matcher's `base + "/"` clause.
+ */
+export const INVITE_ACCEPT_ROUTE_PREFIXES = [
+  "/accept-brand-invitation", // app/accept-brand-invitation.tsx (+ /success sub-route)
+  "/accept-scanner-invitation", // app/accept-scanner-invitation.tsx
+] as const;
+
+/**
+ * Is the current pathname a SELF-AUTHENTICATING exempt route — ORCH-1139?
+ *
+ * Pure, RN-import-free (same discipline as `isPublicBuyerRoute`). Returns true
+ * for any Stripe-Connect seller route OR invite-accept route — both classes
+ * authenticate via an out-of-band credential in the URL (Stripe client_secret /
+ * invite token), NOT via a Supabase web session, so the route-agnostic sign-in
+ * redirect must NOT bounce them. Used to EXEMPT these routes from the redirect
+ * (the exemption can only ever turn a redirect OFF — never ON).
+ *
+ * Matching is IDENTICAL to `isPublicBuyerRoute` (segment-safe prefix match on the
+ * pathname only — no query string):
+ * - null / undefined / empty / whitespace-only → false.
+ * - Trim; strip a single trailing slash for `length > 1`.
+ * - For each prefix `P`, let `base = P` without any trailing slash. Match iff
+ *   `normalized === base` OR `normalized.startsWith(base + "/")` — the `+ "/"`
+ *   keeps it SEGMENT-SAFE (`/connect-onboarding-evil` does NOT match).
+ */
+export const isSelfAuthenticatedExemptRoute = (
+  pathname: string | null | undefined,
+): boolean => {
+  if (pathname === null || pathname === undefined) return false;
+  const trimmed = pathname.trim();
+  if (trimmed === "") return false;
+  // Strip a single trailing slash (but never the root "/" itself).
+  const normalized =
+    trimmed.length > 1 && trimmed.endsWith("/")
+      ? trimmed.slice(0, -1)
+      : trimmed;
+  return [
+    ...SELF_AUTHENTICATING_CONNECT_ROUTE_PREFIXES,
+    ...INVITE_ACCEPT_ROUTE_PREFIXES,
+  ].some((prefix) => {
+    const base = prefix.endsWith("/") ? prefix.slice(0, -1) : prefix;
+    return normalized === base || normalized.startsWith(`${base}/`);
+  });
+};
+
+/**
  * REDIRECT-TO-SIGN-IN, loop-safe + public-buyer-aware — ORCH-1103 + ORCH-1115.
  *
  * Combines the ORCH-1102 `shouldRedirectToSignIn` decision with the
@@ -198,6 +290,14 @@ export const isPublicBuyerRoute = (
  * can ONLY flip a `true` to `false` (suppress a redirect on a public route) — it
  * NEVER causes a redirect that did not already fire, so no authed-only route's
  * behavior can change.
+ *
+ * ORCH-1139: ALSO returns false when the pathname is a SELF-AUTHENTICATING
+ * exempt route (`isSelfAuthenticatedExemptRoute` — Stripe-Connect seller routes
+ * `SELF_AUTHENTICATING_CONNECT_ROUTE_PREFIXES` + invite-accept routes
+ * `INVITE_ACCEPT_ROUTE_PREFIXES`). Same "can only suppress, never cause"
+ * reasoning as the ORCH-1115 clause: these pages authenticate via an out-of-band
+ * URL credential (Stripe client_secret / invite token), not a Supabase web
+ * session, so the route-agnostic redirect must not bounce them to sign-in.
  */
 export const shouldRedirectToSignInFromRoute = ({
   isWeb,
@@ -214,7 +314,8 @@ export const shouldRedirectToSignInFromRoute = ({
 }): boolean =>
   shouldRedirectToSignIn({ isWeb, loading, hasUser, hasStoredWebSession }) &&
   !isSignInRoute(pathname) &&
-  !isPublicBuyerRoute(pathname);
+  !isPublicBuyerRoute(pathname) &&
+  !isSelfAuthenticatedExemptRoute(pathname);
 
 /**
  * The companion LOADING gate — ORCH-1102.

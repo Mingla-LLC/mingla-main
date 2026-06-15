@@ -81,9 +81,13 @@ const AUTHED_ONLY_ROUTE_SAMPLES: string[] = [
   "/ari",
   "/support",
   "/notifications",
-  "/connect-partner-onboarding",
+  // [TEST-MOD-APPROVED ORCH-1139] /connect-partner-onboarding and
+  // /stripe-onboarding-return are now SELF-AUTHENTICATING exempt routes
+  // (ORCH-1139) → they correctly NO LONGER redirect, so removed from this
+  // authed-only sample. /accept-invite stays: it is NOT a real route (the real
+  // routes are /accept-brand-invitation + /accept-scanner-invitation), so it
+  // correctly STILL redirects — kept as a negative control.
   "/accept-invite",
-  "/stripe-onboarding-return",
 ];
 
 describe("ORCH-1115 T-1 (happy) — logged-out guest on a PUBLIC buyer route is NOT redirected", () => {
