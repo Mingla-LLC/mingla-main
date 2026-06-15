@@ -1403,6 +1403,12 @@
 
 (Full list of S2 and S3 items omitted for readability — see WORLD_MAP.md Issue Registry for complete data)
 
+## Recently Closed (Business Notifications — full-read + delete)
+
+| ID | Title | Resolution | Closed Date | Evidence |
+|----|-------|-----------|-------------|----------|
+| ORCH-1142 | Business notification inbox: can't read full notification + can't delete read ones | Root cause = deliberate META-ORCH-1074 Sub-C scope-outs (truncated body + navigate-away tap; no delete). Added tap-to-expand-in-place (deep-link → secondary "Open") + per-row swipe-delete + "Clear read" header bulk action, backed by soft-delete (`deleted_at`, migration `20261002000000`) preserving financial-record reference value. No new dep. | 2026-06-15 | QA CONDITIONAL→full PASS (operator device-confirmed); invariant `I-PROPOSED-BH-NOTIF-SOFTDELETE-EXCLUDED-AND-SCOPED`; PRs #485/#486/#487/#490; OTA iOS `86e1dfce` + Android `b097761a` |
+
 ## Recently Closed (Map Foreground Refresh)
 
 | ID | Title | Resolution | Closed Date | Evidence |
