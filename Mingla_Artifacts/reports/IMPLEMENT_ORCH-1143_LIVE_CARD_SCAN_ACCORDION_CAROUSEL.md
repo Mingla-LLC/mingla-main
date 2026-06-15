@@ -123,7 +123,7 @@ Note on test style: the default biz-app jest config is node/ts-jest with NO RN r
 
 ## 10. Known issues / deferred
 
-- **SC-7 (no-duplication) DEFERRED — needs orchestrator/Seth attention.** The SPEC wanted live offerings to appear in the carousel ONLY, not also as Upcoming-list rows. The existing **append-only-locked** ORCH-0974 test `home.orch_0974.adversarial.test.tsx` A-05 pins the FlatList binding to the literal `data={upcoming.items}` (all items, including live). Filtering live items out of that list would change the binding and FAIL A-05, which CI `tests-append-only.yml` forbids without a `[TEST-MOD-APPROVED ORCH-NNNN]` commit (itself a new ORCH). SPEC §SC-7 explicitly anticipated this ("Confirm current Upcoming-list behavior in IMPLEMENT"). I kept A-05 green and did NOT de-duplicate. Net behavior: a live offering shows in BOTH the new live carousel (with the scan button) and as an existing Upcoming row (navigation only, no scan). If Seth wants strict de-dup, spawn a follow-up ORCH that carries the `[TEST-MOD-APPROVED]` to retarget A-05.
+- **SC-7 (no-duplication) — NOW IMPLEMENTED 2026-06-15 (commit `d0c7f0b50`).** The earlier deferral (A-05 append-only lock) was resolved with Seth's `[TEST-MOD-APPROVED ORCH-1143]` token. The Upcoming list (mobile FlatList + desktop pane) now renders `upcoming.nonLiveItems` (non-live only); live offerings are surfaced exclusively in the Live-now carousel. See §13 (SC-7) below for the full receipt.
 - **`accessible={false}` on the chevron Icon** was specified (§4.4-A) but `IconProps` doesn't expose `accessible`; the Icon renders an inert SVG (no `accessibilityRole`) and the expanded/collapsed state lives on the parent Pressable's `accessibilityState`, so VoiceOver/TalkBack announce only the header button — the intended a11y is preserved without the prop.
 
 ## 11. Operator action required
@@ -135,7 +135,7 @@ Note on test style: the default biz-app jest config is node/ts-jest with NO RN r
 ## 12. Discoveries for Orchestrator
 
 - **DISC-1143-D (pre-existing, unrelated):** `liveEventStore-migrator-chain.adversarial.test.ts` + `liveEventStore-v4-v5-migrator.test.ts` FAIL on this branch AND are independent of ORCH-1143 — the tests expect `liveEventStore` persist `version: 5` but the source is `version: 6` (a prior ORCH bumped the store without updating these adversarial tests). I did not touch `liveEventStore.ts` (confirmed `git diff origin/main...HEAD`). Register as a stale-test cleanup.
-- **SC-7 / A-05 lock conflict** (see §10) — needs a decision: accept live-in-both-places, or spawn a TEST-MOD-APPROVED follow-up.
+- **SC-7 / A-05 lock conflict — RESOLVED 2026-06-15.** Seth approved the TEST-MOD; A-05's data-source assertion was retargeted under `[TEST-MOD-APPROVED ORCH-1143]` and SC-7 is implemented (§13). No longer open.
 - **DISC-1143-C (from investigation, confirmed):** no per-offering historical scanned count source exists; Scanned stays `—`. Future enhancement if a real count is wanted.
 
 ---
@@ -143,3 +143,55 @@ Note on test style: the default biz-app jest config is node/ts-jest with NO RN r
 ## Next handoff
 
 Working tree: `/Users/sethogieva/Desktop/mingla-orchs/ORCH-1143-[live-card-scan-accordion]/` on branch `ORCH-1143-live-card-scan-accordion`, commit `9bbf98980`. Route back to **mingla-orchestrator** for REVIEW, then **mingla-tester** (live-fire the per-kind scan happy path on device + re-verify the T10 fails-on-revert).
+
+---
+
+## 13. SC-7 — live/Upcoming de-duplication (DEFERRED criterion, completed 2026-06-15)
+
+**Status: implemented and verified.** Commit `d0c7f0b50` (TEST-MOD token `[TEST-MOD-APPROVED ORCH-1143]`, Seth-approved 2026-06-15). Rebased on origin/main `0fd6f39c4`.
+
+### 13.1 Problem
+A currently-live offering appeared in BOTH the new "Live now" carousel (with its scan button) AND as a row in the "Upcoming" list below. SC-7 requires live offerings to live ONLY in the carousel; the Upcoming list shows non-live (upcoming/draft) items only.
+
+### 13.2 Files changed (4 product/test files)
+| File | Change | ~lines |
+|------|--------|--------|
+| `mingla-business/src/utils/upcomingBuilder.ts` | Added `nonLiveItems: UpcomingItem[]` to the `buildUpcomingItems` return type + computed it as `nonPast.filter((i) => i.status !== "live")`. Does NOT mutate `items` or `liveItems`. | +9 |
+| `mingla-business/src/hooks/useUpcomingForBrand.ts` | Added `nonLiveItems` to the `UpcomingForBrand` interface; destructured it from the builder + returned it. No query-key/query change. | +6 |
+| `mingla-business/app/(tabs)/home.tsx` | Mobile FlatList `data={upcoming.items}` → `data={upcoming.nonLiveItems}`; desktop Upcoming pane `upcoming.items.map` → `upcoming.nonLiveItems.map`; `hasUpcomingItems` gated on `upcoming.nonLiveItems.length > 0`. keyExtractor, renderItem (`<UpcomingListItem>`), and the three handlers unchanged. | ~3 edits |
+| `mingla-business/app/(tabs)/__tests__/home.orch_0974.adversarial.test.tsx` | TEST-MOD: A-05 data-source assertion retargeted. | 1 line |
+
+### 13.3 New non-live field name
+**`nonLiveItems`** — owned by `upcomingBuilder.buildUpcomingItems`, threaded through `useUpcomingForBrand`. It is a strict projection of the SAME sorted `nonPast` set (live-state stays single-sourced as `liveItems`; one owner per truth, Constitution #2). `items` is never mutated — the carousel, `counts`, and KPI grid still consume the full set / live subset unchanged.
+
+### 13.4 Old → New receipt — `home.tsx`
+- **Before:** the Upcoming list (mobile FlatList + desktop pane) rendered `upcoming.items` (the full non-past set, INCLUDING live offerings). A live offering therefore rendered twice on Home — a live carousel card AND an Upcoming row.
+- **Now:** the Upcoming list renders `upcoming.nonLiveItems` (upcoming + draft only). `hasUpcomingItems` is gated on `nonLiveItems.length > 0`, so when every active item is live the Upcoming section header + list hide cleanly (no empty list). KPI counts (`upcoming.counts`, `hasActiveEvents`, `showKpiGrid`) still count the full set including live.
+- **Why:** SPEC §SC-7 — live offerings belong exclusively in the Live-now carousel.
+
+### 13.5 TEST-MOD rationale (intent preserved)
+A-05 (`home.orch_0974.adversarial.test.tsx`) is append-only-locked. The ONLY change is the FlatList data-source assertion:
+- `data: flatList.includes("data={upcoming.items}")` → `data: flatList.includes("data={upcoming.nonLiveItems}")`
+- The `data: true` expectation (~line 138) is an outcome boolean and is unchanged.
+- Inline comment added: `// ORCH-1143 SC-7 [TEST-MOD-APPROVED by Seth 2026-06-15]: Upcoming list excludes live items (now in the Live-now carousel); single-scroll + all item-kind branches still asserted.`
+
+PRESERVED unchanged (intent NOT weakened): `keyExtractor`, `renderItem` (`<UpcomingListItem>`), the three handlers (`onOpenDraft`/`onOpenTrip`/`onOpenLiveEvent`), and ALL UpcomingListItem branch-preservation checks — draft length 4, trip length 3, event length 5. The single-scroll intent (one FlatList in the locked mobile-populated pane) and the per-kind branch preservation remain fully protected. Only the data-source contract changed (`items` → `nonLiveItems`).
+
+### 13.6 New regression test + fails-on-revert
+- **Path:** `mingla-business/src/utils/__tests__/upcomingBuilder.test.ts` — describe block `"ORCH-1143 SC-7 nonLiveItems — live offerings excluded from the Upcoming list"` (3 tests, append-only, real `buildUpcomingItems` pipeline, `Date.now()` pinned to NOW):
+  - **SC7-1:** a live event is in `liveItems` but NOT in `nonLiveItems`; a future-dated (upcoming) event + a draft ARE in `nonLiveItems`; `items.length === liveItems.length + nonLiveItems.length` (projection, no mutation).
+  - **SC7-2 (all-live edge case):** all items live → `nonLiveItems` empty, `.map` over it is safe (no crash) — proves the clean Upcoming-hides behavior.
+  - **SC7-3 (no-live edge case):** none live → `nonLiveItems` equals `items` in the same order (Upcoming unchanged).
+- **Fails-on-revert verified at commit `d0c7f0b50`.** Method: TRUE line replacement of the fix — `const nonLiveItems = nonPast.filter((i) => i.status !== "live");` → `const nonLiveItems = nonPast;` (live leaks back into the Upcoming view). Re-ran the SC-7 block → **2 failed** (SC7-1: live id present in nonLiveItems; SC7-2: length 2 ≠ 0). Restored the filter → **3 passed**. Output captured during implementation.
+
+### 13.7 Edge-case handling (confirmed)
+- **ALL items live** → `nonLiveItems` is empty; `hasUpcomingItems` is false → the Upcoming header + FlatList/desktop-pane do not render (their existing `hasUpcomingItems ?` gate). No empty list, no crash (SC7-2). The live carousel still renders all live cards.
+- **NONE live** → `nonLiveItems === items` (same order); Upcoming list is identical to prior behavior (SC7-3).
+
+### 13.8 Gates (SC-7)
+- `npx jest home.orch_0974 home.orch_1143 src/utils/__tests__/upcomingBuilder.test.ts` → **4 suites, 51 tests, all PASS** (incl. the modified A-05 and the 3 new SC-7 tests).
+- `npx tsc --noEmit` → zero errors on the 5 touched files (pre-existing unrelated errors remain only in `../packages/phone-input/`).
+- `npx eslint` on the 5 touched files → 0 errors; the 2 `react-hooks/exhaustive-deps` warnings on `useUpcomingForBrand.ts` are PRE-EXISTING on origin/main (confirmed via `git stash`), not introduced here.
+
+### 13.9 Scope adherence
+Stayed within `home.tsx` + `upcomingBuilder.ts` + `useUpcomingForBrand.ts` (the hook is the established thread for builder fields, already in the SPEC §4.2 allowlist) + the two test files. Did NOT touch the scanner, the carousel render, `LiveOfferingCard`, the collapse store, or any other ORCH-1143 work. No new config files. Currency-awareness + no-fabricated-data untouched.
