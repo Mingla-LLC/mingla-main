@@ -195,3 +195,41 @@ PRESERVED unchanged (intent NOT weakened): `keyExtractor`, `renderItem` (`<Upcom
 
 ### 13.9 Scope adherence
 Stayed within `home.tsx` + `upcomingBuilder.ts` + `useUpcomingForBrand.ts` (the hook is the established thread for builder fields, already in the SPEC §4.2 allowlist) + the two test files. Did NOT touch the scanner, the carousel render, `LiveOfferingCard`, the collapse store, or any other ORCH-1143 work. No new config files. Currency-awareness + no-fabricated-data untouched.
+
+---
+
+## Live-now header styling fix (device feedback) — 2026-06-15
+
+**Trigger:** Seth device-tested the dev OTA and reported the "Live now" header sat too close to the screen edges and didn't read as a tappable dropdown. The designer traced both to SPEC under-spec and wrote the exact fix in SPEC §4.4-A "REVISED 2026-06-15 (device-feedback fix)". This is HEADER CHROME ONLY — zero behavior change. Edited ONLY `mingla-business/app/(tabs)/home.tsx`.
+
+### Style keys changed (per §4.4-A revised delta table)
+| Key | Before | After |
+|-----|--------|-------|
+| `liveSection` | `{ marginBottom: spacing.md }` | `{ paddingHorizontal: spacing.md, marginBottom: spacing.md }` — the gutter fix (16pt Home gutter; wrapper View now owns it). |
+| `liveHeaderRow` | `{ flexDirection:'row', alignItems:'center', justifyContent:'space-between', paddingHorizontal: spacing.xs, paddingTop: spacing.sm, paddingBottom: spacing.sm, minHeight: 44 }` | `{ flexDirection:'row', alignItems:'center', justifyContent:'space-between', minHeight: 44 }` — dropped all padding (GlassCard `padding={spacing.md}` owns the inset). |
+| `liveHeaderChevron` | (NEW) | `{ width:28, height:28, borderRadius: radiusTokens.full, alignItems:'center', justifyContent:'center', backgroundColor: glass.tint.profileBase }` — 28pt circular dropdown handle. |
+| `liveHeaderRowPressed`, `liveHeaderLeft`, `liveHeaderDot`, `liveHeaderTitle`, `liveHeaderCount` | (current) | unchanged. |
+
+**JSX deltas:** (1) added `import { GlassCard } from "../../src/components/ui/GlassCard";` (alphabetical, after `EventCoverMedia`, before `Icon`). (2) wrapped the existing header `Pressable` in `<GlassCard variant="base" padding={spacing.md}>…</GlassCard>` inside the `liveSection` View; the card body (single card / carousel) stays a sibling BELOW the GlassCard, NOT enclosed. (3) replaced the bare `<Icon … size={20} …/>` with `<View style={styles.liveHeaderChevron}><Icon name={showLiveOpen ? "chevU" : "chevD"} size={18} color={textTokens.secondary} /></View>`. The `chevU`/`chevD` conditional Icon-name string was preserved verbatim (home.orch_1143 asserts it).
+
+### Token verification — ALL RESOLVED (zero new tokens)
+Every referenced token already exists and is imported in `home.tsx`. Two name substitutions vs. the spec's literal token names, because this file imports the design-system under aliases (verified at the import block, `home.tsx:58-65`):
+- `radius.full` (spec) → **`radiusTokens.full`** (file alias; `radius as radiusTokens`). Value `999`, defined `designSystem.ts:46`. SUBSTITUTION.
+- `text.secondary` (spec) → **`textTokens.secondary`** (file alias; `text as textTokens`). `rgba(255,255,255,0.72)`, `designSystem.ts:290`. SUBSTITUTION.
+- `glass.tint.profileBase` → unchanged (`glass` imported directly); `rgba(255,255,255,0.04)`, `designSystem.ts:260`; already used at `home.tsx:1214`. RESOLVED.
+- `spacing.md` (16) — RESOLVED. `GlassCard` export — RESOLVED (`variant`/`padding` props confirmed). Icon `chevD`/`chevU` — RESOLVED (`Icon.tsx:25-26,128-129`).
+
+No invented tokens. Substitutions are alias-name only (same underlying values), forced by the file's existing import aliasing.
+
+### Gate results — ALL GREEN
+- `npx tsc --noEmit` → **zero errors in `app/(tabs)/home.tsx`** (the listed errors are all pre-existing in unrelated files: checkout buyers, marketing composer, payments modules, and `@testing-library/react-native` type-resolution in render-test files — none in home.tsx).
+- `npx eslint app/(tabs)/home.tsx` → **exit 0**, clean.
+- `npx jest home.orch_1143 home.orch_0974` (+ adversarial) → **21 passed** (3 suites).
+- `npx jest --config jest.orch1143.render.cjs` (the dedicated RN render config for the two `.orch1143.render` proofs — they are `testPathIgnore`d from the default config) → **7 passed** (2 suites).
+- Strict-grep gates: `orch-0974-home-mobile-lock-pane` PASS · `orch-0965-home-uses-upcoming-hook` PASS · `orch-1105-web-glass-opaque-fallback` PASS · `i-proposed-z-home-no-fabricated-events` PASS.
+
+### Regression test
+No new test required — pure visual token change with zero behavior/store/carousel-math/a11y change. No existing test asserts the old style keys (the only style-adjacent assertion, `home.orch_1143:63`, checks the `chevU`/`chevD` Icon-name string, which is preserved verbatim and still passes). Android opaque-glass is automatic via GlassCard's internal GlassChrome. Touch target stays ≥44pt (`liveHeaderRow.minHeight: 44`).
+
+### Commit
+`48fe3d351479d5d8ef7149a46cd40d73ca67c212`

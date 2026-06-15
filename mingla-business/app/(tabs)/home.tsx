@@ -47,6 +47,7 @@ import {
 } from "../../src/components/home/LiveOfferingCard";
 import { UpcomingListItem } from "../../src/components/home/UpcomingListItem";
 import { EventCoverMedia } from "../../src/components/ui/EventCoverMedia";
+import { GlassCard } from "../../src/components/ui/GlassCard";
 import { Icon } from "../../src/components/ui/Icon";
 import { KpiTile } from "../../src/components/ui/KpiTile";
 import { Pill } from "../../src/components/ui/Pill";
@@ -504,42 +505,54 @@ export default function HomeTab(): React.ReactElement {
     if (!hasLiveItems) return null;
     return (
       <View style={styles.liveSection}>
-        <Pressable
-          onPress={handleToggleLiveSection}
-          accessibilityRole="button"
-          accessibilityState={{ expanded: !liveCollapsed }}
-          accessibilityLabel={
-            liveItems.length === 1
-              ? `Live now, 1 offering, ${
-                  liveCollapsed ? "tap to expand" : "tap to collapse"
-                }`
-              : `Live now, ${liveItems.length} offerings, ${
-                  liveCollapsed ? "tap to expand" : "tap to collapse"
-                }`
-          }
-          style={({ pressed }) => [
-            styles.liveHeaderRow,
-            pressed && styles.liveHeaderRowPressed,
-          ]}
-          testID="home-live-section-header"
-        >
-          <View style={styles.liveHeaderLeft}>
-            <View style={styles.liveHeaderDot} />
-            <Text style={styles.liveHeaderTitle}>Live now</Text>
-            {liveItems.length > 1 ? (
-              <Text style={styles.liveHeaderCount}>{`· ${liveItems.length}`}</Text>
-            ) : null}
-          </View>
-          {/* Chevron is decorative — the expanded/collapsed state lives on the
-              parent Pressable's accessibilityState. Icon renders an inert SVG
-              (no accessibilityRole), so VoiceOver/TalkBack announce only the
-              header button. */}
-          <Icon
-            name={showLiveOpen ? "chevU" : "chevD"}
-            size={20}
-            color={textTokens.secondary}
-          />
-        </Pressable>
+        {/* ORCH-1143 §4.4-A (device-feedback fix): the header is wrapped in a
+            GlassCard so it reads as an interactive surface (matching the
+            BusinessTodoToggle directly above it on Home) — the bare label row
+            looked like a static section title. GlassCard owns the inner
+            spacing.md inset and the Android opaque-glass fallback; the gutter
+            lives on the liveSection wrapper View. The card body (single card or
+            carousel) stays a SIBLING below this card, NOT inside it. */}
+        <GlassCard variant="base" padding={spacing.md}>
+          <Pressable
+            onPress={handleToggleLiveSection}
+            accessibilityRole="button"
+            accessibilityState={{ expanded: !liveCollapsed }}
+            accessibilityLabel={
+              liveItems.length === 1
+                ? `Live now, 1 offering, ${
+                    liveCollapsed ? "tap to expand" : "tap to collapse"
+                  }`
+                : `Live now, ${liveItems.length} offerings, ${
+                    liveCollapsed ? "tap to expand" : "tap to collapse"
+                  }`
+            }
+            style={({ pressed }) => [
+              styles.liveHeaderRow,
+              pressed && styles.liveHeaderRowPressed,
+            ]}
+            testID="home-live-section-header"
+          >
+            <View style={styles.liveHeaderLeft}>
+              <View style={styles.liveHeaderDot} />
+              <Text style={styles.liveHeaderTitle}>Live now</Text>
+              {liveItems.length > 1 ? (
+                <Text style={styles.liveHeaderCount}>{`· ${liveItems.length}`}</Text>
+              ) : null}
+            </View>
+            {/* Chevron is decorative — the expanded/collapsed state lives on the
+                parent Pressable's accessibilityState. The contained circular
+                handle is the explicit "this is a dropdown" affordance; the Icon
+                renders an inert SVG (no accessibilityRole), so VoiceOver/TalkBack
+                announce only the header button. */}
+            <View style={styles.liveHeaderChevron}>
+              <Icon
+                name={showLiveOpen ? "chevU" : "chevD"}
+                size={18}
+                color={textTokens.secondary}
+              />
+            </View>
+          </Pressable>
+        </GlassCard>
 
         {showLiveOpen ? (
           liveItems.length === 1 ? (
@@ -1122,19 +1135,33 @@ const styles = StyleSheet.create({
   // The hero render moved into the reusable <LiveOfferingCard>; these styles
   // own only the section wrapper + the accordion header + the carousel.
   liveSection: {
+    // ORCH-1143 §4.4-A (device-feedback fix): self-supply the full Home gutter
+    // (spacing.md = 16) because renderLiveSection() is rendered OUTSIDE the
+    // padded column, so the GlassCard header + card body line up flush with the
+    // To-do toggle above and the KPI/Upcoming column below.
+    paddingHorizontal: spacing.md,
     marginBottom: spacing.md,
   },
   liveHeaderRow: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    paddingHorizontal: spacing.xs,
-    paddingTop: spacing.sm,
-    paddingBottom: spacing.sm,
+    // No paddingHorizontal/vertical — the wrapping GlassCard's padding={spacing.md}
+    // owns the content inset (adding more would double-pad). minHeight keeps the
+    // touch target ≥44pt.
     minHeight: 44,
   },
   liveHeaderRowPressed: {
     opacity: 0.6,
+  },
+  liveHeaderChevron: {
+    // ORCH-1143 §4.4-A: contained circular "dropdown handle" affordance.
+    width: 28,
+    height: 28,
+    borderRadius: radiusTokens.full,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: glass.tint.profileBase,
   },
   liveHeaderLeft: {
     flexDirection: "row",
