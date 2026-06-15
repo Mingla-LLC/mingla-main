@@ -114,8 +114,13 @@ ok(
   // ORCH-1138 FIX-5 (device rework #2): the wrapper is position:'absolute' and its
   // `bottom` is lifted to `wrapperBottom` (safe-area + gap) so the WHOLE rounded
   // card floats above the home indicator — NOT pinned to a static bottom:0.
+  // [TEST-MOD-APPROVED ORCH-1138] assertion-drift refresh: a later same-branch
+  // commit renamed the float style `wrapper` → `floatWrapper`. Behavior is
+  // unchanged (still an absolute overlay lifted by `wrapperBottom`); only the
+  // StyleSheet key was renamed. Still fails on revert (remove the absolute float
+  // → no `floatWrapper` + `bottom: wrapperBottom`).
   /position:\s*"absolute"/.test(reserveBarSrc) &&
-    /style=\{\[styles\.wrapper,\s*\{\s*bottom:\s*wrapperBottom\s*\}\]\}/.test(
+    /style=\{\[styles\.floatWrapper,\s*\{\s*bottom:\s*wrapperBottom\s*\}\]\}/.test(
       reserveBarSrc,
     ),
   "the floating reserve bar must be an absolute overlay lifted by the safe-area bottom",
@@ -161,19 +166,31 @@ ok(
 
 // ── SC-5: checkout is UNCHANGED (the floating bar fires the existing flow) ────
 ok(
-  "T4a the floating bar's onPress opens the EXISTING reserve flow (setReserveSheetVisible(true))",
-  /<ConsumerTripReserveBar[\s\S]*?onPress=\{\(\)\s*=>\s*setReserveSheetVisible\(true\)\}/.test(
-    screenSrc,
-  ),
-  "the reserve tap must still open ExpandedBusinessEventSheet via setReserveSheetVisible(true) — checkout unchanged",
+  // [TEST-MOD-APPROVED ORCH-1138] assertion-drift refresh: a later same-branch
+  // commit ported the consumer reserve flow OFF the duplicate
+  // <ExpandedBusinessEventSheet> (which showed buyers a second detail page) onto
+  // a direct cart open — the reserve tap now fires `openCart` (which seeds + opens
+  // <TicketCartSheet>), not `setReserveSheetVisible(true)`. The tap still opens
+  // the EXISTING reserve flow; only the entry point changed. Still fails on
+  // revert (remove the onPress → the bar is a dead tap).
+  "T4a the floating bar's onPress opens the EXISTING reserve flow (openCart → TicketCartSheet)",
+  /<ConsumerTripReserveBar[\s\S]*?onPress=\{openCart\}/.test(screenSrc),
+  "the reserve tap must still open the cart/checkout via openCart — checkout unchanged",
 );
 ok(
-  "T4b the ExpandedBusinessEventSheet checkout wiring is preserved verbatim (paymentPlanChoice + dueTodayCents)",
-  /<ExpandedBusinessEventSheet[\s\S]*?paymentPlanChoice=\{detail\.hasPlan \? paymentPlanChoice : undefined\}/.test(
+  // [TEST-MOD-APPROVED ORCH-1138] assertion-drift refresh: same reserve-flow
+  // port — the native checkout wiring moved from a <ExpandedBusinessEventSheet>
+  // JSX prop onto the in-place `handleBuy` → `runNativeCheckout({...})` call
+  // (handleBuy ported verbatim from EBES). The consent invariant is IDENTICAL:
+  // paymentPlanChoice is forwarded ONLY for a plan trip (detail.hasPlan) and the
+  // cart leads with dueTodayCents. Still fails on revert (drop the hasPlan gate
+  // or the dueTodayCents wiring).
+  "T4b the consumer native checkout wiring is preserved verbatim (paymentPlanChoice + dueTodayCents)",
+  /paymentPlanChoice:\s*detail\.hasPlan \? paymentPlanChoice : undefined/.test(
     screenSrc,
   ) &&
     /dueTodayCents=\{/.test(screenSrc),
-  "the consumer native checkout (ExpandedBusinessEventSheet → runNativeCheckout) must be unchanged",
+  "the consumer native checkout (handleBuy → runNativeCheckout) must be unchanged",
 );
 
 // ── SC-7: bold-on-native resolver returns the WEIGHTED family ────────────────
