@@ -138,10 +138,10 @@ export default function BrandProfileRoute(): React.ReactElement {
     router.push(`/b/${brandSlug}` as never);
   };
 
-  // ORCH-1040 — venue listing management page.
-  const handleOpenListing = (brandId: string): void => {
-    router.push(`/brand/${brandId}/listing` as never);
-  };
+  // ORCH-1145 — the "Venue listing" Operations row + its onListing handler were
+  // removed; venue listing now lives in the Hub "Venue" tab. The
+  // /brand/{id}/listing route survives as a thin redirect (kept for to-do rows,
+  // push deep-links, and global search).
 
   const handleCreateEvent = (): void => {
     router.push("/event/create" as never);
@@ -196,7 +196,6 @@ export default function BrandProfileRoute(): React.ReactElement {
         onAuditLog={handleOpenAuditLog}
         onBlasts={handleOpenBlasts}
         onViewPublic={handleViewPublic}
-        onListing={handleOpenListing}
         onCreateEvent={handleCreateEvent}
         onOpenEvent={handleOpenEvent}
         onSeeAllEvents={handleSeeAllEvents}

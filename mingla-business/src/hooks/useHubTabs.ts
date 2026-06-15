@@ -6,7 +6,22 @@ import {
   type BrandOfferingCounts,
 } from "./useBrandOfferingCounts";
 
-export type HubTabName = "getstarted" | "events" | "trips" | "experiences";
+export type HubTabName =
+  | "getstarted"
+  | "events"
+  | "trips"
+  | "experiences"
+  | "venue";
+
+/**
+ * ORCH-1145 — venue visibility input for the conditional Hub "Venue" pill.
+ * Mirrors the retired brand-page `showVenueListing` gate
+ * (BrandProfileView's `hasPhysicalLocation === true || placePoolId != null`).
+ */
+export interface HubVenueVisibility {
+  hasPhysicalLocation: boolean;
+  hasPlacePool: boolean;
+}
 
 export interface HubVisibleTabsResult {
   data: HubTabName[] | undefined;
@@ -18,6 +33,7 @@ export const HUB_LAST_TAB_STORAGE_KEY = "@mingla/hub/lastTab";
 
 export const deriveHubVisibleTabs = (
   counts: BrandOfferingCounts,
+  venue: HubVenueVisibility = { hasPhysicalLocation: false, hasPlacePool: false },
 ): HubTabName[] => {
   // ORCH-1038: no "Get started" fallback pill — when the brand has no offerings,
   // the shared to-do toggle (above the pills) carries the "Create your first
@@ -27,6 +43,10 @@ export const deriveHubVisibleTabs = (
   if (counts.events > 0) visible.push("events");
   if (counts.trips > 0) visible.push("trips");
   if (counts.experiences > 0) visible.push("experiences");
+  // ORCH-1145 — Venue pill is conditional on hasPhysicalLocation || placePoolId
+  // (mirrors the retired brand-page gate). Purely-online brands never see it.
+  // Appended LAST so it sits as a rightmost peer alongside the offering pills.
+  if (venue.hasPhysicalLocation || venue.hasPlacePool) visible.push("venue");
   return visible;
 };
 
@@ -39,7 +59,8 @@ export const pickHubInitialTab = (
     storedTab === "getstarted" ||
     storedTab === "events" ||
     storedTab === "trips" ||
-    storedTab === "experiences"
+    storedTab === "experiences" ||
+    storedTab === "venue"
   ) {
     if (visibleTabs.includes(storedTab)) return storedTab;
   }
@@ -53,12 +74,22 @@ export const persistHubLastTab = (tabName: HubTabName): void => {
   });
 };
 
-export function useHubVisibleTabs(brandId: string | null): HubVisibleTabsResult {
+export function useHubVisibleTabs(
+  brandId: string | null,
+  // ORCH-1145 — the Hub layout already resolves `currentBrand` via
+  // useCurrentBrand(); it passes the venue flags in here so we never run a
+  // second brand fetch. Defaults keep older callers/tests (counts-only) valid.
+  venue: HubVenueVisibility = { hasPhysicalLocation: false, hasPlacePool: false },
+): HubVisibleTabsResult {
   const countsQuery = useBrandOfferingCounts(brandId);
   const data = useMemo<HubTabName[] | undefined>(() => {
     if (countsQuery.data === undefined) return undefined;
-    return deriveHubVisibleTabs(countsQuery.data);
-  }, [countsQuery.data]);
+    return deriveHubVisibleTabs(countsQuery.data, venue);
+    // Depend on the primitive venue flags, not the `venue` object identity, so a
+    // fresh `{ ... }` literal from the caller doesn't force a re-derive each
+    // render. The Hub layout memoizes the object on these same primitives.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [countsQuery.data, venue.hasPhysicalLocation, venue.hasPlacePool]);
 
   return {
     data,

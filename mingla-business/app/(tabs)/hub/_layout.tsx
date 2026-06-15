@@ -71,7 +71,20 @@ export default function HubTabLayout(): React.ReactElement {
   const setCurrentBrand = useCurrentBrandStore((s) => s.setCurrentBrand);
   const currentBrand = useCurrentBrand();
   const todos = useBusinessTodos();
-  const visibleTabs = useHubVisibleTabs(currentBrand?.id ?? null);
+  // ORCH-1145 — venue visibility for the conditional "Venue" pill. Computed
+  // from the already-resolved currentBrand (NO second brand fetch); mirrors the
+  // retired brand-page `showVenueListing` gate.
+  const venueVisibility = React.useMemo(
+    () => ({
+      hasPhysicalLocation: currentBrand?.hasPhysicalLocation === true,
+      hasPlacePool: currentBrand?.placePoolId != null,
+    }),
+    [currentBrand?.hasPhysicalLocation, currentBrand?.placePoolId],
+  );
+  const visibleTabs = useHubVisibleTabs(
+    currentBrand?.id ?? null,
+    venueVisibility,
+  );
   const initialTab = useHubInitialTab(
     currentBrand?.id ?? null,
     visibleTabs.data ?? [],
@@ -152,7 +165,10 @@ export default function HubTabLayout(): React.ReactElement {
         ? "trips"
         : activePath.includes("/hub/experiences")
           ? "experiences"
-          : "events";
+          : // ORCH-1145 — the Venue tab route file is `listing.tsx`.
+            activePath.includes("/hub/listing")
+            ? "venue"
+            : "events";
     if (!visibleTabs.data.includes(active)) {
       router.replace(`/(tabs)/hub/${initialTab}` as never);
     }
