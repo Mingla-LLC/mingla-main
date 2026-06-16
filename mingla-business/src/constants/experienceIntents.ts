@@ -40,6 +40,14 @@ export interface ExperienceIntentOption {
 /**
  * The 4 curated intents, mirrored from `ONBOARDING_INTENTS` in the consumer app.
  * Order matches the consumer list.
+ *
+ * ⚠️ ORCH-1146: this id list is the SINGLE SOURCE OF TRUTH for experience vibes.
+ * It is mirrored byte-for-byte by the DB CHECK `events_experience_intents_chk`
+ * (migration `20260828000000_meta_orch_1059_experience_intents_multi.sql:62-64`)
+ * and by the edge-side parser mapper
+ * `supabase/functions/_shared/canonicalExperienceIntents.ts`
+ * (CANONICAL_EXPERIENCE_INTENTS). Keep all three in sync — drift produces
+ * CHECK-violating writes from the snap-confirm path.
  */
 export const EXPERIENCE_INTENTS: readonly ExperienceIntentOption[] = [
   { id: "adventurous", label: "Adventurous", description: "Explore the unexpected", icon: "compass" },

@@ -155,7 +155,10 @@ Deno.serve(async (req) => {
   if (brand.account_id !== userId) {
     return errorResponse(403, "FORBIDDEN", "Brand not owned by caller");
   }
-  const defaultCurrency = (brand.default_currency as string | null)?.trim() || "GBP";
+  // ORCH-1146 (Phase 3 — de-GBP): pass the brand currency through; when absent
+  // pass null (not "GBP"). The parser leaves currency empty and the confirm
+  // executor resolves it from brand.default_currency server-side.
+  const defaultCurrency = (brand.default_currency as string | null)?.trim() || undefined;
   const temporaryCategory = "restaurant" as const;
   const sourceCategory = (brand.venue_category as string | null)?.trim() || "unknown";
 
@@ -199,6 +202,8 @@ Deno.serve(async (req) => {
       currency: exp.currency,
       temporaryCategory,
       intent_tags: exp.intent_tags,
+      is_free: exp.is_free,
+      suggested_time_of_day: exp.suggested_time_of_day,
       confidence: exp.confidence,
     };
 
