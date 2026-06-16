@@ -125,3 +125,85 @@ None. The RSVP publish RPC (`business_publish_rsvp_draft`) was read-verified (lo
 - **DISC-1150R2-B:** mingla-business tsc has 409 pre-existing baseline errors (missing `@testing-library/react-native` + `@mingla/payments-native` modules, stale `category` field on DraftEvent in 4 test files, several component type errors). The repo's "tsc clean" claim does not hold on main today.
 - **DISC-1150R2-C (carried from forensics DISC-1150-R-A/B):** `createServerDraft` is the SHARED promotion service for event+RSVP; a SECOND d_*→server migration path exists in `useServerDraftEvents.ts` (Hub legacy loop) also calling `createServerDraft` — it now inherits the rsvp typing automatically (good), but any future offering type lazily promoting a d_* draft must set its own discriminator there.
 - **DISC-1150R2-D:** the `EditPublishedScreen` RSVP edit-published path (`?mode=edit-published`) for a LIVE RSVP is reachable via `handleManageEdit` now routing to `/rsvp/{id}/edit?mode=edit-published`; the RSVP route already handles that mode (rsvpMode). Worth a device check that live-RSVP "Edit" lands on the RSVP-aware screen (in scope of TEST).
+
+---
+
+# D-4 — Tailored RSVP host detail/dashboard page (`app/rsvp/[id]/index.tsx`)
+
+- **Binding contract:** `Mingla_Artifacts/investigations/INVESTIGATE_ORCH-1150_RSVP_DETAIL_PAGE.md` (PART 2 SPEC, §5 KEEP/DROP + §8 build order + finding F-2).
+- **Dispatch:** retest fix for the white-screen 404 when tapping a LIVE RSVP event. Root cause (proven): `routeForEventRow` correctly routes a non-draft RSVP row to `/rsvp/{id}`, but `app/rsvp/[id]/index.tsx` did not exist → expo-router rendered the branded `+not-found.tsx` (enlarged-logo white screen). The ONLY fix is to create the missing screen.
+- **No migration. No edge deploy. No service/RPC/hook change. No OTA. No merge.**
+
+## D-4.1 Summary (plain English)
+
+Tapping a live (or scheduled) RSVP event in the business Hub now opens a real RSVP host dashboard instead of a white screen with an oversized logo. The page shows the cover, status pill, title, date·venue, an "N going" headcount, and tiles for Guests (approve/deny/remove console), Edit, Public page, Share, and Brand page. It deliberately shows NO tickets, revenue, scanners, orders, door sales, reconciliation, blasts, group-chat, activity feed, or cancel/manage menu — RSVP has no money and no tickets.
+
+## D-4.2 SPEC coverage
+
+| SC | Criterion | Status | Commit |
+|----|-----------|--------|--------|
+| F-1 | `/rsvp/{id}` resolves to a real screen (no +not-found) | ✓ NEW file created | (this commit) |
+| KEEP-hero | cover + status pill + title + date·venue | ✓ | (this commit) |
+| KEEP-going | "N going" via `formatRsvpGoingLabel`; "No one's responded yet"/"0 going" empty state | ✓ | (this commit) |
+| KEEP-guests | Guests tile → `/rsvp/{id}/guests`; manual-mode "Approve / deny" sub | ✓ | (this commit) |
+| KEEP-edit | Edit tile → `/rsvp/{id}/edit` | ✓ | (this commit) |
+| KEEP-share | Share IconChrome + ShareModal w/ `eventPublicUrl` `/e/{brandSlug}/{eventSlug}` | ✓ | (this commit) |
+| F-2 data hook | going-count from `useBusinessEventsForBrand(brandId).find(byId).rsvpGoingCount`, NOT `fetchBusinessEventById` | ✓ | (this commit) |
+| DROP-money | NO revenue card / moneySummary / ticket types / scan / orders / door / recon / blasts / group-chat / activity / cancel / manage menu | ✓ (test-enforced) | (this commit) |
+| States | loading (page shell + "Loading RSVP…", NOT white screen), not-found (EmptyState + Back), populated, empty going-count | ✓ | (this commit) |
+| Gate | `i-proposed-tr2-route-by-event-type` adds ZERO new violations (only `/rsvp/`,`/e/`,`/brand/`,`/(tabs)/` literals) | ✓ | (this commit) |
+
+## D-4.3 Files created (2)
+
+- `mingla-business/app/rsvp/[id]/index.tsx` (NEW, ~440 lines) — `RsvpDetailScreen` default export.
+- `mingla-business/app/rsvp/[id]/__tests__/index.test.tsx` (NEW, ~140 lines) — structural happy-path + subtractive regression test (12 cases).
+
+DO-NOT-TOUCH list untouched: `app/event/[id]/index.tsx`, all `EventDetail*` components, `routeForEventRow.ts`, the strict-grep gate, every service/hook/RPC/migration/edge-fn — all unchanged (verified: `git status` shows only the 2 new files).
+
+## D-4.4 KEEP / DROP realized
+
+**KEEP (cloned + adapted from `event/[id]/index.tsx`):** TopBar back (title "RSVP"); Share IconChrome → ShareModal (url via `eventPublicUrl`); hero `EventCoverMedia` + `EventDetailHeroStatusPill` + title + date·venue subline (status via `deriveScreenStatus`, verbatim); "N going" headcount in a `GlassCard` (replaces the revenue KPI card); Guests `ActionTile` → `/rsvp/{id}/guests` (manual-mode shows "Approve / deny", else the going label); Edit `ActionTile` → `/rsvp/{id}/edit`; Public-page `ActionTile` → `/e/{brandSlug}/{eventSlug}`; Brand-page `ActionTile`; Toast wrap; not-found EmptyState (illustration "users", "RSVP event not found"); loading shell (header + "Loading RSVP…", never a blank screen).
+
+**DROP (not cloned):** `EventDetailKpiCard` revenue card · `moneySummary`/`summarizeEventMoney` + all revenue/payout/covered/door derivations · currency-mismatch card · TICKET TYPES + `EventDetailTicketTypeRow` + `soldCountByTier` · Scan/Scanners tiles · Orders tile + `useEventOrders` + `totalSoldCount` · Door Sales tile + `useDoorSalesStore` + `doorSoldCount` · `ReconciliationCtaTile` · Blasts tile · Group-chat tile · recent-activity feed (`EventDetailActivityRow` + the 8-stream merge) · End-sales sheet + cancel flow · `EventManageMenu` mount · guest-comp store. Per SPEC OQ-1/OQ-2: cancel omitted from v1; manual-mode pending count lives inside the console (tile shows static "Approve / deny").
+
+## D-4.5 Data-hook used (finding F-2)
+
+`useManagedEventRoute(id)` → `{ event, brand, isLoading }` for cover/title/status/date/venue/slugs/`rsvpCapacity`/`rsvpApprovalMode` (its `rsvpGoingCount` is NOT trusted — `fetchBusinessEventById` zeroes it). The headcount is read from the Hub LIST query `useBusinessEventsForBrand(brand?.id ?? null)`, found-by-id (`e.id === id || e.serverEventId === id`) — the same cache the Hub card reads, so the count matches what the host just saw. Fallback to `event.rsvpGoingCount ?? 0` until the list resolves (non-blocking, self-correcting). No service touched.
+
+## D-4.6 Regression test + fails-on-revert proof
+
+- **Test:** `mingla-business/app/rsvp/[id]/__tests__/index.test.tsx` — 12 structural cases (file-exists + KEEP-element presence + DROP-element absence + F-2 data-hook + route-literal safety). Structural source test follows the sibling precedent (`app/event/[id]/__tests__/cancel-no-navigation.test.tsx`): the screen's dependency graph (Expo Router + useManagedEventRoute + Zustand) is too heavyweight for Node-env jest, and `@testing-library/react-native` is absent from devDeps (baseline). The `readFileSync` of `index.tsx` THROWS when the file is absent — the missing-route white-screen condition.
+- **Passing run:** `12 passed, 12 total`.
+- **Fails-on-revert (TRUE LINE DELETION, not comment-out):** deleted `app/rsvp/[id]/index.tsx` → suite FAILED (`1 failed, 0 tests run` — readFileSync threw, exactly the +not-found fallback condition); restored the file → `12 passed`. **fails-on-revert verified.**
+
+## D-4.7 Gate + tsc results
+
+- **`npx tsc --noEmit -p tsconfig.json` (mingla-business):** ZERO errors in `app/rsvp/[id]/*` (grep on `app/rsvp/` → empty). 333 errors total, ALL pre-existing on the branch baseline (checkout buyer `any` params, marketing ComposerV2, search adapters rsvp-type, `@testing-library/react-native`/`@mingla/payments-native` missing modules, stale DraftEvent `category` in test fixtures) — none in my new files (proven: only the 2 new files are added; `git status` = clean except them).
+- **`node .github/scripts/strict-grep/i-proposed-tr2-route-by-event-type.mjs`:** 6 violations, ALL PRE-EXISTING (home.tsx:414, hub/trips.tsx:379/388/397, accept-scanner-invitation.tsx:94, ScannerHome.tsx:119). Proven identical count WITH my files (789 files, 6) and WITHOUT (788 files, 6) — **my change adds ZERO new violations**; my new file is NOT flagged (uses only `/rsvp/`,`/e/`,`/brand/`,`/(tabs)/` literals, the gate bans only `/event/` and `/trip/`). Carries forward DISC-1150R2-A (gate is RED on main for unrelated scanner routes — gate-cleanup ORCH).
+- **New jest test:** `12 passed`.
+
+## D-4.8 Cross-surface impact
+
+| Surface | Affected | Note |
+|---------|----------|------|
+| Consumer iOS / Android | No | RSVP host detail is host-only |
+| Buyer/anon Web | No | buyers use the public page `/e/{slug}/{slug}` (separate, working) |
+| Business iOS | **Yes** | tap live RSVP → host dashboard (no white screen) — `app/rsvp/[id]/index.tsx` (NEW) |
+| Business Android | **Yes** | same NEW file, parity automatic (shared RN) |
+| Admin Web | No | not an admin surface |
+| Business Web preview | Incidental | same RN route compiles to web; renders the same dashboard if reached |
+
+## D-4.9 Smoke result
+
+Source-built + gates run; NOT driven on sim/device this turn (no dev build exercised). Verified by tsc (zero new errors), the 12-case jest suite (pass + fails-on-revert), and the route gate (zero new violations). REQUIRES device proof at TEST: tap a live RSVP event in the Hub → lands on the RSVP dashboard (no +not-found); the "N going" matches the Hub card; Guests/Edit/Public-page/Share all route correctly.
+
+## D-4.10 Known issues / deferred (D-4)
+
+- No render-level test (RN testing-library absent at baseline) — structural test + device proof at TEST cover it.
+- OQ-1 (cancel/unpublish RSVP) and OQ-2 (live pending-approval badge) deferred per SPEC recommendation — non-blocking.
+- No `[TRANSITIONAL]` code introduced.
+
+## D-4.11 Operator action required (D-4)
+
+- None for backend (no migration, no edge deploy).
+- **For TEST/retest:** after review, OTA the business dev channel from MERGED main, then on device tap a LIVE RSVP event in the Hub and confirm: (1) RSVP dashboard renders (no white-screen/enlarged-logo); (2) "N going" headcount; (3) Guests → console; (4) Edit → RSVP edit screen; (5) Public page + Share work.
