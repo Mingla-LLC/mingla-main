@@ -85,17 +85,33 @@ const allDatesPast = (isos: string[], nowMs: number = Date.now()): boolean => {
 export default function CheckoutExperienceTicketScreen(): React.ReactElement {
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const params = useLocalSearchParams<{ experienceEventId: string }>();
+  // ORCH-1138 Leg 3 — the public /exp/ page threads the buyer's adaptive-Reserve
+  // selection via route params: the chosen occurrence (`eventDateId`) + the
+  // party-size (`quantity`, open-daily). Both OPTIONAL — single/no-date Reserve
+  // sends neither and the checkout stays byte-identical.
+  const params = useLocalSearchParams<{
+    experienceEventId: string;
+    eventDateId?: string;
+    quantity?: string;
+  }>();
   const experienceEventId =
     typeof params.experienceEventId === "string"
       ? params.experienceEventId
       : null;
+  const seedEventDateId =
+    typeof params.eventDateId === "string" && params.eventDateId.length > 0
+      ? params.eventDateId
+      : null;
+  const seedQuantity = (() => {
+    const n = typeof params.quantity === "string" ? Number(params.quantity) : NaN;
+    return Number.isFinite(n) && n >= 1 ? Math.floor(n) : null;
+  })();
 
   const query = usePublicExperienceById(experienceEventId);
   const experience = query.data?.experience ?? null;
   const brand = query.data?.brand ?? null;
 
-  const { lines, setLineQuantity } = useCart();
+  const { lines, setLineQuantity, setEventDateId } = useCart();
   const totals = useCartTotals();
 
   // ORCH-1147R2 — the selection bottom bar leads with the server fee-grossed
@@ -115,6 +131,33 @@ export default function CheckoutExperienceTicketScreen(): React.ReactElement {
   );
   const showFeesTaxLine =
     !totals.isEmpty && !totals.isFree && totals.hasFeesTaxDelta;
+
+  // ORCH-1138 Leg 3 — seed the chosen occurrence into the cart once the param is
+  // present (mirror the trip `plan` seed pattern). null param → no occurrence
+  // (single/no-date) → cart.eventDateId stays null → byte-identical checkout.
+  React.useEffect(() => {
+    setEventDateId(seedEventDateId);
+  }, [seedEventDateId, setEventDateId]);
+
+  // ORCH-1138 Leg 3 — seed the party-size quantity (open-daily) onto the one line
+  // once the experience + its ticket resolve. Runs once per (event, qty) seed.
+  const seededQtyRef = React.useRef<string | null>(null);
+  React.useEffect(() => {
+    if (seedQuantity === null || experience?.ticket == null) return;
+    const key = `${experienceEventId}:${seedQuantity}`;
+    if (seededQtyRef.current === key) return;
+    seededQtyRef.current = key;
+    const t = experience.ticket;
+    setLineQuantity({
+      ticketTypeId: t.ticketTypeId,
+      ticketName: t.name,
+      unitPrice: (t.priceCents ?? 0) / 100,
+      unitPriceAllIn: t.priceAllInGbp ?? (t.priceCents ?? 0) / 100,
+      currency: t.currency ?? "USD",
+      isFree: t.isFree,
+      quantity: seedQuantity,
+    });
+  }, [seedQuantity, experience, experienceEventId, setLineQuantity]);
 
   const handleBack = useCallback((): void => {
     if (router.canGoBack()) {

@@ -40,6 +40,14 @@ export interface TicketCheckoutCreateInput {
    * trips without schemas.
    */
   intakeFormData?: unknown[];
+  /**
+   * ORCH-1138 Leg 3 — the chosen experience occurrence's event_dates.id, when
+   * the buyer picked a slot from the adaptive Reserve picker
+   * (recurring/multi-date/open-daily). The edge fn (ticket-checkout-create)
+   * already validates + binds it (investigation Q5). OMITTED on the
+   * single/no-date path so the request stays byte-identical to today.
+   */
+  eventDateId?: string;
 }
 
 export interface TicketCheckoutRequiresPayment {
@@ -148,6 +156,12 @@ export const createTicketCheckout = async (
     // Omit when empty so non-intake flows preserve byte-identical request shape.
     ...(input.intakeFormData !== undefined && input.intakeFormData.length > 0
       ? { intake_form_data: input.intakeFormData }
+      : {}),
+    // ORCH-1138 Leg 3 — forward the chosen occurrence ONLY when present so the
+    // single/no-date checkout request stays byte-identical to today. The edge fn
+    // already accepts `eventDateId` (investigation Q5); never sent on the null path.
+    ...(input.eventDateId !== undefined && input.eventDateId.length > 0
+      ? { eventDateId: input.eventDateId }
       : {}),
   });
 

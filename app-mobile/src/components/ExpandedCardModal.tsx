@@ -49,13 +49,25 @@ import ActionButtons from "./expandedCard/ActionButtons";
 import ShareModal from "./ShareModal";
 import InAppBrowserModal from "./InAppBrowserModal";
 // ORCH-0824: business-event branch (renders when props.businessEvent is set and props.card is null).
-import { ExpandedBusinessEventSheet } from "./expandedCard/ExpandedBusinessEventSheet";
-// ORCH-1138 Leg 2 — the deck EVENT card opens the NEW foundation event detail
-// (NOT EBES). EBES stays for the experience branch (:2259) + chat. The event flow
-// goes straight to ConsumerEventDetailScreen → TicketCartSheet (byte-identical
-// checkout). I-PROPOSED-1138-EVENT-DECK-OFF-EBES.
+import ConsumerExperienceDetailScreen from "../screens/Experience/ConsumerExperienceDetailScreen";
+// ORCH-1138 Leg 2/3 — the deck EVENT card opens ConsumerEventDetailScreen and
+// the deck/venue EXPERIENCE card opens ConsumerExperienceDetailScreen (above).
+// Both go straight to TicketCartSheet (byte-identical checkout). EBES is fully
+// decommissioned. I-PROPOSED-1138-EVENT-DECK-OFF-EBES + I-PROPOSED-1138-EBES-DELETED.
 import ConsumerEventDetailScreen from "../screens/Event/ConsumerEventDetailScreen";
 import type { BusinessEventCard } from "../types/mergedDiscover";
+
+// ORCH-1138 Leg 3 — an experience card carries the multi-stop itinerary and/or
+// the occurrence list; event/trip cards never do (the deck-experience mappers —
+// SwipeableCards experienceRecToBusinessEventCard + venueExperienceMapping — are
+// the only producers). Used to route a `businessEvent` card to the right
+// foundation detail screen.
+function isExperienceCard(card: BusinessEventCard): boolean {
+  return (
+    (Array.isArray(card.experienceStops) && card.experienceStops.length > 0) ||
+    Array.isArray(card.upcomingOccurrences)
+  );
+}
 import { PicnicShoppingList } from './PicnicShoppingList';
 import { useReplaceStop } from '../hooks/useReplaceStop';
 import { estimateTravelMinutes, haversineKm, replaceStopInCard, StopAlternative } from '../utils/mutateCuratedCard';
@@ -1743,11 +1755,24 @@ export default function ExpandedCardModal({
   // Hooks above this point fire on every render regardless to satisfy
   // rules-of-hooks.
   if (businessEvent !== null && businessEvent !== undefined) {
-    // ORCH-1138 Leg 2 — the deck EVENT card now opens the NEW foundation event
-    // detail (ConsumerEventDetailScreen) DIRECTLY, NOT ExpandedBusinessEventSheet
-    // (which showed buyers a flat stacked-card sheet). EBES stays for the
-    // experience branch (:2259) + chat (MessageInterface) — N1. Get-tickets opens
-    // TicketCartSheet directly → byte-identical ticket-checkout-create.
+    // ORCH-1138 Leg 3 — the deck EXPERIENCE card opens the NEW foundation
+    // experience detail (ConsumerExperienceDetailScreen). An experience card
+    // carries experienceStops/upcomingOccurrences (event/trip cards never do —
+    // the discriminator the deck-experience mapper guarantees, SwipeableCards
+    // experienceRecToBusinessEventCard). NEVER ExpandedBusinessEventSheet (EBES
+    // decommissioned). I-PROPOSED-1138-EBES-DELETED.
+    if (isExperienceCard(businessEvent)) {
+      return (
+        <ConsumerExperienceDetailScreen
+          seed={businessEvent}
+          onBack={onClose}
+          tabBarAware={false}
+        />
+      );
+    }
+    // ORCH-1138 Leg 2 — the deck EVENT card opens the foundation event detail
+    // (ConsumerEventDetailScreen) DIRECTLY. Get-tickets opens TicketCartSheet
+    // directly → byte-identical ticket-checkout-create.
     // I-PROPOSED-1138-EVENT-DECK-OFF-EBES.
     return (
       <ConsumerEventDetailScreen
@@ -2256,17 +2281,18 @@ export default function ExpandedCardModal({
             ))}
       </BaseBottomSheet>
 
-      {/* ORCH-1072 — experience opened from the VenueExperiencesSection. Renders
-          as a SIBLING of the root sheet (the proven sub-sheet pattern: a second
-          gorhom sheet must not be nested in the root sheet's scroll content).
-          The root sheet is gated off (anyChildModalOpen) while this is open;
-          closing it clears the selection WITHOUT tearing down the card. */}
+      {/* ORCH-1072 → ORCH-1138 Leg 3 — experience opened from the
+          VenueExperiencesSection. Repointed off EBES to the foundation
+          ConsumerExperienceDetailScreen (which mounts its own BaseBottomSheet as
+          a SIBLING of the root sheet — the proven sub-sheet pattern). The root
+          sheet is gated off (anyChildModalOpen) while this is open; closing it
+          clears the selection WITHOUT tearing down the card.
+          I-PROPOSED-1138-EBES-DELETED. */}
       {selectedVenueExperience !== null && (
-        <ExpandedBusinessEventSheet
-          visible={selectedVenueExperience !== null}
-          data={selectedVenueExperience}
-          onClose={() => setSelectedVenueExperience(null)}
-          bottomContentInset={Math.max(insets.bottom, 16) + 8}
+        <ConsumerExperienceDetailScreen
+          seed={selectedVenueExperience}
+          onBack={() => setSelectedVenueExperience(null)}
+          tabBarAware={false}
         />
       )}
 

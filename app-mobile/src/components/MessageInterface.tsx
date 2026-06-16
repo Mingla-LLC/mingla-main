@@ -62,7 +62,12 @@ import { useChatCardTagSource } from "../hooks/useChatCardTagSource";
 import { useChatInputController } from "../hooks/useChatInputController";
 import ExpandedCardModal from "./ExpandedCardModal";  // ORCH-0667
 import { BaseBottomSheet } from "./ui/BaseBottomSheet";
-import { ExpandedBusinessEventSheet } from "./expandedCard/ExpandedBusinessEventSheet";
+// ORCH-1138 Leg 3 — chat purchased-banner repointed off ExpandedBusinessEventSheet
+// (EBES decommissioned) to the foundation detail screens: trip → Leg-1
+// ConsumerTripDetailScreen, event → Leg-2 ConsumerEventDetailScreen.
+// I-PROPOSED-1138-EBES-DELETED.
+import ConsumerTripDetailScreen from "../screens/Trip/ConsumerTripDetailScreen";
+import ConsumerEventDetailScreen from "../screens/Event/ConsumerEventDetailScreen";
 import type { ExpandedCardData } from "../types/expandedCardTypes";  // ORCH-0685
 import type { BusinessEventCard } from "../types/mergedDiscover";
 import { useTranslation } from 'react-i18next';
@@ -2178,17 +2183,28 @@ export default function MessageInterface({
         />
       )}
 
+      {/* ORCH-1138 Leg 3 — chat purchased-banner repointed off EBES. The chat
+          broadcast channel's linkedEntityType is "trip" or "event" (experiences
+          are not a broadcast linked-entity today). Trip → Leg-1
+          ConsumerTripDetailScreen (self-fetches by brand+trip slug; seed=null);
+          event → Leg-2 ConsumerEventDetailScreen (BusinessEventCard seed). Both
+          mount their own BaseBottomSheet → no EBES. I-PROPOSED-1138-EBES-DELETED. */}
       {showGroupEventSheet && friend.eventPublicCard ? (
-        <ExpandedBusinessEventSheet
-          visible={showGroupEventSheet}
-          data={friend.eventPublicCard}
-          onClose={() => setShowGroupEventSheet(false)}
-          bottomContentInset={
-            isBroadcastOnlyConsumerChannel
-              ? broadcastComposerContentClearance
-              : bottomNavTotalHeight + 32
-          }
-        />
+        friend.linkedEntityType === "trip" ? (
+          <ConsumerTripDetailScreen
+            brandSlug={friend.eventPublicCard.brandSlug}
+            tripSlug={friend.eventPublicCard.eventSlug}
+            seed={null}
+            onBack={() => setShowGroupEventSheet(false)}
+            tabBarAware={false}
+          />
+        ) : (
+          <ConsumerEventDetailScreen
+            seed={friend.eventPublicCard}
+            onBack={() => setShowGroupEventSheet(false)}
+            tabBarAware={false}
+          />
+        )
       ) : null}
 
       {/* Event-audience picker — ORCH trip/event broadcast roster.

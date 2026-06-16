@@ -41,8 +41,15 @@ const stripComments = (src) =>
 
 const cartRaw = read("src/components/expandedCard/TicketCartSheet.tsx");
 const cartCode = stripComments(cartRaw);
-const ebesCode = stripComments(
-  read("src/components/expandedCard/ExpandedBusinessEventSheet.tsx"),
+// ORCH-1138 Leg 3 [TEST-MOD-APPROVED ORCH-1138] — ExpandedBusinessEventSheet was
+// DELETED (EBES decommission). Its successor consumers are the foundation detail
+// screens (ConsumerEventDetailScreen + ConsumerExperienceDetailScreen), which
+// carry the ported handleBuy. Retarget E1 to those — the no-taxCalculationId
+// invariant must hold on EVERY upstream consumer of runNativeCheckout.
+const upstreamCode = stripComments(
+  read("src/screens/Event/ConsumerEventDetailScreen.tsx") +
+    "\n" +
+    read("src/screens/Experience/ConsumerExperienceDetailScreen.tsx"),
 );
 
 let passed = 0;
@@ -172,9 +179,9 @@ ok(
 // G-E — upstream consumer no longer forwards taxCalculationId
 // ---------------------------------------------------------------------------
 ok(
-  "E1 ExpandedBusinessEventSheet no longer passes payload.taxCalculationId",
-  !/taxCalculationId\s*:\s*payload\.taxCalculationId/.test(ebesCode),
-  "the runNativeCheckout call drops the taxCalculationId forward",
+  "E1 foundation detail consumers no longer pass payload.taxCalculationId",
+  !/taxCalculationId\s*:\s*payload\.taxCalculationId/.test(upstreamCode),
+  "the runNativeCheckout call drops the taxCalculationId forward (post-EBES successors)",
 );
 
 // ---------------------------------------------------------------------------
