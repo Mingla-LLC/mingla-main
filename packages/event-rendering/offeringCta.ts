@@ -263,6 +263,73 @@ export const resolveOfferingCta = (
   };
 };
 
+// ===========================================================================
+// ORCH-1150 — RSVP CTA machine (Going / Not-going), money-free.
+// do NOT merge back into the ticket/checkout path — RSVP has zero tickets +
+// no money gate. See SPEC §6.
+// ===========================================================================
+
+/**
+ * The guest's own resolvable RSVP state on this event (when known), plus the
+ * event-level capacity posture. Drives which Going/Not-going affordance renders.
+ */
+export type RsvpCtaState =
+  | "open" // Going / Not going both active
+  | "full" // capacity hit, waitlist OFF, auto mode → Going disabled
+  | "waitlist" // capacity hit, waitlist ON → tapping Going joins the waitlist
+  | "pending" // manual approval, guest already RSVP'd → "Awaiting host approval"
+  | "going" // guest's own current confirmed state
+  | "not_going"; // guest's own current declined state
+
+export interface ResolveRsvpCtaInput {
+  /** Event-level posture: is the cap full of confirmed-attending guests? */
+  capacityFull: boolean;
+  /** events.rsvp_waitlist_enabled. */
+  waitlistEnabled: boolean;
+  /** events.rsvp_approval_mode === 'manual'. */
+  manualApproval: boolean;
+  /** The guest's own current row state, when resolvable (else null). */
+  guestStatus?: "going" | "not_going" | "waitlisted" | null;
+  guestApproval?: "pending" | "approved" | "denied" | null;
+}
+
+export interface RsvpCtaDescriptor {
+  kind: "rsvp";
+  state: RsvpCtaState;
+}
+
+/**
+ * Resolve the RSVP CTA descriptor. Precedence:
+ *   guest already pending          → pending
+ *   guest already going+approved   → going
+ *   guest already not_going        → not_going
+ *   guest already waitlisted       → waitlist
+ *   cap full + waitlist on         → waitlist
+ *   cap full + waitlist off + auto → full
+ *   else                           → open
+ */
+export const resolveRsvpCta = (input: ResolveRsvpCtaInput): RsvpCtaDescriptor => {
+  const { capacityFull, waitlistEnabled, manualApproval, guestStatus, guestApproval } = input;
+
+  if (guestStatus != null) {
+    if (guestApproval === "pending") return { kind: "rsvp", state: "pending" };
+    if (guestStatus === "waitlisted") return { kind: "rsvp", state: "waitlist" };
+    if (guestStatus === "going" && guestApproval === "approved") {
+      return { kind: "rsvp", state: "going" };
+    }
+    if (guestStatus === "not_going") return { kind: "rsvp", state: "not_going" };
+  }
+
+  if (capacityFull) {
+    if (waitlistEnabled) return { kind: "rsvp", state: "waitlist" };
+    // manual mode never hard-blocks at submit (pending doesn't occupy the cap);
+    // only auto-mode-without-waitlist shows the hard "full" state.
+    if (!manualApproval) return { kind: "rsvp", state: "full" };
+  }
+
+  return { kind: "rsvp", state: "open" };
+};
+
 /** Lowest numeric all-in price among paid tickets, formatted, or null. */
 const lowestPriceString = (
   tickets: PublicTicketProps[],

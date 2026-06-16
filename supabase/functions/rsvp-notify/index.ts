@@ -27,6 +27,7 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { sendPush } from "../_shared/push-utils.ts";
+import { fanOutChannels } from "./fanout.ts";
 import {
   assertNotResendSandbox,
   EMAIL_SENDERS,
@@ -325,65 +326,54 @@ serve(async (req: Request): Promise<Response> => {
     }
   }
 
-  // 4. Fan out — each channel independent + non-blocking.
-  const outcome: { push: boolean; email: boolean; sms: boolean } = {
-    push: false,
-    email: false,
-    sms: false,
-  };
-  let anyAttempted = false;
-
-  if (userId !== null) {
-    anyAttempted = true;
-    try {
-      outcome.push = await sendPush({
-        targetUserId: userId,
-        title: copy.pushTitle,
-        body: copy.pushBody,
-        app: "consumer",
-        data: { deepLink: link, type: queueRow.template_key },
-      });
-      // In-app inbox row (mirror notify-dispatch); non-blocking.
-      try {
-        await admin.from("notifications").insert({
-          user_id: userId,
-          type: queueRow.template_key,
-          title: copy.pushTitle,
-          body: copy.pushBody,
-          deep_link: link,
-          data: { deepLink: link },
-          brand_id: eventRow.brand_id,
-          related_id: eventRow.id,
-          related_type: "rsvp_event",
-        });
-      } catch (inboxErr) {
-        console.warn("[rsvp-notify] inbox insert failed (non-fatal)", String(inboxErr));
-      }
-    } catch (err) {
-      console.warn("[rsvp-notify] push failed (isolated)", String(err));
-    }
-  }
-
-  if (email !== null && email.length > 0) {
-    anyAttempted = true;
-    const r = await sendResendEmail(email, copy.emailSubject, copy.emailBody);
-    outcome.email = r.ok;
-    if (!r.ok) console.warn("[rsvp-notify] email failed (isolated)", r.error);
-  }
-
-  if (phone !== null && phone.length > 0) {
-    anyAttempted = true;
-    const r = await sendTwilioSms(phone, copy.sms);
-    outcome.sms = r.ok;
-    if (!r.ok) console.warn("[rsvp-notify] sms failed (isolated)", r.error);
-  }
-
-  const anySucceeded = outcome.push || outcome.email || outcome.sms;
-  const nextStatus = !anyAttempted
-    ? "skipped"
-    : anySucceeded
-      ? "sent"
-      : "failed_retryable";
+  // 4. Fan out — each channel independent + non-blocking (via the pure helper).
+  const { outcome, anySucceeded, status: nextStatus } = await fanOutChannels({
+    push:
+      userId !== null
+        ? async (): Promise<boolean> => {
+            const ok = await sendPush({
+              targetUserId: userId,
+              title: copy.pushTitle,
+              body: copy.pushBody,
+              app: "consumer",
+              data: { deepLink: link, type: queueRow.template_key },
+            });
+            // In-app inbox row (mirror notify-dispatch); non-blocking.
+            try {
+              await admin.from("notifications").insert({
+                user_id: userId,
+                type: queueRow.template_key,
+                title: copy.pushTitle,
+                body: copy.pushBody,
+                deep_link: link,
+                data: { deepLink: link },
+                brand_id: eventRow.brand_id,
+                related_id: eventRow.id,
+                related_type: "rsvp_event",
+              });
+            } catch (inboxErr) {
+              console.warn("[rsvp-notify] inbox insert failed (non-fatal)", String(inboxErr));
+            }
+            return ok;
+          }
+        : null,
+    email:
+      email !== null && email.length > 0
+        ? async (): Promise<boolean> => {
+            const r = await sendResendEmail(email!, copy.emailSubject, copy.emailBody);
+            if (!r.ok) console.warn("[rsvp-notify] email failed (isolated)", r.error);
+            return r.ok;
+          }
+        : null,
+    sms:
+      phone !== null && phone.length > 0
+        ? async (): Promise<boolean> => {
+            const r = await sendTwilioSms(phone!, copy.sms);
+            if (!r.ok) console.warn("[rsvp-notify] sms failed (isolated)", r.error);
+            return r.ok;
+          }
+        : null,
+  });
 
   console.log(
     `[rsvp-notify] ${queueRow.template_key} rsvp=${queueRow.rsvp_id} ` +
