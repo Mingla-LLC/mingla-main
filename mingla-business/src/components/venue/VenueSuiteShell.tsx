@@ -28,6 +28,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import {
   accent,
+  glass,
   radius,
   spacing,
   text as textTokens,
@@ -299,12 +300,25 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     width: "100%",
     maxWidth: venueSuiteMaxWidth,
-    alignSelf: "center",
+    // 2.0.1 polish — LEFT-anchored (was `alignSelf:"center"`). The Hub chrome
+    // above (TopBar / To-Do toggle / sub-nav, all in hub/_layout.tsx) is
+    // full-width and left-aligned to `spacing.md` inside the DesktopCanvas
+    // column. Centering this block floated the rail far to the right of that
+    // chrome edge, opening the dead left gutter Seth flagged. We now share the
+    // chrome's exact left edge (`spacing.md`) and only cap the RIGHT side on
+    // ultra-wide via `maxWidth`, so the rail sits flush under the nav.
+    alignSelf: "flex-start",
+    paddingHorizontal: spacing.md,
   },
   desktopRail: {
     width: venueRailWidth,
-    paddingVertical: spacing.md,
-    paddingHorizontal: spacing.sm,
+    paddingTop: spacing.xs,
+    // Hairline divider separating the rail from the workspace, top-aligned with
+    // the content. Subtle (matches the app's restrained desktop chrome), opaque
+    // safe on Android.
+    borderRightWidth: StyleSheet.hairlineWidth,
+    borderRightColor: glass.border.profileBase,
+    paddingRight: spacing.sm,
   },
   railInner: {
     gap: spacing.xxs,
@@ -312,20 +326,29 @@ const styles = StyleSheet.create({
   railSection: {
     ...typography.labelCap,
     color: textTokens.tertiary,
-    paddingHorizontal: spacing.md,
+    // Aligned to the same left grid line as the row labels (rows use
+    // `paddingHorizontal: spacing.sm`), so section caps and item text share one
+    // intentional left edge.
+    paddingHorizontal: spacing.sm,
     paddingTop: spacing.md,
     paddingBottom: spacing.xs,
   },
   railRow: {
     flexDirection: "row",
     alignItems: "center",
+    // Tighter, consistent vertical rhythm (was sm/16h) and a snug left grid.
     paddingVertical: spacing.sm,
-    paddingHorizontal: spacing.md,
+    paddingHorizontal: spacing.sm,
     borderRadius: radius.md,
     ...Platform.select({ web: { cursor: "pointer" }, default: {} }),
   },
   railRowActive: {
-    backgroundColor: accent.tint,
+    // 2.0.1 polish — sleeker selected state. The old `accent.tint` (warm @0.28
+    // alpha) read as a heavy brown fill. The app's restrained convention is a
+    // faint neutral surface + the warm accent reserved for the edge bar + label,
+    // so the active row now uses the elevated glass surface (opaque-safe rgba)
+    // and the warm signal lives in `railActiveBar` + `railLabelActive`.
+    backgroundColor: glass.tint.profileElevated,
   },
   railActiveBar: {
     position: "absolute",
@@ -346,6 +369,8 @@ const styles = StyleSheet.create({
   },
   desktopWorkspace: {
     flex: 1,
+    // Balanced gutter between the rail and the workspace (paired with the rail's
+    // `paddingRight: spacing.sm` + hairline → a coherent, symmetric seam).
     paddingLeft: spacing.lg,
   },
   desktopScroll: {
