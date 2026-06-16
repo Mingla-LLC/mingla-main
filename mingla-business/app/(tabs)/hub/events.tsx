@@ -357,11 +357,15 @@ export default function EventsTab(): React.ReactElement {
       // instead of /event/{id}. Existing rows without event_type default
       // to "event" via the defensive variant — safe for legacy DraftEvent
       // / LiveEvent stored without the field.
+      // ORCH-1150 — carry the RSVP signal so RSVP rows resume into the RSVP
+      // wizard/dashboard. Drafts carry `isRsvp` (DraftEvent has no event_type);
+      // live RSVP rows carry event_type='rsvp' (LiveEvent). Pass both.
       router.push(
         routeForEventRowDefensive({
           id: item.event.id,
           event_type:
             (item.event as { event_type?: string }).event_type ?? "event",
+          isRsvp: (item.event as { isRsvp?: boolean }).isRsvp === true,
           status: item.kind === "draft" ? "draft" : (item.event as LiveEvent).status,
         }) as never,
       );
@@ -398,8 +402,18 @@ export default function EventsTab(): React.ReactElement {
     // route to the focused EditPublishedScreen via ?mode=edit-published.
     const suffix =
       manageCtx.kind === "draft" ? "" : "?mode=edit-published";
-    // orch-strict-grep-allow route-by-event-type — manageCtx is event-only by construction (event manage menu); trips use a separate dashboard route with no manage-menu surface yet
-    router.push(`/event/${manageCtx.event.id}/edit${suffix}` as never);
+    // ORCH-1150 — route the edit target by RSVP-ness so RSVP rows open the RSVP
+    // wizard / RSVP-aware EditPublishedScreen (app/rsvp/[id]/edit), not the
+    // ticketed event surface. The base path comes from the canonical helper;
+    // ticketed events stay on /event/{id}/edit byte-identically.
+    const isRsvpItem =
+      (manageCtx.event as { isRsvp?: boolean }).isRsvp === true ||
+      (manageCtx.event as { event_type?: string }).event_type === "rsvp";
+    const base = isRsvpItem
+      ? `/rsvp/${manageCtx.event.id}/edit`
+      : `/event/${manageCtx.event.id}/edit`;
+    // orch-strict-grep-allow route-by-event-type — RSVP-vs-event base is chosen above by isRsvp/event_type; ticketed path unchanged, RSVP routes to /rsvp/[id]/edit (outside this gate's /event|/trip scope)
+    router.push(`${base}${suffix}` as never);
     setManageCtx(null);
   }, [manageCtx, router]);
 

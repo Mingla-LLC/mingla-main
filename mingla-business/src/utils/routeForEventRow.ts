@@ -28,6 +28,12 @@
  *     own "Continue editing" / "Edit" action is the only path into the wizard.
  *     (META-ORCH-1059 — operator: tapping an experience opened the edit screen
  *     directly; the dashboard must be the landing surface, with Edit deliberate.)
+ *   - event_type='rsvp' + status='draft' → /rsvp/{id}/edit (resume the RSVP wizard)
+ *   - event_type='rsvp' + status anything else → /rsvp/{id} (RSVP dashboard)
+ *     (ORCH-1150 [RSVP event wizard] — RSVP drafts/rows MUST resume into
+ *     RsvpCreatorWizard, never the ticketed EventCreatorWizard. The camelCase
+ *     DraftEvent shape has no `event_type`; it carries `isRsvp` instead, so the
+ *     defensive variant coerces `isRsvp===true` → event_type:'rsvp'.)
  *   - event_type='event' + status='draft' → /event/{id}/edit
  *   - event_type='event' + status anything else → /event/{id}
  *   - status undefined → default to non-edit path
@@ -41,7 +47,7 @@
  *   `.github/workflows/strict-grep-mingla-business.yml`.
  */
 
-export type EventTypeForRouting = "event" | "experience" | "trip";
+export type EventTypeForRouting = "event" | "experience" | "trip" | "rsvp";
 
 export type EventStatusForRouting =
   | "draft"
@@ -69,6 +75,13 @@ export function routeForEventRow(row: EventRowForRouting): string {
       ? `/trip/${row.id}/edit`
       : `/trip/${row.id}`;
   }
+  if (row.event_type === "rsvp") {
+    // ORCH-1150 — RSVP rows resume into the RSVP wizard / dashboard, never the
+    // ticketed event surfaces. Mirrors the event branch's draft-vs-live split.
+    return row.status === "draft"
+      ? `/rsvp/${row.id}/edit`
+      : `/rsvp/${row.id}`;
+  }
   if (row.event_type === "experience") {
     // META-ORCH-1059: the experience DASHBOARD is the single entry point for
     // every status (draft included). Unlike event/trip drafts (which resume the
@@ -92,9 +105,23 @@ export function routeForEventRow(row: EventRowForRouting): string {
  * `routeForEventRow` directly with the raw row shape.
  */
 export function routeForEventRowDefensive(
-  row: { id: string; eventType?: string; event_type?: string; status?: string },
+  row: {
+    id: string;
+    eventType?: string;
+    event_type?: string;
+    status?: string;
+    // ORCH-1150 — the camelCase DraftEvent / LiveEvent shape carries `isRsvp`
+    // (the DraftEvent type has NO `event_type` field at all), so callers route
+    // RSVP rows by passing this flag. It takes precedence over a missing
+    // event_type and coerces to event_type:'rsvp'.
+    isRsvp?: boolean;
+  },
 ): string {
-  const eventType = (row.event_type ?? row.eventType ?? "event") as EventTypeForRouting;
+  const eventType = (
+    row.isRsvp === true
+      ? "rsvp"
+      : row.event_type ?? row.eventType ?? "event"
+  ) as EventTypeForRouting;
   const status = row.status as EventStatusForRouting;
   return routeForEventRow({ id: row.id, event_type: eventType, status });
 }
