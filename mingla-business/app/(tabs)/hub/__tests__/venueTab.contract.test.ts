@@ -27,6 +27,7 @@ const SUB_NAV = biz("src/components/hub/HubSubNav.tsx");
 const HUB_TAB = biz("app/(tabs)/hub/listing.tsx");
 const HUB_LAYOUT = biz("app/(tabs)/hub/_layout.tsx");
 const CONTENT = biz("src/components/venue/VenueListingContent.tsx");
+const SHELL = biz("src/components/venue/VenueSuiteShell.tsx");
 const REDIRECT = biz("app/brand/[id]/listing.tsx");
 const PROFILE = biz("src/components/brand/BrandProfileView.tsx");
 
@@ -85,11 +86,21 @@ describe("ORCH-1145 — Venue pill definition (HubSubNav)", () => {
 });
 
 describe("ORCH-1145 — content-only Venue tab (no dead tap)", () => {
-  // T-9 — tab renders real management content.
-  test("T-9 — hub/listing.tsx renders VenueListingContent (real UI, not a placeholder)", () => {
-    expect(HUB_TAB).toContain("VenueListingContent");
-    expect(HUB_TAB).toContain('chromeMode="tab"');
-    // Active brand resolved via useCurrentBrand, NO route param.
+  // T-9 — tab renders real management content (no dead Overview).
+  // [TEST-MOD-APPROVED ORCH-1148] The ORCH-1145 direct-mount assertion
+  // (listing.tsx contains VenueListingContent/chromeMode) is SUPERSEDED by the
+  // META-ORCH-1148 suite-shell architecture: listing.tsx now mounts
+  // VenueSuiteShell, and the shell's Overview module mounts VenueListingContent
+  // with chromeMode="tab" VERBATIM. The contract intent is unchanged — the venue
+  // tab still surfaces the real listing UI as Overview — only the mount path
+  // moved one level deeper, so the assertion follows it through the shell.
+  test("T-9 — venue tab renders VenueListingContent as Overview (real UI, not a placeholder)", () => {
+    // listing.tsx mounts the suite shell...
+    expect(HUB_TAB).toContain("VenueSuiteShell");
+    // ...and the shell's Overview module mounts the real listing UI in tab chrome.
+    expect(SHELL).toContain("VenueListingContent");
+    expect(SHELL).toContain('chromeMode="tab"');
+    // Active brand still resolved via useCurrentBrand, NO route param.
     expect(HUB_TAB).toContain("useCurrentBrand");
     expect(HUB_TAB).not.toContain("useLocalSearchParams<{ id");
   });
