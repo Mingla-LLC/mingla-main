@@ -52,6 +52,9 @@ const ticketToStub = (ticket: PublicExperienceTicket): TicketStub => ({
   id: ticket.ticketTypeId,
   name: ticket.name,
   priceGbp: ticket.priceCents > 0 ? ticket.priceCents / 100 : null,
+  // ORCH-1147 — pass the server fee-grossed all-in through to the cart seed
+  // (which reads stub.priceAllInGbp). Null → seed falls back to priceGbp/base.
+  priceAllInGbp: ticket.priceAllInGbp ?? null,
   currency: ticket.currency,
   capacity: ticket.ticketsRemaining ?? ticket.quantityTotal,
   isFree: ticket.priceCents === 0 || ticket.isFree,
@@ -275,6 +278,10 @@ export default function CheckoutExperienceTicketScreen(): React.ReactElement {
               ticketTypeId: stub.id,
               ticketName: stub.name,
               unitPrice: stub.priceGbp ?? 0,
+              // ORCH-1147 — server fee-grossed all-in (priceAllInGbp) as the
+              // headline-Total basis; falls back to base until the experience
+              // source plumbs the per-tier all-in (never fabricate).
+              unitPriceAllIn: stub.priceAllInGbp ?? stub.priceGbp ?? 0,
               currency: stub.currency ?? experience.ticket?.currency ?? "USD",
               isFree: stub.isFree,
               quantity: next,

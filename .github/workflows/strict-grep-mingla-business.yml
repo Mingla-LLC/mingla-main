@@ -2320,6 +2320,45 @@ jobs:
       - name: Run ORCH-1130 no-buyer-tax-form gate
         run: node .github/scripts/strict-grep/orch-1130-no-buyer-tax-form.mjs
 
+  orch-1147-cart-total-is-allin:
+    name: "ORCH-1147: checkout headline Total is the server fee-grossed all-in (I-PROPOSED-1147-CART-TOTAL-IS-SERVER-ALLIN)"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Self-test the gate (good vs base-bound fixtures)
+        run: node .github/scripts/strict-grep/orch-1147-cart-total-is-allin.mjs --self-test
+      - name: Run ORCH-1147 cart-total-is-allin gate
+        run: node .github/scripts/strict-grep/orch-1147-cart-total-is-allin.mjs
+
+  orch-1147-web-charge-allin:
+    name: "ORCH-1147: web Checkout bills the fee-grossed pre-tax subtotal (I-PROPOSED-1147-WEB-CHARGE-BILLS-FEE-GROSSED-SUBTOTAL)"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Self-test the gate (good vs base/total-bound fixtures)
+        run: node .github/scripts/strict-grep/orch-1147-web-charge-allin.mjs --self-test
+      - name: Run ORCH-1147 web-charge-allin gate
+        run: node .github/scripts/strict-grep/orch-1147-web-charge-allin.mjs
+
+  orch-1147-allin-single-owner:
+    name: "ORCH-1147: pg_public_event_tier_allin has ONE owner; trip/experience reuse the helper (SC-11)"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Self-test the gate (owner vs duplicate-RPC fixtures)
+        run: node .github/scripts/strict-grep/orch-1147-allin-single-owner.mjs --self-test
+      - name: Run ORCH-1147 allin-single-owner gate
+        run: node .github/scripts/strict-grep/orch-1147-allin-single-owner.mjs
+
   orch-1138-trip-reserve-straight-to-cart:
     name: "ORCH-1138: trip Reserve opens the cart directly, never EBES (I-PROPOSED-1138-TRIP-RESERVE-STRAIGHT-TO-CART)"
     runs-on: ubuntu-latest

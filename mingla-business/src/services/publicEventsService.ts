@@ -837,7 +837,9 @@ const fetchTicketTypesRemaining = async (
 // compute_all_in_cents the cart + view use (pg_public_event_tier_allin RPC),
 // ZERO fee math in TS. RPC failure is non-fatal → every tier falls back to its
 // base price (never blank). Mirrors app-mobile's publicEventTicketsService.
-const fetchTierAllInCents = async (
+// ORCH-1147 — EXPORTED so the experience service reuses the SAME single owner
+// of pg_public_event_tier_allin (no duplicated RPC / fee math anywhere else).
+export const fetchTierAllInCents = async (
   eventId: string,
 ): Promise<Map<string, number>> => {
   const map = new Map<string, number>();
@@ -1323,7 +1325,12 @@ export const getPublicTripById = async (
   const tickets = (ticketsResp.data ?? []) as any[];
 
   // ORCH-0946 — remaining-capacity per ticket_type for the sold-out gate.
-  const remainingById = await fetchTicketTypesRemaining(tripEventId);
+  // ORCH-1147 — per-tier server all-in (the SAME single owner as the event
+  // path); RPC failure → empty map → base fallback downstream (never blank).
+  const [remainingById, allInById] = await Promise.all([
+    fetchTicketTypesRemaining(tripEventId),
+    fetchTierAllInCents(tripEventId),
+  ]);
 
   const ticketsById = new Map(tickets.map((tt) => [tt.id, tt]));
   const bt =
@@ -1422,6 +1429,13 @@ export const getPublicTripById = async (
         ticketsRemaining,
         isUnlimited,
         installmentSchedule,
+        // ORCH-1147 — server fee-grossed per-tier all-in (MAJOR units). Free
+        // tier / RPC miss → null; the cart seed owns the single base fallback
+        // (mirrors the event path). NEVER recompute fees in TS.
+        priceAllInGbp: (() => {
+          const cents = allInById.get(t.ticket_type_id);
+          return typeof cents === "number" ? cents / 100 : null;
+        })(),
       };
     }),
     inclusions: inclusions.map(

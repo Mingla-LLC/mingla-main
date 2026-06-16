@@ -67,6 +67,9 @@ const tierToTicketStub = (tier: TripPricingTier): TicketStub => ({
   id: tier.ticketTypeId,
   name: tier.tierName,
   priceGbp: tier.priceCents > 0 ? tier.priceCents / 100 : null,
+  // ORCH-1147 — pass the server fee-grossed all-in through to the cart seed
+  // (which reads stub.priceAllInGbp). Null → seed falls back to priceGbp/base.
+  priceAllInGbp: tier.priceAllInGbp ?? null,
   currency: tier.currency,
   // ORCH-0946 — buyer-checkout sold-out gate + QuantityRow "+" cap need
   // remaining bookable seats, not total tier capacity. `quantityTotal`
@@ -244,6 +247,10 @@ export default function CheckoutTripTicketsScreen(): React.ReactElement {
         ticketTypeId: sole.id,
         ticketName: sole.name,
         unitPrice: sole.priceGbp ?? 0,
+        // ORCH-1147 — seed the server fee-grossed all-in (priceAllInGbp) as the
+        // headline-Total basis; falls back to base until the trip source plumbs
+        // the per-tier all-in (never fabricate).
+        unitPriceAllIn: sole.priceAllInGbp ?? sole.priceGbp ?? 0,
         currency: sole.currency ?? trip.pricingTiers[0]?.currency ?? "USD",
         isFree: sole.isFree,
         quantity: 1,
@@ -448,6 +455,10 @@ export default function CheckoutTripTicketsScreen(): React.ReactElement {
                     ticketTypeId: ticket.id,
                     ticketName: ticket.name,
                     unitPrice: ticket.priceGbp ?? 0,
+                    // ORCH-1147 — server fee-grossed all-in (priceAllInGbp) as
+                    // the headline-Total basis; base fallback (never fabricate).
+                    unitPriceAllIn:
+                      ticket.priceAllInGbp ?? ticket.priceGbp ?? 0,
                     currency:
                       ticket.currency ??
                       trip.pricingTiers[0]?.currency ??

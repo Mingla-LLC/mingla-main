@@ -40,6 +40,18 @@ export interface CartLine {
   unitPrice: number;
   /** Legacy compatibility only. New code writes `unitPrice`. */
   unitPriceGbp?: number;
+  /**
+   * ORCH-1147 — server fee-grossed ALL-IN per unit (major units in `currency`),
+   * seeded from the tier's server-computed `priceAllInGbp`
+   * (`pg_public_event_tier_allin`). This is the SINGLE display authority for the
+   * headline Total — the client performs ZERO fee/tax math beyond Σ(allIn×qty).
+   * Optional: a free tier, or a checkout path that has not plumbed the all-in
+   * yet, falls back to `unitPrice` (base) and contributes 0 to fees/tax — never
+   * undefined, never NaN. NEVER fabricate (Constitution #9): when the server has
+   * no all-in for a tier the seed uses the base, it does not invent a markup.
+   * I-PROPOSED-1147-CART-TOTAL-IS-SERVER-ALLIN (DRAFT).
+   */
+  unitPriceAllIn?: number;
   /** ISO 4217 event currency. */
   currency: string;
   isFree: boolean;
@@ -148,6 +160,8 @@ type CartAction =
     ticketName: string;
     unitPrice: number;
     unitPriceGbp?: number;
+    // ORCH-1147 — server fee-grossed all-in per unit (see CartLine.unitPriceAllIn).
+    unitPriceAllIn?: number;
     currency: string;
     isFree: boolean;
     quantity: number;
@@ -190,6 +204,7 @@ const reducer = (state: CartState, action: CartAction): CartState => {
         ticketName,
         unitPrice,
         unitPriceGbp,
+        unitPriceAllIn,
         currency,
         isFree,
         quantity,
@@ -223,16 +238,29 @@ const reducer = (state: CartState, action: CartAction): CartState => {
               quantity,
               unitPrice,
               unitPriceGbp: unitPriceGbp ?? unitPrice,
+              // ORCH-1147 — store the server fee-grossed all-in; fall back to the
+              // base when the path has not plumbed it (never undefined/NaN, never
+              // fabricated — see CartLine.unitPriceAllIn).
+              unitPriceAllIn: unitPriceAllIn ?? unitPrice,
               currency: normalizedCurrency,
               isFree,
             },
           ],
         };
       }
+      // ORCH-1147 — on a quantity update, re-write unitPriceAllIn too so a
+      // re-seed carrying a freshly-resolved all-in is not stranded on the
+      // existing line (the seed always passes the latest server figure).
       return {
         ...state,
         lines: state.lines.map((l) =>
-          l.ticketTypeId === ticketTypeId ? { ...l, quantity } : l
+          l.ticketTypeId === ticketTypeId
+            ? {
+              ...l,
+              quantity,
+              unitPriceAllIn: unitPriceAllIn ?? l.unitPriceAllIn ?? l.unitPrice,
+            }
+            : l
         ),
       };
     }
@@ -272,6 +300,8 @@ export interface CartContextValue extends CartState {
     ticketName: string;
     unitPrice: number;
     unitPriceGbp?: number;
+    // ORCH-1147 — server fee-grossed all-in per unit (see CartLine.unitPriceAllIn).
+    unitPriceAllIn?: number;
     currency: string;
     isFree: boolean;
     quantity: number;
@@ -310,6 +340,8 @@ export const CartProvider: React.FC<CartProviderProps> = ({ children }) => {
       ticketName: string;
       unitPrice: number;
       unitPriceGbp?: number;
+      // ORCH-1147 — server fee-grossed all-in per unit (see CartLine.unitPriceAllIn).
+      unitPriceAllIn?: number;
       currency: string;
       isFree: boolean;
       quantity: number;
@@ -391,8 +423,28 @@ export interface CartTotals {
   subtotalGbp: number;
   /** Legacy compatibility only. Same value as total. */
   totalGbp: number;
+  /**
+   * BASE ticket subtotal (Σ unitPrice×qty), major units. UNCHANGED MEANING
+   * (ORCH-1147 DO-NOT-REPURPOSE): `subtotal`/`total` remain the per-line
+   * "Tickets" recap basis; the headline Total is sourced from `allInTotal`.
+   */
   subtotal: number;
   total: number;
+  /**
+   * ORCH-1147 — server fee-grossed ALL-IN (Σ unitPriceAllIn×qty), major units.
+   * This is the headline Total floor (synchronous, web + native). The client
+   * never re-derives it — it sums the server per-tier all-in.
+   * I-PROPOSED-1147-CART-TOTAL-IS-SERVER-ALLIN (DRAFT).
+   */
+  allInTotal: number;
+  /**
+   * ORCH-1147 — the combined fees+tax delta (allInTotal − subtotal) in MINOR
+   * units, GREATEST(0,…). Rendered as the SINGLE combined "Fees & tax" line
+   * (feedback_cart_combined_fees_tax_line — never split service-fee + VAT).
+   */
+  feesTaxCents: number;
+  /** ORCH-1147 — true iff feesTaxCents > 0 (gates the "Fees & tax" line). */
+  hasFeesTaxDelta: boolean;
   currency: string;
   totalQuantity: number;
   isFree: boolean;
@@ -403,20 +455,31 @@ export const useCartTotals = (): CartTotals => {
   const { lines } = useCart();
   return useMemo<CartTotals>((): CartTotals => {
     let subtotal = 0;
+    // ORCH-1147 — accumulate the server fee-grossed all-in alongside the base.
+    // Each line falls back to its base when no all-in was plumbed (never NaN,
+    // never fabricated). All math in major units; convert the delta to cents
+    // once at the end (mirrors the consumer reference TicketCartSheet.tsx).
+    let allInTotal = 0;
     let totalQuantity = 0;
     let currency = "";
     for (const line of lines) {
       subtotal += line.unitPrice * line.quantity;
+      allInTotal += (line.unitPriceAllIn ?? line.unitPrice) * line.quantity;
       totalQuantity += line.quantity;
       currency = line.currency;
     }
     const isEmpty = totalQuantity === 0;
     const isFree = !isEmpty && subtotal === 0;
+    // ORCH-1147 — combined fees+tax delta in MINOR units, GREATEST(0,…).
+    const feesTaxCents = Math.max(0, Math.round((allInTotal - subtotal) * 100));
     return {
       subtotalGbp: subtotal,
       totalGbp: subtotal,
       subtotal,
       total: subtotal,
+      allInTotal,
+      feesTaxCents,
+      hasFeesTaxDelta: feesTaxCents > 0,
       currency,
       totalQuantity,
       isFree,
