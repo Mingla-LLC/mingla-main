@@ -101,6 +101,9 @@ const queryBuilder = <T,>(
 ) => {
   const builder = {
     eq: jest.fn(() => builder),
+    // ORCH-1150 — additive: draft reads/updates now filter
+    // .in("event_type", ["event","rsvp"]) (RSVP drafts share the pipeline).
+    in: jest.fn(() => builder),
     insert: jest.fn(() => builder),
     is: jest.fn(() => builder),
     maybeSingle: jest.fn(() =>
