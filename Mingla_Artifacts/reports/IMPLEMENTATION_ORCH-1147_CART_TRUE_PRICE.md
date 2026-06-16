@@ -206,3 +206,123 @@ All three use the EXISTING `pg_public_event_tier_allin` RPC — no new SQL, no m
 - **jest.config jsx mode** — the node/ts-jest config could not run ANY runtime-import test of a JSX-bearing `.tsx` before this fix; future hook unit tests benefit. Minor latent test-infra gap, now closed.
 - **Tester D-3 (mandatory):** a green run on current prod data proves nothing (0/8 charges-enabled brands pass any fee → `feesTaxCents=0` everywhere). Tester MUST stand up a synthetic/temporary pass-fee charges-enabled fixture and prove display Total > base by the fee gross-up + the web Checkout Session bills the grossed-up subtotal + NGN parity (SC-7).
 - **Comms:** read COMMS_LEDGER on entry — no BLOCK rows for this skill/ORCH/ALL. Recent WARN-to-ALL entries (COMMS-0035/0032/0028/0027) concern HEIC/expo-image-manipulator and OTA hygiene — unrelated to cart pricing; read, no action this turn.
+
+---
+
+# AMENDMENT IMPLEMENTATION — TRIP + EXPERIENCE all-in SOURCE plumbing (2026-06-15)
+
+**Amends:** `SPEC_AMENDMENT_ORCH-1147_TRIP_EXPERIENCE_ALLIN_SOURCE.md` (§B allowlist, §C per-file spec, §D SC-4/5/11, §E test extension).
+**Status:** implemented and verified (static + unit + gate). Device-verify (tester) still required per §E2.
+**Commit:** `e968e00b3` (all 8 files: 5 product + test + new gate + workflow).
+**Comms:** COMMS_LEDGER read on entry — no OPEN BLOCK rows for mingla-implementor / ORCH-1147 / ALL. COMMS-0003 (external-API docs, WARN/ALL) and COMMS-0031 (consumer iOS native pods, WARN/ALL) are N/A — this is a pure-client cart-plumbing change with no external-API integration and no iOS native build.
+
+## A-amend. Summary (plain English)
+
+Before this amendment, the **event** cart Total already showed the true fee-grossed all-in, but **trip** and **experience** carts fell back to the bare base price — because their two source services never attached the per-tier all-in. This amendment feeds the trip + experience source services the SAME server number the event path already uses (one shared helper, no new SQL), so all three offering types now show an identical true Total + "Fees & tax" line.
+
+## B-amend. SPEC-amendment success-criteria coverage
+
+| SC | Description | Status | Commit |
+|----|-------------|--------|--------|
+| SC-4 (trip) | trip cart Total == Σ priceAllInGbp × qty on a pass-fee brand; "Fees & tax" line = Total − base | ✓ source wired (T-7a) | `e968e00b3` |
+| SC-5 (experience) | experience cart Total == server all-in on a pass-fee brand | ✓ source wired (T-7b) | `e968e00b3` |
+| SC-4b/SC-5b | absorb / free → priceAllInGbp null → seed base fallback → feesTaxCents 0, no fees line (no regression) | ✓ (T-7c) | `e968e00b3` |
+| SC-11 | pg_public_event_tier_allin has ONE owner (fetchTierAllInCents); trip/experience reuse it, no duplicated RPC/fee math | ✓ new strict-grep gate | `e968e00b3` |
+
+## C-amend. Files changed (5 product + test + gate + workflow)
+
+| File | Change | ~lines |
+|------|--------|--------|
+| `mingla-business/src/services/publicEventsService.ts` | `export` `fetchTierAllInCents` (single owner); parallel `fetchTierAllInCents(tripEventId)` in `getPublicTripById`; populate `TripPricingTier.priceAllInGbp` (`allInById.get(t.ticket_type_id)/100`, free/miss → null) | +14 |
+| `mingla-business/src/services/tripsService.ts` | `TripPricingTier.priceAllInGbp?: number \| null` (type-only) | +9 |
+| `mingla-business/src/services/publicExperienceService.ts` | `PublicExperienceTicket.priceAllInGbp`; `import { fetchTierAllInCents }`; thread `allInById` through `loadExperienceSidecars` → `MapInput` → `mapExperience` (set on ticket, free/miss → null) | +24 |
+| `mingla-business/app/checkout-trip/[tripEventId]/index.tsx` | `tierToTicketStub`: `priceAllInGbp: tier.priceAllInGbp ?? null` | +3 |
+| `mingla-business/app/checkout-experience/[experienceEventId]/index.tsx` | `ticketToStub`: `priceAllInGbp: ticket.priceAllInGbp ?? null` | +3 |
+| `mingla-business/src/components/checkout/__tests__/orch_1147_cart_allin_total.test.ts` | +T-7a/T-7b/T-7c (8 new assertions; mapping math + source-text fails-on-revert) | +180 |
+| `.github/scripts/strict-grep/orch-1147-allin-single-owner.mjs` | NEW SC-11 gate (single owner of the RPC; reusers must not call it) | +150 new file |
+| `.github/workflows/strict-grep-mingla-business.yml` | register `orch-1147-allin-single-owner` job | +12 |
+
+## D-amend. Single-owner confirmation (no duplicated RPC)
+
+`pg_public_event_tier_allin` is called from EXACTLY ONE place: the body of `fetchTierAllInCents` in `publicEventsService.ts`.
+- The trip producer `getPublicTripById` (same file) calls `fetchTierAllInCents(tripEventId)` inline.
+- `publicExperienceService.ts` `import { fetchTierAllInCents } from "./publicEventsService"` and calls it inside `loadExperienceSidecars`.
+- No `supabase.rpc("pg_public_event_tier_allin"…)` exists in `tripsService.ts` or `publicExperienceService.ts`. No fee math recomputed in TS anywhere. The SC-11 strict-grep gate enforces this on every CI run.
+- No new SQL, no migration, no edge-fn change. OQ-2 (tax-awareness) PARKED — the RPC is unchanged. No buyer tax form (`orch-1130-no-buyer-tax-form.mjs` GREEN). ORCH-1034 GBP fallbacks untouched.
+
+## E-amend. Regression tests + fails-on-revert proof
+
+**Extended Step-0.5 test:** `mingla-business/src/components/checkout/__tests__/orch_1147_cart_allin_total.test.ts` — now **18 tests, 18 passed** (10 original + T-7a/T-7a-source×3 + T-7b/T-7b-source×2 + T-7c). Run output:
+```
+PASS src/components/checkout/__tests__/orch_1147_cart_allin_total.test.ts
+Tests:       18 passed, 18 total
+```
+
+**fails-on-revert verified at `e968e00b3`** by TRUE LINE DELETION (not comment-out), each restored to GREEN:
+
+1. **Trip stub pass-through** — deleted `priceAllInGbp: tier.priceAllInGbp ?? null` from `tierToTicketStub` (`checkout-trip/.../index.tsx`):
+   `✕ T-7a source: tierToTicketStub passes priceAllInGbp through` → `1 failed`. Restored → pass.
+2. **Trip populate** — deleted the `priceAllInGbp: (() => { allInById.get(t.ticket_type_id) … })()` block from `getPublicTripById` (`publicEventsService.ts`):
+   `✕ T-7a source: getPublicTripById populates priceAllInGbp from the single owner` → `1 failed`. Restored → pass.
+3. **Experience populate** — deleted the `priceAllInGbp: … allInCents / 100 …` block from `mapExperience` (`publicExperienceService.ts`):
+   `✕ T-7b source: PublicExperienceTicket carries priceAllInGbp + reuses the single owner` → `1 failed`. Restored → pass.
+4. **Helper export** — reverted `export const fetchTierAllInCents` → `const fetchTierAllInCents` (`publicEventsService.ts`):
+   SC-11 gate `failed … fetchTierAllInCents must be EXPORTED …` EXIT=1. Restored → gate passed.
+5. **Duplicate-RPC negative (SC-11)** — injected `supabase.rpc("pg_public_event_tier_allin"…)` into `tripsService.ts`:
+   SC-11 gate `failed … references pg_public_event_tier_allin directly …` EXIT=1. Removed → gate passed.
+
+All five reverts confirm the test/gate exercises the actual fix lines (true line-deletion, not comment-out). The T-7a/T-7b/T-7c mapping-math assertions independently prove `source.priceAllInGbp → stub → seed.unitPriceAllIn → useCartTotals.allInTotal` grosses the cart Total above base with `feesTaxCents > 0`, and the absent/null path falls back to base with `feesTaxCents == 0`.
+
+## F-amend. Gate + typecheck results (committed state)
+
+```
+ORCH-1147 allin-single-owner gate self-test passed.  /  gate passed.     (SC-11, NEW)
+ORCH-1147 cart-total-is-allin gate passed.                                (regression)
+ORCH-1147 web-charge-allin gate passed.                                   (regression)
+ORCH-1130 no-buyer-tax-form gate passed.                                  (SC-8 preserved)
+```
+`npx tsc --noEmit` (mingla-business): the 5 touched files introduce ZERO new type errors. The only errors under the touched directories are 5 pre-existing `TS7006` in `checkout-trip/[tripEventId]/buyer.tsx` (NOT a touched file; present on origin/main — confirmed in §9). Total repo baseline 325 errors unchanged.
+
+## G-amend. Old → New receipts (amendment)
+
+### publicEventsService.ts
+- **Before:** `fetchTierAllInCents` module-private; `getPublicTripById` fetched only `fetchTicketTypesRemaining`; `TripPricingTier` rows had no `priceAllInGbp`.
+- **Now:** helper `export`ed; `getPublicTripById` runs `Promise.all([fetchTicketTypesRemaining, fetchTierAllInCents])`; each tier sets `priceAllInGbp = allInById.get(t.ticket_type_id)/100` (free/miss → null; seed owns base fallback).
+- **Why:** SC-4 source — feed the existing trip cart-seed wiring the real server all-in. ~14 lines.
+
+### tripsService.ts
+- **Before:** `TripPricingTier` had no all-in field → `tier.priceAllInGbp` was `undefined` → stub carried nothing → seed read base.
+- **Now:** optional `priceAllInGbp?: number | null` (type-only; only the public buyer-read path populates it; admin draft loads leave it unset → base).
+- **Why:** SC-4 type contract. ~9 lines.
+
+### publicExperienceService.ts
+- **Before:** `PublicExperienceTicket` had no all-in; `loadExperienceSidecars` loaded only stops/tickets/dates; `mapExperience` set no all-in.
+- **Now:** `priceAllInGbp?: number | null` on the ticket; `import { fetchTierAllInCents }`; folded into the existing `Promise.all` (never throws → no new guard); `allInById` threaded through `MapInput`; `mapExperience` sets `priceAllInGbp` (free/miss → null, else `allInCents/100`).
+- **Why:** SC-5 source. ~24 lines.
+
+### checkout-trip/.../index.tsx · checkout-experience/.../index.tsx
+- **Before:** `tierToTicketStub` / `ticketToStub` mapped base price only → the seed's `stub.priceAllInGbp ?? stub.priceGbp` always hit the base branch.
+- **Now:** each passes `priceAllInGbp: <source>.priceAllInGbp ?? null` → seed reads the real all-in.
+- **Why:** the missing pass-through that completes the chain. ~3 lines each.
+
+## H-amend. Cross-surface impact (amendment delta)
+
+| Surface | Affected | What changes | Parity |
+|---------|----------|--------------|--------|
+| Consumer iOS / Android | NO | app-mobile untouched | — |
+| Buyer / anon Web | YES | trip + experience checkout Total = fee-grossed all-in + "Fees & tax" line (was base) | Auto (shared CartContext display) |
+| Business iOS / Android | YES | same, all three offering types now uniform | Auto (shared RN) |
+| Admin Web / Business Web preview | NO | non-buyer surfaces | — |
+
+Trip + experience all-in SOURCE is manual per-service (two distinct services), now both wired to the single owner. Display parity across the three types is automatic via the shared cart seed → CartContext → payment-screen chain (unchanged by this amendment).
+
+## I-amend. Operator action required (amendment)
+
+- **No migration, no edge deploy from this amendment** (the core impl's `ticket-checkout-create` deploy note still stands; this amendment touched only client services + a CI gate). Pure RN/JS → ships via business-app OTA on close (runtime 1.0.0).
+- **CLOSE:** the amendment satisfies SC-4/SC-5 source contracts + adds SC-11; flip `I-PROPOSED-1147-CART-TOTAL-IS-SERVER-ALLIN` + `I-PROPOSED-1147-WEB-CHARGE-BILLS-FEE-GROSSED-SUBTOTAL` ACTIVE once the tester device-verifies all three types on a pass-fee fixture.
+
+## J-amend. Discoveries for Orchestrator (amendment)
+
+- **Tester per-type gate (§E2) is mandatory and still pending:** event (regression) + trip + experience, each on business iOS + Android + buyer-web, on a SYNTHETIC pass-fee charges-enabled fixture (0/8 prod brands pass a fee → a green prod run proves nothing). A single-type or single-platform pass must be rejected.
+- **No new open questions.** OQ-2 (exclusive-tax residual) stays PARKED — unchanged by this amendment; the existing `displayAllIn`-site comments already cover trip + experience payment screens.
+- **The untracked ORCH-1147 artifacts** (`INVESTIGATE_…`, `SPEC_…`, `SPEC_AMENDMENT_…` under `Mingla_Artifacts/`) are committed alongside the report so the closing PR diff carries the full evidence trail.
