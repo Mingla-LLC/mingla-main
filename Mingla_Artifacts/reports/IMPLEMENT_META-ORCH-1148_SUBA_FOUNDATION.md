@@ -108,3 +108,79 @@ After each restore, the full set returned green (migration 9/9, jest 11/11, stri
 
 ## Downstream
 NEXT = **mingla-tester** (business iOS + Android + web-desktop + web-phone device/sim proof of toggle OFF→ON, Settings fee gate, pill replacement, two-column reflow; the RLS/probe DB tests once migrations are applied to a branch DB). Then **orchestrator CLOSE** (apply the 8 migrations via Management API; flip the 5 DRAFT invariants → ACTIVE; register META-ORCH-1148 + 2.0/2.1/2.2 on the World Map; reconcile scope per `feedback_shared_worldmap_scope_bleed`).
+
+---
+
+## P3 + P4 fix (post-test follow-up — commit `c31f1c2ec`)
+
+Two tester-found defects from `Mingla_Artifacts/reports/TEST_META-ORCH-1148_SUBA_FOUNDATION.md` (CONDITIONAL PASS). Scope: exactly the two fixes; no widening; no deploy/apply/merge.
+
+### Fix 1 — P3 (must-fix): probe CHECK-selection disambiguated (`status` vs `payment_status`)
+
+`reservations` has **two** CHECK defs whose constraintdef contains the substring `status` — the lifecycle `status IN (...)` CHECK and the `payment_status IN ('none','paid','refunded')` CHECK. The probe selected via `ILIKE '%status%'` with no `ORDER BY`/`LIMIT`, so `SELECT ... INTO` could non-deterministically return the `payment_status` row → `position('requested' in v_status_def)=0` → a **false RAISE that aborts the prod apply** despite a 100%-correct schema.
+
+File: `supabase/migrations/20261003000007_orch_1148_invariant_probes.sql` (block (4)).
+
+**Before:**
+```sql
+  SELECT pg_get_constraintdef(con.oid) INTO v_status_def
+  FROM pg_constraint con
+  JOIN pg_class rel ON rel.oid = con.conrelid
+  JOIN pg_namespace nsp ON nsp.oid = rel.relnamespace
+  WHERE nsp.nspname = 'public'
+    AND rel.relname = 'reservations'
+    AND con.contype = 'c'
+    AND pg_get_constraintdef(con.oid) ILIKE '%status%';
+```
+
+**After:**
+```sql
+  SELECT pg_get_constraintdef(con.oid) INTO v_status_def
+  FROM pg_constraint con
+  JOIN pg_class rel ON rel.oid = con.conrelid
+  JOIN pg_namespace nsp ON nsp.oid = rel.relnamespace
+  WHERE nsp.nspname = 'public'
+    AND rel.relname = 'reservations'
+    AND con.contype = 'c'
+    AND pg_get_constraintdef(con.oid) ILIKE '%''requested''%'
+    AND pg_get_constraintdef(con.oid) ILIKE '%''seated''%'
+    AND pg_get_constraintdef(con.oid) ILIKE '%''completed''%'
+  LIMIT 1;
+```
+
+Rationale: `'requested'`, `'seated'`, `'completed'` are lifecycle-only values that can **never** appear in the `payment_status` CHECK (`'none','paid','refunded'`), so the predicate is unambiguous; `LIMIT 1` is defensive. Still read-only (no INSERT/UPDATE/DELETE). The downstream `position(... in v_status_def)` block that verifies all 8 lifecycle states is unchanged, so the 8-state lifecycle CHECK is still fully verified.
+
+**Regression guard added** to the deno test `T-MIG-9` (`supabase/migrations/__tests__/orch_1148_venue_suite_migration.test.ts`):
+- asserts the selection is anchored on `ILIKE '%''requested''%'`,
+- asserts the bare ambiguous `ILIKE '%status%'` predicate is **gone** (fails if anyone reverts to it — i.e. the probe must NOT be able to match `payment_status`),
+- asserts `LIMIT 1` is present.
+
+Fails-on-revert proven: temporarily restoring the old `ILIKE '%status%'` selection → `T-MIG-9 FAILED` (8 passed | 1 failed); restored → 9/9 green.
+
+### Fix 2 — P4 (minor): `test:orch-1148` exits 0 on pass
+
+File: `mingla-business/package.json`.
+
+**Before:**
+```
+"test:orch-1148": "... && npx jest src/components/venue/__tests__/venueModules.test.ts src/components/venue/__tests__/venueFeeGate.test.ts --runInBand && npx tsc --noEmit",
+```
+
+**After:**
+```
+"test:orch-1148": "... && npx jest src/components/venue/__tests__/venueModules.test.ts src/components/venue/__tests__/venueFeeGate.test.ts --runInBand",
+```
+
+The `&& npx tsc --noEmit` tail ran a whole-project type-check that inherits the repo's ~325-error **pre-existing** baseline, so the script always exited non-zero even when the ORCH-1148 tests pass. Dropped the tail (the accepted option in the dispatch); the strict-grep gate (self-test + real run) and the two jest suites remain. Script now exits 0 when the ORCH-1148 tests pass.
+
+### Gate results (post-fix, after rebase onto origin/main `262a73a63`)
+
+- **deno migration regression** (`orch_1148_venue_suite_migration.test.ts`): **9 passed | 0 failed** (incl. the extended T-MIG-9).
+- **`npm run test:orch-1148`**: strict-grep self-test PASS + real run PASS + jest **11 passed / 2 suites** → **exit 0**.
+- **Fails-on-revert (T-MIG-9)**: revert probe → 1 failed; restore → 9/9.
+- **Migration versions monotonic**: origin/main max `20261002000000` < branch `20261003000000..07`; probe (`…07`) still last.
+
+### Provenance / scope
+- Touched files (3): `supabase/migrations/20261003000007_orch_1148_invariant_probes.sql`, `supabase/migrations/__tests__/orch_1148_venue_suite_migration.test.ts`, `mingla-business/package.json`.
+- **Out of scope (untouched):** the deferred live-RLS + device legs (orchestrator's to run at apply/OTA), the 7 schema-table migrations' definitions, components, and other tests.
+- Commit: `c31f1c2ec` on `ORCH-1148-venue-suite-foundation` (rebased onto origin/main). No deploy / apply / merge.
