@@ -257,6 +257,13 @@ const isServerEditableOnlyPatch = (
 export interface EditPublishedScreenProps {
   liveEvent: LiveEvent;
   disableLocalSaveReason?: string;
+  /**
+   * ORCH-1150 — when true, the event is an RSVP: drop the Tickets section + the
+   * sold-ticket refund gate, and show the "N guests are going — they'll be
+   * notified" notice (wired in SPEC §12). Default false = ticketed event,
+   * byte-identical behavior. See SPEC §12.
+   */
+  rsvpMode?: boolean;
 }
 
 interface ToastState {
@@ -286,6 +293,7 @@ interface RejectDialogContent {
 export const EditPublishedScreen: React.FC<EditPublishedScreenProps> = ({
   liveEvent,
   disableLocalSaveReason,
+  rsvpMode = false,
 }) => {
   const insets = useSafeAreaInsets();
   const router = useRouter();
