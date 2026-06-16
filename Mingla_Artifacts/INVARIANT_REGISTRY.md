@@ -19,6 +19,20 @@
 
 ---
 
+## ACTIVE (post ORCH-1149 [in-app browser bottom-anchor] CLOSE 2026-06-15)
+
+### I-PROPOSED-1149-INAPP-BROWSER-BOTTOM-ANCHORED (ACTIVE post ORCH-1149 CLOSE)
+
+**Rule:** The shared consumer in-app browser `app-mobile/src/components/InAppBrowserModal.tsx` MUST be bottom-anchored and full-bleed at the base so it covers the in-tree consumer tab bar — its `overlay` uses `justifyContent:'flex-end'` (NOT `'center'`), its `modalContainer` is full-width (`width:'100%'`, no fixed `SCREEN_HEIGHT*0.85` centered height) with top-only border radius, the `<Modal>` opens with `animationType="slide"`, and the WebView container carries `paddingBottom: useSafeAreaInsets().bottom` so content clears the iOS home indicator / Android nav. The browser chrome (title header, close, back/forward, lock+URL nav bar), all WebView props, `normalizeWebsiteUrl` usage, and the error-state-not-external-eject behavior MUST remain unchanged. The component MUST NOT import `@gorhom/bottom-sheet` (defer to BaseBottomSheet's sole-consumer gate) and MUST preserve its default export + `{visible,url,title,onClose}` prop contract (5 mount sites depend on it).
+
+**Why it exists:** ORCH-1149 — the browser previously rendered as a centered floating card (85% height, fade-in), leaving a ~7.5% gap at the base through which the tab bar bled and occluding web content under the home indicator once un-centered. This invariant locks the bottom-anchored/slide-up layout + the safe-area inset so a future refactor can't silently reopen the tab-bar bleed-through or home-indicator occlusion, and bounds the change to layout (no chrome regression, no gorhom).
+
+**Enforcement:** CI gate `app-mobile/scripts/ci/orch-1149-inapp-browser-bottom-anchored.mjs` (npm script `test:orch-1149`, 7 assertions) — asserts no centered-card markers (`justifyContent:'center'`, `height: ...0.85`, `width:'95%'`) remain, `animationType="slide"`, the safe-area bottom inset, and the preserved prop contract. Implementor happy-path `app-mobile/src/components/__tests__/orch-1149-inapp-browser-bottom-anchor.test.tsx` + tester adversarial `app-mobile/src/components/__tests__/orch-1149-inapp-browser-bottom-anchor-tester-adv.test.tsx` (no-centered-markers + chrome-byte-preserved + all-5-mounts angle). All fails-on-revert verified @ `a684169b1`.
+
+**Tests:** see Enforcement. Shipped via PR #495 (squash `5ad874f8d`).
+
+---
+
 ## ACTIVE (post ORCH-1142 [business notification full-read + delete] CLOSE 2026-06-15)
 
 ### I-PROPOSED-BH-NOTIF-SOFTDELETE-EXCLUDED-AND-SCOPED (ACTIVE post ORCH-1142 CLOSE)
