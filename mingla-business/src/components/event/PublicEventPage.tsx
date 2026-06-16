@@ -1,22 +1,41 @@
 /**
  * PublicEventPage — adapter for the shared @mingla/event-rendering package.
  *
- * Per META-ORCH-0827 Pass 2 (Option C). The 1,325-line predecessor was
- * superseded by a fresh pure-presentational component in
- * packages/event-rendering/. This adapter:
- *   - Fetches auth + brand list via existing mingla-business hooks
- *   - Computes viewerRole (organizer/anonymous; ticket-holder pending order data)
- *   - Maps LiveEvent + Brand types to the package's prop contract
- *   - Provides navigation callbacks (router.push for checkout, etc.)
- *   - Mounts ShareModal + Toast at the adapter level (mingla-business primitives)
- *   - Keeps web-only SEO <Head> (mingla-business-specific URLs)
+ * ORCH-1138 Leg 2 [public event page redesign] — re-architected onto the shared
+ * Direction-A foundation (@mingla/offering-rendering via the shared
+ * PublicEventPage's FOUNDATION mode): immersive parallax cover, body-level fixed
+ * chrome (X · Share · Mute), brand-themed palette + bold fonts, City,Country
+ * venue + "Where you'll be" block, date/time facts, a SELECTABLE ticket-TIER
+ * radiogroup, a desktop sticky ticket panel, and the float→dock single CTA — all
+ * built around the SAME resolveOfferingCta state. Mirrors the SHIPPED trip route
+ * (app/t/[brandSlug]/[tripSlug].tsx) 1:1.
  *
- * Visual fidelity is preserved — the shared package was designed to render
- * the same layout as the predecessor. Variant logic is identical.
+ * This adapter:
+ *   - Fetches auth + brand list via existing mingla-business hooks
+ *   - Computes viewerRole (organizer/anonymous)
+ *   - Maps LiveEvent + Brand types to the package's prop contract
+ *   - Resolves the brand theme → palette → bold fonts (useThemeFont pair)
+ *   - Builds the desktop sticky panel + the float/dock EventReserveBar from the
+ *     SAME resolveOfferingCta the page computes (one owner)
+ *   - Owns share/mute/checkout navigation (checkout target UNCHANGED — N7)
+ *   - Mounts ShareModal + Toast + JoinWaitlistSheet + web SEO <Head>
+ *
+ * Checkout is byte-identical (N7): tapping Get-tickets routes to the existing
+ * checkoutPublicPath(event.id) — no address, no taxCalculationId, no change.
  */
 
 import React, { useCallback, useMemo, useState } from "react";
-import { Linking, Platform, Text, View, StyleSheet } from "react-native";
+import {
+  Linking,
+  Platform,
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
+  type LayoutChangeEvent,
+  type NativeScrollEvent,
+  type NativeSyntheticEvent,
+} from "react-native";
 import { useRouter } from "expo-router";
 import Head from "expo-router/head";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -28,24 +47,24 @@ import {
   type PublicEventProps,
   type PublicTicketProps,
   type ViewerRole,
+  type CtaState,
+  type OfferingVariant,
   resolveTheme,
   resolveOfferingCta,
-  resolveOfferingSurface,
   computeOfferingVariant,
+  createThemePalette,
+  boldFontFamily,
 } from "@mingla/event-rendering";
+import { useResponsiveLayout } from "@mingla/offering-rendering";
 
-import { FloatingOfferingBar } from "../offering/FloatingOfferingBar";
+import { EventReserveBar } from "./EventReserveBar";
+import { FoundationEventPreview } from "./FoundationEventPreview";
 
 import {
   checkoutPublicPath,
   eventOgImageUrl,
   eventPublicUrl,
 } from "../../constants/publicUrls";
-import {
-  semantic,
-  spacing,
-  text as textTokens,
-} from "../../constants/designSystem";
 import { useAuth } from "../../context/AuthContext";
 import { useBrandList, type Brand } from "../../store/currentBrandStore";
 import type { LiveEvent } from "../../store/liveEventStore";
@@ -61,7 +80,6 @@ import { useThemeFont } from "../../theme/useThemeFont";
 
 import { ShareModal } from "../ui/ShareModal";
 import { Toast } from "../ui/Toast";
-import { IconChrome } from "../ui/IconChrome";
 import { JoinWaitlistSheet } from "../waitlist/JoinWaitlistSheet";
 
 interface PublicEventPageAdapterProps {
@@ -69,10 +87,8 @@ interface PublicEventPageAdapterProps {
   brand: Brand | null;
   /**
    * ORCH-1076 I-PAID-SUPPLY-REQUIRES-CHARGES-ENABLED — when false, this is a
-   * PAID event whose brand cannot charge yet; the page renders the event
-   * details read-only with a "Booking unavailable right now" banner and the
-   * Get-tickets / claim CTA is neutralized (no dead-end checkout 409). Defaults
-   * to true for back-compat with every existing caller.
+   * PAID event whose brand cannot charge yet; the CTA is the non-tappable
+   * "Booking unavailable" strip (no dead-end checkout 409). Defaults to true.
    */
   bookable?: boolean;
 }
@@ -82,8 +98,6 @@ const mapTicket = (t: TicketStub): PublicTicketProps => ({
   name: t.name,
   description: t.description ?? null,
   priceGbp: t.priceGbp ?? null,
-  // ORCH-1006 — carry the server-computed per-tier all-in (WYSIWYP) so the
-  // QuantityRow shows what the buyer pays, not the base price.
   priceAllInGbp: t.priceAllInGbp ?? null,
   currency: t.currency ?? null,
   isFree: t.isFree,
@@ -198,6 +212,10 @@ const canonicalUrl = (event: LiveEvent): string =>
     eventSlug: event.eventSlug,
   });
 
+function ctaUnavailableLabel(cta: CtaState): string {
+  return cta.kind === "unavailable" ? cta.title : "Booking unavailable";
+}
+
 export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
   event,
   brand,
@@ -207,6 +225,7 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
   const insets = useSafeAreaInsets();
   const { user } = useAuth();
   const userBrands = useBrandList();
+  const { isDesktop } = useResponsiveLayout();
 
   const [shareModalVisible, setShareModalVisible] = useState<boolean>(false);
   const [toast, setToast] = useState<{ visible: boolean; message: string }>({
@@ -214,16 +233,18 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
     message: "",
   });
   const [waitlistTicketId, setWaitlistTicketId] = useState<string | null>(null);
+  // ORCH-1138 — cover-video sound state (default muted). The chrome Mute button
+  // toggles EventCoverMedia's muted state via this.
+  const [muted, setMuted] = useState<boolean>(true);
+  // ORCH-1138 — the selected ticket-tier id (FOUNDATION radiogroup). null → none
+  // chosen yet; the bar/sticky panel use the page-level resolveOfferingCta until
+  // the buyer picks a tier (which then narrows the considered set).
+  const [selectedTicketId, setSelectedTicketId] = useState<string | null>(null);
 
-  // Founder-aware viewer role. Today useBrandList returns all stub brands
-  // to any signed-in user (Cycle 1 pre-B-cycle), so this resolves to
-  // "isSignedIn AND owns this brand" once B-cycle real auth lands.
   const viewerRole: ViewerRole = useMemo(() => {
     if (user === null) return "anonymous";
     const owns = userBrands.some((b) => b.id === event.brandId);
     return owns ? "organizer" : "anonymous";
-    // Cycle 1.2: extend with "ticket-holder" once orders are queryable
-    // from the public page.
   }, [user, userBrands, event.brandId]);
 
   const publicEvent = useMemo(() => mapLiveEventToPublicEvent(event), [event]);
@@ -236,8 +257,36 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
       ),
     [publicBrand?.theme, publicEvent.themeOverrides],
   );
-  // ORCH-1083: load this event's theme font on demand (no longer eager at root).
+  // ORCH-1138 — palette + surface + bold fonts (mirror the trip route). The bold
+  // family is required or native bold no-ops (a loaded custom font ignores
+  // fontWeight); load BOTH the base + bold families on demand.
+  const palette = useMemo(() => createThemePalette(resolvedTheme), [resolvedTheme]);
+  const boldFamily = boldFontFamily(resolvedTheme);
   useThemeFont(resolvedTheme.fontFamilyValue);
+  useThemeFont(boldFamily);
+
+  // ORCH-1138 — float→dock CTA visibility tracking (mirror the trip route 1:1).
+  const [dockTopY, setDockTopY] = useState<number | null>(null);
+  const [scrollY, setScrollY] = useState<number>(0);
+  const [viewportH, setViewportH] = useState<number>(0);
+  const handleDockLayout = useCallback((e: LayoutChangeEvent): void => {
+    setDockTopY(e.nativeEvent.layout.y);
+  }, []);
+  const handleScroll = useCallback(
+    (e: NativeSyntheticEvent<NativeScrollEvent>): void => {
+      setScrollY(e.nativeEvent.contentOffset.y);
+    },
+    [],
+  );
+  const handleScrollLayout = useCallback((e: LayoutChangeEvent): void => {
+    setViewportH(e.nativeEvent.layout.height);
+  }, []);
+  const REVEAL_MARGIN = 24;
+  const floatingPillVisible =
+    dockTopY === null || viewportH === 0
+      ? true
+      : dockTopY > scrollY + viewportH - REVEAL_MARGIN;
+
   const waitlistTicket = useMemo(
     () =>
       publicEvent.tickets.find((ticket) => ticket.id === waitlistTicketId) ??
@@ -253,26 +302,35 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
     setToast((prev) => ({ ...prev, visible: false }));
   }, []);
 
-  // ORCH-1117 — floating Buy bar state. PURE projection of the shared
-  // resolveOfferingCta (same machine the inline ticket rows read). The bar is
-  // the always-reachable primary action; the per-ticket inline rows stay (multi
-  // tier). Tapping the bar reuses the SAME navigation the row CTA uses
-  // (checkoutPublicPath → the cart page that lists all tickets — LOCKED).
-  const offeringCta = useMemo(
-    () =>
-      resolveOfferingCta({
-        variant: computeOfferingVariant(publicEvent, false),
-        bookable,
-        tickets: publicEvent.tickets,
-        currency: publicEvent.currency,
-      }),
-    [publicEvent, bookable],
+  // ORCH-1138 — the page-level variant (cancelled / password-gate keep the shared
+  // renderer's dedicated LEGACY render; everything else gets the FOUNDATION page).
+  const pageVariant: OfferingVariant = useMemo(
+    () => computeOfferingVariant(publicEvent, false),
+    [publicEvent],
   );
-  const offeringSurface = useMemo(
-    () => resolveOfferingSurface(resolvedTheme),
-    [resolvedTheme],
-  );
-  const handleFloatingBarPress = useCallback((): void => {
+
+  // ORCH-1138 — the SINGLE buy-state, the page CTA owner (resolveOfferingCta). The
+  // selected tier (when any) narrows the considered set; the page-level state
+  // drives the bar + sticky panel + tier-row labels identically.
+  const offeringCta = useMemo(() => {
+    const selected = publicEvent.tickets.find(
+      (t) => t.id === selectedTicketId && t.visibility !== "hidden",
+    );
+    const considered =
+      selected !== undefined ? [selected] : publicEvent.tickets;
+    return resolveOfferingCta({
+      variant: computeOfferingVariant(publicEvent, false),
+      bookable,
+      tickets: considered,
+      currency: publicEvent.currency,
+    });
+  }, [publicEvent, bookable, selectedTicketId]);
+
+  const handleSelectTicket = useCallback((ticketId: string): void => {
+    setSelectedTicketId((prev) => (prev === ticketId ? null : ticketId));
+  }, []);
+
+  const handleReserve = useCallback((): void => {
     if (offeringCta.kind === "waitlist") {
       const wlTicket = publicEvent.tickets.find(
         (t) => t.visibility !== "hidden" && t.waitlistEnabled,
@@ -280,23 +338,15 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
       if (wlTicket !== undefined) setWaitlistTicketId(wlTicket.id);
       return;
     }
-    // buy / free → the existing checkout/cart page (or the toast guard when the
-    // brand can't charge — never a dead-end). Mirrors callbacks.onBuyTicket.
     if (!bookable) {
       showToast(
         "Booking unavailable right now — the organizer is finishing payment setup.",
       );
       return;
     }
+    // N7 — checkout target UNCHANGED (the existing /checkout/{eventId} cart page).
     router.push(checkoutPublicPath(event.id) as never);
-  }, [
-    offeringCta.kind,
-    publicEvent.tickets,
-    bookable,
-    router,
-    event.id,
-    showToast,
-  ]);
+  }, [offeringCta.kind, publicEvent.tickets, bookable, router, event.id, showToast]);
 
   const handleClose = useCallback((): void => {
     if (router.canGoBack()) {
@@ -314,12 +364,15 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
     setShareModalVisible(true);
   }, []);
 
+  const handleToggleMute = useCallback((): void => {
+    setMuted((m) => !m);
+  }, []);
+
   const callbacks: PublicEventCallbacks = useMemo(
     () => ({
       onClose: handleClose,
       onShare: handleShare,
       onBuyTicket: (_ticketId: string) => {
-        // ORCH-1076 — a PAID not-ready event must not reach the checkout 409.
         if (!bookable) {
           showToast(
             "Booking unavailable right now — the organizer is finishing payment setup.",
@@ -329,8 +382,6 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
         router.push(checkoutPublicPath(event.id) as never);
       },
       onClaimFreeTicket: (_ticketId: string) => {
-        // Free claims are never gated (bookable is true for free offerings),
-        // but guard defensively so a mixed-state row can't dead-end.
         if (!bookable) {
           showToast(
             "Booking unavailable right now — the organizer is finishing payment setup.",
@@ -350,7 +401,7 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
       },
       onOpenMaps: openMapsForQuery,
       onUnlockPassword: (password: string): boolean => {
-        // [TRANSITIONAL] Frontend stub validation against ticket.password.
+        // [TRANSITIONAL] Frontend stub validation against ticket.password —
         // B4 wires real backend verification (hashed comparison).
         const validPasswords = event.tickets
           .filter((t) => t.passwordProtected && t.password !== null)
@@ -369,12 +420,90 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
     ],
   );
 
+  // ORCH-1138 — state banner (sold-out / sales-ended / pre-sale / not-bookable),
+  // rendered above the body by the shared FOUNDATION body. Driven by the same
+  // offeringCta state (one owner) so the banner never disagrees with the CTA.
+  const stateBanner =
+    offeringCta.kind === "unavailable" ? (
+      <View style={[styles.banner, { backgroundColor: palette.card }]}>
+        <Text style={[styles.bannerText, { color: palette.secondaryText }]}>
+          {offeringCta.title}
+        </Text>
+      </View>
+    ) : null;
+
+  // ORCH-1138 — reserve kicker ("All-in, taxes included" when there's a price).
+  const barKicker = offeringCta.kind === "buy" ? "All-in, taxes included" : null;
+
+  // ORCH-1138 — DOCKED ticket CTA (phone): the LAST body child, flush. Built from
+  // the SAME offeringCta the float pill + sticky panel read.
+  const dockedReserve = !isDesktop ? (
+    <EventReserveBar
+      cta={offeringCta}
+      palette={palette}
+      kicker={barKicker}
+      fontFamily={boldFamily}
+      onPress={handleReserve}
+      variant="docked"
+      onDockLayout={handleDockLayout}
+      testID="orch-1138-event-reserve"
+    />
+  ) : undefined;
+
+  // ORCH-1138 — desktop sticky ticket panel: brand chip → "Choose your ticket"
+  // tier list (rendered in the FOUNDATION body) → price block → CTA → reassurance.
+  // On desktop the tier list is in the body; the panel carries the resolved CTA.
+  const reserveTappable = offeringCta.tappable;
+  const stickyPanel = isDesktop ? (
+    <View style={[styles.deskPanel, { backgroundColor: palette.panelStrong, borderColor: palette.panelBorder }]}>
+      <View style={[styles.deskAccent, { backgroundColor: palette.accent }]} />
+      <View style={styles.deskInner}>
+        <Pressable
+          onPress={reserveTappable ? handleReserve : undefined}
+          disabled={!reserveTappable}
+          accessibilityRole="button"
+          accessibilityState={{ disabled: !reserveTappable }}
+          accessibilityLabel={
+            reserveTappable
+              ? offeringCta.kind === "buy"
+                ? `${offeringCta.label}, ${offeringCta.price}`
+                : offeringCta.kind === "free"
+                  ? offeringCta.label
+                  : "Join waitlist"
+              : ctaUnavailableLabel(offeringCta)
+          }
+          style={[
+            styles.deskReserve,
+            reserveTappable
+              ? { backgroundColor: palette.accent }
+              : { backgroundColor: palette.card, borderColor: palette.panelBorder, borderWidth: 1 },
+          ]}
+          testID="orch-1138-event-desk-reserve"
+        >
+          <Text
+            style={[
+              styles.deskReserveText,
+              { color: reserveTappable ? palette.accentText : palette.tertiaryText, fontFamily: boldFamily },
+            ]}
+          >
+            {reserveTappable
+              ? offeringCta.kind === "buy"
+                ? `${offeringCta.label} · ${offeringCta.price}`
+                : offeringCta.label
+              : ctaUnavailableLabel(offeringCta)}
+          </Text>
+        </Pressable>
+        <Text style={[styles.deskReassure, { color: palette.tertiaryText }]}>
+          All-in price · secure checkout
+        </Text>
+      </View>
+    </View>
+  ) : null;
+
   return (
-    <View style={styles.host}>
-      {/* [TRANSITIONAL] iOS native skips Head metadata — exits when
-          expo-router plugin in app.json gets `origin: "<production URL>"`
-          and a native rebuild lands (B-cycle). Web-only is sufficient for
-          Cycle 6 because buyer traffic always arrives via web URL. */}
+    <View style={[styles.host, { backgroundColor: palette.page }]}>
+      {/* [TRANSITIONAL] iOS native skips Head metadata — web-only is sufficient
+          because buyer traffic arrives via web URL. */}
       {Platform.OS === "web" ? (
         <Head>
           <title>
@@ -415,71 +544,62 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
         </Head>
       ) : null}
 
-      {/* ORCH-1076 I-PAID-SUPPLY-REQUIRES-CHARGES-ENABLED — graceful
-          "Booking unavailable" banner for a PAID event whose brand can't charge
-          yet. Details still render read-only below; the Get-tickets CTA is
-          neutralized in the callbacks. Reuses the sold-out/ended visual
-          register (semantic.error title + secondary body). */}
-      {!bookable ? (
-        <View
-          style={[
-            styles.unavailableBanner,
-            { top: insets.top + spacing.md + 52 },
-          ]}
-          pointerEvents="none"
-          testID="orch-1076-event-booking-unavailable"
-        >
-          <Text style={styles.unavailableTitle}>
-            Booking unavailable right now
-          </Text>
-          <Text style={styles.unavailableBody}>
-            This organizer is finishing their payment setup. Check back soon — or
-            explore their other offerings.
-          </Text>
-        </View>
+      {/* ORCH-1138 Leg 2 — the cancelled / password-gate page-level states keep the
+          shared renderer's dedicated LEGACY render (those variants have no
+          buyable body); everything else renders the Direction-A FOUNDATION page
+          (FoundationEventPreview, composed in the APP layer to avoid the
+          event-rendering↔offering-rendering package cycle — sim-proven). */}
+      {pageVariant === "cancelled" || pageVariant === "password-gate" ? (
+        <SharedPublicEventPage
+          event={publicEvent}
+          brand={publicBrand}
+          viewerRole={viewerRole}
+          callbacks={callbacks}
+          theme={resolvedTheme}
+        />
+      ) : (
+        <FoundationEventPreview
+          event={publicEvent}
+          brand={publicBrand}
+          variant={pageVariant as "published" | "pre-sale" | "sold-out" | "past"}
+          palette={palette}
+          theme={resolvedTheme}
+          muted={muted}
+          onToggleMute={handleToggleMute}
+          onClose={handleClose}
+          onShare={handleShare}
+          onOpenBrand={(slug: string) => router.push(`/b/${slug}` as never)}
+          onOpenMaps={openMapsForQuery}
+          stateBanner={stateBanner}
+          stickyPanel={stickyPanel}
+          dockedReserve={dockedReserve}
+          onScroll={handleScroll}
+          onScrollViewLayout={handleScrollLayout}
+          safeAreaTop={insets.top}
+          selectedTicketId={selectedTicketId}
+          onSelectTicket={handleSelectTicket}
+          testID="orch-1138-event-foundation"
+        />
+      )}
+
+      {/* ORCH-1138 — FLOATING ticket PILL (phone): JUST the button, shown ONLY
+          while the in-content DOCKED CTA is off-screen. Hidden on desktop (the
+          sticky panel carries the CTA) and on the cancelled/password legacy page.
+          Same offeringCta + onPress as the docked bar so the copy never diverges. */}
+      {pageVariant !== "cancelled" &&
+      pageVariant !== "password-gate" &&
+      !isDesktop &&
+      floatingPillVisible ? (
+        <EventReserveBar
+          cta={offeringCta}
+          palette={palette}
+          kicker={barKicker}
+          fontFamily={boldFamily}
+          onPress={handleReserve}
+          variant="floating"
+          testID="orch-1138-event-reserve"
+        />
       ) : null}
-
-      <SharedPublicEventPage
-        event={publicEvent}
-        brand={publicBrand}
-        viewerRole={viewerRole}
-        callbacks={callbacks}
-        hideFloatingChrome
-        theme={resolvedTheme}
-        // ORCH-1117 — reserve clearance so the last inline ticket row scrolls
-        // clear of the floating bar (bar height ≈ 96 + bottom safe area).
-        contentBottomInset={96 + insets.bottom}
-      />
-
-      {/* ORCH-1117 — floating Buy bar (primary action). Non-tappable info strip
-          in every unavailable state (no dead taps); the multi-tier inline rows
-          coexist and route to the same /checkout/{eventId} cart. */}
-      <FloatingOfferingBar
-        cta={offeringCta}
-        onPress={handleFloatingBarPress}
-        surface={offeringSurface}
-        testID="orch-1117-event-floating-bar"
-      />
-
-      <View
-        style={[styles.floatingChrome, { top: insets.top + spacing.md }]}
-        pointerEvents="box-none"
-      >
-        <IconChrome
-          icon="close"
-          size={40}
-          onPress={handleClose}
-          accessibilityLabel="Close"
-          testID="orch-0961-public-event-close"
-        />
-        <IconChrome
-          icon="share"
-          size={40}
-          onPress={handleShare}
-          accessibilityLabel="Share"
-          testID="orch-0961-public-event-share"
-        />
-      </View>
 
       <ShareModal
         visible={shareModalVisible}
@@ -511,37 +631,43 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
 const styles = StyleSheet.create({
   host: {
     flex: 1,
+    position: "relative",
   },
-  // ORCH-1076 — booking-unavailable banner (graceful, non-punitive). Floats
-  // under the close/share chrome row over the hero, column-width.
-  unavailableBanner: {
-    position: "absolute",
-    left: spacing.md,
-    right: spacing.md,
-    zIndex: 5,
-    backgroundColor: "rgba(12,14,18,0.92)",
-    borderRadius: 14,
-    paddingVertical: spacing.sm,
-    paddingHorizontal: spacing.md,
+  banner: {
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 11,
+    paddingHorizontal: 14,
+    borderRadius: 999,
   },
-  unavailableTitle: {
-    fontSize: 14,
-    fontWeight: "600",
-    color: semantic.error,
-  },
-  unavailableBody: {
+  bannerText: {
     fontSize: 13,
-    color: textTokens.secondary,
-    marginTop: spacing.xs,
-    lineHeight: 18,
+    fontWeight: "800",
+    letterSpacing: 0.3,
   },
-  floatingChrome: {
-    position: "absolute",
-    left: spacing.md,
-    right: spacing.md,
+  deskPanel: {
+    borderRadius: 20,
+    borderWidth: 1,
+    overflow: "hidden",
+  },
+  deskAccent: { height: 4 },
+  deskInner: { padding: 18 },
+  deskReserve: {
     flexDirection: "row",
-    justifyContent: "space-between",
-    zIndex: 4,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: 16,
+    paddingVertical: 16,
+    marginTop: 4,
+  },
+  deskReserveText: {
+    fontSize: 16,
+    fontWeight: "900",
+  },
+  deskReassure: {
+    fontSize: 11,
+    textAlign: "center",
+    marginTop: 10,
   },
   toastWrap: {
     position: "absolute",

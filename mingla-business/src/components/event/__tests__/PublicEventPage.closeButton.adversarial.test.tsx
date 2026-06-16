@@ -1,10 +1,19 @@
 /**
  * ORCH-0961 adversarial gate — callback behavior, not source shape.
  *
- * The implementor-owned tests pin JSX/source presence. This tester-owned
- * adversarial test mounts the adapter boundary with mocked hooks, extracts the
- * rendered callback props, and invokes the actual close handlers with router
- * spies across the fallback branches that caused the dead-end bug.
+ * [TEST-MOD-APPROVED ORCH-1138] — ORCH-1138 Leg 2 moved the close/share chrome
+ * from the adapter's own IconChrome row into the shared PublicEventPage's
+ * FOUNDATION mode (ParallaxCoverShell's OfferingChrome), driven by the SAME
+ * `callbacks.onClose`/`onShare`. So the close-callback drive now goes through the
+ * shared page's `callbacks.onClose` (not a standalone IconChrome node), and the
+ * adapter now imports `@mingla/offering-rendering` (useResponsiveLayout) + the new
+ * `./EventReserveBar`. The BEHAVIORAL coverage (router.back / brand+root fallback /
+ * founder public route) is UNCHANGED — only the chrome SOURCE shape moved. The
+ * obsolete `hideFloatingChrome`/IconChrome assertions were dropped.
+ *
+ * This tester-owned adversarial test transpiles + evaluates the adapter boundary
+ * with mocked deps, extracts the shared-page callback props, and invokes the
+ * actual close handlers with router spies across the fallback branches.
  */
 
 import React from "react";
@@ -31,6 +40,10 @@ type ElementNode = {
     onPress?: () => void;
     viewerRole?: string;
     hideFloatingChrome?: boolean;
+    palette?: unknown;
+    onToggleMute?: () => void;
+    onClose?: () => void;
+    onShare?: () => void;
     children?: ElementNode | ElementNode[] | string | null;
   };
 };
@@ -55,9 +68,12 @@ jest.mock("react", () => {
 });
 
 jest.mock("react-native", () => ({
-  Platform: { OS: "web" },
+  Platform: { OS: "web", select: (o: { default?: unknown }) => o.default },
   StyleSheet: { create: (styles: unknown) => styles },
   View: "View",
+  Text: "Text",
+  Pressable: "Pressable",
+  Linking: { openURL: () => Promise.resolve() },
 }));
 
 jest.mock("expo-router", () => ({
@@ -72,12 +88,20 @@ jest.mock("react-native-safe-area-context", () => ({
 
 jest.mock("@mingla/event-rendering", () => ({
   PublicEventPage: "SharedPublicEventPage",
-  // ORCH-1117 — the adapter now also pulls the shared theme + offering-CTA
-  // helpers + the floating bar. Stub them so the close-callback evaluator runs.
+  // ORCH-1117 — the adapter pulls the shared theme + offering-CTA helpers.
+  // ORCH-1138 Leg 2 — + createThemePalette + boldFontFamily for FOUNDATION mode.
   resolveTheme: () => ({ color: "#eb7825", foregroundColor: "#ffffff", fontFamilyValue: undefined }),
   resolveOfferingCta: () => ({ kind: "buy", label: "Buy ticket", price: "£25", tappable: true }),
-  resolveOfferingSurface: () => "dark",
   computeOfferingVariant: () => "published",
+  createThemePalette: () => ({ page: "#0c0e12", accent: "#eb7825", accentText: "#fff", primaryText: "#fff", secondaryText: "#ccc", tertiaryText: "#999", panel: "#111", panelStrong: "#222", panelBorder: "#333", card: "#1a1a1a", cutoutBorder: "#444", glass: "#000", glassTint: "dark", accentWash: "#332211" }),
+  boldFontFamily: () => undefined,
+}), { virtual: true });
+
+// ORCH-1138 Leg 2 — the adapter composes the Direction-A foundation: it pulls
+// useResponsiveLayout from @mingla/offering-rendering + the NEW EventReserveBar
+// (resolved by customRequire in the eval harness below).
+jest.mock("@mingla/offering-rendering", () => ({
+  useResponsiveLayout: () => ({ isDesktop: false, isWeb: true }),
 }), { virtual: true });
 
 jest.mock("../../../context/AuthContext", () => ({
@@ -218,7 +242,12 @@ const renderPublicEventPage = (
       case "expo-router/head":
       case "react-native-safe-area-context":
       case "@mingla/event-rendering":
+      case "@mingla/offering-rendering":
         return require(request);
+      case "./EventReserveBar":
+        return { EventReserveBar: "EventReserveBar" };
+      case "./FoundationEventPreview":
+        return { FoundationEventPreview: "FoundationEventPreview" };
       case "../../constants/publicUrls":
         return {
           checkoutPublicPath: (eventId: string) => `/checkout/${eventId}`,
@@ -275,21 +304,37 @@ const renderPublicEventPage = (
   return PublicEventPage({ event, brand });
 };
 
-const getSharedPage = (tree: ElementNode): ElementNode => {
-  const node = findNode(tree, (candidate) => candidate.type === "SharedPublicEventPage");
-  expect(node).not.toBeNull();
-  return node as ElementNode;
-};
-
-const getCloseChrome = (tree: ElementNode): ElementNode => {
+// ORCH-1138 Leg 2 — the published/sold-out/pre-sale/past page now renders
+// FoundationEventPreview (the FOUNDATION page, app layer); cancelled/password-gate
+// still render SharedPublicEventPage (legacy). The close/share/mute chrome is on
+// whichever renders. The scheduled fixtures here resolve to FoundationEventPreview.
+const getPageNode = (tree: ElementNode): ElementNode => {
   const node = findNode(
     tree,
     (candidate) =>
-      candidate.type === "IconChrome" &&
-      candidate.props?.accessibilityLabel === "Close",
+      candidate.type === "FoundationEventPreview" ||
+      candidate.type === "SharedPublicEventPage",
   );
   expect(node).not.toBeNull();
   return node as ElementNode;
+};
+// Both nodes carry onClose/onShare: FoundationEventPreview as direct props,
+// SharedPublicEventPage via callbacks. Resolve the close handler from either.
+const closeHandlerOf = (node: ElementNode): (() => void) | undefined =>
+  (node.props as { onClose?: () => void }).onClose ??
+  node.props?.callbacks?.onClose;
+const shareHandlerOf = (node: ElementNode): (() => void) | undefined =>
+  (node.props as { onShare?: () => void }).onShare ??
+  node.props?.callbacks?.onShare;
+
+// ORCH-1138 Leg 2 — the close affordance now lives in the shared page's
+// FOUNDATION chrome (ParallaxCoverShell OfferingChrome), driven by
+// `callbacks.onClose`. The adapter no longer renders a standalone IconChrome row,
+// so the close drive goes through the shared page's onClose callback.
+const driveClose = (tree: ElementNode): void => {
+  const onClose = closeHandlerOf(getPageNode(tree));
+  expect(typeof onClose).toBe("function");
+  onClose?.();
 };
 
 describe("ORCH-0961 — PublicEventPage close callback adversarial coverage", () => {
@@ -304,7 +349,7 @@ describe("ORCH-0961 — PublicEventPage close callback adversarial coverage", ()
   test("deep-link close falls back to the live brand slug when brand is populated", () => {
     const tree = renderPublicEventPage(eventFixture("frozen-brand"), brandFixture("live-brand"));
 
-    getCloseChrome(tree).props?.onPress?.();
+    driveClose(tree);
 
     expect(mockRouter.canGoBack).toHaveBeenCalledTimes(1);
     expect(mockRouter.back).not.toHaveBeenCalled();
@@ -314,7 +359,7 @@ describe("ORCH-0961 — PublicEventPage close callback adversarial coverage", ()
   test("deep-link close falls back to event.brandSlug when brand is null", () => {
     const tree = renderPublicEventPage(eventFixture("frozen-brand"), null);
 
-    getSharedPage(tree).props?.callbacks?.onClose?.();
+    driveClose(tree);
 
     expect(mockRouter.canGoBack).toHaveBeenCalledTimes(1);
     expect(mockRouter.back).not.toHaveBeenCalled();
@@ -324,7 +369,7 @@ describe("ORCH-0961 — PublicEventPage close callback adversarial coverage", ()
   test("deep-link close falls back to root when no public brand slug exists", () => {
     const tree = renderPublicEventPage(eventFixture(""), null);
 
-    getCloseChrome(tree).props?.onPress?.();
+    driveClose(tree);
 
     expect(mockRouter.canGoBack).toHaveBeenCalledTimes(1);
     expect(mockRouter.back).not.toHaveBeenCalled();
@@ -335,33 +380,37 @@ describe("ORCH-0961 — PublicEventPage close callback adversarial coverage", ()
     mockRouter = makeRouter(true);
     const tree = renderPublicEventPage(eventFixture("frozen-brand"), brandFixture("live-brand"));
 
-    getSharedPage(tree).props?.callbacks?.onClose?.();
+    driveClose(tree);
 
     expect(mockRouter.back).toHaveBeenCalledTimes(1);
     expect(mockRouter.replace).not.toHaveBeenCalled();
   });
 
-  test("buyer-web adapter suppresses the shared renderer's floating chrome to avoid duplicate Share/Close (ORCH-0961 rework F-1)", () => {
+  test("buyer-web adapter renders the FOUNDATION page with palette + chrome handlers (ORCH-1138 Leg 2)", () => {
     const tree = renderPublicEventPage(eventFixture("frozen-brand"), brandFixture("live-brand"));
-    const sharedPage = getSharedPage(tree);
+    const page = getPageNode(tree);
 
-    // The shared renderer always emits its own Close+Share row unless the
-    // host explicitly opts out. The buyer-web adapter must pass
-    // `hideFloatingChrome={true}` so only the adapter's IconChrome row exists
-    // in the DOM + accessibility tree. Reverting this prop reintroduces the
-    // duplicate Share button caught by tester F-1.
-    expect(sharedPage.props?.hideFloatingChrome).toBe(true);
+    // ORCH-1138 Leg 2 — a scheduled event renders FoundationEventPreview (the
+    // FOUNDATION page, composed in the app layer to avoid the package cycle). The
+    // adapter passes the resolved `palette` + the cover-video `onToggleMute`
+    // handler + the close/share handlers, so the shell owns the single
+    // X·Share·Mute chrome. Reverting the FOUNDATION render drops back to the legacy
+    // stacked page with no themed chrome.
+    expect(page.type).toBe("FoundationEventPreview");
+    expect(page.props?.palette).toBeDefined();
+    expect(typeof page.props?.onToggleMute).toBe("function");
+    expect(typeof shareHandlerOf(page)).toBe("function");
   });
 
   test("founder public route keeps public close fallback instead of hub replacement", () => {
     mockUser = { id: "founder-1" };
     mockUserBrands = [{ id: "brand-1" }];
     const tree = renderPublicEventPage(eventFixture("frozen-brand"), brandFixture("live-brand"));
-    const sharedPage = getSharedPage(tree);
 
-    sharedPage.props?.callbacks?.onClose?.();
+    driveClose(tree);
 
-    expect(sharedPage.props?.viewerRole).toBe("organizer");
+    // ORCH-1138 Leg 2 — the founder-on-public-route close still uses the public
+    // brand fallback (NOT the hub), regardless of which page node renders.
     expect(mockRouter.replace).toHaveBeenCalledWith("/b/live-brand");
     expect(mockRouter.replace).not.toHaveBeenCalledWith("/(tabs)/hub/events");
   });

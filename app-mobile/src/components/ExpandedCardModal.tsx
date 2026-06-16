@@ -50,6 +50,11 @@ import ShareModal from "./ShareModal";
 import InAppBrowserModal from "./InAppBrowserModal";
 // ORCH-0824: business-event branch (renders when props.businessEvent is set and props.card is null).
 import { ExpandedBusinessEventSheet } from "./expandedCard/ExpandedBusinessEventSheet";
+// ORCH-1138 Leg 2 — the deck EVENT card opens the NEW foundation event detail
+// (NOT EBES). EBES stays for the experience branch (:2259) + chat. The event flow
+// goes straight to ConsumerEventDetailScreen → TicketCartSheet (byte-identical
+// checkout). I-PROPOSED-1138-EVENT-DECK-OFF-EBES.
+import ConsumerEventDetailScreen from "../screens/Event/ConsumerEventDetailScreen";
 import type { BusinessEventCard } from "../types/mergedDiscover";
 import { PicnicShoppingList } from './PicnicShoppingList';
 import { useReplaceStop } from '../hooks/useReplaceStop';
@@ -1738,16 +1743,17 @@ export default function ExpandedCardModal({
   // Hooks above this point fire on every render regardless to satisfy
   // rules-of-hooks.
   if (businessEvent !== null && businessEvent !== undefined) {
+    // ORCH-1138 Leg 2 — the deck EVENT card now opens the NEW foundation event
+    // detail (ConsumerEventDetailScreen) DIRECTLY, NOT ExpandedBusinessEventSheet
+    // (which showed buyers a flat stacked-card sheet). EBES stays for the
+    // experience branch (:2259) + chat (MessageInterface) — N1. Get-tickets opens
+    // TicketCartSheet directly → byte-identical ticket-checkout-create.
+    // I-PROPOSED-1138-EVENT-DECK-OFF-EBES.
     return (
-      <ExpandedBusinessEventSheet
-        visible={visible}
-        data={businessEvent}
-        onClose={onClose}
-        // ORCH-1016: EBES hides the nav while open (hidesBottomNav), so the CTA is
-        // never covered. The small bottom inset is just breathing room below the
-        // last row; the gorhom BottomSheetScrollView (scrollMode="scroll", direct
-        // child) owns the bounded scroll.
-        bottomContentInset={Math.max(insets.bottom, 16) + 8}
+      <ConsumerEventDetailScreen
+        seed={businessEvent}
+        onBack={onClose}
+        tabBarAware={false}
       />
     );
   }

@@ -2370,6 +2370,28 @@ jobs:
       - name: Run ORCH-1138 trip-reserve-straight-to-cart gate
         run: node .github/scripts/strict-grep/orch-1138-trip-reserve-straight-to-cart.mjs
 
+  orch-1138-event-deck-off-ebes:
+    name: "ORCH-1138 Leg 2: deck EVENT card opens ConsumerEventDetailScreen, never EBES (I-PROPOSED-1138-EVENT-DECK-OFF-EBES)"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Run ORCH-1138 event-deck-off-ebes gate
+        run: node .github/scripts/strict-grep/orch-1138-event-deck-off-ebes.mjs
+
+  orch-1138-event-no-trip-only-blocks:
+    name: "ORCH-1138 Leg 2: no refund/deadline/itinerary/route/pay-toggle on the event page (I-PROPOSED-1138-EVENT-ON-FOUNDATION)"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Run ORCH-1138 event-no-trip-only-blocks gate
+        run: node .github/scripts/strict-grep/orch-1138-event-no-trip-only-blocks.mjs
+
   orch-1136-biz-web-shell-bugs:
     name: "ORCH-1136: TopSheet web overlay no-fixed + web top-bar breathing gap (I-PROPOSED-TOPSHEET-WEB-OVERLAY-NO-FIXED / I-PROPOSED-WEB-TOPBAR-BREATHING-GAP)"
     runs-on: ubuntu-latest
