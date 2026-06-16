@@ -169,6 +169,21 @@ export default function CheckoutTripTicketsScreen(): React.ReactElement {
     return null;
   }, [paymentPlanChoice, trip, lines]);
 
+  // ORCH-1147R2 — the FULL-TOTAL (non-deposit) branch leads with the server
+  // fee-grossed all-in (totals.allInTotal), NOT the bare base subtotal
+  // (totals.total), so the lead number matches the public page. The combined
+  // "Fees & tax" line renders ONLY on the full-total path with a real pass-fee
+  // delta — never on the installments "Due today" deposit branch (a partial
+  // figure with its own semantics), and never split service-fee + VAT
+  // (feedback_cart_combined_fees_tax_line). The deposit branch (dueTodayCents)
+  // is unchanged. I-PROPOSED-1147R2-SELECTION-SHOWS-ALLIN.
+  const headlineAllIn = formatCurrency(totals.allInTotal, totals.currency);
+  const showFeesTaxLine =
+    !totals.isEmpty &&
+    !totals.isFree &&
+    totals.hasFeesTaxDelta &&
+    dueTodayCents === null;
+
   // ORCH-1130 — seed the cart's payment-plan choice from the public-page param.
   useEffect(() => {
     setPaymentPlanChoice(planParam);
@@ -480,11 +495,19 @@ export default function CheckoutTripTicketsScreen(): React.ReactElement {
           { paddingBottom: insets.bottom + spacing.md },
         ]}
       >
+        {showFeesTaxLine ? (
+          <View style={styles.feesTaxRow}>
+            <Text style={styles.feesTaxLabel}>Fees &amp; tax</Text>
+            <Text style={styles.feesTaxValue}>
+              {formatCurrency(totals.feesTaxCents, totals.currency, true)}
+            </Text>
+          </View>
+        ) : null}
         <View style={styles.subtotalRow}>
           <Text style={styles.subtotalLabel}>
             {dueTodayCents !== null && !totals.isEmpty && !totals.isFree
               ? "Due today"
-              : "Subtotal"}
+              : "Total"}
           </Text>
           <Text style={styles.subtotalValue}>
             {totals.isEmpty
@@ -493,7 +516,7 @@ export default function CheckoutTripTicketsScreen(): React.ReactElement {
                 ? "Free"
                 : dueTodayCents !== null
                   ? formatCurrency(dueTodayCents, totals.currency, true)
-                  : formatCurrency(totals.total, totals.currency)}
+                  : headlineAllIn}
           </Text>
         </View>
         <Button
@@ -510,7 +533,7 @@ export default function CheckoutTripTicketsScreen(): React.ReactElement {
                 ? "Reserve free spot"
                 : dueTodayCents !== null
                   ? `Continue to buyer details, due today ${formatCurrency(dueTodayCents, totals.currency, true)}`
-                  : `Continue to buyer details, total ${formatCurrency(totals.total, totals.currency)}`
+                  : `Continue to buyer details, total ${headlineAllIn}`
           }
         />
       </View>
@@ -592,6 +615,24 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     alignItems: "baseline",
     marginBottom: spacing.sm,
+  },
+  // ORCH-1147R2 — quiet combined "Fees & tax" line above the prominent Total
+  // (full-total path only; never on the installments deposit branch).
+  feesTaxRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "baseline",
+    marginBottom: spacing.xs,
+  },
+  feesTaxLabel: {
+    fontSize: 12,
+    color: textTokens.tertiary,
+    fontWeight: "500",
+  },
+  feesTaxValue: {
+    fontSize: 13,
+    color: textTokens.tertiary,
+    fontWeight: "600",
   },
   subtotalLabel: {
     fontSize: 13,

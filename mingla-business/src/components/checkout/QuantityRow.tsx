@@ -89,6 +89,11 @@ export const QuantityRow: React.FC<QuantityRowProps> = ({
       name: ticket.name,
       description: ticket.description ?? null,
       priceGbp: ticket.priceGbp,
+      // ORCH-1147R2 — forward the server fee-grossed all-in so the shared row
+      // leads with the per-tier all-in + "incl. VAT & fees" caption, matching
+      // the public page. Falls back to base when null (free / RPC miss — never
+      // fabricated). I-PROPOSED-1147R2-SELECTION-SHOWS-ALLIN.
+      priceAllInGbp: ticket.priceAllInGbp ?? null,
       currency: ticket.currency,
       capacity: ticket.capacity,
       isFree: ticket.isFree,

@@ -98,6 +98,15 @@ export default function CheckoutExperienceTicketScreen(): React.ReactElement {
   const { lines, setLineQuantity } = useCart();
   const totals = useCartTotals();
 
+  // ORCH-1147R2 — the selection bottom bar leads with the server fee-grossed
+  // all-in (totals.allInTotal), NOT the bare base subtotal (totals.total), so
+  // the lead number matches the public page. The combined "Fees & tax" line
+  // renders only on a real pass-fee delta (never split service-fee + VAT;
+  // feedback_cart_combined_fees_tax_line). I-PROPOSED-1147R2-SELECTION-SHOWS-ALLIN.
+  const headlineAllIn = formatCurrency(totals.allInTotal, totals.currency);
+  const showFeesTaxLine =
+    !totals.isEmpty && !totals.isFree && totals.hasFeesTaxDelta;
+
   const handleBack = useCallback((): void => {
     if (router.canGoBack()) {
       router.back();
@@ -296,14 +305,22 @@ export default function CheckoutExperienceTicketScreen(): React.ReactElement {
           { paddingBottom: insets.bottom + spacing.md },
         ]}
       >
+        {showFeesTaxLine ? (
+          <View style={styles.feesTaxRow}>
+            <Text style={styles.feesTaxLabel}>Fees &amp; tax</Text>
+            <Text style={styles.feesTaxValue}>
+              {formatCurrency(totals.feesTaxCents, totals.currency, true)}
+            </Text>
+          </View>
+        ) : null}
         <View style={styles.subtotalRow}>
-          <Text style={styles.subtotalLabel}>Subtotal</Text>
+          <Text style={styles.subtotalLabel}>Total</Text>
           <Text style={styles.subtotalValue}>
             {totals.isEmpty
               ? "—"
               : totals.isFree
                 ? "Free"
-                : formatCurrency(totals.total, totals.currency)}
+                : headlineAllIn}
           </Text>
         </View>
         <Button
@@ -318,7 +335,7 @@ export default function CheckoutExperienceTicketScreen(): React.ReactElement {
               ? "Add your spot above"
               : totals.isFree
                 ? "Reserve free spot"
-                : `Continue to buyer details, total ${formatCurrency(totals.total, totals.currency)}`
+                : `Continue to buyer details, total ${headlineAllIn}`
           }
         />
       </View>
@@ -383,6 +400,23 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     alignItems: "baseline",
     marginBottom: spacing.sm,
+  },
+  // ORCH-1147R2 — quiet combined "Fees & tax" line above the prominent Total.
+  feesTaxRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "baseline",
+    marginBottom: spacing.xs,
+  },
+  feesTaxLabel: {
+    fontSize: 12,
+    color: textTokens.tertiary,
+    fontWeight: "500",
+  },
+  feesTaxValue: {
+    fontSize: 13,
+    color: textTokens.tertiary,
+    fontWeight: "600",
   },
   subtotalLabel: {
     fontSize: 13,
