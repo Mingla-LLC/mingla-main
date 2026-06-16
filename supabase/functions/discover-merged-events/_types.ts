@@ -32,6 +32,12 @@ export interface BusinessEventCard {
   displayCurrency: string | null;
   currency: string;
   publicBuyerUrl: string;
+  /**
+   * ORCH-1150 — the offering discriminator. 'rsvp' ⇒ a Partiful-style RSVP event
+   * (Going/Not-going, no checkout); the consumer deck renders Going/Not-going
+   * instead of Book. Defaults to 'event' for every legacy/ticketed row.
+   */
+  eventType?: "event" | "rsvp";
 }
 
 export type MergedDiscoverItem =

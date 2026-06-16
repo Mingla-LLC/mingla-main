@@ -77,11 +77,17 @@ export {
   ticketSaleEnded,
   ticketIsSoldOut,
   ticketIsDoorOnly,
+  // ORCH-1150 — RSVP Going/Not-going CTA machine (money-free).
+  resolveRsvpCta,
 } from "./offeringCta";
 export type {
   CtaState,
   OfferingVariant,
   ResolveOfferingCtaInput,
+  // ORCH-1150
+  RsvpCtaState,
+  RsvpCtaDescriptor,
+  ResolveRsvpCtaInput,
 } from "./offeringCta";
 export type {
   PublicEventProps,

@@ -174,6 +174,15 @@ export interface BusinessDraftPayload {
     privateGuestList: boolean;
     inPersonPaymentsEnabled: boolean;
   };
+  // ORCH-1150 — RSVP host-control passthrough (additive; the event publish RPC
+  // never reads these — only business_publish_rsvp_draft does). See SPEC §5.1.
+  isRsvp: boolean;
+  rsvpCapacity: number | null;
+  rsvpAllowPlusOnes: boolean;
+  rsvpPlusOnesMax: number;
+  rsvpWaitlistEnabled: boolean;
+  rsvpApprovalMode: "auto" | "manual";
+  rsvpDiscoverable: boolean;
   lastStepReached: number;
   clientRevision: number;
 }
@@ -325,6 +334,14 @@ const buildBusinessDraftPayload = (
     privateGuestList: draft.privateGuestList,
     inPersonPaymentsEnabled: draft.inPersonPaymentsEnabled,
   },
+  // ORCH-1150 — RSVP host-control passthrough.
+  isRsvp: draft.isRsvp,
+  rsvpCapacity: draft.rsvpCapacity,
+  rsvpAllowPlusOnes: draft.rsvpAllowPlusOnes,
+  rsvpPlusOnesMax: draft.rsvpPlusOnesMax,
+  rsvpWaitlistEnabled: draft.rsvpWaitlistEnabled,
+  rsvpApprovalMode: draft.rsvpApprovalMode,
+  rsvpDiscoverable: draft.rsvpDiscoverable,
   lastStepReached: draft.lastStepReached,
   clientRevision,
 });
@@ -583,6 +600,20 @@ export const serverRowToDraft = (row: ServerDraftEventRow): DraftEvent => {
     passwordProtected: asBoolean(settings.passwordProtected, false),
     privateGuestList: asBoolean(settings.privateGuestList, false),
     inPersonPaymentsEnabled: asBoolean(settings.inPersonPaymentsEnabled, false),
+    // ORCH-1150 — RSVP host-control round-trip from business_draft. Defaults
+    // keep ticketed drafts byte-identical (isRsvp:false). See SPEC §4.6.
+    isRsvp: asBoolean(businessDraft.isRsvp, false),
+    rsvpCapacity:
+      typeof businessDraft.rsvpCapacity === "number" &&
+      Number.isFinite(businessDraft.rsvpCapacity)
+        ? businessDraft.rsvpCapacity
+        : null,
+    rsvpAllowPlusOnes: asBoolean(businessDraft.rsvpAllowPlusOnes, false),
+    rsvpPlusOnesMax: asNumber(businessDraft.rsvpPlusOnesMax, 0),
+    rsvpWaitlistEnabled: asBoolean(businessDraft.rsvpWaitlistEnabled, false),
+    rsvpApprovalMode:
+      businessDraft.rsvpApprovalMode === "manual" ? "manual" : "auto",
+    rsvpDiscoverable: asBoolean(businessDraft.rsvpDiscoverable, false),
     lastStepReached: asNumber(businessDraft.lastStepReached, 0),
     status: "draft",
     clientRevision: asNumber(businessDraft.clientRevision, 0),

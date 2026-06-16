@@ -47,7 +47,16 @@ interface BusinessPublicEventViewRow {
   title: string;
   description: string | null;
   slug: string;
-  event_type: "event" | "trip" | "experience" | null;
+  event_type: "event" | "trip" | "experience" | "rsvp" | null;
+  // ORCH-1150 — RSVP host-control columns + live confirmed-attending count,
+  // surfaced by business_public_events_view. Inert/0 for non-RSVP rows.
+  rsvp_discoverable?: boolean | null;
+  rsvp_capacity?: number | null;
+  rsvp_allow_plus_ones?: boolean | null;
+  rsvp_plus_ones_max?: number | null;
+  rsvp_waitlist_enabled?: boolean | null;
+  rsvp_approval_mode?: "auto" | "manual" | null;
+  rsvp_going_count?: number | null;
   location_text: string | null;
   online_url: string | null;
   is_online: boolean;
@@ -797,6 +806,23 @@ export const publicEventViewRowToEvent = (
       row.theme_font_override,
       row.theme_animation_override,
     ),
+    // ORCH-1150 — discriminator + RSVP host-control snapshot (inert for
+    // non-RSVP rows). The public RSVP page + Hub list-card read these.
+    event_type:
+      row.event_type === "rsvp"
+        ? "rsvp"
+        : row.event_type === "experience"
+          ? "experience"
+          : row.event_type === "trip"
+            ? "trip"
+            : "event",
+    rsvpCapacity: row.rsvp_capacity ?? null,
+    rsvpAllowPlusOnes: row.rsvp_allow_plus_ones ?? false,
+    rsvpPlusOnesMax: row.rsvp_plus_ones_max ?? 0,
+    rsvpWaitlistEnabled: row.rsvp_waitlist_enabled ?? false,
+    rsvpApprovalMode: row.rsvp_approval_mode ?? "auto",
+    rsvpDiscoverable: row.rsvp_discoverable ?? false,
+    rsvpGoingCount: row.rsvp_going_count ?? 0,
     orders: [],
     createdAt: row.created_at,
     updatedAt: row.updated_at,
@@ -979,7 +1005,9 @@ export const getPublicEventBySlug = async (
   if (row.event_type === "trip") {
     return null;
   }
-  if (row.event_type !== "event") {
+  // ORCH-1150 — the /e/ public page now renders BOTH ticketed events AND RSVP
+  // events (Going/Not-going). Experiences keep their own /exp/ surface.
+  if (row.event_type !== "event" && row.event_type !== "rsvp") {
     return null;
   }
   return detailFromRow(row);
@@ -1001,7 +1029,10 @@ export const getPublicEventById = async (
   if (row.event_type === "trip") {
     return null;
   }
-  return row.event_type === "event" ? detailFromRow(row) : null;
+  // ORCH-1150 — admit RSVP rows (Going/Not-going page) alongside ticketed events.
+  return row.event_type === "event" || row.event_type === "rsvp"
+    ? detailFromRow(row)
+    : null;
 };
 
 // Exported for the ORCH-1076 regression test (buyer-supply readiness drop).

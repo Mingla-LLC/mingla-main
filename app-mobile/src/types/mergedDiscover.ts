@@ -79,6 +79,13 @@ export interface BusinessEventCard {
   /** The anon-tolerant buyer route in mingla-business. Opened via in-app WebView. */
   publicBuyerUrl: string;
   /**
+   * ORCH-1150 — the offering discriminator. 'rsvp' ⇒ a Partiful-style RSVP event
+   * surfaced on the deck (host opted in via rsvp_discoverable); the card renders
+   * a Going/Not-going CTA instead of Book, and writes via public-submit-rsvp.
+   * Undefined/'event' ⇒ the existing ticketed/Book path (byte-safe default).
+   */
+  eventType?: "event" | "rsvp";
+  /**
    * ORCH-1072 — present ONLY for brand experiences (event_type='experience').
    * The multi-stop itinerary, rendered by the detail sheet beneath the cover +
    * description. Undefined for events/trips → no itinerary section (byte-safe).

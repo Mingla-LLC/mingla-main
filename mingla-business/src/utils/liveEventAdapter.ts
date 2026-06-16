@@ -91,6 +91,16 @@ export const liveEventToEditableDraft = (e: LiveEvent): DraftEvent => ({
   themeOverrides: e.themeOverrides ?? null,
   privateGuestList: e.privateGuestList,
   inPersonPaymentsEnabled: e.inPersonPaymentsEnabled,
+  // ORCH-1150 — project the RSVP host-control snapshot into the editable
+  // DraftEvent view. Non-RSVP LiveEvents lack these → defaults (inert when
+  // isRsvp=false). The RSVP edit-published screen reads them via this view.
+  isRsvp: e.event_type === "rsvp",
+  rsvpCapacity: e.rsvpCapacity ?? null,
+  rsvpAllowPlusOnes: e.rsvpAllowPlusOnes ?? false,
+  rsvpPlusOnesMax: e.rsvpPlusOnesMax ?? 0,
+  rsvpWaitlistEnabled: e.rsvpWaitlistEnabled ?? false,
+  rsvpApprovalMode: e.rsvpApprovalMode ?? "auto",
+  rsvpDiscoverable: e.rsvpDiscoverable ?? false,
   // ORCH-1006 — pricing switches; legacy events predate the field → all-inherit.
   pricingSwitches: e.pricingSwitches ?? {
     passTax: null,

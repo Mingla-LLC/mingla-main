@@ -71,6 +71,13 @@ export interface StepBodyProps {
    * passes this; events still require a bounded end (count<=52 / until-date).
    */
   allowNeverEnds?: boolean;
+  /**
+   * ORCH-1150 — when true (RSVP wizard only), CreatorStep2When hides the
+   * single/recurring/multi_date mode tabs and renders ONLY the single-date
+   * body (steering #4). Default false; the event wizard never passes it, so
+   * the event path is byte-identical.
+   */
+  lockSingleDate?: boolean;
   // ORCH-0892-A: legacy wizard-scroll-ref prop removed. CoverPicker
   // now relies on the keyboard-controller library's KeyboardAvoidingView
   // wrap for search-input visibility above the keyboard.

@@ -36,6 +36,7 @@ import type { DraftEvent } from "../../store/draftEventStore";
 import type { Brand } from "../../store/currentBrandStore";
 import { formatDraftDateLine } from "../../utils/eventDateDisplay";
 import { buildEventSalesSummary } from "../../utils/eventSalesSummary";
+import { formatRsvpGoingLabel } from "../../utils/rsvpHubMetrics";
 import { useEventOrders } from "../../hooks/useEventOrders";
 
 import { EventCoverMedia } from "../ui/EventCoverMedia";
@@ -96,7 +97,11 @@ export const EventListCard: React.FC<EventListCardProps> = ({
   // query layer + helper at the tap-handler layer + defensive at the
   // render layer. Trips have their own card surface in /hub/trips.
   const eventType = (event as { event_type?: string }).event_type;
-  if (eventType !== undefined && eventType !== "event") {
+  // ORCH-1150 — the RSVP event renders on this SAME card (Hub parity), with a
+  // "N going" metric instead of revenue/tickets-sold. Trips/experiences still
+  // bail (they have their own surfaces).
+  const isRsvp = eventType === "rsvp" || (event as DraftEvent).isRsvp === true;
+  if (eventType !== undefined && eventType !== "event" && eventType !== "rsvp") {
     return null;
   }
 
@@ -138,10 +143,25 @@ export const EventListCard: React.FC<EventListCardProps> = ({
     salesSummary.finiteCapacity !== null
       ? Math.min(100, Math.round((salesSummary.soldCount / salesSummary.finiteCapacity) * 100))
       : 0;
+
+  // ORCH-1150 — RSVP "N going" metric (no money/sold). Reads the live
+  // confirmed-attending count surfaced on the LiveEvent. Capacity, when set,
+  // shows "N / cap going". Drafts show no count yet (nobody's RSVP'd).
+  const rsvpGoingCount =
+    kind === "live" ? ((event as LiveEvent).rsvpGoingCount ?? 0) : 0;
+  const rsvpCapacity =
+    isRsvp ? ((event as LiveEvent).rsvpCapacity ?? (event as DraftEvent).rsvpCapacity ?? null) : null;
+  const rsvpGoingLabel: string = formatRsvpGoingLabel({
+    kind: kind === "live" ? "live" : kind === "draft" ? "draft" : "past",
+    goingCount: rsvpGoingCount,
+    capacity: rsvpCapacity,
+  });
   const cardAccessibilityLabel =
     kind === "draft"
       ? `Open ${title}`
-      : `Open ${title}. ${salesSummary.soldLabel}. ${salesSummary.revenueLabel}.`;
+      : isRsvp
+        ? `Open ${title}. ${rsvpGoingLabel}.`
+        : `Open ${title}. ${salesSummary.soldLabel}. ${salesSummary.revenueLabel}.`;
 
   // Past + 0 sold → fade per Q-9-9.
   const isFaded = status === "past" && salesSummary.soldCount === 0;
@@ -237,8 +257,11 @@ export const EventListCard: React.FC<EventListCardProps> = ({
             {venue !== null ? ` · ${venue}` : ""}
           </Text>
 
-          {/* Progress bar for finite capacity, explicit sold summary otherwise. */}
-          {kind === "draft" ? (
+          {/* Progress bar for finite capacity, explicit sold summary otherwise.
+              ORCH-1150 — RSVP rows show "N going" (no money/progress bar). */}
+          {isRsvp ? (
+            <Text style={styles.subText}>{rsvpGoingLabel}</Text>
+          ) : kind === "draft" ? (
             <Text style={styles.subText}>
               {(event as DraftEvent).whenMode === "recurring"
                 ? "Series template"
@@ -293,10 +316,13 @@ export const EventListCard: React.FC<EventListCardProps> = ({
         </View>
       ) : null}
 
-      {/* Revenue strip (non-draft only) */}
+      {/* Revenue strip (non-draft only). ORCH-1150 — RSVP has no revenue; the
+          right rail shows the going count instead of a money figure. */}
       {kind !== "draft" ? (
         <View style={styles.revenueStrip} pointerEvents="none">
-          <Text style={styles.revenueValue}>{salesSummary.revenueLabel}</Text>
+          <Text style={styles.revenueValue}>
+            {isRsvp ? `${rsvpGoingCount} going` : salesSummary.revenueLabel}
+          </Text>
         </View>
       ) : null}
 

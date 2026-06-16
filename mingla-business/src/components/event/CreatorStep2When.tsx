@@ -183,6 +183,9 @@ export const CreatorStep2When: React.FC<StepBodyProps> = ({
   // META-ORCH-1059 — experience wizard opts in to the open-ended "Never ends"
   // recurrence option; events leave it false (bounded end required).
   allowNeverEnds = false,
+  // ORCH-1150 — RSVP wizard locks single-date: hide the mode tabs + render only
+  // the single-date body. Default false; event wizard is byte-identical.
+  lockSingleDate = false,
 }) => {
   // ---- Picker state (date + time + termination-until) ----
   const [pickerMode, setPickerMode] = useState<PickerMode>(null);
@@ -843,27 +846,30 @@ export const CreatorStep2When: React.FC<StepBodyProps> = ({
 
   return (
     <View>
-      {/* 3-mode segmented control (replaces Cycle 3 Repeats sheet) */}
-      <View style={styles.field}>
-        <Text style={styles.fieldLabel}>How often does this event happen?</Text>
-        <View style={styles.segmentRow}>
-          <SegmentPill
-            label="Single"
-            active={draft.whenMode === "single"}
-            onPress={() => handleModeSwitch("single")}
-          />
-          <SegmentPill
-            label="Recurring"
-            active={draft.whenMode === "recurring"}
-            onPress={() => handleModeSwitch("recurring")}
-          />
-          <SegmentPill
-            label="Multi-date"
-            active={draft.whenMode === "multi_date"}
-            onPress={() => handleModeSwitch("multi_date")}
-          />
+      {/* 3-mode segmented control (replaces Cycle 3 Repeats sheet).
+          ORCH-1150 — hidden when lockSingleDate (RSVP wizard, single-date only). */}
+      {lockSingleDate ? null : (
+        <View style={styles.field}>
+          <Text style={styles.fieldLabel}>How often does this event happen?</Text>
+          <View style={styles.segmentRow}>
+            <SegmentPill
+              label="Single"
+              active={draft.whenMode === "single"}
+              onPress={() => handleModeSwitch("single")}
+            />
+            <SegmentPill
+              label="Recurring"
+              active={draft.whenMode === "recurring"}
+              onPress={() => handleModeSwitch("recurring")}
+            />
+            <SegmentPill
+              label="Multi-date"
+              active={draft.whenMode === "multi_date"}
+              onPress={() => handleModeSwitch("multi_date")}
+            />
+          </View>
         </View>
-      </View>
+      )}
 
       {/* Mode body */}
       {draft.whenMode === "single" || draft.whenMode === "recurring" ? (

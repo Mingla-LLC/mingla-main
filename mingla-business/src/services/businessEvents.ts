@@ -136,7 +136,9 @@ interface TicketTypeRow {
   display_order: number;
 }
 
-interface PublishRpcResponse {
+// ORCH-1150: exported so the RSVP publish service (rsvpEvents.ts) reuses the
+// SAME response shape + mapping (additive export only; no behavior change).
+export interface PublishRpcResponse {
   event: {
     id: string;
     brand_id: string;
@@ -338,7 +340,18 @@ const eventFromRow = (
   // into the cache → home/hub tap-handlers can route trips vs events
   // correctly via routeForEventRow. View doesn't expose event_type so
   // we attach it here from the events-table probe result.
-  eventType: "event" | "experience" | "trip" = "event",
+  eventType: "event" | "experience" | "trip" | "rsvp" = "event",
+  // ORCH-1150 — RSVP host-control snapshot + live going count from the probe
+  // (attached so the Hub list-card renders "N going" without a 2nd query path).
+  rsvpMeta: {
+    rsvpCapacity: number | null;
+    rsvpAllowPlusOnes: boolean;
+    rsvpPlusOnesMax: number;
+    rsvpWaitlistEnabled: boolean;
+    rsvpApprovalMode: "auto" | "manual";
+    rsvpDiscoverable: boolean;
+    rsvpGoingCount: number;
+  } | null = null,
 ): LiveEvent => {
   const theme = asRecord(row.management_theme);
   const businessEvent = asRecord(theme.business_event);
@@ -365,6 +378,14 @@ const eventFromRow = (
     // ORCH-0865 REWORK 5: attach event_type from the 2-step probe so
     // home/hub tap-handlers can dispatch correctly via routeForEventRow.
     event_type: eventType,
+    // ORCH-1150 — RSVP host-control snapshot (inert for non-RSVP rows).
+    rsvpCapacity: rsvpMeta?.rsvpCapacity ?? null,
+    rsvpAllowPlusOnes: rsvpMeta?.rsvpAllowPlusOnes ?? false,
+    rsvpPlusOnesMax: rsvpMeta?.rsvpPlusOnesMax ?? 0,
+    rsvpWaitlistEnabled: rsvpMeta?.rsvpWaitlistEnabled ?? false,
+    rsvpApprovalMode: rsvpMeta?.rsvpApprovalMode ?? "auto",
+    rsvpDiscoverable: rsvpMeta?.rsvpDiscoverable ?? false,
+    rsvpGoingCount: rsvpMeta?.rsvpGoingCount ?? 0,
     name: row.title,
     description: row.description ?? "",
     format: asFormat(businessEvent.format, row.is_online),
@@ -512,25 +533,86 @@ export const fetchBusinessEventsForBrand = async (
   // ORCH-0865 REWORK 5: capture event_type per id so we can attach it to
   // the LiveEvent output (defensive: tap-handlers route trips → /trip/{id}
   // even if a trip leaks past this filter via a future regression).
-  const eventTypeById = new Map<string, "event" | "experience" | "trip">();
+  // ORCH-1150 — the map now also carries 'rsvp' so RSVP rows reach the Hub
+  // event list with event_type='rsvp' (rendered as "N going" by EventListCard).
+  const eventTypeById = new Map<string, "event" | "experience" | "trip" | "rsvp">();
+  // ORCH-1150 — per-RSVP host-control snapshot from the same probe.
+  const rsvpMetaById = new Map<
+    string,
+    {
+      rsvpCapacity: number | null;
+      rsvpAllowPlusOnes: boolean;
+      rsvpPlusOnesMax: number;
+      rsvpWaitlistEnabled: boolean;
+      rsvpApprovalMode: "auto" | "manual";
+      rsvpDiscoverable: boolean;
+      rsvpGoingCount: number;
+    }
+  >();
   if (rows.length > 0) {
     const ids = rows.map((r) => r.id);
     // orch-strict-grep-allow events-type-filter — this IS the filter probe (returns event_type for client-side trip rejection)
+    // ORCH-1150 — also pull the RSVP host-control columns so the Hub list-card
+    // can render "N going" + the manage-sheet a pending badge.
     const typesResp = await supabase
       .from("events")
-      .select("id, event_type")
+      .select(
+        "id, event_type, rsvp_capacity, rsvp_allow_plus_ones, rsvp_plus_ones_max, rsvp_waitlist_enabled, rsvp_approval_mode, rsvp_discoverable",
+      )
       .in("id", ids);
     if (typesResp.error !== null) throw typesResp.error;
     const tripIds = new Set<string>();
+    const rsvpIds: string[] = [];
     for (const r of (typesResp.data ?? []) as Array<{
       id: string;
-      event_type: "event" | "experience" | "trip" | null;
+      event_type: "event" | "experience" | "trip" | "rsvp" | null;
+      rsvp_capacity: number | null;
+      rsvp_allow_plus_ones: boolean | null;
+      rsvp_plus_ones_max: number | null;
+      rsvp_waitlist_enabled: boolean | null;
+      rsvp_approval_mode: "auto" | "manual" | null;
+      rsvp_discoverable: boolean | null;
     }>) {
       const t = r.event_type ?? "event";
       eventTypeById.set(r.id, t);
       if (t === "trip") tripIds.add(r.id);
+      if (t === "rsvp") {
+        rsvpIds.push(r.id);
+        rsvpMetaById.set(r.id, {
+          rsvpCapacity: r.rsvp_capacity ?? null,
+          rsvpAllowPlusOnes: r.rsvp_allow_plus_ones ?? false,
+          rsvpPlusOnesMax: r.rsvp_plus_ones_max ?? 0,
+          rsvpWaitlistEnabled: r.rsvp_waitlist_enabled ?? false,
+          rsvpApprovalMode: r.rsvp_approval_mode ?? "auto",
+          rsvpDiscoverable: r.rsvp_discoverable ?? false,
+          rsvpGoingCount: 0,
+        });
+      }
     }
     filteredRows = rows.filter((r) => !tripIds.has(r.id));
+    // ORCH-1150 — resolve the live confirmed-attending count per RSVP via the
+    // host-read RLS (the host owns these events). Non-fatal: count stays 0 on error.
+    if (rsvpIds.length > 0) {
+      const { data: rsvpRows, error: rsvpErr } = await supabase
+        .from("event_rsvps")
+        .select("event_id, plus_count")
+        .in("event_id", rsvpIds)
+        .eq("rsvp_status", "going")
+        .eq("approval_status", "approved");
+      if (rsvpErr === null && Array.isArray(rsvpRows)) {
+        for (const r of rsvpRows as Array<{
+          event_id: string;
+          plus_count: number | null;
+        }>) {
+          const meta = rsvpMetaById.get(r.event_id);
+          if (meta !== undefined) {
+            meta.rsvpGoingCount += 1 + (r.plus_count ?? 0);
+          }
+        }
+      } else if (rsvpErr !== null) {
+        console.warn("[ORCH-1150] rsvp going-count probe failed", rsvpErr);
+      }
+    }
   }
 
   const ticketLists = await Promise.all(
@@ -541,6 +623,7 @@ export const fetchBusinessEventsForBrand = async (
       row,
       ticketLists[idx] ?? [],
       eventTypeById.get(row.id) ?? "event",
+      rsvpMetaById.get(row.id) ?? null,
     ),
   );
 };
@@ -592,7 +675,8 @@ export const fetchBusinessEventById = async (
   return detail;
 };
 
-const eventFromPublishResponse = (
+// ORCH-1150: exported so rsvpEvents.publishRsvpDraft reuses the SAME mapping.
+export const eventFromPublishResponse = (
   response: PublishRpcResponse,
 ): PublishedBusinessEvent => {
   const businessEvent = asRecord(asRecord(response.event.theme).business_event);
