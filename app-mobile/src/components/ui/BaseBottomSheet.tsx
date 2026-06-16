@@ -865,11 +865,27 @@ function CenterDialog({
 
 const styles = StyleSheet.create({
   flexContainer: { flex: 1 },
+  // ORCH-1138 [detail-sheet-behind-discover-header] — z-LAYER FIX.
+  // A non-`wrapInRNModal` BaseBottomSheet renders this absolutely-positioned
+  // inline host as a SIBLING of the host screen's other absolute chrome (e.g.
+  // DiscoverScreen `headerPanel` at zIndex:50 + the floating GlassBottomNav at
+  // zIndex:50). RN scopes zIndex to siblings: an unset zIndex here resolves to
+  // auto(0), so the zIndex:50 Discover header PAINTED OVER the top of every
+  // full-screen detail sheet (cover media + the X/Share/Mute OfferingChrome) —
+  // occluding and un-tapping that chrome (the consumer trip + event detail bug).
+  // Lift the whole inline host above all in-tree screen chrome (header + nav are
+  // 50) while staying BELOW the global Toast layer (zIndex:9999), which must keep
+  // floating over an open sheet. `elevation` mirrors it so Android's stacking
+  // agrees with iOS's zIndex ordering. wrapInRNModal sheets already z-stack in a
+  // separate native window and are unaffected. This does NOT change the inline
+  // host's HEIGHT (ORCH-1016/1043 viewport invariant untouched) — layering only.
   inlineContainer: {
     position: 'absolute',
     top: 0,
     left: 0,
     right: 0,
+    zIndex: 100,
+    elevation: 100,
   },
   // ORCH-1043: `stickyContainer` + `sectionListContainer` removed — they styled
   // the BottomSheetView wrappers the sticky/sectionlist branches no longer use
