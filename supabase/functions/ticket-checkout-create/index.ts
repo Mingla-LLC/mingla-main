@@ -1083,7 +1083,17 @@ serve(wrapEdgeHandler("ticket-checkout-create", async (req) => {
             {
               price_data: {
                 currency,
-                unit_amount: totalCents,
+                // ORCH-1147 (D-1 / I-PROPOSED-1147-WEB-CHARGE-BILLS-FEE-GROSSED-SUBTOTAL,
+                // DRAFT) — bill the fee-grossed PRE-TAX subtotal
+                // (buyerSubtotal.buyerSubtotalCents = base + passed Mingla fee +
+                // passed service fee), NOT the bare base `totalCents`, so the web
+                // charge matches the native fee gross-up. The hosted Checkout
+                // Session has automatic_tax.enabled below — Stripe ADDS tax on
+                // top of this line item; billing the tax-inclusive
+                // buyer_total_cents here would DOUBLE-tax. Pre-tax subtotal is
+                // the correct basis. (OQ-1: corrects the dispatch's shorthand
+                // "bill buyer_total_cents" for the WEB hosted-Checkout path.)
+                unit_amount: buyerSubtotal.buyerSubtotalCents,
                 product_data: { name: `Tickets — ${eventName}` },
               },
               quantity: 1,

@@ -566,14 +566,28 @@ function CheckoutTripPaymentScreenContent({
     router,
   ]);
 
-  // ORCH-1130 Fix #2 — display the server-computed all-in (incl. tax) when the
-  // silent no-address preview has resolved (native); otherwise the base Total.
-  // Web shows the all-in on Stripe's hosted page. The all-in is shown in MINOR
-  // units (cents) when sourced from the preview, MAJOR units from totals.total.
-  const displayTotalCents = totals.total;
-  const displayAllIn = Platform.OS !== "web" && allInPreviewCents !== null
-    ? formatCurrency(allInPreviewCents, totals.currency, true)
-    : formatCurrency(displayTotalCents, totals.currency);
+  // ORCH-1147 — the headline Total is the server fee-grossed all-in
+  // (totals.allInTotal, from priceAllInGbp/pg_public_event_tier_allin), NOT the
+  // bare base subtotal. Web shows it synchronously; native upgrades to the
+  // tax-inclusive preview once it resolves (>= floor guard). The client owns
+  // ZERO fee/tax math. I-PROPOSED-1147-CART-TOTAL-IS-SERVER-ALLIN (DRAFT).
+  //
+  // OQ-2 exclusive-tax CAVEAT (documented, NOT fixed): priceAllInGbp folds FEES
+  // but EXCLUDES tax — in exclusive-tax regions (US pass_tax=true) the floor
+  // understates by tax. Today's blast radius is ZERO (all charges-enabled brands
+  // are inclusive-tax GB/EU/CH). Larger follow-on (ORCH-1147 OQ-2).
+  const baseTotalCents = Math.round(totals.subtotal * 100);
+  const allInFloorCents = Math.round(totals.allInTotal * 100);
+  const headlineCents =
+    Platform.OS !== "web" &&
+    allInPreviewCents !== null &&
+    allInPreviewCents >= allInFloorCents
+      ? allInPreviewCents
+      : allInFloorCents;
+  // ORCH-1147 — single combined "Fees & tax" line (never split service-fee + VAT).
+  const feesTaxLineCents = Math.max(0, headlineCents - baseTotalCents);
+  const showFeesTaxLine = feesTaxLineCents > 0;
+  const displayAllIn = formatCurrency(headlineCents, totals.currency, true);
 
   // Defensive shell while guards redirect.
   if (
@@ -694,6 +708,16 @@ function CheckoutTripPaymentScreenContent({
             </View>
           ))}
           <View style={styles.summaryDivider} />
+          {/* ORCH-1147 — single combined "Fees & tax" line (all-in − base);
+              rendered only on a real delta (absorb-all brands show nothing). */}
+          {showFeesTaxLine ? (
+            <View style={styles.summaryFeesTaxRow}>
+              <Text style={styles.summaryFeesTaxLabel}>Fees &amp; tax</Text>
+              <Text style={styles.summaryFeesTaxValue}>
+                {formatCurrency(feesTaxLineCents, totals.currency, true)}
+              </Text>
+            </View>
+          ) : null}
           <View style={styles.summaryTotalRow}>
             <Text style={styles.summaryTotalLabel}>Total</Text>
             <Text style={styles.summaryTotalValue}>
@@ -946,6 +970,23 @@ const styles = StyleSheet.create({
     marginVertical: spacing.sm,
     height: StyleSheet.hairlineWidth,
     backgroundColor: "rgba(255, 255, 255, 0.08)",
+  },
+  // ORCH-1147 — combined "Fees & tax" line.
+  summaryFeesTaxRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "baseline",
+    marginBottom: spacing.xs,
+  },
+  summaryFeesTaxLabel: {
+    fontSize: 13,
+    color: textTokens.tertiary,
+    fontWeight: "500",
+  },
+  summaryFeesTaxValue: {
+    fontSize: 14,
+    color: textTokens.secondary,
+    fontWeight: "600",
   },
   summaryTotalRow: {
     flexDirection: "row",

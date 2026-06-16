@@ -275,6 +275,10 @@ export default function CheckoutExperienceTicketScreen(): React.ReactElement {
               ticketTypeId: stub.id,
               ticketName: stub.name,
               unitPrice: stub.priceGbp ?? 0,
+              // ORCH-1147 — server fee-grossed all-in (priceAllInGbp) as the
+              // headline-Total basis; falls back to base until the experience
+              // source plumbs the per-tier all-in (never fabricate).
+              unitPriceAllIn: stub.priceAllInGbp ?? stub.priceGbp ?? 0,
               currency: stub.currency ?? experience.ticket?.currency ?? "USD",
               isFree: stub.isFree,
               quantity: next,

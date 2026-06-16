@@ -244,6 +244,10 @@ export default function CheckoutTripTicketsScreen(): React.ReactElement {
         ticketTypeId: sole.id,
         ticketName: sole.name,
         unitPrice: sole.priceGbp ?? 0,
+        // ORCH-1147 — seed the server fee-grossed all-in (priceAllInGbp) as the
+        // headline-Total basis; falls back to base until the trip source plumbs
+        // the per-tier all-in (never fabricate).
+        unitPriceAllIn: sole.priceAllInGbp ?? sole.priceGbp ?? 0,
         currency: sole.currency ?? trip.pricingTiers[0]?.currency ?? "USD",
         isFree: sole.isFree,
         quantity: 1,
@@ -448,6 +452,10 @@ export default function CheckoutTripTicketsScreen(): React.ReactElement {
                     ticketTypeId: ticket.id,
                     ticketName: ticket.name,
                     unitPrice: ticket.priceGbp ?? 0,
+                    // ORCH-1147 — server fee-grossed all-in (priceAllInGbp) as
+                    // the headline-Total basis; base fallback (never fabricate).
+                    unitPriceAllIn:
+                      ticket.priceAllInGbp ?? ticket.priceGbp ?? 0,
                     currency:
                       ticket.currency ??
                       trip.pricingTiers[0]?.currency ??

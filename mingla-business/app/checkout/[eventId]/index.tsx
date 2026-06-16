@@ -272,6 +272,12 @@ export default function CheckoutTicketsScreen(): React.ReactElement {
                   ticketTypeId: ticket.id,
                   ticketName: ticket.name,
                   unitPrice: ticket.priceGbp ?? 0,
+                  // ORCH-1147 — seed the server fee-grossed all-in
+                  // (priceAllInGbp, from pg_public_event_tier_allin) as the
+                  // headline-Total basis; fall back to base when the tier has
+                  // no all-in (free / RPC miss — never fabricate).
+                  unitPriceAllIn:
+                    ticket.priceAllInGbp ?? ticket.priceGbp ?? 0,
                   currency: ticket.currency ?? event.currency ?? "GBP",
                   isFree: ticket.isFree,
                   quantity: next,

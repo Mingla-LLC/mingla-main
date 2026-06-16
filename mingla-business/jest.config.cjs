@@ -21,7 +21,15 @@ module.exports = {
   ],
   moduleFileExtensions: ["ts", "tsx", "js", "jsx", "json"],
   transform: {
-    "^.+\\.(ts|tsx)$": ["ts-jest", { tsconfig: { jsx: "react-native" } }],
+    // ORCH-1147 — `jsx: "react-jsx"` (was "react-native", which PRESERVES JSX
+    // and makes node/ts-jest choke on any runtime import of a JSX-bearing .tsx —
+    // e.g. importing `useCartTotals` from CartContext.tsx). The automatic JSX
+    // runtime transpiles `<X/>` to `_jsx(...)` so node-env unit tests can import
+    // hook logic from a .tsx module. Jest-only; the app build is Metro/babel and
+    // is unaffected. The existing carousel .tsx tests read source as TEXT
+    // (readFileSync), so they are unaffected; the RTL render tests run under
+    // their own dedicated configs (ignored here).
+    "^.+\\.(ts|tsx)$": ["ts-jest", { tsconfig: { jsx: "react-jsx" } }],
     // ORCH-1137 (rework) — the biz-web lucide shim deep-requires per-icon ESM
     // modules from `lucide-react/dist/esm/icons/<kebab>.js` (the tree-shakeable
     // import form that keeps the eager web `__common` chunk under the ORCH-1083
