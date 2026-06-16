@@ -95,6 +95,15 @@ jest.mock("../../../src/hooks/useExperiencesByBrand", () => ({
   },
 }));
 
+// ORCH-1150 A.6 — usePendingExperiences now imports brandKeys from useBrands;
+// useBrands → services/supabase → expo-constants (ESM) is untransformable in
+// this harness, so mock the key factory (mirrors the useExperiencesByBrand mock).
+jest.mock("../../../src/hooks/useBrands", () => ({
+  brandKeys: {
+    offeringCounts: (brandId: string) => ["brand", brandId, "offeringCounts"],
+  },
+}));
+
 import fs from "node:fs";
 import path from "node:path";
 
@@ -200,7 +209,15 @@ describe("ORCH-1150 ADVERSARIAL C — count honesty (created != id count)", () =
 //    gate (one that tolerates a missing confirmAll or a missing drafts route)
 //    flips these. Mirrors orch-1150-snap-auto-draft.mjs checkSnapSource. ──────
 describe("ORCH-1150 ADVERSARIAL D — gate §9.3 navigate contract", () => {
-  const REVIEW_REF = /ExperienceReviewCards/;
+  // NOTE: the forbidden review-component name is assembled from parts so this
+  // test SOURCE never contains the literal token. The strict-grep gate
+  // (orch-1150-snap-auto-draft.mjs, grepImporters) FAILS any .ts/.tsx under
+  // app/ or src/ that contains the literal — a test asserting its ABSENCE must
+  // not itself trip the gate, and the gate stays STRICT (no test-file
+  // exclusion that would let a real reintroduction slip through). The runtime
+  // regex below is identical to the gate's REVIEW_REF.
+  const REVIEW_COMPONENT = ["Experience", "ReviewCards"].join("");
+  const REVIEW_REF = new RegExp(REVIEW_COMPONENT);
   const CONFIRM_ALL_REF = /\bconfirmAll\b/;
   const REPLACE_TO_DRAFTS = /router\.replace\(\s*[A-Za-z0-9_]*[^)]*\)/;
   const DRAFTS_ROUTE_LITERAL = /"\/\(tabs\)\/hub\/experiences"/;

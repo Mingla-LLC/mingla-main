@@ -102,6 +102,16 @@ jest.mock("../../../src/hooks/useExperiencesByBrand", () => ({
   },
 }));
 
+// ORCH-1150 A.6 — the hook now imports `brandKeys` from useBrands to invalidate
+// the offering-counts query alongside the drafts list. useBrands transitively
+// pulls services/supabase → expo-constants (ESM, untransformable here), so mock
+// the key factory directly (mirrors the useExperiencesByBrand mock above).
+jest.mock("../../../src/hooks/useBrands", () => ({
+  brandKeys: {
+    offeringCounts: (brandId: string) => ["brand", brandId, "offeringCounts"],
+  },
+}));
+
 import { usePendingExperiences } from "../../../src/hooks/usePendingExperiences";
 
 const BRAND = "11111111-1111-1111-1111-111111111111";
@@ -194,6 +204,19 @@ describe("ORCH-1150 confirmAll — auto-draft-all loop (hook)", () => {
     await hook.invalidateExperienceList();
     expect(invalidateQueries).toHaveBeenCalledWith({
       queryKey: ["experiences", "list", BRAND],
+    });
+  });
+
+  test("TA-4/SC-A3: invalidateExperienceList ALSO invalidates the offering-counts key (drafts raise the count on arrival)", async () => {
+    const hook = renderHook();
+    await hook.invalidateExperienceList();
+    // both the drafts list AND the offering-counts query must refetch, so the
+    // freshly-created drafts make the Hub Experiences tab appear on arrival.
+    expect(invalidateQueries).toHaveBeenCalledWith({
+      queryKey: ["experiences", "list", BRAND],
+    });
+    expect(invalidateQueries).toHaveBeenCalledWith({
+      queryKey: ["brand", BRAND, "offeringCounts"],
     });
   });
 });

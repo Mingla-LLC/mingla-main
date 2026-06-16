@@ -21,6 +21,7 @@ import {
 } from "../services/experienceGenerationService";
 import { useAuth } from "../context/AuthContext";
 import { experienceKeys } from "./useExperiencesByBrand";
+import { brandKeys } from "./useBrands";
 
 export const pendingExperienceKeys = {
   all: ["pendingExperiences"] as const,
@@ -149,6 +150,13 @@ export function usePendingExperiences(
     async (): Promise<void> => {
       if (brandId) {
         await qc.invalidateQueries({ queryKey: experienceKeys.listByBrand(brandId) });
+        // ORCH-1150 A.6 (DISC-1150-A) — also invalidate the offering-counts
+        // query so the freshly-created drafts raise experiences_draft and the
+        // Hub "Experiences" tab is present ON ARRIVAL (not one navigation
+        // later). snap.tsx already awaits this before router.replace, so by the
+        // time the nav-lock effect evaluates visibleTabs the tab exists and the
+        // redirect does NOT fire. Same key useDiscardOfferingDrafts invalidates.
+        await qc.invalidateQueries({ queryKey: brandKeys.offeringCounts(brandId) });
       }
     },
     [qc, brandId],
