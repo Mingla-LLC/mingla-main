@@ -136,6 +136,7 @@ async function sendResendEmail(
     return { ok: false, error: err instanceof Error ? err.message : String(err) };
   }
   try {
+    // no-attachment: RSVP notifications are transactional event-update notices (going/waitlist/approval/removal) — plain HTML, no PDF/file artifact. RSVP has no ticket/order document to attach.
     const res = await fetch("https://api.resend.com/emails", {
       method: "POST",
       headers: {
