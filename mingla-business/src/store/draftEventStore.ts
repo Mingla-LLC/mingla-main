@@ -347,6 +347,23 @@ export interface DraftEvent {
   themeOverrides?: ThemeInput | null;
   /** Cycle 10: hide guest count from buyer-side surfaces. I-26 — operator-only flag; no buyer surface honors this in Cycle 10. */
   privateGuestList: boolean;
+  // ORCH-1150 — RSVP event fields (additive; inert when isRsvp=false). The
+  // ticketed-event path never reads these. See SPEC §4.6.
+  /** ORCH-1150 — true when this draft is an RSVP event (routes to the RSVP
+   *  wizard + business_publish_rsvp_draft). Absent/false = ticketed event. */
+  isRsvp: boolean;
+  /** ORCH-1150 — optional guest cap; null = unlimited. */
+  rsvpCapacity: number | null;
+  /** ORCH-1150 — host allows guests to bring +N. */
+  rsvpAllowPlusOnes: boolean;
+  /** ORCH-1150 — max extra guests per RSVP when plus-ones allowed; 0 when off. */
+  rsvpPlusOnesMax: number;
+  /** ORCH-1150 — start a waitlist when capacity is hit. */
+  rsvpWaitlistEnabled: boolean;
+  /** ORCH-1150 — auto-approve vs approve-each. */
+  rsvpApprovalMode: "auto" | "manual";
+  /** ORCH-1150 — also surface on the consumer discovery feed (default off). */
+  rsvpDiscoverable: boolean;
   /**
    * Cycle 12: when true, /event/{id}/door surface is reachable + "Door Sales"
    * ActionTile appears on Event Detail. Default false; operator opt-in.
@@ -367,6 +384,8 @@ export interface DraftEventState {
   activeDraftId: string | null;
   draftEditMeta: Record<string, DraftEditMeta>;
   createDraft: (brandId: string) => DraftEvent;
+  /** ORCH-1150 — mint an RSVP draft (isRsvp:true, whenMode:"single"). */
+  createRsvpDraft: (brandId: string) => DraftEvent;
   getDraft: (id: string) => DraftEvent | null;
   upsertDraft: (draft: DraftEvent) => void;
   upsertDrafts: (drafts: DraftEvent[]) => void;
@@ -445,6 +464,14 @@ const DEFAULT_DRAFT_FIELDS: Omit<
   themeOverrides: null,
   privateGuestList: false,
   inPersonPaymentsEnabled: false,
+  // ORCH-1150 — RSVP defaults (inert for ticketed events).
+  isRsvp: false,
+  rsvpCapacity: null,
+  rsvpAllowPlusOnes: false,
+  rsvpPlusOnesMax: 0,
+  rsvpWaitlistEnabled: false,
+  rsvpApprovalMode: "auto",
+  rsvpDiscoverable: false,
   lastStepReached: 0,
   status: "draft",
   clientRevision: 0,
@@ -682,6 +709,14 @@ const upgradeV6DraftToV7 = (d: V6DraftEvent): DraftEvent => ({
   coverMediaCreditUrl: null,
   coverMediaAlt: null,
   currency: null,
+  // ORCH-1150 — RSVP defaults backfilled on the legacy v1..v6 chain.
+  isRsvp: false,
+  rsvpCapacity: null,
+  rsvpAllowPlusOnes: false,
+  rsvpPlusOnesMax: 0,
+  rsvpWaitlistEnabled: false,
+  rsvpApprovalMode: "auto",
+  rsvpDiscoverable: false,
 });
 
 const withProviderMetadataDefaults = (draft: DraftEvent): DraftEvent => ({
@@ -691,6 +726,15 @@ const withProviderMetadataDefaults = (draft: DraftEvent): DraftEvent => ({
   coverMediaCredit: draft.coverMediaCredit ?? null,
   coverMediaCreditUrl: draft.coverMediaCreditUrl ?? null,
   coverMediaAlt: draft.coverMediaAlt ?? null,
+  // ORCH-1150 — defensively backfill RSVP defaults so a draft migrated up an
+  // older chain (v1..v10 → eventually here) never carries undefined rsvp fields.
+  isRsvp: draft.isRsvp ?? false,
+  rsvpCapacity: draft.rsvpCapacity ?? null,
+  rsvpAllowPlusOnes: draft.rsvpAllowPlusOnes ?? false,
+  rsvpPlusOnesMax: draft.rsvpPlusOnesMax ?? 0,
+  rsvpWaitlistEnabled: draft.rsvpWaitlistEnabled ?? false,
+  rsvpApprovalMode: draft.rsvpApprovalMode ?? "auto",
+  rsvpDiscoverable: draft.rsvpDiscoverable ?? false,
 });
 
 const persistOptions: PersistOptions<DraftEventState, PersistedState> = {
@@ -703,7 +747,9 @@ const persistOptions: PersistOptions<DraftEventState, PersistedState> = {
   // legacy drafts via smart-infer (date + doorsOpen + endsAt + timezone).
   // Drafts missing any of the four inputs default to endsAtUtc: null —
   // no data loss; wizard recomputes on next commit.
-  version: 11,
+  // ORCH-1150 — v11 → v12 backfills the additive RSVP fields (isRsvp:false +
+  // RSVP defaults) on legacy drafts; all existing drafts are ticketed events.
+  version: 12,
   migrate: (persistedState, version): PersistedState => {
     if (version < 1) {
       return { drafts: [] };
@@ -778,7 +824,10 @@ const persistOptions: PersistOptions<DraftEventState, PersistedState> = {
         drafts: Array<Omit<DraftEvent, "endsAtUtc">>;
       };
       return {
-        drafts: v10.drafts.map((draft): DraftEvent => ({
+        // ORCH-1150 — also backfill the additive RSVP defaults on a v10 store so
+        // a v10 → v12 hydration (which runs only this branch) never lands with
+        // undefined rsvp fields. withProviderMetadataDefaults adds both.
+        drafts: v10.drafts.map((draft): DraftEvent => withProviderMetadataDefaults({
           ...draft,
           endsAtUtc: computeEndsAtUtcWithSmartInfer(
             draft.date,
@@ -786,6 +835,36 @@ const persistOptions: PersistOptions<DraftEventState, PersistedState> = {
             draft.endsAt,
             draft.timezone,
           ),
+        } as DraftEvent)),
+      };
+    }
+    if (version === 11) {
+      // ORCH-1150 — v11 → v12: backfill the additive RSVP fields. Every legacy
+      // draft is a ticketed event → isRsvp:false + RSVP defaults. No data loss.
+      const v11 = persistedState as {
+        drafts: Array<
+          Omit<
+            DraftEvent,
+            | "isRsvp"
+            | "rsvpCapacity"
+            | "rsvpAllowPlusOnes"
+            | "rsvpPlusOnesMax"
+            | "rsvpWaitlistEnabled"
+            | "rsvpApprovalMode"
+            | "rsvpDiscoverable"
+          >
+        >;
+      };
+      return {
+        drafts: v11.drafts.map((d): DraftEvent => ({
+          ...d,
+          isRsvp: false,
+          rsvpCapacity: null,
+          rsvpAllowPlusOnes: false,
+          rsvpPlusOnesMax: 0,
+          rsvpWaitlistEnabled: false,
+          rsvpApprovalMode: "auto",
+          rsvpDiscoverable: false,
         })),
       };
     }
@@ -803,6 +882,19 @@ export const useDraftEventStore = create<DraftEventState>()(
       createDraft: (brandId): DraftEvent => {
         const now = new Date().toISOString();
         const draft = buildDraftEvent(brandId, generateDraftId(), now);
+        set((s) => ({ drafts: [...s.drafts, draft] }));
+        return draft;
+      },
+
+      // ORCH-1150 — RSVP draft: a normal draft flipped to the RSVP discriminator
+      // + forced single-date (the RSVP wizard hides the recurring/multi tabs).
+      createRsvpDraft: (brandId): DraftEvent => {
+        const now = new Date().toISOString();
+        const draft: DraftEvent = {
+          ...buildDraftEvent(brandId, generateDraftId(), now),
+          isRsvp: true,
+          whenMode: "single",
+        };
         set((s) => ({ drafts: [...s.drafts, draft] }));
         return draft;
       },
