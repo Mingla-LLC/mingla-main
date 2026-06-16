@@ -471,6 +471,17 @@ AS $function$
     AND e.visibility = 'public'
     AND e.published_at IS NOT NULL
     AND e.deleted_at IS NULL
+    -- ORCH-1076 I-PAID-SUPPLY-REQUIRES-CHARGES-ENABLED: paid-only Stripe-readiness gate (mirror of checkout 409 + ORCH-1075 publish guard). FREE + in-person-only-paid exempt. Buyer-facing only — owners read events directly. ORCH-1138 rework re-emitted the ORCH-1072 body verbatim, which predated this gate; restore it here (the WHERE widen must NOT drop the ORCH-1076 readiness branch).
+    AND (
+      NOT EXISTS (
+        SELECT 1 FROM public.ticket_types tt
+         WHERE tt.event_id = e.id
+           AND tt.available_online = true
+           AND tt.deleted_at IS NULL
+           AND tt.price_cents > 0
+      )
+      OR public.pg_brand_can_charge(e.brand_id)
+    )
   ORDER BY
     NULLIF(e.theme->'experience_meta'->>'next_occurrence_at', '')::timestamptz ASC NULLS LAST,
     e.published_at DESC;

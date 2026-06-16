@@ -86,4 +86,27 @@ ok(
 );
 ok("no GBP introduced (I-7)", !/\bGBP\b/.test(sql));
 
+// --- ORCH-1076 I-PAID-SUPPLY-REQUIRES-CHARGES-ENABLED preservation ---------
+// This rework migration re-emits the ORCH-1072 venue-RPC body, which PREDATED
+// the ORCH-1076 readiness gate. Both buyer-facing supply RPCs in this file MUST
+// carry the `pg_brand_can_charge(` paid-supply gate or the serve-time mirror of
+// the checkout 409 silently regresses (paid offerings from charge-disabled
+// brands would leak back into the deck + venue supply). Slice each RPC body so a
+// marker present in ONE function can't falsely satisfy the other.
+function sliceFn(src, fn) {
+  const start = src.indexOf(`CREATE OR REPLACE FUNCTION public.${fn}`);
+  if (start === -1) return "";
+  const rest = src.slice(start + 1);
+  const next = rest.indexOf("CREATE OR REPLACE FUNCTION public.");
+  return next === -1 ? src.slice(start) : src.slice(start, start + 1 + next);
+}
+ok(
+  "deck RPC body gates paid supply on pg_brand_can_charge (ORCH-1076)",
+  sliceFn(sql, "pg_eligible_experiences_for_deck").includes("pg_brand_can_charge("),
+);
+ok(
+  "venue RPC body gates paid supply on pg_brand_can_charge (ORCH-1076 — re-emitted ORCH-1072 body must NOT drop it)",
+  sliceFn(sql, "pg_brand_experiences_for_place").includes("pg_brand_can_charge("),
+);
+
 console.log(`\n${passed} assertions passed.`);
