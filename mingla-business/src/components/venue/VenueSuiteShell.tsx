@@ -45,9 +45,11 @@ import { useVenueSuiteStore } from "../../store/venueSuiteStore";
 import type { VenueModule } from "../../types/venueReservation";
 import { Button } from "../ui/Button";
 import { GlassCard } from "../ui/GlassCard";
+import { VenueAvailabilityModule } from "./VenueAvailabilityModule";
 import { VenueListingContent } from "./VenueListingContent";
 import { VenueModuleComingSoon } from "./VenueModuleComingSoon";
 import { VenueSettingsModule } from "./VenueSettingsModule";
+import { VenueTablesModule } from "./VenueTablesModule";
 import { moduleSelfScrolls, venueScrollBottomPad } from "./venueShellScroll";
 import {
   VENUE_MODULES,
@@ -164,7 +166,16 @@ export function VenueSuiteShell({
     if (activeModule === "settings") {
       return <VenueSettingsModule brandId={brandId} />;
     }
-    // Booking band → honest ComingSoon (never a dead tap).
+    // 2.1a — Tables + Availability are now LIVE operator modules (replacing
+    // ComingSoon). Reservations + Waitlist stay ComingSoon until 2.1b.
+    if (activeModule === "tables") {
+      return <VenueTablesModule brandId={brandId} />;
+    }
+    if (activeModule === "availability") {
+      return <VenueAvailabilityModule brandId={brandId} />;
+    }
+    // Remaining booking band (reservations / waitlist) → honest ComingSoon
+    // (never a dead tap). Real CRUD lands in 2.1b.
     return (
       <VenueModuleComingSoon module={activeModule} onGoToSettings={goToSettings} />
     );

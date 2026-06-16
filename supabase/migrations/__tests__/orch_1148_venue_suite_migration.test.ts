@@ -262,3 +262,147 @@ Deno.test("T-MIG-9 — probe asserts tables exist + RLS + 8-state lifecycle (fai
     "probe must LIMIT 1 the status-CHECK selection defensively",
   );
 });
+
+// ===========================================================================
+// 2.1a (Booking Core — Tables + Availability + the Engine). Source-level
+// regression over the NET-NEW 2.1a migrations:
+//   20261006000000_orch_1148_availability_indexes.sql
+//   20261006000001_orch_1148_available_slots_rpc.sql      (THE ENGINE)
+//   20261006000002_orch_1148_booking_core_probes.sql
+// Anchors: I-PROPOSED-1148-AVAILABILITY-ENGINE-SOLE-SLOT-SOURCE +
+//          I-PROPOSED-1148-CAPACITY-RULE-ENFORCED-SERVER-SIDE.
+// ===========================================================================
+
+const ENGINE_RPC_FILE = "20261006000001_orch_1148_available_slots_rpc.sql";
+const ENGINE_INDEX_FILE = "20261006000000_orch_1148_availability_indexes.sql";
+const ENGINE_PROBE_FILE = "20261006000002_orch_1148_booking_core_probes.sql";
+
+Deno.test("T-MIG-10 — 2.1a migration versions are monotonic above the 2.0/1150/1138 max", () => {
+  // 2.0 = …03*; ORCH-1150 = …04*; ORCH-1138 = …05*; 2.1a bases at …06*.
+  for (const f of [ENGINE_INDEX_FILE, ENGINE_RPC_FILE, ENGINE_PROBE_FILE]) {
+    assertMatch(
+      f,
+      /^20261006000\d{3}_orch_1148/,
+      `${f} must use the 20261006* base (strictly above 2.0/1150/1138)`,
+    );
+  }
+  // Probe is the highest 2.1a prefix (runs last).
+  const present = [...Deno.readDirSync(DIR)]
+    .map((e) => e.name)
+    .filter((n) => /^20261006000\d{3}_orch_1148/.test(n))
+    .map((n) => n.slice(0, 14));
+  assert(present.length >= 3, "the three 2.1a migrations must all exist");
+  assert(
+    Math.max(...present.map(Number)) === Number(ENGINE_PROBE_FILE.slice(0, 14)),
+    "the 2.1a invariant-probe migration must be the highest (last) 2.1a prefix",
+  );
+});
+
+Deno.test("T-MIG-11 — engine indexes are additive partial indexes on the live-status / active-rule paths", () => {
+  const sql = read(ENGINE_INDEX_FILE);
+  assertMatch(
+    sql,
+    /CREATE INDEX IF NOT EXISTS reservations_brand_table_reserved_idx[\s\S]*WHERE status IN \('requested', 'confirmed', 'seated'\)/,
+    "the engine overlap index must be a partial index on the LIVE reservation statuses",
+  );
+  assertMatch(
+    sql,
+    /CREATE INDEX IF NOT EXISTS venue_capacity_rules_brand_kind_idx[\s\S]*WHERE is_active/,
+    "the capacity-rule index must be partial on is_active",
+  );
+});
+
+Deno.test("T-MIG-12 — the engine RPC honours the FROZEN CONTRACT signature + return shape", () => {
+  const sql = read(ENGINE_RPC_FILE);
+  assertMatch(
+    sql,
+    /CREATE OR REPLACE FUNCTION public\.pg_venue_available_slots\(\s*p_brand_id\s+uuid,\s*p_date\s+date,\s*p_party_size\s+int\s*\)/,
+    "engine must take (p_brand_id uuid, p_date date, p_party_size int)",
+  );
+  for (const col of ["slot_start_utc", "slot_local_label", "remaining", "is_full"]) {
+    assert(
+      new RegExp(`\\b${col}\\b`).test(sql),
+      `engine RETURNS TABLE must declare the frozen-contract column ${col}`,
+    );
+  }
+  // SECURITY DEFINER + locked search_path.
+  assertMatch(sql, /SECURITY DEFINER/, "engine must be SECURITY DEFINER");
+  assertMatch(
+    sql,
+    /SET search_path = public, pg_temp/,
+    "engine must lock search_path",
+  );
+});
+
+Deno.test("T-MIG-13 — engine GRANTs EXECUTE to authenticated ONLY; NO anon grant (2.1a boundary)", () => {
+  const sql = read(ENGINE_RPC_FILE).replace(/--.*$/gm, ""); // strip the 2.2-seam comment
+  assertMatch(
+    sql,
+    /REVOKE ALL ON FUNCTION public\.pg_venue_available_slots\(uuid, date, int\) FROM PUBLIC/,
+    "engine must REVOKE ALL FROM PUBLIC",
+  );
+  assertMatch(
+    sql,
+    /GRANT EXECUTE ON FUNCTION public\.pg_venue_available_slots\(uuid, date, int\) TO authenticated/,
+    "engine must GRANT EXECUTE to authenticated",
+  );
+  assert(
+    !/GRANT EXECUTE[\s\S]*TO anon/.test(sql),
+    "engine must NOT grant EXECUTE to anon in 2.1a (the anon grant is the 2.2 consumer seam)",
+  );
+});
+
+Deno.test("T-MIG-14 — engine enforces party_fit (min_party/max_party) + subtracts ONLY live reservations server-side", () => {
+  const sql = read(ENGINE_RPC_FILE);
+  assertMatch(
+    sql,
+    /p_party_size BETWEEN COALESCE\(t\.min_party, 1\) AND COALESCE\(t\.max_party, t\.capacity\)/,
+    "engine must enforce the party_fit rule inside the eligible-tables filter",
+  );
+  // Whole-day blackout + reservable-only + the live-status overlap subtraction.
+  assertMatch(
+    sql,
+    /applies_to = 'all'/,
+    "engine must drop whole-day ('all') blackout dates",
+  );
+  assertMatch(
+    sql,
+    /reservation_policy = 'reservable'/,
+    "engine must surface ONLY reservable tables (not walk_in_only/approval_required)",
+  );
+  assertMatch(
+    sql,
+    /status IN \('requested', 'confirmed', 'seated'\)/,
+    "engine must subtract ONLY live reservations from capacity",
+  );
+});
+
+Deno.test("T-MIG-15 — the 2.1a probe asserts the engine contract, the grant boundary, and the indexes (fails-on-revert)", () => {
+  const sql = read(ENGINE_PROBE_FILE);
+  // read-only: no writes.
+  const body = sql.replace(/--.*$/gm, "");
+  assert(
+    !/\bINSERT\s+INTO\b/i.test(body) && !/\bUPDATE\s+public\./i.test(body),
+    "the 2.1a probe must be read-only (no writes)",
+  );
+  assertMatch(
+    sql,
+    /p_brand_id uuid, p_date date, p_party_size integer/,
+    "probe must assert the exact engine identity arguments",
+  );
+  assertMatch(
+    sql,
+    /must NOT GRANT EXECUTE to anon\/PUBLIC in 2\.1a/,
+    "probe must assert the no-anon-grant 2.1a boundary",
+  );
+  assertMatch(
+    sql,
+    /reservations_brand_table_reserved_idx/,
+    "probe must assert the engine overlap index exists",
+  );
+  assertMatch(
+    sql,
+    /must enforce party_fit/,
+    "probe must assert party_fit is enforced server-side",
+  );
+});
