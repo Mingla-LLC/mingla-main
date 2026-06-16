@@ -184,3 +184,44 @@ The `&& npx tsc --noEmit` tail ran a whole-project type-check that inherits the 
 - Touched files (3): `supabase/migrations/20261003000007_orch_1148_invariant_probes.sql`, `supabase/migrations/__tests__/orch_1148_venue_suite_migration.test.ts`, `mingla-business/package.json`.
 - **Out of scope (untouched):** the deferred live-RLS + device legs (orchestrator's to run at apply/OTA), the 7 schema-table migrations' definitions, components, and other tests.
 - Commit: `c31f1c2ec` on `ORCH-1148-venue-suite-foundation` (rebased onto origin/main). No deploy / apply / merge.
+
+---
+
+## Mobile scroll + nav-clearance fix (device-found, Seth 2026-06-15)
+
+**Bug (verbatim):** "On the mobile app ... all pages need to scroll and clear the nav menu on the business app." On the BUSINESS APP (native / web-phone), Venue Suite module pages did not scroll properly and/or content was hidden behind the floating bottom nav.
+
+### Root cause (two defects in the shell)
+1. **Static, too-small bottom padding.** The shell's phone + desktop `ScrollView`s used `contentContainerStyle: { paddingBottom: spacing.xxl }` (=**48px**). The floating BottomNav primitive is ~64px tall (+ floating margin + the device home-indicator safe-area inset), so 48px left the last row hidden behind the nav. Every other Hub tab clears the nav with `insets.bottom + 120`.
+2. **Nested same-axis ScrollView on Overview.** The Overview module mounts `<VenueListingContent>` (mounted VERBATIM), which OWNS its own `ScrollView` with its own `insets.bottom + 120` clearance (tab mode). The shell wrapped that inside a SECOND outer `ScrollView` — nested vertical scroll = the "doesn't scroll properly" symptom on native.
+
+### Pattern reused (cited source)
+`app/(tabs)/hub/events.tsx:636` — `contentContainerStyle={[styles.scroll, { paddingBottom: insets.bottom + 120 }]}` via `useSafeAreaInsets()` (the shared nav-lock companion-pin pattern, also used by `VenueListingContent.tsx:228` in tab mode). No new magic number invented; the `+120` clearance is the established constant.
+
+### Changes (3 files, venue shell scope only)
+- **`mingla-business/src/components/venue/venueShellScroll.ts`** (NEW, 41 lines) — pure, unit-testable helpers extracting the two decisions: `VENUE_SCROLL_NAV_CLEARANCE = 120`, `moduleSelfScrolls(module)` (true only for `overview`), `venueScrollBottomPad(insetsBottom) = insetsBottom + 120`.
+- **`mingla-business/src/components/venue/VenueSuiteShell.tsx`** —
+  - Added `useSafeAreaInsets()`; `scrollBottomPad = venueScrollBottomPad(insets.bottom)`.
+  - `workspaceSelfScrolls = moduleSelfScrolls(activeModule)`.
+  - **Phone path:** Overview renders directly (its own ScrollView owns scroll+clearance — no outer wrap); Settings + booking ComingSoon are wrapped in a shell `ScrollView` with `paddingBottom: scrollBottomPad` (+ `testID="venue-suite-shell-phone-scroll"`).
+  - **Desktop path:** same conditional — Overview direct, others get the padded ScrollView. Two-column rail layout untouched.
+  - **Overview invitation card** re-ordered to PIN ABOVE the self-scrolling `<VenueListingContent>` (was a sibling below a `flex:1` self-scrolling child → would push off-screen with no outer scroll). Keeps the CTA visible without re-introducing nested scroll. `VenueListingContent` itself unchanged.
+  - Removed the dead static `paddingBottom: spacing.xxl` from `phoneScroll`/`desktopScroll` (now inline insets-based).
+- **`mingla-business/package.json`** — added `venueShellScroll.test.ts` to the `test:orch-1148` jest list.
+
+### Regression test (new) — `src/components/venue/__tests__/venueShellScroll.test.ts`
+Pure unit test (no RN render — the RTL/react-test-renderer overlay is per-worktree provisioned + gitignored and is NOT present in this worktree, so a render mount is not runnable here; the contract is asserted via the extracted helpers instead). 5 tests: T-A only Overview self-scrolls (no double-wrap), T-B Settings + booking are shell-scrolled, T-C pad = `inset + 120`, T-D clearance always > 64px nav even at zero inset (and > the buggy 48), T-E monotonic in inset.
+
+### Gate results
+- **`npm run test:orch-1148`** (strict-grep self-test + real run + jest venueModules/venueFeeGate/**venueShellScroll**): **PASS** — 16 passed / 3 suites, exit 0.
+- **`venueSuiteLeakAndExit.tester.adversarial` + `useHubTabs.venueGate.adversarial`**: **PASS** — 20 passed / 2 suites.
+- **Fails-on-revert (proven):** revert the helpers to the buggy static `48` / `moduleSelfScrolls→false` → T-A/T-C/T-D/T-E go RED (4 failed); restore → 5/5 green.
+- **tsc:** 0 errors in changed files (project baseline ~325 pre-existing, unchanged). **eslint:** clean on all 3 changed files.
+
+### Known pre-existing red (NOT mine, flagged)
+- `app/(tabs)/hub/__tests__/venueTab.contract.test.ts` **T-9** (an ORCH-1145 / PR #492 contract) asserts `hub/listing.tsx` directly contains `VenueListingContent` + `chromeMode="tab"`. The **1148 foundation commit** (`627c899e4`, prior work on this branch — not this scroll fix) restructured `listing.tsx` to mount `<VenueSuiteShell>`, moving those strings INTO the shell, so T-9 was ALREADY red at the foundation commit (verified: committed `listing.tsx` contains 0 `VenueListingContent` references). The other 11 assertions pass. Left untouched — updating an ORCH-1145 listing-mount contract is a foundation-commit concern, outside this scroll-fix scope (prompt forbids widening into the toggle/nav-lock/listing-mount logic). **Flag for the orchestrator at CLOSE.**
+
+### Provenance / scope
+- Touched (3): `venueShellScroll.ts` (new), `VenueSuiteShell.tsx`, `package.json` (+ new test). 
+- **Untouched (per hard guards):** schema migrations, toggle logic, `VenueListingContent` (mounted verbatim), the nav-lock guard, `HubSubNav`/`useHubTabs`, desktop two-column behavior, Android opaque-glass policy. Tokens only; safe-area honored.
+- No deploy / merge.

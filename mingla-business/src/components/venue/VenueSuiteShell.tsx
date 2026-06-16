@@ -24,6 +24,7 @@
 
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { Platform, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import {
   accent,
@@ -46,6 +47,7 @@ import { GlassCard } from "../ui/GlassCard";
 import { VenueListingContent } from "./VenueListingContent";
 import { VenueModuleComingSoon } from "./VenueModuleComingSoon";
 import { VenueSettingsModule } from "./VenueSettingsModule";
+import { moduleSelfScrolls, venueScrollBottomPad } from "./venueShellScroll";
 import {
   VENUE_MODULES,
   deriveVenueModules,
@@ -64,6 +66,13 @@ export function VenueSuiteShell({
   initialModule = "overview",
 }: VenueSuiteShellProps): React.ReactElement {
   const { isWideDesktop } = useResponsiveLayout();
+  const insets = useSafeAreaInsets();
+  // Bottom-nav clearance — the floating BottomNav primitive (64px) + its
+  // floating margin + the device home-indicator inset. `insets.bottom + 120`
+  // is the shared nav-lock companion-pin pattern used by every Hub tab
+  // (app/(tabs)/hub/events.tsx) and by VenueListingContent in tab mode, so the
+  // last content row clears the nav on native + web-phone.
+  const scrollBottomPad = venueScrollBottomPad(insets.bottom);
 
   const settingsQuery = useVenueReservationSettings(brandId);
   const reservationsEnabled = settingsQuery.data?.reservationsEnabled ?? false;
@@ -105,15 +114,22 @@ export function VenueSuiteShell({
     setActiveModule("settings");
   }, []);
 
+  // Overview mounts <VenueListingContent>, which OWNS its own ScrollView (with
+  // its own `insets.bottom + 120` clearance) — so the shell must NOT wrap it in
+  // a second, outer ScrollView (nested same-axis scroll = the "doesn't scroll
+  // properly" symptom). Settings + the booking ComingSoon render plain Views, so
+  // the shell supplies the scroll container + bottom-nav clearance for them.
+  const workspaceSelfScrolls = moduleSelfScrolls(activeModule);
+
   const renderWorkspace = (): React.ReactElement => {
     if (activeModule === "overview") {
+      // The invitation card is pinned ABOVE the self-scrolling
+      // <VenueListingContent> (which owns its own ScrollView + bottom-nav
+      // clearance). Pinning it — rather than nesting it inside a second outer
+      // ScrollView — keeps the CTA visible AND avoids the nested same-axis
+      // scroll that broke scrolling on native.
       return (
         <View style={styles.overviewWrap}>
-          <VenueListingContent
-            brandId={brandId}
-            focus={focus}
-            chromeMode="tab"
-          />
           {!reservationsEnabled ? (
             <View style={styles.invitationWrap}>
               <GlassCard variant="elevated" style={styles.invitationCard}>
@@ -136,6 +152,11 @@ export function VenueSuiteShell({
               </GlassCard>
             </View>
           ) : null}
+          <VenueListingContent
+            brandId={brandId}
+            focus={focus}
+            chromeMode="tab"
+          />
         </View>
       );
     }
@@ -164,9 +185,19 @@ export function VenueSuiteShell({
             />
           </View>
           <View style={styles.desktopWorkspace}>
-            <ScrollView contentContainerStyle={styles.desktopScroll}>
-              {renderWorkspace()}
-            </ScrollView>
+            {workspaceSelfScrolls ? (
+              // Overview self-scrolls; avoid nesting a second ScrollView.
+              renderWorkspace()
+            ) : (
+              <ScrollView
+                contentContainerStyle={[
+                  styles.desktopScroll,
+                  { paddingBottom: scrollBottomPad },
+                ]}
+              >
+                {renderWorkspace()}
+              </ScrollView>
+            )}
           </View>
         </View>
       </View>
@@ -180,9 +211,22 @@ export function VenueSuiteShell({
   // body is just the workspace.
   return (
     <View style={styles.phoneHost} testID="venue-suite-shell-phone">
-      <ScrollView contentContainerStyle={styles.phoneScroll}>
-        {renderWorkspace()}
-      </ScrollView>
+      {workspaceSelfScrolls ? (
+        // Overview self-scrolls (VenueListingContent owns the ScrollView + its
+        // own bottom-nav clearance) — render it directly, no outer scroll.
+        renderWorkspace()
+      ) : (
+        <ScrollView
+          contentContainerStyle={[
+            styles.phoneScroll,
+            { paddingBottom: scrollBottomPad },
+          ]}
+          showsVerticalScrollIndicator={false}
+          testID="venue-suite-shell-phone-scroll"
+        >
+          {renderWorkspace()}
+        </ScrollView>
+      )}
     </View>
   );
 }
@@ -305,14 +349,14 @@ const styles = StyleSheet.create({
     paddingLeft: spacing.lg,
   },
   desktopScroll: {
-    paddingBottom: spacing.xxl,
+    // paddingBottom supplied inline (insets.bottom + 120) for nav clearance.
   },
   // phone / native
   phoneHost: {
     flex: 1,
   },
   phoneScroll: {
-    paddingBottom: spacing.xxl,
+    // paddingBottom supplied inline (insets.bottom + 120) for nav clearance.
   },
   // overview + invitation
   overviewWrap: {
