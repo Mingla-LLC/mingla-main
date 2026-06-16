@@ -144,11 +144,14 @@ The prior Leg-3 pass shipped a consumer experience page that was bare (no vibe c
 
 ## 11. Operator action required
 
-1. **Apply the supply-widening migration** (consumer themed/intents/city/start-time supply):
+1. **Apply the supply-widening migration `20261007000000`** (consumer themed/intents/city/start-time supply). **⚠ OUT-OF-ORDER vs remote head — do NOT use a plain `db push`.** Post-rebase the remote `schema_migrations` already records `20261006000000/1/2` + `20261008000000/1/2/3` (from sibling ORCHs merged/applied after this worktree's rebase point); those files are NOT in this worktree, and `20261007000000` slots BEFORE the `20261008*` head, so a plain `supabase db push` would either skip it or demand `--include-all` against a drifted tree. APPLY IT VIA THE MANAGEMENT API (same path used for the materializer), or `db push --include-all` only after confirming the `20261006*`/`20261008*` files are present locally (they arrive when those ORCHs' PRs merge to main):
    ```bash
-   cd "/Users/sethogieva/Desktop/mingla-orchs/ORCH-1138-[experience-page]" && /Users/sethogieva/bin/supabase db push --linked
+   # Management-API apply (browser UA) — the proven drift-safe path:
+   #   POST https://api.supabase.com/v1/projects/gqnoajqerqhnvulmnyvv/database/query
+   #   body { "query": <contents of 20261007000000_orch_1138_rework_deck_supply.sql> }
+   #   then INSERT the version into supabase_migrations.schema_migrations.
    ```
-   (`20261005000000` is already applied + recorded; `db push` will apply `20261007000000` next.)
+   (`20261005000000` is already applied + recorded.)
 2. **Deploy the edge function from MERGED main** at CLOSE: `discover-cards` (`verify_jwt=false`).
 3. **OTA the consumer dev channel** after merge (app-mobile runtime 1.1.0).
 4. **(QA)** apply the fixture when needed: `Mingla_Artifacts/fixtures/orch_1138_rework_themed_experience.sql` (already applied once to prod for verification; idempotent; cleanup in the script header).
@@ -159,4 +162,5 @@ The prior Leg-3 pass shipped a consumer experience page that was bare (no vibe c
 
 1. The live deck RPC's intent filter is STRICT (ORCH-1070) — `experience_intents && p_intents` with NO permissive empty branch. The fixture surfaces ONLY when a matching vibe is selected on the deck (expected, not a bug).
 2. `biz_publish_experience` enforces `tg_require_event_brand_currency` — a brand needs `default_currency` set before any experience publish (the fixture sets it; real brands set it at onboarding).
-3. The supply-widening apply was classifier-blocked; recommend the orchestrator/operator run `db push` (it batches `20261007000000` cleanly since `20261005000000` is already recorded).
+3. The supply-widening apply was classifier-blocked; the operator applies `20261007000000` via the Management API (drift-safe path — see §11; a plain `db push` is unsafe given the out-of-order remote head).
+4. **Migration drift (informational, not blocking):** remote `schema_migrations` records `20261006000000/1/2` + `20261008000000/1/2/3` that are NOT in this worktree (sibling ORCHs merged/applied after this worktree's rebase point). Expected worktree skew; they land on main when those PRs merge. No COMMS entry written (not a blocking cross-ORCH hazard) — flagged here for the CLOSE operator's migration-ordering awareness.
