@@ -13,9 +13,12 @@
 //   LAYER 1 — formatCurrency / formatCurrencyRound are hardened: an empty / blank
 //             / invalid code is routed through `normalizeCurrency` (safe "GBP"
 //             fallback) so Intl can NEVER throw. Valid codes format identically.
-//   LAYER 2 — the three screens guard the headline: `totals.isEmpty ? "" :
-//             formatCurrency(...)` — the value is only DISPLAYED when !isEmpty,
-//             and the empty state renders the "—" placeholder.
+//   LAYER 2 — the three screens guard the headline currency:
+//             `formatCurrency(totals.allInTotal, totals.isEmpty ? "GBP" :
+//             totals.currency)` — never feeds "" into Intl on the empty cart.
+//             (This shape preserves the ORCH-1147R2 source-text gate, which pins
+//             `const headlineAllIn = formatCurrency(totals.allInTotal`.) The
+//             value is only DISPLAYED when !isEmpty; the empty state shows "—".
 //
 // Runs under the default node/ts-jest config (no RTL). Like the ORCH-1147 test,
 // `useCartTotals` is a thin `useMemo` over `useContext(CartCtx)`; we make
@@ -25,9 +28,10 @@
 // FAILS-ON-REVERT (proven by true line-deletion, not comment-out):
 //   • Revert LAYER 1 (restore `const code = currency.toUpperCase()`) → the
 //     `formatCurrency(x, "")` / `(x, undefined)` assertions THROW (RED).
-//   • Revert LAYER 2 (restore the unconditional `headlineAllIn`) → the
-//     `selectionHeadline` empty-cart assertion THROWS (RED), because computing
-//     the headline on an empty cart calls `formatCurrency(0, "")`.
+//   • Revert LAYER 2 (drop the `totals.isEmpty ? "GBP" :` currency guard so the
+//     headline passes the raw `totals.currency`) WITH Layer 1 also reverted →
+//     the `selectionHeadline` empty-cart assertion THROWS (RED), reproducing the
+//     exact shipped S0 crash (`formatCurrency(0, "")`).
 // I-PROPOSED-1152-CHECKOUT-CURRENCY-NEVER-CRASHES (DRAFT).
 
 import { describe, expect, jest, test } from "@jest/globals";
@@ -76,12 +80,14 @@ const totalsFor = (lines: CartLine[]): ReturnType<typeof useCartTotals> => {
 const selectionHeadline = (
   totals: ReturnType<typeof useCartTotals>,
 ): string => {
-  // LAYER 2 — the screens' real guard. Reverting this to an unconditional
-  // formatCurrency(totals.allInTotal, totals.currency) makes the empty branch
-  // throw (the shipped S0 crash).
-  const headlineAllIn = totals.isEmpty
-    ? ""
-    : formatCurrency(totals.allInTotal, totals.currency);
+  // LAYER 2 — the screens' real guard (verbatim shape from index.tsx). The
+  // empty-cart currency is replaced with a safe code so Intl is never fed "".
+  // Dropping the `totals.isEmpty ? "GBP" :` guard (with Layer 1 also reverted)
+  // makes this throw on the empty cart — the shipped S0 crash.
+  const headlineAllIn = formatCurrency(
+    totals.allInTotal,
+    totals.isEmpty ? "GBP" : totals.currency,
+  );
   // The displayed bottom-bar value cell.
   return totals.isEmpty ? "—" : totals.isFree ? "Free" : headlineAllIn;
 };

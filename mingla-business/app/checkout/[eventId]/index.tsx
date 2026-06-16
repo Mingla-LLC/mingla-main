@@ -87,12 +87,14 @@ export default function CheckoutTicketsScreen(): React.ReactElement {
   // feedback_cart_combined_fees_tax_line). I-PROPOSED-1147R2-SELECTION-SHOWS-ALLIN.
   // ORCH-1152 — guard the empty cart: on mount the cart is empty and
   // useCartTotals() returns currency "", which crashed formatCurrency
-  // (RangeError: Currency is invalid). headlineAllIn is only DISPLAYED when
-  // !isEmpty, so compute it only then. (formatCurrency itself is also hardened
-  // against blank codes — defense in depth.)
-  const headlineAllIn = totals.isEmpty
-    ? ""
-    : formatCurrency(totals.allInTotal, totals.currency);
+  // (RangeError: Currency is invalid). Pass a safe code on the empty cart so the
+  // computation never feeds "" into Intl. headlineAllIn is only DISPLAYED when
+  // !isEmpty anyway. (formatCurrency is ALSO hardened against blank codes —
+  // defense in depth; the explicit guard here does not rely on it.)
+  const headlineAllIn = formatCurrency(
+    totals.allInTotal,
+    totals.isEmpty ? "GBP" : totals.currency,
+  );
   const showFeesTaxLine =
     !totals.isEmpty && !totals.isFree && totals.hasFeesTaxDelta;
 
