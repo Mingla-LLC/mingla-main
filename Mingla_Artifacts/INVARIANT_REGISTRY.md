@@ -19,6 +19,30 @@
 
 ---
 
+## ACTIVE (post ORCH-1147 [cart reflects the TRUE all-in price] CLOSE 2026-06-16)
+
+### I-PROPOSED-1147-CART-TOTAL-IS-SERVER-ALLIN (ACTIVE post ORCH-1147 CLOSE)
+
+**Rule:** The business-app cart + buyer-web checkout "Total" (and the per-tier price shown at selection) for event/trip/experience MUST reflect the SERVER-computed fee-grossed all-in, NOT a client re-derivation from the bare base price. The all-in number comes from the single shared owner `fetchTierAllInCents` (`mingla-business/src/services/publicEventsService.ts`) → the `pg_public_event_tier_allin` RPC; the RPC MUST be called ONLY inside `fetchTierAllInCents` (no duplicated fee math / no parallel RPC calls anywhere else). `CartContext` carries it as `unitPriceAllIn`, `useCartTotals` exposes `allInTotal`/`feesTaxCents` while PRESERVING `.total`/`.subtotal` meaning (= base ticket subtotal), and the cart renders ONE combined "Fees & tax" line (per `feedback_cart_combined_fees_tax_line` — never split service-fee + VAT). Trip and experience feed the same field via `tripsService`/`publicExperienceService` + the checkout `index.tsx` stubs. No buyer tax form may be reintroduced (composes with I-PROPOSED-1130-NO-BUYER-TAX-FORM).
+
+**Why it exists:** ORCH-1147 — the cart DISPLAYED the bare ticket subtotal as "Total" and re-derived it independently from base, while the server charges the full all-in (base + passed Mingla fee + service fee) → a WYSIWYP/checkout-surprise breach (Seth screenshot: $67.93 quoted vs $65.00 in cart). This locks the cart to the server all-in as the single source of truth both display and charge consume, so a future refactor can't silently reopen the divergence or duplicate the fee math.
+
+**Enforcement:** strict-grep gate `orch-1147-cart-total-is-allin` + `orch-1147-allin-single-owner` (SC-11: `pg_public_event_tier_allin` called only inside `fetchTierAllInCents`), CI job `strict-grep-mingla-business`. Implementor happy-path `mingla-business/src/components/checkout/__tests__/orch_1147_cart_allin_total.test.ts` (18/18, T-7a/b/c event+trip+experience) fails-on-revert @ `e968e00b3`.
+
+**Tests:** see Enforcement + the adversarial parity test below. Shipped via PR #497 (squash `0e20cb949`).
+
+### I-PROPOSED-1147-WEB-CHARGE-BILLS-FEE-GROSSED-SUBTOTAL (ACTIVE post ORCH-1147 CLOSE)
+
+**Rule:** The buyer-web Stripe Checkout Session line item in `supabase/functions/ticket-checkout-create/index.ts` MUST bill the fee-grossed PRE-TAX subtotal (`buyerSubtotal.buyerSubtotalCents`) — NOT the bare base total (web buyers would under-pay the passed fee vs native) and NOT the tax-inclusive `buyer_total_cents` (the hosted page's `automatic_tax` adds tax on top → billing the tax-inclusive number double-taxes). The cart Total the buyer is quoted MUST equal this charge basis to the cent.
+
+**Why it exists:** ORCH-1147 D-1 — the web charge billed the bare base, so the web charge ≠ the native charge for the fee gross-up AND ≠ the quoted all-in. This locks the web charge to the same fee-grossed pre-tax basis the buyer sees, with tax added exactly once by Stripe.
+
+**Enforcement:** strict-grep gate `orch-1147-web-charge-allin` (CI job `strict-grep-mingla-business`). Tester adversarial `mingla-business/src/components/checkout/__tests__/orch_1147_cart_charge_parity.tester-adversarial.test.ts` (display==charge / rounding / qty>1 / absorb→pass flip / pre-tax basis — different angle) fails-on-revert @ `57056d238`.
+
+**Tests:** see Enforcement. Shipped via PR #497 (squash `0e20cb949`). **PARKED residual (OQ-2, Seth-decided):** exclusive-tax regions where a brand passes tax to the buyer (US AND Nigeria/Paystack via `computeConfigVat`) still understate the QUOTED total by the tax line — zero live-brand blast radius today (all 8 sellable brands inclusive-tax GB/EU/CH); revisit when a US/NG pass-tax brand onboards.
+
+---
+
 ## ACTIVE (post ORCH-1149 [in-app browser bottom-anchor] CLOSE 2026-06-15)
 
 ### I-PROPOSED-1149-INAPP-BROWSER-BOTTOM-ANCHORED (ACTIVE post ORCH-1149 CLOSE)
