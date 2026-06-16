@@ -196,24 +196,35 @@ export const VenueStep4Hours: React.FC<VenueStep4HoursProps> = ({
         <View style={styles.bulkQuickRow}>
           <Pressable
             onPress={() => setSelectedDays(new Set([0, 1, 2, 3, 4]))}
+            accessibilityRole="button"
+            accessibilityLabel="Select weekdays"
             style={styles.bulkQuickBtn}
           >
             <Text style={styles.bulkQuickText}>Weekdays</Text>
           </Pressable>
           <Pressable
             onPress={() => setSelectedDays(new Set([5, 6]))}
+            accessibilityRole="button"
+            accessibilityLabel="Select weekend"
             style={styles.bulkQuickBtn}
           >
             <Text style={styles.bulkQuickText}>Weekend</Text>
           </Pressable>
           <Pressable
             onPress={() => setSelectedDays(new Set([0, 1, 2, 3, 4, 5, 6]))}
+            accessibilityRole="button"
+            accessibilityLabel="Select all days"
             style={styles.bulkQuickBtn}
           >
             <Text style={styles.bulkQuickText}>All</Text>
           </Pressable>
           {selectedDays.size > 0 ? (
-            <Pressable onPress={() => setSelectedDays(new Set())} style={styles.bulkQuickBtn}>
+            <Pressable
+              onPress={() => setSelectedDays(new Set())}
+              accessibilityRole="button"
+              accessibilityLabel="Clear day selection"
+              style={styles.bulkQuickBtn}
+            >
               <Text style={styles.bulkQuickText}>Clear</Text>
             </Pressable>
           ) : null}

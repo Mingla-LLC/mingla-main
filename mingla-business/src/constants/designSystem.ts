@@ -46,6 +46,12 @@ export const radius = {
   full: 999,
 } as const;
 
+// META-ORCH-1148 sub-ORCH 2.0 — venue-suite layout tokens (Design §8). The
+// desktop two-column master rail width + the centered workspace max width. Named
+// so no raw layout numbers live in VenueSuiteShell.
+export const venueRailWidth = 260 as const;
+export const venueSuiteMaxWidth = 1200 as const;
+
 export const shadows = {
   sm: {
     shadowColor: "#000",

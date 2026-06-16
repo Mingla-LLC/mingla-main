@@ -30,6 +30,7 @@ const biz = (rel: string): string =>
 const CONTENT = biz("src/components/venue/VenueListingContent.tsx");
 const REDIRECT = here("../listing.tsx");
 const HUB_TAB = biz("app/(tabs)/hub/listing.tsx");
+const SHELL = biz("src/components/venue/VenueSuiteShell.tsx");
 const PROFILE = biz("src/components/brand/BrandProfileView.tsx");
 
 describe("ORCH-1040 listing management surface (ORCH-1145 relocation)", () => {
@@ -62,10 +63,14 @@ describe("ORCH-1040 listing management surface (ORCH-1145 relocation)", () => {
     expect(PROFILE).not.toContain("onListing");
   });
 
-  // [TEST-MOD-APPROVED ORCH-1145] — reachable now via the Hub "Venue" tab.
-  test("reachable via the Hub Venue tab rendering VenueListingContent", () => {
-    expect(HUB_TAB).toContain("VenueListingContent");
-    expect(HUB_TAB).toContain('chromeMode="tab"');
+  // [TEST-MOD-APPROVED ORCH-1148] — reachable via the Hub "Venue" tab, which now
+  // mounts the META-ORCH-1148 VenueSuiteShell; the listing UI moved one level
+  // deeper into the shell's Overview module (chromeMode="tab" preserved VERBATIM).
+  // Intent unchanged — the venue tab still surfaces VenueListingContent.
+  test("reachable via the Hub Venue tab rendering VenueListingContent (through the suite shell)", () => {
+    expect(HUB_TAB).toContain("VenueSuiteShell");
+    expect(SHELL).toContain("VenueListingContent");
+    expect(SHELL).toContain('chromeMode="tab"');
     expect(HUB_TAB).toContain("useCurrentBrand");
   });
 
