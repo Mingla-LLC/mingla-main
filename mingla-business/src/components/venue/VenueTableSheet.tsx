@@ -102,16 +102,31 @@ export function VenueTableSheet({
   }, [visible, table]);
 
   const capacityNum = parseIntOrNull(capacity);
-  const canSave = name.trim().length > 0 && capacityNum !== null && !saving;
+  const maxPartyNum = parseIntOrNull(maxParty);
+  // META-ORCH-1148 P3-2: a table can never seat more than its capacity. Reject a
+  // max-party that exceeds capacity at write time so bad data (which the engine
+  // would otherwise have to clamp) can't be entered at all. Mirrors the engine's
+  // LEAST(COALESCE(max_party,capacity),capacity) guard.
+  const maxPartyExceedsCapacity =
+    capacityNum !== null && maxPartyNum !== null && maxPartyNum > capacityNum;
+  const canSave =
+    name.trim().length > 0 &&
+    capacityNum !== null &&
+    !maxPartyExceedsCapacity &&
+    !saving;
 
   const handleSave = useCallback((): void => {
     if (!canSave || capacityNum === null) return;
+    // Defensive clamp in addition to the canSave gate above: never persist a
+    // max-party above capacity even if state slipped through.
+    const clampedMaxParty =
+      maxPartyNum !== null ? Math.min(maxPartyNum, capacityNum) : null;
     onSave({
       id: table?.id,
       name: name.trim(),
       capacity: capacityNum,
       minParty: parseIntOrNull(minParty),
-      maxParty: parseIntOrNull(maxParty),
+      maxParty: clampedMaxParty,
       zone,
       seatingType,
       combinable,
@@ -122,11 +137,11 @@ export function VenueTableSheet({
   }, [
     canSave,
     capacityNum,
+    maxPartyNum,
     onSave,
     table,
     name,
     minParty,
-    maxParty,
     zone,
     seatingType,
     combinable,
@@ -197,6 +212,15 @@ export function VenueTableSheet({
               />
             </Field>
           </View>
+          {maxPartyExceedsCapacity ? (
+            <Text
+              style={styles.fieldError}
+              accessibilityLabel="Max party cannot exceed seats"
+              testID="venue-table-max-party-error"
+            >
+              Max party can’t exceed the table’s seats ({capacityNum}).
+            </Text>
+          ) : null}
 
           {/* Character */}
           <Text style={styles.groupLabel}>Character</Text>
@@ -375,6 +399,12 @@ const styles = StyleSheet.create({
   fieldLabel: {
     ...typography.bodySm,
     color: textTokens.secondary,
+  },
+  fieldError: {
+    ...typography.bodySm,
+    color: "#ff6b6b",
+    marginTop: spacing.xxs,
+    marginBottom: spacing.xs,
   },
   row3: {
     flexDirection: "row",
