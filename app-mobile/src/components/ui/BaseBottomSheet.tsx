@@ -159,6 +159,16 @@ interface BaseBottomSheetSheetProps extends BaseBottomSheetCommonProps {
   initialIndex?: number;
   /** gorhom v5 default is true; primitive overrides to false (SPEC §3.1). */
   enableDynamicSizing?: boolean;
+  /**
+   * ORCH-1138 [content-sized cart] — upper bound (px) for gorhom's dynamic
+   * content snap. Only meaningful when `enableDynamicSizing` is true: the sheet
+   * sizes to its content height but is CLAMPED to this value, so a short body
+   * yields a short sheet (no tall empty gap) while a long body caps here and the
+   * inner scrollable takes over. Forwarded verbatim to <BottomSheet>; ignored by
+   * gorhom when dynamic sizing is off. Pair with a `snapPoints` max (e.g.
+   * ["92%"]) so the clamp and the explicit detent agree.
+   */
+  maxDynamicContentSize?: number;
   /** Default true — swipe-down-to-dismiss is the core contract. */
   enablePanDownToClose?: boolean;
   theme?: BaseBottomSheetTheme;
@@ -320,6 +330,7 @@ function BaseBottomSheetComponent(props: BaseBottomSheetProps): React.ReactEleme
     snapPoints,
     initialIndex = 0,
     enableDynamicSizing = false,
+    maxDynamicContentSize,
     enablePanDownToClose = true,
     scrollMode = 'scroll',
     scrollProps,
@@ -706,6 +717,7 @@ function BaseBottomSheetComponent(props: BaseBottomSheetProps): React.ReactEleme
       animationConfigs={sheetAnimationConfigs}
       snapPoints={snapPoints}
       enableDynamicSizing={enableDynamicSizing}
+      maxDynamicContentSize={maxDynamicContentSize}
       enablePanDownToClose={enablePanDownToClose}
       onChange={handleSheetChange}
       backdropComponent={renderBackdrop}
@@ -853,11 +865,27 @@ function CenterDialog({
 
 const styles = StyleSheet.create({
   flexContainer: { flex: 1 },
+  // ORCH-1138 [detail-sheet-behind-discover-header] — z-LAYER FIX.
+  // A non-`wrapInRNModal` BaseBottomSheet renders this absolutely-positioned
+  // inline host as a SIBLING of the host screen's other absolute chrome (e.g.
+  // DiscoverScreen `headerPanel` at zIndex:50 + the floating GlassBottomNav at
+  // zIndex:50). RN scopes zIndex to siblings: an unset zIndex here resolves to
+  // auto(0), so the zIndex:50 Discover header PAINTED OVER the top of every
+  // full-screen detail sheet (cover media + the X/Share/Mute OfferingChrome) —
+  // occluding and un-tapping that chrome (the consumer trip + event detail bug).
+  // Lift the whole inline host above all in-tree screen chrome (header + nav are
+  // 50) while staying BELOW the global Toast layer (zIndex:9999), which must keep
+  // floating over an open sheet. `elevation` mirrors it so Android's stacking
+  // agrees with iOS's zIndex ordering. wrapInRNModal sheets already z-stack in a
+  // separate native window and are unaffected. This does NOT change the inline
+  // host's HEIGHT (ORCH-1016/1043 viewport invariant untouched) — layering only.
   inlineContainer: {
     position: 'absolute',
     top: 0,
     left: 0,
     right: 0,
+    zIndex: 100,
+    elevation: 100,
   },
   // ORCH-1043: `stickyContainer` + `sectionListContainer` removed — they styled
   // the BottomSheetView wrappers the sticky/sectionlist branches no longer use
