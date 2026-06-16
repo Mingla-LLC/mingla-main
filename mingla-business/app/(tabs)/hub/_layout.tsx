@@ -36,8 +36,10 @@ import {
   type HubTabName,
 } from "../../../src/hooks/useHubTabs";
 import { useVenueClaimRefresh } from "../../../src/hooks/useVenueClaimRefresh";
+import { useResponsiveLayout } from "../../../src/hooks/useResponsiveLayout";
 import { IconChrome } from "../../../src/components/ui/IconChrome";
 import { TopBar } from "../../../src/components/ui/TopBar";
+import { VenueModulePillRow } from "../../../src/components/venue/VenueModulePillRow";
 import { canvas, spacing } from "../../../src/constants/designSystem";
 import { useAuth } from "../../../src/context/AuthContext";
 import {
@@ -45,6 +47,7 @@ import {
   type Brand,
 } from "../../../src/store/currentBrandStore";
 import { useHubCreatorStore } from "../../../src/store/hubCreatorStore";
+import { useVenueSuiteStore } from "../../../src/store/venueSuiteStore";
 import type { BusinessTodo } from "../../../src/utils/businessTodos";
 
 const LazyBrandSwitcherSheet = React.lazy(async () => {
@@ -96,6 +99,19 @@ export default function HubTabLayout(): React.ReactElement {
     visibleTabs.data ?? [],
   );
   useVenueClaimRefresh();
+
+  // META-ORCH-1148 — LOCKED DECISION 5: while the Venue suite is mounted, REPLACE
+  // the Hub offering pills with the venue module pill row on native + web-phone
+  // (NOT a second stacked row). On web desktop the Hub pills stay (the suite's
+  // own master rail is the module nav). This is a pure RENDER swap — it never
+  // touches the nav-lock redirect/guard/HUB_TAB_ROUTES below.
+  const { isWideDesktop } = useResponsiveLayout();
+  const venueSuiteActive = useVenueSuiteStore((s) => s.active);
+  const venueActiveModule = useVenueSuiteStore((s) => s.activeModule);
+  const venueVisibleModules = useVenueSuiteStore((s) => s.visibleModules);
+  const venueSelectModule = useVenueSuiteStore((s) => s.selectModule);
+  const showVenueModulePills =
+    venueSuiteActive && !isWideDesktop && venueSelectModule !== null;
 
   const [brandSheetVisible, setBrandSheetVisible] = useState<boolean>(false);
   const [isUniversalCreatorOpen, setIsUniversalCreatorOpen] = useState<boolean>(false);
@@ -192,6 +208,19 @@ export default function HubTabLayout(): React.ReactElement {
     persistHubLastTab(tab);
   }, []);
 
+  // META-ORCH-1148 — the venue module row's "‹ Hub" chip routes back to a
+  // non-venue offering tab (the first visible one that isn't venue/getstarted),
+  // which leaves the Venue route → the suite unmounts → its store flag clears →
+  // the Hub offering pills render again. Uses the SAME HUB_TAB_ROUTES map the
+  // nav-lock redirect uses; no new routing logic.
+  const handleBackToHub = useCallback((): void => {
+    const tabs = visibleTabs.data ?? [];
+    const fallback = tabs.find((t) => t !== "venue" && t !== "getstarted");
+    const dest = fallback ?? "events";
+    const segment = HUB_TAB_ROUTES[dest].replace("/(tabs)/hub/", "");
+    router.replace(`/(tabs)/hub/${segment}` as never);
+  }, [visibleTabs.data, router]);
+
   const handleTodoAction = useCallback(
     (todo: BusinessTodo): void => {
       switch (todo.action.kind) {
@@ -253,16 +282,28 @@ export default function HubTabLayout(): React.ReactElement {
           testID="hub-todo-toggle"
         />
       </View>
-      <HubSubNav
-        visibleTabs={visibleTabs.data}
-        counts={{
-          events: visibleTabs.counts?.events,
-          trips: visibleTabs.counts?.trips,
-          experiences: visibleTabs.counts?.experiences,
-        }}
-        loading={visibleTabs.isLoading}
-        onTabPress={handleHubTabPress}
-      />
+      {showVenueModulePills && venueSelectModule !== null ? (
+        // META-ORCH-1148 — venue module pill row REPLACES the Hub offering pills
+        // while the suite is active (native + web-phone). State-driven: it calls
+        // setActiveModule, NEVER router.push — the nav-lock guard is untouched.
+        <VenueModulePillRow
+          modules={venueVisibleModules}
+          activeModule={venueActiveModule}
+          onSelect={venueSelectModule}
+          onBackToHub={handleBackToHub}
+        />
+      ) : (
+        <HubSubNav
+          visibleTabs={visibleTabs.data}
+          counts={{
+            events: visibleTabs.counts?.events,
+            trips: visibleTabs.counts?.trips,
+            experiences: visibleTabs.counts?.experiences,
+          }}
+          loading={visibleTabs.isLoading}
+          onTabPress={handleHubTabPress}
+        />
+      )}
       {/* META-ORCH-1059 — the venue-claim "being reviewed" blue box was removed
           from Hub (operator: redundant — the brand-page venue listing already
           shows claim status). A pending/under-review claim now surfaces as a
