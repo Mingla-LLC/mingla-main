@@ -502,8 +502,9 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
 
   return (
     <View style={[styles.host, { backgroundColor: palette.page }]}>
-      {/* [TRANSITIONAL] iOS native skips Head metadata — web-only is sufficient
-          because buyer traffic arrives via web URL. */}
+      {/* Web-only by design (not transitional): iOS native skips Head metadata —
+          buyer traffic for public event pages arrives via web URL, so HTML
+          <Head> SEO/meta tags are only meaningful on web. */}
       {Platform.OS === "web" ? (
         <Head>
           <title>
