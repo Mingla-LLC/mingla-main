@@ -18,6 +18,11 @@ module.exports = {
     // (RN preset + RTL via the .orch1118-testdeps overlay); MUST NOT run under
     // this default node/ts-jest config (no RTL).
     "LiveOfferingCard\\.orch1143\\.render\\.test\\.tsx$",
+    // ORCH-1147R2 tester adversarial render-proof — mounts the REAL QuantityRow
+    // + bottom-bar via react-test-renderer + RTL (the R1 blind spot: the
+    // selection SCREEN was never rendered). Runs under jest.orch1147r2.render.cjs
+    // (RN preset + RTL); MUST NOT run under this default node/ts-jest config.
+    "orch_1147r2_selection_allin\\.render\\.test\\.tsx$",
   ],
   moduleFileExtensions: ["ts", "tsx", "js", "jsx", "json"],
   transform: {
