@@ -128,6 +128,10 @@ export function mapRpcRowToCard(row: RpcRow): BusinessEventCard {
     displayCurrency: (row.pricing_currency as string | null) ?? null,
     currency: String(row.currency ?? "GBP"),
     publicBuyerUrl: `${BUSINESS_BUYER_DOMAIN}/e/${brandSlug}/${eventSlug}`,
+    // ORCH-1150 — carry the offering discriminator so the consumer deck renders
+    // Going/Not-going for an RSVP instead of Book. Only opted-in discoverable
+    // RSVP rows reach here (the RPC filters rsvp_discoverable=true).
+    eventType: row.event_type === "rsvp" ? "rsvp" : "event",
   };
 }
 

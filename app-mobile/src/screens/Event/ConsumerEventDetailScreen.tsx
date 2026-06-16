@@ -86,6 +86,7 @@ import TicketCartSheet, {
   type TicketCartCheckoutPayload,
 } from "../../components/expandedCard/TicketCartSheet";
 import { ConsumerEventReserveBar } from "../../components/offering/ConsumerEventReserveBar";
+import { submitDeckRsvp } from "../../services/rsvpDeckService";
 import { useConsumerThemeFont } from "../../theme/useConsumerThemeFont";
 import { usePublicEventTickets } from "../../hooks/usePublicEventTickets";
 import { useTripIntakeSchemas } from "../../hooks/useTripIntakeSchemas";
@@ -193,6 +194,15 @@ export default function ConsumerEventDetailScreen({
   const [checkoutInFlight, setCheckoutInFlight] = useState<boolean>(false);
   const [muted, setMuted] = useState<boolean>(true);
   const [aboutCollapsed, setAboutCollapsed] = useState<boolean>(true);
+
+  // ORCH-1150 — RSVP deck variant. A discoverable RSVP event (host opted in)
+  // renders Going/Not-going instead of Book; tapping writes via the same
+  // public-submit-rsvp edge fn (logged-in path). NO cart, NO checkout.
+  const isRsvp = seed?.eventType === "rsvp";
+  const [rsvpInFlight, setRsvpInFlight] = useState<boolean>(false);
+  const [rsvpResolved, setRsvpResolved] = useState<
+    "going" | "not_going" | "waitlisted" | "pending" | null
+  >(null);
 
   // float→dock CTA visibility tracking (mirror the trip screen 1:1).
   const [dockTopY, setDockTopY] = useState<number | null>(null);
@@ -302,6 +312,53 @@ export default function ConsumerEventDetailScreen({
     setInitialTicketTypeId(sellable.id);
     setCartVisible(true);
   }, [tickets, selectedTicketId]);
+
+  // ORCH-1150 — Going / Not-going write for a discoverable RSVP deck card. The
+  // signed-in user's JWT rides the supabase client → the edge fn resolves
+  // user_id (no contact form needed). Reflects the resolved state + toasts; on
+  // error never dead-ends.
+  const handleRsvp = useCallback(
+    async (rsvpStatus: "going" | "not_going"): Promise<void> => {
+      if (rsvpInFlight || seed === null) return;
+      if (user === null) {
+        toastManager.show("Sign in to RSVP.", "warning");
+        return;
+      }
+      void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      setRsvpInFlight(true);
+      try {
+        const result = await submitDeckRsvp(seed.eventId, rsvpStatus);
+        const resolved =
+          result.approvalStatus === "pending"
+            ? "pending"
+            : result.status;
+        setRsvpResolved(resolved);
+        toastManager.show(
+          resolved === "going"
+            ? "You're going!"
+            : resolved === "waitlisted"
+              ? "You're on the waitlist — we'll let you know if a spot opens."
+              : resolved === "pending"
+                ? "RSVP sent — awaiting host approval."
+                : "Got it — you're marked as not going.",
+          "success",
+        );
+      } catch (err) {
+        const code = err instanceof Error ? err.message : "";
+        toastManager.show(
+          code.includes("rsvp_full")
+            ? "This event just filled up."
+            : code.includes("rsvp_not_open")
+              ? "RSVPs are closed for this event."
+              : "Couldn't save your RSVP. Try again.",
+          "warning",
+        );
+      } finally {
+        setRsvpInFlight(false);
+      }
+    },
+    [rsvpInFlight, seed, user],
+  );
 
   // handleBuy ported VERBATIM (behavior) from EBES handleBuy — same buyer
   // derivation, same guards, same byte-identical runNativeCheckout request (NO
@@ -539,6 +596,63 @@ export default function ConsumerEventDetailScreen({
       testID="orch-1138-consumer-event-reserve"
     />
   ) : null;
+
+  // ORCH-1150 — the RSVP Going/Not-going dock (replaces the cart bar when the
+  // card is a discoverable RSVP). No price, no cart — writes via handleRsvp.
+  const rsvpGoingActive = rsvpResolved === "going";
+  const rsvpDock: ReactElement = (
+    <View
+      style={[rsvpStyles.dock, { paddingBottom: insets.bottom + 8 }]}
+      onLayout={handleDockLayout}
+    >
+      {rsvpResolved === "pending" ? (
+        <Text style={[rsvpStyles.resolvedNote, { color: palette.secondaryText }]}>
+          Awaiting host approval — we'll let you know.
+        </Text>
+      ) : rsvpResolved === "waitlisted" ? (
+        <Text style={[rsvpStyles.resolvedNote, { color: palette.secondaryText }]}>
+          You're on the waitlist.
+        </Text>
+      ) : null}
+      <View style={rsvpStyles.row}>
+        <Pressable
+          onPress={() => void handleRsvp("going")}
+          disabled={rsvpInFlight || rsvpGoingActive}
+          accessibilityRole="button"
+          accessibilityLabel={rsvpGoingActive ? "You're going" : "Going"}
+          style={[
+            rsvpStyles.goingBtn,
+            { backgroundColor: rsvpGoingActive ? palette.card : palette.accent },
+          ]}
+          testID="orch-1150-deck-rsvp-going"
+        >
+          <Text
+            style={[
+              rsvpStyles.goingText,
+              {
+                color: rsvpGoingActive ? palette.accent : palette.accentText,
+                fontFamily: boldFamily,
+              },
+            ]}
+          >
+            {rsvpInFlight ? "Saving…" : rsvpGoingActive ? "You're going ✓" : "Going"}
+          </Text>
+        </Pressable>
+        <Pressable
+          onPress={() => void handleRsvp("not_going")}
+          disabled={rsvpInFlight}
+          accessibilityRole="button"
+          accessibilityLabel="Not going"
+          style={[rsvpStyles.notGoingBtn, { borderColor: palette.panelBorder }]}
+          testID="orch-1150-deck-rsvp-not-going"
+        >
+          <Text style={[rsvpStyles.notGoingText, { color: palette.secondaryText }]}>
+            Not going
+          </Text>
+        </Pressable>
+      </View>
+    </View>
+  );
 
   return (
     <>
@@ -823,8 +937,9 @@ export default function ConsumerEventDetailScreen({
               </Text>
             </View>
 
-            {/* DOCKED CTA — the LAST scroll child (float→dock language) */}
-            {dockedReserve}
+            {/* DOCKED CTA — the LAST scroll child (float→dock language).
+                ORCH-1150 — RSVP cards dock Going/Not-going instead of the cart bar. */}
+            {isRsvp ? rsvpDock : dockedReserve}
           </View>
         </BottomSheetScrollView>
 
@@ -842,8 +957,9 @@ export default function ConsumerEventDetailScreen({
           />
         </View>
 
-        {/* (4) FLOATING reserve PILL — shown while the docked CTA is off-screen */}
-        {floatingReserve}
+        {/* (4) FLOATING reserve PILL — shown while the docked CTA is off-screen.
+            ORCH-1150 — suppressed for RSVP (the Going/Not-going dock is inline). */}
+        {isRsvp ? null : floatingReserve}
       </BaseBottomSheet>
 
       {/* Reserve opens the cart DIRECTLY (NEVER EBES). Sibling BaseBottomSheet
@@ -1158,4 +1274,39 @@ const styles = StyleSheet.create({
     paddingHorizontal: 24,
   },
   retryText: { color: "#FFFFFF", fontSize: 15, fontWeight: "600" },
+});
+
+// ORCH-1150 — RSVP deck dock (Going / Not-going). Opaque-safe (solid accent
+// fill, no translucent tint) per the Android glass policy.
+const rsvpStyles = StyleSheet.create({
+  dock: {
+    paddingHorizontal: 16,
+    paddingTop: 12,
+  },
+  resolvedNote: {
+    fontSize: 13,
+    textAlign: "center",
+    marginBottom: 8,
+  },
+  row: {
+    flexDirection: "row",
+    gap: 10,
+  },
+  goingBtn: {
+    flex: 2,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: 14,
+    paddingVertical: 15,
+  },
+  goingText: { fontSize: 16, fontWeight: "900" },
+  notGoingBtn: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: 14,
+    paddingVertical: 15,
+    borderWidth: 1,
+  },
+  notGoingText: { fontSize: 14, fontWeight: "700" },
 });
