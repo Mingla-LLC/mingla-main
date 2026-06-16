@@ -207,3 +207,16 @@ verify_jwt = true
 # authenticates the producer itself by matching the service-role bearer.
 [functions.notify-support]
 verify_jwt = false
+
+# ORCH-1150 — public-submit-rsvp is the anon-capable guest RSVP write (Going/
+# Not-going) for event_type=rsvp events. Public route (verify_jwt=false): the
+# /e/ public page + the consumer deck call it. It runs under service-role and
+# validates the event is a published RSVP + rate-limits anon writes.
+[functions.public-submit-rsvp]
+verify_jwt = false
+
+# ORCH-1150 — rsvp-notify is the INTERNAL multi-channel transactional fan-out
+# (push + SMS + email) invoked server-to-server with the service-role bearer.
+# It is NOT a public anon route.
+[functions.rsvp-notify]
+verify_jwt = true
