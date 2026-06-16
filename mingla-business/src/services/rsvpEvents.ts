@@ -2,7 +2,7 @@
  * ORCH-1150 — RSVP event service callers.
  *
  * Forked from businessEvents.publishBusinessEventDraft. RSVP NEVER routes
- * through business_publish_event_draft (I-PROPOSED-1150-RSVP-OWN-PUBLISH-RPC):
+ * through the EVENT publish RPC (I-PROPOSED-1150-RSVP-OWN-PUBLISH-RPC):
  *   - publishRsvpDraft → business_publish_rsvp_draft
  *   - updateLiveRsvp   → biz_update_live_rsvp
  *
@@ -10,6 +10,7 @@
  */
 
 import { supabase } from "./supabase";
+import { parseRsvpErrorCode, type RsvpInvokeError } from "./rsvpErrorCodes";
 import {
   eventFromPublishResponse,
   type PublishedBusinessEvent,
@@ -25,7 +26,7 @@ export const publishRsvpDraft = async (
 ): Promise<PublishedBusinessEvent> => {
   const payload = draftToServerUpdate(draft, {});
   // I-PROPOSED-1150-RSVP-OWN-PUBLISH-RPC: this MUST call the RSVP publish RPC,
-  // never business_publish_event_draft (that would re-introduce the
+  // never the EVENT publish RPC (that would re-introduce the
   // event_ticket_required 0-ticket block).
   const { data, error } = await supabase.rpc("business_publish_rsvp_draft", {
     p_event_id: draft.id,
@@ -82,5 +83,57 @@ export const updateLiveRsvp = async (
     reason: res.reason,
     goingCount: res.going_count,
     notifiedCount: res.notified_count,
+  };
+};
+
+// ===========================================================================
+// ORCH-1150 — public guest RSVP write (Going / Not-going) via the anon-capable
+// public-submit-rsvp edge fn. Used by the public /e/ page + the consumer deck
+// card. NEVER navigates to /checkout — this writes an RSVP row, not an order.
+// A logged-in user's JWT rides the supabase client (Authorization header) so
+// the edge fn resolves user_id and the logged-in path applies. See SPEC §6 / §5.3.
+// ===========================================================================
+
+export interface SubmitPublicRsvpInput {
+  eventId: string;
+  rsvpStatus: "going" | "not_going";
+  /** Required for an anon link guest; ignored for a logged-in app user. */
+  guestName?: string;
+  guestEmail?: string;
+  guestPhone?: string;
+  plusCount?: number;
+}
+
+export interface SubmitPublicRsvpResult {
+  status: "going" | "not_going" | "waitlisted";
+  approvalStatus: "pending" | "approved";
+}
+
+export const submitPublicRsvp = async (
+  input: SubmitPublicRsvpInput,
+): Promise<SubmitPublicRsvpResult> => {
+  const { data, error } = await supabase.functions.invoke("public-submit-rsvp", {
+    body: {
+      eventId: input.eventId,
+      rsvpStatus: input.rsvpStatus,
+      guestName: input.guestName,
+      guestEmail: input.guestEmail,
+      guestPhone: input.guestPhone,
+      plusCount: input.plusCount ?? 0,
+    },
+  });
+  // supabase.functions.invoke surfaces a non-2xx as a FunctionsHttpError whose
+  // context.body carries the { error } code — bubble the code so the UI can
+  // show the right inline message (rsvp_contact_required / rsvp_full / …).
+  if (error !== null) {
+    throw new Error(parseRsvpErrorCode(error as RsvpInvokeError));
+  }
+  const res = (data ?? {}) as {
+    status?: "going" | "not_going" | "waitlisted";
+    approvalStatus?: "pending" | "approved";
+  };
+  return {
+    status: res.status ?? input.rsvpStatus,
+    approvalStatus: res.approvalStatus ?? "approved",
   };
 };

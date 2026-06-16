@@ -172,7 +172,25 @@ export interface LiveEvent {
    * 'event' by routeForEventRowDefensive — safe default for legacy
    * stored rows.
    */
-  event_type?: "event" | "experience" | "trip";
+  event_type?: "event" | "experience" | "trip" | "rsvp";
+  /**
+   * ORCH-1150 — RSVP host-control snapshot (present only on event_type='rsvp'
+   * rows; optional on the type for back-compat with every non-RSVP LiveEvent).
+   * The liveEventToEditableDraft adapter projects these into the DraftEvent view
+   * so the RSVP edit-published screen hydrates the host-control toggles.
+   */
+  rsvpCapacity?: number | null;
+  rsvpAllowPlusOnes?: boolean;
+  rsvpPlusOnesMax?: number;
+  rsvpWaitlistEnabled?: boolean;
+  rsvpApprovalMode?: "auto" | "manual";
+  rsvpDiscoverable?: boolean;
+  /**
+   * ORCH-1150 — live confirmed-attending headcount (each going+approved guest
+   * plus their plus_count), surfaced by business_public_events_view. 0 for
+   * non-RSVP rows. Drives the public-page capacity-full state + Hub "N going".
+   */
+  rsvpGoingCount?: number;
   // Content snapshot (frozen from DraftEvent at publish)
   name: string;
   description: string;

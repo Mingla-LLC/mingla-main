@@ -1377,4 +1377,112 @@ CREATE INDEX idx_events_discover_feed
 
 COMMIT;
 
+-- ===========================================================================
+-- ORCH-1150 — expose the RSVP host-control columns + a live confirmed-attending
+-- count on business_public_events_view so the public /e/ page + the Hub
+-- list-card can render Going/Not-going + "N going" without a second query.
+-- do NOT merge back into the ticket/checkout path — these columns are inert for
+-- non-RSVP rows. Mirrors the ORCH-1006 view column list verbatim, appending only
+-- the e.rsvp_* columns + the rsvp_going_count subselect. See SPEC §6 / §8 step 11.
+-- ===========================================================================
+BEGIN;
+
+CREATE OR REPLACE VIEW public.business_public_events_view AS
+  SELECT e.id,
+    e.brand_id,
+    b.slug AS brand_slug,
+    b.name AS brand_name,
+    b.description AS brand_description,
+    b.profile_photo_url AS brand_profile_photo_url,
+    b.display_attendee_count AS brand_display_attendee_count,
+    b.address AS brand_address,
+    b.cover_media_url AS brand_cover_media_url,
+    b.theme_color AS brand_theme_color,
+    b.theme_font AS brand_theme_font,
+    b.theme_animation AS brand_theme_animation,
+    e.title,
+    e.description,
+    e.slug,
+    e.event_type,
+    e.location_text,
+    e.online_url,
+    e.is_online,
+    e.is_recurring,
+    e.is_multi_date,
+    e.recurrence_rules,
+    e.cover_media_url,
+    e.cover_media_type,
+    e.visibility,
+    e.show_on_discover,
+    e.status,
+    e.published_at,
+    e.timezone,
+    e.created_at,
+    e.updated_at,
+    (e.theme - 'business_draft'::text) AS public_theme,
+    e.theme_color_override,
+    e.theme_font_override,
+    e.theme_animation_override,
+    e.currency,
+    e.cover_media_provider,
+    e.cover_media_source_url,
+    e.cover_media_credit,
+    e.cover_media_credit_url,
+    e.cover_media_alt,
+    ed.start_at AS master_start_at,
+    ed.end_at AS master_end_at,
+    ed.timezone AS master_timezone,
+    ed.id AS master_event_date_id,
+    e.city,
+    e.party_types,
+    e.vibe_tags,
+    e.music_genres,
+    e.location_geo,
+    COALESCE(e.pass_tax,         b.default_pass_tax)         AS pass_tax,
+    COALESCE(e.pass_mingla_fee,  b.default_pass_mingla_fee)  AS pass_mingla_fee,
+    COALESCE(e.pass_service_fee, b.default_pass_service_fee) AS pass_service_fee,
+    b.pricing_region   AS pricing_region,
+    b.pricing_currency AS pricing_currency,
+    (e.pricing_locked_at IS NOT NULL) AS pricing_locked,
+    (
+      SELECT public.compute_all_in_cents(
+               MIN(tt.price_cents),
+               COALESCE(e.pass_mingla_fee,  b.default_pass_mingla_fee),
+               COALESCE(e.pass_service_fee, b.default_pass_service_fee),
+               (SELECT r.effective_take_rate_bps FROM public.resolve_effective_take_rate_bps(b.id) r)
+             )
+      FROM public.ticket_types tt
+      WHERE tt.event_id = e.id
+        AND tt.price_cents > 0
+        AND tt.deleted_at IS NULL
+    ) AS display_price_cents,
+    -- ORCH-1150 RSVP host-control columns (inert for non-RSVP rows).
+    e.rsvp_discoverable,
+    e.rsvp_capacity,
+    e.rsvp_allow_plus_ones,
+    e.rsvp_plus_ones_max,
+    e.rsvp_waitlist_enabled,
+    e.rsvp_approval_mode,
+    -- ORCH-1150 confirmed-attending headcount (counts each guest + plus_count),
+    -- per the §4.1c capacity formula: rsvp_status='going' AND approval_status='approved'.
+    -- 0 for non-RSVP rows (no event_rsvps rows exist for them).
+    (
+      SELECT COALESCE(SUM(1 + r.plus_count), 0)::integer
+      FROM public.event_rsvps r
+      WHERE r.event_id = e.id
+        AND r.rsvp_status = 'going'
+        AND r.approval_status = 'approved'
+    ) AS rsvp_going_count
+   FROM events e
+     JOIN brands b ON b.id = e.brand_id
+     LEFT JOIN event_dates ed ON ed.event_id = e.id AND ed.is_master = true
+  WHERE e.deleted_at IS NULL
+    AND b.deleted_at IS NULL
+    AND e.visibility = 'public'::text
+    AND (e.status = ANY (ARRAY['scheduled'::text, 'live'::text, 'ended'::text, 'cancelled'::text]));
+
+ALTER VIEW public.business_public_events_view SET (security_invoker = false);
+
+COMMIT;
+
 NOTIFY pgrst, 'reload schema';

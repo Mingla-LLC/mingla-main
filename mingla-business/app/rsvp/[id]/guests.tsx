@@ -22,5 +22,5 @@ export default function RsvpGuestsRoute(): React.ReactElement | null {
   if (typeof idParam !== "string" || idParam.length === 0) return null;
   const resolvedId = liveEvent?.serverEventId ?? idParam;
 
-  return <RsvpGuestConsole eventId={resolvedId} eventTitle={liveEvent?.title ?? null} />;
+  return <RsvpGuestConsole eventId={resolvedId} eventTitle={liveEvent?.name ?? null} />;
 }

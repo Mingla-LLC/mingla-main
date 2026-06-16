@@ -59,6 +59,8 @@ import { useResponsiveLayout } from "@mingla/offering-rendering";
 
 import { EventReserveBar } from "./EventReserveBar";
 import { FoundationEventPreview } from "./FoundationEventPreview";
+import { RsvpPublicBody } from "./RsvpPublicBody";
+import { submitPublicRsvp } from "../../services/rsvpEvents";
 
 import {
   checkoutPublicPath,
@@ -499,6 +501,95 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
       </View>
     </View>
   ) : null;
+
+  // ORCH-1150 — RSVP branch. An event_type='rsvp' row has zero tickets + no
+  // checkout; it renders the Going/Not-going RsvpPublicBody and returns early.
+  // The ticketed path below is BYTE-IDENTICAL (untouched) for every non-RSVP row.
+  const isRsvp = event.event_type === "rsvp";
+  const rsvpSubmit = useCallback(
+    async (input: {
+      rsvpStatus: "going" | "not_going";
+      guestName: string;
+      guestEmail: string;
+      guestPhone: string;
+      plusCount: number;
+    }): Promise<{
+      status: "going" | "not_going" | "waitlisted";
+      approvalStatus: "pending" | "approved";
+    }> =>
+      submitPublicRsvp({
+        eventId: event.id,
+        rsvpStatus: input.rsvpStatus,
+        guestName: input.guestName,
+        guestEmail: input.guestEmail,
+        guestPhone: input.guestPhone,
+        plusCount: input.plusCount,
+      }),
+    [event.id],
+  );
+
+  if (isRsvp) {
+    return (
+      <View style={[styles.host, { backgroundColor: palette.page }]}>
+        {Platform.OS === "web" ? (
+          <Head>
+            <title>
+              {event.name} · {brand?.displayName ?? "Mingla"}
+            </title>
+            <meta
+              name="description"
+              content={event.description.slice(0, 160) || event.name}
+            />
+            <meta property="og:title" content={event.name} />
+            <meta property="og:url" content={canonicalUrl(event)} />
+            <link rel="canonical" href={canonicalUrl(event)} />
+          </Head>
+        ) : null}
+
+        <RsvpPublicBody
+          event={publicEvent}
+          brand={publicBrand}
+          palette={palette}
+          theme={resolvedTheme}
+          config={{
+            capacity: event.rsvpCapacity ?? null,
+            goingCount: event.rsvpGoingCount ?? 0,
+            allowPlusOnes: event.rsvpAllowPlusOnes ?? false,
+            plusOnesMax: event.rsvpPlusOnesMax ?? 0,
+            waitlistEnabled: event.rsvpWaitlistEnabled ?? false,
+            manualApproval: event.rsvpApprovalMode === "manual",
+          }}
+          isLoggedIn={user !== null}
+          muted={muted}
+          onToggleMute={handleToggleMute}
+          onClose={handleClose}
+          onShare={handleShare}
+          onOpenBrand={(slug: string) => router.push(`/b/${slug}` as never)}
+          onOpenMaps={openMapsForQuery}
+          onSubmit={rsvpSubmit}
+          safeAreaTop={insets.top}
+          testID="orch-1150-rsvp-public"
+        />
+
+        <ShareModal
+          visible={shareModalVisible}
+          onClose={() => setShareModalVisible(false)}
+          url={canonicalUrl(event)}
+          title={event.name}
+          description={event.description.slice(0, 200)}
+        />
+
+        <View style={styles.toastWrap} pointerEvents="box-none">
+          <Toast
+            visible={toast.visible}
+            kind="info"
+            message={toast.message}
+            onDismiss={dismissToast}
+          />
+        </View>
+      </View>
+    );
+  }
 
   return (
     <View style={[styles.host, { backgroundColor: palette.page }]}>
