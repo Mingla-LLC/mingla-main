@@ -116,6 +116,12 @@ const ActionRow: React.FC<ActionRowProps> = ({ action }) => {
     >
       <Icon name={action.icon} size={18} color={color} />
       <Text style={[styles.actionLabel, { color }]}>{action.label}</Text>
+      {/* ORCH-1150 — pending-RSVP count pill on the Guests row. */}
+      {action.badgeCount !== undefined && action.badgeCount > 0 ? (
+        <View style={styles.badge} testID={`${action.testID ?? action.key}-badge`}>
+          <Text style={styles.badgeText}>{action.badgeCount}</Text>
+        </View>
+      ) : null}
     </Pressable>
   );
 };
@@ -151,6 +157,23 @@ const styles = StyleSheet.create({
   actionLabel: {
     fontSize: 15,
     fontWeight: "500",
+    flex: 1,
+  },
+  // ORCH-1150 — pending-RSVP count pill.
+  badge: {
+    minWidth: 22,
+    height: 22,
+    paddingHorizontal: 6,
+    borderRadius: 11,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: accent.warm,
+  },
+  badgeText: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: "#fff",
+    fontVariant: ["tabular-nums"],
   },
 });
 

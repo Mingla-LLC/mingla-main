@@ -20,6 +20,8 @@ export interface OfferingManageAction {
   tone: OfferingActionTone;
   onPress: () => void;
   testID?: string;
+  /** ORCH-1150 — optional count pill (e.g. pending RSVPs on the Guests row). */
+  badgeCount?: number;
 }
 
 /**
@@ -31,6 +33,10 @@ export interface OfferingManageHandlers {
   onEdit?: () => void;
   onViewPublic?: () => void;
   onOrders?: () => void;
+  /** ORCH-1150 — opens the RSVP approve/deny Guests console (rsvp kind only). */
+  onGuests?: () => void;
+  /** ORCH-1150 — pending-RSVP count for the Guests row badge (manual mode). */
+  guestsPendingCount?: number;
   onShare?: () => void;
   onCancel?: () => void;
   onDuplicate?: () => void;
@@ -82,6 +88,22 @@ export function buildOfferingManageActions(
       tone: "default",
       onPress: wrap(handlers.onOrders),
       testID: "offering-manage-orders",
+    });
+  }
+  // ORCH-1150 — Guests row (RSVP only): opens the approve/deny console. Shows a
+  // pending-count badge when manual approval mode has pending RSVPs.
+  if (handlers.onGuests !== undefined) {
+    list.push({
+      key: "guests",
+      icon: "users",
+      label: "Guests",
+      tone: "default",
+      onPress: wrap(handlers.onGuests),
+      testID: "offering-manage-guests",
+      badgeCount:
+        handlers.guestsPendingCount !== undefined && handlers.guestsPendingCount > 0
+          ? handlers.guestsPendingCount
+          : undefined,
     });
   }
   if (handlers.onShare !== undefined) {
