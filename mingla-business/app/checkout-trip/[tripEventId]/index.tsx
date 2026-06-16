@@ -177,7 +177,14 @@ export default function CheckoutTripTicketsScreen(): React.ReactElement {
   // figure with its own semantics), and never split service-fee + VAT
   // (feedback_cart_combined_fees_tax_line). The deposit branch (dueTodayCents)
   // is unchanged. I-PROPOSED-1147R2-SELECTION-SHOWS-ALLIN.
-  const headlineAllIn = formatCurrency(totals.allInTotal, totals.currency);
+  // ORCH-1152 — guard the empty cart: on mount the cart is empty and
+  // useCartTotals() returns currency "", which crashed formatCurrency
+  // (RangeError: Currency is invalid). headlineAllIn is only DISPLAYED when
+  // !isEmpty, so compute it only then. (formatCurrency is also hardened against
+  // blank codes — defense in depth.)
+  const headlineAllIn = totals.isEmpty
+    ? ""
+    : formatCurrency(totals.allInTotal, totals.currency);
   const showFeesTaxLine =
     !totals.isEmpty &&
     !totals.isFree &&
