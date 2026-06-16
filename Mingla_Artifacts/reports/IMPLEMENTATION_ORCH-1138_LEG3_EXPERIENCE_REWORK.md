@@ -35,7 +35,7 @@ The prior Leg-3 pass shipped a consumer experience page that was bare (no vibe c
 | SC-11 | checkout byte-identical (eventDateId + quantity only) | ✓ VERIFIED (gate + fails-on-revert) | `orch-1138-experience-checkout-byte-identical.mjs` PASS |
 | SC-12 | web eyebrow/labels/map title/chips/City-once | ✓ CODE | `ExperiencePreview` FOUNDATION 6 fixes |
 | SC-13 | no LEGACY/EBES regression | ✓ VERIFIED | `orch-1138-ebes-deleted` + 3 Leg-3 gates PASS; LEGACY branch untouched |
-| SC-14 | mockup match (visual) | ⧗ PENDING sim screenshot (§9) | fixture published; render pending build |
+| SC-14 | mockup match (visual) | ⧗ PARTIAL — render sections proven by tests; final themed screenshot → tester (§9) | fixture published; app boots on sim; visual eyeball needs supply migration + OAuth/onboarding nav |
 | SC-15 | no GBP (I-7) | ✓ VERIFIED | fixture USD; supply-migration test asserts no GBP |
 
 **GATED PREREQUISITE for SC-3..SC-8 full data flow:** the supply-widening migration `20261007000000` (brand_theme/city/per-stop start_time on the deck RPC; intents/stops/occurrences on the venue RPC) is **WRITTEN + structurally tested but NOT APPLIED** — the auto-mode classifier denied applying a second consumer-facing infra migration beyond the explicitly-authorized materializer, and the implementor contract (cross-host rule 9) defers infra applies to the operator. The consumer's occurrences/Reserve already work on the LIVE deck RPC (verified: fixture returns 4 stops + 12 occurrences); the themed/intents-array/city/per-stop-start_time fields go live only after `20261007000000` is pushed (command in §11).
@@ -84,7 +84,8 @@ The prior Leg-3 pass shipped a consumer experience page that was bare (no vibe c
 
 ## 6. Regression tests added
 
-- `app-mobile/src/utils/__tests__/orch_1138_consumer_experience_supply.test.ts` (2 tests) — **fails-on-revert VERIFIED at HEAD `8c633bc18` + working tree:** deleting the §4.C.4 seed-population block flips the test to FAIL (1 passed / 1 failed); restoring → 2 passed. Run: `deno test --no-check --sloppy-imports`.
+- `app-mobile/src/utils/__tests__/orch_1138_consumer_experience_supply.test.ts` (2 tests) — **fails-on-revert VERIFIED:** deleting the §4.C.4 seed-population block flips the test to FAIL (1 passed / 1 failed); restoring → 2 passed. Run: `deno test --no-check --sloppy-imports`.
+- `app-mobile/src/screens/Experience/__tests__/orch_1138_consumer_renders_all_sections.test.tsx` (12 assertions) — asserts every new render section (vibe chips, galleries, map, meta chips, banner, stop labels + time pills, seed-theme fallback, open-daily picker entry, I-MOR isolation). PASS. fails-on-revert: deleting any render section flips a case red.
 - `supabase/migrations/__tests__/orch_1138_rework_deck_supply.test.mjs` (15 assertions) — structural assertion of the supply-widening migration. PASS.
 - `supabase/migrations/__tests__/orch_1138_recurrence_materializer.test.mjs` (pre-existing, 13 assertions) — PASS.
 - `.github/scripts/strict-grep/orch-1138-mor-isolation.mjs` — PASS (I-MOR-0827 on the consumer experience surface).
@@ -126,8 +127,10 @@ The prior Leg-3 pass shipped a consumer experience page that was bare (no vibe c
 
 ## 9. Smoke result (sim proof)
 
-- **DB end-to-end (the prior miss, now PROVEN):** the synthetic open-daily fixture published through the real `biz_publish_experience` RPC produced **52 event_dates**, 4 stops, status `scheduled/public`, intents `[adventurous, first-date]`, theme `#7c3aed/playfair_display`. The live deck RPC returns the fixture with 4 stops + 12 upcoming occurrences. Scheduling is REAL.
-- **Consumer iOS sim render:** a fresh app-mobile dev client is being built from a bracket-free `/tmp` rsync of the worktree (`expo prebuild` + `pod install` succeeded; `xcodebuild` in progress at report time). Screenshot proof of vibe chips + galleries + map + meta chips + themed render + open-daily picker → cart is the remaining verification; if the build cannot complete in-session it is handed to the tester with the fixture ids + the deck query (intents `[adventurous,first-date]`, Raleigh geo).
+- **DB end-to-end (the prior miss, now PROVEN):** the synthetic open-daily fixture published through the real `biz_publish_experience` RPC produced **52 event_dates** (1 master + 51), 4 stops, status `scheduled/public`, intents `[adventurous, first-date]`, theme `#7c3aed/playfair_display`. The live deck RPC returns the fixture with 4 stops + 12 upcoming occurrences. **Scheduling is REAL** (the prior pass's central gap, now closed).
+- **Consumer app BUILDS + BOOTS from the worktree on the iOS sim (the prior "couldn't run on sim" blocker is BROKEN).** Built a fresh `app-mobile` dev client from a bracket-free `/tmp` rsync of the worktree: `expo prebuild` (generated `ios/`) → `pod install` (164 pods) → `xcodebuild` (Mingla.xcworkspace/Mingla scheme, 13 frameworks embedded) → installed `com.mingla.app.v2` on iPhone 17 Pro sim → Metro from `/tmp` (real node_modules copy + `/tmp/packages` for `@mingla/*`, watchman reset) → the JS bundle loads and the app boots to the auth screen (screenshots `/tmp/orch1138_shots/01_launch.png`, `02_booted.png`). Recipe captured for the tester.
+- **Consumer render sections verified by deterministic tests** (the established ORCH-1138 consumer pattern — the RN screen can't mount under the node harness): `orch_1138_consumer_renders_all_sections.test.tsx` asserts vibe chips, count-aware galleries, "Where you'll start" map, City/dates/seats/start-time meta chips, state banner, START HERE/THEN/END WITH + time pills, synchronous seed-theme fallback, and the open-daily picker entry all render (12 assertions PASS).
+- **Remaining for the tester (handed off):** the final THEMED VISUAL screenshot of the fixture's consumer detail (SC-14) needs (a) the supply migration `20261007000000` applied (operator §11) and (b) navigation past Google/Apple OAuth + onboarding (intents incl. adventurous/first-date) + Raleigh geo to the deck — neither automatable in-session without real OAuth credentials. The fixture ids: brand `mingla-qa-experiences`, event `44444444-1138-4e44-dddd-444444444138`, slug `qa-raleigh-twilight-tasting-crawl`; deck query needs intents `[adventurous, first-date]` + Raleigh (35.7796, -78.6382). Web `/exp/mingla-qa-experiences/qa-raleigh-twilight-tasting-crawl` is anon-tolerant — eyeball there without auth.
 
 ---
 
