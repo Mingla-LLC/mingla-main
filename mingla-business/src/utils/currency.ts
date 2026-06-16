@@ -75,17 +75,25 @@ export const formatCount = (value: number): string =>
  * Pass `minor=true` if `value` is already in minor units (pence/cents/öre);
  * the function divides by the currency's minor-unit factor before formatting.
  *
+ * An empty / blank / undefined / invalid currency code can NEVER reach
+ * `Intl.NumberFormat` (which throws `RangeError: Currency is invalid` on an
+ * empty code). The code is routed through `normalizeCurrency`, which falls
+ * back to the default ("GBP") for empty/blank input — so no caller can crash
+ * currency formatting (ORCH-1152; Constitution #3 no silent failure, but also
+ * no crash). Valid codes format IDENTICALLY to before.
+ *
  * @example formatCurrency(156.20, "GBP")      → "£156.20"
  * @example formatCurrency(15620, "GBP", true) → "£156.20"
  * @example formatCurrency(99, "USD")          → "$99.00"
  * @example formatCurrency(8420, "EUR")        → "€8,420.00"
+ * @example formatCurrency(0, "")              → "£0.00" (safe fallback, no throw)
  */
 export const formatCurrency = (
   value: number,
   currency: string,
   minor = false,
 ): string => {
-  const code = currency.toUpperCase();
+  const code = normalizeCurrency(currency);
   const locale = LOCALE_BY_CURRENCY[code] ?? "en-GB";
   const major = minor ? value / minorUnitFactor(code) : value;
   return new Intl.NumberFormat(locale, {
@@ -98,15 +106,19 @@ export const formatCurrency = (
 /**
  * Round-headline variant of formatCurrency — no decimals, glanceable.
  *
+ * Same empty/blank/invalid-code hardening as `formatCurrency` (ORCH-1152):
+ * the code is routed through `normalizeCurrency` so it can never throw.
+ *
  * @example formatCurrencyRound(24180, "GBP")  → "£24,180"
  * @example formatCurrencyRound(2418000, "GBP", true) → "£24,180"
+ * @example formatCurrencyRound(0, "")          → "£0" (safe fallback, no throw)
  */
 export const formatCurrencyRound = (
   value: number,
   currency: string,
   minor = false,
 ): string => {
-  const code = currency.toUpperCase();
+  const code = normalizeCurrency(currency);
   const locale = LOCALE_BY_CURRENCY[code] ?? "en-GB";
   const major = minor ? value / minorUnitFactor(code) : value;
   return new Intl.NumberFormat(locale, {

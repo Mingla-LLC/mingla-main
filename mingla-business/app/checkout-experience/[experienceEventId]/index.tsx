@@ -103,7 +103,16 @@ export default function CheckoutExperienceTicketScreen(): React.ReactElement {
   // the lead number matches the public page. The combined "Fees & tax" line
   // renders only on a real pass-fee delta (never split service-fee + VAT;
   // feedback_cart_combined_fees_tax_line). I-PROPOSED-1147R2-SELECTION-SHOWS-ALLIN.
-  const headlineAllIn = formatCurrency(totals.allInTotal, totals.currency);
+  // ORCH-1152 — guard the empty cart: on mount the cart is empty and
+  // useCartTotals() returns currency "", which crashed formatCurrency
+  // (RangeError: Currency is invalid). Pass a safe code on the empty cart so the
+  // computation never feeds "" into Intl. headlineAllIn is only DISPLAYED when
+  // !isEmpty anyway. (formatCurrency is ALSO hardened against blank codes —
+  // defense in depth; the explicit guard here does not rely on it.)
+  const headlineAllIn = formatCurrency(
+    totals.allInTotal,
+    totals.isEmpty ? "GBP" : totals.currency,
+  );
   const showFeesTaxLine =
     !totals.isEmpty && !totals.isFree && totals.hasFeesTaxDelta;
 

@@ -23,6 +23,12 @@ module.exports = {
     // selection SCREEN was never rendered). Runs under jest.orch1147r2.render.cjs
     // (RN preset + RTL); MUST NOT run under this default node/ts-jest config.
     "orch_1147r2_selection_allin\\.render\\.test\\.tsx$",
+    // ORCH-1152 tester adversarial render-proof — mounts the REAL CartProvider
+    // EMPTY (the shipped RangeError state) + the original unconditional bottom-bar
+    // headline, asserting the tree renders "—" without throwing. Runs under
+    // jest.orch1152.render.cjs (RN preset + RTL); MUST NOT run under this default
+    // node/ts-jest config (no RTL installed here).
+    "orch_1152_empty_cart_currency_crash\\.adversarial\\.render\\.test\\.tsx$",
   ],
   moduleFileExtensions: ["ts", "tsx", "js", "jsx", "json"],
   transform: {
