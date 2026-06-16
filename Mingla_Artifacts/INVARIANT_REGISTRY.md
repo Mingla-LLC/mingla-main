@@ -19,6 +19,20 @@
 
 ---
 
+## ACTIVE (post ORCH-1147R2 [cart selection screen shows the all-in] CLOSE 2026-06-16)
+
+### I-PROPOSED-1147R2-SELECTION-SHOWS-ALLIN (ACTIVE post ORCH-1147R2 CLOSE)
+
+**Rule:** The business-app ticket-SELECTION step (the 3 `mingla-business/app/checkout*/[*]/index.tsx` screens + the business `mingla-business/src/components/checkout/QuantityRow.tsx` wrapper) MUST lead with the server fee-grossed all-in, not the bare base: the bottom-bar headline reads `allInTotal` (labeled "Total", NOT base `totals.total`), with the single combined "Fees & tax" line gated on `feesTaxCents > 0`; per-tier rows forward `priceAllInGbp` into the shared `packages/event-rendering` `QuantityRow` (base fallback only when a tier has no all-in — free/RPC miss, never fabricate); the Continue a11y label uses the all-in. `useCartTotals.total`/`.subtotal` stay BASE (read-only here — composes with I-PROPOSED-1147-CART-TOTAL-IS-SERVER-ALLIN). The trip installments "Due today" deposit branch is untouched (only the full-total branch shows the all-in).
+
+**Why it exists:** ORCH-1147R2 — ORCH-1147 R1 fixed the payment-step Total but the ticket-SELECTION screen (the one Seth screenshotted twice) still led with the bare base ($65 vs the public page's all-in $67.93), because the bottom bar bound to base `totals.total` and the business `QuantityRow` wrapper silently dropped `priceAllInGbp`. This locks the selection screen to the all-in so the buyer sees the true price at the first decision point, consistent with the public page.
+
+**Enforcement:** strict-grep gate `orch-1147r2-selection-shows-allin` (CI job `strict-grep-mingla-business`). Implementor happy-path `orch_1147r2_selection_allin.test.ts` + tester adversarial component-RENDER proof `orch_1147r2_selection_allin.render.test.tsx` (asserts the rendered per-tier + bottom-bar strings == all-in, not base; different angle) — fails-on-revert @ `f03cd66c3` / `eed4448b2` (render test 3 RED on bare-base revert).
+
+**Tests:** see Enforcement. Shipped via PR #500 (squash `742875d77`). **Provable on real prod data:** 1 live charges-enabled brand passes a fee (event `09b4ece6`, base $65 → all-in $67.93).
+
+---
+
 ## ACTIVE (post ORCH-1147 [cart reflects the TRUE all-in price] CLOSE 2026-06-16)
 
 ### I-PROPOSED-1147-CART-TOTAL-IS-SERVER-ALLIN (ACTIVE post ORCH-1147 CLOSE)
