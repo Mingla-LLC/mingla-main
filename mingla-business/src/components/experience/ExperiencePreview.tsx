@@ -70,6 +70,8 @@ import { buildStaticMapUrl } from "../../utils/mapboxStaticImage";
 import { CollapsibleDescription } from "../offering/CollapsibleDescription";
 import { formatExperienceDateSubline } from "../../utils/experienceDateSubline";
 import { EXPERIENCE_INTENTS } from "../../constants/experienceIntents";
+// ORCH-1138 rework (§4.D F-1.2) — START HERE / THEN / END WITH stop labels.
+import { labelForIndex } from "./experienceWizardTypes";
 import type {
   PublicExperience,
   PublicExperienceBrand,
@@ -314,6 +316,45 @@ const FoundationExperiencePreview: React.FC<{
     (s) => s.lat !== null && s.lng !== null,
   );
 
+  // ORCH-1138 rework (§4.D F-1.1) — the lead EYEBROW is the derived stop count
+  // ("3-stop experience"); City,Country stays a META CHIP only (no duplication).
+  const stopCount = experience.stops.length;
+  const stopEyebrow = stopCount > 0 ? `${stopCount}-stop experience` : null;
+
+  // ORCH-1138 rework (§4.D F-1.4) — seats meta chip from the ONE ticket's
+  // remaining/total (rule 9: omit when unlimited/unknown).
+  const seatsChip = (() => {
+    const t = experience.ticket;
+    if (t == null || t.isUnlimited) return null;
+    const remaining = t.ticketsRemaining;
+    const total = t.quantityTotal;
+    if (remaining == null && total == null) return null;
+    if (remaining != null && total != null) {
+      return `${Math.max(remaining, 0)} spots left · ${total} max`;
+    }
+    if (remaining != null) return `${Math.max(remaining, 0)} spots left`;
+    if (total != null) return `${total} max`;
+    return null;
+  })();
+
+  // ORCH-1138 rework (§4.D F-1.4) — start-time meta chip from the master/first
+  // occurrence start instant (rule 9: omit when no date).
+  const startTimeChip = (() => {
+    const first = experience.dates[0];
+    if (first == null) return null;
+    const d = new Date(first.startAt);
+    if (Number.isNaN(d.getTime())) return null;
+    try {
+      return `${new Intl.DateTimeFormat(undefined, {
+        hour: "numeric",
+        minute: "2-digit",
+        timeZone: first.timezone || "UTC",
+      }).format(d)} start`;
+    } catch {
+      return null;
+    }
+  })();
+
   // ---- brand chip ----
   const brandChip = (
     <Pressable
@@ -354,9 +395,10 @@ const FoundationExperiencePreview: React.FC<{
       {/* phone-only lead eyebrow + title (desktop shows them in the hero) */}
       {!isDesktop ? (
         <View style={styles.leadBlock}>
-          {cityCountry !== null ? (
+          {/* ORCH-1138 rework (§4.D F-1.1) — N-stop eyebrow (was cityCountry). */}
+          {stopEyebrow !== null ? (
             <Text style={[styles.eyebrowLead, { color: palette.accent }]}>
-              {cityCountry}
+              {stopEyebrow}
             </Text>
           ) : null}
           <Text style={[styles.title, surface.primaryText, { fontFamily: boldFamily }]}>
@@ -365,7 +407,8 @@ const FoundationExperiencePreview: React.FC<{
         </View>
       ) : null}
 
-      {/* meta chips */}
+      {/* meta chips — City,Country (shown ONCE) · dates · seats · start-time
+          (ORCH-1138 rework §4.D F-1.4; rule 9 — only when known) */}
       <View style={styles.metaRow}>
         {dateSubline.length > 0 ? (
           <MetaChip palette={palette} surface={surface} icon="calendar" fontFamily={boldFamily}>
@@ -375,6 +418,16 @@ const FoundationExperiencePreview: React.FC<{
         {cityCountry !== null ? (
           <MetaChip palette={palette} surface={surface} icon="location" fontFamily={boldFamily}>
             {cityCountry}
+          </MetaChip>
+        ) : null}
+        {seatsChip !== null ? (
+          <MetaChip palette={palette} surface={surface} icon="users" fontFamily={boldFamily}>
+            {seatsChip}
+          </MetaChip>
+        ) : null}
+        {startTimeChip !== null ? (
+          <MetaChip palette={palette} surface={surface} icon="clock" fontFamily={boldFamily}>
+            {startTimeChip}
           </MetaChip>
         ) : null}
       </View>
@@ -441,7 +494,8 @@ const FoundationExperiencePreview: React.FC<{
       {mapStop !== undefined ? (
         <View style={styles.section}>
           <Text style={[styles.secTitle, surface.primaryText, { fontFamily: boldFamily }]}>
-            Where you&rsquo;ll be
+            {/* ORCH-1138 rework (§4.D F-1.3) */}
+            Where you&rsquo;ll start
           </Text>
           <View
             style={[styles.mapBlock, surface.card, { height: isDesktop ? 300 : 180 }]}
@@ -521,8 +575,10 @@ const FoundationExperiencePreview: React.FC<{
       onClose={onClose}
       onShare={onShare}
       heroEyebrow={
-        cityCountry !== null ? (
-          <Text style={styles.heroEyebrow}>{cityCountry}</Text>
+        /* ORCH-1138 rework (§4.D F-1.1) — N-stop eyebrow (was cityCountry; city
+           is the meta chip). */
+        stopEyebrow !== null ? (
+          <Text style={styles.heroEyebrow}>{stopEyebrow}</Text>
         ) : undefined
       }
       heroTitle={
@@ -569,7 +625,7 @@ const StopSpine: React.FC<{
 }> = ({ stops, palette, surface, fontFamily, variant }) => (
   <View style={styles.itin}>
     <View style={[styles.itinSpine, { backgroundColor: palette.accentWash }]} />
-    {stops.map((stop) => {
+    {stops.map((stop, idx) => {
       const t = formatStopTime(stop.startTime);
       const media = stopMediaItems(stop);
       return (
@@ -581,8 +637,9 @@ const StopSpine: React.FC<{
           </View>
           <View style={[styles.stopCard, surface.card]}>
             <View style={styles.stopHead}>
+              {/* ORCH-1138 rework (§4.D F-1.2) — START HERE / THEN / END WITH. */}
               <Text style={[styles.stopOrd, { color: palette.accent }]}>
-                Stop {stop.stopOrder + 1}
+                {labelForIndex(idx, stops.length)}
               </Text>
               {t.length > 0 ? (
                 <Text style={[styles.stopTime, surface.tertiaryText]}>{t}</Text>

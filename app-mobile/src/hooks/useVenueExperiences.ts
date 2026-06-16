@@ -33,6 +33,44 @@ export interface VenueExperienceRow {
   price_from_cents: number | null;
   currency: string | null;
   is_free: boolean;
+  /**
+   * ORCH-1138 rework (§4.A.3) — the curated vibes (canonical 4) for the consumer
+   * vibe chips on the venue→detail seed. null/[] → no vibe row (rule 9).
+   */
+  experience_intents: string[] | null;
+  /**
+   * ORCH-1138 rework (§4.A.3) — the ordered stops (mirrors the deck RPC stops
+   * jsonb) so the venue→detail seed renders per-stop galleries + map + labels.
+   */
+  stops:
+    | Array<{
+        stop_order: number;
+        place_id: string | null;
+        place_name: string | null;
+        address: string | null;
+        city: string | null;
+        image_urls: string[] | null;
+        ai_description: string | null;
+        lat: number | null;
+        lng: number | null;
+        start_time: string | null;
+        price_cents: number | null;
+      }>
+    | null;
+  /**
+   * ORCH-1138 rework (§4.A.3) — the upcoming bookable occurrences (post-
+   * materializer) so the venue→detail Reserve sees real slots.
+   */
+  upcoming_occurrences:
+    | Array<{
+        event_date_id: string;
+        start_at: string;
+        end_at: string;
+        capacity: number | null;
+        sold: number;
+        remaining: number | null;
+      }>
+    | null;
   published_at: string;
 }
 

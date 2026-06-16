@@ -2416,6 +2416,28 @@ jobs:
       - name: Run ORCH-1138 ebes-deleted gate
         run: node .github/scripts/strict-grep/orch-1138-ebes-deleted.mjs
 
+  orch-1138-mor-isolation:
+    name: "ORCH-1138 Leg 3 rework: consumer experience surface imports nothing from mingla-business/src (I-MOR-0827 / I-PROPOSED-1138-NO-CROSS-PACKAGE-EXPERIENCE-PICKER)"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Run ORCH-1138 mor-isolation gate
+        run: node .github/scripts/strict-grep/orch-1138-mor-isolation.mjs
+
+  orch-1138-experience-checkout-byte-identical:
+    name: "ORCH-1138 Leg 3 rework: consumer experience Reserve checkout byte-identical — eventDateId + quantity only, no address/tax/plan/parallel-money (I-1)"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Run ORCH-1138 checkout-byte-identical gate
+        run: node .github/scripts/strict-grep/orch-1138-experience-checkout-byte-identical.mjs
+
   orch-1136-biz-web-shell-bugs:
     name: "ORCH-1136: TopSheet web overlay no-fixed + web top-bar breathing gap (I-PROPOSED-TOPSHEET-WEB-OVERLAY-NO-FIXED / I-PROPOSED-WEB-TOPBAR-BREATHING-GAP)"
     runs-on: ubuntu-latest

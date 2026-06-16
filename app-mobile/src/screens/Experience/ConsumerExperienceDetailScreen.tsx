@@ -64,8 +64,10 @@ import {
 } from "@mingla/event-rendering";
 import {
   OfferingChrome,
+  CountAwareGallery,
   normalizeCityCountry,
   useResponsiveLayout,
+  type CountAwareGalleryItem,
 } from "@mingla/offering-rendering";
 
 import { Icon } from "../../components/ui/Icon";
@@ -80,6 +82,11 @@ import {
   ExperienceOccurrencePicker,
   type ExperienceOccurrence,
 } from "../../components/expandedCard/ExperienceOccurrencePicker";
+import {
+  ExperienceReservePicker,
+  type ExperienceReserveSelection,
+} from "../../components/expandedCard/ExperienceReservePicker";
+import { buildStaticMapUrl } from "../../utils/mapboxStaticImage";
 import { ConsumerEventReserveBar } from "../../components/offering/ConsumerEventReserveBar";
 import { useConsumerThemeFont } from "../../theme/useConsumerThemeFont";
 import { usePublicEventTickets } from "../../hooks/usePublicEventTickets";
@@ -97,6 +104,112 @@ import type { BusinessEventCard } from "../../types/mergedDiscover";
 
 const ACCENT = "#FF6B35";
 const ABOUT_COLLAPSE_THRESHOLD = 160;
+
+// ORCH-1138 rework (§4.C.5) — canonical vibe-id → display label (mirrors the
+// business EXPERIENCE_INTENTS labels + deckService EXPERIENCE_INTENT_LABEL).
+const EXPERIENCE_INTENT_LABEL: Record<string, string> = {
+  adventurous: "Adventurous",
+  "first-date": "First Dates",
+  romantic: "Romantic",
+  "group-fun": "Group Fun",
+};
+
+// Open-daily detection: a "restaurant-style" recurring experience materializes
+// many same-window days with a multi-hour open window. We treat the seed as
+// open-daily when there are >1 bookable occurrences AND every window is wide
+// (>=90 min) — derived from real occurrence data, never fabricated (rule 9).
+const OPEN_DAILY_MIN_WINDOW_MS = 90 * 60 * 1000;
+const isOpenDailyModel = (occ: ReadonlyArray<ExperienceOccurrence>): boolean => {
+  if (occ.length <= 1) return false;
+  return occ.every((o) => {
+    const s = new Date(o.startAt).getTime();
+    const e = new Date(o.endAt).getTime();
+    return Number.isFinite(s) && Number.isFinite(e) && e - s >= OPEN_DAILY_MIN_WINDOW_MS;
+  });
+};
+
+// "5 dates · Next: Fri 20 Jun" — derived from the real occurrences (rule 9).
+const buildDatesSubline = (
+  occ: ReadonlyArray<ExperienceOccurrence>,
+  timezone: string,
+): string | null => {
+  if (occ.length === 0) return null;
+  const next = occ[0];
+  let nextLabel = "";
+  const d = new Date(next.startAt);
+  if (!Number.isNaN(d.getTime())) {
+    try {
+      nextLabel = new Intl.DateTimeFormat(undefined, {
+        weekday: "short",
+        day: "numeric",
+        month: "short",
+        timeZone: timezone || "UTC",
+      }).format(d);
+    } catch {
+      nextLabel = new Intl.DateTimeFormat(undefined, {
+        weekday: "short",
+        day: "numeric",
+        month: "short",
+      }).format(d);
+    }
+  }
+  if (occ.length === 1) {
+    return nextLabel.length > 0 ? nextLabel : null;
+  }
+  return nextLabel.length > 0
+    ? `${occ.length} dates · Next: ${nextLabel}`
+    : `${occ.length} dates`;
+};
+
+// "3 spots left · 12 max" / "12 max" — from the soonest occurrence (rule 9).
+const buildSeatsLabel = (
+  occ: ReadonlyArray<ExperienceOccurrence>,
+): string | null => {
+  const first = occ[0];
+  if (first === undefined) return null;
+  const { remaining, capacity } = first;
+  if (remaining === null && capacity === null) return null; // unlimited
+  if (remaining !== null && capacity !== null) {
+    return `${Math.max(remaining, 0)} spots left · ${capacity} max`;
+  }
+  if (remaining !== null) return `${Math.max(remaining, 0)} spots left`;
+  if (capacity !== null) return `${capacity} max`;
+  return null;
+};
+
+// "7:00 PM start" from an HH:MM[:SS] authored start_time (rule 9).
+const formatStartTime = (raw: string | null | undefined): string | null => {
+  if (typeof raw !== "string" || raw.length === 0) return null;
+  const m = raw.match(/^(\d{1,2}):(\d{2})/);
+  if (m === null) return null;
+  let h = Number(m[1]);
+  const min = m[2];
+  if (!Number.isFinite(h)) return null;
+  const ampm = h >= 12 ? "PM" : "AM";
+  h = h % 12 === 0 ? 12 : h % 12;
+  return `${h}:${min} ${ampm}`;
+};
+
+// Per-stop media → CountAwareGallery items (image/video). Honest passthrough.
+const stopGalleryItems = (
+  imageUrls: string[] | undefined,
+  fallback: string | null,
+): CountAwareGalleryItem[] => {
+  const urls =
+    Array.isArray(imageUrls) && imageUrls.length > 0
+      ? imageUrls
+      : fallback !== null
+        ? [fallback]
+        : [];
+  return urls
+    .filter((u) => typeof u === "string" && u.length > 0)
+    .map((url) => ({
+      url,
+      type: /\.(mp4|mov|webm|m4v)(\?.*)?$/i.test(url)
+        ? ("video" as const)
+        : ("image" as const),
+    }));
+};
 const SHEET_SNAP_POINTS = glass.bottomSheet.snapPoints as unknown as (
   | string
   | number
@@ -165,9 +278,14 @@ export default function ConsumerExperienceDetailScreen({
   // ORCH-1072 adaptive occurrence state (ported from EBES).
   const [occurrencePickerVisible, setOccurrencePickerVisible] =
     useState<boolean>(false);
+  // ORCH-1138 rework (§4.C.6) — the open-daily restaurant picker (date → time →
+  // party-size). Distinct from the flat ORCH-1072 slot picker.
+  const [reservePickerVisible, setReservePickerVisible] =
+    useState<boolean>(false);
   const [selectedEventDateId, setSelectedEventDateId] = useState<string | null>(
     null,
   );
+  const [selectedQuantity, setSelectedQuantity] = useState<number>(1);
 
   // float→dock CTA visibility tracking (mirror the event screen 1:1).
   const [dockTopY, setDockTopY] = useState<number | null>(null);
@@ -191,7 +309,23 @@ export default function ConsumerExperienceDetailScreen({
   const themeQuery = useEventTheme(seed);
   const runNativeCheckout = useNativeCheckoutFlow();
 
-  const theme = themeQuery.data ?? resolveTheme(null, null);
+  // ORCH-1138 rework (§4.C.5) — the seed's anon-safe brandTheme (COMMS-0009) is
+  // the SYNCHRONOUS fallback so the page renders themed immediately and never
+  // flashes the default palette before useEventTheme settles. resolveTheme reads
+  // {color, font, animation} from the brand input + {*_override} as the override.
+  const seedTheme = useMemo(() => {
+    const bt = seed?.brandTheme ?? null;
+    if (bt === null) return resolveTheme(null, null);
+    return resolveTheme(
+      { color: bt.color ?? undefined, font: bt.font ?? undefined, animation: bt.animation ?? undefined },
+      {
+        color: bt.color_override ?? undefined,
+        font: bt.font_override ?? undefined,
+        animation: bt.animation_override ?? undefined,
+      },
+    );
+  }, [seed?.brandTheme]);
+  const theme = themeQuery.data ?? seedTheme;
   const palette = useMemo(() => createThemePalette(theme), [theme]);
   const surface = useMemo(() => offeringSurfaceStyles(palette), [palette]);
   const boldFamily = boldFontFamily(theme);
@@ -237,6 +371,17 @@ export default function ConsumerExperienceDetailScreen({
     () => occurrences.filter((o) => o.remaining === null || o.remaining > 0),
     [occurrences],
   );
+  // ORCH-1138 rework (§4.C.5/§4.C.6) — open-daily (restaurant) vs flat slots,
+  // derived from the real occurrence windows (rule 9).
+  const openDaily = useMemo(
+    () => isOpenDailyModel(bookableOccurrences),
+    [bookableOccurrences],
+  );
+  // The event-level remaining caps the open-daily party stepper (soonest slot).
+  const eventRemaining = useMemo<number | null>(() => {
+    const first = bookableOccurrences[0] ?? occurrences[0];
+    return first?.remaining ?? null;
+  }, [bookableOccurrences, occurrences]);
 
   // The SINGLE buy-state (resolveOfferingCta — one owner).
   const offeringCta: CtaState = useMemo(() => {
@@ -272,9 +417,16 @@ export default function ConsumerExperienceDetailScreen({
       tickets[0];
     if (sellable === undefined) return;
     setInitialTicketTypeId(sellable.id);
+    setSelectedQuantity(1);
     if (bookableOccurrences.length > 1) {
       setSelectedEventDateId(null);
-      setOccurrencePickerVisible(true);
+      // ORCH-1138 rework — open-daily → restaurant flow (date → time → party);
+      // discrete recurring/multi → the flat slot list.
+      if (openDaily) {
+        setReservePickerVisible(true);
+      } else {
+        setOccurrencePickerVisible(true);
+      }
       return;
     }
     if (bookableOccurrences.length === 1) {
@@ -283,15 +435,31 @@ export default function ConsumerExperienceDetailScreen({
       setSelectedEventDateId(null);
     }
     setCartVisible(true);
-  }, [tickets, bookableOccurrences]);
+  }, [tickets, bookableOccurrences, openDaily]);
 
   const handleOccurrenceSelect = useCallback((eventDateId: string): void => {
     setSelectedEventDateId(eventDateId);
+    setSelectedQuantity(1);
     setOccurrencePickerVisible(false);
     setCartVisible(true);
   }, []);
   const handleOccurrenceCancel = useCallback((): void => {
     setOccurrencePickerVisible(false);
+  }, []);
+
+  // ORCH-1138 rework (§4.C.6) — the open-daily picker confirms with the chosen
+  // occurrence + party size; party-size = cart quantity (I-1), NO new line item.
+  const handleReserveConfirm = useCallback(
+    (sel: ExperienceReserveSelection): void => {
+      setSelectedEventDateId(sel.eventDateId);
+      setSelectedQuantity(sel.quantity >= 1 ? Math.floor(sel.quantity) : 1);
+      setReservePickerVisible(false);
+      setCartVisible(true);
+    },
+    [],
+  );
+  const handleReserveCancel = useCallback((): void => {
+    setReservePickerVisible(false);
   }, []);
 
   // handleBuy — same byte-identical runNativeCheckout request as the EBES
@@ -492,6 +660,52 @@ export default function ConsumerExperienceDetailScreen({
   const aboutCollapsedNow = canCollapseAbout && aboutCollapsed;
   const stops = Array.isArray(seed.experienceStops) ? seed.experienceStops : [];
 
+  // ORCH-1138 rework (§4.C.5) — derived, real-data-gated display fields (rule 9).
+  const vibeChips = (Array.isArray(seed.experienceIntents)
+    ? seed.experienceIntents
+    : []
+  )
+    .map((id) => ({ id, label: EXPERIENCE_INTENT_LABEL[id] ?? null }))
+    .filter((v): v is { id: string; label: string } => v.label !== null);
+  const datesSubline = buildDatesSubline(occurrences, seed.timezone);
+  const seatsLabel = buildSeatsLabel(occurrences);
+  const experienceStartTime = (() => {
+    // master/first occurrence start time (HH:MM) → "7:00 PM start" chip.
+    const first = occurrences[0];
+    if (first === undefined) return null;
+    const d = new Date(first.startAt);
+    if (Number.isNaN(d.getTime())) return null;
+    try {
+      return new Intl.DateTimeFormat(undefined, {
+        hour: "numeric",
+        minute: "2-digit",
+        timeZone: seed.timezone || "UTC",
+      }).format(d);
+    } catch {
+      return null;
+    }
+  })();
+  // stop-1 coords for the "Where you'll start" map (gate on coords present).
+  const startStop = stops.find(
+    (s) => typeof s.lat === "number" && typeof s.lng === "number",
+  );
+  const startMapUrl =
+    startStop?.lat != null && startStop?.lng != null
+      ? buildStaticMapUrl({
+          lat: startStop.lat,
+          lng: startStop.lng,
+          accentHex: palette.accent,
+          height: 320,
+        })
+      : null;
+  // State banner driven by the resolved CTA (one owner — resolveOfferingCta).
+  // The `unavailable` variant carries the human title ("Sold out" / "Booking
+  // unavailable" / "This experience has ended") + optional subline (rule 9).
+  const stateBanner =
+    offeringCta.kind === "unavailable"
+      ? { title: offeringCta.title, subline: offeringCta.subline }
+      : null;
+
   const barKicker = offeringCta.kind === "buy" ? "All-in, taxes included" : null;
   const REVEAL_MARGIN = 24;
   const floatingPillVisible =
@@ -578,11 +792,11 @@ export default function ConsumerExperienceDetailScreen({
               { backgroundColor: palette.page, borderColor: palette.panelBorder },
             ]}
           >
-            {/* phone lead: city eyebrow + bold title */}
+            {/* phone lead: N-stop eyebrow + bold title (ORCH-1138 rework §4.C.5) */}
             <View style={styles.leadBlock}>
-              {cityCountry !== null ? (
+              {stops.length > 0 ? (
                 <Text style={[styles.eyebrowLead, { color: palette.accent }]}>
-                  {cityCountry}
+                  {stops.length}-stop experience
                 </Text>
               ) : null}
               <Text
@@ -592,16 +806,99 @@ export default function ConsumerExperienceDetailScreen({
               </Text>
             </View>
 
-            {/* meta chips (real fields only — rule 9) */}
-            {cityCountry !== null ? (
-              <View style={styles.metaChipRow}>
-                <View style={[styles.metaChip, surface.card]}>
-                  <Icon name="location" size={15} color={palette.accent} />
-                  <Text
-                    style={[styles.metaChipText, surface.secondaryText, { fontFamily: boldFamily }]}
+            {/* meta chips — City,Country · dates · seats · start-time (real fields
+                only — rule 9; ORCH-1138 rework §4.C.5 SC-6) */}
+            {cityCountry !== null ||
+            datesSubline !== null ||
+            seatsLabel !== null ||
+            experienceStartTime !== null ? (
+              <View
+                style={styles.metaChipRow}
+                testID="orch-1138-consumer-experience-meta"
+              >
+                {cityCountry !== null ? (
+                  <View style={[styles.metaChip, surface.card]}>
+                    <Icon name="location" size={15} color={palette.accent} />
+                    <Text
+                      style={[styles.metaChipText, surface.secondaryText, { fontFamily: boldFamily }]}
+                    >
+                      {cityCountry}
+                    </Text>
+                  </View>
+                ) : null}
+                {datesSubline !== null ? (
+                  <View style={[styles.metaChip, surface.card]}>
+                    <Icon name="calendar" size={15} color={palette.accent} />
+                    <Text
+                      style={[styles.metaChipText, surface.secondaryText, { fontFamily: boldFamily }]}
+                    >
+                      {datesSubline}
+                    </Text>
+                  </View>
+                ) : null}
+                {seatsLabel !== null ? (
+                  <View style={[styles.metaChip, surface.card]}>
+                    <Icon name="people" size={15} color={palette.accent} />
+                    <Text
+                      style={[styles.metaChipText, surface.secondaryText, { fontFamily: boldFamily }]}
+                    >
+                      {seatsLabel}
+                    </Text>
+                  </View>
+                ) : null}
+                {experienceStartTime !== null ? (
+                  <View style={[styles.metaChip, surface.card]}>
+                    <Icon name="time" size={15} color={palette.accent} />
+                    <Text
+                      style={[styles.metaChipText, surface.secondaryText, { fontFamily: boldFamily }]}
+                    >
+                      {experienceStartTime} start
+                    </Text>
+                  </View>
+                ) : null}
+              </View>
+            ) : null}
+
+            {/* vibe chips (ORCH-1138 rework §4.C.5 SC-3; rule 9 — only when present) */}
+            {vibeChips.length > 0 ? (
+              <View
+                style={styles.vibeChipRow}
+                testID="orch-1138-consumer-experience-vibes"
+              >
+                {vibeChips.map((v) => (
+                  <View
+                    key={v.id}
+                    style={[styles.vibeChip, { backgroundColor: palette.accentWash }]}
                   >
-                    {cityCountry}
+                    <Icon name="sparkles" size={13} color={palette.accent} />
+                    <Text
+                      style={[styles.vibeChipText, { color: palette.accent, fontFamily: boldFamily }]}
+                    >
+                      {v.label}
+                    </Text>
+                  </View>
+                ))}
+              </View>
+            ) : null}
+
+            {/* state banner (sold-out / ended / unavailable) — ORCH-1138 §4.C.5 SC-9 */}
+            {stateBanner !== null ? (
+              <View
+                style={[styles.stateBanner, { backgroundColor: palette.accentWash, borderColor: palette.panelBorder }]}
+                testID="orch-1138-consumer-experience-state-banner"
+              >
+                <Icon name="alert-circle" size={16} color={palette.accent} />
+                <View style={styles.stateBannerTextCol}>
+                  <Text
+                    style={[styles.stateBannerTitle, { color: palette.primaryText, fontFamily: boldFamily }]}
+                  >
+                    {stateBanner.title}
                   </Text>
+                  {stateBanner.subline !== null ? (
+                    <Text style={[styles.stateBannerSub, { color: palette.tertiaryText }]}>
+                      {stateBanner.subline}
+                    </Text>
+                  ) : null}
                 </View>
               </View>
             ) : null}
@@ -701,46 +998,94 @@ export default function ConsumerExperienceDetailScreen({
                 </Text>
                 <View style={styles.itin}>
                   <View style={[styles.itinSpine, { backgroundColor: palette.accentWash }]} />
-                  {stops.map((stop, idx) => (
-                    <View key={`${stop.placeName ?? "stop"}-${idx}`} style={styles.stop}>
-                      <View style={[styles.stopDot, { backgroundColor: palette.accent }]}>
-                        <Text style={[styles.stopDotText, { color: palette.accentText }]}>
-                          {stop.stopNumber > 0 ? stop.stopNumber : idx + 1}
-                        </Text>
+                  {stops.map((stop, idx) => {
+                    const stopLabel =
+                      typeof stop.stopLabel === "string"
+                        ? stop.stopLabel.toUpperCase()
+                        : idx === 0
+                          ? "START HERE"
+                          : idx === stops.length - 1
+                            ? "END WITH"
+                            : "THEN";
+                    const galleryItems = stopGalleryItems(
+                      stop.imageUrls,
+                      stop.imageUrl ?? null,
+                    );
+                    const timePill = formatStartTime(stop.startTime);
+                    return (
+                      <View key={`${stop.placeName ?? "stop"}-${idx}`} style={styles.stop}>
+                        <View style={[styles.stopDot, { backgroundColor: palette.accent }]}>
+                          <Text style={[styles.stopDotText, { color: palette.accentText }]}>
+                            {stop.stopNumber > 0 ? stop.stopNumber : idx + 1}
+                          </Text>
+                        </View>
+                        <View style={[styles.stopCard, surface.card]}>
+                          <View style={styles.stopHead}>
+                            <Text style={[styles.stopOrd, { color: palette.accent }]}>
+                              {stopLabel}
+                            </Text>
+                            {timePill !== null ? (
+                              <Text style={[styles.stopTimePill, surface.tertiaryText]}>
+                                {timePill}
+                              </Text>
+                            ) : null}
+                          </View>
+                          {stop.placeName !== null ? (
+                            <Text
+                              style={[styles.stopTitle, surface.primaryText, { fontFamily: boldFamily }]}
+                            >
+                              {stop.placeName}
+                            </Text>
+                          ) : null}
+                          {stop.address !== null ? (
+                            <Text style={[styles.stopAddr, surface.tertiaryText]} numberOfLines={2}>
+                              {stop.address}
+                            </Text>
+                          ) : null}
+                          {stop.aiDescription !== null ? (
+                            <Text style={[styles.stopBlurb, surface.secondaryText]}>
+                              {stop.aiDescription}
+                            </Text>
+                          ) : null}
+                          {galleryItems.length > 0 ? (
+                            <View style={styles.stopGallery}>
+                              <CountAwareGallery
+                                items={galleryItems}
+                                palette={palette}
+                                variant="phone"
+                                accessibilityLabelPrefix={`Stop ${idx + 1} media`}
+                              />
+                            </View>
+                          ) : null}
+                        </View>
                       </View>
-                      <View style={[styles.stopCard, surface.card]}>
-                        <Text style={[styles.stopOrd, { color: palette.accent }]}>
-                          Stop {stop.stopNumber > 0 ? stop.stopNumber : idx + 1}
-                        </Text>
-                        {stop.placeName !== null ? (
-                          <Text
-                            style={[styles.stopTitle, surface.primaryText, { fontFamily: boldFamily }]}
-                          >
-                            {stop.placeName}
-                          </Text>
-                        ) : null}
-                        {stop.address !== null ? (
-                          <Text style={[styles.stopAddr, surface.tertiaryText]} numberOfLines={2}>
-                            {stop.address}
-                          </Text>
-                        ) : null}
-                        {stop.aiDescription !== null ? (
-                          <Text style={[styles.stopBlurb, surface.secondaryText]}>
-                            {stop.aiDescription}
-                          </Text>
-                        ) : null}
-                        {stop.imageUrl !== null ? (
-                          <Image
-                            source={{ uri: stop.imageUrl }}
-                            style={styles.stopImage}
-                            resizeMode="cover"
-                            accessibilityLabel={`Stop ${idx + 1} photo`}
-                          />
-                        ) : null}
-                      </View>
-                    </View>
-                  ))}
+                    );
+                  })}
                 </View>
+              </View>
+            ) : null}
+
+            {/* "Where you'll start" map (ORCH-1138 rework §4.C.5 SC-5; rule 9 —
+                only when stop-1 coords + a Mapbox token resolve) */}
+            {startMapUrl !== null ? (
+              <View style={styles.section} testID="orch-1138-consumer-experience-map">
+                <Text
+                  style={[styles.secTitle, surface.primaryText, { fontFamily: boldFamily }]}
+                >
+                  Where you&apos;ll start
+                </Text>
+                <Image
+                  source={{ uri: startMapUrl }}
+                  style={[styles.startMap, { borderColor: palette.panelBorder }]}
+                  resizeMode="cover"
+                  accessibilityLabel="Map of the first stop"
+                />
+                {startStop?.placeName != null ? (
+                  <Text style={[styles.mapCaption, surface.tertiaryText]}>
+                    {startStop.placeName}
+                    {startStop.address != null ? ` · ${startStop.address}` : ""}
+                  </Text>
+                ) : null}
               </View>
             ) : null}
 
@@ -771,14 +1116,29 @@ export default function ConsumerExperienceDetailScreen({
         {floatingReserve}
       </BaseBottomSheet>
 
-      {/* ORCH-1072 occurrence picker — selection only; sibling root in the same
-          fragment (feedback_rn_sub_sheet_must_render_inside_parent). */}
+      {/* ORCH-1072 occurrence picker (DISCRETE recurring/multi) — selection only;
+          sibling root in the same fragment
+          (feedback_rn_sub_sheet_must_render_inside_parent). */}
       <ExperienceOccurrencePicker
         visible={occurrencePickerVisible}
         occurrences={occurrences}
         timezone={seed.timezone}
         onCancel={handleOccurrenceCancel}
         onSelect={handleOccurrenceSelect}
+      />
+
+      {/* ORCH-1138 rework (§4.C.6) — OPEN-DAILY restaurant picker (date → time →
+          party-size). Party-size → cart quantity (I-1); byte-identical checkout. */}
+      <ExperienceReservePicker
+        visible={reservePickerVisible}
+        mode="open-daily"
+        occurrences={occurrences}
+        timezone={seed.timezone}
+        palette={palette}
+        fontFamily={boldFamily}
+        eventRemaining={eventRemaining}
+        onCancel={handleReserveCancel}
+        onConfirm={handleReserveConfirm}
       />
 
       {/* Reserve opens the cart DIRECTLY (NEVER EBES). Byte-identical request
@@ -790,6 +1150,7 @@ export default function ConsumerExperienceDetailScreen({
         tickets={ticketsQuery.data}
         fallbackCurrency={seed.currency}
         initialTicketTypeId={initialTicketTypeId}
+        initialQuantity={selectedQuantity}
         buyerName={
           profile?.display_name?.trim() || user?.email?.split("@")[0] || "Guest"
         }
@@ -854,6 +1215,45 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
   },
   metaChipText: { fontSize: 13, fontWeight: "600" },
+  vibeChipRow: { flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 12 },
+  vibeChip: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    borderRadius: 999,
+    paddingHorizontal: 11,
+    paddingVertical: 7,
+  },
+  vibeChipText: { fontSize: 12, fontWeight: "800", letterSpacing: 0.2 },
+  stateBanner: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    marginTop: 16,
+    borderRadius: 14,
+    borderWidth: 1,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+  },
+  stateBannerTextCol: { flexShrink: 1 },
+  stateBannerTitle: { fontSize: 14, fontWeight: "800" },
+  stateBannerSub: { fontSize: 12, marginTop: 1 },
+  stopHead: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 8,
+  },
+  stopTimePill: { fontSize: 11, fontWeight: "700" },
+  stopGallery: { marginTop: 12 },
+  startMap: {
+    width: "100%",
+    height: 180,
+    borderRadius: 14,
+    borderWidth: 1,
+    backgroundColor: "#000",
+  },
+  mapCaption: { fontSize: 12, lineHeight: 17, marginTop: 8 },
   brandRow: {
     flexDirection: "row",
     alignItems: "center",
@@ -915,13 +1315,6 @@ const styles = StyleSheet.create({
   stopTitle: { fontSize: 15, fontWeight: "800", marginTop: 4 },
   stopAddr: { fontSize: 12, lineHeight: 17, marginTop: 3 },
   stopBlurb: { fontSize: 13, lineHeight: 20, marginTop: 8 },
-  stopImage: {
-    width: "100%",
-    height: 160,
-    borderRadius: 10,
-    marginTop: 12,
-    backgroundColor: "#000",
-  },
   reassure: { fontSize: 12, marginTop: 20, lineHeight: 17 },
   stateBody: {
     alignItems: "center",
