@@ -35,6 +35,7 @@ import {
   Pressable,
   StyleSheet,
   Text,
+  useWindowDimensions,
   View,
 } from "react-native";
 import * as Haptics from "expo-haptics";
@@ -81,11 +82,26 @@ import {
   validateAnswerAgainstSchema,
 } from "../../services/tripIntakeSchemaService";
 
-// ORCH-0847 Phase C — snap to ~92% so the sheet rises just above the
-// consumer app's bottom tab bar, leaving a thin backdrop strip at the
-// top for visual affordance + tap-to-dismiss. Operator directive
-// 2026-05-15 superseded the prior 75% snap from the design verdict.
+// ORCH-1138 [content-sized cart] — the cart sheet now SIZES TO ITS CONTENT via
+// gorhom's dynamic sizing (`enableDynamicSizing` + `maxDynamicContentSize` set on
+// the BaseBottomSheet below), so a short single-ticket cart is a SHORT sheet
+// (CTA anchored at the content bottom, no tall empty gap) and a long multi-tier /
+// intake cart grows up to the 92% cap and then scrolls. This `["92%"]` value is
+// retained as the MAX detent (the upper bound the dynamic snap is clamped to via
+// `MAX_DYNAMIC_FRACTION`), NOT a fixed open height.
+//
+// PRIOR (ORCH-0847 Phase C, operator 2026-05-15): a FIXED `["92%"]` snap. Because
+// the whole cart (header + body + CTA) renders as ONE BottomSheetScrollView
+// content block (scrollMode="scroll", no header/stickyFooter props), the fixed
+// 92% viewport left a large empty bottom gap whenever the content was shorter
+// than 92% of the screen (Seth, consumer device 2026-06-15). Dynamic sizing
+// removes that gap while preserving the ORCH-1016/1043 scroll-to-Pay behavior for
+// tall carts (the CTA stays a scroll child; on a tall cart it is reached by
+// scrolling, exactly as before).
 const SHEET_SNAP_POINTS = ["92%"];
+// The dynamic content snap is clamped to this fraction of the window height so a
+// tall cart caps at the same ~92% ceiling instead of growing to full screen.
+const MAX_DYNAMIC_FRACTION = 0.92;
 
 /**
  * Dark-mode theme tokens for the consumer cart sheet's QuantityRow. Mirrors
@@ -231,6 +247,14 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
   onCheckout,
 }) => {
   const insets = useSafeAreaInsets();
+  const { height: windowHeight } = useWindowDimensions();
+  // ORCH-1138 — clamp the dynamic content snap to ~92% of the window so a tall
+  // cart caps at the prior ceiling (then scrolls) while a short cart sizes to its
+  // own content height.
+  const maxDynamicContentSize = useMemo(
+    () => Math.round(windowHeight * MAX_DYNAMIC_FRACTION),
+    [windowHeight],
+  );
   const { lines, totals, setLineQuantity, reset } = useTicketCart(
     fallbackCurrency,
   );
@@ -798,6 +822,14 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
       onClose={handleCancel}
       theme="dark"
       snapPoints={SHEET_SNAP_POINTS}
+      // ORCH-1138 [content-sized cart] — size the sheet to its scroll content
+      // (header + body + CTA all live in the single BottomSheetScrollView), so a
+      // short cart is a short sheet with the CTA anchored at the content bottom
+      // and no large empty gap. `maxDynamicContentSize` caps the growth at ~92%
+      // of the window; beyond that gorhom keeps the sheet at the cap and the inner
+      // scrollable scrolls (preserving the ORCH-1016/1043 scroll-to-Pay behavior).
+      enableDynamicSizing
+      maxDynamicContentSize={maxDynamicContentSize}
       backgroundStyle={styles.sheetBackground}
       handleStyle={styles.handleIndicator}
       accessibilityLabel="Get tickets"
