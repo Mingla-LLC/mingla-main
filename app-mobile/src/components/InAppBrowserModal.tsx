@@ -6,13 +6,28 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   StyleSheet,
-  Dimensions,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { WebView, WebViewNavigation } from 'react-native-webview';
 import { Icon } from './ui/Icon';
 import { useTranslation } from 'react-i18next';
 
-const { height: SCREEN_HEIGHT } = Dimensions.get('window');
+/**
+ * ORCH-1149 [in-app browser bottom-anchor] — I-PROPOSED-1149-INAPP-BROWSER-BOTTOM-ANCHORED.
+ *
+ * This sheet is BOTTOM-ANCHORED on purpose. The RN <Modal> mounts in its own OS
+ * overlay window that renders over the in-tree consumer tab bar (ORCH-0908). It
+ * MUST stay full-width, flush to the bottom, and tall enough to cover the tab bar
+ * — otherwise the Explore/Discover/Friends/Likes/Profile tab bar bleeds through at
+ * the base (the original ~7.5% gap from a centered 85%-height card). It opens with
+ * animationType="slide" so it reads as a Mingla sheet, not a fade-in dialog.
+ *
+ * The `paddingBottom: insets.bottom` on the WebView container is REQUIRED so the
+ * web content clears the iOS home indicator / Android nav bar now that the sheet
+ * reaches the screen edge. Do NOT re-center this dialog and do NOT drop the inset —
+ * both silently reopen the tab-bar bleed-through / home-indicator occlusion the
+ * orch-1149 CI gate guards against.
+ */
 
 interface InAppBrowserModalProps {
   visible: boolean;
@@ -28,6 +43,7 @@ export default function InAppBrowserModal({
   onClose,
 }: InAppBrowserModalProps) {
   const { t } = useTranslation(['modals', 'common']);
+  const insets = useSafeAreaInsets();
   const webViewRef = useRef<WebView>(null);
   const [loading, setLoading] = useState(true);
   const [canGoBack, setCanGoBack] = useState(false);
@@ -70,8 +86,9 @@ export default function InAppBrowserModal({
   return (
     <Modal
       visible={visible}
-      animationType="fade"
+      animationType="slide"
       transparent={true}
+      statusBarTranslucent={true}
       onRequestClose={onClose}
       onShow={handleShow}
     >
@@ -121,7 +138,7 @@ export default function InAppBrowserModal({
           </View>
 
           {/* WebView */}
-          <View style={styles.webviewContainer}>
+          <View style={[styles.webviewContainer, { paddingBottom: insets.bottom }]}>
             {loading && (
               <View style={styles.loadingOverlay}>
                 <ActivityIndicator size="large" color="#eb7825" />
@@ -153,8 +170,8 @@ export default function InAppBrowserModal({
 const styles = StyleSheet.create({
   overlay: {
     flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
+    // ORCH-1149: anchor the sheet to the bottom so it sits flush and covers the tab bar.
+    justifyContent: 'flex-end',
     backgroundColor: 'rgba(0, 0, 0, 0.5)',
   },
   overlayBackground: {
@@ -165,12 +182,15 @@ const styles = StyleSheet.create({
     bottom: 0,
   },
   modalContainer: {
-    width: '95%',
-    maxWidth: 600,
-    height: SCREEN_HEIGHT * 0.85,
-    maxHeight: SCREEN_HEIGHT * 0.85,
+    // ORCH-1149: full-width, bottom-flush sheet (no centered fixed-height card).
+    width: '100%',
+    height: '92%',
     backgroundColor: '#ffffff',
-    borderRadius: 20,
+    // Top-only rounding — the sheet meets the screen edge at the base.
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    borderBottomLeftRadius: 0,
+    borderBottomRightRadius: 0,
     overflow: 'hidden',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 10 },
