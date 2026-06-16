@@ -252,8 +252,14 @@ Deno.test("ORCH-1146 T5: Ari minimal {brand_id,title,narrative} → draft + free
   assertEquals("currency" in tk!, false);
 });
 
-// ── T6 (invariant) — no dates/stops/cover/published_at written ──────────────
-Deno.test("ORCH-1146 T6: snap writes NO event_dates/experience_stops/cover/published_at", async () => {
+// ── T6 (invariant) — no dates/cover/published_at written ────────────────────
+// [TEST-MOD-APPROVED ORCH-1151] — I-PROPOSED-1146-AI-EXPERIENCE-STAYS-DRAFT was
+// AMENDED by ORCH-1151 to PERMIT experience_stops on the snap path. The
+// experience_stops-absent assertion (formerly here) is REMOVED; the draft-only
+// guarantee (NO event_dates, published_at null, no cover) is unchanged and still
+// enforced. This Ari/manual call (no `stops` arg) still writes NO stops — that
+// is now asserted in orch_1151_curated_experiences_stops.test.ts T4.
+Deno.test("ORCH-1146 T6: snap writes NO event_dates/cover/published_at (draft-only preserved)", async () => {
   const rec: Recorder = { inserts: [], updates: [] };
   const client = makeClient(scriptsFor("play", "GBP"), rec);
   const tool = findTool("create_experience");
@@ -270,9 +276,9 @@ Deno.test("ORCH-1146 T6: snap writes NO event_dates/experience_stops/cover/publi
     USER_ID,
   );
 
-  // No inserts into the forbidden tables.
+  // No inserts into the still-forbidden draft-only tables (dates remain
+  // publish-time-only; experience_stops is no longer forbidden — ORCH-1151).
   assertEquals(rec.inserts.some((i) => i.table === "event_dates"), false);
-  assertEquals(rec.inserts.some((i) => i.table === "experience_stops"), false);
 
   const ev = getInsert(rec, "events");
   assertEquals(ev!.published_at, null);

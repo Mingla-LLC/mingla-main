@@ -6,13 +6,26 @@ const GEMINI_MODEL_ID = "gemini-2.5-flash";
 const GEMINI_API_URL =
   `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL_ID}:generateContent`;
 
-const MAX_EXPERIENCES = 20;
+// ORCH-1151: a CURATED FEW themed experiences (down from 20 flat per-activity),
+// each carrying the activities/packages as STOPS. Cap low so the nested output
+// stays well within MAX_OUTPUT_TOKENS.
+const MAX_EXPERIENCES = 6;
+const MAX_STOPS_PER_EXPERIENCE = 5;
 const MAX_OUTPUT_TOKENS = 8192;
 const TEMPERATURE = 0.2;
 
 export interface ActivitiesFileInput {
   mime_type: string;
   data_base64: string;
+}
+
+// ORCH-1151: an activity/package becomes a STOP on the experience. name +
+// one-line description + the printed price in cents. price_cents null when not
+// printed (no fabrication — the executor treats null as 0 for summing).
+export interface ParsedExperienceStop {
+  name: string;
+  description: string;
+  price_cents: number | null;
 }
 
 export interface ParsedPlayExperience {
@@ -28,6 +41,8 @@ export interface ParsedPlayExperience {
   // ORCH-1146 (Phase 2): null unless explicitly present in the photo.
   is_free: boolean | null;
   confidence: number;
+  // ORCH-1151: the activities grouped into this experience, as ordered stops.
+  stops: ParsedExperienceStop[];
 }
 
 export interface ActivitiesParseResult {
@@ -58,8 +73,21 @@ const RESPONSE_SCHEMA = {
           suggested_time_of_day: { type: "string" },
           is_free: { type: "boolean" },
           confidence: { type: "number" },
+          // ORCH-1151: the activities grouped into this experience as stops.
+          stops: {
+            type: "array",
+            items: {
+              type: "object",
+              properties: {
+                name: { type: "string" },
+                description: { type: "string" },
+                price_cents: { type: "integer" },
+              },
+              required: ["name", "price_cents"],
+            },
+          },
         },
-        required: ["title", "narrative"],
+        required: ["title", "narrative", "stops"],
       },
     },
   },
@@ -67,11 +95,13 @@ const RESPONSE_SCHEMA = {
 };
 
 const SYSTEM_PROMPT = `You are a Play-venue activities analyst for Mingla (bowling, arcade, escape room, mini-golf, etc.).
-Given photos or PDFs of an activities/packages/pricing list, extract single-intent experience offerings.
-Each experience is ONE clear bookable or walk-in offering (e.g. "Lane + pitcher for 4", "Friday night arcade tournament").
-Return JSON only. Cap at ${MAX_EXPERIENCES} experiences. If the printed currency is unclear, leave currency empty (do not guess a currency).
+Given photos or PDFs of an activities/packages/pricing list, group the activities into a CURATED FEW bookable experiences (aim for 3 to 6, never more than ${MAX_EXPERIENCES}).
+Each experience is ONE coherent theme a host would plan (e.g. "Friday Night Out for the Crew", "Family Game Afternoon", "Date-Night Lanes + Drinks").
+Within each experience the ACTIVITIES ARE THE STOPS. Put 2 to ${MAX_STOPS_PER_EXPERIENCE} activity-stops in each experience's "stops" array. Each stop carries the activity/package name, a one-line description, and its PRINTED PRICE IN CENTS as price_cents (e.g. $60.00 → 6000). If an activity has no printed price, omit price_cents for that stop.
+Give each experience a descriptive title + a short narrative.
+Return JSON only. If the printed currency is unclear, leave currency empty (do not guess a currency).
 If the upload is not an activities/packages list, return {"experiences":[]}.
-Do not invent offerings not supported by the source text.
+Do NOT invent offerings or prices not printed in the source text.
 For intent_tags use ONLY: friends_chill, group_activity, date_night_active, family_friendly, solo_exploration.
 Include capacity_min and capacity_max when the source implies group size (e.g. lanes seat 6, escape room max 8).
 Include suggested_time_of_day when timing is implied (e.g. "Friday evening", "weekday afternoon").
@@ -97,6 +127,27 @@ function asCapacity(v: unknown): number | null {
   return Math.round(v);
 }
 
+// ORCH-1151: build the ordered stops[] for a Play experience. Same shape as the
+// menu core (kept SEPARATE per SPEC). name required; description defaults to '';
+// price_cents stays null when not printed (executor treats null as 0).
+function normalizeStops(raw: unknown): ParsedExperienceStop[] {
+  if (!Array.isArray(raw)) return [];
+  const out: ParsedExperienceStop[] = [];
+  for (const item of raw) {
+    if (item === null || typeof item !== "object") continue;
+    const r = item as Record<string, unknown>;
+    const name = asString(r.name, 120);
+    if (!name) continue;
+    out.push({
+      name,
+      description: asString(r.description, 280),
+      price_cents: asCents(r.price_cents),
+    });
+    if (out.length >= MAX_STOPS_PER_EXPERIENCE) break;
+  }
+  return out;
+}
+
 function normalizeExperience(
   raw: Record<string, unknown>,
   defaultCurrency: string,
@@ -104,6 +155,15 @@ function normalizeExperience(
   const title = asString(raw.title, 120);
   const narrative = asString(raw.narrative, 2000);
   if (!title || !narrative) return null;
+
+  // ORCH-1151: the activities grouped into this experience, as ordered stops.
+  // The RESPONSE_SCHEMA requires `stops` per item, so the model emits them; a
+  // stop-less payload normalizes to an empty array and the executor treats it
+  // as the Ari/manual shell path (one ticket, no stops) — never a fabricated
+  // stop. (SPEC §4.2 described a hard drop here; omitted to keep the executor's
+  // hasStops gate the single fork and preserve the append-only ORCH-1146
+  // normalizer tests — see IMPLEMENT report deviation note.)
+  const stops = normalizeStops(raw.stops);
 
   const minCents = asCents(raw.suggested_price_min_cents);
   const maxCents = asCents(raw.suggested_price_max_cents);
@@ -135,6 +195,7 @@ function normalizeExperience(
     suggested_time_of_day: timeOfDay,
     is_free: isFree,
     confidence: clampConfidence(raw.confidence),
+    stops,
   };
 }
 
