@@ -136,7 +136,9 @@ interface TicketTypeRow {
   display_order: number;
 }
 
-interface PublishRpcResponse {
+// ORCH-1150: exported so the RSVP publish service (rsvpEvents.ts) reuses the
+// SAME response shape + mapping (additive export only; no behavior change).
+export interface PublishRpcResponse {
   event: {
     id: string;
     brand_id: string;
@@ -592,7 +594,8 @@ export const fetchBusinessEventById = async (
   return detail;
 };
 
-const eventFromPublishResponse = (
+// ORCH-1150: exported so rsvpEvents.publishRsvpDraft reuses the SAME mapping.
+export const eventFromPublishResponse = (
   response: PublishRpcResponse,
 ): PublishedBusinessEvent => {
   const businessEvent = asRecord(asRecord(response.event.theme).business_event);
