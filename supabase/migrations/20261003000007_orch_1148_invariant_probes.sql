@@ -79,6 +79,13 @@ BEGIN
   END IF;
 
   -- (4) reservations.status CHECK contains all 8 enum values.
+  -- Disambiguate the `status` lifecycle CHECK from the `payment_status` CHECK:
+  -- both constraintdefs contain the substring 'status', so an ambiguous
+  -- ILIKE '%status%' match could non-deterministically pick the payment_status
+  -- CHECK and cause a false RAISE that aborts the apply. We anchor on
+  -- lifecycle-only values ('requested' + 'seated' + 'completed') that can NEVER
+  -- appear in payment_status's ('none','paid','refunded') CHECK, and LIMIT 1
+  -- defensively. Read-only.
   SELECT pg_get_constraintdef(con.oid) INTO v_status_def
   FROM pg_constraint con
   JOIN pg_class rel ON rel.oid = con.conrelid
@@ -86,7 +93,10 @@ BEGIN
   WHERE nsp.nspname = 'public'
     AND rel.relname = 'reservations'
     AND con.contype = 'c'
-    AND pg_get_constraintdef(con.oid) ILIKE '%status%';
+    AND pg_get_constraintdef(con.oid) ILIKE '%''requested''%'
+    AND pg_get_constraintdef(con.oid) ILIKE '%''seated''%'
+    AND pg_get_constraintdef(con.oid) ILIKE '%''completed''%'
+  LIMIT 1;
   IF v_status_def IS NULL THEN
     RAISE EXCEPTION 'ORCH-1148 probe: reservations.status CHECK constraint not found';
   END IF;

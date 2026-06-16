@@ -237,4 +237,28 @@ Deno.test("T-MIG-9 — probe asserts tables exist + RLS + 8-state lifecycle (fai
     !/\bINSERT\s+INTO\b/i.test(body) && !/\bUPDATE\s+public\./i.test(body),
     "the invariant probe must be read-only (no writes)",
   );
+  // P3 fix (regression guard): the CHECK-constraint selection MUST disambiguate
+  // the `status` lifecycle CHECK from `payment_status` (both constraintdefs
+  // contain the substring "status"). An ambiguous `ILIKE '%status%'` could
+  // non-deterministically return the payment_status CHECK and falsely RAISE,
+  // aborting the apply. Assert the selection is anchored on a lifecycle-only
+  // value that can NEVER appear in payment_status's ('none','paid','refunded')
+  // CHECK, and that the bare ambiguous predicate is gone. Fails on revert.
+  const bodyNoComments = body;
+  assertMatch(
+    bodyNoComments,
+    /pg_get_constraintdef\(con\.oid\)\s+ILIKE\s+'%''requested''%'/i,
+    "probe must anchor the status-CHECK selection on the lifecycle-only value 'requested' (disambiguates payment_status)",
+  );
+  assert(
+    !/pg_get_constraintdef\(con\.oid\)\s+ILIKE\s+'%status%'/i.test(
+      bodyNoComments,
+    ),
+    "probe must NOT select the status CHECK with the ambiguous ILIKE '%status%' (matches payment_status too)",
+  );
+  assertMatch(
+    bodyNoComments,
+    /\bLIMIT\s+1\b/i,
+    "probe must LIMIT 1 the status-CHECK selection defensively",
+  );
 });
