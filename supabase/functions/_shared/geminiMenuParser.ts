@@ -20,6 +20,10 @@ export interface ParsedMenuExperience {
   suggested_price_max_cents: number | null;
   currency: string;
   intent_tags: string[];
+  // ORCH-1146 (Phase 2): null unless the field is explicitly present in the
+  // photo (no fabrication).
+  is_free: boolean | null;
+  suggested_time_of_day: string | null;
   confidence: number;
 }
 
@@ -46,6 +50,8 @@ const RESPONSE_SCHEMA = {
           suggested_price_max_cents: { type: "integer" },
           currency: { type: "string" },
           intent_tags: { type: "array", items: { type: "string" } },
+          is_free: { type: "boolean" },
+          suggested_time_of_day: { type: "string" },
           confidence: { type: "number" },
         },
         required: ["title", "narrative"],
@@ -58,7 +64,8 @@ const RESPONSE_SCHEMA = {
 const SYSTEM_PROMPT = `You are a restaurant menu analyst for Mingla, a social experiences platform.
 Given menu images or PDF pages, extract single-intent experience offerings a venue could promote.
 Each experience is ONE clear intent (e.g. "Bottomless brunch Saturdays", "Date-night tasting menu").
-Return JSON only. Cap at ${MAX_EXPERIENCES} experiences. Use GBP if currency unclear.
+Return JSON only. Cap at ${MAX_EXPERIENCES} experiences. If the printed currency is unclear, leave currency empty (do not guess a currency).
+Set is_free=true ONLY when the menu explicitly signals no charge (e.g. "free entry", "no cover charge"); otherwise omit it. Include suggested_time_of_day only when a serving window is stated (e.g. "Saturday brunch", "happy hour 4-6pm"); otherwise omit it. Do not guess.
 If the upload is not a menu, return {"experiences":[]}.
 Do not invent items not supported by the menu text.`;
 
@@ -99,6 +106,11 @@ function normalizeExperience(
     }
   }
 
+  // ORCH-1146 (Phase 2): only persist these when present in the raw payload —
+  // a missing field stays null (no fabrication).
+  const isFree = typeof raw.is_free === "boolean" ? raw.is_free : null;
+  const timeOfDay = asString(raw.suggested_time_of_day, 80) || null;
+
   return {
     title,
     narrative,
@@ -106,14 +118,23 @@ function normalizeExperience(
     suggested_price_max_cents: maxCents,
     currency,
     intent_tags: intentTags.slice(0, 12),
+    is_free: isFree,
+    suggested_time_of_day: timeOfDay,
     confidence: clampConfidence(raw.confidence),
   };
 }
 
-/** Exported for unit tests — normalizes raw Gemini JSON. */
+/**
+ * Exported for unit tests — normalizes raw Gemini JSON.
+ *
+ * ORCH-1146 (Phase 3 — de-GBP): `defaultCurrency` defaults to "" (NOT "GBP").
+ * Callers MUST pass the brand's currency; when truly unknown, an empty currency
+ * flows through and the confirm executor resolves it from `brand.default_currency`
+ * server-side (single source of truth). No hardcoded GBP anywhere in this path.
+ */
 export function normalizeMenuParsePayload(
   payload: unknown,
-  defaultCurrency = "GBP",
+  defaultCurrency = "",
 ): ParsedMenuExperience[] {
   if (payload === null || typeof payload !== "object") return [];
   const experiences = (payload as { experiences?: unknown }).experiences;
@@ -143,7 +164,9 @@ export async function parseMenuWithGemini(args: {
     throw new Error("GEMINI_API_KEY_ARI is not configured");
   }
 
-  const defaultCurrency = args.defaultCurrency ?? "GBP";
+  // ORCH-1146 (Phase 3 — de-GBP): no GBP literal. The edge entry passes the
+  // brand currency; absent → "" (executor resolves from brand.default_currency).
+  const defaultCurrency = args.defaultCurrency ?? "";
   const temporaryCategory = args.temporaryCategory ?? "restaurant";
   const parts: Array<{ text: string } | { inline_data: { mime_type: string; data: string } }> = [];
 

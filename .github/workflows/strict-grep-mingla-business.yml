@@ -2370,6 +2370,19 @@ jobs:
       - name: Run ORCH-1136 R3 web-sheet CSS-transition gate
         run: node .github/scripts/strict-grep/i-proposed-1136-web-sheet-css-transition.mjs
 
+  orch-1146-no-gbp-currency-default:
+    name: "ORCH-1146: no hardcoded GBP currency fallback in the experience-parser path (I-PROPOSED-1146-PARSER-NO-GBP-DEFAULT)"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Self-test the ORCH-1146 no-GBP gate
+        run: node .github/scripts/strict-grep/orch-1146-no-gbp-currency-default.mjs --self-test
+      - name: Run ORCH-1146 no-GBP currency-default gate
+        run: node .github/scripts/strict-grep/orch-1146-no-gbp-currency-default.mjs
+
   # ORCH-0962 brand-field-map-coverage gate RETIRED at META-ORCH-0972 CLOSE
   # (2026-05-26). The gate asserted that `viewRowToBrand` reads `row.brand_kind`
   # from `business_public_events_view`. META-ORCH-0972 Sub-C removed `brand_kind`

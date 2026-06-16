@@ -25,6 +25,8 @@ export interface ParsedPlayExperience {
   capacity_min: number | null;
   capacity_max: number | null;
   suggested_time_of_day: string | null;
+  // ORCH-1146 (Phase 2): null unless explicitly present in the photo.
+  is_free: boolean | null;
   confidence: number;
 }
 
@@ -54,6 +56,7 @@ const RESPONSE_SCHEMA = {
           capacity_min: { type: "integer" },
           capacity_max: { type: "integer" },
           suggested_time_of_day: { type: "string" },
+          is_free: { type: "boolean" },
           confidence: { type: "number" },
         },
         required: ["title", "narrative"],
@@ -66,12 +69,13 @@ const RESPONSE_SCHEMA = {
 const SYSTEM_PROMPT = `You are a Play-venue activities analyst for Mingla (bowling, arcade, escape room, mini-golf, etc.).
 Given photos or PDFs of an activities/packages/pricing list, extract single-intent experience offerings.
 Each experience is ONE clear bookable or walk-in offering (e.g. "Lane + pitcher for 4", "Friday night arcade tournament").
-Return JSON only. Cap at ${MAX_EXPERIENCES} experiences. Use GBP if currency unclear.
+Return JSON only. Cap at ${MAX_EXPERIENCES} experiences. If the printed currency is unclear, leave currency empty (do not guess a currency).
 If the upload is not an activities/packages list, return {"experiences":[]}.
 Do not invent offerings not supported by the source text.
 For intent_tags use ONLY: friends_chill, group_activity, date_night_active, family_friendly, solo_exploration.
 Include capacity_min and capacity_max when the source implies group size (e.g. lanes seat 6, escape room max 8).
-Include suggested_time_of_day when timing is implied (e.g. "Friday evening", "weekday afternoon").`;
+Include suggested_time_of_day when timing is implied (e.g. "Friday evening", "weekday afternoon").
+Set is_free=true ONLY when the source explicitly signals no charge (e.g. "free entry", "free play hour"); otherwise omit it. Do not guess.`;
 
 function clampConfidence(v: unknown): number {
   if (typeof v !== "number" || Number.isNaN(v)) return 0.5;
@@ -116,6 +120,8 @@ function normalizeExperience(
 
   const timeOfDay = asString(raw.suggested_time_of_day, 80) || null;
   const intentTags = filterPlayIntentTags(raw.intent_tags);
+  // ORCH-1146 (Phase 2): null unless explicitly present (no fabrication).
+  const isFree = typeof raw.is_free === "boolean" ? raw.is_free : null;
 
   return {
     title,
@@ -127,14 +133,21 @@ function normalizeExperience(
     capacity_min: capacityMin,
     capacity_max: capacityMax,
     suggested_time_of_day: timeOfDay,
+    is_free: isFree,
     confidence: clampConfidence(raw.confidence),
   };
 }
 
-/** Exported for unit tests — normalizes raw Gemini JSON. */
+/**
+ * Exported for unit tests — normalizes raw Gemini JSON.
+ *
+ * ORCH-1146 (Phase 3 — de-GBP): `defaultCurrency` defaults to "" (NOT "GBP").
+ * Callers MUST pass the brand currency; absent → "" flows through and the
+ * confirm executor resolves from `brand.default_currency` server-side.
+ */
 export function normalizeActivitiesParsePayload(
   payload: unknown,
-  defaultCurrency = "GBP",
+  defaultCurrency = "",
 ): ParsedPlayExperience[] {
   if (payload === null || typeof payload !== "object") return [];
   const experiences = (payload as { experiences?: unknown }).experiences;
@@ -164,7 +177,9 @@ export async function parseActivitiesWithGemini(args: {
     throw new Error("GEMINI_API_KEY_ARI is not configured");
   }
 
-  const defaultCurrency = args.defaultCurrency ?? "GBP";
+  // ORCH-1146 (Phase 3 — de-GBP): no GBP literal; edge entry passes brand
+  // currency, absent → "" (executor resolves from brand.default_currency).
+  const defaultCurrency = args.defaultCurrency ?? "";
   const temporaryCategory = args.temporaryCategory ?? "play";
   const parts: Array<{ text: string } | { inline_data: { mime_type: string; data: string } }> = [];
 

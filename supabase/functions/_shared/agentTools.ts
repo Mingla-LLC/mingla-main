@@ -12,6 +12,7 @@
 // deno-lint-ignore-file no-explicit-any
 import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.45.4";
 import { filterPlayIntentTags } from "./playIntentTags.ts";
+import { mapToCanonicalExperienceIntents } from "./canonicalExperienceIntents.ts";
 
 export interface AgentTool {
   name: string;
@@ -671,6 +672,11 @@ const createExperience: AgentTool = {
       capacity_min: { type: "integer", description: "Play: minimum group size" },
       capacity_max: { type: "integer", description: "Play: maximum group size" },
       suggested_time_of_day: { type: "string", description: "Play: e.g. Friday evening" },
+      is_free: {
+        type: "boolean",
+        description:
+          "Optional: true when the offering is explicitly free (no charge). Omit to derive from price.",
+      },
       confidence: { type: "number", description: "AI confidence 0-1" },
     },
   },
@@ -701,9 +707,15 @@ const createExperience: AgentTool = {
       default_currency: string | null;
     };
     const venueCategory = brand.venue_category;
-    const currency = isString(args.currency)
+    // ORCH-1146 (Phase 3 — de-GBP): resolve currency from the explicit arg else
+    // the brand's default_currency. NEVER hardcode "GBP". When both are absent,
+    // `currency` is null and the `events`/`ticket_types` INSERTs OMIT the column
+    // so the DB default applies (single source of truth = brand currency).
+    const currency: string | null = isString(args.currency)
       ? args.currency.toUpperCase().slice(0, 3)
-      : (brand.default_currency ?? "GBP");
+      : (isString(brand.default_currency)
+        ? brand.default_currency.toUpperCase().slice(0, 3)
+        : null);
 
     let intentTags: string[] = [];
     if (venueCategory === "play") {
@@ -714,6 +726,16 @@ const createExperience: AgentTool = {
       }
       intentTags = intentTags.slice(0, 12);
     }
+
+    // ORCH-1146 (Phase 1): map the raw parser tags → the canonical 4-id vocab
+    // the `events.experience_intents` CHECK enforces. Unmappable tags are
+    // dropped; an empty result means we write NULL to the column (NEVER an
+    // empty array — the CHECK requires length 1–4 when non-null). The RAW tags
+    // stay in the blob (experienceMeta.intent_tags) for audit.
+    const canonicalIntents = mapToCanonicalExperienceIntents(
+      args.intent_tags,
+      venueCategory,
+    );
 
     let capacityMin: number | null = null;
     let capacityMax: number | null = null;
@@ -777,7 +799,7 @@ const createExperience: AgentTool = {
           )
         : null;
 
-    const row = {
+    const row: Record<string, unknown> = {
       brand_id: args.brand_id,
       created_by: userId,
       title: args.title.trim(),
@@ -793,6 +815,13 @@ const createExperience: AgentTool = {
       whole_price_cents: suggestedMidCents,
       theme,
     };
+    // ORCH-1146: write currency into its real column when resolved (else OMIT
+    // so the DB default applies — never a literal "GBP").
+    if (currency) row.currency = currency;
+    // ORCH-1146: write the canonical vibes into experience_intents ONLY when at
+    // least one tag mapped. When empty → OMIT the key (column stays NULL) — the
+    // CHECK forbids an empty array. The wizard prefills from this column.
+    if (canonicalIntents.length > 0) row.experience_intents = canonicalIntents;
 
     const { data, error } = await client
       .from("events")
@@ -808,6 +837,69 @@ const createExperience: AgentTool = {
       }
       throw new ToolError("WRITE_FAILED", error.message);
     }
+
+    const eventId = (data as { id?: string } | null)?.id;
+    if (!isString(eventId)) {
+      throw new ToolError("WRITE_FAILED", "Experience insert returned no id");
+    }
+
+    // ORCH-1146 (Phase 1): write the ONE ticket_types row the wizard reads back
+    // for the free/capacity/price prefill (I-1 ONE-TICKET — never N). Mirrors
+    // the RPC's single-ticket defaults (`20260824…:489-507`). The draft has no
+    // date → still unsellable (I-2/I-4 preserved). is_free precedence: explicit
+    // args.is_free wins (Phase-2 parser field); else derive from price absence.
+    const isFree = typeof args.is_free === "boolean"
+      ? args.is_free
+      : (suggestedMidCents === null || suggestedMidCents <= 0);
+    // Capacity is a Play-only signal (Ve6). Restaurants (Ve5) never state party
+    // size → always unlimited. quantity_total NULL ⇒ is_unlimited true.
+    const quantityTotal =
+      venueCategory === "play" && capacityMax !== null && capacityMax > 0
+        ? capacityMax
+        : null;
+    const ticketRow: Record<string, unknown> = {
+      event_id: eventId,
+      name: "Standard",
+      description: null,
+      price_cents: isFree ? 0 : (suggestedMidCents ?? 0),
+      quantity_total: quantityTotal,
+      is_unlimited: quantityTotal === null,
+      is_free: isFree,
+      min_purchase_qty: 1,
+      max_purchase_qty: null,
+      is_hidden: false,
+      is_disabled: false,
+      requires_approval: false,
+      allow_transfers: true,
+      password_protected: false,
+      available_online: true,
+      available_in_person: true,
+      waitlist_enabled: false,
+      display_order: 0,
+    };
+    // Currency on the ticket too — OMIT when unresolved (DB default applies).
+    if (currency) ticketRow.currency = currency;
+
+    const { error: ticketErr } = await client
+      .from("ticket_types")
+      .insert(ticketRow);
+    if (ticketErr) {
+      // ORCH-1146 atomicity (SPEC §4.1-3, Q4 LOCKED): the executor is two
+      // direct inserts, not a transaction. If the ticket insert fails after the
+      // events insert succeeded, COMPENSATE so a snap never leaves a
+      // ticket-less draft: soft-delete the orphan events row (deleted_at), then
+      // throw. Soft-delete (not hard) because RLS may block a hard delete; the
+      // event is a draft so a stamp is sufficient to hide it.
+      await client
+        .from("events")
+        .update({ deleted_at: new Date().toISOString() })
+        .eq("id", eventId);
+      throw new ToolError(
+        "WRITE_FAILED",
+        `Experience draft created but pricing setup failed: ${ticketErr.message}`,
+      );
+    }
+
     return { event: data };
   },
 };
