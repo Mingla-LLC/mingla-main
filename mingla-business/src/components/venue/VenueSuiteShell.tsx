@@ -17,7 +17,8 @@
  *  - overview  → <VenueListingContent> (the ORCH-1145 listing, VERBATIM) + an
  *                invitation card when the toggle is OFF.
  *  - settings  → <VenueSettingsModule>.
- *  - booking   → <VenueModuleComingSoon> (honest "set up next", not a dead tap).
+ *  - booking   → live operator modules: Tables (2.1a) · Availability (2.1a) ·
+ *                Reservations (2.1b) · Waitlist (2.1b). No ComingSoon left.
  *
  * Bands C/D are not in the module union → cannot be selected → cannot dead-tap.
  */
@@ -47,9 +48,10 @@ import { Button } from "../ui/Button";
 import { GlassCard } from "../ui/GlassCard";
 import { VenueAvailabilityModule } from "./VenueAvailabilityModule";
 import { VenueListingContent } from "./VenueListingContent";
-import { VenueModuleComingSoon } from "./VenueModuleComingSoon";
+import { VenueReservationsModule } from "./VenueReservationsModule";
 import { VenueSettingsModule } from "./VenueSettingsModule";
 import { VenueTablesModule } from "./VenueTablesModule";
+import { VenueWaitlistModule } from "./VenueWaitlistModule";
 import { moduleSelfScrolls, venueScrollBottomPad } from "./venueShellScroll";
 import {
   VENUE_MODULES,
@@ -113,9 +115,6 @@ export function VenueSuiteShell({
     });
   }, [setEnabled]);
 
-  const goToSettings = useCallback((): void => {
-    setActiveModule("settings");
-  }, []);
 
   // Overview mounts <VenueListingContent>, which OWNS its own ScrollView (with
   // its own `insets.bottom + 120` clearance) — so the shell must NOT wrap it in
@@ -166,19 +165,19 @@ export function VenueSuiteShell({
     if (activeModule === "settings") {
       return <VenueSettingsModule brandId={brandId} />;
     }
-    // 2.1a — Tables + Availability are now LIVE operator modules (replacing
-    // ComingSoon). Reservations + Waitlist stay ComingSoon until 2.1b.
+    // 2.1a — Tables + Availability LIVE. 2.1b — Reservations + Waitlist LIVE.
+    // The whole booking band is now real operator UI (no ComingSoon left).
     if (activeModule === "tables") {
       return <VenueTablesModule brandId={brandId} />;
     }
     if (activeModule === "availability") {
       return <VenueAvailabilityModule brandId={brandId} />;
     }
-    // Remaining booking band (reservations / waitlist) → honest ComingSoon
-    // (never a dead tap). Real CRUD lands in 2.1b.
-    return (
-      <VenueModuleComingSoon module={activeModule} onGoToSettings={goToSettings} />
-    );
+    if (activeModule === "reservations") {
+      return <VenueReservationsModule brandId={brandId} />;
+    }
+    // The remaining booking module: waitlist.
+    return <VenueWaitlistModule brandId={brandId} />;
   };
 
   // ----- Web desktop: two-column master rail + workspace. -----

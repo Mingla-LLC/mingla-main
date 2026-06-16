@@ -500,9 +500,14 @@ Deno.test("T-MIG-20 — the P3 fix migration versions are monotonic above all pr
     .filter((n) => /^20261008000\d{3}_orch_1148/.test(n))
     .map((n) => n.slice(0, 14));
   assert(present.length >= 3, "the three P3 fix migrations must exist");
+  // The P3 probe must come AFTER the engine v2 + tz column (so the probe runs
+  // against the v2 engine). NOTE: a later 2.1a follow-up (revoke_anon_turn_helper
+  // at ...003) legitimately sits above the probe, so this asserts ordering, not
+  // strict-max (the original "is the highest" assertion was stale post that add).
   assert(
-    Math.max(...present.map(Number)) === Number(P3_PROBE_FILE.slice(0, 14)),
-    "the P3 probe migration must be the highest (last) prefix",
+    Number(P3_PROBE_FILE.slice(0, 14)) > Number(ENGINE_V2_FILE.slice(0, 14)) &&
+      Number(P3_PROBE_FILE.slice(0, 14)) > Number(TZ_COLUMN_FILE.slice(0, 14)),
+    "the P3 probe must order after the engine v2 + tz-column migrations",
   );
 });
 
@@ -533,5 +538,159 @@ Deno.test("T-MIG-15 — the 2.1a probe asserts the engine contract, the grant bo
     sql,
     /must enforce party_fit/,
     "probe must assert party_fit is enforced server-side",
+  );
+});
+
+/* =========================================================================
+ * 2.1b — reservation lifecycle + waitlist RPCs + SMS consent (T-MIG-21..30).
+ * Fails-on-revert anchors:
+ *   I-PROPOSED-1148-RESERVATION-LIFECYCLE-TRANSITIONS-GUARDED-SERVER-SIDE
+ *   I-PROPOSED-1148-WAITLIST-CONVERT-ATOMIC
+ *   I-PROPOSED-1148-SMS-OPT-OUT-HONORED
+ * ======================================================================= */
+const CONSENT_FILE = "20261010000000_orch_1148_sms_consent_and_log.sql";
+const LIFECYCLE_RPC_FILE = "20261010000001_orch_1148_reservation_lifecycle_rpcs.sql";
+const WAITLIST_RPC_FILE = "20261010000002_orch_1148_waitlist_rpcs_and_indexes.sql";
+const LIFECYCLE_PROBE_FILE = "20261010000003_orch_1148_reservation_lifecycle_probes.sql";
+
+Deno.test("T-MIG-21 — the 2.1b migrations exist and are ADDITIVE (no DROP TABLE/COLUMN)", () => {
+  for (const f of [CONSENT_FILE, LIFECYCLE_RPC_FILE, WAITLIST_RPC_FILE, LIFECYCLE_PROBE_FILE]) {
+    const sql = read(f);
+    assert(sql.length > 0, `${f} must exist`);
+    assert(
+      !/DROP\s+TABLE/i.test(sql) && !/DROP\s+COLUMN/i.test(sql),
+      `${f} must be additive (no DROP TABLE/COLUMN)`,
+    );
+  }
+});
+
+Deno.test("T-MIG-22 — the legal-transition matrix locks terminal states + no_show source", () => {
+  const sql = read(LIFECYCLE_RPC_FILE);
+  // The matrix fn exists.
+  assertMatch(
+    sql,
+    /FUNCTION public\.pg_reservation_transition_is_legal/,
+    "the legal-transition matrix fn must exist",
+  );
+  // requested can confirm; confirmed can seat/no_show; seated can complete/no_show.
+  assertMatch(sql, /WHEN 'confirmed'\s+THEN p_to IN \([^)]*'no_show'[^)]*\)/);
+  assertMatch(sql, /WHEN 'seated'\s+THEN p_to IN \([^)]*'completed'[^)]*\)/);
+  // The ELSE branch returns false → terminal states are locked.
+  assertMatch(sql, /ELSE false/);
+});
+
+Deno.test("T-MIG-23 — biz_reservation_transition is SECURITY DEFINER, gated, audited, enforces legality", () => {
+  const sql = read(LIFECYCLE_RPC_FILE);
+  assertMatch(sql, /FUNCTION public\.biz_reservation_transition/);
+  assertMatch(sql, /SECURITY DEFINER/);
+  assertMatch(
+    sql,
+    /biz_brand_effective_rank_for_caller/,
+    "transition must gate on brand-member rank",
+  );
+  assertMatch(
+    sql,
+    /pg_reservation_transition_is_legal\(v_from, p_to_status\)/,
+    "transition must enforce server-side legality",
+  );
+  assertMatch(sql, /INSERT INTO public\.audit_log/, "transition must be audited");
+  assertMatch(
+    sql,
+    /REVOKE EXECUTE ON FUNCTION public\.biz_reservation_transition[\s\S]*FROM anon/,
+    "transition must NOT be anon-callable",
+  );
+});
+
+Deno.test("T-MIG-24 — biz_reservation_create is guarded + creates FREE operator bookings", () => {
+  const sql = read(LIFECYCLE_RPC_FILE);
+  assertMatch(sql, /FUNCTION public\.biz_reservation_create/);
+  assertMatch(sql, /SECURITY DEFINER/);
+  assertMatch(sql, /biz_brand_effective_rank_for_caller/);
+  assertMatch(sql, /'operator'/, "manual create must set created_via='operator'");
+  // No checkout/charge CODE in the lifecycle RPC migration (money seam stays
+  // 2.2). Strip SQL comments first — the header prose names the 2.2 Stripe seam.
+  const noComments = sql
+    .replace(/\/\*[\s\S]*?\*\//g, "")
+    .replace(/--.*$/gm, "");
+  assert(
+    !/ticket-checkout-create|allInPricingEngine|stripe_charges|payment_intent_id\s*=|stripe\.|paystack\./i.test(
+      noComments,
+    ),
+    "the lifecycle RPC migration must NOT touch any money path",
+  );
+});
+
+Deno.test("T-MIG-25 — waitlist convert is ATOMIC (create reservation + mark converted in one fn)", () => {
+  const sql = read(WAITLIST_RPC_FILE);
+  assertMatch(sql, /FUNCTION public\.biz_waitlist_convert_to_reservation/);
+  assertMatch(sql, /INSERT INTO public\.reservations/);
+  assertMatch(sql, /status = 'converted'/);
+  assertMatch(sql, /converted_reservation_id = v_res\.id/);
+  assertMatch(sql, /SECURITY DEFINER/);
+  assertMatch(sql, /biz_brand_effective_rank_for_caller/);
+});
+
+Deno.test("T-MIG-26 — waitlist mark-notified RPC exists, guarded, audited", () => {
+  const sql = read(WAITLIST_RPC_FILE);
+  assertMatch(sql, /FUNCTION public\.biz_waitlist_mark_notified/);
+  assertMatch(sql, /status = 'notified'/);
+  assertMatch(sql, /INSERT INTO public\.audit_log/);
+});
+
+Deno.test("T-MIG-27 — the SMS consent ledger exists, RLS-enabled, NOT authenticated-readable", () => {
+  const sql = read(CONSENT_FILE);
+  assertMatch(sql, /CREATE TABLE IF NOT EXISTS public\.venue_sms_opt_out/);
+  assertMatch(sql, /ALTER TABLE public\.venue_sms_opt_out ENABLE ROW LEVEL SECURITY/);
+  // No SELECT policy for `authenticated` on the opt-out PII ledger.
+  assert(
+    !/CREATE POLICY[^;]*ON public\.venue_sms_opt_out[\s\S]*?FOR SELECT TO authenticated/i.test(sql),
+    "the opt-out ledger must NOT be authenticated-readable (service-role only)",
+  );
+});
+
+Deno.test("T-MIG-28 — the SMS send log exists + is brand-member-readable + service-write only", () => {
+  const sql = read(CONSENT_FILE);
+  assertMatch(sql, /CREATE TABLE IF NOT EXISTS public\.venue_sms_log/);
+  assertMatch(
+    sql,
+    /CREATE POLICY[^;]*ON public\.venue_sms_log[\s\S]*?biz_is_brand_member_for_read_for_caller/,
+    "the send log must be brand-member-readable",
+  );
+  // No INSERT/ALL policy for authenticated → service_role inserts only.
+  assert(
+    !/CREATE POLICY[^;]*ON public\.venue_sms_log[\s\S]*?FOR (INSERT|ALL) TO authenticated/i.test(sql),
+    "the send log must NOT be authenticated-writable",
+  );
+});
+
+Deno.test("T-MIG-29 — the 2.1b probe asserts transitions guarded, atomic convert, consent (read-only)", () => {
+  const sql = read(LIFECYCLE_PROBE_FILE);
+  // Strip comments AND single-quoted SQL string literals — the probe READS
+  // function defs that CONTAIN write keywords (via position('INSERT …' in v_def)),
+  // but performs no actual writes. The real read-only guard is: no unquoted
+  // INSERT INTO / UPDATE public. statement.
+  const body = sql
+    .replace(/--.*$/gm, "")
+    .replace(/\$q\$[\s\S]*?\$q\$/g, "''") // dollar-quoted literals
+    .replace(/'[^']*'/g, "''"); // single-quoted literals
+  assert(
+    !/\bINSERT\s+INTO\b/i.test(body) && !/\bUPDATE\s+public\./i.test(body),
+    "the 2.1b probe must be read-only (no unquoted writes)",
+  );
+  assertMatch(sql, /pg_reservation_transition_is_legal\('completed', 'seated'\)/);
+  assertMatch(sql, /biz_reservation_transition must enforce legality/);
+  assertMatch(sql, /atomically create the reservation AND mark/);
+  assertMatch(sql, /venue_sms_opt_out.*is missing/);
+});
+
+Deno.test("T-MIG-30 — the 2.1b probe is the new highest migration prefix", () => {
+  const present = [...Deno.readDirSync(DIR)]
+    .map((e) => e.name)
+    .filter((n) => /^20261010000\d{3}_orch_1148/.test(n))
+    .map((n) => n.slice(0, 14));
+  assert(present.length >= 4, "the four 2.1b migrations must exist");
+  assert(
+    Math.max(...present.map(Number)) === Number(LIFECYCLE_PROBE_FILE.slice(0, 14)),
+    "the 2.1b probe migration must be the highest (last) prefix",
   );
 });

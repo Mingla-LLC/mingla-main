@@ -224,3 +224,136 @@ export interface AvailableSlot {
   /** true → returned but full (show "full", don't hide). */
   isFull: boolean;
 }
+
+/* ===========================================================================
+ * 2.1b (Reservations lifecycle + Waitlist) domain types. camelCase mapped from
+ * the snake_case `reservations` / `venue_waitlist` tables.
+ * ========================================================================= */
+
+/** The 8-state reservation lifecycle (matches the reservations.status CHECK). */
+export type ReservationStatus =
+  | "requested"
+  | "confirmed"
+  | "seated"
+  | "completed"
+  | "no_show"
+  | "cancelled_by_guest"
+  | "cancelled_by_venue"
+  | "waitlisted";
+
+/** Where a reservation came from (matches reservations.source CHECK). */
+export type ReservationSource =
+  | "mingla"
+  | "phone"
+  | "walk_in"
+  | "website"
+  | "instagram";
+
+/** payment_status (manual bookings are FREE → 'none'). */
+export type ReservationPaymentStatus = "none" | "paid" | "refunded";
+
+/**
+ * The segmented list views (Design IA §4.4) — NOT a 3rd nav level; a segmented
+ * control inside the Reservations module. Each maps to a status filter.
+ */
+export type ReservationView =
+  | "today"
+  | "upcoming"
+  | "waitlist"
+  | "completed"
+  | "no_shows"
+  | "canceled";
+
+/** A `reservations` row, camelCased. */
+export interface Reservation {
+  id: string;
+  brandId: string;
+  placePoolId: string | null;
+  tableId: string | null;
+  /** Slot start, UTC ISO. */
+  reservedFor: string;
+  partySize: number;
+  status: ReservationStatus;
+  source: ReservationSource;
+  createdVia: "operator" | "consumer";
+  guestName: string | null;
+  guestPhoneE164: string | null;
+  guestEmail: string | null;
+  consumerUserId: string | null;
+  occasion: string | null;
+  guestNotes: string | null;
+  tags: string[];
+  feeCents: number | null;
+  feeCurrency: string | null;
+  paymentStatus: ReservationPaymentStatus;
+  createdAt: string;
+}
+
+/** Manual-create payload for biz_reservation_create. */
+export interface ReservationCreateInput {
+  reservedFor: string;
+  partySize: number;
+  source: ReservationSource;
+  guestName: string | null;
+  guestPhoneE164: string | null;
+  guestEmail: string | null;
+  tableId: string | null;
+  occasion: string | null;
+  guestNotes: string | null;
+  tags: string[];
+}
+
+/** The lifecycle actions the operator can take (UI labels → transition target). */
+export type ReservationAction =
+  | "confirm"
+  | "seat"
+  | "no_show"
+  | "complete"
+  | "cancel";
+
+/** The canonical reservation tags (Design IA §4.4). */
+export const RESERVATION_TAGS = [
+  "vip",
+  "birthday",
+  "first_time",
+  "regular",
+  "high_risk_no_show",
+] as const;
+export type ReservationTag = (typeof RESERVATION_TAGS)[number];
+
+/** venue_waitlist status (matches the CHECK). */
+export type WaitlistStatus =
+  | "waiting"
+  | "notified"
+  | "converted"
+  | "expired"
+  | "lost";
+
+/** A `venue_waitlist` row, camelCased. */
+export interface WaitlistEntry {
+  id: string;
+  brandId: string;
+  guestName: string | null;
+  guestPhoneE164: string | null;
+  guestEmail: string | null;
+  partySize: number;
+  preferredZone: VenueTableZone | null;
+  quotedWaitMinutes: number | null;
+  status: WaitlistStatus;
+  notifyVia: "push" | "sms" | "none";
+  notifiedAt: string | null;
+  expiresAt: string | null;
+  convertedReservationId: string | null;
+  consumerUserId: string | null;
+  createdAt: string;
+}
+
+/** Add-to-waitlist payload (direct RLS-gated insert). */
+export interface WaitlistAddInput {
+  guestName: string | null;
+  guestPhoneE164: string | null;
+  guestEmail: string | null;
+  partySize: number;
+  preferredZone: VenueTableZone | null;
+  quotedWaitMinutes: number | null;
+}

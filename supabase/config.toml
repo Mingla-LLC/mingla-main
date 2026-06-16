@@ -220,3 +220,11 @@ verify_jwt = false
 # It is NOT a public anon route.
 [functions.rsvp-notify]
 verify_jwt = true
+
+# META-ORCH-1148 2.1b — send-venue-sms is the OPERATOR-triggered "table's ready"
+# waitlist SMS. verify_jwt=true: the gateway verifies the caller's user JWT; the
+# fn ADDITIONALLY gates on manager-plus brand membership, validates E.164, honors
+# the SMS opt-out (STOP) ledger, and sends ONLY via the approved toll-free
+# Messaging Service. Twilio creds are Supabase secrets (set at deploy).
+[functions.send-venue-sms]
+verify_jwt = true
