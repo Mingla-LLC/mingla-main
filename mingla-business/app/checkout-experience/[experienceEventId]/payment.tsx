@@ -104,7 +104,7 @@ function CheckoutExperiencePaymentScreenContent({
 
   const query = usePublicExperienceById(experienceEventId);
   const experience = query.data?.experience ?? null;
-  const { lines, buyer, setLineQuantity, setBuyer } = useCart();
+  const { lines, buyer, setLineQuantity, setBuyer, eventDateId } = useCart();
   const totals = useCartTotals();
 
   const [restoreChecked, setRestoreChecked] = useState<boolean>(
@@ -300,6 +300,9 @@ function CheckoutExperiencePaymentScreenContent({
           buyer,
           lines,
           surface,
+          // ORCH-1138 Leg 3 — forward the chosen occurrence ONLY when the buyer
+          // picked a slot (adaptive Reserve); null → request byte-identical.
+          ...(eventDateId !== null ? { eventDateId } : {}),
         });
         if (checkout.kind !== "requires_web_redirect") {
           throw new Error("Hosted checkout did not return a redirect URL.");
@@ -370,6 +373,8 @@ function CheckoutExperiencePaymentScreenContent({
         ...(previewCalculationId
           ? { taxCalculationId: previewCalculationId }
           : {}),
+        // ORCH-1138 Leg 3 — chosen occurrence ONLY when present; null → identical.
+        ...(eventDateId !== null ? { eventDateId } : {}),
       });
 
       mixpanelService.track("ticket_checkout_sheet_opened", {
@@ -463,6 +468,7 @@ function CheckoutExperiencePaymentScreenContent({
     }
   }, [
     buyer,
+    eventDateId,
     experienceEventId,
     lines,
     nativeCheckout,

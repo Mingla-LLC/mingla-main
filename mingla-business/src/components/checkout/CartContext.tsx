@@ -149,6 +149,15 @@ export interface CartState {
    * tier). Cleared by RESET; otherwise lives for the cart lifetime.
    */
   intakeFormData: Record<string, unknown>;
+  /**
+   * ORCH-1138 Leg 3 — the chosen experience occurrence's event_dates.id, carried
+   * public page → checkout when the buyer picked a slot from the adaptive Reserve
+   * picker (recurring/multi-date/open-daily). null for single/no-date experiences
+   * (and all events/trips) → the checkout request stays byte-identical to today.
+   * Forwarded as the already-supported optional `eventDateId` on the
+   * ticket-checkout-create request only when non-null.
+   */
+  eventDateId: string | null;
 }
 
 // ---- Reducer --------------------------------------------------------
@@ -171,6 +180,8 @@ type CartAction =
   | { type: "SET_INTAKE_TIER"; ticketTypeId: string; data: unknown }
   | { type: "CLEAR_INTAKE_TIER"; ticketTypeId: string }
   | { type: "SET_PAYMENT_PLAN_CHOICE"; choice: TripPaymentPlanChoice }
+  // ORCH-1138 Leg 3 — set/clear the chosen experience occurrence.
+  | { type: "SET_EVENT_DATE_ID"; eventDateId: string | null }
   | { type: "RESET" };
 
 const EMPTY_BUYER: BuyerDetails = {
@@ -194,6 +205,8 @@ const INITIAL_STATE: CartState = {
   intakeFormData: {},
   // ORCH-1130 — default to pay-in-full (deliberate non-surprising default).
   paymentPlanChoice: "full",
+  // ORCH-1138 Leg 3 — no occurrence chosen by default (single/no-date path).
+  eventDateId: null,
 };
 
 const reducer = (state: CartState, action: CartAction): CartState => {
@@ -283,6 +296,8 @@ const reducer = (state: CartState, action: CartAction): CartState => {
     }
     case "SET_PAYMENT_PLAN_CHOICE":
       return { ...state, paymentPlanChoice: action.choice };
+    case "SET_EVENT_DATE_ID":
+      return { ...state, eventDateId: action.eventDateId };
     case "RESET":
       return INITIAL_STATE;
     default: {
@@ -322,6 +337,13 @@ export interface CartContextValue extends CartState {
    * Review & pay segmented toggle (payment.tsx) as the last-chance editor.
    */
   setPaymentPlanChoice: (choice: TripPaymentPlanChoice) => void;
+  /**
+   * ORCH-1138 Leg 3 — set/clear the chosen experience occurrence. Called by the
+   * checkout-experience index's seed-from-route-param effect (the `eventDateId`
+   * param the public /exp/ page threads when the buyer picked a slot). null on
+   * the single/no-date path → request byte-identical.
+   */
+  setEventDateId: (eventDateId: string | null) => void;
   reset: () => void;
 }
 
@@ -378,6 +400,11 @@ export const CartProvider: React.FC<CartProviderProps> = ({ children }) => {
     [],
   );
 
+  // ORCH-1138 Leg 3 — chosen experience occurrence setter.
+  const setEventDateId = useCallback((eventDateId: string | null): void => {
+    dispatch({ type: "SET_EVENT_DATE_ID", eventDateId });
+  }, []);
+
   const reset = useCallback((): void => {
     dispatch({ type: "RESET" });
   }, []);
@@ -391,6 +418,7 @@ export const CartProvider: React.FC<CartProviderProps> = ({ children }) => {
       setIntakeTierData,
       clearIntakeTierData,
       setPaymentPlanChoice,
+      setEventDateId,
       reset,
     }),
     [
@@ -401,6 +429,7 @@ export const CartProvider: React.FC<CartProviderProps> = ({ children }) => {
       setIntakeTierData,
       clearIntakeTierData,
       setPaymentPlanChoice,
+      setEventDateId,
       reset,
     ],
   );

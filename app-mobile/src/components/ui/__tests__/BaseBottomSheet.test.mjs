@@ -110,21 +110,28 @@ function run() {
     /useBottomSheetSpringConfigs/,
     "T-C primitive must NOT build a custom spring (REJECTED — clone of ExpandedBusinessEventSheet)",
   );
-  // The gold-standard reference itself passes NO animationConfigs — assert it
-  // stays that way so the primitive and its reference remain feel-equivalent.
+  // The gold-standard reference passes NO animationConfigs — assert it stays
+  // that way so the primitive and its reference remain feel-equivalent.
+  // ORCH-1138 Leg 3 [TEST-MOD-APPROVED ORCH-1138] — ExpandedBusinessEventSheet
+  // was DELETED (EBES decommission). The gorhom-recipe reference is now the
+  // shared primitive's other consumer, ConsumerEventDetailScreen (the Leg-2
+  // foundation detail), which also passes NO animationConfigs.
   assert.doesNotMatch(
     read(
-      "app-mobile/src/components/expandedCard/ExpandedBusinessEventSheet.tsx",
+      "app-mobile/src/screens/Event/ConsumerEventDetailScreen.tsx",
     ).replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:])\/\/[^\n]*/g, "$1"),
     /animationConfigs=/,
-    "T-C reference ExpandedBusinessEventSheet still passes NO animationConfigs",
+    "T-C reference ConsumerEventDetailScreen still passes NO animationConfigs",
   );
 
   // ── T-D: all 5 sheets consume BaseBottomSheet + none imports gorhom ────────
+  // ORCH-1138 Leg 3 [TEST-MOD-APPROVED ORCH-1138] — ExpandedBusinessEventSheet
+  // DELETED (EBES decommission); its successor foundation consumer
+  // ConsumerEventDetailScreen takes its slot as a BaseBottomSheet consumer.
   const SHEETS = {
     CollabSessionChatBanners: "app-mobile/src/components/chat/CollabSessionChatBanners.tsx",
     TicketCartSheet: "app-mobile/src/components/expandedCard/TicketCartSheet.tsx",
-    ExpandedBusinessEventSheet: "app-mobile/src/components/expandedCard/ExpandedBusinessEventSheet.tsx",
+    ConsumerEventDetailScreen: "app-mobile/src/screens/Event/ConsumerEventDetailScreen.tsx",
     NotificationsSheet: "app-mobile/src/components/NotificationsSheet.tsx",
     ExpandedCardModal: "app-mobile/src/components/ExpandedCardModal.tsx",
   };
@@ -149,17 +156,14 @@ function run() {
     "T-E NotificationsSheet passes scrollMode='sectionlist'",
   );
 
-  // ── No-double-fire structural guard: a migrated sheet that keeps an onChange
-  // passthrough must NOT also call onClose in it (primitive owns that). The two
-  // sheets that pass onChange/onClose explicitly are checked.
-  const ebes = read(SHEETS.ExpandedBusinessEventSheet);
-  const handleChange = ebes.match(/const handleSheetChange[\s\S]*?\}\s*,\s*\[\s*\]\s*\)/);
-  assert.ok(handleChange, "T-B handleSheetChange present in ExpandedBusinessEventSheet");
-  assert.doesNotMatch(
-    handleChange[0],
-    /onClose\(\)/,
-    "T-B ExpandedBusinessEventSheet onChange passthrough must NOT call onClose (no double-fire)",
-  );
+  // ── No-double-fire structural guard. ORCH-1138 Leg 3 [TEST-MOD-APPROVED
+  // ORCH-1138]: the EBES-specific onChange-passthrough sub-check had no
+  // behavioral successor — the foundation detail screens (ConsumerEventDetailScreen
+  // / ConsumerExperienceDetailScreen) no longer pass a custom onChange; the
+  // BaseBottomSheet primitive owns the index===-1 → onClose routing exclusively.
+  // That live invariant is already asserted on the primitive itself at T-B above
+  // (`if (index === -1) onClose()` — line ~81), so the no-double-fire guarantee
+  // is unchanged; only the deleted-EBES read is dropped.
 }
 
 try {

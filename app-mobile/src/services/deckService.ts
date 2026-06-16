@@ -325,6 +325,8 @@ function experienceCardToRecommendation(card: any): Recommendation {
       travelTimeFromPreviousStopMin: null,
       travelModeFromPreviousStop: null,
       aiDescription: typeof s?.aiDescription === 'string' ? s.aiDescription : '',
+      // ORCH-1138 rework (§4.C.2) — per-stop authored start time → consumer time pill.
+      startTime: typeof s?.startTime === 'string' && s.startTime.length > 0 ? s.startTime : null,
       estimatedDurationMinutes: 0,
     };
   });
@@ -340,6 +342,20 @@ function experienceCardToRecommendation(card: any): Recommendation {
     id: String(card?.id ?? card?.eventId ?? ''),
     eventId: String(card?.eventId ?? card?.id ?? ''),
     experienceType: intentId,
+    // ORCH-1138 rework (§4.C.2) — the FULL canonical-vibe array (consumer vibe
+    // chips). Falls back to [experienceType] when the edge sends only the single.
+    experienceIntents: Array.isArray(card?.experienceIntents)
+      ? card.experienceIntents.filter(
+          (x: unknown): x is string => typeof x === 'string' && x.length > 0,
+        )
+      : (intentId ? [intentId] : []),
+    // ORCH-1138 rework (§4.C.2) — anon-safe brand theme passthrough (COMMS-0009).
+    brandTheme:
+      card?.brandTheme !== null && typeof card?.brandTheme === 'object'
+        ? card.brandTheme
+        : null,
+    // ORCH-1138 rework (§4.C.2) — first-stop city → City,Country chip.
+    city: typeof card?.city === 'string' && card.city.length > 0 ? card.city : null,
     title: typeof card?.title === 'string' ? card.title : '',
     tagline: typeof card?.tagline === 'string' ? card.tagline : '',
     // ORCH-1072: carry the experience's REAL description + cover + upcoming

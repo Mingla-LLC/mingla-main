@@ -5,9 +5,10 @@
  *
  * Locks in the contract that the consumer-side payload builder
  * (`supabase/functions/discover-merged-events/index.ts`) and the consumer
- * mapping (`app-mobile/src/components/expandedCard/ExpandedBusinessEventSheet.tsx`)
- * resolve `venueName`, `address`, and `format` identically to the brand-
- * side `mingla-business/src/services/publicEventsService.ts`. Restores the
+ * mapping (`app-mobile/src/screens/Event/ConsumerEventDetailScreen.tsx`, the
+ * post-EBES successor — see ORCH-1138 retarget note below) resolve `venueName`,
+ * `address`, and `format` identically to the brand-side
+ * `mingla-business/src/services/publicEventsService.ts`. Restores the
  * META-ORCH-0827 [Platform structure consolidation] Pass 2 Step 10 parity
  * contract that was broken pre-0846 by `venueName: null` and
  * `format: "in-person"` hardcodes.
@@ -16,7 +17,9 @@
  *   1. The literal `venueName: null` must NOT appear on a non-comment line
  *      in the discover edge function. (Was line 422 pre-fix.)
  *   2. The literal `format: "in-person"` must NOT appear on a non-comment
- *      line in ExpandedBusinessEventSheet.tsx. (Was line 81 pre-fix.)
+ *      line in the consumer detail screen (ConsumerEventDetailScreen.tsx;
+ *      formerly ExpandedBusinessEventSheet.tsx line 81 pre-fix, retargeted by
+ *      ORCH-1138 when EBES was decommissioned).
  *   3. `extractVenueName` must be referenced in the discover edge function
  *      (proves the fallback helper is wired up).
  *   4. `deriveSharedFormat` must be referenced in the discover edge function
@@ -48,12 +51,20 @@ const repoRoot = path.resolve(__dirname, "../../..");
 // 830-line index.ts monolith into `_business-query.ts` (mapRpcRowToCard — the
 // SOLE business-card constructor). The venue/address/format resolution helpers
 // (extractVenueName / deriveSharedFormat, unchanged in _helpers.ts) are now wired
-// there. R-1/R-3/R-4 retarget to _business-query.ts; R-2 (sheet) + R-5 (type)
-// unchanged. See INVESTIGATE_ORCH-1135_DISCOVER_V2_INVARIANT_PRESERVATION.md.
+// there. R-1/R-3/R-4 retarget to _business-query.ts; R-5 (type) unchanged. See
+// INVESTIGATE_ORCH-1135_DISCOVER_V2_INVARIANT_PRESERVATION.md.
 // NOTE: if a future ORCH moves card construction again, retarget BUSINESS_QUERY.
+//
+// ORCH-1138 Leg 3 (EBES decommission): ExpandedBusinessEventSheet.tsx — the
+// consumer-side mapping R-2 used to scan — was DELETED. Its successor consumer of
+// the BusinessEventCard payload is the Leg-2 foundation detail screen
+// `ConsumerEventDetailScreen.tsx`, which consumes `card.format` directly (no
+// `format: "in-person"` hardcode). R-2 retargets to that screen — the venue/
+// address/format parity invariant must hold wherever the consumer now reads the
+// shared card. See SPEC_ORCH-1138_RESERVE_STRAIGHT_TO_CART.md / EBES deletion.
 const DISCOVER_FN = "supabase/functions/discover-merged-events/index.ts";
 const BUSINESS_QUERY = "supabase/functions/discover-merged-events/_business-query.ts";
-const SHEET = "app-mobile/src/components/expandedCard/ExpandedBusinessEventSheet.tsx";
+const SHEET = "app-mobile/src/screens/Event/ConsumerEventDetailScreen.tsx";
 const CARD_TYPE = "app-mobile/src/types/mergedDiscover.ts";
 
 const readSource = (relPath) => {
@@ -106,14 +117,15 @@ const record = (rule, pass, detail) => {
   );
 }
 
-// Rule 2 — format: "in-person" forbidden in ExpandedBusinessEventSheet.tsx
-// (Single or double quotes; either flavor would be a regression.)
+// Rule 2 — format: "in-person" forbidden in the consumer detail screen
+// (ConsumerEventDetailScreen.tsx; post-EBES successor — must consume card.format,
+// not re-hardcode "in-person"). Single or double quotes; either is a regression.
 {
   const hitDouble = forbidOnNonCommentLine(sheetSrc, 'format: "in-person"');
   const hitSingle = forbidOnNonCommentLine(sheetSrc, "format: 'in-person'");
   const hit = hitDouble ?? hitSingle;
   record(
-    'R-2 format: "in-person" hardcode forbidden in ExpandedBusinessEventSheet.tsx',
+    'R-2 format: "in-person" hardcode forbidden in ConsumerEventDetailScreen.tsx',
     hit === null,
     hit === null
       ? `${SHEET}: no offending line`

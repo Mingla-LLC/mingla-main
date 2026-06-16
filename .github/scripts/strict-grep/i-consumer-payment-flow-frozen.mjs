@@ -10,7 +10,17 @@
  *
  * Files frozen:
  *   - `app-mobile/src/payments/nativeCheckoutFlow.ts`
- *   - `app-mobile/src/components/expandedCard/ExpandedBusinessEventSheet.tsx`
+ *   - `app-mobile/src/screens/Event/ConsumerEventDetailScreen.tsx`
+ *   - `app-mobile/src/screens/Experience/ConsumerExperienceDetailScreen.tsx`
+ *
+ * ORCH-1138 Leg 3 (EBES decommission): ExpandedBusinessEventSheet.tsx — the
+ * consumer sheet that USED to host runNativeCheckout — was DELETED. Its
+ * fire-and-forget checkout (the gold reference this gate protects) was ported
+ * VERBATIM into the Leg-2 foundation detail screens ConsumerEventDetailScreen
+ * (events) + ConsumerExperienceDetailScreen (experiences). The "no consumer
+ * payment regression" invariant now lives there, so the freeze retargets to both
+ * — neither may adopt the synchronous-confirm pattern (ORCH-0853 scope) without
+ * citing [CONSUMER-MOD-APPROVED ORCH-NNNN] + updating this gate in the same PR.
  *
  * Verification mechanism: compute the size + line count + a substring
  * fingerprint of stable identifiers. This is a lightweight integrity
@@ -63,10 +73,27 @@ const FROZEN_FILES = [
     ],
   },
   {
-    path: "app-mobile/src/components/expandedCard/ExpandedBusinessEventSheet.tsx",
+    // ORCH-1138: EBES's events checkout was ported here verbatim (keeps the
+    // "Ticket secured" success copy + businessEventOrders invalidation).
+    path: "app-mobile/src/screens/Event/ConsumerEventDetailScreen.tsx",
     mustContain: [
       "runNativeCheckout",
       "Ticket secured",
+      "businessEventOrders",
+    ],
+    mustNotContain: [
+      "confirmTicketCheckout",
+      "useOrderRealtimeSubscription",
+    ],
+  },
+  {
+    // ORCH-1138: the experience consumer of the SAME fire-and-forget flow.
+    // Experience success copy is "Reserved!" (kind-appropriate), but the
+    // load-bearing payment surface (runNativeCheckout + businessEventOrders
+    // invalidation) and the no-sync-confirm guarantee are identical.
+    path: "app-mobile/src/screens/Experience/ConsumerExperienceDetailScreen.tsx",
+    mustContain: [
+      "runNativeCheckout",
       "businessEventOrders",
     ],
     mustNotContain: [

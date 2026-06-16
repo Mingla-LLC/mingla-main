@@ -31,6 +31,8 @@ export interface NativeCheckoutInput {
   paymentPlanChoice?: "full" | "installments";
   idempotencyKey?: string;
   taxCalculationId?: string | null;
+  /** ORCH-1138 Leg 3 — chosen experience occurrence (web stub never invokes). */
+  eventDateId?: string;
 }
 
 export type NativeCheckoutOutcome =

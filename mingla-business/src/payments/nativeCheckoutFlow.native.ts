@@ -65,6 +65,12 @@ export interface NativeCheckoutInput {
   paymentPlanChoice?: "full" | "installments";
   idempotencyKey?: string;
   taxCalculationId?: string | null;
+  /**
+   * ORCH-1138 Leg 3 — the chosen experience occurrence's event_dates.id (adaptive
+   * Reserve picker). Forwarded ONLY when present → byte-identical request on the
+   * single/no-date path. The edge fn already validates + binds it.
+   */
+  eventDateId?: string;
 }
 
 export type NativeCheckoutOutcome =
@@ -245,6 +251,11 @@ export const useNativeCheckoutFlow = (): (
             : {}),
           ...(input.idempotencyKey !== undefined
             ? { idempotencyKey: input.idempotencyKey }
+            : {}),
+          // ORCH-1138 Leg 3 — chosen occurrence ONLY when present (byte-identical
+          // on null). The edge fn validates the eventDateId FK (investigation Q5).
+          ...(input.eventDateId !== undefined && input.eventDateId.length > 0
+            ? { eventDateId: input.eventDateId }
             : {}),
         },
       },

@@ -147,6 +147,26 @@ interface ExperienceDeckCard {
   id: string;
   eventId: string;
   experienceType: string;
+  // ORCH-1138 rework (§4.B) — the FULL curated-vibe array (the 4 canonical ids:
+  // adventurous|first-date|romantic|group-fun) so the consumer renders MULTIPLE
+  // vibe chips, not just the single experienceType. Empty array when absent
+  // (rule 9 — never fabricated).
+  experienceIntents: string[];
+  // ORCH-1138 rework (§4.B) — the anon-safe resolved brand theme (from the deck
+  // RPC's brand_theme, sourced via business_public_events_view — COMMS-0009).
+  // null when the brand carries no theme. The seed mapper feeds it to
+  // resolveTheme as a SYNCHRONOUS fallback so the detail never flashes default.
+  brandTheme: {
+    color: string | null;
+    font: string | null;
+    animation: string | null;
+    color_override: string | null;
+    font_override: string | null;
+    animation_override: string | null;
+  } | null;
+  // ORCH-1138 rework (§4.B) — first-stop city → the consumer City,Country meta
+  // chip (rule 9: null when no stop has a city).
+  city: string | null;
   title: string;
   tagline: string;
   // ORCH-1072: the experience's REAL description + cover (events.description /
@@ -187,6 +207,9 @@ interface ExperienceDeckCard {
     aiDescription: string;
     lat: number;
     lng: number;
+    // ORCH-1138 rework (§4.B) — per-stop authored start time (HH:MM:SS) → the
+    // consumer per-stop time pill. null when unauthored (rule 9).
+    startTime: string | null;
     priceMin: number;
     priceMax: number;
     rating: number;
@@ -308,6 +331,11 @@ async function fetchEligibleExperiences(args: {
         aiDescription: typeof s.ai_description === 'string' ? s.ai_description : '',
         lat,
         lng,
+        // ORCH-1138 rework (§4.B) — per-stop authored start time (honest null).
+        startTime:
+          typeof s.start_time === 'string' && s.start_time.length > 0
+            ? s.start_time
+            : null,
         priceMin: priceMajor,
         priceMax: priceMajor,
         // Experiences carry no Google rating — honest 0, never fabricated.
@@ -326,6 +354,47 @@ async function fetchEligibleExperiences(args: {
       id: String(row.event_id),
       eventId: String(row.event_id),
       experienceType: intentsArr[0] ?? 'adventurous',
+      // ORCH-1138 rework (§4.B) — carry the FULL canonical-vibe array (not just
+      // the single first intent) so the consumer renders multiple vibe chips.
+      experienceIntents: intentsArr.filter(
+        (x): x is string => typeof x === 'string' && x.length > 0,
+      ),
+      // ORCH-1138 rework (§4.B) — anon-safe resolved brand theme passthrough
+      // (COMMS-0009: from the RPC's brand_theme, never a client brands read).
+      brandTheme:
+        row.brand_theme !== null && typeof row.brand_theme === 'object'
+          ? {
+              color:
+                typeof row.brand_theme.color === 'string'
+                  ? row.brand_theme.color
+                  : null,
+              font:
+                typeof row.brand_theme.font === 'string'
+                  ? row.brand_theme.font
+                  : null,
+              animation:
+                typeof row.brand_theme.animation === 'string'
+                  ? row.brand_theme.animation
+                  : null,
+              color_override:
+                typeof row.brand_theme.color_override === 'string'
+                  ? row.brand_theme.color_override
+                  : null,
+              font_override:
+                typeof row.brand_theme.font_override === 'string'
+                  ? row.brand_theme.font_override
+                  : null,
+              animation_override:
+                typeof row.brand_theme.animation_override === 'string'
+                  ? row.brand_theme.animation_override
+                  : null,
+            }
+          : null,
+      // ORCH-1138 rework (§4.B) — first-stop city for the City,Country chip.
+      city:
+        typeof row.city === 'string' && row.city.trim().length > 0
+          ? row.city.trim()
+          : null,
       title: typeof row.title === 'string' ? row.title : '',
       tagline: typeof row.tagline === 'string' ? row.tagline : '',
       // ORCH-1072: carry the real description + cover (honest defaults — '' /

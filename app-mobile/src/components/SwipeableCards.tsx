@@ -169,7 +169,14 @@ function experienceRecToBusinessEventCard(rec: any): BusinessEventCard {
     endsAtLocal: null,
     timezone: typeof rec?.timezone === 'string' ? rec.timezone : 'UTC',
     venueName: firstStop?.placeName ?? null,
-    city: null,
+    // ORCH-1138 rework (§4.C.3) — carry the resolved city (rec.city) or fall back
+    // to the first stop's city → the consumer City,Country meta chip (was hard null).
+    city:
+      typeof rec?.city === 'string' && rec.city.length > 0
+        ? rec.city
+        : (typeof firstStop?.city === 'string' && firstStop.city.length > 0
+            ? firstStop.city
+            : null),
     address: null,
     hideAddressUntilTicket: false,
     format: 'in-person',
@@ -190,15 +197,43 @@ function experienceRecToBusinessEventCard(rec: any): BusinessEventCard {
     // detail sheet renders the route + the date picker. Experience-only (an
     // event/trip card never sets these → undefined → no itinerary/picker).
     experienceStops: Array.isArray(rec?.stops)
-      ? rec.stops.map((s: any) => ({
-          stopNumber: typeof s?.stopNumber === 'number' ? s.stopNumber : 0,
-          placeName: typeof s?.placeName === 'string' && s.placeName.length > 0 ? s.placeName : null,
-          address: typeof s?.address === 'string' && s.address.length > 0 ? s.address : null,
-          imageUrl: typeof s?.imageUrl === 'string' && s.imageUrl.length > 0 ? s.imageUrl : null,
-          aiDescription:
-            typeof s?.aiDescription === 'string' && s.aiDescription.length > 0 ? s.aiDescription : null,
-        }))
+      ? rec.stops.map((s: any, idx: number) => {
+          // ORCH-1138 rework (§4.C.3) — carry the FULL per-stop gallery + coords +
+          // start time + label so the consumer detail renders count-aware
+          // galleries, the "Where you'll start" map, time pills, and START
+          // HERE/THEN/END WITH (these were silently dropped — the mockup gap).
+          const imageUrls: string[] = Array.isArray(s?.imageUrls)
+            ? s.imageUrls.filter((u: unknown): u is string => typeof u === 'string' && u.length > 0)
+            : [];
+          const single =
+            typeof s?.imageUrl === 'string' && s.imageUrl.length > 0 ? s.imageUrl : null;
+          const total = rec.stops.length;
+          const stopLabel: 'Start Here' | 'Then' | 'End With' =
+            typeof s?.stopLabel === 'string' &&
+            (s.stopLabel === 'Start Here' || s.stopLabel === 'Then' || s.stopLabel === 'End With')
+              ? s.stopLabel
+              : (idx === 0 ? 'Start Here' : idx === total - 1 ? 'End With' : 'Then');
+          return {
+            stopNumber: typeof s?.stopNumber === 'number' ? s.stopNumber : 0,
+            placeName: typeof s?.placeName === 'string' && s.placeName.length > 0 ? s.placeName : null,
+            address: typeof s?.address === 'string' && s.address.length > 0 ? s.address : null,
+            imageUrl: single ?? (imageUrls.length > 0 ? imageUrls[0] : null),
+            aiDescription:
+              typeof s?.aiDescription === 'string' && s.aiDescription.length > 0 ? s.aiDescription : null,
+            imageUrls: imageUrls.length > 0 ? imageUrls : (single !== null ? [single] : []),
+            lat: typeof s?.lat === 'number' && s.lat !== 0 ? s.lat : null,
+            lng: typeof s?.lng === 'number' && s.lng !== 0 ? s.lng : null,
+            startTime:
+              typeof s?.startTime === 'string' && s.startTime.length > 0 ? s.startTime : null,
+            stopLabel,
+          };
+        })
       : undefined,
+    experienceIntents: Array.isArray(rec?.experienceIntents)
+      ? rec.experienceIntents.filter((x: unknown): x is string => typeof x === 'string' && x.length > 0)
+      : undefined,
+    brandTheme:
+      rec?.brandTheme !== null && typeof rec?.brandTheme === 'object' ? rec.brandTheme : null,
     upcomingOccurrences: Array.isArray(rec?.upcomingOccurrences)
       ? rec.upcomingOccurrences.map((o: any) => ({
           eventDateId: typeof o?.eventDateId === 'string' ? o.eventDateId : '',

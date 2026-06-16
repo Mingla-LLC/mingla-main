@@ -204,6 +204,12 @@ export interface TicketCartSheetProps {
   fallbackCurrency: string;
   /** Seed the cart with this tier at quantity 1 on open. */
   initialTicketTypeId: string | null;
+  /**
+   * ORCH-1138 rework (§4.C.6) — seed the cart line at this quantity on open
+   * (the open-daily PARTY SIZE → cart quantity; I-1, never a new line item).
+   * Defaults to 1 → byte-identical to every existing caller (events/trips).
+   */
+  initialQuantity?: number;
   /** Auth-derived pre-fill (read-only display). */
   buyerName: string;
   buyerEmail: string;
@@ -236,6 +242,7 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
   tickets,
   fallbackCurrency,
   initialTicketTypeId,
+  initialQuantity = 1,
   intakeSchemasByTier,
   buyerName,
   buyerEmail,
@@ -371,7 +378,14 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
         currency: seedTicket.currency ?? fallbackCurrency,
         isFree: seedTicket.isFree,
       };
-      setLineQuantity(seed, 1);
+      // ORCH-1138 rework — seed the open-daily PARTY SIZE (clamp >=1), capped by
+      // the tier capacity when known so we never seed beyond available stock.
+      const seedQty = Math.max(1, Math.floor(initialQuantity));
+      const cap =
+        seedTicket.isUnlimited || seedTicket.capacity == null
+          ? seedQty
+          : Math.max(1, Math.min(seedQty, seedTicket.capacity));
+      setLineQuantity(seed, cap);
     }
     if (!visible) {
       lastOpenSeedRef.current = null;
@@ -383,6 +397,7 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
   }, [
     visible,
     initialTicketTypeId,
+    initialQuantity,
     tickets,
     fallbackCurrency,
     setLineQuantity,

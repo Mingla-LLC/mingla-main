@@ -341,11 +341,20 @@ function testRelationshipSourceMigrationUsesPostRemoteHeadVersion() {
 }
 
 function testPurchaseInvalidatesCircle() {
-  const sheetSource = read('app-mobile/src/components/expandedCard/ExpandedBusinessEventSheet.tsx');
+  // ORCH-1138 Leg 3 [TEST-MOD-APPROVED ORCH-1138] — ExpandedBusinessEventSheet
+  // was DELETED (EBES decommission). Its purchase-success consumers are now the
+  // foundation detail screens (ConsumerEventDetailScreen +
+  // ConsumerExperienceDetailScreen), which carry the SAME circleKeys.all
+  // invalidation (handleBuy ported). The post-purchase circle-refresh invariant
+  // must hold on EVERY purchase consumer.
+  const eventSource = read('app-mobile/src/screens/Event/ConsumerEventDetailScreen.tsx');
+  const experienceSource = read('app-mobile/src/screens/Experience/ConsumerExperienceDetailScreen.tsx');
   const hookSource = read('app-mobile/src/hooks/useCalendarEntries.ts');
 
-  assert.match(sheetSource, /import \{ circleKeys \} from "\.\.\/\.\.\/hooks\/queryKeys"/);
-  assert.match(sheetSource, /queryClient\.invalidateQueries\(\{ queryKey: circleKeys\.all \}\)/);
+  for (const sheetSource of [eventSource, experienceSource]) {
+    assert.match(sheetSource, /import \{ circleKeys \} from "\.\.\/\.\.\/hooks\/queryKeys"/);
+    assert.match(sheetSource, /queryClient\.invalidateQueries\(\{ queryKey: circleKeys\.all \}\)/);
+  }
   assert.match(hookSource, /import \{ circleKeys \} from "\.\/queryKeys"/);
   assert.match(
     hookSource,

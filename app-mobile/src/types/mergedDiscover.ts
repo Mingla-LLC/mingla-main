@@ -96,7 +96,40 @@ export interface BusinessEventCard {
     address: string | null;
     imageUrl: string | null;
     aiDescription: string | null;
+    /**
+     * ORCH-1138 rework (§4.C.1) — the FULL per-stop gallery (not just one
+     * image). Empty array when the stop has no photos (rule 9). The detail
+     * screen renders a count-aware gallery (1=full / 2=split / 3+=slider).
+     */
+    imageUrls: string[];
+    /** ORCH-1138 rework — per-stop coords (the "Where you'll start" map reads stop-1). */
+    lat: number | null;
+    lng: number | null;
+    /** ORCH-1138 rework — per-stop authored start time (HH:MM[:SS]) → time pill. null when unauthored. */
+    startTime: string | null;
+    /** ORCH-1138 rework — START HERE / THEN / END WITH (canonical consumer label). */
+    stopLabel: "Start Here" | "Then" | "End With";
   }>;
+  /**
+   * ORCH-1138 rework (§4.C.1) — the experience's curated vibes (the canonical 4:
+   * adventurous|first-date|romantic|group-fun) → consumer vibe chips. Present
+   * ONLY for experiences; empty/undefined → no vibe row (rule 9).
+   */
+  experienceIntents?: string[];
+  /**
+   * ORCH-1138 rework (§4.C.1) — the anon-safe resolved brand theme passthrough
+   * (COMMS-0009: NEVER a client `.from('brands')`). The seed mappers feed it so
+   * useEventTheme has a SYNCHRONOUS fallback while the query settles → no flash
+   * of the default palette. null when the brand carries no theme.
+   */
+  brandTheme?: {
+    color: string | null;
+    font: string | null;
+    animation: string | null;
+    color_override: string | null;
+    font_override: string | null;
+    animation_override: string | null;
+  } | null;
   /**
    * ORCH-1072 — present ONLY for brand experiences. The experience's upcoming
    * bookable occurrences (from event_dates), each with remaining capacity.
