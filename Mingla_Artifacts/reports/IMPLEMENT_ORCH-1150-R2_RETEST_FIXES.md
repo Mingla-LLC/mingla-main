@@ -207,3 +207,82 @@ Source-built + gates run; NOT driven on sim/device this turn (no dev build exerc
 
 - None for backend (no migration, no edge deploy).
 - **For TEST/retest:** after review, OTA the business dev channel from MERGED main, then on device tap a LIVE RSVP event in the Hub and confirm: (1) RSVP dashboard renders (no white-screen/enlarged-logo); (2) "N going" headcount; (3) Guests → console; (4) Edit → RSVP edit screen; (5) Public page + Share work.
+
+---
+
+# D-5 — RSVP in-app preview route (`app/rsvp/[id]/preview.tsx`)
+
+- **Binding contract:** `Mingla_Artifacts/specs/SPEC_ORCH-1150_RSVP_PREVIEW_ROUTE.md` (follows `INVESTIGATE_ORCH-1150_RSVP_RENDER_SWEEP.md`).
+- **Base:** HEAD `fc285b92f` (D-4). NOT rebased (continue-the-batch dispatch).
+- **No migration. No edge deploy. No OTA. No merge.**
+
+## D-5.1 Summary (plain English)
+
+The RSVP wizard's "Preview public page" button pushed `/rsvp/{id}/preview`, but that screen file did not exist → expo-router fell through to the branded 404 (`+not-found.tsx`), the white-screen / enlarged-logo crash Seth hit at retest. Same class as the D-4 missing `/rsvp/[id]/index.tsx`. The fix is a single additive route file `app/rsvp/[id]/preview.tsx` — a subtractive clone of the ticketed `app/event/[id]/preview.tsx` that resolves the RSVP draft identically (d_*→server migration + stale/missing recovery) but renders the money-free `RsvpPublicBody` (Going / Not-going) instead of the ticket-assuming `PreviewEventView`. The preview's Going/Not-going CTA is a NO-OP: it shows a "This is a preview" toast and never calls `submitPublicRsvp` / the edge function (a draft has no public guest list).
+
+## D-5.2 SPEC success-criteria coverage
+
+| SC | Met | How (commit) |
+|----|-----|--------------|
+| SC-1-iOS/Android/Web | ✓ | `app/rsvp/[id]/preview.tsx` created → `/rsvp/{id}/preview` resolves (no 404); renders cover+title+date·venue+Going/Not-going via `RsvpPublicBody` |
+| SC-2 (no tickets) | ✓ | Mounts `RsvpPublicBody` (never `PreviewEventView`/`FoundationEventPreview`); mapper sets `tickets:[]`, no checkout/price |
+| SC-3 (submit no-op) | ✓ | `handlePreviewSubmit` shows "This is a preview. Publish to let guests RSVP." toast; NO `submitPublicRsvp` import/call |
+| SC-4 (back) | ✓ | `handleBack` = `router.canGoBack()` ? `router.back()` : `/(tabs)/hub/events` — no dead end |
+| SC-5 (d_* draft) | ✓ | d_*→server migration `useEffect` copied verbatim, `/event` swapped to `/rsvp` — no crash on un-promoted draft |
+| SC-6 (wrong-wizard) | ✓ | `draft.isRsvp === false` → `router.replace('/event/${draft.id}/preview')` (strict-grep allowlisted) |
+| SC-7 (no-regression) | ✓ | `git status` shows ONLY 2 new files; `event/[id]/preview.tsx`, `PreviewEventView.tsx`, `PublicEventPage.tsx`, `RsvpPublicBody.tsx` byte-unchanged |
+
+## D-5.3 Files changed
+
+- `mingla-business/app/rsvp/[id]/preview.tsx` — **NEW** (~340 lines): RSVP preview route.
+- `mingla-business/app/rsvp/[id]/__tests__/preview.test.tsx` — **NEW** (~95 lines): happy-path regression test.
+
+No shared-component edits. `mapDraftToPublicEvent` + `mapBrandToPublicBrand` are inlined local helpers (NOT exported from `PublicEventPage`, per the DO-NOT-TOUCH guard).
+
+## D-5.4 Old → New receipt
+
+### `app/rsvp/[id]/preview.tsx` (NEW)
+- **Before:** file did not exist → `/rsvp/{id}/preview` fell through to `+not-found.tsx` (white-screen crash).
+- **Now:** resolves the RSVP draft (useDraftById + useServerDraftById, d_*→server migration, stale/missing recovery — copied from `event/[id]/preview.tsx` with `/event`→`/rsvp` targets), maps the draft into `PublicEventProps` (tickets:[], slugs ""), renders `RsvpPublicBody` with a preview-mode no-op `onSubmit` and a toast `onShare`. Wrong-wizard guard redirects an `isRsvp===false` draft to the ticketed preview.
+- **Why:** SC-1..SC-6 — close the one render crash the sweep found.
+
+## D-5.5 Regression test (fails-on-revert)
+
+- **Path:** `mingla-business/app/rsvp/[id]/__tests__/preview.test.tsx` — 8 tests, all PASS (structural source test; mirrors the D-4 sibling — the RsvpPublicBody→ParallaxCoverShell→expo-haptics render graph is too heavyweight for the default node/ts-jest config; the tester owns the RTL render-proof).
+- **fails-on-revert verified at `fc285b92f`** (pre-commit): TRUE FILE DELETION of `app/rsvp/[id]/preview.tsx` → `readFileSync` throws → suite fails (`1 failed, 0 tests`). Restored → `8 passed`. (Not a comment-out — the file was `mv`'d out and back.)
+
+## D-5.6 Gate results
+
+- **`npx tsc --noEmit -p tsconfig.json` (mingla-business):** ZERO errors in `app/rsvp/[id]/preview*` (grep on `rsvp/[id]/preview` → empty). The repo-wide pre-existing errors (checkout `any` params, RTL/`@mingla/payments-native` missing modules, stale DraftEvent `category` test fixtures, marketing ComposerV2) are unchanged baseline — none in my 2 new files (proven: only 2 files added, both clean).
+- **`node .github/scripts/strict-grep/i-proposed-tr2-route-by-event-type.mjs`:** 6 violations, ALL PRE-EXISTING (home.tsx:414, hub/trips.tsx:379/388/397, accept-scanner-invitation.tsx:94, ScannerHome.tsx:119). Proven identical count WITH my files (790 files, 6) and WITHOUT (789 files, 6) — **my change adds ZERO new violations**; my new file's one `/event/${draft.id}/preview` literal carries the `// orch-strict-grep-allow route-by-event-type` comment and is NOT flagged. Carries forward DISC-1150R2-A (gate is RED on the branch for unrelated scanner/trip routes — gate-cleanup ORCH).
+- **New jest test:** `8 passed`.
+
+## D-5.7 Cross-surface impact
+
+| Surface | Affected | Note |
+|---------|----------|------|
+| Consumer iOS / Android | No | RSVP preview is a business authoring surface |
+| Buyer/anon Web | No | the PUBLIC `/e/{slug}/{slug}` RSVP page already renders (sweep F-2); preview is host-only |
+| Business iOS | **Yes** | tap "Preview public page" in the RSVP wizard → RSVP preview (no 404) — `app/rsvp/[id]/preview.tsx` (NEW) |
+| Business Android | **Yes** | same NEW file, parity automatic (shared RN) |
+| Admin Web | No | no RSVP wizard |
+| Business Web preview | Incidental | same RN route via Metro web |
+
+## D-5.8 Smoke result
+
+Source-built + gates run; NOT driven on sim/device this turn. Verified by tsc (zero new errors), the 8-case jest suite (pass + fails-on-revert proven by true file deletion), and the route gate (zero new violations). REQUIRES device proof at TEST: in the RSVP wizard Preview step, tap "Preview public page" → RSVP public preview renders (cover + title + date·venue + Going/Not-going), no ticket UI, no 404; tapping Going shows the preview toast and writes nothing; back returns to the wizard.
+
+## D-5.9 Known issues / deferred (D-5)
+
+- No RTL render-level test (RN testing-library absent at the default-config baseline) — structural test + device proof at TEST cover it. The tester may add a `jest.orch1150.render.cjs` mount.
+- OQ-1 (preview brandSlug/eventSlug "" placeholders) and OQ-2 (`isLoggedIn=true` default — contact form hidden) resolved per SPEC defaults; non-blocking, flip-able.
+- No `[TRANSITIONAL]` code introduced.
+
+## D-5.10 Operator action required (D-5)
+
+- None for backend (no migration, no edge deploy).
+- **For TEST/retest:** after review, OTA the business dev channel from MERGED main, then on the dev build open the RSVP wizard → Preview step → tap "Preview public page" and confirm the RSVP preview renders (no white-screen/enlarged-logo), shows Going/Not-going (no ticket tiers/price/checkout), the Going tap shows "This is a preview" + writes nothing, and back returns to the wizard. Also smoke the d_* (fresh draft) and a hand-typed `/rsvp/{ticketed-id}/preview` (redirects to event preview).
+
+## D-5.11 Discoveries for orchestrator (D-5)
+
+- **DISC-1150R2-A (carried forward, NOT introduced here):** `i-proposed-tr2-route-by-event-type.mjs` is RED on the branch baseline with 6 violations in DO-NOT-TOUCH files (home.tsx, hub/trips.tsx, accept-scanner-invitation.tsx, ScannerHome.tsx) — unrelated scanner/trip routes lacking the helper/allowlist. My change is gate-clean (zero new violations). Recommend a dedicated gate-cleanup ORCH; out of scope here.
