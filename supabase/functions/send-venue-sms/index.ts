@@ -243,13 +243,33 @@ serve(async (req: Request): Promise<Response> => {
     // A 21610 (blacklisted) means Twilio knows the recipient opted out — persist
     // a global opt-out so we never try again (defensive; the inbound STOP webhook
     // is the primary path).
+    //
+    // D-2: venue_sms_opt_out has ONLY PARTIAL unique indexes (global brand_id IS
+    // NULL / per-brand brand_id IS NOT NULL) — never a plain UNIQUE(phone_e164) —
+    // so a plain `.upsert({ onConflict: "phone_e164" })` errors at runtime
+    // ("no unique or exclusion constraint matching the ON CONFLICT specification")
+    // and never persists. Route through the SECURITY DEFINER RPC, whose
+    // ON CONFLICT (phone_e164) WHERE brand_id IS NULL DO NOTHING matches the GLOBAL
+    // partial index exactly and is idempotent. Guard with try/catch so a failure
+    // here NEVER masks the subsequent logSend("failed") / response.
     if (result.blacklisted) {
-      await admin
-        .from("venue_sms_opt_out")
-        .upsert(
-          { phone_e164: toPhone, brand_id: null, reason: "twilio_blacklist" },
-          { onConflict: "phone_e164", ignoreDuplicates: true },
+      try {
+        const { error: optErr } = await admin.rpc(
+          "biz_sms_record_global_opt_out",
+          { p_phone_e164: toPhone, p_reason: "twilio_blacklist" },
         );
+        if (optErr) {
+          console.warn(
+            "[send-venue-sms] defensive opt-out persist failed (non-fatal)",
+            optErr.message,
+          );
+        }
+      } catch (optThrow) {
+        console.warn(
+          "[send-venue-sms] defensive opt-out persist threw (non-fatal)",
+          String(optThrow),
+        );
+      }
     }
     await logSend("failed", { error: result.error ?? "twilio_error" });
     console.error("[send-venue-sms] twilio send failed", result.error);

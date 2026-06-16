@@ -170,3 +170,110 @@ All reverts restored with zero residual diff.
 NEXT = **mingla-tester** (business iOS + Android + web-desktop + web-phone device/sim proof of the Reservations + Waitlist modules + manual create + lifecycle actions + realtime + the SMS notify path on a Twilio test number; confirm the money seam + the engine-frozen contract held). Then **mingla-orchestrator CLOSE** — apply the 4 migrations via Management API from MERGED main, run `get_advisors`, set the Twilio secrets, deploy `send-venue-sms`, flip the 4 DRAFT invariants ACTIVE, register 2.1b on the World Map. Then **2.2** (consumer/web booking surface + the engine's `anon` GRANT seam).
 
 *No deploy / no migration applied to prod / no edge-fn deploy / no merge performed by this implementor.*
+
+---
+
+## 10. D-1 + D-2 fix (RETEST rework, post-tester CONDITIONAL PASS)
+
+Fixing the two P2 defects from `TEST_META-ORCH-1148_SUBB_2_1B.md`. Scope NOT widened; money seam + engine frozen untouched. Comms Ledger read on entry — no OPEN BLOCK row addressed to ALL / ORCH-1148 / mingla-implementor; the prior report's "no COMMS_LEDGER.md exists" claim (tester D-3) is corrected — it DOES exist at the worktree/main root and was read this pass.
+
+**New files (touched on the branch):**
+- `supabase/migrations/20261011000000_orch_1148_2_1b_table_brand_scope.sql` — D-1 (CREATE OR REPLACE the 3 RPCs with the same-brand guard).
+- `supabase/migrations/20261011000001_orch_1148_2_1b_sms_optout_rpc.sql` — D-2 (partial-index-safe global opt-out RPC).
+- `supabase/functions/send-venue-sms/index.ts` — D-2 (call the RPC + try/catch).
+- `supabase/functions/__tests__/send_venue_sms.test.ts` — D-2 fails-on-revert assertion.
+- `supabase/migrations/__tests__/orch_1148_2_1b_lifecycle_adversarial.tester.sql` — D-1/D-2 hard fails-on-revert assertions (B1-B4, C4, C5, H1-H3).
+
+Migration versions monotonic: true global max across anchor main (`20261002000000`) + every sibling worktree (2.1b chain through `20261010000003`) was `20261010000003`; the two new migrations are `20261011000000` / `…001`, strictly above. No duplicate prefixes introduced (two pre-existing dup prefixes `20260612000000` / `20260615000000` are in git HEAD, not mine).
+
+### D-1 — cross-brand `table_id` assignment (P2, data integrity)
+
+**Before** (all three RPCs accepted `p_table_id` with NO brand check):
+```sql
+-- biz_reservation_transition
+UPDATE public.reservations SET status = p_to_status,
+       table_id = COALESCE(p_table_id, table_id), updated_at = now() WHERE id = p_reservation_id ...
+-- biz_reservation_create
+INSERT INTO public.reservations (..., table_id, ...) VALUES (..., p_table_id, ...);
+-- biz_waitlist_convert_to_reservation
+INSERT INTO public.reservations (brand_id, ..., table_id, ...) VALUES (v_brand, ..., p_table_id, ...);
+```
+`reservations.table_id` FKs `venue_tables(id)` GLOBALLY (not brand-scoped) → a Brand-A manager could stamp Brand-B's `table_id`.
+
+**After** — in each RPC, before the write, when `p_table_id IS NOT NULL`:
+```sql
+IF p_table_id IS NOT NULL
+   AND NOT EXISTS (
+     SELECT 1 FROM public.venue_tables
+      WHERE id = p_table_id AND brand_id = v_brand   -- (p_brand_id in create)
+   ) THEN
+  RAISE EXCEPTION 'table_brand_mismatch: table % does not belong to brand %',
+    p_table_id, v_brand USING ERRCODE = '23514';
+END IF;
+```
+NULL `p_table_id` stays allowed. SECURITY DEFINER + manager+ gate + audit + lifecycle matrix + convert atomicity preserved verbatim; REVOKE FROM PUBLIC + FROM anon re-emitted for every function (auto-grant gotcha).
+
+**Live proof** (Docker `supabase/postgres:17.4.1.075`, all 239 migrations applied clean in version order):
+- `B1 PASS` — cross-brand `table_id` on `biz_reservation_transition` REJECTED (`check_violation`).
+- `B2 PASS` — same-brand table on transition ACCEPTED + persisted.
+- `B3 PASS` — NULL `table_id` transition still allowed.
+- `B4 PASS` — cross-brand `table_id` on `biz_reservation_create` REJECTED.
+- `C4 PASS` — cross-brand table on `biz_waitlist_convert_to_reservation` REJECTED, NO orphan reservation, waitlist stays `waiting` (atomic abort before INSERT).
+- `C5 PASS` — same-brand table on convert ACCEPTED + linked.
+
+**Fails-on-revert (D-1), proven live:** re-applied the pre-D-1 RPC bodies (`20261010000001` / `…002`) into the live container, re-ran the cross-brand attack → `FAILS-ON-REVERT CONFIRMED (D-1): cross-brand Brand-B table_id bbbbbbbb-0000-0000-0000-000000000001 ACCEPTED onto Brand-A reservation once the guard is reverted`. Restoring the guard → rejected. The B1/B4/C4 assertions also RAISE `FAILS-ON-REVERT CONFIRMED` on a reverted guard. Cited at the commit below.
+
+### D-2 — defensive 21610 opt-out upsert throws (P2, runtime crash)
+
+**Before** (`send-venue-sms/index.ts`): on a Twilio 21610 the fn did
+```ts
+await admin.from("venue_sms_opt_out").upsert(
+  { phone_e164: toPhone, brand_id: null, reason: "twilio_blacklist" },
+  { onConflict: "phone_e164", ignoreDuplicates: true },
+);
+```
+`venue_sms_opt_out` has ONLY PARTIAL unique indexes (`WHERE brand_id IS NULL` global / `WHERE brand_id IS NOT NULL` per-brand) — no plain `UNIQUE(phone_e164)` — so `ON CONFLICT (phone_e164)` errors `42P10` at runtime; the defensive opt-out never persisted, and the unguarded `await` could 500 the response before `logSend("failed")`.
+
+**After** — option (c): a SECURITY DEFINER RPC whose ON CONFLICT targets the GLOBAL partial index's exact predicate, called inside a try/catch:
+```sql
+-- 20261011000001
+CREATE OR REPLACE FUNCTION public.biz_sms_record_global_opt_out(p_phone_e164 text, p_reason text DEFAULT 'twilio_blacklist')
+RETURNS void LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp AS $function$
+BEGIN
+  IF p_reason NOT IN ('stop_keyword','manual','twilio_blacklist') THEN p_reason := 'twilio_blacklist'; END IF;
+  INSERT INTO public.venue_sms_opt_out (phone_e164, brand_id, reason)
+  VALUES (p_phone_e164, NULL, p_reason)
+  ON CONFLICT (phone_e164) WHERE brand_id IS NULL DO NOTHING;   -- partial-index-safe + idempotent
+END; $function$;
+REVOKE ALL ... FROM PUBLIC; REVOKE EXECUTE ... FROM anon; REVOKE EXECUTE ... FROM authenticated;
+GRANT EXECUTE ... TO service_role;   -- internal helper; edge fn runs service role
+```
+```ts
+if (result.blacklisted) {
+  try {
+    const { error: optErr } = await admin.rpc("biz_sms_record_global_opt_out",
+      { p_phone_e164: toPhone, p_reason: "twilio_blacklist" });
+    if (optErr) console.warn("[send-venue-sms] defensive opt-out persist failed (non-fatal)", optErr.message);
+  } catch (optThrow) { console.warn("[send-venue-sms] defensive opt-out persist threw (non-fatal)", String(optThrow)); }
+}
+```
+Per-brand opt-out rows preserved (no plain UNIQUE added); partial-index semantics untouched. The persist can no longer mask the `logSend("failed")` / response.
+
+**Live proof:**
+- `H1 PASS` — RPC persists exactly ONE global (`brand_id IS NULL`) row, and is idempotent on a repeat 21610 (no `23505` throw).
+- `H2 PASS` — a per-brand opt-out for the same phone coexists; the RPC touches only the global row.
+- `H3 PASS(by-error)` — the OLD broken `ON CONFLICT (phone_e164)` spec errors live `42P10: there is no unique or exclusion constraint matching the ON CONFLICT specification` — i.e. the bug, proven, and the RPC avoids it.
+
+**Fails-on-revert (D-2):** H3 proves the broken arbiter throws against the real schema (revert to the `.upsert(onConflict:"phone_e164")` path → runtime `42P10`). The deno `T-SMS-4` adds a source fails-on-revert assertion: it now requires the `biz_sms_record_global_opt_out` RPC call AND forbids a plain `onConflict:'phone_e164'` upsert against `venue_sms_opt_out` (reverting to the old upsert fails the test), plus asserts the try/catch wrap.
+
+### Gate results (all green)
+- **Live adversarial harness** `orch_1148_2_1b_lifecycle_adversarial.tester.sql` on PG 17.4.1: `== ALL 2.1b ADVERSARIAL ASSERTIONS PASSED ==` (E1-E4, F1-F4, B1-B4, A, C1-C5, D1-D3, G, H1-H3).
+- **deno SMS contract** `send_venue_sms.test.ts`: 8/8 (T-SMS-4 updated to the RPC path + fails-on-revert + try/catch assertion).
+- **deno migration** `orch_1148_venue_suite_migration.test.ts`: 30/30 (T-MIG-30 band-scoped to `20261010000xxx`, unaffected by the new `…11…` band).
+- **edge fn type-check** `deno check supabase/functions/send-venue-sms/index.ts`: clean (exit 0).
+- **money-seam gate** `orch-1148-booking-core-engine-and-money-seam.mjs`: PASS (engine sole slot source; no checkout/pricing in the booking core).
+- **venue jest** `capacityRules` / `venueModules` / `venueShellScroll`: 14/14. ZERO `mingla-business` files touched → tsc/eslint/jest baselines unchanged by construction; the broad-pattern jest failures (`PublicBrandPage.ve4` etc.) reproduce IDENTICALLY on the base with this pass's diff stashed → pre-existing, NOT a regression.
+
+Money seam + engine-frozen contract unchanged (no checkout/Stripe/Paystack/`pg_venue_available_slots` file touched). Migration versions monotonic; origin/main has NOT moved past the branch base (`git rev-list --count HEAD..origin/main` = 0) → no rebase needed.
+
+*No deploy / no migration applied to prod / no edge-fn deploy / no merge performed by this implementor.*

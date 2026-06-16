@@ -70,10 +70,29 @@ Deno.test("T-SMS-3 — opt-out is checked BEFORE send and honored", () => {
 
 Deno.test("T-SMS-4 — a 21610 (blacklist) persists a global opt-out (defensive)", () => {
   assertMatch(SRC, /21610/, "must recognize the Twilio blacklist error code");
+  // D-2 fix: the defensive persist routes through the partial-index-safe
+  // SECURITY DEFINER RPC (NOT a plain .upsert({ onConflict: "phone_e164" }),
+  // which errors at runtime against the table's PARTIAL unique indexes).
   assertMatch(
     SRC,
-    /from\(["']venue_sms_opt_out["']\)[\s\S]*?upsert/,
-    "a blacklist response must persist a global opt-out",
+    /\.rpc\(\s*["']biz_sms_record_global_opt_out["']/,
+    "a blacklist response must persist a global opt-out via the partial-index-safe RPC",
+  );
+  // FAILS-ON-REVERT (D-2): reverting to the broken `.upsert({ onConflict:
+  // "phone_e164" })` on venue_sms_opt_out (the runtime-throwing path) makes this
+  // assertion FAIL. The defensive persist must NOT use a plain onConflict upsert
+  // against venue_sms_opt_out — that table only has PARTIAL unique indexes.
+  assert(
+    !/from\(["']venue_sms_opt_out["']\)[\s\S]{0,200}?\.upsert\([\s\S]{0,200}?onConflict:\s*["']phone_e164["']/
+      .test(SRC),
+    "must NOT use a plain onConflict:'phone_e164' upsert (errors against the partial unique indexes)",
+  );
+  // The defensive persist is guarded so it never masks the failure response.
+  const blIdx = SRC.indexOf("result.blacklisted");
+  const tryIdx = SRC.indexOf("try {", blIdx);
+  assert(
+    blIdx > -1 && tryIdx > -1 && tryIdx - blIdx < 400,
+    "the defensive opt-out persist must be wrapped in try/catch",
   );
 });
 
