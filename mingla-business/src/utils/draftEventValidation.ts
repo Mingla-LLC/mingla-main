@@ -103,7 +103,10 @@ export const validatePublish = (
   return errors;
 };
 
-const validateBasics = (d: DraftEvent): ValidationError[] => {
+// ORCH-1150: exported so the forked RSVP validator (draftRsvpValidation.ts)
+// reuses the SAME party-type gate (steering #2 — KEEP Party Type for RSVP).
+// This is the ONLY change to this file; the event path is byte-identical.
+export const validateBasics = (d: DraftEvent): ValidationError[] => {
   const errs: ValidationError[] = [];
   if (d.name.trim().length === 0) {
     errs.push({ fieldKey: "name", step: 0, message: "Event name is required." });
