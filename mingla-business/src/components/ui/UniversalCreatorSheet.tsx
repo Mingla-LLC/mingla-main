@@ -70,7 +70,10 @@ import {
 import { Icon } from "./Icon";
 import { TopSheet } from "./TopSheet";
 
-export type UniversalCreatorStep = "root" | "experience";
+// ORCH-1150 — "event" added: the "Create event" root row now steps in-place to
+// a Ticketed-vs-RSVP chooser (mirrors the ORCH-1144 experience step) instead of
+// routing straight to /event/create.
+export type UniversalCreatorStep = "root" | "experience" | "event";
 
 export interface UniversalCreatorSheetProps {
   visible: boolean;
@@ -98,7 +101,8 @@ interface RootOption {
 }
 
 interface ChooserOption {
-  readonly key: "food" | "activities" | "manual";
+  // ORCH-1150 — + "ticketed" | "rsvp" for the EVENT_OPTIONS chooser.
+  readonly key: "food" | "activities" | "manual" | "ticketed" | "rsvp";
   readonly iconName: IconName;
   readonly title: string;
   readonly subtitle: string;
@@ -111,8 +115,9 @@ const ROOT_OPTIONS: readonly RootOption[] = [
     key: "event",
     iconName: "calendar",
     title: "Create event",
-    subtitle: "A ticketed gathering: concert, party, comedy night, festival.",
-    route: "/event/create",
+    // ORCH-1150 — steps in-place to the Ticketed-vs-RSVP chooser.
+    subtitle: "A gathering with guests — ticketed, or RSVP-only.",
+    step: "event",
     testID: "universal-creator-event",
   },
   {
@@ -172,6 +177,27 @@ const EXPERIENCE_OPTIONS: readonly ChooserOption[] = [
   },
 ] as const;
 
+// ORCH-1150 — the in-sheet "event" step: Ticketed (existing wizard, untouched)
+// vs RSVP (new /rsvp/create). Mirrors EXPERIENCE_OPTIONS exactly.
+const EVENT_OPTIONS: readonly ChooserOption[] = [
+  {
+    key: "ticketed",
+    iconName: "calendar",
+    title: "Ticketed event",
+    subtitle: "Sell or issue tickets — concert, party, comedy night, festival.",
+    route: "/event/create",
+    testID: "event-chooser-ticketed",
+  },
+  {
+    key: "rsvp",
+    iconName: "list",
+    title: "RSVP event",
+    subtitle: "Guests reply Going or Not going. No tickets — like a private invite.",
+    route: "/rsvp/create",
+    testID: "event-chooser-rsvp",
+  },
+] as const;
+
 export const UniversalCreatorSheet: React.FC<UniversalCreatorSheetProps> = ({
   visible,
   onClose,
@@ -219,10 +245,20 @@ export const UniversalCreatorSheet: React.FC<UniversalCreatorSheetProps> = ({
     [pushRoute],
   );
 
+  // ORCH-1150 — the event step rows just push their route (Ticketed/RSVP).
+  const handleEventSelect = useCallback(
+    (option: ChooserOption): void => {
+      pushRoute(option.route);
+    },
+    [pushRoute],
+  );
+
   // Back is only meaningful when there IS a root to return to — i.e. the sheet
-  // was opened at the root step. When opened directly at the experience step
-  // (Hub > Experiences tab) there is no root, so the affordance is omitted.
-  const canGoBackToRoot = step === "experience" && initialStep === "root";
+  // was opened at the root step. When opened directly at a sub-step
+  // (Hub > Experiences tab passes initialStep="experience") there is no root,
+  // so the affordance is omitted. ORCH-1150 — generalized to cover both the
+  // experience AND event sub-steps.
+  const showBack = step !== "root" && initialStep === "root";
 
   return (
     <TopSheet visible={visible} onClose={onClose} heightMode="compact" testID={testID}>
@@ -259,10 +295,58 @@ export const UniversalCreatorSheet: React.FC<UniversalCreatorSheetProps> = ({
             ))}
           </View>
         </View>
+      ) : step === "event" ? (
+        // ORCH-1150 — in-sheet event chooser: Ticketed vs RSVP.
+        <View style={styles.container}>
+          <View style={styles.header}>
+            {showBack ? (
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Back"
+                accessibilityHint="Back to what you're creating"
+                onPress={() => setStep("root")}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                style={({ pressed }) =>
+                  pressed ? [styles.backRow, styles.backRowPressed] : styles.backRow
+                }
+                testID="event-chooser-back"
+              >
+                <Icon name="chevL" size={18} color={textTokens.secondary} />
+                <Text style={styles.backLabel}>Back</Text>
+              </Pressable>
+            ) : null}
+            <Text style={styles.headerTitle}>Create an event</Text>
+            <Text style={styles.headerSubtitle}>Pick how guests join.</Text>
+          </View>
+          <View style={styles.rows}>
+            {EVENT_OPTIONS.map((option) => (
+              <Pressable
+                key={option.key}
+                accessibilityRole="button"
+                accessibilityLabel={option.title}
+                accessibilityHint={option.subtitle}
+                onPress={() => handleEventSelect(option)}
+                style={({ pressed }) =>
+                  pressed ? [styles.expRow, styles.expRowPressed] : styles.expRow
+                }
+                testID={option.testID}
+              >
+                <View style={styles.expRowIconWrap}>
+                  <Icon name={option.iconName} size={28} color={textTokens.primary} />
+                </View>
+                <View style={styles.rowText}>
+                  <Text style={styles.rowTitle}>{option.title}</Text>
+                  <Text style={styles.rowSubtitle}>{option.subtitle}</Text>
+                </View>
+                <Icon name="chevR" size={20} color={textTokens.tertiary} />
+              </Pressable>
+            ))}
+          </View>
+        </View>
       ) : (
         <View style={styles.container}>
           <View style={styles.header}>
-            {canGoBackToRoot ? (
+            {showBack ? (
               <Pressable
                 accessibilityRole="button"
                 accessibilityLabel="Back"
