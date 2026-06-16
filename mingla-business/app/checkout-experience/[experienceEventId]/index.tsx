@@ -52,6 +52,9 @@ const ticketToStub = (ticket: PublicExperienceTicket): TicketStub => ({
   id: ticket.ticketTypeId,
   name: ticket.name,
   priceGbp: ticket.priceCents > 0 ? ticket.priceCents / 100 : null,
+  // ORCH-1147 — pass the server fee-grossed all-in through to the cart seed
+  // (which reads stub.priceAllInGbp). Null → seed falls back to priceGbp/base.
+  priceAllInGbp: ticket.priceAllInGbp ?? null,
   currency: ticket.currency,
   capacity: ticket.ticketsRemaining ?? ticket.quantityTotal,
   isFree: ticket.priceCents === 0 || ticket.isFree,

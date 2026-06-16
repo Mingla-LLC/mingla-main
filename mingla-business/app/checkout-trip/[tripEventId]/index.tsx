@@ -67,6 +67,9 @@ const tierToTicketStub = (tier: TripPricingTier): TicketStub => ({
   id: tier.ticketTypeId,
   name: tier.tierName,
   priceGbp: tier.priceCents > 0 ? tier.priceCents / 100 : null,
+  // ORCH-1147 — pass the server fee-grossed all-in through to the cart seed
+  // (which reads stub.priceAllInGbp). Null → seed falls back to priceGbp/base.
+  priceAllInGbp: tier.priceAllInGbp ?? null,
   currency: tier.currency,
   // ORCH-0946 — buyer-checkout sold-out gate + QuantityRow "+" cap need
   // remaining bookable seats, not total tier capacity. `quantityTotal`

@@ -25,6 +25,9 @@
 
 import { supabase } from "./supabase";
 import type { RecurrenceRule } from "../store/draftEventStore";
+// ORCH-1147 — reuse the SINGLE owner of pg_public_event_tier_allin (no
+// duplicated RPC / fee math here). The trip + event paths use the same helper.
+import { fetchTierAllInCents } from "./publicEventsService";
 
 export type PublicExperienceWhenMode = "single" | "recurring" | "multi_date";
 
@@ -48,6 +51,12 @@ export interface PublicExperienceTicket {
   isFree: boolean;
   /** Remaining bookable seats (null = unlimited / unknown). */
   ticketsRemaining: number | null;
+  /**
+   * ORCH-1147 — server fee-grossed all-in in MAJOR units
+   * (`pg_public_event_tier_allin` → /100). Null = free / RPC miss; cart seed
+   * falls back to `priceCents`/base. NEVER recompute fees in TS.
+   */
+  priceAllInGbp?: number | null;
 }
 
 export interface PublicExperienceDate {
@@ -143,6 +152,8 @@ interface MapInput {
   dates: any[];
   /** ORCH-1076 — resolved buyer-readiness; defaults to true (back-compat). */
   bookable?: boolean;
+  /** ORCH-1147 — ticket_types.id → server all-in cents (single-owner fetch). */
+  allInById?: Map<string, number>;
 }
 
 /**
@@ -191,6 +202,9 @@ function mapExperience(input: MapInput): PublicExperience {
       : (stops[0]?.address ?? null);
 
   const tt = tickets[0];
+  // ORCH-1147 — server fee-grossed all-in (MAJOR units) from the single-owner
+  // fetch; free tier / RPC miss → null; the cart seed owns the base fallback.
+  const allInCents = tt !== undefined ? input.allInById?.get(tt.id) : undefined;
   const ticket: PublicExperienceTicket | null =
     tt !== undefined
       ? {
@@ -204,6 +218,12 @@ function mapExperience(input: MapInput): PublicExperience {
           // Sub-C preview does not gate sold-out per-occurrence; the checkout
           // chain (usePublicExperienceById) computes remaining. Set null here.
           ticketsRemaining: null,
+          priceAllInGbp:
+            tt.is_free === true || (tt.price_cents ?? 0) === 0
+              ? null
+              : typeof allInCents === "number"
+                ? allInCents / 100
+                : null,
         }
       : null;
 
@@ -258,8 +278,13 @@ async function loadExperienceSidecars(eventId: string): Promise<{
   tickets: any[];
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   dates: any[];
+  /** ORCH-1147 — ticket_types.id → server all-in cents (single-owner fetch). */
+  allInById: Map<string, number>;
 }> {
-  const [stopsResp, ticketsResp, datesResp] = await Promise.all([
+  // ORCH-1147 — fold the per-tier all-in fetch into the existing parallel load.
+  // fetchTierAllInCents never throws (RPC failure → empty map → base fallback
+  // downstream); keep the throw-on-RLS guards on the three Supabase reads.
+  const [stopsResp, ticketsResp, datesResp, allInById] = await Promise.all([
     supabase
       .from("experience_stops")
       .select("id, stop_order, place_name, address, image_urls, start_time")
@@ -278,6 +303,7 @@ async function loadExperienceSidecars(eventId: string): Promise<{
       .select("id, start_at, end_at, timezone, is_master")
       .eq("event_id", eventId)
       .order("start_at", { ascending: true }),
+    fetchTierAllInCents(eventId),
   ]);
   if (stopsResp.error) throw stopsResp.error;
   if (ticketsResp.error) throw ticketsResp.error;
@@ -286,6 +312,7 @@ async function loadExperienceSidecars(eventId: string): Promise<{
     stops: stopsResp.data ?? [],
     tickets: ticketsResp.data ?? [],
     dates: datesResp.data ?? [],
+    allInById,
   };
 }
 

@@ -95,6 +95,14 @@ export interface TripPricingTier {
    * plan configured.
    */
   installmentSchedule: TripInstallmentScheduleData | null;
+  /**
+   * ORCH-1147 — server fee-grossed per-tier all-in in MAJOR units
+   * (`pg_public_event_tier_allin` → /100). Null = free tier or RPC miss;
+   * the cart seed falls back to `priceCents`/base. NEVER recompute fees in TS.
+   * Only the public buyer-read path (`getPublicTripById`) populates it; admin
+   * draft loads (`mapTripPricingTier`) leave it unset → base fallback.
+   */
+  priceAllInGbp?: number | null;
 }
 
 /**

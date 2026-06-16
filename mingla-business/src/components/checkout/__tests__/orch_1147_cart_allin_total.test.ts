@@ -169,3 +169,160 @@ describe("ORCH-1147 — payment headline source (T-2 / T-3)", () => {
     expect(headlineCents).toBe(5225); // >= floor guard holds
   });
 });
+
+// --- T-7a/b/c: TRIP + EXPERIENCE source → stub → seed → cart Total ---------
+// (SPEC AMENDMENT E1.) The cart Total must read the server fee-grossed all-in
+// for TRIP and EXPERIENCE exactly as it does for EVENT. Two parts per type:
+//
+//   (1) MAPPING MATH — replicate the real mappers' pure pass-through:
+//         source.priceAllInGbp -> stub.priceAllInGbp -> seed.unitPriceAllIn
+//       then feed useCartTotals and assert allInTotal == Σ all-in × qty and
+//       feesTaxCents > 0 (Total > base).
+//   (2) SOURCE-TEXT FAILS-ON-REVERT — read the ACTUAL source files and assert
+//       the six fix lines exist (the field on each interface, the populate in
+//       getPublicTripById / mapExperience, the pass-through in each stub mapper).
+//       True line-deletion of ANY of them flips the relevant T-7 assertion RED.
+//
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+
+const repoRoot = join(__dirname, "..", "..", "..", "..", "..");
+const read = (rel: string): string =>
+  readFileSync(join(repoRoot, rel), "utf8");
+
+// The real mappers' pass-through is `priceAllInGbp: source.priceAllInGbp ?? null`,
+// and the seeds read `(stub.priceAllInGbp ?? stub.priceGbp ?? 0)` as
+// unitPriceAllIn. Replicate that EXACT shape (no network, no RN render).
+const stubFrom = (src: {
+  priceGbp: number | null;
+  priceAllInGbp?: number | null;
+}): { priceGbp: number | null; priceAllInGbp: number | null } => ({
+  priceGbp: src.priceGbp,
+  priceAllInGbp: src.priceAllInGbp ?? null,
+});
+const seedUnitAllIn = (stub: {
+  priceGbp: number | null;
+  priceAllInGbp: number | null;
+}): number => stub.priceAllInGbp ?? stub.priceGbp ?? 0;
+
+describe("ORCH-1147 AMENDMENT — TRIP source → cart Total (T-7a)", () => {
+  const tripService = read("mingla-business/src/services/tripsService.ts");
+  const publicEvents = read(
+    "mingla-business/src/services/publicEventsService.ts",
+  );
+  const tripStubMapper = read(
+    "mingla-business/app/checkout-trip/[tripEventId]/index.tsx",
+  );
+
+  test("T-7a: a pass-fee trip tier grosses the cart all-in (Total > base)", () => {
+    // TripPricingTier all-in £52.25 > base £50, qty 2.
+    const stub = stubFrom({ priceGbp: 50, priceAllInGbp: 52.25 });
+    const totals = totalsFor([
+      line({
+        unitPrice: stub.priceGbp ?? 0,
+        unitPriceAllIn: seedUnitAllIn(stub),
+        quantity: 2,
+        currency: "GBP",
+      }),
+    ]);
+    expect(totals.subtotal).toBe(100); // base
+    expect(totals.allInTotal).toBeCloseTo(104.5, 5); // fee-grossed all-in
+    expect(totals.feesTaxCents).toBe(450);
+    expect(totals.hasFeesTaxDelta).toBe(true);
+    expect(totals.allInTotal).not.toBe(totals.subtotal);
+  });
+
+  // FAILS-ON-REVERT: each of these is a real fix line. Deleting it → RED.
+  test("T-7a source: TripPricingTier carries priceAllInGbp (field exists)", () => {
+    expect(tripService).toMatch(/priceAllInGbp\?:\s*number\s*\|\s*null/);
+  });
+  test("T-7a source: getPublicTripById populates priceAllInGbp from the single owner", () => {
+    expect(publicEvents).toMatch(/export const fetchTierAllInCents\b/);
+    expect(publicEvents).toMatch(/fetchTierAllInCents\(tripEventId\)/);
+    expect(publicEvents).toMatch(
+      /priceAllInGbp:\s*\(\(\)\s*=>\s*\{[\s\S]*?allInById\.get\(t\.ticket_type_id\)/,
+    );
+  });
+  test("T-7a source: tierToTicketStub passes priceAllInGbp through", () => {
+    expect(tripStubMapper).toMatch(
+      /priceAllInGbp:\s*tier\.priceAllInGbp\s*\?\?\s*null/,
+    );
+  });
+});
+
+describe("ORCH-1147 AMENDMENT — EXPERIENCE source → cart Total (T-7b)", () => {
+  const expService = read(
+    "mingla-business/src/services/publicExperienceService.ts",
+  );
+  const expStubMapper = read(
+    "mingla-business/app/checkout-experience/[experienceEventId]/index.tsx",
+  );
+
+  test("T-7b: a pass-fee experience ticket grosses the cart all-in (Total > base)", () => {
+    // PublicExperienceTicket all-in £33 > base £30, qty 1.
+    const stub = stubFrom({ priceGbp: 30, priceAllInGbp: 33 });
+    const totals = totalsFor([
+      line({
+        unitPrice: stub.priceGbp ?? 0,
+        unitPriceAllIn: seedUnitAllIn(stub),
+        quantity: 1,
+        currency: "GBP",
+      }),
+    ]);
+    expect(totals.subtotal).toBe(30);
+    expect(totals.allInTotal).toBeCloseTo(33, 5);
+    expect(totals.feesTaxCents).toBe(300);
+    expect(totals.hasFeesTaxDelta).toBe(true);
+    expect(totals.allInTotal).not.toBe(totals.subtotal);
+  });
+
+  // FAILS-ON-REVERT (experience side).
+  test("T-7b source: PublicExperienceTicket carries priceAllInGbp + reuses the single owner", () => {
+    expect(expService).toMatch(/priceAllInGbp\?:\s*number\s*\|\s*null/);
+    expect(expService).toMatch(
+      /import\s*\{\s*fetchTierAllInCents\s*\}\s*from\s*"\.\/publicEventsService"/,
+    );
+    expect(expService).toMatch(/fetchTierAllInCents\(eventId\)/);
+    // mapExperience sets priceAllInGbp from the threaded all-in map.
+    expect(expService).toMatch(/priceAllInGbp:[\s\S]*?allInCents\s*\/\s*100/);
+  });
+  test("T-7b source: ticketToStub passes priceAllInGbp through", () => {
+    expect(expStubMapper).toMatch(
+      /priceAllInGbp:\s*ticket\.priceAllInGbp\s*\?\?\s*null/,
+    );
+  });
+});
+
+describe("ORCH-1147 AMENDMENT — fallback, both types (T-7c)", () => {
+  test("T-7c: absent/null source all-in → seed falls back to base, zero delta (no fabrication)", () => {
+    // Trip-shaped source with NO all-in.
+    const tripStub = stubFrom({ priceGbp: 50, priceAllInGbp: undefined });
+    expect(tripStub.priceAllInGbp).toBeNull();
+    const tripTotals = totalsFor([
+      line({
+        unitPrice: tripStub.priceGbp ?? 0,
+        unitPriceAllIn: seedUnitAllIn(tripStub),
+        quantity: 1,
+        currency: "GBP",
+      }),
+    ]);
+    expect(tripTotals.allInTotal).toBe(50);
+    expect(tripTotals.feesTaxCents).toBe(0);
+    expect(tripTotals.hasFeesTaxDelta).toBe(false);
+
+    // Experience-shaped source with explicit null all-in (free / RPC miss).
+    const expStub = stubFrom({ priceGbp: 30, priceAllInGbp: null });
+    expect(expStub.priceAllInGbp).toBeNull();
+    const expTotals = totalsFor([
+      line({
+        unitPrice: expStub.priceGbp ?? 0,
+        unitPriceAllIn: seedUnitAllIn(expStub),
+        quantity: 1,
+        currency: "GBP",
+      }),
+    ]);
+    expect(expTotals.allInTotal).toBe(30);
+    expect(expTotals.feesTaxCents).toBe(0);
+    expect(expTotals.hasFeesTaxDelta).toBe(false);
+  });
+});

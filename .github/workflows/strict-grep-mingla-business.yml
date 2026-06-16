@@ -2346,6 +2346,19 @@ jobs:
       - name: Run ORCH-1147 web-charge-allin gate
         run: node .github/scripts/strict-grep/orch-1147-web-charge-allin.mjs
 
+  orch-1147-allin-single-owner:
+    name: "ORCH-1147: pg_public_event_tier_allin has ONE owner; trip/experience reuse the helper (SC-11)"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Self-test the gate (owner vs duplicate-RPC fixtures)
+        run: node .github/scripts/strict-grep/orch-1147-allin-single-owner.mjs --self-test
+      - name: Run ORCH-1147 allin-single-owner gate
+        run: node .github/scripts/strict-grep/orch-1147-allin-single-owner.mjs
+
   orch-1138-trip-reserve-straight-to-cart:
     name: "ORCH-1138: trip Reserve opens the cart directly, never EBES (I-PROPOSED-1138-TRIP-RESERVE-STRAIGHT-TO-CART)"
     runs-on: ubuntu-latest
