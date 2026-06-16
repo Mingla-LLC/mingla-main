@@ -87,6 +87,8 @@ import {
   type ExperienceReserveSelection,
 } from "../../components/expandedCard/ExperienceReservePicker";
 import { buildStaticMapUrl } from "../../utils/mapboxStaticImage";
+// ORCH-1138 P2-2 — open-daily detection (single owner; pure, Deno-tested).
+import { isOpenDailyModel } from "../../utils/experienceOpenDaily";
 import { ConsumerEventReserveBar } from "../../components/offering/ConsumerEventReserveBar";
 import { useConsumerThemeFont } from "../../theme/useConsumerThemeFont";
 import { usePublicEventTickets } from "../../hooks/usePublicEventTickets";
@@ -114,19 +116,12 @@ const EXPERIENCE_INTENT_LABEL: Record<string, string> = {
   "group-fun": "Group Fun",
 };
 
-// Open-daily detection: a "restaurant-style" recurring experience materializes
-// many same-window days with a multi-hour open window. We treat the seed as
-// open-daily when there are >1 bookable occurrences AND every window is wide
-// (>=90 min) — derived from real occurrence data, never fabricated (rule 9).
-const OPEN_DAILY_MIN_WINDOW_MS = 90 * 60 * 1000;
-const isOpenDailyModel = (occ: ReadonlyArray<ExperienceOccurrence>): boolean => {
-  if (occ.length <= 1) return false;
-  return occ.every((o) => {
-    const s = new Date(o.startAt).getTime();
-    const e = new Date(o.endAt).getTime();
-    return Number.isFinite(s) && Number.isFinite(e) && e - s >= OPEN_DAILY_MIN_WINDOW_MS;
-  });
-};
+// Open-daily detection — ORCH-1138 P2-2: tightened so a FIXED-start single /
+// multi-date experience is NEVER misrouted into the arbitrary date→time-within-
+// window picker. Single owner is utils/experienceOpenDaily.ts (pure + unit-
+// tested under Deno). `isOpenDailyModel` now requires a DENSE, near-DAILY run of
+// wide-window occurrences (which only the recurrence-materializer produces); a
+// handful of fixed-start sessions fall through to the slot list. (Imported above.)
 
 // "5 dates · Next: Fri 20 Jun" — derived from the real occurrences (rule 9).
 const buildDatesSubline = (

@@ -183,9 +183,18 @@ function readIntents(raw: unknown): string[] {
 }
 
 // ORCH-1138 Leg 3 — single owner of the brands-row → PublicExperienceBrand map
-// (used by both the by-slug + by-id resolvers). Guards the theme + cover columns.
+// (used by both the by-slug + by-id resolvers). Guards the cover columns (all
+// anon-readable on `brands`).
+//
+// COMMS-0009 / P0-1 REWORK: the brand THEME (theme_color/theme_font/
+// theme_animation) is NOT read off the brands table — the `anon` Postgres role
+// has NO column-level SELECT on those three columns (live: HTTP 401 `42501
+// permission denied for table brands`), which 401'd the entire anon /exp/ page.
+// The theme is sourced from the anon-safe `business_public_events_view`
+// (brand_theme_*) by the resolver and passed in here, exactly as the trip/event
+// legs do (publicEventsService.businessPublicEventViewRowToBrand).
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-function mapBrand(b: any): PublicExperienceBrand {
+function mapBrand(b: any, theme: ThemeInput | null): PublicExperienceBrand {
   return {
     id: b.id,
     slug: b.slug,
@@ -194,8 +203,37 @@ function mapBrand(b: any): PublicExperienceBrand {
     coverMediaUrl: b.cover_media_url ?? null,
     coverMediaType: normalizeCoverType(b.cover_media_type),
     coverHue: typeof b.cover_hue === "number" ? b.cover_hue : null,
-    theme: asThemeInput(b.theme_color, b.theme_font, b.theme_animation),
+    theme,
   };
+}
+
+/**
+ * COMMS-0009 / P0-1 REWORK — resolve the brand theme (color/font/animation) from
+ * the anon-safe `business_public_events_view` instead of the non-anon-readable
+ * `brands.theme_*` columns. The view exposes `brand_theme_color` /
+ * `brand_theme_font` / `brand_theme_animation` (security-definer, anon-readable —
+ * verified live HTTP 200 returning `#7c3aed`/`playfair_display` for the QA
+ * fixture). Filtered to this experience row (brand_slug + slug + experience type)
+ * so we read the right brand's theme. Non-fatal: any view error / miss → null
+ * (the page resolves the default palette, never 401s).
+ */
+async function fetchBrandThemeFromView(
+  brandSlug: string,
+  experienceSlug: string,
+): Promise<ThemeInput | null> {
+  const { data, error } = await supabase
+    .from("business_public_events_view")
+    .select("brand_theme_color, brand_theme_font, brand_theme_animation")
+    .eq("brand_slug", brandSlug)
+    .eq("slug", experienceSlug)
+    .eq("event_type", "experience")
+    .maybeSingle();
+  if (error !== null || data === null) return null;
+  return asThemeInput(
+    data.brand_theme_color,
+    data.brand_theme_font,
+    data.brand_theme_animation,
+  );
 }
 
 function normalizeCoverType(
@@ -470,13 +508,14 @@ export async function getPublicExperienceBySlug(
   brandSlug: string,
   experienceSlug: string,
 ): Promise<PublicExperiencePayload | null> {
-  // 1. Brand by slug (anon-readable). ORCH-1138 Leg 3 — add theme_* + cover_*
-  // columns (Direction-A theming + brand-chip media). All exist on `brands` and
-  // are anon-readable (same as the trip path); no schema/RLS change.
+  // 1. Brand by slug. ORCH-1138 Leg 3 — cover_* columns for the "Presented by"
+  // chip (all anon-readable on `brands`). COMMS-0009 / P0-1: the theme_* columns
+  // are NOT selected here — anon cannot read them (HTTP 401 `42501`); the brand
+  // theme is sourced from the anon-safe `business_public_events_view` below.
   const brandResp = await supabase
     .from("brands")
     .select(
-      "id, slug, name, description, cover_media_url, cover_media_type, cover_hue, theme_color, theme_font, theme_animation",
+      "id, slug, name, description, cover_media_url, cover_media_type, cover_hue",
     )
     .eq("slug", brandSlug)
     .is("deleted_at", null)
@@ -499,8 +538,11 @@ export async function getPublicExperienceBySlug(
   if (eventResp.data === null) return null;
   const event = eventResp.data;
 
+  // COMMS-0009 / P0-1 — brand theme from the anon-safe view (keyed by this
+  // experience row), never from the non-anon-readable brands.theme_* columns.
+  const brandTheme = await fetchBrandThemeFromView(brandSlug, experienceSlug);
   const sidecars = await loadExperienceSidecars(event.id as string);
-  const brand: PublicExperienceBrand = mapBrand(b);
+  const brand: PublicExperienceBrand = mapBrand(b, brandTheme);
   // ORCH-1076 — resolve buyer-readiness for PAID experiences.
   const isPaid = ticketsArePaidOnline(sidecars.tickets);
   const bookable = await resolveBookable(b.id as string, isPaid);
@@ -518,10 +560,13 @@ export async function getPublicExperienceBySlug(
 export async function getPublicExperienceById(
   eventId: string,
 ): Promise<PublicExperiencePayload | null> {
+  // COMMS-0009 / P0-1: the embedded brands(...) select carries only anon-readable
+  // cover columns — NOT theme_* (anon 401 `42501`). The brand theme is sourced
+  // from the anon-safe `business_public_events_view` below.
   const eventResp = await supabase
     .from("events")
     .select(
-      "*, brands(id, slug, name, description, cover_media_url, cover_media_type, cover_hue, theme_color, theme_font, theme_animation)",
+      "*, brands(id, slug, name, description, cover_media_url, cover_media_type, cover_hue)",
     )
     .eq("id", eventId)
     .eq("event_type", "experience")
@@ -536,7 +581,13 @@ export async function getPublicExperienceById(
   const rawBrand = (event as any).brands;
   const brandRow = Array.isArray(rawBrand) ? rawBrand[0] : rawBrand;
   if (brandRow === null || brandRow === undefined) return null;
-  const brand: PublicExperienceBrand = mapBrand(brandRow);
+  // COMMS-0009 / P0-1 — brand theme from the anon-safe view, keyed by this
+  // experience row (brand_slug + slug), never from brands.theme_*.
+  const brandTheme = await fetchBrandThemeFromView(
+    brandRow.slug as string,
+    event.slug as string,
+  );
+  const brand: PublicExperienceBrand = mapBrand(brandRow, brandTheme);
 
   const sidecars = await loadExperienceSidecars(eventId);
   // ORCH-1076 — resolve buyer-readiness for PAID experiences.

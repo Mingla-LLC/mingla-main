@@ -42,8 +42,24 @@ describe("ORCH-1114 — /exp/{brandSlug}/{experienceSlug} public anon route cont
     expect(publicRouteSource).toMatch(/<ExperiencePreview/);
   });
 
-  test("A-EXP-4: route mounts ExperienceCheckoutFlow", () => {
-    expect(publicRouteSource).toMatch(/<ExperienceCheckoutFlow/);
+  // [TEST-MOD-APPROVED ORCH-1138] — Leg 3 rework replaced the in-page
+  // <ExperienceCheckoutFlow> mount with ROUTE-BASED checkout: Reserve now pushes
+  // experienceCheckoutPath(experience.id) carrying only { eventDateId, quantity }
+  // (byte-identical to the checkout contract). The old assertion (mounts
+  // <ExperienceCheckoutFlow>) is dead — that component is no longer rendered by
+  // this route. This assertion proves the new wiring is present + byte-clean.
+  // Fails-on-revert: removing the experienceCheckoutPath router.push (or
+  // re-introducing an in-page <ExperienceCheckoutFlow> mount with no route push)
+  // flips the .toMatch(experienceCheckoutPath) / .toMatch(router.push) checks.
+  test("A-EXP-4: route checkout is ROUTE-BASED via experienceCheckoutPath (no in-page ExperienceCheckoutFlow mount)", () => {
+    // The new contract: Reserve pushes the experience checkout route.
+    expect(publicRouteSource).toMatch(/experienceCheckoutPath\s*\(/);
+    expect(publicRouteSource).toMatch(/router\.push\b/);
+    // Only eventDateId + quantity are threaded to checkout (byte-identical).
+    expect(publicRouteSource).toMatch(/eventDateId/);
+    expect(publicRouteSource).toMatch(/quantity/);
+    // The deleted in-page mount must NOT come back.
+    expect(publicRouteSource).not.toMatch(/<ExperienceCheckoutFlow/);
   });
 
   test("A-EXP-5: route uses usePublicExperienceBySlug hook", () => {
