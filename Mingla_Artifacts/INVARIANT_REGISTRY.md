@@ -19,6 +19,20 @@
 
 ---
 
+## ACTIVE (post ORCH-1152 [checkout currency crash] CLOSE 2026-06-16)
+
+### I-PROPOSED-1152-FORMATCURRENCY-NEVER-THROWS (ACTIVE post ORCH-1152 CLOSE)
+
+**Rule:** `formatCurrency` / `formatCurrencyRound` in `mingla-business/src/utils/currency.ts` MUST NOT throw on an empty / blank / undefined currency code — the code MUST be routed through `normalizeCurrency` (empty/blank/undefined → the default code, currently "GBP") BEFORE it reaches `Intl.NumberFormat`, so no caller can ever crash currency formatting (Constitution #3 no silent failure → here, no CRASH; #10 currency-aware). Valid ISO codes MUST format identically (behavior-neutral for real currencies). Corollary for callers: do not compute `formatCurrency(...)` UNCONDITIONALLY on a state where the currency may be unresolved (e.g. an empty cart where `useCartTotals().currency === ""`); guard it or rely on the util's fallback.
+
+**Why it exists:** ORCH-1152 — ORCH-1147R2 added an unconditional `formatCurrency(totals.allInTotal, totals.currency)` that ran on the EMPTY cart (currency `""`) → `Intl.NumberFormat({currency:""})` threw `RangeError: Currency is invalid`, crashing every business checkout screen on mount (S0). The R2 render test only mounted a POPULATED cart, so the empty-state crash shipped. This locks the formatter so a blank/unresolved currency degrades gracefully instead of crashing — anywhere in the app.
+
+**Enforcement:** test-enforced (no strict-grep). Implementor empty-state happy-path `mingla-business/src/components/checkout/__tests__/orch_1152_empty_cart_currency_crash.test.ts` + tester adversarial component-render `orch_1152_empty_cart_currency_crash.adversarial.render.test.tsx` (mounts all 3 checkout screens on an empty cart → renders "—", no throw; asserts `formatCurrency(x, "")`/`(x, undefined)` returns a safe string). Both fails-on-revert @ `7602f7bd3` / `95567b0a5` (reverting reproduces the exact shipped `RangeError`).
+
+**Tests:** see Enforcement. Shipped via PR #505 (squash `c204241043`). **Known residual (P3, accepted):** a genuinely junk NON-empty code (e.g. `"$"`) still throws — zero live risk (cart currencies are always valid DB codes); revisit only if a non-ISO code can reach the formatter.
+
+---
+
 ## ACTIVE (post ORCH-1147R2 [cart selection screen shows the all-in] CLOSE 2026-06-16)
 
 ### I-PROPOSED-1147R2-SELECTION-SHOWS-ALLIN (ACTIVE post ORCH-1147R2 CLOSE)
