@@ -12,6 +12,7 @@
 import {
   sumRsvpGoingCount,
   formatRsvpGoingLabel,
+  rsvpEditNoticeCopy,
 } from "../rsvpHubMetrics";
 
 describe("ORCH-1150 §8 step 11 — Hub RSVP going metric", () => {
@@ -46,5 +47,23 @@ describe("ORCH-1150 §8 step 11 — Hub RSVP going metric", () => {
     expect(
       formatRsvpGoingLabel({ kind: "draft", goingCount: 0, capacity: 10 }),
     ).toBe("Not published");
+  });
+});
+
+describe("ORCH-1150 §12 — RSVP edit-published notice", () => {
+  it("pluralizes for >1 going and promises notification", () => {
+    const copy = rsvpEditNoticeCopy(3);
+    expect(copy).toContain("3 guests are going");
+    expect(copy).toContain("they'll be notified");
+  });
+
+  it("uses singular for exactly 1 going", () => {
+    expect(rsvpEditNoticeCopy(1)).toContain("1 guest is going");
+  });
+
+  it("falls back to a generic promise when nobody's going yet", () => {
+    expect(rsvpEditNoticeCopy(0)).toBe(
+      "Guests who RSVP will be notified if you change the date, time, or place.",
+    );
   });
 });

@@ -6,6 +6,15 @@
  * math are unit-testable without the react-native render chain. See SPEC §8 step 11.
  */
 
+/**
+ * ORCH-1150 Step 12 — the RSVP edit-published "they'll be notified" notice copy.
+ * Pure so it's testable without the RN render. SPEC §12.
+ */
+export const rsvpEditNoticeCopy = (goingCount: number): string =>
+  goingCount > 0
+    ? `${goingCount} ${goingCount === 1 ? "guest is" : "guests are"} going — they'll be notified if you change the date, time, or place.`
+    : "Guests who RSVP will be notified if you change the date, time, or place.";
+
 /** Sum each going+approved guest plus their plus_count (the §4.1c cap formula). */
 export const sumRsvpGoingCount = (
   rows: ReadonlyArray<{ plus_count: number | null }>,

@@ -119,6 +119,8 @@ import {
   patchPublishedEventTheme,
   patchPublishedEventWhen,
 } from "../../services/businessEvents";
+import { updateLiveRsvp } from "../../services/rsvpEvents";
+import { rsvpEditNoticeCopy } from "../../utils/rsvpHubMetrics";
 import { businessEventKeys } from "../../hooks/useBusinessEvents";
 import { publicEventKeys } from "../../hooks/usePublicEvents";
 import {
@@ -380,6 +382,13 @@ export const EditPublishedScreen: React.FC<EditPublishedScreenProps> = ({
     [],
   );
 
+  // ORCH-1150 — an RSVP edit drops the Tickets section entirely (RSVP has zero
+  // tickets + no money). Every SECTIONS iteration below uses this filtered list.
+  const sections = useMemo<readonly SectionConfig[]>(
+    () => (rsvpMode ? SECTIONS.filter((s) => s.key !== "tickets") : SECTIONS),
+    [rsvpMode],
+  );
+
   // ---- Per-section errors ----
   const sectionErrors = useMemo<Record<SectionKey, ValidationError[]>>(() => {
     const out: Record<SectionKey, ValidationError[]> = {
@@ -391,7 +400,7 @@ export const EditPublishedScreen: React.FC<EditPublishedScreenProps> = ({
       tickets: [],
       settings: [],
     };
-    for (const sec of SECTIONS) {
+    for (const sec of sections) {
       out[sec.key] =
         sec.stepIndex === null ? [] : validateStep(sec.stepIndex, editState);
     }
@@ -430,13 +439,13 @@ export const EditPublishedScreen: React.FC<EditPublishedScreenProps> = ({
       return;
     }
     // 1. Validate sections
-    const hasErrors = SECTIONS.some(
+    const hasErrors = sections.some(
       (sec) => sectionErrors[sec.key].length > 0,
     );
     if (hasErrors) {
       setShowErrors(true);
       // Open the first errored section so user sees inline errors
-      const firstErrored = SECTIONS.find(
+      const firstErrored = sections.find(
         (sec) => sectionErrors[sec.key].length > 0,
       );
       if (firstErrored !== undefined) {
@@ -739,6 +748,52 @@ export const EditPublishedScreen: React.FC<EditPublishedScreenProps> = ({
       setSubmitting(true);
       await sleep(SAVE_PROCESSING_MS);
       const patch = currentPatch;
+
+      // ORCH-1150 — RSVP edit-published path. RSVP has NO sold tickets + no
+      // money, so it bypasses the entire refund/sold-diff machinery below and
+      // commits through biz_update_live_rsvp. A material change (date/time/
+      // venue) makes that RPC enqueue an `rsvp_event_updated` notification to
+      // every going guest (SPEC §5.2). Then the local Zustand mutation keeps
+      // the cache in sync. No StripeBlockedCard, no EndSalesSheet, no ticket diff.
+      if (rsvpMode) {
+        if (liveEvent.serverEventId === null) {
+          setSubmitting(false);
+          setModal((prev) => ({ ...prev, visible: false }));
+          showToast("Save failed because this event is missing its server id.");
+          return;
+        }
+        try {
+          await updateLiveRsvp(liveEvent.serverEventId, patch, reason);
+        } catch (error) {
+          setSubmitting(false);
+          setModal((prev) => ({ ...prev, visible: false }));
+          const code = error instanceof Error ? error.message : "rsvp_update_failed";
+          const message = code.includes("event_not_an_rsvp")
+            ? "This event isn't an RSVP — reopen it to edit."
+            : code.includes("insufficient_event_permission")
+              ? "You don't have permission to edit this event."
+              : "Couldn't save your changes. Tap to try again.";
+          showToast(message);
+          return;
+        }
+        const rsvpResult = updateLiveEventFields(
+          liveEvent.id,
+          patch,
+          soldCountCtx,
+          reason,
+        );
+        setSubmitting(false);
+        setModal((prev) => ({ ...prev, visible: false }));
+        invalidateServerEventCaches();
+        if (rsvpResult.ok) {
+          showToast("Saved. Going guests will be notified.");
+          setTimeout(() => router.back(), TOAST_NAV_DELAY_MS);
+        } else {
+          showToast("Couldn't save your changes. Tap to try again.");
+        }
+        return;
+      }
+
       const validation = validateLiveEventFieldUpdate(
         liveEvent,
         patch,
@@ -1136,6 +1191,7 @@ export const EditPublishedScreen: React.FC<EditPublishedScreenProps> = ({
       buildRejectDialog,
       disableLocalSaveReason,
       invalidateServerEventCaches,
+      rsvpMode,
     ],
   );
 
@@ -1220,7 +1276,7 @@ export const EditPublishedScreen: React.FC<EditPublishedScreenProps> = ({
     const out = new Set<SectionKey>();
     if (fieldDiffs.length === 0) return out;
     const changedKeys = new Set(fieldDiffs.map((d) => d.fieldKey));
-    for (const sec of SECTIONS) {
+    for (const sec of sections) {
       if (
         (sec.key === "basics" &&
           (changedKeys.has("name") ||
@@ -1302,7 +1358,18 @@ export const EditPublishedScreen: React.FC<EditPublishedScreenProps> = ({
       >
         <EditAfterPublishBanner />
 
-        {SECTIONS.map((sec) => {
+        {/* ORCH-1150 — RSVP edit notice: every going guest is notified when a
+            material detail (date/time/venue) changes. Replaces the ticketed
+            refund warning (RSVP has no buyers to refund). */}
+        {rsvpMode ? (
+          <View style={styles.rsvpNotice}>
+            <Text style={styles.rsvpNoticeText}>
+              {rsvpEditNoticeCopy(liveEvent.rsvpGoingCount ?? 0)}
+            </Text>
+          </View>
+        ) : null}
+
+        {sections.map((sec) => {
           const isOpen = openSection === sec.key;
           const isEdited = editedSectionKeys.has(sec.key);
           const hasErrors =
@@ -1447,6 +1514,23 @@ const styles = StyleSheet.create({
     borderColor: glass.border.profileBase,
     backgroundColor: glass.tint.profileBase,
     overflow: "hidden",
+  },
+  // ORCH-1150 — RSVP "they'll be notified" notice. Opaque fill (Android glass
+  // policy: ANDROID_GLASS_USES_OPAQUE_FALLBACK) — solid card, no translucent tint.
+  rsvpNotice: {
+    marginBottom: spacing.sm,
+    borderRadius: radiusTokens.lg,
+    borderWidth: 1,
+    borderColor: glass.border.profileBase,
+    backgroundColor: canvas.profile,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+    overflow: "hidden",
+  },
+  rsvpNoticeText: {
+    color: textTokens.secondary,
+    fontSize: 13,
+    lineHeight: 18,
   },
   sectionHeader: {
     flexDirection: "row",
