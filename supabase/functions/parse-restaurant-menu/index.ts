@@ -205,6 +205,9 @@ Deno.serve(async (req) => {
       is_free: exp.is_free,
       suggested_time_of_day: exp.suggested_time_of_day,
       confidence: exp.confidence,
+      // ORCH-1151: thread the menu-items-as-stops through to the executor so
+      // the confirm writes experience_stops + a summed-price single ticket.
+      stops: exp.stops,
     };
 
     const { data: inserted, error: insertErr } = await userClient

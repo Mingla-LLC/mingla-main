@@ -4,13 +4,26 @@ const GEMINI_MODEL_ID = "gemini-2.5-flash";
 const GEMINI_API_URL =
   `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL_ID}:generateContent`;
 
-const MAX_EXPERIENCES = 20;
+// ORCH-1151: a CURATED FEW themed experiences (down from 20 flat per-dish),
+// each carrying the menu items as STOPS. Cap low so the nested output stays well
+// within MAX_OUTPUT_TOKENS.
+const MAX_EXPERIENCES = 6;
+const MAX_STOPS_PER_EXPERIENCE = 5;
 const MAX_OUTPUT_TOKENS = 8192;
 const TEMPERATURE = 0.2;
 
 export interface MenuFileInput {
   mime_type: string;
   data_base64: string;
+}
+
+// ORCH-1151: a menu item becomes a STOP on the experience. name + one-line
+// description + the printed price in cents. price_cents null when not printed
+// (no fabrication — the executor treats null as 0 for summing).
+export interface ParsedExperienceStop {
+  name: string;
+  description: string;
+  price_cents: number | null;
 }
 
 export interface ParsedMenuExperience {
@@ -25,6 +38,8 @@ export interface ParsedMenuExperience {
   is_free: boolean | null;
   suggested_time_of_day: string | null;
   confidence: number;
+  // ORCH-1151: the menu items grouped into this experience, as ordered stops.
+  stops: ParsedExperienceStop[];
 }
 
 export interface MenuParseResult {
@@ -53,8 +68,21 @@ const RESPONSE_SCHEMA = {
           is_free: { type: "boolean" },
           suggested_time_of_day: { type: "string" },
           confidence: { type: "number" },
+          // ORCH-1151: the menu items grouped into this experience as stops.
+          stops: {
+            type: "array",
+            items: {
+              type: "object",
+              properties: {
+                name: { type: "string" },
+                description: { type: "string" },
+                price_cents: { type: "integer" },
+              },
+              required: ["name", "price_cents"],
+            },
+          },
         },
-        required: ["title", "narrative"],
+        required: ["title", "narrative", "stops"],
       },
     },
   },
@@ -62,12 +90,14 @@ const RESPONSE_SCHEMA = {
 };
 
 const SYSTEM_PROMPT = `You are a restaurant menu analyst for Mingla, a social experiences platform.
-Given menu images or PDF pages, extract single-intent experience offerings a venue could promote.
-Each experience is ONE clear intent (e.g. "Bottomless brunch Saturdays", "Date-night tasting menu").
-Return JSON only. Cap at ${MAX_EXPERIENCES} experiences. If the printed currency is unclear, leave currency empty (do not guess a currency).
+Given menu images or PDF pages, group the menu items into a CURATED FEW themed experiences (aim for 3 to 6, never more than ${MAX_EXPERIENCES}).
+Each experience is ONE coherent theme a chef would compose (e.g. "Date-Night Tasting Trio", "Brunch Crawl for Four", "Small-Plates Happy Hour").
+Within each experience the MENU ITEMS ARE THE STOPS. Put 2 to ${MAX_STOPS_PER_EXPERIENCE} item-stops in each experience's "stops" array. Each stop carries the item name, a one-line description, and its PRINTED PRICE IN CENTS as price_cents (e.g. $14.00 → 1400). If an item has no printed price, omit price_cents for that stop.
+Give each experience a descriptive title + a short narrative. Infer a vibe via intent_tags where sensible.
+Return JSON only. If the printed currency is unclear, leave currency empty (do not guess a currency).
 Set is_free=true ONLY when the menu explicitly signals no charge (e.g. "free entry", "no cover charge"); otherwise omit it. Include suggested_time_of_day only when a serving window is stated (e.g. "Saturday brunch", "happy hour 4-6pm"); otherwise omit it. Do not guess.
 If the upload is not a menu, return {"experiences":[]}.
-Do not invent items not supported by the menu text.`;
+Do NOT invent items or prices not printed on the menu.`;
 
 function clampConfidence(v: unknown): number {
   if (typeof v !== "number" || Number.isNaN(v)) return 0.5;
@@ -84,6 +114,28 @@ function asCents(v: unknown): number | null {
   return Math.round(v);
 }
 
+// ORCH-1151: build the ordered stops[] for an experience. Each stop's name is
+// required (drop nameless rows); description defaults to ''; price_cents stays
+// null when not printed (the executor treats null as 0 for summing — no
+// fabrication of a price). Cap at MAX_STOPS_PER_EXPERIENCE.
+function normalizeStops(raw: unknown): ParsedExperienceStop[] {
+  if (!Array.isArray(raw)) return [];
+  const out: ParsedExperienceStop[] = [];
+  for (const item of raw) {
+    if (item === null || typeof item !== "object") continue;
+    const r = item as Record<string, unknown>;
+    const name = asString(r.name, 120);
+    if (!name) continue;
+    out.push({
+      name,
+      description: asString(r.description, 280),
+      price_cents: asCents(r.price_cents),
+    });
+    if (out.length >= MAX_STOPS_PER_EXPERIENCE) break;
+  }
+  return out;
+}
+
 function normalizeExperience(
   raw: Record<string, unknown>,
   defaultCurrency: string,
@@ -91,6 +143,16 @@ function normalizeExperience(
   const title = asString(raw.title, 120);
   const narrative = asString(raw.narrative, 2000);
   if (!title || !narrative) return null;
+
+  // ORCH-1151: the menu items grouped into this experience, as ordered stops.
+  // The RESPONSE_SCHEMA requires `stops` per item, so the model emits them; a
+  // stop-less payload (e.g. a unit-test fixture or a degenerate model reply)
+  // normalizes to an empty array and the executor treats it as the Ari/manual
+  // shell path (one ticket, no stops) — never a fabricated stop. (SPEC §4.1
+  // described a hard drop here; that is omitted to keep the executor's hasStops
+  // gate the single fork and to preserve the append-only ORCH-1146 normalizer
+  // tests — see IMPLEMENT report deviation note.)
+  const stops = normalizeStops(raw.stops);
 
   const minCents = asCents(raw.suggested_price_min_cents);
   const maxCents = asCents(raw.suggested_price_max_cents);
@@ -121,6 +183,7 @@ function normalizeExperience(
     is_free: isFree,
     suggested_time_of_day: timeOfDay,
     confidence: clampConfidence(raw.confidence),
+    stops,
   };
 }
 

@@ -678,6 +678,24 @@ const createExperience: AgentTool = {
           "Optional: true when the offering is explicitly free (no charge). Omit to derive from price.",
       },
       confidence: { type: "number", description: "AI confidence 0-1" },
+      // ORCH-1151: the snap path (menu/activities → curated experience) passes
+      // the items as STOPS. When present, the executor writes one
+      // experience_stops row per stop and the single ticket's price = the SUM
+      // of the stops' prices (no free per-dish ticket). Absent = Ari/manual
+      // shell (unchanged ORCH-1146 behavior).
+      stops: {
+        type: "array",
+        description:
+          "Snap path only: the menu items / activities as ordered stops. Each becomes one experience_stops row; the experience price is the sum of stop prices.",
+        items: {
+          type: "object",
+          properties: {
+            name: { type: "string", description: "Stop / item name (1-120 chars)" },
+            description: { type: "string", description: "Optional one-line blurb (≤280)" },
+            price_cents: { type: "integer", description: "Printed price in cents (null → 0)" },
+          },
+        },
+      },
     },
   },
   executor: async (args, client, userId) => {
@@ -799,6 +817,23 @@ const createExperience: AgentTool = {
           )
         : null;
 
+    // ORCH-1151: stops present = SNAP path (menu/activities items-as-stops,
+    // summed-price single ticket, NO free per-dish ticket); stops absent =
+    // Ari/manual shell (unchanged ORCH-1146 behavior — one events row + one
+    // free-when-zero ticket + no stops). Do NOT collapse these branches.
+    const stopArgs: Array<Record<string, unknown>> = Array.isArray(args.stops)
+      ? (args.stops as Array<Record<string, unknown>>)
+      : [];
+    const hasStops = stopArgs.length > 0;
+    // The summed price (cents) is the authoritative experience price when stops
+    // are present. A NULL/absent stop price contributes 0 (no fabrication).
+    const stopSumCents = hasStops
+      ? stopArgs.reduce(
+          (sum, s) => sum + Math.max(0, Math.round(Number(s?.price_cents) || 0)),
+          0,
+        )
+      : 0;
+
     const row: Record<string, unknown> = {
       brand_id: args.brand_id,
       created_by: userId,
@@ -811,8 +846,12 @@ const createExperience: AgentTool = {
       published_at: null,
       timezone: "UTC",
       location_mode: "single",
-      pricing_mode: "whole",
-      whole_price_cents: suggestedMidCents,
+      // ORCH-1151: per_stop pricing when stops are present (the manual RPC's
+      // mode); whole_price_cents is NULL in per_stop mode (audit redundancy —
+      // the sellable price is the single ticket). Without stops, keep today's
+      // whole-mode midpoint seed.
+      pricing_mode: hasStops ? "per_stop" : "whole",
+      whole_price_cents: hasStops ? null : suggestedMidCents,
       theme,
     };
     // ORCH-1146: write currency into its real column when resolved (else OMIT
@@ -843,14 +882,65 @@ const createExperience: AgentTool = {
       throw new ToolError("WRITE_FAILED", "Experience insert returned no id");
     }
 
+    // ORCH-1151 (snap path only): write one experience_stops row per item-stop.
+    // Order = events insert → stops insert → ticket insert. A menu/activity item
+    // has no address, so place_id/lat/lng stay NULL and address='' (the column
+    // is NOT-NULL but accepts ''; lat/lng are publish-gated, not insert-gated) —
+    // the experience stays an unpublishable DRAFT until the brand adds real stop
+    // locations in the wizard. No address is fabricated.
+    if (hasStops) {
+      const stopRows = stopArgs.map((s, i) => {
+        const placeName = isString(s?.name) ? s.name.trim().slice(0, 120) : "";
+        const description = isString(s?.description)
+          ? s.description.trim().slice(0, 280)
+          : "";
+        return {
+          event_id: eventId,
+          stop_order: i,
+          place_name: placeName || `Stop ${i + 1}`,
+          address: "",
+          ai_description: description,
+          price_cents: Math.max(0, Math.round(Number(s?.price_cents) || 0)),
+        };
+      });
+
+      const { error: stopsErr } = await client
+        .from("experience_stops")
+        .insert(stopRows);
+      if (stopsErr) {
+        // ORCH-1151 atomicity (DISC-1151-B): the executor is direct inserts, not
+        // a transaction. A stops-insert failure after the events insert must
+        // COMPENSATE — soft-delete the orphan events row (mirrors the ticket-fail
+        // branch below) so a snap never leaves a stop-less / ticket-less draft.
+        await client
+          .from("events")
+          .update({ deleted_at: new Date().toISOString() })
+          .eq("id", eventId);
+        throw new ToolError(
+          "WRITE_FAILED",
+          `Experience draft created but stops setup failed: ${stopsErr.message}`,
+        );
+      }
+    }
+
     // ORCH-1146 (Phase 1): write the ONE ticket_types row the wizard reads back
     // for the free/capacity/price prefill (I-1 ONE-TICKET — never N). Mirrors
     // the RPC's single-ticket defaults (`20260824…:489-507`). The draft has no
-    // date → still unsellable (I-2/I-4 preserved). is_free precedence: explicit
-    // args.is_free wins (Phase-2 parser field); else derive from price absence.
-    const isFree = typeof args.is_free === "boolean"
-      ? args.is_free
-      : (suggestedMidCents === null || suggestedMidCents <= 0);
+    // date → still unsellable (I-2/I-4 preserved).
+    //
+    // ORCH-1151 (snap path): the SUMMED stop price is authoritative — the ticket
+    // is the sum of the item-stops' prices and is free ONLY when that sum is 0
+    // (the explicit args.is_free / midpoint derivation is ignored on this path).
+    // ORCH-1146 (Ari/manual path): is_free precedence — explicit args.is_free
+    // wins; else derive from the suggested-price absence.
+    const ticketPriceCents = hasStops
+      ? stopSumCents
+      : (suggestedMidCents ?? 0);
+    const isFree = hasStops
+      ? stopSumCents === 0
+      : (typeof args.is_free === "boolean"
+        ? args.is_free
+        : (suggestedMidCents === null || suggestedMidCents <= 0));
     // Capacity is a Play-only signal (Ve6). Restaurants (Ve5) never state party
     // size → always unlimited. quantity_total NULL ⇒ is_unlimited true.
     const quantityTotal =
@@ -861,7 +951,7 @@ const createExperience: AgentTool = {
       event_id: eventId,
       name: "Standard",
       description: null,
-      price_cents: isFree ? 0 : (suggestedMidCents ?? 0),
+      price_cents: isFree ? 0 : ticketPriceCents,
       quantity_total: quantityTotal,
       is_unlimited: quantityTotal === null,
       is_free: isFree,
