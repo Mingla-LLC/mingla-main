@@ -225,3 +225,46 @@ Pure unit test (no RN render — the RTL/react-test-renderer overlay is per-work
 - Touched (3): `venueShellScroll.ts` (new), `VenueSuiteShell.tsx`, `package.json` (+ new test). 
 - **Untouched (per hard guards):** schema migrations, toggle logic, `VenueListingContent` (mounted verbatim), the nav-lock guard, `HubSubNav`/`useHubTabs`, desktop two-column behavior, Android opaque-glass policy. Tokens only; safe-area honored.
 - No deploy / merge.
+
+---
+
+## I-39 a11y fix (Pressable accessibilityLabel coverage)
+
+Follow-up pass to turn CI check **"I-39: Pressable accessibilityLabel coverage"** (PR #498) from RED to green. Labels/roles only — no behavior, layout, or two-column/scroll change.
+
+### Gate's exact rule
+Script: `.github/scripts/strict-grep/i39-pressable-label.mjs` (scans `mingla-business/app/` + `mingla-business/src/`, all `.tsx`). For every `<Pressable>` or `<TouchableOpacity>` JSX element:
+- **Targets only** `Pressable` and `TouchableOpacity` (not `Switch`/`Button`).
+- Only considered if it has an `onPress=` attr (interactive).
+- **PASS** if it has an explicit `accessibilityLabel=`.
+- **P2 implicit pass (INFO, exit 0)** if its only non-whitespace child is a `<Text>` whose only child is a string- or template-literal (RN derives a label). Still counts as PASS but the gate prefers explicit.
+- **VIOLATION (exit 1)** otherwise — unless the line immediately above carries `// orch-strict-grep-allow pressable-no-label — <reason>`.
+- `accessibilityRole` is **not** required by the gate, but the offering/* convention (e.g. `CollapsibleDescription.tsx`, `DraftSelectBar.tsx`) pairs `accessibilityRole="button"` with the label — mirrored here.
+
+### Pre-fix gate result
+`1 violation` + `4 implicit-text (INFO)`, exit 1:
+- VIOLATION: `VenueSettingsModule.tsx:244` — no-show policy segment Pressable; its `<Text>` child is a `policy === "forfeit" ? … : …` conditional (not a string literal), so it failed the implicit-Text heuristic.
+- INFO (P2): `VenueStep4Hours.tsx:197/203/209/216` — Weekdays / Weekend / All / Clear bulk-select chips.
+
+### Elements labeled, per file
+- **`VenueSettingsModule.tsx`** (no-show policy segment, ~L244): added `accessibilityRole="button"`, dynamic `accessibilityLabel` (`"Forfeit fee on no-show"` / `"No penalty on no-show"`), and `accessibilityState={{ selected: active }}`. (The two `Switch`es — reservations + fee toggle — already had `accessibilityLabel`; `Switch` is not a gate target anyway.)
+- **`VenueStep4Hours.tsx`** (bulk-select quick chips): promoted the 4 implicit-Text chips to explicit `accessibilityRole="button"` + label: `"Select weekdays"`, `"Select weekend"`, `"Select all days"`, `"Clear day selection"`. (The day chips and Opens/Closes/Mark-closed Pressables already had explicit dynamic labels.)
+
+### Already-passing venue files (verified, untouched)
+- `VenueSuiteShell.tsx` rail row: already `accessibilityRole="tab"` + `accessibilityLabel={\`${VENUE_MODULES[m].label} module\`}`.
+- `VenueModulePillRow.tsx`: Back-to-Hub (`"Back to Hub"`) + per-module tab pills (`\`${label} module\``) already labeled.
+- `VenueModuleComingSoon.tsx`: only interactive element is a shared `<Button>` (not a gate target; no Pressable).
+- `VenueCreatorWizard.tsx`, `VenueListingContent.tsx`, `VenueStep2NameSlug.tsx`: their Pressables were not flagged (explicit labels / literal-Text children present).
+
+### Local gate-pass proof
+Run the way CI does (`node .github/scripts/strict-grep/i39-pressable-label.mjs`; babel parser resolved from `mingla-business/node_modules`):
+```
+I-39 gate: scanned 445 .tsx files · 0 violations · 0 implicit-text labels (INFO) · 0 warnings · 0 parse failures
+exit 0
+```
+Also green: `npm run test:orch-1148` (16 passed, 3 suites), full `src/components/venue/__tests__/` + `useHubTabs.venueGate.adversarial` (44 passed, 8 suites), eslint clean on both changed files, and `tsc --noEmit` reports **zero** errors in the two changed files (the 325 repo-wide tsc errors are pre-existing/environmental in unrelated files — checkout-trip buyer, brand-rendering, etc. — none in `components/venue/`).
+
+### Commit
+- Branch `ORCH-1148-venue-suite-foundation`, rebased onto `origin/main` (`a2017729f` ORCH-1138 Leg 2).
+- New HEAD: **`eabca6a9a`** — "ORCH-1148: satisfy I-39 Pressable accessibilityLabel gate on venue suite" (2 files, +19/−1).
+- No deploy / merge.

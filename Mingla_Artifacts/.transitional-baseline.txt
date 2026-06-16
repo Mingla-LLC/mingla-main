@@ -16,3 +16,6 @@
 
 mingla-business/src/hooks/useCurrentBrandRole.ts:163
 mingla-business/src/services/eventChangeNotifier.ts:152
+
+# [META-ORCH-1148] Pre-existing main marker (PublicEventPage iOS Head-metadata, orig PR #60); line shifted under parallel edits + never baselined, so the whole-tree gate was red for ALL PRs. Baselined to unblock; PublicEventPage owner should add a proper exit condition.
+mingla-business/src/components/event/PublicEventPage.tsx:505

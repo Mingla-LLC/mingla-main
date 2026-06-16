@@ -245,6 +245,13 @@ export function VenueSettingsModule({
                     key={policy}
                     onPress={() => handleNoShowPolicy(policy)}
                     disabled={!canMutate}
+                    accessibilityRole="button"
+                    accessibilityLabel={
+                      policy === "forfeit"
+                        ? "Forfeit fee on no-show"
+                        : "No penalty on no-show"
+                    }
+                    accessibilityState={{ selected: active }}
                     style={[
                       styles.segmentItem,
                       active ? styles.segmentItemActive : null,
