@@ -18,6 +18,7 @@ import {
 // never flashes a bare dark `#1a1a2e` panel during async decode. Keep
 // `key={currentRec.id}` — the fix works WITH the remount, not by removing it.
 import { Image as ExpoImage } from "expo-image";
+import { useRouter } from "expo-router";
 // ORCH-1069: shared video-capable cover renderer (image + GIF + video, muted
 // autoplay, reduce-motion aware). Same renderer the event/trip grid + hero use
 // (COMMS-0007). A venue with a `.mp4` cover plays its video on the deck hero;
@@ -702,6 +703,9 @@ export default function SwipeableCards({
   coachDeckRef,
 }: SwipeableCardsProps) {
   const { t } = useTranslation(['cards', 'common']);
+  // ORCH-1155 [public-brand-page]: navigate to the brand page from the
+  // brand-experience card's badge (no dead tap).
+  const router = useRouter();
   // ORCH-0589 v4 (V4): safe-area insets used to position the "View Previous" batchChip
   // below the floating top-bar chrome on the Swipe page (insets.top + ~62pt).
   const safeAreaInsets = useSafeAreaInsets();
@@ -2875,6 +2879,15 @@ export default function SwipeableCards({
                     brandExperience={{
                       brandName: (currentRec as any).brandName,
                       brandLogoUrl: (currentRec as any).brandLogoUrl ?? null,
+                    }}
+                    // ORCH-1155 [public-brand-page]: brand badge → brand page.
+                    // brandSlug is threaded end-to-end on the deck path; guard
+                    // the empty slug (rule 9 — never nav to /b/).
+                    onBrandPress={() => {
+                      const s = (currentRec as any).brandSlug;
+                      if (typeof s === 'string' && s.length > 0) {
+                        router.push(`/b/${s}` as never);
+                      }
                     }}
                     // ORCH-1072: real cover → card hero (image/video) with the
                     // stop photos as a strip below (CuratedExperienceSwipeCard).

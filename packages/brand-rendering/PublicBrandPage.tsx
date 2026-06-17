@@ -1,12 +1,40 @@
+// PublicBrandPage — ORCH-1155 [public-brand-page] · Direction-A redesign.
+//
+// THE single shared public brand renderer, consumed identically by:
+//   • mingla-business adapter → buyer-web + business iOS/Android (route /b/{slug})
+//   • app-mobile ConsumerBrandProfileScreen → consumer iOS/Android (route /b/{slug})
+// One refactor reaches all five surfaces.
+//
+// Composes the shipped Direction-A foundation (the EXACT primitives the trip/
+// event/experience pages use): @mingla/offering-rendering ParallaxCoverShell +
+// OfferingChrome + useResponsiveLayout, and @mingla/event-rendering's SHARED
+// createThemePalette / offeringSurfaceStyles (NOT a file-local palette engine —
+// I-PROPOSED-1155-SINGLE-PALETTE-ENGINE). Matches
+// Mingla_Artifacts/design/ORCH-1138/BRAND_DIRECTION_A_RESPONSIVE.html:
+//   • Phone/native: full-bleed pinned parallax cover + body sliding over the −28
+//     seam + body-level fixed chrome (X · Share · Mute; Mute only on video covers).
+//   • Tab bar: About · Upcoming? · Events? · Trips? · Experiences? — About FIRST
+//     + DEFAULT, horizontally scrollable (no clipping), only non-empty tabs.
+//   • About pane: tagline → bio (4-line clamp + Read more) → contact (email/phone).
+//   • Desktop ≥1024px: contained 21:9 hero + two-column (tabs+2-col grid left,
+//     sticky Share + Next-up brand-summary panel right). No money/membership
+//     action — a brand page is a profile+directory, not a checkout.
+//
+// Real-data-only (rule 9): empty tabs/teaser/socials/contact/address/tagline/bio
+// are hidden, never fabricated. Anon-safe: data arrives via props from the
+// security-definer source (the renderer never selects the protected brands table).
+
 import React, { useEffect, useMemo, useState } from "react";
 import {
   Image,
   Linking,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
   Text,
   View,
+  type LayoutChangeEvent,
 } from "react-native";
 import type { LucideIcon } from "lucide-react-native";
 import {
@@ -21,14 +49,19 @@ import {
 } from "lucide-react-native";
 import {
   EventCoverMedia,
-  GlassBlur,
   MINGLA_DEFAULT_THEME,
-  ThemeEntranceAnimation,
+  createThemePalette,
+  offeringSurfaceStyles,
   resolveTheme,
   type ResolvedTheme,
+  type ThemePalette,
 } from "@mingla/event-rendering";
+import {
+  ParallaxCoverShell,
+  useResponsiveLayout,
+} from "@mingla/offering-rendering";
 
-import { accent, backgroundColor, radius, spacing, text } from "./designTokens";
+import { spacing } from "./designTokens";
 import type {
   PublicBrand,
   PublicBrandEvent,
@@ -40,7 +73,7 @@ import type {
   PublicMediaType,
 } from "./types";
 
-type Tab = "upcoming" | "events" | "trips" | "experiences" | "about";
+type Tab = "about" | "upcoming" | "events" | "trips" | "experiences";
 type SocialKind =
   | "website"
   | "instagram"
@@ -52,37 +85,9 @@ type SocialKind =
   | "threads";
 
 const PINNED_CTA_CARD_COUNT = 3;
+const BIO_CLAMP_LINES = 4;
 
-type ThemePalette = {
-  page: string;
-  accent: string;
-  accentText: string;
-  pageWash: string;
-  heroScrim: string;
-  heroLift: string;
-  primaryText: string;
-  secondaryText: string;
-  tertiaryText: string;
-  mutedText: string;
-  panel: string;
-  panelStrong: string;
-  panelBorder: string;
-  card: string;
-  cardBorder: string;
-  cutoutBorder: string;
-  glass: string;
-  glassStrong: string;
-  glassTint: "dark" | "light";
-  tabBand: string;
-  tabBorder: string;
-  accentWash: string;
-};
-
-type Rgb = {
-  r: number;
-  g: number;
-  b: number;
-};
+type Surface = ReturnType<typeof offeringSurfaceStyles>;
 
 const normalizeSocialUrl = (raw: string, base: string): string => {
   const trimmed = raw.trim();
@@ -149,7 +154,7 @@ const minPriceLabel = (
   if (typeof displayPriceCents === "number" && displayPriceCents > 0) {
     return `From ${formatCurrencyRound(
       displayPriceCents / 100,
-      displayCurrency ?? fallbackCurrency ?? "GBP",
+      displayCurrency ?? fallbackCurrency ?? "USD",
     )}`;
   }
   const visible = tickets.filter((t) => t.visibility !== "hidden");
@@ -158,171 +163,49 @@ const minPriceLabel = (
     .filter((p): p is number => typeof p === "number" && p > 0)
     .sort((a, b) => a - b);
   if (paid.length > 0) {
-    return `From ${formatCurrencyRound(paid[0], fallbackCurrency ?? "GBP")}`;
+    return `From ${formatCurrencyRound(paid[0], fallbackCurrency ?? "USD")}`;
   }
   return visible.some((t) => t.isFree === true) ? "Free" : null;
+};
+
+const offeringPriceLabel = (item: {
+  isFree?: boolean;
+  priceFromMinorUnits?: number | null;
+  currency?: string | null;
+}): string | null => {
+  if (
+    item.priceFromMinorUnits !== null &&
+    item.priceFromMinorUnits !== undefined
+  ) {
+    return `From ${formatCurrencyRound(
+      item.priceFromMinorUnits / 100,
+      item.currency ?? "USD",
+    )}`;
+  }
+  return item.isFree === true ? "Free" : null;
+};
+
+const formatUpcomingDateLine = (startsAt: string | null): string => {
+  if (startsAt === null) return "Date TBA";
+  const date = new Date(startsAt);
+  if (Number.isNaN(date.getTime())) return "Date TBA";
+  return date.toLocaleDateString("en-GB", {
+    weekday: "short",
+    day: "numeric",
+    month: "short",
+  });
 };
 
 const openUrl = (url: string): void => {
   void Linking.openURL(url).catch(() => undefined);
 };
 
-const FALLBACK_ACCENT_RGB: Rgb = { r: 235, g: 120, b: 37 };
-
-const clampColorChannel = (value: number): number =>
-  Math.min(255, Math.max(0, Math.round(value)));
-
-const parseHexColor = (hex: string): Rgb => {
-  const match = /^#([0-9a-fA-F]{6})$/.exec(hex);
-  if (match === null) return FALLBACK_ACCENT_RGB;
-  const value = match[1];
-  return {
-    r: parseInt(value.slice(0, 2), 16),
-    g: parseInt(value.slice(2, 4), 16),
-    b: parseInt(value.slice(4, 6), 16),
-  };
-};
-
-const rgbToHex = ({ r, g, b }: Rgb): string =>
-  `#${[r, g, b]
-    .map((channel) => clampColorChannel(channel).toString(16).padStart(2, "0"))
-    .join("")}`;
-
-const mixHexColors = (from: string, to: string, amount: number): string => {
-  const a = parseHexColor(from);
-  const b = parseHexColor(to);
-  const weight = Math.min(1, Math.max(0, amount));
-  return rgbToHex({
-    r: a.r + (b.r - a.r) * weight,
-    g: a.g + (b.g - a.g) * weight,
-    b: a.b + (b.b - a.b) * weight,
-  });
-};
-
-const hexToRgba = (hex: string, alpha: number): string => {
-  const { r, g, b } = parseHexColor(hex);
-  return `rgba(${r},${g},${b},${alpha})`;
-};
-
-const linearizeSrgb = (channel: number): number => {
-  const normalized = channel / 255;
-  return normalized <= 0.03928
-    ? normalized / 12.92
-    : ((normalized + 0.055) / 1.055) ** 2.4;
-};
-
-const relativeLuminance = (hex: string): number => {
-  const { r, g, b } = parseHexColor(hex);
-  return (
-    0.2126 * linearizeSrgb(r) +
-    0.7152 * linearizeSrgb(g) +
-    0.0722 * linearizeSrgb(b)
-  );
-};
-
-const contrastRatio = (a: string, b: string): number => {
-  const lighter = Math.max(relativeLuminance(a), relativeLuminance(b));
-  const darker = Math.min(relativeLuminance(a), relativeLuminance(b));
-  return (lighter + 0.05) / (darker + 0.05);
-};
-
-const readableTextFor = (background: string): "#000000" | "#ffffff" =>
-  contrastRatio("#000000", background) >= contrastRatio("#ffffff", background)
-    ? "#000000"
-    : "#ffffff";
-
-const contrastAdjustedAccent = (
-  accentColor: string,
-  background: string,
-  minimumRatio: number,
-): string => {
-  if (contrastRatio(accentColor, background) >= minimumRatio)
-    return accentColor;
-  const direction = readableTextFor(background);
-  let adjusted = accentColor;
-  for (let i = 0; i < 12; i++) {
-    adjusted = mixHexColors(adjusted, direction, 0.16);
-    if (contrastRatio(adjusted, background) >= minimumRatio) return adjusted;
-  }
-  return adjusted;
-};
-
-const contrastAdjustedForWhiteText = (
-  accentColor: string,
-  minimumRatio: number,
-): string => {
-  if (contrastRatio(accentColor, "#ffffff") >= minimumRatio) return accentColor;
-  let adjusted = accentColor;
-  for (let i = 0; i < 12; i++) {
-    adjusted = mixHexColors(adjusted, "#000000", 0.14);
-    if (contrastRatio(adjusted, "#ffffff") >= minimumRatio) return adjusted;
-  }
-  return adjusted;
-};
-
-const createThemePalette = (theme: ResolvedTheme): ThemePalette => {
-  const darkBase = "#07070a";
-  const lightBase = "#f8fafc";
-  const accentOnDark = contrastRatio(theme.color, darkBase);
-  const accentOnLight = contrastRatio(theme.color, lightBase);
-  const useDark =
-    accentOnDark >= 3 && accentOnLight < 3
-      ? true
-      : accentOnLight >= 3 && accentOnDark < 3
-        ? false
-        : theme.foregroundColor === "#ffffff";
-  const basePage = useDark ? darkBase : lightBase;
-  const page = mixHexColors(basePage, theme.color, useDark ? 0.1 : 0.035);
-  const accentColor = contrastAdjustedForWhiteText(
-    contrastAdjustedAccent(theme.color, page, 3.15),
-    4.5,
-  );
-  const accentText = "#ffffff";
-  const primaryText = readableTextFor(page);
-  const secondaryText =
-    primaryText === "#ffffff"
-      ? "rgba(255,255,255,0.78)"
-      : "rgba(16,20,31,0.76)";
-  const tertiaryText =
-    primaryText === "#ffffff"
-      ? "rgba(255,255,255,0.58)"
-      : "rgba(16,20,31,0.58)";
-  const mutedText =
-    primaryText === "#ffffff"
-      ? "rgba(255,255,255,0.40)"
-      : "rgba(16,20,31,0.42)";
-  return {
-    page,
-    accent: accentColor,
-    accentText,
-    pageWash: hexToRgba(theme.color, useDark ? 0.24 : 0.12),
-    heroScrim: useDark ? "rgba(4,5,8,0.50)" : "rgba(248,250,252,0.36)",
-    heroLift: useDark ? "rgba(7,7,10,0.82)" : "rgba(248,250,252,0.90)",
-    primaryText,
-    secondaryText,
-    tertiaryText,
-    mutedText,
-    panel: useDark ? "rgba(255,255,255,0.08)" : "rgba(255,255,255,0.76)",
-    panelStrong: useDark ? "rgba(255,255,255,0.11)" : "rgba(255,255,255,0.92)",
-    panelBorder: hexToRgba(accentColor, useDark ? 0.38 : 0.3),
-    card: useDark ? "rgba(255,255,255,0.09)" : "rgba(255,255,255,0.72)",
-    cardBorder: useDark ? "rgba(255,255,255,0.16)" : "rgba(255,255,255,0.78)",
-    cutoutBorder: useDark ? "rgba(255,255,255,0.24)" : "rgba(255,255,255,0.96)",
-    glass: useDark ? "rgba(255,255,255,0.10)" : "rgba(255,255,255,0.62)",
-    glassStrong: useDark ? "rgba(255,255,255,0.16)" : "rgba(255,255,255,0.82)",
-    glassTint: useDark ? "dark" : "light",
-    tabBand: hexToRgba(accentColor, useDark ? 0.2 : 0.14),
-    tabBorder: hexToRgba(accentColor, useDark ? 0.46 : 0.34),
-    accentWash: hexToRgba(accentColor, useDark ? 0.24 : 0.18),
-  };
-};
-
 const tabLabel: Record<Tab, string> = {
+  about: "About",
   upcoming: "Upcoming",
   events: "Events",
   trips: "Trips",
   experiences: "Experiences",
-  about: "About",
 };
 
 const SOCIAL_ICON_BY_KIND: Record<SocialKind, LucideIcon> = {
@@ -347,16 +230,30 @@ export const PublicBrandPage: React.FC<PublicBrandPageProps> = ({
   upcomingHasMore = false,
   venue = null,
   theme,
+  // hideFloatingChrome is retained for back-compat with the props type; both live
+  // callers (business adapter + consumer screen) pass it falsy, and the shell
+  // always renders chrome (X · Share). An embedded chrome-less use would be a
+  // a later ORCH. (Spec D-2.)
   hideFloatingChrome = false,
   chromeTopOffset,
   callbacks,
 }) => {
+  void hideFloatingChrome;
+  const { isDesktop } = useResponsiveLayout();
   const [activeTab, setActiveTab] = useState<Tab>("about");
-  const [coverMediaFailed, setCoverMediaFailed] = useState<boolean>(false);
+  const [muted, setMuted] = useState<boolean>(true);
+  const toggleMute = (): void => setMuted((v) => !v);
+
   const resolvedTheme = useMemo<ResolvedTheme>(
     () => theme ?? resolveTheme(brand.theme ?? null, null),
     [brand.theme, theme],
   );
+  const palette = useMemo<ThemePalette>(
+    () => createThemePalette(resolvedTheme),
+    [resolvedTheme],
+  );
+  const surface = useMemo<Surface>(() => offeringSurfaceStyles(palette), [palette]);
+  const themedFont = { fontFamily: resolvedTheme.fontFamilyValue };
 
   const upcomingEvents = useMemo(
     () =>
@@ -390,13 +287,14 @@ export const PublicBrandPage: React.FC<PublicBrandPageProps> = ({
     [providedPastTrips, trips],
   );
 
+  // ORCH-1155 — About FIRST + default; offering tabs render ONLY when non-empty.
+  // (I-PROPOSED-1155-ABOUT-FIRST-DEFAULT + I-PROPOSED-1155-TABS-HIDE-WHEN-EMPTY.)
   const visibleTabs = useMemo<Tab[]>(() => {
-    const tabs: Tab[] = [];
+    const tabs: Tab[] = ["about"];
     if (upcoming.length > 0 || upcomingHasMore) tabs.push("upcoming");
     if (upcomingEvents.length > 0 || pastEvents.length > 0) tabs.push("events");
     if (upcomingTrips.length > 0 || pastTrips.length > 0) tabs.push("trips");
     if (experiences.length > 0) tabs.push("experiences");
-    tabs.push("about");
     return tabs;
   }, [
     experiences.length,
@@ -408,21 +306,29 @@ export const PublicBrandPage: React.FC<PublicBrandPageProps> = ({
     upcomingTrips.length,
   ]);
 
+  // State-guard: if the active offering bucket empties, snap to About (index 0).
   useEffect(() => {
     if (!visibleTabs.includes(activeTab)) {
       setActiveTab(visibleTabs[0] ?? "about");
     }
   }, [activeTab, visibleTabs]);
 
-  const heroColor =
+  const coverHue =
     resolvedTheme.color === MINGLA_DEFAULT_THEME.color && brand.coverHue !== 25
-      ? `hsl(${brand.coverHue}, 60%, 45%)`
-      : resolvedTheme.color;
-  const palette = useMemo(
-    () => createThemePalette(resolvedTheme),
-    [resolvedTheme],
-  );
-  const themedFont = { fontFamily: resolvedTheme.fontFamilyValue };
+      ? brand.coverHue
+      : hashHueFromString(brand.slug);
+  const coverUrl =
+    brand.coverMediaUrl !== undefined && brand.coverMediaUrl.length > 0
+      ? brand.coverMediaUrl
+      : null;
+  const coverType: PublicMediaType | null =
+    brand.coverMediaType === "video"
+      ? "video"
+      : brand.coverMediaType === "gif"
+        ? "gif"
+        : coverUrl !== null
+          ? "image"
+          : null;
 
   const socialEntries = useMemo(() => {
     const links = brand.links;
@@ -484,6 +390,12 @@ export const PublicBrandPage: React.FC<PublicBrandPageProps> = ({
   }, [brand.links]);
 
   const onExternal = callbacks.onOpenExternal ?? openUrl;
+  const isVerified = venue?.isVerifiedVenue === true;
+  const address =
+    brand.address !== null && brand.address.trim().length > 0
+      ? brand.address.trim()
+      : null;
+
   const countForTab = (tab: Tab): number | undefined => {
     if (tab === "upcoming") return upcoming.length;
     if (tab === "events") return upcomingEvents.length + pastEvents.length;
@@ -492,270 +404,241 @@ export const PublicBrandPage: React.FC<PublicBrandPageProps> = ({
     return undefined;
   };
 
-  return (
-    <View style={[styles.host, { backgroundColor: palette.page }]}>
-      {hideFloatingChrome ? null : (
-        <View
-          style={[
-            styles.floatingChrome,
-            chromeTopOffset !== undefined ? { top: chromeTopOffset } : null,
-          ]}
-          pointerEvents="box-none"
-        >
-          <ChromeButton
-            label="Close"
-            glyph="x"
-            onPress={callbacks.onClose}
-            testID="orch-0961-public-brand-close"
-          />
-          <ChromeButton
-            label="Share"
-            glyph="share"
-            onPress={callbacks.onShare}
-            testID="orch-0961-public-brand-share"
-          />
-        </View>
-      )}
+  // Featured "Next up" teaser shows only when there is >1 upcoming offering
+  // (design A.4/A.7 — a single offering's teaser would duplicate the only card).
+  const showFeaturedTeaser = upcoming.length > 1;
 
-      <View
-        style={[styles.heroWrap, { backgroundColor: heroColor }]}
-        pointerEvents="none"
-      >
-        {brand.coverMediaUrl !== undefined &&
-        brand.coverMediaUrl.length > 0 &&
-        !coverMediaFailed ? (
-          <EventCoverMedia
-            mediaUrl={brand.coverMediaUrl}
-            mediaType={brand.coverMediaType ?? null}
-            radius={0}
-            label="Brand cover"
-            style={styles.heroGradient}
-            onMediaError={() => setCoverMediaFailed(true)}
-          />
-        ) : (
-          <View style={[styles.heroGradient, { backgroundColor: heroColor }]} />
-        )}
-        <View
-          style={[styles.heroThemeTint, { backgroundColor: palette.pageWash }]}
-        />
-        <View
-          style={[styles.heroFade, { backgroundColor: palette.heroScrim }]}
-        />
+  // ---- shared sub-blocks ----
+  const identityBlock = (
+    <View style={styles.identityRow}>
+      <Avatar brand={brand} palette={palette} />
+      <View style={styles.identityCopy}>
+        {isVerified ? (
+          <Text style={[styles.verifiedBadge, { color: palette.accent }]}>
+            Verified venue
+          </Text>
+        ) : null}
+        <Text
+          style={[styles.brandName, themedFont, { color: palette.primaryText }]}
+        >
+          {brand.displayName}
+        </Text>
+        {address !== null ? (
+          <Text style={[styles.brandAddr, { color: palette.tertiaryText }]}>
+            {address}
+          </Text>
+        ) : null}
       </View>
+    </View>
+  );
 
-      <ScrollView
-        style={styles.scroll}
-        contentContainerStyle={styles.scrollContent}
-        showsVerticalScrollIndicator={false}
-      >
-        <View
-          style={[
-            styles.identityCentered,
-            {
-              backgroundColor: palette.glassStrong,
-              borderColor: palette.panelBorder,
-            },
-          ]}
-        >
-          <GlassBlur
-            tint={palette.glassTint}
-            intensity={34}
-            style={styles.glassLayer}
-          />
-          <View style={styles.identityTopRow}>
-            <Avatar brand={brand} palette={palette} />
-            <View style={styles.identityCopy}>
-              {venue?.isVerifiedVenue === true ? (
-                <Text style={[styles.verifiedBadge, { color: palette.accent }]}>
-                  Verified venue
-                </Text>
-              ) : null}
-              <Text
-                style={[
-                  styles.brandNameCentered,
-                  themedFont,
-                  { color: palette.primaryText },
-                ]}
-              >
-                {brand.displayName}
-              </Text>
-              {brand.address !== null && brand.address.trim().length > 0 ? (
-                <Text
-                  style={[
-                    styles.handleLineCentered,
-                    { color: palette.tertiaryText },
-                  ]}
-                >
-                  {brand.address.trim()}
-                </Text>
-              ) : null}
-            </View>
-          </View>
+  const socialsBlock =
+    socialEntries.length > 0 ? (
+      <SocialLinksRow
+        entries={socialEntries}
+        palette={palette}
+        onPress={onExternal}
+      />
+    ) : null;
 
-          {brand.tagline !== undefined && brand.tagline.trim().length > 0 ? (
+  const featuredTeaser = showFeaturedTeaser ? (
+    <NextOfferingTeaser
+      item={upcoming[0]}
+      theme={resolvedTheme}
+      palette={palette}
+      onPress={(item) => callbacks.onOpenUpcoming?.(item)}
+    />
+  ) : null;
+
+  const tabBar = (
+    <TabBar
+      tabs={visibleTabs}
+      activeTab={activeTab}
+      palette={palette}
+      surface={surface}
+      theme={resolvedTheme}
+      isDesktop={isDesktop}
+      countForTab={countForTab}
+      onSelect={setActiveTab}
+    />
+  );
+
+  const activePane =
+    activeTab === "upcoming" ? (
+      <UpcomingList
+        rows={upcoming}
+        theme={resolvedTheme}
+        palette={palette}
+        surface={surface}
+        isDesktop={isDesktop}
+        emptyCopy="No upcoming offerings yet"
+        onPress={(item) => callbacks.onOpenUpcoming?.(item)}
+      />
+    ) : activeTab === "events" ? (
+      <EventList
+        events={upcomingEvents}
+        pastEvents={pastEvents}
+        theme={resolvedTheme}
+        palette={palette}
+        surface={surface}
+        isDesktop={isDesktop}
+        emptyCopy="No public events yet"
+        onPress={callbacks.onOpenEvent}
+      />
+    ) : activeTab === "trips" ? (
+      <TripList
+        trips={upcomingTrips}
+        pastTrips={pastTrips}
+        theme={resolvedTheme}
+        palette={palette}
+        surface={surface}
+        isDesktop={isDesktop}
+        emptyCopy="No public trips yet"
+        onPress={callbacks.onOpenTrip}
+      />
+    ) : activeTab === "experiences" ? (
+      <ExperienceList
+        experiences={experiences}
+        theme={resolvedTheme}
+        palette={palette}
+        surface={surface}
+        isDesktop={isDesktop}
+        emptyCopy="No public experiences yet"
+        onPress={callbacks.onOpenExperience}
+      />
+    ) : (
+      <AboutTab
+        brand={brand}
+        theme={resolvedTheme}
+        palette={palette}
+        surface={surface}
+        onExternal={onExternal}
+      />
+    );
+
+  // ---- body (left column / phone flow) ----
+  const bodyContent = (
+    <View>
+      {/* Identity above the tabs ONLY on phone/native — desktop overlays it on
+          the hero + repeats it in the sticky panel. */}
+      {!isDesktop ? (
+        <View style={styles.phoneIdentityWrap}>
+          {identityBlock}
+          {socialsBlock}
+          {featuredTeaser}
+        </View>
+      ) : null}
+
+      {tabBar}
+      <View style={styles.paneWrap}>{activePane}</View>
+    </View>
+  );
+
+  // ---- desktop sticky brand-summary panel (Share + Next-up only) ----
+  const stickyPanel = isDesktop ? (
+    <View style={[styles.deskPanel, surface.cardStrong]}>
+      <View style={[styles.deskAccent, { backgroundColor: palette.accent }]} />
+      <View style={styles.deskInner}>
+        <View style={styles.deskIdentity}>
+          <Avatar brand={brand} palette={palette} size={60} />
+          <View style={styles.identityCopy}>
             <Text
               style={[
-                styles.taglineCentered,
+                styles.deskBrandName,
                 themedFont,
                 { color: palette.primaryText },
               ]}
             >
-              {brand.tagline}
+              {brand.displayName}
             </Text>
-          ) : null}
-          {brand.bio !== undefined && brand.bio.trim().length > 0 ? (
-            <Text
-              style={[styles.bioLeadCentered, { color: palette.secondaryText }]}
-            >
-              {brand.bio}
-            </Text>
-          ) : null}
+            {address !== null ? (
+              <Text style={[styles.brandAddr, { color: palette.tertiaryText }]}>
+                {address}
+              </Text>
+            ) : null}
+          </View>
         </View>
-
-        <SocialLinksRow
-          entries={socialEntries}
-          palette={palette}
-          onPress={onExternal}
-        />
-
-        {upcoming.length > 0 ? (
-          <NextOfferingTeaser
-            item={upcoming[0]}
-            theme={resolvedTheme}
-            palette={palette}
-            onPress={(item) => {
-              if (callbacks.onOpenUpcoming !== undefined) {
-                callbacks.onOpenUpcoming(item);
-              }
-            }}
-          />
-        ) : null}
-
-        <View
-          style={[
-            styles.tabsRow,
-            { backgroundColor: palette.accent, borderColor: palette.accent },
+        {socialsBlock}
+        <Pressable
+          onPress={callbacks.onShare}
+          accessibilityRole="button"
+          accessibilityLabel="Share this brand"
+          style={({ pressed }) => [
+            styles.deskShareBtn,
+            { backgroundColor: palette.accent },
+            pressed && styles.cardPressed,
           ]}
         >
-          <GlassBlur
-            tint={palette.glassTint}
-            intensity={18}
-            style={styles.glassLayer}
-          />
-          {visibleTabs.map((tab) => (
-            <TabButton
-              key={tab}
-              label={tabLabel[tab]}
-              count={countForTab(tab)}
-              active={activeTab === tab}
+          <Text style={[styles.deskShareLabel, { color: palette.accentText }]}>
+            Share
+          </Text>
+        </Pressable>
+        {showFeaturedTeaser ? (
+          <View style={styles.deskNextWrap}>
+            <Text style={[styles.deskNextLabel, { color: palette.tertiaryText }]}>
+              Next up
+            </Text>
+            <NextOfferingTeaser
+              item={upcoming[0]}
               theme={resolvedTheme}
               palette={palette}
-              onPress={() => setActiveTab(tab)}
+              onPress={(item) => callbacks.onOpenUpcoming?.(item)}
             />
-          ))}
-        </View>
-
-        {activeTab === "upcoming" ? (
-          <UpcomingList
-            rows={upcoming}
-            theme={resolvedTheme}
-            palette={palette}
-            emptyCopy="No upcoming offerings yet"
-            onPress={(item) => {
-              if (callbacks.onOpenUpcoming !== undefined) {
-                callbacks.onOpenUpcoming(item);
-              }
-            }}
-          />
-        ) : activeTab === "events" ? (
-          <EventList
-            events={upcomingEvents}
-            pastEvents={pastEvents}
-            theme={resolvedTheme}
-            palette={palette}
-            emptyCopy="No public events yet"
-            onPress={callbacks.onOpenEvent}
-          />
-        ) : activeTab === "trips" ? (
-          <TripList
-            trips={upcomingTrips}
-            pastTrips={pastTrips}
-            theme={resolvedTheme}
-            palette={palette}
-            emptyCopy="No public trips yet"
-            onPress={callbacks.onOpenTrip}
-          />
-        ) : activeTab === "experiences" ? (
-          <ExperienceList
-            experiences={experiences}
-            theme={resolvedTheme}
-            palette={palette}
-            emptyCopy="No public experiences yet"
-            onPress={callbacks.onOpenExperience}
-          />
-        ) : (
-          <AboutTab
-            brand={brand}
-            theme={resolvedTheme}
-            palette={palette}
-            onExternal={onExternal}
-          />
-        )}
-      </ScrollView>
-
-      <ThemeEntranceAnimation
-        theme={resolvedTheme}
-        sessionKey={`brand:${brand.slug}:${resolvedTheme.color}:${resolvedTheme.font}`}
-        replayOnMount
-      />
+          </View>
+        ) : null}
+      </View>
     </View>
+  ) : null;
+
+  // Desktop hero overlay (verified eyebrow + name + address).
+  const heroEyebrow = isVerified ? (
+    <Text style={styles.heroEyebrow}>Verified venue</Text>
+  ) : undefined;
+  const heroTitle = isDesktop ? (
+    <>
+      <Text style={[styles.heroTitle, themedFont]}>{brand.displayName}</Text>
+      {address !== null ? (
+        <Text style={styles.heroAddr}>{address}</Text>
+      ) : null}
+    </>
+  ) : undefined;
+
+  return (
+    <ParallaxCoverShell
+      palette={palette}
+      theme={resolvedTheme}
+      coverMediaUrl={coverUrl}
+      coverMediaType={coverType}
+      coverHue={coverHue}
+      entranceAnimationKey={`brand:${brand.slug}:${resolvedTheme.color}:${resolvedTheme.font}`}
+      muted={muted}
+      onToggleMute={toggleMute}
+      showMute={coverType === "video"}
+      onClose={callbacks.onClose}
+      onShare={callbacks.onShare}
+      heroEyebrow={heroEyebrow}
+      heroTitle={heroTitle}
+      stickyPanel={stickyPanel}
+      safeAreaTop={chromeTopOffset ?? 0}
+      contentBottomInset={0}
+      testID="orch-1155-public-brand"
+    >
+      {bodyContent}
+    </ParallaxCoverShell>
   );
 };
-
-const ChromeButton: React.FC<{
-  label: string;
-  glyph: "x" | "share";
-  onPress: () => void;
-  testID: string;
-}> = ({ label, glyph, onPress, testID }) => (
-  <Pressable
-    onPress={onPress}
-    accessibilityRole="button"
-    accessibilityLabel={label}
-    testID={testID}
-    hitSlop={8}
-    style={styles.chromeButton}
-  >
-    <ChromeGlyph glyph={glyph} />
-  </Pressable>
-);
-
-const ChromeGlyph: React.FC<{ glyph: "x" | "share" }> = ({ glyph }) => (
-  <View style={styles.chromeGlyph} pointerEvents="none">
-    {glyph === "x" ? (
-      <>
-        <View style={[styles.chromeXStroke, styles.chromeXStrokeA]} />
-        <View style={[styles.chromeXStroke, styles.chromeXStrokeB]} />
-      </>
-    ) : (
-      <>
-        <View style={[styles.chromeShareLine, styles.chromeShareLineTop]} />
-        <View style={[styles.chromeShareLine, styles.chromeShareLineBottom]} />
-        <View style={[styles.chromeShareDot, styles.chromeShareDotLeft]} />
-        <View style={[styles.chromeShareDot, styles.chromeShareDotTop]} />
-        <View style={[styles.chromeShareDot, styles.chromeShareDotBottom]} />
-      </>
-    )}
-  </View>
-);
 
 const Avatar: React.FC<{
   brand: PublicBrand;
   palette: ThemePalette;
-}> = ({ brand, palette }) => {
+  size?: number;
+}> = ({ brand, palette, size = 84 }) => {
   const avatarStyle = [
     styles.avatar,
     {
+      width: size,
+      height: size,
+      borderRadius: size / 2,
       backgroundColor: palette.panelStrong,
       borderColor: palette.accent,
       shadowColor: palette.accent,
@@ -773,7 +656,12 @@ const Avatar: React.FC<{
   }
   return (
     <View style={avatarStyle}>
-      <Text style={[styles.avatarInitial, { color: palette.primaryText }]}>
+      <Text
+        style={[
+          styles.avatarInitial,
+          { fontSize: size * 0.42, color: palette.primaryText },
+        ]}
+      >
         {(brand.displayName.charAt(0) || "?").toUpperCase()}
       </Text>
     </View>
@@ -787,17 +675,14 @@ const SocialLinksRow: React.FC<{
 }> = ({ entries, palette, onPress }) => {
   if (entries.length === 0) return null;
   return (
-    <View style={styles.socialsRowCompact}>
+    <View style={styles.socialsRow}>
       {entries.map((entry) => (
         <Pressable
           key={entry.url}
           onPress={() => onPress(entry.url)}
           accessibilityRole="link"
           accessibilityLabel={entry.label}
-          style={[
-            styles.socialBtnIconOnly,
-            { backgroundColor: palette.accent, borderColor: palette.accent },
-          ]}
+          style={[styles.socialBtn, { backgroundColor: palette.accent }]}
         >
           <SocialIcon kind={entry.kind} color="#ffffff" />
         </Pressable>
@@ -811,38 +696,105 @@ const SocialIcon: React.FC<{ kind: SocialKind; color: string }> = ({
   color,
 }) => {
   const Icon = SOCIAL_ICON_BY_KIND[kind];
-  return <Icon color={color} size={23} strokeWidth={2.35} />;
+  return <Icon color={color} size={21} strokeWidth={2.2} />;
 };
 
-const TabButton: React.FC<{
-  label: string;
-  count?: number;
-  active: boolean;
-  theme: ResolvedTheme;
+// ORCH-1155 — horizontally-scrollable tab bar (no clipping; nowrap chips sized to
+// content). Active chip scroll-into-view is best-effort via cached chip offsets
+// (spec OQ-2). I-PROPOSED-1155-TABS-SCROLLABLE.
+const TabBar: React.FC<{
+  tabs: Tab[];
+  activeTab: Tab;
   palette: ThemePalette;
-  onPress: () => void;
-}> = ({ label, count, active, theme, palette, onPress }) => (
-  <Pressable
-    onPress={onPress}
-    accessibilityRole="button"
-    accessibilityState={{ selected: active }}
-    accessibilityLabel={label}
-    style={[styles.tabButton, active && styles.tabButtonActive]}
-  >
-    <Text
-      style={[
-        styles.tabLabel,
-        { fontFamily: theme.fontFamilyValue },
-        { color: "#ffffff" },
-        active && styles.tabLabelActive,
-      ]}
-    >
-      {label}
-      {count !== undefined ? (
-        <Text style={styles.tabCount}> {count}</Text>
+  surface: Surface;
+  theme: ResolvedTheme;
+  isDesktop: boolean;
+  countForTab: (tab: Tab) => number | undefined;
+  onSelect: (tab: Tab) => void;
+}> = ({
+  tabs,
+  activeTab,
+  palette,
+  surface,
+  theme,
+  isDesktop,
+  countForTab,
+  onSelect,
+}) => {
+  const scrollRef = React.useRef<ScrollView>(null);
+  const offsets = React.useRef<Record<string, number>>({});
+  const showEdgeFade = Platform.OS === "web" && !isDesktop;
+
+  useEffect(() => {
+    const x = offsets.current[activeTab];
+    if (typeof x === "number" && scrollRef.current !== null) {
+      scrollRef.current.scrollTo({ x: Math.max(0, x - 16), animated: true });
+    }
+  }, [activeTab]);
+
+  return (
+    <View style={styles.tabBarWrap}>
+      <ScrollView
+        ref={scrollRef}
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={styles.tabsRowContent}
+      >
+        {tabs.map((tab) => {
+          const count = countForTab(tab);
+          const active = activeTab === tab;
+          return (
+            <Pressable
+              key={tab}
+              onLayout={(e: LayoutChangeEvent) => {
+                offsets.current[tab] = e.nativeEvent.layout.x;
+              }}
+              onPress={() => onSelect(tab)}
+              accessibilityRole="button"
+              accessibilityState={{ selected: active }}
+              accessibilityLabel={tabLabel[tab]}
+              style={[
+                styles.tabChip,
+                surface.card,
+                active && {
+                  backgroundColor: palette.accent,
+                  borderColor: palette.accent,
+                },
+              ]}
+            >
+              <Text
+                style={[
+                  styles.tabLabel,
+                  { fontFamily: theme.fontFamilyValue },
+                  {
+                    color: active ? palette.accentText : palette.secondaryText,
+                  },
+                ]}
+              >
+                {tabLabel[tab]}
+                {count !== undefined ? (
+                  <Text style={styles.tabCount}> {count}</Text>
+                ) : null}
+              </Text>
+            </Pressable>
+          );
+        })}
+      </ScrollView>
+      {showEdgeFade ? (
+        <View
+          style={[styles.tabEdgeFade, { backgroundColor: palette.page }]}
+          pointerEvents="none"
+        />
       ) : null}
-    </Text>
-  </Pressable>
+    </View>
+  );
+};
+
+const OfferingGrid: React.FC<{
+  isDesktop: boolean;
+  children: React.ReactNode;
+}> = ({ isDesktop, children }) => (
+  <View style={[styles.grid, isDesktop && styles.gridDesktop]}>{children}</View>
 );
 
 const EventList: React.FC<{
@@ -850,40 +802,60 @@ const EventList: React.FC<{
   pastEvents?: PublicBrandEvent[];
   theme: ResolvedTheme;
   palette: ThemePalette;
+  surface: Surface;
+  isDesktop: boolean;
   emptyCopy: string;
   onPress: (event: PublicBrandEvent) => void;
-}> = ({ events, pastEvents = [], theme, palette, emptyCopy, onPress }) => {
+}> = ({
+  events,
+  pastEvents = [],
+  theme,
+  palette,
+  surface,
+  isDesktop,
+  emptyCopy,
+  onPress,
+}) => {
   if (events.length === 0 && pastEvents.length === 0) {
-    return (
-      <View style={styles.emptyTabWrap}>
-        <Text style={[styles.emptyTabTitle, { color: palette.secondaryText }]}>
-          {emptyCopy}
-        </Text>
-      </View>
-    );
+    return <EmptyPane copy={emptyCopy} palette={palette} />;
   }
   return (
-    <View style={styles.eventList}>
-      {events.map((event, index) => (
-        <EventMiniCard
-          key={event.id}
-          event={event}
-          theme={theme}
-          palette={palette}
-          onPress={onPress}
-          pinCta={index < PINNED_CTA_CARD_COUNT}
-        />
-      ))}
-      {pastEvents.map((event) => (
-        <EventMiniCard
-          key={event.id}
-          event={event}
-          theme={theme}
-          palette={palette}
-          onPress={onPress}
-          past
-        />
-      ))}
+    <View>
+      <OfferingGrid isDesktop={isDesktop}>
+        {events.map((event, index) => (
+          <EventMiniCard
+            key={event.id}
+            event={event}
+            theme={theme}
+            palette={palette}
+            surface={surface}
+            isDesktop={isDesktop}
+            onPress={onPress}
+            pinCta={index < PINNED_CTA_CARD_COUNT}
+          />
+        ))}
+      </OfferingGrid>
+      {pastEvents.length > 0 ? (
+        <>
+          <Text style={[styles.pastHead, { color: palette.tertiaryText }]}>
+            Past
+          </Text>
+          <OfferingGrid isDesktop={isDesktop}>
+            {pastEvents.map((event) => (
+              <EventMiniCard
+                key={event.id}
+                event={event}
+                theme={theme}
+                palette={palette}
+                surface={surface}
+                isDesktop={isDesktop}
+                onPress={onPress}
+                past
+              />
+            ))}
+          </OfferingGrid>
+        </>
+      ) : null}
     </View>
   );
 };
@@ -892,10 +864,21 @@ const EventMiniCard: React.FC<{
   event: PublicBrandEvent;
   theme: ResolvedTheme;
   palette: ThemePalette;
+  surface: Surface;
+  isDesktop: boolean;
   onPress: (event: PublicBrandEvent) => void;
   pinCta?: boolean;
   past?: boolean;
-}> = ({ event, theme, palette, onPress, pinCta = false, past = false }) => {
+}> = ({
+  event,
+  theme,
+  palette,
+  surface,
+  isDesktop,
+  onPress,
+  pinCta = false,
+  past = false,
+}) => {
   const price = minPriceLabel(
     event.tickets,
     event.currency,
@@ -908,29 +891,25 @@ const EventMiniCard: React.FC<{
       accessibilityRole="button"
       accessibilityLabel={`Open event ${event.name}`}
       style={({ pressed }) => [
-        styles.eventCard,
-        { backgroundColor: palette.glass, borderColor: palette.cutoutBorder },
-        past && styles.eventCardPast,
+        styles.oCard,
+        surface.card,
+        isDesktop && styles.oCardDesktop,
+        past && styles.oCardPast,
         pressed && styles.cardPressed,
       ]}
     >
-      <GlassBlur
-        tint={palette.glassTint}
-        intensity={24}
-        style={styles.glassLayer}
-      />
       <CoverBlock
         hue={event.coverHue}
         mediaUrl={event.coverMediaUrl}
         mediaType={event.coverMediaType}
       />
-      <View style={styles.eventBody}>
-        <Text style={[styles.eventDate, { color: palette.accent }]}>
+      <View style={styles.oCardBody}>
+        <Text style={[styles.oCardDate, { color: palette.accent }]}>
           {event.dateLine}
         </Text>
         <Text
           style={[
-            styles.eventTitle,
+            styles.oCardTitle,
             { fontFamily: theme.fontFamilyValue, color: palette.primaryText },
           ]}
           numberOfLines={2}
@@ -939,28 +918,26 @@ const EventMiniCard: React.FC<{
         </Text>
         {event.venueName !== null && event.venueName.length > 0 ? (
           <Text
-            style={[styles.eventVenue, { color: palette.tertiaryText }]}
+            style={[styles.oCardMeta, { color: palette.tertiaryText }]}
             numberOfLines={1}
           >
             {event.venueName}
           </Text>
         ) : event.format === "online" || event.format === "hybrid" ? (
-          <Text style={[styles.eventVenue, { color: palette.tertiaryText }]}>
+          <Text style={[styles.oCardMeta, { color: palette.tertiaryText }]}>
             Online event
           </Text>
         ) : null}
         {price !== null ? (
-          <Text style={[styles.eventPrice, { color: palette.primaryText }]}>
+          <Text style={[styles.oCardPrice, { color: palette.primaryText }]}>
             {price}
           </Text>
         ) : null}
-        {pinCta ? (
+        {pinCta && !past ? (
           <View
-            style={[styles.eventBuyPill, { backgroundColor: palette.accent }]}
+            style={[styles.buyPill, { backgroundColor: palette.accent }]}
           >
-            <Text
-              style={[styles.eventBuyPillLabel, { color: palette.accentText }]}
-            >
+            <Text style={[styles.buyPillLabel, { color: palette.accentText }]}>
               Buy tickets
             </Text>
           </View>
@@ -980,8 +957,8 @@ const NextOfferingTeaser: React.FC<{
   const dateLine = formatUpcomingDateLine(item.startsAt);
   const bodyText =
     price !== null
-      ? `${dateLine} - ${item.name} - ${price}`
-      : `${dateLine} - ${item.name}`;
+      ? `${dateLine} · ${item.name} · ${price}`
+      : `${dateLine} · ${item.name}`;
   return (
     <Pressable
       onPress={() => onPress(item)}
@@ -989,26 +966,28 @@ const NextOfferingTeaser: React.FC<{
       accessibilityLabel={`Next offering ${item.name}`}
       style={({ pressed }) => [
         styles.nextTeaser,
-        { backgroundColor: palette.accent, borderColor: palette.accent },
+        { backgroundColor: palette.accent },
         pressed && styles.cardPressed,
       ]}
     >
-      <GlassBlur
-        tint={palette.glassTint}
-        intensity={14}
-        style={styles.glassLayer}
-      />
       <View style={styles.nextTeaserCopy}>
-        <Text style={styles.nextTeaserLabel}>NEXT EVENT</Text>
+        <Text style={[styles.nextTeaserLabel, { color: palette.accentText }]}>
+          NEXT UP · {item.offeringType.toUpperCase()}
+        </Text>
         <Text
-          style={[styles.nextTeaserBody, { fontFamily: theme.fontFamilyValue }]}
+          style={[
+            styles.nextTeaserBody,
+            { fontFamily: theme.fontFamilyValue, color: palette.accentText },
+          ]}
           numberOfLines={2}
         >
           {bodyText}
         </Text>
       </View>
       <View style={styles.nextTeaserAction}>
-        <Text style={styles.nextTeaserActionText}>View</Text>
+        <Text style={[styles.nextTeaserActionText, { color: palette.accentText }]}>
+          View
+        </Text>
       </View>
     </Pressable>
   );
@@ -1019,39 +998,59 @@ const TripList: React.FC<{
   pastTrips?: PublicBrandTrip[];
   theme: ResolvedTheme;
   palette: ThemePalette;
+  surface: Surface;
+  isDesktop: boolean;
   emptyCopy: string;
   onPress: (trip: PublicBrandTrip) => void;
-}> = ({ trips, pastTrips = [], theme, palette, emptyCopy, onPress }) => {
+}> = ({
+  trips,
+  pastTrips = [],
+  theme,
+  palette,
+  surface,
+  isDesktop,
+  emptyCopy,
+  onPress,
+}) => {
   if (trips.length === 0 && pastTrips.length === 0) {
-    return (
-      <View style={styles.emptyTabWrap}>
-        <Text style={[styles.emptyTabTitle, { color: palette.secondaryText }]}>
-          {emptyCopy}
-        </Text>
-      </View>
-    );
+    return <EmptyPane copy={emptyCopy} palette={palette} />;
   }
   return (
-    <View style={styles.eventList}>
-      {trips.map((trip) => (
-        <TripMiniCard
-          key={trip.id}
-          trip={trip}
-          theme={theme}
-          palette={palette}
-          onPress={onPress}
-        />
-      ))}
-      {pastTrips.map((trip) => (
-        <TripMiniCard
-          key={trip.id}
-          trip={trip}
-          theme={theme}
-          palette={palette}
-          onPress={onPress}
-          past
-        />
-      ))}
+    <View>
+      <OfferingGrid isDesktop={isDesktop}>
+        {trips.map((trip) => (
+          <TripMiniCard
+            key={trip.id}
+            trip={trip}
+            theme={theme}
+            palette={palette}
+            surface={surface}
+            isDesktop={isDesktop}
+            onPress={onPress}
+          />
+        ))}
+      </OfferingGrid>
+      {pastTrips.length > 0 ? (
+        <>
+          <Text style={[styles.pastHead, { color: palette.tertiaryText }]}>
+            Past
+          </Text>
+          <OfferingGrid isDesktop={isDesktop}>
+            {pastTrips.map((trip) => (
+              <TripMiniCard
+                key={trip.id}
+                trip={trip}
+                theme={theme}
+                palette={palette}
+                surface={surface}
+                isDesktop={isDesktop}
+                onPress={onPress}
+                past
+              />
+            ))}
+          </OfferingGrid>
+        </>
+      ) : null}
     </View>
   );
 };
@@ -1060,9 +1059,11 @@ const TripMiniCard: React.FC<{
   trip: PublicBrandTrip;
   theme: ResolvedTheme;
   palette: ThemePalette;
+  surface: Surface;
+  isDesktop: boolean;
   onPress: (trip: PublicBrandTrip) => void;
   past?: boolean;
-}> = ({ trip, theme, palette, onPress, past = false }) => {
+}> = ({ trip, theme, palette, surface, isDesktop, onPress, past = false }) => {
   const dateLine = formatTripDateRange(trip.startAt, trip.endAt, trip.timezone);
   const price =
     trip.minPriceCents !== null && trip.currency !== null
@@ -1085,31 +1086,27 @@ const TripMiniCard: React.FC<{
       accessibilityRole="button"
       accessibilityLabel={`Open trip ${trip.title}`}
       style={({ pressed }) => [
-        styles.eventCard,
-        { backgroundColor: palette.glass, borderColor: palette.cutoutBorder },
-        past && styles.eventCardPast,
+        styles.oCard,
+        surface.card,
+        isDesktop && styles.oCardDesktop,
+        past && styles.oCardPast,
         pressed && styles.cardPressed,
       ]}
     >
-      <GlassBlur
-        tint={palette.glassTint}
-        intensity={24}
-        style={styles.glassLayer}
-      />
       <CoverBlock
         hue={hashHueFromString(trip.id)}
         mediaUrl={trip.coverMediaUrl}
         mediaType={trip.coverMediaType}
       />
-      <View style={styles.eventBody}>
+      <View style={styles.oCardBody}>
         {dateLine.length > 0 ? (
-          <Text style={[styles.eventDate, { color: palette.accent }]}>
+          <Text style={[styles.oCardDate, { color: palette.accent }]}>
             {dateLine}
           </Text>
         ) : null}
         <Text
           style={[
-            styles.eventTitle,
+            styles.oCardTitle,
             { fontFamily: theme.fontFamilyValue, color: palette.primaryText },
           ]}
           numberOfLines={2}
@@ -1118,49 +1115,37 @@ const TripMiniCard: React.FC<{
         </Text>
         {trip.destinationText !== null && trip.destinationText.length > 0 ? (
           <Text
-            style={[styles.eventVenue, { color: palette.tertiaryText }]}
+            style={[styles.oCardMeta, { color: palette.tertiaryText }]}
             numberOfLines={1}
           >
             {trip.destinationText}
           </Text>
         ) : null}
-        <View style={styles.tripFooterRow}>
+        <View style={styles.oCardFoot}>
           {price !== null ? (
-            <Text style={[styles.eventPrice, { color: palette.primaryText }]}>
+            <Text style={[styles.oCardPrice, { color: palette.primaryText }]}>
               {price}
             </Text>
           ) : (
             <View />
           )}
           {trip.bookingsClosed ? (
-            <View
-              style={[
-                styles.tripBadgeClosed,
-                {
-                  backgroundColor: palette.panel,
-                  borderColor: palette.cardBorder,
-                },
-              ]}
-            >
-              <Text
-                style={[styles.tripBadgeLabel, { color: palette.primaryText }]}
-              >
+            <View style={[styles.badge, surface.cardStrong]}>
+              <Text style={[styles.badgeLabel, { color: palette.secondaryText }]}>
                 Booking closed
               </Text>
             </View>
           ) : spotsLabel !== null ? (
             <View
               style={[
-                styles.tripBadgeScarce,
+                styles.badge,
                 {
                   backgroundColor: palette.accentWash,
                   borderColor: palette.panelBorder,
                 },
               ]}
             >
-              <Text
-                style={[styles.tripBadgeLabel, { color: palette.primaryText }]}
-              >
+              <Text style={[styles.badgeLabel, { color: palette.primaryText }]}>
                 {spotsLabel}
               </Text>
             </View>
@@ -1171,62 +1156,32 @@ const TripMiniCard: React.FC<{
   );
 };
 
-const offeringPriceLabel = (item: {
-  isFree?: boolean;
-  priceFromMinorUnits?: number | null;
-  currency?: string | null;
-}): string | null => {
-  if (
-    item.priceFromMinorUnits !== null &&
-    item.priceFromMinorUnits !== undefined
-  ) {
-    return `From ${formatCurrencyRound(
-      item.priceFromMinorUnits / 100,
-      item.currency ?? "USD",
-    )}`;
-  }
-  return item.isFree === true ? "Free" : null;
-};
-
-const formatUpcomingDateLine = (startsAt: string | null): string => {
-  if (startsAt === null) return "Date TBA";
-  const date = new Date(startsAt);
-  if (Number.isNaN(date.getTime())) return "Date TBA";
-  return date.toLocaleDateString("en-GB", {
-    weekday: "short",
-    day: "numeric",
-    month: "short",
-  });
-};
-
 const UpcomingList: React.FC<{
   rows: PublicBrandUpcoming[];
   theme: ResolvedTheme;
   palette: ThemePalette;
+  surface: Surface;
+  isDesktop: boolean;
   emptyCopy: string;
   onPress: (item: PublicBrandUpcoming) => void;
-}> = ({ rows, theme, palette, emptyCopy, onPress }) => {
+}> = ({ rows, theme, palette, surface, isDesktop, emptyCopy, onPress }) => {
   if (rows.length === 0) {
-    return (
-      <View style={styles.emptyTabWrap}>
-        <Text style={[styles.emptyTabTitle, { color: palette.secondaryText }]}>
-          {emptyCopy}
-        </Text>
-      </View>
-    );
+    return <EmptyPane copy={emptyCopy} palette={palette} />;
   }
   return (
-    <View style={styles.eventList}>
+    <OfferingGrid isDesktop={isDesktop}>
       {rows.map((item) => (
         <OfferingMiniCard
           key={`${item.offeringType}:${item.offeringId}`}
           item={item}
           theme={theme}
           palette={palette}
+          surface={surface}
+          isDesktop={isDesktop}
           onPress={onPress}
         />
       ))}
-    </View>
+    </OfferingGrid>
   );
 };
 
@@ -1234,8 +1189,10 @@ const OfferingMiniCard: React.FC<{
   item: PublicBrandUpcoming;
   theme: ResolvedTheme;
   palette: ThemePalette;
+  surface: Surface;
+  isDesktop: boolean;
   onPress: (item: PublicBrandUpcoming) => void;
-}> = ({ item, theme, palette, onPress }) => {
+}> = ({ item, theme, palette, surface, isDesktop, onPress }) => {
   const price = offeringPriceLabel(item);
   return (
     <Pressable
@@ -1243,39 +1200,35 @@ const OfferingMiniCard: React.FC<{
       accessibilityRole="button"
       accessibilityLabel={`Open ${item.offeringType} ${item.name}`}
       style={({ pressed }) => [
-        styles.eventCard,
-        { backgroundColor: palette.glass, borderColor: palette.cutoutBorder },
+        styles.oCard,
+        surface.card,
+        isDesktop && styles.oCardDesktop,
         pressed && styles.cardPressed,
       ]}
     >
-      <GlassBlur
-        tint={palette.glassTint}
-        intensity={24}
-        style={styles.glassLayer}
-      />
       <CoverBlock
         hue={hashHueFromString(item.offeringId)}
         mediaUrl={item.coverMediaUrl}
         mediaType={item.coverMediaType}
       />
-      <View style={styles.eventBody}>
-        <Text style={[styles.eventDate, { color: palette.accent }]}>
+      <View style={styles.oCardBody}>
+        <Text style={[styles.oCardDate, { color: palette.accent }]}>
           {formatUpcomingDateLine(item.startsAt)}
         </Text>
         <Text
           style={[
-            styles.eventTitle,
+            styles.oCardTitle,
             { fontFamily: theme.fontFamilyValue, color: palette.primaryText },
           ]}
           numberOfLines={2}
         >
           {item.name.length > 0 ? item.name : "Untitled offering"}
         </Text>
-        <Text style={[styles.eventVenue, { color: palette.tertiaryText }]}>
+        <Text style={[styles.oCardMeta, { color: palette.tertiaryText }]}>
           {item.offeringType}
         </Text>
         {price !== null ? (
-          <Text style={[styles.eventPrice, { color: palette.primaryText }]}>
+          <Text style={[styles.oCardPrice, { color: palette.primaryText }]}>
             {price}
           </Text>
         ) : null}
@@ -1288,30 +1241,28 @@ const ExperienceList: React.FC<{
   experiences: PublicBrandExperience[];
   theme: ResolvedTheme;
   palette: ThemePalette;
+  surface: Surface;
+  isDesktop: boolean;
   emptyCopy: string;
   onPress?: (experience: PublicBrandExperience) => void;
-}> = ({ experiences, theme, palette, emptyCopy, onPress }) => {
+}> = ({ experiences, theme, palette, surface, isDesktop, emptyCopy, onPress }) => {
   if (experiences.length === 0) {
-    return (
-      <View style={styles.emptyTabWrap}>
-        <Text style={[styles.emptyTabTitle, { color: palette.secondaryText }]}>
-          {emptyCopy}
-        </Text>
-      </View>
-    );
+    return <EmptyPane copy={emptyCopy} palette={palette} />;
   }
   return (
-    <View style={styles.eventList}>
+    <OfferingGrid isDesktop={isDesktop}>
       {experiences.map((experience) => (
         <ExperienceMiniCard
           key={experience.experienceId}
           experience={experience}
           theme={theme}
           palette={palette}
+          surface={surface}
+          isDesktop={isDesktop}
           onPress={onPress}
         />
       ))}
-    </View>
+    </OfferingGrid>
   );
 };
 
@@ -1319,8 +1270,10 @@ const ExperienceMiniCard: React.FC<{
   experience: PublicBrandExperience;
   theme: ResolvedTheme;
   palette: ThemePalette;
+  surface: Surface;
+  isDesktop: boolean;
   onPress?: (experience: PublicBrandExperience) => void;
-}> = ({ experience, theme, palette, onPress }) => {
+}> = ({ experience, theme, palette, surface, isDesktop, onPress }) => {
   const price = offeringPriceLabel(experience);
   return (
     <Pressable
@@ -1328,30 +1281,28 @@ const ExperienceMiniCard: React.FC<{
       accessibilityRole="button"
       accessibilityLabel={`Open experience ${experience.name}`}
       style={({ pressed }) => [
-        styles.eventCard,
-        { backgroundColor: palette.glass, borderColor: palette.cutoutBorder },
+        styles.oCard,
+        surface.card,
+        isDesktop && styles.oCardDesktop,
         pressed && styles.cardPressed,
       ]}
     >
-      <GlassBlur
-        tint={palette.glassTint}
-        intensity={24}
-        style={styles.glassLayer}
-      />
       <CoverBlock
         hue={hashHueFromString(experience.experienceId)}
         mediaUrl={experience.coverMediaUrl}
-        mediaType="image"
+        // ORCH-1155 — render the experience's REAL cover media type (video/gif),
+        // not the prior hardcoded "image". (SC-9 card.)
+        mediaType={experience.coverMediaType}
       />
-      <View style={styles.eventBody}>
+      <View style={styles.oCardBody}>
         {experience.nextOccurrenceAt !== null ? (
-          <Text style={[styles.eventDate, { color: palette.accent }]}>
+          <Text style={[styles.oCardDate, { color: palette.accent }]}>
             {formatUpcomingDateLine(experience.nextOccurrenceAt)}
           </Text>
         ) : null}
         <Text
           style={[
-            styles.eventTitle,
+            styles.oCardTitle,
             { fontFamily: theme.fontFamilyValue, color: palette.primaryText },
           ]}
           numberOfLines={2}
@@ -1360,14 +1311,14 @@ const ExperienceMiniCard: React.FC<{
         </Text>
         {experience.venueText !== null && experience.venueText.length > 0 ? (
           <Text
-            style={[styles.eventVenue, { color: palette.tertiaryText }]}
+            style={[styles.oCardMeta, { color: palette.tertiaryText }]}
             numberOfLines={1}
           >
             {experience.venueText}
           </Text>
         ) : null}
         {price !== null ? (
-          <Text style={[styles.eventPrice, { color: palette.primaryText }]}>
+          <Text style={[styles.oCardPrice, { color: palette.primaryText }]}>
             {price}
           </Text>
         ) : null}
@@ -1387,549 +1338,481 @@ const CoverBlock: React.FC<{
     mediaType={mediaType as PublicMediaType | null}
     radius={0}
     label="Cover"
-    style={styles.eventCover}
+    style={styles.oCardCover}
   />
 );
 
+const EmptyPane: React.FC<{ copy: string; palette: ThemePalette }> = ({
+  copy,
+  palette,
+}) => (
+  <View style={styles.emptyWrap}>
+    <Text style={styles.emptyEmoji}>🗺️</Text>
+    <Text style={[styles.emptyTitle, { color: palette.primaryText }]}>
+      Nothing on the calendar yet
+    </Text>
+    <Text style={[styles.emptySub, { color: palette.tertiaryText }]}>
+      {copy}. Check back soon.
+    </Text>
+  </View>
+);
+
+// ORCH-1155 — About pane: tagline → bio (4-line clamp + Read more) → contact.
 const AboutTab: React.FC<{
   brand: PublicBrand;
   theme: ResolvedTheme;
   palette: ThemePalette;
+  surface: Surface;
   onExternal: (url: string) => void;
-}> = ({ brand, theme, palette, onExternal }) => (
-  <View style={styles.aboutWrap}>
-    {brand.bio !== undefined && brand.bio.trim().length > 0 ? (
-      <View
-        style={[
-          styles.aboutBlock,
-          { backgroundColor: palette.glass, borderColor: palette.cutoutBorder },
-        ]}
-      >
-        <GlassBlur
-          tint={palette.glassTint}
-          intensity={22}
-          style={styles.glassLayer}
-        />
+}> = ({ brand, theme, palette, surface, onExternal }) => {
+  const tagline =
+    brand.tagline !== undefined && brand.tagline.trim().length > 0
+      ? brand.tagline.trim()
+      : null;
+  const bio =
+    brand.bio !== undefined && brand.bio.trim().length > 0
+      ? brand.bio.trim()
+      : null;
+  const email = brand.contact?.email;
+  const phone = brand.contact?.phone;
+  const hasContact = email !== undefined || phone !== undefined;
+
+  return (
+    <View style={styles.aboutWrap}>
+      {tagline !== null ? (
         <Text
           style={[
-            styles.aboutBlockLabel,
-            { fontFamily: theme.fontFamilyValue, color: palette.tertiaryText },
+            styles.tagline,
+            { fontFamily: theme.fontFamilyValue, color: palette.primaryText },
           ]}
         >
-          About
+          {tagline}
         </Text>
-        <Text style={[styles.aboutBlockBody, { color: palette.secondaryText }]}>
-          {brand.bio}
-        </Text>
-      </View>
-    ) : null}
-    {brand.contact?.email !== undefined ||
-    brand.contact?.phone !== undefined ? (
-      <View
-        style={[
-          styles.aboutBlock,
-          { backgroundColor: palette.glass, borderColor: palette.cutoutBorder },
-        ]}
+      ) : null}
+      {bio !== null ? (
+        <ClampedBio text={bio} palette={palette} />
+      ) : null}
+      {hasContact ? (
+        <View style={styles.contactWrap}>
+          {email !== undefined ? (
+            <Pressable
+              onPress={() => onExternal(`mailto:${email}`)}
+              accessibilityRole="link"
+              accessibilityLabel={`Email ${email}`}
+              style={[styles.contactRow, surface.card]}
+            >
+              <Text style={[styles.contactLabel, { color: palette.tertiaryText }]}>
+                Email
+              </Text>
+              <Text style={[styles.contactVal, { color: palette.primaryText }]}>
+                {email}
+              </Text>
+            </Pressable>
+          ) : null}
+          {phone !== undefined ? (
+            <Pressable
+              onPress={() => onExternal(`tel:${phone}`)}
+              accessibilityRole="link"
+              accessibilityLabel={`Call ${phone}`}
+              style={[styles.contactRow, surface.card]}
+            >
+              <Text style={[styles.contactLabel, { color: palette.tertiaryText }]}>
+                Phone
+              </Text>
+              <Text style={[styles.contactVal, { color: palette.primaryText }]}>
+                {phone}
+              </Text>
+            </Pressable>
+          ) : null}
+        </View>
+      ) : null}
+    </View>
+  );
+};
+
+const ClampedBio: React.FC<{ text: string; palette: ThemePalette }> = ({
+  text,
+  palette,
+}) => {
+  const [expanded, setExpanded] = useState<boolean>(false);
+  // Heuristic: a bio long enough to plausibly exceed 4 lines gets the toggle.
+  const couldClamp = text.length > 220;
+  return (
+    <View style={styles.bioWrap}>
+      <Text
+        style={[styles.bio, { color: palette.secondaryText }]}
+        numberOfLines={expanded ? undefined : BIO_CLAMP_LINES}
       >
-        <GlassBlur
-          tint={palette.glassTint}
-          intensity={22}
-          style={styles.glassLayer}
-        />
-        <Text
-          style={[
-            styles.aboutBlockLabel,
-            { fontFamily: theme.fontFamilyValue, color: palette.tertiaryText },
-          ]}
+        {text}
+      </Text>
+      {couldClamp ? (
+        <Pressable
+          onPress={() => setExpanded((v) => !v)}
+          accessibilityRole="button"
+          accessibilityLabel={expanded ? "Show less" : "Read more"}
         >
-          Contact
-        </Text>
-        {brand.contact?.email !== undefined ? (
-          <Pressable
-            onPress={() => onExternal(`mailto:${brand.contact?.email}`)}
-          >
-            <Text style={[styles.aboutContactLink, { color: palette.accent }]}>
-              {brand.contact.email}
-            </Text>
-          </Pressable>
-        ) : null}
-        {brand.contact?.phone !== undefined ? (
-          <Pressable onPress={() => onExternal(`tel:${brand.contact?.phone}`)}>
-            <Text style={[styles.aboutContactLink, { color: palette.accent }]}>
-              {brand.contact.phone}
-            </Text>
-          </Pressable>
-        ) : null}
-      </View>
-    ) : null}
-  </View>
-);
+          <Text style={[styles.readMore, { color: palette.accent }]}>
+            {expanded ? "Show less" : "Read more"}
+          </Text>
+        </Pressable>
+      ) : null}
+    </View>
+  );
+};
 
 const styles = StyleSheet.create({
-  host: {
-    flex: 1,
-    backgroundColor,
+  // ---- identity ----
+  phoneIdentityWrap: {
+    marginBottom: 4,
   },
-  heroWrap: {
-    position: "absolute",
-    top: 0,
-    left: 0,
-    right: 0,
-    height: 380,
-    overflow: "hidden",
-    zIndex: 0,
-  },
-  heroGradient: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: "rgba(255,255,255,0.04)",
-  },
-  heroFade: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: "rgba(12,14,18,0.30)",
-  },
-  heroThemeTint: {
-    ...StyleSheet.absoluteFillObject,
-  },
-  floatingChrome: {
-    position: "absolute",
-    top: spacing.lg,
-    left: spacing.md,
-    right: spacing.md,
-    flexDirection: "row",
-    justifyContent: "space-between",
-    zIndex: 4,
-    elevation: 8,
-  },
-  chromeButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: "rgba(0,0,0,0.48)",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  chromeGlyph: {
-    width: 18,
-    height: 18,
-  },
-  chromeXStroke: {
-    position: "absolute",
-    top: 8,
-    left: 2,
-    width: 14,
-    height: 2,
-    borderRadius: 1,
-    backgroundColor: text.primary,
-  },
-  chromeXStrokeA: {
-    transform: [{ rotate: "45deg" }],
-  },
-  chromeXStrokeB: {
-    transform: [{ rotate: "-45deg" }],
-  },
-  chromeShareLine: {
-    position: "absolute",
-    left: 5,
-    width: 9,
-    height: 2,
-    borderRadius: 1,
-    backgroundColor: text.primary,
-  },
-  chromeShareLineTop: {
-    top: 6,
-    transform: [{ rotate: "-24deg" }],
-  },
-  chromeShareLineBottom: {
-    top: 11,
-    transform: [{ rotate: "24deg" }],
-  },
-  chromeShareDot: {
-    position: "absolute",
-    width: 5,
-    height: 5,
-    borderRadius: 2.5,
-    backgroundColor: text.primary,
-  },
-  chromeShareDotLeft: {
-    left: 1,
-    top: 7,
-  },
-  chromeShareDotTop: {
-    right: 1,
-    top: 2,
-  },
-  chromeShareDotBottom: {
-    right: 1,
-    bottom: 2,
-  },
-  scroll: {
-    flex: 1,
-    zIndex: 1,
-  },
-  scrollContent: {
-    paddingTop: 284,
-    paddingHorizontal: spacing.lg,
-    paddingBottom: spacing.xl * 2,
-  },
-  glassLayer: {
-    ...StyleSheet.absoluteFillObject,
-  },
-  identityCentered: {
-    alignItems: "stretch",
-    alignSelf: "center",
-    width: "100%",
-    maxWidth: 620,
-    position: "relative",
-    overflow: "hidden",
-    paddingHorizontal: spacing.xl,
-    paddingVertical: spacing.xl,
-    borderRadius: radius.md,
-    borderWidth: 1,
-    marginTop: 0,
-    marginBottom: spacing.lg,
-    shadowColor: "#000000",
-    shadowOpacity: 0.22,
-    shadowRadius: 30,
-    shadowOffset: { width: 0, height: 18 },
-    elevation: 7,
-  },
-  identityTopRow: {
+  identityRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.xl,
+    gap: spacing.md,
   },
   identityCopy: {
     flex: 1,
     minWidth: 0,
   },
   avatar: {
-    width: 104,
-    height: 104,
-    borderRadius: 52,
-    backgroundColor: "rgba(255,255,255,0.10)",
     alignItems: "center",
     justifyContent: "center",
-    borderWidth: 4,
-    borderColor: "rgba(255,255,255,0.20)",
-    marginTop: 0,
+    borderWidth: 3,
+    overflow: "hidden",
     shadowOpacity: 0.26,
-    shadowRadius: 24,
-    shadowOffset: { width: 0, height: 12 },
-    elevation: 4,
+    shadowRadius: 18,
+    shadowOffset: { width: 0, height: 10 },
   },
   avatarInitial: {
-    color: text.primary,
-    fontSize: 38,
     fontWeight: "900",
-  },
-  brandNameCentered: {
-    fontSize: 38,
-    lineHeight: 42,
-    fontWeight: "900",
-    color: text.primary,
-    marginTop: spacing.xs,
-    textAlign: "left",
   },
   verifiedBadge: {
-    color: accent.warm,
     fontSize: 10,
     fontWeight: "900",
     letterSpacing: 1.4,
     textTransform: "uppercase",
+    marginBottom: 4,
   },
-  handleLineCentered: {
-    fontSize: 14,
-    lineHeight: 19,
-    color: text.tertiary,
-    marginTop: spacing.xs,
-    textAlign: "left",
+  brandName: {
+    fontSize: 30,
+    lineHeight: 33,
+    fontWeight: "900",
+    letterSpacing: -0.5,
   },
-  bioLeadCentered: {
-    fontSize: 16,
-    color: text.secondary,
-    lineHeight: 25,
-    marginTop: spacing.md,
-    textAlign: "left",
+  brandAddr: {
+    fontSize: 13,
+    lineHeight: 18,
+    marginTop: 4,
   },
-  taglineCentered: {
-    fontSize: 24,
-    fontWeight: "800",
-    color: text.tertiary,
-    lineHeight: 30,
-    marginTop: spacing.lg,
-    textAlign: "left",
-  },
-  socialsRowCompact: {
+  // ---- socials ----
+  socialsRow: {
     flexDirection: "row",
-    justifyContent: "center",
     flexWrap: "wrap",
-    alignSelf: "center",
-    width: "100%",
-    maxWidth: 620,
-    marginTop: 0,
-    marginBottom: spacing.lg,
-    gap: spacing.sm,
+    gap: 10,
+    marginTop: 18,
   },
-  socialBtnIconOnly: {
-    width: 50,
-    height: 50,
+  socialBtn: {
+    width: 44,
+    height: 44,
+    borderRadius: 999,
     alignItems: "center",
     justifyContent: "center",
-    borderRadius: 999,
-    backgroundColor: "rgba(255, 255, 255, 0.06)",
-    borderWidth: 1,
-    borderColor: "rgba(255, 255, 255, 0.08)",
-  },
-  nextTeaser: {
-    flexDirection: "row",
-    alignItems: "center",
-    alignSelf: "center",
-    width: "100%",
-    maxWidth: 620,
-    position: "relative",
     overflow: "hidden",
-    gap: spacing.md,
-    minHeight: 86,
-    paddingVertical: spacing.lg,
-    paddingHorizontal: spacing.lg,
-    borderRadius: radius.sm,
-    backgroundColor: accent.tint,
-    borderWidth: 1,
-    marginBottom: spacing.lg,
-    shadowColor: "#000000",
-    shadowOpacity: 0.14,
-    shadowRadius: 18,
-    shadowOffset: { width: 0, height: 10 },
-    elevation: 3,
+  },
+  // ---- featured teaser ----
+  nextTeaser: {
+    flexDirection: "column",
+    alignItems: "flex-start",
+    gap: 18,
+    marginTop: 22,
+    borderRadius: 18,
+    paddingVertical: 22,
+    paddingHorizontal: 22,
   },
   nextTeaserCopy: {
-    flex: 1,
+    width: "100%",
     minWidth: 0,
   },
   nextTeaserLabel: {
-    color: "#ffffff",
-    fontSize: 11,
+    fontSize: 10,
     fontWeight: "900",
     letterSpacing: 1.4,
+    opacity: 0.92,
   },
   nextTeaserBody: {
-    fontSize: 18,
+    fontSize: 17,
     lineHeight: 23,
-    color: "#ffffff",
     fontWeight: "800",
-    marginTop: 5,
+    marginTop: 10,
   },
   nextTeaserAction: {
-    minWidth: 58,
-    minHeight: 40,
-    paddingHorizontal: spacing.md,
-    alignItems: "center",
-    justifyContent: "center",
-    borderRadius: radius.sm,
-    backgroundColor: "rgba(255,255,255,0.18)",
+    alignSelf: "flex-start",
+    paddingHorizontal: 20,
+    paddingVertical: 9,
+    borderRadius: 12,
+    backgroundColor: "rgba(255,255,255,0.20)",
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.24)",
+    borderColor: "rgba(255,255,255,0.28)",
   },
   nextTeaserActionText: {
-    color: "#ffffff",
     fontSize: 13,
     fontWeight: "900",
   },
-  tabsRow: {
-    flexDirection: "row",
-    alignSelf: "center",
-    width: "100%",
-    maxWidth: 620,
+  // ---- tab bar ----
+  tabBarWrap: {
     position: "relative",
-    overflow: "hidden",
-    gap: 4,
-    borderWidth: 1,
-    borderRadius: radius.full,
-    padding: 5,
-    marginBottom: spacing.lg,
-    shadowColor: "#000000",
-    shadowOpacity: 0.12,
-    shadowRadius: 12,
-    shadowOffset: { width: 0, height: 6 },
-    elevation: 3,
+    marginTop: 22,
   },
-  tabButton: {
-    flex: 1,
-    minHeight: 42,
-    alignItems: "center",
-    justifyContent: "center",
+  tabsRowContent: {
+    flexDirection: "row",
+    gap: 6,
+    paddingVertical: 2,
+    paddingRight: 6,
+  },
+  tabChip: {
+    flexGrow: 0,
+    flexShrink: 0,
+    borderRadius: 999,
+    paddingHorizontal: 16,
     paddingVertical: 10,
-    paddingHorizontal: spacing.sm,
-    borderRadius: radius.full,
-    marginBottom: 0,
-  },
-  tabButtonActive: {
-    backgroundColor: "rgba(255,255,255,0.22)",
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.36)",
+    overflow: "hidden",
   },
   tabLabel: {
-    fontSize: 12,
+    fontSize: 13,
     fontWeight: "800",
-    color: text.tertiary,
-    textAlign: "center",
-  },
-  tabLabelActive: {
-    fontWeight: "900",
   },
   tabCount: {
-    color: "rgba(255,255,255,0.72)",
     fontWeight: "700",
-  },
-  eventList: {
-    alignSelf: "center",
-    width: "100%",
-    maxWidth: 620,
-    gap: spacing.xl,
-  },
-  eventCard: {
-    flexDirection: "column",
-    position: "relative",
-    backgroundColor: "rgba(255, 255, 255, 0.04)",
-    borderRadius: radius.md,
-    overflow: "hidden",
-    borderWidth: 1.5,
-    borderColor: "rgba(255, 255, 255, 0.06)",
-    shadowColor: "#000000",
-    shadowOpacity: 0.28,
-    shadowRadius: 30,
-    shadowOffset: { width: 0, height: 18 },
-    elevation: 8,
-  },
-  eventCardPast: {
     opacity: 0.7,
+  },
+  tabEdgeFade: {
+    position: "absolute",
+    top: 0,
+    right: 0,
+    width: 28,
+    height: "100%",
+    opacity: 0.85,
+  },
+  // ---- panes ----
+  paneWrap: {
+    marginTop: 18,
+  },
+  grid: {
+    gap: 18,
+  },
+  gridDesktop: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 20,
+  },
+  pastHead: {
+    fontSize: 11,
+    fontWeight: "900",
+    letterSpacing: 1.2,
+    textTransform: "uppercase",
+    marginTop: 24,
+    marginBottom: 4,
+  },
+  // ---- offering card ----
+  oCard: {
+    borderRadius: 16,
+    overflow: "hidden",
+  },
+  oCardDesktop: {
+    width: "48%",
+  },
+  oCardPast: {
+    opacity: 0.62,
   },
   cardPressed: {
-    opacity: 0.7,
+    opacity: 0.78,
   },
-  eventCover: {
+  oCardCover: {
     width: "100%",
     height: 184,
   },
-  eventBody: {
-    padding: spacing.lg,
-    gap: spacing.xs,
+  oCardBody: {
+    padding: 14,
+    gap: 4,
   },
-  eventDate: {
+  oCardDate: {
     fontSize: 11,
     fontWeight: "800",
-    letterSpacing: 1.4,
-    marginBottom: 2,
+    letterSpacing: 1.2,
+    textTransform: "uppercase",
   },
-  eventTitle: {
-    fontSize: 21,
-    lineHeight: 26,
+  oCardTitle: {
+    fontSize: 17,
+    lineHeight: 21,
     fontWeight: "800",
-    color: text.primary,
+    marginTop: 1,
   },
-  eventVenue: {
+  oCardMeta: {
     fontSize: 13,
-    color: text.tertiary,
     marginTop: 2,
   },
-  eventPrice: {
-    fontSize: 15,
-    fontWeight: "800",
-    color: text.primary,
-    marginTop: spacing.xs,
-  },
-  eventBuyPill: {
-    alignItems: "center",
-    justifyContent: "center",
-    minHeight: 52,
-    marginTop: spacing.md,
-    paddingVertical: 14,
-    paddingHorizontal: spacing.lg,
-    borderRadius: radius.md,
-    shadowColor: "#000000",
-    shadowOpacity: 0.18,
-    shadowRadius: 12,
-    shadowOffset: { width: 0, height: 6 },
-    elevation: 4,
-  },
-  eventBuyPillLabel: {
-    fontSize: 16,
-    fontWeight: "900",
-    letterSpacing: 0.4,
-  },
-  tripFooterRow: {
+  oCardFoot: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    marginTop: 6,
-    gap: spacing.sm,
+    gap: 8,
+    marginTop: 10,
   },
-  tripBadgeClosed: {
-    paddingVertical: 4,
-    paddingHorizontal: spacing.sm,
-    borderRadius: radius.full,
-    backgroundColor: "rgba(255, 255, 255, 0.08)",
-    borderWidth: 1,
-    borderColor: "rgba(255, 255, 255, 0.16)",
-  },
-  tripBadgeScarce: {
-    paddingVertical: 4,
-    paddingHorizontal: spacing.sm,
-    borderRadius: radius.full,
-    backgroundColor: accent.tint,
-    borderWidth: 1,
-    borderColor: accent.border,
-  },
-  tripBadgeLabel: {
-    fontSize: 11,
-    fontWeight: "600",
-    color: text.primary,
-  },
-  emptyTabWrap: {
-    alignSelf: "center",
-    width: "100%",
-    maxWidth: 620,
-    alignItems: "center",
-    paddingVertical: spacing.xl,
-  },
-  emptyTabTitle: {
-    fontSize: 16,
-    fontWeight: "600",
-    color: text.secondary,
-  },
-  aboutWrap: {
-    alignSelf: "center",
-    width: "100%",
-    maxWidth: 620,
-    gap: spacing.lg,
-  },
-  aboutBlock: {
-    position: "relative",
-    overflow: "hidden",
-    gap: spacing.xs,
-    borderWidth: 1.5,
-    borderRadius: radius.md,
-    padding: spacing.lg,
-    shadowColor: "#000000",
-    shadowOpacity: 0.16,
-    shadowRadius: 20,
-    shadowOffset: { width: 0, height: 10 },
-    elevation: 4,
-  },
-  aboutBlockLabel: {
-    fontSize: 11,
-    color: text.tertiary,
-    letterSpacing: 1.4,
-    fontWeight: "600",
-  },
-  aboutBlockBody: {
-    fontSize: 15,
-    color: text.secondary,
-    lineHeight: 22,
-  },
-  aboutContactLink: {
+  oCardPrice: {
     fontSize: 14,
-    color: accent.warm,
+    fontWeight: "800",
+    marginTop: 4,
+  },
+  buyPill: {
+    alignItems: "center",
+    justifyContent: "center",
+    minHeight: 44,
+    marginTop: 12,
+    paddingVertical: 12,
+    borderRadius: 12,
+  },
+  buyPillLabel: {
+    fontSize: 15,
+    fontWeight: "900",
+    letterSpacing: 0.4,
+  },
+  badge: {
     paddingVertical: 4,
+    paddingHorizontal: 9,
+    borderRadius: 999,
+    borderWidth: 1,
+  },
+  badgeLabel: {
+    fontSize: 11,
+    fontWeight: "700",
+  },
+  // ---- empty ----
+  emptyWrap: {
+    alignItems: "center",
+    paddingVertical: 40,
+    paddingHorizontal: 20,
+  },
+  emptyEmoji: {
+    fontSize: 34,
+  },
+  emptyTitle: {
+    fontSize: 17,
+    fontWeight: "800",
+    marginTop: 10,
+    textAlign: "center",
+  },
+  emptySub: {
+    fontSize: 14,
+    marginTop: 6,
+    lineHeight: 20,
+    textAlign: "center",
+  },
+  // ---- about ----
+  aboutWrap: {
+    gap: 0,
+  },
+  tagline: {
+    fontSize: 19,
+    fontWeight: "800",
+    lineHeight: 24,
+  },
+  bioWrap: {
+    marginTop: 12,
+  },
+  bio: {
+    fontSize: 15,
+    lineHeight: 24,
+  },
+  readMore: {
+    fontSize: 14,
+    fontWeight: "700",
+    marginTop: 8,
+  },
+  contactWrap: {
+    marginTop: 28,
+    gap: 10,
+  },
+  contactRow: {
+    borderRadius: 14,
+    padding: 14,
+  },
+  contactLabel: {
+    fontSize: 10,
+    fontWeight: "800",
+    letterSpacing: 1,
+    textTransform: "uppercase",
+  },
+  contactVal: {
+    fontSize: 14,
+    fontWeight: "700",
+    marginTop: 1,
+  },
+  // ---- desktop sticky panel ----
+  deskPanel: {
+    borderRadius: 22,
+    overflow: "hidden",
+  },
+  deskAccent: {
+    height: 4,
+  },
+  deskInner: {
+    padding: 20,
+  },
+  deskIdentity: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+  },
+  deskBrandName: {
+    fontSize: 22,
+    fontWeight: "900",
+    letterSpacing: -0.4,
+  },
+  deskShareBtn: {
+    marginTop: 18,
+    minHeight: 48,
+    borderRadius: 14,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  deskShareLabel: {
+    fontSize: 14,
+    fontWeight: "900",
+  },
+  deskNextWrap: {
+    marginTop: 18,
+  },
+  deskNextLabel: {
+    fontSize: 13,
+    fontWeight: "900",
+    letterSpacing: 1,
+    textTransform: "uppercase",
+  },
+  // ---- hero overlay (desktop) ----
+  heroEyebrow: {
+    color: "#ffffff",
+    opacity: 0.95,
+    fontSize: 12,
+    fontWeight: "900",
+    letterSpacing: 1.6,
+    textTransform: "uppercase",
+    marginBottom: 8,
+  },
+  heroTitle: {
+    color: "#ffffff",
+    fontSize: 42,
+    lineHeight: 46,
+    fontWeight: "900",
+    letterSpacing: -0.5,
+    textShadowColor: "rgba(0,0,0,0.5)",
+    textShadowOffset: { width: 0, height: 2 },
+    textShadowRadius: 24,
+  },
+  heroAddr: {
+    color: "rgba(255,255,255,0.86)",
+    fontSize: 14,
+    marginTop: 6,
   },
 });
+
+export default PublicBrandPage;

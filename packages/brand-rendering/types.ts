@@ -93,6 +93,11 @@ export interface PublicBrandExperience {
   name: string;
   bio: string | null;
   coverMediaUrl: string | null;
+  // ORCH-1155 — the experience cover's media type so the Experiences-tab card
+  // renders video/gif covers (not image-only). Supplied by both data paths
+  // (publicEventsService + useBrandBySlug) off pg_public_experiences_by_brand's
+  // new cover_media_type column. null ⇒ image-or-hue fallback.
+  coverMediaType: PublicMediaType | null;
   theme?: Record<string, unknown> | null;
   venueText: string | null;
   nextOccurrenceAt: string | null;

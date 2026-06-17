@@ -342,6 +342,10 @@ export interface PublicExperienceCardRow {
   title: string;
   description: string | null;
   cover_media_url: string | null;
+  // ORCH-1155 — RPC now returns the experience cover's media type (added to
+  // pg_public_experiences_by_brand) so the brand-page Experiences card can play
+  // video/gif covers, not just image. null ⇒ image-or-hue fallback.
+  cover_media_type: "image" | "video" | "gif" | null;
   theme: JsonRecord | null;
   venue_text: string | null;
   next_occurrence_at: string | null;
@@ -360,6 +364,8 @@ export interface PublicExperienceCard {
   name: string;
   bio: string | null;
   coverMediaUrl: string | null;
+  // ORCH-1155 — see PublicExperienceCardRow.cover_media_type.
+  coverMediaType: "image" | "video" | "gif" | null;
   theme: JsonRecord;
   venueText: string | null;
   nextOccurrenceAt: string | null;
@@ -1103,6 +1109,7 @@ export const experienceRowToCard = (
   name: row.title,
   bio: row.description,
   coverMediaUrl: row.cover_media_url,
+  coverMediaType: row.cover_media_type,
   theme: asRecord(row.theme),
   venueText: row.venue_text,
   nextOccurrenceAt: row.next_occurrence_at,

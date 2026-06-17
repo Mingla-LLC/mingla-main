@@ -47,6 +47,7 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import * as Haptics from "expo-haptics";
+import { useRouter } from "expo-router";
 import { useQueryClient } from "@tanstack/react-query";
 
 import {
@@ -262,6 +263,7 @@ export default function ConsumerExperienceDetailScreen({
 }: ConsumerExperienceDetailScreenProps): React.ReactElement {
   void tabBarAware;
   const insets = useSafeAreaInsets();
+  const router = useRouter();
   const queryClient = useQueryClient();
   const user = useAppStore((s) => s.user);
   const profile = useAppStore((s) => s.profile);
@@ -927,8 +929,22 @@ export default function ConsumerExperienceDetailScreen({
               </View>
             ) : null}
 
-            {/* brand chip — "Presented by" (anon-safe brand cover/initial) */}
-            <View style={[styles.brandRow, surface.card]}>
+            {/* brand chip — "Presented by" (anon-safe brand cover/initial).
+                ORCH-1155 [public-brand-page]: tap opens the brand page
+                /b/{brandSlug} (no dead tap). Guard empty slug (rule 9). */}
+            <Pressable
+              style={[styles.brandRow, surface.card]}
+              accessibilityRole="button"
+              accessibilityLabel={`View ${seed.brandName}`}
+              onPress={() => {
+                if (
+                  typeof seed.brandSlug === "string" &&
+                  seed.brandSlug.length > 0
+                ) {
+                  router.push(`/b/${seed.brandSlug}` as never);
+                }
+              }}
+            >
               <View
                 style={[
                   styles.brandTile,
@@ -974,7 +990,13 @@ export default function ConsumerExperienceDetailScreen({
                   {seed.brandName}
                 </Text>
               </View>
-            </View>
+              {/* ORCH-1155 [public-brand-page] all-surface parity — trailing
+                  "View" CTA matching the trip/event consumer screens + the
+                  web/business pages. */}
+              <Text style={[styles.brandCta, { color: palette.accent }]}>
+                View
+              </Text>
+            </Pressable>
 
             {/* About — collapsible (rule 9: only when present) */}
             {aboutText !== null ? (
@@ -1297,6 +1319,9 @@ const styles = StyleSheet.create({
   brandInitialWrap: { flex: 1, alignItems: "center", justifyContent: "center" },
   brandInitial: { fontSize: 18, fontWeight: "900" },
   brandTextCol: { flexShrink: 1 },
+  // ORCH-1155 [public-brand-page] — trailing "View" CTA on the brand chip
+  // (parity with the trip/event consumer screens + web/business pages).
+  brandCta: { marginLeft: "auto", fontSize: 12, fontWeight: "800" },
   brandKicker: {
     fontSize: 10,
     fontWeight: "800",

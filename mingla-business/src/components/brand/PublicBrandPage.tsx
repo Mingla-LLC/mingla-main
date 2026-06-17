@@ -117,6 +117,8 @@ const mapExperience = (
   name: experience.name,
   bio: experience.bio,
   coverMediaUrl: experience.coverMediaUrl,
+  // ORCH-1155 — thread the experience cover media type to the shared card.
+  coverMediaType: experience.coverMediaType,
   theme: experience.theme,
   venueText: experience.venueText,
   nextOccurrenceAt: experience.nextOccurrenceAt,

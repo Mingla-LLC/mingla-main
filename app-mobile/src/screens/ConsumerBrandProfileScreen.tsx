@@ -1,6 +1,7 @@
 import React, { useCallback } from "react";
 import { ActivityIndicator, Share, StyleSheet, Text, View } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import * as WebBrowser from "expo-web-browser";
 import {
   PublicBrandPage,
@@ -14,6 +15,7 @@ import { useBrandBySlug } from "../hooks/useBrandBySlug";
 
 export default function ConsumerBrandProfileScreen(): React.ReactElement {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const params = useLocalSearchParams<{ slug: string | string[] }>();
   const slug = Array.isArray(params.slug) ? params.slug[0] : params.slug;
   const query = useBrandBySlug(typeof slug === "string" ? slug : null);
@@ -59,6 +61,13 @@ export default function ConsumerBrandProfileScreen(): React.ReactElement {
       upcoming={query.data.upcoming}
       upcomingHasMore={query.data.upcomingHasMore}
       theme={query.data.resolvedTheme}
+      // ORCH-1155 Known-Issue #1: feed the device safe-area top inset into the
+      // shared shell's fixed chrome so the X / Share buttons clear the notch /
+      // status bar on native (the shell adds its own +12 gap, giving an
+      // effective insets.top + 12 — identical to ConsumerTripDetailScreen /
+      // ConsumerExperienceDetailScreen native chrome). Web/business unchanged:
+      // the business adapter passes its own offset; web safe-area top is 0.
+      chromeTopOffset={insets.top}
       callbacks={{
         onClose: () => router.back(),
         onShare: handleShare,

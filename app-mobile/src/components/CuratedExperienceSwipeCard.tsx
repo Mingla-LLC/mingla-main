@@ -100,13 +100,18 @@ interface BrandChipProps {
   brandName: string;
   brandLogoUrl: string | null;
   top: number;
+  // ORCH-1155: when the chip is wrapped in a pressable that owns the absolute
+  // positioning, the chip itself renders in normal flow (no self-position) and
+  // ignores touches (the wrapper is the button). Default false → byte-identical
+  // to the ORCH-1065 self-positioned badge for curated/non-pressable callers.
+  wrapped?: boolean;
 }
 
 // Top-left glass lockup: [logo/monogram disc] + [brand name]. Copies the
 // glass.badge five-layer vocabulary (DESIGN §2.2) so it reads as the same family
 // as the metadata chips; degrades to the opaque solid fill on Android pre-blur /
 // Reduce Transparency (ANDROID_GLASS_USES_OPAQUE_FALLBACK policy, DESIGN §2.6).
-function BrandChip({ brandName, brandLogoUrl, top }: BrandChipProps): React.ReactElement {
+function BrandChip({ brandName, brandLogoUrl, top, wrapped = false }: BrandChipProps): React.ReactElement {
   const [reduceTransparency, setReduceTransparency] = React.useState(false);
   const [logoFailed, setLogoFailed] = React.useState(false);
 
@@ -138,9 +143,16 @@ function BrandChip({ brandName, brandLogoUrl, top }: BrandChipProps): React.Reac
 
   return (
     <View
-      style={[styles.brandChip, { top }]}
-      accessibilityRole="image"
-      accessibilityLabel={`Experience by ${trimmedName}`}
+      style={
+        wrapped
+          ? styles.brandChipFlow
+          : [styles.brandChip, { top }]
+      }
+      pointerEvents={wrapped ? 'none' : 'auto'}
+      accessibilityRole={wrapped ? undefined : 'image'}
+      accessibilityElementsHidden={wrapped}
+      importantForAccessibility={wrapped ? 'no-hide-descendants' : 'auto'}
+      accessibilityLabel={wrapped ? undefined : `Experience by ${trimmedName}`}
     >
       {/* L1 — blur or opaque solid fallback */}
       {useGlass ? (
@@ -218,6 +230,10 @@ interface Props {
   // ORCH-1065: present ONLY for brand experiences. Curated callers omit both →
   // byte-identical render (SC-13).
   brandExperience?: { brandName: string; brandLogoUrl: string | null };
+  // ORCH-1155 [public-brand-page]: when present, the brand badge becomes a button
+  // that opens the brand page (/b/{slug}). Sibling of brandExperience so curated
+  // callers (which pass neither) render byte-identically (SC-12). No dead taps.
+  onBrandPress?: () => void;
   // ORCH-1072: the experience's REAL cover (separate prop so the ORCH-1065
   // brandExperience contract stays byte-identical). When present, the card hero
   // shows the cover (image/video) with the stop photos as a strip below — not
@@ -230,7 +246,7 @@ interface Props {
   ctaOverride?: string;
 }
 
-export function CuratedExperienceSwipeCard({ card, onSeePlan, travelMode, measurementSystem, currencyCode, brandExperience, experienceCover, ctaOverride }: Props) {
+export function CuratedExperienceSwipeCard({ card, onSeePlan, travelMode, measurementSystem, currencyCode, brandExperience, onBrandPress, experienceCover, ctaOverride }: Props) {
   const { t } = useTranslation(['common']);
   const insets = useSafeAreaInsets();
   // ORCH-0991: deck is full-bleed under the floating glass top bar (HomePage safeArea has
@@ -385,13 +401,34 @@ export function CuratedExperienceSwipeCard({ card, onSeePlan, travelMode, measur
         )}
 
         {/* ORCH-1065: brand badge (top-left, below the stop-badge baseline) —
-            only when this is a brand experience. */}
+            only when this is a brand experience.
+            ORCH-1155: when onBrandPress is provided, wrap the badge in a button
+            that opens the brand page (no dead tap). Curated callers pass neither
+            prop → byte-identical (SC-12). */}
         {brandExperience ? (
-          <BrandChip
-            brandName={brandExperience.brandName}
-            brandLogoUrl={brandExperience.brandLogoUrl}
-            top={stopBadgeTop}
-          />
+          onBrandPress ? (
+            <TrackedTouchableOpacity
+              activeOpacity={0.8}
+              onPress={onBrandPress}
+              accessibilityRole="button"
+              accessibilityLabel={`View ${brandExperience.brandName}`}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              style={[styles.brandChipPressable, { top: stopBadgeTop }]}
+            >
+              <BrandChip
+                brandName={brandExperience.brandName}
+                brandLogoUrl={brandExperience.brandLogoUrl}
+                top={stopBadgeTop}
+                wrapped
+              />
+            </TrackedTouchableOpacity>
+          ) : (
+            <BrandChip
+              brandName={brandExperience.brandName}
+              brandLogoUrl={brandExperience.brandLogoUrl}
+              top={stopBadgeTop}
+            />
+          )
         ) : null}
 
         {/* Hero gradient — dark fade behind title + labels for legibility */}
@@ -634,6 +671,34 @@ const styles = StyleSheet.create({
     right: 0,
     height: 1,
     backgroundColor: glass.badge.border.topHighlight,
+  },
+  // ORCH-1155: the pressable wrapper owns the absolute positioning the badge had,
+  // so the inner BrandChip (rendered with `wrapped`) lays out in normal flow and
+  // the tap target is the chip box. `top` is supplied inline (stopBadgeTop).
+  brandChipPressable: {
+    position: 'absolute',
+    left: 8,
+    zIndex: 3,
+    maxWidth: '60%',
+  },
+  // ORCH-1155: the chip's visual styling minus its own absolute positioning
+  // (the wrapper positions it). Mirrors `brandChip` sans position/left/top/zIndex.
+  brandChipFlow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingLeft: 4,
+    paddingRight: 12,
+    paddingVertical: 4,
+    borderRadius: 9999,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: glass.badge.border.hairline,
+    shadowColor: glass.badge.shadow.color,
+    shadowOffset: glass.badge.shadow.offset,
+    shadowOpacity: glass.badge.shadow.opacity,
+    shadowRadius: glass.badge.shadow.radius,
+    elevation: glass.badge.shadow.elevation,
   },
   brandDisc: {
     width: 28,
