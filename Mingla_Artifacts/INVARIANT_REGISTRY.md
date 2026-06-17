@@ -7,6 +7,38 @@
 
 ---
 
+## ACTIVE — ORCH-1153 (experience reserve + checkout integrity, 2026-06-17, PR #510)
+
+### I-1153-NO-DRAIN (ACTIVE)
+- **Rule:** A scheduled/published/live recurring experience must never be left with zero future bookable `event_dates`.
+- **Enforcement:** Publish/edit drain guard inside `biz_publish_experience` + `biz_update_live_experience` (migration `20261009000000`); daily pg_cron `orch-1153-topup-recurring-experiences` (`20261009000002`) tops up beyond the 52 HARD_CAP window; one-shot backfill (`20261009000001`).
+- **Test that catches a regression:** `supabase/migrations/__tests__/orch_1153_recurrence_topup_backfill.test.sql` (asserts casualty repaired + guard rejects a zero-future publish; fails-on-revert).
+- **Established:** ACTIVE on ORCH-1153 close 2026-06-17.
+
+### I-1153-RESERVE-VERB (ACTIVE)
+- **Rule:** Every experience CTA reads "Reserve" (paid and free) across all surfaces — never "Get my spot" / "Buy ticket" / "Get free ticket".
+- **Enforcement:** strict-grep `.github/scripts/strict-grep/orch-1153-reserve-verb.mjs` (CI green on #510).
+- **Test that catches a regression:** the gate fails if any experience reserve surface reintroduces a non-"Reserve" verb.
+- **Established:** ACTIVE on ORCH-1153 close 2026-06-17.
+
+### I-1153-NO-BARE-BASE-UNDER-ALLIN (ACTIVE)
+- **Rule:** No surface displays the bare base price under an "all-in / taxes included" caption; the displayed price must be the server all-in (via `fetchTierAllInCents` → `pg_public_event_tier_allin`).
+- **Enforcement:** strict-grep `.github/scripts/strict-grep/orch-1153-no-bare-base-under-allin.mjs`; regression tests `mingla-business/__tests__/orch1153ExperienceAllInDisplay.test.ts` + `orch1153AllInChargeParityAdversarial.test.ts` (pass-fee fixture: base $50 → all-in $55 displayed===charged, no 100× error, absorb-fee unchanged).
+- **Established:** ACTIVE on ORCH-1153 close 2026-06-17.
+
+### I-1153-OPENDAILY-ONE-OWNER (ACTIVE)
+- **Rule:** Open-daily detection has ONE shared rule-based owner (`packages/event-rendering/experienceOpenDaily.ts`), consumed by buyer-web + business + consumer; no per-app density heuristic.
+- **Enforcement:** strict-grep `.github/scripts/strict-grep/orch-1153-opendaily-one-owner.mjs`; unit tests `mingla-business/.../orch1153OpenDailyExperience.test.ts`.
+- **Established:** ACTIVE on ORCH-1153 close 2026-06-17.
+
+### I-1153-TOPUP-IDEMPOTENT (ACTIVE)
+- **Rule:** The recurrence top-up/backfill only adds forward occurrences, never duplicates, and respects termination (count/until).
+- **Enforcement:** `pg_topup_recurring_experiences` idempotency (migration `20261009000000`); verified the QA fixture stayed 51 while the casualty went 0→52.
+- **Test that catches a regression:** `orch_1153_recurrence_topup_backfill.test.sql` re-run is a no-op (no new rows).
+- **Established:** ACTIVE on ORCH-1153 close 2026-06-17.
+
+---
+
 ## DRAFT (pending close)
 
 ### I-ENV-HYGIENE-OWNERSHIP-SCOPED (DRAFT — flips ACTIVE on the close that ships the orchestrator Environment Hygiene Sweep)
