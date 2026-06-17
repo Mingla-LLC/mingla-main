@@ -1,0 +1,276 @@
+<!--
+  ORCH-1156 — PUBLIC RSVP PAGE · DIRECTION A "HYPE" (maximalist · Partiful energy)
+  ==========================================================================
+  Boldest departure from the ticket page. Animated gradient theme, huge kinetic
+  display title, glowing momentum bar, neon party-type pills, the Going/Maybe/
+  Can't decision is the brightest thing on the page. Casual, text-native copy.
+  REAL-DATA ONLY — social proof = goingCount + momentum + ANONYMOUS attendee
+  cluster (we store NO public guest names/avatars). Resize: ≤1023 phone · ≥1024 desktop.
+-->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>ORCH-1156 · Public RSVP — Direction A "Hype"</title>
+<style>
+  :root {
+    --accent: #ff2d92; --accent-2: #7c3aed; --accent-strong: #be185d;
+    --accent-wash: rgba(255,45,146,0.20); --accent-glow: rgba(255,45,146,0.6);
+    --page: #07060d; --primary: #ffffff; --secondary: rgba(255,255,255,0.82);
+    --tertiary: rgba(255,255,255,0.58); --card: rgba(255,255,255,0.06);
+    --border: rgba(255,255,255,0.14); --accent-border: rgba(255,45,146,0.45);
+    --font: "Inter", system-ui, sans-serif; --accent-on: #ffffff;
+    --maybe: #fbbf24; --maybe-wash: rgba(251,191,36,0.16);
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; -webkit-font-smoothing: antialiased; }
+  html, body { height: 100%; }
+  body { font-family: var(--font); color: var(--primary); min-height: 100vh; overflow-x: hidden;
+    background:
+      radial-gradient(900px 500px at 15% -10%, var(--accent-wash), transparent 60%) fixed,
+      radial-gradient(900px 600px at 95% 10%, rgba(124,58,237,0.18), transparent 55%) fixed,
+      #050409; }
+
+  .demo-bar { position: sticky; top: 0; z-index: 50; display: flex; gap: 10px; align-items: center; overflow-x: auto; padding: 10px 16px; background: rgba(5,4,9,0.94); backdrop-filter: blur(10px); border-bottom: 1px solid rgba(255,255,255,0.08); font-size: 12px; color: rgba(255,255,255,0.6); }
+  .demo-bar .lbl { letter-spacing: .4px; text-transform: uppercase; font-weight: 800; font-size: 9px; color: rgba(255,255,255,0.45); }
+  .swatch { width: 24px; height: 24px; border-radius: 999px; border: 2px solid rgba(255,255,255,0.2); cursor: pointer; }
+  .grp { display: flex; gap: 6px; align-items: center; }
+  .state-pick { background: #15101d; color: #fff; border: 1px solid #2a2336; border-radius: 8px; padding: 6px 8px; font-size: 12px; }
+  .demo-sep { width: 1px; height: 22px; background: rgba(255,255,255,0.12); }
+  .vp-hint { margin-left: auto; font-size: 11px; opacity: .7; } .vp-hint b { color: var(--accent); }
+
+  .stage { display: flex; justify-content: center; padding: 22px 16px 60px; }
+  .page { width: 100%; max-width: 640px; position: relative; }
+
+  .hero { position: relative; width: 100%; aspect-ratio: 4 / 5; overflow: hidden; border-radius: 28px; }
+  .hero img { width: 100%; height: 100%; object-fit: cover; filter: saturate(1.15) contrast(1.05); }
+  .hero-overlay { position: absolute; inset: 0; background: linear-gradient(180deg, rgba(0,0,0,0.25) 0%, rgba(7,6,13,0.1) 35%, rgba(7,6,13,0.92) 100%); }
+  .hero-grade { position: absolute; inset: 0; background: linear-gradient(125deg, var(--accent-wash), transparent 45%, rgba(124,58,237,0.22)); mix-blend-mode: screen; pointer-events: none; }
+  .hero-spacer { display: none; }
+  .chrome { position: absolute; top: 18px; left: 16px; right: 16px; display: flex; justify-content: space-between; z-index: 4; }
+  .chrome.cm { display: none; }
+  .chrome-right { display: flex; gap: 10px; }
+  .chrome-btn { width: 40px; height: 40px; border-radius: 999px; background: rgba(0,0,0,0.48); backdrop-filter: blur(8px); display: grid; place-items: center; cursor: pointer; border: none; }
+  .chrome-btn svg { width: 19px; height: 19px; stroke: #fff; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+
+  .hero-text { position: absolute; left: 22px; right: 22px; bottom: 24px; z-index: 5; }
+  .invited { display: inline-flex; align-items: center; gap: 8px; font-size: 12px; font-weight: 900; letter-spacing: 2px; text-transform: uppercase; color: #fff; background: var(--accent); padding: 6px 12px; border-radius: 999px; box-shadow: 0 0 22px var(--accent-glow); }
+  .title { font-size: 44px; line-height: 0.98; font-weight: 900; letter-spacing: -1.2px; margin-top: 14px; text-shadow: 0 3px 30px rgba(0,0,0,0.6); }
+  .title .grad { background: linear-gradient(92deg, #fff, var(--accent)); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; }
+
+  .body { position: relative; padding: 20px 4px 0; }
+
+  .host-row { display: flex; align-items: center; gap: 10px; margin-top: 18px; }
+  .host-avatar { width: 36px; height: 36px; border-radius: 999px; object-fit: cover; border: 2px solid var(--accent-border); box-shadow: 0 0 16px var(--accent-wash); }
+  .host-txt { font-size: 14px; color: var(--secondary); } .host-txt b { color: #fff; font-weight: 800; }
+
+  .pills { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px; }
+  .pill { font-size: 13px; font-weight: 800; padding: 8px 14px; border-radius: 999px; }
+  .pill.fact { background: var(--card); border: 1px solid var(--border); color: var(--secondary); display: inline-flex; align-items: center; gap: 6px; }
+  .pill.fact svg { width: 14px; height: 14px; stroke: var(--accent); fill: none; stroke-width: 2; }
+  .pill.vibe { color: #fff; background: linear-gradient(120deg, var(--accent), var(--accent-2)); box-shadow: 0 6px 20px var(--accent-wash); }
+
+  .momentum { margin-top: 20px; border-radius: 24px; padding: 20px; position: relative; overflow: hidden; border: 1px solid var(--accent-border); background: linear-gradient(160deg, rgba(255,45,146,0.10), rgba(124,58,237,0.06)); }
+  .momentum::before { content:""; position:absolute; inset:-1px; border-radius:24px; background: linear-gradient(120deg, var(--accent-wash), transparent 50%); pointer-events:none; }
+  .mom-count { font-size: 56px; font-weight: 900; letter-spacing: -2.5px; line-height: .9; background: linear-gradient(92deg, #fff, var(--accent)); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; }
+  .mom-label { font-size: 16px; font-weight: 800; color: var(--secondary); margin-left: 4px; }
+  .mom-sub { font-size: 13px; color: var(--tertiary); margin-top: 6px; font-weight: 700; }
+  .meter { height: 10px; border-radius: 999px; background: rgba(255,255,255,0.10); margin-top: 16px; overflow: hidden; }
+  .meter-fill { height: 100%; border-radius: 999px; background: linear-gradient(90deg, var(--accent-2), var(--accent)); box-shadow: 0 0 18px var(--accent-glow); width: 76%; }
+  .cluster { display: flex; align-items: center; margin-top: 16px; }
+  .av { width: 32px; height: 32px; border-radius: 999px; border: 2px solid var(--page); margin-left: -9px; background: linear-gradient(135deg, var(--accent), var(--accent-2)); display: grid; place-items: center; }
+  .av:first-child { margin-left: 0; } .av svg { width: 16px; height: 16px; stroke: rgba(255,255,255,.92); fill: none; stroke-width: 2; }
+  .av.more { background: rgba(255,255,255,0.10); color: var(--secondary); font-size: 11px; font-weight: 900; }
+  .cluster-note { margin-left: 12px; font-size: 12px; color: var(--tertiary); font-weight: 700; }
+
+  .sec-title { font-size: 19px; font-weight: 900; letter-spacing: -.3px; margin: 24px 0 10px; }
+  .about { color: var(--secondary); font-size: 15px; line-height: 1.6; }
+  .where { display: flex; align-items: center; gap: 12px; background: var(--card); border: 1px solid var(--border); border-radius: 18px; padding: 14px; margin-top: 10px; }
+  .where-disk { width: 40px; height: 40px; border-radius: 12px; background: linear-gradient(135deg, var(--accent), var(--accent-2)); display: grid; place-items: center; flex-shrink: 0; }
+  .where-disk svg { width: 18px; height: 18px; stroke: #fff; fill: none; stroke-width: 2; }
+  .where-name { font-size: 15px; font-weight: 800; } .where-sub { font-size: 13px; color: var(--secondary); margin-top: 2px; }
+  .where-maps { margin-left: auto; color: var(--accent); font-size: 12px; font-weight: 900; }
+
+  .decision { display: flex; gap: 10px; }
+  .dbtn { flex: 1 1 0; min-width: 0; white-space: nowrap; text-align: center; display: flex; flex-direction: column; align-items: center; gap: 6px; border-radius: 18px; padding: 16px 6px; font-family: var(--font); font-weight: 900; font-size: 14px; cursor: pointer; border: 1px solid var(--border); background: var(--card); color: var(--secondary); transition: transform .08s ease, filter .16s ease; }
+  .dbtn svg { width: 24px; height: 24px; stroke: currentColor; fill: none; stroke-width: 2.4; }
+  .dbtn:active { transform: scale(.96); }
+  .dbtn.going { color: var(--accent-on); border-color: transparent; background: linear-gradient(120deg, var(--accent), var(--accent-2)); box-shadow: 0 16px 44px var(--accent-wash), 0 0 26px var(--accent-glow); }
+  .dbtn.going:hover { filter: brightness(1.08); }
+  .dbtn.maybe { color: var(--maybe); border-color: var(--maybe); background: var(--maybe-wash); }
+  .micro { text-align: center; font-size: 11px; color: var(--tertiary); margin-top: 10px; }
+  .spacer { height: 12px; }
+  .floating { display: none; }
+
+  @media (min-width: 1024px) {
+    .stage { padding: 32px; } .page { max-width: 1160px; }
+    .hero { aspect-ratio: 21/9; max-height: 480px; }
+    .hero-text .title { font-size: 60px; max-width: 70%; }
+    .shell { display: grid; grid-template-columns: minmax(0,1fr) 380px; gap: 40px; margin-top: 26px; align-items: start; }
+    .body { grid-column: 1; padding: 0; min-width: 0; }
+    .body .momentum.inbody, .body .decision-host.inbody, .body .host-row.inbody { display: none; }
+    .deskpanel { grid-column: 2; position: sticky; top: 24px; border-radius: 26px; padding: 22px; border: 1px solid var(--accent-border); background: linear-gradient(165deg, rgba(255,45,146,0.10), rgba(124,58,237,0.06)); box-shadow: 0 24px 60px rgba(0,0,0,0.45); }
+    .deskpanel .host-row { margin-top: 0; margin-bottom: 16px; }
+    .deskpanel .momentum { margin-top: 0; }
+    .deskpanel .decision-host { margin-top: 18px; }
+    .phone-only { display: none; }
+    .floating { display: none; }
+  }
+  .deskpanel { display: none; }
+  @media (min-width: 1024px) { .deskpanel { display: block; } }
+
+  @media (max-width: 1023px) {
+    .stage { padding: 0 0 0; } .page { max-width: none; }
+    .hero { position: fixed; top: 0; left: 0; right: 0; width: auto; z-index: 1; aspect-ratio: 4/5; border-radius: 0; }
+    .hero-spacer { display: block; width: 100%; aspect-ratio: 4/5; }
+    .chrome.cd { display: none; } .chrome.cm { display: flex; position: fixed; top: 56px; left: 0; right: 0; padding: 0 16px; z-index: 70; }
+    .body { position: relative; z-index: 2; background: var(--page); margin-top: -28px; border-radius: 28px 28px 0 0; padding: 22px 20px 16px; border: 1px solid var(--accent-border); border-bottom: none; }
+    .shell { position: relative; z-index: 2; }
+    .deskpanel { display: none; }
+    .floating { display: block; position: sticky; bottom: 0; z-index: 6; padding: 12px 16px calc(12px + env(safe-area-inset-bottom)); background: linear-gradient(180deg, rgba(7,6,13,0) 0%, var(--page) 42%); }
+    .decision-host.inbody { display: none; }
+  }
+</style>
+</head>
+<body data-state="available">
+  <div class="demo-bar">
+    <div class="grp"><span class="lbl">Theme</span>
+      <button class="swatch" style="background:#ff2d92" title="Hot pink" onclick="setTheme('#ff2d92','#7c3aed','#be185d')"></button>
+      <button class="swatch" style="background:#22d3ee" title="Cyan/violet" onclick="setTheme('#22d3ee','#6366f1','#0891b2')"></button>
+      <button class="swatch" style="background:#a3e635" title="Lime/teal" onclick="setTheme('#a3e635','#14b8a6','#65a30d')"></button>
+      <button class="swatch" style="background:#fb923c" title="Sunset" onclick="setTheme('#fb923c','#ec4899','#ea580c')"></button>
+    </div>
+    <div class="demo-sep"></div>
+    <div class="grp"><span class="lbl">State</span>
+      <select class="state-pick" onchange="document.body.dataset.state=this.value; render();">
+        <option value="available">Open</option>
+        <option value="few">Few spots</option>
+        <option value="full">Full · waitlist</option>
+        <option value="going">You're going</option>
+        <option value="pending">Pending approval</option>
+      </select>
+    </div>
+    <div class="vp-hint">Resize → <b>≤1023 phone · ≥1024 desktop</b></div>
+  </div>
+
+  <div class="chrome cm">
+    <button class="chrome-btn" aria-label="Close">&times;</button>
+    <div class="chrome-right"><button class="chrome-btn" aria-label="Share"><svg viewBox="0 0 24 24"><circle cx="6" cy="12" r="2.5"/><circle cx="18" cy="6" r="2.5"/><circle cx="18" cy="18" r="2.5"/><path d="M8.2 10.8L15.8 7.2M8.2 13.2L15.8 16.8"/></svg></button></div>
+  </div>
+
+  <div class="stage"><div class="page">
+    <div class="hero">
+      <img src="https://images.unsplash.com/photo-1492684223066-81342ee5ff30?w=1400&q=80" alt="Party crowd with lights" />
+      <div class="hero-overlay"></div>
+      <div class="hero-grade"></div>
+      <div class="chrome cd">
+        <button class="chrome-btn" aria-label="Close">&times;</button>
+        <div class="chrome-right"><button class="chrome-btn" aria-label="Share"><svg viewBox="0 0 24 24"><circle cx="6" cy="12" r="2.5"/><circle cx="18" cy="6" r="2.5"/><circle cx="18" cy="18" r="2.5"/><path d="M8.2 10.8L15.8 7.2M8.2 13.2L15.8 16.8"/></svg></button></div>
+      </div>
+      <div class="hero-text">
+        <span class="invited">★ You're invited</span>
+        <div class="title">Neon Rooftop<br/><span class="grad">Summer Kickoff</span></div>
+      </div>
+    </div>
+    <div class="hero-spacer phone-only" aria-hidden="true"></div>
+
+    <div class="shell">
+      <div class="body">
+        <div class="host-row inbody">
+          <img class="host-avatar" src="https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=120&q=80" alt="" />
+          <div class="host-txt">thrown by <b>The Foundry</b></div>
+        </div>
+
+        <div class="pills">
+          <span class="pill fact"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg> Sat, Sep 14 · 8 PM</span>
+          <span class="pill fact"><svg viewBox="0 0 24 24"><path d="M12 2C8 2 5 5 5 9c0 5 7 13 7 13s7-8 7-13c0-4-3-7-7-7z"/><circle cx="12" cy="9" r="2.5"/></svg> Washington, DC</span>
+          <span class="pill vibe">Rooftop party</span>
+          <span class="pill vibe">Club night</span>
+        </div>
+
+        <div class="momentum inbody">
+          <div><span class="mom-count" id="mc1">38</span><span class="mom-label" id="ml1">pulling up</span></div>
+          <div class="mom-sub" id="ms1">12 spots left · this one's filling up</div>
+          <div class="meter"><div class="meter-fill" id="mf1"></div></div>
+          <div class="cluster">
+            <div class="av"><svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 4-7 8-7s8 3 8 7"/></svg></div>
+            <div class="av"><svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 4-7 8-7s8 3 8 7"/></svg></div>
+            <div class="av"><svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 4-7 8-7s8 3 8 7"/></svg></div>
+            <div class="av more">+35</div>
+            <div class="cluster-note">said they're in</div>
+          </div>
+        </div>
+
+        <div class="sec-title">The vibe</div>
+        <div class="about">Sunset sets, full bar, best skyline in the District. Doors 8, headline DJ at 10. Open-air with a covered fallback — dress for the weather, bring the energy.</div>
+
+        <div class="sec-title">Where</div>
+        <div class="where">
+          <div class="where-disk"><svg viewBox="0 0 24 24"><path d="M12 2C8 2 5 5 5 9c0 5 7 13 7 13s7-8 7-13c0-4-3-7-7-7z"/><circle cx="12" cy="9" r="2.5"/></svg></div>
+          <div><div class="where-name">The Foundry Rooftop</div><div class="where-sub">Washington, DC</div></div>
+          <div class="where-maps">Maps</div>
+        </div>
+
+        <div class="decision-host inbody"><div class="spacer"></div></div>
+      </div>
+
+      <aside class="deskpanel">
+        <div class="host-row">
+          <img class="host-avatar" src="https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=120&q=80" alt="" />
+          <div class="host-txt">thrown by <b>The Foundry</b></div>
+        </div>
+        <div class="momentum">
+          <div><span class="mom-count" id="mc2">38</span><span class="mom-label" id="ml2">pulling up</span></div>
+          <div class="mom-sub" id="ms2">12 spots left · this one's filling up</div>
+          <div class="meter"><div class="meter-fill" id="mf2"></div></div>
+          <div class="cluster">
+            <div class="av"><svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 4-7 8-7s8 3 8 7"/></svg></div>
+            <div class="av"><svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 4-7 8-7s8 3 8 7"/></svg></div>
+            <div class="av"><svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 4-7 8-7s8 3 8 7"/></svg></div>
+            <div class="av more">+35</div>
+            <div class="cluster-note">said they're in</div>
+          </div>
+        </div>
+        <div class="decision-host">
+          <div class="decision" id="dec2"></div>
+          <div class="micro" id="micro2">Anyone with the link can RSVP.</div>
+        </div>
+      </aside>
+    </div>
+  </div></div>
+
+  <div class="floating">
+    <div class="decision" id="dec1"></div>
+    <div class="micro" id="micro1">Anyone with the link can RSVP.</div>
+  </div>
+
+<script>
+  function setTheme(a, a2, strong) {
+    const r = document.documentElement.style, rgb = hexToRgb(a);
+    r.setProperty('--accent', a); r.setProperty('--accent-2', a2); r.setProperty('--accent-strong', strong);
+    r.setProperty('--accent-wash', `rgba(${rgb},0.20)`); r.setProperty('--accent-border', `rgba(${rgb},0.45)`); r.setProperty('--accent-glow', `rgba(${rgb},0.6)`);
+    r.setProperty('--accent-on', luminance(a) > 0.6 ? '#101420' : '#ffffff');
+  }
+  function hexToRgb(h){const n=parseInt(h.slice(1),16);return `${(n>>16)&255},${(n>>8)&255},${n&255}`;}
+  function luminance(h){const n=parseInt(h.slice(1),16),r=(n>>16&255)/255,g=(n>>8&255)/255,b=(n&255)/255,f=c=>c<=.03928?c/12.92:Math.pow((c+.055)/1.055,2.4);return .2126*f(r)+.7152*f(g)+.0722*f(b);}
+  const ICON={check:'<svg viewBox="0 0 24 24"><path d="M5 13l4 4L19 7"/></svg>',q:'<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M9.5 9a2.5 2.5 0 1 1 3.5 2.3c-.8.4-1 .9-1 1.7M12 17h.01"/></svg>',x:'<svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg>',clock:'<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>',list:'<svg viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h10"/></svg>'};
+  function decisionFor(s){
+    if(s==='going') return {meter:'76%',count:38,label:'pulling up',sub:"You're in! we'll ping you if anything changes",html:`<button class="dbtn going">${ICON.check}You're in</button><button class="dbtn maybe">${ICON.q}Maybe</button><button class="dbtn">${ICON.x}Can't</button>`,micro:"Tap any to change your reply."};
+    if(s==='pending') return {meter:'76%',count:38,label:'pulling up',sub:'the host approves each guest',html:`<button class="dbtn going" style="opacity:.85">${ICON.clock}Awaiting approval</button>`,micro:"We'll ping you the second you're in."};
+    if(s==='full') return {meter:'100%',count:50,label:'pulling up',sub:'maxed out — waitlist is open',html:`<button class="dbtn going">${ICON.list}Join waitlist</button><button class="dbtn">${ICON.x}Can't</button>`,micro:"Spot opens? we bump you in automatically."};
+    if(s==='few') return {meter:'90%',count:45,label:'pulling up',sub:'only 5 spots left · moving fast',html:`<button class="dbtn going">${ICON.check}I'm in</button><button class="dbtn maybe">${ICON.q}Maybe</button><button class="dbtn">${ICON.x}Can't</button>`,micro:"Anyone with the link can RSVP."};
+    return {meter:'76%',count:38,label:'pulling up',sub:"12 spots left · this one's filling up",html:`<button class="dbtn going">${ICON.check}I'm in</button><button class="dbtn maybe">${ICON.q}Maybe</button><button class="dbtn">${ICON.x}Can't</button>`,micro:"Anyone with the link can RSVP."};
+  }
+  function render(){
+    const d=decisionFor(document.body.dataset.state||'available');
+    ['dec1','dec2'].forEach(i=>{const e=document.getElementById(i); if(e)e.innerHTML=d.html;});
+    ['micro1','micro2'].forEach(i=>{const e=document.getElementById(i); if(e)e.textContent=d.micro;});
+    ['mc1','mc2'].forEach(i=>{const e=document.getElementById(i); if(e)e.textContent=d.count;});
+    ['ml1','ml2'].forEach(i=>{const e=document.getElementById(i); if(e)e.textContent=d.label;});
+    ['ms1','ms2'].forEach(i=>{const e=document.getElementById(i); if(e)e.textContent=d.sub;});
+    ['mf1','mf2'].forEach(i=>{const e=document.getElementById(i); if(e)e.style.width=d.meter;});
+  }
+  render();
+</script>
+</body>
+</html>
