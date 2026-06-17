@@ -163,6 +163,7 @@ serve(wrapEdgeHandler("venue-reservation-confirm", async (req) => {
   let piStatus = "";
   try {
     const stripe = stripeTicketCheckout();
+    // orch-strict-grep-allow stripe-no-idempotency-key — paymentIntents.retrieve is a read/GET; inherently idempotent, no mutation to dedupe
     // @ts-ignore -- Stripe SDK namespace is runtime-provided in Deno.
     const pi = await stripe.paymentIntents.retrieve(
       session.stripe_payment_intent_id,
