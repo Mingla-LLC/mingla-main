@@ -155,3 +155,33 @@ Manual-parity items (both done): the `coverMediaType` cover field on TWO data pa
 - `c6f8c929e` — shared PublicBrandPage refactor onto the Direction-A shell
 - `0dc53cfbc` — consumer brand-badge wiring (no dead taps)
 - `dd4bb61db` — regression tests + relocated dataDriven test (`[TEST-MOD-APPROVED ORCH-1155]`)
+
+---
+
+## 13. Known-Issue #1 fix — consumer brand-page chrome top-inset (2026-06-17)
+
+**Status:** implemented, code-parity verified (bracket-path Metro precluded a local sim screenshot — see below).
+
+**Root cause.** The consumer brand-page screen is `app-mobile/src/screens/ConsumerBrandProfileScreen.tsx` (the `/b/{slug}` deep-link target, now also reached by the ORCH-1155 brand-badge taps). It mounted the shared `@mingla/brand-rendering/PublicBrandPage` WITHOUT passing `chromeTopOffset`, so the shared page forwarded `safeAreaTop={chromeTopOffset ?? 0}` = `0` into `ParallaxCoverShell`. The shell positions its body-level fixed chrome (X · Share · Mute) at `safeAreaTop + 12` (`ParallaxCoverShell.tsx:286` web / `:375` native). With `safeAreaTop=0` the chrome sat at a flat `12px` from the top → it could render UNDER the notch / status bar on iOS home-indicator phones and Android. This broke all-surface parity: the business adapter already passes `chromeTopOffset={insets.top + 8}`, and every other Direction-A consumer page (trip/event/experience) offsets its chrome by `insets.top + 12`.
+
+**The renderer already accepted the prop — no renderer change needed.** `PublicBrandPage` declares `chromeTopOffset` (`packages/brand-rendering/PublicBrandPage.tsx:238`) and forwards it with a safe `?? 0` default (`:622`). The fix is purely additive at the consumer route; web/business behavior is unchanged because they already pass their own offset (business) or have a `0` web safe-area top.
+
+**Exact change** — `app-mobile/src/screens/ConsumerBrandProfileScreen.tsx` (+3 lines, 1 comment block):
+- imported `useSafeAreaInsets` from `react-native-safe-area-context`;
+- `const insets = useSafeAreaInsets();`;
+- passed `chromeTopOffset={insets.top}` to `<PublicBrandPage>`.
+
+**Why `insets.top` (not `insets.top + 12`).** The shared shell ADDS its own `+12` gap on top of `safeAreaTop`. Passing `insets.top` yields an effective chrome top of `insets.top + 12` — byte-identical to `ConsumerTripDetailScreen` (`insets.top + 12`, `:1475`) and `ConsumerExperienceDetailScreen` (`insets.top + 12`, `:594`/`:1142`) native chrome. Passing `insets.top + 12` here would have double-padded to `insets.top + 24`. So this matches the established consumer pattern exactly while letting the shell own the constant gap.
+
+**Web / business unchanged — confirmed.** `git diff --name-only` for this fix shows ONLY `app-mobile/src/screens/ConsumerBrandProfileScreen.tsx` (+ the new test). The shared renderer `packages/brand-rendering/PublicBrandPage.tsx` and the business adapter `mingla-business/src/components/brand/PublicBrandPage.tsx` are NOT touched. The business adapter keeps `chromeTopOffset={insets.top + 8}`; buyer-web safe-area top is `0` as before.
+
+**Scope.** Chrome top-inset only. No change to the renderer's layout/tabs/theming, `themePalette` math, or the offering-rendering primitives.
+
+**Test added (append-only).** `app-mobile/src/screens/__tests__/orch_1155_brand_chrome_top_inset.test.ts` — node:assert source-assertion (the app-mobile convention; no jest/RTL runner). Asserts the screen imports `useSafeAreaInsets`, reads `insets`, and passes `chromeTopOffset={insets.top}`. Run: `node app-mobile/src/screens/__tests__/orch_1155_brand_chrome_top_inset.test.ts` → PASS.
+- **fails-on-revert verified at `6f999cd40`:** TRUE LINE-DELETION of `chromeTopOffset={insets.top}` → test throws `AssertionError: ConsumerBrandProfileScreen must pass chromeTopOffset={insets.top}…` (exit 1); restored → PASS. The existing `orch_1155_brand_badge_nav` test still PASSes (no regression).
+
+**Verification: code-parity, NOT sim.** The bracket worktree path breaks Metro/expo (same constraint noted in §9), so no `consumer_chrome_clears_notch.png` was captured. Proven by code-parity: the consumer brand chrome now resolves to the IDENTICAL effective top offset (`insets.top + 12`) as the trip/experience consumer detail screens that already clear the notch on device. Tester's device eyeball remains the runtime PASS for SC-4 chrome positioning on consumer native.
+
+**Updates Known-Issue #1 in §10:** RESOLVED. (The §10 note assumed the consumer screen was DO-NOT-TOUCH; this scoped follow-up ORCH was dispatched specifically to fix it — additive prop only, web/business untouched.)
+
+**Commit:** `6f999cd40` — consumer brand-page chrome top-inset fix + regression test.
