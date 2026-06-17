@@ -351,3 +351,61 @@ DB probe (read-only, project `gqnoajqerqhnvulmnyvv`): `event_rsvps` carries `eve
 
 ## Verdict
 D-8 + D-9 implemented and verified at the source/unit/gate layer; live-fire (device) deferred to TEST per SPEC (the reproducer-bound items were capped at probable upstream due to the shared-Metro blocker).
+
+---
+
+# D-10 — Going / Maybe / Can't-go CTA + new 'maybe' RSVP status  (commit f2d4237d9)
+
+## Summary
+Added a third RSVP status `'maybe'`: an OPTIONAL attendee — auto-approved, CAP-NEUTRAL, on the notify list, never occupying a seat. Mirrors `not_going`'s cap-neutrality but stays on the guest list. The public CTA is now THREE equal-width buttons (Going · Maybe · Can't go) with lucide icons. 6 additive layers, no behavior change to capacity/drain/headcount.
+
+## Migration (written, NOT applied — orchestrator applies)
+- **File:** `supabase/migrations/20261012000000_orch_1150_rsvp_maybe.sql` (prefix strictly > head `20261011000001`; checked anchor + sibling worktrees). Atomic `BEGIN/COMMIT`, idempotent, `NOTIFY pgrst` at end.
+- **DDL summary:**
+  - (a) **CHECK widen** — `DROP CONSTRAINT IF EXISTS event_rsvps_rsvp_status_check` + `ADD … CHECK (rsvp_status IN ('going','not_going','waitlisted','maybe'))`.
+  - (b) **RLS widen** — re-create `event_rsvps_guest_update_own` `WITH CHECK (user_id = auth.uid() AND rsvp_status IN ('going','not_going','maybe'))`.
+  - (c) **`submit_event_rsvp`** (full `CREATE OR REPLACE`) — validation now allows `'maybe'` (else `rsvp_status_invalid`); a `'maybe'` branch BEFORE the capacity math sets `v_status='maybe'; v_approval='approved'` (auto-approved, no cap consumption, `waitlisted_at` stays NULL). The confirmed-headcount SUM WHERE stays `going AND approved` UNCHANGED. GRANT after `$$;`.
+  - (d) **`host_list_rsvp_guests`** (`DROP` + `CREATE`, RETURNS TABLE) — order CASE gets a `WHEN r.rsvp_status='maybe' THEN 3` bucket (else→4). GRANT after `$$;`.
+  - NOT touched: `fn_rsvp_drain_on_capacity_freed`, `business_public_events_view.rsvp_going_count`, `host_bulk_approve_rsvps` (verify-only — they already exclude maybe).
+
+## Edge function
+- `supabase/functions/public-submit-rsvp/index.ts` — request type + validation accept `'maybe'`; A4-NEW anon contact gate is status-agnostic and still requires name+email+phone for a Maybe link guest (not relaxed). `verify_jwt=false` (unchanged, config.toml untouched). `deno check` PASS.
+
+## Service / shared types
+- `mingla-business/src/services/rsvpEvents.ts` — `SubmitPublicRsvpInput.rsvpStatus` + `SubmitPublicRsvpResult.status` +`'maybe'`.
+- `mingla-business/src/services/rsvpApprovals.ts` — `RsvpStatusValue` +`'maybe'`.
+- `packages/event-rendering/offeringCta.ts` — `RsvpCtaState` + `ResolveRsvpCtaInput.guestStatus` +`'maybe'`; `resolveRsvpCta` adds `if (guestStatus === "maybe") return { state: "maybe" }` after not_going (pending still outranks).
+
+## Component CTA (RsvpPublicBody.tsx)
+- 3 equal-size buttons, each `flex:1` via the new shared `ctaBtn` style — **Going · Maybe · Can't go**.
+- **Icons:** per-icon NAMED `import { Check, HelpCircle, X } from "lucide-react-native"` (NOT a barrel) → Going=`Check`, Maybe=`HelpCircle`, Can't-go=`X` (size 19). All three already in the ORCH-1137 web-shim used-set → lucide gate PASS, no shim edit.
+- Going = filled accent; Maybe = `accentWash` + accent border (secondary); Can't-go = outlined (tertiary). `overflow:'hidden'` clips opaque-Android fill (ANDROID_GLASS_USES_OPAQUE_FALLBACK).
+- Contact gate extended: Going AND Maybe both require `contactReady`; not_going ungated.
+- Maybe is NON-TERMINAL: a resolved Maybe shows "You're marked as Maybe — we'll keep you posted. Switch to Going anytime." + a Switch-to-Going button + a Can't-go decline (no dead end). Contact form + plus-row hide when `maybeResolved`.
+- `PublicEventPage.tsx` `rsvpSubmit` callback types widened (`'maybe'`) — necessary type cascade of the widened service/component; NOT in the ticketed DO-NOT-TOUCH branch (`:594-721`), no behavior change.
+
+## Console (RsvpGuestConsole.tsx)
+- New memoized `maybe = guests.filter(g.rsvpStatus==='maybe')`; read-only **"Maybe (N)"** section after Going, before Waitlist. Rows = name + `+plusCount`, no approve/deny. Trailing `Icon name="users"` (in-house Icon has no help glyph; reused an existing glyph to avoid widening Icon.tsx). Going count unchanged.
+
+# D-7 — parallax content-layering safety-net  (commit 3296edb6b)
+
+## Summary
+No source defect in current `RsvpPublicBody`: it already passes a bare `<View>` of children into the SHARED `@mingla/offering-rendering` `ParallaxCoverShell` (ORCH-1138 cover<content<chrome fix), with NO competing `zIndex`/`position`/`marginTop`/`backgroundColor` on that wrapper — byte-identical to the proven ticketed `FoundationEventPreview` body. Seth's inversion = most likely a stale build. Belt-and-suspenders only: a fails-on-revert source-structure test. `ParallaxCoverShell.tsx` NOT touched (shared, test-guarded; its `ParallaxCoverShell_native_stacking.test.ts` stays green 7/7). If a fresh build still inverts → new on-device shell dispatch.
+
+# Tests + gates
+- `resolveRsvpCta.maybe.orch1150r2.test.ts` (3) — maybe state resolution.
+- `rsvpMaybeMigration.orch1150r2.test.ts` (7) — migration-source CHECK/RLS/RPC widen + I-PROPOSED-1150-MAYBE-NOT-IN-CAP (cap SUM still going+approved only).
+- `RsvpPublicBody.maybeCta.orch1150r2.test.ts` (6) — 3-button CTA, per-icon lucide imports, maybe submit path, contact gate covers Maybe, response copy.
+- `RsvpPublicBody.parallaxLayering.orch1150r2.test.ts` (3) — D-7 layering (bare View child of shared shell, no competing stacking style).
+- `supabase/migrations/__tests__/orch_1150_maybe.test.sql` — live T1 (accept), T2 (cap-neutral), T3 (next-going-after-maybe fits), T4 (invalid rejected); orchestrator runs post-apply.
+- **fails-on-revert verified at 3296edb6b** (HEAD): deleting the migration maybe-resolve branch + the RsvpPublicBody lucide import + the offeringCta maybe branch → 4 test failures across the 3 source suites; restored → 26/26 green.
+- **Gates:** `npx tsc --noEmit` (mingla-business) introduces ZERO new errors (333 baseline = 333 after, all pre-existing testing-library/cross-package noise). `deno check public-submit-rsvp` PASS. `i-proposed-tr2-route-by-event-type.mjs` — 6 violations, ALL pre-existing in files I did not touch (ScannerHome/home/hub-trips/accept-scanner-invitation). `i-proposed-1137-biz-web-lucide-real.mjs` PASS (INV-1..4). `ParallaxCoverShell_native_stacking.test.ts` 7/7 green.
+
+# DO-NOT-TOUCH compliance
+Did NOT edit `ParallaxCoverShell.tsx`, `FoundationEventPreview.tsx`, the ticketed `PublicEventPage` branch (`:594-721`), the capacity/drain/headcount SQL, or the parallel workstream's files (`app/rsvp/[id]/edit.tsx`, `app/rsvp/[id]/index.tsx`, `marketingAudienceService.ts`). `PublicEventPage.tsx` edit was a minimal RSVP-submit type cascade outside the ticketed branch (flagged above).
+
+# Operator action required
+1. **APPLY the migration** (orchestrator, via MCP/Management API — dev history drift-corrupted): `supabase/migrations/20261012000000_orch_1150_rsvp_maybe.sql`.
+2. After apply, run `supabase/migrations/__tests__/orch_1150_maybe.test.sql` (T1–T4) against the linked remote.
+3. **Deploy edge fn** from MERGED main: `public-submit-rsvp` (keep `verify_jwt=false`).
+4. **Re-OTA** business per the EAS gotchas runbook (the D-7 fix is build-freshness; the CTA is JS-only).
