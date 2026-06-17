@@ -153,6 +153,24 @@ export default function RsvpDetailScreen(): React.ReactElement {
     }
   }, [id, router]);
 
+  // ORCH-1150 (D-8) — Group chat + Blasts are COMMS, not money: D-4 wrongly
+  // dropped them. Both reuse the event-scoped comms screens (group-chat is
+  // event_type-agnostic; the Blasts audience is extended to event_rsvps
+  // going-guests via resolveRsvpGuests + the useEventBuyers type-probe).
+  const handleGroupChat = useCallback((): void => {
+    if (id !== null) {
+      // orch-strict-grep-allow route-by-event-type — RSVP reuses the event-scoped group-chat/blasts screens (comms, not ticketed)
+      router.push(`/event/${id}/group-chat` as never);
+    }
+  }, [id, router]);
+
+  const handleBlasts = useCallback((): void => {
+    if (id !== null) {
+      // orch-strict-grep-allow route-by-event-type — RSVP reuses the event-scoped group-chat/blasts screens (comms, not ticketed)
+      router.push(`/event/${id}/blasts` as never);
+    }
+  }, [id, router]);
+
   const handleViewPublic = useCallback((): void => {
     if (resolvedLiveEvent !== null) {
       router.push(
@@ -316,6 +334,21 @@ export default function RsvpDetailScreen(): React.ReactElement {
             onPress={handleGuests}
           />
           <ActionTile icon="edit" label="Edit" onPress={handleEdit} />
+          {/* ORCH-1150 (D-8) — Group chat + Blasts are comms (not money):
+              re-added after D-4 dropped them. They reuse the event-scoped
+              comms screens (see handleGroupChat / handleBlasts). */}
+          <ActionTile
+            icon="send"
+            label="Blasts"
+            sub="Message going guests"
+            onPress={handleBlasts}
+          />
+          <ActionTile
+            icon="chat"
+            label="Group chat"
+            sub="Read + reply + moderate"
+            onPress={handleGroupChat}
+          />
           <ActionTile
             icon="eye"
             label="Public page"

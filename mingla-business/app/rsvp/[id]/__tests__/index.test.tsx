@@ -100,9 +100,12 @@ describe("ORCH-1150-R2 D-4 — RSVP host dashboard exists + is RSVP-tailored", (
     expect(source).not.toContain("useEventOrders");
   });
 
-  test("DROP: NO blasts / group-chat tiles, NO activity feed, NO manage menu, NO cancel/end-sales", () => {
-    expect(source).not.toContain('label="Blasts"');
-    expect(source).not.toContain("Group chat");
+  // ORCH-1150-R2 (D-8) — Blasts + Group-chat are COMMS, not money. D-4
+  // originally dropped them; D-8 (later in the same retest batch) RE-ADDED
+  // them. This DROP assertion is narrowed to the genuinely money/ticket-
+  // coupled surfaces only. The Blasts/Group-chat presence is asserted
+  // positively in the D-8 block below.
+  test("DROP: NO activity feed, NO manage menu, NO cancel/end-sales (money/ticket surfaces)", () => {
     expect(source).not.toContain("EventDetailActivityRow");
     expect(source).not.toContain("recentActivity");
     expect(source).not.toContain("EventManageMenu");
@@ -110,11 +113,37 @@ describe("ORCH-1150-R2 D-4 — RSVP host dashboard exists + is RSVP-tailored", (
     expect(source).not.toMatch(/Cancel event|handleCancelConfirm/);
   });
 
-  test("REGRESSION: protective comment + only /rsvp routes (no hardcoded /event/ or /trip/)", () => {
+  test("REGRESSION: protective comment present", () => {
     expect(source).toContain("DO NOT delete");
-    // The route gate (i-proposed-tr2) bans /event/ and /trip/ literals; this
-    // screen only pushes /rsvp/... , /e/... , /brand/... and /(tabs)/...
-    expect(source).not.toMatch(/`\/event\//);
-    expect(source).not.toMatch(/`\/trip\//);
+  });
+});
+
+// ===========================================================================
+// ORCH-1150-R2 (D-8) — Blasts + Group-chat tiles re-added (comms, not money)
+// ===========================================================================
+describe("ORCH-1150-R2 D-8 — RSVP detail keeps Blasts + Group-chat tiles", () => {
+  const source = readFileSync(SCREEN_SOURCE_PATH, "utf8");
+
+  test("renders a Group chat tile routing to the event-scoped /event/{id}/group-chat", () => {
+    expect(source).toContain('label="Group chat"');
+    expect(source).toContain("handleGroupChat");
+    expect(source).toMatch(/router\.push\(`\/event\/\$\{id\}\/group-chat`/);
+  });
+
+  test("renders a Blasts tile routing to the event-scoped /event/{id}/blasts", () => {
+    expect(source).toContain('label="Blasts"');
+    expect(source).toContain("handleBlasts");
+    expect(source).toMatch(/router\.push\(`\/event\/\$\{id\}\/blasts`/);
+  });
+
+  test("each cross-type push carries the route-by-event-type allowlist comment (gate stays green)", () => {
+    // The two /event/... pushes from this /rsvp screen are only legal with the
+    // strict-grep allowlist comment within 3 lines above. Reverting either
+    // comment (or the tiles) trips i-proposed-tr2-route-by-event-type.
+    const allowMatches = source.match(
+      /orch-strict-grep-allow route-by-event-type/g,
+    );
+    expect(allowMatches).not.toBeNull();
+    expect((allowMatches ?? []).length).toBeGreaterThanOrEqual(2);
   });
 });

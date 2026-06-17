@@ -205,6 +205,99 @@ export async function resolveEventBuyers(
   return aggregateBuyers(orders, unsubs, brandId);
 }
 
+/**
+ * Resolve "all going (+approved) guests of an RSVP event" audience.
+ *
+ * ORCH-1150 (D-8) — RSVP events have ZERO `orders` rows, so `resolveEventBuyers`
+ * (orders-derived) returns an empty audience forever. RSVP attendees live in
+ * `event_rsvps` (going + approved). This reads them under the host-read RLS
+ * (`event_rsvps_host_read`: brand-scoped, biz_brand_effective_rank >=
+ * event_manager — confirmed covers this SELECT), shapes the result IDENTICALLY
+ * to `resolveEventBuyers` ({ rows, reach }) so the shared Blasts UI + BuyerRow
+ * render with no branching. RSVP guests have no purchase, so order_count = 0,
+ * spend = 0, currency falls back to "USD" purely for the row type (never shown).
+ */
+export async function resolveRsvpGuests(
+  eventId: string,
+): Promise<ResolveBuyersResult> {
+  if (!eventId) {
+    throw new Error("resolveRsvpGuests: eventId is required");
+  }
+  assertUuid(eventId, "resolveRsvpGuests.eventId");
+
+  // Pull every going + approved RSVP guest for this event. Host reads under
+  // event_rsvps_host_read RLS (the brand owner manages the event).
+  const { data, error } = await supabase
+    .from("event_rsvps")
+    .select("id, event_id, guest_name, guest_email, guest_phone, created_at")
+    .eq("event_id", eventId)
+    .eq("rsvp_status", "going")
+    .eq("approval_status", "approved")
+    .order("created_at", { ascending: false });
+
+  if (error) throw error;
+
+  const guests = (data ?? []) as unknown as Array<{
+    id: string;
+    event_id: string;
+    guest_name: string | null;
+    guest_email: string | null;
+    guest_phone: string | null;
+    created_at: string;
+  }>;
+
+  // The brand-scoped unsubscribe lookup needs a brand_id. Resolve it from the
+  // event row (RLS-gated) so going-guests who unsubscribed are flagged in the
+  // same way buyers are. Failure here is non-fatal to the audience read — but
+  // a thrown query is surfaced (no silent swallow): the brand probe IS allowed
+  // to come back empty (a never-blasted brand), in which case no unsubs apply.
+  let brandId: string | null = null;
+  if (guests.length > 0) {
+    const { data: eventRow, error: eventErr } = await supabase
+      .from("events")
+      .select("id, brand_id")
+      .eq("id", eventId)
+      .maybeSingle();
+    if (eventErr) throw eventErr;
+    brandId =
+      eventRow !== null && typeof eventRow.brand_id === "string"
+        ? eventRow.brand_id
+        : null;
+  }
+
+  let unsubs: UnsubRow[] = [];
+  if (brandId !== null) {
+    assertUuid(brandId, "resolveRsvpGuests.brandId (server-derived)");
+    const { data: unsubData, error: unsubError } = await supabase
+      .from("marketing_unsubscribes")
+      .select("contact_email, channel, scope, brand_id")
+      .or(`scope.eq.global,and(scope.eq.brand,brand_id.eq.${brandId})`);
+
+    if (unsubError) throw unsubError;
+    unsubs = (unsubData ?? []) as unknown as UnsubRow[];
+  }
+
+  // Map RSVP guests onto the same OrderRowForAudience shape aggregateBuyers
+  // expects (zero money), then reuse the identical aggregation + masking +
+  // consent path so the Blasts UI is byte-identical to the buyers surface.
+  const pseudoOrders: OrderRowForAudience[] = guests.map((g) => ({
+    id: g.id,
+    event_id: g.event_id,
+    buyer_email: g.guest_email,
+    buyer_name: g.guest_name,
+    buyer_phone: g.guest_phone,
+    buyer_phone_e164: g.guest_phone,
+    total_cents: 0,
+    currency: "USD",
+    payment_status: "rsvp_going",
+    confirmed_at: g.created_at,
+    created_at: g.created_at,
+    events: brandId !== null ? { id: eventId, title: null, brand_id: brandId } : null,
+  }));
+
+  return aggregateBuyers(pseudoOrders, unsubs, brandId);
+}
+
 // ---------------------------------------------------------------------------
 // Aggregation + masking
 // ---------------------------------------------------------------------------

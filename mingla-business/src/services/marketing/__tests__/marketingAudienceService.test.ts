@@ -26,6 +26,7 @@ import {
   maskPhone,
   resolveBrandBuyers,
   resolveEventBuyers,
+  resolveRsvpGuests,
 } from "../marketingAudienceService";
 import { supabase } from "../../supabase";
 
@@ -308,6 +309,138 @@ describe("marketingAudienceService — consent filtering (T-03 + T-04)", () => {
     });
     const result = await resolveBrandBuyers("00000000-0000-0000-0000-0000000000a1");
     expect(result.rows[0]?.consent.email_marketing_ok).toBe(false);
+  });
+});
+
+// ===========================================================================
+// ORCH-1150-R2 (D-8) — resolveRsvpGuests reads event_rsvps going+approved
+// ===========================================================================
+describe("marketingAudienceService — resolveRsvpGuests (ORCH-1150 D-8)", () => {
+  const EVENT_UUID = "00000000-0000-0000-0000-0000000000c1";
+  const BRAND_UUID = "00000000-0000-0000-0000-0000000000a1";
+
+  interface RsvpGuestFixture {
+    id: string;
+    event_id: string;
+    guest_name: string | null;
+    guest_email: string | null;
+    guest_phone: string | null;
+    created_at: string;
+  }
+
+  function setupRsvpMock(args: {
+    guests: RsvpGuestFixture[];
+    guestsError?: Error;
+    brandId?: string | null;
+  }): { rsvpChain: { eq: jest.Mock } } {
+    const fromMock = supabase.from as jest.Mock;
+    fromMock.mockReset();
+    // event_rsvps chain — assert the going+approved filter is applied.
+    const eqGoing = jest.fn().mockReturnThis();
+    const eqApproved = jest.fn().mockReturnThis();
+    const eqEvent = jest.fn().mockReturnValue({
+      eq: eqGoing,
+    });
+    const rsvpChain = {
+      select: jest.fn().mockReturnThis(),
+      eq: eqEvent,
+    };
+    // We model: .eq(event) -> .eq(going) -> .eq(approved) -> .order(...)
+    eqGoing.mockReturnValue({ eq: eqApproved });
+    eqApproved.mockReturnValue({
+      order: jest.fn().mockResolvedValue({
+        data: args.guestsError ? null : args.guests,
+        error: args.guestsError ?? null,
+      }),
+    });
+
+    fromMock.mockImplementation((table: string) => {
+      if (table === "event_rsvps") return rsvpChain;
+      if (table === "events") {
+        return {
+          select: jest.fn().mockReturnThis(),
+          eq: jest.fn().mockReturnThis(),
+          maybeSingle: jest.fn().mockResolvedValue({
+            data:
+              args.brandId === undefined
+                ? { id: EVENT_UUID, brand_id: BRAND_UUID }
+                : args.brandId === null
+                  ? null
+                  : { id: EVENT_UUID, brand_id: args.brandId },
+            error: null,
+          }),
+        };
+      }
+      if (table === "marketing_unsubscribes") {
+        return {
+          select: jest.fn().mockReturnThis(),
+          or: jest.fn().mockResolvedValue({ data: [], error: null }),
+        };
+      }
+      throw new Error(`unexpected supabase.from(${table})`);
+    });
+    return { rsvpChain: { eq: eqEvent } };
+  }
+
+  it("reads going+approved event_rsvps rows and maps them to BuyerRowData", async () => {
+    setupRsvpMock({
+      guests: [
+        {
+          id: "rsvp_1",
+          event_id: EVENT_UUID,
+          guest_name: "Jade R.",
+          guest_email: "jade@example.com",
+          guest_phone: "+15555551111",
+          created_at: "2026-06-15T10:00:00Z",
+        },
+        {
+          id: "rsvp_2",
+          event_id: EVENT_UUID,
+          guest_name: "Kofi A.",
+          guest_email: "kofi@example.com",
+          guest_phone: "+15555552222",
+          created_at: "2026-06-15T11:00:00Z",
+        },
+      ],
+    });
+
+    const result = await resolveRsvpGuests(EVENT_UUID);
+    expect(result.rows).toHaveLength(2);
+    expect(result.reach.total).toBe(2);
+    expect(result.reach.reachable_email).toBe(2);
+    const jade = result.rows.find((r) => r.contact_key === "jade@example.com");
+    expect(jade).toBeDefined();
+    // RSVP guests have no purchase → zero spend; the shared aggregator counts
+    // the single RSVP row as one "membership" and masks the email for display.
+    expect(jade?.total_spend_minor).toBe(0);
+    expect(jade?.masked_email).toBe("jad**@example.com");
+  });
+
+  it("queries the event_rsvps table (NOT orders) — the audience-source contract", async () => {
+    setupRsvpMock({ guests: [] });
+    await resolveRsvpGuests(EVENT_UUID);
+    const fromMock = supabase.from as jest.Mock;
+    const tablesQueried = fromMock.mock.calls.map((c) => c[0]);
+    expect(tablesQueried).toContain("event_rsvps");
+    expect(tablesQueried).not.toContain("orders");
+  });
+
+  it("returns an empty audience without throwing when no one is going", async () => {
+    setupRsvpMock({ guests: [] });
+    const result = await resolveRsvpGuests(EVENT_UUID);
+    expect(result.rows).toEqual([]);
+    expect(result.reach.total).toBe(0);
+  });
+
+  it("throws on RLS/network error (no silent swallow)", async () => {
+    setupRsvpMock({ guests: [], guestsError: new Error("rls_denied") });
+    await expect(resolveRsvpGuests(EVENT_UUID)).rejects.toThrow("rls_denied");
+  });
+
+  it("throws when eventId is empty / not a UUID", async () => {
+    setupRsvpMock({ guests: [] });
+    await expect(resolveRsvpGuests("")).rejects.toThrow(/eventId is required/i);
+    await expect(resolveRsvpGuests("not-a-uuid")).rejects.toThrow(/UUID/);
   });
 });
 
