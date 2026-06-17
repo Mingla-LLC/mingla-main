@@ -205,3 +205,124 @@ Then run the hand-run probe `supabase/migrations/__tests__/orch_1153_recurrence_
 | `1e8362472` | binding SPEC + INVESTIGATE artifacts on-branch |
 
 **Next:** orchestrator REVIEW → apply migrations (order in §11) → deploy discover-cards from merged main → tester (drive web + business iOS/Android + consumer iOS/Android; build the §8 fixture; verify displayed===charged with a non-zero fee + the backfill casualty repair + the open-daily parity + the drain guard).
+
+---
+
+## Reserve-UX fix pass (NEEDS-WORK — Seth device, dev channel) — 2026-06-17
+
+Four reserve-UX bugs Seth found on device AFTER the all-in PRICE work shipped.
+The verified-correct price path (`expDisplayCents` → `priceAllInGbp × 100`) is
+**UNTOUCHED** — the two 1153 price tests (`orch1153ExperienceAllInDisplay`,
+`orch1153AllInChargeParityAdversarial`, 15 tests) stay green. All edits inside
+the dispatch allowlist (consumer screen, `/exp` route, `ExperiencePreview`,
+business `ExperienceReservePicker`, shared `ParallaxCoverShell`) + one new test.
+
+**Commit:** `05fcd2122` (single commit, all 5 source files + the test).
+
+### Root cause + fix per bug
+
+**BUG 1 — consumer reserve bar cut off + not floating**
+(`app-mobile/src/screens/Experience/ConsumerExperienceDetailScreen.tsx`)
+- *Root cause:* the screen is a faithful clone of the (working) trip screen —
+  identical bar component (`ConsumerEventReserveBar`), identical float→dock
+  wiring, identical insets. The ONE difference that bites on the shorter
+  experience body: the scroll `contentContainerStyle.paddingBottom` was a flat
+  `8`. The DOCKED bar is the last scroll child in normal flow; the gorhom
+  `BaseBottomSheet` content extends ~63pt BELOW the visible window at the 90%
+  snap (`SHEET_BOTTOM_OVERSHOOT` in the bar). With only 8pt clearance the docked
+  bar landed inside that clipped overshoot region → its price + "Reserve →" were
+  cut off and it never read as floating. The trip rarely hits this because trip
+  bodies are long (itinerary days + payment section) and push the docked bar up.
+- *Fix:* `reserveBarClearance = SHEET_BOTTOM_OVERSHOOT + 8` (63 + 8). The bar
+  still self-pads its own bottom safe-area (`safeBottom + 8`), so the inset is
+  NOT re-added here (no double-pad). Source-only — see "re-verify on device".
+
+**BUG 2 — public /exp parallax viewport too short**
+(`packages/offering-rendering/ParallaxCoverShell.tsx` + `ExperiencePreview.tsx`)
+- *Root cause:* the shared shell pins the cover at `aspectRatio: 4/5` (height ≈
+  1.25× width ≈ 487px on a 390px phone) for ALL offering pages. That's tuned for
+  the long trip body; the shorter experience body left only a slit of readable
+  content sliding over the cover on first paint.
+- *Fix:* added an OPTIONAL `coverAspectRatio?: number` prop to ParallaxCoverShell,
+  **default `4/5`** (trip / event / RSVP byte-identical; the
+  `ParallaxCoverShell_native_stacking` test asserting 4/5 still passes because
+  the static styles keep 4/5 and the prop only overrides inline). The experience
+  preview passes `coverAspectRatio={1}` (square ≈ 390px) → ~25% more content
+  viewport, cover still full-bleed + pins identically. Applied to web-phone cover
+  + web-phone spacer + native cover + native spacer (all four kept in sync).
+
+**BUG 3 — "Reserve a table" → "Reserve a spot"**
+(`mingla-business/app/exp/[brandSlug]/[experienceSlug].tsx:425`,
+`mingla-business/src/components/experience/ExperienceReservePicker.tsx:220`)
+- *Root cause:* restaurant/open-daily copy leaked the "table" noun onto the
+  experience reservation surface (open-daily availability strip + picker title).
+- *Fix:* both → "Reserve a spot" / "Reserve a spot any upcoming day". Grep of the
+  experience + offering + reserve surfaces (business + consumer + packages)
+  confirms ZERO remaining "Reserve a table" / "a table". Primary CTA verb stays
+  "Reserve" (the locked decision; `orch-1153-reserve-verb` gate still green).
+  No CTA-copy strict-grep gate asserts "table", so none needed updating.
+
+**BUG 4 — public /exp date picker dead (selection doesn't enable Reserve)**
+(`mingla-business/src/components/experience/ExperienceReservePicker.tsx`)
+- *Root cause:* the picker's `canConfirm` logic is correct and IDENTICAL to the
+  working consumer picker (date tap → `setSelectedDateId` → `selectedDate` !=
+  null → for open-daily the time/party sections appear, then Reserve enables).
+  The divergence from the consumer: the business picker rendered the Confirm
+  button as a **fixed footer OUTSIDE the `ScrollView`**, with `host: flex:1`
+  inside the desktop centred card's `cardBody: flexShrink:1` (no bounded height).
+  The open-daily time + party steps render BELOW the date list inside the
+  ScrollView; with the button pinned outside and the host unable to size, the
+  time step (which gates Reserve) was unreachable / the layout collapsed → a date
+  tap appeared to "do nothing". The working consumer picker keeps the Confirm
+  button as the LAST child INSIDE its scroll.
+- *Fix:* moved the Confirm Pressable INSIDE the `ScrollView` (one scroll: date →
+  time → party → Reserve, mirroring the consumer) + added a reset-on-open
+  `useEffect` (clears `selectedDateId`/`selectedMinute`/`party` when `visible`
+  flips true) so a stale selection from a prior open can't leave `selectedDate`
+  resolving null against a refreshed `dates` array.
+
+### Per-surface impact
+
+| Surface | BUG-1 | BUG-2 | BUG-3 | BUG-4 |
+|---|---|---|---|---|
+| Consumer iOS/Android | Fixed (scroll clearance) | n/a (own cover, not the shell) | n/a (consumer title already "Reserve a time") | n/a (consumer picker already correct — it was the reference) |
+| Buyer Web (/exp) | n/a | Fixed (square cover) | Fixed | Fixed |
+| Business iOS/Android (/exp) | n/a | Fixed (same route) | Fixed | Fixed |
+| Admin / Business-web preview | n/a | n/a | n/a | n/a |
+
+Price display: untouched on every surface.
+
+### Gates / tests (all green)
+
+- New: `mingla-business/__tests__/orch1153ReserveUxFixPass.test.ts` — 6 tests
+  (BUG-1 clearance, BUG-2 prop + experience pass-through, BUG-3 no-table copy,
+  BUG-4 Confirm-inside-scroll + reset-on-open).
+- **fails-on-revert verified at `05fcd2122`** by true line deletion:
+  - BUG-1: revert `reserveBarClearance` to flat `8` → BUG-1 test FAILS.
+  - BUG-3: revert picker title to "Reserve a table" → BUG-3 test FAILS.
+  - BUG-4: move `</ScrollView>` back before the Confirm → BUG-4 structure test FAILS.
+  All restored → PASS.
+- Regression-green: `orch1153ExperienceAllInDisplay`, `orch1153AllInChargeParityAdversarial`,
+  `ParallaxCoverShell_native_stacking`, `tripReserveFloatDock.orch1138` (41 total).
+- strict-grep: `orch-1153-reserve-verb`, `orch-1153-no-bare-base-under-allin`,
+  `orch-1153-opendaily-one-owner`, `orch-1138-experience-checkout-byte-identical`,
+  `orch-1138-mor-isolation` all PASS.
+- tsc: no errors in any touched file (business route/picker/preview via
+  business tsconfig; ParallaxCoverShell via the package tsconfig; consumer screen
+  via app-mobile tsconfig). The business-tsc "Cannot find module 'react'" noise
+  on `packages/*` is pre-existing config (business tsc doesn't resolve sibling
+  package deps) — not from this change.
+
+### Must re-verify on device (could not runtime-check — bracket worktree path
+breaks Metro; no sim run this pass):
+- **BUG 1:** open a SHORT-content experience on the consumer app (iPhone with a
+  home indicator) → the orange Reserve bar must be fully visible (price +
+  "Reserve →") at rest and the floating pill must appear when scrolled away.
+- **BUG 2:** open `/exp/<brand>/<experience>` on web AND in the business app's
+  in-app browser → the cover should be noticeably shorter, with a normal-height
+  content viewport sliding over it. Confirm trip `/t/...` is unchanged (still
+  the taller 4/5 cover).
+- **BUG 4:** open the /exp reserve sheet on an open-daily experience → pick a
+  date, then a time + party in the same scroll → Reserve enables and proceeds to
+  cart with the chosen occurrence. Also confirm a slots (multi-date) experience
+  enables Reserve immediately on date tap.
