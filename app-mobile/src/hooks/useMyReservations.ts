@@ -18,6 +18,10 @@ export interface MyReservationRow {
   id: string;
   brand_id: string;
   brand_name: string | null;
+  brand_cover_url: string | null;
+  brand_cover_type: string | null;
+  brand_photo_url: string | null;
+  brand_cover_hue: string | null;
   reserved_for: string;
   party_size: number;
   status: string;
@@ -25,7 +29,16 @@ export interface MyReservationRow {
   fee_currency: string | null;
   payment_status: string;
   occasion: string | null;
+  guest_notes: string | null;
   created_at: string;
+}
+
+interface RawBrandJoin {
+  name: string | null;
+  cover_media_url: string | null;
+  cover_media_type: string | null;
+  profile_photo_url: string | null;
+  cover_hue: string | null;
 }
 
 interface RawReservationRow {
@@ -38,8 +51,9 @@ interface RawReservationRow {
   fee_currency: string | null;
   payment_status: string;
   occasion: string | null;
+  guest_notes: string | null;
   created_at: string;
-  brands: { name: string | null } | { name: string | null }[] | null;
+  brands: RawBrandJoin | RawBrandJoin[] | null;
 }
 
 export const myReservationsKeys = {
@@ -53,7 +67,7 @@ async function fetchMyReservations(
   const { data, error } = await supabase
     .from("reservations")
     .select(
-      "id, brand_id, reserved_for, party_size, status, fee_cents, fee_currency, payment_status, occasion, created_at, brands(name)",
+      "id, brand_id, reserved_for, party_size, status, fee_cents, fee_currency, payment_status, occasion, guest_notes, created_at, brands(name, cover_media_url, cover_media_type, profile_photo_url, cover_hue)",
     )
     .eq("consumer_user_id", userId)
     .order("reserved_for", { ascending: false });
@@ -65,6 +79,10 @@ async function fetchMyReservations(
       id: r.id,
       brand_id: r.brand_id,
       brand_name: brand?.name ?? null,
+      brand_cover_url: brand?.cover_media_url ?? null,
+      brand_cover_type: brand?.cover_media_type ?? null,
+      brand_photo_url: brand?.profile_photo_url ?? null,
+      brand_cover_hue: brand?.cover_hue ?? null,
       reserved_for: r.reserved_for,
       party_size: r.party_size,
       status: r.status,
@@ -72,6 +90,7 @@ async function fetchMyReservations(
       fee_currency: r.fee_currency,
       payment_status: r.payment_status,
       occasion: r.occasion,
+      guest_notes: r.guest_notes,
       created_at: r.created_at,
     };
   });
