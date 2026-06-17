@@ -30,7 +30,7 @@ interface SubmitRsvpRequest {
   guestName?: string;
   guestEmail?: string;
   guestPhone?: string;
-  rsvpStatus?: "going" | "not_going";
+  rsvpStatus?: "going" | "not_going" | "maybe";
   plusCount?: number;
 }
 
@@ -101,7 +101,14 @@ serve(async (req: Request): Promise<Response> => {
   if (eventId.length === 0) {
     return json(400, { error: "event_id_required" });
   }
-  if (rsvpStatus !== "going" && rsvpStatus !== "not_going") {
+  // ORCH-1150 R2 D-10: 'maybe' is an accepted RSVP status (cap-neutral, auto-
+  // approved). The A4-NEW anon-contact gate below is status-agnostic, so a Maybe
+  // link guest still must supply name+email+phone — do NOT relax it for maybe.
+  if (
+    rsvpStatus !== "going" &&
+    rsvpStatus !== "not_going" &&
+    rsvpStatus !== "maybe"
+  ) {
     return json(400, { error: "rsvp_status_invalid" });
   }
 

@@ -128,6 +128,29 @@ export default function RsvpEditRoute(): React.ReactElement {
   const deleteDraft = useDraftEventStore((s) => s.deleteDraft);
   const migratingLegacyIdRef = React.useRef<string | null>(null);
   const staleRecoveryDraftIdRef = React.useRef<string | null>(null);
+  // ORCH-1150 (D-1) — retain the last resolved draft so the d_*→server migration
+  // swap does NOT flash the `draft===null` Spinner (which remounts the wizard,
+  // perceived as a "refresh" while typing the name). During an in-flight
+  // migration the resolved `draft` momentarily goes null between
+  // replaceDraft(d_*→server) + router.replace(newId) and useDraftById(newId)
+  // resolving. We keep rendering the wizard against this retained draft until
+  // the new id resolves. RSVP-route-only — the event route is byte-identical.
+  const lastResolvedDraftRef = React.useRef<DraftEvent | null>(null);
+  if (!isEditPublished && draft !== null) {
+    lastResolvedDraftRef.current = draft;
+    // The migration has landed once a real (non-d_*) server draft resolves —
+    // clear the in-flight marker so the Spinner suppression below stops.
+    if (
+      !draft.id.startsWith("d_") &&
+      migratingLegacyIdRef.current !== null &&
+      migratingLegacyIdRef.current.startsWith("d_")
+    ) {
+      migratingLegacyIdRef.current = null;
+    }
+  }
+  // ORCH-1150 (D-1) — true while the d_*→server promotion is mid-flight. Used to
+  // hold the wizard mounted instead of bouncing to the draft-null Spinner.
+  const migrationInFlight = migratingLegacyIdRef.current !== null;
   const brands = useBrandList();
   const brand = useMemo(() => {
     if (isEditPublished) {
@@ -137,8 +160,12 @@ export default function RsvpEditRoute(): React.ReactElement {
       if (resolvedLiveEvent === null) return null;
       return brands.find((b) => b.id === resolvedLiveEvent.brandId) ?? null;
     }
-    if (draft === null) return null;
-    return brands.find((b) => b.id === draft.brandId) ?? null;
+    // ORCH-1150 (D-1) — fall back to the retained draft during the migration
+    // swap so the brand stays resolved (brandId is identical across the swap)
+    // and the wizard doesn't lose its brand mid-migration.
+    const draftForBrand = draft ?? lastResolvedDraftRef.current;
+    if (draftForBrand === null) return null;
+    return brands.find((b) => b.id === draftForBrand.brandId) ?? null;
   }, [isEditPublished, businessEventQuery.data?.brand, resolvedLiveEvent, draft, brands]);
 
   const [toast, setToast] = React.useState<{ visible: boolean; message: string }>(
@@ -178,7 +205,22 @@ export default function RsvpEditRoute(): React.ReactElement {
         );
         return undefined;
       }
-      if (resolvedLiveEvent === null && !businessEventQuery.isLoading) {
+      // ORCH-1150 (D-9) — gate the safe-exit so it fires ONLY when the live-
+      // event lookup is genuinely exhausted: auth is ready AND the fetch has
+      // settled (not loading, not fetching) AND the event is still null. The
+      // bare `!isLoading` guard (mirrored from the ticketed event-edit) fired
+      // during the `isAuthReady` flicker — React-Query reports a DISABLED query
+      // (enabled = isAuthReady && eventId) as isLoading=false, so a fresh push
+      // with an empty useLiveEventStore bounced a published RSVP before the
+      // fetch ever ran. Adding isAuthReady + !isFetching makes the exit
+      // strictly more conservative than today; it can never bounce earlier.
+      // RSVP-route-only — the ticketed app/event/[id]/edit.tsx is NOT touched.
+      if (
+        isAuthReady &&
+        resolvedLiveEvent === null &&
+        !businessEventQuery.isLoading &&
+        !businessEventQuery.isFetching
+      ) {
         // Published event not found — bounce to events tab.
         const t = setTimeout(() => {
           router.replace(safeEventsExitRoute() as never);
@@ -286,11 +328,21 @@ export default function RsvpEditRoute(): React.ReactElement {
     staleServerDraft,
   ]);
 
+  // ORCH-1150 (D-1) — the draft used for rendering. During the d_*→server
+  // migration `draft` briefly resolves to null (the store entry is swapped from
+  // the d_* id to the server id and the URL changes); rather than flash the
+  // Spinner and remount the wizard, fall back to the last resolved draft so the
+  // wizard stays mounted across the swap. Cover/name/all fields carry across
+  // because replaceDraft preserves them (the migration merge in
+  // handleAutosaveDraft copies them onto the server draft).
+  const renderDraft: DraftEvent | null =
+    draft ?? (migrationInFlight ? lastResolvedDraftRef.current : null);
+
   const isCreateMode = useMemo<boolean>(() => {
-    if (draft === null) return false;
+    if (renderDraft === null) return false;
     // First-time edit: lastStepReached is 0 AND name is empty AND no fields filled.
-    return draft.lastStepReached === 0 && draft.name.length === 0;
-  }, [draft]);
+    return renderDraft.lastStepReached === 0 && renderDraft.name.length === 0;
+  }, [renderDraft]);
 
   // ORCH-1150 — wrong-wizard guard (SPEC §4.6): an /rsvp/[id]/edit URL pointed
   // at a TICKETED draft (isRsvp=false) redirects to the event wizard, and
@@ -544,7 +596,12 @@ export default function RsvpEditRoute(): React.ReactElement {
     );
   }
 
-  if (draft === null) {
+  // ORCH-1150 (D-1) — suppress the draft-null Spinner DURING an in-flight
+  // d_*→server migration when we still have the retained draft to render. This
+  // is the visible "refresh"/remount Seth hit when typing the name: the swap
+  // briefly nulled `draft`, flashed this Spinner, and remounted the wizard.
+  // Keep the wizard mounted against `renderDraft` until the new id resolves.
+  if (draft === null && !(migrationInFlight && renderDraft !== null)) {
     return (
       <View
         style={[
@@ -588,9 +645,29 @@ export default function RsvpEditRoute(): React.ReactElement {
     );
   }
 
+  // ORCH-1150 (D-1) — render against `renderDraft` (the live draft, or the
+  // retained draft during the migration swap). This is non-null here: the
+  // draft-null Spinner branch only falls through when migrationInFlight &&
+  // renderDraft !== null. The guard satisfies the type system.
+  if (renderDraft === null) {
+    return (
+      <View
+        style={[
+          styles.host,
+          { paddingTop: insets.top, backgroundColor: canvas.discover },
+        ]}
+      >
+        <View style={styles.center}>
+          <Spinner size={36} />
+          <Text style={styles.label}>Loading…</Text>
+        </View>
+      </View>
+    );
+  }
+
   return (
     <RsvpCreatorWizard
-      draft={draft}
+      draft={renderDraft}
       brand={brand}
       initialStep={initialStep}
       isCreateMode={isCreateMode}

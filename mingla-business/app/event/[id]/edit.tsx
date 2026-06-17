@@ -298,6 +298,19 @@ export default function EventEditRoute(): React.ReactElement {
     return draft.lastStepReached === 0 && draft.name.length === 0;
   }, [draft]);
 
+  // ORCH-1150 — inverse wrong-wizard guard (SPEC §4.6). Mirrors the RSVP route's
+  // guard (app/rsvp/[id]/edit.tsx): an /event/[id]/edit URL pointed at an RSVP
+  // draft (isRsvp=true) redirects to the RSVP wizard. Belt-and-suspenders for a
+  // stale/hand-typed URL or a routing miss — the route IS the discriminator.
+  useEffect(() => {
+    if (isEditPublished || draft === null) return;
+    if (draft.isRsvp === true) {
+      router.replace(
+        `/rsvp/${draft.id}/edit?step=${initialStep ?? 0}` as never,
+      );
+    }
+  }, [draft, isEditPublished, initialStep, router]);
+
   const handleExit = React.useCallback(
     (
       mode: WizardExitMode,

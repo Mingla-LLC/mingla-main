@@ -279,7 +279,8 @@ export type RsvpCtaState =
   | "waitlist" // capacity hit, waitlist ON → tapping Going joins the waitlist
   | "pending" // manual approval, guest already RSVP'd → "Awaiting host approval"
   | "going" // guest's own current confirmed state
-  | "not_going"; // guest's own current declined state
+  | "not_going" // guest's own current declined state
+  | "maybe"; // ORCH-1150 R2: guest's own non-binding "maybe" state (cap-neutral)
 
 export interface ResolveRsvpCtaInput {
   /** Event-level posture: is the cap full of confirmed-attending guests? */
@@ -289,7 +290,7 @@ export interface ResolveRsvpCtaInput {
   /** events.rsvp_approval_mode === 'manual'. */
   manualApproval: boolean;
   /** The guest's own current row state, when resolvable (else null). */
-  guestStatus?: "going" | "not_going" | "waitlisted" | null;
+  guestStatus?: "going" | "not_going" | "waitlisted" | "maybe" | null;
   guestApproval?: "pending" | "approved" | "denied" | null;
 }
 
@@ -303,6 +304,7 @@ export interface RsvpCtaDescriptor {
  *   guest already pending          → pending
  *   guest already going+approved   → going
  *   guest already not_going        → not_going
+ *   guest already maybe            → maybe (ORCH-1150 R2; non-binding)
  *   guest already waitlisted       → waitlist
  *   cap full + waitlist on         → waitlist
  *   cap full + waitlist off + auto → full
@@ -318,6 +320,8 @@ export const resolveRsvpCta = (input: ResolveRsvpCtaInput): RsvpCtaDescriptor =>
       return { kind: "rsvp", state: "going" };
     }
     if (guestStatus === "not_going") return { kind: "rsvp", state: "not_going" };
+    // ORCH-1150 R2 D-10: a resolved 'maybe' shows the non-binding maybe state.
+    if (guestStatus === "maybe") return { kind: "rsvp", state: "maybe" };
   }
 
   if (capacityFull) {

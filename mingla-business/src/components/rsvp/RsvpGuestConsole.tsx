@@ -84,6 +84,12 @@ export const RsvpGuestConsole: React.FC<RsvpGuestConsoleProps> = ({
     () => guests.filter((g) => g.rsvpStatus === "waitlisted"),
     [guests],
   );
+  // ORCH-1150 R2 D-10: read-only "Maybe" group — non-binding, cap-neutral guests
+  // (auto-approved). No approve/deny actions; the host just sees who might come.
+  const maybe = useMemo(
+    () => guests.filter((g) => g.rsvpStatus === "maybe"),
+    [guests],
+  );
 
   const showToast = useCallback((message: string): void => {
     setToast({ visible: true, message });
@@ -262,6 +268,27 @@ export const RsvpGuestConsole: React.FC<RsvpGuestConsoleProps> = ({
             ))
           )}
         </View>
+
+        {/* Maybe section (read-only) — ORCH-1150 R2 D-10 */}
+        {maybe.length > 0 ? (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Maybe ({maybe.length})</Text>
+            {maybe.map((g) => (
+              <View key={g.id} style={styles.guestRow} testID={`rsvp-maybe-${g.id}`}>
+                <View style={styles.guestInfo}>
+                  <Text style={styles.guestName} numberOfLines={1}>
+                    {g.guestName}
+                    {g.plusCount > 0 ? <Text style={styles.plusChip}>  +{g.plusCount}</Text> : null}
+                  </Text>
+                  <Text style={styles.guestContact} numberOfLines={1}>
+                    {g.guestEmail ?? g.guestPhone ?? "App guest"}
+                  </Text>
+                </View>
+                <Icon name="users" size={18} color={textTokens.tertiary} />
+              </View>
+            ))}
+          </View>
+        ) : null}
 
         {/* Waitlist section (read-only) */}
         {waitlisted.length > 0 ? (
