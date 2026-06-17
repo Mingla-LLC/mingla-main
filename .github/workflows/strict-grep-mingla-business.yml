@@ -2503,6 +2503,19 @@ jobs:
       - name: Run ORCH-1148 booking-core engine/money-seam gate
         run: node .github/scripts/strict-grep/orch-1148-booking-core-engine-and-money-seam.mjs
 
+  orch-1154-snap-auto-draft:
+    name: "ORCH-1154: snap suggestions auto-draft + navigate (no per-card review; Ari manual-confirm untouched)"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Self-test the ORCH-1154 snap auto-draft gate
+        run: node .github/scripts/strict-grep/orch-1154-snap-auto-draft.mjs --self-test
+      - name: Run ORCH-1154 snap auto-draft gate
+        run: node .github/scripts/strict-grep/orch-1154-snap-auto-draft.mjs
+
   # ORCH-0962 brand-field-map-coverage gate RETIRED at META-ORCH-0972 CLOSE
   # (2026-05-26). The gate asserted that `viewRowToBrand` reads `row.brand_kind`
   # from `business_public_events_view`. META-ORCH-0972 Sub-C removed `brand_kind`
