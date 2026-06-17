@@ -96,6 +96,9 @@ interface PublicExperienceRow {
   title: string;
   description: string | null;
   cover_media_url: string | null;
+  // ORCH-1155 — RPC now returns the experience cover's media type so the
+  // in-app brand-page Experiences card plays video/gif covers (SC-9-Native).
+  cover_media_type: "image" | "video" | "gif" | null;
   theme: Record<string, unknown> | null;
   venue_text: string | null;
   next_occurrence_at: string | null;
@@ -276,6 +279,7 @@ const mapExperience = (row: PublicExperienceRow): PublicBrandExperience => ({
   name: row.title,
   bio: row.description,
   coverMediaUrl: row.cover_media_url,
+  coverMediaType: row.cover_media_type,
   theme: row.theme,
   venueText: row.venue_text,
   nextOccurrenceAt: row.next_occurrence_at,
