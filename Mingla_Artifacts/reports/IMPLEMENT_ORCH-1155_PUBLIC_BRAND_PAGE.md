@@ -185,3 +185,58 @@ Manual-parity items (both done): the `coverMediaType` cover field on TWO data pa
 **Updates Known-Issue #1 in §10:** RESOLVED. (The §10 note assumed the consumer screen was DO-NOT-TOUCH; this scoped follow-up ORCH was dispatched specifically to fix it — additive prop only, web/business untouched.)
 
 **Commit:** `6f999cd40` — consumer brand-page chrome top-inset fix + regression test.
+
+---
+
+## 14. Brand-card View affordance fix — offering pages, all-surface parity (2026-06-17)
+
+**Status:** implemented, source-verified (bracket-path Metro precludes a local sim screenshot — proven by source that the View CTA renders unconditionally when brandSlug is present + the handler is passed on every route/screen; tester device eyeball remains the runtime PASS).
+
+**Device bug (Seth):** on the public EVENT, TRIP and EXPERIENCE pages the "Presented by {Brand}" block had no visible/functional "View" affordance — no way to reach the new brand page from an offering page.
+
+### Real root cause — PER PAGE × PER SURFACE (investigated, not guessed)
+
+| Page | Web + Business iOS/Android | Consumer app |
+|------|----------------------------|--------------|
+| **Event** | ALREADY WORKING. The shared `packages/event-rendering/PublicEventPage.tsx` renders the brand row as a `Pressable` and shows the trailing **"View"** CTA *only when `callbacks.onOpenBrand !== undefined`* (`:656-660`); `onPress` calls `onOpenBrand(brand.slug)` (`:599-602`). The business wrapper `mingla-business/src/components/event/PublicEventPage.tsx` passes `onOpenBrand={(slug)=>router.push('/b/'+slug)}` on BOTH the phone + desktop mounts (`:570`, `:675`), and the web route `app/e/[brandSlug]/[eventSlug].tsx` renders that wrapper. → View shows + navigates. No change. | **GAP (real bug).** `ConsumerEventDetailScreen.tsx` re-implements the page inline (does NOT mount the shared page) and rendered the brand chip as a plain `<View>` (`:755`) — no CTA, no `useRouter`, no navigation = a dead block. |
+| **Trip** | ALREADY WORKING. `TripPreview.tsx` brand chip is a `Pressable onPress={onViewBrand}` (`:368`) with an unconditional `<Text style={styles.brandCta}>View</Text>` (`:405`), rendered on BOTH phone (`{!isDesktop ? brandChip}` `:517`) and desktop sticky panel (`:688`). The `/t/[brandSlug]/[tripSlug].tsx` route passes `onViewBrand={handleViewBrand}` (`:534`) → `router.push('/b/'+brandSlug)` (guarded). No change. | **GAP (real bug).** `ConsumerTripDetailScreen.tsx` also re-implements inline (NOT importing TripPreview — "business-local") and rendered the brand chip as a plain `<View>` (`:784`) — no CTA, no `useRouter`, no nav. |
+| **Experience** | ALREADY WORKING. `ExperiencePreview.tsx` brand chip = `Pressable onPress={onViewBrand}` (`:361`) + unconditional `View` CTA (`:389`); the `/exp/[brandSlug]/[experienceSlug].tsx` route passes `onViewBrand={handleViewBrand}` (`:499`). No change. | **PARTIAL.** `ConsumerExperienceDetailScreen.tsx` brand chip was ALREADY a navigating `Pressable` (wired earlier this ORCH, commit `0dc53cfbc`, `:935-993`) but had NO trailing "View" CTA → inconsistent label/placement vs the other two pages. |
+
+**So the premise "View missing on web/business" was already satisfied by this ORCH's earlier offering-page work; the device-observable gap is the three CONSUMER screens** (event + trip = no affordance at all; experience = nav-only, no label).
+
+### Fix per surface (additive only — no renderer/route change needed on web/business)
+
+- **Consumer trip** (`app-mobile/src/screens/Trip/ConsumerTripDetailScreen.tsx`, +~30): import `useRouter`; `const router = useRouter()`; brand chip `<View>` → `<Pressable accessibilityRole="button" accessibilityLabel={\`View ${fnd.brandName}\`}>` whose `onPress` guards `brandSlug.length > 0` then `router.push('/b/'+brandSlug)`; trailing `<Text style={styles.brandCta}>View</Text>`; new `brandCta` style (`marginLeft:'auto', fontSize:12, fontWeight:'800'` — byte-identical to `TripPreview.brandCta`). `brandSlug` is the **screen prop** (always set when the route mounts).
+- **Consumer event** (`app-mobile/src/screens/Event/ConsumerEventDetailScreen.tsx`, +~30): same pattern; `onPress` guards `typeof fnd.brandSlug === "string" && fnd.brandSlug.length > 0` then `router.push('/b/'+fnd.brandSlug)`; `fnd.brandSlug` is typed `string` in `useConsumerEventFoundation` (`:57`). Added `brandCta` style.
+- **Consumer experience** (`app-mobile/src/screens/Experience/ConsumerExperienceDetailScreen.tsx`, +9): nav already worked — added the trailing `<Text style={styles.brandCta}>View</Text>` + `brandCta` style for consistency.
+
+### Consistency (dispatch requirement #3) — all three offering pages now identical
+Label = **"View"**, placement = trailing on the brand chip (`marginLeft:auto`), accent color, whole-row `Pressable` with `accessibilityRole="button"` + `View {brandName}` label, slug-guarded `router.push('/b/{slug}')`. Matches the trip/exp `onViewBrand` pattern across web/business + all three consumer screens. No dead taps (Constitution rule 1); empty slug guarded (rule 9).
+
+### brandSlug non-undefined on every path — confirmed
+- Trip consumer: `brandSlug` screen prop (`string`); also `detail.brandSlug: string` (`useConsumerTripDetail:165`).
+- Event consumer: `fnd.brandSlug: string` (`useConsumerEventFoundation:57`).
+- Experience consumer: `seed.brandSlug` from `card.brandSlug` (guarded `typeof === "string"`).
+- Web/business: each route reads `params.brandSlug` and `handleViewBrand`/`onOpenBrand` guards `length > 0`.
+
+### Cross-surface impact
+| Surface | Affected | What |
+|---------|----------|------|
+| Consumer iOS | YES | brand chip now tappable + "View" CTA (trip/event new; experience CTA added) |
+| Consumer Android | YES | same (shared screens) |
+| Buyer/anon Web | NO | already showed/navigated View (no change) |
+| Business iOS | NO | already showed/navigated View (no change) |
+| Business Android | NO | same |
+| Admin Web | NO | no offering pages |
+| Business Web preview | NO | == buyer web |
+
+### Regression test (implementor happy-path)
+`app-mobile/src/screens/__tests__/orch_1155_brand_view_affordance.test.ts` — node:assert source-assertion (app-mobile convention). Asserts: shared event page View-CTA-on-onOpenBrand + business event passes onOpenBrand; TripPreview/ExperiencePreview render View CTA + the /t/ & /exp/ routes pass onViewBrand (+ guarded /b/{slug}); all three consumer screens render the brand `Pressable` → guarded `/b/{slug}` + the "View" CTA. Run: `node app-mobile/src/screens/__tests__/orch_1155_brand_view_affordance.test.ts` → PASS.
+**fails-on-revert verified at `db7b2b288`:** TRUE LINE-DELETION of the consumer-trip `<Text style={styles.brandCta}>View</Text>` → `AssertionError: ConsumerTripDetailScreen must render the trailing 'View' CTA` (exit 1); restored → PASS. Existing `orch_1155_brand_badge_nav` + `orch_1155_brand_chrome_top_inset` still PASS (no regression).
+
+### Verification
+- `tsc --noEmit` (app-mobile): 0 errors in the 3 touched files (remaining errors are pre-existing Deno-test-in-tsc noise + unrelated files, same baseline as §9).
+- Strict-grep: `orch-0964-brand-rendering-self-contained` PASS, `orch-0805-brand-cover-overhaul` 9/9 PASS.
+- No sim screenshot (bracket path breaks Metro/expo, §9). Source-proven: the "View" CTA renders unconditionally in each consumer brand chip and the handler/slug is present on every route/screen. Tester's 3-page × consumer-native eyeball is the runtime PASS.
+
+**Commit:** `db7b2b288` — brand-card View affordance: consumer event/trip Pressable→/b/{slug} + View CTA (parity) + regression test.
