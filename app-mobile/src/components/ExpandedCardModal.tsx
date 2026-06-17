@@ -12,6 +12,7 @@ import {
   Animated,
   LayoutAnimation,
   PanResponder,
+  Alert,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTranslation } from 'react-i18next';
@@ -44,6 +45,11 @@ import { StopImageGallery } from "./expandedCard/StopImageGallery";
 // ORCH-1072: brand experiences claimed-to-this-venue, rendered as compact rows
 // beneath the stars/miles/price block and above the weather section.
 import VenueExperiencesSection from "./expandedCard/VenueExperiencesSection";
+// META-ORCH-1148 2.2b: consumer reserve-a-table for reservable venues. The
+// affordance + 3-step sheet appear ONLY for a place whose verified-claimed
+// brand has reservations enabled (useVenueReservable gate — no dead tap).
+import VenueReserveSheet from "./expandedCard/VenueReserveSheet";
+import { useVenueReservable } from "../hooks/useVenueReservable";
 import { ImageLightbox } from "./ImageLightbox";
 import ActionButtons from "./expandedCard/ActionButtons";
 import ShareModal from "./ShareModal";
@@ -1439,13 +1445,20 @@ export default function ExpandedCardModal({
   const [selectedVenueExperience, setSelectedVenueExperience] =
     useState<BusinessEventCard | null>(null);
 
+  // META-ORCH-1148 2.2b — reservable-venue gate for the consumer reserve flow.
+  // card.id is a place_pool.id; the hook is disabled (no fetch) for non-uuid ids
+  // (stroll/picnic/curated/Ticketmaster). reservable=false → no affordance.
+  const { data: venueReservable } = useVenueReservable(card?.id);
+  const [isReserveSheetOpen, setIsReserveSheetOpen] = useState(false);
+
   const anyChildModalOpen =
     browserUrl !== null ||
     ticketBrowserUrl !== null ||
     isNightOutShareOpen ||
     isSchedulePickerOpen ||
     curatedLightbox.visible ||
-    selectedVenueExperience !== null;
+    selectedVenueExperience !== null ||
+    isReserveSheetOpen;
 
   const handleRootSheetClose = useCallback(() => {
     // ORCH-1022: while a child RN Modal/WebView is open, the root sheet is
@@ -2094,6 +2107,27 @@ export default function ExpandedCardModal({
                   </View>
                 )}
 
+                {/* META-ORCH-1148 2.2b: Reserve a table — ONLY for a place
+                    whose verified-claimed brand has reservations enabled
+                    (useVenueReservable gate). reservable=false / unknown brand
+                    → nothing renders (NO dead tap). Tapping opens the 3-step
+                    reserve sheet (mounted as a sibling of the root sheet). */}
+                {venueReservable?.reservable === true &&
+                  venueReservable.brand_id !== null && (
+                    <TouchableOpacity
+                      style={reserveStyles.reserveButton}
+                      activeOpacity={0.85}
+                      onPress={() => setIsReserveSheetOpen(true)}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Reserve a table at ${card.title}`}
+                    >
+                      <Icon name="restaurant-outline" size={18} color="#ffffff" />
+                      <Text style={reserveStyles.reserveButtonText}>
+                        Reserve a table
+                      </Text>
+                    </TouchableOpacity>
+                  )}
+
                 {/* ORCH-1072: Experiences at this venue (claimed-brand only).
                     Renders nothing for unclaimed venues or non-uuid card ids
                     (stroll/picnic/curated/Ticketmaster). */}
@@ -2295,6 +2329,27 @@ export default function ExpandedCardModal({
           tabBarAware={false}
         />
       )}
+
+      {/* META-ORCH-1148 2.2b — the 3-step reserve sheet, mounted as a SIBLING of
+          the root sheet (same proven sub-sheet pattern as the experience detail
+          above). The root sheet is gated off (anyChildModalOpen) while it is
+          open. The reservation attaches to the signed-in user server-side. */}
+      {isNightOut && nightOut && venueReservable?.reservable === true &&
+        venueReservable.brand_id !== null && (
+          <VenueReserveSheet
+            visible={isReserveSheetOpen}
+            onClose={() => setIsReserveSheetOpen(false)}
+            brandId={venueReservable.brand_id}
+            venueName={card.title}
+            currency={venueReservable.currency}
+            onReserved={() => {
+              Alert.alert(
+                "You're booked",
+                `Your table at ${card.title} is confirmed. Find it in your Calendar under Reservations.`,
+              );
+            }}
+          />
+        )}
 
       {/* META-ORCH-0991 Wave A — child RN Modals moved to siblings of the sheet.
           They render in their own OS overlay window regardless of tree position,
@@ -2583,5 +2638,27 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: "#9ca3af",
     flex: 1,
+  },
+});
+
+// META-ORCH-1148 2.2b — the consumer "Reserve a table" affordance in the
+// nightOut expanded card (alongside VenueExperiencesSection).
+const reserveStyles = StyleSheet.create({
+  reserveButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    marginHorizontal: 16,
+    marginTop: 8,
+    paddingVertical: 13,
+    borderRadius: 14,
+    backgroundColor: "#ea580c",
+  },
+  reserveButtonText: {
+    color: "#ffffff",
+    fontSize: 15,
+    fontWeight: "700",
+    letterSpacing: 0.2,
   },
 });
