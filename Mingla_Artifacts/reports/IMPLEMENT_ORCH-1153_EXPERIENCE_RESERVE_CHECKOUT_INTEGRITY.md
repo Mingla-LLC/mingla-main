@@ -326,3 +326,95 @@ breaks Metro; no sim run this pass):
   date, then a time + party in the same scroll → Reserve enables and proceeds to
   cart with the chosen occurrence. Also confirm a slots (multi-date) experience
   enables Reserve immediately on date tap.
+
+---
+
+## Attempt #2 — FLOATING Reserve pill clears the home indicator (2026-06-17)
+
+**Commit:** `6189ca73a`
+
+### Summary
+The DOCKED reserve bar was already fixed (attempt #1), but Seth re-confirmed on
+device that the FLOATING "Reserve →" pill on the consumer EXPERIENCE detail
+(`ConsumerExperienceDetailScreen`) was still clipped under the home indicator.
+This pass fixes the floating pill so the whole pill renders cleanly above the
+sheet's bottom edge, verified on a home-indicator simulator.
+
+### Root cause (device-proven, not guessed)
+Booted an iPhone 17 Pro sim (home indicator), ran app-mobile from the
+bracket-free checkout, signed in via an injected Supabase session for a fresh
+consumer QA user, set onboarding-complete in the DB, and opened the
+"Raleigh Wine and Dine Crawl" experience (`b8bd995b-fde9-452f-a7f9-0dffec359259`)
+detail from the deck.
+
+Accessibility-frame measurement on the OPENED detail (screen 874pt tall):
+- DOCKED Reserve (full width, x21/w360): off-screen at y≈1899 — correct.
+- FLOATING Reserve pill (compact, x132/w138/h52): top y≈786, **bottom y≈838**.
+
+Pixel scan down the pill's center column showed the orange pill turning to PURE
+BLACK at **y≈793** — i.e. the gorhom `BottomSheetContent` CLIPS its overflow at
+y≈793, and the float pill (bottom 838) was rendered ~45pt BELOW that clip → the
+lower half of the pill was cut off by the SHEET's own overflow boundary, not
+merely the OS home indicator. The float is an absolute child of the gorhom host,
+whose LAYOUT bottom sits ~77pt below the 874pt screen while its VISIBLE bottom
+clips ~81pt ABOVE the screen bottom. `ConsumerEventReserveBar` lifted the float by
+only `SHEET_BOTTOM_OVERSHOOT(63) + HOME_INDICATOR_FLOOR(34) + FLOAT_GAP(16) = 113`,
+which is ~45pt short of clearing the clip. (Note: the docked-bar clearance lives
+on the SCREEN as `reserveBarClearance = SHEET_BOTTOM_OVERSHOOT(63) + 8` and was
+NOT the float owner — confirming attempt #1 touched the wrong layer for the float.)
+
+### The exact change
+`app-mobile/src/components/offering/ConsumerEventReserveBar.tsx` — the SOLE owner
+of the float wrapper's `bottom` for BOTH consumer details (event + experience,
+same gorhom 90% sheet host):
+
+```
+- const SHEET_BOTTOM_OVERSHOOT = 63;
++ const SHEET_BOTTOM_OVERSHOOT = 120;   // device-measured: clears the ~158pt
+                                        // content-clip gap; pill bottom y≈781 (~12pt
+                                        // above the y≈793 clip) → whole pill renders
+```
+
+`wrapperBottom = safeBottom + 120 + 16 = 170`. Re-measured on device after the
+fix: FLOAT pill top y≈729, **bottom y≈781** — ~12pt above the y≈793 clip → the
+ENTIRE rounded pill (label + "→") renders, no clipping. ~14 lines changed (value +
+expanded device-evidence comment). No behavior change to the docked bar
+(`paddingBottom: safeBottom + 8`) or the all-in price block.
+
+### Verification (device + gates)
+- **Float clears (proof):** `Mingla_Artifacts/evidence/ORCH-1153/float_clears_ios.png`
+  (iPhone 17 Pro, home indicator) shows the full floating "Reserve →" pill above
+  the bottom edge.
+- **Docked bar not regressed:** scrolled to the docked bar — renders full-width at
+  bottom with "All-in, taxes included / $70" + "Reserve →", clears the bottom
+  (`/tmp/orch1153_docked.png`, measured bottom y≈761).
+- **All-in price not regressed:** $70 all-in displayed in both docked + float paths.
+- **Consumer EVENT float:** shares the same `ConsumerEventReserveBar` + same gorhom
+  host, so the corrected overshoot applies identically (source-equivalent; not
+  separately reachable in this deck session without an event card surfacing for
+  Raleigh — noted for the tester).
+- **Regression test (fails-on-revert verified at `6189ca73a`):**
+  `app-mobile/src/components/offering/__tests__/orch_1153_consumer_reserve_float_clears.test.tsx`
+  — 6 assertions pass; reverting the value to 63 (true line edit) FAILS the first
+  assertion; restoring re-greens.
+- **Existing tests:** `orch_1138_consumer_experience_foundation` (11 pass),
+  `orch1153ReserveUxFixPass` jest (6 pass) — unaffected (the screen's
+  `SHEET_BOTTOM_OVERSHOOT = 63` docked-clearance assertion is on a DIFFERENT file
+  and is intentionally unchanged).
+- **tsc:** no errors in the changed files.
+- **strict-grep:** the changed files are implicated in ZERO gates; the gate
+  failures observed on this worktree are PRE-EXISTING on the clean tree
+  (stash-confirmed) and unrelated to this change — flagged for the orchestrator.
+
+### Smoke test (Seth)
+Consumer app → open any brand EXPERIENCE detail from the deck → with the page at
+or near the top (docked bar below the fold) the floating "Reserve →" pill shows
+ABOVE the home indicator, fully visible (no clipping). Scroll down → the docked
+all-in bar appears and the float hides.
+
+### Known issue / deferred
+`SHEET_BOTTOM_OVERSHOOT` is an empirically-tuned constant for the shared gorhom
+90% sheet geometry (driven by the ~34pt home-indicator inset, consistent across
+Pro devices). A fully device-agnostic fix would hoist the float out of the clipped
+sheet to a screen-level overlay — larger architectural change, out of this bug's
+scope; deferred to the orchestrator if cross-device variance is later observed.
