@@ -64,6 +64,9 @@ import {
 // (the proven ORCH-1016 trip pattern). NO parallel money fn (COMMS-0014/0016).
 import type { BusinessEventCard } from "../types/mergedDiscover";
 import { hueFromId } from "../utils/hueFromId";
+// ORCH-1157 Round-3 [consumer-hide-address] — fail-closed extractor for the
+// anon-safe address-privacy flag (mirrors the discover-merged-events edge fn).
+import { extractHideAddressUntilTicket } from "../utils/venueExperienceMapping";
 import { mixpanelService } from "../services/mixpanelService";
 import { logAppsFlyerEvent } from "../services/appsFlyerService";
 import { BoardCardService } from "../services/boardCardService";
@@ -179,7 +182,15 @@ function experienceRecToBusinessEventCard(rec: any): BusinessEventCard {
             ? firstStop.city
             : null),
     address: null,
-    hideAddressUntilTicket: false,
+    // ORCH-1157 Round-3 [consumer-hide-address] — carry the REAL flag instead of
+    // a hardcoded `false`. The deck experience envelope carries no top-level
+    // street (address is null) and may not carry the theme; honor a direct
+    // boolean if present, else fail CLOSED to true (street hidden). Never
+    // fabricate a reveal-by-default privacy flag (Constitution rule 9).
+    hideAddressUntilTicket:
+      typeof rec?.hideAddressUntilTicket === 'boolean'
+        ? rec.hideAddressUntilTicket
+        : extractHideAddressUntilTicket(rec?.theme),
     format: 'in-person',
     locationGeo:
       firstStop && typeof firstStop.lat === 'number' && typeof firstStop.lng === 'number'
