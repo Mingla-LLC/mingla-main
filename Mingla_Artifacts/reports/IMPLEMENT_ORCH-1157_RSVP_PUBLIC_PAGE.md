@@ -340,3 +340,125 @@ Source-trace + live-DB (the two named events) + Deno/Jest fails-on-revert.
 sim for business-web + consumer-iOS was out of the device-fix budget. Tester should
 capture the consumer RSVP parity + the address-hidden screenshots on a booted
 sim/device → `Mingla_Artifacts/evidence/ORCH-1157/`.
+
+---
+
+## Round-3 consumer hide-address plumbing fix (2026-06-17)
+
+Dispatch: trace the FULL consumer card supply chain and make the REAL
+`hideAddressUntilTicket` flow end-to-end so the consumer "Where you'll be" hides
+the street exactly like the web RSVP page. New HEAD `f4dadb71d`.
+
+### Headline (ruthlessly honest)
+
+The privacy-critical card path — **the only path that puts an event/RSVP STREET
+address in front of `ConsumerEventDetailScreen`** — was **ALREADY correct in
+source AND in the deployed backend** before this round. The consumer on-device
+leak Seth re-confirmed is a **stale consumer-app OTA**: Round-2's consumer gate
+(`addressHidden`/`rsvpAddressRevealed`) is committed on this branch but was never
+shipped to the installed binary. The two hardcoded-`false` literals the dispatch
+flagged (`SwipeableCards.tsx:182`, `venueExperienceMapping.ts:151`) are both
+**experience** mappers that set `address: null` — they cannot leak a street today,
+but they fabricated a reveal-by-default privacy boolean (a latent leak the moment
+an experience carries a top-level address). Round-3 removes those literals and
+carries the real fail-closed flag, and adds the regression guard. **The actual
+on-device fix is shipping the consumer OTA** (Round-2 + Round-3 together).
+
+### Full card-supply-chain map (every path that can reach `ConsumerEventDetailScreen`)
+
+`ConsumerEventDetailScreen` is mounted ONLY by `ExpandedCardModal` (kind
+`businessEvent` → `seed`). Its address gate reads `fnd.hideAddressUntilTicket`
+which = `card.hideAddressUntilTicket` (via `useConsumerEventFoundation` →
+`mapConsumerEventToFoundation`, pure passthrough). So the leak hinges entirely on
+the card's flag. The `ExpansionTarget{kind:'businessEvent'}` producers:
+
+| # | Path | Producer of the `BusinessEventCard` | `hideAddressUntilTicket` | `address` | Leak risk |
+|---|---|---|---|---|---|
+| 1 | **DiscoverScreen "Night Out" deck** (events + RSVP) | edge fn `discover-merged-events` → `pg_discover_business_events` RPC → `mapRpcRowToCard` (`_business-query.ts`) | **(a) correctly extracted** from `theme.business_event` (fail-closed `true`) | real `location_text` | **NONE — correct.** This is the ONLY path carrying a real street to the consumer event detail. RSVP rows ride here too (`event_type='rsvp'`, `rsvp_discoverable=true`). |
+| 2 | **Main swipe deck → experience** (`SwipeableCards.experienceRecToBusinessEventCard`, line 182) | client mapper off the `discover-cards` experience envelope | **(b) WAS hardcoded `false`** → now extracted/fail-closed | `null` (top-level) | latent only (address null); FIXED |
+| 3 | **Venue → experiences list** (`venueExperienceMapping.experienceToBusinessEventCard`, line 151) | client mapper off `pg_brand_experiences_for_place` row (`row.theme` present) | **(b) WAS hardcoded `false`** → now extracted from `row.theme`, fail-closed | `null` (top-level) | latent only (address null); FIXED |
+| 4 | **Group-chat linked event** (`ConnectionsPage.fetchGroupEventMetaByIds`) | client read of `business_public_events_view.public_theme` | **(a) already correctly extracted** (`extractHideAddressUntilTicket`, line 156/228) | real `location_text` | NONE — correct |
+
+Paths NOT producing an event-detail card with a street: `discover-cards` emits
+only **place** cards (`place_pool`, route to the place sheet) + **experience**
+cards (route to `ConsumerExperienceDetailScreen`, `address: null`); the
+`discover-cards` deck has NO ticketed/RSVP-event branch. `rsvpDeckService.ts`
+provides only the momentum snapshot + the write — it does NOT build the card.
+
+### Every place the flag was dropped/hardcoded + the fix
+
+- `app-mobile/src/utils/venueExperienceMapping.ts` — replaced
+  `hideAddressUntilTicket: false` with `extractHideAddressUntilTicket(row.theme)`
+  (NEW exported fail-closed extractor, default `true`, mirrors the edge fn +
+  ConnectionsPage). `row.theme` IS available on `VenueExperienceRow`.
+- `app-mobile/src/components/SwipeableCards.tsx` — replaced
+  `hideAddressUntilTicket: false` with a direct-boolean-or-`extractHideAddressUntilTicket(rec?.theme)`
+  (fail-closed `true`); imported the extractor.
+- No change to path #1 (already correct) or path #4 (already correct), or to the
+  consumer detail gate (already correct since Round-2).
+
+### Edge fn / RPC change needed?
+
+**NONE.** Confirmed via MCP that the DEPLOYED `discover-merged-events` is **version
+179, ACTIVE** and its `mapRpcRowToCard` already sets
+`hideAddressUntilTicket: extractHideAddressUntilTicket(theme)` (fail-closed `true`).
+`pg_discover_business_events` returns the `theme` jsonb with
+`business_event.hideAddressUntilTicket`. No edge deploy, no migration, no RPC
+widen required by this round. (Round-2's RsvpPublicBody + consumer-screen fixes
+still need the **consumer-app OTA** to reach devices — that is the operator's
+shipping step, not a code change.)
+
+### Live-event confirmation (MCP read-only, 2026-06-17)
+
+- `business_public_events_view`: **"Test Rsvp"** and **"The Second Test"** are the
+  two `event_type='rsvp'` rows with `hide_flag = "true"` and the
+  "700 Corporate Center Drive" street. Only **"The Second Test"** has
+  `rsvp_discoverable = true` → it is the one that surfaces on the consumer deck.
+- `pg_discover_business_events(p_cities=>['Raleigh'], …)` returns "The Second Test"
+  with `row.theme.business_event.hideAddressUntilTicket = "true"` and
+  `has_theme = true` → the deck RPC exposes the flag; `mapRpcRowToCard` reads it →
+  the consumer card carries `hideAddressUntilTicket: true` → the
+  `ConsumerEventDetailScreen` gate hides the street (venue name + "Raleigh, USA")
+  unless the viewer's own RSVP is going/maybe. **Source + deployed backend prove
+  the card now carries the flag true → street hidden.**
+- All the `700 Corporate` **ticketed** events carry `hide_flag = "false"` (host did
+  not enable hide) — they correctly show the street; not a leak.
+
+### Tests + fails-on-revert
+
+- NEW `app-mobile/src/utils/__tests__/orch_1157_round3_consumer_hide_address.test.ts`
+  — 8 Deno tests, hybrid: (A) behavioral — imports the real
+  `extractHideAddressUntilTicket` + `experienceToBusinessEventCard` and asserts
+  the flag tracks the theme and **fails CLOSED to `true`** when absent; (B)
+  source-contract — asserts neither experience mapper carries
+  `hideAddressUntilTicket: false` (comment-stripped) and the consumer gate reads
+  `fnd.hideAddressUntilTicket` + `rsvpAddressRevealed`. **8 passed / 0 failed.**
+- **fails-on-revert proven by TRUE LINE DELETION** at `f4dadb71d`: reverting
+  `venueExperienceMapping.ts` to `hideAddressUntilTicket: false` → **5 passed / 3
+  failed** (the hide=ON behavioral, the fail-closed, and the source-contract
+  asserts). Restored → **8 / 8**.
+- Regression-green: `orch_1138_consumer_experience_supply` (2), the full RSVP Deno
+  set (round-2 + round-3 + 1150 + momentum) = **40 passed / 0 failed**. tsc clean
+  on both changed files. Append-only gate **7 passed / 0 failed** (HEAD carries
+  `[TEST-MOD-APPROVED ORCH-1157]`).
+
+### Source- vs sim-verified (honest)
+
+- **Source + live-DB + test-verified:** the full chain map; the two hardcoded-false
+  removals + fail-closed extractor; deployed edge fn v179 correctness; the live
+  RPC exposing `theme.hideAddressUntilTicket=true` for "The Second Test"; 8 Deno
+  tests + fails-on-revert.
+- **NOT sim-verified this round:** no consumer-sim screenshot of the hidden
+  "Where you'll be" — the worktree bracket path breaks Metro and a bracket-free
+  consumer boot was out of budget. No `Mingla_Artifacts/evidence/ORCH-1157/`
+  Round-3 screenshot produced. The on-device proof is gated on the **consumer-app
+  OTA** (which is itself the real device fix); tester should capture it
+  post-OTA.
+
+### Operator action required (Round-3)
+
+- **NO migration, NO edge deploy** from this round.
+- **The on-device leak fix = ship the consumer-app OTA** (Round-2 consumer gate +
+  Round-3 mapper fix). Until the consumer `app-mobile` OTA ships, the installed
+  binary still runs the pre-Round-2 JS and will keep showing the street. This is
+  the parity/OTA CLOSE gate (consumer-app OTA per the all-surface parity rule).
