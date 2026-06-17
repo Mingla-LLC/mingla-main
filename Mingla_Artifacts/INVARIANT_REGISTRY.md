@@ -7,6 +7,42 @@
 
 ---
 
+## ACTIVE — ORCH-1155 (public brand page — Direction-A redesign + all-surface parity, 2026-06-17, PR #516)
+
+### I-PROPOSED-1155-ABOUT-FIRST-DEFAULT (ACTIVE)
+- **Rule:** The public brand page's About tab is the FIRST tab and the DEFAULT-selected tab (never Upcoming).
+- **Enforcement:** strict-grep + the brand-rendering tests (`packages/brand-rendering/__tests__/orch_1155_brand_redesign.test.tsx`); CI green on #516.
+- **Test that catches a regression:** test asserts About is index 0 + initial selection; fails-on-revert.
+- **Established:** ACTIVE on ORCH-1155 close 2026-06-17.
+
+### I-PROPOSED-1155-TABS-HIDE-WHEN-EMPTY (ACTIVE)
+- **Rule:** A brand-page tab (Upcoming/Events/Trips/Experiences) renders ONLY when that bucket has content; no empty tabs, no missing populated tabs.
+- **Enforcement:** `packages/brand-rendering/__tests__/orch_1155_brand_redesign*` (full / partial / zero-offering brands).
+- **Established:** ACTIVE on ORCH-1155 close 2026-06-17.
+
+### I-PROPOSED-1155-BRAND-USES-SHELL (ACTIVE)
+- **Rule:** The brand page composes the shared Direction-A primitives (offering-rendering ParallaxCoverShell/OfferingChrome/useResponsiveLayout + event-rendering palette) — it does NOT fork its own cover/chrome/theme.
+- **Enforcement:** strict-grep + structural test; CI green on #516.
+- **Established:** ACTIVE on ORCH-1155 close 2026-06-17.
+
+### I-PROPOSED-1155-BRAND-BADGE-NOT-DEAD-TAP (ACTIVE)
+- **Rule:** Every in-app brand affordance (consumer swipe-card badge, "Presented by" lockup, and the brand-card "View" on event/trip/experience details) navigates to `/b/{brandSlug}` — no dead taps; empty slug guarded.
+- **Enforcement:** `app-mobile/src/screens/__tests__/orch_1155_brand_view_affordance.test.ts` + `orch_1155_brand_badge_nav.test.ts`.
+- **Test that catches a regression:** asserts a brand-view handler is passed + nav fires; fails-on-revert.
+- **Established:** ACTIVE on ORCH-1155 close 2026-06-17.
+
+### I-PROPOSED-1155-NO-FABRICATED-FOLLOW (ACTIVE)
+- **Rule:** The brand page must NOT render a Follow control (no follow exists in the data model — constitution rule 9, no fabricated affordances). No Reserve on the brand page either.
+- **Enforcement:** strict-grep + structural test asserting absence of Follow/Reserve.
+- **Established:** ACTIVE on ORCH-1155 close 2026-06-17.
+
+### I-PROPOSED-1155-SINGLE-PALETTE-ENGINE (ACTIVE)
+- **Rule:** Brand theming uses the single shared createThemePalette/resolveTheme engine (one owner per truth, constitution rule 2) — no bespoke local palette fork.
+- **Enforcement:** palette-parity test (5/5 on #516) + strict-grep.
+- **Established:** ACTIVE on ORCH-1155 close 2026-06-17.
+
+---
+
 ## ACTIVE — ORCH-1153 (experience reserve + checkout integrity, 2026-06-17, PR #510)
 
 ### I-1153-NO-DRAIN (ACTIVE)
