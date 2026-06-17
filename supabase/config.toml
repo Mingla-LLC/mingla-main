@@ -228,3 +228,17 @@ verify_jwt = true
 # Messaging Service. Twilio creds are Supabase secrets (set at deploy).
 [functions.send-venue-sms]
 verify_jwt = true
+
+# META-ORCH-1148 2.2a — venue-reservation-create serves BOTH an authenticated
+# consumer-app user AND an anonymous web guest, so verify_jwt=false (the fn
+# handles auth internally, mirroring ticket-checkout-create's guest path);
+# re-validates the slot against pg_venue_available_slots + enforces capacity
+# server-side; free path mints directly, fee path uses the shared all-in engine.
+[functions.venue-reservation-create]
+verify_jwt = false
+
+# META-ORCH-1148 2.2a — venue-reservation-confirm finalizes a FEE reservation
+# after the charge (idempotent: FOR-UPDATE the session + return-existing).
+# verify_jwt=false: callable from the anon web redirect-return + the app.
+[functions.venue-reservation-confirm]
+verify_jwt = false
