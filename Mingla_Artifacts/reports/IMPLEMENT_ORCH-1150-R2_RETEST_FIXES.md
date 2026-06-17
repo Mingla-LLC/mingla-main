@@ -441,3 +441,38 @@ Edited ONLY `app/rsvp/[id]/index.tsx` (the one-line route fix + comment) and its
 
 ## Commit
 `ORCH-1150-R2: D-9b — RSVP detail Edit passes mode=edit-published (published-edit no longer bounces to events list)`
+
+---
+
+# D-7b — RSVP public page scroll runway (contentBottomInset parity)
+
+## Symptom + root cause
+On the public RSVP page (`/e/{brandSlug}/{eventSlug}`, `event_type='rsvp'`), the details (brand chip, RSVP card, facts, About) appeared to slide BEHIND the cover with only a short window to read them; the ticketed event / trip / experience pages scroll correctly. Per `INVESTIGATE_ORCH-1150_RSVP_PARALLAX_D7B.md`: **no z-layering bug** — the shared `ParallaxCoverShell` z-orders `cover(1) < content(2) < chrome(70)` unconditionally on native and the cover is a STATIC pinned layer (no scroll transform). The real cause is **near-zero scroll runway**: the RSVP body is short (no ticket-tier section, no docked CTA), it sat under an ~80%-tall pinned-cover spacer (`aspectRatio:4/5`), AND it passed `contentBottomInset=0` (the shell default). So content height ≈ viewport height ⇒ the body could be dragged only a little over the (correctly pinned) cover before bottoming out ⇒ reads as "stuck behind the cover." The ticketed branch is exempt because its tier list + docked `EventReserveBar` add height; trip/experience routes pass `contentBottomInset={spacing.md}`.
+
+## The inset wiring (end-to-end plumbing, RSVP-scoped)
+The plumbing was MISSING end-to-end — `RsvpPublicBody` neither accepted nor forwarded `contentBottomInset`/`onScroll`/`onScrollViewLayout`, and `PublicEventPage`'s RSVP branch passed none.
+
+1. **`RsvpPublicBody.tsx`** — added `contentBottomInset?: number` (default `48`, a positive runway so a short page clears the cover even if a caller omits it), plus `onScroll?` + `onScrollViewLayout?` for convention parity. All three are forwarded to `<ParallaxCoverShell>` mirroring `FoundationEventPreview.tsx:460-463` (`contentBottomInset={contentBottomInset}` → ScrollView `paddingBottom`; `onScroll`/`onScrollViewLayout` pass-through). Added the `LayoutChangeEvent`/`NativeScrollEvent`/`NativeSyntheticEvent` type imports from `react-native`.
+2. **`PublicEventPage.tsx` RSVP branch only (`~L551-574`)** — imported `spacing` from `../../constants/designSystem` and passed `contentBottomInset={insets.bottom + spacing.xxl}` plus `onScroll={handleScroll}` / `onScrollViewLayout={handleScrollLayout}` (the same handlers already wired to the ticketed branch). The ticketed branch (`L596+`) and the shell were NOT touched.
+
+## Value used + parity source
+- **Value:** `insets.bottom + spacing.xxl` = safe-area bottom + 48px.
+- **Parity source:** trip route `app/t/[brandSlug]/[tripSlug].tsx:174` and experience route `app/exp/[brandSlug]/[experienceSlug].tsx:195` both pass `contentBottomInset={spacing.md}` (=16). RSVP intentionally uses a LARGER pad (`spacing.xxl`=48 + safe-area) because — unlike trip/experience — the RSVP body has NEITHER a docked reserve bar NOR a tier list adding height (the investigation §136 calls for "a one-screen-safe runway... large enough that the short RSVP body clears the cover"). `onScroll` parity: **YES added** (harmless — RSVP has no float→dock pill, so no runtime effect today; matches the caller convention).
+
+## Test + fails-on-revert
+Extended `src/components/event/__tests__/RsvpPublicBody.parallaxLayering.orch1150r2.test.ts` with a new `D-7b` describe block (5 assertions): `RsvpPublicBody` declares `contentBottomInset`, defaults it to a NON-ZERO positive value, forwards it to `<ParallaxCoverShell>`, forwards `onScroll`/`onScrollViewLayout`; AND `PublicEventPage`'s RSVP branch passes a positive `contentBottomInset` (must match `insets.bottom + spacing.`, must NOT be `{0}`). Suite: **8/8 pass**.
+- **fails-on-revert verified at 65d58691c**: true LINE DELETION (perl) of the `contentBottomInset={contentBottomInset}` forward in `RsvpPublicBody.tsx` AND the `contentBottomInset={insets.bottom + spacing.xxl}` pass in `PublicEventPage.tsx` → **2 tests FAIL** (the shell-forward + page-inset assertions); both lines restored → **8/8 green**. Append-only: no existing test modified or deleted.
+
+## Gates
+- **tsc** (`npx tsc --noEmit -p tsconfig.json`, mingla-business): ZERO new errors — **333 baseline before == 333 after** (verified by stashing the three changed files: identical count). Neither edited source file (`RsvpPublicBody.tsx`, `src/components/event/PublicEventPage.tsx`) appears in the error set; all 333 are pre-existing cross-package/`any`-param/missing-test-dep noise.
+- **`node .github/scripts/strict-grep/i-proposed-tr2-route-by-event-type.mjs`**: 6 violations are PRE-EXISTING (identical count on pristine HEAD via stash; all in ScannerHome / hub trips / accept-scanner-invitation — files I did not touch). My change adds no hardcoded `/event/` or `/trip/` route. No new violation introduced.
+- **jest** event suite regression check: the 3 failing suites (`EventListCard_defensiveFilter`, `orch_1138_event_foundation`, `PublicEventPage.closeButton.adversarial`) fail IDENTICALLY at baseline (verified via stash) — pre-existing, unrelated to this change.
+
+## Runtime status
+Runtime sim repro was BLOCKED (per investigation §93-97: the Metro on :8081 is wedged on ORCH-1142's worktree / `expo-image-manipulator` drift, COMMS-0035 / ORCH-1119). Fix is structurally proven + source-test-guarded; Seth's device retest confirms.
+
+## DO-NOT-TOUCH compliance
+Edited ONLY: `mingla-business/src/components/event/RsvpPublicBody.tsx`, the RSVP branch of `mingla-business/src/components/event/PublicEventPage.tsx`, and the test. Did NOT touch `packages/offering-rendering/ParallaxCoverShell.tsx` (shared shell — proven correct), `FoundationEventPreview.tsx`, the ticketed `PublicEventPage` branch, or any trip/experience caller/route. The shell remains byte-identical.
+
+## Commit
+`ORCH-1150-R2: D-7b — RSVP public page scroll runway (contentBottomInset parity) so content scrolls over the cover`

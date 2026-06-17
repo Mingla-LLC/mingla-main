@@ -57,6 +57,7 @@ import {
 } from "@mingla/event-rendering";
 import { useResponsiveLayout } from "@mingla/offering-rendering";
 
+import { spacing } from "../../constants/designSystem";
 import { EventReserveBar } from "./EventReserveBar";
 import { FoundationEventPreview } from "./FoundationEventPreview";
 import { RsvpPublicBody } from "./RsvpPublicBody";
@@ -569,6 +570,15 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
           onOpenBrand={(slug: string) => router.push(`/b/${slug}` as never)}
           onOpenMaps={openMapsForQuery}
           onSubmit={rsvpSubmit}
+          // ORCH-1150 R2 D-7b — scroll-runway parity with the trip / experience /
+          // ticketed routes. Those routes use `spacing.md` because a DOCKED reserve
+          // bar (or tier list) already adds height; the RSVP body has NEITHER, so it
+          // needs MORE bottom runway to guarantee a short page exceeds the viewport
+          // and the (correctly pinned) cover can be fully scrolled away. Safe-area
+          // bottom + a one-screen-safe pad.
+          contentBottomInset={insets.bottom + spacing.xxl}
+          onScroll={handleScroll}
+          onScrollViewLayout={handleScrollLayout}
           safeAreaTop={insets.top}
           testID="orch-1150-rsvp-public"
         />

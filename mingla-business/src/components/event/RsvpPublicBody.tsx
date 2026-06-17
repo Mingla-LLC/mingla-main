@@ -21,6 +21,9 @@
 
 import React, { useCallback, useMemo, useState } from "react";
 import {
+  type LayoutChangeEvent,
+  type NativeScrollEvent,
+  type NativeSyntheticEvent,
   Platform,
   Pressable,
   StyleSheet,
@@ -77,6 +80,26 @@ export interface RsvpPublicBodyProps {
   onOpenBrand?: (brandSlug: string) => void;
   onOpenMaps?: (query: string) => void;
   /**
+   * ORCH-1150 R2 D-7b — scroll runway. A short RSVP page (no ticket tiers, no
+   * docked CTA) sits under an ~80%-tall pinned-cover spacer, so with a zero
+   * bottom inset the body barely exceeds the viewport ⇒ near-zero scroll travel
+   * ⇒ the (correctly pinned) cover dominates and content reads as "stuck behind
+   * the cover." A positive `contentBottomInset` adds the runway so the body
+   * scrolls UP and OVER the cover — parity with the trip / experience / ticketed
+   * routes. Forwarded straight to `<ParallaxCoverShell contentBottomInset>`
+   * (→ ScrollView `paddingBottom`). Defaults to a positive value so the runway
+   * exists even if a caller forgets to pass it.
+   */
+  contentBottomInset?: number;
+  /**
+   * Convention parity with FoundationEventPreview / trip / experience callers.
+   * RSVP has no float→dock CTA pill, so these have no runtime effect today — they
+   * exist so the RSVP caller matches the shared shell's prop contract and the
+   * regression guard can assert full parity.
+   */
+  onScroll?: (event: NativeSyntheticEvent<NativeScrollEvent>) => void;
+  onScrollViewLayout?: (event: LayoutChangeEvent) => void;
+  /**
    * Submits the RSVP. Returns the resolved server state so the body can reflect
    * pending / waitlist / going. Throws on error (the body shows an inline error,
    * never a dead end).
@@ -111,6 +134,11 @@ export const RsvpPublicBody: React.FC<RsvpPublicBodyProps> = ({
   onOpenBrand,
   onOpenMaps,
   onSubmit,
+  // ORCH-1150 R2 D-7b — default to a positive runway so the short RSVP page
+  // always clears the pinned cover even if the caller omits the prop.
+  contentBottomInset = 48,
+  onScroll,
+  onScrollViewLayout,
   safeAreaTop = 0,
   testID,
 }) => {
@@ -573,7 +601,10 @@ export const RsvpPublicBody: React.FC<RsvpPublicBodyProps> = ({
           {event.name.length > 0 ? event.name : "Untitled event"}
         </Text>
       }
+      contentBottomInset={contentBottomInset}
       safeAreaTop={safeAreaTop}
+      onScroll={onScroll}
+      onScrollViewLayout={onScrollViewLayout}
       testID={testID}
     >
       <View>
