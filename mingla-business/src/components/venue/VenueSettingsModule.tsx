@@ -18,7 +18,7 @@
  *    charge in 2.0).
  */
 
-import React, { useCallback, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { Pressable, StyleSheet, Switch, Text, View } from "react-native";
 import { useRouter } from "expo-router";
 
@@ -38,14 +38,24 @@ import {
   useVenueReservationSettings,
 } from "../../hooks/useVenueReservationSettings";
 import { BRAND_ROLE_RANK } from "../../utils/brandRole";
-import { formatCurrency, normalizeCurrency } from "../../utils/currency";
+import {
+  formatCurrency,
+  majorFromMinor,
+  minorFromMajor,
+  normalizeCurrency,
+} from "../../utils/currency";
 import {
   brandStripeOnboardingRoute,
   paidPublishGuardCopy,
 } from "../../utils/paidPublishGuards";
 import { Button } from "../ui/Button";
 import { GlassCard } from "../ui/GlassCard";
-import { brandPayoutReadiness, canEnablePaidReservationFee } from "./venueFeeGate";
+import { Input } from "../ui/Input";
+import {
+  brandPayoutReadiness,
+  canEnablePaidReservationFee,
+  paidFeeIsActive,
+} from "./venueFeeGate";
 
 const MANAGER_PLUS_RANK = BRAND_ROLE_RANK.event_manager; // 40
 
@@ -110,6 +120,31 @@ export function VenueSettingsModule({
   const feeEnabled = settings?.feeEnabled ?? false;
   const feeAmountCents = settings?.feeAmountCents ?? 0;
 
+  // Draft amount in MAJOR units (what the operator types). Hydrated from the
+  // persisted cents; mirrors the table-sheet's string-input pattern. Kept in
+  // sync when the server value changes (e.g. after a successful save / refetch).
+  const [amountDraft, setAmountDraft] = useState<string>("");
+  useEffect(() => {
+    if (feeAmountCents > 0) {
+      setAmountDraft(String(majorFromMinor(feeAmountCents, currency)));
+    } else {
+      setAmountDraft("");
+    }
+  }, [feeAmountCents, currency]);
+
+  // Parse the draft → integer cents (currency-aware; zero-decimal safe). A blank
+  // / non-numeric / non-positive draft → 0 (= "no amount set").
+  const draftCents = useMemo<number>(() => {
+    const major = Number.parseFloat(amountDraft.replace(/,/g, ""));
+    if (!Number.isFinite(major) || major <= 0) return 0;
+    return minorFromMajor(major, currency);
+  }, [amountDraft, currency]);
+
+  // The fee is a broken "paid but charges nothing" config while ON with no
+  // positive amount — surface it and DO NOT treat the fee as active.
+  const feeNeedsAmount = feeEnabled && draftCents <= 0;
+  const feeActive = paidFeeIsActive(feeEnabled, draftCents);
+
   const handleToggleReservations = useCallback(
     (next: boolean): void => {
       if (!canMutate) return;
@@ -127,13 +162,27 @@ export function VenueSettingsModule({
         return;
       }
       setFeeBlocked(false);
+      // Turning the fee ON does NOT set an amount — the operator must enter one
+      // (feeNeedsAmount surfaces until they do). Turning it OFF clears the amount
+      // so it can never settle as a stale paid fee.
       updateFee.mutate({
         feeEnabled: next,
         feeCurrency: next ? currency : null,
+        feeAmountCents: next ? undefined : null,
       });
     },
     [canMutate, payoutReady, updateFee, currency],
   );
+
+  // Commit the typed amount to fee_amount_cents (on blur / explicit save). A
+  // null/0 draft writes null so the fee reads FREE rather than broken-paid.
+  const handleSaveAmount = useCallback((): void => {
+    if (!canMutate || !feeEnabled) return;
+    updateFee.mutate({
+      feeAmountCents: draftCents > 0 ? draftCents : null,
+      feeCurrency: currency,
+    });
+  }, [canMutate, feeEnabled, updateFee, draftCents, currency]);
 
   const handleNoShowPolicy = useCallback(
     (policy: "forfeit" | "none"): void => {
@@ -154,9 +203,9 @@ export function VenueSettingsModule({
   }, [brandId, router]);
 
   const feePreview = useMemo(() => {
-    if (!feeEnabled || feeAmountCents <= 0) return null;
-    return formatCurrency(feeAmountCents, currency, true);
-  }, [feeEnabled, feeAmountCents, currency]);
+    if (!feeActive) return null;
+    return formatCurrency(draftCents, currency, true);
+  }, [feeActive, draftCents, currency]);
 
   return (
     <View style={styles.host} testID={testID ?? "venue-settings-module"}>
@@ -224,8 +273,39 @@ export function VenueSettingsModule({
               </View>
             ) : null}
 
-            {feeEnabled && feePreview !== null ? (
-              <Text style={styles.feePreview}>
+            {feeEnabled && !feeBlocked ? (
+              <View style={styles.amountBlock}>
+                <Text style={styles.fieldLabel}>
+                  Fee amount ({normalizeCurrency(currency)})
+                </Text>
+                <Input
+                  value={amountDraft}
+                  onChangeText={setAmountDraft}
+                  onBlur={handleSaveAmount}
+                  variant="number"
+                  placeholder="0.00"
+                  disabled={!canMutate}
+                  accessibilityLabel="Reservation fee amount"
+                  testID="venue-settings-fee-amount"
+                />
+                {feeNeedsAmount ? (
+                  <Text
+                    style={styles.amountWarn}
+                    accessibilityLabel="Set a fee amount above zero to charge guests"
+                    testID="venue-settings-fee-needs-amount"
+                  >
+                    Set an amount above 0 to charge guests. Until you do, this fee
+                    stays free.
+                  </Text>
+                ) : null}
+              </View>
+            ) : null}
+
+            {feeActive && feePreview !== null ? (
+              <Text
+                style={styles.feePreview}
+                testID="venue-settings-fee-preview"
+              >
                 Guests pay {feePreview} all-in at booking.
               </Text>
             ) : null}
@@ -366,6 +446,18 @@ const styles = StyleSheet.create({
     ...typography.bodySm,
     color: semantic.success,
     marginTop: spacing.xs,
+  },
+  amountBlock: {
+    marginTop: spacing.sm,
+    gap: spacing.xs,
+  },
+  fieldLabel: {
+    ...typography.bodySm,
+    color: textTokens.secondary,
+  },
+  amountWarn: {
+    ...typography.bodySm,
+    color: semantic.warning,
   },
   blockCard: {
     marginTop: spacing.sm,

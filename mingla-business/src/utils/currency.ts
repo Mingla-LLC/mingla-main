@@ -145,6 +145,17 @@ export const majorFromMinor = (value: number, currency: string): number =>
   value / minorUnitFactor(normalizeCurrency(currency));
 
 /**
+ * Inverse of `majorFromMinor` — convert a major-unit amount (e.g. 25 dollars)
+ * to integer minor units (e.g. 2500 cents), currency-aware (zero-decimal
+ * currencies like JPY/KRW round to whole units). Always returns an integer.
+ * Negative / non-finite inputs clamp to 0.
+ */
+export const minorFromMajor = (value: number, currency: string): number => {
+  if (!Number.isFinite(value) || value <= 0) return 0;
+  return Math.round(value * minorUnitFactor(normalizeCurrency(currency)));
+};
+
+/**
  * Sensible-default locale per currency. Avoids requiring callers to know
  * which locale to pair. Defaults to en-GB for unknown codes.
  */

@@ -31,6 +31,38 @@ export function canEnablePaidReservationFee(
 }
 
 /**
+ * META-ORCH-1148 e2e-validation gap — a PAID reservation fee is only ACTIVE
+ * (will be charged) when the toggle is ON **and** an amount > 0 is set. The
+ * engine / edge fn already treat `fee_enabled` + null/0 amount as FREE
+ * (venue-reservation-create: `fee_enabled && (fee_amount_cents ?? 0) > 0`).
+ * Surfacing the SAME rule in the Settings UI makes the invalid state
+ * (fee_enabled=true + amount null/0) impossible to leave the screen in as a
+ * silently-broken "paid but charges nothing" config.
+ *
+ * Pure so it is fails-on-revert testable
+ * (I-PROPOSED-1148-PAID-FEE-NEEDS-NONZERO-AMOUNT): a revert that returns true
+ * for a null/0 amount lets the broken config read as active and FAILs the test.
+ */
+export function paidFeeIsActive(
+  feeEnabled: boolean,
+  feeAmountCents: number | null,
+): boolean {
+  return feeEnabled && (feeAmountCents ?? 0) > 0;
+}
+
+/**
+ * True when the fee config is SAVEABLE without leaving the screen in the broken
+ * state: either the fee is OFF (amount irrelevant) OR the fee is ON with a
+ * positive amount. A fee ON with null/0 amount is NOT saveable as active.
+ */
+export function feeAmountValidForSave(
+  feeEnabled: boolean,
+  feeAmountCents: number | null,
+): boolean {
+  return !feeEnabled || (feeAmountCents ?? 0) > 0;
+}
+
+/**
  * Resolve readiness from the (camelCased) brand shape this app already carries.
  * `stripeStatus === "active"` is the canonical "charges enabled" signal.
  */
