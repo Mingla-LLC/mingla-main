@@ -607,6 +607,25 @@ export default function ConsumerEventDetailScreen({
     : fnd.format === "hybrid" && fnd.address !== null
       ? `${fnd.address} · also online`
       : (fnd.address ?? addressHiddenLabel);
+  // ORCH-1157 Round-5 [rsvp-address-privacy] — defense-in-depth for the venue
+  // NAME line. The address gate only masks `venueAddressLabel`; the name line
+  // renders `fnd.venueName`. If a row reaches here with the full street folded
+  // into the venueName (the legacy `location_text` fallback, e.g.
+  // "The Party Venue · 700 Corporate Center Drive…"), the name line would leak
+  // the street even with the gate ON. When the address is hidden, never render a
+  // name that still contains the street: take the portion before the canonical
+  // " · " name/address separator, and if the remainder still contains the full
+  // address, drop to the venue name only / null so the street can never paint.
+  const venueNameDisplay: string | null = (() => {
+    if (fnd.venueName === null) return null;
+    if (!addressHidden) return fnd.venueName;
+    const namePart = fnd.venueName.split(" · ")[0]?.trim() ?? fnd.venueName;
+    if (fnd.address !== null && namePart.includes(fnd.address)) {
+      // Even the leading segment carries the street — suppress it entirely.
+      return null;
+    }
+    return namePart.length > 0 ? namePart : null;
+  })();
   const venueMapsQuery =
     addressHidden || fnd.venueName === null
       ? null
@@ -871,8 +890,8 @@ export default function ConsumerEventDetailScreen({
           accessibilityRole={venueMapsQuery !== null ? "button" : undefined}
           accessibilityLabel={
             venueMapsQuery !== null
-              ? `Open ${fnd.venueName} in maps`
-              : fnd.venueName
+              ? `Open ${venueNameDisplay ?? fnd.venueName} in maps`
+              : (venueNameDisplay ?? addressHiddenLabel)
           }
           style={[styles.venueCard, surface.card]}
         >
@@ -880,12 +899,19 @@ export default function ConsumerEventDetailScreen({
             <Text style={[styles.venueGlyph, { color: palette.accentText }]}>⌖</Text>
           </View>
           <View style={styles.venueTextCol}>
+            {/* ORCH-1157 Round-5 — render the SANITIZED venue name (never the
+                street-folded fallback) when the address is hidden. Falls back to
+                the City/Country hidden label when the name itself is the street. */}
             <Text style={[styles.venueName, surface.primaryText, { fontFamily: boldFamily }]}>
-              {fnd.venueName}
+              {venueNameDisplay ?? addressHiddenLabel}
             </Text>
-            <Text style={[styles.venueAddr, surface.secondaryText]}>
-              {venueAddressLabel}
-            </Text>
+            {/* Suppress the sub-line when the name fell back to the hidden label
+                so the City/Country caption never paints twice. */}
+            {venueNameDisplay === null && venueAddressLabel === addressHiddenLabel ? null : (
+              <Text style={[styles.venueAddr, surface.secondaryText]}>
+                {venueAddressLabel}
+              </Text>
+            )}
           </View>
           {venueMapsQuery !== null ? (
             <View style={[styles.venuePill, { backgroundColor: palette.accent }]}>
