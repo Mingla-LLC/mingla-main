@@ -73,6 +73,10 @@ export const fetchVenueTables = async (
     .from("venue_tables")
     .select(TABLE_COLUMNS)
     .eq("brand_id", brandId)
+    // Exclude soft-deleted tables (deleted_at set) — they must vanish from the
+    // operator list AND stop producing availability (the engine excludes them
+    // too). Mirrors the engine's `AND t.deleted_at IS NULL`.
+    .is("deleted_at", null)
     .order("sort_order", { ascending: true })
     .order("name", { ascending: true })
     .returns<VenueTableRow[]>();
@@ -119,6 +123,35 @@ export function useUpsertVenueTable(
       };
       if (input.id !== undefined) row.id = input.id;
       const { error } = await supabase.from("venue_tables").upsert(row);
+      if (error !== null) throw error as unknown as Error;
+    },
+    onSuccess: () => {
+      if (brandId !== null) {
+        void queryClient.invalidateQueries({
+          queryKey: venueTablesKeys.list(brandId),
+        });
+      }
+    },
+  });
+}
+
+/**
+ * Soft-DELETE a table via the guarded RPC (`biz_venue_table_soft_delete`).
+ * Preserves reservation history (the row + FK stay; deleted_at is stamped). The
+ * RPC is SECURITY DEFINER + manager+ gated server-side. Idempotent on the server
+ * (already-deleted → no-op). On success the list (which filters deleted_at) and
+ * the availability engine both stop seeing the table.
+ */
+export function useDeleteVenueTable(
+  brandId: string | null,
+): UseMutationResult<void, Error, { id: string }> {
+  const queryClient = useQueryClient();
+  return useMutation<void, Error, { id: string }>({
+    mutationFn: async ({ id }): Promise<void> => {
+      if (brandId === null) throw new Error("brand_required");
+      const { error } = await supabase.rpc("biz_venue_table_soft_delete", {
+        p_table_id: id,
+      });
       if (error !== null) throw error as unknown as Error;
     },
     onSuccess: () => {

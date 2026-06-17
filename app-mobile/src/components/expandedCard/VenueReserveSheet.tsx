@@ -113,7 +113,7 @@ export const VenueReserveSheet: React.FC<VenueReserveSheetProps> = ({
   onReserved,
 }) => {
   const insets = useSafeAreaInsets();
-  const { user } = useAppStore();
+  const { user, profile } = useAppStore();
   const reserve = useReserveTable(user?.id);
 
   const [step, setStep] = useState<Step>("party");
@@ -140,7 +140,14 @@ export const VenueReserveSheet: React.FC<VenueReserveSheetProps> = ({
     step === "slots" || step === "confirm" ? partySize : null,
   );
 
-  const profilePhone = (user?.phone ?? "").trim();
+  // ORCH-1148 [consumer phone blocker] — the signed-in user's phone is sourced
+  // from their profile. The store `user` now mirrors `profiles.phone` (see
+  // appStore.setProfile), but we also read `profile.phone` directly as a
+  // belt-and-suspenders fallback in case the store `user` merge hasn't landed
+  // yet (profile loads asynchronously, possibly after this sheet first reads).
+  // A user WITH a profile phone gets needsPhone=false (no prompt, books with
+  // their phone automatically); a user with NONE gets the contact-phone input.
+  const profilePhone = (user?.phone ?? profile?.phone ?? "").trim();
   const needsPhone = profilePhone.length === 0;
   const composedPhoneE164 = needsPhone
     ? buildPendingCollabPhoneE164(phoneInput, selectedCountry?.dialCode)

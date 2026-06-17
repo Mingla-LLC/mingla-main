@@ -20,6 +20,7 @@ import {
 } from "../../constants/designSystem";
 import { useCurrentBrandRole } from "../../hooks/useCurrentBrandRole";
 import {
+  useDeleteVenueTable,
   useSetVenueTableActive,
   useUpsertVenueTable,
   useVenueTables,
@@ -80,6 +81,7 @@ export function VenueTablesModule({
   const tablesQuery = useVenueTables(brandId);
   const upsert = useUpsertVenueTable(brandId);
   const setActive = useSetVenueTableActive(brandId);
+  const remove = useDeleteVenueTable(brandId);
 
   const [sheetOpen, setSheetOpen] = useState<boolean>(false);
   const [editing, setEditing] = useState<VenueTable | null>(null);
@@ -115,6 +117,22 @@ export function VenueTablesModule({
       setActive.mutate({ id: t.id, isActive: !t.isActive });
     },
     [canMutate, setActive],
+  );
+
+  const handleDelete = useCallback(
+    (id: string): void => {
+      if (!canMutate) return;
+      remove.mutate(
+        { id },
+        {
+          onSuccess: () => {
+            setSheetOpen(false);
+            setEditing(null);
+          },
+        },
+      );
+    },
+    [canMutate, remove],
   );
 
   const header = useMemo(
@@ -232,6 +250,9 @@ export function VenueTablesModule({
         table={editing}
         onSave={handleSave}
         saving={upsert.isPending}
+        onDelete={handleDelete}
+        deleting={remove.isPending}
+        canDelete={canMutate}
       />
     </View>
   );

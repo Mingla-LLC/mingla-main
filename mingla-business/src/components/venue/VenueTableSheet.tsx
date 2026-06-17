@@ -18,6 +18,7 @@ import {
   typography,
 } from "../../constants/designSystem";
 import { Button } from "../ui/Button";
+import { ConfirmDialog } from "../ui/ConfirmDialog";
 import { Input } from "../ui/Input";
 import { Sheet } from "../ui/Sheet";
 import type {
@@ -63,6 +64,11 @@ export interface VenueTableSheetProps {
   table: VenueTable | null;
   onSave: (input: VenueTableUpsert) => void;
   saving: boolean;
+  /** Soft-delete the table being edited (edit mode only). Omit to hide delete. */
+  onDelete?: (id: string) => void;
+  deleting?: boolean;
+  /** Only managers+ may delete; the row action is hidden otherwise. */
+  canDelete?: boolean;
   testID?: string;
 }
 
@@ -72,9 +78,25 @@ export function VenueTableSheet({
   table,
   onSave,
   saving,
+  onDelete,
+  deleting = false,
+  canDelete = false,
   testID,
 }: VenueTableSheetProps): React.ReactElement {
   const isEdit = table !== null;
+  const [confirmDeleteOpen, setConfirmDeleteOpen] = useState<boolean>(false);
+
+  // Close the confirm dialog whenever the sheet (re)opens for a different table.
+  useEffect(() => {
+    if (!visible) setConfirmDeleteOpen(false);
+  }, [visible]);
+
+  const showDelete = isEdit && canDelete && onDelete !== undefined;
+
+  const handleConfirmDelete = useCallback((): void => {
+    if (table === null || onDelete === undefined) return;
+    onDelete(table.id);
+  }, [table, onDelete]);
   const [name, setName] = useState<string>("");
   const [capacity, setCapacity] = useState<string>("");
   const [minParty, setMinParty] = useState<string>("");
@@ -284,8 +306,44 @@ export function VenueTableSheet({
             style={styles.saveBtn}
             testID="venue-table-save"
           />
+
+          {showDelete ? (
+            <Button
+              label="Delete table"
+              onPress={() => setConfirmDeleteOpen(true)}
+              variant="destructive"
+              size="md"
+              fullWidth
+              disabled={deleting}
+              loading={deleting}
+              style={styles.deleteBtn}
+              testID="venue-table-delete"
+            />
+          ) : null}
         </ScrollView>
       </View>
+
+      {showDelete ? (
+        <ConfirmDialog
+          visible={confirmDeleteOpen}
+          onClose={() => setConfirmDeleteOpen(false)}
+          onConfirm={handleConfirmDelete}
+          title="Delete this table?"
+          description={
+            `${table?.name ?? "This table"} will be removed from your floor plan` +
+            " and stop being offered for new bookings. Existing reservations are" +
+            " kept. This can't be undone."
+          }
+          variant="simple"
+          destructive
+          confirmLabel="Delete"
+          cancelLabel="Keep table"
+          confirmLoading={deleting}
+          confirmTestID="venue-table-delete-confirm"
+          cancelTestID="venue-table-delete-cancel"
+          testID="venue-table-delete-dialog"
+        />
+      ) : null}
     </Sheet>
   );
 }
@@ -449,6 +507,9 @@ const styles = StyleSheet.create({
   },
   saveBtn: {
     marginTop: spacing.lg,
+  },
+  deleteBtn: {
+    marginTop: spacing.sm,
   },
 });
 

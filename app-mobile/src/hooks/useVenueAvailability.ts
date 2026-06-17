@@ -82,7 +82,10 @@ export function useVenueAvailability(
       fetchVenueSlots(brandId as string, date as string, partySize as number),
     enabled,
     // Slots go stale fast — short window, refetch on focus.
+    // ORCH-1148: the focus comment was aspirational — make it real so returning to
+    // the slot step (or back to the app) re-pulls live remaining-capacity.
     staleTime: 30 * 1000,
     gcTime: 60 * 1000,
+    refetchOnWindowFocus: true,
   });
 }

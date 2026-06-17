@@ -305,7 +305,31 @@ export const useAppStore = create<AppState>()(
       },
 
       // User data actions
-      setProfile: (profile) => set({ profile }),
+      //
+      // ORCH-1148 [consumer phone blocker] — the store `user` is seeded from the
+      // Supabase AUTH user (`session.user`, via setAuth), which does NOT carry
+      // `profiles.phone`. Phone lives only on the separately-loaded `profiles`
+      // row. Consumers that read `user.phone` (e.g. VenueReserveSheet's
+      // `needsPhone`/`composedPhoneE164`) therefore saw an empty phone for a
+      // signed-in user WITH a profile phone → forced phone prompt that, if left
+      // blank, hit the server `buyer_phone_required` 400. Fix: whenever a profile
+      // is loaded, mirror its `phone` (when present) onto the store `user` so
+      // every `user.phone` reader gets the real value. Single chokepoint —
+      // covers useAuthSimple, AppStateManager, OnboardingFlow, AccountSettings,
+      // and authService profile loads alike. Null/absent profile clears nothing
+      // on `user` (logout goes through clearUserData).
+      setProfile: (profile) =>
+        set((state: AppState) => {
+          const nextProfilePhone =
+            typeof profile?.phone === "string" && profile.phone.trim().length > 0
+              ? profile.phone
+              : null;
+          const nextUser =
+            state.user && nextProfilePhone && state.user.phone !== nextProfilePhone
+              ? { ...state.user, phone: nextProfilePhone }
+              : state.user;
+          return { profile, user: nextUser };
+        }),
 
       // Session actions
       setCurrentSession: (currentSession) => set({ currentSession }),
