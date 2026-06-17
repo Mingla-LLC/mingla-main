@@ -542,3 +542,107 @@ So the worktree fix already flows through the Discover path. The deck (`Swipeabl
 
 - **Source + LIVE-infra + test-verified:** the full Discover→detail wiring; live DB row; live RPC output; deployed edge v179 mapping; origin/main divergence proof; 9 Deno tests + fails-on-revert by line-deletion.
 - **NOT sim/device-verified this round:** no consumer-sim screenshot (the bracketed worktree path breaks Metro, same constraint as Round-3; an OTA is the real device fix). Tester should capture the Discover→Events RSVP detail (hidden street + Maybe + no ticket block) **post-OTA**.
+
+---
+
+## Round-5 Discover client-parser hide-address fix — the REAL runtime leak
+
+**Round-4's "no source bug, just unmerged" conclusion is DISPROVEN.** Seth ran the FIXED
+round-3 bundle on a physical Samsung A72 via Metro and the RSVP "Where you'll be" STILL
+showed the full street for `hideAddressUntilTicket=ON`, viewer not going/maybe
+(`/tmp/orch-1157-device/20_secondtest_metro.png`). This round traced the runtime data flow
+end-to-end with LIVE evidence and found the actual defect.
+
+### The dispatch's premise was wrong — but there IS a server bug
+
+The dispatch hypothesized a CLIENT parser dropping `hideAddressUntilTicket`. There is **no
+client parser**: `NightOutExperiencesService.searchMerged` (`app-mobile/src/services/nightOutExperiencesService.ts:296`)
+does `return data as DiscoverMergedResponse` — a blind cast of the edge JSON, no field mapping.
+So whatever the edge returns is what the client renders. I verified `hideAddressUntilTicket`
+survives end-to-end (edge → service cast → DiscoverScreen `bizItems.push(it.item)` →
+`setExpansionTarget({kind:"businessEvent", data})` → `seed={businessEvent}` →
+`mapConsumerEventToFoundation` passthrough → `fnd.hideAddressUntilTicket` gate). The flag is
+TRUE at runtime and the `address` field IS correctly hidden.
+
+### Runtime-proven root cause — the street leaked through the venue NAME, not the address
+
+Live invoke of the **deployed** edge fn (v179) for Raleigh returned, for "The Second Test":
+- `hideAddressUntilTicket: true` ✓
+- `address: "The Party Venue · 700 Corporate Center Drive, Raleigh, NC 27607, United States"`
+- **`venueName: "The Party Venue · 700 Corporate Center Drive, …"`** ← the FULL STREET folded into the NAME
+
+The consumer detail (`ConsumerEventDetailScreen.tsx:884`) renders `fnd.venueName` verbatim as
+the venue-NAME line. The address gate only masks `venueAddressLabel`, never the name line — so
+the street painted through the NAME even with the gate ON. That is exactly what the device
+screenshot showed.
+
+**Why `venueName` was polluted:** `extractVenueName` (`supabase/functions/discover-merged-events/_helpers.ts:14`,
+ORCH-0846) read ONLY the top-level `theme.business_event.venueName`. SQL probe of live data:
+
+| event_type | rows | top-level `venueName` set | nested `location.venueName` set |
+|---|---|---|---|
+| event | 14 | 0 | 14 |
+| rsvp  | 2  | 0 | 2  |
+
+**16/16 events store the venue name nested at `theme.business_event.location.venueName`; ZERO
+use the top-level key.** So `extractVenueName` returned null for every event and
+`mapRpcRowToCard` fell back to `row.location_text` (the "name · street" string) AS the
+`venueName`. The buyer-web `RsvpPublicBody` never leaked because
+`mingla-business/src/services/publicEventsService.ts:772` already reads
+`location.venueName ?? row.location_text`. **This fix brings the consumer edge fn into parity
+with the web service.**
+
+### The masking trip-wire
+
+`ORCH-0846 ADV-A6a` asserted `extractVenueName` must NOT read `.location.venueName`, on the
+premise "ZERO live rows use .location.venueName." That premise is provably false (16/16 use
+it) — the anti-test was enforcing the very leak it claimed to prevent, and is why round-4's
+fixture (which set `venueName` at top-level, not nested) passed while live data leaked.
+
+### Fix
+
+- **`supabase/functions/discover-merged-events/_helpers.ts` (`extractVenueName`)** — read
+  top-level `venueName` FIRST (forward-compat), then the canonical nested
+  `location.venueName`, before `mapRpcRowToCard`'s `location_text` last resort. Now
+  `venueName = "The Party Venue"`; the street rides only on `address` (gated). **Edge fn —
+  requires orchestrator/operator DEPLOY from merged main; `verify_jwt=false` preserved.**
+- **`app-mobile/src/screens/Event/ConsumerEventDetailScreen.tsx`** — defense-in-depth
+  `venueNameDisplay`: when the address is hidden, strip the street from the name (split on the
+  canonical " · " separator; if the remainder still contains the full address, suppress it
+  entirely) and render `venueNameDisplay` instead of raw `fnd.venueName`; suppress the
+  duplicate City/Country sub-line. Pure-JS — OTA-shippable.
+
+### Tests + fails-on-revert
+
+- **NEW** `supabase/functions/discover-merged-events/__tests__/orch_1157_round5_venue_name_no_street_leak.test.ts`
+  — 5 tests against the live "The Second Test" shape (nested venueName, null top-level). T-R5-2:
+  `card.venueName === "The Party Venue"` and does NOT contain "700 Corporate Center Drive".
+  **fails-on-revert verified at `8e1e2d2ae`** by TRUE LINE DELETION of the nested-`location.venueName`
+  lookup in `_helpers.ts` → T-R5-1 + T-R5-2 FAIL (venueName falls back to the street) → restore → PASS.
+- **`[TEST-MOD-APPROVED ORCH-1157]`** updated `ORCH-0846 ADV-A6a` to the corrected contract
+  (resolve nested `location.venueName`, top-level still wins).
+- Green: round-5 (5), round-4 (9), venue adversarial (10). `deno check` clean for `_helpers.ts`.
+
+### Pre-existing issues found (NOT mine — for Orchestrator)
+
+- `supabase/functions/discover-merged-events/_response-bytes.ts` has 4 `deno check` TS errors
+  (Uint8Array/BodyInit/BlobPart under Deno 2.7 stdlib) — **identical to origin/main**, predates
+  this work. The fn deploys/runs fine (Supabase uses the fn's own deno runtime).
+- `end_at_boundary.test.ts` + `excludes_ended_events.test.ts` (5 ORCH-0845 tests) fail because
+  they assert on the pre-RPC query-builder source that the G1 scale v2 migration (PR #466)
+  replaced with `pg_discover_business_events`. Unchanged from origin/main — pre-existing.
+- `app-mobile` `orch_1157_round3_*` + `orch_1157_rsvp_consumer` jest suites fail to PARSE under
+  jest (`import.meta` not supported in Hermes/jest; the bracketed worktree path also breaks the
+  babel root). Pre-existing test-infra, independent of this fix.
+
+### Honest verification status
+
+- **Source + LIVE-infra + test-verified:** live DB shape (16/16 nested), live edge invoke
+  showing the polluted venueName, the fix, fails-on-revert by line-deletion, web-parity proof.
+- **NOT sim/device-verified this round:** bracketed worktree path breaks Metro (same constraint
+  as R3/R4). The orchestrator will hot-reload the bracket-free sim checkout (port 8083) +
+  re-verify on the physical A72 after this commit; the edge fn needs DEPLOY for the venueName to
+  arrive clean. Tester should confirm post-deploy + post-OTA: Discover → Events → RSVP detail,
+  hidden state shows venue NAME + City/Country only (no street), street appears on going/maybe.
+
+New HEAD: `8e1e2d2ae` (this report commit advances it).
