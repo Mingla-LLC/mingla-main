@@ -294,6 +294,17 @@ export const ParallaxCoverShell: React.FC<ParallaxCoverShellProps> = ({
         </View>
 
         <Scroll
+          // WEB-PHONE STACKING FIX (ORCH-1150-R2 D-7c): the Scroll element MUST
+          // carry an explicit position+zIndex so the scrolling body paints OVER
+          // the `position:fixed` cover (COVER_Z) instead of behind it. Without a
+          // `style` the Scroll was statically positioned + auto-z, so it sat in
+          // the flow layer BENEATH every positioned child (the fixed cover at
+          // COVER_Z). Mirrors how the native branch z-indexes `styles.nativeScroll`
+          // to CONTENT_Z. The host (`webPhoneHost`) establishes the shared stacking
+          // context (position:relative + zIndex:0) so cover(1) < Scroll(2) <
+          // chrome(70) resolves deterministically. Contract: COVER_Z < CONTENT_Z
+          // < CHROME_Z (shell header §Z-INDEX CONTRACT).
+          style={webStyle({ position: "relative", zIndex: CONTENT_Z })}
           contentContainerStyle={[
             styles.webPhoneScrollContent,
             { paddingBottom: contentBottomInset },
@@ -434,6 +445,15 @@ const styles = StyleSheet.create({
   // ---- web phone ----
   webPhoneHost: {
     flex: 1,
+    // WEB-PHONE STACKING FIX (ORCH-1150-R2 D-7c): establish a local stacking
+    // context so the host's three children — the `position:fixed` cover
+    // (COVER_Z), the `position:relative` Scroll (CONTENT_Z), and the
+    // `position:fixed` chrome (CHROME_Z) — resolve their z-order against EACH
+    // OTHER (cover < content < chrome) rather than independently at the root.
+    // `position:relative` + an explicit `zIndex` is the minimal trigger; without
+    // it the body could not reliably paint over the fixed cover.
+    position: "relative",
+    zIndex: 0,
   },
   webPhoneScrollContent: {
     flexGrow: 1,
