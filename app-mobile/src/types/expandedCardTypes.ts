@@ -294,4 +294,29 @@ export interface ExpandedCardModalProps {
   navigationTotal?: number;
   onPaywallRequired?: () => void;
   canAccessCurated?: boolean;
+  /**
+   * META-ORCH-1148 2.2f — when the modal is opened from a booked reservation,
+   * this renders the injected "Confirmed" reservation pass (banner + full
+   * details + a check-in QR) at the top of the existing expanded card design.
+   * Null / absent for every other card. Structural shape (no hook coupling);
+   * the Calendar tab maps its MyReservationRow into this.
+   */
+  reservationPass?: ReservationPass | null;
+}
+
+export interface ReservationPass {
+  reservationId: string;
+  status: string;
+  reservedForUtc: string;
+  partySize: number;
+  feeCents: number | null;
+  feeCurrency: string | null;
+  paymentStatus: string;
+  occasion: string | null;
+  guestNotes: string | null;
+  venueName: string | null;
+  address: string | null;
+  confirmationRef: string;
+  cancellable: boolean;
+  onCancel?: () => void;
 }

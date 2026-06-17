@@ -22,6 +22,10 @@ export interface MyReservationRow {
   brand_cover_type: string | null;
   brand_photo_url: string | null;
   brand_cover_hue: string | null;
+  brand_address: string | null;
+  brand_city: string | null;
+  brand_lat: number | null;
+  brand_lng: number | null;
   reserved_for: string;
   party_size: number;
   status: string;
@@ -39,6 +43,10 @@ interface RawBrandJoin {
   cover_media_type: string | null;
   profile_photo_url: string | null;
   cover_hue: string | null;
+  address: string | null;
+  city: string | null;
+  lat: number | null;
+  lng: number | null;
 }
 
 interface RawReservationRow {
@@ -67,7 +75,7 @@ async function fetchMyReservations(
   const { data, error } = await supabase
     .from("reservations")
     .select(
-      "id, brand_id, reserved_for, party_size, status, fee_cents, fee_currency, payment_status, occasion, guest_notes, created_at, brands(name, cover_media_url, cover_media_type, profile_photo_url, cover_hue)",
+      "id, brand_id, reserved_for, party_size, status, fee_cents, fee_currency, payment_status, occasion, guest_notes, created_at, brands(name, cover_media_url, cover_media_type, profile_photo_url, cover_hue, address, city, lat, lng)",
     )
     .eq("consumer_user_id", userId)
     .order("reserved_for", { ascending: false });
@@ -83,6 +91,10 @@ async function fetchMyReservations(
       brand_cover_type: brand?.cover_media_type ?? null,
       brand_photo_url: brand?.profile_photo_url ?? null,
       brand_cover_hue: brand?.cover_hue ?? null,
+      brand_address: brand?.address ?? null,
+      brand_city: brand?.city ?? null,
+      brand_lat: typeof brand?.lat === "number" ? brand.lat : null,
+      brand_lng: typeof brand?.lng === "number" ? brand.lng : null,
       reserved_for: r.reserved_for,
       party_size: r.party_size,
       status: r.status,

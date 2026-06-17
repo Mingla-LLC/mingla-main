@@ -26,7 +26,7 @@ import ExpandedCardModal from "../ExpandedCardModal";
 import { mixpanelService } from "../../services/mixpanelService";
 import { logAppsFlyerEvent } from "../../services/appsFlyerService";
 import { recordCardExpand } from "../../services/cardEngagementService";
-import { ExpandedCardData } from "../../types/expandedCardTypes";
+import { ExpandedCardData, ReservationPass } from "../../types/expandedCardTypes";
 import { useAppStore } from "../../store/appStore";
 import { useQueryClient } from "@tanstack/react-query";
 import { toastManager } from "../ui/Toast";
@@ -224,6 +224,10 @@ const CalendarTab = ({
   const lastModalCloseAtRef = useRef(0);
   const [selectedCardForExpansion, setSelectedCardForExpansion] =
     useState<ExpandedCardData | null>(null);
+  // META-ORCH-1148 2.2f — the Confirmed reservation pass injected into the
+  // ExpandedCardModal when a reservation row is tapped (null for normal cards).
+  const [reservationPassForModal, setReservationPassForModal] =
+    useState<ReservationPass | null>(null);
   const [isScheduling, setIsScheduling] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedWhen, setSelectedWhen] = useState<WhenFilter>('all');
@@ -1725,7 +1729,91 @@ const CalendarTab = ({
   const handleCloseExpandedModal = () => {
     setIsExpandedModalVisible(false);
     setSelectedCardForExpansion(null);
+    setReservationPassForModal(null);
     lastModalCloseAtRef.current = Date.now(); // ORCH-1064: re-open guard window
+  };
+
+  // META-ORCH-1148 2.2f — tapping a reservation opens the SAME ExpandedCardModal
+  // the app uses for venues (its weather / directions / gallery), with the
+  // Confirmed reservation pass (banner + check-in QR + details) injected on top.
+  const handleReservationPress = (reservation: MyReservationRow) => {
+    if (Date.now() - lastModalCloseAtRef.current < 500) return; // re-open guard
+    HapticFeedback.buttonPress();
+
+    const image =
+      reservation.brand_cover_type === "image" && reservation.brand_cover_url
+        ? reservation.brand_cover_url
+        : reservation.brand_photo_url ?? "";
+    const hasCoords =
+      typeof reservation.brand_lat === "number" &&
+      typeof reservation.brand_lng === "number";
+    const startMs = Date.parse(reservation.reserved_for);
+
+    // Minimal venue ExpandedCardData → renders the modal's place branch with
+    // weather (from location) + directions (from address) + gallery.
+    const venueCard: ExpandedCardData = {
+      id: `reservation:${reservation.id}`,
+      placeId: reservation.brand_id,
+      title: reservation.brand_name ?? "Your reservation",
+      category: "Restaurant",
+      categoryIcon: getIconComponent("restaurant"),
+      description: "",
+      fullDescription: "",
+      image,
+      images: image ? [image] : [],
+      rating: 0,
+      reviewCount: 0,
+      priceRange: undefined,
+      distance: "",
+      travelTime: undefined,
+      address: reservation.brand_address ?? "",
+      openingHours: undefined,
+      phone: undefined,
+      website: undefined,
+      highlights: [],
+      tags: [],
+      matchScore: 0,
+      matchFactors: { location: 0, budget: 0, category: 0, time: 0, popularity: 0 },
+      socialStats: { views: 0, likes: 0, saves: 0, shares: 0 },
+      priceTier: undefined,
+      location: hasCoords
+        ? { lat: reservation.brand_lat as number, lng: reservation.brand_lng as number }
+        : undefined,
+      selectedDateTime: Number.isFinite(startMs)
+        ? new Date(startMs)
+        : new Date(),
+    };
+
+    const cancellable =
+      Number.isFinite(startMs) &&
+      startMs > Date.now() &&
+      (reservation.status === "confirmed" || reservation.status === "requested");
+
+    const pass: ReservationPass = {
+      reservationId: reservation.id,
+      status: reservation.status,
+      reservedForUtc: reservation.reserved_for,
+      partySize: reservation.party_size,
+      feeCents: reservation.fee_cents,
+      feeCurrency: reservation.fee_currency,
+      paymentStatus: reservation.payment_status,
+      occasion: reservation.occasion,
+      guestNotes: reservation.guest_notes,
+      venueName: reservation.brand_name,
+      address: reservation.brand_address,
+      confirmationRef: `RES-${reservation.id.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
+      cancellable,
+      onCancel: cancellable
+        ? () => {
+            handleCloseExpandedModal();
+            handleCancelReservation(reservation);
+          }
+        : undefined,
+    };
+
+    setSelectedCardForExpansion(venueCard);
+    setReservationPassForModal(pass);
+    setIsExpandedModalVisible(true);
   };
 
   const handleSaveFromModal = async (card: ExpandedCardData) => {
@@ -2420,7 +2508,7 @@ const CalendarTab = ({
                         key={row.key}
                         reservation={row.reservation}
                         animation={animation}
-                        onCancel={handleCancelReservation}
+                        onPress={handleReservationPress}
                       />
                     );
                   }
@@ -2492,7 +2580,7 @@ const CalendarTab = ({
                         key={row.key}
                         reservation={row.reservation}
                         animation={animation}
-                        onCancel={handleCancelReservation}
+                        onPress={handleReservationPress}
                       />
                     );
                   }
@@ -2540,6 +2628,7 @@ const CalendarTab = ({
           visible={isExpandedModalVisible}
           // ORCH-0828: discriminated-union target.
           target={{ kind: "nightOut", data: selectedCardForExpansion }}
+          reservationPass={reservationPassForModal}
           onClose={handleCloseExpandedModal}
           onSave={handleSaveFromModal}
           onPurchase={handlePurchaseFromModal}

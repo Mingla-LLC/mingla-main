@@ -38,6 +38,7 @@ import CardInfoSection from "./expandedCard/CardInfoSection";
 import WeatherSection from "./expandedCard/WeatherSection";
 import BusynessSection from "./expandedCard/BusynessSection";
 import PracticalDetailsSection from "./expandedCard/PracticalDetailsSection";
+import ReservationPassSection from "./expandedCard/ReservationPassSection";
 import TimelineSection from "./expandedCard/TimelineSection";
 import EventDetailLayout from "./expandedCard/EventDetailLayout";
 import CompanionStopsSection from "./expandedCard/CompanionStopsSection";
@@ -1399,6 +1400,7 @@ export default function ExpandedCardModal({
   navigationTotal,
   onPaywallRequired,
   canAccessCurated = true,
+  reservationPass,
 }: ExpandedCardModalProps) {
   // ORCH-0828: project the union back to the legacy `card` / `businessEvent`
   // local bindings used throughout the rest of this large component. The
@@ -1916,6 +1918,11 @@ export default function ExpandedCardModal({
       >
             {/* ORCH-0908: locked-in banner — renders for ANY card type (curated/event/place) when shared via lock-and-schedule */}
             {card && <LockedInBanner card={card} />}
+
+            {/* META-ORCH-1148 2.2f: when opened from a booked reservation, the
+                injected Confirmed pass (banner + check-in QR + details) sits at
+                the top of the existing expanded card design. */}
+            {reservationPass && <ReservationPassSection pass={reservationPass} />}
 
             {/* ===== Curated Experience Plan ===== */}
             {isCuratedCard && curatedCard && Array.isArray(curatedCard.stops) && (
