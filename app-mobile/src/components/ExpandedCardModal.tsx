@@ -1464,11 +1464,11 @@ export default function ExpandedCardModal({
     // ORCH-1022: while a child RN Modal/WebView is open, the root sheet is
     // intentionally suppressed to free the native presentation slot. Swallow
     // BaseBottomSheet's synthetic close so the card state is not torn down.
-    if (browserUrl !== null || ticketBrowserUrl !== null || isNightOutShareOpen || isSchedulePickerOpen || curatedLightbox.visible || selectedVenueExperience !== null) {
+    if (browserUrl !== null || ticketBrowserUrl !== null || isNightOutShareOpen || isSchedulePickerOpen || curatedLightbox.visible || selectedVenueExperience !== null || isReserveSheetOpen) {
       return;
     }
     onClose();
-  }, [browserUrl, curatedLightbox.visible, isNightOutShareOpen, isSchedulePickerOpen, onClose, ticketBrowserUrl, selectedVenueExperience]);
+  }, [browserUrl, curatedLightbox.visible, isNightOutShareOpen, isSchedulePickerOpen, onClose, ticketBrowserUrl, selectedVenueExperience, isReserveSheetOpen]);
 
   // Review navigation: horizontal swipe to cycle through reviewed cards
   const hasNavigation = onNavigateNext !== undefined || onNavigatePrevious !== undefined;
