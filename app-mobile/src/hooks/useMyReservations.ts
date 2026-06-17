@@ -121,29 +121,39 @@ export function useMyReservations(
 }
 
 /**
- * Cancel one of the caller's OWN reservations via pg_cancel_my_reservation
- * (2.2a, SECURITY DEFINER authenticated — asserts consumer_user_id = auth.uid(),
- * honors cancel_cutoff_hours, transitions to cancelled_by_guest). Returns
- * { refundEligible } so the UI can surface refund eligibility.
- *
- * [TRANSITIONAL] Refund EXECUTION is not wired here — the RPC only FLAGS
- * refund_eligible (paid + refundable + before cutoff). When a deposit was paid
- * and eligible, the actual refund (reuse refund-order) is the 2.2c/edge-cancel
- * seam. Exit: once the edge cancel endpoint executes the refund, this caller
- * routes through it instead of the bare RPC. Tracked in the 2.2b report.
+ * Cancel one of the caller's OWN reservations via the venue-reservation-cancel
+ * edge function (META-ORCH-1148 2.2g). The fn calls the SECURITY DEFINER
+ * pg_cancel_my_reservation AS THE USER (auth.uid() enforces ownership + a legal
+ * transition + computes refund eligibility), then — when eligible (paid &&
+ * fee_refundable && before the venue's cancel cutoff) — EXECUTES the Stripe
+ * deposit refund on the brand's connected account and flips payment_status to
+ * 'refunded'. Cancellation is always allowed for an upcoming reservation; the
+ * cutoff governs only the refund (Seth 2026-06-17). A refund-side failure still
+ * returns cancelled:true (the seat is freed) with refunded:false + refundError.
  */
 export async function cancelMyReservation(
   reservationId: string,
-): Promise<{ refundEligible: boolean; status: string }> {
-  const { data, error } = await supabase.rpc("pg_cancel_my_reservation", {
-    p_reservation_id: reservationId,
-  });
+): Promise<{
+  refundEligible: boolean;
+  refunded: boolean;
+  refundAmountCents: number;
+  status: string;
+}> {
+  const { data, error } = await supabase.functions.invoke(
+    "venue-reservation-cancel",
+    { body: { reservationId } },
+  );
   if (error !== null) throw error;
-  const row = (Array.isArray(data) ? data[0] : data) as
-    | { reservation?: { status?: string } | null; refund_eligible?: boolean }
-    | null;
+  const res = (data ?? {}) as {
+    status?: string;
+    refundEligible?: boolean;
+    refunded?: boolean;
+    refundAmountCents?: number;
+  };
   return {
-    refundEligible: row?.refund_eligible === true,
-    status: row?.reservation?.status ?? "cancelled_by_guest",
+    refundEligible: res.refundEligible === true,
+    refunded: res.refunded === true,
+    refundAmountCents: typeof res.refundAmountCents === "number" ? res.refundAmountCents : 0,
+    status: res.status ?? "cancelled",
   };
 }

@@ -242,3 +242,12 @@ verify_jwt = false
 # verify_jwt=false: callable from the anon web redirect-return + the app.
 [functions.venue-reservation-confirm]
 verify_jwt = false
+
+# META-ORCH-1148 2.2g — venue-reservation-cancel: the signed-in guest cancels
+# their OWN reservation; the SECURITY DEFINER pg_cancel_my_reservation (called as
+# the user) enforces ownership + legal transition + computes refund eligibility
+# (paid && fee_refundable && before cancel cutoff). When eligible, this fn
+# EXECUTES the Stripe deposit refund on the connected account (mirrors
+# refund-order). verify_jwt=false: the fn validates the JWT + auth.uid() itself.
+[functions.venue-reservation-cancel]
+verify_jwt = false
