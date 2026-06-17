@@ -70,6 +70,7 @@ import {
   type NativeSyntheticEvent,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useRouter } from "expo-router";
 import {
   boldFontFamily,
   createThemePalette,
@@ -303,6 +304,7 @@ export default function ConsumerTripDetailScreen({
   accountPreferences,
 }: ConsumerTripDetailScreenProps): React.ReactElement {
   const insets = useSafeAreaInsets();
+  const router = useRouter();
   const { detail, isLoading, isError, refetch } = useConsumerTripDetail(
     brandSlug,
     tripSlug,
@@ -780,8 +782,24 @@ export default function ConsumerTripDetailScreen({
           CLEAN themed circle with the brand INITIAL — NOT a bare striped red disk
           and NOT the broken "COVE…" alt text Seth saw (rule 9 — graceful, no
           fabrication). The rounded tile clips the media (overflow:hidden;
-          ANDROID_GLASS_USES_OPAQUE_FALLBACK opaque fill). */}
-      <View style={[styles.brandRow, surface.card]}>
+          ANDROID_GLASS_USES_OPAQUE_FALLBACK opaque fill).
+
+          ORCH-1155 [public-brand-page] all-surface parity: the brand chip is a
+          tappable Pressable that opens the brand page /b/{brandSlug} with a
+          trailing "View" CTA — matching the trip/event/experience PreviEW and the
+          web/business trip page (onViewBrand). Guard empty slug (rule 9; no dead
+          tap, Constitution rule 1). brandSlug is the screen prop (always set when
+          the route mounts). */}
+      <Pressable
+        style={[styles.brandRow, surface.card]}
+        accessibilityRole="button"
+        accessibilityLabel={`View ${fnd.brandName}`}
+        onPress={() => {
+          if (brandSlug.length > 0) {
+            router.push(`/b/${brandSlug}` as never);
+          }
+        }}
+      >
         <View
           style={[
             styles.brandTile,
@@ -833,7 +851,8 @@ export default function ConsumerTripDetailScreen({
             ) : null}
           </View>
         </View>
-      </View>
+        <Text style={[styles.brandCta, { color: palette.accent }]}>View</Text>
+      </Pressable>
 
       {/* deadline state band (closed / countdown) */}
       {closed ? (
@@ -1635,6 +1654,13 @@ const styles = StyleSheet.create({
     fontWeight: "900",
   },
   brandTextCol: { flexShrink: 1 },
+  // ORCH-1155 [public-brand-page] — trailing "View" CTA on the brand chip
+  // (parity with TripPreview.brandCta + web/business trip page).
+  brandCta: {
+    marginLeft: "auto",
+    fontSize: 12,
+    fontWeight: "800",
+  },
   brandKicker: {
     fontSize: 10,
     fontWeight: "800",

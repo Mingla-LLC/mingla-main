@@ -55,6 +55,7 @@ import {
   type NativeSyntheticEvent,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useRouter } from "expo-router";
 import * as Haptics from "expo-haptics";
 import { useQueryClient } from "@tanstack/react-query";
 
@@ -182,6 +183,7 @@ export default function ConsumerEventDetailScreen({
 }: ConsumerEventDetailScreenProps): React.ReactElement {
   void tabBarAware; // the sheet hides the nav; kept for prop parity with trip.
   const insets = useSafeAreaInsets();
+  const router = useRouter();
   const queryClient = useQueryClient();
   const user = useAppStore((s) => s.user);
   const profile = useAppStore((s) => s.profile);
@@ -751,8 +753,25 @@ export default function ConsumerEventDetailScreen({
               ) : null}
             </View>
 
-            {/* brand chip — "Presented by" (anon-safe brand cover/initial) */}
-            <View style={[styles.brandRow, surface.card]}>
+            {/* brand chip — "Presented by" (anon-safe brand cover/initial).
+                ORCH-1155 [public-brand-page] all-surface parity: tappable
+                Pressable opens the brand page /b/{brandSlug} with a trailing
+                "View" CTA — parity with the web/business event page (onOpenBrand
+                → /b/{slug}) and the trip/experience consumer screens. Guard empty
+                slug (rule 9; no dead tap, Constitution rule 1). */}
+            <Pressable
+              style={[styles.brandRow, surface.card]}
+              accessibilityRole="button"
+              accessibilityLabel={`View ${fnd.brandName}`}
+              onPress={() => {
+                if (
+                  typeof fnd.brandSlug === "string" &&
+                  fnd.brandSlug.length > 0
+                ) {
+                  router.push(`/b/${fnd.brandSlug}` as never);
+                }
+              }}
+            >
               <View
                 style={[
                   styles.brandTile,
@@ -798,7 +817,10 @@ export default function ConsumerEventDetailScreen({
                   {fnd.brandName}
                 </Text>
               </View>
-            </View>
+              <Text style={[styles.brandCta, { color: palette.accent }]}>
+                View
+              </Text>
+            </Pressable>
 
             {/* About — collapsible (rule 9: only when present) */}
             {aboutText !== null ? (
@@ -1185,6 +1207,9 @@ const styles = StyleSheet.create({
   brandInitialWrap: { flex: 1, alignItems: "center", justifyContent: "center" },
   brandInitial: { fontSize: 18, fontWeight: "900" },
   brandTextCol: { flexShrink: 1 },
+  // ORCH-1155 [public-brand-page] — trailing "View" CTA on the brand chip
+  // (parity with the web/business event page + trip/experience consumer screens).
+  brandCta: { marginLeft: "auto", fontSize: 12, fontWeight: "800" },
   brandKicker: {
     fontSize: 10,
     fontWeight: "800",

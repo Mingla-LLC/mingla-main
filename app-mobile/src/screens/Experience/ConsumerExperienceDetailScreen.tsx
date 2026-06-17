@@ -990,6 +990,12 @@ export default function ConsumerExperienceDetailScreen({
                   {seed.brandName}
                 </Text>
               </View>
+              {/* ORCH-1155 [public-brand-page] all-surface parity — trailing
+                  "View" CTA matching the trip/event consumer screens + the
+                  web/business pages. */}
+              <Text style={[styles.brandCta, { color: palette.accent }]}>
+                View
+              </Text>
             </Pressable>
 
             {/* About — collapsible (rule 9: only when present) */}
@@ -1313,6 +1319,9 @@ const styles = StyleSheet.create({
   brandInitialWrap: { flex: 1, alignItems: "center", justifyContent: "center" },
   brandInitial: { fontSize: 18, fontWeight: "900" },
   brandTextCol: { flexShrink: 1 },
+  // ORCH-1155 [public-brand-page] — trailing "View" CTA on the brand chip
+  // (parity with the trip/event consumer screens + web/business pages).
+  brandCta: { marginLeft: "auto", fontSize: 12, fontWeight: "800" },
   brandKicker: {
     fontSize: 10,
     fontWeight: "800",
