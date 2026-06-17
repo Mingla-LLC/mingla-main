@@ -156,3 +156,24 @@ Deno.test("the decision exposes Going / Maybe / Can't (the three-way RSVP reply)
   assertStringIncludes(COMPONENT, "onMaybe");
   assertStringIncludes(COMPONENT, "onNotGoing");
 });
+
+// ORCH-1157 rework (tester FAIL P1-A): the decision block must be GATED behind a
+// `showDecision` prop so the phone INLINE body mount renders momentum-only — the
+// Going/Maybe/Can't decision lives EXACTLY ONCE (floating dock on phone, sticky
+// panel on desktop). Without the gate the inline body re-emits a SECOND, dead
+// decision row (no-op handlers) — Constitution rule 1 (no dead taps), and a
+// divergence from the binding mockup (`.decision-host.inbody { display:none }`).
+// FAILS-ON-REVERT: revert `{showDecision ? decisionBlock : null}` back to the
+// unconditional `{decisionBlock}` (drop the prop) → these assertions FAIL.
+Deno.test("P1-A: the decision block is gated behind a showDecision prop (no dead duplicate row)", () => {
+  // the prop is part of the contract …
+  assertStringIncludes(COMPONENT, "showDecision");
+  // … defaults to true so the dock + desktop sticky-panel keep the decision …
+  assertStringIncludes(COMPONENT, "showDecision = true");
+  // … and the render gates the decision block on it (not unconditional).
+  assertStringIncludes(COMPONENT, "showDecision ? decisionBlock : null");
+  assert(
+    !/\n\s*\{decisionBlock\}\s*\n/.test(COMPONENT),
+    "decisionBlock must be rendered ONLY through the showDecision gate, never unconditionally",
+  );
+});

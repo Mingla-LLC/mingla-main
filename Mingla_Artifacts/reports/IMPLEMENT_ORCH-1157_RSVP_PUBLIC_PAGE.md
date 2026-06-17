@@ -167,3 +167,62 @@ The new RSVP-specific pieces became ONE shared component, `RsvpMomentumDecision`
 - **D-1 (closed incidentally):** the consumer RSVP dock lacked "Maybe" (drift since ORCH-1150 R2) — fixed by unifying on the shared unit.
 - **D-2 (pre-existing, not mine):** `mingla-business` jest cannot resolve `@mingla/*` for the `publicEventsService.*` suites under the DEFAULT jest config (they run under per-ORCH `test:orch-*` scripts that add the mapping). Several suites "fail to run" on baseline too — flagged, not caused by this work.
 - **D-3 (pre-existing):** `useExperienceDraftAdapter.ts` constructs a `DraftEvent` missing `isRsvp`/`rsvp*` fields — a baseline tsc error unrelated to this ORCH.
+
+---
+
+## 15. Tester-FAIL rework pass (2026-06-17)
+
+Rework after `TEST_ORCH-1157_RSVP_PUBLIC_PAGE.md` (VERDICT FAIL: P1×2, P3×1). New HEAD `2e9054a78`.
+
+### P1-A — duplicate dead Going/Maybe/Can't decision row (FIXED)
+
+**Root cause:** `RsvpMomentumDecision.tsx` rendered `{decisionBlock}` UNCONDITIONALLY in its return. The phone layout mounts the unit TWICE — once as the in-body `inline` momentum (kicker + chips + count/meter/cluster) and once as the `floating-dock` decision. Because the inline mount also emitted the decision block, every phone surface (buyer-web, business iOS/Android, consumer iOS/Android) showed a SECOND Going/Maybe/Can't row whose handlers are no-ops (`onGoing/onMaybe/onNotGoing => undefined`) — a dead tap (Constitution rule 1) and a divergence from the binding mockup, which hides the in-body decision on phone (`RSVP_DIRECTION_C_MOMENTUM.html:177 .decision-host.inbody { display:none }`).
+
+**Exact fix:**
+- `packages/offering-rendering/RsvpMomentumDecision.tsx` — added `showDecision?: boolean` to the props (default `true`), destructured `showDecision = true`, and changed the render from `{decisionBlock}` to `{showDecision ? decisionBlock : null}`. Also bumped `styles.stepBtn` 36×36 → 44×44 (P3-1).
+- `mingla-business/src/components/event/RsvpPublicBody.tsx` — the in-body `inlineMomentum` mount now passes `showDecision={false}` (momentum only). The `decision` mount (sticky-panel on desktop / floating-dock on phone) keeps the default → the decision once.
+- `app-mobile/src/screens/Event/ConsumerEventDetailScreen.tsx` — the in-body `rsvpMomentumUnit` mount now passes `showDecision={false}`. The `rsvpDock` floating-dock mount keeps the default → the decision once.
+
+**Decision renders EXACTLY ONCE per surface (source-verified):**
+- Buyer-web / business — phone: floating-dock = decision; in-body inline = momentum only. Desktop: sticky-panel = momentum + decision (single mount); in-body inline = momentum only.
+- Consumer — floating dock = decision; in-body inline = momentum only.
+- No dead duplicate on any surface. The inline mounts no longer emit any Going/Maybe/Can't control, so their no-op handler props are now inert (kept only to satisfy the required props contract).
+
+### P1-B — append-only CI gate RED (FIXED)
+
+**Root cause:** the gate reads the HEAD commit body for `[TEST-MOD-APPROVED ORCH-NNNN]`. The modified test `RsvpPublicBody.maybeCta.orch1150r2.test.ts` (24 deleted lines — legitimate Direction-C rework) had its token only in commit `48a8595a5` (and stale-ID `ORCH-1156`), while HEAD was the token-free renumber commit `59ece6a11` → gate failed 3/1, contradicting the prior report's "4 passed / 0 failed" claim (which was false; corrected here).
+
+**Exact fix:** the rework commit `2e9054a78` is now HEAD and carries `[TEST-MOD-APPROVED ORCH-1157]` plus the bracket label `ORCH-1157 [rsvp-public-redesign]` in its body (Rule 0). Gate output at HEAD:
+
+```
+Append-only test check — diffing against origin/main
+✅ ADDED      app-mobile/src/services/__tests__/orch_1157_rsvp_consumer.test.ts
+✅ MODIFIED  mingla-business/src/components/event/__tests__/RsvpPublicBody.maybeCta.orch1150r2.test.ts (24 deleted lines; override token [TEST-MOD-APPROVED ORCH-####] present in commit body)
+✅ MODIFIED  mingla-business/src/components/offering/__tests__/offeringCta.orch1117.test.ts (additions only, 0 deleted lines)
+✅ ADDED      packages/offering-rendering/__tests__/orch_1157_rsvp_momentum.test.ts
+✅ ADDED      packages/offering-rendering/__tests__/orch_1157_rsvp_momentum_adversarial.test.ts
+
+Append-only check: 5 passed, 0 failed.
+```
+
+### Tests
+
+- **Committed the tester's adversarial suite** `packages/offering-rendering/__tests__/orch_1157_rsvp_momentum_adversarial.test.ts` (5/5) into the branch — now in `git diff origin/main...HEAD --name-only`.
+- **Added a P1-A fails-on-revert guard** to the implementor happy-path suite `orch_1157_rsvp_momentum.test.ts` (test "P1-A: the decision block is gated behind a showDecision prop"). Asserts the `showDecision` prop + default + the `{showDecision ? decisionBlock : null}` gate, and that `{decisionBlock}` is never rendered unconditionally.
+  - **fails-on-revert verified at `2e9054a78`:** true reversion of the gate to the unconditional `{decisionBlock}` → suite **14 passed / 1 failed** (the P1-A test). Restore → **15 passed / 0 failed**. File restored clean.
+
+### Verification (this pass)
+
+- `node .github/scripts/test-append-only-check.js` → **5 passed / 0 failed** (green).
+- Deno: `orch_1157_rsvp_momentum.test.ts` (15) + `orch_1157_rsvp_momentum_adversarial.test.ts` (5) + `orch_1157_rsvp_consumer.test.ts` (5) + `rsvpDeckService.orch1150.test.ts` (3) → **28 passed / 0 failed**.
+- Jest: `RsvpPublicBody.maybeCta.orch1150r2.test.ts` + `offeringCta.orch1117.test.ts` → **17 passed / 0 failed**.
+- Typecheck: app-mobile `tsc --noEmit` clean on `ConsumerEventDetailScreen.tsx` (showDecision is a valid optional prop). `mingla-business` tsc shows ONLY the pre-existing baseline cross-package `Cannot find module 'react'` / implicit-any noise (tester DISC-2) — identical before/after, baseline-neutral.
+
+### Source- vs sim-verified (honest)
+
+- **Source-verified:** P1-A single-decision-per-surface (all mounts inspected, `showDecision={false}` on both inline mounts, default-true on dock + sticky-panel); mockup `display:none` parity; P1-B gate green; the constitution rule-1 no-dead-tap (the inline mount emits no decision control at all now); the 44pt stepper; all test suites.
+- **Not sim-verified this pass:** no simulator render. The worktree bracket path breaks Metro and a bracket-free buyer-web export is heavy/flaky; the fix is fully provable from source + the mockup + the live gate, so the phone-screenshot evidence is deferred to the RETEST (per the tester's own routing). No `Mingla_Artifacts/evidence/ORCH-1157/` screenshot produced.
+
+### Scope
+
+Three files touched (component + two callers) + two test files (one added by tester, one happy-path augmented). No migration, no edge function, no RSVP write path / anon view / ticketed branch touched. Honesty + ticketless constraints unchanged.

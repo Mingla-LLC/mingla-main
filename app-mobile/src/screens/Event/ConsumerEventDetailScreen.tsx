@@ -712,6 +712,7 @@ export default function ConsumerEventDetailScreen({
           onNotGoing={() => undefined}
           variant="inline"
           showMomentum
+          showDecision={false}
           testID="orch-1157-consumer-rsvp-momentum"
         />
       </View>

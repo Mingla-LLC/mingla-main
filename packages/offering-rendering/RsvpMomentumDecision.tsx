@@ -117,6 +117,16 @@ export interface RsvpMomentumDecisionProps {
    */
   showMomentum: boolean;
   /**
+   * When false, the Going / Maybe / Can't decision block is NOT rendered (the
+   * momentum unit only). The phone `inline` body mount passes false — the
+   * decision lives ONCE in the floating dock there (mockup line 177:
+   * `.decision-host.inbody { display:none }`). Default true so the dock + the
+   * desktop sticky-panel (the single mount on those surfaces) keep the decision.
+   * Without this, the inline body would emit a SECOND, dead Going/Maybe/Can't row
+   * with no-op handlers (Constitution rule 1 — no dead taps).
+   */
+  showDecision?: boolean;
+  /**
    * The host row (avatar + "Hosted by X") for the sticky-panel. Optional —
    * RsvpPublicBody renders its own brand chip in the body on phone.
    */
@@ -204,6 +214,7 @@ export const RsvpMomentumDecision: React.FC<RsvpMomentumDecisionProps> = ({
   onNotGoing,
   variant,
   showMomentum,
+  showDecision = true,
   hostRow,
   micro,
   goingTestID,
@@ -569,7 +580,7 @@ export const RsvpMomentumDecision: React.FC<RsvpMomentumDecisionProps> = ({
       {showMomentum ? kicker : null}
       {showMomentum ? chips : null}
       {showMomentum ? momentumUnit : null}
-      {decisionBlock}
+      {showDecision ? decisionBlock : null}
     </View>
   );
 };
@@ -648,9 +659,9 @@ const styles = StyleSheet.create({
   plusLabel: { fontSize: 14, fontWeight: "600" },
   stepper: { flexDirection: "row", alignItems: "center" },
   stepBtn: {
-    width: 36,
-    height: 36,
-    borderRadius: 10,
+    width: 44,
+    height: 44,
+    borderRadius: 12,
     borderWidth: 1,
     alignItems: "center",
     justifyContent: "center",

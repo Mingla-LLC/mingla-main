@@ -426,6 +426,7 @@ export const RsvpPublicBody: React.FC<RsvpPublicBodyProps> = ({
       onNotGoing={() => undefined}
       variant="inline"
       showMomentum
+      showDecision={false}
       micro={undefined}
       testID="orch-1157-rsvp-inline-momentum"
     />
