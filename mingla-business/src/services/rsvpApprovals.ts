@@ -11,7 +11,7 @@
 
 import { supabase } from "./supabase";
 
-export type RsvpStatusValue = "going" | "not_going" | "waitlisted";
+export type RsvpStatusValue = "going" | "not_going" | "waitlisted" | "maybe";
 export type RsvpApprovalValue = "pending" | "approved" | "denied";
 
 export interface RsvpGuest {

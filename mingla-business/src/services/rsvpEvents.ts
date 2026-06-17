@@ -96,7 +96,7 @@ export const updateLiveRsvp = async (
 
 export interface SubmitPublicRsvpInput {
   eventId: string;
-  rsvpStatus: "going" | "not_going";
+  rsvpStatus: "going" | "not_going" | "maybe";
   /** Required for an anon link guest; ignored for a logged-in app user. */
   guestName?: string;
   guestEmail?: string;
@@ -105,7 +105,7 @@ export interface SubmitPublicRsvpInput {
 }
 
 export interface SubmitPublicRsvpResult {
-  status: "going" | "not_going" | "waitlisted";
+  status: "going" | "not_going" | "waitlisted" | "maybe";
   approvalStatus: "pending" | "approved";
 }
 
@@ -129,7 +129,7 @@ export const submitPublicRsvp = async (
     throw new Error(parseRsvpErrorCode(error as RsvpInvokeError));
   }
   const res = (data ?? {}) as {
-    status?: "going" | "not_going" | "waitlisted";
+    status?: "going" | "not_going" | "waitlisted" | "maybe";
     approvalStatus?: "pending" | "approved";
   };
   return {

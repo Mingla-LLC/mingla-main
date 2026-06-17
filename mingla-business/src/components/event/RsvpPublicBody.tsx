@@ -29,6 +29,10 @@ import {
   View,
 } from "react-native";
 import * as Haptics from "expo-haptics";
+// ORCH-1150 R2 D-10: per-icon NAMED imports (never a `import *` barrel — that
+// defeats tree-shake + blows the ORCH-1083 web bundle budget). Real lib on
+// native; the ORCH-1137 metro web shim maps these three to real DOM-SVG glyphs.
+import { Check, HelpCircle, X } from "lucide-react-native";
 
 import {
   ParallaxCoverShell,
@@ -78,13 +82,13 @@ export interface RsvpPublicBodyProps {
    * never a dead end).
    */
   onSubmit: (input: {
-    rsvpStatus: "going" | "not_going";
+    rsvpStatus: "going" | "not_going" | "maybe";
     guestName: string;
     guestEmail: string;
     guestPhone: string;
     plusCount: number;
   }) => Promise<{
-    status: "going" | "not_going" | "waitlisted";
+    status: "going" | "not_going" | "waitlisted" | "maybe";
     approvalStatus: "pending" | "approved";
   }>;
   safeAreaTop?: number;
@@ -124,7 +128,7 @@ export const RsvpPublicBody: React.FC<RsvpPublicBodyProps> = ({
 
   // The guest's resolved own state after a successful submit (null = not yet).
   const [guestStatus, setGuestStatus] = useState<
-    "going" | "not_going" | "waitlisted" | null
+    "going" | "not_going" | "waitlisted" | "maybe" | null
   >(null);
   const [guestApproval, setGuestApproval] = useState<
     "pending" | "approved" | null
@@ -158,9 +162,11 @@ export const RsvpPublicBody: React.FC<RsvpPublicBodyProps> = ({
   const contactReady = isLoggedIn || (nameValid && emailValid && phoneValid);
 
   const submit = useCallback(
-    async (rsvpStatus: "going" | "not_going"): Promise<void> => {
+    async (rsvpStatus: "going" | "not_going" | "maybe"): Promise<void> => {
       if (phase === "submitting") return;
-      if (rsvpStatus === "going" && !contactReady) {
+      // A4-NEW: Going AND Maybe both require a reachable guest (a Maybe must be
+      // updatable). Declining (not_going) needs no contact.
+      if ((rsvpStatus === "going" || rsvpStatus === "maybe") && !contactReady) {
         setErrorMsg("Add your name, email, and phone to RSVP.");
         return;
       }
@@ -233,6 +239,9 @@ export const RsvpPublicBody: React.FC<RsvpPublicBodyProps> = ({
   const pendingResolved = guestApproval === "pending";
   const notGoingResolved = guestStatus === "not_going";
   const waitlistedResolved = guestStatus === "waitlisted";
+  // ORCH-1150 R2 D-10: a resolved (non-binding) Maybe. NOT a terminal dead end —
+  // a Maybe can still upgrade to Going or decline.
+  const maybeResolved = guestStatus === "maybe";
 
   const headline: string =
     pendingResolved
@@ -241,11 +250,13 @@ export const RsvpPublicBody: React.FC<RsvpPublicBodyProps> = ({
         ? "You're on the waitlist"
         : goingResolved
           ? "You're going"
-          : notGoingResolved
-            ? "You said you can't make it"
-            : ctaState === "full"
-              ? "This event is full"
-              : "Are you going?";
+          : maybeResolved
+            ? "You're marked as Maybe"
+            : notGoingResolved
+              ? "You said you can't make it"
+              : ctaState === "full"
+                ? "This event is full"
+                : "Are you going?";
 
   const subcopy: string | null =
     pendingResolved
@@ -254,15 +265,17 @@ export const RsvpPublicBody: React.FC<RsvpPublicBodyProps> = ({
         ? "A spot opened? We'll text and email you automatically."
         : goingResolved
           ? "We'll let you know if anything about the event changes."
-          : notGoingResolved
-            ? "Changed your mind? You can switch to Going."
-            : ctaState === "full"
-              ? config.waitlistEnabled
-                ? "Join the waitlist and we'll move you in if a spot opens."
-                : "The guest list is full for now."
-              : config.manualApproval
-                ? "The host approves each guest after you reply."
-                : null;
+          : maybeResolved
+            ? "You're marked as Maybe — we'll keep you posted. Switch to Going anytime."
+            : notGoingResolved
+              ? "Changed your mind? You can switch to Going."
+              : ctaState === "full"
+                ? config.waitlistEnabled
+                  ? "Join the waitlist and we'll move you in if a spot opens."
+                  : "The guest list is full for now."
+                : config.manualApproval
+                  ? "The host approves each guest after you reply."
+                  : null;
 
   // Whether the Going button is the waitlist-join variant.
   const goingIsWaitlist =
@@ -282,11 +295,18 @@ export const RsvpPublicBody: React.FC<RsvpPublicBodyProps> = ({
       ? "Saving…"
       : "Going";
 
+  // ORCH-1150 R2 D-10: Maybe is disabled while submitting or once the guest has
+  // resolved to a BINDING state (going / pending / waitlisted). It stays
+  // available from the open + not_going states (so a decline can flip to Maybe).
+  const maybeDisabled =
+    submitting || goingResolved || pendingResolved || waitlistedResolved || maybeResolved;
+
   const showContactForm =
     !isLoggedIn &&
     !goingResolved &&
     !pendingResolved &&
     !waitlistedResolved &&
+    !maybeResolved &&
     !(ctaState === "full" && !config.waitlistEnabled);
 
   const actionCard = (
@@ -352,7 +372,8 @@ export const RsvpPublicBody: React.FC<RsvpPublicBodyProps> = ({
       {config.allowPlusOnes &&
       !goingResolved &&
       !pendingResolved &&
-      !waitlistedResolved ? (
+      !waitlistedResolved &&
+      !maybeResolved ? (
         <View style={[styles.plusRow, surface.card]}>
           <Text style={[styles.plusLabel, surface.secondaryText]}>
             Bringing extras?
@@ -395,7 +416,12 @@ export const RsvpPublicBody: React.FC<RsvpPublicBodyProps> = ({
         </Text>
       ) : null}
 
-      {!goingResolved && !pendingResolved && !notGoingResolved ? (
+      {/* ORCH-1150 R2 D-10: the three-button RSVP CTA — Going · Maybe · Not going.
+          Each button is flex:1 (equal width). Going = filled accent (primary),
+          Maybe = accent-wash secondary, Not going = outlined tertiary. Icons are
+          per-icon lucide imports (Check / HelpCircle / X). Android fills are
+          opaque (ANDROID_GLASS_USES_OPAQUE_FALLBACK). */}
+      {!goingResolved && !pendingResolved && !notGoingResolved && !maybeResolved ? (
         <View style={styles.ctaRow}>
           <Pressable
             onPress={() => void submit("going")}
@@ -404,16 +430,20 @@ export const RsvpPublicBody: React.FC<RsvpPublicBodyProps> = ({
             accessibilityState={{ disabled: goingDisabled }}
             accessibilityLabel={goingLabel}
             style={[
-              styles.goingBtn,
+              styles.ctaBtn,
               goingDisabled
                 ? { backgroundColor: palette.card, borderColor: palette.panelBorder, borderWidth: 1 }
                 : { backgroundColor: palette.accent },
             ]}
             testID="orch-1150-rsvp-going"
           >
+            <Check
+              size={19}
+              color={goingDisabled ? palette.tertiaryText : palette.accentText}
+            />
             <Text
               style={[
-                styles.goingText,
+                styles.ctaBtnText,
                 {
                   color: goingDisabled ? palette.tertiaryText : palette.accentText,
                   fontFamily: boldFamily,
@@ -425,39 +455,89 @@ export const RsvpPublicBody: React.FC<RsvpPublicBodyProps> = ({
           </Pressable>
           {!waitlistedResolved ? (
             <Pressable
+              onPress={() => void submit("maybe")}
+              disabled={maybeDisabled}
+              accessibilityRole="button"
+              accessibilityState={{ disabled: maybeDisabled }}
+              accessibilityLabel="Maybe"
+              style={[
+                styles.ctaBtn,
+                {
+                  backgroundColor: palette.accentWash,
+                  borderColor: palette.accent,
+                  borderWidth: 1,
+                  opacity: maybeDisabled ? 0.5 : 1,
+                },
+              ]}
+              testID="orch-1150-rsvp-maybe"
+            >
+              <HelpCircle size={19} color={palette.accent} />
+              <Text
+                style={[
+                  styles.ctaBtnText,
+                  { color: palette.accent, fontFamily: boldFamily },
+                ]}
+              >
+                Maybe
+              </Text>
+            </Pressable>
+          ) : null}
+          {!waitlistedResolved ? (
+            <Pressable
               onPress={() => void submit("not_going")}
               disabled={submitting}
               accessibilityRole="button"
               accessibilityLabel="Not going"
-              style={[styles.notGoingBtn, { borderColor: palette.panelBorder }]}
+              style={[styles.ctaBtn, { borderColor: palette.panelBorder, borderWidth: 1 }]}
               testID="orch-1150-rsvp-not-going"
             >
-              <Text style={[styles.notGoingText, surface.secondaryText]}>
-                Not going
+              <X size={19} color={palette.secondaryText} />
+              <Text style={[styles.ctaBtnText, surface.secondaryText]}>
+                Can't go
               </Text>
             </Pressable>
           ) : null}
         </View>
       ) : null}
 
-      {notGoingResolved ? (
-        <Pressable
-          onPress={() => void submit("going")}
-          disabled={submitting}
-          accessibilityRole="button"
-          accessibilityLabel="Switch to Going"
-          style={[styles.goingBtn, { backgroundColor: palette.accent }]}
-          testID="orch-1150-rsvp-switch-going"
-        >
-          <Text
-            style={[
-              styles.goingText,
-              { color: palette.accentText, fontFamily: boldFamily },
-            ]}
+      {/* ORCH-1150 R2 D-10: a resolved not_going OR maybe can upgrade to Going.
+          A Maybe can additionally still decline (never a dead end). */}
+      {notGoingResolved || maybeResolved ? (
+        <View style={styles.ctaRow}>
+          <Pressable
+            onPress={() => void submit("going")}
+            disabled={submitting}
+            accessibilityRole="button"
+            accessibilityLabel="Switch to Going"
+            style={[styles.ctaBtn, { backgroundColor: palette.accent }]}
+            testID="orch-1150-rsvp-switch-going"
           >
-            Actually, I'm going
-          </Text>
-        </Pressable>
+            <Check size={19} color={palette.accentText} />
+            <Text
+              style={[
+                styles.ctaBtnText,
+                { color: palette.accentText, fontFamily: boldFamily },
+              ]}
+            >
+              {maybeResolved ? "Switch to Going" : "Actually, I'm going"}
+            </Text>
+          </Pressable>
+          {maybeResolved ? (
+            <Pressable
+              onPress={() => void submit("not_going")}
+              disabled={submitting}
+              accessibilityRole="button"
+              accessibilityLabel="Can't make it"
+              style={[styles.ctaBtn, { borderColor: palette.panelBorder, borderWidth: 1 }]}
+              testID="orch-1150-rsvp-maybe-decline"
+            >
+              <X size={19} color={palette.secondaryText} />
+              <Text style={[styles.ctaBtnText, surface.secondaryText]}>
+                Can't go
+              </Text>
+            </Pressable>
+          ) : null}
+        </View>
       ) : null}
     </View>
   );
@@ -703,24 +783,19 @@ const styles = StyleSheet.create({
   stepCount: { fontSize: 16, fontWeight: "800", minWidth: 40, textAlign: "center" },
   errorText: { color: "#e5484d", fontSize: 13, marginTop: 10, marginBottom: 2 },
   ctaRow: { flexDirection: "row", marginTop: 14, gap: 10 },
-  goingBtn: {
+  // ORCH-1150 R2 D-10: equal-width (flex:1) RSVP CTA buttons. overflow:'hidden'
+  // clips the opaque Android fill under the rounded corners (no translucent fill).
+  ctaBtn: {
     flex: 1,
+    flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
+    gap: 7,
     borderRadius: 14,
     paddingVertical: 15,
-    marginTop: 14,
+    overflow: "hidden",
   },
-  goingText: { fontSize: 16, fontWeight: "900" },
-  notGoingBtn: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-    borderRadius: 14,
-    paddingVertical: 15,
-    borderWidth: 1,
-  },
-  notGoingText: { fontSize: 15, fontWeight: "700" },
+  ctaBtnText: { fontSize: 15, fontWeight: "900" },
   factRow: {
     flexDirection: "row",
     alignItems: "center",

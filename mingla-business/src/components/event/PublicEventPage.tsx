@@ -507,14 +507,16 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
   // The ticketed path below is BYTE-IDENTICAL (untouched) for every non-RSVP row.
   const isRsvp = event.event_type === "rsvp";
   const rsvpSubmit = useCallback(
+    // ORCH-1150 R2 D-10: 'maybe' rides the same wiring (cascade of the widened
+    // RsvpPublicBody.onSubmit + submitPublicRsvp types). No behavior change here.
     async (input: {
-      rsvpStatus: "going" | "not_going";
+      rsvpStatus: "going" | "not_going" | "maybe";
       guestName: string;
       guestEmail: string;
       guestPhone: string;
       plusCount: number;
     }): Promise<{
-      status: "going" | "not_going" | "waitlisted";
+      status: "going" | "not_going" | "waitlisted" | "maybe";
       approvalStatus: "pending" | "approved";
     }> =>
       submitPublicRsvp({
