@@ -254,6 +254,10 @@ const cardToPublicEvent = (
   coverCredit: null,
   tickets,
   currency: card.currency,
+  // ORCH-1156 [rsvp-public-redesign] — PublicEventProps now requires partyTypes
+  // (default-safe). The experience CTA machine reads only variant/CTA, not chips,
+  // so this is inert here; passed through for one consistent shape.
+  partyTypes: card.partyTypes ?? [],
 });
 
 export default function ConsumerExperienceDetailScreen({

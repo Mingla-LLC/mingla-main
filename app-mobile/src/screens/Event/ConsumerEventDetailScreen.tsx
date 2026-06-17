@@ -57,7 +57,7 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import * as Haptics from "expo-haptics";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 
 import {
   boldFontFamily,
@@ -66,14 +66,17 @@ import {
   EventCoverMedia,
   offeringSurfaceStyles,
   resolveOfferingCta,
+  resolveRsvpCta,
   resolveTheme,
   ThemeEntranceAnimation,
   type CtaState,
   type PublicEventProps,
   type PublicTicketProps,
+  type RsvpCtaState,
 } from "@mingla/event-rendering";
 import {
   OfferingChrome,
+  RsvpMomentumDecision,
   normalizeCityCountry,
   useResponsiveLayout,
 } from "@mingla/offering-rendering";
@@ -87,7 +90,10 @@ import TicketCartSheet, {
   type TicketCartCheckoutPayload,
 } from "../../components/expandedCard/TicketCartSheet";
 import { ConsumerEventReserveBar } from "../../components/offering/ConsumerEventReserveBar";
-import { submitDeckRsvp } from "../../services/rsvpDeckService";
+import {
+  fetchRsvpMomentum,
+  submitDeckRsvp,
+} from "../../services/rsvpDeckService";
 import { useConsumerThemeFont } from "../../theme/useConsumerThemeFont";
 import { usePublicEventTickets } from "../../hooks/usePublicEventTickets";
 import { useTripIntakeSchemas } from "../../hooks/useTripIntakeSchemas";
@@ -158,6 +164,9 @@ const cardToPublicEvent = (
   coverCredit: null,
   tickets,
   currency: card.currency,
+  // ORCH-1156 [rsvp-public-redesign] — the deck seed carries canonical party
+  // types; pass them so the RSVP momentum unit + the CTA machine see one shape.
+  partyTypes: card.partyTypes ?? [],
 });
 
 const openMapsForQuery = (query: string): void => {
@@ -202,8 +211,13 @@ export default function ConsumerEventDetailScreen({
   // public-submit-rsvp edge fn (logged-in path). NO cart, NO checkout.
   const isRsvp = seed?.eventType === "rsvp";
   const [rsvpInFlight, setRsvpInFlight] = useState<boolean>(false);
-  const [rsvpResolved, setRsvpResolved] = useState<
-    "going" | "not_going" | "waitlisted" | "pending" | null
+  // ORCH-1156 [rsvp-public-redesign] — the guest's resolved own RSVP state, kept
+  // in the shape the shared RsvpMomentumDecision reads (status + approval).
+  const [rsvpStatus, setRsvpStatus] = useState<
+    "going" | "not_going" | "waitlisted" | "maybe" | null
+  >(null);
+  const [rsvpApproval, setRsvpApproval] = useState<
+    "pending" | "approved" | null
   >(null);
 
   // float→dock CTA visibility tracking (mirror the trip screen 1:1).
@@ -228,6 +242,20 @@ export default function ConsumerEventDetailScreen({
   const intakeSchemasQuery = useTripIntakeSchemas(eventId);
   const themeQuery = useEventTheme(seed);
   const runNativeCheckout = useNativeCheckoutFlow();
+
+  // ORCH-1156 [rsvp-public-redesign] OQ-1 (option a) — fetch the live RSVP
+  // momentum (going-count + capacity + waitlist/approval) from the SAME anon-safe
+  // business_public_events_view the buyer-web page reads, since the deck seed does
+  // not carry these (F-6). NO migration / RPC widen (avoids COMMS-0002). Only
+  // enabled for an RSVP card. On a missing row the momentum unit is omitted (the
+  // decision + chips still render — honest, no fabricated count).
+  const rsvpMomentumQuery = useQuery({
+    queryKey: ["rsvpMomentum", eventId],
+    enabled: isRsvp && eventId !== null,
+    staleTime: 60 * 1000,
+    queryFn: () => fetchRsvpMomentum(eventId as string),
+  });
+  const rsvpMomentum = rsvpMomentumQuery.data ?? null;
 
   const theme = themeQuery.data ?? resolveTheme(null, null);
   const palette = useMemo(() => createThemePalette(theme), [theme]);
@@ -319,8 +347,12 @@ export default function ConsumerEventDetailScreen({
   // signed-in user's JWT rides the supabase client → the edge fn resolves
   // user_id (no contact form needed). Reflects the resolved state + toasts; on
   // error never dead-ends.
+  // ORCH-1156 — Going / Maybe / Not-going write. "maybe" is NEW on consumer
+  // (parity with the shared RsvpPublicBody since ORCH-1150 R2). The signed-in
+  // user's JWT rides the supabase client → the edge fn resolves user_id (no
+  // contact form). Reflects the resolved state + toasts; never dead-ends.
   const handleRsvp = useCallback(
-    async (rsvpStatus: "going" | "not_going"): Promise<void> => {
+    async (next: "going" | "not_going" | "maybe"): Promise<void> => {
       if (rsvpInFlight || seed === null) return;
       if (user === null) {
         toastManager.show("Sign in to RSVP.", "warning");
@@ -329,22 +361,25 @@ export default function ConsumerEventDetailScreen({
       void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
       setRsvpInFlight(true);
       try {
-        const result = await submitDeckRsvp(seed.eventId, rsvpStatus);
-        const resolved =
-          result.approvalStatus === "pending"
-            ? "pending"
-            : result.status;
-        setRsvpResolved(resolved);
+        const result = await submitDeckRsvp(seed.eventId, next);
+        setRsvpStatus(result.status);
+        setRsvpApproval(result.approvalStatus);
         toastManager.show(
-          resolved === "going"
-            ? "You're going!"
-            : resolved === "waitlisted"
-              ? "You're on the waitlist — we'll let you know if a spot opens."
-              : resolved === "pending"
-                ? "RSVP sent — awaiting host approval."
-                : "Got it — you're marked as not going.",
+          result.approvalStatus === "pending"
+            ? "RSVP sent — awaiting host approval."
+            : result.status === "going"
+              ? "You're going!"
+              : result.status === "waitlisted"
+                ? "You're on the waitlist — we'll let you know if a spot opens."
+                : result.status === "maybe"
+                  ? "Marked as Maybe — we'll keep you posted."
+                  : "Got it — you're marked as not going.",
           "success",
         );
+        // Refresh the live going-count after a successful own-submit.
+        void queryClient.invalidateQueries({
+          queryKey: ["rsvpMomentum", seed.eventId],
+        });
       } catch (err) {
         const code = err instanceof Error ? err.message : "";
         toastManager.show(
@@ -359,7 +394,7 @@ export default function ConsumerEventDetailScreen({
         setRsvpInFlight(false);
       }
     },
-    [rsvpInFlight, seed, user],
+    [rsvpInFlight, seed, user, queryClient],
   );
 
   // handleBuy ported VERBATIM (behavior) from EBES handleBuy — same buyer
@@ -599,62 +634,88 @@ export default function ConsumerEventDetailScreen({
     />
   ) : null;
 
-  // ORCH-1150 — the RSVP Going/Not-going dock (replaces the cart bar when the
-  // card is a discoverable RSVP). No price, no cart — writes via handleRsvp.
-  const rsvpGoingActive = rsvpResolved === "going";
+  // ORCH-1156 [rsvp-public-redesign] — the Direction-C Going / Maybe / Can't
+  // decision dock (replaces the old 2-button hand-rolled dock; Maybe is NEW on
+  // consumer). Built on the SHARED RsvpMomentumDecision in floating-dock mode so
+  // it stays byte-parity with the buyer-web / business RsvpPublicBody. No price,
+  // no cart, no checkout — writes via handleRsvp → submitDeckRsvp. The momentum
+  // unit + chips render INLINE in the body (rsvpMomentumUnit below); the dock is
+  // the decision only. testIDs preserve the ORCH-1150 deck contract.
+  const rsvpCtaState: RsvpCtaState = resolveRsvpCta({
+    capacityFull:
+      rsvpMomentum !== null &&
+      rsvpMomentum.capacity !== null &&
+      rsvpMomentum.goingCount >= rsvpMomentum.capacity,
+    waitlistEnabled: rsvpMomentum?.waitlistEnabled ?? false,
+    manualApproval: rsvpMomentum?.manualApproval ?? false,
+    guestStatus: rsvpStatus,
+    guestApproval: rsvpApproval,
+  }).state;
+
   const rsvpDock: ReactElement = (
     <View
       style={[rsvpStyles.dock, { paddingBottom: insets.bottom + 8 }]}
       onLayout={handleDockLayout}
     >
-      {rsvpResolved === "pending" ? (
-        <Text style={[rsvpStyles.resolvedNote, { color: palette.secondaryText }]}>
-          Awaiting host approval — we'll let you know.
-        </Text>
-      ) : rsvpResolved === "waitlisted" ? (
-        <Text style={[rsvpStyles.resolvedNote, { color: palette.secondaryText }]}>
-          You're on the waitlist.
-        </Text>
-      ) : null}
-      <View style={rsvpStyles.row}>
-        <Pressable
-          onPress={() => void handleRsvp("going")}
-          disabled={rsvpInFlight || rsvpGoingActive}
-          accessibilityRole="button"
-          accessibilityLabel={rsvpGoingActive ? "You're going" : "Going"}
-          style={[
-            rsvpStyles.goingBtn,
-            { backgroundColor: rsvpGoingActive ? palette.card : palette.accent },
-          ]}
-          testID="orch-1150-deck-rsvp-going"
-        >
-          <Text
-            style={[
-              rsvpStyles.goingText,
-              {
-                color: rsvpGoingActive ? palette.accent : palette.accentText,
-                fontFamily: boldFamily,
-              },
-            ]}
-          >
-            {rsvpInFlight ? "Saving…" : rsvpGoingActive ? "You're going ✓" : "Going"}
-          </Text>
-        </Pressable>
-        <Pressable
-          onPress={() => void handleRsvp("not_going")}
-          disabled={rsvpInFlight}
-          accessibilityRole="button"
-          accessibilityLabel="Not going"
-          style={[rsvpStyles.notGoingBtn, { borderColor: palette.panelBorder }]}
-          testID="orch-1150-deck-rsvp-not-going"
-        >
-          <Text style={[rsvpStyles.notGoingText, { color: palette.secondaryText }]}>
-            Not going
-          </Text>
-        </Pressable>
-      </View>
+      <RsvpMomentumDecision
+        palette={palette}
+        theme={theme}
+        goingCount={rsvpMomentum?.goingCount ?? 0}
+        capacity={rsvpMomentum?.capacity ?? null}
+        ctaState={rsvpCtaState}
+        guestStatus={rsvpStatus}
+        guestApproval={rsvpApproval}
+        partyTypes={[]}
+        allowPlusOnes={false}
+        plusOnesMax={0}
+        plusCount={0}
+        onPlusChange={() => undefined}
+        waitlistEnabled={rsvpMomentum?.waitlistEnabled ?? false}
+        submitting={rsvpInFlight}
+        contactReady={user !== null}
+        onGoing={() => void handleRsvp("going")}
+        onMaybe={() => void handleRsvp("maybe")}
+        onNotGoing={() => void handleRsvp("not_going")}
+        variant="floating-dock"
+        showMomentum={false}
+        goingTestID="orch-1150-deck-rsvp-going"
+        maybeTestID="orch-1156-deck-rsvp-maybe"
+        notGoingTestID="orch-1150-deck-rsvp-not-going"
+      />
     </View>
   );
+
+  // ORCH-1156 — the momentum unit + kicker + party chips, rendered inline in the
+  // body (the dock above carries only the decision). Omitted entirely when the
+  // anon-view momentum has not resolved (no fabricated count — rule 9).
+  const rsvpMomentumUnit: ReactElement | null =
+    rsvpMomentum !== null ? (
+      <View style={styles.section}>
+        <RsvpMomentumDecision
+          palette={palette}
+          theme={theme}
+          goingCount={rsvpMomentum.goingCount}
+          capacity={rsvpMomentum.capacity}
+          ctaState={rsvpCtaState}
+          guestStatus={rsvpStatus}
+          guestApproval={rsvpApproval}
+          partyTypes={seed.partyTypes ?? []}
+          allowPlusOnes={false}
+          plusOnesMax={0}
+          plusCount={0}
+          onPlusChange={() => undefined}
+          waitlistEnabled={rsvpMomentum.waitlistEnabled}
+          submitting={rsvpInFlight}
+          contactReady={user !== null}
+          onGoing={() => undefined}
+          onMaybe={() => undefined}
+          onNotGoing={() => undefined}
+          variant="inline"
+          showMomentum
+          testID="orch-1156-consumer-rsvp-momentum"
+        />
+      </View>
+    ) : null;
 
   return (
     <>
@@ -752,6 +813,12 @@ export default function ConsumerEventDetailScreen({
                 </View>
               ) : null}
             </View>
+
+            {/* ORCH-1156 — Direction-C RSVP momentum unit (kicker + party chips +
+                going-count + meter + faceless anonymous cluster), inline in the
+                body. Renders only for an RSVP card once the anon-view momentum
+                resolves (no fabricated count). The decision lives in the dock. */}
+            {isRsvp ? rsvpMomentumUnit : null}
 
             {/* brand chip — "Presented by" (anon-safe brand cover/initial).
                 ORCH-1155 [public-brand-page] all-surface parity: tappable
@@ -1301,37 +1368,12 @@ const styles = StyleSheet.create({
   retryText: { color: "#FFFFFF", fontSize: 15, fontWeight: "600" },
 });
 
-// ORCH-1150 — RSVP deck dock (Going / Not-going). Opaque-safe (solid accent
-// fill, no translucent tint) per the Android glass policy.
+// ORCH-1156 — RSVP decision dock wrapper. The Going/Maybe/Can't buttons + their
+// opaque-Android fills now live in the shared RsvpMomentumDecision; this is just
+// the dock padding (matches the float→dock pattern of the reserve bar).
 const rsvpStyles = StyleSheet.create({
   dock: {
     paddingHorizontal: 16,
     paddingTop: 12,
   },
-  resolvedNote: {
-    fontSize: 13,
-    textAlign: "center",
-    marginBottom: 8,
-  },
-  row: {
-    flexDirection: "row",
-    gap: 10,
-  },
-  goingBtn: {
-    flex: 2,
-    alignItems: "center",
-    justifyContent: "center",
-    borderRadius: 14,
-    paddingVertical: 15,
-  },
-  goingText: { fontSize: 16, fontWeight: "900" },
-  notGoingBtn: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-    borderRadius: 14,
-    paddingVertical: 15,
-    borderWidth: 1,
-  },
-  notGoingText: { fontSize: 14, fontWeight: "700" },
 });

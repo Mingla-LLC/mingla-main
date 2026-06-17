@@ -78,6 +78,19 @@ export interface PublicEventProps {
   tickets: PublicTicketProps[];
   currency: string;
 
+  /**
+   * ORCH-1156 [rsvp-public-redesign] — canonical party-type slugs (ORCH-0824),
+   * rendered as the Direction-C "Momentum" vibe chips on the public RSVP page.
+   * ADDITIVE + default-safe: `[]` when none. Every existing constructor of
+   * PublicEventProps (ticket/trip/experience/preview mappers) defaults this to
+   * `[]` so no non-RSVP offering page changes. The buyer-web view-row mapper
+   * (`publicEventViewRowToEvent`) populates it from `business_public_events_view.party_types`
+   * (already anon-safe; no migration). Optional `vibeTags` reserved for a future
+   * secondary chip row (mockup shows party-types only — OQ-2 = party-types only).
+   */
+  partyTypes: string[];
+  vibeTags?: string[];
+
   themeOverrides?: ThemeInput | null;
 }
 

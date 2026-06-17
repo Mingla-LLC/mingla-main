@@ -110,6 +110,11 @@ const mapDraftToPublicEvent = (draft: DraftEvent): PublicEventProps => {
     coverCredit,
     tickets: [],
     currency: "GBP",
+    // ORCH-1156 [rsvp-public-redesign] — pass the draft's party types so the
+    // preview renders the Direction-C vibe chips. goingCount stays 0 (set in the
+    // config below) → the shared momentum unit shows the honest zero-state.
+    partyTypes: draft.partyTypes ?? [],
+    vibeTags: draft.vibeTags ?? [],
     themeOverrides: draft.themeOverrides ?? null,
   };
 };
@@ -372,6 +377,7 @@ export default function RsvpPreviewRoute(): React.ReactElement {
         onOpenMaps={openMapsForQuery}
         onSubmit={handlePreviewSubmit}
         safeAreaTop={insets.top}
+        safeAreaBottom={insets.bottom}
         testID="orch-1150-rsvp-preview"
       />
       <View style={styles.toastWrap} pointerEvents="box-none">

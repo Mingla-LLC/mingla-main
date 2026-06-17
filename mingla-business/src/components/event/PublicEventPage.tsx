@@ -177,6 +177,11 @@ const mapLiveEventToPublicEvent = (event: LiveEvent): PublicEventProps => {
     coverCredit,
     tickets: event.tickets.map(mapTicket),
     currency: event.currency ?? "GBP",
+    // ORCH-1156 [rsvp-public-redesign] — surface canonical party types (ORCH-0824)
+    // for the Direction-C RSVP vibe chips. LiveEvent already carries these from
+    // the view mapper; default `[]` for legacy persisted rows (rule 9 — no fake).
+    partyTypes: event.partyTypes ?? [],
+    vibeTags: event.vibeTags ?? [],
     themeOverrides: event.themeOverrides ?? null,
   };
 };
@@ -580,6 +585,7 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
           onScroll={handleScroll}
           onScrollViewLayout={handleScrollLayout}
           safeAreaTop={insets.top}
+          safeAreaBottom={insets.bottom}
           testID="orch-1150-rsvp-public"
         />
 

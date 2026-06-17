@@ -25,6 +25,25 @@ export type { GalleryLayout } from "./galleryLayout";
 export { ChipGroup } from "./ChipGroup";
 export type { Chip, ChipGroupProps } from "./ChipGroup";
 
+// ORCH-1156 [rsvp-public-redesign] — the shared Direction-C "Momentum" RSVP hero
+// (going-count + capacity meter + faceless anonymous cluster + Going/Maybe/Can't
+// decision). Consumed by the business RsvpPublicBody (buyer-web + business +
+// preview) AND the consumer ConsumerEventDetailScreen RSVP branch — one unit,
+// every surface. RSVP is ticketless: NO price/checkout/cart affordance here.
+export { RsvpMomentumDecision } from "./RsvpMomentumDecision";
+export type {
+  RsvpMomentumDecisionProps,
+  RsvpMomentumVariant,
+  RsvpGuestStatus,
+  RsvpGuestApproval,
+} from "./RsvpMomentumDecision";
+export {
+  deriveMomentum,
+  partyTypeLabel,
+  RSVP_CLUSTER_SHOWN,
+} from "./rsvpMomentum";
+export type { RsvpMomentumModel } from "./rsvpMomentum";
+
 // ORCH-1138 [trip-page-redesign] — shared "City, Country" route-leg normalizer
 // (departure/destination) used identically by the business/web TripPreview and
 // the consumer ConsumerTripDetailScreen so the leaving-from/destination block
