@@ -39,7 +39,7 @@ const hookSrc = stripComments(read(`${APP}/src/hooks/useMyReservations.ts`));
 // ── Data layer — the hook fetches the venue cover/photo + notes ─────────────
 ok(
   "useMyReservations selects the brand cover media + photo + hue",
-  /brands\(name,\s*cover_media_url,\s*cover_media_type,\s*profile_photo_url,\s*cover_hue\)/.test(
+  /brands\(name,\s*cover_media_url,\s*cover_media_type,\s*profile_photo_url,\s*cover_hue/.test(
     hookSrc,
   ),
   "expected brands(name, cover_media_url, cover_media_type, profile_photo_url, cover_hue)",
@@ -104,6 +104,41 @@ ok(
 ok(
   "Cancel action survives and stays gated on cancellable",
   /isCancellable/.test(rowSrc) && /Cancel reservation/.test(rowSrc),
+);
+
+// ── 2.2e [QR + weather + traffic] — the digital reservation pass ─────────────
+ok(
+  "renders a check-in QR code encoding the reservation id",
+  /from "react-native-qrcode-svg"/.test(rowSrc) &&
+    /reservationQrValue\(/.test(rowSrc) &&
+    /mingla:\/\/reservation\//.test(rowSrc),
+);
+ok(
+  "QR is gated to live reservations (confirmed/pending tone)",
+  /banner\.tone === "confirmed" \|\| banner\.tone === "pending"/.test(rowSrc),
+);
+ok(
+  "shows the venue address row",
+  /label="Address"/.test(rowSrc),
+);
+ok(
+  "Directions opens native maps with driving/live-traffic routing",
+  /openDirections\(/.test(rowSrc) &&
+    /maps\.apple\.com\/\?daddr=/.test(rowSrc) &&
+    /maps\/dir\/\?api=1&destination=/.test(rowSrc) &&
+    /Directions & live traffic/.test(rowSrc),
+);
+ok(
+  "fetches + renders the weather forecast for the venue + reservation time",
+  /weatherService[\s\S]*getWeatherForecast\(/.test(rowSrc) &&
+    /<WeatherSection/.test(rowSrc) &&
+    /brand_lat/.test(rowSrc),
+);
+ok(
+  "hook fetches venue address + coordinates for the pass",
+  /address,\s*city,\s*lat,\s*lng/.test(hookSrc) &&
+    /brand_lat:/.test(hookSrc) &&
+    /brand_address:/.test(hookSrc),
 );
 
 console.log(`\n${passed} assertions passed.`);

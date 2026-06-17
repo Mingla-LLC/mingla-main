@@ -16,11 +16,15 @@
  * the same staggered Active/Archive entrance.
  */
 
-import React, { useState } from "react";
-import { Animated, Pressable, StyleSheet, Text, View } from "react-native";
+import React, { useEffect, useState } from "react";
+import { Animated, Linking, Platform, Pressable, StyleSheet, Text, View } from "react-native";
+import QRCode from "react-native-qrcode-svg";
 
 import { Icon } from "../ui/Icon";
 import { ImageWithFallback } from "../figma/ImageWithFallback";
+import WeatherSection from "../expandedCard/WeatherSection";
+import { weatherService, type WeatherData } from "../../services/weatherService";
+import { useAppStore } from "../../store/appStore";
 import type { MyReservationRow } from "../../hooks/useMyReservations";
 
 interface ReservationCalendarRowProps {
@@ -83,6 +87,33 @@ function confirmationRef(id: string): string {
   return `RES-${id.replace(/-/g, "").slice(0, 6).toUpperCase()}`;
 }
 
+// The QR payload the venue scans to check the guest in. Encodes the canonical
+// reservation id under the mingla scheme (stable, scanner-resolvable).
+function reservationQrValue(reservation: MyReservationRow): string {
+  return `mingla://reservation/${reservation.id}`;
+}
+
+// Opens the native maps app with DIRECTIONS to the venue — which surfaces live
+// traffic + ETA from the user's current location. Prefers lat/lng; falls back
+// to the address string. Apple Maps on iOS, Google Maps elsewhere.
+function openDirections(reservation: MyReservationRow): void {
+  const hasCoords =
+    typeof reservation.brand_lat === "number" &&
+    typeof reservation.brand_lng === "number";
+  const dest = hasCoords
+    ? `${reservation.brand_lat},${reservation.brand_lng}`
+    : reservation.brand_address
+    ? encodeURIComponent(reservation.brand_address)
+    : null;
+  if (!dest) return;
+  const label = encodeURIComponent(reservation.brand_name ?? "Venue");
+  const url =
+    Platform.OS === "ios"
+      ? `http://maps.apple.com/?daddr=${dest}&q=${label}&dirflg=d`
+      : `https://www.google.com/maps/dir/?api=1&destination=${dest}&travelmode=driving`;
+  void Linking.openURL(url);
+}
+
 const STATUS_LABEL: Record<string, string> = {
   requested: "Requested",
   confirmed: "Confirmed",
@@ -133,9 +164,53 @@ const ReservationCalendarRow: React.FC<ReservationCalendarRowProps> = ({
   onCancel,
 }) => {
   const [expanded, setExpanded] = useState(false);
+  const [weather, setWeather] = useState<WeatherData | null>(null);
+  const [weatherLoading, setWeatherLoading] = useState(false);
+  const [weatherTried, setWeatherTried] = useState(false);
+
+  const measurementSystem = useAppStore(
+    (s) => (s.user?.measurement_system === "Metric" ? "Metric" : "Imperial") as
+      | "Metric"
+      | "Imperial",
+  );
 
   const startMs = Date.parse(reservation.reserved_for);
   const isUpcoming = Number.isFinite(startMs) && startMs > Date.now();
+
+  // Lazily fetch the forecast for the venue + reservation date when the card is
+  // first expanded (Open-Meteo, free, no key). Beyond the forecast horizon it
+  // resolves null → the weather block simply hides.
+  useEffect(() => {
+    if (!expanded || weatherTried) return;
+    const lat = reservation.brand_lat;
+    const lng = reservation.brand_lng;
+    if (typeof lat !== "number" || typeof lng !== "number") {
+      setWeatherTried(true);
+      return;
+    }
+    let cancelled = false;
+    setWeatherTried(true);
+    setWeatherLoading(true);
+    const when = Number.isFinite(startMs) ? new Date(startMs) : new Date();
+    weatherService
+      .getWeatherForecast(lat, lng, when)
+      .then((data) => {
+        if (!cancelled) setWeather(data);
+      })
+      .catch(() => {
+        if (!cancelled) setWeather(null);
+      })
+      .finally(() => {
+        if (!cancelled) setWeatherLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [expanded, weatherTried, reservation.brand_lat, reservation.brand_lng, startMs]);
+
+  const hasLocation =
+    typeof reservation.brand_lat === "number" ||
+    !!reservation.brand_address;
   const isCancellable =
     isUpcoming &&
     (reservation.status === "confirmed" ||
@@ -243,6 +318,22 @@ const ReservationCalendarRow: React.FC<ReservationCalendarRowProps> = ({
             </Text>
           </View>
 
+          {/* Check-in QR — the digital reservation pass (scan at the venue). */}
+          {(banner.tone === "confirmed" || banner.tone === "pending") && (
+            <View style={styles.qrCard}>
+              <View style={styles.qrBox}>
+                <QRCode
+                  value={reservationQrValue(reservation)}
+                  size={132}
+                  backgroundColor="#ffffff"
+                  color="#0c0e12"
+                />
+              </View>
+              <Text style={styles.qrRef}>{confirmationRef(reservation.id)}</Text>
+              <Text style={styles.qrHint}>Show this at the venue to check in</Text>
+            </View>
+          )}
+
           <DetailRow icon="calendar-outline" label="When" value={formatReservedForLong(reservation.reserved_for)} />
           <DetailRow icon="people-outline" label="Party" value={`${reservation.party_size} ${reservation.party_size === 1 ? "guest" : "guests"}`} />
           <DetailRow icon="card-outline" label="Deposit" value={formatDeposit(reservation)} />
@@ -254,6 +345,40 @@ const ReservationCalendarRow: React.FC<ReservationCalendarRowProps> = ({
           ) : null}
           <DetailRow icon="pricetag-outline" label="Confirmation" value={confirmationRef(reservation.id)} />
           <DetailRow icon="storefront-outline" label="Venue" value={reservation.brand_name ?? "Venue"} />
+          {reservation.brand_address ? (
+            <DetailRow icon="location-outline" label="Address" value={reservation.brand_address} />
+          ) : null}
+
+          {/* Getting there — opens native maps with live traffic + ETA. */}
+          {hasLocation ? (
+            <Pressable
+              onPress={() => openDirections(reservation)}
+              accessibilityRole="button"
+              accessibilityLabel={`Get directions to ${reservation.brand_name ?? "the venue"}`}
+              style={({ pressed }) => [
+                styles.directionsBtn,
+                pressed && styles.directionsBtnPressed,
+              ]}
+            >
+              <Icon name="navigate-outline" size={16} color="#1d4ed8" />
+              <Text style={styles.directionsText}>Directions & live traffic</Text>
+            </Pressable>
+          ) : null}
+
+          {/* Weather forecast for the venue at your reservation time. */}
+          {(weatherLoading || weather) && (
+            <View style={styles.weatherWrap}>
+              <Text style={styles.sectionLabel}>Weather at your visit</Text>
+              <WeatherSection
+                weatherData={weather}
+                loading={weatherLoading}
+                selectedDateTime={
+                  Number.isFinite(startMs) ? new Date(startMs) : undefined
+                }
+                measurementSystem={measurementSystem}
+              />
+            </View>
+          )}
 
           {isCancellable ? (
             <Pressable
@@ -435,6 +560,58 @@ const styles = StyleSheet.create({
     fontSize: 13.5,
     fontWeight: "700",
     color: "#dc2626",
+  },
+  qrCard: {
+    alignItems: "center",
+    gap: 6,
+    paddingVertical: 16,
+    backgroundColor: "#f9fafb",
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: "#eef2f7",
+  },
+  qrBox: {
+    padding: 12,
+    backgroundColor: "#ffffff",
+    borderRadius: 12,
+  },
+  qrRef: {
+    fontSize: 14,
+    fontWeight: "800",
+    color: "#111827",
+    letterSpacing: 1,
+    marginTop: 4,
+  },
+  qrHint: {
+    fontSize: 12,
+    color: "#6b7280",
+  },
+  directionsBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    paddingVertical: 11,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "#bfdbfe",
+    backgroundColor: "#eff6ff",
+  },
+  directionsBtnPressed: {
+    backgroundColor: "#dbeafe",
+  },
+  directionsText: {
+    fontSize: 13.5,
+    fontWeight: "700",
+    color: "#1d4ed8",
+  },
+  weatherWrap: {
+    gap: 6,
+  },
+  sectionLabel: {
+    fontSize: 12.5,
+    fontWeight: "700",
+    color: "#6b7280",
   },
 });
 
