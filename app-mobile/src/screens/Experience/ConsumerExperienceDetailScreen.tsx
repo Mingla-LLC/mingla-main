@@ -724,7 +724,19 @@ export default function ConsumerExperienceDetailScreen({
     dockTopY === null || viewportH === 0
       ? true
       : dockTopY > scrollY + viewportH - REVEAL_MARGIN;
-  const reserveBarClearance = 8;
+  // ORCH-1153 BUG-1 (Seth device, experience reserve bar cut off): the gorhom
+  // BaseBottomSheet content extends ~63pt BELOW the visible window at the 90%
+  // snap (SHEET_BOTTOM_OVERSHOOT in ConsumerEventReserveBar). A flat 8pt scroll
+  // clearance let the DOCKED bar (last scroll child, in normal flow) land in
+  // that overshoot region on short-content experiences, so its price block +
+  // "Reserve →" were clipped at the home-indicator edge and the bar never read
+  // as "floating". Pad the scroll content past the overshoot so the docked bar
+  // rests ABOVE the clipped region; the bar itself already pads its own bottom
+  // safe-area (safeBottom + 8), so do NOT re-add the inset here (would double-
+  // pad). The trip page rarely hit this — trips have long itinerary/payment
+  // content that fills the viewport, pushing the docked bar up naturally.
+  const SHEET_BOTTOM_OVERSHOOT = 63;
+  const reserveBarClearance = SHEET_BOTTOM_OVERSHOOT + 8;
 
   const dockedReserve: ReactElement = (
     <ConsumerEventReserveBar

@@ -119,6 +119,17 @@ export interface ParallaxCoverShellProps {
   onScroll?: (event: NativeSyntheticEvent<NativeScrollEvent>) => void;
   onScrollViewLayout?: (event: LayoutChangeEvent) => void;
   closeAccessibilityLabel?: string;
+  /**
+   * ORCH-1153 BUG-2 — OPTIONAL phone/native cover aspect ratio (width / height).
+   * The pinned cover + its flow spacer both use this. Default `4 / 5` (the
+   * proven event/trip/RSVP full-bleed cover; native-stacking test asserts 4/5).
+   * A page whose detail content needs a taller readable viewport as it slides
+   * over the cover (the experience page — shorter body than a multi-day trip)
+   * passes a WIDER ratio (e.g. `3 / 2`), which makes the cover SHORTER so more
+   * of the screen is content from the first paint. Desktop is unaffected (its
+   * contained hero uses a fixed 21/9). Absent ⇒ byte-identical to today.
+   */
+  coverAspectRatio?: number;
   testID?: string;
 }
 
@@ -145,6 +156,7 @@ export const ParallaxCoverShell: React.FC<ParallaxCoverShellProps> = ({
   onScroll,
   onScrollViewLayout,
   closeAccessibilityLabel,
+  coverAspectRatio = 4 / 5,
   testID,
 }) => {
   const { isDesktop, isWeb } = useResponsiveLayout();
@@ -255,7 +267,7 @@ export const ParallaxCoverShell: React.FC<ParallaxCoverShellProps> = ({
             top: 0,
             left: 0,
             right: 0,
-            aspectRatio: 4 / 5,
+            aspectRatio: coverAspectRatio,
             zIndex: COVER_Z,
             overflow: "hidden",
             backgroundColor: "#000",
@@ -291,8 +303,9 @@ export const ParallaxCoverShell: React.FC<ParallaxCoverShellProps> = ({
           scrollEventThrottle={16}
           onLayout={onScrollViewLayout}
         >
-          {/* flow spacer holding the pinned cover height */}
-          <View style={styles.webPhoneSpacer} />
+          {/* flow spacer holding the pinned cover height (matches the cover
+              aspect ratio so the body seam sits at the cover's bottom edge) */}
+          <View style={[styles.webPhoneSpacer, { aspectRatio: coverAspectRatio }]} />
           {/* body slides up over the cover (middle layer) */}
           <View
             style={webStyle({
@@ -323,7 +336,7 @@ export const ParallaxCoverShell: React.FC<ParallaxCoverShellProps> = ({
   return (
     <View style={[styles.nativeHost, { backgroundColor: palette.page }]} testID={testID}>
       {/* pinned cover behind the scroll */}
-      <View style={styles.nativeCover} pointerEvents="none">
+      <View style={[styles.nativeCover, { aspectRatio: coverAspectRatio }]} pointerEvents="none">
         {coverMedia}
         <View style={styles.coverScrim} pointerEvents="none" />
         {entrance}
@@ -340,7 +353,7 @@ export const ParallaxCoverShell: React.FC<ParallaxCoverShellProps> = ({
         scrollEventThrottle={16}
         onLayout={onScrollViewLayout}
       >
-        <View style={styles.nativeSpacer} />
+        <View style={[styles.nativeSpacer, { aspectRatio: coverAspectRatio }]} />
         <View
           style={[
             styles.nativeBody,

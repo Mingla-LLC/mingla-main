@@ -422,7 +422,7 @@ const ResolvedExperiencePage: React.FC<{
             {formatOpenHours(bookable[0], experience.timezone)}
           </Text>
           <Text style={[styles.hoursSub, { color: palette.tertiaryText }]}>
-            Reserve a table any upcoming day
+            Reserve a spot any upcoming day
           </Text>
         </View>
       </View>
