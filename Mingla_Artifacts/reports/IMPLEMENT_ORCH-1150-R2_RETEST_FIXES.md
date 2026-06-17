@@ -286,3 +286,68 @@ Source-built + gates run; NOT driven on sim/device this turn. Verified by tsc (z
 ## D-5.11 Discoveries for orchestrator (D-5)
 
 - **DISC-1150R2-A (carried forward, NOT introduced here):** `i-proposed-tr2-route-by-event-type.mjs` is RED on the branch baseline with 6 violations in DO-NOT-TOUCH files (home.tsx, hub/trips.tsx, accept-scanner-invitation.tsx, ScannerHome.tsx) — unrelated scanner/trip routes lacking the helper/allowlist. My change is gate-clean (zero new violations). Recommend a dedicated gate-cleanup ORCH; out of scope here.
+
+---
+
+# D-8 + D-9 (mingla-implementor, 2026-06-17)
+
+Implemented per the binding SPEC `Mingla_Artifacts/investigations/INVESTIGATE_ORCH-1150_RETEST_D6_D9.md` §D-8/§D-9. D-6/D-7 were OUT of this dispatch's scope (parallel workstream); `RsvpPublicBody.tsx`, `ParallaxCoverShell.tsx`, and the public-page CTA were NOT touched.
+
+## Commits
+- D-9: `0636b3e06`
+- D-8: `b8ee98baa`
+
+## D-9 — published-RSVP edit no longer bounces to the events list
+
+### Files
+- `mingla-business/app/rsvp/[id]/edit.tsx` (guard hardened, ~12 lines incl. comment)
+- `mingla-business/app/rsvp/[id]/__tests__/editPublishedExitGuard.test.ts` (NEW, 5 tests)
+
+### Old → New
+- **Before:** the edit-published safe-exit fired on `resolvedLiveEvent === null && !businessEventQuery.isLoading`. A DISABLED React-Query query (`enabled = isAuthReady && eventId`) reports `isLoading=false`; during the `isAuthReady` flicker (fresh push, empty `useLiveEventStore`) the exit bounced a published RSVP to `/(tabs)/hub/events` before the fetch ran.
+- **Now:** gated on `isAuthReady && resolvedLiveEvent === null && !businessEventQuery.isLoading && !businessEventQuery.isFetching` — bounces ONLY when the lookup is genuinely exhausted. Strictly more conservative; can never bounce earlier than before. All four terms were already in the effect dep array.
+- **Why:** SPEC §D-9 / SC-5. RSVP-route-only; ticketed `app/event/[id]/edit.tsx` untouched (DO-NOT-TOUCH honored).
+
+### Test + fails-on-revert
+- 4 pure-logic predicate tests (auth-flicker, in-flight fetch, event-found, exhausted) + 1 source-binding assertion that the shipped guard carries `isAuthReady` + `!isFetching`.
+- **fails-on-revert verified at `0636b3e06`** by TRUE LINE DELETION of the `isAuthReady &&` + `!businessEventQuery.isFetching` terms → the source assertion FAILS; restored → 5/5 PASS.
+
+## D-8 — RSVP detail keeps Blasts + Group-chat (comms, not money)
+
+### Files
+- `mingla-business/app/rsvp/[id]/index.tsx` (2 handlers + 2 ActionTiles, ~28 lines)
+- `mingla-business/src/services/marketing/marketingAudienceService.ts` (`resolveRsvpGuests`, ~95 lines)
+- `mingla-business/src/hooks/marketing/useEventBuyers.ts` (optional `eventType` arg + event_type probe + RSVP routing, ~55 lines)
+- `mingla-business/src/services/marketing/__tests__/marketingAudienceService.test.ts` (+5 tests, additions only)
+- `mingla-business/src/hooks/marketing/__tests__/useEventBuyers.rsvpAudience.test.ts` (NEW, 5 tests)
+- `mingla-business/app/rsvp/[id]/__tests__/index.test.tsx` (D-4 DROP assertion narrowed + D-8 block; file is net-ADDED vs origin/main → append-only clean)
+
+### Old → New
+- **Group chat tile:** routes `/event/{id}/group-chat` (REUSE-SAFE — event-scoped, event_type-agnostic; the RSVP already has a `conversations` row). Allowlist comment present.
+- **Blasts tile:** routes `/event/{id}/blasts`. `resolveEventBuyers` reads `orders` → an RSVP has zero orders → empty audience forever. NEW `resolveRsvpGuests(eventId)` reads `event_rsvps` `rsvp_status='going'` + `approval_status='approved'` (`guest_name/guest_email/guest_phone`), maps them onto the same aggregate/mask/consent path, and returns the IDENTICAL `{ rows, reach }` shape so the shared Blasts UI + `BuyerRow` render unchanged. `useEventBuyers` gained an optional `eventType` arg; when omitted (the DO-NOT-TOUCH `app/event/[id]/blasts` screen passes none) the hook probes `events.event_type` once and routes RSVP events to `resolveRsvpGuests`. The two existing callers (`blasts/index.tsx`, `useResolveAudience.ts`) are unaffected (optional arg, auto-probe).
+- Tiles reuse the shared `ActionTile` (icons `send`/`chat`, matching the ticketed event detail) so the Android opaque-glass policy is inherited automatically — no new glass surface authored.
+
+### RLS confirmation (the FLAG in SPEC §10 / Open Q-3)
+DB probe (read-only, project `gqnoajqerqhnvulmnyvv`): `event_rsvps` carries `event_rsvps_host_read` (cmd `r`/SELECT) with USING `EXISTS (SELECT 1 FROM events e WHERE e.id = event_rsvps.event_id AND biz_brand_effective_rank(e.brand_id, auth.uid()) >= biz_role_rank('event_manager'))`. The Blasts host is a logged-in business user managing the brand, so the going+approved guest read is covered. **No migration / RPC / RLS widening needed — client query only.** (Same policy the existing ORCH-1150 going-count probe in `businessEvents.ts:596` already reads under.)
+
+### Tests + fails-on-revert
+- `marketingAudienceService.test.ts`: `resolveRsvpGuests` reads `event_rsvps` (NOT `orders`), maps going-guests, empty/error/UUID-guard paths (+5).
+- `useEventBuyers.rsvpAudience.test.ts`: imports `resolveRsvpGuests`, routes by `event_type`, optional-arg + probe, type-gated `audienceEnabled`, type-keyed cache (5).
+- `index.test.tsx` D-8 block: Group-chat + Blasts tiles present, route to the event-scoped screens, and carry ≥2 route-by-event-type allowlist comments.
+- **fails-on-revert verified at `b8ee98baa`**: TRUE LINE DELETION of the `resolvedType === "rsvp" ? resolveRsvpGuests : resolveEventBuyers` hook branch → hook test FAILS; deletion of the two tiles → detail test FAILS (2 D-8 tests). Restored → 50/50 PASS across the 4 D-8/D-9 suites; 207/207 across the full marketing suite (no regression).
+
+## Gate / tsc / test results (D-8 + D-9)
+- `npx tsc --noEmit -p tsconfig.json` (mingla-business): 333 errors WITH my changes, 333 WITHOUT (stash compare) → ZERO new errors; none in any touched file (`edit.tsx`/`index.tsx`/`marketingAudienceService.ts`/`useEventBuyers.ts`/tests). The 333 are pre-existing repo-wide (checkout buyer.tsx implicit-any, RTL render-test module resolution, richEditor, search adapters, payments native modules, DraftEvent.category fixtures).
+- `node .github/scripts/strict-grep/i-proposed-tr2-route-by-event-type.mjs`: the RSVP screen produces ZERO violations (both `/event/...` pushes allowlisted). The gate still exits non-zero on **6 PRE-EXISTING** violations in DO-NOT-TOUCH files (home.tsx:414, hub/trips.tsx:379/388/397, accept-scanner-invitation.tsx:94, ScannerHome.tsx:119) — identical with my changes stashed, files untouched vs origin/main. See DISC-1150R2-A. My change is gate-clean.
+- `node .github/scripts/test-append-only-check.js`: 10 passed, 0 failed (my `marketingAudienceService.test.ts` = additions-only; `index.test.tsx` = net-ADDED vs origin/main).
+- jest (D-8/D-9 suites): 50/50 PASS. Marketing regression: 207/207 PASS.
+
+## DO-NOT-TOUCH compliance (D-8 + D-9)
+- NOT touched: `app/event/[id]/**` (only ROUTED to), `RsvpPublicBody.tsx`, `ParallaxCoverShell.tsx`, `GroupChatPanel.tsx`, `EditPublishedScreen` ticketed behavior, `blasts/index.tsx` UI, any migration/RPC. The Blasts audience is a pure client query under existing RLS. D-6/D-7 files (public-page CTA, parallax shell) left for the parallel workstream.
+
+## Operator action required (D-8 + D-9)
+- None for backend: no migration, no edge deploy, no RPC. `event_rsvps` read runs under the existing `event_rsvps_host_read` policy.
+- For TEST (clean build bound to THIS worktree, per SPEC §11): (1) tap Edit on a PUBLISHED (scheduled/live) RSVP from the Hub → must open the RSVP-aware EditPublishedScreen, not the events list; also cold deep-link `/rsvp/{uuid}/edit?mode=edit-published`. (2) Open an RSVP detail → tap Group chat (existing conversation loads, host can post) and Blasts (audience = going `event_rsvps` guests, NOT "no buyers"). (3) Regression: a published TICKETED event Edit + Blasts behave identically to before.
+
+## Verdict
+D-8 + D-9 implemented and verified at the source/unit/gate layer; live-fire (device) deferred to TEST per SPEC (the reproducer-bound items were capped at probable upstream due to the shared-Metro blocker).
