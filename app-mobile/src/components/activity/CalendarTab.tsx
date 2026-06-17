@@ -62,11 +62,33 @@ import {
 } from "../../hooks/useCalendarEntries";
 import BusinessEventCalendarRow from "./BusinessEventCalendarRow";
 import type { BusinessEventCalendarRow as BusinessEventRow } from "../../services/calendarService";
+// META-ORCH-1148 2.2b: the signed-in user's venue reservations, folded into the
+// existing Active/Archive buckets as a THIRD unified-row kind.
+import ReservationCalendarRow from "./ReservationCalendarRow";
+import {
+  useMyReservations,
+  cancelMyReservation,
+  myReservationsKeys,
+  type MyReservationRow,
+} from "../../hooks/useMyReservations";
 
 // ORCH-0842: discriminated-union row for unified Active/Archive rendering.
+// META-ORCH-1148 2.2b adds the "reservation" kind.
 type UnifiedRow =
   | { kind: "calendar"; key: string; sortAt: number; entry: CalendarEntry }
-  | { kind: "ticket"; key: string; sortAt: number; row: BusinessEventRow };
+  | { kind: "ticket"; key: string; sortAt: number; row: BusinessEventRow }
+  | { kind: "reservation"; key: string; sortAt: number; reservation: MyReservationRow };
+
+// META-ORCH-1148 2.2b — a reservation's effective end for bucket decisions.
+// Reservations have no stored duration; treat them as a single instant + a
+// default dining window so a just-passed booking lingers in Active briefly
+// (mirrors the calendar-entry / business-order bucketing intent).
+const RESERVATION_DEFAULT_DURATION_MIN = 120;
+function reservationEffectiveEndMs(reservedFor: string): number {
+  const startMs = Date.parse(reservedFor);
+  if (!Number.isFinite(startMs)) return Number.NaN;
+  return startMs + RESERVATION_DEFAULT_DURATION_MIN * 60_000;
+}
 
 interface CalendarEntry {
   id: string;
@@ -219,6 +241,11 @@ const CalendarTab = ({
   const businessOrdersQuery = useBusinessEventOrders(user?.id);
   const businessOrders = businessOrdersQuery.data ?? [];
 
+  // META-ORCH-1148 2.2b — the signed-in user's own venue reservations (consumer-
+  // own-read RLS). Folded into the same Active/Archive buckets below.
+  const reservationsQuery = useMyReservations(user?.id);
+  const myReservations = reservationsQuery.data ?? [];
+
   // ORCH-0851 H-1: realtime subscription invalidates
   // `["businessEventOrders", user.id]` within ~1s of an INSERT/UPDATE/DELETE
   // on `orders` matching `buyer_user_id=eq.<userId>`. Fallbacks
@@ -236,6 +263,58 @@ const CalendarTab = ({
     await queryClient.invalidateQueries({ queryKey: ["calendarEntries", user?.id] });
     setIsRefreshing(false);
   }, [queryClient, user?.id]);
+
+  // META-ORCH-1148 2.2b — cancel one of MY reservations (consumer cancel RPC).
+  // Honors cancel_cutoff_hours server-side; surfaces refund eligibility.
+  // [TRANSITIONAL] Refund EXECUTION is not wired here — the RPC only FLAGS
+  // refund_eligible; the actual refund (reuse refund-order) is the 2.2c/edge-
+  // cancel seam. Exit: route through the edge cancel endpoint once it executes
+  // the refund. Tracked in IMPLEMENT_META-ORCH-1148_SUBC_2_2B.
+  const handleCancelReservation = useCallback(
+    (reservation: MyReservationRow) => {
+      Alert.alert(
+        "Cancel this reservation?",
+        `${reservation.brand_name ?? "This venue"} · party of ${reservation.party_size}`,
+        [
+          { text: "Keep it", style: "cancel" },
+          {
+            text: "Cancel reservation",
+            style: "destructive",
+            onPress: () => {
+              void (async () => {
+                try {
+                  const { refundEligible } = await cancelMyReservation(
+                    reservation.id,
+                  );
+                  if (user?.id) {
+                    await queryClient.invalidateQueries({
+                      queryKey: myReservationsKeys.byUser(user.id),
+                    });
+                  }
+                  Alert.alert(
+                    "Reservation cancelled",
+                    refundEligible
+                      ? "You cancelled before the cutoff. Any deposit refund will follow."
+                      : "Your reservation has been cancelled.",
+                  );
+                } catch (err) {
+                  const msg =
+                    err instanceof Error ? err.message : String(err);
+                  Alert.alert(
+                    "Couldn't cancel",
+                    msg.includes("cutoff")
+                      ? "The cancellation window has passed for this reservation."
+                      : "We couldn't cancel your reservation. Please try again.",
+                  );
+                }
+              })();
+            },
+          },
+        ],
+      );
+    },
+    [queryClient, user?.id],
+  );
 
   // ORCH-1030: a calendar/review notification deep link selects its target
   // entry by auto-expanding the matching inline card (v1 = select, no scroll).
@@ -440,6 +519,28 @@ const CalendarTab = ({
     return { activeBusinessOrders: active, archiveBusinessOrders: archive };
   }, [businessOrders]);
 
+  // META-ORCH-1148 2.2b — bucket reservations. Cancelled reservations always go
+  // to Archive; otherwise bucket on the effective end (just like orders).
+  const { activeReservations, archiveReservations } = useMemo(() => {
+    const now = Date.now();
+    const active: MyReservationRow[] = [];
+    const archive: MyReservationRow[] = [];
+    for (const r of myReservations) {
+      const cancelled =
+        r.status === "cancelled_by_guest" ||
+        r.status === "cancelled_by_venue" ||
+        r.status === "no_show" ||
+        r.status === "completed";
+      const endMs = reservationEffectiveEndMs(r.reserved_for);
+      if (cancelled || (Number.isFinite(endMs) && endMs < now)) {
+        archive.push(r);
+      } else {
+        active.push(r);
+      }
+    }
+    return { activeReservations: active, archiveReservations: archive };
+  }, [myReservations]);
+
   // ORCH-0842: filter parity rules per SPEC §3.6.1.
   // - search: match eventTitle OR brandName (case-insensitive)
   // - when: apply to masterDateUtc; null-date tickets show only under "all"
@@ -528,9 +629,18 @@ const CalendarTab = ({
         row: order,
       });
     }
+    for (const reservation of activeReservations) {
+      const ts = Date.parse(reservation.reserved_for);
+      rows.push({
+        kind: "reservation",
+        key: `reservation:${reservation.id}`,
+        sortAt: Number.isFinite(ts) ? ts : Number.POSITIVE_INFINITY,
+        reservation,
+      });
+    }
     rows.sort((a, b) => a.sortAt - b.sortAt);
     return rows;
-  }, [filteredActiveEntries, filteredActiveBusinessOrders]);
+  }, [filteredActiveEntries, filteredActiveBusinessOrders, activeReservations]);
 
   const unifiedArchiveRows = useMemo<UnifiedRow[]>(() => {
     const rows: UnifiedRow[] = [];
@@ -558,10 +668,19 @@ const CalendarTab = ({
         row: order,
       });
     }
+    for (const reservation of archiveReservations) {
+      const ts = Date.parse(reservation.reserved_for);
+      rows.push({
+        kind: "reservation",
+        key: `reservation:${reservation.id}`,
+        sortAt: Number.isFinite(ts) ? ts : Number.POSITIVE_INFINITY,
+        reservation,
+      });
+    }
     // Archive: most recently past first.
     rows.sort((a, b) => b.sortAt - a.sortAt);
     return rows;
-  }, [filteredArchiveEntries, filteredArchiveBusinessOrders]);
+  }, [filteredArchiveEntries, filteredArchiveBusinessOrders, archiveReservations]);
 
   // ORCH-0842: animate the UNIFIED active row list — calendar entries
   // AND ticket orders participate in the same staggered entrance using
@@ -2295,6 +2414,16 @@ const CalendarTab = ({
                       </Animated.View>
                     );
                   }
+                  if (row.kind === "reservation") {
+                    return (
+                      <ReservationCalendarRow
+                        key={row.key}
+                        reservation={row.reservation}
+                        animation={animation}
+                        onCancel={handleCancelReservation}
+                      />
+                    );
+                  }
                   return (
                     <BusinessEventCalendarRow
                       key={row.key}
@@ -2355,6 +2484,16 @@ const CalendarTab = ({
                       >
                         {renderCalendarEntry({ item: row.entry })}
                       </Animated.View>
+                    );
+                  }
+                  if (row.kind === "reservation") {
+                    return (
+                      <ReservationCalendarRow
+                        key={row.key}
+                        reservation={row.reservation}
+                        animation={animation}
+                        onCancel={handleCancelReservation}
+                      />
                     );
                   }
                   return (
