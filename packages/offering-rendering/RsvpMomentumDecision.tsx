@@ -1,5 +1,5 @@
 /**
- * RsvpMomentumDecision — ORCH-1156 [rsvp-public-redesign] · Direction C "Momentum".
+ * RsvpMomentumDecision — ORCH-1157 [rsvp-public-redesign] · Direction C "Momentum".
  *
  * The ONE shared, pure-presentational RSVP hero consumed by every surface:
  *   - buyer-web + business iOS/Android via `RsvpPublicBody`
@@ -16,22 +16,22 @@
  *
  * WHY this exists (read before editing):
  *   - RSVP is TICKETLESS. There is NO price, NO "Reserve"/"Get tickets", NO cart,
- *     NO /checkout anywhere on any RSVP surface (I-PROPOSED-1156-RSVP-NO-CHECKOUT-
+ *     NO /checkout anywhere on any RSVP surface (I-PROPOSED-1157-RSVP-NO-CHECKOUT-
  *     AFFORDANCE). Do not add one.
  *   - Social proof is HONEST: going COUNT + capacity meter + a FACELESS cluster
  *     ONLY. We store NO public guest list, NO public maybe count, NO public
  *     waitlist count, NO comments/photos/reactions — so this component renders
  *     none of those, and its props surface carries no name/photo/maybeCount/
- *     waitlistCount field (I-PROPOSED-1156-RSVP-SOCIAL-PROOF-ANON-ONLY; constitution
+ *     waitlistCount field (I-PROPOSED-1157-RSVP-SOCIAL-PROOF-ANON-ONLY; constitution
  *     rule 9 — missing is hidden, never faked). The cluster avatars are GLYPH-only
  *     (a person outline drawn in SVG) — never an <Image>/uri.
  *   - The brand THEME ACCENT is the "loudness dial": the meter, cluster, going
  *     button and kicker dot all derive their color from `palette.accent` /
- *     `palette.accentWash`, never a hardcoded hue (I-PROPOSED-1156-RSVP-USES-
+ *     `palette.accentWash`, never a hardcoded hue (I-PROPOSED-1157-RSVP-USES-
  *     BRAND-THEME-DIAL) — so the same layout reads right from a corporate mixer to
  *     a club-night with no layout change.
  *   - The decision is the HERO — it is rendered docked/sticky, never buried
- *     mid-body (I-PROPOSED-1156-RSVP-DECISION-IS-HERO).
+ *     mid-body (I-PROPOSED-1157-RSVP-DECISION-IS-HERO).
  *
  * Pure: react-native + react-native-svg + the shared ThemePalette/ResolvedTheme
  * only. NO data fetch, NO React Query, NO app `src/` import
@@ -278,7 +278,7 @@ export const RsvpMomentumDecision: React.FC<RsvpMomentumDecisionProps> = ({
   // ── party-type vibe chips (accent-wash pills; glyph-free, per the mockup) ──
   const chips =
     partyTypes.length > 0 ? (
-      <View style={styles.chips} testID="orch-1156-rsvp-chips">
+      <View style={styles.chips} testID="orch-1157-rsvp-chips">
         {partyTypes.map((slug) => (
           <View
             key={slug}
@@ -305,19 +305,19 @@ export const RsvpMomentumDecision: React.FC<RsvpMomentumDecisionProps> = ({
         styles.momentum,
         { backgroundColor: opaqueCardFill(palette), borderColor: palette.panelBorder },
       ]}
-      testID="orch-1156-rsvp-momentum"
+      testID="orch-1157-rsvp-momentum"
     >
       <View style={styles.momTop}>
         <Text
           style={[styles.momCount, { color: palette.primaryText, fontFamily: boldFamily }]}
-          testID="orch-1156-rsvp-going-count"
+          testID="orch-1157-rsvp-going-count"
           accessibilityLabel={`${momentum.hasGoing ? goingCount : 0} people going`}
         >
           {momentum.hasGoing ? goingCount : 0}
         </Text>
         <Text style={[styles.momLabel, { color: palette.secondaryText }]}>going</Text>
       </View>
-      <Text style={[styles.momSub, { color: palette.tertiaryText }]} testID="orch-1156-rsvp-momentum-sub">
+      <Text style={[styles.momSub, { color: palette.tertiaryText }]} testID="orch-1157-rsvp-momentum-sub">
         {momentum.subLabel}
       </Text>
       {/* capacity meter — accent-gradient fill (theme dial), empty at goingCount=0 */}
@@ -327,7 +327,7 @@ export const RsvpMomentumDecision: React.FC<RsvpMomentumDecisionProps> = ({
             styles.meterFill,
             { width: meterFillWidth, backgroundColor: palette.accent },
           ]}
-          testID="orch-1156-rsvp-meter"
+          testID="orch-1157-rsvp-meter"
         />
       </View>
       {/* anonymous FACELESS attendee cluster — a COUNT motif, never identities.
@@ -336,7 +336,7 @@ export const RsvpMomentumDecision: React.FC<RsvpMomentumDecisionProps> = ({
         <View
           style={styles.cluster}
           accessibilityLabel={`${goingCount} people going`}
-          testID="orch-1156-rsvp-cluster"
+          testID="orch-1157-rsvp-cluster"
         >
           {Array.from({ length: momentum.shownAvatars }).map((_, i) => (
             <View
@@ -391,7 +391,7 @@ export const RsvpMomentumDecision: React.FC<RsvpMomentumDecisionProps> = ({
           ? { backgroundColor: opaqueCardFill(palette), borderColor: palette.panelBorder }
           : { backgroundColor: palette.accent, borderColor: palette.accent },
       ]}
-      testID={goingTestID ?? "orch-1156-rsvp-going"}
+      testID={goingTestID ?? "orch-1157-rsvp-going"}
     >
       {goingIsWaitlist ? (
         <ListGlyph color={goingDisabled ? palette.tertiaryText : palette.accentText} />
@@ -417,7 +417,7 @@ export const RsvpMomentumDecision: React.FC<RsvpMomentumDecisionProps> = ({
       accessibilityState={{ disabled: maybeDisabled }}
       accessibilityLabel="Maybe"
       style={[styles.dbtn, { backgroundColor: palette.accentWash, borderColor: palette.accent, opacity: maybeDisabled ? 0.5 : 1 }]}
-      testID={maybeTestID ?? "orch-1156-rsvp-maybe"}
+      testID={maybeTestID ?? "orch-1157-rsvp-maybe"}
     >
       <MaybeGlyph color={palette.accent} />
       <Text style={[styles.dbtnText, { color: palette.accent, fontFamily: boldFamily }]} numberOfLines={1}>
@@ -433,7 +433,7 @@ export const RsvpMomentumDecision: React.FC<RsvpMomentumDecisionProps> = ({
       accessibilityRole="button"
       accessibilityLabel="Can't go"
       style={[...dbtnBase]}
-      testID={notGoingTestID ?? "orch-1156-rsvp-not-going"}
+      testID={notGoingTestID ?? "orch-1157-rsvp-not-going"}
     >
       <XGlyph color={palette.secondaryText} />
       <Text style={[styles.dbtnText, { color: palette.secondaryText, fontFamily: boldFamily }]} numberOfLines={1}>
@@ -515,7 +515,7 @@ export const RsvpMomentumDecision: React.FC<RsvpMomentumDecisionProps> = ({
           accessibilityRole="button"
           accessibilityLabel="Remove one extra guest"
           style={[styles.stepBtn, { borderColor: palette.panelBorder }]}
-          testID="orch-1156-rsvp-plus-minus"
+          testID="orch-1157-rsvp-plus-minus"
         >
           <Text style={[styles.stepGlyph, { color: palette.accent }]}>–</Text>
         </Pressable>
@@ -526,7 +526,7 @@ export const RsvpMomentumDecision: React.FC<RsvpMomentumDecisionProps> = ({
           accessibilityRole="button"
           accessibilityLabel="Add one extra guest"
           style={[styles.stepBtn, { borderColor: palette.panelBorder }]}
-          testID="orch-1156-rsvp-plus-plus"
+          testID="orch-1157-rsvp-plus-plus"
         >
           <Text style={[styles.stepGlyph, { color: palette.accent }]}>+</Text>
         </Pressable>
@@ -535,7 +535,7 @@ export const RsvpMomentumDecision: React.FC<RsvpMomentumDecisionProps> = ({
   ) : null;
 
   const decisionBlock = (
-    <View testID="orch-1156-rsvp-decision">
+    <View testID="orch-1157-rsvp-decision">
       {stepper}
       {decisionButtons}
       {micro !== undefined && micro.length > 0 ? (
@@ -547,7 +547,7 @@ export const RsvpMomentumDecision: React.FC<RsvpMomentumDecisionProps> = ({
   // Kicker — "You're invited" (color: inherit = SAME as the title color =
   // palette.primaryText). The pulsing dot stays accent (Seth's approved tweak).
   const kicker = (
-    <View style={styles.kickerRow} testID="orch-1156-rsvp-kicker">
+    <View style={styles.kickerRow} testID="orch-1157-rsvp-kicker">
       <Animated.View
         style={[
           styles.kickerDot,
@@ -563,7 +563,7 @@ export const RsvpMomentumDecision: React.FC<RsvpMomentumDecisionProps> = ({
   return (
     <View
       style={variant === "floating-dock" ? styles.dockWrap : styles.wrap}
-      testID={testID ?? "orch-1156-rsvp-momentum-decision"}
+      testID={testID ?? "orch-1157-rsvp-momentum-decision"}
     >
       {hostRow}
       {showMomentum ? kicker : null}

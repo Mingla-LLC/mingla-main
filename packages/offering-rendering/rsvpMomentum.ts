@@ -1,5 +1,5 @@
 /**
- * rsvpMomentum — ORCH-1156 [rsvp-public-redesign] Direction-C "Momentum" pure
+ * rsvpMomentum — ORCH-1157 [rsvp-public-redesign] Direction-C "Momentum" pure
  * helpers. Dep-free (no react / react-native imports) so the regression tests run
  * under Deno/node without a renderer (mirrors experienceOpenDaily.ts).
  *

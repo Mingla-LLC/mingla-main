@@ -57,7 +57,7 @@ interface BusinessPublicEventViewRow {
   rsvp_waitlist_enabled?: boolean | null;
   rsvp_approval_mode?: "auto" | "manual" | null;
   rsvp_going_count?: number | null;
-  // ORCH-1156 [rsvp-public-redesign] — canonical party-type + vibe slugs
+  // ORCH-1157 [rsvp-public-redesign] — canonical party-type + vibe slugs
   // (ORCH-0824), surfaced anon-safe by business_public_events_view (the view
   // SELECTs e.party_types / e.vibe_tags; security_invoker=false). Drive the
   // Direction-C RSVP vibe chips. Null/absent for legacy rows → mapper defaults [].
@@ -835,7 +835,7 @@ export const publicEventViewRowToEvent = (
     rsvpApprovalMode: row.rsvp_approval_mode ?? "auto",
     rsvpDiscoverable: row.rsvp_discoverable ?? false,
     rsvpGoingCount: row.rsvp_going_count ?? 0,
-    // ORCH-1156 [rsvp-public-redesign] — surface party types / vibe tags from the
+    // ORCH-1157 [rsvp-public-redesign] — surface party types / vibe tags from the
     // anon view so the Direction-C RSVP page renders vibe chips. Default [] (rule
     // 9: missing is empty, never fabricated). Already-present columns; no migration.
     partyTypes: Array.isArray(row.party_types) ? row.party_types : [],

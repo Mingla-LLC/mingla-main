@@ -1,15 +1,15 @@
-# IMPLEMENTATION — ORCH-1156 [rsvp-public-redesign] · Public RSVP page → Direction C "Momentum"
+# IMPLEMENTATION — ORCH-1157 [rsvp-public-redesign] · Public RSVP page → Direction C "Momentum"
 
 **Skill:** mingla-implementor (Claude). **Date:** 2026-06-17.
-**Worktree:** `~/Desktop/mingla-orchs/ORCH-1156-[rsvp-public-redesign]/` on branch `ORCH-1156-rsvp-public-redesign` (rebased onto origin/main).
+**Worktree:** `~/Desktop/mingla-orchs/ORCH-1157-[rsvp-public-redesign]/` on branch `ORCH-1157-rsvp-public-redesign` (rebased onto origin/main).
 **Commit:** `8fdab323a` (code + tests). **Status:** implemented + self-verified (source/structure/tests); per-surface live-fire is tester-owned.
-**Binding contract:** `SPEC_ORCH-1156_RSVP_PUBLIC_PAGE.md` + the approved `RSVP_DIRECTION_C_MOMENTUM.html`.
+**Binding contract:** `SPEC_ORCH-1157_RSVP_PUBLIC_PAGE.md` + the approved `RSVP_DIRECTION_C_MOMENTUM.html`.
 
 ---
 
-## 0. ⚠ BLOCKER for orchestrator — ORCH-ID collision (COMMS-0037)
+## 0. ✅ RESOLVED — ORCH-ID collision renumbered (COMMS-0037)
 
-`ORCH-1156` is ALREADY taken on origin/main by a shipped housekeeping ORCH ("make main CI green — venue realtime publication + stripe read idempotency", PR #517, merge `ade2b026c`, migration `20261013000001_orch_1156_venue_realtime_publication.sql`). This RSVP dispatch is a SECOND, unrelated ORCH-1156 spawned off the stale anchor. Wrote **COMMS-0037** (committed + pushed to main, `8d1f5ce94`). Per the shipped-first rule (COMMS-0033 precedent) the venue/CI-green work KEEPS 1156; the RSVP work should RENUMBER at CLOSE. The shipped 1156 registered NO `I-PROPOSED-1156-*` invariant and NO `orch_1156_*` test file, so my new files do NOT physically collide on disk — the collision is semantic (World Map / invariant registry). All my new test/invariant tokens are namespaced `orch_1156_rsvp` / `I-PROPOSED-1156-RSVP-*` for a mechanical rename. **Orchestrator must pick the renumbered ID before CLOSE.**
+`ORCH-1156` was ALREADY taken on origin/main by a shipped housekeeping ORCH ("make main CI green — venue realtime publication + stripe read idempotency", PR #517, merge `ade2b026c`, migration `20261013000001_orch_1156_venue_realtime_publication.sql`). This RSVP dispatch was a SECOND, unrelated ORCH spawned off the stale anchor. Wrote **COMMS-0037** (committed + pushed to main, `8d1f5ce94`). Per the shipped-first rule (COMMS-0033 precedent) the venue/CI-green work KEEPS 1156; this RSVP work was RENUMBERED to **ORCH-1157** (next free ID). The shipped 1156 registered NO `I-PROPOSED-1156-*` invariant and NO `orch_1156_*` test file, so the rename was purely mechanical (no on-disk collision). All this work's test/invariant tokens are now namespaced `orch_1157_rsvp` / `I-PROPOSED-1157-RSVP-*`. The venue references above (PR #517, the `orch_1156_venue_realtime_publication` migration) intentionally retain `1156` — they point at the OTHER, shipped ORCH.
 
 ---
 
@@ -31,11 +31,11 @@ The new RSVP-specific pieces became ONE shared component, `RsvpMomentumDecision`
 | SC-3 (Going/Maybe/Can't writes via existing path, resolves; no dead ends) | ✓ | `submit`/`handleRsvp` unchanged write contract; state machine mirrors resolveRsvpCta; all resolved branches render a toggle | 8fdab323a |
 | SC-4 (full+waitlist: meter 100, "Join waitlist", NO number) | ✓ | T-4 Deno asserts `subLabel` has no digit; meter 100 | 8fdab323a |
 | SC-5 (manual approval → "Awaiting approval", disabled, no number) | ✓ source | `pendingResolved` branch → single disabled going button "Awaiting approval" | 8fdab323a |
-| SC-6 (NO price/Reserve/cart/checkout on any RSVP surface) | ✓ | I-PROPOSED-1156-RSVP-NO-CHECKOUT (Deno+jest); grep=0 across the 3 RSVP files (code) | 8fdab323a |
+| SC-6 (NO price/Reserve/cart/checkout on any RSVP surface) | ✓ | I-PROPOSED-1157-RSVP-NO-CHECKOUT (Deno+jest); grep=0 across the 3 RSVP files (code) | 8fdab323a |
 | SC-7 (goingCount=0 → "Be the first to RSVP", empty meter, NO cluster; incl. preview) | ✓ | T-3 Deno + preview passes `goingCount: 0`; consumer omits the unit when momentum unresolved | 8fdab323a |
 | SC-8 (consumer Going/**Maybe**/Can't + chips; momentum iff OQ-1) | ✓ | consumer Deno test asserts maybe + shared unit + `fetchRsvpMomentum` | 8fdab323a |
 | SC-9 (Android opaque fills) | ✓ | `opaqueCardFill` (Platform.OS==='android'→opaque page) + `overflow:'hidden'`; Deno asserts both | 8fdab323a |
-| SC-10 (theme accent drives meter/cluster/going/dot; no layout change) | ✓ | I-PROPOSED-1156-RSVP-USES-BRAND-THEME-DIAL (Deno asserts `palette.accent` + no hex literal) | 8fdab323a |
+| SC-10 (theme accent drives meter/cluster/going/dot; no layout change) | ✓ | I-PROPOSED-1157-RSVP-USES-BRAND-THEME-DIAL (Deno asserts `palette.accent` + no hex literal) | 8fdab323a |
 
 ---
 
@@ -57,9 +57,9 @@ The new RSVP-specific pieces became ONE shared component, `RsvpMomentumDecision`
 
 ## 5. Honesty + no-checkout constraints held
 
-- **No checkout affordance:** grep over `RsvpMomentumDecision.tsx` + `RsvpPublicBody.tsx` (comment-stripped) = **0** references to `/checkout` / `ticket-checkout-create` / `priceAllIn` / `Reserve` / `cart`. The consumer screen retains `TicketCartSheet` ONLY for the ticketed path, gated off RSVP. Enforced by I-PROPOSED-1156-RSVP-NO-CHECKOUT-AFFORDANCE (Deno + jest).
-- **Social proof anon-only:** the cluster uses a faceless SVG `PersonGlyph` (never an `<Image>`/uri); the props surface carries NO guest name/photo, NO `maybeCount`, NO `waitlistCount`. Full state shows "Full · waitlist open" (no number). Enforced by I-PROPOSED-1156-RSVP-SOCIAL-PROOF-ANON-ONLY (Deno).
-- **Brand-theme dial:** meter fill, cluster avatars, going button, and kicker dot all read `palette.accent`/`palette.accentWash`; the component has ZERO hardcoded hex literals (the only hexes — error red — live in the host contact form). Enforced by I-PROPOSED-1156-RSVP-USES-BRAND-THEME-DIAL (Deno).
+- **No checkout affordance:** grep over `RsvpMomentumDecision.tsx` + `RsvpPublicBody.tsx` (comment-stripped) = **0** references to `/checkout` / `ticket-checkout-create` / `priceAllIn` / `Reserve` / `cart`. The consumer screen retains `TicketCartSheet` ONLY for the ticketed path, gated off RSVP. Enforced by I-PROPOSED-1157-RSVP-NO-CHECKOUT-AFFORDANCE (Deno + jest).
+- **Social proof anon-only:** the cluster uses a faceless SVG `PersonGlyph` (never an `<Image>`/uri); the props surface carries NO guest name/photo, NO `maybeCount`, NO `waitlistCount`. Full state shows "Full · waitlist open" (no number). Enforced by I-PROPOSED-1157-RSVP-SOCIAL-PROOF-ANON-ONLY (Deno).
+- **Brand-theme dial:** meter fill, cluster avatars, going button, and kicker dot all read `palette.accent`/`palette.accentWash`; the component has ZERO hardcoded hex literals (the only hexes — error red — live in the host contact form). Enforced by I-PROPOSED-1157-RSVP-USES-BRAND-THEME-DIAL (Deno).
 - **Android opaque:** `opaqueCardFill` returns `palette.page` on Android + every card uses `overflow:'hidden'`.
 
 ---
@@ -79,9 +79,9 @@ The new RSVP-specific pieces became ONE shared component, `RsvpMomentumDecision`
 | `app-mobile/src/screens/Event/ConsumerEventDetailScreen.tsx` | ~+130/-90 | RSVP branch → shared unit + Maybe + momentum fetch |
 | `app-mobile/src/screens/Experience/ConsumerExperienceDetailScreen.tsx` | +5 | `partyTypes` default (type cascade) |
 | `app-mobile/src/services/rsvpDeckService.ts` | +~55 | `fetchRsvpMomentum` + "maybe" in write enum |
-| `packages/offering-rendering/__tests__/orch_1156_rsvp_momentum.test.ts` | NEW (14 tests) | shared-unit happy-path + 4 invariants |
-| `app-mobile/src/services/__tests__/orch_1156_rsvp_consumer.test.ts` | NEW (5 tests) | consumer maybe + momentum + no-checkout |
-| `mingla-business/.../RsvpPublicBody.maybeCta.orch1150r2.test.ts` | MOD (-24, `[TEST-MOD-APPROVED ORCH-1156]`) | re-aimed at the Direction-C delegation |
+| `packages/offering-rendering/__tests__/orch_1157_rsvp_momentum.test.ts` | NEW (14 tests) | shared-unit happy-path + 4 invariants |
+| `app-mobile/src/services/__tests__/orch_1157_rsvp_consumer.test.ts` | NEW (5 tests) | consumer maybe + momentum + no-checkout |
+| `mingla-business/.../RsvpPublicBody.maybeCta.orch1150r2.test.ts` | MOD (-24, `[TEST-MOD-APPROVED ORCH-1157]`) | re-aimed at the Direction-C delegation |
 | `mingla-business/.../offeringCta.orch1117.test.ts` | +5 (append-only) | fixture `partyTypes: []` |
 
 ---
@@ -121,12 +121,12 @@ The new RSVP-specific pieces became ONE shared component, `RsvpMomentumDecision`
 
 ## 9. Regression tests + fails-on-revert
 
-- **Happy-path (implementor-owned):** `packages/offering-rendering/__tests__/orch_1156_rsvp_momentum.test.ts` — **14 passed** (Deno). Covers T-1/T-1b/T-2/T-3/T-4 + singular-spot + cluster-cap + partyTypeLabel + the 4 DRAFT invariants + Android-opaque + three-way decision.
-- **Consumer contract:** `app-mobile/src/services/__tests__/orch_1156_rsvp_consumer.test.ts` — **5 passed** (Deno). Maybe enum, OQ-1 anon-view source, shared-unit consumption, no-checkout dock gating, three-way `handleRsvp`.
+- **Happy-path (implementor-owned):** `packages/offering-rendering/__tests__/orch_1157_rsvp_momentum.test.ts` — **14 passed** (Deno). Covers T-1/T-1b/T-2/T-3/T-4 + singular-spot + cluster-cap + partyTypeLabel + the 4 DRAFT invariants + Android-opaque + three-way decision.
+- **Consumer contract:** `app-mobile/src/services/__tests__/orch_1157_rsvp_consumer.test.ts` — **5 passed** (Deno). Maybe enum, OQ-1 anon-view source, shared-unit consumption, no-checkout dock gating, three-way `handleRsvp`.
 - **fails-on-revert verified at `8fdab323a`:** by TRUE LINE DELETION of the `goingCount === 0` guard in `rsvpMomentum.ts` → `T-3 FAILED` (13 passed / 1 failed); restoring the guard → 14/14 pass. (The deleted-line diff and the FAIL output were captured in the implementor session.)
 - **Preserved green:** existing `rsvpDeckService.orch1150.test.ts` (3, Deno), `RsvpPublicBody.parallaxLayering.orch1150r2.test.ts` (jest), `offeringCta.orch1117` (jest), `rsvp/[id]/preview.test.tsx` (jest). Business jest run: **33 passed / 33** across the 4 RSVP-adjacent suites.
-- **Append-only gate:** `node .github/scripts/test-append-only-check.js` → **4 passed, 0 failed** (the `[TEST-MOD-APPROVED ORCH-1156]` token is recognized).
-- **DRAFT invariants pre-staged:** `I-PROPOSED-1156-RSVP-{NO-CHECKOUT-AFFORDANCE, DECISION-IS-HERO, SOCIAL-PROOF-ANON-ONLY, USES-BRAND-THEME-DIAL}` — each has a passing enforcement assertion; orchestrator flips ACTIVE at CLOSE.
+- **Append-only gate:** `node .github/scripts/test-append-only-check.js` → **4 passed, 0 failed** (the `[TEST-MOD-APPROVED ORCH-1157]` token is recognized).
+- **DRAFT invariants pre-staged:** `I-PROPOSED-1157-RSVP-{NO-CHECKOUT-AFFORDANCE, DECISION-IS-HERO, SOCIAL-PROOF-ANON-ONLY, USES-BRAND-THEME-DIAL}` — each has a passing enforcement assertion; orchestrator flips ACTIVE at CLOSE.
 
 ---
 
@@ -156,14 +156,14 @@ The new RSVP-specific pieces became ONE shared component, `RsvpMomentumDecision`
 ## 13. Operator action required
 
 - **NO migration, NO edge function, NO OTA from the implementor.** Nothing to `db push` / deploy.
-- **Orchestrator (CLOSE):** (1) resolve the ORCH-ID collision per COMMS-0037 — renumber the RSVP work and rekey branch/worktree/spec/investigation/report + the `I-PROPOSED-1156-RSVP-*` invariant IDs + `orch_1156_rsvp_*` test names + the `orch-1156-*` testID prefixes; (2) flip the 4 DRAFT invariants ACTIVE; (3) all-surface parity incl. consumer-app + business-app OTA is a CLOSE gate (parity memory rule).
+- **Orchestrator (CLOSE):** (1) resolve the ORCH-ID collision per COMMS-0037 — renumber the RSVP work and rekey branch/worktree/spec/investigation/report + the `I-PROPOSED-1157-RSVP-*` invariant IDs + `orch_1157_rsvp_*` test names + the `orch-1157-*` testID prefixes; (2) flip the 4 DRAFT invariants ACTIVE; (3) all-surface parity incl. consumer-app + business-app OTA is a CLOSE gate (parity memory rule).
 - **Tester:** per-surface live-fire of SC-1…SC-10 across the 5 RSVP states on all 5 surfaces + the business-web preview zero-state; verify the theme dial with a light/navy corporate theme and a dark/violet club theme.
 
 ---
 
 ## 14. Discoveries for orchestrator
 
-- **D-COMMS-0037 (BLOCKER):** ORCH-1156 ID collision (see §0).
+- **D-COMMS-0037 (BLOCKER):** ORCH-1157 ID collision (see §0).
 - **D-1 (closed incidentally):** the consumer RSVP dock lacked "Maybe" (drift since ORCH-1150 R2) — fixed by unifying on the shared unit.
 - **D-2 (pre-existing, not mine):** `mingla-business` jest cannot resolve `@mingla/*` for the `publicEventsService.*` suites under the DEFAULT jest config (they run under per-ORCH `test:orch-*` scripts that add the mapping). Several suites "fail to run" on baseline too — flagged, not caused by this work.
 - **D-3 (pre-existing):** `useExperienceDraftAdapter.ts` constructs a `DraftEvent` missing `isRsvp`/`rsvp*` fields — a baseline tsc error unrelated to this ORCH.

@@ -186,7 +186,7 @@ describe("ORCH-1117 computeOfferingVariant — shared variant owner", () => {
       coverCredit: null,
       tickets: over.tickets ?? [baseTicket()],
       currency: "GBP",
-      // ORCH-1156 [rsvp-public-redesign] — PublicEventProps gained partyTypes
+      // ORCH-1157 [rsvp-public-redesign] — PublicEventProps gained partyTypes
       // (default-safe). Append-only fixture update (no deletion).
       partyTypes: over.partyTypes ?? [],
     }) as PublicEventProps;

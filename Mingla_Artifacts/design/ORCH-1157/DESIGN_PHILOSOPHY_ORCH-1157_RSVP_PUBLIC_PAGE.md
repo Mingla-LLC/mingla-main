@@ -1,4 +1,4 @@
-# ORCH-1156 — Public RSVP Event Page · Design Philosophy + Mockups
+# ORCH-1157 — Public RSVP Event Page · Design Philosophy + Mockups
 
 **Status:** DESIGN EXPLORATION (no product code). For Seth to open in a browser and react to.
 **Benchmark:** Partiful. **Family:** Mingla Direction-A public-page system (ORCH-1138).

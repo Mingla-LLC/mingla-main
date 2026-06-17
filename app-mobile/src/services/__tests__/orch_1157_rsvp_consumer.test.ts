@@ -3,7 +3,7 @@ import {
   assertStringIncludes,
 } from "https://deno.land/std@0.224.0/assert/mod.ts";
 
-// ORCH-1156 [rsvp-public-redesign] — consumer RSVP source-contract regression
+// ORCH-1157 [rsvp-public-redesign] — consumer RSVP source-contract regression
 // (implementor-owned happy-path). rsvpDeckService.ts + ConsumerEventDetailScreen
 // import RN-bound modules, so per the established app-mobile service-test pattern
 // (rsvpDeckService.orch1150.test.ts) we read the source as TEXT and assert the
@@ -27,7 +27,7 @@ const screen = await Deno.readTextFile(
   new URL("../../screens/Event/ConsumerEventDetailScreen.tsx", import.meta.url),
 );
 
-Deno.test("ORCH-1156 T-6a: deck RSVP write enum includes 'maybe' (consumer parity)", () => {
+Deno.test("ORCH-1157 T-6a: deck RSVP write enum includes 'maybe' (consumer parity)", () => {
   // submitDeckRsvp accepts going | not_going | maybe.
   assertStringIncludes(
     svc,
@@ -41,7 +41,7 @@ Deno.test("ORCH-1156 T-6a: deck RSVP write enum includes 'maybe' (consumer parit
   assert(!svc.includes("/checkout"));
 });
 
-Deno.test("ORCH-1156 OQ-1: consumer momentum sourced via the anon business_public_events_view", () => {
+Deno.test("ORCH-1157 OQ-1: consumer momentum sourced via the anon business_public_events_view", () => {
   // fetchRsvpMomentum reads the SAME anon-safe view buyer-web uses (option a) —
   // NOT a widened deck RPC (option b → COMMS-0002). Never .from('brands').
   assertStringIncludes(svc, "fetchRsvpMomentum");
@@ -50,7 +50,7 @@ Deno.test("ORCH-1156 OQ-1: consumer momentum sourced via the anon business_publi
   assert(!svc.includes('from("brands")'));
 });
 
-Deno.test("ORCH-1156 T-8: consumer detail consumes the SHARED RsvpMomentumDecision", () => {
+Deno.test("ORCH-1157 T-8: consumer detail consumes the SHARED RsvpMomentumDecision", () => {
   assertStringIncludes(
     screen,
     'import {\n  OfferingChrome,\n  RsvpMomentumDecision,',
@@ -65,17 +65,17 @@ Deno.test("ORCH-1156 T-8: consumer detail consumes the SHARED RsvpMomentumDecisi
   assertStringIncludes(screen, "rsvpMomentum");
 });
 
-Deno.test("ORCH-1156 T-7: RSVP card docks the decision, never the cart bar (no checkout)", () => {
+Deno.test("ORCH-1157 T-7: RSVP card docks the decision, never the cart bar (no checkout)", () => {
   // The deck-off-EBES + ORCH-1150 contract: RSVP → rsvpDock, ticketed → cart.
   assertStringIncludes(screen, "isRsvp ? rsvpDock : dockedReserve");
   assertStringIncludes(screen, "isRsvp ? null : floatingReserve");
-  // the RSVP dock + momentum unit carry the ORCH-1156 testIDs.
+  // the RSVP dock + momentum unit carry the ORCH-1157 testIDs.
   assertStringIncludes(screen, "orch-1150-deck-rsvp-going");
-  assertStringIncludes(screen, "orch-1156-deck-rsvp-maybe");
+  assertStringIncludes(screen, "orch-1157-deck-rsvp-maybe");
   assertStringIncludes(screen, "orch-1150-deck-rsvp-not-going");
 });
 
-Deno.test("ORCH-1156 handleRsvp accepts the three-way reply union", () => {
+Deno.test("ORCH-1157 handleRsvp accepts the three-way reply union", () => {
   assertStringIncludes(
     screen,
     'next: "going" | "not_going" | "maybe"',

@@ -25,7 +25,7 @@ export type { GalleryLayout } from "./galleryLayout";
 export { ChipGroup } from "./ChipGroup";
 export type { Chip, ChipGroupProps } from "./ChipGroup";
 
-// ORCH-1156 [rsvp-public-redesign] — the shared Direction-C "Momentum" RSVP hero
+// ORCH-1157 [rsvp-public-redesign] — the shared Direction-C "Momentum" RSVP hero
 // (going-count + capacity meter + faceless anonymous cluster + Going/Maybe/Can't
 // decision). Consumed by the business RsvpPublicBody (buyer-web + business +
 // preview) AND the consumer ConsumerEventDetailScreen RSVP branch — one unit,

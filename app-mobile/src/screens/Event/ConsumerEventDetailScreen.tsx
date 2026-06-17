@@ -164,7 +164,7 @@ const cardToPublicEvent = (
   coverCredit: null,
   tickets,
   currency: card.currency,
-  // ORCH-1156 [rsvp-public-redesign] — the deck seed carries canonical party
+  // ORCH-1157 [rsvp-public-redesign] — the deck seed carries canonical party
   // types; pass them so the RSVP momentum unit + the CTA machine see one shape.
   partyTypes: card.partyTypes ?? [],
 });
@@ -211,7 +211,7 @@ export default function ConsumerEventDetailScreen({
   // public-submit-rsvp edge fn (logged-in path). NO cart, NO checkout.
   const isRsvp = seed?.eventType === "rsvp";
   const [rsvpInFlight, setRsvpInFlight] = useState<boolean>(false);
-  // ORCH-1156 [rsvp-public-redesign] — the guest's resolved own RSVP state, kept
+  // ORCH-1157 [rsvp-public-redesign] — the guest's resolved own RSVP state, kept
   // in the shape the shared RsvpMomentumDecision reads (status + approval).
   const [rsvpStatus, setRsvpStatus] = useState<
     "going" | "not_going" | "waitlisted" | "maybe" | null
@@ -243,7 +243,7 @@ export default function ConsumerEventDetailScreen({
   const themeQuery = useEventTheme(seed);
   const runNativeCheckout = useNativeCheckoutFlow();
 
-  // ORCH-1156 [rsvp-public-redesign] OQ-1 (option a) — fetch the live RSVP
+  // ORCH-1157 [rsvp-public-redesign] OQ-1 (option a) — fetch the live RSVP
   // momentum (going-count + capacity + waitlist/approval) from the SAME anon-safe
   // business_public_events_view the buyer-web page reads, since the deck seed does
   // not carry these (F-6). NO migration / RPC widen (avoids COMMS-0002). Only
@@ -347,7 +347,7 @@ export default function ConsumerEventDetailScreen({
   // signed-in user's JWT rides the supabase client → the edge fn resolves
   // user_id (no contact form needed). Reflects the resolved state + toasts; on
   // error never dead-ends.
-  // ORCH-1156 — Going / Maybe / Not-going write. "maybe" is NEW on consumer
+  // ORCH-1157 — Going / Maybe / Not-going write. "maybe" is NEW on consumer
   // (parity with the shared RsvpPublicBody since ORCH-1150 R2). The signed-in
   // user's JWT rides the supabase client → the edge fn resolves user_id (no
   // contact form). Reflects the resolved state + toasts; never dead-ends.
@@ -634,7 +634,7 @@ export default function ConsumerEventDetailScreen({
     />
   ) : null;
 
-  // ORCH-1156 [rsvp-public-redesign] — the Direction-C Going / Maybe / Can't
+  // ORCH-1157 [rsvp-public-redesign] — the Direction-C Going / Maybe / Can't
   // decision dock (replaces the old 2-button hand-rolled dock; Maybe is NEW on
   // consumer). Built on the SHARED RsvpMomentumDecision in floating-dock mode so
   // it stays byte-parity with the buyer-web / business RsvpPublicBody. No price,
@@ -679,13 +679,13 @@ export default function ConsumerEventDetailScreen({
         variant="floating-dock"
         showMomentum={false}
         goingTestID="orch-1150-deck-rsvp-going"
-        maybeTestID="orch-1156-deck-rsvp-maybe"
+        maybeTestID="orch-1157-deck-rsvp-maybe"
         notGoingTestID="orch-1150-deck-rsvp-not-going"
       />
     </View>
   );
 
-  // ORCH-1156 — the momentum unit + kicker + party chips, rendered inline in the
+  // ORCH-1157 — the momentum unit + kicker + party chips, rendered inline in the
   // body (the dock above carries only the decision). Omitted entirely when the
   // anon-view momentum has not resolved (no fabricated count — rule 9).
   const rsvpMomentumUnit: ReactElement | null =
@@ -712,7 +712,7 @@ export default function ConsumerEventDetailScreen({
           onNotGoing={() => undefined}
           variant="inline"
           showMomentum
-          testID="orch-1156-consumer-rsvp-momentum"
+          testID="orch-1157-consumer-rsvp-momentum"
         />
       </View>
     ) : null;
@@ -814,7 +814,7 @@ export default function ConsumerEventDetailScreen({
               ) : null}
             </View>
 
-            {/* ORCH-1156 — Direction-C RSVP momentum unit (kicker + party chips +
+            {/* ORCH-1157 — Direction-C RSVP momentum unit (kicker + party chips +
                 going-count + meter + faceless anonymous cluster), inline in the
                 body. Renders only for an RSVP card once the anon-view momentum
                 resolves (no fabricated count). The decision lives in the dock. */}
@@ -1368,7 +1368,7 @@ const styles = StyleSheet.create({
   retryText: { color: "#FFFFFF", fontSize: 15, fontWeight: "600" },
 });
 
-// ORCH-1156 — RSVP decision dock wrapper. The Going/Maybe/Can't buttons + their
+// ORCH-1157 — RSVP decision dock wrapper. The Going/Maybe/Can't buttons + their
 // opaque-Android fills now live in the shared RsvpMomentumDecision; this is just
 // the dock padding (matches the float→dock pattern of the reserve bar).
 const rsvpStyles = StyleSheet.create({

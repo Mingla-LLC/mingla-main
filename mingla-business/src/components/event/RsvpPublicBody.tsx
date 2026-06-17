@@ -1,6 +1,6 @@
 /**
  * RsvpPublicBody — public RSVP page body (buyer-web + business iOS/Android + the
- * business-web draft preview), recomposed to Direction C "Momentum" by ORCH-1156
+ * business-web draft preview), recomposed to Direction C "Momentum" by ORCH-1157
  * [rsvp-public-redesign].
  *
  * The Going / Maybe / Can't public surface for an event_type='rsvp' row, mounted
@@ -9,7 +9,7 @@
  * bold fonts, hero) so an RSVP page looks like a sibling of the ticketed page —
  * but it carries NO ticket tiers, NO checkout, NO money.
  *
- * Direction C (ORCH-1156): the gravitational center is the SHARED
+ * Direction C (ORCH-1157): the gravitational center is the SHARED
  * `RsvpMomentumDecision` unit — going COUNT + capacity METER + an ANONYMOUS
  * faceless attendee cluster + the Going/Maybe/Can't decision, theme-accent driven
  * ("loudness dial"). The decision is the thumb-zone HERO: a floating-dock at the
@@ -19,9 +19,9 @@
  * do NOT merge back into the ticket/checkout path — RSVP has zero tickets + no
  * money gate; the CTA writes a Going/Maybe/Not-going row via public-submit-rsvp,
  * never an order, and never navigates to /checkout. NO price / Reserve / cart /
- * checkout affordance anywhere (I-PROPOSED-1156-RSVP-NO-CHECKOUT-AFFORDANCE).
+ * checkout affordance anywhere (I-PROPOSED-1157-RSVP-NO-CHECKOUT-AFFORDANCE).
  * Social proof is honest: count + meter + faceless cluster ONLY — no guest
- * names/faces, no public maybe/waitlist count (I-PROPOSED-1156-RSVP-SOCIAL-PROOF-
+ * names/faces, no public maybe/waitlist count (I-PROPOSED-1157-RSVP-SOCIAL-PROOF-
  * ANON-ONLY; constitution rule 9).
  *
  * Anon-tolerant: a logged-out link guest supplies name + email + phone (all three
@@ -95,7 +95,7 @@ export interface RsvpPublicBodyProps {
    * barely exceeds the viewport ⇒ near-zero scroll travel ⇒ the (correctly
    * pinned) cover dominates and content reads as "stuck behind the cover." A
    * positive `contentBottomInset` adds the runway so the body scrolls UP and OVER
-   * the cover — parity with the trip / experience / ticketed routes. ORCH-1156
+   * the cover — parity with the trip / experience / ticketed routes. ORCH-1157
    * also reserves clearance for the phone floating decision dock. Forwarded to
    * the shared cover shell's `contentBottomInset`. Defaults to a positive value
    * so the runway exists even if a caller forgets to pass it.
@@ -283,7 +283,7 @@ export const RsvpPublicBody: React.FC<RsvpPublicBodyProps> = ({
   // a Maybe can still upgrade to Going or decline.
   const maybeResolved = guestStatus === "maybe";
 
-  // Resolved-state subcopy (ORCH-1156 keeps the honest ORCH-1150 R2 response copy;
+  // Resolved-state subcopy (ORCH-1157 keeps the honest ORCH-1150 R2 response copy;
   // the headline now lives in the kicker/momentum, so this reads as the micro line
   // beneath the decision). "You're marked as Maybe — we'll keep you posted."
   const subcopy: string | null =
@@ -317,7 +317,7 @@ export const RsvpPublicBody: React.FC<RsvpPublicBodyProps> = ({
 
   // ── the contact-capture block (anon link guest) ──
   const contactForm = showContactForm ? (
-    <View style={[styles.formCard, surface.card]} testID="orch-1156-rsvp-contact">
+    <View style={[styles.formCard, surface.card]} testID="orch-1157-rsvp-contact">
       <Text style={[styles.formMicro, surface.tertiaryText]}>
         We'll only use this to update you about this event.
       </Text>
@@ -427,7 +427,7 @@ export const RsvpPublicBody: React.FC<RsvpPublicBodyProps> = ({
       variant="inline"
       showMomentum
       micro={undefined}
-      testID="orch-1156-rsvp-inline-momentum"
+      testID="orch-1157-rsvp-inline-momentum"
     />
   ) : null;
 
@@ -534,10 +534,10 @@ export const RsvpPublicBody: React.FC<RsvpPublicBodyProps> = ({
         </View>
       </ParallaxCoverShell>
 
-      {/* ORCH-1156 — the Going/Maybe/Can't decision as the thumb-zone HERO: a
+      {/* ORCH-1157 — the Going/Maybe/Can't decision as the thumb-zone HERO: a
           floating dock pinned to the bottom on phone (<1024px), above the safe
           area. Hidden on desktop (the sticky panel carries the decision).
-          I-PROPOSED-1156-RSVP-DECISION-IS-HERO. */}
+          I-PROPOSED-1157-RSVP-DECISION-IS-HERO. */}
       {!isDesktop ? (
         <View
           style={[
@@ -548,7 +548,7 @@ export const RsvpPublicBody: React.FC<RsvpPublicBodyProps> = ({
               paddingBottom: 12 + safeAreaBottom,
             },
           ]}
-          testID="orch-1156-rsvp-floating-dock"
+          testID="orch-1157-rsvp-floating-dock"
         >
           {decision}
         </View>
@@ -594,7 +594,7 @@ const Brand: React.FC<{
       onPress={() => {
         if (brand?.slug !== undefined) onOpenBrand?.(brand.slug);
       }}
-      testID="orch-1156-rsvp-brand"
+      testID="orch-1157-rsvp-brand"
     >
       <View style={styles.brandTextCol}>
         <Text style={[styles.brandKicker, surface.tertiaryText]}>Hosted by</Text>
@@ -769,7 +769,7 @@ const styles = StyleSheet.create({
   aboutCard: { borderRadius: 16, padding: 16, marginBottom: 10, overflow: "hidden" },
   aboutTitle: { fontSize: 15, fontWeight: "800", marginBottom: 8 },
   aboutBody: { fontSize: 14, lineHeight: 21 },
-  // ORCH-1156 — phone floating decision dock (sticky bottom, thumb zone). Opaque
+  // ORCH-1157 — phone floating decision dock (sticky bottom, thumb zone). Opaque
   // page fill + a hairline top border; safe-area inset added at runtime.
   floatingDock: {
     position: "absolute",

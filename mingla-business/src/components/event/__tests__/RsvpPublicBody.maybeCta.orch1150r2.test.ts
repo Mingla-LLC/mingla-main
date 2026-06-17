@@ -8,12 +8,12 @@
  * as SOURCE-STRUCTURE assertions. Each assertion FAILS if the corresponding fix
  * line is deleted — proving fails-on-revert without a runtime renderer.
  *
- * ORCH-1156 [rsvp-public-redesign] UPDATE ([TEST-MOD-APPROVED ORCH-1156]):
+ * ORCH-1157 [rsvp-public-redesign] UPDATE ([TEST-MOD-APPROVED ORCH-1157]):
  * Direction C moved the inline Going/Maybe/Can't CTA buttons OUT of
  * RsvpPublicBody and INTO the shared `RsvpMomentumDecision` unit (one shared
  * decision across buyer-web + business + consumer). The lucide `<Check/HelpCircle/
  * X size={19}>` inline buttons + the `ctaBtn` style no longer live here — the
- * shared unit owns them (covered by orch_1156_* tests). What RsvpPublicBody STILL
+ * shared unit owns them (covered by orch_1157_* tests). What RsvpPublicBody STILL
  * owns + MUST keep (these assertions enforce it): (a) the `submit` 3-status union
  * + the `void submit("maybe")` wiring, (b) the A4-NEW contact gate applied to BOTH
  * going and maybe, (c) the resolved-maybe response copy, (d) delegation to the
@@ -35,7 +35,7 @@ const SRC_NO_COMMENTS = SRC_RAW.replace(/\/\*[\s\S]*?\*\//g, "").replace(
   "$1",
 );
 
-describe("ORCH-1156 — RsvpPublicBody delegates the Going/Maybe/Can't decision to the shared unit", () => {
+describe("ORCH-1157 — RsvpPublicBody delegates the Going/Maybe/Can't decision to the shared unit", () => {
   it("renders the shared RsvpMomentumDecision (the Direction-C decision hero)", () => {
     expect(SRC).toMatch(
       /import\s*\{[\s\S]*RsvpMomentumDecision[\s\S]*\}\s*from\s*["']@mingla\/offering-rendering["']/,
@@ -68,7 +68,7 @@ describe("ORCH-1156 — RsvpPublicBody delegates the Going/Maybe/Can't decision 
   });
 
   it("never wires a checkout / price / cart affordance (RSVP is ticketless)", () => {
-    // I-PROPOSED-1156-RSVP-NO-CHECKOUT-AFFORDANCE (RsvpPublicBody half). Assert on
+    // I-PROPOSED-1157-RSVP-NO-CHECKOUT-AFFORDANCE (RsvpPublicBody half). Assert on
     // the comment-stripped source — the invariant is about RENDERED code, not the
     // doc comments that NAME the forbidden affordances to explain their absence.
     expect(SRC_NO_COMMENTS).not.toMatch(/\/checkout/);

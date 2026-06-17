@@ -110,7 +110,7 @@ const mapDraftToPublicEvent = (draft: DraftEvent): PublicEventProps => {
     coverCredit,
     tickets: [],
     currency: "GBP",
-    // ORCH-1156 [rsvp-public-redesign] — pass the draft's party types so the
+    // ORCH-1157 [rsvp-public-redesign] — pass the draft's party types so the
     // preview renders the Direction-C vibe chips. goingCount stays 0 (set in the
     // config below) → the shared momentum unit shows the honest zero-state.
     partyTypes: draft.partyTypes ?? [],

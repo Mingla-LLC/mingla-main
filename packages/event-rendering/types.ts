@@ -79,7 +79,7 @@ export interface PublicEventProps {
   currency: string;
 
   /**
-   * ORCH-1156 [rsvp-public-redesign] — canonical party-type slugs (ORCH-0824),
+   * ORCH-1157 [rsvp-public-redesign] — canonical party-type slugs (ORCH-0824),
    * rendered as the Direction-C "Momentum" vibe chips on the public RSVP page.
    * ADDITIVE + default-safe: `[]` when none. Every existing constructor of
    * PublicEventProps (ticket/trip/experience/preview mappers) defaults this to

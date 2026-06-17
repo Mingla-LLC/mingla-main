@@ -1,8 +1,8 @@
-# SPEC — ORCH-1156 · Public RSVP Event Page → Direction C "Momentum"
+# SPEC — ORCH-1157 · Public RSVP Event Page → Direction C "Momentum"
 
-**Mode:** SPEC (half 2 of IA pass). Investigation: `Mingla_Artifacts/investigations/INVESTIGATE_ORCH-1156_RSVP_PUBLIC_PAGE.md` (same worktree).
-**Worktree:** `~/Desktop/mingla-orchs/ORCH-1156-[rsvp-public-redesign]/` on branch `ORCH-1156-rsvp-public-redesign`.
-**Binding design:** `Mingla_Artifacts/design/ORCH-1156/RSVP_DIRECTION_C_MOMENTUM.html` + `DESIGN_PHILOSOPHY_ORCH-1156_RSVP_PUBLIC_PAGE.md`. Seth-approved Direction C, kicker `color:inherit` tweak applied.
+**Mode:** SPEC (half 2 of IA pass). Investigation: `Mingla_Artifacts/investigations/INVESTIGATE_ORCH-1157_RSVP_PUBLIC_PAGE.md` (same worktree).
+**Worktree:** `~/Desktop/mingla-orchs/ORCH-1157-[rsvp-public-redesign]/` on branch `ORCH-1157-rsvp-public-redesign`.
+**Binding design:** `Mingla_Artifacts/design/ORCH-1157/RSVP_DIRECTION_C_MOMENTUM.html` + `DESIGN_PHILOSOPHY_ORCH-1157_RSVP_PUBLIC_PAGE.md`. Seth-approved Direction C, kicker `color:inherit` tweak applied.
 **Status:** ready for mingla-implementor.
 
 ---
@@ -97,7 +97,7 @@ interface RsvpMomentumDecisionProps {
 - Recompose to Direction C: hero kicker "You're invited" (style `color: inherit` = same color as the title; pulsing dot stays accent) inside the existing `ParallaxCoverShell` hero (phone-lead + desktop caption parity with the mockup); host row; party-type chips (via `ChipGroup` from `partyTypes` + date/City-Country chips); then `RsvpMomentumDecision`.
   - Phone (`useResponsiveLayout` not-desktop): momentum unit `inline` in the body; decision rendered in a `floating-dock` (sticky bottom). Keep the contact form + plus stepper in the body, gating Going/Maybe on `contactReady` (unchanged logic).
   - Desktop (≥1024): two-column — scrolling body (cover caption, about, where, chips, momentum-context) left; `sticky-panel` (host + momentum + decision) right.
-- Preserve EVERY existing state, copy, contact-form validation (`A4-NEW` name+email+phone), error handling, and the `onSubmit`/`resolveRsvpCta` wiring. Do NOT change the write path. Keep `testID="orch-1150-rsvp-…"` IDs and add `orch-1156-…` IDs for the new momentum/cluster/decision/chips nodes.
+- Preserve EVERY existing state, copy, contact-form validation (`A4-NEW` name+email+phone), error handling, and the `onSubmit`/`resolveRsvpCta` wiring. Do NOT change the write path. Keep `testID="orch-1150-rsvp-…"` IDs and add `orch-1157-…` IDs for the new momentum/cluster/decision/chips nodes.
 
 ### 4.5 Host — `mingla-business/app/rsvp/[id]/preview.tsx`
 - Props-only: pass `partyTypes` from the draft (`draft.partyTypes`) into the `publicEvent` it builds (`mapDraftToPublicEvent`), and keep `goingCount: 0`. The shared unit renders the honest zero state. No logic change.
@@ -132,17 +132,17 @@ interface RsvpMomentumDecisionProps {
 
 **Preserve:**
 - `ANDROID_GLASS_USES_OPAQUE_FALLBACK` — new cards opaque on Android (SC-9; test: snapshot/style assertion that Android fills are ≥0.92 + `overflow:'hidden'`).
-- ORCH-1150 RSVP-no-checkout test (`app-mobile/src/services/__tests__/rsvpDeckService.orch1150.test.ts` + the business equivalent) — must stay green; extend it for ORCH-1156 below.
+- ORCH-1150 RSVP-no-checkout test (`app-mobile/src/services/__tests__/rsvpDeckService.orch1150.test.ts` + the business equivalent) — must stay green; extend it for ORCH-1157 below.
 - `I-PROPOSED-1138-EVENT-DECK-OFF-EBES` — deck routing into `ConsumerEventDetailScreen` unchanged.
 
 **New DRAFT invariants (flip ACTIVE on CLOSE — orchestrator owns the flip):**
 
 | ID (DRAFT) | Rule | Enforcement | Regression test |
 |---|---|---|---|
-| `I-PROPOSED-1156-RSVP-NO-CHECKOUT-AFFORDANCE` | No RSVP surface may render a price, "Reserve"/"Get tickets"/cart, or navigate to `/checkout`/`ticket-checkout-create`. | strict-grep over `RsvpPublicBody.tsx` + the consumer RSVP branch + `RsvpMomentumDecision.tsx` for `checkout`/`Reserve`/`priceAllIn`/`cart` (allow none) + a render test asserting no price node. | `__tests__/orch_1156_rsvp_no_checkout.test.*` — FAILS if any RSVP file references a checkout/price affordance. |
-| `I-PROPOSED-1156-RSVP-DECISION-IS-HERO` | The Going/Maybe/Can't control is rendered in a docked/sticky position (floating-dock on phone, sticky-panel on desktop), not buried mid-body. | render test: the decision node carries the dock/sticky `variant` and is a direct child of the floating/sticky container, not the inline body, on each layout. | `__tests__/orch_1156_decision_hero.test.tsx`. |
-| `I-PROPOSED-1156-RSVP-SOCIAL-PROOF-ANON-ONLY` | Social proof is goingCount + meter + faceless cluster ONLY. No guest names, no avatar images, no public maybe count, no public waitlist count. | strict-grep: `RsvpMomentumDecision.tsx` must not import/render any guest-name/photo field or a `maybeCount`/`waitlistCount` prop; cluster avatars are glyph-only (no `Image`/`uri`). | `__tests__/orch_1156_social_proof_anon.test.tsx` — asserts cluster has no `<Image>` and the props surface has no name/maybe/waitlist count. |
-| `I-PROPOSED-1156-RSVP-USES-BRAND-THEME-DIAL` | The momentum meter, cluster, going button, and kicker dot derive color from `palette.accent`/theme, never a hardcoded hue. | strict-grep: no hardcoded hex in the accent-driven nodes of `RsvpMomentumDecision.tsx` (must read from `palette`). | `__tests__/orch_1156_theme_dial.test.tsx` — render with two palettes, assert the meter/button color tracks `palette.accent`. |
+| `I-PROPOSED-1157-RSVP-NO-CHECKOUT-AFFORDANCE` | No RSVP surface may render a price, "Reserve"/"Get tickets"/cart, or navigate to `/checkout`/`ticket-checkout-create`. | strict-grep over `RsvpPublicBody.tsx` + the consumer RSVP branch + `RsvpMomentumDecision.tsx` for `checkout`/`Reserve`/`priceAllIn`/`cart` (allow none) + a render test asserting no price node. | `__tests__/orch_1157_rsvp_no_checkout.test.*` — FAILS if any RSVP file references a checkout/price affordance. |
+| `I-PROPOSED-1157-RSVP-DECISION-IS-HERO` | The Going/Maybe/Can't control is rendered in a docked/sticky position (floating-dock on phone, sticky-panel on desktop), not buried mid-body. | render test: the decision node carries the dock/sticky `variant` and is a direct child of the floating/sticky container, not the inline body, on each layout. | `__tests__/orch_1157_decision_hero.test.tsx`. |
+| `I-PROPOSED-1157-RSVP-SOCIAL-PROOF-ANON-ONLY` | Social proof is goingCount + meter + faceless cluster ONLY. No guest names, no avatar images, no public maybe count, no public waitlist count. | strict-grep: `RsvpMomentumDecision.tsx` must not import/render any guest-name/photo field or a `maybeCount`/`waitlistCount` prop; cluster avatars are glyph-only (no `Image`/`uri`). | `__tests__/orch_1157_social_proof_anon.test.tsx` — asserts cluster has no `<Image>` and the props surface has no name/maybe/waitlist count. |
+| `I-PROPOSED-1157-RSVP-USES-BRAND-THEME-DIAL` | The momentum meter, cluster, going button, and kicker dot derive color from `palette.accent`/theme, never a hardcoded hue. | strict-grep: no hardcoded hex in the accent-driven nodes of `RsvpMomentumDecision.tsx` (must read from `palette`). | `__tests__/orch_1157_theme_dial.test.tsx` — render with two palettes, assert the meter/button color tracks `palette.accent`. |
 
 ---
 
@@ -179,8 +179,8 @@ interface RsvpMomentumDecisionProps {
 
 ## 9. Regression prevention (fails-on-revert)
 
-- Primary safeguard: `__tests__/orch_1156_rsvp_no_checkout.test.*` (I-PROPOSED-1156-RSVP-NO-CHECKOUT-AFFORDANCE) — strict-grep across `RsvpPublicBody.tsx`, the consumer RSVP branch, and `RsvpMomentumDecision.tsx` asserting ZERO checkout/price/cart references. **Must FAIL if any implementor reintroduces a Reserve/price affordance (revert proof: temporarily add a price node → test fails; remove → passes.)**
-- Secondary: `orch_1156_social_proof_anon.test.tsx` asserts the cluster renders no `<Image>`/`uri` and the props carry no name/maybeCount/waitlistCount — FAILS if someone wires a real guest list or a public maybe/waitlist number (constitution-rule-9 guard).
+- Primary safeguard: `__tests__/orch_1157_rsvp_no_checkout.test.*` (I-PROPOSED-1157-RSVP-NO-CHECKOUT-AFFORDANCE) — strict-grep across `RsvpPublicBody.tsx`, the consumer RSVP branch, and `RsvpMomentumDecision.tsx` asserting ZERO checkout/price/cart references. **Must FAIL if any implementor reintroduces a Reserve/price affordance (revert proof: temporarily add a price node → test fails; remove → passes.)**
+- Secondary: `orch_1157_social_proof_anon.test.tsx` asserts the cluster renders no `<Image>`/`uri` and the props carry no name/maybeCount/waitlistCount — FAILS if someone wires a real guest list or a public maybe/waitlist number (constitution-rule-9 guard).
 - Protective comments at the top of `RsvpMomentumDecision.tsx` and the consumer RSVP branch explaining WHY (no public guest identities; RSVP is ticketless; theme is the loudness dial).
 
 ---
@@ -194,7 +194,7 @@ interface RsvpMomentumDecisionProps {
 
 ## 11. Downstream routing
 
-Next = **mingla-implementor** (this worktree). Then **mingla-tester** (per-surface live-fire: web desktop+phone, business iOS+Android, consumer iOS+Android — prove SC-1…SC-10 in all 5 states: open / few-spots / full+waitlist / you're-going / pending). Then **mingla-orchestrator** CLOSE (flip the 4 `I-PROPOSED-1156-*` to ACTIVE; World Map + registry sync). All-surface parity (incl. consumer-app OTA per the parity memory rule) is a CLOSE gate.
+Next = **mingla-implementor** (this worktree). Then **mingla-tester** (per-surface live-fire: web desktop+phone, business iOS+Android, consumer iOS+Android — prove SC-1…SC-10 in all 5 states: open / few-spots / full+waitlist / you're-going / pending). Then **mingla-orchestrator** CLOSE (flip the 4 `I-PROPOSED-1157-*` to ACTIVE; World Map + registry sync). All-surface parity (incl. consumer-app OTA per the parity memory rule) is a CLOSE gate.
 
 ---
 
@@ -209,7 +209,7 @@ Next = **mingla-implementor** (this worktree). Then **mingla-tester** (per-surfa
 - `app-mobile/src/screens/Event/ConsumerEventDetailScreen.tsx` (RSVP branch only)
 - `app-mobile/src/services/rsvpDeckService.ts` (add `"maybe"` to the write enum + a thin anon-view momentum fetch if OQ-1=a)
 - Constructors of `PublicEventProps` that must default `partyTypes: []` (ticket/trip/experience mappers — type-check will name them)
-- New `__tests__/orch_1156_*` files + extension of the ORCH-1150 no-checkout test
+- New `__tests__/orch_1157_*` files + extension of the ORCH-1150 no-checkout test
 
 ## DO-NOT-TOUCH (stop-and-amend before changing)
 

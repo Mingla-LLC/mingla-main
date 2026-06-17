@@ -177,7 +177,7 @@ const mapLiveEventToPublicEvent = (event: LiveEvent): PublicEventProps => {
     coverCredit,
     tickets: event.tickets.map(mapTicket),
     currency: event.currency ?? "GBP",
-    // ORCH-1156 [rsvp-public-redesign] — surface canonical party types (ORCH-0824)
+    // ORCH-1157 [rsvp-public-redesign] — surface canonical party types (ORCH-0824)
     // for the Direction-C RSVP vibe chips. LiveEvent already carries these from
     // the view mapper; default `[]` for legacy persisted rows (rule 9 — no fake).
     partyTypes: event.partyTypes ?? [],

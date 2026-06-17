@@ -1,12 +1,12 @@
-// ORCH-1156 [rsvp-public-redesign] — shared RsvpMomentumDecision regression
+// ORCH-1157 [rsvp-public-redesign] — shared RsvpMomentumDecision regression
 // (implementor-owned happy-path). Deno-runnable: rsvpMomentum.ts is pure +
 // dep-free (no RN imports), and the component invariants are enforced as
 // SOURCE-STRUCTURE assertions (the package has no react-native-testing-library).
 //
 // Covers the SPEC §7 cases for the shared unit + the 4 DRAFT invariants:
 //   T-1 open count>0 capacity set · T-2 unlimited · T-3 goingCount=0 zero-state ·
-//   T-4 full+waitlist (no number) · I-PROPOSED-1156-RSVP-NO-CHECKOUT-AFFORDANCE ·
-//   I-PROPOSED-1156-RSVP-DECISION-IS-HERO · -SOCIAL-PROOF-ANON-ONLY · -USES-BRAND-
+//   T-4 full+waitlist (no number) · I-PROPOSED-1157-RSVP-NO-CHECKOUT-AFFORDANCE ·
+//   I-PROPOSED-1157-RSVP-DECISION-IS-HERO · -SOCIAL-PROOF-ANON-ONLY · -USES-BRAND-
 //   THEME-DIAL.
 //
 // FAILS-ON-REVERT (proven by true line-deletion in the implementation report):
@@ -100,7 +100,7 @@ Deno.test("partyTypeLabel humanizes canonical kebab slugs to the taxonomy label"
 
 // ───────────────────── DRAFT-invariant source assertions ─────────────────────
 
-Deno.test("I-PROPOSED-1156-RSVP-NO-CHECKOUT-AFFORDANCE: the shared unit has no checkout/price/cart", () => {
+Deno.test("I-PROPOSED-1157-RSVP-NO-CHECKOUT-AFFORDANCE: the shared unit has no checkout/price/cart", () => {
   assert(!/\/checkout/.test(COMPONENT));
   assert(!/ticket-checkout-create/.test(COMPONENT));
   assert(!/priceAllIn/.test(COMPONENT));
@@ -109,7 +109,7 @@ Deno.test("I-PROPOSED-1156-RSVP-NO-CHECKOUT-AFFORDANCE: the shared unit has no c
   assert(!/\bcart\b/i.test(COMPONENT));
 });
 
-Deno.test("I-PROPOSED-1156-RSVP-DECISION-IS-HERO: the unit supports floating-dock + sticky-panel variants", () => {
+Deno.test("I-PROPOSED-1157-RSVP-DECISION-IS-HERO: the unit supports floating-dock + sticky-panel variants", () => {
   assertStringIncludes(COMPONENT, '"floating-dock"');
   assertStringIncludes(COMPONENT, '"sticky-panel"');
   // the host (RsvpPublicBody / consumer screen) picks the dock/sticky variant —
@@ -117,7 +117,7 @@ Deno.test("I-PROPOSED-1156-RSVP-DECISION-IS-HERO: the unit supports floating-doc
   assertStringIncludes(COMPONENT, "variant:");
 });
 
-Deno.test("I-PROPOSED-1156-RSVP-SOCIAL-PROOF-ANON-ONLY: faceless cluster, no images, no maybe/waitlist count props", () => {
+Deno.test("I-PROPOSED-1157-RSVP-SOCIAL-PROOF-ANON-ONLY: faceless cluster, no images, no maybe/waitlist count props", () => {
   // The cluster avatars are GLYPH-only — never a photo.
   assert(!/<Image\b/.test(COMPONENT));
   assert(!/\buri\b/.test(COMPONENT));
@@ -129,7 +129,7 @@ Deno.test("I-PROPOSED-1156-RSVP-SOCIAL-PROOF-ANON-ONLY: faceless cluster, no ima
   assert(!/guestName|guestPhoto|attendeeName|guestAvatar/.test(COMPONENT));
 });
 
-Deno.test("I-PROPOSED-1156-RSVP-USES-BRAND-THEME-DIAL: meter + cluster + going + kicker dot read palette.accent (no hardcoded hue)", () => {
+Deno.test("I-PROPOSED-1157-RSVP-USES-BRAND-THEME-DIAL: meter + cluster + going + kicker dot read palette.accent (no hardcoded hue)", () => {
   // The accent-driven nodes derive color from the palette, never a literal hex.
   assertStringIncludes(COMPONENT, "backgroundColor: palette.accent"); // meter fill + going + dot + cluster
   // No hardcoded 6/3-digit hex literals anywhere in the component (the error red

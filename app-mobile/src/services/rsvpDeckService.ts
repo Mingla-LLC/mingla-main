@@ -14,7 +14,7 @@
 import { supabase } from "./supabase";
 
 /**
- * ORCH-1156 [rsvp-public-redesign] OQ-1 (resolved = option a) — the consumer RSVP
+ * ORCH-1157 [rsvp-public-redesign] OQ-1 (resolved = option a) — the consumer RSVP
  * detail needs the live going-count + capacity + waitlist/approval to render the
  * Direction-C momentum unit, but the deck seed does NOT carry them (investigation
  * F-6). Rather than widen the deck-supply RPC (option b → would trip the
@@ -77,7 +77,7 @@ export interface SubmitDeckRsvpResult {
  * event. Throws an Error whose message is the edge-fn error code (rsvp_full /
  * rsvp_not_open / …) so the caller can show the right toast.
  *
- * ORCH-1156 [rsvp-public-redesign] — "maybe" added to the write enum so the
+ * ORCH-1157 [rsvp-public-redesign] — "maybe" added to the write enum so the
  * consumer RSVP detail reaches parity with the shared RsvpPublicBody (which has
  * had Maybe since ORCH-1150 R2). The public-submit-rsvp edge fn already accepts
  * "maybe"; this only widens the consumer caller (was narrowed to going/not_going).
