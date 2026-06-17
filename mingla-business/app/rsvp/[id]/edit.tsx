@@ -205,7 +205,22 @@ export default function RsvpEditRoute(): React.ReactElement {
         );
         return undefined;
       }
-      if (resolvedLiveEvent === null && !businessEventQuery.isLoading) {
+      // ORCH-1150 (D-9) — gate the safe-exit so it fires ONLY when the live-
+      // event lookup is genuinely exhausted: auth is ready AND the fetch has
+      // settled (not loading, not fetching) AND the event is still null. The
+      // bare `!isLoading` guard (mirrored from the ticketed event-edit) fired
+      // during the `isAuthReady` flicker — React-Query reports a DISABLED query
+      // (enabled = isAuthReady && eventId) as isLoading=false, so a fresh push
+      // with an empty useLiveEventStore bounced a published RSVP before the
+      // fetch ever ran. Adding isAuthReady + !isFetching makes the exit
+      // strictly more conservative than today; it can never bounce earlier.
+      // RSVP-route-only — the ticketed app/event/[id]/edit.tsx is NOT touched.
+      if (
+        isAuthReady &&
+        resolvedLiveEvent === null &&
+        !businessEventQuery.isLoading &&
+        !businessEventQuery.isFetching
+      ) {
         // Published event not found — bounce to events tab.
         const t = setTimeout(() => {
           router.replace(safeEventsExitRoute() as never);
