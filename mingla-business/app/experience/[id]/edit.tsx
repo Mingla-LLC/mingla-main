@@ -165,6 +165,23 @@ function detailToInitialDraft(
     };
   }
 
+  // ORCH-1153 WS1 SEED-HARDENING (F-4, client belt-and-suspenders). When the
+  // loaded detail is recurring but the parsed recurrenceRule came back null (a
+  // firstRecurrenceRule shape anomaly), the wizard would seed whenMode:'recurring'
+  // with a null rule → on save, the payload's recurrence_rules is null and the
+  // live-edit RPC would (without the server guard) wipe the expansion. The PRIMARY
+  // fix is the server re-derive guard in biz_update_live_experience (migration
+  // 20261009000000), which restores the rule from the persisted column. Surface
+  // the anomaly here (no silent failure, Constitution #3) so it is observable; we
+  // do NOT fabricate a rule client-side (the raw jsonb is not exposed here).
+  if (when.whenMode === "recurring" && when.recurrenceRule === null) {
+    console.warn(
+      "[ORCH-1153] recurring experience loaded with a null parsed recurrenceRule",
+      "— relying on the server re-derive guard; do NOT drop the rule on save.",
+      { experienceId: exp.id },
+    );
+  }
+
   return {
     title: exp.title,
     description: exp.description ?? "",
