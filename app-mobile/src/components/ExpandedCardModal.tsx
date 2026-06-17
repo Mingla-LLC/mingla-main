@@ -2333,9 +2333,22 @@ export default function ExpandedCardModal({
       {/* META-ORCH-1148 2.2b — the 3-step reserve sheet, mounted as a SIBLING of
           the root sheet (same proven sub-sheet pattern as the experience detail
           above). The root sheet is gated off (anyChildModalOpen) while it is
-          open. The reservation attaches to the signed-in user server-side. */}
+          open. The reservation attaches to the signed-in user server-side.
+
+          2.2b reserve-won't-open fix (2026-06-17): MOUNT-ON-OPEN, mirroring the
+          ConsumerExperienceDetailScreen sibling (`selectedVenueExperience !== null
+          && <…>`). The prior always-mounted-when-reservable + `visible`-toggle
+          shape raced the root sheet's simultaneous close (both share the inline,
+          non-RN-Modal presentation slot): flipping `isReserveSheetOpen` true
+          gated the root off (card collapsed) but the already-mounted sub-sheet's
+          open never presented → nothing opened → onClose never fired → the flag
+          stuck true → root stayed suppressed → card couldn't re-expand. Mounting
+          fresh on open gives a clean open animation in the freed slot, exactly
+          like the experience-detail sibling; closing it (CTA/pan-down/backdrop →
+          resetAndClose → onClose) unmounts AND resets isReserveSheetOpen=false,
+          ungating the root so the card restores and re-expands. */}
       {isNightOut && nightOut && venueReservable?.reservable === true &&
-        venueReservable.brand_id !== null && (
+        venueReservable.brand_id !== null && isReserveSheetOpen && (
           <VenueReserveSheet
             visible={isReserveSheetOpen}
             onClose={() => setIsReserveSheetOpen(false)}
