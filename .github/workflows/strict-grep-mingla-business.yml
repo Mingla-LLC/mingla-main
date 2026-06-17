@@ -2542,6 +2542,19 @@ jobs:
       - name: Run ORCH-1148 booking-core engine/money-seam gate
         run: node .github/scripts/strict-grep/orch-1148-booking-core-engine-and-money-seam.mjs
 
+  orch-1148-reserve-sheet-gate-mirrors-button:
+    name: "ORCH-1148 reserve-tap: sheet render gate mirrors the button gate (I-PROPOSED-1148-RESERVE-SHEET-GATE-MIRRORS-BUTTON)"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Self-test the ORCH-1148 reserve-sheet-gate gate
+        run: node .github/scripts/strict-grep/orch-1148-reserve-sheet-gate-mirrors-button.mjs --self-test
+      - name: Run ORCH-1148 reserve-sheet-gate-mirrors-button gate
+        run: node .github/scripts/strict-grep/orch-1148-reserve-sheet-gate-mirrors-button.mjs
+
   orch-1154-snap-auto-draft:
     name: "ORCH-1154: snap suggestions auto-draft + navigate (no per-card review; Ari manual-confirm untouched)"
     runs-on: ubuntu-latest

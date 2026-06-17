@@ -2347,7 +2347,20 @@ export default function ExpandedCardModal({
           like the experience-detail sibling; closing it (CTA/pan-down/backdrop →
           resetAndClose → onClose) unmounts AND resets isReserveSheetOpen=false,
           ungating the root so the card restores and re-expands. */}
-      {isNightOut && nightOut && venueReservable?.reservable === true &&
+      {/* ORCH-1148 RUNTIME FIX (2026-06-17): the sheet render gate previously
+          ALSO required `isNightOut && nightOut`, but the "Reserve a table"
+          BUTTON (above) renders ONLY in the regular-place branch (`!isNightOut`)
+          of the layout ternary. Those two conditions are mutually exclusive, so
+          on every card that showed the button, `isNightOut` was false → the
+          sheet gate was false → tapping flipped `isReserveSheetOpen` true but
+          NOTHING mounted ("does nothing"). Proven at runtime: tap logged
+          `gateWouldMount:false` with `isNightOut:false, reservable:true,
+          brand_id` present. The sheet's props (brandId, venueName=card.title,
+          currency) never depend on `nightOut`, so the gate now mirrors the
+          button EXACTLY (RESERVABLE_VENUE_GATE) — any card that shows the button
+          can open the sheet. Regression test asserts both gates share the
+          condition so they can't drift again. */}
+      {venueReservable?.reservable === true &&
         venueReservable.brand_id !== null && isReserveSheetOpen && (
           <VenueReserveSheet
             visible={isReserveSheetOpen}
