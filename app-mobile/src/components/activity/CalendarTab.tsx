@@ -287,18 +287,31 @@ const CalendarTab = ({
             onPress: () => {
               void (async () => {
                 try {
-                  const { refundEligible } = await cancelMyReservation(
-                    reservation.id,
-                  );
+                  const { refundEligible, refunded, refundAmountCents } =
+                    await cancelMyReservation(reservation.id);
                   if (user?.id) {
                     await queryClient.invalidateQueries({
                       queryKey: myReservationsKeys.byUser(user.id),
                     });
                   }
+                  const amount =
+                    refundAmountCents > 0
+                      ? new Intl.NumberFormat(undefined, {
+                          style: "currency",
+                          currency: (reservation.fee_currency || "USD").toUpperCase(),
+                        }).format(refundAmountCents / 100)
+                      : null;
+                  const hadDeposit =
+                    (reservation.fee_cents ?? 0) > 0 &&
+                    reservation.payment_status === "paid";
                   Alert.alert(
                     "Reservation cancelled",
-                    refundEligible
-                      ? "You cancelled before the cutoff. Any deposit refund will follow."
+                    refunded && amount
+                      ? `Your ${amount} deposit has been refunded.`
+                      : refundEligible
+                      ? "Your deposit refund is being processed and will follow shortly."
+                      : hadDeposit
+                      ? "Your reservation has been cancelled. Your deposit is non-refundable after the venue's cancellation cutoff."
                       : "Your reservation has been cancelled.",
                   );
                 } catch (err) {
@@ -1740,10 +1753,12 @@ const CalendarTab = ({
     if (Date.now() - lastModalCloseAtRef.current < 500) return; // re-open guard
     HapticFeedback.buttonPress();
 
+    // Cover media for the modal's ImageGallery — which plays VIDEO covers via
+    // isVideoUrl/EventCoverMedia, so pass the cover URL regardless of type
+    // (image OR video); fall back to the profile photo. (Earlier this dropped
+    // video covers → the "no images" placeholder.)
     const image =
-      reservation.brand_cover_type === "image" && reservation.brand_cover_url
-        ? reservation.brand_cover_url
-        : reservation.brand_photo_url ?? "";
+      reservation.brand_cover_url || reservation.brand_photo_url || "";
     const hasCoords =
       typeof reservation.brand_lat === "number" &&
       typeof reservation.brand_lng === "number";

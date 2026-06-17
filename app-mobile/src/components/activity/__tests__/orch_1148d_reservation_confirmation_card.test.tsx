@@ -137,4 +137,22 @@ ok(
   /handleCancelReservation\(reservation\)/.test(calSrc),
 );
 
+// ── 2.2g [video cover + real cancel/refund] ─────────────────────────────────
+ok(
+  "the venue card passes the cover URL regardless of type (video plays)",
+  /const image =\s*\n?\s*reservation\.brand_cover_url \|\| reservation\.brand_photo_url \|\| ""/.test(
+    calSrc,
+  ),
+  "video covers must reach ImageGallery, not be dropped to the placeholder",
+);
+ok(
+  "cancelMyReservation calls the venue-reservation-cancel edge fn (executes refund)",
+  /functions\.invoke\(\s*\n?\s*["']venue-reservation-cancel["']/.test(hookSrc),
+);
+ok(
+  "cancel surfaces the actual refund outcome to the guest",
+  /refunded,\s*refundAmountCents/.test(calSrc) &&
+    /deposit has been refunded/.test(calSrc),
+);
+
 console.log(`\n${passed} assertions passed.`);
