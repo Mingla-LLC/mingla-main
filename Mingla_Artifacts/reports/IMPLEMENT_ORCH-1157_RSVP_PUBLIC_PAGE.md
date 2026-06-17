@@ -462,3 +462,83 @@ shipping step, not a code change.)
   Round-3 mapper fix). Until the consumer `app-mobile` OTA ships, the installed
   binary still runs the pre-Round-2 JS and will keep showing the street. This is
   the parity/OTA CLOSE gate (consumer-app OTA per the all-surface parity rule).
+
+---
+
+## Round-4 — Discover-path + entry-path audit fix
+
+**Date:** 2026-06-17 · **HEAD:** `6da698fff` · **Branch:** `ORCH-1157-rsvp-public-redesign` · **Worktree:** `~/Desktop/mingla-orchs/ORCH-1157-[rsvp-public-redesign]/`
+
+### Dispatch premise vs. forensic finding (be honest)
+
+The dispatch said rounds 1-3 fixed only the "DECK/discover-cards" path and that the **Discover-screen Events tab** is a SECOND, unfixed consumer entry path that still renders the ticketed branch + leaks the street for an RSVP. I traced that path end-to-end and the premise is **partly wrong and partly right**:
+
+- **WRONG (no new source bug):** the Discover-screen Events tab is the ONLY consumer path that opens an RSVP **event** into `ConsumerEventDetailScreen`, and it is **already correct in this worktree AND on prod infra**. There is no second broken path and no source fix was needed for it.
+- **RIGHT (the device really does leak):** the on-device leak is real — but its cause is that **ORCH-1157 (rounds 1-4) is UNMERGED and UN-OTA'd**. The Samsung A72 is running the **deployed ORCH-1150 consumer code**, whose `ConsumerEventDetailScreen` (a) renders the "Choose your ticket / No tickets available yet" block **un-gated** (no `!isRsvp`), (b) docks Going/Not-going only (**no Maybe**), and (c) uses the pre-1157 ticketed address copy. That is exactly the device symptom.
+
+### Discover → detail wiring (root cause of the SYMPTOM, traced)
+
+1. `app-mobile/src/components/DiscoverScreen.tsx` Events tab renders `BusinessEventCard` (`discover/BusinessEventCard.tsx`); `onPress = handleBusinessEventCardPress` (line ~1641) → `setExpansionTarget({ kind: "businessEvent", data })` — `data` is the merged `BusinessEventCard` **verbatim** (`it.item` from `searchMerged`, no lossy rebuild).
+2. Supply = `nightOutExperiencesService.searchMerged` → `discover-merged-events` edge fn → `mapRpcRowToCard` (`_business-query.ts`). That mapper **does** set `eventType: row.event_type === "rsvp" ? "rsvp" : "event"` (line 134) and `hideAddressUntilTicket` via the fail-closed extractor (line 116).
+3. `app-mobile/src/components/ExpandedCardModal.tsx` (line 1772-1798): a `businessEvent` target that is **not** an experience opens `<ConsumerEventDetailScreen seed={businessEvent} />` — the **same** single-source-of-truth screen the deck-experience path uses.
+4. `ConsumerEventDetailScreen` derives `isRsvp = seed?.eventType === "rsvp"` (line 212); the worktree gates the ticket block on `!isRsvp` (line 1040) and gates the address with the RSVP reveal-on-going/maybe + "Address shared after you RSVP" copy (lines 598-604).
+
+So the worktree fix already flows through the Discover path. The deck (`SwipeableCards.tsx`) only opens a `businessEvent` target for `cardType === 'experience'` (line 1775) — it has **no RSVP-event path at all**; the RSVP **event** lives exclusively on Discover→Events (and group chat).
+
+### Live-infra proof (not source-only)
+
+- DB `events` row "The Second Test" (`d3aa8011-…`): `event_type='rsvp'`, `rsvp_discoverable=true`, `theme.business_event.hideAddressUntilTicket=true`, `location_text` carries the full street.
+- Live `pg_discover_business_events('Raleigh', …)` returns that row with `event_type:'rsvp'` + `theme…hideAddressUntilTicket:true` (ran via Management API SELECT).
+- Deployed `discover-merged-events` **v179** source (fetched live) maps `eventType` + `hideAddressUntilTicket` exactly as the worktree does.
+- `origin/main` `ConsumerEventDetailScreen` (deployed ORCH-1150) renders the ticket block **un-gated** and has no Maybe — confirmed by reading `git show origin/main:…`. ORCH-1157 branch is **not** on `origin/main`.
+
+### FULL consumer entry-path audit (every path that can open an event/RSVP detail)
+
+| # | Entry path | Component → detail | Card carries `eventType`/`isRsvp`? | Carries real `hideAddressUntilTicket`? | Status |
+|---|------------|--------------------|-----------------------------------|----------------------------------------|--------|
+| 1 | **Discover → Events tab** (this dispatch) | `DiscoverScreen` → `ExpandedCardModal` → `ConsumerEventDetailScreen` | YES (merged `mapRpcRowToCard` sets `eventType`) | YES (extractor, fail-closed) | **CORRECT in source/infra; device leak = un-OTA'd 1157** |
+| 2 | Consumer swipe deck (Home) | `SwipeableCards` → `ExpandedCardModal` | N/A — deck opens `businessEvent` ONLY for `cardType==='experience'`; **no RSVP-event path** | experience mapper carries real flag (Round-3 fix) | CORRECT (no RSVP events on deck by design) |
+| 3 | Deck EXPERIENCE card | `SwipeableCards.experienceRecToBusinessEventCard` → `ConsumerExperienceDetailScreen` | experiences are never RSVP (`eventType` unset → not RSVP) | YES (Round-3 fix removed hardcoded false) | CORRECT |
+| 4 | `venueExperienceMapping` (venue card experiences) | `useVenueExperiences` → experience card → experience detail | experiences never RSVP | YES (Round-3 fix) | CORRECT |
+| 5 | **Group chat** event share | `MessageInterface.tsx` → `ConsumerEventDetailScreen` | depends on the shared card; `ConnectionsPage.extractHideAddressUntilTicket` plumbs the flag | YES (ConnectionsPage extractor, fail-closed) | CORRECT (same shared detail; reuses extractor) |
+| 6 | Brand page (consumer) | no consumer brand-page → event-detail mount found (`ConsumerEventDetailScreen` importers = only `ExpandedCardModal` + `MessageInterface`) | — | — | N/A (path does not exist on consumer) |
+| 7 | Search / Notifications / Likes-saved / Deep links | no direct mount of `ConsumerEventDetailScreen` from these (importer grep) | — | — | N/A (no such consumer entry today) |
+| 8 | Buyer-web `RsvpPublicBody` | shared `@mingla/event-rendering` | server-rendered RSVP gate | YES (already correct, do-not-regress) | CORRECT (untouched) |
+
+**Conclusion of the audit:** there is exactly ONE consumer surface that renders an RSVP **event** detail — Discover→Events (path 1), with group chat (path 5) reusing the identical screen. Both are correct in source. No third unfixed path exists. The deck never surfaces RSVP events.
+
+### Edge / RPC changes needed
+
+**NONE.** The live RPC (`pg_discover_business_events`) and the deployed edge fn (`discover-merged-events` v179, `verify_jwt:false`) already emit `event_type`/`eventType` + `hideAddressUntilTicket`. No deploy required for this round.
+
+### Regression test added (Round-4)
+
+- **Path:** `supabase/functions/discover-merged-events/__tests__/orch_1157_round4_discover_rsvp_card.test.ts` (9 Deno tests).
+  - Part A (behavioral): real `mapRpcRowToCard` on an RSVP row → `eventType:'rsvp'` + `hideAddressUntilTicket:true` (fail-closed); a ticketed row stays `'event'`.
+  - Part B (source-contract): Discover opens `kind:'businessEvent'` with the merged item verbatim; `ExpandedCardModal` routes a non-experience businessEvent to the SAME `ConsumerEventDetailScreen seed={businessEvent}` (never EBES); the detail gates the ticket block on `!isRsvp`, derives `isRsvp` from `seed.eventType`, and reveals the street only on going/maybe with RSVP wording.
+- **Run:** `deno test --no-check --allow-read --allow-env --sloppy-imports supabase/functions/discover-merged-events/__tests__/orch_1157_round4_discover_rsvp_card.test.ts` → **9 passed | 0 failed**.
+- **fails-on-revert verified at `6da698fff`** by **true line-deletion**: deleting the `eventType: row.event_type === "rsvp" ? "rsvp" : "event",` line in `_business-query.ts` fails T-R4-A1+A2; replacing `{!isRsvp ? (` with `{true ? (` in `ConsumerEventDetailScreen.tsx` fails T-R4-B3. Restored → 9/9 green; full ORCH-1157 suite (round-4 + round-3 + consumer) **22 passed | 0 failed**.
+- **Append-only:** new test file only; zero existing-test deletions; C7 `no-new-backend-files` is ORCH-1141-rescoped to ORCH-0863 PRs only (skipped here).
+
+### Files changed (Round-4)
+
+- `supabase/functions/discover-merged-events/__tests__/orch_1157_round4_discover_rsvp_card.test.ts` (NEW, +~200) — regression only. **Zero product-code changes this round** (`git diff --stat` empty against the prior commit's product files).
+
+### Cross-surface impact (Round-4)
+
+| Surface | Affected | Note |
+|---------|----------|------|
+| Consumer iOS / Android | NO source change; **fixed by OTA** of rounds 1-4 | the device leak resolves only when consumer `app-mobile` is OTA'd |
+| Buyer/anon Web | NO | `RsvpPublicBody` already correct, untouched |
+| Business iOS / Android | NO | — |
+| Admin Web / Business Web preview | NO | — |
+
+### Operator action required (Round-4)
+
+- **NO migration, NO edge deploy** this round (live infra already correct).
+- **The device fix = merge ORCH-1157 to main + OTA the consumer `app-mobile`** (development + production channels per the all-surface parity rule). Until that OTA ships, the installed binary runs deployed ORCH-1150 JS and will keep showing the ticket block + ungated street + no-Maybe on Discover→Events. This is the CLOSE gate.
+
+### Source- vs sim-verified (Round-4, honest)
+
+- **Source + LIVE-infra + test-verified:** the full Discover→detail wiring; live DB row; live RPC output; deployed edge v179 mapping; origin/main divergence proof; 9 Deno tests + fails-on-revert by line-deletion.
+- **NOT sim/device-verified this round:** no consumer-sim screenshot (the bracketed worktree path breaks Metro, same constraint as Round-3; an OTA is the real device fix). Tester should capture the Discover→Events RSVP detail (hidden street + Maybe + no ticket block) **post-OTA**.
