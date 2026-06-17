@@ -143,7 +143,15 @@ export default function RsvpDetailScreen(): React.ReactElement {
 
   const handleEdit = useCallback((): void => {
     if (id !== null) {
-      router.push(`/rsvp/${id}/edit` as never);
+      // ORCH-1150-R2 (D-9b) — this detail page is ONLY ever shown for a
+      // PUBLISHED/live RSVP (the draft case is redirected away earlier in the
+      // "Defensive: draft → redirect" effect). So Edit must enter the edit
+      // screen on its edit-published path. Without ?mode=edit-published the
+      // edit screen runs its DRAFT-resolution path (useDraftById) — a published
+      // RSVP has no draft → it never resolves and bounces to the events list
+      // (safeEventsExitRoute). The Hub manage-menu Edit appends this same param
+      // for non-draft rows; the detail-page Edit must match that.
+      router.push(`/rsvp/${id}/edit?mode=edit-published` as never);
     }
   }, [id, router]);
 

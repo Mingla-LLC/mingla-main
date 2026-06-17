@@ -147,3 +147,37 @@ describe("ORCH-1150-R2 D-8 — RSVP detail keeps Blasts + Group-chat tiles", () 
     expect((allowMatches ?? []).length).toBeGreaterThanOrEqual(2);
   });
 });
+
+// ===========================================================================
+// ORCH-1150-R2 (D-9b) — RSVP detail Edit enters the edit screen on its
+// edit-published path. The detail page is only shown for a PUBLISHED RSVP;
+// without ?mode=edit-published the edit screen runs the draft-resolution path
+// (useDraftById), finds no draft for a published RSVP, and bounces to the
+// events list. handleEdit MUST therefore push the edit-published route.
+//
+// Fails-on-revert: delete the `?mode=edit-published` from the handleEdit push
+// in index.tsx and the assertion below fails (the bare /rsvp/{id}/edit route
+// is the bug that bounces to the events list).
+// ===========================================================================
+describe("ORCH-1150-R2 D-9b — RSVP detail Edit passes mode=edit-published", () => {
+  const source = readFileSync(SCREEN_SOURCE_PATH, "utf8");
+
+  test("handleEdit pushes the edit screen WITH ?mode=edit-published", () => {
+    // The Edit tile's handler must enter the published-edit path so the edit
+    // screen resolves the live event (useBusinessEventById) instead of the
+    // non-existent draft (useDraftById) and bouncing to the events list.
+    expect(source).toMatch(
+      /router\.push\(\s*`\/rsvp\/\$\{id\}\/edit\?mode=edit-published`/,
+    );
+  });
+
+  test("no bare /rsvp/{id}/edit push remains in handleEdit (the bounce bug)", () => {
+    // The ONLY draft-mode (no ?mode=) /rsvp/{id}/edit navigation legitimately
+    // left in this file is the "Defensive: draft → redirect" router.replace —
+    // it is a router.replace, NOT a router.push. Assert no router.push targets
+    // the bare edit route (that bare-push WAS the D-9b bounce bug).
+    expect(source).not.toMatch(
+      /router\.push\(\s*`\/rsvp\/\$\{id\}\/edit`/,
+    );
+  });
+});

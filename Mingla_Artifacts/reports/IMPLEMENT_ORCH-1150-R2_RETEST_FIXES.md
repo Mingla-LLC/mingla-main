@@ -409,3 +409,35 @@ Did NOT edit `ParallaxCoverShell.tsx`, `FoundationEventPreview.tsx`, the tickete
 2. After apply, run `supabase/migrations/__tests__/orch_1150_maybe.test.sql` (T1–T4) against the linked remote.
 3. **Deploy edge fn** from MERGED main: `public-submit-rsvp` (keep `verify_jwt=false`).
 4. **Re-OTA** business per the EAS gotchas runbook (the D-7 fix is build-freshness; the CTA is JS-only).
+
+---
+
+# D-9b — RSVP detail Edit passes `mode=edit-published` (published-edit no longer bounces to events list)
+
+## Root cause (proven from source)
+The D-9 fix hardened the edit screen's *safe-exit timing* (auth-flicker), but it did NOT address THIS cause. `app/rsvp/[id]/index.tsx` `handleEdit` (~L144) pushed `/rsvp/{id}/edit` WITHOUT `?mode=edit-published`. The edit screen (`app/rsvp/[id]/edit.tsx:79`) keys `isEditPublished` off `modeParam === 'edit-published'`. Without the param the screen runs the DRAFT-resolution path (`useDraftById`/`useServerDraftById`) — but a PUBLISHED RSVP has no draft, so `draft===null` settles and the screen exits to `safeEventsExitRoute()` = `/(tabs)/hub/events`. The Hub manage-menu Edit (`app/(tabs)/hub/events.tsx:404`) correctly appends `?mode=edit-published` for non-draft rows; the detail page's `handleEdit` did not. That asymmetry was the bug.
+
+## The fix (one line)
+`app/rsvp/[id]/index.tsx` `handleEdit`: `router.push(\`/rsvp/${id}/edit?mode=edit-published\`)` (was the bare `/rsvp/${id}/edit`). The detail page is ONLY ever shown for a published/live RSVP — the draft case is already redirected away earlier in the "Defensive: draft → redirect" effect (~L110-120, a `router.replace` to the bare draft route, which legitimately omits the mode). So `handleEdit` unconditionally appending `?mode=edit-published` is correct. A 10-line explanatory comment accompanies the change.
+
+## Published-edit resolution verification (no second bounce introduced)
+With `?mode=edit-published`, `edit.tsx` resolves the live event via `useBusinessEventById(idParam)` → `resolvedLiveEvent = serverLiveEvent ?? liveEvent` (L117-123) and mounts the RSVP-aware `EditPublishedScreen` with `rsvpMode` (L554-558). CONFIRMED:
+1. **`fetchBusinessEventById` resolves a published RSVP.** `src/services/businessEvents.ts:631-676` rejects ONLY `event_type === 'trip'` (L647-648). An `event_type='rsvp'` row passes the probe and resolves via `business_management_events_view`. This is the SAME data layer the D-4 detail page used successfully (`useManagedEventRoute` → `fetchBusinessEventById`), so RSVP rows are proven to resolve. NO data-layer change required (verification #1 passes; ticketed path untouched).
+2. **`EditPublishedScreen` mounts in `rsvpMode`** for the resolved RSVP (L554-564) and does not itself bounce — the D-9 conservative safe-exit (L218-229: `isAuthReady && resolved===null && !isLoading && !isFetching`) only fires when the live-event lookup is genuinely exhausted; with a resolvable RSVP it never triggers.
+3. **`le_`→`serverEventId` redirect** (L198-206) already re-appends `?mode=edit-published`, so an `le_<ts36>` detail id stays on the published-edit path through the redirect. Confirmed unchanged in source.
+**No second resolution bug found.** Fix is purely the one-line route change in `index.tsx`.
+
+## Tests + fails-on-revert
+- `app/rsvp/[id]/__tests__/index.test.tsx` — appended D-9b block (2 tests): (a) `handleEdit` pushes the edit screen WITH `?mode=edit-published`; (b) NO bare `router.push(\`/rsvp/{id}/edit\`)` remains (the defensive draft redirect is a `router.replace`, so the negative assertion is valid). Suite: **17/17 pass**.
+- **fails-on-revert verified at 876d64cde**: true line-deletion of the `?mode=edit-published` query (perl substitution back to the bare route) → both D-9b tests FAIL (2 failed, 15 passed); restored → 17/17 green. (Append-only: no existing test modified/deleted.)
+
+## Gates
+- **tsc** (`npx tsc --noEmit -p tsconfig.json`, mingla-business): ZERO new errors — 333 baseline errors before == 333 after (diff of sorted error sets is empty). All baseline errors are pre-existing cross-package/`any`-param noise in files I did not touch (phone-input, checkout buyers, search adapters); neither touched file appears in the error set.
+- **`i-proposed-tr2-route-by-event-type.mjs`**: exit 0 (GREEN). 6 violations reported are PRE-EXISTING (identical count on pristine HEAD via stash; all in ScannerHome / hub trips / accept-scanner-invitation — files I did not touch). My `/rsvp/...` route is not a `/event/` or `/trip/` target, so the gate is unaffected.
+- jest rsvp index suite: 17/17 green.
+
+## DO-NOT-TOUCH compliance
+Edited ONLY `app/rsvp/[id]/index.tsx` (the one-line route fix + comment) and its test `app/rsvp/[id]/__tests__/index.test.tsx`. Did NOT touch the data layer (verification #1 confirmed no change needed), the ticketed `app/event/[id]/**`, the event-edit screen behavior, `app/rsvp/[id]/edit.tsx`, or any parallel-workstream file.
+
+## Commit
+`ORCH-1150-R2: D-9b — RSVP detail Edit passes mode=edit-published (published-edit no longer bounces to events list)`
