@@ -646,3 +646,117 @@ fixture (which set `venueName` at top-level, not nested) passed while live data 
   hidden state shows venue NAME + City/Country only (no street), street appears on going/maybe.
 
 New HEAD: `8e1e2d2ae` (this report commit advances it).
+
+---
+
+## Round-6 hidden-address caption (2026-06-17)
+
+Seth, device-confirmed: in the "Where you'll be" card, when the exact street is
+HIDDEN (`hideAddressUntilTicket` ON and the viewer hasn't unlocked it), the hidden
+state showed `<Venue Name> · <City>` with NOTHING under it ("The Party Venue ·
+Raleigh"), leaving users with no idea HOW to get the full address. Round-6 adds a
+short, condition-aware caption line DIRECTLY UNDER the city/venue line, on all
+three surfaces. It renders ONLY while hidden (suppressed once revealed).
+
+### Copy used (condition-aware)
+
+| Condition | Caption |
+|---|---|
+| RSVP event (hidden until going/maybe) | **"Full address shared once you're going"** |
+| TICKETED event (hidden until purchase) | **"Full address shared after you get tickets"** |
+
+The RSVP copy never says "tickets"; the ticketed copy never says "RSVP"/"going"
+(both enforced by the test).
+
+### Surfaces + exact changes
+
+1. **CONSUMER** — `app-mobile/src/screens/Event/ConsumerEventDetailScreen.tsx`.
+   - Added `addressUnlockCaption` (after `addressHiddenLabel`, ~line 605): non-null
+     ONLY when `addressHidden`; picks RSVP vs ticketed copy by `isRsvp` (so the one
+     shared screen covers both branches).
+   - Rendered in the "Where you'll be" venue card text column, UNDER the
+     `venueAddressLabel` (city) sub-line (~line 916), guarded `addressUnlockCaption
+     !== null`, `testID="orch-1157-consumer-address-unlock-caption"`,
+     `surface.tertiaryText`.
+   - New style `venueUnlockCaption` (fontSize 12, marginTop 4) (~line 1392).
+2. **WEB/BUSINESS RSVP** — `mingla-business/src/components/event/RsvpPublicBody.tsx`.
+   - Added `addressUnlockCaption` (after `venueMapsQuery`, ~line 302): null when
+     `event.format === "online" || addressRevealed`, else the RSVP copy. Threaded
+     into the `Venue` subcomponent prop list + render.
+   - `Venue` renders it UNDER the city/`venueAddressLabel` line (~line 711),
+     guarded, `testID="orch-1157-rsvp-address-unlock-caption"`,
+     `styles.factSub` + `surface.tertiaryText` (reuses the doors caption style).
+3. **WEB/BUSINESS TICKETED** — `mingla-business/src/components/event/FoundationEventPreview.tsx`.
+   - Standardized the legacy caption: the hidden `venueAddressLabel` now shows the
+     **City/Country** line (real city) instead of swallowing it with the helper
+     string (which only remains as the no-city last-resort fallback), and
+     `addressUnlockCaption` (ticketed copy, gated `event.hideAddressUntilTicket`,
+     ~line 208) renders UNDER it (~line 390),
+     `testID="orch-1157-ticketed-address-unlock-caption"`,
+     `surface.tertiaryText`. New style `venueUnlockCaption`.
+   - The old "Address shared after ticket purchase" sub-line text is replaced by
+     the standardized "Full address shared after you get tickets" caption (the
+     ticket-purchase wording survives only as the no-city fallback for the
+     `venueAddressLabel` itself, now reworded to "after you get tickets").
+
+### Only-when-hidden guarantee
+
+On every surface the caption variable is `null` whenever the street is revealed
+(flag off, or viewer purchased / going / maybe), and the JSX is
+`addressUnlockCaption !== null ? <Text/> : null`. So a revealed page shows the real
+street and NO caption. Confirmed by the "REVEALED state shows NO caption" test.
+
+### Test + fails-on-revert
+
+- **NEW** `packages/offering-rendering/__tests__/orch_1157_round6_address_unlock_caption.test.ts`
+  — 7 Deno source-contract tests (the established RSVP-suite pattern; the RN-bound
+  files are read as text). Covers: consumer condition-aware + under-the-city render;
+  RSVP copy + no-"tickets" + under-city render; ticketed copy + no-"RSVP" +
+  under-city render; revealed-state-nulls-out (all surfaces).
+- Run: `deno test --no-check --allow-read --allow-env --sloppy-imports
+  packages/offering-rendering/__tests__/orch_1157_round6_address_unlock_caption.test.ts`
+  → **7 passed | 0 failed**.
+- **fails-on-revert verified by TRUE LINE DELETION** on each of the 3 surfaces:
+  - delete the consumer `addressUnlockCaption` declaration → **5 passed / 2
+    failed** (CONSUMER + REVEALED tests).
+  - delete the RSVP `addressUnlockCaption` declaration → **5 passed / 2 failed**
+    (RSVP + REVEALED).
+  - delete the ticketed `addressUnlockCaption` declaration → **5 passed / 2
+    failed** (TICKETED + REVEALED).
+  - all three restored → **7 / 7** green.
+- **Regression-green:** `orch_1157_round2_rsvp_fixes` + `orch_1157_rsvp_momentum`
+  (incl. adversarial) → **24 passed / 0 failed** after the change.
+- **Append-only:** Round-6 ADDS one test file, deletes none. The two pre-existing
+  test-modifications (RsvpPublicBody.maybeCta R1, venue_name_adversarial R5) carry
+  the `[TEST-MOD-APPROVED ORCH-1157]` token in the HEAD commit body, so the gate is
+  green at HEAD.
+
+### Files changed (Round-6)
+
+- `app-mobile/src/screens/Event/ConsumerEventDetailScreen.tsx` (+~18)
+- `mingla-business/src/components/event/RsvpPublicBody.tsx` (+~20)
+- `mingla-business/src/components/event/FoundationEventPreview.tsx` (+~20)
+- NEW `packages/offering-rendering/__tests__/orch_1157_round6_address_unlock_caption.test.ts` (7 tests)
+
+### Cross-surface impact (Round-6)
+
+| Surface | Affected | Parity |
+|---|---|---|
+| Consumer iOS / Android | YES | shared screen (`addressUnlockCaption`, isRsvp copy) |
+| Buyer/anon Web RSVP | YES | `RsvpPublicBody` (auto across business + buyer-web) |
+| Business iOS / Android RSVP | YES | same `RsvpPublicBody` |
+| Buyer/anon + Business TICKETED | YES | `FoundationEventPreview` |
+| Admin Web | NO | no public event page |
+
+### Verification posture (honest)
+
+Source + Deno source-contract tests + fails-on-revert by line-deletion. NOT
+sim/device-verified this round (bracketed worktree path breaks Metro, same
+constraint as R3-R5). The orchestrator's port-8083 sim + physical A72 hot-reload
+re-verifies the caption on-device after this commit. Tester should confirm:
+hidden RSVP/ticketed "Where you'll be" shows the caption under the city; a
+going/maybe (RSVP) or purchased (ticketed) viewer sees the full street and NO
+caption.
+
+No migration, no edge function, no write-contract change. Pure-JS — OTA-shippable
+(consumer app-mobile + business app per the all-surface parity rule).

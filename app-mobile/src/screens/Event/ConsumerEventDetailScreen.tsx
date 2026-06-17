@@ -602,6 +602,16 @@ export default function ConsumerEventDetailScreen({
   const addressHiddenLabel = isRsvp
     ? (cityCountry ?? "Address shared after you RSVP")
     : "Address shared after ticket purchase";
+  // ORCH-1157 Round-6 [rsvp-public-redesign] — when the exact street is HIDDEN,
+  // show a short caption UNDER the city explaining HOW to unlock it (the city
+  // alone left users guessing). Condition-aware: RSVP unlocks on going/maybe,
+  // ticketed unlocks on purchase. Static helper text (not fabricated data); it
+  // renders ONLY while `addressHidden` is true (suppressed once revealed).
+  const addressUnlockCaption: string | null = addressHidden
+    ? isRsvp
+      ? "Full address shared once you're going"
+      : "Full address shared after you get tickets"
+    : null;
   const venueAddressLabel = addressHidden
     ? addressHiddenLabel
     : fnd.format === "hybrid" && fnd.address !== null
@@ -912,6 +922,16 @@ export default function ConsumerEventDetailScreen({
                 {venueAddressLabel}
               </Text>
             )}
+            {/* ORCH-1157 Round-6 — unlock caption UNDER the city, only while the
+                street is hidden (condition-aware copy). */}
+            {addressUnlockCaption !== null ? (
+              <Text
+                style={[styles.venueUnlockCaption, surface.tertiaryText]}
+                testID="orch-1157-consumer-address-unlock-caption"
+              >
+                {addressUnlockCaption}
+              </Text>
+            ) : null}
           </View>
           {venueMapsQuery !== null ? (
             <View style={[styles.venuePill, { backgroundColor: palette.accent }]}>
@@ -1389,6 +1409,7 @@ const styles = StyleSheet.create({
   venueTextCol: { flex: 1, minWidth: 0 },
   venueName: { fontSize: 15, fontWeight: "800" },
   venueAddr: { fontSize: 13, marginTop: 2 },
+  venueUnlockCaption: { fontSize: 12, marginTop: 4 },
   venuePill: { borderRadius: 999, paddingHorizontal: 14, paddingVertical: 8 },
   venuePillText: { fontSize: 12, fontWeight: "800" },
   reassure: { fontSize: 12, marginTop: 12, lineHeight: 17 },

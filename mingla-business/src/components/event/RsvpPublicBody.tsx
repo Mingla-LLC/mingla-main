@@ -299,6 +299,14 @@ export const RsvpPublicBody: React.FC<RsvpPublicBodyProps> = ({
     !addressRevealed || event.venueName === null
       ? null
       : [event.venueName, event.address].filter(Boolean).join(", ");
+  // ORCH-1157 Round-6 [rsvp-public-redesign] — a short caption UNDER the city
+  // telling the viewer HOW to unlock the exact street. RSVP unlocks once you're
+  // going (going/maybe), not via a purchase — so the copy must NOT say "tickets".
+  // Static helper text; renders ONLY while the street is hidden.
+  const addressUnlockCaption: string | null =
+    event.format === "online" || addressRevealed
+      ? null
+      : "Full address shared once you're going";
   const canOpenVenueMaps =
     venueMapsQuery !== null &&
     venueMapsQuery.trim().length > 0 &&
@@ -566,6 +574,7 @@ export const RsvpPublicBody: React.FC<RsvpPublicBodyProps> = ({
             boldFamily={boldFamily}
             cityCountry={cityCountry}
             venueAddressLabel={venueAddressLabel}
+            addressUnlockCaption={addressUnlockCaption}
             venueMapsQuery={venueMapsQuery}
             canOpenVenueMaps={canOpenVenueMaps}
             onOpenMaps={onOpenMaps}
@@ -668,6 +677,7 @@ const Venue: React.FC<{
   boldFamily: string;
   cityCountry: string | null;
   venueAddressLabel: string;
+  addressUnlockCaption: string | null;
   venueMapsQuery: string | null;
   canOpenVenueMaps: boolean;
   onOpenMaps?: (query: string) => void;
@@ -678,6 +688,7 @@ const Venue: React.FC<{
   boldFamily,
   cityCountry,
   venueAddressLabel,
+  addressUnlockCaption,
   venueMapsQuery,
   canOpenVenueMaps,
   onOpenMaps,
@@ -708,6 +719,16 @@ const Venue: React.FC<{
           ? venueAddressLabel
           : (cityCountry ?? venueAddressLabel)}
       </Text>
+      {/* ORCH-1157 Round-6 — unlock caption UNDER the city; only while the exact
+          street is hidden (null once the viewer is going/maybe or hide=off). */}
+      {addressUnlockCaption !== null ? (
+        <Text
+          style={[styles.factSub, surface.tertiaryText]}
+          testID="orch-1157-rsvp-address-unlock-caption"
+        >
+          {addressUnlockCaption}
+        </Text>
+      ) : null}
     </View>
   </Pressable>
 );
