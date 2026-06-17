@@ -57,7 +57,16 @@ export function useVenueReservable(
     queryKey: venueReservableKeys.byPlace(placePoolId ?? "none"),
     queryFn: () => fetchVenueReservable(placePoolId as string),
     enabled,
-    staleTime: 5 * 60 * 1000,
-    gcTime: 10 * 60 * 1000,
+    // ORCH-1148 consumer realtime freshness: a business operator can flip
+    // reservations on/off or change the reservation fee/currency at any time, and
+    // the consumer MUST see it the moment they (re)open the venue card — never a
+    // multi-minute cache. The RPC is cheap + anon-safe, so re-check on every
+    // mount/focus. staleTime:0 = always considered stale; refetchOnMount:"always"
+    // re-pulls each card expand even within the gcTime window; refetchOnWindowFocus
+    // re-pulls when the user returns to the app. (Was: staleTime 5min — the gap.)
+    staleTime: 0,
+    gcTime: 60 * 1000,
+    refetchOnMount: "always",
+    refetchOnWindowFocus: true,
   });
 }
