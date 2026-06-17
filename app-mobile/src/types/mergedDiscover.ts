@@ -145,6 +145,21 @@ export interface BusinessEventCard {
     sold: number;
     remaining: number | null;
   }>;
+  /**
+   * ORCH-1153 WS2 — recurrence fields for the SHARED rule-based open-daily
+   * detector (isOpenDailyExperience). Present ONLY for experiences, plumbed from
+   * the deck-supply + venue RPCs through every seed mapper. undefined → the
+   * detector returns false (flat slot list) — the safe default for a cold
+   * deep-link or a pre-OTA payload that lacks the fields (rule 9, no fabrication).
+   */
+  isRecurring?: boolean;
+  recurrenceRule?: {
+    preset?: string;
+    byDay?: string;
+    byMonthDay?: number;
+    bySetPos?: number;
+    termination?: { kind?: string; count?: number; until?: string };
+  } | null;
 }
 
 export type MergedDiscoverItem =

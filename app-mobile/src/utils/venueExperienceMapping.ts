@@ -168,5 +168,14 @@ export function experienceToBusinessEventCard(
     experienceIntents,
     upcomingOccurrences,
     brandTheme: null,
+    // ORCH-1153 WS2: recurrence fields → the shared rule-based open-daily detector
+    // on the venue→detail seed. null recurrence_rules → not open-daily (rule 9).
+    isRecurring: row.is_recurring === true,
+    recurrenceRule:
+      row.recurrence_rules !== null &&
+      row.recurrence_rules !== undefined &&
+      typeof row.recurrence_rules === "object"
+        ? row.recurrence_rules
+        : null,
   } as unknown as BusinessEventCard;
 }

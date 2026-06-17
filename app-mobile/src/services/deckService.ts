@@ -380,6 +380,14 @@ function experienceCardToRecommendation(card: any): Recommendation {
           remaining: typeof o?.remaining === 'number' ? o.remaining : null,
         }))
       : [],
+    // ORCH-1153 WS2: recurrence fields → the consumer rule-based open-daily
+    // detector. Carried verbatim onto the Recommendation (read via runtime cast
+    // in experienceRecToBusinessEventCard). Honest defaults (false / null).
+    isRecurring: card?.isRecurring === true,
+    recurrenceRule:
+      card?.recurrenceRule !== null && typeof card?.recurrenceRule === 'object'
+        ? card.recurrenceRule
+        : null,
     brandId: typeof card?.brandId === 'string' ? card.brandId : '',
     brandName: typeof card?.brandName === 'string' ? card.brandName : '',
     brandSlug: typeof card?.brandSlug === 'string' ? card.brandSlug : '',
