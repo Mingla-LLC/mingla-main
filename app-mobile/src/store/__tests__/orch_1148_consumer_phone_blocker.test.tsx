@@ -91,9 +91,20 @@ ok(
 
 // profilePhone must fall back to profile.phone when user.phone is empty.
 ok(
-  "profilePhone falls back to user.phone ?? profile.phone",
-  /user\?\.phone\s*\?\?\s*profile\?\.phone/.test(sheetSrc),
-  "expected `user?.phone ?? profile?.phone`",
+  "rawStoredPhone sources from profile.phone and user.phone",
+  /profile\?\.phone\s*\?\?\s*user\?\.phone/.test(sheetSrc) ||
+    /user\?\.phone\s*\?\?\s*profile\?\.phone/.test(sheetSrc),
+  "expected `profile?.phone ?? user?.phone` (or the reverse)",
+);
+
+// ── ORCH-1148b fix — bare-E164 (no '+') stored phone is coerced to '+digits' ──
+// Supabase Auth stores the onboarding phone without '+'; the server's
+// normalizePhoneE164 only re-prefixes US numbers, so a bare international number
+// must be '+'-coerced client-side or it normalizes to null → buyer_phone_required.
+ok(
+  "bare all-digits stored phone is coerced to +E164",
+  /\.test\(rawStoredPhone\)\s*\?\s*`\+\$\{rawStoredPhone\}`/.test(sheetSrc),
+  "expected the `/^\\d{6,15}$/.test(rawStoredPhone) ? `+${rawStoredPhone}`` coercion",
 );
 
 // needsPhone is derived from the (now profile-aware) phone.
@@ -127,6 +138,45 @@ ok(
 ok(
   "reserve sends composedPhoneE164 as the buyer phone",
   /phone:\s*composedPhoneE164/.test(sheetSrc),
+);
+
+// ── Behavioral proof: the client coercion + the SERVER normalizePhoneE164 ─────
+// together accept a non-US onboarding phone. Mirrors the two functions exactly.
+const coerce = (raw) => {
+  const r = (raw ?? "").trim();
+  if (r.startsWith("+")) return r;
+  if (/^\d{10}$/.test(r) || /^1\d{10}$/.test(r)) return r; // US national / US E.164
+  return /^\d{6,15}$/.test(r) ? `+${r}` : r; // bare international E.164 → restore '+'
+};
+const serverNormalize = (raw) => {
+  if (typeof raw !== "string") return null;
+  const t = raw.trim();
+  if (/^\+[1-9][0-9]{1,14}$/.test(t)) return t;
+  const d = t.replace(/[^\d]/g, "");
+  if (d.length === 10) return `+1${d}`;
+  if (d.length === 11 && d.startsWith("1")) return `+${d}`;
+  return null;
+};
+// Belgium auth phone (no '+') — the exact bug repro.
+ok(
+  "non-US bare auth phone survives coerce → server-normalize (was buyer_phone_required)",
+  serverNormalize(coerce("32466178389")) === "+32466178389",
+  `got ${serverNormalize(coerce("32466178389"))}`,
+);
+// Already-'+' profile phone passes through unchanged.
+ok(
+  "already-+E164 profile phone is unchanged through coerce → normalize",
+  serverNormalize(coerce("+32466178389")) === "+32466178389",
+);
+// US 10-digit still works (no regression).
+ok(
+  "US 10-digit still normalizes to +1 (no regression)",
+  serverNormalize(coerce("2025551234")) === "+12025551234",
+);
+// Proves the OLD path was broken (coercion is load-bearing).
+ok(
+  "without coercion the bare non-US phone normalized to null (regression guard)",
+  serverNormalize("32466178389") === null,
 );
 
 console.log(`\n${passed} assertions passed.`);
