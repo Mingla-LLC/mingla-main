@@ -141,13 +141,28 @@ export const VenueReserveSheet: React.FC<VenueReserveSheetProps> = ({
   );
 
   // ORCH-1148 [consumer phone blocker] — the signed-in user's phone is sourced
-  // from their profile. The store `user` now mirrors `profiles.phone` (see
-  // appStore.setProfile), but we also read `profile.phone` directly as a
+  // from their profile / auth user. The store `user` now mirrors `profiles.phone`
+  // (see appStore.setProfile); we also read `profile.phone` directly as a
   // belt-and-suspenders fallback in case the store `user` merge hasn't landed
   // yet (profile loads asynchronously, possibly after this sheet first reads).
-  // A user WITH a profile phone gets needsPhone=false (no prompt, books with
-  // their phone automatically); a user with NONE gets the contact-phone input.
-  const profilePhone = (user?.phone ?? profile?.phone ?? "").trim();
+  // A user WITH a phone gets needsPhone=false (no prompt, books automatically);
+  // a user with NONE gets the contact-phone input.
+  //
+  // ORCH-1148b [non-US phone blocker] — Supabase Auth stores the onboarding phone
+  // in E.164 WITHOUT the leading '+' (e.g. "32466178389"), while the profile /
+  // public buyer form store it WITH '+'. The server `normalizePhoneE164` only
+  // re-prefixes US numbers (10-digit → +1, 11-digit "1…" → +…), so a bare
+  // international number ("32466178389") normalized to null → buyer_phone_required
+  // for EVERY non-US consumer. Coerce a bare all-digits stored phone to '+digits'
+  // here so the server accepts it. (Already-'+'-prefixed values pass through.)
+  const rawStoredPhone = (profile?.phone ?? user?.phone ?? "").trim();
+  const profilePhone = rawStoredPhone.startsWith("+")
+    ? rawStoredPhone // already E.164 (profile / public buyer form)
+    : /^\d{10}$/.test(rawStoredPhone) || /^1\d{10}$/.test(rawStoredPhone)
+    ? rawStoredPhone // US national (10) / US E.164 "1…" (11) — let the server add +1
+    : /^\d{6,15}$/.test(rawStoredPhone)
+    ? `+${rawStoredPhone}` // full international E.164 missing its '+' (Supabase Auth)
+    : rawStoredPhone;
   const needsPhone = profilePhone.length === 0;
   const composedPhoneE164 = needsPhone
     ? buildPendingCollabPhoneE164(phoneInput, selectedCountry?.dialCode)
