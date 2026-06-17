@@ -187,34 +187,27 @@ serve(wrapEdgeHandler("venue-reservation-confirm", async (req) => {
     return jsonResponse({ status: "failed", reservationId: null });
   }
 
-  // Charge SUCCEEDED → mint the reservation atomically (payment_status='paid').
-  // The writer re-validates the slot under an advisory lock; if it was taken
-  // between create and confirm, it rejects with slot_unavailable → the charge
-  // must be REFUNDED (reuse refund-order — the seam; wired in 2.2b/2.2c).
-  const { data: created, error: createErr } = await supabase.rpc(
-    "pg_create_guest_reservation",
+  // Charge SUCCEEDED → finalize the reservation IDEMPOTENTLY (DEFECT-1 fix). The
+  // pg_finalize_guest_reservation RPC locks the session row FOR UPDATE,
+  // early-returns the existing reservation if this session/PI was already
+  // finalized (a double-fired / replayed / flip-failure-retried confirm yields
+  // exactly ONE reservation per charge — never two), and otherwise mints via the
+  // same atomic writer (advisory-lock double-book guard + slot re-validation +
+  // capacity/deposit enforcement) AND links the session in the SAME txn (the
+  // session flip is no longer fire-and-forget). Mirrors biz_ticket_checkout_
+  // finalize's FOR-UPDATE + return-existing structure.
+  // If the slot was taken between create and confirm, the writer rejects with
+  // slot_unavailable → the charge must be REFUNDED (reuse refund-order — the
+  // seam; wired in 2.2b/2.2c).
+  const { data: finalized, error: finalizeErr } = await supabase.rpc(
+    "pg_finalize_guest_reservation",
     {
-      p_brand_id: session.brand_id,
-      p_reserved_for: session.reserved_for,
-      p_party_size: session.party_size,
-      p_source: session.created_via === "web" ? "website" : "mingla",
-      p_created_via: session.created_via === "web" ? "guest" : "consumer",
-      p_consumer_user_id: session.consumer_user_id,
-      p_guest_name: session.buyer_name,
-      p_guest_phone_e164: session.buyer_phone_e164,
-      p_guest_email: session.buyer_email,
-      p_fee_cents: session.amount_cents,
-      p_fee_currency: session.currency.slice(0, 3),
+      p_session_id: sessionId,
       p_payment_intent_id: session.stripe_payment_intent_id,
-      p_payment_status: "paid",
-      p_guest_cancel_token: session.guest_cancel_token,
-      p_occasion: session.occasion,
-      p_guest_notes: session.guest_notes,
-      p_status: "confirmed",
     },
   );
-  if (createErr !== null || !created) {
-    const msg = (createErr as { message?: string } | null)?.message ?? "";
+  if (finalizeErr !== null || !finalized) {
+    const msg = (finalizeErr as { message?: string } | null)?.message ?? "";
     if (msg.includes("slot_unavailable")) {
       // The seat was taken after we charged. Mark the session for refund. The
       // actual refund executes via refund-order (reuse) — wired in 2.2b/2.2c.
@@ -224,17 +217,20 @@ serve(wrapEdgeHandler("venue-reservation-confirm", async (req) => {
         .eq("id", sessionId);
       return jsonResponse({ error: "slot_unavailable", refundDue: true }, 409);
     }
-    console.error("[venue-reservation-confirm] reservation mint failed", createErr);
+    console.error("[venue-reservation-confirm] reservation finalize failed", finalizeErr);
     return jsonResponse({ error: "reservation_create_failed", detail: msg }, 409);
   }
-  const row = (Array.isArray(created) ? created[0] : created) as Record<string, unknown>;
-  const reservationId = String(row.id ?? "");
-
-  // Flip the session → completed + link the reservation (the atomicity link).
-  await supabase
-    .from("reservation_checkout_sessions")
-    .update({ status: "completed", reservation_id: reservationId, updated_at: new Date().toISOString() })
-    .eq("id", sessionId);
+  // The RPC returns TABLE(reservation reservations, session_id uuid); PostgREST
+  // surfaces it as a one-row array with a nested `reservation` composite.
+  const finalRow = (Array.isArray(finalized) ? finalized[0] : finalized) as
+    | { reservation?: Record<string, unknown> | null }
+    | null;
+  const reservationRow = finalRow?.reservation ?? null;
+  const reservationId = String(reservationRow?.id ?? "");
+  if (!reservationId) {
+    console.error("[venue-reservation-confirm] finalize returned no reservation id", finalized);
+    return jsonResponse({ error: "reservation_create_failed" }, 409);
+  }
 
   return jsonResponse({
     status: "completed",

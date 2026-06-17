@@ -74,4 +74,47 @@ The seam pre-authored at 2.1a `20261008000001:296` is flipped ON. Verdict (SPEC 
 - **Brand-scoped pricing resolver added** (`resolve_brand_pricing_inputs`) because `resolve_event_pricing_inputs` is event-scoped and reservations are brand-scoped — it mirrors the event resolver exactly, brand-side, honoring the reservation `pass_*_override`.
 - The Docker test container `mingla_1148_test` is left running for the tester; tear down with `docker rm -f mingla_1148_test`.
 
+---
+
+## 10. DEFECT-1 idempotency fix (P1, money integrity) — re-dispatched 2026-06-17
+
+**Tester verdict:** CONDITIONAL PASS (`TEST_META-ORCH-1148_SUBC_2_2A.md`) — DEFECT-1: the fee-confirm path was NOT idempotent on `payment_intent_id`. A double-fired / replayed / flip-failure-retried `venue-reservation-confirm` on a slot with `remaining ≥ 2` minted TWO reservations from ONE charge. Tester's regression sentinel **T-A1 FAILED on HEAD `7e090cd9e`**.
+
+**Root cause (two seams):**
+1. `pg_create_guest_reservation` had no idempotency key on `payment_intent_id`; its advisory-lock guard only re-validates *slot capacity*, which passes when `remaining ≥ 2`.
+2. `venue-reservation-confirm/index.ts` read the session `status` OUTSIDE any lock (TOCTOU), minted via the bare writer, then did a **fire-and-forget** `.update({status:"completed", reservation_id})` (unchecked). Two concurrent confirms both read `pending`, both verified the PI `succeeded`, both minted.
+
+### The fix (mirrors `biz_ticket_checkout_finalize`'s FOR-UPDATE + return-existing)
+**New migration `supabase/migrations/20261012000005_orch_1148_2_2a_idempotent_fee_finalize.sql`** (true global max was `20261012000004` → this is `20261012000005`; `$function$` closed before each GRANT; `REVOKE PUBLIC+anon+authenticated`, `GRANT service_role`):
+
+1. **`pg_finalize_guest_reservation(p_session_id uuid, p_payment_intent_id text)`** — service-role-only. `SELECT * ... FROM reservation_checkout_sessions WHERE id = p_session_id FOR UPDATE`; if `reservation_id IS NOT NULL` → **early-return the existing reservation** (mirror of `biz_ticket_checkout_finalize`'s `IF v_session.order_id IS NOT NULL THEN RETURN <existing>`). Else: PI-keyed adopt-if-exists, else MINT via the unchanged `pg_create_guest_reservation` (advisory-lock double-book guard + slot re-validation + capacity/deposit all preserved) AND flip the session `completed` + link `reservation_id` **in the SAME txn** (no longer fire-and-forget). A racing same-PI mint that slips the lock raises `unique_violation` → caught and the winning row adopted.
+2. **`CREATE UNIQUE INDEX reservations_payment_intent_id_uniq ON reservations(payment_intent_id) WHERE payment_intent_id IS NOT NULL`** — DB-layer belt: a duplicate mint for one PI is impossible even under a race the lock misses. Free rows (NULL PI) unconstrained.
+
+`pg_create_guest_reservation` body/signature **UNCHANGED**.
+
+**Edge fn `venue-reservation-confirm/index.ts` (`venue-reservation-confirm` BEFORE → AFTER):**
+- BEFORE: `supabase.rpc("pg_create_guest_reservation", {…18 args…})` then a separate fire-and-forget `.update({status:"completed", reservation_id})`.
+- AFTER: `supabase.rpc("pg_finalize_guest_reservation", { p_session_id: sessionId, p_payment_intent_id: session.stripe_payment_intent_id })`; the RPC returns `TABLE(reservation reservations, session_id uuid)` (PostgREST → one-row array, nested `reservation` composite) — extract `finalRow.reservation.id`. The mint + session-flip are now ONE atomic txn inside the RPC; the `slot_unavailable` refund seam is preserved. The pre-existing `status==="completed"` fast-path remains as belt-and-braces.
+
+### Live proof (Docker `supabase/postgres:17.4.1.075`, fresh container, full 246-file chain applied CLEAN)
+| Check | Result |
+|---|---|
+| Full migration chain incl. `20261012000005` | **APPLIED CLEAN** from scratch |
+| `pg_finalize_guest_reservation` exists; `reservations_payment_intent_id_uniq` exists | **YES** |
+| Finalize grants: anon=DENY, authenticated=DENY, service_role=GRANT | **CORRECT** |
+| **Tester T-A1** (regression sentinel) | **PASS** — "writer is idempotent on payment_intent_id (one reservation per charge)" (was FAIL on HEAD) |
+| Tester T-A2 / T-A3 / T-A4 (PII-coax / cross-guest cancel / keystone fails-on-revert) | **PASS** (still green) |
+| Implementor C-01..C-12 harness | **14 PASS, 0 FAIL** (re-run on the fresh chain) |
+| **Finalize idempotency harness** `TEST_META-ORCH-1148_SUBC_2_2A_defect1_finalize_idempotency.test.sql` (F-1 double-finalize→1 row+same id+atomic link, F-2 unique-index rejects dup-PI 23505, F-2b NULL unconstrained, F-3 early-return-if-linked) | **F-1/F-2/F-2b/F-3 ALL PASS** |
+| `deno check` venue-reservation-confirm + -create | **EXIT 0** both |
+| `deno lint` venue-reservation-confirm | **CLEAN** |
+| Money-seam gates `orch-1130-no-buyer-tax-form` / `orch-0843-stripe-direct-charges-only` / `i-stripe-pm-method-allowlist` | **ALL PASS** |
+| Migration monotonic above true global max | **YES** (`20261012000005`) |
+| Diff scope | only `venue-reservation-confirm/index.ts` + the new migration + the new test |
+
+### Fails-on-revert (proven live)
+Reverting BOTH guards (drop `reservations_payment_intent_id_uniq` + strip the FOR-UPDATE/early-return so finalize naively always-mints) → a double-finalize of one session minted **2 reservations for ONE charge** → DEFECT-1 re-manifests. NOTICE: *"FAILS-ON-REVERT PROVEN: reverted finalize … minted 2 reservations for ONE charge → DEFECT-1 re-manifests. The fix is load-bearing."* Restoring the migration → T-A1 + F-1 PASS. The fix is load-bearing.
+
+**Fix commit:** the DEFECT-1 fix is the branch tip on `ORCH-1148-venue-guest-booking`, rebased onto origin/main `9d962f248` (migration `20261012000005` + the `venue-reservation-confirm` edit + this report). Docker container `mingla_1148_fix` torn down. Do NOT deploy/apply/merge.
+
 *End of report. Do NOT deploy/apply/merge — orchestrator owns that from merged main.*
