@@ -1,8 +1,8 @@
-# INVESTIGATE — ORCH-1150 [snap-autodraft-navigate]: auto-drafts not visible on Hub after navigation
+# INVESTIGATE — ORCH-1154 [snap-autodraft-navigate]: auto-drafts not visible on Hub after navigation
 
 **Date:** 2026-06-15
 **Mode:** INVESTIGATE (no code changes)
-**Worktree:** `~/Desktop/mingla-orchs/orch-1150-[snap-autodraft-navigate]` on branch `orch-1150-snap-autodraft-navigate`
+**Worktree:** `~/Desktop/mingla-orchs/orch-1154-[snap-autodraft-navigate]` on branch `orch-1154-snap-autodraft-navigate`
 **DB:** project `gqnoajqerqhnvulmnyvv` (read-only)
 **Confidence:** **PROVEN** (DB row evidence + RPC definition + deterministic redirect logic). The only un-run step is the on-sim render; the source dictates it unambiguously and the redirect is NOT a timing race.
 
@@ -10,7 +10,7 @@
 
 ## Symptom (expected vs actual)
 
-Seth snapped a food menu for brand **"Leggo This"** on a real device. The ORCH-1150 auto-draft flow ran ("Creating your experiences…"), then navigated him back to the Hub. **The experiences/drafts did NOT appear.** Auto-create + navigation worked; the drafts were invisible on arrival.
+Seth snapped a food menu for brand **"Leggo This"** on a real device. The ORCH-1154 auto-draft flow ran ("Creating your experiences…"), then navigated him back to the Hub. **The experiences/drafts did NOT appear.** Auto-create + navigation worked; the drafts were invisible on arrival.
 
 - **Expected:** land on Hub > Experiences (Drafts) with the 20 new drafts listed.
 - **Actual:** landed on the Hub but on the **Events** tab; the Experiences pill is not even shown; the 20 drafts exist in the DB but are unreachable.
@@ -123,7 +123,7 @@ The load-bearing contradiction is Docs vs Runtime: the success criterion "drafts
 
 ## Blast radius / cross-surface map
 
-- **Business iOS / Android (in scope):** any brand whose ONLY experiences are unpublished drafts cannot reach `/hub/experiences` — the entire ORCH-1150 auto-draft→curate loop is dead-ended for them. This is the *common* case immediately after a snap (drafts are unpublished by definition).
+- **Business iOS / Android (in scope):** any brand whose ONLY experiences are unpublished drafts cannot reach `/hub/experiences` — the entire ORCH-1154 auto-draft→curate loop is dead-ended for them. This is the *common* case immediately after a snap (drafts are unpublished by definition).
 - **Same gate affects Trips:** a brand with only draft trips and 0 published trips is equally bounced off `/hub/trips` (`useHubTabs.ts:44`, same `published_at` RPC filter). Auto-draft is experiences-only today, so the user-facing break is experiences, but the gate defect is general.
 - **Out of scope:** consumer app (no hub), web buyer surfaces (no hub), admin.
 - **Recurring pattern:** "data-driven tab visibility keyed on a published-only count" vs "a flow that produces drafts." Any future draft-producing flow that navigates to a count-gated tab inherits this.

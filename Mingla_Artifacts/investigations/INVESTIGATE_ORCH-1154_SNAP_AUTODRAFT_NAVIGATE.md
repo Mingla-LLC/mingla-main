@@ -1,10 +1,10 @@
-# INVESTIGATE — ORCH-1150 [snap suggestions auto-draft + navigate to drafts]
+# INVESTIGATE — ORCH-1154 [snap suggestions auto-draft + navigate to drafts]
 
 **Skill:** mingla-forensics · **Phase:** INVESTIGATE · **Date:** 2026-06-15
-**Worktree:** `~/Desktop/mingla-orchs/orch-1150-[snap-autodraft-navigate]` · branch `orch-1150-snap-autodraft-navigate`
+**Worktree:** `~/Desktop/mingla-orchs/orch-1154-[snap-autodraft-navigate]` · branch `orch-1154-snap-autodraft-navigate`
 **Decision (LOCKED by Seth — not relitigated):** the moment the parser returns suggestions, EVERY suggestion auto-saves as a draft experience (no per-card Accept), then the user is navigated to the Hub Experiences (drafts) tab, where they curate via edit / publish / DELETE (DELETE = the new "reject"). The per-card Reject/Edit/Accept review screen is REPLACED.
 
-This is an INVESTIGATION. It proposes NOTHING. The fix is defined in `SPEC_ORCH-1150_SNAP_AUTODRAFT_NAVIGATE.md`.
+This is an INVESTIGATION. It proposes NOTHING. The fix is defined in `SPEC_ORCH-1154_SNAP_AUTODRAFT_NAVIGATE.md`.
 
 ---
 
@@ -80,7 +80,7 @@ This is an INVESTIGATION. It proposes NOTHING. The fix is defined in `SPEC_ORCH-
   - `experienceGenerationService.ts:91-108` `fetchPendingExperiencesForBrand` is the ONLY reader: `.eq("source","hub_experience").eq("status","pending")` — consumed only by `usePendingExperiences` → only mounted in `snap.tsx`.
   - grep: `ExperienceReviewCards` referenced only in `snap.tsx` + its own file (no other mount).
 - **Mechanism:** proposals are durable rows, but the only UI that lists them is the transient snap screen; leaving it strands them until they expire (`HUB_EXPIRY_HOURS`) or are re-snapped.
-- **Severity:** CONFIRMED ROOT CAUSE (the problem ORCH-1150 fixes).
+- **Severity:** CONFIRMED ROOT CAUSE (the problem ORCH-1154 fixes).
 
 ### F-3 — Drafts destination: route, query, bucket
 - **Symptom:** a created draft appears in the Hub Experiences "Drafts" pill.
@@ -143,7 +143,7 @@ This is an INVESTIGATION. It proposes NOTHING. The fix is defined in `SPEC_ORCH-
 
 | Layer | Finding | Contradiction? |
 |-------|---------|----------------|
-| Docs | `snap.tsx:11-19` header + ORCH-1144 SPEC describe accept→draft / reject as the model | Will be superseded by ORCH-1150; doc comment must update |
+| Docs | `snap.tsx:11-19` header + ORCH-1144 SPEC describe accept→draft / reject as the model | Will be superseded by ORCH-1154; doc comment must update |
 | Schema | `agent_pending_actions` (pending→executing→executed/cancelled/expired) + `events(status='draft')`; atomic flip enforces idempotency | none |
 | Code | snap confirm path is isolated from Ari; parser returns proposal IDs; drafts query has no status filter | none |
 | Runtime | confirm is N independent POSTs; 409 on replay | partial-failure + nav-timing are the two behaviors to pin (F-6/F-7) |

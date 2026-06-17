@@ -1,5 +1,5 @@
 /**
- * ORCH-1150 [snap suggestions auto-draft + navigate to drafts] — IMPLEMENTOR
+ * ORCH-1154 [snap suggestions auto-draft + navigate to drafts] — IMPLEMENTOR
  * happy-path + edge-case regression suite (SPEC §7 T1–T5, T9, T10).
  *
  * Two angles, both exercising REAL production logic (not source-grep):
@@ -23,7 +23,7 @@
  * fails-on-revert: deleting the auto-draft branch in snap.tsx removes
  * `resolveSnapOutcome`/`createdToastText` (import throws) and removes
  * `confirmAll` from the hook (the hook test's mutateAsync loop assertions
- * flip). Verified in IMPLEMENTATION_ORCH-1150 §Regression Test.
+ * flip). Verified in IMPLEMENTATION_ORCH-1154 §Regression Test.
  */
 import { afterEach, beforeEach, describe, expect, jest, test } from "@jest/globals";
 
@@ -102,7 +102,7 @@ jest.mock("../../../src/hooks/useExperiencesByBrand", () => ({
   },
 }));
 
-// ORCH-1150 A.6 — the hook now imports `brandKeys` from useBrands to invalidate
+// ORCH-1154 A.6 — the hook now imports `brandKeys` from useBrands to invalidate
 // the offering-counts query alongside the drafts list. useBrands transitively
 // pulls services/supabase → expo-constants (ESM, untransformable here), so mock
 // the key factory directly (mirrors the useExperiencesByBrand mock above).
@@ -137,7 +137,7 @@ afterEach(() => {
   jest.clearAllMocks();
 });
 
-describe("ORCH-1150 confirmAll — auto-draft-all loop (hook)", () => {
+describe("ORCH-1154 confirmAll — auto-draft-all loop (hook)", () => {
   test("T1 happy: 3 proposal ids → 3 confirms → tally created=3", async () => {
     confirmResults = [
       { kind: "executed" },
@@ -228,7 +228,7 @@ describe("ORCH-1150 confirmAll — auto-draft-all loop (hook)", () => {
 //    auto-draft branch breaks this import + the snap-route compile. ───────────
 import { createdToastText, resolveSnapOutcome } from "../snapOutcome";
 
-describe("ORCH-1150 resolveSnapOutcome + createdToastText (pure route logic)", () => {
+describe("ORCH-1154 resolveSnapOutcome + createdToastText (pure route logic)", () => {
   const ALL_FAILED = "We couldn't create your experiences. Try snapping again.";
 
   test("T10 copy: singular vs plural", () => {

@@ -84,12 +84,12 @@ export function usePendingExperiences(
     [parseMutation],
   );
 
-  // ORCH-1150 — track the auto-draft-all loop so the snap route can render an
+  // ORCH-1154 — track the auto-draft-all loop so the snap route can render an
   // honest "Creating your experiences…" state distinct from a single confirm.
   const [isConfirmingAll, setIsConfirmingAll] = useState(false);
 
   /**
-   * ORCH-1150 — auto-draft-all. Confirms an array of pending-proposal ids
+   * ORCH-1154 — auto-draft-all. Confirms an array of pending-proposal ids
    * SEQUENTIALLY through the existing, tested per-proposal confirm path
    * (`confirmMutation.mutateAsync` → `agent-confirm-action` → the shared
    * `create_experience` executor → one `status:"draft"` event). Each success
@@ -142,7 +142,7 @@ export function usePendingExperiences(
     [confirmMutation],
   );
 
-  // ORCH-1150 §4.6 — belt-and-braces invalidation the snap route awaits BEFORE
+  // ORCH-1154 §4.6 — belt-and-braces invalidation the snap route awaits BEFORE
   // navigating to the drafts tab, so the destination refetches and the new
   // drafts are present on arrival (the per-item invalidations may be deduped /
   // still in-flight).
@@ -150,7 +150,7 @@ export function usePendingExperiences(
     async (): Promise<void> => {
       if (brandId) {
         await qc.invalidateQueries({ queryKey: experienceKeys.listByBrand(brandId) });
-        // ORCH-1150 A.6 (DISC-1150-A) — also invalidate the offering-counts
+        // ORCH-1154 A.6 (DISC-1150-A) — also invalidate the offering-counts
         // query so the freshly-created drafts raise experiences_draft and the
         // Hub "Experiences" tab is present ON ARRIVAL (not one navigation
         // later). snap.tsx already awaits this before router.replace, so by the

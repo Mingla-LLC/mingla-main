@@ -8,7 +8,7 @@ export interface BrandOfferingCounts {
   events: number;
   trips: number;
   experiences: number;
-  // ORCH-1150 A.5.1 — draft (published_at IS NULL) counts, ADDED alongside the
+  // ORCH-1154 A.5.1 — draft (published_at IS NULL) counts, ADDED alongside the
   // published-only counts above. The Hub tab gate ORs published+draft per type
   // (useHubTabs) so a draft-only brand's offering tab becomes visible. The
   // published columns above are UNCHANGED — public/published-only consumers
@@ -40,7 +40,7 @@ export const fetchBrandOfferingCounts = async (
     events: Number(row?.events ?? 0),
     trips: Number(row?.trips ?? 0),
     experiences: Number(row?.experiences ?? 0),
-    // ORCH-1150 — defensive `?? 0` so a pre-migration RPC response during
+    // ORCH-1154 — defensive `?? 0` so a pre-migration RPC response during
     // rollout (no *_draft columns yet) degrades to today's behavior (tab stays
     // hidden) instead of NaN/crash. Backend-first ordering avoids this path.
     events_draft: Number(row?.events_draft ?? 0),

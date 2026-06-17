@@ -31,7 +31,7 @@ export interface HubVisibleTabsResult {
 
 export const HUB_LAST_TAB_STORAGE_KEY = "@mingla/hub/lastTab";
 
-// ORCH-1150 A.5.2 — the draft counts are read defensively (`?? 0`) so the gate
+// ORCH-1154 A.5.2 — the draft counts are read defensively (`?? 0`) so the gate
 // also accepts a legacy/published-only shape (an old-RPC response during
 // rollout, or a published-only test fixture). `BrandOfferingCounts` itself
 // keeps the *_draft fields REQUIRED for the fetcher contract; only this gate's
@@ -54,7 +54,7 @@ export const deriveHubVisibleTabs = (
   // offering" action instead. Hub then lands on its canonical /hub/events route
   // (hub/index redirect) showing that sub-route's own empty state.
   const visible: HubTabName[] = [];
-  // ORCH-1150 A.5.2 — a Hub offering tab is visible when the brand has ANY
+  // ORCH-1154 A.5.2 — a Hub offering tab is visible when the brand has ANY
   // non-deleted row of that type, DRAFT or published (OR, not AND). This makes
   // the snap→auto-draft→navigate destination reachable: a draft-only brand's
   // Experiences tab now EXISTS in visibleTabs, so the ORCH-1145 nav-lock

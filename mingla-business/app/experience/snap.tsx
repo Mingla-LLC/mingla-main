@@ -1,5 +1,5 @@
 /**
- * /experience/snap (ORCH-1144 · ORCH-1150) — experience snap/parse/auto-draft flow.
+ * /experience/snap (ORCH-1144 · ORCH-1154) — experience snap/parse/auto-draft flow.
  *
  * Reached from the in-sheet experience chooser (UniversalCreatorSheet step
  * "experience") options 1 & 2.
@@ -8,7 +8,7 @@
  *   - ?mode=menu       → Ve5 restaurant/food-menu parser  (MenuSnapInput)
  *   - ?mode=activities → Ve6 play/activities parser        (ActivitiesSnapInput)
  *
- * ORCH-1150 — the moment the parser returns N≥1 suggestions, EVERY suggestion
+ * ORCH-1154 — the moment the parser returns N≥1 suggestions, EVERY suggestion
  * is auto-confirmed into a DRAFT experience (client-side loop over the parser's
  * returned proposal ids → the existing per-proposal confirm path), the screen
  * shows an honest "Creating your experiences…" state, the drafts-list cache is
@@ -24,7 +24,7 @@
  * Copy = COPY §3 Recommended-primary set (food/play snap-screen headers +
  * loading/no-items/error microcopy), keyed by the explicit parseMode.
  *
- * Mingla_Artifacts/specs/SPEC_ORCH-1150_SNAP_AUTODRAFT_NAVIGATE.md
+ * Mingla_Artifacts/specs/SPEC_ORCH-1154_SNAP_AUTODRAFT_NAVIGATE.md
  */
 
 import React, { useCallback, useState } from "react";
@@ -141,7 +141,7 @@ export default function ExperienceSnapRoute(): React.ReactElement {
           return;
         }
 
-        // ORCH-1150 — auto-draft-all: confirm EVERY returned proposal id into a
+        // ORCH-1154 — auto-draft-all: confirm EVERY returned proposal id into a
         // draft experience, then navigate to the drafts tab.
         setPhase("drafting");
         const ids = result.pending_actions.map((p) => p.id);

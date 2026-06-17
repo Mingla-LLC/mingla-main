@@ -1,4 +1,4 @@
--- ORCH-1150 [snap-autodraft-navigate] — AMENDMENT A (drafts-visibility fix)
+-- ORCH-1154 [snap-autodraft-navigate] — AMENDMENT A (drafts-visibility fix)
 --
 -- WHY: pg_brand_offering_counts counted PUBLISHED offerings only
 -- (published_at IS NOT NULL in the WHERE). A brand whose only experiences are
@@ -6,7 +6,7 @@
 -- omitted from visibleTabs, and the ORCH-1145 nav-lock redirect bounced any
 -- navigation to /hub/experiences straight back to /hub/events — so the drafts a
 -- snap just created were real in the DB but unreachable in the UI.
--- (INVESTIGATE_ORCH-1150_DRAFTS_NOT_VISIBLE.md, F-1 CONFIRMED ROOT CAUSE.)
+-- (INVESTIGATE_ORCH-1154_DRAFTS_NOT_VISIBLE.md, F-1 CONFIRMED ROOT CAUSE.)
 --
 -- FIX (ADDITIVE — design LOCKED in SPEC A.2): keep the existing published-only
 -- columns events/trips/experiences UNCHANGED (a second consumer — the events

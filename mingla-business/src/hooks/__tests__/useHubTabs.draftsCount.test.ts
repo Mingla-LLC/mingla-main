@@ -1,5 +1,5 @@
 /**
- * ORCH-1150 [snap-autodraft-navigate] — AMENDMENT A (drafts-visibility fix)
+ * ORCH-1154 [snap-autodraft-navigate] — AMENDMENT A (drafts-visibility fix)
  * IMPLEMENTOR happy-path regression suite for the Hub tab gate.
  *
  * THE BUG (INVESTIGATE F-1 / SPEC A.1): `pg_brand_offering_counts` counted
@@ -16,7 +16,7 @@
  * fails-on-revert (SPEC A.14 safeguard 1): reverting the
  * `|| (counts.*_draft ?? 0) > 0` clauses in useHubTabs.ts flips TA-1/TA-3/TA-5
  * to FAIL (the draft-only / executed-gate cases). Verified in
- * IMPLEMENT_ORCH-1150_DRAFTS_FIX.md §Regression Test.
+ * IMPLEMENT_ORCH-1154_DRAFTS_FIX.md §Regression Test.
  *
  * NOTE — append-only, DIFFERENT ANGLE from the existing
  * useHubTabs.venueGate.adversarial.test.ts (which attacks the venue OR + the
@@ -60,7 +60,7 @@ const counts = (over: Partial<BrandOfferingCounts>): BrandOfferingCounts => ({
   ...over,
 });
 
-describe("ORCH-1150 A.5.2 — drafts count toward Hub tab visibility", () => {
+describe("ORCH-1154 A.5.2 — drafts count toward Hub tab visibility", () => {
   test("TA-1: draft-only brand (experiences_draft:2) → 'experiences' tab visible", () => {
     const visible = deriveHubVisibleTabs(counts({ experiences_draft: 2 }));
     // The bug-closing assertion: drafts alone make the tab appear.

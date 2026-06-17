@@ -1,5 +1,5 @@
 /**
- * ORCH-1150 [snap suggestions auto-draft + navigate to drafts] — TESTER
+ * ORCH-1154 [snap suggestions auto-draft + navigate to drafts] — TESTER
  * adversarial regression suite (append-only; different angle than the
  * implementor's happy-path/tally tests).
  *
@@ -95,7 +95,7 @@ jest.mock("../../../src/hooks/useExperiencesByBrand", () => ({
   },
 }));
 
-// ORCH-1150 A.6 — usePendingExperiences now imports brandKeys from useBrands;
+// ORCH-1154 A.6 — usePendingExperiences now imports brandKeys from useBrands;
 // useBrands → services/supabase → expo-constants (ESM) is untransformable in
 // this harness, so mock the key factory (mirrors the useExperiencesByBrand mock).
 jest.mock("../../../src/hooks/useBrands", () => ({
@@ -132,7 +132,7 @@ afterEach(() => {
   jest.clearAllMocks();
 });
 
-describe("ORCH-1150 ADVERSARIAL A — confirmAll exactness / no double-confirm (SC-7)", () => {
+describe("ORCH-1154 ADVERSARIAL A — confirmAll exactness / no double-confirm (SC-7)", () => {
   test("issues EXACTLY one confirm per id, in order, never a duplicate call", async () => {
     confirmResults = [
       { kind: "executed" },
@@ -165,7 +165,7 @@ describe("ORCH-1150 ADVERSARIAL A — confirmAll exactness / no double-confirm (
   });
 });
 
-describe("ORCH-1150 ADVERSARIAL B — empty ids boundary (SC-4/SC-6 seam)", () => {
+describe("ORCH-1154 ADVERSARIAL B — empty ids boundary (SC-4/SC-6 seam)", () => {
   test("confirmAll([]) issues ZERO confirm calls and tallies created:0", async () => {
     const hook = renderHook();
     const tally = await hook.confirmAll([]);
@@ -183,7 +183,7 @@ describe("ORCH-1150 ADVERSARIAL B — empty ids boundary (SC-4/SC-6 seam)", () =
   });
 });
 
-describe("ORCH-1150 ADVERSARIAL C — count honesty (created != id count)", () => {
+describe("ORCH-1154 ADVERSARIAL C — count honesty (created != id count)", () => {
   test("5 ids, 3 ok / 2 fail → navigate true, toast says 3 not 5", async () => {
     confirmResults = [
       { kind: "executed" },
@@ -207,11 +207,11 @@ describe("ORCH-1150 ADVERSARIAL C — count honesty (created != id count)", () =
 // ── ANGLE D — the gate's §9.3 snap-source contract cannot be silently
 //    defeated. Re-implements the gate's exact regex predicates so a weakened
 //    gate (one that tolerates a missing confirmAll or a missing drafts route)
-//    flips these. Mirrors orch-1150-snap-auto-draft.mjs checkSnapSource. ──────
-describe("ORCH-1150 ADVERSARIAL D — gate §9.3 navigate contract", () => {
+//    flips these. Mirrors orch-1154-snap-auto-draft.mjs checkSnapSource. ──────
+describe("ORCH-1154 ADVERSARIAL D — gate §9.3 navigate contract", () => {
   // NOTE: the forbidden review-component name is assembled from parts so this
   // test SOURCE never contains the literal token. The strict-grep gate
-  // (orch-1150-snap-auto-draft.mjs, grepImporters) FAILS any .ts/.tsx under
+  // (orch-1154-snap-auto-draft.mjs, grepImporters) FAILS any .ts/.tsx under
   // app/ or src/ that contains the literal — a test asserting its ABSENCE must
   // not itself trip the gate, and the gate stays STRICT (no test-file
   // exclusion that would let a real reintroduction slip through). The runtime

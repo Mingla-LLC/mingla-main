@@ -1,11 +1,11 @@
 #!/usr/bin/env node
 /**
- * ORCH-1150 [snap suggestions auto-draft + navigate to drafts] — structural gate.
+ * ORCH-1154 [snap suggestions auto-draft + navigate to drafts] — structural gate.
  *
  * WHY: the business snap flow (app/experience/snap.tsx) used to render a
  * transient per-card "Suggested experiences" review (ExperienceReviewCards →
  * Accept/Edit/Reject) where ONLY tapping Accept turned a proposal into a draft;
- * leaving the screen stranded the proposals. ORCH-1150 replaces that with
+ * leaving the screen stranded the proposals. ORCH-1154 replaces that with
  * auto-draft-ALL: the instant the parser returns N≥1 suggestions, every
  * proposal is confirmed into a draft (client loop over the existing confirm
  * path) and the brand is navigated to the Hub Experiences (Drafts) tab. The
@@ -34,7 +34,7 @@
  *      again and the bug returns).
  *   6. useBrandOfferingCounts.ts declares the three `*_draft` fields — FAIL if
  *      the count shape regresses to published-only.
- *   7. the migration *_orch_1150_offering_counts_include_drafts.sql exists and
+ *   7. the migration *_orch_1154_offering_counts_include_drafts.sql exists and
  *      contains DROP FUNCTION (RETURNS-TABLE widening) + the experiences_draft
  *      column + retains `deleted_at IS NULL` (deleted rows never counted) —
  *      FAIL if the migration is missing or drops the soft-delete exclusion.
@@ -67,7 +67,7 @@ const OFFERING_COUNTS = path.join(
   "mingla-business/src/hooks/useBrandOfferingCounts.ts",
 );
 const MIGRATIONS_DIR = path.join(root, "supabase/migrations");
-const DRAFT_MIGRATION_SUFFIX = "_orch_1150_offering_counts_include_drafts.sql";
+const DRAFT_MIGRATION_SUFFIX = "_orch_1154_offering_counts_include_drafts.sql";
 
 // ── Pure checks (operate on source strings) so --self-test can reuse them. ──
 const REVIEW_REF = /ExperienceReviewCards/;
@@ -80,18 +80,18 @@ function checkSnapSource(src, failures) {
   // (1) no per-card review reintroduced
   if (REVIEW_REF.test(src)) {
     failures.push(
-      "snap.tsx references ExperienceReviewCards — the per-card Accept/Reject review must NOT be reintroduced (ORCH-1150 §9.1).",
+      "snap.tsx references ExperienceReviewCards — the per-card Accept/Reject review must NOT be reintroduced (ORCH-1154 §9.1).",
     );
   }
   // (3) auto-draft+navigate present
   if (!CONFIRM_ALL_REF.test(src)) {
     failures.push(
-      "snap.tsx does not reference `confirmAll` — the auto-draft-all loop is missing (ORCH-1150 §9.3).",
+      "snap.tsx does not reference `confirmAll` — the auto-draft-all loop is missing (ORCH-1154 §9.3).",
     );
   }
   if (!REPLACE_TO_DRAFTS.test(src) || !DRAFTS_ROUTE_LITERAL.test(src)) {
     failures.push(
-      'snap.tsx must `router.replace(...)` to "/(tabs)/hub/experiences" after auto-draft (ORCH-1150 §9.3).',
+      'snap.tsx must `router.replace(...)` to "/(tabs)/hub/experiences" after auto-draft (ORCH-1154 §9.3).',
     );
   }
 }
@@ -100,12 +100,12 @@ function checkAriSource(src, failures) {
   // (4) Ari must keep manual confirm + must not pull the auto-confirm hook
   if (/usePendingExperiences/.test(src) || CONFIRM_ALL_REF.test(src)) {
     failures.push(
-      "AriChatScreen.tsx references usePendingExperiences/confirmAll — auto-confirm must NOT bleed into Ari; Ari keeps MANUAL per-action confirm (ORCH-1150 §9.4 / SC-8).",
+      "AriChatScreen.tsx references usePendingExperiences/confirmAll — auto-confirm must NOT bleed into Ari; Ari keeps MANUAL per-action confirm (ORCH-1154 §9.4 / SC-8).",
     );
   }
   if (!/useConfirmPendingAction/.test(src)) {
     failures.push(
-      "AriChatScreen.tsx no longer imports useConfirmPendingAction — Ari's manual confirm path regressed (ORCH-1150 §9.4 / SC-8).",
+      "AriChatScreen.tsx no longer imports useConfirmPendingAction — Ari's manual confirm path regressed (ORCH-1154 §9.4 / SC-8).",
     );
   }
 }
@@ -131,7 +131,7 @@ function checkHubTabsSource(src, failures) {
     );
     if (!re.test(src)) {
       failures.push(
-        `useHubTabs.ts deriveHubVisibleTabs must gate "${pub}" on published OR draft (counts.${pub} || counts.${draft}) — the draft-inclusive clause is missing (ORCH-1150 A.5.2).`,
+        `useHubTabs.ts deriveHubVisibleTabs must gate "${pub}" on published OR draft (counts.${pub} || counts.${draft}) — the draft-inclusive clause is missing (ORCH-1154 A.5.2).`,
       );
     }
   }
@@ -141,7 +141,7 @@ function checkOfferingCountsSource(src, failures) {
   for (const field of ["events_draft", "trips_draft", "experiences_draft"]) {
     if (!new RegExp(`\\b${field}\\b`).test(src)) {
       failures.push(
-        `useBrandOfferingCounts.ts is missing the \`${field}\` field — the draft count shape regressed to published-only (ORCH-1150 A.5.1).`,
+        `useBrandOfferingCounts.ts is missing the \`${field}\` field — the draft count shape regressed to published-only (ORCH-1154 A.5.1).`,
       );
     }
   }
@@ -150,17 +150,17 @@ function checkOfferingCountsSource(src, failures) {
 function checkDraftMigrationSource(src, failures) {
   if (!/DROP\s+FUNCTION/i.test(src)) {
     failures.push(
-      "drafts migration must DROP FUNCTION before CREATE (RETURNS TABLE widening) (ORCH-1150 A.4).",
+      "drafts migration must DROP FUNCTION before CREATE (RETURNS TABLE widening) (ORCH-1154 A.4).",
     );
   }
   if (!/\bexperiences_draft\b/.test(src)) {
     failures.push(
-      "drafts migration must add the experiences_draft column (ORCH-1150 A.4).",
+      "drafts migration must add the experiences_draft column (ORCH-1154 A.4).",
     );
   }
   if (!/deleted_at\s+IS\s+NULL/i.test(src)) {
     failures.push(
-      "drafts migration must retain `deleted_at IS NULL` — deleted rows must never be counted (ORCH-1150 A.4 / SC-A1).",
+      "drafts migration must retain `deleted_at IS NULL` — deleted rows must never be counted (ORCH-1154 A.4 / SC-A1).",
     );
   }
 }
@@ -246,11 +246,11 @@ if (process.argv.includes("--self-test")) {
   expect("migration missing deleted_at guard", checkDraftMigrationSource, migNoSoftDelete, true);
 
   if (selfFailures.length) {
-    console.error("ORCH-1150 gate SELF-TEST FAILED:");
+    console.error("ORCH-1154 gate SELF-TEST FAILED:");
     selfFailures.forEach((f) => console.error("  - " + f));
     process.exit(1);
   }
-  console.log("ORCH-1150 gate self-test PASS (14/14 cases).");
+  console.log("ORCH-1154 gate self-test PASS (14/14 cases).");
   process.exit(0);
 }
 
@@ -261,13 +261,13 @@ function checkNpmWiring(failures) {
   try {
     pkg = JSON.parse(fs.readFileSync(pkgPath, "utf8"));
   } catch (error) {
-    failures.push(`ORCH-1150 wiring: mingla-business/package.json parse failed: ${error.message}`);
+    failures.push(`ORCH-1154 wiring: mingla-business/package.json parse failed: ${error.message}`);
     return;
   }
-  const script = pkg.scripts?.["test:orch-1150"];
-  if (typeof script !== "string" || !script.includes("orch-1150-snap-auto-draft.mjs")) {
+  const script = pkg.scripts?.["test:orch-1154"];
+  if (typeof script !== "string" || !script.includes("orch-1154-snap-auto-draft.mjs")) {
     failures.push(
-      "ORCH-1150 wiring: mingla-business/package.json missing scripts[\"test:orch-1150\"] pointing at the gate script.",
+      "ORCH-1154 wiring: mingla-business/package.json missing scripts[\"test:orch-1154\"] pointing at the gate script.",
     );
   }
 }
@@ -277,36 +277,36 @@ const failures = [];
 // (2) deleted-on-disk
 if (fs.existsSync(REVIEW_CARDS)) {
   failures.push(
-    "ExperienceReviewCards.tsx still exists on disk — the per-card review component must be DELETED (ORCH-1150 §9.2).",
+    "ExperienceReviewCards.tsx still exists on disk — the per-card review component must be DELETED (ORCH-1154 §9.2).",
   );
 }
 if (fs.existsSync(CONFIRM_CARD)) {
   failures.push(
-    "ExperienceConfirmationCard.tsx still exists on disk — the per-card confirmation component must be DELETED (ORCH-1150 §9.2).",
+    "ExperienceConfirmationCard.tsx still exists on disk — the per-card confirmation component must be DELETED (ORCH-1154 §9.2).",
   );
 }
 
 if (!fs.existsSync(SNAP)) {
-  failures.push(`ORCH-1150: snap route not found at ${SNAP}.`);
+  failures.push(`ORCH-1154: snap route not found at ${SNAP}.`);
 } else {
   checkSnapSource(fs.readFileSync(SNAP, "utf8"), failures);
 }
 
 if (!fs.existsSync(ARI)) {
-  failures.push(`ORCH-1150: AriChatScreen not found at ${ARI}.`);
+  failures.push(`ORCH-1154: AriChatScreen not found at ${ARI}.`);
 } else {
   checkAriSource(fs.readFileSync(ARI, "utf8"), failures);
 }
 
 // AMENDMENT A — drafts-visibility fix (the Hub tab must be reachable post-snap).
 if (!fs.existsSync(HUB_TABS)) {
-  failures.push(`ORCH-1150 A: useHubTabs.ts not found at ${HUB_TABS}.`);
+  failures.push(`ORCH-1154 A: useHubTabs.ts not found at ${HUB_TABS}.`);
 } else {
   checkHubTabsSource(fs.readFileSync(HUB_TABS, "utf8"), failures);
 }
 
 if (!fs.existsSync(OFFERING_COUNTS)) {
-  failures.push(`ORCH-1150 A: useBrandOfferingCounts.ts not found at ${OFFERING_COUNTS}.`);
+  failures.push(`ORCH-1154 A: useBrandOfferingCounts.ts not found at ${OFFERING_COUNTS}.`);
 } else {
   checkOfferingCountsSource(fs.readFileSync(OFFERING_COUNTS, "utf8"), failures);
 }
@@ -319,11 +319,11 @@ if (!fs.existsSync(OFFERING_COUNTS)) {
       .readdirSync(MIGRATIONS_DIR)
       .find((f) => f.endsWith(DRAFT_MIGRATION_SUFFIX));
   } catch (error) {
-    failures.push(`ORCH-1150 A: cannot read ${MIGRATIONS_DIR}: ${error.message}`);
+    failures.push(`ORCH-1154 A: cannot read ${MIGRATIONS_DIR}: ${error.message}`);
   }
   if (!migFile) {
     failures.push(
-      `ORCH-1150 A: migration *${DRAFT_MIGRATION_SUFFIX} not found in supabase/migrations — the draft-counts RPC migration is missing (A.4).`,
+      `ORCH-1154 A: migration *${DRAFT_MIGRATION_SUFFIX} not found in supabase/migrations — the draft-counts RPC migration is missing (A.4).`,
     );
   } else {
     checkDraftMigrationSource(
@@ -344,10 +344,10 @@ function grepImporters(dir, failures) {
       const src = fs.readFileSync(full, "utf8");
       if (
         /ExperienceReviewCards|ExperienceConfirmationCard/.test(src) &&
-        !full.endsWith("orch-1150-snap-auto-draft.mjs")
+        !full.endsWith("orch-1154-snap-auto-draft.mjs")
       ) {
         failures.push(
-          `${path.relative(root, full)}: still imports/references a deleted review component (ExperienceReviewCards/ExperienceConfirmationCard) — ORCH-1150 §9.1/§9.2.`,
+          `${path.relative(root, full)}: still imports/references a deleted review component (ExperienceReviewCards/ExperienceConfirmationCard) — ORCH-1154 §9.1/§9.2.`,
         );
       }
     }
@@ -359,10 +359,10 @@ grepImporters(path.join(root, "mingla-business/app"), failures);
 checkNpmWiring(failures);
 
 if (failures.length) {
-  console.error("ORCH-1150 snap auto-draft gate FAILED:");
+  console.error("ORCH-1154 snap auto-draft gate FAILED:");
   failures.forEach((f) => console.error("  - " + f));
   process.exit(1);
 }
 console.log(
-  "ORCH-1150 gate PASS: snap auto-drafts all suggestions + navigates to drafts; review components deleted; Ari manual-confirm untouched; drafts count toward Hub tab visibility (useHubTabs OR-draft, *_draft count shape, migration present).",
+  "ORCH-1154 gate PASS: snap auto-drafts all suggestions + navigates to drafts; review components deleted; Ari manual-confirm untouched; drafts count toward Hub tab visibility (useHubTabs OR-draft, *_draft count shape, migration present).",
 );

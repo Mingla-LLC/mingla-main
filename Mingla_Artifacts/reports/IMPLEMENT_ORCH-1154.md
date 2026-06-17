@@ -1,8 +1,8 @@
-# IMPLEMENTATION — ORCH-1150 [snap suggestions auto-draft + navigate to drafts]
+# IMPLEMENTATION — ORCH-1154 [snap suggestions auto-draft + navigate to drafts]
 
 **Skill:** mingla-implementor (business side) · **Phase:** IMPLEMENT · **Date:** 2026-06-15
-**Worktree:** `~/Desktop/mingla-orchs/orch-1150-[snap-autodraft-navigate]` · branch `orch-1150-snap-autodraft-navigate`
-**SPEC:** `Mingla_Artifacts/specs/SPEC_ORCH-1150_SNAP_AUTODRAFT_NAVIGATE.md` (Option A — CLIENT auto-confirm-all; pure JS / OTA-able)
+**Worktree:** `~/Desktop/mingla-orchs/orch-1154-[snap-autodraft-navigate]` · branch `orch-1154-snap-autodraft-navigate`
+**SPEC:** `Mingla_Artifacts/specs/SPEC_ORCH-1154_SNAP_AUTODRAFT_NAVIGATE.md` (Option A — CLIENT auto-confirm-all; pure JS / OTA-able)
 **Status:** implemented and verified (gates + jest green; fails-on-revert proven). Live snap→drafts on-device verification is the tester's job.
 
 ---
@@ -32,12 +32,12 @@ All criteria satisfied by commit **`ad2f922ac`** (single commit).
 
 | Status | File | Δ |
 |--------|------|---|
-| A | `.github/scripts/strict-grep/orch-1150-snap-auto-draft.mjs` | +~230 (new gate, --self-test) |
+| A | `.github/scripts/strict-grep/orch-1154-snap-auto-draft.mjs` | +~230 (new gate, --self-test) |
 | M | `.github/workflows/strict-grep-mingla-business.yml` | +16 (gate CI job) |
-| A | `mingla-business/app/experience/__tests__/orch1150SnapAutoDraft.test.ts` | +~290 (23 tests) |
+| A | `mingla-business/app/experience/__tests__/orch1154SnapAutoDraft.test.ts` | +~290 (23 tests) |
 | M | `mingla-business/app/experience/snap.tsx` | rewrite (~+60/−95 net) |
 | A | `mingla-business/app/experience/snapOutcome.ts` | +~55 (pure decision/copy module) |
-| M | `mingla-business/package.json` | +1 (`test:orch-1150` script) |
+| M | `mingla-business/package.json` | +1 (`test:orch-1154` script) |
 | D | `mingla-business/src/components/experience/ExperienceConfirmationCard.tsx` | deleted |
 | D | `mingla-business/src/components/experience/ExperienceReviewCards.tsx` | deleted |
 | M | `mingla-business/src/hooks/usePendingExperiences.ts` | +~70 (`confirmAll`, `isConfirmingAll`, `invalidateExperienceList`) |
@@ -59,12 +59,12 @@ NONE. `agent-confirm-action`, `create_experience` executor (`_shared/agentTools.
 
 ## 6. Regression tests added
 
-- **Path:** `mingla-business/app/experience/__tests__/orch1150SnapAutoDraft.test.ts` — 13 tests in this file (T1, T3, T4, T5, T5b, T5c, T9 on the real `confirmAll` hook body; T1/T3/T4/T5/T10 + edge wording on the pure `resolveSnapOutcome`/`createdToastText`). Plus the kept `orch1144Chooser.tester.adversarial.test.ts` (10 tests, T8 parseMode category-agnostic). **Total 23 tests, all PASS.**
+- **Path:** `mingla-business/app/experience/__tests__/orch1154SnapAutoDraft.test.ts` — 13 tests in this file (T1, T3, T4, T5, T5b, T5c, T9 on the real `confirmAll` hook body; T1/T3/T4/T5/T10 + edge wording on the pure `resolveSnapOutcome`/`createdToastText`). Plus the kept `orch1144Chooser.tester.adversarial.test.ts` (10 tests, T8 parseMode category-agnostic). **Total 23 tests, all PASS.**
 - **Append-only:** new file added; no existing test modified/deleted.
-- **fails-on-revert verified at `ad2f922ac`:** reverting `snap.tsx` to re-add the `ExperienceReviewCards` import and delete the `confirmAll` call made `npm run test:orch-1150` exit non-zero at the strict-grep gate (T7 — "review removed"), with both gate assertions firing:
+- **fails-on-revert verified at `ad2f922ac`:** reverting `snap.tsx` to re-add the `ExperienceReviewCards` import and delete the `confirmAll` call made `npm run test:orch-1154` exit non-zero at the strict-grep gate (T7 — "review removed"), with both gate assertions firing:
   - `snap.tsx references ExperienceReviewCards — the per-card Accept/Reject review must NOT be reintroduced (§9.1)`
   - `snap.tsx still imports/references a deleted review component (§9.1/§9.2)`
-  Restoring the fix (`cp` back the committed clean files; `git diff --stat HEAD` empty) → `test:orch-1150` PASS (23/23). True line-deletion revert, not a comment-out.
+  Restoring the fix (`cp` back the committed clean files; `git diff --stat HEAD` empty) → `test:orch-1154` PASS (23/23). True line-deletion revert, not a comment-out.
 
 ## 7. Old → New receipts
 
@@ -109,9 +109,9 @@ Parity is automatic across iOS/Android/Web-preview (one shared RN route + hook).
 
 ## 9. Smoke / gate result (run in the worktree)
 
-- `node …/orch-1150-snap-auto-draft.mjs --self-test` → `self-test PASS (6/6 cases)`.
-- `node …/orch-1150-snap-auto-draft.mjs` → `gate PASS: snap auto-drafts all suggestions + navigates to drafts; review components deleted; Ari manual-confirm untouched.`
-- `npm run test:orch-1150` → gate self-test PASS + gate PASS + **23/23 jest tests PASS**.
+- `node …/orch-1154-snap-auto-draft.mjs --self-test` → `self-test PASS (6/6 cases)`.
+- `node …/orch-1154-snap-auto-draft.mjs` → `gate PASS: snap auto-drafts all suggestions + navigates to drafts; review components deleted; Ari manual-confirm untouched.`
+- `npm run test:orch-1154` → gate self-test PASS + gate PASS + **23/23 jest tests PASS**.
 - `node …/orch-1004-auth-scoped-query-readiness.mjs` → still PASS (24 hooks; my `usePendingExperiences` edit preserves the `isAuthReady` gate).
 - `npx tsc --noEmit` → **zero errors in any changed file** (`snap.tsx`, `snapOutcome.ts`, `usePendingExperiences.ts`, the test). Repo baseline of 325 pre-existing errors in unrelated files is unchanged (none in my files; confirmed by filtered grep returning empty).
 - `npx eslint <changed files>` → **0 errors**, 2 warnings (`import/first` — inherent to the jest.mock-before-import harness style, identical to the accepted `useEventCoverVideoUpload.test.ts` / `authScopedQueryReadiness.test.ts`).

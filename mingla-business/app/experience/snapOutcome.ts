@@ -1,11 +1,11 @@
 /**
- * ORCH-1150 — pure snap auto-draft outcome logic, extracted from snap.tsx so it
+ * ORCH-1154 — pure snap auto-draft outcome logic, extracted from snap.tsx so it
  * is unit-testable under the repo's node/ts-jest harness (the RN `.tsx` route
  * cannot be imported there — JSX isn't transformed for node). snap.tsx imports
  * these; the SPEC §9 jest contract asserts the navigate/toast/phase decision
  * here directly.
  *
- * Mingla_Artifacts/specs/SPEC_ORCH-1150_SNAP_AUTODRAFT_NAVIGATE.md §5
+ * Mingla_Artifacts/specs/SPEC_ORCH-1154_SNAP_AUTODRAFT_NAVIGATE.md §5
  */
 
 export type SnapPhase = "idle" | "parsing" | "drafting";

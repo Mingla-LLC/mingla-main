@@ -1,8 +1,8 @@
-# SPEC — ORCH-1150 [snap suggestions auto-draft + navigate to drafts]
+# SPEC — ORCH-1154 [snap suggestions auto-draft + navigate to drafts]
 
 **Skill:** mingla-forensics · **Phase:** SPEC · **Date:** 2026-06-15
-**Worktree:** `~/Desktop/mingla-orchs/orch-1150-[snap-autodraft-navigate]` · branch `orch-1150-snap-autodraft-navigate`
-**Investigation:** `Mingla_Artifacts/investigations/INVESTIGATE_ORCH-1150_SNAP_AUTODRAFT_NAVIGATE.md`
+**Worktree:** `~/Desktop/mingla-orchs/orch-1154-[snap-autodraft-navigate]` · branch `orch-1154-snap-autodraft-navigate`
+**Investigation:** `Mingla_Artifacts/investigations/INVESTIGATE_ORCH-1154_SNAP_AUTODRAFT_NAVIGATE.md`
 **Mechanism chosen (LOCKED):** Option A — CLIENT auto-confirm-all. No edge deploy, no migration. Pure JS / OTA-able.
 
 This is a CONTRACT. The implementor builds exactly this. Snippets are illustrative (≤3 lines), not implementations.
@@ -142,13 +142,13 @@ Acceptance: navigating to `/(tabs)/hub/experiences` immediately after auto-draft
 1. **Hook** — add `confirmAll(ids)` + `isConfirmingAll` (+ optional `invalidateExperienceList`) to `usePendingExperiences.ts`; keep existing exports.
 2. **Route** — rewrite `app/experience/snap.tsx`: new `SnapPhase`, `handleFilesReady` auto-draft loop, progress state, post-draft navigate + cache invalidate, remove review render + the resolve-to-empty `useEffect`, update header doc.
 3. **Delete** — `src/components/experience/ExperienceReviewCards.tsx` + `src/components/experience/ExperienceConfirmationCard.tsx`; remove any barrel/index exports.
-4. **Gate** — add `.github/scripts/strict-grep/orch-1150-snap-auto-draft.mjs` (with `--self-test`).
-5. **Tests** — `app/experience/__tests__/orch1150SnapAutoDraft.test.ts` (T1–T5,T9,T10) + extend/keep `orch1144Chooser` adversarial (T8). Add `test:orch-1150` script in `mingla-business/package.json` running the gate `--self-test` + gate + jest.
+4. **Gate** — add `.github/scripts/strict-grep/orch-1154-snap-auto-draft.mjs` (with `--self-test`).
+5. **Tests** — `app/experience/__tests__/orch1154SnapAutoDraft.test.ts` (T1–T5,T9,T10) + extend/keep `orch1144Chooser` adversarial (T8). Add `test:orch-1154` script in `mingla-business/package.json` running the gate `--self-test` + gate + jest.
 6. `npx tsc --noEmit` clean.
 
 ## 9. Regression prevention (fails-on-revert contract)
 
-**Structural safeguard:** strict-grep gate `orch-1150-snap-auto-draft.mjs` asserts ALL of:
+**Structural safeguard:** strict-grep gate `orch-1154-snap-auto-draft.mjs` asserts ALL of:
 1. `app/experience/snap.tsx` does NOT import or reference `ExperienceReviewCards` (FAIL if reintroduced).
 2. `ExperienceReviewCards.tsx` and `ExperienceConfirmationCard.tsx` do NOT exist on disk (FAIL if restored).
 3. `app/experience/snap.tsx` references `confirmAll` AND `router.replace` to `"/(tabs)/hub/experiences"` (FAIL if the auto-draft+navigate is reverted to per-card review).
@@ -156,7 +156,7 @@ Acceptance: navigating to `/(tabs)/hub/experiences` immediately after auto-draft
 
 The gate must `--self-test` (run a synthetic violating + passing fixture). **Fails-on-revert proof required from the implementor:** reverting snap.tsx to the per-card review (re-adding the `ExperienceReviewCards` import) MUST make the gate exit non-zero AND make T1/T7 fail; restoring the auto-draft flow MUST make them pass.
 
-Jest suite `orch1150SnapAutoDraft.test.ts` mocks `usePendingExperiences` (parseFiles + confirmAll) and the router, and asserts the navigation + toast outcomes per T1–T5/T9/T10 — failing when the auto-draft branch is removed.
+Jest suite `orch1154SnapAutoDraft.test.ts` mocks `usePendingExperiences` (parseFiles + confirmAll) and the router, and asserts the navigation + toast outcomes per T1–T5/T9/T10 — failing when the auto-draft branch is removed.
 
 ## 10. Open questions
 
@@ -173,10 +173,10 @@ None of these block IMPLEMENT.
 - `mingla-business/src/hooks/usePendingExperiences.ts` (add `confirmAll`/`isConfirmingAll`/`invalidateExperienceList`)
 - DELETE `mingla-business/src/components/experience/ExperienceReviewCards.tsx`
 - DELETE `mingla-business/src/components/experience/ExperienceConfirmationCard.tsx`
-- `.github/scripts/strict-grep/orch-1150-snap-auto-draft.mjs` (new)
-- `mingla-business/app/experience/__tests__/orch1150SnapAutoDraft.test.ts` (new)
+- `.github/scripts/strict-grep/orch-1154-snap-auto-draft.mjs` (new)
+- `mingla-business/app/experience/__tests__/orch1154SnapAutoDraft.test.ts` (new)
 - `mingla-business/app/experience/__tests__/orch1144Chooser.tester.adversarial.test.ts` (only if a route/import literal it greps changed)
-- `mingla-business/package.json` (add `test:orch-1150` script)
+- `mingla-business/package.json` (add `test:orch-1154` script)
 - artifact docs under the worktree's `Mingla_Artifacts/`
 
 **DO-NOT-TOUCH (stop-and-amend before any edit):**
@@ -186,17 +186,17 @@ None of these block IMPLEMENT.
 - `mingla-business/app/(tabs)/hub/experiences.tsx`, `src/hooks/useExperiencesByBrand.ts`, `src/services/experiencesService.ts` — navigation target only; no rendering/bucket changes.
 - `mingla-business/src/services/experienceGenerationService.ts` / `agentChatService.ts` — reused verbatim.
 
-Amendments: append in-file or as `SPEC_AMENDMENT_ORCH-1150_SNAP_AUTODRAFT_NAVIGATE.md`. The implementor must stop-and-amend before touching anything outside the allowlist — never silently widen.
+Amendments: append in-file or as `SPEC_AMENDMENT_ORCH-1154_SNAP_AUTODRAFT_NAVIGATE.md`. The implementor must stop-and-amend before touching anything outside the allowlist — never silently widen.
 
-**Downstream routing:** next = **mingla-implementor (business side)** — build per this SPEC in `~/Desktop/mingla-orchs/orch-1150-[snap-autodraft-navigate]` on branch `orch-1150-snap-autodraft-navigate`; produce the implementation report + fails-on-revert proof. Then = **mingla-tester** (live-fire snap→N-drafts→drafts-tab on iOS sim + the adversarial set: zero, partial-failure, all-failed, Ari-unaffected, no-duplicate-on-resubmit). Then = **mingla-orchestrator CLOSE** (flip `I-PROPOSED-1150-SNAP-SUGGESTIONS-AUTO-DRAFT` ACTIVE; OTA the business dev channel per the EAS gotchas memory — pure JS, no edge deploy, no migration).
+**Downstream routing:** next = **mingla-implementor (business side)** — build per this SPEC in `~/Desktop/mingla-orchs/orch-1154-[snap-autodraft-navigate]` on branch `orch-1154-snap-autodraft-navigate`; produce the implementation report + fails-on-revert proof. Then = **mingla-tester** (live-fire snap→N-drafts→drafts-tab on iOS sim + the adversarial set: zero, partial-failure, all-failed, Ari-unaffected, no-duplicate-on-resubmit). Then = **mingla-orchestrator CLOSE** (flip `I-PROPOSED-1150-SNAP-SUGGESTIONS-AUTO-DRAFT` ACTIVE; OTA the business dev channel per the EAS gotchas memory — pure JS, no edge deploy, no migration).
 
 ---
 ---
 
-# AMENDMENT A — DRAFTS-VISIBILITY FIX (the real ORCH-1150 bug)
+# AMENDMENT A — DRAFTS-VISIBILITY FIX (the real ORCH-1154 bug)
 
 **Skill:** mingla-forensics · **Phase:** SPEC (amendment) · **Date:** 2026-06-15
-**Investigation:** `Mingla_Artifacts/investigations/INVESTIGATE_ORCH-1150_DRAFTS_NOT_VISIBLE.md` (PROVEN; F-1 CONFIRMED ROOT CAUSE).
+**Investigation:** `Mingla_Artifacts/investigations/INVESTIGATE_ORCH-1154_DRAFTS_NOT_VISIBLE.md` (PROVEN; F-1 CONFIRMED ROOT CAUSE).
 **Direction:** **A — LOCKED by Seth.** Draft offerings count toward Hub tab visibility for ALL three offering types (experiences, trips, events).
 **This amendment is REQUIRED to ship.** The base SPEC above (auto-draft-all + navigate) shipped and merged, but the destination tab is UNREACHABLE for a draft-only brand: the snap navigates to `/hub/experiences`, the hub layout's nav-lock redirect bounces it straight off because the Experiences tab is not in `visibleTabs` (drafts don't count), and the 20 created drafts are real but invisible. Base SPEC SC-1 ("drafts visible on arrival") was verified only by a unit test asserting `router.replace` was *called* — the bounce slipped through (INVESTIGATE DISC-1150-D).
 
@@ -246,7 +246,7 @@ Blast verdict: with the additive design, the ONLY behavior that changes is Hub t
 
 ## A.4 Layer 1 — DATABASE (migration REQUIRED)
 
-**New migration file** (next free version after the latest in `supabase/migrations/`): `supabase/migrations/<YYYYMMDDHHMMSS>_orch_1150_offering_counts_include_drafts.sql`. The implementor MUST pick the timestamp as `max(existing migration prefix) + 1 second` (read the directory; the current latest RPC-defining migration is `20260729000001_meta_orch_0972_pg_brand_offering_counts_grants.sql` but newer unrelated migrations exist — use a timestamp strictly greater than ALL existing files).
+**New migration file** (next free version after the latest in `supabase/migrations/`): `supabase/migrations/<YYYYMMDDHHMMSS>_orch_1154_offering_counts_include_drafts.sql`. The implementor MUST pick the timestamp as `max(existing migration prefix) + 1 second` (read the directory; the current latest RPC-defining migration is `20260729000001_meta_orch_0972_pg_brand_offering_counts_grants.sql` but newer unrelated migrations exist — use a timestamp strictly greater than ALL existing files).
 
 **Safe-migration protocol (MANDATORY):** the implementor MUST re-introspect the LIVE prod body (`SELECT pg_get_functiondef('pg_brand_offering_counts'::regproc);`) at implement-time and re-emit FROM THAT BODY (it may have changed since this SPEC). The migration is `CREATE OR REPLACE FUNCTION` preserving EVERY existing attribute: `LANGUAGE sql`, `SECURITY DEFINER`, `SET search_path TO 'public','pg_temp'`, `STABLE`-ness if present, and the SAME `GRANT`s (re-emit the grants from `20260729000001_*_grants.sql` if the `CREATE OR REPLACE` resets them — verify whether a bare replace drops grants on this object; if grants persist, do not re-grant).
 
@@ -348,19 +348,19 @@ INVESTIGATE Q4 RULED OUT a bucket-hiding defect; re-verified this turn against s
 
 ## A.13 Out-of-scope hardening (flag only)
 
-**DISC-1150-C** — `experiences.tsx:184` / `trips.tsx:156` / `events.tsx:253` `const [filter, setFilter] = useState(defaultFilter)` captures `defaultFilter` at first render only; no `useEffect` re-syncs it when async counts arrive. Not user-visible for THIS fix (the default still includes drafts via `"all"`/`"draft"`), but a latent staleness. **OUT OF SCOPE** for ORCH-1150 — flagged for a future hardening pass. The implementor must NOT touch these `useState` lines.
+**DISC-1150-C** — `experiences.tsx:184` / `trips.tsx:156` / `events.tsx:253` `const [filter, setFilter] = useState(defaultFilter)` captures `defaultFilter` at first render only; no `useEffect` re-syncs it when async counts arrive. Not user-visible for THIS fix (the default still includes drafts via `"all"`/`"draft"`), but a latent staleness. **OUT OF SCOPE** for ORCH-1154 — flagged for a future hardening pass. The implementor must NOT touch these `useState` lines.
 
 ## A.14 Regression prevention (fails-on-revert)
 
 **Structural safeguard 1 — DB-shape gate (jest, EXECUTED):** `useHubTabs.draftsCount.test.ts` (new) imports + RUNS `deriveHubVisibleTabs` with `experiences_draft:1, experiences:0` and asserts `"experiences"` ∈ result. **Fails-on-revert:** reverting the `|| counts.*_draft > 0` clauses in `useHubTabs.ts` flips TA-1/TA-5 to FAIL; restoring → PASS. This is the executed-gate companion to any string match (a `&&`/wrong-field mutation slips past regex but fails the executed test).
 
-**Structural safeguard 2 — strict-grep gate:** EXTEND the existing `.github/scripts/strict-grep/orch-1150-snap-auto-draft.mjs` (already in the allowlist) with assertions that (a) `useHubTabs.ts` contains the draft-inclusive OR for all three types, (b) `useBrandOfferingCounts.ts` declares the 3 `*_draft` fields, (c) the migration file `*_orch_1150_offering_counts_include_drafts.sql` exists and contains both `DROP FUNCTION` and the `experiences_draft` column AND retains `deleted_at IS NULL`. Include `--self-test`. Keep it append-only with a protective comment explaining WHY (drafts must reach the Hub tab post-snap).
+**Structural safeguard 2 — strict-grep gate:** EXTEND the existing `.github/scripts/strict-grep/orch-1154-snap-auto-draft.mjs` (already in the allowlist) with assertions that (a) `useHubTabs.ts` contains the draft-inclusive OR for all three types, (b) `useBrandOfferingCounts.ts` declares the 3 `*_draft` fields, (c) the migration file `*_orch_1154_offering_counts_include_drafts.sql` exists and contains both `DROP FUNCTION` and the `experiences_draft` column AND retains `deleted_at IS NULL`. Include `--self-test`. Keep it append-only with a protective comment explaining WHY (drafts must reach the Hub tab post-snap).
 
 **Structural safeguard 3 — live-fire (tester-owned):** SC-A4 / TA-7 — the missing test class from DISC-1150-D. The tester drives snap→navigate on a draft-only brand and asserts the drafts RENDER (not merely that navigation was attempted).
 
 ## A.15 Implementation order (amendment)
 
-1. **DB:** re-introspect live body → write migration `<ts>_orch_1150_offering_counts_include_drafts.sql` (DROP + CREATE + re-GRANT, `deleted_at IS NULL` preserved, `$function$;` before GRANT) → apply to prod via Management API (browser UA).
+1. **DB:** re-introspect live body → write migration `<ts>_orch_1154_offering_counts_include_drafts.sql` (DROP + CREATE + re-GRANT, `deleted_at IS NULL` preserved, `$function$;` before GRANT) → apply to prod via Management API (browser UA).
 2. **Hook fetcher:** extend `BrandOfferingCounts` + `EMPTY_COUNTS` + `fetchBrandOfferingCounts` mapper (`useBrandOfferingCounts.ts`).
 3. **Gate:** `useHubTabs.ts:43-45` → draft-inclusive OR (A.5.2).
 4. **Invalidation:** `usePendingExperiences.ts` — import `brandKeys`, extend `invalidateExperienceList` to also invalidate `brandKeys.offeringCounts(brandId)` (A.6).
@@ -370,12 +370,12 @@ INVESTIGATE Q4 RULED OUT a bucket-hiding defect; re-verified this turn against s
 ## A.16 File allowlist (amendment — ADDITIVE to the base §11 allowlist)
 
 **ALLOWLIST (implementor may change ONLY these, in addition to base §11):**
-- `supabase/migrations/<YYYYMMDDHHMMSS>_orch_1150_offering_counts_include_drafts.sql` (NEW)
+- `supabase/migrations/<YYYYMMDDHHMMSS>_orch_1154_offering_counts_include_drafts.sql` (NEW)
 - `mingla-business/src/hooks/useBrandOfferingCounts.ts` (extend type + mapper)
 - `mingla-business/src/hooks/useHubTabs.ts` (draft-inclusive gate, lines 43-45)
 - `mingla-business/src/hooks/usePendingExperiences.ts` (import `brandKeys`; extend `invalidateExperienceList` — lines 23, 148-155)
 - `mingla-business/src/hooks/__tests__/useHubTabs.draftsCount.test.ts` (NEW)
-- `.github/scripts/strict-grep/orch-1150-snap-auto-draft.mjs` (EXTEND — already in base allowlist)
+- `.github/scripts/strict-grep/orch-1154-snap-auto-draft.mjs` (EXTEND — already in base allowlist)
 - generated Supabase types file IF the repo commits one for this RPC (verify first)
 - artifact docs under the worktree's `Mingla_Artifacts/`
 
@@ -396,4 +396,4 @@ INVESTIGATE Q4 RULED OUT a bucket-hiding defect; re-verified this turn against s
 
 - **Backend (migration):** prod-applied via Supabase Management API; file committed for CI baseline. NOT OTA-able — must land before/with the client.
 - **Client (hook + gate + invalidation):** pure JS / RN → **OTA-able** on the business dev channel per the EAS OTA gotchas memory (`npx -y eas-cli@latest update`, per-platform, runtime biz 1.0.0). No native rebuild.
-- **Downstream:** next = **mingla-implementor (business side)** — build A.4–A.16 in `~/Desktop/mingla-orchs/orch-1150-[snap-autodraft-navigate]` on branch `orch-1150-snap-autodraft-navigate`; apply the migration to prod (Management API) + write the client changes + extend tests/gate; produce the report + fails-on-revert proof (TA-1/TA-5 revert demo). Then = **mingla-tester** — the SC-A4 / TA-7 live-fire (snap on a draft-only brand → lands on `/hub/experiences` with drafts rendered, NOT bounced) + SC-A5 public-leak guard + SC-A6 nav-lock-preserved. Then = **mingla-orchestrator CLOSE** — flip `I-PROPOSED-1150-DRAFTS-COUNT-FOR-HUB-TAB-VISIBILITY` ACTIVE, OTA the business dev channel.
+- **Downstream:** next = **mingla-implementor (business side)** — build A.4–A.16 in `~/Desktop/mingla-orchs/orch-1154-[snap-autodraft-navigate]` on branch `orch-1154-snap-autodraft-navigate`; apply the migration to prod (Management API) + write the client changes + extend tests/gate; produce the report + fails-on-revert proof (TA-1/TA-5 revert demo). Then = **mingla-tester** — the SC-A4 / TA-7 live-fire (snap on a draft-only brand → lands on `/hub/experiences` with drafts rendered, NOT bounced) + SC-A5 public-leak guard + SC-A6 nav-lock-preserved. Then = **mingla-orchestrator CLOSE** — flip `I-PROPOSED-1150-DRAFTS-COUNT-FOR-HUB-TAB-VISIBILITY` ACTIVE, OTA the business dev channel.
