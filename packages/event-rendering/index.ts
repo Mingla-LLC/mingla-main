@@ -89,6 +89,13 @@ export type {
   RsvpCtaDescriptor,
   ResolveRsvpCtaInput,
 } from "./offeringCta";
+// ORCH-1153 WS2 — the canonical rule-based open-daily detector (one owner, all
+// surfaces). Replaces the consumer occurrence-density heuristic.
+export { isOpenDailyExperience } from "./experienceOpenDaily";
+export type {
+  IsOpenDailyExperienceInput,
+  OpenDailyRecurrenceRule,
+} from "./experienceOpenDaily";
 export type {
   PublicEventProps,
   PublicBrandProps,

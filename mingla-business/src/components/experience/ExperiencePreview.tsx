@@ -592,6 +592,12 @@ const FoundationExperiencePreview: React.FC<{
       safeAreaTop={safeAreaTop}
       onScroll={onScroll}
       onScrollViewLayout={onScrollViewLayout}
+      // ORCH-1153 BUG-2 (Seth device): the experience body is shorter than a
+      // multi-day trip's, so the shared 4/5 cover (height ≈ 1.25× width) left
+      // only a slit of readable content on first paint. A square (1/1) cover
+      // pins full-bleed exactly as before but frees ~25% more viewport for the
+      // detail content to slide over. Trip/event/RSVP keep the 4/5 default.
+      coverAspectRatio={1}
       testID={testID}
     >
       {left}

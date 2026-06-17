@@ -5,7 +5,8 @@
  *
  * Experiences sell as ONE ticket (the whole itinerary) — there is no per-stop
  * or multi-tier selection at checkout. The single ticket_types row is resolved
- * server-side; the buyer just taps "Get my spot".
+ * server-side; the buyer just taps "Reserve" (DISC-1153-B: the old "Get my spot"
+ * verb was retired — every experience CTA reads "Reserve" across all surfaces).
  *
  * COMMS-0014/0016 (BLOCK-grade): the underlying money path is the EXISTING
  * `ticket-checkout-create` edge fn keyed on the experience's events-row id.
@@ -93,7 +94,16 @@ export const ExperienceCheckoutFlow: React.FC<ExperienceCheckoutFlowProps> = ({
         <View style={styles.ticketTextCol}>
           <Text style={styles.ticketName}>{ticket.name}</Text>
           <Text style={styles.ticketPrice}>
-            {formatPriceMajor(ticket.priceCents, ticket.currency)}
+            {/* ORCH-1147/1153 WS3 (F-8): render the SERVER all-in, never the bare
+                base. priceAllInGbp is MAJOR units (allInCents/100); formatPriceMajor
+                expects CENTS (it ÷100), so ×100 back to cents. Falls back to
+                priceCents when the all-in is absent/0 (absorb-fee brand: identical). */}
+            {formatPriceMajor(
+              typeof ticket.priceAllInGbp === "number" && ticket.priceAllInGbp > 0
+                ? Math.round(ticket.priceAllInGbp * 100)
+                : ticket.priceCents,
+              ticket.currency,
+            )}
           </Text>
           <Text style={styles.ticketSubline} numberOfLines={1}>
             {formatExperienceDateSubline({

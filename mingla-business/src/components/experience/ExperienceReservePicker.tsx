@@ -28,7 +28,7 @@
  * Anon-tolerant: no useAuth, no fetch — the route passes resolved occurrences.
  */
 
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 
 import type { ThemePalette } from "@mingla/event-rendering";
@@ -165,6 +165,19 @@ export const ExperienceReservePicker: React.FC<ExperienceReservePickerProps> = (
   const [selectedMinute, setSelectedMinute] = useState<number | null>(null);
   const [party, setParty] = useState<number>(2);
 
+  // ORCH-1153 BUG-4 (Seth device, /exp date picker "dead"): reset the selection
+  // whenever the sheet opens so a re-open starts clean (a stale selectedDateId
+  // from a prior open could point at a date no longer in `dates` → selectedDate
+  // resolves null → Reserve stays disabled even after a fresh tap). Mirrors the
+  // consumer picker's expected fresh-open behavior.
+  useEffect(() => {
+    if (visible) {
+      setSelectedDateId(null);
+      setSelectedMinute(null);
+      setParty(2);
+    }
+  }, [visible]);
+
   const selectedDate = useMemo(
     () => dates.find((d) => d.id === selectedDateId) ?? null,
     [dates, selectedDateId],
@@ -217,7 +230,7 @@ export const ExperienceReservePicker: React.FC<ExperienceReservePickerProps> = (
       <View style={[styles.host, { backgroundColor: palette.page }]}>
         <View style={styles.headerRow}>
           <Text style={[styles.title, { color: palette.primaryText }, fontStyle]}>
-            {mode === "open-daily" ? "Reserve a table" : "Pick a date"}
+            {mode === "open-daily" ? "Reserve a spot" : "Pick a date"}
           </Text>
           <Pressable
             onPress={onCancel}
@@ -396,33 +409,43 @@ export const ExperienceReservePicker: React.FC<ExperienceReservePickerProps> = (
               </View>
             </>
           ) : null}
-        </ScrollView>
 
-        {/* ---- Confirm Reserve ---- */}
-        <Pressable
-          onPress={canConfirm ? handleConfirm : undefined}
-          disabled={!canConfirm}
-          accessibilityRole="button"
-          accessibilityState={{ disabled: !canConfirm }}
-          accessibilityLabel="Reserve"
-          style={[
-            styles.confirm,
-            canConfirm
-              ? { backgroundColor: palette.accent }
-              : { backgroundColor: palette.panelStrong, borderColor: palette.panelBorder, borderWidth: 1 },
-          ]}
-          testID="orch-1138-experience-reserve-confirm"
-        >
-          <Text
+          {/* ---- Confirm Reserve ----
+              ORCH-1153 BUG-4: the Confirm button lives INSIDE the ScrollView (the
+              LAST scroll child), mirroring the working consumer picker. When it
+              was a fixed footer OUTSIDE the scroll, the open-daily time + party
+              sections (which appear BELOW the date list after a date is tapped)
+              and the button could land off-screen / collapse inside the desktop
+              centred card (cardBody flexShrink:1, host flex:1 with no bounded
+              height), so date selection appeared to "do nothing" — the buyer
+              could never scroll to the time step that enables Reserve. One scroll
+              makes the whole date→time→party→Reserve flow reachable, and the
+              button re-renders with `canConfirm` as selection state changes. */}
+          <Pressable
+            onPress={canConfirm ? handleConfirm : undefined}
+            disabled={!canConfirm}
+            accessibilityRole="button"
+            accessibilityState={{ disabled: !canConfirm }}
+            accessibilityLabel="Reserve"
             style={[
-              styles.confirmText,
-              { color: canConfirm ? palette.accentText : palette.tertiaryText },
-              fontStyle,
+              styles.confirm,
+              canConfirm
+                ? { backgroundColor: palette.accent }
+                : { backgroundColor: palette.panelStrong, borderColor: palette.panelBorder, borderWidth: 1 },
             ]}
+            testID="orch-1138-experience-reserve-confirm"
           >
-            Reserve →
-          </Text>
-        </Pressable>
+            <Text
+              style={[
+                styles.confirmText,
+                { color: canConfirm ? palette.accentText : palette.tertiaryText },
+                fontStyle,
+              ]}
+            >
+              Reserve →
+            </Text>
+          </Pressable>
+        </ScrollView>
       </View>
     </Sheet>
   );

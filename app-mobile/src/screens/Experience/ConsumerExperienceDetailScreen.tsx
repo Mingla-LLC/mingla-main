@@ -54,6 +54,7 @@ import {
   computeOfferingVariant,
   createThemePalette,
   EventCoverMedia,
+  isOpenDailyExperience,
   offeringSurfaceStyles,
   resolveOfferingCta,
   resolveTheme,
@@ -87,8 +88,11 @@ import {
   type ExperienceReserveSelection,
 } from "../../components/expandedCard/ExperienceReservePicker";
 import { buildStaticMapUrl } from "../../utils/mapboxStaticImage";
-// ORCH-1138 P2-2 — open-daily detection (single owner; pure, Deno-tested).
-import { isOpenDailyModel } from "../../utils/experienceOpenDaily";
+// ORCH-1153 WS2 — open-daily detection is now the SHARED rule-based predicate
+// isOpenDailyExperience (@mingla/event-rendering), the single owner across all
+// surfaces. The prior occurrence-density heuristic (utils/experienceOpenDaily
+// isOpenDailyModel) is retired here (kept only for its Deno test + the unused
+// medianConsecutiveGapMs export); it no longer drives the consumer picker.
 import { ConsumerEventReserveBar } from "../../components/offering/ConsumerEventReserveBar";
 import { useConsumerThemeFont } from "../../theme/useConsumerThemeFont";
 import { usePublicEventTickets } from "../../hooks/usePublicEventTickets";
@@ -366,11 +370,19 @@ export default function ConsumerExperienceDetailScreen({
     () => occurrences.filter((o) => o.remaining === null || o.remaining > 0),
     [occurrences],
   );
-  // ORCH-1138 rework (§4.C.5/§4.C.6) — open-daily (restaurant) vs flat slots,
-  // derived from the real occurrence windows (rule 9).
+  // ORCH-1153 WS2 — open-daily (restaurant) vs flat slots, from the SHARED
+  // rule-based detector (same owner the buyer-web /exp/ page uses) so the SAME
+  // experience classifies IDENTICALLY across surfaces. The recurrence fields
+  // arrive on the seed via the deck-supply RPC + the seed mappers (deck +
+  // venue). undefined isRecurring/recurrenceRule (cold deep-link / pre-OTA
+  // payload) → false → flat slot list (safe default, no fabrication).
   const openDaily = useMemo(
-    () => isOpenDailyModel(bookableOccurrences),
-    [bookableOccurrences],
+    () =>
+      isOpenDailyExperience({
+        isRecurring: seed?.isRecurring === true,
+        recurrenceRule: seed?.recurrenceRule ?? null,
+      }),
+    [seed?.isRecurring, seed?.recurrenceRule],
   );
   // The event-level remaining caps the open-daily party stepper (soonest slot).
   const eventRemaining = useMemo<number | null>(() => {
@@ -394,6 +406,11 @@ export default function ConsumerExperienceDetailScreen({
       bookable: true,
       tickets,
       currency: seed.currency,
+      // ORCH-1153 WS2 (I-PROPOSED-1153-RESERVE-VERB) — experiences read "Reserve"
+      // on EVERY surface (paid + free), matching buyer-web/business. Without
+      // these the consumer rendered the generic "Buy ticket" / "Get free ticket".
+      buyVerb: "Reserve",
+      freeVerb: "Reserve",
     });
   }, [seed, tickets]);
 
@@ -707,7 +724,19 @@ export default function ConsumerExperienceDetailScreen({
     dockTopY === null || viewportH === 0
       ? true
       : dockTopY > scrollY + viewportH - REVEAL_MARGIN;
-  const reserveBarClearance = 8;
+  // ORCH-1153 BUG-1 (Seth device, experience reserve bar cut off): the gorhom
+  // BaseBottomSheet content extends ~63pt BELOW the visible window at the 90%
+  // snap (SHEET_BOTTOM_OVERSHOOT in ConsumerEventReserveBar). A flat 8pt scroll
+  // clearance let the DOCKED bar (last scroll child, in normal flow) land in
+  // that overshoot region on short-content experiences, so its price block +
+  // "Reserve →" were clipped at the home-indicator edge and the bar never read
+  // as "floating". Pad the scroll content past the overshoot so the docked bar
+  // rests ABOVE the clipped region; the bar itself already pads its own bottom
+  // safe-area (safeBottom + 8), so do NOT re-add the inset here (would double-
+  // pad). The trip page rarely hit this — trips have long itinerary/payment
+  // content that fills the viewport, pushing the docked bar up naturally.
+  const SHEET_BOTTOM_OVERSHOOT = 63;
+  const reserveBarClearance = SHEET_BOTTOM_OVERSHOOT + 8;
 
   const dockedReserve: ReactElement = (
     <ConsumerEventReserveBar

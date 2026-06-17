@@ -78,11 +78,29 @@ export const ConsumerEventReserveBar: React.FC<ConsumerEventReserveBarProps> = (
 }) => {
   const insets = useSafeAreaInsets();
   const HOME_INDICATOR_FLOOR = 34;
-  // The floating variant is an absolute child of the gorhom BottomSheetContent,
-  // which extends ~63pt BELOW the visible window at the 90% snap. The floating
-  // pill's `bottom` must clear that overshoot FIRST, then the home-indicator
-  // floor, then a visible float gap. The docked variant is IN FLOW (no overshoot).
-  const SHEET_BOTTOM_OVERSHOOT = 63;
+  // The floating variant is an ABSOLUTE child of the gorhom BottomSheetContent.
+  // Its `bottom` is measured from that content's LAYOUT bottom, which extends well
+  // BELOW the content's VISIBLE bottom edge at the 90% snap (gorhom lays the host
+  // out taller than the on-screen sheet and CLIPS the overflow). So the pill's
+  // `bottom` must lift it past BOTH (a) the below-screen layout overshoot AND
+  // (b) the gap between the sheet's visible bottom and the screen bottom, or the
+  // pill renders inside the clipped/void region and gets cut off. The docked
+  // variant is IN FLOW (last scroll child) so it needs no overshoot.
+  //
+  // ORCH-1153 attempt #2 (Seth device — consumer EXPERIENCE detail floating pill
+  // clipped under the home indicator). The previous 63pt value cleared only the
+  // home-indicator inset, not the gorhom clip: on an iPhone 17 Pro (home-indicator
+  // sim) the float pill's bottom landed at screen y≈838 while the sheet content
+  // CLIPS at y≈793 — so the lower ~45pt of the pill was cut off by the sheet's own
+  // overflow boundary (not merely the OS indicator). Device-measured: the content
+  // layout bottom sits ~77pt below the 874pt screen and the visible clip ~81pt
+  // ABOVE it, so the pill must lift ~158pt to clear the clip; 120 (+34 floor +16
+  // gap = 170 total) puts the pill bottom at y≈781, ~12pt above the clip — the
+  // WHOLE pill renders. Verified on device:
+  // Mingla_Artifacts/evidence/ORCH-1153/float_clears_ios.png. Host-driven (the
+  // shared gorhom 90% sheet behind BOTH the EVENT and EXPERIENCE consumer details),
+  // so this value is correct for every consumer of this bar's floating variant.
+  const SHEET_BOTTOM_OVERSHOOT = 120;
   const FLOAT_GAP = 16;
   const safeBottom = Math.max(safeAreaBottom ?? 0, insets.bottom, HOME_INDICATOR_FLOOR);
   const wrapperBottom = safeBottom + SHEET_BOTTOM_OVERSHOOT + FLOAT_GAP;

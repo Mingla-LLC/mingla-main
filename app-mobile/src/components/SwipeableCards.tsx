@@ -244,6 +244,13 @@ function experienceRecToBusinessEventCard(rec: any): BusinessEventCard {
           remaining: typeof o?.remaining === 'number' ? o.remaining : null,
         }))
       : undefined,
+    // ORCH-1153 WS2: recurrence fields → the consumer rule-based open-daily
+    // detector (the final seed the ConsumerExperienceDetailScreen reads).
+    isRecurring: rec?.isRecurring === true,
+    recurrenceRule:
+      rec?.recurrenceRule !== null && typeof rec?.recurrenceRule === 'object'
+        ? rec.recurrenceRule
+        : null,
   } as unknown as BusinessEventCard;
 }
 

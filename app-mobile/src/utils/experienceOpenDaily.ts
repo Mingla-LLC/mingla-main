@@ -53,6 +53,14 @@ export const medianConsecutiveGapMs = (
 };
 
 /**
+ * @deprecated ORCH-1153 WS2 — RETIRED as the open-daily owner. The canonical
+ * detector is now the rule-based `isOpenDailyExperience` in
+ * `@mingla/event-rendering` (one owner across buyer-web + business + consumer).
+ * This density heuristic classified the SAME experience differently than the web
+ * page (F-5); it is no longer consumed by ConsumerExperienceDetailScreen. Kept
+ * only for its existing Deno test (append-only) — do NOT reintroduce it as the
+ * picker detector.
+ *
  * True ONLY for a genuine open-daily / open-hours experience: a dense run of
  * occurrences (>= OPEN_DAILY_MIN_OCCURRENCES), every window wide (>=90 min), AND
  * a near-daily median cadence (<= ~1.5 days). A discrete fixed-start multi-date

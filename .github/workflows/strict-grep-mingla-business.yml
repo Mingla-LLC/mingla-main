@@ -2427,6 +2427,45 @@ jobs:
       - name: Run ORCH-1138 mor-isolation gate
         run: node .github/scripts/strict-grep/orch-1138-mor-isolation.mjs
 
+  orch-1153-no-bare-base-under-allin:
+    name: "ORCH-1153 WS3: experience page/recap show the server all-in, never bare base under the all-in caption (I-PROPOSED-1153-NO-BARE-BASE-UNDER-ALLIN)"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Self-test ORCH-1153 no-bare-base-under-allin gate
+        run: node .github/scripts/strict-grep/orch-1153-no-bare-base-under-allin.mjs --self-test
+      - name: Run ORCH-1153 no-bare-base-under-allin gate
+        run: node .github/scripts/strict-grep/orch-1153-no-bare-base-under-allin.mjs
+
+  orch-1153-reserve-verb:
+    name: "ORCH-1153 WS2: every experience CTA reads 'Reserve' (consumer passes buyVerb/freeVerb) (I-PROPOSED-1153-RESERVE-VERB)"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Self-test ORCH-1153 reserve-verb gate
+        run: node .github/scripts/strict-grep/orch-1153-reserve-verb.mjs --self-test
+      - name: Run ORCH-1153 reserve-verb gate
+        run: node .github/scripts/strict-grep/orch-1153-reserve-verb.mjs
+
+  orch-1153-opendaily-one-owner:
+    name: "ORCH-1153 WS2: one canonical rule-based open-daily owner across surfaces (I-PROPOSED-1153-OPENDAILY-ONE-OWNER)"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Self-test ORCH-1153 opendaily-one-owner gate
+        run: node .github/scripts/strict-grep/orch-1153-opendaily-one-owner.mjs --self-test
+      - name: Run ORCH-1153 opendaily-one-owner gate
+        run: node .github/scripts/strict-grep/orch-1153-opendaily-one-owner.mjs
+
   orch-1138-experience-checkout-byte-identical:
     name: "ORCH-1138 Leg 3 rework: consumer experience Reserve checkout byte-identical — eventDateId + quantity only, no address/tax/plan/parallel-money (I-1)"
     runs-on: ubuntu-latest

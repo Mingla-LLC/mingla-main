@@ -44,6 +44,7 @@ import {
 import {
   boldFontFamily,
   createThemePalette,
+  isOpenDailyExperience,
   resolveOfferingSurface,
   resolveTheme,
   type CtaState,
@@ -95,11 +96,14 @@ function bookableDates(
 // ORCH-1138 Leg 3 (§4.5 / OQ-5) — "open daily within hours": a recurring
 // experience whose recurrence repeats daily forever (preset=daily + never). The
 // adaptive Reserve opens the restaurant-style date + time-in-window + party flow.
+// ORCH-1153 WS2: delegates to the SHARED rule-based detector (one owner across
+// buyer-web + business iOS/Android + the app-mobile consumer). whenMode ===
+// 'recurring' is the page's is_recurring proxy. Net behaviour identical on web.
 function isOpenDaily(experience: PublicExperience): boolean {
-  if (experience.whenMode !== "recurring") return false;
-  const rule = experience.recurrenceRule;
-  if (rule === null) return false;
-  return rule.preset === "daily" && rule.termination?.kind === "never";
+  return isOpenDailyExperience({
+    isRecurring: experience.whenMode === "recurring",
+    recurrenceRule: experience.recurrenceRule,
+  });
 }
 
 export default function PublicExperienceRoute(): React.ReactElement {
@@ -286,9 +290,23 @@ const ResolvedExperiencePage: React.FC<{
   const usesPicker = openDaily || bookable.length > 1;
 
   // ---- price + CTA (single CTA — no split, SC-5) ----
+  // ORCH-1147/1153 WS3: display the SERVER all-in (fetchTierAllInCents →
+  // pg_public_event_tier_allin → ticket.priceAllInGbp), never the bare base under
+  // the "All-in, taxes included" caption (the WYSIWYP breach). priceAllInGbp is in
+  // MAJOR units (publicExperienceService.ts: allInCents / 100) whereas priceCents
+  // is MINOR units; formatExpPrice divides by 100 (expects cents), so the all-in
+  // must be ×100 back to cents before formatting. Falls back to priceCents when
+  // the all-in is absent (RPC miss) or 0 — so an absorb-fee brand where
+  // all-in === base renders identically to today (no 100× / wrong-field regression).
+  const expDisplayCents: number | null =
+    ticket === null
+      ? null
+      : typeof ticket.priceAllInGbp === "number" && ticket.priceAllInGbp > 0
+        ? Math.round(ticket.priceAllInGbp * 100)
+        : ticket.priceCents;
   const expPrice =
-    ticket !== null && ticket.priceCents > 0
-      ? formatExpPrice(ticket.priceCents, ticket.currency)
+    expDisplayCents !== null && expDisplayCents > 0
+      ? formatExpPrice(expDisplayCents, ticket!.currency)
       : ticket !== null
         ? "Free"
         : "";
@@ -404,7 +422,7 @@ const ResolvedExperiencePage: React.FC<{
             {formatOpenHours(bookable[0], experience.timezone)}
           </Text>
           <Text style={[styles.hoursSub, { color: palette.tertiaryText }]}>
-            Reserve a table any upcoming day
+            Reserve a spot any upcoming day
           </Text>
         </View>
       </View>

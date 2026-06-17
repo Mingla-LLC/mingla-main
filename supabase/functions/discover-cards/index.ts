@@ -197,6 +197,17 @@ interface ExperienceDeckCard {
     sold: number;
     remaining: number | null;
   }>;
+  // ORCH-1153 WS2: recurrence fields → the consumer rule-based open-daily
+  // detector (isOpenDailyExperience). From pg_eligible_experiences_for_deck's
+  // is_recurring / recurrence_rules columns (added in 20261009000003).
+  isRecurring: boolean;
+  recurrenceRule: {
+    preset?: string;
+    byDay?: string;
+    byMonthDay?: number;
+    bySetPos?: number;
+    termination?: { kind?: string; count?: number; until?: string };
+  } | null;
   stops: Array<{
     stopNumber: number;
     placeId: string;
@@ -411,6 +422,15 @@ async function fetchEligibleExperiences(args: {
           ? row.cover_media_type
           : null,
       upcomingOccurrences: mapExperienceOccurrences(row.upcoming_occurrences),
+      // ORCH-1153 WS2: recurrence fields for the consumer open-daily detector.
+      // Honest passthrough — null when the RPC row lacks them (rule 9).
+      isRecurring: row.is_recurring === true,
+      recurrenceRule:
+        row.recurrence_rules !== null &&
+        row.recurrence_rules !== undefined &&
+        typeof row.recurrence_rules === 'object'
+          ? (row.recurrence_rules as ExperienceDeckCard['recurrenceRule'])
+          : null,
       brandId: String(row.brand_id),
       brandName: typeof row.brand_name === 'string' ? row.brand_name : '',
       brandSlug: typeof row.brand_slug === 'string' ? row.brand_slug : '',

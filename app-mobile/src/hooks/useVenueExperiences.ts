@@ -72,6 +72,20 @@ export interface VenueExperienceRow {
       }>
     | null;
   published_at: string;
+  /**
+   * ORCH-1153 WS2 — recurrence fields (from pg_brand_experiences_for_place, added
+   * in 20261009000003) so the venue→detail seed runs the SHARED rule-based
+   * open-daily detector (isOpenDailyExperience). NULL recurrence_rules → not
+   * open-daily (falls back to the flat slot list).
+   */
+  is_recurring?: boolean | null;
+  recurrence_rules?: {
+    preset?: string;
+    byDay?: string;
+    byMonthDay?: number;
+    bySetPos?: number;
+    termination?: { kind?: string; count?: number; until?: string };
+  } | null;
 }
 
 export const venueExperiencesKeys = {
