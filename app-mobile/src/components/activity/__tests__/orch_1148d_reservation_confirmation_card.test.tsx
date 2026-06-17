@@ -1,18 +1,21 @@
 // @ts-nocheck
 /* eslint-disable @typescript-eslint/no-require-imports */
 //
-// META-ORCH-1148 2.2d [locked-in confirmation card] — after booking, the
-// reservation must surface in the Calendar tab as a tappable card (like the
-// scheduled-experience cards already there) that, when EXPANDED, shows a
-// prominent "Confirmed — you're locked in" banner + the full confirmation
-// details (when, party, deposit/payment, occasion, confirmation ref, venue),
-// and the data layer must fetch the venue cover/photo so the card matches the
-// scheduled-card look.
+// META-ORCH-1148 2.2f [reservation pass in the existing expanded card] —
+// REWRITE of the 2.2d test. Per Seth, we do NOT reinvent an expanded design in
+// the calendar row. Instead:
+//   • the reservation row is a COMPACT, TAPPABLE card (cover · venue · time ·
+//     party · chips) that calls onPress — it no longer expands in place;
+//   • tapping opens the SAME ExpandedCardModal the app already uses for venues
+//     (its weather / directions / gallery), into which a Confirmed reservation
+//     PASS is injected: a status banner, a check-in QR code, the full details,
+//     and Cancel. That pass lives in ReservationPassSection and is rendered by
+//     ExpandedCardModal when `reservationPass` is provided;
+//   • CalendarTab builds a venue ExpandedCardData + the pass from the tapped
+//     reservation and opens the modal.
 //
-// SOURCE-STRING assertions (the RN row/hook can't mount under the node harness
-// — the established ORCH-1138/1148 consumer pattern). fails-on-revert: each
-// ok(...) flips red if the corresponding fix line is removed. Owner:
-// mingla-implementor.
+// SOURCE-STRING assertions (RN can't mount under node — the established
+// ORCH-1138/1148 consumer pattern). fails-on-revert. Owner: mingla-implementor.
 
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
@@ -34,76 +37,104 @@ const APP = "app-mobile";
 const rowSrc = stripComments(
   read(`${APP}/src/components/activity/ReservationCalendarRow.tsx`),
 );
+const passSrc = stripComments(
+  read(`${APP}/src/components/expandedCard/ReservationPassSection.tsx`),
+);
+const modalSrc = stripComments(
+  read(`${APP}/src/components/ExpandedCardModal.tsx`),
+);
+const calSrc = stripComments(
+  read(`${APP}/src/components/activity/CalendarTab.tsx`),
+);
 const hookSrc = stripComments(read(`${APP}/src/hooks/useMyReservations.ts`));
 
-// ── Data layer — the hook fetches the venue cover/photo + notes ─────────────
+// ── Data layer — hook fetches cover + notes + venue geo/address ──────────────
 ok(
-  "useMyReservations selects the brand cover media + photo + hue",
-  /brands\(name,\s*cover_media_url,\s*cover_media_type,\s*profile_photo_url,\s*cover_hue\)/.test(
+  "useMyReservations selects cover + address + coordinates",
+  /brands\(name,\s*cover_media_url,\s*cover_media_type,\s*profile_photo_url,\s*cover_hue,\s*address,\s*city,\s*lat,\s*lng\)/.test(
     hookSrc,
   ),
-  "expected brands(name, cover_media_url, cover_media_type, profile_photo_url, cover_hue)",
 );
 ok(
-  "MyReservationRow exposes brand cover fields",
-  /brand_cover_url:/.test(hookSrc) &&
-    /brand_cover_type:/.test(hookSrc) &&
-    /brand_photo_url:/.test(hookSrc) &&
-    /brand_cover_hue:/.test(hookSrc),
-);
-ok(
-  "useMyReservations also reads guest_notes",
-  /guest_notes/.test(hookSrc),
+  "MyReservationRow exposes venue address + lat/lng",
+  /brand_address:/.test(hookSrc) &&
+    /brand_lat:/.test(hookSrc) &&
+    /brand_lng:/.test(hookSrc),
 );
 
-// ── Card — expandable like the scheduled cards ──────────────────────────────
+// ── Row — compact + tappable, NOT an in-place expanded card ──────────────────
 ok(
-  "row is expandable (collapsed ↔ expanded state)",
-  /useState\(false\)/.test(rowSrc) && /setExpanded\(\(v\)\s*=>\s*!v\)/.test(rowSrc),
-  "expected an `expanded` toggle on tap",
+  "row is a tappable card that calls onPress (no inline expand)",
+  /onPress:\s*\(reservation/.test(rowSrc) &&
+    /onPress\(reservation\)/.test(rowSrc) &&
+    !/setExpanded/.test(rowSrc),
+  "row should delegate to onPress and not manage its own expanded state",
 );
 ok(
-  "collapsed header shows a venue cover thumbnail (image or hue fallback)",
+  "row keeps the venue cover thumbnail + chips",
   /ImageWithFallback/.test(rowSrc) && /hueColor\(/.test(rowSrc),
 );
+
+// ── ExpandedCardModal — injects the reservation pass (reuse, not reinvent) ────
 ok(
-  "expanded content is gated on `expanded`",
-  /\{expanded\s*&&\s*\(/.test(rowSrc),
+  "modal accepts a reservationPass prop",
+  /reservationPass,/.test(modalSrc) || /reservationPass\b/.test(modalSrc),
+);
+ok(
+  "modal renders ReservationPassSection when a pass is present",
+  /import ReservationPassSection/.test(modalSrc) &&
+    /\{reservationPass\s*&&\s*<ReservationPassSection\s+pass=\{reservationPass\}/.test(
+      modalSrc,
+    ),
 );
 
-// ── The Confirmed banner — the locked-in confirmation ───────────────────────
+// ── ReservationPassSection — banner + QR + full details + cancel ─────────────
 ok(
-  "expanded view renders a Confirmed / locked-in banner",
-  /you're locked in/.test(rowSrc) && /bannerFor\(/.test(rowSrc),
-  "expected the `Confirmed — you're locked in` banner",
+  "pass renders a check-in QR encoding the reservation id",
+  /from "react-native-qrcode-svg"/.test(passSrc) &&
+    /mingla:\/\/reservation\/\$\{pass\.reservationId\}/.test(passSrc),
 );
 ok(
-  "confirmed status maps to the confirmed banner tone",
-  /case "confirmed":[\s\S]*?tone:\s*"confirmed"/.test(rowSrc),
+  "pass renders the Confirmed / locked-in banner",
+  /you're locked in/.test(passSrc) && /bannerFor\(/.test(passSrc),
+);
+ok(
+  "pass shows When / Party / Deposit / Confirmation / Venue",
+  /label="When"/.test(passSrc) &&
+    /label="Party"/.test(passSrc) &&
+    /label="Deposit"/.test(passSrc) &&
+    /label="Confirmation"/.test(passSrc) &&
+    /label="Venue"/.test(passSrc),
+);
+ok(
+  "pass deposit line reflects the paid state",
+  /paymentStatus === "paid"/.test(passSrc) && /deposit · Paid/.test(passSrc),
+);
+ok(
+  "pass exposes a gated Cancel action",
+  /pass\.cancellable\s*&&\s*pass\.onCancel/.test(passSrc) &&
+    /Cancel reservation/.test(passSrc),
 );
 
-// ── Full confirmation details ───────────────────────────────────────────────
+// ── CalendarTab — taps build a venue card + pass and open the modal ──────────
 ok(
-  "expanded view shows When / Party / Deposit / Confirmation / Venue rows",
-  /label="When"/.test(rowSrc) &&
-    /label="Party"/.test(rowSrc) &&
-    /label="Deposit"/.test(rowSrc) &&
-    /label="Confirmation"/.test(rowSrc) &&
-    /label="Venue"/.test(rowSrc),
+  "tapping a reservation opens the modal via handleReservationPress",
+  /handleReservationPress/.test(calSrc) &&
+    /onPress=\{handleReservationPress\}/.test(calSrc),
 );
 ok(
-  "deposit line reflects the paid state",
-  /payment_status === "paid"/.test(rowSrc) && /deposit · Paid/.test(rowSrc),
+  "the venue card carries location (weather) + address (directions)",
+  /location:\s*hasCoords/.test(calSrc) &&
+    /address:\s*reservation\.brand_address/.test(calSrc),
 );
 ok(
-  "a human confirmation reference is derived from the id",
-  /confirmationRef/.test(rowSrc) && /RES-/.test(rowSrc),
+  "the modal is passed the built reservationPass",
+  /reservationPass=\{reservationPassForModal\}/.test(calSrc) &&
+    /setReservationPassForModal\(pass\)/.test(calSrc),
 );
-
-// ── Cancel preserved, gated on upcoming + confirmed/requested ───────────────
 ok(
-  "Cancel action survives and stays gated on cancellable",
-  /isCancellable/.test(rowSrc) && /Cancel reservation/.test(rowSrc),
+  "the pass cancel routes through the existing cancel handler",
+  /handleCancelReservation\(reservation\)/.test(calSrc),
 );
 
 console.log(`\n${passed} assertions passed.`);
