@@ -171,6 +171,7 @@ export const createServerDraft = async (
   // Setting it at draft-promotion realizes SPEC §4.6:401's explicit instruction.
   const eventTypeForInsert: "event" | "rsvp" =
     draft.isRsvp === true ? "rsvp" : "event";
+  // orch-strict-grep-allow events-type-filter — ORCH-1150 D-2: event_type IS written (event|rsvp) via the eventTypeForInsert variable, not unfiltered; the gate only matches string literals in the payload.
   const { data, error } = await supabase
     .from("events")
     .insert({ ...insertPayload, event_type: eventTypeForInsert })
@@ -186,6 +187,7 @@ export const fetchDraftsForBrand = async (
 ): Promise<DraftEvent[]> => {
   // ORCH-0859 REWORK 3 (events-type-filter audit): drafts list.
   // ORCH-1150: include RSVP drafts (DRAFT_EVENT_TYPES) so they don't vanish.
+  // orch-strict-grep-allow events-type-filter — ORCH-1150 D-2: RSVP drafts are included via .in("event_type", ["event","rsvp"]); event_type IS filtered (event+rsvp), not unfiltered.
   const { data, error } = await supabase
     .from("events")
     .select(EVENT_DRAFT_SELECT)
@@ -204,6 +206,7 @@ export const fetchDraftById = async (
 ): Promise<DraftEvent | null> => {
   // ORCH-0859 REWORK 3 (events-type-filter audit): single draft read.
   // ORCH-1150: include RSVP drafts so resume/edit can resolve them.
+  // orch-strict-grep-allow events-type-filter — ORCH-1150 D-2: RSVP drafts are included via .in("event_type", ["event","rsvp"]); event_type IS filtered (event+rsvp), not unfiltered.
   const { data, error } = await supabase
     .from("events")
     .select(EVENT_DRAFT_SELECT)
@@ -228,6 +231,7 @@ const resolveMissingDraftLifecycle = async (
   // ORCH-0859 REWORK 3 (events-type-filter audit): lifecycle check is for
   // event + RSVP drafts (DRAFT_EVENT_TYPES). Trip-draft lifecycle is handled by
   // tripsService. ORCH-1150: RSVP drafts must resolve their lifecycle too.
+  // orch-strict-grep-allow events-type-filter — ORCH-1150 D-2: RSVP drafts are included via .in("event_type", ["event","rsvp"]); event_type IS filtered (event+rsvp), not unfiltered.
   const { data, error } = await supabase
     .from("events")
     .select("status,deleted_at")
@@ -251,6 +255,7 @@ const fetchExistingDraftSaveContext = async (
 ): Promise<ExistingDraftSaveContext> => {
   // ORCH-0859 REWORK 3 (events-type-filter audit): draft save context.
   // ORCH-1150: include RSVP drafts so their autosave can resolve theme/currency.
+  // orch-strict-grep-allow events-type-filter — ORCH-1150 D-2: RSVP drafts are included via .in("event_type", ["event","rsvp"]); event_type IS filtered (event+rsvp), not unfiltered.
   const { data, error } = await supabase
     .from("events")
     .select("theme,currency")
@@ -284,6 +289,7 @@ export const autosaveServerDraft = async (
   // ORCH-0859 REWORK 3 (events-type-filter audit): draft UPDATE must not
   // accidentally write to a trip row that shares an id space.
   // ORCH-1150: include RSVP drafts (DRAFT_EVENT_TYPES) so RSVP autosave persists.
+  // orch-strict-grep-allow events-type-filter — ORCH-1150 D-2: RSVP-draft UPDATE is scoped via .in("event_type", ["event","rsvp"]); event_type IS filtered (event+rsvp), not unfiltered.
   const { data, error } = await supabase
     .from("events")
     .update(updatePayload)

@@ -69,6 +69,7 @@ export function useEventBuyers(
       ? ["marketing", "event-buyers", "type-probe", eventId]
       : ["marketing", "event-buyers", "type-probe"],
     queryFn: async () => {
+      // orch-strict-grep-allow events-type-filter — ORCH-1150 D-8: RSVP audience path; this query READS events.event_type itself (to route RSVP vs ticketed), so an event_type literal filter is intentionally absent.
       const { data, error } = await supabase
         .from("events")
         .select("event_type")

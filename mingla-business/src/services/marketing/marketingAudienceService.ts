@@ -253,6 +253,7 @@ export async function resolveRsvpGuests(
   // to come back empty (a never-blasted brand), in which case no unsubs apply.
   let brandId: string | null = null;
   if (guests.length > 0) {
+    // orch-strict-grep-allow events-type-filter — ORCH-1150 D-8: RSVP blast audience (resolveRsvpGuests) reads event_rsvps for a known rsvp event id; this single-row brand_id lookup is by id on that same RSVP event.
     const { data: eventRow, error: eventErr } = await supabase
       .from("events")
       .select("id, brand_id")
