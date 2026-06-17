@@ -76,6 +76,7 @@ import {
   formatDraftDateLine,
   formatDraftDateSubline,
   formatDraftDatesList,
+  formatEventDoorsTimes,
 } from "../../utils/eventDateDisplay";
 import { isLegacyUnsafeEventCoverVideoUrl } from "../../utils/eventCoverMediaRules";
 import { eventCoverProviderCreditLabel } from "../../types/eventCoverProvider";
@@ -536,6 +537,18 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
     [event.id],
   );
 
+  // ORCH-1157 Issue 4 [doors] — derive the tz-aware doors labels from the live
+  // event's master start/end instants (event_dates). REAL-DATA-ONLY.
+  const rsvpDoors = useMemo(
+    () =>
+      formatEventDoorsTimes(
+        event.masterStartAtUtc ?? null,
+        event.masterEndAtUtc ?? null,
+        event.timezone ?? null,
+      ),
+    [event.masterStartAtUtc, event.masterEndAtUtc, event.timezone],
+  );
+
   if (isRsvp) {
     return (
       <View style={[styles.host, { backgroundColor: palette.page }]}>
@@ -566,6 +579,10 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
             plusOnesMax: event.rsvpPlusOnesMax ?? 0,
             waitlistEnabled: event.rsvpWaitlistEnabled ?? false,
             manualApproval: event.rsvpApprovalMode === "manual",
+            // ORCH-1157 Issue 4 [doors] — start_at/end_at (event_dates) → tz-aware
+            // doors labels. No new field/schema.
+            doorsOpenLabel: rsvpDoors.open,
+            doorsCloseLabel: rsvpDoors.close,
           }}
           isLoggedIn={user !== null}
           muted={muted}

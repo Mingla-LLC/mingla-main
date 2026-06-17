@@ -220,6 +220,35 @@ const formatTimeLabelInTz = (utc: string, tz: string): string | null => {
 };
 
 /**
+ * ORCH-1157 [rsvp-public-redesign] Issue 4 — doors-open / doors-close labels for
+ * the public RSVP page. Seth-locked: events already carry start_at + end_at
+ * (event_dates) → reuse those, NO new field/schema. "Doors open" = start_at,
+ * "Doors close" = end_at, formatted in the event's IANA timezone (reuses the same
+ * tz-aware 12h label the date line uses). REAL-DATA-ONLY: `close` is null when
+ * masterEndAtUtc is absent (no fabricated close — Constitution rule 9).
+ *
+ * Returns `{ open: null, close: null }` when there is no start instant.
+ */
+export const formatEventDoorsTimes = (
+  masterStartAtUtc: string | null | undefined,
+  masterEndAtUtc: string | null | undefined,
+  timezone: string | null | undefined,
+): { open: string | null; close: string | null } => {
+  const tz = timezone !== null && timezone !== undefined && timezone.length > 0
+    ? timezone
+    : "UTC";
+  const open =
+    masterStartAtUtc !== null && masterStartAtUtc !== undefined
+      ? formatTimeLabelInTz(masterStartAtUtc, tz)
+      : null;
+  const close =
+    masterEndAtUtc !== null && masterEndAtUtc !== undefined
+      ? formatTimeLabelInTz(masterEndAtUtc, tz)
+      : null;
+  return { open, close };
+};
+
+/**
  * ORCH-0877 — Single-event date line. Renders one of three forms:
  *   1. Date TBD                              — when date is null
  *   2. "Sat 18 May · 10 PM"                  — when endsAt is null

@@ -73,6 +73,15 @@ export interface RsvpPublicConfig {
   plusOnesMax: number;
   waitlistEnabled: boolean;
   manualApproval: boolean;
+  /**
+   * ORCH-1157 Issue 4 [doors] — Seth-locked: events already carry start_at +
+   * end_at (event_dates); these are the formatted "doors open" (= start_at) and
+   * "doors close" (= end_at) labels in the brand locale/timezone (built by the
+   * adapter via `formatEventDoorsTimes`). REAL-DATA-ONLY: `doorsCloseLabel` is
+   * null when end_at is absent (no fabricated close — Constitution rule 9).
+   */
+  doorsOpenLabel?: string | null;
+  doorsCloseLabel?: string | null;
 }
 
 export interface RsvpPublicBodyProps {
@@ -260,12 +269,34 @@ export const RsvpPublicBody: React.FC<RsvpPublicBodyProps> = ({
   const cityCountry =
     normalizeCityCountry(event.venueName) ??
     normalizeCityCountry(event.address);
+
+  // ORCH-1157 Issue 2 [rsvp-address-privacy] — when the host set "hide address
+  // until purchase" (events.theme→business_event→hideAddressUntilTicket, exposed
+  // anon as public_theme), the public RSVP page MUST hide the exact street: show
+  // the venue NAME + City/Country only. The exact street + the Open-in-maps deep
+  // link are revealed ONLY once the viewer's own RSVP status is GOING or MAYBE
+  // (RSVP has no "ticket purchase" — going/maybe is the reveal gate, Seth-locked).
+  // Anon / unknown / not-yet-RSVP'd (guestStatus === null) → hide. The flag is
+  // read from the anon-safe view (publicEventsService maps public_theme), never
+  // `.from("brands")`. This closes a real leak on live RSVP rows.
+  const addressRevealed =
+    !event.hideAddressUntilTicket ||
+    guestStatus === "going" ||
+    guestStatus === "maybe";
+  // Hidden state shows City/Country only — prefer the address-derived city (the
+  // real city) over the venueName parse so a hidden street collapses to the area.
+  const hiddenAreaLabel =
+    normalizeCityCountry(event.address) ??
+    cityCountry ??
+    "Address shared after you RSVP";
   const venueAddressLabel =
     event.format === "online"
       ? "Online event"
-      : (event.address ?? event.venueName ?? "Location shared on RSVP");
+      : addressRevealed
+        ? (event.address ?? event.venueName ?? "Location shared on RSVP")
+        : hiddenAreaLabel;
   const venueMapsQuery =
-    event.venueName === null
+    !addressRevealed || event.venueName === null
       ? null
       : [event.venueName, event.address].filter(Boolean).join(", ");
   const canOpenVenueMaps =
@@ -274,6 +305,17 @@ export const RsvpPublicBody: React.FC<RsvpPublicBodyProps> = ({
     onOpenMaps !== undefined;
 
   const submitting = phase === "submitting";
+
+  // ORCH-1157 Issue 4 [doors] — "Doors open X · Doors close Y" beneath the date.
+  // Built by the adapter (locale/timezone-aware) into config.doorsOpenLabel /
+  // doorsCloseLabel. REAL-DATA-ONLY: show only the open time if close is null;
+  // render nothing if there is no open time (Constitution rule 9).
+  const doorsLine: string | null =
+    config.doorsOpenLabel !== null && config.doorsOpenLabel !== undefined
+      ? config.doorsCloseLabel !== null && config.doorsCloseLabel !== undefined
+        ? `Doors open ${config.doorsOpenLabel} · Doors close ${config.doorsCloseLabel}`
+        : `Doors open ${config.doorsOpenLabel}`
+      : null;
 
   const goingResolved = guestStatus === "going" && guestApproval === "approved";
   const pendingResolved = guestApproval === "pending";
@@ -502,9 +544,19 @@ export const RsvpPublicBody: React.FC<RsvpPublicBodyProps> = ({
           {event.dateSubline !== null && event.dateSubline.length > 0 ? (
             <View style={[styles.factRow, surface.card]}>
               <Text style={[styles.factGlyph, { color: palette.accent }]}>◴</Text>
-              <Text style={[styles.factText, surface.secondaryText]}>
-                {event.dateSubline}
-              </Text>
+              <View style={styles.factCol}>
+                <Text style={[styles.factText, surface.secondaryText]}>
+                  {event.dateSubline}
+                </Text>
+                {/* ORCH-1157 Issue 4 [doors] — doors open (= start_at) · doors
+                    close (= end_at) beneath the date line. REAL-DATA-ONLY: the
+                    close clause is omitted when end_at is absent. */}
+                {doorsLine !== null ? (
+                  <Text style={[styles.factSub, surface.tertiaryText]}>
+                    {doorsLine}
+                  </Text>
+                ) : null}
+              </View>
             </View>
           ) : null}
           <Venue
@@ -649,7 +701,12 @@ const Venue: React.FC<{
         </Text>
       ) : null}
       <Text style={[styles.factSub, surface.secondaryText]}>
-        {cityCountry ?? venueAddressLabel}
+        {/* ORCH-1157 Issue 2 — `venueAddressLabel` is already address-gated:
+            the exact street when the viewer is going/maybe (or hide=off), else
+            City/Country only. Falls back to cityCountry then the label. */}
+        {venueAddressLabel.length > 0
+          ? venueAddressLabel
+          : (cityCountry ?? venueAddressLabel)}
       </Text>
     </View>
   </Pressable>

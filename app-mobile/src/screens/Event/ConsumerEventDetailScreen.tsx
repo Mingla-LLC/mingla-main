@@ -590,13 +590,25 @@ export default function ConsumerEventDetailScreen({
   const canCollapseAbout =
     aboutText !== null && aboutText.length > ABOUT_COLLAPSE_THRESHOLD;
   const aboutCollapsedNow = canCollapseAbout && aboutCollapsed;
-  const venueAddressLabel = fnd.hideAddressUntilTicket
-    ? "Address shared after ticket purchase"
+  // ORCH-1157 Issue 2 [rsvp-address-privacy] — for an RSVP event there is no
+  // "ticket purchase"; the exact street is revealed once the viewer's own RSVP
+  // status is GOING or MAYBE (Seth-locked), else City/Country only. The ticketed
+  // path keeps its existing purchase gate. Anon / unknown → hide. The flag is the
+  // anon-safe `hideAddressUntilTicket` (theme.business_event), never `.from(...)`.
+  const rsvpAddressRevealed = rsvpStatus === "going" || rsvpStatus === "maybe";
+  const addressHidden = isRsvp
+    ? fnd.hideAddressUntilTicket && !rsvpAddressRevealed
+    : fnd.hideAddressUntilTicket;
+  const addressHiddenLabel = isRsvp
+    ? (cityCountry ?? "Address shared after you RSVP")
+    : "Address shared after ticket purchase";
+  const venueAddressLabel = addressHidden
+    ? addressHiddenLabel
     : fnd.format === "hybrid" && fnd.address !== null
       ? `${fnd.address} · also online`
-      : (fnd.address ?? "Address shared after ticket purchase");
+      : (fnd.address ?? addressHiddenLabel);
   const venueMapsQuery =
-    fnd.hideAddressUntilTicket || fnd.venueName === null
+    addressHidden || fnd.venueName === null
       ? null
       : [fnd.venueName, fnd.address].filter(Boolean).join(", ");
 
@@ -718,6 +730,174 @@ export default function ConsumerEventDetailScreen({
       </View>
     ) : null;
 
+  // ORCH-1157 Issue 1 [rsvp-public-redesign] — structural-parity nodes. The
+  // consumer body is shared by ticketed + RSVP; extracting brand / about / venue
+  // into nodes lets the RSVP branch render them in the SAME section order as the
+  // business/web RsvpPublicBody (brand → momentum → date+doors → venue → about),
+  // while the ticketed path keeps its byte-identical order (brand → about → venue
+  // → tickets). This is the "mirror the shared body" approach (dispatch option b).
+  const brandNode: ReactElement = (
+    <Pressable
+      style={[styles.brandRow, surface.card]}
+      accessibilityRole="button"
+      accessibilityLabel={`View ${fnd.brandName}`}
+      onPress={() => {
+        if (typeof fnd.brandSlug === "string" && fnd.brandSlug.length > 0) {
+          router.push(`/b/${fnd.brandSlug}` as never);
+        }
+      }}
+    >
+      <View
+        style={[
+          styles.brandTile,
+          fnd.brandCoverMediaUrl === null
+            ? { backgroundColor: palette.accent }
+            : null,
+        ]}
+      >
+        {fnd.brandCoverMediaUrl !== null ? (
+          <EventCoverMedia
+            mediaUrl={fnd.brandCoverMediaUrl}
+            mediaType="image"
+            hue={hueFromId(fnd.brandSlug)}
+            label=""
+            radius={999}
+            autoplay
+            playbackActive
+            muted
+            loop
+            height="100%"
+            width="100%"
+          />
+        ) : (
+          <View style={styles.brandInitialWrap}>
+            <Text
+              style={[
+                styles.brandInitial,
+                { color: palette.accentText, fontFamily: boldFamily },
+              ]}
+            >
+              {(fnd.brandName.trim()[0] ?? "•").toUpperCase()}
+            </Text>
+          </View>
+        )}
+      </View>
+      <View style={styles.brandTextCol}>
+        <Text style={[styles.brandKicker, surface.tertiaryText]}>
+          {isRsvp ? "Hosted by" : "Presented by"}
+        </Text>
+        <Text
+          style={[styles.brandName, surface.primaryText, { fontFamily: boldFamily }]}
+        >
+          {fnd.brandName}
+        </Text>
+      </View>
+      <Text style={[styles.brandCta, { color: palette.accent }]}>View</Text>
+    </Pressable>
+  );
+
+  const aboutNode: ReactElement | null =
+    aboutText !== null ? (
+      <View style={styles.section}>
+        <Text
+          style={[styles.secTitle, surface.primaryText, { fontFamily: boldFamily }]}
+        >
+          About
+        </Text>
+        <Text
+          style={[styles.aboutText, surface.secondaryText]}
+          numberOfLines={aboutCollapsedNow ? 3 : undefined}
+          ellipsizeMode="tail"
+        >
+          {aboutText}
+        </Text>
+        {canCollapseAbout ? (
+          <Pressable
+            onPress={toggleAbout}
+            accessibilityRole="button"
+            accessibilityState={{ expanded: !aboutCollapsedNow }}
+            accessibilityLabel={aboutCollapsedNow ? "Read more" : "Show less"}
+            style={styles.aboutToggleRow}
+          >
+            <Text style={[styles.aboutToggleText, { color: palette.accent }]}>
+              {aboutCollapsedNow ? "Read more" : "Show less"}
+            </Text>
+            <Icon
+              name={aboutCollapsedNow ? "chevron-down" : "chevron-up"}
+              size={16}
+              color={palette.accent}
+            />
+          </Pressable>
+        ) : null}
+      </View>
+    ) : null;
+
+  const venueNode: ReactElement | null =
+    fnd.format === "online" ? (
+      <View style={styles.section}>
+        <Text
+          style={[styles.secTitle, surface.primaryText, { fontFamily: boldFamily }]}
+        >
+          Where you&apos;ll be
+        </Text>
+        <View style={[styles.venueCard, surface.card]}>
+          <View style={[styles.venueDisk, { backgroundColor: palette.accent }]}>
+            <Text style={[styles.venueGlyph, { color: palette.accentText }]}>◯</Text>
+          </View>
+          <View style={styles.venueTextCol}>
+            <Text style={[styles.venueName, surface.primaryText, { fontFamily: boldFamily }]}>
+              Online
+            </Text>
+            <Text style={[styles.venueAddr, surface.secondaryText]}>
+              {isRsvp
+                ? "Link shared with confirmed guests."
+                : "Conferencing link shared with ticketed guests."}
+            </Text>
+          </View>
+        </View>
+      </View>
+    ) : fnd.venueName !== null ? (
+      <View style={styles.section}>
+        <Text
+          style={[styles.secTitle, surface.primaryText, { fontFamily: boldFamily }]}
+        >
+          Where you&apos;ll be
+        </Text>
+        <Pressable
+          onPress={() => {
+            if (venueMapsQuery !== null) openMapsForQuery(venueMapsQuery);
+          }}
+          disabled={venueMapsQuery === null}
+          accessibilityRole={venueMapsQuery !== null ? "button" : undefined}
+          accessibilityLabel={
+            venueMapsQuery !== null
+              ? `Open ${fnd.venueName} in maps`
+              : fnd.venueName
+          }
+          style={[styles.venueCard, surface.card]}
+        >
+          <View style={[styles.venueDisk, { backgroundColor: palette.accent }]}>
+            <Text style={[styles.venueGlyph, { color: palette.accentText }]}>⌖</Text>
+          </View>
+          <View style={styles.venueTextCol}>
+            <Text style={[styles.venueName, surface.primaryText, { fontFamily: boldFamily }]}>
+              {fnd.venueName}
+            </Text>
+            <Text style={[styles.venueAddr, surface.secondaryText]}>
+              {venueAddressLabel}
+            </Text>
+          </View>
+          {venueMapsQuery !== null ? (
+            <View style={[styles.venuePill, { backgroundColor: palette.accent }]}>
+              <Text style={[styles.venuePillText, { color: palette.accentText }]}>
+                Open maps
+              </Text>
+            </View>
+          ) : null}
+        </Pressable>
+      </View>
+    ) : null;
+
   return (
     <>
       <BaseBottomSheet
@@ -815,217 +995,85 @@ export default function ConsumerEventDetailScreen({
               ) : null}
             </View>
 
-            {/* ORCH-1157 — Direction-C RSVP momentum unit (kicker + party chips +
-                going-count + meter + faceless anonymous cluster), inline in the
-                body. Renders only for an RSVP card once the anon-view momentum
-                resolves (no fabricated count). The decision lives in the dock. */}
-            {isRsvp ? rsvpMomentumUnit : null}
-
-            {/* brand chip — "Presented by" (anon-safe brand cover/initial).
-                ORCH-1155 [public-brand-page] all-surface parity: tappable
-                Pressable opens the brand page /b/{brandSlug} with a trailing
-                "View" CTA — parity with the web/business event page (onOpenBrand
-                → /b/{slug}) and the trip/experience consumer screens. Guard empty
-                slug (rule 9; no dead tap, Constitution rule 1). */}
-            <Pressable
-              style={[styles.brandRow, surface.card]}
-              accessibilityRole="button"
-              accessibilityLabel={`View ${fnd.brandName}`}
-              onPress={() => {
-                if (
-                  typeof fnd.brandSlug === "string" &&
-                  fnd.brandSlug.length > 0
-                ) {
-                  router.push(`/b/${fnd.brandSlug}` as never);
-                }
-              }}
-            >
-              <View
-                style={[
-                  styles.brandTile,
-                  fnd.brandCoverMediaUrl === null
-                    ? { backgroundColor: palette.accent }
-                    : null,
-                ]}
+            {/* ORCH-1157 Issue 4 [doors] — "Doors open X · Doors close Y" just
+                beneath the date line (Seth-locked, reuses start_at/end_at).
+                REAL-DATA-ONLY: omitted entirely when there is no start time. */}
+            {fnd.doorsLine !== null ? (
+              <Text
+                style={[styles.doorsLine, surface.tertiaryText]}
+                testID="orch-1157-consumer-doors"
               >
-                {fnd.brandCoverMediaUrl !== null ? (
-                  <EventCoverMedia
-                    mediaUrl={fnd.brandCoverMediaUrl}
-                    mediaType="image"
-                    hue={hueFromId(fnd.brandSlug)}
-                    label=""
-                    radius={999}
-                    autoplay
-                    playbackActive
-                    muted
-                    loop
-                    height="100%"
-                    width="100%"
-                  />
-                ) : (
-                  <View style={styles.brandInitialWrap}>
-                    <Text
-                      style={[
-                        styles.brandInitial,
-                        { color: palette.accentText, fontFamily: boldFamily },
-                      ]}
-                    >
-                      {(fnd.brandName.trim()[0] ?? "•").toUpperCase()}
+                {fnd.doorsLine}
+              </Text>
+            ) : null}
+
+            {/* ORCH-1157 Issue 1 [rsvp-public-redesign] — section ORDER. The RSVP
+                branch mirrors the business/web RsvpPublicBody section sequence
+                (host/brand → momentum [kicker+chips+count+meter+faceless cluster]
+                → date+doors already above → venue → about) so the consumer RSVP
+                page is structurally identical to business/web. The ticketed path
+                keeps its byte-identical order (brand → about → venue → tickets).
+                The momentum unit omits when the anon-view count has not resolved
+                (no fabricated count — rule 9); the decision lives in the dock. */}
+            {isRsvp ? (
+              <>
+                {brandNode}
+                {rsvpMomentumUnit}
+                {venueNode}
+                {aboutNode}
+              </>
+            ) : (
+              <>
+                {brandNode}
+                {aboutNode}
+                {venueNode}
+              </>
+            )}
+
+            {/* Tickets — the selectable tier radiogroup.
+                ORCH-1157 Issue 1 [rsvp-public-redesign] — GATED `!isRsvp`. An
+                RSVP event is TICKETLESS: it must NOT render "Choose your ticket"
+                or the "No tickets available yet" empty state (that block was
+                ungated and leaked onto RSVP cards — F-1 structural divergence).
+                RSVP momentum + decision are the body's gravitational center
+                instead (rsvpMomentumUnit above + rsvpDock below). */}
+            {!isRsvp ? (
+              <View style={styles.section}>
+                <Text
+                  style={[styles.secTitle, surface.primaryText, { fontFamily: boldFamily }]}
+                >
+                  Choose your ticket
+                </Text>
+                {tickets.filter((t) => t.visibility !== "hidden").length === 0 ? (
+                  <View style={[styles.venueCard, surface.card]}>
+                    <Text style={[styles.aboutText, surface.secondaryText]}>
+                      No tickets available yet.
                     </Text>
+                  </View>
+                ) : (
+                  <View accessibilityRole="radiogroup" style={styles.tierCol}>
+                    {tickets
+                      .filter((t) => t.visibility !== "hidden")
+                      .sort((a, b) => a.displayOrder - b.displayOrder)
+                      .map((t) => (
+                        <ConsumerTierRow
+                          key={t.id}
+                          ticket={t}
+                          fallbackCurrency={seed.currency}
+                          palette={palette}
+                          surface={surface}
+                          boldFamily={boldFamily}
+                          selected={selectedTicketId === t.id}
+                          onSelect={handleSelectTicket}
+                        />
+                      ))}
                   </View>
                 )}
-              </View>
-              <View style={styles.brandTextCol}>
-                <Text style={[styles.brandKicker, surface.tertiaryText]}>
-                  Presented by
+                <Text style={[styles.reassure, { color: palette.tertiaryText }]}>
+                  All-in price — taxes &amp; fees included, no surprises at checkout.
                 </Text>
-                <Text
-                  style={[styles.brandName, surface.primaryText, { fontFamily: boldFamily }]}
-                >
-                  {fnd.brandName}
-                </Text>
-              </View>
-              <Text style={[styles.brandCta, { color: palette.accent }]}>
-                View
-              </Text>
-            </Pressable>
-
-            {/* About — collapsible (rule 9: only when present) */}
-            {aboutText !== null ? (
-              <View style={styles.section}>
-                <Text
-                  style={[styles.secTitle, surface.primaryText, { fontFamily: boldFamily }]}
-                >
-                  About
-                </Text>
-                <Text
-                  style={[styles.aboutText, surface.secondaryText]}
-                  numberOfLines={aboutCollapsedNow ? 3 : undefined}
-                  ellipsizeMode="tail"
-                >
-                  {aboutText}
-                </Text>
-                {canCollapseAbout ? (
-                  <Pressable
-                    onPress={toggleAbout}
-                    accessibilityRole="button"
-                    accessibilityState={{ expanded: !aboutCollapsedNow }}
-                    accessibilityLabel={aboutCollapsedNow ? "Read more" : "Show less"}
-                    style={styles.aboutToggleRow}
-                  >
-                    <Text style={[styles.aboutToggleText, { color: palette.accent }]}>
-                      {aboutCollapsedNow ? "Read more" : "Show less"}
-                    </Text>
-                    <Icon
-                      name={aboutCollapsedNow ? "chevron-down" : "chevron-up"}
-                      size={16}
-                      color={palette.accent}
-                    />
-                  </Pressable>
-                ) : null}
               </View>
             ) : null}
-
-            {/* Where you'll be — venue card (map OMITTED on consumer, OQ-5) */}
-            {fnd.format === "online" ? (
-              <View style={styles.section}>
-                <Text
-                  style={[styles.secTitle, surface.primaryText, { fontFamily: boldFamily }]}
-                >
-                  Where you&apos;ll be
-                </Text>
-                <View style={[styles.venueCard, surface.card]}>
-                  <View style={[styles.venueDisk, { backgroundColor: palette.accent }]}>
-                    <Text style={[styles.venueGlyph, { color: palette.accentText }]}>◯</Text>
-                  </View>
-                  <View style={styles.venueTextCol}>
-                    <Text style={[styles.venueName, surface.primaryText, { fontFamily: boldFamily }]}>
-                      Online
-                    </Text>
-                    <Text style={[styles.venueAddr, surface.secondaryText]}>
-                      Conferencing link shared with ticketed guests.
-                    </Text>
-                  </View>
-                </View>
-              </View>
-            ) : fnd.venueName !== null ? (
-              <View style={styles.section}>
-                <Text
-                  style={[styles.secTitle, surface.primaryText, { fontFamily: boldFamily }]}
-                >
-                  Where you&apos;ll be
-                </Text>
-                <Pressable
-                  onPress={() => {
-                    if (venueMapsQuery !== null) openMapsForQuery(venueMapsQuery);
-                  }}
-                  disabled={venueMapsQuery === null}
-                  accessibilityRole={venueMapsQuery !== null ? "button" : undefined}
-                  accessibilityLabel={
-                    venueMapsQuery !== null
-                      ? `Open ${fnd.venueName} in maps`
-                      : fnd.venueName
-                  }
-                  style={[styles.venueCard, surface.card]}
-                >
-                  <View style={[styles.venueDisk, { backgroundColor: palette.accent }]}>
-                    <Text style={[styles.venueGlyph, { color: palette.accentText }]}>⌖</Text>
-                  </View>
-                  <View style={styles.venueTextCol}>
-                    <Text style={[styles.venueName, surface.primaryText, { fontFamily: boldFamily }]}>
-                      {fnd.venueName}
-                    </Text>
-                    <Text style={[styles.venueAddr, surface.secondaryText]}>
-                      {venueAddressLabel}
-                    </Text>
-                  </View>
-                  {venueMapsQuery !== null ? (
-                    <View style={[styles.venuePill, { backgroundColor: palette.accent }]}>
-                      <Text style={[styles.venuePillText, { color: palette.accentText }]}>
-                        Open maps
-                      </Text>
-                    </View>
-                  ) : null}
-                </Pressable>
-              </View>
-            ) : null}
-
-            {/* Tickets — the selectable tier radiogroup */}
-            <View style={styles.section}>
-              <Text
-                style={[styles.secTitle, surface.primaryText, { fontFamily: boldFamily }]}
-              >
-                Choose your ticket
-              </Text>
-              {tickets.filter((t) => t.visibility !== "hidden").length === 0 ? (
-                <View style={[styles.venueCard, surface.card]}>
-                  <Text style={[styles.aboutText, surface.secondaryText]}>
-                    No tickets available yet.
-                  </Text>
-                </View>
-              ) : (
-                <View accessibilityRole="radiogroup" style={styles.tierCol}>
-                  {tickets
-                    .filter((t) => t.visibility !== "hidden")
-                    .sort((a, b) => a.displayOrder - b.displayOrder)
-                    .map((t) => (
-                      <ConsumerTierRow
-                        key={t.id}
-                        ticket={t}
-                        fallbackCurrency={seed.currency}
-                        palette={palette}
-                        surface={surface}
-                        boldFamily={boldFamily}
-                        selected={selectedTicketId === t.id}
-                        onSelect={handleSelectTicket}
-                      />
-                    ))}
-                </View>
-              )}
-              <Text style={[styles.reassure, { color: palette.tertiaryText }]}>
-                All-in price — taxes &amp; fees included, no surprises at checkout.
-              </Text>
-            </View>
 
             {/* DOCKED CTA — the LAST scroll child (float→dock language).
                 ORCH-1150 — RSVP cards dock Going/Not-going instead of the cart bar. */}
@@ -1256,6 +1304,8 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
   },
   metaChipText: { fontSize: 13, fontWeight: "600" },
+  // ORCH-1157 Issue 4 [doors] — doors-open/close line beneath the meta chips.
+  doorsLine: { fontSize: 12, fontWeight: "600", marginTop: 8 },
   brandRow: {
     flexDirection: "row",
     alignItems: "center",

@@ -136,3 +136,37 @@ export const formatEventLocalRange = (fields: ConsumerEventTimeFields): string =
     return fields.masterDateUtc ?? "Date to be announced";
   }
 };
+
+/**
+ * ORCH-1157 [rsvp-public-redesign] Issue 4 — consumer doors-open / doors-close
+ * labels for the RSVP detail. Seth-locked: reuse the existing start_at + end_at
+ * (masterDateUtc / masterEndAtUtc), NO new field/schema. "Doors open" = start,
+ * "Doors close" = end, formatted in the event timezone with the same 12h label
+ * `formatEventDateLine` uses. REAL-DATA-ONLY: `close` is null when masterEndAtUtc
+ * is absent (no fabricated close — Constitution rule 9). `open` is null when there
+ * is no valid start instant.
+ */
+export const formatEventDoorsTimes = (
+  fields: ConsumerEventTimeFields,
+): { open: string | null; close: string | null } => {
+  const tz = fields.timezone && fields.timezone.length > 0
+    ? fields.timezone
+    : "UTC";
+  let open: string | null = null;
+  let close: string | null = null;
+  try {
+    if (isValidIso(fields.masterDateUtc)) {
+      open = formatTimeInTz(fields.masterDateUtc as string, tz);
+    }
+  } catch {
+    open = null;
+  }
+  try {
+    if (isValidIso(fields.masterEndAtUtc)) {
+      close = formatTimeInTz(fields.masterEndAtUtc as string, tz);
+    }
+  } catch {
+    close = null;
+  }
+  return { open, close };
+};

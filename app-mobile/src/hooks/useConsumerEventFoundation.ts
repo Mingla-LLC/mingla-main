@@ -20,7 +20,7 @@ import { normalizeCityCountry } from "@mingla/offering-rendering";
 import type { ThemePalette, PublicTicketProps } from "@mingla/event-rendering";
 
 import type { BusinessEventCard } from "../types/mergedDiscover";
-import { formatEventDateLine } from "../utils/eventDateDisplay";
+import { formatEventDateLine, formatEventDoorsTimes } from "../utils/eventDateDisplay";
 
 /** The mapped foundation render inputs for the consumer event body. */
 export interface ConsumerEventFoundationModel {
@@ -32,6 +32,12 @@ export interface ConsumerEventFoundationModel {
   dateLine: string | null;
   /** Recurring/multi-date subline ("+ 3 more dates") — null → omit. */
   dateSubline: string | null;
+  /**
+   * ORCH-1157 Issue 4 [doors] — "Doors open X · Doors close Y" beneath the date.
+   * Seth-locked: reuse start_at/end_at (event_dates), NO new field. REAL-DATA-ONLY
+   * — shows only the open time when end_at is absent; null → omit (rule 9).
+   */
+  doorsLine: string | null;
   /** "N tickets left" / "Sold out" — null → omit (hideRemaining or no finite cap). */
   capacityLabel: string | null;
   /** "City, Country" normalized — null → omit (rule 9). */
@@ -79,6 +85,19 @@ export function mapConsumerEventToFoundation(
     timezone: card.timezone,
   });
 
+  // ORCH-1157 Issue 4 [doors] — tz-aware doors open (start) · doors close (end).
+  const doors = formatEventDoorsTimes({
+    masterDateUtc: card.masterDateUtc,
+    masterEndAtUtc: card.masterEndAtUtc,
+    timezone: card.timezone,
+  });
+  const doorsLine =
+    doors.open !== null
+      ? doors.close !== null
+        ? `Doors open ${doors.open} · Doors close ${doors.close}`
+        : `Doors open ${doors.open}`
+      : null;
+
   // City,Country normalized from city → venue → address (rule 9: null → omit).
   const cityCountry =
     normalizeCityCountry(card.city) ??
@@ -114,6 +133,7 @@ export function mapConsumerEventToFoundation(
     title: card.title,
     dateLine: dateLine.length > 0 ? dateLine : null,
     dateSubline: null,
+    doorsLine,
     capacityLabel,
     cityCountry,
     venueName: card.venueName,

@@ -226,3 +226,117 @@ Append-only check: 5 passed, 0 failed.
 ### Scope
 
 Three files touched (component + two callers) + two test files (one added by tester, one happy-path augmented). No migration, no edge function, no RSVP write path / anon view / ticketed branch touched. Honesty + ticketless constraints unchanged.
+
+---
+
+## Round-2 device-fix pass (2026-06-17)
+
+Device-found follow-up. Three Seth-locked fixes from the cluster investigation
+(`INVESTIGATE_ORCH-1157-CLUSTER_EVENT_PAGE_ISSUES.md`): Issue 1 (consumer RSVP
+structural parity), Issue 2 (RSVP address privacy leak), Issue 4 (doors). Issues
+3 (wizard map) + the standard-event page belong to ORCH-1158 — NOT touched here.
+
+### Issue 1 — consumer RSVP structural parity
+
+**Root cause (F-1):** the consumer RSVP branch reused the ticketed
+`ConsumerEventDetailScreen` body and only swapped in the momentum unit + dock; the
+"Choose your ticket → No tickets available yet" block (the ticket radiogroup) was
+**ungated by `isRsvp`**, so it rendered on RSVP cards, and the section order did
+not match the business/web `RsvpPublicBody`.
+
+**Fix:** (a) wrapped the entire ticket section in `{!isRsvp ? (...) : null}` — it
+no longer renders on an RSVP card; (b) extracted `brandNode` / `aboutNode` /
+`venueNode` and render them in the **RsvpPublicBody section order for RSVP**
+(brand/host → momentum [kicker+chips+count+meter+faceless cluster] → date+doors →
+venue → about), while the ticketed path keeps its byte-identical order (brand →
+about → venue → tickets); (c) the brand chip reads "Hosted by" for RSVP (host-row
+parity) vs "Presented by" for ticketed. The single-decision-row dock + shared
+`RsvpMomentumDecision` (no price/cart) are untouched.
+
+**Parity approach chosen: option (b) — mirror the shared body structure in the
+consumer screen using the shared primitives.** Rationale: `RsvpPublicBody` lives in
+`mingla-business` and cannot be imported by `app-mobile`; a full packages/ extract
+would have to carry the contact-form/RsvpField/web-Head host concerns the consumer
+does not use (logged-in JWT path), a heavier change than the device-fix charter.
+The consumer already consumes the SAME shared `RsvpMomentumDecision` unit, so
+mirroring the section order achieves section-for-section structural parity at low
+risk — the same pattern `ConsumerTripDetailScreen` uses to mirror `TripPreview`.
+
+### Issue 2 — RSVP address privacy leak (URGENT) — CLOSED on all 3 surfaces
+
+**Root cause (F-2):** `RsvpPublicBody.tsx` rendered `event.address` (+ an
+Open-in-maps deep link) with NO `hideAddressUntilTicket` check; the anon
+`business_public_events_view` exposes the flag + street under
+`public_theme.business_event`, so any logged-out viewer of a hide=ON RSVP link saw
+the exact street. (Standard ticketed + consumer ticketed already gated; this was
+RSVP-render-only.)
+
+**Fix (reveal rule — Seth-locked):** hide the exact street UNLESS the viewer's own
+RSVP status is GOING or MAYBE; anon/unknown (`guestStatus`/`rsvpStatus` = null) →
+hide. When hidden, show venue NAME + City/Country only (`normalizeCityCountry` of
+the address — the real city) and null the maps query. When revealed, show the full
+street + maps. Flag read from the anon-safe view (`publicEventsService` maps
+`public_theme`), never `.from("brands")`.
+- `RsvpPublicBody.tsx` (buyer-web + business iOS/Android): `addressRevealed` gate +
+  `hiddenAreaLabel`.
+- `ConsumerEventDetailScreen.tsx` (consumer iOS/Android): `rsvpAddressRevealed`
+  (own rsvp going/maybe) combined with the existing `hideAddressUntilTicket`.
+- Buyer-web inherits the `RsvpPublicBody` fix automatically.
+
+**Two named live events confirmed closing:** live anon-view query (2026-06-17)
+shows "Test Rsvp" + "The Second Test", both `hideAddressUntilTicket=true` with the
+full "700 Corporate Center Drive, Raleigh…" street. Post-fix, an anon viewer sees
+"Raleigh, USA" (venue name + city/country), no street, no maps link. Evidence:
+`Mingla_Artifacts/evidence/ORCH-1157/ROUND2_ADDRESS_LEAK_DB_PROOF.md`.
+
+### Issue 4 — doors (start/end) on the RSVP page
+
+**Root cause:** events already carry `start_at` + `end_at` (`event_dates`,
+exposed as `master_start_at`/`master_end_at` + `timezone`), but no surface rendered
+them as doors. Seth-locked: use those, NO new field/schema.
+
+**Fix:** new `formatEventDoorsTimes` helper in BOTH `eventDateDisplay` utils
+(business + consumer), tz/locale-aware (reuses the existing 12h tz formatters).
+- Business: `PublicEventPage` adapter computes `rsvpDoors` from
+  `event.masterStartAtUtc/EndAtUtc/timezone` → `config.doorsOpenLabel/CloseLabel`;
+  `RsvpPublicBody` renders "Doors open X · Doors close Y" beneath the date fact.
+- Consumer: `useConsumerEventFoundation` builds `doorsLine`; the screen renders it
+  beneath the meta-chip date row (`testID="orch-1157-consumer-doors"`).
+- REAL-DATA-ONLY: open-only form when `end_at` is null; omitted entirely when no
+  start time (Constitution rule 9). The two named events render
+  "Doors open 6:00 PM · Doors close 4:00 AM" (America/New_York, cross-midnight).
+
+### Files changed (Round-2)
+
+- `mingla-business/src/components/event/RsvpPublicBody.tsx` (address gate, doors,
+  config fields)
+- `mingla-business/src/components/event/PublicEventPage.tsx` (rsvpDoors → config)
+- `mingla-business/src/utils/eventDateDisplay.ts` (`formatEventDoorsTimes`)
+- `app-mobile/src/screens/Event/ConsumerEventDetailScreen.tsx` (ticket gate +
+  section-order parity + address gate + doors render + section nodes)
+- `app-mobile/src/hooks/useConsumerEventFoundation.ts` (`doorsLine`)
+- `app-mobile/src/utils/eventDateDisplay.ts` (`formatEventDoorsTimes`)
+- NEW `packages/offering-rendering/__tests__/orch_1157_round2_rsvp_fixes.test.ts`
+  (9 tests across the 3 issues × 3 surfaces)
+
+### Tests + fails-on-revert (Round-2)
+
+- New: `orch_1157_round2_rsvp_fixes.test.ts` — 9 Deno source-contract tests
+  (Issue 1 ticket-gate + section order; Issue 2 RsvpPublicBody + consumer gate;
+  Issue 4 helper + render on both surfaces). All pass.
+- **Fails-on-revert proven by true line-deletion** at HEAD:
+  - Issue 1: delete the `{!isRsvp ? (` ticket gate → ISSUE-1 test FAILED → restored.
+  - Issue 2: delete the `addressRevealed` gate → ISSUE-2 test FAILED → restored.
+  - Issue 4: delete the `doorsLine` computation → ISSUE-4 test FAILED → restored.
+- Regression suite green: 37 Deno (incl. the 28 prior 1157/1150) + the 6-case
+  business `RsvpPublicBody.maybeCta` Jest. tsc clean on all changed files.
+- Append-only gate (`node .github/scripts/test-append-only-check.js`): GREEN
+  (Round-2 adds product code + ONE new test file, zero test-file deletions).
+
+### Verification posture
+
+Source-trace + live-DB (the two named events) + Deno/Jest fails-on-revert.
+**NOT sim-verified this round** — no bracket-free checkout available; dual Metro +
+sim for business-web + consumer-iOS was out of the device-fix budget. Tester should
+capture the consumer RSVP parity + the address-hidden screenshots on a booted
+sim/device → `Mingla_Artifacts/evidence/ORCH-1157/`.
