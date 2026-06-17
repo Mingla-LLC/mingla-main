@@ -70,10 +70,12 @@ const BASELINE_PUBLICATION_TABLES = new Set([
   "pair_requests",
   "pairings",
   "pending_pair_invites",
+  "reservations",
   "session_participants",
   "tag_along_requests",
   "ticket_checkout_sessions",
   "tickets",
+  "venue_waitlist",
 ]);
 
 /**
