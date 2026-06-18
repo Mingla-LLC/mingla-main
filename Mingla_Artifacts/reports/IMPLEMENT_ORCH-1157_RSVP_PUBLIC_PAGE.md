@@ -1013,3 +1013,94 @@ experience; (2) experience page on a 24h-clock device shows per-stop times as
 
 Pure-JS — no migration, no edge function, no write-contract change. OTA-shippable
 (consumer app-mobile + business app per the all-surface parity rule).
+
+---
+
+## Round-9 — wrapInRNModal nav-bar filler (the detail-sheet path)
+
+**Status:** implemented, partially verified (source + gates + fails-on-revert proven;
+on-device confirmation belongs to the orchestrator's Metro hot-reload pass).
+
+### Why Round-8 missed
+Round-8 added the Android see-through nav-bar filler ONLY to the inline
+(non-`wrapInRNModal`) return branch of `BaseBottomSheet`. The consumer deck /
+Discover DETAIL sheets — RSVP / event / trip / experience — all mount via
+`ExpandedCardModal` (`app-mobile/src/components/ExpandedCardModal.tsx:1884-1887`)
+with **`wrapInRNModal={true}`**, which takes the OTHER return branch: the gorhom
+`<BottomSheet>` wrapped in an RN `<Modal statusBarTranslucent>` + `GestureHandlerRootView`.
+That branch `return`ed before reaching the filler render, so the see-through band
+between the sheet body and the OS nav bar still showed on Android (Samsung A72).
+
+### Fix
+`app-mobile/src/components/ui/BaseBottomSheet.tsx`:
+
+1. **Hoisted** the `resolvedBgColor` + `androidNavFiller` computation to a SINGLE
+   definition ABOVE the `if (wrapInRNModal)` branch (was previously defined inside
+   the inline branch only). Both host paths now reuse the identical filler — no
+   duplication.
+2. **wrapInRNModal branch** (the `if (wrapInRNModal) { ... return <RNModal>…`): render
+   `{androidNavFiller}` as a SIBLING of `{sheet}` inside the modal's
+   `GestureHandlerRootView`. The RN `<Modal statusBarTranslucent>` window spans the
+   full screen including the nav-bar region, so the absolute, bottom-anchored,
+   full-width filler (`styles.androidNavFiller`: bottom:0/left:0/right:0, height =
+   `insets.bottom`, `backgroundColor` = the sheet's own resolved bg) paints exactly
+   the nav-bar inset → no see-through.
+3. **Inline branch** (Round-8): unchanged behaviour — still renders the same
+   `{androidNavFiller}` sibling of the bounded inline host at `inlineContainerHeight`.
+   The comment was trimmed; the render is preserved (no regression).
+4. **ORCH-1043 viewport-check gate** (`app-mobile/scripts/ci/orch-1043-sheet-scroll-viewport-check.mjs`,
+   T-06 regex): widened to tolerate the `{androidNavFiller}` sibling after `{sheet}`
+   inside the GHRV. This is a CI gate SCRIPT, not a governed test path
+   (`scripts/ci/`, not `__tests__/` / `.test.*`), so the append-only token is not
+   required for it. The assertion still pins `{sheet}` inside the GHRV.
+
+Properties preserved: Android-only (`Platform.OS === 'android'`); skipped when
+`insets.bottom === 0` (gesture-nav / no nav bar); `pointerEvents="none"` (never
+steals a backdrop tap); iOS untouched (the home-indicator region is already
+painted by the sheet reaching the safe-area). ORCH-1016 viewport invariant intact
+— the filler is a SIBLING, never inside the gorhom-measured container; snap/scroll
+unperturbed.
+
+### Coverage — all deck/Discover detail sheets
+RSVP / event / trip / experience detail all open via `ExpandedCardModal` →
+`<BaseBottomSheet wrapInRNModal … theme={isNightOut?'dark':'light'} backgroundStyle/handleStyle>`,
+so they share THIS host and THIS resolved bg (dark `rgba(12,14,18,1)` for night-out
+events, light `#ffffff` for place/curated/RSVP). One change fixes all four types.
+
+### Branch / lines changed
+- Branch `ORCH-1157-rsvp-public-redesign`.
+- `app-mobile/src/components/ui/BaseBottomSheet.tsx` — hoisted filler def (+~40 lines
+  of shared def/comment above the branch), added `{androidNavFiller}` inside the
+  wrapInRNModal GHRV (+1 render +comment), trimmed the inline-branch duplicate def
+  (−~30 lines). Net the filler is defined ONCE.
+- `app-mobile/scripts/ci/orch-1043-sheet-scroll-viewport-check.mjs` — T-06 regex
+  widened (1 line + comment).
+- `packages/offering-rendering/__tests__/orch_1157_round9_android_gap_wrapinrnmodal.test.ts`
+  — NEW (4 assertions).
+
+### Tests + fails-on-revert
+- NEW: `packages/offering-rendering/__tests__/orch_1157_round9_android_gap_wrapinrnmodal.test.ts`
+  (4 Deno source-contract assertions): filler renders inside the wrapInRNModal RN
+  `<Modal>` branch; filler is a sibling AFTER `{sheet}` (viewport untouched); the
+  filler is defined exactly ONCE above the branch (both paths reuse it); the inline
+  Round-8 path still renders it.
+- **fails-on-revert verified at HEAD `76a6b77fe`**: deleting the `{androidNavFiller}`
+  line inside the wrapInRNModal branch (true line deletion) → 2/4 round-9 assertions
+  FAIL ("`{androidNavFiller}` must render in the wrapInRNModal branch"); restoring →
+  4/4 PASS.
+- Round-8 test (`orch_1157_round8_android_gap_and_stop_time.test.ts`, 7) stays green.
+- Gates: `meta-orch-0991-base-bottom-sheet-sole-consumer.mjs` OK;
+  `i-bottomsheet-inline-scroll-binding.mjs` OK; ORCH-1043 viewport check 10/10 PASS;
+  append-only check 14 passed / 0 failed.
+
+### Discoveries for orchestrator
+- Two STALE `.mjs` source-contract tests under
+  `app-mobile/src/components/ui/__tests__/` predate Round-9 and FAIL on the pristine
+  branch (proven by stashing my change): `BaseBottomSheet.test.mjs` asserts the
+  primitive must NOT pass `animationConfigs`, but ORCH-1064 deliberately ADDED
+  `useBottomSheetTimingConfigs`/`animationConfigs` (the half-open-stall freeze fix) —
+  the test was never updated for that decision; and `BaseBottomSheetRework.test.mjs`
+  reads a now-deleted path `src/components/expandedCard/ExpandedBusinessEventSheet.tsx`
+  (ENOENT). Both are pre-existing on this branch, NOT caused by round-9. Recommend a
+  cleanup ORCH (they need `[TEST-MOD-APPROVED]` to amend, as they are governed test
+  paths).
