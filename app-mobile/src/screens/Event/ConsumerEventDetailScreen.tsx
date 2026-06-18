@@ -1041,16 +1041,23 @@ export default function ConsumerEventDetailScreen({
               ) : null}
             </View>
 
-            {/* ORCH-1157 Issue 4 [doors] — "Doors open X · Doors close Y" just
-                beneath the date line (Seth-locked, reuses start_at/end_at).
+            {/* ORCH-1157 Issue 4 [doors] / Round-7 [doors pill] — doors time in a
+                PILL styled exactly like the date chip above (same metaChip +
+                surface.card + clock icon), placed just beneath the date row.
+                Seth-locked: reuses start_at/end_at; the time itself is now
+                device-locale-aware (12h "1:00 PM" / 24h "13:00") with minutes.
                 REAL-DATA-ONLY: omitted entirely when there is no start time. */}
             {fnd.doorsLine !== null ? (
-              <Text
-                style={[styles.doorsLine, surface.tertiaryText]}
-                testID="orch-1157-consumer-doors"
-              >
-                {fnd.doorsLine}
-              </Text>
+              <View style={styles.doorsChipRow}>
+                <View style={[styles.metaChip, surface.card]} testID="orch-1157-consumer-doors">
+                  <Icon name="time-outline" size={15} color={palette.accent} />
+                  <Text
+                    style={[styles.metaChipText, surface.secondaryText, { fontFamily: boldFamily }]}
+                  >
+                    {fnd.doorsLine}
+                  </Text>
+                </View>
+              </View>
             ) : null}
 
             {/* ORCH-1157 Issue 1 [rsvp-public-redesign] — section ORDER. The RSVP
@@ -1350,8 +1357,9 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
   },
   metaChipText: { fontSize: 13, fontWeight: "600" },
-  // ORCH-1157 Issue 4 [doors] — doors-open/close line beneath the meta chips.
-  doorsLine: { fontSize: 12, fontWeight: "600", marginTop: 8 },
+  // ORCH-1157 Round-7 [doors pill] — doors chip row beneath the meta chips.
+  // Wraps the doors pill (reuses styles.metaChip) so it aligns with the date chip.
+  doorsChipRow: { flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 8 },
   brandRow: {
     flexDirection: "row",
     alignItems: "center",

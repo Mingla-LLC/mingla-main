@@ -142,9 +142,14 @@ Deno.test("ISSUE 2: consumer RSVP reveal follows own rsvp status going/maybe", (
 Deno.test("ISSUE 4: business doors helper reuses start/end (no new field), real-data-only", () => {
   assertStringIncludes(bizDateUtil, "export const formatEventDoorsTimes");
   // close is null when masterEndAtUtc is absent (no fabricated close).
+  // ORCH-1157 Round-7 [TEST-MOD-APPROVED ORCH-1157]: the doors helper now formats
+  // via the device-locale-aware `formatDoorsTimeInTz` (12h/24h respecting the
+  // phone setting, minutes always shown) instead of the forced-12h
+  // `formatTimeLabelInTz` the date line uses. The reuse-start/end + real-data-only
+  // contract is unchanged; only the internal formatter call was retargeted.
   const code = stripComments(bizDateUtil);
   assertStringIncludes(code, "masterEndAtUtc !== null && masterEndAtUtc !== undefined");
-  assertStringIncludes(code, "? formatTimeLabelInTz(masterEndAtUtc, tz)");
+  assertStringIncludes(code, "? formatDoorsTimeInTz(masterEndAtUtc, tz, locale)");
   assertStringIncludes(code, ": null;");
 });
 

@@ -556,14 +556,24 @@ export const RsvpPublicBody: React.FC<RsvpPublicBodyProps> = ({
                 <Text style={[styles.factText, surface.secondaryText]}>
                   {event.dateSubline}
                 </Text>
-                {/* ORCH-1157 Issue 4 [doors] — doors open (= start_at) · doors
-                    close (= end_at) beneath the date line. REAL-DATA-ONLY: the
-                    close clause is omitted when end_at is absent. */}
-                {doorsLine !== null ? (
-                  <Text style={[styles.factSub, surface.tertiaryText]}>
-                    {doorsLine}
-                  </Text>
-                ) : null}
+              </View>
+            </View>
+          ) : null}
+          {/* ORCH-1157 Issue 4 [doors] / Round-7 [doors pill] — doors open
+              (= start_at) · doors close (= end_at) in its OWN pill styled like the
+              date pill (factRow + surface.card + clock glyph), placed just beneath
+              the date. Decoupled from dateSubline so it shows for single-date
+              events too. The time is device-locale-aware (12h "1:00 PM" /
+              24h "13:00") with minutes. REAL-DATA-ONLY: the close clause is
+              omitted when end_at is absent; the whole pill is omitted with no
+              start time. */}
+          {doorsLine !== null ? (
+            <View style={[styles.factRow, surface.card]} testID="orch-1157-rsvp-doors">
+              <Text style={[styles.factGlyph, { color: palette.accent }]}>◷</Text>
+              <View style={styles.factCol}>
+                <Text style={[styles.factText, surface.secondaryText]}>
+                  {doorsLine}
+                </Text>
               </View>
             </View>
           ) : null}
