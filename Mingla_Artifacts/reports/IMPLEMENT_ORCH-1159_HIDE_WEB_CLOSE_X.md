@@ -30,7 +30,7 @@ The dispatch carried the contract inline (no separate SPEC file). Mapped to its 
 | SC-4 | Share button stays on ALL surfaces incl. web | ✓ | Share/Mute never gated; only the close slot is conditional |
 | SC-5 | Close handler logic UNCHANGED | ✓ | no `onClose`/handler edits |
 | SC-6 | No new web-detection helper invented | ✓ | uses the package's existing `Platform.OS === "web"` idiom |
-| SC-7 | Non-public-page consumer (brand page) not regressed | ✓ | brand page does not opt in; test asserts it |
+| SC-7 | Non-public-page consumer (brand page) not regressed | ✓ (SUPERSEDED 2026-06-18) | base impl left brand page un-opted; the §13 scope extension now opts the brand page IN — it is a public page too. The "opt-in mechanism not a blanket gate" guarantee moves to a synthetic NOT-opted predicate case. |
 
 ---
 
@@ -152,3 +152,70 @@ Parity is **automatic** (shared `OfferingChrome` + the predicate). The only manu
 3. **Stale isolation gate:** `mingla-business/src/components/trip/__tests__/offeringRenderingIsolation.orch1138.test.ts` (test 71, "depends only on @mingla/event-rendering + RN + svg") walks `packages/offering-rendering/__tests__/` and FAILS on clean HEAD because the existing ORCH-1157 Deno tests import `https://deno.land/std...` (not in its allow-list). My new Deno test follows the same established convention. The gate should exclude `__tests__/` (test files legitimately import Deno std). Pre-existing; not modified (append-only). Recommend a follow-up to exclude `__tests__/` from that walk.
 
 4. **Acked COMMS-0025 (WARN, OPEN):** ORCH-1117 ask #6 folds the Sound/Mute pill move into the SAME shared chrome region (`PublicEventPage.tsx` close+share row). No file collision — ORCH-1117 edits the `EventCoverMedia` audio-control position and the legacy `packages/event-rendering/PublicEventPage.tsx`; ORCH-1159 edits the shared `OfferingChrome` close button + the FOUNDATION page opt-ins. Disjoint files. Factored in; appended ack.
+
+---
+
+## 13. SCOPE EXTENSION — public BRAND page (Seth 2026-06-18)
+
+**Ask:** the public BRAND page (`packages/brand-rendering/PublicBrandPage.tsx`) is the FIFTH consumer of the same shared chrome (`ParallaxCoverShell` → `OfferingChrome`) and still showed its close "X" on web. Seth wants it hidden on web too, identical to the four offering pages. This REVERSES the base implementation's deliberate "brand page out of scope, keeps its X" decision (original SC-7).
+
+### 13.1 Brand-page change
+
+**File:** `packages/brand-rendering/PublicBrandPage.tsx` — **line 619** (inside the single `<ParallaxCoverShell …>` call that renders the whole brand page).
+
+**Before:**
+```tsx
+      onClose={callbacks.onClose}
+      onShare={callbacks.onShare}
+      heroEyebrow={heroEyebrow}
+```
+**After:**
+```tsx
+      onClose={callbacks.onClose}
+      onShare={callbacks.onShare}
+      hideCloseOnWeb
+      heroEyebrow={heroEyebrow}
+```
+
+Matches the exact idiom the offering pages use (bare-boolean `hideCloseOnWeb` shorthand sitting alongside the preserved Share wiring). `Platform` was already imported in this file (line 31) and `hideCloseOnWeb?: boolean` is already a declared, type-safe prop on `ParallaxCoverShell` (line 128) forwarded to `OfferingChrome` (line 182). Native (iOS/Android) is unchanged — the predicate `shouldRenderCloseButton(true, "ios"|"android")` still returns `true`. Share + Mute on the brand page stay on web (never gated). No edit to `closeButtonVisibility.ts`, `OfferingChrome.tsx`, or `ParallaxCoverShell.tsx` was needed — the opt-in mechanism already existed.
+
+### 13.2 Test cases that flipped
+
+`packages/offering-rendering/__tests__/orch_1159_hide_web_close_x.test.ts`:
+
+- **FLIPPED** — the case formerly titled *"the public BRAND page is OUT of scope — it does NOT opt in (keeps its X on web)"* (asserted `!/hideCloseOnWeb/`) is now *"(scope extension): the public BRAND page opts in — HIDES its X on web"* and asserts the brand page DOES pass `hideCloseOnWeb` and preserves `onShare={callbacks.onShare}`.
+- **BROADENED** — the case formerly *"the 3 public-offering pages … opt in"* is now *"ALL 5 public pages (event ticketed+RSVP, trip, experience, BRAND) opt in"*; the `PublicBrandPage` row (with its `onShare={callbacks.onShare}` share-call check) was added to the table.
+- **ADDED/RETITLED** — the NOT-opted-in mechanism case was retitled to *"a NOT-opted-in caller (hideCloseOnWeb=false) KEEPS the X on every surface"* and now documents that it covers the opt-in mechanism itself (synthetic caller, distinct from the brand page which now opts in). This is the explicit "hypothetical NON-opted caller still keeps its X" coverage the dispatch required.
+- **KEPT INTACT** — the three predicate-level behavioral cases (web hides, iOS keeps, Android keeps) and the two source-contract cases (OfferingChrome gates ONLY close / Share never gated; ParallaxCoverShell forwards the prop).
+
+### 13.3 Pass count
+
+`deno test --allow-read packages/offering-rendering/__tests__/orch_1159_hide_web_close_x.test.ts` → **8 passed | 0 failed** (was 8/8 before; same count — one case flipped, one broadened, none net-added).
+
+### 13.4 Fails-on-revert (brand-page addition specifically)
+
+Committed the fix + test together at **`67fa1a0e4`**. Then TRUE LINE-DELETED the `hideCloseOnWeb` line from `PublicBrandPage.tsx` only (test untouched) and re-ran:
+
+```
+ORCH-1159: ALL 5 public pages (… BRAND) opt in ... FAILED
+  AssertionError: PublicBrandPage (brand) must pass hideCloseOnWeb to ParallaxCoverShell
+ORCH-1159 (scope extension): the public BRAND page opts in — HIDES its X on web ... FAILED
+  AssertionError: PublicBrandPage must pass hideCloseOnWeb (brand page now opts in — Seth 2026-06-18)
+FAILED | 6 passed | 2 failed
+```
+
+Restored the line → **8 passed | 0 failed** again. **fails-on-revert verified at `67fa1a0e4`** (the two brand-page cases fail on deletion of the single brand-page opt-in line; the four offering-page assertions stay green, proving the brand-page coverage is independent).
+
+### 13.5 Gates
+
+- `deno check packages/offering-rendering/closeButtonVisibility.ts packages/offering-rendering/__tests__/orch_1159_hide_web_close_x.test.ts` → clean.
+- `tsc --noEmit -p packages/brand-rendering/tsconfig.json` → no errors referencing `PublicBrandPage` / `hideCloseOnWeb` / `ParallaxCoverShell` (prop is typed `hideCloseOnWeb?: boolean` on the shell).
+- No new strict-grep gate exists for ORCH-1159; the Deno regression is the gate. The pre-existing broad jest baseline / stale isolation gate noted in §12 are unchanged by this extension.
+
+### 13.6 Comms
+
+Acked **COMMS-0037 (WARN, OPEN, to ALL):** the program-level "public experience page → single source of truth" coordination hold. This extension touches public-page CHROME (a single boolean prop on an existing shared `ParallaxCoverShell` call), not the experience read-path or page IA, so it does not conflict with that standardization scope; factored in, no collision.
+
+### 13.7 Cross-surface impact (extension)
+
+The brand page (`PublicBrandPage.tsx`) is the ONE shared renderer for the brand route `/b/{slug}` across buyer-web + business iOS/Android + consumer iOS/Android. Parity is AUTOMATIC (single shared component). Buyer-WEB: X now hidden. Native (business + consumer iOS/Android): UNCHANGED (X still shows). Admin web: not affected (no brand public page). Web ships via Vercel from merged main; native change is pure-JS conditional, OTA-optional (native behavior identical).
