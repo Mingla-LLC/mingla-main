@@ -1510,3 +1510,28 @@ Open any detail sheet (RSVP / event / trip / experience) from Discover: the bott
 48dp nav-bar region must show the sheet's own #0c0e12 background with NO deck
 content peeking through; snap (50/90), scroll, pan-down-dismiss, and hardware-back
 must all still work; iOS visually identical to before.
+
+### Discoveries for Orchestrator (Round-13)
+
+**Stale superseded-contract tests from Rounds 10/11/12.** Three prior-round Deno
+tests under `packages/offering-rendering/__tests__/` assert the EXACT mechanisms
+Round-13 deliberately removed, so they now contradict the proven-correct source:
+- `orch_1157_round11_inline_nav_fill_screen_layer.test.ts` asserts
+  `!includes("Dimensions.get('screen').height")` — Round-13 RE-INTRODUCES that
+  (it is the host-height fix), so this assertion is now FALSE.
+- `orch_1157_round12_inline_navbar_modal_window.test.ts` asserts the inline path
+  contains `androidNeedsFullScreenWindow` + an `<RNModal navigationBarTranslucent>`
+  wrap — Round-13 REMOVED both from the inline path.
+- `orch_1157_round10_android_modal_fullheight.test.ts` (genuine wrapInRNModal
+  branch) still passes — that branch keeps `navigationBarTranslucent`.
+
+These files are NOT wired into any CI job (CI runs only the explicit Stripe Deno
+allowlist in `supabase-migrations-and-stripe-deno.yml` + the strict-grep gates), so
+they do NOT block the merge. But they are now misleading dead contracts. I did NOT
+modify or delete them — append-only (`tests-append-only.yml`) forbids
+modify-with-deletion / delete of an existing test file without a
+`[TEST-MOD-APPROVED ORCH-NNNN]` token, which is itself a new ORCH. RECOMMENDATION:
+at CLOSE, retire `round11`/`round12` (and the now-superseded assertions in
+`round8`/`round9`) under a `[TEST-MOD-APPROVED ORCH-NNNN]` token, OR have the
+tester supersede them, so the repo carries ONE coherent test contract matching the
+Round-13 single-mechanism source.
