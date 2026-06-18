@@ -1412,3 +1412,101 @@ and open an RSVP/event/trip/experience from Discover on the A72: the bottom 48dp
 nav-bar region must show the sheet's own dark bg (`#0c0e12`) with NO Discover deck
 content peeking above/through the nav bar; pan-down-to-dismiss + hardware-back must
 still close the sheet; iOS unchanged.
+
+---
+
+## Round-13 host-to-screen-bottom (iOS-mirroring)
+
+### Approach chosen: OPTION A (host-height), not Option B (wrapper fill)
+
+Round-13 implements the spec's PRIMARY fix — extend the inline detail-sheet host
+to the **physical screen height on Android** so gorhom's own opaque
+`backgroundStyle` (#0c0e12) paints all the way to the true screen bottom, exactly
+like iOS already does over the home-indicator region. Option B (a screen-spanning
+wrapper with a pinned opaque fill) was the fallback and was NOT needed: the
+host-height change does not break the snap math (analysis below), so the cleaner
+single-mechanism approach wins.
+
+**Why this is the true iOS mirror, proven by the [GAPDIAG] numbers (A72):**
+`insTop=30.58, insBot=48, winH=774.76, scrH=853.33, snap=['50%','90%']`. With
+Expo-54 `edgeToEdgeEnabled`, `Dimensions.get('window').height` (774.76dp) EXCLUDES
+the 48dp nav bar while `Dimensions.get('screen').height` (853.33dp) is the true
+physical screen. The inline host was sized to `windowHeight`, so gorhom's opaque
+background (anchored `bottomInset=0`) stopped ~48dp ABOVE the physical bottom and
+the Discover deck showed through that band. iOS has no gap because there
+`window === screen`. Sizing the Android host to `screen.height` removes the gap at
+the geometry root, identically to iOS.
+
+**The change (BaseBottomSheet.tsx):**
+```ts
+const physicalScreenHeight = Dimensions.get('screen').height;
+const baseHostHeight =
+  Platform.OS === 'android' && insets.bottom > 0
+    ? Math.max(physicalScreenHeight, windowHeight)
+    : windowHeight;                       // iOS / gesture-nav UNCHANGED
+const inlineContainerHeight = baseHostHeight + Math.max(0, bottomSheetInset);
+```
+- Android (3-button nav, `insets.bottom > 0`) → physical screen height.
+- iOS / Android gesture-nav (`insets.bottom === 0`, where `screen === window`) →
+  `windowHeight`, byte-identical behaviour to before. `Math.max(screen, window)` is
+  a defensive floor so the host can never end up SHORTER than the window.
+
+### Snap-math confirmation (ORCH-1016 / ORCH-1043 invariants preserved)
+
+The host is still a SINGLE bounded value handed to gorhom (we only swap WHICH bound
+on Android) — the ORCH-1016 viewport invariant ("bound the inline host to a real,
+finite height; never let an ancestor hand gorhom an unbounded/over-tall parent") is
+intact. The snap %s resolve against the slightly-taller host: 90% of ~853 ≈ 768dp
+vs the old 90% of ~775 ≈ 697dp; 50% similarly a touch lower. The sheet simply
+settles a few dp lower and its opaque bg covers the 48dp band — that IS the fix.
+Content never hides behind the nav bar because the existing
+`safeBottomInset = Math.max(insets.bottom, 16)` paddingBottom (applied to
+scroll/list/footer content via `withBottomInset` / `withFooterClearance`) still
+clears the nav region. ORCH-1043 (scrollable is a direct child of `<BottomSheet>`)
+body composition is untouched. Gate proof:
+- `i-bottomsheet-inline-scroll-binding.mjs` → OK (scrollable still a direct child).
+- `orch-1043-sheet-scroll-viewport-check.mjs` → PASSED 10/10.
+- `meta-orch-0991-base-bottom-sheet-sole-consumer.mjs` → OK (sole gorhom importer).
+- `tsc --noEmit` → no BaseBottomSheet errors (pre-existing `packages/phone-input`
+  module-resolution errors are unrelated).
+
+### What happened to Round-12's RN-Modal wrap
+
+REMOVED. Round-12 hosted the INLINE detail sheet inside a full-screen
+`<RNModal statusBarTranslucent navigationBarTranslucent>` — it did not fix the band
+on the A72 and added a separate native window (with its own Toast-z-stacking
+tradeoff). The host-height fix supersedes it, so the inline path now returns the
+**bare `inlineHost` on all platforms** (`return inlineHost;`). Also removed as dead
+code: the `androidNeedsFullScreenWindow` gate, the `androidNavFiller` filler View
+const + its JSX usages + its `styles.androidNavFiller` entry + the unused
+`resolvedBgColor` derivation (Rounds 8/9/12). The genuine `wrapInRNModal` branch
+(for sheets z-stacking over the in-tree tab bar / chat input — NOT the detail
+sheets) KEEPS `navigationBarTranslucent` (geometry-correct full-screen window,
+iOS no-op) but its now-superseded `androidNavFiller` sibling was removed too. Net
+result: ONE clean mechanism (host reaches screen bottom), no layered dead attempts.
+Rounds 1–8 content fixes (address privacy, caption, doors pill, locale-aware time,
+parity) are all left intact.
+
+### Regression test + fails-on-revert
+
+New: `app-mobile/src/components/ui/__tests__/orch_1157_round13_android_host_screen_bottom.test.mjs`
+(source-structural, same approach as `BaseBottomSheet.test.mjs` — the gorhom host
+is not mountable in this harness). 4 assertions, all PASS:
+- T-1 Android inline host derives from `Dimensions.get('screen').height` and feeds
+  `inlineContainerHeight`.
+- T-2 the host-height is Android(+nav-bar)-gated and iOS keeps `windowHeight`.
+- T-3 the inline detail sheet returns the bare `inlineHost` (Round-12 RN-Modal wrap
+  + `androidNeedsFullScreenWindow` gone).
+- T-4 the superseded `androidNavFiller` is fully removed.
+
+**fails-on-revert verified** by TRUE LINE DELETION of the fix (replacing the
+host-height block with `const inlineContainerHeight = windowHeight + Math.max(0, bottomSheetInset);`):
+T-1 + T-2 FAIL, suite exits 1. Restoring the fix → 4/4 PASS, exit 0. Append-only:
+new test file added; no existing test modified or deleted.
+
+### On-device acceptance (orchestrator-owned, Metro 8083 → A72)
+
+Open any detail sheet (RSVP / event / trip / experience) from Discover: the bottom
+48dp nav-bar region must show the sheet's own #0c0e12 background with NO deck
+content peeking through; snap (50/90), scroll, pan-down-dismiss, and hardware-back
+must all still work; iOS visually identical to before.
