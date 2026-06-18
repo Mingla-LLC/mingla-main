@@ -33,7 +33,9 @@ import React, {
 import {
   AccessibilityInfo,
   BackHandler,
+  Dimensions,
   Modal as RNModal,
+  Platform,
   StyleSheet,
   View,
   useWindowDimensions,
@@ -455,7 +457,42 @@ function BaseBottomSheetComponent(props: BaseBottomSheetProps): React.ReactEleme
   // the scroll body above it only needs footer clearance — see the sticky branch.
   const tabBarExtra = tabBarAware ? BOTTOM_NAV_CONTENT_HEIGHT : 0;
   const bottomInset = safeBottomInset + tabBarExtra;
-  const inlineContainerHeight = windowHeight + Math.max(0, bottomSheetInset);
+  // ORCH-1157 Round-13 [android-sheet-gap] — HOST REACHES THE PHYSICAL SCREEN
+  // BOTTOM ON ANDROID (the iOS mirror). SUPERSEDES Rounds 8–12 (every in-tree
+  // filler AND the Round-12 full-screen RN-Modal wrap, all proven to leave the
+  // band on a Samsung A72).
+  //
+  // ROOT CAUSE (on-device [GAPDIAG], A72): with Expo-54 `edgeToEdgeEnabled`,
+  // `Dimensions.get('window').height` (≈774.76dp) EXCLUDES the 48dp system
+  // navigation bar, while `Dimensions.get('screen').height` (≈853.33dp) is the
+  // true physical screen. The inline detail-sheet host was sized to the WINDOW
+  // height, so gorhom's opaque `backgroundStyle` (#0c0e12) — which paints the
+  // sheet body down to the host bottom — stopped ~48dp ABOVE the physical bottom,
+  // and the Discover deck behind showed through that nav-bar strip.
+  //
+  // iOS has NO such gap because there `window` already spans to the true bottom,
+  // so the sheet's own opaque background covers the home-indicator region.
+  //
+  // FIX (mirror iOS): on ANDROID, size the inline host to the PHYSICAL SCREEN
+  // height so it reaches the true bottom. gorhom (anchored `bottomInset=0`) then
+  // paints its opaque background all the way down over the nav-bar region — the
+  // same way iOS already covers the home indicator. iOS keeps `windowHeight`
+  // (already correct — do NOT change it). The CONTENT stays clear of the nav bar
+  // via the existing `safeBottomInset` paddingBottom (= max(insets.bottom, 16)),
+  // applied to scroll/list/footer content, so the slightly-taller host only makes
+  // the sheet PAINT lower (covering the band); no CTA hides behind the nav bar.
+  // The 50%/90% snap %s resolve against this taller host (90% of ~853 ≈ 768dp vs
+  // the old 90% of ~775 ≈ 697dp): the sheet simply settles a touch lower and its
+  // bg covers the band — gorhom's snap/scroll math is otherwise unchanged
+  // (ORCH-1016/1043 viewport invariant: the host is still a single bounded value;
+  // we only swap WHICH bound on Android). Gesture-nav / no nav bar
+  // (`insets.bottom === 0`): `screen` === `window`, so this is a no-op there.
+  const physicalScreenHeight = Dimensions.get('screen').height;
+  const baseHostHeight =
+    Platform.OS === 'android' && insets.bottom > 0
+      ? Math.max(physicalScreenHeight, windowHeight)
+      : windowHeight;
+  const inlineContainerHeight = baseHostHeight + Math.max(0, bottomSheetInset);
 
   // Merge `bottomInset` into a consumer's contentContainerStyle as paddingBottom,
   // taking the MAX with any value the consumer already set (never reduce).
@@ -735,6 +772,14 @@ function BaseBottomSheetComponent(props: BaseBottomSheetProps): React.ReactEleme
     </BottomSheet>
   );
 
+  // ORCH-1157 Round-13 [android-sheet-gap]: the in-tree `androidNavFiller`
+  // (Rounds 8–9) and the full-screen RN-Modal wrap of the INLINE sheet (Round-12)
+  // are REMOVED. The host-to-physical-screen-bottom fix above (mirroring iOS) is
+  // the single, clean mechanism: gorhom's own opaque `backgroundStyle` now paints
+  // over the nav-bar band because the host reaches the true screen bottom. No
+  // separate filler View and no extra native window are needed for the inline
+  // detail sheets, which is the actual host the deck/Discover detail sheets use.
+
   if (wrapInRNModal) {
     // ORCH-0908 z-stack: RN <Modal> hosts a separate OS overlay window so the
     // sheet lifts above the custom in-tree tab bar / chat input. RN Modal also
@@ -750,6 +795,20 @@ function BaseBottomSheetComponent(props: BaseBottomSheetProps): React.ReactEleme
     // Modals, you need to wrap Modal's content with GestureHandlerRootView";
     // iOS evaluates GHRV as a plain View, Android requires it for touch
     // registration — exactly the observed iOS-fragile / Android-dead asymmetry.)
+    //
+    // ORCH-1157 Round-10/Round-13 [android-sheet-gap] — geometry for GENUINE
+    // wrapInRNModal sheets (those z-stacking over the in-tree tab bar / chat
+    // input; NOT the deck/Discover detail sheets, which use the INLINE host
+    // below). `navigationBarTranslucent` (RN ≥0.76, present on 0.81.5; REQUIRES
+    // `statusBarTranslucent`, already set) makes the Android Modal window draw
+    // under the NAVIGATION bar, so the GHRV + gorhom container measure the TRUE
+    // full physical screen height and the sheet's opaque bg reaches the real
+    // screen bottom — no see-through band. iOS evaluates the prop as a no-op (its
+    // Modal already spans the home-indicator region), so iOS is UNCHANGED. The
+    // body's own `withBottomInset` paddingBottom keeps the CTA clear of the
+    // overlapped nav bar. Round-13 removed the now-superseded `androidNavFiller`
+    // sibling: the full-screen window already lets gorhom's own background paint
+    // the band, so a separate filler View is dead code.
     return (
       <RNModal
         visible={visible}
@@ -757,6 +816,7 @@ function BaseBottomSheetComponent(props: BaseBottomSheetProps): React.ReactEleme
         animationType="none"
         onRequestClose={onClose}
         statusBarTranslucent
+        navigationBarTranslucent
       >
         <GestureHandlerRootView style={styles.flexContainer}>
           {sheet}
@@ -777,7 +837,15 @@ function BaseBottomSheetComponent(props: BaseBottomSheetProps): React.ReactEleme
   // applies that inset as `bottom`, so the measured container remains exactly
   // the real window while the nav-overlay clearance still feeds snap math.
   if (!visible) return sheet;
-  return (
+
+  // The bounded inline host (ORCH-1016 viewport invariant) — gorhom measures
+  // EXACTLY `inlineContainerHeight`. On iOS / gesture-nav that is
+  // `windowHeight + nav-overlay clearance`; on Android edge-to-edge with a
+  // 3-button nav bar it is the PHYSICAL SCREEN height (Round-13) so the sheet's
+  // own opaque background reaches the true screen bottom and paints over the
+  // nav-bar band — the iOS mirror. Snap/scroll math is unchanged: it is still a
+  // single bounded host value (we only swap WHICH bound on Android).
+  const inlineHost = (
     <View
       style={[styles.inlineContainer, { height: inlineContainerHeight }]}
       pointerEvents="box-none"
@@ -786,6 +854,13 @@ function BaseBottomSheetComponent(props: BaseBottomSheetProps): React.ReactEleme
       {sheet}
     </View>
   );
+
+  // ORCH-1157 Round-13 [android-sheet-gap]: the inline detail sheet is rendered
+  // as the bare host on ALL platforms. The Round-12 Android full-screen RN-Modal
+  // wrap is REMOVED — extending the host to the physical screen bottom (above)
+  // lets gorhom's own opaque background fill the nav-bar band, so no separate
+  // native window or filler View is needed. iOS / gesture-nav are unchanged.
+  return inlineHost;
 }
 
 // ── center-dialog body (SPEC §5.4 / DESIGN §5) ───────────────────────────────
@@ -887,6 +962,9 @@ const styles = StyleSheet.create({
     zIndex: 100,
     elevation: 100,
   },
+  // ORCH-1157 Round-13 [android-sheet-gap]: the `androidNavFiller` style (Rounds
+  // 8/12) is REMOVED — the host now reaches the physical screen bottom on Android,
+  // so gorhom's own opaque background paints the nav-bar band; no filler View.
   // ORCH-1043: `stickyContainer` + `sectionListContainer` removed — they styled
   // the BottomSheetView wrappers the sticky/sectionlist branches no longer use
   // (the scrollable is now a direct child of <BottomSheet>). `stickyBody` and

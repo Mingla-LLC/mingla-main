@@ -12,11 +12,31 @@ export type BusinessEventFormatDraft = "in_person" | "online" | "hybrid";
 export type BusinessEventFormatShared = "in-person" | "online" | "hybrid";
 
 export function extractVenueName(theme: unknown): string | null {
+  // ORCH-1157 Round-5 [rsvp-address-privacy] — the venue NAME must resolve to
+  // JUST the name (e.g. "The Party Venue"), never the full "name · street"
+  // string. The publish path stores the venue name at
+  // `theme.business_event.location.venueName` (verified: 16/16 live business
+  // events — RSVP and ticketed alike — carry it there, ZERO carry a top-level
+  // `business_event.venueName`). The ORCH-0846 reading of the TOP-LEVEL key
+  // therefore returned null for every event and `mapRpcRowToCard` fell back to
+  // `row.location_text` (the full street) AS the venueName — so the consumer
+  // RSVP detail's venue-NAME line leaked the street even with the address gate
+  // ON (the gate only masks the `address` field, never the name line).
+  // Read top-level FIRST (forward-compat with any future top-level writer),
+  // then the canonical nested `location.venueName`. Falling back to
+  // `location_text` stays in `mapRpcRowToCard` as the last resort.
   if (theme && typeof theme === "object") {
     const be = (theme as Record<string, unknown>).business_event;
     if (be && typeof be === "object") {
-      const v = (be as Record<string, unknown>).venueName;
-      if (typeof v === "string" && v.trim().length > 0) return v;
+      const top = (be as Record<string, unknown>).venueName;
+      if (typeof top === "string" && top.trim().length > 0) return top;
+      const loc = (be as Record<string, unknown>).location;
+      if (loc && typeof loc === "object") {
+        const nested = (loc as Record<string, unknown>).venueName;
+        if (typeof nested === "string" && nested.trim().length > 0) {
+          return nested;
+        }
+      }
     }
   }
   return null;

@@ -57,7 +57,7 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import * as Haptics from "expo-haptics";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 
 import {
   boldFontFamily,
@@ -66,14 +66,17 @@ import {
   EventCoverMedia,
   offeringSurfaceStyles,
   resolveOfferingCta,
+  resolveRsvpCta,
   resolveTheme,
   ThemeEntranceAnimation,
   type CtaState,
   type PublicEventProps,
   type PublicTicketProps,
+  type RsvpCtaState,
 } from "@mingla/event-rendering";
 import {
   OfferingChrome,
+  RsvpMomentumDecision,
   normalizeCityCountry,
   useResponsiveLayout,
 } from "@mingla/offering-rendering";
@@ -87,7 +90,10 @@ import TicketCartSheet, {
   type TicketCartCheckoutPayload,
 } from "../../components/expandedCard/TicketCartSheet";
 import { ConsumerEventReserveBar } from "../../components/offering/ConsumerEventReserveBar";
-import { submitDeckRsvp } from "../../services/rsvpDeckService";
+import {
+  fetchRsvpMomentum,
+  submitDeckRsvp,
+} from "../../services/rsvpDeckService";
 import { useConsumerThemeFont } from "../../theme/useConsumerThemeFont";
 import { usePublicEventTickets } from "../../hooks/usePublicEventTickets";
 import { useTripIntakeSchemas } from "../../hooks/useTripIntakeSchemas";
@@ -158,6 +164,9 @@ const cardToPublicEvent = (
   coverCredit: null,
   tickets,
   currency: card.currency,
+  // ORCH-1157 [rsvp-public-redesign] — the deck seed carries canonical party
+  // types; pass them so the RSVP momentum unit + the CTA machine see one shape.
+  partyTypes: card.partyTypes ?? [],
 });
 
 const openMapsForQuery = (query: string): void => {
@@ -202,8 +211,13 @@ export default function ConsumerEventDetailScreen({
   // public-submit-rsvp edge fn (logged-in path). NO cart, NO checkout.
   const isRsvp = seed?.eventType === "rsvp";
   const [rsvpInFlight, setRsvpInFlight] = useState<boolean>(false);
-  const [rsvpResolved, setRsvpResolved] = useState<
-    "going" | "not_going" | "waitlisted" | "pending" | null
+  // ORCH-1157 [rsvp-public-redesign] — the guest's resolved own RSVP state, kept
+  // in the shape the shared RsvpMomentumDecision reads (status + approval).
+  const [rsvpStatus, setRsvpStatus] = useState<
+    "going" | "not_going" | "waitlisted" | "maybe" | null
+  >(null);
+  const [rsvpApproval, setRsvpApproval] = useState<
+    "pending" | "approved" | null
   >(null);
 
   // float→dock CTA visibility tracking (mirror the trip screen 1:1).
@@ -228,6 +242,20 @@ export default function ConsumerEventDetailScreen({
   const intakeSchemasQuery = useTripIntakeSchemas(eventId);
   const themeQuery = useEventTheme(seed);
   const runNativeCheckout = useNativeCheckoutFlow();
+
+  // ORCH-1157 [rsvp-public-redesign] OQ-1 (option a) — fetch the live RSVP
+  // momentum (going-count + capacity + waitlist/approval) from the SAME anon-safe
+  // business_public_events_view the buyer-web page reads, since the deck seed does
+  // not carry these (F-6). NO migration / RPC widen (avoids COMMS-0002). Only
+  // enabled for an RSVP card. On a missing row the momentum unit is omitted (the
+  // decision + chips still render — honest, no fabricated count).
+  const rsvpMomentumQuery = useQuery({
+    queryKey: ["rsvpMomentum", eventId],
+    enabled: isRsvp && eventId !== null,
+    staleTime: 60 * 1000,
+    queryFn: () => fetchRsvpMomentum(eventId as string),
+  });
+  const rsvpMomentum = rsvpMomentumQuery.data ?? null;
 
   const theme = themeQuery.data ?? resolveTheme(null, null);
   const palette = useMemo(() => createThemePalette(theme), [theme]);
@@ -319,8 +347,12 @@ export default function ConsumerEventDetailScreen({
   // signed-in user's JWT rides the supabase client → the edge fn resolves
   // user_id (no contact form needed). Reflects the resolved state + toasts; on
   // error never dead-ends.
+  // ORCH-1157 — Going / Maybe / Not-going write. "maybe" is NEW on consumer
+  // (parity with the shared RsvpPublicBody since ORCH-1150 R2). The signed-in
+  // user's JWT rides the supabase client → the edge fn resolves user_id (no
+  // contact form). Reflects the resolved state + toasts; never dead-ends.
   const handleRsvp = useCallback(
-    async (rsvpStatus: "going" | "not_going"): Promise<void> => {
+    async (next: "going" | "not_going" | "maybe"): Promise<void> => {
       if (rsvpInFlight || seed === null) return;
       if (user === null) {
         toastManager.show("Sign in to RSVP.", "warning");
@@ -329,22 +361,25 @@ export default function ConsumerEventDetailScreen({
       void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
       setRsvpInFlight(true);
       try {
-        const result = await submitDeckRsvp(seed.eventId, rsvpStatus);
-        const resolved =
-          result.approvalStatus === "pending"
-            ? "pending"
-            : result.status;
-        setRsvpResolved(resolved);
+        const result = await submitDeckRsvp(seed.eventId, next);
+        setRsvpStatus(result.status);
+        setRsvpApproval(result.approvalStatus);
         toastManager.show(
-          resolved === "going"
-            ? "You're going!"
-            : resolved === "waitlisted"
-              ? "You're on the waitlist — we'll let you know if a spot opens."
-              : resolved === "pending"
-                ? "RSVP sent — awaiting host approval."
-                : "Got it — you're marked as not going.",
+          result.approvalStatus === "pending"
+            ? "RSVP sent — awaiting host approval."
+            : result.status === "going"
+              ? "You're going!"
+              : result.status === "waitlisted"
+                ? "You're on the waitlist — we'll let you know if a spot opens."
+                : result.status === "maybe"
+                  ? "Marked as Maybe — we'll keep you posted."
+                  : "Got it — you're marked as not going.",
           "success",
         );
+        // Refresh the live going-count after a successful own-submit.
+        void queryClient.invalidateQueries({
+          queryKey: ["rsvpMomentum", seed.eventId],
+        });
       } catch (err) {
         const code = err instanceof Error ? err.message : "";
         toastManager.show(
@@ -359,7 +394,7 @@ export default function ConsumerEventDetailScreen({
         setRsvpInFlight(false);
       }
     },
-    [rsvpInFlight, seed, user],
+    [rsvpInFlight, seed, user, queryClient],
   );
 
   // handleBuy ported VERBATIM (behavior) from EBES handleBuy — same buyer
@@ -555,13 +590,54 @@ export default function ConsumerEventDetailScreen({
   const canCollapseAbout =
     aboutText !== null && aboutText.length > ABOUT_COLLAPSE_THRESHOLD;
   const aboutCollapsedNow = canCollapseAbout && aboutCollapsed;
-  const venueAddressLabel = fnd.hideAddressUntilTicket
-    ? "Address shared after ticket purchase"
+  // ORCH-1157 Issue 2 [rsvp-address-privacy] — for an RSVP event there is no
+  // "ticket purchase"; the exact street is revealed once the viewer's own RSVP
+  // status is GOING or MAYBE (Seth-locked), else City/Country only. The ticketed
+  // path keeps its existing purchase gate. Anon / unknown → hide. The flag is the
+  // anon-safe `hideAddressUntilTicket` (theme.business_event), never `.from(...)`.
+  const rsvpAddressRevealed = rsvpStatus === "going" || rsvpStatus === "maybe";
+  const addressHidden = isRsvp
+    ? fnd.hideAddressUntilTicket && !rsvpAddressRevealed
+    : fnd.hideAddressUntilTicket;
+  const addressHiddenLabel = isRsvp
+    ? (cityCountry ?? "Address shared after you RSVP")
+    : "Address shared after ticket purchase";
+  // ORCH-1157 Round-6 [rsvp-public-redesign] — when the exact street is HIDDEN,
+  // show a short caption UNDER the city explaining HOW to unlock it (the city
+  // alone left users guessing). Condition-aware: RSVP unlocks on going/maybe,
+  // ticketed unlocks on purchase. Static helper text (not fabricated data); it
+  // renders ONLY while `addressHidden` is true (suppressed once revealed).
+  const addressUnlockCaption: string | null = addressHidden
+    ? isRsvp
+      ? "Full address shared once you're going"
+      : "Full address shared after you get tickets"
+    : null;
+  const venueAddressLabel = addressHidden
+    ? addressHiddenLabel
     : fnd.format === "hybrid" && fnd.address !== null
       ? `${fnd.address} · also online`
-      : (fnd.address ?? "Address shared after ticket purchase");
+      : (fnd.address ?? addressHiddenLabel);
+  // ORCH-1157 Round-5 [rsvp-address-privacy] — defense-in-depth for the venue
+  // NAME line. The address gate only masks `venueAddressLabel`; the name line
+  // renders `fnd.venueName`. If a row reaches here with the full street folded
+  // into the venueName (the legacy `location_text` fallback, e.g.
+  // "The Party Venue · 700 Corporate Center Drive…"), the name line would leak
+  // the street even with the gate ON. When the address is hidden, never render a
+  // name that still contains the street: take the portion before the canonical
+  // " · " name/address separator, and if the remainder still contains the full
+  // address, drop to the venue name only / null so the street can never paint.
+  const venueNameDisplay: string | null = (() => {
+    if (fnd.venueName === null) return null;
+    if (!addressHidden) return fnd.venueName;
+    const namePart = fnd.venueName.split(" · ")[0]?.trim() ?? fnd.venueName;
+    if (fnd.address !== null && namePart.includes(fnd.address)) {
+      // Even the leading segment carries the street — suppress it entirely.
+      return null;
+    }
+    return namePart.length > 0 ? namePart : null;
+  })();
   const venueMapsQuery =
-    fnd.hideAddressUntilTicket || fnd.venueName === null
+    addressHidden || fnd.venueName === null
       ? null
       : [fnd.venueName, fnd.address].filter(Boolean).join(", ");
 
@@ -599,62 +675,274 @@ export default function ConsumerEventDetailScreen({
     />
   ) : null;
 
-  // ORCH-1150 — the RSVP Going/Not-going dock (replaces the cart bar when the
-  // card is a discoverable RSVP). No price, no cart — writes via handleRsvp.
-  const rsvpGoingActive = rsvpResolved === "going";
+  // ORCH-1157 [rsvp-public-redesign] — the Direction-C Going / Maybe / Can't
+  // decision dock (replaces the old 2-button hand-rolled dock; Maybe is NEW on
+  // consumer). Built on the SHARED RsvpMomentumDecision in floating-dock mode so
+  // it stays byte-parity with the buyer-web / business RsvpPublicBody. No price,
+  // no cart, no checkout — writes via handleRsvp → submitDeckRsvp. The momentum
+  // unit + chips render INLINE in the body (rsvpMomentumUnit below); the dock is
+  // the decision only. testIDs preserve the ORCH-1150 deck contract.
+  const rsvpCtaState: RsvpCtaState = resolveRsvpCta({
+    capacityFull:
+      rsvpMomentum !== null &&
+      rsvpMomentum.capacity !== null &&
+      rsvpMomentum.goingCount >= rsvpMomentum.capacity,
+    waitlistEnabled: rsvpMomentum?.waitlistEnabled ?? false,
+    manualApproval: rsvpMomentum?.manualApproval ?? false,
+    guestStatus: rsvpStatus,
+    guestApproval: rsvpApproval,
+  }).state;
+
   const rsvpDock: ReactElement = (
     <View
       style={[rsvpStyles.dock, { paddingBottom: insets.bottom + 8 }]}
       onLayout={handleDockLayout}
     >
-      {rsvpResolved === "pending" ? (
-        <Text style={[rsvpStyles.resolvedNote, { color: palette.secondaryText }]}>
-          Awaiting host approval — we'll let you know.
-        </Text>
-      ) : rsvpResolved === "waitlisted" ? (
-        <Text style={[rsvpStyles.resolvedNote, { color: palette.secondaryText }]}>
-          You're on the waitlist.
-        </Text>
-      ) : null}
-      <View style={rsvpStyles.row}>
-        <Pressable
-          onPress={() => void handleRsvp("going")}
-          disabled={rsvpInFlight || rsvpGoingActive}
-          accessibilityRole="button"
-          accessibilityLabel={rsvpGoingActive ? "You're going" : "Going"}
-          style={[
-            rsvpStyles.goingBtn,
-            { backgroundColor: rsvpGoingActive ? palette.card : palette.accent },
-          ]}
-          testID="orch-1150-deck-rsvp-going"
-        >
-          <Text
-            style={[
-              rsvpStyles.goingText,
-              {
-                color: rsvpGoingActive ? palette.accent : palette.accentText,
-                fontFamily: boldFamily,
-              },
-            ]}
-          >
-            {rsvpInFlight ? "Saving…" : rsvpGoingActive ? "You're going ✓" : "Going"}
-          </Text>
-        </Pressable>
-        <Pressable
-          onPress={() => void handleRsvp("not_going")}
-          disabled={rsvpInFlight}
-          accessibilityRole="button"
-          accessibilityLabel="Not going"
-          style={[rsvpStyles.notGoingBtn, { borderColor: palette.panelBorder }]}
-          testID="orch-1150-deck-rsvp-not-going"
-        >
-          <Text style={[rsvpStyles.notGoingText, { color: palette.secondaryText }]}>
-            Not going
-          </Text>
-        </Pressable>
-      </View>
+      <RsvpMomentumDecision
+        palette={palette}
+        theme={theme}
+        goingCount={rsvpMomentum?.goingCount ?? 0}
+        capacity={rsvpMomentum?.capacity ?? null}
+        ctaState={rsvpCtaState}
+        guestStatus={rsvpStatus}
+        guestApproval={rsvpApproval}
+        partyTypes={[]}
+        allowPlusOnes={false}
+        plusOnesMax={0}
+        plusCount={0}
+        onPlusChange={() => undefined}
+        waitlistEnabled={rsvpMomentum?.waitlistEnabled ?? false}
+        submitting={rsvpInFlight}
+        contactReady={user !== null}
+        onGoing={() => void handleRsvp("going")}
+        onMaybe={() => void handleRsvp("maybe")}
+        onNotGoing={() => void handleRsvp("not_going")}
+        variant="floating-dock"
+        showMomentum={false}
+        goingTestID="orch-1150-deck-rsvp-going"
+        maybeTestID="orch-1157-deck-rsvp-maybe"
+        notGoingTestID="orch-1150-deck-rsvp-not-going"
+      />
     </View>
   );
+
+  // ORCH-1157 — the momentum unit + kicker + party chips, rendered inline in the
+  // body (the dock above carries only the decision). Omitted entirely when the
+  // anon-view momentum has not resolved (no fabricated count — rule 9).
+  const rsvpMomentumUnit: ReactElement | null =
+    rsvpMomentum !== null ? (
+      <View style={styles.section}>
+        <RsvpMomentumDecision
+          palette={palette}
+          theme={theme}
+          goingCount={rsvpMomentum.goingCount}
+          capacity={rsvpMomentum.capacity}
+          ctaState={rsvpCtaState}
+          guestStatus={rsvpStatus}
+          guestApproval={rsvpApproval}
+          partyTypes={seed.partyTypes ?? []}
+          allowPlusOnes={false}
+          plusOnesMax={0}
+          plusCount={0}
+          onPlusChange={() => undefined}
+          waitlistEnabled={rsvpMomentum.waitlistEnabled}
+          submitting={rsvpInFlight}
+          contactReady={user !== null}
+          onGoing={() => undefined}
+          onMaybe={() => undefined}
+          onNotGoing={() => undefined}
+          variant="inline"
+          showMomentum
+          showDecision={false}
+          testID="orch-1157-consumer-rsvp-momentum"
+        />
+      </View>
+    ) : null;
+
+  // ORCH-1157 Issue 1 [rsvp-public-redesign] — structural-parity nodes. The
+  // consumer body is shared by ticketed + RSVP; extracting brand / about / venue
+  // into nodes lets the RSVP branch render them in the SAME section order as the
+  // business/web RsvpPublicBody (brand → momentum → date+doors → venue → about),
+  // while the ticketed path keeps its byte-identical order (brand → about → venue
+  // → tickets). This is the "mirror the shared body" approach (dispatch option b).
+  const brandNode: ReactElement = (
+    <Pressable
+      style={[styles.brandRow, surface.card]}
+      accessibilityRole="button"
+      accessibilityLabel={`View ${fnd.brandName}`}
+      onPress={() => {
+        if (typeof fnd.brandSlug === "string" && fnd.brandSlug.length > 0) {
+          router.push(`/b/${fnd.brandSlug}` as never);
+        }
+      }}
+    >
+      <View
+        style={[
+          styles.brandTile,
+          fnd.brandCoverMediaUrl === null
+            ? { backgroundColor: palette.accent }
+            : null,
+        ]}
+      >
+        {fnd.brandCoverMediaUrl !== null ? (
+          <EventCoverMedia
+            mediaUrl={fnd.brandCoverMediaUrl}
+            mediaType="image"
+            hue={hueFromId(fnd.brandSlug)}
+            label=""
+            radius={999}
+            autoplay
+            playbackActive
+            muted
+            loop
+            height="100%"
+            width="100%"
+          />
+        ) : (
+          <View style={styles.brandInitialWrap}>
+            <Text
+              style={[
+                styles.brandInitial,
+                { color: palette.accentText, fontFamily: boldFamily },
+              ]}
+            >
+              {(fnd.brandName.trim()[0] ?? "•").toUpperCase()}
+            </Text>
+          </View>
+        )}
+      </View>
+      <View style={styles.brandTextCol}>
+        <Text style={[styles.brandKicker, surface.tertiaryText]}>
+          {isRsvp ? "Hosted by" : "Presented by"}
+        </Text>
+        <Text
+          style={[styles.brandName, surface.primaryText, { fontFamily: boldFamily }]}
+        >
+          {fnd.brandName}
+        </Text>
+      </View>
+      <Text style={[styles.brandCta, { color: palette.accent }]}>View</Text>
+    </Pressable>
+  );
+
+  const aboutNode: ReactElement | null =
+    aboutText !== null ? (
+      <View style={styles.section}>
+        <Text
+          style={[styles.secTitle, surface.primaryText, { fontFamily: boldFamily }]}
+        >
+          About
+        </Text>
+        <Text
+          style={[styles.aboutText, surface.secondaryText]}
+          numberOfLines={aboutCollapsedNow ? 3 : undefined}
+          ellipsizeMode="tail"
+        >
+          {aboutText}
+        </Text>
+        {canCollapseAbout ? (
+          <Pressable
+            onPress={toggleAbout}
+            accessibilityRole="button"
+            accessibilityState={{ expanded: !aboutCollapsedNow }}
+            accessibilityLabel={aboutCollapsedNow ? "Read more" : "Show less"}
+            style={styles.aboutToggleRow}
+          >
+            <Text style={[styles.aboutToggleText, { color: palette.accent }]}>
+              {aboutCollapsedNow ? "Read more" : "Show less"}
+            </Text>
+            <Icon
+              name={aboutCollapsedNow ? "chevron-down" : "chevron-up"}
+              size={16}
+              color={palette.accent}
+            />
+          </Pressable>
+        ) : null}
+      </View>
+    ) : null;
+
+  const venueNode: ReactElement | null =
+    fnd.format === "online" ? (
+      <View style={styles.section}>
+        <Text
+          style={[styles.secTitle, surface.primaryText, { fontFamily: boldFamily }]}
+        >
+          Where you&apos;ll be
+        </Text>
+        <View style={[styles.venueCard, surface.card]}>
+          <View style={[styles.venueDisk, { backgroundColor: palette.accent }]}>
+            <Text style={[styles.venueGlyph, { color: palette.accentText }]}>◯</Text>
+          </View>
+          <View style={styles.venueTextCol}>
+            <Text style={[styles.venueName, surface.primaryText, { fontFamily: boldFamily }]}>
+              Online
+            </Text>
+            <Text style={[styles.venueAddr, surface.secondaryText]}>
+              {isRsvp
+                ? "Link shared with confirmed guests."
+                : "Conferencing link shared with ticketed guests."}
+            </Text>
+          </View>
+        </View>
+      </View>
+    ) : fnd.venueName !== null ? (
+      <View style={styles.section}>
+        <Text
+          style={[styles.secTitle, surface.primaryText, { fontFamily: boldFamily }]}
+        >
+          Where you&apos;ll be
+        </Text>
+        <Pressable
+          onPress={() => {
+            if (venueMapsQuery !== null) openMapsForQuery(venueMapsQuery);
+          }}
+          disabled={venueMapsQuery === null}
+          accessibilityRole={venueMapsQuery !== null ? "button" : undefined}
+          accessibilityLabel={
+            venueMapsQuery !== null
+              ? `Open ${venueNameDisplay ?? fnd.venueName} in maps`
+              : (venueNameDisplay ?? addressHiddenLabel)
+          }
+          style={[styles.venueCard, surface.card]}
+        >
+          <View style={[styles.venueDisk, { backgroundColor: palette.accent }]}>
+            <Text style={[styles.venueGlyph, { color: palette.accentText }]}>⌖</Text>
+          </View>
+          <View style={styles.venueTextCol}>
+            {/* ORCH-1157 Round-5 — render the SANITIZED venue name (never the
+                street-folded fallback) when the address is hidden. Falls back to
+                the City/Country hidden label when the name itself is the street. */}
+            <Text style={[styles.venueName, surface.primaryText, { fontFamily: boldFamily }]}>
+              {venueNameDisplay ?? addressHiddenLabel}
+            </Text>
+            {/* Suppress the sub-line when the name fell back to the hidden label
+                so the City/Country caption never paints twice. */}
+            {venueNameDisplay === null && venueAddressLabel === addressHiddenLabel ? null : (
+              <Text style={[styles.venueAddr, surface.secondaryText]}>
+                {venueAddressLabel}
+              </Text>
+            )}
+            {/* ORCH-1157 Round-6 — unlock caption UNDER the city, only while the
+                street is hidden (condition-aware copy). */}
+            {addressUnlockCaption !== null ? (
+              <Text
+                style={[styles.venueUnlockCaption, surface.tertiaryText]}
+                testID="orch-1157-consumer-address-unlock-caption"
+              >
+                {addressUnlockCaption}
+              </Text>
+            ) : null}
+          </View>
+          {venueMapsQuery !== null ? (
+            <View style={[styles.venuePill, { backgroundColor: palette.accent }]}>
+              <Text style={[styles.venuePillText, { color: palette.accentText }]}>
+                Open maps
+              </Text>
+            </View>
+          ) : null}
+        </Pressable>
+      </View>
+    ) : null;
 
   return (
     <>
@@ -753,211 +1041,92 @@ export default function ConsumerEventDetailScreen({
               ) : null}
             </View>
 
-            {/* brand chip — "Presented by" (anon-safe brand cover/initial).
-                ORCH-1155 [public-brand-page] all-surface parity: tappable
-                Pressable opens the brand page /b/{brandSlug} with a trailing
-                "View" CTA — parity with the web/business event page (onOpenBrand
-                → /b/{slug}) and the trip/experience consumer screens. Guard empty
-                slug (rule 9; no dead tap, Constitution rule 1). */}
-            <Pressable
-              style={[styles.brandRow, surface.card]}
-              accessibilityRole="button"
-              accessibilityLabel={`View ${fnd.brandName}`}
-              onPress={() => {
-                if (
-                  typeof fnd.brandSlug === "string" &&
-                  fnd.brandSlug.length > 0
-                ) {
-                  router.push(`/b/${fnd.brandSlug}` as never);
-                }
-              }}
-            >
-              <View
-                style={[
-                  styles.brandTile,
-                  fnd.brandCoverMediaUrl === null
-                    ? { backgroundColor: palette.accent }
-                    : null,
-                ]}
-              >
-                {fnd.brandCoverMediaUrl !== null ? (
-                  <EventCoverMedia
-                    mediaUrl={fnd.brandCoverMediaUrl}
-                    mediaType="image"
-                    hue={hueFromId(fnd.brandSlug)}
-                    label=""
-                    radius={999}
-                    autoplay
-                    playbackActive
-                    muted
-                    loop
-                    height="100%"
-                    width="100%"
-                  />
-                ) : (
-                  <View style={styles.brandInitialWrap}>
-                    <Text
-                      style={[
-                        styles.brandInitial,
-                        { color: palette.accentText, fontFamily: boldFamily },
-                      ]}
-                    >
-                      {(fnd.brandName.trim()[0] ?? "•").toUpperCase()}
-                    </Text>
-                  </View>
-                )}
-              </View>
-              <View style={styles.brandTextCol}>
-                <Text style={[styles.brandKicker, surface.tertiaryText]}>
-                  Presented by
-                </Text>
-                <Text
-                  style={[styles.brandName, surface.primaryText, { fontFamily: boldFamily }]}
-                >
-                  {fnd.brandName}
-                </Text>
-              </View>
-              <Text style={[styles.brandCta, { color: palette.accent }]}>
-                View
-              </Text>
-            </Pressable>
-
-            {/* About — collapsible (rule 9: only when present) */}
-            {aboutText !== null ? (
-              <View style={styles.section}>
-                <Text
-                  style={[styles.secTitle, surface.primaryText, { fontFamily: boldFamily }]}
-                >
-                  About
-                </Text>
-                <Text
-                  style={[styles.aboutText, surface.secondaryText]}
-                  numberOfLines={aboutCollapsedNow ? 3 : undefined}
-                  ellipsizeMode="tail"
-                >
-                  {aboutText}
-                </Text>
-                {canCollapseAbout ? (
-                  <Pressable
-                    onPress={toggleAbout}
-                    accessibilityRole="button"
-                    accessibilityState={{ expanded: !aboutCollapsedNow }}
-                    accessibilityLabel={aboutCollapsedNow ? "Read more" : "Show less"}
-                    style={styles.aboutToggleRow}
+            {/* ORCH-1157 Issue 4 [doors] / Round-7 [doors pill] — doors time in a
+                PILL styled exactly like the date chip above (same metaChip +
+                surface.card + clock icon), placed just beneath the date row.
+                Seth-locked: reuses start_at/end_at; the time itself is now
+                device-locale-aware (12h "1:00 PM" / 24h "13:00") with minutes.
+                REAL-DATA-ONLY: omitted entirely when there is no start time. */}
+            {fnd.doorsLine !== null ? (
+              <View style={styles.doorsChipRow}>
+                <View style={[styles.metaChip, surface.card]} testID="orch-1157-consumer-doors">
+                  <Icon name="time-outline" size={15} color={palette.accent} />
+                  <Text
+                    style={[styles.metaChipText, surface.secondaryText, { fontFamily: boldFamily }]}
                   >
-                    <Text style={[styles.aboutToggleText, { color: palette.accent }]}>
-                      {aboutCollapsedNow ? "Read more" : "Show less"}
-                    </Text>
-                    <Icon
-                      name={aboutCollapsedNow ? "chevron-down" : "chevron-up"}
-                      size={16}
-                      color={palette.accent}
-                    />
-                  </Pressable>
-                ) : null}
-              </View>
-            ) : null}
-
-            {/* Where you'll be — venue card (map OMITTED on consumer, OQ-5) */}
-            {fnd.format === "online" ? (
-              <View style={styles.section}>
-                <Text
-                  style={[styles.secTitle, surface.primaryText, { fontFamily: boldFamily }]}
-                >
-                  Where you&apos;ll be
-                </Text>
-                <View style={[styles.venueCard, surface.card]}>
-                  <View style={[styles.venueDisk, { backgroundColor: palette.accent }]}>
-                    <Text style={[styles.venueGlyph, { color: palette.accentText }]}>◯</Text>
-                  </View>
-                  <View style={styles.venueTextCol}>
-                    <Text style={[styles.venueName, surface.primaryText, { fontFamily: boldFamily }]}>
-                      Online
-                    </Text>
-                    <Text style={[styles.venueAddr, surface.secondaryText]}>
-                      Conferencing link shared with ticketed guests.
-                    </Text>
-                  </View>
-                </View>
-              </View>
-            ) : fnd.venueName !== null ? (
-              <View style={styles.section}>
-                <Text
-                  style={[styles.secTitle, surface.primaryText, { fontFamily: boldFamily }]}
-                >
-                  Where you&apos;ll be
-                </Text>
-                <Pressable
-                  onPress={() => {
-                    if (venueMapsQuery !== null) openMapsForQuery(venueMapsQuery);
-                  }}
-                  disabled={venueMapsQuery === null}
-                  accessibilityRole={venueMapsQuery !== null ? "button" : undefined}
-                  accessibilityLabel={
-                    venueMapsQuery !== null
-                      ? `Open ${fnd.venueName} in maps`
-                      : fnd.venueName
-                  }
-                  style={[styles.venueCard, surface.card]}
-                >
-                  <View style={[styles.venueDisk, { backgroundColor: palette.accent }]}>
-                    <Text style={[styles.venueGlyph, { color: palette.accentText }]}>⌖</Text>
-                  </View>
-                  <View style={styles.venueTextCol}>
-                    <Text style={[styles.venueName, surface.primaryText, { fontFamily: boldFamily }]}>
-                      {fnd.venueName}
-                    </Text>
-                    <Text style={[styles.venueAddr, surface.secondaryText]}>
-                      {venueAddressLabel}
-                    </Text>
-                  </View>
-                  {venueMapsQuery !== null ? (
-                    <View style={[styles.venuePill, { backgroundColor: palette.accent }]}>
-                      <Text style={[styles.venuePillText, { color: palette.accentText }]}>
-                        Open maps
-                      </Text>
-                    </View>
-                  ) : null}
-                </Pressable>
-              </View>
-            ) : null}
-
-            {/* Tickets — the selectable tier radiogroup */}
-            <View style={styles.section}>
-              <Text
-                style={[styles.secTitle, surface.primaryText, { fontFamily: boldFamily }]}
-              >
-                Choose your ticket
-              </Text>
-              {tickets.filter((t) => t.visibility !== "hidden").length === 0 ? (
-                <View style={[styles.venueCard, surface.card]}>
-                  <Text style={[styles.aboutText, surface.secondaryText]}>
-                    No tickets available yet.
+                    {fnd.doorsLine}
                   </Text>
                 </View>
-              ) : (
-                <View accessibilityRole="radiogroup" style={styles.tierCol}>
-                  {tickets
-                    .filter((t) => t.visibility !== "hidden")
-                    .sort((a, b) => a.displayOrder - b.displayOrder)
-                    .map((t) => (
-                      <ConsumerTierRow
-                        key={t.id}
-                        ticket={t}
-                        fallbackCurrency={seed.currency}
-                        palette={palette}
-                        surface={surface}
-                        boldFamily={boldFamily}
-                        selected={selectedTicketId === t.id}
-                        onSelect={handleSelectTicket}
-                      />
-                    ))}
-                </View>
-              )}
-              <Text style={[styles.reassure, { color: palette.tertiaryText }]}>
-                All-in price — taxes &amp; fees included, no surprises at checkout.
-              </Text>
-            </View>
+              </View>
+            ) : null}
+
+            {/* ORCH-1157 Issue 1 [rsvp-public-redesign] — section ORDER. The RSVP
+                branch mirrors the business/web RsvpPublicBody section sequence
+                (host/brand → momentum [kicker+chips+count+meter+faceless cluster]
+                → date+doors already above → venue → about) so the consumer RSVP
+                page is structurally identical to business/web. The ticketed path
+                keeps its byte-identical order (brand → about → venue → tickets).
+                The momentum unit omits when the anon-view count has not resolved
+                (no fabricated count — rule 9); the decision lives in the dock. */}
+            {isRsvp ? (
+              <>
+                {brandNode}
+                {rsvpMomentumUnit}
+                {venueNode}
+                {aboutNode}
+              </>
+            ) : (
+              <>
+                {brandNode}
+                {aboutNode}
+                {venueNode}
+              </>
+            )}
+
+            {/* Tickets — the selectable tier radiogroup.
+                ORCH-1157 Issue 1 [rsvp-public-redesign] — GATED `!isRsvp`. An
+                RSVP event is TICKETLESS: it must NOT render "Choose your ticket"
+                or the "No tickets available yet" empty state (that block was
+                ungated and leaked onto RSVP cards — F-1 structural divergence).
+                RSVP momentum + decision are the body's gravitational center
+                instead (rsvpMomentumUnit above + rsvpDock below). */}
+            {!isRsvp ? (
+              <View style={styles.section}>
+                <Text
+                  style={[styles.secTitle, surface.primaryText, { fontFamily: boldFamily }]}
+                >
+                  Choose your ticket
+                </Text>
+                {tickets.filter((t) => t.visibility !== "hidden").length === 0 ? (
+                  <View style={[styles.venueCard, surface.card]}>
+                    <Text style={[styles.aboutText, surface.secondaryText]}>
+                      No tickets available yet.
+                    </Text>
+                  </View>
+                ) : (
+                  <View accessibilityRole="radiogroup" style={styles.tierCol}>
+                    {tickets
+                      .filter((t) => t.visibility !== "hidden")
+                      .sort((a, b) => a.displayOrder - b.displayOrder)
+                      .map((t) => (
+                        <ConsumerTierRow
+                          key={t.id}
+                          ticket={t}
+                          fallbackCurrency={seed.currency}
+                          palette={palette}
+                          surface={surface}
+                          boldFamily={boldFamily}
+                          selected={selectedTicketId === t.id}
+                          onSelect={handleSelectTicket}
+                        />
+                      ))}
+                  </View>
+                )}
+                <Text style={[styles.reassure, { color: palette.tertiaryText }]}>
+                  All-in price — taxes &amp; fees included, no surprises at checkout.
+                </Text>
+              </View>
+            ) : null}
 
             {/* DOCKED CTA — the LAST scroll child (float→dock language).
                 ORCH-1150 — RSVP cards dock Going/Not-going instead of the cart bar. */}
@@ -1188,6 +1357,9 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
   },
   metaChipText: { fontSize: 13, fontWeight: "600" },
+  // ORCH-1157 Round-7 [doors pill] — doors chip row beneath the meta chips.
+  // Wraps the doors pill (reuses styles.metaChip) so it aligns with the date chip.
+  doorsChipRow: { flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 8 },
   brandRow: {
     flexDirection: "row",
     alignItems: "center",
@@ -1245,6 +1417,7 @@ const styles = StyleSheet.create({
   venueTextCol: { flex: 1, minWidth: 0 },
   venueName: { fontSize: 15, fontWeight: "800" },
   venueAddr: { fontSize: 13, marginTop: 2 },
+  venueUnlockCaption: { fontSize: 12, marginTop: 4 },
   venuePill: { borderRadius: 999, paddingHorizontal: 14, paddingVertical: 8 },
   venuePillText: { fontSize: 12, fontWeight: "800" },
   reassure: { fontSize: 12, marginTop: 12, lineHeight: 17 },
@@ -1301,37 +1474,12 @@ const styles = StyleSheet.create({
   retryText: { color: "#FFFFFF", fontSize: 15, fontWeight: "600" },
 });
 
-// ORCH-1150 — RSVP deck dock (Going / Not-going). Opaque-safe (solid accent
-// fill, no translucent tint) per the Android glass policy.
+// ORCH-1157 — RSVP decision dock wrapper. The Going/Maybe/Can't buttons + their
+// opaque-Android fills now live in the shared RsvpMomentumDecision; this is just
+// the dock padding (matches the float→dock pattern of the reserve bar).
 const rsvpStyles = StyleSheet.create({
   dock: {
     paddingHorizontal: 16,
     paddingTop: 12,
   },
-  resolvedNote: {
-    fontSize: 13,
-    textAlign: "center",
-    marginBottom: 8,
-  },
-  row: {
-    flexDirection: "row",
-    gap: 10,
-  },
-  goingBtn: {
-    flex: 2,
-    alignItems: "center",
-    justifyContent: "center",
-    borderRadius: 14,
-    paddingVertical: 15,
-  },
-  goingText: { fontSize: 16, fontWeight: "900" },
-  notGoingBtn: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-    borderRadius: 14,
-    paddingVertical: 15,
-    borderWidth: 1,
-  },
-  notGoingText: { fontSize: 14, fontWeight: "700" },
 });

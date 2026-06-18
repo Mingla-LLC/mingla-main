@@ -220,6 +220,83 @@ const formatTimeLabelInTz = (utc: string, tz: string): string | null => {
 };
 
 /**
+ * ORCH-1157 Round-7 [doors pill] — device-locale-aware doors time formatter.
+ *
+ * Unlike `formatTimeLabelInTz` (forced 12h, drops `:00` minutes — used by the
+ * date line), this ALWAYS shows minutes and respects the DEVICE'S 12h/24h
+ * preference:
+ *   - device on 12h → "1:00 PM"
+ *   - device on 24h → "13:00"
+ *
+ * Mechanism: `toLocaleTimeString(locale, { hour: 'numeric', minute: '2-digit' })`
+ * with an UNDEFINED locale resolves to the device locale + its 24-hour-clock
+ * setting on Hermes (native) and the OS locale in the browser (buyer web). The
+ * `locale` param exists ONLY so tests can pin a clock ("en-US" → 12h,
+ * "sv-SE" → 24h); production passes undefined. AM/PM uppercased for parity with
+ * the date line. Returns null on any invalid instant (never fabricates).
+ */
+const formatDoorsTimeInTz = (
+  utc: string,
+  tz: string,
+  locale?: string,
+): string | null => {
+  try {
+    const d = new Date(utc);
+    if (Number.isNaN(d.getTime())) return null;
+    // Detect the device's 12h/24h preference from the resolved format. 24h →
+    // zero-padded "HH:MM" ("13:00", "04:00"); 12h → "H:MM AM/PM" ("1:00 PM").
+    const is24h =
+      new Intl.DateTimeFormat(locale, { hour: "numeric" })
+        .resolvedOptions().hour12 === false;
+    return d
+      .toLocaleTimeString(locale, {
+        hour: is24h ? "2-digit" : "numeric",
+        minute: "2-digit",
+        timeZone: tz,
+      })
+      .replace(/\bam\b/gi, "AM")
+      .replace(/\bpm\b/gi, "PM");
+  } catch {
+    return null;
+  }
+};
+
+/**
+ * ORCH-1157 [rsvp-public-redesign] Issue 4 — doors-open / doors-close labels for
+ * the public RSVP page. Seth-locked: events already carry start_at + end_at
+ * (event_dates) → reuse those, NO new field/schema. "Doors open" = start_at,
+ * "Doors close" = end_at, formatted in the event's IANA timezone.
+ *
+ * ORCH-1157 Round-7: the time is now device-locale-aware (12h → "1:00 PM",
+ * 24h → "13:00") via `formatDoorsTimeInTz` and always carries minutes — replacing
+ * the bare-hour output ("13") the date-line label produced. REAL-DATA-ONLY:
+ * `close` is null when masterEndAtUtc is absent (no fabricated close — rule 9).
+ * Returns `{ open: null, close: null }` when there is no start instant.
+ *
+ * @param locale test-only clock override ("en-US" 12h / "sv-SE" 24h); production
+ *   passes undefined → device locale + device 24-hour-clock setting.
+ */
+export const formatEventDoorsTimes = (
+  masterStartAtUtc: string | null | undefined,
+  masterEndAtUtc: string | null | undefined,
+  timezone: string | null | undefined,
+  locale?: string,
+): { open: string | null; close: string | null } => {
+  const tz = timezone !== null && timezone !== undefined && timezone.length > 0
+    ? timezone
+    : "UTC";
+  const open =
+    masterStartAtUtc !== null && masterStartAtUtc !== undefined
+      ? formatDoorsTimeInTz(masterStartAtUtc, tz, locale)
+      : null;
+  const close =
+    masterEndAtUtc !== null && masterEndAtUtc !== undefined
+      ? formatDoorsTimeInTz(masterEndAtUtc, tz, locale)
+      : null;
+  return { open, close };
+};
+
+/**
  * ORCH-0877 — Single-event date line. Renders one of three forms:
  *   1. Date TBD                              — when date is null
  *   2. "Sat 18 May · 10 PM"                  — when endsAt is null

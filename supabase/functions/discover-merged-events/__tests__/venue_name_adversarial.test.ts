@@ -218,29 +218,39 @@ Deno.test(
 // ── A6 — anti-test: contract drift trip-wire ────────────────────────────
 
 Deno.test(
-  "ORCH-0846 ADV-A6a — venueName MUST NOT be read from theme.location",
+  // ORCH-1157 Round-5 [TEST-MOD-APPROVED ORCH-1157] — the ORCH-0846 premise
+  // that "ZERO live rows use .location.venueName" was DISPROVEN against live
+  // data: 16/16 business events (RSVP + ticketed) carry the venue name at
+  // theme.business_event.location.venueName and ZERO carry a top-level
+  // theme.business_event.venueName. The old anti-test therefore enforced the
+  // very privacy leak it was meant to prevent — extractVenueName returned null
+  // and mapRpcRowToCard fell back to location_text (the full street) AS the
+  // venueName, leaking the street through the consumer RSVP detail's venue-NAME
+  // line. The corrected contract: top-level FIRST (forward-compat), then the
+  // canonical nested location.venueName, never the full "name · street" string.
+  "ORCH-0846/1157 ADV-A6a — venueName resolves nested location.venueName (NOT location_text)",
   () => {
-    // Brand-side publicEventsService.ts:339 deliberately resolves
-    // `theme.business_event.location` and reads `.venueName` from it —
-    // but this is a NO-OP in production because the publish RPC at
-    // `20260604000001_orch_0824_publish_rpc.sql:358-369` stores
-    // venueName at theme.business_event.venueName (top-level of the
-    // business_event blob, NOT nested under a .location sub-object).
-    // If any future refactor moves the helper to read .location.venueName,
-    // it must coexist with the top-level path — but for now, ZERO live
-    // rows use .location.venueName (verified via SPEC §10.D probe).
-    // This anti-test locks the producer's current single-source.
-    const theme = {
+    // Live shape: top-level venueName absent, real name nested under location.
+    const liveShape = {
       business_event: {
         venueName: null,
-        location: { venueName: "should-not-be-picked-up" },
+        location: { venueName: "The Party Venue" },
       },
     };
     assertEquals(
-      extractVenueName(theme),
-      null,
-      "Producer must read venueName ONLY from theme.business_event.venueName (top-level). Reading from .location.venueName would diverge from publish RPC contract and silently activate a dead code path.",
+      extractVenueName(liveShape),
+      "The Party Venue",
+      "Producer must resolve the nested location.venueName (the live shape) so the venue NAME is just the name, never the location_text street fallback.",
     );
+
+    // Top-level still wins when a future writer sets it (forward-compat).
+    const topLevelShape = {
+      business_event: {
+        venueName: "Top Level Name",
+        location: { venueName: "Nested Name" },
+      },
+    };
+    assertEquals(extractVenueName(topLevelShape), "Top Level Name");
   },
 );
 

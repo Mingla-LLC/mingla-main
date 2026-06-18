@@ -196,11 +196,21 @@ export const FoundationEventPreview: React.FC<FoundationEventPreviewProps> = ({
     return total <= 0 ? "Sold out" : `${total} tickets left`;
   }, [visibleTickets]);
 
+  // ORCH-1157 Round-6 [rsvp-public-redesign] — when the street is hidden show the
+  // City/Country line (real city) as the sub-line, with the unlock caption beneath
+  // it (standardized below). The legacy "Address shared after ticket purchase"
+  // remains only as the last-resort fallback when there is no city to show.
   const venueAddressLabel = event.hideAddressUntilTicket
-    ? "Address shared after ticket purchase"
+    ? (cityCountry ?? "Address shared after you get tickets")
     : event.format === "hybrid" && event.address !== null
       ? `${event.address} · also online`
-      : (event.address ?? "Address shared after ticket purchase");
+      : (event.address ?? "Address shared after you get tickets");
+  // The caption telling the buyer HOW to unlock the exact street; renders ONLY
+  // while the street is hidden. This is the TICKETED page → "after you get
+  // tickets" (must never say "RSVP"). Static helper text.
+  const addressUnlockCaption: string | null = event.hideAddressUntilTicket
+    ? "Full address shared after you get tickets"
+    : null;
   const venueMapsQuery =
     event.hideAddressUntilTicket || event.venueName === null
       ? null
@@ -388,6 +398,16 @@ export const FoundationEventPreview: React.FC<FoundationEventPreviewProps> = ({
                 {event.venueName}
               </Text>
               <Text style={[styles.venueAddr, surface.secondaryText]}>{venueAddressLabel}</Text>
+              {/* ORCH-1157 Round-6 — unlock caption UNDER the city; only while the
+                  exact street is hidden (ticketed copy, never "RSVP"). */}
+              {addressUnlockCaption !== null ? (
+                <Text
+                  style={[styles.venueUnlockCaption, surface.tertiaryText]}
+                  testID="orch-1157-ticketed-address-unlock-caption"
+                >
+                  {addressUnlockCaption}
+                </Text>
+              ) : null}
             </View>
             {canOpenVenueMaps ? (
               <View style={[styles.venuePill, { backgroundColor: palette.accent }]}>
@@ -653,6 +673,7 @@ const styles = StyleSheet.create({
   venueTextCol: { flex: 1, minWidth: 0 },
   venueName: { fontSize: 15, fontWeight: "800" },
   venueAddr: { fontSize: 13, marginTop: 2 },
+  venueUnlockCaption: { fontSize: 12, marginTop: 4 },
   venuePill: { borderRadius: 999, paddingHorizontal: 14, paddingVertical: 8 },
   venuePillText: { fontSize: 12, fontWeight: "800" },
   reassure: { fontSize: 12, marginTop: 12, lineHeight: 17 },

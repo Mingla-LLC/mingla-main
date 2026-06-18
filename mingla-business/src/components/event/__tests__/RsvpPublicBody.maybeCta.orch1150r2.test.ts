@@ -4,43 +4,49 @@
  * Owner: mingla-implementor (the tester adds a SECOND adversarial angle).
  *
  * @testing-library/react-native is NOT a dependency of mingla-business (see the
- * repo-wide pre-existing TS2307s), so the CTA + D-7 layering invariants are
- * enforced as SOURCE-STRUCTURE assertions (SPEC §7 T8/T11 explicitly call these
- * "component (source)"). Each assertion FAILS if the corresponding fix line is
- * deleted — proving fails-on-revert without a runtime renderer.
+ * repo-wide pre-existing TS2307s), so the CTA + layering invariants are enforced
+ * as SOURCE-STRUCTURE assertions. Each assertion FAILS if the corresponding fix
+ * line is deleted — proving fails-on-revert without a runtime renderer.
+ *
+ * ORCH-1157 [rsvp-public-redesign] UPDATE ([TEST-MOD-APPROVED ORCH-1157]):
+ * Direction C moved the inline Going/Maybe/Can't CTA buttons OUT of
+ * RsvpPublicBody and INTO the shared `RsvpMomentumDecision` unit (one shared
+ * decision across buyer-web + business + consumer). The lucide `<Check/HelpCircle/
+ * X size={19}>` inline buttons + the `ctaBtn` style no longer live here — the
+ * shared unit owns them (covered by orch_1157_* tests). What RsvpPublicBody STILL
+ * owns + MUST keep (these assertions enforce it): (a) the `submit` 3-status union
+ * + the `void submit("maybe")` wiring, (b) the A4-NEW contact gate applied to BOTH
+ * going and maybe, (c) the resolved-maybe response copy, (d) delegation to the
+ * shared RsvpMomentumDecision threading the ORCH-1150 testIDs.
  */
 
 import { readFileSync } from "fs";
 import { join } from "path";
 
-const SRC = readFileSync(
+const SRC_RAW = readFileSync(
   join(__dirname, "..", "RsvpPublicBody.tsx"),
   "utf8",
 );
+const SRC = SRC_RAW;
+// Comment-stripped view for the no-checkout assertion (the doc comments
+// legitimately NAME the forbidden affordances to explain WHY they are absent).
+const SRC_NO_COMMENTS = SRC_RAW.replace(/\/\*[\s\S]*?\*\//g, "").replace(
+  /(^|[^:])\/\/[^\n]*/g,
+  "$1",
+);
 
-describe("ORCH-1150 R2 D-10 — RsvpPublicBody three-button CTA", () => {
-  it("imports the three lucide icons per-icon NAMED (never a barrel import)", () => {
-    // INV: real-glyph icons on native + ORCH-1137 web shim; per-icon = tree-shake-safe.
+describe("ORCH-1157 — RsvpPublicBody delegates the Going/Maybe/Can't decision to the shared unit", () => {
+  it("renders the shared RsvpMomentumDecision (the Direction-C decision hero)", () => {
     expect(SRC).toMatch(
-      /import\s*\{\s*Check\s*,\s*HelpCircle\s*,\s*X\s*\}\s*from\s*["']lucide-react-native["']/,
+      /import\s*\{[\s\S]*RsvpMomentumDecision[\s\S]*\}\s*from\s*["']@mingla\/offering-rendering["']/,
     );
-    // Must NOT barrel-import lucide (would blow the ORCH-1083 web bundle budget).
-    expect(SRC).not.toMatch(/import\s*\*\s*as\s*\w+\s*from\s*["']lucide-react-native["']/);
+    expect(SRC).toMatch(/<RsvpMomentumDecision[\s\S]*?\/>/);
   });
 
-  it("renders Going · Maybe · Can't-go, each as a flex:1 equal-width ctaBtn", () => {
-    expect(SRC).toContain('testID="orch-1150-rsvp-going"');
-    expect(SRC).toContain('testID="orch-1150-rsvp-maybe"');
-    expect(SRC).toContain('testID="orch-1150-rsvp-not-going"');
-    // The shared CTA button style is flex:1 (equal width).
-    expect(SRC).toMatch(/ctaBtn:\s*\{[\s\S]*?flex:\s*1/);
-  });
-
-  it("threads the correct lucide icon into each button", () => {
-    // Going → Check, Maybe → HelpCircle, Can't-go → X.
-    expect(SRC).toMatch(/<Check\s+size=\{19\}/);
-    expect(SRC).toMatch(/<HelpCircle\s+size=\{19\}/);
-    expect(SRC).toMatch(/<X\s+size=\{19\}/);
+  it("threads the ORCH-1150 going / maybe / not-going testIDs into the shared decision", () => {
+    expect(SRC).toContain('goingTestID="orch-1150-rsvp-going"');
+    expect(SRC).toContain('maybeTestID="orch-1150-rsvp-maybe"');
+    expect(SRC).toContain('notGoingTestID="orch-1150-rsvp-not-going"');
   });
 
   it("submit() accepts the three-status union and routes 'maybe'", () => {
@@ -59,5 +65,15 @@ describe("ORCH-1150 R2 D-10 — RsvpPublicBody three-button CTA", () => {
   it("shows the keep-posted response copy for a resolved maybe", () => {
     expect(SRC).toContain("You're marked as Maybe");
     expect(SRC).toMatch(/we'll keep you posted/i);
+  });
+
+  it("never wires a checkout / price / cart affordance (RSVP is ticketless)", () => {
+    // I-PROPOSED-1157-RSVP-NO-CHECKOUT-AFFORDANCE (RsvpPublicBody half). Assert on
+    // the comment-stripped source — the invariant is about RENDERED code, not the
+    // doc comments that NAME the forbidden affordances to explain their absence.
+    expect(SRC_NO_COMMENTS).not.toMatch(/\/checkout/);
+    expect(SRC_NO_COMMENTS).not.toMatch(/ticket-checkout-create/);
+    expect(SRC_NO_COMMENTS).not.toMatch(/Reserve|Get tickets/);
+    expect(SRC_NO_COMMENTS).not.toMatch(/priceAllIn|TicketCartSheet/);
   });
 });
