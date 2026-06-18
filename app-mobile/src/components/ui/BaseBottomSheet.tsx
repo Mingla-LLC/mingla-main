@@ -799,16 +799,44 @@ function BaseBottomSheetComponent(props: BaseBottomSheetProps): React.ReactEleme
     // iOS evaluates GHRV as a plain View, Android requires it for touch
     // registration — exactly the observed iOS-fragile / Android-dead asymmetry.)
     //
-    // ORCH-1157 Round-9 [android-sheet-gap]: render the Android nav-bar filler as
-    // a SIBLING of `{sheet}` inside this modal's GestureHandlerRootView. The RN
-    // <Modal statusBarTranslucent> window spans the FULL screen (including the
-    // nav-bar region), so an absolute, bottom-anchored, full-width filler lands
-    // exactly on the nav-bar inset region and paints it with the sheet's own bg —
-    // no see-through band. It is a sibling of `{sheet}`, never inside the gorhom-
-    // measured container, so the ORCH-1016 viewport invariant is untouched and
-    // snap/scroll are unperturbed. This covers ALL deck/Discover detail sheets
-    // (RSVP / event / trip / experience) which open via ExpandedCardModal with
-    // wrapInRNModal={true}. Android-only + skipped when insets.bottom===0.
+    // ORCH-1157 Round-10 [android-sheet-gap] — THE GEOMETRY ROOT CAUSE + FIX.
+    //
+    // Rounds 8/9 wrongly assumed the RN <Modal statusBarTranslucent> window spans
+    // the FULL screen on Android. It does NOT. `statusBarTranslucent` makes the
+    // Android Modal (a Dialog window) draw under the STATUS bar only — it stays
+    // INSET above the NAVIGATION bar. So the GestureHandlerRootView (flex:1) and
+    // the gorhom hosting container (absoluteFill) inside it measure a height of
+    // `screenHeight − navBarInset` (often LESS, depending on the device's window
+    // insets). gorhom computes `snapPoints=['50%','90%']` as a fraction of THAT
+    // measured container height and anchors the sheet body to the container bottom
+    // (BottomSheetHostingContainer onLayout → rawContainerHeight; column-reverse
+    // DraggableView). So at the 90% snap the sheet body bottom lands at the TOP of
+    // the nav bar — and the deck/Discover root window (drawn edge-to-edge under the
+    // nav bar) shows THROUGH the whole region from there down: a see-through band
+    // that is the nav bar PLUS any extra short-window remainder — i.e. TALLER than
+    // `insets.bottom`. That is exactly why the Round-8/9 fillers (height =
+    // insets.bottom, anchored to the GHRV bottom = the nav-bar TOP) painted the
+    // wrong strip and left the band showing on the Samsung A72.
+    //
+    // FIX: add `navigationBarTranslucent` (RN 0.76+, supported on 0.81.5; it
+    // REQUIRES `statusBarTranslucent`, already set). This makes the Android Modal
+    // window draw under the NAVIGATION bar too, so the GHRV + gorhom container now
+    // measure the TRUE full physical screen height. The 90% sheet body therefore
+    // reaches the real screen bottom — there is NO band, on any device, regardless
+    // of how big the nav-bar inset is (the fix is geometry-correct, not a sized
+    // filler). The body's own `withBottomInset` paddingBottom (= max(insets.bottom,
+    // 16)) already keeps the CTA clear of the now-overlapped nav bar — no content
+    // hides. iOS evaluates the prop as a no-op (the iOS Modal already spans the
+    // home-indicator region), so iOS is UNCHANGED. This is the SINGLE shared host
+    // for all four deck/Discover detail-sheet types (RSVP / event / trip /
+    // experience via ExpandedCardModal wrapInRNModal={true}) — one fix covers all.
+    //
+    // The `androidNavFiller` sibling (Rounds 8/9) is RETAINED as harmless
+    // belt-and-braces: with the window now full-screen it paints the sheet's own
+    // bg over the (now sheet-occupied) nav-bar region — same colour, zero visual
+    // effect — and it preserves the Round-8/9 regression suites. It never touches
+    // the gorhom-measured container, so the ORCH-1016 viewport invariant + snap/
+    // scroll stay untouched.
     return (
       <RNModal
         visible={visible}
@@ -816,6 +844,7 @@ function BaseBottomSheetComponent(props: BaseBottomSheetProps): React.ReactEleme
         animationType="none"
         onRequestClose={onClose}
         statusBarTranslucent
+        navigationBarTranslucent
       >
         <GestureHandlerRootView style={styles.flexContainer}>
           {sheet}

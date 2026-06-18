@@ -1104,3 +1104,93 @@ events, light `#ffffff` for place/curated/RSVP). One change fixes all four types
   (ENOENT). Both are pre-existing on this branch, NOT caused by round-9. Recommend a
   cleanup ORCH (they need `[TEST-MOD-APPROVED]` to amend, as they are governed test
   paths).
+
+---
+
+## Round-10 sheet-bottom geometry fix
+
+**Status:** implemented, unverified-on-device (orchestrator hot-reloads + re-verifies on the A72). Source/test/gates all green; the see-through band is removed at the geometry level, not with another filler.
+
+### The geometry — proven from the code (why rounds 8/9 were wrong)
+
+The deck/Discover DETAIL sheets (RSVP / event / trip / experience) all mount via
+`ExpandedCardModal` → `BaseBottomSheet` with `wrapInRNModal={true}`,
+`snapPoints={glass.bottomSheet.snapPoints}` = `['50%','90%']`, `initialIndex={1}`
+(opens at the **90% snap**). The wrapInRNModal branch hosts the gorhom `<BottomSheet>`
+inside `<GestureHandlerRootView style={flex:1}>` inside an RN
+`<Modal statusBarTranslucent>`.
+
+Tracing gorhom 5.2.8:
+- `BottomSheetHostingContainer` is `StyleSheet.absoluteFillObject` and measures its own
+  `onLayout` height → `rawContainerHeight` (the container the snap math uses).
+- `normalizeSnapPoint('90%', H)` = `H − 0.9·H = 0.1·H` → the sheet body **top** sits at
+  10% from the container top; the body (`column-reverse` `DraggableView`,
+  `height = sheetHeight − handleHeight`) is anchored to the **container bottom**.
+- So the sheet body bottom == the gorhom container bottom == the GestureHandlerRootView
+  bottom == the RN Modal content-frame bottom.
+
+**The miss:** `statusBarTranslucent` on an Android RN `<Modal>` (a Dialog window) makes it
+draw under the **status bar only** — it stays inset **above the navigation bar**. With
+`edgeToEdgeEnabled: true` (app.json) the Discover/deck ROOT window draws full-screen under
+the nav bar. So the Modal content frame = `screenHeight − navBarInset` (often less), the
+90% sheet body bottom lands at the **top of the nav bar**, and the edge-to-edge deck shows
+THROUGH everything below that — a band = nav bar **plus** any short-window remainder, i.e.
+**taller than `insets.bottom`**. Rounds 8/9 anchored a `height: insets.bottom` filler to the
+GHRV bottom (= the nav-bar top) → it painted the wrong strip and never covered the band.
+That is exactly the device evidence (band ~100–150px, fillers ineffective).
+
+### The fix (Android-only, iOS untouched, ORCH-1016 preserved)
+
+`app-mobile/src/components/ui/BaseBottomSheet.tsx` — add **`navigationBarTranslucent`** to
+the wrapInRNModal RN `<Modal>` (RN 0.81.5 supports it; it REQUIRES the already-present
+`statusBarTranslucent`). The Android Modal window now draws under the nav bar → the GHRV +
+gorhom container measure the **true full screen height** → the 90% sheet body reaches the
+real screen bottom → **NO band**, on any device, regardless of nav-bar inset size
+(geometry-correct, not a sized filler). The body's own `withBottomInset` paddingBottom
+(`max(insets.bottom,16)`) already keeps the CTA clear of the now-overlapped nav bar — no
+content hides. iOS evaluates the prop as a no-op (its Modal already spans the
+home-indicator region) → iOS unchanged.
+
+- ORCH-1016 viewport invariant: untouched. That invariant bounds the **inline**
+  (non-wrapInRNModal) host to `inlineContainerHeight`; the wrapInRNModal path uses
+  `flex:1`/absoluteFill and never reads that calc. The change only enlarges the OS Modal
+  window — gorhom's snap/scroll math runs unchanged against the (now correct) measured
+  container.
+- The Round-8/9 `androidNavFiller` sibling is RETAINED as harmless belt-and-braces (same
+  bg colour over the now sheet-occupied nav-bar region; zero visual effect) so the
+  round-8/9 regression suites stay green.
+- Lines changed: +1 JSX prop, ~+30 lines of root-cause comment (replacing the wrong
+  round-9 comment block). Single file. One fix covers all four detail-sheet types (shared host).
+
+### Regression test + fails-on-revert
+
+`packages/offering-rendering/__tests__/orch_1157_round10_android_modal_fullheight.test.ts`
+(4 Deno source-contract tests; the gorhom host is not mountable in this harness, same
+approach as the locked META-ORCH-0991 / round-9 suites). Assertions are keyed on
+**comment-stripped JSX** (a comment mention cannot satisfy them — the comment-out trap
+guard).
+
+- `deno test --allow-read …round10…` → **4 passed / 0 failed**.
+- **fails-on-revert verified at HEAD `428ae1b54`** (pre-commit working tree): TRUE
+  LINE-DELETION of the `navigationBarTranslucent` JSX prop (comment text left in place) →
+  **2/4 FAIL** ("navigationBarTranslucent must be present"); restoring the line → **4/4
+  PASS**. The comment-strip guard is proven: the deletion fails even though the prose still
+  names the prop.
+- Round-9 suite (`orch_1157_round9_android_gap_wrapinrnmodal.test.ts`) → **4 passed**
+  (filler retained). Append-only: only ADDED a new test file; no existing test modified.
+
+### Gates run
+
+- `meta-orch-0991-base-bottom-sheet-sole-consumer.mjs` → OK (BaseBottomSheet still sole
+  gorhom importer).
+- `i-bottomsheet-inline-scroll-binding.mjs` → OK.
+- `app-mobile/scripts/ci/orch-1043-sheet-scroll-viewport-check.mjs` → 10/10 PASS.
+- `tsc --noEmit` → no BaseBottomSheet / navigationBarTranslucent errors.
+
+### Pre-existing failures (NOT caused by round-10) — already in Discoveries above
+`BaseBottomSheet.test.mjs` (stale `animationConfigs` assertion superseded by ORCH-1064) and
+`BaseBottomSheetRework.test.mjs` (reads deleted `ExpandedBusinessEventSheet.tsx`) FAIL on
+the pristine branch too (proven by stashing this change). Both need a cleanup ORCH +
+`[TEST-MOD-APPROVED]` to amend.
+
+### New HEAD: see the commit hash in the close handoff (committed below).
