@@ -120,6 +120,13 @@ export interface ParallaxCoverShellProps {
   onScrollViewLayout?: (event: LayoutChangeEvent) => void;
   closeAccessibilityLabel?: string;
   /**
+   * ORCH-1159 — forwarded verbatim to OfferingChrome. When true, the floating
+   * "X" (close) button is HIDDEN on web and KEPT on native (Share + Mute
+   * unaffected). The public event / trip / experience pages pass `true`; the
+   * public brand page omits it (keeps its X on web). Absent ⇒ unchanged.
+   */
+  hideCloseOnWeb?: boolean;
+  /**
    * ORCH-1153 BUG-2 — OPTIONAL phone/native cover aspect ratio (width / height).
    * The pinned cover + its flow spacer both use this. Default `4 / 5` (the
    * proven event/trip/RSVP full-bleed cover; native-stacking test asserts 4/5).
@@ -156,6 +163,7 @@ export const ParallaxCoverShell: React.FC<ParallaxCoverShellProps> = ({
   onScroll,
   onScrollViewLayout,
   closeAccessibilityLabel,
+  hideCloseOnWeb = false,
   coverAspectRatio = 4 / 5,
   testID,
 }) => {
@@ -171,6 +179,7 @@ export const ParallaxCoverShell: React.FC<ParallaxCoverShellProps> = ({
       onShare={onShare}
       onToggleMute={onToggleMute}
       closeAccessibilityLabel={closeAccessibilityLabel}
+      hideCloseOnWeb={hideCloseOnWeb}
       testID={testID !== undefined ? `${testID}-chrome` : undefined}
     />
   );

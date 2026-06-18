@@ -706,6 +706,9 @@ const FoundationTripPreview: React.FC<{
       showMute={coverType === "video"}
       onClose={onClose}
       onShare={onShare}
+      // ORCH-1159 — hide the floating X on web (public trip page; no parent
+      // screen for an anonymous share-link visitor). Native keeps it.
+      hideCloseOnWeb
       heroEyebrow={
         duration !== null ? (
           <Text style={styles.heroEyebrow}>

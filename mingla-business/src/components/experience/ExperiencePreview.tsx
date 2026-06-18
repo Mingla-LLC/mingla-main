@@ -594,6 +594,9 @@ const FoundationExperiencePreview: React.FC<{
       showMute={coverType === "video"}
       onClose={onClose}
       onShare={onShare}
+      // ORCH-1159 — hide the floating X on web (public experience page; no
+      // parent screen for an anonymous share-link visitor). Native keeps it.
+      hideCloseOnWeb
       heroEyebrow={
         /* ORCH-1138 rework (§4.D F-1.1) — N-stop eyebrow (was cityCountry; city
            is the meta chip). */

@@ -616,6 +616,7 @@ export const PublicBrandPage: React.FC<PublicBrandPageProps> = ({
       showMute={coverType === "video"}
       onClose={callbacks.onClose}
       onShare={callbacks.onShare}
+      hideCloseOnWeb
       heroEyebrow={heroEyebrow}
       heroTitle={heroTitle}
       stickyPanel={stickyPanel}

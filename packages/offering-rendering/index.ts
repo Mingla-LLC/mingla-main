@@ -14,6 +14,10 @@ export type { ParallaxCoverShellProps } from "./ParallaxCoverShell";
 export { OfferingChrome } from "./OfferingChrome";
 export type { OfferingChromeProps } from "./OfferingChrome";
 
+// ORCH-1159 — RN-free close-button visibility predicate (single owner).
+export { shouldRenderCloseButton } from "./closeButtonVisibility";
+export type { PlatformOSValue } from "./closeButtonVisibility";
+
 export { CountAwareGallery } from "./CountAwareGallery";
 export type {
   CountAwareGalleryProps,

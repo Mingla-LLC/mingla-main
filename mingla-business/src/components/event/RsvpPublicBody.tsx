@@ -515,6 +515,9 @@ export const RsvpPublicBody: React.FC<RsvpPublicBodyProps> = ({
         showMute={event.coverMediaType === "video"}
         onClose={onClose}
         onShare={onShare}
+        // ORCH-1159 — hide the floating X on web (public RSVP event page; no
+        // parent screen for an anonymous share-link visitor). Native keeps it.
+        hideCloseOnWeb
         heroEyebrow={
           event.dateLine.length > 0 ? (
             <Text style={styles.heroEyebrow}>{event.dateLine}</Text>
