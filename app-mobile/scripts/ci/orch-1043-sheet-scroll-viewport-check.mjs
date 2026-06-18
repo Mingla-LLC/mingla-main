@@ -157,9 +157,16 @@ check("T-06 swipe-dismiss + wrapInRNModal wiring preserved", () => {
     /if \(index === -1\) onClose\(\);/,
     "handleSheetChange must map onChange(-1) → onClose()",
   );
+  // ORCH-1157 Round-9 [android-sheet-gap]: the GHRV inside the RN Modal now hosts
+  // {sheet} PLUS the Android nav-bar `{androidNavFiller}` sibling (paints the OS
+  // nav-bar inset region with the sheet's own bg so deck/Discover detail sheets
+  // have no see-through band). The filler is a SIBLING of {sheet}, never nested in
+  // the gorhom container, so the swipe-dismiss / viewport wiring is untouched. The
+  // assertion still pins {sheet} inside the GHRV; it tolerates the trailing
+  // {androidNavFiller} sibling before the closing tag.
   assert.match(
     src,
-    /<GestureHandlerRootView style=\{styles\.flexContainer\}>\s*\{sheet\}\s*<\/GestureHandlerRootView>/,
+    /<GestureHandlerRootView style=\{styles\.flexContainer\}>\s*\{sheet\}\s*(\{androidNavFiller\}\s*)?<\/GestureHandlerRootView>/,
     "wrapInRNModal must still wrap {sheet} in a GestureHandlerRootView inside the RN Modal",
   );
 });

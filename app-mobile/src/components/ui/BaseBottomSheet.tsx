@@ -736,69 +736,35 @@ function BaseBottomSheetComponent(props: BaseBottomSheetProps): React.ReactEleme
     </BottomSheet>
   );
 
-  if (wrapInRNModal) {
-    // ORCH-0908 z-stack: RN <Modal> hosts a separate OS overlay window so the
-    // sheet lifts above the custom in-tree tab bar / chat input. RN Modal also
-    // provides native accessibilityViewIsModal focus-trap + Android back.
-    //
-    // META-ORCH-0991 (sheet rework — Bug 1): the modal window is a SEPARATE
-    // native window/ViewRootImpl that the host-tree GestureHandlerRootView
-    // (app/_layout.tsx) does NOT extend into. Without a GestureHandlerRootView
-    // INSIDE this window, gorhom's pan-down-to-dismiss PanGestureHandler never
-    // receives touches → swipe-down-to-close is dead on Android and fragile on
-    // iOS. Wrapping {sheet} in its own GHRV re-activates the drag-to-dismiss
-    // engine in the modal window. (RNGH docs: "If you want to use gestures in
-    // Modals, you need to wrap Modal's content with GestureHandlerRootView";
-    // iOS evaluates GHRV as a plain View, Android requires it for touch
-    // registration — exactly the observed iOS-fragile / Android-dead asymmetry.)
-    return (
-      <RNModal
-        visible={visible}
-        transparent
-        animationType="none"
-        onRequestClose={onClose}
-        statusBarTranslucent
-      >
-        <GestureHandlerRootView style={styles.flexContainer}>
-          {sheet}
-        </GestureHandlerRootView>
-      </RNModal>
-    );
-  }
-
-  // Non-wrapped: announce a modal boundary for VoiceOver so focus does not leak
-  // to content behind the sheet (SPEC §5 a11y / §9 blast #5). The sheet floats
-  // absolutely; this View provides the modal semantics RN <Modal> gives wrapped
-  // sheets for free. pointerEvents=box-none keeps the backdrop/sheet interactive.
-  // ORCH-1016 REWORK-10: do not rely on `StyleSheet.absoluteFill` here. Live
-  // iPhone evidence showed Discover's ancestor could hand gorhom an inline
-  // parent taller than the physical window, making BottomSheetScrollView report
-  // a 1057pt viewport on an 852pt-tall phone. Bound the inline host to the real
-  // window height; add `bottomSheetInset` back because gorhom's HostingContainer
-  // applies that inset as `bottom`, so the measured container remains exactly
-  // the real window while the nav-overlay clearance still feeds snap math.
-  if (!visible) return sheet;
-  // ORCH-1157 Round-8 [android-sheet-gap] — Android see-through nav-bar gap fix.
+  // ORCH-1157 Round-8/Round-9 [android-sheet-gap] — Android see-through nav-bar
+  // gap filler, SHARED by BOTH host paths (inline AND wrapInRNModal).
   //
-  // ROOT CAUSE: a non-`wrapInRNModal` sheet renders this inline host at exactly
-  // `windowHeight` (the ORCH-1016 viewport invariant — gorhom must NOT measure a
-  // parent taller than the physical window). gorhom's `backgroundComponent`
-  // therefore paints the sheet's rounded body only down to `windowHeight`. On
-  // Android edge-to-edge, the OS navigation-bar strip (`insets.bottom`) sits
-  // BELOW that — unpainted by the sheet — so the deck/Discover content behind the
-  // sheet shows THROUGH it: an ugly see-through band between the sheet and the nav
-  // bar. iOS does not exhibit this (the home-indicator region is painted by the
-  // sheet body reaching the safe-area bottom), so the filler is Android-only.
+  // ROOT CAUSE: the sheet's `backgroundComponent` paints the rounded body only
+  // down to its measured host bottom. On Android edge-to-edge the OS navigation-
+  // bar strip (`insets.bottom`) sits BELOW that — unpainted by the sheet — so the
+  // deck/Discover content behind the sheet shows THROUGH it: an ugly see-through
+  // band between the sheet and the nav bar.
+  //   • Inline host (non-wrapInRNModal): the host is bounded to `windowHeight`
+  //     (ORCH-1016 viewport invariant), so the nav-bar inset region below it is
+  //     unpainted.
+  //   • RN <Modal statusBarTranslucent> host (wrapInRNModal): the modal window
+  //     spans the full screen INCLUDING the nav-bar region, and the gorhom sheet
+  //     inside it still measures to the safe-area, so the same nav-bar band is
+  //     unpainted. Round-8 only added the filler to the inline branch, so the
+  //     deck/Discover DETAIL sheets — RSVP / event / trip / experience, all of
+  //     which open via ExpandedCardModal with `wrapInRNModal={true}` — still
+  //     gapped (Round-9: render the SAME filler in the modal window's bottom).
   //
   // FIX: paint a thin opaque filler of the SHEET'S OWN background colour across
-  // exactly the nav-bar inset region, anchored to the bottom of the host. It is a
-  // SIBLING of `{sheet}` (NOT a child of the gorhom-measured container) so it does
-  // not perturb gorhom's snap/viewport math (ORCH-1016 invariant preserved). The
-  // colour is read from the resolved background style (per-consumer override or
-  // theme default) so RSVP/event/trip/experience detail sheets — all four share
-  // THIS host — get the right fill with one change. pointerEvents=none so it never
+  // exactly the nav-bar inset region, anchored to the bottom of the window. It is
+  // a SIBLING of `{sheet}` (NOT a child of the gorhom-measured container) so it
+  // never perturbs gorhom's snap/viewport math (ORCH-1016 invariant preserved).
+  // The colour is read from the resolved background style (per-consumer override
+  // or theme default) so all four detail-sheet types — which share THIS host —
+  // get the right fill from one definition. pointerEvents=none so it never
   // intercepts a tap meant for the backdrop. Skipped when the inset is 0
-  // (gesture-nav / no nav bar) — nothing to fill.
+  // (gesture-nav / no nav bar) — nothing to fill. iOS is untouched (the home-
+  // indicator region is already painted by the sheet reaching the safe-area).
   const resolvedBgColor =
     (StyleSheet.flatten(resolvedBackgroundStyle) as ViewStyle | undefined)
       ?.backgroundColor;
@@ -816,6 +782,68 @@ function BaseBottomSheetComponent(props: BaseBottomSheetProps): React.ReactEleme
         ]}
       />
     ) : null;
+
+  if (wrapInRNModal) {
+    // ORCH-0908 z-stack: RN <Modal> hosts a separate OS overlay window so the
+    // sheet lifts above the custom in-tree tab bar / chat input. RN Modal also
+    // provides native accessibilityViewIsModal focus-trap + Android back.
+    //
+    // META-ORCH-0991 (sheet rework — Bug 1): the modal window is a SEPARATE
+    // native window/ViewRootImpl that the host-tree GestureHandlerRootView
+    // (app/_layout.tsx) does NOT extend into. Without a GestureHandlerRootView
+    // INSIDE this window, gorhom's pan-down-to-dismiss PanGestureHandler never
+    // receives touches → swipe-down-to-close is dead on Android and fragile on
+    // iOS. Wrapping {sheet} in its own GHRV re-activates the drag-to-dismiss
+    // engine in the modal window. (RNGH docs: "If you want to use gestures in
+    // Modals, you need to wrap Modal's content with GestureHandlerRootView";
+    // iOS evaluates GHRV as a plain View, Android requires it for touch
+    // registration — exactly the observed iOS-fragile / Android-dead asymmetry.)
+    //
+    // ORCH-1157 Round-9 [android-sheet-gap]: render the Android nav-bar filler as
+    // a SIBLING of `{sheet}` inside this modal's GestureHandlerRootView. The RN
+    // <Modal statusBarTranslucent> window spans the FULL screen (including the
+    // nav-bar region), so an absolute, bottom-anchored, full-width filler lands
+    // exactly on the nav-bar inset region and paints it with the sheet's own bg —
+    // no see-through band. It is a sibling of `{sheet}`, never inside the gorhom-
+    // measured container, so the ORCH-1016 viewport invariant is untouched and
+    // snap/scroll are unperturbed. This covers ALL deck/Discover detail sheets
+    // (RSVP / event / trip / experience) which open via ExpandedCardModal with
+    // wrapInRNModal={true}. Android-only + skipped when insets.bottom===0.
+    return (
+      <RNModal
+        visible={visible}
+        transparent
+        animationType="none"
+        onRequestClose={onClose}
+        statusBarTranslucent
+      >
+        <GestureHandlerRootView style={styles.flexContainer}>
+          {sheet}
+          {androidNavFiller}
+        </GestureHandlerRootView>
+      </RNModal>
+    );
+  }
+
+  // Non-wrapped: announce a modal boundary for VoiceOver so focus does not leak
+  // to content behind the sheet (SPEC §5 a11y / §9 blast #5). The sheet floats
+  // absolutely; this View provides the modal semantics RN <Modal> gives wrapped
+  // sheets for free. pointerEvents=box-none keeps the backdrop/sheet interactive.
+  // ORCH-1016 REWORK-10: do not rely on `StyleSheet.absoluteFill` here. Live
+  // iPhone evidence showed Discover's ancestor could hand gorhom an inline
+  // parent taller than the physical window, making BottomSheetScrollView report
+  // a 1057pt viewport on an 852pt-tall phone. Bound the inline host to the real
+  // window height; add `bottomSheetInset` back because gorhom's HostingContainer
+  // applies that inset as `bottom`, so the measured container remains exactly
+  // the real window while the nav-overlay clearance still feeds snap math.
+  if (!visible) return sheet;
+  // ORCH-1157 Round-8 [android-sheet-gap] — the inline (non-wrapInRNModal) host
+  // renders the SHARED `androidNavFiller` (defined above) as a SIBLING of the
+  // bounded inline host. The host stays exactly `inlineContainerHeight`
+  // (windowHeight + nav-overlay clearance — ORCH-1016 viewport invariant), and
+  // the filler paints the Android nav-bar inset region below it with the sheet's
+  // own background colour so the deck behind never shows through. iOS / gesture-
+  // nav (insets.bottom===0) get `androidNavFiller === null` — no-op.
   return (
     <>
       <View
