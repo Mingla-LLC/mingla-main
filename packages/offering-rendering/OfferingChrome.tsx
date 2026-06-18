@@ -23,6 +23,8 @@ import Svg, { Circle, Line, Path } from "react-native-svg";
 
 import { type ThemePalette } from "@mingla/event-rendering";
 
+import { shouldRenderCloseButton } from "./closeButtonVisibility";
+
 const HIT_SLOP = { top: 8, bottom: 8, left: 8, right: 8 };
 
 const CloseGlyph: React.FC = () => (
@@ -114,6 +116,16 @@ export interface OfferingChromeProps {
   onShare: () => void;
   onToggleMute: () => void;
   closeAccessibilityLabel?: string;
+  /**
+   * ORCH-1159 — when true, the floating "X" (close) button is HIDDEN on web
+   * (`Platform.OS === "web"`) and KEPT on native. On the public event / trip /
+   * experience pages there is no parent screen to return to on web — the close
+   * handler just bounces an anonymous share-link visitor to the brand page or
+   * home, which is confusing. Share + Mute are NEVER affected. Native is
+   * byte-identical to before. Absent / false ⇒ the close button renders on all
+   * surfaces (current behavior — the public brand page keeps its X on web).
+   */
+  hideCloseOnWeb?: boolean;
   testID?: string;
 }
 
@@ -143,23 +155,34 @@ export const OfferingChrome: React.FC<OfferingChromeProps> = ({
   onShare,
   onToggleMute,
   closeAccessibilityLabel = "Close",
+  hideCloseOnWeb = false,
   testID,
 }) => {
   // accentWash tints the glass slightly toward the brand color over the dark
   // scrim, keeping the buttons readable on any cover.
   const tint: ViewStyle = { backgroundColor: "rgba(0,0,0,0.48)" };
   void palette; // palette reserved for future accent-tinted chrome; scrim stays neutral for contrast.
+  // ORCH-1159 — hide ONLY the close button on web when the caller opts in
+  // (public event / trip / experience pages). Share + Mute always render; native
+  // is unaffected. When the close button is hidden, an empty placeholder keeps
+  // the left slot so the space-between row still pins the Share/Mute group to the
+  // right edge (a single child under space-between would otherwise flush LEFT).
+  const showClose = shouldRenderCloseButton(hideCloseOnWeb, Platform.OS);
   return (
     <View style={styles.row} pointerEvents="box-none" testID={testID}>
-      <ChromeButton
-        onPress={onClose}
-        accessibilityLabel={closeAccessibilityLabel}
-        testID={testID !== undefined ? `${testID}-close` : undefined}
-      >
-        <View style={[styles.glass, tint]}>
-          <CloseGlyph />
-        </View>
-      </ChromeButton>
+      {showClose ? (
+        <ChromeButton
+          onPress={onClose}
+          accessibilityLabel={closeAccessibilityLabel}
+          testID={testID !== undefined ? `${testID}-close` : undefined}
+        >
+          <View style={[styles.glass, tint]}>
+            <CloseGlyph />
+          </View>
+        </ChromeButton>
+      ) : (
+        <View pointerEvents="none" />
+      )}
       <View style={styles.rightGroup}>
         <ChromeButton
           onPress={onShare}

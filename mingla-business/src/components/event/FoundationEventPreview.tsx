@@ -465,6 +465,10 @@ export const FoundationEventPreview: React.FC<FoundationEventPreviewProps> = ({
       showMute={coverType === "video"}
       onClose={onClose}
       onShare={onShare}
+      // ORCH-1159 — hide the floating X on web (public event page; no parent
+      // screen to return to for an anonymous share-link visitor). Native keeps
+      // it; Share is unaffected.
+      hideCloseOnWeb
       heroEyebrow={
         event.dateLine.length > 0 ? (
           <Text style={styles.heroEyebrow}>{event.dateLine}</Text>
