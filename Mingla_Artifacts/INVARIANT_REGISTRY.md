@@ -7,6 +7,30 @@
 
 ---
 
+## ACTIVE — ORCH-1157 (public RSVP page "Momentum" + address-privacy/doors/parity/Android-sheet-gap, 2026-06-18, PR #526)
+
+### I-PROPOSED-1157-NO-CHECKOUT-AFFORDANCE (ACTIVE)
+- **Rule:** RSVP event surfaces are ticketless — NO price / Reserve / cart / checkout affordance anywhere; the only action is Going / Maybe / Can't go.
+- **Enforcement:** strict-grep + the RSVP momentum/decision tests; CI green on #526.
+- **Established:** ACTIVE on ORCH-1157 close 2026-06-18.
+
+### I-PROPOSED-1157-DECISION-IS-HERO (ACTIVE)
+- **Rule:** The Going/Maybe/Can't decision is the single hero control (float→dock on phone, sticky panel on desktop), rendered exactly once per surface (no dead duplicate row).
+- **Enforcement:** `packages/offering-rendering/__tests__/orch_1157_*` (single-decision assertions); fails-on-revert.
+- **Established:** ACTIVE on ORCH-1157 close 2026-06-18.
+
+### I-PROPOSED-1157-SOCIAL-PROOF-ANON-ONLY (ACTIVE)
+- **Rule:** RSVP social proof is the going COUNT + capacity meter + an anonymous faceless cluster ONLY — never guest names/avatars, no public maybe/waitlist count (constitution rule 9, no fabricated data). AND the exact street address is hidden until the viewer is Going/Maybe (RSVP) / purchased (ticketed); the venue NAME must never carry the street.
+- **Enforcement:** strict-grep + the address-gate + round-4/5 discover-card tests; fails-on-revert.
+- **Established:** ACTIVE on ORCH-1157 close 2026-06-18.
+
+### I-PROPOSED-1157-USES-BRAND-THEME-DIAL (ACTIVE)
+- **Rule:** RSVP expression scales via the brand theme accent (the "loudness dial") with NO layout change between themes; doors times render in a pill, locale-aware (12h AM/PM vs 24h per device).
+- **Enforcement:** theme-dial + doors locale-format tests; CI green on #526.
+- **Established:** ACTIVE on ORCH-1157 close 2026-06-18.
+
+---
+
 ## ACTIVE — ORCH-1155 (public brand page — Direction-A redesign + all-surface parity, 2026-06-17, PR #516)
 
 ### I-PROPOSED-1155-ABOUT-FIRST-DEFAULT (ACTIVE)
