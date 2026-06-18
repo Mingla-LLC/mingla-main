@@ -177,17 +177,44 @@ const buildSeatsLabel = (
   return null;
 };
 
-// "7:00 PM start" from an HH:MM[:SS] authored start_time (rule 9).
-const formatStartTime = (raw: string | null | undefined): string | null => {
+// ORCH-1157 Round-8 [cross-type time audit] — device-locale-aware per-stop time
+// from an HH:MM[:SS] authored start_time (rule 9). PREVIOUSLY forced 12h AM/PM
+// ("7:00 PM") regardless of the device clock — a 24h-clock device still saw
+// "7:00 PM". Now matches the RSVP doors treatment: device on 12h → "7:00 PM",
+// device on 24h → "19:00", always carrying minutes. The `locale` param exists
+// ONLY so tests can pin a clock (undefined → device locale on Hermes / OS locale
+// on buyer web). Real-data-only: malformed / out-of-range → null (never fabricate).
+const formatStartTime = (
+  raw: string | null | undefined,
+  locale?: string,
+): string | null => {
   if (typeof raw !== "string" || raw.length === 0) return null;
   const m = raw.match(/^(\d{1,2}):(\d{2})/);
   if (m === null) return null;
-  let h = Number(m[1]);
-  const min = m[2];
-  if (!Number.isFinite(h)) return null;
-  const ampm = h >= 12 ? "PM" : "AM";
-  h = h % 12 === 0 ? 12 : h % 12;
-  return `${h}:${min} ${ampm}`;
+  const h = Number(m[1]);
+  const min = Number(m[2]);
+  if (!Number.isFinite(h) || !Number.isFinite(min)) return null;
+  if (h < 0 || h > 23 || min < 0 || min > 59) return null;
+  try {
+    // Decide the device 12h/24h clock the same way the RSVP doors helper does.
+    const is24h =
+      new Intl.DateTimeFormat(locale, { hour: "numeric" }).resolvedOptions()
+        .hour12 === false;
+    // Synthetic local instant at the authored clock time; no tz shift applied so
+    // the displayed HH:MM equals the authored clock value (these are wall-clock
+    // stop times, not tz-bearing instants).
+    const d = new Date(2000, 0, 1, h, min, 0);
+    if (Number.isNaN(d.getTime())) return null;
+    return new Intl.DateTimeFormat(locale, {
+      hour: is24h ? "2-digit" : "numeric",
+      minute: "2-digit",
+    })
+      .format(d)
+      .replace(/\bam\b/i, "AM")
+      .replace(/\bpm\b/i, "PM");
+  } catch {
+    return null;
+  }
 };
 
 // Per-stop media → CountAwareGallery items (image/video). Honest passthrough.

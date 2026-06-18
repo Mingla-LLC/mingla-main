@@ -141,22 +141,42 @@ function formatFromPrice(experience: PublicExperience): string {
   }
 }
 
-function formatStopTime(iso: string | null): string {
+// ORCH-1157 Round-8 [cross-type time audit] — device-locale-aware per-stop time.
+// PREVIOUSLY forced 12h AM/PM (HH:MM branch hard-coded "PM"/"AM"; ISO branch used
+// "en-US") regardless of the device clock — a 24h-clock device/browser still saw
+// "7:00 PM". Now matches the RSVP doors treatment: device on 12h → "7:00 PM",
+// device on 24h → "19:00", always carrying minutes. `locale` exists ONLY so tests
+// can pin a clock (undefined → device/OS locale). Real-data-only: malformed → "".
+function formatStopTime(iso: string | null, locale?: string): string {
   if (iso === null) return "";
+  const is24h =
+    new Intl.DateTimeFormat(locale, { hour: "numeric" }).resolvedOptions()
+      .hour12 === false;
   // start_time is stored as a clock string ("HH:mm[:ss]") or an ISO instant.
   if (/^\d{2}:\d{2}/.test(iso)) {
     const [hh, mm] = iso.split(":");
     const h = Number(hh);
-    if (!Number.isFinite(h)) return "";
-    const ampm = h >= 12 ? "PM" : "AM";
-    const h12 = h % 12 === 0 ? 12 : h % 12;
-    return `${h12}:${mm} ${ampm}`;
+    const m = Number(mm);
+    if (!Number.isFinite(h) || !Number.isFinite(m)) return "";
+    if (h < 0 || h > 23 || m < 0 || m > 59) return "";
+    const d = new Date(2000, 0, 1, h, m, 0);
+    return new Intl.DateTimeFormat(locale, {
+      hour: is24h ? "2-digit" : "numeric",
+      minute: "2-digit",
+    })
+      .format(d)
+      .replace(/\bam\b/i, "AM")
+      .replace(/\bpm\b/i, "PM");
   }
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return "";
-  return d
-    .toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })
-    .toUpperCase();
+  return new Intl.DateTimeFormat(locale, {
+    hour: is24h ? "2-digit" : "numeric",
+    minute: "2-digit",
+  })
+    .format(d)
+    .replace(/\bam\b/i, "AM")
+    .replace(/\bpm\b/i, "PM");
 }
 
 // ORCH-1138 Leg 3 — id → human label for the vibe chips (single source of truth:

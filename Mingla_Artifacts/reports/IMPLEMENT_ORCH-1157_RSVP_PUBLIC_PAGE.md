@@ -863,3 +863,153 @@ visually matches the date chip.
 
 Pure-JS — no migration, no edge function, no write-contract change. OTA-shippable
 (consumer app-mobile + business app per the all-surface parity rule).
+
+---
+
+## Round-8 — Android sheet-gap + cross-offering-type time audit
+
+Two tasks: (A) fix the Android see-through gap below the consumer detail sheet,
+and (B) confirm/repair the two bugs (ugly time + Android gap) across standard
+events, trips, and experiences. On-device target: Samsung A72 (port-8083 Metro).
+
+### TASK A — Android see-through sheet gap (FIXED)
+
+**Symptom (Seth, on A72):** the consumer DETAIL sheet (RSVP / event / trip /
+experience — opened from the deck) did not extend to the bottom; a band between
+the sheet's bottom edge and the Android nav bar showed THROUGH to the Discover
+deck behind.
+
+**Root cause.** All four consumer detail sheets mount the SAME shared host
+`app-mobile/src/components/ui/BaseBottomSheet.tsx` as a NON-`wrapInRNModal`
+inline sheet (`hidesBottomNav`, `snapPoints=['50%','90%']`). For a non-wrapped
+sheet the host renders its inline container at EXACTLY `windowHeight`
+(`inlineContainerHeight`), an ORCH-1016 viewport invariant — gorhom must never
+measure a parent taller than the physical window (the 1057pt-on-852pt-phone bug).
+gorhom's `backgroundComponent` therefore paints the rounded sheet body only down
+to `windowHeight`. On Android edge-to-edge the OS navigation-bar strip
+(`insets.bottom`) lives BELOW that line and was left unpainted by the sheet — so
+the deck behind showed through it. iOS does not show the gap (its home-indicator
+region is covered by the sheet body reaching the safe-area bottom), so the fix is
+Android-gated.
+
+**Fix.** In `BaseBottomSheet` (the SOLE gorhom host; the one change covers all
+four detail types), for the non-`wrapInRNModal` inline path, paint an
+Android-only opaque filler of the SHEET'S OWN background colour across exactly the
+nav-bar inset, anchored to the screen bottom, as a SIBLING of the gorhom
+container (NOT a child — so gorhom's snap/viewport math is untouched and the
+ORCH-1016 invariant holds). The colour is read from the resolved background style
+(`resolvedBgColor` = `StyleSheet.flatten(resolvedBackgroundStyle).backgroundColor`)
+so a per-consumer override or theme default both fill correctly; `height` =
+`insets.bottom`; `pointerEvents="none"` + a11y-hidden so it never eats a backdrop
+tap. Skipped when `insets.bottom === 0` (gesture-nav / no bar). New style
+`androidNavFiller` (absolute, `bottom:0`, full-width, same zIndex/elevation 100 as
+the inline host). Added `Platform` to the RN import.
+
+**Covers all 4 types?** YES — confirmed each detail sheet is a non-`wrapInRNModal`
+`BaseBottomSheet`:
+- RSVP: `ConsumerEventDetailScreen` (isRsvp branch), same host.
+- Standard event: `ConsumerEventDetailScreen` (ticketed branch), same host.
+- Trip: `ConsumerTripDetailScreen`, same host (`snapPoints=SHEET_SNAP_POINTS`,
+  `scrollMode="view"`, `hidesBottomNav`).
+- Experience: `ConsumerExperienceDetailScreen`, same host.
+
+No other sheet host is involved. (`ExpandedCardModal`'s OWN root sheet is
+`wrapInRNModal` — a separate native window with `statusBarTranslucent`, which does
+NOT show this gap and is intentionally left on the existing path.)
+
+### TASK B — cross-offering-type audit (time display + Android gap)
+
+| Surface | Time display — status | What changed | Android gap |
+|---|---|---|---|
+| Standard EVENT — consumer detail (`ConsumerEventDetailScreen`, ticketed) | doors PILL already locale-aware (Round-7 `formatEventDoorsTimes`, 12h/24h device, minutes); date eyebrow uses the date-line helper (en-GB, deliberately untouched to avoid date-line regression — same as RSVP) | NO CHANGE — already correct | Fixed by Task A (shared host) |
+| Standard EVENT — `FoundationEventPreview` (business/web, ORCH-1158 scope) | renders NO doors line at all; only `dateLine` in a `◷` MetaChip (pill). Nothing raw/ugly to fix | NO CHANGE — no doors rendered (doors pill deferred to ORCH-1158, noted Round-7) | N/A (web/business preview, not the consumer gorhom sheet) |
+| TRIP — consumer detail + `formatTripDateRange` | DATE-ONLY range ("Mar 12, 2026 – Mar 18, 2026") via `toLocaleDateString(undefined,…)` (device locale). Trips have NO time-of-day; the `time-outline` chip shows DURATION ("3 days"), not a clock | NO CHANGE — already correct, no time-of-day exists | Fixed by Task A (shared host) |
+| EXPERIENCE — START chip (consumer `experienceStartTime` + business `startTimeChip`) | already `Intl.DateTimeFormat(undefined,{hour:"numeric",minute:"2-digit"})` — device-locale-aware, minutes, in a pill | NO CHANGE — already correct | Fixed by Task A (shared host) |
+| EXPERIENCE — per-STOP timeline time pill (consumer `formatStartTime` + business `formatStopTime`) | **BUG:** forced 12h AM/PM ("7:00 PM") regardless of device clock; 24h-clock device still saw "7:00 PM" | **FIXED** — both now decide the device clock via `Intl.DateTimeFormat(locale,{hour:"numeric"}).resolvedOptions().hour12` (same mechanism as RSVP doors): 12h → "7:00 PM", 24h → "19:00", always minutes; still rendered in the existing `stopTimePill` / stop time chip | Fixed by Task A (shared host) |
+
+**Net Task-B fixes:** only the experience per-stop time pill (consumer +
+business/web parity). Everything else on standard events / trips / experiences
+either already matched the RSVP treatment or has no time-of-day to format
+(trips). FoundationEventPreview's missing doors pill stays ORCH-1158's call.
+
+### Files changed (Round-8)
+
+- `app-mobile/src/components/ui/BaseBottomSheet.tsx` — Android nav-bar filler in
+  the inline (non-wrapInRNModal) path + `androidNavFiller` style + `Platform`
+  import. (~45 lines incl. comment.)
+- `app-mobile/src/screens/Experience/ConsumerExperienceDetailScreen.tsx` —
+  `formatStartTime` rewritten device-locale-aware (optional `locale` param for
+  tests). (~25 lines.)
+- `mingla-business/src/components/experience/ExperiencePreview.tsx` —
+  `formatStopTime` rewritten device-locale-aware (optional `locale` param). (~25
+  lines.)
+- `packages/offering-rendering/__tests__/orch_1157_round8_android_gap_and_stop_time.test.ts`
+  — NEW (7 Deno source-contract + mechanism tests).
+
+### Old → New receipts
+
+**BaseBottomSheet.tsx** — *Before:* non-wrapped inline sheet painted only to
+`windowHeight`; Android nav-bar region transparent → deck visible through it.
+*Now:* an Android-only opaque filler of the sheet's own bg colour paints the
+`insets.bottom` nav region as a sibling of the gorhom host. *Why:* Task A — kill
+the see-through gap on all 4 detail sheets via the shared host without touching
+the ORCH-1016 viewport invariant.
+
+**ConsumerExperienceDetailScreen.tsx `formatStartTime`** — *Before:* `h>=12?
+"PM":"AM"` forced 12h. *Now:* `resolvedOptions().hour12` device-clock detection →
+12h "7:00 PM" / 24h "19:00", minutes always. *Why:* Task B — match the RSVP
+locale-aware treatment on the experience stop-time pill.
+
+**ExperiencePreview.tsx `formatStopTime`** — *Before:* HH:MM branch forced "PM"/
+"AM"; ISO branch hard-coded `en-US`. *Now:* device-clock detection, same as
+above. *Why:* Task B — business/web parity for the same stop-time pill.
+
+### Regression test + fails-on-revert
+
+`packages/offering-rendering/__tests__/orch_1157_round8_android_gap_and_stop_time.test.ts`
+— 7 Deno tests: 4 source-contract for the Task-A Android filler (Android-gated,
+sheet-own bg colour, `height:insets.bottom` + bottom-anchored, sibling-of-host),
+3 for Task B (consumer + business stop-time use the device-clock mechanism and
+the forced-12h paths are gone; per-stop time still renders in a pill). **7
+passed.**
+
+**fails-on-revert verified at HEAD (this commit)** by TRUE LINE-DELETION:
+- Deleted the `androidNavFiller` const + `{androidNavFiller}` render (restored the
+  bare `return <View …>{sheet}</View>`) → the 4 Task-A assertions FAILED.
+- Reverted consumer `formatStartTime` to the forced-`h>=12?"PM":"AM"` body → the
+  consumer Task-B assertion FAILED.
+- (Together: 5 of 7 failed; the 2 that stayed green were the un-reverted business
+  helper + the pill-render contract, as expected.)
+- Restored all three files → **7 passed** again.
+
+### Gates
+
+- All ORCH-1157 offering-rendering Deno tests (round-2..8): **51 passed, 0 failed.**
+- `tsc -p app-mobile/tsconfig.json` + `tsc -p mingla-business/tsconfig.json` —
+  **0 errors in the 3 touched source files.**
+- strict-grep: `meta-orch-0991-base-bottom-sheet-sole-consumer` PASS (still the
+  sole gorhom importer), `i-bottomsheet-inline-scroll-binding` PASS,
+  `orch-1043-sheet-scroll-viewport-check` 10/10 PASS,
+  `orch-1105-web-glass-opaque-fallback` PASS.
+- Append-only: Round-8 test ADDED; zero existing tests modified/deleted.
+- PRE-EXISTING (not my regression): `BaseBottomSheet.test.mjs` /
+  `BaseBottomSheetRework.test.mjs` assert "primitive must NOT pass
+  animationConfigs" — STALE META-ORCH-0991 assertion that ORCH-1064 intentionally
+  superseded (it added `animationConfigs={sheetAnimationConfigs}` for the freeze
+  fix). Confirmed failing identically at HEAD before any Round-8 change. Left
+  untouched (append-only; out of ORCH-1157 scope) — flagged to orchestrator.
+
+### Verification posture (honest)
+
+Source + Deno source-contract/mechanism execution + fails-on-revert by true
+line-deletion + type-check + strict-grep. NOT sim/device-verified this round
+(bracketed worktree path breaks Metro — same R3-R7 constraint). The
+orchestrator's port-8083 Metro + physical A72 hot-reload re-verifies on-device.
+Tester should confirm on the A72: (1) open any deck card → the detail sheet has
+NO see-through band at the bottom — the nav-bar region is filled with the sheet's
+own colour (dark sheet → dark fill); verify on RSVP, ticketed event, trip, AND
+experience; (2) experience page on a 24h-clock device shows per-stop times as
+"19:00" (not "7:00 PM"); on 12h shows "7:00 PM".
+
+Pure-JS — no migration, no edge function, no write-contract change. OTA-shippable
+(consumer app-mobile + business app per the all-surface parity rule).

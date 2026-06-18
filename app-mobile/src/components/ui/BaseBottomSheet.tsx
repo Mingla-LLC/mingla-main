@@ -34,6 +34,7 @@ import {
   AccessibilityInfo,
   BackHandler,
   Modal as RNModal,
+  Platform,
   StyleSheet,
   View,
   useWindowDimensions,
@@ -777,14 +778,55 @@ function BaseBottomSheetComponent(props: BaseBottomSheetProps): React.ReactEleme
   // applies that inset as `bottom`, so the measured container remains exactly
   // the real window while the nav-overlay clearance still feeds snap math.
   if (!visible) return sheet;
+  // ORCH-1157 Round-8 [android-sheet-gap] — Android see-through nav-bar gap fix.
+  //
+  // ROOT CAUSE: a non-`wrapInRNModal` sheet renders this inline host at exactly
+  // `windowHeight` (the ORCH-1016 viewport invariant — gorhom must NOT measure a
+  // parent taller than the physical window). gorhom's `backgroundComponent`
+  // therefore paints the sheet's rounded body only down to `windowHeight`. On
+  // Android edge-to-edge, the OS navigation-bar strip (`insets.bottom`) sits
+  // BELOW that — unpainted by the sheet — so the deck/Discover content behind the
+  // sheet shows THROUGH it: an ugly see-through band between the sheet and the nav
+  // bar. iOS does not exhibit this (the home-indicator region is painted by the
+  // sheet body reaching the safe-area bottom), so the filler is Android-only.
+  //
+  // FIX: paint a thin opaque filler of the SHEET'S OWN background colour across
+  // exactly the nav-bar inset region, anchored to the bottom of the host. It is a
+  // SIBLING of `{sheet}` (NOT a child of the gorhom-measured container) so it does
+  // not perturb gorhom's snap/viewport math (ORCH-1016 invariant preserved). The
+  // colour is read from the resolved background style (per-consumer override or
+  // theme default) so RSVP/event/trip/experience detail sheets — all four share
+  // THIS host — get the right fill with one change. pointerEvents=none so it never
+  // intercepts a tap meant for the backdrop. Skipped when the inset is 0
+  // (gesture-nav / no nav bar) — nothing to fill.
+  const resolvedBgColor =
+    (StyleSheet.flatten(resolvedBackgroundStyle) as ViewStyle | undefined)
+      ?.backgroundColor;
+  const androidNavFiller =
+    Platform.OS === 'android' &&
+    insets.bottom > 0 &&
+    typeof resolvedBgColor === 'string' ? (
+      <View
+        pointerEvents="none"
+        accessibilityElementsHidden
+        importantForAccessibility="no-hide-descendants"
+        style={[
+          styles.androidNavFiller,
+          { height: insets.bottom, backgroundColor: resolvedBgColor },
+        ]}
+      />
+    ) : null;
   return (
-    <View
-      style={[styles.inlineContainer, { height: inlineContainerHeight }]}
-      pointerEvents="box-none"
-      accessibilityViewIsModal
-    >
-      {sheet}
-    </View>
+    <>
+      <View
+        style={[styles.inlineContainer, { height: inlineContainerHeight }]}
+        pointerEvents="box-none"
+        accessibilityViewIsModal
+      >
+        {sheet}
+      </View>
+      {androidNavFiller}
+    </>
   );
 }
 
@@ -882,6 +924,19 @@ const styles = StyleSheet.create({
   inlineContainer: {
     position: 'absolute',
     top: 0,
+    left: 0,
+    right: 0,
+    zIndex: 100,
+    elevation: 100,
+  },
+  // ORCH-1157 Round-8 [android-sheet-gap] — opaque filler that paints the sheet's
+  // own background colour across the Android nav-bar inset region, anchored to the
+  // bottom of the screen, so a non-wrapInRNModal detail sheet has NO see-through
+  // band between its painted body and the OS navigation bar. Same z-layer/elevation
+  // as the inline host so it sits above the deck behind but below the global Toast.
+  androidNavFiller: {
+    position: 'absolute',
+    bottom: 0,
     left: 0,
     right: 0,
     zIndex: 100,
