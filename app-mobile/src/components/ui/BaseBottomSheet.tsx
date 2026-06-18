@@ -327,6 +327,10 @@ function BaseBottomSheetComponent(props: BaseBottomSheetProps): React.ReactEleme
     diagFrame = {};
   }
   const [diagHostH, setDiagHostH] = useState<number | null>(null);
+  // [ORCH-1157-DIAG] ref on a zero-height marker that is the bottom-most direct
+  // child of <BottomSheet>; measureInWindow gives its absolute screen pageY so we
+  // can log where the sheet content actually bottoms out vs the screen. Throwaway.
+  const diagContentRef = useRef<View>(null);
   // sheetTopY/sheetBotY: gorhom paints the sheet body inside an internal
   // absolutely-positioned container that does not forward a usable onLayout
   // without overriding backgroundComponent (which would change painting — out of
@@ -337,7 +341,10 @@ function BaseBottomSheetComponent(props: BaseBottomSheetProps): React.ReactEleme
   const diagSheetBotY: number | null = null;
   const onDiagHostLayout = useCallback((e: LayoutChangeEvent) => {
     try {
-      setDiagHostH(e?.nativeEvent?.layout?.height ?? null);
+      const h = e?.nativeEvent?.layout?.height ?? null;
+      setDiagHostH(h);
+      // eslint-disable-next-line no-console
+      console.log(`[GAPDIAG] hostLayout {height:${Math.round(h ?? 0)}}`);
     } catch {
       /* read-once diagnostic — never crash */
     }
@@ -384,6 +391,67 @@ function BaseBottomSheetComponent(props: BaseBottomSheetProps): React.ReactEleme
   } = props;
 
   const effectiveBackdropOpacity = useEffectiveBackdropOpacity(theme, backdropOpacity);
+
+  // [ORCH-1157-DIAG] Console-log the runtime sheet geometry under the unique tag
+  // [GAPDIAG] so it lands in `adb logcat` (ReactNativeJS) on the A72 — the
+  // on-screen magenta overlay renders hidden BEHIND the open sheet, so logcat is
+  // the readable channel. Emits one JSON line on open and again whenever the host
+  // onLayout populates hostH; plus a measureInWindow probe 800ms after open for the
+  // sheet content's absolute bottom pageY. Everything guarded — a throwaway DIAG
+  // must never crash. Reaped at CLOSE.
+  useEffect(() => {
+    if (!visible) return;
+    try {
+      const w = Dimensions.get('window');
+      const s = Dimensions.get('screen');
+      let snapRaw: unknown = null;
+      try {
+        snapRaw = glass.bottomSheet.snapPoints;
+      } catch {
+        snapRaw = null;
+      }
+      // eslint-disable-next-line no-console
+      console.log(
+        '[GAPDIAG]',
+        JSON.stringify({
+          winH: w?.height ?? null,
+          winW: w?.width ?? null,
+          scrH: s?.height ?? null,
+          scrW: s?.width ?? null,
+          insTop: insets?.top ?? null,
+          insBot: insets?.bottom ?? null,
+          frameH: typeof diagFrame?.height === 'number' ? diagFrame.height : null,
+          hostH: diagHostH,
+          snap: snapRaw,
+          pixelRatio: PixelRatio.get(),
+          wrapInRNModal,
+        }),
+      );
+    } catch {
+      /* read-once diagnostic — never crash */
+    }
+  }, [visible, diagHostH, insets?.top, insets?.bottom, diagFrame?.height, wrapInRNModal]);
+
+  // [ORCH-1157-DIAG] measureInWindow on the bottom-most content marker, 800ms
+  // after open (so the sheet has settled), to log its absolute screen Y.
+  useEffect(() => {
+    if (!visible) return undefined;
+    const t = setTimeout(() => {
+      try {
+        diagContentRef.current?.measureInWindow?.((x, y, width, height) => {
+          // eslint-disable-next-line no-console
+          console.log(
+            `[GAPDIAG] sheetBottomPageY=${Math.round((y ?? 0) + (height ?? 0))} (markerY=${Math.round(
+              y ?? 0,
+            )} markerH=${Math.round(height ?? 0)})`,
+          );
+        });
+      } catch {
+        /* read-once diagnostic — never crash */
+      }
+    }, 800);
+    return () => clearTimeout(t);
+  }, [visible]);
 
   // ORCH-1064: DETERMINISTIC timing open/close, replacing gorhom's default SPRING.
   // Replay 6a970e63 + 1d7caee1 (release, on-device) proved the sheet STALLED
@@ -765,6 +833,29 @@ function BaseBottomSheetComponent(props: BaseBottomSheetProps): React.ReactEleme
       accessibilityLabel={accessibilityLabel}
     >
       {body}
+      {/* [ORCH-1157-DIAG] zero-height, non-interactive marker appended as the
+          bottom-most direct child of <BottomSheet> so its onLayout / measureInWindow
+          reveal where the sheet content actually bottoms out. collapsable={false}
+          keeps the native view around for measureInWindow on Android. Throwaway. */}
+      <View
+        ref={diagContentRef}
+        collapsable={false}
+        pointerEvents="none"
+        style={styles.diagContentMarker}
+        onLayout={(e: LayoutChangeEvent) => {
+          try {
+            const ly = e?.nativeEvent?.layout;
+            // eslint-disable-next-line no-console
+            console.log(
+              `[GAPDIAG] sheetContent {y:${Math.round(ly?.y ?? 0)}, height:${Math.round(
+                ly?.height ?? 0,
+              )}}`,
+            );
+          } catch {
+            /* read-once diagnostic — never crash */
+          }
+        }}
+      />
     </BottomSheet>
   );
 
@@ -1094,6 +1185,9 @@ const styles = StyleSheet.create({
     lineHeight: 15,
     fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace',
   },
+  // [ORCH-1157-DIAG] zero-height non-perturbing marker (bottom-most child of
+  // <BottomSheet>) used only for onLayout / measureInWindow geometry logging.
+  diagContentMarker: { height: 0, width: '100%' },
   centerScrim: {
     flex: 1,
     alignItems: 'center',
