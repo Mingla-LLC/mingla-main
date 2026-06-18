@@ -760,3 +760,106 @@ caption.
 
 No migration, no edge function, no write-contract change. Pure-JS — OTA-shippable
 (consumer app-mobile + business app per the all-surface parity rule).
+
+---
+
+## Round-7 — doors pill + locale-aware time (HEAD 96f92819c)
+
+**Problem (Seth, device-confirmed):** the public RSVP doors line rendered as
+bare-hour plain text — "Doors open 13 · Doors close 04" — no minutes, no AM/PM,
+not in a pill. Root cause: the doors formatter reused the date-line time helper
+(`formatTimeInTz` / `formatTimeLabelInTz`), which is forced 12h-ish via `en-GB`
+AND strips `:00` minutes; the consumer `hour: "numeric"` en-GB path produced a
+bare hour ("13"). Render was a plain `<Text>`.
+
+### Fix 1 — locale-aware, minute-carrying time (shared formatter, both apps)
+
+New private helper `formatDoorsTimeInTz(iso, tz, locale?)` in BOTH
+`app-mobile/src/utils/eventDateDisplay.ts` and
+`mingla-business/src/utils/eventDateDisplay.ts` (byte-identical logic), used ONLY
+by `formatEventDoorsTimes`. The date-line helpers (`formatTimeInTz`,
+`formatTimeLabelInTz`, `formatSingleDateLine`) are UNTOUCHED — zero date-line
+regression.
+
+**12h/24h detection mechanism + why:** neither app depends on
+`react-native-localize`, and adding a dep is out of scope. The app's existing
+device-respecting convention is `Date.toLocaleTimeString(undefined, { hour, minute })`
+(used in `MessageBubble.tsx` + `ChatStatusLine.tsx`), which on Hermes resolves to
+the device locale + its 24-hour-clock setting. We use that, and decide the clock
+explicitly from `new Intl.DateTimeFormat(locale, { hour: "numeric" }).resolvedOptions().hour12`:
+- `hour12 === false` (device 24h) → `hour: "2-digit"` → zero-padded "13:00" / "04:00"
+- otherwise (device 12h) → `hour: "numeric"` → "1:00 PM" / "4:00 AM"
+
+Minutes are always shown (`minute: "2-digit"`). AM/PM uppercased for parity with
+the date line. The event timezone (`timeZone: tz` from `event_dates.start_at/end_at`)
+is honored for the actual time value. The optional `locale` param exists ONLY for
+deterministic tests (production passes `undefined` → device). Real-data-only:
+invalid instant → `null`; null end → `close: null` (no fabricated close).
+
+Verified by execution (event tz UTC, 18:00–02:00+1):
+- `en-US` (12h) → `{ open: "6:00 PM", close: "2:00 AM" }`
+- `sv-SE` (24h) → `{ open: "18:00", close: "02:00" }`
+- `America/New_York` 12h → `open: "2:00 PM"` (tz respected)
+- null end, 12h → `{ open: "1:30 PM", close: null }`
+
+### Fix 2 — render in a PILL styled like the date chip (both RSVP surfaces)
+
+| Surface | File | Pill component reused |
+|---|---|---|
+| Consumer RSVP | `app-mobile/src/screens/Event/ConsumerEventDetailScreen.tsx` | the date chip `styles.metaChip` + `surface.card` + `Icon name="time-outline"` (Lucide Clock) + `styles.metaChipText`, wrapped in a new `styles.doorsChipRow` placed just beneath the date `metaChipRow`. Replaces the old plain-text `styles.doorsLine` (style removed). `testID="orch-1157-consumer-doors"` preserved (moved onto the pill). |
+| Business/web RSVP | `mingla-business/src/components/event/RsvpPublicBody.tsx` | the date pill `styles.factRow` + `surface.card` + clock glyph (◷) + `styles.factText`, its OWN row placed just beneath the date pill. Decoupled from `event.dateSubline` (previously nested inside the subline factRow, so single-date events never showed doors). `testID="orch-1157-rsvp-doors"`. |
+
+Standard event page (`FoundationEventPreview.tsx`, ORCH-1158) does NOT render
+doors today — it inherits the friendly shared formatter automatically; the pill
+render is deferred to **ORCH-1158** (noted here, not built — out of scope).
+
+`mingla-business/src/components/event/PublicEventPage.tsx` (the adapter) is
+unchanged: it already feeds `rsvpDoors.open/.close`; my added optional `locale`
+param defaults to device. No edit needed.
+
+### Regression test (implementor-owned)
+
+`packages/offering-rendering/__tests__/orch_1157_round7_doors_locale_pill.test.ts`
+— 8 Deno tests: behavioral execution of the consumer `formatEventDoorsTimes`
+under pinned 12h (`en-US`) / 24h (`sv-SE`) clocks, tz-respect, null-end + invalid
+fallback; source-contract that the business formatter shares the device-locale
+mechanism; source-contract for both pill renders. **8 passed.**
+
+**fails-on-revert verified at 96f92819c** by TRUE LINE-DELETION: reverting
+`formatDoorsTimeInTz` to a forced-`hour12:false` / `hour:"numeric"` path made the
+4 behavioral assertions fail (24h forced → "13:30" instead of 12h "1:30 PM");
+restoring → 8 passed.
+
+Existing `orch_1157_round2_rsvp_fixes.test.ts` "ISSUE 4 business doors helper"
+asserted the helper's stale internal call (`formatTimeLabelInTz`); retargeted to
+`formatDoorsTimeInTz` — the reuse-start/end + real-data-only contract is unchanged.
+Token `[TEST-MOD-APPROVED ORCH-1157]` in the commit body; append-only check passes
+(12 passed, 0 failed).
+
+### Gates
+
+- All ORCH-1157 offering-rendering Deno tests: **24 passed, 0 failed**.
+- Business jest (date-line + RsvpPublicBody): `eventDateDisplay_cross_midnight`,
+  `eventDateDisplay_web_picker.adversarial`, `RsvpPublicBody.maybeCta` — **20 passed**.
+- `deno check app-mobile/src/utils/eventDateDisplay.ts` — clean.
+- `tsc -p mingla-business/tsconfig.json` — my 4 touched files: **0 errors** (the
+  pre-existing `packages/event-rendering/PublicEventPage.tsx` "Cannot find module
+  'react'" noise is a sibling-package tsconfig-resolution artifact, untouched by me).
+- strict-grep: glass-opaque-fallback + no-buyer-tax-form **PASS**; the broad
+  baseline failures (currency-GBP-in-preview, safearea, topbar-cluster, node-v22
+  script errors) all PRE-EXIST at `HEAD~1` and flag NONE of my touched files.
+- Append-only check: **PASS** (Round-7 test ADDED; Round-2 MODIFIED recognized
+  with token).
+
+### Verification posture (honest)
+
+Source + Deno behavioral execution + source-contract + fails-on-revert by
+line-deletion. NOT sim/device-verified this round (bracketed worktree path breaks
+Metro, same R3–R6 constraint). The orchestrator's port-8083 sim + physical device
+hot-reload re-verifies the doors pill on-device. Tester should confirm: phone on
+12h shows "Doors open 1:00 PM · Doors close 4:00 AM" in a chip beneath the date;
+phone on 24h shows "13:00 … 04:00"; null-end event shows open-only; the chip
+visually matches the date chip.
+
+Pure-JS — no migration, no edge function, no write-contract change. OTA-shippable
+(consumer app-mobile + business app per the all-surface parity rule).
