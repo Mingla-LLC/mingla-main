@@ -33,7 +33,6 @@ import React, {
 import {
   AccessibilityInfo,
   BackHandler,
-  Dimensions,
   Modal as RNModal,
   Platform,
   StyleSheet,
@@ -784,38 +783,15 @@ function BaseBottomSheetComponent(props: BaseBottomSheetProps): React.ReactEleme
       />
     ) : null;
 
-  // ORCH-1157 Round-11 [android-sheet-gap] — DATA-BACKED inline-path nav-bar fill.
-  //
-  // ON-DEVICE GEOMETRY (Samsung A72, runtime logcat, dp): scrH=853.33,
-  // winH=774.76, insTop=30.58, insBot=48; scrH−winH ≈ insTop+insBot. The OPEN
-  // consumer detail sheet logged `wrapInRNModal:false` — it is the INLINE
-  // BaseBottomSheet that ConsumerEventDetailScreen mounts (ExpandedCardModal
-  // returns <ConsumerEventDetailScreen> EARLY, before its own wrapInRNModal=true
-  // sheet), so the gapping host is THIS inline path, NOT the wrapInRNModal branch
-  // Rounds 9/10 patched. The gorhom inline host is bounded to `inlineContainerHeight`
-  // (= windowHeight = 774.76, ORCH-1016) so the sheet bottom lands at the nav-bar
-  // TOP; the 48dp Android nav-bar band BELOW winH is unpainted and the edge-to-edge
-  // Discover deck shows through it.
-  //
-  // WHY ROUND-8's SIBLING FILLER STILL GAPPED: `styles.androidNavFiller`
-  // (position:absolute; bottom:0) resolves its `bottom:0` against its CONTAINING
-  // BLOCK — the inline overlay's positioned ancestor, which is bounded to the
-  // WINDOW height (winH), not the physical SCREEN (scrH). So `bottom:0` landed at
-  // winH = the nav-bar TOP, painting nothing over the 48dp band below it.
-  //
-  // FIX: in the inline return path, render the filler inside an Android-only
-  // screen-height layer (`styles.androidNavFillerScreenLayer`: position:absolute;
-  // top:0; height = Dimensions.get('screen').height) that anchors at the overlay's
-  // top (= physical screen top, the same origin the working inline host uses) and
-  // EXPLICITLY spans scrH. An absolute child with `height` escapes the parent's
-  // winH height constraint, so the filler's `bottom:0` now reaches the TRUE
-  // physical screen bottom and paints the sheet's own bg over the nav-bar band.
-  // This uses NO RN <Modal> and NO `navigationBarTranslucent` on the inline path
-  // (Round-10 invariant preserved — that prop is wrapInRNModal-only). pointerEvents
-  // none; behind the sheet but above the deck; only when visible; skipped when
-  // insets.bottom===0. iOS untouched (filler is null off-Android). The
-  // wrapInRNModal branch keeps rendering the bare `androidNavFiller` (its window is
-  // already full-screen via navigationBarTranslucent, so no screen layer needed).
+  // ORCH-1157 Round-12 [android-sheet-gap] — SUPERSEDES Rounds 8–11. The in-tree
+  // `androidNavFiller` const above is RETAINED (it is the sheet-bg strip painted
+  // across the nav-bar inset region) but it is now rendered INSIDE a full-screen
+  // RN <Modal> window — on BOTH the wrapInRNModal branch (Round-10) AND the inline
+  // path (Round-12 block further below). The Round-11 in-tree screen-height layer
+  // is GONE: an in-tree layer can never escape the
+  // window-bounded, clipping host (proven on-device); only the separate native
+  // window of an RN <Modal navigationBarTranslucent> reaches the physical screen
+  // bottom. See the Round-12 block at the inline return for the full rationale.
 
   if (wrapInRNModal) {
     // ORCH-0908 z-stack: RN <Modal> hosts a separate OS overlay window so the
@@ -910,47 +886,86 @@ function BaseBottomSheetComponent(props: BaseBottomSheetProps): React.ReactEleme
   // applies that inset as `bottom`, so the measured container remains exactly
   // the real window while the nav-overlay clearance still feeds snap math.
   if (!visible) return sheet;
-  // ORCH-1157 Round-8 + Round-11 [android-sheet-gap] — the inline
-  // (non-wrapInRNModal) host renders the bounded gorhom host (exactly
-  // `inlineContainerHeight` = windowHeight + nav-overlay clearance — ORCH-1016
-  // viewport invariant) and, as a SIBLING, the `androidNavFiller` wrapped in the
-  // Round-11 `androidNavFillerScreenLayer`. Round-8 anchored the filler `bottom:0`
-  // against a winH-bounded ancestor, so it stopped at the nav-bar TOP and never
-  // painted the 48dp band below winH (A72 runtime geometry). The Round-11 screen
-  // layer (position:absolute; top:0; height = Dimensions.get('screen').height)
-  // spans the TRUE physical screen so the filler's `bottom:0` reaches the screen
-  // bottom and covers the nav-bar inset region with the sheet's own bg → the deck
-  // behind never shows through. iOS / gesture-nav (insets.bottom===0) get
-  // `androidNavFiller === null` → `androidNavFillerScreenLayer === null` → no-op.
-  return (
-    <>
-      <View
-        style={[styles.inlineContainer, { height: inlineContainerHeight }]}
-        pointerEvents="box-none"
-        accessibilityViewIsModal
-      >
-        {sheet}
-      </View>
-      {/* ORCH-1157 Round-11: the nav-bar filler must paint at the PHYSICAL screen
-          bottom, not the winH-bounded ancestor its own bottom:0 would otherwise
-          resolve against. Wrap it in a screen-height absolute layer (top:0,
-          height = screen height) so it spans scrH and its bottom reaches the real
-          screen bottom. Off-Android / gesture-nav → androidNavFiller is null. */}
-      {androidNavFiller !== null ? (
-        <View
-          pointerEvents="none"
-          accessibilityElementsHidden
-          importantForAccessibility="no-hide-descendants"
-          style={[
-            styles.androidNavFillerScreenLayer,
-            { height: Dimensions.get('screen').height },
-          ]}
-        >
-          {androidNavFiller}
-        </View>
-      ) : null}
-    </>
+
+  // The bounded inline host (ORCH-1016 viewport invariant) — gorhom measures
+  // EXACTLY `inlineContainerHeight` (= windowHeight + nav-overlay clearance), so
+  // snap/scroll math is unchanged whether or not this host is later placed inside
+  // the Round-12 full-screen modal window below.
+  const inlineHost = (
+    <View
+      style={[styles.inlineContainer, { height: inlineContainerHeight }]}
+      pointerEvents="box-none"
+      accessibilityViewIsModal
+    >
+      {sheet}
+    </View>
   );
+
+  // ORCH-1157 Round-12 [android-sheet-gap] — SYSTEM-BAR-LEVEL FIX (supersedes the
+  // in-tree fillers of Rounds 8–11, which ALL failed on-device, clean-cache
+  // verified on a Samsung A72).
+  //
+  // WHY EVERY IN-TREE FILLER FAILED (proven): the inline detail-sheet host (and
+  // gorhom's own backdrop, which is `StyleSheet.absoluteFillObject` INSIDE that
+  // host) is bounded to the WINDOW height (winH=774.76dp), per the ORCH-1016
+  // invariant — it must stay window-bounded or gorhom's snap math breaks. The
+  // Android system navigation-bar band (~48dp) lives BELOW winH, OUTSIDE the host.
+  // With Expo-54 edge-to-edge the app draws behind a TRANSLUCENT nav bar, so the
+  // Discover deck behind the sheet shows THROUGH that band. NO layer mounted in
+  // the host tree can paint there: an absolute child's `bottom:0`/`top:0` resolves
+  // against a winH-bounded (and clipping) ancestor, never the physical screen —
+  // that is exactly why the Round-8/11 `bottom:0` filler and the Round-11
+  // screen-height layer both stopped at the nav-bar TOP on-device.
+  //
+  // There is NO installed JS API to recolor the Android nav bar (no
+  // `expo-navigation-bar`, no `react-native-edge-to-edge`; only the detect-only
+  // `react-native-is-edge-to-edge` is present, and `expo-system-ui` sets the ROOT
+  // view bg, not the nav bar), and adding one needs a native rebuild — forbidden
+  // (this must ship OTA). The ONLY in-codebase mechanism whose layout escapes the
+  // host-tree clipping is a SEPARATE NATIVE WINDOW: an RN <Modal>. Round-10 proved
+  // `navigationBarTranslucent` (RN ≥0.76, present on 0.81.5; requires
+  // `statusBarTranslucent`) makes such a Modal window span the FULL physical
+  // screen INCLUDING the nav-bar band.
+  //
+  // FIX: on Android, when there IS a nav-bar inset, host the inline sheet inside a
+  // transparent full-screen RN <Modal statusBarTranslucent navigationBarTranslucent>.
+  // The modal window spans scrH, so (a) gorhom's own dimming backdrop — still
+  // `absoluteFill` inside the WINDOW-bounded `inlineHost` — keeps covering the deck
+  // down to winH (host height unchanged → ORCH-1016 preserved), and (b) the
+  // `androidNavFiller`, rendered as a sibling of the host INSIDE this full-screen
+  // window, now resolves its `bottom:0` against the TRUE screen bottom and paints
+  // the sheet's own bg across the 48dp band. Result: no raw deck anywhere below
+  // the sheet — the band is the sheet's bg (immediately below the body) over the
+  // window's own dim, consistent with the rest. The GestureHandlerRootView inside
+  // the window re-activates pan-down-to-dismiss in the separate native window
+  // (same Bug-1 rationale as the wrapInRNModal branch). `onRequestClose` wires
+  // Android hardware-back; the existing inline BackHandler is also active and
+  // onClose is idempotent. iOS / gesture-nav (insets.bottom===0) skip the wrap
+  // entirely and render the bare inline host — unchanged.
+  const androidNeedsFullScreenWindow =
+    Platform.OS === 'android' && insets.bottom > 0;
+
+  if (androidNeedsFullScreenWindow) {
+    return (
+      <RNModal
+        visible={visible}
+        transparent
+        animationType="none"
+        onRequestClose={onClose}
+        statusBarTranslucent
+        navigationBarTranslucent
+      >
+        <GestureHandlerRootView style={styles.flexContainer}>
+          {inlineHost}
+          {androidNavFiller}
+        </GestureHandlerRootView>
+      </RNModal>
+    );
+  }
+
+  // iOS (and Android gesture-nav with no nav-bar inset): the bare inline host —
+  // no system-bar band to paint, no behaviour change.
+  return inlineHost;
 }
 
 // ── center-dialog body (SPEC §5.4 / DESIGN §5) ───────────────────────────────
@@ -1052,32 +1067,18 @@ const styles = StyleSheet.create({
     zIndex: 100,
     elevation: 100,
   },
-  // ORCH-1157 Round-8 [android-sheet-gap] — opaque filler that paints the sheet's
-  // own background colour across the Android nav-bar inset region, anchored to the
-  // bottom of the screen, so a non-wrapInRNModal detail sheet has NO see-through
-  // band between its painted body and the OS navigation bar. Same z-layer/elevation
-  // as the inline host so it sits above the deck behind but below the global Toast.
+  // ORCH-1157 Round-8 + Round-12 [android-sheet-gap] — opaque filler that paints
+  // the sheet's own background colour across the Android nav-bar inset region,
+  // anchored to the bottom. Round-12: it is rendered INSIDE the full-screen RN
+  // <Modal> window (both the wrapInRNModal branch and the inline path), so its
+  // `bottom:0` resolves against the TRUE physical screen bottom (the modal window
+  // spans scrH via navigationBarTranslucent) and the strip lands over the real
+  // 48dp nav-bar band — escaping the window-bounded host the Round-8/11 in-tree
+  // placements were trapped inside. zIndex/elevation match the inline host so it
+  // sits above the deck behind but below the global Toast.
   androidNavFiller: {
     position: 'absolute',
     bottom: 0,
-    left: 0,
-    right: 0,
-    zIndex: 100,
-    elevation: 100,
-  },
-  // ORCH-1157 Round-11 [android-sheet-gap] — screen-height layer that hosts the
-  // inline-path `androidNavFiller`. top:0 anchors it at the inline overlay's top
-  // (= physical screen top, the same origin the working inline host uses) and an
-  // explicit `height` (set at render time to Dimensions.get('screen').height)
-  // makes it span the TRUE physical screen (scrH), escaping the winH-bounded
-  // ancestor the bare filler's bottom:0 would otherwise resolve against. So the
-  // child filler (bottom:0) reaches the real screen bottom and paints the nav-bar
-  // band. pointerEvents none; same z-layer as the inline host (above the deck,
-  // below the global Toast). The wrapInRNModal branch does NOT use this — its
-  // window is already full-screen via navigationBarTranslucent (Round-10).
-  androidNavFillerScreenLayer: {
-    position: 'absolute',
-    top: 0,
     left: 0,
     right: 0,
     zIndex: 100,

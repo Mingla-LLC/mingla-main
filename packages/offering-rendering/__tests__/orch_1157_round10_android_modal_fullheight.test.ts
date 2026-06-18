@@ -94,19 +94,18 @@ Deno.test("Round-10: the CenterDialog RN <Modal> is NOT made navigationBarTransl
 });
 
 Deno.test("Round-10: snapPoints still drive the body to the container bottom (no inline-host regression)", () => {
-  // The fix changes ONLY the wrapInRNModal Modal window size. The inline
-  // (non-wrapInRNModal) host stays bounded to inlineContainerHeight (ORCH-1016
-  // viewport invariant). Assert that invariant is untouched.
+  // [TEST-MOD-APPROVED ORCH-1157] — Round-10 originally asserted the inline path
+  // carries NO navigationBarTranslucent. Round-12 SUPERSEDES that: the inline path
+  // now hosts the bounded sheet inside a full-screen RN <Modal
+  // navigationBarTranslucent> (the only mechanism that reaches the physical screen
+  // bottom — proven on the A72). The ENDURING Round-10 invariant — gorhom still
+  // measures inlineContainerHeight (ORCH-1016) — is unchanged and still asserted.
   const inlineBranch = stripComments(
     baseSheet.slice(
       baseSheet.indexOf("// Non-wrapped: announce a modal boundary"),
     ),
   );
+  // ORCH-1016 viewport invariant: the gorhom host is bounded to the window height,
+  // whether or not it is later placed inside the Round-12 full-screen window.
   assertStringIncludes(inlineBranch, "height: inlineContainerHeight");
-  // The inline path must NOT have gained navigationBarTranslucent (it has no RN
-  // Modal at all on the visible path).
-  assert(
-    !inlineBranch.includes("navigationBarTranslucent"),
-    "the inline host path must not carry the Modal-only navigationBarTranslucent prop",
-  );
 });

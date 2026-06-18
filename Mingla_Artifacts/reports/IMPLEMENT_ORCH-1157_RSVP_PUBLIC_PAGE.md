@@ -1287,3 +1287,128 @@ geometry effect + 800ms measureInWindow probe + host onLayout), the zero-height
 Not run by the implementor (Metro on 8083 → A72 is orchestrator-owned). Open an RSVP/event
 from Discover on the A72; the bottom 48dp nav-bar region must show the sheet's own dark bg
 (`#0c0e12`), with NO Discover deck content visible above the nav bar. iOS unchanged.
+
+---
+
+## Round-12 system-bar / edge-to-edge nav fix
+
+### Summary
+Rounds 8–11 ALL tried to paint the Android see-through nav-bar band with an
+**in-tree** view (a sibling filler, then a screen-height layer). Every one FAILED
+on-device (Samsung A72, clean-cache). Round-12 abandons in-tree fillers and fixes
+it at the **separate-native-window** level: on Android (when a nav-bar inset
+exists) the INLINE detail-sheet host is now wrapped in a transparent full-screen
+RN `<Modal statusBarTranslucent navigationBarTranslucent>` — the only mechanism in
+the codebase whose layout escapes the window-bounded, clipping host tree and
+reaches the TRUE physical screen bottom.
+
+### What edge-to-edge / nav-bar API the app actually has (INVESTIGATED)
+- `app-mobile/app.json` sets **`edgeToEdgeEnabled: true`** (Expo SDK 54 default).
+  There is **no** `androidNavigationBar` config, no `expo-navigation-bar` plugin.
+- **No installed JS API can recolor the Android navigation bar.** `package.json`
+  has **no `expo-navigation-bar`** and **no `react-native-edge-to-edge`**. The only
+  edge-to-edge package present is **`react-native-is-edge-to-edge@1.2.1`** — which
+  exports `isEdgeToEdge()` / `controlEdgeToEdgeValues()` only (DETECTION; no
+  setter). `expo-system-ui@6.0.9` is installed but its
+  `setBackgroundColorAsync` sets the **root view** background, NOT the nav bar (the
+  deck still draws into the band on top of the root view, so it cannot fix this).
+- Adding `expo-navigation-bar` or `react-native-edge-to-edge` would pull a NATIVE
+  module → **native rebuild required → forbidden** (this must ship OTA). So the
+  nav-bar-color-on-open approach (dispatch option 2b) was ruled OUT as impossible
+  without a rebuild, and the fix is the **window / backdrop-reach** approach
+  (dispatch option 3a).
+- **`navigationBarTranslucent`** IS a real RN 0.81.5 `<Modal>` prop
+  (`react-native/Libraries/Modal/Modal.d.ts:114`; requires `statusBarTranslucent`).
+  Round-10 already proved it makes an Android Modal window span the full physical
+  screen INCLUDING the nav-bar band. It is pure-JS — **OTA-safe, no rebuild.**
+
+### Exactly what changed
+`app-mobile/src/components/ui/BaseBottomSheet.tsx` (the SOLE gorhom consumer; the
+inline host the consumer RSVP/event/trip/experience detail sheets actually mount):
+- The inline visible-return now builds the bounded host once as `const inlineHost`
+  (`styles.inlineContainer`, `height: inlineContainerHeight` = windowHeight — the
+  **ORCH-1016 viewport invariant is unchanged**; gorhom still measures windowHeight
+  because the host keeps its explicit height even inside the new window).
+- New gate `androidNeedsFullScreenWindow = Platform.OS === 'android' && insets.bottom > 0`.
+  When true, the inline host is returned **inside** a transparent full-screen
+  `<RNModal statusBarTranslucent navigationBarTranslucent onRequestClose={onClose}>`
+  with a `GestureHandlerRootView` (re-activates pan-down-to-dismiss in the separate
+  native window — META-ORCH-0991 Bug-1 rationale) and the retained `androidNavFiller`
+  rendered as a sibling **inside** the window. Because the window now spans scrH,
+  the filler's `bottom:0` lands on the REAL screen bottom and paints the sheet's own
+  bg (`#0c0e12` for the dark detail sheet) across the 48dp band; gorhom's own
+  backdrop (absoluteFill inside the windowHeight-bounded host) still dims the deck
+  down to windowHeight. No raw deck shows anywhere below the sheet.
+- iOS and Android-gesture-nav (`insets.bottom === 0`) fall through to `return inlineHost`
+  — the bare host, **no behaviour change**.
+- REMOVED the dead Round-11 mechanism: the `Dimensions` import, the
+  `androidNavFillerScreenLayer` style, and its render wrapper (an in-tree layer can
+  never reach scrH — proven on-device; subtract-before-adding, Constitution #8).
+- The wrapInRNModal branch (Round-10) is untouched and still correct for genuine
+  `wrapInRNModal` consumers.
+
+### Does it need a native rebuild?
+**NO.** RN `<Modal>` + `navigationBarTranslucent` + `statusBarTranslucent` are all
+pure-JS props already present in RN 0.81.5 and already used elsewhere in this same
+file (the wrapInRNModal branch). Ships over-the-air / hot-reload. No new dependency,
+no config-plugin change, no `app.json` change.
+
+### Regression test + fails-on-revert
+- **New (Round-12 happy-path, implementor-owned):**
+  `packages/offering-rendering/__tests__/orch_1157_round12_inline_navbar_modal_window.test.ts`
+  — 8 Deno source-contract assertions (comment-stripped; inline-branch-scoped):
+  the Android+inset gate, the transparent `<RNModal navigationBarTranslucent
+  statusBarTranslucent onRequestClose>`, the bounded `inlineHost` preserved INSIDE
+  the window (`height: inlineContainerHeight` → ORCH-1016), GHRV + `androidNavFiller`
+  inside the window, the iOS/gesture-nav `return inlineHost;` fall-through, the
+  retained Round-8 strip contract, the dead-Round-11-layer removal, and zero DIAG.
+- **fails-on-revert verified at commit `b907f7499` (pre-fix base) + working tree:**
+  TRUE LINE-DELETION of the `if (androidNeedsFullScreenWindow) { … }` modal-wrap
+  return block → **5/8 Round-12 assertions FAIL**; restoring → **8/8 PASS**. Proof
+  captured during this session (deno run output).
+- **Superseded existing tests (append-only token `[TEST-MOD-APPROVED ORCH-1157]`,
+  same precedent Round-9 set in this ORCH):**
+  - `orch_1157_round11_inline_nav_fill_screen_layer.test.ts` — its mechanism is
+    dead; rewritten to LOCK the supersession (dead layer gone; window-level fix
+    present). 2/2 PASS.
+  - `orch_1157_round10_android_modal_fullheight.test.ts` — dropped the now-false
+    "inline path must not carry navigationBarTranslucent" sub-assertion; KEPT the
+    enduring ORCH-1016 `height: inlineContainerHeight` invariant check.
+
+### Gates run (round-12)
+- `meta-orch-0991-base-bottom-sheet-sole-consumer.mjs` → OK (still sole importer).
+- `i-bottomsheet-inline-scroll-binding.mjs` → OK (scrollable still direct child).
+- `app-mobile/scripts/ci/orch-1043-sheet-scroll-viewport-check.mjs` → 10/10 PASS.
+- All ORCH-1157 deno tests → **69 passed / 0 failed**.
+- `tsc --noEmit -p app-mobile/tsconfig.json` → no BaseBottomSheet errors (the 499
+  reported errors are pre-existing `packages/phone-input` module-resolution noise,
+  none in the touched file).
+- Append-only: round-12 test ADDED; round-10/11 modifications carry the
+  `[TEST-MOD-APPROVED ORCH-1157]` token in the commit body.
+
+### Invariants preserved
+- ORCH-1016 (host bounded to windowHeight) — YES (inlineHost keeps its explicit
+  height; only its WRAPPER changed).
+- ORCH-0828 (vanilla inline `<BottomSheet>`, no Provider/portal) — YES (no portal/
+  provider added; the sheet is still the inline gorhom default export).
+- ORCH-1043 (scrollable is a direct child) — YES (body composition untouched).
+- iOS unchanged — YES (Android-gated branch; iOS returns the bare host).
+- Rounds 1–7 content fixes — untouched.
+
+### Known tradeoff (Discoveries for Orchestrator)
+- On Android, the inline detail sheet now lives in a separate native Modal window,
+  so it z-stacks ABOVE the host-tree global Toast (`ToastContainer`, zIndex:10000,
+  a host-tree absolute view — NOT a Modal). A Toast fired WHILE an Android detail
+  sheet is open would render behind the sheet. This is the SAME tradeoff every
+  existing `wrapInRNModal` sheet (cart/checkout/etc.) already has; the consumer
+  detail sheets did not previously have it. Low blast radius (Toasts during an open
+  detail sheet are rare); flagged for the orchestrator. If it matters, the fix is to
+  promote `ToastContainer` to its own RN Modal/portal window app-wide (separate
+  ORCH) so it floats over ALL Modal sheets.
+
+### On-device (orchestrator-owned)
+Not run by the implementor (Metro on 8083 → A72 is orchestrator-owned). Hot-reload
+and open an RSVP/event/trip/experience from Discover on the A72: the bottom 48dp
+nav-bar region must show the sheet's own dark bg (`#0c0e12`) with NO Discover deck
+content peeking above/through the nav bar; pan-down-to-dismiss + hardware-back must
+still close the sheet; iOS unchanged.
