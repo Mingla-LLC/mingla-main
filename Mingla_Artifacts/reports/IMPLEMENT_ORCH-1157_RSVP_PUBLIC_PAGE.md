@@ -1194,3 +1194,96 @@ the pristine branch too (proven by stashing this change). Both need a cleanup OR
 `[TEST-MOD-APPROVED]` to amend.
 
 ### New HEAD: see the commit hash in the close handoff (committed below).
+
+---
+
+## Round-11 inline-path nav-bar fill (data-backed)
+
+### Summary
+Rounds 8–10 fixed the WRONG sheet. The on-device `[GAPDIAG]` logs (Samsung A72, dp)
+proved the OPEN consumer detail sheet runs the **inline** (`wrapInRNModal:false`)
+BaseBottomSheet path: `ExpandedCardModal` returns `<ConsumerEventDetailScreen>` EARLY
+(ExpandedCardModal.tsx:1792-1798), and that screen mounts an inline `<BaseBottomSheet>`
+(wrapInRNModal default false), BEFORE ExpandedCardModal's own wrapInRNModal=true sheet.
+Rounds 9 & 10 patched the wrapInRNModal branch — never hit by the detail sheet.
+
+Geometry (A72): `scrH=853.33`, `winH=774.76`, `insTop=30.58`, `insBot=48`;
+`scrH − winH = 78.57 ≈ insTop+insBot`. The gorhom inline host is bounded to
+`inlineContainerHeight` (= windowHeight = 774.76, ORCH-1016), so the sheet bottom lands at
+the nav-bar TOP. The 48dp Android nav-bar band BELOW winH is unpainted, and the
+edge-to-edge Discover deck shows through it (the see-through band).
+
+Round-8's bare sibling filler (`styles.androidNavFiller`: position:absolute; bottom:0)
+failed because its `bottom:0` resolves against its **containing block** — the inline
+overlay's positioned ancestor, which is bounded to the WINDOW height (winH), not the
+physical SCREEN (scrH). So `bottom:0` landed at winH (= the nav-bar top) and never painted
+the band below it.
+
+### The fix — which container/layer the filler now lives in, and why it reaches scrH
+In the **inline** return path of `BaseBottomSheet.tsx`, the `androidNavFiller` is now
+rendered inside a new Android-only **screen-height layer** (`styles.androidNavFillerScreenLayer`:
+`position:absolute; top:0; left:0; right:0; zIndex/elevation 100`) whose `height` is set at
+render time to `Dimensions.get('screen').height` (scrH). This layer:
+- anchors at `top:0` = the inline overlay's top = the **physical screen top** (the same
+  origin the working inline host `styles.inlineContainer` uses), and
+- carries an EXPLICIT `height = scrH`, which makes an absolutely-positioned View span the
+  TRUE physical screen, escaping the parent chain's winH height constraint.
+
+The bare filler (`height: insets.bottom`, `bottom:0`, sheet's own `resolvedBgColor`) is the
+child of that layer, so its `bottom:0` now resolves against scrH → it lands on the physical
+screen bottom and paints exactly the 48dp nav-bar band with the sheet's own background. NO
+RN `<Modal>` and NO `navigationBarTranslucent` are added on the inline path (Round-10
+invariant preserved — that prop stays wrapInRNModal-only). `pointerEvents="none"`; behind the
+sheet content, above the deck; rendered only when visible; null off-Android and on
+gesture-nav (`insets.bottom === 0`). iOS unchanged.
+
+### What was done with the round-9/10 wrong-path code
+- The `wrapInRNModal` branch is **kept** with `navigationBarTranslucent` (Round-10) — it is
+  legitimately correct for any sheet that genuinely sets `wrapInRNModal` (z-stacking over the
+  in-tree tab bar / chat input), even though that is NOT the detail-sheet host. A clarifying
+  Round-11 NOTE was added in-code stating the detail sheets take the inline path instead.
+- The shared `androidNavFiller` value (single definition, hoisted above the branch — Round-9
+  contract) is **retained**; the wrapInRNModal branch still renders it as harmless
+  belt-and-braces (its window is already full-screen via navigationBarTranslucent). No dead/
+  misleading code left: the bare filler is load-bearing on the inline path (inside the screen
+  layer) and harmless-correct on the wrapInRNModal path.
+
+### DIAG fully removed (grep = ZERO)
+Deleted everything added by `b6c72ccbc` + `52cca8b8c`: the magenta on-screen overlay
+(`diagOverlay`/`diagLines`/`diagText` styles + builder), the `[GAPDIAG]` console.logs (open
+geometry effect + 800ms measureInWindow probe + host onLayout), the zero-height
+`diagContentMarker` child + style, and the diag-only state/refs/imports
+(`useState`, `PixelRatio`, `Text`, `LayoutChangeEvent`, `useSafeAreaFrame`, `diagHostH`,
+`diagContentRef`, `diagFrame`, `onDiagHostLayout`). Verified:
+`grep -rn 'ORCH-1157-DIAG|GAPDIAG' app-mobile mingla-business packages supabase Mingla_Artifacts`
+→ **0 matches** (grep exit 1).
+
+### Tests + fails-on-revert
+- New test: `packages/offering-rendering/__tests__/orch_1157_round11_inline_nav_fill_screen_layer.test.ts`
+  (6 tests). Asserts: the inline path renders the filler inside the screen-height layer
+  (`styles.androidNavFillerScreenLayer` + `Dimensions.get('screen').height`); the filler is
+  NESTED inside that layer (child) and the layer is a sibling AFTER the bounded inline host;
+  the layer style is `position:absolute; top:0` with NO hard-coded height; the filler keeps
+  `height: insets.bottom` + `resolvedBgColor`; the inline path adds NO `<RNModal>` /
+  `navigationBarTranslucent` (Round-10 preserved); and the DIAG is fully removed. Comments are
+  stripped before load-bearing assertions (comment-out trap guard).
+- `deno test …round11…` → **6 passed / 0 failed**.
+- **fails-on-revert verified**: TRUE LINE-DELETION of the screen-layer wrapper in the inline
+  return (reverting to Round-8's bare `{androidNavFiller}`) → **2/6 FAIL** ("screen-height
+  layer must render in the inline path"); restoring the wrapper → **6/6 PASS**.
+- Rounds 8/9/10 suites re-run together with round-11 → **21 passed / 0 failed** (no
+  regression; the inline `{androidNavFiller}` token + `height: inlineContainerHeight` + the
+  hoisted single definition + the Round-10 no-inline-Modal invariant all still hold).
+
+### Gates run (round-11)
+- `meta-orch-0991-base-bottom-sheet-sole-consumer.mjs` → OK (still sole gorhom importer).
+- `i-bottomsheet-inline-scroll-binding.mjs` → OK.
+- `app-mobile/scripts/ci/orch-1043-sheet-scroll-viewport-check.mjs` → 10/10 PASS.
+- `tsc --noEmit -p app-mobile/tsconfig.json` → no BaseBottomSheet errors (unused diag imports
+  removed cleanly).
+- Append-only: only ADDED `orch_1157_round11_*.test.ts`; no existing test modified/deleted.
+
+### On-device
+Not run by the implementor (Metro on 8083 → A72 is orchestrator-owned). Open an RSVP/event
+from Discover on the A72; the bottom 48dp nav-bar region must show the sheet's own dark bg
+(`#0c0e12`), with NO Discover deck content visible above the nav bar. iOS unchanged.

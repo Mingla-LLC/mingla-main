@@ -28,7 +28,6 @@ import React, {
   useEffect,
   useMemo,
   useRef,
-  useState,
   type ReactNode,
 } from 'react';
 import {
@@ -36,13 +35,10 @@ import {
   BackHandler,
   Dimensions,
   Modal as RNModal,
-  PixelRatio,
   Platform,
   StyleSheet,
-  Text,
   View,
   useWindowDimensions,
-  type LayoutChangeEvent,
   type StyleProp,
   type ViewStyle,
 } from 'react-native';
@@ -57,7 +53,7 @@ import BottomSheet, {
   type BottomSheetBackdropProps,
 } from '@gorhom/bottom-sheet';
 import { Easing } from 'react-native-reanimated';
-import { useSafeAreaInsets, useSafeAreaFrame } from 'react-native-safe-area-context';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 // META-ORCH-0991 (sheet rework — Bug 1): GestureHandlerRootView must wrap the
 // sheet INSIDE the RN <Modal> window so gorhom's pan-down-to-dismiss
 // PanGestureHandler registers there. RN <Modal> mounts its children in a
@@ -316,40 +312,6 @@ function BaseBottomSheetComponent(props: BaseBottomSheetProps): React.ReactEleme
   const { height: windowHeight } = useWindowDimensions();
   const sheetRef = useRef<BottomSheet>(null);
 
-  // [ORCH-1157-DIAG] TEMPORARY on-screen geometry overlay — NOT a fix. Captures
-  // the runtime numbers the orchestrator needs to compute the real Android
-  // see-through-band gap. Hooks live ABOVE the center-dialog early return so hook
-  // order stays stable on every render path. Reaped at CLOSE.
-  let diagFrame: { height?: number } = {};
-  try {
-    diagFrame = useSafeAreaFrame() ?? {};
-  } catch {
-    diagFrame = {};
-  }
-  const [diagHostH, setDiagHostH] = useState<number | null>(null);
-  // [ORCH-1157-DIAG] ref on a zero-height marker that is the bottom-most direct
-  // child of <BottomSheet>; measureInWindow gives its absolute screen pageY so we
-  // can log where the sheet content actually bottoms out vs the screen. Throwaway.
-  const diagContentRef = useRef<View>(null);
-  // sheetTopY/sheetBotY: gorhom paints the sheet body inside an internal
-  // absolutely-positioned container that does not forward a usable onLayout
-  // without overriding backgroundComponent (which would change painting — out of
-  // scope for a no-layout-change DIAG). Capturing the gorhom-measured host height
-  // (diagHostH, below) is the load-bearing number for the gap math, so these two
-  // are reported as "n/a" per the dispatch's explicit allowance.
-  const diagSheetTopY: number | null = null;
-  const diagSheetBotY: number | null = null;
-  const onDiagHostLayout = useCallback((e: LayoutChangeEvent) => {
-    try {
-      const h = e?.nativeEvent?.layout?.height ?? null;
-      setDiagHostH(h);
-      // eslint-disable-next-line no-console
-      console.log(`[GAPDIAG] hostLayout {height:${Math.round(h ?? 0)}}`);
-    } catch {
-      /* read-once diagnostic — never crash */
-    }
-  }, []);
-
   // ── center-dialog: NOT gorhom (SPEC §3.1 / §5.4). Wave A ships the typed
   // prop + a faithful RN-Modal centered card. Visual chrome from
   // glass.centerDialog. First real consumers are Wave-B confirm dialogs.
@@ -391,67 +353,6 @@ function BaseBottomSheetComponent(props: BaseBottomSheetProps): React.ReactEleme
   } = props;
 
   const effectiveBackdropOpacity = useEffectiveBackdropOpacity(theme, backdropOpacity);
-
-  // [ORCH-1157-DIAG] Console-log the runtime sheet geometry under the unique tag
-  // [GAPDIAG] so it lands in `adb logcat` (ReactNativeJS) on the A72 — the
-  // on-screen magenta overlay renders hidden BEHIND the open sheet, so logcat is
-  // the readable channel. Emits one JSON line on open and again whenever the host
-  // onLayout populates hostH; plus a measureInWindow probe 800ms after open for the
-  // sheet content's absolute bottom pageY. Everything guarded — a throwaway DIAG
-  // must never crash. Reaped at CLOSE.
-  useEffect(() => {
-    if (!visible) return;
-    try {
-      const w = Dimensions.get('window');
-      const s = Dimensions.get('screen');
-      let snapRaw: unknown = null;
-      try {
-        snapRaw = glass.bottomSheet.snapPoints;
-      } catch {
-        snapRaw = null;
-      }
-      // eslint-disable-next-line no-console
-      console.log(
-        '[GAPDIAG]',
-        JSON.stringify({
-          winH: w?.height ?? null,
-          winW: w?.width ?? null,
-          scrH: s?.height ?? null,
-          scrW: s?.width ?? null,
-          insTop: insets?.top ?? null,
-          insBot: insets?.bottom ?? null,
-          frameH: typeof diagFrame?.height === 'number' ? diagFrame.height : null,
-          hostH: diagHostH,
-          snap: snapRaw,
-          pixelRatio: PixelRatio.get(),
-          wrapInRNModal,
-        }),
-      );
-    } catch {
-      /* read-once diagnostic — never crash */
-    }
-  }, [visible, diagHostH, insets?.top, insets?.bottom, diagFrame?.height, wrapInRNModal]);
-
-  // [ORCH-1157-DIAG] measureInWindow on the bottom-most content marker, 800ms
-  // after open (so the sheet has settled), to log its absolute screen Y.
-  useEffect(() => {
-    if (!visible) return undefined;
-    const t = setTimeout(() => {
-      try {
-        diagContentRef.current?.measureInWindow?.((x, y, width, height) => {
-          // eslint-disable-next-line no-console
-          console.log(
-            `[GAPDIAG] sheetBottomPageY=${Math.round((y ?? 0) + (height ?? 0))} (markerY=${Math.round(
-              y ?? 0,
-            )} markerH=${Math.round(height ?? 0)})`,
-          );
-        });
-      } catch {
-        /* read-once diagnostic — never crash */
-      }
-    }, 800);
-    return () => clearTimeout(t);
-  }, [visible]);
 
   // ORCH-1064: DETERMINISTIC timing open/close, replacing gorhom's default SPRING.
   // Replay 6a970e63 + 1d7caee1 (release, on-device) proved the sheet STALLED
@@ -833,29 +734,6 @@ function BaseBottomSheetComponent(props: BaseBottomSheetProps): React.ReactEleme
       accessibilityLabel={accessibilityLabel}
     >
       {body}
-      {/* [ORCH-1157-DIAG] zero-height, non-interactive marker appended as the
-          bottom-most direct child of <BottomSheet> so its onLayout / measureInWindow
-          reveal where the sheet content actually bottoms out. collapsable={false}
-          keeps the native view around for measureInWindow on Android. Throwaway. */}
-      <View
-        ref={diagContentRef}
-        collapsable={false}
-        pointerEvents="none"
-        style={styles.diagContentMarker}
-        onLayout={(e: LayoutChangeEvent) => {
-          try {
-            const ly = e?.nativeEvent?.layout;
-            // eslint-disable-next-line no-console
-            console.log(
-              `[GAPDIAG] sheetContent {y:${Math.round(ly?.y ?? 0)}, height:${Math.round(
-                ly?.height ?? 0,
-              )}}`,
-            );
-          } catch {
-            /* read-once diagnostic — never crash */
-          }
-        }}
-      />
     </BottomSheet>
   );
 
@@ -906,41 +784,38 @@ function BaseBottomSheetComponent(props: BaseBottomSheetProps): React.ReactEleme
       />
     ) : null;
 
-  // [ORCH-1157-DIAG] Build the high-visibility geometry overlay. pointerEvents
-  // none so it never steals a tap; zIndex/elevation 99999 so it paints above the
-  // open sheet + cover + nav. Each value on its own labeled line. Guarded so a
-  // missing value renders "n/a" rather than crashing. Reaped at CLOSE.
-  const diagWin = Dimensions.get('window');
-  const diagScr = Dimensions.get('screen');
-  const fmt = (v: number | null | undefined): string =>
-    typeof v === 'number' && !Number.isNaN(v) ? String(Math.round(v * 100) / 100) : 'n/a';
-  const diagSnapRaw = (() => {
-    try {
-      return JSON.stringify(glass.bottomSheet.snapPoints);
-    } catch {
-      return 'n/a';
-    }
-  })();
-  const diagLines = [
-    '[ORCH-1157 DIAG]',
-    `winH=${fmt(diagWin?.height)} winW=${fmt(diagWin?.width)}`,
-    `scrH=${fmt(diagScr?.height)} scrW=${fmt(diagScr?.width)}`,
-    `insTop=${fmt(insets?.top)} insBot=${fmt(insets?.bottom)}`,
-    `frameH=${fmt(diagFrame?.height)}`,
-    `hostH=${fmt(diagHostH)}`,
-    `snap=${diagSnapRaw}`,
-    `sheetTopY=${fmt(diagSheetTopY)} sheetBotY=${fmt(diagSheetBotY)}`,
-    `pixelRatio=${fmt(PixelRatio.get())}`,
-  ];
-  const diagOverlay = visible ? (
-    <View pointerEvents="none" style={styles.diagOverlay}>
-      {diagLines.map((ln, i) => (
-        <Text key={i} style={styles.diagText}>
-          {ln}
-        </Text>
-      ))}
-    </View>
-  ) : null;
+  // ORCH-1157 Round-11 [android-sheet-gap] — DATA-BACKED inline-path nav-bar fill.
+  //
+  // ON-DEVICE GEOMETRY (Samsung A72, runtime logcat, dp): scrH=853.33,
+  // winH=774.76, insTop=30.58, insBot=48; scrH−winH ≈ insTop+insBot. The OPEN
+  // consumer detail sheet logged `wrapInRNModal:false` — it is the INLINE
+  // BaseBottomSheet that ConsumerEventDetailScreen mounts (ExpandedCardModal
+  // returns <ConsumerEventDetailScreen> EARLY, before its own wrapInRNModal=true
+  // sheet), so the gapping host is THIS inline path, NOT the wrapInRNModal branch
+  // Rounds 9/10 patched. The gorhom inline host is bounded to `inlineContainerHeight`
+  // (= windowHeight = 774.76, ORCH-1016) so the sheet bottom lands at the nav-bar
+  // TOP; the 48dp Android nav-bar band BELOW winH is unpainted and the edge-to-edge
+  // Discover deck shows through it.
+  //
+  // WHY ROUND-8's SIBLING FILLER STILL GAPPED: `styles.androidNavFiller`
+  // (position:absolute; bottom:0) resolves its `bottom:0` against its CONTAINING
+  // BLOCK — the inline overlay's positioned ancestor, which is bounded to the
+  // WINDOW height (winH), not the physical SCREEN (scrH). So `bottom:0` landed at
+  // winH = the nav-bar TOP, painting nothing over the 48dp band below it.
+  //
+  // FIX: in the inline return path, render the filler inside an Android-only
+  // screen-height layer (`styles.androidNavFillerScreenLayer`: position:absolute;
+  // top:0; height = Dimensions.get('screen').height) that anchors at the overlay's
+  // top (= physical screen top, the same origin the working inline host uses) and
+  // EXPLICITLY spans scrH. An absolute child with `height` escapes the parent's
+  // winH height constraint, so the filler's `bottom:0` now reaches the TRUE
+  // physical screen bottom and paints the sheet's own bg over the nav-bar band.
+  // This uses NO RN <Modal> and NO `navigationBarTranslucent` on the inline path
+  // (Round-10 invariant preserved — that prop is wrapInRNModal-only). pointerEvents
+  // none; behind the sheet but above the deck; only when visible; skipped when
+  // insets.bottom===0. iOS untouched (filler is null off-Android). The
+  // wrapInRNModal branch keeps rendering the bare `androidNavFiller` (its window is
+  // already full-screen via navigationBarTranslucent, so no screen layer needed).
 
   if (wrapInRNModal) {
     // ORCH-0908 z-stack: RN <Modal> hosts a separate OS overlay window so the
@@ -996,6 +871,16 @@ function BaseBottomSheetComponent(props: BaseBottomSheetProps): React.ReactEleme
     // effect — and it preserves the Round-8/9 regression suites. It never touches
     // the gorhom-measured container, so the ORCH-1016 viewport invariant + snap/
     // scroll stay untouched.
+    //
+    // ORCH-1157 Round-11 NOTE: the consumer deck/Discover DETAIL sheets do NOT
+    // actually take this branch — ExpandedCardModal returns
+    // <ConsumerEventDetailScreen> (which mounts an INLINE wrapInRNModal=false
+    // BaseBottomSheet) EARLY, before its own wrapInRNModal=true sheet, so the
+    // gapping detail sheet is the INLINE path below (proven by the runtime
+    // `wrapInRNModal:false` log on the A72). This branch + its
+    // navigationBarTranslucent geometry fix is still correct for any sheet that
+    // genuinely sets wrapInRNModal (z-stacking over the in-tree tab bar / chat
+    // input); it is just not the detail-sheet host. Round-11 fixes the inline path.
     return (
       <RNModal
         visible={visible}
@@ -1005,10 +890,9 @@ function BaseBottomSheetComponent(props: BaseBottomSheetProps): React.ReactEleme
         statusBarTranslucent
         navigationBarTranslucent
       >
-        <GestureHandlerRootView style={styles.flexContainer} onLayout={onDiagHostLayout}>
+        <GestureHandlerRootView style={styles.flexContainer}>
           {sheet}
           {androidNavFiller}
-          {diagOverlay}
         </GestureHandlerRootView>
       </RNModal>
     );
@@ -1026,13 +910,18 @@ function BaseBottomSheetComponent(props: BaseBottomSheetProps): React.ReactEleme
   // applies that inset as `bottom`, so the measured container remains exactly
   // the real window while the nav-overlay clearance still feeds snap math.
   if (!visible) return sheet;
-  // ORCH-1157 Round-8 [android-sheet-gap] — the inline (non-wrapInRNModal) host
-  // renders the SHARED `androidNavFiller` (defined above) as a SIBLING of the
-  // bounded inline host. The host stays exactly `inlineContainerHeight`
-  // (windowHeight + nav-overlay clearance — ORCH-1016 viewport invariant), and
-  // the filler paints the Android nav-bar inset region below it with the sheet's
-  // own background colour so the deck behind never shows through. iOS / gesture-
-  // nav (insets.bottom===0) get `androidNavFiller === null` — no-op.
+  // ORCH-1157 Round-8 + Round-11 [android-sheet-gap] — the inline
+  // (non-wrapInRNModal) host renders the bounded gorhom host (exactly
+  // `inlineContainerHeight` = windowHeight + nav-overlay clearance — ORCH-1016
+  // viewport invariant) and, as a SIBLING, the `androidNavFiller` wrapped in the
+  // Round-11 `androidNavFillerScreenLayer`. Round-8 anchored the filler `bottom:0`
+  // against a winH-bounded ancestor, so it stopped at the nav-bar TOP and never
+  // painted the 48dp band below winH (A72 runtime geometry). The Round-11 screen
+  // layer (position:absolute; top:0; height = Dimensions.get('screen').height)
+  // spans the TRUE physical screen so the filler's `bottom:0` reaches the screen
+  // bottom and covers the nav-bar inset region with the sheet's own bg → the deck
+  // behind never shows through. iOS / gesture-nav (insets.bottom===0) get
+  // `androidNavFiller === null` → `androidNavFillerScreenLayer === null` → no-op.
   return (
     <>
       <View
@@ -1042,7 +931,24 @@ function BaseBottomSheetComponent(props: BaseBottomSheetProps): React.ReactEleme
       >
         {sheet}
       </View>
-      {androidNavFiller}
+      {/* ORCH-1157 Round-11: the nav-bar filler must paint at the PHYSICAL screen
+          bottom, not the winH-bounded ancestor its own bottom:0 would otherwise
+          resolve against. Wrap it in a screen-height absolute layer (top:0,
+          height = screen height) so it spans scrH and its bottom reaches the real
+          screen bottom. Off-Android / gesture-nav → androidNavFiller is null. */}
+      {androidNavFiller !== null ? (
+        <View
+          pointerEvents="none"
+          accessibilityElementsHidden
+          importantForAccessibility="no-hide-descendants"
+          style={[
+            styles.androidNavFillerScreenLayer,
+            { height: Dimensions.get('screen').height },
+          ]}
+        >
+          {androidNavFiller}
+        </View>
+      ) : null}
     </>
   );
 }
@@ -1159,35 +1065,30 @@ const styles = StyleSheet.create({
     zIndex: 100,
     elevation: 100,
   },
+  // ORCH-1157 Round-11 [android-sheet-gap] — screen-height layer that hosts the
+  // inline-path `androidNavFiller`. top:0 anchors it at the inline overlay's top
+  // (= physical screen top, the same origin the working inline host uses) and an
+  // explicit `height` (set at render time to Dimensions.get('screen').height)
+  // makes it span the TRUE physical screen (scrH), escaping the winH-bounded
+  // ancestor the bare filler's bottom:0 would otherwise resolve against. So the
+  // child filler (bottom:0) reaches the real screen bottom and paints the nav-bar
+  // band. pointerEvents none; same z-layer as the inline host (above the deck,
+  // below the global Toast). The wrapInRNModal branch does NOT use this — its
+  // window is already full-screen via navigationBarTranslucent (Round-10).
+  androidNavFillerScreenLayer: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    zIndex: 100,
+    elevation: 100,
+  },
   // ORCH-1043: `stickyContainer` + `sectionListContainer` removed — they styled
   // the BottomSheetView wrappers the sticky/sectionlist branches no longer use
   // (the scrollable is now a direct child of <BottomSheet>). `stickyBody` and
   // `sectionList` (flex:1) stay — they are on the SCROLLABLES themselves.
   stickyBody: { flex: 1 },
   sectionList: { flex: 1 },
-  // [ORCH-1157-DIAG] TEMPORARY geometry overlay — reaped at CLOSE. Bright magenta
-  // opaque background + white monospace text, mid-left so it reads in a device
-  // screenshot and is not obscured by the cover image or the nav bar.
-  diagOverlay: {
-    position: 'absolute',
-    top: '40%',
-    left: 8,
-    paddingHorizontal: 6,
-    paddingVertical: 4,
-    backgroundColor: '#ff00ff',
-    borderRadius: 4,
-    zIndex: 99999,
-    elevation: 99999,
-  },
-  diagText: {
-    color: '#ffffff',
-    fontSize: 12,
-    lineHeight: 15,
-    fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace',
-  },
-  // [ORCH-1157-DIAG] zero-height non-perturbing marker (bottom-most child of
-  // <BottomSheet>) used only for onLayout / measureInWindow geometry logging.
-  diagContentMarker: { height: 0, width: '100%' },
   centerScrim: {
     flex: 1,
     alignItems: 'center',
