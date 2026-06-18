@@ -28,16 +28,21 @@ import React, {
   useEffect,
   useMemo,
   useRef,
+  useState,
   type ReactNode,
 } from 'react';
 import {
   AccessibilityInfo,
   BackHandler,
+  Dimensions,
   Modal as RNModal,
+  PixelRatio,
   Platform,
   StyleSheet,
+  Text,
   View,
   useWindowDimensions,
+  type LayoutChangeEvent,
   type StyleProp,
   type ViewStyle,
 } from 'react-native';
@@ -52,7 +57,7 @@ import BottomSheet, {
   type BottomSheetBackdropProps,
 } from '@gorhom/bottom-sheet';
 import { Easing } from 'react-native-reanimated';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useSafeAreaInsets, useSafeAreaFrame } from 'react-native-safe-area-context';
 // META-ORCH-0991 (sheet rework — Bug 1): GestureHandlerRootView must wrap the
 // sheet INSIDE the RN <Modal> window so gorhom's pan-down-to-dismiss
 // PanGestureHandler registers there. RN <Modal> mounts its children in a
@@ -310,6 +315,33 @@ function BaseBottomSheetComponent(props: BaseBottomSheetProps): React.ReactEleme
   const insets = useSafeAreaInsets();
   const { height: windowHeight } = useWindowDimensions();
   const sheetRef = useRef<BottomSheet>(null);
+
+  // [ORCH-1157-DIAG] TEMPORARY on-screen geometry overlay — NOT a fix. Captures
+  // the runtime numbers the orchestrator needs to compute the real Android
+  // see-through-band gap. Hooks live ABOVE the center-dialog early return so hook
+  // order stays stable on every render path. Reaped at CLOSE.
+  let diagFrame: { height?: number } = {};
+  try {
+    diagFrame = useSafeAreaFrame() ?? {};
+  } catch {
+    diagFrame = {};
+  }
+  const [diagHostH, setDiagHostH] = useState<number | null>(null);
+  // sheetTopY/sheetBotY: gorhom paints the sheet body inside an internal
+  // absolutely-positioned container that does not forward a usable onLayout
+  // without overriding backgroundComponent (which would change painting — out of
+  // scope for a no-layout-change DIAG). Capturing the gorhom-measured host height
+  // (diagHostH, below) is the load-bearing number for the gap math, so these two
+  // are reported as "n/a" per the dispatch's explicit allowance.
+  const diagSheetTopY: number | null = null;
+  const diagSheetBotY: number | null = null;
+  const onDiagHostLayout = useCallback((e: LayoutChangeEvent) => {
+    try {
+      setDiagHostH(e?.nativeEvent?.layout?.height ?? null);
+    } catch {
+      /* read-once diagnostic — never crash */
+    }
+  }, []);
 
   // ── center-dialog: NOT gorhom (SPEC §3.1 / §5.4). Wave A ships the typed
   // prop + a faithful RN-Modal centered card. Visual chrome from
@@ -783,6 +815,42 @@ function BaseBottomSheetComponent(props: BaseBottomSheetProps): React.ReactEleme
       />
     ) : null;
 
+  // [ORCH-1157-DIAG] Build the high-visibility geometry overlay. pointerEvents
+  // none so it never steals a tap; zIndex/elevation 99999 so it paints above the
+  // open sheet + cover + nav. Each value on its own labeled line. Guarded so a
+  // missing value renders "n/a" rather than crashing. Reaped at CLOSE.
+  const diagWin = Dimensions.get('window');
+  const diagScr = Dimensions.get('screen');
+  const fmt = (v: number | null | undefined): string =>
+    typeof v === 'number' && !Number.isNaN(v) ? String(Math.round(v * 100) / 100) : 'n/a';
+  const diagSnapRaw = (() => {
+    try {
+      return JSON.stringify(glass.bottomSheet.snapPoints);
+    } catch {
+      return 'n/a';
+    }
+  })();
+  const diagLines = [
+    '[ORCH-1157 DIAG]',
+    `winH=${fmt(diagWin?.height)} winW=${fmt(diagWin?.width)}`,
+    `scrH=${fmt(diagScr?.height)} scrW=${fmt(diagScr?.width)}`,
+    `insTop=${fmt(insets?.top)} insBot=${fmt(insets?.bottom)}`,
+    `frameH=${fmt(diagFrame?.height)}`,
+    `hostH=${fmt(diagHostH)}`,
+    `snap=${diagSnapRaw}`,
+    `sheetTopY=${fmt(diagSheetTopY)} sheetBotY=${fmt(diagSheetBotY)}`,
+    `pixelRatio=${fmt(PixelRatio.get())}`,
+  ];
+  const diagOverlay = visible ? (
+    <View pointerEvents="none" style={styles.diagOverlay}>
+      {diagLines.map((ln, i) => (
+        <Text key={i} style={styles.diagText}>
+          {ln}
+        </Text>
+      ))}
+    </View>
+  ) : null;
+
   if (wrapInRNModal) {
     // ORCH-0908 z-stack: RN <Modal> hosts a separate OS overlay window so the
     // sheet lifts above the custom in-tree tab bar / chat input. RN Modal also
@@ -846,9 +914,10 @@ function BaseBottomSheetComponent(props: BaseBottomSheetProps): React.ReactEleme
         statusBarTranslucent
         navigationBarTranslucent
       >
-        <GestureHandlerRootView style={styles.flexContainer}>
+        <GestureHandlerRootView style={styles.flexContainer} onLayout={onDiagHostLayout}>
           {sheet}
           {androidNavFiller}
+          {diagOverlay}
         </GestureHandlerRootView>
       </RNModal>
     );
@@ -1005,6 +1074,26 @@ const styles = StyleSheet.create({
   // `sectionList` (flex:1) stay — they are on the SCROLLABLES themselves.
   stickyBody: { flex: 1 },
   sectionList: { flex: 1 },
+  // [ORCH-1157-DIAG] TEMPORARY geometry overlay — reaped at CLOSE. Bright magenta
+  // opaque background + white monospace text, mid-left so it reads in a device
+  // screenshot and is not obscured by the cover image or the nav bar.
+  diagOverlay: {
+    position: 'absolute',
+    top: '40%',
+    left: 8,
+    paddingHorizontal: 6,
+    paddingVertical: 4,
+    backgroundColor: '#ff00ff',
+    borderRadius: 4,
+    zIndex: 99999,
+    elevation: 99999,
+  },
+  diagText: {
+    color: '#ffffff',
+    fontSize: 12,
+    lineHeight: 15,
+    fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace',
+  },
   centerScrim: {
     flex: 1,
     alignItems: 'center',
