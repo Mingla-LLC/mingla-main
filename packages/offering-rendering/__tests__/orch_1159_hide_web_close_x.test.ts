@@ -1,10 +1,14 @@
 // ORCH-1159 [hide-web-close-x] — implementor-owned happy-path regression.
 //
-// CONTRACT: on the PUBLIC event / trip / experience pages the floating "X"
-// (close) button is HIDDEN on web (`Platform.OS === "web"`) and KEPT on native.
-// The Share button (and Mute) render on EVERY surface, web included. Native is
-// byte-identical to before. The public BRAND page is out of ORCH-1159 scope and
-// keeps its X on web (it does NOT opt in).
+// CONTRACT: on the PUBLIC event / trip / experience pages AND the public BRAND
+// page the floating "X" (close) button is HIDDEN on web (`Platform.OS === "web"`)
+// and KEPT on native. The Share button (and Mute) render on EVERY surface, web
+// included. Native is byte-identical to before.
+//
+// SCOPE EXTENSION (Seth 2026-06-18): the public BRAND page (PublicBrandPage.tsx)
+// is the FIFTH consumer of the shared chrome and now ALSO opts in — its X is
+// hidden on web, same as the offering pages. The opt-in MECHANISM itself stays
+// covered by a synthetic NOT-opted caller (predicate returns true on web).
 //
 // All three "render sites" named in the dispatch collapse to ONE shared owner:
 // the close button is rendered exclusively by `OfferingChrome` (reached via
@@ -23,8 +27,8 @@
 //     closeButtonVisibility.ts → the web-hidden behavioral assert fails.
 //   - delete `shouldRenderCloseButton(...)` / the `showClose ?` guard in
 //     OfferingChrome.tsx → the "close is gated" source assert fails.
-//   - delete `hideCloseOnWeb` from any of the 4 page call sites → that page's
-//     opt-in source assert fails.
+//   - delete `hideCloseOnWeb` from any of the 5 page call sites (4 offering
+//     pages + the brand page) → that page's opt-in source assert fails.
 
 import {
   assert,
@@ -48,8 +52,11 @@ Deno.test("ORCH-1159: opted-in public page KEEPS the close button on Android", (
   assertEquals(shouldRenderCloseButton(true, "android"), true);
 });
 
-Deno.test("ORCH-1159: NOT-opted-in caller (e.g. brand page) KEEPS the X on web", () => {
-  // The public brand page does not pass hideCloseOnWeb → unchanged on web.
+Deno.test("ORCH-1159: a NOT-opted-in caller (hideCloseOnWeb=false) KEEPS the X on every surface", () => {
+  // The opt-in MECHANISM itself: any chrome consumer that does NOT pass
+  // hideCloseOnWeb is unchanged on web (and native). This proves the gate is
+  // opt-in, not a blanket web-hide — distinct from the brand page, which now
+  // DOES opt in (asserted below).
   assertEquals(shouldRenderCloseButton(false, "web"), true);
   assertEquals(shouldRenderCloseButton(false, "ios"), true);
   assertEquals(shouldRenderCloseButton(false, "android"), true);
@@ -86,40 +93,52 @@ Deno.test("ORCH-1159: ParallaxCoverShell forwards hideCloseOnWeb to OfferingChro
   assertStringIncludes(src, "hideCloseOnWeb={hideCloseOnWeb}");
 });
 
-Deno.test("ORCH-1159: the 3 public-offering pages (event ticketed+RSVP, trip, experience) opt in", () => {
-  const pages: Array<[string, string]> = [
+Deno.test("ORCH-1159: ALL 5 public pages (event ticketed+RSVP, trip, experience, BRAND) opt in", () => {
+  const pages: Array<[string, string, string]> = [
     [
       "FoundationEventPreview (event ticketed)",
       "../../../mingla-business/src/components/event/FoundationEventPreview.tsx",
+      "onShare={onShare}",
     ],
     [
       "RsvpPublicBody (event RSVP)",
       "../../../mingla-business/src/components/event/RsvpPublicBody.tsx",
+      "onShare={onShare}",
     ],
     [
       "TripPreview (trip)",
       "../../../mingla-business/src/components/trip/TripPreview.tsx",
+      "onShare={onShare}",
     ],
     [
       "ExperiencePreview (experience)",
       "../../../mingla-business/src/components/experience/ExperiencePreview.tsx",
+      "onShare={onShare}",
+    ],
+    // SCOPE EXTENSION (Seth 2026-06-18) — the 5th chrome consumer.
+    [
+      "PublicBrandPage (brand)",
+      "../../../packages/brand-rendering/PublicBrandPage.tsx",
+      "onShare={callbacks.onShare}",
     ],
   ];
-  for (const [label, rel] of pages) {
+  for (const [label, rel, shareCall] of pages) {
     const src = read(rel);
     assert(
       /hideCloseOnWeb\b/.test(src),
       `${label} must pass hideCloseOnWeb to ParallaxCoverShell`,
     );
-    // The prop must sit on the ParallaxCoverShell call alongside onShare (Share kept).
-    assertStringIncludes(src, "onShare={onShare}");
+    // The opt-in sits on the same ParallaxCoverShell call that keeps Share.
+    assertStringIncludes(src, shareCall);
   }
 });
 
-Deno.test("ORCH-1159: the public BRAND page is OUT of scope — it does NOT opt in (keeps its X on web)", () => {
+Deno.test("ORCH-1159 (scope extension): the public BRAND page opts in — HIDES its X on web", () => {
   const src = read("../../../packages/brand-rendering/PublicBrandPage.tsx");
   assert(
-    !/hideCloseOnWeb/.test(src),
-    "PublicBrandPage must NOT pass hideCloseOnWeb (brand page is out of ORCH-1159 scope)",
+    /hideCloseOnWeb\b/.test(src),
+    "PublicBrandPage must pass hideCloseOnWeb (brand page now opts in — Seth 2026-06-18)",
   );
+  // Share is preserved on the brand page on web (never gated).
+  assertStringIncludes(src, "onShare={callbacks.onShare}");
 });
