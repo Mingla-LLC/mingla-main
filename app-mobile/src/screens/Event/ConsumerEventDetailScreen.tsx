@@ -241,21 +241,21 @@ export default function ConsumerEventDetailScreen({
     "pending" | "approved" | null
   >(null);
 
-  // float→dock CTA visibility tracking (mirror the trip screen 1:1).
-  const [dockTopY, setDockTopY] = useState<number | null>(null);
-  const [scrollY, setScrollY] = useState<number>(0);
-  const [viewportH, setViewportH] = useState<number>(0);
-  const handleDockLayout = useCallback((e: LayoutChangeEvent): void => {
-    setDockTopY(e.nativeEvent.layout.y);
+  // ORCH-1167-R2 (change 4) — the floating bar is PERSISTENT now (Seth-directed),
+  // so the prior float→dock scroll/viewport tracking is retired (subtract before
+  // adding). These handlers stay as no-op sinks for the body's onTicketBoxLayout +
+  // the gorhom scroll's onScroll/onLayout so the wiring is intact + lint-clean.
+  const handleDockLayout = useCallback((_e: LayoutChangeEvent): void => {
+    // No-op: the bar is persistent; retained for future float→dock re-enable.
   }, []);
   const handleScroll = useCallback(
-    (e: NativeSyntheticEvent<NativeScrollEvent>): void => {
-      setScrollY(e.nativeEvent.contentOffset.y);
+    (_e: NativeSyntheticEvent<NativeScrollEvent>): void => {
+      // No-op: no visibility math (bar persistent).
     },
     [],
   );
-  const handleScrollLayout = useCallback((e: LayoutChangeEvent): void => {
-    setViewportH(e.nativeEvent.layout.height);
+  const handleScrollLayout = useCallback((_e: LayoutChangeEvent): void => {
+    // No-op: no visibility math (bar persistent).
   }, []);
 
   const eventId = seed?.eventId ?? null;
@@ -658,12 +658,16 @@ export default function ConsumerEventDetailScreen({
       ? null
       : [fnd.venueName, fnd.address].filter(Boolean).join(", ");
 
-  const REVEAL_MARGIN = 24;
-  const floatingPillVisible =
-    dockTopY === null || viewportH === 0
-      ? true
-      : dockTopY > scrollY + viewportH - REVEAL_MARGIN;
-  const reserveBarClearance = 8;
+  // ORCH-1167-R2 (change 4) — the floating Get-tickets bar is PERSISTENT on the
+  // consumer sheet too (was regressing: anchored to the body top it hid right
+  // after the cover). It stays pinned the whole scroll, reflects the live Σ-all-in
+  // total, and opens the SAME pre-seeded cart as the in-box Proceed (both coexist).
+  const floatingPillVisible = true;
+  // ORCH-1167-R2 (change 6) — bottom inset so the LAST content fully clears the
+  // persistent floating Get-tickets bar: the bar height (~56) + its 8px bottom
+  // offset + the device safe-area bottom (home indicator) + a small gap. Without
+  // this the last section hid behind the bar.
+  const reserveBarClearance = 72 + insets.bottom;
 
   // ORCH-1157 [rsvp-public-redesign] — the Direction-C Going / Maybe / Can't
   // decision dock (replaces the old 2-button hand-rolled dock; Maybe is NEW on
@@ -1015,7 +1019,11 @@ export default function ConsumerEventDetailScreen({
                 floating Get-tickets bar (section 9) is rendered below. The RSVP
                 branch is UNCHANGED (its own section sequence + dock). */}
             {!isRsvp ? (
-              <View onLayout={handleDockLayout}>
+              /* ORCH-1167-R2 (change 4) — onTicketBoxLayout fires from the INLINE
+                 TICKET BOX (section 5), NOT a wrapper around the whole body, so the
+                 floating bar stays pinned through the cover + scroll and ducks away
+                 only once the box is actually on-screen (was: hid right after the
+                 cover because it measured the body top). */
               <EventOfferingBody
                 event={publicEventForBody}
                 brand={{
@@ -1036,9 +1044,9 @@ export default function ConsumerEventDetailScreen({
                 onOpenMaps={openMapsForQuery}
                 staticMapUrl={bodyStaticMapUrl}
                 submitting={checkoutInFlight}
+                onTicketBoxLayout={handleDockLayout}
                 testID="orch-1167-consumer-event-body"
               />
-              </View>
             ) : (
               <>
             {/* phone lead: date eyebrow + bold title */}
