@@ -56,3 +56,51 @@ describe("ORCH-1138 tester adversarial — anon cannot read brands.theme_* (P0)"
     },
   );
 });
+
+// ============================================================
+// ORCH-1164 (#507 regression recovery) — GENERALIZE the same guard to the TRIP
+// read path. The original guard (above) scanned ONLY publicExperienceService.ts
+// — so when #507 (ORCH-1138 Leg 3) added the IDENTICAL non-anon-readable
+// theme_color/theme_font/theme_animation columns to the DIRECT
+// `supabase.from("brands").select(...)` in usePublicTripBySlug.ts, CI never
+// caught it and the anon /t/{brandSlug}/{tripSlug} page shipped blanked
+// ("permission denied for table brands", 42501). This block closes that
+// coverage gap: it asserts the trip hook's brands select carries NO theme_*
+// column. FAILS-ON-REVERT: re-adding any theme_* to the trip hook's
+// `.from("brands").select(...)` flips this red.
+// ============================================================
+const TRIP_HOOK = resolve(
+  __dirname,
+  "..",
+  "..",
+  "hooks",
+  "usePublicTripBySlug.ts",
+);
+
+describe("ORCH-1164 — anon cannot read brands.theme_* on the TRIP read path (P0)", () => {
+  const src = readFileSync(TRIP_HOOK, "utf8");
+
+  // The select-string capture allows an OPTIONAL trailing comma before the
+  // closing paren (the trip hook formats its column list with a trailing comma),
+  // so the lazy match terminates at the real string boundary rather than
+  // over-running to a later `")` further down the chain.
+  const brandSelects = Array.from(
+    src.matchAll(
+      /\.from\(\s*["']brands["']\s*\)[\s\S]*?\.select\(\s*([`"'])([\s\S]*?)\1\s*,?\s*\)/g,
+    ),
+  ).map((m) => m[2]);
+
+  test("usePublicTripBySlug DOES read brands (sanity — guard targets the right call)", () => {
+    expect(brandSelects.length).toBeGreaterThan(0);
+  });
+
+  const FORBIDDEN = ["theme_color", "theme_font", "theme_animation"];
+
+  test.each(FORBIDDEN)(
+    "no trip-hook brands.select(...) requests the non-anon-readable column %s",
+    (col) => {
+      const offenders = brandSelects.filter((s) => s.includes(col));
+      expect(offenders).toEqual([]);
+    },
+  );
+});
