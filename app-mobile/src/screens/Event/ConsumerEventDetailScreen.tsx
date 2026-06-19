@@ -1006,10 +1006,15 @@ export default function ConsumerEventDetailScreen({
             mediaUrl={fnd.coverMediaUrl}
             mediaType={fnd.coverMediaType}
             hue={fnd.coverHue}
-            autoplay
-            playbackActive
+            // ORCH-1167-R4 — VIDEO cover AUTOPLAYS (muted, inline) + LOOPS on
+            // consumer iOS/Android (the standard-event sheet pins this cover
+            // directly, not via ParallaxCoverShell). Explicit (not bare-boolean)
+            // so the R4 regression pins it; reduce-motion freeze + the chrome
+            // Mute toggle (owns `muted`) are unaffected. Image/GIF unchanged.
+            autoplay={true}
+            playbackActive={true}
             muted={muted}
-            loop
+            loop={true}
             height="100%"
             width="100%"
           />
