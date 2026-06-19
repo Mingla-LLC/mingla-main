@@ -35,8 +35,20 @@ export type { Chip, ChipGroupProps } from "./ChipGroup";
 // scroll root (each surface injects its scroll + parallax-cover scaffold around it).
 // Carries the inline on-page ticket box (per-tier steppers + live Σ-all-in running
 // total (WYSIWYP) + in-box Proceed) and the surface-pinned floating Get-tickets bar.
-export { EventOfferingBody, EventOfferingFloatingBar, computeRunningTotal, totalSelectedQuantity } from "./EventOfferingBody";
-export type { EventOfferingBodyProps, EventOfferingFloatingBarProps } from "./EventOfferingBody";
+// ORCH-1167-R2 — EventTicketBox is the extracted inline box, rendered inline on
+// phone/native and inside the desktop sticky panel (change 5; one owner).
+export {
+  EventOfferingBody,
+  EventOfferingFloatingBar,
+  EventTicketBox,
+  computeRunningTotal,
+  totalSelectedQuantity,
+} from "./EventOfferingBody";
+export type {
+  EventOfferingBodyProps,
+  EventOfferingFloatingBarProps,
+  EventTicketBoxProps,
+} from "./EventOfferingBody";
 
 // ORCH-1157 [rsvp-public-redesign] — the shared Direction-C "Momentum" RSVP hero
 // (going-count + capacity meter + faceless anonymous cluster + Going/Maybe/Can't

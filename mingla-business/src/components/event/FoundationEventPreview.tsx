@@ -69,10 +69,19 @@ export interface FoundationEventPreviewProps {
   stickyPanel?: React.ReactNode | null;
   onScroll?: (event: NativeSyntheticEvent<NativeScrollEvent>) => void;
   onScrollViewLayout?: (event: LayoutChangeEvent) => void;
-  /** ORCH-1167 — the inline box bottom y, so the floating bar can hide on-screen. */
+  /**
+   * ORCH-1167 / R2 (change 4) — fires with the INLINE TICKET BOX (section 5)
+   * layout (NOT the whole body), so the adapter hides the floating bar only once
+   * the box itself scrolls on-screen and the bar stays pinned until then.
+   */
   onDockLayout?: (event: LayoutChangeEvent) => void;
   safeAreaTop?: number;
   contentBottomInset?: number;
+  /**
+   * ORCH-1167-R2 (change 5) — desktop web only: omit the inline box from the body
+   * (it's rendered in the sticky right panel instead). Phones/native pass false.
+   */
+  hideTicketBox?: boolean;
   // ORCH-1167 — the inline ticket box state (LIFTED to the adapter for the cart).
   ticketQuantities: Record<string, number>;
   onChangeTicketQuantity: (ticketTypeId: string, qty: number) => void;
@@ -102,6 +111,7 @@ export const FoundationEventPreview: React.FC<FoundationEventPreviewProps> = ({
   onDockLayout,
   safeAreaTop = 0,
   contentBottomInset = 0,
+  hideTicketBox = false,
   ticketQuantities,
   onChangeTicketQuantity,
   onProceedToCart,
@@ -121,27 +131,32 @@ export const FoundationEventPreview: React.FC<FoundationEventPreviewProps> = ({
           ? "image"
           : null;
 
-  // The shared body's content, wrapped so the adapter can measure its bottom y
-  // (float→dock: hide the floating bar once the in-page box scrolls into view).
+  // ORCH-1167-R2 (change 4) — onDockLayout now fires from the INLINE TICKET BOX
+  // (section 5) via the body's onTicketBoxLayout, NOT from a wrapper around the
+  // whole body. Anchoring on the body top hid the floating bar right after the
+  // cover (the regression); anchoring on the box keeps the bar pinned until the
+  // box is actually in view. On desktop the box is in the sticky panel, so the
+  // inline box is hidden (hideTicketBox) and the float bar is hidden by the
+  // adapter anyway.
   const body = (
-    <View onLayout={onDockLayout}>
-      <EventOfferingBody
-        event={event}
-        brand={brand}
-        variant={variant}
-        bookable={bookable}
-        palette={palette}
-        theme={theme}
-        ticketQuantities={ticketQuantities}
-        onChangeTicketQuantity={onChangeTicketQuantity}
-        onProceedToCart={onProceedToCart}
-        onOpenBrand={onOpenBrand}
-        onOpenMaps={onOpenMaps}
-        staticMapUrl={staticMapUrl}
-        submitting={submitting}
-        testID="orch-1167-event-body"
-      />
-    </View>
+    <EventOfferingBody
+      event={event}
+      brand={brand}
+      variant={variant}
+      bookable={bookable}
+      palette={palette}
+      theme={theme}
+      ticketQuantities={ticketQuantities}
+      onChangeTicketQuantity={onChangeTicketQuantity}
+      onProceedToCart={onProceedToCart}
+      onOpenBrand={onOpenBrand}
+      onOpenMaps={onOpenMaps}
+      staticMapUrl={staticMapUrl}
+      submitting={submitting}
+      onTicketBoxLayout={onDockLayout}
+      hideTicketBox={hideTicketBox}
+      testID="orch-1167-event-body"
+    />
   );
 
   return (

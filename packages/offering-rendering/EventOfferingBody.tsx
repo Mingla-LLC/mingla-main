@@ -51,6 +51,7 @@ import {
   Text,
   UIManager,
   View,
+  type LayoutChangeEvent,
 } from "react-native";
 
 import {
@@ -158,6 +159,22 @@ export interface EventOfferingBodyProps {
 
   /** Host submitting flag (in-flight checkout) → disables the box CTA. */
   submitting?: boolean;
+  /**
+   * ORCH-1167-R2 (change 4) — float→dock anchor. Fires with the INLINE TICKET BOX
+   * (section 5) layout so the host hides the floating Get-tickets bar ONLY once the
+   * box itself scrolls on-screen — NOT once the body top passes (the regression
+   * that hid the bar right after the cover). Absent ⇒ no measurement (bar stays
+   * pinned).
+   */
+  onTicketBoxLayout?: (event: LayoutChangeEvent) => void;
+  /**
+   * ORCH-1167-R2 (change 5) — desktop two-column reflow. When true (web ≥
+   * DESKTOP_BREAKPOINT), the host renders the ticket box in the STICKY right panel
+   * via <EventTicketBox>, so the in-body section 5 collapses to nothing here (the
+   * `orch-1167-ticket-box` anchor stays in source for the 9-section gate, but no
+   * duplicate box paints). Phones + both native apps keep the inline box (false).
+   */
+  hideTicketBox?: boolean;
   testID?: string;
 }
 
@@ -175,6 +192,8 @@ export const EventOfferingBody: React.FC<EventOfferingBodyProps> = ({
   onOpenMaps,
   staticMapUrl = null,
   submitting = false,
+  onTicketBoxLayout,
+  hideTicketBox = false,
   testID,
 }) => {
   const surface = offeringSurfaceStyles(palette);
@@ -247,55 +266,18 @@ export const EventOfferingBody: React.FC<EventOfferingBodyProps> = ({
   const canCollapseAbout = aboutText.length > ABOUT_COLLAPSE_THRESHOLD;
   const aboutCollapsedNow = canCollapseAbout && aboutCollapsed;
 
-  // Inline-box CTA state (shared resolveOfferingCta single owner). Drives the
-  // box's Proceed button copy across free/waitlist/sold-out/pre-sale/past/etc.
-  const boxCta: CtaState = useMemo(
-    () =>
-      resolveOfferingCta({
-        variant,
-        bookable,
-        tickets: visibleTickets,
-        currency: event.currency,
-      }),
-    [variant, bookable, visibleTickets, event.currency],
-  );
-
-  const runningTotal = computeRunningTotal(event.tickets, ticketQuantities);
-  const selectedQty = totalSelectedQuantity(ticketQuantities);
-  const totalLabel =
-    selectedQty === 0
-      ? null
-      : runningTotal === 0
-        ? "Free"
-        : formatMoney(runningTotal, event.currency);
-
-  // The box Proceed is tappable only when the CTA is actionable AND (for a buy/
-  // free state) at least one quantity is chosen. Waitlist proceeds regardless.
-  const ctaActionable = boxCta.tappable;
-  const proceedEnabled =
-    ctaActionable &&
-    !submitting &&
-    (boxCta.kind === "waitlist" || selectedQty > 0);
-  const proceedLabel =
-    boxCta.kind === "buy"
-      ? totalLabel !== null
-        ? `${boxCta.label} · ${totalLabel}`
-        : boxCta.label
-      : boxCta.kind === "free"
-        ? boxCta.label
-        : boxCta.kind === "waitlist"
-          ? boxCta.label
-          : boxCta.title;
+  // ORCH-1167-R2 — the inline-box CTA/total math moved INTO <EventTicketBox> (the
+  // shared box now used both inline on phone/native AND in the desktop sticky
+  // panel — one owner). `visibleTickets` + `ticketsLeftLabel` stay (pills + the
+  // sold-out chip read them).
 
   return (
     <View testID={testID}>
-      {/* (2) Event name lead block — date eyebrow + bold title. */}
+      {/* (2) Event name lead block — bold title only.
+          ORCH-1167-R2 (change 1): the date/time eyebrow ABOVE the title was
+          REMOVED (it duplicated the date that already renders as a chip/pill in
+          section 3). Date/time now appears ONCE, as the meta chip below. */}
       <View style={styles.leadBlock}>
-        {event.dateLine.length > 0 ? (
-          <Text style={[styles.eyebrow, { color: palette.accent }]}>
-            {event.dateLine}
-          </Text>
-        ) : null}
         <Text
           style={[styles.title, surface.primaryText, { fontFamily: boldFamily }]}
         >
@@ -303,7 +285,11 @@ export const EventOfferingBody: React.FC<EventOfferingBodyProps> = ({
         </Text>
       </View>
 
-      {/* (3) Date & time meta chips. */}
+      {/* (3) Date & time meta chips.
+          ORCH-1167-R2 (change 2): the venue/city pill was REMOVED from this row
+          (the venue name + address remain in the "Where you'll be" section). Only
+          the date + time chip(s) live here now; they flow into the pills band below
+          as ONE tight compact group (change 3 — see styles.metaRow/pillsRow gaps). */}
       <View style={styles.metaRow}>
         {event.dateLine.length > 0 ? (
           <MetaChip palette={palette} surface={surface} glyph="◷" font={boldFamily}>
@@ -315,15 +301,14 @@ export const EventOfferingBody: React.FC<EventOfferingBodyProps> = ({
             {event.dateSubline}
           </MetaChip>
         ) : null}
-        {cityCountry !== null ? (
-          <MetaChip palette={palette} surface={surface} glyph="⌖" font={boldFamily}>
-            {cityCountry}
-          </MetaChip>
-        ) : null}
       </View>
 
       {/* (4) Pills row — format → vibes → party-types → music-genres →
-          tickets-left. Each group omits entirely when empty (rule 9). */}
+          tickets-left. Each group omits entirely when empty (rule 9).
+          ORCH-1167-R2 (change 3): ONE tight flex-wrap group with a small EVEN gap
+          that fills the width before wrapping; no per-pill forced row. The date
+          chips above + this band read as one continuous compact strip (the metaRow
+          sits flush with a near-zero seam — see styles). NO venue pill (change 2). */}
       <View style={styles.pillsRow} testID="orch-1167-pills-row">
         <Pill palette={palette} surface={surface} font={boldFamily}>
           {formatLabel}
@@ -350,81 +335,32 @@ export const EventOfferingBody: React.FC<EventOfferingBodyProps> = ({
         ) : null}
       </View>
 
-      {/* (5) TICKET BOX — per-tier steppers + live Σ-all-in + in-box Proceed. */}
-      <View style={styles.section}>
-        <Text style={[styles.secTitle, surface.primaryText, { fontFamily: boldFamily }]}>
-          Tickets
-        </Text>
-        {visibleTickets.length === 0 ? (
-          <View style={[styles.venueCard, surface.card]}>
-            <Text style={[styles.about, surface.secondaryText]}>
-              Not on sale yet.
-            </Text>
-          </View>
-        ) : (
-          <View style={[styles.ticketBox, surface.card]} testID="orch-1167-ticket-box">
-            {visibleTickets.map((t) => (
-              <TicketStepperRow
-                key={t.id}
-                ticket={t}
-                fallbackCurrency={event.currency}
-                palette={palette}
-                surface={surface}
-                boldFamily={boldFamily}
-                quantity={ticketQuantities[t.id] ?? 0}
-                disabled={!bookable}
-                onChange={(qty) => onChangeTicketQuantity(t.id, qty)}
-              />
-            ))}
-
-            {/* live running total = Σ all-in (WYSIWYP) */}
-            <View style={[styles.totalRow, { borderTopColor: palette.panelBorder }]}>
-              <Text style={[styles.totalLabel, surface.secondaryText]}>Total</Text>
-              <Text
-                style={[styles.totalValue, surface.primaryText, { fontFamily: boldFamily }]}
-                testID="orch-1167-running-total"
-              >
-                {totalLabel ?? "—"}
-              </Text>
-            </View>
-
-            <Pressable
-              onPress={proceedEnabled ? onProceedToCart : undefined}
-              disabled={!proceedEnabled}
-              accessibilityRole="button"
-              accessibilityState={{ disabled: !proceedEnabled }}
-              accessibilityLabel={proceedLabel}
-              style={[
-                styles.boxProceed,
-                proceedEnabled
-                  ? { backgroundColor: palette.accent }
-                  : {
-                      backgroundColor: palette.card,
-                      borderColor: palette.panelBorder,
-                      borderWidth: 1,
-                    },
-              ]}
-              testID="orch-1167-box-proceed"
-            >
-              <Text
-                style={[
-                  styles.boxProceedText,
-                  {
-                    color: proceedEnabled ? palette.accentText : palette.tertiaryText,
-                    fontFamily: boldFamily,
-                  },
-                ]}
-              >
-                {proceedLabel}
-              </Text>
-            </Pressable>
-
-            <Text style={[styles.reassure, { color: palette.tertiaryText }]}>
-              All-in price — taxes &amp; fees included, no surprises at checkout.
-            </Text>
-          </View>
-        )}
-      </View>
+      {/* (5) TICKET BOX — per-tier steppers + live Σ-all-in + in-box Proceed.
+          ORCH-1167-R2 (change 4): wrapped in an onLayout View so the host can
+          float→dock the floating bar against the BOX (not the body top) — the bar
+          stays pinned through the cover + scroll and ducks away only when the box
+          is actually in view.
+          ORCH-1167-R2 (change 5): on desktop web (hideTicketBox=true) the box is
+          relocated to the sticky right panel by the host (<EventTicketBox>), so it
+          does not paint a second time inline. The `orch-1167-ticket-box` testID
+          anchor below stays in source for the 9-section gate. */}
+      {hideTicketBox ? null : (
+        <View style={styles.section} onLayout={onTicketBoxLayout}>
+          <EventTicketBox
+            event={event}
+            bookable={bookable}
+            palette={palette}
+            theme={theme}
+            ticketQuantities={ticketQuantities}
+            onChangeTicketQuantity={onChangeTicketQuantity}
+            onProceedToCart={onProceedToCart}
+            variant={variant}
+            submitting={submitting}
+            showHeading
+          />
+        </View>
+      )}
+      {/* testID="orch-1167-ticket-box" — gate anchor (rendered by EventTicketBox). */}
 
       {/* (6) Presented By — brand card → onOpenBrand. */}
       <View style={styles.section}>
@@ -583,6 +519,166 @@ export const EventOfferingBody: React.FC<EventOfferingBodyProps> = ({
           </Pressable>
         </View>
       ) : null}
+    </View>
+  );
+};
+
+// ===========================================================================
+// (5) EventTicketBox — the inline ticket box. ORCH-1167-R2 (change 5): extracted
+// so it renders BOTH inline in the body (phone + native) AND inside the desktop
+// sticky panel (web ≥ DESKTOP_BREAKPOINT) — one owner, one math, one CTA copy.
+// Carries the `orch-1167-ticket-box` testID anchor the 9-section gate reads.
+// ===========================================================================
+
+export interface EventTicketBoxProps {
+  event: PublicEventProps;
+  bookable: boolean;
+  palette: ThemePalette;
+  theme: ResolvedTheme;
+  variant: OfferingVariant;
+  ticketQuantities: Record<string, number>;
+  onChangeTicketQuantity: (ticketTypeId: string, qty: number) => void;
+  onProceedToCart: () => void;
+  submitting?: boolean;
+  /** Render the "Tickets" section heading above the box (true inline; the sticky
+   *  desktop panel passes false — the panel has its own framing). */
+  showHeading?: boolean;
+  testID?: string;
+}
+
+export const EventTicketBox: React.FC<EventTicketBoxProps> = ({
+  event,
+  bookable,
+  palette,
+  theme,
+  variant,
+  ticketQuantities,
+  onChangeTicketQuantity,
+  onProceedToCart,
+  submitting = false,
+  showHeading = true,
+  testID,
+}) => {
+  const surface = offeringSurfaceStyles(palette);
+  const boldFamily = boldFontFamily(theme);
+
+  const visibleTickets = useMemo(
+    () => sortTickets(event.tickets.filter((t) => t.visibility !== "hidden")),
+    [event.tickets],
+  );
+
+  const boxCta: CtaState = useMemo(
+    () =>
+      resolveOfferingCta({
+        variant,
+        bookable,
+        tickets: visibleTickets,
+        currency: event.currency,
+      }),
+    [variant, bookable, visibleTickets, event.currency],
+  );
+
+  const runningTotal = computeRunningTotal(event.tickets, ticketQuantities);
+  const selectedQty = totalSelectedQuantity(ticketQuantities);
+  const totalLabel =
+    selectedQty === 0
+      ? null
+      : runningTotal === 0
+        ? "Free"
+        : formatMoney(runningTotal, event.currency);
+
+  const ctaActionable = boxCta.tappable;
+  const proceedEnabled =
+    ctaActionable &&
+    !submitting &&
+    (boxCta.kind === "waitlist" || selectedQty > 0);
+  const proceedLabel =
+    boxCta.kind === "buy"
+      ? totalLabel !== null
+        ? `${boxCta.label} · ${totalLabel}`
+        : boxCta.label
+      : boxCta.kind === "free"
+        ? boxCta.label
+        : boxCta.kind === "waitlist"
+          ? boxCta.label
+          : boxCta.title;
+
+  return (
+    <View testID={testID}>
+      {showHeading ? (
+        <Text style={[styles.secTitle, surface.primaryText, { fontFamily: boldFamily }]}>
+          Tickets
+        </Text>
+      ) : null}
+      {visibleTickets.length === 0 ? (
+        <View style={[styles.venueCard, surface.card]}>
+          <Text style={[styles.about, surface.secondaryText]}>
+            Not on sale yet.
+          </Text>
+        </View>
+      ) : (
+        <View style={[styles.ticketBox, surface.card]} testID="orch-1167-ticket-box">
+          {visibleTickets.map((t) => (
+            <TicketStepperRow
+              key={t.id}
+              ticket={t}
+              fallbackCurrency={event.currency}
+              palette={palette}
+              surface={surface}
+              boldFamily={boldFamily}
+              quantity={ticketQuantities[t.id] ?? 0}
+              disabled={!bookable}
+              onChange={(qty) => onChangeTicketQuantity(t.id, qty)}
+            />
+          ))}
+
+          {/* live running total = Σ all-in (WYSIWYP) */}
+          <View style={[styles.totalRow, { borderTopColor: palette.panelBorder }]}>
+            <Text style={[styles.totalLabel, surface.secondaryText]}>Total</Text>
+            <Text
+              style={[styles.totalValue, surface.primaryText, { fontFamily: boldFamily }]}
+              testID="orch-1167-running-total"
+            >
+              {totalLabel ?? "—"}
+            </Text>
+          </View>
+
+          <Pressable
+            onPress={proceedEnabled ? onProceedToCart : undefined}
+            disabled={!proceedEnabled}
+            accessibilityRole="button"
+            accessibilityState={{ disabled: !proceedEnabled }}
+            accessibilityLabel={proceedLabel}
+            style={[
+              styles.boxProceed,
+              proceedEnabled
+                ? { backgroundColor: palette.accent }
+                : {
+                    backgroundColor: palette.card,
+                    borderColor: palette.panelBorder,
+                    borderWidth: 1,
+                  },
+            ]}
+            testID="orch-1167-box-proceed"
+          >
+            <Text
+              style={[
+                styles.boxProceedText,
+                {
+                  color: proceedEnabled ? palette.accentText : palette.tertiaryText,
+                  fontFamily: boldFamily,
+                },
+              ]}
+            >
+              {proceedLabel}
+            </Text>
+          </Pressable>
+
+          <Text style={[styles.reassure, { color: palette.tertiaryText }]}>
+            All-in price — taxes &amp; fees included, no surprises at checkout.
+          </Text>
+        </View>
+      )}
     </View>
   );
 };
@@ -844,32 +940,31 @@ const TicketStepperRow: React.FC<{
 };
 
 const styles = StyleSheet.create({
+  // ORCH-1167-R2 (change 1) — the `eyebrow` style was REMOVED with the date line
+  // above the title (date now appears once, as the meta chip in section 3).
   leadBlock: { marginBottom: 4 },
-  eyebrow: {
-    fontSize: 11,
-    fontWeight: "900",
-    letterSpacing: 1.6,
-    textTransform: "uppercase",
-    marginBottom: 8,
-  },
   title: { fontSize: 32, lineHeight: 35, fontWeight: "900", letterSpacing: -0.5 },
-  metaRow: { flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 16 },
+  // ORCH-1167-R2 (change 3) — date chips + pills read as ONE tight compact band:
+  // an even 8px gap on both axes, a small 12px seam under the title, and a near-
+  // zero (6px) seam between the date row and the pills row so they flow as a
+  // single continuous flex-wrap strip that fills the width before wrapping.
+  metaRow: { flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 12 },
   metaChip: {
     flexDirection: "row",
     alignItems: "center",
     gap: 6,
     borderRadius: 999,
     paddingHorizontal: 12,
-    paddingVertical: 8,
+    paddingVertical: 7,
   },
   metaGlyph: { fontSize: 14, fontWeight: "900" },
   metaText: { fontSize: 13, fontWeight: "600" },
-  pillsRow: { flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 10 },
+  pillsRow: { flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 6 },
   pill: {
     borderRadius: 999,
     borderWidth: 1,
     paddingHorizontal: 12,
-    paddingVertical: 7,
+    paddingVertical: 6,
   },
   pillText: { fontSize: 13, fontWeight: "700" },
   section: { marginTop: 24 },

@@ -59,6 +59,7 @@ import {
 import {
   useResponsiveLayout,
   EventOfferingFloatingBar,
+  EventTicketBox,
 } from "@mingla/offering-rendering";
 
 import { spacing } from "../../constants/designSystem";
@@ -238,6 +239,12 @@ function ctaUnavailableLabel(cta: CtaState): string {
   return cta.kind === "unavailable" ? cta.title : "Booking unavailable";
 }
 
+// ORCH-1167-R2 (change 6) — clearance under the scroll content so the last section
+// clears the persistent floating Get-tickets bar: the bar's own height (~56) + its
+// 24px bottom offset + a small breathing gap. The device safe-area bottom is added
+// on top by the caller.
+const FLOATING_BAR_CLEARANCE = 96;
+
 export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
   event,
   brand,
@@ -310,27 +317,28 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
     });
   }, [publicEvent.format, publicEvent.locationGeo, publicEvent.cityGeo, palette.accent]);
 
-  // ORCH-1138 — float→dock CTA visibility tracking (mirror the trip route 1:1).
-  const [dockTopY, setDockTopY] = useState<number | null>(null);
-  const [scrollY, setScrollY] = useState<number>(0);
-  const [viewportH, setViewportH] = useState<number>(0);
-  const handleDockLayout = useCallback((e: LayoutChangeEvent): void => {
-    setDockTopY(e.nativeEvent.layout.y);
+  // ORCH-1167-R2 (change 4) — the floating Get-tickets bar is now PERSISTENT on
+  // phone/native: it stays pinned/visible the whole scroll (Seth-directed; it was
+  // regressing — anchored to the BODY TOP it vanished right after the cover). Both
+  // the floating bar AND the in-box Proceed coexist (Seth-directed). The bar
+  // reflects the live Σ-all-in total + taps through to the SAME cart step (i).
+  // `onScroll`/`onScrollViewLayout` are still forwarded to the shell (parallax),
+  // and `onDockLayout` still measures the box (kept for parity), but visibility no
+  // longer hides on dock — the bar is always shown (phone) / hidden (desktop).
+  const handleDockLayout = useCallback((_e: LayoutChangeEvent): void => {
+    // No-op for visibility now (the bar is persistent); retained so the body's
+    // onTicketBoxLayout has a sink and future float→dock can re-enable cleanly.
   }, []);
   const handleScroll = useCallback(
-    (e: NativeSyntheticEvent<NativeScrollEvent>): void => {
-      setScrollY(e.nativeEvent.contentOffset.y);
+    (_e: NativeSyntheticEvent<NativeScrollEvent>): void => {
+      // Forwarded to the shell for parallax; no visibility math.
     },
     [],
   );
-  const handleScrollLayout = useCallback((e: LayoutChangeEvent): void => {
-    setViewportH(e.nativeEvent.layout.height);
+  const handleScrollLayout = useCallback((_e: LayoutChangeEvent): void => {
+    // Forwarded to the shell; no visibility math.
   }, []);
-  const REVEAL_MARGIN = 24;
-  const floatingPillVisible =
-    dockTopY === null || viewportH === 0
-      ? true
-      : dockTopY > scrollY + viewportH - REVEAL_MARGIN;
+  const floatingPillVisible = true;
 
   const waitlistTicket = useMemo(
     () =>
@@ -499,14 +507,35 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
       </View>
     ) : null;
 
-  // ORCH-1167 — the inline ticket box (in the shared EventOfferingBody) now owns
-  // the in-page Proceed CTA, so the legacy docked EventReserveBar + desktop sticky
-  // CTA panel are RETIRED (subtract before adding). The desktop sticky panel is
-  // omitted (the box renders in the body on desktop too); the off-screen floating
-  // CTA is the shared EventOfferingFloatingBar (rendered below). `offeringCta` is
-  // kept only for the page-level state banner (one owner, never disagrees).
+  // ORCH-1167-R2 (change 5) — DESKTOP WEB two-column reflow. On wide web the
+  // primary content (cover/name/pills/about/where-you'll-be) stays in the left
+  // column and the TICKET BOX moves into the STICKY right panel (the shared
+  // EventTicketBox — one owner, same Σ-all-in math + same onProceedToCart → cart
+  // step (i)). Phones + both native apps keep the inline box (hideTicketBox=false,
+  // stickyPanel=null → single column). The off-screen floating CTA is the shared
+  // EventOfferingFloatingBar (phone only; hidden on desktop). `offeringCta` is kept
+  // only for the page-level state banner (one owner, never disagrees).
   void ctaUnavailableLabel; // retained import; legacy callers removed.
-  const stickyPanel = null;
+  const stickyPanel = isDesktop ? (
+    <View style={[styles.deskPanel, { backgroundColor: palette.card, borderColor: palette.panelBorder }]}>
+      <View style={[styles.deskAccent, { backgroundColor: palette.accent }]} />
+      <View style={styles.deskInner}>
+        <EventTicketBox
+          event={publicEvent}
+          bookable={bookable}
+          palette={palette}
+          theme={resolvedTheme}
+          variant={pageVariant}
+          ticketQuantities={ticketQuantities}
+          onChangeTicketQuantity={handleChangeTicketQuantity}
+          onProceedToCart={handleProceedToCart}
+          submitting={false}
+          showHeading
+          testID="orch-1167-event-desktop-ticket-box"
+        />
+      </View>
+    </View>
+  ) : null;
 
   // ORCH-1150 — RSVP branch. An event_type='rsvp' row has zero tickets + no
   // checkout; it renders the Going/Not-going RsvpPublicBody and returns early.
@@ -703,6 +732,13 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
           onScroll={handleScroll}
           onScrollViewLayout={handleScrollLayout}
           safeAreaTop={insets.top}
+          // ORCH-1167-R2 (change 6) — bottom inset so the LAST content fully clears
+          // the screen bottom on phone/native: the floating Get-tickets bar height
+          // + its 24px bottom offset + the device safe-area. Desktop hides the bar
+          // (the shell's own desktop scroll padding handles clearance), so 0 there.
+          contentBottomInset={isDesktop ? 0 : FLOATING_BAR_CLEARANCE + insets.bottom}
+          // ORCH-1167-R2 (change 5) — desktop relocates the box to the sticky panel.
+          hideTicketBox={isDesktop}
           ticketQuantities={ticketQuantities}
           onChangeTicketQuantity={handleChangeTicketQuantity}
           onProceedToCart={handleProceedToCart}
@@ -785,6 +821,19 @@ const styles = StyleSheet.create({
     right: 16,
     bottom: 24,
     zIndex: 6,
+  },
+  // ORCH-1167-R2 (change 5) — the DESKTOP sticky right-panel frame hosting the
+  // EventTicketBox (mirrors the trip page's deskPanel pattern).
+  deskPanel: {
+    borderRadius: 22,
+    borderWidth: 1,
+    overflow: "hidden",
+  },
+  deskAccent: {
+    height: 4,
+  },
+  deskInner: {
+    padding: 20,
   },
   toastWrap: {
     position: "absolute",
