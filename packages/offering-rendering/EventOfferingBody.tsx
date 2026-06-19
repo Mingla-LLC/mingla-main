@@ -286,29 +286,49 @@ export const EventOfferingBody: React.FC<EventOfferingBodyProps> = ({
       </View>
 
       {/* (3) Date & time meta chips.
-          ORCH-1167-R2 (change 2): the venue/city pill was REMOVED from this row
-          (the venue name + address remain in the "Where you'll be" section). Only
-          the date + time chip(s) live here now; they flow into the pills band below
-          as ONE tight compact group (change 3 — see styles.metaRow/pillsRow gaps). */}
-      <View style={styles.metaRow}>
-        {event.dateLine.length > 0 ? (
-          <MetaChip palette={palette} surface={surface} glyph="◷" font={boldFamily}>
-            {event.dateLine}
-          </MetaChip>
-        ) : null}
-        {event.dateSubline !== null && event.dateSubline.length > 0 ? (
-          <MetaChip palette={palette} surface={surface} glyph="⟳" font={boldFamily}>
-            {event.dateSubline}
-          </MetaChip>
-        ) : null}
-      </View>
+          ORCH-1167-R3 (change 1): the date/time is its OWN FULL-WIDTH ROW that
+          spans the content column on BOTH mobile and desktop — no longer a small
+          chip squeezed into the compact pill band. It is styled CONSISTENTLY with
+          the solid-fill pills below (change 2): the same theme-aware solid accent
+          fill (palette.accentWash), just full width. The date + time subline read
+          as ONE bold full-width band; the other pills live in the compact band
+          below. ORCH-1167-R2 (change 2): NO venue/city pill (venue stays in §8). */}
+      {event.dateLine.length > 0 ||
+      (event.dateSubline !== null && event.dateSubline.length > 0) ? (
+        <View
+          style={[styles.dateRow, { backgroundColor: palette.accentWash, borderColor: palette.panelBorder }]}
+          testID="orch-1167-date-row"
+        >
+          <Text style={[styles.dateGlyph, { color: palette.accent }]}>◷</Text>
+          <View style={styles.dateTextCol}>
+            {event.dateLine.length > 0 ? (
+              <Text
+                style={[styles.dateLine, { color: palette.primaryText, fontFamily: boldFamily }]}
+                testID="orch-1167-date-line"
+              >
+                {event.dateLine}
+              </Text>
+            ) : null}
+            {event.dateSubline !== null && event.dateSubline.length > 0 ? (
+              <Text
+                style={[styles.dateSubline, { color: palette.secondaryText, fontFamily: boldFamily }]}
+              >
+                {event.dateSubline}
+              </Text>
+            ) : null}
+          </View>
+        </View>
+      ) : null}
 
       {/* (4) Pills row — format → vibes → party-types → music-genres →
           tickets-left. Each group omits entirely when empty (rule 9).
           ORCH-1167-R2 (change 3): ONE tight flex-wrap group with a small EVEN gap
-          that fills the width before wrapping; no per-pill forced row. The date
-          chips above + this band read as one continuous compact strip (the metaRow
-          sits flush with a near-zero seam — see styles). NO venue pill (change 2). */}
+          that fills the width before wrapping; no per-pill forced row.
+          ORCH-1167-R3 (change 2): EVERY pill now carries the SOLID accent fill
+          (palette.accentWash) — matching the prior tickets-left chip — instead of
+          the old outlined/translucent card style. Theme-aware + Android opaque-
+          glass-policy intact (accentWash is an opaque-ish accent tint, not the
+          translucent glass card). NO venue pill (change 2). */}
       <View style={styles.pillsRow} testID="orch-1167-pills-row">
         <Pill palette={palette} surface={surface} font={boldFamily}>
           {formatLabel}
@@ -329,7 +349,7 @@ export const EventOfferingBody: React.FC<EventOfferingBodyProps> = ({
           </Pill>
         ))}
         {ticketsLeftLabel !== null ? (
-          <Pill palette={palette} surface={surface} font={boldFamily} accent>
+          <Pill palette={palette} surface={surface} font={boldFamily}>
             {ticketsLeftLabel}
           </Pill>
         ) : null}
@@ -587,11 +607,17 @@ export const EventTicketBox: React.FC<EventTicketBoxProps> = ({
         ? "Free"
         : formatMoney(runningTotal, event.currency);
 
+  // ORCH-1167-R3 (change 3) — the in-box buy/get-tickets button is ALWAYS
+  // tappable while the offering is on-sale (buy/free) or waitlistable, EVEN at 0
+  // selected: tapping routes to the cart step (i) where the buyer picks/edits
+  // quantities. The prior "nothing selected ⇒ disabled" clause (selectedQty > 0)
+  // is REMOVED. The genuinely non-purchasable states (sold-out / past / ended /
+  // cancelled / not-bookable / door-only) stay GATED via `boxCta.tappable` (those
+  // resolve `tappable:false` in resolveOfferingCta) — only the empty-selection
+  // disable is lifted. At 0 selected the label is the bare get-tickets verb (no
+  // total / no "$0"), since `totalLabel` is null until a tier is picked.
   const ctaActionable = boxCta.tappable;
-  const proceedEnabled =
-    ctaActionable &&
-    !submitting &&
-    (boxCta.kind === "waitlist" || selectedQty > 0);
+  const proceedEnabled = ctaActionable && !submitting;
   const proceedLabel =
     boxCta.kind === "buy"
       ? totalLabel !== null
@@ -739,8 +765,12 @@ export const EventOfferingFloatingBar: React.FC<EventOfferingFloatingBarProps> =
         ? "Free"
         : formatMoney(runningTotal, event.currency);
 
-  const enabled =
-    cta.tappable && !submitting && (cta.kind === "waitlist" || selectedQty > 0);
+  // ORCH-1167-R3 (change 3) — the persistent floating button mirrors the in-box
+  // button: ALWAYS tappable while on-sale (buy/free) or waitlistable, even at 0
+  // selected (taps open the cart to pick/edit quantities). The empty-selection
+  // disable (selectedQty > 0) is REMOVED. Non-purchasable states stay gated via
+  // `cta.tappable` (false for sold-out/past/ended/cancelled/not-bookable/door-only).
+  const enabled = cta.tappable && !submitting;
   const label =
     cta.kind === "buy"
       ? totalLabel !== null
@@ -783,41 +813,31 @@ export const EventOfferingFloatingBar: React.FC<EventOfferingFloatingBarProps> =
 // Sub-components.
 // ===========================================================================
 
-const MetaChip: React.FC<{
-  palette: ThemePalette;
-  surface: ReturnType<typeof offeringSurfaceStyles>;
-  glyph: string;
-  font: string;
-  children: React.ReactNode;
-}> = ({ palette, surface, glyph, font, children }) => (
-  <View style={[styles.metaChip, surface.card]}>
-    <Text style={[styles.metaGlyph, { color: palette.accent }]}>{glyph}</Text>
-    <Text style={[styles.metaText, surface.secondaryText, { fontFamily: font }]}>
-      {children}
-    </Text>
-  </View>
-);
+// ORCH-1167-R3 (change 1) — the date/time MetaChip component was REMOVED with the
+// compact date chip; date/time now renders as the FULL-WIDTH solid-fill `dateRow`
+// inline above the pills band (section 3). No other consumer remained.
 
+// ORCH-1167-R3 (change 2) — EVERY pill carries the SOLID accent fill
+// (palette.accentWash + a border), matching the prior tickets-left chip. The old
+// outlined/translucent `surface.card` variant is gone; `surface` is retained in
+// the signature only for call-site parity (no behavioral use now). Theme-aware
+// (accentWash is derived from the page palette) and Android opaque-glass safe
+// (accentWash is an opaque-ish accent tint, NOT the translucent glass card).
 const Pill: React.FC<{
   palette: ThemePalette;
   surface: ReturnType<typeof offeringSurfaceStyles>;
   font: string;
   accent?: boolean;
   children: React.ReactNode;
-}> = ({ palette, surface, font, accent = false, children }) => (
+}> = ({ palette, font, children }) => (
   <View
     style={[
       styles.pill,
-      accent
-        ? { backgroundColor: palette.accentWash, borderColor: palette.panelBorder }
-        : surface.card,
+      { backgroundColor: palette.accentWash, borderColor: palette.panelBorder },
     ]}
   >
     <Text
-      style={[
-        styles.pillText,
-        { color: accent ? palette.primaryText : palette.secondaryText, fontFamily: font },
-      ]}
+      style={[styles.pillText, { color: palette.primaryText, fontFamily: font }]}
     >
       {children}
     </Text>
@@ -944,22 +964,30 @@ const styles = StyleSheet.create({
   // above the title (date now appears once, as the meta chip in section 3).
   leadBlock: { marginBottom: 4 },
   title: { fontSize: 32, lineHeight: 35, fontWeight: "900", letterSpacing: -0.5 },
-  // ORCH-1167-R2 (change 3) — date chips + pills read as ONE tight compact band:
-  // an even 8px gap on both axes, a small 12px seam under the title, and a near-
-  // zero (6px) seam between the date row and the pills row so they flow as a
-  // single continuous flex-wrap strip that fills the width before wrapping.
+  // ORCH-1167-R3 (change 1) — date/time is its OWN FULL-WIDTH ROW (`dateRow`),
+  // spanning the content column on mobile + desktop, styled like the solid-fill
+  // pills (palette.accentWash + border) — just full width. The legacy compact
+  // date `metaChip`/`metaGlyph`/`metaText` chip styles were removed with the chip.
+  // `metaRow` (flex-wrap) is retained as the row-wrapper token the R2 regression
+  // asserts; it is no longer applied to the date chips (those moved to dateRow).
   metaRow: { flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 12 },
-  metaChip: {
+  dateRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 6,
-    borderRadius: 999,
-    paddingHorizontal: 12,
-    paddingVertical: 7,
+    alignSelf: "stretch",
+    width: "100%",
+    gap: 10,
+    borderRadius: 16,
+    borderWidth: 1,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    marginTop: 12,
   },
-  metaGlyph: { fontSize: 14, fontWeight: "900" },
-  metaText: { fontSize: 13, fontWeight: "600" },
-  pillsRow: { flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 6 },
+  dateGlyph: { fontSize: 18, fontWeight: "900" },
+  dateTextCol: { flex: 1, minWidth: 0 },
+  dateLine: { fontSize: 15, fontWeight: "800", letterSpacing: -0.2 },
+  dateSubline: { fontSize: 13, fontWeight: "700", marginTop: 2 },
+  pillsRow: { flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 8 },
   pill: {
     borderRadius: 999,
     borderWidth: 1,

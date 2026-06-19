@@ -328,10 +328,11 @@ export default function ConsumerEventDetailScreen({
     [],
   );
   const handleProceedToCart = useCallback((): void => {
-    const anySelected = Object.values(ticketQuantities).some((q) => q > 0);
-    if (!anySelected) return;
-    // Seed the cart sheet at the FIRST selected tier for back-compat with the
-    // single-seed contract; initialQuantities carries the FULL selection.
+    // ORCH-1167-R3 (change 3) — the empty-selection early-return is REMOVED: the
+    // on-sale floating + in-box button is always tappable, and tapping at 0
+    // selected opens the cart (TicketCartSheet) where the buyer picks/edits
+    // quantities. With nothing selected `initialQuantities` is empty + the seed
+    // tier is null → the cart opens with the tier list ready to pick.
     const firstSelected = Object.keys(ticketQuantities).find(
       (id) => (ticketQuantities[id] ?? 0) > 0,
     );
@@ -663,11 +664,34 @@ export default function ConsumerEventDetailScreen({
   // after the cover). It stays pinned the whole scroll, reflects the live Σ-all-in
   // total, and opens the SAME pre-seeded cart as the in-box Proceed (both coexist).
   const floatingPillVisible = true;
-  // ORCH-1167-R2 (change 6) — bottom inset so the LAST content fully clears the
-  // persistent floating Get-tickets bar: the bar height (~56) + its 8px bottom
-  // offset + the device safe-area bottom (home indicator) + a small gap. Without
-  // this the last section hid behind the bar.
-  const reserveBarClearance = 72 + insets.bottom;
+  // ORCH-1167-R3 (change 4) — the floating Get-tickets bar BLED off the bottom of
+  // the gorhom sheet (barely visible). Root cause: it was an absolute child of the
+  // gorhom BottomSheetContent with `bottom: 0`, but that content extends ~63pt
+  // BELOW the visible window at the 90% snap AND `useSafeAreaInsets().bottom` can
+  // resolve to ~0 inside the sheet's own SafeAreaProvider — so the button sat
+  // below the visible edge under the home indicator. FIX: mirror the SHIPPED,
+  // device-proven ConsumerTripReserveBar floating math — lift the wrapper by the
+  // gorhom overshoot + a home-indicator floor + a visible float gap (max of the
+  // passed inset, the local inset, and the 34pt floor). This anchors the bar
+  // WITHIN the sheet's visible bounds, fully on-screen + tappable on a notched
+  // device. (Web + business-native bar positioning is owned elsewhere — unchanged.)
+  const HOME_INDICATOR_FLOOR = 34;
+  const SHEET_BOTTOM_OVERSHOOT = 63;
+  const FLOAT_GAP = 16;
+  const floatSafeBottom = Math.max(insets.bottom, HOME_INDICATOR_FLOOR);
+  const floatBarBottom =
+    floatSafeBottom + SHEET_BOTTOM_OVERSHOOT + FLOAT_GAP;
+  // ORCH-1167-R3 (change 4) — bottom inset so the LAST content fully clears the
+  // (now correctly raised) persistent floating bar. The bar's lifted bottom is at
+  // most `insets.bottom + HOME_INDICATOR_FLOOR + SHEET_BOTTOM_OVERSHOOT +
+  // FLOAT_GAP`; adding the bar height (~56) + a small gap gives a constant runway
+  // ON TOP OF the device safe-area that always clears the raised bar (the prior
+  // `72 + insets.bottom` under-cleared it once the bar was lifted).
+  void floatBarBottom; // applied to the float wrapper's `bottom` below.
+  // 177 = HOME_INDICATOR_FLOOR(34) + SHEET_BOTTOM_OVERSHOOT(63) + FLOAT_GAP(16) +
+  // bar-height-and-gap(64) — the constant runway above the device safe-area that
+  // always clears the raised float bar (whose bottom ≤ insets.bottom + 177).
+  const reserveBarClearance = 177 + insets.bottom;
 
   // ORCH-1157 [rsvp-public-redesign] — the Direction-C Going / Maybe / Can't
   // decision dock (replaces the old 2-button hand-rolled dock; Maybe is NEW on
@@ -1158,7 +1182,7 @@ export default function ConsumerEventDetailScreen({
             RSVP (its Going/Not-going dock is inline). */}
         {isRsvp ? null : floatingPillVisible ? (
           <View
-            style={[styles.nativeFloatWrap, { paddingBottom: insets.bottom + 8 }]}
+            style={[styles.nativeFloatWrap, { bottom: floatBarBottom }]}
             pointerEvents="box-none"
           >
             <EventOfferingFloatingBar
@@ -1238,13 +1262,15 @@ const styles = StyleSheet.create({
     right: 16,
     zIndex: 70,
   },
-  // ORCH-1167 — the standard-event floating Get-tickets bar wrapper (off-screen-
-  // box only). Absolute pinned sibling above the scroll, below the chrome.
+  // ORCH-1167 — the standard-event floating Get-tickets bar wrapper. Absolute
+  // pinned sibling above the scroll, below the chrome. ORCH-1167-R3 (change 4):
+  // `bottom` is set DYNAMICALLY at the call site (floatBarBottom) to clear the
+  // gorhom sheet's ~63pt overshoot + the home-indicator floor + a float gap, so
+  // the bar sits WITHIN the sheet's visible bounds (was `bottom: 0` → bled off).
   nativeFloatWrap: {
     position: "absolute",
     left: 16,
     right: 16,
-    bottom: 0,
     zIndex: 60,
   },
   leadBlock: { marginBottom: 4 },
