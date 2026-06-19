@@ -408,8 +408,11 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
       );
       return;
     }
-    if (!anySelected) return;
-    // Cart step (i), pre-populated + editable (replaces the empty tier-picker).
+    // ORCH-1167-R3 (change 3) — the empty-selection early-return is REMOVED: the
+    // on-sale button is always tappable, and tapping at 0 selected pushes to the
+    // cart step (i) where the buyer picks/edits quantities. An empty seed encodes
+    // to nothing → the bare /checkout/[eventId] cart path. The genuinely non-
+    // purchasable states never reach here (their CTA resolves tappable:false).
     router.push(
       checkoutPublicPathWithSeed(event.id, ticketQuantities) as never,
     );
