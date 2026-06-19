@@ -61,7 +61,8 @@
     "test:orch-430": "node ../scripts/audit/checkout-grade-a-contract.mjs",
     "test:orch-431": "node ../scripts/audit/hub-grade-a-contract.mjs",
     "test:orch-432": "node ../scripts/audit/marketing-grade-a-contract.mjs",
-    "test:orch-433": "node ../scripts/audit/trip-checkout-grade-a-contract.mjs"
+    "test:orch-433": "node ../scripts/audit/trip-checkout-grade-a-contract.mjs",
+    "test:g3-sentry": "node ../scripts/audit/g3-sentry-contract.mjs"
   },
   "dependencies": {
     "@expo-google-fonts/anton": "^0.4.2",

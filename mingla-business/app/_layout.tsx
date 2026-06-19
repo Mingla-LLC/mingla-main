@@ -97,6 +97,9 @@ if (sentryDsn) {
     dsn: sentryDsn,
     enableAutoSessionTracking: true,
     debug: __DEV__,
+    environment: __DEV__
+      ? "development"
+      : (process.env.EXPO_PUBLIC_SENTRY_ENVIRONMENT ?? "production"),
     // 100% trace sample in dev for visibility; 20% in production to balance
     // cost vs visibility. Adjust via DEC if production volume changes.
     tracesSampleRate: __DEV__ ? 1.0 : 0.2,
