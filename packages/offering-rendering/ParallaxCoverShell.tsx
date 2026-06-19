@@ -189,11 +189,21 @@ export const ParallaxCoverShell: React.FC<ParallaxCoverShellProps> = ({
       mediaUrl={coverMediaUrl}
       mediaType={coverMediaType}
       hue={coverHue ?? undefined}
-      autoplay
-      playbackActive
+      // ORCH-1167-R4 — a VIDEO cover AUTOPLAYS (muted, inline) and LOOPS
+      // continuously on every surface that mounts this shell (buyer-web +
+      // business iOS/Android, both standard-event + trip/experience). Passed
+      // explicitly (not bare-boolean shorthand) so the R4 regression can pin
+      // them; image/GIF covers are unaffected (EventCoverMedia ignores autoplay/
+      // loop for non-video presentations). EventCoverMedia honors the existing
+      // reduce-motion freeze (shouldFreezeCoverForReduceMotion): the default
+      // muted-autoplay-loop cover is ambient motion and keeps playing, while a
+      // sound-on / non-looping cover is still frozen to a still — that policy is
+      // intact here, this only guarantees the autoplay+loop INTENT reaches it.
+      autoplay={true}
+      playbackActive={true}
       muted={muted}
       onMutedChange={() => onToggleMute()}
-      loop
+      loop={true}
       height="100%"
       width="100%"
     />
