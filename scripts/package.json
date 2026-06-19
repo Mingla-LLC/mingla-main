@@ -4,7 +4,8 @@
   "type": "module",
   "scripts": {
     "validate:categories": "node validate-category-consistency.mjs",
-    "test:g4-dr-restore": "node audit/g4-dr-restore-contract.mjs"
+    "test:g4-dr-restore": "node audit/g4-dr-restore-contract.mjs",
+    "test:g5-synthetic-incident": "node audit/g5-synthetic-incident-contract.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2",
