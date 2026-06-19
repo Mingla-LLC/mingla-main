@@ -40,17 +40,14 @@ export type {
   EventCoverMediaErrorEvent,
   EventCoverMediaProps,
 } from "./EventCoverMedia";
-// ORCH-1167-R6 — WebKit-robust muted inline autoplay driver for the web cover
-// <video> (retries play() until the element starts; fixes Safari's paused
-// native-play-button overlay).
-export {
-  driveMutedAutoplay,
-  COVER_AUTOPLAY_READY_EVENTS,
-} from "./coverWebVideoAutoplay";
-export type {
-  MutedAutoplayVideoLike,
-  MutedAutoplayDriverOptions,
-} from "./coverWebVideoAutoplay";
+// ORCH-1167-R7 — the R6 `driveMutedAutoplay` play()-hammer driver was REMOVED:
+// proven (Playwright vs. live WebKit) to be the BUG, not the fix. Manually
+// calling play() (esp. at readyState 0) poisons WebKit's one-time inline-autoplay
+// eligibility for the element (NotAllowedError, permanently denied), which is why
+// the cover stayed paused under Safari's native play button. The cover now drives
+// its muted ambient autoplay via the native `autoplay`/`muted`/`playsinline`
+// ATTRIBUTES only (the proven-working bare-element pattern), inside
+// EventCoverWebVideo. The driver module + its export are gone.
 // ORCH-0847 Phase A2 — shared ticket-tier quantity stepper used by
 // mingla-business public cart screen AND consumer-app TicketCartSheet.
 export { QuantityRow } from "./QuantityRow";

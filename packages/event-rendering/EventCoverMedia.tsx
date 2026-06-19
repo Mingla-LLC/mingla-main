@@ -22,7 +22,6 @@ import {
   resolveEventCoverMediaPresentation,
   shouldFreezeCoverForReduceMotion,
 } from "./coverMediaPresentation";
-import { driveMutedAutoplay } from "./coverWebVideoAutoplay";
 import { EventCover } from "./EventCover";
 
 export interface EventCoverMediaProps {
@@ -200,10 +199,11 @@ const EventCoverWebVideo: React.FC<{
     // the `muted` + `playsinline` ATTRIBUTES are present at the element level.
     // React 19 sets `muted` as a DOM property only (no attribute), so iOS refuses
     // to autoplay and shows its native play button. Set the attributes + property
-    // imperatively, then play(). (Desktop works on the property alone.)
+    // imperatively so the element is autoplay-eligible. (Desktop works on the
+    // property alone.)
     //
     // ORCH-1167-R5 — `effectiveMuted` (not the raw prop) is hard-true until the
-    // user unmutes, so the FIRST inline autoplay is always permitted and the
+    // user unmutes, so the initial inline autoplay is always permitted and the
     // native play button never paints. After a user-gesture unmute it follows
     // the live prop, so the chrome Mute/Unmute toggle keeps working.
     video.muted = effectiveMuted;
@@ -217,24 +217,44 @@ const EventCoverWebVideo: React.FC<{
       return;
     }
 
-    // ORCH-1167-R6 — WebKit/Safari LOADS the muted inline video (readyState 4)
-    // but the FIRST play() promise REJECTS (NotAllowedError) and stays paused
-    // forever; Safari then paints its native play-button overlay on the paused
-    // inline video (the play button Seth sees on PC web). The R5 code did
-    // `void video.play().catch(() => undefined)` — a single attempt whose
-    // rejection was swallowed with NO retry. Chromium plays on the first attempt;
-    // WebKit needs the attempt re-driven once the element is truly eligible.
+    // ORCH-1167-R7 — ROOT CAUSE (proven via Playwright against the LIVE page,
+    // headless WebKit): the R5/R6 code drove the muted ambient autoplay by
+    // calling `video.play()` MANUALLY — R6 hammered it ~50× via a retry driver,
+    // with the FIRST attempt firing at `readyState 0` (before any media). On
+    // WebKit that gesture-less play()-at-readyState-0 POISONS the
+    // element's one-time inline-autoplay eligibility: WebKit rejects it with
+    // NotAllowedError and PERMANENTLY denies that specific element — every one of
+    // the 56 retries then rejected too, and Safari painted its native play-button
+    // overlay on the dead, paused cover. Decisive proof: on the SAME live page a
+    // fresh bare `<video autoplay muted playsinline src>` (which NEVER calls
+    // play()) autoplays, while the component's hammered element stays paused.
     //
-    // While HARD-MUTED (effectiveMuted true — the initial ambient autoplay, and
-    // every state until the user takes over with a real unmute gesture) drive the
-    // WebKit-robust retry: keep re-attempting play() (re-pinning muted before
-    // each attempt) across the late readiness events + a bounded backoff, until
-    // the cover actually starts. The driver stops on its own once playing, and is
-    // fully torn down by the returned cleanup on unmount / shouldPlay flip /
-    // unmute (effectiveMuted is in the deps, so an unmute re-runs this effect and
-    // tears down the muted loop). See coverWebVideoAutoplay.driveMutedAutoplay.
+    // THE FIX: render the cover EXACTLY like that proven-working bare element —
+    // rely SOLELY on the native `autoplay` + `muted` + `playsinline` ATTRIBUTES
+    // (pinned at mount by `attachVideo`, re-pinned above) to drive the muted
+    // ambient autoplay. Do NOT call play() while hard-muted, and NEVER at
+    // readyState 0. The attributes-only path is what WebKit grants without a
+    // gesture; manual play() is what poisons it.
+    //
+    // A single GUARDED late recovery (the `canplaythrough` listener below) covers
+    // the rare case where the autoplay attribute didn't kick the element off:
+    // it attempts play() ONCE, only when the media is genuinely ready
+    // (readyState >= 3) AND still paused — never at readyState 0 — and stops the
+    // moment it plays. That can't poison (the element is past the eligibility
+    // window and truly ready), and it is fully torn down on cleanup.
     if (effectiveMuted) {
-      return driveMutedAutoplay(video);
+      let recovered = false;
+      const recover = (): void => {
+        if (recovered) return;
+        // Only recover when truly ready (>=3 HAVE_FUTURE_DATA) AND still paused.
+        // Never at readyState 0 — that is the attempt that poisons WebKit.
+        if (video.readyState < 3 || !video.paused) return;
+        recovered = true;
+        video.muted = true;
+        void video.play().catch(() => undefined);
+      };
+      video.addEventListener("canplaythrough", recover);
+      return () => video.removeEventListener("canplaythrough", recover);
     }
 
     // User has unmuted (a real gesture the browser honors): follow the live prop
@@ -251,11 +271,16 @@ const EventCoverWebVideo: React.FC<{
     muted: effectiveMuted,
     onCanPlay: (event: React.SyntheticEvent<HTMLVideoElement>): void => {
       if (!shouldPlay) return;
-      // Guarantee muted before the (re)play attempt so a browser that deferred
-      // its eligibility check to canplay still permits the inline autoplay and
-      // never paints the native play button.
+      // ORCH-1167-R7 — NO play() at readyState 0 (that poisons WebKit). Re-assert
+      // muted so a browser that deferred its eligibility check still permits the
+      // attribute-driven inline autoplay (R5 contract), and ONLY attempt a recovery
+      // play() when the media is genuinely ready (readyState >= 3) AND still paused
+      // — never on an empty element. The native `autoplay` attribute is the
+      // primary driver.
       event.currentTarget.muted = effectiveMuted;
-      void event.currentTarget.play().catch(() => undefined);
+      if (event.currentTarget.readyState >= 3 && event.currentTarget.paused) {
+        void event.currentTarget.play().catch(() => undefined);
+      }
     },
     onEnded: (event: React.SyntheticEvent<HTMLVideoElement>): void => {
       if (!loop || !shouldPlay) return;
