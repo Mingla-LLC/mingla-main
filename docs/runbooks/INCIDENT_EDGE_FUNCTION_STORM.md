@@ -29,3 +29,7 @@
 
 - Error rate &lt; 0.1% for 15 minutes
 - p95 within SLO in [load-profile.md](../load-profile.md)
+
+## Drill
+
+Quarterly synthetic alert drill: [SYNTHETIC_INCIDENT_DRILL.md](./SYNTHETIC_INCIDENT_DRILL.md) (G5).

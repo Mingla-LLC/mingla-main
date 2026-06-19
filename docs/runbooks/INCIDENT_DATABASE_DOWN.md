@@ -25,3 +25,4 @@
 
 - Timeline + root cause in incident doc
 - Add missing index/RLS fix ORCH if query storm caused pool exhaustion
+- On-call drill reference: [SYNTHETIC_INCIDENT_DRILL.md](./SYNTHETIC_INCIDENT_DRILL.md) (G5)
