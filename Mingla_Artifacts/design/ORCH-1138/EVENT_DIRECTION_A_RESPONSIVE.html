@@ -1,0 +1,697 @@
+<!--
+  ORCH-1138B — PUBLIC EVENT PAGE REDESIGN · DIRECTION A "IMMERSIVE TICKET"
+  ===========================================================================
+  Inherits the APPROVED Direction A trip system (DIRECTION_A_V2_FULL_RESPONSIVE.html,
+  Seth: "works perfect") and FINE-TUNES it for a SINGLE-DATE TICKETED EVENT:
+
+    SAME AS TRIP (inherited verbatim):
+      • Phone parallax cover (cover PINNED, body slides up & over) + body-level
+        FIXED chrome (X top-left · Share + Mute top-right, matching circular
+        glass icon buttons; z above the demo bar; phone top:56px).
+      • Brand THEMING engine (accent/font + contrast-aware light/dark palette).
+      • Overlapping rounded body card (-28px seam, accent-tinted border).
+      • Desktop ≥1024px = TWO-COLUMN: scrolling content LEFT, STICKY action
+        panel RIGHT (the event's TICKET panel).
+      • Count-aware galleries (1=full / 2=split / 3+=swipe slider) — applied to
+        the cover when no media, and reused for the (rare) multi-image case.
+      • Wrapping check/✗ chips for "what's included" (per-tier description chips).
+      • Interactive demo bar: brand swatches + font + State + the ticket toggle.
+      • Constitution rule 9: ONLY fields the EVENT model carries are rendered.
+
+    DIFFERENT FROM TRIP (event-native):
+      • NO multi-day itinerary spine — an event is ONE date. That vertical space
+        becomes: a date/time hero fact, a VENUE block (map + address rules), and
+        the TICKET TIERS list (the event's real money structure).
+      • The right sticky panel is the TICKET PANEL: tier select → all-in price →
+        free-vs-paid CTA ("Get tickets" / "Get free ticket" / "Join waitlist" /
+        "Request approval" / "Pay at the door" / disabled states), capacity
+        "N available" / "Sold out", NOT a pay-in-full/over-time installment
+        toggle (events have no installment schedule — that is trip-only).
+        ORCH-1138 DEVICE-REVIEW SLEEK-CTA PROPAGATION: the ticket action (phone
+        floating + desktop sticky) keeps its SINGLE ticket CTA but is restyled to
+        the new sleek button language from SPLIT_CTA_OPTIONS.html Treatment B's
+        single-button fallback — accent fill used once, AA-safe --accent-on text,
+        crisp wash shadow, → go-glyph, hover-brighten + scale-press. NO
+        pay-in-full/over-time seam-split here (no installments on events).
+        Float→dock: floats compact while scrolling, docks flush at the base (no
+        black gap) above the home indicator.
+      • NO refund-ladder + NO booking-deadline strips — the EVENT public read
+        (BusinessPublicEventViewRow / PublicEventProps) carries NEITHER field
+        (trips do; events do not). Rendering them would fabricate data → CUT.
+      • Address honors hideAddressUntilTicket (event-only privacy rule).
+      • State set = event-native: Available / Few left / Sold out / Sales closed
+        (pre-sale "On sale soon" + past "Sales ended" folded into "Sales closed").
+
+  Self-contained, no deps. Open by double-clicking. Resize: ≤1023 phone · ≥1024 desktop.
+  See DESIGN_ORCH-1138B_PUBLIC_EVENT_PAGE.md §A for the field→source inventory.
+-->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>ORCH-1138B · Public Event — Direction A (phone ↔ desktop)</title>
+<style>
+  /* ================= THEME ENGINE (mirrors createThemePalette) ============= */
+  :root {
+    --accent: #0f766e;
+    --accent-strong: #0b5a54;
+    --accent-wash: rgba(15,118,110,0.18);
+    --page: #07100f;
+    --primary: #ffffff;
+    --secondary: rgba(255,255,255,0.78);
+    --tertiary: rgba(255,255,255,0.56);
+    --card: rgba(255,255,255,0.07);
+    --card-strong: rgba(255,255,255,0.10);
+    --border: rgba(255,255,255,0.14);
+    --accent-border: rgba(15,118,110,0.42);
+    --font: "Inter", system-ui, -apple-system, sans-serif;
+    --danger: #ef4444;
+    --danger-wash: rgba(239,68,68,0.14);
+    --accent-on: #ffffff;   /* AA-safe text color on the accent fill (CTA) */
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; -webkit-font-smoothing: antialiased; }
+  html, body { height: 100%; }
+  body {
+    font-family: var(--font);
+    background:
+      radial-gradient(1400px 700px at 50% -160px, #1a1f24 0%, #0a0c0f 62%) fixed,
+      #0a0c0f;
+    color: var(--primary);
+    min-height: 100vh;
+  }
+
+  /* ================= DEMO CHROME (not part of the page) ==================== */
+  .demo-bar {
+    position: sticky; top: 0; z-index: 50;
+    display: flex; gap: 10px; align-items: center; flex-wrap: nowrap; overflow-x: auto;
+    padding: 10px 16px; background: rgba(10,12,15,0.92); backdrop-filter: blur(10px);
+    border-bottom: 1px solid rgba(255,255,255,0.08);
+    font-size: 12px; color: rgba(255,255,255,0.6);
+  }
+  .demo-bar .grp { display: flex; gap: 6px; align-items: center; }
+  .demo-bar .lbl { letter-spacing: 0.4px; text-transform: uppercase; font-weight: 800; font-size: 9px; color: rgba(255,255,255,0.45); }
+  .swatch { width: 26px; height: 26px; border-radius: 999px; border: 2px solid rgba(255,255,255,0.2); cursor: pointer; }
+  .swatch:hover { transform: scale(1.12); }
+  .font-pick, .state-pick { background: #161a1f; color: #fff; border: 1px solid #2a2f36; border-radius: 8px; padding: 6px 8px; font-size: 12px; }
+  .demo-sep { width: 1px; height: 22px; background: rgba(255,255,255,0.12); }
+  .vp-hint { margin-left: auto; font-size: 11px; opacity: 0.7; }
+  .vp-hint b { color: var(--accent); }
+
+  /* ================= SHELL (responsive container) ========================= */
+  .stage { display: flex; justify-content: center; padding: 22px 16px 60px; }
+  .page {
+    width: 100%; max-width: 660px;
+    background: var(--page);
+    border-radius: 28px; overflow: hidden; position: relative;
+    box-shadow: 0 40px 120px rgba(0,0,0,0.55), 0 0 0 1px rgba(255,255,255,0.06);
+  }
+
+  /* ---- HERO ---- */
+  .hero { position: relative; width: 100%; aspect-ratio: 4 / 5; overflow: hidden; background: #000; }
+  .hero img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  /* no-cover fallback: flat accent-derived hue (matches event page no-cover branch) */
+  .hero.nocover { background: linear-gradient(160deg, var(--accent), var(--accent-strong)); }
+  .hero-overlay {
+    position: absolute; inset: 0;
+    background: linear-gradient(180deg, rgba(0,0,0,0.40) 0%, rgba(0,0,0,0) 28%, var(--page) 100%);
+  }
+  .hero-spacer { display: none; }
+  .chrome { position: absolute; top: 18px; left: 16px; right: 16px; display: flex; align-items: flex-start; justify-content: space-between; z-index: 4; }
+  .chrome.cm { display: none; }
+  .chrome-right { display: flex; flex-direction: row; align-items: center; gap: 10px; }
+  .chrome-btn { width: 40px; height: 40px; border-radius: 999px; background: rgba(0,0,0,0.48); backdrop-filter: blur(8px); display: grid; place-items: center; color: #fff; font-size: 20px; cursor: pointer; border: none; padding: 0; }
+  .chrome-btn svg { width: 19px; height: 19px; stroke: #fff; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+  /* mute = circular ICON button matching X/Share (ported from EventCoverMedia VolumeGlyph) */
+  .mute-btn .spk-body { fill: #fff; stroke: #fff; stroke-width: 2; stroke-linejoin: round; }
+  .mute-btn .spk-wave { fill: none; stroke: #fff; stroke-width: 2; stroke-linecap: round; }
+  .mute-btn .spk-slash { stroke: #fff; stroke-width: 2; stroke-linecap: round; }
+  .mute-btn .spk-wave { display: none; }
+  .mute-btn.is-on .spk-wave { display: inline; }
+  .mute-btn.is-on .spk-slash { display: none; }
+  /* mute button hidden unless cover is a video (toggle via demo for illustration) */
+  body:not([data-cover="video"]) .mute-btn { display: none; }
+
+  /* ---- STATE BANNER (few-left / sold out / sales closed) ---- */
+  .state-banner { display: none; align-items: center; gap: 8px; justify-content: center; padding: 11px 14px; font-size: 13px; font-weight: 800; letter-spacing: 0.3px; }
+  .state-banner svg { width: 16px; height: 16px; stroke: currentColor; fill: none; stroke-width: 2.2; }
+  .state-banner.soldout { background: rgba(255,255,255,0.08); color: var(--secondary); }
+  .state-banner.closed  { background: var(--danger-wash); color: var(--danger); }
+  .state-banner.few     { background: var(--accent-wash); color: var(--accent); }
+  body[data-state="soldout"] .state-banner.soldout { display: flex; }
+  body[data-state="closed"]  .state-banner.closed  { display: flex; }
+  body[data-state="few"]     .state-banner.few     { display: flex; }
+
+  /* ---- BODY CARD (overlaps hero — the event-page seam) ---- */
+  .body { position: relative; margin-top: -28px; border-top-left-radius: 28px; border-top-right-radius: 28px; background: var(--page); border: 1px solid var(--accent-border); border-bottom: none; padding: 24px 20px 20px; box-shadow: 0 -10px 40px rgba(0,0,0,0.4); }
+
+  .eyebrow { color: var(--accent); font-size: 11px; font-weight: 900; letter-spacing: 1.6px; text-transform: uppercase; margin-bottom: 8px; }
+  .eyebrow.lead { color: var(--primary); }   /* meta line reads at title contrast, theme-aware */
+  .title { font-family: var(--font); font-size: 32px; line-height: 1.08; font-weight: 900; letter-spacing: -0.5px; }
+
+  .meta-row { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px; }
+  .chip { display: inline-flex; align-items: center; gap: 6px; background: var(--card); border: 1px solid var(--border); border-radius: 999px; padding: 8px 12px; font-size: 13px; font-weight: 600; color: var(--secondary); }
+  .chip svg { width: 15px; height: 15px; stroke: var(--accent); fill: none; stroke-width: 2; }
+  .cap-left { color: var(--primary); font-weight: 800; }   /* capacity TEXT high-contrast; icon stays accent */
+  body[data-state="soldout"] .cap-live { display: none; }
+  .cap-sold { display: none; color: var(--secondary); font-weight: 800; }
+  body[data-state="soldout"] .cap-sold { display: inline; }
+
+  .brand-row { display: flex; align-items: center; gap: 12px; margin-top: 18px; background: var(--card); border: 1px solid var(--border); border-radius: 16px; padding: 12px 14px; cursor: pointer; }
+  .brand-tile { width: 42px; height: 42px; border-radius: 999px; object-fit: cover; border: 2px solid rgba(255,255,255,0.2); }
+  .brand-kicker { font-size: 10px; font-weight: 800; letter-spacing: 1.2px; text-transform: uppercase; color: var(--tertiary); }
+  .brand-name { font-size: 15px; font-weight: 800; margin-top: 1px; }
+  .brand-cta { margin-left: auto; color: var(--accent); font-size: 12px; font-weight: 800; align-self: center; }
+
+  .sec-title { font-family: var(--font); font-size: 20px; font-weight: 900; letter-spacing: -0.3px; margin: 28px 0 12px; }
+
+  .about { color: var(--secondary); font-size: 15px; line-height: 1.6; margin-top: 12px; }
+  .read-more { color: var(--accent); font-weight: 700; font-size: 14px; margin-top: 8px; cursor: pointer; }
+
+  /* ---- VENUE block (honors hideAddressUntilTicket) ---- */
+  .venue { display: flex; align-items: center; gap: 12px; background: var(--card); border: 1px solid var(--border); border-radius: 16px; padding: 14px; margin-top: 12px; cursor: pointer; }
+  .venue-disk { width: 40px; height: 40px; border-radius: 12px; background: var(--accent); display: grid; place-items: center; flex-shrink: 0; }
+  .venue-disk svg { width: 20px; height: 20px; stroke: #fff; fill: none; stroke-width: 2; }
+  .venue-name { font-size: 15px; font-weight: 800; }
+  .venue-addr { font-size: 13px; color: var(--secondary); margin-top: 2px; }
+  .venue-maps { margin-left: auto; background: var(--accent); color: #fff; font-size: 12px; font-weight: 800; padding: 7px 12px; border-radius: 999px; align-self: center; flex-shrink: 0; }
+  /* online-format variant: no maps pill, neutral disk glyph (shown via data-format) */
+  body[data-format="online"] .venue-maps { display: none; }
+
+  /* ---- MAP (location_geo lat/lng) ---- */
+  .map { margin-top: 12px; border-radius: 16px; overflow: hidden; border: 1px solid var(--border); position: relative; height: 180px; background: linear-gradient(135deg, rgba(255,255,255,0.04), rgba(255,255,255,0.01)); }
+  .map img { width: 100%; height: 100%; object-fit: cover; opacity: 0.9; }
+  .map-pin { position: absolute; left: 50%; top: 50%; transform: translate(-50%,-100%); color: var(--accent); font-size: 28px; filter: drop-shadow(0 2px 4px rgba(0,0,0,0.5)); }
+  .map-cap { position: absolute; left: 12px; bottom: 12px; background: rgba(0,0,0,0.55); backdrop-filter: blur(6px); color:#fff; font-size: 12px; font-weight: 700; padding: 6px 10px; border-radius: 999px; }
+  body[data-format="online"] .map { display: none; }
+
+  /* ================= TICKET TIERS (the event's money IA) ================== */
+  /* On phone: an inline tier list. On desktop: the SELECTABLE list lives in the
+     sticky right panel; selecting a tier drives the panel price + CTA. */
+  .tiers { margin-top: 8px; display: flex; flex-direction: column; gap: 10px; }
+  .tier {
+    position: relative; overflow: hidden; cursor: pointer;
+    background: var(--card); border: 1px solid var(--border); border-radius: 16px;
+    padding: 14px 16px; display: flex; align-items: flex-start; gap: 12px;
+    transition: border-color .15s ease, background .15s ease;
+  }
+  .tier::before { content: ""; position: absolute; top: 0; left: 0; bottom: 0; width: 4px; background: var(--accent); opacity: 0; transition: opacity .15s ease; }
+  .tier.selected { border-color: var(--accent-border); background: var(--accent-wash); }
+  .tier.selected::before { opacity: 1; }
+  .tier-radio { width: 20px; height: 20px; border-radius: 999px; border: 2px solid var(--tertiary); flex-shrink: 0; margin-top: 2px; display: grid; place-items: center; }
+  .tier.selected .tier-radio { border-color: var(--accent); }
+  .tier.selected .tier-radio::after { content: ""; width: 10px; height: 10px; border-radius: 999px; background: var(--accent); }
+  .tier-main { flex: 1; min-width: 0; }
+  .tier-name { font-size: 15px; font-weight: 800; }
+  .tier-desc { font-size: 13px; color: var(--secondary); margin-top: 3px; line-height: 1.45; }
+  .tier-cap { font-size: 12px; color: var(--tertiary); margin-top: 6px; font-weight: 700; }
+  .tier-price { font-size: 16px; font-weight: 900; letter-spacing: -0.3px; flex-shrink: 0; align-self: center; }
+  .tier-price .free { color: var(--accent); }
+  /* sold-out tier: dim + non-selectable label */
+  .tier.soldtier { opacity: 0.55; cursor: default; }
+  .tier.soldtier .tier-radio { display: none; }
+  .tier-soldtag { font-size: 11px; font-weight: 900; text-transform: uppercase; letter-spacing: 0.6px; color: var(--secondary); align-self: center; }
+
+  /* all-in reassurance under the tier list */
+  .allin-note { font-size: 12px; color: var(--tertiary); margin-top: 10px; display: flex; align-items: center; gap: 7px; }
+  .allin-note svg { width: 14px; height: 14px; stroke: var(--accent); fill: none; stroke-width: 2; flex-shrink: 0; }
+
+  /* ================= FLOATING TICKET CTA (phone) ========================= */
+  /* CHANGE (ORCH-1138 device review → sleek-CTA propagation): events sell TICKET
+     TIERS, NOT pay-in-full/over-time installments, so the event CTA stays a
+     SINGLE action ("Get tickets" / "Get free ticket" / "Join waitlist"). It is
+     restyled to the new sleek seam-split BUTTON LANGUAGE from SPLIT_CTA_OPTIONS
+     Treatment B's single-button fallback (.single): one rounded accent shell,
+     accent used once, crisp shadow, → go-glyph, scale-on-press. FLOAT→DOCK:
+     while scrolling it FLOATS (compact, inset, glassy gradient under it); at the
+     base it DOCKS flush to the bottom edge (no black gap) above the home
+     indicator via safe-area inset. */
+  .floating {
+    position: sticky; bottom: 0; left: 0; right: 0; z-index: 6;
+    padding: 12px 16px calc(12px + env(safe-area-inset-bottom));
+    /* the page-color wash makes the docked bar read as flush to the base — no
+       black gap between the button and the home indicator. */
+    background: linear-gradient(180deg, rgba(7,16,15,0) 0%, var(--page) 42%);
+  }
+  .reserve {
+    display: flex; align-items: center; justify-content: space-between; gap: 12px;
+    background: var(--accent); color: var(--accent-on, #fff); border: none; width: 100%;
+    border-radius: 18px; padding: 16px 20px; cursor: pointer;
+    box-shadow: 0 16px 40px var(--accent-wash), 0 2px 0 rgba(0,0,0,0.18);
+    font-family: var(--font);
+    transition: filter .16s ease, transform .08s ease;
+  }
+  .reserve:hover { filter: brightness(1.06); }
+  .reserve:active { transform: scale(0.99); }
+  .reserve .r-left { text-align: left; }
+  .reserve .r-kicker { font-size: 11px; font-weight: 700; opacity: 0.85; }
+  .reserve .r-price { font-size: 19px; font-weight: 900; letter-spacing: -0.3px; }
+  .reserve .r-cta { font-size: 16px; font-weight: 900; }
+  /* unavailable variants (sold out / sales closed) */
+  body[data-state="soldout"] .reserve, body[data-state="closed"] .reserve { background: var(--card-strong); color: var(--tertiary); box-shadow: none; cursor: not-allowed; border: 1px solid var(--border); position: relative; }
+  body[data-state="soldout"] .reserve:hover, body[data-state="closed"] .reserve:hover { filter: none; }
+  body[data-state="soldout"] .reserve .r-cta, body[data-state="closed"] .reserve .r-cta,
+  body[data-state="soldout"] .reserve .r-left, body[data-state="closed"] .reserve .r-left { visibility: hidden; }
+  body[data-state="soldout"] .reserve::after, body[data-state="closed"] .reserve::after { position: absolute; inset: 0; display: grid; place-items: center; visibility: visible; font-weight: 900; font-size: 15px; }
+  body[data-state="soldout"] .reserve::after { content: "Sold out"; }
+  body[data-state="closed"]  .reserve::after { content: "Sales closed"; }
+
+  .deskpanel { display: none; }
+
+  /* ============================================================ */
+  /* ====================  DESKTOP  (≥ 1024px)  ================= */
+  @media (min-width: 1024px) {
+    .stage { display: block; padding: 32px 32px 72px; }
+    .page { width: auto; max-width: 1200px; margin: 0 auto; border-radius: 0; overflow: visible; background: transparent; box-shadow: none; }
+
+    .hero { aspect-ratio: 21 / 9; max-height: 520px; border-radius: 24px; box-shadow: 0 30px 90px rgba(0,0,0,0.5), 0 0 0 1px rgba(255,255,255,0.06); }
+    .hero-overlay { background: linear-gradient(180deg, rgba(0,0,0,0.45) 0%, rgba(0,0,0,0) 45%, rgba(0,0,0,0.30) 100%); border-radius: 24px; }
+    .hero-caption { position: absolute; left: 36px; bottom: 30px; right: 36px; z-index: 5; }
+    .hero-caption .eyebrow { color: #fff; opacity: 0.92; }
+    .hero-caption .title { font-size: 46px; max-width: 72%; text-shadow: 0 2px 24px rgba(0,0,0,0.5); }
+
+    .state-banner { border-radius: 999px; margin: 16px auto 0; max-width: 520px; }
+
+    .shell { display: grid; grid-template-columns: minmax(0,1fr) 360px; gap: 40px; margin-top: 26px; align-items: start; }
+
+    .body { grid-column: 1; min-width: 0; margin-top: 0; padding: 0; border: none; border-radius: 0; background: transparent; box-shadow: none; }
+    .body > .phone-only:first-child { display: none; }
+
+    .dsection { padding: 4px 0 0; }
+    .sec-title { margin: 10px 0 14px; font-size: 22px; }
+
+    .brand-row.inbody { display: none; }
+    .meta-row { margin-top: 0; }
+
+    .map { height: 300px; }
+
+    /* on desktop the INLINE tier list (phone) is hidden — tiers live in the panel */
+    .tiers.inbody { display: none; }
+    .allin-note.inbody { display: none; }
+
+    .floating { display: none; }
+    .deskpanel {
+      display: block; grid-column: 2; position: sticky; top: 24px;
+      background: var(--card-strong); border: 1px solid var(--accent-border);
+      border-radius: 22px; padding: 0; overflow: hidden;
+      box-shadow: 0 24px 60px rgba(0,0,0,0.4);
+    }
+    .deskpanel .dp-accent { height: 4px; background: var(--accent); }
+    .deskpanel .dp-inner { padding: 20px; }
+    .deskpanel .brand-row { margin-top: 0; }
+    .deskpanel .dp-tier-title { font-size: 13px; font-weight: 900; letter-spacing: 0.6px; text-transform: uppercase; color: var(--tertiary); margin: 18px 0 10px; }
+    .deskpanel .tiers { margin-top: 0; }
+    .deskpanel .dp-priceblock { margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--border); }
+    .deskpanel .dp-amt-label { font-size: 11px; font-weight: 800; letter-spacing: 1px; text-transform: uppercase; color: var(--tertiary); }
+    .deskpanel .dp-amt { font-size: 34px; font-weight: 900; letter-spacing: -1px; margin-top: 2px; }
+    .deskpanel .dp-amt .free { color: var(--accent); }
+    .deskpanel .dp-sub { font-size: 13px; color: var(--secondary); margin-top: 4px; line-height: 1.5; }
+    .deskpanel .dp-reserve {
+      display: flex; align-items: center; justify-content: center; gap: 8px;
+      width: 100%; margin-top: 18px; background: var(--accent); color: var(--accent-on, #fff);
+      border: none; border-radius: 16px; padding: 16px; font-family: var(--font);
+      font-size: 16px; font-weight: 900; cursor: pointer; box-shadow: 0 16px 40px var(--accent-wash);
+      transition: filter .16s ease, transform .08s ease;
+    }
+    .deskpanel .dp-reserve:hover { filter: brightness(1.06); }
+    .deskpanel .dp-reserve:active { transform: scale(0.99); }
+    body[data-state="soldout"] .deskpanel .dp-reserve,
+    body[data-state="closed"]  .deskpanel .dp-reserve { background: var(--card-strong); color: var(--tertiary); box-shadow: none; border: 1px solid var(--border); cursor: not-allowed; }
+    .deskpanel .dp-reassure { font-size: 11px; color: var(--tertiary); text-align: center; margin-top: 10px; }
+
+    .desk-only { display: block; }
+    .phone-only { display: none; }
+    .hero-caption { display: block; }
+  }
+  /* base (phone) visibility — OVERRIDDEN by the trailing desktop query so source
+     order keeps the desktop rules winning (same cascade fix as the trip page). */
+  .desk-only { display: none; }
+  .phone-only { display: block; }
+  .hero-caption { display: none; }
+  @media (min-width: 1024px) {
+    .desk-only { display: block; }
+    .deskpanel { display: block; }   /* the sticky right TICKET panel */
+    .phone-only { display: none; }
+    .hero-caption { display: block; }
+    .floating { display: none; }      /* phone reserve bar hidden on desktop */
+  }
+
+  .spacer { height: 8px; }
+
+  /* ============================================================ */
+  /* ============  PHONE PARALLAX  (≤ 1023px ONLY)  ============= */
+  @media (max-width: 1023px) {
+    .stage { padding: 0; }
+    .page { z-index: 2; overflow: visible; max-width: none; border-radius: 0; }
+    .body { border-left: none; border-right: none; }
+
+    .hero { position: fixed; top: 0; left: 0; right: 0; transform: none; width: auto; z-index: 1; aspect-ratio: 4 / 5; border-radius: 0; }
+    .hero-spacer { display: block; width: 100%; aspect-ratio: 4 / 5; }
+
+    .chrome.cd { display: none; }
+    .chrome.cm {
+      display: flex; position: fixed;
+      top: 56px;                   /* below the demo bar; real device: calc(env(safe-area-inset-top) + 12px) */
+      left: 0; right: 0; width: auto; padding: 0 16px; z-index: 70;
+    }
+
+    .shell { position: relative; z-index: 2; }
+    .body  { position: relative; z-index: 2; }
+    .state-banner { position: relative; z-index: 2; }
+  }
+</style>
+</head>
+<body data-state="available" data-format="in_person" data-cover="image">
+  <!-- ============== DEMO CHROME ============== -->
+  <div class="demo-bar">
+    <div class="grp">
+      <span class="lbl">Brand</span>
+      <button class="swatch" style="background:#0f766e" title="Deep teal" onclick="setTheme('#0f766e','#0b5a54','#07100f','dark')"></button>
+      <button class="swatch" style="background:#e11d48" title="Crimson" onclick="setTheme('#e11d48','#b01239','#120709','dark')"></button>
+      <button class="swatch" style="background:#f5c518" title="Saffron (light)" onclick="setTheme('#9a7b00','#7d6300','#fbf7ea','light')"></button>
+      <button class="swatch" style="background:#6d28d9" title="Violet" onclick="setTheme('#6d28d9','#54199f','#0d0916','dark')"></button>
+    </div>
+    <select class="font-pick" onchange="document.documentElement.style.setProperty('--font', this.value)">
+      <option value="Inter, system-ui, sans-serif">Inter</option>
+      <option value="'Poppins', system-ui, sans-serif">Poppins</option>
+      <option value="'Playfair Display', Georgia, serif">Playfair Display</option>
+      <option value="Georgia, 'Times New Roman', serif">Serif (Lora-like)</option>
+    </select>
+    <div class="demo-sep"></div>
+    <div class="grp">
+      <span class="lbl">State</span>
+      <select class="state-pick" onchange="document.body.dataset.state=this.value">
+        <option value="available">Available</option>
+        <option value="few">Few left</option>
+        <option value="soldout">Sold out</option>
+        <option value="closed">Sales closed</option>
+      </select>
+    </div>
+    <div class="demo-sep"></div>
+    <div class="grp">
+      <span class="lbl">Cover</span>
+      <select class="state-pick" onchange="document.body.dataset.cover=this.value">
+        <option value="image">Image</option>
+        <option value="video">Video</option>
+        <option value="none">No media</option>
+      </select>
+    </div>
+    <div class="vp-hint">Resize me → <b>≤1023px phone · ≥1024px desktop</b></div>
+  </div>
+
+  <!-- PHONE COVER CHROME (.cm) — body-level fixed layer. X / Share / Mute stay
+       visible & tappable while the details slide over the fixed cover. -->
+  <div class="chrome cm">
+    <button class="chrome-btn" aria-label="Close">&times;</button>
+    <div class="chrome-right">
+      <button class="chrome-btn" aria-label="Share">
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <circle cx="6" cy="12" r="2.5"/><circle cx="18" cy="6" r="2.5"/><circle cx="18" cy="18" r="2.5"/>
+          <path d="M8.2 10.8L15.8 7.2M8.2 13.2L15.8 16.8"/>
+        </svg>
+      </button>
+      <button class="chrome-btn mute-btn" aria-label="Turn on cover sound" onclick="this.classList.toggle('is-on'); this.setAttribute('aria-label', this.classList.contains('is-on') ? 'Mute cover sound' : 'Turn on cover sound');">
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <path class="spk-body" d="M11 5 6 9H2v6h4l5 4V5z"/>
+          <path class="spk-wave" d="M15.5 8.5a5 5 0 0 1 0 7M18.5 5.5a9 9 0 0 1 0 13"/>
+          <line class="spk-slash" x1="16" y1="9" x2="22" y2="15"/>
+          <line class="spk-slash" x1="22" y1="9" x2="16" y2="15"/>
+        </svg>
+      </button>
+    </div>
+  </div>
+
+  <div class="stage">
+    <div class="page">
+
+      <!-- ============== HERO ============== -->
+      <div class="hero">
+        <img src="https://images.unsplash.com/photo-1492684223066-81342ee5ff30?w=1400&q=80" alt="Event cover — rooftop concert at dusk" />
+        <div class="hero-overlay"></div>
+        <div class="hero-caption">
+          <div class="eyebrow">Sat · Sep 14, 2026 · Doors 7:00 PM</div>
+          <div class="title">Rooftop Sessions: Live at The Foundry</div>
+        </div>
+      </div>
+
+      <!-- DESKTOP COVER CHROME (.cd) -->
+      <div class="chrome cd">
+        <button class="chrome-btn" aria-label="Close">&times;</button>
+        <div class="chrome-right">
+          <button class="chrome-btn" aria-label="Share">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <circle cx="6" cy="12" r="2.5"/><circle cx="18" cy="6" r="2.5"/><circle cx="18" cy="18" r="2.5"/>
+              <path d="M8.2 10.8L15.8 7.2M8.2 13.2L15.8 16.8"/>
+            </svg>
+          </button>
+          <button class="chrome-btn mute-btn" aria-label="Turn on cover sound" onclick="this.classList.toggle('is-on'); this.setAttribute('aria-label', this.classList.contains('is-on') ? 'Mute cover sound' : 'Turn on cover sound');">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path class="spk-body" d="M11 5 6 9H2v6h4l5 4V5z"/>
+              <path class="spk-wave" d="M15.5 8.5a5 5 0 0 1 0 7M18.5 5.5a9 9 0 0 1 0 13"/>
+              <line class="spk-slash" x1="16" y1="9" x2="22" y2="15"/>
+              <line class="spk-slash" x1="22" y1="9" x2="16" y2="15"/>
+            </svg>
+          </button>
+        </div>
+      </div>
+
+      <div class="hero-spacer phone-only" aria-hidden="true"></div>
+
+      <!-- state banners (driven by State picker) -->
+      <div class="state-banner few"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg> Only a few tickets left</div>
+      <div class="state-banner soldout"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M15 9l-6 6M9 9l6 6"/></svg> SOLD OUT</div>
+      <div class="state-banner closed"><svg viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V7a4 4 0 018 0v4"/></svg> Ticket sales have closed</div>
+
+      <!-- ============== RESPONSIVE SHELL ============== -->
+      <div class="shell">
+
+        <!-- ===== LEFT / MAIN CONTENT ===== -->
+        <div class="body">
+          <!-- phone-only lead title (desktop shows it in the hero) -->
+          <div class="phone-only">
+            <div class="eyebrow lead">Sat · Sep 14, 2026 · Doors 7:00 PM</div>
+            <div class="title lead">Rooftop Sessions: Live at The Foundry</div>
+          </div>
+
+          <div class="meta-row">
+            <span class="chip"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg> Sat, Sep 14, 2026</span>
+            <span class="chip"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg> 7:00 PM – 11:30 PM</span>
+            <span class="chip"><svg viewBox="0 0 24 24"><circle cx="9" cy="8" r="3"/><path d="M3 20c0-3.3 2.7-6 6-6s6 2.7 6 6M16 11a3 3 0 100-6"/></svg>
+              <span class="cap-live"><span class="cap-left">42 tickets left</span></span>
+              <span class="cap-sold">Sold out</span>
+            </span>
+            <span class="chip"><svg viewBox="0 0 24 24"><path d="M12 2C8 2 5 5 5 9c0 5 7 13 7 13s7-8 7-13c0-4-3-7-7-7z"/><circle cx="12" cy="9" r="2.5"/></svg> Washington, DC</span>
+          </div>
+
+          <!-- brand chip (phone only; desktop puts it in the sticky panel) -->
+          <div class="brand-row inbody">
+            <img class="brand-tile" src="https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=200&q=80" alt="" />
+            <div>
+              <div class="brand-kicker">Presented by</div>
+              <div class="brand-name">The Foundry</div>
+            </div>
+            <div class="brand-cta">View</div>
+          </div>
+
+          <!-- about (collapsible) -->
+          <div class="dsection">
+            <div class="sec-title">About</div>
+            <div class="about">An intimate rooftop concert as the sun drops over the city skyline. Doors at 7, opener at 8, headline set at 9. Limited capacity, full bar, and the best view in the District. Dress for the weather — it's open-air with covered fallback if the sky turns.</div>
+            <div class="read-more">Read more</div>
+          </div>
+
+          <!-- ===== VENUE (honors hideAddressUntilTicket) ===== -->
+          <div class="dsection">
+            <div class="sec-title">Where</div>
+            <div class="venue">
+              <div class="venue-disk"><svg viewBox="0 0 24 24"><path d="M12 2C8 2 5 5 5 9c0 5 7 13 7 13s7-8 7-13c0-4-3-7-7-7z"/><circle cx="12" cy="9" r="2.5"/></svg></div>
+              <div>
+                <div class="venue-name">The Foundry Rooftop</div>
+                <!-- when hideAddressUntilTicket=true → "Address shared after ticket purchase" -->
+                <div class="venue-addr">1201 Half St SE, Washington, DC 20003</div>
+              </div>
+              <div class="venue-maps">Open maps</div>
+            </div>
+            <!-- MAP (only when location_geo present + format !== online) -->
+            <div class="map">
+              <img src="https://images.unsplash.com/photo-1524661135-423995f22d0b?w=900&q=80" alt="Map of the venue area">
+              <div class="map-pin">&#9679;</div>
+              <div class="map-cap">The Foundry Rooftop · DC</div>
+            </div>
+          </div>
+
+          <!-- ===== TICKETS (phone inline; desktop moves to sticky panel) ===== -->
+          <div class="phone-only">
+            <div class="sec-title">Tickets</div>
+            <div class="tiers inbody" id="tiers-phone">
+              <div class="tier selected" data-price="&euro;0" data-free="1" data-cta="Get free ticket" onclick="selectTier(this,'phone')">
+                <div class="tier-radio"></div>
+                <div class="tier-main">
+                  <div class="tier-name">General Admission</div>
+                  <div class="tier-desc">Standing room, rooftop access, one welcome drink.</div>
+                  <div class="tier-cap">Free · 42 available</div>
+                </div>
+                <div class="tier-price"><span class="free">Free</span></div>
+              </div>
+              <div class="tier" data-price="&euro;65" data-free="0" data-cta="Get tickets" onclick="selectTier(this,'phone')">
+                <div class="tier-radio"></div>
+                <div class="tier-main">
+                  <div class="tier-name">Reserved Table (4)</div>
+                  <div class="tier-desc">Front-rail table for four, table service, priority entry.</div>
+                  <div class="tier-cap">8 available</div>
+                </div>
+                <div class="tier-price">&euro;65</div>
+              </div>
+              <div class="tier soldtier" data-sold="1">
+                <div class="tier-main">
+                  <div class="tier-name">VIP Lounge</div>
+                  <div class="tier-desc">Indoor lounge, open bar, meet-the-artist after the set.</div>
+                </div>
+                <div class="tier-soldtag">Sold out</div>
+              </div>
+            </div>
+            <div class="allin-note inbody"><svg viewBox="0 0 24 24"><path d="M9 12l2 2 4-4M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg> All-in price — taxes &amp; fees included, no surprises at checkout.</div>
+          </div>
+
+          <div class="spacer"></div>
+        </div>
+
+        <!-- ===== RIGHT / STICKY TICKET PANEL (desktop only) ===== -->
+        <aside class="deskpanel desk-only">
+          <div class="dp-accent"></div>
+          <div class="dp-inner">
+            <!-- brand chip lives here on desktop -->
+            <div class="brand-row">
+              <img class="brand-tile" src="https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=200&q=80" alt="" />
+              <div>
+                <div class="brand-kicker">Presented by</div>
+                <div class="brand-name">The Foundry</div>
+              </div>
+              <div class="brand-cta">View</div>
+            </div>
+
+            <div class="dp-tier-title">Choose your ticket</div>
+            <div class="tiers" id="tiers-desk">
+              <div class="tier selected" data-price="&euro;0" data-free="1" data-cta="Get free ticket" onclick="selectTier(this,'desk')">
+                <div class="tier-radio"></div>
+                <div class="tier-main">
+                  <div class="tier-name">General Admission</div>
+                  <div class="tier-cap">Free · 42 available</div>
+                </div>
+                <div class="tier-price"><span class="free">Free</span></div>
+              </div>
+              <div class="tier" data-price="&euro;65" data-free="0" data-cta="Get tickets" onclick="selectTier(this,'desk')">
+                <div class="tier-radio"></div>
+                <div class="tier-main">
+                  <div class="tier-name">Reserved Table (4)</div>
+                  <div class="tier-cap">8 available</div>
+                </div>
+                <div class="tier-price">&euro;65</div>
+              </div>
+              <div class="tier soldtier" data-sold="1">
+                <div class="tier-main">
+                  <div class="tier-name">VIP Lounge</div>
+                  <div class="tier-cap">Sold out</div>
+                </div>
+                <div class="tier-soldtag">Sold out</div>
+              </div>
+            </div>
+
+            <div class="dp-priceblock">
+              <div class="dp-amt-label" id="dp-amt-label">Free ticket</div>
+              <div class="dp-amt" id="dp-amt"><span class="free">Free</span></div>
+              <div class="dp-sub">All-in — taxes &amp; fees included.</div>
+            </div>
+
+            <button class="dp-reserve" id="dp-reserve">Get free ticket &rarr;</button>
+            <div class="dp-reassure">42 tickets left · secure checkout</div>
+          </div>
+        </aside>
+
+      </div>
+    </div>
+  </div>
+
+  <!-- ============== FLOATING RESERVE BAR (phone) ============== -->
+  <div class="floating">
+    <button class="reserve">
+      <span class="r-left">
+        <span class="r-kicker" id="bar-kicker">All-in, taxes included</span><br/>
+        <span class="r-price" id="bar-price">Free</span>
+      </span>
+      <span class="r-cta" id="bar-cta">Get free ticket &rarr;</span>
+    </button>
+  </div>
+
+<script>
+  function setTheme(accent, strong, page, mode) {
+    const r = document.documentElement.style;
+    r.setProperty('--accent', accent);
+    r.setProperty('--accent-strong', strong);
+    r.setProperty('--page', page);
+    const rgb = hexToRgb(accent);
+    r.setProperty('--accent-wash', `rgba(${rgb},0.18)`);
+    r.setProperty('--accent-border', `rgba(${rgb},0.42)`);
+    // AA-safe text-on-accent (matches SPLIT_CTA Treatment B): black on a light
+    // brand fill (e.g. saffron), white on a dark one.
+    r.setProperty('--accent-on', luminance(accent) > 0.6 ? '#101420' : '#ffffff');
+    if (mode === 'light') {
+      r.setProperty('--primary', '#101420');
+      r.setProperty('--secondary', 'rgba(16,20,31,0.76)');
+      r.setProperty('--tertiary', 'rgba(16,20,31,0.56)');
+      r.setProperty('--card', 'rgba(0,0,0,0.04)');
+      r.setProperty('--card-strong', 'rgba(0,0,0,0.06)');
+      r.setProperty('--border', 'rgba(0,0,0,0.10)');
+    } else {
+      r.setProperty('--primary', '#ffffff');
+      r.setProperty('--secondary', 'rgba(255,255,255,0.78)');
+      r.setProperty('--tertiary', 'rgba(255,255,255,0.56)');
+      r.setProperty('--card', 'rgba(255,255,255,0.07)');
+      r.setProperty('--card-strong', 'rgba(255,255,255,0.10)');
+      r.setProperty('--border', 'rgba(255,255,255,0.14)');
+    }
+  }
+  function hexToRgb(hex) {
+    const n = parseInt(hex.slice(1), 16);
+    return `${(n>>16)&255},${(n>>8)&255},${n&255}`;
+  }
+  function luminance(hex) {
+    const n = parseInt(hex.slice(1), 16);
+    const r=(n>>16&255)/255, g=(n>>8&255)/255, b=(n&255)/255;
+    const f = c => c <= 0.03928 ? c/12.92 : Math.pow((c+0.055)/1.055, 2.4);
+    return 0.2126*f(r) + 0.7152*f(g) + 0.0722*f(b);
+  }
+
+  // selectTier — selecting a tier drives the desktop price block + CTA AND the
+  // phone floating bar. Mirrors resolveOfferingCta(selectedTier): a free tier →
+  // "Get free ticket" + "Free"; a paid tier → "Get tickets" + all-in price.
+  function selectTier(el, side) {
+    if (el.dataset.sold === '1') return;
+    const list = el.parentElement;
+    list.querySelectorAll('.tier').forEach(t => t.classList.remove('selected'));
+    el.classList.add('selected');
+    const isFree = el.dataset.free === '1';
+    const price = el.dataset.price;
+    const cta = el.dataset.cta;
+    const priceHtml = isFree ? '<span class="free">Free</span>' : price;
+
+    // keep both lists' selection in sync (phone + desktop render the same tiers)
+    const other = side === 'phone' ? document.getElementById('tiers-desk') : document.getElementById('tiers-phone');
+    if (other) {
+      const idx = Array.prototype.indexOf.call(list.children, el);
+      other.querySelectorAll('.tier').forEach((t,i)=>{ t.classList.toggle('selected', i===idx && t.dataset.sold!=='1'); });
+    }
+
+    // desktop price block
+    document.getElementById('dp-amt-label').textContent = isFree ? 'Free ticket' : 'All-in price';
+    document.getElementById('dp-amt').innerHTML = priceHtml;
+    document.getElementById('dp-reserve').innerHTML = cta + ' &rarr;';
+
+    // phone floating bar
+    document.getElementById('bar-kicker').textContent = isFree ? 'Free ticket' : 'All-in, taxes included';
+    document.getElementById('bar-price').innerHTML = priceHtml;
+    document.getElementById('bar-cta').innerHTML = cta + ' &rarr;';
+  }
+</script>
+</body>
+</html>

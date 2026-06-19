@@ -1,0 +1,253 @@
+<!--
+  ORCH-1138 — PUBLIC TRIP PAGE REDESIGN
+  DIRECTION C — "EDITORIAL"
+  THESIS: Sell the trip as an aspiration, not a transaction. A magazine /
+  travel-feature layout: a tall full-bleed cover with the title set OVER
+  the image, generous whitespace, a serif-leaning type system (when the
+  brand picks one), big numbered itinerary chapters, and a quiet,
+  confident payment block. This direction leans HARDEST on the brand font
+  choice as a personality lever — a Playfair/serif brand reads as luxury,
+  Inter reads as modern-clean. Brand color stays restrained: thin accent
+  rules, a single accent CTA. ORCH-1130's toggle is understated but
+  first-class, sitting just above the floating bar. For premium / curated
+  brands.
+
+  Self-contained. No external deps. Double-click to open.
+-->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>ORCH-1138 · Direction C — Editorial</title>
+<style>
+  :root {
+    --accent: #0f766e; --page: #0b0d0c;
+    --primary: #f4f2ec; --secondary: rgba(244,242,236,0.72); --tertiary: rgba(244,242,236,0.5);
+    --line: rgba(244,242,236,0.14); --card: rgba(255,255,255,0.04);
+    --accent-wash: rgba(15,118,110,0.16); --accent-border: rgba(15,118,110,0.4);
+    --display: "Playfair Display", Georgia, serif;
+    --body-font: "Inter", system-ui, sans-serif;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; -webkit-font-smoothing: antialiased; }
+  body { font-family: var(--body-font); background: #07090a; color: var(--primary);
+    display: flex; flex-direction: column; align-items: center; min-height: 100vh; padding: 24px 16px 64px; }
+
+  .demo-bar { width: 430px; max-width: 100%; margin-bottom: 18px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; font-size: 12px; color: rgba(255,255,255,0.6); }
+  .demo-bar span { letter-spacing: 0.4px; text-transform: uppercase; font-weight: 700; font-size: 10px; }
+  .swatch { width: 30px; height: 30px; border-radius: 999px; border: 2px solid rgba(255,255,255,0.2); cursor: pointer; transition: transform .15s; }
+  .swatch:hover { transform: scale(1.1); }
+  .font-pick { margin-left: auto; background: #161a1f; color: #fff; border: 1px solid #2a2f36; border-radius: 8px; padding: 6px 8px; font-size: 12px; }
+
+  .phone { width: 430px; max-width: 100%; background: var(--page); border-radius: 38px; overflow: hidden;
+    box-shadow: 0 40px 120px rgba(0,0,0,0.6), 0 0 0 1px rgba(255,255,255,0.06); position: relative; }
+  .scroll { max-height: 880px; overflow-y: auto; scrollbar-width: none; }
+  .scroll::-webkit-scrollbar { display: none; }
+
+  /* COVER — title over image */
+  .cover { position: relative; width: 100%; height: 560px; overflow: hidden; background:#000; }
+  .cover img { width: 100%; height: 100%; object-fit: cover; }
+  .cover-grad { position: absolute; inset: 0; background: linear-gradient(180deg, rgba(0,0,0,0.45) 0, rgba(0,0,0,0) 28%, rgba(0,0,0,0.1) 55%, rgba(11,13,12,0.85) 86%, var(--page) 100%); }
+  .chrome { position: absolute; top: 18px; left: 16px; right: 16px; display: flex; justify-content: space-between; z-index: 4; }
+  .chrome-btn { width: 40px; height: 40px; border-radius: 999px; background: rgba(0,0,0,0.42); backdrop-filter: blur(8px); display: grid; place-items: center; color:#fff; font-size: 20px; border: none; cursor: pointer; }
+  .cover-text { position: absolute; left: 22px; right: 22px; bottom: 30px; z-index: 3; }
+  .cover-kicker { font-size: 11px; font-weight: 800; letter-spacing: 2px; text-transform: uppercase; color: #fff; opacity: 0.9; }
+  .cover-rule { width: 40px; height: 2px; background: var(--accent); margin: 14px 0; }
+  .cover-title { font-family: var(--display); font-size: 42px; line-height: 1.02; font-weight: 700; color: #fff; letter-spacing: -0.5px; text-shadow: 0 2px 20px rgba(0,0,0,0.4); }
+  .cover-byline { font-size: 13px; color: rgba(255,255,255,0.85); margin-top: 14px; }
+  .cover-byline b { font-weight: 800; }
+
+  .pad { padding: 28px 24px 0; }
+
+  /* Facts row */
+  .facts { display: flex; gap: 0; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+  .fact { flex: 1; padding: 16px 4px; text-align: center; }
+  .fact + .fact { border-left: 1px solid var(--line); }
+  .fact .fl { font-size: 9px; font-weight: 800; letter-spacing: 1px; text-transform: uppercase; color: var(--tertiary); }
+  .fact .fv { font-size: 15px; font-weight: 700; margin-top: 5px; font-family: var(--display); }
+  .fact .fv.hot { color: var(--accent); }
+
+  .lede { font-family: var(--display); font-size: 22px; line-height: 1.45; font-weight: 500; color: var(--primary); margin-top: 26px; }
+  .body-copy { font-size: 15.5px; line-height: 1.7; color: var(--secondary); margin-top: 16px; }
+  .read-more { color: var(--accent); font-weight: 700; font-size: 14px; margin-top: 10px; cursor: pointer; }
+
+  /* Itinerary chapters */
+  .chapter-head { font-family: var(--display); font-size: 13px; font-weight: 700; letter-spacing: 2px; text-transform: uppercase; color: var(--tertiary); margin: 40px 0 4px; }
+  .chapter { display: flex; gap: 18px; padding: 22px 0; border-bottom: 1px solid var(--line); }
+  .chapter:last-of-type { border-bottom: none; }
+  .ch-num { font-family: var(--display); font-size: 40px; font-weight: 700; line-height: 0.9; color: var(--accent); width: 54px; flex-shrink: 0; }
+  .ch-body { flex: 1; }
+  .ch-ord { font-size: 10px; font-weight: 800; letter-spacing: 1px; text-transform: uppercase; color: var(--tertiary); }
+  .ch-title { font-family: var(--display); font-size: 21px; font-weight: 600; margin-top: 3px; }
+  .ch-narr { font-size: 14px; line-height: 1.6; color: var(--secondary); margin-top: 8px; }
+  .ch-stops { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 12px; }
+  .stop { font-size: 11px; font-weight: 600; color: var(--secondary); border: 1px solid var(--line); border-radius: 999px; padding: 4px 10px; }
+
+  /* Inclusions */
+  .incl-head { font-family: var(--display); font-size: 13px; font-weight: 700; letter-spacing: 2px; text-transform: uppercase; color: var(--tertiary); margin: 40px 0 14px; }
+  .incl-list { display: grid; gap: 10px; }
+  .incl { display: flex; gap: 12px; font-size: 15px; align-items: baseline; }
+  .incl .mk { font-size: 13px; font-weight: 900; width: 16px; flex-shrink: 0; }
+  .incl.yes .mk { color: var(--accent); }
+  .incl.no .mk { color: var(--tertiary); }
+  .incl.no { color: var(--tertiary); }
+
+  /* Payment block (ORCH-1130) — quiet, framed */
+  .pay-head { font-family: var(--display); font-size: 13px; font-weight: 700; letter-spacing: 2px; text-transform: uppercase; color: var(--tertiary); margin: 40px 0 14px; }
+  .pay { border: 1px solid var(--line); border-radius: 4px; padding: 22px; }
+  .seg { display: flex; border: 1px solid var(--line); border-radius: 999px; overflow: hidden; }
+  .seg button { flex: 1; border: none; background: transparent; color: var(--secondary); font-family: var(--body-font); font-size: 13px; font-weight: 700; padding: 11px 8px; cursor: pointer; transition: all .18s; }
+  .seg button.active { background: var(--accent); color: #fff; }
+  .pay-amt-row { display: flex; align-items: baseline; gap: 10px; margin-top: 22px; }
+  .pay-lbl { font-size: 10px; font-weight: 800; letter-spacing: 1px; text-transform: uppercase; color: var(--tertiary); }
+  .pay-amt { font-family: var(--display); font-size: 40px; font-weight: 700; letter-spacing: -1px; }
+  .pay-sub { font-size: 13px; color: var(--secondary); margin-top: 8px; line-height: 1.5; }
+  .sched { margin-top: 20px; display: none; }
+  .sched.show { display: block; }
+  .sr { display: flex; align-items: center; justify-content: space-between; padding: 11px 0; border-top: 1px solid var(--line); }
+  .sr-when { display: flex; align-items: baseline; gap: 10px; font-size: 14px; color: var(--secondary); font-family: var(--display); }
+  .sr-amt { font-size: 15px; font-weight: 700; font-family: var(--display); }
+  .sr-tag { font-size: 9px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.6px; color: var(--accent); }
+
+  .note { font-size: 13px; color: var(--tertiary); margin-top: 24px; padding-top: 18px; border-top: 1px solid var(--line); line-height: 1.6; }
+  .note b { color: var(--secondary); font-weight: 700; }
+
+  .floating { position: absolute; left: 0; right: 0; bottom: 0; z-index: 6; padding: 16px 22px calc(16px + env(safe-area-inset-bottom)); background: linear-gradient(180deg, rgba(11,13,12,0) 0, var(--page) 40%); }
+  .reserve { display: flex; align-items: center; justify-content: space-between; gap: 12px; background: var(--accent); color: #fff; border: none; width: 100%; border-radius: 4px; padding: 17px 22px; cursor: pointer; box-shadow: 0 14px 40px var(--accent-wash); font-family: var(--body-font); }
+  .r-kicker { font-size: 11px; font-weight: 600; opacity: 0.85; letter-spacing: 0.3px; }
+  .r-price { font-size: 18px; font-weight: 800; font-family: var(--display); }
+  .r-cta { font-size: 14px; font-weight: 800; letter-spacing: 1px; text-transform: uppercase; }
+
+  .spacer { height: 110px; }
+</style>
+</head>
+<body>
+  <div class="demo-bar">
+    <span>Brand theme</span>
+    <button class="swatch" style="background:#0f766e" onclick="setTheme('#0f766e','#0b0d0c','dark')"></button>
+    <button class="swatch" style="background:#b08d57" onclick="setTheme('#b08d57','#0d0b08','dark')" title="Gold/luxe"></button>
+    <button class="swatch" style="background:#e11d48" onclick="setTheme('#e11d48','#110708','dark')"></button>
+    <button class="swatch" style="background:#7a5c00" onclick="setTheme('#7a5c00','#faf6ec','light')" title="Cream/light"></button>
+    <select class="font-pick" onchange="document.documentElement.style.setProperty('--display', this.value)">
+      <option value="'Playfair Display', Georgia, serif">Playfair (serif)</option>
+      <option value="Georgia, serif">Georgia serif</option>
+      <option value="Inter, system-ui, sans-serif">Inter (sans)</option>
+      <option value="'Trebuchet MS', sans-serif">Geometric sans</option>
+    </select>
+  </div>
+
+  <div class="phone">
+    <div class="scroll">
+      <div class="cover">
+        <img src="https://images.unsplash.com/photo-1437846972679-9e6e537be46e?w=900&q=80" alt="cover" />
+        <div class="cover-grad"></div>
+        <div class="chrome"><button class="chrome-btn">&times;</button><button class="chrome-btn">&#8599;</button></div>
+        <div class="cover-text">
+          <div class="cover-kicker">Italy · 6 days</div>
+          <div class="cover-rule"></div>
+          <div class="cover-title">Slow Mornings in the Amalfi Coast</div>
+          <div class="cover-byline">A small-group escape with <b>Wander Collective</b></div>
+        </div>
+      </div>
+
+      <div class="pad">
+        <div class="facts">
+          <div class="fact"><div class="fl">Dates</div><div class="fv">Sep 14–19</div></div>
+          <div class="fact"><div class="fl">Group</div><div class="fv">12 max</div></div>
+          <div class="fact"><div class="fl">Seats</div><div class="fv hot">3 left</div></div>
+        </div>
+
+        <div class="lede">Six unhurried days on the cliffs, where the only thing on the schedule is the next long lunch.</div>
+        <div class="body-copy">Lemon groves and hidden swimming coves, a private boat day to Capri, and dinners that go well past sunset. We keep the group small and the pace real — no rushing between photo stops, no megaphone tours.</div>
+        <div class="read-more">Read more</div>
+
+        <div class="chapter-head">The Itinerary</div>
+        <div class="chapter"><div class="ch-num">01</div><div class="ch-body">
+          <div class="ch-ord">Day One</div><div class="ch-title">Arrive &amp; settle in Positano</div>
+          <div class="ch-narr">Private transfer from Naples, welcome aperitivo on the terrace, an easy walk to the beach as the light drops.</div>
+          <div class="ch-stops"><span class="stop">Welcome dinner</span><span class="stop">Terrace aperitivo</span></div>
+        </div></div>
+        <div class="chapter"><div class="ch-num">02</div><div class="ch-body">
+          <div class="ch-ord">Day Two</div><div class="ch-title">Path of the Gods hike</div>
+          <div class="ch-narr">A guided cliffside hike with views to Capri, lunch at a family farmhouse along the trail.</div>
+          <div class="ch-stops"><span class="stop">Guided hike</span><span class="stop">Farmhouse lunch</span></div>
+        </div></div>
+        <div class="chapter"><div class="ch-num">03</div><div class="ch-body">
+          <div class="ch-ord">Day Three</div><div class="ch-title">Private boat to Capri</div>
+          <div class="ch-narr">Charter the day around the Blue Grotto and quiet swimming coves, with a long seafood lunch on board.</div>
+        </div></div>
+
+        <div class="incl-head">What's Included</div>
+        <div class="incl-list">
+          <div class="incl yes"><span class="mk">&#10003;</span> 5 nights boutique cliffside hotel</div>
+          <div class="incl yes"><span class="mk">&#10003;</span> All breakfasts &amp; three group dinners</div>
+          <div class="incl yes"><span class="mk">&#10003;</span> Private Capri boat day</div>
+          <div class="incl no"><span class="mk">&times;</span> International flights</div>
+          <div class="incl no"><span class="mk">&times;</span> Travel insurance</div>
+        </div>
+
+        <div class="pay-head">Reserve Your Place</div>
+        <div class="pay">
+          <div class="seg">
+            <button id="seg-full" class="active" onclick="selectPlan('full')">Pay in full</button>
+            <button id="seg-plan" onclick="selectPlan('plan')">Pay over time</button>
+          </div>
+          <div id="amt-full">
+            <div class="pay-amt-row"><span class="pay-amt">&euro;2,450</span></div>
+            <div class="pay-sub">One payment, all-in. Taxes &amp; fees included.</div>
+          </div>
+          <div id="amt-plan" style="display:none">
+            <div class="pay-amt-row"><span class="pay-lbl">Due today</span><span class="pay-amt">&euro;612.50</span></div>
+            <div class="pay-sub">A 25% deposit secures your place today, then three monthly payments. &euro;2,450 total — no added cost.</div>
+          </div>
+          <div id="sched" class="sched">
+            <div class="sr"><div class="sr-when">Today <span class="sr-tag">Deposit</span></div><div class="sr-amt">&euro;612.50</div></div>
+            <div class="sr"><div class="sr-when">In 30 days</div><div class="sr-amt">&euro;612.50</div></div>
+            <div class="sr"><div class="sr-when">In 60 days</div><div class="sr-amt">&euro;612.50</div></div>
+            <div class="sr"><div class="sr-when">In 90 days</div><div class="sr-amt">&euro;612.50</div></div>
+          </div>
+        </div>
+
+        <div class="note"><b>Full refund up to 30 days before departure.</b> Bookings close in 9 days, or when the last seats go.</div>
+
+        <div class="spacer"></div>
+      </div>
+    </div>
+
+    <div class="floating">
+      <button class="reserve">
+        <span><span class="r-kicker" id="bar-kicker">All-in, taxes included</span><br/><span class="r-price" id="bar-price">&euro;2,450</span></span>
+        <span class="r-cta">Reserve</span>
+      </button>
+    </div>
+  </div>
+
+<script>
+  function setTheme(accent, page, mode) {
+    const r = document.documentElement.style; r.setProperty('--accent', accent); r.setProperty('--page', page);
+    const rgb = hexToRgb(accent);
+    r.setProperty('--accent-wash', `rgba(${rgb},0.16)`); r.setProperty('--accent-border', `rgba(${rgb},0.4)`);
+    if (mode === 'light') {
+      r.setProperty('--primary', '#1a1814'); r.setProperty('--secondary', 'rgba(26,24,20,0.74)');
+      r.setProperty('--tertiary', 'rgba(26,24,20,0.5)'); r.setProperty('--line', 'rgba(26,24,20,0.14)');
+      r.setProperty('--card', 'rgba(0,0,0,0.03)');
+    } else {
+      r.setProperty('--primary', '#f4f2ec'); r.setProperty('--secondary', 'rgba(244,242,236,0.72)');
+      r.setProperty('--tertiary', 'rgba(244,242,236,0.5)'); r.setProperty('--line', 'rgba(244,242,236,0.14)');
+      r.setProperty('--card', 'rgba(255,255,255,0.04)');
+    }
+  }
+  function hexToRgb(hex){const n=parseInt(hex.slice(1),16);return `${(n>>16)&255},${(n>>8)&255},${n&255}`;}
+  function selectPlan(which) {
+    const full = which === 'full';
+    document.getElementById('seg-full').classList.toggle('active', full);
+    document.getElementById('seg-plan').classList.toggle('active', !full);
+    document.getElementById('amt-full').style.display = full ? 'block' : 'none';
+    document.getElementById('amt-plan').style.display = full ? 'none' : 'block';
+    document.getElementById('sched').classList.toggle('show', !full);
+    document.getElementById('bar-kicker').innerHTML = full ? 'All-in, taxes included' : 'Due today · deposit';
+    document.getElementById('bar-price').innerHTML = full ? '&euro;2,450' : '&euro;612.50';
+  }
+</script>
+</body>
+</html>

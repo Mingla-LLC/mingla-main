@@ -1,0 +1,424 @@
+<!--
+  ORCH-1138 — PUBLIC TRIP PAGE REDESIGN
+  DIRECTION A — "IMMERSIVE ITINERARY"
+  THESIS: Reach 1:1 parity with the themed public EVENT page. Full-bleed
+  aspect-adaptive hero, a rounded body card that OVERLAPS the cover (the
+  event page's immersive seam), brand color drives every accent + the
+  contrast-aware light/dark page decision, brand font drives the type.
+  The day-by-day itinerary is the spine. ORCH-1130's pay-in-full /
+  pay-over-time segmented toggle is a first-class block above the
+  inclusions, and the floating reserve bar echoes the toggle's selection.
+
+  Self-contained. No external deps. Open by double-clicking.
+  Toggle the brand theme with the swatch row at the very top.
+-->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>ORCH-1138 · Direction A — Immersive Itinerary</title>
+<style>
+  /* ---- THEME ENGINE (mirrors createThemePalette in PublicEventPage) ---- */
+  /* Default theme = deep teal. Swatches re-assign --accent + recompute. */
+  :root {
+    --accent: #0f766e;          /* brand color */
+    --accent-strong: #0b5a54;
+    --accent-wash: rgba(15,118,110,0.18);
+    --page: #07100f;            /* dark base mixed 10% toward accent */
+    --primary: #ffffff;
+    --secondary: rgba(255,255,255,0.78);
+    --tertiary: rgba(255,255,255,0.56);
+    --card: rgba(255,255,255,0.07);
+    --card-strong: rgba(255,255,255,0.10);
+    --border: rgba(255,255,255,0.14);
+    --accent-border: rgba(15,118,110,0.42);
+    --font: "Inter", system-ui, -apple-system, sans-serif;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; -webkit-font-smoothing: antialiased; }
+  body {
+    font-family: var(--font);
+    background:
+      radial-gradient(1200px 600px at 50% -100px, #1a1f24 0%, #0a0c0f 60%) fixed,
+      #0a0c0f;
+    color: var(--primary);
+    display: flex; flex-direction: column; align-items: center;
+    min-height: 100vh; padding: 24px 16px 64px;
+  }
+
+  /* ---- Theme switcher (demo chrome — NOT part of the page) ---- */
+  .demo-bar {
+    width: 430px; max-width: 100%; margin-bottom: 18px;
+    display: flex; gap: 8px; align-items: center; flex-wrap: wrap;
+    font-size: 12px; color: rgba(255,255,255,0.6);
+  }
+  .demo-bar span { letter-spacing: 0.4px; text-transform: uppercase; font-weight: 700; font-size: 10px; }
+  .swatch {
+    width: 30px; height: 30px; border-radius: 999px; border: 2px solid rgba(255,255,255,0.2);
+    cursor: pointer; outline: none; transition: transform .15s ease;
+  }
+  .swatch:hover { transform: scale(1.1); }
+  .font-pick { margin-left: auto; background: #161a1f; color: #fff; border: 1px solid #2a2f36;
+    border-radius: 8px; padding: 6px 8px; font-size: 12px; }
+
+  /* ---- PHONE FRAME ---- */
+  .phone {
+    width: 430px; max-width: 100%;
+    background: var(--page);
+    border-radius: 38px; overflow: hidden;
+    box-shadow: 0 40px 120px rgba(0,0,0,0.6), 0 0 0 1px rgba(255,255,255,0.06);
+    position: relative;
+  }
+  .scroll { max-height: 880px; overflow-y: auto; scrollbar-width: none; }
+  .scroll::-webkit-scrollbar { display: none; }
+
+  /* ---- HERO ---- */
+  .hero { position: relative; width: 100%; aspect-ratio: 4 / 5; overflow: hidden; background: #000; }
+  .hero img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .hero-overlay {
+    position: absolute; inset: 0;
+    background: linear-gradient(180deg, rgba(0,0,0,0.36) 0%, rgba(0,0,0,0) 30%, rgba(7,16,15,0) 55%, var(--page) 100%);
+  }
+  .chrome { position: absolute; top: 18px; left: 16px; right: 16px; display: flex; justify-content: space-between; z-index: 4; }
+  .chrome-btn {
+    width: 40px; height: 40px; border-radius: 999px; background: rgba(0,0,0,0.48);
+    backdrop-filter: blur(8px); display: grid; place-items: center; color: #fff; font-size: 20px; cursor: pointer;
+    border: none;
+  }
+  .video-pill {
+    position: absolute; right: 16px; bottom: 16px; z-index: 4;
+    display: flex; align-items: center; gap: 6px;
+    background: rgba(0,0,0,0.5); backdrop-filter: blur(8px);
+    border-radius: 999px; padding: 6px 12px; font-size: 11px; font-weight: 700; color: #fff;
+  }
+
+  /* ---- BODY CARD (overlaps the hero — the event-page seam) ---- */
+  .body {
+    position: relative; margin-top: -28px;
+    border-top-left-radius: 28px; border-top-right-radius: 28px;
+    background: var(--page);
+    border: 1px solid var(--accent-border); border-bottom: none;
+    padding: 24px 20px 20px;
+    box-shadow: 0 -10px 40px rgba(0,0,0,0.4);
+  }
+
+  .eyebrow {
+    color: var(--accent); font-size: 11px; font-weight: 900; letter-spacing: 1.6px;
+    text-transform: uppercase; margin-bottom: 8px;
+  }
+  .title { font-family: var(--font); font-size: 32px; line-height: 1.08; font-weight: 900; letter-spacing: -0.5px; }
+
+  /* Meta chips row */
+  .meta-row { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px; }
+  .chip {
+    display: inline-flex; align-items: center; gap: 6px;
+    background: var(--card); border: 1px solid var(--border);
+    border-radius: 999px; padding: 8px 12px; font-size: 13px; font-weight: 600; color: var(--secondary);
+  }
+  .chip svg { width: 15px; height: 15px; stroke: var(--accent); fill: none; stroke-width: 2; }
+  .chip.cap svg { stroke: var(--accent); }
+  .seats-left { color: var(--accent); font-weight: 800; }
+
+  /* Brand row */
+  .brand-row {
+    display: flex; align-items: center; gap: 12px; margin-top: 18px;
+    background: var(--card); border: 1px solid var(--border); border-radius: 16px; padding: 12px 14px;
+    cursor: pointer;
+  }
+  .brand-tile { width: 42px; height: 42px; border-radius: 999px; object-fit: cover; border: 2px solid rgba(255,255,255,0.2); }
+  .brand-kicker { font-size: 10px; font-weight: 800; letter-spacing: 1.2px; text-transform: uppercase; color: var(--tertiary); }
+  .brand-name { font-size: 15px; font-weight: 800; margin-top: 1px; }
+  .brand-cta { margin-left: auto; color: var(--accent); font-size: 12px; font-weight: 800; }
+
+  /* Section title */
+  .sec-title { font-family: var(--font); font-size: 20px; font-weight: 900; letter-spacing: -0.3px; margin: 28px 0 12px; }
+
+  /* Route line (leaving → going) */
+  .route { display: flex; align-items: center; gap: 12px; background: var(--card); border: 1px solid var(--border);
+    border-radius: 16px; padding: 14px; margin-top: 14px; }
+  .route-leg { flex: 1; min-width: 0; }
+  .route-label { font-size: 10px; font-weight: 800; letter-spacing: 1px; text-transform: uppercase; color: var(--tertiary); }
+  .route-place { font-size: 14px; font-weight: 700; margin-top: 2px; }
+  .route-arrow { color: var(--accent); font-size: 18px; }
+
+  /* About */
+  .about { color: var(--secondary); font-size: 15px; line-height: 1.6; margin-top: 12px; }
+  .read-more { color: var(--accent); font-weight: 700; font-size: 14px; margin-top: 8px; cursor: pointer; }
+
+  /* Itinerary — vertical spine */
+  .itin { position: relative; padding-left: 30px; margin-top: 4px; }
+  .itin::before { content: ""; position: absolute; left: 9px; top: 6px; bottom: 6px; width: 2px;
+    background: linear-gradient(var(--accent), var(--accent-wash)); }
+  .day { position: relative; padding-bottom: 18px; }
+  .day:last-child { padding-bottom: 0; }
+  .day-dot { position: absolute; left: -30px; top: 2px; width: 20px; height: 20px; border-radius: 999px;
+    background: var(--accent); color: #fff; font-size: 10px; font-weight: 900; display: grid; place-items: center;
+    box-shadow: 0 0 0 4px var(--page); }
+  .day-card { background: var(--card); border: 1px solid var(--border); border-radius: 14px; padding: 14px; }
+  .day-ord { font-size: 10px; font-weight: 900; letter-spacing: 1px; text-transform: uppercase; color: var(--accent); }
+  .day-title { font-size: 15px; font-weight: 800; margin-top: 4px; }
+  .day-narr { font-size: 13px; line-height: 1.5; color: var(--secondary); margin-top: 6px; }
+  .day-stops { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+  .stop { font-size: 11px; font-weight: 600; color: var(--secondary); background: var(--accent-wash);
+    border: 1px solid var(--accent-border); border-radius: 999px; padding: 4px 9px; }
+
+  /* Inclusions */
+  .incl-grid { display: grid; gap: 8px; margin-top: 8px; }
+  .incl { display: flex; align-items: flex-start; gap: 10px; font-size: 14px; color: var(--secondary); }
+  .incl .mk { width: 18px; height: 18px; border-radius: 999px; display: grid; place-items: center; font-size: 11px; font-weight: 900; flex-shrink: 0; margin-top: 1px; }
+  .incl.yes .mk { background: var(--accent-wash); color: var(--accent); border: 1px solid var(--accent-border); }
+  .incl.no .mk { background: rgba(255,255,255,0.06); color: var(--tertiary); border: 1px solid var(--border); }
+  .incl.no { color: var(--tertiary); text-decoration: line-through; text-decoration-color: rgba(255,255,255,0.2); }
+
+  /* ---- PAYMENT BLOCK (ORCH-1130) ---- */
+  .pay-card { background: var(--card-strong); border: 1px solid var(--accent-border); border-radius: 20px; padding: 18px; margin-top: 14px; position: relative; overflow: hidden; }
+  .pay-card::before { content: ""; position: absolute; top: 0; left: 0; right: 0; height: 4px; background: var(--accent); }
+  .seg {
+    display: flex; background: rgba(0,0,0,0.28); border-radius: 12px; padding: 4px; gap: 4px;
+    border: 1px solid var(--border);
+  }
+  .seg button {
+    flex: 1; border: none; background: transparent; color: var(--secondary);
+    font-family: var(--font); font-size: 13px; font-weight: 800; padding: 10px 8px; border-radius: 9px;
+    cursor: pointer; transition: all .18s ease;
+  }
+  .seg button.active { background: var(--accent); color: #fff; box-shadow: 0 4px 14px var(--accent-wash); }
+  .pay-amt-row { display: flex; align-items: baseline; gap: 8px; margin-top: 16px; }
+  .pay-amt-label { font-size: 11px; font-weight: 800; letter-spacing: 1px; text-transform: uppercase; color: var(--tertiary); }
+  .pay-amt { font-size: 34px; font-weight: 900; letter-spacing: -1px; }
+  .pay-sub { font-size: 13px; color: var(--secondary); margin-top: 4px; }
+  /* Schedule projection */
+  .schedule { margin-top: 16px; border-top: 1px solid var(--border); padding-top: 14px; display: none; }
+  .schedule.show { display: block; }
+  .sched-row { display: flex; align-items: center; justify-content: space-between; padding: 9px 0; }
+  .sched-row + .sched-row { border-top: 1px dashed var(--border); }
+  .sched-when { display: flex; align-items: center; gap: 10px; font-size: 13px; color: var(--secondary); }
+  .sched-dot { width: 8px; height: 8px; border-radius: 999px; background: var(--accent); }
+  .sched-dot.future { background: rgba(255,255,255,0.3); }
+  .sched-amt { font-size: 14px; font-weight: 800; }
+  .sched-tag { font-size: 10px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.6px; color: var(--accent); margin-left: 8px; }
+
+  /* Refund / deadline strip */
+  .strip { display: flex; align-items: center; gap: 10px; margin-top: 14px; background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 12px 14px; font-size: 13px; color: var(--secondary); }
+  .strip svg { width: 16px; height: 16px; stroke: var(--accent); fill: none; stroke-width: 2; flex-shrink: 0; }
+
+  /* ---- FLOATING RESERVE BAR ---- */
+  .floating {
+    position: absolute; left: 0; right: 0; bottom: 0; z-index: 6;
+    padding: 14px 16px calc(14px + env(safe-area-inset-bottom));
+    background: linear-gradient(180deg, rgba(7,16,15,0) 0%, var(--page) 38%);
+  }
+  .reserve {
+    display: flex; align-items: center; justify-content: space-between; gap: 12px;
+    background: var(--accent); color: #fff; border: none; width: 100%;
+    border-radius: 18px; padding: 16px 20px; cursor: pointer;
+    box-shadow: 0 12px 34px var(--accent-wash), 0 2px 0 rgba(0,0,0,0.15);
+    font-family: var(--font);
+  }
+  .reserve .r-left { text-align: left; }
+  .reserve .r-kicker { font-size: 11px; font-weight: 700; opacity: 0.85; }
+  .reserve .r-price { font-size: 19px; font-weight: 900; letter-spacing: -0.3px; }
+  .reserve .r-cta { font-size: 16px; font-weight: 900; }
+
+  .spacer { height: 96px; }
+</style>
+</head>
+<body>
+  <div class="demo-bar">
+    <span>Brand theme</span>
+    <button class="swatch" style="background:#0f766e" title="Deep teal"
+      onclick="setTheme('#0f766e','#0b5a54','#07100f','dark')"></button>
+    <button class="swatch" style="background:#e11d48" title="Crimson"
+      onclick="setTheme('#e11d48','#b01239','#120709','dark')"></button>
+    <button class="swatch" style="background:#f5c518" title="Saffron (light page)"
+      onclick="setTheme('#9a7b00','#7d6300','#fbf7ea','light')"></button>
+    <button class="swatch" style="background:#6d28d9" title="Violet"
+      onclick="setTheme('#6d28d9','#54199f','#0d0916','dark')"></button>
+    <select class="font-pick" onchange="document.documentElement.style.setProperty('--font', this.value)">
+      <option value="Inter, system-ui, sans-serif">Inter</option>
+      <option value="'Poppins', system-ui, sans-serif">Poppins</option>
+      <option value="'Playfair Display', Georgia, serif">Playfair Display</option>
+      <option value="Georgia, 'Times New Roman', serif">Serif (Lora-like)</option>
+      <option value="'Trebuchet MS', sans-serif">Geometric</option>
+    </select>
+  </div>
+
+  <div class="phone">
+    <div class="scroll">
+      <!-- HERO -->
+      <div class="hero">
+        <img src="https://images.unsplash.com/photo-1469854523086-cc02fe5d8800?w=900&q=80" alt="Trip cover" />
+        <div class="hero-overlay"></div>
+        <div class="chrome">
+          <button class="chrome-btn">&times;</button>
+          <button class="chrome-btn">&#8599;</button>
+        </div>
+        <div class="video-pill">&#9658; Cover video · tap for sound</div>
+      </div>
+
+      <!-- BODY -->
+      <div class="body">
+        <div class="eyebrow">6 days · small group</div>
+        <div class="title">Slow Mornings in the Amalfi Coast</div>
+
+        <div class="meta-row">
+          <span class="chip"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg> Sep 14 – Sep 19</span>
+          <span class="chip cap"><svg viewBox="0 0 24 24"><circle cx="9" cy="8" r="3"/><path d="M3 20c0-3.3 2.7-6 6-6s6 2.7 6 6M16 11a3 3 0 100-6"/></svg> <span class="seats-left">3 seats left</span> · 12 max</span>
+        </div>
+
+        <div class="brand-row">
+          <img class="brand-tile" src="https://images.unsplash.com/photo-1517841905240-472988babdf9?w=200&q=80" alt="" />
+          <div>
+            <div class="brand-kicker">Presented by</div>
+            <div class="brand-name">Wander Collective</div>
+          </div>
+          <div class="brand-cta">View</div>
+        </div>
+
+        <div class="route">
+          <div class="route-leg">
+            <div class="route-label">Leaving from</div>
+            <div class="route-place">Naples Intl (NAP)</div>
+          </div>
+          <div class="route-arrow">&rarr;</div>
+          <div class="route-leg">
+            <div class="route-label">Destination</div>
+            <div class="route-place">Positano, Italy</div>
+          </div>
+        </div>
+
+        <div class="sec-title">About this trip</div>
+        <div class="about">Six unhurried days on the cliffs of the Amalfi Coast — lemon groves, hidden swimming coves, a private boat day to Capri, and dinners that go long past sunset. Small group, real pace, no rushing between photo stops.</div>
+        <div class="read-more">Read more</div>
+
+        <div class="sec-title">Day by day</div>
+        <div class="itin">
+          <div class="day"><div class="day-dot">1</div><div class="day-card">
+            <div class="day-ord">Day 1</div><div class="day-title">Arrive &amp; settle in Positano</div>
+            <div class="day-narr">Private transfer from Naples, welcome aperitivo on the terrace, an easy walk to the beach as the light drops.</div>
+            <div class="day-stops"><span class="stop">Welcome dinner</span><span class="stop">Terrace aperitivo</span></div>
+          </div></div>
+          <div class="day"><div class="day-dot">2</div><div class="day-card">
+            <div class="day-ord">Day 2</div><div class="day-title">Path of the Gods hike</div>
+            <div class="day-narr">A guided cliffside hike with views to Capri, lunch at a family farmhouse along the trail.</div>
+            <div class="day-stops"><span class="stop">Guided hike</span><span class="stop">Farmhouse lunch</span></div>
+          </div></div>
+          <div class="day"><div class="day-dot">3</div><div class="day-card">
+            <div class="day-ord">Day 3</div><div class="day-title">Private boat to Capri</div>
+            <div class="day-narr">Charter the day around the Blue Grotto and quiet swimming coves, with a long seafood lunch on board.</div>
+          </div></div>
+        </div>
+
+        <div class="sec-title">What's included</div>
+        <div class="incl-grid">
+          <div class="incl yes"><span class="mk">&#10003;</span> 5 nights boutique cliffside hotel</div>
+          <div class="incl yes"><span class="mk">&#10003;</span> All breakfasts + 3 group dinners</div>
+          <div class="incl yes"><span class="mk">&#10003;</span> Private Capri boat day</div>
+          <div class="incl no"><span class="mk">&times;</span> International flights</div>
+          <div class="incl no"><span class="mk">&times;</span> Travel insurance</div>
+        </div>
+
+        <!-- PAYMENT (ORCH-1130) -->
+        <div class="sec-title">Choose how you pay</div>
+        <div class="pay-card">
+          <div class="seg">
+            <button id="seg-full" class="active" onclick="selectPlan('full')">Pay in full</button>
+            <button id="seg-plan" onclick="selectPlan('plan')">Pay over time</button>
+          </div>
+
+          <div id="amt-full">
+            <div class="pay-amt-row">
+              <span class="pay-amt">&euro;2,450</span>
+            </div>
+            <div class="pay-sub">One payment, all-in. Taxes &amp; fees included.</div>
+          </div>
+
+          <div id="amt-plan" style="display:none">
+            <div class="pay-amt-row">
+              <span class="pay-amt-label">Due today</span>
+              <span class="pay-amt">&euro;612.50</span>
+            </div>
+            <div class="pay-sub">25% deposit now, then 3 monthly payments. &euro;2,450 total — no extra cost.</div>
+          </div>
+
+          <div id="schedule" class="schedule">
+            <div class="sched-row">
+              <div class="sched-when"><span class="sched-dot"></span> Today<span class="sched-tag">Deposit</span></div>
+              <div class="sched-amt">&euro;612.50</div>
+            </div>
+            <div class="sched-row">
+              <div class="sched-when"><span class="sched-dot future"></span> In 30 days</div>
+              <div class="sched-amt">&euro;612.50</div>
+            </div>
+            <div class="sched-row">
+              <div class="sched-when"><span class="sched-dot future"></span> In 60 days</div>
+              <div class="sched-amt">&euro;612.50</div>
+            </div>
+            <div class="sched-row">
+              <div class="sched-when"><span class="sched-dot future"></span> In 90 days</div>
+              <div class="sched-amt">&euro;612.50</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="strip"><svg viewBox="0 0 24 24"><path d="M9 12l2 2 4-4M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg> Full refund up to 30 days before departure</div>
+        <div class="strip"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg> Bookings close in 9 days</div>
+
+        <div class="spacer"></div>
+      </div>
+    </div>
+
+    <!-- FLOATING RESERVE BAR -->
+    <div class="floating">
+      <button class="reserve">
+        <span class="r-left">
+          <span class="r-kicker" id="bar-kicker">All-in, taxes included</span><br/>
+          <span class="r-price" id="bar-price">&euro;2,450</span>
+        </span>
+        <span class="r-cta">Reserve my spot &rarr;</span>
+      </button>
+    </div>
+  </div>
+
+<script>
+  function setTheme(accent, strong, page, mode) {
+    const r = document.documentElement.style;
+    r.setProperty('--accent', accent);
+    r.setProperty('--accent-strong', strong);
+    r.setProperty('--page', page);
+    const rgb = hexToRgb(accent);
+    r.setProperty('--accent-wash', `rgba(${rgb},0.18)`);
+    r.setProperty('--accent-border', `rgba(${rgb},0.42)`);
+    if (mode === 'light') {
+      r.setProperty('--primary', '#101420');
+      r.setProperty('--secondary', 'rgba(16,20,31,0.76)');
+      r.setProperty('--tertiary', 'rgba(16,20,31,0.56)');
+      r.setProperty('--card', 'rgba(0,0,0,0.04)');
+      r.setProperty('--card-strong', 'rgba(0,0,0,0.06)');
+      r.setProperty('--border', 'rgba(0,0,0,0.10)');
+    } else {
+      r.setProperty('--primary', '#ffffff');
+      r.setProperty('--secondary', 'rgba(255,255,255,0.78)');
+      r.setProperty('--tertiary', 'rgba(255,255,255,0.56)');
+      r.setProperty('--card', 'rgba(255,255,255,0.07)');
+      r.setProperty('--card-strong', 'rgba(255,255,255,0.10)');
+      r.setProperty('--border', 'rgba(255,255,255,0.14)');
+    }
+  }
+  function hexToRgb(hex) {
+    const n = parseInt(hex.slice(1), 16);
+    return `${(n>>16)&255},${(n>>8)&255},${n&255}`;
+  }
+  function selectPlan(which) {
+    const full = which === 'full';
+    document.getElementById('seg-full').classList.toggle('active', full);
+    document.getElementById('seg-plan').classList.toggle('active', !full);
+    document.getElementById('amt-full').style.display = full ? 'block' : 'none';
+    document.getElementById('amt-plan').style.display = full ? 'none' : 'block';
+    document.getElementById('schedule').classList.toggle('show', !full);
+    document.getElementById('bar-kicker').innerHTML = full ? 'All-in, taxes included' : 'Due today · deposit';
+    document.getElementById('bar-price').innerHTML = full ? '&euro;2,450' : '&euro;612.50';
+  }
+</script>
+</body>
+</html>

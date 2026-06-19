@@ -1,0 +1,1636 @@
+{
+  "meta_orch": "META-ORCH-1160",
+  "stage": "Stage 0 — Lean structure",
+  "generated_at": "2026-06-18T08:22:05Z",
+  "clickup": {
+    "workspace": {
+      "id": "90141074565",
+      "url": "https://app.clickup.com/90141074565"
+    },
+    "space": {
+      "id": "90146114214",
+      "name": "Mingla Growth",
+      "url": "https://app.clickup.com/90141074565/v/s/90146114214"
+    },
+    "folders": {
+      "00 Command": {
+        "id": "901410144768",
+        "url": "https://app.clickup.com/90141074565/v/f/901410144768"
+      },
+      "01 Sprint Board": {
+        "id": "901410144769",
+        "url": "https://app.clickup.com/90141074565/v/f/901410144769"
+      },
+      "02 Supply Pipeline": {
+        "id": "901410144770",
+        "url": "https://app.clickup.com/90141074565/v/f/901410144770"
+      },
+      "03 Demand & Outreach": {
+        "id": "901410144771",
+        "url": "https://app.clickup.com/90141074565/v/f/901410144771"
+      },
+      "04 Content Engine": {
+        "id": "901410144772",
+        "url": "https://app.clickup.com/90141074565/v/f/901410144772"
+      },
+      "05 Ops": {
+        "id": "901410144773",
+        "url": "https://app.clickup.com/90141074565/v/f/901410144773"
+      },
+      "06 Feedback & Re-direct": {
+        "id": "901410144774",
+        "url": "https://app.clickup.com/90141074565/v/f/901410144774"
+      }
+    },
+    "lists": {
+      "Sprint Board": {
+        "id": "901417374440",
+        "url": "https://app.clickup.com/90141074565/v/l/li/901417374440",
+        "folder": "01 Sprint Board",
+        "desired_statuses": [
+          "Backlog",
+          "This Week",
+          "In Progress",
+          "Blocked",
+          "Needs Review",
+          "Done"
+        ],
+        "actual_statuses": [
+          "to do",
+          "complete"
+        ],
+        "custom_fields": {
+          "Feedback Status": {
+            "id": "1b320b35-ed8a-413f-bbc7-f5f1fc6f421a",
+            "type": "drop_down"
+          },
+          "Outcome #": {
+            "id": "5b97752d-bd09-4fa5-a23f-f059f82ba8c4",
+            "type": "number"
+          },
+          "Channel": {
+            "id": "8836886b-e4a4-41f2-9a3c-fbe94f2ca849",
+            "type": "drop_down"
+          },
+          "Role": {
+            "id": "93c5ee64-9a4e-491c-85e4-6ffc912fe0b5",
+            "type": "drop_down"
+          },
+          "Sprint": {
+            "id": "948ce452-6909-46ca-9a35-57ef38b775e2",
+            "type": "short_text"
+          },
+          "Feedback": {
+            "id": "a3c59da4-9744-4a94-ad73-2ff636732b90",
+            "type": "text"
+          },
+          "Funnel Stage": {
+            "id": "c917e5d6-3b2d-43a6-b087-d311706eb855",
+            "type": "drop_down"
+          },
+          "Geo": {
+            "id": "d202d718-1931-49c0-92bf-51f2be4157f9",
+            "type": "drop_down"
+          },
+          "Effort": {
+            "id": "d652144c-85f1-4aa6-8639-a07ed0cb10d5",
+            "type": "drop_down"
+          },
+          "Proof": {
+            "id": "e8e16242-7885-4aa1-8d98-d7564f5b2dfe",
+            "type": "short_text"
+          },
+          "Due": {
+            "id": "ed72f405-b6ea-4f90-beb6-b89bb9971216",
+            "type": "date"
+          },
+          "Spend $": {
+            "id": "f07c8250-8c29-4c6b-a3c0-e45cfde6adc2",
+            "type": "currency"
+          },
+          "Hypothesis": {
+            "id": "f0c6dc0f-55c4-4a74-9da7-f7044d54effb",
+            "type": "tasks"
+          }
+        },
+        "views": {
+          "This Sprint": {
+            "id": "2kyd7945-4154",
+            "type": "list"
+          },
+          "By Person": {
+            "id": "2kyd7945-4174",
+            "type": "list"
+          },
+          "Needs Review": {
+            "id": "2kyd7945-4194",
+            "type": "list"
+          },
+          "Blocked": {
+            "id": "2kyd7945-4214",
+            "type": "list"
+          },
+          "My Week": {
+            "id": "2kyd7945-4234",
+            "type": "list"
+          }
+        },
+        "sample_tasks": {
+          "[SAMPLE] Stage-0 manual operating week kickoff": {
+            "id": "86baghawb",
+            "url": "https://app.clickup.com/t/86baghawb"
+          }
+        }
+      },
+      "Supply CRM": {
+        "id": "901417374441",
+        "url": "https://app.clickup.com/90141074565/v/l/li/901417374441",
+        "folder": "02 Supply Pipeline",
+        "desired_statuses": [
+          "Prospect",
+          "Contacted",
+          "Meeting Set",
+          "Onboarding",
+          "LIVE (≥1 bookable offering)",
+          "Active",
+          "At-risk",
+          "Churned"
+        ],
+        "actual_statuses": [
+          "to do",
+          "complete"
+        ],
+        "custom_fields": {
+          "Last Touch": {
+            "id": "19592ee2-1a27-475f-9bdb-3dfb1aca1f35",
+            "type": "date"
+          },
+          "Feedback Status": {
+            "id": "1b320b35-ed8a-413f-bbc7-f5f1fc6f421a",
+            "type": "drop_down"
+          },
+          "# Live Offerings": {
+            "id": "1f211cfb-0010-4e23-96d0-1b26e441c74c",
+            "type": "number"
+          },
+          "Charges-enabled?": {
+            "id": "49b5bb5e-c30d-40e6-a798-d5b1ebe65eab",
+            "type": "checkbox"
+          },
+          "Outcome #": {
+            "id": "5b97752d-bd09-4fa5-a23f-f059f82ba8c4",
+            "type": "number"
+          },
+          "Channel": {
+            "id": "8836886b-e4a4-41f2-9a3c-fbe94f2ca849",
+            "type": "drop_down"
+          },
+          "Role": {
+            "id": "93c5ee64-9a4e-491c-85e4-6ffc912fe0b5",
+            "type": "drop_down"
+          },
+          "Lead Type": {
+            "id": "9d4d6e5a-ced6-4140-aa4f-3c278f5f9243",
+            "type": "drop_down"
+          },
+          "Feedback": {
+            "id": "a3c59da4-9744-4a94-ad73-2ff636732b90",
+            "type": "text"
+          },
+          "Owner": {
+            "id": "b77c9515-ba71-42e0-8bfc-203d00b0e9f8",
+            "type": "short_text"
+          },
+          "Contact": {
+            "id": "c25c2807-c2a3-42db-a092-c1a6b49af2dc",
+            "type": "short_text"
+          },
+          "Funnel Stage": {
+            "id": "c917e5d6-3b2d-43a6-b087-d311706eb855",
+            "type": "drop_down"
+          },
+          "Geo": {
+            "id": "d202d718-1931-49c0-92bf-51f2be4157f9",
+            "type": "drop_down"
+          },
+          "Venue name": {
+            "id": "d8d2bc51-d2cd-4ac2-a7c7-f3038849ee24",
+            "type": "short_text"
+          },
+          "Category": {
+            "id": "e54975e2-b4e6-4422-b22a-fcb1954a8b34",
+            "type": "short_text"
+          },
+          "Proof": {
+            "id": "e8e16242-7885-4aa1-8d98-d7564f5b2dfe",
+            "type": "short_text"
+          },
+          "Spend $": {
+            "id": "f07c8250-8c29-4c6b-a3c0-e45cfde6adc2",
+            "type": "currency"
+          },
+          "Hypothesis": {
+            "id": "f0c6dc0f-55c4-4a74-9da7-f7044d54effb",
+            "type": "tasks"
+          }
+        },
+        "views": {
+          "Pipeline": {
+            "id": "2kyd7945-4254",
+            "type": "list"
+          },
+          "Raleigh": {
+            "id": "2kyd7945-4274",
+            "type": "list"
+          },
+          "Cary": {
+            "id": "2kyd7945-4294",
+            "type": "list"
+          },
+          "Durham": {
+            "id": "2kyd7945-4314",
+            "type": "list"
+          },
+          "DC": {
+            "id": "2kyd7945-4334",
+            "type": "list"
+          },
+          "New York": {
+            "id": "2kyd7945-4354",
+            "type": "list"
+          },
+          "Lagos": {
+            "id": "2kyd7945-4374",
+            "type": "list"
+          }
+        },
+        "sample_tasks": {
+          "[SAMPLE] Raleigh venue lead — first concierge outreach": {
+            "id": "86baghavt",
+            "url": "https://app.clickup.com/t/86baghavt"
+          },
+          "[SAMPLE] Lagos creator lead — flyer-to-page pilot": {
+            "id": "86baghavu",
+            "url": "https://app.clickup.com/t/86baghavu"
+          }
+        }
+      },
+      "Creator Onboarding": {
+        "id": "901417374442",
+        "url": "https://app.clickup.com/90141074565/v/l/li/901417374442",
+        "folder": "04 Content Engine",
+        "desired_statuses": [
+          "Waiting for assets",
+          "Assets received",
+          "Page setup",
+          "Copy needed",
+          "Design needed",
+          "Sent to creator",
+          "Approved",
+          "Published",
+          "Promo live",
+          "Post-event follow-up"
+        ],
+        "actual_statuses": [
+          "to do",
+          "complete"
+        ],
+        "custom_fields": {
+          "Feedback Status": {
+            "id": "1b320b35-ed8a-413f-bbc7-f5f1fc6f421a",
+            "type": "drop_down"
+          },
+          "Results (views/RSVPs/revenue/feedback/repeat?)": {
+            "id": "4de319cb-b2fa-4d52-9442-1b49b35c1754",
+            "type": "text"
+          },
+          "Date": {
+            "id": "58958a86-f58d-48fc-9b60-5434b0fd9ed8",
+            "type": "date"
+          },
+          "Outcome #": {
+            "id": "5b97752d-bd09-4fa5-a23f-f059f82ba8c4",
+            "type": "number"
+          },
+          "Mingla link": {
+            "id": "5e91cb93-fd89-4c00-9b3f-53a7aa6330ac",
+            "type": "short_text"
+          },
+          "Event/Trip/Experience name": {
+            "id": "732cbef6-875e-4c98-b8c4-2d8b5a637227",
+            "type": "short_text"
+          },
+          "Ticket/RSVP details": {
+            "id": "8156a53d-b105-461b-86ef-119c284b0012",
+            "type": "text"
+          },
+          "Current platform/link": {
+            "id": "86add470-f828-48b8-a0a2-e4d624e8a64a",
+            "type": "short_text"
+          },
+          "Channel": {
+            "id": "8836886b-e4a4-41f2-9a3c-fbe94f2ca849",
+            "type": "drop_down"
+          },
+          "Capacity": {
+            "id": "8e005f27-cbbd-42dc-9e18-fadbbb1d3931",
+            "type": "number"
+          },
+          "Role": {
+            "id": "93c5ee64-9a4e-491c-85e4-6ffc912fe0b5",
+            "type": "drop_down"
+          },
+          "Feedback": {
+            "id": "a3c59da4-9744-4a94-ad73-2ff636732b90",
+            "type": "text"
+          },
+          "Creator": {
+            "id": "a44398f9-434a-4bb8-9ef4-0925f9109d08",
+            "type": "short_text"
+          },
+          "Assets (flyer/cover)": {
+            "id": "ad3d90cf-2252-4ced-99de-70d3ac314cbc",
+            "type": "short_text"
+          },
+          "Promo pack (IG/story/WhatsApp/email/reel)": {
+            "id": "b3b4d64b-45f1-421c-bf53-57305ba51260",
+            "type": "text"
+          },
+          "Funnel Stage": {
+            "id": "c917e5d6-3b2d-43a6-b087-d311706eb855",
+            "type": "drop_down"
+          },
+          "Geo": {
+            "id": "d202d718-1931-49c0-92bf-51f2be4157f9",
+            "type": "drop_down"
+          },
+          "Proof": {
+            "id": "e8e16242-7885-4aa1-8d98-d7564f5b2dfe",
+            "type": "short_text"
+          },
+          "Spend $": {
+            "id": "f07c8250-8c29-4c6b-a3c0-e45cfde6adc2",
+            "type": "currency"
+          },
+          "Hypothesis": {
+            "id": "f0c6dc0f-55c4-4a74-9da7-f7044d54effb",
+            "type": "tasks"
+          }
+        },
+        "views": {
+          "Onboarding Pipeline": {
+            "id": "2kyd7945-4394",
+            "type": "list"
+          },
+          "Needs Assets": {
+            "id": "2kyd7945-4414",
+            "type": "list"
+          },
+          "Needs Copy": {
+            "id": "2kyd7945-4434",
+            "type": "list"
+          },
+          "Needs Design": {
+            "id": "2kyd7945-4454",
+            "type": "list"
+          },
+          "Published": {
+            "id": "2kyd7945-4474",
+            "type": "list"
+          }
+        },
+        "sample_tasks": {
+          "[SAMPLE] Creator onboarding — send flyer, receive Mingla promo pack": {
+            "id": "86baghavw",
+            "url": "https://app.clickup.com/t/86baghavw"
+          }
+        }
+      },
+      "Experiments": {
+        "id": "901417374443",
+        "url": "https://app.clickup.com/90141074565/v/l/li/901417374443",
+        "folder": "03 Demand & Outreach",
+        "desired_statuses": [
+          "Idea",
+          "Designed",
+          "LIVE",
+          "Measuring",
+          "Verdict: Scale",
+          "Verdict: Iterate",
+          "Verdict: Kill"
+        ],
+        "actual_statuses": [
+          "to do",
+          "complete"
+        ],
+        "custom_fields": {
+          "Feedback Status": {
+            "id": "1b320b35-ed8a-413f-bbc7-f5f1fc6f421a",
+            "type": "drop_down"
+          },
+          "Learning": {
+            "id": "21a11b8b-10b0-426b-be3c-f8bc1ecc4db5",
+            "type": "text"
+          },
+          "Signups #": {
+            "id": "3a77a81d-0f2b-4874-877f-10d25ba3bae9",
+            "type": "number"
+          },
+          "CTR %": {
+            "id": "54c6d439-2c56-4f1b-85c1-f77f629b277a",
+            "type": "number"
+          },
+          "Outcome #": {
+            "id": "5b97752d-bd09-4fa5-a23f-f059f82ba8c4",
+            "type": "number"
+          },
+          "Tracked Link": {
+            "id": "7e4ff013-2030-4e3a-bbf4-29a33b9f0b58",
+            "type": "short_text"
+          },
+          "Verdict": {
+            "id": "7e873cb7-9078-45c1-ae90-fc707b658758",
+            "type": "drop_down"
+          },
+          "Channel": {
+            "id": "8836886b-e4a4-41f2-9a3c-fbe94f2ca849",
+            "type": "drop_down"
+          },
+          "Variants #": {
+            "id": "8eeba3c5-4ff7-413d-93d6-a76963fd14c3",
+            "type": "number"
+          },
+          "Role": {
+            "id": "93c5ee64-9a4e-491c-85e4-6ffc912fe0b5",
+            "type": "drop_down"
+          },
+          "Feedback": {
+            "id": "a3c59da4-9744-4a94-ad73-2ff636732b90",
+            "type": "text"
+          },
+          "Audience": {
+            "id": "a4f42be4-b906-42df-939a-a0d080f46a2f",
+            "type": "short_text"
+          },
+          "Funnel Stage": {
+            "id": "c917e5d6-3b2d-43a6-b087-d311706eb855",
+            "type": "drop_down"
+          },
+          "Activation %": {
+            "id": "d05afa41-f24a-43ac-9b32-8c902e3da1bf",
+            "type": "number"
+          },
+          "Geo": {
+            "id": "d202d718-1931-49c0-92bf-51f2be4157f9",
+            "type": "drop_down"
+          },
+          "CPL $": {
+            "id": "dfcc9bb4-e553-4c11-b8ac-6122f3b9ba40",
+            "type": "currency"
+          },
+          "Proof": {
+            "id": "e8e16242-7885-4aa1-8d98-d7564f5b2dfe",
+            "type": "short_text"
+          },
+          "Spend $": {
+            "id": "f07c8250-8c29-4c6b-a3c0-e45cfde6adc2",
+            "type": "currency"
+          },
+          "Hypothesis": {
+            "id": "f0c6dc0f-55c4-4a74-9da7-f7044d54effb",
+            "type": "tasks"
+          }
+        },
+        "views": {
+          "Active Tests": {
+            "id": "2kyd7945-4494",
+            "type": "list"
+          },
+          "Awaiting Verdict (Fri)": {
+            "id": "2kyd7945-4514",
+            "type": "list"
+          },
+          "Winners (Scale)": {
+            "id": "2kyd7945-4534",
+            "type": "list"
+          },
+          "Library (all past)": {
+            "id": "2kyd7945-4554",
+            "type": "list"
+          }
+        },
+        "sample_tasks": {
+          "[SAMPLE] Lagos creator flyer-to-page messaging test": {
+            "id": "86baghavx",
+            "url": "https://app.clickup.com/t/86baghavx"
+          },
+          "[SAMPLE] Triangle weekend-plan landing test": {
+            "id": "86baghavz",
+            "url": "https://app.clickup.com/t/86baghavz"
+          }
+        }
+      },
+      "Influencer CRM": {
+        "id": "901417374444",
+        "url": "https://app.clickup.com/90141074565/v/l/li/901417374444",
+        "folder": "03 Demand & Outreach",
+        "desired_statuses": [
+          "Identified",
+          "Researched",
+          "Contacted",
+          "Replied",
+          "Negotiating",
+          "Booked",
+          "Posted",
+          "Measured",
+          "Recurring / Passed"
+        ],
+        "actual_statuses": [
+          "to do",
+          "complete"
+        ],
+        "custom_fields": {
+          "Promo Code": {
+            "id": "0a9fbe54-3183-4d3d-b6b9-dd018378d96c",
+            "type": "short_text"
+          },
+          "Signups": {
+            "id": "102ecf1b-251e-471a-99b5-1a5004e7cb31",
+            "type": "number"
+          },
+          "Last Touch": {
+            "id": "19592ee2-1a27-475f-9bdb-3dfb1aca1f35",
+            "type": "date"
+          },
+          "Followers": {
+            "id": "199c9148-9533-42bb-b3cb-e8895fbb24cc",
+            "type": "number"
+          },
+          "Feedback Status": {
+            "id": "1b320b35-ed8a-413f-bbc7-f5f1fc6f421a",
+            "type": "drop_down"
+          },
+          "Handle": {
+            "id": "22922882-0bb8-49b9-b905-e690b369f948",
+            "type": "short_text"
+          },
+          "Reach": {
+            "id": "24faa327-bd4f-4f9c-87e2-01517d6a818e",
+            "type": "number"
+          },
+          "Clicks": {
+            "id": "49333d07-82b3-4b38-a907-fc60de80ac27",
+            "type": "number"
+          },
+          "Platform": {
+            "id": "51d9d548-66a6-4dbf-925b-7f3785e0df9b",
+            "type": "drop_down"
+          },
+          "Outcome #": {
+            "id": "5b97752d-bd09-4fa5-a23f-f059f82ba8c4",
+            "type": "number"
+          },
+          "Tracked Link": {
+            "id": "7e4ff013-2030-4e3a-bbf4-29a33b9f0b58",
+            "type": "short_text"
+          },
+          "Contact Method": {
+            "id": "824ca696-b26b-446e-91a7-22b02b1b4bd9",
+            "type": "short_text"
+          },
+          "Touches #": {
+            "id": "87acda92-92b4-4a4d-81b0-69ea9a62f624",
+            "type": "number"
+          },
+          "Channel": {
+            "id": "8836886b-e4a4-41f2-9a3c-fbe94f2ca849",
+            "type": "drop_down"
+          },
+          "Posts #": {
+            "id": "8bf94dd1-61f7-461b-8995-1bd32234c532",
+            "type": "number"
+          },
+          "Role": {
+            "id": "93c5ee64-9a4e-491c-85e4-6ffc912fe0b5",
+            "type": "drop_down"
+          },
+          "Feedback": {
+            "id": "a3c59da4-9744-4a94-ad73-2ff636732b90",
+            "type": "text"
+          },
+          "Owner": {
+            "id": "b77c9515-ba71-42e0-8bfc-203d00b0e9f8",
+            "type": "short_text"
+          },
+          "Funnel Stage": {
+            "id": "c917e5d6-3b2d-43a6-b087-d311706eb855",
+            "type": "drop_down"
+          },
+          "Replied?": {
+            "id": "cd67343b-e923-4b49-aed3-15ade1b52fb9",
+            "type": "checkbox"
+          },
+          "Geo": {
+            "id": "d202d718-1931-49c0-92bf-51f2be4157f9",
+            "type": "drop_down"
+          },
+          "CPL $": {
+            "id": "dfcc9bb4-e553-4c11-b8ac-6122f3b9ba40",
+            "type": "currency"
+          },
+          "Next Action": {
+            "id": "e5f3826f-6b06-48b0-95ac-85d8d27508a0",
+            "type": "short_text"
+          },
+          "Deal Terms / $": {
+            "id": "e85cb13f-e5b5-4748-8735-bb3ebcec072e",
+            "type": "text"
+          },
+          "Proof": {
+            "id": "e8e16242-7885-4aa1-8d98-d7564f5b2dfe",
+            "type": "short_text"
+          },
+          "Spend $": {
+            "id": "f07c8250-8c29-4c6b-a3c0-e45cfde6adc2",
+            "type": "currency"
+          },
+          "Niche": {
+            "id": "f09430cd-5239-41a7-9973-e9ef403456d9",
+            "type": "short_text"
+          },
+          "Hypothesis": {
+            "id": "f0c6dc0f-55c4-4a74-9da7-f7044d54effb",
+            "type": "tasks"
+          },
+          "Next Action Date": {
+            "id": "f72d5428-0c2e-4a5c-82f1-07ca2741d3c3",
+            "type": "date"
+          }
+        },
+        "views": {
+          "Pipeline": {
+            "id": "2kyd7945-4574",
+            "type": "list"
+          },
+          "Awaiting Reply": {
+            "id": "2kyd7945-4594",
+            "type": "list"
+          },
+          "Booked & Live": {
+            "id": "2kyd7945-4614",
+            "type": "list"
+          },
+          "Top ROI": {
+            "id": "2kyd7945-4634",
+            "type": "list"
+          }
+        },
+        "sample_tasks": {
+          "[SAMPLE] Raleigh micro-influencer — $50 booked post test": {
+            "id": "86baghaw0",
+            "url": "https://app.clickup.com/t/86baghaw0"
+          }
+        }
+      },
+      "Activity Log": {
+        "id": "901417374445",
+        "url": "https://app.clickup.com/90141074565/v/l/li/901417374445",
+        "folder": "03 Demand & Outreach",
+        "desired_statuses": [
+          "Planned",
+          "Logged",
+          "Follow-up Needed",
+          "Converted",
+          "Done"
+        ],
+        "actual_statuses": [
+          "to do",
+          "complete"
+        ],
+        "custom_fields": {
+          "Feedback Status": {
+            "id": "1b320b35-ed8a-413f-bbc7-f5f1fc6f421a",
+            "type": "drop_down"
+          },
+          "Activity Type": {
+            "id": "33779465-fe37-46dc-ada1-01f274e8f1d8",
+            "type": "drop_down"
+          },
+          "Follower Delta": {
+            "id": "34cd3cac-a085-4134-ba1d-4c813e79a89f",
+            "type": "number"
+          },
+          "Calls Made": {
+            "id": "35b65a3c-b63a-4ff3-8b63-1587012c9e9b",
+            "type": "number"
+          },
+          "Communities Posted In": {
+            "id": "40671814-058b-4546-bbfb-b5d9e62c8347",
+            "type": "number"
+          },
+          "Outcome #": {
+            "id": "5b97752d-bd09-4fa5-a23f-f059f82ba8c4",
+            "type": "number"
+          },
+          "Posts Shipped": {
+            "id": "641629e4-adf5-47f0-a2ba-de3881da1d16",
+            "type": "number"
+          },
+          "Meetings Set": {
+            "id": "64a2bb7c-5893-4f6e-a853-c4bd782c1199",
+            "type": "number"
+          },
+          "Channel": {
+            "id": "8836886b-e4a4-41f2-9a3c-fbe94f2ca849",
+            "type": "drop_down"
+          },
+          "Role": {
+            "id": "93c5ee64-9a4e-491c-85e4-6ffc912fe0b5",
+            "type": "drop_down"
+          },
+          "Replies": {
+            "id": "974fe34b-bd34-4ce2-9b09-839695d73b4a",
+            "type": "number"
+          },
+          "Feedback": {
+            "id": "a3c59da4-9744-4a94-ad73-2ff636732b90",
+            "type": "text"
+          },
+          "Script Version": {
+            "id": "a6c9deb2-9aef-4ae2-97ba-1c8c20497178",
+            "type": "short_text"
+          },
+          "Owner": {
+            "id": "b77c9515-ba71-42e0-8bfc-203d00b0e9f8",
+            "type": "short_text"
+          },
+          "Funnel Stage": {
+            "id": "c917e5d6-3b2d-43a6-b087-d311706eb855",
+            "type": "drop_down"
+          },
+          "Geo": {
+            "id": "d202d718-1931-49c0-92bf-51f2be4157f9",
+            "type": "drop_down"
+          },
+          "Emails Sent": {
+            "id": "dab1fb68-0aac-48ef-be7b-053c1df403d1",
+            "type": "number"
+          },
+          "Connects": {
+            "id": "de4f0595-8a54-4d57-b6c9-fa26b6f36074",
+            "type": "number"
+          },
+          "DMs Sent": {
+            "id": "e526b405-6332-44bb-887e-3a7121b0b757",
+            "type": "number"
+          },
+          "Notes": {
+            "id": "e7837227-a13e-4b8d-a4a9-2b65047ad0b0",
+            "type": "text"
+          },
+          "Proof": {
+            "id": "e8e16242-7885-4aa1-8d98-d7564f5b2dfe",
+            "type": "short_text"
+          },
+          "Spend $": {
+            "id": "f07c8250-8c29-4c6b-a3c0-e45cfde6adc2",
+            "type": "currency"
+          },
+          "Hypothesis": {
+            "id": "f0c6dc0f-55c4-4a74-9da7-f7044d54effb",
+            "type": "tasks"
+          },
+          "Comments/DMs Sent": {
+            "id": "f1541727-74db-4108-9cfd-4e219b27a7b2",
+            "type": "number"
+          }
+        },
+        "views": {
+          "Activity Rollup": {
+            "id": "2kyd7945-4654",
+            "type": "list"
+          },
+          "Cold Outreach": {
+            "id": "2kyd7945-4674",
+            "type": "list"
+          },
+          "Social/Community": {
+            "id": "2kyd7945-4694",
+            "type": "list"
+          },
+          "By Person": {
+            "id": "2kyd7945-4714",
+            "type": "list"
+          }
+        },
+        "sample_tasks": {
+          "[SAMPLE] Cold outreach daily log — Raleigh supply": {
+            "id": "86baghaw9",
+            "url": "https://app.clickup.com/t/86baghaw9"
+          }
+        }
+      },
+      "Content Production": {
+        "id": "901417374446",
+        "url": "https://app.clickup.com/90141074565/v/l/li/901417374446",
+        "folder": "04 Content Engine",
+        "desired_statuses": [
+          "Brief (Aaron)",
+          "AI Draft (ChatGPT)",
+          "Human Edit",
+          "SEO/Brand Check",
+          "Imagery Sourced",
+          "Seth Approve",
+          "Uploaded/Published",
+          "Measured"
+        ],
+        "actual_statuses": [
+          "to do",
+          "complete"
+        ],
+        "custom_fields": {
+          "Feedback Status": {
+            "id": "1b320b35-ed8a-413f-bbc7-f5f1fc6f421a",
+            "type": "drop_down"
+          },
+          "Format": {
+            "id": "36906d7e-64fa-4660-859a-5340f7daa695",
+            "type": "drop_down"
+          },
+          "Image Source": {
+            "id": "40480c1c-7168-4e44-9498-e77eb74aca85",
+            "type": "drop_down"
+          },
+          "Outcome #": {
+            "id": "5b97752d-bd09-4fa5-a23f-f059f82ba8c4",
+            "type": "number"
+          },
+          "Word Count": {
+            "id": "7a72c7de-7c6d-4fc9-b1ba-66e563538c61",
+            "type": "number"
+          },
+          "Tracked Link": {
+            "id": "7e4ff013-2030-4e3a-bbf4-29a33b9f0b58",
+            "type": "short_text"
+          },
+          "Image URLs": {
+            "id": "810b6d25-06d5-4763-b816-ef618c8be721",
+            "type": "text"
+          },
+          "Channel": {
+            "id": "8836886b-e4a4-41f2-9a3c-fbe94f2ca849",
+            "type": "drop_down"
+          },
+          "Target Keyword": {
+            "id": "88b5c9fb-d0de-47da-aedf-07e044e088ba",
+            "type": "short_text"
+          },
+          "CMS/Post URL": {
+            "id": "8f578964-ab88-443d-baaf-01abb12bf62c",
+            "type": "short_text"
+          },
+          "Role": {
+            "id": "93c5ee64-9a4e-491c-85e4-6ffc912fe0b5",
+            "type": "drop_down"
+          },
+          "Feedback": {
+            "id": "a3c59da4-9744-4a94-ad73-2ff636732b90",
+            "type": "text"
+          },
+          "Owner": {
+            "id": "b77c9515-ba71-42e0-8bfc-203d00b0e9f8",
+            "type": "short_text"
+          },
+          "Funnel Stage": {
+            "id": "c917e5d6-3b2d-43a6-b087-d311706eb855",
+            "type": "drop_down"
+          },
+          "Geo": {
+            "id": "d202d718-1931-49c0-92bf-51f2be4157f9",
+            "type": "drop_down"
+          },
+          "Performance": {
+            "id": "e42d282d-d297-4436-ae66-a3680cafe0f6",
+            "type": "text"
+          },
+          "Proof": {
+            "id": "e8e16242-7885-4aa1-8d98-d7564f5b2dfe",
+            "type": "short_text"
+          },
+          "Publish Date": {
+            "id": "e977e92f-5065-4fde-91ca-272da93672cb",
+            "type": "date"
+          },
+          "AI Prompt Used": {
+            "id": "ed5178ce-00d5-4cc7-8a7f-cadc79cfd954",
+            "type": "text"
+          },
+          "Spend $": {
+            "id": "f07c8250-8c29-4c6b-a3c0-e45cfde6adc2",
+            "type": "currency"
+          },
+          "Hypothesis": {
+            "id": "f0c6dc0f-55c4-4a74-9da7-f7044d54effb",
+            "type": "tasks"
+          }
+        },
+        "views": {
+          "Production Queue": {
+            "id": "2kyd7945-4734",
+            "type": "list"
+          },
+          "Awaiting AI Draft": {
+            "id": "2kyd7945-4754",
+            "type": "list"
+          },
+          "Awaiting Seth Approval": {
+            "id": "2kyd7945-4774",
+            "type": "list"
+          },
+          "Needs Imagery": {
+            "id": "2kyd7945-4794",
+            "type": "list"
+          },
+          "Published Library": {
+            "id": "2kyd7945-4814",
+            "type": "list"
+          },
+          "Content Calendar": {
+            "id": "2kyd7945-4834",
+            "type": "calendar"
+          },
+          "Social Calendar": {
+            "id": "2kyd7945-4854",
+            "type": "calendar"
+          },
+          "Asset Library": {
+            "id": "2kyd7945-4874",
+            "type": "list"
+          }
+        },
+        "sample_tasks": {
+          "[SAMPLE] Social video — Lagos creator onboarding reel": {
+            "id": "86baghaw2",
+            "url": "https://app.clickup.com/t/86baghaw2"
+          }
+        }
+      },
+      "Product Growth Requests": {
+        "id": "901417374447",
+        "url": "https://app.clickup.com/90141074565/v/l/li/901417374447",
+        "folder": "05 Ops",
+        "desired_statuses": [
+          "Request",
+          "Spec needed",
+          "Prioritized",
+          "Sent to GitHub",
+          "In progress",
+          "QA",
+          "Shipped",
+          "Measured"
+        ],
+        "actual_statuses": [
+          "to do",
+          "complete"
+        ],
+        "custom_fields": {
+          "Feedback Status": {
+            "id": "1b320b35-ed8a-413f-bbc7-f5f1fc6f421a",
+            "type": "drop_down"
+          },
+          "Success metric": {
+            "id": "2e928e8d-2d59-4cc9-aa64-a557156469cc",
+            "type": "short_text"
+          },
+          "Business impact": {
+            "id": "3c6b2d25-e1fb-46eb-9f8c-3031ec9e343e",
+            "type": "text"
+          },
+          "Outcome #": {
+            "id": "5b97752d-bd09-4fa5-a23f-f059f82ba8c4",
+            "type": "number"
+          },
+          "MVP scope": {
+            "id": "6da92528-52b4-4ed8-90f5-e240bcef6ceb",
+            "type": "text"
+          },
+          "Pain (with evidence)": {
+            "id": "75c900fa-5b3c-4f1c-906f-8efa4bc61991",
+            "type": "text"
+          },
+          "Channel": {
+            "id": "8836886b-e4a4-41f2-9a3c-fbe94f2ca849",
+            "type": "drop_down"
+          },
+          "GitHub link": {
+            "id": "891b942b-e3f3-4114-8429-a7554adffb4b",
+            "type": "short_text"
+          },
+          "Role": {
+            "id": "93c5ee64-9a4e-491c-85e4-6ffc912fe0b5",
+            "type": "drop_down"
+          },
+          "Feedback": {
+            "id": "a3c59da4-9744-4a94-ad73-2ff636732b90",
+            "type": "text"
+          },
+          "Funnel Stage": {
+            "id": "c917e5d6-3b2d-43a6-b087-d311706eb855",
+            "type": "drop_down"
+          },
+          "Proposed solution": {
+            "id": "cd24834e-ac39-41cc-b201-fff978e00027",
+            "type": "text"
+          },
+          "Geo": {
+            "id": "d202d718-1931-49c0-92bf-51f2be4157f9",
+            "type": "drop_down"
+          },
+          "Proof": {
+            "id": "e8e16242-7885-4aa1-8d98-d7564f5b2dfe",
+            "type": "short_text"
+          },
+          "Spend $": {
+            "id": "f07c8250-8c29-4c6b-a3c0-e45cfde6adc2",
+            "type": "currency"
+          },
+          "Hypothesis": {
+            "id": "f0c6dc0f-55c4-4a74-9da7-f7044d54effb",
+            "type": "tasks"
+          },
+          "Current workaround": {
+            "id": "fcfdc90e-b91e-4dca-8ad7-c3417fb2cfe7",
+            "type": "text"
+          }
+        },
+        "views": {
+          "Request Intake": {
+            "id": "2kyd7945-4894",
+            "type": "list"
+          },
+          "Prioritized": {
+            "id": "2kyd7945-4914",
+            "type": "list"
+          },
+          "In Engineering": {
+            "id": "2kyd7945-4934",
+            "type": "list"
+          },
+          "Shipped + Measuring": {
+            "id": "2kyd7945-4954",
+            "type": "list"
+          }
+        },
+        "sample_tasks": {
+          "[SAMPLE] Growth blocker — creator page setup friction evidence": {
+            "id": "86baghaw6",
+            "url": "https://app.clickup.com/t/86baghaw6"
+          }
+        }
+      },
+      "Standups": {
+        "id": "901417374448",
+        "url": "https://app.clickup.com/90141074565/v/l/li/901417374448",
+        "folder": "06 Feedback & Re-direct",
+        "desired_statuses": [
+          "Open",
+          "Blocked",
+          "Needs Attention",
+          "Done"
+        ],
+        "actual_statuses": [
+          "to do",
+          "complete"
+        ],
+        "custom_fields": {
+          "Feedback Status": {
+            "id": "1b320b35-ed8a-413f-bbc7-f5f1fc6f421a",
+            "type": "drop_down"
+          },
+          "Standup Date": {
+            "id": "39887ed5-4899-44eb-89cf-372b825735c8",
+            "type": "date"
+          },
+          "Outcome #": {
+            "id": "5b97752d-bd09-4fa5-a23f-f059f82ba8c4",
+            "type": "number"
+          },
+          "Person": {
+            "id": "7f536c74-b381-4abf-ad8a-34d429244d0f",
+            "type": "drop_down"
+          },
+          "Channel": {
+            "id": "8836886b-e4a4-41f2-9a3c-fbe94f2ca849",
+            "type": "drop_down"
+          },
+          "Blocked": {
+            "id": "8d5c5c8b-0a54-4300-95ba-0cd0b0267051",
+            "type": "text"
+          },
+          "Role": {
+            "id": "93c5ee64-9a4e-491c-85e4-6ffc912fe0b5",
+            "type": "drop_down"
+          },
+          "Feedback": {
+            "id": "a3c59da4-9744-4a94-ad73-2ff636732b90",
+            "type": "text"
+          },
+          "Need": {
+            "id": "bccfcec5-671a-4ddd-aca1-633baa9f2905",
+            "type": "text"
+          },
+          "Funnel Stage": {
+            "id": "c917e5d6-3b2d-43a6-b087-d311706eb855",
+            "type": "drop_down"
+          },
+          "Geo": {
+            "id": "d202d718-1931-49c0-92bf-51f2be4157f9",
+            "type": "drop_down"
+          },
+          "Proof": {
+            "id": "e8e16242-7885-4aa1-8d98-d7564f5b2dfe",
+            "type": "short_text"
+          },
+          "Spend $": {
+            "id": "f07c8250-8c29-4c6b-a3c0-e45cfde6adc2",
+            "type": "currency"
+          },
+          "Hypothesis": {
+            "id": "f0c6dc0f-55c4-4a74-9da7-f7044d54effb",
+            "type": "tasks"
+          },
+          "Shipped": {
+            "id": "fd0090af-ae65-4998-b58d-02590c26d370",
+            "type": "text"
+          }
+        },
+        "views": {
+          "Today": {
+            "id": "2kyd7945-4974",
+            "type": "list"
+          },
+          "Needs Attention": {
+            "id": "2kyd7945-4994",
+            "type": "list"
+          },
+          "By Person": {
+            "id": "2kyd7945-5014",
+            "type": "list"
+          },
+          "Re-direct Queue": {
+            "id": "2kyd7945-5034",
+            "type": "list"
+          }
+        },
+        "sample_tasks": {
+          "[SAMPLE] Standup — Aaron — daily shipped/blocked/need": {
+            "id": "86baghaw8",
+            "url": "https://app.clickup.com/t/86baghaw8"
+          }
+        }
+      },
+      "Spend Ledger": {
+        "id": "901417374449",
+        "url": "https://app.clickup.com/90141074565/v/l/li/901417374449",
+        "folder": "05 Ops",
+        "desired_statuses": [
+          "Planned",
+          "Committed",
+          "Paid"
+        ],
+        "actual_statuses": [
+          "to do",
+          "complete"
+        ],
+        "custom_fields": {
+          "Promo Code": {
+            "id": "0a9fbe54-3183-4d3d-b6b9-dd018378d96c",
+            "type": "short_text"
+          },
+          "Feedback Status": {
+            "id": "1b320b35-ed8a-413f-bbc7-f5f1fc6f421a",
+            "type": "drop_down"
+          },
+          "Outcome #": {
+            "id": "5b97752d-bd09-4fa5-a23f-f059f82ba8c4",
+            "type": "number"
+          },
+          "Linked To": {
+            "id": "738b63f1-37da-4708-ae87-0a85a9cb133e",
+            "type": "tasks"
+          },
+          "Period/Date": {
+            "id": "750780ce-7bdf-4a15-b9e9-ef3dfbaf90bd",
+            "type": "date"
+          },
+          "Channel": {
+            "id": "8836886b-e4a4-41f2-9a3c-fbe94f2ca849",
+            "type": "drop_down"
+          },
+          "Role": {
+            "id": "93c5ee64-9a4e-491c-85e4-6ffc912fe0b5",
+            "type": "drop_down"
+          },
+          "Type": {
+            "id": "a1f1043b-f9be-417f-a282-f73d2b1cf998",
+            "type": "drop_down"
+          },
+          "Feedback": {
+            "id": "a3c59da4-9744-4a94-ad73-2ff636732b90",
+            "type": "text"
+          },
+          "Owner": {
+            "id": "b77c9515-ba71-42e0-8bfc-203d00b0e9f8",
+            "type": "short_text"
+          },
+          "Funnel Stage": {
+            "id": "c917e5d6-3b2d-43a6-b087-d311706eb855",
+            "type": "drop_down"
+          },
+          "Amount $": {
+            "id": "ca4aa273-2c86-4326-8beb-9207c71a0f88",
+            "type": "currency"
+          },
+          "Geo": {
+            "id": "d202d718-1931-49c0-92bf-51f2be4157f9",
+            "type": "drop_down"
+          },
+          "Notes": {
+            "id": "e7837227-a13e-4b8d-a4a9-2b65047ad0b0",
+            "type": "text"
+          },
+          "Proof": {
+            "id": "e8e16242-7885-4aa1-8d98-d7564f5b2dfe",
+            "type": "short_text"
+          },
+          "Spend $": {
+            "id": "f07c8250-8c29-4c6b-a3c0-e45cfde6adc2",
+            "type": "currency"
+          },
+          "Hypothesis": {
+            "id": "f0c6dc0f-55c4-4a74-9da7-f7044d54effb",
+            "type": "tasks"
+          }
+        },
+        "views": {
+          "By Channel": {
+            "id": "2kyd7945-5054",
+            "type": "table"
+          },
+          "By Type": {
+            "id": "2kyd7945-5074",
+            "type": "table"
+          },
+          "This Month": {
+            "id": "2kyd7945-5094",
+            "type": "table"
+          },
+          "Planned vs Paid": {
+            "id": "2kyd7945-5114",
+            "type": "table"
+          },
+          "Daily Ad Spend": {
+            "id": "2kyd7945-5134",
+            "type": "calendar"
+          }
+        },
+        "sample_tasks": {
+          "[SAMPLE] Daily ad row — Meta Ads Lagos campaign — Planned $5": {
+            "id": "86baghaw4",
+            "url": "https://app.clickup.com/t/86baghaw4"
+          },
+          "[SAMPLE] Influencer deal row — booked creator promo": {
+            "id": "86baghaw5",
+            "url": "https://app.clickup.com/t/86baghaw5"
+          }
+        }
+      }
+    },
+    "docs": {
+      "Growth OS mirror": {
+        "id": "2kyd7945-5154",
+        "parent_folder": "00 Command",
+        "url": "https://app.clickup.com/90141074565/docs/2kyd7945-5154",
+        "stage0_page_id": "2kyd7945-3794"
+      },
+      "Channel Playbooks": {
+        "id": "2kyd7945-5174",
+        "parent_folder": "05 Ops",
+        "url": "https://app.clickup.com/90141074565/docs/2kyd7945-5174",
+        "stage0_page_id": "2kyd7945-3814"
+      },
+      "Sales Script + Venue Onboarding SOP": {
+        "id": "2kyd7945-5194",
+        "parent_folder": "05 Ops",
+        "url": "https://app.clickup.com/90141074565/docs/2kyd7945-5194",
+        "stage0_page_id": "2kyd7945-3834"
+      },
+      "Messaging Baseline": {
+        "id": "2kyd7945-5214",
+        "parent_folder": "05 Ops",
+        "url": "https://app.clickup.com/90141074565/docs/2kyd7945-5214",
+        "stage0_page_id": "2kyd7945-3854"
+      },
+      "Brand Voice + Asset Guidelines": {
+        "id": "2kyd7945-5234",
+        "parent_folder": "05 Ops",
+        "url": "https://app.clickup.com/90141074565/docs/2kyd7945-5234",
+        "stage0_page_id": "2kyd7945-3874"
+      },
+      "Link-Builder & UTM Standard": {
+        "id": "2kyd7945-5254",
+        "parent_folder": "05 Ops",
+        "url": "https://app.clickup.com/90141074565/docs/2kyd7945-5254",
+        "stage0_page_id": "2kyd7945-3894"
+      },
+      "Weekly Sprint Notes": {
+        "id": "2kyd7945-5274",
+        "parent_folder": "00 Command",
+        "url": "https://app.clickup.com/90141074565/docs/2kyd7945-5274",
+        "stage0_page_id": "2kyd7945-3914"
+      },
+      "How the System Works": {
+        "id": "2kyd7945-5294",
+        "parent_folder": "00 Command",
+        "url": "https://app.clickup.com/90141074565/docs/2kyd7945-5294",
+        "stage0_page_id": "2kyd7945-3934"
+      },
+      "Mingla Growth AI Playbooks": {
+        "id": "2kyd7945-5314",
+        "parent_folder": "05 Ops",
+        "url": "https://app.clickup.com/90141074565/docs/2kyd7945-5314",
+        "stage0_page_id": "2kyd7945-3954"
+      }
+    },
+    "goals": {
+      "Mingla Growth — 6-Month North Star": {
+        "id": "43992362-a58f-4961-a657-0dc21749718b",
+        "url": "https://app.clickup.com/90141074565/goals/1"
+      },
+      "Mingla Growth — 90-Day Acquisition": {
+        "id": "07f09dcc-ebb0-4e09-ad22-793d4c75ab02",
+        "url": "https://app.clickup.com/90141074565/goals/2"
+      },
+      "Mingla Growth — Monthly Theme": {
+        "id": "6200c6a3-4024-4afb-bd0f-f7604db4d35d",
+        "url": "https://app.clickup.com/90141074565/goals/3"
+      },
+      "Mingla Growth — Weekly Sprint Goal": {
+        "id": "05698178-95f8-4c44-8a4f-e73761bdf8db",
+        "url": "https://app.clickup.com/90141074565/goals/4"
+      }
+    },
+    "webhooks": {
+      "taskCreated": {
+        "id": "f7d05983-3394-44f6-859f-4f873a702880",
+        "endpoint": "https://example.com/mingla-growth-worker-placeholder",
+        "events": [
+          "taskCreated"
+        ]
+      },
+      "taskUpdated": {
+        "id": "0cfd9600-1c5e-4c90-b145-1d3f0080a416",
+        "endpoint": "https://example.com/mingla-growth-worker-placeholder",
+        "events": [
+          "taskUpdated"
+        ]
+      },
+      "taskStatusUpdated": {
+        "id": "59ed32a6-fab2-495b-acc8-3fa974a54994",
+        "endpoint": "https://example.com/mingla-growth-worker-placeholder",
+        "events": [
+          "taskStatusUpdated"
+        ]
+      },
+      "taskCommentPosted": {
+        "id": "1425d5ce-5319-4d8d-9ab1-03bb7e599960",
+        "endpoint": "https://example.com/mingla-growth-worker-placeholder",
+        "events": [
+          "taskCommentPosted"
+        ]
+      }
+    },
+    "native_automations_created": 0,
+    "placeholder_worker_url": "https://example.com/mingla-growth-worker-placeholder",
+    "custom_field_strategy": "Replicated the 10 global custom fields onto each Stage-0 task list because public API does not expose reusable space-level/global field attachment.",
+    "desired_global_fields": [
+      "Role",
+      "Funnel Stage",
+      "Channel",
+      "Geo",
+      "Hypothesis",
+      "Spend $",
+      "Outcome #",
+      "Proof",
+      "Feedback",
+      "Feedback Status"
+    ],
+    "channel_options": [
+      "Website — Blog Posts",
+      "Website — Guides",
+      "Website — Landing Pages",
+      "Reddit",
+      "Quora",
+      "Instagram",
+      "Facebook",
+      "Threads",
+      "TikTok",
+      "X",
+      "Snapchat",
+      "Influencer Marketing",
+      "Local Blogs Marketing",
+      "Local Communities (Telegram & WhatsApp)",
+      "Cold Calling",
+      "Cold DMing",
+      "Cold Emailing",
+      "Search Ads",
+      "Meta Ads",
+      "TikTok Ads",
+      "Reddit Ads",
+      "Snapchat Ads"
+    ],
+    "geo_options": [
+      "Raleigh",
+      "Cary",
+      "Durham",
+      "DC",
+      "New York",
+      "Lagos"
+    ]
+  },
+  "google_drive": {
+    "root": {
+      "name": "Mingla Growth",
+      "id": "1y2UWGCfvp5tRH3E1yk7fi7a6cTIAjShf",
+      "url": "https://drive.google.com/drive/folders/1y2UWGCfvp5tRH3E1yk7fi7a6cTIAjShf",
+      "parent_url": "https://drive.google.com/drive/folders/1TeVcKi8SrpXbU8lSgaJQZvU-iMIPihVX"
+    },
+    "folders": {
+      "Brand Assets": {
+        "id": "11plzU3TTrl6TA4xVElZp5eYsEmLJTALt"
+      },
+      "City Launches": {
+        "id": "1NApai7kQBZI35zWSGKxoLxslnP97-N2R"
+      },
+      "Creator Onboarding": {
+        "id": "1Szr0IDjD4DWFyHb9oiUHiwjlO7IAisRB"
+      },
+      "Campaigns": {
+        "id": "1cvWo19h_Rug_lqjhAGqQeJdTv6vHAceE"
+      },
+      "Reports": {
+        "id": "1wBoWaK6NfnMzzG50N5oEo52-bi4s0YBp"
+      }
+    },
+    "city_launches": {
+      "Lagos": "1jXzSmyZR2cK4bBIjDfnVgCJePlDHf2Rd",
+      "Raleigh": "198nRwt7Sz9URv0EhPCzy0aIl88jE5qmZ",
+      "Cary": "1_OioBGeANw4QC_5GkULct3r47xEUUScc",
+      "Durham": "1AmXaqGH2q9Kr6TNVd4ghLgQLWf4vCQfJ",
+      "DC": "1x6A6y0aLlckZVigIGHAOmb1jEALfABJs",
+      "New York": "1Z551c0weuifjVWfNeLJshmK-0xZn65rt"
+    },
+    "creator_template": {
+      "root": "1mGuFODCMQrSHoOMjhoxP0keAsm7HeU4G",
+      "folders": {
+        "Event Assets": "1WUhYdaotHUeotmBx5WOmdU1bbYKKqOgP",
+        "Copy": "18t-EtRTzsyN7rIgbcXryC0ZHUOUs_Ldq",
+        "Design": "1iwzYxjv7Ml7DtIPknEzw9GeJryEg4HnD",
+        "Videos": "1KqKQrF5jggddjOPsGGfzfhN6fFgGo0cc",
+        "Published Links": "11RM97U8okLy5mLhrvLlIxsJkRTAemwSp",
+        "Results": "1TFSjgFEkCE233q8geXv-iYQaxA1hf-AP"
+      }
+    }
+  },
+  "created": {
+    "google_drive_folders": 19,
+    "clickup_spaces": 1,
+    "clickup_folders": 7,
+    "clickup_lists": 10,
+    "custom_fields": 193,
+    "views": 50,
+    "docs": 9,
+    "doc_pages": 9,
+    "goals": 4,
+    "webhooks": 4,
+    "sample_tasks": 13
+  },
+  "skipped": {
+    "duplicates_avoided": "Objects were checked by name/parent before creation. The second reconciliation pass skipped the first 9 views that were already created before the interrupted first run.",
+    "views": 9
+  },
+  "updated": {
+  },
+  "limitations": [
+    "ClickUp public API exposes list.status as color and does not expose an endpoint to create/edit custom workflow statuses. Lists were created with desired exact status strings in list descriptions and manifest; a ClickUp UI pass or future API endpoint is required to apply them.",
+    "Native ClickUp automations intentionally not built. The four webhooks are the Stage-0 automation surface.",
+    "Custom-field values were not set on sample tasks to avoid consuming Free-plan custom-field-use quota; field schemas exist on lists."
+  ],
+  "errors": [
+
+  ],
+  "sources": [
+    "Mingla_Artifacts/specs/SPEC_META-ORCH-1160_CLICKUP_DRIVE_BUILD.md",
+    "Mingla_Roadmap/living/GROWTH_TEAM_CLICKUP_SYSTEM.md",
+    "Mingla_Roadmap/living/GROWTH_90DAY_ACQUISITION_PLAN.md",
+    "Mingla_Roadmap/living/GROWTH_TEAM_SOPS.md",
+    "Mingla_Roadmap/living/GROWTH_OS.md"
+  ],
+  "review_route": "mingla-orchestrator for REVIEW; do not advance to Stage 2",
+  "verification": {
+    "list_count": 10,
+    "all_lists_have_global_fields": true,
+    "view_count": 50,
+    "doc_count": 9,
+    "webhook_count": 4,
+    "errors_count": 0,
+    "secret_scan": "No ClickUp token or master-key path found in manifest/report."
+  },
+  "list_descriptions_set": true,
+  "list_descriptions_updated_at": "2026-06-18T09:16:22Z",
+  "list_description_updates": [
+    {
+      "list_id": "901417374440",
+      "name": "Sprint Board",
+      "field_used": "content",
+      "before_bytes": 306,
+      "after_bytes": 318,
+      "verified_exact": true
+    },
+    {
+      "list_id": "901417374441",
+      "name": "Supply CRM",
+      "field_used": "content",
+      "before_bytes": 429,
+      "after_bytes": 441,
+      "verified_exact": true
+    },
+    {
+      "list_id": "901417374442",
+      "name": "Creator Onboarding",
+      "field_used": "content",
+      "before_bytes": 577,
+      "after_bytes": 589,
+      "verified_exact": true
+    },
+    {
+      "list_id": "901417374443",
+      "name": "Experiments",
+      "field_used": "content",
+      "before_bytes": 359,
+      "after_bytes": 371,
+      "verified_exact": true
+    },
+    {
+      "list_id": "901417374444",
+      "name": "Influencer CRM",
+      "field_used": "content",
+      "before_bytes": 343,
+      "after_bytes": 355,
+      "verified_exact": true
+    },
+    {
+      "list_id": "901417374445",
+      "name": "Activity Log",
+      "field_used": "content",
+      "before_bytes": 330,
+      "after_bytes": 342,
+      "verified_exact": true
+    },
+    {
+      "list_id": "901417374446",
+      "name": "Content Production",
+      "field_used": "content",
+      "before_bytes": 452,
+      "after_bytes": 464,
+      "verified_exact": true
+    },
+    {
+      "list_id": "901417374447",
+      "name": "Product Growth Requests",
+      "field_used": "content",
+      "before_bytes": 299,
+      "after_bytes": 311,
+      "verified_exact": true
+    },
+    {
+      "list_id": "901417374448",
+      "name": "Standups",
+      "field_used": "content",
+      "before_bytes": 267,
+      "after_bytes": 279,
+      "verified_exact": true
+    },
+    {
+      "list_id": "901417374449",
+      "name": "Spend Ledger",
+      "field_used": "content",
+      "before_bytes": 348,
+      "after_bytes": 360,
+      "verified_exact": true
+    }
+  ],
+  "manual_ui_steps": [
+    "Google Drive ClickApp toggle is a manual ClickUp UI step for Seth; not attempted via API."
+  ]
+}

@@ -1,0 +1,306 @@
+<!--
+  ORCH-1138 — PUBLIC TRIP PAGE REDESIGN
+  DIRECTION B — "BOARDING PASS"
+  THESIS: Make a trip feel like a trip, not a recycled event. A travel-native
+  layout: a compact hero, a perforated "boarding pass" summary card that
+  fuses dates + route + seats-left into one scannable artifact, and a
+  HORIZONTAL day-tab itinerary so multi-day trips read as a journey, not a
+  long scroll. Brand theming still drives every accent + the contrast-aware
+  page tone. ORCH-1130's payment toggle is the stub of the boarding pass —
+  the tear-off "fare" section — with the schedule projection as the
+  itinerary of payments. Floating bar mirrors the selected fare.
+
+  Self-contained. No external deps. Double-click to open.
+-->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>ORCH-1138 · Direction B — Boarding Pass</title>
+<style>
+  :root {
+    --accent: #0f766e; --page: #0a0f12; --paper: #11181c;
+    --primary: #ffffff; --secondary: rgba(255,255,255,0.75); --tertiary: rgba(255,255,255,0.52);
+    --card: rgba(255,255,255,0.06); --border: rgba(255,255,255,0.12);
+    --accent-wash: rgba(15,118,110,0.16); --accent-border: rgba(15,118,110,0.40);
+    --font: "Inter", system-ui, sans-serif;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; -webkit-font-smoothing: antialiased; }
+  body { font-family: var(--font); background: #07090b; color: var(--primary);
+    display: flex; flex-direction: column; align-items: center; min-height: 100vh; padding: 24px 16px 64px; }
+
+  .demo-bar { width: 430px; max-width: 100%; margin-bottom: 18px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; font-size: 12px; color: rgba(255,255,255,0.6); }
+  .demo-bar span { letter-spacing: 0.4px; text-transform: uppercase; font-weight: 700; font-size: 10px; }
+  .swatch { width: 30px; height: 30px; border-radius: 999px; border: 2px solid rgba(255,255,255,0.2); cursor: pointer; transition: transform .15s; }
+  .swatch:hover { transform: scale(1.1); }
+  .font-pick { margin-left: auto; background: #161a1f; color: #fff; border: 1px solid #2a2f36; border-radius: 8px; padding: 6px 8px; font-size: 12px; }
+
+  .phone { width: 430px; max-width: 100%; background: var(--page); border-radius: 38px; overflow: hidden;
+    box-shadow: 0 40px 120px rgba(0,0,0,0.6), 0 0 0 1px rgba(255,255,255,0.06); position: relative; }
+  .scroll { max-height: 880px; overflow-y: auto; scrollbar-width: none; }
+  .scroll::-webkit-scrollbar { display: none; }
+
+  /* HERO — compact band */
+  .hero { position: relative; width: 100%; height: 280px; overflow: hidden; background:#000; }
+  .hero img { width: 100%; height: 100%; object-fit: cover; }
+  .hero-overlay { position: absolute; inset: 0; background: linear-gradient(180deg, rgba(0,0,0,0.4) 0, rgba(0,0,0,0) 40%, var(--page) 100%); }
+  .chrome { position: absolute; top: 18px; left: 16px; right: 16px; display: flex; justify-content: space-between; z-index: 4; }
+  .chrome-btn { width: 40px; height: 40px; border-radius: 999px; background: rgba(0,0,0,0.5); backdrop-filter: blur(8px); display: grid; place-items: center; color:#fff; font-size: 20px; border: none; cursor: pointer; }
+  .hero-tag { position: absolute; bottom: 70px; left: 20px; right: 20px; z-index: 3; }
+  .hero-eyebrow { color: #fff; font-size: 11px; font-weight: 900; letter-spacing: 1.6px; text-transform: uppercase; opacity: 0.9; text-shadow: 0 1px 8px rgba(0,0,0,0.6); }
+  .hero-title { color: #fff; font-family: var(--font); font-size: 30px; font-weight: 900; line-height: 1.08; letter-spacing: -0.5px; margin-top: 6px; text-shadow: 0 2px 14px rgba(0,0,0,0.6); }
+
+  .pad { padding: 0 18px; }
+
+  /* BOARDING PASS card */
+  .pass { position: relative; margin: -42px 16px 0; background: var(--paper); border: 1px solid var(--border);
+    border-radius: 20px; z-index: 5; box-shadow: 0 24px 60px rgba(0,0,0,0.5); overflow: hidden; }
+  .pass-top { padding: 16px 18px; }
+  .pass-route { display: flex; align-items: center; gap: 12px; }
+  .pass-leg { flex: 1; min-width: 0; }
+  .pass-leg .lbl { font-size: 9px; font-weight: 800; letter-spacing: 1px; text-transform: uppercase; color: var(--tertiary); }
+  .pass-leg .code { font-size: 22px; font-weight: 900; letter-spacing: -0.5px; margin-top: 2px; }
+  .pass-leg .place { font-size: 11px; color: var(--secondary); }
+  .pass-mid { display: flex; flex-direction: column; align-items: center; color: var(--accent); }
+  .pass-mid .plane { font-size: 18px; }
+  .pass-mid .dur { font-size: 9px; font-weight: 700; color: var(--tertiary); letter-spacing: 0.5px; margin-top: 2px; }
+  .pass-line { height: 2px; flex: 1; background: repeating-linear-gradient(90deg, var(--accent) 0 6px, transparent 6px 12px); }
+  /* perforation */
+  .perf { position: relative; height: 1px; border-top: 2px dashed var(--border); margin: 0 14px; }
+  .perf::before, .perf::after { content: ""; position: absolute; top: -10px; width: 20px; height: 20px; border-radius: 999px; background: var(--page); }
+  .perf::before { left: -24px; } .perf::after { right: -24px; }
+  .pass-bottom { display: flex; padding: 14px 18px; gap: 10px; }
+  .pass-stat { flex: 1; }
+  .pass-stat .lbl { font-size: 9px; font-weight: 800; letter-spacing: 0.8px; text-transform: uppercase; color: var(--tertiary); }
+  .pass-stat .val { font-size: 14px; font-weight: 800; margin-top: 3px; }
+  .pass-stat .val.hot { color: var(--accent); }
+
+  /* Brand row */
+  .brand-row { display: flex; align-items: center; gap: 12px; margin: 20px 18px 0; background: var(--card);
+    border: 1px solid var(--border); border-radius: 14px; padding: 11px 13px; cursor: pointer; }
+  .brand-tile { width: 38px; height: 38px; border-radius: 999px; object-fit: cover; border: 2px solid rgba(255,255,255,0.2); }
+  .brand-kicker { font-size: 10px; font-weight: 800; letter-spacing: 1px; text-transform: uppercase; color: var(--tertiary); }
+  .brand-name { font-size: 14px; font-weight: 800; }
+  .brand-cta { margin-left: auto; color: var(--accent); font-size: 12px; font-weight: 800; }
+
+  .sec-title { font-family: var(--font); font-size: 18px; font-weight: 900; letter-spacing: -0.3px; margin: 26px 0 12px; }
+  .about { color: var(--secondary); font-size: 14.5px; line-height: 1.6; }
+  .read-more { color: var(--accent); font-weight: 700; font-size: 14px; margin-top: 8px; cursor: pointer; }
+
+  /* Horizontal day tabs */
+  .day-tabs { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 6px; scrollbar-width: none; }
+  .day-tabs::-webkit-scrollbar { display: none; }
+  .day-tab { flex-shrink: 0; min-width: 64px; text-align: center; background: var(--card); border: 1px solid var(--border);
+    border-radius: 12px; padding: 10px 12px; cursor: pointer; transition: all .15s; }
+  .day-tab.active { background: var(--accent); border-color: var(--accent); }
+  .day-tab .dt-ord { font-size: 9px; font-weight: 800; letter-spacing: 0.8px; text-transform: uppercase; color: var(--tertiary); }
+  .day-tab.active .dt-ord { color: rgba(255,255,255,0.85); }
+  .day-tab .dt-day { font-size: 18px; font-weight: 900; margin-top: 2px; }
+  .day-tab.active .dt-day { color: #fff; }
+  .day-panel { display: none; background: var(--card); border: 1px solid var(--border); border-radius: 16px; padding: 16px; margin-top: 12px; }
+  .day-panel.active { display: block; animation: fade .25s ease; }
+  @keyframes fade { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+  .dp-title { font-size: 16px; font-weight: 800; }
+  .dp-narr { font-size: 13.5px; line-height: 1.55; color: var(--secondary); margin-top: 8px; }
+  .dp-stops { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 12px; }
+  .stop { font-size: 11px; font-weight: 600; color: var(--secondary); background: var(--accent-wash); border: 1px solid var(--accent-border); border-radius: 999px; padding: 4px 9px; }
+
+  /* Inclusions two-col */
+  .incl-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 14px; margin-top: 6px; }
+  .incl { display: flex; gap: 8px; font-size: 13.5px; color: var(--secondary); align-items: flex-start; }
+  .incl .mk { font-weight: 900; font-size: 13px; flex-shrink: 0; }
+  .incl.yes .mk { color: var(--accent); }
+  .incl.no .mk { color: var(--tertiary); }
+  .incl.no { color: var(--tertiary); }
+
+  /* PAYMENT — the fare stub */
+  .fare { margin-top: 14px; background: var(--paper); border: 1px solid var(--accent-border); border-radius: 18px; overflow: hidden; }
+  .fare-head { padding: 14px 16px 0; }
+  .seg { display: flex; background: rgba(0,0,0,0.3); border-radius: 11px; padding: 4px; gap: 4px; border: 1px solid var(--border); }
+  .seg button { flex: 1; border: none; background: transparent; color: var(--secondary); font-family: var(--font); font-size: 13px; font-weight: 800; padding: 9px 6px; border-radius: 8px; cursor: pointer; transition: all .18s; }
+  .seg button.active { background: var(--accent); color: #fff; }
+  .fare-body { padding: 16px; }
+  .fare-amt-row { display: flex; align-items: baseline; gap: 8px; }
+  .fare-lbl { font-size: 10px; font-weight: 800; letter-spacing: 1px; text-transform: uppercase; color: var(--tertiary); }
+  .fare-amt { font-size: 30px; font-weight: 900; letter-spacing: -0.8px; }
+  .fare-sub { font-size: 12.5px; color: var(--secondary); margin-top: 4px; }
+  .sched { margin-top: 14px; border-top: 1px dashed var(--border); padding-top: 12px; display: none; }
+  .sched.show { display: block; }
+  .sr { display: flex; align-items: center; justify-content: space-between; padding: 8px 0; }
+  .sr + .sr { border-top: 1px dashed var(--border); }
+  .sr-when { display: flex; align-items: center; gap: 9px; font-size: 12.5px; color: var(--secondary); }
+  .sr-dot { width: 7px; height: 7px; border-radius: 999px; background: var(--accent); }
+  .sr-dot.f { background: rgba(255,255,255,0.3); }
+  .sr-amt { font-size: 13.5px; font-weight: 800; }
+  .sr-tag { font-size: 9px; font-weight: 800; text-transform: uppercase; color: var(--accent); margin-left: 6px; letter-spacing: 0.5px; }
+
+  .strip { display: flex; align-items: center; gap: 9px; margin: 12px 18px 0; background: var(--card); border: 1px solid var(--border); border-radius: 11px; padding: 11px 13px; font-size: 13px; color: var(--secondary); }
+  .strip .ic { color: var(--accent); font-weight: 900; }
+
+  .floating { position: absolute; left: 0; right: 0; bottom: 0; z-index: 6; padding: 14px 16px calc(14px + env(safe-area-inset-bottom)); background: linear-gradient(180deg, rgba(10,15,18,0) 0, var(--page) 38%); }
+  .reserve { display: flex; align-items: center; justify-content: space-between; gap: 12px; background: var(--accent); color: #fff; border: none; width: 100%; border-radius: 16px; padding: 15px 18px; cursor: pointer; box-shadow: 0 12px 34px var(--accent-wash); font-family: var(--font); }
+  .r-kicker { font-size: 11px; font-weight: 700; opacity: 0.85; }
+  .r-price { font-size: 18px; font-weight: 900; }
+  .r-cta { font-size: 15px; font-weight: 900; }
+
+  .spacer { height: 100px; }
+</style>
+</head>
+<body>
+  <div class="demo-bar">
+    <span>Brand theme</span>
+    <button class="swatch" style="background:#0f766e" onclick="setTheme('#0f766e','#0a0f12','dark')"></button>
+    <button class="swatch" style="background:#e11d48" onclick="setTheme('#e11d48','#120709','dark')"></button>
+    <button class="swatch" style="background:#9a7b00" onclick="setTheme('#9a7b00','#fbf7ea','light')"></button>
+    <button class="swatch" style="background:#2563eb" onclick="setTheme('#2563eb','#080c14','dark')"></button>
+    <select class="font-pick" onchange="document.documentElement.style.setProperty('--font', this.value)">
+      <option value="Inter, system-ui, sans-serif">Inter</option>
+      <option value="'Poppins', sans-serif">Poppins</option>
+      <option value="'Playfair Display', Georgia, serif">Playfair Display</option>
+      <option value="Georgia, serif">Serif</option>
+    </select>
+  </div>
+
+  <div class="phone">
+    <div class="scroll">
+      <div class="hero">
+        <img src="https://images.unsplash.com/photo-1533105079780-92b9be482077?w=900&q=80" alt="cover" />
+        <div class="hero-overlay"></div>
+        <div class="chrome"><button class="chrome-btn">&times;</button><button class="chrome-btn">&#8599;</button></div>
+        <div class="hero-tag">
+          <div class="hero-eyebrow">6 days · small group</div>
+          <div class="hero-title">Slow Mornings in the Amalfi Coast</div>
+        </div>
+      </div>
+
+      <!-- BOARDING PASS -->
+      <div class="pass">
+        <div class="pass-top">
+          <div class="pass-route">
+            <div class="pass-leg"><div class="lbl">From</div><div class="code">NAP</div><div class="place">Naples</div></div>
+            <div class="pass-line"></div>
+            <div class="pass-mid"><div class="plane">&#9992;</div><div class="dur">6 days</div></div>
+            <div class="pass-line"></div>
+            <div class="pass-leg" style="text-align:right"><div class="lbl">To</div><div class="code">PST</div><div class="place">Positano</div></div>
+          </div>
+        </div>
+        <div class="perf"></div>
+        <div class="pass-bottom">
+          <div class="pass-stat"><div class="lbl">Dates</div><div class="val">Sep 14–19</div></div>
+          <div class="pass-stat"><div class="lbl">Seats</div><div class="val hot">3 left · 12 max</div></div>
+          <div class="pass-stat"><div class="lbl">From</div><div class="val">&euro;2,450</div></div>
+        </div>
+      </div>
+
+      <div class="brand-row">
+        <img class="brand-tile" src="https://images.unsplash.com/photo-1517841905240-472988babdf9?w=200&q=80" alt="" />
+        <div><div class="brand-kicker">Presented by</div><div class="brand-name">Wander Collective</div></div>
+        <div class="brand-cta">View</div>
+      </div>
+
+      <div class="pad">
+        <div class="sec-title">About this trip</div>
+        <div class="about">Six unhurried days on the cliffs of the Amalfi Coast — lemon groves, hidden swimming coves, a private boat day to Capri, and dinners that go long past sunset. Small group, real pace.</div>
+        <div class="read-more">Read more</div>
+
+        <div class="sec-title">The journey</div>
+        <div class="day-tabs">
+          <div class="day-tab active" onclick="pickDay(1,this)"><div class="dt-ord">Day</div><div class="dt-day">1</div></div>
+          <div class="day-tab" onclick="pickDay(2,this)"><div class="dt-ord">Day</div><div class="dt-day">2</div></div>
+          <div class="day-tab" onclick="pickDay(3,this)"><div class="dt-ord">Day</div><div class="dt-day">3</div></div>
+          <div class="day-tab" onclick="pickDay(4,this)"><div class="dt-ord">Day</div><div class="dt-day">4</div></div>
+          <div class="day-tab" onclick="pickDay(5,this)"><div class="dt-ord">Day</div><div class="dt-day">5</div></div>
+          <div class="day-tab" onclick="pickDay(6,this)"><div class="dt-ord">Day</div><div class="dt-day">6</div></div>
+        </div>
+        <div class="day-panel active" data-day="1"><div class="dp-title">Arrive &amp; settle in Positano</div><div class="dp-narr">Private transfer from Naples, welcome aperitivo on the terrace, an easy walk to the beach as the light drops.</div><div class="dp-stops"><span class="stop">Welcome dinner</span><span class="stop">Terrace aperitivo</span></div></div>
+        <div class="day-panel" data-day="2"><div class="dp-title">Path of the Gods hike</div><div class="dp-narr">A guided cliffside hike with views to Capri, lunch at a family farmhouse along the trail.</div><div class="dp-stops"><span class="stop">Guided hike</span><span class="stop">Farmhouse lunch</span></div></div>
+        <div class="day-panel" data-day="3"><div class="dp-title">Private boat to Capri</div><div class="dp-narr">Charter the day around the Blue Grotto and quiet swimming coves, with a long seafood lunch on board.</div></div>
+        <div class="day-panel" data-day="4"><div class="dp-title">Lemon grove &amp; cooking class</div><div class="dp-narr">Morning at a working lemon farm, then a hands-on pasta and limoncello class for lunch.</div></div>
+        <div class="day-panel" data-day="5"><div class="dp-title">Free day in Ravello</div><div class="dp-narr">Optional gardens of Villa Cimbrone, or just a long lunch and a slow afternoon.</div></div>
+        <div class="day-panel" data-day="6"><div class="dp-title">Last morning &amp; transfer</div><div class="dp-narr">A final breakfast on the terrace before the private transfer back to Naples.</div></div>
+
+        <div class="sec-title">What's included</div>
+        <div class="incl-cols">
+          <div class="incl yes"><span class="mk">&#10003;</span> 5 nights cliffside hotel</div>
+          <div class="incl yes"><span class="mk">&#10003;</span> All breakfasts</div>
+          <div class="incl yes"><span class="mk">&#10003;</span> 3 group dinners</div>
+          <div class="incl yes"><span class="mk">&#10003;</span> Private Capri boat day</div>
+          <div class="incl no"><span class="mk">&times;</span> Intl flights</div>
+          <div class="incl no"><span class="mk">&times;</span> Travel insurance</div>
+        </div>
+
+        <div class="sec-title">Choose your fare</div>
+        <div class="fare">
+          <div class="fare-head">
+            <div class="seg">
+              <button id="seg-full" class="active" onclick="selectPlan('full')">Pay in full</button>
+              <button id="seg-plan" onclick="selectPlan('plan')">Pay over time</button>
+            </div>
+          </div>
+          <div class="fare-body">
+            <div id="amt-full">
+              <div class="fare-amt-row"><span class="fare-amt">&euro;2,450</span></div>
+              <div class="fare-sub">One payment, all-in. Taxes &amp; fees included.</div>
+            </div>
+            <div id="amt-plan" style="display:none">
+              <div class="fare-amt-row"><span class="fare-lbl">Due today</span><span class="fare-amt">&euro;612.50</span></div>
+              <div class="fare-sub">25% deposit now, then 3 monthly payments. &euro;2,450 total — no extra cost.</div>
+            </div>
+            <div id="sched" class="sched">
+              <div class="sr"><div class="sr-when"><span class="sr-dot"></span> Today<span class="sr-tag">Deposit</span></div><div class="sr-amt">&euro;612.50</div></div>
+              <div class="sr"><div class="sr-when"><span class="sr-dot f"></span> In 30 days</div><div class="sr-amt">&euro;612.50</div></div>
+              <div class="sr"><div class="sr-when"><span class="sr-dot f"></span> In 60 days</div><div class="sr-amt">&euro;612.50</div></div>
+              <div class="sr"><div class="sr-when"><span class="sr-dot f"></span> In 90 days</div><div class="sr-amt">&euro;612.50</div></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="strip"><span class="ic">&#10003;</span> Full refund up to 30 days before departure</div>
+      <div class="strip"><span class="ic">&#9201;</span> Bookings close in 9 days</div>
+
+      <div class="spacer"></div>
+    </div>
+
+    <div class="floating">
+      <button class="reserve">
+        <span><span class="r-kicker" id="bar-kicker">All-in, taxes included</span><br/><span class="r-price" id="bar-price">&euro;2,450</span></span>
+        <span class="r-cta">Reserve &rarr;</span>
+      </button>
+    </div>
+  </div>
+
+<script>
+  function setTheme(accent, page, mode) {
+    const r = document.documentElement.style; r.setProperty('--accent', accent); r.setProperty('--page', page);
+    const rgb = hexToRgb(accent);
+    r.setProperty('--accent-wash', `rgba(${rgb},0.16)`); r.setProperty('--accent-border', `rgba(${rgb},0.40)`);
+    if (mode === 'light') {
+      r.setProperty('--paper', '#ffffff'); r.setProperty('--primary', '#101420');
+      r.setProperty('--secondary', 'rgba(16,20,31,0.76)'); r.setProperty('--tertiary', 'rgba(16,20,31,0.54)');
+      r.setProperty('--card', 'rgba(0,0,0,0.04)'); r.setProperty('--border', 'rgba(0,0,0,0.10)');
+    } else {
+      r.setProperty('--paper', '#11181c'); r.setProperty('--primary', '#ffffff');
+      r.setProperty('--secondary', 'rgba(255,255,255,0.75)'); r.setProperty('--tertiary', 'rgba(255,255,255,0.52)');
+      r.setProperty('--card', 'rgba(255,255,255,0.06)'); r.setProperty('--border', 'rgba(255,255,255,0.12)');
+    }
+  }
+  function hexToRgb(hex){const n=parseInt(hex.slice(1),16);return `${(n>>16)&255},${(n>>8)&255},${n&255}`;}
+  function pickDay(d, el) {
+    document.querySelectorAll('.day-tab').forEach(t=>t.classList.remove('active')); el.classList.add('active');
+    document.querySelectorAll('.day-panel').forEach(p=>p.classList.toggle('active', p.dataset.day==d));
+  }
+  function selectPlan(which) {
+    const full = which === 'full';
+    document.getElementById('seg-full').classList.toggle('active', full);
+    document.getElementById('seg-plan').classList.toggle('active', !full);
+    document.getElementById('amt-full').style.display = full ? 'block' : 'none';
+    document.getElementById('amt-plan').style.display = full ? 'none' : 'block';
+    document.getElementById('sched').classList.toggle('show', !full);
+    document.getElementById('bar-kicker').innerHTML = full ? 'All-in, taxes included' : 'Due today · deposit';
+    document.getElementById('bar-price').innerHTML = full ? '&euro;2,450' : '&euro;612.50';
+  }
+</script>
+</body>
+</html>

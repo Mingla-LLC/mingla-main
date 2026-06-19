@@ -1,0 +1,873 @@
+<!--
+  ORCH-1138 — PUBLIC TRIP PAGE REDESIGN · DIRECTION A v2 "IMMERSIVE ITINERARY"
+  ===========================================================================
+  Approved aesthetic: Direction A (event-page parity — full-bleed hero, body
+  card overlapping the seam, brand color drives every accent, contrast-aware
+  light/dark page, brand font drives type, ORCH-1130 pay toggle + floating bar).
+
+  v2 ADDS:
+    (1) KITCHEN-SINK — every trip field a trip can actually carry is populated.
+    (2) TRUE RESPONSIVE — ONE file. Resize the window:
+          ≤ 1023px → PHONE: single-column immersive (Direction A unchanged).
+          ≥ 1024px → DESKTOP: re-architected 2-column shell — scrolling content
+                     left (cover / route / about / per-day itinerary / gallery /
+                     inclusions / map / policy), STICKY booking panel right
+                     (brand chip + payment toggle + schedule + price + reserve).
+                     Gallery uses the count-aware slider; hero takes a wide
+                     21:9 aspect; itinerary uses the full width.
+    (3) REAL PER-DAY ITINERARY — Day 1 / Day 2 / … each with its own media
+        gallery (image+video). NOTE (v3, 2026-06-14): the trip wizard does NOT
+        author timed stops, so per-day STOP rows have been REMOVED — a day now
+        renders ONLY its real fields: day number/title + narrative + media.
+    (4) GALLERY count-aware everywhere: 1 photo = full width, 2 = full-width
+        split, 3+ = horizontal scroll-snap slider (no awkward grids/orphans).
+
+  Self-contained, no deps. Open by double-clicking. Top demo bar:
+    · brand color swatches + font picker (theme engine)
+    · STATE toggles: Available / Deadline soon / Sold out / Bookings closed
+    · payment toggle (Pay in full / Pay over time)
+
+  Constitution rule 9 honored: only fields that EXIST in the model are rendered.
+  See DESIGN_ORCH-1138 §FIELD INVENTORY for the field→source map.
+-->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>ORCH-1138 · Direction A v2 — Responsive (phone ↔ desktop)</title>
+<style>
+  /* ================= THEME ENGINE (mirrors createThemePalette) ============= */
+  :root {
+    --accent: #0f766e;
+    --accent-strong: #0b5a54;
+    --accent-wash: rgba(15,118,110,0.18);
+    --page: #07100f;
+    --primary: #ffffff;
+    --secondary: rgba(255,255,255,0.78);
+    --tertiary: rgba(255,255,255,0.56);
+    --card: rgba(255,255,255,0.07);
+    --card-strong: rgba(255,255,255,0.10);
+    --border: rgba(255,255,255,0.14);
+    --accent-border: rgba(15,118,110,0.42);
+    --font: "Inter", system-ui, -apple-system, sans-serif;
+    --danger: #ef4444;
+    --danger-wash: rgba(239,68,68,0.14);
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; -webkit-font-smoothing: antialiased; }
+  html, body { height: 100%; }
+  body {
+    font-family: var(--font);
+    background:
+      radial-gradient(1400px 700px at 50% -160px, #1a1f24 0%, #0a0c0f 62%) fixed,
+      #0a0c0f;
+    color: var(--primary);
+    min-height: 100vh;
+  }
+
+  /* ================= DEMO CHROME (not part of the page) ==================== */
+  .demo-bar {
+    position: sticky; top: 0; z-index: 50;
+    display: flex; gap: 10px; align-items: center; flex-wrap: nowrap; overflow-x: auto;
+    padding: 10px 16px; background: rgba(10,12,15,0.92); backdrop-filter: blur(10px);
+    border-bottom: 1px solid rgba(255,255,255,0.08);
+    font-size: 12px; color: rgba(255,255,255,0.6);
+  }
+  .demo-bar .grp { display: flex; gap: 6px; align-items: center; }
+  .demo-bar .lbl { letter-spacing: 0.4px; text-transform: uppercase; font-weight: 800; font-size: 9px; color: rgba(255,255,255,0.45); }
+  .swatch { width: 26px; height: 26px; border-radius: 999px; border: 2px solid rgba(255,255,255,0.2); cursor: pointer; }
+  .swatch:hover { transform: scale(1.12); }
+  .font-pick, .state-pick { background: #161a1f; color: #fff; border: 1px solid #2a2f36; border-radius: 8px; padding: 6px 8px; font-size: 12px; }
+  .demo-sep { width: 1px; height: 22px; background: rgba(255,255,255,0.12); }
+  .vp-hint { margin-left: auto; font-size: 11px; opacity: 0.7; }
+  .vp-hint b { color: var(--accent); }
+
+  /* ================= SHELL (responsive container) ========================= */
+  /* PHONE default: one immersive column. DESKTOP (≥1024): 2-col grid. */
+  .stage { display: flex; justify-content: center; padding: 22px 16px 60px; }
+  .page {
+    width: 100%; max-width: 660px;
+    background: var(--page);
+    border-radius: 28px; overflow: hidden; position: relative;
+    box-shadow: 0 40px 120px rgba(0,0,0,0.55), 0 0 0 1px rgba(255,255,255,0.06);
+  }
+
+  /* ---- HERO ---- */
+  .hero { position: relative; width: 100%; aspect-ratio: 4 / 5; overflow: hidden; background: #000; }
+  .hero img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .hero-overlay {
+    position: absolute; inset: 0;
+    background: linear-gradient(180deg, rgba(0,0,0,0.40) 0%, rgba(0,0,0,0) 28%, var(--page) 100%);
+  }
+  /* hero spacer — flow placeholder equal to the (phone) pinned cover height so
+     the body starts below the cover, then scrolls UP over it. Hidden on desktop. */
+  .hero-spacer { display: none; }
+  .chrome { position: absolute; top: 18px; left: 16px; right: 16px; display: flex; align-items: flex-start; justify-content: space-between; z-index: 4; }
+  .chrome.cm { display: none; }   /* phone-only body-level chrome — hidden by default (desktop uses .cd) */
+  /* CHANGE (review v5 #3) — right cover-chrome is now a HORIZONTAL row of two
+     IDENTICAL circular icon buttons: Share + Mute, side by side. Mute is no
+     longer a labeled pill — it matches the X (close) and Share buttons exactly
+     (same diameter, same glass background, same icon treatment). */
+  .chrome-right { display: flex; flex-direction: row; align-items: center; gap: 10px; }
+  .chrome-btn { width: 40px; height: 40px; border-radius: 999px; background: rgba(0,0,0,0.48); backdrop-filter: blur(8px); display: grid; place-items: center; color: #fff; font-size: 20px; cursor: pointer; border: none; padding: 0; }
+  .chrome-btn svg { width: 19px; height: 19px; stroke: #fff; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+  /* mute = circular ICON button matching X/Share (CHANGE review v5 #3).
+     Speaker body is a FILLED white triangle (matches VolumeGlyph); the wave /
+     slash are stroked. NO text label. Toggles volume-off (slash) ↔ on (waves). */
+  .mute-btn .spk-body { fill: #fff; stroke: #fff; stroke-width: 2; stroke-linejoin: round; }
+  .mute-btn .spk-wave { fill: none; stroke: #fff; stroke-width: 2; stroke-linecap: round; }
+  .mute-btn .spk-slash { stroke: #fff; stroke-width: 2; stroke-linecap: round; }
+  /* default = muted (sound off): show the X slash, hide the waves */
+  .mute-btn .spk-wave { display: none; }
+  .mute-btn.is-on .spk-wave { display: inline; }
+  .mute-btn.is-on .spk-slash { display: none; }
+
+  /* ---- STATE BANNER (sold out / bookings closed / deadline) ---- */
+  .state-banner { display: none; align-items: center; gap: 8px; justify-content: center; padding: 11px 14px; font-size: 13px; font-weight: 800; letter-spacing: 0.3px; }
+  .state-banner svg { width: 16px; height: 16px; stroke: currentColor; fill: none; stroke-width: 2.2; }
+  .state-banner.soldout { background: rgba(255,255,255,0.08); color: var(--secondary); }
+  .state-banner.closed  { background: var(--danger-wash); color: var(--danger); }
+  .state-banner.deadline{ background: var(--accent-wash); color: var(--accent); }
+  body[data-state="soldout"]  .state-banner.soldout  { display: flex; }
+  body[data-state="closed"]   .state-banner.closed   { display: flex; }
+  body[data-state="deadline"] .state-banner.deadline { display: flex; }
+
+  /* ---- BODY CARD (overlaps hero — the event-page seam) ---- */
+  .body { position: relative; margin-top: -28px; border-top-left-radius: 28px; border-top-right-radius: 28px; background: var(--page); border: 1px solid var(--accent-border); border-bottom: none; padding: 24px 20px 20px; box-shadow: 0 -10px 40px rgba(0,0,0,0.4); }
+
+  .eyebrow { color: var(--accent); font-size: 11px; font-weight: 900; letter-spacing: 1.6px; text-transform: uppercase; margin-bottom: 8px; }
+  /* CHANGE 3 — trip meta line ("6 days · small group · Italy") reads at TITLE
+     contrast (primaryText from the resolved palette), not the faded accent.
+     Theme-aware: --primary flips black/white with the light/dark page. */
+  .eyebrow.lead { color: var(--primary); }
+  .title { font-family: var(--font); font-size: 32px; line-height: 1.08; font-weight: 900; letter-spacing: -0.5px; }
+
+  .meta-row { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px; }
+  .chip { display: inline-flex; align-items: center; gap: 6px; background: var(--card); border: 1px solid var(--border); border-radius: 999px; padding: 8px 12px; font-size: 13px; font-weight: 600; color: var(--secondary); }
+  .chip svg { width: 15px; height: 15px; stroke: var(--accent); fill: none; stroke-width: 2; }
+  /* CHANGE (review v4 #3) — capacity TEXT ("3 seats left") reads at primary
+     high-contrast, NOT the faded accent. The seat/people ICON keeps the accent
+     color (it inherits `.chip svg { stroke: var(--accent) }`). Theme-aware:
+     --primary flips black/white with the light/dark page. */
+  .seats-left { color: var(--primary); font-weight: 800; }
+  body[data-state="soldout"] .seats-live { display: none; }
+  .seats-sold { display: none; color: var(--secondary); font-weight: 800; }
+  body[data-state="soldout"] .seats-sold { display: inline; }
+
+  .brand-row { display: flex; align-items: center; gap: 12px; margin-top: 18px; background: var(--card); border: 1px solid var(--border); border-radius: 16px; padding: 12px 14px; cursor: pointer; }
+  .brand-tile { width: 42px; height: 42px; border-radius: 999px; object-fit: cover; border: 2px solid rgba(255,255,255,0.2); }
+  .brand-kicker { font-size: 10px; font-weight: 800; letter-spacing: 1.2px; text-transform: uppercase; color: var(--tertiary); }
+  .brand-name { font-size: 15px; font-weight: 800; margin-top: 1px; }
+  /* CHANGE (review v4) — .brand-bio rule REMOVED with the tagline markup. */
+  .brand-cta { margin-left: auto; color: var(--accent); font-size: 12px; font-weight: 800; align-self: center; }
+
+  .sec-title { font-family: var(--font); font-size: 20px; font-weight: 900; letter-spacing: -0.3px; margin: 28px 0 12px; }
+
+  .route { display: flex; align-items: center; gap: 12px; background: var(--card); border: 1px solid var(--border); border-radius: 16px; padding: 14px; margin-top: 14px; }
+  .route-leg { flex: 1; min-width: 0; }
+  .route-label { font-size: 10px; font-weight: 800; letter-spacing: 1px; text-transform: uppercase; color: var(--tertiary); }
+  .route-place { font-size: 14px; font-weight: 700; margin-top: 2px; }
+  .route-arrow { color: var(--accent); font-size: 18px; }
+
+  .about { color: var(--secondary); font-size: 15px; line-height: 1.6; margin-top: 12px; }
+  .read-more { color: var(--accent); font-weight: 700; font-size: 14px; margin-top: 8px; cursor: pointer; }
+
+  /* ---- ITINERARY — vertical spine, REAL per-day with media + stops ---- */
+  .itin { position: relative; padding-left: 30px; margin-top: 4px; }
+  .itin::before { content: ""; position: absolute; left: 9px; top: 6px; bottom: 6px; width: 2px; background: linear-gradient(var(--accent), var(--accent-wash)); }
+  .day { position: relative; padding-bottom: 18px; }
+  .day:last-child { padding-bottom: 0; }
+  .day-dot { position: absolute; left: -30px; top: 2px; width: 20px; height: 20px; border-radius: 999px; background: var(--accent); color: #fff; font-size: 10px; font-weight: 900; display: grid; place-items: center; box-shadow: 0 0 0 4px var(--page); }
+  .day-card { background: var(--card); border: 1px solid var(--border); border-radius: 14px; padding: 14px; }
+  .day-ord { font-size: 10px; font-weight: 900; letter-spacing: 1px; text-transform: uppercase; color: var(--accent); }
+  .day-date { font-size: 10px; font-weight: 700; color: var(--tertiary); letter-spacing: 0.4px; margin-left: 8px; }
+  .day-title { font-size: 15px; font-weight: 800; margin-top: 4px; }
+  .day-narr { font-size: 13px; line-height: 1.5; color: var(--secondary); margin-top: 6px; }
+  /* per-day media gallery (ORCH-1119) — count-aware (CHANGE 2) */
+  .day-media { margin-top: 12px; }
+  .day-media .m { position: relative; border-radius: 10px; overflow: hidden; border: 1px solid var(--border); background:#000; }
+  .day-media .m img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .day-media .m.video::after { content: "\25B6"; position: absolute; inset: 0; display: grid; place-items: center; color: #fff; font-size: 14px; background: rgba(0,0,0,0.28); text-shadow: 0 1px 4px rgba(0,0,0,0.6); }
+  /* 1 photo → full width, single large image (no orphan half) */
+  .day-media.media-one { display: block; }
+  .day-media.media-one .m { width: 100%; height: 200px; }
+  /* 2 photos → two equal columns spanning full width (no empty gutter) */
+  .day-media.media-two { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .day-media.media-two .m { width: 100%; height: 140px; }
+  /* 3+ photos → horizontal scroll-snap slider */
+  .day-media.media-slider { display: flex; gap: 8px; overflow-x: auto; scrollbar-width: none; padding-bottom: 2px; scroll-snap-type: x mandatory; }
+  .day-media.media-slider::-webkit-scrollbar { display: none; }
+  .day-media.media-slider .m { flex: 0 0 auto; width: 150px; height: 104px; scroll-snap-align: start; }
+  /* CHANGE 1 — per-day "stops" timeline styles REMOVED. The trip wizard does
+     not author stops, so they are no longer rendered (only ordinal/date,
+     title, narrative, and the media gallery remain). */
+
+  /* CHANGE (review v5 #1) — trip-level .gallery styles REMOVED (no model field;
+     fabricated). Per-day media (.day-media) above is the only trip imagery. */
+
+  /* ---- INCLUSIONS ---- */
+  /* WHAT'S INCLUDED / NOT INCLUDED — wrapping CHIPS (review v7). Chips fill
+     line-by-line left→right (flex-wrap) on BOTH mobile and desktop. Included =
+     check mark; not-included = x mark. */
+  .chip-wrap { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+  .ichip { display: inline-flex; align-items: center; gap: 7px; padding: 8px 13px; border-radius: 999px; font-size: 13px; font-weight: 600; line-height: 1; background: var(--card); border: 1px solid var(--border); color: var(--secondary); }
+  .ichip .ic { width: 16px; height: 16px; border-radius: 999px; display: grid; place-items: center; font-size: 10px; font-weight: 900; flex-shrink: 0; }
+  .ichip.yes { color: var(--primary); background: var(--accent-wash); border-color: var(--accent-border); }
+  .ichip.yes .ic { background: var(--accent); color: #fff; }
+  .ichip.no { color: var(--secondary); }
+  .ichip.no .ic { background: rgba(255,255,255,0.10); color: var(--tertiary); }
+
+  /* ---- MAP ---- */
+  .map { margin-top: 12px; border-radius: 16px; overflow: hidden; border: 1px solid var(--border); position: relative; height: 180px; background:
+      linear-gradient(135deg, rgba(255,255,255,0.04), rgba(255,255,255,0.01)); }
+  .map img { width: 100%; height: 100%; object-fit: cover; opacity: 0.9; }
+  .map-pin { position: absolute; left: 50%; top: 50%; transform: translate(-50%,-100%); color: var(--accent); font-size: 28px; filter: drop-shadow(0 2px 4px rgba(0,0,0,0.5)); }
+  .map-cap { position: absolute; left: 12px; bottom: 12px; background: rgba(0,0,0,0.55); backdrop-filter: blur(6px); color:#fff; font-size: 12px; font-weight: 700; padding: 6px 10px; border-radius: 999px; }
+
+  /* ================= PAYMENT BLOCK (ORCH-1130) ============================ */
+  .pay-card { background: var(--card-strong); border: 1px solid var(--accent-border); border-radius: 20px; padding: 18px; margin-top: 14px; position: relative; overflow: hidden; }
+  .pay-card::before { content: ""; position: absolute; top: 0; left: 0; right: 0; height: 4px; background: var(--accent); }
+  .seg { display: flex; background: rgba(0,0,0,0.28); border-radius: 12px; padding: 4px; gap: 4px; border: 1px solid var(--border); }
+  .seg button { flex: 1; border: none; background: transparent; color: var(--secondary); font-family: var(--font); font-size: 13px; font-weight: 800; padding: 10px 8px; border-radius: 9px; cursor: pointer; transition: all .18s ease; }
+  .seg button.active { background: var(--accent); color: #fff; box-shadow: 0 4px 14px var(--accent-wash); }
+  .pay-amt-row { display: flex; align-items: baseline; gap: 8px; margin-top: 16px; }
+  .pay-amt-label { font-size: 11px; font-weight: 800; letter-spacing: 1px; text-transform: uppercase; color: var(--tertiary); }
+  .pay-amt { font-size: 34px; font-weight: 900; letter-spacing: -1px; }
+  .pay-sub { font-size: 13px; color: var(--secondary); margin-top: 4px; line-height: 1.5; }
+  .schedule { margin-top: 16px; border-top: 1px solid var(--border); padding-top: 14px; display: none; }
+  .schedule.show { display: block; }
+  .sched-row { display: flex; align-items: center; justify-content: space-between; padding: 9px 0; }
+  .sched-row + .sched-row { border-top: 1px dashed var(--border); }
+  .sched-when { display: flex; align-items: center; gap: 10px; font-size: 13px; color: var(--secondary); }
+  .sched-dot { width: 8px; height: 8px; border-radius: 999px; background: var(--accent); }
+  .sched-dot.future { background: rgba(255,255,255,0.3); }
+  .sched-amt { font-size: 14px; font-weight: 800; }
+  .sched-tag { font-size: 10px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.6px; color: var(--accent); margin-left: 8px; }
+  .sched-total { display:flex; justify-content: space-between; margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border); font-size: 13px; }
+  .sched-total b { font-weight: 900; }
+
+  /* ---- REFUND LADDER + DEADLINE strips ---- */
+  .strip { display: flex; align-items: flex-start; gap: 10px; margin-top: 14px; background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 12px 14px; font-size: 13px; color: var(--secondary); }
+  .strip svg { width: 16px; height: 16px; stroke: var(--accent); fill: none; stroke-width: 2; flex-shrink: 0; margin-top: 1px; }
+  .refund-ladder { margin-top: 8px; display: flex; flex-direction: column; gap: 0; }
+  .rl-row { display: flex; justify-content: space-between; font-size: 13px; padding: 7px 0; color: var(--secondary); }
+  .rl-row + .rl-row { border-top: 1px dashed var(--border); }
+  .rl-pct { font-weight: 800; color: var(--primary); }
+  .rl-pct.zero { color: var(--tertiary); }
+
+  /* ================= FLOATING RESERVE BAR (phone) ======================== */
+  .floating { position: sticky; bottom: 0; left: 0; right: 0; z-index: 6; padding: 14px 16px calc(14px + env(safe-area-inset-bottom)); background: linear-gradient(180deg, rgba(7,16,15,0) 0%, var(--page) 38%); }
+  .reserve { display: flex; align-items: center; justify-content: space-between; gap: 12px; background: var(--accent); color: #fff; border: none; width: 100%; border-radius: 18px; padding: 16px 20px; cursor: pointer; box-shadow: 0 12px 34px var(--accent-wash), 0 2px 0 rgba(0,0,0,0.15); font-family: var(--font); }
+  .reserve .r-left { text-align: left; }
+  .reserve .r-kicker { font-size: 11px; font-weight: 700; opacity: 0.85; }
+  .reserve .r-price { font-size: 19px; font-weight: 900; letter-spacing: -0.3px; }
+  .reserve .r-cta { font-size: 16px; font-weight: 900; }
+  /* unavailable variants */
+  .reserve.disabled { background: var(--card-strong); color: var(--tertiary); box-shadow: none; cursor: not-allowed; border: 1px solid var(--border); }
+  body[data-state="soldout"] .reserve, body[data-state="closed"] .reserve { background: var(--card-strong); color: var(--tertiary); box-shadow: none; cursor: not-allowed; border: 1px solid var(--border); }
+  body[data-state="soldout"] .reserve .r-cta::after { content: "Sold out"; }
+  body[data-state="closed"]  .reserve .r-cta::after { content: "Bookings closed"; }
+  body[data-state="soldout"] .reserve .r-cta, body[data-state="closed"] .reserve .r-cta,
+  body[data-state="soldout"] .reserve .r-left, body[data-state="closed"] .reserve .r-left { visibility: hidden; }
+  body[data-state="soldout"] .reserve, body[data-state="closed"] .reserve { position: relative; }
+  body[data-state="soldout"] .reserve::after, body[data-state="closed"] .reserve::after { position: absolute; inset: 0; display: grid; place-items: center; visibility: visible; font-weight: 900; font-size: 15px; }
+  body[data-state="soldout"] .reserve::after { content: "Sold out — join the waitlist"; }
+  body[data-state="closed"]  .reserve::after { content: "Bookings closed"; }
+
+  /* The desktop sticky panel + its inner reserve button (hidden on phone) */
+  .deskpanel { display: none; }
+
+  /* ============================================================ */
+  /* ====================  DESKTOP  (≥ 1024px)  ================= */
+  /* CHANGE (review v5 #4) — DESKTOP LAYOUT REBUILT FROM SCRATCH.              */
+  /* The prior build left content jammed in a narrow left column with an empty */
+  /* void on the right. Root cause: the phone .page max-width:660 clamp leaked */
+  /* and the grid never actually owned the full shell width.                   */
+  /*                                                                            */
+  /* New model — a SINGLE centered shell that owns the full width:             */
+  /*   .stage  → just a full-bleed scroll surface (NO flex centering;          */
+  /*             centering now lives on .page via margin:0 auto).              */
+  /*   .page   → margin:0 auto; max-width:1200px (cap effectively ~1264 w/     */
+  /*             gutters). This is THE shell. Hero + body + grid all share it. */
+  /*   .hero   → contained inside the shell, rounded, capped max-height 520px. */
+  /*   .shell  → grid: minmax(0,1fr) 360px  (≈ 62% / 34% after the 40px gap).  */
+  /*             LEFT = scrolling content; RIGHT = sticky booking card.        */
+  /* No parent retains a 660 clamp or margin-left:0 that could pin left.       */
+  /* ============================================================ */
+  @media (min-width: 1024px) {
+    /* .stage is now just a scroll surface; centering moved onto .page itself */
+    .stage { display: block; padding: 32px 32px 72px; }
+    .page {
+      width: auto;
+      max-width: 1200px;            /* the centered shell width */
+      margin: 0 auto;               /* TRUE horizontal centering — no flex dep */
+      border-radius: 0;
+      overflow: visible;            /* let the sticky right card escape clip */
+      background: transparent;
+      box-shadow: none;
+    }
+
+    /* HERO — contained inside the shell width, rounded, controlled height.
+       21:9 keeps a cinematic ratio but max-height caps it on ultra-wide. */
+    .hero { aspect-ratio: 21 / 9; max-height: 520px; border-radius: 24px; box-shadow: 0 30px 90px rgba(0,0,0,0.5), 0 0 0 1px rgba(255,255,255,0.06); }
+    .hero-overlay { background: linear-gradient(180deg, rgba(0,0,0,0.45) 0%, rgba(0,0,0,0) 45%, rgba(0,0,0,0.30) 100%); border-radius: 24px; }
+    /* title overlaid bottom-left on the wide hero */
+    .hero-caption { position: absolute; left: 36px; bottom: 30px; right: 36px; z-index: 5; }
+    .hero-caption .eyebrow { color: #fff; opacity: 0.92; }
+    .hero-caption .title { font-size: 46px; max-width: 72%; text-shadow: 0 2px 24px rgba(0,0,0,0.5); }
+
+    .state-banner { border-radius: 999px; margin: 16px auto 0; max-width: 520px; }
+
+    /* THE TWO-COLUMN GRID — lives directly inside the centered .page shell.
+       LEFT fluid (≈62%), RIGHT fixed 360px sticky card. 40px gutter. */
+    .shell { display: grid; grid-template-columns: minmax(0,1fr) 360px; gap: 40px; margin-top: 26px; align-items: start; }
+
+    /* LEFT: scrolling content. No card chrome, no hero overlap on desktop. */
+    .body {
+      grid-column: 1; min-width: 0;       /* min-width:0 lets the slider clip */
+      margin-top: 0; padding: 0;
+      border: none; border-radius: 0; background: transparent; box-shadow: none;
+    }
+    /* lead title/eyebrow are now in the hero — hide the phone-inline copy */
+    .body > .phone-only:first-child { display: none; }
+
+    /* desktop content blocks sit in plain sections */
+    .dsection { padding: 4px 0 0; }
+    .sec-title { margin: 10px 0 14px; font-size: 22px; }
+
+    /* meta chips + brand: brand moves to the right card on desktop, so hide here */
+    .brand-row.inbody { display: none; }
+    .meta-row { margin-top: 0; }
+
+    /* itinerary uses the wide column; day cards get more room.
+       Count-aware day media scales up on desktop. */
+    .day-card { padding: 16px 18px; }
+    .day-media.media-one .m { height: 300px; }
+    .day-media.media-two .m { height: 190px; }
+    .day-media.media-slider .m { width: 220px; height: 146px; }
+
+    /* MAP taller on desktop */
+    .map { height: 300px; }
+
+    /* RIGHT: the sticky booking card — brand chip + payment + reserve + strips. */
+    .floating { display: none; }                 /* phone bar hidden on desktop */
+    .deskpanel {
+      display: block; grid-column: 2; position: sticky; top: 24px;
+      background: var(--card-strong); border: 1px solid var(--accent-border);
+      border-radius: 22px; padding: 0; overflow: hidden;
+      box-shadow: 0 24px 60px rgba(0,0,0,0.4);
+    }
+    .deskpanel .dp-accent { height: 4px; background: var(--accent); }
+    .deskpanel .dp-inner { padding: 20px; }
+    .deskpanel .brand-row { margin-top: 0; }
+    .deskpanel .pay-card { margin-top: 18px; border: none; background: transparent; padding: 0; }
+    .deskpanel .pay-card::before { display: none; }
+    .deskpanel .dp-reserve {
+      display: flex; align-items: center; justify-content: center; gap: 8px;
+      width: 100%; margin-top: 18px; background: var(--accent); color: #fff;
+      border: none; border-radius: 16px; padding: 16px; font-family: var(--font);
+      font-size: 16px; font-weight: 900; cursor: pointer;
+      box-shadow: 0 12px 34px var(--accent-wash);
+    }
+    body[data-state="soldout"] .deskpanel .dp-reserve,
+    body[data-state="closed"]  .deskpanel .dp-reserve {
+      background: var(--card-strong); color: var(--tertiary); box-shadow: none; border: 1px solid var(--border); cursor: not-allowed;
+    }
+    .deskpanel .dp-reassure { font-size: 11px; color: var(--tertiary); text-align: center; margin-top: 10px; }
+    .deskpanel .dp-strips { margin-top: 6px; }
+    .deskpanel .strip { margin-top: 10px; }
+
+    /* desktop reveals the hero title; keeps about/itinerary in the left body */
+    .desk-only { display: block; }
+    .phone-only { display: none; }
+  }
+  /* default (phone) visibility helpers — defined here, OVERRIDDEN by the
+     trailing desktop query below so source-order keeps the desktop wins. */
+  .desk-only { display: none; }
+  .phone-only { display: block; }
+  .hero-caption { display: none; }
+  @media (min-width: 1024px) {
+    .hero-caption { display: block; }
+    .desk-only { display: block; }
+    .deskpanel { display: block; }   /* the sticky right booking panel */
+    .phone-only { display: none; }
+    .floating { display: none; }      /* phone reserve bar hidden on desktop */
+  }
+
+  .spacer { height: 8px; }
+
+  /* ============================================================ */
+  /* ============  PHONE PARALLAX  (≤ 1023px ONLY)  ============= */
+  /* CHANGE (review v6) — phone-only immersive parallax:               */
+  /*   • The COVER (hero media + overlay + chrome) is PINNED to the    */
+  /*     viewport (position:fixed) behind the content.                 */
+  /*   • A flow spacer (.hero-spacer, same 4/5 ratio + page width)     */
+  /*     holds the cover's height so the body starts below it, then    */
+  /*     the body card (opaque var(--page) bg + rounded top, -28px     */
+  /*     seam) SLIDES UP and OVER the fixed cover as you scroll.       */
+  /*   • The 3 chrome buttons (X · Share · Mute) FLOAT fixed at the    */
+  /*     viewport corners, always above cover + content, always tappable.*/
+  /* Z-INDEX LAYERING:  cover/hero = 1  <  content/.page = 2  <  chrome = 60.*/
+  /* Everything is reset to the approved contained behavior at ≥1024px */
+  /* by the desktop queries below (hero static, chrome static), so the */
+  /* two-column + sticky-right desktop shell is COMPLETELY UNAFFECTED. */
+  /* ============================================================ */
+  @media (max-width: 1023px) {
+    /* FULL-BLEED on phone (review v7): remove the stage side padding + page
+       max-width/rounding so the body/details span the FULL viewport width and
+       fully cover the pinned cover — no cover image peeking on the left/right. */
+    .stage { padding: 0; }
+    .page { z-index: 2; overflow: visible; max-width: none; border-radius: 0; }
+    /* body keeps its rounded TOP seam (parallax reveal) but goes edge-to-edge */
+    .body { border-left: none; border-right: none; }
+
+    /* PIN THE COVER — fixed to the viewport, centered to the page width,
+       low z-index so the scrolling content rides over it. */
+    .hero {
+      position: fixed;
+      top: 0;
+      left: 0; right: 0;           /* full-bleed: exactly the (now edge-to-edge) page width */
+      transform: none;
+      width: auto;
+      z-index: 1;
+      aspect-ratio: 4 / 5;
+      border-radius: 0;
+    }
+    /* flow placeholder: same width + ratio as the pinned cover so the
+       content column begins exactly below the cover, then scrolls over. */
+    .hero-spacer {
+      display: block;
+      width: 100%;
+      aspect-ratio: 4 / 5;
+    }
+
+    /* FLOAT THE CHROME — X (top-left), Share + Mute (top-right) fixed to
+       the viewport corners, above cover AND sliding content, always tappable.
+       Same circular icon style/size; anchored to the page band, not page-static. */
+    /* DESKTOP chrome (.cd) hidden on phone; PHONE chrome (.cm) is the body-level
+       fixed float that escapes the .page stacking level and beats the demo bar +
+       the pinned parallax cover + the sliding content. */
+    .chrome.cd { display: none; }
+    .chrome.cm {
+      display: flex;
+      position: fixed;
+      top: 56px;                   /* below the single-row demo bar; real device:
+                                      top: calc(env(safe-area-inset-top) + 12px). */
+      left: 0; right: 0; width: auto;
+      padding: 0 16px;             /* 16px inset from each edge */
+      z-index: 70;                 /* ROOT level → above demo bar(50), cover, content */
+    }
+
+    /* the body card already has an OPAQUE var(--page) bg + rounded top + the
+       -28px seam — it cleanly covers the fixed cover as it slides over. Ensure
+       it (and the whole scrolling column) sits above the pinned cover. */
+    .shell { position: relative; z-index: 2; }
+    .body  { position: relative; z-index: 2; }
+
+    /* state banners ride with the content over the cover too */
+    .state-banner { position: relative; z-index: 2; }
+  }
+</style>
+</head>
+<body data-state="available">
+  <!-- ============== DEMO CHROME ============== -->
+  <div class="demo-bar">
+    <div class="grp">
+      <span class="lbl">Brand</span>
+      <button class="swatch" style="background:#0f766e" title="Deep teal" onclick="setTheme('#0f766e','#0b5a54','#07100f','dark')"></button>
+      <button class="swatch" style="background:#e11d48" title="Crimson" onclick="setTheme('#e11d48','#b01239','#120709','dark')"></button>
+      <button class="swatch" style="background:#f5c518" title="Saffron (light)" onclick="setTheme('#9a7b00','#7d6300','#fbf7ea','light')"></button>
+      <button class="swatch" style="background:#6d28d9" title="Violet" onclick="setTheme('#6d28d9','#54199f','#0d0916','dark')"></button>
+    </div>
+    <select class="font-pick" onchange="document.documentElement.style.setProperty('--font', this.value)">
+      <option value="Inter, system-ui, sans-serif">Inter</option>
+      <option value="'Poppins', system-ui, sans-serif">Poppins</option>
+      <option value="'Playfair Display', Georgia, serif">Playfair Display</option>
+      <option value="Georgia, 'Times New Roman', serif">Serif (Lora-like)</option>
+    </select>
+    <div class="demo-sep"></div>
+    <div class="grp">
+      <span class="lbl">State</span>
+      <select class="state-pick" onchange="document.body.dataset.state=this.value">
+        <option value="available">Available</option>
+        <option value="deadline">Deadline soon</option>
+        <option value="soldout">Sold out</option>
+        <option value="closed">Bookings closed</option>
+      </select>
+    </div>
+    <div class="vp-hint">Resize me → <b>≤1023px phone · ≥1024px desktop</b></div>
+  </div>
+
+  <!-- PHONE COVER CHROME (.cm) — body-level fixed layer (review v7). Lives at the
+       ROOT so its z-index beats the demo bar + the pinned parallax cover + content;
+       this is what makes X / Share / Mute stay visible & tappable while the details
+       slide over the fixed cover. Hidden ≥1024px (desktop uses the .cd chrome). -->
+  <div class="chrome cm">
+    <button class="chrome-btn" aria-label="Close">&times;</button>
+    <div class="chrome-right">
+      <button class="chrome-btn" aria-label="Share">
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <circle cx="6" cy="12" r="2.5"/>
+          <circle cx="18" cy="6" r="2.5"/>
+          <circle cx="18" cy="18" r="2.5"/>
+          <path d="M8.2 10.8L15.8 7.2M8.2 13.2L15.8 16.8"/>
+        </svg>
+      </button>
+      <button class="chrome-btn mute-btn" aria-label="Turn on cover sound" onclick="this.classList.toggle('is-on'); this.setAttribute('aria-label', this.classList.contains('is-on') ? 'Mute cover sound' : 'Turn on cover sound');">
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <path class="spk-body" d="M11 5 6 9H2v6h4l5 4V5z"/>
+          <path class="spk-wave" d="M15.5 8.5a5 5 0 0 1 0 7M18.5 5.5a9 9 0 0 1 0 13"/>
+          <line class="spk-slash" x1="16" y1="9" x2="22" y2="15"/>
+          <line class="spk-slash" x1="22" y1="9" x2="16" y2="15"/>
+        </svg>
+      </button>
+    </div>
+  </div>
+
+  <div class="stage">
+    <div class="page">
+
+      <!-- ============== HERO ============== -->
+      <div class="hero">
+        <img src="https://images.unsplash.com/photo-1469854523086-cc02fe5d8800?w=1400&q=80" alt="Trip cover — Amalfi Coast cliffs" />
+        <div class="hero-overlay"></div>
+        <!-- CHANGE (review v5 #2) — "Cover video" badge REMOVED. Cover may still
+             be a video; mute is controlled by the icon button in the chrome row. -->
+        <!-- desktop-only overlaid title -->
+        <div class="hero-caption">
+          <div class="eyebrow">6 days · small group · Italy</div>
+          <div class="title">Slow Mornings in the Amalfi Coast</div>
+        </div>
+      </div>
+
+      <!-- DESKTOP COVER CHROME (.cd) — child of .page, position:absolute, lands on
+           the contained hero's top corners (≥1024px). Hidden on phone; the phone
+           uses the body-level fixed .cm chrome (see top of <body>) which escapes
+           the .page stacking level so it floats above the pinned parallax cover. -->
+      <div class="chrome cd">
+        <button class="chrome-btn" aria-label="Close">&times;</button>
+        <div class="chrome-right">
+          <button class="chrome-btn" aria-label="Share">
+            <!-- ported verbatim from mingla-business Icon.tsx `share` -->
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <circle cx="6" cy="12" r="2.5"/>
+              <circle cx="18" cy="6" r="2.5"/>
+              <circle cx="18" cy="18" r="2.5"/>
+              <path d="M8.2 10.8L15.8 7.2M8.2 13.2L15.8 16.8"/>
+            </svg>
+          </button>
+          <button class="chrome-btn mute-btn" aria-label="Turn on cover sound" onclick="this.classList.toggle('is-on'); this.setAttribute('aria-label', this.classList.contains('is-on') ? 'Mute cover sound' : 'Turn on cover sound');">
+            <!-- VolumeGlyph (EventCoverMedia.tsx) — speaker + slash (muted) ↔ waves (on) -->
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path class="spk-body" d="M11 5 6 9H2v6h4l5 4V5z"/>
+              <path class="spk-wave" d="M15.5 8.5a5 5 0 0 1 0 7M18.5 5.5a9 9 0 0 1 0 13"/>
+              <line class="spk-slash" x1="16" y1="9" x2="22" y2="15"/>
+              <line class="spk-slash" x1="22" y1="9" x2="16" y2="15"/>
+            </svg>
+          </button>
+        </div>
+      </div>
+
+      <!-- PHONE PARALLAX flow spacer (review v6): holds the pinned cover's
+           height so the content starts below the fixed cover, then slides up
+           over it. Display:none on desktop (cover is contained, not pinned). -->
+      <div class="hero-spacer phone-only" aria-hidden="true"></div>
+
+      <!-- state banners (driven by State picker) -->
+      <div class="state-banner deadline"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg> Bookings close in 6 days</div>
+      <div class="state-banner soldout"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M15 9l-6 6M9 9l6 6"/></svg> SOLD OUT</div>
+      <div class="state-banner closed"><svg viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V7a4 4 0 018 0v4"/></svg> Bookings are closed for this trip</div>
+
+      <!-- ============== RESPONSIVE SHELL ============== -->
+      <div class="shell">
+
+        <!-- ===== LEFT / MAIN CONTENT ===== -->
+        <div class="body">
+          <!-- phone-only lead title (desktop shows it in the hero) -->
+          <div class="phone-only">
+            <div class="eyebrow lead">6 days · small group · Italy</div>
+            <div class="title lead">Slow Mornings in the Amalfi Coast</div>
+          </div>
+
+          <div class="meta-row">
+            <span class="chip"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg> Sep 14 – Sep 19, 2026</span>
+            <span class="chip"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg> 6 days · 5 nights</span>
+            <span class="chip"><svg viewBox="0 0 24 24"><circle cx="9" cy="8" r="3"/><path d="M3 20c0-3.3 2.7-6 6-6s6 2.7 6 6M16 11a3 3 0 100-6"/></svg>
+              <span class="seats-live"><span class="seats-left">3 seats left</span> · 12 max</span>
+              <span class="seats-sold">Sold out · 12 of 12 booked</span>
+            </span>
+            <span class="chip"><svg viewBox="0 0 24 24"><path d="M12 2C8 2 5 5 5 9c0 5 7 13 7 13s7-8 7-13c0-4-3-7-7-7z"/><circle cx="12" cy="9" r="2.5"/></svg> Positano, Italy</span>
+          </div>
+
+          <!-- brand chip (phone only; desktop puts it in the sticky panel) -->
+          <div class="brand-row inbody">
+            <img class="brand-tile" src="https://images.unsplash.com/photo-1517841905240-472988babdf9?w=200&q=80" alt="" />
+            <div>
+              <div class="brand-kicker">Presented by</div>
+              <div class="brand-name">Wander Collective</div>
+              <!-- CHANGE (review v4) — brand bio tagline REMOVED. Brand block shows
+                   ONLY avatar chip + kicker + name, matching the event page. -->
+            </div>
+            <div class="brand-cta">View</div>
+          </div>
+
+          <!-- route (departure → destination) -->
+          <div class="dsection">
+            <div class="route">
+              <div class="route-leg">
+                <div class="route-label">Leaving from</div>
+                <div class="route-place">Naples Intl (NAP)</div>
+              </div>
+              <div class="route-arrow">&rarr;</div>
+              <div class="route-leg">
+                <div class="route-label">Destination</div>
+                <div class="route-place">Positano, Italy</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- about -->
+          <div class="dsection">
+            <div class="sec-title">About this trip</div>
+            <div class="about">Six unhurried days on the cliffs of the Amalfi Coast — lemon groves, hidden swimming coves, a private boat day to Capri, and dinners that go long past sunset. Small group, real pace, no rushing between photo stops. You wake up where the locals do, eat where they eat, and leave knowing the coast the way a friend would show you.</div>
+            <div class="read-more">Read more</div>
+          </div>
+
+          <!-- ===== REAL PER-DAY ITINERARY (Day 1 / Day 2 / … with media + stops) ===== -->
+          <div class="dsection">
+            <div class="sec-title">Day by day</div>
+            <div class="itin">
+
+              <!-- CHANGE 1 — per-day STOP rows REMOVED (wizard does not author
+                   stops). Each day renders ONLY real fields: ordinal/date +
+                   title + narrative + media gallery.
+                   CHANGE 2 — day media is count-aware:
+                     Day 1 → 1 photo  (.media-one  → full width)
+                     Day 2 → 2 photos (.media-two  → full-width split)
+                     Day 3 → 3 photos (.media-slider → swipe carousel) -->
+              <div class="day"><div class="day-dot">1</div><div class="day-card">
+                <div><span class="day-ord">Day 1</span><span class="day-date">Sun · Sep 14</span></div>
+                <div class="day-title">Arrive &amp; settle in Positano</div>
+                <div class="day-narr">Private transfer from Naples, welcome aperitivo on the terrace, an easy walk to the beach as the light drops. The first evening is unstructured on purpose — get your bearings, find your café, watch the harbor lights come up.</div>
+                <div class="day-media media-one">
+                  <div class="m"><img src="https://images.unsplash.com/photo-1530521954074-e64f6810b32d?w=900&q=80" alt="Positano terrace at dusk"></div>
+                </div>
+              </div></div>
+
+              <div class="day"><div class="day-dot">2</div><div class="day-card">
+                <div><span class="day-ord">Day 2</span><span class="day-date">Mon · Sep 15</span></div>
+                <div class="day-title">Path of the Gods hike</div>
+                <div class="day-narr">A guided cliffside walk with views straight out to Capri, ending at a family farmhouse for a long lunch under the lemon trees.</div>
+                <div class="day-media media-two">
+                  <div class="m"><img src="https://images.unsplash.com/photo-1464822759023-fed622ff2c3b?w=500&q=80" alt="Cliff trail"></div>
+                  <div class="m"><img src="https://images.unsplash.com/photo-1504280390367-361c6d9f38f4?w=500&q=80" alt="Farmhouse lunch"></div>
+                </div>
+              </div></div>
+
+              <div class="day"><div class="day-dot">3</div><div class="day-card">
+                <div><span class="day-ord">Day 3</span><span class="day-date">Tue · Sep 16</span></div>
+                <div class="day-title">Private boat to Capri</div>
+                <div class="day-narr">Charter the day around the Blue Grotto and the quiet swimming coves the day-trippers never reach, with a long seafood lunch served on board.</div>
+                <div class="day-media media-slider">
+                  <div class="m video"><img src="https://images.unsplash.com/photo-1559827260-dc66d52bef19?w=400&q=80" alt="Boat day clip"></div>
+                  <div class="m"><img src="https://images.unsplash.com/photo-1505228395891-9a51e7e86bf6?w=400&q=80" alt="Capri coast"></div>
+                  <div class="m"><img src="https://images.unsplash.com/photo-1471922694854-ff1b63b20054?w=400&q=80" alt="Swimming cove"></div>
+                  <div class="m"><img src="https://images.unsplash.com/photo-1523906921802-b5d2d899e93b?w=400&q=80" alt="Harbor return"></div>
+                </div>
+              </div></div>
+
+            </div>
+          </div>
+
+          <!-- CHANGE (review v5 #1) — STANDALONE TRIP-LEVEL GALLERY REMOVED.
+               The trip data model has NO trip-level gallery field and the prior
+               captions (Coast view / Lemon grove clip / Harbor / Cove / Village)
+               were fabricated. Real trip imagery lives in the per-day itinerary
+               media (trip_days.media), kept above. -->
+
+          <!-- ===== WHAT'S INCLUDED / EXCLUDED ===== -->
+          <div class="dsection">
+            <div class="sec-title">What's included</div>
+            <div class="chip-wrap">
+              <span class="ichip yes"><span class="ic">&#10003;</span> 5 nights boutique cliffside hotel</span>
+              <span class="ichip yes"><span class="ic">&#10003;</span> All breakfasts + 3 group dinners</span>
+              <span class="ichip yes"><span class="ic">&#10003;</span> Private Capri boat day</span>
+              <span class="ichip yes"><span class="ic">&#10003;</span> Airport transfers (both ways)</span>
+              <span class="ichip yes"><span class="ic">&#10003;</span> Local guide throughout</span>
+            </div>
+          </div>
+
+          <div class="dsection">
+            <div class="sec-title">What's not included</div>
+            <div class="chip-wrap">
+              <span class="ichip no"><span class="ic">&times;</span> International flights</span>
+              <span class="ichip no"><span class="ic">&times;</span> Travel insurance</span>
+              <span class="ichip no"><span class="ic">&times;</span> Lunches on free days</span>
+            </div>
+          </div>
+
+          <!-- ===== MAP (destination lat/lng) ===== -->
+          <div class="dsection">
+            <div class="sec-title">Where you'll be</div>
+            <div class="map">
+              <img src="https://images.unsplash.com/photo-1524661135-423995f22d0b?w=900&q=80" alt="Map of Positano area">
+              <div class="map-pin">&#9679;</div>
+              <div class="map-cap">Positano, Amalfi Coast</div>
+            </div>
+          </div>
+
+          <!-- ===== PHONE-ONLY PAYMENT: on desktop the booking/payment card
+                     moves to the sticky right column (.deskpanel). ===== -->
+          <div class="phone-only">
+            <div class="sec-title">Choose how you pay</div>
+            <div class="pay-card" id="paycard-phone">
+              <div class="seg">
+                <button class="active" onclick="selectPlan('full')">Pay in full</button>
+                <button onclick="selectPlan('plan')">Pay over time</button>
+              </div>
+              <div class="amt-full">
+                <div class="pay-amt-row"><span class="pay-amt">&euro;2,450</span></div>
+                <div class="pay-sub">One payment, all-in. Taxes &amp; fees included.</div>
+              </div>
+              <div class="amt-plan" style="display:none">
+                <div class="pay-amt-row"><span class="pay-amt-label">Due today</span><span class="pay-amt">&euro;612.50</span></div>
+                <div class="pay-sub">25% deposit now, then 3 monthly payments. &euro;2,450 total — no extra cost.</div>
+              </div>
+              <div class="schedule">
+                <div class="sched-row"><div class="sched-when"><span class="sched-dot"></span> Today<span class="sched-tag">Deposit</span></div><div class="sched-amt">&euro;612.50</div></div>
+                <div class="sched-row"><div class="sched-when"><span class="sched-dot future"></span> In 30 days</div><div class="sched-amt">&euro;612.50</div></div>
+                <div class="sched-row"><div class="sched-when"><span class="sched-dot future"></span> In 60 days</div><div class="sched-amt">&euro;612.50</div></div>
+                <div class="sched-row"><div class="sched-when"><span class="sched-dot future"></span> In 90 days</div><div class="sched-amt">&euro;612.50</div></div>
+                <div class="sched-total"><span>Total</span><b>&euro;2,450</b></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- ===== CANCELLATION POLICY + BOOKING DEADLINE — full detail lives in
+                     the LEFT column on BOTH phone and desktop (RefundPolicy.tiers).
+                     The right card carries only condensed reassurance strips. ===== -->
+          <div class="dsection">
+            <div class="sec-title">Cancellation policy</div>
+            <div class="strip"><svg viewBox="0 0 24 24"><path d="M9 12l2 2 4-4M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg> Flexible — cancel for a full or partial refund based on how early you cancel.</div>
+            <div class="refund-ladder">
+              <div class="rl-row"><span>30+ days before departure</span><span class="rl-pct">100% refund</span></div>
+              <div class="rl-row"><span>14–29 days before</span><span class="rl-pct">50% refund</span></div>
+              <div class="rl-row"><span>Under 14 days</span><span class="rl-pct zero">No refund</span></div>
+            </div>
+            <div class="strip"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg> Bookings close Sep 7, 2026 (7 days before departure).</div>
+          </div>
+
+          <div class="spacer"></div>
+        </div>
+
+        <!-- ===== RIGHT / STICKY BOOKING PANEL (desktop only) ===== -->
+        <aside class="deskpanel desk-only">
+          <div class="dp-accent"></div>
+          <div class="dp-inner">
+            <!-- brand chip lives here on desktop -->
+            <div class="brand-row">
+              <img class="brand-tile" src="https://images.unsplash.com/photo-1517841905240-472988babdf9?w=200&q=80" alt="" />
+              <div>
+                <div class="brand-kicker">Presented by</div>
+                <div class="brand-name">Wander Collective</div>
+              </div>
+              <div class="brand-cta">View</div>
+            </div>
+
+            <!-- payment block -->
+            <div class="pay-card">
+              <div class="seg">
+                <button class="active" onclick="selectPlan('full')">Pay in full</button>
+                <button onclick="selectPlan('plan')">Pay over time</button>
+              </div>
+              <div class="amt-full">
+                <div class="pay-amt-row"><span class="pay-amt">&euro;2,450</span></div>
+                <div class="pay-sub">One payment, all-in. Taxes &amp; fees included.</div>
+              </div>
+              <div class="amt-plan" style="display:none">
+                <div class="pay-amt-row"><span class="pay-amt-label">Due today</span><span class="pay-amt">&euro;612.50</span></div>
+                <div class="pay-sub">25% deposit now, then 3 monthly payments. &euro;2,450 total — no extra cost.</div>
+              </div>
+              <div class="schedule">
+                <div class="sched-row"><div class="sched-when"><span class="sched-dot"></span> Today<span class="sched-tag">Deposit</span></div><div class="sched-amt">&euro;612.50</div></div>
+                <div class="sched-row"><div class="sched-when"><span class="sched-dot future"></span> In 30 days</div><div class="sched-amt">&euro;612.50</div></div>
+                <div class="sched-row"><div class="sched-when"><span class="sched-dot future"></span> In 60 days</div><div class="sched-amt">&euro;612.50</div></div>
+                <div class="sched-row"><div class="sched-when"><span class="sched-dot future"></span> In 90 days</div><div class="sched-amt">&euro;612.50</div></div>
+                <div class="sched-total"><span>Total</span><b>&euro;2,450</b></div>
+              </div>
+            </div>
+
+            <button class="dp-reserve" id="dp-reserve">Reserve my spot &rarr;</button>
+            <div class="dp-reassure">Free to hold · 3 seats left · cancel per policy below</div>
+
+            <div class="dp-strips">
+              <div class="strip"><svg viewBox="0 0 24 24"><path d="M9 12l2 2 4-4M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg> Flexible refund — 100% up to 30 days out.</div>
+              <div class="strip"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg> Bookings close Sep 7, 2026.</div>
+            </div>
+          </div>
+        </aside>
+
+      </div>
+    </div>
+  </div>
+
+  <!-- ============== FLOATING RESERVE BAR (phone) ============== -->
+  <div class="floating">
+    <button class="reserve">
+      <span class="r-left">
+        <span class="r-kicker" id="bar-kicker">All-in, taxes included</span><br/>
+        <span class="r-price" id="bar-price">&euro;2,450</span>
+      </span>
+      <span class="r-cta">Reserve my spot &rarr;</span>
+    </button>
+  </div>
+
+<script>
+  function setTheme(accent, strong, page, mode) {
+    const r = document.documentElement.style;
+    r.setProperty('--accent', accent);
+    r.setProperty('--accent-strong', strong);
+    r.setProperty('--page', page);
+    const rgb = hexToRgb(accent);
+    r.setProperty('--accent-wash', `rgba(${rgb},0.18)`);
+    r.setProperty('--accent-border', `rgba(${rgb},0.42)`);
+    if (mode === 'light') {
+      r.setProperty('--primary', '#101420');
+      r.setProperty('--secondary', 'rgba(16,20,31,0.76)');
+      r.setProperty('--tertiary', 'rgba(16,20,31,0.56)');
+      r.setProperty('--card', 'rgba(0,0,0,0.04)');
+      r.setProperty('--card-strong', 'rgba(0,0,0,0.06)');
+      r.setProperty('--border', 'rgba(0,0,0,0.10)');
+    } else {
+      r.setProperty('--primary', '#ffffff');
+      r.setProperty('--secondary', 'rgba(255,255,255,0.78)');
+      r.setProperty('--tertiary', 'rgba(255,255,255,0.56)');
+      r.setProperty('--card', 'rgba(255,255,255,0.07)');
+      r.setProperty('--card-strong', 'rgba(255,255,255,0.10)');
+      r.setProperty('--border', 'rgba(255,255,255,0.14)');
+    }
+  }
+  function hexToRgb(hex) {
+    const n = parseInt(hex.slice(1), 16);
+    return `${(n>>16)&255},${(n>>8)&255},${n&255}`;
+  }
+  // selectPlan drives BOTH the phone inline card and the desktop panel card.
+  function selectPlan(which) {
+    const full = which === 'full';
+    document.querySelectorAll('.pay-card').forEach(card => {
+      const btns = card.querySelectorAll('.seg button');
+      if (btns[0]) btns[0].classList.toggle('active', full);
+      if (btns[1]) btns[1].classList.toggle('active', !full);
+      const af = card.querySelector('.amt-full');
+      const ap = card.querySelector('.amt-plan');
+      const sc = card.querySelector('.schedule');
+      if (af) af.style.display = full ? 'block' : 'none';
+      if (ap) ap.style.display = full ? 'none' : 'block';
+      if (sc) sc.classList.toggle('show', !full);
+    });
+    document.getElementById('bar-kicker').innerHTML = full ? 'All-in, taxes included' : 'Due today · deposit';
+    document.getElementById('bar-price').innerHTML = full ? '&euro;2,450' : '&euro;612.50';
+  }
+</script>
+</body>
+</html>

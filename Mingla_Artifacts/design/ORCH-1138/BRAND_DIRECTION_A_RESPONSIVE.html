@@ -1,0 +1,817 @@
+<!--
+  ORCH-1138D — PUBLIC BRAND PAGE REDESIGN · DIRECTION A "Immersive Brand Hub"
+  ===========================================================================
+  Inherits the APPROVED Direction A system from the trip page
+  (DIRECTION_A_V2_FULL_RESPONSIVE.html), fine-tuned for a brand PROFILE/HUB
+  instead of a single-offering checkout:
+
+    • Full-bleed PHONE parallax cover (pinned; content slides up & over it).
+    • Body-level FIXED chrome — X top-left, Share top-right (NO mute: a brand
+      cover is the SAME EventCoverMedia and CAN be a video, but the current
+      brand page renders no sound control; we keep X + Share only to match
+      production. A mute button is added ONLY when cover is video — toggle it
+      in the demo bar to preview that variant).
+    • Brand THEMING (color + font + light/dark contrast palette) — identical
+      engine to the trip page (mirrors createThemePalette in brand-rendering).
+    • Overlapping rounded body card (the −28 immersive seam).
+    • TWO-COLUMN desktop (≥1024px): offerings directory LEFT, sticky brand
+      summary panel RIGHT (Share + Contact + featured next-offering — NOT a
+      Follow button; FOLLOW DOES NOT EXIST IN THE BRAND MODEL).
+    • ORCH-1138 DEVICE-REVIEW SLEEK-CTA PROPAGATION: a brand hub has NO checkout,
+      so there is NO pay CTA (no seam-split, no Reserve/Book/Get-tickets). What
+      propagated instead is the refined BUTTON LANGUAGE — the Share action,
+      featured-next teaser, social chips and empty-state CTA now share the
+      offering pages' accent-fill + AA-safe --accent-on + crisp wash shadow +
+      hover-brighten + scale-press, so chrome reads consistent WITHOUT implying a
+      purchase. Chrome order normalized to the standard: X left · Share then Mute
+      right (Mute rightmost), matching trip/event/experience.
+    • TAB BAR (ORCH-1138 Seth direction 2026-06-15): About · Upcoming · Events ·
+      Trips · Experiences. ABOUT is the FIRST tab and the DEFAULT selected tab.
+      Only tabs the brand has content for render ("depending on availability") —
+      About + Upcoming always present; Events/Trips/Experiences appear only when
+      that bucket is non-empty. The bar is HORIZONTALLY SCROLLABLE (overflow-x +
+      nowrap + edge fade) so all tabs are reachable on a narrow phone without
+      wrapping. The ABOUT tab holds the bio AND the email+phone CONTACT (moved
+      in from its old standalone block / the right panel). Offering tabs show the
+      count-aware grid (1-col phone, 2-col desktop; upcoming first; past dimmed at
+      the bottom). Tabs are interactive (click switches content) on both layouts.
+    • Wrapping social chips (only the real links present render).
+    • REAL-DATA-ONLY (constitution rule 9). Every field maps to a source —
+      see DESIGN_ORCH-1138D §A FIELD INVENTORY.
+
+  Demo bar: brand-color swatches + font picker + State picker
+    (Populated / Few offerings / No offerings / Cover is video).
+
+  Self-contained, no deps. Open by double-clicking. Resize the window:
+    ≤ 1023px → PHONE immersive parallax hub.
+    ≥ 1024px → DESKTOP 2-column shell (directory + sticky summary panel).
+-->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>ORCH-1138D · Public Brand Page — Direction A (phone ↔ desktop)</title>
+<style>
+  /* ================= THEME ENGINE (mirrors createThemePalette) ============= */
+  :root {
+    --accent: #0f766e;
+    --accent-strong: #0b5a54;
+    --accent-wash: rgba(15,118,110,0.18);
+    --page: #07100f;
+    --primary: #ffffff;
+    --secondary: rgba(255,255,255,0.78);
+    --tertiary: rgba(255,255,255,0.56);
+    --card: rgba(255,255,255,0.07);
+    --card-strong: rgba(255,255,255,0.10);
+    --border: rgba(255,255,255,0.14);
+    --accent-border: rgba(15,118,110,0.42);
+    --font: "Inter", system-ui, -apple-system, sans-serif;
+    --danger: #ef4444;
+    --accent-on: #ffffff;   /* AA-safe text/icon color on accent fills */
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; -webkit-font-smoothing: antialiased; }
+  html, body { height: 100%; }
+  body {
+    font-family: var(--font);
+    background:
+      radial-gradient(1400px 700px at 50% -160px, #1a1f24 0%, #0a0c0f 62%) fixed,
+      #0a0c0f;
+    color: var(--primary);
+    min-height: 100vh;
+  }
+
+  /* ================= DEMO CHROME (not part of the page) ==================== */
+  .demo-bar {
+    position: sticky; top: 0; z-index: 50;
+    display: flex; gap: 10px; align-items: center; flex-wrap: nowrap; overflow-x: auto;
+    padding: 10px 16px; background: rgba(10,12,15,0.92); backdrop-filter: blur(10px);
+    border-bottom: 1px solid rgba(255,255,255,0.08);
+    font-size: 12px; color: rgba(255,255,255,0.6);
+  }
+  .demo-bar .grp { display: flex; gap: 6px; align-items: center; }
+  .demo-bar .lbl { letter-spacing: 0.4px; text-transform: uppercase; font-weight: 800; font-size: 9px; color: rgba(255,255,255,0.45); }
+  .swatch { width: 26px; height: 26px; border-radius: 999px; border: 2px solid rgba(255,255,255,0.2); cursor: pointer; }
+  .swatch:hover { transform: scale(1.12); }
+  .font-pick, .state-pick { background: #161a1f; color: #fff; border: 1px solid #2a2f36; border-radius: 8px; padding: 6px 8px; font-size: 12px; }
+  .demo-sep { width: 1px; height: 22px; background: rgba(255,255,255,0.12); }
+  .vp-hint { margin-left: auto; font-size: 11px; opacity: 0.7; white-space: nowrap; }
+  .vp-hint b { color: var(--accent); }
+
+  /* ================= SHELL (responsive container) ========================= */
+  .stage { display: flex; justify-content: center; padding: 22px 16px 60px; }
+  .page {
+    width: 100%; max-width: 660px;
+    background: var(--page);
+    border-radius: 28px; overflow: hidden; position: relative;
+    box-shadow: 0 40px 120px rgba(0,0,0,0.55), 0 0 0 1px rgba(255,255,255,0.06);
+  }
+
+  /* ---- HERO (brand cover) ---- */
+  .hero { position: relative; width: 100%; aspect-ratio: 4 / 5; overflow: hidden; background: #000; }
+  .hero img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .hero-overlay {
+    position: absolute; inset: 0;
+    background: linear-gradient(180deg, rgba(0,0,0,0.34) 0%, rgba(0,0,0,0) 30%, var(--page) 100%);
+  }
+  .hero-spacer { display: none; }
+
+  /* cover chrome — X (left) + Share (right). Mute appears only when cover=video. */
+  .chrome { position: absolute; top: 18px; left: 16px; right: 16px; display: flex; align-items: flex-start; justify-content: space-between; z-index: 4; }
+  .chrome.cm { display: none; }
+  .chrome-right { display: flex; flex-direction: row; align-items: center; gap: 10px; }
+  .chrome-btn { width: 40px; height: 40px; border-radius: 999px; background: rgba(0,0,0,0.48); backdrop-filter: blur(8px); display: grid; place-items: center; color: #fff; font-size: 20px; cursor: pointer; border: none; padding: 0; }
+  .chrome-btn svg { width: 19px; height: 19px; stroke: #fff; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+  /* mute button — only shown when the demo State = "Cover is video" */
+  .mute-btn { display: none; }
+  body[data-state="video"] .mute-btn { display: grid; }
+  .mute-btn .spk-body { fill: #fff; stroke: #fff; stroke-width: 2; stroke-linejoin: round; }
+  .mute-btn .spk-wave { fill: none; stroke: #fff; stroke-width: 2; stroke-linecap: round; }
+  .mute-btn .spk-slash { stroke: #fff; stroke-width: 2; stroke-linecap: round; }
+  .mute-btn .spk-wave { display: none; }
+  .mute-btn.is-on .spk-wave { display: inline; }
+  .mute-btn.is-on .spk-slash { display: none; }
+
+  /* ---- BODY CARD (overlaps hero — the event/trip-page seam) ---- */
+  .body { position: relative; margin-top: -28px; border-top-left-radius: 28px; border-top-right-radius: 28px; background: var(--page); border: 1px solid var(--accent-border); border-bottom: none; padding: 24px 20px 28px; box-shadow: 0 -10px 40px rgba(0,0,0,0.4); }
+
+  /* ---- IDENTITY (avatar + name + verified + address + tagline + bio) ---- */
+  .identity { display: flex; flex-direction: column; gap: 0; }
+  .id-top { display: flex; align-items: center; gap: 16px; }
+  .avatar { width: 84px; height: 84px; border-radius: 999px; object-fit: cover; border: 3px solid var(--accent); background: var(--card-strong); flex-shrink: 0; display: grid; place-items: center; font-size: 32px; font-weight: 900; color: var(--primary); }
+  .id-copy { min-width: 0; flex: 1; }
+  .verified { color: var(--accent); font-size: 10px; font-weight: 900; letter-spacing: 1.4px; text-transform: uppercase; display: inline-flex; align-items: center; gap: 4px; margin-bottom: 4px; }
+  .verified svg { width: 12px; height: 12px; stroke: var(--accent); fill: none; stroke-width: 2.2; }
+  .brand-name { font-family: var(--font); font-size: 30px; line-height: 1.08; font-weight: 900; letter-spacing: -0.5px; }
+  .brand-addr { font-size: 13px; color: var(--tertiary); margin-top: 4px; }
+  .tagline { font-family: var(--font); font-size: 19px; font-weight: 800; color: var(--primary); line-height: 1.25; margin-top: 16px; }
+  .bio { font-size: 15px; color: var(--secondary); line-height: 1.6; margin-top: 12px; }
+  .bio.clamp { display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden; }
+  .read-more { color: var(--accent); font-weight: 700; font-size: 14px; margin-top: 8px; cursor: pointer; display: inline-block; }
+
+  /* ---- SOCIAL CHIPS (only present links render; wrapping) ---- */
+  .socials { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 18px; }
+  .social { width: 44px; height: 44px; border-radius: 999px; background: var(--accent); display: grid; place-items: center; cursor: pointer; border: none; transition: filter .16s ease, transform .08s ease; }
+  .social:hover { filter: brightness(1.06); }
+  .social:active { transform: scale(0.94); }
+  .social svg { width: 21px; height: 21px; stroke: var(--accent-on, #fff); fill: none; stroke-width: 2; }
+
+  /* ---- FEATURED NEXT-OFFERING teaser (phone; real upcoming[0]) ---- */
+  /* Breathing room (ORCH-1138, Seth 2026-06-15): the teaser was cramped — kicker,
+     title and View were jammed on one row. Now a roomy VERTICAL stack: generous
+     internal padding, a clear gap between kicker → title, and the View button
+     pushed to its own line (does NOT hug the text). Same on phone + desktop. */
+  .next { display: flex; flex-direction: column; align-items: flex-start; gap: 40px; margin-top: 22px; background: var(--accent); border-radius: 18px; padding: 26px 24px 26px; cursor: pointer; box-shadow: 0 16px 40px var(--accent-wash); transition: filter .16s ease, transform .08s ease; }
+  .next-body { margin-bottom: 2px; }
+  .next:hover { filter: brightness(1.04); }
+  .next:active { transform: scale(0.99); }
+  .next-copy { width: 100%; min-width: 0; color: var(--accent-on, #fff); }
+  .next-label { font-size: 10px; font-weight: 900; letter-spacing: 1.4px; opacity: 0.92; }
+  .next-body { font-size: 17px; font-weight: 800; line-height: 1.32; margin-top: 10px; }
+  .next-view { align-self: flex-start; width: fit-content; flex: 0 0 auto; background: rgba(255,255,255,0.20); border: 1px solid rgba(255,255,255,0.28); color: var(--accent-on, #fff); border-radius: 12px; padding: 9px 20px; font-size: 13px; font-weight: 900; transition: background .16s ease; }
+  .next:hover .next-view { background: rgba(255,255,255,0.30); }
+
+  /* ---- OFFERINGS DIRECTORY ---- */
+  .sec-title { font-family: var(--font); font-size: 20px; font-weight: 900; letter-spacing: -0.3px; margin: 28px 0 12px; }
+
+  /* ============================================================
+     TAB BAR — About · Upcoming · Events · Trips · Experiences
+     ============================================================
+     ORCH-1138 (Seth direction 2026-06-15): the brand page's "What's on"
+     area becomes a TAB bar, not a filter. About is the FIRST tab and the
+     DEFAULT selected tab. Only tabs the brand has content for render
+     ("depending on availability") — About + Upcoming always present;
+     Events/Trips/Experiences appear only when that bucket is non-empty.
+     The bar is HORIZONTALLY SCROLLABLE so all tabs are reachable on a
+     narrow phone without wrapping (overflow-x:auto + nowrap + edge fades).
+     Selecting About shows bio + contact; selecting an offering tab shows
+     that filtered grid. */
+  .tabwrap { position: sticky; top: 0; z-index: 5; margin-top: 22px; position: relative; }
+  .tabs {
+    display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none;
+    -webkit-overflow-scrolling: touch; scroll-snap-type: x proximity;
+    padding: 2px; flex-wrap: nowrap;
+  }
+  .tabs::-webkit-scrollbar { display: none; }
+  .tab {
+    flex: 0 0 auto; white-space: nowrap; scroll-snap-align: start;
+    border: 1px solid var(--border); background: var(--card);
+    color: var(--secondary); font-family: var(--font); font-size: 13px;
+    font-weight: 800; padding: 10px 16px; border-radius: 999px; cursor: pointer;
+    transition: background .16s ease, color .16s ease, border-color .16s ease;
+  }
+  .tab:hover { border-color: var(--accent-border); color: var(--primary); }
+  .tab .cnt { opacity: 0.65; font-weight: 700; margin-left: 4px; }
+  .tab.active { background: var(--accent); color: var(--accent-on, #fff); border-color: var(--accent); box-shadow: 0 8px 22px var(--accent-wash); }
+  .tab.active .cnt { opacity: 0.85; }
+  /* edge fade hints there's more to scroll on a narrow phone (phone only) */
+  @media (max-width: 1023px) {
+    .tabwrap::after { content: ""; position: absolute; top: 0; right: 0; width: 28px; height: 100%; pointer-events: none;
+      background: linear-gradient(90deg, transparent, var(--page)); }
+  }
+
+  /* tab panes */
+  .pane { display: none; }
+  .pane.active { display: block; }
+
+  /* About pane: bio + contact live here now */
+  .about-tab .tagline { margin-top: 18px; }
+  .about-tab .bio { margin-top: 12px; }
+
+  .grid { display: grid; grid-template-columns: 1fr; gap: 18px; margin-top: 18px; }
+  .ocard { background: var(--card); border: 1px solid var(--border); border-radius: 16px; overflow: hidden; cursor: pointer; transition: transform .14s ease, border-color .14s ease; }
+  .ocard:hover { border-color: var(--accent-border); }
+  .ocard.past { opacity: 0.62; }
+  .ocard-cover { width: 100%; aspect-ratio: 16/9; position: relative; background: #000; }
+  .ocard-cover img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .ocard-kind { position: absolute; top: 10px; left: 10px; background: rgba(0,0,0,0.55); backdrop-filter: blur(6px); color: #fff; font-size: 10px; font-weight: 900; letter-spacing: 0.6px; text-transform: uppercase; padding: 4px 9px; border-radius: 999px; }
+  .ocard-body { padding: 14px; }
+  .ocard-date { color: var(--accent); font-size: 11px; font-weight: 800; letter-spacing: 1.2px; text-transform: uppercase; }
+  .ocard-title { font-family: var(--font); font-size: 17px; font-weight: 800; line-height: 1.2; margin-top: 5px; color: var(--primary); }
+  .ocard-meta { font-size: 13px; color: var(--tertiary); margin-top: 4px; }
+  .ocard-foot { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 10px; }
+  .ocard-price { font-size: 14px; font-weight: 800; color: var(--primary); }
+  .badge { font-size: 11px; font-weight: 700; padding: 4px 9px; border-radius: 999px; background: var(--accent-wash); border: 1px solid var(--accent-border); color: var(--primary); }
+  .badge.closed { background: var(--card-strong); border-color: var(--border); color: var(--secondary); }
+  .past-head { font-size: 11px; font-weight: 900; letter-spacing: 1.2px; text-transform: uppercase; color: var(--tertiary); margin: 24px 0 -4px; grid-column: 1 / -1; }
+
+  /* empty / few states (driven by demo State picker) */
+  .empty { text-align: center; padding: 40px 20px; }
+  .empty-emoji { font-size: 34px; }
+  .empty-title { font-size: 17px; font-weight: 800; margin-top: 10px; color: var(--primary); }
+  .empty-sub { font-size: 14px; color: var(--tertiary); margin-top: 6px; line-height: 1.5; }
+  .empty-cta { display: inline-flex; gap: 8px; align-items: center; margin-top: 16px; background: var(--accent); color: var(--accent-on, #fff); border: none; border-radius: 14px; padding: 13px 18px; font-weight: 900; font-size: 14px; cursor: pointer; box-shadow: 0 16px 40px var(--accent-wash); transition: filter .16s ease, transform .08s ease; }
+  .empty-cta:hover { filter: brightness(1.06); }
+  .empty-cta:active { transform: scale(0.98); }
+
+  /* state-driven visibility: which offering bodies show */
+  .when-populated, .when-few, .when-empty { display: none; }
+  body[data-state="populated"] .when-populated,
+  body[data-state="video"]     .when-populated { display: block; }
+  body[data-state="few"]       .when-few       { display: block; }
+  body[data-state="empty"]     .when-empty     { display: block; }
+  /* when there are no offerings: only About + Upcoming tabs exist; the
+     featured teaser hides. (Empty handled by the Upcoming pane's empty body.) */
+  body[data-state="empty"] .next { display: none; }
+  body[data-state="few"] .next { display: none; }   /* few: featured optional — hidden when only 1 */
+  /* count-aware tab visibility — offering tabs hide when their bucket is empty.
+     About + Upcoming always present. Events/Trips/Experiences appear only when
+     the brand has that kind. (Demo: 'empty' hides all three offering-kind tabs;
+     'few' shows only the kinds present in the few set.) */
+  body[data-state="empty"] .tab[data-tab="events"],
+  body[data-state="empty"] .tab[data-tab="trips"],
+  body[data-state="empty"] .tab[data-tab="exp"] { display: none; }
+  body[data-state="few"] .tab[data-tab="trips"],
+  body[data-state="few"] .tab[data-tab="exp"] { display: none; }
+  /* count-aware tab counts swap per state */
+  .tab .cnt-populated { display: inline; }
+  .tab .cnt-few { display: none; }
+  body[data-state="few"] .tab .cnt-populated { display: none; }
+  body[data-state="few"] .tab .cnt-few { display: inline; }
+  body[data-state="empty"] .tab[data-tab="all"] .cnt { display: none; }
+
+  /* ---- CONTACT block (real email/phone) ---- */
+  .contact { margin-top: 28px; }
+  .contact-row { display: flex; align-items: center; gap: 12px; background: var(--card); border: 1px solid var(--border); border-radius: 14px; padding: 14px; margin-top: 10px; cursor: pointer; }
+  .contact-row svg { width: 18px; height: 18px; stroke: var(--accent); fill: none; stroke-width: 2; flex-shrink: 0; }
+  .contact-label { font-size: 10px; font-weight: 800; letter-spacing: 1px; text-transform: uppercase; color: var(--tertiary); }
+  .contact-val { font-size: 14px; font-weight: 700; margin-top: 1px; }
+
+  .spacer { height: 8px; }
+
+  /* ================= DESKTOP STICKY SUMMARY PANEL (hidden on phone) ======= */
+  .deskpanel { display: none; }
+
+  /* ============================================================ */
+  /* ====================  DESKTOP  (≥ 1024px)  ================= */
+  /* Single centered shell owns the full width. Hero contained + rounded.    */
+  /* .shell = grid: LEFT directory (≈1fr) + RIGHT 360px sticky summary panel. */
+  /* The brand SUMMARY panel (NOT a checkout) carries: avatar+name, socials,  */
+  /* Share, and a featured next-offering card. Contact now lives in the ABOUT */
+  /* tab in the left column (not the panel). NO FOLLOW.                       */
+  /* ============================================================ */
+  @media (min-width: 1024px) {
+    .stage { display: block; padding: 32px 32px 72px; }
+    .page {
+      width: auto; max-width: 1200px; margin: 0 auto;
+      border-radius: 0; overflow: visible; background: transparent; box-shadow: none;
+    }
+    .hero { aspect-ratio: 21 / 9; max-height: 460px; border-radius: 24px; box-shadow: 0 30px 90px rgba(0,0,0,0.5), 0 0 0 1px rgba(255,255,255,0.06); }
+    .hero-overlay { background: linear-gradient(180deg, rgba(0,0,0,0.40) 0%, rgba(0,0,0,0) 45%, rgba(0,0,0,0.28) 100%); border-radius: 24px; }
+    /* desktop overlays the identity bottom-left ON the hero */
+    .hero-caption { position: absolute; left: 36px; bottom: 28px; right: 36px; z-index: 5; display: flex; align-items: center; gap: 18px; }
+    .hero-caption .avatar { width: 96px; height: 96px; border-width: 3px; }
+    .hero-caption .verified { color: #fff; opacity: 0.95; }
+    .hero-caption .brand-name { font-size: 42px; text-shadow: 0 2px 24px rgba(0,0,0,0.5); }
+    .hero-caption .brand-addr { color: rgba(255,255,255,0.86); text-shadow: 0 1px 10px rgba(0,0,0,0.5); }
+
+    .shell { display: grid; grid-template-columns: minmax(0,1fr) 360px; gap: 40px; margin-top: 26px; align-items: start; }
+
+    /* LEFT: scrolling directory. No card chrome / no hero overlap on desktop. */
+    .body { grid-column: 1; min-width: 0; margin-top: 0; padding: 0; border: none; border-radius: 0; background: transparent; box-shadow: none; }
+    /* identity/tagline/bio + socials + featured teaser move to the right panel on desktop */
+    .body .identity.inbody, .body .socials.inbody, .body .next.inbody { display: none; }
+    body[data-state="few"] .body .next.inbody { display: none; }
+
+    .sec-title { margin: 8px 0 14px; font-size: 22px; }
+    .filter { margin-top: 0; }
+    /* offerings as a real multi-column directory */
+    .grid { grid-template-columns: repeat(2, 1fr); gap: 20px; }
+    .ocard-cover { aspect-ratio: 16/10; }
+
+    /* RIGHT: sticky brand summary panel. */
+    .deskpanel {
+      display: block; grid-column: 2; position: sticky; top: 24px;
+      background: var(--card-strong); border: 1px solid var(--accent-border);
+      border-radius: 22px; padding: 0;
+      overflow: hidden auto;                 /* scroll the panel if all content exists */
+      max-height: calc(100vh - 48px);
+      box-shadow: 0 24px 60px rgba(0,0,0,0.4);
+    }
+    .dp-accent { height: 4px; background: var(--accent); }
+    .dp-inner { padding: 20px; }
+    .dp-inner .identity { gap: 0; }
+    .dp-inner .id-top { gap: 12px; }
+    .dp-inner .avatar { width: 60px; height: 60px; font-size: 24px; }
+    .dp-inner .brand-name { font-size: 22px; }
+    .dp-inner .tagline { font-size: 16px; margin-top: 12px; }
+    .dp-inner .bio { font-size: 14px; margin-top: 10px; }
+    .dp-inner .socials { margin-top: 16px; }
+    /* CHANGE (ORCH-1138 device review → sleek-CTA propagation): a brand hub has
+       NO checkout, so there is NO pay CTA here. The brand's real action (Share)
+       inherits the refined BUTTON LANGUAGE from the offering pages — accent fill,
+       AA-safe --accent-on text, crisp wash shadow, hover-brighten + scale-press —
+       so chrome reads consistently with the trip/event/experience CTAs without
+       implying a purchase. */
+    .dp-actions { display: flex; gap: 10px; margin-top: 18px; }
+    .dp-actions button { flex: 1; display: inline-flex; align-items: center; justify-content: center; gap: 8px; border: 1px solid var(--accent-border); background: var(--accent-wash); color: var(--primary); border-radius: 14px; padding: 14px; font-family: var(--font); font-weight: 900; font-size: 14px; cursor: pointer; transition: filter .16s ease, transform .08s ease, background .16s ease; }
+    .dp-actions button:hover { background: color-mix(in srgb, var(--accent) 26%, transparent); }
+    .dp-actions button:active { transform: scale(0.98); }
+    .dp-actions button.primary { background: var(--accent); color: var(--accent-on, #fff); border-color: var(--accent); box-shadow: 0 16px 40px var(--accent-wash); }
+    .dp-actions button.primary:hover { filter: brightness(1.06); background: var(--accent); }
+    .dp-actions button svg { width: 17px; height: 17px; stroke: currentColor; fill: none; stroke-width: 2; }
+    .dp-next { margin-top: 18px; border-top: 1px solid var(--border); padding-top: 16px; }
+    .dp-next .next { margin-top: 12px; }
+    body[data-state="empty"] .dp-next { display: none; }
+
+    .desk-only { display: block; }
+    .phone-only { display: none; }
+  }
+  .desk-only { display: none; }
+  .phone-only { display: block; }
+  .hero-caption { display: none; }
+  @media (min-width: 1024px) {
+    .hero-caption { display: flex; }
+    .desk-only { display: block; }
+    .deskpanel { display: block; }
+    .phone-only { display: none; }
+  }
+
+  /* ============================================================ */
+  /* ============  PHONE PARALLAX  (≤ 1023px ONLY)  ============= */
+  /* Cover PINNED to the viewport behind the content; body card slides UP and */
+  /* OVER it. Chrome (X · Share [· Mute]) floats fixed at the corners.        */
+  /* Z-INDEX: cover = 1 < content = 2 < chrome = 70.                          */
+  /* ============================================================ */
+  @media (max-width: 1023px) {
+    .stage { padding: 0; }
+    .page { z-index: 2; overflow: visible; max-width: none; border-radius: 0; }
+    .body { border-left: none; border-right: none; }
+
+    .hero { position: fixed; top: 0; left: 0; right: 0; transform: none; width: auto; z-index: 1; aspect-ratio: 4 / 5; border-radius: 0; }
+    .hero-spacer { display: block; width: 100%; aspect-ratio: 4 / 5; }
+
+    .chrome.cd { display: none; }
+    .chrome.cm {
+      display: flex; position: fixed; top: 56px; left: 0; right: 0; width: auto;
+      padding: 0 16px; z-index: 70;
+    }
+
+    .shell { position: relative; z-index: 2; }
+    .body  { position: relative; z-index: 2; }
+  }
+</style>
+</head>
+<body data-state="populated">
+  <!-- ============== DEMO CHROME ============== -->
+  <div class="demo-bar">
+    <div class="grp">
+      <span class="lbl">Brand</span>
+      <button class="swatch" style="background:#0f766e" title="Deep teal" onclick="setTheme('#0f766e','#0b5a54','#07100f','dark')"></button>
+      <button class="swatch" style="background:#e11d48" title="Crimson" onclick="setTheme('#e11d48','#b01239','#120709','dark')"></button>
+      <button class="swatch" style="background:#f5c518" title="Saffron (light)" onclick="setTheme('#9a7b00','#7d6300','#fbf7ea','light')"></button>
+      <button class="swatch" style="background:#6d28d9" title="Violet" onclick="setTheme('#6d28d9','#54199f','#0d0916','dark')"></button>
+    </div>
+    <select class="font-pick" onchange="document.documentElement.style.setProperty('--font', this.value)">
+      <option value="Inter, system-ui, sans-serif">Inter</option>
+      <option value="'Poppins', system-ui, sans-serif">Poppins</option>
+      <option value="'Playfair Display', Georgia, serif">Playfair Display</option>
+      <option value="Georgia, 'Times New Roman', serif">Serif (Lora-like)</option>
+    </select>
+    <div class="demo-sep"></div>
+    <div class="grp">
+      <span class="lbl">State</span>
+      <select class="state-pick" onchange="document.body.dataset.state=this.value; syncTabsToState();">
+        <option value="populated">Many offerings</option>
+        <option value="few">Few (1 offering)</option>
+        <option value="empty">No offerings</option>
+        <option value="video">Cover is video</option>
+      </select>
+    </div>
+    <div class="vp-hint">Resize me → <b>≤1023px phone · ≥1024px desktop</b></div>
+  </div>
+
+  <!-- PHONE COVER CHROME (.cm) — body-level fixed layer.
+       ORDER (ORCH-1138 device-review standard): X left · Share then Mute right
+       (Mute rightmost), matching the trip/event/experience chrome row. Mute only
+       renders when the cover is a video (demo State = "Cover is video"). -->
+  <div class="chrome cm">
+    <button class="chrome-btn" aria-label="Close">&times;</button>
+    <div class="chrome-right">
+      <button class="chrome-btn" aria-label="Share">
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <circle cx="6" cy="12" r="2.5"/>
+          <circle cx="18" cy="6" r="2.5"/>
+          <circle cx="18" cy="18" r="2.5"/>
+          <path d="M8.2 10.8L15.8 7.2M8.2 13.2L15.8 16.8"/>
+        </svg>
+      </button>
+      <button class="chrome-btn mute-btn" aria-label="Turn on cover sound" onclick="this.classList.toggle('is-on'); this.setAttribute('aria-label', this.classList.contains('is-on') ? 'Mute cover sound' : 'Turn on cover sound');">
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <path class="spk-body" d="M11 5 6 9H2v6h4l5 4V5z"/>
+          <path class="spk-wave" d="M15.5 8.5a5 5 0 0 1 0 7M18.5 5.5a9 9 0 0 1 0 13"/>
+          <line class="spk-slash" x1="16" y1="9" x2="22" y2="15"/>
+          <line class="spk-slash" x1="22" y1="9" x2="16" y2="15"/>
+        </svg>
+      </button>
+    </div>
+  </div>
+
+  <div class="stage">
+    <div class="page">
+
+      <!-- ============== HERO (brand cover) ============== -->
+      <div class="hero">
+        <img src="https://images.unsplash.com/photo-1414235077428-338989a2e8c0?w=1400&q=80" alt="Brand cover — Wander Collective" />
+        <div class="hero-overlay"></div>
+        <!-- desktop-only identity overlaid on the wide hero -->
+        <div class="hero-caption">
+          <img class="avatar" src="https://images.unsplash.com/photo-1517841905240-472988babdf9?w=200&q=80" alt="Wander Collective avatar" />
+          <div class="id-copy">
+            <div class="verified"><svg viewBox="0 0 24 24"><path d="M9 12l2 2 4-4M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg> Verified venue</div>
+            <div class="brand-name">Wander Collective</div>
+            <div class="brand-addr">12 Old Street, London EC1V 9HL</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- DESKTOP COVER CHROME (.cd) — X left · Share then Mute right (Mute rightmost). -->
+      <div class="chrome cd">
+        <button class="chrome-btn" aria-label="Close">&times;</button>
+        <div class="chrome-right">
+          <button class="chrome-btn" aria-label="Share">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <circle cx="6" cy="12" r="2.5"/>
+              <circle cx="18" cy="6" r="2.5"/>
+              <circle cx="18" cy="18" r="2.5"/>
+              <path d="M8.2 10.8L15.8 7.2M8.2 13.2L15.8 16.8"/>
+            </svg>
+          </button>
+          <button class="chrome-btn mute-btn" aria-label="Turn on cover sound" onclick="this.classList.toggle('is-on'); this.setAttribute('aria-label', this.classList.contains('is-on') ? 'Mute cover sound' : 'Turn on cover sound');">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path class="spk-body" d="M11 5 6 9H2v6h4l5 4V5z"/>
+              <path class="spk-wave" d="M15.5 8.5a5 5 0 0 1 0 7M18.5 5.5a9 9 0 0 1 0 13"/>
+              <line class="spk-slash" x1="16" y1="9" x2="22" y2="15"/>
+              <line class="spk-slash" x1="22" y1="9" x2="16" y2="15"/>
+            </svg>
+          </button>
+        </div>
+      </div>
+
+      <!-- PHONE PARALLAX flow spacer -->
+      <div class="hero-spacer phone-only" aria-hidden="true"></div>
+
+      <!-- ============== RESPONSIVE SHELL ============== -->
+      <div class="shell">
+
+        <!-- ===== LEFT / MAIN: identity (phone) + offerings directory ===== -->
+        <div class="body">
+
+          <!-- IDENTITY HEADER (phone only; desktop shows it in hero + right panel).
+               Bio + tagline moved OUT of here into the ABOUT tab below. -->
+          <div class="identity inbody phone-only">
+            <div class="id-top">
+              <img class="avatar" src="https://images.unsplash.com/photo-1517841905240-472988babdf9?w=200&q=80" alt="Wander Collective avatar" />
+              <div class="id-copy">
+                <div class="verified"><svg viewBox="0 0 24 24"><path d="M9 12l2 2 4-4M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg> Verified venue</div>
+                <div class="brand-name">Wander Collective</div>
+                <div class="brand-addr">12 Old Street, London EC1V 9HL</div>
+              </div>
+            </div>
+
+            <!-- SOCIAL CHIPS (only real links render; wrapping) -->
+            <div class="socials inbody">
+              <button class="social" aria-label="Website"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a15 15 0 010 18M12 3a15 15 0 000 18"/></svg></button>
+              <button class="social" aria-label="Instagram"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="5"/><circle cx="12" cy="12" r="4"/><circle cx="17.5" cy="6.5" r="1"/></svg></button>
+              <button class="social" aria-label="TikTok"><svg viewBox="0 0 24 24"><path d="M9 12a4 4 0 104 4V4c1 2 2.5 3 5 3"/></svg></button>
+              <button class="social" aria-label="YouTube"><svg viewBox="0 0 24 24"><rect x="2.5" y="6" width="19" height="12" rx="3"/><path d="M10 9l5 3-5 3z"/></svg></button>
+            </div>
+          </div>
+
+          <!-- FEATURED NEXT-OFFERING (phone; from upcoming[0]) -->
+          <div class="next inbody phone-only when-populated" onclick="">
+            <div class="next-copy">
+              <div class="next-label">NEXT UP · TRIP</div>
+              <div class="next-body">Sat 14 Sep · Slow Mornings in the Amalfi Coast · From €2,450</div>
+            </div>
+            <div class="next-view">View</div>
+          </div>
+
+          <!-- ===== TAB BAR (About · Upcoming · Events · Trips · Experiences) =====
+               About FIRST + DEFAULT. Horizontally scrollable. Count-aware:
+               offering-kind tabs hide when that bucket is empty (CSS handles the
+               demo 'empty'/'few' states; production renders only present kinds). -->
+          <div class="tabwrap">
+            <div class="tabs" role="tablist" aria-label="Brand sections">
+              <button class="tab active" data-tab="about" role="tab" aria-selected="true" onclick="showTab(this,'about')">About</button>
+              <button class="tab" data-tab="all"    role="tab" onclick="showTab(this,'all')">Upcoming <span class="cnt"><span class="cnt-populated">7</span><span class="cnt-few">1</span></span></button>
+              <button class="tab" data-tab="events" role="tab" onclick="showTab(this,'events')">Events <span class="cnt"><span class="cnt-populated">3</span><span class="cnt-few">1</span></span></button>
+              <button class="tab" data-tab="trips"  role="tab" onclick="showTab(this,'trips')">Trips <span class="cnt"><span class="cnt-populated">2</span><span class="cnt-few">0</span></span></button>
+              <button class="tab" data-tab="exp"    role="tab" onclick="showTab(this,'exp')">Experiences <span class="cnt"><span class="cnt-populated">2</span><span class="cnt-few">0</span></span></button>
+            </div>
+          </div>
+
+          <!-- ===== ABOUT PANE (default) — bio + tagline + CONTACT ===== -->
+          <div class="pane about-tab active" id="pane-about" role="tabpanel">
+            <div class="tagline">Slow travel, run by people who live there.</div>
+            <div class="bio clamp" id="bio-about">Wander Collective designs small-group, slow-travel trips and city experiences across the Mediterranean and beyond. No rushing between photo stops — you wake up where the locals do, eat where they eat, and leave knowing a place the way a friend would show you. Founded in 2019, every trip is led by a resident host who actually lives there.</div>
+            <div class="read-more" onclick="document.getElementById('bio-about').classList.toggle('clamp'); this.textContent = this.textContent==='Read more' ? 'Show less' : 'Read more';">Read more</div>
+
+            <!-- CONTACT lives in About now (moved from its own block). -->
+            <div class="contact">
+              <a class="contact-row" href="mailto:hello@wandercollective.com" style="text-decoration:none;color:inherit">
+                <svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 7l9 6 9-6"/></svg>
+                <div><div class="contact-label">Email</div><div class="contact-val">hello@wandercollective.com</div></div>
+              </a>
+              <a class="contact-row" href="tel:+447700900312" style="text-decoration:none;color:inherit">
+                <svg viewBox="0 0 24 24"><path d="M5 4h4l2 5-3 2a12 12 0 005 5l2-3 5 2v4a2 2 0 01-2 2A17 17 0 013 6a2 2 0 012-2z"/></svg>
+                <div><div class="contact-label">Phone</div><div class="contact-val">+44 7700 900312</div></div>
+              </a>
+            </div>
+          </div>
+
+          <!-- ===== OFFERINGS PANE — shown by any offering tab; inner body
+               switches on data-state (populated / few / empty). The active
+               OFFERING tab filters the grid by kind via showTab(). ===== -->
+          <div class="pane" id="pane-offerings" role="tabpanel">
+            <div class="when-populated">
+            <div class="grid" id="dir-grid">
+              <!-- TRIP -->
+              <div class="ocard" data-kind="trips">
+                <div class="ocard-cover"><img src="https://images.unsplash.com/photo-1469854523086-cc02fe5d8800?w=700&q=80" alt=""><span class="ocard-kind">Trip</span></div>
+                <div class="ocard-body">
+                  <div class="ocard-date">14 – 19 Sep 2026</div>
+                  <div class="ocard-title">Slow Mornings in the Amalfi Coast</div>
+                  <div class="ocard-meta">Positano, Italy</div>
+                  <div class="ocard-foot"><span class="ocard-price">From €2,450</span><span class="badge">3 spots left</span></div>
+                </div>
+              </div>
+              <!-- EVENT -->
+              <div class="ocard" data-kind="events">
+                <div class="ocard-cover"><img src="https://images.unsplash.com/photo-1492684223066-81342ee5ff30?w=700&q=80" alt=""><span class="ocard-kind">Event</span></div>
+                <div class="ocard-body">
+                  <div class="ocard-date">Fri 20 Sep</div>
+                  <div class="ocard-title">Rooftop Supper Club</div>
+                  <div class="ocard-meta">The Glasshouse, London</div>
+                  <div class="ocard-foot"><span class="ocard-price">From £45</span></div>
+                </div>
+              </div>
+              <!-- EXPERIENCE -->
+              <div class="ocard" data-kind="exp">
+                <div class="ocard-cover"><img src="https://images.unsplash.com/photo-1414235077428-338989a2e8c0?w=700&q=80" alt=""><span class="ocard-kind">Experience</span></div>
+                <div class="ocard-body">
+                  <div class="ocard-date">Sun 22 Sep</div>
+                  <div class="ocard-title">Sunrise Foraging Walk</div>
+                  <div class="ocard-meta">Hampstead Heath</div>
+                  <div class="ocard-foot"><span class="ocard-price">From £28</span></div>
+                </div>
+              </div>
+              <!-- EVENT -->
+              <div class="ocard" data-kind="events">
+                <div class="ocard-cover"><img src="https://images.unsplash.com/photo-1533174072545-7a4b6ad7a6c3?w=700&q=80" alt=""><span class="ocard-kind">Event</span></div>
+                <div class="ocard-body">
+                  <div class="ocard-date">Thu 26 Sep</div>
+                  <div class="ocard-title">Natural Wine Tasting</div>
+                  <div class="ocard-meta">Online event</div>
+                  <div class="ocard-foot"><span class="ocard-price">From £20</span></div>
+                </div>
+              </div>
+              <!-- TRIP -->
+              <div class="ocard" data-kind="trips">
+                <div class="ocard-cover"><img src="https://images.unsplash.com/photo-1530521954074-e64f6810b32d?w=700&q=80" alt=""><span class="ocard-kind">Trip</span></div>
+                <div class="ocard-body">
+                  <div class="ocard-date">3 – 8 Oct 2026</div>
+                  <div class="ocard-title">Lake District Walking Retreat</div>
+                  <div class="ocard-meta">Ambleside, UK</div>
+                  <div class="ocard-foot"><span class="ocard-price">From £1,180</span><span class="badge">Free to hold</span></div>
+                </div>
+              </div>
+              <!-- EXPERIENCE -->
+              <div class="ocard" data-kind="exp">
+                <div class="ocard-cover"><img src="https://images.unsplash.com/photo-1504280390367-361c6d9f38f4?w=700&q=80" alt=""><span class="ocard-kind">Experience</span></div>
+                <div class="ocard-body">
+                  <div class="ocard-date">Sat 5 Oct</div>
+                  <div class="ocard-title">Pasta-from-Scratch Workshop</div>
+                  <div class="ocard-meta">Borough Market</div>
+                  <div class="ocard-foot"><span class="ocard-price">From £55</span></div>
+                </div>
+              </div>
+              <!-- EVENT -->
+              <div class="ocard" data-kind="events">
+                <div class="ocard-cover"><img src="https://images.unsplash.com/photo-1501281668745-f7f57925c3b4?w=700&q=80" alt=""><span class="ocard-kind">Event</span></div>
+                <div class="ocard-body">
+                  <div class="ocard-date">Fri 11 Oct</div>
+                  <div class="ocard-title">Autumn Long-Table Dinner</div>
+                  <div class="ocard-meta">The Glasshouse, London</div>
+                  <div class="ocard-foot"><span class="ocard-price">From £60</span></div>
+                </div>
+              </div>
+
+              <!-- PAST (dimmed, end of directory) -->
+              <div class="past-head">Past</div>
+              <div class="ocard past" data-kind="events">
+                <div class="ocard-cover"><img src="https://images.unsplash.com/photo-1429962714451-bb934ecdc4ec?w=700&q=80" alt=""><span class="ocard-kind">Event</span></div>
+                <div class="ocard-body">
+                  <div class="ocard-date">Sat 17 Aug</div>
+                  <div class="ocard-title">Summer Garden Party</div>
+                  <div class="ocard-meta">The Glasshouse, London</div>
+                </div>
+              </div>
+              <div class="ocard past" data-kind="trips">
+                <div class="ocard-cover"><img src="https://images.unsplash.com/photo-1464822759023-fed622ff2c3b?w=700&q=80" alt=""><span class="ocard-kind">Trip</span></div>
+                <div class="ocard-body">
+                  <div class="ocard-date">2 – 7 Jun 2026</div>
+                  <div class="ocard-title">Dolomites Hiking Week</div>
+                  <div class="ocard-meta">South Tyrol, Italy</div>
+                  <div class="ocard-foot"><span class="badge closed">Booking closed</span></div>
+                </div>
+              </div>
+            </div>
+            </div><!-- /.when-populated -->
+
+            <!-- FEW-OFFERINGS STATE — single card -->
+            <div class="when-few">
+              <div class="grid">
+                <div class="ocard" data-kind="events">
+                  <div class="ocard-cover"><img src="https://images.unsplash.com/photo-1492684223066-81342ee5ff30?w=700&q=80" alt=""><span class="ocard-kind">Event</span></div>
+                  <div class="ocard-body">
+                    <div class="ocard-date">Fri 20 Sep</div>
+                    <div class="ocard-title">Rooftop Supper Club</div>
+                    <div class="ocard-meta">The Glasshouse, London</div>
+                    <div class="ocard-foot"><span class="ocard-price">From £45</span></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- NO-OFFERINGS STATE — friendly Mingla-voice empty -->
+            <div class="when-empty">
+            <div class="empty">
+              <div class="empty-emoji">🗺️</div>
+              <div class="empty-title">Nothing on the calendar yet</div>
+              <div class="empty-sub">Wander Collective hasn't posted any public events, trips or experiences right now.<br/>Follow them on Instagram or check back soon.</div>
+            </div>
+            </div><!-- /.when-empty -->
+          </div><!-- /#pane-offerings -->
+
+          <!-- (Contact moved INTO the About pane above — no standalone block.) -->
+
+          <div class="spacer"></div>
+        </div>
+
+        <!-- ===== RIGHT / STICKY BRAND SUMMARY PANEL (desktop only) ===== -->
+        <aside class="deskpanel desk-only">
+          <div class="dp-accent"></div>
+          <div class="dp-inner">
+            <div class="identity">
+              <div class="id-top">
+                <img class="avatar" src="https://images.unsplash.com/photo-1517841905240-472988babdf9?w=200&q=80" alt="" />
+                <div class="id-copy">
+                  <div class="brand-name">Wander Collective</div>
+                  <div class="brand-addr">London EC1V</div>
+                </div>
+              </div>
+              <div class="socials">
+                <button class="social" aria-label="Website"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a15 15 0 010 18M12 3a15 15 0 000 18"/></svg></button>
+                <button class="social" aria-label="Instagram"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="5"/><circle cx="12" cy="12" r="4"/><circle cx="17.5" cy="6.5" r="1"/></svg></button>
+                <button class="social" aria-label="TikTok"><svg viewBox="0 0 24 24"><path d="M9 12a4 4 0 104 4V4c1 2 2.5 3 5 3"/></svg></button>
+                <button class="social" aria-label="YouTube"><svg viewBox="0 0 24 24"><rect x="2.5" y="6" width="19" height="12" rx="3"/><path d="M10 9l5 3-5 3z"/></svg></button>
+              </div>
+            </div>
+
+            <!-- ACTION: Share only. Contact (email/phone) now lives in the
+                 ABOUT TAB content in the left column — NOT duplicated here.
+                 NO Follow — no follow concept exists in the brand model. -->
+            <div class="dp-actions">
+              <button class="primary" aria-label="Share this brand">
+                <svg viewBox="0 0 24 24"><circle cx="6" cy="12" r="2"/><circle cx="18" cy="6" r="2"/><circle cx="18" cy="18" r="2"/><path d="M8 11l8-4M8 13l8 4"/></svg> Share
+              </button>
+            </div>
+
+            <!-- featured next-offering -->
+            <div class="dp-next">
+              <div class="sec-title" style="font-size:13px;margin:0;text-transform:uppercase;letter-spacing:1px;color:var(--tertiary)">Next up</div>
+              <div class="next">
+                <div class="next-copy">
+                  <div class="next-label">TRIP · 14 SEP</div>
+                  <div class="next-body">Slow Mornings in the Amalfi Coast</div>
+                </div>
+                <div class="next-view">View</div>
+              </div>
+            </div>
+          </div>
+        </aside>
+
+      </div>
+    </div>
+  </div>
+
+<script>
+  function setTheme(accent, strong, page, mode) {
+    const r = document.documentElement.style;
+    r.setProperty('--accent', accent);
+    r.setProperty('--accent-strong', strong);
+    r.setProperty('--page', page);
+    const rgb = hexToRgb(accent);
+    r.setProperty('--accent-wash', `rgba(${rgb},0.18)`);
+    r.setProperty('--accent-border', `rgba(${rgb},0.42)`);
+    r.setProperty('--accent-on', luminance(accent) > 0.6 ? '#101420' : '#ffffff');
+    if (mode === 'light') {
+      r.setProperty('--primary', '#101420');
+      r.setProperty('--secondary', 'rgba(16,20,31,0.76)');
+      r.setProperty('--tertiary', 'rgba(16,20,31,0.56)');
+      r.setProperty('--card', 'rgba(0,0,0,0.04)');
+      r.setProperty('--card-strong', 'rgba(0,0,0,0.06)');
+      r.setProperty('--border', 'rgba(0,0,0,0.10)');
+    } else {
+      r.setProperty('--primary', '#ffffff');
+      r.setProperty('--secondary', 'rgba(255,255,255,0.78)');
+      r.setProperty('--tertiary', 'rgba(255,255,255,0.56)');
+      r.setProperty('--card', 'rgba(255,255,255,0.07)');
+      r.setProperty('--card-strong', 'rgba(255,255,255,0.10)');
+      r.setProperty('--border', 'rgba(255,255,255,0.14)');
+    }
+  }
+  function hexToRgb(hex) {
+    const n = parseInt(hex.slice(1), 16);
+    return `${(n>>16)&255},${(n>>8)&255},${n&255}`;
+  }
+  function luminance(hex) {
+    const n = parseInt(hex.slice(1), 16);
+    const r=(n>>16&255)/255, g=(n>>8&255)/255, b=(n&255)/255;
+    const f = c => c <= 0.03928 ? c/12.92 : Math.pow((c+0.055)/1.055, 2.4);
+    return 0.2126*f(r) + 0.7152*f(g) + 0.0722*f(b);
+  }
+  // TAB switch — About · Upcoming(all) · Events · Trips · Experiences.
+  // About shows the About pane (bio + contact); any offering tab shows the
+  // offerings pane filtered by kind. Tabs are interactive on phone + desktop.
+  function showTab(btn, kind) {
+    document.querySelectorAll('.tab').forEach(b => { b.classList.remove('active'); b.setAttribute('aria-selected','false'); });
+    btn.classList.add('active'); btn.setAttribute('aria-selected','true');
+    // auto-scroll the chosen tab into view in the scrollable bar
+    btn.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
+
+    const about = document.getElementById('pane-about');
+    const offerings = document.getElementById('pane-offerings');
+    if (kind === 'about') {
+      about.classList.add('active');
+      offerings.classList.remove('active');
+      return;
+    }
+    about.classList.remove('active');
+    offerings.classList.add('active');
+    // filter the grid by kind (Upcoming = all)
+    document.querySelectorAll('#dir-grid .ocard').forEach(card => {
+      card.style.display = (kind === 'all' || card.dataset.kind === kind) ? '' : 'none';
+    });
+    // hide the "Past" header if its section is filtered out
+    const pastHead = document.querySelector('#dir-grid .past-head');
+    if (pastHead) {
+      const anyPastVisible = [...document.querySelectorAll('#dir-grid .ocard.past')].some(c => c.style.display !== 'none');
+      pastHead.style.display = anyPastVisible ? '' : 'none';
+    }
+  }
+
+  // If the demo State flips to a value that hides the currently-active offering
+  // tab (e.g. switch to 'empty' while on Trips), snap back to About so the user
+  // never lands on a hidden/empty tab.
+  function syncTabsToState() {
+    const active = document.querySelector('.tab.active');
+    if (active && getComputedStyle(active).display === 'none') {
+      const aboutTab = document.querySelector('.tab[data-tab="about"]');
+      showTab(aboutTab, 'about');
+    }
+  }
+</script>
+</body>
+</html>

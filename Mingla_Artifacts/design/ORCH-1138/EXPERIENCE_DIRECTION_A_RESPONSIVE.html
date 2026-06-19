@@ -1,0 +1,1244 @@
+<!--
+  ORCH-1138C — PUBLIC EXPERIENCE PAGE REDESIGN · DIRECTION A "Immersive Itinerary"
+  ===============================================================================
+  Inherits the APPROVED trip Direction A v6 system (DIRECTION_A_V2_FULL_RESPONSIVE.html,
+  "works perfect") and FINE-TUNES it for the experience data model:
+
+    SAME AS TRIP:
+      · full-bleed PHONE parallax cover (pinned; details slide over) + body-level
+        FIXED chrome (X top-left, Share + Mute top-right circular icon buttons)
+      · BRAND THEMING (color/font + contrast palette) — closes the experience
+        page's known theming gap (it is the ONLY public offering page still
+        locked to dark #0c0e12 + hardcoded warm accent)
+      · overlapping rounded body card (-28 seam) + DESKTOP 2-column (≥1024px:
+        content left + STICKY booking panel right)
+      · count-aware galleries (1=full / 2=split / 3+=slider)
+      · interactive demo bar (color swatches / font / State / When)
+      · REAL-DATA-ONLY (constitution rule 9)
+
+    ORCH-1138 WIZARD AUDIT — RECONCILED AGAINST THE EXPERIENCE CREATE/EDIT WIZARD
+    (mingla-business/src/components/experience/*). The public page now renders
+    ONLY what the wizard authors (+ legit auto-derived fields). REMOVED this pass
+    because the experience wizard authors NEITHER:
+      · "What's included / inclusions" chips — NO inclusions field in any step.
+      · "Cancellation policy" refund ladder — NO refund/cancellation step (the
+        TRIP wizard has one via ORCH-1120; the EXPERIENCE wizard does not), and
+        PublicExperience carries no RefundPolicy.
+    Per-stop PRICE line is NOT rendered (per-stop prices roll into the ONE all-in
+    ticket — the buyer always buys the whole itinerary). start_time pills render
+    only when authored (optional). Vibes + per-stop ai_description + per-date
+    remaining are AUTHORED/real but need read-path wiring (flagged inline + spec).
+
+    FINE-TUNED FOR EXPERIENCES (vs the trip page) — see the spec §"current→reimagined":
+      1. ITINERARY = REAL authored STOPS (2–5), not days. Each stop carries
+         placeName + address + START HERE/THEN/END WITH label + startTime +
+         its own count-aware image gallery (image_urls[≤5]) + a per-stop blurb
+         (ai_description). Stops ARE authored by the wizard (unlike trips, where
+         per-day stops were fabricated and got removed).
+      2. NO pay-in-full / pay-over-time toggle. Experiences sell as ONE ticket at
+         a single price — the PublicExperience payload carries NO installment
+         schedule. Rendering a toggle would violate rule 9. The booking block is
+         a single all-in price + a single "Reserve" action.
+         ORCH-1138 CTA STANDARDIZATION (Seth 2026-06-15): the verb is "Reserve"
+         everywhere (NOT "Book Experience"). Experiences can recur so often the
+         purchase reads like a RESERVATION. The "Reserve" action (phone floating
+         + desktop sticky) uses the sleek single-button language from
+         SPLIT_CTA_OPTIONS.html Treatment B's fallback (.reserve / .dp-reserve),
+         because experiences have no plan. The Treatment-B seam-split shell
+         (.b-shell) is carried, commented OUT, to show it would ONLY render if an
+         experience ever offered a plan. Float→dock: floats compact while
+         scrolling, docks flush at the base (no black gap) above the home
+         indicator — same behavior as the approved trip page CTA.
+      3. CURATED INTENTS (vibes) chips — a real multi-select field (Adventurous /
+         First Dates / Romantic / Group Fun).
+      4. ADAPTIVE RESERVE off the DATE MODEL (single / recurring / multi_date):
+         · SINGLE   → "Reserve" goes STRAIGHT to the cart with the one date.
+           NO picker (one option only). The date renders as a FACT (.date-fact).
+         · MULTI / RECURRING → "Reserve" OPENS a slot-picker bottom sheet
+           (.slot-sheet) listing UPCOMING slots ("Fri, Jun 20 · 7:00 PM · 4
+           left"); selecting a slot enables the sheet's Reserve, which proceeds
+           to the cart with that occurrence. For heavily-recurring experiences
+           this reads like making a reservation (pick a day/time).
+         Capacity "N left" per slot is shown when known (flagged: the preview
+         hook sets ticketsRemaining=null today — design for it, wire the read
+         path). Flip the demo bar "When" control to see both states.
+      5. NO departure→destination route line. An experience is a local stop crawl,
+         not A→B travel; "Where you'll be" is the stops + a map of the first stop.
+
+  Self-contained, no deps. Open by double-clicking. Resize: ≤1023px = phone
+  immersive parallax · ≥1024px = desktop 2-column with sticky booking panel.
+-->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>ORCH-1138C · Public Experience — Direction A (responsive)</title>
+<style>
+  /* ================= THEME ENGINE (mirrors createThemePalette) ============= */
+  :root {
+    --accent: #0f766e;
+    --accent-strong: #0b5a54;
+    --accent-wash: rgba(15,118,110,0.18);
+    --page: #07100f;
+    --primary: #ffffff;
+    --secondary: rgba(255,255,255,0.78);
+    --tertiary: rgba(255,255,255,0.56);
+    --card: rgba(255,255,255,0.07);
+    --card-strong: rgba(255,255,255,0.10);
+    --border: rgba(255,255,255,0.14);
+    --accent-border: rgba(15,118,110,0.42);
+    --font: "Inter", system-ui, -apple-system, sans-serif;
+    --danger: #ef4444;
+    --danger-wash: rgba(239,68,68,0.14);
+    --accent-on: #ffffff;   /* AA-safe text color on the accent fill (CTA) */
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; -webkit-font-smoothing: antialiased; }
+  html, body { height: 100%; }
+  body {
+    font-family: var(--font);
+    background:
+      radial-gradient(1400px 700px at 50% -160px, #1a1f24 0%, #0a0c0f 62%) fixed,
+      #0a0c0f;
+    color: var(--primary);
+    min-height: 100vh;
+  }
+
+  /* ================= DEMO CHROME (not part of the page) ==================== */
+  .demo-bar {
+    position: sticky; top: 0; z-index: 50;
+    display: flex; gap: 10px; align-items: center; flex-wrap: nowrap; overflow-x: auto;
+    padding: 10px 16px; background: rgba(10,12,15,0.92); backdrop-filter: blur(10px);
+    border-bottom: 1px solid rgba(255,255,255,0.08);
+    font-size: 12px; color: rgba(255,255,255,0.6);
+  }
+  .demo-bar .grp { display: flex; gap: 6px; align-items: center; }
+  .demo-bar .lbl { letter-spacing: 0.4px; text-transform: uppercase; font-weight: 800; font-size: 9px; color: rgba(255,255,255,0.45); }
+  .swatch { width: 26px; height: 26px; border-radius: 999px; border: 2px solid rgba(255,255,255,0.2); cursor: pointer; }
+  .swatch:hover { transform: scale(1.12); }
+  .font-pick, .state-pick, .when-pick { background: #161a1f; color: #fff; border: 1px solid #2a2f36; border-radius: 8px; padding: 6px 8px; font-size: 12px; }
+  .demo-sep { width: 1px; height: 22px; background: rgba(255,255,255,0.12); }
+  .vp-hint { margin-left: auto; font-size: 11px; opacity: 0.7; white-space: nowrap; }
+  .vp-hint b { color: var(--accent); }
+
+  /* ================= SHELL (responsive container) ========================= */
+  .stage { display: flex; justify-content: center; padding: 22px 16px 60px; }
+  .page {
+    width: 100%; max-width: 660px;
+    background: var(--page);
+    border-radius: 28px; overflow: hidden; position: relative;
+    box-shadow: 0 40px 120px rgba(0,0,0,0.55), 0 0 0 1px rgba(255,255,255,0.06);
+  }
+
+  /* ---- HERO ---- */
+  .hero { position: relative; width: 100%; aspect-ratio: 4 / 5; overflow: hidden; background: #000; }
+  .hero img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .hero-overlay {
+    position: absolute; inset: 0;
+    background: linear-gradient(180deg, rgba(0,0,0,0.40) 0%, rgba(0,0,0,0) 28%, var(--page) 100%);
+  }
+  .hero-spacer { display: none; }
+  .chrome { position: absolute; top: 18px; left: 16px; right: 16px; display: flex; align-items: flex-start; justify-content: space-between; z-index: 4; }
+  .chrome.cm { display: none; }
+  .chrome-right { display: flex; flex-direction: row; align-items: center; gap: 10px; }
+  .chrome-btn { width: 40px; height: 40px; border-radius: 999px; background: rgba(0,0,0,0.48); backdrop-filter: blur(8px); display: grid; place-items: center; color: #fff; font-size: 20px; cursor: pointer; border: none; padding: 0; }
+  .chrome-btn svg { width: 19px; height: 19px; stroke: #fff; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+  .mute-btn .spk-body { fill: #fff; stroke: #fff; stroke-width: 2; stroke-linejoin: round; }
+  .mute-btn .spk-wave { fill: none; stroke: #fff; stroke-width: 2; stroke-linecap: round; }
+  .mute-btn .spk-slash { stroke: #fff; stroke-width: 2; stroke-linecap: round; }
+  .mute-btn .spk-wave { display: none; }
+  .mute-btn.is-on .spk-wave { display: inline; }
+  .mute-btn.is-on .spk-slash { display: none; }
+
+  /* ---- STATE BANNER ---- */
+  .state-banner { display: none; align-items: center; gap: 8px; justify-content: center; padding: 11px 14px; font-size: 13px; font-weight: 800; letter-spacing: 0.3px; }
+  .state-banner svg { width: 16px; height: 16px; stroke: currentColor; fill: none; stroke-width: 2.2; }
+  .state-banner.soldout { background: rgba(255,255,255,0.08); color: var(--secondary); }
+  .state-banner.closed  { background: var(--danger-wash); color: var(--danger); }
+  .state-banner.deadline{ background: var(--accent-wash); color: var(--accent); }
+  body[data-state="soldout"]  .state-banner.soldout  { display: flex; }
+  body[data-state="closed"]   .state-banner.closed   { display: flex; }
+  body[data-state="deadline"] .state-banner.deadline { display: flex; }
+
+  /* ---- BODY CARD (overlaps hero) ---- */
+  .body { position: relative; margin-top: -28px; border-top-left-radius: 28px; border-top-right-radius: 28px; background: var(--page); border: 1px solid var(--accent-border); border-bottom: none; padding: 24px 20px 20px; box-shadow: 0 -10px 40px rgba(0,0,0,0.4); }
+
+  .eyebrow { color: var(--accent); font-size: 11px; font-weight: 900; letter-spacing: 1.6px; text-transform: uppercase; margin-bottom: 8px; }
+  .eyebrow.lead { color: var(--primary); }
+  .title { font-family: var(--font); font-size: 32px; line-height: 1.08; font-weight: 900; letter-spacing: -0.5px; }
+
+  .meta-row { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px; }
+  .chip { display: inline-flex; align-items: center; gap: 6px; background: var(--card); border: 1px solid var(--border); border-radius: 999px; padding: 8px 12px; font-size: 13px; font-weight: 600; color: var(--secondary); }
+  .chip svg { width: 15px; height: 15px; stroke: var(--accent); fill: none; stroke-width: 2; }
+  .seats-left { color: var(--primary); font-weight: 800; }
+  body[data-state="soldout"] .seats-live { display: none; }
+  .seats-sold { display: none; color: var(--secondary); font-weight: 800; }
+  body[data-state="soldout"] .seats-sold { display: inline; }
+
+  /* ---- CURATED VIBES (intent chips) ---- */
+  .vibes { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+  .vibe { display: inline-flex; align-items: center; gap: 6px; padding: 7px 12px; border-radius: 999px; font-size: 12px; font-weight: 700; letter-spacing: 0.2px; background: var(--accent-wash); border: 1px solid var(--accent-border); color: var(--primary); }
+  .vibe svg { width: 14px; height: 14px; stroke: var(--accent); fill: none; stroke-width: 2; }
+
+  .brand-row { display: flex; align-items: center; gap: 12px; margin-top: 18px; background: var(--card); border: 1px solid var(--border); border-radius: 16px; padding: 12px 14px; cursor: pointer; }
+  .brand-tile { width: 42px; height: 42px; border-radius: 999px; object-fit: cover; border: 2px solid rgba(255,255,255,0.2); }
+  .brand-kicker { font-size: 10px; font-weight: 800; letter-spacing: 1.2px; text-transform: uppercase; color: var(--tertiary); }
+  .brand-name { font-size: 15px; font-weight: 800; margin-top: 1px; }
+  .brand-cta { margin-left: auto; color: var(--accent); font-size: 12px; font-weight: 800; align-self: center; }
+
+  .sec-title { font-family: var(--font); font-size: 20px; font-weight: 900; letter-spacing: -0.3px; margin: 28px 0 12px; }
+
+  .about { color: var(--secondary); font-size: 15px; line-height: 1.6; margin-top: 12px; }
+  .read-more { color: var(--accent); font-weight: 700; font-size: 14px; margin-top: 8px; cursor: pointer; }
+
+  /* ---- ITINERARY — vertical spine of REAL authored STOPS ---- */
+  .itin { position: relative; padding-left: 30px; margin-top: 4px; }
+  .itin::before { content: ""; position: absolute; left: 9px; top: 6px; bottom: 6px; width: 2px; background: linear-gradient(var(--accent), var(--accent-wash)); }
+  .stop { position: relative; padding-bottom: 18px; }
+  .stop:last-child { padding-bottom: 0; }
+  .stop-dot { position: absolute; left: -30px; top: 2px; width: 20px; height: 20px; border-radius: 999px; background: var(--accent); color: #fff; font-size: 10px; font-weight: 900; display: grid; place-items: center; box-shadow: 0 0 0 4px var(--page); }
+  .stop-card { background: var(--card); border: 1px solid var(--border); border-radius: 14px; padding: 14px; }
+  .stop-ord { font-size: 10px; font-weight: 900; letter-spacing: 1px; text-transform: uppercase; color: var(--accent); }
+  .stop-time { font-size: 10px; font-weight: 700; color: var(--tertiary); letter-spacing: 0.4px; margin-left: 8px; }
+  .stop-title { font-size: 15px; font-weight: 800; margin-top: 4px; }
+  .stop-addr { font-size: 12px; line-height: 1.4; color: var(--tertiary); margin-top: 3px; display: flex; align-items: flex-start; gap: 5px; }
+  .stop-addr svg { width: 13px; height: 13px; stroke: var(--accent); fill: none; stroke-width: 2; flex-shrink: 0; margin-top: 1px; }
+  .stop-blurb { font-size: 13px; line-height: 1.5; color: var(--secondary); margin-top: 8px; }
+  /* per-stop media gallery (image_urls) — count-aware */
+  .stop-media { margin-top: 12px; }
+  .stop-media .m { position: relative; border-radius: 10px; overflow: hidden; border: 1px solid var(--border); background:#000; }
+  .stop-media .m img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .stop-media .m.video::after { content: "\25B6"; position: absolute; inset: 0; display: grid; place-items: center; color: #fff; font-size: 14px; background: rgba(0,0,0,0.28); text-shadow: 0 1px 4px rgba(0,0,0,0.6); }
+  .stop-media.media-one { display: block; }
+  .stop-media.media-one .m { width: 100%; height: 200px; }
+  .stop-media.media-two { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .stop-media.media-two .m { width: 100%; height: 140px; }
+  .stop-media.media-slider { display: flex; gap: 8px; overflow-x: auto; scrollbar-width: none; padding-bottom: 2px; scroll-snap-type: x mandatory; }
+  .stop-media.media-slider::-webkit-scrollbar { display: none; }
+  .stop-media.media-slider .m { flex: 0 0 auto; width: 150px; height: 104px; scroll-snap-align: start; }
+
+  /* ---- INCLUSIONS ---- */
+  .chip-wrap { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+  .ichip { display: inline-flex; align-items: center; gap: 7px; padding: 8px 13px; border-radius: 999px; font-size: 13px; font-weight: 600; line-height: 1; background: var(--card); border: 1px solid var(--border); color: var(--secondary); }
+  .ichip .ic { width: 16px; height: 16px; border-radius: 999px; display: grid; place-items: center; font-size: 10px; font-weight: 900; flex-shrink: 0; }
+  .ichip.yes { color: var(--primary); background: var(--accent-wash); border-color: var(--accent-border); }
+  .ichip.yes .ic { background: var(--accent); color: #fff; }
+  .ichip.no { color: var(--secondary); }
+  .ichip.no .ic { background: rgba(255,255,255,0.10); color: var(--tertiary); }
+
+  /* ---- MAP ---- */
+  .map { margin-top: 12px; border-radius: 16px; overflow: hidden; border: 1px solid var(--border); position: relative; height: 180px; background:
+      linear-gradient(135deg, rgba(255,255,255,0.04), rgba(255,255,255,0.01)); }
+  .map img { width: 100%; height: 100%; object-fit: cover; opacity: 0.9; }
+  .map-pin { position: absolute; left: 50%; top: 50%; transform: translate(-50%,-100%); color: var(--accent); font-size: 28px; filter: drop-shadow(0 2px 4px rgba(0,0,0,0.5)); }
+  .map-cap { position: absolute; left: 12px; bottom: 12px; background: rgba(0,0,0,0.55); backdrop-filter: blur(6px); color:#fff; font-size: 12px; font-weight: 700; padding: 6px 10px; border-radius: 999px; }
+
+  /* ================= BOOKING BLOCK (single ticket — NO installments) ====== */
+  .book-card { background: var(--card-strong); border: 1px solid var(--accent-border); border-radius: 20px; padding: 18px; margin-top: 14px; position: relative; overflow: hidden; }
+  .book-card::before { content: ""; position: absolute; top: 0; left: 0; right: 0; height: 4px; background: var(--accent); }
+
+  /* ============================================================
+     ADAPTIVE RESERVE — date model drives whether Reserve opens a picker
+     ============================================================
+     ORCH-1138 (Seth direction 2026-06-15): an experience can recur so
+     often it reads like a RESERVATION. The CTA verb is standardized to
+     "Reserve" everywhere. The behavior is ADAPTIVE off how many bookable
+     slots exist:
+       · SINGLE fixed date  → Reserve goes STRAIGHT to the cart with that
+         one date. NO picker (one option only). The date is shown as a
+         FACT on the page (.date-fact, in the price card).
+       · MULTI / RECURRING  → Reserve opens the SLOT PICKER sheet
+         (.slot-sheet) — a clean scroller of upcoming slots, each
+         "Fri Jun 20 · 7:00 PM · 4 left". Choosing a slot enables the
+         sheet's Reserve, which proceeds to the cart.
+     REAL-DATA-ONLY (rule 9): only slots that exist render; per-slot
+     "N left" renders only when the model has it (the preview hook sets
+     ticketsRemaining=null today — flagged for read-path wiring). */
+
+  /* date FACT (single mode): the one date stated as a fact, not a chooser */
+  .date-fact { display: none; align-items: center; gap: 10px; margin-bottom: 16px; padding: 12px 14px; border-radius: 12px; background: var(--accent-wash); border: 1px solid var(--accent-border); }
+  .date-fact svg { width: 18px; height: 18px; stroke: var(--accent); fill: none; stroke-width: 2; flex-shrink: 0; }
+  .date-fact .df-when { font-size: 14px; font-weight: 800; color: var(--primary); }
+  .date-fact .df-sub { font-size: 11px; color: var(--tertiary); margin-top: 1px; }
+  body[data-when="single"] .date-fact { display: flex; }
+  /* "From " price prefix shows only when multiple slots exist */
+  .rp-from { display: none; }
+  body[data-when="multi"] .rp-from,
+  body[data-when="recurring"] .rp-from,
+  body[data-when="hours"] .rp-from { display: inline; }
+
+  /* recurring/multi SUMMARY (in price card): tells the buyer Reserve picks a slot */
+  .date-summary { display: none; align-items: center; gap: 10px; margin-bottom: 16px; padding: 12px 14px; border-radius: 12px; background: rgba(0,0,0,0.20); border: 1px dashed var(--border); cursor: pointer; transition: border-color .15s ease; }
+  .date-summary:hover { border-color: var(--accent-border); }
+  .date-summary svg.ds-cal { width: 18px; height: 18px; stroke: var(--accent); fill: none; stroke-width: 2; flex-shrink: 0; }
+  .date-summary .ds-text { flex: 1; min-width: 0; }
+  .date-summary .ds-when { font-size: 14px; font-weight: 800; color: var(--primary); }
+  .date-summary .ds-when .ds-chosen { color: var(--accent); }
+  .date-summary .ds-sub { font-size: 11px; color: var(--tertiary); margin-top: 1px; }
+  .date-summary .ds-chevron { color: var(--accent); font-size: 13px; font-weight: 800; flex-shrink: 0; }
+  body[data-when="multi"] .date-summary,
+  body[data-when="recurring"] .date-summary { display: flex; }
+  body[data-when="recurring"] .date-summary .ds-recurlabel { display: inline; }
+  body[data-when="multi"] .date-summary .ds-recurlabel { display: none; }
+  body[data-when="recurring"] .date-summary .ds-multilabel { display: none; }
+  body[data-when="multi"] .date-summary .ds-multilabel { display: inline; }
+
+  /* ============================================================
+     OPEN-DAILY (HOURS) availability — restaurant special-menu model
+     ============================================================
+     ORCH-1138 (Seth direction 2026-06-15): the RICHEST reservation case.
+     Some experiences (e.g. a restaurant special-menu) are OPEN EVERY DAY
+     within operating HOURS (8:00 AM – 9:00 PM), not a list of fixed
+     event_dates. Availability renders as HOURS, and Reserve opens a
+     restaurant-style booking sheet (any upcoming day → a time slot inside
+     hours → party size). See .resv-sheet below.
+     ── REAL-DATA HONESTY (rule 9): this "open daily within hours" model
+        implies DAILY time-slot supply that the current discrete
+        `event_dates` table does NOT yet carry. Powering it for real is the
+        recurrence / operating-hours availability supply work (generate
+        bookable slots per day from open/close + slot interval + per-slot
+        capacity). This mockup designs the TARGET UX regardless. */
+  .date-hours { display: none; align-items: center; gap: 10px; margin-bottom: 16px; padding: 12px 14px; border-radius: 12px; background: var(--accent-wash); border: 1px solid var(--accent-border); }
+  body[data-when="hours"] .date-hours { display: flex; }
+  .date-hours svg { width: 18px; height: 18px; stroke: var(--accent); fill: none; stroke-width: 2; flex-shrink: 0; }
+  .date-hours .dh-when { font-size: 14px; font-weight: 800; color: var(--primary); }
+  .date-hours .dh-sub { font-size: 11px; color: var(--tertiary); margin-top: 1px; }
+  /* in hours mode the single-date FACT and the slot-picker SUMMARY are both off */
+  body[data-when="hours"] .date-fact,
+  body[data-when="hours"] .date-summary { display: none !important; }
+
+  /* ---- RESERVATION SHEET (restaurant booking; opened by Reserve in HOURS mode) ----
+     A taller bottom sheet than the slot picker: DAY strip → TIME slots →
+     PARTY-size stepper → live SUMMARY → Reserve. Reuses .sheet-scrim. */
+  .resv-sheet {
+    position: fixed; left: 0; right: 0; bottom: 0; z-index: 95;
+    max-width: 560px; margin: 0 auto;
+    background: var(--page); border-top-left-radius: 24px; border-top-right-radius: 24px;
+    border: 1px solid var(--border); border-bottom: none;
+    box-shadow: 0 -20px 60px rgba(0,0,0,0.45);
+    display: flex; flex-direction: column; max-height: 88vh;
+    transform: translateY(102%); transition: transform .26s cubic-bezier(.22,1,.36,1);
+  }
+  .resv-sheet.open { transform: translateY(0); }
+  .resv-head { display: flex; align-items: baseline; justify-content: space-between; padding: 8px 20px 4px; flex-shrink: 0; }
+  .resv-title { font-size: 18px; font-weight: 900; letter-spacing: -0.3px; }
+  .resv-sub { font-size: 12px; color: var(--tertiary); margin-top: 2px; }
+  .resv-body { overflow-y: auto; padding: 6px 16px 8px; -webkit-overflow-scrolling: touch; }
+  .resv-group { margin-top: 16px; }
+  .resv-group:first-child { margin-top: 8px; }
+  .resv-glabel { font-size: 11px; font-weight: 900; letter-spacing: 1px; text-transform: uppercase; color: var(--tertiary); margin-bottom: 10px; display: flex; align-items: baseline; justify-content: space-between; }
+  .resv-glabel .rg-hint { font-weight: 700; letter-spacing: 0; text-transform: none; color: var(--accent); }
+
+  /* DAY strip — horizontal scroller; every upcoming day selectable */
+  .day-strip { display: flex; gap: 8px; overflow-x: auto; scrollbar-width: none; padding-bottom: 4px; scroll-snap-type: x proximity; -webkit-overflow-scrolling: touch; }
+  .day-strip::-webkit-scrollbar { display: none; }
+  .day-cell { flex: 0 0 auto; scroll-snap-align: start; width: 58px; padding: 10px 0; border-radius: 14px; background: var(--card); border: 1px solid var(--border); cursor: pointer; text-align: center; transition: border-color .14s ease, background .14s ease; }
+  .day-cell:hover { border-color: var(--accent-border); }
+  .day-cell.active { background: var(--accent); border-color: var(--accent); }
+  .day-cell .dc-dow { font-size: 11px; font-weight: 800; letter-spacing: 0.4px; color: var(--tertiary); text-transform: uppercase; }
+  .day-cell .dc-num { font-size: 20px; font-weight: 900; color: var(--primary); margin-top: 2px; line-height: 1; }
+  .day-cell .dc-mon { font-size: 10px; font-weight: 700; color: var(--tertiary); text-transform: uppercase; margin-top: 3px; }
+  .day-cell.active .dc-dow, .day-cell.active .dc-num, .day-cell.active .dc-mon { color: var(--accent-on, #fff); }
+
+  /* TIME slots — wrap grid; all within 8:00 AM–9:00 PM (last slot 8:30 PM) */
+  .time-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+  .time-slot { padding: 11px 4px; border-radius: 12px; background: var(--card); border: 1px solid var(--border); cursor: pointer; font-size: 13px; font-weight: 800; color: var(--primary); text-align: center; transition: border-color .14s ease, background .14s ease; }
+  .time-slot:hover { border-color: var(--accent-border); }
+  .time-slot.active { background: var(--accent); border-color: var(--accent); color: var(--accent-on, #fff); }
+  .time-slot.lastcall { position: relative; }
+  .time-slot.lastcall::after { content: "last"; position: absolute; top: -7px; right: -4px; font-size: 8px; font-weight: 900; letter-spacing: 0.3px; text-transform: uppercase; color: var(--accent-on,#fff); background: var(--accent); border-radius: 999px; padding: 1px 5px; }
+
+  /* PARTY size stepper */
+  .party { display: flex; align-items: center; justify-content: space-between; padding: 12px 14px; border-radius: 14px; background: var(--card); border: 1px solid var(--border); }
+  .party .pt-text { min-width: 0; }
+  .party .pt-label { font-size: 14px; font-weight: 800; color: var(--primary); }
+  .party .pt-sub { font-size: 11px; color: var(--tertiary); margin-top: 1px; }
+  .party .pt-ctrl { display: flex; align-items: center; gap: 14px; flex-shrink: 0; }
+  .party .pt-btn { width: 38px; height: 38px; border-radius: 999px; border: 1px solid var(--accent-border); background: var(--accent-wash); color: var(--primary); font-size: 22px; font-weight: 800; line-height: 1; cursor: pointer; display: grid; place-items: center; transition: filter .14s ease, transform .08s ease; }
+  .party .pt-btn:hover { filter: brightness(1.1); }
+  .party .pt-btn:active { transform: scale(0.94); }
+  .party .pt-btn:disabled { opacity: 0.35; cursor: not-allowed; }
+  .party .pt-count { font-size: 20px; font-weight: 900; color: var(--primary); min-width: 22px; text-align: center; }
+
+  /* SUMMARY + confirm */
+  .resv-foot { padding: 12px 16px calc(14px + env(safe-area-inset-bottom)); border-top: 1px solid var(--border); flex-shrink: 0; background: var(--page); }
+  .resv-summary { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--secondary); margin-bottom: 10px; min-height: 18px; }
+  .resv-summary svg { width: 15px; height: 15px; stroke: var(--accent); fill: none; stroke-width: 2; flex-shrink: 0; }
+  .resv-summary b { color: var(--primary); font-weight: 800; }
+  .resv-summary .rs-price { margin-left: auto; font-weight: 900; color: var(--primary); white-space: nowrap; }
+  .resv-confirm { display: flex; align-items: center; justify-content: center; gap: 8px; width: 100%; background: var(--accent); color: var(--accent-on, #fff); border: none; border-radius: 16px; padding: 16px; font-family: var(--font); font-size: 16px; font-weight: 900; cursor: pointer; box-shadow: 0 12px 34px var(--accent-wash); transition: filter .16s ease, transform .08s ease; }
+  .resv-confirm:hover { filter: brightness(1.06); }
+  .resv-confirm:active { transform: scale(0.99); }
+  .resv-confirm:disabled { background: var(--card-strong); color: var(--tertiary); box-shadow: none; cursor: not-allowed; border: 1px solid var(--border); }
+
+  /* ---- SLOT PICKER SHEET (bottom sheet; opened by Reserve in multi/recurring) ---- */
+  .sheet-scrim { position: fixed; inset: 0; z-index: 90; background: rgba(0,0,0,0.55); backdrop-filter: blur(2px); opacity: 0; pointer-events: none; transition: opacity .22s ease; }
+  .sheet-scrim.open { opacity: 1; pointer-events: auto; }
+  .slot-sheet {
+    position: fixed; left: 0; right: 0; bottom: 0; z-index: 91;
+    background: var(--page); border-top-left-radius: 24px; border-top-right-radius: 24px;
+    border: 1px solid var(--accent-border); border-bottom: none;
+    box-shadow: 0 -24px 60px rgba(0,0,0,0.5);
+    transform: translateY(102%); transition: transform .28s cubic-bezier(0.22,1,0.36,1);
+    max-height: 78vh; display: flex; flex-direction: column;
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+  .slot-sheet.open { transform: translateY(0); }
+  .slot-grab { width: 40px; height: 4px; border-radius: 999px; background: var(--border); margin: 10px auto 4px; flex-shrink: 0; }
+  .slot-head { display: flex; align-items: baseline; justify-content: space-between; padding: 8px 20px 12px; flex-shrink: 0; }
+  .slot-title { font-size: 18px; font-weight: 900; letter-spacing: -0.3px; }
+  .slot-sub { font-size: 12px; color: var(--tertiary); margin-top: 2px; }
+  .slot-close { background: var(--card); border: 1px solid var(--border); color: var(--secondary); width: 32px; height: 32px; border-radius: 999px; font-size: 18px; cursor: pointer; line-height: 1; flex-shrink: 0; align-self: flex-start; }
+  .slot-list { overflow-y: auto; padding: 0 16px 8px; display: flex; flex-direction: column; gap: 8px; -webkit-overflow-scrolling: touch; }
+  .slot-opt { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 14px 14px; border-radius: 14px; background: var(--card); border: 1px solid var(--border); cursor: pointer; transition: border-color .15s ease, background .15s ease; text-align: left; }
+  .slot-opt:hover { border-color: var(--accent-border); }
+  .slot-opt.active { background: var(--accent-wash); border-color: var(--accent); }
+  .slot-opt[aria-disabled="true"] { opacity: 0.5; cursor: not-allowed; }
+  .slot-opt .so-when { font-size: 15px; font-weight: 800; color: var(--primary); }
+  .slot-opt .so-sub { font-size: 12px; color: var(--tertiary); margin-top: 2px; }
+  .slot-opt .so-right { display: flex; align-items: center; gap: 12px; flex-shrink: 0; }
+  .slot-opt .so-cap { font-size: 12px; font-weight: 800; color: var(--accent); white-space: nowrap; }
+  .slot-opt .so-cap.soldout { color: var(--tertiary); }
+  .slot-opt .so-radio { width: 20px; height: 20px; border-radius: 999px; border: 2px solid var(--border); flex-shrink: 0; position: relative; }
+  .slot-opt.active .so-radio { border-color: var(--accent); }
+  .slot-opt.active .so-radio::after { content: ""; position: absolute; inset: 4px; border-radius: 999px; background: var(--accent); }
+  .slot-foot { padding: 12px 16px calc(14px + env(safe-area-inset-bottom)); border-top: 1px solid var(--border); flex-shrink: 0; background: var(--page); }
+  .slot-confirm { display: flex; align-items: center; justify-content: center; gap: 8px; width: 100%; background: var(--accent); color: var(--accent-on, #fff); border: none; border-radius: 16px; padding: 16px; font-family: var(--font); font-size: 16px; font-weight: 900; cursor: pointer; box-shadow: 0 12px 34px var(--accent-wash); transition: filter .16s ease, transform .08s ease; }
+  .slot-confirm:hover { filter: brightness(1.06); }
+  .slot-confirm:active { transform: scale(0.99); }
+  .slot-confirm:disabled { background: var(--card-strong); color: var(--tertiary); box-shadow: none; cursor: not-allowed; border: 1px solid var(--border); }
+
+  .book-amt-row { display: flex; align-items: baseline; gap: 8px; }
+  .book-amt-label { font-size: 11px; font-weight: 800; letter-spacing: 1px; text-transform: uppercase; color: var(--tertiary); }
+  .book-amt { font-size: 34px; font-weight: 900; letter-spacing: -1px; }
+  .book-sub { font-size: 13px; color: var(--secondary); margin-top: 4px; line-height: 1.5; }
+
+  /* ---- CANCELLATION / DEADLINE strips ---- */
+  .strip { display: flex; align-items: flex-start; gap: 10px; margin-top: 14px; background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 12px 14px; font-size: 13px; color: var(--secondary); }
+  .strip svg { width: 16px; height: 16px; stroke: var(--accent); fill: none; stroke-width: 2; flex-shrink: 0; margin-top: 1px; }
+  .refund-ladder { margin-top: 8px; display: flex; flex-direction: column; gap: 0; }
+  .rl-row { display: flex; justify-content: space-between; font-size: 13px; padding: 7px 0; color: var(--secondary); }
+  .rl-row + .rl-row { border-top: 1px dashed var(--border); }
+  .rl-pct { font-weight: 800; color: var(--primary); }
+  .rl-pct.zero { color: var(--tertiary); }
+
+  /* ================= FLOATING BOOK CTA (phone) =========================== */
+  /* CHANGE (ORCH-1138 device review → sleek-CTA propagation): an experience sells
+     as ONE ticket at a SINGLE price — the PublicExperience payload carries NO
+     installment schedule (rule 9). So the DEFAULT CTA is the SINGLE-button form
+     from SPLIT_CTA_OPTIONS Treatment B's fallback (.single): one rounded accent
+     shell, accent once, crisp shadow, → go-glyph, scale-on-press. The Treatment-B
+     SEAM-SPLIT shell (.b-shell, below) is included but commented OUT — it renders
+     ONLY if an experience ever offers a payment plan. We do NOT invent
+     installments for experiences. FLOAT→DOCK: floats compact while scrolling;
+     docks flush at the base (no black gap) above the home indicator. */
+  .floating {
+    position: sticky; bottom: 0; left: 0; right: 0; z-index: 6;
+    padding: 12px 16px calc(12px + env(safe-area-inset-bottom));
+    background: linear-gradient(180deg, rgba(7,16,15,0) 0%, var(--page) 42%);
+  }
+  /* SINGLE booking button (DEFAULT for experiences) */
+  .reserve {
+    display: flex; align-items: center; justify-content: space-between; gap: 12px;
+    background: var(--accent); color: var(--accent-on, #fff); border: none; width: 100%;
+    border-radius: 18px; padding: 16px 20px; cursor: pointer;
+    box-shadow: 0 16px 40px var(--accent-wash), 0 2px 0 rgba(0,0,0,0.18);
+    font-family: var(--font); transition: filter .16s ease, transform .08s ease;
+  }
+  .reserve:hover { filter: brightness(1.06); }
+  .reserve:active { transform: scale(0.99); }
+  .reserve .r-left { text-align: left; }
+  .reserve .r-kicker { font-size: 11px; font-weight: 700; opacity: 0.85; }
+  .reserve .r-price { font-size: 19px; font-weight: 900; letter-spacing: -0.3px; }
+  .reserve .r-cta { font-size: 16px; font-weight: 900; }
+  body[data-state="soldout"] .reserve, body[data-state="closed"] .reserve { background: var(--card-strong); color: var(--tertiary); box-shadow: none; cursor: not-allowed; border: 1px solid var(--border); }
+  body[data-state="soldout"] .reserve:hover, body[data-state="closed"] .reserve:hover { filter: none; }
+  body[data-state="soldout"] .reserve .r-cta, body[data-state="closed"] .reserve .r-cta,
+  body[data-state="soldout"] .reserve .r-left, body[data-state="closed"] .reserve .r-left { visibility: hidden; }
+  body[data-state="soldout"] .reserve, body[data-state="closed"] .reserve { position: relative; }
+  body[data-state="soldout"] .reserve::after, body[data-state="closed"] .reserve::after { position: absolute; inset: 0; display: grid; place-items: center; visibility: visible; font-weight: 900; font-size: 15px; }
+  body[data-state="soldout"] .reserve::after { content: "Sold out"; }
+  body[data-state="closed"]  .reserve::after { content: "This experience has ended"; }
+
+  /* ---- Treatment-B SEAM-SPLIT shell (ONLY if a plan exists; NOT default) ----
+     Reference anatomy from SPLIT_CTA_OPTIONS.html Treatment B. Kept here verbatim
+     so the per-type CTA architecture is visible: an experience that offered a
+     pay-in-full / pay-over-time plan would swap the single .reserve for this
+     control. With the experience model as-is, it never renders. */
+  .b-shell { display: flex; align-items: stretch; border-radius: 18px; overflow: hidden; border: 1px solid var(--accent-border); box-shadow: 0 16px 40px var(--accent-wash), 0 2px 0 rgba(0,0,0,0.18); }
+  .b-side { border: none; cursor: pointer; font-family: var(--font); padding: 14px 16px; text-align: left; display: flex; flex-direction: column; gap: 2px; min-width: 0; transition: filter .16s ease, transform .08s ease, background .16s ease; position: relative; }
+  .b-side:active { transform: scale(0.985); }
+  .b-side.primary { flex: 1.15; background: var(--accent); color: var(--accent-on, #fff); }
+  .b-side.primary:hover { filter: brightness(1.06); }
+  .b-side.secondary { flex: 1; background: var(--card-strong); color: var(--primary); }
+  .b-side.secondary:hover { background: var(--accent-wash); }
+  .b-seam { width: 1px; align-self: stretch; background: rgba(0,0,0,0.22); }
+  .b-k { font-size: 10.5px; font-weight: 800; letter-spacing: 0.2px; opacity: 0.92; }
+  .b-side.secondary .b-k { color: var(--tertiary); opacity: 1; }
+  .b-amt { font-size: 17px; font-weight: 900; letter-spacing: -0.3px; line-height: 1.12; }
+
+  .deskpanel { display: none; }
+
+  /* ============================================================ */
+  /* ====================  DESKTOP  (≥ 1024px)  ================= */
+  @media (min-width: 1024px) {
+    .stage { display: block; padding: 32px 32px 72px; }
+    .page {
+      width: auto; max-width: 1200px; margin: 0 auto; border-radius: 0;
+      overflow: visible; background: transparent; box-shadow: none;
+    }
+    .hero { aspect-ratio: 21 / 9; max-height: 520px; border-radius: 24px; box-shadow: 0 30px 90px rgba(0,0,0,0.5), 0 0 0 1px rgba(255,255,255,0.06); }
+    .hero-overlay { background: linear-gradient(180deg, rgba(0,0,0,0.45) 0%, rgba(0,0,0,0) 45%, rgba(0,0,0,0.30) 100%); border-radius: 24px; }
+    .hero-caption { position: absolute; left: 36px; bottom: 30px; right: 36px; z-index: 5; }
+    .hero-caption .eyebrow { color: #fff; opacity: 0.92; }
+    .hero-caption .title { font-size: 46px; max-width: 72%; text-shadow: 0 2px 24px rgba(0,0,0,0.5); }
+
+    .state-banner { border-radius: 999px; margin: 16px auto 0; max-width: 520px; }
+
+    .shell { display: grid; grid-template-columns: minmax(0,1fr) 360px; gap: 40px; margin-top: 26px; align-items: start; }
+
+    .body { grid-column: 1; min-width: 0; margin-top: 0; padding: 0; border: none; border-radius: 0; background: transparent; box-shadow: none; }
+
+    .dsection { padding: 4px 0 0; }
+    .sec-title { margin: 10px 0 14px; font-size: 22px; }
+
+    .brand-row.inbody { display: none; }
+    .meta-row { margin-top: 0; }
+
+    .stop-card { padding: 16px 18px; }
+    .stop-media.media-one .m { height: 300px; }
+    .stop-media.media-two .m { height: 190px; }
+    .stop-media.media-slider .m { width: 220px; height: 146px; }
+
+    .map { height: 300px; }
+
+    .floating { display: none; }
+    .deskpanel {
+      display: block; grid-column: 2; position: sticky; top: 24px;
+      background: var(--card-strong); border: 1px solid var(--accent-border);
+      border-radius: 22px; padding: 0; overflow: hidden;
+      box-shadow: 0 24px 60px rgba(0,0,0,0.4);
+    }
+    .deskpanel .dp-accent { height: 4px; background: var(--accent); }
+    .deskpanel .dp-inner { padding: 20px; }
+    .deskpanel .brand-row { margin-top: 0; }
+    .deskpanel .book-card { margin-top: 18px; border: none; background: transparent; padding: 0; }
+    .deskpanel .book-card::before { display: none; }
+    .deskpanel .dp-reserve {
+      display: flex; align-items: center; justify-content: center; gap: 8px;
+      width: 100%; margin-top: 18px; background: var(--accent); color: var(--accent-on, #fff);
+      border: none; border-radius: 16px; padding: 16px; font-family: var(--font);
+      font-size: 16px; font-weight: 900; cursor: pointer;
+      box-shadow: 0 16px 40px var(--accent-wash);
+      transition: filter .16s ease, transform .08s ease;
+    }
+    .deskpanel .dp-reserve:hover { filter: brightness(1.06); }
+    .deskpanel .dp-reserve:active { transform: scale(0.99); }
+    body[data-state="soldout"] .deskpanel .dp-reserve,
+    body[data-state="closed"]  .deskpanel .dp-reserve {
+      background: var(--card-strong); color: var(--tertiary); box-shadow: none; border: 1px solid var(--border); cursor: not-allowed;
+    }
+    .deskpanel .dp-reassure { font-size: 11px; color: var(--tertiary); text-align: center; margin-top: 10px; }
+    .deskpanel .dp-strips { margin-top: 6px; }
+    .deskpanel .strip { margin-top: 10px; }
+
+    .desk-only { display: block; }
+    .phone-only { display: none; }
+  }
+  .desk-only { display: none; }
+  .phone-only { display: block; }
+  .hero-caption { display: none; }
+  @media (min-width: 1024px) {
+    .hero-caption { display: block; }
+    .desk-only { display: block; }
+    .deskpanel { display: block; }
+    .phone-only { display: none; }
+    .floating { display: none; }
+  }
+
+  .spacer { height: 8px; }
+
+  /* ============================================================ */
+  /* ============  PHONE PARALLAX  (≤ 1023px ONLY)  ============= */
+  @media (max-width: 1023px) {
+    .stage { padding: 0; }
+    .page { z-index: 2; overflow: visible; max-width: none; border-radius: 0; }
+    .body { border-left: none; border-right: none; }
+    .hero { position: fixed; top: 0; left: 0; right: 0; transform: none; width: auto; z-index: 1; aspect-ratio: 4 / 5; border-radius: 0; }
+    .hero-spacer { display: block; width: 100%; aspect-ratio: 4 / 5; }
+    .chrome.cd { display: none; }
+    .chrome.cm { display: flex; position: fixed; top: 56px; left: 0; right: 0; width: auto; padding: 0 16px; z-index: 70; }
+    .shell { position: relative; z-index: 2; }
+    .body  { position: relative; z-index: 2; }
+    .state-banner { position: relative; z-index: 2; }
+  }
+</style>
+</head>
+<body data-state="available" data-when="multi">
+  <!-- ============== DEMO CHROME ============== -->
+  <div class="demo-bar">
+    <div class="grp">
+      <span class="lbl">Brand</span>
+      <button class="swatch" style="background:#0f766e" title="Deep teal" onclick="setTheme('#0f766e','#0b5a54','#07100f','dark')"></button>
+      <button class="swatch" style="background:#e11d48" title="Crimson" onclick="setTheme('#e11d48','#b01239','#120709','dark')"></button>
+      <button class="swatch" style="background:#f5c518" title="Saffron (light)" onclick="setTheme('#9a7b00','#7d6300','#fbf7ea','light')"></button>
+      <button class="swatch" style="background:#6d28d9" title="Violet" onclick="setTheme('#6d28d9','#54199f','#0d0916','dark')"></button>
+    </div>
+    <select class="font-pick" onchange="document.documentElement.style.setProperty('--font', this.value)">
+      <option value="Inter, system-ui, sans-serif">Inter</option>
+      <option value="'Poppins', system-ui, sans-serif">Poppins</option>
+      <option value="'Playfair Display', Georgia, serif">Playfair Display</option>
+      <option value="Georgia, 'Times New Roman', serif">Serif (Lora-like)</option>
+    </select>
+    <div class="demo-sep"></div>
+    <div class="grp">
+      <span class="lbl">State</span>
+      <select class="state-pick" onchange="document.body.dataset.state=this.value">
+        <option value="available">Available</option>
+        <option value="deadline">Deadline soon</option>
+        <option value="soldout">Sold out</option>
+        <option value="closed">Ended</option>
+      </select>
+    </div>
+    <div class="grp">
+      <span class="lbl">When</span>
+      <select class="when-pick" onchange="document.body.dataset.when=this.value; resetSlotState();">
+        <option value="single">Single (direct)</option>
+        <option value="multi" selected>Multi-date (picker)</option>
+        <option value="recurring">Recurring (picker)</option>
+        <option value="hours">Open daily (hours)</option>
+      </select>
+    </div>
+    <div class="vp-hint">Resize → <b>≤1023 phone · ≥1024 desktop</b></div>
+  </div>
+
+  <!-- PHONE COVER CHROME (.cm) — body-level fixed layer -->
+  <div class="chrome cm">
+    <button class="chrome-btn" aria-label="Close">&times;</button>
+    <div class="chrome-right">
+      <button class="chrome-btn" aria-label="Share">
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <circle cx="6" cy="12" r="2.5"/><circle cx="18" cy="6" r="2.5"/><circle cx="18" cy="18" r="2.5"/>
+          <path d="M8.2 10.8L15.8 7.2M8.2 13.2L15.8 16.8"/>
+        </svg>
+      </button>
+      <button class="chrome-btn mute-btn" aria-label="Turn on cover sound" onclick="this.classList.toggle('is-on'); this.setAttribute('aria-label', this.classList.contains('is-on') ? 'Mute cover sound' : 'Turn on cover sound');">
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <path class="spk-body" d="M11 5 6 9H2v6h4l5 4V5z"/>
+          <path class="spk-wave" d="M15.5 8.5a5 5 0 0 1 0 7M18.5 5.5a9 9 0 0 1 0 13"/>
+          <line class="spk-slash" x1="16" y1="9" x2="22" y2="15"/>
+          <line class="spk-slash" x1="22" y1="9" x2="16" y2="15"/>
+        </svg>
+      </button>
+    </div>
+  </div>
+
+  <div class="stage">
+    <div class="page">
+
+      <!-- ============== HERO ============== -->
+      <div class="hero">
+        <img src="https://images.unsplash.com/photo-1514933651103-005eec06c04b?w=1400&q=80" alt="Experience cover — candlelit jazz bar" />
+        <div class="hero-overlay"></div>
+        <div class="hero-caption">
+          <!-- eyebrow = DERIVED stop count only (no authored duration/time-of-day field) -->
+          <div class="eyebrow">3-stop experience</div>
+          <div class="title">Friday Night Jazz Crawl</div>
+        </div>
+      </div>
+
+      <!-- DESKTOP COVER CHROME (.cd) -->
+      <div class="chrome cd">
+        <button class="chrome-btn" aria-label="Close">&times;</button>
+        <div class="chrome-right">
+          <button class="chrome-btn" aria-label="Share">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <circle cx="6" cy="12" r="2.5"/><circle cx="18" cy="6" r="2.5"/><circle cx="18" cy="18" r="2.5"/>
+              <path d="M8.2 10.8L15.8 7.2M8.2 13.2L15.8 16.8"/>
+            </svg>
+          </button>
+          <button class="chrome-btn mute-btn" aria-label="Turn on cover sound" onclick="this.classList.toggle('is-on'); this.setAttribute('aria-label', this.classList.contains('is-on') ? 'Mute cover sound' : 'Turn on cover sound');">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path class="spk-body" d="M11 5 6 9H2v6h4l5 4V5z"/>
+              <path class="spk-wave" d="M15.5 8.5a5 5 0 0 1 0 7M18.5 5.5a9 9 0 0 1 0 13"/>
+              <line class="spk-slash" x1="16" y1="9" x2="22" y2="15"/>
+              <line class="spk-slash" x1="22" y1="9" x2="16" y2="15"/>
+            </svg>
+          </button>
+        </div>
+      </div>
+
+      <!-- PHONE PARALLAX flow spacer -->
+      <div class="hero-spacer phone-only" aria-hidden="true"></div>
+
+      <!-- state banners -->
+      <div class="state-banner deadline"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg> Next date is filling up — 3 spots left</div>
+      <div class="state-banner soldout"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M15 9l-6 6M9 9l6 6"/></svg> SOLD OUT</div>
+      <div class="state-banner closed"><svg viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V7a4 4 0 018 0v4"/></svg> This experience has ended</div>
+
+      <!-- ============== RESPONSIVE SHELL ============== -->
+      <div class="shell">
+
+        <!-- ===== LEFT / MAIN CONTENT ===== -->
+        <div class="body">
+          <!-- phone-only lead title (desktop shows it in the hero) -->
+          <div class="phone-only">
+            <div class="eyebrow lead">3-stop experience</div>
+            <div class="title lead">Friday Night Jazz Crawl</div>
+          </div>
+
+          <div class="meta-row">
+            <span class="chip"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg> 5 dates · Next: Fri 20 Jun</span>
+            <span class="chip"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg> 7:00 PM start</span>
+            <span class="chip"><svg viewBox="0 0 24 24"><circle cx="9" cy="8" r="3"/><path d="M3 20c0-3.3 2.7-6 6-6s6 2.7 6 6M16 11a3 3 0 100-6"/></svg>
+              <span class="seats-live"><span class="seats-left">3 spots left</span> · 12 max</span>
+              <span class="seats-sold">Sold out · 12 of 12</span>
+            </span>
+            <span class="chip"><svg viewBox="0 0 24 24"><path d="M12 2C8 2 5 5 5 9c0 5 7 13 7 13s7-8 7-13c0-4-3-7-7-7z"/><circle cx="12" cy="9" r="2.5"/></svg> Washington, DC</span>
+          </div>
+
+          <!-- curated vibes (experience_intents) — AUTHORED (wizard step 1, ≥1 required).
+               RENDER NOW, NEEDS READ-PATH WIRING: PublicExperience does not yet
+               surface experience_intents; implementor must add it to
+               publicExperienceService.ts (select experience_intents off events). -->
+          <div class="vibes">
+            <span class="vibe"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M16 8l-2 6-6 2 2-6z"/></svg> Group Fun</span>
+            <span class="vibe"><svg viewBox="0 0 24 24"><path d="M12 3l2.5 5.5L20 9l-4 4 1 6-5-3-5 3 1-6-4-4 5.5-.5z"/></svg> Romantic</span>
+          </div>
+
+          <!-- brand chip (phone only; desktop puts it in the sticky panel) -->
+          <div class="brand-row inbody">
+            <img class="brand-tile" src="https://images.unsplash.com/photo-1511192336575-5a79af67a629?w=200&q=80" alt="" />
+            <div>
+              <div class="brand-kicker">Presented by</div>
+              <div class="brand-name">After Hours Society</div>
+            </div>
+            <div class="brand-cta">View</div>
+          </div>
+
+          <!-- about -->
+          <div class="dsection">
+            <div class="sec-title">About this experience</div>
+            <div class="about">A guided three-stop crawl through DC's best small jazz rooms — a hidden basement listening bar, a corner speakeasy with a live trio, and a late-night rooftop set under the city lights. Your host knows the bartenders, skips the lines, and times each stop to the music. Come for the first impression, stay for the last set.</div>
+            <div class="read-more">Read more</div>
+          </div>
+
+          <!-- ===== REAL AUTHORED STOPS (2–5; START HERE / THEN / END WITH) =====
+               Per stop the wizard authors (ExperienceStopCard.tsx): name, description
+               (ai_description, COMPULSORY 1–280), address (single mode → stop 1 only;
+               per_stop → every stop), photos (image_urls ≤5, [0]=primary), start_time
+               (OPTIONAL — render the time pill ONLY when present). NO per-stop price
+               line on the public page (per-stop prices roll into the ONE all-in ticket).
+               READ-PATH NOTE: publicExperienceService selects place_name/address/
+               image_urls/start_time but NOT ai_description — implementor must add it. -->
+          <div class="dsection">
+            <div class="sec-title">The itinerary</div>
+            <div class="itin">
+
+              <!-- Stop 1 (START HERE) — 1 photo → media-one full width -->
+              <div class="stop"><div class="stop-dot">1</div><div class="stop-card">
+                <div><span class="stop-ord">Start here</span><span class="stop-time">7:00 PM</span></div>
+                <div class="stop-title">The Cellar Door</div>
+                <div class="stop-addr"><svg viewBox="0 0 24 24"><path d="M12 2C8 2 5 5 5 9c0 5 7 13 7 13s7-8 7-13c0-4-3-7-7-7z"/><circle cx="12" cy="9" r="2.5"/></svg> 1337 14th St NW, Washington, DC</div>
+                <div class="stop-blurb">Meet your host downstairs for a welcome cocktail and the first set — an intimate basement room where the trio plays an arm's length away.</div>
+                <div class="stop-media media-one">
+                  <div class="m"><img src="https://images.unsplash.com/photo-1415201364774-f6f0bb35f28f?w=900&q=80" alt="Basement listening bar"></div>
+                </div>
+              </div></div>
+
+              <!-- Stop 2 (THEN) — 2 photos → media-two split -->
+              <div class="stop"><div class="stop-dot">2</div><div class="stop-card">
+                <!-- start_time is OPTIONAL — this stop has none, so NO time pill renders -->
+                <div><span class="stop-ord">Then</span></div>
+                <div class="stop-title">Marvelous Speakeasy</div>
+                <div class="stop-addr"><svg viewBox="0 0 24 24"><path d="M12 2C8 2 5 5 5 9c0 5 7 13 7 13s7-8 7-13c0-4-3-7-7-7z"/><circle cx="12" cy="9" r="2.5"/></svg> 2003 11th St NW, Washington, DC</div>
+                <div class="stop-blurb">A short walk to a hidden corner bar with a live quartet and the best Old Fashioned in the city. We've reserved the front banquette.</div>
+                <div class="stop-media media-two">
+                  <div class="m"><img src="https://images.unsplash.com/photo-1470225620780-dba8ba36b745?w=500&q=80" alt="Speakeasy interior"></div>
+                  <div class="m"><img src="https://images.unsplash.com/photo-1543007630-9710e4a00a20?w=500&q=80" alt="Live quartet"></div>
+                </div>
+              </div></div>
+
+              <!-- Stop 3 (END WITH) — 4 photos → media-slider carousel (one video) -->
+              <div class="stop"><div class="stop-dot">3</div><div class="stop-card">
+                <div><span class="stop-ord">End with</span><span class="stop-time">10:30 PM</span></div>
+                <div class="stop-title">Skyline Rooftop</div>
+                <div class="stop-addr"><svg viewBox="0 0 24 24"><path d="M12 2C8 2 5 5 5 9c0 5 7 13 7 13s7-8 7-13c0-4-3-7-7-7z"/><circle cx="12" cy="9" r="2.5"/></svg> 901 Massachusetts Ave NW, Washington, DC</div>
+                <div class="stop-blurb">End on the roof for the late set as the city lights come up — a saxophone, a skyline, and one last round before the night winds down.</div>
+                <div class="stop-media media-slider">
+                  <div class="m video"><img src="https://images.unsplash.com/photo-1493225457124-a3eb161ffa5f?w=400&q=80" alt="Rooftop set clip"></div>
+                  <div class="m"><img src="https://images.unsplash.com/photo-1438557068880-c5f474830377?w=400&q=80" alt="City skyline at night"></div>
+                  <div class="m"><img src="https://images.unsplash.com/photo-1551918120-9739cb430c6d?w=400&q=80" alt="Saxophone player"></div>
+                  <div class="m"><img src="https://images.unsplash.com/photo-1470337458703-46ad1756a187?w=400&q=80" alt="Last round on the roof"></div>
+                </div>
+              </div></div>
+
+            </div>
+          </div>
+
+          <!-- ===== WHAT'S INCLUDED / EXCLUDED — REMOVED (ORCH-1138 wizard audit) =====
+               The experience wizard authors NO inclusions/what's-included field
+               (see ExperienceCreatorWizard.tsx steps 1–5: identity, stops,
+               when, pricing, cover — nothing captures inclusion chips). Rendering
+               them would fabricate data → violates real-data-only (rule 9). The
+               .chip-wrap / .ichip CSS is retained ONLY so the brand page (which
+               does have authored amenities) can reuse it; it is unused here. -->
+
+          <!-- ===== MAP (first stop lat/lng) ===== -->
+          <div class="dsection">
+            <div class="sec-title">Where you'll start</div>
+            <div class="map">
+              <img src="https://images.unsplash.com/photo-1524661135-423995f22d0b?w=900&q=80" alt="Map of the first stop area">
+              <div class="map-pin">&#9679;</div>
+              <div class="map-cap">The Cellar Door · 14th St NW</div>
+            </div>
+          </div>
+
+          <!-- ===== PHONE-ONLY BOOKING (desktop moves it to the sticky right panel) =====
+               ADAPTIVE per date model (ORCH-1138):
+                 · single    → .date-fact (the one date, stated as fact) + Reserve
+                               goes straight to cart (the floating bar below).
+                 · multi/rec → .date-summary (tap to pick) + Reserve OPENS the slot
+                               sheet; choosing a slot then proceeds to cart. -->
+          <div class="phone-only">
+            <div class="sec-title">Reserve your spot</div>
+            <div class="book-card">
+              <!-- SINGLE: one date, shown as a FACT (no chooser) -->
+              <div class="date-fact">
+                <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
+                <span><span class="df-when">Sat, Jun 14 · 7:00 PM</span><span class="df-sub">One date · 3 spots left</span></span>
+              </div>
+
+              <!-- MULTI / RECURRING: summary row → Reserve opens the slot picker.
+                   per-slot "N left" = AUTO-DERIVED REAL (capacity − sold per
+                   event_date). RENDER NOW, NEEDS READ-PATH WIRING: the slug preview
+                   sets ticketsRemaining=null; implementor must compute per-occurrence
+                   remaining (the by-id checkout path already does). -->
+              <div class="date-summary" id="date-summary-phone" onclick="openSlots()">
+                <svg class="ds-cal" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
+                <span class="ds-text">
+                  <span class="ds-when"><span class="ds-default"><span class="ds-multilabel">5 dates available</span><span class="ds-recurlabel">Recurring · weekly</span></span><span class="ds-chosen" style="display:none"></span></span>
+                  <span class="ds-sub">Reserve to pick a day &amp; time</span>
+                </span>
+                <span class="ds-chevron">Choose &rsaquo;</span>
+              </div>
+
+              <!-- OPEN-DAILY (HOURS): availability shows operating hours, not dates.
+                   Reserve opens the restaurant booking sheet (day → time → party). -->
+              <div class="date-hours">
+                <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
+                <span><span class="dh-when">Open daily · 8:00 AM – 9:00 PM</span><span class="dh-sub">Reserve a table any upcoming day</span></span>
+              </div>
+
+              <div class="book-amt-row"><span class="book-amt">$65</span><span class="book-amt-label">per person</span></div>
+              <div class="book-sub">All-in price. Taxes &amp; fees included.</div>
+            </div>
+          </div>
+
+          <!-- ===== CANCELLATION POLICY — REMOVED (ORCH-1138 wizard audit) =====
+               The experience wizard authors NO refund/cancellation policy. Unlike
+               the TRIP wizard (ORCH-1120 added a refund-deadline), the experience
+               creator (ExperienceCreatorWizard.tsx) has no refund step and the
+               PublicExperience payload (publicExperienceService.ts) carries no
+               RefundPolicy/tiers. Rendering a refund ladder fabricates terms the
+               brand never set → violates real-data-only. The .strip / .refund-ladder
+               CSS is retained for the trip page's reuse; unused here. -->
+
+          <div class="spacer"></div>
+        </div>
+
+        <!-- ===== RIGHT / STICKY BOOKING PANEL (desktop only) ===== -->
+        <aside class="deskpanel desk-only">
+          <div class="dp-accent"></div>
+          <div class="dp-inner">
+            <div class="brand-row">
+              <img class="brand-tile" src="https://images.unsplash.com/photo-1511192336575-5a79af67a629?w=200&q=80" alt="" />
+              <div>
+                <div class="brand-kicker">Presented by</div>
+                <div class="brand-name">After Hours Society</div>
+              </div>
+              <div class="brand-cta">View</div>
+            </div>
+
+            <div class="book-card">
+              <!-- ADAPTIVE (desktop mirror of phone). per-slot "N left" =
+                   AUTO-DERIVED REAL (capacity − sold per event_date). RENDER NOW,
+                   NEEDS READ-PATH WIRING: slug preview sets ticketsRemaining=null;
+                   implementor computes per-occurrence remaining (by-id path does). -->
+              <div class="date-fact">
+                <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
+                <span><span class="df-when">Sat, Jun 14 · 7:00 PM</span><span class="df-sub">One date · 3 spots left</span></span>
+              </div>
+              <div class="date-summary" id="date-summary-desk" onclick="openSlots()">
+                <svg class="ds-cal" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
+                <span class="ds-text">
+                  <span class="ds-when"><span class="ds-default"><span class="ds-multilabel">5 dates available</span><span class="ds-recurlabel">Recurring · weekly</span></span><span class="ds-chosen" style="display:none"></span></span>
+                  <span class="ds-sub">Reserve to pick a day &amp; time</span>
+                </span>
+                <span class="ds-chevron">Choose &rsaquo;</span>
+              </div>
+
+              <!-- OPEN-DAILY (HOURS): operating hours, not dates. Reserve opens the
+                   restaurant booking sheet (day → time → party). -->
+              <div class="date-hours">
+                <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
+                <span><span class="dh-when">Open daily · 8:00 AM – 9:00 PM</span><span class="dh-sub">Reserve a table any upcoming day</span></span>
+              </div>
+
+              <div class="book-amt-row"><span class="book-amt">$65</span><span class="book-amt-label">per person</span></div>
+              <div class="book-sub">All-in price. Taxes &amp; fees included.</div>
+            </div>
+
+            <button class="dp-reserve" id="dp-reserve" onclick="onReserve()">Reserve &rarr;</button>
+            <!-- reassurance = DERIVED (remaining on selected date + the real Stripe
+                 checkout path); refund strip REMOVED — no authored refund policy. -->
+            <div class="dp-reassure">3 spots left on this date · secure Stripe checkout</div>
+          </div>
+        </aside>
+
+      </div>
+    </div>
+  </div>
+
+  <!-- ============== FLOATING RESERVE BAR (phone) ==============
+       ADAPTIVE: in SINGLE mode the kicker reads "$65" (no "From") and
+       Reserve goes straight to the cart with the one date. In MULTI/
+       RECURRING mode the kicker reads "From $65" and Reserve OPENS the
+       slot sheet. JS swaps the r-cta label + kicker off data-when. -->
+  <div class="floating">
+    <button class="reserve" onclick="onReserve()">
+      <span class="r-left">
+        <span class="r-kicker">All-in, taxes included</span><br/>
+        <span class="r-price"><span class="rp-from">From </span>$65</span>
+      </span>
+      <span class="r-cta">Reserve &rarr;</span>
+    </button>
+  </div>
+
+  <!-- ============== SLOT PICKER SHEET (multi / recurring) ==============
+       Opened by Reserve when more than one bookable slot exists. A clean
+       scroller of UPCOMING slots (REAL event_dates only — rule 9), each
+       "Fri, Jun 20 · 7:00 PM · 4 left". Selecting a slot enables the
+       sheet's Reserve, which proceeds to the cart with that occurrence.
+       Sold-out occurrences render disabled (not hidden) so the buyer sees
+       the cadence. Shared by phone + desktop. -->
+  <div class="sheet-scrim" id="slot-scrim" onclick="closeSlots()"></div>
+  <div class="slot-sheet" id="slot-sheet" role="dialog" aria-modal="true" aria-label="Pick a date and time">
+    <div class="slot-grab" aria-hidden="true"></div>
+    <div class="slot-head">
+      <div>
+        <div class="slot-title">Pick a day &amp; time</div>
+        <div class="slot-sub" id="slot-sub">5 upcoming dates · Friday Night Jazz Crawl</div>
+      </div>
+      <button class="slot-close" aria-label="Close" onclick="closeSlots()">&times;</button>
+    </div>
+    <div class="slot-list" id="slot-list">
+      <!-- REAL upcoming event_dates only. data-label feeds the chosen-slot summary. -->
+      <button class="slot-opt" onclick="pickSlot(this)" data-label="Fri, Jun 20 · 7:00 PM">
+        <span><span class="so-when">Fri, Jun 20</span><span class="so-sub">7:00 PM</span></span>
+        <span class="so-right"><span class="so-cap">4 left</span><span class="so-radio"></span></span>
+      </button>
+      <button class="slot-opt" onclick="pickSlot(this)" data-label="Fri, Jun 27 · 7:00 PM">
+        <span><span class="so-when">Fri, Jun 27</span><span class="so-sub">7:00 PM</span></span>
+        <span class="so-right"><span class="so-cap">9 left</span><span class="so-radio"></span></span>
+      </button>
+      <button class="slot-opt" onclick="pickSlot(this)" data-label="Sat, Jun 28 · 2:00 PM">
+        <span><span class="so-when">Sat, Jun 28</span><span class="so-sub">2:00 PM · matinee</span></span>
+        <span class="so-right"><span class="so-cap">11 left</span><span class="so-radio"></span></span>
+      </button>
+      <button class="slot-opt" aria-disabled="true" data-label="Fri, Jul 4 · 7:00 PM">
+        <span><span class="so-when">Fri, Jul 4</span><span class="so-sub">7:00 PM</span></span>
+        <span class="so-right"><span class="so-cap soldout">Sold out</span><span class="so-radio"></span></span>
+      </button>
+      <button class="slot-opt" onclick="pickSlot(this)" data-label="Fri, Jul 11 · 7:00 PM">
+        <span><span class="so-when">Fri, Jul 11</span><span class="so-sub">7:00 PM</span></span>
+        <span class="so-right"><span class="so-cap">12 left</span><span class="so-radio"></span></span>
+      </button>
+    </div>
+    <div class="slot-foot">
+      <button class="slot-confirm" id="slot-confirm" disabled onclick="confirmSlot()">Select a date to reserve</button>
+    </div>
+  </div>
+
+  <!-- ============== RESERVATION SHEET (OPEN-DAILY / HOURS) ==============
+       Opened by Reserve when the experience is OPEN EVERY DAY within hours
+       (restaurant special-menu model). Restaurant-style booking:
+         1. DAY    — horizontal day-strip; any upcoming day selectable.
+         2. TIME   — slots inside 8:00 AM–9:00 PM, 30-min cadence; last
+                     bookable slot is 8:30 PM (respects the 9:00 PM close).
+         3. PARTY  — quantity stepper = ticket quantity ("how many people").
+         4. SUMMARY— "Fri Jun 20 · 7:30 PM · 2 guests · €X" → Reserve → cart.
+       REAL-DATA NOTE (rule 9): daily time-slot supply is NOT in the current
+       discrete event_dates; powering this for real = the recurrence/
+       operating-hours availability supply work. TARGET UX shown regardless.
+       Day cells / capacity are demo data the read-path would compute. -->
+  <div class="resv-sheet" id="resv-sheet" role="dialog" aria-modal="true" aria-label="Reserve a table">
+    <div class="slot-grab" aria-hidden="true"></div>
+    <div class="resv-head">
+      <div>
+        <div class="resv-title">Reserve a table</div>
+        <div class="resv-sub">The Chef's Counter Tasting · open daily 8:00 AM – 9:00 PM</div>
+      </div>
+      <button class="slot-close" aria-label="Close" onclick="closeResv()">&times;</button>
+    </div>
+    <div class="resv-body">
+      <!-- 1. DAY -->
+      <div class="resv-group">
+        <div class="resv-glabel"><span>Date</span><span class="rg-hint">Any upcoming day</span></div>
+        <div class="day-strip" id="day-strip"><!-- populated by JS (next 14 days) --></div>
+      </div>
+      <!-- 2. TIME -->
+      <div class="resv-group">
+        <div class="resv-glabel"><span>Time</span><span class="rg-hint">8:00 AM – 8:30 PM</span></div>
+        <div class="time-grid" id="time-grid"><!-- populated by JS (every 30 min) --></div>
+      </div>
+      <!-- 3. PARTY SIZE -->
+      <div class="resv-group">
+        <div class="resv-glabel"><span>Guests</span><span class="rg-hint">8 seats left at the counter</span></div>
+        <div class="party">
+          <span class="pt-text"><span class="pt-label">Party size</span><span class="pt-sub">$65 all-in per guest</span></span>
+          <span class="pt-ctrl">
+            <button class="pt-btn" id="pt-minus" aria-label="Fewer guests" onclick="changeParty(-1)">&minus;</button>
+            <span class="pt-count" id="pt-count" aria-live="polite">2</span>
+            <button class="pt-btn" id="pt-plus" aria-label="More guests" onclick="changeParty(1)">+</button>
+          </span>
+        </div>
+      </div>
+    </div>
+    <div class="resv-foot">
+      <!-- 4. LIVE SUMMARY -->
+      <div class="resv-summary" id="resv-summary">
+        <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
+        <span id="resv-summary-text">Pick a day &amp; time</span>
+        <span class="rs-price" id="resv-summary-price">$130</span>
+      </div>
+      <button class="resv-confirm" id="resv-confirm" disabled onclick="confirmResv()">Pick a day &amp; time</button>
+    </div>
+  </div>
+
+<script>
+  function setTheme(accent, strong, page, mode) {
+    const r = document.documentElement.style;
+    r.setProperty('--accent', accent);
+    r.setProperty('--accent-strong', strong);
+    r.setProperty('--page', page);
+    const rgb = hexToRgb(accent);
+    r.setProperty('--accent-wash', `rgba(${rgb},0.18)`);
+    r.setProperty('--accent-border', `rgba(${rgb},0.42)`);
+    r.setProperty('--accent-on', luminance(accent) > 0.6 ? '#101420' : '#ffffff');
+    if (mode === 'light') {
+      r.setProperty('--primary', '#101420');
+      r.setProperty('--secondary', 'rgba(16,20,31,0.76)');
+      r.setProperty('--tertiary', 'rgba(16,20,31,0.56)');
+      r.setProperty('--card', 'rgba(0,0,0,0.04)');
+      r.setProperty('--card-strong', 'rgba(0,0,0,0.06)');
+      r.setProperty('--border', 'rgba(0,0,0,0.10)');
+    } else {
+      r.setProperty('--primary', '#ffffff');
+      r.setProperty('--secondary', 'rgba(255,255,255,0.78)');
+      r.setProperty('--tertiary', 'rgba(255,255,255,0.56)');
+      r.setProperty('--card', 'rgba(255,255,255,0.07)');
+      r.setProperty('--card-strong', 'rgba(255,255,255,0.10)');
+      r.setProperty('--border', 'rgba(255,255,255,0.14)');
+    }
+  }
+  function hexToRgb(hex) {
+    const n = parseInt(hex.slice(1), 16);
+    return `${(n>>16)&255},${(n>>8)&255},${n&255}`;
+  }
+  function luminance(hex) {
+    const n = parseInt(hex.slice(1), 16);
+    const r=(n>>16&255)/255, g=(n>>8&255)/255, b=(n&255)/255;
+    const f = c => c <= 0.03928 ? c/12.92 : Math.pow((c+0.055)/1.055, 2.4);
+    return 0.2126*f(r) + 0.7152*f(g) + 0.0722*f(b);
+  }
+  // ===================== ADAPTIVE RESERVE FLOW =====================
+  // onReserve — single → straight to cart; multi/recurring → open slot sheet.
+  function onReserve() {
+    const when = document.body.dataset.when;
+    if (when === 'single') {
+      goToCart('Sat, Jun 14 · 7:00 PM');   // one date, no picker
+    } else if (when === 'hours') {
+      openResv();                           // restaurant-style day/time/party booking
+    } else {
+      openSlots();                          // pick a fixed occurrence first
+    }
+  }
+
+  function openSlots() {
+    document.getElementById('slot-scrim').classList.add('open');
+    document.getElementById('slot-sheet').classList.add('open');
+    document.body.style.overflow = 'hidden';
+  }
+  function closeSlots() {
+    document.getElementById('slot-scrim').classList.remove('open');
+    document.getElementById('slot-sheet').classList.remove('open');
+    document.body.style.overflow = '';
+  }
+
+  // pickSlot — single-select inside the sheet; enables the sheet Reserve.
+  let chosenSlot = null;
+  function pickSlot(el) {
+    if (el.getAttribute('aria-disabled') === 'true') return;
+    document.querySelectorAll('#slot-list .slot-opt').forEach(o => o.classList.remove('active'));
+    el.classList.add('active');
+    chosenSlot = el.dataset.label;
+    const btn = document.getElementById('slot-confirm');
+    btn.disabled = false;
+    btn.textContent = 'Reserve · ' + chosenSlot.split(' · ')[0] + ' →';
+  }
+
+  // confirmSlot — chosen slot proceeds to cart; reflect it back on the summary row.
+  function confirmSlot() {
+    if (!chosenSlot) return;
+    document.querySelectorAll('.date-summary').forEach(s => {
+      s.querySelector('.ds-default').style.display = 'none';
+      const c = s.querySelector('.ds-chosen');
+      c.style.display = 'inline';
+      c.textContent = chosenSlot;
+      s.querySelector('.ds-sub').textContent = 'Tap to change';
+    });
+    closeSlots();
+    goToCart(chosenSlot);
+  }
+
+  // goToCart — demo stand-in for the real Stripe checkout hand-off.
+  function goToCart(slotLabel) {
+    alert('→ Cart (demo)\nReserving: Friday Night Jazz Crawl\nWhen: ' + slotLabel + '\n$65 all-in · taxes & fees included');
+  }
+
+  // Reset chosen-slot state whenever the When model is flipped in the demo bar.
+  function resetSlotState() {
+    chosenSlot = null;
+    document.querySelectorAll('#slot-list .slot-opt').forEach(o => o.classList.remove('active'));
+    const btn = document.getElementById('slot-confirm');
+    btn.disabled = true;
+    btn.textContent = 'Select a date to reserve';
+    document.querySelectorAll('.date-summary').forEach(s => {
+      s.querySelector('.ds-default').style.display = 'inline';
+      const c = s.querySelector('.ds-chosen');
+      c.style.display = 'none'; c.textContent = '';
+      s.querySelector('.ds-sub').textContent = 'Reserve to pick a day & time';
+    });
+    resetResvState();
+  }
+
+  // ===================== OPEN-DAILY (HOURS) RESERVATION =====================
+  // Restaurant-style booking sheet: any upcoming DAY → a TIME inside operating
+  // hours → PARTY size. Live summary updates on every change.
+  // REAL-DATA NOTE: day/time supply + capacity would come from the recurrence/
+  // hours availability supply work; demo generates them client-side here.
+  const OPEN_HOUR = 8, CLOSE_HOUR = 21, SLOT_MIN = 30;  // 8:00 AM–9:00 PM, 30-min slots
+  const PRICE = 65, MAX_PARTY = 8;                       // $65/guest · 8 counter seats
+  let resvDay = null, resvTime = null, resvParty = 2;
+
+  function fmtTime(mins) {
+    let h = Math.floor(mins / 60), m = mins % 60;
+    const ap = h >= 12 ? 'PM' : 'AM';
+    let h12 = h % 12; if (h12 === 0) h12 = 12;
+    return h12 + ':' + String(m).padStart(2, '0') + ' ' + ap;
+  }
+
+  function buildResv() {
+    // DAY strip — next 14 days from "today" (demo: anchored to Jun 14, 2026).
+    const DOW = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+    const MON = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    const strip = document.getElementById('day-strip');
+    strip.innerHTML = '';
+    const base = new Date(2026, 5, 14);  // demo "today"
+    for (let i = 0; i < 14; i++) {
+      const d = new Date(base); d.setDate(base.getDate() + i);
+      const cell = document.createElement('button');
+      cell.className = 'day-cell';
+      cell.dataset.label = DOW[d.getDay()] + ' ' + MON[d.getMonth()] + ' ' + d.getDate();
+      cell.innerHTML = '<div class="dc-dow">' + DOW[d.getDay()] + '</div>' +
+                       '<div class="dc-num">' + d.getDate() + '</div>' +
+                       '<div class="dc-mon">' + MON[d.getMonth()] + '</div>';
+      cell.onclick = () => pickDay(cell);
+      strip.appendChild(cell);
+    }
+    // TIME grid — every 30 min, 8:00 AM .. 8:30 PM (last slot < 21:00 close).
+    const grid = document.getElementById('time-grid');
+    grid.innerHTML = '';
+    for (let mins = OPEN_HOUR * 60; mins <= CLOSE_HOUR * 60 - SLOT_MIN; mins += SLOT_MIN) {
+      const slot = document.createElement('button');
+      slot.className = 'time-slot';
+      slot.dataset.label = fmtTime(mins);
+      slot.textContent = fmtTime(mins);
+      if (mins === CLOSE_HOUR * 60 - SLOT_MIN) slot.classList.add('lastcall');  // 8:30 PM = last call
+      slot.onclick = () => pickTime(slot);
+      grid.appendChild(slot);
+    }
+  }
+
+  function pickDay(el) {
+    document.querySelectorAll('#day-strip .day-cell').forEach(c => c.classList.remove('active'));
+    el.classList.add('active');
+    resvDay = el.dataset.label;
+    updateResvSummary();
+  }
+  function pickTime(el) {
+    document.querySelectorAll('#time-grid .time-slot').forEach(s => s.classList.remove('active'));
+    el.classList.add('active');
+    resvTime = el.dataset.label;
+    updateResvSummary();
+  }
+  function changeParty(delta) {
+    resvParty = Math.min(MAX_PARTY, Math.max(1, resvParty + delta));
+    document.getElementById('pt-count').textContent = resvParty;
+    document.getElementById('pt-minus').disabled = resvParty <= 1;
+    document.getElementById('pt-plus').disabled = resvParty >= MAX_PARTY;
+    updateResvSummary();
+  }
+  function updateResvSummary() {
+    const total = PRICE * resvParty;
+    const priceEl = document.getElementById('resv-summary-price');
+    const textEl = document.getElementById('resv-summary-text');
+    const btn = document.getElementById('resv-confirm');
+    priceEl.textContent = '$' + total;
+    const guests = resvParty + (resvParty === 1 ? ' guest' : ' guests');
+    if (resvDay && resvTime) {
+      textEl.innerHTML = '<b>' + resvDay + ' · ' + resvTime + '</b> · ' + guests;
+      btn.disabled = false;
+      btn.textContent = 'Reserve · $' + total + ' →';
+    } else {
+      textEl.textContent = resvDay ? 'Pick a time' : 'Pick a day & time';
+      btn.disabled = true;
+      btn.textContent = resvDay ? 'Pick a time' : 'Pick a day & time';
+    }
+  }
+
+  function openResv() {
+    document.getElementById('slot-scrim').classList.add('open');
+    document.getElementById('resv-sheet').classList.add('open');
+    document.body.style.overflow = 'hidden';
+  }
+  function closeResv() {
+    document.getElementById('slot-scrim').classList.remove('open');
+    document.getElementById('resv-sheet').classList.remove('open');
+    document.body.style.overflow = '';
+  }
+  function confirmResv() {
+    if (!resvDay || !resvTime) return;
+    const total = PRICE * resvParty;
+    const guests = resvParty + (resvParty === 1 ? ' guest' : ' guests');
+    closeResv();
+    goToCart(resvDay + ' · ' + resvTime + ' · ' + guests + ' · $' + total);
+  }
+  function resetResvState() {
+    resvDay = null; resvTime = null; resvParty = 2;
+    document.querySelectorAll('#day-strip .day-cell, #time-grid .time-slot').forEach(e => e.classList.remove('active'));
+    const cnt = document.getElementById('pt-count'); if (cnt) cnt.textContent = '2';
+    const minus = document.getElementById('pt-minus'); if (minus) minus.disabled = false;
+    updateResvSummary();
+  }
+
+  // The scrim is shared by both sheets — make its click close whichever is open.
+  document.getElementById('slot-scrim').onclick = function () { closeSlots(); closeResv(); };
+
+  // Build the reservation controls once on load.
+  buildResv();
+  updateResvSummary();
+</script>
+</body>
+</html>

@@ -1,0 +1,265 @@
+<!--
+  ORCH-1156 — PUBLIC RSVP PAGE · DIRECTION B "ELEVATED" (refined / modern)
+  ==========================================================================
+  Premium-social: light editorial canvas, generous whitespace, one tasteful
+  brand-accent gradient, refined display title, soft glass cards, a calm
+  momentum meter. Still social-first (decision + count are hero) but grown-up —
+  a beautifully designed invitation. Safe across corporate-event / networking
+  party types. REAL-DATA ONLY — social proof = goingCount + meter + ANONYMOUS
+  attendee cluster (no public guest names/avatars stored).
+  Resize: ≤1023 phone · ≥1024 desktop.
+-->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>ORCH-1156 · Public RSVP — Direction B "Elevated"</title>
+<style>
+  :root {
+    --accent: #1d4ed8; --accent-strong: #1e3a8a; --accent-wash: rgba(29,78,216,0.10);
+    --accent-soft: rgba(29,78,216,0.06); --page: #fbfbfd; --surface: #ffffff;
+    --primary: #0f1424; --secondary: rgba(15,20,36,0.66); --tertiary: rgba(15,20,36,0.46);
+    --border: rgba(15,20,36,0.10); --accent-border: rgba(29,78,216,0.24);
+    --serif: "Playfair Display", Georgia, serif; --sans: "Inter", system-ui, sans-serif;
+    --accent-on: #ffffff; --maybe: #b45309; --maybe-wash: rgba(180,83,9,0.10);
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; -webkit-font-smoothing: antialiased; }
+  html, body { height: 100%; }
+  body { font-family: var(--sans); color: var(--primary); min-height: 100vh; background: var(--page); overflow-x: hidden; }
+
+  .demo-bar { position: sticky; top: 0; z-index: 50; display: flex; gap: 10px; align-items: center; overflow-x: auto; padding: 10px 16px; background: rgba(255,255,255,0.92); backdrop-filter: blur(10px); border-bottom: 1px solid var(--border); font-size: 12px; color: var(--secondary); }
+  .demo-bar .lbl { letter-spacing: .4px; text-transform: uppercase; font-weight: 800; font-size: 9px; color: var(--tertiary); }
+  .swatch { width: 24px; height: 24px; border-radius: 999px; border: 2px solid rgba(0,0,0,0.12); cursor: pointer; }
+  .grp { display: flex; gap: 6px; align-items: center; }
+  .state-pick { background: #fff; color: var(--primary); border: 1px solid var(--border); border-radius: 8px; padding: 6px 8px; font-size: 12px; }
+  .demo-sep { width: 1px; height: 22px; background: var(--border); }
+  .vp-hint { margin-left: auto; font-size: 11px; opacity: .7; } .vp-hint b { color: var(--accent); }
+
+  .stage { display: flex; justify-content: center; padding: 24px 16px 60px; }
+  .page { width: 100%; max-width: 620px; }
+
+  .hero { position: relative; width: 100%; aspect-ratio: 4 / 5; overflow: hidden; border-radius: 24px; box-shadow: 0 24px 60px rgba(15,20,36,0.18); }
+  .hero img { width: 100%; height: 100%; object-fit: cover; }
+  .hero-overlay { position: absolute; inset: 0; background: linear-gradient(180deg, rgba(0,0,0,0.18) 0%, rgba(0,0,0,0) 40%, rgba(0,0,0,0.35) 100%); }
+  .hero-spacer { display: none; }
+  .chrome { position: absolute; top: 18px; left: 16px; right: 16px; display: flex; justify-content: space-between; z-index: 4; }
+  .chrome.cm { display: none; }
+  .chrome-right { display: flex; gap: 10px; }
+  .chrome-btn { width: 40px; height: 40px; border-radius: 999px; background: rgba(255,255,255,0.86); backdrop-filter: blur(8px); display: grid; place-items: center; cursor: pointer; border: none; box-shadow: 0 4px 14px rgba(0,0,0,0.12); }
+  .chrome-btn svg { width: 18px; height: 18px; stroke: #0f1424; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+
+  .hero-cap { position: absolute; left: 24px; right: 24px; bottom: 24px; z-index: 5; color: #fff; }
+  .kicker { font-size: 11px; font-weight: 800; letter-spacing: 2px; text-transform: uppercase; opacity: .92; }
+  .title { font-family: var(--serif); font-size: 38px; line-height: 1.04; font-weight: 800; letter-spacing: -.5px; margin-top: 8px; text-shadow: 0 2px 18px rgba(0,0,0,0.4); }
+
+  .body { padding: 22px 2px 0; }
+  .host-row { display: flex; align-items: center; gap: 10px; margin-top: 4px; }
+  .host-avatar { width: 36px; height: 36px; border-radius: 999px; object-fit: cover; border: 1px solid var(--border); }
+  .host-txt { font-size: 14px; color: var(--secondary); } .host-txt b { color: var(--primary); font-weight: 700; }
+
+  .facts { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 18px; }
+  .fchip { display: inline-flex; align-items: center; gap: 7px; background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 9px 13px; font-size: 13px; font-weight: 600; color: var(--secondary); box-shadow: 0 2px 8px rgba(15,20,36,0.04); }
+  .fchip svg { width: 15px; height: 15px; stroke: var(--accent); fill: none; stroke-width: 2; }
+  .fchip.vibe { color: var(--accent); background: var(--accent-soft); border-color: var(--accent-border); font-weight: 700; }
+
+  .momentum { margin-top: 20px; background: var(--surface); border: 1px solid var(--border); border-radius: 20px; padding: 20px; box-shadow: 0 8px 28px rgba(15,20,36,0.06); position: relative; overflow: hidden; }
+  .momentum::before { content:""; position:absolute; left:0; top:0; bottom:0; width:4px; background: linear-gradient(180deg, var(--accent), var(--accent-strong)); }
+  .mom-count { font-family: var(--serif); font-size: 44px; font-weight: 800; letter-spacing: -1px; line-height: 1; }
+  .mom-label { font-size: 14px; color: var(--secondary); font-weight: 700; margin-left: 6px; }
+  .mom-sub { font-size: 13px; color: var(--tertiary); margin-top: 6px; font-weight: 600; }
+  .meter { height: 7px; border-radius: 999px; background: rgba(15,20,36,0.08); margin-top: 14px; overflow: hidden; }
+  .meter-fill { height: 100%; border-radius: 999px; background: linear-gradient(90deg, var(--accent-strong), var(--accent)); width: 76%; }
+  .cluster { display: flex; align-items: center; margin-top: 14px; }
+  .av { width: 30px; height: 30px; border-radius: 999px; border: 2px solid var(--surface); margin-left: -8px; background: linear-gradient(135deg, var(--accent), var(--accent-strong)); display: grid; place-items: center; }
+  .av:first-child { margin-left: 0; } .av svg { width: 14px; height: 14px; stroke: #fff; fill: none; stroke-width: 2; }
+  .av.more { background: var(--accent-soft); color: var(--accent); font-size: 11px; font-weight: 800; }
+  .cluster-note { margin-left: 12px; font-size: 12px; color: var(--tertiary); font-weight: 600; }
+
+  .sec-title { font-family: var(--serif); font-size: 22px; font-weight: 800; letter-spacing: -.2px; margin: 26px 0 10px; }
+  .about { color: var(--secondary); font-size: 15px; line-height: 1.65; }
+  .where { display: flex; align-items: center; gap: 12px; background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 14px; margin-top: 10px; box-shadow: 0 4px 14px rgba(15,20,36,0.04); }
+  .where-disk { width: 40px; height: 40px; border-radius: 12px; background: var(--accent-soft); display: grid; place-items: center; flex-shrink: 0; }
+  .where-disk svg { width: 18px; height: 18px; stroke: var(--accent); fill: none; stroke-width: 2; }
+  .where-name { font-size: 15px; font-weight: 700; } .where-sub { font-size: 13px; color: var(--secondary); margin-top: 2px; }
+  .where-maps { margin-left: auto; color: var(--accent); font-size: 12px; font-weight: 800; }
+
+  .decision { display: flex; gap: 10px; }
+  .dbtn { flex: 1 1 0; min-width: 0; white-space: nowrap; display: flex; align-items: center; justify-content: center; gap: 7px; border-radius: 14px; padding: 15px 6px; font-family: var(--sans); font-weight: 800; font-size: 13px; cursor: pointer; border: 1px solid var(--border); background: var(--surface); color: var(--secondary); transition: transform .08s ease, filter .16s ease; }
+  .dbtn svg { flex-shrink: 0; }
+  .dbtn svg { width: 19px; height: 19px; stroke: currentColor; fill: none; stroke-width: 2.2; }
+  .dbtn:active { transform: scale(.97); }
+  .dbtn.going { color: var(--accent-on); border-color: transparent; background: linear-gradient(120deg, var(--accent), var(--accent-strong)); box-shadow: 0 12px 30px var(--accent-wash); }
+  .dbtn.going:hover { filter: brightness(1.06); }
+  .dbtn.maybe { color: var(--maybe); border-color: rgba(180,83,9,0.3); background: var(--maybe-wash); }
+  .micro { text-align: center; font-size: 11px; color: var(--tertiary); margin-top: 10px; }
+  .spacer { height: 12px; }
+  .floating { display: none; } .deskpanel { display: none; }
+
+  @media (min-width: 1024px) {
+    .stage { padding: 36px; } .page { max-width: 1120px; }
+    .hero { aspect-ratio: 21/9; max-height: 460px; }
+    .hero-cap .title { font-size: 52px; max-width: 72%; }
+    .shell { display: grid; grid-template-columns: minmax(0,1fr) 360px; gap: 44px; margin-top: 28px; align-items: start; }
+    .body { grid-column: 1; padding: 0; min-width: 0; }
+    .body .momentum.inbody, .body .decision-host.inbody, .body .host-row.inbody { display: none; }
+    .deskpanel { display: block; grid-column: 2; position: sticky; top: 24px; background: var(--surface); border: 1px solid var(--border); border-radius: 22px; padding: 22px; box-shadow: 0 24px 60px rgba(15,20,36,0.12); }
+    .deskpanel .host-row { margin-top: 0; margin-bottom: 16px; }
+    .deskpanel .momentum { margin-top: 0; box-shadow: none; }
+    .deskpanel .decision-host { margin-top: 18px; }
+    .phone-only { display: none; }
+  }
+
+  @media (max-width: 1023px) {
+    .stage { padding: 0; } .page { max-width: none; }
+    .hero { position: fixed; top: 0; left: 0; right: 0; width: auto; z-index: 1; aspect-ratio: 4/5; border-radius: 0; box-shadow: none; }
+    .hero-spacer { display: block; width: 100%; aspect-ratio: 4/5; }
+    .chrome.cd { display: none; } .chrome.cm { display: flex; position: fixed; top: 56px; left: 0; right: 0; padding: 0 16px; z-index: 70; }
+    .body { position: relative; z-index: 2; background: var(--page); margin-top: -26px; border-radius: 26px 26px 0 0; padding: 22px 20px 16px; box-shadow: 0 -8px 30px rgba(15,20,36,0.08); }
+    .shell { position: relative; z-index: 2; }
+    .floating { display: block; position: sticky; bottom: 0; z-index: 6; padding: 12px 16px calc(12px + env(safe-area-inset-bottom)); background: linear-gradient(180deg, rgba(251,251,253,0) 0%, var(--page) 42%); }
+    .decision-host.inbody { display: none; }
+  }
+</style>
+</head>
+<body data-state="available">
+  <div class="demo-bar">
+    <div class="grp"><span class="lbl">Theme</span>
+      <button class="swatch" style="background:#1d4ed8" title="Navy" onclick="setTheme('#1d4ed8','#1e3a8a')"></button>
+      <button class="swatch" style="background:#0f766e" title="Teal" onclick="setTheme('#0f766e','#0b5a54')"></button>
+      <button class="swatch" style="background:#9333ea" title="Plum" onclick="setTheme('#9333ea','#6b21a8')"></button>
+      <button class="swatch" style="background:#b45309" title="Amber" onclick="setTheme('#b45309','#92400e')"></button>
+    </div>
+    <div class="demo-sep"></div>
+    <div class="grp"><span class="lbl">State</span>
+      <select class="state-pick" onchange="document.body.dataset.state=this.value; render();">
+        <option value="available">Open</option>
+        <option value="few">Few spots</option>
+        <option value="full">Full · waitlist</option>
+        <option value="going">You're going</option>
+        <option value="pending">Pending approval</option>
+      </select>
+    </div>
+    <div class="vp-hint">Resize → <b>≤1023 phone · ≥1024 desktop</b></div>
+  </div>
+
+  <div class="chrome cm">
+    <button class="chrome-btn" aria-label="Close">&times;</button>
+    <div class="chrome-right"><button class="chrome-btn" aria-label="Share"><svg viewBox="0 0 24 24"><circle cx="6" cy="12" r="2.5"/><circle cx="18" cy="6" r="2.5"/><circle cx="18" cy="18" r="2.5"/><path d="M8.2 10.8L15.8 7.2M8.2 13.2L15.8 16.8"/></svg></button></div>
+  </div>
+
+  <div class="stage"><div class="page">
+    <div class="hero">
+      <img src="https://images.unsplash.com/photo-1530103862676-de8c9debad1d?w=1400&q=80" alt="Elegant garden gathering" />
+      <div class="hero-overlay"></div>
+      <div class="chrome cd">
+        <button class="chrome-btn" aria-label="Close">&times;</button>
+        <div class="chrome-right"><button class="chrome-btn" aria-label="Share"><svg viewBox="0 0 24 24"><circle cx="6" cy="12" r="2.5"/><circle cx="18" cy="6" r="2.5"/><circle cx="18" cy="18" r="2.5"/><path d="M8.2 10.8L15.8 7.2M8.2 13.2L15.8 16.8"/></svg></button></div>
+      </div>
+      <div class="hero-cap">
+        <div class="kicker">You're invited</div>
+        <div class="title">An Evening on the Terrace</div>
+      </div>
+    </div>
+    <div class="hero-spacer phone-only" aria-hidden="true"></div>
+
+    <div class="shell">
+      <div class="body">
+        <div class="host-row inbody">
+          <img class="host-avatar" src="https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=120&q=80" alt="" />
+          <div class="host-txt">Hosted by <b>The Foundry</b></div>
+        </div>
+
+        <div class="facts">
+          <span class="fchip"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg> Sat, Sep 14 · 7:30 PM</span>
+          <span class="fchip"><svg viewBox="0 0 24 24"><path d="M12 2C8 2 5 5 5 9c0 5 7 13 7 13s7-8 7-13c0-4-3-7-7-7z"/><circle cx="12" cy="9" r="2.5"/></svg> Washington, DC</span>
+          <span class="fchip vibe">Rooftop party</span>
+          <span class="fchip vibe">Networking</span>
+        </div>
+
+        <div class="momentum inbody">
+          <div><span class="mom-count" id="mc1">38</span><span class="mom-label" id="ml1">attending</span></div>
+          <div class="mom-sub" id="ms1">12 spots remaining</div>
+          <div class="meter"><div class="meter-fill" id="mf1"></div></div>
+          <div class="cluster">
+            <div class="av"><svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 4-7 8-7s8 3 8 7"/></svg></div>
+            <div class="av"><svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 4-7 8-7s8 3 8 7"/></svg></div>
+            <div class="av"><svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 4-7 8-7s8 3 8 7"/></svg></div>
+            <div class="av more">+35</div>
+            <div class="cluster-note">have confirmed</div>
+          </div>
+        </div>
+
+        <div class="sec-title">About</div>
+        <div class="about">An intimate evening as the sun drops over the skyline — open bar, light bites, and the best terrace view in the District. Doors at 7:30. Dress smart-casual; covered fallback if the weather turns.</div>
+
+        <div class="sec-title">Where</div>
+        <div class="where">
+          <div class="where-disk"><svg viewBox="0 0 24 24"><path d="M12 2C8 2 5 5 5 9c0 5 7 13 7 13s7-8 7-13c0-4-3-7-7-7z"/><circle cx="12" cy="9" r="2.5"/></svg></div>
+          <div><div class="where-name">The Foundry Rooftop</div><div class="where-sub">Washington, DC</div></div>
+          <div class="where-maps">Open maps</div>
+        </div>
+
+        <div class="decision-host inbody"><div class="spacer"></div></div>
+      </div>
+
+      <aside class="deskpanel">
+        <div class="host-row">
+          <img class="host-avatar" src="https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=120&q=80" alt="" />
+          <div class="host-txt">Hosted by <b>The Foundry</b></div>
+        </div>
+        <div class="momentum">
+          <div><span class="mom-count" id="mc2">38</span><span class="mom-label" id="ml2">attending</span></div>
+          <div class="mom-sub" id="ms2">12 spots remaining</div>
+          <div class="meter"><div class="meter-fill" id="mf2"></div></div>
+          <div class="cluster">
+            <div class="av"><svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 4-7 8-7s8 3 8 7"/></svg></div>
+            <div class="av"><svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 4-7 8-7s8 3 8 7"/></svg></div>
+            <div class="av"><svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 4-7 8-7s8 3 8 7"/></svg></div>
+            <div class="av more">+35</div>
+            <div class="cluster-note">have confirmed</div>
+          </div>
+        </div>
+        <div class="decision-host">
+          <div class="decision" id="dec2"></div>
+          <div class="micro" id="micro2">Anyone with the link can RSVP.</div>
+        </div>
+      </aside>
+    </div>
+  </div></div>
+
+  <div class="floating">
+    <div class="decision" id="dec1"></div>
+    <div class="micro" id="micro1">Anyone with the link can RSVP.</div>
+  </div>
+
+<script>
+  function setTheme(a, strong) {
+    const r = document.documentElement.style, rgb = hexToRgb(a);
+    r.setProperty('--accent', a); r.setProperty('--accent-strong', strong);
+    r.setProperty('--accent-wash', `rgba(${rgb},0.10)`); r.setProperty('--accent-soft', `rgba(${rgb},0.06)`); r.setProperty('--accent-border', `rgba(${rgb},0.24)`);
+    r.setProperty('--accent-on', luminance(a) > 0.6 ? '#101420' : '#ffffff');
+  }
+  function hexToRgb(h){const n=parseInt(h.slice(1),16);return `${(n>>16)&255},${(n>>8)&255},${n&255}`;}
+  function luminance(h){const n=parseInt(h.slice(1),16),r=(n>>16&255)/255,g=(n>>8&255)/255,b=(n&255)/255,f=c=>c<=.03928?c/12.92:Math.pow((c+.055)/1.055,2.4);return .2126*f(r)+.7152*f(g)+.0722*f(b);}
+  const ICON={check:'<svg viewBox="0 0 24 24"><path d="M5 13l4 4L19 7"/></svg>',q:'<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M9.5 9a2.5 2.5 0 1 1 3.5 2.3c-.8.4-1 .9-1 1.7M12 17h.01"/></svg>',x:'<svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg>',clock:'<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>',list:'<svg viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h10"/></svg>'};
+  function decisionFor(s){
+    if(s==='going') return {meter:'76%',count:38,label:'attending',sub:"You're confirmed — we'll share any updates",html:`<button class="dbtn going">${ICON.check}Going</button><button class="dbtn maybe">${ICON.q}Maybe</button><button class="dbtn">${ICON.x}Can't go</button>`,micro:"Tap any to change your reply."};
+    if(s==='pending') return {meter:'76%',count:38,label:'attending',sub:'The host approves each guest',html:`<button class="dbtn going" style="opacity:.85">${ICON.clock}Awaiting approval</button>`,micro:"We'll notify you once you're approved."};
+    if(s==='full') return {meter:'100%',count:50,label:'attending',sub:'At capacity — waitlist open',html:`<button class="dbtn going">${ICON.list}Join waitlist</button><button class="dbtn">${ICON.x}Can't go</button>`,micro:"A spot opens? we move you in automatically."};
+    if(s==='few') return {meter:'90%',count:45,label:'attending',sub:'Only 5 spots remaining',html:`<button class="dbtn going">${ICON.check}Going</button><button class="dbtn maybe">${ICON.q}Maybe</button><button class="dbtn">${ICON.x}Can't go</button>`,micro:"Anyone with the link can RSVP."};
+    return {meter:'76%',count:38,label:'attending',sub:'12 spots remaining',html:`<button class="dbtn going">${ICON.check}Going</button><button class="dbtn maybe">${ICON.q}Maybe</button><button class="dbtn">${ICON.x}Can't go</button>`,micro:"Anyone with the link can RSVP."};
+  }
+  function render(){
+    const d=decisionFor(document.body.dataset.state||'available');
+    ['dec1','dec2'].forEach(i=>{const e=document.getElementById(i); if(e)e.innerHTML=d.html;});
+    ['micro1','micro2'].forEach(i=>{const e=document.getElementById(i); if(e)e.textContent=d.micro;});
+    ['mc1','mc2'].forEach(i=>{const e=document.getElementById(i); if(e)e.textContent=d.count;});
+    ['ml1','ml2'].forEach(i=>{const e=document.getElementById(i); if(e)e.textContent=d.label;});
+    ['ms1','ms2'].forEach(i=>{const e=document.getElementById(i); if(e)e.textContent=d.sub;});
+    ['mf1','mf2'].forEach(i=>{const e=document.getElementById(i); if(e)e.style.width=d.meter;});
+  }
+  render();
+</script>
+</body>
+</html>
