@@ -135,6 +135,16 @@ verify_jwt = true
 [functions.mapbox-geocode]
 verify_jwt = true
 
+# ORCH-1165 [Mapbox static map server-proxy]. Server-side proxy for the public
+# "Where you'll be"/"Where you'll start" static map (trip / event / experience).
+# verify_jwt = false: the buyer-web public page is anonymous (same posture as the
+# other public web fns); the strict input validation + style/zoom/size allowlists
+# in index.ts are the abuse guard in lieu of auth. Reuses the EXISTING
+# MAPBOX_ACCESS_TOKEN secret — keeps the token + the "mapbox" host out of all
+# client network traffic and strips the logo/attribution server-side.
+[functions.mapbox-static]
+verify_jwt = false
+
 # ORCH-1050 [Brand team invite + accept + ownership transfer]
 # META-ORCH-1048 sub-B. Both endpoints require an authenticated caller — the
 # invite endpoint reads auth.uid() for the brand_admin+ rank check, and the
