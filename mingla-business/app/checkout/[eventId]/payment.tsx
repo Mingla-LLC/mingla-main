@@ -62,6 +62,8 @@ import {
   text as textTokens,
 } from "../../../src/constants/designSystem";
 import { usePublicEventById } from "../../../src/hooks/usePublicEvents";
+// ORCH-1162 Bug 3 — brand-accent for the checkout Pay CTA, matching the public page.
+import { resolveCheckoutBrandAccent } from "../../../src/utils/checkoutBrandAccent";
 import { formatCurrency } from "../../../src/utils/currency";
 import { isRequiredPhoneValid } from "../../../src/utils/phone";
 import { eventPublicPath } from "../../../src/constants/publicUrls";
@@ -128,6 +130,15 @@ function CheckoutPaymentScreenContent({
 
   const publicEventQuery = usePublicEventById(eventId);
   const event = publicEventQuery.data?.event ?? null;
+  const brand = publicEventQuery.data?.brand ?? null;
+  // ORCH-1162 Bug 3 — CTA brand accent (matches the public page Pay button).
+  const ctaAccent =
+    event !== null
+      ? (resolveCheckoutBrandAccent({
+          brandTheme: brand?.theme ?? null,
+          eventThemeOverrides: event.themeOverrides ?? null,
+        }) ?? undefined)
+      : undefined;
   const { lines, buyer, setLineQuantity, setBuyer } = useCart();
   const totals = useCartTotals();
 
@@ -711,6 +722,7 @@ function CheckoutPaymentScreenContent({
           label={`Pay ${displayAllIn}`}
           onPress={handlePay}
           variant="primary"
+          accentColor={ctaAccent}
           size="lg"
           fullWidth
           loading={processing}

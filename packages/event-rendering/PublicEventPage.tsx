@@ -69,6 +69,10 @@ import { EventCoverMedia } from "./EventCoverMedia";
 // (resolveOfferingSurface is not called here — it is re-exported from index.ts
 // straight off ./themePalette.)
 import { createThemePalette, type ThemePalette } from "./themePalette";
+// ORCH-1162 Bug 2 — the shared static-Mapbox builder (single owner, this package)
+// for the "Where you'll be" map. Returns null when coords/token are absent →
+// the renderer falls back to the honest text venue card (rule-9).
+import { buildStaticMapUrl } from "./mapboxStaticImage";
 import type {
   PublicEventPageProps,
   PublicEventProps,
@@ -659,6 +663,67 @@ const PublishedBody: React.FC<PublishedBodyProps> = ({
               </Text>
             ) : null}
           </Pressable>
+
+          {/* ORCH-1162 Bug 2 — "Where you'll be" static-Mapbox map. Modeled on
+              TripPreview's reference block. Renders ONLY for in-person events
+              that carry finite venue geo AND when buildStaticMapUrl resolves a
+              URL (token present at runtime). Rule-9 fail-safe: when the URL is
+              null (no coords / no token) NOTHING renders here and the existing
+              text venue card below is the honest fallback — never a blank box,
+              never a placeholder tile, never a crash. The pin is themed to the
+              page's brand accent (palette.accent), matching the trip pin.
+              I-PROPOSED-1162-MAP-FAILSAFE-HIDES. NOT added inside the rsvp
+              early-return body (that body lives in the business-app wrapper —
+              COMMS-0040). */}
+          {(() => {
+            const geo = event.locationGeo;
+            if (
+              event.format === "online" ||
+              geo == null ||
+              !Number.isFinite(geo.lat) ||
+              !Number.isFinite(geo.lng)
+            ) {
+              return null;
+            }
+            const mapUrl = buildStaticMapUrl({
+              lat: geo.lat,
+              lng: geo.lng,
+              accentHex: palette.accent,
+              height: 300,
+            });
+            if (mapUrl === null) return null;
+            return (
+              <View
+                style={[
+                  styles.whereMapBlock,
+                  { backgroundColor: palette.card },
+                ]}
+                testID="orch-1162-event-where-map"
+              >
+                <Image
+                  source={{ uri: mapUrl }}
+                  style={styles.whereMapImage}
+                  resizeMode="cover"
+                  accessibilityLabel={`Map of ${event.venueName ?? "the venue"}`}
+                />
+                <View
+                  style={[
+                    styles.whereMapPill,
+                    { backgroundColor: palette.page },
+                  ]}
+                >
+                  <Text
+                    style={[
+                      styles.whereMapPillText,
+                      { color: palette.primaryText },
+                    ]}
+                  >
+                    {event.venueName ?? "Where you'll be"}
+                  </Text>
+                </View>
+              </View>
+            );
+          })()}
 
           {/* Venue card — honors hideAddressUntilTicket */}
           {event.format !== "online" && event.venueName !== null ? (
@@ -1454,6 +1519,33 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(255,255,255,0.10)",
     borderWidth: 1,
     borderColor: glass.border.profileBase,
+  },
+  // ORCH-1162 Bug 2 — "Where you'll be" static-Mapbox block (mirrors the trip
+  // reference: a fixed-height rounded card with the map filling it + an accent
+  // caption pill overlaid bottom-left). overflow:'hidden' clips the image to the
+  // radius (Android glass policy — opaque clip, no translucent fill).
+  whereMapBlock: {
+    height: 180,
+    borderRadius: radius.lg,
+    overflow: "hidden",
+    marginBottom: spacing.md,
+    justifyContent: "flex-end",
+  },
+  whereMapImage: {
+    ...StyleSheet.absoluteFillObject,
+    opacity: 0.92,
+  },
+  whereMapPill: {
+    position: "absolute",
+    left: 12,
+    bottom: 12,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 999,
+  },
+  whereMapPillText: {
+    fontSize: 12,
+    fontWeight: "700",
   },
   venueCardInteractive: {
     borderColor: "rgba(255,255,255,0.32)",

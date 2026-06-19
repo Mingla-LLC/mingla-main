@@ -38,6 +38,9 @@ import {
   type ViewStyle,
 } from "react-native";
 import * as Haptics from "expo-haptics";
+// ORCH-1162 Bug 1 — the pre-sale "Sales open …" date formatter, extracted to a
+// pure (unit-testable) module; en-US + hour12 so a meridiem appears.
+import { formatSaleDate } from "./quantityRowFormat";
 
 const STEPPER_BTN = 44;
 const PLUS_ICON_SIZE = 18;
@@ -112,18 +115,6 @@ const DEFAULT_THEME: Required<QuantityRowTheme> = {
   saleBannerBorder: "rgba(245, 158, 11, 0.32)",
   soldOutBg: "rgba(239, 68, 68, 0.16)",
   soldOutBorder: "rgba(239, 68, 68, 0.32)",
-};
-
-const formatSaleDate = (iso: string): string => {
-  const d = new Date(iso);
-  if (!Number.isFinite(d.getTime())) return "soon";
-  return d.toLocaleString("en-GB", {
-    weekday: "short",
-    day: "numeric",
-    month: "short",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
 };
 
 export interface QuantityRowProps {

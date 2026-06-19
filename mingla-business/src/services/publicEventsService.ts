@@ -64,6 +64,11 @@ interface BusinessPublicEventViewRow {
   party_types?: string[] | null;
   vibe_tags?: string[] | null;
   location_text: string | null;
+  // ORCH-1162 Bug 2 — venue geo exposed by business_public_events_view (a
+  // `point` column; PostgREST serializes it as a "(lng,lat)" string for anon
+  // reads). Threaded into PublicEventRecord.locationGeo so the buyer-web +
+  // consumer public event page can draw the "Where you'll be" static-Mapbox map.
+  location_geo?: string | { x: number; y: number } | null;
   online_url: string | null;
   is_online: boolean;
   is_recurring: boolean;
@@ -719,6 +724,23 @@ const ticketRowToTicketStub = (row: TicketTypeRow): PublicTicketTypeRecord => ({
         : "door",
 });
 
+// ORCH-1162 Bug 2 — parse a Postgres `point` ("(lng,lat)" string or {x,y}) into
+// {lat,lng}. VERBATIM logic from businessEvents.ts:410 (the proven precedent).
+// Returns null on absent/malformed input → caller hides the map (rule-9).
+const parseLocationGeoPoint = (
+  g: string | { x: number; y: number } | null | undefined,
+): { lat: number; lng: number } | null => {
+  if (g == null) return null;
+  if (typeof g === "string") {
+    const m = g.match(/^\(([-\d.]+),([-\d.]+)\)$/);
+    return m ? { lng: Number(m[1]), lat: Number(m[2]) } : null;
+  }
+  if (typeof g === "object" && typeof g.x === "number" && typeof g.y === "number") {
+    return { lng: g.x, lat: g.y };
+  }
+  return null;
+};
+
 export const publicEventViewRowToEvent = (
   row: BusinessPublicEventViewRow,
   tickets: PublicTicketTypeRecord[],
@@ -771,6 +793,11 @@ export const publicEventViewRowToEvent = (
       : null,
     venueName: asStringOrNull(location.venueName) ?? row.location_text,
     address: asStringOrNull(location.address) ?? row.location_text,
+    // ORCH-1162 Bug 2 — parse the view's `location_geo` point ("(lng,lat)"
+    // string, or {x,y}) into {lat,lng} so the public/buyer-web event page draws
+    // the "Where you'll be" map. Mirrors the proven parser at businessEvents.ts.
+    // null → no map (rule-9 text-card fallback).
+    locationGeo: parseLocationGeoPoint(row.location_geo),
     onlineUrl: row.online_url,
     hideAddressUntilTicket: asBoolean(
       businessEvent.hideAddressUntilTicket,

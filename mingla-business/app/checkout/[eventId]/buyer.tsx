@@ -50,6 +50,8 @@ import {
   text as textTokens,
 } from "../../../src/constants/designSystem";
 import { usePublicEventById } from "../../../src/hooks/usePublicEvents";
+// ORCH-1162 Bug 3 — brand-accent for the checkout CTA, matching the public page.
+import { resolveCheckoutBrandAccent } from "../../../src/utils/checkoutBrandAccent";
 import { formatCurrency } from "../../../src/utils/currency";
 import { isValidE164, composeE164 } from "../../../src/utils/phone";
 import { createTicketCheckout } from "../../../src/services/ticketCheckoutService";
@@ -184,6 +186,15 @@ export default function CheckoutBuyerScreen(): React.ReactElement {
 
   const publicEventQuery = usePublicEventById(eventId);
   const event = publicEventQuery.data?.event ?? null;
+  const brand = publicEventQuery.data?.brand ?? null;
+  // ORCH-1162 Bug 3 — CTA brand accent (matches the public page button).
+  const ctaAccent =
+    event !== null
+      ? (resolveCheckoutBrandAccent({
+          brandTheme: brand?.theme ?? null,
+          eventThemeOverrides: event.themeOverrides ?? null,
+        }) ?? undefined)
+      : undefined;
   const { lines, buyer, setBuyer, recordResult } = useCart();
   const totals = useCartTotals();
   const [submitting, setSubmitting] = useState<boolean>(false);
@@ -595,6 +606,7 @@ export default function CheckoutBuyerScreen(): React.ReactElement {
           label={continueLabel}
           onPress={handleContinue}
           variant="primary"
+          accentColor={ctaAccent}
           size="lg"
           fullWidth
           loading={submitting}

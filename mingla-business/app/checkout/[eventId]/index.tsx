@@ -32,6 +32,8 @@ import type { TicketStub } from "../../../src/store/draftEventStore";
 import { usePublicEventById } from "../../../src/hooks/usePublicEvents";
 import { formatCurrency } from "../../../src/utils/currency";
 import { formatDraftDateLine } from "../../../src/utils/eventDateDisplay";
+// ORCH-1162 Bug 3 — brand-accent for the checkout CTA, matching the public page.
+import { resolveCheckoutBrandAccent } from "../../../src/utils/checkoutBrandAccent";
 
 import { Button } from "../../../src/components/ui/Button";
 import { EmptyState } from "../../../src/components/ui/EmptyState";
@@ -75,6 +77,16 @@ export default function CheckoutTicketsScreen(): React.ReactElement {
   const publicEventQuery = usePublicEventById(eventId);
   const event = publicEventQuery.data?.event ?? null;
   const brand = publicEventQuery.data?.brand ?? null;
+  // ORCH-1162 Bug 3 — the CTA brand accent (same source/derivation as the public
+  // page button: brand theme_color + event theme_color_override). undefined while
+  // loading → Button keeps the default Mingla orange (no flash of wrong color).
+  const ctaAccent =
+    event !== null
+      ? (resolveCheckoutBrandAccent({
+          brandTheme: brand?.theme ?? null,
+          eventThemeOverrides: event.themeOverrides ?? null,
+        }) ?? undefined)
+      : undefined;
 
   const { lines, setLineQuantity } = useCart();
   const totals = useCartTotals();
@@ -335,6 +347,7 @@ export default function CheckoutTicketsScreen(): React.ReactElement {
           label={continueLabel}
           onPress={handleContinue}
           variant="primary"
+          accentColor={ctaAccent}
           size="lg"
           fullWidth
           disabled={totals.isEmpty}

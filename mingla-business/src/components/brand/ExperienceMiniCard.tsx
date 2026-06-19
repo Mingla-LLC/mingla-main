@@ -93,14 +93,20 @@ const hashHueFromString = (s: string): number => {
   return h % 360;
 };
 
+// ORCH-1162 Bug 1 (A.3 hygiene) — this component has ZERO importers (the live
+// brand-page mini card is an inline component in
+// packages/brand-rendering/PublicBrandPage.tsx). Fixed for parity so the en-GB
+// 24h formatter does not linger as a latent bug — switched to en-US + hour12 so
+// it emits a meridiem ("Wed, 7:00 PM") consistent with the repo's 12h discipline.
 const formatNextOccurrence = (iso: string | null): string | null => {
   if (iso === null) return null;
   const date = new Date(iso);
   if (Number.isNaN(date.getTime())) return null;
-  return date.toLocaleString("en-GB", {
+  return date.toLocaleString("en-US", {
     weekday: "short",
     hour: "numeric",
     minute: "2-digit",
+    hour12: true,
   });
 };
 

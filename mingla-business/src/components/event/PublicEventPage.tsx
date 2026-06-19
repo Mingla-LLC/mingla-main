@@ -167,6 +167,9 @@ const mapLiveEventToPublicEvent = (event: LiveEvent): PublicEventProps => {
     venueName: event.venueName ?? null,
     address: event.address ?? null,
     hideAddressUntilTicket: Boolean(event.hideAddressUntilTicket),
+    // ORCH-1162 Bug 2 — thread the venue geo so the shared renderer can draw the
+    // "Where you'll be" map (business native preview). null → text-card fallback.
+    locationGeo: event.locationGeo ?? null,
     coverHue: event.coverHue,
     coverMediaUrl: safeCoverMediaUrl,
     coverMediaType:
