@@ -13,8 +13,9 @@
 --     map simply does not render (Constitution rule 9: missing is hidden, never
 --     fabricated). No backfill (OQ-1: city centroid is derived at the publish /
 --     address-write path going forward; existing rows render the text venue card).
---   • The `CREATE OR REPLACE VIEW` mirrors the ORCH-1150 view column list VERBATIM
---     and appends ONLY `e.city_geo` (right after `e.location_geo`). No column is
+--   • The `CREATE OR REPLACE VIEW` mirrors the existing view column list VERBATIM
+--     and appends ONLY `e.city_geo` at the END (CREATE OR REPLACE VIEW requires new
+--     columns last; existing columns keep name/type/order). No column is
 --     dropped/reordered → no PostgREST contract break for existing readers.
 --   • `security_invoker=false` preserved (anon reads run as the view owner).
 --
@@ -89,9 +90,6 @@ CREATE OR REPLACE VIEW public.business_public_events_view AS
     e.vibe_tags,
     e.music_genres,
     e.location_geo,
-    -- ORCH-1167 — city-level privacy centroid (the ONLY geo returned for an
-    -- anon viewer when the street is hidden until ticket purchase).
-    e.city_geo,
     COALESCE(e.pass_tax,         b.default_pass_tax)         AS pass_tax,
     COALESCE(e.pass_mingla_fee,  b.default_pass_mingla_fee)  AS pass_mingla_fee,
     COALESCE(e.pass_service_fee, b.default_pass_service_fee) AS pass_service_fee,
@@ -123,7 +121,11 @@ CREATE OR REPLACE VIEW public.business_public_events_view AS
       WHERE r.event_id = e.id
         AND r.rsvp_status = 'going'
         AND r.approval_status = 'approved'
-    ) AS rsvp_going_count
+    ) AS rsvp_going_count,
+    -- ORCH-1167 — city-level privacy centroid. Appended LAST: CREATE OR REPLACE VIEW
+    -- requires new columns at the END of the column list (existing columns keep name,
+    -- type AND order). location_geo (the exact pin) is unchanged at its position.
+    e.city_geo
    FROM events e
      JOIN brands b ON b.id = e.brand_id
      LEFT JOIN event_dates ed ON ed.event_id = e.id AND ed.is_master = true
