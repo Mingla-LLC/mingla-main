@@ -22,6 +22,7 @@ import {
   resolveEventCoverMediaPresentation,
   shouldFreezeCoverForReduceMotion,
 } from "./coverMediaPresentation";
+import { driveMutedAutoplay } from "./coverWebVideoAutoplay";
 import { EventCover } from "./EventCover";
 
 export interface EventCoverMediaProps {
@@ -210,11 +211,36 @@ const EventCoverWebVideo: React.FC<{
     else video.removeAttribute("muted");
     video.setAttribute("playsinline", "");
     video.setAttribute("webkit-playsinline", "");
-    if (shouldPlay) {
-      void video.play().catch(() => undefined);
+
+    if (!shouldPlay) {
+      video.pause();
       return;
     }
-    video.pause();
+
+    // ORCH-1167-R6 — WebKit/Safari LOADS the muted inline video (readyState 4)
+    // but the FIRST play() promise REJECTS (NotAllowedError) and stays paused
+    // forever; Safari then paints its native play-button overlay on the paused
+    // inline video (the play button Seth sees on PC web). The R5 code did
+    // `void video.play().catch(() => undefined)` — a single attempt whose
+    // rejection was swallowed with NO retry. Chromium plays on the first attempt;
+    // WebKit needs the attempt re-driven once the element is truly eligible.
+    //
+    // While HARD-MUTED (effectiveMuted true — the initial ambient autoplay, and
+    // every state until the user takes over with a real unmute gesture) drive the
+    // WebKit-robust retry: keep re-attempting play() (re-pinning muted before
+    // each attempt) across the late readiness events + a bounded backoff, until
+    // the cover actually starts. The driver stops on its own once playing, and is
+    // fully torn down by the returned cleanup on unmount / shouldPlay flip /
+    // unmute (effectiveMuted is in the deps, so an unmute re-runs this effect and
+    // tears down the muted loop). See coverWebVideoAutoplay.driveMutedAutoplay.
+    if (effectiveMuted) {
+      return driveMutedAutoplay(video);
+    }
+
+    // User has unmuted (a real gesture the browser honors): follow the live prop
+    // with a single play() attempt; no hard-muted retry loop.
+    void video.play().catch(() => undefined);
+    return;
   }, [shouldPlay, uri, effectiveMuted]);
 
   return React.createElement("video", {
