@@ -5,7 +5,7 @@
  * top-level import and stays unit-testable under Deno.
  *
  * ORCH-1165 [Mapbox static map server-proxy]: the static map now points at the
- * `mapbox-static` edge fn instead of `api.mapbox.com`. Each app ALREADY ships
+ * vendor-neutral `static-map` edge fn instead of `api.mapbox.com`. Each app ALREADY ships
  * `EXPO_PUBLIC_SUPABASE_URL` in `Constants.expoConfig.extra` (it is how the
  * supabase client + the stripe-mode handshake resolve their URLs) — so there is
  * NO new client env var and NO app.config.ts change on any surface.

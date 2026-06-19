@@ -27,7 +27,7 @@ export interface StaticMapParams {
   functionsBaseUrl?: string | null;
   /**
    * RETAINED for the server-side Mapbox URL contract (buildStaticMapUrlWithToken,
-   * consumed by the mapbox-static edge fn). The client builder no longer reads it.
+   * consumed by the vendor-neutral static-map edge fn). The client builder no longer reads it.
    * Token override (mainly for tests); defaults to the runtime public token.
    */
   token?: string | null;

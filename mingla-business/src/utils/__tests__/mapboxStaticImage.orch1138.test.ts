@@ -5,14 +5,17 @@
  * ORCH-1165 [Mapbox static map server-proxy] UPDATE [TEST-MOD-APPROVED ORCH-1165]:
  * the static map is no longer composed against api.mapbox.com with a client `pk.*`
  * token (that token was never provisioned, so the map never rendered). It now
- * points at the `mapbox-static` Supabase edge fn — a token-less, host-hidden proxy
- * URL. This file's old assertions (api.mapbox.com host + access_token + client
- * token param) asserted the SUPERSEDED contract; they are rewritten here to the
- * new proxy contract. The rule-9 coord fail-safe coverage is preserved.
+ * points at the vendor-NEUTRAL `static-map` Supabase edge fn — a token-less,
+ * host-hidden proxy URL whose path reveals nothing about the upstream map vendor.
+ * This file's old assertions (api.mapbox.com host + access_token + client token
+ * param + the interim `/mapbox-static` path) asserted SUPERSEDED contracts; they
+ * are rewritten here to the new vendor-neutral proxy contract. The rule-9 coord
+ * fail-safe coverage is preserved.
  *
  * Covers:
  *  - happy path: finite coords + a functions base URL → a proxy URL pointing at
- *    `<base>/mapbox-static` with NO Mapbox token and NO api.mapbox.com host.
+ *    `<base>/static-map` with NO Mapbox token, NO api.mapbox.com host, and the
+ *    substring "mapbox" NOWHERE in the URL.
  *  - FAIL-SAFE (Constitution rule 9): missing functions base → null (hide map).
  *  - FAIL-SAFE: missing / non-finite coords → null (hide map).
  *  - getPublicMapboxToken (retained backward-compat export) still reads the
@@ -49,8 +52,8 @@ afterEach(() => {
   delete process.env.EXPO_PUBLIC_SUPABASE_URL;
 });
 
-describe("buildStaticMapUrl — proxy URL (ORCH-1165), token-less + mapbox-less", () => {
-  test("finite coords + base → proxy URL, NO token, NO api.mapbox.com", () => {
+describe("buildStaticMapUrl — proxy URL (ORCH-1165), token-less + vendor-neutral", () => {
+  test("finite coords + base → proxy URL, NO token, NO api.mapbox.com, NO 'mapbox'", () => {
     const url = buildStaticMapUrl({
       lat: 40.6281,
       lng: 14.485,
@@ -59,10 +62,13 @@ describe("buildStaticMapUrl — proxy URL (ORCH-1165), token-less + mapbox-less"
     });
     expect(url).not.toBeNull();
     const u = url as string;
-    expect(u.startsWith(`${BASE}/mapbox-static?`)).toBe(true);
+    expect(u.startsWith(`${BASE}/static-map?`)).toBe(true);
     expect(u.includes("api.mapbox.com")).toBe(false);
     expect(u.includes("access_token")).toBe(false);
     expect(u.toLowerCase().includes("pk.")).toBe(false);
+    // Seth's HARD requirement: the substring "mapbox" appears NOWHERE in the
+    // client-facing URL — the public fn name is vendor-neutral `static-map`.
+    expect(u.toLowerCase().includes("mapbox")).toBe(false);
     // lng,lat forwarded; accent normalized ('#' stripped, lowercased).
     expect(u).toContain("lat=40.6281");
     expect(u).toContain("lng=14.485");
@@ -83,7 +89,7 @@ describe("buildStaticMapUrl — proxy URL (ORCH-1165), token-less + mapbox-less"
     mockExtra.EXPO_PUBLIC_SUPABASE_URL =
       "https://gqnoajqerqhnvulmnyvv.supabase.co";
     const url = buildStaticMapUrl({ lat: 1, lng: 2 });
-    expect(url).toContain(`${BASE}/mapbox-static?`);
+    expect(url).toContain(`${BASE}/static-map?`);
   });
 });
 

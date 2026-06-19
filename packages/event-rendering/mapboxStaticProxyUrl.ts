@@ -5,13 +5,14 @@
  * mapboxStaticImage.ts (via mapboxFunctionsBase.ts).
  *
  * ORCH-1165 [Mapbox static map server-proxy]: the static map is now fetched
- * through the `mapbox-static` Supabase edge fn (server secret MAPBOX_ACCESS_TOKEN),
- * mirroring the `mapbox-geocode` proxy. The CLIENT URL is a plain
- * `<functionsBaseUrl>/mapbox-static?lat=…&lng=…&accent=…&w=…&h=…&zoom=…&style=…`
- * — it carries NO Mapbox token and the string "mapbox" never appears as the HOST
- * (only as the edge-fn path segment), so the device/browser network log never
- * exposes `api.mapbox.com` or an `access_token`. The Mapbox logo + attribution
- * are stripped server-side (`logo=false&attribution=false`).
+ * through the vendor-NEUTRAL `static-map` Supabase edge fn (server secret
+ * MAPBOX_ACCESS_TOKEN), mirroring the `mapbox-geocode` proxy. The CLIENT URL is a
+ * plain `<functionsBaseUrl>/static-map?lat=…&lng=…&accent=…&w=…&h=…&zoom=…&style=…`
+ * — it carries NO map-vendor token AND the string "mapbox" appears NOWHERE in it
+ * (the function name is `static-map`, not the vendor), so the device/browser
+ * network log never exposes the upstream vendor host or an `access_token`. The
+ * upstream logo + attribution are stripped server-side
+ * (`logo=false&attribution=false`).
  *
  * Supersedes the prior client-token URL contract (mapboxStaticUrl.ts, which is now
  * the SERVER-side Mapbox URL contract owned by the edge fn). The pin/style/zoom/
@@ -66,7 +67,7 @@ const normalizePinHex = (accentHex?: string | null): string => {
     : FALLBACK_PIN_HEX;
 };
 
-/** Trim a trailing slash so `${base}/mapbox-static` never double-slashes. */
+/** Trim a trailing slash so `${base}/static-map` never double-slashes. */
 const normalizeBase = (base: string): string => base.replace(/\/+$/, "");
 
 /**
@@ -104,5 +105,5 @@ export const buildProxyStaticMapUrl = (
     query.set("style", params.style.trim());
   }
 
-  return `${normalizeBase(functionsBaseUrl.trim())}/mapbox-static?${query.toString()}`;
+  return `${normalizeBase(functionsBaseUrl.trim())}/static-map?${query.toString()}`;
 };

@@ -10,11 +10,12 @@
  * app-mobile imports from the @mingla/* package, never from mingla-business/src.
  *
  * ORCH-1165 [Mapbox static map server-proxy] — KEYSTONE CHANGE: the static map is
- * now fetched through the `mapbox-static` Supabase edge fn (server secret
- * MAPBOX_ACCESS_TOKEN), mirroring the `mapbox-geocode` proxy. The CLIENT URL is a
- * plain `<functionsBaseUrl>/mapbox-static?lat=…&lng=…&accent=…&w=…&h=…` — it
- * carries NO Mapbox token and `api.mapbox.com` never appears in client network
- * traffic; the Mapbox logo + attribution are stripped server-side. This replaces
+ * now fetched through the vendor-NEUTRAL `static-map` Supabase edge fn (server
+ * secret MAPBOX_ACCESS_TOKEN), mirroring the `mapbox-geocode` proxy. The CLIENT
+ * URL is a plain `<functionsBaseUrl>/static-map?lat=…&lng=…&accent=…&w=…&h=…` — it
+ * carries NO map-vendor token, the substring "mapbox" appears NOWHERE in it, and
+ * `api.mapbox.com` never appears in client network traffic; the upstream logo +
+ * attribution are stripped server-side. This replaces
  * the prior client-`pk.*`-token URL (which was never provisioned, so the map never
  * rendered) and HIDES the tech stack (Seth's requirement). The static map needs NO
  * client token now — it only needs the Supabase functions base URL, which every
@@ -28,7 +29,7 @@
  *
  * The pure CLIENT-side Mapbox URL contract (./mapboxStaticUrl,
  * buildStaticMapUrlWithToken) is RETAINED as the SERVER-side contract owned by the
- * mapbox-static edge fn — it is no longer used to render the client <Image>.
+ * static-map edge fn — it is no longer used to render the client <Image>.
  *
  * FAIL-SAFE (Constitution rule 9 / I-PROPOSED-1162-MAP-FAILSAFE-HIDES): if the
  * functions base URL is absent OR coords are missing/non-finite, the builder

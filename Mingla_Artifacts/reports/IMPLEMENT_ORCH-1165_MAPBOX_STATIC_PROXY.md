@@ -237,3 +237,62 @@ Parity is **automatic** across all affected surfaces — they all consume the si
   safearea/route-by-event-type) and local-env noise (missing `@babel/parser`, the `[...]`-bracket
   worktree path breaking node URL resolution). NONE name my files; the governing
   `orch-1162-map-single-owner` gate passes.
+
+---
+
+## REWORK 1 (2026-06-19) — vendor-neutral public function name
+
+**Why:** the proxy rendered correctly with the logo stripped (orchestrator deployed + curl-verified a
+real DC tile, no logo, abuse-guard 400 confirmed), BUT the edge function was NAMED `mapbox-static`,
+so the client `<Image>` URL was `…/functions/v1/mapbox-static?…` — the literal string "mapbox" was
+still visible in client network traffic. Seth's hard requirement is that NOBODY can discover the
+tech stack. Fix = rename the PUBLIC function (and the client URL path) to a vendor-neutral name.
+Server-side logic (the `api.mapbox.com` fetch with the env `MAPBOX_ACCESS_TOKEN` +
+`logo=false&attribution=false`) is unchanged — it is invisible to clients.
+
+**Change (rename only — zero logic/validation/caching/fetch change):**
+
+- Renamed the edge function directory `supabase/functions/mapbox-static/` → `supabase/functions/static-map/`
+  (`git mv`; carries `index.ts` + `__tests__/`).
+- `supabase/config.toml`: `[functions.mapbox-static]` → `[functions.static-map]` (kept `verify_jwt = false`).
+- `packages/event-rendering/mapboxStaticProxyUrl.ts`: the emitted client path `/mapbox-static` → `/static-map`
+  (the single path-emitting line; plus doc-comment + double-slash-guard comment).
+- Doc-comment path references updated to `/static-map` in `mapboxStaticImage.ts`, `mapboxFunctionsBase.ts`,
+  `mapboxStaticUrl.ts`, `event-rendering/index.ts`, and the `static-map/index.ts` header (public-path line 18).
+- Internal var/function/log names stay descriptive (`buildMapboxStaticFetchUrl`, `validateStaticParams`,
+  `console.error("[mapbox-static] …")`) — they are SERVER-side only, never in client traffic. Internal
+  source filenames (`mapboxStaticProxyUrl.ts` etc.) also stay; only the PUBLIC fn name + URL path are neutral.
+
+**Proven client URL (zero "mapbox" string):**
+
+```
+https://gqnoajqerqhnvulmnyvv.supabase.co/functions/v1/static-map?lat=38.8977&lng=-77.0365&accent=eb7825&h=180
+contains "mapbox"? false
+```
+
+**Tests updated + re-run (all green):**
+
+- `packages/event-rendering/__tests__/mapboxStaticProxyUrl.orch1165.test.ts` — path assertions → `/static-map`;
+  ADDED a hard `!u.toLowerCase().includes("mapbox")` assertion. **4 passed / 0 failed** (Deno).
+- `supabase/functions/static-map/__tests__/mapboxStatic.orch1165.test.ts` — `Run:` path comment + note updated
+  (imports `../index.ts` relatively, carried by the rename). **5 passed / 0 failed** (Deno). `deno check` clean.
+- `mingla-business/src/utils/__tests__/mapboxStaticImage.orch1138.test.ts` (`[TEST-MOD-APPROVED ORCH-1165]`) —
+  path assertions → `/static-map` + the no-"mapbox" assertion added. **UNVERIFIED-locally**: this worktree's
+  `jest.config.cjs` has NO `@mingla/*` moduleNameMapper (only metro maps it) and `node_modules/@mingla` is not
+  linked here, so the import chain `mapboxStaticImage.ts` → `@mingla/event-rendering` is jest-unresolvable —
+  the SAME `Cannot find module '@mingla/event-rendering'` failure occurs on the PRE-edit file (proven by stash),
+  i.e. an environmental gap, NOT a code defect. The identical logic is Deno-proven by the client builder test.
+
+**fails-on-revert (re-proven for the rename):** reverting the emitted path `/static-map` → `/mapbox-static` in
+`mapboxStaticProxyUrl.ts:108` turns the client test RED (the vendor-neutral-path + no-"mapbox"-substring +
+double-slash assertions FAIL → `2 passed | 2 failed`); restoring → `4 passed | 0 failed`. Verified at HEAD
+`cb3b022e5` (pre-commit working tree).
+
+**Gates re-run:** `orch-1162-map-single-owner` PASS, `orch-1138-mor-isolation` OK.
+
+**Operator action — UPDATED edge-fn deploy/cleanup:**
+1. Deploy the renamed fn from MERGED main: `npx supabase functions deploy static-map --no-verify-jwt`
+   (preserve `verify_jwt = false`; reuses the existing `MAPBOX_ACCESS_TOKEN` secret — no new secret).
+2. DELETE the old fn so the vendor-revealing name is gone: `npx supabase functions delete mapbox-static`.
+3. Re-curl a tile against the NEW path to confirm: `…/functions/v1/static-map?lat=38.8977&lng=-77.0365`
+   → 200 PNG, no logo; an out-of-range/garbage request → 400 (abuse guard).

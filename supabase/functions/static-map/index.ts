@@ -1,21 +1,27 @@
 /**
  * ORCH-1165 [Mapbox static map server-proxy]
  *
- * mapbox-static — server-side proxy for the "Where you'll be"/"Where you'll
- * start" static map on the public trip / event / experience pages (buyer-web +
- * business app + consumer app). Mirrors the `mapbox-geocode` proxy: keeps
- * MAPBOX_ACCESS_TOKEN strictly server-side, so the client NEVER holds a Mapbox
- * token and `api.mapbox.com` NEVER appears in client network traffic. The Mapbox
- * logo + attribution are stripped server-side (`logo=false&attribution=false`).
+ * static-map (vendor-NEUTRAL public fn name) — server-side proxy for the "Where
+ * you'll be"/"Where you'll start" static map on the public trip / event /
+ * experience pages (buyer-web + business app + consumer app). Mirrors the
+ * `mapbox-geocode` proxy: keeps MAPBOX_ACCESS_TOKEN strictly server-side, so the
+ * client NEVER holds a Mapbox token and `api.mapbox.com` NEVER appears in client
+ * network traffic. The Mapbox logo + attribution are stripped server-side
+ * (`logo=false&attribution=false`). The PUBLIC fn name is deliberately
+ * `static-map`, so the client `<Image>` URL `/functions/v1/static-map?…` carries
+ * the substring "mapbox" NOWHERE — client traffic reveals nothing about the
+ * upstream map vendor. (Internal var/log names below stay descriptive — they are
+ * server-side only.)
  *
  * WHY a proxy (not a client `pk.*` token): Seth's requirement is to render the map
- * on ALL surfaces AND hide the tech stack — no Mapbox logo, no "mapbox" host, no
- * token in client traffic. A client token (Approach A) cannot hide the host/token;
- * only a server proxy that returns image bytes from a *.supabase.co URL can.
+ * on ALL surfaces AND hide the tech stack — no Mapbox logo, no vendor host, no
+ * "mapbox" in client traffic, no token in client traffic. A client token
+ * (Approach A) cannot hide the host/token; only a server proxy that returns image
+ * bytes from a *.supabase.co URL can.
  * (INVESTIGATE_ORCH-1162R_MAPBOX_RENDER_AND_STACK_HIDING.md, Approach B.)
  *
  * ── API surface (GET — it is an <Image source={{uri}}> target) ───────────────
- *   GET /functions/v1/mapbox-static
+ *   GET /functions/v1/static-map
  *       ?lat=<-90..90>&lng=<-180..180>          (REQUIRED, finite)
  *       &accent=<6-hex>                          (optional pin color; default eb7825)
  *       &zoom=<0..22 step allowlist>             (optional; default 11)

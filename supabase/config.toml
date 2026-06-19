@@ -140,9 +140,12 @@ verify_jwt = true
 # verify_jwt = false: the buyer-web public page is anonymous (same posture as the
 # other public web fns); the strict input validation + style/zoom/size allowlists
 # in index.ts are the abuse guard in lieu of auth. Reuses the EXISTING
-# MAPBOX_ACCESS_TOKEN secret — keeps the token + the "mapbox" host out of all
-# client network traffic and strips the logo/attribution server-side.
-[functions.mapbox-static]
+# MAPBOX_ACCESS_TOKEN secret — keeps the token + the upstream map-vendor host out
+# of all client network traffic and strips the logo/attribution server-side.
+# NOTE: the PUBLIC function name is intentionally vendor-NEUTRAL (`static-map`),
+# so the client `<Image>` URL `/functions/v1/static-map?…` reveals nothing about
+# the upstream map vendor. Internal var/log names stay descriptive (server-side).
+[functions.static-map]
 verify_jwt = false
 
 # ORCH-1050 [Brand team invite + accept + ownership transfer]

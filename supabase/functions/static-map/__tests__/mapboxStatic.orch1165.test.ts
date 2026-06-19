@@ -15,8 +15,14 @@
 //  - delete the lat/lng-range or style/zoom allowlist guards in
 //    validateStaticParams → the corresponding 400-input assertions FAIL.
 //
+// NOTE: the edge fn's PUBLIC name is the vendor-neutral `static-map` (the dir was
+// renamed from `mapbox-static`); the SERVER-side fetch URL legitimately targets
+// api.mapbox.com with the env token — that is invisible to clients. Internal
+// builder/var names (buildMapboxStaticFetchUrl, validateStaticParams) stay
+// descriptive; only the public fn name + client URL path are vendor-neutral.
+//
 // Run: deno test --allow-env --allow-net \
-//   supabase/functions/mapbox-static/__tests__/mapboxStatic.orch1165.test.ts
+//   supabase/functions/static-map/__tests__/mapboxStatic.orch1165.test.ts
 
 import {
   assert,
