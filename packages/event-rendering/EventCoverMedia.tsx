@@ -141,6 +141,38 @@ const EventCoverWebVideo: React.FC<{
 }) => {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const shouldPlay = autoplay && playbackActive;
+  // ORCH-1167-R5 — web autoplay was still showing the browser's native PLAY
+  // BUTTON because the FIRST autoplay attempt could fire while the `<video>` was
+  // not yet guaranteed-muted at the element level. Browsers ONLY permit inline
+  // autoplay without a user gesture when the video is MUTED at play() time; a
+  // single unmuted play() rejection paints the native control overlay. We track
+  // whether the user has unmuted yet: until they do, EVERY autoplay attempt is
+  // forced muted (so the browser always permits it and NO play button shows).
+  // Once the chrome Mute toggle unmutes (a real user gesture, which the browser
+  // honors), we follow the live `muted` prop. Re-muting works too. `hasUnmuted`
+  // is a ref so flipping it never re-triggers the autoplay effect mid-play.
+  const hasUnmutedRef = useRef<boolean>(false);
+  if (!muted) hasUnmutedRef.current = true;
+  // The mute value actually applied to the element: hard-muted for the initial
+  // ambient autoplay, then the prop once the user has taken over.
+  const effectiveMuted = hasUnmutedRef.current ? muted : true;
+
+  // Synchronous ref callback: set the muted PROPERTY + ATTRIBUTE the instant the
+  // element mounts, BEFORE the browser evaluates autoplay eligibility. React 19
+  // emits `muted` as a property only (no HTML attribute), and even the property
+  // can land after the browser's first eligibility check — so we pin both here,
+  // guaranteeing the very first autoplay attempt is muted and permitted.
+  const attachVideo = React.useCallback(
+    (node: HTMLVideoElement | null): void => {
+      videoRef.current = node;
+      if (node === null) return;
+      node.muted = true;
+      node.setAttribute("muted", "");
+      node.setAttribute("playsinline", "");
+      node.setAttribute("webkit-playsinline", "");
+    },
+    [],
+  );
 
   // ORCH-0992: report the video's intrinsic aspect ratio once metadata loads,
   // so a hero can size its box to the video's shape. videoWidth/videoHeight are
@@ -168,8 +200,13 @@ const EventCoverWebVideo: React.FC<{
     // React 19 sets `muted` as a DOM property only (no attribute), so iOS refuses
     // to autoplay and shows its native play button. Set the attributes + property
     // imperatively, then play(). (Desktop works on the property alone.)
-    video.muted = muted;
-    if (muted) video.setAttribute("muted", "");
+    //
+    // ORCH-1167-R5 — `effectiveMuted` (not the raw prop) is hard-true until the
+    // user unmutes, so the FIRST inline autoplay is always permitted and the
+    // native play button never paints. After a user-gesture unmute it follows
+    // the live prop, so the chrome Mute/Unmute toggle keeps working.
+    video.muted = effectiveMuted;
+    if (effectiveMuted) video.setAttribute("muted", "");
     else video.removeAttribute("muted");
     video.setAttribute("playsinline", "");
     video.setAttribute("webkit-playsinline", "");
@@ -178,16 +215,20 @@ const EventCoverWebVideo: React.FC<{
       return;
     }
     video.pause();
-  }, [shouldPlay, uri, muted]);
+  }, [shouldPlay, uri, effectiveMuted]);
 
   return React.createElement("video", {
-    ref: videoRef,
+    ref: attachVideo,
     autoPlay: shouldPlay,
     controls: false,
     loop,
-    muted,
+    muted: effectiveMuted,
     onCanPlay: (event: React.SyntheticEvent<HTMLVideoElement>): void => {
       if (!shouldPlay) return;
+      // Guarantee muted before the (re)play attempt so a browser that deferred
+      // its eligibility check to canplay still permits the inline autoplay and
+      // never paints the native play button.
+      event.currentTarget.muted = effectiveMuted;
       void event.currentTarget.play().catch(() => undefined);
     },
     onEnded: (event: React.SyntheticEvent<HTMLVideoElement>): void => {
@@ -392,6 +433,11 @@ export const EventCoverMedia: React.FC<EventCoverMediaProps> = ({
 }) => {
   const [hasMediaError, setHasMediaError] = useState(false);
   const [reduceMotion, setReduceMotion] = useState(false);
+  // ORCH-1167-R5 — a VIDEO cover must AUTOPLAY MUTED by default on web so the
+  // browser permits inline autoplay and never paints its native play button. The
+  // INITIAL mute state is forced true on web when autoplaying (ambient muted
+  // loop), matching native. After first paint we follow the parent `muted` prop
+  // so the chrome Mute/Unmute toggle (a user gesture) can unmute and re-mute.
   const initialMuted = Platform.OS === "web" && autoplay ? true : muted;
   const [isMuted, setIsMuted] = useState(initialMuted);
   const containerRef = useRef<View | null>(null);
@@ -416,8 +462,22 @@ export const EventCoverMedia: React.FC<EventCoverMediaProps> = ({
     setHasMediaError(false);
   }, [mediaUrl]);
 
+  // ORCH-1167-R5 — follow the parent `muted` prop on every change so the chrome
+  // Mute/Unmute toggle (which flips the parent state) actually reaches the cover
+  // video. A NEW media url resets to the web autoplay-muted default so the next
+  // cover's first inline autoplay is permitted; an in-place prop change (the
+  // user toggling sound) passes straight through. The web `<video>` separately
+  // hard-mutes its FIRST autoplay attempt (hasUnmutedRef) so dropping the old
+  // "force muted on web" here can never reintroduce the native play button.
+  const mediaUrlRef = useRef(mediaUrl);
   useEffect(() => {
-    setIsMuted(Platform.OS === "web" && autoplay ? true : muted);
+    const isNewMedia = mediaUrlRef.current !== mediaUrl;
+    mediaUrlRef.current = mediaUrl;
+    if (isNewMedia) {
+      setIsMuted(Platform.OS === "web" && autoplay ? true : muted);
+      return;
+    }
+    setIsMuted(muted);
   }, [autoplay, mediaUrl, muted]);
 
   // ORCH-0992: a muted-autoplay-loop cover is ambient motion (like a GIF cover,
