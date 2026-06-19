@@ -29,6 +29,15 @@ export type { GalleryLayout } from "./galleryLayout";
 export { ChipGroup } from "./ChipGroup";
 export type { Chip, ChipGroupProps } from "./ChipGroup";
 
+// ORCH-1167 [event-page-canonical] — THE ONE shared, shell-agnostic body for the
+// standard ticketed-event public page (event_type='event'). Rendered byte-
+// identically on buyer-web + business iOS/Android + consumer iOS/Android. Hosts NO
+// scroll root (each surface injects its scroll + parallax-cover scaffold around it).
+// Carries the inline on-page ticket box (per-tier steppers + live Σ-all-in running
+// total (WYSIWYP) + in-box Proceed) and the surface-pinned floating Get-tickets bar.
+export { EventOfferingBody, EventOfferingFloatingBar, computeRunningTotal, totalSelectedQuantity } from "./EventOfferingBody";
+export type { EventOfferingBodyProps, EventOfferingFloatingBarProps } from "./EventOfferingBody";
+
 // ORCH-1157 [rsvp-public-redesign] — the shared Direction-C "Momentum" RSVP hero
 // (going-count + capacity meter + faceless anonymous cluster + Going/Maybe/Can't
 // decision). Consumed by the business RsvpPublicBody (buyer-web + business +

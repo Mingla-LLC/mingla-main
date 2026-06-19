@@ -54,17 +54,20 @@ import {
   computeOfferingVariant,
   createThemePalette,
   boldFontFamily,
+  buildStaticMapUrl,
 } from "@mingla/event-rendering";
-import { useResponsiveLayout } from "@mingla/offering-rendering";
+import {
+  useResponsiveLayout,
+  EventOfferingFloatingBar,
+} from "@mingla/offering-rendering";
 
 import { spacing } from "../../constants/designSystem";
-import { EventReserveBar } from "./EventReserveBar";
 import { FoundationEventPreview } from "./FoundationEventPreview";
 import { RsvpPublicBody } from "./RsvpPublicBody";
 import { submitPublicRsvp } from "../../services/rsvpEvents";
 
 import {
-  checkoutPublicPath,
+  checkoutPublicPathWithSeed,
   eventOgImageUrl,
   eventPublicUrl,
 } from "../../constants/publicUrls";
@@ -170,6 +173,11 @@ const mapLiveEventToPublicEvent = (event: LiveEvent): PublicEventProps => {
     // ORCH-1162 Bug 2 — thread the venue geo so the shared renderer can draw the
     // "Where you'll be" map (business native preview). null → text-card fallback.
     locationGeo: event.locationGeo ?? null,
+    // ORCH-1167 [event-page-canonical] — city-level privacy centroid (merged from
+    // pg_public_event_by_slug in detailFromRow). The EventOfferingBody host feeds
+    // whichever geo the privacy gate left present (cityGeo when the street is
+    // hidden, locationGeo when public). null → text venue card (rule 9).
+    cityGeo: event.cityGeo ?? null,
     coverHue: event.coverHue,
     coverMediaUrl: safeCoverMediaUrl,
     coverMediaType:
@@ -186,6 +194,8 @@ const mapLiveEventToPublicEvent = (event: LiveEvent): PublicEventProps => {
     // the view mapper; default `[]` for legacy persisted rows (rule 9 — no fake).
     partyTypes: event.partyTypes ?? [],
     vibeTags: event.vibeTags ?? [],
+    // ORCH-1167 [event-page-canonical] — music-genre pills (third pills group).
+    musicGenres: event.musicGenres ?? [],
     themeOverrides: event.themeOverrides ?? null,
   };
 };
@@ -248,10 +258,13 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
   // ORCH-1138 — cover-video sound state (default muted). The chrome Mute button
   // toggles EventCoverMedia's muted state via this.
   const [muted, setMuted] = useState<boolean>(true);
-  // ORCH-1138 — the selected ticket-tier id (FOUNDATION radiogroup). null → none
-  // chosen yet; the bar/sticky panel use the page-level resolveOfferingCta until
-  // the buyer picks a tier (which then narrows the considered set).
-  const [selectedTicketId, setSelectedTicketId] = useState<string | null>(null);
+  // ORCH-1167 [event-page-canonical] — the inline ticket-box per-tier quantities
+  // (REPLACES the ORCH-1138 single-select radiogroup). The shared EventOfferingBody
+  // reads/writes this; in-box Proceed + the floating bar carry it into the cart
+  // (pre-populated, editable) at the checkout cart step (i). Empty → nothing picked.
+  const [ticketQuantities, setTicketQuantities] = useState<Record<string, number>>(
+    {},
+  );
 
   const viewerRole: ViewerRole = useMemo(() => {
     if (user === null) return "anonymous";
@@ -276,6 +289,26 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
   const boldFamily = boldFontFamily(resolvedTheme);
   useThemeFont(resolvedTheme.fontFamilyValue);
   useThemeFont(boldFamily);
+
+  // ORCH-1167 [event-page-canonical] — the server-proxied static map URL for the
+  // "Where you'll be" section. PRIVACY: the RPC already enforces the gate server-
+  // side (locationGeo null + cityGeo set when the street is hidden), so the host
+  // simply feeds whichever geo is present — exact pin when public, city-level
+  // centroid when hidden. null on no geo → text venue card (rule 9). Online events
+  // never render a map (the body shows the "Online" card).
+  const staticMapUrl = useMemo<string | null>(() => {
+    if (publicEvent.format === "online") return null;
+    const geo = publicEvent.locationGeo ?? publicEvent.cityGeo ?? null;
+    if (geo === null) return null;
+    return buildStaticMapUrl({
+      lat: geo.lat,
+      lng: geo.lng,
+      accentHex: palette.accent,
+      // city-level when only cityGeo present (no exact pin leak); zoomed when exact.
+      zoom: publicEvent.locationGeo !== null && publicEvent.locationGeo !== undefined ? 14 : 11,
+      height: 180,
+    });
+  }, [publicEvent.format, publicEvent.locationGeo, publicEvent.cityGeo, palette.accent]);
 
   // ORCH-1138 — float→dock CTA visibility tracking (mirror the trip route 1:1).
   const [dockTopY, setDockTopY] = useState<number | null>(null);
@@ -321,29 +354,40 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
     [publicEvent],
   );
 
-  // ORCH-1138 — the SINGLE buy-state, the page CTA owner (resolveOfferingCta). The
-  // selected tier (when any) narrows the considered set; the page-level state
-  // drives the bar + sticky panel + tier-row labels identically.
-  const offeringCta = useMemo(() => {
-    const selected = publicEvent.tickets.find(
-      (t) => t.id === selectedTicketId && t.visibility !== "hidden",
-    );
-    const considered =
-      selected !== undefined ? [selected] : publicEvent.tickets;
-    return resolveOfferingCta({
-      variant: computeOfferingVariant(publicEvent, false),
-      bookable,
-      tickets: considered,
-      currency: publicEvent.currency,
-    });
-  }, [publicEvent, bookable, selectedTicketId]);
+  // ORCH-1167 — the page-level buy-state (resolveOfferingCta — one owner), now
+  // computed over ALL visible tickets (the inline box owns per-tier selection).
+  // Drives the state banner only; the inline box + floating bar resolve their own
+  // CTA from the shared EventOfferingBody/Bar (same single owner, same payload).
+  const offeringCta = useMemo(
+    () =>
+      resolveOfferingCta({
+        variant: computeOfferingVariant(publicEvent, false),
+        bookable,
+        tickets: publicEvent.tickets.filter((t) => t.visibility !== "hidden"),
+        currency: publicEvent.currency,
+      }),
+    [publicEvent, bookable],
+  );
 
-  const handleSelectTicket = useCallback((ticketId: string): void => {
-    setSelectedTicketId((prev) => (prev === ticketId ? null : ticketId));
-  }, []);
+  const handleChangeTicketQuantity = useCallback(
+    (ticketTypeId: string, qty: number): void => {
+      setTicketQuantities((prev) => {
+        const next = { ...prev };
+        if (qty <= 0) delete next[ticketTypeId];
+        else next[ticketTypeId] = qty;
+        return next;
+      });
+    },
+    [],
+  );
 
-  const handleReserve = useCallback((): void => {
-    if (offeringCta.kind === "waitlist") {
+  // ORCH-1167 — in-box Proceed + the floating bar both call this. It REPLACES the
+  // /checkout/[eventId] tier-PICKER push: it carries the selected quantities into
+  // the cart step (i) PRE-POPULATED (still editable there) via the `seed` param.
+  // Waitlist routes to the waitlist sheet; a not-bookable paid brand toasts.
+  const handleProceedToCart = useCallback((): void => {
+    const anySelected = Object.values(ticketQuantities).some((q) => q > 0);
+    if (offeringCta.kind === "waitlist" && !anySelected) {
       const wlTicket = publicEvent.tickets.find(
         (t) => t.visibility !== "hidden" && t.waitlistEnabled,
       );
@@ -356,9 +400,20 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
       );
       return;
     }
-    // N7 — checkout target UNCHANGED (the existing /checkout/{eventId} cart page).
-    router.push(checkoutPublicPath(event.id) as never);
-  }, [offeringCta.kind, publicEvent.tickets, bookable, router, event.id, showToast]);
+    if (!anySelected) return;
+    // Cart step (i), pre-populated + editable (replaces the empty tier-picker).
+    router.push(
+      checkoutPublicPathWithSeed(event.id, ticketQuantities) as never,
+    );
+  }, [
+    offeringCta.kind,
+    ticketQuantities,
+    publicEvent.tickets,
+    bookable,
+    router,
+    event.id,
+    showToast,
+  ]);
 
   const handleClose = useCallback((): void => {
     if (router.canGoBack()) {
@@ -391,7 +446,7 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
           );
           return;
         }
-        router.push(checkoutPublicPath(event.id) as never);
+        router.push(checkoutPublicPathWithSeed(event.id, {}) as never);
       },
       onClaimFreeTicket: (_ticketId: string) => {
         if (!bookable) {
@@ -400,7 +455,7 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
           );
           return;
         }
-        router.push(checkoutPublicPath(event.id) as never);
+        router.push(checkoutPublicPathWithSeed(event.id, {}) as never);
       },
       onJoinWaitlist: (ticketId: string) => {
         setWaitlistTicketId(ticketId);
@@ -444,73 +499,14 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
       </View>
     ) : null;
 
-  // ORCH-1138 — reserve kicker ("All-in, taxes included" when there's a price).
-  const barKicker = offeringCta.kind === "buy" ? "All-in, taxes included" : null;
-
-  // ORCH-1138 — DOCKED ticket CTA (phone): the LAST body child, flush. Built from
-  // the SAME offeringCta the float pill + sticky panel read.
-  const dockedReserve = !isDesktop ? (
-    <EventReserveBar
-      cta={offeringCta}
-      palette={palette}
-      kicker={barKicker}
-      fontFamily={boldFamily}
-      onPress={handleReserve}
-      variant="docked"
-      onDockLayout={handleDockLayout}
-      testID="orch-1138-event-reserve"
-    />
-  ) : undefined;
-
-  // ORCH-1138 — desktop sticky ticket panel: brand chip → "Choose your ticket"
-  // tier list (rendered in the FOUNDATION body) → price block → CTA → reassurance.
-  // On desktop the tier list is in the body; the panel carries the resolved CTA.
-  const reserveTappable = offeringCta.tappable;
-  const stickyPanel = isDesktop ? (
-    <View style={[styles.deskPanel, { backgroundColor: palette.panelStrong, borderColor: palette.panelBorder }]}>
-      <View style={[styles.deskAccent, { backgroundColor: palette.accent }]} />
-      <View style={styles.deskInner}>
-        <Pressable
-          onPress={reserveTappable ? handleReserve : undefined}
-          disabled={!reserveTappable}
-          accessibilityRole="button"
-          accessibilityState={{ disabled: !reserveTappable }}
-          accessibilityLabel={
-            reserveTappable
-              ? offeringCta.kind === "buy"
-                ? `${offeringCta.label}, ${offeringCta.price}`
-                : offeringCta.kind === "free"
-                  ? offeringCta.label
-                  : "Join waitlist"
-              : ctaUnavailableLabel(offeringCta)
-          }
-          style={[
-            styles.deskReserve,
-            reserveTappable
-              ? { backgroundColor: palette.accent }
-              : { backgroundColor: palette.card, borderColor: palette.panelBorder, borderWidth: 1 },
-          ]}
-          testID="orch-1138-event-desk-reserve"
-        >
-          <Text
-            style={[
-              styles.deskReserveText,
-              { color: reserveTappable ? palette.accentText : palette.tertiaryText, fontFamily: boldFamily },
-            ]}
-          >
-            {reserveTappable
-              ? offeringCta.kind === "buy"
-                ? `${offeringCta.label} · ${offeringCta.price}`
-                : offeringCta.label
-              : ctaUnavailableLabel(offeringCta)}
-          </Text>
-        </Pressable>
-        <Text style={[styles.deskReassure, { color: palette.tertiaryText }]}>
-          All-in price · secure checkout
-        </Text>
-      </View>
-    </View>
-  ) : null;
+  // ORCH-1167 — the inline ticket box (in the shared EventOfferingBody) now owns
+  // the in-page Proceed CTA, so the legacy docked EventReserveBar + desktop sticky
+  // CTA panel are RETIRED (subtract before adding). The desktop sticky panel is
+  // omitted (the box renders in the body on desktop too); the off-screen floating
+  // CTA is the shared EventOfferingFloatingBar (rendered below). `offeringCta` is
+  // kept only for the page-level state banner (one owner, never disagrees).
+  void ctaUnavailableLabel; // retained import; legacy callers removed.
+  const stickyPanel = null;
 
   // ORCH-1150 — RSVP branch. An event_type='rsvp' row has zero tickets + no
   // checkout; it renders the Going/Not-going RsvpPublicBody and returns early.
@@ -691,7 +687,8 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
         <FoundationEventPreview
           event={publicEvent}
           brand={publicBrand}
-          variant={pageVariant as "published" | "pre-sale" | "sold-out" | "past"}
+          variant={pageVariant}
+          bookable={bookable}
           palette={palette}
           theme={resolvedTheme}
           muted={muted}
@@ -700,35 +697,41 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
           onShare={handleShare}
           onOpenBrand={(slug: string) => router.push(`/b/${slug}` as never)}
           onOpenMaps={openMapsForQuery}
+          staticMapUrl={staticMapUrl}
           stateBanner={stateBanner}
           stickyPanel={stickyPanel}
-          dockedReserve={dockedReserve}
           onScroll={handleScroll}
           onScrollViewLayout={handleScrollLayout}
           safeAreaTop={insets.top}
-          selectedTicketId={selectedTicketId}
-          onSelectTicket={handleSelectTicket}
-          testID="orch-1138-event-foundation"
+          ticketQuantities={ticketQuantities}
+          onChangeTicketQuantity={handleChangeTicketQuantity}
+          onProceedToCart={handleProceedToCart}
+          onDockLayout={handleDockLayout}
+          testID="orch-1167-event-foundation"
         />
       )}
 
-      {/* ORCH-1138 — FLOATING ticket PILL (phone): JUST the button, shown ONLY
-          while the in-content DOCKED CTA is off-screen. Hidden on desktop (the
-          sticky panel carries the CTA) and on the cancelled/password legacy page.
-          Same offeringCta + onPress as the docked bar so the copy never diverges. */}
+      {/* ORCH-1167 — FLOATING Get-tickets bar (phone): the shared
+          EventOfferingFloatingBar, shown ONLY while the in-page ticket box is
+          off-screen. Hidden on desktop + on the cancelled/password legacy page.
+          Reflects the live Σ-all-in total + calls the SAME onProceedToCart the
+          in-box Proceed calls (copy never diverges — one owner). */}
       {pageVariant !== "cancelled" &&
       pageVariant !== "password-gate" &&
       !isDesktop &&
       floatingPillVisible ? (
-        <EventReserveBar
-          cta={offeringCta}
-          palette={palette}
-          kicker={barKicker}
-          fontFamily={boldFamily}
-          onPress={handleReserve}
-          variant="floating"
-          testID="orch-1138-event-reserve"
-        />
+        <View style={styles.floatWrap} pointerEvents="box-none">
+          <EventOfferingFloatingBar
+            event={publicEvent}
+            variant={pageVariant}
+            bookable={bookable}
+            palette={palette}
+            theme={resolvedTheme}
+            ticketQuantities={ticketQuantities}
+            onProceedToCart={handleProceedToCart}
+            testID="orch-1167-event-floating-bar"
+          />
+        </View>
       ) : null}
 
       <ShareModal
@@ -775,29 +778,13 @@ const styles = StyleSheet.create({
     fontWeight: "800",
     letterSpacing: 0.3,
   },
-  deskPanel: {
-    borderRadius: 20,
-    borderWidth: 1,
-    overflow: "hidden",
-  },
-  deskAccent: { height: 4 },
-  deskInner: { padding: 18 },
-  deskReserve: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    borderRadius: 16,
-    paddingVertical: 16,
-    marginTop: 4,
-  },
-  deskReserveText: {
-    fontSize: 16,
-    fontWeight: "900",
-  },
-  deskReassure: {
-    fontSize: 11,
-    textAlign: "center",
-    marginTop: 10,
+  // ORCH-1167 — the floating Get-tickets bar wrapper (phone, off-screen-box only).
+  floatWrap: {
+    position: "absolute",
+    left: 16,
+    right: 16,
+    bottom: 24,
+    zIndex: 6,
   },
   toastWrap: {
     position: "absolute",

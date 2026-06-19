@@ -63,6 +63,15 @@ interface BusinessPublicEventViewRow {
   // Direction-C RSVP vibe chips. Null/absent for legacy rows → mapper defaults [].
   party_types?: string[] | null;
   vibe_tags?: string[] | null;
+  // ORCH-1167 — music_genres exposed anon-safe by business_public_events_view
+  // (the view SELECTs e.music_genres). The mapper previously DROPPED this (F-3);
+  // now threaded into LiveEvent.musicGenres → the canonical pills row.
+  music_genres?: string[] | null;
+  // ORCH-1167 — city-level privacy centroid (geometry(Point,4326)); PostgREST
+  // serializes geometry as GeoJSON or a WKB hex string for anon reads. The
+  // canonical body fields are read from the pg_public_event_by_slug RPC (which
+  // returns {lat,lng}); this view column is the schema source of truth.
+  city_geo?: unknown;
   location_text: string | null;
   // ORCH-1162 Bug 2 — venue geo exposed by business_public_events_view (a
   // `point` column; PostgREST serializes it as a "(lng,lat)" string for anon
@@ -867,6 +876,11 @@ export const publicEventViewRowToEvent = (
     // 9: missing is empty, never fabricated). Already-present columns; no migration.
     partyTypes: Array.isArray(row.party_types) ? row.party_types : [],
     vibeTags: Array.isArray(row.vibe_tags) ? row.vibe_tags : [],
+    // ORCH-1167 [event-page-canonical] — thread music_genres (was DROPPED — F-3).
+    // Default [] (rule 9: missing is empty, never fabricated). For the standard-
+    // event PAGE BODY the authoritative source is the pg_public_event_by_slug RPC
+    // (merged in detailFromRow); this view-derived value is the fallback.
+    musicGenres: Array.isArray(row.music_genres) ? row.music_genres : [],
     orders: [],
     createdAt: row.created_at,
     updatedAt: row.updated_at,
@@ -909,6 +923,70 @@ const fetchTicketTypesRemaining = async (
 // base price (never blank). Mirrors app-mobile's publicEventTicketsService.
 // ORCH-1147 — EXPORTED so the experience service reuses the SAME single owner
 // of pg_public_event_tier_allin (no duplicated RPC / fee math anywhere else).
+// ===========================================================================
+// ORCH-1167 [event-page-canonical] — the ONE canonical anon read RPC for the
+// standard ticketed-event public page body fields. Returns the full
+// EventOfferingBody payload as json incl. pills (party/vibe/music), city +
+// city_geo, and per-tier server all-in. The web/business standard-event read
+// merges the canonical BODY fields from here onto the view-derived LiveEvent so
+// a field added to the RPC payload surfaces on web too with ONE mapper edit
+// (SC-7) and music_genres is no longer dropped (F-3). The view read remains for
+// the non-body LiveEvent fields the RSVP/recurrence paths still need.
+// ===========================================================================
+
+interface CanonicalEventBodyFields {
+  partyTypes: string[];
+  vibeTags: string[];
+  musicGenres: string[];
+  cityGeo: { lat: number; lng: number } | null;
+}
+
+const asStringArray = (value: unknown): string[] =>
+  Array.isArray(value)
+    ? value.filter((v): v is string => typeof v === "string")
+    : [];
+
+const asLatLng = (
+  value: unknown,
+): { lat: number; lng: number } | null => {
+  if (value === null || typeof value !== "object") return null;
+  const obj = value as { lat?: unknown; lng?: unknown };
+  return typeof obj.lat === "number" &&
+    Number.isFinite(obj.lat) &&
+    typeof obj.lng === "number" &&
+    Number.isFinite(obj.lng)
+    ? { lat: obj.lat, lng: obj.lng }
+    : null;
+};
+
+// Fetch the canonical body fields for one (brand, event) from the RPC. Returns
+// defaults (empty pills, null cityGeo) on RPC miss/error so the page never blanks
+// (rule 9). The PRIVACY gate is enforced SERVER-SIDE in the RPC (cityGeo present /
+// exact pin null when the address is hidden) — the client never re-derives it.
+export const fetchCanonicalEventBodyFields = async (
+  brandSlug: string,
+  eventSlug: string,
+): Promise<CanonicalEventBodyFields> => {
+  const empty: CanonicalEventBodyFields = {
+    partyTypes: [],
+    vibeTags: [],
+    musicGenres: [],
+    cityGeo: null,
+  };
+  const { data, error } = await supabase.rpc("pg_public_event_by_slug", {
+    p_brand_slug: brandSlug,
+    p_event_slug: eventSlug,
+  });
+  if (error !== null || data === null || typeof data !== "object") return empty;
+  const payload = data as Record<string, unknown>;
+  return {
+    partyTypes: asStringArray(payload.partyTypes),
+    vibeTags: asStringArray(payload.vibeTags),
+    musicGenres: asStringArray(payload.musicGenres),
+    cityGeo: asLatLng(payload.cityGeo),
+  };
+};
+
 export const fetchTierAllInCents = async (
   eventId: string,
 ): Promise<Map<string, number>> => {
@@ -1019,9 +1097,39 @@ const detailFromRow = async (
   const tickets = await fetchTickets(row.id);
   // ORCH-1076 — resolve buyer-readiness for PAID events (deep-link graceful CTA).
   const isPaid = ticketsArePaidOnline(tickets);
-  const bookable = await resolveEventBookable(row.brand_id, isPaid);
+  // ORCH-1167 [event-page-canonical] — for the STANDARD ticketed-event page, also
+  // resolve the canonical BODY fields (pills + city_geo) from the ONE read RPC
+  // (pg_public_event_by_slug) and MERGE them onto the view-derived LiveEvent. This
+  // makes the RPC the authoritative source for the page body fields (SC-7: a field
+  // added to the RPC surfaces here with one mapper edit) and closes the F-3
+  // music_genres drop. RSVP rows keep the view-only fields (the RPC is event-only).
+  const isStandardEvent = row.event_type === "event" || row.event_type === null;
+  const [bookable, canonical] = await Promise.all([
+    resolveEventBookable(row.brand_id, isPaid),
+    isStandardEvent
+      ? fetchCanonicalEventBodyFields(row.brand_slug, row.slug)
+      : Promise.resolve(null),
+  ]);
+  const event = publicEventViewRowToEvent(row, tickets);
+  const merged =
+    canonical !== null
+      ? {
+          ...event,
+          partyTypes:
+            canonical.partyTypes.length > 0
+              ? canonical.partyTypes
+              : event.partyTypes,
+          vibeTags:
+            canonical.vibeTags.length > 0 ? canonical.vibeTags : event.vibeTags,
+          musicGenres:
+            canonical.musicGenres.length > 0
+              ? canonical.musicGenres
+              : event.musicGenres,
+          cityGeo: canonical.cityGeo,
+        }
+      : event;
   return {
-    event: publicEventViewRowToEvent(row, tickets),
+    event: merged,
     brand: viewRowToBrand(row),
     tickets,
     bookable,

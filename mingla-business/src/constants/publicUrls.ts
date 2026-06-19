@@ -54,6 +54,47 @@ export const brandPublicUrl = (brandSlug: string): string =>
 export const checkoutPublicPath = (eventId: string): string =>
   `/checkout/${requireSegment(eventId, "eventId")}`;
 
+/**
+ * ORCH-1167 [event-page-canonical] — encode the inline-ticket-box selection as a
+ * compact `seed` query param so the checkout cart step (i) lands PRE-POPULATED +
+ * editable (replacing the empty tier-PICKER push). Format: `id:qty,id:qty`. Empty
+ * selection → the bare path (no seed param). The checkout index seeds the cart from
+ * this on mount; quantities remain editable there (the cart step is unchanged).
+ */
+export const encodeCartSeed = (
+  quantities: Record<string, number>,
+): string =>
+  Object.entries(quantities)
+    .filter(([, qty]) => qty > 0)
+    .map(([id, qty]) => `${id}:${qty}`)
+    .join(",");
+
+/** Decode the `seed` query param back into a {ticketTypeId: qty} map. */
+export const decodeCartSeed = (
+  seed: string | null | undefined,
+): Record<string, number> => {
+  const out: Record<string, number> = {};
+  if (typeof seed !== "string" || seed.length === 0) return out;
+  for (const pair of seed.split(",")) {
+    const [id, qtyRaw] = pair.split(":");
+    const qty = Number.parseInt(qtyRaw ?? "", 10);
+    if (typeof id === "string" && id.length > 0 && Number.isFinite(qty) && qty > 0) {
+      out[id] = qty;
+    }
+  }
+  return out;
+};
+
+/** checkoutPublicPath with an optional pre-populated cart seed (ORCH-1167). */
+export const checkoutPublicPathWithSeed = (
+  eventId: string,
+  quantities: Record<string, number>,
+): string => {
+  const base = checkoutPublicPath(eventId);
+  const seed = encodeCartSeed(quantities);
+  return seed.length > 0 ? `${base}?seed=${encodeURIComponent(seed)}` : base;
+};
+
 export const checkoutPublicUrl = (eventId: string): string =>
   `${BUSINESS_PUBLIC_ORIGIN}${checkoutPublicPath(eventId)}`;
 

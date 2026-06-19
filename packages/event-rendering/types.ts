@@ -75,6 +75,17 @@ export interface PublicEventProps {
    * is themed from the page's brand accent (createThemePalette → palette.accent).
    */
   locationGeo?: { lat: number; lng: number } | null;
+  /**
+   * ORCH-1167 [event-page-canonical] — CITY-LEVEL centroid (privacy-safe), the
+   * sibling of the exact `locationGeo` pin. The canonical `EventOfferingBody`
+   * "Where you'll be" map draws at CITY zoom (no exact pin) from this when the
+   * street is hidden until ticket purchase. ADDITIVE + default-safe: undefined /
+   * null on every predating constructor → no city-level map (rule 9). For the
+   * anon read path the privacy gate is enforced SERVER-SIDE in
+   * `pg_public_event_by_slug` (it returns `locationGeo` null + `cityGeo` set when
+   * the address is hidden), so the host simply feeds whichever geo is present.
+   */
+  cityGeo?: { lat: number; lng: number } | null;
 
   // Cover
   coverHue: number;
@@ -98,6 +109,16 @@ export interface PublicEventProps {
    */
   partyTypes: string[];
   vibeTags?: string[];
+  /**
+   * ORCH-1167 [event-page-canonical] — canonical music-genre slugs (ORCH-0824),
+   * the third pills group on the standard ticketed-event public page (after
+   * format → vibes → party-types). ADDITIVE + default-safe: `[]` when none /
+   * predating constructor (rule 9). Closes the F-3 web-mapper drop
+   * (`publicEventViewRowToEvent` mapped party/vibe but silently dropped
+   * music_genres though the anon view exposes it). The pills row renders ALL of
+   * vibeTags + partyTypes + musicGenres, each group omitted when empty.
+   */
+  musicGenres?: string[];
 
   themeOverrides?: ThemeInput | null;
 }

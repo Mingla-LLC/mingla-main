@@ -16,7 +16,7 @@
 
 // orch-strict-grep-allow safearea-on-fullscreen-routes — design-intent full-bleed checkout header: insets.bottom IS applied (line 230 + 283) for home-indicator clearance; the top status-bar overlap with back arrow / "Get tickets" header / "1 OF 3" pill is the intended banner-style buyer aesthetic. Per ORCH-0859 [Tr2 Minimum Viable Trip] REWORK 5b operator design ruling 2026-05-17 (QA report §1) + pixel verification on iPhone 17 Pro Max sim (screenshot 18-CHECKOUT-INDEX.png).
 
-import React, { useCallback, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { ScrollView, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useLocalSearchParams, useRouter } from "expo-router";
@@ -26,7 +26,10 @@ import {
   spacing,
   text as textTokens,
 } from "../../../src/constants/designSystem";
-import { eventPublicPath } from "../../../src/constants/publicUrls";
+import {
+  decodeCartSeed,
+  eventPublicPath,
+} from "../../../src/constants/publicUrls";
 import type { LiveEvent } from "../../../src/store/liveEventStore";
 import type { TicketStub } from "../../../src/store/draftEventStore";
 import { usePublicEventById } from "../../../src/hooks/usePublicEvents";
@@ -71,8 +74,18 @@ const ticketSalesEnded = (ticket: TicketStub): boolean => {
 export default function CheckoutTicketsScreen(): React.ReactElement {
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const params = useLocalSearchParams<{ eventId: string }>();
+  const params = useLocalSearchParams<{ eventId: string; seed?: string }>();
   const eventId = typeof params.eventId === "string" ? params.eventId : null;
+  // ORCH-1167 [event-page-canonical] — the inline-ticket-box selection carried
+  // from the public event page (`seed=id:qty,id:qty`). Seeds the cart ONCE on mount
+  // so this cart step (i) lands PRE-POPULATED + editable (replaces the empty
+  // tier-PICKER). Decode is null-safe (empty seed → empty map → unchanged path).
+  const seedParam =
+    typeof params.seed === "string"
+      ? params.seed
+      : Array.isArray(params.seed)
+        ? params.seed[0]
+        : undefined;
 
   const publicEventQuery = usePublicEventById(eventId);
   const event = publicEventQuery.data?.event ?? null;
@@ -91,6 +104,35 @@ export default function CheckoutTicketsScreen(): React.ReactElement {
   const { lines, setLineQuantity } = useCart();
   const totals = useCartTotals();
   const [waitlistTicketId, setWaitlistTicketId] = useState<string | null>(null);
+
+  // ORCH-1167 [event-page-canonical] — seed the cart from the inline-box selection
+  // carried in the `seed` param, ONCE, after the event (and its tickets) resolve.
+  // Quantities remain fully editable here (the QuantityRows below own them). The
+  // all-in (priceAllInGbp) is seeded as the headline-Total basis (WYSIWYP), exactly
+  // like the QuantityRow onChange path — never fabricated.
+  const seededRef = useRef<boolean>(false);
+  useEffect(() => {
+    if (seededRef.current) return;
+    const ev = publicEventQuery.data?.event ?? null;
+    if (ev === null) return;
+    const seedMap = decodeCartSeed(seedParam);
+    seededRef.current = true; // mark even on empty seed so re-renders don't re-seed.
+    if (Object.keys(seedMap).length === 0) return;
+    for (const ticket of ev.tickets) {
+      const qty = seedMap[ticket.id];
+      if (qty === undefined || qty <= 0) continue;
+      if (ticket.visibility === "hidden" || ticket.availableAt === "door") continue;
+      setLineQuantity({
+        ticketTypeId: ticket.id,
+        ticketName: ticket.name,
+        unitPrice: ticket.priceGbp ?? 0,
+        unitPriceAllIn: ticket.priceAllInGbp ?? ticket.priceGbp ?? 0,
+        currency: ticket.currency ?? ev.currency ?? "GBP",
+        isFree: ticket.isFree,
+        quantity: qty,
+      });
+    }
+  }, [publicEventQuery.data, seedParam, setLineQuantity]);
 
   // ORCH-1147R2 — the selection bottom bar leads with the server fee-grossed
   // all-in (totals.allInTotal), NOT the bare base subtotal (totals.total), so
