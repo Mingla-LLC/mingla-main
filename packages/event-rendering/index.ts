@@ -40,6 +40,17 @@ export type {
   EventCoverMediaErrorEvent,
   EventCoverMediaProps,
 } from "./EventCoverMedia";
+// ORCH-1167-R6 — WebKit-robust muted inline autoplay driver for the web cover
+// <video> (retries play() until the element starts; fixes Safari's paused
+// native-play-button overlay).
+export {
+  driveMutedAutoplay,
+  COVER_AUTOPLAY_READY_EVENTS,
+} from "./coverWebVideoAutoplay";
+export type {
+  MutedAutoplayVideoLike,
+  MutedAutoplayDriverOptions,
+} from "./coverWebVideoAutoplay";
 // ORCH-0847 Phase A2 — shared ticket-tier quantity stepper used by
 // mingla-business public cart screen AND consumer-app TicketCartSheet.
 export { QuantityRow } from "./QuantityRow";
