@@ -73,7 +73,13 @@ export { GlassBlur } from "./GlassBlur";
 // event, and experience public pages all draw their "Where you'll be" map from
 // this one primitive (mingla-business + app-mobile re-export it, never re-fork).
 // I-PROPOSED-1162-MAP-PRIMITIVE-SINGLE-OWNER.
-export { buildStaticMapUrl, getPublicMapboxToken } from "./mapboxStaticImage";
+// ORCH-1165: the static map is now server-proxied (vendor-neutral static-map edge fn);
+// buildStaticMapUrl composes a token-less proxy URL via the Supabase functions
+// base. getPublicMapboxToken stays exported (sourced from ./mapboxToken) for
+// backward-compat with existing import paths — it is no longer used by the static
+// map itself.
+export { buildStaticMapUrl, getSupabaseFunctionsBaseUrl } from "./mapboxStaticImage";
+export { getPublicMapboxToken } from "./mapboxToken";
 export type { StaticMapParams } from "./mapboxStaticImage";
 // ORCH-1117 — the single buy/unavailable state machine consumed by BOTH the
 // inline ticket row AND the per-host floating Buy bar (no forked gate logic).

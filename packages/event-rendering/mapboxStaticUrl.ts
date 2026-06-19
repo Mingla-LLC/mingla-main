@@ -19,7 +19,17 @@ export interface StaticMapParams {
   zoom?: number;
   width?: number;
   height?: number;
-  /** Token override (mainly for tests); defaults to the runtime public token. */
+  /**
+   * ORCH-1165: Supabase Edge Functions base URL override (mainly for tests);
+   * defaults to the runtime `<EXPO_PUBLIC_SUPABASE_URL>/functions/v1`. The static
+   * map is now composed against this proxy base, not `api.mapbox.com`.
+   */
+  functionsBaseUrl?: string | null;
+  /**
+   * RETAINED for the server-side Mapbox URL contract (buildStaticMapUrlWithToken,
+   * consumed by the vendor-neutral static-map edge fn). The client builder no longer reads it.
+   * Token override (mainly for tests); defaults to the runtime public token.
+   */
   token?: string | null;
 }
 
