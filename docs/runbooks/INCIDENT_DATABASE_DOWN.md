@@ -13,7 +13,7 @@
 
 - If regional outage: wait for provider recovery; enable status page message.
 - If connection pool exhaustion: reduce edge concurrency; pause marketing send cron.
-- If bad migration: stop deploys; assess PITR restore (see G4 in [LAUNCH_GATES.md](../LAUNCH_GATES.md)).
+- If bad migration: stop deploys; assess PITR restore ([DR_RESTORE.md](./DR_RESTORE.md), gate G4 in [LAUNCH_GATES.md](../LAUNCH_GATES.md)).
 
 ## Recovery verification
 
