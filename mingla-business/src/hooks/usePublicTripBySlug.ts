@@ -47,6 +47,38 @@ const asThemeInput = (
   return Object.keys(out).length > 0 ? out : null;
 };
 
+// ORCH-1164 (#507 regression recovery) — COMMS-0009 anon-safe-theme contract.
+// The brand THEME (theme_color/theme_font/theme_animation) is NOT read off the
+// `brands` table: the `anon` Postgres role has NO column-level SELECT on those
+// three columns (live: HTTP 401 `42501 permission denied for table brands`),
+// which #507 introduced on the trip read path and which blanked the entire anon
+// /t/{brandSlug}/{tripSlug} page. The theme is sourced from the anon-safe
+// security-definer `business_public_events_view` (brand_theme_color/
+// brand_theme_font/brand_theme_animation — anon-readable), filtered to THIS
+// trip's row by (brand_slug, slug, event_type='trip'), exactly as the
+// experience leg does (publicExperienceService.fetchBrandThemeFromView). The
+// view has trip rows (verified live: event_type='trip' rows present). Non-fatal:
+// any view error / miss → null (the page resolves the default palette, never
+// 401s). The trip hook's direct brands select keeps only anon-granted columns.
+const fetchBrandThemeFromView = async (
+  brandSlug: string,
+  tripSlug: string,
+): Promise<ThemeInput | null> => {
+  const { data, error } = await supabase
+    .from("business_public_events_view")
+    .select("brand_theme_color, brand_theme_font, brand_theme_animation")
+    .eq("brand_slug", brandSlug)
+    .eq("slug", tripSlug)
+    .eq("event_type", "trip")
+    .maybeSingle();
+  if (error !== null || data === null) return null;
+  return asThemeInput(
+    data.brand_theme_color,
+    data.brand_theme_font,
+    data.brand_theme_animation,
+  );
+};
+
 // ORCH-1138 B2 — anon-callable remaining-capacity RPC, mirroring
 // publicEventsService.fetchTicketTypesRemaining / getPublicTripById. Fail OPEN
 // on RPC error (empty map ⇒ ticketsRemaining stays null ⇒ no fabricated
@@ -159,7 +191,16 @@ export const usePublicTripBySlug = (
     enabled,
     staleTime: PUBLIC_TRIP_STALE_MS,
     queryFn: async () => {
-      if (!enabled) return null;
+      if (
+        typeof brandSlug !== "string" ||
+        brandSlug.length === 0 ||
+        typeof tripSlug !== "string" ||
+        tripSlug.length === 0
+      ) {
+        // mirrors `enabled` — narrows brandSlug/tripSlug to non-empty string for
+        // the view-theme lookup (ORCH-1164) without an unsafe non-null assert.
+        return null;
+      }
 
       // 1. Resolve brand by slug — anon-readable via brands public policy
       // (a brand is anon-readable when it has any published event;
@@ -168,16 +209,19 @@ export const usePublicTripBySlug = (
       // policy).
       const brandResp = await supabase
         .from("brands")
-        // ORCH-1138 B1 — theme_color/theme_font/theme_animation added so the
-        // public trip page is brand-themed (Direction A). No schema change —
-        // these columns exist (20260729000002_orch_0964_brand_event_theme).
-        // ORCH-1138 FIX-3 — cover_media_type + cover_hue added so the
-        // "Presented by" brand chip can render an animated (gif/video) brand
-        // cover via the media-aware EventCoverMedia (a plain <Image> on a video
-        // URL was showing a broken "COVE…" alt placeholder). All three columns
-        // exist on `brands` and are anon-readable (verified). No schema change.
+        // ORCH-1164 (#507 regression recovery) — theme_color/theme_font/
+        // theme_animation are NOT selected here. The `anon` role has no
+        // column-level SELECT on those three columns, so including them aborted
+        // the whole anon query with `42501 permission denied for table brands`
+        // and blanked the public trip page (the #507 regression). The brand
+        // theme is sourced from the anon-safe `business_public_events_view`
+        // (COMMS-0009) via fetchBrandThemeFromView below.
+        // ORCH-1138 FIX-3 — cover_media_type + cover_hue stay here: both ARE
+        // anon-granted (verified live) and the view exposes no brand_cover_hue.
+        // They let the "Presented by" brand chip render an animated (gif/video)
+        // brand cover via the media-aware EventCoverMedia.
         .select(
-          "id, slug, name, description, cover_media_url, cover_media_type, cover_hue, theme_color, theme_font, theme_animation",
+          "id, slug, name, description, cover_media_url, cover_media_type, cover_hue",
         )
         .eq("slug", brandSlug)
         .is("deleted_at", null)
@@ -421,11 +465,11 @@ export const usePublicTripBySlug = (
       // ORCH-1138 B1 — guard the brand theme + the per-trip overrides into
       // ThemeInputs (the page resolves + builds the palette). Trips are events
       // rows, so `event` (select("*")) already carries theme_*_override.
-      const brandTheme = asThemeInput(
-        brand.theme_color,
-        brand.theme_font,
-        brand.theme_animation,
-      );
+      // ORCH-1164 (#507 regression recovery) — the BRAND theme is now sourced
+      // from the anon-safe `business_public_events_view` (COMMS-0009), NOT from
+      // brands.theme_* (which anon cannot read). The per-trip overrides still
+      // come off the `events` row (anon-readable; not on the brands table).
+      const brandTheme = await fetchBrandThemeFromView(brandSlug, tripSlug);
       const themeOverrides = asThemeInput(
         event.theme_color_override,
         event.theme_font_override,
