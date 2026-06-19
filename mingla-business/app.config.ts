@@ -95,7 +95,13 @@ export default ({ config }: ConfigContext): ExpoConfig => {
       // Checkout via expo-web-browser. Removing the plugin omits the native
       // framework on the next EAS rebuild — shrinking binary size and
       // retiring the iOS 26 + bridgeless TurboModule hang surface.
-      "@sentry/react-native/expo",
+      [
+        "@sentry/react-native/expo",
+        {
+          organization: "mingla-llc",
+          project: "mingla-business",
+        },
+      ],
       // [TRANSITIONAL] react-native-nfc-manager auto-linked via npm install
       // (D-NFC-OUTCOME = Option 3). No plugin entry required for auto-link.
       // If iOS NFC entitlement is needed for Cycle 13 door-mode, re-evaluate

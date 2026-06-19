@@ -1,9 +1,11 @@
 /**
  * #426 — Structured JSON logging for edge functions.
  *
- * Emits one JSON line per event for Supabase log drains / future Sentry wiring.
- * Use instead of bare console.log for errors and latency spans.
+ * Emits one JSON line per event for Supabase log drains. Errors also forward to
+ * Sentry when SENTRY_DSN is configured (#426 G3).
  */
+
+import { captureEdgeException } from "./sentryEdge.ts";
 
 export type LogLevel = "debug" | "info" | "warn" | "error";
 
@@ -53,6 +55,13 @@ export function logError(
         ? error
         : JSON.stringify(error);
   structuredLog("error", message, { ...fields, err });
+  if (error instanceof Error) {
+    captureEdgeException(error, {
+      fn: fields.fn,
+      requestId: fields.requestId,
+      extra: { message, ...fields },
+    });
+  }
 }
 
 /**
