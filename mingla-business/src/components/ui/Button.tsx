@@ -43,6 +43,12 @@ import {
   typography,
 } from "../../constants/designSystem";
 import { HapticFeedback } from "../../utils/hapticFeedback";
+// ORCH-1162 Bug 3 — pure WCAG-contrast helpers for the optional accentColor.
+import {
+  mixHex,
+  normalizeHex,
+  readableTextFor,
+} from "../../utils/buttonAccentContrast";
 
 import { Icon } from "./Icon";
 import type { IconName } from "./Icon";
@@ -52,12 +58,25 @@ export type ButtonVariant = "primary" | "secondary" | "ghost" | "destructive";
 export type ButtonSize = "sm" | "md" | "lg";
 export type ButtonShape = "pill" | "square";
 
+// ORCH-1162 Bug 3 — optional brand-accent override for the `primary` variant.
+// The WCAG contrast helpers live in the pure, unit-testable buttonAccentContrast
+// util (they mirror packages/event-rendering/themePalette.ts). The label color
+// auto-resolves (black/white) for ≥4.5:1 on ANY brand hue, so the checkout CTAs
+// stay legible on light AND dark themes. I-PROPOSED-1162-CHECKOUT-CTA-BRAND-THEMED.
+
 export interface ButtonProps {
   label: string;
   onPress: (event: GestureResponderEvent) => void | Promise<void>;
   variant?: ButtonVariant;
   size?: ButtonSize;
   shape?: ButtonShape;
+  /**
+   * ORCH-1162 Bug 3 — optional brand-accent hex that overrides the `primary`
+   * variant's background (ignored for secondary/ghost/destructive). The label
+   * color auto-resolves for ≥4.5:1 contrast on any hue. Omit → unchanged Mingla
+   * orange. Invalid hex → ignored (falls back to the default token).
+   */
+  accentColor?: string;
   leadingIcon?: IconName;
   trailingIcon?: IconName;
   loading?: boolean;
@@ -128,6 +147,7 @@ export const Button: React.FC<ButtonProps> = ({
   variant = "primary",
   size = "md",
   shape = "pill",
+  accentColor,
   leadingIcon,
   trailingIcon,
   loading = false,
@@ -143,6 +163,19 @@ export const Button: React.FC<ButtonProps> = ({
   const reduceMotion = useReducedMotion();
   const tokens = VARIANT_TOKENS[variant];
   const interactive = !disabled && !loading;
+
+  // ORCH-1162 Bug 3 — optional brand-accent override (primary variant only).
+  // Label color auto-resolves for WCAG legibility on arbitrary hues; the web
+  // hover lightens the brand bg by 6% toward white (mirrors the default token
+  // hover shade). Invalid/absent accentColor → unchanged default tokens.
+  const brandBg =
+    variant === "primary" && typeof accentColor === "string"
+      ? normalizeHex(accentColor)
+      : null;
+  const effectiveBg = brandBg ?? tokens.background;
+  const effectiveText = brandBg !== null ? readableTextFor(brandBg) : tokens.text;
+  const effectiveHoverBg =
+    brandBg !== null ? mixHex(brandBg, "#ffffff", 0.06) : tokens.hoverBackground;
 
   const handlePressIn = useCallback((): void => {
     if (!interactive) return;
@@ -201,14 +234,14 @@ export const Button: React.FC<ButtonProps> = ({
     height: containerHeight,
     paddingHorizontal: SIZE_PADDING_X[size],
     borderRadius: containerRadius,
-    backgroundColor: disabled ? DISABLED_BACKGROUND : tokens.background,
+    backgroundColor: disabled ? DISABLED_BACKGROUND : effectiveBg,
     borderColor: disabled ? DISABLED_BORDER : tokens.border,
     borderWidth: disabled ? 1 : (tokens.borderWidth ?? 0),
     alignSelf: fullWidth ? "stretch" : "auto",
     opacity: disabled ? 0.6 : 1,
   };
 
-  const resolvedTextColor = disabled ? textTokens.tertiary : tokens.text;
+  const resolvedTextColor = disabled ? textTokens.tertiary : effectiveText;
 
   // PressableStateCallbackType in the installed RN version does not declare
   // `focused`/`hovered` — both fields are passed at runtime on web. We widen
@@ -228,7 +261,7 @@ export const Button: React.FC<ButtonProps> = ({
         style={[
           styles.container,
           containerStaticStyle,
-          hovered && Platform.OS === "web" ? { backgroundColor: tokens.hoverBackground } : null,
+          hovered && Platform.OS === "web" ? { backgroundColor: effectiveHoverBg } : null,
           focused && Platform.OS === "web" ? styles.focusRing : null,
           animatedStyle,
         ]}

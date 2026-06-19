@@ -42,6 +42,7 @@ import React, {
 } from "react";
 import {
   ActivityIndicator,
+  Image,
   LayoutAnimation,
   Linking,
   Platform,
@@ -111,6 +112,9 @@ import { toastManager } from "../../components/ui/Toast";
 import { useAppStore } from "../../store/appStore";
 import { glass } from "../../constants/designSystem";
 import { hueFromId } from "../../utils/hueFromId";
+// ORCH-1162 Bug 2 — shared static-Mapbox builder (re-exported from
+// @mingla/event-rendering) for the consumer EVENT "Where you'll be" map.
+import { buildStaticMapUrl } from "../../utils/mapboxStaticImage";
 import type { BusinessEventCard } from "../../types/mergedDiscover";
 
 const ACCENT = "#FF6B35";
@@ -892,6 +896,32 @@ export default function ConsumerEventDetailScreen({
         >
           Where you&apos;ll be
         </Text>
+        {/* ORCH-1162 Bug 2 — static-Mapbox map above the venue card (parity with
+            the consumer EXPERIENCE screen + the shared event renderer). Rule-9:
+            only renders when fnd.lat/lng are finite AND a Mapbox token resolves
+            (buildStaticMapUrl non-null); otherwise nothing renders here and the
+            tappable venue card below is the honest fallback. */}
+        {(() => {
+          if (!Number.isFinite(fnd.lat) || !Number.isFinite(fnd.lng)) {
+            return null;
+          }
+          const mapUrl = buildStaticMapUrl({
+            lat: fnd.lat as number,
+            lng: fnd.lng as number,
+            accentHex: palette.accent,
+            height: 180,
+          });
+          if (mapUrl === null) return null;
+          return (
+            <Image
+              source={{ uri: mapUrl }}
+              style={[styles.whereMap, { borderColor: palette.panelBorder }]}
+              resizeMode="cover"
+              accessibilityLabel={`Map of ${venueNameDisplay ?? fnd.venueName}`}
+              testID="orch-1162-consumer-event-map"
+            />
+          );
+        })()}
         <Pressable
           onPress={() => {
             if (venueMapsQuery !== null) openMapsForQuery(venueMapsQuery);
@@ -1399,6 +1429,16 @@ const styles = StyleSheet.create({
     minHeight: 44,
   },
   aboutToggleText: { fontSize: 14, fontWeight: "600" },
+  // ORCH-1162 Bug 2 — consumer EVENT "Where you'll be" map (parity with the
+  // consumer EXPERIENCE startMap).
+  whereMap: {
+    width: "100%",
+    height: 180,
+    borderRadius: 14,
+    borderWidth: 1,
+    backgroundColor: "#000",
+    marginBottom: 12,
+  },
   venueCard: {
     flexDirection: "row",
     alignItems: "center",

@@ -47,15 +47,33 @@ const formatShortDateInTz = (iso: string, tz: string): string =>
     timeZone: tz,
   }).format(new Date(iso));
 
-const formatTimeInTz = (iso: string, tz: string): string =>
-  new Intl.DateTimeFormat("en-GB", {
-    hour: "numeric",
+// ORCH-1162 Bug 1 — restore the meridiem. en-GB has NO am/pm; a `.replace(/am/)`
+// on en-GB output is dead post-processing and a tell-tale latent 24h bug (the
+// file's doc-comment promised "10 PM" but the en-GB code could only emit "22:00").
+// Mirror the repo's canonical 12h discipline (mingla-business formatTimeLabelInTz):
+// read the hour via an h23 `formatToParts` in the supplied tz, then convert to
+// "10 PM" / "2:30 AM" with the minute suppressed on the hour. The `timeZone: tz`
+// argument is PRESERVED exactly. Keep the 24h sites (format24hTimeInTz,
+// formatEventLocalRange) untouched — those are intentional.
+const formatTimeInTz = (iso: string, tz: string): string => {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    hour: "2-digit",
     minute: "2-digit",
+    hour12: false,
     timeZone: tz,
-  }).format(new Date(iso))
-    .replace(/:00\b/, "")
-    .replace(/\bam\b/g, "AM")
-    .replace(/\bpm\b/g, "PM");
+  }).formatToParts(new Date(iso));
+  const get = (type: string): string =>
+    parts.find((p) => p.type === type)?.value ?? "";
+  const rawHour = get("hour");
+  const minute = get("minute");
+  const h = Number(rawHour === "24" ? "0" : rawHour);
+  const m = Number(minute);
+  if (!Number.isFinite(h) || !Number.isFinite(m)) return "";
+  const isPm = h >= 12;
+  const h12 = h === 0 ? 12 : h > 12 ? h - 12 : h;
+  const minuteSuffix = m === 0 ? "" : `:${String(m).padStart(2, "0")}`;
+  return `${h12}${minuteSuffix} ${isPm ? "PM" : "AM"}`;
+};
 
 const format24hTimeInTz = (iso: string, tz: string): string =>
   new Intl.DateTimeFormat("en-GB", {

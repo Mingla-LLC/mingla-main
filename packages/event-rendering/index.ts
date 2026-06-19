@@ -69,6 +69,12 @@ export type {
 // ORCH-0964 — BlurView wrapper that skips backdrop-filter on mobile web (where
 // stacked blur hard-crashes the renderer). Used by public brand + event pages.
 export { GlassBlur } from "./GlassBlur";
+// ORCH-1162 Bug 2 — the SINGLE shared static-Mapbox URL builder. The trip,
+// event, and experience public pages all draw their "Where you'll be" map from
+// this one primitive (mingla-business + app-mobile re-export it, never re-fork).
+// I-PROPOSED-1162-MAP-PRIMITIVE-SINGLE-OWNER.
+export { buildStaticMapUrl, getPublicMapboxToken } from "./mapboxStaticImage";
+export type { StaticMapParams } from "./mapboxStaticImage";
 // ORCH-1117 — the single buy/unavailable state machine consumed by BOTH the
 // inline ticket row AND the per-host floating Buy bar (no forked gate logic).
 export {
