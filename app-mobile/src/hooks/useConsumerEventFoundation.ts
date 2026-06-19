@@ -65,6 +65,21 @@ export interface ConsumerEventFoundationModel {
   /** The selectable tiers (PublicTicketProps — same shape the cart consumes). */
   tickets: PublicTicketProps[];
   currency: string;
+  /**
+   * ORCH-1167 [event-page-canonical] — the pills arrays threaded END-TO-END from
+   * the deck seed (BusinessEventCard) so the canonical EventOfferingBody renders
+   * the format → vibes → party-types → music-genres pills row (closes the F-3 drop
+   * where the foundation mapper silently dropped all three). `[]` when none (rule 9).
+   */
+  partyTypes: string[];
+  vibeTags: string[];
+  musicGenres: string[];
+  /**
+   * ORCH-1167 — city-level privacy centroid (BusinessEventCard does not carry it
+   * today, so null on the warm path; the cold path RPC supplies it). The exact pin
+   * (lat/lng above) is the warm-path geo.
+   */
+  cityGeo: { lat: number; lng: number } | null;
 }
 
 /**
@@ -148,6 +163,12 @@ export function mapConsumerEventToFoundation(
     brandCoverMediaUrl: card.brandProfilePhotoUrl,
     tickets,
     currency: card.currency,
+    // ORCH-1167 — thread the pills from the deck seed (rule 9: [] when absent).
+    partyTypes: Array.isArray(card.partyTypes) ? card.partyTypes : [],
+    vibeTags: Array.isArray(card.vibeTags) ? card.vibeTags : [],
+    musicGenres: Array.isArray(card.musicGenres) ? card.musicGenres : [],
+    // ORCH-1167 — BusinessEventCard has no city centroid; null on the warm path.
+    cityGeo: null,
   };
 }
 

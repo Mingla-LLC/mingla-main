@@ -2576,3 +2576,68 @@ jobs:
   # The other 3 columns the gate also checked (brand_address, brand_cover_media_url,
   # display_attendee_count) are still mapped — a future docs-hygiene ORCH may
   # revive a narrower replacement gate for just those columns if regressions appear.
+
+  orch-1167-shell-agnostic-body:
+    name: "ORCH-1167 [event-page-canonical]: EventOfferingBody hosts no scroll root + no cover shell (I-PROPOSED-1167-SHELL-AGNOSTIC-BODY)"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Self-test ORCH-1167 shell-agnostic-body gate
+        run: node .github/scripts/strict-grep/orch-1167-shell-agnostic-body.mjs --self-test
+      - name: Run ORCH-1167 shell-agnostic-body gate
+        run: node .github/scripts/strict-grep/orch-1167-shell-agnostic-body.mjs
+
+  orch-1167-allin-price-in-ticket-box:
+    name: "ORCH-1167 [event-page-canonical]: inline ticket-box total reads server all-in, never bare base (I-PROPOSED-1167-ALLIN-PRICE-IN-TICKET-BOX)"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Self-test ORCH-1167 allin-price-in-ticket-box gate
+        run: node .github/scripts/strict-grep/orch-1167-allin-price-in-ticket-box.mjs --self-test
+      - name: Run ORCH-1167 allin-price-in-ticket-box gate
+        run: node .github/scripts/strict-grep/orch-1167-allin-price-in-ticket-box.mjs
+
+  orch-1167-canonical-9-section-order:
+    name: "ORCH-1167 [event-page-canonical]: EventOfferingBody emits sections 2..8 in the locked canonical order (I-PROPOSED-1167-CANONICAL-9-SECTION-ORDER)"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Self-test ORCH-1167 canonical-9-section-order gate
+        run: node .github/scripts/strict-grep/orch-1167-canonical-9-section-order.mjs --self-test
+      - name: Run ORCH-1167 canonical-9-section-order gate
+        run: node .github/scripts/strict-grep/orch-1167-canonical-9-section-order.mjs
+
+  orch-1167-city-level-map-no-exact-pin-when-hidden:
+    name: "ORCH-1167 [event-page-canonical]: pg_public_event_by_slug omits exact address+pin when hidden, returns city_geo (I-PROPOSED-1167-CITY-LEVEL-MAP-NO-EXACT-PIN-WHEN-HIDDEN)"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Self-test ORCH-1167 city-level-map gate
+        run: node .github/scripts/strict-grep/orch-1167-city-level-map-no-exact-pin-when-hidden.mjs --self-test
+      - name: Run ORCH-1167 city-level-map gate
+        run: node .github/scripts/strict-grep/orch-1167-city-level-map-no-exact-pin-when-hidden.mjs
+
+  orch-1167-one-read-rpc:
+    name: "ORCH-1167 [event-page-canonical]: web + consumer both read the standard-event page via pg_public_event_by_slug (I-PROPOSED-1167-ONE-READ-RPC)"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Self-test ORCH-1167 one-read-rpc gate
+        run: node .github/scripts/strict-grep/orch-1167-one-read-rpc.mjs --self-test
+      - name: Run ORCH-1167 one-read-rpc gate
+        run: node .github/scripts/strict-grep/orch-1167-one-read-rpc.mjs

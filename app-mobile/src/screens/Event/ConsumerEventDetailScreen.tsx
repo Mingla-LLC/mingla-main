@@ -66,16 +66,16 @@ import {
   createThemePalette,
   EventCoverMedia,
   offeringSurfaceStyles,
-  resolveOfferingCta,
   resolveRsvpCta,
   resolveTheme,
   ThemeEntranceAnimation,
-  type CtaState,
   type PublicEventProps,
   type PublicTicketProps,
   type RsvpCtaState,
 } from "@mingla/event-rendering";
 import {
+  EventOfferingBody,
+  EventOfferingFloatingBar,
   OfferingChrome,
   RsvpMomentumDecision,
   normalizeCityCountry,
@@ -90,7 +90,6 @@ import {
 import TicketCartSheet, {
   type TicketCartCheckoutPayload,
 } from "../../components/expandedCard/TicketCartSheet";
-import { ConsumerEventReserveBar } from "../../components/offering/ConsumerEventReserveBar";
 import {
   fetchRsvpMomentum,
   submitDeckRsvp,
@@ -115,6 +114,7 @@ import { hueFromId } from "../../utils/hueFromId";
 // ORCH-1162 Bug 2 — shared static-Mapbox builder (re-exported from
 // @mingla/event-rendering) for the consumer EVENT "Where you'll be" map.
 import { buildStaticMapUrl } from "../../utils/mapboxStaticImage";
+import { formatEventDateLine } from "../../utils/eventDateDisplay";
 import type { BusinessEventCard } from "../../types/mergedDiscover";
 
 const ACCENT = "#FF6B35";
@@ -135,43 +135,55 @@ interface ConsumerEventDetailScreenProps {
   tabBarAware?: boolean;
 }
 
-// Build the PublicEventProps the SHARED state machine reads (mirror EBES
-// mapCardToPublicEvent — for variant/CTA computation only; the foundation body
-// renders from the foundation model, not this).
+// Build the PublicEventProps the SHARED state machine + the canonical
+// EventOfferingBody read. ORCH-1167 — threads the pills (vibes/party/music) +
+// the formatted date line so the consumer standard-event body renders the SAME
+// canonical 9-section structure as buyer-web/business from the deck seed (warm
+// path). RSVP rows still feed only the CTA machine (the RSVP body is separate).
 const cardToPublicEvent = (
   card: BusinessEventCard,
   tickets: PublicTicketProps[],
-): PublicEventProps => ({
-  id: card.eventId,
-  name: card.title,
-  brandId: card.brandId,
-  brandSlug: card.brandSlug,
-  eventSlug: card.eventSlug,
-  description: card.description ?? "",
-  dateLine: "",
-  dateSubline: null,
-  datesList: [],
-  status: "published",
-  endedAt: null,
-  format: card.format,
-  venueName: card.venueName,
-  address: card.address,
-  hideAddressUntilTicket: card.hideAddressUntilTicket,
-  coverHue: card.coverHue,
-  coverMediaUrl: card.coverMediaUrl,
-  coverMediaType:
-    card.coverMediaType === "image" ||
-    card.coverMediaType === "video" ||
-    card.coverMediaType === "gif"
-      ? card.coverMediaType
-      : null,
-  coverCredit: null,
-  tickets,
-  currency: card.currency,
-  // ORCH-1157 [rsvp-public-redesign] — the deck seed carries canonical party
-  // types; pass them so the RSVP momentum unit + the CTA machine see one shape.
-  partyTypes: card.partyTypes ?? [],
-});
+): PublicEventProps => {
+  const dateLine = formatEventDateLine({
+    masterDateUtc: card.masterDateUtc,
+    masterEndAtUtc: card.masterEndAtUtc,
+    timezone: card.timezone,
+  });
+  return {
+    id: card.eventId,
+    name: card.title,
+    brandId: card.brandId,
+    brandSlug: card.brandSlug,
+    eventSlug: card.eventSlug,
+    description: card.description ?? "",
+    dateLine: dateLine.length > 0 ? dateLine : "",
+    dateSubline: null,
+    datesList: [],
+    status: "published",
+    endedAt: null,
+    format: card.format,
+    venueName: card.venueName,
+    address: card.address,
+    hideAddressUntilTicket: card.hideAddressUntilTicket,
+    locationGeo: card.locationGeo ?? null,
+    cityGeo: null,
+    coverHue: card.coverHue,
+    coverMediaUrl: card.coverMediaUrl,
+    coverMediaType:
+      card.coverMediaType === "image" ||
+      card.coverMediaType === "video" ||
+      card.coverMediaType === "gif"
+        ? card.coverMediaType
+        : null,
+    coverCredit: null,
+    tickets,
+    currency: card.currency,
+    // ORCH-1157/1167 — canonical pills threaded from the deck seed (rule 9: []).
+    partyTypes: card.partyTypes ?? [],
+    vibeTags: card.vibeTags ?? [],
+    musicGenres: card.musicGenres ?? [],
+  };
+};
 
 const openMapsForQuery = (query: string): void => {
   const encoded = encodeURIComponent(query);
@@ -205,7 +217,12 @@ export default function ConsumerEventDetailScreen({
   const [initialTicketTypeId, setInitialTicketTypeId] = useState<string | null>(
     null,
   );
-  const [selectedTicketId, setSelectedTicketId] = useState<string | null>(null);
+  // ORCH-1167 [event-page-canonical] — the inline ticket-box per-tier quantities
+  // (the canonical EventOfferingBody owns selection on the standard-event branch).
+  // onProceedToCart opens TicketCartSheet PRE-SEEDED with this multi-tier map.
+  const [ticketQuantities, setTicketQuantities] = useState<Record<string, number>>(
+    {},
+  );
   const [checkoutInFlight, setCheckoutInFlight] = useState<boolean>(false);
   const [muted, setMuted] = useState<boolean>(true);
   const [aboutCollapsed, setAboutCollapsed] = useState<boolean>(true);
@@ -295,57 +312,32 @@ export default function ConsumerEventDetailScreen({
 
   const tickets = ticketsQuery.data ?? [];
 
-  // The SINGLE buy-state (resolveOfferingCta — one owner). The selected tier
-  // narrows the considered set; the page-level state drives the bar + tier rows.
-  const offeringCta: CtaState = useMemo(() => {
-    if (seed === null) {
-      return {
-        kind: "unavailable",
-        title: "Open from the app",
-        subline: null,
-        tappable: false,
-      };
-    }
-    const publicEvent = cardToPublicEvent(seed, tickets);
-    const selected = tickets.find(
-      (t) => t.id === selectedTicketId && t.visibility !== "hidden",
+  // ORCH-1167 — inline ticket-box quantity setter + proceed-to-cart. The box
+  // lifts its quantities here; Proceed (in-box) + the floating bar both open the
+  // existing TicketCartSheet PRE-SEEDED with the full multi-tier selection (the
+  // cart lands editable). Empty selection → no-op (the CTA is disabled anyway).
+  const handleChangeTicketQuantity = useCallback(
+    (ticketTypeId: string, qty: number): void => {
+      setTicketQuantities((prev) => {
+        const next = { ...prev };
+        if (qty <= 0) delete next[ticketTypeId];
+        else next[ticketTypeId] = qty;
+        return next;
+      });
+    },
+    [],
+  );
+  const handleProceedToCart = useCallback((): void => {
+    const anySelected = Object.values(ticketQuantities).some((q) => q > 0);
+    if (!anySelected) return;
+    // Seed the cart sheet at the FIRST selected tier for back-compat with the
+    // single-seed contract; initialQuantities carries the FULL selection.
+    const firstSelected = Object.keys(ticketQuantities).find(
+      (id) => (ticketQuantities[id] ?? 0) > 0,
     );
-    const considered = selected !== undefined ? [selected] : tickets;
-    return resolveOfferingCta({
-      variant: computeOfferingVariant(publicEvent, false),
-      // OQ-B parity: the deck card has no `bookable`; pass true and rely on the
-      // checkout 409 → cart-toast backstop (mirrors EBES + the trip screen v1).
-      bookable: true,
-      tickets: considered,
-      currency: seed.currency,
-    });
-  }, [seed, tickets, selectedTicketId]);
-
-  const handleSelectTicket = useCallback((ticketId: string): void => {
-    setSelectedTicketId((prev) => (prev === ticketId ? null : ticketId));
-  }, []);
-
-  // Reserve opens the cart DIRECTLY, seeded at the selected/first sellable tier.
-  const openCart = useCallback((): void => {
-    if (tickets.length === 0) return;
-    const explicit =
-      selectedTicketId !== null
-        ? tickets.find((t) => t.id === selectedTicketId)
-        : undefined;
-    const sellable =
-      explicit ??
-      tickets.find(
-        (t) =>
-          t.visibility !== "hidden" &&
-          t.availableAt !== "door" &&
-          (t.isUnlimited || (t.capacity ?? 0) > 0),
-      ) ??
-      tickets.find((t) => t.visibility !== "hidden") ??
-      tickets[0];
-    if (sellable === undefined) return;
-    setInitialTicketTypeId(sellable.id);
+    setInitialTicketTypeId(firstSelected ?? null);
     setCartVisible(true);
-  }, [tickets, selectedTicketId]);
+  }, [ticketQuantities]);
 
   // ORCH-1150 — Going / Not-going write for a discoverable RSVP deck card. The
   // signed-in user's JWT rides the supabase client → the edge fn resolves
@@ -588,6 +580,27 @@ export default function ConsumerEventDetailScreen({
   );
   const showMute = fnd.coverMediaType === "video";
 
+  // ORCH-1167 [event-page-canonical] — the standard-event PublicEventProps for the
+  // shared EventOfferingBody (warm path from the deck seed). RSVP rows do NOT use
+  // this (their body is the separate RsvpPublicBody section sequence). The static
+  // map URL is privacy-gated: exact pin when the street is public, else null on the
+  // warm path (no city centroid on the deck seed) → text venue card (rule 9).
+  const publicEventForBody: PublicEventProps = cardToPublicEvent(seed, tickets);
+  const bodyStaticMapUrl: string | null = (() => {
+    if (publicEventForBody.format === "online") return null;
+    if (publicEventForBody.hideAddressUntilTicket) return null;
+    const geo = publicEventForBody.locationGeo ?? null;
+    if (geo === null || !Number.isFinite(geo.lat) || !Number.isFinite(geo.lng)) {
+      return null;
+    }
+    return buildStaticMapUrl({
+      lat: geo.lat,
+      lng: geo.lng,
+      accentHex: palette.accent,
+      height: 180,
+    });
+  })();
+
   const cityCountry =
     fnd.cityCountry ?? normalizeCityCountry(seed.city) ?? null;
   const aboutText = fnd.description;
@@ -645,39 +658,12 @@ export default function ConsumerEventDetailScreen({
       ? null
       : [fnd.venueName, fnd.address].filter(Boolean).join(", ");
 
-  const barKicker = offeringCta.kind === "buy" ? "All-in, taxes included" : null;
   const REVEAL_MARGIN = 24;
   const floatingPillVisible =
     dockTopY === null || viewportH === 0
       ? true
       : dockTopY > scrollY + viewportH - REVEAL_MARGIN;
   const reserveBarClearance = 8;
-
-  const dockedReserve: ReactElement = (
-    <ConsumerEventReserveBar
-      cta={offeringCta}
-      palette={palette}
-      kicker={barKicker}
-      fontFamily={boldFamily}
-      onPress={openCart}
-      variant="docked"
-      safeAreaBottom={insets.bottom}
-      onDockLayout={handleDockLayout}
-      testID="orch-1138-consumer-event-reserve"
-    />
-  );
-  const floatingReserve: ReactElement | null = floatingPillVisible ? (
-    <ConsumerEventReserveBar
-      cta={offeringCta}
-      palette={palette}
-      kicker={barKicker}
-      fontFamily={boldFamily}
-      onPress={openCart}
-      variant="floating"
-      safeAreaBottom={insets.bottom}
-      testID="orch-1138-consumer-event-reserve"
-    />
-  ) : null;
 
   // ORCH-1157 [rsvp-public-redesign] — the Direction-C Going / Maybe / Can't
   // decision dock (replaces the old 2-button hand-rolled dock; Maybe is NEW on
@@ -1023,6 +1009,38 @@ export default function ConsumerEventDetailScreen({
               { backgroundColor: palette.page, borderColor: palette.panelBorder },
             ]}
           >
+            {/* ORCH-1167 — STANDARD ticketed-event branch renders the ONE shared
+                canonical EventOfferingBody (sections 2–8 incl. the inline ticket
+                box at 5). The cover (section 1) is the pinned sibling above; the
+                floating Get-tickets bar (section 9) is rendered below. The RSVP
+                branch is UNCHANGED (its own section sequence + dock). */}
+            {!isRsvp ? (
+              <View onLayout={handleDockLayout}>
+              <EventOfferingBody
+                event={publicEventForBody}
+                brand={{
+                  id: seed.brandId,
+                  slug: seed.brandSlug,
+                  displayName: seed.brandName,
+                  photo: seed.brandProfilePhotoUrl ?? undefined,
+                  theme: null,
+                }}
+                variant={computeOfferingVariant(publicEventForBody, false)}
+                bookable
+                palette={palette}
+                theme={theme}
+                ticketQuantities={ticketQuantities}
+                onChangeTicketQuantity={handleChangeTicketQuantity}
+                onProceedToCart={handleProceedToCart}
+                onOpenBrand={(slug: string) => router.push(`/b/${slug}` as never)}
+                onOpenMaps={openMapsForQuery}
+                staticMapUrl={bodyStaticMapUrl}
+                submitting={checkoutInFlight}
+                testID="orch-1167-consumer-event-body"
+              />
+              </View>
+            ) : (
+              <>
             {/* phone lead: date eyebrow + bold title */}
             <View style={styles.leadBlock}>
               {fnd.dateLine !== null ? (
@@ -1098,69 +1116,17 @@ export default function ConsumerEventDetailScreen({
                 keeps its byte-identical order (brand → about → venue → tickets).
                 The momentum unit omits when the anon-view count has not resolved
                 (no fabricated count — rule 9); the decision lives in the dock. */}
-            {isRsvp ? (
-              <>
-                {brandNode}
-                {rsvpMomentumUnit}
-                {venueNode}
-                {aboutNode}
-              </>
-            ) : (
-              <>
-                {brandNode}
-                {aboutNode}
-                {venueNode}
+            {/* RSVP section sequence (host/brand → momentum → venue → about),
+                structurally identical to the business/web RsvpPublicBody. */}
+            {brandNode}
+            {rsvpMomentumUnit}
+            {venueNode}
+            {aboutNode}
+
+            {/* DOCKED RSVP decision — the LAST scroll child (float→dock). */}
+            {rsvpDock}
               </>
             )}
-
-            {/* Tickets — the selectable tier radiogroup.
-                ORCH-1157 Issue 1 [rsvp-public-redesign] — GATED `!isRsvp`. An
-                RSVP event is TICKETLESS: it must NOT render "Choose your ticket"
-                or the "No tickets available yet" empty state (that block was
-                ungated and leaked onto RSVP cards — F-1 structural divergence).
-                RSVP momentum + decision are the body's gravitational center
-                instead (rsvpMomentumUnit above + rsvpDock below). */}
-            {!isRsvp ? (
-              <View style={styles.section}>
-                <Text
-                  style={[styles.secTitle, surface.primaryText, { fontFamily: boldFamily }]}
-                >
-                  Choose your ticket
-                </Text>
-                {tickets.filter((t) => t.visibility !== "hidden").length === 0 ? (
-                  <View style={[styles.venueCard, surface.card]}>
-                    <Text style={[styles.aboutText, surface.secondaryText]}>
-                      No tickets available yet.
-                    </Text>
-                  </View>
-                ) : (
-                  <View accessibilityRole="radiogroup" style={styles.tierCol}>
-                    {tickets
-                      .filter((t) => t.visibility !== "hidden")
-                      .sort((a, b) => a.displayOrder - b.displayOrder)
-                      .map((t) => (
-                        <ConsumerTierRow
-                          key={t.id}
-                          ticket={t}
-                          fallbackCurrency={seed.currency}
-                          palette={palette}
-                          surface={surface}
-                          boldFamily={boldFamily}
-                          selected={selectedTicketId === t.id}
-                          onSelect={handleSelectTicket}
-                        />
-                      ))}
-                  </View>
-                )}
-                <Text style={[styles.reassure, { color: palette.tertiaryText }]}>
-                  All-in price — taxes &amp; fees included, no surprises at checkout.
-                </Text>
-              </View>
-            ) : null}
-
-            {/* DOCKED CTA — the LAST scroll child (float→dock language).
-                ORCH-1150 — RSVP cards dock Going/Not-going instead of the cart bar. */}
-            {isRsvp ? rsvpDock : dockedReserve}
           </View>
         </BottomSheetScrollView>
 
@@ -1178,9 +1144,28 @@ export default function ConsumerEventDetailScreen({
           />
         </View>
 
-        {/* (4) FLOATING reserve PILL — shown while the docked CTA is off-screen.
-            ORCH-1150 — suppressed for RSVP (the Going/Not-going dock is inline). */}
-        {isRsvp ? null : floatingReserve}
+        {/* (4) FLOATING Get-tickets BAR — shown while the in-page ticket box is
+            off-screen. ORCH-1167 — the shared EventOfferingFloatingBar reflects the
+            live Σ-all-in total + calls the SAME handleProceedToCart. Suppressed for
+            RSVP (its Going/Not-going dock is inline). */}
+        {isRsvp ? null : floatingPillVisible ? (
+          <View
+            style={[styles.nativeFloatWrap, { paddingBottom: insets.bottom + 8 }]}
+            pointerEvents="box-none"
+          >
+            <EventOfferingFloatingBar
+              event={publicEventForBody}
+              variant={computeOfferingVariant(publicEventForBody, false)}
+              bookable
+              palette={palette}
+              theme={theme}
+              ticketQuantities={ticketQuantities}
+              onProceedToCart={handleProceedToCart}
+              submitting={checkoutInFlight}
+              testID="orch-1167-consumer-event-floating-bar"
+            />
+          </View>
+        ) : null}
       </BaseBottomSheet>
 
       {/* Reserve opens the cart DIRECTLY (NEVER EBES). Sibling BaseBottomSheet
@@ -1194,6 +1179,7 @@ export default function ConsumerEventDetailScreen({
         intakeSchemasByTier={intakeSchemasQuery.data}
         fallbackCurrency={seed.currency}
         initialTicketTypeId={initialTicketTypeId}
+        initialQuantities={ticketQuantities}
         buyerName={
           profile?.display_name?.trim() || user?.email?.split("@")[0] || "Guest"
         }
@@ -1207,130 +1193,6 @@ export default function ConsumerEventDetailScreen({
     </>
   );
 }
-
-// ---- ConsumerTierRow — one selectable tier in the radiogroup ----
-const ConsumerTierRow: React.FC<{
-  ticket: PublicTicketProps;
-  fallbackCurrency: string;
-  palette: ReturnType<typeof createThemePalette>;
-  surface: ReturnType<typeof offeringSurfaceStyles>;
-  boldFamily: string;
-  selected: boolean;
-  onSelect: (ticketId: string) => void;
-}> = ({ ticket, fallbackCurrency, palette, surface, boldFamily, selected, onSelect }) => {
-  const isDisabled = ticket.visibility === "disabled";
-  const isSoldOut = !ticket.isUnlimited && (ticket.capacity ?? 0) === 0;
-  const isDoorOnly = ticket.availableAt === "door";
-  const saleEnded =
-    ticket.saleEndAt !== null &&
-    Number.isFinite(new Date(ticket.saleEndAt).getTime()) &&
-    new Date(ticket.saleEndAt).getTime() <= Date.now();
-
-  const stateWord: string | null = saleEnded
-    ? "Sales ended"
-    : isDisabled
-      ? "Sales paused"
-      : isDoorOnly
-        ? "Pay at the door"
-        : isSoldOut
-          ? "Sold out"
-          : null;
-  const selectable = stateWord === null;
-
-  const priceLabel = ticket.isFree
-    ? "Free"
-    : (() => {
-        const price = ticket.priceAllInGbp ?? ticket.priceGbp;
-        if (price === null || price === undefined) return "—";
-        const currency = ticket.currency ?? fallbackCurrency;
-        try {
-          return new Intl.NumberFormat("en-US", {
-            style: "currency",
-            currency,
-            minimumFractionDigits: 0,
-            maximumFractionDigits: 2,
-          }).format(price);
-        } catch {
-          return `${currency} ${price.toFixed(2)}`;
-        }
-      })();
-
-  const capacityLabel = ticket.isUnlimited
-    ? "Unlimited"
-    : ticket.capacity !== null
-      ? ticket.capacity <= 0
-        ? "Sold out"
-        : `${ticket.capacity} available`
-      : "Available";
-
-  return (
-    <Pressable
-      onPress={selectable ? () => onSelect(ticket.id) : undefined}
-      disabled={!selectable}
-      accessibilityRole={selectable ? "radio" : "text"}
-      accessibilityState={selectable ? { checked: selected } : undefined}
-      accessibilityLabel={
-        ticket.name +
-        (priceLabel !== "—" ? `, ${priceLabel}` : "") +
-        (stateWord !== null ? `, ${stateWord}` : "")
-      }
-      style={[
-        styles.tierRow,
-        surface.card,
-        selected
-          ? { borderColor: palette.accent, backgroundColor: palette.accentWash }
-          : null,
-        isDisabled || isSoldOut || saleEnded ? styles.tierRowMuted : null,
-      ]}
-    >
-      {selected ? (
-        <View
-          pointerEvents="none"
-          style={[styles.tierRail, { backgroundColor: palette.accent }]}
-        />
-      ) : null}
-      <View
-        style={[
-          styles.radio,
-          { borderColor: selected ? palette.accent : palette.cutoutBorder },
-        ]}
-      >
-        {selected ? (
-          <View style={[styles.radioDot, { backgroundColor: palette.accent }]} />
-        ) : null}
-      </View>
-      <View style={styles.tierTextCol}>
-        <Text
-          style={[
-            styles.tierName,
-            surface.primaryText,
-            selected ? { fontFamily: boldFamily } : null,
-          ]}
-        >
-          {ticket.name}
-        </Text>
-        {ticket.description !== null && ticket.description.length > 0 ? (
-          <Text style={[styles.tierDesc, surface.secondaryText]}>
-            {ticket.description}
-          </Text>
-        ) : null}
-        <Text style={[styles.tierCap, surface.tertiaryText]}>
-          {stateWord ?? capacityLabel}
-        </Text>
-      </View>
-      <View
-        style={[
-          styles.tierPricePill,
-          { backgroundColor: palette.accentWash, borderColor: palette.panelBorder },
-        ]}
-      >
-        <Text style={[styles.tierPrice, surface.primaryText, { fontFamily: boldFamily }]}>
-          {priceLabel}
-        </Text>
-      </View>
-    </Pressable>
-  );
-};
 
 const SEAM = 28;
 
@@ -1367,6 +1229,15 @@ const styles = StyleSheet.create({
     left: 16,
     right: 16,
     zIndex: 70,
+  },
+  // ORCH-1167 — the standard-event floating Get-tickets bar wrapper (off-screen-
+  // box only). Absolute pinned sibling above the scroll, below the chrome.
+  nativeFloatWrap: {
+    position: "absolute",
+    left: 16,
+    right: 16,
+    bottom: 0,
+    zIndex: 60,
   },
   leadBlock: { marginBottom: 4 },
   eyebrowLead: {

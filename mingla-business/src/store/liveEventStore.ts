@@ -215,6 +215,15 @@ export interface LiveEvent {
   city?: string | null;
   /** ORCH-0824: structured lat/lng from Google Places autocomplete at publish. */
   locationGeo?: { lat: number; lng: number } | null;
+  /**
+   * ORCH-1167 [event-page-canonical] — CITY-LEVEL centroid (privacy-safe),
+   * sibling of the exact `locationGeo` pin. The canonical EventOfferingBody
+   * "Where you'll be" map draws at city zoom (no exact pin) from this when the
+   * street is hidden until ticket purchase. Optional + default-safe (rule 9):
+   * undefined/null when the event has no city centroid. Threaded onto the LiveEvent
+   * by the buyer-web standard-event read (merged from pg_public_event_by_slug).
+   */
+  cityGeo?: { lat: number; lng: number } | null;
   whenMode: WhenMode;
   date: string | null;
   doorsOpen: string | null;

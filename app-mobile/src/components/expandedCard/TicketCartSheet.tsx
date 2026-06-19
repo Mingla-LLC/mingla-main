@@ -210,6 +210,15 @@ export interface TicketCartSheetProps {
    * Defaults to 1 → byte-identical to every existing caller (events/trips).
    */
   initialQuantity?: number;
+  /**
+   * ORCH-1167 [event-page-canonical] — seed MULTIPLE tiers at once on open from
+   * the inline ticket box on the canonical event page ({ ticketTypeId: qty }).
+   * When present (non-empty) it TAKES PRECEDENCE over `initialTicketTypeId`/
+   * `initialQuantity`: every listed tier is seeded (each capped by its capacity)
+   * so the cart lands PRE-POPULATED + editable (parity with the buyer-web cart
+   * step). Absent/empty → byte-identical single-tier seed (every existing caller).
+   */
+  initialQuantities?: Record<string, number>;
   /** Auth-derived pre-fill (read-only display). */
   buyerName: string;
   buyerEmail: string;
@@ -243,6 +252,7 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
   fallbackCurrency,
   initialTicketTypeId,
   initialQuantity = 1,
+  initialQuantities,
   intakeSchemasByTier,
   buyerName,
   buyerEmail,
@@ -364,28 +374,59 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
   // (declarative `visible`). The prior sheetRef + snapToIndex/close effect is
   // removed; the primitive replicates that exact open/close pattern internally.
 
-  // Seed the tapped tier on open; reset cart + opt-in on close.
+  // Seed the tapped tier(s) on open; reset cart + opt-in on close.
+  // ORCH-1167 — when `initialQuantities` (the inline-box multi-tier selection) is
+  // present it TAKES PRECEDENCE: every listed tier is seeded (capped by capacity).
+  // Else the byte-identical single-tier seed runs (every existing caller).
+  const multiSeed = useMemo<Record<string, number>>(
+    () =>
+      initialQuantities !== undefined &&
+      Object.keys(initialQuantities).length > 0
+        ? initialQuantities
+        : {},
+    [initialQuantities],
+  );
+  const multiSeedKey = useMemo<string>(
+    () =>
+      Object.entries(multiSeed)
+        .filter(([, q]) => q > 0)
+        .map(([id, q]) => `${id}:${q}`)
+        .sort()
+        .join(","),
+    [multiSeed],
+  );
+
   useEffect(() => {
-    if (visible && initialTicketTypeId !== null && tickets) {
-      if (lastOpenSeedRef.current === initialTicketTypeId) return;
-      lastOpenSeedRef.current = initialTicketTypeId;
-      const seedTicket = tickets.find((t) => t.id === initialTicketTypeId);
-      if (seedTicket === undefined) return;
-      const seed: CartLineSeed = {
-        ticketTypeId: seedTicket.id,
-        ticketName: seedTicket.name,
-        unitPriceCents: Math.round((seedTicket.priceGbp ?? 0) * 100),
-        currency: seedTicket.currency ?? fallbackCurrency,
-        isFree: seedTicket.isFree,
-      };
-      // ORCH-1138 rework — seed the open-daily PARTY SIZE (clamp >=1), capped by
-      // the tier capacity when known so we never seed beyond available stock.
-      const seedQty = Math.max(1, Math.floor(initialQuantity));
-      const cap =
-        seedTicket.isUnlimited || seedTicket.capacity == null
-          ? seedQty
-          : Math.max(1, Math.min(seedQty, seedTicket.capacity));
-      setLineQuantity(seed, cap);
+    if (visible && tickets) {
+      const useMulti = multiSeedKey.length > 0;
+      const thisKey = useMulti ? multiSeedKey : initialTicketTypeId;
+      if (thisKey !== null && lastOpenSeedRef.current !== thisKey) {
+        lastOpenSeedRef.current = thisKey;
+        const seedOne = (ticketId: string, qty: number): void => {
+          const seedTicket = tickets.find((t) => t.id === ticketId);
+          if (seedTicket === undefined) return;
+          const seed: CartLineSeed = {
+            ticketTypeId: seedTicket.id,
+            ticketName: seedTicket.name,
+            unitPriceCents: Math.round((seedTicket.priceGbp ?? 0) * 100),
+            currency: seedTicket.currency ?? fallbackCurrency,
+            isFree: seedTicket.isFree,
+          };
+          const seedQty = Math.max(1, Math.floor(qty));
+          const cap =
+            seedTicket.isUnlimited || seedTicket.capacity == null
+              ? seedQty
+              : Math.max(1, Math.min(seedQty, seedTicket.capacity));
+          setLineQuantity(seed, cap);
+        };
+        if (useMulti) {
+          for (const [ticketId, qty] of Object.entries(multiSeed)) {
+            if (qty > 0) seedOne(ticketId, qty);
+          }
+        } else if (initialTicketTypeId !== null) {
+          seedOne(initialTicketTypeId, initialQuantity);
+        }
+      }
     }
     if (!visible) {
       lastOpenSeedRef.current = null;
@@ -398,6 +439,8 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
     visible,
     initialTicketTypeId,
     initialQuantity,
+    multiSeed,
+    multiSeedKey,
     tickets,
     fallbackCurrency,
     setLineQuantity,
