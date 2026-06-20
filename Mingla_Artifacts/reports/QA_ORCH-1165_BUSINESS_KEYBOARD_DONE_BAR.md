@@ -290,3 +290,47 @@ This CONDITIONAL PASS carries ONE deferral: **SC-4a (Sheet) + SC-4b (Modal) defe
 
 ## F10. Confidence
 **High** on the gating result. SC-3-Ari is `proven` on Android with 5 reproducible focus cycles + a multi-line growth case + a keyboard-closed no-gap case, the served-bundle identity is confirmed to contain the loop-2 code, and the loop-2 fails-on-revert is independently reproduced. The fix's correctness (measured composerHeight + 12, no feedback loop, keyed-on-open) is verified at both source and runtime. The verdict is **CONDITIONAL PASS** strictly because SC-4a/4b could not be staged in-session (explicitly deferrable per the dispatch) and iOS is `suspected` (blocked by the stale-binary native-drift, which would not change the gating result since the Ari path is platform-agnostic and Android passes).
+
+---
+
+# ORCH-1170 SC-4 Samsung drive (ex-ORCH-1165 deferred eyeball)
+
+**Phase:** RETEST — SC-4 closure (mingla-tester, canonical TEST owner). **Date:** 2026-06-20.
+**Worktree:** detached `origin/main` @ `b43e9f128` (contains the merged keyboard code `b2914b5f5` / PR #548), node_modules symlinked from anchor, Metro from `/tmp/orch-1170-test/mingla-business` (isolated `TMPDIR=/tmp/orch-1170/metro`, port 8081, adb reverse).
+**Runtime — Android (gating):** Samsung Galaxy A72 `R58R54YV7JT` (`SM-A725F`, 1080×2400, `com.sethogieva.minglabusiness`), dev build loading **current-main JS over Metro from this worktree**. **Bundle identity confirmed:** the served Android `index.bundle?platform=android` = **5312 modules / 32.9 MB** (route-healthy, NOT the COMMS-0027 ~951-module poisoned bundle) and contains the ORCH-1165 markers `KeyboardToolbarRoot`, `MINGLA_KEYBOARD_TOOLBAR_THEME`, `showArrows: false`, `eb7825` (47 hits), plus the SC-4 components (`CancelOrderDialog` placeholder string + `TicketTierEditSheet`). Brand "Lantern & Vine", dark theme.
+**Driver:** Maestro 2.5.1 `--device R58R54YV7JT` for taps (the in-sheet Mapbox autocomplete + sheet/dialog buttons were unresponsive to `adb input tap` — a known z-order/gesture quirk; Maestro's synthesized gestures drove them reliably). `adb input text` for keystrokes. Screenshots `adb exec-out screencap -p`.
+
+## SC-4 Verdict
+
+**FAIL** — P0: 0 · **P1: 1** (the Done bar does NOT render inside either RN-Modal-hosted surface on Android) · P2: 0 · P4: 1.
+
+Both deferred SC-4 surfaces were **driven on the Samsung to the exact required state with the keyboard open**, and on **both** the brand-orange Done bar is **ABSENT**. A clean **positive control** (Ari app-root composer) on the **same device, same session, same bundle** shows the orange "Done" bar rendering correctly — so the failure is specific to the RN-`Modal`-hosted mounts (`SheetMobile.tsx`, `Modal.tsx`), not a global break.
+
+## SC-4 matrix
+
+| SC | Surface (host primitive) | Verdict | Evidence |
+|----|--------------------------|---------|----------|
+| **SC-4a** | TicketTierEditSheet (`SheetMobile.tsx` → RN `Modal`) | **FAIL (proven)** | Reached via Event Creator wizard (Ryry draft) → advanced Step 1 Basics (filled required description) → Step 2 When (date + door/end times) → Step 3 Where (venue + Mapbox-autocomplete-picked address, via Maestro) → Step 4 Cover (default) → **Step 5 Tickets → "+ Add ticket type" → tier edit Sheet**. Focused the **Name** field, typed "VIP", keyboard up. Field fully visible above keyboard (no occlusion). **But NO orange Done bar renders** between the sheet content and the keyboard top — the sheet's "Free ticket" row meets the Samsung keyboard's emoji toolbar directly. `SC4a_ticket_tier_sheet_samsung.png` + band crop `SC4a_band_no_done_bar.png`. |
+| **SC-4b** | CancelOrderDialog (`Modal.tsx` `ModalNative` → RN `RNModal`) | **FAIL (proven)** | Brand "Lantern & Vine" has 0 orders, so deep-linked into a **reachable** free+paid order on sibling brand "Leggo This" (device account is a `brand_team_members` member; order `8f31dfb4…`, event `b1ab659e…`) via `mingla-business://event/<id>/orders/<oid>`. Order detail rendered → red **"Cancel order"** → **CancelOrderDialog** opened with its required reason input. Focused the reason input, typed "testing", keyboard up. Input fully visible. **NO orange Done bar renders** above the keyboard — dialog content meets the keyboard emoji toolbar directly. Dismissed via **"Keep order"** (NO cancellation submitted; verified post-hoc `cancelled_at IS NULL`, order untouched). `SC4b_cancel_order_dialog_samsung.png` + band crop `SC4b_band_no_done_bar.png`. |
+| **SC-4 positive control** | Ari composer (`AriChatScreen.tsx`, app-root `KeyboardToolbarRoot` under `app/_layout.tsx` `KeyboardRoot`) | **PASS (proven)** | Same device/session/bundle: focused "Ask Ari…", typed, keyboard up → the brand-orange (#eb7825) "Done" bar renders as a distinct strip flush above the keyboard, right-aligned. `SC4_POSITIVE_CONTROL_ari_done_bar.png`. Proves the toolbar works at app-root but NOT inside the Modal windows. |
+
+## Root cause (P1)
+
+`react-native-keyboard-controller`'s `KeyboardToolbar` (via internal `KeyboardStickyView`) requires a `KeyboardProvider` **in the same native window** to receive keyboard-frame animation events. The only `KeyboardProvider` is at app root (`app/_layout.tsx:695` `<KeyboardRoot>`). Both `SheetMobile.tsx` (L294 RN `<Modal>`, `<KeyboardToolbarRoot/>` at L340) and `Modal.tsx` (L185 `<RNModal>`, `<KeyboardToolbarRoot/>` at L224) render their content + the toolbar inside a **separate Android native window**, with **NO `KeyboardProvider` inside that window**. The root provider does not observe the Modal's window, so the sheet/dialog `KeyboardToolbar` never receives a keyboard frame and stays translated off-screen → the Done bar never appears. The ORCH-1165 mounts are present in source but **non-functional on Android**.
+
+- **Impact:** The two RN-Modal-hosted text-entry surfaces (ticket-tier name/price edit; order cancellation reason) get NO Done bar — the very surfaces the SC-4 mounts were added to cover. Field occlusion is NOT the issue here (both fields sit above the keyboard); the issue is the **missing Done affordance** the spec requires on these surfaces.
+- **Required fix:** wrap the Modal/Sheet content (or at minimum the `KeyboardToolbarRoot`) in its own `<KeyboardProvider>` inside each RN-Modal window — `SheetMobile.tsx` and `Modal.tsx` — so the sticky toolbar receives keyboard frames in that window. Then re-drive SC-4a/SC-4b on the Samsung (same staging recipe above).
+- **Retest:** repeat the two flows; confirm the orange Done bar appears flush above the keyboard in both the tier sheet and the cancel dialog, matching the Ari positive control.
+
+## Constitution / regression note
+No new product code touched by this drive (test-only). The P1 is a runtime defect in already-merged code; routes to REWORK (implementor) under ORCH-1170. The implementor happy-path + tester adversarial tests asserted the *source mount* of `<KeyboardToolbarRoot/>` in both primitives — which is present — but could NOT assert runtime rendering inside the Modal window; this drive supplies the missing runtime proof that the mount is inert on Android.
+
+## Evidence paths (`Mingla_Artifacts/evidence/ORCH-1165/`)
+- `SC4a_ticket_tier_sheet_samsung.png` — tier edit Sheet, Name focused, keyboard up, no Done bar.
+- `SC4a_band_no_done_bar.png` — cropped band above keyboard (SC-4a), no orange strip.
+- `SC4b_cancel_order_dialog_samsung.png` — CancelOrderDialog reason input focused, keyboard up, no Done bar.
+- `SC4b_band_no_done_bar.png` — cropped band above keyboard (SC-4b), no orange strip.
+- `SC4_POSITIVE_CONTROL_ari_done_bar.png` — Ari app-root composer with the orange Done bar PRESENT (same session).
+
+## Confidence
+**High / proven.** Both deferred surfaces were driven to the exact required state with the keyboard open on the physical Samsung running the confirmed current-main bundle; the negative (no Done bar in Sheet + Modal) is corroborated by a same-session positive control (Ari) where the bar DOES render, and the source root cause (no `KeyboardProvider` inside the RN-Modal windows) is consistent with the observed runtime. No DB mutation performed (cancellation aborted via "Keep order"; order verified untouched).
