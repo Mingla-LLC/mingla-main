@@ -53,6 +53,17 @@ export interface ChannelPrefRow {
   enabled: boolean;
 }
 
+/**
+ * META-ORCH-1161 go-live-prep — a marketing suppression the user holds, keyed by
+ * channel (email|sms). Its PRESENCE means the user has opted OUT of marketing on
+ * that channel (scope ∈ {marketing,'all'}). This is the SINGLE source of truth
+ * for marketing email/sms opt-out (channel_suppressions), read into the matrix so
+ * a suppressed marketing chip renders OFF regardless of any prefs row.
+ */
+export interface MarketingSuppressionRow {
+  channel: 'email' | 'sms';
+}
+
 /** One channel cell within a category row. */
 export interface ChannelCellState {
   channel: NotificationChannel;
@@ -132,24 +143,41 @@ export function isChannelLocked(
 
 /**
  * Default ON/OFF for a (category, channel) when the user has NO pref row.
- * Transactional → ON; marketing (non-transactional) → ON only if locked
- * (locked channels are always ON), else OFF.
  *
- * NOTE on marketing default: DEC-186 auto-enrolls signups into marketing, so the
- * marketing GRANT happens at consent time, not here. At the prefs layer the
- * absence of a row means "category default": transactional defaults ON, marketing
- * defaults OFF unless the channel is structurally locked-on (none are, for
- * marketing). This mirrors SPEC §5.3 can_send: marketing is off-by-default unless
- * an enabled=true pref row exists. (If product wants marketing chips to render ON
- * by default to reflect the auto-enroll grant, that is a one-line flip here —
- * flagged OQ for Seth in the report.)
+ * META-ORCH-1161 go-live-prep (DEC-191 / Decision A): marketing is now
+ * ENROLLED-BY-DEFAULT (opt-out), so EVERY category — transactional AND marketing —
+ * defaults ON when the user has expressed no choice. This mirrors the DEC-191
+ * can_send() flip (marketing is default-ON unless an explicit enabled=false pref
+ * or a channel_suppressions row exists). The chips reflect the auto-enroll grant
+ * (DEC-186) instead of contradicting it. Locked channels are always ON regardless.
+ *
+ * For marketing email/sms the user's OFF choice is carried by channel_suppressions
+ * (written via set_marketing_suppression), NOT a notification_channel_prefs row —
+ * see `isMarketingSuppressibleChannel` / `marketingSuppressionChannelsFromState`.
  */
 export function defaultChannelEnabled(
   channel: NotificationChannel,
   isTransactional: boolean,
 ): boolean {
   if (isChannelLocked(channel, isTransactional)) return true;
-  return isTransactional;
+  return true; // DEC-191 — default-ON for both transactional and marketing.
+}
+
+/**
+ * META-ORCH-1161 go-live-prep — is this (category, channel) toggle one whose
+ * opt-out is canonically carried by channel_suppressions rather than a
+ * notification_channel_prefs row? TRUE iff the category is MARKETING and the
+ * channel is email or sms (the only suppressible channels — inapp/push are not in
+ * channel_suppressions). For these, an OFF toggle calls set_marketing_suppression
+ * (the single source of truth honored by can_send AND marketingAudience); an ON
+ * toggle removes the suppression. All OTHER toggles (every transactional channel;
+ * marketing push) keep the notification_channel_prefs path.
+ */
+export function isMarketingSuppressibleChannel(
+  channel: NotificationChannel,
+  isTransactional: boolean,
+): boolean {
+  return !isTransactional && (channel === 'email' || channel === 'sms');
 }
 
 /** Canonical channel ordering for chip layout (a11y reading order). */
@@ -167,19 +195,29 @@ function sectionSortIndex(section: string): number {
 /**
  * Build the full rendered matrix from the live seed + the user's pref rows.
  *
- * @param categories  active notification_categories rows (any inactive are dropped here too)
- * @param prefs       the user's notification_channel_prefs rows
+ * @param categories    active notification_categories rows (any inactive are dropped here too)
+ * @param prefs         the user's notification_channel_prefs rows
+ * @param suppressions  the user's marketing channel_suppressions (email|sms). PRESENCE
+ *                      of a channel = opted out of marketing on it → every marketing
+ *                      cell for that channel renders OFF (single source of truth,
+ *                      DEC-191). Defaults empty for back-compat with existing callers.
  * @returns sections (in consumer order) each with category rows (seed order within section)
  */
 export function buildNotificationMatrix(
   categories: NotificationCategoryRow[],
   prefs: ChannelPrefRow[],
+  suppressions: MarketingSuppressionRow[] = [],
 ): MatrixSection[] {
   // Index prefs by (category_key, channel) for O(1) coalesce.
   const prefIndex = new Map<string, boolean>();
   for (const p of prefs) {
     prefIndex.set(`${p.category_key}::${p.channel}`, p.enabled);
   }
+
+  // META-ORCH-1161 go-live-prep — set of marketing channels the user has
+  // suppressed. A suppressed marketing email/sms chip is OFF no matter what.
+  const suppressedMarketing = new Set<string>();
+  for (const s of suppressions) suppressedMarketing.add(s.channel);
 
   // Active AND consumer-audience only. The audience filter (isConsumerCategory)
   // is what keeps seller-only categories (payout_paid + every biz_* alert) OUT
@@ -196,6 +234,14 @@ export function buildNotificationMatrix(
 
     const channels: ChannelCellState[] = supported.map((channel) => {
       const locked = isChannelLocked(channel, cat.is_transactional);
+      // META-ORCH-1161 go-live-prep — for a MARKETING email/sms cell the opt-out
+      // lives in channel_suppressions (single source of truth), NOT a prefs row.
+      // A suppression → OFF; absence → the DEC-191 default-ON. The prefs row is
+      // ignored for these cells so the two authorities can never disagree.
+      if (isMarketingSuppressibleChannel(channel, cat.is_transactional)) {
+        const enabled = !suppressedMarketing.has(channel);
+        return { channel, enabled, locked: false };
+      }
       const override = prefIndex.get(`${cat.key}::${channel}`);
       const enabled = locked
         ? true
@@ -260,4 +306,57 @@ export function buildChannelPrefUpsert(args: {
 /** Does this category's policy include SMS? (drives whether an SMS chip exists at all) */
 export function categorySupportsSms(cat: NotificationCategoryRow): boolean {
   return cat.default_channels.includes('sms');
+}
+
+/**
+ * META-ORCH-1161 go-live-prep — the WRITE ACTION a single toggle resolves to.
+ * A discriminated union so the hook/service performs exactly one write:
+ *  - 'noop'                : a locked chip — never writes (defence-in-depth).
+ *  - 'channel_pref_upsert' : the legacy notification_channel_prefs path (every
+ *                            transactional channel + marketing push/inapp).
+ *  - 'marketing_suppression': call set_marketing_suppression(channel, suppress)
+ *                            (marketing email/sms — the single opt-out authority).
+ */
+export type ToggleAction =
+  | { kind: 'noop' }
+  | { kind: 'channel_pref_upsert'; upsert: ChannelPrefUpsert }
+  | {
+      kind: 'marketing_suppression';
+      channel: 'email' | 'sms';
+      /** true → opt OUT (write suppression); false → opt back IN (remove it). */
+      suppress: boolean;
+    };
+
+/**
+ * Decide the single write a toggle performs. Marketing email/sms routes to the
+ * suppression RPC (suppress = the chip is going OFF); everything else uses the
+ * prefs upsert; a locked chip is a no-op. This is the SINGLE chokepoint that
+ * guarantees a marketing opt-out lands in channel_suppressions (the one authority
+ * read by both can_send and marketingAudience) and never depends on a prefs row.
+ */
+export function resolveToggleAction(args: {
+  userId: string;
+  categoryKey: string;
+  channel: NotificationChannel;
+  isTransactional: boolean;
+  nextEnabled: boolean;
+  locked: boolean;
+}): ToggleAction {
+  if (args.locked) return { kind: 'noop' };
+  if (isMarketingSuppressibleChannel(args.channel, args.isTransactional)) {
+    return {
+      kind: 'marketing_suppression',
+      channel: args.channel as 'email' | 'sms',
+      suppress: !args.nextEnabled, // chip OFF → suppress; chip ON → un-suppress.
+    };
+  }
+  return {
+    kind: 'channel_pref_upsert',
+    upsert: {
+      user_id: args.userId,
+      category_key: args.categoryKey,
+      channel: args.channel,
+      enabled: args.nextEnabled,
+    },
+  };
 }

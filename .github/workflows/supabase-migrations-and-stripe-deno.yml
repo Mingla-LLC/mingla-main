@@ -157,13 +157,18 @@ jobs:
           #   - implementor happy-path (8 tests)
           #   - tester adversarial anon/guest path (3 tests)
           #   - implementor REWORK guest-ledger + atomic-dedupe (2 tests)
+          # META-ORCH-1161 go-live-prep (DEC-191, 2026-06-20):
+          #   - can_send marketing default-ON + suppression (migration behavioral)
+          #   - US quiet-hours recipient-timezone (P3-1 carry-forward)
           DENO_TEST_FILES=(
             supabase/functions/__tests__/orch_1161_notify_dispatch_v2.test.ts
             supabase/functions/__tests__/orch_1161_anon_guest_path.test.ts
             supabase/functions/__tests__/orch_1161_guest_ledger_and_dedupe.test.ts
+            supabase/migrations/__tests__/orch_1161_golive_can_send_marketing_optout.test.ts
+            supabase/functions/marketing-send/quiet-hours-tz.test.ts
           )
           for attempt in 1 2 3; do
-            if deno test --allow-env --allow-net --no-check "${DENO_TEST_FILES[@]}"; then
+            if deno test --allow-env --allow-net --allow-read --no-check "${DENO_TEST_FILES[@]}"; then
               exit 0
             fi
             if [ "$attempt" -eq 3 ]; then

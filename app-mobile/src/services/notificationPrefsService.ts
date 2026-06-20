@@ -12,6 +12,7 @@ import { supabase } from './supabase';
 import type {
   ChannelPrefRow,
   ChannelPrefUpsert,
+  MarketingSuppressionRow,
   NotificationCategoryRow,
   NotificationChannel,
 } from '../components/profile/notificationPrefsMatrix';
@@ -19,6 +20,10 @@ import type {
 export interface NotificationMatrixData {
   categories: NotificationCategoryRow[];
   prefs: ChannelPrefRow[];
+  // META-ORCH-1161 go-live-prep — the user's marketing channel_suppressions
+  // (email|sms). The single source of truth for marketing opt-out; absence = the
+  // DEC-191 default-ON.
+  suppressions: MarketingSuppressionRow[];
 }
 
 /**
@@ -28,7 +33,7 @@ export interface NotificationMatrixData {
 export async function fetchNotificationMatrix(
   userId: string,
 ): Promise<NotificationMatrixData> {
-  const [catRes, prefRes] = await Promise.all([
+  const [catRes, prefRes, suppRes] = await Promise.all([
     supabase
       .from('notification_categories')
       .select('key, section, is_transactional, urgency, default_channels, active')
@@ -37,6 +42,15 @@ export async function fetchNotificationMatrix(
       .from('notification_channel_prefs')
       .select('category_key, channel, enabled')
       .eq('user_id', userId),
+    // META-ORCH-1161 go-live-prep — the user's OWN marketing suppressions
+    // (RLS: channel_suppressions read-own). A row in scope marketing|all for
+    // email/sms means opted out of marketing on that channel → chip OFF.
+    supabase
+      .from('channel_suppressions')
+      .select('channel, scope')
+      .eq('user_id', userId)
+      .in('scope', ['marketing', 'all'])
+      .in('channel', ['email', 'sms']),
   ]);
 
   if (catRes.error) {
@@ -47,6 +61,11 @@ export async function fetchNotificationMatrix(
   if (prefRes.error) {
     throw new Error(
       `Failed to load notification preferences: ${prefRes.error.message}`,
+    );
+  }
+  if (suppRes.error) {
+    throw new Error(
+      `Failed to load marketing suppressions: ${suppRes.error.message}`,
     );
   }
 
@@ -65,7 +84,33 @@ export async function fetchNotificationMatrix(
     enabled: !!p.enabled,
   }));
 
-  return { categories, prefs };
+  const suppressions: MarketingSuppressionRow[] = (suppRes.data ?? [])
+    .map((s) => ({ channel: s.channel as 'email' | 'sms' }))
+    .filter((s) => s.channel === 'email' || s.channel === 'sms');
+
+  return { categories, prefs, suppressions };
+}
+
+/**
+ * META-ORCH-1161 go-live-prep — opt OUT of (suppress=true) or back IN to
+ * (suppress=false) marketing on a channel via the SECURITY DEFINER RPC. This is
+ * the ONLY authenticated write path to channel_suppressions (the single source of
+ * truth honored by can_send AND marketingAudience). Throws on error so the hook's
+ * onError + optimistic rollback + toast fire (no silent failure).
+ */
+export async function setMarketingSuppression(args: {
+  channel: 'email' | 'sms';
+  suppress: boolean;
+}): Promise<void> {
+  const { error } = await supabase.rpc('set_marketing_suppression', {
+    p_channel: args.channel,
+    p_suppress: args.suppress,
+  });
+  if (error) {
+    throw new Error(
+      `Failed to update marketing preference (${args.channel}): ${error.message}`,
+    );
+  }
 }
 
 /**

@@ -167,18 +167,28 @@ test('effective state = coalesce(pref.enabled, default); transactional default O
   assert.equal(smsOff.enabled, false);
 });
 
-test('marketing channels default OFF until an enabled=true pref exists', () => {
+// [TEST-MOD-APPROVED META-ORCH-1161] DEC-191 / Decision A SUPERSEDES the prior
+// "marketing default OFF until enabled=true" contract: marketing is now
+// ENROLLED-BY-DEFAULT (opt-out). A fresh user sees marketing chips ON; the opt-out
+// is carried by channel_suppressions (3rd arg), NOT a notification_channel_prefs
+// enabled=true row. This assertion is INVERTED on purpose to match the go-live
+// model — see SPEC §5.3 / can_send migration 20261113000000.
+test('marketing channels default ON; a suppression (not a pref) flips them OFF', () => {
   const fresh = buildNotificationMatrix([MARKETING_CAT], []);
   const sms = fresh[0].rows[0].channels.find((c) => c.channel === 'sms')!;
   assert.equal(sms.locked, false, 'marketing locks nothing');
-  assert.equal(sms.enabled, false, 'marketing default OFF');
+  assert.equal(sms.enabled, true, 'DEC-191 marketing default ON (auto-enrolled)');
 
-  const optedIn = buildNotificationMatrix(
-    [MARKETING_CAT],
-    [{ category_key: 'marketing_blast', channel: 'sms', enabled: true }],
-  );
-  const smsOn = optedIn[0].rows[0].channels.find((c) => c.channel === 'sms')!;
-  assert.equal(smsOn.enabled, true);
+  // A marketing channel_suppression for sms → the marketing sms chip is OFF.
+  const suppressed = buildNotificationMatrix([MARKETING_CAT], [], [{ channel: 'sms' }]);
+  const smsOff = suppressed[0].rows[0].channels.find((c) => c.channel === 'sms')!;
+  assert.equal(smsOff.enabled, false, 'a marketing suppression flips the chip OFF');
+
+  // The email marketing chip stays ON (the suppression was sms-only).
+  const emailStillOn = suppressed[0].rows[0].channels.find(
+    (c) => c.channel === 'email',
+  )!;
+  assert.equal(emailStillOn.enabled, true, 'email marketing unaffected by an sms suppression');
 });
 
 test('REWORK P2: seller-only payout_paid is EXCLUDED from the consumer matrix', () => {

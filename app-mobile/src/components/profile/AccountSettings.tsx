@@ -213,7 +213,7 @@ export default function AccountSettings({ user, onSignOut, visible, onClose, not
   };
 
   const renderChannelChip = useCallback(
-    (catKey: string, cell: ChannelCellState) => {
+    (catKey: string, isTransactional: boolean, cell: ChannelCellState) => {
       // Push chip is dimmed + non-interactive when the app-wide push master is OFF
       // (mirrors can_send: a global push-off suppresses push only, never email/SMS).
       const pushDimmed = cell.channel === 'push' && !pushMasterOn;
@@ -253,6 +253,7 @@ export default function AccountSettings({ user, onSignOut, visible, onClose, not
             toggleChannel({
               categoryKey: catKey,
               channel: cell.channel,
+              isTransactional,
               nextEnabled: !cell.enabled,
               locked: cell.locked,
             });
@@ -287,7 +288,9 @@ export default function AccountSettings({ user, onSignOut, visible, onClose, not
               ) : null}
             </View>
             <View style={styles.prefChannelCluster}>
-              {row.channels.map((cell) => renderChannelChip(row.key, cell))}
+              {row.channels.map((cell) =>
+                renderChannelChip(row.key, row.isTransactional, cell),
+              )}
             </View>
           </View>
         </View>
