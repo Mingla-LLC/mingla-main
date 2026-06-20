@@ -113,11 +113,18 @@ Deno.test("ISSUE 1: RsvpOfferingBody renders the Direction-C parity sections (br
   assertStringIncludes(code, "aboutText"); // about copy
 });
 
-Deno.test("ISSUE 1: consumer RSVP still consumes the shared momentum + decision dock (no checkout)", () => {
-  // prior 1157 work intact (single shared decision via the shared body/dock, no
-  // price/cart on the RSVP path).
+// ORCH-1163 [TEST-MOD-APPROVED ORCH-1163]: ORCH-1163-R2 renamed the consumer RSVP
+// floating control from <RsvpOfferingDecisionDock> to <RsvpOfferingFloatingBar>
+// (the dock is now a back-compat ALIAS of the floating bar — same shared, no-checkout
+// decision control, just made structurally identical to the event page's
+// EventOfferingFloatingBar). The protective intent is unchanged: the consumer RSVP
+// branch still consumes the ONE shared body + a single shared floating decision
+// control with NO price/cart. Retargeted the literal accordingly.
+Deno.test("ISSUE 1: consumer RSVP still consumes the shared momentum + decision control (no checkout)", () => {
+  // prior 1157 work intact (single shared decision via the shared body/floating bar,
+  // no price/cart on the RSVP path).
   assertStringIncludes(consumerScreen, "<RsvpOfferingBody");
-  assertStringIncludes(consumerScreen, "<RsvpOfferingDecisionDock");
+  assertStringIncludes(consumerScreen, "<RsvpOfferingFloatingBar");
   const bodyCode = stripComments(rsvpBody);
   assertStringIncludes(bodyCode, "<RsvpMomentumDecision");
   assert(!bodyCode.includes("ticket-checkout-create"));

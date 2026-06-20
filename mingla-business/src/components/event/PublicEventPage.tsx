@@ -64,7 +64,6 @@ import {
   EventTicketBox,
 } from "@mingla/offering-rendering";
 
-import { spacing } from "../../constants/designSystem";
 import { FoundationEventPreview } from "./FoundationEventPreview";
 import { FoundationRsvpPreview } from "./FoundationRsvpPreview";
 import { submitPublicRsvp } from "../../services/rsvpEvents";
@@ -632,13 +631,13 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
           onOpenMaps={openMapsForQuery}
           staticMapUrl={staticMapUrl}
           onSubmit={rsvpSubmit}
-          // ORCH-1150 R2 D-7b — scroll-runway parity with the trip / experience /
-          // ticketed routes. Those routes use `spacing.md` because a DOCKED reserve
-          // bar (or tier list) already adds height; the RSVP body has NEITHER, so it
-          // needs MORE bottom runway to guarantee a short page exceeds the viewport
-          // and the (correctly pinned) cover can be fully scrolled away. Safe-area
-          // bottom + a one-screen-safe pad.
-          contentBottomInset={insets.bottom + spacing.xxl}
+          // ORCH-1163-R2 [floating-parity] — scroll-runway is now BYTE-IDENTICAL to
+          // the standard event page: FLOATING_BAR_CLEARANCE + insets.bottom on phone
+          // (so the last section clears the pinned floating decision bar, exactly as
+          // the event page clears its Get-tickets bar), 0 on desktop (the sticky
+          // panel + shell desktop padding own clearance). Replaces the bespoke
+          // `insets.bottom + spacing.xxl` runway.
+          contentBottomInset={isDesktop ? 0 : FLOATING_BAR_CLEARANCE + insets.bottom}
           onScroll={handleScroll}
           onScrollViewLayout={handleScrollLayout}
           safeAreaTop={insets.top}

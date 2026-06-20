@@ -31,7 +31,8 @@ import {
 import {
   ParallaxCoverShell,
   RsvpOfferingBody,
-  RsvpOfferingDecisionDock,
+  RsvpDecisionBox,
+  RsvpOfferingFloatingBar,
   useResponsiveLayout,
   useRsvpOfferingState,
   boldFontFamily,
@@ -97,6 +98,11 @@ export const FoundationRsvpPreview: React.FC<FoundationRsvpPreviewProps> = (prop
     safeAreaBottom = 0,
     testID,
   } = props;
+  // ORCH-1163-R2 — the floating bar now uses the event-style fixed bottom offset
+  // (floatWrap bottom:24) + the surface's contentBottomInset (FLOATING_BAR_CLEARANCE
+  // + insets.bottom) for runway; `safeAreaBottom` is retained on the props contract
+  // for call-site parity but no longer drives a bespoke dock-panel inset.
+  void safeAreaBottom;
 
   const { isDesktop } = useResponsiveLayout();
   const boldFamily = boldFontFamily(theme);
@@ -124,14 +130,25 @@ export const FoundationRsvpPreview: React.FC<FoundationRsvpPreviewProps> = (prop
           ? "image"
           : null;
 
-  const dock = (
-    <RsvpOfferingDecisionDock
-      palette={palette}
-      theme={theme}
-      config={config}
-      state={state}
-    />
-  );
+  // ORCH-1163-R2 [floating-parity] — desktop hosts the SINGLE-OWNER inline decision
+  // box (RsvpDecisionBox) in the STICKY right panel (PARITY with the event page's
+  // EventTicketBox in deskPanel). The phone keeps the inline box in the body and
+  // pins the separate floating bar below.
+  const stickyPanel = isDesktop ? (
+    <View
+      style={[styles.deskPanel, { backgroundColor: palette.card, borderColor: palette.panelBorder }]}
+    >
+      <View style={[styles.deskAccent, { backgroundColor: palette.accent }]} />
+      <View style={styles.deskInner}>
+        <RsvpDecisionBox
+          palette={palette}
+          theme={theme}
+          config={config}
+          state={state}
+        />
+      </View>
+    </View>
+  ) : undefined;
 
   return (
     <View style={[styles.host, { backgroundColor: palette.page }]}>
@@ -158,9 +175,7 @@ export const FoundationRsvpPreview: React.FC<FoundationRsvpPreviewProps> = (prop
             {event.name.length > 0 ? event.name : "Untitled event"}
           </Text>
         }
-        // Desktop hosts the decision in the sticky right panel; phone uses the
-        // pinned floating dock below.
-        stickyPanel={isDesktop ? dock : undefined}
+        stickyPanel={stickyPanel}
         contentBottomInset={contentBottomInset}
         safeAreaTop={safeAreaTop}
         onScroll={onScroll}
@@ -179,24 +194,27 @@ export const FoundationRsvpPreview: React.FC<FoundationRsvpPreviewProps> = (prop
           onOpenMaps={onOpenMaps}
           staticMapUrl={staticMapUrl}
           state={state}
+          // ORCH-1163-R2 — desktop relocates the inline box to the sticky panel
+          // (PARITY with FoundationEventPreview's hideTicketBox).
+          hideDecisionBox={isDesktop}
           testID="orch-1163-rsvp-body"
         />
       </ParallaxCoverShell>
 
-      {/* (9) Phone floating decision dock — surface-pinned overlay above the safe
-          area. Hidden on desktop (the sticky panel carries the decision). */}
+      {/* (9) Phone FLOATING decision bar — the shared RsvpOfferingFloatingBar pinned
+          as an absolute-bottom SIBLING of ParallaxCoverShell with zIndex:6, EXACTLY
+          like the event page's floatWrap (PublicEventPage). This fixes the
+          business-on-top / web-under layering: a positioned overlay below the chrome
+          but ABOVE the scrolling body's content stacking context on BOTH surfaces.
+          Hidden on desktop (the sticky panel carries the decision). */}
       {!isDesktop ? (
-        <View
-          style={[
-            styles.floatingDock,
-            {
-              backgroundColor: palette.page,
-              borderTopColor: palette.panelBorder,
-              paddingBottom: 12 + safeAreaBottom,
-            },
-          ]}
-        >
-          {dock}
+        <View style={styles.floatWrap} pointerEvents="box-none">
+          <RsvpOfferingFloatingBar
+            palette={palette}
+            theme={theme}
+            config={config}
+            state={state}
+          />
         </View>
       ) : null}
     </View>
@@ -222,14 +240,32 @@ const styles = StyleSheet.create({
     textShadowColor: "rgba(0,0,0,0.5)",
     textShadowRadius: 10,
   },
-  floatingDock: {
+  // ORCH-1163-R2 [floating-parity] — the floating decision-bar wrapper, BYTE-
+  // IDENTICAL to the event page's floatWrap (PublicEventPage.styles.floatWrap):
+  // absolute, left/right:16, bottom:24, zIndex:6. The zIndex:6 is the load-bearing
+  // fix — it pins the bar ABOVE the scrolling body's content stacking context
+  // (CONTENT_Z=2) on web (where the body was painting over the old un-z-indexed
+  // dock) and stays consistent on business-native, so the layering matches the
+  // event page on BOTH surfaces.
+  floatWrap: {
     position: "absolute",
-    left: 0,
-    right: 0,
-    bottom: 0,
-    paddingHorizontal: 16,
-    paddingTop: 12,
-    borderTopWidth: StyleSheet.hairlineWidth,
+    left: 16,
+    right: 16,
+    bottom: 24,
+    zIndex: 6,
+  },
+  // ORCH-1163-R2 — the DESKTOP sticky right-panel frame hosting the single-owner
+  // RsvpDecisionBox (mirrors the event page's deskPanel hosting EventTicketBox).
+  deskPanel: {
+    borderRadius: 22,
+    borderWidth: 1,
+    overflow: "hidden",
+  },
+  deskAccent: {
+    height: 4,
+  },
+  deskInner: {
+    padding: 20,
   },
 });
 

@@ -26,12 +26,28 @@
  *   3. Date & Time      (FULL-WIDTH solid-fill row — orch-1167-date-row parity)
  *   4. Pills row        (format → ALL vibes → ALL party-types → ALL music-genres;
  *                        NO tickets-left; party chips PROMOTED here from the momentum)
- *   5. Going/Maybe/Not  (INLINE decision box — shared RsvpMomentumDecision + the
- *                        per-guest plus-one mini-forms; Going → confirm dialog)
+ *   5. DECISION BOX     (INLINE <RsvpDecisionBox> — parallel to EventTicketBox: the
+ *                        Going/Maybe/Can't selector + contact + per-guest plus-one
+ *                        mini-forms; rendered inline on phone AND in the desktop
+ *                        sticky panel — ONE instance pattern, `hideDecisionBox` on
+ *                        desktop exactly like EventTicketBox's `hideTicketBox`)
  *   6. Presented By     (brand card → onOpenBrand)
  *   7. About            (collapsible read-more/show-less)
  *   8. Where you'll be  (server-proxied static map; city-level when hidden)
- *   9. Floating button  (<RsvpOfferingDecisionDock>, surface-pinned)
+ *   9. Floating button  (<RsvpOfferingFloatingBar> — a SEPARATE clean floating
+ *                        segmented bar mirroring EventOfferingFloatingBar; the
+ *                        surface pins it absolute-bottom with zIndex:6 as a sibling
+ *                        of ParallaxCoverShell, exactly like the event floatWrap.
+ *                        <RsvpOfferingDecisionDock> is retained as a back-compat
+ *                        alias of the floating bar.)
+ *
+ * ORCH-1163-R2 [rsvp-shared-body / floating-parity] — the RSVP page is now made
+ * STRUCTURALLY IDENTICAL to the standard event page (EventOfferingBody): the inline
+ * decision is the single-owner <RsvpDecisionBox> (parallel to <EventTicketBox>),
+ * and the floating control is the separate <RsvpOfferingFloatingBar> the surface
+ * pins with zIndex:6 (parallel to <EventOfferingFloatingBar> + the floatWrap). Both
+ * read ONE lifted decision state (useRsvpOfferingState) so the inline box + floating
+ * bar never diverge. The decision LOGIC stays in RsvpMomentumDecision (single owner).
  */
 
 import React, { useCallback, useMemo, useState } from "react";
@@ -118,6 +134,16 @@ export interface RsvpOfferingBodyProps {
   onScrollViewLayout?: (event: LayoutChangeEvent) => void;
   safeAreaTop?: number;
   safeAreaBottom?: number;
+  /**
+   * ORCH-1163-R2 — desktop two-column reflow (PARITY with EventOfferingBody's
+   * `hideTicketBox`). When true (web ≥ DESKTOP_BREAKPOINT) the inline §5 decision
+   * box is relocated to the STICKY right panel by the surface (which renders the
+   * SAME <RsvpDecisionBox> there), so the in-body section 5 collapses to nothing
+   * here — exactly one decision-box instance paints. Phones + both native apps
+   * keep the inline box (false). The `orch-1163-rsvp-inline-box` anchor stays in
+   * source for the canonical-order gate.
+   */
+  hideDecisionBox?: boolean;
   testID?: string;
 }
 
@@ -627,14 +653,17 @@ const DecisionUnit: React.FC<{
 };
 
 // ───────────────────────────────────────────────────────────────────────────
-// (9) RsvpOfferingDecisionDock — the floating decision (Going/Maybe/Not-going),
-// surface-pinned overlay (mirrors EventOfferingFloatingBar). The surface pins it
-// absolutely at the bottom on phone (gorhom-safe — the body never owns the scroll
-// root or the dock). Takes the SHARED state from useRsvpOfferingState so the dock
-// and the inline box drive one state machine.
+// (5) RsvpDecisionBox — the INLINE decision box. ORCH-1163-R2: extracted so it
+// renders BOTH inline in the body (phone + native) AND inside the desktop sticky
+// panel (web ≥ DESKTOP_BREAKPOINT) — ONE owner, one state, one decision-control
+// copy (PARITY with EventTicketBox). Carries the contact form + per-guest plus-one
+// mini-forms + the shared momentum/decision unit (showMomentum) + the error node.
+// Reads the SHARED state from useRsvpOfferingState (the inline box + the floating
+// bar drive one state machine — no duplicate writes). Hosts the
+// `orch-1163-rsvp-inline-box` testID anchor the canonical-order gate reads.
 // ───────────────────────────────────────────────────────────────────────────
 
-export interface RsvpOfferingDecisionDockProps {
+export interface RsvpDecisionBoxProps {
   palette: ThemePalette;
   theme: ResolvedTheme;
   config: RsvpOfferingConfig;
@@ -642,7 +671,47 @@ export interface RsvpOfferingDecisionDockProps {
   testID?: string;
 }
 
-export const RsvpOfferingDecisionDock: React.FC<RsvpOfferingDecisionDockProps> = ({
+export const RsvpDecisionBox: React.FC<RsvpDecisionBoxProps> = ({
+  palette,
+  theme,
+  config,
+  state,
+  testID,
+}) => (
+  <View testID={testID ?? "orch-1163-rsvp-inline-box"}>
+    {state.contactForm}
+    {state.guestForms}
+    <DecisionUnit
+      palette={palette}
+      theme={theme}
+      config={config}
+      state={state}
+      showMomentum
+      testID="orch-1157-rsvp-inline-momentum"
+    />
+    {state.errorNode}
+  </View>
+);
+
+// ───────────────────────────────────────────────────────────────────────────
+// (9) RsvpOfferingFloatingBar — the floating decision control (Going/Maybe/Can't),
+// surface-pinned overlay (mirrors EventOfferingFloatingBar EXACTLY). ALL THREE
+// controls show together as a floating segmented bar; the surface pins it
+// absolute-bottom with zIndex:6 as a sibling of ParallaxCoverShell (the event
+// `floatWrap` contract). Gorhom-safe — the body never owns the scroll root or the
+// bar. Takes the SHARED state from useRsvpOfferingState so the bar + the inline box
+// drive ONE state machine. The decision LOGIC stays in RsvpMomentumDecision.
+// ───────────────────────────────────────────────────────────────────────────
+
+export interface RsvpOfferingFloatingBarProps {
+  palette: ThemePalette;
+  theme: ResolvedTheme;
+  config: RsvpOfferingConfig;
+  state: RsvpOfferingState;
+  testID?: string;
+}
+
+export const RsvpOfferingFloatingBar: React.FC<RsvpOfferingFloatingBarProps> = ({
   palette,
   theme,
   config,
@@ -659,6 +728,12 @@ export const RsvpOfferingDecisionDock: React.FC<RsvpOfferingDecisionDockProps> =
   />
 );
 
+// Back-compat alias — RsvpOfferingDecisionDock IS the floating bar (kept so the
+// barrel re-export + existing imports stay valid; the surface now pins it with the
+// event-style floatWrap zIndex:6 sibling rather than a full-width bottom panel).
+export type RsvpOfferingDecisionDockProps = RsvpOfferingFloatingBarProps;
+export const RsvpOfferingDecisionDock = RsvpOfferingFloatingBar;
+
 // ───────────────────────────────────────────────────────────────────────────
 // The body. Renders sections 2–8 content + the inline decision box (§0-5) + the
 // confirm dialog + success popup (both <Modal>, portal-safe). The surface pins the
@@ -669,7 +744,7 @@ export const RsvpOfferingDecisionDock: React.FC<RsvpOfferingDecisionDockProps> =
 export const RsvpOfferingBody: React.FC<
   RsvpOfferingBodyProps & { state: RsvpOfferingState }
 > = (props) => {
-  const { event, brand, palette, theme, config, onOpenBrand, onOpenMaps, staticMapUrl = null, testID, state } =
+  const { event, brand, palette, theme, config, onOpenBrand, onOpenMaps, staticMapUrl = null, hideDecisionBox = false, testID, state } =
     props;
   const { surface, boldFamily } = state;
   const [aboutCollapsed, setAboutCollapsed] = useState(true);
@@ -795,21 +870,25 @@ export const RsvpOfferingBody: React.FC<
         ))}
       </View>
 
-      {/* (5) Going / Maybe / Not-going box — INLINE. Contact form (anon) + per-guest
-          mini-forms + the shared decision (Going → confirm dialog). */}
-      <View style={styles.section} testID="orch-1163-rsvp-inline-box">
-        {state.contactForm}
-        {state.guestForms}
-        <DecisionUnit
-          palette={palette}
-          theme={theme}
-          config={config}
-          state={state}
-          showMomentum
-          testID="orch-1157-rsvp-inline-momentum"
-        />
-        {state.errorNode}
-      </View>
+      {/* (5) DECISION BOX — INLINE single-owner <RsvpDecisionBox> (parallel to
+          EventTicketBox): contact form (anon) + per-guest mini-forms + the shared
+          decision (Going → confirm dialog). ORCH-1163-R2 (change 2): on desktop web
+          (hideDecisionBox=true) the box is relocated to the sticky right panel by
+          the surface (the SAME <RsvpDecisionBox>), so it does not paint a second
+          time inline. Phones + both native apps keep the inline box. The
+          `orch-1163-rsvp-inline-box` testID anchor stays in source for the
+          canonical-order gate (rendered by RsvpDecisionBox). */}
+      {hideDecisionBox ? null : (
+        <View style={styles.section}>
+          <RsvpDecisionBox
+            palette={palette}
+            theme={theme}
+            config={config}
+            state={state}
+            testID="orch-1163-rsvp-inline-box"
+          />
+        </View>
+      )}
 
       {/* (6) Presented By — brand card → onOpenBrand. */}
       <View style={styles.section}>
