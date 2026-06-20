@@ -16,6 +16,7 @@ import {
 } from "../services/rsvpEvents";
 import type { PublishedBusinessEvent } from "../services/businessEvents";
 import type { DraftEvent } from "../store/draftEventStore";
+import type { RsvpUpdatePayload } from "../utils/serverDraftEventMapper";
 
 export function usePublishRsvpDraft() {
   return useMutation<
@@ -32,7 +33,7 @@ export function useUpdateLiveRsvp() {
   return useMutation<
     UpdateLiveRsvpResult,
     Error,
-    { eventId: string; payload: Record<string, unknown>; reason: string }
+    { eventId: string; payload: RsvpUpdatePayload; reason: string }
   >({
     mutationFn: ({ eventId, payload, reason }) =>
       updateLiveRsvp(eventId, payload, reason),

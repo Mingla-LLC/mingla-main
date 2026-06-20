@@ -117,6 +117,18 @@ export type EditableLiveEventFields = Pick<
   // protection guard rail; the post-sale lock is enforced server-side + the UI
   // renders read-only once sold).
   | "pricingSwitches"
+  // ORCH-1172 — RSVP host-controls editable post-publish (parity with the
+  // create RSVP wizard's Step-5). These live ONLY on RSVP rows; they are
+  // additive (no buyer-protection guard rail — RSVP is moneyless, no orders)
+  // and reach biz_update_live_rsvp via buildRsvpUpdatePayload. Listed as
+  // SAFE_KEYS below. Optional on LiveEvent (present only on event_type='rsvp');
+  // the Pick is legal because the keys exist on the type.
+  | "rsvpCapacity"
+  | "rsvpAllowPlusOnes"
+  | "rsvpPlusOnesMax"
+  | "rsvpWaitlistEnabled"
+  | "rsvpApprovalMode"
+  | "rsvpDiscoverable"
 >;
 
 /**
