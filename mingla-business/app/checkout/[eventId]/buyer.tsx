@@ -727,6 +727,8 @@ export default function CheckoutBuyerScreen(): React.ReactElement {
             onPress fires; the outer onPress is a no-op while enabled. */}
         <Pressable
           onPress={continueDisabled ? showConsentHint : undefined}
+          accessibilityRole="button"
+          accessibilityLabel={continueLabel}
           accessibilityElementsHidden={false}
         >
           <View pointerEvents={continueDisabled ? "none" : "auto"}>
