@@ -55,6 +55,16 @@ import { resolveCheckoutBrandAccent } from "../../../src/utils/checkoutBrandAcce
 import { formatCurrency } from "../../../src/utils/currency";
 import { isValidE164, composeE164 } from "../../../src/utils/phone";
 import { createTicketCheckout } from "../../../src/services/ticketCheckoutService";
+// META-ORCH-1161 Sub-A.2 — bundled-mandatory consent (DEC-186): shared writer +
+// verbatim disclosure copy + the §2 T&C sheet.
+import { recordConsent } from "../../../src/services/consentService";
+import {
+  CONSENT_DISCLOSURE_TEXT,
+  CONSENT_VISIBLE_LABEL_PREFIX,
+  CONSENT_VISIBLE_LABEL_LINK,
+  CONSENT_VISIBLE_LABEL_SUFFIX,
+  DISCLOSURE_VERSION,
+} from "../../../src/constants/consentDisclosure";
 
 import { Button } from "../../../src/components/ui/Button";
 import { GlassCard } from "../../../src/components/ui/GlassCard";
@@ -66,6 +76,11 @@ import {
   useCartTotals,
 } from "../../../src/components/checkout/CartContext";
 import { CheckoutHeader } from "../../../src/components/checkout/CheckoutHeader";
+import { ConsentTermsSheet } from "../../../src/components/checkout/ConsentTermsSheet";
+import {
+  isContinueDisabled,
+  shouldShowConsentHintOnDisabledTap,
+} from "../../../src/components/checkout/checkoutConsentGate";
 
 // ORCH-0847 Phase B — country-picker phone input shared with app-mobile
 // auth onboarding. Replaces the prior single-text-field phone Input which
@@ -199,6 +214,27 @@ export default function CheckoutBuyerScreen(): React.ReactElement {
   const totals = useCartTotals();
   const [submitting, setSubmitting] = useState<boolean>(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
+
+  // META-ORCH-1161 Sub-A.2 (DEC-186) — bundled-mandatory consent gate state.
+  const termsAccepted = buyer.termsAccepted === true;
+  const [termsSheetVisible, setTermsSheetVisible] = useState<boolean>(false);
+  // Shown after the buyer taps a disabled Pay button with fields valid but the
+  // box unchecked — never a silent dead tap (DESIGN §S3.4).
+  const [consentHintVisible, setConsentHintVisible] = useState<boolean>(false);
+
+  // Checking the box constitutes the bundled grant: DEC-186 folds marketing into
+  // the single mandatory consent, so `marketingOptIn` rides with `termsAccepted`
+  // (the downstream payment payload reads `marketingOptIn`).
+  const acceptTerms = useCallback((): void => {
+    setBuyer({ termsAccepted: true, marketingOptIn: true });
+    setConsentHintVisible(false);
+  }, [setBuyer]);
+
+  const toggleTerms = useCallback((): void => {
+    const next = !(buyer.termsAccepted === true);
+    setBuyer({ termsAccepted: next, marketingOptIn: next });
+    if (next) setConsentHintVisible(false);
+  }, [buyer.termsAccepted, setBuyer]);
 
   // Touched flags — show validation errors only after first focus blur,
   // so a fresh-mount form doesn't immediately scream red.
@@ -336,14 +372,66 @@ export default function CheckoutBuyerScreen(): React.ReactElement {
     }
   }, [router, eventId]);
 
+  // META-ORCH-1161 Sub-A.2 (DEC-186) — surface why the Pay button is greyed when
+  // the buyer taps it while it is disabled. Marks every field touched (so any
+  // field error renders) and, when the only missing thing is the consent box,
+  // flashes the box + shows the "Please agree to continue." helper. The Pay
+  // button stays VISUALLY disabled (DESIGN §S3.4) but the tap is captured by a
+  // Pressable overlay below — never a silent dead tap (Constitution Rule 1).
+  const showConsentHint = useCallback((): void => {
+    setNameTouched(true);
+    setEmailTouched(true);
+    setPhoneTouched(true);
+    if (
+      shouldShowConsentHintOnDisabledTap({
+        fieldsValid: validation.isValid,
+        termsAccepted,
+      })
+    ) {
+      setConsentHintVisible(true);
+    }
+  }, [validation.isValid, termsAccepted]);
+
   const handleContinue = useCallback(async (): Promise<void> => {
     // Mark all fields touched so any validation errors render
     setNameTouched(true);
     setEmailTouched(true);
     setPhoneTouched(true);
     if (!validation.isValid) return;
+    // META-ORCH-1161 Sub-A.2 (DEC-186) — the bundled consent box is mandatory.
+    // Fields valid but box unchecked → surface the helper (no dead tap).
+    if (!termsAccepted) {
+      setConsentHintVisible(true);
+      return;
+    }
     if (eventId === null) return;
     setSubmitError(null);
+
+    // META-ORCH-1161 Sub-A.2 — record the bundled consent grant (transactional +
+    // marketing, both channels) with the EXACT §1b disclosure VERBATIM. The phone
+    // country supplies country_code; ip_hash is computed server-side. Non-blocking:
+    // the checkbox act already constitutes consent, so an audit-write failure must
+    // not deadlock checkout — we log and proceed (Constitution #3: surfaced via
+    // console, never silently swallowed).
+    try {
+      const consentResult = await recordConsent({
+        source: "checkout",
+        disclosureText: CONSENT_DISCLOSURE_TEXT,
+        disclosureVersion: DISCLOSURE_VERSION,
+        phone: buyer.phone,
+        email: buyer.email,
+        countryCode: phoneCountry,
+        userId: null,
+      });
+      if (!consentResult.ok) {
+        console.error(
+          "[checkout-buyer] consent_records write failed (proceeding; checkbox act stands)",
+        );
+      }
+    } catch (consentErr) {
+      console.error("[checkout-buyer] consent write threw", consentErr);
+    }
+
     if (totals.isFree) {
       try {
         setSubmitting(true);
@@ -379,6 +467,8 @@ export default function CheckoutBuyerScreen(): React.ReactElement {
     router.push(`/checkout/${eventId}/payment` as never);
   }, [
     validation.isValid,
+    termsAccepted,
+    phoneCountry,
     eventId,
     totals.isFree,
     totals.currency,
@@ -391,6 +481,15 @@ export default function CheckoutBuyerScreen(): React.ReactElement {
   const continueLabel = totals.isFree
     ? "Reserve free ticket"
     : "Continue to payment";
+
+  // META-ORCH-1161 Sub-A.2 (DEC-186) — single source of the Pay-button gate so
+  // the visual disabled state, the pointer-events pass-through, and the
+  // tap-capture overlay all agree.
+  const continueDisabled = isContinueDisabled({
+    fieldsValid: validation.isValid,
+    termsAccepted,
+    submitting,
+  });
 
   if (event === null || hasNoLines) {
     // Render an empty shell — useEffect above redirects on the next tick.
@@ -558,12 +657,14 @@ export default function CheckoutBuyerScreen(): React.ReactElement {
           />
         </View>
 
-        {/* Marketing opt-in */}
+        {/* META-ORCH-1161 Sub-A.2 (DEC-186) — bundled-mandatory consent gate.
+            ONE checkbox covering T&Cs + transactional + reminders + email +
+            SMS marketing; the underlined link opens the §2 T&C sheet. */}
         <Pressable
-          onPress={() => setBuyer({ marketingOptIn: !buyer.marketingOptIn })}
+          onPress={toggleTerms}
           accessibilityRole="checkbox"
-          accessibilityState={{ checked: buyer.marketingOptIn }}
-          accessibilityLabel="Email me about this organiser's future events"
+          accessibilityState={{ checked: termsAccepted }}
+          accessibilityLabel="I agree to all terms and conditions and to receive booking confirmations, reminders, account updates, and marketing from Mingla and the businesses I book with by email, push, and text."
           style={({ pressed }) => [
             styles.checkboxRow,
             pressed && styles.checkboxRowPressed,
@@ -572,17 +673,32 @@ export default function CheckoutBuyerScreen(): React.ReactElement {
           <View
             style={[
               styles.checkboxBox,
-              buyer.marketingOptIn && styles.checkboxBoxChecked,
+              termsAccepted && styles.checkboxBoxChecked,
+              consentHintVisible && !termsAccepted && styles.checkboxBoxFlash,
             ]}
           >
-            {buyer.marketingOptIn ? (
+            {termsAccepted ? (
               <Icon name="check" size={14} color={textTokens.primary} />
             ) : null}
           </View>
           <Text style={styles.checkboxLabel}>
-            Email me about this organiser&apos;s future events
+            {CONSENT_VISIBLE_LABEL_PREFIX}
+            <Text
+              style={styles.checkboxLinkUnderlined}
+              onPress={() => setTermsSheetVisible(true)}
+              accessibilityRole="link"
+              accessibilityLabel="Open all terms and conditions"
+            >
+              {CONSENT_VISIBLE_LABEL_LINK}
+            </Text>
+            {CONSENT_VISIBLE_LABEL_SUFFIX}
           </Text>
         </Pressable>
+        {consentHintVisible && !termsAccepted ? (
+          <Text style={styles.consentRequiredHint}>
+            Please agree to continue.
+          </Text>
+        ) : null}
         {submitError !== null ? (
           <Text style={styles.errorText}>{submitError}</Text>
         ) : null}
@@ -602,18 +718,43 @@ export default function CheckoutBuyerScreen(): React.ReactElement {
             {totals.isFree ? "Free" : formatCurrency(totals.total, totals.currency)}
           </Text>
         </View>
-        <Button
-          label={continueLabel}
-          onPress={handleContinue}
-          variant="primary"
-          accentColor={ctaAccent}
-          size="lg"
-          fullWidth
-          loading={submitting}
-          disabled={!validation.isValid || submitting}
-        />
+        {/* META-ORCH-1161 Sub-A.2 (DEC-186) — the Pay button stays VISUALLY
+            greyed until fields are valid AND the consent box is checked, but a
+            tap on the greyed button is CAPTURED by this Pressable overlay and
+            surfaces the "Please agree to continue." helper + checkbox flash
+            (DESIGN §S3.4 — never a silent dead tap). When the button is
+            enabled, the inner Button claims the touch responder and its own
+            onPress fires; the outer onPress is a no-op while enabled. */}
+        <Pressable
+          onPress={continueDisabled ? showConsentHint : undefined}
+          accessibilityRole="button"
+          accessibilityLabel={continueLabel}
+          accessibilityElementsHidden={false}
+        >
+          <View pointerEvents={continueDisabled ? "none" : "auto"}>
+            <Button
+              label={continueLabel}
+              onPress={handleContinue}
+              variant="primary"
+              accentColor={ctaAccent}
+              size="lg"
+              fullWidth
+              loading={submitting}
+              disabled={continueDisabled}
+            />
+          </View>
+        </Pressable>
       </View>
 
+      {/* META-ORCH-1161 Sub-A.2 — the §2 T&C sheet (shared overlay). */}
+      <ConsentTermsSheet
+        visible={termsSheetVisible}
+        onClose={() => setTermsSheetVisible(false)}
+        onAgree={() => {
+          acceptTerms();
+          setTermsSheetVisible(false);
+        }}
+      />
     </View>
   );
 }
@@ -763,6 +904,24 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: textTokens.secondary,
     lineHeight: 20,
+  },
+  // META-ORCH-1161 Sub-A.2 — underlined "terms and conditions" link on the dark
+  // checkout canvas (warm-orange + underline = two non-color affordances).
+  checkboxLinkUnderlined: {
+    color: accent.warm,
+    fontWeight: "600",
+    textDecorationLine: "underline",
+  },
+  // Red flash on the box when the buyer taps a disabled Pay with the box
+  // unchecked (DESIGN §S3.4 — never a silent dead tap).
+  checkboxBoxFlash: {
+    borderColor: semantic.error,
+  },
+  consentRequiredHint: {
+    marginTop: 6,
+    fontSize: 12,
+    color: semantic.error,
+    fontWeight: "500",
   },
   // Sticky bottom bar
   bottomBar: {
