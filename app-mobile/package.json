@@ -74,6 +74,7 @@
     "test:orch-1125": "node ./scripts/ci/orch-1125-regression-check.mjs && node --experimental-strip-types --test app/__tests__/coldRouteQueryProvider.orch1125.test.ts",
     "test:orch-1149": "node ./scripts/ci/orch-1149-inapp-browser-bottom-anchored.mjs",
     "test:orch-1148": "node ./scripts/ci/orch-1148-reserve-sheet-mount-on-open-check.mjs",
+    "test:orch-1161": "node ./scripts/ci/orch-1161-notif-prefs-matrix-check.mjs",
     "test:orch-1163-one-shared-body": "node ./scripts/ci/orch-1163-rsvp-one-shared-body-check.mjs",
     "test:orch-1163-shell-agnostic": "node ./scripts/ci/orch-1163-rsvp-shell-agnostic-check.mjs",
     "test:orch-1163-one-read-path": "node ./scripts/ci/orch-1163-rsvp-one-read-path-check.mjs",

@@ -137,6 +137,7 @@ import {
   ShoppingCart,
   Shuffle,
   SlidersHorizontal,
+  Smartphone,
   Sparkles,
   SquarePen,
   Star,
@@ -383,6 +384,7 @@ const ICON_MAP: Record<string, LucideIcon> = {
   'person-outline':             User,
   'person-remove':              UserMinus,
   'person-remove-outline':      UserMinus,
+  'phone-portrait':             Smartphone, // META-ORCH-1161: push-channel glyph in the notif prefs matrix
   'play':                       Play,
   'play-circle':                CirclePlay,
   'pricetag':                   Tag,
