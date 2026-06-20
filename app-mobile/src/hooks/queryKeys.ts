@@ -20,6 +20,15 @@ export const savedCardKeys = {
   board: (sessionId: string) => [...savedCardKeys.all, 'board', sessionId] as const,
 };
 
+// META-ORCH-1161 Sub-A — consumer notification-preferences matrix.
+// One factory for the (categories + user channel prefs) read; the toggle
+// mutation invalidates via notificationPrefsKeys.matrix(userId).
+export const notificationPrefsKeys = {
+  all: ['notificationPrefs'] as const,
+  matrix: (userId: string) =>
+    [...notificationPrefsKeys.all, 'matrix', userId] as const,
+};
+
 export const chatKeys = {
   all: ['chat'] as const,
   participants: (conversationId: string | null) =>

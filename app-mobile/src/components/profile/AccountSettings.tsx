@@ -37,6 +37,13 @@ import { getCountryByCode } from "../../constants/countries";
 import { getCurrencyByCountryCode, getMeasurementSystem } from "../../services/countryCurrencyService";
 import { GENDER_OPTIONS, GENDER_DISPLAY_LABELS } from "../../types/onboarding";
 import { useTranslation } from 'react-i18next';
+// META-ORCH-1161 Sub-A — consumer notification-preferences matrix.
+import { useNotificationPrefs } from "../../hooks/useNotificationPrefs";
+import type {
+  ChannelCellState,
+  MatrixCategoryRow,
+  NotificationChannel,
+} from "./notificationPrefsMatrix";
 
 // Enable LayoutAnimation on Android
 if (Platform.OS === "android" && UIManager.setLayoutAnimationEnabledExperimental) {
@@ -158,6 +165,136 @@ export default function AccountSettings({ user, onSignOut, visible, onClose, not
   });
   const [dmBypassQuietHours, setDmBypassQuietHours] = useState(false);
   const [isLoadingNotifPrefs, setIsLoadingNotifPrefs] = useState(false);
+
+  // META-ORCH-1161 Sub-A — per-category × per-channel matrix (granular layer
+  // beneath the master push toggle). Reads notification_categories +
+  // notification_channel_prefs; toggling upserts a row. Master push_enabled
+  // (above) still gates everything; push chips dim when it's off.
+  const [prefSaveError, setPrefSaveError] = useState<string | null>(null);
+  const prefErrorTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const showPrefSaveError = useCallback((message: string) => {
+    setPrefSaveError(message);
+    if (prefErrorTimer.current) clearTimeout(prefErrorTimer.current);
+    prefErrorTimer.current = setTimeout(() => setPrefSaveError(null), 4000);
+  }, []);
+  useEffect(() => () => {
+    if (prefErrorTimer.current) clearTimeout(prefErrorTimer.current);
+  }, []);
+  const {
+    sections: prefSections,
+    isLoading: prefMatrixLoading,
+    toggleChannel,
+  } = useNotificationPrefs(user?.id, {
+    enabled: visible && !!user?.id,
+    onError: (message) => showPrefSaveError(message),
+  });
+  const pushMasterOn = notifPrefs.push_enabled ?? true;
+
+  // Channel glyphs (SVG via Icon set — never emoji). DESIGN §S1.2.
+  const CHANNEL_GLYPH: Record<NotificationChannel, string> = {
+    inapp: 'notifications',
+    push: 'phone-portrait',
+    email: 'mail',
+    sms: 'chatbubble',
+  };
+  const channelLabel = (c: NotificationChannel) =>
+    t(`settings:notifications.prefs.channel.${c}`);
+  const categoryLabel = (key: string) => {
+    const v = t(`settings:notifications.prefs.cat.${key}`);
+    // i18next returns the key path when missing → humanize the category_key.
+    return v.startsWith('settings:') || v === key
+      ? key.replace(/_/g, ' ').replace(/\b\w/g, (m) => m.toUpperCase())
+      : v;
+  };
+  const categoryHint = (key: string) => {
+    const hk = `settings:notifications.prefs.cat.${key}_hint`;
+    const v = t(hk);
+    return v.startsWith('settings:') || v === `${key}_hint` ? null : v;
+  };
+
+  const renderChannelChip = useCallback(
+    (catKey: string, cell: ChannelCellState) => {
+      // Push chip is dimmed + non-interactive when the app-wide push master is OFF
+      // (mirrors can_send: a global push-off suppresses push only, never email/SMS).
+      const pushDimmed = cell.channel === 'push' && !pushMasterOn;
+      const interactive = !cell.locked && !pushDimmed;
+      const innerStyle = cell.locked || pushDimmed
+        ? styles.prefChipLocked
+        : cell.enabled
+          ? styles.prefChipOn
+          : styles.prefChipOff;
+      const glyphColor = cell.locked || pushDimmed
+        ? '#d1d5db'
+        : cell.enabled
+          ? '#ffffff'
+          : '#6b7280';
+      const stateLabel = cell.enabled
+        ? t('settings:notifications.prefs.chip_state_on')
+        : t('settings:notifications.prefs.chip_state_off');
+      const lockedSuffix = cell.locked
+        ? t('settings:notifications.prefs.chip_locked_suffix')
+        : '';
+      return (
+        <TouchableOpacity
+          key={cell.channel}
+          style={styles.prefChip}
+          activeOpacity={interactive ? 0.7 : 1}
+          disabled={!interactive}
+          accessibilityRole="switch"
+          accessibilityState={{ checked: cell.enabled, disabled: !interactive }}
+          accessibilityLabel={t('settings:notifications.prefs.chip_a11y', {
+            channel: channelLabel(cell.channel),
+            category: categoryLabel(catKey),
+            state: stateLabel,
+            lockedSuffix,
+          })}
+          onPress={() => {
+            if (!interactive) return;
+            toggleChannel({
+              categoryKey: catKey,
+              channel: cell.channel,
+              nextEnabled: !cell.enabled,
+              locked: cell.locked,
+            });
+          }}
+        >
+          <View style={[styles.prefChipInner, innerStyle]}>
+            <Icon name={CHANNEL_GLYPH[cell.channel] as any} size={16} color={glyphColor} />
+          </View>
+        </TouchableOpacity>
+      );
+    },
+    [pushMasterOn, toggleChannel, t],
+  );
+
+  const renderCategoryRow = useCallback(
+    (row: MatrixCategoryRow) => {
+      const hint = categoryHint(row.key);
+      return (
+        <View key={row.key}>
+          <View style={styles.rowDivider} />
+          <View style={styles.prefCategoryRow}>
+            <View style={styles.rowLabelWrap}>
+              <Text style={styles.rowLabel}>{categoryLabel(row.key)}</Text>
+              {hint ? <Text style={styles.rowHint}>{hint}</Text> : null}
+              {row.hasLockedChannel ? (
+                <View style={styles.prefLockHint}>
+                  <Icon name="lock-closed" size={11} color="#9ca3af" />
+                  <Text style={styles.prefLockText}>
+                    {t('settings:notifications.prefs.locked')}
+                  </Text>
+                </View>
+              ) : null}
+            </View>
+            <View style={styles.prefChannelCluster}>
+              {row.channels.map((cell) => renderChannelChip(row.key, cell))}
+            </View>
+          </View>
+        </View>
+      );
+    },
+    [renderChannelChip, t],
+  );
 
   // Fetch notification preferences on mount
   useEffect(() => {
@@ -710,70 +847,63 @@ export default function AccountSettings({ user, onSignOut, visible, onClose, not
                 />
               </View>
 
-              {/* Sub-toggles — only shown when master is enabled */}
-              {notifPrefs.push_enabled && (
-                <>
-                  <View style={styles.rowDivider} />
-                  <View style={[styles.row, styles.rowMultiline]}>
-                    <View style={styles.rowLabelWrap}>
-                      <Text style={styles.rowLabel}>{t('settings:notifications.friends_pairing')}</Text>
-                      <Text style={styles.rowHint}>{t('settings:notifications.friends_pairing_hint')}</Text>
-                    </View>
-                    <Toggle
-                      value={notifPrefs.friend_requests ?? true}
-                      onToggle={() => updateNotifPref('friend_requests', !notifPrefs.friend_requests)}
-                    />
-                  </View>
+              {/* Master-off helper: push chips below are dimmed; email/SMS stay live. */}
+              {!pushMasterOn ? (
+                <Text style={styles.rowHelper}>
+                  {t('settings:notifications.prefs.push_master_off')}
+                </Text>
+              ) : null}
 
-                  <View style={styles.rowDivider} />
-                  <View style={[styles.row, styles.rowMultiline]}>
-                    <View style={styles.rowLabelWrap}>
-                      <Text style={styles.rowLabel}>{t('settings:notifications.link_requests')}</Text>
-                      <Text style={styles.rowHint}>{t('settings:notifications.link_requests_hint')}</Text>
+              {/* META-ORCH-1161 Sub-A — per-category × per-channel matrix.
+                  Sections grouped from the live notification_categories seed;
+                  only each category's supported channels render as chips (SMS
+                  chip appears ONLY for sms-eligible categories). */}
+              {prefMatrixLoading ? (
+                <View style={styles.prefSkeletonWrap}>
+                  {[0, 1, 2].map((i) => (
+                    <View key={i} style={styles.prefSkeletonRow}>
+                      <View style={styles.prefSkeletonLabel} />
+                      <View style={styles.prefChannelCluster}>
+                        {[0, 1, 2].map((j) => (
+                          <View key={j} style={styles.prefSkeletonChip} />
+                        ))}
+                      </View>
                     </View>
-                    <Toggle
-                      value={notifPrefs.link_requests ?? true}
-                      onToggle={() => updateNotifPref('link_requests', !notifPrefs.link_requests)}
-                    />
-                  </View>
-
-                  <View style={styles.rowDivider} />
-                  <View style={[styles.row, styles.rowMultiline]}>
-                    <View style={styles.rowLabelWrap}>
-                      <Text style={styles.rowLabel}>{t('settings:notifications.messages')}</Text>
-                      <Text style={styles.rowHint}>{t('settings:notifications.messages_hint')}</Text>
+                  ))}
+                </View>
+              ) : (
+                prefSections.map((sec) => (
+                  <View key={sec.section}>
+                    <View style={styles.prefSectionHeader}>
+                      <Text
+                        style={styles.prefSectionHeaderText}
+                        accessibilityRole="header"
+                      >
+                        {t(`settings:notifications.prefs.section.${sec.section}`, {
+                          defaultValue: sec.section,
+                        })}
+                      </Text>
                     </View>
-                    <Toggle
-                      value={notifPrefs.messages ?? true}
-                      onToggle={() => updateNotifPref('messages', !notifPrefs.messages)}
-                    />
+                    {sec.rows.map((row) => renderCategoryRow(row))}
+                    <View style={styles.prefSectionGap} />
                   </View>
-
-                  <View style={styles.rowDivider} />
-                  <View style={[styles.row, styles.rowMultiline]}>
-                    <View style={styles.rowLabelWrap}>
-                      <Text style={styles.rowLabel}>{t('settings:notifications.sessions')}</Text>
-                      <Text style={styles.rowHint}>{t('settings:notifications.sessions_hint')}</Text>
-                    </View>
-                    <Toggle
-                      value={notifPrefs.collaboration_invites ?? true}
-                      onToggle={() => updateNotifPref('collaboration_invites', !notifPrefs.collaboration_invites)}
-                    />
-                  </View>
-
-                  <View style={styles.rowDivider} />
-                  <View style={[styles.row, styles.rowMultiline]}>
-                    <View style={styles.rowLabelWrap}>
-                      <Text style={styles.rowLabel}>{t('settings:notifications.tips_reengagement')}</Text>
-                      <Text style={styles.rowHint}>{t('settings:notifications.tips_hint')}</Text>
-                    </View>
-                    <Toggle
-                      value={notifPrefs.marketing ?? true}
-                      onToggle={() => updateNotifPref('marketing', !notifPrefs.marketing)}
-                    />
-                  </View>
-                </>
+                ))
               )}
+
+              {/* Save-error bar (revert already happened in the hook). Tap to dismiss. */}
+              {prefSaveError ? (
+                <TouchableOpacity
+                  style={styles.prefSaveErrorBar}
+                  activeOpacity={0.8}
+                  accessibilityRole="alert"
+                  onPress={() => setPrefSaveError(null)}
+                >
+                  <Icon name="alert-circle" size={16} color="#dc2626" />
+                  <Text style={styles.prefSaveErrorText}>
+                    {t('settings:notifications.prefs.save_error')}
+                  </Text>
+                </TouchableOpacity>
+              ) : null}
             </AccordionCard>
 
             {/* Section 4: Quiet Hours (accordion) */}
@@ -1272,6 +1402,74 @@ const styles = StyleSheet.create({
   rowValueMuted: { fontSize: 14, fontWeight: "500", color: "#6b7280" },
   rowPlaceholder: { color: "#9ca3af", fontStyle: "italic" },
   rowHelper: { fontSize: 12, color: "#9ca3af", marginLeft: 16, marginTop: -4, marginBottom: 8 },
+  // META-ORCH-1161 Sub-A — notification-prefs matrix (DESIGN §S1.2). Opaque
+  // fills only (no glass) → ANDROID_GLASS_USES_OPAQUE_FALLBACK not triggered.
+  prefSectionHeader: { paddingHorizontal: 16, paddingTop: 16, paddingBottom: 6 },
+  prefSectionHeaderText: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: "#9ca3af",
+    letterSpacing: 0.6,
+    textTransform: "uppercase",
+  },
+  prefSectionGap: { height: 8 },
+  prefCategoryRow: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    minHeight: 56,
+  },
+  prefChannelCluster: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    flexShrink: 0,
+    marginLeft: 12,
+    paddingTop: 2,
+  },
+  prefLockHint: { flexDirection: "row", alignItems: "center", gap: 4, marginTop: 4 },
+  prefLockText: { fontSize: 11, color: "#9ca3af", fontWeight: "500" },
+  prefChip: { width: 44, height: 44, alignItems: "center", justifyContent: "center" },
+  prefChipInner: {
+    width: 28,
+    height: 28,
+    borderRadius: 8,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  prefChipOn: { backgroundColor: "#eb7825" },
+  prefChipOff: { backgroundColor: "#f3f4f6" },
+  prefChipLocked: { backgroundColor: "#f9fafb" },
+  prefSkeletonWrap: { paddingHorizontal: 16, paddingTop: 12, paddingBottom: 4 },
+  prefSkeletonRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingVertical: 12,
+  },
+  prefSkeletonLabel: {
+    width: 160,
+    height: 14,
+    borderRadius: 7,
+    backgroundColor: "#f3f4f6",
+    opacity: 0.6,
+  },
+  prefSkeletonChip: { width: 28, height: 28, borderRadius: 8, backgroundColor: "#f3f4f6", opacity: 0.6 },
+  prefSaveErrorBar: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    marginHorizontal: 16,
+    marginVertical: 8,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    backgroundColor: "#fef2f2",
+    borderWidth: 1,
+    borderColor: "#fecaca",
+    borderRadius: 12,
+  },
+  prefSaveErrorText: { fontSize: 13, lineHeight: 18, color: "#dc2626", flex: 1 },
   // Delete button
   deleteButton: {
     flexDirection: "row",
