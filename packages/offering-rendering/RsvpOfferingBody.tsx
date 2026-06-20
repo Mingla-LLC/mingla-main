@@ -74,6 +74,7 @@ import { normalizeCityCountry } from "./normalizeCityCountry";
 import { RsvpMomentumDecision } from "./RsvpMomentumDecision";
 import { RsvpGoingConfirmDialog } from "./RsvpGoingConfirmDialog";
 import { RsvpSuccessPopup, type RsvpConfirmationDetails } from "./RsvpSuccessPopup";
+import { RsvpDetailsModal } from "./RsvpDetailsModal";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const PHONE_RE = /^\+?[0-9\s()-]{7,20}$/;
@@ -166,6 +167,14 @@ interface RsvpDecisionState {
   onGoingTap: () => void;
   onMaybe: () => void;
   onNotGoing: () => void;
+  // ORCH-1163-R3 — floating-bar entry handlers. Distinct from the inline handlers:
+  // when contact details are NOT yet ready, these open the self-sufficient details
+  // modal (asking name/email/phone + per-guest +1 forms) instead of surfacing a
+  // dead error, then dispatch the pending decision on Continue. When details ARE
+  // ready, they fall straight through to the inline behavior (confirm/submit).
+  onFloatingGoing: () => void;
+  onFloatingMaybe: () => void;
+  onFloatingNotGoing: () => void;
 }
 
 export interface RsvpOfferingState extends RsvpDecisionState {
@@ -173,6 +182,9 @@ export interface RsvpOfferingState extends RsvpDecisionState {
   guestForms: React.ReactNode;
   confirmDialog: React.ReactNode;
   successPopup: React.ReactNode;
+  // ORCH-1163-R3 — the floating-bar details modal (portal <Modal>, gorhom-safe).
+  // Rendered ONCE in RsvpOfferingBody next to confirmDialog/successPopup.
+  detailsModal: React.ReactNode;
 }
 
 /**
@@ -208,6 +220,16 @@ export const useRsvpOfferingState = (
   const [successDetails, setSuccessDetails] = useState<RsvpConfirmationDetails | null>(
     null,
   );
+
+  // ORCH-1163-R3 — floating-bar details modal. The floating bar has no form host,
+  // so when a guest taps a floating decision with no contact details, we open this
+  // modal (which re-hosts the SAME contactForm/guestForms nodes — shared state, so
+  // values sync with the inline §5 box), then dispatch the pending decision on
+  // Continue. `pendingDecision` is the decision awaiting its details.
+  const [detailsOpen, setDetailsOpen] = useState(false);
+  const [pendingDecision, setPendingDecision] = useState<
+    "going" | "maybe" | "not_going" | null
+  >(null);
 
   const capacityFull =
     config.capacity !== null && config.goingCount >= config.capacity;
@@ -326,6 +348,69 @@ export const useRsvpOfferingState = (
     setConfirmError(null);
     setConfirmOpen(true);
   }, [submitting, contactReady]);
+
+  // ── ORCH-1163-R3 — floating-bar entry handlers ──
+  // The floating bar forces contactReady=true on its DecisionUnit so the buttons
+  // are never disabled into a dead end; readiness is enforced HERE instead. If the
+  // guest already has details (inline box / a prior modal), fall straight through
+  // to the inline behavior; otherwise open the self-sufficient details modal with
+  // the decision pinned, to dispatch once the contact + +1 forms are filled.
+  const onFloatingGoing = useCallback((): void => {
+    if (submitting) return;
+    if (contactReady) {
+      onGoingTap();
+      return;
+    }
+    setErrorMsg(null);
+    setPendingDecision("going");
+    setDetailsOpen(true);
+  }, [submitting, contactReady, onGoingTap]);
+
+  const onFloatingMaybe = useCallback((): void => {
+    if (submitting) return;
+    if (contactReady) {
+      void submitDirect("maybe");
+      return;
+    }
+    setErrorMsg(null);
+    setPendingDecision("maybe");
+    setDetailsOpen(true);
+  }, [submitting, contactReady, submitDirect]);
+
+  const onFloatingNotGoing = useCallback((): void => {
+    if (submitting) return;
+    // Can't-go needs no +1s and no contact gate for a logged-in guest. Anon guests
+    // still need a reachable identity so the host can attribute the decline.
+    if (isLoggedIn || contactReady) {
+      void submitDirect("not_going");
+      return;
+    }
+    setErrorMsg(null);
+    setPendingDecision("not_going");
+    setDetailsOpen(true);
+  }, [submitting, isLoggedIn, contactReady, submitDirect]);
+
+  // Continue inside the details modal — dispatch the pinned decision. Disabled in
+  // the UI until contactReady, so values are valid here.
+  const closeDetails = useCallback((): void => {
+    setDetailsOpen(false);
+    setPendingDecision(null);
+  }, []);
+  const onDetailsContinue = useCallback((): void => {
+    if (!contactReady) return;
+    const decision = pendingDecision;
+    setDetailsOpen(false);
+    setPendingDecision(null);
+    if (decision === "going") {
+      setErrorMsg(null);
+      setConfirmError(null);
+      setConfirmOpen(true);
+    } else if (decision === "maybe") {
+      void submitDirect("maybe");
+    } else if (decision === "not_going") {
+      void submitDirect("not_going");
+    }
+  }, [contactReady, pendingDecision, submitDirect]);
 
   const onConfirmGoing = useCallback(async (): Promise<void> => {
     if (submitting) return;
@@ -585,6 +670,33 @@ export const useRsvpOfferingState = (
     />
   );
 
+  // ── ORCH-1163-R3 — floating-bar details modal (extracted to RsvpDetailsModal,
+  // a portal <Modal> mirroring RsvpGoingConfirmDialog so the BODY file hosts NO
+  // scroll root — shell-agnostic invariant §A.2). Re-hosts the SAME contactForm /
+  // guestForms nodes (shared state → values sync with the inline §5 box). The +1
+  // forms are omitted for Can't-go. Continue is disabled until contactReady. ──
+  const detailsContinueLabel =
+    pendingDecision === "maybe"
+      ? "Save as Maybe"
+      : pendingDecision === "not_going"
+        ? "Mark Can't go"
+        : "Continue";
+  const detailsModal = (
+    <RsvpDetailsModal
+      visible={detailsOpen}
+      palette={palette}
+      theme={theme}
+      contactForm={contactForm}
+      guestForms={pendingDecision !== "not_going" ? guestForms : null}
+      errorNode={errorNode}
+      continueLabel={detailsContinueLabel}
+      continueEnabled={contactReady}
+      submitting={submitting}
+      onContinue={onDetailsContinue}
+      onCancel={closeDetails}
+    />
+  );
+
   return {
     surface,
     boldFamily,
@@ -599,10 +711,14 @@ export const useRsvpOfferingState = (
     onGoingTap,
     onMaybe: () => void submitDirect("maybe"),
     onNotGoing: () => void submitDirect("not_going"),
+    onFloatingGoing,
+    onFloatingMaybe,
+    onFloatingNotGoing,
     contactForm,
     guestForms,
     confirmDialog,
     successPopup,
+    detailsModal,
   };
 };
 
@@ -616,8 +732,35 @@ const DecisionUnit: React.FC<{
   config: RsvpOfferingConfig;
   state: RsvpDecisionState;
   showMomentum: boolean;
+  /**
+   * ORCH-1163-R3 — the floating bar forces this true so Going/Maybe paint ENABLED
+   * (readiness is enforced by the floating handlers, which open the details modal).
+   * The inline box omits it and uses the real `state.contactReady`. The resolved-
+   * state disabling (going/pending/waitlisted/maybe) is independent of this — it
+   * depends on guestStatus and stays intact.
+   */
+  contactReadyOverride?: boolean;
+  /**
+   * ORCH-1163-R3 — explicit handler overrides. The floating bar wires the
+   * onFloating* entry handlers; the inline box omits these (defaults to the inline
+   * onGoingTap/onMaybe/onNotGoing).
+   */
+  onGoing?: () => void;
+  onMaybe?: () => void;
+  onNotGoing?: () => void;
   testID?: string;
-}> = ({ palette, theme, config, state, showMomentum, testID }) => {
+}> = ({
+  palette,
+  theme,
+  config,
+  state,
+  showMomentum,
+  contactReadyOverride,
+  onGoing,
+  onMaybe,
+  onNotGoing,
+  testID,
+}) => {
   return (
     <RsvpMomentumDecision
       palette={palette}
@@ -637,10 +780,10 @@ const DecisionUnit: React.FC<{
       hideStepper
       waitlistEnabled={config.waitlistEnabled}
       submitting={state.submitting}
-      contactReady={state.contactReady}
-      onGoing={state.onGoingTap}
-      onMaybe={state.onMaybe}
-      onNotGoing={state.onNotGoing}
+      contactReady={contactReadyOverride ?? state.contactReady}
+      onGoing={onGoing ?? state.onGoingTap}
+      onMaybe={onMaybe ?? state.onMaybe}
+      onNotGoing={onNotGoing ?? state.onNotGoing}
       variant="floating-dock"
       showMomentum={showMomentum}
       micro={state.subcopy ?? undefined}
@@ -718,12 +861,20 @@ export const RsvpOfferingFloatingBar: React.FC<RsvpOfferingFloatingBarProps> = (
   state,
   testID,
 }) => (
+  // ORCH-1163-R3 — the floating bar is SELF-SUFFICIENT: force contactReady so
+  // Going/Maybe are never disabled into a dead end, and route through the floating
+  // entry handlers (which open the details modal when contact info is missing).
+  // The inline RsvpDecisionBox is untouched (real contactReady + inline handlers).
   <DecisionUnit
     palette={palette}
     theme={theme}
     config={config}
     state={state}
     showMomentum={false}
+    contactReadyOverride
+    onGoing={state.onFloatingGoing}
+    onMaybe={state.onFloatingMaybe}
+    onNotGoing={state.onFloatingNotGoing}
     testID={testID ?? "orch-1157-rsvp-floating-dock"}
   />
 );
@@ -810,10 +961,13 @@ export const RsvpOfferingBody: React.FC<
 
   return (
     <View testID={testID}>
-      {/* FLOW A modals — both <Modal> (portal to root), gorhom-safe regardless of
-          where in the tree they mount. The surface need not re-pin them. */}
+      {/* FLOW A modals — all <Modal> (portal to root), gorhom-safe regardless of
+          where in the tree they mount. The surface need not re-pin them.
+          ORCH-1163-R3 — detailsModal hosts the floating-bar's self-sufficient
+          name/email/phone + +1 forms (same shared state as the inline §5 box). */}
       {state.confirmDialog}
       {state.successPopup}
+      {state.detailsModal}
 
       {/* (2) Event name lead block. */}
       <View style={styles.leadBlock}>

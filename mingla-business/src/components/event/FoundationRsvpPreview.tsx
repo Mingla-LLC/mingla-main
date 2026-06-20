@@ -17,7 +17,7 @@
  * doors + SEO. Android: opaque glass via the shared primitives.
  */
 
-import React from "react";
+import React, { useCallback, useState } from "react";
 import {
   Platform,
   StyleSheet,
@@ -98,14 +98,26 @@ export const FoundationRsvpPreview: React.FC<FoundationRsvpPreviewProps> = (prop
     safeAreaBottom = 0,
     testID,
   } = props;
-  // ORCH-1163-R2 — the floating bar now uses the event-style fixed bottom offset
-  // (floatWrap bottom:24) + the surface's contentBottomInset (FLOATING_BAR_CLEARANCE
-  // + insets.bottom) for runway; `safeAreaBottom` is retained on the props contract
-  // for call-site parity but no longer drives a bespoke dock-panel inset.
-  void safeAreaBottom;
-
   const { isDesktop } = useResponsiveLayout();
   const boldFamily = boldFontFamily(theme);
+
+  // ORCH-1163-R3 — the RSVP floating bar is TALLER + variable (3 glyph+label
+  // buttons + a wrapping micro subcopy) vs the event page's ~56px single button, so
+  // a fixed clearance under-reserves and the last section scrolls UNDER the bar.
+  // MEASURE the floatWrap height and make the shell's bottom inset the MAX of the
+  // adapter's value (a floor) and `measured + floatWrap-bottom(24) + gap(16) +
+  // safeAreaBottom`. The adapter value remains a floor for the first paint (before
+  // onLayout fires) and for desktop (0).
+  const [floatBarHeight, setFloatBarHeight] = useState(0);
+  const onFloatWrapLayout = useCallback((e: LayoutChangeEvent): void => {
+    const h = e.nativeEvent.layout.height;
+    setFloatBarHeight((prev) => (Math.abs(prev - h) > 1 ? h : prev));
+  }, []);
+  const measuredBottomInset =
+    floatBarHeight > 0 ? floatBarHeight + 24 + 16 + safeAreaBottom : 0;
+  const resolvedBottomInset = isDesktop
+    ? contentBottomInset
+    : Math.max(contentBottomInset, measuredBottomInset);
 
   // Lift the ONE decision/submit/dialog state machine; share it with body + dock.
   const state = useRsvpOfferingState({
@@ -176,7 +188,7 @@ export const FoundationRsvpPreview: React.FC<FoundationRsvpPreviewProps> = (prop
           </Text>
         }
         stickyPanel={stickyPanel}
-        contentBottomInset={contentBottomInset}
+        contentBottomInset={resolvedBottomInset}
         safeAreaTop={safeAreaTop}
         onScroll={onScroll}
         onScrollViewLayout={onScrollViewLayout}
@@ -208,7 +220,11 @@ export const FoundationRsvpPreview: React.FC<FoundationRsvpPreviewProps> = (prop
           but ABOVE the scrolling body's content stacking context on BOTH surfaces.
           Hidden on desktop (the sticky panel carries the decision). */}
       {!isDesktop ? (
-        <View style={styles.floatWrap} pointerEvents="box-none">
+        <View
+          style={styles.floatWrap}
+          pointerEvents="box-none"
+          onLayout={onFloatWrapLayout}
+        >
           <RsvpOfferingFloatingBar
             palette={palette}
             theme={theme}

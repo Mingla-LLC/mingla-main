@@ -631,12 +631,13 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
           onOpenMaps={openMapsForQuery}
           staticMapUrl={staticMapUrl}
           onSubmit={rsvpSubmit}
-          // ORCH-1163-R2 [floating-parity] — scroll-runway is now BYTE-IDENTICAL to
-          // the standard event page: FLOATING_BAR_CLEARANCE + insets.bottom on phone
-          // (so the last section clears the pinned floating decision bar, exactly as
-          // the event page clears its Get-tickets bar), 0 on desktop (the sticky
-          // panel + shell desktop padding own clearance). Replaces the bespoke
-          // `insets.bottom + spacing.xxl` runway.
+          // ORCH-1163-R3 — this FLOATING_BAR_CLEARANCE + insets.bottom expression is
+          // the scroll-runway FLOOR (byte-identical to the event page). The RSVP bar
+          // is TALLER + variable than the event Get-tickets bar, so FoundationRsvpPreview
+          // onLayout-MEASURES the real bar height and takes the MAX of this floor and
+          // `measured + 24 + 16 + safeAreaBottom` — that measured override does the
+          // real clearance work so the last section always clears the bar even when
+          // the micro subcopy wraps. 0 on desktop (sticky panel owns clearance).
           contentBottomInset={isDesktop ? 0 : FLOATING_BAR_CLEARANCE + insets.bottom}
           onScroll={handleScroll}
           onScrollViewLayout={handleScrollLayout}

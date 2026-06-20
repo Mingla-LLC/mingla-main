@@ -103,6 +103,10 @@ export type {
 } from "./RsvpOfferingBody";
 export { RsvpGoingConfirmDialog } from "./RsvpGoingConfirmDialog";
 export type { RsvpGoingConfirmDialogProps } from "./RsvpGoingConfirmDialog";
+// ORCH-1163-R3 — the floating-bar "Add your details" modal (self-sufficient
+// contact + +1 forms; one decision owner, two entry points).
+export { RsvpDetailsModal } from "./RsvpDetailsModal";
+export type { RsvpDetailsModalProps } from "./RsvpDetailsModal";
 export { RsvpSuccessPopup } from "./RsvpSuccessPopup";
 export type {
   RsvpSuccessPopupProps,
