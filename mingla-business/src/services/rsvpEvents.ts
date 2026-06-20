@@ -16,7 +16,11 @@ import {
   type PublishedBusinessEvent,
   type PublishRpcResponse,
 } from "./businessEvents";
-import { draftToServerUpdate, publishedVisibilityForDraft } from "../utils/serverDraftEventMapper";
+import {
+  draftToServerUpdate,
+  publishedVisibilityForDraft,
+  type RsvpUpdatePayload,
+} from "../utils/serverDraftEventMapper";
 import { logAppsFlyerEvent } from "./appsFlyerService";
 import type { DraftEvent } from "../store/draftEventStore";
 
@@ -63,7 +67,10 @@ export interface UpdateLiveRsvpResult {
 
 export const updateLiveRsvp = async (
   eventId: string,
-  payload: Record<string, unknown>,
+  // ORCH-1172 — the publish-style payload built by buildRsvpUpdatePayload (was
+  // a raw camelCase patch that the RPC rejected with rsvp_title_required —
+  // BUG-A). The typed contract keeps create + edit on one payload shape.
+  payload: RsvpUpdatePayload,
   reason: string,
 ): Promise<UpdateLiveRsvpResult> => {
   const { data, error } = await supabase.rpc("biz_update_live_rsvp", {

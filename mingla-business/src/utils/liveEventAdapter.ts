@@ -162,6 +162,14 @@ export const FIELD_LABELS: Record<keyof EditableLiveEventFields, string> = {
   locationGeo: "Map location",
   // ORCH-1006
   pricingSwitches: "Who covers costs",
+  // ORCH-1172 — RSVP host-control labels (surface in the ChangeSummaryModal
+  // + drive the rsvp-setup "Edited" indicator).
+  rsvpCapacity: "Guest limit",
+  rsvpAllowPlusOnes: "Allow extras",
+  rsvpPlusOnesMax: "Max extras per guest",
+  rsvpWaitlistEnabled: "Waitlist",
+  rsvpApprovalMode: "Approval mode",
+  rsvpDiscoverable: "Discoverable",
 };
 
 /**
@@ -215,6 +223,15 @@ export const SAFE_KEYS: ReadonlyArray<keyof EditableLiveEventFields> = [
   "musicGenres",
   "city",
   "locationGeo",
+  // ORCH-1172 — RSVP host-controls are additive (RSVP is moneyless — no buyers
+  // to protect). They must NOT be in MATERIAL_KEYS (which would imply ticket-
+  // buyer SMS). The biz_update_live_rsvp RPC owns its own going-guest notify.
+  "rsvpCapacity",
+  "rsvpAllowPlusOnes",
+  "rsvpPlusOnesMax",
+  "rsvpWaitlistEnabled",
+  "rsvpApprovalMode",
+  "rsvpDiscoverable",
 ];
 
 /**
@@ -365,6 +382,35 @@ export const editableDraftToPatch = (
     !deepEqual(origSwitches, edited.pricingSwitches)
   ) {
     patch.pricingSwitches = edited.pricingSwitches;
+  }
+  // ORCH-1172 — diff the 6 core RSVP host-controls so capacity/plus-ones/
+  // waitlist/approval/discoverable changes reach biz_update_live_rsvp (BUG-B:
+  // these were never diffed, so every change was silently dropped). Originals
+  // are undefined on non-RSVP / legacy LiveEvents → coalesce to the create-
+  // wizard defaults (null capacity / false / 0 / "auto") so the diff is honest.
+  const origRsvpCapacity = original.rsvpCapacity ?? null;
+  if (origRsvpCapacity !== edited.rsvpCapacity) {
+    patch.rsvpCapacity = edited.rsvpCapacity;
+  }
+  const origRsvpAllowPlusOnes = original.rsvpAllowPlusOnes ?? false;
+  if (origRsvpAllowPlusOnes !== edited.rsvpAllowPlusOnes) {
+    patch.rsvpAllowPlusOnes = edited.rsvpAllowPlusOnes;
+  }
+  const origRsvpPlusOnesMax = original.rsvpPlusOnesMax ?? 0;
+  if (origRsvpPlusOnesMax !== edited.rsvpPlusOnesMax) {
+    patch.rsvpPlusOnesMax = edited.rsvpPlusOnesMax;
+  }
+  const origRsvpWaitlistEnabled = original.rsvpWaitlistEnabled ?? false;
+  if (origRsvpWaitlistEnabled !== edited.rsvpWaitlistEnabled) {
+    patch.rsvpWaitlistEnabled = edited.rsvpWaitlistEnabled;
+  }
+  const origRsvpApprovalMode = original.rsvpApprovalMode ?? "auto";
+  if (origRsvpApprovalMode !== edited.rsvpApprovalMode) {
+    patch.rsvpApprovalMode = edited.rsvpApprovalMode;
+  }
+  const origRsvpDiscoverable = original.rsvpDiscoverable ?? false;
+  if (origRsvpDiscoverable !== edited.rsvpDiscoverable) {
+    patch.rsvpDiscoverable = edited.rsvpDiscoverable;
   }
   return patch;
 };

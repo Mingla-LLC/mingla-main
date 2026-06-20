@@ -120,6 +120,8 @@ import {
   patchPublishedEventWhen,
 } from "../../services/businessEvents";
 import { updateLiveRsvp } from "../../services/rsvpEvents";
+import { buildRsvpUpdatePayload } from "../../utils/serverDraftEventMapper";
+import { RsvpStep5Setup } from "../rsvp/RsvpStep5Setup";
 import { rsvpEditNoticeCopy } from "../../utils/rsvpHubMetrics";
 import { businessEventKeys } from "../../hooks/useBusinessEvents";
 import { publicEventKeys } from "../../hooks/usePublicEvents";
@@ -128,34 +130,24 @@ import {
   useEventReconciliation,
 } from "../../hooks/useEventOrders";
 import { ThemeEditorSection } from "../theme/ThemeEditorSection";
+// ORCH-1172 — the section model lives in a pure sibling module so the
+// ticketed-vs-RSVP section-list logic is unit-testable without importing this
+// react-native component. Re-exported below for back-compat.
+import {
+  SECTIONS,
+  sectionsForMode,
+  type SectionConfig,
+  type SectionKey,
+} from "./editPublishedSections";
 
 // ---- Section configuration -----------------------------------------
 
-type SectionKey =
-  | "basics"
-  | "when"
-  | "where"
-  | "cover"
-  | "visual"
-  | "tickets"
-  | "settings";
-
-interface SectionConfig {
-  key: SectionKey;
-  label: string;
-  /** Step index for `validateStep(N, draft)`. */
-  stepIndex: number | null;
-}
-
-const SECTIONS: readonly SectionConfig[] = [
-  { key: "basics", label: "Basics", stepIndex: 0 },
-  { key: "when", label: "When", stepIndex: 1 },
-  { key: "where", label: "Where", stepIndex: 2 },
-  { key: "cover", label: "Cover", stepIndex: 3 },
-  { key: "visual", label: "Visual", stepIndex: null },
-  { key: "tickets", label: "Tickets", stepIndex: 4 },
-  { key: "settings", label: "Settings", stepIndex: 5 },
-];
+export {
+  SECTIONS,
+  RSVP_SECTIONS,
+  sectionsForMode,
+} from "./editPublishedSections";
+export type { SectionConfig, SectionKey } from "./editPublishedSections";
 
 const SAVE_PROCESSING_MS = 800;
 const TOAST_NAV_DELAY_MS = 600;
@@ -382,10 +374,13 @@ export const EditPublishedScreen: React.FC<EditPublishedScreenProps> = ({
     [],
   );
 
-  // ORCH-1150 — an RSVP edit drops the Tickets section entirely (RSVP has zero
-  // tickets + no money). Every SECTIONS iteration below uses this filtered list.
+  // ORCH-1172 — RSVP edit uses the dedicated RSVP section list (Tickets +
+  // generic Settings dropped; the RsvpStep5Setup card added after Cover, which
+  // owns visibility/discoverable/privacy). Ticketed edit is byte-identical.
+  // Supersedes the ORCH-1150 tickets-only filter, which left the mislabeled
+  // ticketed Settings card in place and exposed only 3 of 9 RSVP controls.
   const sections = useMemo<readonly SectionConfig[]>(
-    () => (rsvpMode ? SECTIONS.filter((s) => s.key !== "tickets") : SECTIONS),
+    () => sectionsForMode(rsvpMode),
     [rsvpMode],
   );
 
@@ -399,6 +394,9 @@ export const EditPublishedScreen: React.FC<EditPublishedScreenProps> = ({
       visual: [],
       tickets: [],
       settings: [],
+      // ORCH-1172 — RSVP host-control section. stepIndex null → never validated
+      // by the ticketed validateStep (validateRsvpStep(4) returns []).
+      "rsvp-setup": [],
     };
     for (const sec of sections) {
       out[sec.key] =
@@ -430,7 +428,10 @@ export const EditPublishedScreen: React.FC<EditPublishedScreenProps> = ({
   // patches; the new name reflects the broadened set.
   const canSaveServerCoverMediaOnly =
     disableLocalSaveReason !== undefined &&
-    isServerEditableOnlyPatch(currentPatch);
+    // ORCH-1172 — an RSVP edit has its OWN complete server write path
+    // (biz_update_live_rsvp), so the ticketed Zustand-only disable gate must
+    // not apply: every RSVP change is server-routable regardless of patch keys.
+    (rsvpMode || isServerEditableOnlyPatch(currentPatch));
 
   // ---- Save flow ----
   const handleSavePress = useCallback((): void => {
@@ -462,6 +463,9 @@ export const EditPublishedScreen: React.FC<EditPublishedScreenProps> = ({
     }
     if (
       disableLocalSaveReason !== undefined &&
+      // ORCH-1172 — RSVP edits route through biz_update_live_rsvp (a full server
+      // write), so they bypass the ticketed Zustand-only disable gate entirely.
+      !rsvpMode &&
       !isServerEditableOnlyPatch(patch)
     ) {
       // ORCH-0824 hotfix: only block when the patch contains a field
@@ -494,6 +498,8 @@ export const EditPublishedScreen: React.FC<EditPublishedScreenProps> = ({
     editState,
     fieldDiffs,
     liveEvent.tickets,
+    rsvpMode,
+    sections,
     sectionErrors,
     showToast,
   ]);
@@ -763,7 +769,19 @@ export const EditPublishedScreen: React.FC<EditPublishedScreenProps> = ({
           return;
         }
         try {
-          await updateLiveRsvp(liveEvent.serverEventId, patch, reason);
+          // ORCH-1172 — send the publish-style payload (title + when +
+          // requestedVisibility + snake_case location/cover + the 6 camelCase
+          // rsvp* host-controls), NOT the raw camelCase patch. The patch never
+          // carried `title`, so the RPC raised rsvp_title_required on EVERY save
+          // (BUG-A) and the host-controls were never diffed into it (BUG-B) — so
+          // nothing persisted. buildRsvpUpdatePayload reads the full editState so
+          // `title` is always present + every control is emitted (idempotent:
+          // the RPC defaults absent keys to the existing column).
+          await updateLiveRsvp(
+            liveEvent.serverEventId,
+            buildRsvpUpdatePayload(editState),
+            reason,
+          );
         } catch (error) {
           setSubmitting(false);
           setModal((prev) => ({ ...prev, visible: false }));
@@ -776,6 +794,14 @@ export const EditPublishedScreen: React.FC<EditPublishedScreenProps> = ({
           showToast(message);
           return;
         }
+        // ORCH-1172 — the RPC is the source of truth for an RSVP edit; it has
+        // already committed. Best-effort refresh the local Zustand mirror so a
+        // cached list stays fresh — but a server-loaded RSVP (the common case,
+        // where disableLocalSaveReason is set) has NO local row, so
+        // updateLiveEventFields returns ok:false (event_not_found). That must
+        // NOT surface as a save failure: the cache invalidation below refetches
+        // the freshly-written row. Only the local-store-backed path treats a
+        // mirror failure as a real failure.
         const rsvpResult = updateLiveEventFields(
           liveEvent.id,
           patch,
@@ -785,7 +811,8 @@ export const EditPublishedScreen: React.FC<EditPublishedScreenProps> = ({
         setSubmitting(false);
         setModal((prev) => ({ ...prev, visible: false }));
         invalidateServerEventCaches();
-        if (rsvpResult.ok) {
+        const localMirrorRequired = disableLocalSaveReason === undefined;
+        if (rsvpResult.ok || !localMirrorRequired) {
           showToast("Saved. Going guests will be notified.");
           setTimeout(() => router.back(), TOAST_NAV_DELAY_MS);
         } else {
@@ -1184,6 +1211,9 @@ export const EditPublishedScreen: React.FC<EditPublishedScreenProps> = ({
       submitting,
       liveEvent,
       currentPatch,
+      // ORCH-1172 — the RSVP save reads the full editState to build the
+      // publish-style payload (buildRsvpUpdatePayload).
+      editState,
       soldCountCtx,
       updateLiveEventFields,
       router,
@@ -1251,6 +1281,12 @@ export const EditPublishedScreen: React.FC<EditPublishedScreenProps> = ({
           return <CreatorStep5Tickets {...stepBodyProps} />;
         case "settings":
           return <CreatorStep6Settings {...stepBodyProps} />;
+        case "rsvp-setup":
+          // ORCH-1172 — mount the SAME Step-5 host-control body the create RSVP
+          // wizard uses. Cross-field logic (capacity→waitlist, private→discover-
+          // off, plus-ones-max) runs identically in edit: it only calls
+          // updateDraft, which is the local editState setter here.
+          return <RsvpStep5Setup {...stepBodyProps} />;
         default: {
           const _exhaust: never = key;
           return _exhaust;
@@ -1314,7 +1350,20 @@ export const EditPublishedScreen: React.FC<EditPublishedScreenProps> = ({
             changedKeys.has("hideRemainingCount") ||
             changedKeys.has("passwordProtected") ||
             // Cycle 12 — in-person payments toggle is a Settings field.
-            changedKeys.has("inPersonPaymentsEnabled")))
+            changedKeys.has("inPersonPaymentsEnabled"))) ||
+        // ORCH-1172 — the RSVP card owns the 6 host-controls PLUS visibility,
+        // privateGuestList + hideRemainingCount (the create wizard co-locates
+        // them in Step-5; in RSVP edit there is no generic Settings card).
+        (sec.key === "rsvp-setup" &&
+          (changedKeys.has("rsvpCapacity") ||
+            changedKeys.has("rsvpAllowPlusOnes") ||
+            changedKeys.has("rsvpPlusOnesMax") ||
+            changedKeys.has("rsvpWaitlistEnabled") ||
+            changedKeys.has("rsvpApprovalMode") ||
+            changedKeys.has("rsvpDiscoverable") ||
+            changedKeys.has("visibility") ||
+            changedKeys.has("privateGuestList") ||
+            changedKeys.has("hideRemainingCount")))
       ) {
         out.add(sec.key);
       }

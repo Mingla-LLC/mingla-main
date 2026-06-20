@@ -371,6 +371,72 @@ const locationTextForDraft = (draft: DraftEvent): string | null => {
   return parts.length > 0 ? parts.join(" · ") : null;
 };
 
+/**
+ * ORCH-1172 — the `biz_update_live_rsvp` p_payload shape.
+ *
+ * The RPC reads `title` (REQUIRED — raises rsvp_title_required when blank),
+ * `requestedVisibility` (public|unlisted|private), the snake_case location /
+ * cover keys, a single-date `when{}` block, and the 6 camelCase rsvp host-
+ * control keys (defaulting absent keys to the existing column). This is the
+ * SAME publish-style shape `business_publish_rsvp_draft` consumes — the create
+ * publish path sends `title` + `requestedVisibility` + snake_case via
+ * draftToServerUpdate (see publishRsvpDraft). Keeping one builder here makes
+ * create + edit share a single source of truth for the payload contract.
+ */
+export interface RsvpUpdatePayload {
+  title: string;
+  description: string | null;
+  location_text: string | null;
+  online_url: string | null;
+  cover_media_url: string | null;
+  cover_media_type: EventCoverMediaType | null;
+  requestedVisibility: DraftEventVisibility;
+  timezone: string;
+  when: {
+    date: string | null;
+    doorsOpen: string | null;
+    endsAt: string | null;
+  };
+  rsvpCapacity: number | null;
+  rsvpAllowPlusOnes: boolean;
+  rsvpPlusOnesMax: number;
+  rsvpWaitlistEnabled: boolean;
+  rsvpApprovalMode: "auto" | "manual";
+  rsvpDiscoverable: boolean;
+}
+
+/**
+ * ORCH-1172 — build the publish-style RSVP edit payload from the FULL edit
+ * state (not a sparse patch). The RPC requires `title` unconditionally and
+ * defaults absent keys to the existing column, so emitting the full current
+ * values is safe + idempotent. Fixes BUG-A (title always present → no more
+ * rsvp_title_required) and BUG-B (the 6 rsvp* host-controls + when always
+ * present, correctly snake-cased location/cover + requestedVisibility).
+ */
+export const buildRsvpUpdatePayload = (
+  draft: DraftEvent,
+): RsvpUpdatePayload => ({
+  title: draft.name.trim(),
+  description: draft.description.trim().length > 0 ? draft.description : null,
+  location_text: locationTextForDraft(draft),
+  online_url: draft.onlineUrl,
+  cover_media_url: draft.coverMediaUrl,
+  cover_media_type: draft.coverMediaUrl === null ? null : draft.coverMediaType,
+  requestedVisibility: draft.visibility,
+  timezone: draft.timezone,
+  when: {
+    date: draft.date,
+    doorsOpen: draft.doorsOpen,
+    endsAt: draft.endsAt,
+  },
+  rsvpCapacity: draft.rsvpCapacity,
+  rsvpAllowPlusOnes: draft.rsvpAllowPlusOnes,
+  rsvpPlusOnesMax: draft.rsvpPlusOnesMax,
+  rsvpWaitlistEnabled: draft.rsvpWaitlistEnabled,
+  rsvpApprovalMode: draft.rsvpApprovalMode,
+  rsvpDiscoverable: draft.rsvpDiscoverable,
+});
+
 const recurrenceRulesForDraft = (draft: DraftEvent): unknown =>
   draft.recurrenceRule === null ? null : draft.recurrenceRule;
 
