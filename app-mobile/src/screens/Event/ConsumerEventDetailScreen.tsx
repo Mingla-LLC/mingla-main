@@ -72,11 +72,13 @@ import {
   EventOfferingFloatingBar,
   OfferingChrome,
   // ORCH-1163 [rsvp-shared-body] — THE ONE shared RSVP body + floating decision
-  // dock + the lifted decision-state hook. Replaces the bespoke RSVP-branch nodes
+  // bar + the lifted decision-state hook. Replaces the bespoke RSVP-branch nodes
   // (rsvpDock / rsvpMomentumUnit / brand/about/venue mirror) with byte-parity to
-  // buyer-web + business.
+  // buyer-web + business. ORCH-1163-R2 — the floating control is the
+  // RsvpOfferingFloatingBar (parallel to EventOfferingFloatingBar), pinned in the
+  // SAME nativeFloatWrap (zIndex:60) slot as the event branch.
   RsvpOfferingBody,
-  RsvpOfferingDecisionDock,
+  RsvpOfferingFloatingBar,
   useRsvpOfferingState,
   type RsvpOfferingConfig,
   type RsvpGuestContact,
@@ -820,20 +822,18 @@ export default function ConsumerEventDetailScreen({
 
         {/* (4) FLOATING decision — ORCH-1167 the standard branch pins the shared
             EventOfferingFloatingBar (live Σ-all-in total + handleProceedToCart);
-            ORCH-1163 the RSVP branch pins the shared RsvpOfferingDecisionDock
+            ORCH-1163-R2 the RSVP branch pins the shared RsvpOfferingFloatingBar
             (Going/Maybe/Can't, driven by the SAME rsvpState as the inline box) in
-            the SAME bottom-overlay slot. Both sit in the same float wrapper math. */}
+            the SAME bottom-overlay slot — BYTE-IDENTICAL wrapper to the event branch
+            (styles.nativeFloatWrap, zIndex:60, bottom:floatBarBottom) so the z-order
+            + float positioning match the standard event page on consumer too. */}
         {isRsvp ? (
           <View
-            style={[
-              styles.nativeFloatWrap,
-              rsvpStyles.dock,
-              { bottom: floatBarBottom, paddingBottom: insets.bottom + 8 },
-            ]}
+            style={[styles.nativeFloatWrap, { bottom: floatBarBottom }]}
             pointerEvents="box-none"
             onLayout={handleDockLayout}
           >
-            <RsvpOfferingDecisionDock
+            <RsvpOfferingFloatingBar
               palette={palette}
               theme={theme}
               config={rsvpConfig}
@@ -1083,9 +1083,6 @@ const styles = StyleSheet.create({
 // ORCH-1157 — RSVP decision dock wrapper. The Going/Maybe/Can't buttons + their
 // opaque-Android fills now live in the shared RsvpMomentumDecision; this is just
 // the dock padding (matches the float→dock pattern of the reserve bar).
-const rsvpStyles = StyleSheet.create({
-  dock: {
-    paddingHorizontal: 16,
-    paddingTop: 12,
-  },
-});
+// ORCH-1163-R2 — the bespoke RSVP dock-panel style was REMOVED: the RSVP floating
+// bar now reuses styles.nativeFloatWrap byte-identically with the event branch (the
+// decision controls carry their own opaque fills, so no separate panel chrome).

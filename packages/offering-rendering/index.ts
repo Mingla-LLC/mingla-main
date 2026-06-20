@@ -77,8 +77,17 @@ export type { RsvpMomentumModel } from "./rsvpMomentum";
 // <RsvpOfferingDecisionDock> (pinned floating dock §0-9). FLOW A (Going-confirm dialog
 // + success popup) + FLOW B (per-guest plus-one contacts) are owned here. RSVP is
 // ticketless: NO price/checkout/cart affordance.
+// ORCH-1163-R2 [floating-parity] — the inline box is now the single-owner
+// <RsvpDecisionBox> (parallel to EventTicketBox; rendered inline on phone AND in the
+// desktop sticky panel) and the floating control is the separate
+// <RsvpOfferingFloatingBar> (parallel to EventOfferingFloatingBar; the surface pins
+// it absolute-bottom with zIndex:6 as a ParallaxCoverShell sibling). Both read ONE
+// lifted useRsvpOfferingState. RsvpOfferingDecisionDock stays as a back-compat alias
+// of the floating bar.
 export {
   RsvpOfferingBody,
+  RsvpDecisionBox,
+  RsvpOfferingFloatingBar,
   RsvpOfferingDecisionDock,
   useRsvpOfferingState,
 } from "./RsvpOfferingBody";
@@ -86,6 +95,8 @@ export type {
   RsvpOfferingBodyProps,
   RsvpOfferingConfig,
   RsvpOfferingState,
+  RsvpDecisionBoxProps,
+  RsvpOfferingFloatingBarProps,
   RsvpOfferingDecisionDockProps,
   RsvpGuestContact,
   RsvpSubmitResult,
