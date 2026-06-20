@@ -210,3 +210,83 @@ None — this is a FAIL (unaccepted gating P1), not a CONDITIONAL PASS.
 
 ## R10. Confidence
 **High** on the FAIL. The SC-3-Ari occlusion is `proven` on Android with quantified, reproducible pixel measurements across 5 focus cycles (full-width-pill detector, Done-bar top precisely located), plus the dispositive type→hidden→dismiss→revealed sequence. The root cause (the `+ 42` undershoots by the composer's own ~57dp height) is traced to the exact line. The static gates and both fails-on-revert proofs are independently re-reproduced. Caveats explicitly stated: SC-4a/4b not re-driven (A6.1 unmet, low risk, mount code unchanged); iOS not driven (A6.2 unmet, would not change the FAIL); Paystack offset is iOS-only on inspection (P3-1).
+
+---
+
+# FINAL RETEST — rework loop 2 @ `9ad7b1639`
+
+**Phase:** RETEST (mingla-tester, canonical TEST owner). **Worktree:** `~/Desktop/mingla-orchs/ORCH-1165-[business-keyboard-done-bar]/` on branch `ORCH-1165-business-keyboard-done-bar`. **Rework commit:** `9ad7b1639de1081357f7050fdf794a5a42117924` (loop 2).
+**Binding contract:** `SPEC_AMENDMENT_ORCH-1165_AT_RISK_COMPLETE.md` (A5 matrix + A6 hard directives).
+**Runtime — Android (gating):** Samsung Galaxy `R58R54YV7JT` (`com.sethogieva.minglabusiness`), dev build loading **current-branch JS over Metro started from THIS worktree** (port 8081, adb reverse, Android bundle = **5305 modules / 32.7MB** = route-healthy, NOT the COMMS-0027 poisoned ~951-module bundle). **Bundle identity confirmed:** the served Android bundle contains the loop-2 markers `onComposerLayout`, `COMPOSER_HEIGHT_FALLBACK`, and the exact expression `42 + composerHeight + 12` (grep over `/index.bundle?platform=android` = present). Brand "Lantern & Vine", dark theme.
+**Runtime — iOS:** iPhone 17 Pro Max sim (`2C3312D9…`) booted + business dev-client reinstalled + deep-linked to this Metro; iOS native bundle built (5305 modules) — but the app **redboxed on `Cannot find native module 'ExpoImageManipulator'`** (stale Jun-9 local native binary predates the `expo-image-manipulator` native module current main's JS requires — the known ORCH-1119/COMMS-0035 native-drift). The redbox is unrelated to ORCH-1165 (neither `AriChatScreen.tsx` nor `BrandPaystackOnboardView.tsx` imports that module). iOS therefore capped at **suspected** (see §F7).
+
+## F1. Verdict
+
+**CONDITIONAL PASS** — P0: 0 · P1: 0 · P2: 0 · **P3: 1** (carried DISC-1165-T3, not driven) · P4: 1.
+**Sole condition: SC-4a (Sheet) + SC-4b (Modal) are DEFERRED TO SETH EYEBALL** (deep-flow staging genuinely unreachable in-session; precise staging requirements in §F3 / DISC-1165-T6). Paystack (P3, Nigeria-only flow) not reachable in-session — fix verified sound by inspection.
+
+**The gating item — SC-3-Ari (FAIL twice prior) — now PASSES, `proven` on Android.** The loop-2 fix (lift the keyboard-open `paddingBottom` by `keyboardHeight + spacing.sm + 42 + composerHeight + 12`, where `composerHeight` is measured via `onLayout` on a `<View>` wrapping ONLY the `InputBar` pill — so the measurement is independent of the `inputWrap`'s own changing padding, no feedback loop) clears the **entire** composer pill above the 42dp Done bar with a visible gap, across **5 separate focus cycles** AND a **4-line multi-line** grown composer (the onLayout measurement self-adjusted), AND leaves **no permanent dead gap when the keyboard is closed** (the `keyboardHeight > 0` guard scopes the lift to keyboard-open only). The exact prior-FAIL reproducer (typed text hidden behind the bar) is now INVERTED: typed text is fully visible above the bar in every cycle.
+
+Regression gate: SATISFIED — implementor clearance test + the loop-2-extended mount-coverage adversarial test both present, on-branch, in-diff; loop-2 Ari fails-on-revert independently re-reproduced (§F4).
+
+## F2. SC-by-SC matrix (FINAL RETEST)
+
+| SC | Surface | Verdict | Evidence |
+|----|---------|---------|----------|
+| **SC-3-Ari** (gating, was FAIL ×2) | **Android** | **PASS (proven)** | 5 focus cycles, each with typed `CycleN_ABOVE_BAR` **fully visible above the Done bar** with a clear gap: `RETEST2_android_ari_cycle1..5.png`. Multi-line: a 4-line grown composer's LAST line + cursor clears the bar (`RETEST2_android_ari_multiline.png`) — onLayout self-adjusts. Keyboard-closed: composer rests normally above the bottom nav, NO phantom gap (`RETEST2_android_ari_keyboard_closed.png`). Prior FAIL inverted: text now visible WHILE keyboard up. |
+| SC-3-Ari | iOS | **suspected (PASS by inspection)** | Path is platform-agnostic (`Platform.OS === "web" ? … : keyboardHeight > 0 ? keyboardHeight + spacing.sm + 42 + composerHeight + 12 : …`; web-exempt). iOS hits the identical native branch with the same measured `composerHeight`. Not driven: stale local sim binary redboxes on `ExpoImageManipulator` native-drift (§F7), unrelated to ORCH-1165 JS. |
+| SC-3 — SmartScrollView wizards (spot-check) | Android | **PASS (proven, re-confirmed)** | EventCreatorWizard Step-1 "Event name" focused, keyboard up → field fully visible above the Done-only orange bar, clear gap, **no dead-gap / no double-padding** (`orch1165_wizard_kbd.png`). Code path UNCHANGED by loop 2. |
+| SC-1 / SC-6 | Android | **PASS (proven, re-confirmed)** | Done-**only** bar (no Prev/Next), "Done" brand-orange `#eb7825`, flush on keyboard top — re-seen on Ari (all cycles) + Event wizard this pass. |
+| SC-2 | Android | **PASS (carried)** | Dismiss behavior unchanged; keyboard-closed Ari shot confirms clean teardown. |
+| **SC-4a (Sheet — TicketTierEditSheet)** | Android | **DEFERRED → Seth eyeball** | NOT driven (deep-flow staging unreachable — see §F3). **Evidence upgrade:** `TicketTierEditSheet.tsx:20-21` renders its `<TextInput>`s inside `ScrollView` from the **SmartScrollView wrapper** (its own comment L422-425: "keyboard awareness handled natively via the ScrollView's… TextInput above the keyboard top. No manual listener needed") → its inputs use the **exact `DEFAULT_BOTTOM_OFFSET=54` mechanism already PROVEN on the Event wizard this pass**. Risk materially lower than a bespoke site. Sheet host (`Sheet`/`SheetMobile.tsx`) mount of `<KeyboardToolbarRoot/>` unchanged + adversarial-test-asserted. |
+| **SC-4b (Modal — CancelOrderDialog)** | Android | **DEFERRED → Seth eyeball** | NOT driven (requires a LIVE order — brand has 0 sales). Host `Modal.tsx` mount of `<KeyboardToolbarRoot/>` unchanged + adversarial-test-asserted. |
+| SC-3 — Paystack bank-picker modal (#24, DISC-1165-T3) | Android | **NOT REACHABLE in-session (P3)** | The view renders only when `isPaystackBrand` (a Nigeria-payout brand); "Lantern & Vine" is a Stripe brand. Loop-2 fix verified by inspection: `useKeyboardIsVisible()` (library primitive, not bespoke listener — keeps orch-0892 green) → Android-only `bankListKbPad: {paddingBottom:42}` on the bank-list `ScrollView` contentContainer, keyed on `Platform.OS==="android" && keyboardVisible` (no permanent gap); iOS keeps the KAV `behavior="padding"` path. Sound by inspection; runtime deferred (P3). |
+| SC-3 — checkout buyer/intake/payment | Android | **suspected (carried)** | Source patches verified prior pass (`+42` keyed on keyboard-open); not driven (live cart needed). 140–260pt headroom + `scrollToEnd`; not gating. |
+| SC-5 / SC-7 | Web / CI | **PASS (re-run)** | Web ternary branch untouched (no `+42` on web); `orch-0892` gate **EXIT 0** re-run this pass (8 safelisted, 0 violations). |
+
+## F3. Findings (FINAL RETEST)
+
+### SC-3-Ari — RESOLVED (the gating P1 from RETEST 1 is fixed)
+- **Evidence:** `src/screens/ari/AriChatScreen.tsx:350` keyboard-open branch is now `keyboardHeight + spacing.sm + 42 + composerHeight + 12`; `composerHeight` set from `onComposerLayout` (`:375` `<View onLayout={onComposerLayout}>` wrapping `InputBar`), fallback `COMPOSER_HEIGHT_FALLBACK = 110` before first measure. On device (Samsung, 1080×2400), across 5 focus cycles the typed text is fully visible above the Done bar with a clear gap; a 4-line grown composer's bottom line still clears (self-adjusting); keyboard-closed shows no phantom gap.
+- **Root-cause closure:** RETEST 1's `+42` lifted only the pill's BOTTOM edge to the bar top, leaving the text row (mid-pill) behind the bar. Loop 2 adds the **full measured composer height + 12dp**, so the entire pill (incl. text row) sits above the bar's top. The `onLayout` wraps only `InputBar` (not `inputWrap`, whose `paddingBottom` is the value being computed), so there is no measurement feedback loop — verified by reading the JSX nesting.
+- **Status: PASS.** No further action on Ari.
+
+### P3-1 (CARRIED) — DISC-1165-T3: Paystack bank-picker not driven (Nigeria-only flow)
+- **Evidence:** `BrandPaystackOnboardView.tsx` renders only for `isPaystackBrand` (`BrandPaymentsView.tsx:286`); current brand is Stripe. Loop-2 fix (Android bank-list `paddingBottom:42` via `useKeyboardIsVisible`) is sound by inspection and keeps orch-0892 green (library primitive). **Impact: LOW / P3** — Nigeria payout onboarding only; the search Input sits at the sheet top (never occluded), the fix only adds bottom-row clearance.
+- **Required to verify:** stage a Nigeria-payout brand (or drive the Nigeria self-onboard country-picker path) → Brand → Payments → bank-picker; focus search with keyboard up; confirm bottom bank-list rows reachable on Android. Deferred (P3, not gating).
+
+### P4-1 (praise) — loop-2 fix is precise, self-adjusting, and minimal
+- The measured-`onLayout` approach (vs a guessed pill constant) self-corrects for multi-line growth and font scaling, proven on device. The wrap-`InputBar`-only choice correctly avoids the feedback loop. The Paystack switch to `useKeyboardIsVisible` (over a no-op Android KAV offset) is the right library-only fix. All keyed-on-keyboard-open; no web/closed-branch pollution.
+
+## F4. Step 0.5 — Independent re-run of the implementor's fails-on-revert proofs (loop 2)
+- **Clearance test** (`orch_1165_keyboard_toolbar_clearance.test.ts`): at HEAD `9ad7b1639` → 2/2 PASS (carried; `DEFAULT_BOTTOM_OFFSET=54 >= 42`).
+- **Loop-2 Ari assertion** (`orch_1165_keyboard_toolbar_mount_coverage.test.ts`): the test now asserts the full `keyboardHeight + spacing.sm + 42 + composerHeight + 12` expression + `onLayout={onComposerLayout}` + `setComposerHeight(`. **Independently reproduced fails-on-revert:** line-edited `AriChatScreen.tsx` back to the RETEST-1 `keyboardHeight + spacing.sm + 42` (removed `+ composerHeight + 12`) → re-ran → **FAIL** (`✕ Ari composer lifts the FULL composer above the Done bar only when keyboard open (REWORK loop 2)`); restored → **17/17 PASS**; `git status` clean on the file. Full suite: **19/19 PASS** at HEAD.
+
+## F5. Adversarial test (FINAL RETEST)
+The tester adversarial test (`orch_1165_keyboard_toolbar_mount_coverage.test.ts`, token `[TEST-MOD-APPROVED ORCH-1165]`) was correctly EXTENDED by the implementor in loop 2 to assert the new measured-lift expression + onLayout wiring + web-branch exclusion for Ari (3 new regex assertions on the same `it`). It remains on-branch and in `git diff origin/main...HEAD --name-only` alongside the implementor clearance test. The gating defect was a runtime-magnitude failure (the `+42` WAS present in source) now closed by adding the measured term — newly guarded at source level by the loop-2 assertions, and proven at runtime on device. No new tester test file added (the magnitude defect is fundamentally runtime; documented with device evidence). Regression gate: SATISFIED.
+
+## F6. Constitution (FINAL RETEST delta)
+Rule 3 (no silent failures) — the prior "typing into a hidden composer" silent-UX-failure is now RESOLVED (text visible while typing). No constitutional violation. All other rules N/A as in the base pass.
+
+## F7. Device / parity matrix (FINAL RETEST)
+
+| Surface | Verdict | Notes |
+|---------|---------|-------|
+| **Business Android** | **DRIVEN — PASS (gating SC-3-Ari)** | Samsung `R58R54YV7JT`, current-branch JS over Metro (5305 modules, bundle-identity-confirmed). SC-3-Ari PASS (5 cycles + multi-line + closed-state). SC-1/2/3-wizard/6/7 PASS. SC-4a/4b deferred (staging); Paystack not reachable (Nigeria-only). |
+| **Business iOS** | **suspected — blocked by stale local native build** | iPhone 17 Pro Max sim booted, dev-client reinstalled + deep-linked to this Metro, iOS bundle built (5305 modules) — but the app **redboxed: `Cannot find native module 'ExpoImageManipulator'`** (the Jun-9 DerivedData binary predates the `expo-image-manipulator` native module current main's JS imports; the known ORCH-1119/COMMS-0035 native-drift). The redbox is **unrelated to ORCH-1165** (neither patched file imports that module — verified). The Ari fix is platform-agnostic JS → iOS behaves identically to the proven Android result. **Operator-unblock:** a fresh business iOS dev-client native build (EAS, or per `IOS_DEV_BUILD_REBUILD_RUNBOOK.md` — NOT `expo run:ios`) is required to eyeball iOS Ari; it would not change the verdict (Android already PASSES the gating item). |
+| Consumer iOS/Android, Buyer Web, Admin Web | N/A | out of scope (business leg only). |
+
+Physical iPhone HITL: not requested this pass (Android device proved the gating fix; iOS blocked by the native-drift, an EAS-rebuild matter, not a HITL one).
+
+## F8. Discoveries for Orchestrator (FINAL RETEST)
+- **DISC-1165-T6 (SC-4 staging requirements, for the deferred Seth eyeball):** SC-4a (TicketTierEditSheet) requires advancing the Event Creator wizard to the Tickets step (Step 5) on a ticketed event and opening a tier's edit sheet — multi-step staging not completable in-session. **De-risked:** its TextInputs are SmartScrollView-backed (`DEFAULT_BOTTOM_OFFSET=54`), the exact mechanism PROVEN on the Event wizard this pass. SC-4b (CancelOrderDialog Modal) requires a LIVE order to cancel (brand has 0 sales) → unreachable without a completed purchase. Both host mounts (`SheetMobile.tsx`, `Modal.tsx`) are unchanged by loop 2 and adversarial-test-asserted. Recommend Seth eyeball both, OR accept the deferral given the SmartScrollView de-risk + unchanged-mount evidence.
+- **DISC-1165-T3 (P3-1):** Paystack bank-picker is a Nigeria-payout-only surface, not reachable with the Stripe test brand; loop-2 fix sound by inspection. Verify when the Nigeria flow is next driven.
+- **DISC-1165-T7 (iOS native-drift, sibling of COMMS-0035/ORCH-1119):** the local iPhone-17 sim's business dev-client binary (Jun-9 DerivedData) is stale vs current main's JS — it redboxes on `ExpoImageManipulator`. Any future iOS-sim eyeball of business-app JS needs a fresh native dev build first. Not an ORCH-1165 defect.
+- **DISC-1165-T5 (carried):** Samsung keyboard renders its own "Done" key + suggestion strip alongside the app's accessory Done bar (two "Done" affordances). Cosmetic.
+- **COMMS-0040 / COMMS-0041 (WARN):** acknowledged again, **zero overlap** — ORCH-1165 touched only keyboard-clearance offsets in Ari + Paystack; no public RSVP/experience page files (`RsvpPublicBody.tsx`, `RsvpMomentumDecision.tsx`, `ConsumerEventDetailScreen.tsx`, `PublicEventPage.tsx`, `packages/offering-rendering/*`, experience public pages all untouched). Factored, no ledger write needed.
+
+## F9. Accepted conditions
+This CONDITIONAL PASS carries ONE deferral: **SC-4a (Sheet) + SC-4b (Modal) deferred to a Seth manual eyeball** (deep-flow staging genuinely unreachable in-session — ticket-tier sheet needs a multi-step wizard advance on a ticketed event; cancel-order Modal needs a live order, and the brand has 0 sales). This is NOT a code defect: both host mounts are unchanged from the source+adversarial-verified base pass, and SC-4a's inputs ride the SmartScrollView `54` mechanism already PROVEN on device this pass. Per the dispatch directive ("Do NOT block the verdict solely on SC-4 if SC-3-Ari and the rest pass; mark SC-4 as deferred to Seth eyeball with the reason"), the verdict is not blocked on SC-4. P3 Paystack (Nigeria-only) likewise not reachable; fix sound by inspection.
+
+## F10. Confidence
+**High** on the gating result. SC-3-Ari is `proven` on Android with 5 reproducible focus cycles + a multi-line growth case + a keyboard-closed no-gap case, the served-bundle identity is confirmed to contain the loop-2 code, and the loop-2 fails-on-revert is independently reproduced. The fix's correctness (measured composerHeight + 12, no feedback loop, keyed-on-open) is verified at both source and runtime. The verdict is **CONDITIONAL PASS** strictly because SC-4a/4b could not be staged in-session (explicitly deferrable per the dispatch) and iOS is `suspected` (blocked by the stale-binary native-drift, which would not change the gating result since the Ari path is platform-agnostic and Android passes).
