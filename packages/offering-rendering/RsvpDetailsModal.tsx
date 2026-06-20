@@ -86,8 +86,10 @@ export const RsvpDetailsModal: React.FC<RsvpDetailsModalProps> = ({
           style={[
             styles.card,
             {
-              // ANDROID_GLASS_USES_OPAQUE_FALLBACK — opaque page fill on Android.
-              backgroundColor: Platform.OS === "android" ? palette.page : palette.card,
+              // ANDROID_GLASS_USES_OPAQUE_FALLBACK — opaque page fill on web AND Android
+              // (neither has a native blur backdrop, so the translucent glass card bleeds
+              // through); only iOS keeps the native glass card.
+              backgroundColor: Platform.OS === "ios" ? palette.card : palette.page,
               borderColor: palette.panelBorder,
             },
           ]}
