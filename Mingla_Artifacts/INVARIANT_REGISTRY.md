@@ -7,12 +7,12 @@
 
 ---
 
-## ACTIVE — ORCH-1165 (business keyboard "Done" accessory bar, 2026-06-20, PR #548)
+## ACTIVE — ORCH-1170 (business keyboard "Done" accessory bar, 2026-06-20, PR #548)
 
 ### I-PROPOSED-KEYBOARD-TOOLBAR-CLEARANCE (ACTIVE)
 - **Rule:** The app-wide keyboard "Done" bar (`KeyboardToolbar`, 42dp tall) must never occlude the focused input. The `SmartScrollView` default `bottomOffset` MUST stay ≥ the bar height (42), and every bespoke-keyboard-padding surface (Ari composer, native checkout forms, Paystack bank-picker) must add ≥42dp clearance on the keyboard-OPEN branch only (never a permanent dead gap when closed). For bottom-anchored composers, the ENTIRE composer pill must clear the bar (offset by its measured height, not a fixed constant).
 - **Enforcement:** `mingla-business/src/wrappers/__tests__/orch_1165_keyboard_toolbar_clearance.test.ts` (asserts `DEFAULT_BOTTOM_OFFSET >= 42` + Done-only `showArrows={false}`) + `orch_1165_keyboard_toolbar_mount_coverage.test.ts` (root+Sheet+Modal mounts + per-surface keyed-on-open +42); both fails-on-revert; `orch-0892-no-bespoke-keyboard-plumbing.mjs` stays library-only. 19/19 jest green on #548.
-- **Established:** flipped DRAFT → ACTIVE 2026-06-20 at ORCH-1165 CLOSE (registered DRAFT in the ORCH-1165 SPEC). Ari no-occlusion proven on physical Samsung (5 cycles + multi-line + closed-state).
+- **Established:** flipped DRAFT → ACTIVE 2026-06-20 at ORCH-1170 CLOSE (registered DRAFT in the ORCH-1170 SPEC). Ari no-occlusion proven on physical Samsung (5 cycles + multi-line + closed-state).
 
 ---
 
