@@ -359,7 +359,7 @@ export default function CheckoutExperienceBuyerScreen(): React.ReactElement {
         contentContainerStyle={[
           styles.scrollContent,
           { paddingBottom: insets.bottom + 140 },
-          keyboardHeight > 0 ? { paddingBottom: keyboardHeight + 140 } : null,
+          keyboardHeight > 0 ? { paddingBottom: keyboardHeight + 140 + 42 } : null,
         ]}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"

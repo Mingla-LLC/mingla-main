@@ -98,4 +98,64 @@ describe("ORCH-1165 Done-bar mount coverage + keyed offsets (adversarial)", () =
     // And must NOT have left the old =0 lift (would put composer under the bar).
     expect(src).not.toMatch(/keyboardVerticalOffset\s*=\s*\{\s*0\s*\}/);
   });
+
+  // ---- (C) AMENDMENT REWORK: the 9 newly-found at-risk surfaces ----
+  // SPEC_AMENDMENT_ORCH-1165_AT_RISK_COMPLETE.md A2 rows 1–9 (the DEFECT +
+  // 8 NEW-REWORK). Each must add the +42 (or keyboardVerticalOffset={42})
+  // KEYED ON KEYBOARD-OPEN — never a permanent dead gap, never the web/closed
+  // branch. Source-regex assertions; fails-on-revert by line-deletion.
+
+  it("Ari composer adds +42 to the keyboard-open paddingBottom term only", () => {
+    const src = read("src/screens/ari/AriChatScreen.tsx");
+    // keyboard-open branch: keyboardHeight + spacing.sm + 42
+    expect(src).toMatch(
+      /keyboardHeight\s*>\s*0[\s\S]*?\?\s*keyboardHeight\s*\+\s*spacing\.sm\s*\+\s*42/,
+    );
+    // web branch must NOT get +42 (no accessory bar on web).
+    expect(src).not.toMatch(/===\s*["']web["']\s*\?\s*spacing\.sm\s*\+\s*42/);
+  });
+
+  // The five identical "keyboardHeight + 140" checkout scrollviews (event
+  // buyer/payment, trip buyer, experience buyer/payment) → + 140 + 42,
+  // strictly inside the `keyboardHeight > 0 ?` ternary.
+  it.each([
+    "app/checkout/[eventId]/buyer.tsx",
+    "app/checkout/[eventId]/payment.tsx",
+    "app/checkout-trip/[tripEventId]/buyer.tsx",
+    "app/checkout-experience/[experienceEventId]/buyer.tsx",
+    "app/checkout-experience/[experienceEventId]/payment.tsx",
+  ])("%s adds +42 only inside the keyboardHeight > 0 padding branch", (rel) => {
+    const src = read(rel);
+    expect(src).toMatch(
+      /keyboardHeight\s*>\s*0\s*\?\s*\{\s*paddingBottom:\s*keyboardHeight\s*\+\s*140\s*\+\s*42\s*\}\s*:\s*null/,
+    );
+    // The keyboard-CLOSED static padding must stay 140 (no permanent +42 gap).
+    expect(src).toMatch(/paddingBottom:\s*insets\.bottom\s*\+\s*140\s*\}/);
+  });
+
+  it("trip checkout intake (tight spacing.xl) adds +42 only when keyboard open", () => {
+    const src = read("app/checkout-trip/[tripEventId]/intake.tsx");
+    expect(src).toMatch(
+      /keyboardHeight\s*>\s*0[\s\S]*?\?\s*\{\s*paddingBottom:\s*keyboardHeight\s*\+\s*spacing\.xl\s*\+\s*42\s*\}/,
+    );
+    // keyboard-closed branch must stay insets.bottom + 120 (no +42 dead gap).
+    expect(src).toMatch(/:\s*\{\s*paddingBottom:\s*insets\.bottom\s*\+\s*120\s*\}/);
+  });
+
+  it("trip checkout payment (plan-aware) adds +42 only when keyboard open", () => {
+    const src = read("app/checkout-trip/[tripEventId]/payment.tsx");
+    expect(src).toMatch(
+      /keyboardHeight\s*>\s*0[\s\S]*?\?\s*\{\s*paddingBottom:\s*keyboardHeight\s*\+\s*\(isPlanActive\s*\?\s*260\s*:\s*140\)\s*\+\s*42\s*\}/,
+    );
+    // keyboard-closed static padding must NOT carry the +42.
+    expect(src).toMatch(
+      /paddingBottom:\s*insets\.bottom\s*\+\s*\(isPlanActive\s*\?\s*260\s*:\s*140\)\s*\}/,
+    );
+  });
+
+  it("BrandPaystackOnboardView bank-picker KAV lifts with keyboardVerticalOffset={42}", () => {
+    const src = read("src/components/brand/BrandPaystackOnboardView.tsx");
+    expect(src).toMatch(/keyboardVerticalOffset\s*=\s*\{\s*42\s*\}/);
+    expect(src).not.toMatch(/keyboardVerticalOffset\s*=\s*\{\s*0\s*\}/);
+  });
 });

@@ -258,6 +258,7 @@ export const BrandPaystackOnboardView: React.FC<Props> = ({
         <KeyboardAvoidingView
           style={styles.modalRoot}
           behavior={Platform.OS === "ios" ? "padding" : undefined}
+          keyboardVerticalOffset={42}
         >
           <Pressable
             style={styles.backdrop}

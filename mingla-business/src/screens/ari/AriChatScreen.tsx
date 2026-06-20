@@ -326,7 +326,7 @@ export const AriChatScreen: React.FC = () => {
                 Platform.OS === "web"
                   ? spacing.sm
                   : keyboardHeight > 0
-                    ? keyboardHeight + spacing.sm
+                    ? keyboardHeight + spacing.sm + 42
                     : Math.max(insets.bottom, spacing.md) + BOTTOM_NAV_CLEARANCE_PX,
             },
           ]}

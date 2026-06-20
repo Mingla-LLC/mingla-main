@@ -630,7 +630,7 @@ function CheckoutTripPaymentScreenContent({
           // taller bottom bar.
           { paddingBottom: insets.bottom + (isPlanActive ? 260 : 140) },
           keyboardHeight > 0
-            ? { paddingBottom: keyboardHeight + (isPlanActive ? 260 : 140) }
+            ? { paddingBottom: keyboardHeight + (isPlanActive ? 260 : 140) + 42 }
             : null,
         ]}
         showsVerticalScrollIndicator={false}
