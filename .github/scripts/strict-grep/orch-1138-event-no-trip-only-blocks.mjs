@@ -14,7 +14,6 @@
  *   - mingla-business/src/components/event/FoundationEventPreview.tsx (web/biz FOUNDATION body)
  *   - app-mobile/src/screens/Event/ConsumerEventDetailScreen.tsx
  *   - mingla-business/src/components/event/PublicEventPage.tsx (adapter)
- *   - mingla-business/src/components/event/EventReserveBar.tsx
  *   - app-mobile/src/components/offering/ConsumerEventReserveBar.tsx
  *
  * Banned tokens (active code): RefundLadder, RefundPolicyDisplay, bookingDeadline,
@@ -42,7 +41,8 @@ const FILES = [
   "mingla-business/src/components/event/FoundationEventPreview.tsx",
   "app-mobile/src/screens/Event/ConsumerEventDetailScreen.tsx",
   "mingla-business/src/components/event/PublicEventPage.tsx",
-  "mingla-business/src/components/event/EventReserveBar.tsx",
+  // ORCH-1168: EventReserveBar.tsx DELETED (dead code; ORCH-1167 replaced the
+  // event reserve bar with the shared @mingla/offering-rendering EventOfferingFloatingBar).
   "app-mobile/src/components/offering/ConsumerEventReserveBar.tsx",
 ];
 
