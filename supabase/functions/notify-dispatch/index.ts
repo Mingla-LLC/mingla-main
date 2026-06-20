@@ -2,6 +2,11 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { resolveOneSignalApp, sendPush } from "../_shared/push-utils.ts";
 import { getTranslatedNotification } from "../_shared/push-translations.ts";
+// META-ORCH-1161 transitional: v2 dispatch core ({category_key,...} contract).
+// The legacy type-based path below is left BYTE-IDENTICAL — the v2 branch is an
+// early, additive return. Exit condition: when all senders migrate onto v2 and
+// the legacy contract is retired (CLOSE-time cleanup, §5.7).
+import { dispatchV2, type DispatchV2Input } from "../_shared/notifyV2.ts";
 import {
   assertNotResendSandbox,
   EMAIL_SENDERS,
@@ -238,6 +243,64 @@ serve(async (req) => {
 
     // ── Parse & validate input ──────────────────────────────────────────────
     const payload = await req.json();
+
+    // ── META-ORCH-1161 transitional: v2 ({category_key,...}) branch ──────────
+    // ADDITIVE — a caller that sends `category_key` opts into the unified
+    // simultaneous-send path (DEC-185). A caller that sends `type` (legacy) falls
+    // through to the byte-identical legacy path below. Exit condition: legacy
+    // contract retired at CLOSE (§5.7).
+    if (payload && typeof payload.category_key === "string" && payload.category_key.length > 0) {
+      const v2Input: DispatchV2Input = {
+        user_id: payload.user_id ?? payload.userId ?? null,
+        contact: payload.contact ?? null,
+        category_key: payload.category_key,
+        payload: (payload.payload ?? {}) as Record<string, unknown>,
+        idempotency_key: String(payload.idempotency_key ?? payload.idempotencyKey ?? ""),
+        country_code: payload.country_code ?? null,
+      };
+      if (!v2Input.idempotency_key) {
+        return jsonResponse({ success: false, reason: "idempotency_key required for v2" }, 400);
+      }
+
+      // Record the transactional consent for this moment if not already present
+      // (SPEC §7.2: source='reservation'). Append-only; failure is non-fatal.
+      const consentContact =
+        typeof v2Input.contact === "string" && v2Input.contact.length > 0
+          ? v2Input.contact
+          : null;
+      if (consentContact) {
+        const channel = consentContact.includes("@") ? "email" : "sms";
+        try {
+          const { data: existingConsent } = await adminClient
+            .from("consent_records")
+            .select("id")
+            .eq("contact", consentContact)
+            .eq("channel", channel)
+            .eq("scope", "transactional")
+            .eq("action", "granted")
+            .maybeSingle();
+          if (!existingConsent) {
+            await adminClient.from("consent_records").insert({
+              user_id: v2Input.user_id,
+              contact: consentContact,
+              channel,
+              scope: "transactional",
+              action: "granted",
+              source: "reservation",
+              country_code: v2Input.country_code,
+            });
+          }
+        } catch (consentErr) {
+          console.warn("[notify-dispatch v2] consent record write failed (non-fatal):", consentErr);
+        }
+      }
+
+      const v2Result = await dispatchV2(
+        adminClient as unknown as Parameters<typeof dispatchV2>[0],
+        v2Input,
+      );
+      return jsonResponse(v2Result, v2Result.success ? 200 : 400);
+    }
     const {
       userId,
       type,

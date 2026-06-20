@@ -264,3 +264,15 @@ verify_jwt = false
 # refund-order). verify_jwt=false: the fn validates the JWT + auth.uid() itself.
 [functions.venue-reservation-cancel]
 verify_jwt = false
+
+# META-ORCH-1161 Sub-A — notify-outbox-drain: pg_cron drains notification_outbox
+# and forwards each row to notify-dispatch v2. verify_jwt=false: invoked by cron
+# with the service-role bearer.
+[functions.notify-outbox-drain]
+verify_jwt = false
+
+# META-ORCH-1161 Sub-A — twilio-inbound-sms: the STOP/HELP inbound webhook.
+# verify_jwt=false: Twilio cannot present a Supabase JWT; gated on ?secret=
+# (same posture as twilio-message-status).
+[functions.twilio-inbound-sms]
+verify_jwt = false
