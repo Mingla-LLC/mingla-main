@@ -120,6 +120,28 @@ export default function RsvpEditRoute(): React.ReactElement {
       : null,
   );
   const serverLiveEvent = businessEventQuery.data?.event ?? null;
+  // ORCH-1172 R4 — has the server-event fetch genuinely SETTLED for this edit
+  // session? React-Query reports a DISABLED query (enabled = isAuthReady &&
+  // eventId) as isLoading=false, so gate on isAuthReady too. Settled means: auth
+  // is ready, and the query is neither in its initial load nor refetching.
+  const serverEventSettled =
+    isAuthReady &&
+    !businessEventQuery.isLoading &&
+    !businessEventQuery.isFetching;
+  // ORCH-1172 R4 — the live event the editor SEEDS from. For the edit-published
+  // path the seed MUST come from the FRESH server event, never the stale zustand
+  // mirror: the editor seeds its local editState ONCE on mount, so a stale
+  // zustand `liveEvent` (e.g. discoverable=false from a pre-edit snapshot) would
+  // be baked into editState and then diff-clobber the true server value on save.
+  // Therefore for edit-published: prefer `serverLiveEvent`; fall back to the
+  // zustand `liveEvent` ONLY once the server fetch has SETTLED and genuinely
+  // returned null (event not found / offline). While the fetch is still in
+  // flight the route renders the Loading shell below instead of mounting the
+  // editor with the stale fallback. The non-edit-published (draft) path is
+  // untouched. The route-level safe-exit guard keeps using `resolvedLiveEvent`.
+  const editorLiveEvent = isEditPublished
+    ? serverLiveEvent ?? (serverEventSettled ? liveEvent : null)
+    : null;
   const resolvedLiveEvent = serverLiveEvent ?? liveEvent;
   const autosave = useServerDraftAutosave();
   const discardServerDraft = useDiscardServerDraft();
@@ -534,8 +556,15 @@ export default function RsvpEditRoute(): React.ReactElement {
 
   // Cycle 9b-2 edit-published branch — render the focused edit screen
   // when ?mode=edit-published. Loading shell while liveEvent resolves.
+  // ORCH-1172 R4 — mount the editor against `editorLiveEvent` (seed-from-fresh-
+  // server-event), NOT `resolvedLiveEvent`. `editorLiveEvent` is null while the
+  // server fetch is still in flight EVEN IF a stale zustand `liveEvent` exists,
+  // so the Loading shell holds until the fresh row arrives and the editor never
+  // mounts seeded with the stale mirror. Once settled it falls back to the
+  // zustand mirror only when the server genuinely returned null (the safe-exit
+  // effect then bounces to the events list).
   if (isEditPublished) {
-    if (resolvedLiveEvent === null) {
+    if (editorLiveEvent === null) {
       return (
         <View
           style={[
@@ -552,10 +581,15 @@ export default function RsvpEditRoute(): React.ReactElement {
     }
     return (
       <EditPublishedScreen
-        liveEvent={resolvedLiveEvent}
+        liveEvent={editorLiveEvent}
         // ORCH-1150 — RSVP edit-published: drop the Tickets section + the
         // sold-ticket refund gate; show the "N guests are going" notice (§12).
         rsvpMode
+        // ORCH-1172 R4 — the disable gate keys off whether there is a LOCAL
+        // (zustand) mirror to write through. The editor now seeds from the
+        // server event, but the local-save gate is still correctly governed by
+        // the presence of a zustand `liveEvent` (server-only RSVPs route through
+        // biz_update_live_rsvp regardless — see EditPublishedScreen rsvpMode).
         disableLocalSaveReason={
           liveEvent === null
             ? "Server-loaded RSVPs are readable here. Full published editing needs the server edit mutation before saves are enabled."

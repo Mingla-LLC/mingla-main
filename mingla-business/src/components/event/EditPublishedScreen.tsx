@@ -303,6 +303,19 @@ export const EditPublishedScreen: React.FC<EditPublishedScreenProps> = ({
   );
   const [editState, setEditState] = useState<DraftEvent>(initialEditState);
 
+  // ORCH-1172 R4 — guarded re-seed key. The editor seeds editState ONCE on mount
+  // (useState above). When the route mounts this screen with a STALE prop (e.g.
+  // a zustand mirror) and a FRESH `liveEvent` then arrives (stale-while-
+  // revalidate, or any prop change after mount), editState would otherwise keep
+  // the stale seed and diff-clobber the true saved values on save. We re-hydrate
+  // editState from the fresh prop ONLY when this key changes AND the user has no
+  // pending edits (fieldDiffs.length === 0) — never discarding in-progress input.
+  // The key combines identity (`id`) + a freshness marker (`updatedAt`) so a
+  // same-id-but-newer-data prop re-seeds, while an identical prop does not.
+  const hydratedKeyRef = useRef<string>(
+    `${liveEvent.id}::${liveEvent.updatedAt}`,
+  );
+
   // Currently expanded section (accordion — only one at a time)
   const [openSection, setOpenSection] = useState<SectionKey | null>("basics");
   const [showErrors, setShowErrors] = useState<boolean>(false);
@@ -418,6 +431,21 @@ export const EditPublishedScreen: React.FC<EditPublishedScreenProps> = ({
     () => computeRichFieldDiffs(liveEvent, editState),
     [liveEvent, editState],
   );
+
+  // ORCH-1172 R4 — guarded re-seed. If the `liveEvent` prop changes to a fresher
+  // value (id+updatedAt key differs) AND the user has made NO edits yet
+  // (fieldDiffs.length === 0), re-hydrate editState from the fresh prop so the
+  // editor reflects the REAL saved values (fixing the seed-from-stale clobber:
+  // discoverable true→false on a save that touched only an unrelated setting).
+  // Strictly gated on zero pending diffs so it NEVER discards in-progress input —
+  // this guard applies identically to the ticketed and RSVP paths.
+  useEffect(() => {
+    const nextKey = `${liveEvent.id}::${liveEvent.updatedAt}`;
+    if (nextKey === hydratedKeyRef.current) return;
+    if (fieldDiffs.length > 0) return;
+    hydratedKeyRef.current = nextKey;
+    setEditState(liveEventToEditableDraft(liveEvent));
+  }, [liveEvent, fieldDiffs.length]);
   const currentPatch = useMemo(
     () => editableDraftToPatch(liveEvent, editState),
     [liveEvent, editState],
