@@ -1,5 +1,8 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import type { StyleProp, ViewStyle } from "react-native";
+import { GestureDetector } from "react-native-gesture-handler";
+import Animated from "react-native-reanimated";
 
 import {
   accent,
@@ -8,6 +11,10 @@ import {
   text as textTokens,
   typography,
 } from "../../constants/designSystem";
+import {
+  useTopSheetScroll,
+  type TopSheetScrollContextValue,
+} from "../ui/TopSheetScrollContext";
 import { useAuth } from "../../context/AuthContext";
 import { useBrandListState } from "../../hooks/useBrandListShim";
 import { useUpdateCreatorAccount } from "../../hooks/useCreatorAccount";
@@ -47,6 +54,10 @@ export const BrandSwitcherSheet: React.FC<BrandSwitcherSheetProps> = ({
   const [mode, setMode] = useState<Mode>(
     brandList.isTrueEmpty ? "create" : "switch",
   );
+  // ORCH-1173: scroll-coordination handle from the enclosing TopSheet. Non-null
+  // on native fixed-70 (the brand-switcher path) → wires the dismiss-pan gate;
+  // null on web / compact → falls back to a plain ScrollView.
+  const topSheetScroll = useTopSheetScroll();
 
   useEffect(() => {
     if (visible) setMode(brandList.isTrueEmpty ? "create" : "switch");
@@ -103,10 +114,10 @@ export const BrandSwitcherSheet: React.FC<BrandSwitcherSheetProps> = ({
                 <Text style={styles.emptyText}>Loading your brands…</Text>
               </View>
             ) : (
-              <ScrollView
+              <BrandListScrollBody
+                topSheetScroll={topSheetScroll}
                 style={styles.scrollArea}
                 contentContainerStyle={styles.scrollContent}
-                showsVerticalScrollIndicator={false}
               >
                 {brands.map((brand) => {
                   const isActive = currentBrandId === brand.id;
@@ -158,7 +169,7 @@ export const BrandSwitcherSheet: React.FC<BrandSwitcherSheetProps> = ({
                     </View>
                   );
                 })}
-              </ScrollView>
+              </BrandListScrollBody>
             )}
             <View style={styles.footer}>
               <Button
@@ -174,6 +185,59 @@ export const BrandSwitcherSheet: React.FC<BrandSwitcherSheetProps> = ({
         )}
       </View>
     </TopSheet>
+  );
+};
+
+/**
+ * ORCH-1173 — the scrollable brand list body.
+ *
+ * When rendered inside a native `TopSheet` (fixed-70), `topSheetScroll` is the
+ * coordination handle: this swaps the plain `ScrollView` for a reanimated
+ * `Animated.ScrollView` whose `onScroll` writes the live offset into TopSheet's
+ * dismiss-pan gate, and attaches TopSheet's `Gesture.Native()` (composed
+ * `Gesture.Simultaneous` with the dismiss-pan) via a `<GestureDetector>`. The
+ * net effect: the list scrolls; the sheet only dismisses on an upward drag when
+ * the list is at the top.
+ *
+ * When `topSheetScroll` is null (web variant — no dismiss-pan; or any context-
+ * less host) it renders a plain `ScrollView`, which already scrolls fine.
+ */
+interface BrandListScrollBodyProps {
+  topSheetScroll: TopSheetScrollContextValue | null;
+  style: StyleProp<ViewStyle>;
+  contentContainerStyle: StyleProp<ViewStyle>;
+  children: React.ReactNode;
+}
+
+const BrandListScrollBody: React.FC<BrandListScrollBodyProps> = ({
+  topSheetScroll,
+  style,
+  contentContainerStyle,
+  children,
+}) => {
+  if (topSheetScroll === null) {
+    return (
+      <ScrollView
+        style={style}
+        contentContainerStyle={contentContainerStyle}
+        showsVerticalScrollIndicator={false}
+      >
+        {children}
+      </ScrollView>
+    );
+  }
+  return (
+    <GestureDetector gesture={topSheetScroll.nativeGesture}>
+      <Animated.ScrollView
+        style={style}
+        contentContainerStyle={contentContainerStyle}
+        showsVerticalScrollIndicator={false}
+        onScroll={topSheetScroll.onScroll}
+        scrollEventThrottle={16}
+      >
+        {children}
+      </Animated.ScrollView>
+    </GestureDetector>
   );
 };
 
