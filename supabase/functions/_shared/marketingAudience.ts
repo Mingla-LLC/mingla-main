@@ -185,6 +185,43 @@ async function resolveSuppressedPhones(
 }
 
 /**
+ * META-ORCH-1161 go-live-prep (P2 fix) — resolve the set of suppressed EMAIL keys
+ * (lowercased) from channel_suppressions(channel='email', scope ∈ {marketing,all}),
+ * keyed on `contact` (the lowercased email written by set_marketing_suppression).
+ * Mirrors resolveSuppressedPhones for the email channel so a prefs-UI email
+ * marketing opt-out — which lands in channel_suppressions, NOT marketing_unsubscribes
+ * — actually excludes the buyer from the email blast. Without this, can_send(email)
+ * blocks server-gated sends but the blast audience still includes the contact
+ * (the email-blast-ignores-opt-out defect). channel_suppressions stays the single
+ * opt-out authority across BOTH can_send AND the blast resolver.
+ * (I-PROPOSED-1161-EMAIL-OPT-OUT-HONORED-ANY-CHANNEL, mirror of the SMS invariant.)
+ */
+// deno-lint-ignore no-explicit-any
+async function resolveSuppressedEmails(
+  client: SupabaseClient<any, "public", any>,
+): Promise<Set<string>> {
+  const suppressed = new Set<string>();
+  const { data, error } = await client
+    .from("channel_suppressions")
+    .select("contact, channel, scope")
+    .eq("channel", "email")
+    .in("scope", ["marketing", "all"])
+    .not("contact", "is", null);
+  if (error) {
+    // Same fail-surfaced posture as resolveSuppressedPhones — the audience
+    // contract cannot silently degrade (a swallowed error would over-report reach).
+    throw new Error(`audience_channel_suppressions_email_query_failed:${error.message}`);
+  }
+  for (const row of (data ?? []) as unknown as ChannelSuppressionRow[]) {
+    const c = row.contact;
+    if (c === null) continue;
+    const key = c.toLowerCase().trim();
+    if (key.length > 0) suppressed.add(key);
+  }
+  return suppressed;
+}
+
+/**
  * Resolve a discriminated-union audience query into per-recipient rows.
  *
  * Phase B supports `brand_buyers` + `event_buyers`. `brand_followers` and
@@ -246,12 +283,14 @@ async function resolveBrandBuyers(
   }
 
   const suppressedPhones = await resolveSuppressedPhones(client, brandId);
+  const suppressedEmails = await resolveSuppressedEmails(client);
 
   return aggregate(
     orders,
     (unsubData ?? []) as unknown as UnsubRow[],
     brandId,
     suppressedPhones,
+    suppressedEmails,
   );
 }
 
@@ -293,8 +332,9 @@ async function resolveEventBuyers(
   }
 
   const suppressedPhones = await resolveSuppressedPhones(client, brandId);
+  const suppressedEmails = await resolveSuppressedEmails(client);
 
-  return aggregate(orders, unsubs, brandId, suppressedPhones);
+  return aggregate(orders, unsubs, brandId, suppressedPhones, suppressedEmails);
 }
 
 // Exported for unit testing (META-ORCH-1161 Sub-B) — pure function, no client.
@@ -306,6 +346,11 @@ export function aggregate(
   // SMS marketing across marketing_unsubscribes(contact_phone) AND
   // channel_suppressions. A contact whose phone matches is NOT reachable_sms.
   suppressedPhones: Set<string> = new Set<string>(),
+  // META-ORCH-1161 go-live-prep (P2) — lowercased email keys suppressed for EMAIL
+  // marketing via channel_suppressions(channel='email', scope ∈ {marketing,all}),
+  // written by the prefs-UI RPC set_marketing_suppression. A buyer whose email
+  // matches is NOT reachable_email (in addition to the marketing_unsubscribes check).
+  suppressedEmails: Set<string> = new Set<string>(),
 ): ResolveResult {
   const unsubLookup = new Map<string, Set<MarketingChannel>>();
   for (const u of unsubs) {
@@ -365,7 +410,13 @@ export function aggregate(
   let reachableSms = 0;
   for (const [emailKey, acc] of buckets.entries()) {
     const suppressed = unsubLookup.get(emailKey) ?? new Set<MarketingChannel>();
-    const emailOk = acc.raw_email !== null && !suppressed.has("email");
+    // Email reach now checks BOTH the email-keyed marketing_unsubscribes row AND
+    // the channel_suppressions(channel='email') ledger the prefs-UI RPC writes
+    // (P2 fix). Previously emailOk only consulted marketing_unsubscribes, so a
+    // prefs-UI email opt-out (which lands in channel_suppressions) was ignored by
+    // the blast even though can_send(email) honored it → reach.reachable_email lied.
+    const emailOk = acc.raw_email !== null && !suppressed.has("email") &&
+      !suppressedEmails.has(emailKey);
     // SMS reach now checks BOTH the email-keyed unsub (channel='sms' on this
     // buyer's email row) AND the phone-keyed suppression ledgers (Sub-B fix).
     // Previously smsOk only consulted the email-keyed set, so a phone STOP /

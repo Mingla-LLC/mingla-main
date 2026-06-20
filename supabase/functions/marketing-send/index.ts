@@ -545,25 +545,101 @@ function getTrackingRedirectOrigin(): string {
   return `${supabaseUrl}/functions/v1/marketing-track-click`;
 }
 
+// META-ORCH-1161 go-live-prep (P3-1 carry-forward) — US NANP area-code → IANA
+// timezone. The prior quiet-hours logic anchored EVERY US number to
+// America/New_York, so a +1 West-Coast recipient was evaluated at Eastern time
+// and could be texted at 5 AM local (8 AM ET). FCC/TCPA quiet hours are
+// RECIPIENT-LOCAL (8 AM–9 PM), so we derive the actual zone from the area code.
+// Covers the 50 states + DC + PR/VI; an area code NOT in the map → unknown → the
+// caller conservatively DENIES (defer) rather than guess. Codes that straddle a
+// DST/standard quirk (AZ no-DST) get their correct IANA zone (Phoenix).
+const US_AREACODE_TZ: Record<string, string> = (() => {
+  const m: Record<string, string> = {};
+  const add = (tz: string, codes: string[]) => {
+    for (const c of codes) m[c] = tz;
+  };
+  // Eastern.
+  add("America/New_York", [
+    "201","202","203","207","212","215","216","219","220","223","224","226",
+    "229","234","239","240","267","272","276","283","301","302","304","305",
+    "321","330","339","340","347","351","352","380","386","401","404","407",
+    "410","412","413","419","434","440","443","445","464","470","475","478",
+    "484","508","513","516","517","518","540","551","557","561","564","567",
+    "570","571","585","586","588","603","606","607","609","610","614","616",
+    "617","631","646","667","678","680","681","689","703","704","706","716",
+    "717","718","724","727","732","734","737","740","743","754","757","762",
+    "770","772","774","781","786","787","802","803","804","810","813","814",
+    "828","835","843","845","848","850","856","857","860","862","863","864",
+    "878","901","904","910","912","914","917","919","920","929","937","939",
+    "941","947","954","959","978","980","984",
+  ]);
+  // Central.
+  add("America/Chicago", [
+    "205","210","214","217","218","224","225","228","254","256","262","270",
+    "281","309","312","314","318","319","320","331","334","337","361","380",
+    "402","405","409","414","417","430","432","447","456","469","479","501",
+    "504","507","512","515","531","539","563","573","580","601","608","612",
+    "615","618","620","630","636","641","651","657","660","662","682","708",
+    "713","715","731","737","763","769","773","779","785","806","815","816",
+    "817","830","832","847","850","870","901","903","913","915","920","930",
+    "931","936","940","952","956","972","979","985",
+  ]);
+  // Mountain (DST-observing).
+  add("America/Denver", [
+    "303","307","308","385","406","435","505","575","719","720","970","984",
+  ]);
+  // Arizona (no DST — distinct zone).
+  add("America/Phoenix", ["480","520","602","623","928"]);
+  // Pacific.
+  add("America/Los_Angeles", [
+    "209","213","279","310","323","341","350","408","415","424","442","510",
+    "530","559","562","619","626","628","650","657","661","669","707","714",
+    "747","760","805","818","820","831","858","909","916","925","949","951",
+  ]);
+  // Alaska / Hawaii.
+  add("America/Anchorage", ["907"]);
+  add("Pacific/Honolulu", ["808"]);
+  return m;
+})();
+
+/**
+ * Resolve the recipient-local IANA timezone for quiet-hours evaluation.
+ *   - US (+1): derive from the NANP area code (digits 2-4 of the E.164). An
+ *     unrecognized area code returns null → caller defers (no Eastern guess).
+ *   - NG (+234): Africa/Lagos (single zone, WAT).
+ *   - any other / unknown market: null.
+ */
+function resolveRecipientTz(phone: string, countryCode: string | null): string | null {
+  const cc = (countryCode ?? "").toUpperCase();
+  if (cc === "NG") return "Africa/Lagos";
+  if (cc === "US") {
+    const digits = phone.replace(/[^0-9]/g, "");
+    // +1AAANXXXXXX → strip the leading country '1', take the next 3 = area code.
+    const national = digits.startsWith("1") ? digits.slice(1) : digits;
+    const areaCode = national.slice(0, 3);
+    return US_AREACODE_TZ[areaCode] ?? null;
+  }
+  return null;
+}
+
 /**
  * Marketing quiet hours (SPEC §6.6 / §8.2). Returns true when it is currently
- * INSIDE the recipient-local sending window for the contact's market. Derives
- * the timezone from the country code; an UNKNOWN country conservatively denies
- * outside a UTC-evaluated US window (fail-safe — we'd rather defer than text at
- * 3 AM local).
+ * INSIDE the RECIPIENT-LOCAL sending window for the contact's market. The
+ * timezone is derived from the phone itself (US area code; NG = Lagos) so a
+ * West-Coast +1 number is evaluated in Pacific time, not Eastern. An unknown
+ * market OR an unrecognized US area code conservatively DENIES (defer) — we will
+ * not text a number whose local time we cannot establish (fail-safe).
  */
-function isWithinQuietHours(countryCode: string | null, now: Date): boolean {
+function isWithinQuietHours(
+  phone: string,
+  countryCode: string | null,
+  now: Date,
+): boolean {
   const cc = (countryCode ?? "").toUpperCase();
-  // Unknown market → conservative DENY (defer). We will not text a number whose
-  // local time we cannot establish (SPEC §6.6).
   if (cc !== "US" && cc !== "NG") return false;
-  // Resolve an IANA tz to evaluate the recipient-local hour.
-  const tzByCountry: Record<string, string> = {
-    US: "America/New_York", // conservative US-east anchor (earliest 9 PM cutoff)
-    NG: "Africa/Lagos", // WAT
-  };
+  const tz = resolveRecipientTz(phone, countryCode);
+  if (tz === null) return false; // unknown recipient zone → conservative deny.
   const market: "US" | "NG" = cc === "NG" ? "NG" : "US";
-  const tz = tzByCountry[cc];
   const { startHour, endHour } = QUIET_HOURS[market];
   let localHour: number;
   try {
@@ -635,7 +711,9 @@ async function sendSms(
       const countryCode = countryFromE164(phone);
 
       // Quiet hours — defer (do NOT send) outside the recipient-local window.
-      if (!isWithinQuietHours(countryCode, now)) {
+      // TZ is derived from the phone (US area code; NG = Lagos), not a fixed
+      // Eastern anchor, so a West-Coast +1 is judged in Pacific time.
+      if (!isWithinQuietHours(phone, countryCode, now)) {
         const messageId = crypto.randomUUID();
         await supabase.from("marketing_messages").insert({
           id: messageId,
