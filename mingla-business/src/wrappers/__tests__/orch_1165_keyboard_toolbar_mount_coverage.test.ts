@@ -105,13 +105,20 @@ describe("ORCH-1165 Done-bar mount coverage + keyed offsets (adversarial)", () =
   // KEYED ON KEYBOARD-OPEN — never a permanent dead gap, never the web/closed
   // branch. Source-regex assertions; fails-on-revert by line-deletion.
 
-  it("Ari composer adds +42 to the keyboard-open paddingBottom term only", () => {
+  it("Ari composer lifts the FULL composer above the Done bar only when keyboard open (REWORK loop 2)", () => {
     const src = read("src/screens/ari/AriChatScreen.tsx");
-    // keyboard-open branch: keyboardHeight + spacing.sm + 42
+    // REWORK loop 2: clearing only the pill's bottom edge to the bar (+42) left
+    // the input row BEHIND the bar. The keyboard-open branch must now lift by
+    // the bar offset (+42) PLUS the measured composer height PLUS 12dp breath,
+    // so the WHOLE pill sits above the bar's top.
     expect(src).toMatch(
-      /keyboardHeight\s*>\s*0[\s\S]*?\?\s*keyboardHeight\s*\+\s*spacing\.sm\s*\+\s*42/,
+      /keyboardHeight\s*>\s*0[\s\S]*?\?\s*keyboardHeight\s*\+\s*spacing\.sm\s*\+\s*42\s*\+\s*composerHeight\s*\+\s*12/,
     );
-    // web branch must NOT get +42 (no accessory bar on web).
+    // composerHeight is measured (self-adjusts to multi-line / font scaling),
+    // not a guessed constant — the onLayout handler must feed it.
+    expect(src).toMatch(/onLayout\s*=\s*\{\s*onComposerLayout\s*\}/);
+    expect(src).toMatch(/setComposerHeight\s*\(/);
+    // web branch must NOT get the +42 lift (no accessory bar on web).
     expect(src).not.toMatch(/===\s*["']web["']\s*\?\s*spacing\.sm\s*\+\s*42/);
   });
 
