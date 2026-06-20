@@ -403,6 +403,11 @@ export interface RsvpUpdatePayload {
   rsvpWaitlistEnabled: boolean;
   rsvpApprovalMode: "auto" | "manual";
   rsvpDiscoverable: boolean;
+  // ORCH-1172 — privacy toggles persisted into theme.business_event.settings
+  // by biz_update_live_rsvp (migration 20261113000000). These are NOT DB
+  // columns; without them in the payload the edit silently drops the toggles.
+  privateGuestList: boolean;
+  hideRemainingCount: boolean;
 }
 
 /**
@@ -435,6 +440,8 @@ export const buildRsvpUpdatePayload = (
   rsvpWaitlistEnabled: draft.rsvpWaitlistEnabled,
   rsvpApprovalMode: draft.rsvpApprovalMode,
   rsvpDiscoverable: draft.rsvpDiscoverable,
+  privateGuestList: draft.privateGuestList,
+  hideRemainingCount: draft.hideRemainingCount,
 });
 
 const recurrenceRulesForDraft = (draft: DraftEvent): unknown =>

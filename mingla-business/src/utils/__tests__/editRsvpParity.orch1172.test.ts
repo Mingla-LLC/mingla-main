@@ -14,7 +14,10 @@
  * Fails-on-revert: revert the editableDraftToPatch rsvp* diff branches → the
  * "edited controls reach the patch" assertions throw (BUG-B regression). Revert
  * buildRsvpUpdatePayload's `title` → the "payload carries a non-empty title"
- * assertion throws (BUG-A regression).
+ * assertion throws (BUG-A regression). Revert the privateGuestList /
+ * hideRemainingCount lines in buildRsvpUpdatePayload (the BUG-C theme-settings
+ * persistence gap, migration 20261113000000) → the "payload carries the two
+ * privacy toggles" assertion throws.
  */
 
 import { describe, expect, test } from "@jest/globals";
@@ -244,5 +247,33 @@ describe("ORCH-1172 — edit-RSVP parity", () => {
     expect(payload).toHaveProperty("cover_media_url");
     expect(payload).toHaveProperty("cover_media_type");
     expect(payload.location_text).toBe("Loft 5 · 5 Main St");
+  });
+
+  // ----- BUG-C: privacy toggles reach the RPC so it can persist them into
+  //             theme.business_event.settings (migration 20261113000000) -------
+
+  test("buildRsvpUpdatePayload carries privateGuestList + hideRemainingCount (BUG-C fixed)", () => {
+    const original = rsvpLiveEvent();
+    const edited: DraftEvent = {
+      ...liveEventToEditableDraft(original),
+      privateGuestList: true,
+      hideRemainingCount: true,
+    };
+
+    const payload = buildRsvpUpdatePayload(edited);
+
+    // These are NOT DB columns — biz_update_live_rsvp deep-merges them into
+    // theme.business_event.settings. The RPC can only persist what the client
+    // sends, so the payload MUST carry them or the toggle save silently no-ops.
+    expect(payload.privateGuestList).toBe(true);
+    expect(payload.hideRemainingCount).toBe(true);
+  });
+
+  test("buildRsvpUpdatePayload mirrors the unedited privacy toggles (default OFF round-trips)", () => {
+    const payload = buildRsvpUpdatePayload(
+      liveEventToEditableDraft(rsvpLiveEvent()),
+    );
+    expect(payload.privateGuestList).toBe(false);
+    expect(payload.hideRemainingCount).toBe(false);
   });
 });
