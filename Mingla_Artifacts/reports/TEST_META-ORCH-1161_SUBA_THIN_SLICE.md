@@ -174,3 +174,63 @@ If Seth accepts both → this routes to CLOSE. If either must be fixed in the th
 ## Downstream routing
 
 CONDITIONAL PASS with two P2 conditions requiring Seth's accept → **STOP and surface to Seth** (do not auto-route to CLOSE). On Seth's accept of P2-1 + P2-2 as Sub-C carry-forward → orchestrator CLOSE (flip I-PROPOSED-1161-* ACTIVE, log the notification DEC-185/186 under non-colliding IDs, add the 2 Deno test paths to CI). On reject → REWORK to implementor for the atomic drain claim + guest delivery ledger.
+
+---
+
+# RE-VERIFY 2026-06-20 — RETEST after REWORK (P2-1 + P2-2 fixed in-slice)
+
+**Mode:** RETEST (mingla-tester, adversarial). Backend/SQL/edge-only → Phase 0.A live-fire-sim EXEMPT (no UI/runtime surface). Runtime proof = real Postgres `supabase/postgres:17.4.1.075` (CI-identical image) + Deno 2.7.x.
+**Under test:** REWORK commit `14cb98412` (7 files; the two P2s were sent back rather than Seth-accepted).
+**New migration:** `20261110000004_orch_1161_atomic_claim_and_guest_ledger.sql`.
+
+## RE-VERIFY VERDICT: **PASS**
+
+**P0: 0 | P1: 0 | P2: 0 | P3: 1 (carried, advisory) | P4: 3 (carried).**
+
+Both prior P2s are CLOSED with runtime proof against a real Postgres. The rework is tightly scoped (7 files; legacy path / `can_send` / `smsAdapter` / migration `…000002` all UNTOUCHED), the migration chain applies in order, CI now actually runs all three 1161 Deno files, and the regression gate is satisfied with an independently-reproduced fails-on-revert. **CLEAR TO CLOSE.**
+
+The earlier CONDITIONAL was gated on Seth accepting the two P2s as Sub-C carry-forward; the implementor instead fixed them in-slice, so that condition is moot and the verdict upgrades to a clean PASS.
+
+## What I RUNTIME-PROVED this cycle
+
+### P2-1 CLOSED — atomic outbox claim (real Postgres 17, true concurrency)
+- `claim_notification_outbox(int)` confirmed live: **SECURITY DEFINER = t**, body contains **`FOR UPDATE SKIP LOCKED`**, and **REVOKE'd** — `has_function_privilege` for anon / authenticated / public all = **false** (auto-grant gotcha closed). ✓
+- **Concurrency disjointness proof:** seeded 10 pending outbox rows. Session A opened a txn, called `claim_notification_outbox(5)`, and **held its row locks for 4s** while Session B concurrently called `claim_notification_outbox(10)`. Result: **A claimed 5, B claimed 5, OVERLAP = 0 double-claimed rows, 10 distinct rows total, all flipped to `processing`.** Two overlapping drains CANNOT claim the same row → exactly-once forwarding. ✓
+- **Guest dedupe backstop proven:** duplicate insert of `(idempotency_key, channel)` on a guest row (notification_id NULL) → **23505 `duplicate key … notification_deliveries_guest_idem_idx`** (a repeated guest send is a no-op skip); same key + different channel → allowed. This is the second line of defense for the no-user_id path that lacks the `notifications` UNIQUE backstop. ✓
+
+### P2-2 CLOSED — guest delivery ledger (real Postgres 17)
+- `notification_deliveries.notification_id` is now **NULLABLE**; `contact` + `idempotency_key` columns present. ✓
+- No-orphan integrity: `CHECK (notification_id IS NOT NULL OR contact IS NOT NULL)` confirmed; a row with **neither** set is **rejected by `check_violation`**; a guest row (notification_id NULL, contact set) is accepted. There is no way to write a delivery with neither key. ✓
+- Guest partial UNIQUE confirmed verbatim: `(idempotency_key, channel) WHERE idempotency_key IS NOT NULL AND notification_id IS NULL` (does not touch the authenticated path). ✓
+- `dispatchAnon` (`_shared/notifyV2.ts`) now writes a contact-keyed delivery row per guest send, claimed `queued` → reconciled to the provider result; the Twilio status webhook reconciles by `provider_message_id` with no `notification_id` filter → guest rows reconcile automatically. ✓ (source-confirmed; webhook untouched.)
+
+### Migration chain — applies IN ORDER after `…000003`, monotonic, RLS/REVOKE intact
+- `20261110000000 → 000004` applied in sequence against the CI-identical Postgres-17 image. `000000/000001/000002/000004` apply **clean**; `000003` errors ONLY on `cron.job` absent in a bare container — installing `pg_cron` (as the CI baseline does via `CREATE EXTENSION`) makes `000003` apply clean and register the cron job (`cron.schedule` jobid 1; only NOTICE is the expected vault advisory). NOT a migration defect. ✓
+- `20261110000004` > all existing 1161 prefixes and every sibling-worktree prefix → monotonic. The re-affirmed `notification_deliveries_read_own` RLS policy + the three REVOKEs on the new function are all present live. ✓
+
+### No regression to prior PASS items
+- **Rework scope:** commit `14cb98412` touched exactly 7 files — none of `notify-dispatch/index.ts` (legacy path), `…000002` (`can_send`), or `smsAdapter.ts`. Legacy `type` path is structurally **byte-identical**. ✓
+- **Marketing-scope STOP does NOT kill transactional (re-proven live):** a `scope='marketing'` STOP on a phone → `can_send(NULL,'buyer_reservation_changed','sms',phone)` = **t**; `can_send(…,'marketing_blast',…)` = **f**; a `scope='all'` STOP → transactional = **f**. ✓
+- **SMS kill-switch zero-HTTP:** re-proven via the Deno suite (`dispatchV2: kill-switch OFF` + anon `ZERO Twilio HTTP` both pass; smsAdapter returns `skipped` before any Twilio HTTP). ✓
+- strict-grep `i-proposed-1161-sms-from-approved-sender-and-kill-switch.mjs`: **PASS (exit 0)**; `deno check` on the 2 rework-touched edge fns: **clean**.
+
+### CI registration — both (all three) 1161 Deno files now enumerated and triggered
+- `.github/workflows/supabase-migrations-and-stripe-deno.yml` adds a new **`notification-deno-tests`** job enumerating all three files: `orch_1161_notify_dispatch_v2.test.ts`, `orch_1161_anon_guest_path.test.ts`, `orch_1161_guest_ledger_and_dedupe.test.ts`. The workflow `paths` trigger now includes `supabase/functions/__tests__/**` on **both** `push` and `pull_request` → they will actually run on CI. ✓
+- CI-parity batch run locally: **13 passed | 0 failed** (8 happy-path + 3 tester adversarial + 2 rework).
+
+### Tester's prior A3 (`twilio===2`) honored as append-only
+- The rework did **not** modify `orch_1161_anon_guest_path.test.ts` (append-only intact). That test's A3 still asserts `twilio===2` because its fake client never simulates the DB UNIQUE — correct: the dedupe is a real-DB constraint, and the FIXED behavior is proven in `orch_1161_guest_ledger_and_dedupe.test.ts` G2 (whose fake client DOES enforce the partial UNIQUE and asserts `twilio===1`) **and** independently in the live Postgres 23505 probe above. The dedupe is real, not a fake-client artifact. ✓
+
+## Independent fails-on-revert re-run (regression gate)
+- **Path:** `supabase/functions/__tests__/orch_1161_guest_ledger_and_dedupe.test.ts` (G1, G2). In-diff vs origin/main as `A` (added), alongside the other two 1161 files.
+- **Revert 1 (dedupe guard):** true line-deletion of the `if (claim.duplicate) { … continue; }` block in `dispatchAnon` → **G2 FAILS** (1 passed | 1 failed); restore → 2 pass. ✓
+- **Revert 2 (ledger write):** true neutering of the `insertGuestDelivery` INSERT body → **BOTH G1 and G2 FAIL** (0 passed | 2 failed); restore → 2 pass; working tree confirmed byte-clean (`git diff --quiet` = YES). ✓
+- `fails-on-revert reproduced at 14cb98412.`
+
+## Residual / carried (non-blocking)
+- **P3-1 (carried):** the idempotency key uses txn-start `now()` → dedupes within a txn, not across logical-duplicate transitions. Unchanged this cycle; arguably correct (a distinct transition should get a distinct notification). Advisory only — does NOT block.
+- **P4-1/2/3 (carried praise):** additive legacy branch (0 deletions), kill-switch fails-closed before any Twilio env read, REVOKE on every SECURITY DEFINER fn (now incl. `claim_notification_outbox`).
+- **Discoveries (unchanged, orchestrator-owned at CLOSE):** notification DEC-185/186 must be logged under non-colliding IDs (local DEC-185/186 are the ORCH-1146/1151 experience decisions); the COPY file lives in the anchor, not origin/main; `payout_paid` business-SMS seed vs SPEC §2 non-goal needs reconciliation; COMMS-0038 (META-ORCH-1148 realtime CI red) is pre-existing and inherited by the closing PR — does NOT block 1161 (this slice adds no realtime subscriptions).
+
+## RE-VERIFY routing
+PASS → **CLEAR TO CLOSE.** Routes to orchestrator CLOSE: open a PR (will inherit the pre-existing COMMS-0038 red gate; not a 1161 defect), apply the migration chain `…000000 → …000004` in order via `db push` / Management API, deploy `notify-dispatch` + `notify-outbox-drain` + `twilio-inbound-sms` + `twilio-message-status` from MERGED main, flip I-PROPOSED-1161-* ACTIVE, and log the notification DEC-185/186 under non-colliding IDs.
