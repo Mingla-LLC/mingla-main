@@ -21,9 +21,10 @@
 --       — the authenticated consumer prefs UI cannot write channel_suppressions
 --       directly (RLS: service-role writes only). This RPC resolves the CALLER's
 --       own email + phone (auth.uid()) and inserts (opt-out) or deletes (opt-in)
---       channel_suppressions(scope='marketing') rows keyed by BOTH user_id AND
---       contact, so the round-trip is honored by can_send (user_id|contact match)
---       AND the contact-keyed audience resolver.
+--       channel_suppressions(scope='marketing') rows — a user_id-keyed row AND a
+--       user_id=NULL contact-keyed row (distinct unique-index keys) — so the
+--       round-trip is honored by can_send (user_id|contact match) AND the
+--       contact-keyed audience resolver (email + sms blasts).
 --
 -- Cross-refs:
 --   SPEC:  Mingla_Artifacts/specs/SPEC_META-ORCH-1161_NOTIFICATION_MESSAGING_SYSTEM.md
@@ -140,13 +141,18 @@ COMMENT ON FUNCTION public.can_send(uuid, text, text, text) IS
 -- source of truth (no parallel authority) and resolves the caller's own contacts
 -- so the contact-keyed audience resolver honors the same opt-out.
 --
--- suppress=true  → INSERT a channel_suppressions(scope='marketing', reason='unsubscribe',
---                  brand_id NULL=global) row for the caller (user_id = auth.uid())
---                  WITH the resolved contact (email for 'email', phone for 'sms')
---                  so BOTH can_send (user_id|contact) AND the audience resolver
---                  (contact) exclude the user. ON CONFLICT DO NOTHING (idempotent).
+-- suppress=true  → INSERT TWO channel_suppressions(scope='marketing',
+--                  reason='unsubscribe', brand_id NULL=global) rows with DISTINCT
+--                  unique-index keys: a user_id-keyed row (user_id=auth.uid(),
+--                  contact=NULL) so can_send honors it even with no contact on file,
+--                  AND a contact-keyed row (user_id=NULL, contact=resolved email/phone)
+--                  so the contact-keyed audience resolver excludes the user too. The
+--                  contact row MUST carry user_id=NULL — otherwise COALESCE(user_id,
+--                  contact) collapses both rows onto one key and ON CONFLICT DO NOTHING
+--                  silently drops the contact row. ON CONFLICT DO NOTHING (idempotent).
 -- suppress=false → DELETE the caller's marketing suppression rows for that channel
---                  (both the user_id-keyed and any contact-keyed row this RPC wrote).
+--                  (the user_id-keyed row AND the user_id=NULL contact-keyed row this
+--                  RPC wrote for the caller's own contact).
 --                  Only scope='marketing' rows authored here are removed — a
 --                  scope='all' STOP or a bounce/complaint suppression is NEVER
 --                  cleared by a prefs re-opt-in (I-PROPOSED-1161-TRANSACTIONAL-VS-
@@ -168,6 +174,7 @@ DECLARE
   v_phone   text;
   v_contact text;
   v_affected integer := 0;
+  v_tmp     integer;
 BEGIN
   IF v_user_id IS NULL THEN
     RAISE EXCEPTION 'not_authenticated' USING ERRCODE = 'P0001';
@@ -205,9 +212,19 @@ BEGIN
   END IF;
 
   IF p_suppress THEN
-    -- Opt OUT. Always write the user_id-keyed row (can_send honors it even when no
-    -- contact is on file). Also write the contact-keyed row when a contact exists
-    -- so the contact-keyed audience resolver excludes the user too.
+    -- Opt OUT. Write TWO rows that resolve to DISTINCT unique-index keys.
+    -- The production index is channel_suppressions_uniq_idx ON
+    -- (COALESCE(user_id::text, contact), channel, scope, COALESCE(brand_id,'global')).
+    --   (a) user_id-keyed row: (user_id, contact=NULL) → key = user_id. can_send
+    --       honors it via the user_id branch even when no contact is on file.
+    --   (b) contact-keyed row: (user_id=NULL, contact) → key = contact (NOT
+    --       user_id). MUST be user_id=NULL — if it carried v_user_id, COALESCE
+    --       would collapse it onto the SAME key as (a) and ON CONFLICT DO NOTHING
+    --       would silently drop it, so the contact-keyed audience resolver
+    --       (resolveSuppressedPhones / resolveSuppressedEmails — keyed on
+    --       channel_suppressions.contact) would never exclude the user (the P1
+    --       SMS-blast-ignores-opt-out defect). A NULL user_id contact row is also
+    --       cross-user-safe (G-03: no foreign user_id is ever written).
     INSERT INTO public.channel_suppressions (user_id, contact, channel, scope, reason, brand_id)
     VALUES (v_user_id, NULL, p_channel, 'marketing', 'unsubscribe', NULL)
     ON CONFLICT DO NOTHING;
@@ -215,19 +232,26 @@ BEGIN
 
     IF v_contact IS NOT NULL THEN
       INSERT INTO public.channel_suppressions (user_id, contact, channel, scope, reason, brand_id)
-      VALUES (v_user_id, v_contact, p_channel, 'marketing', 'unsubscribe', NULL)
+      VALUES (NULL, v_contact, p_channel, 'marketing', 'unsubscribe', NULL)
       ON CONFLICT DO NOTHING;
-      GET DIAGNOSTICS v_affected = v_affected + ROW_COUNT;
+      -- GET DIAGNOSTICS accepts only a bare `var = item` assignment, NOT an
+      -- expression — accumulate via a temp (the P0 compile fix).
+      GET DIAGNOSTICS v_tmp = ROW_COUNT;
+      v_affected := v_affected + v_tmp;
     END IF;
   ELSE
     -- Opt back IN. Remove ONLY this caller's scope='marketing' rows for the
-    -- channel (user_id-keyed and any contact-keyed row authored by this RPC).
-    -- A scope='all' STOP or a bounce/complaint suppression is intentionally NOT
-    -- cleared here — re-enrolling marketing must not resurrect a hard opt-out.
+    -- channel: the user_id-keyed row AND the contact-keyed (user_id=NULL) row this
+    -- RPC wrote for the caller's own contact. A scope='all' STOP or a
+    -- bounce/complaint suppression is intentionally NOT cleared here —
+    -- re-enrolling marketing must not resurrect a hard opt-out.
     DELETE FROM public.channel_suppressions s
-     WHERE s.user_id = v_user_id
-       AND s.channel = p_channel
-       AND s.scope = 'marketing';
+     WHERE s.channel = p_channel
+       AND s.scope = 'marketing'
+       AND (
+         s.user_id = v_user_id
+         OR (v_contact IS NOT NULL AND s.user_id IS NULL AND s.contact = v_contact)
+       );
     GET DIAGNOSTICS v_affected = ROW_COUNT;
   END IF;
 
