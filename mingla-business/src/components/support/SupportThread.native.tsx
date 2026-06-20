@@ -22,7 +22,8 @@ import {
 } from "./SupportThreadCore";
 
 const NativeKeyboardWrap: React.FC<KeyboardWrapProps> = ({ children }) => (
-  <KeyboardAvoidingView behavior="padding" keyboardVerticalOffset={0}>
+  // ORCH-1165: lift the composer 42pt so the Done bar sits above it.
+  <KeyboardAvoidingView behavior="padding" keyboardVerticalOffset={42}>
     {children}
   </KeyboardAvoidingView>
 );

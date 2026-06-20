@@ -144,7 +144,16 @@ export const JoinWaitlistSheet: React.FC<JoinWaitlistSheetProps> = ({
   return (
     <Sheet visible={visible} onClose={onClose} snapPoint="full">
       <View
-        style={[styles.body, { paddingBottom: keyboardPadding + spacing.lg }]}
+        style={[
+          styles.body,
+          {
+            // ORCH-1165: +42pt (KEYBOARD_TOOLBAR_HEIGHT) only with the keyboard
+            // open, so the Done bar never covers the last field. This sheet is
+            // inside a Modal host → also gets the §4.3 in-Modal toolbar.
+            paddingBottom:
+              keyboardPadding + spacing.lg + (keyboardPadding > 0 ? 42 : 0),
+          },
+        ]}
       >
         <Text style={styles.title}>Join waitlist</Text>
         <Text style={styles.subtitle}>{ticket?.name ?? "Ticket"}</Text>

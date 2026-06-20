@@ -465,7 +465,7 @@ export default function TripIntakeScreen(): React.ReactElement {
         contentContainerStyle={[
           styles.bodyContent,
           keyboardHeight > 0
-            ? { paddingBottom: keyboardHeight + spacing.xl }
+            ? { paddingBottom: keyboardHeight + spacing.xl + 42 }
             : { paddingBottom: insets.bottom + 120 },
         ]}
         keyboardShouldPersistTaps="handled"

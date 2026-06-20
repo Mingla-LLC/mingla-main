@@ -21,7 +21,7 @@ import {
   Text,
   View,
 } from "react-native";
-import type { KeyboardEvent } from "react-native";
+import type { KeyboardEvent, LayoutChangeEvent } from "react-native";
 import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Menu, Settings } from "lucide-react-native";
@@ -80,6 +80,22 @@ export const AriChatScreen: React.FC = () => {
   const [localError, setLocalError] = useState<string | null>(null);
   const [keyboardHeight, setKeyboardHeight] = useState(0);
   const [suggestionsOpen, setSuggestionsOpen] = useState(false);
+  // ORCH-1165 REWORK loop 2 — the keyboard-open lift must clear the ENTIRE
+  // composer pill above the 42dp Done bar, not just its bottom edge. The pill
+  // is taller than 42 (~57dp one-line, more multi-line / at large font scale),
+  // so `keyboardHeight + spacing.sm + 42` left the text-input row BEHIND the
+  // bar (typed text invisible until dismiss). We measure the composer's
+  // rendered height via onLayout and lift by that full height + 12dp breathing
+  // room, so it self-adjusts to multi-line growth and font scaling — no guessed
+  // pill height. First render (pre-measure) falls back to a conservative
+  // constant that already clears a one-line pill (InputBar host minHeight 48 +
+  // inputWrap paddingTop spacing.sm) so it never under-lifts on first focus.
+  const COMPOSER_HEIGHT_FALLBACK = 110;
+  const [composerHeight, setComposerHeight] = useState(COMPOSER_HEIGHT_FALLBACK);
+  const onComposerLayout = (e: LayoutChangeEvent): void => {
+    const h = e.nativeEvent.layout.height;
+    if (h > 0) setComposerHeight(h);
+  };
   // ORCH-1101 REWORK Bug #6 — dismiss the AI-disclosure sheet the instant the
   // CTA is tapped, decoupled from the acknowledge mutation's network round-trip
   // + profile-query refetch. Previously the sheet only closed when the refetched
@@ -319,14 +335,19 @@ export const AriChatScreen: React.FC = () => {
               // `insets.bottom + BOTTOM_NAV_CLEARANCE_PX` reserved a phantom
               // 80px gap below the composer. Web → spacing.sm only.
               //
-              // Native unchanged: when the keyboard is up, sit JUST above it
-              // with a small breath (spacing.sm); when closed, clear the
-              // floating BottomNav capsule + safe-area inset.
+              // Native: when the keyboard is up, lift the WHOLE composer pill
+              // above the 42dp Done bar. ORCH-1165 REWORK loop 2 — the bar sits
+              // keyboardHeight + spacing.sm + 42 from the bottom; clearing only
+              // the pill's bottom edge to that line left the input row behind
+              // the bar. Add the measured composerHeight + 12dp so the entire
+              // pill sits above the bar's top (self-adjusts to multi-line /
+              // font scaling; conservative fallback before first measure). When
+              // closed, clear the floating BottomNav capsule + safe-area inset.
               paddingBottom:
                 Platform.OS === "web"
                   ? spacing.sm
                   : keyboardHeight > 0
-                    ? keyboardHeight + spacing.sm
+                    ? keyboardHeight + spacing.sm + 42 + composerHeight + 12
                     : Math.max(insets.bottom, spacing.md) + BOTTOM_NAV_CLEARANCE_PX,
             },
           ]}
@@ -347,11 +368,17 @@ export const AriChatScreen: React.FC = () => {
               />
             </View>
           ) : null}
-          <InputBar
-            onSend={handleSend}
-            disabled={chat.isSending}
-            onShowSuggestions={() => setSuggestionsOpen((v) => !v)}
-          />
+          {/* ORCH-1165 REWORK loop 2 — measure the composer pill's rendered
+              height (NOT the inputWrap, whose dynamic paddingBottom would feed
+              back) so the keyboard-open lift clears the full pill above the
+              42dp Done bar. */}
+          <View onLayout={onComposerLayout}>
+            <InputBar
+              onSend={handleSend}
+              disabled={chat.isSending}
+              onShowSuggestions={() => setSuggestionsOpen((v) => !v)}
+            />
+          </View>
         </View>
       </View>
 

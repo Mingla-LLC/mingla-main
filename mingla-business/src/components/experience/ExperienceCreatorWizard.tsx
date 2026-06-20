@@ -2,6 +2,8 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+// ORCH-1165: library-backed keyboard-visibility read (gate-clean wrapper).
+import { useKeyboardIsVisible } from "../../wrappers/useKeyboardIsVisible";
 // orch-strict-grep-allow orch-0892 — META-ORCH-1059 Sub-A rebuilds the experience
 // wizard onto a multi-stop itinerary + lifted CreatorStep2When + two-mode pricing.
 // Keyboard-input fields sit in a single ScrollView with keyboardShouldPersistTaps;
@@ -192,6 +194,9 @@ export const ExperienceCreatorWizard: React.FC<ExperienceCreatorWizardProps> = (
   const brand = useCurrentBrand();
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  // ORCH-1165: this bare ScrollView has no KAS auto-scroll, so when the Done
+  // bar (42pt) is up we add 42pt of bottom padding so the last field clears it.
+  const keyboardVisible = useKeyboardIsVisible();
   const taxRegistration = useBrandTaxRegistration(brand?.id ?? null);
   const venueDefault = useExperienceVenueDefault(brandId);
   const scrollRef = useRef<ScrollView>(null);
@@ -726,7 +731,11 @@ export const ExperienceCreatorWizard: React.FC<ExperienceCreatorWizardProps> = (
       </View>
       <ScrollView
         ref={scrollRef}
-        contentContainerStyle={styles.scrollContent}
+        contentContainerStyle={[
+          styles.scrollContent,
+          // ORCH-1165: +42pt clearance for the Done bar while the keyboard is up.
+          keyboardVisible ? { paddingBottom: spacing.lg + 42 } : null,
+        ]}
         keyboardShouldPersistTaps="handled"
       >
         {isLiveEdit ? (

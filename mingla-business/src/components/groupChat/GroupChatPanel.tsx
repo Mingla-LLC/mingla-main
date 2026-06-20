@@ -226,7 +226,8 @@ export const GroupChatPanel: React.FC<GroupChatPanelProps> = ({ eventId }) => {
             })}
           </ScrollView>
 
-          <KeyboardAvoidingView behavior="padding" keyboardVerticalOffset={0}>
+          {/* ORCH-1165: lift the composer 42pt so the Done bar sits above it. */}
+          <KeyboardAvoidingView behavior="padding" keyboardVerticalOffset={42}>
             {attachment ? (
               <View style={styles.attachmentPreview}>
                 <Image
