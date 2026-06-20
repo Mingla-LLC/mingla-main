@@ -42,11 +42,26 @@ import {
   type MarketingVariables,
   renderMarketingEmail,
 } from "../_shared/marketingEmailRender.ts";
-import { signUnsubscribeToken } from "../_shared/marketingTokens.ts";
+import { generateTrackingId, signUnsubscribeToken } from "../_shared/marketingTokens.ts";
+import { computeSegments, isValidE164, smsAdapter } from "../_shared/adapters/smsAdapter.ts";
 
 const BATCH_LIMIT = 10;
 const RESEND_MAX_RETRIES = 3;
 const RESEND_BACKOFF_MS = [1000, 3000, 9000];
+
+// META-ORCH-1161 Sub-B — SMS throughput throttling. Mirror the email
+// BATCH_LIMIT discipline: cap concurrent SMS sends and pace them so we never
+// burst-blast past the toll-free/10DLC throughput tier (SPEC §6.8, R-2).
+const SMS_BATCH_SIZE = 10; // recipients per batch
+const SMS_BATCH_PAUSE_MS = 1100; // ~9 msg/s sustained — under the 1 MPS toll-free + headroom
+
+// META-ORCH-1161 Sub-B — marketing quiet hours (SPEC §6.6 / §8.2). Marketing SMS
+// is blocked outside these recipient-local windows. Transactional SMS is NOT
+// gated here (this function is marketing-only).
+const QUIET_HOURS = {
+  US: { startHour: 8, endHour: 21 }, // 8 AM–9 PM recipient-local
+  NG: { startHour: 8, endHour: 20 }, // 8 AM–8 PM WAT
+} as const;
 
 interface CampaignRow {
   id: string;
@@ -60,6 +75,10 @@ interface CampaignRow {
     body_html?: string;
     body_text?: string;
     embedded_events?: string[];
+    // SMS payload (ChannelPayloadSms): the GSM-7 body (sans STOP footer — the
+    // adapter appends it). short_url_token is reserved; SMS links use the
+    // existing /m/{tracking_id} Mingla redirect (Sub-B §6.7).
+    body?: string;
   };
   name: string;
   scheduled_for: string | null;
@@ -258,7 +277,12 @@ async function dispatchByKind(
     case "email":
       return await sendEmail(supabase, campaign, options);
     case "sms":
-      throw new Error("sms_not_yet_enabled");
+      // META-ORCH-1161 Sub-B — real SMS dispatch via the Sub-A smsAdapter.
+      // The per-market kill-switch (SMS_LIVE_ENABLED_US/_NG, default false)
+      // lives inside smsAdapter: when off it returns status='skipped' WITHOUT
+      // any Twilio HTTP, so this ships text-dark until the operator flips it.
+      // (The Phase-A sentinel string "sms_not_yet_enabled" is retired here.)
+      return await sendSms(supabase, campaign, options);
     case "rcs":
       throw new Error("rcs_not_yet_enabled");
     default: {
@@ -458,6 +482,250 @@ async function sendEmail(
         err instanceof Error ? err.message : String(err)
       }`,
     );
+  }
+
+  return { recipients: sent + previewSkipped, preview_skipped: previewSkipped };
+}
+
+// ---------------------------------------------------------------------------
+// META-ORCH-1161 Sub-B — SMS marketing dispatch.
+// ---------------------------------------------------------------------------
+
+interface SmsContact {
+  raw_phone: string | null;
+  sms_marketing_ok: boolean;
+}
+
+/**
+ * Derive a region (for quiet-hours + kill-switch routing) from the E.164 phone
+ * prefix, since orders carry no buyer country column. +1 → US, +234 → NG. An
+ * unrecognized prefix returns null → quiet-hours conservatively DENIES (defer)
+ * and the kill-switch defaults to the US switch in the adapter (off by default).
+ */
+function countryFromE164(phone: string): string | null {
+  const trimmed = phone.trim();
+  if (trimmed.startsWith("+234")) return "NG";
+  if (trimmed.startsWith("+1")) return "US";
+  return null;
+}
+
+/**
+ * Branded short links (SPEC §6.7): rewrite every http(s) URL in the SMS body
+ * into a Mingla-hosted /m/{tracking_id} redirect handled by marketing-track-click
+ * — NEVER a public shortener. Each rewritten link gets a marketing_clicks row so
+ * attribution + per-campaign click tracking works identically to email.
+ */
+function rewriteSmsLinks(
+  body: string,
+): { rewritten: string; links: Array<{ tracking_id: string; destination_url: string }> } {
+  const links: Array<{ tracking_id: string; destination_url: string }> = [];
+  const origin = getTrackingRedirectOrigin();
+  const urlRe = /https?:\/\/[^\s]+/g;
+  const rewritten = body.replace(urlRe, (match) => {
+    // Strip a trailing sentence punctuation so it isn't swallowed into the URL.
+    const trailingMatch = match.match(/[.,;:!?)]+$/);
+    const trailing = trailingMatch ? trailingMatch[0] : "";
+    const destination = trailing.length > 0
+      ? match.slice(0, match.length - trailing.length)
+      : match;
+    const trackingId = generateTrackingId();
+    links.push({ tracking_id: trackingId, destination_url: destination });
+    return `${origin}/${trackingId}${trailing}`;
+  });
+  return { rewritten, links };
+}
+
+function getTrackingRedirectOrigin(): string {
+  const override = Deno.env.get("MINGLA_TRACKING_LINK_ORIGIN");
+  if (override !== undefined && override.trim().length > 0) {
+    return override.replace(/\/+$/, "");
+  }
+  const supabaseUrl = Deno.env.get("SUPABASE_URL")?.replace(/\/+$/, "") ??
+    "https://gqnoajqerqhnvulmnyvv.supabase.co";
+  return `${supabaseUrl}/functions/v1/marketing-track-click`;
+}
+
+/**
+ * Marketing quiet hours (SPEC §6.6 / §8.2). Returns true when it is currently
+ * INSIDE the recipient-local sending window for the contact's market. Derives
+ * the timezone from the country code; an UNKNOWN country conservatively denies
+ * outside a UTC-evaluated US window (fail-safe — we'd rather defer than text at
+ * 3 AM local).
+ */
+function isWithinQuietHours(countryCode: string | null, now: Date): boolean {
+  const cc = (countryCode ?? "").toUpperCase();
+  // Unknown market → conservative DENY (defer). We will not text a number whose
+  // local time we cannot establish (SPEC §6.6).
+  if (cc !== "US" && cc !== "NG") return false;
+  // Resolve an IANA tz to evaluate the recipient-local hour.
+  const tzByCountry: Record<string, string> = {
+    US: "America/New_York", // conservative US-east anchor (earliest 9 PM cutoff)
+    NG: "Africa/Lagos", // WAT
+  };
+  const market: "US" | "NG" = cc === "NG" ? "NG" : "US";
+  const tz = tzByCountry[cc];
+  const { startHour, endHour } = QUIET_HOURS[market];
+  let localHour: number;
+  try {
+    const fmt = new Intl.DateTimeFormat("en-US", {
+      timeZone: tz,
+      hour: "numeric",
+      hour12: false,
+    });
+    localHour = parseInt(fmt.format(now), 10);
+    if (Number.isNaN(localHour)) return false;
+  } catch {
+    return false; // unknown tz → conservative deny
+  }
+  // Inside the window means startHour <= localHour < endHour.
+  return localHour >= startHour && localHour < endHour;
+}
+
+async function sendSms(
+  // deno-lint-ignore no-explicit-any
+  supabase: any,
+  campaign: CampaignRow,
+  options: DispatchOptions,
+): Promise<DispatchOutcome> {
+  // 1. Load audience + brand display name (sender identity in the SMS body).
+  const { data: audienceData, error: audienceErr } = await supabase
+    .from("marketing_audiences")
+    .select("id, brand_id, query_definition")
+    .eq("id", campaign.audience_id)
+    .maybeSingle();
+  if (audienceErr) throw new Error(`audience_load:${audienceErr.message}`);
+  if (audienceData === null) throw new Error("audience_missing");
+  const audience = audienceData as AudienceRow;
+
+  const { data: brandRow, error: brandErr } = await supabase
+    .from("brands")
+    .select("id, name")
+    .eq("id", campaign.brand_id)
+    .maybeSingle();
+  if (brandErr) throw new Error(`brand_load:${brandErr.message}`);
+  const brandName: string = (brandRow as { name?: string } | null)?.name ?? "Mingla brand";
+
+  // 2. Resolve audience (service-role bypasses RLS). reachable_sms is now truthful
+  //    (Sub-B phone-suppression fix in marketingAudience.ts).
+  const resolved = await resolveAudience(supabase, audience.query_definition);
+
+  const rawBody = (campaign.channel_payload.body ?? "").trim();
+  if (rawBody.length === 0) throw new Error("sms_body_empty");
+
+  const marketingSid = Deno.env.get("TWILIO_MARKETING_MESSAGING_SERVICE_SID") ?? null;
+
+  // 3. Throttled batches.
+  const deliverable = resolved.rows.filter(
+    (c) => c.sms_marketing_ok && c.raw_phone !== null,
+  ) as unknown as SmsContact[];
+
+  let sent = 0;
+  let previewSkipped = 0;
+  const now = new Date();
+
+  for (let i = 0; i < deliverable.length; i += SMS_BATCH_SIZE) {
+    const batch = deliverable.slice(i, i + SMS_BATCH_SIZE);
+    for (const contact of batch) {
+      const phone = contact.raw_phone;
+      if (phone === null || !isValidE164(phone.trim())) {
+        // Non-E.164 phone — skip, do NOT write a row (mirrors email's
+        // suppressed-skip discipline: report deliverable, not total).
+        continue;
+      }
+      const countryCode = countryFromE164(phone);
+
+      // Quiet hours — defer (do NOT send) outside the recipient-local window.
+      if (!isWithinQuietHours(countryCode, now)) {
+        const messageId = crypto.randomUUID();
+        await supabase.from("marketing_messages").insert({
+          id: messageId,
+          campaign_id: campaign.id,
+          recipient_phone: phone,
+          channel: "sms",
+          status: "failed",
+          failure_reason: "quiet_hours_deferred",
+        });
+        continue;
+      }
+
+      // Branded links + per-link click rows.
+      const { rewritten, links } = rewriteSmsLinks(rawBody);
+      const segments = computeSegments(rewritten);
+      const messageId = crypto.randomUUID();
+
+      const { error: insMsgErr } = await supabase
+        .from("marketing_messages")
+        .insert({
+          id: messageId,
+          campaign_id: campaign.id,
+          recipient_phone: phone,
+          channel: "sms",
+          status: "queued",
+          segments,
+        });
+      if (insMsgErr) throw new Error(`message_insert:${insMsgErr.message}`);
+
+      if (links.length > 0) {
+        const { error: insClicksErr } = await supabase
+          .from("marketing_clicks")
+          .insert(
+            links.map((link) => ({
+              campaign_id: campaign.id,
+              message_id: messageId,
+              destination_url: link.destination_url,
+              tracking_id: link.tracking_id,
+            })),
+          );
+        if (insClicksErr) throw new Error(`clicks_insert:${insClicksErr.message}`);
+      }
+
+      if (!options.live) {
+        await supabase
+          .from("marketing_messages")
+          .update({ status: "preview_skipped" })
+          .eq("id", messageId);
+        previewSkipped += 1;
+        continue;
+      }
+
+      // Live path — adapter enforces the per-market kill-switch internally;
+      // when SMS_LIVE_ENABLED_<MKT> is off it returns status='skipped' with
+      // ZERO Twilio HTTP, so even LIVE marketing-send is text-dark until flip.
+      const result = await smsAdapter.send({
+        to: phone.trim(),
+        brandName,
+        message: rewritten,
+        countryCode,
+        messagingServiceSid: marketingSid,
+      });
+
+      if (result.status === "sent") {
+        await supabase
+          .from("marketing_messages")
+          .update({
+            status: "sent",
+            sent_at: new Date().toISOString(),
+            provider_message_id: result.providerMessageId,
+            segments: result.segments ?? segments,
+          })
+          .eq("id", messageId);
+        sent += 1;
+      } else {
+        // skipped (kill-switch) OR failed — record honestly; no silent drop.
+        await supabase
+          .from("marketing_messages")
+          .update({
+            status: result.status === "skipped" ? "preview_skipped" : "failed",
+            failure_reason: result.error ?? "sms_unknown_error",
+          })
+          .eq("id", messageId);
+        if (result.status === "skipped") previewSkipped += 1;
+      }
+    }
+    // Pace between batches (skip the trailing pause).
+    if (i + SMS_BATCH_SIZE < deliverable.length) {
+      await new Promise((resolve) => setTimeout(resolve, SMS_BATCH_PAUSE_MS));
+    }
   }
 
   return { recipients: sent + previewSkipped, preview_skipped: previewSkipped };
