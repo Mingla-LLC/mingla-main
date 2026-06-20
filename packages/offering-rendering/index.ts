@@ -69,6 +69,35 @@ export {
 } from "./rsvpMomentum";
 export type { RsvpMomentumModel } from "./rsvpMomentum";
 
+// ORCH-1163 [rsvp-shared-body] — THE ONE shared, shell-agnostic body for the public
+// RSVP page (event_type='rsvp'). Rendered byte-identically on buyer-web + business
+// iOS/Android + consumer iOS/Android. Hosts NO scroll root / cover host (each surface
+// injects its scaffold). The surface lifts the decision state via useRsvpOfferingState
+// and passes it to BOTH <RsvpOfferingBody> (inline box §0-5) and
+// <RsvpOfferingDecisionDock> (pinned floating dock §0-9). FLOW A (Going-confirm dialog
+// + success popup) + FLOW B (per-guest plus-one contacts) are owned here. RSVP is
+// ticketless: NO price/checkout/cart affordance.
+export {
+  RsvpOfferingBody,
+  RsvpOfferingDecisionDock,
+  useRsvpOfferingState,
+} from "./RsvpOfferingBody";
+export type {
+  RsvpOfferingBodyProps,
+  RsvpOfferingConfig,
+  RsvpOfferingState,
+  RsvpOfferingDecisionDockProps,
+  RsvpGuestContact,
+  RsvpSubmitResult,
+} from "./RsvpOfferingBody";
+export { RsvpGoingConfirmDialog } from "./RsvpGoingConfirmDialog";
+export type { RsvpGoingConfirmDialogProps } from "./RsvpGoingConfirmDialog";
+export { RsvpSuccessPopup } from "./RsvpSuccessPopup";
+export type {
+  RsvpSuccessPopupProps,
+  RsvpConfirmationDetails,
+} from "./RsvpSuccessPopup";
+
 // ORCH-1138 [trip-page-redesign] — shared "City, Country" route-leg normalizer
 // (departure/destination) used identically by the business/web TripPreview and
 // the consumer ConsumerTripDetailScreen so the leaving-from/destination block

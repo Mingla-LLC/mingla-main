@@ -59,9 +59,19 @@ import {
   useBusinessEventOrders,
   useOrdersRealtimeSubscription,
   useTicketsRealtimeSubscription, // ORCH-0854
+  // ORCH-1163 [rsvp-shared-body] — the signed-in user's "Going" RSVPs + their
+  // realtime freshness, folded in as a fourth unified-row kind.
+  useMyGoingRsvps,
+  useRsvpsRealtimeSubscription,
 } from "../../hooks/useCalendarEntries";
 import BusinessEventCalendarRow from "./BusinessEventCalendarRow";
-import type { BusinessEventCalendarRow as BusinessEventRow } from "../../services/calendarService";
+import type {
+  BusinessEventCalendarRow as BusinessEventRow,
+  ConsumerRsvpRow,
+} from "../../services/calendarService";
+// ORCH-1163 [rsvp-shared-body] — the consumer RSVP row (cover + "RSVP · Going"
+// pill + View-RSVP → RsvpPassSheet).
+import RsvpCalendarRow from "./RsvpCalendarRow";
 // META-ORCH-1148 2.2b: the signed-in user's venue reservations, folded into the
 // existing Active/Archive buckets as a THIRD unified-row kind.
 import ReservationCalendarRow from "./ReservationCalendarRow";
@@ -77,7 +87,9 @@ import {
 type UnifiedRow =
   | { kind: "calendar"; key: string; sortAt: number; entry: CalendarEntry }
   | { kind: "ticket"; key: string; sortAt: number; row: BusinessEventRow }
-  | { kind: "reservation"; key: string; sortAt: number; reservation: MyReservationRow };
+  | { kind: "reservation"; key: string; sortAt: number; reservation: MyReservationRow }
+  // ORCH-1163 [rsvp-shared-body] — a "Going" RSVP (own primary or a plus-one row).
+  | { kind: "rsvp"; key: string; sortAt: number; rsvp: ConsumerRsvpRow };
 
 // META-ORCH-1148 2.2b — a reservation's effective end for bucket decisions.
 // Reservations have no stored duration; treat them as a single instant + a
@@ -250,6 +262,11 @@ const CalendarTab = ({
   const reservationsQuery = useMyReservations(user?.id);
   const myReservations = reservationsQuery.data ?? [];
 
+  // ORCH-1163 [rsvp-shared-body] — the signed-in user's "Going" RSVPs (own +
+  // plus-one rows). Folded into the same Active/Archive buckets below.
+  const goingRsvpsQuery = useMyGoingRsvps(user?.id);
+  const myGoingRsvps = goingRsvpsQuery.data ?? [];
+
   // ORCH-0851 H-1: realtime subscription invalidates
   // `["businessEventOrders", user.id]` within ~1s of an INSERT/UPDATE/DELETE
   // on `orders` matching `buyer_user_id=eq.<userId>`. Fallbacks
@@ -261,6 +278,9 @@ const CalendarTab = ({
   // delivery to tickets the buyer owns. Companion publication-add migration:
   // `supabase/migrations/20260606000200_orch_0854_tickets_realtime_publication.sql`.
   useTicketsRealtimeSubscription(user?.id);
+  // ORCH-1163 [rsvp-shared-body] — realtime on `event_rsvps`: a host approval
+  // flip / status change refreshes the RSVP rows within ~1s. RLS gates delivery.
+  useRsvpsRealtimeSubscription(user?.id);
 
   const handleRefresh = useCallback(async () => {
     setIsRefreshing(true);
@@ -558,6 +578,34 @@ const CalendarTab = ({
     return { activeReservations: active, archiveReservations: archive };
   }, [myReservations]);
 
+  // ORCH-1163 [rsvp-shared-body] — bucket "Going" RSVPs on the event's effective
+  // end (end_at when present, else start_at). Past events drop into Archive; a
+  // null/unparseable date keeps the row Active (mirrors the ticket bucketing).
+  const { activeRsvps, archiveRsvps } = useMemo(() => {
+    const now = Date.now();
+    const active: ConsumerRsvpRow[] = [];
+    const archive: ConsumerRsvpRow[] = [];
+    for (const r of myGoingRsvps) {
+      const endTs = r.masterDateEndUtc
+        ? Date.parse(r.masterDateEndUtc)
+        : Number.NaN;
+      const startTs = r.masterDateUtc
+        ? Date.parse(r.masterDateUtc)
+        : Number.NaN;
+      const effectiveEndTs = Number.isFinite(endTs)
+        ? endTs
+        : Number.isFinite(startTs)
+          ? startTs
+          : Number.NaN;
+      if (Number.isFinite(effectiveEndTs) && effectiveEndTs < now) {
+        archive.push(r);
+      } else {
+        active.push(r);
+      }
+    }
+    return { activeRsvps: active, archiveRsvps: archive };
+  }, [myGoingRsvps]);
+
   // ORCH-0842: filter parity rules per SPEC §3.6.1.
   // - search: match eventTitle OR brandName (case-insensitive)
   // - when: apply to masterDateUtc; null-date tickets show only under "all"
@@ -618,6 +666,65 @@ const CalendarTab = ({
     [archiveBusinessOrders, filterBusinessOrders],
   );
 
+  // ORCH-1163 [rsvp-shared-body]: RSVP rows follow the same filter parity as
+  // tickets — search matches eventTitle OR brandName; `when` applies to
+  // masterDateUtc with null-date rows visible only under "all"; category + tier
+  // always pass (Mingla taxonomy doesn't apply to RSVPs).
+  const filterRsvps = useCallback(
+    (rows: ConsumerRsvpRow[]): ConsumerRsvpRow[] => {
+      const normalize = (value: string | undefined | null) =>
+        (value || "").toLowerCase();
+      const q = normalize(searchQuery).trim();
+
+      return rows.filter((r) => {
+        if (q) {
+          const title = normalize(r.eventTitle);
+          const brand = normalize(r.brandName);
+          if (!title.includes(q) && !brand.includes(q)) return false;
+        }
+        if (selectedWhen !== "all") {
+          if (!r.masterDateUtc) return false;
+          const scheduled = new Date(r.masterDateUtc);
+          const now = new Date();
+          const isSameDay =
+            scheduled.getFullYear() === now.getFullYear() &&
+            scheduled.getMonth() === now.getMonth() &&
+            scheduled.getDate() === now.getDate();
+          if (selectedWhen === "today" && !isSameDay) return false;
+          if (selectedWhen === "this_week") {
+            const startOfWeek = new Date(now);
+            startOfWeek.setDate(now.getDate() - now.getDay());
+            startOfWeek.setHours(0, 0, 0, 0);
+            const endOfWeek = new Date(startOfWeek);
+            endOfWeek.setDate(startOfWeek.getDate() + 7);
+            if (scheduled < startOfWeek || scheduled >= endOfWeek) {
+              return false;
+            }
+          }
+          if (
+            selectedWhen === "this_month" &&
+            (scheduled.getFullYear() !== now.getFullYear() ||
+              scheduled.getMonth() !== now.getMonth())
+          ) {
+            return false;
+          }
+          if (selectedWhen === "upcoming" && scheduled < now) return false;
+        }
+        return true;
+      });
+    },
+    [searchQuery, selectedWhen],
+  );
+
+  const filteredActiveRsvps = useMemo(
+    () => filterRsvps(activeRsvps),
+    [activeRsvps, filterRsvps],
+  );
+  const filteredArchiveRsvps = useMemo(
+    () => filterRsvps(archiveRsvps),
+    [archiveRsvps, filterRsvps],
+  );
+
   // ORCH-0842: unified rows = calendar entries + ticket orders, sorted
   // ascending by date (soonest first; null-date entries go to the bottom).
   const unifiedActiveRows = useMemo<UnifiedRow[]>(() => {
@@ -655,9 +762,25 @@ const CalendarTab = ({
         reservation,
       });
     }
+    for (const rsvp of filteredActiveRsvps) {
+      const ts = rsvp.masterDateUtc
+        ? Date.parse(rsvp.masterDateUtc)
+        : Number.NaN;
+      rows.push({
+        kind: "rsvp",
+        key: `rsvp:${rsvp.rsvpId}:${rsvp.guestId ?? "primary"}`,
+        sortAt: Number.isFinite(ts) ? ts : Number.POSITIVE_INFINITY,
+        rsvp,
+      });
+    }
     rows.sort((a, b) => a.sortAt - b.sortAt);
     return rows;
-  }, [filteredActiveEntries, filteredActiveBusinessOrders, activeReservations]);
+  }, [
+    filteredActiveEntries,
+    filteredActiveBusinessOrders,
+    activeReservations,
+    filteredActiveRsvps,
+  ]);
 
   const unifiedArchiveRows = useMemo<UnifiedRow[]>(() => {
     const rows: UnifiedRow[] = [];
@@ -694,10 +817,26 @@ const CalendarTab = ({
         reservation,
       });
     }
+    for (const rsvp of filteredArchiveRsvps) {
+      const ts = rsvp.masterDateUtc
+        ? Date.parse(rsvp.masterDateUtc)
+        : Number.NaN;
+      rows.push({
+        kind: "rsvp",
+        key: `rsvp:${rsvp.rsvpId}:${rsvp.guestId ?? "primary"}`,
+        sortAt: Number.isFinite(ts) ? ts : Number.POSITIVE_INFINITY,
+        rsvp,
+      });
+    }
     // Archive: most recently past first.
     rows.sort((a, b) => b.sortAt - a.sortAt);
     return rows;
-  }, [filteredArchiveEntries, filteredArchiveBusinessOrders, archiveReservations]);
+  }, [
+    filteredArchiveEntries,
+    filteredArchiveBusinessOrders,
+    archiveReservations,
+    filteredArchiveRsvps,
+  ]);
 
   // ORCH-0842: animate the UNIFIED active row list — calendar entries
   // AND ticket orders participate in the same staggered entrance using
@@ -2527,6 +2666,15 @@ const CalendarTab = ({
                       />
                     );
                   }
+                  if (row.kind === "rsvp") {
+                    return (
+                      <RsvpCalendarRow
+                        key={row.key}
+                        row={row.rsvp}
+                        animation={animation}
+                      />
+                    );
+                  }
                   return (
                     <BusinessEventCalendarRow
                       key={row.key}
@@ -2596,6 +2744,15 @@ const CalendarTab = ({
                         reservation={row.reservation}
                         animation={animation}
                         onPress={handleReservationPress}
+                      />
+                    );
+                  }
+                  if (row.kind === "rsvp") {
+                    return (
+                      <RsvpCalendarRow
+                        key={row.key}
+                        row={row.rsvp}
+                        animation={animation}
                       />
                     );
                   }

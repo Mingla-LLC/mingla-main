@@ -15,25 +15,33 @@
 import { readFileSync } from "fs";
 import { join } from "path";
 
-const SRC = readFileSync(join(__dirname, "..", "RsvpPublicBody.tsx"), "utf8");
+// ORCH-1163 [TEST-MOD-APPROVED ORCH-1163]: retargeted RsvpPublicBody → RsvpOfferingBody/FoundationRsvpPreview (body promoted to offering-rendering).
+// RsvpPublicBody.tsx was DELETED. The shell composition (the part that owns the
+// cover<content<chrome z-order seam) lives in the thin FoundationRsvpPreview
+// WRAPPER — it composes ParallaxCoverShell around the shell-agnostic RsvpOfferingBody
+// and owns the contentBottomInset scroll-runway plumbing. The shared-body content is
+// now <RsvpOfferingBody> (first shell child), with no competing stacking style.
+const SRC = readFileSync(join(__dirname, "..", "FoundationRsvpPreview.tsx"), "utf8");
 const PAGE_SRC = readFileSync(
   join(__dirname, "..", "PublicEventPage.tsx"),
   "utf8",
 );
 
-describe("ORCH-1150 R2 D-7 — RsvpPublicBody parallax content layering", () => {
+describe("ORCH-1150 R2 D-7 — FoundationRsvpPreview parallax content layering", () => {
   it("imports ParallaxCoverShell from the shared @mingla/offering-rendering package", () => {
     expect(SRC).toMatch(
       /import\s*\{[\s\S]*ParallaxCoverShell[\s\S]*\}\s*from\s*["']@mingla\/offering-rendering["']/,
     );
   });
 
-  it("passes its body as a bare <View> child of <ParallaxCoverShell> (shell owns the seam)", () => {
-    expect(SRC).toMatch(/<ParallaxCoverShell[\s\S]*?>\s*<View>\s*\{\/\* Brand chip/);
+  it("passes its body as the first <RsvpOfferingBody> child of <ParallaxCoverShell> (shell owns the seam)", () => {
+    // The shell's first child is the shell-agnostic shared body (was a bare <View>
+    // wrapping the brand chip when the body was inlined in RsvpPublicBody).
+    expect(SRC).toMatch(/<ParallaxCoverShell[\s\S]*?>\s*<RsvpOfferingBody/);
   });
 
-  it("does NOT give the RSVP content wrapper a zIndex / position / marginTop / backgroundColor", () => {
-    const m = SRC.match(/<ParallaxCoverShell[\s\S]*?>\s*<View(\s[^>]*)?>/);
+  it("does NOT give the RSVP content (RsvpOfferingBody) a zIndex / position / marginTop / backgroundColor", () => {
+    const m = SRC.match(/<ParallaxCoverShell[\s\S]*?>\s*<RsvpOfferingBody(\s[^>]*)?>/);
     expect(m).not.toBeNull();
     const childOpenTag = m ? m[0] : "";
     expect(childOpenTag).not.toMatch(/zIndex/);
@@ -56,25 +64,27 @@ describe("ORCH-1150 R2 D-7 — RsvpPublicBody parallax content layering", () => 
  *
  * These source assertions FAIL if the inset plumbing is reverted to 0 / removed.
  */
+// ORCH-1163 [TEST-MOD-APPROVED ORCH-1163]: retargeted RsvpPublicBody → RsvpOfferingBody/FoundationRsvpPreview (body promoted to offering-rendering).
+// The scroll-runway plumbing moved with the shell composition into FoundationRsvpPreview.
 describe("ORCH-1150 R2 D-7b — RSVP scroll-runway parity", () => {
-  it("RsvpPublicBody declares a contentBottomInset prop", () => {
+  it("FoundationRsvpPreview declares a contentBottomInset prop", () => {
     expect(SRC).toMatch(/contentBottomInset\?:\s*number/);
   });
 
-  it("RsvpPublicBody defaults contentBottomInset to a NON-ZERO positive value", () => {
+  it("FoundationRsvpPreview defaults contentBottomInset to a NON-ZERO positive value", () => {
     const m = SRC.match(/contentBottomInset\s*=\s*(\d+)/);
     expect(m).not.toBeNull();
     const dflt = m ? Number(m[1]) : 0;
     expect(dflt).toBeGreaterThan(0);
   });
 
-  it("RsvpPublicBody forwards contentBottomInset to <ParallaxCoverShell>", () => {
+  it("FoundationRsvpPreview forwards contentBottomInset to <ParallaxCoverShell>", () => {
     expect(SRC).toMatch(
       /<ParallaxCoverShell[\s\S]*?contentBottomInset=\{contentBottomInset\}[\s\S]*?>/,
     );
   });
 
-  it("RsvpPublicBody forwards onScroll / onScrollViewLayout to <ParallaxCoverShell> (convention parity)", () => {
+  it("FoundationRsvpPreview forwards onScroll / onScrollViewLayout to <ParallaxCoverShell> (convention parity)", () => {
     expect(SRC).toMatch(
       /<ParallaxCoverShell[\s\S]*?onScroll=\{onScroll\}[\s\S]*?>/,
     );
@@ -83,8 +93,8 @@ describe("ORCH-1150 R2 D-7b — RSVP scroll-runway parity", () => {
     );
   });
 
-  it("PublicEventPage RSVP branch passes a POSITIVE contentBottomInset to <RsvpPublicBody>", () => {
-    const m = PAGE_SRC.match(/<RsvpPublicBody[\s\S]*?\/>/);
+  it("PublicEventPage RSVP branch passes a POSITIVE contentBottomInset to <FoundationRsvpPreview>", () => {
+    const m = PAGE_SRC.match(/<FoundationRsvpPreview[\s\S]*?\/>/);
     expect(m).not.toBeNull();
     const tag = m ? m[0] : "";
     // must pass contentBottomInset, and it must NOT be a literal 0

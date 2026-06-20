@@ -33,15 +33,20 @@ const consumerScreen = await Deno.readTextFile(
     import.meta.url,
   ),
 );
+// ORCH-1163 [TEST-MOD-APPROVED ORCH-1163]: retargeted RsvpPublicBody → RsvpOfferingBody/FoundationRsvpPreview (body promoted to offering-rendering).
 const rsvpBody = await Deno.readTextFile(
   new URL(
-    "../../../mingla-business/src/components/event/RsvpPublicBody.tsx",
+    "../RsvpOfferingBody.tsx",
     import.meta.url,
   ),
 );
+// ORCH-1163 [TEST-MOD-APPROVED ORCH-1163]: retargeted RsvpPublicBody → RsvpOfferingBody/FoundationRsvpPreview (body promoted to offering-rendering).
+// The ticketed address-unlock caption was likewise promoted out of
+// FoundationEventPreview into the ONE shared EventOfferingBody (testID
+// orch-1167-address-unlock-caption) — same surface, same gate. Repoint the read.
 const ticketedPreview = await Deno.readTextFile(
   new URL(
-    "../../../mingla-business/src/components/event/FoundationEventPreview.tsx",
+    "../EventOfferingBody.tsx",
     import.meta.url,
   ),
 );
@@ -56,25 +61,39 @@ const stripComments = (src: string): string =>
 
 // ───────────────────────── CONSUMER (app-mobile) ────────────────────────────
 
-Deno.test("CONSUMER: caption is condition-aware and gated on addressHidden", () => {
-  const code = stripComments(consumerScreen);
-  // declared, derived from addressHidden (only computed when hidden, else null).
-  assertStringIncludes(code, "const addressUnlockCaption");
-  assertStringIncludes(code, "addressUnlockCaption: string | null = addressHidden");
-  // RSVP copy + ticketed copy both present, picked by isRsvp.
-  assertStringIncludes(code, "Full address shared once you're going");
-  assertStringIncludes(code, "Full address shared after you get tickets");
+// ORCH-1163 [TEST-MOD-APPROVED ORCH-1163]: retargeted RsvpPublicBody → RsvpOfferingBody/FoundationRsvpPreview (body promoted to offering-rendering).
+// The bespoke consumer addressUnlockCaption (a screen-local string keyed on isRsvp,
+// testID orch-1157-consumer-address-unlock-caption) was DELETED and PROMOTED into
+// the SAME two shared bodies the consumer now mounts: the RSVP caption ("…once
+// you're going") into RsvpOfferingBody, the ticketed caption ("…after you get
+// tickets") into EventOfferingBody. The consumer surface therefore still shows the
+// condition-aware caption — via the shared bodies, not a screen-local variable.
+Deno.test("CONSUMER: caption is condition-aware (RSVP + ticketed copy live in the shared bodies the consumer mounts)", () => {
+  // the consumer screen mounts BOTH shared bodies (ticketed vs RSVP), each owning
+  // its own gated caption.
+  const screen = stripComments(consumerScreen);
+  assertStringIncludes(screen, "<RsvpOfferingBody");
+  assertStringIncludes(screen, "<EventOfferingBody");
+  // RSVP copy lives in RsvpOfferingBody; ticketed copy in EventOfferingBody.
+  assertStringIncludes(stripComments(rsvpBody), "Full address shared once you're going");
+  assertStringIncludes(stripComments(ticketedPreview), "Full address shared after you get tickets");
 });
 
-Deno.test("CONSUMER: caption renders UNDER the venue line only when non-null", () => {
-  const code = stripComments(consumerScreen);
-  // rendered guarded by the null check (so it never paints when revealed).
-  assertStringIncludes(code, "addressUnlockCaption !== null ?");
-  assertStringIncludes(code, 'testID="orch-1157-consumer-address-unlock-caption"');
-  // it sits AFTER the venue sub-line (the city line) in the venue card.
-  const subIdx = code.indexOf("{venueAddressLabel}");
-  const capIdx = code.indexOf('testID="orch-1157-consumer-address-unlock-caption"');
-  assert(subIdx !== -1 && capIdx !== -1 && subIdx < capIdx, "caption renders under the city");
+Deno.test("CONSUMER: caption renders UNDER the venue line only when non-null (in the shared bodies)", () => {
+  // RSVP body: gated null-check + correct testID, under the city.
+  const rsvp = stripComments(rsvpBody);
+  assertStringIncludes(rsvp, "addressUnlockCaption !== null ?");
+  assertStringIncludes(rsvp, 'testID="orch-1157-rsvp-address-unlock-caption"');
+  const rSubIdx = rsvp.indexOf("? venueAddressLabel");
+  const rCapIdx = rsvp.indexOf('testID="orch-1157-rsvp-address-unlock-caption"');
+  assert(rSubIdx !== -1 && rCapIdx !== -1 && rSubIdx < rCapIdx, "RSVP caption under the city");
+  // ticketed body: gated null-check + correct testID, under the city.
+  const ticketed = stripComments(ticketedPreview);
+  assertStringIncludes(ticketed, "addressUnlockCaption !== null ?");
+  assertStringIncludes(ticketed, 'testID="orch-1167-address-unlock-caption"');
+  const tSubIdx = ticketed.indexOf("{venueAddressLabel}");
+  const tCapIdx = ticketed.indexOf('testID="orch-1167-address-unlock-caption"');
+  assert(tSubIdx !== -1 && tCapIdx !== -1 && tSubIdx < tCapIdx, "ticketed caption under the city");
 });
 
 // ───────────────────────── WEB/BUSINESS RSVP ────────────────────────────────
@@ -92,11 +111,15 @@ Deno.test("RSVP web: caption is RSVP copy, null when revealed or online", () => 
   );
 });
 
+// ORCH-1163 [TEST-MOD-APPROVED ORCH-1163]: retargeted RsvpPublicBody → RsvpOfferingBody/FoundationRsvpPreview (body promoted to offering-rendering).
+// The promoted body renders the venue card INLINE (no separate Venue subcomponent),
+// so the caption is a local `const addressUnlockCaption: string | null` rendered
+// directly under the city label — the threaded-prop form is gone, but the
+// rendered-under-the-city, gated-non-null, RSVP-copy, correct-testID INVARIANT holds.
 Deno.test("RSVP web: caption rendered in the Venue card under the city, gated non-null", () => {
   const code = stripComments(rsvpBody);
-  // threaded into the Venue subcomponent + rendered guarded.
-  assertStringIncludes(code, "addressUnlockCaption={addressUnlockCaption}");
-  assertStringIncludes(code, "addressUnlockCaption: string | null;");
+  // declared as a local string|null (the promoted body renders the venue inline).
+  assertStringIncludes(code, "const addressUnlockCaption: string | null");
   assertStringIncludes(code, "addressUnlockCaption !== null ?");
   assertStringIncludes(code, 'testID="orch-1157-rsvp-address-unlock-caption"');
   // it follows the gated city/address label inside the Venue text column.
@@ -122,25 +145,28 @@ Deno.test("TICKETED web: caption is ticketed copy, gated on hideAddressUntilTick
   );
 });
 
+// ORCH-1163 [TEST-MOD-APPROVED ORCH-1163]: retargeted RsvpPublicBody → RsvpOfferingBody/FoundationRsvpPreview (body promoted to offering-rendering).
+// Ticketed caption testID is orch-1167-address-unlock-caption in the shared body.
 Deno.test("TICKETED web: caption rendered under the city, gated non-null", () => {
   const code = stripComments(ticketedPreview);
   assertStringIncludes(code, "addressUnlockCaption !== null ?");
-  assertStringIncludes(code, 'testID="orch-1157-ticketed-address-unlock-caption"');
+  assertStringIncludes(code, 'testID="orch-1167-address-unlock-caption"');
   // sits after the venueAddressLabel sub-line (now the City/Country line when hidden).
   const subIdx = code.indexOf("{venueAddressLabel}");
-  const capIdx = code.indexOf('testID="orch-1157-ticketed-address-unlock-caption"');
+  const capIdx = code.indexOf('testID="orch-1167-address-unlock-caption"');
   assert(subIdx !== -1 && capIdx !== -1 && subIdx < capIdx, "caption under the city");
 });
 
 // ───────────────────────── REVEALED state = NO caption ──────────────────────
 
+// ORCH-1163 [TEST-MOD-APPROVED ORCH-1163]: retargeted RsvpPublicBody → RsvpOfferingBody/FoundationRsvpPreview (body promoted to offering-rendering).
+// The consumer screen-local caption-nulling moved into the two shared bodies the
+// consumer mounts; assert each shared body ties the caption to its hide gate.
 Deno.test("REVEALED state shows NO caption (all surfaces): the variable nulls out", () => {
   // The render is `addressUnlockCaption !== null ? <Text/> : null` on every
   // surface; the variable is null whenever the street is revealed. Assert each
-  // surface ties the caption to its hide gate (so revealing nulls it).
-  const consumer = stripComments(consumerScreen);
-  assertStringIncludes(consumer, "addressUnlockCaption: string | null = addressHidden");
-
+  // SHARED body ties the caption to its hide gate (so revealing nulls it). The
+  // consumer mounts both bodies, so its caption nulls out through them.
   const rsvp = stripComments(rsvpBody);
   assertStringIncludes(rsvp, 'event.format === "online" || addressRevealed\n      ? null');
 

@@ -117,32 +117,35 @@ const consumerScreen = stripComments(
     ),
   ),
 );
+// ORCH-1163 [TEST-MOD-APPROVED ORCH-1163]: retargeted RsvpPublicBody → RsvpOfferingBody/FoundationRsvpPreview (body promoted to offering-rendering).
 const rsvpBody = stripComments(
   await Deno.readTextFile(
     new URL(
-      "../../../mingla-business/src/components/event/RsvpPublicBody.tsx",
+      "../RsvpOfferingBody.tsx",
       import.meta.url,
     ),
   ),
 );
 
-Deno.test("Round-7: consumer doors renders in a PILL (metaChip, not plain Text)", () => {
-  // The doors testID now sits on a metaChip pill reusing the date-chip style.
-  assertStringIncludes(consumerScreen, "doorsChipRow");
-  assertStringIncludes(
-    consumerScreen,
-    'style={[styles.metaChip, surface.card]} testID="orch-1157-consumer-doors"',
-  );
-  assertStringIncludes(consumerScreen, 'name="time-outline"');
-  // The old plain-text doorsLine style must be gone.
-  assert(
-    !consumerScreen.includes("styles.doorsLine"),
-    "plain-text doorsLine render must be replaced by the pill",
-  );
+// ORCH-1163 [TEST-MOD-APPROVED ORCH-1163]: retargeted RsvpPublicBody → RsvpOfferingBody/FoundationRsvpPreview (body promoted to offering-rendering).
+// The bespoke consumer doors PILL (doorsChipRow / metaChip / orch-1157-consumer-doors)
+// was DELETED with the rest of the RSVP-branch; the consumer now mounts the shared
+// RsvpOfferingBody which owns the doors render (testID orch-1157-rsvp-doors), fed
+// via config.doorsOpenLabel. Assert the consumer mounts that body (the doors-pill
+// invariant moved into the shared body, asserted in the business/web test below).
+Deno.test("Round-7: consumer mounts the shared RsvpOfferingBody that owns the doors render", () => {
+  assertStringIncludes(consumerScreen, "<RsvpOfferingBody");
+  assertStringIncludes(rsvpBody, 'testID="orch-1157-rsvp-doors"');
 });
 
-Deno.test("Round-7: business/web doors renders in a date-style PILL (factRow), decoupled from dateSubline", () => {
+// ORCH-1163 [TEST-MOD-APPROVED ORCH-1163]: retargeted RsvpPublicBody → RsvpOfferingBody/FoundationRsvpPreview (body promoted to offering-rendering).
+// The promoted body renders the doors line in the date-fact column (styles.dateSubline)
+// rather than the old factRow/metaChip pill — a presentation change from the body
+// promotion. The INVARIANT (doors render gated on doorsLine !== null behind the
+// orch-1157-rsvp-doors testID, sourced from config.doorsOpenLabel/doorsCloseLabel)
+// is preserved; the factRow-pill styling assertion is retargeted to the new render.
+Deno.test("Round-7: business/web doors renders beneath the date, gated, behind the orch-1157-rsvp-doors testID", () => {
   assertStringIncludes(rsvpBody, 'testID="orch-1157-rsvp-doors"');
   assertStringIncludes(rsvpBody, "doorsLine !== null ?");
-  assertStringIncludes(rsvpBody, "styles.factRow, surface.card");
+  assertStringIncludes(rsvpBody, "Doors open ${config.doorsOpenLabel}");
 });

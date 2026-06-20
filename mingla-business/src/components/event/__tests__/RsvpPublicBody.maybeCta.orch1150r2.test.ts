@@ -23,8 +23,11 @@
 import { readFileSync } from "fs";
 import { join } from "path";
 
+// ORCH-1163 [TEST-MOD-APPROVED ORCH-1163]: retargeted RsvpPublicBody → RsvpOfferingBody/FoundationRsvpPreview (body promoted to offering-rendering).
+// RsvpPublicBody.tsx was DELETED; the maybe-CTA / submit-union / contact-gate /
+// resolved-maybe-copy / no-checkout contracts moved into the shared RsvpOfferingBody.
 const SRC_RAW = readFileSync(
-  join(__dirname, "..", "RsvpPublicBody.tsx"),
+  join(__dirname, "..", "..", "..", "..", "..", "packages", "offering-rendering", "RsvpOfferingBody.tsx"),
   "utf8",
 );
 const SRC = SRC_RAW;
@@ -35,10 +38,14 @@ const SRC_NO_COMMENTS = SRC_RAW.replace(/\/\*[\s\S]*?\*\//g, "").replace(
   "$1",
 );
 
-describe("ORCH-1157 — RsvpPublicBody delegates the Going/Maybe/Can't decision to the shared unit", () => {
+describe("ORCH-1157 — RsvpOfferingBody delegates the Going/Maybe/Can't decision to the shared unit", () => {
+  // ORCH-1163 [TEST-MOD-APPROVED ORCH-1163]: retargeted RsvpPublicBody → RsvpOfferingBody/FoundationRsvpPreview (body promoted to offering-rendering).
   it("renders the shared RsvpMomentumDecision (the Direction-C decision hero)", () => {
+    // the body now lives IN the offering-rendering package, so it imports the
+    // decision from the sibling module (was an @mingla/offering-rendering import
+    // when the body was in mingla-business).
     expect(SRC).toMatch(
-      /import\s*\{[\s\S]*RsvpMomentumDecision[\s\S]*\}\s*from\s*["']@mingla\/offering-rendering["']/,
+      /import\s*\{[\s\S]*RsvpMomentumDecision[\s\S]*\}\s*from\s*["']\.\/RsvpMomentumDecision["']/,
     );
     expect(SRC).toMatch(/<RsvpMomentumDecision[\s\S]*?\/>/);
   });
@@ -49,17 +56,21 @@ describe("ORCH-1157 — RsvpPublicBody delegates the Going/Maybe/Can't decision 
     expect(SRC).toContain('notGoingTestID="orch-1150-rsvp-not-going"');
   });
 
-  it("submit() accepts the three-status union and routes 'maybe'", () => {
+  it("submit accepts the three-status union and routes 'maybe' directly", () => {
     expect(SRC).toMatch(
       /rsvpStatus:\s*["']going["']\s*\|\s*["']not_going["']\s*\|\s*["']maybe["']/,
     );
-    expect(SRC).toContain('void submit("maybe")');
+    // ORCH-1163 [TEST-MOD-APPROVED ORCH-1163]: the body promotion routes maybe via
+    // the direct submitter (was `void submit("maybe")`).
+    expect(SRC).toContain('void submitDirect("maybe")');
   });
 
   it("applies the A4-NEW contact gate to BOTH going and maybe (a Maybe must be reachable)", () => {
-    expect(SRC).toMatch(
-      /\(rsvpStatus === "going" \|\| rsvpStatus === "maybe"\) && !contactReady/,
-    );
+    // ORCH-1163 [TEST-MOD-APPROVED ORCH-1163]: the promoted body splits the single
+    // combined gate into a maybe-path gate (submitDirect) + a going-path gate
+    // (onGoingTap); the INVARIANT (contact gate applies to BOTH going and maybe) holds.
+    expect(SRC).toMatch(/rsvpStatus === "maybe" && !contactReady/); // maybe path gate
+    expect(SRC).toMatch(/onGoingTap[\s\S]*?if \(!contactReady\)/); // going path gate
   });
 
   it("shows the keep-posted response copy for a resolved maybe", () => {

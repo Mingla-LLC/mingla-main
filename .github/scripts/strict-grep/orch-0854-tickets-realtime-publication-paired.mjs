@@ -62,6 +62,7 @@ const BASELINE_PUBLICATION_TABLES = new Set([
   "conversation_participants",
   "conversation_presence",
   "conversations",
+  "event_rsvps",
   "friends",
   "leaderboard_presence",
   "messages",

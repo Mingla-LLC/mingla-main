@@ -94,6 +94,13 @@ export const updateLiveRsvp = async (
 // the edge fn resolves user_id and the logged-in path applies. See SPEC §6 / §5.3.
 // ===========================================================================
 
+/** ORCH-1163 §H — a per-plus-one contact (name+email+phone, all required). */
+export interface RsvpGuestContactInput {
+  name: string;
+  email: string;
+  phone: string;
+}
+
 export interface SubmitPublicRsvpInput {
   eventId: string;
   rsvpStatus: "going" | "not_going" | "maybe";
@@ -102,11 +109,17 @@ export interface SubmitPublicRsvpInput {
   guestEmail?: string;
   guestPhone?: string;
   plusCount?: number;
+  /** ORCH-1163 §H — per-plus-one contacts; length must equal plusCount. */
+  guests?: RsvpGuestContactInput[];
 }
 
 export interface SubmitPublicRsvpResult {
   status: "going" | "not_going" | "waitlisted" | "maybe";
   approvalStatus: "pending" | "approved";
+  /** ORCH-1163 — the persisted event_rsvps.id (success popup + Calendar QR). */
+  rsvpId: string;
+  /** ORCH-1163 §I — the signed mingla:v1:rsvp: QR (going only; null otherwise). */
+  confirmationToken: string | null;
 }
 
 export const submitPublicRsvp = async (
@@ -120,6 +133,7 @@ export const submitPublicRsvp = async (
       guestEmail: input.guestEmail,
       guestPhone: input.guestPhone,
       plusCount: input.plusCount ?? 0,
+      guests: input.guests ?? [],
     },
   });
   // supabase.functions.invoke surfaces a non-2xx as a FunctionsHttpError whose
@@ -131,9 +145,13 @@ export const submitPublicRsvp = async (
   const res = (data ?? {}) as {
     status?: "going" | "not_going" | "waitlisted" | "maybe";
     approvalStatus?: "pending" | "approved";
+    rsvpId?: string;
+    confirmationToken?: string | null;
   };
   return {
     status: res.status ?? input.rsvpStatus,
     approvalStatus: res.approvalStatus ?? "approved",
+    rsvpId: res.rsvpId ?? "",
+    confirmationToken: res.confirmationToken ?? null,
   };
 };

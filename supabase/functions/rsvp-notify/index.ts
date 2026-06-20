@@ -34,6 +34,9 @@ import {
   formatSenderHeader,
   renderTransactionalEmail,
 } from "../_shared/email/index.ts";
+// ORCH-1163 [rsvp-shared-body] — the rsvp_pass branch attaches the recipient's
+// signed RSVP entry QR as a PDF (mirrors how tickets ride a PDF attachment).
+import { buildRsvpPassPdf } from "../_shared/ticketPdf.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -47,7 +50,10 @@ type TemplateKey =
   | "rsvp_waitlist_promoted"
   | "rsvp_approved"
   | "rsvp_denied"
-  | "rsvp_removed";
+  | "rsvp_removed"
+  // ORCH-1163 [rsvp-shared-body] — per-recipient "you're going" pass: email
+  // (QR PDF attachment) + push for the matched plus-one / signed-in primary.
+  | "rsvp_pass";
 
 interface CopyBlock {
   pushTitle: string;
@@ -59,10 +65,36 @@ interface CopyBlock {
 
 function buildCopy(
   template: TemplateKey,
-  ctx: { eventTitle: string; brandName: string; link: string },
+  ctx: {
+    eventTitle: string;
+    brandName: string;
+    link: string;
+    // ORCH-1163 — rsvp_pass email body carries the human date + venue lines
+    // (sourced from the queue payload; null when the host gave none).
+    dateLine?: string | null;
+    venueLine?: string | null;
+  },
 ): CopyBlock {
   const { eventTitle, brandName, link } = ctx;
   switch (template) {
+    case "rsvp_pass": {
+      // ORCH-1163 [rsvp-shared-body] — "you're going" pass copy. Email body =
+      // event name + dateLine + venueLine + "Hosted by {brand}". Push points the
+      // recipient at their Calendar where the RSVP + entry QR live.
+      const lines = [
+        eventTitle,
+        ...(ctx.dateLine ? [ctx.dateLine] : []),
+        ...(ctx.venueLine ? [ctx.venueLine] : []),
+        `Hosted by ${brandName}`,
+      ];
+      return {
+        pushTitle: `You're going to ${eventTitle}`,
+        pushBody: "Find your RSVP + entry QR in your Calendar.",
+        sms: `${brandName}: you're going to ${eventTitle}. Your entry QR is in your email + Calendar.`,
+        emailSubject: `You're going to ${eventTitle}`,
+        emailBody: lines.join("\n\n"),
+      };
+    }
     case "rsvp_event_updated":
       return {
         pushTitle: `Plans changed: ${eventTitle}`,
@@ -160,6 +192,70 @@ async function sendResendEmail(
   }
 }
 
+// ORCH-1163 [rsvp-shared-body] — Resend send WITH a PDF attachment, for the
+// rsvp_pass branch (the recipient's signed entry QR rides as a PDF, mirroring
+// how tickets attach their PDF). Body HTML rendered via the SAME shared
+// renderTransactionalEmail generic_notification template; sender = tickets
+// (same as ticket confirmations). Cloned from
+// ticket-confirmation-dispatch/index.ts:86-121 — do NOT write a new client.
+async function sendResendEmailWithRsvpPass(input: {
+  to: string;
+  recipientName: string | null;
+  subject: string;
+  body: string;
+  attachment: { filename: string; content: string };
+}): Promise<{ ok: boolean; error?: string }> {
+  const key = Deno.env.get("RESEND_API_KEY");
+  if (!key) return { ok: false, error: "RESEND_API_KEY missing" };
+  const sender = EMAIL_SENDERS.tickets;
+  try {
+    assertNotResendSandbox(sender);
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : String(err) };
+  }
+  let rendered;
+  try {
+    rendered = renderTransactionalEmail({
+      variant: "generic_notification",
+      recipient: { name: input.recipientName, email: input.to },
+      body: {
+        variant: "generic_notification",
+        title: input.subject,
+        paragraphs: input.body.split("\n\n"),
+        cta: null,
+      },
+      sender, // tickets — same sender ticket-confirmation-dispatch uses.
+    });
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : String(err) };
+  }
+  try {
+    const res = await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${key}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        from: formatSenderHeader(rendered.from),
+        to: [input.to],
+        subject: rendered.subject,
+        html: rendered.html,
+        text: rendered.text,
+        attachments: [
+          { filename: input.attachment.filename, content: input.attachment.content },
+        ],
+      }),
+    });
+    if (!res.ok) {
+      return { ok: false, error: `Resend ${res.status}: ${await res.text()}` };
+    }
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : String(err) };
+  }
+}
+
 // Twilio send — cloned from ticket-confirmation-dispatch/index.ts:123-170.
 async function sendTwilioSms(
   to: string,
@@ -211,6 +307,138 @@ function json(status: number, body: Record<string, unknown>): Response {
   });
 }
 
+// ORCH-1163 [rsvp-shared-body] — rsvp_pass handler. The producer
+// (public-submit-rsvp) enqueues ONE row per going recipient (primary + each
+// guest) carrying a self-contained payload, so this branch never re-resolves
+// from event_rsvps. EMAIL always fires (the recipient's signed entry QR rides
+// as a PDF attachment, mirroring tickets). PUSH fires ONLY for a matched
+// plus-one (payload.matchedUserId) OR the signed-in primary (role==='primary'
+// + payload.primaryUserId) — unmatched guests get email-only. Each channel is
+// isolated; the queue row's idempotency_key (unique) is the de-dupe guard.
+// deno-lint-ignore no-explicit-any
+type AdminClient = ReturnType<typeof createClient<any, "public", any>>;
+
+async function handleRsvpPass(
+  admin: AdminClient,
+  notificationId: string,
+  queueRow: {
+    event_id: string;
+    rsvp_id: string | null;
+    payload: unknown;
+    recipient: string | null;
+  },
+): Promise<Response> {
+  const p = (queueRow.payload ?? {}) as Record<string, unknown>;
+  const str = (v: unknown): string | null =>
+    typeof v === "string" && v.length > 0 ? v : null;
+
+  const recipientEmail = str(p.recipientEmail) ?? str(queueRow.recipient);
+  const recipientName = str(p.recipientName);
+  const qrCode = str(p.qrCode);
+  const matchedUserId = str(p.matchedUserId);
+  const eventName = str(p.eventName) ?? "your event";
+  const dateLine = str(p.dateLine);
+  const venueLine = str(p.venueLine);
+  const brandName = str(p.brandName) ?? "Mingla";
+  const role = str(p.role) ?? "guest";
+  const primaryUserId = str(p.primaryUserId);
+  const brandId = str(p.brandId);
+  const deepLink = str(p.deepLink) ?? "https://usemingla.com";
+
+  const copy = buildCopy("rsvp_pass", {
+    eventTitle: eventName,
+    brandName,
+    link: deepLink,
+    dateLine,
+    venueLine,
+  });
+
+  // Push target: a matched plus-one, or the signed-in primary. Unmatched → none.
+  const pushUserId =
+    matchedUserId ?? (role === "primary" ? primaryUserId : null);
+
+  const { outcome, anySucceeded, status: nextStatus } = await fanOutChannels({
+    push:
+      pushUserId !== null
+        ? async (): Promise<boolean> => {
+            const ok = await sendPush({
+              targetUserId: pushUserId,
+              title: copy.pushTitle,
+              body: copy.pushBody,
+              app: "consumer",
+              data: { deepLink, type: "rsvp_pass" },
+            });
+            // In-app inbox mirror (same shape rsvp-notify uses elsewhere).
+            try {
+              await admin.from("notifications").insert({
+                user_id: pushUserId,
+                type: "rsvp_pass",
+                title: copy.pushTitle,
+                body: copy.pushBody,
+                deep_link: deepLink,
+                data: { deepLink },
+                brand_id: brandId,
+                related_id: queueRow.event_id,
+                related_type: "rsvp_event",
+              });
+            } catch (inboxErr) {
+              console.warn("[rsvp-notify] rsvp_pass inbox insert failed (non-fatal)", String(inboxErr));
+            }
+            return ok;
+          }
+        : null,
+    // Email: the recipient's signed entry QR as a PDF attachment. Build is
+    // inside the sender closure so a PDF failure is isolated to the email
+    // channel (never aborts push).
+    email:
+      recipientEmail !== null && qrCode !== null
+        ? async (): Promise<boolean> => {
+            let pdf;
+            try {
+              pdf = await buildRsvpPassPdf({
+                eventTitle: eventName,
+                dateLine,
+                venueLine,
+                brandName,
+                attendeeName: recipientName,
+                qrPayload: qrCode,
+              });
+            } catch (pdfErr) {
+              console.warn("[rsvp-notify] rsvp_pass pdf build failed (isolated)", String(pdfErr));
+              return false;
+            }
+            const r = await sendResendEmailWithRsvpPass({
+              to: recipientEmail,
+              recipientName,
+              subject: copy.emailSubject,
+              body: copy.emailBody,
+              attachment: { filename: pdf.filename, content: pdf.contentBase64 },
+            });
+            if (!r.ok) console.warn("[rsvp-notify] rsvp_pass email failed (isolated)", r.error);
+            return r.ok;
+          }
+        : null,
+    sms: null, // rsvp_pass is email (QR PDF) + push; no SMS.
+  });
+
+  console.log(
+    `[rsvp-notify] rsvp_pass rsvp=${queueRow.rsvp_id} role=${role} ` +
+      `push=${outcome.push} email=${outcome.email} -> ${nextStatus}`,
+  );
+
+  const nowIso = new Date().toISOString();
+  await admin
+    .from("rsvp_notifications")
+    .update({
+      status: nextStatus,
+      sent_at: anySucceeded ? nowIso : null,
+      updated_at: nowIso,
+    })
+    .eq("id", notificationId);
+
+  return json(200, { ok: anySucceeded, channels: outcome, status: nextStatus });
+}
+
 serve(async (req: Request): Promise<Response> => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
@@ -245,7 +473,7 @@ serve(async (req: Request): Promise<Response> => {
   // 1. Load the queue row.
   const { data: queueRow, error: queueErr } = await admin
     .from("rsvp_notifications")
-    .select("id, event_id, rsvp_id, template_key, status")
+    .select("id, event_id, rsvp_id, template_key, status, payload, recipient")
     .eq("id", notificationId)
     .single();
   if (queueErr || !queueRow) {
@@ -254,6 +482,14 @@ serve(async (req: Request): Promise<Response> => {
   }
   if (queueRow.status === "sent") {
     return json(200, { ok: true, reason: "already_sent" });
+  }
+
+  // ORCH-1163 [rsvp-shared-body] — rsvp_pass: per-RECIPIENT "you're going" pass.
+  // Self-contained from the payload (one row per recipient: primary + each
+  // guest); does NOT re-resolve from event_rsvps. Email always (QR PDF
+  // attachment); push only when matchedUserId OR the signed-in primary.
+  if (queueRow.template_key === "rsvp_pass") {
+    return await handleRsvpPass(admin, notificationId, queueRow);
   }
 
   // 2. Resolve the guest + event.

@@ -50,34 +50,49 @@ Deno.test("ORCH-1157 OQ-1: consumer momentum sourced via the anon business_publi
   assert(!svc.includes('from("brands")'));
 });
 
-Deno.test("ORCH-1157 T-8: consumer detail consumes the SHARED RsvpMomentumDecision", () => {
-  assertStringIncludes(
-    screen,
-    'import {\n  OfferingChrome,\n  RsvpMomentumDecision,',
-  );
-  assertStringIncludes(screen, "<RsvpMomentumDecision");
-  // Going / Maybe / Can't all wired through handleRsvp.
-  assertStringIncludes(screen, 'handleRsvp("going")');
-  assertStringIncludes(screen, 'handleRsvp("maybe")');
-  assertStringIncludes(screen, 'handleRsvp("not_going")');
-  // the anon-view momentum query feeds the unit.
+// ORCH-1163 [TEST-MOD-APPROVED ORCH-1163]: retargeted RsvpPublicBody → RsvpOfferingBody/FoundationRsvpPreview (body promoted to offering-rendering).
+// The bespoke consumer RSVP-branch (the hand-wired RsvpMomentumDecision mount +
+// handleRsvp + rsvpDock/dockedReserve/floatingReserve + deck testIDs) was DELETED
+// and PROMOTED into the ONE shared RsvpOfferingBody + RsvpOfferingDecisionDock. The
+// INVARIANT (consumer consumes the SHARED RSVP decision, wires the three-way union,
+// fed by the anon-view momentum, never a cart on the RSVP path) is preserved; it
+// now lives in the shared body the consumer mounts.
+Deno.test("ORCH-1157 T-8: consumer detail consumes the SHARED RsvpOfferingBody (which owns RsvpMomentumDecision)", () => {
+  // imports the shared body + decision dock from the offering-rendering package.
+  assertStringIncludes(screen, "RsvpOfferingBody,");
+  assertStringIncludes(screen, "RsvpOfferingDecisionDock,");
+  assertStringIncludes(screen, '} from "@mingla/offering-rendering";');
+  assertStringIncludes(screen, "<RsvpOfferingBody");
+  // the shared body owns the RsvpMomentumDecision (going/maybe/not-going) — the
+  // consumer feeds it the submit wrapper that carries the three-way union.
+  assertStringIncludes(screen, "onSubmit={rsvpOnSubmit}");
+  assertStringIncludes(screen, 'rsvpStatus: "going" | "not_going" | "maybe"');
+  // the anon-view momentum query feeds the unit (via rsvpConfig).
   assertStringIncludes(screen, "fetchRsvpMomentum");
   assertStringIncludes(screen, "rsvpMomentum");
 });
 
-Deno.test("ORCH-1157 T-7: RSVP card docks the decision, never the cart bar (no checkout)", () => {
-  // The deck-off-EBES + ORCH-1150 contract: RSVP → rsvpDock, ticketed → cart.
-  assertStringIncludes(screen, "isRsvp ? rsvpDock : dockedReserve");
-  assertStringIncludes(screen, "isRsvp ? null : floatingReserve");
-  // the RSVP dock + momentum unit carry the ORCH-1157 testIDs.
-  assertStringIncludes(screen, "orch-1150-deck-rsvp-going");
-  assertStringIncludes(screen, "orch-1157-deck-rsvp-maybe");
-  assertStringIncludes(screen, "orch-1150-deck-rsvp-not-going");
+// ORCH-1163 [TEST-MOD-APPROVED ORCH-1163]: retargeted RsvpPublicBody → RsvpOfferingBody/FoundationRsvpPreview (body promoted to offering-rendering).
+Deno.test("ORCH-1157 T-7: RSVP card docks the shared decision, never the cart bar (no checkout)", () => {
+  // The deck-off-EBES + ORCH-1150 contract: RSVP → shared decision dock,
+  // ticketed → the cart float bar. Same invariant, new shared structure. The
+  // floating-overlay branch is gated `{isRsvp ? <RsvpOfferingDecisionDock> :
+  // … <EventOfferingFloatingBar>}` so an RSVP card never gets the cart bar.
+  const floatBranch = screen.slice(screen.indexOf("{isRsvp ? ("));
+  const dockIdx = floatBranch.indexOf("<RsvpOfferingDecisionDock");
+  const barIdx = floatBranch.indexOf("<EventOfferingFloatingBar");
+  assert(dockIdx !== -1 && barIdx !== -1, "both the RSVP dock and the ticketed bar exist");
+  assert(dockIdx < barIdx, "RSVP gets the decision dock; the cart bar is the non-RSVP fallback");
+  // The RSVP write goes through the ticketless submitDeckRsvp wrapper (rsvpOnSubmit),
+  // never a checkout — proven on the service in T-6a/OQ-1 above.
+  assertStringIncludes(screen, "onSubmit={rsvpOnSubmit}");
 });
 
-Deno.test("ORCH-1157 handleRsvp accepts the three-way reply union", () => {
+// ORCH-1163 [TEST-MOD-APPROVED ORCH-1163]: retargeted RsvpPublicBody → RsvpOfferingBody/FoundationRsvpPreview (body promoted to offering-rendering).
+Deno.test("ORCH-1157 consumer RSVP submit accepts the three-way reply union", () => {
+  // the consumer onSubmit wrapper (handed to the shared body) carries the union.
   assertStringIncludes(
     screen,
-    'next: "going" | "not_going" | "maybe"',
+    'rsvpStatus: "going" | "not_going" | "maybe";',
   );
 });

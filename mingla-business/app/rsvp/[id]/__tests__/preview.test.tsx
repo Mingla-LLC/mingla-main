@@ -44,9 +44,12 @@ describe("ORCH-1150-R2 D-5 — RSVP preview route exists + uses the no-ticket re
     expect(source).toMatch(/export default function RsvpPreviewRoute/);
   });
 
-  test("REUSE: renders RsvpPublicBody with the preview testID (route resolves, no 404)", () => {
-    expect(source).toContain("RsvpPublicBody");
-    expect(source).toContain("<RsvpPublicBody");
+  // ORCH-1163 [TEST-MOD-APPROVED ORCH-1163]: retargeted RsvpPublicBody → RsvpOfferingBody/FoundationRsvpPreview (body promoted to offering-rendering).
+  // preview.tsx now mounts the thin FoundationRsvpPreview wrapper (which composes
+  // the shared, ticketless RsvpOfferingBody) instead of the deleted RsvpPublicBody.
+  test("REUSE: renders FoundationRsvpPreview with the preview testID (route resolves, no 404)", () => {
+    expect(source).toContain("FoundationRsvpPreview");
+    expect(source).toContain("<FoundationRsvpPreview");
     expect(source).toContain('testID="orch-1150-rsvp-preview"');
   });
 

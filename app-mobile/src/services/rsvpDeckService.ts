@@ -70,6 +70,11 @@ export const fetchRsvpMomentum = async (
 export interface SubmitDeckRsvpResult {
   status: "going" | "not_going" | "waitlisted" | "maybe";
   approvalStatus: "pending" | "approved";
+  // ORCH-1163 [rsvp-shared-body] — the written primary RSVP id + its signed
+  // confirmation token, threaded back so the shared RsvpSuccessPopup (and the
+  // consumer calendar pass) can reference the created row.
+  rsvpId: string;
+  confirmationToken: string | null;
 }
 
 /**
@@ -85,9 +90,13 @@ export interface SubmitDeckRsvpResult {
 export const submitDeckRsvp = async (
   eventId: string,
   rsvpStatus: "going" | "not_going" | "maybe",
+  // ORCH-1163 [rsvp-shared-body] — optional per-guest plus-one contacts (FLOW B).
+  // Passed straight through to the edge fn body; omitted (empty) keeps the call
+  // byte-identical to the prior no-guests path.
+  guests?: Array<{ name: string; email: string; phone: string }>,
 ): Promise<SubmitDeckRsvpResult> => {
   const { data, error } = await supabase.functions.invoke("public-submit-rsvp", {
-    body: { eventId, rsvpStatus },
+    body: { eventId, rsvpStatus, guests: guests ?? [] },
   });
   if (error !== null) {
     let code = error.message ?? "rsvp_write_failed";
@@ -110,9 +119,13 @@ export const submitDeckRsvp = async (
   const res = (data ?? {}) as {
     status?: "going" | "not_going" | "waitlisted" | "maybe";
     approvalStatus?: "pending" | "approved";
+    rsvpId?: string;
+    confirmationToken?: string | null;
   };
   return {
     status: res.status ?? rsvpStatus,
     approvalStatus: res.approvalStatus ?? "approved",
+    rsvpId: res.rsvpId ?? "",
+    confirmationToken: res.confirmationToken ?? null,
   };
 };
