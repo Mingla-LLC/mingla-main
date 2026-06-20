@@ -6,34 +6,48 @@
 // <video> is MUTED at play() time, so a single unmuted play() attempt paints the
 // native control overlay (the bug Seth saw live on buyer-web).
 //
+// [TEST-MOD-APPROVED ORCH-1167] — R8 MECHANISM MIGRATION (intent UNCHANGED).
+// R5/R6/R7 expressed the web cover as a React-RENDERED <video> (React.createElement
+// + JSX props: `muted: effectiveMuted`, `attachVideo` ref callback, `onCanPlay`,
+// `controls: false`). ORCH-1167-R8 proved (orchestrator Playwright forensics, live
+// page, headless WebKit) that ANY React-reconciled <video> is permanently DENIED
+// inline-muted autoplay by desktop Safari/WebKit, and replaced it with an
+// IMPERATIVELY created `document.createElement('video')` appended into a React-owned
+// container <div>. The R5 INTENT below is fully preserved on the imperative element
+// — the FIRST autoplay is hard-muted (`effectiveMuted` / `hasUnmutedRef`), the
+// muted + playsinline + webkit-playsinline ATTRIBUTES are pinned at create, controls
+// stay off, loop + inline playback are preserved — but the ASSERTION ANCHORS are
+// migrated from the React-prop form to the imperative-element form
+// (`video.muted = effectiveMuted`, `video.controls = false`, `video.loop = …`,
+// `video.playsInline = true`). The React-prop assertions are intentionally removed
+// (they would now pin the very mechanism R8 proved poisons WebKit autoplay).
+//
 // THE FIX, asserted here (all in the web branch of EventCoverMedia.tsx):
 //   (1) The web <video>'s FIRST autoplay attempt is HARD-MUTED regardless of the
 //       incoming `muted` prop (`effectiveMuted` is true until the user unmutes),
 //       so the browser always permits the inline autoplay and no play button
 //       shows. A `hasUnmutedRef` records the first user-gesture unmute; only then
 //       does the element follow the live `muted` prop.
-//   (2) The element is mounted via a SYNCHRONOUS ref callback that pins the
-//       `muted` + `playsinline` ATTRIBUTES the instant it mounts — before the
-//       browser evaluates autoplay eligibility (React 19 emits `muted` as a
-//       property only, which can land after the first eligibility check).
-//   (3) `onCanPlay` re-asserts `muted` before the (re)play attempt.
-//   (4) `controls` stays false (no native chrome), `playsInline`/`webkit-
-//       playsinline` stay set, `loop` is preserved.
-//   (5) The shared EventCoverMedia mute STATE follows the parent `muted` prop on
+//   (2) The imperatively created element pins the `muted` + `playsinline` +
+//       `webkit-playsinline` ATTRIBUTES at create — before the browser evaluates
+//       autoplay eligibility.
+//   (3) `controls` stays false (no native chrome), `playsInline` stays true,
+//       `loop` is preserved.
+//   (4) The shared EventCoverMedia mute STATE follows the parent `muted` prop on
 //       in-place changes (so the chrome Mute/Unmute toggle reaches the cover),
 //       and resets to the web autoplay-muted default only on a NEW media url.
 //
-// Source-structural (readFileSync) — the same proven pattern as the R2/R3/R4
+// Source-structural (readFileSync) — the same proven pattern as the R2/R3/R4/R7/R8
 // ORCH-1167 tests: these mounts import react-native + expo-video and cannot run
 // under node-env jest, and there is no jsdom in this repo, so the web autoplay
-// contract is pinned as a source contract.
+// contract is pinned as a source contract. The AUTHORITATIVE runtime proof is the
+// orchestrator's Vercel-preview headless-WebKit check (no local bed reproduces it).
 //
-// FAILS-ON-REVERT (proven by TRUE deletion in the implementation report):
-//   • Pass the raw `muted` prop to the web <video> instead of `effectiveMuted`
-//     (drop the hasUnmutedRef hard-mute) → "first autoplay is hard-muted" FAILS.
-//   • Drop the synchronous ref-callback muted-attribute pin → "ref callback pins
-//     muted attribute on mount" FAILS.
-//   • Drop the onCanPlay muted re-assert → "onCanPlay re-asserts muted" FAILS.
+// FAILS-ON-REVERT:
+//   • Pass the raw `muted` prop to the element instead of `effectiveMuted` (drop
+//     the hasUnmutedRef hard-mute) → "first autoplay is hard-muted" FAILS.
+//   • Drop the muted-attribute pin at create → "pins muted attribute" FAILS.
+//   • Re-enable controls → "controls disabled" FAILS.
 //   • Make EventCoverMedia's sync effect force muted on web again (re-mute on
 //     every prop change) → "mute state follows the parent prop on in-place
 //     change" FAILS.
@@ -66,48 +80,48 @@ describe("ORCH-1167-R5 — web video cover autoplays MUTED (no native play butto
   const src = stripComments(read(COVER));
   const web = webVideoBody(src);
 
-  it("the web <video> autoplay attempt is HARD-MUTED until the user unmutes (effectiveMuted, not the raw prop)", () => {
+  it("the imperative <video>'s autoplay attempt is HARD-MUTED until the user unmutes (effectiveMuted, not the raw prop)", () => {
     // The hard-mute gate exists.
     expect(web).toMatch(/hasUnmutedRef/);
     expect(web).toMatch(/const effectiveMuted\s*=/);
-    // The element's `muted` is driven by effectiveMuted, NOT the raw `muted` prop.
-    expect(web).toMatch(/muted:\s*effectiveMuted/);
-    // The imperative effect mutes the element with effectiveMuted before play().
+    // The imperative element's `muted` is driven by effectiveMuted, NOT the raw prop.
     expect(web).toMatch(/video\.muted\s*=\s*effectiveMuted/);
     // The user-gesture unmute is recorded so the toggle can later take over.
     expect(web).toMatch(/if\s*\(!muted\)\s*hasUnmutedRef\.current\s*=\s*true/);
   });
 
-  it("a synchronous ref callback pins the muted + playsinline ATTRIBUTES on mount (before autoplay eligibility check)", () => {
-    expect(web).toMatch(/attachVideo/);
-    expect(web).toMatch(/node\.muted\s*=\s*true/);
-    expect(web).toMatch(/node\.setAttribute\("muted",\s*""\)/);
-    expect(web).toMatch(/setAttribute\("playsinline",\s*""\)/);
-    expect(web).toMatch(/setAttribute\("webkit-playsinline",\s*""\)/);
-    // The element uses the ref callback (not a bare ref) so the pin runs on mount.
-    expect(web).toMatch(/ref:\s*attachVideo/);
+  it("pins the muted + playsinline + webkit-playsinline ATTRIBUTES at create (before autoplay eligibility check)", () => {
+    // The imperative element is muted at create...
+    expect(web).toMatch(/video\.muted\s*=\s*true/);
+    // ...and the autoplay-eligibility attributes are pinned on it.
+    expect(web).toMatch(/video\.setAttribute\(\s*["']muted["']\s*,\s*""\s*\)/);
+    expect(web).toMatch(/video\.setAttribute\(\s*["']playsinline["']\s*,\s*""\s*\)/);
+    expect(web).toMatch(
+      /video\.setAttribute\(\s*["']webkit-playsinline["']\s*,\s*""\s*\)/,
+    );
+    // It is built imperatively via document.createElement (never React-rendered).
+    expect(web).toMatch(/document\.createElement\(\s*["']video["']\s*\)/);
+    expect(web).not.toMatch(/React\.createElement\(\s*["']video["']/);
   });
 
-  it("onCanPlay re-asserts muted before the (re)play attempt", () => {
-    expect(web).toMatch(/onCanPlay/);
-    expect(web).toMatch(/event\.currentTarget\.muted\s*=\s*effectiveMuted/);
+  it("re-asserts muted (effectiveMuted) when prop changes on the existing element", () => {
+    // The follow-prop effect re-applies effectiveMuted to the existing element.
+    expect(web).toMatch(/video\.muted\s*=\s*effectiveMuted/);
   });
 
-  it("keeps controls disabled, loop, and inline-playback attributes (no native chrome regression)", () => {
-    expect(web).toMatch(/controls:\s*false/);
-    expect(web).toMatch(/loop,/);
-    expect(web).toMatch(/playsInline:\s*true/);
-    // It must NOT regress to showing native controls.
-    expect(web).not.toMatch(/controls:\s*true/);
+  it("keeps controls disabled, loop, and inline-playback on the imperative element (no native chrome regression)", () => {
+    expect(web).toMatch(/video\.controls\s*=\s*false/);
+    expect(web).toMatch(/video\.loop\s*=/);
+    expect(web).toMatch(/video\.playsInline\s*=\s*true/);
+    // It must NOT regress to enabling native controls.
+    expect(web).not.toMatch(/video\.controls\s*=\s*true/);
   });
 
-  it("does NOT pass the raw `muted` prop straight to the <video> element (would reintroduce the play button)", () => {
-    // The element-level muted is effectiveMuted; a bare `muted,` (shorthand) or
-    // `muted: muted` on the createElement props would defeat the hard-mute gate.
-    const createEl = web.slice(web.indexOf('React.createElement("video"'));
-    expect(createEl).toMatch(/muted:\s*effectiveMuted/);
-    expect(createEl).not.toMatch(/\bmuted,\b/);
-    expect(createEl).not.toMatch(/muted:\s*muted\b/);
+  it("does NOT pass the raw `muted` prop straight to the element (would reintroduce the play button)", () => {
+    // The element-level muted is effectiveMuted; a `video.muted = muted` would
+    // defeat the hard-mute gate.
+    expect(web).toMatch(/video\.muted\s*=\s*effectiveMuted/);
+    expect(web).not.toMatch(/video\.muted\s*=\s*muted\b/);
   });
 });
 

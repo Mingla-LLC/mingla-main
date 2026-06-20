@@ -65,11 +65,15 @@ export interface EventCoverMediaErrorEvent {
   nativeEvent?: unknown;
 }
 
-const WEB_VIDEO_STYLE: React.CSSProperties = {
+// ORCH-1167-R8 — the React-owned container <div> that hosts the IMPERATIVELY
+// created DOM <video> (see EventCoverWebVideo). React reconciles only this div;
+// the <video> is appended via document.createElement so WebKit grants it inline
+// muted autoplay (the React-reconciled <video> is permanently denied autoplay).
+const WEB_VIDEO_CONTAINER_STYLE: React.CSSProperties = {
   backgroundColor: "#000000",
   height: "100%",
   inset: 0,
-  objectFit: "cover",
+  overflow: "hidden",
   position: "absolute",
   width: "100%",
 };
@@ -139,8 +143,28 @@ const EventCoverWebVideo: React.FC<{
   onAspectRatio,
   onError,
 }) => {
+  // ORCH-1167-R8 — IMPERATIVE DOM `<video>` (NO React JSX / NO
+  // React.createElement). ROOT CAUSE (orchestrator, exhaustive Playwright
+  // forensics on the LIVE page, headless WebKit): R5/R6/R7's React-RENDERED
+  // `<video>` is PERMANENTLY DENIED inline-muted autoplay by WebKit — it shows
+  // the native play button and never autoplays on desktop Safari/WebKit. The
+  // decisive proof: EVERY video created via `document.createElement('video')`
+  // (raw DOM) and appended on the EXACT live page AUTOPLAYS, while the
+  // component's React-reconciled `<video>` stays poisoned. So React's
+  // rendering/reconciliation of the `<video>` node is itself the poison.
+  //
+  // THE FIX: render a plain `<div>` container that React owns, and in a
+  // useEffect create the `<video>` with `document.createElement('video')`,
+  // mirror the proven-working bare element (autoplay + muted + playsinline
+  // ATTRIBUTES, NO manual play() required), and append it into the container.
+  // React must NEVER own/reconcile the `<video>` node. The existing features —
+  // mute toggle, aspect-ratio report, error→fallback, reduce-motion freeze
+  // (via the autoplay prop), lazy-mount gating — are wired through to the
+  // imperative element below. The NATIVE (expo-video) path is UNCHANGED.
+  const containerRef = useRef<HTMLDivElement | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const shouldPlay = autoplay && playbackActive;
+
   // ORCH-1167-R5 — web autoplay was still showing the browser's native PLAY
   // BUTTON because the FIRST autoplay attempt could fire while the `<video>` was
   // not yet guaranteed-muted at the element level. Browsers ONLY permit inline
@@ -150,104 +174,143 @@ const EventCoverWebVideo: React.FC<{
   // forced muted (so the browser always permits it and NO play button shows).
   // Once the chrome Mute toggle unmutes (a real user gesture, which the browser
   // honors), we follow the live `muted` prop. Re-muting works too. `hasUnmuted`
-  // is a ref so flipping it never re-triggers the autoplay effect mid-play.
+  // is a ref so flipping it never re-triggers the create effect mid-play.
   const hasUnmutedRef = useRef<boolean>(false);
   if (!muted) hasUnmutedRef.current = true;
   // The mute value actually applied to the element: hard-muted for the initial
   // ambient autoplay, then the prop once the user has taken over.
   const effectiveMuted = hasUnmutedRef.current ? muted : true;
 
-  // Synchronous ref callback: set the muted PROPERTY + ATTRIBUTE the instant the
-  // element mounts, BEFORE the browser evaluates autoplay eligibility. React 19
-  // emits `muted` as a property only (no HTML attribute), and even the property
-  // can land after the browser's first eligibility check — so we pin both here,
-  // guaranteeing the very first autoplay attempt is muted and permitted.
-  const attachVideo = React.useCallback(
-    (node: HTMLVideoElement | null): void => {
-      videoRef.current = node;
-      if (node === null) return;
-      node.muted = true;
-      node.setAttribute("muted", "");
-      node.setAttribute("playsinline", "");
-      node.setAttribute("webkit-playsinline", "");
-    },
-    [],
-  );
+  // Keep the latest callbacks/flags in refs so the create effect can read them
+  // WITHOUT re-running (which would tear down + recreate the element and lose
+  // its autoplay eligibility). The create effect re-runs ONLY on uri change.
+  const onAspectRatioRef = useRef(onAspectRatio);
+  onAspectRatioRef.current = onAspectRatio;
+  const onErrorRef = useRef(onError);
+  onErrorRef.current = onError;
+  const loopRef = useRef(loop);
+  loopRef.current = loop;
+  const shouldPlayRef = useRef(shouldPlay);
+  shouldPlayRef.current = shouldPlay;
 
-  // ORCH-0992: report the video's intrinsic aspect ratio once metadata loads,
-  // so a hero can size its box to the video's shape. videoWidth/videoHeight are
-  // 0 until metadata is available; the loadedmetadata listener covers the case
-  // where metadata is already cached (the effect runs after the event fired).
+  // Create the imperative DOM <video> exactly like the proven-working bare
+  // element. Re-runs only when the source url changes; fully torn down on
+  // unmount / src change. NO manual play() is required for autoplay — the
+  // attributes drive it (that is the WebKit-granted path; the React-reconciled
+  // node is the poison, NOT a missing play()).
   useEffect(() => {
-    if (onAspectRatio === undefined) return;
-    const video = videoRef.current;
-    if (video === null) return;
-    const report = (): void => {
+    const container = containerRef.current;
+    if (container === null) return;
+    if (typeof document === "undefined") return;
+
+    const video = document.createElement("video");
+    videoRef.current = video;
+
+    // Mirror the bare element that autoplays on the live page. `muted` must be
+    // both the PROPERTY and the ATTRIBUTE before the browser evaluates autoplay
+    // eligibility (iOS/WebKit only grant inline muted autoplay when the
+    // muted + playsinline ATTRIBUTES are present at the element level).
+    video.muted = true;
+    video.setAttribute("muted", "");
+    video.setAttribute("playsinline", "");
+    video.setAttribute("webkit-playsinline", "");
+    video.playsInline = true;
+    video.autoplay = shouldPlayRef.current;
+    video.loop = loopRef.current;
+    video.controls = false;
+    video.preload = "auto";
+    // Cover styles (objectFit cover/contain, fill the container).
+    Object.assign(video.style, {
+      backgroundColor: "#000000",
+      height: "100%",
+      inset: "0",
+      objectFit: contentFit,
+      position: "absolute",
+      width: "100%",
+    } as Partial<CSSStyleDeclaration>);
+
+    // ORCH-0992: report intrinsic aspect ratio once metadata is known. The
+    // listener covers the cached-metadata case (event already fired). Reads the
+    // latest callback via ref so this effect never re-runs for a callback swap.
+    const reportAspectRatio = (): void => {
+      const cb = onAspectRatioRef.current;
+      if (cb === undefined) return;
       if (video.videoWidth > 0 && video.videoHeight > 0) {
-        onAspectRatio(video.videoWidth / video.videoHeight);
+        cb(video.videoWidth / video.videoHeight);
       }
     };
-    report();
-    video.addEventListener("loadedmetadata", report);
-    return () => video.removeEventListener("loadedmetadata", report);
-  }, [onAspectRatio, uri]);
+    // Error → fallback (EventCover placeholder shows).
+    const handleError = (): void => {
+      onErrorRef.current();
+    };
+    // Loop manually too (belt-and-suspenders with the loop attribute) so the
+    // ambient cover keeps cycling; never forces play when we should be paused.
+    const handleEnded = (): void => {
+      if (!loopRef.current || !shouldPlayRef.current) return;
+      video.currentTime = 0;
+      void video.play().catch(() => undefined);
+    };
 
+    video.addEventListener("loadedmetadata", reportAspectRatio);
+    video.addEventListener("error", handleError);
+    video.addEventListener("ended", handleEnded);
+
+    // Set src LAST, after attributes are pinned, then append — matching the
+    // proven bare element's construction order so the very first autoplay
+    // eligibility check sees a muted, playsinline, autoplay element.
+    video.src = uri;
+    container.appendChild(video);
+    reportAspectRatio();
+
+    return () => {
+      video.removeEventListener("loadedmetadata", reportAspectRatio);
+      video.removeEventListener("error", handleError);
+      video.removeEventListener("ended", handleEnded);
+      try {
+        video.pause();
+      } catch {
+        // ignore
+      }
+      video.removeAttribute("src");
+      if (video.parentNode !== null) video.parentNode.removeChild(video);
+      if (videoRef.current === video) videoRef.current = null;
+    };
+  }, [uri, contentFit]);
+
+  // Follow prop changes on the EXISTING element WITHOUT recreating it. Mute /
+  // unmute toggle: when the parent `muted` prop changes we update
+  // `video.muted` — unmute is a real user gesture the browser honors. The R5
+  // contract holds: the FIRST autoplay is hard-muted (effectiveMuted), and we
+  // only follow the live prop once the user has unmuted (hasUnmutedRef). Also
+  // keeps loop + the play/pause state in sync with playbackActive/autoplay.
   useEffect(() => {
     const video = videoRef.current;
     if (video === null) return;
-    // iOS Safari only treats a video as eligible for inline muted autoplay when
-    // the `muted` + `playsinline` ATTRIBUTES are present at the element level.
-    // React 19 sets `muted` as a DOM property only (no attribute), so iOS refuses
-    // to autoplay and shows its native play button. Set the attributes + property
-    // imperatively so the element is autoplay-eligible. (Desktop works on the
-    // property alone.)
-    //
-    // ORCH-1167-R5 — `effectiveMuted` (not the raw prop) is hard-true until the
-    // user unmutes, so the initial inline autoplay is always permitted and the
-    // native play button never paints. After a user-gesture unmute it follows
-    // the live prop, so the chrome Mute/Unmute toggle keeps working.
+    video.loop = loop;
     video.muted = effectiveMuted;
     if (effectiveMuted) video.setAttribute("muted", "");
     else video.removeAttribute("muted");
-    video.setAttribute("playsinline", "");
-    video.setAttribute("webkit-playsinline", "");
+    video.autoplay = shouldPlay;
 
     if (!shouldPlay) {
-      video.pause();
+      try {
+        video.pause();
+      } catch {
+        // ignore
+      }
       return;
     }
 
-    // ORCH-1167-R7 — ROOT CAUSE (proven via Playwright against the LIVE page,
-    // headless WebKit): the R5/R6 code drove the muted ambient autoplay by
-    // calling `video.play()` MANUALLY — R6 hammered it ~50× via a retry driver,
-    // with the FIRST attempt firing at `readyState 0` (before any media). On
-    // WebKit that gesture-less play()-at-readyState-0 POISONS the
-    // element's one-time inline-autoplay eligibility: WebKit rejects it with
-    // NotAllowedError and PERMANENTLY denies that specific element — every one of
-    // the 56 retries then rejected too, and Safari painted its native play-button
-    // overlay on the dead, paused cover. Decisive proof: on the SAME live page a
-    // fresh bare `<video autoplay muted playsinline src>` (which NEVER calls
-    // play()) autoplays, while the component's hammered element stays paused.
-    //
-    // THE FIX: render the cover EXACTLY like that proven-working bare element —
-    // rely SOLELY on the native `autoplay` + `muted` + `playsinline` ATTRIBUTES
-    // (pinned at mount by `attachVideo`, re-pinned above) to drive the muted
-    // ambient autoplay. Do NOT call play() while hard-muted, and NEVER at
-    // readyState 0. The attributes-only path is what WebKit grants without a
-    // gesture; manual play() is what poisons it.
-    //
-    // A single GUARDED late recovery (the `canplaythrough` listener below) covers
-    // the rare case where the autoplay attribute didn't kick the element off:
-    // it attempts play() ONCE, only when the media is genuinely ready
-    // (readyState >= 3) AND still paused — never at readyState 0 — and stops the
-    // moment it plays. That can't poison (the element is past the eligibility
-    // window and truly ready), and it is fully torn down on cleanup.
     if (effectiveMuted) {
+      // Hard-muted ambient autoplay is driven by the ATTRIBUTES alone (the
+      // proven-working path). We do NOT call play() here — a gesture-less
+      // play() is unnecessary for the imperative element and was the R7
+      // poison theory. A single GUARDED late recovery covers the rare case
+      // where the autoplay attribute didn't kick it off: play() ONCE, only
+      // when the media is genuinely ready (readyState >= 3) AND still paused.
       let recovered = false;
       const recover = (): void => {
         if (recovered) return;
-        // Only recover when truly ready (>=3 HAVE_FUTURE_DATA) AND still paused.
-        // Never at readyState 0 — that is the attempt that poisons WebKit.
         if (video.readyState < 3 || !video.paused) return;
         recovered = true;
         video.muted = true;
@@ -257,41 +320,16 @@ const EventCoverWebVideo: React.FC<{
       return () => video.removeEventListener("canplaythrough", recover);
     }
 
-    // User has unmuted (a real gesture the browser honors): follow the live prop
-    // with a single play() attempt; no hard-muted retry loop.
+    // User has unmuted (a real gesture the browser honors): follow the live
+    // prop with a single play() attempt; no hard-muted retry loop.
     void video.play().catch(() => undefined);
     return;
-  }, [shouldPlay, uri, effectiveMuted]);
+  }, [shouldPlay, effectiveMuted, loop]);
 
-  return React.createElement("video", {
-    ref: attachVideo,
-    autoPlay: shouldPlay,
-    controls: false,
-    loop,
-    muted: effectiveMuted,
-    onCanPlay: (event: React.SyntheticEvent<HTMLVideoElement>): void => {
-      if (!shouldPlay) return;
-      // ORCH-1167-R7 — NO play() at readyState 0 (that poisons WebKit). Re-assert
-      // muted so a browser that deferred its eligibility check still permits the
-      // attribute-driven inline autoplay (R5 contract), and ONLY attempt a recovery
-      // play() when the media is genuinely ready (readyState >= 3) AND still paused
-      // — never on an empty element. The native `autoplay` attribute is the
-      // primary driver.
-      event.currentTarget.muted = effectiveMuted;
-      if (event.currentTarget.readyState >= 3 && event.currentTarget.paused) {
-        void event.currentTarget.play().catch(() => undefined);
-      }
-    },
-    onEnded: (event: React.SyntheticEvent<HTMLVideoElement>): void => {
-      if (!loop || !shouldPlay) return;
-      event.currentTarget.currentTime = 0;
-      void event.currentTarget.play().catch(() => undefined);
-    },
-    onError,
-    playsInline: true,
-    preload: "auto",
-    src: uri,
-    style: { ...WEB_VIDEO_STYLE, objectFit: contentFit },
+  // React owns ONLY this container <div>; it never owns/reconciles the <video>.
+  return React.createElement("div", {
+    ref: containerRef,
+    style: WEB_VIDEO_CONTAINER_STYLE,
   });
 };
 
