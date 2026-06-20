@@ -36,17 +36,29 @@ Deno.test("ORCH-1150 T-10a: deck RSVP write hits public-submit-rsvp, bubbles cod
   assert(!svc.includes("/checkout"));
 });
 
-Deno.test("ORCH-1150 T-10b: detail screen docks Going/Not-going for an RSVP card", () => {
+// ORCH-1163 [TEST-MOD-APPROVED ORCH-1163]: retargeted RsvpPublicBody → RsvpOfferingBody/FoundationRsvpPreview (body promoted to offering-rendering).
+// The bespoke RSVP-branch (isRsvp ? rsvpDock : dockedReserve + deck testIDs) was
+// DELETED and PROMOTED into the shared RsvpOfferingBody + RsvpOfferingDecisionDock.
+// The INVARIANT (an RSVP card docks the shared decision, writes via submitDeckRsvp,
+// never the cart) is preserved via the new shared mount.
+Deno.test("ORCH-1150 T-10b: detail screen docks the shared decision for an RSVP card", () => {
   assertStringIncludes(screen, 'seed?.eventType === "rsvp"');
-  assertStringIncludes(screen, "isRsvp ? rsvpDock : dockedReserve");
+  // RSVP → the shared decision dock; the write still routes through submitDeckRsvp.
+  assertStringIncludes(screen, "{isRsvp ? (");
+  assertStringIncludes(screen, "<RsvpOfferingDecisionDock");
   assertStringIncludes(screen, "submitDeckRsvp");
-  assertStringIncludes(screen, "orch-1150-deck-rsvp-going");
-  assertStringIncludes(screen, "orch-1150-deck-rsvp-not-going");
+  // the RSVP body itself is mounted (owns the going/maybe/not-going decision UI).
+  assertStringIncludes(screen, "<RsvpOfferingBody");
 });
 
+// ORCH-1163 [TEST-MOD-APPROVED ORCH-1163]: retargeted RsvpPublicBody → RsvpOfferingBody/FoundationRsvpPreview (body promoted to offering-rendering).
 Deno.test("ORCH-1150 T-10c: ticketed path untouched — TicketCartSheet still mounted", () => {
   // The deck-off-EBES invariant: the cart stays the ticketed reserve path.
   assertStringIncludes(screen, "TicketCartSheet");
-  // RSVP suppresses the cart float bar but does NOT remove the cart mount.
-  assertStringIncludes(screen, "isRsvp ? null : floatingReserve");
+  // RSVP gets the decision dock; the cart float bar (EventOfferingFloatingBar) is
+  // the non-RSVP fallback — the cart mount itself is NOT removed.
+  const floatBranch = screen.slice(screen.indexOf("{isRsvp ? ("));
+  const dockIdx = floatBranch.indexOf("<RsvpOfferingDecisionDock");
+  const barIdx = floatBranch.indexOf("<EventOfferingFloatingBar");
+  assert(dockIdx !== -1 && barIdx !== -1 && dockIdx < barIdx, "RSVP docks the decision; cart bar is the non-RSVP fallback");
 });

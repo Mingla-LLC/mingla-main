@@ -124,6 +124,13 @@ export interface RsvpMomentumDecisionProps {
    */
   showDecision?: boolean;
   /**
+   * ORCH-1163 §H.5 — when true, the built-in bare-integer plus-ones stepper is NOT
+   * rendered (the shared `RsvpOfferingBody` owns the per-guest contact mini-forms +
+   * its own stepper instead, since each plus-one now needs name+email+phone, not a
+   * count). Default false preserves the ORCH-1157 stepper for any legacy caller.
+   */
+  hideStepper?: boolean;
+  /**
    * The host row (avatar + "Hosted by X") for the sticky-panel. Optional —
    * RsvpPublicBody renders its own brand chip in the body on phone.
    */
@@ -212,6 +219,7 @@ export const RsvpMomentumDecision: React.FC<RsvpMomentumDecisionProps> = ({
   variant,
   showMomentum,
   showDecision = true,
+  hideStepper = false,
   hostRow,
   micro,
   goingTestID,
@@ -505,9 +513,11 @@ export const RsvpMomentumDecision: React.FC<RsvpMomentumDecisionProps> = ({
     );
   }
 
-  // Plus-ones stepper (only in an unresolved, non-binding state).
+  // Plus-ones stepper (only in an unresolved, non-binding state). ORCH-1163: the
+  // shared RsvpOfferingBody hides this and renders per-guest contact mini-forms.
   const showStepper =
     allowPlusOnes &&
+    !hideStepper &&
     !goingResolved &&
     !pendingResolved &&
     !waitlistedResolved &&

@@ -66,7 +66,7 @@ import {
 
 import { spacing } from "../../constants/designSystem";
 import { FoundationEventPreview } from "./FoundationEventPreview";
-import { RsvpPublicBody } from "./RsvpPublicBody";
+import { FoundationRsvpPreview } from "./FoundationRsvpPreview";
 import { submitPublicRsvp } from "../../services/rsvpEvents";
 
 import {
@@ -547,17 +547,22 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
   // The ticketed path below is BYTE-IDENTICAL (untouched) for every non-RSVP row.
   const isRsvp = event.event_type === "rsvp";
   const rsvpSubmit = useCallback(
-    // ORCH-1150 R2 D-10: 'maybe' rides the same wiring (cascade of the widened
-    // RsvpPublicBody.onSubmit + submitPublicRsvp types). No behavior change here.
+    // ORCH-1163 — extended to carry per-guest plus-one contacts (§H) and to surface
+    // the persisted rsvpId + signed confirmationToken (§I) back to the body (the
+    // success popup + Calendar QR). The single write owner (submitPublicRsvp →
+    // public-submit-rsvp) is unchanged.
     async (input: {
       rsvpStatus: "going" | "not_going" | "maybe";
       guestName: string;
       guestEmail: string;
       guestPhone: string;
       plusCount: number;
+      guests: Array<{ name: string; email: string; phone: string }>;
     }): Promise<{
       status: "going" | "not_going" | "waitlisted" | "maybe";
       approvalStatus: "pending" | "approved";
+      rsvpId: string;
+      confirmationToken: string | null;
     }> =>
       submitPublicRsvp({
         eventId: event.id,
@@ -566,6 +571,7 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
         guestEmail: input.guestEmail,
         guestPhone: input.guestPhone,
         plusCount: input.plusCount,
+        guests: input.guests,
       }),
     [event.id],
   );
@@ -600,7 +606,7 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
           </Head>
         ) : null}
 
-        <RsvpPublicBody
+        <FoundationRsvpPreview
           event={publicEvent}
           brand={publicBrand}
           palette={palette}
@@ -624,6 +630,7 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
           onShare={handleShare}
           onOpenBrand={(slug: string) => router.push(`/b/${slug}` as never)}
           onOpenMaps={openMapsForQuery}
+          staticMapUrl={staticMapUrl}
           onSubmit={rsvpSubmit}
           // ORCH-1150 R2 D-7b — scroll-runway parity with the trip / experience /
           // ticketed routes. Those routes use `spacing.md` because a DOCKED reserve

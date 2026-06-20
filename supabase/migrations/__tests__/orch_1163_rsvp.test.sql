@@ -1,0 +1,36 @@
+-- ORCH-1163 [rsvp-shared-body] — migration source-contract assertions.
+--
+-- These are NOT executed against a live DB by the implementor (the orchestrator
+-- applies the two migrations via the Management API). They document the LOCKED
+-- contract the two migration FILES must carry; the .mjs CI gates
+-- (orch-1163-rsvp-one-read-path / -plus-one-per-guest / -going-calendar-qr /
+-- -guest-notify-match) enforce these same facts as fails-on-revert string checks.
+--
+-- Contract (the orchestrator verifies post-apply on prod):
+--   mig 1 (20261016000000_orch_1163_pg_public_rsvp_by_slug.sql):
+--     • pg_public_rsvp_by_slug(text,text) RETURNS json, SECURITY DEFINER, STABLE.
+--     • event_type = 'rsvp' filter (NOT 'event').
+--     • NO tickets aggregate; returns rsvpGoingCount/rsvpCapacity/rsvpAllowPlusOnes/
+--       rsvpPlusOnesMax/rsvpWaitlistEnabled/rsvpApprovalMode.
+--     • rsvpGoingCount = SUM(1 + plus_count) over going+approved (maybe excluded).
+--     • PRIVACY: address + location_geo NULL when hide_address_until_ticket; city_geo only.
+--     • GRANT EXECUTE TO anon, authenticated; $function$ before GRANT; NOTIFY pgrst.
+--   mig 2 (20261016000001_orch_1163_event_rsvp_guests.sql):
+--     • event_rsvps.qr_token_hash / qr_code added (primary signed pass).
+--     • event_rsvp_guests child table: name/email/phone NOT NULL + CHECK length>0,
+--       FK rsvp_id → event_rsvps ON DELETE CASCADE, RLS ENABLED, host-read +
+--       owner-read (OR matched_user_id = auth.uid()) policies, GRANT TO service_role
+--       ONLY (no anon/authenticated table write grant).
+--     • per-guest qr_token_hash / qr_code / matched_user_id columns + indexes.
+--     • biz_rsvp_qr_payload emits 'mingla:v1:rsvp:' using the shared pepper helper.
+--     • biz_resolve_verified_user reads auth.identities (email_verified) +
+--       phone_confirmed_at, NEVER user_metadata/raw_user_meta_data.
+--     • submit_event_rsvp redefined: DROP old 7-arg sig; new 9-arg with p_guests jsonb
+--       + p_qr_token_pepper; delete-then-insert guests; RAISE rsvp_guest_count_mismatch
+--       / rsvp_guest_contact_required; mint primary + per-guest tokens ONLY for going;
+--       capacity math SUM(1 + plus_count) UNCHANGED.
+--     • fetch_user_going_rsvps(uuid): UNION of primary rows + matched-guest rows,
+--       each tagged role 'primary' | 'guest' with the right qr_code/display_name/invited_by.
+--
+-- (No-op SELECT so the file is syntactically valid SQL.)
+SELECT 'orch_1163_rsvp_contract' AS doc;

@@ -6,6 +6,7 @@ import {
   CalendarEntryRecord,
   ConsumerCalendarEntry,
   BusinessEventCalendarRow,
+  ConsumerRsvpRow,
 } from "../services/calendarService";
 import { circleKeys } from "./queryKeys";
 
@@ -146,6 +147,64 @@ export const useTicketsRealtimeSubscription = (userId: string | undefined): void
         () => {
           queryClient.invalidateQueries({ queryKey: ["businessEventOrders", userId] });
           queryClient.invalidateQueries({ queryKey: ["consumerCalendar", userId] });
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [userId, queryClient]);
+};
+
+// ORCH-1163 [rsvp-shared-body]: the signed-in user's "Going" RSVPs (their own
+// primary rows + plus-one rows they were brought as), folded into the consumer
+// Calendar tab as a FOURTH unified-row kind alongside calendar / ticket /
+// reservation. Source is the `fetch_user_going_rsvps` RPC. Mirrors
+// `useBusinessEventOrders`'s caching posture (60s staleTime, refetch on
+// focus/mount) since a just-submitted RSVP should appear promptly.
+export const useMyGoingRsvps = (userId: string | undefined) => {
+  return useQuery<ConsumerRsvpRow[]>({
+    queryKey: ["myGoingRsvps", userId],
+    queryFn: async (): Promise<ConsumerRsvpRow[]> => {
+      if (!userId) return [];
+      return await CalendarService.fetchUserGoingRsvps(userId);
+    },
+    enabled: !!userId,
+    staleTime: 60 * 1000,
+    gcTime: 10 * 60 * 1000,
+    refetchOnMount: true,
+    refetchOnReconnect: true,
+    refetchOnWindowFocus: true,
+    retry: false,
+  });
+};
+
+// ORCH-1163 [rsvp-shared-body]: Supabase realtime subscription on `event_rsvps`.
+// Invalidates `["myGoingRsvps", userId]` on every INSERT/UPDATE/DELETE so a
+// host approval flip (pending → approved) or a status change surfaces on the
+// consumer Calendar within ~1s. Modeled verbatim on
+// `useTicketsRealtimeSubscription`; postgres_changes has no server-side filter,
+// so RLS on `event_rsvps` gates delivery to the rows the caller owns.
+export const useRsvpsRealtimeSubscription = (
+  userId: string | undefined,
+): void => {
+  const queryClient = useQueryClient();
+
+  useEffect(() => {
+    if (!userId) return;
+
+    const channel = supabase
+      .channel(`event_rsvps:user=${userId}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "event_rsvps",
+        },
+        () => {
+          queryClient.invalidateQueries({ queryKey: ["myGoingRsvps", userId] });
         }
       )
       .subscribe();

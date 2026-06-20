@@ -105,6 +105,42 @@ export interface BusinessEventCalendarRow {
   venue: BusinessEventVenue;
 }
 
+// ORCH-1163 [rsvp-shared-body]: one flat "Going" RSVP row for the consumer
+// Calendar tab. Each row is either the signed-in user's OWN primary RSVP
+// (role="primary") or a plus-one row they were brought as (role="guest"); the
+// per-entity QR + role discriminator come straight from `fetch_user_going_rsvps`.
+// Models the BusinessEventCalendarRow shape (venue block + cover + dates) so the
+// row + pass sheet reuse the same rendering conventions. RSVP is ticketless — no
+// order/payment fields.
+export interface ConsumerRsvpRow {
+  rsvpId: string;
+  guestId: string | null;
+  role: "primary" | "guest";
+  qrCode: string | null;
+  status: string;
+  approvalStatus: string;
+  // The primary's plus-one display names (empty for now — the RPC is flat).
+  plusGuestNames: string[];
+  // The viewer's own resolved display name (primary's profile name, or the
+  // guest's name on a plus-one row) — shown on the pass.
+  displayName: string | null;
+  coverMediaUrl: string | null;
+  // The RSVP event id — needed to change/cancel via submitDeckRsvp.
+  eventId: string;
+  eventTitle: string;
+  eventSlug: string;
+  brandName: string;
+  masterDateUtc: string | null;
+  masterDateEndUtc: string | null;
+  timezone: string;
+  venue: {
+    locationText: string | null;
+    isOnline: boolean;
+    onlineUrl: string | null;
+  };
+  invitedBy: string | null;
+}
+
 // ORCH-0842: PostgREST returns `point` columns as either string "(x,y)" or
 // an object { x, y } depending on version. Defensive parser handles both
 // and falls back to nulls on any unexpected shape.
@@ -429,6 +465,81 @@ export class CalendarService {
           venue,
         };
       },
+    );
+  }
+
+  /**
+   * ORCH-1163 [rsvp-shared-body]: fetch the signed-in consumer's "Going" RSVPs
+   * (the primary's own + each plus-one row they were brought as), flattened by
+   * the `fetch_user_going_rsvps` RPC. Each row carries its per-entity QR + role
+   * discriminator so the consumer Calendar can render an RSVP pass alongside
+   * tickets + reservations. RLS / SECURITY DEFINER in the RPC scope the read to
+   * the caller (own primary rows + the guest rows minted for them).
+   */
+  static async fetchUserGoingRsvps(
+    userId: string,
+  ): Promise<ConsumerRsvpRow[]> {
+    const { data, error } = await supabase.rpc("fetch_user_going_rsvps", {
+      p_user_id: userId,
+    });
+
+    if (error) {
+      console.error("[CalendarService] fetchUserGoingRsvps error:", error);
+      throw error;
+    }
+
+    type RsvpRpcRow = {
+      rsvp_id: string;
+      guest_id: string | null;
+      role: string;
+      qr_code: string | null;
+      rsvp_status: string;
+      approval_status: string;
+      plus_count: number | null;
+      display_name: string | null;
+      invited_by: string | null;
+      event_id: string;
+      event_title: string | null;
+      event_slug: string | null;
+      cover_media_url: string | null;
+      timezone: string | null;
+      location_text: string | null;
+      is_online: boolean | null;
+      online_url: string | null;
+      brand_id: string;
+      brand_slug: string | null;
+      brand_name: string | null;
+      master_start_at: string | null;
+      master_end_at: string | null;
+      created_at: string | null;
+    };
+
+    return ((data ?? []) as unknown as RsvpRpcRow[]).map(
+      (row): ConsumerRsvpRow => ({
+        rsvpId: row.rsvp_id,
+        guestId: row.guest_id ?? null,
+        role: row.role === "guest" ? "guest" : "primary",
+        qrCode: row.qr_code ?? null,
+        status: row.rsvp_status,
+        approvalStatus: row.approval_status,
+        // The RPC does not return the per-guest names; leave empty for now.
+        plusGuestNames: [],
+        displayName: row.display_name ?? null,
+        coverMediaUrl: row.cover_media_url ?? null,
+        eventId: row.event_id,
+        eventTitle: row.event_title ?? "Event",
+        eventSlug: row.event_slug ?? "",
+        brandName: row.brand_name ?? "",
+        masterDateUtc: row.master_start_at ?? null,
+        masterDateEndUtc: row.master_end_at ?? null,
+        timezone: row.timezone ?? "UTC",
+        venue: {
+          locationText: row.location_text ?? null,
+          isOnline: Boolean(row.is_online),
+          onlineUrl: row.online_url ?? null,
+        },
+        invitedBy: row.invited_by ?? null,
+      }),
     );
   }
 

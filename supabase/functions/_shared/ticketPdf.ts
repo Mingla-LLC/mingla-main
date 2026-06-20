@@ -267,3 +267,168 @@ function truncate(value: string, max: number): string {
   if (value.length <= max) return value;
   return `${value.slice(0, max - 1)}…`;
 }
+
+// ORCH-1163 [rsvp-shared-body] — RSVP entry-pass PDF. Modeled on buildTicketPdf
+// (same qrPayloadAsPngBytes primitive + brand band), but RSVP has NO order/price
+// fields. One page: event title + date + venue + "Hosted by {brand}" + the signed
+// `mingla:v1:rsvp:` QR. The QR encodes the SAME `event_rsvps.qr_code` /
+// `event_rsvp_guests.qr_code` string that powers RSVP entry scan; no new secret
+// material (mirror I-PROPOSED-AG TICKET_PDF_PRIVACY — no token_hash / pepper).
+export interface RsvpPassPdfInput {
+  eventTitle: string;
+  dateLine: string | null;
+  venueLine: string | null;
+  brandName: string;
+  attendeeName: string | null;
+  qrPayload: string;
+  // Optional Mingla wordmark PNG URL (same fallback-to-text behavior as tickets).
+  logoUrl?: string;
+}
+
+export async function buildRsvpPassPdf(
+  input: RsvpPassPdfInput,
+): Promise<TicketPdfResult> {
+  if (!input.qrPayload || input.qrPayload.length === 0) {
+    throw new Error("rsvp_pass_pdf_no_qr");
+  }
+  const pdf = await PDFDocument.create();
+  const fontRegular = await pdf.embedFont(StandardFonts.Helvetica);
+  const fontBold = await pdf.embedFont(StandardFonts.HelveticaBold);
+  const fontItalic = await pdf.embedFont(StandardFonts.HelveticaOblique);
+
+  // Try to embed the wordmark; failures fall back to the text "Mingla".
+  let logoImage: Awaited<ReturnType<typeof pdf.embedPng>> | null = null;
+  if (input.logoUrl) {
+    try {
+      const res = await fetch(input.logoUrl);
+      if (res.ok) {
+        const bytes = new Uint8Array(await res.arrayBuffer());
+        logoImage = await pdf.embedPng(bytes);
+      }
+    } catch (_err) {
+      logoImage = null;
+    }
+  }
+
+  const page = pdf.addPage([PAGE_WIDTH, PAGE_HEIGHT]);
+
+  // Top header band.
+  if (logoImage) {
+    const targetWidth = 140;
+    const scaled = logoImage.scaleToFit(targetWidth, 56);
+    page.drawImage(logoImage, {
+      x: 32,
+      y: PAGE_HEIGHT - 24 - scaled.height,
+      width: scaled.width,
+      height: scaled.height,
+    });
+  } else {
+    page.drawText("Mingla", {
+      x: 32,
+      y: PAGE_HEIGHT - 56,
+      size: 28,
+      font: fontBold,
+      color: rgb(BRAND_ORANGE_R, BRAND_ORANGE_G, BRAND_ORANGE_B),
+    });
+  }
+  page.drawText("RSVP", {
+    x: PAGE_WIDTH - 84,
+    y: PAGE_HEIGHT - 46,
+    size: 11,
+    font: fontBold,
+    color: rgb(BRAND_ORANGE_R, BRAND_ORANGE_G, BRAND_ORANGE_B),
+  });
+  page.drawRectangle({
+    x: 0,
+    y: PAGE_HEIGHT - 92,
+    width: PAGE_WIDTH,
+    height: 4,
+    color: rgb(BRAND_ORANGE_R, BRAND_ORANGE_G, BRAND_ORANGE_B),
+  });
+
+  // Event block — title + date + venue + host. NO price/order fields.
+  let cursorY = PAGE_HEIGHT - 130;
+  page.drawText(truncate(input.eventTitle, 60), {
+    x: 32,
+    y: cursorY,
+    size: 20,
+    font: fontBold,
+    color: rgb(0.06, 0.07, 0.09),
+  });
+  cursorY -= 28;
+  if (input.dateLine) {
+    page.drawText(truncate(input.dateLine, 80), {
+      x: 32,
+      y: cursorY,
+      size: 12,
+      font: fontRegular,
+      color: rgb(0.36, 0.38, 0.45),
+    });
+    cursorY -= 18;
+  }
+  if (input.venueLine) {
+    page.drawText(truncate(input.venueLine, 80), {
+      x: 32,
+      y: cursorY,
+      size: 12,
+      font: fontRegular,
+      color: rgb(0.36, 0.38, 0.45),
+    });
+    cursorY -= 18;
+  }
+  page.drawText(`Hosted by ${truncate(input.brandName, 60)}`, {
+    x: 32,
+    y: cursorY,
+    size: 12,
+    font: fontRegular,
+    color: rgb(0.36, 0.38, 0.45),
+  });
+  cursorY -= 28;
+
+  if (input.attendeeName) {
+    page.drawText(truncate(input.attendeeName, 60), {
+      x: 32,
+      y: cursorY,
+      size: 14,
+      font: fontBold,
+      color: rgb(0.06, 0.07, 0.09),
+    });
+  }
+
+  // QR block (same primitive as the ticket renderer).
+  const qrBytes = await qrPayloadAsPngBytes(input.qrPayload);
+  const qrImage = await pdf.embedPng(qrBytes);
+  const qrSize = 240;
+  const qrX = (PAGE_WIDTH - qrSize) / 2;
+  const qrY = 200;
+  page.drawImage(qrImage, { x: qrX, y: qrY, width: qrSize, height: qrSize });
+
+  page.drawText(
+    "Present this RSVP pass at the door. The QR code is unique to you.",
+    {
+      x: 32,
+      y: 120,
+      size: 10,
+      font: fontItalic,
+      color: rgb(0.36, 0.38, 0.45),
+    },
+  );
+  page.drawText("support@usemingla.com", {
+    x: 32,
+    y: 100,
+    size: 10,
+    font: fontRegular,
+    color: rgb(BRAND_ORANGE_R, BRAND_ORANGE_G, BRAND_ORANGE_B),
+  });
+
+  const bytes = await pdf.save();
+  if (bytes.byteLength > SIZE_CAP_BYTES) {
+    throw new Error("rsvp_pass_pdf_size_exceeded");
+  }
+  return {
+    filename: "rsvp-pass.pdf",
+    contentBase64: bytesToBase64(bytes),
+    pageCount: 1,
+    byteLength: bytes.byteLength,
+  };
+}

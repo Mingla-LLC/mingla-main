@@ -153,11 +153,23 @@ Deno.test("source — SwipeableCards experience mapper no longer hardcodes false
   assertStringIncludes(swipeableSrc, "extractHideAddressUntilTicket(rec?.theme)");
 });
 
-Deno.test("source — consumer detail address gate reads the card flag and reveals only on going/maybe (RSVP) / purchase", () => {
-  // The gate must be driven by the REAL card flag (fnd.hideAddressUntilTicket),
-  // never a literal — this is what the Round-3 mapper fix now feeds correctly.
-  assertStringIncludes(consumerScreenSrc, "fnd.hideAddressUntilTicket");
-  assertStringIncludes(consumerScreenSrc, "rsvpAddressRevealed");
-  // hidden → venue name + City/Country only (no street); revealed → full street.
-  assertStringIncludes(consumerScreenSrc, "const addressHidden = isRsvp");
+// ORCH-1163 [TEST-MOD-APPROVED ORCH-1163]: retargeted RsvpPublicBody → RsvpOfferingBody/FoundationRsvpPreview (body promoted to offering-rendering).
+// The bespoke consumer address gate (fnd.hideAddressUntilTicket / rsvpAddressRevealed
+// / `const addressHidden = isRsvp …`) was DELETED and PROMOTED into the shared
+// RsvpOfferingBody (which reveals the street only on the viewer's own going/maybe).
+// The INVARIANT — the gate is driven by the REAL host card flag (never a fabricated
+// literal) and reveals only on going/maybe — is preserved: the consumer threads the
+// REAL flag into the shared body, and the shared body owns the reveal logic.
+const rsvpBodySrc = await Deno.readTextFile(
+  new URL("../../../../packages/offering-rendering/RsvpOfferingBody.tsx", import.meta.url),
+);
+Deno.test("source — consumer threads the REAL card flag into the shared body, which reveals only on going/maybe (RSVP)", () => {
+  // the consumer carries the REAL host flag into the shared body props (never a
+  // hardcoded literal) — this is what the Round-3 mapper fix feeds correctly.
+  assertStringIncludes(consumerScreenSrc, "hideAddressUntilTicket: card.hideAddressUntilTicket");
+  // the shared body owns the reveal: revealed iff hide is OFF, or own going/maybe.
+  assertStringIncludes(rsvpBodySrc, "const addressRevealed");
+  assertStringIncludes(rsvpBodySrc, "!event.hideAddressUntilTicket");
+  assertStringIncludes(rsvpBodySrc, 'state.guestStatus === "going"');
+  assertStringIncludes(rsvpBodySrc, 'state.guestStatus === "maybe"');
 });

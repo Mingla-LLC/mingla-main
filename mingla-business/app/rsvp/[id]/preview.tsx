@@ -29,7 +29,7 @@ import {
 } from "../../../src/constants/designSystem";
 import { Spinner } from "../../../src/components/ui/Spinner";
 import { Toast } from "../../../src/components/ui/Toast";
-import { RsvpPublicBody } from "../../../src/components/event/RsvpPublicBody";
+import { FoundationRsvpPreview } from "../../../src/components/event/FoundationRsvpPreview";
 import {
   resolveTheme,
   createThemePalette,
@@ -297,14 +297,16 @@ export default function RsvpPreviewRoute(): React.ReactElement {
   // a draft has no public guest list. Resolves to a defined state so the body's
   // optimistic UI has a return value, but writes nothing.
   const handlePreviewSubmit = async (): Promise<{
-    status: "going" | "not_going" | "waitlisted";
+    status: "going" | "not_going" | "waitlisted" | "maybe";
     approvalStatus: "pending" | "approved";
+    rsvpId: string;
+    confirmationToken: string | null;
   }> => {
     setToast({
       visible: true,
       message: "This is a preview. Publish to let guests RSVP.",
     });
-    return { status: "going", approvalStatus: "approved" };
+    return { status: "going", approvalStatus: "approved", rsvpId: "", confirmationToken: null };
   };
 
   if (draft === null) {
@@ -355,7 +357,7 @@ export default function RsvpPreviewRoute(): React.ReactElement {
 
   return (
     <View style={styles.host}>
-      <RsvpPublicBody
+      <FoundationRsvpPreview
         event={publicEvent}
         brand={publicBrand}
         palette={palette}

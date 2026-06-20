@@ -100,9 +100,10 @@ Deno.test("ORCH-1159: ALL 5 public pages (event ticketed+RSVP, trip, experience,
       "../../../mingla-business/src/components/event/FoundationEventPreview.tsx",
       "onShare={onShare}",
     ],
+    // ORCH-1163 [TEST-MOD-APPROVED ORCH-1163]: retargeted RsvpPublicBody → RsvpOfferingBody/FoundationRsvpPreview (body promoted to offering-rendering). The hideCloseOnWeb opt-in now lives in the FoundationRsvpPreview wrapper (which composes ParallaxCoverShell).
     [
-      "RsvpPublicBody (event RSVP)",
-      "../../../mingla-business/src/components/event/RsvpPublicBody.tsx",
+      "FoundationRsvpPreview (event RSVP)",
+      "../../../mingla-business/src/components/event/FoundationRsvpPreview.tsx",
       "onShare={onShare}",
     ],
     [

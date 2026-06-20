@@ -38,12 +38,9 @@ import React, {
   useCallback,
   useMemo,
   useState,
-  type ReactElement,
 } from "react";
 import {
   ActivityIndicator,
-  Image,
-  LayoutAnimation,
   Linking,
   Platform,
   Pressable,
@@ -65,24 +62,28 @@ import {
   computeOfferingVariant,
   createThemePalette,
   EventCoverMedia,
-  offeringSurfaceStyles,
-  resolveRsvpCta,
   resolveTheme,
   ThemeEntranceAnimation,
   type PublicEventProps,
   type PublicTicketProps,
-  type RsvpCtaState,
 } from "@mingla/offering-rendering";
 import {
   EventOfferingBody,
   EventOfferingFloatingBar,
   OfferingChrome,
-  RsvpMomentumDecision,
-  normalizeCityCountry,
+  // ORCH-1163 [rsvp-shared-body] — THE ONE shared RSVP body + floating decision
+  // dock + the lifted decision-state hook. Replaces the bespoke RSVP-branch nodes
+  // (rsvpDock / rsvpMomentumUnit / brand/about/venue mirror) with byte-parity to
+  // buyer-web + business.
+  RsvpOfferingBody,
+  RsvpOfferingDecisionDock,
+  useRsvpOfferingState,
+  type RsvpOfferingConfig,
+  type RsvpGuestContact,
+  type RsvpSubmitResult,
   useResponsiveLayout,
 } from "@mingla/offering-rendering";
 
-import { Icon } from "../../components/ui/Icon";
 import {
   BaseBottomSheet,
   BottomSheetScrollView,
@@ -110,7 +111,6 @@ import {
 import { toastManager } from "../../components/ui/Toast";
 import { useAppStore } from "../../store/appStore";
 import { glass } from "../../constants/designSystem";
-import { hueFromId } from "../../utils/hueFromId";
 // ORCH-1162 Bug 2 — shared static-Mapbox builder (re-exported from
 // @mingla/offering-rendering) for the consumer EVENT "Where you'll be" map.
 import { buildStaticMapUrl } from "../../utils/mapboxStaticImage";
@@ -118,7 +118,6 @@ import { formatEventDateLine } from "../../utils/eventDateDisplay";
 import type { BusinessEventCard } from "../../types/mergedDiscover";
 
 const ACCENT = "#FF6B35";
-const ABOUT_COLLAPSE_THRESHOLD = 160;
 const SHEET_SNAP_POINTS = glass.bottomSheet.snapPoints as unknown as (
   | string
   | number
@@ -225,21 +224,14 @@ export default function ConsumerEventDetailScreen({
   );
   const [checkoutInFlight, setCheckoutInFlight] = useState<boolean>(false);
   const [muted, setMuted] = useState<boolean>(true);
-  const [aboutCollapsed, setAboutCollapsed] = useState<boolean>(true);
 
   // ORCH-1150 — RSVP deck variant. A discoverable RSVP event (host opted in)
   // renders Going/Not-going instead of Book; tapping writes via the same
   // public-submit-rsvp edge fn (logged-in path). NO cart, NO checkout.
+  // ORCH-1163 [rsvp-shared-body] — the RSVP branch now lifts ALL submit/dialog/
+  // contact state into the shared useRsvpOfferingState hook (one state machine
+  // for the inline box + the floating dock), byte-parity with buyer-web/business.
   const isRsvp = seed?.eventType === "rsvp";
-  const [rsvpInFlight, setRsvpInFlight] = useState<boolean>(false);
-  // ORCH-1157 [rsvp-public-redesign] — the guest's resolved own RSVP state, kept
-  // in the shape the shared RsvpMomentumDecision reads (status + approval).
-  const [rsvpStatus, setRsvpStatus] = useState<
-    "going" | "not_going" | "waitlisted" | "maybe" | null
-  >(null);
-  const [rsvpApproval, setRsvpApproval] = useState<
-    "pending" | "approved" | null
-  >(null);
 
   // ORCH-1167-R2 (change 4) — the floating bar is PERSISTENT now (Seth-directed),
   // so the prior float→dock scroll/viewport tracking is retired (subtract before
@@ -280,7 +272,6 @@ export default function ConsumerEventDetailScreen({
 
   const theme = themeQuery.data ?? resolveTheme(null, null);
   const palette = useMemo(() => createThemePalette(theme), [theme]);
-  const surface = useMemo(() => offeringSurfaceStyles(palette), [palette]);
   const boldFamily = boldFontFamily(theme);
   useConsumerThemeFont(theme.fontFamilyValue);
   useConsumerThemeFont(boldFamily);
@@ -289,16 +280,6 @@ export default function ConsumerEventDetailScreen({
   void isDesktop; // native is always single-column immersive (parity assert).
 
   const toggleMute = useCallback(() => setMuted((m) => !m), []);
-  const toggleAbout = useCallback((): void => {
-    LayoutAnimation.configureNext(
-      LayoutAnimation.create(
-        200,
-        LayoutAnimation.Types.easeInEaseOut,
-        LayoutAnimation.Properties.opacity,
-      ),
-    );
-    setAboutCollapsed((c) => !c);
-  }, []);
 
   const handleShare = useCallback((): void => {
     const slug = seed?.brandSlug ?? brandSlug;
@@ -340,58 +321,40 @@ export default function ConsumerEventDetailScreen({
     setCartVisible(true);
   }, [ticketQuantities]);
 
-  // ORCH-1150 — Going / Not-going write for a discoverable RSVP deck card. The
-  // signed-in user's JWT rides the supabase client → the edge fn resolves
-  // user_id (no contact form needed). Reflects the resolved state + toasts; on
-  // error never dead-ends.
-  // ORCH-1157 — Going / Maybe / Not-going write. "maybe" is NEW on consumer
-  // (parity with the shared RsvpPublicBody since ORCH-1150 R2). The signed-in
-  // user's JWT rides the supabase client → the edge fn resolves user_id (no
-  // contact form). Reflects the resolved state + toasts; never dead-ends.
-  const handleRsvp = useCallback(
-    async (next: "going" | "not_going" | "maybe"): Promise<void> => {
-      if (rsvpInFlight || seed === null) return;
-      if (user === null) {
-        toastManager.show("Sign in to RSVP.", "warning");
-        return;
-      }
+  // ORCH-1163 [rsvp-shared-body] — the onSubmit wrapper handed to
+  // useRsvpOfferingState. The shared body/dock own all the submit/dialog/contact
+  // state + toasts now; this wrapper just bridges to the consumer write
+  // (submitDeckRsvp, logged-in JWT path) + maps the result into the shared
+  // RsvpSubmitResult shape, then refreshes the live going-count. Errors throw
+  // the edge-fn code so the body maps the right inline message (never dead-ends).
+  const rsvpOnSubmit = useCallback(
+    async (input: {
+      rsvpStatus: "going" | "not_going" | "maybe";
+      guestName: string;
+      guestEmail: string;
+      guestPhone: string;
+      plusCount: number;
+      guests: RsvpGuestContact[];
+    }): Promise<RsvpSubmitResult> => {
+      if (seed === null) throw new Error("rsvp_not_open");
       void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-      setRsvpInFlight(true);
-      try {
-        const result = await submitDeckRsvp(seed.eventId, next);
-        setRsvpStatus(result.status);
-        setRsvpApproval(result.approvalStatus);
-        toastManager.show(
-          result.approvalStatus === "pending"
-            ? "RSVP sent — awaiting host approval."
-            : result.status === "going"
-              ? "You're going!"
-              : result.status === "waitlisted"
-                ? "You're on the waitlist — we'll let you know if a spot opens."
-                : result.status === "maybe"
-                  ? "Marked as Maybe — we'll keep you posted."
-                  : "Got it — you're marked as not going.",
-          "success",
-        );
-        // Refresh the live going-count after a successful own-submit.
-        void queryClient.invalidateQueries({
-          queryKey: ["rsvpMomentum", seed.eventId],
-        });
-      } catch (err) {
-        const code = err instanceof Error ? err.message : "";
-        toastManager.show(
-          code.includes("rsvp_full")
-            ? "This event just filled up."
-            : code.includes("rsvp_not_open")
-              ? "RSVPs are closed for this event."
-              : "Couldn't save your RSVP. Try again.",
-          "warning",
-        );
-      } finally {
-        setRsvpInFlight(false);
-      }
+      const result = await submitDeckRsvp(
+        seed.eventId,
+        input.rsvpStatus,
+        input.guests,
+      );
+      // Refresh the live going-count after a successful own-submit.
+      void queryClient.invalidateQueries({
+        queryKey: ["rsvpMomentum", seed.eventId],
+      });
+      return {
+        status: result.status,
+        approvalStatus: result.approvalStatus,
+        rsvpId: result.rsvpId,
+        confirmationToken: result.confirmationToken,
+      };
     },
-    [rsvpInFlight, seed, user, queryClient],
+    [seed, queryClient],
   );
 
   // handleBuy ported VERBATIM (behavior) from EBES handleBuy — same buyer
@@ -508,6 +471,89 @@ export default function ConsumerEventDetailScreen({
     setInitialTicketTypeId(null);
   }, []);
 
+  // ORCH-1163 [rsvp-shared-body] — lift the shared RSVP decision/submit/dialog
+  // state ONCE (hooks must run unconditionally, before the early returns). The
+  // PublicEventProps is built from the deck seed (same mapper as the standard
+  // branch); when there is no seed the safe defaults keep the hook stable (the
+  // RSVP body never renders on the seedless cold cap anyway). The shared body +
+  // floating dock both consume this single state machine. The static map URL is
+  // privacy-gated the same way as the standard branch (exact pin only when the
+  // street is public).
+  const rsvpPublicEvent: PublicEventProps = seed !== null
+    ? cardToPublicEvent(seed, [])
+    : {
+        id: "",
+        name: "",
+        brandId: "",
+        brandSlug: "",
+        eventSlug: "",
+        description: "",
+        dateLine: "",
+        dateSubline: null,
+        datesList: [],
+        status: "published",
+        endedAt: null,
+        format: "in-person",
+        venueName: null,
+        address: null,
+        hideAddressUntilTicket: false,
+        locationGeo: null,
+        cityGeo: null,
+        coverHue: 0,
+        coverMediaUrl: null,
+        coverMediaType: null,
+        coverCredit: null,
+        tickets: [],
+        currency: "USD",
+        partyTypes: [],
+        vibeTags: [],
+        musicGenres: [],
+      };
+  const rsvpBrand =
+    seed !== null
+      ? {
+          id: seed.brandId,
+          slug: seed.brandSlug,
+          displayName: seed.brandName,
+          photo: seed.brandProfilePhotoUrl ?? undefined,
+          theme: null,
+        }
+      : null;
+  const rsvpConfig: RsvpOfferingConfig = {
+    capacity: rsvpMomentum?.capacity ?? null,
+    goingCount: rsvpMomentum?.goingCount ?? 0,
+    allowPlusOnes: rsvpMomentum?.allowPlusOnes ?? false,
+    plusOnesMax: rsvpMomentum?.plusOnesMax ?? 0,
+    waitlistEnabled: rsvpMomentum?.waitlistEnabled ?? false,
+    manualApproval: rsvpMomentum?.manualApproval ?? false,
+  };
+  const rsvpBodyStaticMapUrl: string | null = (() => {
+    if (rsvpPublicEvent.format === "online") return null;
+    if (rsvpPublicEvent.hideAddressUntilTicket) return null;
+    const geo = rsvpPublicEvent.locationGeo ?? null;
+    if (geo === null || !Number.isFinite(geo.lat) || !Number.isFinite(geo.lng)) {
+      return null;
+    }
+    return buildStaticMapUrl({
+      lat: geo.lat,
+      lng: geo.lng,
+      accentHex: palette.accent,
+      height: 180,
+    });
+  })();
+  const rsvpState = useRsvpOfferingState({
+    event: rsvpPublicEvent,
+    brand: rsvpBrand,
+    palette,
+    theme,
+    config: rsvpConfig,
+    isLoggedIn: user !== null,
+    onSubmit: rsvpOnSubmit,
+    onOpenBrand: (slug: string) => router.push(`/b/${slug}` as never),
+    onOpenMaps: openMapsForQuery,
+    staticMapUrl: rsvpBodyStaticMapUrl,
+  });
+
   const chrome = (
     <View
       style={[styles.nativeChrome, { top: insets.top + 12 }]}
@@ -602,62 +648,11 @@ export default function ConsumerEventDetailScreen({
     });
   })();
 
-  const cityCountry =
-    fnd.cityCountry ?? normalizeCityCountry(seed.city) ?? null;
-  const aboutText = fnd.description;
-  const canCollapseAbout =
-    aboutText !== null && aboutText.length > ABOUT_COLLAPSE_THRESHOLD;
-  const aboutCollapsedNow = canCollapseAbout && aboutCollapsed;
-  // ORCH-1157 Issue 2 [rsvp-address-privacy] — for an RSVP event there is no
-  // "ticket purchase"; the exact street is revealed once the viewer's own RSVP
-  // status is GOING or MAYBE (Seth-locked), else City/Country only. The ticketed
-  // path keeps its existing purchase gate. Anon / unknown → hide. The flag is the
-  // anon-safe `hideAddressUntilTicket` (theme.business_event), never `.from(...)`.
-  const rsvpAddressRevealed = rsvpStatus === "going" || rsvpStatus === "maybe";
-  const addressHidden = isRsvp
-    ? fnd.hideAddressUntilTicket && !rsvpAddressRevealed
-    : fnd.hideAddressUntilTicket;
-  const addressHiddenLabel = isRsvp
-    ? (cityCountry ?? "Address shared after you RSVP")
-    : "Address shared after ticket purchase";
-  // ORCH-1157 Round-6 [rsvp-public-redesign] — when the exact street is HIDDEN,
-  // show a short caption UNDER the city explaining HOW to unlock it (the city
-  // alone left users guessing). Condition-aware: RSVP unlocks on going/maybe,
-  // ticketed unlocks on purchase. Static helper text (not fabricated data); it
-  // renders ONLY while `addressHidden` is true (suppressed once revealed).
-  const addressUnlockCaption: string | null = addressHidden
-    ? isRsvp
-      ? "Full address shared once you're going"
-      : "Full address shared after you get tickets"
-    : null;
-  const venueAddressLabel = addressHidden
-    ? addressHiddenLabel
-    : fnd.format === "hybrid" && fnd.address !== null
-      ? `${fnd.address} · also online`
-      : (fnd.address ?? addressHiddenLabel);
-  // ORCH-1157 Round-5 [rsvp-address-privacy] — defense-in-depth for the venue
-  // NAME line. The address gate only masks `venueAddressLabel`; the name line
-  // renders `fnd.venueName`. If a row reaches here with the full street folded
-  // into the venueName (the legacy `location_text` fallback, e.g.
-  // "The Party Venue · 700 Corporate Center Drive…"), the name line would leak
-  // the street even with the gate ON. When the address is hidden, never render a
-  // name that still contains the street: take the portion before the canonical
-  // " · " name/address separator, and if the remainder still contains the full
-  // address, drop to the venue name only / null so the street can never paint.
-  const venueNameDisplay: string | null = (() => {
-    if (fnd.venueName === null) return null;
-    if (!addressHidden) return fnd.venueName;
-    const namePart = fnd.venueName.split(" · ")[0]?.trim() ?? fnd.venueName;
-    if (fnd.address !== null && namePart.includes(fnd.address)) {
-      // Even the leading segment carries the street — suppress it entirely.
-      return null;
-    }
-    return namePart.length > 0 ? namePart : null;
-  })();
-  const venueMapsQuery =
-    addressHidden || fnd.venueName === null
-      ? null
-      : [fnd.venueName, fnd.address].filter(Boolean).join(", ");
+  // ORCH-1163 [rsvp-shared-body] — the RSVP branch's bespoke address-privacy,
+  // about-collapse, brand/about/venue mirror nodes are GONE. The shared
+  // RsvpOfferingBody owns all of section 2–8 (incl. server-gated address privacy
+  // + collapsible About + the static map) byte-identically with buyer-web/
+  // business. The STANDARD ticketed branch (EventOfferingBody) is untouched.
 
   // ORCH-1167-R2 (change 4) — the floating Get-tickets bar is PERSISTENT on the
   // consumer sheet too (was regressing: anchored to the body top it hid right
@@ -692,301 +687,6 @@ export default function ConsumerEventDetailScreen({
   // bar-height-and-gap(64) — the constant runway above the device safe-area that
   // always clears the raised float bar (whose bottom ≤ insets.bottom + 177).
   const reserveBarClearance = 177 + insets.bottom;
-
-  // ORCH-1157 [rsvp-public-redesign] — the Direction-C Going / Maybe / Can't
-  // decision dock (replaces the old 2-button hand-rolled dock; Maybe is NEW on
-  // consumer). Built on the SHARED RsvpMomentumDecision in floating-dock mode so
-  // it stays byte-parity with the buyer-web / business RsvpPublicBody. No price,
-  // no cart, no checkout — writes via handleRsvp → submitDeckRsvp. The momentum
-  // unit + chips render INLINE in the body (rsvpMomentumUnit below); the dock is
-  // the decision only. testIDs preserve the ORCH-1150 deck contract.
-  const rsvpCtaState: RsvpCtaState = resolveRsvpCta({
-    capacityFull:
-      rsvpMomentum !== null &&
-      rsvpMomentum.capacity !== null &&
-      rsvpMomentum.goingCount >= rsvpMomentum.capacity,
-    waitlistEnabled: rsvpMomentum?.waitlistEnabled ?? false,
-    manualApproval: rsvpMomentum?.manualApproval ?? false,
-    guestStatus: rsvpStatus,
-    guestApproval: rsvpApproval,
-  }).state;
-
-  const rsvpDock: ReactElement = (
-    <View
-      style={[rsvpStyles.dock, { paddingBottom: insets.bottom + 8 }]}
-      onLayout={handleDockLayout}
-    >
-      <RsvpMomentumDecision
-        palette={palette}
-        theme={theme}
-        goingCount={rsvpMomentum?.goingCount ?? 0}
-        capacity={rsvpMomentum?.capacity ?? null}
-        ctaState={rsvpCtaState}
-        guestStatus={rsvpStatus}
-        guestApproval={rsvpApproval}
-        partyTypes={[]}
-        allowPlusOnes={false}
-        plusOnesMax={0}
-        plusCount={0}
-        onPlusChange={() => undefined}
-        waitlistEnabled={rsvpMomentum?.waitlistEnabled ?? false}
-        submitting={rsvpInFlight}
-        contactReady={user !== null}
-        onGoing={() => void handleRsvp("going")}
-        onMaybe={() => void handleRsvp("maybe")}
-        onNotGoing={() => void handleRsvp("not_going")}
-        variant="floating-dock"
-        showMomentum={false}
-        goingTestID="orch-1150-deck-rsvp-going"
-        maybeTestID="orch-1157-deck-rsvp-maybe"
-        notGoingTestID="orch-1150-deck-rsvp-not-going"
-      />
-    </View>
-  );
-
-  // ORCH-1157 — the momentum unit + kicker + party chips, rendered inline in the
-  // body (the dock above carries only the decision). Omitted entirely when the
-  // anon-view momentum has not resolved (no fabricated count — rule 9).
-  const rsvpMomentumUnit: ReactElement | null =
-    rsvpMomentum !== null ? (
-      <View style={styles.section}>
-        <RsvpMomentumDecision
-          palette={palette}
-          theme={theme}
-          goingCount={rsvpMomentum.goingCount}
-          capacity={rsvpMomentum.capacity}
-          ctaState={rsvpCtaState}
-          guestStatus={rsvpStatus}
-          guestApproval={rsvpApproval}
-          partyTypes={seed.partyTypes ?? []}
-          allowPlusOnes={false}
-          plusOnesMax={0}
-          plusCount={0}
-          onPlusChange={() => undefined}
-          waitlistEnabled={rsvpMomentum.waitlistEnabled}
-          submitting={rsvpInFlight}
-          contactReady={user !== null}
-          onGoing={() => undefined}
-          onMaybe={() => undefined}
-          onNotGoing={() => undefined}
-          variant="inline"
-          showMomentum
-          showDecision={false}
-          testID="orch-1157-consumer-rsvp-momentum"
-        />
-      </View>
-    ) : null;
-
-  // ORCH-1157 Issue 1 [rsvp-public-redesign] — structural-parity nodes. The
-  // consumer body is shared by ticketed + RSVP; extracting brand / about / venue
-  // into nodes lets the RSVP branch render them in the SAME section order as the
-  // business/web RsvpPublicBody (brand → momentum → date+doors → venue → about),
-  // while the ticketed path keeps its byte-identical order (brand → about → venue
-  // → tickets). This is the "mirror the shared body" approach (dispatch option b).
-  const brandNode: ReactElement = (
-    <Pressable
-      style={[styles.brandRow, surface.card]}
-      accessibilityRole="button"
-      accessibilityLabel={`View ${fnd.brandName}`}
-      onPress={() => {
-        if (typeof fnd.brandSlug === "string" && fnd.brandSlug.length > 0) {
-          router.push(`/b/${fnd.brandSlug}` as never);
-        }
-      }}
-    >
-      <View
-        style={[
-          styles.brandTile,
-          fnd.brandCoverMediaUrl === null
-            ? { backgroundColor: palette.accent }
-            : null,
-        ]}
-      >
-        {fnd.brandCoverMediaUrl !== null ? (
-          <EventCoverMedia
-            mediaUrl={fnd.brandCoverMediaUrl}
-            mediaType="image"
-            hue={hueFromId(fnd.brandSlug)}
-            label=""
-            radius={999}
-            autoplay
-            playbackActive
-            muted
-            loop
-            height="100%"
-            width="100%"
-          />
-        ) : (
-          <View style={styles.brandInitialWrap}>
-            <Text
-              style={[
-                styles.brandInitial,
-                { color: palette.accentText, fontFamily: boldFamily },
-              ]}
-            >
-              {(fnd.brandName.trim()[0] ?? "•").toUpperCase()}
-            </Text>
-          </View>
-        )}
-      </View>
-      <View style={styles.brandTextCol}>
-        <Text style={[styles.brandKicker, surface.tertiaryText]}>
-          {isRsvp ? "Hosted by" : "Presented by"}
-        </Text>
-        <Text
-          style={[styles.brandName, surface.primaryText, { fontFamily: boldFamily }]}
-        >
-          {fnd.brandName}
-        </Text>
-      </View>
-      <Text style={[styles.brandCta, { color: palette.accent }]}>View</Text>
-    </Pressable>
-  );
-
-  const aboutNode: ReactElement | null =
-    aboutText !== null ? (
-      <View style={styles.section}>
-        <Text
-          style={[styles.secTitle, surface.primaryText, { fontFamily: boldFamily }]}
-        >
-          About
-        </Text>
-        <Text
-          style={[styles.aboutText, surface.secondaryText]}
-          numberOfLines={aboutCollapsedNow ? 3 : undefined}
-          ellipsizeMode="tail"
-        >
-          {aboutText}
-        </Text>
-        {canCollapseAbout ? (
-          <Pressable
-            onPress={toggleAbout}
-            accessibilityRole="button"
-            accessibilityState={{ expanded: !aboutCollapsedNow }}
-            accessibilityLabel={aboutCollapsedNow ? "Read more" : "Show less"}
-            style={styles.aboutToggleRow}
-          >
-            <Text style={[styles.aboutToggleText, { color: palette.accent }]}>
-              {aboutCollapsedNow ? "Read more" : "Show less"}
-            </Text>
-            <Icon
-              name={aboutCollapsedNow ? "chevron-down" : "chevron-up"}
-              size={16}
-              color={palette.accent}
-            />
-          </Pressable>
-        ) : null}
-      </View>
-    ) : null;
-
-  const venueNode: ReactElement | null =
-    fnd.format === "online" ? (
-      <View style={styles.section}>
-        <Text
-          style={[styles.secTitle, surface.primaryText, { fontFamily: boldFamily }]}
-        >
-          Where you&apos;ll be
-        </Text>
-        <View style={[styles.venueCard, surface.card]}>
-          <View style={[styles.venueDisk, { backgroundColor: palette.accent }]}>
-            <Text style={[styles.venueGlyph, { color: palette.accentText }]}>◯</Text>
-          </View>
-          <View style={styles.venueTextCol}>
-            <Text style={[styles.venueName, surface.primaryText, { fontFamily: boldFamily }]}>
-              Online
-            </Text>
-            <Text style={[styles.venueAddr, surface.secondaryText]}>
-              {isRsvp
-                ? "Link shared with confirmed guests."
-                : "Conferencing link shared with ticketed guests."}
-            </Text>
-          </View>
-        </View>
-      </View>
-    ) : fnd.venueName !== null ? (
-      <View style={styles.section}>
-        <Text
-          style={[styles.secTitle, surface.primaryText, { fontFamily: boldFamily }]}
-        >
-          Where you&apos;ll be
-        </Text>
-        {/* ORCH-1162 Bug 2 — static-Mapbox map above the venue card (parity with
-            the consumer EXPERIENCE screen + the shared event renderer). Rule-9:
-            only renders when fnd.lat/lng are finite AND a Mapbox token resolves
-            (buildStaticMapUrl non-null); otherwise nothing renders here and the
-            tappable venue card below is the honest fallback. */}
-        {(() => {
-          if (!Number.isFinite(fnd.lat) || !Number.isFinite(fnd.lng)) {
-            return null;
-          }
-          const mapUrl = buildStaticMapUrl({
-            lat: fnd.lat as number,
-            lng: fnd.lng as number,
-            accentHex: palette.accent,
-            height: 180,
-          });
-          if (mapUrl === null) return null;
-          return (
-            <Image
-              source={{ uri: mapUrl }}
-              style={[styles.whereMap, { borderColor: palette.panelBorder }]}
-              resizeMode="cover"
-              accessibilityLabel={`Map of ${venueNameDisplay ?? fnd.venueName}`}
-              testID="orch-1162-consumer-event-map"
-            />
-          );
-        })()}
-        <Pressable
-          onPress={() => {
-            if (venueMapsQuery !== null) openMapsForQuery(venueMapsQuery);
-          }}
-          disabled={venueMapsQuery === null}
-          accessibilityRole={venueMapsQuery !== null ? "button" : undefined}
-          accessibilityLabel={
-            venueMapsQuery !== null
-              ? `Open ${venueNameDisplay ?? fnd.venueName} in maps`
-              : (venueNameDisplay ?? addressHiddenLabel)
-          }
-          style={[styles.venueCard, surface.card]}
-        >
-          <View style={[styles.venueDisk, { backgroundColor: palette.accent }]}>
-            <Text style={[styles.venueGlyph, { color: palette.accentText }]}>⌖</Text>
-          </View>
-          <View style={styles.venueTextCol}>
-            {/* ORCH-1157 Round-5 — render the SANITIZED venue name (never the
-                street-folded fallback) when the address is hidden. Falls back to
-                the City/Country hidden label when the name itself is the street. */}
-            <Text style={[styles.venueName, surface.primaryText, { fontFamily: boldFamily }]}>
-              {venueNameDisplay ?? addressHiddenLabel}
-            </Text>
-            {/* Suppress the sub-line when the name fell back to the hidden label
-                so the City/Country caption never paints twice. */}
-            {venueNameDisplay === null && venueAddressLabel === addressHiddenLabel ? null : (
-              <Text style={[styles.venueAddr, surface.secondaryText]}>
-                {venueAddressLabel}
-              </Text>
-            )}
-            {/* ORCH-1157 Round-6 — unlock caption UNDER the city, only while the
-                street is hidden (condition-aware copy). */}
-            {addressUnlockCaption !== null ? (
-              <Text
-                style={[styles.venueUnlockCaption, surface.tertiaryText]}
-                testID="orch-1157-consumer-address-unlock-caption"
-              >
-                {addressUnlockCaption}
-              </Text>
-            ) : null}
-          </View>
-          {venueMapsQuery !== null ? (
-            <View style={[styles.venuePill, { backgroundColor: palette.accent }]}>
-              <Text style={[styles.venuePillText, { color: palette.accentText }]}>
-                Open maps
-              </Text>
-            </View>
-          ) : null}
-        </Pressable>
-      </View>
-    ) : null;
 
   return (
     <>
@@ -1045,8 +745,11 @@ export default function ConsumerEventDetailScreen({
             {/* ORCH-1167 — STANDARD ticketed-event branch renders the ONE shared
                 canonical EventOfferingBody (sections 2–8 incl. the inline ticket
                 box at 5). The cover (section 1) is the pinned sibling above; the
-                floating Get-tickets bar (section 9) is rendered below. The RSVP
-                branch is UNCHANGED (its own section sequence + dock). */}
+                floating Get-tickets bar (section 9) is rendered below.
+                ORCH-1163 — the RSVP branch now renders the ONE shared
+                RsvpOfferingBody (sections 2–8 incl. the inline decision box +
+                FLOW-A modals) byte-identically with buyer-web/business; its
+                floating decision dock is pinned below. */}
             {!isRsvp ? (
               /* ORCH-1167-R2 (change 4) — onTicketBoxLayout fires from the INLINE
                  TICKET BOX (section 5), NOT a wrapper around the whole body, so the
@@ -1077,92 +780,20 @@ export default function ConsumerEventDetailScreen({
                 testID="orch-1167-consumer-event-body"
               />
             ) : (
-              <>
-            {/* phone lead: date eyebrow + bold title */}
-            <View style={styles.leadBlock}>
-              {fnd.dateLine !== null ? (
-                <Text style={[styles.eyebrowLead, { color: palette.accent }]}>
-                  {fnd.dateLine}
-                </Text>
-              ) : null}
-              <Text
-                style={[styles.fndTitle, surface.primaryText, { fontFamily: boldFamily }]}
-              >
-                {fnd.title}
-              </Text>
-            </View>
-
-            {/* meta chips (real columns only — rule 9) */}
-            <View style={styles.metaChipRow}>
-              {fnd.dateLine !== null ? (
-                <View style={[styles.metaChip, surface.card]}>
-                  <Icon name="calendar" size={15} color={palette.accent} />
-                  <Text
-                    style={[styles.metaChipText, surface.secondaryText, { fontFamily: boldFamily }]}
-                  >
-                    {fnd.dateLine}
-                  </Text>
-                </View>
-              ) : null}
-              {fnd.capacityLabel !== null ? (
-                <View style={[styles.metaChip, surface.card]}>
-                  <Icon name="people-outline" size={15} color={palette.accent} />
-                  <Text
-                    style={[styles.metaChipText, surface.secondaryText, { fontFamily: boldFamily }]}
-                  >
-                    {fnd.capacityLabel}
-                  </Text>
-                </View>
-              ) : null}
-              {cityCountry !== null ? (
-                <View style={[styles.metaChip, surface.card]}>
-                  <Icon name="location" size={15} color={palette.accent} />
-                  <Text
-                    style={[styles.metaChipText, surface.secondaryText, { fontFamily: boldFamily }]}
-                  >
-                    {cityCountry}
-                  </Text>
-                </View>
-              ) : null}
-            </View>
-
-            {/* ORCH-1157 Issue 4 [doors] / Round-7 [doors pill] — doors time in a
-                PILL styled exactly like the date chip above (same metaChip +
-                surface.card + clock icon), placed just beneath the date row.
-                Seth-locked: reuses start_at/end_at; the time itself is now
-                device-locale-aware (12h "1:00 PM" / 24h "13:00") with minutes.
-                REAL-DATA-ONLY: omitted entirely when there is no start time. */}
-            {fnd.doorsLine !== null ? (
-              <View style={styles.doorsChipRow}>
-                <View style={[styles.metaChip, surface.card]} testID="orch-1157-consumer-doors">
-                  <Icon name="time-outline" size={15} color={palette.accent} />
-                  <Text
-                    style={[styles.metaChipText, surface.secondaryText, { fontFamily: boldFamily }]}
-                  >
-                    {fnd.doorsLine}
-                  </Text>
-                </View>
-              </View>
-            ) : null}
-
-            {/* ORCH-1157 Issue 1 [rsvp-public-redesign] — section ORDER. The RSVP
-                branch mirrors the business/web RsvpPublicBody section sequence
-                (host/brand → momentum [kicker+chips+count+meter+faceless cluster]
-                → date+doors already above → venue → about) so the consumer RSVP
-                page is structurally identical to business/web. The ticketed path
-                keeps its byte-identical order (brand → about → venue → tickets).
-                The momentum unit omits when the anon-view count has not resolved
-                (no fabricated count — rule 9); the decision lives in the dock. */}
-            {/* RSVP section sequence (host/brand → momentum → venue → about),
-                structurally identical to the business/web RsvpPublicBody. */}
-            {brandNode}
-            {rsvpMomentumUnit}
-            {venueNode}
-            {aboutNode}
-
-            {/* DOCKED RSVP decision — the LAST scroll child (float→dock). */}
-            {rsvpDock}
-              </>
+              <RsvpOfferingBody
+                event={rsvpPublicEvent}
+                brand={rsvpBrand}
+                palette={palette}
+                theme={theme}
+                config={rsvpConfig}
+                isLoggedIn={user !== null}
+                onSubmit={rsvpOnSubmit}
+                onOpenBrand={(slug: string) => router.push(`/b/${slug}` as never)}
+                onOpenMaps={openMapsForQuery}
+                staticMapUrl={rsvpBodyStaticMapUrl}
+                state={rsvpState}
+                testID="orch-1163-consumer-rsvp-body"
+              />
             )}
           </View>
         </BottomSheetScrollView>
@@ -1181,11 +812,30 @@ export default function ConsumerEventDetailScreen({
           />
         </View>
 
-        {/* (4) FLOATING Get-tickets BAR — shown while the in-page ticket box is
-            off-screen. ORCH-1167 — the shared EventOfferingFloatingBar reflects the
-            live Σ-all-in total + calls the SAME handleProceedToCart. Suppressed for
-            RSVP (its Going/Not-going dock is inline). */}
-        {isRsvp ? null : floatingPillVisible ? (
+        {/* (4) FLOATING decision — ORCH-1167 the standard branch pins the shared
+            EventOfferingFloatingBar (live Σ-all-in total + handleProceedToCart);
+            ORCH-1163 the RSVP branch pins the shared RsvpOfferingDecisionDock
+            (Going/Maybe/Can't, driven by the SAME rsvpState as the inline box) in
+            the SAME bottom-overlay slot. Both sit in the same float wrapper math. */}
+        {isRsvp ? (
+          <View
+            style={[
+              styles.nativeFloatWrap,
+              rsvpStyles.dock,
+              { bottom: floatBarBottom, paddingBottom: insets.bottom + 8 },
+            ]}
+            pointerEvents="box-none"
+            onLayout={handleDockLayout}
+          >
+            <RsvpOfferingDecisionDock
+              palette={palette}
+              theme={theme}
+              config={rsvpConfig}
+              state={rsvpState}
+              testID="orch-1163-consumer-rsvp-dock"
+            />
+          </View>
+        ) : floatingPillVisible ? (
           <View
             style={[styles.nativeFloatWrap, { bottom: floatBarBottom }]}
             pointerEvents="box-none"
