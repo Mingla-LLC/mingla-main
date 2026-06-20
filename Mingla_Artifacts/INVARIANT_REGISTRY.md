@@ -16,6 +16,50 @@
 
 ---
 
+## ACTIVE — META-ORCH-1161 (notification platform / SMS + transactional + marketing + consent + compliance, 2026-06-20, PRs #544/#545/#547/#550/#552/#553)
+
+### I-PROPOSED-1161-UNIFIED-DISPATCHER-SOLE-SEND-PATH (ACTIVE)
+- **Rule:** Every user-facing notification (push, in-app, email, SMS) leaves the system through the ONE unified dispatcher; no edge fn / cron / service sends a channel message directly. The dispatcher is the single send owner that applies the channel-policy + `can_send` gates.
+- **Enforcement:** strict-grep (no direct Twilio/Expo-push/email sends outside the dispatcher) + dispatcher contract tests; CI green on #544–#553.
+- **Established:** ACTIVE at META-ORCH-1161 BUILD COMPLETE 2026-06-20.
+
+### I-PROPOSED-1161-SMS-ONLY-FOR-POLICY-ELIGIBLE-CATEGORIES (ACTIVE)
+- **Rule:** SMS fires ONLY for categories whose curated `default_channels` policy includes `sms` (per DEC-190 matrix); no category sends SMS as an ad-hoc fallback for a failed push. Each channel in a category fires simultaneously, independently `can_send`-gated.
+- **Enforcement:** strict-grep + the channel-policy matrix tests (asserts the confirmed text-eligible vs no-text category lists); fails-on-revert.
+- **Established:** ACTIVE at META-ORCH-1161 BUILD COMPLETE 2026-06-20.
+
+### I-PROPOSED-1161-TRANSACTIONAL-VS-MARKETING-CONSENT-SEPARATED (ACTIVE)
+- **Rule:** Transactional and marketing consent are stored and evaluated as SEPARATE consent dimensions; a marketing send requires the marketing-consent flag, never inferred from transactional consent. (The capture UI bundles them into one checkbox per DEC-191, but the stored dimensions and send-time gates stay separate.)
+- **Enforcement:** strict-grep + consent-model tests (marketing send checks the marketing dimension, not transactional); fails-on-revert.
+- **Established:** ACTIVE at META-ORCH-1161 BUILD COMPLETE 2026-06-20.
+
+### I-PROPOSED-1161-SMS-OPT-OUT-HONORED-ANY-CHANNEL (ACTIVE)
+- **Rule:** An SMS opt-out (inbound STOP, `/unsubscribe`, or prefs toggle) suppresses ALL subsequent SMS for that recipient regardless of which channel/path triggered it; the suppression is checked in `can_send` before any SMS dispatch.
+- **Enforcement:** `self-serve-unsubscribe` fn + suppression-list `can_send` gate + opt-out tests; fails-on-revert.
+- **Established:** ACTIVE at META-ORCH-1161 BUILD COMPLETE 2026-06-20.
+
+### I-PROPOSED-1161-QUIET-HOURS-ENFORCED-FOR-MARKETING (ACTIVE)
+- **Rule:** Marketing SMS is suppressed during the recipient's quiet hours (no marketing text outside allowed local hours); transactional moments are exempt. Enforced in `can_send`.
+- **Enforcement:** quiet-hours `can_send` gate + quiet-hours tests; fails-on-revert. *(Carry-forward: US quiet-hours Eastern-anchor fix still open.)*
+- **Established:** ACTIVE at META-ORCH-1161 BUILD COMPLETE 2026-06-20.
+
+### I-PROPOSED-1161-GSM7-SANITIZED-TEMPLATES (ACTIVE)
+- **Rule:** SMS templates are sanitized to the GSM-7 character set (no smart quotes / emoji / non-GSM chars that silently force UCS-2 + segment cost/encoding surprises) before dispatch.
+- **Enforcement:** strict-grep + template GSM-7 sanitization tests; fails-on-revert.
+- **Established:** ACTIVE at META-ORCH-1161 BUILD COMPLETE 2026-06-20.
+
+### I-PROPOSED-1161-SMS-FROM-APPROVED-SENDER-ONLY (ACTIVE)
+- **Rule:** SMS is sent ONLY from an approved/configured sender identity (separate senders for transactional vs marketing); no hardcoded or arbitrary from-number reaches Twilio.
+- **Enforcement:** strict-grep + sender-resolution tests; fails-on-revert. *(Carry-forward: Twilio-console go-live must verify the marketing sender + inbound-STOP webhook before any market is flipped live.)*
+- **Established:** ACTIVE at META-ORCH-1161 BUILD COMPLETE 2026-06-20.
+
+### I-PROPOSED-1161-SMS-MARKET-KILL-SWITCH (ACTIVE)
+- **Rule:** SMS for a market is gated behind a per-market kill-switch (`SMS_LIVE_ENABLED_*`) that defaults OFF; no SMS leaves the system for a market until that market is explicitly flipped on. The whole platform ships text-dark by default.
+- **Enforcement:** `can_send` kill-switch gate (default false) + kill-switch tests; fails-on-revert.
+- **Established:** ACTIVE at META-ORCH-1161 BUILD COMPLETE 2026-06-20. Cross-ref DEC-190/191.
+
+---
+
 ## ACTIVE — ORCH-1167 (canonical standard-event public page — one shared `EventOfferingBody` + one read RPC, 2026-06-19, PRs #534–#541, LEG 1 of META-ORCH-1166)
 
 ### I-PROPOSED-1167-CANONICAL-9-SECTION-ORDER (ACTIVE)
