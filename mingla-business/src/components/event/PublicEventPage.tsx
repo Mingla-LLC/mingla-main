@@ -15,13 +15,15 @@
  *   - Computes viewerRole (organizer/anonymous)
  *   - Maps LiveEvent + Brand types to the package's prop contract
  *   - Resolves the brand theme → palette → bold fonts (useThemeFont pair)
- *   - Builds the desktop sticky panel + the float/dock EventReserveBar from the
- *     SAME resolveOfferingCta the page computes (one owner)
+ *   - Builds the desktop sticky panel (EventTicketBox) + the float/dock
+ *     EventOfferingFloatingBar — both from @mingla/offering-rendering (ORCH-1167)
+ *     — off the SAME resolveOfferingCta the page computes (one owner)
  *   - Owns share/mute/checkout navigation (checkout target UNCHANGED — N7)
  *   - Mounts ShareModal + Toast + JoinWaitlistSheet + web SEO <Head>
  *
- * Checkout is byte-identical (N7): tapping Get-tickets routes to the existing
- * checkoutPublicPath(event.id) — no address, no taxCalculationId, no change.
+ * Checkout target is unchanged (N7): tapping Get-tickets routes to the existing
+ * public checkout for event.id — now via the ORCH-1167 cart seed
+ * (checkoutPublicPathWithSeed(event.id, …)) — no address, no taxCalculationId.
  */
 
 import React, { useCallback, useMemo, useState } from "react";

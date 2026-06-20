@@ -98,8 +98,8 @@ jest.mock("@mingla/event-rendering", () => ({
 }), { virtual: true });
 
 // ORCH-1138 Leg 2 — the adapter composes the Direction-A foundation: it pulls
-// useResponsiveLayout from @mingla/offering-rendering + the NEW EventReserveBar
-// (resolved by customRequire in the eval harness below).
+// useResponsiveLayout from @mingla/offering-rendering (and, post-ORCH-1167, the
+// shared EventOfferingFloatingBar + EventTicketBox from the same package).
 jest.mock("@mingla/offering-rendering", () => ({
   useResponsiveLayout: () => ({ isDesktop: false, isWeb: true }),
 }), { virtual: true });
@@ -244,8 +244,6 @@ const renderPublicEventPage = (
       case "@mingla/event-rendering":
       case "@mingla/offering-rendering":
         return require(request);
-      case "./EventReserveBar":
-        return { EventReserveBar: "EventReserveBar" };
       case "./FoundationEventPreview":
         return { FoundationEventPreview: "FoundationEventPreview" };
       case "../../constants/publicUrls":
