@@ -57,20 +57,17 @@ import {
 import type { LayoutChangeEvent, StyleProp, ViewStyle } from "react-native";
 import { BlurView } from "expo-blur";
 import { Gesture } from "react-native-gesture-handler";
+import type { GestureType } from "react-native-gesture-handler";
 import Animated, {
   Easing,
   cancelAnimation,
   runOnJS,
-  useAnimatedScrollHandler,
   useAnimatedStyle,
   useReducedMotion,
   useSharedValue,
   withTiming,
 } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-
-import { TopSheetScrollProvider } from "./TopSheetScrollContext";
-import type { TopSheetScrollContextValue } from "./TopSheetScrollContext";
 
 import {
   blurIntensity as blurIntensityTokens,
@@ -113,7 +110,14 @@ const useWebReducedMotion = (): boolean => {
 // each layer absolute-filled at the panel level so heights are
 // panel-driven, not content-driven (GlassChrome's content-driven sizing
 // breaks when used as a background-only layer — see D-IMPL-44).
-const FALLBACK_BACKGROUND = "rgba(20, 22, 26, 0.92)";
+//
+// ORCH-1173 R2: FULLY OPAQUE (alpha 1.0). This is the L1 base used ONLY on the
+// non-blur fallback path (`shouldUseRealBlur` false → Android + unsupported
+// mobile-web). When real blur is unavailable there is nothing behind the panel
+// to blur, so the base MUST be solid — at 0.92 the home screen bled through on
+// Android (ANDROID_GLASS_USES_OPAQUE_FALLBACK). iOS blur path (blurOk true)
+// renders a `BlurView` instead and is unaffected by this constant.
+const FALLBACK_BACKGROUND = "rgb(20, 22, 26)";
 
 export type TopSheetHeightMode = "fixed-70" | "compact";
 
@@ -224,16 +228,6 @@ const TopSheetNative: React.FC<TopSheetProps> = ({
   const scrimOpacity = useSharedValue(0);
   const reduceMotion = useReducedMotion();
 
-  // ORCH-1173: live scroll offset of the consumer's inner scrollable, written
-  // on the UI thread from `useAnimatedScrollHandler`. Drives the dismiss-pan
-  // gate (pan only dismisses when the list is at the top: `scrollOffset <= 0`).
-  // Starts 0 (top) so a sheet with no inner scroll (e.g. compact, or a
-  // consumer that never wires `onScroll`) keeps dismiss-dragging from anywhere.
-  const scrollOffset = useSharedValue(0);
-  const scrollHandler = useAnimatedScrollHandler((event) => {
-    scrollOffset.value = event.contentOffset.y;
-  });
-
   useEffect(() => {
     if (visible) {
       setMounted(true);
@@ -339,69 +333,33 @@ const TopSheetNative: React.FC<TopSheetProps> = ({
     opacity: scrimOpacity.value,
   }));
 
-  // ORCH-1173: a `Gesture.Native()` representing the inner ScrollView's own
-  // native scroll recognizer. The consumer attaches this (via its
-  // `nativeGesture` context handle) to its scrollable so we can compose it
-  // SIMULTANEOUSLY with the dismiss-pan — both gestures run, and the pan can
-  // yield the upward drag to the scroll when the list isn't at its top.
-  const nativeScrollGesture = Gesture.Native();
-
-  // ORCH-1173 dismiss-pan GATE. Predicate for "this drag should dismiss the
-  // sheet (translate the panel up)":
-  //   panDismissesDrag := (scrollOffset.value <= 0) && (translationY < 0)
-  // i.e. the inner list is at the TOP and the finger is moving UP. When the
-  // list is scrolled (`scrollOffset > 0`), the pan no-ops so the ScrollView
-  // consumes the drag (the list scrolls instead of the sheet dismissing).
-  // `panDroveDismiss` records whether `onUpdate` ever actually translated the
-  // panel this gesture, so `onEnd`'s dismiss decision can't fire on a plain
-  // scroll-fling (which never satisfied the gate).
-  const panDroveDismiss = useSharedValue(false);
+  // ORCH-1173 R2: the dismiss-pan is the SIMPLE upward-drag→translateY dismiss
+  // it was before R1, and it is attached ONLY to the drag HANDLE (see
+  // `TopSheetPanelInner` — the handle area wraps in `WebSafeGestureDetector`
+  // with this gesture). It NEVER wraps the scroll body, so the brand list is a
+  // plain native `ScrollView` with zero competing Pan and scrolls normally on
+  // Android. The R1 scroll-offset-gated `Gesture.Simultaneous`/`Gesture.Native`
+  // coordination was removed (it failed on-device).
   const panGesture = Gesture.Pan()
-    .simultaneousWithExternalGesture(nativeScrollGesture)
-    .onBegin(() => {
-      panDroveDismiss.value = false;
-    })
     .onUpdate((event) => {
-      // Dismiss-translate ONLY when the list is at the top AND dragging up.
-      // Otherwise leave the panel put and let the ScrollView scroll.
-      if (scrollOffset.value <= 0 && event.translationY < 0) {
-        panDroveDismiss.value = true;
+      // Allow upward drag only (swipe-up to dismiss).
+      if (event.translationY < 0) {
         translateY.value = event.translationY;
       }
     })
     .onEnd((event) => {
-      // Only consider dismissing if this gesture actually drove a dismiss-drag
-      // from the top — a normal scroll-fling never set `panDroveDismiss`.
       const shouldClose =
-        panDroveDismiss.value &&
-        (event.translationY < -CLOSE_THRESHOLD_PX ||
-          event.velocityY < -CLOSE_VELOCITY);
+        event.translationY < -CLOSE_THRESHOLD_PX ||
+        event.velocityY < -CLOSE_VELOCITY;
       if (shouldClose) {
         runOnJS(onClose)();
-      } else if (panDroveDismiss.value) {
-        // Drove a (sub-threshold) dismiss-drag → snap the panel back open.
+      } else {
         translateY.value = withTiming(openY, {
           duration: 200,
           easing: Easing.out(Easing.cubic),
         });
       }
-      // else: the gesture only scrolled the list — leave the panel untouched.
     });
-
-  // ORCH-1173: run the dismiss-pan and the inner native scroll SIMULTANEOUSLY
-  // so the scroll-position gate above (not gesture arbitration) decides which
-  // wins. On Android this is what lets the list scroll at all; on iOS it is a
-  // no-op behavior-wise (scroll + at-top dismiss both already worked) but keeps
-  // the logic platform-agnostic.
-  const composedGesture = Gesture.Simultaneous(panGesture, nativeScrollGesture);
-
-  // ORCH-1173: the handle TopSheet hands its scrollable consumer (e.g.
-  // BrandSwitcherSheet). `null` outside this native fixed-70 path (web / no
-  // provider) → consumer falls back to a plain ScrollView.
-  const scrollContextValue: TopSheetScrollContextValue = {
-    onScroll: scrollHandler,
-    nativeGesture: nativeScrollGesture,
-  };
 
   const handleScrimPress = (): void => {
     if (dismissOnScrimTap) onClose();
@@ -455,45 +413,44 @@ const TopSheetNative: React.FC<TopSheetProps> = ({
         ]}
         pointerEvents="box-none"
       >
-        <WebSafeGestureDetector gesture={composedGesture}>
-          <Animated.View
-            style={[
-              styles.panel,
-              // Compact mode pre-measurement: render with NATURAL height (no
-              // explicit `height` style) + opacity 0 so children can lay out
-              // freely and `onLayout` reports their true height. Earlier
-              // attempt set `height: 0` here which clipped children to 0 and
-              // produced a permanent height=0 measurement (chicken-and-egg).
-              // Post-measurement: explicit measured height + opacity 1 for
-              // normal animation. Fixed-70 mode: explicit height always.
-              heightMode === "compact"
-                ? compactInvisible
-                  ? { opacity: 0 }
-                  : { height: panelHeight, opacity: 1 }
-                : { height: panelHeight },
-              shadows.glassCardElevated,
-              panelStyle,
-              style,
-            ]}
+        <Animated.View
+          style={[
+            styles.panel,
+            // Compact mode pre-measurement: render with NATURAL height (no
+            // explicit `height` style) + opacity 0 so children can lay out
+            // freely and `onLayout` reports their true height. Earlier
+            // attempt set `height: 0` here which clipped children to 0 and
+            // produced a permanent height=0 measurement (chicken-and-egg).
+            // Post-measurement: explicit measured height + opacity 1 for
+            // normal animation. Fixed-70 mode: explicit height always.
+            heightMode === "compact"
+              ? compactInvisible
+                ? { opacity: 0 }
+                : { height: panelHeight, opacity: 1 }
+              : { height: panelHeight },
+            shadows.glassCardElevated,
+            panelStyle,
+            style,
+          ]}
+        >
+          {/* ORCH-1173 R2: the dismiss-pan attaches ONLY to the drag handle
+              (rendered inside TopSheetPanelInner via `dismissGesture`), never
+              around the scroll body — so the brand list is a plain native
+              ScrollView that scrolls normally on Android. The Animated.View
+              panel still owns the `translateY` transform; the handle gesture
+              drives the shared value directly (no parent-child wrap needed). */}
+          <TopSheetPanelInner
+            blurOk={blurOk}
+            blurIntensity={blurIntensity}
+            heightMode={heightMode}
+            bodyHeight={bodyHeight}
+            handleAreaHeight={handleAreaHeight}
+            handleCompactLayout={handleCompactLayout}
+            dismissGesture={panGesture}
           >
-            <TopSheetPanelInner
-              blurOk={blurOk}
-              blurIntensity={blurIntensity}
-              heightMode={heightMode}
-              bodyHeight={bodyHeight}
-              handleAreaHeight={handleAreaHeight}
-              handleCompactLayout={handleCompactLayout}
-            >
-              {/* ORCH-1173: expose the scroll-coordination handle so a
-                  scrollable consumer (BrandSwitcherSheet) can wire its
-                  Animated.ScrollView's onScroll + attach the native scroll
-                  gesture, gating the dismiss-pan on scroll position. */}
-              <TopSheetScrollProvider value={scrollContextValue}>
-                {children}
-              </TopSheetScrollProvider>
-            </TopSheetPanelInner>
-          </Animated.View>
-        </WebSafeGestureDetector>
+            {children}
+          </TopSheetPanelInner>
+        </Animated.View>
       </View>
     </View>
   );
@@ -512,6 +469,14 @@ interface TopSheetPanelInnerProps {
   bodyHeight: number;
   handleAreaHeight: number;
   handleCompactLayout: (event: LayoutChangeEvent) => void;
+  /**
+   * ORCH-1173 R2: the upward-drag dismiss gesture, attached ONLY to the drag
+   * HANDLE region (never the scroll body). Native variant passes the
+   * `Gesture.Pan()`; web passes `undefined` (web has no pan — dismiss is via
+   * scrim-tap / Escape / close affordances). Gating on this keeps the body a
+   * plain scrollable so the brand list scrolls natively on Android.
+   */
+  dismissGesture?: GestureType;
   children: React.ReactNode;
 }
 
@@ -522,6 +487,7 @@ const TopSheetPanelInner: React.FC<TopSheetPanelInnerProps> = ({
   bodyHeight,
   handleAreaHeight,
   handleCompactLayout,
+  dismissGesture,
   children,
 }) => (
   <>
@@ -579,9 +545,25 @@ const TopSheetPanelInner: React.FC<TopSheetPanelInnerProps> = ({
     >
       {children}
     </View>
-    <View style={[styles.handleWrap, { height: handleAreaHeight }]}>
-      <View style={styles.handle} />
-    </View>
+    {/* ORCH-1173 R2: the dismiss-pan is attached ONLY to this handle region
+        (native). The visual bar stays the same size; the touch target is the
+        full handleWrap row + `hitSlop` so it's easy to grab. The web variant
+        passes `dismissGesture={undefined}` → the bare handle renders with no
+        gesture (web dismiss is scrim-tap / Escape). */}
+    {dismissGesture !== undefined ? (
+      <WebSafeGestureDetector gesture={dismissGesture}>
+        <View
+          style={[styles.handleWrap, { height: handleAreaHeight }]}
+          hitSlop={16}
+        >
+          <View style={styles.handle} />
+        </View>
+      </WebSafeGestureDetector>
+    ) : (
+      <View style={[styles.handleWrap, { height: handleAreaHeight }]}>
+        <View style={styles.handle} />
+      </View>
+    )}
   </>
 );
 

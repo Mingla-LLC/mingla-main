@@ -1,31 +1,40 @@
 /**
- * ORCH-1173 [brand-switcher Android scroll] — scroll-gated dismiss-pan
- * coordination gate.
+ * ORCH-1173 R2 [brand-switcher Android scroll + opaque panel] — handle-only
+ * dismiss + opaque Android fallback gate.
  *
- * # Bug
+ * # Bug (R1 failed on-device)
  * On Android the brand-switcher TopSheet's brand list could not be scrolled —
- * swiping up dismissed the sheet instead of scrolling, so brands below the fold
- * were unreachable. Root cause: `TopSheetNative` wrapped its children (incl. the
- * inner `ScrollView`) in a bare `Gesture.Pan()` that translated the panel up on
- * ANY upward drag, which won vertical-drag arbitration over the ScrollView.
+ * swiping up dismissed the sheet. R1 tried a scroll-offset-gated
+ * `Gesture.Simultaneous`/`Gesture.Native` coordination between the dismiss-pan
+ * and the inner scroll; it did NOT work on the Samsung (the list still didn't
+ * scroll). The panel was also too translucent (0.92 alpha fallback → home
+ * screen bled through on Android).
  *
- * # Fix (asserted here — SOURCE CONTRACT)
- * 1. TopSheetNative tracks the consumer's scroll offset in a UI-thread shared
- *    value (`scrollOffset`) via `useAnimatedScrollHandler`, and gates the
- *    dismiss-pan on `scrollOffset.value <= 0` (list at top) so the pan only
- *    dismisses from the top; otherwise the ScrollView consumes the drag.
- * 2. The dismiss-pan is composed `Gesture.Simultaneous(...)` with a
- *    `Gesture.Native()` representing the inner scroll, so both run.
- * 3. The handle is exposed via `TopSheetScrollProvider`; BrandSwitcherSheet
- *    consumes it (`useTopSheetScroll`) and renders an `Animated.ScrollView`
- *    wired with the gate's `onScroll` + the native gesture.
+ * # Fix (asserted here — SOURCE CONTRACT, R2)
+ * 1. The dismiss-pan is the SIMPLE upward-drag→translateY dismiss again, and it
+ *    is attached ONLY to the drag HANDLE (`TopSheetPanelInner` wraps the handle
+ *    region in `WebSafeGestureDetector` with the `dismissGesture` prop). It does
+ *    NOT wrap the panel/scroll body — so the brand list is a plain native
+ *    `ScrollView` with zero competing Pan and scrolls normally on Android.
+ * 2. The R1 coordination is GONE: no `Gesture.Simultaneous`, no
+ *    `Gesture.Native()`, no `simultaneousWithExternalGesture`, no
+ *    `useAnimatedScrollHandler` scroll-offset gate, and `TopSheetScrollContext`
+ *    is deleted.
+ * 3. BrandSwitcherSheet renders a plain react-native `<ScrollView>` (no
+ *    `Animated.ScrollView`, no `useTopSheetScroll`, no `GestureDetector`).
+ * 4. The non-blur (Android / unsupported-web) `FALLBACK_BACKGROUND` is FULLY
+ *    OPAQUE (alpha 1.0) so nothing bleeds through
+ *    (ANDROID_GLASS_USES_OPAQUE_FALLBACK).
  *
  * # Fails-on-revert
- * Reverting any leg — restoring the bare `Gesture.Pan()` wrap (drop the
- * `scrollOffset` gate / the `Gesture.Simultaneous` / the
- * `useAnimatedScrollHandler`), or reverting BrandSwitcherSheet's
- * `Animated.ScrollView`/`useTopSheetScroll` back to a plain `ScrollView` —
- * removes the asserted token(s) and FAILS the corresponding test below.
+ * - Re-wrapping the whole panel in the dismiss gesture (so the body is gesture-
+ *   wrapped) or re-introducing the `Gesture.Simultaneous`/`Gesture.Native`
+ *   coordination FAILS T-2/T-3.
+ * - Reverting the handle to not carry `dismissGesture` FAILS T-2.
+ * - Reverting BrandSwitcherSheet to `Animated.ScrollView`/`useTopSheetScroll`
+ *   FAILS T-4.
+ * - Lowering `FALLBACK_BACKGROUND` back below alpha 1.0 (a translucent
+ *   `rgba(...,0.92)` fill) FAILS T-5.
  */
 
 import * as fs from "fs";
@@ -61,53 +70,57 @@ function stripComments(src: string): string {
     .replace(/(^|[^:])\/\/[^\n]*/g, "$1");
 }
 
-describe("ORCH-1173 brand-switcher Android scroll gate", () => {
-  // ---- T-1: the scroll-gating context module exists + exports the contract --
-  test("T-1 — TopSheetScrollContext exposes onScroll + nativeGesture handle", () => {
-    expect(fs.existsSync(CONTEXT_PATH)).toBe(true);
-    const code = stripComments(fs.readFileSync(CONTEXT_PATH, "utf8"));
-    expect(code).toContain("onScroll");
-    expect(code).toContain("nativeGesture");
-    expect(code).toContain("useTopSheetScroll");
-    expect(code).toContain("TopSheetScrollProvider");
+describe("ORCH-1173 R2 brand-switcher handle-only dismiss + opaque panel", () => {
+  // ---- T-1: the dead R1 coordination context module is removed --------------
+  test("T-1 — TopSheetScrollContext.tsx is deleted (R1 coordination removed)", () => {
+    expect(fs.existsSync(CONTEXT_PATH)).toBe(false);
   });
 
-  // ---- T-2: TopSheetNative gates the dismiss-pan on scroll offset -----------
-  test("T-2 — TopSheetNative tracks scrollOffset and gates the dismiss-pan on it (at-top only)", () => {
+  // ---- T-2: dismiss-pan attached to the handle only, not the scroll body ----
+  test("T-2 — TopSheetNative attaches the dismiss-pan to the handle only via dismissGesture", () => {
     const code = stripComments(fs.readFileSync(TOPSHEET_PATH, "utf8"));
-    // UI-thread scroll-offset tracking.
-    expect(code).toContain("useAnimatedScrollHandler");
-    expect(code).toMatch(/scrollOffset\s*=\s*useSharedValue\(0\)/);
-    // The gate predicate: pan only dismisses when the list is at the top.
-    expect(code).toMatch(/scrollOffset\.value\s*<=\s*0/);
-  });
-
-  // ---- T-3: dismiss-pan composed SIMULTANEOUS with the inner native scroll --
-  test("T-3 — dismiss-pan is composed Gesture.Simultaneous with a Gesture.Native scroll gesture", () => {
-    const code = stripComments(fs.readFileSync(TOPSHEET_PATH, "utf8"));
-    expect(code).toContain("Gesture.Native()");
-    expect(code).toContain("Gesture.Simultaneous(");
-    expect(code).toContain("simultaneousWithExternalGesture");
-    // The composed gesture (not the bare panGesture) drives the detector.
-    expect(code).toContain("gesture={composedGesture}");
-    // The dismiss-pan must NOT be wired bare anymore (the reverted bug shape).
+    // The handle region carries the dismiss gesture.
+    expect(code).toContain("dismissGesture");
+    expect(code).toMatch(/dismissGesture=\{panGesture\}/);
+    // The dismiss-pan is the simple upward-drag dismiss (no scroll-offset gate).
+    expect(code).toContain("Gesture.Pan()");
+    // The panel/body is NOT wrapped in the dismiss gesture anymore: the only
+    // WebSafeGestureDetector usage wraps the handleWrap, never the panel.
+    expect(code).not.toContain("gesture={composedGesture}");
     expect(code).not.toContain("gesture={panGesture}");
   });
 
-  // ---- T-4: TopSheet provides the scroll handle to its children -------------
-  test("T-4 — TopSheetNative wraps children in TopSheetScrollProvider", () => {
+  // ---- T-3: the R1 scroll-coordination is fully gone ------------------------
+  test("T-3 — no Gesture.Simultaneous / Gesture.Native / scroll-offset gate remains", () => {
     const code = stripComments(fs.readFileSync(TOPSHEET_PATH, "utf8"));
-    expect(code).toContain("TopSheetScrollProvider");
+    expect(code).not.toContain("Gesture.Simultaneous(");
+    expect(code).not.toContain("Gesture.Native()");
+    expect(code).not.toContain("simultaneousWithExternalGesture");
+    expect(code).not.toContain("useAnimatedScrollHandler");
+    expect(code).not.toContain("TopSheetScrollProvider");
+    expect(code).not.toMatch(/scrollOffset\.value\s*<=\s*0/);
   });
 
-  // ---- T-5: BrandSwitcherSheet consumes the gate via Animated.ScrollView ----
-  test("T-5 — BrandSwitcherSheet wires Animated.ScrollView to the TopSheet scroll gate", () => {
+  // ---- T-4: BrandSwitcherSheet uses a PLAIN ScrollView ----------------------
+  test("T-4 — BrandSwitcherSheet renders a plain ScrollView (no R1 coordination)", () => {
     const code = stripComments(fs.readFileSync(SWITCHER_PATH, "utf8"));
-    expect(code).toContain("useTopSheetScroll");
-    expect(code).toContain("Animated.ScrollView");
-    // It must hand the gate's onScroll + native gesture to the scrollable.
-    expect(code).toContain("topSheetScroll.onScroll");
-    expect(code).toContain("topSheetScroll.nativeGesture");
-    expect(code).toContain("GestureDetector");
+    expect(code).toContain("<ScrollView");
+    expect(code).toContain("showsVerticalScrollIndicator");
+    // None of the R1 coordination wiring.
+    expect(code).not.toContain("useTopSheetScroll");
+    expect(code).not.toContain("Animated.ScrollView");
+    expect(code).not.toContain("topSheetScroll");
+    expect(code).not.toContain("GestureDetector");
+  });
+
+  // ---- T-5: the Android/non-blur fallback fill is FULLY OPAQUE ---------------
+  test("T-5 — FALLBACK_BACKGROUND is fully opaque (no alpha bleed-through)", () => {
+    const code = stripComments(fs.readFileSync(TOPSHEET_PATH, "utf8"));
+    // Solid rgb(...) (or #hex) — NOT a translucent rgba(...,0.xx).
+    expect(code).toMatch(
+      /FALLBACK_BACKGROUND\s*=\s*"(?:rgb\(\s*20\s*,\s*22\s*,\s*26\s*\)|#14161[Aa])"/,
+    );
+    // Guard against any rgba(...) (alpha) fallback sneaking back.
+    expect(code).not.toMatch(/FALLBACK_BACKGROUND\s*=\s*"rgba\(/);
   });
 });
