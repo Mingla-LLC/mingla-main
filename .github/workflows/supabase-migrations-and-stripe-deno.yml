@@ -160,12 +160,19 @@ jobs:
           # META-ORCH-1161 go-live-prep (DEC-191, 2026-06-20):
           #   - can_send marketing default-ON + suppression (migration behavioral)
           #   - US quiet-hours recipient-timezone (P3-1 carry-forward)
+          # META-ORCH-1161 go-live-prep REWORK (2026-06-20):
+          #   - SMS phone-suppression audience exclusion (Sub-B, was unregistered)
+          #   - EMAIL channel_suppressions audience exclusion (P2 fix)
+          #   - quiet-hours-tz tester adversarial boundary cases (P3 retest)
           DENO_TEST_FILES=(
             supabase/functions/__tests__/orch_1161_notify_dispatch_v2.test.ts
             supabase/functions/__tests__/orch_1161_anon_guest_path.test.ts
             supabase/functions/__tests__/orch_1161_guest_ledger_and_dedupe.test.ts
             supabase/migrations/__tests__/orch_1161_golive_can_send_marketing_optout.test.ts
             supabase/functions/marketing-send/quiet-hours-tz.test.ts
+            supabase/functions/_shared/marketingAudience.sms-suppression.test.ts
+            supabase/functions/_shared/marketingAudience.email-suppression.golive.test.ts
+            supabase/functions/marketing-send/quiet-hours-tz.tester.test.ts
           )
           for attempt in 1 2 3; do
             if deno test --allow-env --allow-net --allow-read --no-check "${DENO_TEST_FILES[@]}"; then

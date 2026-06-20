@@ -154,3 +154,51 @@ No device/sim run (consumer prefs UI; gates run instead). Verified: 11 Deno test
 - The CI test runners (`supabase-migrations-and-stripe-deno.yml`, the app-mobile matrix wrapper) use EXPLICIT file lists, not glob discovery — any future ORCH-1161 test MUST be registered or it silently never runs in CI. I registered all 3 new tests.
 - `record-consent` already writes a `scope='marketing'` consent row on grant (DEC-186) — no change needed; the default-ON + suppression model is the enrollment mechanism, consent_records is the audit trail. Confirmed, no per-user enabled=true rows written for signups.
 - COMMS ledger: no BLOCK/WARN entry addressed to mingla-implementor / META-ORCH-1161 / ALL touches this lane (notification prefs / marketing-send / can_send). The active WARN initiatives (RSVP/experience public-page standardization, ORCH-1142 notif-read-delete) touch different files. No ack write needed; no new cross-ORCH discovery to log.
+
+---
+
+## REWORK 2026-06-20 — 3 tester-found defects fixed (verdict FAIL → fixed, real-Postgres proven)
+
+Source: `Mingla_Artifacts/reports/TEST_META-ORCH-1161_GOLIVE_PREP.md` (FAIL: 1 P0, 1 P1, 1 P2). Worktree `~/Desktop/mingla-orchs/ORCH-1161-[golive-prep]/` on `ORCH-1161-golive-prep`. Self-verified against a real Postgres 15 (Docker) — full migration apply + tester G-01/02/03 + implementor round-trip + fails-on-revert.
+
+### What failed → what changed
+
+**P0 — migration would not compile/apply.** `20261113000000_orch_1161_golive_marketing_optout.sql:220` used `GET DIAGNOSTICS v_affected = v_affected + ROW_COUNT;` — invalid PL/pgSQL (GET DIAGNOSTICS takes a bare `var = item`, not an expression). The whole migration aborted (can_send flip lost too). Fix: declared `v_tmp integer;` and split into `GET DIAGNOSTICS v_tmp = ROW_COUNT; v_affected := v_affected + v_tmp;`. The migration now applies cleanly (`CREATE FUNCTION` × 2, no error).
+
+**P1 — opt-out contact row collapsed.** Both INSERTs carried `user_id=v_user_id`, so `channel_suppressions_uniq_idx` (`COALESCE(user_id::text, contact), …`) resolved both to the same key → the second (contact-keyed) row was dropped by `ON CONFLICT DO NOTHING` → the SMS blast resolver (keys on `channel_suppressions.contact`) never excluded the user. Fix: the contact-keyed INSERT now writes `user_id=NULL` (so its index key is `contact`), and the opt-IN DELETE was broadened to also remove `user_id IS NULL AND contact = v_contact`. Net: both a user_id-keyed and a contact-keyed row land (affected=2) and both are removable on opt-in (affected=2). Cross-user-safe (the contact row carries no foreign user_id).
+
+**P2 — email blast ignored the new opt-out.** `_shared/marketingAudience.ts` `aggregate`/`resolveBrandBuyers`/`resolveEventBuyers` read only `marketing_unsubscribes` for email; the RPC writes to `channel_suppressions`. Fix: added `resolveSuppressedEmails()` (mirror of `resolveSuppressedPhones`) reading `channel_suppressions(channel='email', scope IN ('marketing','all'))` keyed on `contact`, threaded a `suppressedEmails` set through both resolvers into `aggregate`, and `emailOk` now ANDs `!suppressedEmails.has(emailKey)`. Email blast now honors the prefs opt-out. (No client-mirror change: `marketingAudienceService.ts` is an RLS-scoped preview that already documents it does NOT read channel_suppressions and defers to the service-role server resolver as authoritative.)
+
+Guards honored: kill-switch/text-dark path untouched; `channel_suppressions` remains the single opt-out authority; can_send default-ON + quiet-hours-TZ logic unchanged (those passed and re-pass).
+
+### Real-Postgres verification (Docker `postgres:15`)
+
+| Check | Result |
+|---|---|
+| Migration applies (P0) | PASS — `CREATE FUNCTION` × 2, no `unrecognized GET DIAGNOSTICS item` |
+| Tester G-01 (RPC exists) | PASS |
+| Tester G-02 (contact-keyed sms row persists) | PASS |
+| Tester G-03 (no cross-user row) | PASS — `ALL GUARDS PASSED` (exit 0) |
+| Implementor round-trip R-1..R-6 | PASS — opt-out writes 2 rows; can_send(sms)=f; contact row present; opt-in removes 2; email opt-out → contact row + can_send(email)=f; transactional isolated |
+| P2 email-suppression Deno test (3 cases) | PASS |
+| All 24 registered 1161 Deno tests together | PASS |
+
+Email + SMS opt-out round-trip proof (real PG): SMS opt-out → rows `(user_id, NULL)` + `(NULL, +15551234567)`; `can_send(marketing,sms)=false`; SMS blast resolver query `contact='+15551234567'` → 1 row. EMAIL opt-out → `(NULL, alice@example.com)` row; `can_send(marketing,email)=false`; email blast resolver excludes it (`reachable_email` drops). Opt-in removes both per channel.
+
+### fails-on-revert (true line deletion, real backends)
+
+- **P0:** restore the expression `GET DIAGNOSTICS v_affected = v_affected + ROW_COUNT;` → migration aborts (`unrecognized GET DIAGNOSTICS item`) → tester G-01 RAISEs. Verified at commit `0b9c8f9be`.
+- **P1:** contact INSERT back to `user_id=v_user_id` → `ON CONFLICT` collapse → tester G-02 RAISEs (`0 contact-keyed`) AND implementor round-trip R-1 RAISEs (`affected 1, expected 2`). Verified at `0b9c8f9be`.
+- **P2:** delete the `!suppressedEmails.has(emailKey)` clause in `aggregate()` → Deno test fails (2 of 3 cases). Restored → 5/5 pass. Verified at `0b9c8f9be`.
+
+### Tests added/registered (closing diff)
+- `supabase/migrations/__tests__/orch_1161_golive_marketing_optout_roundtrip.test.sql` (NEW, implementor happy-path, real-PG).
+- `supabase/functions/_shared/marketingAudience.email-suppression.golive.test.ts` (NEW, implementor, P2).
+- Tester files committed into the branch for CLOSE: `..._set_marketing_suppression.tester.test.sql`, `marketing-send/quiet-hours-tz.tester.test.ts`, `TEST_META-ORCH-1161_GOLIVE_PREP.md`.
+- Registered the new Deno tests + the previously-unregistered `marketingAudience.sms-suppression.test.ts` + the tester quiet-hours adversarial in `.github/workflows/supabase-migrations-and-stripe-deno.yml` (notification-deno-tests).
+
+### Known CI gap (discovery)
+The `migrations-apply` job applies all migrations in order (so the P0 fix IS gated there — the build now passes where it would have aborted) but does NOT execute the `__tests__/*.test.sql` behavioral files. So G-01/02/03 + the round-trip `.test.sql` are NOT yet run by CI (only locally proven here). A `.test.sql` runner step (apply migrations → run `__tests__/*.test.sql`) should be added — flagged for the orchestrator (pre-existing gap the tester also noted).
+
+### Commit
+`0b9c8f9be` — migration + marketingAudience + 2 implementor tests + tester artifacts. CI workflow registration + this report in a follow-up commit on the same branch.
