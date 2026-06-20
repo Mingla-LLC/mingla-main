@@ -17,7 +17,10 @@ import {
 // META-ORCH-1074 Sub-A: shared order-finalize triggers (order_paid /
 // event_sold_out / low_inventory). Same helper the slow-path edge calls;
 // idempotency collapses the confirm-vs-webhook double-fire.
-import { fireOrderFinalizeNotifications } from "./businessNotifyTriggers.ts";
+import {
+  fireBuyerOrderNotify,
+  fireOrderFinalizeNotifications,
+} from "./businessNotifyTriggers.ts";
 import { qrTokenPepper } from "./ticketCheckout.ts";
 // ORCH-0869 [Tr3 Installment Payments]: discriminator + handlers for
 // installment PaymentIntent events. See SPEC §3.2.3.
@@ -820,6 +823,18 @@ async function handleRefundEvent(
       );
     }
   }
+
+  // META-ORCH-1161 §7.x — NET-NEW buyer refund PUSH + in-app (+ SMS per the
+  // buyer_refund_issued seed) routed through notify-dispatch v2. This is the SINGLE
+  // refund chokepoint (in-app + dashboard refunds both reconcile here), idempotent
+  // on refundId. The buyer EMAIL stays owned by ticket-confirmation-dispatch — the
+  // helper passes contact=phone so the v2 email channel skips (no double-email).
+  await fireBuyerOrderNotify(supabase as never, {
+    categoryKey: "buyer_refund_issued",
+    orderId,
+    idempotencyKey: `buyer_refund_issued:${refundId}`,
+    extraPayload: { amount_cents: amountCents, currency },
+  });
 
   if (stripeAccountId) {
     try {

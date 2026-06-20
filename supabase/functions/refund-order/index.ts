@@ -518,6 +518,12 @@ serve(async (req: Request): Promise<Response> => {
       { orderId },
     );
   }
+  // META-ORCH-1161 §7.x note: the NET-NEW buyer PUSH+in-app(+SMS) for a refund is
+  // added in the SINGLE allowlisted chokepoint — the stripeWebhookRouter refund
+  // path (handleRefundEvent) — which reconciles EVERY refund (in-app + dashboard)
+  // exactly once, idempotent on refundId. We do NOT also dispatch here to avoid a
+  // double push for the in-app refund path (which also produces a Stripe refund
+  // event → the webhook).
 
   // Step 5: audit row.
   try {
