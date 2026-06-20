@@ -51,8 +51,8 @@ import { join } from "node:path";
 const repoRoot = join(__dirname, "..", "..", "..");
 const read = (rel: string): string => readFileSync(join(repoRoot, rel), "utf8");
 
-const COVER = "packages/event-rendering/EventCoverMedia.tsx";
-const INDEX = "packages/event-rendering/index.ts";
+const COVER = "packages/offering-rendering/EventCoverMedia.tsx";
+const INDEX = "packages/offering-rendering/index.ts";
 
 const stripComments = (src: string): string =>
   src

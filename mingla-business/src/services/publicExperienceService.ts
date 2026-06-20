@@ -36,7 +36,7 @@ import {
   isThemeColor,
   isThemeFontSlug,
   type ThemeInput,
-} from "@mingla/event-rendering";
+} from "@mingla/offering-rendering";
 
 export type PublicExperienceWhenMode = "single" | "recurring" | "multi_date";
 

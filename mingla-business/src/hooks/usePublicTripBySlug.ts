@@ -19,7 +19,7 @@ import {
   isThemeColor,
   isThemeFontSlug,
   type ThemeInput,
-} from "@mingla/event-rendering";
+} from "@mingla/offering-rendering";
 
 import { supabase } from "../services/supabase";
 import { tripKeys } from "./useTrips";

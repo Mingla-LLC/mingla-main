@@ -12,8 +12,8 @@ const animationJson = (slug: string): { layers?: Array<{ nm?: string }> } =>
 describe("ORCH-0964 smoke rework — distinct original-color Lottie animations", () => {
   test("animations are selected by saved theme slug and preserve original Lottie colors", () => {
     const indexSource = repoFile("packages/theme-animations/index.ts");
-    const resolverSource = repoFile("packages/event-rendering/themeResolver.ts");
-    const animationSource = repoFile("packages/event-rendering/ThemeEntranceAnimation.tsx");
+    const resolverSource = repoFile("packages/offering-rendering/themeResolver.ts");
+    const animationSource = repoFile("packages/offering-rendering/ThemeEntranceAnimation.tsx");
 
     expect(indexSource).toContain("export const LOTTIE_BY_SLUG");
     expect(resolverSource).toContain("return eventOverride.animation");

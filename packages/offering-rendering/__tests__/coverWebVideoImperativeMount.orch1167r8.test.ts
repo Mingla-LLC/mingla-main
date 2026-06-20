@@ -30,7 +30,7 @@ import { join } from "node:path";
 const repoRoot = join(__dirname, "..", "..", "..");
 const read = (rel: string): string => readFileSync(join(repoRoot, rel), "utf8");
 
-const COVER = "packages/event-rendering/EventCoverMedia.tsx";
+const COVER = "packages/offering-rendering/EventCoverMedia.tsx";
 
 const stripComments = (src: string): string =>
   src

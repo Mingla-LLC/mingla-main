@@ -38,11 +38,6 @@ config.resolver.nodeModulesPaths = [
 ];
 config.resolver.extraNodeModules = {
   ...(config.resolver.extraNodeModules ?? {}),
-  "@mingla/event-rendering": path.join(
-    WORKSPACE_ROOT,
-    "packages",
-    "event-rendering",
-  ),
   "@mingla/brand-rendering": path.join(
     WORKSPACE_ROOT,
     "packages",

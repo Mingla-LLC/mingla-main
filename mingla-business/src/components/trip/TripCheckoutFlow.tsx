@@ -27,7 +27,7 @@ import {
   text as textTokens,
   typography,
 } from "../../constants/designSystem";
-import type { ThemePalette } from "@mingla/event-rendering";
+import type { ThemePalette } from "@mingla/offering-rendering";
 import type { Trip } from "../../services/tripsService";
 import type { TripPreviewBrand } from "./TripPreview";
 import { projectInstallmentSchedule } from "../../utils/installmentScheduleProjection";

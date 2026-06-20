@@ -80,7 +80,7 @@ import {
   resolveTheme,
   ThemeEntranceAnimation,
   type CtaState,
-} from "@mingla/event-rendering";
+} from "@mingla/offering-rendering";
 // ORCH-1138 Leg 1C — the shared Direction-A foundation primitives. The consumer
 // trip detail converges on the business/web trip page (TripPreview FOUNDATION
 // mode) by REUSING these (NOT importing TripPreview, which is business-local).

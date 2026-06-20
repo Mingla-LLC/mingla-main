@@ -16,7 +16,7 @@
 
 import { normalizeCityCountry } from "@mingla/offering-rendering";
 import type { Chip, CountAwareGalleryItem } from "@mingla/offering-rendering";
-import type { ThemePalette } from "@mingla/event-rendering";
+import type { ThemePalette } from "@mingla/offering-rendering";
 
 import type {
   ConsumerTripDetail,
@@ -145,7 +145,7 @@ export function mapConsumerTripToFoundation(
   const dateLabel =
     detail.startAt !== null && detail.endAt !== null
       ? // formatTripDateRange is applied at the call site (it lives in
-        // @mingla/event-rendering); the adapter just signals presence.
+        // @mingla/offering-rendering); the adapter just signals presence.
         "has-range"
       : "";
 

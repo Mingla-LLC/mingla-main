@@ -13,14 +13,14 @@
  * present; an empty policy renders zero ladder rows.
  *
  * Anon-tolerant: pure presentational, no fetch, no useAuth.
- * I-MOR-0827: imports only @mingla/event-rendering (the shared palette type) +
+ * I-MOR-0827: imports only @mingla/offering-rendering (the shared palette type) +
  * react-native — no mingla-business/src import.
  */
 
 import React from "react";
 import { StyleSheet, Text, View } from "react-native";
 
-import type { OfferingSurfaceStyles, ThemePalette } from "@mingla/event-rendering";
+import type { OfferingSurfaceStyles, ThemePalette } from "@mingla/offering-rendering";
 
 import type { RefundPolicyShape } from "../../hooks/useConsumerTripDetail";
 

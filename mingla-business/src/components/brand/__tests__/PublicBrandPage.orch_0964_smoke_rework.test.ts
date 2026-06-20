@@ -13,7 +13,7 @@ describe("ORCH-0964 smoke rework — business public-page preview chrome/theme",
     "utf8",
   );
   const animationSource = repoFile(
-    "packages/event-rendering/ThemeEntranceAnimation.tsx",
+    "packages/offering-rendering/ThemeEntranceAnimation.tsx",
   );
 
   test("hero band is themed and entrance animation cannot intercept chrome taps", () => {

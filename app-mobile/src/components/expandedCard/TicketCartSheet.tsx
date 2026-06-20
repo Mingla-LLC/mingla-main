@@ -13,7 +13,7 @@
  *   1. Header: "Get tickets" title + close (×)
  *   2. Section label: "SELECT YOUR TICKETS"
  *   3. Tier rows (one per visible+available ticket, sorted by displayOrder),
- *      rendered via `<QuantityRow>` from `@mingla/event-rendering` with a
+ *      rendered via `<QuantityRow>` from `@mingla/offering-rendering` with a
  *      dark-mode theme override + `ConsumerCartCard` host wrapper.
  *   4. Marketing opt-in checkbox (default unchecked, GDPR/CAN-SPAM compliance).
  *   5. Buyer recap card (read-only Name / Email / Phone, from auth profile).
@@ -59,7 +59,7 @@ import {
   type PublicTicketProps,
   QuantityRow,
   type QuantityRowTheme,
-} from "@mingla/event-rendering";
+} from "@mingla/offering-rendering";
 
 import { Icon } from "../ui/Icon";
 // ORCH-1025 [Seamless native consumer cart] — the buyer billing-address +

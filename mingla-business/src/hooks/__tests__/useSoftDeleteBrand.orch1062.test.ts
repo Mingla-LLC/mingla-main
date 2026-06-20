@@ -49,7 +49,7 @@ jest.mock("../../services/appsFlyerService", () => ({
 jest.mock("../../context/AuthContext", () => ({
   useAuth: () => ({ isAuthReady: true, user: null, authStatus: "ready" }),
 }));
-// usePublicEvents transitively imports the @mingla/event-rendering workspace
+// usePublicEvents transitively imports the @mingla/offering-rendering workspace
 // package, which jest can't resolve in the worktree. useSoftDeleteBrand only
 // needs the key factory — stub it.
 jest.mock("../usePublicEvents", () => ({

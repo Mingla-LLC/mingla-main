@@ -56,7 +56,7 @@ import {
   offeringSurfaceStyles,
   type ResolvedTheme,
   type ThemePalette,
-} from "@mingla/event-rendering";
+} from "@mingla/offering-rendering";
 import {
   ParallaxCoverShell,
   CountAwareGallery,

@@ -16,7 +16,7 @@
  * uses the flat slot list.
  *
  * Pure + dep-free (no React Native imports) so both apps consume it via the
- * existing @mingla/event-rendering import path (same path offeringCta.ts uses) —
+ * existing @mingla/offering-rendering import path (same path offeringCta.ts uses) —
  * satisfying I-MOR-0827-PACKAGE-ISOLATION (one shared package, never a cross-app
  * import).
  */

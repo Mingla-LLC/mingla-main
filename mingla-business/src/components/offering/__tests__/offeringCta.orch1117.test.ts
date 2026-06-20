@@ -16,11 +16,11 @@
 import {
   resolveOfferingCta,
   computeOfferingVariant,
-} from "../../../../../packages/event-rendering/offeringCta";
+} from "../../../../../packages/offering-rendering/offeringCta";
 import type {
   PublicTicketProps,
   PublicEventProps,
-} from "../../../../../packages/event-rendering/types";
+} from "../../../../../packages/offering-rendering/types";
 
 const baseTicket = (over: Partial<PublicTicketProps> = {}): PublicTicketProps => ({
   id: over.id ?? "tt-1",

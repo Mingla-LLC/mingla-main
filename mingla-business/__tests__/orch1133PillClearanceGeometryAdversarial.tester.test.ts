@@ -31,11 +31,11 @@ import path from "node:path";
 
 const repoRoot = path.resolve(__dirname, "..", "..");
 const ECM = fs.readFileSync(
-  path.join(repoRoot, "packages/event-rendering/EventCoverMedia.tsx"),
+  path.join(repoRoot, "packages/offering-rendering/EventCoverMedia.tsx"),
   "utf8",
 );
 const PEP = fs.readFileSync(
-  path.join(repoRoot, "packages/event-rendering/PublicEventPage.tsx"),
+  path.join(repoRoot, "packages/offering-rendering/PublicEventPage.tsx"),
   "utf8",
 );
 

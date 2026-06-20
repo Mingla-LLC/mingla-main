@@ -13,7 +13,7 @@
  * cache. Do NOT add AsyncStorage/in-memory caching here.
  */
 
-import type { EventCoverMediaType } from "@mingla/event-rendering";
+import type { EventCoverMediaType } from "@mingla/offering-rendering";
 
 import { supabase } from "./supabase";
 

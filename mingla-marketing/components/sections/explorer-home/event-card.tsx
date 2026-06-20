@@ -18,7 +18,7 @@ import type { ShowcaseEvent } from '@/lib/dc-showcase-events'
 //   - 'ticketmaster' → REAL TM CDN cover image, genre eyebrow, NO "On Mingla"
 //     chip, "Ticketmaster" attribution folded into the orange CTA pill.
 //   - 'mingla'       → brand cover image OR the coverHue striped fallback band
-//     (§E.4b, faithful to @mingla/event-rendering EventCover), an "On Mingla"
+//     (§E.4b, faithful to @mingla/offering-rendering EventCover), an "On Mingla"
 //     ink chip top-right, no Ticketmaster text.
 //
 // SHELL is pixel-identical to the two siblings: 260×360, --radius-2xl (36px),
@@ -356,7 +356,7 @@ function EventCover({
 }
 
 // coverHue striped fallback band (§E.4b) — translated 1:1 from the app's
-// @mingla/event-rendering EventCover.tsx to web CSS: base hsl(hue,60%,50%),
+// @mingla/offering-rendering EventCover.tsx to web CSS: base hsl(hue,60%,50%),
 // alternating 14px stripe-base / 14px darker hsl(hue,60%,40%) at 135°, with the
 // app's bottom vignette (linear-gradient 0→0.72 over locations 0.5→1).
 function CoverHueBand({ hue }: { hue: number }): React.ReactElement {

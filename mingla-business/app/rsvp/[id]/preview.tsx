@@ -35,7 +35,7 @@ import {
   createThemePalette,
   type PublicEventProps,
   type PublicBrandProps,
-} from "@mingla/event-rendering";
+} from "@mingla/offering-rendering";
 import { useBrandList, type Brand } from "../../../src/store/currentBrandStore";
 import {
   useDraftById,

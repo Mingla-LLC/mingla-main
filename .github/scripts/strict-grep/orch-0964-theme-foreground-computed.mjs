@@ -28,12 +28,12 @@ for (const file of walk(root)) {
   }
 }
 
-const resolver = readFileSync(join(root, "packages/event-rendering/themeResolver.ts"), "utf8");
+const resolver = readFileSync(join(root, "packages/offering-rendering/themeResolver.ts"), "utf8");
 if (!/export\s+const\s+computeForeground\s*=/.test(resolver)) {
-  failures.push("packages/event-rendering/themeResolver.ts: computeForeground export missing");
+  failures.push("packages/offering-rendering/themeResolver.ts: computeForeground export missing");
 }
 if (!/foregroundColor:\s*computeForeground\(/.test(resolver)) {
-  failures.push("packages/event-rendering/themeResolver.ts: resolveTheme must call computeForeground");
+  failures.push("packages/offering-rendering/themeResolver.ts: resolveTheme must call computeForeground");
 }
 
 if (failures.length > 0) {

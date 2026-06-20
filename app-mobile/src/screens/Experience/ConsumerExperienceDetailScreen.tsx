@@ -63,7 +63,7 @@ import {
   type CtaState,
   type PublicEventProps,
   type PublicTicketProps,
-} from "@mingla/event-rendering";
+} from "@mingla/offering-rendering";
 import {
   OfferingChrome,
   CountAwareGallery,
@@ -90,7 +90,7 @@ import {
 } from "../../components/expandedCard/ExperienceReservePicker";
 import { buildStaticMapUrl } from "../../utils/mapboxStaticImage";
 // ORCH-1153 WS2 — open-daily detection is now the SHARED rule-based predicate
-// isOpenDailyExperience (@mingla/event-rendering), the single owner across all
+// isOpenDailyExperience (@mingla/offering-rendering), the single owner across all
 // surfaces. The prior occurrence-density heuristic (utils/experienceOpenDaily
 // isOpenDailyModel) is retired here (kept only for its Deno test + the unused
 // medianConsecutiveGapMs export); it no longer drives the consumer picker.

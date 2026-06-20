@@ -8,7 +8,7 @@
  * in resolveRsvpCta makes the first assertion fall through to "open" → FAIL.
  */
 
-import { resolveRsvpCta } from "../../../../../packages/event-rendering/offeringCta";
+import { resolveRsvpCta } from "../../../../../packages/offering-rendering/offeringCta";
 
 describe("ORCH-1150 R2 — resolveRsvpCta maybe", () => {
   it("reflects a guest's own resolved 'maybe' state", () => {

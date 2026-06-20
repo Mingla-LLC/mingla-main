@@ -3,7 +3,7 @@
 // pure, no expo-constants in its chain.)
 //
 // THE FIX (B.0): the URL builder was duplicated byte-for-byte in two app utils;
-// it is now the single owner in @mingla/event-rendering. The pure core
+// it is now the single owner in @mingla/offering-rendering. The pure core
 // (buildStaticMapUrlWithToken) is what the event/experience/trip maps render.
 //
 // FAILS-ON-REVERT: (a) change the URL contract (style/overlay/center/size order

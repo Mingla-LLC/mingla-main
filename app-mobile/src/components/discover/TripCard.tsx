@@ -18,7 +18,7 @@ import { Platform, Pressable, StyleSheet, Text, View } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import * as Haptics from "expo-haptics";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
-import { EventCoverMedia, formatTripDateRange } from "@mingla/event-rendering";
+import { EventCoverMedia, formatTripDateRange } from "@mingla/offering-rendering";
 
 import { Icon } from "../ui/Icon";
 import {

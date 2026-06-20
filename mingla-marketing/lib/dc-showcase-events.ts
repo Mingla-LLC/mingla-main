@@ -19,7 +19,7 @@
 //    business events in the DB are test data, not showable). One ("Rooftop
 //    Vinyl Sundays") carries a photo cover; the other ("Lincoln Cottage Jazz
 //    Picnic") has NO cover media on purpose, to SHOWCASE the coverHue striped
-//    fallback band (per §E.4b, faithful to @mingla/event-rendering EventCover).
+//    fallback band (per §E.4b, faithful to @mingla/offering-rendering EventCover).
 //    source: 'mingla'.
 //
 // This is TEST DATA — no backend calls, no fetch, no edge function at render

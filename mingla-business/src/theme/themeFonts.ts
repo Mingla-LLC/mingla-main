@@ -59,7 +59,7 @@ export const THEME_FONT_MODULE_THUNKS: Record<string, ThemeFontModuleThunk> = {
   // ORCH-1138 Leg-1 (native-parity fix #2) — the 700-weight BOLD variants.
   // A loaded custom font ignores `fontWeight` on native, so bold themed text must
   // set `fontFamily` to the weight-specific loaded family (see
-  // @mingla/event-rendering `FONT_FAMILY_BOLD_MAP` / `boldFontFamily`). These
+  // @mingla/offering-rendering `FONT_FAMILY_BOLD_MAP` / `boldFontFamily`). These
   // thunks make those bold faces loadable on demand via `useThemeFont`/
   // `loadThemeFont`, exactly like the medium variants above — same dynamic
   // `import()` deferral (ORCH-1083 boot-budget). The 3 single-weight display

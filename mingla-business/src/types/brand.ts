@@ -15,7 +15,7 @@
  * Per SPEC_ORCH_0743 §3.4.1.
  */
 
-import type { ThemeInput } from "@mingla/event-rendering";
+import type { ThemeInput } from "@mingla/offering-rendering";
 
 // BrandRole: from the brand list, what role does the CURRENT USER hold on
 // this brand? Used for permission gating in the founder-facing UI (top-nav

@@ -55,7 +55,7 @@ export const medianConsecutiveGapMs = (
 /**
  * @deprecated ORCH-1153 WS2 — RETIRED as the open-daily owner. The canonical
  * detector is now the rule-based `isOpenDailyExperience` in
- * `@mingla/event-rendering` (one owner across buyer-web + business + consumer).
+ * `@mingla/offering-rendering` (one owner across buyer-web + business + consumer).
  * This density heuristic classified the SAME experience differently than the web
  * page (F-5); it is no longer consumed by ConsumerExperienceDetailScreen. Kept
  * only for its existing Deno test (append-only) — do NOT reintroduce it as the

@@ -52,12 +52,9 @@ import {
 } from "react-native";
 import Svg, { Circle, Path } from "react-native-svg";
 
-import {
-  boldFontFamily,
-  type ResolvedTheme,
-  type RsvpCtaState,
-  type ThemePalette,
-} from "@mingla/event-rendering";
+import { boldFontFamily, type ThemePalette } from "./themePalette";
+import { type ResolvedTheme } from "./designTokens";
+import { type RsvpCtaState } from "./offeringCta";
 
 // Pure, dep-free momentum derivation (Deno/node-testable; no renderer).
 import { deriveMomentum, partyTypeLabel } from "./rsvpMomentum";

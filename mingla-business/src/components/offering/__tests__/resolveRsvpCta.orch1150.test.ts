@@ -7,7 +7,7 @@
  * offeringCta imports ONLY types (no RN runtime), so it resolves under ts-jest.
  */
 
-import { resolveRsvpCta } from "../../../../../packages/event-rendering/offeringCta";
+import { resolveRsvpCta } from "../../../../../packages/offering-rendering/offeringCta";
 
 describe("ORCH-1150 — resolveRsvpCta", () => {
   it("open when not full and guest has no row", () => {

@@ -11,7 +11,7 @@ import {
   type PublicBrandTrip,
   type PublicBrandUpcoming,
 } from "@mingla/brand-rendering";
-import { resolveTheme, type ResolvedTheme } from "@mingla/event-rendering";
+import { resolveTheme, type ResolvedTheme } from "@mingla/offering-rendering";
 
 import {
   brandOgImageUrl,

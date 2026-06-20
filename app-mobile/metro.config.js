@@ -20,16 +20,12 @@ config.resolver.nodeModulesPaths = [
 ];
 config.resolver.extraNodeModules = {
   ...(config.resolver.extraNodeModules ?? {}),
-  "@mingla/event-rendering": path.join(
-    WORKSPACE_ROOT,
-    "packages",
-    "event-rendering",
-  ),
   // ORCH-1138 Leg 1C — shared Direction-A offering layout primitives
   // (ParallaxCoverShell + ChipGroup + CountAwareGallery + useResponsiveLayout).
-  // Consumed by the consumer trip detail to converge on the business/web trip
-  // page look. Mirrors the event-rendering alias exactly (Metro uses Node
-  // resolution, not tsconfig paths).
+  // ORCH-1169: this package absorbed the former @mingla/event-rendering, so it is
+  // now the monorepo's SOLE rendering package. Consumed by the consumer trip
+  // detail to converge on the business/web trip page look. (Metro uses Node
+  // resolution, not tsconfig paths.)
   "@mingla/offering-rendering": path.join(
     WORKSPACE_ROOT,
     "packages",

@@ -13,7 +13,7 @@
 import { describe, expect, jest, test } from "@jest/globals";
 
 // brandKeys lives in useBrands.ts which transitively imports AuthContext (JSX) +
-// supabase + the @mingla/event-rendering workspace pkg; stub them so the pure
+// supabase + the @mingla/offering-rendering workspace pkg; stub them so the pure
 // key factory loads under jest (mirrors useSoftDeleteBrand.orch1062.test.ts).
 jest.mock("@react-native-async-storage/async-storage", () => ({
   __esModule: true,

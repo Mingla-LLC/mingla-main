@@ -39,7 +39,7 @@ import type {
   EventCoverMediaType,
 } from "./draftEventStore";
 import type { EventCoverMediaProvider } from "../types/eventCoverProvider";
-import type { ThemeInput } from "@mingla/event-rendering";
+import type { ThemeInput } from "@mingla/offering-rendering";
 import { useEventEditLogStore } from "./eventEditLogStore";
 import { useOrderStore } from "./orderStore";
 import type { SoldCountContext } from "./orderStoreHelpers";

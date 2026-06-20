@@ -1,6 +1,6 @@
 import { describe, expect, test } from "@jest/globals";
 
-import { computeForeground } from "../../../../packages/event-rendering/themeResolver";
+import { computeForeground } from "../../../../packages/offering-rendering/themeResolver";
 
 describe("ORCH-0964 theme resolver adversarial coverage", () => {
   test("switches foreground at the WCAG luminance boundary", () => {

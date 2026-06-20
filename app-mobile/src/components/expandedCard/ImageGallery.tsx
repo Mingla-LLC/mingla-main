@@ -15,7 +15,7 @@ import { Icon } from '../ui/Icon';
 // muted autoplay, reduce-motion aware) for `.mp4` gallery entries. Same renderer
 // the event/trip grid + hero use (COMMS-0007); do NOT add a parallel player or a
 // direct expo-video call site here.
-import { EventCoverMedia } from '@mingla/event-rendering';
+import { EventCoverMedia } from '@mingla/offering-rendering';
 // ORCH-1069: single owner of video-URL detection, mirrors discover-cards isVideoUrl
 // (I-1069-VIDEO-DETECTION-MATCHES-EDGE).
 import { isVideoUrl } from '../../utils/videoUrl';

@@ -2,7 +2,7 @@
 //
 // Pure count→layout selector for CountAwareGallery, extracted into its OWN
 // RN-free module so it is unit-testable without mounting React Native (mirrors
-// how @mingla/event-rendering keeps offeringCta pure). empty → "none" (renders
+// how @mingla/offering-rendering keeps offeringCta pure). empty → "none" (renders
 // zero nodes, rule 9), 1 → "one", 2 → "two", 3+ → "slider".
 
 export type GalleryLayout = "none" | "one" | "two" | "slider";

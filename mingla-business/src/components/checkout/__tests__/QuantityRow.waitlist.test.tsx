@@ -7,7 +7,7 @@ describe("T-WL-04 QuantityRow waitlist CTA", () => {
   const packageSource = fs.readFileSync(
     path.resolve(
       __dirname,
-      "../../../../../packages/event-rendering/QuantityRow.tsx",
+      "../../../../../packages/offering-rendering/QuantityRow.tsx",
     ),
     "utf8",
   );

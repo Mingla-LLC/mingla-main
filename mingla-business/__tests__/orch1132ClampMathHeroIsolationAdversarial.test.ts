@@ -108,7 +108,7 @@ describe("ORCH-1133 inverted (A) — the ORCH-1132 checkout cover-aspect clamp i
 
 describe("ORCH-1133 inverted (B) — public hero clamp UNCHANGED (revert scoped away from the hero)", () => {
   const heroSrc = fs.readFileSync(
-    path.join(repoRoot, "packages/event-rendering/PublicEventPage.tsx"),
+    path.join(repoRoot, "packages/offering-rendering/PublicEventPage.tsx"),
     "utf8",
   );
   const heroClamp = extractClamp(heroSrc);
@@ -125,7 +125,7 @@ describe("ORCH-1133 inverted (B) — public hero clamp UNCHANGED (revert scoped 
 
 describe("ORCH-1133 inverted (C) — EventCoverMedia videoContentFit default stays 'cover'", () => {
   const ecmSrc = fs.readFileSync(
-    path.join(repoRoot, "packages/event-rendering/EventCoverMedia.tsx"),
+    path.join(repoRoot, "packages/offering-rendering/EventCoverMedia.tsx"),
     "utf8",
   );
 

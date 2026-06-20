@@ -6,7 +6,7 @@
  * content; the page reserves bottom clearance so the last element clears it.
  *
  * The bar's label / tappability / reason are a PURE PROJECTION of the shared
- * `resolveOfferingCta` (`@mingla/event-rendering`) — the SAME state machine the
+ * `resolveOfferingCta` (`@mingla/offering-rendering`) — the SAME state machine the
  * inline ticket row reads. This component renders the resolved `CtaState`; it
  * does NOT compute buy-state itself (one owner).
  *
@@ -28,7 +28,7 @@ import { Platform, Pressable, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import * as Haptics from "expo-haptics";
 
-import type { CtaState } from "@mingla/event-rendering";
+import type { CtaState } from "@mingla/offering-rendering";
 import {
   radius as radiusTokens,
   spacing,

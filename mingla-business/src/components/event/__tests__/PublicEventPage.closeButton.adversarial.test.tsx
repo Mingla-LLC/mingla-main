@@ -86,7 +86,7 @@ jest.mock("react-native-safe-area-context", () => ({
   useSafeAreaInsets: () => ({ top: 0, right: 0, bottom: 0, left: 0 }),
 }));
 
-jest.mock("@mingla/event-rendering", () => ({
+jest.mock("@mingla/offering-rendering", () => ({
   PublicEventPage: "SharedPublicEventPage",
   // ORCH-1117 — the adapter pulls the shared theme + offering-CTA helpers.
   // ORCH-1138 Leg 2 — + createThemePalette + boldFontFamily for FOUNDATION mode.
@@ -241,7 +241,7 @@ const renderPublicEventPage = (
       case "expo-router":
       case "expo-router/head":
       case "react-native-safe-area-context":
-      case "@mingla/event-rendering":
+      case "@mingla/offering-rendering":
       case "@mingla/offering-rendering":
         return require(request);
       case "./FoundationEventPreview":

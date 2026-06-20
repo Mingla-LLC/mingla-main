@@ -31,7 +31,7 @@ const reserveBarSrc = read("src/components/offering/ConsumerTripReserveBar.tsx")
 const refundLadderSrc = read("src/components/offering/ConsumerRefundLadder.tsx");
 const metroSrc = read("metro.config.js");
 const tsconfigSrc = read("tsconfig.json");
-const themePaletteSrc = read("../packages/event-rendering/themePalette.ts");
+const themePaletteSrc = read("../packages/offering-rendering/themePalette.ts");
 
 let passed = 0;
 function ok(name, cond, detail) {
@@ -71,8 +71,8 @@ ok(
   "the consumer screen must consume OfferingChrome + ChipGroup + CountAwareGallery from @mingla/offering-rendering",
 );
 ok(
-  "T1d the screen renders the cover via the gif/video-aware EventCoverMedia + ThemeEntranceAnimation from @mingla/event-rendering",
-  /import\s*\{[\s\S]*?EventCoverMedia[\s\S]*?ThemeEntranceAnimation[\s\S]*?\}\s*from\s*["']@mingla\/event-rendering["']/.test(
+  "T1d the screen renders the cover via the gif/video-aware EventCoverMedia + ThemeEntranceAnimation from @mingla/offering-rendering",
+  /import\s*\{[\s\S]*?EventCoverMedia[\s\S]*?ThemeEntranceAnimation[\s\S]*?\}\s*from\s*["']@mingla\/offering-rendering["']/.test(
     screenSrc,
   ),
   "the cover must use the shared gif/video-aware EventCoverMedia (parity with the business page cover)",

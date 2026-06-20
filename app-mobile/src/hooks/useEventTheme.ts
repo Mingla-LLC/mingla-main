@@ -6,7 +6,7 @@ import {
   isThemeFontSlug,
   type ResolvedTheme,
   type ThemeInput,
-} from "@mingla/event-rendering";
+} from "@mingla/offering-rendering";
 
 import { supabase } from "../services/supabase";
 import type { BusinessEventCard } from "../types/mergedDiscover";

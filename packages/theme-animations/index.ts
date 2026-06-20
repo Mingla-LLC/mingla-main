@@ -8,7 +8,7 @@ import fallingPetals from "./lottie/falling_petals.json";
 import hearts from "./lottie/hearts.json";
 import shimmerReveal from "./lottie/shimmer_reveal.json";
 
-import type { ThemeAnimationSlug } from "@mingla/event-rendering";
+import type { ThemeAnimationSlug } from "@mingla/offering-rendering";
 
 export const LOTTIE_BY_SLUG: Record<
   Exclude<ThemeAnimationSlug, "none">,

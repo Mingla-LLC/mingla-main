@@ -72,7 +72,7 @@ import {
   type PublicEventProps,
   type PublicTicketProps,
   type RsvpCtaState,
-} from "@mingla/event-rendering";
+} from "@mingla/offering-rendering";
 import {
   EventOfferingBody,
   EventOfferingFloatingBar,
@@ -112,7 +112,7 @@ import { useAppStore } from "../../store/appStore";
 import { glass } from "../../constants/designSystem";
 import { hueFromId } from "../../utils/hueFromId";
 // ORCH-1162 Bug 2 — shared static-Mapbox builder (re-exported from
-// @mingla/event-rendering) for the consumer EVENT "Where you'll be" map.
+// @mingla/offering-rendering) for the consumer EVENT "Where you'll be" map.
 import { buildStaticMapUrl } from "../../utils/mapboxStaticImage";
 import { formatEventDateLine } from "../../utils/eventDateDisplay";
 import type { BusinessEventCard } from "../../types/mergedDiscover";

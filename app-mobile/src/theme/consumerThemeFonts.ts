@@ -7,7 +7,7 @@
 // offering page) via ./useConsumerThemeFont — never at app boot.
 //
 // Each entry is a DYNAMIC `import()` thunk keyed by the font-family VALUE (the
-// `fontFamilyValue` string from @mingla/event-rendering's FONT_FAMILY_MAP, e.g.
+// `fontFamilyValue` string from @mingla/offering-rendering's FONT_FAMILY_MAP, e.g.
 // "Inter_500Medium") + its 700-weight BOLD variant (from FONT_FAMILY_BOLD_MAP).
 // The thunk resolves the named export off the lazily-loaded `@expo-google-fonts/*`
 // module so the asset is only fetched/parsed when the trip detail mounts and

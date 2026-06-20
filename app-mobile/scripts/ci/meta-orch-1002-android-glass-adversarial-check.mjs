@@ -17,7 +17,7 @@
  *         expected opaque value is present; it would pass even if a stray
  *         rgba(...,0.6) Android fill were ALSO introduced. We assert the exact
  *         opaque values and that the Android branch is NOT a <0.92 rgba.
- *   A-03  Package-isolation guard (I-MOR-0827) — packages/event-rendering/
+ *   A-03  Package-isolation guard (I-MOR-0827) — packages/offering-rendering/
  *         designTokens.ts and GlassBlur.tsx are byte-untouched vs origin/main
  *         (the third token file must NOT participate in this strike).
  *   A-04  Both-files parity — S5 (2 files) and S6 (2 files) were BOTH edited;
@@ -41,7 +41,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const consumerRoot = path.resolve(__dirname, "../..");          // app-mobile/
 const repoRoot = path.resolve(consumerRoot, "..");              // monorepo root
 const businessRoot = path.join(repoRoot, "mingla-business");
-const pkgRoot = path.join(repoRoot, "packages/event-rendering");
+const pkgRoot = path.join(repoRoot, "packages/offering-rendering");
 
 const readMaybe = (abs) => {
   try {
@@ -164,7 +164,7 @@ for (const rel of ["designTokens.ts", "GlassBlur.tsx"]) {
   const abs = path.join(pkgRoot, rel);
   const unchanged = isUnchangedVsMain(abs);
   check(
-    `A-03 packages/event-rendering/${rel} is byte-untouched vs main (I-MOR-0827)`,
+    `A-03 packages/offering-rendering/${rel} is byte-untouched vs main (I-MOR-0827)`,
     unchanged === true || (unchanged === null && readMaybe(abs) !== null),
     unchanged === false
       ? "This strike must NOT edit the third token file / web glass path (deferred Sub-C)."

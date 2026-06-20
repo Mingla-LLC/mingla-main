@@ -45,7 +45,7 @@ import {
 } from "../utils/serverDraftAutosaveGuards";
 import type { EventCoverMediaProvider } from "../types/eventCoverProvider";
 import type { LiveEvent } from "./liveEventStore";
-import type { ThemeInput } from "@mingla/event-rendering";
+import type { ThemeInput } from "@mingla/offering-rendering";
 
 /**
  * Detect device's IANA timezone via Intl. Falls back to "Europe/London"

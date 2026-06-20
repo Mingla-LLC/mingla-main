@@ -51,7 +51,7 @@ const PLUS_ICON_SIZE = 18;
  *
  * `visibility` accepts any string; only the literal `"disabled"` is checked
  * to render the "Sales paused" banner + hide the stepper. Mingla-business
- * uses `"public" | "hidden" | "disabled"`; the event-rendering package's
+ * uses `"public" | "hidden" | "disabled"`; this package's
  * other types use `"visible" | "hidden" | "disabled"` — both are accepted
  * because the relevant check is `=== "disabled"`.
  */

@@ -1,6 +1,6 @@
 /**
  * QuantityRow — mingla-business thin wrapper around
- * `@mingla/event-rendering`'s shared QuantityRow.
+ * `@mingla/offering-rendering`'s shared QuantityRow.
  *
  * Per ORCH-0847 Phase A2 — the implementation moved to a shared package so
  * the consumer-app `TicketCartSheet` (Phase C) can render the same UX inside
@@ -16,7 +16,7 @@ import type { StyleProp, ViewStyle } from "react-native";
 import {
   QuantityRow as PackageQuantityRow,
   type QuantityRowTheme,
-} from "@mingla/event-rendering";
+} from "@mingla/offering-rendering";
 
 import {
   accent,

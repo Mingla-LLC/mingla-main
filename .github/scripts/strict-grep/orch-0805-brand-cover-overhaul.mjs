@@ -84,7 +84,7 @@ const EDIT_PATH = join(
   "BrandEditView.tsx",
 );
 // ORCH-0964 — cover rendering moved out of the mingla-business wrapper into the
-// shared @mingla/event-rendering EventCoverMedia, mounted by the shared brand
+// shared @mingla/offering-rendering EventCoverMedia, mounted by the shared brand
 // page. Check 9 now targets the shared page (single source of truth) so the gate
 // reflects reality instead of failing on the stale wrapper path.
 const PUBLIC_PATH = join(

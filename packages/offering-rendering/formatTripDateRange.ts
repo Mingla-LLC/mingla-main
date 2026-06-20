@@ -1,4 +1,4 @@
-// @mingla/event-rendering — shared trip date-range formatter.
+// @mingla/offering-rendering — shared trip date-range formatter.
 //
 // ORCH-1016: extracted from mingla-business TripPreview's local `formatDateRange`
 // so the consumer app (TripCard + ConsumerTripDetailScreen) and the business

@@ -18,7 +18,7 @@
  *
  * WHY this still lives in the APP layer (not the package): the shared event body is
  * a DEPENDENCY of @mingla/offering-rendering (offering-rendering imports
- * offeringSurfaceStyles/types FROM event-rendering). Composing ParallaxCoverShell
+ * offeringSurfaceStyles/types FROM the same package). Composing ParallaxCoverShell
  * (offering-rendering) + the body (offering-rendering) + the brand-app Icon belongs
  * in the app layer, which imports both packages freely. The shared body itself is
  * pure (I-MOR-0827); this wrapper is the surface seam.
@@ -41,7 +41,7 @@ import {
   type ResolvedTheme,
   type ThemePalette,
   boldFontFamily,
-} from "@mingla/event-rendering";
+} from "@mingla/offering-rendering";
 import {
   EventOfferingBody,
   ParallaxCoverShell,

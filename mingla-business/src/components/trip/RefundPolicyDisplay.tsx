@@ -1,7 +1,7 @@
 /**
  * RefundPolicyDisplay — re-export shim.
  *
- * ORCH-1016: the implementation moved to the shared @mingla/event-rendering
+ * ORCH-1016: the implementation moved to the shared @mingla/offering-rendering
  * package so the consumer-app trip detail and the business public/preview pages
  * render the IDENTICAL refund ladder (copy + semantics LOCKED). This file is now
  * a thin re-export shim (same pattern as EventCoverMedia per COMMS-0007 /
@@ -15,4 +15,4 @@
 export {
   RefundPolicyDisplay,
   type RefundPolicyDisplayProps,
-} from "@mingla/event-rendering";
+} from "@mingla/offering-rendering";

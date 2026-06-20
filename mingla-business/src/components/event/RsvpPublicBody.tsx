@@ -60,7 +60,7 @@ import {
   type ThemePalette,
   type ResolvedTheme,
   type RsvpCtaState,
-} from "@mingla/event-rendering";
+} from "@mingla/offering-rendering";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const PHONE_RE = /^\+?[0-9\s()-]{7,20}$/;

@@ -25,7 +25,7 @@ import React from "react";
 import { Platform, Pressable, StyleSheet, Text, View } from "react-native";
 import * as Haptics from "expo-haptics";
 
-import type { CtaState } from "@mingla/event-rendering";
+import type { CtaState } from "@mingla/offering-rendering";
 import { colors } from "../../constants/colors";
 
 export interface FloatingOfferingBarProps {

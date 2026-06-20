@@ -34,11 +34,11 @@ const repoRoot = path.resolve(businessDir, "..");
 
 const EVENT_COVER_MEDIA = path.join(
   repoRoot,
-  "packages/event-rendering/EventCoverMedia.tsx",
+  "packages/offering-rendering/EventCoverMedia.tsx",
 );
 const PUBLIC_EVENT_PAGE = path.join(
   repoRoot,
-  "packages/event-rendering/PublicEventPage.tsx",
+  "packages/offering-rendering/PublicEventPage.tsx",
 );
 
 /** Extract the body of `styleKey: { ... }` from a StyleSheet.create block. */

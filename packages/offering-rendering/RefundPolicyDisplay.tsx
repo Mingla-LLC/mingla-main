@@ -1,5 +1,5 @@
 /**
- * @mingla/event-rendering — shared <RefundPolicyDisplay /> (refund ladder).
+ * @mingla/offering-rendering — shared <RefundPolicyDisplay /> (refund ladder).
  *
  * ORCH-1016: extracted from mingla-business/src/components/trip/RefundPolicyDisplay.tsx
  * (ORCH-0875 [Tr4 Refund Tiers + Booking Deadline]) so the consumer-app trip

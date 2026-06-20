@@ -25,7 +25,7 @@
  *      Fails-on-revert: restore the <Pressable onPress> card host → B FAILS.
  *
  *   C  BUG 3b (event thumbnails). BusinessEventCard renders its cover via the
- *      SHARED EventCoverMedia (@mingla/event-rendering) — video covers get a
+ *      SHARED EventCoverMedia (@mingla/offering-rendering) — video covers get a
  *      poster, images get the shared onError fallback — instead of a hand-rolled
  *      ExpoImage + a `coverMediaType !== "video"` flat-band fall-through. The
  *      Discover TM card adds onError + recyclingKey + placeholder to its image.
@@ -177,7 +177,7 @@ function run() {
   // ── C: BUG 3b — shared EventCoverMedia + image robustness ──────────────────
   assert.match(
     bizCode,
-    /import\s*\{[^}]*\bEventCoverMedia\b[^}]*\}\s*from\s*['"]@mingla\/event-rendering['"]/,
+    /import\s*\{[^}]*\bEventCoverMedia\b[^}]*\}\s*from\s*['"]@mingla\/offering-rendering['"]/,
     "C BusinessEventCard imports the SHARED EventCoverMedia (COMMS-0007)",
   );
   assert.match(

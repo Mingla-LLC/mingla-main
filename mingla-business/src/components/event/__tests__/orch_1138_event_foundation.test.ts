@@ -26,11 +26,11 @@ const ROOT = path.resolve(__dirname, "../../../..");
 const read = (rel) => fs.readFileSync(path.join(ROOT, rel), "utf8");
 
 // ORCH-1138 Leg 2 — the FOUNDATION composition lives in the APP layer
-// (FoundationEventPreview), NOT the shared package, to avoid the runtime
-// event-rendering↔offering-rendering circular dependency (sim-proven). The shared
+// (FoundationEventPreview), NOT the shared package. (ORCH-1169 merged the two
+// rendering packages into one @mingla/offering-rendering.) The shared
 // PublicEventPage stays BYTE-IDENTICAL to origin/main (its LEGACY render for EBES).
 const foundationSrc = read("src/components/event/FoundationEventPreview.tsx");
-const sharedSrc = read("../packages/event-rendering/PublicEventPage.tsx");
+const sharedSrc = read("../packages/offering-rendering/PublicEventPage.tsx");
 const adapterSrc = read("src/components/event/PublicEventPage.tsx");
 
 const strip = (src) =>

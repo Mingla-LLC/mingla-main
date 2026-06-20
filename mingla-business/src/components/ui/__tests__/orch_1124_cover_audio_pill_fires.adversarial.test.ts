@@ -32,7 +32,7 @@ import { describe, expect, test } from "@jest/globals";
 
 const coverMediaSource = (): string =>
   readFileSync(
-    path.join(process.cwd(), "../packages/event-rendering/EventCoverMedia.tsx"),
+    path.join(process.cwd(), "../packages/offering-rendering/EventCoverMedia.tsx"),
     "utf8",
   );
 

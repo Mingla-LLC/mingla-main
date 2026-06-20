@@ -2,7 +2,7 @@
  * buttonAccentContrast — pure WCAG-contrast helpers for the Button primitive's
  * optional brand-accent override (ORCH-1162 Bug 3). Extracted from Button.tsx so
  * the contrast/label logic is unit-testable (no RN import). Mirrors the proven
- * logic in packages/event-rendering/themePalette.ts (relativeLuminance +
+ * logic in packages/offering-rendering/themePalette.ts (relativeLuminance +
  * contrastRatio + readableTextFor). I-PROPOSED-1162-CHECKOUT-CTA-BRAND-THEMED.
  */
 const HEX6 = /^[0-9a-fA-F]{6}$/;
