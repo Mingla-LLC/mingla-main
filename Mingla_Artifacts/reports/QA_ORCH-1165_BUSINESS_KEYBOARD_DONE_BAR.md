@@ -132,3 +132,81 @@ None — this is a FAIL (unaccepted P1), not a CONDITIONAL PASS.
 ## Confidence
 
 **High** on the FAIL. The P1 Ari occlusion is `proven` (device repro with typed-text-hidden evidence), the root cause is traced to a specific spec-inventory gap + the exact unpatched line, and the iOS impact is established by platform-agnostic code inspection. The in-scope mechanism (Done-only, brand-orange, dismiss, SmartScrollView clearance) is genuinely solid and proven on the Event wizard — the fix is narrow (add Ari + audit the checkout forms).
+
+---
+
+# RETEST 1 — rework @ `1fee49d35` (SPEC AMENDMENT A2/A4 sites #16–#24)
+
+**Phase:** RETEST (mingla-tester). **Worktree:** same. **Rework commit:** `1fee49d3524adc6c018d711c77e3dc18cbdef0b0`.
+**Binding contract:** `SPEC_AMENDMENT_ORCH-1165_AT_RISK_COMPLETE.md` (A5 matrix + A6 hard directives).
+**Runtime:** Samsung Galaxy `R58R54YV7JT` (`com.sethogieva.minglabusiness`), dev build loading **current-branch JS over Metro** started from THIS worktree (port 8081, adb reverse, bundle = 4840 modules, brand "Lantern & Vine", dark theme). iOS: not driven (see RETEST §7).
+
+## R1. Verdict
+
+**FAIL** — P0: 0 · **P1: 1** (carried/unresolved — Ari) · P2: 0 · P3: 1 (minor) · P4: 1.
+
+The rework correctly applied all 9 source patches (verified in the diff and on disk), the static gates are green (orch-0892 EXIT 0, jest 19/19, both fails-on-revert independently re-reproduced), and the Ari composer is **materially improved** vs the BEFORE state. **BUT the gating item — SC-3-Ari — still FAILS on device:** with the keyboard up, the "Ask Ari…" composer is **still occluded by the 42pt Done bar** in steady state. The `+ 42` lifted the composer's BOTTOM to the bar top but the composer pill is ~57dp tall, so its text-entry row and most of its body remain BEHIND the bar. Typed text ("VISIBLE_ABOVE_BAR_OK" / "RetestOcclusionCheck") was NOT visible while the keyboard was up — it only appeared after dismissing the keyboard. Measured across 5 independent focus/settle cycles: only **~11–29dp of the ~57dp composer pill clears the bar** (never the full pill); the text baseline sits at-or-behind the bar boundary. Per A6 directive 3, "the exact P1 reproducer must now show typed text fully visible" — it does NOT. **Unaccepted P1 UI/runtime regression, `proven` on Android → FAIL → REWORK.**
+
+## R2. SC-by-SC matrix (RETEST)
+
+| SC | Surface | Verdict | Evidence |
+|----|---------|---------|----------|
+| **SC-3-Ari** (gating) | **Android** | **FAIL (proven)** | Composer occluded by Done bar in steady state. Full-width pill detector: BEFORE-rework send-button = 0px above bar (100% hidden); AFTER-rework = only top **11–29dp** of the 57dp pill above bar; text row hidden. Typed text invisible until keyboard dismissed. 5 focus cycles, reproducible. `RETEST_android_ari_OCCLUDED_no_suggestion_strip.png` (text hidden, kbd up), `RETEST_android_ari_composer_text_revealed_on_dismiss.png` (same text shown after dismiss → proves it was behind bar), `RETEST_android_ari_CLEARS_when_settled.png` (best case, still only ~29dp/57dp). |
+| SC-3-Ari | iOS | **suspected (FAIL by inspection)** | Path is platform-agnostic (`keyboardHeight + spacing.sm + 42`, web-exempt). The +42 undershoots by the composer's own height on both platforms → iOS Ari occlusion expected identically. No iOS sim driven this pass (RETEST §7). |
+| SC-3 — checkout intake (#5 tight) | Android | **BLOCKED (not driven)** | Reaching a checkout intake form requires a live published-event order/cart; could not stage in-session. Source patch verified present (`keyboardHeight + spacing.xl + 42`, keyboard-open branch only). Not the gating item; verdict already FAIL on Ari. |
+| SC-3 — checkout buyer/payment | Android | **suspected** | Source patches verified (`keyboardHeight + 140 + 42` / plan-aware `+42`, keyboard-open branch only). Not driven (live cart needed). These carry 140–260pt headroom + `scrollToEnd`, lower blast radius. |
+| SC-3 — Paystack bank-picker modal (#24) | Android | **suspected / N/A-on-Android** | Source verified: `keyboardVerticalOffset={42}` added. **CAVEAT (DISC-1165-T3):** the KAV uses `behavior={Platform.OS === "ios" ? "padding" : undefined}` — on **Android the behavior is `undefined`, so KAV (and the offset) are NO-OP**; Android relies on native windowSoftInput. So the `={42}` only takes effect on iOS. Not driven on either platform (Nigeria payout onboarding flow not staged). |
+| SC-3 — SmartScrollView wizards | Android | **PASS (proven, re-confirmed)** | EventCreatorWizard (Ticketed) Step-1 "Event name" focused with keyboard up → field fully visible above the Done bar, orange focus border, **no dead-gap / no double-padding**. Code path UNCHANGED by rework. `wiz_step_basics_focused` (in-session). |
+| SC-1 / SC-6 | Android | **PASS (proven, re-confirmed)** | Done-**only** bar (no Prev/Next), "Done" text brand-orange `#eb7825`, flush on keyboard top — re-seen on Ari + Event wizard this pass. |
+| SC-2 | Android | **PASS (carried)** | Dismiss behavior unchanged by rework; proven prior pass. |
+| **SC-4a (Sheet)** / **SC-4b (Modal)** | Android | **suspected (NOT re-driven — A6.1 unmet)** | TicketTierEditSheet / CancelOrderDialog require deep flow staging (publish event → tiers; stage an order → cancel); not reached in-session. Mount code (`SheetMobile.tsx`, `Modal.tsx`) is **UNCHANGED by this rework** and was source+adversarial-test verified in the base pass; the Done bar mounting at the root over full-screen surfaces (Ari, wizard) is now visually proven this pass. A6.1 wanted these driven on device — **not achieved**; flagged. Since the verdict is already FAIL on Ari, this does not change routing. |
+| SC-5 / SC-7 | Web / CI | **PASS** | Web branch untouched (web ternary not patched); orch-0892 EXIT 0 re-run this pass. |
+
+## R3. Findings
+
+### P1-1 (CARRIED, UNRESOLVED) — Ari composer STILL occluded by the Done bar
+- **Evidence:** `src/screens/ari/AriChatScreen.tsx:329` now `keyboardHeight + spacing.sm + 42`. On device, full-width-pill measurement (Done-bar top = y1274 on the 1080×2400 frame): the composer pill (full at-rest height ~170px ≈ 57dp) shows only **31–88px (≈11–29dp) above the bar** across 5 focus cycles (`ari_stab_1/2`, `ari_clean_focus`, `maestro_ari_typed`, `ari_final_typed`). Typed text invisible with keyboard up; appears only after `hideKeyboard` (`RETEST_android_ari_composer_text_revealed_on_dismiss.png`). The orange send-button sliver peeks ~10dp above the bar; the text-entry row is at-or-behind the bar.
+- **Impact:** On the Ari tab (a primary every-brand business screen), the user still cannot reliably see what they type — the composer body sits behind the orange Done bar. This is the exact regression the ORCH exists to prevent; the rework reduced but did not eliminate it.
+- **Root cause of the insufficient fix:** `+ 42` adds ONLY the bar height, lifting the composer's BOTTOM edge to the bar top (0dp gap). Because the composer is a tall pill (~57dp) whose text row sits in its vertical middle, ~half the pill (incl. the text baseline) remains behind the 42dp bar. To fully clear, the keyboard-open offset must account for the composer's own height + a breath, e.g. `keyboardHeight + 42 + <composerHeight> + spacing.sm` OR restructure so the bar reserves space rather than overlaying (the composer must end ≥12dp ABOVE the bar TOP, not at it). Note the screen is the Ari empty-state; the same container is reused for the conversation state.
+- **Required fix:** Increase the Ari keyboard-open offset so the **full composer** clears the bar with ≥12dp gap (add the composer container's measured/known height to the `+ 42`, or anchor the composer above a reserved bar inset). Re-drive: focus "Ask Ari…", type, confirm typed text fully visible above the bar with ≥12dp gap in steady state AND immediately after typing (no suggestion-strip dependency).
+- **Retest:** the A6.3 reproducer — typed text fully visible above the bar, every focus cycle.
+
+### P3-1 (minor, NEW) — DISC-1165-T3: Paystack KAV offset is a no-op on Android
+- **Evidence:** `BrandPaystackOnboardView.tsx:258-261` — `<KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} keyboardVerticalOffset={42}>`. With `behavior` undefined on Android, KAV does nothing → the `keyboardVerticalOffset={42}` has no Android effect. The amendment A2 row #9 assumed the offset would lift the Android bank-list; on Android the sheet relies on native windowSoftInput instead.
+- **Impact:** LOW. The search Input sits at the sheet TOP (not occluded); the concern was the bottom bank-list rows. On Android the native resize handles the sheet; the `={42}` is iOS-only. Not a regression (prior behavior preserved), but the patch does not do on Android what A2 #9 described. Worth a one-line confirmation when the Nigeria flow is driven.
+- **Required fix:** none mandatory; verify the Android bank-list bottom rows are reachable when this flow is next driven. iOS keeps the `={42}`.
+
+### P4-1 (praise) — patches are precise and minimal
+All 9 patches are exactly keyed on the keyboard-open branch (never web, never closed) — no permanent dead gap. The test extension (9 source-regex assertions) is a genuine different-angle guard with proven fails-on-revert. The defect is a clearance-magnitude miscalibration on Ari, not sloppy or out-of-scope code.
+
+## R4. Step 0.5 — Independent re-run of the implementor's fails-on-revert proofs (RETEST)
+- **Implementor clearance test** (`orch_1165_keyboard_toolbar_clearance.test.ts`): checked out HEAD `1fee49d35`; ran → 2/2 PASS. Line-deleted `DEFAULT_BOTTOM_OFFSET = 54` → `12` in `SmartScrollView.native.tsx` → re-ran → **FAIL** (`Expected: >= 42 / Received: 12` at line 45, 1 failed/1 passed). Restored `12 → 54` → 2/2 PASS; `git status` clean. **Independently reproduced.**
+- **New 9-site mount-coverage assertions** (`orch_1165_keyboard_toolbar_mount_coverage.test.ts`): line-deleted the Ari `+ 42` (`keyboardHeight + spacing.sm + 42` → `keyboardHeight + spacing.sm`) → re-ran → **FAIL** (`✕ Ari composer adds +42 to the keyboard-open paddingBottom term only`). Restored → 17/17 PASS; tree clean. **Independently reproduced.**
+
+## R5. Adversarial test (RETEST)
+The base-pass tester adversarial test (`orch_1165_keyboard_toolbar_mount_coverage.test.ts`, token `[TEST-MOD-APPROVED ORCH-1165]`) was EXTENDED by the implementor with the 9 new source-regex assertions (mount + keyed-on-open). It remains on-branch and in `git diff origin/main...HEAD --name-only`. Both the implementor happy-path clearance test and this adversarial test are present. **No new tester test added this RETEST** — the source-regex layer is adequate and the gating defect is a runtime-magnitude failure (the +42 IS present in source — the source assertions correctly PASS — but the magnitude is too small), which is fundamentally a **runtime** defect not catchable by a source regex; it is documented as P1-1 with device evidence. Regression gate: SATISFIED (both tests present, both fails-on-revert independently re-reproduced).
+
+## R6. Constitution (RETEST delta)
+No change from base pass. Rule 3 (no silent failures) is again the relevant lens — typing into a composer the user cannot see is a silent UX failure → captured as P1-1. No new constitutional violation. All other rules N/A as before.
+
+## R7. Device / parity matrix (RETEST)
+
+| Surface | Verdict | Notes |
+|---------|---------|-------|
+| **Business Android** | **DRIVEN — FAIL** | Samsung `R58R54YV7JT`, current-branch JS over Metro (4840 modules). SC-3-Ari FAIL (proven, 5 cycles). SC-1/2/3-wizard/6/7 PASS. SC-3-checkout / SC-4a/4b not driven (deep-flow staging). |
+| **Business iOS** | **suspected — NOT driven** | A6.2 REQUIRED an iOS-sim eyeball of the Ari fix. **Not achieved this pass.** No iOS sim was booted (none booted at start; booting a 17-series sim + fresh Metro dev-client install was not completed in-session). The Ari occlusion path is platform-agnostic → iOS Ari = FAIL by inspection regardless; since Android already FAILs the gating item, the iOS eyeball would not change the verdict (it would still need the bigger-offset rework first). **Operator-unblock note:** once the Ari offset is corrected, an iOS Ari eyeball is still owed before CLOSE per A6.2. |
+| Consumer iOS/Android, Buyer Web, Admin Web | N/A | out of scope (business leg only). |
+
+Physical iPhone HITL: not requested this pass (Android device proved the blocking defect).
+
+## R8. Discoveries for Orchestrator (RETEST)
+- **DISC-1165-T3 (P3-1 above):** the Paystack KAV `keyboardVerticalOffset={42}` is a **no-op on Android** (`behavior` is `undefined` there). A2 row #9's Android rationale does not hold; the offset is iOS-only. Verify the Android bank-list bottom rows when the Nigeria payout flow is next driven.
+- **DISC-1165-T4:** SC-4a/4b were **not re-driven on device** (A6.1 unmet) — they require deep-flow staging (publish event → ticket tiers; stage order → cancel). Mount code is unchanged by this rework + already source/adversarial-verified, and the Done bar's root-mount over full-screen surfaces is visually proven, so risk is low — but A6.1's explicit on-device requirement remains open and should be satisfied in the next retest (alongside the Ari re-drive), OR explicitly accepted by Seth.
+- **DISC-1165-T5:** the Samsung keyboard renders its OWN suggestion strip + its OWN "Done" key in addition to the app's accessory Done bar (two "Done" affordances visible). Cosmetic only; flagging for awareness.
+- **COMMS-0040 / COMMS-0041 (WARN):** acknowledged, **zero overlap** — this ORCH touched only keyboard-clearance offsets in Ari/checkout/Paystack; no public RSVP/experience page files. Factored, no ledger write needed.
+
+## R9. Accepted conditions
+None — this is a FAIL (unaccepted gating P1), not a CONDITIONAL PASS.
+
+## R10. Confidence
+**High** on the FAIL. The SC-3-Ari occlusion is `proven` on Android with quantified, reproducible pixel measurements across 5 focus cycles (full-width-pill detector, Done-bar top precisely located), plus the dispositive type→hidden→dismiss→revealed sequence. The root cause (the `+ 42` undershoots by the composer's own ~57dp height) is traced to the exact line. The static gates and both fails-on-revert proofs are independently re-reproduced. Caveats explicitly stated: SC-4a/4b not re-driven (A6.1 unmet, low risk, mount code unchanged); iOS not driven (A6.2 unmet, would not change the FAIL); Paystack offset is iOS-only on inspection (P3-1).
