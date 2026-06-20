@@ -35,6 +35,9 @@ import {
 import { handlePaystackChargeSuccess } from "../_shared/paystackWebhookRouter.ts";
 import { writeAudit } from "../_shared/audit.ts";
 import { dispatchTicketConfirmation } from "../_shared/ticketCheckout.ts";
+// META-ORCH-1161 §7.1 — buyer purchase-confirmation push (the Paystack-equivalent
+// of the Stripe finalize path). Email stays owned by dispatchTicketConfirmation.
+import { fireBuyerPurchaseConfirmationPush } from "../_shared/businessNotifyTriggers.ts";
 
 // Match the stripe-webhook retry-budget posture.
 const MAX_WEBHOOK_ATTEMPTS = 6;
@@ -192,6 +195,41 @@ serve(async (req) => {
   // Fire-and-forget the confirmation dispatch only on a fresh finalize.
   if (finalizedOrderId) {
     await dispatchTicketConfirmation(finalizedOrderId);
+
+    // META-ORCH-1161 §7.1 — buyer purchase-confirmation PUSH+in-app (Paystack
+    // equivalent of the Stripe finalize push). Email already went via
+    // dispatchTicketConfirmation; the helper passes contact=null so the v2
+    // dispatcher never re-emails (push+inapp only). Best-effort; never throws.
+    try {
+      const { data: orderRow } = await supabase
+        .from("orders")
+        .select("event_id, events(title, brand_id)")
+        .eq("id", finalizedOrderId)
+        .maybeSingle();
+      const eventId = (orderRow as Record<string, unknown> | null)?.event_id as
+        | string
+        | undefined;
+      const joinedEvent = (orderRow as Record<string, unknown> | null)?.events as
+        | { title?: string | null; brand_id?: string | null }
+        | Array<{ title?: string | null; brand_id?: string | null }>
+        | null
+        | undefined;
+      const eventRow = Array.isArray(joinedEvent) ? joinedEvent[0] ?? null : joinedEvent ?? null;
+      if (eventId) {
+        await fireBuyerPurchaseConfirmationPush(supabase as never, {
+          orderId: finalizedOrderId,
+          eventId,
+          brandId: (eventRow?.brand_id as string | null) ?? null,
+          eventTitle: (eventRow?.title as string | null) ?? "your event",
+          startAtIso: null,
+        });
+      }
+    } catch (pushErr) {
+      console.warn(
+        "[paystack-webhook] purchase-confirmation push failed (non-fatal):",
+        pushErr instanceof Error ? pushErr.message : String(pushErr),
+      );
+    }
   }
 
   // ---- Mark processed / retry_count++ / error (mirror stripe-webhook) ----

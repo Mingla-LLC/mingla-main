@@ -25,6 +25,10 @@ import {
   userClient,
   userIdFromAuthHeader,
 } from "../_shared/ticketCheckout.ts";
+// META-ORCH-1161 §7.x — buyer order-cancelled PUSH+in-app(+SMS) via notify-dispatch
+// v2. Email stays owned by dispatchTicketConfirmation (no double-email). cancel-order
+// is the SOLE chokepoint for free-order cancellation (no Stripe webhook path).
+import { fireBuyerOrderNotify } from "../_shared/businessNotifyTriggers.ts";
 
 function mapRpcErrorToHttp(errorMessage: string): {
   code: string;
@@ -135,6 +139,16 @@ serve(async (req: Request): Promise<Response> => {
   } else {
     console.warn("[cancel-order] no buyer_email; skipping notification enqueue", { orderId });
   }
+
+  // META-ORCH-1161 §7.x — NET-NEW buyer order-cancelled PUSH + in-app (+ SMS per
+  // the buyer_order_cancelled seed). Idempotent per (order, idempotencyKey). Email
+  // stays owned by dispatchTicketConfirmation above (helper passes contact=phone →
+  // v2 email channel skips, no double-email). Best-effort; never blocks the response.
+  await fireBuyerOrderNotify(supabase as never, {
+    categoryKey: "buyer_order_cancelled",
+    orderId,
+    idempotencyKey: `buyer_order_cancelled:${orderId}:${idempotencyKey}`,
+  });
 
   try {
     await writeAudit(supabase, {

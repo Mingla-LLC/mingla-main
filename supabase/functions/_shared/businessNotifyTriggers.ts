@@ -77,6 +77,201 @@ export async function notifyBrandRoles(
   }
 }
 
+/**
+ * META-ORCH-1161 Sub-C §7.1 — buyer purchase-confirmation PUSH+in-app leg.
+ *
+ * The buyer already gets the EMAIL (with the ticket PDF + .ics) via
+ * ticket-confirmation-dispatch — that stays the SOLE email owner for this moment.
+ * This adds the NET-NEW free push + durable in-app row through notify-dispatch v2
+ * (category `buyer_purchase_confirmation`, channels {inapp,push,email} per seed).
+ *
+ * Double-email avoidance: we dispatch with contact=null, so the v2 dispatcher's
+ * email channel records `skipped` (no_contact) and NEVER sends — push+inapp only.
+ * (buyer_purchase_confirmation is a NO-SMS category per DEC-185, so no SMS leg
+ * exists regardless.)
+ *
+ * Idempotent per `buyer_purchase_confirmation:{orderId}` (notify-dispatch v2 +
+ * the notifications UNIQUE backstop collapse the confirm/webhook double-fire).
+ * Never throws — best-effort relative to the order finalize.
+ */
+export async function fireBuyerPurchaseConfirmationPush(
+  supabase: SupabaseClient,
+  input: {
+    orderId: string;
+    eventId: string;
+    brandId: string | null;
+    eventTitle: string;
+    startAtIso?: string | null;
+  },
+): Promise<void> {
+  try {
+    // Resolve the buyer (push targets buyer_user_id; no contact → email skipped).
+    const { data: order } = await supabase
+      .from("orders")
+      .select("buyer_user_id")
+      .eq("id", input.orderId)
+      .maybeSingle();
+    const buyerUserId = order?.buyer_user_id as string | null | undefined;
+    if (!buyerUserId) {
+      // Anon/guest buyer has no account → no push/in-app row. The email
+      // (ticket-confirmation-dispatch) still reaches them. No silent gap: nothing
+      // to deliver on the push+inapp channels for a no-account buyer.
+      return;
+    }
+
+    let brandName = "Mingla";
+    if (input.brandId) {
+      const { data: brand } = await supabase
+        .from("brands")
+        .select("name")
+        .eq("id", input.brandId)
+        .maybeSingle();
+      if (brand?.name && typeof brand.name === "string") brandName = brand.name;
+    }
+
+    const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
+    const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+    if (!SUPABASE_URL || !SERVICE_KEY) {
+      console.warn("[businessNotifyTriggers] purchase-confirmation push skipped: env missing");
+      return;
+    }
+
+    const res = await fetch(`${SUPABASE_URL}/functions/v1/notify-dispatch`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${SERVICE_KEY}`,
+      },
+      body: JSON.stringify({
+        category_key: "buyer_purchase_confirmation",
+        user_id: buyerUserId,
+        // contact=null → email channel records `skipped` (no double-email; the
+        // email is owned by ticket-confirmation-dispatch).
+        contact: null,
+        payload: {
+          order_id: input.orderId,
+          event_id: input.eventId,
+          event_title: input.eventTitle,
+          brand_name: brandName,
+          reserved_for: input.startAtIso ?? null,
+        },
+        idempotency_key: `buyer_purchase_confirmation:${input.orderId}`,
+      }),
+    });
+    if (!res.ok) {
+      const text = await res.text();
+      console.warn(
+        "[businessNotifyTriggers] purchase-confirmation push dispatch non-ok:",
+        res.status,
+        text,
+      );
+    }
+  } catch (err) {
+    console.warn(
+      "[businessNotifyTriggers] fireBuyerPurchaseConfirmationPush failed (non-fatal):",
+      err instanceof Error ? err.message : String(err),
+    );
+  }
+}
+
+/**
+ * META-ORCH-1161 Sub-C §7.x — buyer refund-issued / order-cancelled PUSH+in-app
+ * (+SMS per the seed) via notify-dispatch v2.
+ *
+ * The buyer EMAIL for these moments is owned by ticket-confirmation-dispatch
+ * (template_key buyer_refund_issued / buyer_order_cancelled) — to avoid a
+ * double-email we dispatch with contact = buyer_phone_e164 (phone ONLY). The v2
+ * dispatcher's email channel then records `skipped` (no_contact) while push,
+ * in-app, and SMS fire (buyer_refund_issued / buyer_order_cancelled are
+ * {inapp,push,email,sms} per the seed). If the buyer has no phone, only push +
+ * in-app reach them (still no double-email).
+ *
+ * Idempotent per the caller-supplied idempotency_key. Never throws.
+ */
+export async function fireBuyerOrderNotify(
+  supabase: SupabaseClient,
+  input: {
+    categoryKey: "buyer_refund_issued" | "buyer_order_cancelled";
+    orderId: string;
+    idempotencyKey: string;
+    extraPayload?: Record<string, unknown>;
+  },
+): Promise<void> {
+  try {
+    const { data: order } = await supabase
+      .from("orders")
+      .select(
+        "buyer_user_id, buyer_phone_e164, event_id, currency, events(title, brand_id, brands(name))",
+      )
+      .eq("id", input.orderId)
+      .maybeSingle();
+    if (!order) {
+      console.warn("[businessNotifyTriggers] order not found for buyer notify", input.orderId);
+      return;
+    }
+    const buyerUserId = (order.buyer_user_id as string | null) ?? null;
+    const buyerPhone = (order.buyer_phone_e164 as string | null) ?? null;
+    // No account AND no phone → nothing on push/in-app/sms to deliver (email is
+    // the email-owner's job). No silent gap — there is genuinely no recipient here.
+    if (!buyerUserId && !buyerPhone) return;
+
+    const eventsJoin = order.events as
+      | { title?: string | null; brand_id?: string | null; brands?: { name?: string | null } | Array<{ name?: string | null }> | null }
+      | Array<{ title?: string | null; brand_id?: string | null; brands?: { name?: string | null } | Array<{ name?: string | null }> | null }>
+      | null
+      | undefined;
+    const eventRow = Array.isArray(eventsJoin) ? eventsJoin[0] ?? null : eventsJoin ?? null;
+    const brandsJoin = eventRow?.brands ?? null;
+    const brandRow = Array.isArray(brandsJoin) ? brandsJoin[0] ?? null : brandsJoin ?? null;
+    const brandName = (brandRow?.name as string | null) ?? "Mingla";
+    const eventTitle = (eventRow?.title as string | null) ?? "your order";
+
+    const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
+    const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+    if (!SUPABASE_URL || !SERVICE_KEY) {
+      console.warn("[businessNotifyTriggers] buyer notify skipped: env missing");
+      return;
+    }
+
+    const res = await fetch(`${SUPABASE_URL}/functions/v1/notify-dispatch`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${SERVICE_KEY}`,
+      },
+      body: JSON.stringify({
+        category_key: input.categoryKey,
+        user_id: buyerUserId,
+        // phone ONLY → email channel skips (no double-email); push/inapp/sms fire.
+        contact: buyerPhone,
+        payload: {
+          order_id: input.orderId,
+          event_id: (order.event_id as string | null) ?? null,
+          event_title: eventTitle,
+          brand_name: brandName,
+          currency: (order.currency as string | null) ?? null,
+          ...(input.extraPayload ?? {}),
+        },
+        idempotency_key: input.idempotencyKey,
+      }),
+    });
+    if (!res.ok) {
+      const text = await res.text();
+      console.warn(
+        "[businessNotifyTriggers] buyer notify dispatch non-ok:",
+        input.categoryKey,
+        res.status,
+        text,
+      );
+    }
+  } catch (err) {
+    console.warn(
+      "[businessNotifyTriggers] fireBuyerOrderNotify failed (non-fatal):",
+      err instanceof Error ? err.message : String(err),
+    );
+  }
+}
+
 interface EventCapacity {
   title: string;
   /** total published capacity across all ticket types; null if any is unlimited. */
@@ -182,6 +377,29 @@ export async function fireOrderFinalizeNotifications(
       relatedType: "order",
       idempotencyKey: `business.order_paid:${input.orderId}`,
       deepLink: `mingla-business://event/${input.eventId}`,
+    });
+
+    // META-ORCH-1161 §7.1 — buyer purchase-confirmation PUSH+in-app (NET-NEW).
+    // Email stays owned by ticket-confirmation-dispatch (no double-email). Resolve
+    // the master/earliest date for the copy; null-safe.
+    let startAtIso: string | null = null;
+    const { data: masterDate } = await supabase
+      .from("event_dates")
+      .select("start_at")
+      .eq("event_id", input.eventId)
+      .order("is_master", { ascending: false })
+      .order("start_at", { ascending: true })
+      .limit(1)
+      .maybeSingle();
+    if (masterDate?.start_at && typeof masterDate.start_at === "string") {
+      startAtIso = masterDate.start_at;
+    }
+    await fireBuyerPurchaseConfirmationPush(supabase, {
+      orderId: input.orderId,
+      eventId: input.eventId,
+      brandId,
+      eventTitle,
+      startAtIso,
     });
 
     // 2 + 3 derive from remaining capacity (skip when unlimited).

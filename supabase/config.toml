@@ -278,6 +278,13 @@ verify_jwt = false
 [functions.notify-outbox-drain]
 verify_jwt = false
 
+# META-ORCH-1161 Sub-C — notify-reminders: ~15-min pg_cron enqueues buyer event +
+# reservation reminders (24h + 2h buckets) into notification_outbox via
+# pg_notify_reminders_enqueue(). verify_jwt=false: invoked by cron with the
+# service-role bearer.
+[functions.notify-reminders]
+verify_jwt = false
+
 # META-ORCH-1161 Sub-A — twilio-inbound-sms: the STOP/HELP inbound webhook.
 # verify_jwt=false: Twilio cannot present a Supabase JWT; gated on ?secret=
 # (same posture as twilio-message-status).
