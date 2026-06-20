@@ -116,3 +116,63 @@ Physical iPhone HITL: not requested — the feature is non-functional pre-fix (P
 ## 9. Accepted conditions
 
 None — this is a FAIL, not a CONDITIONAL PASS. Routes to REWORK.
+
+---
+
+# RETEST 2026-06-20
+
+**Verdict: PASS — 0 P0, 0 P1, 0 P2. CLEAR-TO-CLOSE.**
+**Rework commits verified:** `0b9c8f9be` (3 defect fixes) + `fdfad5a47` (CI registration + IMPLEMENT REWORK report).
+**Branch:** `ORCH-1161-golive-prep`. **Tester:** mingla-tester. **Evidence level:** `proven` — real Postgres **15.18** (Docker `postgres:15`, fresh container) + Deno 2.7.14.
+**Comms ledger re-read on entry:** no BLOCK row targets `mingla-tester`, `META-ORCH-1161`, or `ORCH-1161`. The ALL-targeted rows are WARN/FYI process notes (eas OTA, edge-deploy hazards, RSVP-page restructure, 1148 Stripe idempotency) — different lanes/files; read, no ack required, no new cross-ORCH discovery to log.
+
+## R1. Retest method (real Postgres, not the re-implemented unit tests)
+
+Spun a fresh `postgres:15` container; built a faithful harness: `auth.users`/`auth.identities`, an `auth.uid()` stub reading `current_setting('test.uid')`, a `brands` FK stub, the `anon`/`authenticated`/`service_role` roles, and the production foundation tables from `20261110000000` — including the EXACT production unique index `channel_suppressions_uniq_idx ON (COALESCE(user_id::text, contact), channel, scope, COALESCE(brand_id::text,'global'))` (the index the P1 collapse hinges on, confirmed byte-identical via `pg_indexes.indexdef`). Then applied the real `20261113000000_orch_1161_golive_marketing_optout.sql` and ran the actual `.test.sql` files + direct row inspection. (The implementor's `.test.ts` for can_send is a TS re-implementation + `sql.includes` anchors — deliberately NOT trusted for the migration; all SQL findings below are from executing the real migration against Postgres.)
+
+## R2. Per-defect close proofs
+
+### P0 — CLOSED (real Postgres apply, no roll-back)
+- The full apply chain ran: harness OK → foundation tables created → **`20261113000000` applied cleanly (`GOLIVE-APPLIED-OK`)**, no compile error, no roll-back.
+- Post-apply: `pg_proc` shows BOTH `can_send(p_user_id uuid, p_category_key text, p_channel text, p_contact text)` and `set_marketing_suppression(p_channel text, p_suppress boolean)` exist. The `v_tmp int` + split `GET DIAGNOSTICS v_tmp = ROW_COUNT; v_affected := v_affected + v_tmp;` compiles.
+- **Tester G-01 PASS** (`orch_1161_golive_set_marketing_suppression.tester.test.sql`, exit 0).
+- **Fails-on-revert PROVEN:** restored the invalid expression-form `GET DIAGNOSTICS v_affected = v_affected + ROW_COUNT;` → migration aborts with the exact original error `ERROR: unrecognized GET DIAGNOSTICS item at or near "v_affected"`, and tester G-01 RAISEs (`set_marketing_suppression … does not exist`). Fixed version applies; reverted version does not.
+
+### P1 — CLOSED (contact-keyed row persists; SMS blast honors opt-out; opt-in removes both)
+- Independent row inspection (not the test's own assertions): `set_marketing_suppression('sms', true)` returns **2** and persists EXACTLY two rows — `(user_id=alice, contact=NULL)` AND `(user_id=NULL, contact='+15551234567')` — distinct unique-index keys, no collapse. `can_send` returns **false** via BOTH the `user_id` branch AND the contact-only/`user_id=NULL` branch (the blast/anon path). `set_marketing_suppression('sms', false)` returns **2** and leaves **0** rows.
+- **Tester G-02 PASS** (contact-keyed row count ≥1) and **implementor roundtrip R-1/R-3/R-4 PASS** (`orch_1161_golive_marketing_optout_roundtrip.test.sql`, exit 0).
+- The SMS audience resolver (`resolveSuppressedPhones`, keyed on `channel_suppressions.contact`) now finds the user — confirmed the contact-keyed row exists with the phone in E.164 `+15551234567`.
+- **Fails-on-revert PROVEN:** rebuilt the contact INSERT to carry `v_user_id` (the original collapse) → `COALESCE(user_id, contact)` keys both rows identically → only 1 row persists, 0 contact-keyed. Tester G-02 RAISEs (`no contact-keyed sms marketing suppression row persisted … got 1 total rows, 0 contact-keyed`) and roundtrip R-1 RAISEs (`affected 1 rows, expected 2`). Fixed (`user_id=NULL`) version lands both.
+
+### P2 — CLOSED (email blast reads channel_suppressions and excludes the opted-out email)
+- Wiring verified in `supabase/functions/_shared/marketingAudience.ts`: new `resolveSuppressedEmails` queries `channel_suppressions` with `.eq('channel','email').in('scope',['marketing','all']).not('contact','is',null)`, lowercases `contact`, and is called in BOTH `resolveBrandBuyers` (L286) and `resolveEventBuyers` (L335), fed into `aggregate(... suppressedEmails)`; the `emailOk` gate now also checks `!suppressedEmails.has(emailKey)` (L418-419).
+- **Email-suppression aggregate test PASS** (`marketingAudience.email-suppression.golive.test.ts`, 3/3): suppressed buyer NOT `reachable_email` (sms unaffected); case-insensitive email match; no-suppression both reachable.
+- End-to-end key consistency confirmed: the RPC stores `contact=lower(email)` (real-PG row showed `alice@example.com`); the resolver lowercases `contact`; `aggregate` keys on lowercased email → matched.
+- **Fails-on-revert PROVEN:** reverted the `emailOk` line to drop `!suppressedEmails.has(emailKey)` → 2/3 email-suppression tests FAIL; restored → 3/3 pass. File restored to as-committed.
+
+## R3. No-regression (the parts that already passed)
+
+| Area | Result | Evidence |
+|---|---|---|
+| Marketing default-ON in can_send | PASS | Real PG: `can_send(marketing_blast,email)` = **t** with no pref/suppression. can_send Deno 5/5. |
+| Scope isolation (marketing opt-out ≠ transactional block) | PASS | Real PG: with alice's marketing-email opt-out active, `can_send(buyer_receipt,email)` = **t** and `can_send(buyer_receipt,sms)` = **t**. Roundtrip R-6 PASS. |
+| set_marketing_suppression cross-user-write security | PASS | Real PG: after alice opt-out, **0** rows carry a non-NULL `user_id` other than the caller; victim user-2 `can_send(marketing,email)` = **t**. Tester G-03 PASS. |
+| SMS phone-exclusion path | PASS (no regression) | `resolveSuppressedPhones` still wired (L285/L334); sms-suppression aggregate 2/2. |
+| Quiet-hours recipient-TZ | PASS | Deno 14/14 (415 PT 5 AM blocked vs 212 ET 8 AM allowed same instant; 8:00 allowed/7:59 blocked; 21:00 endHour-exclusive; Phoenix no-DST; NG WAT; null→deny). |
+| Text-dark / zero Twilio while off | PASS (unchanged) | Rework diff does not touch smsAdapter / kill-switches; no change since prior PASS. |
+
+## R4. Constitution deltas vs prior FAIL
+
+Rules 2 (one owner per truth), 3 (no silent failures), 13 (exclusion consistency) were the prior FAILs. All now **PASS**: `channel_suppressions` is the single opt-out authority honored by can_send (user_id|contact) AND both blast resolvers (contact-keyed phone + email); the contact row no longer silently collapses (returns 2, both persist); exclusion is consistent across all three chokepoints. No new violations introduced.
+
+## R5. Device / parity
+
+Backend-only + edge-fn-pure-logic change → no UI/runtime surface in this ORCH (the prefs-UI chips were verified in the Sub-A/SliceA reports; this ORCH is the can_send flip + RPC + audience resolver). Phase-0.A live-fire **exempt** (SQL migration + Deno pure-function). The prior FAIL's BLOCKED device rows (RPC 404 because migration didn't apply) are now MOOT — the migration applies and the RPC exists. Live deploy: NOT yet applied to remote (expected; CLOSE/operator deploys via `supabase db push` + edge-fn deploy from merged main).
+
+## R6. Retest cycle count
+
+Cycle 1 (single retest after one rework). Not stuck-in-loop.
+
+## R7. RETEST verdict
+
+**PASS — CLEAR-TO-CLOSE.** All three FAIL defects (P0 migration compile/apply, P1 SMS contact-row collapse, P2 email blast opt-out) are fixed and proven on real Postgres 15.18 + Deno, each with fails-on-revert. Zero regression to the previously-passing surfaces. Routes to the orchestrator for CLOSE. Reminder for CLOSE: deploy `marketing-send`/shared edge fns from MERGED main (not the worktree) and apply the migration via `db push` / Management API per the standing hazards.
