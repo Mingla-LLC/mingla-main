@@ -20,9 +20,15 @@ import type { ScrollView as RNScrollView } from "react-native";
 
 export type ScrollViewProps = KeyboardAwareScrollViewProps;
 
-// 12pt clearance keeps the field comfortably above the keyboard without
-// scrolling further than necessary. Consumers may override per-instance.
-const DEFAULT_BOTTOM_OFFSET = 12;
+// ORCH-1165: 54 = 12 (clearance) + 42 (KEYBOARD_TOOLBAR_HEIGHT). The app-wide
+// Done bar adds 42pt of height on top of the keyboard, so the auto-scroll must
+// land the focused field 42pt higher to keep 12pt of visible clearance ABOVE
+// the toolbar — otherwise the bar occludes the field (the exact regression Seth
+// flagged). The library does not publicly export KEYBOARD_TOOLBAR_HEIGHT from
+// its index, so the literal is used. Consumers may still override per-instance.
+// Exported for the §9 fails-on-revert clearance test
+// (I-PROPOSED-KEYBOARD-TOOLBAR-CLEARANCE: MUST stay >= 42).
+export const DEFAULT_BOTTOM_OFFSET = 54; // was 12
 
 export const ScrollView = forwardRef<RNScrollView, ScrollViewProps>(
   function SmartScrollView({ bottomOffset = DEFAULT_BOTTOM_OFFSET, ...rest }, ref) {

@@ -69,6 +69,9 @@ import {
 
 import { WebSafeGestureDetector } from "./WebSafeGestureDetector";
 import { shouldUseRealBlur } from "../../utils/glassBlur";
+// ORCH-1165: sheet inputs live in the sheet's own native Modal window, so the
+// root app-level toolbar can't reach them — mount a toolbar inside this Modal.
+import { KeyboardToolbarRoot } from "../../wrappers/KeyboardToolbarRoot";
 
 // Inline glass-stack background — mirrors GlassChrome's L1-L4 visual layers
 // but with each layer absolute-filled at the body level so the body can be
@@ -331,6 +334,10 @@ const SheetNative: React.FC<SheetProps> = ({
             </Animated.View>
           </WebSafeGestureDetector>
         </View>
+        {/* ORCH-1165: Done bar for sheet-hosted inputs — last child of the
+            Modal's root absoluteFill so it overlays the sheet and floats on
+            the keyboard. KeyboardStickyView keeps it off-screen until focus. */}
+        <KeyboardToolbarRoot />
       </View>
     </Modal>
   );

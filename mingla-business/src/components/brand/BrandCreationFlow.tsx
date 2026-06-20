@@ -14,6 +14,8 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 // the same flag the rest of the partner surface keys off.
 import { usePartnerStripeStatus } from "../../hooks/usePartnerStripe";
 import { inviteBrandMember } from "../../services/brandInvitationsService";
+// ORCH-1165: library-backed keyboard-visibility read (gate-clean wrapper).
+import { useKeyboardIsVisible } from "../../wrappers/useKeyboardIsVisible";
 
 import {
   accent,
@@ -222,6 +224,9 @@ export const BrandCreationFlow: React.FC<BrandCreationFlowProps> = ({
 }) => {
   const router = useRouter();
   const { user } = useAuth();
+  // ORCH-1165: bare ScrollView (no KAS auto-scroll) → +42pt bottom padding
+  // while the keyboard is up so the Done bar can't occlude the last field.
+  const keyboardVisible = useKeyboardIsVisible();
   const setCurrentBrand = useCurrentBrandStore((s) => s.setCurrentBrand);
   const createBrandMutation = useCreateBrand();
   const updateBrandMutation = useUpdateBrand();
@@ -500,7 +505,11 @@ export const BrandCreationFlow: React.FC<BrandCreationFlowProps> = ({
       </View>
 
       <ScrollView
-        contentContainerStyle={styles.scrollContent}
+        contentContainerStyle={[
+          styles.scrollContent,
+          // ORCH-1165: +42pt clearance for the Done bar while the keyboard is up.
+          keyboardVisible ? { paddingBottom: spacing.lg + 42 } : null,
+        ]}
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
       >

@@ -77,6 +77,10 @@ const SAFELIST = new Set([
   // import from 'react-native' only — not flagged.
   "mingla-business/src/wrappers/SmartScrollView.native.tsx",
   "mingla-business/src/wrappers/useKeyboardIsVisible.native.ts",
+  // ORCH-1165: KeyboardToolbarRoot native variant imports KeyboardToolbar from
+  // the library (the Done-only accessory bar). Legitimate library mount, same
+  // class as KeyboardRoot.native.tsx — safelisted so the gate stays green.
+  "mingla-business/src/wrappers/KeyboardToolbarRoot.native.tsx",
 ]);
 
 function walkSourceFiles(dir, out = []) {

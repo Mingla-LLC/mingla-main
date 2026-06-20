@@ -47,6 +47,9 @@ import {
 } from "../../constants/designSystem";
 
 import { GlassCard } from "./GlassCard";
+// ORCH-1165: Modal inputs (e.g. CancelOrderDialog) live in this Modal's own
+// native window — mount a Done bar inside RNModal so they get the toolbar too.
+import { KeyboardToolbarRoot } from "../../wrappers/KeyboardToolbarRoot";
 
 export interface ModalProps {
   visible: boolean;
@@ -215,6 +218,10 @@ const ModalNative: React.FC<ModalProps> = ({
             </GlassCard>
           </Animated.View>
         </View>
+        {/* ORCH-1165: Done bar for Modal-hosted inputs (CancelOrderDialog,
+            future Modal forms) — last overlay child inside RNModal so it
+            floats on the keyboard above the panel. Native-only (null on web). */}
+        <KeyboardToolbarRoot />
       </View>
     </RNModal>
   );

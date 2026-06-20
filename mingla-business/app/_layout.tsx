@@ -54,6 +54,8 @@ import { useCurrentBrandId } from "../src/store/currentBrandStore";
 // keyboard events. Web variant is a passthrough Fragment (library has no
 // web entry point). Per SPEC_ORCH-0892-A §7.3.
 import { KeyboardRoot } from "../src/wrappers/KeyboardRoot";
+// ORCH-1165: Done-only keyboard accessory bar (native-only; web variant is null).
+import { KeyboardToolbarRoot } from "../src/wrappers/KeyboardToolbarRoot";
 import { canvas } from "../src/constants/designSystem";
 import { initializeAppsFlyer } from "../src/services/appsFlyerService";
 import { mixpanelService } from "../src/services/mixpanelService";
@@ -692,6 +694,12 @@ export default function RootLayout(): React.ReactElement {
                   startup does not initialize the payment SDK. */}
               <KeyboardRoot>
                 <RootLayoutInner />
+                {/* ORCH-1165: Done-only accessory bar, sibling of the app shell
+                    inside KeyboardProvider. KeyboardStickyView (internal) is
+                    absolutely positioned, so it overlays the root window and
+                    stays off-screen until a field is focused. Last child keeps
+                    it visually on top. Native-only (web variant returns null). */}
+                <KeyboardToolbarRoot />
               </KeyboardRoot>
             </AuthProvider>
           </QueryClientProvider>

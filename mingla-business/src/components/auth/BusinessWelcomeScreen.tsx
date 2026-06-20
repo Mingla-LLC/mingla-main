@@ -573,7 +573,11 @@ export default function BusinessWelcomeScreen({
           style={[
             styles.actionZone,
             {
-              paddingBottom: Math.max(insets.bottom, vs(24)) + keyboardPad,
+              // ORCH-1165: +42pt (KEYBOARD_TOOLBAR_HEIGHT) only with the
+              // keyboard open, so the Done bar never covers the action zone.
+              paddingBottom:
+                Math.max(insets.bottom, vs(24)) +
+                (keyboardPad > 0 ? keyboardPad + 42 : 0),
             },
           ]}
         >

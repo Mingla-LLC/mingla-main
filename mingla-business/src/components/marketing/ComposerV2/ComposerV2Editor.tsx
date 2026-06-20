@@ -195,8 +195,12 @@ export const ComposerV2Editor = forwardRef<ComposerV2EditorHandle, ComposerV2Edi
     // stops touching the home-indicator area visually. Body now claims
     // ~400pt on iPhone Pro (was ~432pt) — still very usable.
     const CHROME_CONTENT_PX = 376;
+    // ORCH-1165: when the keyboard is up, also subtract the 42pt Done bar so the
+    // pell editor's bottom is not hidden under the toolbar. Added to the
+    // keyboard-height term only (0 when the keyboard is closed).
+    const keyboardShrink = keyboardHeight > 0 ? keyboardHeight + 42 : 0;
     const rawBodyHeight =
-      windowHeight - insets.top - insets.bottom - CHROME_CONTENT_PX - keyboardHeight;
+      windowHeight - insets.top - insets.bottom - CHROME_CONTENT_PX - keyboardShrink;
     // ORCH-1100 RC-3: on phone web, `CHROME_CONTENT_PX` (iPhone-pell tuned)
     // under-counts the chrome (TopBar + MarketingSubNav + browser URL bar), so
     // `rawBodyHeight` over-shoots the real viewport and the body strip ends up
