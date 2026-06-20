@@ -140,7 +140,23 @@ export const useBusinessEventById = (
     queryKey:
       enabled && eventId !== null ? businessEventKeys.detail(eventId) : DISABLED_KEY,
     enabled,
-    staleTime: STALE_TIME_MS,
+    // ORCH-1172 R5 — fetch FRESH on every mount. This hook feeds ONLY managed-
+    // event surfaces (the edit-published editor via /rsvp|/event[id]/edit, the
+    // event/rsvp dashboards + scanner/orders/guests/door/recon sub-screens via
+    // useManagedEventRoute) — never the hot brand-list feed (that is
+    // useBusinessEventsForBrand). On those surfaces you ALWAYS want current DB
+    // state. R4 made the editor hold its Loading shell until this query SETTLES
+    // (serverEventSettled = isAuthReady && !isLoading && !isFetching) before
+    // seeding editState from the server event. But with the previous 30s
+    // staleTime + default refetchOnMount, a mount within 30s of viewing the
+    // event resolved INSTANTLY from STALE cache → R4 seeded stale → a
+    // full-state/diff save could still clobber a field that diverged on the
+    // server (the rsvp_discoverable revert edge). staleTime:0 +
+    // refetchOnMount:"always" force a network fetch on each mount; combined with
+    // R4's !isFetching gate the editor waits for the FRESH row, then seeds from
+    // it — killing the last stale-cache clobber.
+    staleTime: 0,
+    refetchOnMount: "always",
     queryFn: async (): Promise<BusinessEventDetail | null> => {
       if (!enabled || eventId === null) return null;
       return fetchBusinessEventById(eventId);
