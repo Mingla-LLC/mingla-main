@@ -70,7 +70,11 @@ export const updateLiveRsvp = async (
   // ORCH-1172 — the publish-style payload built by buildRsvpUpdatePayload (was
   // a raw camelCase patch that the RPC rejected with rsvp_title_required —
   // BUG-A). The typed contract keeps create + edit on one payload shape.
-  payload: RsvpUpdatePayload,
+  // ORCH-1172 R3 — accepts the DIFF payload (buildRsvpUpdatePayloadDiff): `title`
+  // is always present (RPC-required) but the 9 host-control toggles are emitted
+  // only when changed. The RPC COALESCEs every ABSENT column / theme leaf to its
+  // existing stored value, so a partial payload is safe + never clobbers.
+  payload: Partial<RsvpUpdatePayload> & Pick<RsvpUpdatePayload, "title">,
   reason: string,
 ): Promise<UpdateLiveRsvpResult> => {
   const { data, error } = await supabase.rpc("biz_update_live_rsvp", {

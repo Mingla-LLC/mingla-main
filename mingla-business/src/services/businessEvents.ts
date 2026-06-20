@@ -500,10 +500,27 @@ const fetchTicketsForEvent = async (eventId: string): Promise<TicketStub[]> => {
 
 const detailFromRow = async (
   row: BusinessManagementEventRow,
+  // ORCH-1172 R3 — the single-event read needs to thread event_type + the RSVP
+  // host-control snapshot through to eventFromRow, exactly like the LIST path
+  // (fetchBusinessEventsForBrand) does. The management view exposes neither, so
+  // the single-event by-id reader probes them off the events table and passes
+  // them in. Without this, a server-loaded RSVP editor hydrates rsvp_* as
+  // defaults (discoverable=false, capacity=null, approval=auto …) → wrong-on
+  // -open render + a full-state save that reverts the real DB values (R3 clobber).
+  eventType: "event" | "experience" | "trip" | "rsvp" = "event",
+  rsvpMeta: {
+    rsvpCapacity: number | null;
+    rsvpAllowPlusOnes: boolean;
+    rsvpPlusOnesMax: number;
+    rsvpWaitlistEnabled: boolean;
+    rsvpApprovalMode: "auto" | "manual";
+    rsvpDiscoverable: boolean;
+    rsvpGoingCount: number;
+  } | null = null,
 ): Promise<BusinessEventDetail> => {
   const tickets = await fetchTicketsForEvent(row.id);
   return {
-    event: eventFromRow(row, tickets),
+    event: eventFromRow(row, tickets, eventType, rsvpMeta),
     brand: brandFromRow(row),
     tickets,
   };
@@ -638,20 +655,57 @@ export const fetchBusinessEventById = async (
   // ORCH-1006: also grab the RAW (nullable) pass_* overrides here — the
   // management view only exposes resolved/no switches, but the edit screen
   // needs the raw per-offering values to show inherit-vs-override correctly.
+  // ORCH-1172 R3: ALSO grab the 6 rsvp_* host-control columns (same view-
+  // doesn't-expose-these reason) so a server-loaded RSVP editor hydrates the
+  // REAL saved values instead of defaults — mirrors fetchBusinessEventsForBrand.
   const typeResp = await supabase
     .from("events")
-    .select("id, event_type, pass_tax, pass_mingla_fee, pass_service_fee")
+    .select(
+      "id, event_type, pass_tax, pass_mingla_fee, pass_service_fee, " +
+        "rsvp_capacity, rsvp_allow_plus_ones, rsvp_plus_ones_max, " +
+        "rsvp_waitlist_enabled, rsvp_approval_mode, rsvp_discoverable",
+    )
     .eq("id", eventId)
     .maybeSingle();
   if (typeResp.error !== null) throw typeResp.error;
-  if (typeResp.data !== null && typeResp.data.event_type === "trip") {
-    return null;
-  }
-  const rawSwitches = (typeResp.data ?? null) as {
+  // ORCH-1172 R3 — the SELECT pulls rsvp_* columns the Supabase generated types
+  // don't model on `events`, so `typeResp.data` infers as GenericStringError.
+  // Cast to the known nullable shape BEFORE reading any field (the same overlay
+  // pattern ORCH-1006 used for pass_*; the columns exist server-side).
+  const probeRow = (typeResp.data ?? null) as {
+    event_type?: "event" | "experience" | "trip" | "rsvp" | null;
     pass_tax?: boolean | null;
     pass_mingla_fee?: boolean | null;
     pass_service_fee?: boolean | null;
+    rsvp_capacity?: number | null;
+    rsvp_allow_plus_ones?: boolean | null;
+    rsvp_plus_ones_max?: number | null;
+    rsvp_waitlist_enabled?: boolean | null;
+    rsvp_approval_mode?: "auto" | "manual" | null;
+    rsvp_discoverable?: boolean | null;
   } | null;
+  if (probeRow !== null && probeRow.event_type === "trip") {
+    return null;
+  }
+  const rawSwitches = probeRow;
+  // ORCH-1172 R3 — resolve the discriminator + RSVP host-control snapshot from
+  // the probe row. rsvpGoingCount is NOT needed for the editor's clobber-safe
+  // hydration (it's a display-only notice), so it's left 0 here — pulling the
+  // live count is OPTIONAL and out of the clobber scope (SPEC §B1.2).
+  const resolvedEventType: "event" | "experience" | "trip" | "rsvp" =
+    probeRow?.event_type ?? "event";
+  const rsvpMeta =
+    resolvedEventType === "rsvp" && probeRow !== null
+      ? {
+          rsvpCapacity: probeRow.rsvp_capacity ?? null,
+          rsvpAllowPlusOnes: probeRow.rsvp_allow_plus_ones ?? false,
+          rsvpPlusOnesMax: probeRow.rsvp_plus_ones_max ?? 0,
+          rsvpWaitlistEnabled: probeRow.rsvp_waitlist_enabled ?? false,
+          rsvpApprovalMode: probeRow.rsvp_approval_mode ?? "auto",
+          rsvpDiscoverable: probeRow.rsvp_discoverable ?? false,
+          rsvpGoingCount: 0,
+        }
+      : null;
 
   // orch-strict-grep-allow events-type-filter — view doesn't expose event_type; trip exclusion via probe above
   const { data, error } = await supabase
@@ -662,7 +716,11 @@ export const fetchBusinessEventById = async (
 
   if (error !== null) throw error;
   if (data === null) return null;
-  const detail = await detailFromRow(data as BusinessManagementEventRow);
+  const detail = await detailFromRow(
+    data as BusinessManagementEventRow,
+    resolvedEventType,
+    rsvpMeta,
+  );
   // ORCH-1006 — overlay the raw nullable switch overrides onto the LiveEvent so
   // the edit screen seeds inherit (null) vs explicit override correctly.
   if (rawSwitches !== null) {

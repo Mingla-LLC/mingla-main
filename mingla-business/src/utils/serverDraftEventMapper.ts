@@ -12,6 +12,7 @@ import {
   asEventCoverMediaProvider,
   type EventCoverMediaProvider,
 } from "../types/eventCoverProvider";
+import type { LiveEvent } from "../store/liveEventStore";
 import { normalizeCurrency } from "./currency";
 
 export const BUSINESS_DRAFT_SCHEMA_VERSION = 1;
@@ -452,6 +453,85 @@ export const buildRsvpUpdatePayload = (
   hideRemainingCount: draft.hideRemainingCount,
   hideAddressUntilTicket: draft.hideAddressUntilTicket,
 });
+
+/**
+ * ORCH-1172 R3 — diff-based RSVP edit payload (defense-in-depth, no migration).
+ *
+ * The full-state `buildRsvpUpdatePayload` emits EVERY key always, so the RPC's
+ * COALESCE-to-existing safety (it defaults each ABSENT column / theme leaf to
+ * the stored value) never fires — a hydration miss becomes a destructive write
+ * (the R3 clobber: editing hide-address reverted rsvp_discoverable +
+ * hideRemainingCount). This builder ALWAYS emits the RPC-required `title`, the
+ * full `when` block + `requestedVisibility` (cheap, idempotent, drives the
+ * material-change notify), and the snake_case location/cover keys, but emits
+ * each of the 9 toggled host-controls ONLY when it differs from `original`.
+ * Omitted toggles → the RPC keeps the existing stored value → no clobber.
+ *
+ * `original` is the loaded `LiveEvent` (server source of truth); on legacy /
+ * non-RSVP LiveEvents the rsvp_* fields can be undefined → coalesce to the
+ * create-wizard defaults so the diff is honest (mirrors editableDraftToPatch).
+ */
+export const buildRsvpUpdatePayloadDiff = (
+  original: LiveEvent,
+  edited: DraftEvent,
+): Partial<RsvpUpdatePayload> & Pick<RsvpUpdatePayload, "title"> => {
+  const payload: Partial<RsvpUpdatePayload> &
+    Pick<RsvpUpdatePayload, "title"> = {
+    // Always-on fields the RPC needs (title is hard-required; the rest are
+    // idempotent and drive notify/visibility correctly).
+    title: edited.name.trim(),
+    description:
+      edited.description.trim().length > 0 ? edited.description : null,
+    location_text: locationTextForDraft(edited),
+    online_url: edited.onlineUrl,
+    cover_media_url: edited.coverMediaUrl,
+    cover_media_type:
+      edited.coverMediaUrl === null ? null : edited.coverMediaType,
+    requestedVisibility: edited.visibility,
+    timezone: edited.timezone,
+    when: {
+      date: edited.date,
+      doorsOpen: edited.doorsOpen,
+      endsAt: edited.endsAt,
+    },
+  };
+
+  // The 9 toggled host-controls — emit ONLY when changed from the loaded
+  // LiveEvent. Coalesce undefined originals to the create-wizard defaults so a
+  // legacy LiveEvent doesn't spuriously diff (same shape as editableDraftToPatch).
+  if ((original.rsvpCapacity ?? null) !== edited.rsvpCapacity) {
+    payload.rsvpCapacity = edited.rsvpCapacity;
+  }
+  if ((original.rsvpAllowPlusOnes ?? false) !== edited.rsvpAllowPlusOnes) {
+    payload.rsvpAllowPlusOnes = edited.rsvpAllowPlusOnes;
+  }
+  if ((original.rsvpPlusOnesMax ?? 0) !== edited.rsvpPlusOnesMax) {
+    payload.rsvpPlusOnesMax = edited.rsvpPlusOnesMax;
+  }
+  if ((original.rsvpWaitlistEnabled ?? false) !== edited.rsvpWaitlistEnabled) {
+    payload.rsvpWaitlistEnabled = edited.rsvpWaitlistEnabled;
+  }
+  if ((original.rsvpApprovalMode ?? "auto") !== edited.rsvpApprovalMode) {
+    payload.rsvpApprovalMode = edited.rsvpApprovalMode;
+  }
+  if ((original.rsvpDiscoverable ?? false) !== edited.rsvpDiscoverable) {
+    payload.rsvpDiscoverable = edited.rsvpDiscoverable;
+  }
+  // privateGuestList / hideRemainingCount / hideAddressUntilTicket are
+  // non-optional booleans on LiveEvent (hydrated from theme), so they compare
+  // directly — no default coalesce needed (unlike the optional rsvp_* fields).
+  if (original.privateGuestList !== edited.privateGuestList) {
+    payload.privateGuestList = edited.privateGuestList;
+  }
+  if (original.hideRemainingCount !== edited.hideRemainingCount) {
+    payload.hideRemainingCount = edited.hideRemainingCount;
+  }
+  if (original.hideAddressUntilTicket !== edited.hideAddressUntilTicket) {
+    payload.hideAddressUntilTicket = edited.hideAddressUntilTicket;
+  }
+
+  return payload;
+};
 
 const recurrenceRulesForDraft = (draft: DraftEvent): unknown =>
   draft.recurrenceRule === null ? null : draft.recurrenceRule;
