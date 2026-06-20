@@ -334,3 +334,64 @@ No new product code touched by this drive (test-only). The P1 is a runtime defec
 
 ## Confidence
 **High / proven.** Both deferred surfaces were driven to the exact required state with the keyboard open on the physical Samsung running the confirmed current-main bundle; the negative (no Done bar in Sheet + Modal) is corroborated by a same-session positive control (Ari) where the bar DOES render, and the source root cause (no `KeyboardProvider` inside the RN-Modal windows) is consistent with the observed runtime. No DB mutation performed (cancellation aborted via "Keep order"; order verified untouched).
+
+---
+
+# ORCH-1170 SC-4 RETEST (post-provider-fix)
+
+**Phase:** RETEST — SC-4 closure after the per-Modal `KeyboardProvider` fix (mingla-tester, canonical TEST owner). **Date:** 2026-06-20.
+**Worktree:** `/Users/sethogieva/Desktop/mingla-orchs/ORCH-1170-[keyboard-modal-provider]/` on branch `ORCH-1170-keyboard-modal-provider`, fix @ `a10438607` (HEAD).
+**Fix under test:** `a10438607` wraps each RN-Modal window's content in its OWN `<KeyboardRoot>` (native = `<KeyboardProvider>`, web = passthrough) in `SheetMobile.tsx` (SC-4a host) and `Modal.tsx` (SC-4b host), so the `<KeyboardToolbarRoot/>` Done bar mounted in that window receives keyboard frames.
+**Runtime — Android:** Samsung Galaxy A72 `R58R54YV7JT` (`SM-A725F`, 1080×2400, `com.sethogieva.minglabusiness`), dev build loading **current-branch JS over Metro from this worktree** (isolated `TMPDIR=/tmp/orch-1170/metro`, port 8081, adb reverse).
+**Bundle identity CONFIRMED (this branch's fix, not stale main):** served `index.bundle?platform=android` = **32.9 MB / 4850 modules** (route-healthy). The served bundle contains **2× `require(..., "../../wrappers/KeyboardRoot")`** — the NEW per-window providers imported from `src/components/ui/SheetMobile.tsx` and `src/components/ui/Modal.tsx` (both two levels deep under `components/ui/`) — paired with **2× `require(..., "../../wrappers/KeyboardToolbarRoot")`**, plus the app-root `require(..., "../src/wrappers/KeyboardRoot")` from `app/_layout.tsx`. The pre-fix bundle would have had only the single app-root `KeyboardRoot` require. Both `Dismiss sheet`/`Dismiss modal` a11y strings present, `eb7825` ×45.
+**Driver:** Maestro 2.5.1 `--device R58R54YV7JT` (tapOn) + `adb shell input tap`/`input text` + `screenrecord` frame extraction.
+
+## ORCH-1170 SC-4 Verdict
+
+**BLOCKED** — P0: 0 · P1: 0 · P2: 0 · P4: 0. **Cannot issue PASS or FAIL: the same-session positive control (Ari app-root Done bar) did NOT render under any automated focus method, so the absence of the bar in the SC-4a/SC-4b captures is confounded by a test-tooling limitation and cannot be attributed to the code.** Requires a Seth human finger-tap to confirm (HITL).
+
+## What changed vs. the prior FAIL pass (behavioral signal the fix IS live)
+
+In the prior FAIL pass the Modal-hosted toolbar was entirely inert (no provider in the window → no reaction at all). In THIS retest the toolbar is demonstrably **mounted and reacting inside the Modal window**: on keyboard-CLOSE in the tier Sheet the brand-orange "Done" bar is visibly parked at the **window top** overlapping the status bar (`SC4a_RETEST_done_bar_at_window_top_on_kbclose.png`, 494 orange `#eb7825` px in the top-right band; 0 px when keyboard fully up). That top-parked rest position is the `KeyboardStickyView`'s hidden translate state — proof the per-window `KeyboardProvider` is now wired and the bar is animating against this window's keyboard frame. This is a genuine, observable change from the prior "no provider, no reaction" state.
+
+## Why this is BLOCKED, not PASS/FAIL — the positive-control failure
+
+With the keyboard genuinely UP and the field focused, **no orange Done bar renders flush above the keyboard on ANY surface I drove — including the Ari app-root composer, which PASSED in the prior pass** (`SC4_POSITIVE_CONTROL_ari_done_bar.png` shows the grey strip + right-aligned orange "Done" above the Samsung keyboard's emoji row). I reproduced the Ari focus via Maestro `tapOn`, `adb shell input tap` (genuine InputManager MotionEvent), and `adb input text`, and extracted **39 frames from a `screenrecord` of the full keyboard-show animation** — the orange Done bar appears in **zero** frames above the keyboard. Since my positive control is dark, the identical "no bar above keyboard" result in SC-4a/SC-4b is **not diagnostic** — it is consistent with both "fix works but my synthesized focus doesn't trigger the `WindowInsetsAnimation` callbacks the keyboard-controller needs to render the bar in a capturable frame" AND "fix doesn't work." The prior pass's cropped positive-control screenshot proves the bar CAN render on this device via a real human tap; New-Architecture keyboard-controller is known to depend on genuine IME inset-animation callbacks that synthesized input does not always deliver. No keyboard-controller errors in Metro/logcat.
+
+Per tester discipline ("If neither tool reproduces a keystroke bug, STOP and ask Seth to perform the sequence while you prep field state and screenshot before/after; never claim a hardware-event repro you didn't perform") this is escalated HITL — fields are pre-staged on the device for Seth's finger-tap.
+
+## ORCH-1170 SC-4 matrix
+
+| SC | Surface (host primitive) | Verdict | Evidence |
+|----|--------------------------|---------|----------|
+| **SC-4a** | TicketTierEditSheet (`SheetMobile.tsx` → RN `Modal`, now wrapped in per-window `<KeyboardProvider>`) | **BLOCKED (HITL)** | Reached via Event Creator wizard (Ryry draft already on Step 5) → "+ Add ticket type" → tier edit Sheet → focused Name field (Maestro tapOn), keyboard up, field visible above keyboard (no occlusion). No orange Done bar above keyboard in capture — but positive control also dark, so non-diagnostic. Behavioral proof the provider IS live: Done bar parks at window-top on keyboard-close. `SC4a_RETEST_ticket_tier_sheet_samsung.png`, `SC4a_RETEST_done_bar_at_window_top_on_kbclose.png`. |
+| **SC-4b** | CancelOrderDialog (`Modal.tsx` `ModalNative` → RN `RNModal`, now wrapped in per-window `<KeyboardProvider>`) | **BLOCKED (HITL)** | Deep-linked the reachable real order (`mingla-business://event/b1ab659e…/orders/8f31dfb4…`) → order detail rendered → red "Cancel order" → CancelOrderDialog opened → focused reason input (Maestro tapOn), keyboard up, input visible above keyboard. No orange Done bar above keyboard in capture — non-diagnostic (positive control dark). **Aborted via "Keep order" — NO cancellation submitted; DB verified `cancelled_at IS NULL` before AND after.** `SC4b_RETEST_cancel_order_dialog_samsung.png`. |
+| **SC-4 positive control** | Ari composer (`AriChatScreen`, app-root `KeyboardToolbarRoot` under `app/_layout.tsx` `KeyboardRoot`) | **FAILED TO REPRODUCE (tooling)** | Same device/session/bundle. Focused "Ask Ari…" via Maestro tapOn, adb tap, adb input text + screenrecord (39 frames). The orange Done bar that rendered in the prior pass does NOT appear above the keyboard under any automated method → invalidates automated SC-4 disambiguation; the bar requires a genuine human tap on this New-Arch build. `SC4_POSITIVE_CONTROL_ari_done_bar_RETEST.png`. |
+
+## No-regression (Ari)
+
+The Ari composer renders, accepts text ("hello"), shows its orange send button, and the keyboard raises/lowers normally — no crash, no layout break, no regression in the composer itself. The ONLY anomaly is the Done-bar accessory not rendering under synthesized focus (a capture limitation affecting all three surfaces equally, including the previously-passing positive control), not a functional Ari regression.
+
+## DB safety
+
+Order `8f31dfb4-f241-4686-943a-3377f2fab02a` queried before staging and after "Keep order": `cancelled_at = null` both times. **No order cancelled. No DB mutation performed.**
+
+## Evidence paths (`Mingla_Artifacts/evidence/ORCH-1165/`)
+- `SC4a_RETEST_ticket_tier_sheet_samsung.png` — tier edit Sheet, Name focused, keyboard up.
+- `SC4a_RETEST_done_bar_at_window_top_on_kbclose.png` — brand-orange "Done" bar parked at window top on keyboard-close (proof the per-window provider is live + reacting).
+- `SC4b_RETEST_cancel_order_dialog_samsung.png` — CancelOrderDialog reason input focused, keyboard up.
+- `SC4_POSITIVE_CONTROL_ari_done_bar_RETEST.png` — Ari composer focused, keyboard up; Done bar did NOT reproduce under automated focus (compare to passing `SC4_POSITIVE_CONTROL_ari_done_bar.png`).
+
+## Required to close (Seth HITL — 2 finger-taps, ~60s)
+
+Fields are pre-staged. On the connected Samsung:
+1. **SC-4a:** open the Ari tab → tap "Ask Ari…" with your finger. If the brand-orange "Done" strip appears flush above the keyboard → the keyboard-controller works via real tap (positive control GREEN). Then: Home → resume "Ryry" draft (Step 5) → "+ Add ticket type" → finger-tap the Name field. Confirm the orange "Done" bar renders flush above the keyboard with the field visible.
+2. **SC-4b:** deep-link `mingla-business://event/b1ab659e-358d-41f3-a56d-76f7b273bddd/orders/8f31dfb4-f241-4686-943a-3377f2fab02a` → "Cancel order" → finger-tap the reason input. Confirm the orange "Done" bar renders above the keyboard. **Dismiss via "Keep order" — do NOT submit a cancellation.**
+
+If the bar renders above the keyboard in both (and in the Ari positive control) → SC-4 is **PASS**. The source fix + bundle identity + live-provider behavioral signal all point to PASS; only the runtime eyeball under a real finger-tap is outstanding.
+
+## ORCH-1170 Confidence
+**Medium-high that the fix is correct; BLOCKED on runtime eyeball.** The fix is structurally sound (native `KeyboardRoot` = real `<KeyboardProvider>`, correctly wrapping both Modal hosts), the served bundle is confirmed to carry it, and the Done bar is observably mounted + reacting inside the Modal windows now (parks at window-top on keyboard-close — a behavior absent in the prior FAIL). The single gap is that automated synthesized focus does not render the bar in a capturable above-keyboard frame on this New-Architecture build, AND that same limitation blanks the previously-passing Ari positive control — so I will not assert PASS/FAIL without Seth's finger-tap. No order cancelled.
+
+## COMMS ledger
+Scanned `COMMS_LEDGER.md` on entry. No `BLOCK`+`OPEN` entry targets `mingla-tester`, `ORCH-1170`, `ORCH-1165`, or `ALL`. The open `ALL`/WARN entries (COMMS-0038/0039 Stripe-idempotency + realtime-pairing, COMMS-0040/0041 RSVP/experience public-page standardization) do not touch the keyboard/Modal/Sheet surfaces under test — no action required.

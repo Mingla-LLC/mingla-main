@@ -50,6 +50,16 @@ import { GlassCard } from "./GlassCard";
 // ORCH-1165: Modal inputs (e.g. CancelOrderDialog) live in this Modal's own
 // native window — mount a Done bar inside RNModal so they get the toolbar too.
 import { KeyboardToolbarRoot } from "../../wrappers/KeyboardToolbarRoot";
+// ORCH-1170: the ORCH-1165 toolbar above mounted inside RNModal's native window
+// but received NO keyboard frames — react-native-keyboard-controller's
+// KeyboardToolbar/KeyboardStickyView only animate when a KeyboardProvider lives
+// in their OWN native window, and the app-root provider (KeyboardRoot in
+// app/_layout.tsx) does NOT propagate into a RN Modal window. Wrap the Modal
+// content in its own KeyboardProvider so the dialog's inputs + the Done bar
+// share one provider scoped to this window. KeyboardRoot is the web-split
+// wrapper (native = <KeyboardProvider>, web = passthrough) — keeps the library
+// import out of the web bundle exactly like the app-root mount.
+import { KeyboardRoot } from "../../wrappers/KeyboardRoot";
 
 export interface ModalProps {
   visible: boolean;
@@ -189,40 +199,48 @@ const ModalNative: React.FC<ModalProps> = ({
       statusBarTranslucent
       onRequestClose={onClose}
     >
-      <View
-        pointerEvents={visible ? "auto" : "none"}
-        style={StyleSheet.absoluteFill}
-        testID={testID}
-      >
-        <Animated.View
-          style={[StyleSheet.absoluteFill, { backgroundColor: SCRIM_COLOR }, scrimStyle]}
+      {/* ORCH-1170: KeyboardProvider scoped to THIS RNModal's native window so
+          the Done bar below actually receives keyboard frames here (the
+          app-root provider does not reach into a separate RN Modal window).
+          Wraps the whole panel so the dialog's inputs + the toolbar share one
+          provider. */}
+      <KeyboardRoot>
+        <View
+          pointerEvents={visible ? "auto" : "none"}
+          style={StyleSheet.absoluteFill}
+          testID={testID}
         >
-          <Pressable
-            style={styles.scrimPress}
-            onPress={handleScrimPress}
-            accessibilityLabel="Dismiss modal"
-            accessibilityRole="button"
-          />
-        </Animated.View>
-        <View style={styles.center} pointerEvents="box-none">
           <Animated.View
-            style={[
-              styles.panelWrap,
-              Platform.OS === "web" ? { maxWidth } : null,
-              panelStyle,
-              style,
-            ]}
+            style={[StyleSheet.absoluteFill, { backgroundColor: SCRIM_COLOR }, scrimStyle]}
           >
-            <GlassCard variant="elevated" radius="xl" padding={spacing.lg}>
-              {children}
-            </GlassCard>
+            <Pressable
+              style={styles.scrimPress}
+              onPress={handleScrimPress}
+              accessibilityLabel="Dismiss modal"
+              accessibilityRole="button"
+            />
           </Animated.View>
+          <View style={styles.center} pointerEvents="box-none">
+            <Animated.View
+              style={[
+                styles.panelWrap,
+                Platform.OS === "web" ? { maxWidth } : null,
+                panelStyle,
+                style,
+              ]}
+            >
+              <GlassCard variant="elevated" radius="xl" padding={spacing.lg}>
+                {children}
+              </GlassCard>
+            </Animated.View>
+          </View>
+          {/* ORCH-1165: Done bar for Modal-hosted inputs (CancelOrderDialog,
+              future Modal forms) — last overlay child inside RNModal so it
+              floats on the keyboard above the panel. Native-only (null on web).
+              ORCH-1170: now inside the per-window KeyboardProvider above. */}
+          <KeyboardToolbarRoot />
         </View>
-        {/* ORCH-1165: Done bar for Modal-hosted inputs (CancelOrderDialog,
-            future Modal forms) — last overlay child inside RNModal so it
-            floats on the keyboard above the panel. Native-only (null on web). */}
-        <KeyboardToolbarRoot />
-      </View>
+      </KeyboardRoot>
     </RNModal>
   );
 };

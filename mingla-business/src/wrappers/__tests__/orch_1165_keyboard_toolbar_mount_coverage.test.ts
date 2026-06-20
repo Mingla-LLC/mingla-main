@@ -166,3 +166,71 @@ describe("ORCH-1165 Done-bar mount coverage + keyed offsets (adversarial)", () =
     expect(src).not.toMatch(/keyboardVerticalOffset\s*=\s*\{\s*0\s*\}/);
   });
 });
+
+/**
+ * [TEST-MOD-APPROVED ORCH-1165]
+ *
+ * ORCH-1170 — per-Modal-window KeyboardProvider (append-only extension of the
+ * ORCH-1165 mount-coverage suite above; a DIFFERENT angle than every assertion
+ * before it, which only check that <KeyboardToolbarRoot/> is RENDERED in each
+ * host — not that it can actually receive keyboard frames).
+ *
+ * THE DEFECT (ORCH-1170, proven on Samsung, see QA report "ORCH-1170 SC-4
+ * Samsung drive"): the SheetMobile + Modal toolbar mounts above render inside a
+ * RN <Modal> / <RNModal> — a SEPARATE Android native window. react-native-
+ * keyboard-controller's KeyboardToolbar (via internal KeyboardStickyView) only
+ * animates when a <KeyboardProvider> lives in its OWN native window; the
+ * app-root provider (KeyboardRoot in app/_layout.tsx) does NOT propagate into a
+ * RN Modal window. So the Done bar mounted (the ORCH-1165 assertions PASS) but
+ * stayed off-screen — the bar never appeared in the ticket-tier sheet or the
+ * cancel-order dialog. The fix wraps each Modal's content in its own
+ * <KeyboardRoot> (native = <KeyboardProvider>, web = passthrough).
+ *
+ * These assertions verify each Modal-window host (a) imports the KeyboardRoot
+ * provider wrapper and (b) wraps its <KeyboardToolbarRoot/> INSIDE a
+ * <KeyboardRoot> element — i.e. the provider opens before the toolbar mounts.
+ *
+ * Fails-on-revert: deleting either KeyboardRoot wrapper (so the toolbar is no
+ * longer nested inside it) makes the matching assertion FAIL.
+ */
+describe("ORCH-1170 per-Modal-window KeyboardProvider (adversarial)", () => {
+  const MODAL_HOSTS: ReadonlyArray<{ label: string; rel: string }> = [
+    { label: "Sheet native host", rel: "src/components/ui/SheetMobile.tsx" },
+    { label: "Modal native host", rel: "src/components/ui/Modal.tsx" },
+  ];
+
+  it.each(MODAL_HOSTS)(
+    "$label imports the KeyboardRoot provider wrapper",
+    ({ rel }) => {
+      const src = read(rel);
+      expect(src).toMatch(
+        /import\s*\{\s*KeyboardRoot\s*\}\s*from\s*["'][^"']*KeyboardRoot["']/,
+      );
+    },
+  );
+
+  it.each(MODAL_HOSTS)(
+    "$label nests <KeyboardToolbarRoot/> INSIDE a <KeyboardRoot> in its Modal window",
+    ({ rel }) => {
+      const src = read(rel);
+
+      // Strip import lines so the import alone can't satisfy the render checks.
+      const withoutImports = src
+        .split("\n")
+        .filter((l) => !/^\s*import\b/.test(l))
+        .join("\n");
+
+      // Both the provider open-tag and the toolbar must render as JSX...
+      expect(withoutImports).toMatch(/<KeyboardRoot\b[^>]*>/);
+      expect(withoutImports).toMatch(/<KeyboardToolbarRoot\s*\/?>/);
+
+      // ...and the provider must OPEN before the toolbar AND CLOSE after it,
+      // i.e. the toolbar is nested inside the provider (not a sibling that the
+      // provider never wraps). Match a <KeyboardRoot> ... <KeyboardToolbarRoot/>
+      // ... </KeyboardRoot> span.
+      expect(withoutImports).toMatch(
+        /<KeyboardRoot\b[^>]*>[\s\S]*<KeyboardToolbarRoot\s*\/?>[\s\S]*<\/KeyboardRoot>/,
+      );
+    },
+  );
+});

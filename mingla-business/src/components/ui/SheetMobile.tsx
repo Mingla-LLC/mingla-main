@@ -72,6 +72,16 @@ import { shouldUseRealBlur } from "../../utils/glassBlur";
 // ORCH-1165: sheet inputs live in the sheet's own native Modal window, so the
 // root app-level toolbar can't reach them — mount a toolbar inside this Modal.
 import { KeyboardToolbarRoot } from "../../wrappers/KeyboardToolbarRoot";
+// ORCH-1170: the ORCH-1165 toolbar above mounted inside the sheet's native
+// Modal window but received NO keyboard frames — react-native-keyboard-
+// controller's KeyboardToolbar/KeyboardStickyView only animate when a
+// KeyboardProvider lives in their OWN native window, and the app-root provider
+// (KeyboardRoot in app/_layout.tsx) does NOT propagate into a RN Modal window.
+// Wrap the sheet's Modal content in its own KeyboardProvider so inputs + the
+// Done bar share one provider scoped to this window. KeyboardRoot is the
+// web-split wrapper (native = <KeyboardProvider>, web = passthrough) — keeps
+// the library import out of the web bundle exactly like the app-root mount.
+import { KeyboardRoot } from "../../wrappers/KeyboardRoot";
 
 // Inline glass-stack background — mirrors GlassChrome's L1-L4 visual layers
 // but with each layer absolute-filled at the body level so the body can be
@@ -298,47 +308,54 @@ const SheetNative: React.FC<SheetProps> = ({
       onRequestClose={onClose}
       statusBarTranslucent
     >
-      <View
-        pointerEvents={visible ? "auto" : "none"}
-        style={StyleSheet.absoluteFill}
-        testID={testID}
-      >
-        <Animated.View
-          style={[StyleSheet.absoluteFill, { backgroundColor: SCRIM_COLOR }, scrimStyle]}
+      {/* ORCH-1170: KeyboardProvider scoped to THIS Modal's native window so the
+          Done bar below actually receives keyboard frames here (the app-root
+          provider does not reach into a separate RN Modal window). Wraps the
+          whole panel so the sheet's inputs + the toolbar share one provider. */}
+      <KeyboardRoot>
+        <View
+          pointerEvents={visible ? "auto" : "none"}
+          style={StyleSheet.absoluteFill}
+          testID={testID}
         >
-          <Pressable
-            style={styles.scrimPress}
-            onPress={handleScrimPress}
-            accessibilityLabel="Dismiss sheet"
-            accessibilityRole="button"
-          />
-        </Animated.View>
-        <View style={styles.bottomDock} pointerEvents="box-none">
-          <WebSafeGestureDetector gesture={panGesture}>
-            <Animated.View
-              style={[
-                styles.panel,
-                { height: sheetHeight },
-                shadows.glassCardElevated,
-                panelStyle,
-                style,
-              ]}
-            >
-              <SheetMobilePanelInner
-                blurOk={blurOk}
-                blurIntensity={blurIntensity}
-                bottomInset={insets.bottom}
+          <Animated.View
+            style={[StyleSheet.absoluteFill, { backgroundColor: SCRIM_COLOR }, scrimStyle]}
+          >
+            <Pressable
+              style={styles.scrimPress}
+              onPress={handleScrimPress}
+              accessibilityLabel="Dismiss sheet"
+              accessibilityRole="button"
+            />
+          </Animated.View>
+          <View style={styles.bottomDock} pointerEvents="box-none">
+            <WebSafeGestureDetector gesture={panGesture}>
+              <Animated.View
+                style={[
+                  styles.panel,
+                  { height: sheetHeight },
+                  shadows.glassCardElevated,
+                  panelStyle,
+                  style,
+                ]}
               >
-                {children}
-              </SheetMobilePanelInner>
-            </Animated.View>
-          </WebSafeGestureDetector>
+                <SheetMobilePanelInner
+                  blurOk={blurOk}
+                  blurIntensity={blurIntensity}
+                  bottomInset={insets.bottom}
+                >
+                  {children}
+                </SheetMobilePanelInner>
+              </Animated.View>
+            </WebSafeGestureDetector>
+          </View>
+          {/* ORCH-1165: Done bar for sheet-hosted inputs — last child of the
+              Modal's root absoluteFill so it overlays the sheet and floats on
+              the keyboard. KeyboardStickyView keeps it off-screen until focus.
+              ORCH-1170: now inside the per-window KeyboardProvider above. */}
+          <KeyboardToolbarRoot />
         </View>
-        {/* ORCH-1165: Done bar for sheet-hosted inputs — last child of the
-            Modal's root absoluteFill so it overlays the sheet and floats on
-            the keyboard. KeyboardStickyView keeps it off-screen until focus. */}
-        <KeyboardToolbarRoot />
-      </View>
+      </KeyboardRoot>
     </Modal>
   );
 };
