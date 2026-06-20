@@ -408,6 +408,14 @@ export interface RsvpUpdatePayload {
   // columns; without them in the payload the edit silently drops the toggles.
   privateGuestList: boolean;
   hideRemainingCount: boolean;
+  // ORCH-1172 R2 — hide-address-until-RSVP'd-going. Like the two toggles above
+  // this is NOT a DB column: the publish path stores it at
+  // theme.business_event.hideAddressUntilTicket (a DIRECT child of
+  // business_event, NOT under settings) and pg_public_rsvp_by_slug reads it
+  // from there. Without it in the payload the edit silently drops it and the
+  // address keeps showing publicly. biz_update_live_rsvp (migration
+  // 20261114000000) deep-merges it back into that leaf.
+  hideAddressUntilTicket: boolean;
 }
 
 /**
@@ -442,6 +450,7 @@ export const buildRsvpUpdatePayload = (
   rsvpDiscoverable: draft.rsvpDiscoverable,
   privateGuestList: draft.privateGuestList,
   hideRemainingCount: draft.hideRemainingCount,
+  hideAddressUntilTicket: draft.hideAddressUntilTicket,
 });
 
 const recurrenceRulesForDraft = (draft: DraftEvent): unknown =>

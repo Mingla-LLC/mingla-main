@@ -17,7 +17,9 @@
  * assertion throws (BUG-A regression). Revert the privateGuestList /
  * hideRemainingCount lines in buildRsvpUpdatePayload (the BUG-C theme-settings
  * persistence gap, migration 20261113000000) → the "payload carries the two
- * privacy toggles" assertion throws.
+ * privacy toggles" assertion throws. Revert the hideAddressUntilTicket line
+ * (the R2 theme.business_event.hideAddressUntilTicket persistence gap, migration
+ * 20261114000000) → the two "carries hideAddressUntilTicket" assertions throw.
  */
 
 import { describe, expect, test } from "@jest/globals";
@@ -275,5 +277,45 @@ describe("ORCH-1172 — edit-RSVP parity", () => {
     );
     expect(payload.privateGuestList).toBe(false);
     expect(payload.hideRemainingCount).toBe(false);
+  });
+
+  // ----- ORCH-1172 R2 — hideAddressUntilTicket reaches the RPC so it can
+  //        persist into theme.business_event.hideAddressUntilTicket
+  //        (migration 20261114000000) -------------------------------------
+  //
+  // Fails-on-revert: remove the `hideAddressUntilTicket: draft.hideAddressUntilTicket`
+  // line from buildRsvpUpdatePayload → both assertions below throw. Without it
+  // the edit save (publish with address shown → edit to "hide address until
+  // RSVP'd going" → save) silently drops the flag and the address keeps showing
+  // on every public surface (Seth, live).
+
+  test("buildRsvpUpdatePayload carries hideAddressUntilTicket = true when toggled on (R2 fix)", () => {
+    const original = rsvpLiveEvent({ hideAddressUntilTicket: false });
+    const edited: DraftEvent = {
+      ...liveEventToEditableDraft(original),
+      hideAddressUntilTicket: true,
+    };
+
+    const payload = buildRsvpUpdatePayload(edited);
+
+    // NOT a DB column — biz_update_live_rsvp writes it at
+    // theme.business_event.hideAddressUntilTicket (direct child, NOT under
+    // settings). The RPC can only persist what the client sends.
+    expect(payload.hideAddressUntilTicket).toBe(true);
+  });
+
+  test("buildRsvpUpdatePayload carries hideAddressUntilTicket = false when toggled off (R2 round-trip)", () => {
+    const original = rsvpLiveEvent({ hideAddressUntilTicket: true });
+    const edited: DraftEvent = {
+      ...liveEventToEditableDraft(original),
+      hideAddressUntilTicket: false,
+    };
+
+    const payload = buildRsvpUpdatePayload(edited);
+
+    // The false case must round-trip too — the RPC defaults to the stored value
+    // when the key is ABSENT, so an explicit false must be emitted to clear a
+    // previously-hidden address.
+    expect(payload.hideAddressUntilTicket).toBe(false);
   });
 });
