@@ -158,3 +158,48 @@ Parity consumer iOS↔Android is automatic (one RN codebase). No manual parity o
    (ORCH-1119 ExpoImageManipulator native drift) — notification domain but unrelated to prefs; no action.
    COMMS-0038/0040 (RSVP/event public-page standardization, ALL) do not touch AccountSettings or the
    notification tables — no conflict.
+
+---
+
+## REWORK 2026-06-20 — P2: seller-only `payout_paid` leaked into the consumer matrix
+
+**Defect (from TEST report, P2).** The consumer matrix was built from EVERY active
+`notification_categories` row. The live seed includes seller/brand-targeted categories — today
+`payout_paid` (section `Payouts`), and the spec defines a full business roster in sections `Sales` +
+`Payouts` (`biz_new_sale`, `biz_sold_out`, `biz_low_inventory`, `biz_new_reservation`,
+`biz_reservation_change`, `biz_payout_failed`, `biz_stripe_account_problem`, `biz_bank_problem`,
+`payout_paid`). These are business-app notifications and must NOT appear in the CONSUMER app's
+Settings → Notifications matrix. Verified live (Supabase MCP, 2026-06-20): `payout_paid` is the ONLY
+brand category currently seeded, section `Payouts`; all other rows are buyer/marketing/social.
+
+**Fix approach — centralized consumer-AUDIENCE predicate (data-driven, no per-key denylist).**
+Schema check: `notification_categories` has `key, section, is_transactional, urgency,
+default_channels, reach_mode, active` — there is NO audience/recipient column. Rather than add a
+migration for a one-row leak (the `audience` option), I reused the existing `CONSUMER_SECTION_ORDER`
+list as the consumer-section ALLOWLIST and added one predicate, `isConsumerCategory(cat)`, in the
+pure decision core (`notificationPrefsMatrix.ts`). `buildNotificationMatrix` now filters
+`c.active && isConsumerCategory(c)`. Because the filter is by consumer SECTION (not a denylist of
+keys), `payout_paid` AND every present/future `biz_*` alert in `Sales`/`Payouts` (or any new
+brand-only section) are excluded automatically. Applied at the single chokepoint — the component and
+`useNotificationPrefs` hook both consume `buildNotificationMatrix`, so no other call site can leak.
+Did NOT touch `can_send`, channel sets, locks, or the service fetch. No migration, no edge fn.
+
+**Files changed (2; +79 / −5):**
+- `app-mobile/src/components/profile/notificationPrefsMatrix.ts` (+34/−3) — new `isConsumerCategory`
+  predicate + `CONSUMER_SECTION_ORDER` re-documented as the audience allowlist + filter wired into
+  `buildNotificationMatrix`.
+- `app-mobile/src/components/profile/__tests__/notificationPrefsMatrix.orch1161.test.ts` (+45/−2) —
+  new exclusion test "REWORK P2: seller-only payout_paid is EXCLUDED from the consumer matrix"
+  (asserts `payout_paid` + `biz_new_sale` predicate FALSE, both absent from the built matrix, no
+  `Payouts`/`Sales` sections, and the genuine consumer categories still render).
+
+**Exclusion test + fails-on-revert.** `npm run test:orch-1161` → 8/8 PASS (was 7/7; +1 exclusion
+test). Fails-on-revert by TRUE LINE DELETION of the audience filter (replaced
+`c.active && isConsumerCategory(c)` with `c.active`) → test 7 FAILED (7 pass / 1 fail), all others
+still green; restored → 8/8 PASS. **fails-on-revert verified at commit `be665a90d45125e5958f6f2d99b02683ddf77c2a`.**
+`npx tsc --noEmit` shows ZERO new errors in the touched core file. Scope clean: `git diff` = exactly
+the 2 files above. Comms ledger re-read: no BLOCK to this skill/ORCH/ALL; WARN COMMS-0040/0041
+(RSVP/experience public-page) do not touch AccountSettings or notification tables — no conflict.
+
+**Routing.** Back to orchestrator → tester RETEST (confirm `payout_paid`/brand categories absent from
+the consumer matrix on device) → CLOSE.

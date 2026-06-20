@@ -80,9 +80,16 @@ export interface MatrixSection {
 }
 
 /**
- * Fixed consumer (Explorer) section order. Any section the seed returns that is
- * NOT in this list is appended after, alphabetically — so a new seeded section
- * surfaces without a code change (data-driven), it just sorts last.
+ * Fixed consumer (Explorer) section order. This list is ALSO the consumer
+ * AUDIENCE ALLOWLIST: a category renders in the consumer prefs matrix ONLY when
+ * its `section` is one of these. Brand/seller-targeted categories live in
+ * business-only sections (today `Payouts` for `payout_paid`; the spec's `Sales`
+ * + `Payouts` for every `biz_*` alert) and therefore NEVER surface here. This is
+ * the SINGLE OWNER of "what is a consumer category" — see `isConsumerCategory`.
+ *
+ * Consequence: a NEW consumer-facing section requires a deliberate one-line edit
+ * to this list (intentional — it guarantees no business category can ever leak
+ * into the consumer matrix via a future seed row).
  */
 export const CONSUMER_SECTION_ORDER: readonly string[] = [
   'Purchases',
@@ -91,6 +98,22 @@ export const CONSUMER_SECTION_ORDER: readonly string[] = [
   'Marketing',
   'Social',
 ] as const;
+
+/**
+ * Audience predicate — TRUE iff this category belongs in the CONSUMER app's
+ * notification-preferences matrix. Data-driven on the consumer-section allowlist
+ * (not a per-key denylist), so seller/brand categories (`payout_paid` and every
+ * `biz_*` alert in `Sales`/`Payouts`) are excluded automatically, and any future
+ * brand-only section is excluded with zero further code changes.
+ *
+ * META-ORCH-1161 slice "a" REWORK (P2): the matrix previously rendered EVERY
+ * active `notification_categories` row, leaking the seller-only `payout_paid`
+ * (and any seeded brand alert) into the consumer settings screen. This predicate
+ * is the fix and its single chokepoint.
+ */
+export function isConsumerCategory(cat: NotificationCategoryRow): boolean {
+  return (CONSUMER_SECTION_ORDER as readonly string[]).includes(cat.section);
+}
 
 /**
  * Is a (category, channel) cell locked-on (not user-toggleable)?
@@ -158,7 +181,10 @@ export function buildNotificationMatrix(
     prefIndex.set(`${p.category_key}::${p.channel}`, p.enabled);
   }
 
-  const activeCats = categories.filter((c) => c.active);
+  // Active AND consumer-audience only. The audience filter (isConsumerCategory)
+  // is what keeps seller-only categories (payout_paid + every biz_* alert) OUT
+  // of the consumer matrix — ORCH-1161 slice "a" REWORK (P2).
+  const activeCats = categories.filter((c) => c.active && isConsumerCategory(c));
 
   const rows: MatrixCategoryRow[] = activeCats.map((cat) => {
     // Only the channels the category actually supports render as chips.

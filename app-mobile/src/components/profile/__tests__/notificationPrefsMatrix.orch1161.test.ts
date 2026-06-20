@@ -23,7 +23,7 @@ import assert from 'node:assert/strict';
 // test import is suppressed (matches useLaunchCityGate.test.ts precedent).
 // prettier-ignore
 // @ts-expect-error -- runtime .ts import for `node --experimental-strip-types`
-import { buildNotificationMatrix, buildChannelPrefUpsert, categorySupportsSms, type NotificationCategoryRow } from '../notificationPrefsMatrix.ts';
+import { buildNotificationMatrix, buildChannelPrefUpsert, categorySupportsSms, isConsumerCategory, type NotificationCategoryRow } from '../notificationPrefsMatrix.ts';
 
 const SMS_CAT: NotificationCategoryRow = {
   key: 'buyer_reservation_changed',
@@ -49,6 +49,28 @@ const MARKETING_CAT: NotificationCategoryRow = {
   is_transactional: false,
   urgency: 'low',
   default_channels: ['email', 'sms'],
+  active: true,
+};
+
+// Seller-only category that is LIVE in the seed today (section 'Payouts').
+// It must NEVER appear in the consumer matrix (ORCH-1161 slice "a" REWORK P2).
+const PAYOUT_PAID_CAT: NotificationCategoryRow = {
+  key: 'payout_paid',
+  section: 'Payouts',
+  is_transactional: true,
+  urgency: 'high',
+  default_channels: ['inapp', 'push', 'email', 'sms'],
+  active: true,
+};
+
+// A representative brand alert from the spec's business sections. Same rule:
+// excluded from the consumer matrix purely by virtue of its business section.
+const BIZ_NEW_SALE_CAT: NotificationCategoryRow = {
+  key: 'biz_new_sale',
+  section: 'Sales',
+  is_transactional: true,
+  urgency: 'normal',
+  default_channels: ['inapp', 'push', 'email'],
   active: true,
 };
 
@@ -157,6 +179,32 @@ test('marketing channels default OFF until an enabled=true pref exists', () => {
   );
   const smsOn = optedIn[0].rows[0].channels.find((c) => c.channel === 'sms')!;
   assert.equal(smsOn.enabled, true);
+});
+
+test('REWORK P2: seller-only payout_paid is EXCLUDED from the consumer matrix', () => {
+  // Predicate: payout_paid / brand alerts are NOT consumer categories.
+  assert.equal(isConsumerCategory(PAYOUT_PAID_CAT), false, 'payout_paid is not consumer');
+  assert.equal(isConsumerCategory(BIZ_NEW_SALE_CAT), false, 'biz_new_sale is not consumer');
+  assert.equal(isConsumerCategory(SMS_CAT), true, 'a buyer reservation cat IS consumer');
+
+  // Build with the seller categories present in the seed alongside buyer cats —
+  // exactly the leak scenario. The consumer matrix must drop them entirely.
+  const matrix = buildNotificationMatrix(
+    [PAYOUT_PAID_CAT, BIZ_NEW_SALE_CAT, SMS_CAT, NO_SMS_CAT, MARKETING_CAT],
+    [],
+  );
+  const allKeys = matrix.flatMap((s) => s.rows.map((r) => r.key));
+  const allSections = matrix.map((s) => s.section);
+
+  assert.equal(allKeys.includes('payout_paid'), false, 'payout_paid must NOT render in consumer matrix');
+  assert.equal(allKeys.includes('biz_new_sale'), false, 'biz_new_sale must NOT render in consumer matrix');
+  assert.equal(allSections.includes('Payouts'), false, 'no Payouts section in consumer matrix');
+  assert.equal(allSections.includes('Sales'), false, 'no Sales section in consumer matrix');
+
+  // The genuine consumer categories still render.
+  assert.equal(allKeys.includes('buyer_reservation_changed'), true);
+  assert.equal(allKeys.includes('buyer_purchase_confirmation'), true);
+  assert.equal(allKeys.includes('marketing_blast'), true);
 });
 
 test('sections render in consumer order; inactive categories dropped', () => {
