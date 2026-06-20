@@ -41,15 +41,16 @@ serve(async (req) => {
     auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
   });
 
-  // Claim a batch of pending rows (best-effort; the unique idempotency_key on the
-  // outbox + the notifications UNIQUE(idempotency_key) make a double-process a
-  // no-op duplicate downstream).
-  const { data: rows, error: claimErr } = await admin
-    .from("notification_outbox")
-    .select("id, category_key, user_id, contact, brand_id, payload, idempotency_key, country_code, attempts")
-    .eq("status", "pending")
-    .order("created_at", { ascending: true })
-    .limit(BATCH_LIMIT);
+  // ATOMICALLY claim a batch of pending rows (P2-1). claim_notification_outbox
+  // flips status='pending'→'processing' inside a single UPDATE … FOR UPDATE SKIP
+  // LOCKED statement, so two overlapping cron runs can NEVER both claim the same
+  // row — the second invocation skips the row the first has locked. This is the
+  // primary double-send guard (incl. the guest/no-user_id path, which lacks the
+  // notifications UNIQUE backstop); the per-channel guest dedupe in dispatchAnon
+  // is the second line of defense.
+  const { data: rows, error: claimErr } = await admin.rpc("claim_notification_outbox", {
+    p_limit: BATCH_LIMIT,
+  });
 
   if (claimErr) {
     console.error("[notify-outbox-drain] claim failed:", claimErr.message);
@@ -64,8 +65,8 @@ serve(async (req) => {
 
   for (const row of rows as Array<Record<string, unknown>>) {
     const id = row.id as string;
-    // Mark processing to avoid an overlapping cron re-claiming the same row.
-    await admin.from("notification_outbox").update({ status: "processing" }).eq("id", id);
+    // The atomic claim already flipped this row to 'processing' — no separate
+    // mark-processing UPDATE (that was the non-atomic step that P2-1 removed).
 
     // Resolve the brand display name for the copy (sender identity).
     let brandName = "Mingla";

@@ -26,6 +26,11 @@ export interface MinimalClient {
     insert: (row: Record<string, unknown>) => {
       select?: (cols: string) => { single: () => Promise<{ data: unknown; error: unknown }> };
     } & Promise<{ data: unknown; error: unknown }>;
+    update?: (row: Record<string, unknown>) => {
+      eq: (col: string, val: unknown) => {
+        eq: (col: string, val: unknown) => Promise<{ data: unknown; error: unknown }>;
+      };
+    };
   };
   rpc(
     fn: string,
@@ -211,9 +216,14 @@ export async function dispatchV2(
   return { success: true, notificationId, deliveries };
 }
 
-// Anon/guest path: no inbox row (notifications.user_id NOT NULL), so no
-// notification_deliveries FK. Fire email/SMS directly through the gate; record
-// nothing in the FK-bound ledger. Returns the channel results inline.
+// Anon/guest path: no inbox row (notifications.user_id NOT NULL). REWORK (P2-2):
+// each send now writes a CONTACT-KEYED notification_deliveries row (notification_id
+// NULL, contact + idempotency_key populated) so the guest path has the same durable,
+// webhook-reconcilable ledger as the authenticated path. REWORK (P2-1, second line
+// of defense): before each send we INSERT the ledger row FIRST; the partial
+// UNIQUE(idempotency_key, channel) on guest rows means a duplicated drain tick that
+// re-dispatches the same key gets a 23505 → we skip the provider send entirely (the
+// notifications UNIQUE backstop the user_id path enjoys, now mirrored for guests).
 async function dispatchAnon(
   client: MinimalClient,
   input: DispatchV2Input,
@@ -237,20 +247,103 @@ async function dispatchAnon(
       p_contact: contactForChannel,
     });
     if (allowedData !== true) {
+      // Record the suppression in the ledger too (no silent gap). A dedupe
+      // collision here is harmless — the row already exists.
+      await insertGuestDelivery(
+        client, input.idempotency_key, channel, contactForChannel,
+        "suppressed", CHANNEL_PROVIDER[channel], "can_send_denied", null, null,
+      );
       deliveries.push({ channel, status: "suppressed", providerMessageId: null });
+      continue;
+    }
+
+    // Claim the (idempotency_key, channel) dedupe slot BEFORE sending. A 23505
+    // means a prior/concurrent drain tick already sent this channel → skip.
+    const claim = await insertGuestDelivery(
+      client, input.idempotency_key, channel, contactForChannel,
+      "queued", CHANNEL_PROVIDER[channel], null, null, null,
+    );
+    if (claim.duplicate) {
+      deliveries.push({ channel, status: "duplicate", providerMessageId: null });
       continue;
     }
 
     if (channel === "email") {
       const r = await emailAdapter.send({ to: contactEmail!, title: rendered.email.subject, body: rendered.email.body });
+      await updateGuestDelivery(
+        client, input.idempotency_key, channel,
+        r.status, r.providerMessageId ?? null, r.error ?? null, undefined,
+      );
       deliveries.push({ channel: "email", status: r.status, providerMessageId: r.providerMessageId });
     } else if (channel === "sms") {
       const r = await smsAdapter.send({ to: contactPhone!, brandName, message: rendered.sms, countryCode: input.country_code });
+      await updateGuestDelivery(
+        client, input.idempotency_key, channel,
+        r.status, r.providerMessageId ?? null, r.error ?? null, r.segments,
+      );
       deliveries.push({ channel: "sms", status: r.status, providerMessageId: r.providerMessageId, segments: r.segments });
     }
   }
 
   return { success: true, notificationId: null, deliveries };
+}
+
+// Insert a CONTACT-KEYED guest delivery row (notification_id NULL). Returns
+// duplicate=true on a 23505 (the dedupe slot is already taken → caller skips the
+// send). Any other insert error is non-fatal (logged), never throws — the ledger
+// is observability, not the send gate (the can_send chokepoint already ran).
+async function insertGuestDelivery(
+  client: MinimalClient,
+  idempotencyKey: string,
+  channel: string,
+  contact: string,
+  status: string,
+  provider: string | null,
+  failedReason: string | null,
+  providerMessageId: string | null,
+  segments: number | null,
+): Promise<{ duplicate: boolean }> {
+  const res = (await client.from("notification_deliveries").insert({
+    notification_id: null,
+    contact: contact.toLowerCase(),
+    idempotency_key: idempotencyKey,
+    channel,
+    status,
+    provider,
+    provider_message_id: providerMessageId,
+    failed_reason: failedReason,
+    delivered_at: status === "delivered" ? new Date().toISOString() : null,
+    segments,
+  })) as unknown as { error: { code?: string } | null };
+  if (res?.error) {
+    if (res.error.code === "23505") return { duplicate: true };
+    console.error("[notifyV2] guest delivery insert failed:", res.error);
+  }
+  return { duplicate: false };
+}
+
+// Reconcile the guest delivery row (claimed 'queued') with the provider result.
+async function updateGuestDelivery(
+  client: MinimalClient,
+  idempotencyKey: string,
+  channel: string,
+  status: string,
+  providerMessageId: string | null,
+  failedReason: string | null,
+  segments?: number,
+): Promise<void> {
+  const table = client.from("notification_deliveries");
+  if (!table.update) return; // fake clients without update — non-fatal
+  await table.update({
+    status,
+    provider_message_id: providerMessageId,
+    failed_reason: failedReason,
+    delivered_at: status === "delivered" ? new Date().toISOString() : null,
+    segments: segments ?? null,
+    attempt_at: new Date().toISOString(),
+  })
+    .eq("idempotency_key", idempotencyKey)
+    .eq("channel", channel);
 }
 
 async function writeDelivery(

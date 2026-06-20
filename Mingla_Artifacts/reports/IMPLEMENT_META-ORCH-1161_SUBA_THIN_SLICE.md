@@ -196,3 +196,63 @@ cd "/Users/sethogieva/Desktop/mingla-orchs/ORCH-1161-[notif-system]" && /Users/s
 - **DEC-185 in the local `DECISION_LOG.md` is a DIFFERENT decision** (ORCH-1146 experience parser) than the "simultaneous policy send" DEC-185 the dispatch references. The notification DEC-185/186 are recorded in the COPY file header but not yet in `DECISION_LOG.md` — orchestrator should log the notification DEC-185 (simultaneous send) / DEC-186 (bundled consent) to avoid the ID-collision confusion.
 - The COPY file `COPY_META-ORCH-1161_CONSENT_AND_MESSAGE_TEMPLATES.md` lives in the **anchor** (`mingla-main`), not the worktree or origin/main — it was read from the anchor. Orchestrator may want it committed to main for durability.
 - The `[[FILL]]` legal placeholders in the consent disclosure string are a real blocker for the consent-capture leg (Sub-B/checkout) — counsel + real entity/URL values needed before any consent `disclosure_text` ships.
+
+---
+
+## REWORK 2026-06-20 — NEEDS-REWORK loop (fix tester P2-1 + P2-2 + CI registration)
+
+**Trigger:** `TEST_META-ORCH-1161_SUBA_THIN_SLICE.md` CONDITIONAL PASS → REWORK for the two P2 anon/guest defects + the CI housekeeping item. Built on top of code `a511b7944` / tester adversarial test `577de017b`. NOT deployed/merged.
+
+### Fixes
+
+**P2-1 — guest double-fire / non-atomic outbox claim → CLOSED.**
+- The drain claimed pending rows with a non-atomic `select status='pending'` then per-row `update status='processing'` — two overlapping cron runs could both claim the same row (the guest/no-`user_id` path has no `notifications` UNIQUE backstop → double SMS/email).
+- New migration `20261110000004_orch_1161_atomic_claim_and_guest_ledger.sql` adds `claim_notification_outbox(p_limit int)` — a SECURITY DEFINER function doing a single `UPDATE … WHERE id IN (SELECT id … WHERE status='pending' ORDER BY created_at FOR UPDATE SKIP LOCKED LIMIT N) RETURNING *`. The drain (`notify-outbox-drain/index.ts`) now calls this RPC instead of select-then-update, and the redundant per-row mark-processing UPDATE is removed.
+- **Second line of defense (dispatcher idempotency for guests):** the guest delivery ledger now carries `idempotency_key`, and a partial `UNIQUE(idempotency_key, channel) WHERE idempotency_key IS NOT NULL AND notification_id IS NULL` makes a second dispatch of the same key a 23505 → `dispatchAnon` skips the provider HTTP. This mirrors, for guests, the `notifications` UNIQUE backstop the `user_id` path already had.
+
+**P2-2 — guest sends not written to the delivery ledger → CLOSED.**
+- `notification_deliveries.notification_id` relaxed to NULLABLE; added `contact` + `idempotency_key` columns; added `CHECK (notification_id IS NOT NULL OR contact IS NOT NULL)` (no orphan rows).
+- `dispatchAnon` (`_shared/notifyV2.ts`) now writes a CONTACT-KEYED delivery row per guest send (email + SMS; push n/a for guest), claimed `queued` then reconciled to the provider result (`sent`/`failed` + `provider_message_id` + `segments`).
+- The Twilio status webhook (`twilio-message-status`) already reconciles by `provider_message_id` + `channel='sms'` with NO `notification_id` filter — so guest rows reconcile automatically; no webhook change needed.
+
+**CI registration → DONE.** Added `supabase/functions/__tests__/**` to the workflow trigger `paths` (push + pull_request) and a new `notification-deno-tests` job in `.github/workflows/supabase-migrations-and-stripe-deno.yml` that enumerates ALL THREE 1161 Deno test files (happy-path + tester adversarial + this rework's). Batch-run verified locally (CI parity): 13 passed | 0 failed.
+
+### Files changed (rework)
+| File | Change |
+|---|---|
+| `supabase/migrations/20261110000004_orch_1161_atomic_claim_and_guest_ledger.sql` | NEW (+~115) — atomic claim fn + guest ledger schema |
+| `supabase/functions/notify-outbox-drain/index.ts` | atomic `claim_notification_outbox` RPC; removed non-atomic select + per-row mark-processing (~−12/+12) |
+| `supabase/functions/_shared/notifyV2.ts` | `dispatchAnon` writes contact-keyed ledger + per-channel dedupe; `MinimalClient.update`; `insertGuestDelivery`/`updateGuestDelivery` helpers (~+70) |
+| `.github/workflows/supabase-migrations-and-stripe-deno.yml` | trigger paths + `notification-deno-tests` job (~+40) |
+| `supabase/functions/__tests__/orch_1161_guest_ledger_and_dedupe.test.ts` | NEW (2 tests) — proves the fixes; fails-on-revert |
+
+### How atomicity is guaranteed
+`claim_notification_outbox` flips `pending → processing` inside ONE statement whose inner `SELECT … FOR UPDATE SKIP LOCKED` row-locks the chosen rows; a concurrent drain invocation cannot lock the same rows and SKIPs them. Runtime-proven against real Postgres `supabase/postgres:17.4.1.075`: two concurrent claims (session A holding locks on c6–c10, session B claiming live) returned **disjoint** sets (A={c6..c10}, B={c1..c5}, overlap NONE). The dispatcher-level guest dedupe (partial UNIQUE) is the backstop if a single logical notification is ever re-enqueued.
+
+### Guest-ledger proof (runtime, real Postgres 17)
+- `notification_id` nullable: YES.
+- Guest insert (`notification_id NULL`, `contact` set) OK; duplicate `(idempotency_key, channel)` rejected with 23505; same `idempotency_key` + different `channel` allowed.
+- Orphan row (no `notification_id`, no `contact`) rejected by the CHECK.
+- `claim_notification_outbox(2)` over 3 pending rows claimed the 2 oldest and flipped exactly those to `processing` (third stayed `pending`).
+- `has_function_privilege` for `anon` and `authenticated` on `claim_notification_outbox(int)` = **false** (SECURITY DEFINER auto-grant gotcha closed).
+
+### Regression test (rework)
+- Path: `supabase/functions/__tests__/orch_1161_guest_ledger_and_dedupe.test.ts` (2 tests: G1 guest ledger write, G2 guest dedupe).
+- Run: 2 passed | 0 failed. Combined 1161 suite (3 files): **13 passed | 0 failed**.
+- **fails-on-revert verified at `577de017b`** (branch HEAD before the rework commit): deleting the `if (claim.duplicate) { … continue; }` dedupe guard in `dispatchAnon` → G2 FAILS (twilio===2 not 1); restored → pass. Neutering `insertGuestDelivery` (true line-deletion of the ledger write) → BOTH G1 and G2 FAIL; restored → pass.
+
+### CI registration confirmation
+All three files present and enumerated; CI-parity batch run (`deno test … orch_1161_notify_dispatch_v2.test.ts orch_1161_anon_guest_path.test.ts orch_1161_guest_ledger_and_dedupe.test.ts`) → 13 passed. `git diff origin/main --name-status` shows all three test files as `A` (added) — append-only satisfied; the tester's A3 (`twilio===2`) is UNCHANGED (its fake client never simulates the DB UNIQUE conflict, so it still passes — the dedupe is a real-DB constraint, proven separately in `orch_1161_guest_ledger_and_dedupe.test.ts` + the Postgres runtime probe).
+
+### Guards held (rework)
+- Legacy `notify-dispatch` `type` path: BYTE-IDENTICAL (untouched this rework).
+- `SMS_LIVE_ENABLED_US` default false: unchanged.
+- Migration monotonic: `20261110000004` > all local + sibling-worktree prefixes.
+- `claim_notification_outbox` REVOKE PUBLIC + anon + authenticated (service-role only).
+- DO-NOT-TOUCH (send-otp/verify-otp, venue send path, Stripe money seam, reservation lifecycle money RPCs): untouched.
+- strict-grep `i-proposed-1161-sms-from-approved-sender-and-kill-switch.mjs`: PASS. `deno check` on all 4 touched edge fns: clean.
+
+### Operator action required (rework — additive to §11)
+- **Apply the new migration** (in order, after REVIEW): `20261110000004_orch_1161_atomic_claim_and_guest_ledger.sql` is part of the same `db push` chain in §11 (applies after `…000003`).
+- **No new edge fn** to deploy beyond §11's list; `notify-outbox-drain` and `notify-dispatch` (v2 core) are re-deployed from MERGED main with the rework changes.
+- **Cron migration `…000003` (vault/net) unchanged** — the cron now POSTs the drain which calls the new claim RPC.
