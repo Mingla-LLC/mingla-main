@@ -25,14 +25,17 @@
     "body": "We'll send a code. Takes two seconds.",
     "verified_headline": "You're all set.",
     "verified_body": "Your number's locked in. One less thing.",
-    "consent_text": "I agree to receive messages from Mingla via SMS or phone call, including verification codes, friend invitations, and experience reminders. Reply STOP to opt out or HELP for help. See our ",
+    "consent_text": "I agree to Mingla's ",
     "terms_of_service": "Terms of Service",
     "and": " and ",
     "privacy_policy": "Privacy Policy",
-    "consent_accessibility": "Agree to receive messages from Mingla",
+    "consent_accessibility": "I agree to Mingla's terms and conditions and to receive booking confirmations, reminders, account updates, and marketing by email, push, and text.",
     "cta_send_code": "Send code",
     "placeholder_phone": "(555) 123-4567",
-    "country_accessibility": "Selected country: {{name}}. Tap to change."
+    "country_accessibility": "Selected country: {{name}}. Tap to change.",
+    "consent_terms_link": "terms and conditions",
+    "consent_text_suffix": " and to receive booking confirmations, reminders, account updates, and marketing from Mingla and the businesses I book with — by email, push, and text. Message frequency varies. Msg & data rates may apply. Reply STOP to opt out of texts, HELP for help.",
+    "terms_and_conditions": "Terms & Conditions"
   },
   "otp": {
     "headline": "Enter the code",

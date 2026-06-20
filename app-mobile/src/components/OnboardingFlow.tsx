@@ -31,6 +31,9 @@ import { locationService } from '../services/locationService'
 import { throttledReverseGeocode, clearGeocodeCache } from '../utils/throttledGeocode'
 import { geocodingService } from '../services/geocodingService'
 import { sendOtp, verifyOtp, OtpChannel } from '../services/otpService'
+// META-ORCH-1161 Sub-A.2 (DEC-186) — bundled-mandatory consent writer + verbatim disclosure.
+import { recordConsent } from '../services/consentService'
+import { CONSENT_DISCLOSURE_TEXT, DISCLOSURE_VERSION } from '../constants/consentDisclosure'
 import { logger } from '../utils/logger'
 import { saveOnboardingData, clearOnboardingData } from '../utils/onboardingPersistence'
 import { resolveOnboardingLocationOverride } from '../utils/onboardingLocationOverride'
@@ -1395,6 +1398,33 @@ const OnboardingFlow = ({
       if (result.success) {
         logger.onboarding('OTP verified successfully')
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success)
+
+        // META-ORCH-1161 Sub-A.2 (DEC-186) — record the bundled consent grant the
+        // moment the phone is verified (the user now has a session). Writes
+        // transactional + marketing consent_records with the EXACT §1b disclosure
+        // VERBATIM. Non-blocking: a consent-audit write failure must NOT block
+        // finishing onboarding (the checkbox act already constitutes consent), so
+        // we log and proceed (Constitution #3: surfaced, never silently swallowed).
+        try {
+          const { data: authData } = await supabase.auth.getUser()
+          const grantedUserId = authData?.user?.id ?? null
+          const grantedEmail = authData?.user?.email ?? null
+          const consentResult = await recordConsent({
+            source: 'onboarding',
+            disclosureText: CONSENT_DISCLOSURE_TEXT,
+            disclosureVersion: DISCLOSURE_VERSION,
+            phone: buildE164(),
+            email: grantedEmail,
+            countryCode: data.phoneCountryCode,
+            userId: grantedUserId,
+          })
+          if (!consentResult.ok) {
+            logger.onboarding('consent_records write failed (proceeding; checkbox act stands)')
+          }
+        } catch (consentErr) {
+          logger.onboarding('consent write threw', { error: String(consentErr) })
+        }
+
         // Pre-populate identity defaults from phone context (atomic update)
         setData((prev) => ({
           ...prev,
@@ -1429,7 +1459,7 @@ const OnboardingFlow = ({
         }
       }
     },
-    [buildE164, goNext, otpAttempts, goToSubStep]
+    [buildE164, goNext, otpAttempts, goToSubStep, data.phoneCountryCode]
   )
 
   // ─── Location Capture ───
@@ -2365,34 +2395,25 @@ const OnboardingFlow = ({
               size="md"
               style={styles.consentCheckbox}
             />
+            {/* META-ORCH-1161 Sub-A.2 (DEC-186) — bundled-mandatory consent:
+                ONE underlined "terms and conditions" link opening the full
+                T&C view. The single checkbox covers T&Cs + transactional +
+                reminders + email + SMS marketing. */}
             <Text style={styles.consentText}>
               {t('onboarding:phone.consent_text')}
               <Text
-                style={styles.consentLink}
+                style={styles.consentLinkUnderlined}
                 onPress={() => {
                   setLegalBrowserUrl(LEGAL_URLS.termsOfService)
-                  setLegalBrowserTitle(t('onboarding:phone.terms_of_service'))
+                  setLegalBrowserTitle(t('onboarding:phone.terms_and_conditions'))
                   setLegalBrowserVisible(true)
                 }}
                 accessibilityRole="link"
-                accessibilityLabel={t('onboarding:phone.terms_of_service')}
+                accessibilityLabel={t('onboarding:phone.terms_and_conditions')}
               >
-                {t('onboarding:phone.terms_of_service')}
+                {t('onboarding:phone.consent_terms_link')}
               </Text>
-              {t('onboarding:phone.and')}
-              <Text
-                style={styles.consentLink}
-                onPress={() => {
-                  setLegalBrowserUrl(LEGAL_URLS.privacyPolicy)
-                  setLegalBrowserTitle(t('onboarding:phone.privacy_policy'))
-                  setLegalBrowserVisible(true)
-                }}
-                accessibilityRole="link"
-                accessibilityLabel={t('onboarding:phone.privacy_policy')}
-              >
-                {t('onboarding:phone.privacy_policy')}
-              </Text>
-              .
+              {t('onboarding:phone.consent_text_suffix')}
             </Text>
           </Pressable>
         </View>
@@ -3478,6 +3499,14 @@ const styles = StyleSheet.create({
   consentLink: {
     color: colors.primary[700],
     fontWeight: fontWeights.medium,
+  },
+  // META-ORCH-1161 Sub-A.2 — the underlined "terms and conditions" link
+  // (DEC-186 / DESIGN §S2.2). Keeps the established settings-link orange,
+  // adds the required underline (two non-color affordances).
+  consentLinkUnderlined: {
+    color: colors.primary[700],
+    fontWeight: fontWeights.medium,
+    textDecorationLine: 'underline' as const,
   },
   captionCentered: {
     ...typography.sm,

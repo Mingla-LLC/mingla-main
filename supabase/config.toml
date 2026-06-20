@@ -234,6 +234,13 @@ verify_jwt = false
 [functions.rsvp-notify]
 verify_jwt = true
 
+# META-ORCH-1161 Sub-A.2 — record-consent is the SHARED bundled-consent writer
+# called by BOTH the consumer onboarding (authenticated) AND the anonymous buyer
+# checkout (anon), so verify_jwt=false (anon-tolerant). It writes consent_records
+# via the service-role client and computes ip_hash server-side. DEC-186.
+[functions.record-consent]
+verify_jwt = false
+
 # META-ORCH-1148 2.1b — send-venue-sms is the OPERATOR-triggered "table's ready"
 # waitlist SMS. verify_jwt=true: the gateway verifies the caller's user JWT; the
 # fn ADDITIONALLY gates on manager-plus brand membership, validates E.164, honors

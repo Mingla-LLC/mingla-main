@@ -63,6 +63,15 @@ export interface BuyerDetails {
   /** Required for production checkout. Edge functions normalise to E.164. */
   phone: string;
   marketingOptIn: boolean;
+  /**
+   * META-ORCH-1161 Sub-A.2 (DEC-186) — the single bundled-mandatory consent
+   * gate. TRUE means the buyer checked "I agree to all terms and conditions",
+   * which (per DEC-186 bundling) also constitutes the marketing grant. The Pay
+   * button is disabled until this is true AND fields are valid. When set true,
+   * the buyer surface ALSO sets `marketingOptIn=true` (the bundled grant) so the
+   * downstream payment payload carries it. Default false (affirmative act).
+   */
+  termsAccepted?: boolean;
   address?: {
     line1: string;
     line2?: string;
@@ -189,6 +198,7 @@ const EMPTY_BUYER: BuyerDetails = {
   email: "",
   phone: "",
   marketingOptIn: false,
+  termsAccepted: false,
   address: {
     line1: "",
     city: "",
