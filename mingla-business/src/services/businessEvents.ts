@@ -658,6 +658,8 @@ export const fetchBusinessEventById = async (
   // ORCH-1172 R3: ALSO grab the 6 rsvp_* host-control columns (same view-
   // doesn't-expose-these reason) so a server-loaded RSVP editor hydrates the
   // REAL saved values instead of defaults — mirrors fetchBusinessEventsForBrand.
+  // orch-strict-grep-allow events-type-filter — by-id probe (.eq("id")) that READS
+  // event_type to resolve the row's type + rsvp meta; it must not filter by it.
   const typeResp = await supabase
     .from("events")
     .select(
