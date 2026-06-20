@@ -39,6 +39,22 @@ ALTER TABLE public.event_rsvps
   ADD COLUMN IF NOT EXISTS qr_token_hash text NULL,
   ADD COLUMN IF NOT EXISTS qr_code       text NULL;
 
+-- ORCH-1163 §J.6 — the consumer Calendar tab subscribes to `event_rsvps` realtime
+-- (useCalendarEntries `useMyGoingRsvps`) so a going/cancel reflects live. Add the
+-- table to the realtime publication (idempotent) and pair it in the ORCH-0854
+-- REALTIME-TABLE-PUBLICATION-PAIRED gate baseline. Mirrors the `tickets` add.
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_publication_tables
+    WHERE pubname = 'supabase_realtime'
+      AND schemaname = 'public'
+      AND tablename = 'event_rsvps'
+  ) THEN
+    ALTER PUBLICATION supabase_realtime ADD TABLE public.event_rsvps;
+  END IF;
+END $$;
+
 -- ===========================================================================
 -- (2) The child table — one CONTACT record per plus-one + per-guest pass +
 --     matched-account FK (§H.3 + §J.1, folded into one migration).
