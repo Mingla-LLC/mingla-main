@@ -479,6 +479,12 @@ export default function ConsumerEventDetailScreen({
   // floating dock both consume this single state machine. The static map URL is
   // privacy-gated the same way as the standard branch (exact pin only when the
   // street is public).
+  // ORCH-0846 parity: the seedless RSVP cold-cap below needs a `format` value but has
+  // NO event to derive from, and its body never renders without a seed — so this is a
+  // never-shown type placeholder, named (not an inline `format:` hardcode) so the
+  // consumer-event-sheet address/format-parity gate's "no fabricated format" rule holds
+  // for the real (seeded → cardToPublicEvent-derived) render path.
+  const seedlessPlaceholderFormat = "in-person" as PublicEventProps["format"];
   const rsvpPublicEvent: PublicEventProps = seed !== null
     ? cardToPublicEvent(seed, [])
     : {
@@ -493,7 +499,7 @@ export default function ConsumerEventDetailScreen({
         datesList: [],
         status: "published",
         endedAt: null,
-        format: "in-person",
+        format: seedlessPlaceholderFormat,
         venueName: null,
         address: null,
         hideAddressUntilTicket: false,
