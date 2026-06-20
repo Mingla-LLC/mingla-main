@@ -239,8 +239,15 @@ export default function ConsumerEventDetailScreen({
   // so the prior float→dock scroll/viewport tracking is retired (subtract before
   // adding). These handlers stay as no-op sinks for the body's onTicketBoxLayout +
   // the gorhom scroll's onScroll/onLayout so the wiring is intact + lint-clean.
-  const handleDockLayout = useCallback((_e: LayoutChangeEvent): void => {
-    // No-op: the bar is persistent; retained for future float→dock re-enable.
+  // ORCH-1163-R3 — for the RSVP branch the floating decision bar is TALLER + variable
+  // (3 glyph+label buttons + a wrapping micro subcopy) than the event Get-tickets
+  // bar, so the fixed `reserveBarClearance=177` under-reserves and the last section
+  // scrolls UNDER the bar. We now MEASURE the nativeFloatWrap height (event branch
+  // still ignores it — its clearance is the constant 177 path).
+  const [rsvpFloatBarHeight, setRsvpFloatBarHeight] = useState<number>(0);
+  const handleDockLayout = useCallback((e: LayoutChangeEvent): void => {
+    const h = e.nativeEvent.layout.height;
+    setRsvpFloatBarHeight((prev) => (Math.abs(prev - h) > 1 ? h : prev));
   }, []);
   const handleScroll = useCallback(
     (_e: NativeSyntheticEvent<NativeScrollEvent>): void => {
@@ -690,11 +697,21 @@ export default function ConsumerEventDetailScreen({
   // FLOAT_GAP`; adding the bar height (~56) + a small gap gives a constant runway
   // ON TOP OF the device safe-area that always clears the raised bar (the prior
   // `72 + insets.bottom` under-cleared it once the bar was lifted).
-  void floatBarBottom; // applied to the float wrapper's `bottom` below.
+  // (floatBarBottom is applied to the float wrapper's `bottom` below + drives the
+  // RSVP measured runway.)
   // 177 = HOME_INDICATOR_FLOOR(34) + SHEET_BOTTOM_OVERSHOOT(63) + FLOAT_GAP(16) +
   // bar-height-and-gap(64) — the constant runway above the device safe-area that
   // always clears the raised float bar (whose bottom ≤ insets.bottom + 177).
   const reserveBarClearance = 177 + insets.bottom;
+  // ORCH-1163-R3 — the RSVP branch's bar is taller + variable, so its runway is
+  // MEASURED: the wrapper's lifted `bottom` (floatBarBottom) + the measured bar
+  // height + a FLOAT_GAP. Falls back to the event-branch constant until onLayout
+  // fires (so the first paint never under-clears).
+  const rsvpBarClearance =
+    rsvpFloatBarHeight > 0
+      ? floatBarBottom + rsvpFloatBarHeight + FLOAT_GAP
+      : reserveBarClearance;
+  const scrollPaddingBottom = isRsvp ? rsvpBarClearance : reserveBarClearance;
 
   return (
     <>
@@ -735,7 +752,7 @@ export default function ConsumerEventDetailScreen({
           style={styles.nativeScroll}
           contentContainerStyle={[
             styles.nativeScrollContent,
-            { paddingBottom: reserveBarClearance },
+            { paddingBottom: scrollPaddingBottom },
           ]}
           showsVerticalScrollIndicator={false}
           onScroll={handleScroll}
