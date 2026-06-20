@@ -51,6 +51,9 @@ export const emailAdapter = {
     }
 
     try {
+      // no-attachment: META-ORCH-1161 transactional notification emails (reservation
+      // changed/cancelled, reminders, refunds, order-cancelled) carry no PDF/file —
+      // the ticket-PDF/.ics path stays in ticket-confirmation-dispatch (ORCH-0785-A).
       const res = await fetch("https://api.resend.com/emails", {
         method: "POST",
         headers: {
