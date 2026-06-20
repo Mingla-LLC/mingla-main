@@ -218,3 +218,48 @@ NOT run on sim/device this pass (logic + contract + DB-probe verification only).
 - **DISC-1161-A2-SEED-LAG:** the shipped thin-slice seed (`20261110000001`) did NOT match the DEC-185 matrix for three rows (refund_issued/order_cancelled missing `sms`; payout_paid missing `email`). This slice's migration corrects it, but it means the live `notification_categories` seed was briefly out of parity with the closed SMS-eligible set — worth a note when the `I-PROPOSED-1161-SMS-ONLY-FOR-POLICY-ELIGIBLE-CATEGORIES` strict-grep gate is flipped ACTIVE at CLOSE (the gate must assert the CORRECTED seed).
 - **OQ-2 resolved:** `consent_records.source` has NO CHECK constraint (only a comment), so `source='onboarding'` is accepted with no migration needed (no enum widening required).
 - **Comms ledger:** COMMS-0040/0041 (RSVP/experience public-page standardization) are WARN/ALL — this slice touches the CHECKOUT flow + onboarding, NOT the public RSVP/experience page bodies, so no structural conflict (acked, no action).
+
+---
+
+## REWORK 2026-06-20 — NEEDS-REWORK loop (tester FAIL → fix P1-1 + commit drift test + P2-1 guard)
+
+Routed back from `TEST_META-ORCH-1161_SUBA2_CONSENT_CAPTURE.md` (verdict FAIL, P1: 1 / P2: 3). This loop fixes the one blocking P1 + two smaller items. No money seam touched; the verbatim §1b disclosure string left byte-identical (tester proved it); no new gorhom consumer; SMS kill-switch untouched.
+
+### R-1 — P1-1 (BLOCKING) — checkout Pay dead-tap FIXED
+
+**Before:** `mingla-business/app/checkout/[eventId]/buyer.tsx` set `consentHintVisible`/`checkboxBoxFlash` ONLY inside `handleContinue` behind `if (!termsAccepted)`. `handleContinue` fired only via the Pay `Button`'s `onPress`, which is `undefined` while the button is `disabled` (`isContinueDisabled`). Box unchecked → button disabled → tap swallowed → the specced red flash + "Please agree to continue." (DESIGN §S3.4 L311/335) was unreachable dead code = silent dead tap (Constitution Rule 1).
+
+**After (approach (a) — capture the tap, keep the button visually greyed):**
+- New `showConsentHint` callback marks all fields touched and, when the only blocker is the unchecked box, sets `consentHintVisible(true)` → renders the red checkbox flash (`checkboxBoxFlash`) + the "Please agree to continue." helper (`consentRequiredHint`).
+- The show/no-show decision is the new PURE predicate `shouldShowConsentHintOnDisabledTap({fieldsValid, termsAccepted})` in `checkoutConsentGate.ts` (`fieldsValid && !termsAccepted`) — testable in isolation (fails-on-revert), and avoids double-messaging when fields are still invalid (the field errors carry that message).
+- The Pay `Button` now sits inside a tap-capturing `<Pressable onPress={continueDisabled ? showConsentHint : undefined}>` wrapping a `<View pointerEvents={continueDisabled ? "none" : "auto"}>`. While disabled, `pointerEvents="none"` makes the inner Button transparent to touches so the outer Pressable reliably captures the tap and fires `showConsentHint` (robust on web + native). While enabled, `pointerEvents="auto"` lets the Button claim the responder and fire `handleContinue`; the outer `onPress` is `undefined` → no double-fire. The button stays VISUALLY disabled (`disabled={continueDisabled}`) per DESIGN §S3.4.
+- Single source of the gate value: `const continueDisabled = isContinueDisabled({...})` drives the visual disabled state, the pointer-events pass-through, and the tap-capture overlay so they cannot disagree.
+
+**Files:** `mingla-business/app/checkout/[eventId]/buyer.tsx` (+~45 lines), `mingla-business/src/components/checkout/checkoutConsentGate.ts` (+~18 lines).
+**Commit:** `c317d57ba` (filled below).
+
+### R-2 — tester adversarial drift test COMMITTED on-branch
+
+`mingla-business/src/services/__tests__/consentDisclosureDrift.tester.orch1161.test.ts` was UNTRACKED on the branch (would not appear in the closing `git diff main...HEAD`). Committed verbatim (append-only; NOT modified) so it lands in the closing diff. 3 tests PASS.
+
+### R-3 — P2-1 — record-consent open-write abuse guard ADDED
+
+`supabase/functions/record-consent/index.ts` is `verify_jwt=false` (anon checkout calls it), so anyone could POST fabricated consent rows; the 5-min dedupe only blocks an identical `(contact,channel,scope,source)` tuple, which an attacker rotating fake contacts bypasses. Added a lightweight per-IP sliding-window throttle (`RATE_LIMIT_WINDOW_MS=60s`, `RATE_LIMIT_MAX_PER_WINDOW=12`) checked BEFORE any JSON parse / DB work; over-cap → HTTP 429 with `Retry-After`. JWT stays disabled (legit buyer/onboarding callers are anon). Fail-OPEN on a missing/stripped IP header so a legitimate caller is never blocked. Reuses the existing `clientIp()` (the duplicate `clientIp` call for `ip_hash` was de-duped into the single `requestIp`).
+
+**Residual (documented):** this is a PER-INSTANCE in-memory guard — it does not coordinate across warm Deno instances and resets on cold start. It caps a single hot client's burst (the realistic cheap-spam shape) but a distributed/multi-instance flood is not fully blocked. A durable cross-instance limiter (e.g. a DB/Redis counter) is out of scope for this slice; registered as the residual. Note (from tester P2-1, re-confirmed): a poisoned consent row grants NO send capability — `can_send()` does not read `consent_records` — so there is no TCPA send-amplification harm; the guard targets audit-log pollution + cost-spam only.
+
+### Verification (this loop)
+
+- `npx jest` (mingla-business) on the 3 consent suites → **9/9 PASS** (`consentService.orch1161` 3, `consentDisclosureDrift.tester.orch1161` 3, `checkoutConsentGate.deadtap.orch1161` 3).
+- **fails-on-revert (new dead-tap test):** true LINE DELETION of `&& !params.termsAccepted` in `shouldShowConsentHintOnDisabledTap` (→ `params.fieldsValid`) → `checkoutConsentGate.deadtap.orch1161.test.ts` "box already checked → no consent helper" FAILED (expected false, received true); restored → 3/3 PASS. **fails-on-revert verified at `c317d57ba`**.
+- `deno check supabase/functions/record-consent/index.ts` → clean.
+- `tsc --noEmit` (mingla-business): the buyer.tsx/gate edits introduce ZERO new errors; the only buyer.tsx TS7006 lines are the pre-existing PhoneInput `iconRenderer`/`onChange` block (identical in the untouched sibling `checkout-trip/[tripEventId]/buyer.tsx`; baseline 461 repo-wide).
+- Strict-grep: `i-proposed-1161-sms-from-approved-sender-and-kill-switch` PASS; `i-proposed-orch-0945-dead-end-reason-coverage` PASS; `i-proposed-tr2-safearea-on-fullscreen-routes` is a pre-existing baseline FAIL (16 unrelated routes; `buyer.tsx` is allowlisted and NOT flagged) — not regressed by this loop.
+
+### New regression test (implementor-owned, this loop)
+
+`mingla-business/src/components/checkout/__tests__/checkoutConsentGate.deadtap.orch1161.test.ts` (3 tests) — pins that a disabled-Pay tap with valid fields + unchecked box surfaces the helper, and does NOT when the box is checked or fields are invalid. Append-only (new file).
+
+### Still operator-owned at CLOSE (unchanged from original report)
+
+Deploy `record-consent` from MERGED main (`verify_jwt=false`); apply migration `20261110000005`; flip the SMS-eligible strict-grep gate ACTIVE asserting the POST-000005 seed (P2-3 / DISC-1161-A2-SEED-LAG). P2-2 (live edge round-trip) confirmed at CLOSE post-deploy.

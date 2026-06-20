@@ -44,6 +44,40 @@ const corsHeaders = {
 
 const DEDUPE_WINDOW_MS = 5 * 60 * 1000; // 5 minutes
 
+// META-ORCH-1161 Sub-A.2 (P2-1 hardening) — record-consent is an anon
+// (verify_jwt=false) write path: anyone can POST fabricated consent rows. The
+// dedupe above only blocks an IDENTICAL (contact,channel,scope,source) tuple,
+// so an attacker rotating distinct fabricated contacts bypasses it entirely.
+// This lightweight per-IP sliding-window throttle blunts the cheap-burst abuse
+// vector (audit-log pollution / cost-spam) without adding a JWT requirement
+// (the legit buyer/onboarding callers are anon). It is a per-instance in-memory
+// guard — see "Residual" in the rework note: it does not coordinate across
+// warm instances or survive a cold start, but it caps a single hot client's
+// burst, which is the realistic abuse shape. Fail-OPEN on a missing IP so a
+// legitimate caller behind a stripped header is never blocked.
+const RATE_LIMIT_WINDOW_MS = 60 * 1000; // 1 minute
+const RATE_LIMIT_MAX_PER_WINDOW = 12; // a real grant is 1 call → 12/min is generous
+const rateBuckets = new Map<string, number[]>();
+
+/**
+ * Returns true when the caller (keyed by IP) is OVER the per-window cap.
+ * Prunes timestamps outside the window on each call so the map stays bounded
+ * for active keys. `null` IP → never rate-limited (fail-open, can't attribute).
+ */
+function isRateLimited(ipKey: string | null): boolean {
+  if (ipKey === null) return false;
+  const now = Date.now();
+  const windowStart = now - RATE_LIMIT_WINDOW_MS;
+  const hits = (rateBuckets.get(ipKey) ?? []).filter((t) => t > windowStart);
+  if (hits.length >= RATE_LIMIT_MAX_PER_WINDOW) {
+    rateBuckets.set(ipKey, hits); // keep the pruned window; do NOT record this call
+    return true;
+  }
+  hits.push(now);
+  rateBuckets.set(ipKey, hits);
+  return false;
+}
+
 type ConsentSource =
   | "onboarding"
   | "checkout"
@@ -95,6 +129,24 @@ serve(async (req: Request): Promise<Response> => {
     return new Response(
       JSON.stringify({ error: "method_not_allowed" }),
       { status: 405, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+    );
+  }
+
+  // META-ORCH-1161 Sub-A.2 (P2-1) — per-IP abuse guard BEFORE any parse/DB work
+  // so a burst is rejected as cheaply as possible.
+  const requestIp = clientIp(req);
+  if (isRateLimited(requestIp)) {
+    console.warn("[record-consent] rate-limited", { ip: requestIp });
+    return new Response(
+      JSON.stringify({ error: "rate_limited" }),
+      {
+        status: 429,
+        headers: {
+          ...corsHeaders,
+          "Content-Type": "application/json",
+          "Retry-After": String(Math.ceil(RATE_LIMIT_WINDOW_MS / 1000)),
+        },
+      },
     );
   }
 
@@ -157,8 +209,7 @@ serve(async (req: Request): Promise<Response> => {
     "marketing",
   ];
 
-  const ip = clientIp(req);
-  const ipHash = ip !== null ? await hashIp(ip) : null;
+  const ipHash = requestIp !== null ? await hashIp(requestIp) : null;
   const countryCode =
     typeof body.countryCode === "string" && body.countryCode.trim().length > 0
       ? body.countryCode.trim().toUpperCase()

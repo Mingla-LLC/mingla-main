@@ -77,7 +77,10 @@ import {
 } from "../../../src/components/checkout/CartContext";
 import { CheckoutHeader } from "../../../src/components/checkout/CheckoutHeader";
 import { ConsentTermsSheet } from "../../../src/components/checkout/ConsentTermsSheet";
-import { isContinueDisabled } from "../../../src/components/checkout/checkoutConsentGate";
+import {
+  isContinueDisabled,
+  shouldShowConsentHintOnDisabledTap,
+} from "../../../src/components/checkout/checkoutConsentGate";
 
 // ORCH-0847 Phase B — country-picker phone input shared with app-mobile
 // auth onboarding. Replaces the prior single-text-field phone Input which
@@ -369,6 +372,26 @@ export default function CheckoutBuyerScreen(): React.ReactElement {
     }
   }, [router, eventId]);
 
+  // META-ORCH-1161 Sub-A.2 (DEC-186) — surface why the Pay button is greyed when
+  // the buyer taps it while it is disabled. Marks every field touched (so any
+  // field error renders) and, when the only missing thing is the consent box,
+  // flashes the box + shows the "Please agree to continue." helper. The Pay
+  // button stays VISUALLY disabled (DESIGN §S3.4) but the tap is captured by a
+  // Pressable overlay below — never a silent dead tap (Constitution Rule 1).
+  const showConsentHint = useCallback((): void => {
+    setNameTouched(true);
+    setEmailTouched(true);
+    setPhoneTouched(true);
+    if (
+      shouldShowConsentHintOnDisabledTap({
+        fieldsValid: validation.isValid,
+        termsAccepted,
+      })
+    ) {
+      setConsentHintVisible(true);
+    }
+  }, [validation.isValid, termsAccepted]);
+
   const handleContinue = useCallback(async (): Promise<void> => {
     // Mark all fields touched so any validation errors render
     setNameTouched(true);
@@ -458,6 +481,15 @@ export default function CheckoutBuyerScreen(): React.ReactElement {
   const continueLabel = totals.isFree
     ? "Reserve free ticket"
     : "Continue to payment";
+
+  // META-ORCH-1161 Sub-A.2 (DEC-186) — single source of the Pay-button gate so
+  // the visual disabled state, the pointer-events pass-through, and the
+  // tap-capture overlay all agree.
+  const continueDisabled = isContinueDisabled({
+    fieldsValid: validation.isValid,
+    termsAccepted,
+    submitting,
+  });
 
   if (event === null || hasNoLines) {
     // Render an empty shell — useEffect above redirects on the next tick.
@@ -686,20 +718,30 @@ export default function CheckoutBuyerScreen(): React.ReactElement {
             {totals.isFree ? "Free" : formatCurrency(totals.total, totals.currency)}
           </Text>
         </View>
-        <Button
-          label={continueLabel}
-          onPress={handleContinue}
-          variant="primary"
-          accentColor={ctaAccent}
-          size="lg"
-          fullWidth
-          loading={submitting}
-          disabled={isContinueDisabled({
-            fieldsValid: validation.isValid,
-            termsAccepted,
-            submitting,
-          })}
-        />
+        {/* META-ORCH-1161 Sub-A.2 (DEC-186) — the Pay button stays VISUALLY
+            greyed until fields are valid AND the consent box is checked, but a
+            tap on the greyed button is CAPTURED by this Pressable overlay and
+            surfaces the "Please agree to continue." helper + checkbox flash
+            (DESIGN §S3.4 — never a silent dead tap). When the button is
+            enabled, the inner Button claims the touch responder and its own
+            onPress fires; the outer onPress is a no-op while enabled. */}
+        <Pressable
+          onPress={continueDisabled ? showConsentHint : undefined}
+          accessibilityElementsHidden={false}
+        >
+          <View pointerEvents={continueDisabled ? "none" : "auto"}>
+            <Button
+              label={continueLabel}
+              onPress={handleContinue}
+              variant="primary"
+              accentColor={ctaAccent}
+              size="lg"
+              fullWidth
+              loading={submitting}
+              disabled={continueDisabled}
+            />
+          </View>
+        </Pressable>
       </View>
 
       {/* META-ORCH-1161 Sub-A.2 — the §2 T&C sheet (shared overlay). */}
