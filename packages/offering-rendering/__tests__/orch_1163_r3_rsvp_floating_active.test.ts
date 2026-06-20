@@ -215,9 +215,21 @@ Deno.test("ORCH-1163-R3 §6b — consumer RSVP scroll paddingBottom is measured 
     /rsvpFloatBarHeight > 0[\s\S]*?floatBarBottom \+ rsvpFloatBarHeight \+ FLOAT_GAP/.test(consumer),
     "rsvpBarClearance must be floatBarBottom + rsvpFloatBarHeight + FLOAT_GAP when measured",
   );
+  // ORCH-1163 R4 — the RSVP runway moved OUT of the transparent scroll padding
+  // and INTO the page-colored nativeBody (so palette.page fills behind the bar,
+  // no black void). The runway VALUE is still rsvpBarClearance; the event branch
+  // keeps the transparent scroll padding. Same effective clearance.
   assert(
-    /scrollPaddingBottom = isRsvp \? rsvpBarClearance : reserveBarClearance/.test(consumer),
-    "the scroll paddingBottom must branch isRsvp → rsvpBarClearance, else the event reserveBarClearance",
+    /scrollPaddingBottom = isRsvp \? 0 : reserveBarClearance/.test(consumer),
+    "RSVP zeroes the transparent scroll padding (runway lives in the body); event branch keeps reserveBarClearance",
+  );
+  assert(
+    /rsvpBodyClearance = isRsvp \? rsvpBarClearance : undefined/.test(consumer),
+    "the RSVP runway value (rsvpBarClearance) must feed the page-colored nativeBody paddingBottom",
+  );
+  assert(
+    /paddingBottom: rsvpBodyClearance/.test(consumer),
+    "the page-colored nativeBody must apply rsvpBodyClearance so no black shows under the floating bar",
   );
   assert(
     /paddingBottom: scrollPaddingBottom/.test(consumer),
