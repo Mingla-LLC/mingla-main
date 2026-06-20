@@ -78,13 +78,18 @@ serve(async (req) => {
     .eq("id", clickRow.id);
 
   // Bump the message's click_count + last_clicked_at unless message is
-  // missing (defensive — message_id is nullable on the table).
+  // missing (defensive — message_id is nullable on the table). Also read the
+  // channel so the UTM medium is honest for SMS vs email (META-ORCH-1161 §6.7).
+  let messageChannel = "email";
   if (clickRow.message_id !== null) {
     const { data: msgRow, error: msgErr } = await supabase
       .from("marketing_messages")
-      .select("click_count, status")
+      .select("click_count, status, channel")
       .eq("id", clickRow.message_id)
       .maybeSingle();
+    if (!msgErr && msgRow !== null && typeof msgRow.channel === "string") {
+      messageChannel = msgRow.channel;
+    }
     if (!msgErr && msgRow !== null) {
       const nextStatus = msgRow.status === "sent" || msgRow.status === "delivered"
         ? "clicked"
@@ -109,7 +114,8 @@ serve(async (req) => {
     return redirect(FALLBACK_URL);
   }
   destination.searchParams.set("utm_source", "mingla");
-  destination.searchParams.set("utm_medium", "email");
+  // META-ORCH-1161 §6.7 — honest channel attribution (sms vs email).
+  destination.searchParams.set("utm_medium", messageChannel === "sms" ? "sms" : "email");
   destination.searchParams.set("utm_campaign", clickRow.campaign_id);
   destination.searchParams.set("utm_content", clickRow.id);
 

@@ -39,7 +39,11 @@ interface TabSpec {
 
 const TABS: ReadonlyArray<TabSpec> = [
   { kind: "email", label: "Email", enabled: true, caption: "" },
-  { kind: "sms", label: "SMS", enabled: false, caption: "pending" },
+  // META-ORCH-1161 Sub-B — SMS enabled. The send still ships text-dark: the
+  // per-market kill-switch (SMS_LIVE_ENABLED_US/_NG) defaults false server-side,
+  // so composing/scheduling an SMS blast is live UI but no Twilio HTTP fires
+  // until the operator flips the switch. RCS stays disabled.
+  { kind: "sms", label: "SMS", enabled: true, caption: "" },
   { kind: "rcs", label: "RCS", enabled: false, caption: "pending" },
 ];
 

@@ -100,8 +100,11 @@ import {
 import { getTemplate } from "../../../../src/services/marketing/marketingTemplateService";
 import { extractEmbeddedEventIds } from "../../../../src/services/marketing/tenTapTokenBridge";
 import { useBrandEvents } from "../../../../src/services/marketing/brandEvents";
+import { ChannelTabs } from "../../../../src/components/marketing/ChannelTabs";
 import type { MarketingChannelKind } from "../../../../src/components/marketing/ChannelTabs";
+import { SmsComposeCard } from "../../../../src/components/marketing/SmsComposeCard";
 import type { PreviewVariables } from "../../../../src/services/marketing/marketingRenderingService";
+import type { CampaignChannelPayload } from "../../../../src/types/marketing";
 import { useCurrentBrand } from "../../../../src/hooks/useCurrentBrand";
 import { useAuth } from "../../../../src/context/AuthContext";
 import { useResponsiveLayout } from "../../../../src/hooks/useResponsiveLayout";
@@ -143,6 +146,9 @@ export default function ComposeCampaignRoute(): React.ReactElement {
   const [channel, setChannel] = useState<MarketingChannelKind>("email");
   const [subject, setSubject] = useState("");
   const [body, setBody] = useState("");
+  // META-ORCH-1161 Sub-B — SMS blast body (plain text, separate from the HTML
+  // email `body`). Only used when channel === 'sms'.
+  const [smsBody, setSmsBody] = useState("");
   const [audienceId, setAudienceId] = useState<string | null>(null);
   const [audienceName, setAudienceName] = useState<string | null>(null);
   const [sendMode, setSendMode] = useState<SendMode>("now");
@@ -260,6 +266,8 @@ export default function ComposeCampaignRoute(): React.ReactElement {
         if (row.channel_payload.kind === "email") {
           setSubject(row.channel_payload.subject);
           setBody(row.channel_payload.body_html);
+        } else if (row.channel_payload.kind === "sms") {
+          setSmsBody(row.channel_payload.body);
         }
         if (row.scheduled_for !== null) {
           setScheduledForIso(row.scheduled_for);
@@ -283,24 +291,43 @@ export default function ComposeCampaignRoute(): React.ReactElement {
   // Auto-save draft (debounced via useComposerDraft). embedded_events is
   // derived from the body string via extractEmbeddedEventIds — Stage F
   // removed the parallel embeddedEvents state in favor of single-source body.
+  // META-ORCH-1161 Sub-B — build the channel-correct payload. Email keeps its
+  // HTML + embedded-events shape; SMS carries the plain body. The service derives
+  // `channel` from `kind`, so the discriminated union drives everything.
+  const buildPayload = useCallback((): CampaignChannelPayload => {
+    if (channel === "sms") {
+      return { kind: "sms", body: smsBody };
+    }
+    return {
+      kind: "email",
+      subject,
+      body_html: body,
+      body_text: stripHtml(body),
+      embedded_events: extractEmbeddedEventIds(body),
+    };
+  }, [channel, smsBody, subject, body]);
+
+  // Campaign name — email uses the subject; SMS uses the first ~40 chars of the
+  // body (SMS has no subject line).
+  const campaignName = useMemo<string>(() => {
+    if (channel === "sms") {
+      const firstLine = smsBody.trim().split(/\r?\n/)[0]?.slice(0, 40) ?? "";
+      return firstLine.length > 0 ? firstLine : "Untitled SMS blast";
+    }
+    return subject.length > 0 ? subject : "Untitled campaign";
+  }, [channel, smsBody, subject]);
+
   const flushDraft = useCallback(
     async () => {
       if (accountId === null || brandId === null || audienceId === null) return;
-      const embeddedEventIds = extractEmbeddedEventIds(body);
-      const payload = {
-        kind: "email" as const,
-        subject,
-        body_html: body,
-        body_text: stripHtml(body),
-        embedded_events: embeddedEventIds,
-      };
+      const payload = buildPayload();
       try {
         if (campaignId === null) {
           const row = await createDraft({
             account_id: accountId,
             brand_id: brandId,
             audience_id: audienceId,
-            name: subject.length > 0 ? subject : "Untitled campaign",
+            name: campaignName,
             channel_payload: payload,
             ...(templateId !== null ? { template_id: templateId } : {}),
           });
@@ -308,7 +335,7 @@ export default function ComposeCampaignRoute(): React.ReactElement {
         } else {
           await updateDraft({
             campaign_id: campaignId,
-            name: subject.length > 0 ? subject : "Untitled campaign",
+            name: campaignName,
             audience_id: audienceId,
             channel_payload: payload,
           });
@@ -320,11 +347,11 @@ export default function ComposeCampaignRoute(): React.ReactElement {
         );
       }
     },
-    [accountId, brandId, audienceId, subject, body, campaignId, templateId],
+    [accountId, brandId, audienceId, campaignName, buildPayload, campaignId, templateId],
   );
 
   useComposerDraft({
-    state: { subject, body, embeddedEvents: extractEmbeddedEventIds(body), audienceId },
+    state: { channel, subject, body, smsBody, embeddedEvents: extractEmbeddedEventIds(body), audienceId },
     isDirty,
     flush: async () => {
       await flushDraft();
@@ -335,13 +362,16 @@ export default function ComposeCampaignRoute(): React.ReactElement {
   // are the minimum needed BEFORE the user opens Schedule (date-time picker)
   // or Send Now (review sheet). The schedule-time check is enforced inside
   // the picker + review sheet, not at the footer level.
+  // META-ORCH-1161 Sub-B — channel-aware content readiness. Email needs subject
+  // + HTML body; SMS needs just the plain body (no subject line).
+  const contentReady = useMemo<boolean>(() => {
+    if (channel === "sms") return smsBody.trim().length > 0;
+    return subject.trim().length > 0 && body.trim().length > 0;
+  }, [channel, smsBody, subject, body]);
+
   const coreFooterDisabled = useMemo<boolean>(() => {
-    return (
-      audienceId === null ||
-      subject.trim().length === 0 ||
-      body.trim().length === 0
-    );
-  }, [audienceId, subject, body]);
+    return audienceId === null || !contentReady;
+  }, [audienceId, contentReady]);
 
   // F.10c: human-readable "what's missing" message for the toast banner
   // that fires when an operator taps Send Now / Schedule before filling
@@ -349,20 +379,28 @@ export default function ComposeCampaignRoute(): React.ReactElement {
   const missingFieldsLabel = useCallback((): string | null => {
     const missing: string[] = [];
     if (audienceId === null) missing.push("an audience");
-    if (subject.trim().length === 0) missing.push("a subject");
-    if (body.trim().length === 0) missing.push("a message");
+    if (channel === "sms") {
+      if (smsBody.trim().length === 0) missing.push("a message");
+    } else {
+      if (subject.trim().length === 0) missing.push("a subject");
+      if (body.trim().length === 0) missing.push("a message");
+    }
     if (missing.length === 0) return null;
     if (missing.length === 1) return `Pick ${missing[0]} before sending.`;
     if (missing.length === 2) return `Add ${missing[0]} and ${missing[1]} first.`;
     return `Add ${missing[0]}, ${missing[1]}, and ${missing[2]} first.`;
-  }, [audienceId, subject, body]);
+  }, [audienceId, channel, smsBody, subject, body]);
 
   // Validation — Review CTA disabled until required fields are present.
   const validationIssues = useMemo<string[]>(() => {
     const issues: string[] = [];
     if (audienceId === null) issues.push("Pick an audience");
-    if (subject.trim().length === 0) issues.push("Subject required");
-    if (body.trim().length === 0) issues.push("Body required");
+    if (channel === "sms") {
+      if (smsBody.trim().length === 0) issues.push("Message required");
+    } else {
+      if (subject.trim().length === 0) issues.push("Subject required");
+      if (body.trim().length === 0) issues.push("Body required");
+    }
     if (sendMode === "schedule") {
       if (scheduledForIso.trim().length === 0) {
         issues.push("Pick a send time");
@@ -372,7 +410,7 @@ export default function ComposeCampaignRoute(): React.ReactElement {
       }
     }
     return issues;
-  }, [audienceId, subject, body, sendMode, scheduledForIso]);
+  }, [audienceId, channel, smsBody, subject, body, sendMode, scheduledForIso]);
 
   const scheduleMutation = useScheduleCampaign({
     onSuccess: () => {
@@ -396,20 +434,14 @@ export default function ComposeCampaignRoute(): React.ReactElement {
     const isoForServer = sendMode === "now"
       ? new Date().toISOString()
       : new Date(scheduledForIso).toISOString();
-    const embeddedEventIds = extractEmbeddedEventIds(body);
     scheduleMutation.mutate({
       campaign_id: campaignId,
       scheduled_for: isoForServer,
-      name: subject.length > 0 ? subject : "Untitled campaign",
-      channel_payload: {
-        kind: "email",
-        subject,
-        body_html: body,
-        body_text: stripHtml(body),
-        embedded_events: embeddedEventIds,
-      },
+      name: campaignName,
+      // META-ORCH-1161 Sub-B — channel-correct payload (email HTML or SMS body).
+      channel_payload: buildPayload(),
     });
-  }, [campaignId, sendMode, scheduledForIso, subject, body, scheduleMutation]);
+  }, [campaignId, sendMode, scheduledForIso, campaignName, buildPayload, scheduleMutation]);
 
   // Back-block — intercept exits if dirty.
   //
@@ -484,6 +516,18 @@ export default function ComposeCampaignRoute(): React.ReactElement {
   }, [resolvedAudience.data, brandName]);
 
   const reach = resolvedAudience.data?.reach ?? null;
+
+  // META-ORCH-1161 Sub-B — channel switch (Email ↔ SMS). Marks dirty so the
+  // channel choice persists to the draft.
+  const handleChannelChange = useCallback((next: MarketingChannelKind): void => {
+    setChannel(next);
+    setIsDirty(true);
+  }, []);
+
+  // Reachability shown in the Who row + review sheet depends on the channel.
+  const channelReachable = channel === "sms"
+    ? (reach?.reachable_sms ?? null)
+    : (reach?.reachable_email ?? null);
 
   const handleBack = useCallback((): void => {
     if (router.canGoBack()) router.back();
@@ -649,27 +693,45 @@ export default function ComposeCampaignRoute(): React.ReactElement {
               <View style={[styles.whoRow, isWideDesktop ? styles.desktopWhoRow : null]}>
                 <ComposerStepWho
                   audienceName={audienceName}
-                  reachableEmail={reach?.reachable_email ?? null}
+                  reachableEmail={channelReachable}
                   totalAudience={reach?.total ?? null}
                   onOpenPicker={() => setShowAudiencePicker(true)}
                   disabled={brandId === null}
                 />
               </View>
 
-              <ComposerV2Editor
-                ref={editorHandleRef}
-                initialBodyHtml={body}
-                subject={subject}
-                onSubjectChange={onSubjectChange}
-                onBodyChange={onBodyChange}
-                editable={!scheduleMutation.isPending}
-                brandEvents={brandEvents}
-                templates={templates}
-                previewVariables={previewVariables}
-                brandName={brandName}
-                currentDraftIsDirty={isDirty}
-                onErrorToast={(msg) => setErrorBanner(msg)}
-              />
+              {/* META-ORCH-1161 Sub-B — channel selector (Email · SMS · RCS). */}
+              <View style={styles.channelRow}>
+                <ChannelTabs active={channel} onChange={handleChannelChange} />
+              </View>
+
+              {channel === "sms" ? (
+                <SmsComposeCard
+                  value={smsBody}
+                  onChangeText={(text) => {
+                    setSmsBody(text);
+                    setIsDirty(true);
+                  }}
+                  reachableSms={reach?.reachable_sms ?? null}
+                  currencyCode={currentBrand?.defaultCurrency ?? "USD"}
+                  editable={!scheduleMutation.isPending}
+                />
+              ) : (
+                <ComposerV2Editor
+                  ref={editorHandleRef}
+                  initialBodyHtml={body}
+                  subject={subject}
+                  onSubjectChange={onSubjectChange}
+                  onBodyChange={onBodyChange}
+                  editable={!scheduleMutation.isPending}
+                  brandEvents={brandEvents}
+                  templates={templates}
+                  previewVariables={previewVariables}
+                  brandName={brandName}
+                  currentDraftIsDirty={isDirty}
+                  onErrorToast={(msg) => setErrorBanner(msg)}
+                />
+              )}
 
               {/* F.10b: 3-button footer (Preview / Send Now / Schedule).
                   ORCH-0891 M2 note: On wide-desktop the EmailPreviewPane
@@ -739,7 +801,7 @@ export default function ComposeCampaignRoute(): React.ReactElement {
         <ComposerReviewSheet
           visible={showReview}
           audienceName={audienceName}
-          recipientCount={reach?.reachable_email ?? null}
+          recipientCount={channelReachable}
           subject={subject}
           scheduledLabel={scheduledLabel}
           isSendNow={sendMode === "now"}
@@ -874,6 +936,11 @@ const styles = StyleSheet.create({
   desktopWhoRow: {
     paddingTop: spacing.sm,
     paddingBottom: spacing.xs,
+  },
+  // META-ORCH-1161 Sub-B — channel selector row, same rhythm as whoRow.
+  channelRow: {
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.xs,
   },
   // F.10b: Preview modal chrome — light "inbox" canvas behind the sheet,
   // white header with title + orange Done button. EmailPreviewPane fills

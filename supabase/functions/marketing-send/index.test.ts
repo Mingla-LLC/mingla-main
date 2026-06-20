@@ -14,17 +14,45 @@ import { assert, assertFalse } from "https://deno.land/std@0.168.0/testing/asser
 const SOURCE = await Deno.readTextFile(new URL("./index.ts", import.meta.url));
 
 // T-B07 — channel dispatcher switch with `default: throw`
+// [TEST-MOD-APPROVED ORCH-1161] META-ORCH-1161 Sub-B [marketing SMS send] —
+// the Phase-A `sms_not_yet_enabled` sentinel is intentionally retired: the SMS
+// case now dispatches via sendSms() (smsAdapter). RCS stays a throw.
 Deno.test("marketing-send: dispatchByKind uses switch with default throw (I-PROPOSED-BR)", () => {
   assert(/switch\s*\(\s*kind\s*\)/.test(SOURCE), "switch on kind missing");
   assert(SOURCE.includes('case "email":'));
   assert(SOURCE.includes('case "sms":'));
   assert(SOURCE.includes('case "rcs":'));
-  assert(/sms_not_yet_enabled/.test(SOURCE));
+  // SMS now dispatches (no longer throws); RCS still throws.
+  assert(/return await sendSms\(/.test(SOURCE), "sms case must dispatch via sendSms");
   assert(/rcs_not_yet_enabled/.test(SOURCE));
   assert(/unknown_channel_kind/.test(SOURCE));
   // Exhaustiveness sentinel — TS compile error if a kind is added without
   // a case branch.
   assert(/const _exhaustive:\s*never\s*=\s*kind/.test(SOURCE));
+});
+
+// META-ORCH-1161 Sub-B — SMS dispatch structural invariants.
+Deno.test("marketing-send: SMS leg dispatches via smsAdapter with marketing SID + quiet hours + branded links", () => {
+  // Uses the Sub-A adapter (no new provider).
+  assert(SOURCE.includes('from "../_shared/adapters/smsAdapter.ts"'));
+  assert(/smsAdapter\.send\(/.test(SOURCE), "must call smsAdapter.send");
+  // Separate marketing Messaging Service SID (§12 Q2), with adapter fallback.
+  assert(SOURCE.includes("TWILIO_MARKETING_MESSAGING_SERVICE_SID"));
+  // Quiet hours gate (marketing only).
+  assert(/isWithinQuietHours\(/.test(SOURCE));
+  assert(SOURCE.includes("quiet_hours_deferred"));
+  // Branded short links via the Mingla /m redirect, never a public shortener.
+  assert(SOURCE.includes("marketing-track-click"));
+  assert(/rewriteSmsLinks\(/.test(SOURCE));
+  // Throughput throttling (batch + pace).
+  assert(SOURCE.includes("SMS_BATCH_SIZE"));
+  assert(SOURCE.includes("SMS_BATCH_PAUSE_MS"));
+  // Writes marketing_messages with recipient_phone + channel='sms' + segments.
+  assert(/recipient_phone/.test(SOURCE));
+  assert(/channel:\s*"sms"/.test(SOURCE));
+  assert(/segments/.test(SOURCE));
+  // Live gate still respected (preview_skipped when not live).
+  assert(SOURCE.includes("preview_skipped"));
 });
 
 // T-B08 — live-broadcast gate (LIVE=false) writes preview_skipped

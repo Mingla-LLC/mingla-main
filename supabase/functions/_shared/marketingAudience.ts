@@ -99,6 +99,91 @@ interface UnsubRow {
   brand_id: string | null;
 }
 
+// META-ORCH-1161 Sub-B — phone-keyed suppression rows. A phone is NOT
+// reachable_sms if it appears on EITHER:
+//   - marketing_unsubscribes(contact_phone, channel ∈ {sms,all}), OR
+//   - channel_suppressions(contact = phone, channel='sms', scope ∈ {marketing,all}).
+// (I-PROPOSED-1161-SMS-OPT-OUT-HONORED-ANY-CHANNEL.)
+interface PhoneUnsubRow {
+  contact_phone: string | null;
+  channel: string;
+}
+interface ChannelSuppressionRow {
+  contact: string | null;
+  channel: string;
+  scope: string;
+}
+
+// Normalize a phone for set membership — trim only (we compare against E.164
+// from orders.buyer_phone_e164 and the raw suppression contact). We DON'T
+// lowercase (phones are digits) but we keep both a trimmed and a digits-only
+// form so a "+1 555" stored without the + still matches.
+function phoneKeysOf(raw: string | null | undefined): string[] {
+  if (raw === null || raw === undefined) return [];
+  const trimmed = raw.trim();
+  if (trimmed.length === 0) return [];
+  const digits = trimmed.replace(/[^0-9]/g, "");
+  const keys = new Set<string>([trimmed]);
+  if (digits.length > 0) keys.add(digits);
+  return Array.from(keys);
+}
+
+/**
+ * META-ORCH-1161 Sub-B — resolve the set of suppressed phone keys for a brand
+ * scope. Queries BOTH suppression ledgers and returns a flat Set of phone keys
+ * (trimmed + digits-only forms) that must NOT receive marketing SMS.
+ */
+// deno-lint-ignore no-explicit-any
+async function resolveSuppressedPhones(
+  client: SupabaseClient<any, "public", any>,
+  brandId: string | null,
+): Promise<Set<string>> {
+  const suppressed = new Set<string>();
+
+  // 1. marketing_unsubscribes by phone (sms or all channel; global or this brand).
+  let unsubQuery = client
+    .from("marketing_unsubscribes")
+    .select("contact_phone, channel")
+    .not("contact_phone", "is", null)
+    .in("channel", ["sms", "all"]);
+  if (brandId !== null) {
+    unsubQuery = unsubQuery.or(
+      `scope.eq.global,and(scope.eq.brand,brand_id.eq.${brandId})`,
+    );
+  } else {
+    unsubQuery = unsubQuery.eq("scope", "global");
+  }
+  const { data: phoneUnsubData, error: phoneUnsubError } = await unsubQuery;
+  if (phoneUnsubError) {
+    throw new Error(`audience_phone_unsubs_query_failed:${phoneUnsubError.message}`);
+  }
+  for (const row of (phoneUnsubData ?? []) as unknown as PhoneUnsubRow[]) {
+    for (const k of phoneKeysOf(row.contact_phone)) suppressed.add(k);
+  }
+
+  // 2. channel_suppressions(channel='sms', scope ∈ {marketing,all}). This is the
+  //    Sub-A unified ledger that the inbound-STOP webhook + prefs UI write to.
+  //    contact holds an E.164 phone. (brand_id is NULL=global for marketing STOP;
+  //    we honor any sms marketing/all suppression regardless of brand.)
+  const { data: chanSuppData, error: chanSuppError } = await client
+    .from("channel_suppressions")
+    .select("contact, channel, scope")
+    .eq("channel", "sms")
+    .in("scope", ["marketing", "all"])
+    .not("contact", "is", null);
+  if (chanSuppError) {
+    // channel_suppressions ships with Sub-A; if it's somehow absent on an
+    // un-migrated env, fail-closed is wrong for reach (would hide all phones).
+    // Surface the error — the audience contract cannot silently degrade.
+    throw new Error(`audience_channel_suppressions_query_failed:${chanSuppError.message}`);
+  }
+  for (const row of (chanSuppData ?? []) as unknown as ChannelSuppressionRow[]) {
+    for (const k of phoneKeysOf(row.contact)) suppressed.add(k);
+  }
+
+  return suppressed;
+}
+
 /**
  * Resolve a discriminated-union audience query into per-recipient rows.
  *
@@ -160,7 +245,14 @@ async function resolveBrandBuyers(
     throw new Error(`audience_unsubs_query_failed:${unsubError.message}`);
   }
 
-  return aggregate(orders, (unsubData ?? []) as unknown as UnsubRow[], brandId);
+  const suppressedPhones = await resolveSuppressedPhones(client, brandId);
+
+  return aggregate(
+    orders,
+    (unsubData ?? []) as unknown as UnsubRow[],
+    brandId,
+    suppressedPhones,
+  );
 }
 
 // deno-lint-ignore no-explicit-any
@@ -200,13 +292,20 @@ async function resolveEventBuyers(
     unsubs = (unsubData ?? []) as unknown as UnsubRow[];
   }
 
-  return aggregate(orders, unsubs, brandId);
+  const suppressedPhones = await resolveSuppressedPhones(client, brandId);
+
+  return aggregate(orders, unsubs, brandId, suppressedPhones);
 }
 
-function aggregate(
+// Exported for unit testing (META-ORCH-1161 Sub-B) — pure function, no client.
+export function aggregate(
   orders: OrderRow[],
   unsubs: UnsubRow[],
   brandId: string | null,
+  // META-ORCH-1161 Sub-B — phone keys (trimmed + digits-only) suppressed for
+  // SMS marketing across marketing_unsubscribes(contact_phone) AND
+  // channel_suppressions. A contact whose phone matches is NOT reachable_sms.
+  suppressedPhones: Set<string> = new Set<string>(),
 ): ResolveResult {
   const unsubLookup = new Map<string, Set<MarketingChannel>>();
   for (const u of unsubs) {
@@ -267,7 +366,15 @@ function aggregate(
   for (const [emailKey, acc] of buckets.entries()) {
     const suppressed = unsubLookup.get(emailKey) ?? new Set<MarketingChannel>();
     const emailOk = acc.raw_email !== null && !suppressed.has("email");
-    const smsOk = acc.raw_phone !== null && !suppressed.has("sms");
+    // SMS reach now checks BOTH the email-keyed unsub (channel='sms' on this
+    // buyer's email row) AND the phone-keyed suppression ledgers (Sub-B fix).
+    // Previously smsOk only consulted the email-keyed set, so a phone STOP /
+    // channel_suppressions row was silently ignored → reach.reachable_sms lied.
+    const phoneSuppressed = phoneKeysOf(acc.raw_phone).some((k) =>
+      suppressedPhones.has(k)
+    );
+    const smsOk = acc.raw_phone !== null && !suppressed.has("sms") &&
+      !phoneSuppressed;
     if (emailOk) reachableEmail += 1;
     if (smsOk) reachableSms += 1;
     rows.push({

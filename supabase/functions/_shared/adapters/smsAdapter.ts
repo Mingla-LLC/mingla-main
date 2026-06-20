@@ -28,6 +28,12 @@ export interface SmsSendInput {
   brandName: string; // sender identity in the body (CTIA brand-name-in-body)
   message: string; // the body WITHOUT the STOP footer (footer is appended here)
   countryCode?: string | null; // ISO-2 for region routing (default US)
+  // META-ORCH-1161 Sub-B (§12 Q2) — optional Messaging Service SID override so a
+  // SEPARATE marketing sender (reputation isolation; a marketing STOP must not
+  // touch transactional) can be used. When omitted, the adapter uses the
+  // approved transactional toll-free TWILIO_MESSAGING_SERVICE_SID. NEVER a raw
+  // From number either way (I-PROPOSED-1161-SMS-FROM-APPROVED-SENDER-ONLY).
+  messagingServiceSid?: string | null;
 }
 
 const E164_RE = /^\+[1-9][0-9]{1,14}$/;
@@ -103,10 +109,15 @@ function envTrue(name: string): boolean {
 async function twilioSend(
   to: string,
   body: string,
+  messagingServiceSidOverride?: string | null,
 ): Promise<{ ok: boolean; sid?: string; error?: string; blacklisted?: boolean }> {
   const accountSid = Deno.env.get("TWILIO_ACCOUNT_SID");
   const authToken = Deno.env.get("TWILIO_AUTH_TOKEN");
-  const messagingServiceSid = Deno.env.get("TWILIO_MESSAGING_SERVICE_SID");
+  // Marketing send passes a separate marketing Messaging Service SID
+  // (§12 Q2). When absent, fall back to the approved transactional toll-free.
+  const messagingServiceSid = messagingServiceSidOverride && messagingServiceSidOverride.length > 0
+    ? messagingServiceSidOverride
+    : Deno.env.get("TWILIO_MESSAGING_SERVICE_SID");
   if (!accountSid || !authToken || !messagingServiceSid) {
     return { ok: false, error: "twilio_env_missing" };
   }
@@ -167,7 +178,7 @@ export const smsAdapter = {
     const body = composeSmsBody(input.message);
     const segments = computeSegments(body);
 
-    const result = await twilioSend(to, body);
+    const result = await twilioSend(to, body, input.messagingServiceSid);
     if (!result.ok) {
       return {
         ok: false,
