@@ -1,30 +1,23 @@
 /**
- * ConsumerRefundLadder — ORCH-1138 Leg 1C (OQ-2 = port for parity).
+ * TripRefundLadder — META-ORCH-1174 Leg A [trip-page-standardize].
  *
- * The palette-themed cancellation-policy ladder for the consumer trip detail,
- * mirroring the business FOUNDATION `RefundLadder` (TripPreview.tsx) so the
- * consumer surface matches the business/web trip page EXACTLY (themed `.strip` +
- * `.refund-ladder` rows). The consumer previously used the shared
- * `RefundPolicyDisplay`, which hardcodes warm-orange (#eb7825) — NOT the brand
- * palette. This bespoke ladder reads the SAME real `RefundPolicyShape.tiers`
- * (+ optional booking deadline) but themes off the resolved brand palette.
+ * THE ONE promoted palette-driven cancellation-policy ladder. Replaces the two
+ * near-identical forks: the business inline `RefundLadder` (TripPreview :872-931)
+ * + the consumer `app-mobile/src/components/offering/ConsumerRefundLadder.tsx`.
+ * Both were already palette-driven; this is their single shared owner.
  *
- * Constitution rule 9: renders ONLY when a real policy and/or deadline is
- * present; an empty policy renders zero ladder rows.
- *
- * Anon-tolerant: pure presentational, no fetch, no useAuth.
- * I-MOR-0827: imports only @mingla/offering-rendering (the shared palette type) +
- * react-native — no mingla-business/src import.
+ * Pure-presentational (I-MOR-0827). Rule 9: renders ONLY when a real policy and/or
+ * deadline is present (an empty policy renders zero ladder rows). Renders its OWN
+ * "Cancellation policy" section heading (so the body just drops it in §9).
  */
 
 import React from "react";
 import { StyleSheet, Text, View } from "react-native";
 
-import type { OfferingSurfaceStyles, ThemePalette } from "@mingla/offering-rendering";
+import type { OfferingSurfaceStyles, ThemePalette } from "./themePalette";
+import type { TripRefundPolicyShape } from "./tripOfferingTypes";
 
-import type { RefundPolicyShape } from "../../hooks/useConsumerTripDetail";
-
-const REFUND_KIND_COPY: Record<RefundPolicyShape["kind"], string> = {
+const REFUND_KIND_COPY: Record<TripRefundPolicyShape["kind"], string> = {
   flexible:
     "Flexible — cancel for a full or partial refund based on how early you cancel.",
   standard:
@@ -63,21 +56,23 @@ function formatDeadline(iso: string | null): string | null {
   }
 }
 
-export interface ConsumerRefundLadderProps {
-  policy: RefundPolicyShape | null;
+export interface TripRefundLadderProps {
+  policy: TripRefundPolicyShape | null;
   bookingDeadline: string | null;
   palette: ThemePalette;
   surface: OfferingSurfaceStyles;
   /** Bold (700-weight) loaded family for the section title (native bold). */
-  boldFamily: string;
+  fontFamily?: string;
+  testID?: string;
 }
 
-export const ConsumerRefundLadder: React.FC<ConsumerRefundLadderProps> = ({
+export const TripRefundLadder: React.FC<TripRefundLadderProps> = ({
   policy,
   bookingDeadline,
   palette,
   surface,
-  boldFamily,
+  fontFamily,
+  testID,
 }) => {
   const tiers = policy !== null ? policy.tiers : [];
   const deadlineLabel = formatDeadline(bookingDeadline);
@@ -85,9 +80,11 @@ export const ConsumerRefundLadder: React.FC<ConsumerRefundLadderProps> = ({
   // rule 9 — nothing to render.
   if (policy === null && deadlineLabel === null) return null;
 
+  const titleStyle = fontFamily !== undefined ? { fontFamily } : null;
+
   return (
-    <View style={styles.section}>
-      <Text style={[styles.secTitle, surface.primaryText, { fontFamily: boldFamily }]}>
+    <View style={styles.section} testID={testID}>
+      <Text style={[styles.secTitle, surface.primaryText, titleStyle]}>
         Cancellation policy
       </Text>
       {policy !== null ? (
@@ -122,9 +119,7 @@ export const ConsumerRefundLadder: React.FC<ConsumerRefundLadderProps> = ({
                   style={[
                     styles.rlPct,
                     {
-                      color: isZero
-                        ? palette.tertiaryText
-                        : palette.primaryText,
+                      color: isZero ? palette.tertiaryText : palette.primaryText,
                     },
                   ]}
                 >
@@ -148,9 +143,7 @@ export const ConsumerRefundLadder: React.FC<ConsumerRefundLadderProps> = ({
 };
 
 const styles = StyleSheet.create({
-  section: {
-    marginTop: 24,
-  },
+  section: { marginTop: 24 },
   secTitle: {
     fontSize: 20,
     fontWeight: "900",
@@ -166,19 +159,9 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     marginTop: 14,
   },
-  stripGlyph: {
-    fontSize: 15,
-    fontWeight: "900",
-    marginTop: 1,
-  },
-  stripText: {
-    flex: 1,
-    fontSize: 13,
-    lineHeight: 18,
-  },
-  refundLadder: {
-    marginTop: 8,
-  },
+  stripGlyph: { fontSize: 15, fontWeight: "900", marginTop: 1 },
+  stripText: { flex: 1, fontSize: 13, lineHeight: 18 },
+  refundLadder: { marginTop: 8 },
   rlRow: {
     flexDirection: "row",
     justifyContent: "space-between",
@@ -186,14 +169,8 @@ const styles = StyleSheet.create({
     gap: 12,
     paddingVertical: 7,
   },
-  rlLabel: {
-    flexShrink: 1,
-    fontSize: 13,
-  },
-  rlPct: {
-    fontSize: 13,
-    fontWeight: "800",
-  },
+  rlLabel: { flexShrink: 1, fontSize: 13 },
+  rlPct: { fontSize: 13, fontWeight: "800" },
 });
 
-export default ConsumerRefundLadder;
+export default TripRefundLadder;

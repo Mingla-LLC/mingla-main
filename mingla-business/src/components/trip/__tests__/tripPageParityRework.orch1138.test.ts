@@ -67,30 +67,42 @@ describe("RT-5 ORCH-1138 R2 — public trip page device-parity rework", () => {
   });
 
   test("#7 CANCELLATION: FOUNDATION path uses the palette-themed RefundLadder, not the shared warm-orange display", () => {
-    expect(previewSrc).toContain("<RefundLadder");
-    expect(previewSrc).toContain("const RefundLadder: React.FC");
-    // the mockup ladder renders accent/tertiary refund percentages from real tiers.
-    expect(previewSrc).toContain("refundTierLabel(tier, index, tiers)");
-    // the shared warm-orange RefundPolicyDisplay is NOT RENDERED as JSX in
-    // TripPreview (a `<RefundPolicyDisplay policy=…` / `<RefundPolicyDisplay/>`
-    // usage). It may still be MENTIONED in an explanatory comment.
-    expect(previewSrc).not.toMatch(/<RefundPolicyDisplay\s+policy/);
+    // [TEST-MOD-APPROVED META-ORCH-1174] retarget: the palette-themed refund ladder
+    // was promoted into the shared @mingla/offering-rendering TripRefundLadder (one
+    // ladder on every surface); the body renders it for §9 cancellation. The
+    // warm-orange RefundPolicyDisplay stays OUT of the trip body.
+    const bodySrc = read("../packages/offering-rendering/TripOfferingBody.tsx");
+    const ladderSrc = read("../packages/offering-rendering/TripRefundLadder.tsx");
+    expect(bodySrc).toContain("<TripRefundLadder");
+    // the promoted ladder renders accent/tertiary refund percentages from real tiers.
+    expect(ladderSrc).toMatch(/refund_pct|refundPct/);
+    // the shared warm-orange RefundPolicyDisplay is NOT RENDERED as JSX in the
+    // trip body or the promoted ladder.
+    expect(bodySrc).not.toMatch(/<RefundPolicyDisplay\s+policy/);
+    expect(ladderSrc).not.toMatch(/<RefundPolicyDisplay\s+policy/);
   });
 
-  test("#8 RESERVE BAR: the phone bar is the bespoke TripReserveBar, not the warm-orange shared bar", () => {
-    expect(routeSrc).toContain(
-      'import { TripReserveBar } from "../../../src/components/trip/TripReserveBar";',
+  test("#8 RESERVE BAR: the phone bar is the shared TripReserveBar, not the warm-orange shared bar", () => {
+    // [TEST-MOD-APPROVED META-ORCH-1174] retarget: the bespoke business-local bar was
+    // promoted into the shared @mingla/offering-rendering TripReserveBar (one bar on
+    // every surface). The route now imports + mounts the package bar with the
+    // brand-accent kicker; FloatingOfferingBar stays unused.
+    expect(routeSrc).toMatch(
+      /TripReserveBar[\s\S]{0,400}from "@mingla\/offering-rendering"/,
     );
     expect(routeSrc).toContain("<TripReserveBar");
     expect(routeSrc).not.toContain("<FloatingOfferingBar");
     // the bar fills with the BRAND accent (not a hardcoded warm orange) + a kicker.
-    expect(reserveBarSrc).toContain("backgroundColor: palette.accent");
-    expect(routeSrc).toContain("kicker={barKicker}");
+    const sharedBarSrc = read("../packages/offering-rendering/TripReserveBar.tsx");
+    expect(sharedBarSrc).toContain("backgroundColor: palette.accent");
+    expect(routeSrc).toContain("kicker={offeringState.barKicker}");
   });
 
   test("#8 RESERVE BAR: the bespoke bar never dead-taps an unavailable CTA", () => {
+    // [TEST-MOD-APPROVED META-ORCH-1174] retarget: read the promoted shared bar.
+    const sharedBarSrc = read("../packages/offering-rendering/TripReserveBar.tsx");
     // unavailable branch has NO onPress + accessibilityRole text (Constitution #1).
-    expect(reserveBarSrc).toContain('accessibilityRole="text"');
-    expect(reserveBarSrc).toContain("if (!cta.tappable) return;");
+    expect(sharedBarSrc).toContain('accessibilityRole="text"');
+    expect(sharedBarSrc).toContain("if (!cta.tappable) return;");
   });
 });

@@ -44,22 +44,24 @@ import {
   createThemePalette,
   resolveOfferingSurface,
   resolveTheme,
+  useResponsiveLayout,
+  useTripOfferingState,
+  TripReserveBar,
   type CtaState,
+  type TripPaymentPlanChoice,
 } from "@mingla/offering-rendering";
-import { useResponsiveLayout } from "@mingla/offering-rendering";
 import { useThemeFont } from "../../../src/theme/useThemeFont";
 import { ShareModal } from "../../../src/components/ui/ShareModal";
-import { TripReserveBar } from "../../../src/components/trip/TripReserveBar";
-import type { ReserveSplitCtas } from "../../../src/components/trip/TripReserveBar";
 import {
   tripCheckoutPath,
   tripPublicUrl,
 } from "../../../src/constants/publicUrls";
 import { usePublicTripBySlug } from "../../../src/hooks/usePublicTripBySlug";
 import { TripPreview } from "../../../src/components/trip/TripPreview";
-import { TripCheckoutFlow } from "../../../src/components/trip/TripCheckoutFlow";
-import type { TripPaymentChoiceValue } from "../../../src/components/trip/TripPaymentChoice";
-import { projectInstallmentSchedule } from "../../../src/utils/installmentScheduleProjection";
+import {
+  buildTripOfferingBrand,
+  buildTripOfferingData,
+} from "../../../src/components/trip/tripOfferingAdapter";
 
 export default function PublicTripRoute(): React.ReactElement {
   const router = useRouter();
@@ -84,7 +86,7 @@ export default function PublicTripRoute(): React.ReactElement {
   // threaded into checkout as a route param on Reserve (the checkout index seeds
   // CartContext.paymentPlanChoice from it). Default "full".
   const [paymentPlanChoice, setPaymentPlanChoice] =
-    useState<TripPaymentChoiceValue>("full");
+    useState<TripPaymentPlanChoice>("full");
 
   const query = usePublicTripBySlug(
     typeof brandSlug === "string" ? brandSlug : null,
@@ -166,6 +168,7 @@ export default function PublicTripRoute(): React.ReactElement {
       shareModalVisible={shareModalVisible}
       onCloseShareModal={() => setShareModalVisible(false)}
       safeAreaTop={insets.top}
+      safeAreaBottom={insets.bottom}
       // ORCH-1138 device-rework #3 — the DOCKED Reserve CTA is now the LAST scroll
       // child and carries its OWN safe-area bottom padding, so the scroll content
       // NO LONGER reserves a full bar-sized clearance (that oversized pad was the
@@ -187,11 +190,12 @@ const ResolvedTripPage: React.FC<{
   onToggleMute: () => void;
   onClose: () => void;
   onShare: () => void;
-  paymentPlanChoice: TripPaymentChoiceValue;
-  onPaymentPlanChoiceChange: (value: TripPaymentChoiceValue) => void;
+  paymentPlanChoice: TripPaymentPlanChoice;
+  onPaymentPlanChoiceChange: (value: TripPaymentPlanChoice) => void;
   shareModalVisible: boolean;
   onCloseShareModal: () => void;
   safeAreaTop: number;
+  safeAreaBottom: number;
   contentBottomInset: number;
   router: ReturnType<typeof useRouter>;
 }> = ({
@@ -207,6 +211,7 @@ const ResolvedTripPage: React.FC<{
   shareModalVisible,
   onCloseShareModal,
   safeAreaTop,
+  safeAreaBottom,
   contentBottomInset,
   router,
 }) => {
@@ -221,54 +226,48 @@ const ResolvedTripPage: React.FC<{
   const palette = useMemo(() => createThemePalette(theme), [theme]);
   const surface = useMemo(() => resolveOfferingSurface(theme), [theme]);
 
-  // ORCH-1138 R2 (device parity fix #1) — LOAD the resolved brand font on demand.
-  // The FONT_FAMILY_MAP values (e.g. "Poppins_500Medium") are NOT bundled at the
-  // app root (ORCH-1083 deferred the 14 families out of the boot bundle); a themed
-  // surface MUST call useThemeFont so expo-font fetches the family. Without this,
-  // setting fontFamily on Text silently no-ops on native → the system font shows
-  // (Seth's device finding #1). Mirrors PublicEventPage / PublicBrandPage exactly.
+  // ORCH-1138 R2 — load the resolved brand font (medium + bold) on demand.
   useThemeFont(theme.fontFamilyValue);
-  // ORCH-1138 Leg-1 (native-parity fix #2) — ALSO load the BOLD (700-weight)
-  // family. On native a loaded custom font ignores `fontWeight`, so every bold
-  // text on the page sets `fontFamily` to the weight-specific family
-  // (boldFontFamily(theme), e.g. "Inter_700Bold"); without registering it here
-  // expo-font has no bold face → native silently falls back to medium/system
-  // (the reported "bold not applying" divergence; web synthesized bold from
-  // font-weight so it looked correct there). No-op when bold === base (the 3
-  // single-weight display faces).
   const boldFamily = boldFontFamily(theme);
   useThemeFont(boldFamily);
 
-  // ORCH-1138 device-rework #3 (Seth's screenshot feedback) — float→dock Reserve
-  // CTA visibility tracking, mirroring the consumer ConsumerTripDetailScreen 1:1.
-  // The DOCKED CTA is the LAST scroll child (flush beneath "Choose how you pay",
-  // no void); a light FLOATING PILL (no full-width bar bg) shows ONLY while that
-  // docked button is scrolled OFF-screen. We track the docked card's `y` within
-  // the scroll content (onDockLayout), the scroll offset (onScroll) + viewport
-  // height (onLayout), then hide the pill once the docked button's top crosses the
-  // viewport bottom. Default visible (the docked button starts below the fold).
-  const [dockTopY, setDockTopY] = useState<number | null>(null);
-  const [scrollY, setScrollY] = useState<number>(0);
-  const [viewportH, setViewportH] = useState<number>(0);
-  const handleDockLayout = useCallback((e: LayoutChangeEvent): void => {
-    setDockTopY(e.nativeEvent.layout.y);
-  }, []);
-  const handleScroll = useCallback(
-    (e: NativeSyntheticEvent<NativeScrollEvent>): void => {
-      setScrollY(e.nativeEvent.contentOffset.y);
-    },
-    [],
+  // META-ORCH-1174 Leg A — the ONE normalized body data + brand contract (one
+  // build; the SAME object useTripOfferingState reads). The shared body never
+  // touches the read hook.
+  const data = useMemo(
+    () => buildTripOfferingData(trip, payload.bookable !== false),
+    [trip, payload.bookable],
   );
-  const handleScrollLayout = useCallback((e: LayoutChangeEvent): void => {
-    setViewportH(e.nativeEvent.layout.height);
-  }, []);
-  const REVEAL_MARGIN = 24;
-  const floatingPillVisible =
-    dockTopY === null || viewportH === 0
-      ? true
-      : dockTopY > scrollY + viewportH - REVEAL_MARGIN;
+  const offeringBrand = useMemo(
+    () => buildTripOfferingBrand(payload.brand),
+    [payload.brand],
+  );
 
-  // ORCH-0875 booking-deadline state.
+  // META-ORCH-1174 (Seth, ORCH-1138 preserved) — Reserve routes STRAIGHT to
+  // checkout with the payment choice in the `plan` param (the checkout-trip route
+  // seeds CartContext.paymentPlanChoice from it → byte-identical request). The
+  // single bar passes the live toggle; the SPLIT buttons pass their explicit choice.
+  const handleTripReserve = useCallback(
+    (choice?: TripPaymentPlanChoice): void => {
+      router.push(
+        {
+          pathname: tripCheckoutPath(trip.id),
+          params: { plan: choice ?? paymentPlanChoice },
+        } as never,
+      );
+    },
+    [router, trip.id, paymentPlanChoice],
+  );
+
+  // META-ORCH-1174 Leg A — the ONE lifted buy-state machine (the inline §10 box +
+  // the docked/floating/desktop bars ALL read this; they can never diverge).
+  const offeringState = useTripOfferingState({
+    data,
+    paymentPlanChoice,
+    onReserve: handleTripReserve,
+  });
+
+  // ORCH-0875 booking-deadline state banner (route-owned; above the body content).
   const deadlineIso = trip.bookingDeadline;
   const isClosed = trip.bookingsClosed === true;
   let countdownLabel: string | null = null;
@@ -291,174 +290,56 @@ const ResolvedTripPage: React.FC<{
     }
   }
 
-  const tripTier = trip.pricingTiers[0];
-  const isSoldOut =
-    tripTier !== undefined &&
-    tripTier.isUnlimited === false &&
-    tripTier.ticketsRemaining !== null &&
-    tripTier.ticketsRemaining <= 0;
-  const tripPrice =
-    tripTier !== undefined && tripTier.priceCents > 0
-      ? formatTripPrice(tripTier.priceCents, tripTier.currency)
-      : tripTier !== undefined && tripTier.priceCents === 0
-        ? "Free"
-        : "";
+  // ORCH-1138 device-rework #3 — float→dock Reserve CTA visibility tracking.
+  const [dockTopY, setDockTopY] = useState<number | null>(null);
+  const [scrollY, setScrollY] = useState<number>(0);
+  const [viewportH, setViewportH] = useState<number>(0);
+  const handleDockLayout = useCallback((e: LayoutChangeEvent): void => {
+    setDockTopY(e.nativeEvent.layout.y);
+  }, []);
+  const handleScroll = useCallback(
+    (e: NativeSyntheticEvent<NativeScrollEvent>): void => {
+      setScrollY(e.nativeEvent.contentOffset.y);
+    },
+    [],
+  );
+  const handleScrollLayout = useCallback((e: LayoutChangeEvent): void => {
+    setViewportH(e.nativeEvent.layout.height);
+  }, []);
+  const REVEAL_MARGIN = 24;
+  const floatingPillVisible =
+    dockTopY === null || viewportH === 0
+      ? true
+      : dockTopY > scrollY + viewportH - REVEAL_MARGIN;
 
-  // ORCH-1130 — the bar's price label follows the live toggle, reading the
-  // deposit from the SAME projected schedule TripPaymentChoice renders.
-  const barSchedule =
-    tripTier !== undefined
-      ? projectInstallmentSchedule(tripTier, new Date())
-      : null;
-  const tripHasPlan = barSchedule !== null;
-  const multiTier = trip.pricingTiers.length > 1;
-  const depositLabel =
-    barSchedule !== null
-      ? formatTripPrice(barSchedule.depositCents, tripTier?.currency ?? "USD")
-      : "";
-  const barPrice = tripHasPlan
-    ? paymentPlanChoice === "installments"
-      ? `${depositLabel} today`
-      : `${tripPrice} total`
-    : multiTier
-      ? `From ${tripPrice}`
-      : tripPrice;
-
-  // ORCH-1138 R2 (device parity fix #8) — the mockup's reserve-bar KICKER line
-  // above the price: "All-in, taxes included" in pay-full, "Due today · deposit"
-  // when paying over time (DIRECTION_A_V2 `#bar-kicker`). Free trips have no price
-  // → no kicker (the CTA spans full-width).
-  const barKicker =
-    tripPrice === "Free" || tripPrice === ""
-      ? null
-      : tripHasPlan && paymentPlanChoice === "installments"
-        ? "Due today · deposit"
-        : "All-in, taxes included";
-
-  const tripCta: CtaState =
-    payload.bookable === false
-      ? {
-          kind: "unavailable",
-          title: "Booking unavailable",
-          subline: "The organizer is finishing payment setup.",
-          tappable: false,
-        }
-      : isClosed
-        ? {
-            kind: "unavailable",
-            title: "Bookings closed",
-            subline: null,
-            tappable: false,
-          }
-        : isSoldOut
-          ? {
-              kind: "unavailable",
-              title: "Sold out",
-              subline: null,
-              tappable: false,
-            }
-          : tripTier === undefined
-            ? {
-                kind: "unavailable",
-                title: "Not bookable yet",
-                subline: null,
-                tappable: false,
-              }
-            : tripPrice === "Free"
-              ? { kind: "free", label: "Reserve my spot", tappable: true }
-              : {
-                  kind: "buy",
-                  label: "Reserve my spot",
-                  price: barPrice,
-                  tappable: true,
-                };
-
-  // ORCH-1138 (Seth, 2026-06-15) — Reserve routes STRAIGHT to checkout with the
-  // payment choice in the `plan` param (the checkout-trip route seeds
-  // CartContext.paymentPlanChoice from it → byte-identical request). The single
-  // bar passes the live toggle choice; the SPLIT BUTTONS pass their own explicit
-  // choice ("full" / "installments") so the buyer picks the plan WITHOUT scrolling
-  // to the "Choose how you pay" toggle.
-  const handleTripReserve = (choice?: TripPaymentChoiceValue): void => {
-    router.push(
-      {
-        pathname: tripCheckoutPath(trip.id),
-        params: { plan: choice ?? paymentPlanChoice },
-      } as never,
-    );
-  };
-
-  // ORCH-1138 (Seth, 2026-06-15) — SPLIT BUTTONS for a bookable plan trip ONLY
-  // (rule 9: no-plan / disabled trips keep the SINGLE Reserve bar). "Pay in full"
-  // shows the full price; "Pay over time" shows the deposit due today. Each routes
-  // straight to checkout with its own choice pre-selected.
-  const tripSplitCtas: ReserveSplitCtas | undefined =
-    tripHasPlan && tripCta.tappable
-      ? {
-          full: {
-            cta: {
-              kind: "buy" as const,
-              label: "Pay in full",
-              price: tripPrice,
-              tappable: true,
-            },
-            onPress: () => handleTripReserve("full"),
-          },
-          overTime: {
-            cta: {
-              kind: "buy" as const,
-              label: "Pay over time",
-              price: depositLabel.length > 0 ? `From ${depositLabel} today` : "",
-              tappable: true,
-            },
-            onPress: () => handleTripReserve("installments"),
-          },
-        }
-      : undefined;
-
-  const handleViewBrand = (): void => {
+  const handleViewBrand = useCallback((): void => {
     if (brandSlug.length > 0) {
       router.push(`/b/${brandSlug}` as never);
     }
-  };
+  }, [router, brandSlug]);
+
+  const isSoldOut = offeringState.isSoldOut;
 
   // ORCH-1138 — state banner (sold out / closed / deadline) rendered above body.
-  const stateBanner =
-    isClosed ? (
-      <View style={[styles.banner, { backgroundColor: "rgba(239,68,68,0.14)" }]}>
-        <Text style={[styles.bannerText, { color: "#ef4444" }]}>
-          Bookings are closed for this trip
-        </Text>
-      </View>
-    ) : isSoldOut ? (
-      <View style={[styles.banner, { backgroundColor: palette.card }]}>
-        <Text style={[styles.bannerText, { color: palette.secondaryText }]}>
-          SOLD OUT
-        </Text>
-      </View>
-    ) : countdownLabel !== null ? (
-      <View style={[styles.banner, { backgroundColor: palette.accentWash }]}>
-        <Text style={[styles.bannerText, { color: palette.accent }]}>
-          {countdownLabel}
-        </Text>
-      </View>
-    ) : null;
-
-  // ORCH-1138 — themed payment block (additive palette prop). Rendered inline on
-  // phone + inside the desktop sticky panel by TripPreview.
-  const paymentBlock = (
-    <TripCheckoutFlow
-      trip={trip}
-      brand={payload.brand}
-      paymentPlanChoice={paymentPlanChoice}
-      onPaymentPlanChoiceChange={onPaymentPlanChoiceChange}
-      palette={palette}
-      fontFamily={boldFamily}
-    />
-  );
+  const stateBanner = isClosed ? (
+    <View style={[styles.banner, { backgroundColor: "rgba(239,68,68,0.14)" }]}>
+      <Text style={[styles.bannerText, { color: "#ef4444" }]}>
+        Bookings are closed for this trip
+      </Text>
+    </View>
+  ) : isSoldOut ? (
+    <View style={[styles.banner, { backgroundColor: palette.card }]}>
+      <Text style={[styles.bannerText, { color: palette.secondaryText }]}>SOLD OUT</Text>
+    </View>
+  ) : countdownLabel !== null ? (
+    <View style={[styles.banner, { backgroundColor: palette.accentWash }]}>
+      <Text style={[styles.bannerText, { color: palette.accent }]}>{countdownLabel}</Text>
+    </View>
+  ) : null;
 
   // ORCH-1138 — desktop sticky-panel Reserve control (phone uses the floating bar).
-  const reserveTappable = tripCta.tappable;
+  const reserveTappable = offeringState.cta.tappable;
+  const barPrice = offeringState.barPriceLabel;
   const reserveControl = (
     <View>
       <Pressable
@@ -469,7 +350,7 @@ const ResolvedTripPage: React.FC<{
         accessibilityLabel={
           reserveTappable
             ? `Reserve your spot on ${trip.title}`
-            : ctaUnavailableLabel(tripCta)
+            : ctaUnavailableLabel(offeringState.cta)
         }
         style={[
           styles.deskReserve,
@@ -487,10 +368,10 @@ const ResolvedTripPage: React.FC<{
           ]}
         >
           {reserveTappable
-            ? tripPrice === "Free" || tripPrice === ""
+            ? barPrice === "" || offeringState.cta.kind === "free"
               ? "Reserve my spot"
               : `Reserve · ${barPrice}`
-            : ctaUnavailableLabel(tripCta)}
+            : ctaUnavailableLabel(offeringState.cta)}
         </Text>
       </Pressable>
       <Text style={[styles.deskReassure, { color: palette.tertiaryText }]}>
@@ -499,32 +380,31 @@ const ResolvedTripPage: React.FC<{
     </View>
   );
 
-  // ORCH-1138 device-rework #3 — the DOCKED Reserve CTA (variant="docked"),
-  // rendered by TripPreview as the LAST phone-body child so it sits flush beneath
-  // "Choose how you pay" (no black void). Phone-only; desktop uses the sticky
-  // panel's reserveControl. onDockLayout reports its position so the floating pill
-  // hides once it scrolls in. Same CtaState + onPress as the floating bar.
-  const dockedReserve =
-    !isDesktop ? (
-      <TripReserveBar
-        cta={tripCta}
-        palette={palette}
-        surface={surface}
-        kicker={barKicker}
-        fontFamily={boldFamily}
-        onPress={() => handleTripReserve()}
-        splitCtas={tripSplitCtas}
-        variant="docked"
-        onDockLayout={handleDockLayout}
-        testID="orch-1117-trip-floating-bar"
-      />
-    ) : undefined;
+  // META-ORCH-1174 — the DOCKED Reserve CTA (shared TripReserveBar variant="docked"),
+  // rendered by TripPreview as the LAST phone-body child. Reads the SAME state.
+  const dockedReserve = !isDesktop ? (
+    <TripReserveBar
+      cta={offeringState.cta}
+      palette={palette}
+      kicker={offeringState.barKicker}
+      fontFamily={boldFamily}
+      onPress={() => handleTripReserve()}
+      splitCtas={offeringState.splitCtas}
+      variant="docked"
+      safeAreaBottom={safeAreaBottom}
+      onDockLayout={handleDockLayout}
+      testID="orch-1117-trip-floating-bar"
+    />
+  ) : undefined;
 
   return (
     <View style={[styles.host, { backgroundColor: palette.page }]}>
       <TripPreview
         trip={trip}
         brand={payload.brand}
+        offeringData={data}
+        offeringBrand={offeringBrand}
+        offeringState={offeringState}
         palette={palette}
         theme={theme}
         muted={muted}
@@ -533,7 +413,9 @@ const ResolvedTripPage: React.FC<{
         onShare={onShare}
         onViewBrand={handleViewBrand}
         stateBanner={stateBanner}
-        paymentBlock={paymentBlock}
+        paymentPlanChoice={paymentPlanChoice}
+        onPaymentPlanChoiceChange={onPaymentPlanChoiceChange}
+        onReserve={handleTripReserve}
         reserveControl={reserveControl}
         contentBottomInset={contentBottomInset}
         safeAreaTop={safeAreaTop}
@@ -553,22 +435,19 @@ const ResolvedTripPage: React.FC<{
         />
       ) : null}
 
-      {/* ORCH-1138 device-rework #3 — the FLOATING Reserve PILL (phone): JUST the
-          button (no full-width opaque bar bg), shown ONLY while the in-content
-          DOCKED CTA (last scroll child) is off-screen. Hides once the docked
-          button scrolls in (floatingPillVisible) → no double bar, no black void.
-          Hidden on desktop (the sticky panel carries the Reserve control). Same
-          CtaState + onPress as the docked bar so the copy never diverges. */}
+      {/* META-ORCH-1174 — the FLOATING Reserve PILL (phone): shown ONLY while the
+          docked CTA is off-screen. The SHARED TripReserveBar (web/business → no
+          sheet overshoot). Same state as the docked bar so copy never diverges. */}
       {!isDesktop && floatingPillVisible ? (
         <TripReserveBar
-          cta={tripCta}
+          cta={offeringState.cta}
           palette={palette}
-          surface={surface}
-          kicker={barKicker}
+          kicker={offeringState.barKicker}
           fontFamily={boldFamily}
           onPress={() => handleTripReserve()}
-          splitCtas={tripSplitCtas}
+          splitCtas={offeringState.splitCtas}
           variant="floating"
+          safeAreaBottom={safeAreaBottom}
           testID="orch-1117-trip-floating-bar"
         />
       ) : null}

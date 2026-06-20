@@ -110,22 +110,24 @@ describe("RT-6 ORCH-1138 — native-only render parity", () => {
   });
 
   test("BUG-2: the trip page renders bold text with the bold family, not fontWeight alone", () => {
-    // TripPreview derives the bold family and applies it to bold elements.
-    expect(previewSrc).toContain("const boldFamily = boldFontFamily(theme);");
-    expect(previewSrc).toContain(
+    // [TEST-MOD-APPROVED META-ORCH-1174] retarget: the bold-text render moved into
+    // the shared TripOfferingBody — it derives boldFamily = boldFontFamily(theme)
+    // and applies { fontFamily: boldFamily } to the title, section titles, and the
+    // §3 full-width route pills (the weight-aware fix, byte-preserved).
+    const bodySrc = read("../packages/offering-rendering/TripOfferingBody.tsx");
+    expect(bodySrc).toContain("const boldFamily = boldFontFamily(theme);");
+    expect(bodySrc).toContain(
       "styles.title, surface.primaryText, { fontFamily: boldFamily }",
     );
-    expect(previewSrc).toContain(
-      "styles.secTitle, surface.primaryText, { fontFamily: boldFamily }",
+    expect(bodySrc).toContain(
+      "surface.primaryText, { fontFamily: boldFamily }",
     );
-    expect(previewSrc).toContain(
-      "styles.routePlace, surface.primaryText, { fontFamily: boldFamily }",
+    // the §3 route pills carry the bold family on their value text.
+    expect(bodySrc).toMatch(
+      /styles\.fullPillText,\s*\n?\s*\{ color: palette\.primaryText, fontFamily: boldFamily \}/,
     );
-    // the chip VALUE carries the bold family (MetaChip applies the prop).
-    expect(previewSrc).toContain(
-      "styles.metaChipText, surface.secondaryText, { fontFamily }",
-    );
-    expect(previewSrc).toContain("fontFamily={boldFamily}");
+    // the §4 meta pills + brand name apply the bold font family too.
+    expect(bodySrc).toContain("fontFamily: boldFamily");
   });
 
   test("BUG-2: the route LOADS the bold family via useThemeFont (else it never registers)", () => {

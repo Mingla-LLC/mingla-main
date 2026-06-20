@@ -96,15 +96,22 @@ describe("ORCH-1130 ADDENDUM — due-today equals the projected deposit (real lo
 });
 
 describe("ORCH-1130 ADDENDUM — public trip page floating bar follows the toggle", () => {
+  // [TEST-MOD-APPROVED META-ORCH-1174] retarget: META-ORCH-1174 Leg A LIFTED the
+  // bar's price derivation out of the /t/ route into the shared
+  // useTripOfferingState (one owner — the §10 box + the docked/floating bars never
+  // diverge). The behavior is UNCHANGED (installments → "{deposit} today";
+  // pay-in-full → "{price} total"; deposit from the SAME pure projection, never a
+  // recompute) — the assertions now read the hook source. Still fails on revert
+  // (deleting the toggle-driven branch / the projection drops the behavior).
   test("bar leads with the deposit due today on pay-over-time, full+total otherwise", () => {
-    const src = slugSrc();
-    // The bar's deposit comes from the SAME projection source, never a recompute.
-    expect(src).toContain("projectInstallmentSchedule(tripTier, new Date())");
-    expect(src).toContain("barSchedule.depositCents");
+    const hookSrc = read("../packages/offering-rendering/useTripOfferingState.ts");
+    // The bar's deposit comes from the SAME pure projection, never a recompute.
+    expect(hookSrc).toContain("projectTripSchedule(selectedTier, anchor)");
+    expect(hookSrc).toContain("projectedSchedule.depositCents");
     // Selection-driven: installments → "{deposit} today"; full → "{price} total".
-    expect(src).toContain('paymentPlanChoice === "installments"');
-    expect(src).toContain("${depositLabel} today");
-    expect(src).toContain("${tripPrice} total");
+    expect(hookSrc).toContain('paymentPlanChoice === "installments"');
+    expect(hookSrc).toContain("${depositLabel} today");
+    expect(hookSrc).toContain("${priceLabel} total");
   });
 });
 

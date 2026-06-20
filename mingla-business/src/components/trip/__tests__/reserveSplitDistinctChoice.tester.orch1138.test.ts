@@ -39,22 +39,29 @@ const read = (rel: string): string =>
   stripComments(readFileSync(join(ROOT, rel), "utf8"));
 
 describe("ORCH-1138 tester adversarial — split Reserve routes DISTINCT pay choices (money correctness)", () => {
-  describe("business / public web route — app/t/[brandSlug]/[tripSlug].tsx", () => {
+  // [TEST-MOD-APPROVED META-ORCH-1174] the distinct full/installments wiring was
+  // LIFTED out of the route into the shared useTripOfferingState (one owner). The
+  // money-correctness invariant is byte-preserved: the hook builds each segment's
+  // onPress as onReserve("full") / onReserve("installments"), and the route's
+  // onReserve handler (handleTripReserve) threads that choice into the plan route
+  // param. The adversarial attack still holds — collapse the two choices and a
+  // case goes red.
+  describe("the distinct choices are wired in the shared state machine", () => {
+    const hook = read("packages/offering-rendering/useTripOfferingState.ts");
     const route = read("mingla-business/app/t/[brandSlug]/[tripSlug].tsx");
 
     it("the full half routes with the explicit 'full' choice", () => {
-      expect(route).toMatch(/handleTripReserve\(\s*["']full["']\s*\)/);
+      expect(hook).toMatch(/onReserve\(\s*["']full["']\s*\)/);
     });
 
     it("the over-time half routes with the explicit 'installments' choice", () => {
-      expect(route).toMatch(/handleTripReserve\(\s*["']installments["']\s*\)/);
+      expect(hook).toMatch(/onReserve\(\s*["']installments["']\s*\)/);
     });
 
     it("the two halves do NOT share one choice (full !== installments wiring)", () => {
-      const full = (route.match(/handleTripReserve\(\s*["']full["']\s*\)/g) ?? [])
-        .length;
+      const full = (hook.match(/onReserve\(\s*["']full["']\s*\)/g) ?? []).length;
       const inst = (
-        route.match(/handleTripReserve\(\s*["']installments["']\s*\)/g) ?? []
+        hook.match(/onReserve\(\s*["']installments["']\s*\)/g) ?? []
       ).length;
       // Each distinct choice must be wired at least once, and they must be two
       // DIFFERENT literals — not the same string copy-pasted into both slots.

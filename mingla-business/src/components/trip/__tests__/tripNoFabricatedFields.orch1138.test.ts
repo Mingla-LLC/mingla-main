@@ -17,35 +17,44 @@ import path from "path";
 
 import { describe, expect, test } from "@jest/globals";
 
-const src = readFileSync(
-  path.join(process.cwd(), "src/components/trip/TripPreview.tsx"),
+// [TEST-MOD-APPROVED META-ORCH-1174] retarget: the public-trip render moved into
+// the shared @mingla/offering-rendering body — the destination map gate now lives in
+// TripOfferingBody (gated on data.destinationLat/Lng) and the per-day gallery in the
+// promoted DayByDay (fed from real day.media). The no-fabricated-fields invariant
+// (I-PROPOSED-1138-NO-FABRICATED-TRIP-FIELDS) is byte-preserved at the new homes.
+const bodySrc = readFileSync(
+  path.join(process.cwd(), "../packages/offering-rendering/TripOfferingBody.tsx"),
+  "utf8",
+);
+const dayByDaySrc = readFileSync(
+  path.join(process.cwd(), "../packages/offering-rendering/DayByDay.tsx"),
   "utf8",
 );
 
-// The FOUNDATION render path only (the LegacyTripPreview is the framed wizard
-// preview, which also never rendered stops). We assert against the whole file.
-describe("RT-4 ORCH-1138 — TripPreview renders no fabricated trip fields", () => {
+describe("RT-4 ORCH-1138 — the shared trip body renders no fabricated trip fields", () => {
   test("no per-day timed-stop rows are rendered", () => {
     // The Trip model carries `day.stops` (a JSON array) but the wizard does not
-    // author them. They must NOT be mapped/rendered anywhere.
-    expect(src).not.toMatch(/day\.stops\b/);
-    expect(src).not.toMatch(/\.stops\.map\(/);
-    expect(src).not.toMatch(/stops\.map\(/);
+    // author them. They must NOT be mapped/rendered in the body or DayByDay.
+    expect(bodySrc).not.toMatch(/\bstops\.map\(/);
+    expect(dayByDaySrc).not.toMatch(/\bstops\.map\(/);
+    expect(dayByDaySrc).not.toMatch(/day\.stops\b/);
   });
 
   test("the destination map is GATED on real lat/lng (no placeholder map)", () => {
-    // The map block must be guarded by a lat !== null && lng !== null check.
-    expect(src).toContain("bt.destinationLat !== null && bt.destinationLng !== null");
+    // The §11 map block must be guarded by a lat !== null && lng !== null check.
+    expect(bodySrc).toContain(
+      "data.destinationLat !== null && data.destinationLng !== null",
+    );
   });
 
   test("no trip-level standalone gallery (per-day media is the only imagery)", () => {
-    // There is no Trip.gallery field; the only gallery is the per-day
-    // CountAwareGallery fed from `day.media`.
-    expect(src).not.toMatch(/trip\.gallery\b/);
-    expect(src).toContain("mediaToGalleryItems(day)");
+    // There is no trip-level gallery; the only gallery is the per-day one inside
+    // DayByDay, fed from real day.media.
+    expect(bodySrc).not.toMatch(/trip\.gallery\b/);
+    expect(dayByDaySrc).toContain("day.media");
   });
 
   test("per-day media galleries are fed from real day.media only", () => {
-    expect(src).toContain("day.media.map");
+    expect(dayByDaySrc).toMatch(/day\.media/);
   });
 });

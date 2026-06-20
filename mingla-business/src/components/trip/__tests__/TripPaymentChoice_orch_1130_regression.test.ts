@@ -133,8 +133,15 @@ describe("ORCH-1130 — TripCheckoutFlow public page rebuild", () => {
     // `plan` route param; only the source expression evolved. Still fails on
     // revert (deleting the param drops the choice → no `params: { plan:`).
     expect(src).toContain("params: { plan: choice ?? paymentPlanChoice }");
-    // plan trips disambiguate the bar price with the word "total".
-    expect(src).toContain("total");
+    // [TEST-MOD-APPROVED META-ORCH-1174] retarget: the plan-trip bar price that
+    // disambiguates with the word "total" was LIFTED out of the route into the
+    // shared useTripOfferingState (one owner — the §10 box + bars never diverge).
+    // The behavior is preserved; the assertion now reads the hook source. Still
+    // fails on revert (deleting `${priceLabel} total` drops the disambiguation).
+    const hookSrc = read(
+      "../packages/offering-rendering/useTripOfferingState.ts",
+    );
+    expect(hookSrc).toContain("total");
   });
 });
 

@@ -254,16 +254,27 @@ describe("ORCH-1130 adversarial — selector suppressed for unbuyable/no-plan tr
     expect(toggleIdx).toBeGreaterThan(recapIdx);
   });
 
-  test("ConsumerTripDetailScreen module is gated on plan + !closed + bookable (never on an unbuyable trip)", () => {
-    const src = read(
-      "../app-mobile/src/screens/Trip/ConsumerTripDetailScreen.tsx",
+  test("the payment toggle is gated on plan + !closed + bookable (never on an unbuyable trip)", () => {
+    // [TEST-MOD-APPROVED META-ORCH-1174] retarget: the consumer screen's inline
+    // payment-mockup + its `planSchedule/planTier/!closed/bookable` gate were
+    // DELETED and lifted into the shared useTripOfferingState (one owner) +
+    // TripOfferingBody (the §10 box). The same suppression invariant now lives
+    // in the shared package: the hook derives `projectedSchedule` (null → no
+    // plan), `isClosed`, and honours `bookable === false`; the body renders the
+    // <TripPaymentChoice> toggle ONLY when projectedSchedule !== null && not
+    // closed. Behavior preserved; assertion reads the new shared home. Still
+    // fails on revert (drop the gate → these matches vanish).
+    const hookSrc = read("../packages/offering-rendering/useTripOfferingState.ts");
+    // The hook computes the plan schedule (null for no-plan), the closed flag,
+    // and respects bookable === false.
+    expect(hookSrc).toMatch(/projectedSchedule\s*=\s*\n?\s*selectedTier\s*!==\s*null/);
+    expect(hookSrc).toMatch(/isClosed\s*=\s*data\.bookingsClosed\s*===\s*true/);
+    expect(hookSrc).toMatch(/data\.bookable\s*===\s*false/);
+    // The shared body gates the toggle on a non-null schedule AND not-closed.
+    const bodySrc = read("../packages/offering-rendering/TripOfferingBody.tsx");
+    expect(bodySrc).toMatch(
+      /state\.projectedSchedule\s*!==\s*null\s*&&\s*state\.isClosed\s*===\s*false/,
     );
-    // The module render condition must require all of: a plan schedule, a plan
-    // tier, NOT closed, and bookable !== false.
-    expect(src).toMatch(/planSchedule\s*!==\s*null/);
-    expect(src).toMatch(/planTier\s*!==\s*null/);
-    expect(src).toMatch(/!closed/);
-    expect(src).toMatch(/detail\.bookable\s*!==\s*false/);
   });
 
   test("Path A Review gates the selector on isPlanActive (free/no-plan trip never shows the toggle at Review)", () => {

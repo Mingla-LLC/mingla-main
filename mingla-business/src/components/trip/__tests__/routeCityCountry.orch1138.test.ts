@@ -113,12 +113,28 @@ const CONSUMER_TRIP = path.resolve(
   "../../../../../app-mobile/src/screens/Trip/ConsumerTripDetailScreen.tsx",
 );
 
+// [TEST-MOD-APPROVED META-ORCH-1174] retarget: the per-surface route block was
+// promoted into the shared TripOfferingBody's §3 full-width pills (one body on every
+// surface); the City,Country normalization moved into the per-surface adapters
+// (tripOfferingAdapter / useConsumerTripOfferingData). The one-row + ellipsis + shared
+// normalizer invariants are byte-preserved at their new homes. Each still fails on a
+// true line-deletion of its guard.
+const BODY = path.resolve(
+  __dirname,
+  "../../../../../packages/offering-rendering/TripOfferingBody.tsx",
+);
+const BIZ_ADAPTER = path.resolve(__dirname, "../tripOfferingAdapter.ts");
+const CONSUMER_ADAPTER = path.resolve(
+  __dirname,
+  "../../../../../app-mobile/src/hooks/useConsumerTripOfferingData.ts",
+);
+
 describe("ORCH-1138 route block stays on ONE aligned row (no wrap)", () => {
-  test("business/web TripPreview routePlace is numberOfLines={1} + ellipsis", () => {
-    const src = readFileSync(TRIP_PREVIEW, "utf8");
-    // The FOUNDATION-mode route block: count the routePlace Texts that carry
-    // numberOfLines={1} (both legs).
-    const block = src.slice(src.indexOf("{/* route line"));
+  test("the shared body's §3 route pills are numberOfLines={1} + ellipsis (both legs)", () => {
+    const src = readFileSync(BODY, "utf8");
+    // The §3 full-width route pills: each leg pill carries numberOfLines={1} +
+    // ellipsis so a long City, Country stays on one row (no wrap).
+    const block = src.slice(src.indexOf("trip-body-route-pills"));
     const single = block.match(/numberOfLines=\{1\}/g) ?? [];
     expect(single.length).toBeGreaterThanOrEqual(2);
     expect(block).toContain('ellipsizeMode="tail"');
@@ -127,26 +143,23 @@ describe("ORCH-1138 route block stays on ONE aligned row (no wrap)", () => {
     expect(block).toContain("destinationCityCountry");
   });
 
-  test("business/web TripPreview imports + applies the shared normalizer", () => {
-    const src = readFileSync(TRIP_PREVIEW, "utf8");
+  test("the business adapter imports + applies the shared normalizer", () => {
+    const src = readFileSync(BIZ_ADAPTER, "utf8");
     expect(src).toContain("normalizeCityCountry");
     expect(src).toContain('from "@mingla/offering-rendering"');
   });
 
-  test("consumer ConsumerTripDetailScreen routePlace is numberOfLines={1} + ellipsis", () => {
+  test("the consumer surface renders the SAME shared §3 route pills (one body)", () => {
+    // The consumer screen mounts the shared TripOfferingBody, so the route-pill
+    // numberOfLines/ellipsis live in BODY (asserted above); here we prove the
+    // consumer surface imports + renders the shared body (not a forked route block).
     const src = readFileSync(CONSUMER_TRIP, "utf8");
-    const block = src.slice(src.indexOf("{/* route — leaving from"));
-    const single = block.match(/numberOfLines=\{1\}/g) ?? [];
-    expect(single.length).toBeGreaterThanOrEqual(2);
-    expect(block).toContain('ellipsizeMode="tail"');
+    expect(src).toContain("TripOfferingBody");
+    expect(src).toContain('from "@mingla/offering-rendering"');
   });
 
-  test("consumer foundation adapter applies the shared normalizer to both legs", () => {
-    const adapter = path.resolve(
-      __dirname,
-      "../../../../../app-mobile/src/hooks/useConsumerTripFoundation.ts",
-    );
-    const src = readFileSync(adapter, "utf8");
+  test("the consumer adapter applies the shared normalizer to both legs", () => {
+    const src = readFileSync(CONSUMER_ADAPTER, "utf8");
     expect(src).toContain("normalizeCityCountry");
     expect(src).toContain("departureCityCountry");
     expect(src).toContain("destinationCityCountry");
