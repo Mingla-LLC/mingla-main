@@ -3,7 +3,7 @@ import { describe, expect, test } from "@jest/globals";
 import {
   computeForeground,
   resolveTheme,
-} from "../../../../packages/event-rendering/themeResolver";
+} from "../../../../packages/offering-rendering/themeResolver";
 
 describe("ORCH-0964 theme resolver", () => {
   test("uses the Mingla default when brand and event theme are null", () => {

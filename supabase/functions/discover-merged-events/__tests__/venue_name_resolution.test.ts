@@ -3,7 +3,7 @@
 //
 // Bug: pre-0846, `supabase/functions/discover-merged-events/index.ts`
 // hardcoded `venueName: null` on every BusinessEventCard, which forced the
-// shared @mingla/event-rendering `PublicEventPage` render gate
+// shared @mingla/offering-rendering `PublicEventPage` render gate
 // (`event.format !== "online" && event.venueName !== null`) to false on
 // every business event. The consumer-side sheet (Discover → tap business
 // card → ExpandedBusinessEventSheet) silently dropped the entire venue

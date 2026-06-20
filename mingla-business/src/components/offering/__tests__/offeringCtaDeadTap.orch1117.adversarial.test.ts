@@ -49,12 +49,12 @@ import { join, resolve } from "node:path";
 import {
   resolveOfferingCta,
   type CtaState,
-} from "../../../../../packages/event-rendering/offeringCta";
-import type { PublicTicketProps } from "../../../../../packages/event-rendering/types";
+} from "../../../../../packages/offering-rendering/offeringCta";
+import type { PublicTicketProps } from "../../../../../packages/offering-rendering/types";
 
 const PKG_OFFERING_CTA = resolve(
   __dirname,
-  "../../../../../packages/event-rendering/offeringCta.ts",
+  "../../../../../packages/offering-rendering/offeringCta.ts",
 );
 const SRC_ROOT = join(__dirname, "..", "..", "..");
 const APP_ROOT = join(__dirname, "..", "..", "..", "..", "app");

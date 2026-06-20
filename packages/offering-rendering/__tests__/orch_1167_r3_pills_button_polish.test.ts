@@ -28,10 +28,10 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
 // Import the PURE CTA resolver + ticket type DIRECTLY from their module files
-// (not the @mingla/event-rendering barrel, which pulls react-native and breaks
+// (not the @mingla/offering-rendering barrel, which pulls react-native and breaks
 // node-env jest). resolveOfferingCta + offeringCta.ts are react-native-free.
-import { resolveOfferingCta } from "../../event-rendering/offeringCta";
-import type { PublicTicketProps } from "../../event-rendering/types";
+import { resolveOfferingCta } from "../offeringCta";
+import type { PublicTicketProps } from "../types";
 
 const repoRoot = join(__dirname, "..", "..", "..");
 const read = (rel: string): string => readFileSync(join(repoRoot, rel), "utf8");

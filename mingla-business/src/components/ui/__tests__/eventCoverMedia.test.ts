@@ -103,8 +103,8 @@ describe("EventCoverMedia presentation", () => {
 
   test("event cover videos use inline browser-safe playback props", () => {
     // ORCH-0964 [TEST-MOD-APPROVED ORCH-0964]: implementation moved to the
-    // shared @mingla/event-rendering package; assertions unchanged.
-    const source = repoFile("../packages/event-rendering/EventCoverMedia.tsx");
+    // shared @mingla/offering-rendering package; assertions unchanged.
+    const source = repoFile("../packages/offering-rendering/EventCoverMedia.tsx");
 
     expect(source).toContain("fullscreenOptions={{ enable: false }}");
     expect(source).toContain("playsInline");
@@ -121,7 +121,7 @@ describe("EventCoverMedia presentation", () => {
     expect(source).toContain("onMutedChange?.(next)");
     // ORCH-1124 [TEST-MOD-APPROVED ORCH-1124] — the audio-pill wiring was
     // refactored out of the mingla-business src/components/event/PublicEventPage
-    // adapter (now a thin delegate) into the shared @mingla/event-rendering
+    // adapter (now a thin delegate) into the shared @mingla/offering-rendering
     // package's PublicEventPage. The old assertions below targeted
     // `publicPageSource` (the adapter) for `showAudioControl` /
     // `audioControlPosition="topLeft"` / `audioControlTopOffset={insets.top + 60}`
@@ -131,7 +131,7 @@ describe("EventCoverMedia presentation", () => {
     // "bottomRight" position (no override), clearing the top-right floating
     // close+share chrome.
     const sharedPublicPageSource = repoFile(
-      "../packages/event-rendering/PublicEventPage.tsx",
+      "../packages/offering-rendering/PublicEventPage.tsx",
     );
     expect(sharedPublicPageSource).toContain("showAudioControl");
     expect(sharedPublicPageSource).not.toContain(
@@ -145,8 +145,8 @@ describe("EventCoverMedia presentation", () => {
 
   test("event cover video playback is gated by active surface intent", () => {
     // ORCH-0964 [TEST-MOD-APPROVED ORCH-0964]: implementation moved to the
-    // shared @mingla/event-rendering package; assertions unchanged.
-    const source = repoFile("../packages/event-rendering/EventCoverMedia.tsx");
+    // shared @mingla/offering-rendering package; assertions unchanged.
+    const source = repoFile("../packages/offering-rendering/EventCoverMedia.tsx");
     const publicPageSource = repoFile("src/components/event/PublicEventPage.tsx");
 
     expect(source).toContain("playbackActive?: boolean");
@@ -182,8 +182,8 @@ describe("EventCoverMedia presentation", () => {
 
   test("native event cover cleanup does not call pause on a potentially disposed player", () => {
     // ORCH-0964 [TEST-MOD-APPROVED ORCH-0964]: implementation moved to the
-    // shared @mingla/event-rendering package; assertions unchanged.
-    const source = repoFile("../packages/event-rendering/EventCoverMedia.tsx");
+    // shared @mingla/offering-rendering package; assertions unchanged.
+    const source = repoFile("../packages/offering-rendering/EventCoverMedia.tsx");
     const cleanupBlockMatch = source.match(
       /return \(\) => \{\s*playToEndSub\.remove\(\);\s*appStateSub\.remove\(\);\s*\};/,
     );
@@ -197,8 +197,8 @@ describe("EventCoverMedia presentation", () => {
 
   test("media render failures are surfaced to the caller before fallback", () => {
     // ORCH-0964 [TEST-MOD-APPROVED ORCH-0964]: implementation moved to the
-    // shared @mingla/event-rendering package; assertions unchanged.
-    const source = repoFile("../packages/event-rendering/EventCoverMedia.tsx");
+    // shared @mingla/offering-rendering package; assertions unchanged.
+    const source = repoFile("../packages/offering-rendering/EventCoverMedia.tsx");
     const stepSource = repoFile("src/components/event/CreatorStep4Cover.tsx");
 
     expect(source).toContain("onMediaError");
@@ -338,9 +338,9 @@ describe("ORCH-0992 reduce-motion ambient cover gate", () => {
 // expandedCard/ImageGallery), clearing the chrome.
 describe("ORCH-1124 cover-video audio pill clears top-right floating chrome", () => {
   const sharedPublicPage = (): string =>
-    repoFile("../packages/event-rendering/PublicEventPage.tsx");
+    repoFile("../packages/offering-rendering/PublicEventPage.tsx");
   const coverMedia = (): string =>
-    repoFile("../packages/event-rendering/EventCoverMedia.tsx");
+    repoFile("../packages/offering-rendering/EventCoverMedia.tsx");
 
   // HAPPY PATH — the public event page must NOT override the audio-pill
   // position, so it inherits the shared component's "bottomRight" default.

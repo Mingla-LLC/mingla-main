@@ -45,14 +45,14 @@ export interface BusinessEventCard {
   city: string | null;
   /**
    * ORCH-0846: address is now passed unconditionally; the shared
-   * @mingla/event-rendering PublicEventPage gates rendering via
+   * @mingla/offering-rendering PublicEventPage gates rendering via
    * hideAddressUntilTicket (matches brand-side mechanism).
    */
   address: string | null;
   hideAddressUntilTicket: boolean;
   /**
    * ORCH-0846: shared-component format string consumed by
-   * @mingla/event-rendering PublicEventPage. Resolved server-side from
+   * @mingla/offering-rendering PublicEventPage. Resolved server-side from
    * theme.business_event.format with events.is_online as fallback.
    */
   format: "in-person" | "online" | "hybrid";

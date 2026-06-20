@@ -5,7 +5,7 @@
 // install (single-copy React).
 //
 // Unlike the implementor's math+source-text test, this MOUNTS the real
-// business-app QuantityRow (→ the shared @mingla/event-rendering row) and the
+// business-app QuantityRow (→ the shared @mingla/offering-rendering row) and the
 // exact bottom-bar JSX from the three checkout index.tsx screens, then asserts
 // the RENDERED TEXT shows the all-in (the R1 blind spot: the screen could not
 // be rendered, so the selection-display bug shipped unseen).
@@ -50,18 +50,18 @@ module.exports = {
     // map the bare specifier straight to the QuantityRow source file. This is
     // the SAME real component the wrapper renders — only the unrelated barrel
     // siblings are bypassed.
-    "^@mingla/event-rendering$": path.join(
+    "^@mingla/offering-rendering$": path.join(
       businessRoot,
       "..",
       "packages",
-      "event-rendering",
+      "offering-rendering",
       "QuantityRow.tsx",
     ),
-    "^@mingla/event-rendering/(.*)$": path.join(
+    "^@mingla/offering-rendering/(.*)$": path.join(
       businessRoot,
       "..",
       "packages",
-      "event-rendering",
+      "offering-rendering",
       "$1",
     ),
     // expo-haptics has no native side under jest; stub selectionAsync.

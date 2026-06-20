@@ -3,7 +3,7 @@
  * shared owner of the "Where you'll be"/"Where you'll start" map across the
  * public trip, event, and experience pages.
  *
- * ORCH-1162 Bug 2 (B.0): PROMOTED into @mingla/event-rendering so there is
+ * ORCH-1162 Bug 2 (B.0): PROMOTED into @mingla/offering-rendering so there is
  * exactly ONE buildStaticMapUrl owner. mingla-business/src/utils/mapboxStaticImage
  * and app-mobile/src/utils/mapboxStaticImage RE-EXPORT from here (the prior
  * byte-for-byte duplication ended). This preserves I-MOR-0827-PACKAGE-ISOLATION:

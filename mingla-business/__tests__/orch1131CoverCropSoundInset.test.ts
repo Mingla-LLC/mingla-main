@@ -91,7 +91,7 @@ describe("ORCH-1133 FIX 1 (round 3) — checkout mini-card cover is the compact 
 
 describe("ORCH-1133 FIX 2 (round 3) — shared Sound-pill bottomRight inset", () => {
   const src = fs.readFileSync(
-    path.join(repoRoot, "packages/event-rendering/EventCoverMedia.tsx"),
+    path.join(repoRoot, "packages/offering-rendering/EventCoverMedia.tsx"),
     "utf8",
   );
   const body = extractStyleBody(src, "audioControlBottomRight");

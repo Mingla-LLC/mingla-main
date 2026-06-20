@@ -1,5 +1,5 @@
 import { supabase } from "./supabase";
-import type { ThemeInput } from "@mingla/event-rendering";
+import type { ThemeInput } from "@mingla/offering-rendering";
 import type {
   DraftEvent,
   DraftEventFormat,

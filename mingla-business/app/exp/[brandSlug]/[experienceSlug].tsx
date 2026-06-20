@@ -48,7 +48,7 @@ import {
   resolveOfferingSurface,
   resolveTheme,
   type CtaState,
-} from "@mingla/event-rendering";
+} from "@mingla/offering-rendering";
 import { useResponsiveLayout } from "@mingla/offering-rendering";
 import { useThemeFont } from "../../../src/theme/useThemeFont";
 import { ShareModal } from "../../../src/components/ui/ShareModal";

@@ -15,7 +15,7 @@
  *     T-A3 app-mobile thin wrappers preserve original consumer API
  *
  *   Phase A2 (QuantityRow extraction):
- *     T-A4 packages/event-rendering/QuantityRow.tsx exists with QuantityRowTheme
+ *     T-A4 packages/offering-rendering/QuantityRow.tsx exists with QuantityRowTheme
  *     T-A5 mingla-business QuantityRow thin wrapper imports from package
  *
  *   Phase B (public phone field UX):
@@ -32,7 +32,7 @@
  *     T-C5 ExpandedBusinessEventSheet has cartSheetVisible + initialTicketTypeId state
  *     T-C6 ExpandedBusinessEventSheet renders <TicketCartSheet>
  *     T-C7 TicketCartSheet defaults marketingOptIn to useState<boolean>(false)
- *     T-C8 TicketCartSheet imports QuantityRow from @mingla/event-rendering
+ *     T-C8 TicketCartSheet imports QuantityRow from @mingla/offering-rendering
  *     T-C9 TicketCartSheet uses Icon name="add" (not "plus") for the plus glyph
  *     T-C10 TicketCartSheet uses 92% snap point
  *     T-C11 handleBuy accepts TicketCartCheckoutPayload + uses payload.totalCents > 0
@@ -111,14 +111,14 @@ check(
 // ─── Phase A2 — QuantityRow extraction ───────────────────────────────────
 
 const quantityRowPkg = fromWorkspace(
-  "packages/event-rendering/QuantityRow.tsx",
+  "packages/offering-rendering/QuantityRow.tsx",
 );
 check(
-  "T-A4 packages/event-rendering/QuantityRow.tsx exists with QuantityRowTheme",
+  "T-A4 packages/offering-rendering/QuantityRow.tsx exists with QuantityRowTheme",
   quantityRowPkg !== null &&
     /export\s+const\s+QuantityRow/.test(quantityRowPkg) &&
     /QuantityRowTheme/.test(quantityRowPkg),
-  "packages/event-rendering/QuantityRow.tsx MUST exist and define QuantityRowTheme.",
+  "packages/offering-rendering/QuantityRow.tsx MUST exist and define QuantityRowTheme.",
 );
 
 const businessQrWrapper = fromWorkspace(
@@ -127,8 +127,8 @@ const businessQrWrapper = fromWorkspace(
 check(
   "T-A5 mingla-business QuantityRow thin wrapper imports from package",
   businessQrWrapper !== null &&
-    /from\s+["']@mingla\/event-rendering["']/.test(businessQrWrapper),
-  "mingla-business/src/components/checkout/QuantityRow.tsx MUST be a thin wrapper importing QuantityRow from @mingla/event-rendering.",
+    /from\s+["']@mingla\/offering-rendering["']/.test(businessQrWrapper),
+  "mingla-business/src/components/checkout/QuantityRow.tsx MUST be a thin wrapper importing QuantityRow from @mingla/offering-rendering.",
 );
 
 // ─── Phase B — public phone field UX ──────────────────────────────────────
@@ -241,12 +241,12 @@ check(
 );
 
 check(
-  "T-C8 TicketCartSheet imports QuantityRow from @mingla/event-rendering",
+  "T-C8 TicketCartSheet imports QuantityRow from @mingla/offering-rendering",
   cartSheet !== null &&
-    /import\s*\{[^}]*\bQuantityRow\b[^}]*\}\s*from\s*["']@mingla\/event-rendering["']/.test(
+    /import\s*\{[^}]*\bQuantityRow\b[^}]*\}\s*from\s*["']@mingla\/offering-rendering["']/.test(
       cartSheet,
     ),
-  "TicketCartSheet MUST import QuantityRow from @mingla/event-rendering (the Phase A2 shared component).",
+  "TicketCartSheet MUST import QuantityRow from @mingla/offering-rendering (the Phase A2 shared component).",
 );
 
 check(

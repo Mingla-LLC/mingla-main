@@ -20,7 +20,7 @@ import {
   isThemeColor,
   isThemeFontSlug,
   type ThemeInput,
-} from "@mingla/event-rendering";
+} from "@mingla/offering-rendering";
 import { parseClaimedVenueHours } from "../utils/venuePublicHours";
 import { buildVenueGalleryPhotoUrls } from "../utils/venuePublicPhotos";
 import {

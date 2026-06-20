@@ -54,22 +54,22 @@ import {
   type LayoutChangeEvent,
 } from "react-native";
 
+import { boldFontFamily, offeringSurfaceStyles, type ThemePalette } from "./themePalette";
 import {
-  boldFontFamily,
   computeOfferingVariant,
-  offeringSurfaceStyles,
   resolveOfferingCta,
   ticketIsDoorOnly,
   ticketIsSoldOut,
   ticketSaleEnded,
   type CtaState,
   type OfferingVariant,
+} from "./offeringCta";
+import {
   type PublicBrandProps,
   type PublicEventProps,
   type PublicTicketProps,
-  type ResolvedTheme,
-  type ThemePalette,
-} from "@mingla/event-rendering";
+} from "./types";
+import { type ResolvedTheme } from "./designTokens";
 
 import { normalizeCityCountry } from "./normalizeCityCountry";
 import {

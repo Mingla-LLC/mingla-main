@@ -7,7 +7,7 @@
  * ExpoImage and explicitly EXCLUDED video (`data.coverMediaType !== "video"`),
  * so any video cover fell through to the solid hue band ("solid color" report).
  *
- * Fix: route the cover through the shared `@mingla/event-rendering`
+ * Fix: route the cover through the shared `@mingla/offering-rendering`
  * `EventCoverMedia`, which plays video (muted/looping), animates GIFs, shows
  * images, and renders its own hue-band fallback when there is no media.
  *
@@ -36,8 +36,8 @@ function runOrch0994VideoCoverHappyPath() {
   // T-01: the shared video-capable renderer is imported from the shared package.
   assert.match(
     src,
-    /import\s*\{\s*EventCoverMedia\s*\}\s*from\s*["']@mingla\/event-rendering["']/,
-    "BusinessEventCard must import EventCoverMedia from @mingla/event-rendering",
+    /import\s*\{\s*EventCoverMedia\s*\}\s*from\s*["']@mingla\/offering-rendering["']/,
+    "BusinessEventCard must import EventCoverMedia from @mingla/offering-rendering",
   );
 
   // T-02: the cover is rendered through EventCoverMedia.

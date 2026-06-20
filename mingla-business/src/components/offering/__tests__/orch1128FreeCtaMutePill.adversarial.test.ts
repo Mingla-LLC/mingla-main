@@ -60,7 +60,7 @@ const coverMedia = (): string =>
   readFileSync(
     path.resolve(
       __dirname,
-      "../../../../../packages/event-rendering/EventCoverMedia.tsx",
+      "../../../../../packages/offering-rendering/EventCoverMedia.tsx",
     ),
     "utf8",
   );

@@ -48,7 +48,7 @@ const check = (name, pass, detail) => {
 
 const glassBlurPath = path.join(
   packagesRoot,
-  "event-rendering/GlassBlur.tsx",
+  "offering-rendering/GlassBlur.tsx",
 );
 const glassBlurRaw = readMaybe(glassBlurPath);
 const glassBlur = glassBlurRaw ? stripComments(glassBlurRaw) : "";
@@ -112,8 +112,8 @@ check(
 
 // ─── T-04: Symptom-A mitigation preserved in shared cards ────────────────────
 for (const rel of [
-  "event-rendering/EventCoverMedia.tsx",
-  "event-rendering/EventCover.tsx",
+  "offering-rendering/EventCoverMedia.tsx",
+  "offering-rendering/EventCover.tsx",
 ]) {
   const src = readMaybe(path.join(packagesRoot, rel));
   check(

@@ -31,7 +31,7 @@ import { Platform, Pressable, StyleSheet, Text, View } from "react-native";
 import * as Haptics from "expo-haptics";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import type { ThemePalette } from "@mingla/event-rendering";
+import type { ThemePalette } from "@mingla/offering-rendering";
 import { BaseBottomSheet } from "../ui/BaseBottomSheet";
 import { Icon } from "../ui/Icon";
 import { BOTTOM_NAV_CONTENT_HEIGHT } from "../../hooks/useAppLayout";

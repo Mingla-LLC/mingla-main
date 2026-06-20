@@ -7,8 +7,6 @@
       "@mingla/brand-rendering": ["../packages/brand-rendering"],
       "@mingla/brand-rendering/*": ["../packages/brand-rendering/*"],
       "expo-video": ["./node_modules/expo-video"],
-      "@mingla/event-rendering": ["../packages/event-rendering"],
-      "@mingla/event-rendering/*": ["../packages/event-rendering/*"],
       "@mingla/offering-rendering": ["../packages/offering-rendering"],
       "@mingla/offering-rendering/*": ["../packages/offering-rendering/*"],
       "@mingla/theme-animations": ["../packages/theme-animations"],

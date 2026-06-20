@@ -1,4 +1,4 @@
-// Prop contract for @mingla/event-rendering.
+// Prop contract for @mingla/offering-rendering.
 //
 // Both mingla-business and app-mobile must shape their data into these types
 // before passing to PublicEventPage. The package never imports from either

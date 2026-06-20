@@ -22,7 +22,7 @@ import path from "path";
 
 const PKG = path.resolve(
   __dirname,
-  "../../../../../packages/event-rendering/PublicEventPage.tsx",
+  "../../../../../packages/offering-rendering/PublicEventPage.tsx",
 );
 const SRC = readFileSync(PKG, "utf8");
 

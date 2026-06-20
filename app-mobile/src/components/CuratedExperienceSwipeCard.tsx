@@ -4,7 +4,7 @@ import { View, Text, StyleSheet, Platform, AccessibilityInfo } from 'react-nativ
 // video) via the SAME shared component the detail sheet + public event page use
 // (expo-video, muted/autoplay per the event-card contract). One source of truth
 // for cover rendering — never a parallel video player.
-import { EventCoverMedia } from '@mingla/event-rendering';
+import { EventCoverMedia } from '@mingla/offering-rendering';
 // ORCH-1042: curated stop photos render via expo-image (NOT react-native <Image>)
 // so each stop gets a placeholder + fade transition + memory-disk cache +
 // recyclingKey + an onError fallback (this path previously had NO fallback at all

@@ -1,12 +1,12 @@
 /**
  * usePublicEventTickets — React Query hook for fetching a business event's
- * ticket types in the @mingla/event-rendering package's prop shape.
+ * ticket types in the @mingla/offering-rendering package's prop shape.
  *
  * Per META-ORCH-0827 Pass 2 Step 10 support.
  */
 
 import { useQuery } from "@tanstack/react-query";
-import type { PublicTicketProps } from "@mingla/event-rendering";
+import type { PublicTicketProps } from "@mingla/offering-rendering";
 import { fetchPublicEventTickets } from "../services/publicEventTicketsService";
 
 export const PUBLIC_EVENT_TICKETS_KEY = (eventId: string | null) =>

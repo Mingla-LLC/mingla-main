@@ -31,7 +31,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 
-import type { ThemePalette } from "@mingla/event-rendering";
+import type { ThemePalette } from "@mingla/offering-rendering";
 import { Sheet } from "../ui/Sheet";
 import { Icon } from "../ui/Icon";
 import type { PublicExperienceDate } from "../../services/publicExperienceService";

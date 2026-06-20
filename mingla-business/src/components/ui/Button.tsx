@@ -60,7 +60,7 @@ export type ButtonShape = "pill" | "square";
 
 // ORCH-1162 Bug 3 — optional brand-accent override for the `primary` variant.
 // The WCAG contrast helpers live in the pure, unit-testable buttonAccentContrast
-// util (they mirror packages/event-rendering/themePalette.ts). The label color
+// util (they mirror packages/offering-rendering/themePalette.ts). The label color
 // auto-resolves (black/white) for ≥4.5:1 on ANY brand hue, so the checkout CTAs
 // stay legible on light AND dark themes. I-PROPOSED-1162-CHECKOUT-CTA-BRAND-THEMED.
 

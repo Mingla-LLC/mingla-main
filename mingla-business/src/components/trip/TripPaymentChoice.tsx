@@ -39,7 +39,7 @@ import {
 } from "react-native";
 
 import { spacing, text as textTokens } from "../../constants/designSystem";
-import type { ThemePalette } from "@mingla/event-rendering";
+import type { ThemePalette } from "@mingla/offering-rendering";
 import { GlassCard } from "../ui/GlassCard";
 import { formatCurrency } from "../../utils/currency";
 import {

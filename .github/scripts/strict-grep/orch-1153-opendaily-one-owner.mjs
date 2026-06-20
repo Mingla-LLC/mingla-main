@@ -5,7 +5,7 @@
  *
  * The buyer-web /exp/ page and the app-mobile consumer detail screen must BOTH
  * use the shared rule-based predicate isOpenDailyExperience
- * (@mingla/event-rendering). The consumer's prior occurrence-density heuristic
+ * (@mingla/offering-rendering). The consumer's prior occurrence-density heuristic
  * (utils/experienceOpenDaily isOpenDailyModel) classified the SAME experience
  * differently than the web page (F-5) and is no longer the detector.
  *
@@ -13,7 +13,7 @@
  *   (a) the consumer detail screen still CALLS isOpenDailyModel( (the heuristic),
  *   (b) the consumer detail screen does not import/use isOpenDailyExperience,
  *   (c) the /exp/ page does not use isOpenDailyExperience,
- *   (d) the shared export is missing from packages/event-rendering.
+ *   (d) the shared export is missing from packages/offering-rendering.
  *
  * Self-test (`--self-test`): FAILS on the reverted consumer (heuristic call),
  * PASSES on the fixed consumer (shared predicate).
@@ -28,7 +28,7 @@ const root = process.cwd().endsWith("mingla-business")
 const CONSUMER =
   "app-mobile/src/screens/Experience/ConsumerExperienceDetailScreen.tsx";
 const EXP_PAGE = "mingla-business/app/exp/[brandSlug]/[experienceSlug].tsx";
-const SHARED = "packages/event-rendering/experienceOpenDaily.ts";
+const SHARED = "packages/offering-rendering/experienceOpenDaily.ts";
 
 const stripComments = (src) =>
   src

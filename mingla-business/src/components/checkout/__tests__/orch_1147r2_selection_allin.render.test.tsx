@@ -11,7 +11,7 @@
 // Two render surfaces are proven for event / trip / experience:
 //   (A) per-tier QuantityRow — mounts the REAL mingla-business <QuantityRow>
 //       wrapper (which forwards priceAllInGbp) → the shared
-//       @mingla/event-rendering row. Asserts the rendered price is the ALL-IN
+//       @mingla/offering-rendering row. Asserts the rendered price is the ALL-IN
 //       ("£67.93"), the "incl. VAT & fees" caption renders, and the bare base
 //       ("£65.00") is NOT the headline price.
 //   (B) bottom bar — renders the EXACT JSX from the three checkout index.tsx

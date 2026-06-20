@@ -3,7 +3,7 @@
 /**
  * ORCH-1117 R1 — I-PROPOSED-NO-RAW-WHITE-ON-PALETTE-SURFACE
  *
- * In packages/event-rendering/PublicEventPage.tsx, text that sits on a palette
+ * In packages/offering-rendering/PublicEventPage.tsx, text that sits on a palette
  * surface (page / card / glass / panel / accentWash) MUST take its color from
  * the luminance-aware palette tokens, never a raw `#ffffff` / `#fff` literal —
  * otherwise it vanishes white-on-near-white on a light brand theme (the exact
@@ -35,7 +35,7 @@ const repoRoot = path.resolve(__dirname, "../../..");
 
 const TARGET = path.join(
   repoRoot,
-  "packages/event-rendering/PublicEventPage.tsx",
+  "packages/offering-rendering/PublicEventPage.tsx",
 );
 
 // Matches a text-style color override set to raw white, in any quoting/spacing.

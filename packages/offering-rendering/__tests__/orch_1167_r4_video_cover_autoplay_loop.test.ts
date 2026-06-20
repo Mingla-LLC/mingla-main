@@ -40,9 +40,9 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
 // Pure, react-native-free decider — import the module DIRECTLY (not the
-// @mingla/event-rendering barrel, which pulls react-native and breaks node-env
+// @mingla/offering-rendering barrel, which pulls react-native and breaks node-env
 // jest).
-import { shouldFreezeCoverForReduceMotion } from "../../event-rendering/coverMediaPresentation";
+import { shouldFreezeCoverForReduceMotion } from "../coverMediaPresentation";
 
 const repoRoot = join(__dirname, "..", "..", "..");
 const read = (rel: string): string => readFileSync(join(repoRoot, rel), "utf8");

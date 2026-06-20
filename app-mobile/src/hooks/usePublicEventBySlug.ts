@@ -12,7 +12,7 @@
  * for standard events). PRIVACY is enforced SERVER-SIDE in the RPC (locationGeo
  * null + cityGeo set when the street is hidden) — the client never re-derives it.
  *
- * 🔒 I-MOR-0827-PACKAGE-ISOLATION: imports only @mingla/event-rendering types +
+ * 🔒 I-MOR-0827-PACKAGE-ISOLATION: imports only @mingla/offering-rendering types +
  * the anon supabase client. No mingla-business/src import.
  */
 
@@ -21,7 +21,7 @@ import type {
   PublicBrandProps,
   PublicEventProps,
   PublicTicketProps,
-} from "@mingla/event-rendering";
+} from "@mingla/offering-rendering";
 
 import { supabase } from "../services/supabase";
 

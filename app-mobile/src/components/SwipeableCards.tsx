@@ -24,7 +24,7 @@ import { useRouter } from "expo-router";
 // (COMMS-0007). A venue with a `.mp4` cover plays its video on the deck hero;
 // still-only venues keep the ExpoImage CardHeroImage path unchanged. Do NOT add
 // a parallel player or a direct expo-video call site here.
-import { EventCoverMedia } from "@mingla/event-rendering";
+import { EventCoverMedia } from "@mingla/offering-rendering";
 // ORCH-1069: single owner of video-URL detection, mirrors discover-cards
 // isVideoUrl (I-1069-VIDEO-DETECTION-MATCHES-EDGE).
 import { firstVideoUrl } from "../utils/videoUrl";

@@ -40,7 +40,7 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import * as Haptics from "expo-haptics";
 
-import type { CtaState, ThemePalette } from "@mingla/event-rendering";
+import type { CtaState, ThemePalette } from "@mingla/offering-rendering";
 
 export interface ConsumerEventReserveBarProps {
   cta: CtaState;

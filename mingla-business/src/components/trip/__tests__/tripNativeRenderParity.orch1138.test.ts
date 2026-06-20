@@ -34,15 +34,15 @@ import { describe, expect, test } from "@jest/globals";
 import {
   FONT_FAMILY_BOLD_MAP,
   boldFontFamily,
-} from "../../../../../packages/event-rendering/themePalette";
+} from "../../../../../packages/offering-rendering/themePalette";
 import {
   FONT_FAMILY_MAP,
   THEME_FONT_SLUGS,
-} from "../../../../../packages/event-rendering/designTokens";
+} from "../../../../../packages/offering-rendering/designTokens";
 import type {
   ResolvedTheme,
   ThemeFontSlug,
-} from "../../../../../packages/event-rendering/designTokens";
+} from "../../../../../packages/offering-rendering/designTokens";
 
 const read = (rel: string): string =>
   readFileSync(path.join(process.cwd(), rel), "utf8");

@@ -376,7 +376,7 @@ export const normalizeEventCoverAsset = (input: {
   };
 };
 
-// ORCH-0964 — kept identical to @mingla/event-rendering `coverMediaPresentation.ts`,
+// ORCH-0964 — kept identical to @mingla/offering-rendering `coverMediaPresentation.ts`,
 // which the shared EventCoverMedia uses. Both are the same pure 1:1 type→presentation
 // mapping; if you change one, change the other (covered by eventCoverMedia.test.ts).
 export const resolveEventCoverMediaPresentation = ({
@@ -402,7 +402,7 @@ export const resolveEventCoverMediaPresentation = ({
 };
 
 // ORCH-0992 [event-cover video paused on web] — kept identical to
-// @mingla/event-rendering `coverMediaPresentation.ts` `shouldFreezeCoverForReduceMotion`.
+// @mingla/offering-rendering `coverMediaPresentation.ts` `shouldFreezeCoverForReduceMotion`.
 // A muted-autoplay-loop cover is ambient motion (like a GIF cover, never frozen);
 // only non-ambient covers (sound-on / tap-to-play) still freeze to a still under
 // reduce-motion. If you change one copy, change the other.

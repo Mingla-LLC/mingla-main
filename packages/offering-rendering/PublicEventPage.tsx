@@ -2,7 +2,7 @@
 //
 // Per META-ORCH-0827 Pass 2 (Option C). Designed fresh for cross-app
 // sharing. Both mingla-business (native + web) and app-mobile (native)
-// consume this component via @mingla/event-rendering.
+// consume this component via @mingla/offering-rendering.
 //
 // Pattern rules (DEC-PASS2-8 → I-1.2-* invariants after Pass 2 validates):
 //   - Pure presentational: NO data fetching, NO useAuth, NO useRouter,

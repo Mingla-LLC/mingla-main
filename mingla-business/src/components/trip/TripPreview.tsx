@@ -57,7 +57,7 @@ import {
   offeringSurfaceStyles,
   type ResolvedTheme,
   type ThemePalette,
-} from "@mingla/event-rendering";
+} from "@mingla/offering-rendering";
 import {
   ParallaxCoverShell,
   CountAwareGallery,
@@ -162,7 +162,7 @@ export interface TripPreviewProps {
   onScrollViewLayout?: ParallaxLayoutHandler;
 }
 
-// ORCH-1016 — date range from the shared @mingla/event-rendering helper so the
+// ORCH-1016 — date range from the shared @mingla/offering-rendering helper so the
 // consumer card/detail and this preview/public page format identically.
 
 function formatPrice(tier: TripPricingTier | undefined): string {

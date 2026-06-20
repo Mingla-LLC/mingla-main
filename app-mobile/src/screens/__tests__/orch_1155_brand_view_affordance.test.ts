@@ -53,7 +53,7 @@ const tripPreview = read(
 const experiencePreview = read(
   "mingla-business/src/components/experience/ExperiencePreview.tsx",
 );
-const sharedEventPage = read("packages/event-rendering/PublicEventPage.tsx");
+const sharedEventPage = read("packages/offering-rendering/PublicEventPage.tsx");
 const businessEventPage = read(
   "mingla-business/src/components/event/PublicEventPage.tsx",
 );

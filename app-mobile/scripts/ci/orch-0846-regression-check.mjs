@@ -7,7 +7,7 @@
  * `app-mobile/src/components/expandedCard/ExpandedBusinessEventSheet.tsx`
  * forwards `card.format`, `card.venueName`, `card.address`, and
  * `card.hideAddressUntilTicket` straight through to the shared
- * @mingla/event-rendering PublicEventPage, instead of hardcoding
+ * @mingla/offering-rendering PublicEventPage, instead of hardcoding
  * `format: "in-person"`.
  *
  * Two coverage angles:

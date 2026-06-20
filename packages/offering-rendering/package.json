@@ -5,11 +5,16 @@
   "main": "index.ts",
   "types": "index.ts",
   "license": "UNLICENSED",
-  "description": "ORCH-1138 — pure-presentational Direction-A layout primitives (parallax cover shell, offering chrome, count-aware gallery, chip group, surface theming) shared by the public trip/event/experience/brand pages. Props-only; no app src/ imports (I-MOR-0827-PACKAGE-ISOLATION). Renders on react-native-web and native RN.",
+  "description": "ORCH-1138 — pure-presentational Direction-A layout primitives (parallax cover shell, offering chrome, count-aware gallery, chip group, surface theming) shared by the public trip/event/experience/brand pages. ORCH-1169: absorbed the former @mingla/event-rendering (theming engine, CTA state machine, EventCover/EventCoverMedia, QuantityRow, RefundPolicyDisplay, mapbox builders, PublicEventPage) so the monorepo has ONE rendering package. Props-only; no app src/ imports (I-MOR-0827-PACKAGE-ISOLATION). Renders on react-native-web and native RN.",
   "peerDependencies": {
     "react": "*",
     "react-native": "*",
     "react-native-svg": "*",
-    "@mingla/event-rendering": "*"
+    "expo-video": "*",
+    "expo-blur": "*",
+    "expo-constants": "*",
+    "expo-image": "*",
+    "expo-linear-gradient": "*",
+    "lottie-react-native": "*"
   }
 }

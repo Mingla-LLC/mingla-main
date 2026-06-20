@@ -17,7 +17,7 @@
 // 🔒 I-MOR-0827-PACKAGE-ISOLATION: no import from mingla-business/src.
 
 import { normalizeCityCountry } from "@mingla/offering-rendering";
-import type { ThemePalette, PublicTicketProps } from "@mingla/event-rendering";
+import type { ThemePalette, PublicTicketProps } from "@mingla/offering-rendering";
 
 import type { BusinessEventCard } from "../types/mergedDiscover";
 import { formatEventDateLine, formatEventDoorsTimes } from "../utils/eventDateDisplay";

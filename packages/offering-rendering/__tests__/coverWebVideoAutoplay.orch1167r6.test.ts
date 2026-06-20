@@ -1,5 +1,5 @@
 // ORCH-1167-R6 → SUPERSEDED BY R7. This test's original subject — the
-// `driveMutedAutoplay` play()-retry driver (packages/event-rendering/
+// `driveMutedAutoplay` play()-retry driver (packages/offering-rendering/
 // coverWebVideoAutoplay.ts) — was REMOVED by ORCH-1167-R7 after real-component
 // WebKit forensics proved the play()-hammering at readyState 0 was ITSELF the
 // Safari autoplay poison: a gesture-less play() fired before media load

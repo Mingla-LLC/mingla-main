@@ -26,7 +26,7 @@ for (const relRoot of checkoutRoots) {
     const rel = relative(root, file);
     const src = readFileSync(file, "utf8");
     if (
-      /@mingla\/event-rendering/.test(src) &&
+      /@mingla\/offering-rendering/.test(src) &&
       /\b(resolveTheme|ResolvedTheme|MINGLA_DEFAULT_THEME|ThemeEntranceAnimation)\b/.test(src)
     ) {
       failures.push(`${rel}: checkout route imports public-page theme primitives`);

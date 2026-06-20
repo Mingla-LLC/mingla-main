@@ -1,4 +1,4 @@
-import type { ResolvedTheme, ThemeInput } from "@mingla/event-rendering";
+import type { ResolvedTheme, ThemeInput } from "@mingla/offering-rendering";
 
 export type PublicMediaType = "image" | "video" | "gif";
 

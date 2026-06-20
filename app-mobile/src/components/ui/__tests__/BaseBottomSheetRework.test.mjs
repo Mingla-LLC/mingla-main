@@ -85,7 +85,7 @@ function run() {
   const ebes = read(EBES);
   const ebesCode = stripComments(ebes);
 
-  const PAGE = "packages/event-rendering/PublicEventPage.tsx";
+  const PAGE = "packages/offering-rendering/PublicEventPage.tsx";
   const page = read(PAGE);
   const pageCode = stripComments(page);
 
@@ -184,7 +184,7 @@ function run() {
     /<ScrollView\s+style=\{styles\.scroll\}/,
     "R-2 PublicEventPage no longer hardcodes <ScrollView style={styles.scroll}> as the body host",
   );
-  const PAGE_TYPES = "packages/event-rendering/types.ts";
+  const PAGE_TYPES = "packages/offering-rendering/types.ts";
   assert.match(
     read(PAGE_TYPES),
     /ScrollComponent\?:/,

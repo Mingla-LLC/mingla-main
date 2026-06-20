@@ -21,7 +21,7 @@ import {
 } from "react-native";
 import Svg, { Circle, Line, Path } from "react-native-svg";
 
-import { type ThemePalette } from "@mingla/event-rendering";
+import { type ThemePalette } from "./themePalette";
 
 import { shouldRenderCloseButton } from "./closeButtonVisibility";
 

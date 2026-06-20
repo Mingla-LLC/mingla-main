@@ -1,7 +1,7 @@
 /**
  * EventCover — hue-driven striped placeholder for missing event imagery.
  *
- * Moved into @mingla/event-rendering (ORCH-0964) so the same placeholder
+ * Moved into @mingla/offering-rendering (ORCH-0964) so the same placeholder
  * backs mingla-business cards, app-mobile, AND the shared brand page.
  * mingla-business re-exports this. Per I-MOR-0827-PACKAGE-ISOLATION this
  * file imports nothing from any app src/; tokens are local to the package.

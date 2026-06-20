@@ -4,7 +4,7 @@
  *
  * Per META-ORCH-0827 Pass 2 Step 10 support. Mirrors mingla-business's
  * publicEventsService ticket subset, but mapped directly to
- * PublicTicketProps from @mingla/event-rendering (skipping the full
+ * PublicTicketProps from @mingla/offering-rendering (skipping the full
  * LiveEvent/TicketStub type conversion that mingla-business needs for
  * its operator-facing surfaces).
  *
@@ -13,7 +13,7 @@
  */
 
 import { supabase } from "./supabase";
-import type { PublicTicketProps } from "@mingla/event-rendering";
+import type { PublicTicketProps } from "@mingla/offering-rendering";
 
 interface TicketTypeRow {
   id: string;

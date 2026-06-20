@@ -7,7 +7,7 @@
 //
 // Composes the shipped Direction-A foundation (the EXACT primitives the trip/
 // event/experience pages use): @mingla/offering-rendering ParallaxCoverShell +
-// OfferingChrome + useResponsiveLayout, and @mingla/event-rendering's SHARED
+// OfferingChrome + useResponsiveLayout, and @mingla/offering-rendering's SHARED
 // createThemePalette / offeringSurfaceStyles (NOT a file-local palette engine —
 // I-PROPOSED-1155-SINGLE-PALETTE-ENGINE). Matches
 // Mingla_Artifacts/design/ORCH-1138/BRAND_DIRECTION_A_RESPONSIVE.html:
@@ -55,7 +55,7 @@ import {
   resolveTheme,
   type ResolvedTheme,
   type ThemePalette,
-} from "@mingla/event-rendering";
+} from "@mingla/offering-rendering";
 import {
   ParallaxCoverShell,
   useResponsiveLayout,

@@ -20,7 +20,7 @@ import {
   createThemePalette,
   resolveTheme,
   type ThemeInput,
-} from "@mingla/event-rendering";
+} from "@mingla/offering-rendering";
 
 interface CheckoutAccentInputs {
   brandTheme: ThemeInput | null | undefined;

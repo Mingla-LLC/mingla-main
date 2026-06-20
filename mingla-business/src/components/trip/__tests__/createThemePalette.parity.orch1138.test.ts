@@ -2,7 +2,7 @@
  * RT-1 — createThemePalette palette parity snapshot (ORCH-1138 A1 gate).
  *
  * createThemePalette + the color-math helpers were extracted VERBATIM out of
- * PublicEventPage.tsx into packages/event-rendering/themePalette.ts
+ * PublicEventPage.tsx into packages/offering-rendering/themePalette.ts
  * (behavior-neutral). This test pins the EXACT palette output across a fixed
  * matrix of ResolvedTheme inputs (dark accent, light accent / light page,
  * default, edge low-contrast). It MUST PASS with the extracted module and FAIL
@@ -26,8 +26,8 @@ import { describe, expect, test } from "@jest/globals";
 import {
   createThemePalette,
   resolveOfferingSurface,
-} from "../../../../../packages/event-rendering/themePalette";
-import type { ResolvedTheme } from "../../../../../packages/event-rendering/designTokens";
+} from "../../../../../packages/offering-rendering/themePalette";
+import type { ResolvedTheme } from "../../../../../packages/offering-rendering/designTokens";
 
 const theme = (
   color: string,

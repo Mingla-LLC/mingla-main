@@ -3,15 +3,15 @@
  * ORCH-1162 Bug 2 — single owner of the static-Mapbox URL builder.
  *
  * Invariant I-PROPOSED-1162-MAP-PRIMITIVE-SINGLE-OWNER (DRAFT): there is exactly
- * ONE implementation of buildStaticMapUrl, owned by @mingla/event-rendering
- * (packages/event-rendering/mapboxStaticImage.ts). mingla-business and app-mobile
+ * ONE implementation of buildStaticMapUrl, owned by @mingla/offering-rendering
+ * (packages/offering-rendering/mapboxStaticImage.ts). mingla-business and app-mobile
  * RE-EXPORT it (a re-export shim), never re-implement it. This ends the prior
  * byte-for-byte fork in the two app utils and keeps I-MOR-0827-PACKAGE-ISOLATION
  * intact (app-mobile imports from the @mingla/* package, not mingla-business/src).
  *
  * The gate FAILS if:
  *   (a) more than one `export const buildStaticMapUrl =` DEFINITION exists, OR
- *   (b) the one definition does NOT live under packages/event-rendering/, OR
+ *   (b) the one definition does NOT live under packages/offering-rendering/, OR
  *   (c) either app util re-implements the body instead of re-exporting it.
  *
  * Mirrors the modular gate pattern (sibling: orch-1130-no-buyer-tax-form.mjs).
@@ -66,13 +66,13 @@ if (definitions.length !== 1) {
   failures.push(
     `expected exactly ONE buildStaticMapUrl definition; found ${definitions.length}: ${
       definitions.join(", ") || "(none)"
-    }. The two app utils must RE-EXPORT from @mingla/event-rendering, never re-implement.`,
+    }. The two app utils must RE-EXPORT from @mingla/offering-rendering, never re-implement.`,
   );
 } else if (
-  !definitions[0].startsWith("packages/event-rendering/")
+  !definitions[0].startsWith("packages/offering-rendering/")
 ) {
   failures.push(
-    `the single buildStaticMapUrl definition must live under packages/event-rendering/, found at ${definitions[0]}.`,
+    `the single buildStaticMapUrl definition must live under packages/offering-rendering/, found at ${definitions[0]}.`,
   );
 }
 
@@ -89,12 +89,12 @@ for (const shim of [
   const code = stripComments(readFileSync(path, "utf8"));
   if (DEFINITION_RE.test(code)) {
     failures.push(
-      `${shim}: re-implements buildStaticMapUrl — must RE-EXPORT from @mingla/event-rendering (single owner).`,
+      `${shim}: re-implements buildStaticMapUrl — must RE-EXPORT from @mingla/offering-rendering (single owner).`,
     );
   }
-  if (!/from\s+["']@mingla\/event-rendering["']/.test(code)) {
+  if (!/from\s+["']@mingla\/offering-rendering["']/.test(code)) {
     failures.push(
-      `${shim}: must re-export buildStaticMapUrl from @mingla/event-rendering.`,
+      `${shim}: must re-export buildStaticMapUrl from @mingla/offering-rendering.`,
     );
   }
 }

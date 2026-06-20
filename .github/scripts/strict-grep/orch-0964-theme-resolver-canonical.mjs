@@ -3,7 +3,7 @@ import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
 
 const root = process.cwd();
-const resolverRel = "packages/event-rendering/themeResolver.ts";
+const resolverRel = "packages/offering-rendering/themeResolver.ts";
 const failures = [];
 
 const walk = (dir) => {

@@ -34,8 +34,8 @@ import { describe, expect, test } from "@jest/globals";
 import {
   createThemePalette,
   resolveOfferingSurface,
-} from "../../../../../packages/event-rendering/themePalette";
-import { resolveTheme } from "../../../../../packages/event-rendering/themeResolver";
+} from "../../../../../packages/offering-rendering/themePalette";
+import { resolveTheme } from "../../../../../packages/offering-rendering/themeResolver";
 
 // --- independent WCAG contrast (NOT imported from the module under test) ---
 function chan(c: number): number {

@@ -35,7 +35,7 @@ describe("ORCH-1155 public brand page — Direction-A redesign", () => {
   });
 
   test("T-6 uses the SINGLE shared palette engine, not a file-local one — I-PROPOSED-1155-SINGLE-PALETTE-ENGINE", () => {
-    expect(brandPage).toContain('from "@mingla/event-rendering"');
+    expect(brandPage).toContain('from "@mingla/offering-rendering"');
     expect(brandPage).toContain("createThemePalette");
     expect(brandPage).toContain("offeringSurfaceStyles");
     // no second palette engine defined in this file

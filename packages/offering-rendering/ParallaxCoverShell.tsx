@@ -36,7 +36,7 @@
 // itself: CONTENT_Z (cover 1 < CONTENT_Z 2 < chrome 70). The opaque nativeBody
 // bg + the full-height spacer make the body fully occlude the cover as it slides.
 //
-// Pure: react-native + @mingla/event-rendering only. Web-only `position` values
+// Pure: react-native + @mingla/offering-rendering only. Web-only `position` values
 // (fixed/sticky) are applied via a typed web-style escape hatch (RN's ViewStyle
 // type omits them but react-native-web honors them at runtime).
 
@@ -53,12 +53,10 @@ import {
   type ViewStyle,
 } from "react-native";
 
-import {
-  EventCoverMedia,
-  ThemeEntranceAnimation,
-  type ResolvedTheme,
-  type ThemePalette,
-} from "@mingla/event-rendering";
+import { EventCoverMedia } from "./EventCoverMedia";
+import { ThemeEntranceAnimation } from "./ThemeEntranceAnimation";
+import { type ResolvedTheme } from "./designTokens";
+import { type ThemePalette } from "./themePalette";
 
 import { OfferingChrome } from "./OfferingChrome";
 import { useResponsiveLayout } from "./useResponsiveLayout";

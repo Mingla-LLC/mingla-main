@@ -7,16 +7,16 @@ const repoFile = (relativePath: string): string =>
   readFileSync(path.join(process.cwd(), "..", relativePath), "utf8");
 
 describe("ORCH-0964 design rework — public event page premium renderer", () => {
-  const sharedSource = repoFile("packages/event-rendering/PublicEventPage.tsx");
+  const sharedSource = repoFile("packages/offering-rendering/PublicEventPage.tsx");
   // ORCH-1138 A1 (SPEC amendment A-1) — createThemePalette + the ThemePalette
   // type + the color-math helpers were extracted VERBATIM out of
   // PublicEventPage.tsx into themePalette.ts (behavior-neutral). These three
   // structural assertions now read the new module home; the page still consumes
   // them via `useMemo(() => createThemePalette(theme))` (asserted below against
   // sharedSource). [TEST-MOD-APPROVED ORCH-1138]
-  const paletteSource = repoFile("packages/event-rendering/themePalette.ts");
-  const typesSource = repoFile("packages/event-rendering/types.ts");
-  const packageSource = repoFile("packages/event-rendering/package.json");
+  const paletteSource = repoFile("packages/offering-rendering/themePalette.ts");
+  const typesSource = repoFile("packages/offering-rendering/types.ts");
+  const packageSource = repoFile("packages/offering-rendering/package.json");
   const businessAdapterSource = readFileSync(
     path.join(process.cwd(), "src/components/event/PublicEventPage.tsx"),
     "utf8",

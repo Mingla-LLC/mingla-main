@@ -5,7 +5,7 @@
  * dimensions (GRID_CARD_WIDTH × GRID_CARD_HEIGHT, passed in via props
  * so the layout token stays single-owned by DiscoverScreen) but with a
  * Mingla-native hero treatment:
- *   - Hero: rendered by the SHARED `EventCoverMedia` (@mingla/event-rendering)
+ *   - Hero: rendered by the SHARED `EventCoverMedia` (@mingla/offering-rendering)
  *     so image covers get error/recycling fallback, VIDEO covers show a static
  *     first-frame poster (autoplay disabled for the grid), and a null/errored
  *     cover falls back to the shared `coverHue` band — all owned by the shared
@@ -38,7 +38,7 @@ import * as Haptics from "expo-haptics";
 // onError → hue-band fallback + per-mediaUrl error/recycling reset (COMMS-0007;
 // the Android robustness the bare ExpoImage lacked). Same component the event
 // hero uses; renders its own hue-band fallback (EventCover) on missing/failed media.
-import { EventCoverMedia } from "@mingla/event-rendering";
+import { EventCoverMedia } from "@mingla/offering-rendering";
 // META-ORCH-0991 Bug 3a (intermittent card tap): the card lives inside the
 // Discover screen-level RN <ScrollView>. A plain <Pressable onPress> is cancelled
 // the instant the parent scroll claims the touch — a tap with a few px of finger
@@ -71,7 +71,7 @@ const CARD_RADIUS = 18;
 // helper was removed: the no-media / failed-media fallback band is now rendered
 // by EventCoverMedia's built-in EventCover (hsl(hue, 60%, 45%) base — identical
 // to the prior local band), keeping a single owner for cover rendering across
-// hero + grid (@mingla/event-rendering).
+// hero + grid (@mingla/offering-rendering).
 
 const BusinessEventCardImpl: React.FC<BusinessEventCardProps> = ({
   data,

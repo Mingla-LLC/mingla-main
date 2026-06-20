@@ -10,7 +10,7 @@
 // reuses EventCoverMedia (autoplay-muted) with a one-playing guard so only the
 // first/tapped video tile plays.
 //
-// Pure: react-native + react-native-svg + @mingla/event-rendering only.
+// Pure: react-native + react-native-svg + @mingla/offering-rendering only.
 
 import React, { useState } from "react";
 import {
@@ -24,7 +24,8 @@ import {
 } from "react-native";
 import Svg, { Path } from "react-native-svg";
 
-import { EventCoverMedia, type ThemePalette } from "@mingla/event-rendering";
+import { EventCoverMedia } from "./EventCoverMedia";
+import { type ThemePalette } from "./themePalette";
 
 import { pickGalleryLayout } from "./galleryLayout";
 

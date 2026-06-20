@@ -61,7 +61,7 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import * as Haptics from "expo-haptics";
 
-import type { CtaState, ThemePalette } from "@mingla/event-rendering";
+import type { CtaState, ThemePalette } from "@mingla/offering-rendering";
 
 /**
  * ORCH-1138 [trip-page-redesign] (Seth, 2026-06-15) — the SPLIT-CTA payload. When

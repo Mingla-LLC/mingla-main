@@ -81,7 +81,7 @@ if (!sucrase) {
 }
 
 // ── Transpile + evaluate GlassBlur.tsx with mocked module deps ────────────────
-const glassBlurPath = path.join(packagesRoot, "event-rendering/GlassBlur.tsx");
+const glassBlurPath = path.join(packagesRoot, "offering-rendering/GlassBlur.tsx");
 const tsxSource = fs.readFileSync(glassBlurPath, "utf8");
 
 const transpiled = sucrase.transform(tsxSource, {

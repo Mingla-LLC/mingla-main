@@ -21,7 +21,7 @@
 
 import { beforeEach, describe, expect, jest, test } from "@jest/globals";
 
-import { formatTripDateRange } from "../../../../packages/event-rendering/formatTripDateRange";
+import { formatTripDateRange } from "../../../../packages/offering-rendering/formatTripDateRange";
 
 const rpcMock = jest.fn() as ReturnType<typeof jest.fn>;
 const fromMock = jest.fn() as ReturnType<typeof jest.fn>;
@@ -35,13 +35,13 @@ jest.mock("../supabase", () => ({
 
 jest.mock("expo-image", () => ({}), { virtual: true });
 
-// `@mingla/event-rendering` is a monorepo workspace package resolved by Metro at
+// `@mingla/offering-rendering` is a monorepo workspace package resolved by Metro at
 // build time, not by jest's node resolver in this worktree (no moduleNameMapper).
 // publicEventsService only pulls in the theme-slug guards from it; stub them so
 // the service module loads. The date-formatter under test is imported directly
 // from its file path above, so this stub does NOT mask the behavior we assert.
 jest.mock(
-  "@mingla/event-rendering",
+  "@mingla/offering-rendering",
   () => ({
     isThemeAnimationSlug: () => false,
     isThemeColor: () => false,

@@ -1,5 +1,5 @@
 /**
- * PublicEventPage — adapter for the shared @mingla/event-rendering package.
+ * PublicEventPage — adapter for the shared @mingla/offering-rendering package.
  *
  * ORCH-1138 Leg 2 [public event page redesign] — re-architected onto the shared
  * Direction-A foundation (@mingla/offering-rendering via the shared
@@ -57,7 +57,7 @@ import {
   createThemePalette,
   boldFontFamily,
   buildStaticMapUrl,
-} from "@mingla/event-rendering";
+} from "@mingla/offering-rendering";
 import {
   useResponsiveLayout,
   EventOfferingFloatingBar,
@@ -707,8 +707,8 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
       {/* ORCH-1138 Leg 2 — the cancelled / password-gate page-level states keep the
           shared renderer's dedicated LEGACY render (those variants have no
           buyable body); everything else renders the Direction-A FOUNDATION page
-          (FoundationEventPreview, composed in the APP layer to avoid the
-          event-rendering↔offering-rendering package cycle — sim-proven). */}
+          (FoundationEventPreview, composed in the APP layer; ORCH-1169 merged
+          the rendering packages into one @mingla/offering-rendering). */}
       {pageVariant === "cancelled" || pageVariant === "password-gate" ? (
         <SharedPublicEventPage
           event={publicEvent}
