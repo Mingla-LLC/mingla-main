@@ -139,3 +139,53 @@ Checked out HEAD `8b119de47`; ran `mingla-business` jest.
 ## 9. Routing
 
 **FAIL → REWORK (mingla-implementor).** Single blocking item: **P1-1** — make the disabled-Pay tap surface the specced flash + "Please agree to continue." helper (DESIGN §S3.4 L311/335). Recommended to also commit the tester adversarial test on-branch (P2/process), address P2-1 hardening or document the accepted residual, and ensure the CLOSE-time SMS-eligible gate asserts the post-000005 seed (P2-3). NOT clear-to-close.
+
+---
+
+# RETEST 2026-06-20 — rework re-verification (P1-1 fix + drift test commit + rate-limit)
+
+**Commit under test:** `3fa0bc072` (rework; the report's intermediate `c317d57ba` was squashed into it — `git cat-file -t c317d57ba` confirms it's an ancestor object). HEAD of `ORCH-1161-consent-surface`, tree clean.
+**Mode:** RETEST. Re-verify ONLY the four dispatch items: (1) P1-1 dead-tap CLOSED, (2) drift test tracked + in-diff + passing, (3) record-consent rate limit, (4) no regression to the already-PASS items.
+
+## RETEST Verdict
+
+**CONDITIONAL PASS** — P0: 0 · unaccepted P1: 0 · P2: 1 (P2-1 → now mitigated + residual documented) · P3: 0.
+**CLEAR-TO-CLOSE: YES** (operator-owned deploy/migration/gate steps remain, unchanged from the original report — they are CLOSE-time operator actions, not rework defects).
+
+The single rework conditional is the on-screen UI repro of P1-1, which is `probable` not `proven`: the decision logic is proven (pure predicate + independently re-run fails-on-revert + 9/9 jest), the capture mechanism is source-proven sound on web + native, and the dead code is now reachable — but the actual tap-renders-the-helper was NOT driven on a device this pass (the fix is a `mingla-business` checkout surface; the only connected device runs the consumer `app-mobile` on Metro 8081, and standing up the business checkout to the exact "valid fields + unchecked box + tap greyed Pay" state needs a live published event + fresh web export). A one-tap physical-iPhone HITL confirms it to `proven` (instructions below). Because the original FAIL was a source-provable wiring *contradiction* (the control could not fire under any state) and the fix is now a source-provable wiring *resolution* (the control fires under exactly the specced state), the source-level closure of P1-1 is strong; the device tap is the last 5%.
+
+## RETEST item-by-item
+
+### 1. P1-1 CLOSED — disabled-Pay dead tap is fixed (was the blocking FAIL)
+
+- **Pure predicate present:** `mingla-business/src/components/checkout/checkoutConsentGate.ts` L35-37 `shouldShowConsentHintOnDisabledTap = (params) => params.fieldsValid && !params.termsAccepted`. Decides show/no-show in isolation; avoids double-messaging when fields are still invalid (errors carry that message).
+- **Wiring in `buyer.tsx`:** import L81-82; `showConsentHint` callback L381-393 marks all fields touched and sets `consentHintVisible(true)` gated on the predicate; single-source `continueDisabled = isContinueDisabled({...})` L488; render: outer `<Pressable onPress={continueDisabled ? showConsentHint : undefined}>` L728-729 wraps `<View pointerEvents={continueDisabled ? "none" : "auto"}>` L732 wrapping the `Button` (`disabled={continueDisabled}` L741). Helper Text `consentHintVisible && !termsAccepted` → "Please agree to continue." L697-701; checkbox flash `consentHintVisible && !termsAccepted && styles.checkboxBoxFlash` L677.
+- **Mechanism is sound on BOTH platforms:** the inner `Button` (`src/components/ui/Button.tsx` L296/299) is itself a `Pressable` with `onPress=undefined` + `disabled` while not interactive — i.e. on its own it swallows the tap (the original dead tap). Wrapping it in `pointerEvents="none"` (while disabled) makes it transparent to the touch on web (CSS `pointer-events:none`) AND native (RN responder skips it), so the outer `Pressable` reliably captures the tap → `showConsentHint`. When enabled: inner `pointerEvents="auto"` claims the responder → `handleContinue`; outer `onPress` is `undefined` → no double-fire. No regression to the enabled (real Pay) path. `Pressable`/`View` both imported from `react-native` (L34/L38) — not a build break.
+- **Runtime evidence:** jest `checkoutConsentGate.deadtap.orch1161` 3/3 PASS; full consent suite 9/9 PASS. On-screen device tap = `probable` pending the HITL step.
+- **Verdict:** P1-1 **CLOSED** (source-proven + logic-proven; on-screen repro `probable`).
+
+### 2. Tester drift test — tracked, in-diff, passing, §1b byte-identical
+
+- `git ls-files` → `mingla-business/src/services/__tests__/consentDisclosureDrift.tester.orch1161.test.ts` is **tracked**; appears in `git diff main...HEAD --name-only` (closing diff). Working tree clean (not staged-on-a-side-branch). The implementor happy-path test + the new dead-tap test are also in the diff.
+- Runs **3/3 PASS** (verbatim §1b byte-identity to the COPY authority preserved; `consentDisclosure.ts` not touched by the rework — `git show 3fa0bc072` does not list it). **PASS.**
+
+### 3. record-consent rate limit — 12/min per IP, fail-open, cannot block legit checkout, no send-amplification
+
+- `supabase/functions/record-consent/index.ts`: `RATE_LIMIT_WINDOW_MS=60s`, `RATE_LIMIT_MAX_PER_WINDOW=12` (L58-59); per-IP sliding-window `isRateLimited()` L67-79 (prunes the window each call, bounded); checked **BEFORE** any JSON parse / DB work L137-151; over-cap → HTTP **429** + `Retry-After`. **Fail-OPEN** on null IP (`if (ipKey === null) return false` L68) → a legit caller behind a stripped header is never blocked. A real grant is 1 call → 12/min is generously above any legitimate checkout/onboarding cadence, so it **cannot block legit checkout**.
+- **Residual (documented + ACCEPTED):** per-instance in-memory map — does not coordinate across warm Deno instances, resets on cold start. Caps a single hot client's burst (the realistic cheap-spam shape); a distributed multi-instance flood is not fully blocked. **Acceptable** because the harm it guards is bounded to audit-log pollution + cost-spam only: **`can_send()` (the single send chokepoint, migration `20261110000002`) contains ZERO references to `consent_records`** (independently grepped: `grep -c consent_records … = 0`). A forged/poisoned consent row therefore grants NO sms/email send capability → no TCPA send-amplification. **PASS** (P2-1 mitigated; residual documented; no send blast).
+
+### 4. No regression to the already-PASS items
+
+- **Dual-scope consent_records write:** edge-fn fan-out `{transactional,marketing} × {sms,email}` L203-263 unchanged in shape; only the rate-limit guard + a `clientIp`/`requestIp` de-dup were added. Verbatim disclosure write intact. **No regression.**
+- **Seed-correction migration `20261110000005`:** present & untouched by the rework (`git show 3fa0bc072` lists no `supabase/migrations/*`). **No regression.**
+- **Money seam:** `ticket-checkout-create` / `stripeWebhookRouter` NOT in the rework diff; the enabled-Pay path still fires `handleContinue` exactly as before. **Untouched.**
+- **SMS kill-switch:** not touched by the rework. **Off / unchanged.**
+- **Independent fails-on-revert re-run (this pass):** true line-deletion of `&& !params.termsAccepted` in `shouldShowConsentHintOnDisabledTap` (→ `params.fieldsValid`) → `checkoutConsentGate.deadtap.orch1161` test "box already checked → no consent helper" **FAILED** (`expect false, received true`); restored → **3/3 PASS**; tree restored clean. **fails-on-revert independently confirmed at `3fa0bc072`.**
+
+## RETEST device / HITL
+
+The on-screen P1-1 repro is `probable`. To reach `proven`, the physical-iPhone HITL (one tap on the `mingla-business` buyer checkout): open any paid event's checkout, fill name + email + phone, leave the consent box UNCHECKED, tap the greyed Pay → expect the checkbox border to flash red ~400ms AND "Please agree to continue." to appear under it; then check the box → Pay un-greys and proceeds. NOT requested-and-blocking for CLOSE given the strong source + logic proof; flagged as the recommended final eyeball.
+
+## RETEST routing
+
+**CONDITIONAL PASS → CLEAR-TO-CLOSE: YES.** Route to **mingla-orchestrator for CLOSE**. The remaining items are operator-owned CLOSE-time actions (unchanged from the original report, NOT rework defects): deploy `record-consent` from MERGED main (`verify_jwt=false`); apply migration `20261110000005`; flip the SMS-eligible strict-grep gate ACTIVE asserting the POST-000005 seed (DISC-1161-A2-SEED-LAG); confirm the live edge round-trip post-deploy (P2-2). Single accepted condition: the on-screen P1-1 device tap is `probable` (logic + mechanism proven) — recommend the one HITL tap above at/after CLOSE.
