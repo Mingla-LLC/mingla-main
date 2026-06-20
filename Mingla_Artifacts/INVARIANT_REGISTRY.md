@@ -7,6 +7,38 @@
 
 ---
 
+## ACTIVE — ORCH-1167 (canonical standard-event public page — one shared `EventOfferingBody` + one read RPC, 2026-06-19, PRs #534–#541, LEG 1 of META-ORCH-1166)
+
+### I-PROPOSED-1167-CANONICAL-9-SECTION-ORDER (ACTIVE)
+- **Rule:** The STANDARD ticketed-event public page renders Seth's canonical 9-section order, in order: cover → event name → date/time (AM/PM) → pills (event-format · vibes · party-types · music-genres · tickets-left, all solid-fill) → inline ticket box → Presented-By → About toggle → "Where you'll be" Mapbox → floating Get Tickets. No section is silently dropped (the vibes/party/music pills were being dropped before 1167 — never again).
+- **Enforcement:** `packages/offering-rendering/__tests__/orch_1167_*` (section-order + pill-presence assertions); CI green on #534–#541; fails-on-revert.
+- **Established:** flipped DRAFT → ACTIVE 2026-06-19 at ORCH-1167 CLOSE (registered DRAFT in the ORCH-1167 SPEC).
+
+### I-PROPOSED-1167-SHELL-AGNOSTIC-BODY (ACTIVE)
+- **Rule:** The standard-event public page body is ONE shared shell-agnostic `EventOfferingBody` in `packages/offering-rendering`, rendered identically on buyer-web + business iOS/Android + consumer iOS/Android. No per-surface fork (the FoundationEventPreview web-body + `ConsumerEventDetailScreen` event fork were retired — do not reintroduce a surface-specific body).
+- **Enforcement:** package-isolation gates + the offering-rendering tests; a single body owner; fails-on-revert.
+- **Established:** flipped DRAFT → ACTIVE 2026-06-19 at ORCH-1167 CLOSE.
+
+### I-PROPOSED-1167-ALLIN-PRICE-IN-TICKET-BOX (ACTIVE)
+- **Rule:** The inline ticket box shows the live running Σ as the all-in/WYSIWYP total (per-tier qty steppers); the in-box AND floating buy buttons both route to the cart step and stay always-active even at 0 selected (never a dead/disabled CTA). The displayed price is the server all-in, consistent with the ORCH-1147 cart contract.
+- **Enforcement:** offering-rendering ticket-box render tests + the `orch-1147-*` all-in gates; fails-on-revert.
+- **Established:** flipped DRAFT → ACTIVE 2026-06-19 at ORCH-1167 CLOSE.
+
+### I-PROPOSED-1167-CITY-LEVEL-MAP-NO-EXACT-PIN-WHEN-HIDDEN (ACTIVE)
+- **Rule:** The "Where you'll be" Mapbox renders city-level (no exact pin) whenever the event's exact address is hidden; the anon read RPC must NEVER emit an exact pin/coordinate for a hidden address. Address privacy is enforced server-side, not client-side.
+- **Enforcement:** `pg_public_event_by_slug` server-side privacy (no exact pin when hidden) + the map-render tests; live-smoke-verified.
+- **Established:** flipped DRAFT → ACTIVE 2026-06-19 at ORCH-1167 CLOSE.
+
+### I-PROPOSED-1167-ONE-READ-RPC (ACTIVE)
+- **Rule:** The standard-event public page reads through exactly ONE canonical anon RPC — `pg_public_event_by_slug` — across every surface. No surface re-derives the page payload from a second query path.
+- **Enforcement:** migration `20261015000001_orch_1167_pg_public_event_by_slug.sql` (applied to prod + recorded in `schema_migrations`); single-owner read; live-smoke-verified.
+- **Established:** flipped DRAFT → ACTIVE 2026-06-19 at ORCH-1167 CLOSE.
+
+### Note — ORCH-0978 web-video gate UPDATED (ACTIVE)
+- **Change:** the ORCH-0978 web-video strict-grep gate now ACCEPTS the ORCH-1167 imperative-DOM autoplay primitive — i.e. rendering the web cover `<video>` via `document.createElement('video')` into a container ref (so React never owns the node) is the SANCTIONED form for muted-autoplay covers on web/Safari. Root cause: WebKit permanently denies inline muted autoplay to a React-RENDERED `<video>`; the imperative-DOM node autoplays. See DEC-189.
+
+---
+
 ## ACTIVE — ORCH-1157 (public RSVP page "Momentum" + address-privacy/doors/parity/Android-sheet-gap, 2026-06-18, PR #526)
 
 ### I-PROPOSED-1157-NO-CHECKOUT-AFFORDANCE (ACTIVE)
