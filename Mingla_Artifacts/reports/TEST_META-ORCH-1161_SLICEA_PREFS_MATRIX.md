@@ -242,3 +242,97 @@ The single condition: **on-device render of the consumer notification-prefs matr
 UI. The implementation report already defers the on-device eyeball to Seth at QA. To upgrade to full
 PASS, Seth (or a follow-up sim run) confirms the matrix renders + a chip tap persists on device.
 No P0/P1 outstanding; the P2/P3 items are non-blocking and routed as Discoveries.
+
+---
+
+## RETEST 2026-06-20 — P2 rework verification (audience filter)
+
+**Skill:** mingla-tester (Claude) · **Mode:** RETEST · **Code under test:** rework commit
+`4f2bf0783` (fails-on-revert proof commit `be665a90d`) · branch HEAD `4f2bf0783`.
+
+### Verdict (RETEST)
+
+**PASS** (P2-1 CLOSED) — P0: 0 · P1: 0 · P2: 0 (the prior P2-1 audience leak is fixed) · plus ONE
+new **P3 hygiene finding** (stale prior adversarial test, on-branch only, see below — non-blocking,
+must reconcile before merge). UI-render remains `probable` (no sim driven this run — same documented
+condition as the original CONDITIONAL PASS; the rework is a pure decision-core filter so the device
+risk is unchanged). **CLEAR-TO-CLOSE: YES**, conditioned on (a) the same on-device eyeball already
+owed from the original verdict, and (b) reconciling the stale prior adversarial file P3 below.
+
+### 1. P2-1 CLOSED — data-driven audience filter (PROVEN)
+
+- **Fix shape (verified in source):** `notificationPrefsMatrix.ts` adds `isConsumerCategory(cat)` =
+  `CONSUMER_SECTION_ORDER.includes(cat.section)` (allowlist of the 5 consumer sections), and
+  `buildNotificationMatrix` now filters `c.active && isConsumerCategory(c)` (L187). It is an
+  **allowlist by SECTION, NOT a one-key denylist** — exactly what the dispatch required. A future
+  `Sales`/`Payouts` `biz_*` row is excluded with zero further code change.
+- **Single chokepoint (verified):** `buildNotificationMatrix` has exactly ONE non-test consumer —
+  `useNotificationPrefs.ts:123` — and the component reads `sections` from that hook. The service
+  (`notificationPrefsService.ts`) fetches raw active categories (no audience pre-filter) and passes
+  them through the core. No render path bypasses the filter.
+- **Confirmed against the LIVE category set (Supabase MCP, project `gqnoajqerqhnvulmnyvv`,
+  2026-06-20):** 16 active categories; tagging each with the allowlist predicate yields **exactly 1
+  excluded — `payout_paid` (section `Payouts`)** — the lone seller category. The other 15
+  (Purchases ×4, Reservations ×3, Reminders ×2, Marketing ×2, Social ×4) all pass. So the consumer
+  matrix renders 15 rows and `payout_paid` is gone.
+- **Tests (gated runner):** `npm run test:orch-1161` → **8/8 PASS** (was 7/7; +1 exclusion test
+  "REWORK P2: seller-only payout_paid is EXCLUDED from the consumer matrix").
+- **Independent fails-on-revert (re-run by tester):** TRUE line-deletion of the audience filter
+  (`c.active && isConsumerCategory(c)` → `c.active`) → exclusion test (test 7) **FAILS** (7 pass / 1
+  fail); all others green. Restored → 8/8. Matches the implementor's claim @ `be665a90d`. `tsc
+  --noEmit` → zero new errors in the touched core file; `git status` clean after restore.
+
+### 2. No regression (CONFIRMED)
+
+- **SMS-gate:** intact — happy-path test 4 + my new retest test 4 both prove SMS chip present IFF
+  `default_channels.includes('sms')` across the surviving 15 consumer rows.
+- **Locked-on inapp / transactional-email:** `isChannelLocked` + `defaultChannelEnabled` untouched
+  by the rework (diff = only the new predicate + filter wiring).
+- **Optimistic toggle + error-revert:** hook (`useNotificationPrefs`) not touched by the rework.
+- **RLS owner-only (DB-PROVEN):** `notification_channel_prefs_owner` FOR ALL, `qual` + `with_check`
+  both `user_id = auth.uid()` — unchanged.
+- **can_send honors toggles (DB-PROVEN):** `can_send(p_user_id,p_category_key,p_channel,p_contact)`
+  live and unchanged; it gates by category_key/channel against channel_prefs and is **independent of
+  the UI section allowlist** — confirming the audience filter is display-only and does NOT block any
+  send. (No category becomes unsendable just because it's hidden from the consumer prefs screen.)
+
+### 3. Tester adversarial RETEST added (different angle)
+
+- **Path:** `app-mobile/src/components/profile/__tests__/notificationPrefsMatrix.orch1161.retest.adversarial.test.ts`
+  (NEW; append-only — no existing test modified).
+- **Angle:** attacks the AUDIENCE filter on the FULL live seed — only consumer rows survive (15 of
+  16, payout_paid dropped BY SECTION); no non-consumer section ever appears; a HYPOTHETICAL future
+  `Sales` biz alert is auto-excluded (proves allowlist not denylist); SMS-gate still holds (no
+  regression).
+- **As-is:** 4/4 PASS. **fails-on-revert verified at `4f2bf0783`** (same line-deletion of the
+  filter → 3 of 4 FAIL, the SMS no-regression test correctly stays green; restore → 4/4).
+
+### 4. NEW P3 finding — stale prior adversarial test (on-branch only, reconcile before merge)
+
+- **Evidence:** the PRIOR tester adversarial file `notificationPrefsMatrix.orch1161.adversarial.test.ts`
+  (commit `b55a18be7`, **on-branch only — NOT on origin/main**) pinned the full 16-row seed as
+  all-present and asserts "every active live category renders one row" (16). Run directly post-rework
+  it is **3 pass / 2 fail** (`15 !== 16`; `payout_paid` lookup returns undefined) — i.e. it fails
+  PRECISELY because the P2 fix correctly drops the seller row. This is positive evidence the fix
+  works, but a red test file should not ship.
+- **Why not fixed here:** tester is append-only (cannot modify an existing test file).
+- **Impact:** the gated CI runner (`test:orch-1161`) runs ONLY the happy-path file (8/8 green) — the
+  stale adversarial file is NOT wired into any workflow today, so CI is green. The risk is hygiene +
+  any future broad `node --test src/` sweep.
+- **Required fix (orchestrator/implementor, before CLOSE-merge):** update the 2 stale assertions in
+  `…orch1161.adversarial.test.ts` to expect `payout_paid` excluded (or drop that file in favor of the
+  new `…retest.adversarial.test.ts` which already supersedes its coverage). Since it's branch-only,
+  it can be reconciled before merge with no history impact.
+- **Retest:** `node --experimental-strip-types --test …orch1161.adversarial.test.ts` → must be green.
+
+### 5. Comms ledger
+
+Read on entry. No BLOCK to mingla-tester / ORCH-1161 / ALL. OPEN WARNs COMMS-0040/0041/0042/0045
+(RSVP/experience/trip public-page standardization + ORCH-1165 collision) do not touch
+AccountSettings or the notification tables — no conflict, no ack owed beyond noting.
+
+### 6. Routing
+
+PASS (P2 closed) → orchestrator CLOSE. Two carry-forward conditions, both non-blocking: (a) the
+on-device eyeball already owed from the original CONDITIONAL PASS; (b) reconcile the stale
+branch-only adversarial file (P3 above) before the closing merge.
