@@ -33,7 +33,13 @@ export function useUpdateLiveRsvp() {
   return useMutation<
     UpdateLiveRsvpResult,
     Error,
-    { eventId: string; payload: RsvpUpdatePayload; reason: string }
+    {
+      eventId: string;
+      // ORCH-1172 R3 — diff-based payload: `title` always present, host-control
+      // toggles only when changed (RPC COALESCEs absent keys to existing).
+      payload: Partial<RsvpUpdatePayload> & Pick<RsvpUpdatePayload, "title">;
+      reason: string;
+    }
   >({
     mutationFn: ({ eventId, payload, reason }) =>
       updateLiveRsvp(eventId, payload, reason),

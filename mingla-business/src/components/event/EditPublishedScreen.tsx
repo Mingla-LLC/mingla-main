@@ -120,7 +120,7 @@ import {
   patchPublishedEventWhen,
 } from "../../services/businessEvents";
 import { updateLiveRsvp } from "../../services/rsvpEvents";
-import { buildRsvpUpdatePayload } from "../../utils/serverDraftEventMapper";
+import { buildRsvpUpdatePayloadDiff } from "../../utils/serverDraftEventMapper";
 import { RsvpStep5Setup } from "../rsvp/RsvpStep5Setup";
 import { rsvpEditNoticeCopy } from "../../utils/rsvpHubMetrics";
 import { businessEventKeys } from "../../hooks/useBusinessEvents";
@@ -769,17 +769,19 @@ export const EditPublishedScreen: React.FC<EditPublishedScreenProps> = ({
           return;
         }
         try {
-          // ORCH-1172 — send the publish-style payload (title + when +
-          // requestedVisibility + snake_case location/cover + the 6 camelCase
-          // rsvp* host-controls), NOT the raw camelCase patch. The patch never
-          // carried `title`, so the RPC raised rsvp_title_required on EVERY save
-          // (BUG-A) and the host-controls were never diffed into it (BUG-B) — so
-          // nothing persisted. buildRsvpUpdatePayload reads the full editState so
-          // `title` is always present + every control is emitted (idempotent:
-          // the RPC defaults absent keys to the existing column).
+          // ORCH-1172 R3 — send a DIFF-BASED publish-style payload: always the
+          // RPC-required `title` + `when` + `requestedVisibility` + snake_case
+          // location/cover, but each of the 9 host-control toggles ONLY when it
+          // differs from the loaded `liveEvent`. The full-state send (R2) emitted
+          // every key always, so the RPC's COALESCE-to-existing-on-absent safety
+          // never fired and a hydration miss reverted untouched settings (the R3
+          // clobber: editing hide-address also flipped rsvp_discoverable +
+          // hideRemainingCount). With the diff, omitted toggles keep their stored
+          // value server-side. (B1 also fixes the root hydration drop so the
+          // loaded `liveEvent` now carries the TRUE saved rsvp_* values.)
           await updateLiveRsvp(
             liveEvent.serverEventId,
-            buildRsvpUpdatePayload(editState),
+            buildRsvpUpdatePayloadDiff(liveEvent, editState),
             reason,
           );
         } catch (error) {
