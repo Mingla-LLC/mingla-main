@@ -89,9 +89,26 @@ interface OrderRowForAudience {
 
 interface UnsubRow {
   contact_email: string | null;
+  // META-ORCH-1161 Sub-B — phone-keyed unsubscribe rows (web unsubscribe / STOP
+  // round-trip write marketing_unsubscribes.contact_phone). Used to make the
+  // composer's reachable_sms preview truthful — a phone-unsubscribed buyer is
+  // not counted as reachable on SMS.
+  contact_phone: string | null;
   channel: string;
   scope: string;
   brand_id: string | null;
+}
+
+// Phone keys (trimmed + digits-only) for set membership — mirrors the server
+// resolver's phoneKeysOf so client + server agree on what "suppressed" means.
+function phoneKeysOf(raw: string | null | undefined): string[] {
+  if (raw === null || raw === undefined) return [];
+  const trimmed = raw.trim();
+  if (trimmed.length === 0) return [];
+  const digits = trimmed.replace(/[^0-9]/g, "");
+  const keys = new Set<string>([trimmed]);
+  if (digits.length > 0) keys.add(digits);
+  return Array.from(keys);
 }
 
 // ---------------------------------------------------------------------------
@@ -139,7 +156,7 @@ export async function resolveBrandBuyers(
   // (global + this brand's scope). Phase A only checks email channel.
   const { data: unsubData, error: unsubError } = await supabase
     .from("marketing_unsubscribes")
-    .select("contact_email, channel, scope, brand_id")
+    .select("contact_email, contact_phone, channel, scope, brand_id")
     .or(`scope.eq.global,and(scope.eq.brand,brand_id.eq.${brandId})`);
 
   if (unsubError) throw unsubError;
@@ -195,7 +212,7 @@ export async function resolveEventBuyers(
     assertUuid(brandId, "resolveEventBuyers.brandId (server-derived)");
     const { data: unsubData, error: unsubError } = await supabase
       .from("marketing_unsubscribes")
-      .select("contact_email, channel, scope, brand_id")
+      .select("contact_email, contact_phone, channel, scope, brand_id")
       .or(`scope.eq.global,and(scope.eq.brand,brand_id.eq.${brandId})`);
 
     if (unsubError) throw unsubError;
@@ -271,7 +288,7 @@ export async function resolveRsvpGuests(
     assertUuid(brandId, "resolveRsvpGuests.brandId (server-derived)");
     const { data: unsubData, error: unsubError } = await supabase
       .from("marketing_unsubscribes")
-      .select("contact_email, channel, scope, brand_id")
+      .select("contact_email, contact_phone, channel, scope, brand_id")
       .or(`scope.eq.global,and(scope.eq.brand,brand_id.eq.${brandId})`);
 
     if (unsubError) throw unsubError;
@@ -322,8 +339,22 @@ function aggregateBuyers(
 ): ResolveBuyersResult {
   // Build unsub lookup: email → channels that are suppressed.
   const unsubLookup = new Map<string, Set<MarketingChannel>>();
+  // META-ORCH-1161 Sub-B — phone keys suppressed for SMS via a phone-keyed
+  // marketing_unsubscribes row (channel sms/all). Makes the composer's SMS reach
+  // preview honest. NOTE: channel_suppressions (the Sub-A STOP/bounce ledger) is
+  // RLS-scoped to the row's OWN user, so the brand client cannot read other
+  // buyers' rows — the server send (service-role) is the authoritative SMS gate
+  // and additionally honors channel_suppressions; this client preview is a
+  // conservative estimate that already excludes web-unsubscribe + STOP phones.
+  const suppressedPhones = new Set<string>();
   let hasGlobalAllEmail = false;
   for (const u of unsubs) {
+    if (
+      u.contact_phone !== null &&
+      (u.channel === "sms" || u.channel === "all")
+    ) {
+      for (const k of phoneKeysOf(u.contact_phone)) suppressedPhones.add(k);
+    }
     if (u.contact_email === null) continue;
     const email = u.contact_email.toLowerCase();
     // Global scope = suppression across all brands.
@@ -391,7 +422,8 @@ function aggregateBuyers(
       email_marketing_ok:
         acc.raw_email !== null && !suppressed.has("email"),
       sms_marketing_ok:
-        acc.raw_phone !== null && !suppressed.has("sms"),
+        acc.raw_phone !== null && !suppressed.has("sms") &&
+        !phoneKeysOf(acc.raw_phone).some((k) => suppressedPhones.has(k)),
       unsubscribed_brand_scope: suppressed.size > 0,
       unsubscribed_global_scope: false,
     };
