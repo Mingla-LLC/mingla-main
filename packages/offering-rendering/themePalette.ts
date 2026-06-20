@@ -178,6 +178,75 @@ export const createThemePalette = (theme: ResolvedTheme): ThemePalette => {
   };
 };
 
+// =====================================================================
+// ORCH-1163 R4 — GENUINELY-OPAQUE surface helpers.
+//
+// `palette.card` / `palette.accentWash` are TRANSLUCENT rgba tokens (alpha < 1).
+// They read fine on iOS where a native blur backdrop sits behind them, but on a
+// real WEB page (no `backdrop-filter`) and on Android they bleed the page/content
+// through — the exact ORCH-1163 R3.1 modal complaint, now also hit by the RSVP
+// decision buttons ("Maybe"/"Can't go") + the momentum card. These helpers
+// ALPHA-COMPOSITE a translucent token over the opaque `palette.page` so the
+// result is a SOLID hex color that is opaque on EVERY platform, reusing the same
+// color-math (parseHexColor / clampColorChannel) already proven by the RT-1
+// parity snapshot. The visual TONE is preserved (it is the same color you'd see
+// over the page), only the see-through is removed.
+//
+// Pure + dep-free; returns a 6-digit hex. Used by RsvpMomentumDecision so the
+// component never holds a raw hex literal (its theme-dial gate forbids that).
+
+/** Parse an `rgb()` / `rgba()` / `#rrggbb` string into { rgb, alpha }. */
+const parseColorWithAlpha = (color: string): { rgb: Rgb; alpha: number } => {
+  const rgbaMatch =
+    /^rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*(?:,\s*([\d.]+)\s*)?\)$/.exec(
+      color,
+    );
+  if (rgbaMatch !== null) {
+    return {
+      rgb: {
+        r: Number(rgbaMatch[1]),
+        g: Number(rgbaMatch[2]),
+        b: Number(rgbaMatch[3]),
+      },
+      alpha: rgbaMatch[4] === undefined ? 1 : Number(rgbaMatch[4]),
+    };
+  }
+  return { rgb: parseHexColor(color), alpha: 1 };
+};
+
+/**
+ * Composite a (possibly translucent) `top` color over an opaque `base` and
+ * return a SOLID 6-digit hex. `base` is treated as fully opaque (it is always
+ * `palette.page`, an opaque hex). The result is the exact color the eye sees
+ * for `top` painted over `base`, but with NO alpha — so it can't bleed.
+ */
+const compositeOverOpaque = (top: string, base: string): string => {
+  const t = parseColorWithAlpha(top);
+  const b = parseHexColor(base);
+  const a = Math.min(1, Math.max(0, t.alpha));
+  return rgbToHex({
+    r: t.rgb.r * a + b.r * (1 - a),
+    g: t.rgb.g * a + b.g * (1 - a),
+    b: t.rgb.b * a + b.b * (1 - a),
+  });
+};
+
+/**
+ * Solid NEUTRAL surface = the translucent `card` token composited over `page`.
+ * The opaque equivalent of `palette.card` on EVERY platform (no see-through).
+ * Used for the momentum card, the "Can't go" button, and the plus-ones row.
+ */
+export const opaqueSurfaceColor = (palette: ThemePalette): string =>
+  compositeOverOpaque(palette.card, palette.page);
+
+/**
+ * Solid ACCENT-TINTED surface = the translucent `accentWash` token composited
+ * over `page`. The opaque equivalent of `palette.accentWash` on EVERY platform.
+ * Used for the "Maybe" button fill + the microcopy pill.
+ */
+export const opaqueAccentWashColor = (palette: ThemePalette): string =>
+  compositeOverOpaque(palette.accentWash, palette.page);
+
 // ORCH-1117 — surface tone (light vs dark page) for a host-mounted floating bar.
 // Mirrors createThemePalette's `useDark` decision EXACTLY so the bar fill matches
 // the page it sits over (a light brand theme → "light" near-white bar fill).

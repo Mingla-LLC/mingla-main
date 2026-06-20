@@ -52,7 +52,12 @@ import {
 } from "react-native";
 import Svg, { Circle, Path } from "react-native-svg";
 
-import { boldFontFamily, type ThemePalette } from "./themePalette";
+import {
+  boldFontFamily,
+  opaqueAccentWashColor,
+  opaqueSurfaceColor,
+  type ThemePalette,
+} from "./themePalette";
 import { type ResolvedTheme } from "./designTokens";
 import { type RsvpCtaState } from "./offeringCta";
 
@@ -188,12 +193,23 @@ const ListGlyph: React.FC<{ color: string }> = ({ color }) => (
   </Svg>
 );
 
-// Opaque-on-Android card fill (ANDROID_GLASS_USES_OPAQUE_FALLBACK): on Android we
-// never use a translucent tint — derive an opaque fill from the palette (the page
-// + a small accent wash already resolve to high-alpha values on dark/light
-// themes). `overflow:'hidden'` clips the fill under the rounded corners.
+// Opaque neutral card fill on EVERY platform (ORCH-1163 R4 — was opaque only on
+// Android). The translucent `palette.card` rgba bled the page/content through on
+// a real web page (no backdrop-filter) and on Android; `opaqueSurfaceColor`
+// alpha-composites that token over `palette.page` to a SOLID hex (same tone, no
+// see-through). Android keeps its raw opaque `palette.page` (already solid).
+// `overflow:'hidden'` still clips the fill under the rounded corners.
+// (ANDROID_GLASS_USES_OPAQUE_FALLBACK + the R3.1 web-opaque rationale.)
 const opaqueCardFill = (palette: ThemePalette): string =>
-  Platform.OS === "android" ? palette.page : palette.card;
+  Platform.OS === "android" ? palette.page : opaqueSurfaceColor(palette);
+
+// Opaque accent-TINTED fill (the "Maybe" button + the microcopy pill). The
+// opaque equivalent of `palette.accentWash` — a SOLID hex on web/iOS/Android
+// (composited over the page) so the accent tint survives AND there is no
+// see-through. Used on every platform so "Maybe" stays visually distinct from
+// the neutral "Can't go" everywhere (a bare page fill would collapse them).
+const opaqueAccentFill = (palette: ThemePalette): string =>
+  opaqueAccentWashColor(palette);
 
 // ─────────────────────────────── component ──────────────────────────────────
 
@@ -432,11 +448,24 @@ export const RsvpMomentumDecision: React.FC<RsvpMomentumDecisionProps> = ({
       accessibilityRole="button"
       accessibilityState={{ disabled: maybeDisabled }}
       accessibilityLabel="Maybe"
-      style={[styles.dbtn, { backgroundColor: palette.accentWash, borderColor: palette.accent, opacity: maybeDisabled ? 0.5 : 1 }]}
+      style={[
+        styles.dbtn,
+        maybeDisabled
+          ? // disabled: OPAQUE neutral surface + dimmed text/border (no see-through).
+            { backgroundColor: opaqueCardFill(palette), borderColor: palette.panelBorder }
+          : // active: OPAQUE accent-tinted fill + accent border + accent text.
+            { backgroundColor: opaqueAccentFill(palette), borderColor: palette.accent },
+      ]}
       testID={maybeTestID ?? "orch-1157-rsvp-maybe"}
     >
-      <MaybeGlyph color={palette.accent} />
-      <Text style={[styles.dbtnText, { color: palette.accent, fontFamily: boldFamily }]} numberOfLines={1}>
+      <MaybeGlyph color={maybeDisabled ? palette.tertiaryText : palette.accent} />
+      <Text
+        style={[
+          styles.dbtnText,
+          { color: maybeDisabled ? palette.tertiaryText : palette.accent, fontFamily: boldFamily },
+        ]}
+        numberOfLines={1}
+      >
         Maybe
       </Text>
     </Pressable>
@@ -557,7 +586,18 @@ export const RsvpMomentumDecision: React.FC<RsvpMomentumDecisionProps> = ({
       {stepper}
       {decisionButtons}
       {micro !== undefined && micro.length > 0 ? (
-        <Text style={[styles.micro, { color: palette.tertiaryText }]}>{micro}</Text>
+        // ORCH-1163 R4 — the microcopy sits in a thin self-sizing PILL that HUGS
+        // the text (alignSelf:'center', no fixed width), opaque accent-tinted
+        // fill + panelBorder, readable on-fill text. Not full-width.
+        <View
+          style={[
+            styles.microPill,
+            { backgroundColor: opaqueAccentFill(palette), borderColor: palette.panelBorder },
+          ]}
+          testID="orch-1163-rsvp-micro-pill"
+        >
+          <Text style={[styles.micro, { color: palette.secondaryText }]}>{micro}</Text>
+        </View>
       ) : null}
     </View>
   );
@@ -650,7 +690,17 @@ const styles = StyleSheet.create({
     overflow: "hidden",
   },
   dbtnText: { fontSize: 13, fontWeight: "900" },
-  micro: { textAlign: "center", fontSize: 11, marginTop: 10 },
+  // ORCH-1163 R4 — self-sizing pill (hugs the text), centered under the buttons.
+  microPill: {
+    alignSelf: "center",
+    marginTop: 10,
+    borderRadius: 999,
+    borderWidth: 1,
+    paddingHorizontal: 11,
+    paddingVertical: 5,
+    overflow: "hidden",
+  },
+  micro: { textAlign: "center", fontSize: 11 },
 
   plusRow: {
     flexDirection: "row",

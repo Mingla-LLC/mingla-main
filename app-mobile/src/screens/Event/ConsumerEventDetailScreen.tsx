@@ -711,7 +711,15 @@ export default function ConsumerEventDetailScreen({
     rsvpFloatBarHeight > 0
       ? floatBarBottom + rsvpFloatBarHeight + FLOAT_GAP
       : reserveBarClearance;
-  const scrollPaddingBottom = isRsvp ? rsvpBarClearance : reserveBarClearance;
+  // ORCH-1163 R4 — on the RSVP branch the bottom clearance must live INSIDE the
+  // page-colored `nativeBody` (not as transparent scroll-content padding), so the
+  // light `palette.page` extends through the runway behind the floating decision
+  // bar. Previously the runway was a TRANSPARENT padding area below the body, so
+  // the sheet's BLACK backdrop showed through under the bar (Seth screenshot).
+  // The event (non-rsvp) branch keeps its transparent scroll-content padding
+  // unchanged (its bar/colors were fine). Same effective runway either way.
+  const scrollPaddingBottom = isRsvp ? 0 : reserveBarClearance;
+  const rsvpBodyClearance = isRsvp ? rsvpBarClearance : undefined;
 
   return (
     <>
@@ -765,6 +773,9 @@ export default function ConsumerEventDetailScreen({
             style={[
               styles.nativeBody,
               { backgroundColor: palette.page, borderColor: palette.panelBorder },
+              // ORCH-1163 R4 — RSVP runway is page-colored (no black void under
+              // the floating decision bar); event branch keeps its scroll padding.
+              rsvpBodyClearance !== undefined ? { paddingBottom: rsvpBodyClearance } : null,
             ]}
           >
             {/* ORCH-1167 — STANDARD ticketed-event branch renders the ONE shared
