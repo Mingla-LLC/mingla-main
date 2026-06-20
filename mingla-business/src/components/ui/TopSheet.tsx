@@ -61,12 +61,16 @@ import Animated, {
   Easing,
   cancelAnimation,
   runOnJS,
+  useAnimatedScrollHandler,
   useAnimatedStyle,
   useReducedMotion,
   useSharedValue,
   withTiming,
 } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+
+import { TopSheetScrollProvider } from "./TopSheetScrollContext";
+import type { TopSheetScrollContextValue } from "./TopSheetScrollContext";
 
 import {
   blurIntensity as blurIntensityTokens,
@@ -220,6 +224,16 @@ const TopSheetNative: React.FC<TopSheetProps> = ({
   const scrimOpacity = useSharedValue(0);
   const reduceMotion = useReducedMotion();
 
+  // ORCH-1173: live scroll offset of the consumer's inner scrollable, written
+  // on the UI thread from `useAnimatedScrollHandler`. Drives the dismiss-pan
+  // gate (pan only dismisses when the list is at the top: `scrollOffset <= 0`).
+  // Starts 0 (top) so a sheet with no inner scroll (e.g. compact, or a
+  // consumer that never wires `onScroll`) keeps dismiss-dragging from anywhere.
+  const scrollOffset = useSharedValue(0);
+  const scrollHandler = useAnimatedScrollHandler((event) => {
+    scrollOffset.value = event.contentOffset.y;
+  });
+
   useEffect(() => {
     if (visible) {
       setMounted(true);
@@ -325,26 +339,69 @@ const TopSheetNative: React.FC<TopSheetProps> = ({
     opacity: scrimOpacity.value,
   }));
 
+  // ORCH-1173: a `Gesture.Native()` representing the inner ScrollView's own
+  // native scroll recognizer. The consumer attaches this (via its
+  // `nativeGesture` context handle) to its scrollable so we can compose it
+  // SIMULTANEOUSLY with the dismiss-pan — both gestures run, and the pan can
+  // yield the upward drag to the scroll when the list isn't at its top.
+  const nativeScrollGesture = Gesture.Native();
+
+  // ORCH-1173 dismiss-pan GATE. Predicate for "this drag should dismiss the
+  // sheet (translate the panel up)":
+  //   panDismissesDrag := (scrollOffset.value <= 0) && (translationY < 0)
+  // i.e. the inner list is at the TOP and the finger is moving UP. When the
+  // list is scrolled (`scrollOffset > 0`), the pan no-ops so the ScrollView
+  // consumes the drag (the list scrolls instead of the sheet dismissing).
+  // `panDroveDismiss` records whether `onUpdate` ever actually translated the
+  // panel this gesture, so `onEnd`'s dismiss decision can't fire on a plain
+  // scroll-fling (which never satisfied the gate).
+  const panDroveDismiss = useSharedValue(false);
   const panGesture = Gesture.Pan()
+    .simultaneousWithExternalGesture(nativeScrollGesture)
+    .onBegin(() => {
+      panDroveDismiss.value = false;
+    })
     .onUpdate((event) => {
-      // Allow upward drag only (swipe-up to dismiss).
-      if (event.translationY < 0) {
+      // Dismiss-translate ONLY when the list is at the top AND dragging up.
+      // Otherwise leave the panel put and let the ScrollView scroll.
+      if (scrollOffset.value <= 0 && event.translationY < 0) {
+        panDroveDismiss.value = true;
         translateY.value = event.translationY;
       }
     })
     .onEnd((event) => {
+      // Only consider dismissing if this gesture actually drove a dismiss-drag
+      // from the top — a normal scroll-fling never set `panDroveDismiss`.
       const shouldClose =
-        event.translationY < -CLOSE_THRESHOLD_PX ||
-        event.velocityY < -CLOSE_VELOCITY;
+        panDroveDismiss.value &&
+        (event.translationY < -CLOSE_THRESHOLD_PX ||
+          event.velocityY < -CLOSE_VELOCITY);
       if (shouldClose) {
         runOnJS(onClose)();
-      } else {
+      } else if (panDroveDismiss.value) {
+        // Drove a (sub-threshold) dismiss-drag → snap the panel back open.
         translateY.value = withTiming(openY, {
           duration: 200,
           easing: Easing.out(Easing.cubic),
         });
       }
+      // else: the gesture only scrolled the list — leave the panel untouched.
     });
+
+  // ORCH-1173: run the dismiss-pan and the inner native scroll SIMULTANEOUSLY
+  // so the scroll-position gate above (not gesture arbitration) decides which
+  // wins. On Android this is what lets the list scroll at all; on iOS it is a
+  // no-op behavior-wise (scroll + at-top dismiss both already worked) but keeps
+  // the logic platform-agnostic.
+  const composedGesture = Gesture.Simultaneous(panGesture, nativeScrollGesture);
+
+  // ORCH-1173: the handle TopSheet hands its scrollable consumer (e.g.
+  // BrandSwitcherSheet). `null` outside this native fixed-70 path (web / no
+  // provider) → consumer falls back to a plain ScrollView.
+  const scrollContextValue: TopSheetScrollContextValue = {
+    onScroll: scrollHandler,
+    nativeGesture: nativeScrollGesture,
+  };
 
   const handleScrimPress = (): void => {
     if (dismissOnScrimTap) onClose();
@@ -398,7 +455,7 @@ const TopSheetNative: React.FC<TopSheetProps> = ({
         ]}
         pointerEvents="box-none"
       >
-        <WebSafeGestureDetector gesture={panGesture}>
+        <WebSafeGestureDetector gesture={composedGesture}>
           <Animated.View
             style={[
               styles.panel,
@@ -427,7 +484,13 @@ const TopSheetNative: React.FC<TopSheetProps> = ({
               handleAreaHeight={handleAreaHeight}
               handleCompactLayout={handleCompactLayout}
             >
-              {children}
+              {/* ORCH-1173: expose the scroll-coordination handle so a
+                  scrollable consumer (BrandSwitcherSheet) can wire its
+                  Animated.ScrollView's onScroll + attach the native scroll
+                  gesture, gating the dismiss-pan on scroll position. */}
+              <TopSheetScrollProvider value={scrollContextValue}>
+                {children}
+              </TopSheetScrollProvider>
             </TopSheetPanelInner>
           </Animated.View>
         </WebSafeGestureDetector>
