@@ -283,3 +283,13 @@ verify_jwt = false
 # (same posture as twilio-message-status).
 [functions.twilio-inbound-sms]
 verify_jwt = false
+
+# META-ORCH-1161 COMPLIANCE-PAGES — self-serve-unsubscribe: the PUBLIC no-login
+# opt-out endpoint behind the marketing-site /unsubscribe page + CAN-SPAM email
+# footers. Accepts {email?, phone?, scope, token?} and writes BOTH
+# channel_suppressions (per channel) AND legacy marketing_unsubscribes (global)
+# via the service role. verify_jwt=false: CAN-SPAM requires the page to work
+# standalone with no login; per-IP throttle blunts burst abuse (mirrors
+# record-consent).
+[functions.self-serve-unsubscribe]
+verify_jwt = false
