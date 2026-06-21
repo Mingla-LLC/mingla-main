@@ -55,6 +55,8 @@ import { JoinWaitlistSheet } from "../../../src/components/waitlist/JoinWaitlist
 // US-Eastern event — blocking ticket purchases on still-live events (S0).
 import { isEventPast } from "../../../src/utils/eventLifecycle";
 import { computeMasterEndAtUtc } from "../../../src/utils/eventDateMath";
+// META-ORCH-1187 LEG 2 — buyer-web funnel capture (web-only; native no-op).
+import { captureWeb, gaEvent } from "../../../src/analytics/webAnalytics";
 
 const sortByDisplayOrder = (a: TicketStub, b: TicketStub): number =>
   a.displayOrder - b.displayOrder;
@@ -104,6 +106,21 @@ export default function CheckoutTicketsScreen(): React.ReactElement {
   const { lines, setLineQuantity } = useCart();
   const totals = useCartTotals();
   const [waitlistTicketId, setWaitlistTicketId] = useState<string | null>(null);
+
+  // META-ORCH-1187 LEG 2 — fire `web_checkout_started` once the buyer lands on
+  // the cart and the event resolves (begin of the web purchase funnel). PostHog
+  // + GA4 `begin_checkout` for the Ads link. Web-only (no-op on native).
+  const checkoutStartedRef = useRef<boolean>(false);
+  useEffect(() => {
+    if (checkoutStartedRef.current) return;
+    if (eventId === null) return;
+    checkoutStartedRef.current = true;
+    captureWeb("web_checkout_started", {
+      event_id: eventId,
+      offering_type: "event",
+    });
+    gaEvent("begin_checkout", { event_id: eventId });
+  }, [eventId]);
 
   // ORCH-1167 [event-page-canonical] — seed the cart from the inline-box selection
   // carried in the `seed` param, ONCE, after the event (and its tickets) resolve.

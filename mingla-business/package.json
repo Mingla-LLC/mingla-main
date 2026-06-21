@@ -127,6 +127,7 @@
     "lucide-react-native": "^0.577.0",
     "mixpanel-react-native": "^3.3.0",
     "onesignal-expo-plugin": "^2.5.0",
+    "posthog-js": "^1.205.0",
     "react": "19.1.0",
     "react-dom": "19.1.0",
     "react-error-boundary": "^6.1.1",

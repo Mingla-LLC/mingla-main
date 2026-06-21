@@ -55,6 +55,9 @@ import { TicketQrCarousel } from "../../../src/components/checkout/TicketQrCarou
 import { DownloadMinglaCta } from "../../../src/components/checkout/DownloadMinglaCta";
 import { confirmTicketCheckout } from "../../../src/services/ticketCheckoutService";
 import { useOrderRealtimeSubscription } from "../../../src/hooks/useOrderRealtimeSubscription";
+// META-ORCH-1187 LEG 2 — buyer-web conversion capture (web-only; native no-op).
+import { captureWeb, gaEvent } from "../../../src/analytics/webAnalytics";
+import { phMaskProps } from "../../../src/analytics/phMask";
 
 export default function CheckoutConfirmScreen(): React.ReactElement | null {
   const [isClient, setIsClient] = useState<boolean>(false);
@@ -333,6 +336,32 @@ function CheckoutConfirmScreenInner({
     },
   });
 
+  // ----- META-ORCH-1187 LEG 2 — web purchase conversion -----
+  // Fire once when the order first finalizes (covers BOTH the sync-confirm and
+  // the realtime paths, since both populate `result`). Keyed on orderId via a
+  // ref so it never double-fires. PostHog `web_purchase_completed` +
+  // GA4 `purchase` (value+currency) for the Google Ads conversion link.
+  // Web-only: captureWeb/gaEvent are no-ops on native.
+  const purchaseFiredFor = useRef<string | null>(null);
+  useEffect(() => {
+    if (result === null) return;
+    if (purchaseFiredFor.current === result.orderId) return;
+    purchaseFiredFor.current = result.orderId;
+    captureWeb("web_purchase_completed", {
+      order_id: result.orderId,
+      total: result.total,
+      currency: result.currency,
+      ticket_count: result.tickets.length,
+      offering_type: "event",
+    });
+    gaEvent("purchase", {
+      transaction_id: result.orderId,
+      value: result.total,
+      currency: result.currency,
+      items: result.tickets.length,
+    });
+  }, [result]);
+
   // ----- Defensive: result missing → bounce to /checkout/{eventId} -----
   // Skip the bounce on web while either (a) the ?cs= resume hasn't run yet,
   // or (b) realtimePending is true (sync confirm returned pending OR
@@ -459,7 +488,10 @@ function CheckoutConfirmScreenInner({
             <Icon name="check" size={36} color={textTokens.primary} />
           </View>
           <Text style={styles.heroTitle}>You&apos;re in</Text>
-          <Text style={styles.heroEmail} numberOfLines={2}>
+          {/* META-ORCH-1187 §4.H — buyer email/phone is PII; data-ph-mask makes
+              PostHog session replay render it as a masked block (maskTextSelector
+              '[data-ph-mask]'). On RN web, dataSet maps to data-* attributes. */}
+          <Text style={styles.heroEmail} numberOfLines={2} {...phMaskProps()}>
             Sent to {buyer.email} and {buyer.phone}.
           </Text>
         </View>
