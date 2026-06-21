@@ -65,11 +65,35 @@ describe("ORCH-0859 — /t/{brandSlug}/{tripSlug} public anon route contract", (
     expect(publicHookSource).not.toMatch(/\buseAuth\s*\(/);
   });
 
-  test("A-PUBLIC-8: usePublicTripBySlug filters status to scheduled+live only (no draft leakage)", () => {
-    // Draft trips must not surface on public route — RLS + query both enforce
+  // [TEST-MOD-APPROVED META-ORCH-1174] — Leg A.2 wired this hook onto the single
+  // canonical anon RPC `pg_public_trip_by_slug`, retiring the client-side
+  // `.in("status", ["scheduled","live"])` query filter. The no-draft-leakage
+  // invariant now lives SERVER-SIDE in the RPC (`e.status = ANY(ARRAY['scheduled',
+  // 'live'])` + `e.event_type='trip'`), so this test re-points to assert (a) the
+  // hook reads the RPC and (b) the RPC migration enforces the status filter.
+  test("A-PUBLIC-8: usePublicTripBySlug reads the canonical RPC, which filters status to scheduled+live only (no draft leakage)", () => {
+    // (a) the hook is wired onto the single-source RPC.
     expect(publicHookSource).toMatch(
-      /\.in\(\s*"status"\s*,\s*\[\s*"scheduled"\s*,\s*"live"\s*\]/,
+      /supabase\.rpc\(\s*["']pg_public_trip_by_slug["']/,
     );
+    // (b) the RPC migration enforces the no-draft-leakage status filter server-side.
+    const rpcMigration = readFileSync(
+      join(
+        __dirname,
+        "..",
+        "..",
+        "..",
+        "..",
+        "supabase",
+        "migrations",
+        "20261017000000_meta_orch_1174_pg_public_trip_by_slug.sql",
+      ),
+      "utf-8",
+    );
+    expect(rpcMigration).toMatch(
+      /e\.status\s*=\s*ANY\s*\(\s*ARRAY\['scheduled'::text,\s*'live'::text\]\)/,
+    );
+    expect(rpcMigration).toMatch(/e\.event_type\s*=\s*'trip'/);
   });
 
   // ORCH-1114 — the Share control must route through the web-aware ShareModal,

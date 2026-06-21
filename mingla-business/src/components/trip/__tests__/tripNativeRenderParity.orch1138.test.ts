@@ -139,20 +139,36 @@ describe("RT-6 ORCH-1138 — native-only render parity", () => {
 
   // ---------------- BUG-1: canonical-first meta-chip/route data ----------------
 
-  test("BUG-1: the public hook reads destination from the CANONICAL column first", () => {
-    // canonical events.destination_text wins; theme mirror is fallback only.
-    expect(hookSrc).toContain("typeof event.destination_text === \"string\"");
+  // [TEST-MOD-APPROVED META-ORCH-1174] — Leg A.2 moved the canonical-first
+  // destination/capacity resolution off the client hook (which used to do the
+  // `events.destination_text ?? theme-mirror` + `ticket_types[0].quantity_total
+  // ?? theme-mirror` coalescing in TS) and INTO the single-source RPC. The BUG-1
+  // invariant (canonical column wins, theme mirror is fallback only) is unchanged
+  // — it now lives server-side in the RPC migration, and the hook simply maps the
+  // RPC payload. These tests re-point to assert BOTH halves.
+  const rpcMigration = read(
+    "../supabase/migrations/20261017000000_meta_orch_1174_pg_public_trip_by_slug.sql",
+  );
+
+  test("BUG-1: destination is canonical-first (events.destination_text), theme mirror fallback — enforced in the RPC", () => {
+    // the RPC COALESCEs the canonical column first, the theme mirror second.
+    expect(rpcMigration).toMatch(
+      /'destinationText',\s*COALESCE\([\s\S]*?tr\.destination_text[\s\S]*?destinationLocationText/,
+    );
+    // the hook maps the RPC destinationText through to businessTrip.
     expect(hookSrc).toMatch(
-      /destinationLocationText:[\s\S]*?event\.destination_text[\s\S]*?:[\s\S]*?bt\.destinationLocationText/,
+      /destinationLocationText:\s*strOrNull\(p\.destinationText\)/,
     );
   });
 
-  test("BUG-1: the public hook reads capacity from the CANONICAL ticket quantity first", () => {
-    // capacity from ticket_types[0].quantity_total (mirrors readBusinessTrip),
-    // theme mirror only as fallback.
-    expect(hookSrc).toContain("typeof tickets[0]?.quantity_total === \"number\"");
+  test("BUG-1: capacity is canonical-first (ticket quantity_total) — enforced in the RPC; hook maps it", () => {
+    // the RPC's per-tier rows carry the canonical ticket_types.quantity_total.
+    expect(rpcMigration).toMatch(/tt\.quantity_total/);
+    expect(rpcMigration).toMatch(/'quantityTotal',\s*tiers\.quantity_total/);
+    // the hook derives capacity from the first tier's RPC quantityTotal.
     expect(hookSrc).toMatch(
-      /capacity:[\s\S]*?tickets\[0\]\.quantity_total[\s\S]*?:[\s\S]*?bt\.capacity/,
+      /firstTierQty\s*=\s*p\.tiers\[0\]\?\.quantityTotal/,
     );
+    expect(hookSrc).toMatch(/capacity:\s*firstTierQty/);
   });
 });

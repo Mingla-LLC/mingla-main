@@ -57,16 +57,23 @@ function read(rel: string): string {
 // hook) must extract `installmentSchedule` from `tier_metadata.installments`
 // or the mapper receives undefined and the public trip page crashes. The
 // slug-based hook had this gap pre-hotfix; the id-based hook didn't.
+// [TEST-MOD-APPROVED META-ORCH-1174] — Leg A.2 wired usePublicTripBySlug onto the
+// canonical RPC, which emits each tier's installment template pre-extracted as
+// `installments` (server-side `tier_metadata -> 'installments'`), so the hook no
+// longer reaches into `tier_metadata?.installments` itself. The ORCH-0882
+// invariant (the hook must SET installmentSchedule on the returned tier so the
+// page never receives undefined and crashes) is unchanged — only the source of
+// the installments signal moved to the RPC payload.
 describe("ORCH-0882 hotfix — usePublicTripBySlug extracts installmentSchedule", () => {
-  test("slug-based public trip hook extracts installmentSchedule from tier_metadata", () => {
+  test("slug-based public trip hook sets installmentSchedule from the RPC tier installments", () => {
     const src = readFileSync(
       join(REPO_ROOT, "src/hooks/usePublicTripBySlug.ts"),
       "utf8",
     );
-    // Must reference the data signal AND set the field on the returned
-    // TripPricingTier shape. Mirror of publicEventsService.ts pattern.
+    // Must SET the field on the returned TripPricingTier shape, mapped from the
+    // RPC's pre-extracted per-tier `installments` (no undefined → no crash).
     expect(src).toContain("installmentSchedule");
-    expect(src).toContain("tier_metadata?.installments");
+    expect(src).toMatch(/installmentSchedule:\s*asInstallmentSchedule\(t\.installments\)/);
   });
 });
 

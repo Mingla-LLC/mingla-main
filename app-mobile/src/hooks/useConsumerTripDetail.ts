@@ -1,29 +1,24 @@
 /**
- * useConsumerTripDetail — composes a consumer trip-detail view from anon-granted
- * sources only (ORCH-1016). NEVER `.from('brands')` / `.from('tickets')`
- * (COMMS-0009 / I-ANON-BRANDS-VIA-DEFINER-VIEW). Does NOT copy
- * mingla-business/usePublicTripBySlug.ts (which reads brands directly — NG-4).
+ * useConsumerTripDetail — composes a consumer trip-detail view from the ONE
+ * canonical anon RPC.
  *
- * Sources:
- *  - Card seed (DiscoverTripRow) for instant paint, OR a pg_published_trips_public
- *    re-fetch by destination/departure for cold deep-link open.
- *  - Anon-direct reads of events (refund_policy, departure_text, description),
- *    event_dates (master), trip_days, trip_inclusions, trip_pricing_tiers +
- *    ticket_types (tiers/price/intake mapping).
- *  - Brand name/verified come from the seed (RPC-sourced) or business_public_brands_view.
- *  - ORCH-1138 FIX-3 — the BRAND COVER (cover_media_url/type) for the "Presented
- *    by" chip is read from the anon-safe, security-definer
- *    `business_public_brands_view` (NEVER `.from('brands')`) — the same scoped
- *    public read model the business /b/ + /t/ pages use. No schema/edge change.
+ * META-ORCH-1174 Leg A.2 (Seth single-source decision) — this hook now reads the
+ * SAME `pg_public_trip_by_slug(p_brand_slug, p_event_slug)` RPC the business/web
+ * trip page reads (SECURITY DEFINER, GRANT anon), replacing the prior per-surface
+ * fan-out (a DiscoverTripRow seed/re-fetch to resolve tripId + 5 anon-direct
+ * table reads). The RPC returns the FULL payload — crucially the destination
+ * lat/lng (so the §11 "Where you'll be" map now renders on consumer, closing the
+ * gap this hook previously documented) and per-tier remaining capacity (also
+ * previously missing on consumer). The `seed` arg is retained for source-compat
+ * but is now unused for the read (the RPC resolves directly by slug, hot OR cold
+ * deep-link). NEVER `.from('brands')` / `.from('tickets')` — the definer RPC is
+ * the anon-safe path (COMMS-0009 / I-ANON-BRANDS-VIA-DEFINER-VIEW).
  */
 
 import { useQuery } from "@tanstack/react-query";
 
 import { supabase } from "../services/supabase";
-import {
-  fetchPublishedTrips,
-  type DiscoverTripRow,
-} from "../services/tripsDiscoveryService";
+import type { DiscoverTripRow } from "../services/tripsDiscoveryService";
 
 /**
  * ORCH-1119 — one item in a trip DAY's optional media gallery. Explicit `type`
@@ -98,6 +93,14 @@ export interface TripDetailTier {
   isUnlimited: boolean;
   quantityTotal: number | null;
   /**
+   * META-ORCH-1174 Leg A.2 — per-tier remaining capacity from the canonical RPC
+   * (GREATEST(quantity_total - sold, 0)); null when unlimited/uncapped (never a
+   * fabricated "0 left" — rule 9). Previously MISSING on consumer (the read had
+   * only an aggregate spotsLeft) → the shared body now gets real per-tier
+   * remaining, parity with web/business.
+   */
+  ticketsRemaining: number | null;
+  /**
    * ORCH-1130 — extracted from `tier_metadata.installments` (anon-readable).
    * Null on missing/malformed metadata (same shape-guard the business
    * `extractInstallmentSchedule` uses). Drives the consumer "HOW YOU PAY"
@@ -169,6 +172,14 @@ export interface ConsumerTripDetail {
   description: string | null;
   destinationText: string | null;
   departureText: string | null;
+  /**
+   * META-ORCH-1174 Leg A.2 — destination lat/lng from the canonical RPC. These
+   * were MISSING on consumer (the prior read carried no coords) → the §11 "Where
+   * you'll be" map was silently omitted. The shared body now renders the map on
+   * EVERY surface (rule 9 — both must be finite; null when the brand set none).
+   */
+  destinationLat: number | null;
+  destinationLng: number | null;
   coverMediaUrl: string | null;
   coverMediaType: "image" | "video" | "gif" | null;
   /**
@@ -228,22 +239,6 @@ export const consumerTripDetailKeys = {
     [...consumerTripDetailKeys.all, brandSlug, tripSlug] as const,
 };
 
-interface EventDetailRow {
-  id: string;
-  slug: string;
-  brand_id: string;
-  title: string;
-  description: string | null;
-  destination_text: string | null;
-  departure_text: string | null;
-  cover_media_url: string | null;
-  cover_media_type: string | null;
-  timezone: string | null;
-  bookings_closed: boolean | null;
-  booking_deadline: string | null;
-  refund_policy: unknown;
-}
-
 function coerceCoverType(raw: string | null): "image" | "video" | "gif" | null {
   return raw === "image" || raw === "video" || raw === "gif" ? raw : null;
 }
@@ -278,179 +273,184 @@ function coerceRefundPolicy(raw: unknown): RefundPolicyShape | null {
   return { kind, tiers };
 }
 
+// META-ORCH-1174 Leg A.2 — the raw JSON shape returned by pg_public_trip_by_slug
+// (mirrors the migration's json_build_object keys). Read defensively; the mapper
+// narrows into the typed ConsumerTripDetail.
+interface RpcTripBrand {
+  id: string;
+  slug: string;
+  name: string;
+  coverMediaUrl: string | null;
+  coverMediaType: string | null;
+  verified: boolean;
+}
+interface RpcTripDay {
+  id: string;
+  ordinal: number;
+  title: string;
+  narrative: string | null;
+  media: unknown;
+}
+interface RpcTripInclusion {
+  id: string;
+  kind: "included" | "excluded";
+  item: string;
+  ordinal: number;
+}
+interface RpcTripTier {
+  id: string;
+  ticketTypeId: string;
+  tierName: string;
+  tierMetadata: Record<string, unknown> | null;
+  priceCents: number;
+  currency: string;
+  quantityTotal: number | null;
+  ticketsRemaining: number | null;
+  isUnlimited: boolean;
+  isFree: boolean;
+  installments: unknown;
+}
+interface RpcTripPayload {
+  id: string;
+  brandId: string;
+  brandSlug: string;
+  tripSlug: string;
+  title: string;
+  description: string | null;
+  timezone: string | null;
+  startAt: string | null;
+  endAt: string | null;
+  departureText: string | null;
+  destinationText: string | null;
+  destinationLat: number | null;
+  destinationLng: number | null;
+  currency: string;
+  coverMediaUrl: string | null;
+  coverMediaType: string | null;
+  refundPolicy: unknown;
+  bookingDeadline: string | null;
+  bookingsClosed: boolean;
+  brand: RpcTripBrand;
+  days: RpcTripDay[];
+  inclusions: RpcTripInclusion[];
+  tiers: RpcTripTier[];
+}
+
+const numOrNull = (raw: unknown): number | null =>
+  typeof raw === "number" && Number.isFinite(raw) ? raw : null;
+
 async function fetchTripDetail(
   brandSlug: string,
   tripSlug: string,
-  seed: DiscoverTripRow | null,
 ): Promise<ConsumerTripDetail> {
-  // Resolve the feed-shaped row (seed when present, else re-fetch by slug match).
-  let feedRow: DiscoverTripRow | null = seed;
-  if (feedRow === null || feedRow.tripSlug !== tripSlug) {
-    // Cold deep-link open: pull a page and match the slug. The RPC has no
-    // by-slug param, but the feed is small; filter on destination is not needed.
-    const { rows } = await fetchPublishedTrips(
-      {
-        destinationQuery: null,
-        departureQuery: null,
-        dateFrom: null,
-        dateTo: null,
-        minPriceCents: null,
-        maxPriceCents: null,
-        groupSizeMin: null,
-        groupSizeMax: null,
-        sort: "relevance",
-      },
-      { limit: 50, offset: 0 },
-    );
-    feedRow =
-      rows.find((r) => r.tripSlug === tripSlug && r.brandSlug === brandSlug) ?? null;
-  }
-  if (feedRow === null) {
+  // META-ORCH-1174 Leg A.2 — the ONE canonical anon read. The SECURITY DEFINER
+  // RPC resolves by (brand_slug, trip_slug) directly (hot OR cold deep-link, no
+  // feed re-fetch) and returns the full payload incl. destination lat/lng + per-
+  // tier remaining (both previously missing on consumer). NEVER `.from('brands')`.
+  const { data, error } = await supabase.rpc("pg_public_trip_by_slug", {
+    p_brand_slug: brandSlug,
+    p_event_slug: tripSlug,
+  });
+  if (error !== null) throw error;
+  if (data === null || data === undefined) {
     throw new Error("Trip not found or no longer available.");
   }
-  const tripId = feedRow.tripId;
+  const p = data as RpcTripPayload;
 
-  // Anon-direct reads (events is anon-SELECT; NO brands/tickets table reads).
-  // ORCH-1138 FIX-3 — the BRAND COVER is read from the anon-safe, security-definer
-  // `business_public_brands_view` by slug (🔒 COMMS-0009 — NEVER `.from("brands")`).
-  // Folded into this same batch so the brand cover costs ZERO extra round trips.
-  const [eventResp, daysResp, inclResp, tiersResp, brandCoverResp] =
-    await Promise.all([
-    supabase
-      .from("events")
-      .select(
-        "id, slug, brand_id, title, description, destination_text, departure_text, cover_media_url, cover_media_type, timezone, bookings_closed, booking_deadline, refund_policy",
-      )
-      .eq("id", tripId)
-      .maybeSingle(),
-    supabase.from("trip_days").select("id, ordinal, title, narrative, media").eq("event_id", tripId).order("ordinal"),
-    supabase
-      .from("trip_inclusions")
-      .select("id, kind, item, ordinal")
-      .eq("event_id", tripId)
-      .order("ordinal"),
-    supabase
-      .from("trip_pricing_tiers")
-      // ORCH-1130 — pull tier_metadata so the consumer "HOW YOU PAY" module can
-      // surface the installment template (anon-readable jsonb).
-      .select("ticket_type_id, tier_metadata, ticket_types(id, name, price_cents, currency, is_free, is_unlimited, quantity_total, is_hidden, deleted_at)")
-      .eq("event_id", tripId),
-    // ORCH-1138 FIX-3 — brand cover from the anon-safe public brand read model.
-    // Fails OPEN: an error/missing row leaves the cover null → themed fallback
-    // (rule 9), it does NOT throw and break the whole trip-detail load.
-    supabase
-      .from("business_public_brands_view")
-      .select("cover_media_url, cover_media_type")
-      .eq("slug", brandSlug)
-      .maybeSingle(),
-  ]);
-
-  if (eventResp.error) throw eventResp.error;
-  if (daysResp.error) throw daysResp.error;
-  if (inclResp.error) throw inclResp.error;
-  if (tiersResp.error) throw tiersResp.error;
-  // brandCoverResp intentionally NOT in the throwing fan-out (fail-open above).
-
-  const brandCover = (brandCoverResp.data ?? null) as {
-    cover_media_url: string | null;
-    cover_media_type: string | null;
-  } | null;
-  const brandCoverMediaUrl = brandCover?.cover_media_url ?? null;
-  const brandCoverMediaType = coerceBrandCoverType(
-    brandCover?.cover_media_type ?? null,
-  );
-
-  const ev = (eventResp.data ?? null) as EventDetailRow | null;
-
-  const days: TripDetailDay[] = (daysResp.data ?? []).map((d) => ({
-    id: String((d as { id: string }).id),
-    ordinal: (d as { ordinal: number }).ordinal,
-    title: (d as { title: string }).title,
-    narrative: (d as { narrative: string | null }).narrative ?? null,
-    // ORCH-1119 — coerce the per-day gallery from the anon-readable jsonb column.
-    media: coerceTripDayMedia((d as { media?: unknown }).media),
+  const days: TripDetailDay[] = (p.days ?? []).map((d) => ({
+    id: String(d.id),
+    ordinal: d.ordinal,
+    title: d.title,
+    narrative: d.narrative ?? null,
+    media: coerceTripDayMedia(d.media),
   }));
 
-  const inclusions: TripDetailInclusion[] = (inclResp.data ?? []).map((i) => ({
-    id: String((i as { id: string }).id),
-    kind: (i as { kind: "included" | "excluded" }).kind,
-    item: (i as { item: string }).item,
-    ordinal: (i as { ordinal: number }).ordinal,
+  const inclusions: TripDetailInclusion[] = (p.inclusions ?? []).map((i) => ({
+    id: String(i.id),
+    kind: i.kind,
+    item: i.item,
+    ordinal: i.ordinal,
   }));
 
-  const tiers: TripDetailTier[] = (tiersResp.data ?? [])
-    .map((row) => {
-      const tt = (row as { ticket_types: unknown }).ticket_types as
-        | {
-            id: string;
-            name: string;
-            price_cents: number;
-            currency: string;
-            is_free: boolean;
-            is_unlimited: boolean;
-            quantity_total: number | null;
-            is_hidden: boolean | null;
-            deleted_at: string | null;
-          }
-        | null;
-      if (tt === null || tt.deleted_at !== null || tt.is_hidden === true) return null;
-      return {
-        ticketTypeId: tt.id,
-        tierName: tt.name,
-        priceCents: tt.price_cents,
-        currency: tt.currency,
-        isFree: tt.is_free === true,
-        isUnlimited: tt.is_unlimited === true,
-        quantityTotal: tt.quantity_total,
-        // ORCH-1130 — installment template from tier_metadata (null on no plan).
-        installmentSchedule: extractTripInstallmentSchedule(
-          (row as { tier_metadata?: unknown }).tier_metadata,
-        ),
-      };
-    })
-    .filter((t): t is TripDetailTier => t !== null);
+  const tiers: TripDetailTier[] = (p.tiers ?? []).map((t) => ({
+    ticketTypeId: t.ticketTypeId,
+    tierName: t.tierName,
+    priceCents: t.priceCents ?? 0,
+    currency: t.currency ?? "",
+    isFree: t.isFree === true,
+    isUnlimited: t.isUnlimited === true,
+    quantityTotal: t.quantityTotal ?? null,
+    // META-ORCH-1174 — real per-tier remaining (null when unlimited; no
+    // fabricated sold-out — rule 9). Previously always null on consumer.
+    ticketsRemaining: t.isUnlimited ? null : (t.ticketsRemaining ?? null),
+    installmentSchedule: extractTripInstallmentSchedule(t.installments),
+  }));
+
+  // Aggregate availability derived from the per-tier rows (the prior consumer
+  // read sourced these off the feed seed; now single-source off the RPC tiers).
+  const minPriceCents =
+    tiers.length > 0
+      ? Math.min(...tiers.map((t) => t.priceCents))
+      : null;
+  const hasFreeTier = tiers.some((t) => t.isFree);
+  // total capacity = sum of capped tiers (null when every tier is unlimited).
+  const cappedQtys = tiers
+    .map((t) => (t.isUnlimited ? null : t.quantityTotal))
+    .filter((q): q is number => typeof q === "number");
+  const totalCapacity = cappedQtys.length > 0 ? cappedQtys.reduce((a, b) => a + b, 0) : null;
+  // spotsLeft = sum of per-tier remaining (null when no capped/known remaining).
+  const knownRemaining = tiers
+    .map((t) => (t.isUnlimited ? null : t.ticketsRemaining))
+    .filter((r): r is number => typeof r === "number");
+  const spotsLeft =
+    knownRemaining.length > 0 ? knownRemaining.reduce((a, b) => a + b, 0) : null;
 
   // ORCH-1130 — derived cheap gating flag for the consumer payment module.
   const hasPlan = tiers.some((t) => t.installmentSchedule !== null);
 
   // ORCH-1117 — a trip is PAID when its cheapest tier costs > 0. Resolve the
   // brand's charge-readiness for the floating Reserve bar's unavailable state.
-  const isPaid = (feedRow.minPriceCents ?? 0) > 0;
-  const bookable = await resolveTripBookable(ev?.brand_id ?? null, isPaid);
+  const isPaid = (minPriceCents ?? 0) > 0;
+  const bookable = await resolveTripBookable(p.brandId, isPaid);
 
   return {
-    tripId,
-    tripSlug: feedRow.tripSlug,
-    brandSlug: feedRow.brandSlug,
-    brandName: feedRow.brandName,
-    brandVerified: feedRow.brandVerified,
-    title: ev?.title ?? feedRow.title,
-    description: ev?.description ?? feedRow.description,
-    destinationText: ev?.destination_text ?? feedRow.destinationText,
-    departureText: ev?.departure_text ?? feedRow.departureText,
-    coverMediaUrl: ev?.cover_media_url ?? feedRow.coverMediaUrl,
-    coverMediaType: coerceCoverType(ev?.cover_media_type ?? feedRow.coverMediaType),
-    // ORCH-1138 FIX-3 — anon-safe brand cover for the "Presented by" chip.
-    brandCoverMediaUrl,
-    brandCoverMediaType,
-    startAt: feedRow.startAt,
-    endAt: feedRow.endAt,
-    timezone: ev?.timezone ?? feedRow.timezone,
-    bookingsClosed: ev?.bookings_closed === true || feedRow.bookingsClosed,
-    bookingDeadline: ev?.booking_deadline ?? feedRow.bookingDeadline,
-    totalCapacity: feedRow.totalCapacity,
-    spotsLeft: feedRow.spotsLeft,
-    minPriceCents: feedRow.minPriceCents,
-    currency: feedRow.currency,
-    hasFreeTier: feedRow.hasFreeTier,
+    tripId: p.id,
+    tripSlug: p.tripSlug,
+    brandSlug: p.brand.slug,
+    brandName: p.brand.name,
+    brandVerified: p.brand.verified === true,
+    title: p.title,
+    description: p.description,
+    destinationText: p.destinationText,
+    departureText: p.departureText,
+    // META-ORCH-1174 — destination coords (the consumer §11 map gap this leg closes).
+    destinationLat: numOrNull(p.destinationLat),
+    destinationLng: numOrNull(p.destinationLng),
+    coverMediaUrl: p.coverMediaUrl,
+    coverMediaType: coerceCoverType(p.coverMediaType),
+    // META-ORCH-1174 — the "Presented by" brand cover now rides the same RPC
+    // payload (anon-safe via the definer owner — NEVER `.from('brands')`).
+    brandCoverMediaUrl: p.brand.coverMediaUrl,
+    brandCoverMediaType: coerceBrandCoverType(p.brand.coverMediaType),
+    startAt: p.startAt,
+    endAt: p.endAt,
+    timezone: p.timezone,
+    bookingsClosed: p.bookingsClosed === true,
+    bookingDeadline: p.bookingDeadline,
+    totalCapacity,
+    spotsLeft,
+    minPriceCents,
+    currency: p.currency,
+    hasFreeTier,
     bookable,
-    refundPolicy: coerceRefundPolicy(ev?.refund_policy ?? null),
+    refundPolicy: coerceRefundPolicy(p.refundPolicy),
     days,
     inclusions,
     tiers,
     hasPlan,
   };
 }
+
 
 export interface UseConsumerTripDetailResult {
   detail: ConsumerTripDetail | null;
@@ -463,14 +463,19 @@ export interface UseConsumerTripDetailResult {
 export function useConsumerTripDetail(
   brandSlug: string | null,
   tripSlug: string | null,
+  // META-ORCH-1174 Leg A.2 — `seed` is retained for caller source-compat (the
+  // screen still passes a DiscoverTripRow for the card→detail hop) but is no
+  // longer read: the canonical RPC resolves the full detail directly by slug, so
+  // the seed-based instant-paint/re-fetch path is retired.
   seed: DiscoverTripRow | null,
 ): UseConsumerTripDetailResult {
+  void seed;
   const enabled = brandSlug !== null && tripSlug !== null;
   const query = useQuery<ConsumerTripDetail, Error>({
     queryKey: enabled
       ? consumerTripDetailKeys.detail(brandSlug as string, tripSlug as string)
       : consumerTripDetailKeys.all,
-    queryFn: () => fetchTripDetail(brandSlug as string, tripSlug as string, seed),
+    queryFn: () => fetchTripDetail(brandSlug as string, tripSlug as string),
     enabled,
     staleTime: 30_000,
   });
