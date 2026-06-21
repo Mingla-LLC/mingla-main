@@ -618,6 +618,16 @@ export async function setTripPricingSwitches(
 // ---------------------- createTripDraft ----------------------
 
 /**
+ * ORCH-1177 — the placeholder title `createTripDraft` seeds a fresh draft with.
+ * Exported so the create-mode guard (`/trip/[id]/edit.tsx` isCreateMode) can
+ * recognise a never-edited draft by this exact title and route Close/back
+ * through the discard-confirm path instead of silently autosaving + bouncing to
+ * Home. The seed (below) and the guard MUST reference this one const so they
+ * can never drift.
+ */
+export const TRIP_DRAFT_PLACEHOLDER_TITLE = "Untitled trip";
+
+/**
  * Creates a draft event_type='trip' row + placeholder ticket_types row +
  * placeholder trip_pricing_tiers row joining the two. Returns the Trip with
  * empty days/inclusions arrays + single placeholder pricing tier.
@@ -631,7 +641,7 @@ export async function createTripDraft(
 ): Promise<Trip> {
   // I-BRAND-UNIVERSAL-AUTHORING (META-ORCH-0972) — no kind gate.
 
-  const tempTitle = input.initialTitle?.trim() || "Untitled trip";
+  const tempTitle = input.initialTitle?.trim() || TRIP_DRAFT_PLACEHOLDER_TITLE;
   const tempSlug = `draft-${Date.now().toString(36)}`;
 
   // 1. Look up brand default_currency + slug BEFORE creating the event.

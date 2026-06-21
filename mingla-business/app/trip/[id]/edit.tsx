@@ -40,6 +40,7 @@ import {
 import { TripCreatorWizard } from "../../../src/components/trip/TripCreatorWizard";
 import { EditPublishedTripScreen } from "../../../src/components/trip/EditPublishedTripScreen";
 import { Button } from "../../../src/components/ui/Button";
+import { TRIP_DRAFT_PLACEHOLDER_TITLE } from "../../../src/services/tripsService";
 
 export default function TripEditRoute(): React.ReactElement {
   const router = useRouter();
@@ -186,9 +187,16 @@ export default function TripEditRoute(): React.ReactElement {
   // ORCH-0874: derive isCreateMode — true for freshly-created draft trips
   // that haven't been edited yet (no title, no days, no inclusions). Drives
   // wizard chrome X discard semantics per SPEC §3.3.5/§3.3.6.
+  // ORCH-1177 — `createTripDraft` seeds the title with TRIP_DRAFT_PLACEHOLDER_TITLE
+  // ("Untitled trip"), NOT an empty string, so a fresh never-edited draft failed
+  // the `title.length === 0` clause and was misclassified as edit-mode → Close X /
+  // Android back silently autosaved + bounced to Home with no "Discard this trip?"
+  // confirm. Treat the placeholder title as still-pristine so a fresh draft routes
+  // through the proper create-mode discard path (pristine → discard orphan + exit;
+  // dirty → confirm). The shared const keeps the seed + this guard from drifting.
   const isCreateMode =
     trip.status === "draft" &&
-    trip.title.length === 0 &&
+    (trip.title.length === 0 || trip.title === TRIP_DRAFT_PLACEHOLDER_TITLE) &&
     trip.days.length === 0 &&
     trip.inclusions.length === 0;
 
