@@ -837,6 +837,13 @@ export default function ConsumerExperienceDetailScreen({
         initialIndex={SHEET_INITIAL_INDEX}
         scrollMode="view"
         hidesBottomNav
+        // ORCH-1192 — render in the full-screen RN-Modal window (the SAME host the
+        // ExpandedCardModal place/curated/event expanded cards use). The inline host
+        // makes gorhom mis-measure the sheet ~63dp short on the deck-card mount,
+        // leaving a root band below the body + clipping the float reserve bar
+        // (can't-buy). navigationBarTranslucent gives gorhom the true edge-to-edge
+        // screen so the sheet fills to the physical bottom — no band, bar visible.
+        wrapInRNModal
         accessibilityLabel={seed.title}
       >
         {/* (1) pinned cover — absolute sibling BEHIND the scroll. */}
