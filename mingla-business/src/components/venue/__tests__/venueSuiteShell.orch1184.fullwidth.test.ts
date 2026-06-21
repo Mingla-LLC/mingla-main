@@ -78,8 +78,12 @@ describe("ORCH-1184 — bare rail + full-width workspace", () => {
       expect(SHELL_SRC).not.toMatch(/^\s*railSection:\s*\{/m);
     });
 
-    it("all SIX menu items still derive in the existing order", () => {
-      // Toggle ON → the full rail: Overview, booking band, Settings.
+    it("all rail items still derive in the existing order", () => {
+      // Toggle ON → the full rail: Overview, booking band, Menu, Settings.
+      // ORCH-1186-C [TEST-MOD-APPROVED ORCH-1186-C] added the command-band
+      // "Menu" module (between Waitlist and Settings), so the ON rail is now 7
+      // items; Settings still stays last. The ORCH-1184 full-width layout +
+      // bare-rail intent is unchanged — only the item count moved.
       const ids = deriveVenueModules(true);
       const labels = ids.map((id) => VENUE_MODULES[id].label);
       expect(labels).toEqual([
@@ -88,9 +92,10 @@ describe("ORCH-1184 — bare rail + full-width workspace", () => {
         "Availability",
         "Reservations",
         "Waitlist",
+        "Menu",
         "Settings",
       ]);
-      expect(labels).toHaveLength(6);
+      expect(labels).toHaveLength(7);
     });
   });
 

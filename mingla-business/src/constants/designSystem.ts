@@ -61,6 +61,12 @@ export const radius = {
 // cap left dead right-side canvas / a "black bar" on wide monitors).
 export const venueRailWidth = 220 as const;
 
+// ORCH-1186-A: the venue Settings content column readable-measure cap on wide
+// desktop. The ORCH-1184 workspace fills the full page width, so an editable
+// form would stretch to an unreadable line length on a wide monitor — cap the
+// Settings column (left-anchored) to keep the ~65–75 char body measure.
+export const venueSettingsMaxWidth = 720 as const;
+
 export const shadows = {
   sm: {
     shadowColor: "#000",

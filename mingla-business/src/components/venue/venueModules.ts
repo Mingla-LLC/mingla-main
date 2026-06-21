@@ -54,6 +54,14 @@ export const VENUE_MODULES: Readonly<Record<VenueModule, VenueModuleMeta>> = {
     band: "booking",
     summary: "Quote waits and seat walk-ins from a live queue.",
   },
+  // ORCH-1186-C — DISPLAY-ONLY menu builder. COMMAND band (always visible,
+  // independent of the reservations toggle). NOT a booking module.
+  menu: {
+    id: "menu",
+    label: "Menu",
+    band: "command",
+    summary: "Build your menu — categories, items, and prices guests see online.",
+  },
   settings: {
     id: "settings",
     label: "Settings",
@@ -72,9 +80,15 @@ export const VENUE_BOOKING_MODULES: readonly VenueModule[] = [
 
 /**
  * Visible module list, gated on the single Reservations toggle.
- *  - OFF → `['overview', 'settings']` (no booking band).
- *  - ON  → Overview, the four booking modules, then Settings (Settings stays
- *    last; booking modules between).
+ *  - OFF → `['overview', 'menu', 'settings']` (no booking band).
+ *  - ON  → Overview, the four booking modules, Menu, then Settings (Settings
+ *    stays last; booking modules between).
+ *
+ * ORCH-1186-C — `menu` is a COMMAND-band capability present in BOTH branches
+ * (it is NOT gated on the reservations toggle). It sits after the booking band
+ * and before Settings (a command capability after booking, before settings).
+ * Settings STAYS LAST. The booking-band gating is unchanged — the menu addition
+ * does not affect I-PROPOSED-1148-RESERVATION-TOGGLE-GATES-SUITE.
  *
  * Pure; unit-tested (mirrors `deriveHubVisibleTabs`).
  */
@@ -82,9 +96,9 @@ export function deriveVenueModules(
   reservationsEnabled: boolean,
 ): readonly VenueModule[] {
   if (!reservationsEnabled) {
-    return ["overview", "settings"];
+    return ["overview", "menu", "settings"];
   }
-  return ["overview", ...VENUE_BOOKING_MODULES, "settings"];
+  return ["overview", ...VENUE_BOOKING_MODULES, "menu", "settings"];
 }
 
 /** True for the Band-B booking modules (which render ComingSoon in 2.0). */

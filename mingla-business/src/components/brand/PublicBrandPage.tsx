@@ -10,6 +10,7 @@ import {
   type PublicBrandExperience,
   type PublicBrandTrip,
   type PublicBrandUpcoming,
+  type PublicMenuGroup,
 } from "@mingla/brand-rendering";
 import { resolveTheme, type ResolvedTheme } from "@mingla/offering-rendering";
 
@@ -42,6 +43,8 @@ interface PublicBrandPageProps {
   upcoming?: PublicUpcomingRow[];
   upcomingHasMore?: boolean;
   venue?: PublicVenueDetail | null;
+  /** ORCH-1186-C — DISPLAY-ONLY menu groups (shared shape; passed through). */
+  menu?: PublicMenuGroup[];
   resolvedTheme?: ResolvedTheme;
 }
 
@@ -157,6 +160,7 @@ export const PublicBrandPage: React.FC<PublicBrandPageProps> = ({
   upcoming = [],
   upcomingHasMore = false,
   venue = null,
+  menu = [],
   resolvedTheme,
 }) => {
   const router = useRouter();
@@ -301,6 +305,7 @@ export const PublicBrandPage: React.FC<PublicBrandPageProps> = ({
         experiences={sharedExperiences}
         upcoming={sharedUpcoming}
         upcomingHasMore={upcomingHasMore}
+        menu={menu}
         venue={
           venue === null
             ? null

@@ -16,19 +16,28 @@
  *    modules render the honest ComingSoon interstitial in 2.0 (no dead tap);
  *    real CRUD is 2.1.
  *
- * Bands C/D (Menu / Demand / Guests / Campaigns / Feedback) are intentionally
- * NOT in the union in 2.0 — they cannot be selected, so they cannot dead-tap.
+ * Bands C/D (Demand / Guests / Campaigns / Feedback) are intentionally NOT in
+ * the union — they cannot be selected, so they cannot dead-tap.
+ *
+ * ORCH-1186-C — `menu` is a COMMAND-band module (always visible, independent of
+ * the reservations toggle): the DISPLAY-ONLY menu builder. It is NOT a booking
+ * module (isBookingModule("menu") === false), so the booking-band gating is
+ * unchanged (I-PROPOSED-1148-RESERVATION-TOGGLE-GATES-SUITE preserved).
  */
 export type VenueModule =
   | "overview"
   | "settings"
+  | "menu"
   | "tables"
   | "availability"
   | "reservations"
   | "waitlist";
 
 /** The booking-band modules (gated on the toggle; ComingSoon in 2.0). */
-export type VenueBookingModule = Exclude<VenueModule, "overview" | "settings">;
+export type VenueBookingModule = Exclude<
+  VenueModule,
+  "overview" | "settings" | "menu"
+>;
 
 /** No-show fee policy (enforcement is 2.2; 2.0 stores the policy only). */
 export type NoShowFeePolicy = "forfeit" | "none";

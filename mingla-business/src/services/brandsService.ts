@@ -349,6 +349,50 @@ export async function upsertBrandHours(
   if (error !== null) throw error;
 }
 
+interface BrandHourRow {
+  weekday: number;
+  open_time: string | null;
+  close_time: string | null;
+  is_closed: boolean;
+}
+
+/**
+ * ORCH-1186-A — read the brand's own `brand_hours` for the management Settings
+ * view (the business-app side had no own-brand hours reader before this; the
+ * only reads were the public-page view + the creation draft). RLS owner-select
+ * (20260613000000:98-110) admits the authenticated owner. Always returns all 7
+ * weekdays (Mon=0 … Sun=6), filling any missing weekday as a closed day so the
+ * editor renders a stable 7-row table.
+ */
+export async function fetchBrandHours(
+  brandId: string,
+): Promise<BrandHourEntry[]> {
+  const { data, error } = await supabase
+    .from("brand_hours")
+    .select("weekday, open_time, close_time, is_closed")
+    .eq("brand_id", brandId)
+    .order("weekday")
+    .returns<BrandHourRow[]>();
+  if (error !== null) throw error;
+  const byWeekday = new Map<number, BrandHourRow>();
+  for (const row of data ?? []) byWeekday.set(row.weekday, row);
+  const result: BrandHourEntry[] = [];
+  for (let weekday = 0; weekday <= 6; weekday++) {
+    const row = byWeekday.get(weekday);
+    if (row === undefined) {
+      result.push({ weekday, openTime: null, closeTime: null, isClosed: true });
+    } else {
+      result.push({
+        weekday,
+        openTime: row.open_time,
+        closeTime: row.close_time,
+        isClosed: row.is_closed,
+      });
+    }
+  }
+  return result;
+}
+
 async function invokeVenueClaimSubmittedEmail(brandId: string): Promise<void> {
   try {
     const { error } = await supabase.functions.invoke(

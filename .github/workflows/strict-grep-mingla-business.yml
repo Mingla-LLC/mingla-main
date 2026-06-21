@@ -2688,3 +2688,42 @@ jobs:
         run: node .github/scripts/strict-grep/i-proposed-1187-analytics-web-only-via-web-ts.mjs
       - name: Run META-ORCH-1187 marketing-layout-mounts-analytics regression
         run: node .github/scripts/strict-grep/i-proposed-1187-marketing-layout-mounts-analytics.mjs
+
+  orch-1186-hours-single-owner:
+    name: "ORCH-1186-A [venue-unify]: opening hours single owner — brand_hours is canonical; service_periods derived ONLY by biz_derive_service_periods_from_brand_hours, called from both hours-write RPCs (I-PROPOSED-1186-HOURS-SINGLE-OWNER)"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Self-test the ORCH-1186 hours-single-owner gate
+        run: node .github/scripts/strict-grep/orch-1186-hours-single-owner.mjs --self-test
+      - name: Run ORCH-1186 hours-single-owner gate
+        run: node .github/scripts/strict-grep/orch-1186-hours-single-owner.mjs
+
+  orch-1186c-menu-display-only:
+    name: "ORCH-1186-C [venue-unify]: venue menu is DISPLAY-ONLY — no cart/checkout/quantity/order/payment on the builder or public Menu tab (I-PROPOSED-1186-MENU-DISPLAY-ONLY)"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Self-test the ORCH-1186-C menu-display-only gate
+        run: node .github/scripts/strict-grep/orch-1186c-menu-display-only.mjs --self-test
+      - name: Run ORCH-1186-C menu-display-only gate
+        run: node .github/scripts/strict-grep/orch-1186c-menu-display-only.mjs
+
+  orch-1186c-menu-not-experience-stops:
+    name: "ORCH-1186-C [venue-unify]: venue menu is DISTINCT from the snap-menu parser — menusService/publicMenusService/useMenus/VenueMenuModule never reference experience_stops/parse-restaurant-menu/create_experience (I-PROPOSED-1186C-MENU-NOT-EXPERIENCE-STOPS)"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Self-test the ORCH-1186-C menu-not-experience-stops gate
+        run: node .github/scripts/strict-grep/orch-1186c-menu-not-experience-stops.mjs --self-test
+      - name: Run ORCH-1186-C menu-not-experience-stops gate
+        run: node .github/scripts/strict-grep/orch-1186c-menu-not-experience-stops.mjs

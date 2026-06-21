@@ -11,5 +11,7 @@ export type {
   PublicBrandTrip,
   PublicBrandUpcoming,
   PublicMediaType,
+  PublicMenuGroup,
+  PublicMenuItem,
   PublicVenueDetail,
 } from "./types";
