@@ -124,13 +124,51 @@ const formatTripDateLine = (
 export default function CheckoutTripTicketsScreen(): React.ReactElement {
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const params = useLocalSearchParams<{ tripEventId: string; plan?: string }>();
+  const params = useLocalSearchParams<{
+    tripEventId: string;
+    plan?: string;
+    lines?: string;
+  }>();
   const tripEventId =
     typeof params.tripEventId === "string" ? params.tripEventId : null;
   // ORCH-1130 — the public-page pay-full vs pay-over-time choice arrives as a
   // route param. Seed CartContext from it once on mount (default "full").
   const planParam: TripPaymentPlanChoice =
     params.plan === "installments" ? "installments" : "full";
+
+  // META-ORCH-1174 Leg B3 — the §10 multi-package SELECTION arrives as a JSON
+  // `lines` param `[{ticketTypeId, quantity, paymentPlanChoice?}]` (DEC-B). When
+  // present we seed the cart with ALL selected packages (skipping tier-select),
+  // mirroring ORCH-1138 "Reserve opens the cart directly". Parsed once (stable
+  // string); malformed → empty (the auto-skip / tier-select path takes over).
+  const seededLinesParam = React.useMemo<
+    Array<{ ticketTypeId: string; quantity: number }>
+  >(() => {
+    if (typeof params.lines !== "string" || params.lines.length === 0) return [];
+    try {
+      const parsed: unknown = JSON.parse(params.lines);
+      if (!Array.isArray(parsed)) return [];
+      return parsed.flatMap((row) => {
+        if (
+          row !== null &&
+          typeof row === "object" &&
+          typeof (row as { ticketTypeId?: unknown }).ticketTypeId === "string" &&
+          typeof (row as { quantity?: unknown }).quantity === "number" &&
+          (row as { quantity: number }).quantity > 0
+        ) {
+          return [
+            {
+              ticketTypeId: (row as { ticketTypeId: string }).ticketTypeId,
+              quantity: Math.floor((row as { quantity: number }).quantity),
+            },
+          ];
+        }
+        return [];
+      });
+    } catch {
+      return [];
+    }
+  }, [params.lines]);
 
   const publicTripQuery = usePublicTripById(tripEventId);
   const trip = publicTripQuery.data?.trip ?? null;
@@ -242,9 +280,68 @@ export default function CheckoutTripTicketsScreen(): React.ReactElement {
   // on the commit where `lines` actually contains the sole tier (qty>=1), never
   // in the same body as the dispatch. This removes the empty-cart window the
   // pre-existing buyer.tsx guard ping-ponged against.
+  // META-ORCH-1174 Leg B3 — seed the cart with the public-page MULTI-PACKAGE
+  // selection (DEC-B), then advance to /buyer. Takes precedence over the single-
+  // tier auto-skip below (which is gated off when seeded lines are present). Same
+  // two-phase pattern as the auto-skip: dispatch the cart writes, and navigate only
+  // on a later commit once the cart actually holds them (no ping-pong with the
+  // /buyer empty-cart guard). Latched so it fires once per mount.
+  const multiSeedNavigatedRef = useRef(false);
+  useEffect(() => {
+    if (tripEventId === null || trip === null) return;
+    if (seededLinesParam.length === 0) return;
+    if (multiSeedNavigatedRef.current) return;
+    // Resolve each requested line against the trip's real tiers (drop unknown ids,
+    // clamp to remaining/unlimited). The cart already enforces capacity at commit;
+    // this keeps the seed honest (DEC-D per-package capacity).
+    const stubById = new Map(
+      trip.pricingTiers.map((t) => [t.ticketTypeId, tierToTicketStub(t)] as const),
+    );
+    const resolved = seededLinesParam.flatMap((line) => {
+      const stub = stubById.get(line.ticketTypeId);
+      if (stub === undefined) return [];
+      const cap =
+        stub.isUnlimited || stub.capacity === null
+          ? line.quantity
+          : Math.max(0, stub.capacity);
+      const qty = Math.min(line.quantity, cap);
+      if (qty <= 0) return [];
+      return [{ stub, qty }];
+    });
+    if (resolved.length === 0) return;
+
+    // Are all resolved lines already in the cart at the requested qty? If not,
+    // dispatch the writes and WAIT for the next commit (do NOT navigate here).
+    const allLanded = resolved.every(({ stub, qty }) =>
+      lines.some((l) => l.ticketTypeId === stub.id && l.quantity === qty),
+    );
+    if (!allLanded) {
+      for (const { stub, qty } of resolved) {
+        setLineQuantity({
+          ticketTypeId: stub.id,
+          ticketName: stub.name,
+          unitPrice: stub.priceGbp ?? 0,
+          unitPriceAllIn: stub.priceAllInGbp ?? stub.priceGbp ?? 0,
+          currency: stub.currency ?? trip.pricingTiers[0]?.currency ?? "USD",
+          isFree: stub.isFree,
+          quantity: qty,
+        });
+      }
+      return;
+    }
+    // All seeded lines have landed → /buyer reads a populated cart.
+    multiSeedNavigatedRef.current = true;
+    router.replace(`/checkout-trip/${tripEventId}/buyer` as never);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tripEventId, trip, seededLinesParam, lines, router]);
+
   const autoSkipNavigatedRef = useRef(false);
   useEffect(() => {
     if (tripEventId === null || trip === null) return;
+    // META-ORCH-1174 Leg B3 — when the public page passed an explicit multi-package
+    // selection, the seeding effect above owns the funnel entry; the single-tier
+    // auto-skip must NOT also fire (it would add tier[0] over the real selection).
+    if (seededLinesParam.length > 0) return;
     const skipTickets = trip.pricingTiers.map(tierToTicketStub);
     const sole = skipTickets[0];
     const outcome = decideAutoSkip({

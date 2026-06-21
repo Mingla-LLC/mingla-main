@@ -49,6 +49,7 @@ import {
   TripReserveBar,
   type CtaState,
   type TripPaymentPlanChoice,
+  type TripReserveLine,
 } from "@mingla/offering-rendering";
 import { useThemeFont } from "../../../src/theme/useThemeFont";
 import { ShareModal } from "../../../src/components/ui/ShareModal";
@@ -57,6 +58,7 @@ import {
   tripPublicUrl,
 } from "../../../src/constants/publicUrls";
 import { usePublicTripBySlug } from "../../../src/hooks/usePublicTripBySlug";
+import { useTripTierAllIn } from "../../../src/hooks/useTripTierAllIn";
 import { TripPreview } from "../../../src/components/trip/TripPreview";
 import {
   buildTripOfferingBrand,
@@ -92,6 +94,41 @@ export default function PublicTripRoute(): React.ReactElement {
     typeof brandSlug === "string" ? brandSlug : null,
     typeof tripSlug === "string" ? tripSlug : null,
   );
+
+  // META-ORCH-1174 Leg B3 — the per-package selection + per-package plan choice
+  // (the §10 multi-package box owns the values; the shared state derives the
+  // summed all-in / due-today / selected lines). Held here (above the body) so the
+  // floating bar + the box read the SAME selection. DEC-B/C/F.
+  const [quantities, setQuantities] = useState<Record<string, number>>({});
+  const [planChoiceByTier, setPlanChoiceByTier] = useState<
+    Record<string, TripPaymentPlanChoice>
+  >({});
+  const handleChangeQuantity = useCallback(
+    (ticketTypeId: string, qty: number): void => {
+      setQuantities((prev) => {
+        const next = { ...prev };
+        if (qty <= 0) delete next[ticketTypeId];
+        else next[ticketTypeId] = qty;
+        return next;
+      });
+    },
+    [],
+  );
+  const handleChangePlanChoice = useCallback(
+    (ticketTypeId: string, value: TripPaymentPlanChoice): void => {
+      setPlanChoiceByTier((prev) => ({ ...prev, [ticketTypeId]: value }));
+    },
+    [],
+  );
+
+  // META-ORCH-1174 Leg B3 — resolve the server all-in per ticket_type (WYSIWYP) so
+  // the §10 box shows what the buyer pays, not the bare base. Keyed on the trip's
+  // event id (the trip RPC returns it as `trip.id`).
+  const tripEventId =
+    query.data?.trip?.id !== undefined && query.data.trip.id.length > 0
+      ? query.data.trip.id
+      : null;
+  const allInQuery = useTripTierAllIn(tripEventId);
 
   const handleClose = useCallback((): void => {
     if (router.canGoBack()) {
@@ -159,6 +196,11 @@ export default function PublicTripRoute(): React.ReactElement {
       payload={payload}
       brandSlug={typeof brandSlug === "string" ? brandSlug : ""}
       tripSlug={typeof tripSlug === "string" ? tripSlug : ""}
+      allInByTicketType={allInQuery.data ?? null}
+      quantities={quantities}
+      onChangeQuantity={handleChangeQuantity}
+      planChoiceByTier={planChoiceByTier}
+      onChangePlanChoice={handleChangePlanChoice}
       muted={muted}
       onToggleMute={handleToggleMute}
       onClose={handleClose}
@@ -186,6 +228,11 @@ const ResolvedTripPage: React.FC<{
   payload: NonNullable<ReturnType<typeof usePublicTripBySlug>["data"]>;
   brandSlug: string;
   tripSlug: string;
+  allInByTicketType: Map<string, number> | null;
+  quantities: Record<string, number>;
+  onChangeQuantity: (ticketTypeId: string, qty: number) => void;
+  planChoiceByTier: Record<string, TripPaymentPlanChoice>;
+  onChangePlanChoice: (ticketTypeId: string, value: TripPaymentPlanChoice) => void;
   muted: boolean;
   onToggleMute: () => void;
   onClose: () => void;
@@ -202,6 +249,11 @@ const ResolvedTripPage: React.FC<{
   payload,
   brandSlug,
   tripSlug,
+  allInByTicketType,
+  quantities,
+  onChangeQuantity,
+  planChoiceByTier,
+  onChangePlanChoice,
   muted,
   onToggleMute,
   onClose,
@@ -235,35 +287,47 @@ const ResolvedTripPage: React.FC<{
   // build; the SAME object useTripOfferingState reads). The shared body never
   // touches the read hook.
   const data = useMemo(
-    () => buildTripOfferingData(trip, payload.bookable !== false),
-    [trip, payload.bookable],
+    () => buildTripOfferingData(trip, payload.bookable !== false, allInByTicketType),
+    [trip, payload.bookable, allInByTicketType],
   );
   const offeringBrand = useMemo(
     () => buildTripOfferingBrand(payload.brand),
     [payload.brand],
   );
 
-  // META-ORCH-1174 (Seth, ORCH-1138 preserved) — Reserve routes STRAIGHT to
-  // checkout with the payment choice in the `plan` param (the checkout-trip route
-  // seeds CartContext.paymentPlanChoice from it → byte-identical request). The
-  // single bar passes the live toggle; the SPLIT buttons pass their explicit choice.
+  // META-ORCH-1174 Leg B3 (Seth, ORCH-1138 preserved) — Reserve routes STRAIGHT to
+  // the trip checkout chain. DEC-B: the SELECTED LINES ride a JSON `lines` route
+  // param `[{ticketTypeId, quantity, paymentPlanChoice?}]` so the checkout index
+  // seeds the cart with ALL selected packages (skipping the tier-select step). The
+  // single `plan` param stays as the cart-level default (back-compat / single-tier).
+  // No address/tax form (venue-sourced, ORCH-1025/1130). When `lines` is empty (a
+  // dead-tap-guarded inert CTA never fires, but the split buttons may) the cart
+  // opens to pick — never a dead tap.
   const handleTripReserve = useCallback(
-    (choice?: TripPaymentPlanChoice): void => {
+    (choice?: TripPaymentPlanChoice, lines?: TripReserveLine[]): void => {
+      const linesParam =
+        lines !== undefined && lines.length > 0
+          ? { lines: JSON.stringify(lines) }
+          : {};
       router.push(
         {
           pathname: tripCheckoutPath(trip.id),
-          params: { plan: choice ?? paymentPlanChoice },
+          params: { plan: choice ?? paymentPlanChoice, ...linesParam },
         } as never,
       );
     },
     [router, trip.id, paymentPlanChoice],
   );
 
-  // META-ORCH-1174 Leg A — the ONE lifted buy-state machine (the inline §10 box +
-  // the docked/floating/desktop bars ALL read this; they can never diverge).
+  // META-ORCH-1174 Leg B3 — the ONE lifted buy-state machine (the inline §10 box +
+  // the docked/floating/desktop bars ALL read this; they can never diverge). The
+  // surface owns the selection (quantities + per-tier plan choice); the hook
+  // derives the summed all-in / due-today / selected lines.
   const offeringState = useTripOfferingState({
     data,
     paymentPlanChoice,
+    quantities,
+    planChoiceByTier,
     onReserve: handleTripReserve,
   });
 
@@ -340,10 +404,15 @@ const ResolvedTripPage: React.FC<{
   // ORCH-1138 — desktop sticky-panel Reserve control (phone uses the floating bar).
   const reserveTappable = offeringState.cta.tappable;
   const barPrice = offeringState.barPriceLabel;
+  // META-ORCH-1174 Leg B3 — the bars + desktop control fire Reserve with the SAME
+  // selected lines the §10 box reads (DEC-B). Empty selection → no lines → the cart
+  // opens to pick (never a dead tap; the CTA itself is gated by reserveTappable).
+  const reserveSelected = (): void =>
+    handleTripReserve(undefined, offeringState.selectedLines);
   const reserveControl = (
     <View>
       <Pressable
-        onPress={reserveTappable ? () => handleTripReserve() : undefined}
+        onPress={reserveTappable ? reserveSelected : undefined}
         disabled={!reserveTappable}
         accessibilityRole="button"
         accessibilityState={{ disabled: !reserveTappable }}
@@ -388,7 +457,7 @@ const ResolvedTripPage: React.FC<{
       palette={palette}
       kicker={offeringState.barKicker}
       fontFamily={boldFamily}
-      onPress={() => handleTripReserve()}
+      onPress={reserveSelected}
       splitCtas={offeringState.splitCtas}
       variant="docked"
       safeAreaBottom={safeAreaBottom}
@@ -415,6 +484,10 @@ const ResolvedTripPage: React.FC<{
         stateBanner={stateBanner}
         paymentPlanChoice={paymentPlanChoice}
         onPaymentPlanChoiceChange={onPaymentPlanChoiceChange}
+        quantities={quantities}
+        onChangeQuantity={onChangeQuantity}
+        planChoiceByTier={planChoiceByTier}
+        onChangePlanChoice={onChangePlanChoice}
         onReserve={handleTripReserve}
         reserveControl={reserveControl}
         contentBottomInset={contentBottomInset}
@@ -444,7 +517,7 @@ const ResolvedTripPage: React.FC<{
           palette={palette}
           kicker={offeringState.barKicker}
           fontFamily={boldFamily}
-          onPress={() => handleTripReserve()}
+          onPress={reserveSelected}
           splitCtas={offeringState.splitCtas}
           variant="floating"
           safeAreaBottom={safeAreaBottom}

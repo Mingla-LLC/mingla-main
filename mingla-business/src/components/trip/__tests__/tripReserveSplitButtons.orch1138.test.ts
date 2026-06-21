@@ -140,8 +140,11 @@ describe("ORCH-1138 — trip Reserve UNIFIED seam-split CTA (business/web)", () 
   });
 
   test("SP6 the shared state machine gates the split on a bookable plan trip (rule 9)", () => {
+    // [TEST-MOD-APPROVED META-ORCH-1174] Leg B3 — the split-CTA fast path is now the
+    // SINGLE-package plan case ONLY (multi-package rows own their own per-row toggle).
+    // The gate became `hasSingleTierPlan && !multiTier && cta.tappable`.
     expect(hookSrc).toMatch(
-      /const splitCtas:\s*ReserveSplitCtas \| undefined =\s*\n?\s*hasPlan && cta\.tappable/,
+      /const splitCtas:\s*ReserveSplitCtas \| undefined =\s*\n?\s*hasSingleTierPlan && !multiTier && cta\.tappable/,
     );
   });
 
@@ -152,8 +155,13 @@ describe("ORCH-1138 — trip Reserve UNIFIED seam-split CTA (business/web)", () 
 
   test("SP8 each segment routes STRAIGHT to checkout with its OWN plan choice (byte-identical)", () => {
     // The route's reserve handler threads the choice into the plan route param…
+    // [TEST-MOD-APPROVED META-ORCH-1174] Leg B3 — the handler signature grew a
+    // `lines?: TripReserveLine[]` arg (DEC-B multi-package selection rides the
+    // checkout as a JSON param). The plan-param threading is unchanged.
     expect(routeSrc).toMatch(/handleTripReserve = useCallback\(/);
-    expect(routeSrc).toMatch(/\(choice\?:\s*TripPaymentPlanChoice\):\s*void/);
+    expect(routeSrc).toMatch(
+      /\(choice\?:\s*TripPaymentPlanChoice,\s*lines\?:\s*TripReserveLine\[\]\):\s*void/,
+    );
     expect(routeSrc).toMatch(/plan:\s*choice \?\? paymentPlanChoice/);
     // …and the shared state wires each segment to its OWN choice.
     expect(hookSrc).toMatch(/onPress:\s*\(\)\s*=>\s*onReserve\("full"\)/);

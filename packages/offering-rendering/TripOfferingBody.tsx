@@ -57,14 +57,20 @@ import { DayByDay } from "./DayByDay";
 import { TripRefundLadder } from "./TripRefundLadder";
 import { TripPaymentChoice } from "./TripPaymentChoice";
 import { TripCountdownPill } from "./TripCountdownPill";
-import { BadgeCheck, Calendar, Moon, Plane, Users } from "./LucideIcons";
+import { BadgeCheck, Calendar, Minus, Moon, Plane, Plus, Users } from "./LucideIcons";
 import { buildStaticMapUrl } from "./mapboxStaticImage";
 import type {
   TripOfferingBrand,
   TripOfferingCallbacks,
   TripOfferingData,
+  TripOfferingTier,
 } from "./tripOfferingTypes";
-import type { TripOfferingState, TripPaymentPlanChoice } from "./useTripOfferingState";
+import {
+  projectTripSchedule,
+  tripTierPriceLabel,
+  type TripOfferingState,
+  type TripPaymentPlanChoice,
+} from "./useTripOfferingState";
 
 const ABOUT_COLLAPSE_THRESHOLD = 160;
 
@@ -84,9 +90,28 @@ export interface TripOfferingBodyProps {
   state: TripOfferingState;
   callbacks: TripOfferingCallbacks;
   variant: "phone" | "desktop";
-  /** The live pay-full/pay-over-time toggle value (the surface owns the useState). */
+  /**
+   * The live pay-full/pay-over-time toggle value (the surface owns the useState).
+   * Leg A back-compat: drives a SINGLE-package trip's toggle. Multi-package trips
+   * use the per-tier `planChoiceByTier` map (each row owns its own toggle).
+   */
   paymentPlanChoice: TripPaymentPlanChoice;
   onPaymentPlanChoiceChange: (value: TripPaymentPlanChoice) => void;
+  /**
+   * META-ORCH-1174 Leg B3 — the per-package selection `{ ticketTypeId → quantity }`
+   * (the surface owns the useState). Absent → the box renders read-only (Leg-A
+   * preview). The §10 stepper writes through `onChangeQuantity` (clamped by the
+   * shared state). The §10 box + the floating bar read the SAME selection.
+   */
+  quantities?: Record<string, number>;
+  onChangeQuantity?: (ticketTypeId: string, qty: number) => void;
+  /**
+   * META-ORCH-1174 Leg B3 — per-package pay-full/over-time choice (DEC-F). Only the
+   * rows whose tier carries an installment plan render a toggle. Absent → every
+   * plan row defaults to "full".
+   */
+  planChoiceByTier?: Record<string, TripPaymentPlanChoice>;
+  onChangePlanChoice?: (ticketTypeId: string, value: TripPaymentPlanChoice) => void;
   /**
    * Phone-only docked reserve node (the SAME <TripReserveBar variant="docked"> the
    * surface builds) — passed in so it renders as the LAST body child, flush beneath
@@ -111,6 +136,10 @@ export const TripOfferingBody: React.FC<TripOfferingBodyProps> = ({
   variant,
   paymentPlanChoice,
   onPaymentPlanChoiceChange,
+  quantities,
+  onChangeQuantity,
+  planChoiceByTier,
+  onChangePlanChoice,
   dockedReserve,
   reduceMotion = false,
   testID,
@@ -176,12 +205,53 @@ export const TripOfferingBody: React.FC<TripOfferingBodyProps> = ({
       : null;
 
   const reserveTappable = state.cta.tappable;
-  const boxPriceLabel =
-    state.cta.kind === "buy"
+  // META-ORCH-1174 Leg B3 — the multi-select selector is ACTIVE when the surface
+  // wires the selection state through (quantities + onChangeQuantity). When it does
+  // NOT (a Leg-A caller that hasn't adopted multi-select yet), the box falls back to
+  // the read-only single-tier preview — no regression, no dead UI.
+  const selectorActive =
+    quantities !== undefined && onChangeQuantity !== undefined;
+  const sortedTiers = data.tiers;
+  // The in-box selection summary line. With ≥1 selected → summed all-in (or due
+  // today when any line pays over time). Nothing selected → the bare "—" placeholder.
+  const summaryPriceLabel = selectorActive
+    ? state.anyLineOnPlan
+      ? state.summedDueTodayLabel
+      : state.summedAllInLabel
+    : state.cta.kind === "buy"
       ? state.barPriceLabel
       : state.cta.kind === "free"
         ? "Free"
         : null;
+  const summaryRowLabel = selectorActive
+    ? state.anyLineOnPlan
+      ? "Due today"
+      : "Total"
+    : null;
+  // The Reserve CTA wording. Selector active → reflect the summed total + open the
+  // cart with the SELECTED LINES (DEC-B). Empty selection is still tappable (the
+  // cart lets the buyer pick) but the CTA reads the bare verb.
+  const reserveLabel = selectorActive
+    ? state.totalSelectedQuantity === 0
+      ? state.cta.kind === "unavailable"
+        ? state.cta.title
+        : "Reserve my spot"
+      : summaryPriceLabel !== null && summaryPriceLabel !== "Free"
+        ? `Reserve · ${summaryPriceLabel}`
+        : "Reserve my spot"
+    : state.cta.kind === "unavailable"
+      ? state.cta.title
+      : summaryPriceLabel !== null && summaryPriceLabel !== "Free"
+        ? `Reserve · ${summaryPriceLabel}`
+        : "Reserve my spot";
+
+  const handleBoxReserve = (): void => {
+    if (selectorActive) {
+      callbacks.onReserve(undefined, state.selectedLines);
+    } else {
+      callbacks.onReserve();
+    }
+  };
 
   return (
     <View testID={testID}>
@@ -420,15 +490,17 @@ export const TripOfferingBody: React.FC<TripOfferingBodyProps> = ({
         />
       </View>
 
-      {/* (10) Choose how you pay — ONE merged §10 reserve box (Leg A.3 bug #5: the
-          prior duplicate "payment-choice" box AND separate "reserve" box are now a
-          SINGLE box — payment-plan toggle (plan tiers) + the live price row + the
-          in-box Reserve CTA. The box + the docked/floating bars read the SAME
-          `state`, so they never disagree. Leg B drops N tier rows into this same
-          selectBox slot — the multi-tier seam is intact.) */}
+      {/* (10) Choose your package + how you pay — ONE merged §10 reserve box.
+          META-ORCH-1174 Leg B3 [multi-package selector]: the single-tier slot is now
+          N selectable PACKAGE ROWS (DEC-B/C/D). Each row: name + description + server
+          ALL-IN price + remaining/sold-out + a quantity stepper. A row whose tier
+          carries an installment plan offers its OWN Pay-in-full / Pay-over-time toggle
+          (DEC-F). The summed all-in + summed due-today + the in-box Reserve CTA + the
+          docked/floating bar ALL read the SAME shared `state` → never diverge. N=1
+          renders exactly as Leg A (one row, the same toggle). */}
       <View style={styles.section} testID="trip-body-pay-box">
         <Text style={[styles.secTitle, surface.primaryText, { fontFamily: boldFamily }]}>
-          Choose how you pay
+          {data.tiers.length > 1 ? "Choose your package" : "Choose how you pay"}
         </Text>
 
         {state.selectedTier !== null ? (
@@ -436,40 +508,84 @@ export const TripOfferingBody: React.FC<TripOfferingBodyProps> = ({
             style={[styles.selectBox, surface.card]}
             testID="trip-body-select-box"
           >
-            {/* The shared pay-full / pay-over-time toggle (plan tiers, open only).
-                Tapping drives `paymentPlanChoice` (Leg A.3 bug #4) → the price row
-                + the CTA below + the docked/floating bar all update live. */}
-            {state.projectedSchedule !== null && state.isClosed === false ? (
-              <View style={styles.payChoiceWrap}>
-                <TripPaymentChoice
-                  schedule={state.projectedSchedule}
-                  currency={data.currency}
-                  depositPct={0}
-                  value={paymentPlanChoice}
-                  onChange={onPaymentPlanChoiceChange}
-                  palette={palette}
-                  fontFamily={boldFamily}
-                  testID="trip-body-payment-choice"
-                />
-              </View>
-            ) : null}
+            {selectorActive ? (
+              <>
+                {/* META-ORCH-1174 Leg B3 — N package rows. */}
+                {sortedTiers.map((tier) => (
+                  <TripPackageRow
+                    key={tier.ticketTypeId}
+                    tier={tier}
+                    palette={palette}
+                    surface={surface}
+                    boldFamily={boldFamily}
+                    quantity={quantities?.[tier.ticketTypeId] ?? 0}
+                    disabled={data.bookable === false || state.isClosed}
+                    onChange={(qty) => {
+                      const clamped = state.clampQuantity(tier.ticketTypeId, qty);
+                      onChangeQuantity?.(tier.ticketTypeId, clamped);
+                    }}
+                    planChoice={
+                      planChoiceByTier?.[tier.ticketTypeId] ?? "full"
+                    }
+                    onChangePlanChoice={
+                      onChangePlanChoice !== undefined
+                        ? (v) => onChangePlanChoice(tier.ticketTypeId, v)
+                        : undefined
+                    }
+                    currency={data.currency}
+                  />
+                ))}
 
-            <View style={styles.selectRow}>
-              <Text
-                style={[styles.selectTierName, surface.primaryText, { fontFamily: boldFamily }]}
-                numberOfLines={1}
-              >
-                {state.selectedTier.tierName}
-              </Text>
-              <Text
-                style={[styles.selectPrice, surface.primaryText, { fontFamily: boldFamily }]}
-                testID="trip-body-select-total"
-              >
-                {boxPriceLabel ?? "—"}
-              </Text>
-            </View>
+                {/* Σ all-in / Σ due-today summary row (WYSIWYP). */}
+                <View style={[styles.totalRow, { borderTopColor: palette.panelBorder }]}>
+                  <Text style={[styles.selectTierName, surface.secondaryText]}>
+                    {summaryRowLabel ?? "Total"}
+                  </Text>
+                  <Text
+                    style={[styles.selectPrice, surface.primaryText, { fontFamily: boldFamily }]}
+                    testID="trip-body-select-total"
+                  >
+                    {summaryPriceLabel ?? "—"}
+                  </Text>
+                </View>
+              </>
+            ) : (
+              <>
+                {/* Leg-A fallback: the single-tier read-only preview + toggle. */}
+                {state.projectedSchedule !== null && state.isClosed === false ? (
+                  <View style={styles.payChoiceWrap}>
+                    <TripPaymentChoice
+                      schedule={state.projectedSchedule}
+                      currency={data.currency}
+                      depositPct={0}
+                      value={paymentPlanChoice}
+                      onChange={onPaymentPlanChoiceChange}
+                      palette={palette}
+                      fontFamily={boldFamily}
+                      testID="trip-body-payment-choice"
+                    />
+                  </View>
+                ) : null}
+
+                <View style={styles.selectRow}>
+                  <Text
+                    style={[styles.selectTierName, surface.primaryText, { fontFamily: boldFamily }]}
+                    numberOfLines={1}
+                  >
+                    {state.selectedTier.tierName}
+                  </Text>
+                  <Text
+                    style={[styles.selectPrice, surface.primaryText, { fontFamily: boldFamily }]}
+                    testID="trip-body-select-total"
+                  >
+                    {summaryPriceLabel ?? "—"}
+                  </Text>
+                </View>
+              </>
+            )}
+
             <Pressable
-              onPress={reserveTappable ? () => callbacks.onReserve() : undefined}
+              onPress={reserveTappable ? handleBoxReserve : undefined}
               disabled={!reserveTappable}
               accessibilityRole="button"
               accessibilityState={{ disabled: !reserveTappable }}
@@ -497,11 +613,7 @@ export const TripOfferingBody: React.FC<TripOfferingBodyProps> = ({
                   },
                 ]}
               >
-                {state.cta.kind === "unavailable"
-                  ? state.cta.title
-                  : boxPriceLabel !== null && boxPriceLabel !== "Free"
-                    ? `Reserve · ${boxPriceLabel}`
-                    : "Reserve my spot"}
+                {reserveLabel}
               </Text>
             </Pressable>
             <Text style={[styles.reassure, { color: palette.tertiaryText }]}>
@@ -543,6 +655,178 @@ export const TripOfferingBody: React.FC<TripOfferingBodyProps> = ({
       {/* The phone-only DOCKED reserve CTA — the SAME <TripReserveBar variant="docked">
           the surface builds, rendered as the LAST body child (flush, no void). */}
       {!isDesktop && dockedReserve !== undefined ? dockedReserve : null}
+    </View>
+  );
+};
+
+// ===========================================================================
+// META-ORCH-1174 Leg B3 — TripPackageRow: ONE selectable package row in the §10
+// box. name + description + server ALL-IN price + remaining/sold-out + a quantity
+// stepper. A tier carrying an installment plan offers its own Pay-in-full / Pay-
+// over-time toggle (DEC-F) — that choice flows per-line into the summed due-today.
+// ===========================================================================
+
+const TripPackageRow: React.FC<{
+  tier: TripOfferingTier;
+  palette: ThemePalette;
+  surface: ReturnType<typeof offeringSurfaceStyles>;
+  boldFamily: string;
+  quantity: number;
+  disabled: boolean;
+  onChange: (qty: number) => void;
+  planChoice: TripPaymentPlanChoice;
+  onChangePlanChoice?: (value: TripPaymentPlanChoice) => void;
+  currency: string;
+}> = ({
+  tier,
+  palette,
+  surface,
+  boldFamily,
+  quantity,
+  disabled,
+  onChange,
+  planChoice,
+  onChangePlanChoice,
+  currency,
+}) => {
+  const isSoldOut =
+    tier.isUnlimited === false &&
+    tier.ticketsRemaining !== null &&
+    tier.ticketsRemaining <= 0;
+  // Cap: unlimited → 99; else the tier's own remaining (DEC-D per-package capacity).
+  const cap = tier.isUnlimited
+    ? 99
+    : tier.ticketsRemaining === null
+      ? 0
+      : Math.max(0, tier.ticketsRemaining);
+  const canIncrement = !disabled && !isSoldOut && quantity < cap;
+  const canDecrement = quantity > 0;
+
+  const remainingLabel = tier.isUnlimited
+    ? "Available"
+    : tier.ticketsRemaining === null
+      ? "Available"
+      : tier.ticketsRemaining <= 0
+        ? "Sold out"
+        : tier.ticketsRemaining <= 5
+          ? `${tier.ticketsRemaining} left`
+          : `${tier.ticketsRemaining} available`;
+
+  const hasPlan =
+    tier.installmentSchedule !== null && tier.installmentSchedule !== undefined;
+  // Per-row pay-over-time projection (the row toggle reads it). Scaled by qty (≥1)
+  // so the deposit preview reflects the line, not the unit.
+  const projected =
+    hasPlan && quantity > 0
+      ? projectTripSchedule(tier, new Date(), quantity)
+      : hasPlan
+        ? projectTripSchedule(tier, new Date(), 1)
+        : null;
+
+  return (
+    <View
+      style={[
+        styles.pkgRow,
+        { borderBottomColor: palette.panelBorder },
+        isSoldOut ? styles.pkgRowMuted : null,
+      ]}
+      testID={`trip-body-package-row-${tier.ticketTypeId}`}
+    >
+      <View style={styles.pkgHeaderRow}>
+        <View style={styles.pkgTextCol}>
+          <Text
+            style={[styles.selectTierName, surface.primaryText, { fontFamily: boldFamily }]}
+            numberOfLines={2}
+          >
+            {tier.tierName}
+          </Text>
+          {tier.description !== null &&
+          tier.description !== undefined &&
+          tier.description.length > 0 ? (
+            <Text style={[styles.pkgDesc, surface.secondaryText]} numberOfLines={2}>
+              {tier.description}
+            </Text>
+          ) : null}
+          <Text style={[styles.pkgCap, surface.tertiaryText]}>{remainingLabel}</Text>
+        </View>
+
+        <View style={styles.pkgRight}>
+          <Text
+            style={[styles.pkgPrice, surface.primaryText, { fontFamily: boldFamily }]}
+          >
+            {tripTierPriceLabel(tier)}
+          </Text>
+          {isSoldOut ? (
+            <View
+              style={[
+                styles.pkgSoldOut,
+                { backgroundColor: palette.card, borderColor: palette.panelBorder },
+              ]}
+            >
+              <Text style={[styles.pkgSoldOutText, { color: palette.tertiaryText }]}>
+                Sold out
+              </Text>
+            </View>
+          ) : (
+            <View style={styles.pkgStepper}>
+              <Pressable
+                onPress={canDecrement ? () => onChange(quantity - 1) : undefined}
+                disabled={!canDecrement}
+                accessibilityRole="button"
+                accessibilityLabel={`Remove one ${tier.tierName}`}
+                style={[
+                  styles.pkgStepBtn,
+                  { borderColor: palette.panelBorder },
+                  !canDecrement ? styles.pkgStepBtnDisabled : null,
+                ]}
+                testID={`trip-body-pkg-minus-${tier.ticketTypeId}`}
+              >
+                <Minus size={18} color={palette.primaryText} />
+              </Pressable>
+              <Text
+                style={[styles.pkgQty, surface.primaryText, { fontFamily: boldFamily }]}
+                accessibilityLabel={`${quantity} ${tier.tierName} selected`}
+              >
+                {quantity}
+              </Text>
+              <Pressable
+                onPress={canIncrement ? () => onChange(quantity + 1) : undefined}
+                disabled={!canIncrement}
+                accessibilityRole="button"
+                accessibilityLabel={`Add one ${tier.tierName}`}
+                style={[
+                  styles.pkgStepBtn,
+                  { borderColor: palette.panelBorder },
+                  !canIncrement ? styles.pkgStepBtnDisabled : null,
+                ]}
+                testID={`trip-body-pkg-plus-${tier.ticketTypeId}`}
+              >
+                <Plus size={18} color={palette.primaryText} />
+              </Pressable>
+            </View>
+          )}
+        </View>
+      </View>
+
+      {/* Per-package payment plan (DEC-F) — only when the tier carries a plan AND
+          this line is selected, so the buyer chooses how to pay for THIS package. */}
+      {hasPlan &&
+      projected !== null &&
+      quantity > 0 &&
+      onChangePlanChoice !== undefined ? (
+        <View style={styles.pkgPlanWrap}>
+          <TripPaymentChoice
+            schedule={projected}
+            currency={currency}
+            depositPct={0}
+            value={planChoice}
+            onChange={onChangePlanChoice}
+            palette={palette}
+            fontFamily={boldFamily}
+            testID={`trip-body-pkg-plan-${tier.ticketTypeId}`}
+          />
+        </View>
+      ) : null}
     </View>
   );
 };
@@ -655,6 +939,50 @@ const styles = StyleSheet.create({
   },
   selectTierName: { flexShrink: 1, fontSize: 15, fontWeight: "800" },
   selectPrice: { fontSize: 22, fontWeight: "900", letterSpacing: -0.4 },
+  // ---- §10 Leg B3 package rows ----
+  pkgRow: {
+    paddingVertical: 14,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+  },
+  pkgRowMuted: { opacity: 0.7 },
+  pkgHeaderRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 12,
+  },
+  pkgTextCol: { flex: 1, minWidth: 0 },
+  pkgDesc: { fontSize: 13, marginTop: 3, lineHeight: 18 },
+  pkgCap: { fontSize: 12, fontWeight: "700", marginTop: 4 },
+  pkgRight: { alignItems: "flex-end", gap: 8 },
+  pkgPrice: { fontSize: 15, fontWeight: "900" },
+  pkgStepper: { flexDirection: "row", alignItems: "center", gap: 12 },
+  pkgStepBtn: {
+    width: 34,
+    height: 34,
+    borderRadius: 999,
+    borderWidth: 1,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  pkgStepBtnDisabled: { opacity: 0.4 },
+  pkgQty: { fontSize: 16, fontWeight: "900", minWidth: 18, textAlign: "center" },
+  pkgSoldOut: {
+    borderRadius: 999,
+    borderWidth: 1,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+  },
+  pkgSoldOutText: { fontSize: 12, fontWeight: "800" },
+  pkgPlanWrap: { marginTop: 12 },
+  totalRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "baseline",
+    borderTopWidth: 1,
+    paddingTop: 14,
+    marginTop: 4,
+  },
   boxProceed: {
     flexDirection: "row",
     alignItems: "center",

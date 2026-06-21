@@ -81,6 +81,7 @@ import {
   useTripOfferingState,
   type TripOfferingData,
   type TripPaymentPlanChoice,
+  type TripReserveLine,
 } from "@mingla/offering-rendering";
 // ORCH-1138 Leg 1C — the shared Direction-A foundation primitives. The consumer
 // trip detail converges on the business/web trip page (TripPreview FOUNDATION
@@ -141,6 +142,7 @@ import { useConsumerThemeFont } from "../../theme/useConsumerThemeFont";
 import {
   buildConsumerTripOfferingBrand,
   buildConsumerTripOfferingData,
+  type ConsumerTripTierEnrichment,
 } from "../../hooks/useConsumerTripOfferingData";
 import type { DiscoverTripRow } from "../../services/tripsDiscoveryService";
 import type { BusinessEventCard } from "../../types/mergedDiscover";
@@ -287,6 +289,35 @@ export default function ConsumerTripDetailScreen({
   // server receives an EXPLICIT choice for plan trips (DISC-1130-A consent fix).
   const [paymentPlanChoice, setPaymentPlanChoice] =
     useState<"full" | "installments">("full");
+  // META-ORCH-1174 Leg B3 — the per-package selection (DEC-B/C) + per-package plan
+  // choice (DEC-F). The §10 multi-package box steppers write through these; the
+  // shared state derives the summed all-in / due-today / selected lines. Reserve
+  // seeds the cart with the selected lines via initialQuantities (the cart is still
+  // the confirmation step — never auto-charges).
+  const [quantities, setQuantities] = useState<Record<string, number>>({});
+  const [planChoiceByTier, setPlanChoiceByTier] = useState<
+    Record<string, "full" | "installments">
+  >({});
+  const [seededQuantities, setSeededQuantities] = useState<
+    Record<string, number> | undefined
+  >(undefined);
+  const handleChangeQuantity = useCallback(
+    (ticketTypeId: string, qty: number): void => {
+      setQuantities((prev) => {
+        const next = { ...prev };
+        if (qty <= 0) delete next[ticketTypeId];
+        else next[ticketTypeId] = qty;
+        return next;
+      });
+    },
+    [],
+  );
+  const handleChangePlanChoice = useCallback(
+    (ticketTypeId: string, value: "full" | "installments"): void => {
+      setPlanChoiceByTier((prev) => ({ ...prev, [ticketTypeId]: value }));
+    },
+    [],
+  );
   // META-ORCH-1174 — the OS reduce-motion preference, threaded into the shared
   // TripOfferingBody (it owns the About collapse animation + the countdown pill).
   const [reduceMotion, setReduceMotion] = useState<boolean>(false);
@@ -420,15 +451,53 @@ export default function ConsumerTripDetailScreen({
   // loading/error/not-found early returns). The §10 box + the docked/floating bar
   // all read this state → never diverge. Reserve opens the cart DIRECTLY (the
   // gate-protected straight-to-cart flow, ORCH-1138).
+  // META-ORCH-1174 Leg B3 — the per-tier server all-in + description from the SAME
+  // tickets source the cart uses (usePublicEventTickets). The §10 box DISPLAYS +
+  // SUMS this all-in (WYSIWYP); the description rounds out each package row.
+  const tierEnrichment = useMemo<
+    Map<string, ConsumerTripTierEnrichment>
+  >(() => {
+    const map = new Map<string, ConsumerTripTierEnrichment>();
+    for (const t of ticketsQuery.data ?? []) {
+      map.set(t.id, {
+        allInCents:
+          typeof t.priceAllInGbp === "number"
+            ? Math.round(t.priceAllInGbp * 100)
+            : null,
+        description: t.description ?? null,
+      });
+    }
+    return map;
+  }, [ticketsQuery.data]);
+
   const offeringData = useMemo<TripOfferingData>(
     () =>
       detail !== null
-        ? buildConsumerTripOfferingData(detail)
+        ? buildConsumerTripOfferingData(detail, tierEnrichment)
         : EMPTY_TRIP_OFFERING_DATA,
-    [detail],
+    [detail, tierEnrichment],
   );
+  // META-ORCH-1174 Leg B3 — Reserve opens the cart DIRECTLY, seeded with the
+  // SELECTED LINES (DEC-B). `lines` carries the §10 multi-package selection; we
+  // stash it as initialQuantities so the cart lands pre-populated + editable (the
+  // confirmation step, never auto-charged). Empty selection → open un-seeded (the
+  // cart's own steppers let the buyer pick — never a dead tap). The split-button
+  // `choice` fast path is preserved for a single-package plan trip.
   const onReserveFromBody = useCallback(
-    (choice?: TripPaymentPlanChoice): void => {
+    (choice?: TripPaymentPlanChoice, lines?: TripReserveLine[]): void => {
+      if (lines !== undefined && lines.length > 0) {
+        const seed: Record<string, number> = {};
+        for (const l of lines) seed[l.ticketTypeId] = l.quantity;
+        setSeededQuantities(seed);
+        // If any selected line pays over time, lead the cart with the deposit.
+        const anyInstallments = lines.some(
+          (l) => l.paymentPlanChoice === "installments",
+        );
+        setPaymentPlanChoice(anyInstallments ? "installments" : "full");
+        openCart();
+        return;
+      }
+      setSeededQuantities(undefined);
       if (choice !== undefined) openCartWithChoice(choice);
       else openCart();
     },
@@ -437,6 +506,8 @@ export default function ConsumerTripDetailScreen({
   const offeringState = useTripOfferingState({
     data: offeringData,
     paymentPlanChoice,
+    quantities,
+    planChoiceByTier,
     onReserve: onReserveFromBody,
   });
 
@@ -559,6 +630,9 @@ export default function ConsumerTripDetailScreen({
   const handleCartCancel = useCallback((): void => {
     setCartVisible(false);
     setInitialTicketTypeId(null);
+    // META-ORCH-1174 Leg B3 — clear the multi-package seed so a later single-tier
+    // Reserve doesn't re-seed the prior multi-selection.
+    setSeededQuantities(undefined);
   }, []);
 
   // Floating close/share chrome — preserved from the prior overlay, now layered
@@ -782,6 +856,10 @@ export default function ConsumerTripDetailScreen({
               variant="phone"
               paymentPlanChoice={paymentPlanChoice}
               onPaymentPlanChoiceChange={setPaymentPlanChoice}
+              quantities={quantities}
+              onChangeQuantity={handleChangeQuantity}
+              planChoiceByTier={planChoiceByTier}
+              onChangePlanChoice={handleChangePlanChoice}
               dockedReserve={dockedReserve}
               reduceMotion={reduceMotion}
               testID="meta-orch-1174-consumer-trip-body"
@@ -829,6 +907,11 @@ export default function ConsumerTripDetailScreen({
         intakeSchemasByTier={intakeSchemasQuery.data}
         fallbackCurrency={detail.currency ?? "USD"}
         initialTicketTypeId={initialTicketTypeId}
+        // META-ORCH-1174 Leg B3 — when Reserve fired with a multi-package selection,
+        // seed the cart with ALL selected lines (takes precedence over the single
+        // initialTicketTypeId). The cart lands pre-populated + editable (the
+        // confirmation step). Empty/undefined → single-tier seed (Leg-A behavior).
+        initialQuantities={seededQuantities}
         buyerName={
           profile?.display_name?.trim() || user?.email?.split("@")[0] || "Guest"
         }
