@@ -306,17 +306,31 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
   },
   tableCard: {
-    // ORCH-1190 #8 — full-width row card. On narrow widths the card previously
-    // collapsed to its min-content width (the GlassCard wrapper carried the
-    // flexDirection:row, so its single clipped child shrank to min-content),
-    // wrapping the meta text one character per line. The card style now only
-    // forces full width; the row layout lives on the inner `tableRow` View.
+    // ORCH-1190 #8 / R2 — full-width row card. On narrow widths the card
+    // previously collapsed to its min-content width (the GlassCard wrapper
+    // carried the flexDirection:row, so its single clipped child shrank to
+    // min-content), wrapping the meta text one character per line.
+    //
+    // R2 HARDENING: width:"100%" alone resolves against the PARENT's width, so
+    // it only protects the card when every ancestor stretches. A vertical
+    // ScrollView content container (the shell's phone path) or any ancestor that
+    // sets alignItems other than "stretch" leaves the card sized by its content
+    // → the one-char-per-line collapse returns. `alignSelf:"stretch"` forces the
+    // card to fill its cross-axis regardless of the ancestor's alignItems, and
+    // width:"100%" keeps it edge-to-edge when the parent IS definite. Both are
+    // required; neither alone covers every container.
     width: "100%",
+    alignSelf: "stretch",
   },
   tableRow: {
     flexDirection: "row",
     alignItems: "center",
     gap: spacing.sm,
+    // R2 — the GlassCard padding wrapper between the width:100% card and this
+    // row carries no width of its own; pin the row to 100% so the flex children
+    // below (tableMain/tableText with flex:1+minWidth:0) measure against the
+    // full card width instead of collapsing to the longest unbreakable word.
+    width: "100%",
   },
   tableCardInactive: {
     opacity: 0.55,
