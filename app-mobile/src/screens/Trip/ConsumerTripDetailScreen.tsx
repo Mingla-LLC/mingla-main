@@ -79,6 +79,11 @@ import {
   TripOfferingBody,
   TripReserveBar,
   useTripOfferingState,
+  // ORCH-1181 — per-package deposit-due-today + the shared installment sub-line
+  // copy (identical to business + web). Reuses the same all-in deposit math the
+  // cart-level "Due today" reads — never recomputes fees.
+  tripTierDepositTodayCents,
+  formatTripTierInstallmentNote,
   type TripOfferingData,
   type TripPaymentPlanChoice,
   type TripReserveLine,
@@ -511,6 +516,60 @@ export default function ConsumerTripDetailScreen({
     onReserve: onReserveFromBody,
   });
 
+  // ORCH-1181 — the per-package installment sub-line shown on each cart tile
+  // (parity with the business/web checkout tile). For each PLAN tier whose
+  // effective choice is pay-over-time, compute the deposit-due-today off the
+  // SAME all-in deposit math the cart-level "Due today" uses
+  // (tripTierDepositTodayCents), and format via the SHARED copy formatter. We
+  // scale by the buyer's selected quantity (default 1 so the affordance shows on
+  // a plan tier even before a row is bumped). Gated on detail.hasPlan so events /
+  // experiences / no-plan trips contribute nothing (the map is empty → no notes).
+  const installmentNoteByTicketId = useMemo<Record<string, string>>(() => {
+    const map: Record<string, string> = {};
+    if (detail === null || !detail.hasPlan) return map;
+    for (const tier of offeringData.tiers) {
+      const hasPlan =
+        tier.installmentSchedule !== null &&
+        tier.installmentSchedule !== undefined;
+      if (!hasPlan) continue;
+      // Effective per-tier choice: explicit per-tier map wins, else the cart-level
+      // toggle (mirrors useTripOfferingState's effectivePlanByTier).
+      const choice =
+        planChoiceByTier[tier.ticketTypeId] ?? paymentPlanChoice;
+      if (choice !== "installments") continue;
+      const qty = Math.max(1, quantities[tier.ticketTypeId] ?? 1);
+      const deposit = tripTierDepositTodayCents(
+        {
+          ticketTypeId: tier.ticketTypeId,
+          priceCents: tier.priceCents,
+          priceAllInCents: tier.priceAllInCents ?? null,
+          isFree: tier.isFree,
+          isUnlimited: tier.isUnlimited,
+          ticketsRemaining: tier.ticketsRemaining,
+          installmentSchedule: tier.installmentSchedule,
+        },
+        qty,
+      );
+      const note = formatTripTierInstallmentNote(
+        deposit,
+        tier.currency || detail.currency || "USD",
+        (value, currency) =>
+          (() => {
+            try {
+              return new Intl.NumberFormat(undefined, {
+                style: "currency",
+                currency: currency || "USD",
+              }).format(value);
+            } catch {
+              return `${value.toFixed(2)} ${currency}`;
+            }
+          })(),
+      );
+      if (note !== null) map[tier.ticketTypeId] = note;
+    }
+    return map;
+  }, [detail, offeringData.tiers, planChoiceByTier, paymentPlanChoice, quantities]);
+
   // ORCH-1138 — handleBuy ported VERBATIM (behavior) from EBES handleBuy
   // (ExpandedBusinessEventSheet.tsx:313-432), scoped to the trip. Same buyer
   // derivation, same guards, same byte-identical runNativeCheckout request (NO
@@ -930,6 +989,9 @@ export default function ConsumerTripDetailScreen({
             ? offeringState.projectedSchedule.depositCents
             : undefined
         }
+        // ORCH-1181 — per-package installment sub-line on each cart tile (parity
+        // with business/web). Empty for events / no-plan / pay-in-full.
+        installmentNoteByTicketId={installmentNoteByTicketId}
         onCancel={handleCartCancel}
         onCheckout={handleCartCheckout}
       />

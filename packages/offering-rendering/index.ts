@@ -173,6 +173,10 @@ export {
   tripSummedAllInCents,
   tripSummedDueTodayCents,
   tripAnyLineOnPlan,
+  // ORCH-1181 — per-package deposit-due-today + the shared installment sub-line
+  // copy for the checkout/cart ticket tile (business + web + consumer identical).
+  tripTierDepositTodayCents,
+  formatTripTierInstallmentNote,
 } from "./tripBoxTotals";
 export type {
   TripTierLike,

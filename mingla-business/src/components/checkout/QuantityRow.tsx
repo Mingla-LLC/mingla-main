@@ -38,6 +38,14 @@ export interface QuantityRowProps {
   /** Caller dispatches; this component is fully controlled. */
   onQuantityChange: (next: number) => void;
   onJoinWaitlist?: (ticketId: string) => void;
+  /**
+   * ORCH-1181 — a ready-formatted per-package installment sub-line (e.g.
+   * "From $125.00 today · pay over time"). Forwarded verbatim to the shared
+   * QuantityRow. The checkout screen passes it ONLY for a trip tier on a payment
+   * plan when pay-over-time is the active cart choice (null otherwise → events /
+   * no-plan / pay-in-full render nothing).
+   */
+  installmentNote?: string | null;
 }
 
 const MINGLA_BUSINESS_THEME: QuantityRowTheme = {
@@ -75,6 +83,7 @@ export const QuantityRow: React.FC<QuantityRowProps> = ({
   quantity,
   onQuantityChange,
   onJoinWaitlist,
+  installmentNote,
 }) => {
   const renderPlusIcon = useCallback(
     (iconProps: { size: number; color: string }) => (
@@ -119,6 +128,7 @@ export const QuantityRow: React.FC<QuantityRowProps> = ({
       theme={MINGLA_BUSINESS_THEME}
       fallbackCurrency="GBP"
       onJoinWaitlist={onJoinWaitlist}
+      installmentNote={installmentNote}
     />
   );
 };
