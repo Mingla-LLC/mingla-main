@@ -240,3 +240,23 @@ Either gate payment-plan reservations to one package per cart (no engine change)
 - Leg A not landed → seam coordination churn (DEC-1174-A). Building on current files means a future promotion re-touches the same code.
 - Trip pages display BASE price today, not all-in — wiring server all-in into §10 is itself net work even before multi-tier (the all-in only enters after Reserve in the cart today).
 - Per-tier capacity authoring breaks the Step-1→Step-4 read-only capacity mirror; capacity ownership moves into Step-4 per package (DEC-1174-D).
+
+---
+## SETH-LOCKED DECISIONS (2026-06-20)
+- **DEC-A:** Build on the SHIPPED Leg-A `TripOfferingBody`/`useTripOfferingState` + `pg_public_trip_by_slug` (they ARE on main; the forensics read a stale anchor). NOT TripPreview.
+- **DEC-B = MULTIPLE packages in one reservation** (Standard×1 + VIP×2), cart sums all lines (event model).
+- **DEC-C:** per-package quantity >1 allowed.
+- **DEC-D:** per-package capacity (each package its own spots/remaining), like event ticket_types.
+- **DEC-E:** soft cap (default 6 packages/trip; confirm in impl).
+- **DEC-F = FULL multi-package installments** — lift the `ticket_lines_mixed_with_installments` engine guard + make per-line installment math work across multiple lines (the real engine work). An installment package CAN sit alongside others in one cart.
+- **DEC-G:** inline add/remove package rows in the wizard pricing step; per-package fields: name, price, description, capacity, optional per-package installment terms.
+- **DEC-H:** edit-published can add/remove/reprice packages, reusing existing refund-gates (tier_delete_with_sales / tier_price_change_with_sales / capacity_below_sold); add an INSERT branch + make the live-edit capacity writer per-tier (drop the LIMIT 1).
+- **DEC-I:** mixed free + paid packages allowed.
+- **DEC-J:** floating bar = "From $X" until a package is selected, then the summed all-in.
+- **ALL-IN:** §10 shows server all-in upfront (wire fetchTierAllInCents/pg_public_event_tier_allin), matching the WYSIWYP all-in policy — today trips show base price.
+
+## PHASING
+- **B1 (engine foundation):** lift the single-tier service rule (tripsService) + the FULL multi-package installment engine (DB guard + per-line installment math in the checkout session/finalize RPCs + ticket-checkout-create edge fn) + confirm per-package capacity/remaining. Money-path; most careful.
+- **B2:** wizard multi-package authoring (add/remove rows + per-package fields incl. installments).
+- **B3:** public §10 multi-option selector (N rows + per-package qty + multi-select) + summed server all-in + cart wiring + floating bar.
+- **B4:** edit-published multi-tier (INSERT branch + per-tier capacity writer).
