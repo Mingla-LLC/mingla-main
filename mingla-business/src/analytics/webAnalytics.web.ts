@@ -254,6 +254,13 @@ export function grantConsent(): void {
       ad_personalization: "granted",
     });
   }
+  // META-ORCH-1187 P2 — consent-rate measurement. Fire AFTER opt_in_capturing()
+  // above: while still opted-out PostHog drops captures, so an earlier fire would
+  // be silently lost. Deny-rate is derived as sessions-without-a-grant (no
+  // `consent_denied` PostHog capture is fired on Reject — PostHog stays opted-out
+  // there so a capture cannot send; see denyConsent below).
+  captureWeb("consent_granted");
+  gaEvent("consent_granted");
 }
 
 /** Reject handler — keeps both gates closed and persists the choice. */
@@ -266,6 +273,10 @@ export function denyConsent(): void {
   }
   // GA4: leave the defaults denied (no update). GA then runs in cookieless
   // consent mode (pinged, no cookies).
+  // META-ORCH-1187 P2 — NO `consent_denied` PostHog capture here: PostHog stays
+  // opted-out on Reject, so a capture would be dropped. Deny-rate is derived
+  // downstream as sessions-without-a `consent_granted`. GA4 stays consent-denied
+  // (cookieless) so no gaEvent fires on deny either.
 }
 
 /** Fire a custom PostHog event + (optionally) a GA4 event. No-op if gated. */

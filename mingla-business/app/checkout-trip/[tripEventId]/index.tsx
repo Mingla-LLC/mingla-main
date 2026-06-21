@@ -66,6 +66,10 @@ import {
 } from "../../../src/components/checkout/CartContext";
 import { CheckoutHeader } from "../../../src/components/checkout/CheckoutHeader";
 import { QuantityRow } from "../../../src/components/checkout/QuantityRow";
+// META-ORCH-1187 P2 — buyer-web funnel parity: fire `web_checkout_started` on the
+// trip checkout too (the event checkout already does; trips/experiences didn't,
+// undercounting started checkouts). Web-only (native no-op via the .web split).
+import { captureWeb, gaEvent } from "../../../src/analytics/webAnalytics";
 
 /**
  * Convert a TripPricingTier (DB shape) to a TicketStub (QuantityRow's
@@ -168,6 +172,22 @@ export default function CheckoutTripTicketsScreen(): React.ReactElement {
   const { lines, paymentPlanChoice, setLineQuantity, setPaymentPlanChoice } =
     useCart();
   const totals = useCartTotals();
+
+  // META-ORCH-1187 P2 — fire `web_checkout_started` once the buyer lands on the
+  // trip cart and the trip event id resolves (begin of the web purchase funnel),
+  // matching app/checkout/[eventId]/index.tsx. PostHog + GA4 `begin_checkout` for
+  // the Ads link. Web-only (no-op on native). offering_type: "trip".
+  const checkoutStartedRef = useRef<boolean>(false);
+  useEffect(() => {
+    if (checkoutStartedRef.current) return;
+    if (tripEventId === null) return;
+    checkoutStartedRef.current = true;
+    captureWeb("web_checkout_started", {
+      event_id: tripEventId,
+      offering_type: "trip",
+    });
+    gaEvent("begin_checkout", { event_id: tripEventId });
+  }, [tripEventId]);
 
   // ORCH-1178 — the cart step always shows, so the trip funnel is index → buyer
   // → [intake] → payment. Derive the visible total (3 without intake, 4 with) so
