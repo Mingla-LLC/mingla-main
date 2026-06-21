@@ -35,6 +35,7 @@ import {
 } from "../../../src/constants/designSystem";
 import { tripPublicPath } from "../../../src/constants/publicUrls";
 import { usePublicTripById } from "../../../src/hooks/usePublicTripById";
+import { useTripIntakeSchemasByEvent } from "../../../src/hooks/useIntakeSchema";
 import { formatCurrency } from "../../../src/utils/currency";
 import { projectInstallmentSchedule } from "../../../src/utils/installmentScheduleProjection";
 import type { TripPricingTier } from "../../../src/services/tripsService";
@@ -48,7 +49,7 @@ import { Button } from "../../../src/components/ui/Button";
 import { EmptyState } from "../../../src/components/ui/EmptyState";
 import { EventCoverMedia } from "../../../src/components/ui/EventCoverMedia";
 import { decideAutoSkip } from "./autoSkipDecision";
-import { bookableTierCount } from "./bookableTierCount";
+import { tripFunnelTotalSteps } from "./tripFunnelSteps";
 
 import {
   useCart,
@@ -178,6 +179,26 @@ export default function CheckoutTripTicketsScreen(): React.ReactElement {
   const { lines, paymentPlanChoice, setLineQuantity, setPaymentPlanChoice } =
     useCart();
   const totals = useCartTotals();
+
+  // ORCH-1178 — the cart step always shows, so the trip funnel is index → buyer
+  // → [intake] → payment. Derive the visible total (3 without intake, 4 with) so
+  // the "1 OF N" pill reads correctly. The cart is empty on first mount (the
+  // buyer hasn't picked a tier yet), so the intake-presence probe keys off ANY
+  // of the trip's tiers having a schema with ≥1 question — a stable answer that
+  // matches what buyer/payment derive once a selection is committed. Same
+  // anon-tolerant by-event query the buyer step uses.
+  const intakeSchemasQuery = useTripIntakeSchemasByEvent(tripEventId ?? "", {
+    enabled: tripEventId !== null,
+  });
+  const hasAnyIntakeSchema = React.useMemo<boolean>(() => {
+    if (intakeSchemasQuery.data === undefined || trip === null) return false;
+    for (const tier of trip.pricingTiers) {
+      const schema = intakeSchemasQuery.data.get(tier.ticketTypeId);
+      if (schema !== undefined && schema.questions.length > 0) return true;
+    }
+    return false;
+  }, [intakeSchemasQuery.data, trip]);
+  const totalSteps = tripFunnelTotalSteps(hasAnyIntakeSchema);
 
   // ORCH-1130 ADDENDUM (Seth-BINDING) — the price shown beside the Continue CTA
   // (the Subtotal) follows the current pay-full vs pay-over-time selection
@@ -330,24 +351,15 @@ export default function CheckoutTripTicketsScreen(): React.ReactElement {
       }
       return;
     }
-    // ORCH-1176 — only auto-advance to /buyer for an effectively SINGLE-tier trip
-    // (≤1 bookable tier). For a genuine MULTI-PACKAGE trip (>1 bookable tier) the
-    // cart is seeded but we STAY on index ("1 OF 3") so the buyer reviews/edits the
-    // package quantities before handleContinue routes them to /buyer. Bookable =
-    // unlimited OR remaining capacity > 0 (mirrors tierToTicketStub's capacity).
-    const bookableCount = bookableTierCount(
-      trip.pricingTiers.map(tierToTicketStub),
-    );
-    if (bookableCount > 1) {
-      // Latch so we don't keep re-seeding; the buyer drives the funnel from here.
-      multiSeedNavigatedRef.current = true;
-      return;
-    }
-    // All seeded lines have landed → /buyer reads a populated cart.
+    // ORCH-1178 — the cart/quantity step ALWAYS shows and STAYS for every trip
+    // (single AND multi tier). The public-page `lines` selection pre-seeds the
+    // cart so the buyer sees their picks, but we NO LONGER auto-advance to /buyer
+    // (the old single-tier `router.replace` is removed — it briefly showed the
+    // cart then yanked the buyer to "Your details" with no chance to edit qty).
+    // Just latch so we stop re-seeding; the buyer taps Continue to advance.
     multiSeedNavigatedRef.current = true;
-    router.replace(`/checkout-trip/${tripEventId}/buyer` as never);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tripEventId, trip, seededLinesParam, lines, router]);
+  }, [tripEventId, trip, seededLinesParam, lines]);
 
   const autoSkipNavigatedRef = useRef(false);
   useEffect(() => {
@@ -392,13 +404,16 @@ export default function CheckoutTripTicketsScreen(): React.ReactElement {
       });
       return;
     }
-    // outcome === "navigate": the sole tier's line is present (qty>=1) → /buyer
-    // reads a populated cart and its empty-cart guard will not bounce us back.
-    // Latch so this navigation fires EXACTLY ONCE per mount (kills the ping-pong).
+    // ORCH-1178 — outcome === "navigate": the sole tier's line is present
+    // (qty>=1). We PRE-SEED the sole tier (the "addLine" branch above) so it's
+    // editable at qty 1, but we NO LONGER auto-`router.replace` to /buyer — the
+    // cart/quantity step ALWAYS stays so the buyer can edit quantity and tap
+    // Continue. Just latch so the effect goes quiet (the sole tier is seeded,
+    // no ping-pong). This supersedes the ORCH-1130 single-tier auto-skip
+    // behaviorally (decideAutoSkip the pure fn is intentionally unchanged).
     autoSkipNavigatedRef.current = true;
-    router.replace(`/checkout-trip/${tripEventId}/buyer` as never);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tripEventId, trip, lines, router]);
+  }, [tripEventId, trip, lines]);
 
   // ----- Trip-not-found / past / closed empty states -----
   if (publicTripQuery.isLoading || publicTripQuery.isFetching) {
@@ -406,7 +421,7 @@ export default function CheckoutTripTicketsScreen(): React.ReactElement {
       <View style={styles.host}>
         <CheckoutHeader
           stepIndex={0}
-          totalSteps={3}
+          totalSteps={totalSteps}
           title="Reserve your spot"
           onBack={handleBack}
         />
@@ -422,7 +437,7 @@ export default function CheckoutTripTicketsScreen(): React.ReactElement {
       <View style={styles.host}>
         <CheckoutHeader
           stepIndex={0}
-          totalSteps={3}
+          totalSteps={totalSteps}
           title="Reserve your spot"
           onBack={handleBack}
         />
@@ -443,7 +458,7 @@ export default function CheckoutTripTicketsScreen(): React.ReactElement {
       <View style={styles.host}>
         <CheckoutHeader
           stepIndex={0}
-          totalSteps={3}
+          totalSteps={totalSteps}
           title="Reserve your spot"
           onBack={handleBack}
         />
@@ -467,7 +482,7 @@ export default function CheckoutTripTicketsScreen(): React.ReactElement {
       <View style={styles.host}>
         <CheckoutHeader
           stepIndex={0}
-          totalSteps={3}
+          totalSteps={totalSteps}
           title="Reserve your spot"
           onBack={handleBack}
         />
@@ -495,7 +510,7 @@ export default function CheckoutTripTicketsScreen(): React.ReactElement {
       <View style={styles.host}>
         <CheckoutHeader
           stepIndex={0}
-          totalSteps={3}
+          totalSteps={totalSteps}
           title="Reserve your spot"
           onBack={handleBack}
         />
@@ -533,7 +548,7 @@ export default function CheckoutTripTicketsScreen(): React.ReactElement {
     <View style={styles.host}>
       <CheckoutHeader
         stepIndex={0}
-        totalSteps={3}
+        totalSteps={totalSteps}
         title="Reserve your spot"
         onBack={handleBack}
       />

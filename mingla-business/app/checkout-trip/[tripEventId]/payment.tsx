@@ -50,6 +50,7 @@ import {
   text as textTokens,
 } from "../../../src/constants/designSystem";
 import { usePublicTripById } from "../../../src/hooks/usePublicTripById";
+import { useTripIntakeSchemasByEvent } from "../../../src/hooks/useIntakeSchema";
 import { formatCurrency } from "../../../src/utils/currency";
 import { isRequiredPhoneValid } from "../../../src/utils/phone";
 import { tripPublicPath } from "../../../src/constants/publicUrls";
@@ -75,7 +76,10 @@ import {
   writeCheckoutResumePayload,
 } from "../../../src/components/checkout/checkoutPersistence";
 import { CheckoutHeader } from "../../../src/components/checkout/CheckoutHeader";
-import { bookableTierCount } from "./bookableTierCount";
+import {
+  tripFunnelTotalSteps,
+  tripPaymentStepIndex,
+} from "./tripFunnelSteps";
 import { supabase } from "../../../src/services/supabase";
 
 const NativeCheckoutPaymentBoundary = React.lazy(
@@ -110,6 +114,12 @@ function CheckoutTripPaymentScreenContent({
 
   const publicTripQuery = usePublicTripById(tripEventId);
   const trip = publicTripQuery.data?.trip ?? null;
+  // ORCH-1178 — anon-tolerant per-tier intake schemas, used ONLY to derive the
+  // funnel length (whether /intake sits between /buyer and /payment). Mirrors
+  // buyer.tsx's by-event query.
+  const intakeSchemasQuery = useTripIntakeSchemasByEvent(tripEventId ?? "", {
+    enabled: tripEventId !== null,
+  });
   const {
     lines,
     buyer,
@@ -590,19 +600,22 @@ function CheckoutTripPaymentScreenContent({
   const showFeesTaxLine = feesTaxLineCents > 0;
   const displayAllIn = formatCurrency(headlineCents, totals.currency, true);
 
-  // ORCH-1176 — derive the funnel length from the trip's BOOKABLE tier count so
-  // the "Review & pay" step reads "2 OF 3" on a multi-package trip and "2 OF 2"
-  // on the single-tier auto-skip path (consistent with index.tsx + buyer.tsx).
-  const totalSteps: 2 | 3 =
-    trip !== null &&
-    bookableTierCount(
-      trip.pricingTiers.map((t) => ({
-        isUnlimited: t.isUnlimited,
-        capacity: t.ticketsRemaining ?? t.quantityTotal,
-      })),
-    ) > 1
-      ? 3
-      : 2;
+  // ORCH-1178 — the cart step ALWAYS shows now, so the "Review & pay" step is
+  // the LAST step of the index → buyer → [intake] → payment funnel: "3 OF 3"
+  // without an intake form, "4 OF 4" with one. (Supersedes the ORCH-1176
+  // bookableTierCount-derived 2|3.) Reuse the SAME per-cart-line intake-presence
+  // predicate buyer.tsx uses to route Continue → /intake, so the payment counter
+  // and the funnel can never disagree.
+  const hasAnyIntakeSchema = React.useMemo<boolean>(() => {
+    if (intakeSchemasQuery.data === undefined) return false;
+    for (const line of lines) {
+      const schema = intakeSchemasQuery.data.get(line.ticketTypeId);
+      if (schema !== undefined && schema.questions.length > 0) return true;
+    }
+    return false;
+  }, [intakeSchemasQuery.data, lines]);
+  const totalSteps = tripFunnelTotalSteps(hasAnyIntakeSchema);
+  const paymentStepIndex = tripPaymentStepIndex(hasAnyIntakeSchema);
 
   // Defensive shell while guards redirect.
   if (
@@ -615,7 +628,7 @@ function CheckoutTripPaymentScreenContent({
     return (
       <View style={styles.host}>
         <CheckoutHeader
-          stepIndex={1}
+          stepIndex={paymentStepIndex}
           totalSteps={totalSteps}
           title="Review & pay"
           onBack={handleBack}
@@ -627,7 +640,7 @@ function CheckoutTripPaymentScreenContent({
   return (
     <View style={styles.host}>
       <CheckoutHeader
-        stepIndex={1}
+        stepIndex={paymentStepIndex}
         totalSteps={totalSteps}
         title="Review & pay"
         onBack={handleBack}
