@@ -75,7 +75,7 @@ None. (Spec DO-NOT-TOUCH: no server-side capture this phase.)
 
 **Happy-path regression (implementor-owned):** `.github/scripts/strict-grep/i-proposed-1187-marketing-layout-mounts-analytics.mjs` — asserts `app/layout.tsx` mounts `<PostHogProvider>` + `<ConsentBanner>` + `<GoogleAnalytics gaId>` and the provider init uses the US host. This is the §9 marketing fails-on-revert contract. (The marketing project has no jest/vitest harness; a Node structural gate is the in-CI-runnable form and matches the §9 "unit/lint test" intent.)
 
-**fails-on-revert verified at commit `<FILLED ON COMMIT>` (see commit hash list in Section 0 of chat):**
+**fails-on-revert verified at commit `82db71f9d`:**
 - CONSENT gate: deleted the `opt_out_capturing_by_default: true` line → `i-proposed-1187-consent-gate-before-cookies.mjs` exit 1 (FAIL). Restored → exit 0 (PASS).
 - REPLAY-MASKS-PII gate (SECURITY): flipped `maskAllInputs: true`→`false` → `i-proposed-1187-replay-masks-pii.mjs` exit 1 (FAIL). Restored → exit 0.
 - POSTHOG-HOST-US gate: replaced US host with `eu.i.posthog.com` → `i-proposed-1187-posthog-host-us.mjs` exit 1 (FAIL). Restored → exit 0.
