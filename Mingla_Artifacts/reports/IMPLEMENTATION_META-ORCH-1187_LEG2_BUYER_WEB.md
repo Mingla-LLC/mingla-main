@@ -95,7 +95,7 @@ None. (DO-NOT-TOUCH honored; no server-side capture this phase.)
 ## 6. Regression tests added
 
 - **Happy-path (implementor):** `mingla-business/src/analytics/__tests__/orch1187Leg2BuyerWebAnalytics.test.ts` — 18 tests, all PASS. Source-text proofs (node-env, comment-stripped for true fails-on-revert) covering: US host, consent gate, masked replay, GA4 all-denied default, the export facade, dynamic posthog-js import, native no-op purity, `_layout` web-guard + banner mount, and all 8 conversion/view call sites.
-- **fails-on-revert verified at commit `<COMMIT_LEG2>`:** deleted the real `opt_out_capturing_by_default: true,` line from `webAnalytics.web.ts` (TRUE line deletion, not comment-out) → the test `opts out of capturing by default` FAILED (1 failed, 17 passed) AND both strict-grep gates (`consent-gate-before-cookies`, `orch-1187-leg2-buyer-web-analytics-wired`) FAILED; restored the line → 18/18 PASS + gates green.
+- **fails-on-revert verified at commit `30f7120a8`:** deleted the real `opt_out_capturing_by_default: true,` line from `webAnalytics.web.ts` (TRUE line deletion, not comment-out) → the test `opts out of capturing by default` FAILED (1 failed, 17 passed) AND both strict-grep gates (`consent-gate-before-cookies`, `orch-1187-leg2-buyer-web-analytics-wired`) FAILED; restored the line → 18/18 PASS + gates green.
 - **Strict-grep gates (all PASS on source tree):** posthog-host-us (2 init sites, US), no-phx-in-client (0 phx_), consent-gate-before-cookies, replay-masks-pii, analytics-web-only-via-web-ts, orch-1187-leg2-buyer-web-analytics-wired (+ self-test).
 
 ---
