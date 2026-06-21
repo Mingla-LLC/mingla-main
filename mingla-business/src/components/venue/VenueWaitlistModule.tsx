@@ -259,6 +259,9 @@ const styles = StyleSheet.create({
     color: textTokens.secondary,
   },
   emptyCard: {
+    // ORCH-1190 R2 — full-width empty card on WEB (see VenueReservationsModule).
+    width: "100%",
+    alignSelf: "stretch",
     alignItems: "center",
     gap: spacing.sm,
   },
@@ -276,6 +279,10 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
   },
   card: {
+    // ORCH-1190 R2 — full-width queue row on WEB. The row card carried only
+    // flexDirection:row, so its single clipped child shrank to min-content on
+    // the wide shell. Force full width; the row layout stays on this style.
+    width: "100%",
     flexDirection: "row",
     alignItems: "center",
     gap: spacing.sm,
