@@ -75,13 +75,19 @@ describe("VenueIntelligenceModule (ORCH-1186-B) — Constitution #9 no-fabricati
 });
 
 /**
- * Extract a top-level `function NAME(...) { ... }` body region by brace
- * matching. Returns "" if not found.
+ * Extract a top-level `function NAME(...): React.ReactElement { ... }` body
+ * region by brace matching. Anchors on the body brace AFTER the return-type
+ * marker so the param-destructure / type-literal braces are NOT mistaken for
+ * the body. Returns "" if not found.
  */
 function extractFn(source: string, signature: string): string {
   const start = source.indexOf(signature);
   if (start < 0) return "";
-  const braceStart = source.indexOf("{", start);
+  // The body brace is the `{` that immediately follows `): React.ReactElement`.
+  const marker = "): React.ReactElement {";
+  const markerAt = source.indexOf(marker, start);
+  const braceStart =
+    markerAt >= 0 ? markerAt + marker.length - 1 : source.indexOf("{", start);
   if (braceStart < 0) return "";
   let depth = 0;
   for (let i = braceStart; i < source.length; i += 1) {

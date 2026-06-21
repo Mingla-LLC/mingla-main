@@ -15,8 +15,9 @@
  *    layout owns the row; the shell does not duplicate it.)
  *
  * Module dispatch (NO dead taps, §6):
- *  - overview  → <VenueListingContent> (the ORCH-1145 listing, VERBATIM) + an
- *                invitation card when the toggle is OFF.
+ *  - overview  → VenueIntelligenceModule (ORCH-1186-B venue intelligence
+ *                dashboard) + a reservations-activation card when the toggle is
+ *                OFF. (The listing recap relocated to Settings in Leg 1.)
  *  - settings  → <VenueSettingsModule>.
  *  - booking   → live operator modules: Tables (2.1a) · Availability (2.1a) ·
  *                Reservations (2.1b) · Waitlist (2.1b). No ComingSoon left.
@@ -47,7 +48,7 @@ import type { VenueModule } from "../../types/venueReservation";
 import { Button } from "../ui/Button";
 import { GlassCard } from "../ui/GlassCard";
 import { VenueAvailabilityModule } from "./VenueAvailabilityModule";
-import { VenueListingContent } from "./VenueListingContent";
+import { VenueIntelligenceModule } from "./VenueIntelligenceModule";
 import { VenueReservationsModule } from "./VenueReservationsModule";
 import { VenueSettingsModule } from "./VenueSettingsModule";
 import { VenueTablesModule } from "./VenueTablesModule";
@@ -116,20 +117,24 @@ export function VenueSuiteShell({
   }, [setEnabled]);
 
 
-  // Overview mounts <VenueListingContent>, which OWNS its own ScrollView (with
-  // its own `insets.bottom + 120` clearance) — so the shell must NOT wrap it in
-  // a second, outer ScrollView (nested same-axis scroll = the "doesn't scroll
-  // properly" symptom). Settings + the booking ComingSoon render plain Views, so
-  // the shell supplies the scroll container + bottom-nav clearance for them.
+  // Overview mounts the VenueIntelligenceModule, which OWNS its own ScrollView
+  // (with its own `insets.bottom + 120` clearance) — so the shell must NOT wrap
+  // it in a second, outer ScrollView (nested same-axis scroll = the "doesn't
+  // scroll properly" symptom). Settings + the booking ComingSoon render plain
+  // Views, so the shell supplies the scroll container + clearance for them.
   const workspaceSelfScrolls = moduleSelfScrolls(activeModule);
 
   const renderWorkspace = (): React.ReactElement => {
     if (activeModule === "overview") {
-      // The invitation card is pinned ABOVE the self-scrolling
-      // <VenueListingContent> (which owns its own ScrollView + bottom-nav
+      // ORCH-1186-B — the Overview slot is now the venue INTELLIGENCE dashboard
+      // (the listing recap relocated to Settings by Leg 1). The reservations-
+      // activation invitation card is pinned ABOVE the self-scrolling
+      // <VenueIntelligenceModule> (which owns its own ScrollView + bottom-nav
       // clearance). Pinning it — rather than nesting it inside a second outer
       // ScrollView — keeps the CTA visible AND avoids the nested same-axis
-      // scroll that broke scrolling on native.
+      // scroll that broke scrolling on native. (`focus` is the venue-claim
+      // feedback deep-link, which followed the recap into Settings — it is no
+      // longer consumed at the Overview slot.)
       return (
         <View style={styles.overviewWrap}>
           {!reservationsEnabled ? (
@@ -154,11 +159,7 @@ export function VenueSuiteShell({
               </GlassCard>
             </View>
           ) : null}
-          <VenueListingContent
-            brandId={brandId}
-            focus={focus}
-            chromeMode="tab"
-          />
+          <VenueIntelligenceModule brandId={brandId} />
         </View>
       );
     }
@@ -223,8 +224,8 @@ export function VenueSuiteShell({
   return (
     <View style={styles.phoneHost} testID="venue-suite-shell-phone">
       {workspaceSelfScrolls ? (
-        // Overview self-scrolls (VenueListingContent owns the ScrollView + its
-        // own bottom-nav clearance) — render it directly, no outer scroll.
+        // Overview self-scrolls (VenueIntelligenceModule owns the ScrollView +
+        // its own bottom-nav clearance) — render it directly, no outer scroll.
         renderWorkspace()
       ) : (
         <ScrollView
