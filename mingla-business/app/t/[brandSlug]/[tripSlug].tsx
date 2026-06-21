@@ -64,6 +64,7 @@ import {
   buildTripOfferingBrand,
   buildTripOfferingData,
 } from "../../../src/components/trip/tripOfferingAdapter";
+import { collapseTripPlanChoice } from "../../../src/components/trip/tripCartPlanChoice";
 
 export default function PublicTripRoute(): React.ReactElement {
   const router = useRouter();
@@ -407,8 +408,16 @@ const ResolvedTripPage: React.FC<{
   // META-ORCH-1174 Leg B3 — the bars + desktop control fire Reserve with the SAME
   // selected lines the §10 box reads (DEC-B). Empty selection → no lines → the cart
   // opens to pick (never a dead tap; the CTA itself is gated by reserveTappable).
-  const reserveSelected = (): void =>
-    handleTripReserve(undefined, offeringState.selectedLines);
+  // ORCH-1180 — collapse the per-package plan choice into the cart-level choice
+  // (mirrors the consumer ConsumerTripDetailScreen). If ANY selected line pays over
+  // time, the whole cart leads with the deposit; else "full" (NOT "auto", so no
+  // installment rows are minted when no package is on a plan — pay-in-full opt-out).
+  const reserveSelected = (): void => {
+    handleTripReserve(
+      collapseTripPlanChoice(offeringState.selectedLines),
+      offeringState.selectedLines,
+    );
+  };
   const reserveControl = (
     <View>
       <Pressable
