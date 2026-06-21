@@ -33,8 +33,8 @@ visibly broken on business.usemingla.com (the deployed web build):
 
 | SC | Description | Status | Commit |
 |----|-------------|--------|--------|
-| BUG-1-Web | Venue-suite toggles render Mingla brand (orange track + WHITE handle) on WEB, no teal | ✓ FIXED + WEB-VERIFIED | (this branch HEAD) |
-| BUG-1-Native | Same toggles unchanged/correct on native (props inert on RN) | ✓ (additive, native ignores web props) | (this branch HEAD) |
+| BUG-1-Web | Venue-suite toggles render Mingla brand (orange track + WHITE handle) on WEB, no teal | ✓ FIXED + WEB-VERIFIED | 4857f6d25 |
+| BUG-1-Native | Same toggles unchanged/correct on native (props inert on RN) | ✓ (additive, native ignores web props) | 4857f6d25 |
 | BUG-2-Web | Reservations / Waitlist / Menu full-width on WEB | ⚠ NOT REPRODUCIBLE from main — see §10 | — |
 
 ---
@@ -74,7 +74,7 @@ None.
   Tests: 2 passed, 2 total
   ```
 - **fails-on-revert verified** by TRUE LINE-DELETION of the fix (deleting the
-  `activeThumbColor: THUMB` + `activeTrackColor: accent.warm` lines), at branch HEAD:
+  `activeThumbColor: THUMB` + `activeTrackColor: accent.warm` lines), at commit 4857f6d25:
   ```
   ✕ ON-state: track is brand orange, handle is WHITE (never the native teal)
       Expected pattern: not /rgba\(0,\s*150,\s*136/
