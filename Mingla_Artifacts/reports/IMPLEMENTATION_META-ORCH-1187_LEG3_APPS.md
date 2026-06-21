@@ -98,7 +98,7 @@ None.
 - **Business:** `mingla-business/src/services/__tests__/postHogService.orch1187.test.ts` — jest behavioral (mocks posthog-react-native/expo-constants/Platform). 3 tests PASS (no-op-on-missing-key T-10, masked-replay+US-host constructor, opt-out routing T-19). Fails-on-revert: deleting `maskAllTextInputs: true` → the masked-replay test FAILS; restored → 3 PASS.
 - **Gate fails-on-revert:** removing `<PostHogAnalyticsProvider>` from a layout → `native-mounts-analytics` gate FAILS; restored → PASS.
 
-`fails-on-revert verified at <COMMIT_HASH_PLACEHOLDER>` (real hash recorded post-commit below).
+`fails-on-revert verified at 2f16a4a454dd742e127e7a59b897b5115dc1f124` — consumer: delete `maskAllTextInputs: true` → `AssertionError`; `git checkout` restore → 23 pass. Business: delete same → masked-replay jest test fails (1 failed/2 passed); restore → 3 pass.
 
 ---
 
