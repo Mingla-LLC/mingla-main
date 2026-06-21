@@ -29,6 +29,12 @@ module.exports = {
     // jest.orch1152.render.cjs (RN preset + RTL); MUST NOT run under this default
     // node/ts-jest config (no RTL installed here).
     "orch_1152_empty_cart_currency_crash\\.adversarial\\.render\\.test\\.tsx$",
+    // ORCH-1193 [sheet-cutoff] implementor render-proof — mounts the REAL
+    // VenueTableSheet through react-native-web (ReactDOMServer) to assert the body
+    // ScrollView is flex-bounded. Runs under jest.orch1193.sheetscroll.web.render.cjs
+    // (react-native→react-native-web alias); MUST NOT run under this default
+    // node/ts-jest config (no web alias / react-dom types).
+    "sheetBodyScrollBounded\\.orch1193\\.web\\.render\\.test\\.tsx$",
   ],
   moduleFileExtensions: ["ts", "tsx", "js", "jsx", "json"],
   transform: {

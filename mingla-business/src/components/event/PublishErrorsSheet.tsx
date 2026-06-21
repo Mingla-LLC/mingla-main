@@ -49,7 +49,11 @@ export const PublishErrorsSheet: React.FC<PublishErrorsSheetProps> = ({
 }) => {
   return (
     <Sheet visible={visible} onClose={onClose} snapPoint="half">
-      <ScrollView contentContainerStyle={styles.content}>
+      {/* ORCH-1193 [sheet-cutoff]: flex:1 bounds the scroll viewport to the
+          fixed-height panel so a long error list scrolls instead of overflowing
+          past overflow:hidden. Read-only (no inputs) → plain RN ScrollView is
+          intentional; SmartScrollView would add no value here. */}
+      <ScrollView style={styles.scrollFlex} contentContainerStyle={styles.content}>
         <Text style={styles.title}>
           {errors.length === 1
             ? "1 thing to fix before you can publish"
@@ -88,6 +92,11 @@ export const PublishErrorsSheet: React.FC<PublishErrorsSheetProps> = ({
 };
 
 const styles = StyleSheet.create({
+  // ORCH-1193: bound the scroll viewport to the fixed-height panel so a long
+  // error list scrolls into view instead of overflowing past overflow:hidden.
+  scrollFlex: {
+    flex: 1,
+  },
   content: {
     paddingHorizontal: spacing.lg,
     paddingTop: spacing.md,

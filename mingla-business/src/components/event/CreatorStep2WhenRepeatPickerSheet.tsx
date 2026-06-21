@@ -13,6 +13,11 @@
 
 import React from "react";
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+// ORCH-1193 [sheet-cutoff]: the VERTICAL body scroller becomes SmartScrollView so
+// the "Done" CTA clears the keyboard + 42dp Done bar and is bounded to the panel
+// (I-PROPOSED-KEYBOARD-TOOLBAR-CLEARANCE). The nested HORIZONTAL day-of-month
+// ScrollView stays plain RN (no keyboard role).
+import { ScrollView as BodyScrollView } from "../../wrappers/SmartScrollView";
 
 import {
   accent,
@@ -98,7 +103,8 @@ export const CreatorStep2WhenRepeatPickerSheet: React.FC<
 }) => {
   return (
     <Sheet visible={visible} onClose={onClose} snapPoint="full">
-      <ScrollView
+      <BodyScrollView
+        style={styles.scrollFlex}
         contentContainerStyle={styles.sheetContent}
         keyboardShouldPersistTaps="handled"
       >
@@ -244,12 +250,17 @@ export const CreatorStep2WhenRepeatPickerSheet: React.FC<
         >
           <Text style={styles.sheetDoneLabel}>Done</Text>
         </Pressable>
-      </ScrollView>
+      </BodyScrollView>
     </Sheet>
   );
 };
 
 const styles = StyleSheet.create({
+  // ORCH-1193: bound the body scroll viewport to the fixed-height panel so the
+  // "Done" CTA scrolls into view instead of overflowing past overflow:hidden.
+  scrollFlex: {
+    flex: 1,
+  },
   sheetContent: {
     paddingHorizontal: spacing.lg,
     paddingTop: spacing.md,
