@@ -22,6 +22,7 @@ import {
 } from "react-native-keyboard-controller";
 
 import { accent } from "../constants/designSystem";
+import { useKeyboardIsVisible } from "./useKeyboardIsVisible";
 
 // The library does not re-export its KeyboardToolbarTheme type from the
 // package index — derive it from the public prop so we stay on the exported
@@ -49,6 +50,18 @@ export const MINGLA_KEYBOARD_TOOLBAR_THEME: KeyboardToolbarTheme = {
   },
 };
 
-export const KeyboardToolbarRoot: React.FC = () => (
-  <KeyboardToolbar showArrows={false} theme={MINGLA_KEYBOARD_TOOLBAR_THEME} />
-);
+// ORCH-1186 Fix 5 — gate on keyboard visibility. The library's KeyboardToolbar
+// rests at the TOP of the window when no keyboard is up (KeyboardStickyView
+// translates it from offset 0), so on input-less sheets/modals it showed an
+// off-white bar with an orange "Done" parked at the sheet top. Render NOTHING
+// until a keyboard is actually visible; the Done bar still appears whenever a
+// keyboard opens (only the resting-at-top artifact is removed). useKeyboard
+// IsVisible reads the nearest per-window KeyboardProvider (KeyboardRoot), so
+// this resolves correctly inside each Sheet/Modal's own provider window.
+export const KeyboardToolbarRoot: React.FC = () => {
+  const visible = useKeyboardIsVisible();
+  if (!visible) return null;
+  return (
+    <KeyboardToolbar showArrows={false} theme={MINGLA_KEYBOARD_TOOLBAR_THEME} />
+  );
+};
