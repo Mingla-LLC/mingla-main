@@ -2616,12 +2616,19 @@ function AppContent() {
 }
 
 const styles = StyleSheet.create({
-  // ORCH-0589 v3 (R1): black — the transparent bottomNavigation from v2 was
-  // showing this wrapper through. Page-level backgrounds cover this on non-Swipe
-  // pages; the Swipe page (HomePage) already uses black so no change is visible there.
+  // ORCH-0589 v3 (R1): the transparent bottomNavigation from v2 was showing this
+  // wrapper through. Page-level backgrounds cover this on non-Swipe pages; the
+  // Swipe page (HomePage) already uses a near-black bg so no change is visible there.
+  // ORCH-1191: recolored pure #000 → #0c0e12 (the app's canonical dark sheet base).
+  // The deck-card detail sheets mount via `wrapInRNModal` (a SEPARATE OS overlay
+  // window). When gorhom's sheet bg stops short of the physical bottom, the strip
+  // below it is THIS root showing through the transparent modal — an in-modal
+  // filler can't reach outside the modal frame, so the root must carry the color.
+  // At #0c0e12 the strip blends with the dark detail sheets instead of a pure-black
+  // band. Visually identical to #000 on the Swipe deck (5% lift, imperceptible).
   rootView: {
     flex: 1,
-    backgroundColor: "#000000",
+    backgroundColor: "#0c0e12",
   },
   profileLoadingContainer: {
     flex: 1,
