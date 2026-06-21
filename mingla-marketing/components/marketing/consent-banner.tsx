@@ -22,7 +22,11 @@ import { AnimatePresence, motion } from 'framer-motion'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
 import { useMinglaReducedMotion } from '@/lib/reduced-motion'
-import { posthogOptIn, posthogOptOut } from '@/components/marketing/posthog-provider'
+import {
+  captureMarketing,
+  posthogOptIn,
+  posthogOptOut,
+} from '@/components/marketing/posthog-provider'
 
 export const CONSENT_STORAGE_KEY = 'mingla_consent_v1'
 type ConsentValue = 'granted' | 'denied'
@@ -109,6 +113,19 @@ export function ConsentBanner(): React.ReactElement | null {
   const choose = (value: ConsentValue): void => {
     writeStoredConsent(value)
     applyConsent(value)
+    // META-ORCH-1187 P2 — consent-rate measurement. Fire AFTER applyConsent()
+    // above (which calls posthogOptIn on grant): while still opted-out PostHog
+    // drops captures, so an earlier fire would be silently lost. Only the active
+    // grant is captured. NO `consent_denied` PostHog capture on Reject — PostHog
+    // stays opted-out there so a capture cannot send; deny-rate is derived
+    // downstream as sessions-without-a `consent_granted`. (GA4 still records a
+    // cookieless `consent_denied` ping below for symmetry, since gtag is loaded.)
+    if (value === 'granted') {
+      captureMarketing('consent_granted')
+      getGtag()?.('event', 'consent_granted')
+    } else {
+      getGtag()?.('event', 'consent_denied')
+    }
     setDecision(value)
   }
 
