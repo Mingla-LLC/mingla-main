@@ -3,8 +3,9 @@
  *
  * The suite container mounted by the Hub Venue tab. OWNS the `activeModule`
  * state machine and renders the responsive shell:
- *  - web desktop (isWideDesktop): a two-column master rail (260) + workspace,
- *    centered at venueSuiteMaxWidth (1200); the Hub chrome stays above.
+ *  - web desktop (isWideDesktop): a two-column master rail + workspace,
+ *    left-anchored and filling the full page width (ORCH-1184 removed the
+ *    1200px cap); the Hub chrome stays above.
  *  - web-phone + native: single column. The module nav is the venue module pill
  *    row, which on native/web-phone REPLACES the Hub offering pills via the
  *    `venueSuiteStore` bridge (rendered in `_layout.tsx`). The shell renders the
@@ -35,7 +36,6 @@ import {
   text as textTokens,
   typography,
   venueRailWidth,
-  venueSuiteMaxWidth,
 } from "../../constants/designSystem";
 import { useResponsiveLayout } from "../../hooks/useResponsiveLayout";
 import {
@@ -253,7 +253,8 @@ function DesktopRail({
   activeModule,
   onSelect,
 }: DesktopRailProps): React.ReactElement {
-  // Band section headers: Command (A) then Booking (B). C/D absent in 2.0.
+  // Band grouping drives ORDER only (ORCH-1184 removed the Command/Booking
+  // captions): Command band (A) then Booking band (B). C/D absent in 2.0.
   const command = modules.filter((m) => VENUE_MODULES[m].band === "command");
   const booking = modules.filter((m) => VENUE_MODULES[m].band === "booking");
   // Keep Overview (command) first, then Booking band, then Settings (command).
@@ -285,16 +286,14 @@ function DesktopRail({
     );
   };
 
+  // ORCH-1184 — the grey uppercase "Command" / "Booking" section captions are
+  // removed; the rail now reads as ONE clean, uniformly-spaced list (Overview,
+  // booking band, Settings). The band grouping still drives ORDER (Overview
+  // first, booking band, Settings last) but is no longer surfaced as a caption.
   return (
     <View style={styles.railInner}>
-      <Text style={styles.railSection}>Command</Text>
       {orderedCommandTop.map(renderRow)}
-      {booking.length > 0 ? (
-        <>
-          <Text style={styles.railSection}>Booking</Text>
-          {booking.map(renderRow)}
-        </>
-      ) : null}
+      {booking.map(renderRow)}
       {orderedCommandBottom.map(renderRow)}
     </View>
   );
@@ -309,14 +308,16 @@ const styles = StyleSheet.create({
     flex: 1,
     flexDirection: "row",
     width: "100%",
-    maxWidth: venueSuiteMaxWidth,
-    // 2.0.1 polish — LEFT-anchored (was `alignSelf:"center"`). The Hub chrome
-    // above (TopBar / To-Do toggle / sub-nav, all in hub/_layout.tsx) is
-    // full-width and left-aligned to `spacing.md` inside the DesktopCanvas
-    // column. Centering this block floated the rail far to the right of that
-    // chrome edge, opening the dead left gutter Seth flagged. We now share the
-    // chrome's exact left edge (`spacing.md`) and only cap the RIGHT side on
-    // ultra-wide via `maxWidth`, so the rail sits flush under the nav.
+    // ORCH-1184 — the workspace FILLS the page width (Seth's decision). The old
+    // `maxWidth: venueSuiteMaxWidth` (1200) cap stopped the two-column block at
+    // 1200px on wide monitors, leaving dead right-side canvas (the "weird black
+    // bar"). The cap is removed so the block expands to the full available page
+    // width; the rail stays fixed-width and the `flex:1` workspace absorbs the
+    // extra width (settings cards get wider). We KEEP the LEFT anchor and the
+    // `paddingHorizontal: spacing.md` edge gutters — the block shares the Hub
+    // chrome's exact left edge (TopBar / To-Do / sub-nav, all left-aligned to
+    // `spacing.md` in hub/_layout.tsx), so the rail still sits flush under the
+    // nav, now with no right-side dead space.
     alignSelf: "flex-start",
     paddingHorizontal: spacing.md,
   },
@@ -331,17 +332,11 @@ const styles = StyleSheet.create({
     paddingRight: spacing.sm,
   },
   railInner: {
+    // ORCH-1184 — the Command/Booking captions were removed, so the rail is one
+    // uniformly-spaced list. `gap` now applies evenly between every item (the
+    // captions' former `paddingTop: spacing.md` no longer opens a gap between
+    // the Overview group and the booking band).
     gap: spacing.xxs,
-  },
-  railSection: {
-    ...typography.labelCap,
-    color: textTokens.tertiary,
-    // Aligned to the same left grid line as the row labels (rows use
-    // `paddingHorizontal: spacing.sm`), so section caps and item text share one
-    // intentional left edge.
-    paddingHorizontal: spacing.sm,
-    paddingTop: spacing.md,
-    paddingBottom: spacing.xs,
   },
   railRow: {
     flexDirection: "row",

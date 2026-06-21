@@ -46,18 +46,20 @@ export const radius = {
   full: 999,
 } as const;
 
-// META-ORCH-1148 sub-ORCH 2.0 — venue-suite layout tokens (Design §8). The
-// desktop two-column master rail width + the workspace max width. Named so no
-// raw layout numbers live in VenueSuiteShell.
+// META-ORCH-1148 sub-ORCH 2.0 — venue-suite layout token (Design §8). The
+// desktop two-column master rail width. Named so no raw layout numbers live in
+// VenueSuiteShell.
 //
 // 2.0.1 desktop polish: the rail narrowed 260→220 (the labels are short; 260
-// left a dead band of empty rail) and the whole suite is now LEFT-anchored to
-// the Hub chrome's `spacing.md` edge instead of centered in the canvas column —
+// left a dead band of empty rail) and the whole suite is LEFT-anchored to the
+// Hub chrome's `spacing.md` edge instead of centered in the canvas column —
 // `alignSelf:"center"` floated the rail far right of the left-aligned TopBar /
-// To-Do / sub-nav chrome, opening the dead gutter Seth flagged. `maxWidth` still
-// caps ultra-wide so the workspace doesn't run edge-to-edge.
+// To-Do / sub-nav chrome, opening the dead gutter Seth flagged.
+//
+// ORCH-1184: the former `venueSuiteMaxWidth` (1200) workspace max-width cap was
+// REMOVED — the workspace now fills the full page width (Seth's decision; the
+// cap left dead right-side canvas / a "black bar" on wide monitors).
 export const venueRailWidth = 220 as const;
-export const venueSuiteMaxWidth = 1200 as const;
 
 export const shadows = {
   sm: {
