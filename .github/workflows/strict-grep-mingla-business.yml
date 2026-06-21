@@ -2735,3 +2735,14 @@ jobs:
         run: node .github/scripts/strict-grep/orch-1186c-menu-not-experience-stops.mjs --self-test
       - name: Run ORCH-1186-C menu-not-experience-stops gate
         run: node .github/scripts/strict-grep/orch-1186c-menu-not-experience-stops.mjs
+
+  orch-1192-app-events-wired:
+    name: "ORCH-1192 [app-instrumentation-gaps]: app_opened (cold+warm) + checkout_started wired across both native apps via postHogService (follow-on to META-ORCH-1187 Phase 1; native-only)"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Run ORCH-1192 app-events-wired gate
+        run: node .github/scripts/strict-grep/orch-1192-app-events-wired.mjs

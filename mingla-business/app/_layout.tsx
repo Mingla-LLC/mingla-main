@@ -476,7 +476,16 @@ function RootLayoutInner(): React.ReactElement {
         void mixpanelService.initialize();
         // META-ORCH-1187 — init PostHog alongside Mixpanel (idempotent; the root
         // provider also calls this). No-ops gracefully when the key is absent.
-        void postHogService.initialize();
+        // ORCH-1192 — fire the cold-start `app_opened` once init resolves, so
+        // DAU/WAU/MAU + retention key on a real session event (today the
+        // dashboards proxy this with card_viewed, which misses business-app
+        // users who never swipe). capture() no-ops when opted out / key absent.
+        void postHogService.initialize().then(() => {
+          postHogService.capture("app_opened", {
+            cold_start: true,
+            surface: "business_app",
+          });
+        });
         revenueCatService.initialize();
         initializeOneSignal();
         // META-ORCH-1187 LEG 2 — buyer-web analytics init (PostHog + GA4),
@@ -567,9 +576,28 @@ function RootLayoutInner(): React.ReactElement {
   // Cross-platform: react-native-web 0.21.0 shims AppState 'change' events
   // to document.visibilitychange + window.focus/blur, so this single code
   // path works identically on iOS, Android, and Expo Web.
+  // ORCH-1192 — track the previous AppState so the foreground `app_opened`
+  // fires ONLY on a genuine background→active resume. Seeding from
+  // AppState.currentState means the very first 'active' (which coincides with
+  // the cold-start app_opened emitted in the boot effect above) is NOT counted
+  // as a resume → no double-fire. iOS inactive→active (Control Center,
+  // notification shade) is also excluded because prev !== "background".
+  const prevAppStateRef = useRef<AppStateStatus>(AppState.currentState);
   useEffect(() => {
     const handleAppStateChange = (status: AppStateStatus): void => {
       focusManager.setFocused(status === "active");
+      const wasBackground = prevAppStateRef.current === "background";
+      prevAppStateRef.current = status;
+      if (wasBackground && status === "active") {
+        // Foreground resume — feeds DAU/WAU/MAU keyed on a real session event.
+        // capture() no-ops when opted out / key absent. Web (react-native-web
+        // shims AppState to visibilitychange) also benefits, but the native
+        // postHogService is a no-op on web so this only emits on iOS/Android.
+        postHogService.capture("app_opened", {
+          cold_start: false,
+          surface: "business_app",
+        });
+      }
     };
     const subscription = AppState.addEventListener(
       "change",

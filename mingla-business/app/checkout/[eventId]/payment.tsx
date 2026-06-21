@@ -72,6 +72,9 @@ import {
   createTicketCheckout,
 } from "../../../src/services/ticketCheckoutService";
 import { mixpanelService } from "../../../src/services/mixpanelService";
+// ORCH-1192 — native `checkout_started` (mirrors web web_checkout_started),
+// fired before purchase_completed. No-op on web / when key absent / opted out.
+import { postHogService } from "../../../src/services/postHogService";
 // ORCH-0849 (2026-05-15): native PaymentSheet flow replaces the
 // ORCH-0839-B WebBrowser.openAuthSessionAsync hosted-checkout pivot.
 // Parity with consumer (app-mobile/src/payments/nativeCheckoutFlow.ts).
@@ -335,6 +338,21 @@ function CheckoutPaymentScreenContent({
   const handlePay = useCallback(async (): Promise<void> => {
     if (processing) return;
     if (eventId === null) return;
+    // ORCH-1192 — fire `checkout_started` ONCE per attempt, at the top of
+    // handlePay (the `processing` early-return above guards re-render/double-tap
+    // double-fire), BEFORE either the web hosted-redirect or the native
+    // PaymentSheet opens and BEFORE the purchase_completed success capture on
+    // /confirm. Free orders never reach this screen (J-C2 → /confirm), so this
+    // is paid-only; value reflects the server-computed all-in preview when
+    // available. capture() no-ops on web (native postHogService is a web no-op)
+    // and when opted out / key absent.
+    postHogService.capture("checkout_started", {
+      event_id: eventId,
+      offering_type: "event",
+      ...(allInPreviewCents !== null ? { value: allInPreviewCents / 100 } : {}),
+      currency: totals.currency,
+      surface: "business_app",
+    });
     // ORCH-1130 Fix #2 — no "Calculate tax" gate. Pay is available immediately
     // with the server-computed all-in (incl. tax, venue-sourced). The buyer
     // never types an address.
@@ -552,6 +570,7 @@ function CheckoutPaymentScreenContent({
       setProcessing(false);
     }
   }, [
+    allInPreviewCents,
     buyer,
     event,
     eventId,
@@ -560,6 +579,7 @@ function CheckoutPaymentScreenContent({
     previewCalculationId,
     processing,
     router,
+    totals.currency,
   ]);
 
   // ORCH-1147 — the headline Total is sourced from the server fee-grossed

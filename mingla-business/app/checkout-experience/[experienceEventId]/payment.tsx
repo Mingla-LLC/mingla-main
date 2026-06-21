@@ -52,6 +52,9 @@ import {
   createTicketCheckout,
 } from "../../../src/services/ticketCheckoutService";
 import { mixpanelService } from "../../../src/services/mixpanelService";
+// ORCH-1192 — native `checkout_started` (mirrors web web_checkout_started),
+// fired before purchase_completed. No-op on web / when key absent / opted out.
+import { postHogService } from "../../../src/services/postHogService";
 import type { NativeCheckoutExecutor } from "../../../src/payments/NativeCheckoutPaymentBoundary";
 
 import { Button } from "../../../src/components/ui/Button";
@@ -281,6 +284,19 @@ function CheckoutExperiencePaymentScreenContent({
   const handlePay = useCallback(async (): Promise<void> => {
     if (processing) return;
     if (experienceEventId === null) return;
+    // ORCH-1192 — fire `checkout_started` ONCE per attempt at the top of
+    // handlePay (the `processing` early-return guards re-render/double-tap
+    // double-fire), BEFORE the web hosted-redirect or native PaymentSheet opens
+    // and BEFORE the purchase_completed success capture. value reflects the
+    // server-computed all-in preview when available. capture() no-ops on web
+    // (native postHogService is a web no-op) and when opted out / key absent.
+    postHogService.capture("checkout_started", {
+      event_id: experienceEventId,
+      offering_type: "experience",
+      ...(allInPreviewCents !== null ? { value: allInPreviewCents / 100 } : {}),
+      currency: totals.currency,
+      surface: "business_app",
+    });
     // ORCH-1130 Fix #2 — no "Calculate tax" gate. Pay is available immediately
     // with the server-computed all-in (incl. tax, venue-sourced).
 
@@ -467,6 +483,7 @@ function CheckoutExperiencePaymentScreenContent({
       setProcessing(false);
     }
   }, [
+    allInPreviewCents,
     buyer,
     eventDateId,
     experienceEventId,
@@ -475,6 +492,7 @@ function CheckoutExperiencePaymentScreenContent({
     previewCalculationId,
     processing,
     router,
+    totals.currency,
   ]);
 
   // ORCH-1147 — the headline Total is the server fee-grossed all-in
