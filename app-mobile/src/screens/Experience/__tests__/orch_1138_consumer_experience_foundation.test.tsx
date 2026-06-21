@@ -53,18 +53,25 @@ ok(
   "the consumer detail composes the Direction-A look, never ParallaxCoverShell",
 );
 ok(
-  "SC-7c pins the cover + chrome + a float→dock ConsumerEventReserveBar",
+  // ORCH-1183 [experience-standardize] — the reserve bar was CONVERGED onto the
+  // shared <TripReserveBar> (single all-in price, no split) — the SAME bar the
+  // buyer-web /exp/ route uses; the prior forked ConsumerEventReserveBar is retired.
+  "SC-7c pins the cover + chrome + a float→dock shared TripReserveBar (ORCH-1183)",
   /EventCoverMedia/.test(screenCode) &&
     /OfferingChrome/.test(screenCode) &&
-    /ConsumerEventReserveBar/.test(screenCode) &&
+    /TripReserveBar/.test(screenCode) &&
+    !/ConsumerEventReserveBar/.test(screenCode) &&
     /variant="docked"/.test(screenCode) &&
     /variant="floating"/.test(screenCode),
 );
 ok(
-  "SC-7d renders the REAL authored itinerary stops (rule 9: only when present)",
-  /experienceStops/.test(screenCode) &&
-    /The itinerary/.test(screenCode) &&
-    /stop\.aiDescription/.test(screenCode),
+  // ORCH-1183 — the hand-mirrored itinerary section moved to the ONE shared
+  // <ExperienceOfferingBody> (the per-stop VIDEO-capable StopSpine). The screen now
+  // mounts the shared body; the seed adapter threads the real authored stops
+  // (aiDescription) into the normalized contract (rule 9 — only when present).
+  "SC-7d renders the REAL authored itinerary via the shared ExperienceOfferingBody (ORCH-1183)",
+  /<ExperienceOfferingBody/.test(screenCode) &&
+    /buildExperienceOfferingDataFromSeed/.test(screenCode),
 );
 
 // ── COMMS-0009: anon-read, never .from('brands') ──

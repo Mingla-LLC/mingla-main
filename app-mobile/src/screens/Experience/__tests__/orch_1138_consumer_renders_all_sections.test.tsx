@@ -36,51 +36,80 @@ const screen = stripComments(
   read("app-mobile/src/screens/Experience/ConsumerExperienceDetailScreen.tsx"),
 );
 
-// ── SC-3: vibe chips ──
-ok(
-  "SC-3 renders vibe chips from seed.experienceIntents (only when non-empty)",
-  /vibeChips\.length > 0/.test(screen) &&
-    /seed\.experienceIntents/.test(screen) &&
-    /vibeChip/.test(screen),
+// ORCH-1183 [experience-standardize] — the hand-mirrored render sections (vibe
+// chips, meta chips, per-stop count-aware galleries, "Where you'll start" map,
+// START HERE/THEN/END WITH labels + time pills) were RETIRED into the ONE shared
+// @mingla/offering-rendering ExperienceOfferingBody (+ its StopSpine). The screen
+// now mounts the shared body; the seed adapter
+// (useConsumerExperienceOfferingData.buildExperienceOfferingDataFromSeed) threads
+// the real intents/stops/coords/occurrences into the normalized contract. These
+// SC-3..SC-7 assertions follow each section to its new owner so the "renders ALL
+// sections" intent still fails-on-revert.
+const adapter = stripComments(
+  read("app-mobile/src/hooks/useConsumerExperienceOfferingData.ts"),
 );
+const body = stripComments(
+  read("packages/offering-rendering/ExperienceOfferingBody.tsx"),
+);
+const spine = stripComments(read("packages/offering-rendering/StopSpine.tsx"));
+
+// the screen mounts the shared body from the seed.
 ok(
-  "SC-3 vibe ids map to display labels (EXPERIENCE_INTENT_LABEL)",
-  /EXPERIENCE_INTENT_LABEL/.test(screen),
+  "ORCH-1183 the screen mounts the shared <ExperienceOfferingBody> from the seed adapter",
+  /<ExperienceOfferingBody/.test(screen) &&
+    /buildExperienceOfferingDataFromSeed/.test(screen),
 );
 
-// ── SC-4: count-aware per-stop galleries (NOT a single <Image> for stop media) ──
+// ── SC-3: vibe chips (now in the shared body; adapter threads the intents) ──
 ok(
-  "SC-4 each stop renders a CountAwareGallery from stop.imageUrls",
-  /CountAwareGallery[\s\S]*items=\{galleryItems\}/.test(screen) &&
-    /stopGalleryItems\(/.test(screen),
+  "SC-3 the adapter threads seed.experienceIntents; the body renders vibe chips",
+  /seed\.experienceIntents/.test(adapter) &&
+    /vibeLabels/.test(body) &&
+    /vibeChip/.test(body),
+);
+ok(
+  "SC-3 vibe ids map to display labels via the ONE shared EXPERIENCE_VIBE_LABELS map",
+  /EXPERIENCE_VIBE_LABELS/.test(body),
 );
 
-// ── SC-5: "Where you'll start" map ──
+// ── SC-4: count-aware per-stop galleries (NOT a single <Image>) — shared StopSpine ──
 ok(
-  "SC-5 renders a 'Where you'll start' static map from stop-1 coords",
-  /Where you&apos;ll start/.test(screen) &&
-    /buildStaticMapUrl\(/.test(screen) &&
-    /startMapUrl/.test(screen),
+  "SC-4 the shared StopSpine renders a CountAwareGallery from each stop's media",
+  /CountAwareGallery/.test(spine) && /stop\.media\.map/.test(spine),
 );
 
-// ── SC-6: meta row City + dates + seats + start-time ──
+// ── SC-5: "Where you'll start" map (shared body, stop-1 coords) ──
 ok(
-  "SC-6 meta row carries dates + seats + start-time chips (beyond City)",
-  /datesSubline/.test(screen) &&
-    /seatsLabel/.test(screen) &&
-    /experienceStartTime/.test(screen),
+  "SC-5 the shared body renders a 'Where you'll start' static map from stop-1 coords",
+  /Where you&rsquo;ll start/.test(body) &&
+    /buildStaticMapUrl\(/.test(body) &&
+    /s\.lat !== null && s\.lng !== null/.test(body),
 );
 
-// ── SC-7: START HERE / THEN / END WITH + time pill ──
+// ── SC-6: meta row City + dates + seats + start-time (adapter builds, body renders) ──
 ok(
-  "SC-7 stop labels use stop.stopLabel (not 'Stop N') + per-stop time pill",
-  /stop\.stopLabel/.test(screen) &&
-    /stopTimePill/.test(screen) &&
-    /formatStartTime\(stop\.startTime\)/.test(screen),
+  "SC-6 the adapter builds dates + seats + start-time labels; the body renders the chips",
+  /buildDatesLabel/.test(adapter) &&
+    /buildSeatsLabel/.test(adapter) &&
+    /buildStartTimeLabel/.test(adapter) &&
+    /datesLabel/.test(body) &&
+    /seatsLabel/.test(body) &&
+    /startTimeLabel/.test(body),
+);
+
+// ── SC-7: START HERE / THEN / END WITH + time pill (shared StopSpine) ──
+ok(
+  "SC-7 the shared StopSpine uses START HERE/THEN/END WITH labels + a per-stop time pill",
+  /stopLabelForIndex/.test(spine) &&
+    /START HERE/.test(spine) &&
+    /END WITH/.test(spine) &&
+    /formatStopTime\(/.test(spine),
 );
 ok(
-  "SC-7 the generic 'Stop {stopNumber}' ordinal label is gone from the stop card",
-  !/Stop \{stop\.stopNumber/.test(screen),
+  "SC-7 the consumer per-stop time still resolves via the device-locale formatStartTime, threaded to the body",
+  /formatStopTime=\{\(iso: string \| null\) => formatStartTime\(iso\)\}/.test(
+    screen,
+  ),
 );
 
 // ── SC-8: themed render via synchronous seed fallback (no #FF6B35 content flash) ──
