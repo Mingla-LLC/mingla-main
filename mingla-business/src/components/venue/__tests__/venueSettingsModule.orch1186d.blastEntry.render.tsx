@@ -92,32 +92,28 @@ import { VenueSettingsModule } from "../VenueSettingsModule";
 
 const BRAND_ID = "11111111-2222-3333-4444-555555555555";
 
-describe("ORCH-1186-D — venue blasts entry point", () => {
+describe("ORCH-1186-D / ORCH-1190 #7 — venue blast entry RELOCATED out of Settings", () => {
+  // [TEST-MOD-APPROVED ORCH-1190] — ORCH-1190 #7 moved the "Message your guests"
+  // blast entry FROM Settings TO the top of the Overview module. The original
+  // T-4/T-5 asserted the row lived in Settings; they would now false-fail. They
+  // are retargeted: this test proves the row is GONE from Settings (the other
+  // half — that it now works in Overview — is covered by the new
+  // venueIntelligenceModule.orch1190.blastEntry.render test). The deep-link
+  // CONTRACT (`?audience=brand:{id}` via buildComposeAudienceHref) is unchanged
+  // and is exercised in the Overview test.
   beforeEach(() => {
     mockPush.mockClear();
   });
 
-  it("T-4 — pressing 'Message your guests' navigates the composer with the brand audience", () => {
+  it("T-4R — Settings no longer renders the blast entry row", () => {
     const r = render(<VenueSettingsModule brandId={BRAND_ID} />);
-
-    const row = r.getByTestId("venue-settings-message-guests");
-    fireEvent.press(row);
-
-    expect(mockPush).toHaveBeenCalledTimes(1);
-    expect(mockPush).toHaveBeenCalledWith(
-      `/marketing/campaigns/compose?audience=brand:${BRAND_ID}`,
-    );
+    expect(r.queryByTestId("venue-settings-message-guests")).toBeNull();
+    expect(r.queryByText("Reach your guests")).toBeNull();
   });
 
-  it("T-5 — with a null brand id the handler does not navigate", () => {
-    // brandId === null: the action button is rendered disabled (defensive) and
-    // the handler early-returns, so no navigation fires.
+  it("T-5R — even with a null brand id, no blast row exists in Settings", () => {
     const r = render(<VenueSettingsModule brandId={null} />);
-
-    const row = r.getByTestId("venue-settings-message-guests");
-    expect(row.props.accessibilityState?.disabled).toBe(true);
-
-    fireEvent.press(row);
+    expect(r.queryByTestId("venue-settings-message-guests")).toBeNull();
     expect(mockPush).not.toHaveBeenCalled();
   });
 });

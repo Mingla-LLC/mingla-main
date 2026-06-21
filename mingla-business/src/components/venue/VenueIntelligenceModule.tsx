@@ -18,7 +18,7 @@
  * only, NO charting library (SPEC NG-6). See SPEC §4.5 + the DESIGN section.
  */
 import { useRouter } from "expo-router";
-import React, { useMemo } from "react";
+import React, { useCallback, useMemo } from "react";
 import {
   ActivityIndicator,
   RefreshControl,
@@ -39,6 +39,9 @@ import {
   typography,
 } from "../../constants/designSystem";
 import { venueSignalLabel } from "../../constants/venueSignals";
+import { useCurrentBrandRole } from "../../hooks/useCurrentBrandRole";
+import { BRAND_ROLE_RANK } from "../../utils/brandRole";
+import { buildComposeAudienceHref } from "../../utils/composeAudienceHref";
 import {
   formatCurrencyRound,
 } from "../../utils/currency";
@@ -61,6 +64,8 @@ import {
 import { useVenueIntelligence } from "../../hooks/useVenueIntelligence";
 import { VENUE_SCROLL_NAV_CLEARANCE } from "./venueShellScroll";
 
+const MANAGER_PLUS_RANK = BRAND_ROLE_RANK.event_manager; // 40
+
 const SPARKLINE_RECENT_BAR_COUNT = 5;
 const HOUR_TICKS: { hour: number; label: string }[] = [
   { hour: 0, label: "12a" },
@@ -80,6 +85,20 @@ export function VenueIntelligenceModule({
   const router = useRouter();
   const query = useVenueIntelligence(brandId);
   const data = query.data ?? null;
+
+  // ORCH-1190 #7 — "Message your guests" blast entry, RELOCATED from Settings
+  // (ORCH-1186-D) to a top-of-Overview button. REUSE ONLY: deep-link into the
+  // EXISTING marketing composer with this venue's brand audience pre-selected
+  // (`?audience=brand:{brandId}`) — no new composer / send path / audience kind
+  // (I-PROPOSED-1186-D-BLAST-REUSE-ONLY). Build via buildComposeAudienceHref so
+  // the `?audience={kind}:{id}` contract stays guarded (I-PROPOSED-BU). Manager-
+  // plus gated for parity with the other venue-suite action affordances.
+  const { rank } = useCurrentBrandRole(brandId);
+  const canBlast = rank >= MANAGER_PLUS_RANK;
+  const handleBlast = useCallback((): void => {
+    if (brandId === null) return;
+    router.push(buildComposeAudienceHref("brand", brandId) as never);
+  }, [brandId, router]);
 
   const contentContainerStyle = useMemo(
     () => [
@@ -221,6 +240,23 @@ export function VenueIntelligenceModule({
       showsVerticalScrollIndicator={false}
       refreshControl={refreshControl}
     >
+      {/* ORCH-1190 #7 — Message your guests (relocated from Settings). Top of
+          Overview, manager-plus gated, reuse-only composer deep-link. */}
+      {canBlast && brandId !== null ? (
+        <View style={styles.blastRow}>
+          <Button
+            label="Message your guests"
+            onPress={handleBlast}
+            variant="primary"
+            size="md"
+            leadingIcon="send"
+            fullWidth
+            accessibilityLabel="Message your guests"
+            testID="venue-overview-message-guests"
+          />
+        </View>
+      ) : null}
+
       {/* Header strip */}
       <View style={styles.headerStrip}>
         <Text style={styles.headerTitle}>Venue insights</Text>
@@ -741,6 +777,10 @@ const styles = StyleSheet.create({
   actionRow: {
     marginTop: spacing.md,
     flexDirection: "row",
+  },
+  // ORCH-1190 #7 — top-of-Overview blast button row.
+  blastRow: {
+    marginBottom: spacing.md,
   },
 });
 

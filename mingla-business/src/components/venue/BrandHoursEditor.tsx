@@ -24,7 +24,6 @@ import {
   Platform,
   Pressable,
   StyleSheet,
-  Switch,
   Text,
   TextInput,
   View,
@@ -42,6 +41,7 @@ import {
   typography,
 } from "../../constants/designSystem";
 import type { BrandHourEntry } from "../../types/brand";
+import { BrandSwitch } from "../ui/BrandSwitch";
 import { Button } from "../ui/Button";
 
 const DAY_NAMES = [
@@ -388,7 +388,7 @@ export const BrandHoursEditor: React.FC<BrandHoursEditorProps> = ({
         <View key={row.weekday} style={styles.dayRow}>
           <View style={styles.dayHead}>
             <Text style={styles.dayName}>{DAY_NAMES[row.weekday]}</Text>
-            <Switch
+            <BrandSwitch
               value={!row.isClosed}
               disabled={disabled}
               onValueChange={(on) =>
