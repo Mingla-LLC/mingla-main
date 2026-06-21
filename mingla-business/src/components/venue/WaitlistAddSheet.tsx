@@ -7,7 +7,10 @@
  */
 
 import React, { useCallback, useEffect, useState } from "react";
-import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { Pressable, StyleSheet, Text, View } from "react-native";
+// ORCH-1193 [sheet-cutoff]: body ScrollView via SmartScrollView wrapper so the
+// CTA clears the keyboard + 42dp Done bar (I-PROPOSED-KEYBOARD-TOOLBAR-CLEARANCE).
+import { ScrollView } from "../../wrappers/SmartScrollView";
 
 import {
   accent,
@@ -93,6 +96,7 @@ export function WaitlistAddSheet({
       <View style={styles.body}>
         <Text style={styles.heading}>Add to waitlist</Text>
         <ScrollView
+          style={styles.scrollFlex}
           contentContainerStyle={styles.scroll}
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
@@ -204,6 +208,11 @@ const styles = StyleSheet.create({
     ...typography.h3,
     color: textTokens.primary,
     marginBottom: spacing.sm,
+  },
+  // ORCH-1193: bound the scroll viewport to the fixed-height panel so the CTA
+  // scrolls into view instead of overflowing past the panel's overflow:hidden.
+  scrollFlex: {
+    flex: 1,
   },
   scroll: {
     paddingBottom: spacing.xxl,

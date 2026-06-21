@@ -2746,3 +2746,16 @@ jobs:
           node-version: "20"
       - name: Run ORCH-1192 app-events-wired gate
         run: node .github/scripts/strict-grep/orch-1192-app-events-wired.mjs
+
+  orch-1193-sheet-body-scroll-bounded:
+    name: "ORCH-1193 [sheet-cutoff]: the 8 venue/event action sheets bound their body ScrollView with flex:1 (scrollFlex) + import it from wrappers/SmartScrollView (PublishErrorsSheet read-only exempt) so the CTA isn't clipped past the fixed-height overflow:hidden panel (I-PROPOSED-1193-SHEET-BODY-SCROLL-BOUNDED + I-PROPOSED-KEYBOARD-TOOLBAR-CLEARANCE)"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Self-test the ORCH-1193 sheet-body-scroll-bounded gate
+        run: node .github/scripts/strict-grep/orch-1193-sheet-body-scroll-bounded.mjs --self-test
+      - name: Run ORCH-1193 sheet-body-scroll-bounded gate
+        run: node .github/scripts/strict-grep/orch-1193-sheet-body-scroll-bounded.mjs

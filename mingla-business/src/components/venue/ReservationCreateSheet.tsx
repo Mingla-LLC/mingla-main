@@ -11,6 +11,10 @@
 
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+// ORCH-1193 [sheet-cutoff]: the VERTICAL body scroller becomes SmartScrollView so
+// the CTA clears the keyboard + 42dp Done bar (I-PROPOSED-KEYBOARD-TOOLBAR-CLEARANCE).
+// The nested HORIZONTAL date-row ScrollView stays plain RN (no keyboard role).
+import { ScrollView as BodyScrollView } from "../../wrappers/SmartScrollView";
 
 import {
   accent,
@@ -172,7 +176,8 @@ export function ReservationCreateSheet({
     >
       <View style={styles.body}>
         <Text style={styles.heading}>New reservation</Text>
-        <ScrollView
+        <BodyScrollView
+          style={styles.scrollFlex}
           contentContainerStyle={styles.scroll}
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
@@ -397,7 +402,7 @@ export function ReservationCreateSheet({
             style={styles.saveBtn}
             testID="reservation-create-save"
           />
-        </ScrollView>
+        </BodyScrollView>
       </View>
     </Sheet>
   );
@@ -413,6 +418,11 @@ const styles = StyleSheet.create({
     ...typography.h3,
     color: textTokens.primary,
     marginBottom: spacing.sm,
+  },
+  // ORCH-1193: bound the body scroll viewport to the fixed-height panel so the
+  // CTA scrolls into view instead of overflowing past overflow:hidden.
+  scrollFlex: {
+    flex: 1,
   },
   scroll: {
     paddingBottom: spacing.xxl,
