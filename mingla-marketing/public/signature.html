@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="robots" content="noindex" />
+<title>Mingla — Email Signature</title>
+<style>
+  :root { --orange:#EB7825; --ink:#1C1C1C; }
+  * { box-sizing:border-box; }
+  body {
+    margin:0; padding:40px 20px 64px;
+    font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;
+    color:var(--ink);
+    background:#FAFAF8;
+    -webkit-font-smoothing:antialiased;
+  }
+  .wrap { max-width:680px; margin:0 auto; }
+  .kicker { font-size:12px; letter-spacing:1.4px; text-transform:uppercase; color:var(--orange); font-weight:700; margin:0 0 6px; }
+  h1 { font-size:26px; line-height:1.2; margin:0 0 8px; letter-spacing:-.3px; }
+  .sub { font-size:14px; line-height:1.55; color:#6B6B6B; margin:0 0 28px; }
+  .card {
+    background:#FFFFFF; border:1px solid #ECECEC; border-radius:16px;
+    padding:34px 32px; box-shadow:0 1px 2px rgba(0,0,0,.04), 0 12px 32px rgba(0,0,0,.05);
+  }
+  .label { font-size:11px; letter-spacing:1.2px; text-transform:uppercase; color:#9A9A9A; font-weight:700; margin:0 0 16px; }
+  .btn {
+    display:inline-flex; align-items:center; gap:8px; cursor:pointer;
+    background:var(--orange); color:#fff; border:0; border-radius:999px;
+    font-size:14px; font-weight:700; padding:12px 22px; margin-top:26px;
+    font-family:inherit; transition:transform .08s ease, filter .15s ease;
+  }
+  .btn:hover { filter:brightness(1.05); }
+  .btn:active { transform:translateY(1px); }
+  .btn.done { background:#1C9D5B; }
+  .steps { margin:30px 0 0; padding:0; list-style:none; counter-reset:s; }
+  .steps li {
+    position:relative; padding:0 0 14px 38px; font-size:14px; line-height:1.5; color:#3A3A3A; counter-increment:s;
+  }
+  .steps li::before {
+    content:counter(s); position:absolute; left:0; top:-1px;
+    width:24px; height:24px; border-radius:50%; background:#FBEFE6; color:var(--orange);
+    font-size:12px; font-weight:700; display:flex; align-items:center; justify-content:center;
+  }
+  .steps b { color:var(--ink); }
+  code { background:#F2F2EE; padding:2px 6px; border-radius:5px; font-size:13px; }
+  .hint { font-size:12.5px; color:#9A9A9A; margin-top:22px; line-height:1.5; }
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <p class="kicker">Mingla</p>
+    <h1>Your email signature</h1>
+    <p class="sub">Click <b>Copy signature</b>, then paste it straight into Gmail. Everything is hosted on usemingla.com, so the logo and icons load for everyone you email.</p>
+
+    <div class="card">
+      <p class="label">Preview</p>
+
+      <!-- ============ SIGNATURE (this exact block gets copied) ============ -->
+      <div id="signature">
+        <table cellpadding="0" cellspacing="0" border="0" role="presentation" style="border-collapse:collapse;font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;">
+          <tr>
+            <!-- LEFT: logo + tagline -->
+            <td valign="middle" style="padding:0 26px 0 0;text-align:center;vertical-align:middle;">
+              <a href="https://www.usemingla.com" style="text-decoration:none;border:0;">
+                <img src="https://www.usemingla.com/brand/email/mingla-wordmark-email.png" width="180" height="64" alt="Mingla" style="display:block;border:0;outline:none;width:180px;height:64px;" />
+              </a>
+              <div style="font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;font-size:11px;line-height:14px;color:#A6A6A6;letter-spacing:.2px;font-style:italic;padding-top:10px;">Find the plan that fits the vibe.</div>
+            </td>
+
+            <!-- RIGHT: details -->
+            <td valign="middle" style="border-left:1px solid #E6E6E6;padding:2px 0 2px 26px;vertical-align:middle;">
+              <div style="font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;font-size:21px;line-height:25px;font-weight:700;color:#1C1C1C;letter-spacing:.3px;">Seth Ogieva</div>
+              <div style="font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;font-size:13px;line-height:18px;color:#737373;padding-top:4px;">Founder &amp; Head of Product</div>
+              <div style="font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;font-size:13px;line-height:18px;font-weight:700;color:#EB7825;padding-top:1px;">Mingla</div>
+
+              <!-- contact -->
+              <table cellpadding="0" cellspacing="0" border="0" role="presentation" style="border-collapse:collapse;">
+                <tr><td colspan="2" style="font-size:0;line-height:0;height:13px;">&nbsp;</td></tr>
+                <tr>
+                  <td style="font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;font-size:12px;font-weight:700;color:#EB7825;padding:0 8px 5px 0;vertical-align:middle;">P.</td>
+                  <td style="font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;font-size:13px;color:#3A3A3A;padding:0 0 5px 0;vertical-align:middle;"><a href="tel:+19843822876" style="color:#3A3A3A;text-decoration:none;">+1 984 382 2876</a></td>
+                </tr>
+                <tr>
+                  <td style="font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;font-size:12px;font-weight:700;color:#EB7825;padding:0 8px 5px 0;vertical-align:middle;">E.</td>
+                  <td style="font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;font-size:13px;padding:0 0 5px 0;vertical-align:middle;"><a href="mailto:seth@usemingla.com" style="color:#3A3A3A;text-decoration:underline;">seth@usemingla.com</a></td>
+                </tr>
+                <tr>
+                  <td style="font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;font-size:12px;font-weight:700;color:#EB7825;padding:0 8px 0 0;vertical-align:middle;">W.</td>
+                  <td style="font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;font-size:13px;padding:0;vertical-align:middle;"><a href="https://www.usemingla.com" style="color:#3A3A3A;text-decoration:underline;">usemingla.com</a></td>
+                </tr>
+              </table>
+
+              <!-- socials -->
+              <table cellpadding="0" cellspacing="0" border="0" role="presentation" style="border-collapse:collapse;">
+                <tr><td style="font-size:0;line-height:0;height:15px;">&nbsp;</td></tr>
+                <tr><td style="padding:0;">
+                  <table cellpadding="0" cellspacing="0" border="0" role="presentation" style="border-collapse:collapse;display:inline-block;">
+                    <tr>
+                      <td style="padding:0 8px 0 0;"><a href="https://www.instagram.com/usemingla/" style="text-decoration:none;border:0;"><img src="https://www.usemingla.com/brand/email/social-instagram.png" width="26" height="26" alt="Instagram" style="display:block;border:0;outline:none;width:26px;height:26px;" /></a></td>
+                      <td style="padding:0 8px 0 0;"><a href="https://www.tiktok.com/@usemingla" style="text-decoration:none;border:0;"><img src="https://www.usemingla.com/brand/email/social-tiktok.png" width="26" height="26" alt="TikTok" style="display:block;border:0;outline:none;width:26px;height:26px;" /></a></td>
+                      <td style="padding:0 8px 0 0;"><a href="https://x.com/usemingla" style="text-decoration:none;border:0;"><img src="https://www.usemingla.com/brand/email/social-x.png" width="26" height="26" alt="X" style="display:block;border:0;outline:none;width:26px;height:26px;" /></a></td>
+                      <td style="padding:0 8px 0 0;"><a href="https://www.threads.com/@usemingla" style="text-decoration:none;border:0;"><img src="https://www.usemingla.com/brand/email/social-threads.png" width="26" height="26" alt="Threads" style="display:block;border:0;outline:none;width:26px;height:26px;" /></a></td>
+                      <td style="padding:0;"><a href="https://www.facebook.com/usemingla" style="text-decoration:none;border:0;"><img src="https://www.usemingla.com/brand/email/social-facebook.png" width="26" height="26" alt="Facebook" style="display:block;border:0;outline:none;width:26px;height:26px;" /></a></td>
+                    </tr>
+                  </table>
+                </td></tr>
+              </table>
+            </td>
+          </tr>
+        </table>
+      </div>
+      <!-- ============ /SIGNATURE ============ -->
+
+      <button class="btn" id="copyBtn" type="button">Copy signature</button>
+    </div>
+
+    <ol class="steps">
+      <li>Click <b>Copy signature</b> above.</li>
+      <li>In Gmail, open <b>Settings</b> (gear icon) &rarr; <b>See all settings</b>.</li>
+      <li>Scroll to <b>Signature</b> &rarr; <b>Create new</b> (name it &ldquo;Mingla&rdquo;), click into the box and <b>paste</b> (<code>Cmd/Ctrl + V</code>).</li>
+      <li>Under <b>Signature defaults</b>, set it for new emails and replies. Scroll down and <b>Save Changes</b>.</li>
+    </ol>
+
+    <p class="hint">Tip: if you paste into the box and the logo looks broken on first try, give it a second &mdash; Gmail fetches the images from usemingla.com the first time. On mobile Gmail, edit your signature from the desktop site once and it syncs everywhere.</p>
+  </div>
+
+<script>
+  document.getElementById('copyBtn').addEventListener('click', async function () {
+    var btn = this;
+    var node = document.getElementById('signature');
+    var html = node.innerHTML;
+    try {
+      if (navigator.clipboard && window.ClipboardItem) {
+        await navigator.clipboard.write([
+          new ClipboardItem({
+            'text/html': new Blob([html], { type: 'text/html' }),
+            'text/plain': new Blob([node.innerText], { type: 'text/plain' })
+          })
+        ]);
+      } else {
+        var range = document.createRange();
+        range.selectNode(node);
+        var sel = window.getSelection();
+        sel.removeAllRanges();
+        sel.addRange(range);
+        document.execCommand('copy');
+        sel.removeAllRanges();
+      }
+      btn.textContent = '✓ Copied — now paste into Gmail';
+      btn.classList.add('done');
+      setTimeout(function () { btn.textContent = 'Copy signature'; btn.classList.remove('done'); }, 3200);
+    } catch (e) {
+      // Fallback: select the node so the user can Cmd/Ctrl+C manually
+      var range2 = document.createRange();
+      range2.selectNode(node);
+      var sel2 = window.getSelection();
+      sel2.removeAllRanges();
+      sel2.addRange(range2);
+      btn.textContent = 'Selected — press Cmd/Ctrl + C';
+    }
+  });
+</script>
+</body>
+</html>
