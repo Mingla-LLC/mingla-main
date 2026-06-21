@@ -86,6 +86,12 @@ export interface VenueExperienceRow {
     bySetPos?: number;
     termination?: { kind?: string; count?: number; until?: string };
   } | null;
+  /**
+   * ORCH-1183 — the experience's REAL IANA timezone (events.timezone), added to
+   * pg_brand_experiences_for_place so the venue→detail SEED no longer hardcodes
+   * "UTC". null/undefined (pre-migration payload) → the mapper keeps "UTC".
+   */
+  timezone?: string | null;
 }
 
 export const venueExperiencesKeys = {

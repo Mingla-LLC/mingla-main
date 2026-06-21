@@ -499,57 +499,196 @@ async function loadExperienceSidecars(eventId: string): Promise<{
   };
 }
 
+// ===========================================================================
+// ORCH-1183 [experience-standardize] — the by-slug resolver now reads the ONE
+// canonical anon RPC `pg_public_experience_by_slug` (SECURITY DEFINER, GRANT anon),
+// replacing the prior fan-out of direct anon table reads (brands + events + the
+// sidecar Promise.all + the anon-safe-view theme hop + the separate can-charge
+// resolve). The RPC returns the full payload — cover-media-aware, ADDRESS-PRIVACY-
+// aware stops (NULL street/pin when hidden), the ONE ticket with server all-in +
+// remaining, occurrences, recurrence/intents, brand (cover + theme), and a bookable
+// flag — keyed by (brand_slug, experience_slug) directly (hot OR cold deep-link),
+// the SAME path the consumer by-slug route reads. The output shape is unchanged
+// (PublicExperiencePayload) so the route/adapter are untouched. The by-id resolver
+// (checkout chain) stays on direct reads (out of scope).
+// ===========================================================================
+
+interface RpcExpStop {
+  id: string;
+  stopOrder: number;
+  placeName: string | null;
+  address: string | null;
+  description: string | null;
+  startTime: string | null;
+  lat: number | null;
+  lng: number | null;
+  imageUrls: unknown;
+}
+interface RpcExpTicket {
+  ticketTypeId: string;
+  name: string;
+  priceCents: number;
+  allInCents: number | null;
+  currency: string;
+  quantityTotal: number | null;
+  isUnlimited: boolean;
+  isFree: boolean;
+  ticketsRemaining: number | null;
+  availableOnline: boolean;
+}
+interface RpcExpDate {
+  id: string;
+  startAt: string;
+  endAt: string;
+  timezone: string;
+  isMaster: boolean;
+  ticketsRemaining: number | null;
+}
+interface RpcExpBrand {
+  id: string;
+  slug: string;
+  name: string;
+  bio: string | null;
+  coverMediaUrl: string | null;
+  coverMediaType: string | null;
+  coverHue: number | null;
+  verified: boolean;
+  themeColor: unknown;
+  themeFont: unknown;
+  themeAnimation: unknown;
+}
+interface RpcExpPayload {
+  id: string;
+  brandId: string;
+  brandSlug: string;
+  experienceSlug: string;
+  title: string;
+  description: string | null;
+  status: string;
+  visibility: string;
+  timezone: string;
+  currency: string;
+  coverMediaUrl: string | null;
+  coverMediaType: string | null;
+  venueText: string | null;
+  isRecurring: boolean;
+  isMultiDate: boolean;
+  recurrenceRules: unknown;
+  intents: unknown;
+  hideAddressUntilTicket: boolean;
+  themeColorOverride: unknown;
+  themeFontOverride: unknown;
+  themeAnimationOverride: unknown;
+  brand: RpcExpBrand;
+  stops: RpcExpStop[];
+  ticket: RpcExpTicket | null;
+  dates: RpcExpDate[];
+  bookable: boolean;
+}
+
+function mapRpcPayload(p: RpcExpPayload): PublicExperiencePayload {
+  const brand: PublicExperienceBrand = {
+    id: p.brand.id,
+    slug: p.brand.slug,
+    name: p.brand.name,
+    bio: p.brand.bio ?? null,
+    coverMediaUrl: p.brand.coverMediaUrl ?? null,
+    coverMediaType: normalizeCoverType(p.brand.coverMediaType),
+    coverHue: typeof p.brand.coverHue === "number" ? p.brand.coverHue : null,
+    theme: asThemeInput(p.brand.themeColor, p.brand.themeFont, p.brand.themeAnimation),
+  };
+
+  const t = p.ticket;
+  const ticket: PublicExperienceTicket | null =
+    t !== null
+      ? {
+          ticketTypeId: t.ticketTypeId,
+          name: t.name,
+          priceCents: t.priceCents ?? 0,
+          currency: t.currency ?? "USD",
+          quantityTotal: t.quantityTotal ?? null,
+          isUnlimited: t.isUnlimited === true,
+          isFree: t.isFree === true || (t.priceCents ?? 0) === 0,
+          ticketsRemaining: t.ticketsRemaining ?? null,
+          // RPC emits allInCents in MINOR units (compute_all_in_cents); the existing
+          // payload contract is priceAllInGbp in MAJOR units → /100. Free → null.
+          priceAllInGbp:
+            t.isFree === true || (t.priceCents ?? 0) === 0
+              ? null
+              : typeof t.allInCents === "number" && t.allInCents > 0
+                ? t.allInCents / 100
+                : null,
+        }
+      : null;
+
+  const experience: PublicExperience = {
+    id: p.id,
+    brandId: p.brandId,
+    brandSlug: p.brandSlug,
+    title: p.title,
+    slug: p.experienceSlug,
+    description: p.description ?? null,
+    status: p.status,
+    visibility: p.visibility,
+    timezone: p.timezone ?? "UTC",
+    coverMediaUrl: p.coverMediaUrl ?? null,
+    coverMediaType: normalizeCoverType(p.coverMediaType),
+    venueText: p.venueText ?? null,
+    whenMode: deriveWhenMode(p.isRecurring === true, p.isMultiDate === true),
+    recurrenceRule: firstRecurrenceRule(p.recurrenceRules),
+    stops: (p.stops ?? []).map((s) => ({
+      id: s.id,
+      stopOrder: s.stopOrder,
+      placeName: s.placeName ?? "",
+      address: s.address ?? "",
+      imageUrls: Array.isArray(s.imageUrls)
+        ? s.imageUrls.filter((u): u is string => typeof u === "string")
+        : [],
+      startTime: s.startTime ?? null,
+      description:
+        typeof s.description === "string" && s.description.length > 0
+          ? s.description
+          : null,
+      lat: typeof s.lat === "number" ? s.lat : null,
+      lng: typeof s.lng === "number" ? s.lng : null,
+    })),
+    ticket,
+    dates: (p.dates ?? []).map((d) => ({
+      id: d.id,
+      startAt: d.startAt,
+      endAt: d.endAt,
+      timezone: d.timezone ?? p.timezone ?? "UTC",
+      isMaster: d.isMaster === true,
+      ticketsRemaining: d.ticketsRemaining ?? null,
+    })),
+    intents: readIntents(p.intents),
+    themeOverrides: asThemeInput(
+      p.themeColorOverride,
+      p.themeFontOverride,
+      p.themeAnimationOverride,
+    ),
+    bookable: p.bookable !== false,
+  };
+
+  return { experience, brand };
+}
+
 /**
- * Resolve one published experience by (brandSlug, experienceSlug). Returns
- * null when the brand/experience is missing, not an experience, or not live
- * (draft → never leaks). Mirrors getPublicTripBySlug.
+ * Resolve one published experience by (brandSlug, experienceSlug) via the canonical
+ * anon RPC. Returns null when the brand/experience is missing, not an experience, or
+ * not live (draft → never leaks). Mirrors useConsumerTripDetail's RPC read.
  */
 export async function getPublicExperienceBySlug(
   brandSlug: string,
   experienceSlug: string,
 ): Promise<PublicExperiencePayload | null> {
-  // 1. Brand by slug. ORCH-1138 Leg 3 — cover_* columns for the "Presented by"
-  // chip (all anon-readable on `brands`). COMMS-0009 / P0-1: the theme_* columns
-  // are NOT selected here — anon cannot read them (HTTP 401 `42501`); the brand
-  // theme is sourced from the anon-safe `business_public_events_view` below.
-  const brandResp = await supabase
-    .from("brands")
-    .select(
-      "id, slug, name, description, cover_media_url, cover_media_type, cover_hue",
-    )
-    .eq("slug", brandSlug)
-    .is("deleted_at", null)
-    .maybeSingle();
-  if (brandResp.error) throw brandResp.error;
-  if (brandResp.data === null) return null;
-  const b = brandResp.data;
-
-  // 2. Experience by (brand_id, slug, event_type='experience', published).
-  const eventResp = await supabase
-    .from("events")
-    .select("*")
-    .eq("brand_id", b.id)
-    .eq("slug", experienceSlug)
-    .eq("event_type", "experience")
-    .in("status", PUBLIC_STATUSES as unknown as string[])
-    .is("deleted_at", null)
-    .maybeSingle();
-  if (eventResp.error) throw eventResp.error;
-  if (eventResp.data === null) return null;
-  const event = eventResp.data;
-
-  // COMMS-0009 / P0-1 — brand theme from the anon-safe view (keyed by this
-  // experience row), never from the non-anon-readable brands.theme_* columns.
-  const brandTheme = await fetchBrandThemeFromView(brandSlug, experienceSlug);
-  const sidecars = await loadExperienceSidecars(event.id as string);
-  const brand: PublicExperienceBrand = mapBrand(b, brandTheme);
-  // ORCH-1076 — resolve buyer-readiness for PAID experiences.
-  const isPaid = ticketsArePaidOnline(sidecars.tickets);
-  const bookable = await resolveBookable(b.id as string, isPaid);
-  return {
-    experience: mapExperience({ event, brand, ...sidecars, bookable }),
-    brand,
-  };
+  const { data, error } = await supabase.rpc("pg_public_experience_by_slug", {
+    p_brand_slug: brandSlug,
+    p_experience_slug: experienceSlug,
+  });
+  if (error !== null) throw error;
+  if (data === null || data === undefined) return null;
+  return mapRpcPayload(data as RpcExpPayload);
 }
 
 /**
