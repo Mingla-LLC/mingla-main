@@ -383,7 +383,15 @@ async function fetchTripDetail(
     // META-ORCH-1174 — real per-tier remaining (null when unlimited; no
     // fabricated sold-out — rule 9). Previously always null on consumer.
     ticketsRemaining: t.isUnlimited ? null : (t.ticketsRemaining ?? null),
-    installmentSchedule: extractTripInstallmentSchedule(t.installments),
+    // ORCH-1179 — extractTripInstallmentSchedule expects the FULL tier_metadata
+    // (its first line unwraps `.installments`). The RPC ALSO emits `t.installments`
+    // ALREADY unwrapped (tier_metadata -> 'installments'), so passing that here
+    // double-unwrapped → null for every plan tier → the §10 pay-over-time toggle,
+    // reserve split CTAs, and cart deposit-lead all silently vanished on consumer.
+    // Read `t.tierMetadata` (the full metadata the extractor was written for) to
+    // restore parity with the business twin (which reads t.installments via a
+    // DIRECT reader). I-1179: consumer installment parity.
+    installmentSchedule: extractTripInstallmentSchedule(t.tierMetadata),
   }));
 
   // Aggregate availability derived from the per-tier rows (the prior consumer

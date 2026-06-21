@@ -21,14 +21,20 @@ import { IconChrome } from "../ui/IconChrome";
 import { Pill } from "../ui/Pill";
 
 export interface CheckoutHeaderProps {
-  /** 0-indexed step (0=Tickets, 1=Buyer, 2=Payment). */
-  stepIndex: 0 | 1 | 2;
   /**
-   * Total visible steps. The event-side funnel is 3; the ORCH-1130 trip funnel
-   * collapses single-tier trips to 2 ("Your details" → "Review & pay"). The
-   * multi-tier trip fallback + all event checkouts keep 3.
+   * 0-indexed step. Event-side: 0=Tickets, 1=Buyer, 2=Payment. ORCH-1178 trip
+   * funnel ALWAYS shows the cart step (index=0) so the trip sequence is
+   * index(0) → buyer(1) → [intake] → payment(2 without intake, 3 with intake);
+   * the intake step itself renders its own inline "3 OF N" header.
    */
-  totalSteps: 2 | 3;
+  stepIndex: 0 | 1 | 2 | 3;
+  /**
+   * Total visible steps. Event checkouts are 3. ORCH-1178 trips ALWAYS keep the
+   * cart/quantity step, so the trip funnel is 3 (no intake) or 4 (intake
+   * present). (Legacy 2 retained for source-compat; the trip funnel no longer
+   * collapses to 2 — ORCH-1178 supersedes the ORCH-1130 single-tier auto-skip.)
+   */
+  totalSteps: 2 | 3 | 4;
   title: string;
   onBack: () => void;
 }
