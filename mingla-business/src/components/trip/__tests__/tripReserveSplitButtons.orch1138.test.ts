@@ -28,6 +28,11 @@ const read = (rel: string): string =>
 
 const routeSrc = read("app/t/[brandSlug]/[tripSlug].tsx");
 const reserveBarSrc = read("src/components/trip/TripReserveBar.tsx");
+// [TEST-MOD-APPROVED META-ORCH-1174] the split-CTA construction (the rule-9 gate +
+// the distinct full/installments routing + the per-segment deposit/full price) was
+// LIFTED out of the route into the shared useTripOfferingState (one owner — the box
+// + both bars read the same splitCtas). SP6–SP9 read its new home; behavior preserved.
+const hookSrc = read("../packages/offering-rendering/useTripOfferingState.ts");
 
 describe("ORCH-1138 — trip Reserve UNIFIED seam-split CTA (business/web)", () => {
   test("SP1 TripReserveBar exposes a splitCtas prop (full + overTime)", () => {
@@ -134,34 +139,33 @@ describe("ORCH-1138 — trip Reserve UNIFIED seam-split CTA (business/web)", () 
     expect(reserveBarSrc).toMatch(/\{floatBody\}\s*<\/View>/);
   });
 
-  test("SP6 the route gates the split on a bookable plan trip (rule 9)", () => {
-    expect(routeSrc).toMatch(
-      /const tripSplitCtas:\s*ReserveSplitCtas \| undefined =\s*\n?\s*tripHasPlan && tripCta\.tappable/,
+  test("SP6 the shared state machine gates the split on a bookable plan trip (rule 9)", () => {
+    expect(hookSrc).toMatch(
+      /const splitCtas:\s*ReserveSplitCtas \| undefined =\s*\n?\s*hasPlan && cta\.tappable/,
     );
   });
 
-  test("SP7 the route passes splitCtas to BOTH the docked + floating bars", () => {
-    const matches = routeSrc.match(/splitCtas=\{tripSplitCtas\}/g) ?? [];
+  test("SP7 the route passes the shared splitCtas to BOTH the docked + floating bars", () => {
+    const matches = routeSrc.match(/splitCtas=\{offeringState\.splitCtas\}/g) ?? [];
     expect(matches.length).toBeGreaterThanOrEqual(2);
   });
 
   test("SP8 each segment routes STRAIGHT to checkout with its OWN plan choice (byte-identical)", () => {
-    expect(routeSrc).toMatch(
-      /handleTripReserve = \(choice\?:\s*TripPaymentChoiceValue\)/,
-    );
+    // The route's reserve handler threads the choice into the plan route param…
+    expect(routeSrc).toMatch(/handleTripReserve = useCallback\(/);
+    expect(routeSrc).toMatch(/\(choice\?:\s*TripPaymentPlanChoice\):\s*void/);
     expect(routeSrc).toMatch(/plan:\s*choice \?\? paymentPlanChoice/);
-    expect(routeSrc).toMatch(/onPress:\s*\(\)\s*=>\s*handleTripReserve\("full"\)/);
-    expect(routeSrc).toMatch(
-      /onPress:\s*\(\)\s*=>\s*handleTripReserve\("installments"\)/,
-    );
+    // …and the shared state wires each segment to its OWN choice.
+    expect(hookSrc).toMatch(/onPress:\s*\(\)\s*=>\s*onReserve\("full"\)/);
+    expect(hookSrc).toMatch(/onPress:\s*\(\)\s*=>\s*onReserve\("installments"\)/);
   });
 
   test("SP9 'Pay over time' shows the deposit due today; 'Pay in full' the full price", () => {
-    const block = routeSrc.match(/const tripSplitCtas[\s\S]*?:\s*undefined;/);
+    const block = hookSrc.match(/const splitCtas[\s\S]*?:\s*undefined;/);
     expect(block).not.toBeNull();
     const str = block?.[0] ?? "";
     expect(str).toContain('label: "Pay in full"');
-    expect(str).toContain("price: tripPrice");
+    expect(str).toMatch(/price:\s*priceLabel/);
     expect(str).toContain('label: "Pay over time"');
     expect(str).toMatch(/From \$\{depositLabel\} today/);
   });

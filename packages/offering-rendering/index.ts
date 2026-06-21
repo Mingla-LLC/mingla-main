@@ -120,6 +120,58 @@ export type {
 export { normalizeCityCountry } from "./normalizeCityCountry";
 export type { StructuredPlaceParts } from "./normalizeCityCountry";
 
+// ===========================================================================
+// META-ORCH-1174 Leg A [trip-page-standardize] — THE ONE shared, shell-agnostic
+// body for the public TRIP page (event_type='trip'). Rendered byte-identically on
+// buyer-web + business iOS/Android + consumer iOS/Android. Hosts NO scroll root /
+// cover host (each surface injects its scaffold). The surface lifts buy-state via
+// useTripOfferingState and passes it to BOTH <TripOfferingBody>'s inline §10 box
+// AND the pinned <TripReserveBar> (floating/docked) — one owner, never diverge.
+// Promotes the forked reserve bar, refund ladder, day-by-day, payment choice into
+// shared pure components; adds the NEW reduce-motion-aware <TripCountdownPill>.
+// ===========================================================================
+export { TripOfferingBody } from "./TripOfferingBody";
+export type { TripOfferingBodyProps } from "./TripOfferingBody";
+export {
+  useTripOfferingState,
+  projectTripSchedule,
+  selectSellableTier,
+} from "./useTripOfferingState";
+export type {
+  UseTripOfferingStateInput,
+  TripOfferingState,
+  TripPaymentPlanChoice,
+} from "./useTripOfferingState";
+export { TripReserveBar } from "./TripReserveBar";
+export type { TripReserveBarProps } from "./TripReserveBar";
+export { TripPaymentChoice as TripOfferingPaymentChoice } from "./TripPaymentChoice";
+export type { TripPaymentChoiceProps as TripOfferingPaymentChoiceProps } from "./TripPaymentChoice";
+export { TripRefundLadder } from "./TripRefundLadder";
+export type { TripRefundLadderProps } from "./TripRefundLadder";
+export { DayByDay } from "./DayByDay";
+export type { DayByDayProps } from "./DayByDay";
+export { TripCountdownPill } from "./TripCountdownPill";
+export type { TripCountdownPillProps } from "./TripCountdownPill";
+export {
+  countdownTickMs,
+  formatCountdown,
+  formatDeadlineCoarse,
+} from "./tripCountdown";
+export type {
+  TripOfferingData,
+  TripOfferingBrand,
+  TripOfferingTier,
+  TripOfferingDay,
+  TripOfferingInclusion,
+  TripOfferingCallbacks,
+  TripInstallmentTemplate,
+  TripRefundPolicyShape,
+  TripRefundTier,
+  ProjectedTripSchedule,
+  ReserveSplitButton,
+  ReserveSplitCtas,
+} from "./tripOfferingTypes";
+
 export {
   useResponsiveLayout,
   DESKTOP_BREAKPOINT,

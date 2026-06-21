@@ -108,9 +108,15 @@ describe("ORCH-1138 DR3 — trip Reserve CTA float→dock (business/web)", () =>
     );
   });
 
-  test("DR3e TripPreview renders dockedReserve as the LAST phone-body child (flush, no void)", () => {
-    const payIdx = previewSrc.indexOf("Choose how you pay");
-    const dockIdx = previewSrc.lastIndexOf("dockedReserve !== undefined");
+  test("DR3e the body renders dockedReserve as the LAST phone-body child (flush, no void)", () => {
+    // [TEST-MOD-APPROVED META-ORCH-1174] retarget: the "Choose how you pay" §10
+    // box + the dockedReserve tail were LIFTED out of TripPreview into the shared
+    // TripOfferingBody (one body, all surfaces). The flush-no-void invariant now
+    // lives there: the dockedReserve renders as the LAST child, after §10. Still
+    // fails on revert (move the dockedReserve above the pay box → dockIdx < payIdx).
+    const bodySrc = read("../packages/offering-rendering/TripOfferingBody.tsx");
+    const payIdx = bodySrc.indexOf("Choose how you pay");
+    const dockIdx = bodySrc.lastIndexOf("dockedReserve !== undefined");
     expect(payIdx).toBeGreaterThan(-1);
     expect(dockIdx).toBeGreaterThan(-1);
     expect(dockIdx).toBeGreaterThan(payIdx);

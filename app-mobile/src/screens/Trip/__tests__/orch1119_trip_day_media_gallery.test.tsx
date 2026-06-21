@@ -93,19 +93,28 @@ ok(
 );
 
 // ── T3: Constitution #9 — zero gallery nodes for media:[] ──
-// ORCH-1138 Leg 1C RETARGET ([TEST-MOD-APPROVED ORCH-1138]): the consumer trip
-// detail now delegates the per-day gallery to the SHARED @mingla/offering-
-// rendering <CountAwareGallery/> (Direction-A parity with the business/web trip
-// page) instead of the hand-rolled `day.media.length > 0 ? <ScrollView>…` block.
-// CountAwareGallery enforces Constitution #9 INTERNALLY — it renders ZERO nodes
-// for an empty `items` array (documented in CountAwareGallery.tsx). The adapter
-// feeds it `day.gallery` (the mapped CountAwareGalleryItem[]). So the rule-9
-// guard is preserved, now at the primitive layer; this assertion is retargeted to
-// the delegation. The behavioral replica below still proves the zero-node rule.
+// META-ORCH-1174 Leg A RETARGET ([TEST-MOD-APPROVED META-ORCH-1174]): the consumer
+// trip detail now renders the SHARED <TripOfferingBody/> (the ONE standardized trip
+// body), which renders the shared <DayByDay/> spine, which renders the shared
+// <CountAwareGallery/> per day. The per-day gallery moved ONE delegation level
+// deeper than the ORCH-1138 Leg-1C retarget (screen → TripOfferingBody → DayByDay →
+// CountAwareGallery). CountAwareGallery enforces Constitution #9 INTERNALLY (zero
+// nodes for an empty items array). So this assertion is retargeted to: the screen
+// renders <TripOfferingBody/> (carrying the day-by-day spine), AND the shared
+// DayByDay feeds CountAwareGallery the per-day media. The behavioral replica below
+// still proves the zero-node rule independently.
+const dayByDaySrc = fs.readFileSync(
+  path.join(ROOT, "../packages/offering-rendering/DayByDay.tsx"),
+  "utf8",
+);
 ok(
-  "T3 consumer gallery delegates to the shared CountAwareGallery (rule-9 zero-nodes enforced by the primitive)",
-  /<CountAwareGallery\b/.test(detailSrc) &&
-    /items=\{day\.gallery\}/.test(detailSrc),
+  "T3 consumer trip detail renders the shared TripOfferingBody (carries day-by-day)",
+  /<TripOfferingBody\b/.test(detailSrc),
+);
+ok(
+  "T3 shared DayByDay delegates the per-day gallery to CountAwareGallery (rule-9 zero-nodes enforced by the primitive)",
+  /<CountAwareGallery\b/.test(dayByDaySrc) &&
+    /items=\{day\.media\.map\(/.test(dayByDaySrc),
 );
 
 // Behavioral replica: the render predicate yields nothing for an empty day.
@@ -137,17 +146,15 @@ ok(
   const r1 = renderGalleryNodeCount(twoVideos, "d1-0", "d1");
   ok("T4 one active key → exactly one video playing", r1.playing === 1 && r1.nodes === 2);
 }
-// ORCH-1138 Leg 1C RETARGET ([TEST-MOD-APPROVED ORCH-1138]): the one-playing
-// guard moved INTO the shared CountAwareGallery primitive (it tracks the active
-// video via firstVideoIndex + internal state, so at most one tile plays at a
-// time). The consumer screen no longer hand-rolls activeVideoKey/playbackActive
-// for the per-day gallery (it delegates to CountAwareGallery). The behavioral
-// replica above still proves the at-most-one-playing invariant; this assertion is
-// retargeted to the delegation.
+// META-ORCH-1174 Leg A RETARGET ([TEST-MOD-APPROVED META-ORCH-1174]): the
+// one-playing guard is owned by the shared CountAwareGallery primitive, which is
+// now rendered by the shared <DayByDay/> (inside <TripOfferingBody/>), not the
+// screen. The behavioral replica above still proves the at-most-one-playing
+// invariant; this assertion is retargeted to the DayByDay delegation.
 ok(
-  "T4 the per-day gallery's one-playing guard is owned by the shared CountAwareGallery primitive",
-  /<CountAwareGallery\b/.test(detailSrc) &&
-    /accessibilityLabelPrefix=\{`Day \$\{day\.ordinal\} media`\}/.test(detailSrc),
+  "T4 the per-day gallery's one-playing guard is owned by the shared CountAwareGallery primitive (via DayByDay)",
+  /<CountAwareGallery\b/.test(dayByDaySrc) &&
+    /accessibilityLabelPrefix=\{`Day \$\{day\.ordinal\} media`\}/.test(dayByDaySrc),
 );
 
 console.log(`\n${passed} checks passed — ORCH-1119 consumer gallery`);

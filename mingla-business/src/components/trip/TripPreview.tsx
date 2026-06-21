@@ -58,20 +58,25 @@ import {
   type ResolvedTheme,
   type ThemePalette,
 } from "@mingla/offering-rendering";
+// META-ORCH-1174 Leg A — the FOUNDATION mode now renders the ONE shared
+// TripOfferingBody (sections 2→11) inside ParallaxCoverShell. The forked inline
+// body parts (DayByDay / RefundLadder / MetaChip / route block / map / payment
+// mockup) are RETIRED here in favor of the shared package components.
 import {
   ParallaxCoverShell,
-  CountAwareGallery,
-  ChipGroup,
   useResponsiveLayout,
+  TripOfferingBody,
+  TripOfferingPaymentChoice,
   normalizeCityCountry,
-  type Chip,
-  type CountAwareGalleryItem,
+  type TripOfferingBrand,
+  type TripOfferingCallbacks,
+  type TripOfferingData,
+  type TripOfferingState,
+  type TripPaymentPlanChoice,
 } from "@mingla/offering-rendering";
 import { EventCoverMedia } from "../ui/EventCoverMedia";
 import { Icon } from "../ui/Icon";
-import { buildStaticMapUrl } from "../../utils/mapboxStaticImage";
 import { CollapsibleDescription } from "../offering/CollapsibleDescription";
-import type { RefundPolicy } from "../../services/refundPolicyService";
 import type {
   Trip,
   TripDay,
@@ -134,10 +139,26 @@ export interface TripPreviewProps {
   /** sold-out / closed / deadline pill, rendered above the body content. */
   stateBanner?: React.ReactNode | null;
   /**
-   * Themed payment block (TripCheckoutFlow). Rendered inline on phone and inside
-   * the sticky panel on desktop. Built by the route so it carries route state.
+   * META-ORCH-1174 Leg A — the SHARED normalized body data + brand contract,
+   * built by the route via tripOfferingAdapter (one build, the SAME object the
+   * route's useTripOfferingState read). Required in FOUNDATION mode.
    */
-  paymentBlock?: React.ReactNode;
+  offeringData?: TripOfferingData;
+  offeringBrand?: TripOfferingBrand;
+  /**
+   * META-ORCH-1174 Leg A — the SHARED lifted buy-state (useTripOfferingState).
+   * Required in FOUNDATION mode: the inline §10 box + the docked/desktop bars all
+   * read it so they can never diverge. Built by the route.
+   */
+  offeringState?: TripOfferingState;
+  /** The live pay-full/pay-over-time toggle value (route owns the useState). */
+  paymentPlanChoice?: TripPaymentPlanChoice;
+  onPaymentPlanChoiceChange?: (value: TripPaymentPlanChoice) => void;
+  /**
+   * META-ORCH-1174 Leg A — the §10 reserve action (route push to checkout). The
+   * `choice` is set when the split buttons fire; undefined for the single Reserve.
+   */
+  onReserve?: (choice?: TripPaymentPlanChoice) => void;
   /** Desktop sticky-panel Reserve control + reassurance (route-owned). */
   reserveControl?: React.ReactNode;
   /** Brand "View" tap → brand page (route-owned). */
@@ -179,30 +200,9 @@ function formatPrice(tier: TripPricingTier | undefined): string {
   }
 }
 
-// ORCH-1138 — derived "N days · M nights" from the trip date range. Returns null
-// when the range can't be derived (rule 9 — never fabricate a duration).
-function deriveDuration(startAt: string | null, endAt: string | null): string | null {
-  if (startAt === null || endAt === null) return null;
-  const s = Date.parse(startAt);
-  const e = Date.parse(endAt);
-  if (!Number.isFinite(s) || !Number.isFinite(e) || e < s) return null;
-  const dayMs = 24 * 60 * 60 * 1000;
-  const nights = Math.max(0, Math.round((e - s) / dayMs));
-  const days = nights + 1;
-  if (nights === 0) return `${days} day`;
-  return `${days} days · ${nights} night${nights === 1 ? "" : "s"}`;
-}
-
-function mediaToGalleryItems(day: TripDay): CountAwareGalleryItem[] {
-  return day.media.map((m) => ({
-    url: m.url,
-    type: m.type === "video" ? "video" : "image",
-  }));
-}
-
-// ORCH-1138 Q2 — collapse to first 2 days + "Show all N days" when 5+ days.
-const LONG_ITINERARY_THRESHOLD = 5;
-const COLLAPSED_DAY_COUNT = 2;
+// META-ORCH-1174 Leg A — `deriveDuration` + `mediaToGalleryItems` + the itinerary
+// collapse thresholds moved into the shared @mingla/offering-rendering package
+// (tripOfferingAdapter / DayByDay). FOUNDATION mode no longer hand-rolls them.
 
 export const TripPreview: React.FC<TripPreviewProps> = ({
   trip,
@@ -218,7 +218,12 @@ export const TripPreview: React.FC<TripPreviewProps> = ({
   onClose,
   onShare,
   stateBanner = null,
-  paymentBlock,
+  offeringData,
+  offeringBrand,
+  offeringState,
+  paymentPlanChoice = "full",
+  onPaymentPlanChoiceChange,
+  onReserve,
   reserveControl,
   onViewBrand,
   contentBottomInset = 0,
@@ -227,18 +232,25 @@ export const TripPreview: React.FC<TripPreviewProps> = ({
   onScroll,
   onScrollViewLayout,
 }) => {
-  // FOUNDATION mode requires both palette + theme + the chrome handlers.
+  // FOUNDATION mode requires palette + theme + chrome handlers + the shared state.
   if (
     palette !== undefined &&
     theme !== undefined &&
     onClose !== undefined &&
     onShare !== undefined &&
-    onToggleMute !== undefined
+    onToggleMute !== undefined &&
+    offeringData !== undefined &&
+    offeringBrand !== undefined &&
+    offeringState !== undefined &&
+    onReserve !== undefined &&
+    onPaymentPlanChoiceChange !== undefined
   ) {
     return (
       <FoundationTripPreview
         trip={trip}
         brand={brand}
+        data={offeringData}
+        offeringBrand={offeringBrand}
         palette={palette}
         theme={theme}
         muted={muted}
@@ -246,7 +258,10 @@ export const TripPreview: React.FC<TripPreviewProps> = ({
         onClose={onClose}
         onShare={onShare}
         stateBanner={stateBanner}
-        paymentBlock={paymentBlock}
+        offeringState={offeringState}
+        paymentPlanChoice={paymentPlanChoice}
+        onPaymentPlanChoiceChange={onPaymentPlanChoiceChange}
+        onReserve={onReserve}
         reserveControl={reserveControl}
         onViewBrand={onViewBrand}
         contentBottomInset={contentBottomInset}
@@ -279,6 +294,8 @@ export const TripPreview: React.FC<TripPreviewProps> = ({
 const FoundationTripPreview: React.FC<{
   trip: Trip;
   brand: TripPreviewBrand;
+  data: TripOfferingData;
+  offeringBrand: TripOfferingBrand;
   palette: ThemePalette;
   theme: ResolvedTheme;
   muted: boolean;
@@ -286,7 +303,10 @@ const FoundationTripPreview: React.FC<{
   onClose: () => void;
   onShare: () => void;
   stateBanner: React.ReactNode | null;
-  paymentBlock?: React.ReactNode;
+  offeringState: TripOfferingState;
+  paymentPlanChoice: TripPaymentPlanChoice;
+  onPaymentPlanChoiceChange: (value: TripPaymentPlanChoice) => void;
+  onReserve: (choice?: TripPaymentPlanChoice) => void;
   reserveControl?: React.ReactNode;
   onViewBrand?: () => void;
   contentBottomInset: number;
@@ -298,6 +318,8 @@ const FoundationTripPreview: React.FC<{
 }> = ({
   trip,
   brand,
+  data,
+  offeringBrand,
   palette,
   theme,
   muted,
@@ -305,7 +327,10 @@ const FoundationTripPreview: React.FC<{
   onClose,
   onShare,
   stateBanner,
-  paymentBlock,
+  offeringState,
+  paymentPlanChoice,
+  onPaymentPlanChoiceChange,
+  onReserve,
   reserveControl,
   onViewBrand,
   contentBottomInset,
@@ -318,41 +343,11 @@ const FoundationTripPreview: React.FC<{
   const { isDesktop } = useResponsiveLayout();
   const surface = offeringSurfaceStyles(palette);
   // ORCH-1138 Leg-1 (native-parity fix #2) — the BOLD (700-weight) loaded family.
-  // On native a loaded custom font ignores `fontWeight`, so every element the
-  // mockup shows bold (title, section headings, brand name, day titles, chip
-  // VALUES like "3 seats left", the route place values) sets `fontFamily` to this
-  // weight-specific family instead of relying on the StyleSheet's `fontWeight`
-  // (which only synthesized bold on react-native-web — the native divergence).
-  // The route loads this family via useThemeFont(boldFontFamily(theme)).
-  // (The medium `theme.fontFamilyValue` is no longer referenced on this page — the
-  // mockup renders the brand face only at bold weights; small caps eyebrows/labels
-  // intentionally stay on the system font per DIRECTION_A_V2.)
   const boldFamily = boldFontFamily(theme);
 
-  const bt = trip.businessTrip;
-  // ORCH-1138 [trip-page-redesign] — standardize the route legs to "City, Country"
-  // so leaving-from + destination stay short + balanced on ONE aligned row. The
-  // trip payload carries only free-text *LocationText (no structured city/country
-  // fields), so we parse the free text via the shared normalizer. null → that leg
-  // is hidden (rule 9, no fabrication).
-  const departureCityCountry = normalizeCityCountry(bt.departureLocationText);
-  const destinationCityCountry = normalizeCityCountry(bt.destinationLocationText);
-  const tier = trip.pricingTiers[0];
-  const includedChips: Chip[] = trip.inclusions
-    .filter((i) => i.kind === "included")
-    .map((i) => ({ label: i.item, variant: "yes" }));
-  const excludedChips: Chip[] = trip.inclusions
-    .filter((i) => i.kind === "excluded")
-    .map((i) => ({ label: i.item, variant: "no" }));
-
-  const duration = deriveDuration(bt.startAt, bt.endAt);
-  const dateLabel = formatTripDateRange(bt.startAt, bt.endAt);
-  const isSoldOut =
-    tier !== undefined &&
-    tier.isUnlimited === false &&
-    tier.ticketsRemaining !== null &&
-    tier.ticketsRemaining <= 0;
-  const capacity = bt.capacity;
+  const callbacks: TripOfferingCallbacks = { onViewBrand, onReserve };
+  const duration = data.durationLabel;
+  const destinationCityCountry = data.destinationCityCountry;
 
   const coverType =
     trip.coverMediaType === "video"
@@ -363,7 +358,7 @@ const FoundationTripPreview: React.FC<{
           ? "image"
           : null;
 
-  // ---- brand chip ----
+  // ---- desktop sticky booking panel (brand chip + payment toggle + reserve) ----
   const brandChip = (
     <Pressable
       onPress={onViewBrand}
@@ -371,19 +366,11 @@ const FoundationTripPreview: React.FC<{
       accessibilityLabel={`View ${brand.name}`}
       style={[styles.brandRow, surface.card]}
     >
-      {/* ORCH-1138 FIX-3 — render the brand cover via the media-aware
-          EventCoverMedia (image + animated gif + muted inline video) clipped to
-          the circular tile, NOT a plain <Image> (which showed a broken "COVE…"
-          alt on a gif/video URL). No cover ⇒ EventCoverMedia draws its themed hue
-          fallback (rule 9 — clean initial-less avatar, never broken alt text). */}
       <View style={styles.brandTile}>
         <EventCoverMedia
           mediaUrl={brand.coverMediaUrl ?? null}
           mediaType={brand.coverMediaType ?? null}
           hue={brand.coverHue ?? undefined}
-          // ORCH-1138 FIX-3 — empty label so the no-cover fallback is a CLEAN
-          // themed hue gradient, NOT the default "Cover" text (which truncated to
-          // the broken "COVE…" placeholder in the 42px circle).
           label=""
           radius={999}
           autoplay
@@ -395,9 +382,7 @@ const FoundationTripPreview: React.FC<{
         />
       </View>
       <View style={styles.brandTextCol}>
-        <Text style={[styles.brandKicker, surface.tertiaryText]}>
-          Presented by
-        </Text>
+        <Text style={[styles.brandKicker, surface.tertiaryText]}>Presented by</Text>
         <Text style={[styles.brandName, surface.primaryText, { fontFamily: boldFamily }]}>
           {brand.name}
         </Text>
@@ -406,288 +391,23 @@ const FoundationTripPreview: React.FC<{
     </Pressable>
   );
 
-  // ---- itinerary (collapse-aware) ----
-  const itinerary = trip.days.length > 0 ? (
-    <DayByDay
-      trip={trip}
-      palette={palette}
-      surface={surface}
-      // ORCH-1138 fix #2 — DayByDay's only themed text is the bold day title, so
-      // it receives the BOLD loaded family (native bold needs the weighted family).
-      fontFamily={boldFamily}
-      variant={isDesktop ? "desktop" : "phone"}
-    />
-  ) : null;
-
-  // ---- refund + deadline strips (left column on BOTH viewports) ----
-  // ORCH-1138 R2 (device parity fix #7) — the cancellation block is rendered to
-  // the mockup (`.strip` + `.refund-ladder` rows) and PALETTE-THEMED. The shared
-  // <RefundPolicyDisplay/> hardcodes warm-orange (#eb7825) + a white-on-dark
-  // timeline and is consumed by the consumer-app trip detail, so it is NOT
-  // re-themed here; instead the FOUNDATION path renders a bespoke palette-driven
-  // ladder from the SAME real refundPolicy.tiers (rule 9 — only when present).
-  const refundBlock =
-    trip.refundPolicy !== null || trip.bookingDeadline !== null ? (
-      <View style={styles.section}>
-        <Text style={[styles.secTitle, surface.primaryText, { fontFamily: boldFamily }]}>
-          Cancellation policy
-        </Text>
-        <RefundLadder
-          policy={trip.refundPolicy}
-          bookingDeadline={trip.bookingDeadline}
-          palette={palette}
-          surface={surface}
-        />
-      </View>
-    ) : null;
-
-  const left = (
-    <View>
-      {/* phone-only lead eyebrow + title (desktop shows them in the hero) */}
-      {!isDesktop ? (
-        <View style={styles.leadBlock}>
-          {duration !== null ? (
-            <Text style={[styles.eyebrowLead, surface.primaryText]}>
-              {duration}
-              {/* ORCH-1138 FIX-2 — normalize the eyebrow trailing destination to
-                  "City, Country" (same shared normalizer as the route + chip). */}
-              {destinationCityCountry != null
-                ? ` · ${destinationCityCountry}`
-                : ""}
-            </Text>
-          ) : null}
-          <Text style={[styles.title, surface.primaryText, { fontFamily: boldFamily }]}>
-            {trip.title}
-          </Text>
-        </View>
-      ) : null}
-
-      {/* meta chips */}
-      <View style={styles.metaRow}>
-        {dateLabel.length > 0 ? (
-          <MetaChip
-            palette={palette}
-            surface={surface}
-            icon="calendar"
-            fontFamily={boldFamily}
-          >
-            {dateLabel}
-          </MetaChip>
-        ) : null}
-        {duration !== null ? (
-          <MetaChip
-            palette={palette}
-            surface={surface}
-            icon="clock"
-            fontFamily={boldFamily}
-          >
-            {duration}
-          </MetaChip>
-        ) : null}
-        {capacity !== null ? (
-          <MetaChip
-            palette={palette}
-            surface={surface}
-            icon="users"
-            fontFamily={boldFamily}
-          >
-            {isSoldOut
-              ? `Sold out · ${capacity} of ${capacity} booked`
-              : tier?.ticketsRemaining != null
-                ? `${tier.ticketsRemaining} seats left · ${capacity} max`
-                : `${capacity} max`}
-          </MetaChip>
-        ) : null}
-        {/* ORCH-1138 FIX-2 — the 📍 location chip shows the normalized
-            "City, Country" (same shared normalizer as the eyebrow + route block)
-            instead of the raw long destination text. */}
-        {destinationCityCountry != null ? (
-          <MetaChip
-            palette={palette}
-            surface={surface}
-            icon="location"
-            fontFamily={boldFamily}
-          >
-            {destinationCityCountry}
-          </MetaChip>
-        ) : null}
-      </View>
-
-      {/* brand chip — phone shows it inline; desktop puts it in the sticky panel */}
-      {!isDesktop ? brandChip : null}
-
-      {/* route line — ORCH-1138: legs standardized to "City, Country"; each
-          routePlace is numberOfLines={1}+ellipsis on a flex:1/minWidth:0 column
-          so a long city truncates rather than WRAPS (keeps both legs balanced on
-          one aligned row). */}
-      {departureCityCountry != null || destinationCityCountry != null ? (
-        <View style={[styles.route, surface.card]}>
-          {departureCityCountry != null ? (
-            <View style={styles.routeLeg}>
-              <Text style={[styles.routeLabel, surface.tertiaryText]}>
-                Leaving from
-              </Text>
-              <Text
-                numberOfLines={1}
-                ellipsizeMode="tail"
-                style={[styles.routePlace, surface.primaryText, { fontFamily: boldFamily }]}
-              >
-                {departureCityCountry}
-              </Text>
-            </View>
-          ) : null}
-          {departureCityCountry != null &&
-          destinationCityCountry != null ? (
-            <Text style={[styles.routeArrow, { color: palette.accent }]}>→</Text>
-          ) : null}
-          {destinationCityCountry != null ? (
-            <View style={styles.routeLeg}>
-              <Text style={[styles.routeLabel, surface.tertiaryText]}>
-                Destination
-              </Text>
-              <Text
-                numberOfLines={1}
-                ellipsizeMode="tail"
-                style={[styles.routePlace, surface.primaryText, { fontFamily: boldFamily }]}
-              >
-                {destinationCityCountry}
-              </Text>
-            </View>
-          ) : null}
-        </View>
-      ) : null}
-
-      {/* about */}
-      {trip.description !== null && trip.description.trim().length > 0 ? (
-        <View style={styles.section}>
-          <Text style={[styles.secTitle, surface.primaryText, { fontFamily: boldFamily }]}>
-            About this trip
-          </Text>
-          <View style={styles.aboutWrap}>
-            <CollapsibleDescription
-              text={trip.description}
-              testID="trip-preview-description"
-            />
-          </View>
-        </View>
-      ) : null}
-
-      {/* day by day */}
-      {itinerary !== null ? (
-        <View style={styles.section}>
-          <Text style={[styles.secTitle, surface.primaryText, { fontFamily: boldFamily }]}>
-            Day by day
-          </Text>
-          {itinerary}
-        </View>
-      ) : null}
-
-      {/* what's included */}
-      {includedChips.length > 0 ? (
-        <View style={styles.section}>
-          <Text style={[styles.secTitle, surface.primaryText, { fontFamily: boldFamily }]}>
-            What&rsquo;s included
-          </Text>
-          <ChipGroup chips={includedChips} palette={palette} />
-        </View>
-      ) : null}
-
-      {/* what's not included */}
-      {excludedChips.length > 0 ? (
-        <View style={styles.section}>
-          <Text style={[styles.secTitle, surface.primaryText, { fontFamily: boldFamily }]}>
-            What&rsquo;s not included
-          </Text>
-          <ChipGroup chips={excludedChips} palette={palette} />
-        </View>
-      ) : null}
-
-      {/* destination map — only when lat/lng present (rule 9: no placeholder).
-          ORCH-1138 Leg 1: the mockup shows a STATIC MAP IMAGE with a themed pin
-          + caption pill. We render a Mapbox Static Images API URL (a plain
-          <Image>, NO map SDK / NO new dependency) themed to the brand accent,
-          using the client-safe PUBLIC `pk.*` token (Constants.expoConfig.extra.
-          EXPO_PUBLIC_MAPBOX_ACCESS_TOKEN — wired in app.config.ts).
-          FAIL-SAFE (rule 9): buildStaticMapUrl returns null when the token is
-          absent at runtime OR coords are missing/non-finite → we HIDE the image
-          and fall back to the HONEST pin+caption card. Never a fabricated tile,
-          never a crash. Works on native AND react-native-web. */}
-      {bt.destinationLat !== null && bt.destinationLng !== null ? (
-        <View style={styles.section}>
-          <Text style={[styles.secTitle, surface.primaryText, { fontFamily: boldFamily }]}>
-            Where you&rsquo;ll be
-          </Text>
-          <View
-            style={[
-              styles.mapBlock,
-              surface.card,
-              { height: isDesktop ? 300 : 180 },
-            ]}
-          >
-            {(() => {
-              const mapUrl = buildStaticMapUrl({
-                lat: bt.destinationLat,
-                lng: bt.destinationLng,
-                accentHex: palette.accent,
-                height: isDesktop ? 300 : 180,
-              });
-              return mapUrl !== null ? (
-                <Image
-                  source={{ uri: mapUrl }}
-                  style={styles.mapImage}
-                  resizeMode="cover"
-                  accessibilityLabel={`Map of ${
-                    bt.destinationLocationText ?? "the destination"
-                  }`}
-                />
-              ) : null;
-            })()}
-            <Icon name="location" size={28} color={palette.accent} />
-            <View style={[styles.mapCapPill, { backgroundColor: palette.page }]}>
-              <Text style={[styles.mapCap, surface.primaryText]}>
-                {bt.destinationLocationText ?? "Destination"}
-              </Text>
-            </View>
-          </View>
-        </View>
-      ) : null}
-
-      {/* ORCH-1138 [trip-page-redesign] FIX-6 — STANDARD section order on every
-          surface: Cancellation policy renders BEFORE the How-you-pay/payment
-          block. (Consumer already does this; the business/web page previously
-          rendered payment-then-cancellation — reordered here so both match.) This
-          is the standing order for the future event/experience/brand legs too. */}
-      {refundBlock}
-
-      {/* phone-only inline payment block */}
-      {!isDesktop && paymentBlock !== undefined ? (
-        <View style={styles.section}>
-          <Text style={[styles.secTitle, surface.primaryText, { fontFamily: boldFamily }]}>
-            Choose how you pay
-          </Text>
-          {paymentBlock}
-        </View>
-      ) : null}
-
-      {/* ORCH-1138 device-rework #3 — the DOCKED Reserve CTA: the LAST child of the
-          PHONE body, in normal flow, flush just beneath the "Choose how you pay"
-          section (NO black void). Its bg is allowed at this resting position; it
-          pads its own safe-area bottom so the whole button clears the home
-          indicator. onDockLayout (inside the bar) reports its position so the route
-          hides the floating pill once this is on-screen. Desktop uses the sticky
-          panel's Reserve control, so the docked bar is phone-only. */}
-      {!isDesktop && dockedReserve !== undefined ? dockedReserve : null}
-    </View>
-  );
-
-  // ---- desktop sticky booking panel ----
   const stickyPanel = isDesktop ? (
     <View style={[styles.deskPanel, surface.cardStrong]}>
       <View style={[styles.deskAccent, { backgroundColor: palette.accent }]} />
       <View style={styles.deskInner}>
         {brandChip}
-        {paymentBlock !== undefined ? (
-          <View style={styles.deskPayWrap}>{paymentBlock}</View>
+        {offeringState.projectedSchedule !== null ? (
+          <View style={styles.deskPayWrap}>
+            <TripOfferingPaymentChoice
+              schedule={offeringState.projectedSchedule}
+              currency={data.currency}
+              depositPct={0}
+              value={paymentPlanChoice}
+              onChange={onPaymentPlanChoiceChange}
+              palette={palette}
+              fontFamily={boldFamily}
+            />
+          </View>
         ) : null}
         {reserveControl}
       </View>
@@ -706,17 +426,12 @@ const FoundationTripPreview: React.FC<{
       showMute={coverType === "video"}
       onClose={onClose}
       onShare={onShare}
-      // ORCH-1159 — hide the floating X on web (public trip page; no parent
-      // screen for an anonymous share-link visitor). Native keeps it.
       hideCloseOnWeb
       heroEyebrow={
         duration !== null ? (
           <Text style={styles.heroEyebrow}>
             {duration}
-            {/* ORCH-1138 FIX-2 — desktop hero eyebrow normalized to "City, Country". */}
-            {destinationCityCountry != null
-              ? ` · ${destinationCityCountry}`
-              : ""}
+            {destinationCityCountry != null ? ` · ${destinationCityCountry}` : ""}
           </Text>
         ) : undefined
       }
@@ -733,203 +448,20 @@ const FoundationTripPreview: React.FC<{
       onScrollViewLayout={onScrollViewLayout}
       testID={testID}
     >
-      {left}
+      <TripOfferingBody
+        data={data}
+        brand={offeringBrand}
+        palette={palette}
+        theme={theme}
+        state={offeringState}
+        callbacks={callbacks}
+        variant={isDesktop ? "desktop" : "phone"}
+        paymentPlanChoice={paymentPlanChoice}
+        onPaymentPlanChoiceChange={onPaymentPlanChoiceChange}
+        dockedReserve={!isDesktop ? dockedReserve : undefined}
+        testID="meta-orch-1174-trip-body"
+      />
     </ParallaxCoverShell>
-  );
-};
-
-// ---- meta chip ----
-const MetaChip: React.FC<{
-  palette: ThemePalette;
-  surface: ReturnType<typeof offeringSurfaceStyles>;
-  icon: React.ComponentProps<typeof Icon>["name"];
-  // ORCH-1138 Leg-1 (native-parity fix #2) — the bold loaded family so the chip
-  // VALUE ("3 seats left · 102 max", "Positano, Italy") renders bold on native
-  // (a loaded custom font ignores `fontWeight` natively).
-  fontFamily: string;
-  children: React.ReactNode;
-}> = ({ palette, surface, icon, fontFamily, children }) => (
-  <View style={[styles.metaChip, surface.card]}>
-    <Icon name={icon} size={15} color={palette.accent} />
-    <Text style={[styles.metaChipText, surface.secondaryText, { fontFamily }]}>
-      {children}
-    </Text>
-  </View>
-);
-
-// ---- day-by-day spine ----
-const DayByDay: React.FC<{
-  trip: Trip;
-  palette: ThemePalette;
-  surface: ReturnType<typeof offeringSurfaceStyles>;
-  fontFamily: string;
-  variant: "phone" | "desktop";
-}> = ({ trip, palette, surface, fontFamily, variant }) => {
-  const isLong = trip.days.length >= LONG_ITINERARY_THRESHOLD;
-  const [expanded, setExpanded] = React.useState<boolean>(false);
-  const visibleDays =
-    isLong && !expanded ? trip.days.slice(0, COLLAPSED_DAY_COUNT) : trip.days;
-
-  return (
-    <View style={styles.itin}>
-      <View style={[styles.itinSpine, { backgroundColor: palette.accentWash }]} />
-      {visibleDays.map((day: TripDay) => (
-        <View key={day.id} style={styles.day}>
-          <View style={[styles.dayDot, { backgroundColor: palette.accent }]}>
-            <Text style={[styles.dayDotText, { color: palette.accentText }]}>
-              {day.ordinal}
-            </Text>
-          </View>
-          <View style={[styles.dayCard, surface.card]}>
-            <View style={styles.dayHead}>
-              <Text style={[styles.dayOrd, { color: palette.accent }]}>
-                Day {day.ordinal}
-              </Text>
-              {day.date !== null ? (
-                <Text style={[styles.dayDate, surface.tertiaryText]}>
-                  {day.date}
-                </Text>
-              ) : null}
-            </View>
-            <Text style={[styles.dayTitle, surface.primaryText, { fontFamily }]}>
-              {day.title}
-            </Text>
-            {day.narrative !== null && day.narrative.trim().length > 0 ? (
-              <Text style={[styles.dayNarr, surface.secondaryText]}>
-                {day.narrative}
-              </Text>
-            ) : null}
-            {/* CHANGE 1 (mockup v3) — NO timed stops; the wizard does not author
-                them, rendering would fabricate data (rule 9). Day ends at media. */}
-            <CountAwareGallery
-              items={mediaToGalleryItems(day)}
-              palette={palette}
-              variant={variant}
-              accessibilityLabelPrefix={`Day ${day.ordinal} media`}
-            />
-          </View>
-        </View>
-      ))}
-      {isLong ? (
-        <Pressable
-          onPress={() => setExpanded((v) => !v)}
-          accessibilityRole="button"
-          accessibilityLabel={
-            expanded ? "Show fewer days" : `Show all ${trip.days.length} days`
-          }
-          style={styles.showAllRow}
-        >
-          <Text style={[styles.showAllText, { color: palette.accent }]}>
-            {expanded ? "Show fewer days" : `Show all ${trip.days.length} days`}
-          </Text>
-        </Pressable>
-      ) : null}
-    </View>
-  );
-};
-
-// ---- refund ladder + deadline strips (mockup `.strip` / `.refund-ladder`) ----
-// ORCH-1138 R2 (device parity fix #7). Palette-themed; built ONLY from real
-// refundPolicy.tiers + bookingDeadline (rule 9). Mirrors the shared
-// RefundPolicyDisplay's tier-label semantics but reads from the brand palette so
-// the percentages/accent match the page (the shared component is warm-orange).
-const REFUND_KIND_COPY: Record<RefundPolicy["kind"], string> = {
-  flexible:
-    "Flexible — cancel for a full or partial refund based on how early you cancel.",
-  standard:
-    "Standard — partial refunds up to the cutoff, based on how early you cancel.",
-  strict: "Strict — limited refunds; review the cancellation windows below.",
-  custom: "Cancel for a refund based on the windows below.",
-};
-
-function refundTierLabel(
-  tier: { days_before_start: number },
-  index: number,
-  tiers: ReadonlyArray<{ days_before_start: number }>,
-): string {
-  const isLast = index === tiers.length - 1;
-  if (index === 0) return `${tier.days_before_start}+ days before departure`;
-  if (isLast && tier.days_before_start === 0) {
-    const prev = tiers[index - 1];
-    return `Under ${prev.days_before_start} days`;
-  }
-  const prev = tiers[index - 1];
-  return `${tier.days_before_start}–${prev.days_before_start - 1} days before`;
-}
-
-function formatDeadline(iso: string | null): string | null {
-  if (iso === null) return null;
-  const ms = Date.parse(iso);
-  if (!Number.isFinite(ms)) return null;
-  try {
-    return new Date(ms).toLocaleDateString(undefined, {
-      month: "short",
-      day: "numeric",
-      year: "numeric",
-    });
-  } catch {
-    return null;
-  }
-}
-
-const RefundLadder: React.FC<{
-  policy: RefundPolicy | null;
-  bookingDeadline: string | null;
-  palette: ThemePalette;
-  surface: ReturnType<typeof offeringSurfaceStyles>;
-}> = ({ policy, bookingDeadline, palette, surface }) => {
-  const tiers = policy !== null ? policy.tiers : [];
-  const deadlineLabel = formatDeadline(bookingDeadline);
-  return (
-    <View>
-      {policy !== null ? (
-        <View style={[styles.strip, surface.card]}>
-          <Icon name="check" size={16} color={palette.accent} />
-          <Text style={[styles.stripText, surface.secondaryText]}>
-            {REFUND_KIND_COPY[policy.kind]}
-          </Text>
-        </View>
-      ) : null}
-      {tiers.length > 0 ? (
-        <View style={styles.refundLadder}>
-          {tiers.map((tier, index) => {
-            const isZero = tier.refund_pct === 0;
-            return (
-              <View
-                key={`rl-${index}`}
-                style={[
-                  styles.rlRow,
-                  index > 0 ? { borderTopWidth: 1, borderTopColor: palette.panelBorder } : null,
-                ]}
-                accessibilityLabel={`${refundTierLabel(tier, index, tiers)}: ${
-                  isZero ? "no refund" : `${tier.refund_pct}% refund`
-                }`}
-              >
-                <Text style={[styles.rlLabel, surface.secondaryText]}>
-                  {refundTierLabel(tier, index, tiers)}
-                </Text>
-                <Text
-                  style={[
-                    styles.rlPct,
-                    { color: isZero ? palette.tertiaryText : palette.primaryText },
-                  ]}
-                >
-                  {isZero ? "No refund" : `${tier.refund_pct}% refund`}
-                </Text>
-              </View>
-            );
-          })}
-        </View>
-      ) : null}
-      {deadlineLabel !== null ? (
-        <View style={[styles.strip, surface.card]}>
-          <Icon name="clock" size={16} color={palette.accent} />
-          <Text style={[styles.stripText, surface.secondaryText]}>
-            Bookings close {deadlineLabel}.
-          </Text>
-        </View>
-      ) : null}
-    </View>
   );
 };
 
