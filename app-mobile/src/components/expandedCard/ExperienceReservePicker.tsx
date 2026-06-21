@@ -260,6 +260,11 @@ export const ExperienceReservePicker: React.FC<
       accessibilityLabel={mode === "open-daily" ? "Reserve a time" : "Pick a date"}
       scrollMode="scroll"
       hidesBottomNav
+      // ORCH-1192 — the experience detail sheet is now wrapInRNModal (its own OS
+      // window); a sub-sheet must ALSO be wrapInRNModal to z-stack ABOVE it (same
+      // as the TicketCartSheet sibling). Without this the picker renders behind the
+      // experience modal and the reserve flow is dead.
+      wrapInRNModal
       scrollProps={{
         contentContainerStyle: [
           styles.scrollContent,

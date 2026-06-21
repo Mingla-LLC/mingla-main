@@ -110,6 +110,9 @@ export const ExperienceOccurrencePicker: React.FC<
       accessibilityLabel="Pick a date"
       scrollMode="scroll"
       hidesBottomNav
+      // ORCH-1192 — z-stack ABOVE the now-wrapInRNModal experience detail sheet
+      // (same as TicketCartSheet). Without this the picker hides behind the modal.
+      wrapInRNModal
       scrollProps={{
         contentContainerStyle: [
           styles.scrollContent,
