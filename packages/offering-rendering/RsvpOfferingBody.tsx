@@ -67,6 +67,7 @@ import {
 } from "react-native";
 
 import { boldFontFamily, offeringSurfaceStyles, type ThemePalette } from "./themePalette";
+import { Calendar, Globe, MapPin, Minus, Plus } from "./LucideIcons";
 import { resolveRsvpCta, type RsvpCtaState } from "./offeringCta";
 import { type PublicBrandProps, type PublicEventProps } from "./types";
 import { type ResolvedTheme } from "./designTokens";
@@ -574,7 +575,7 @@ export const useRsvpOfferingState = (
             style={[styles.stepBtn, { borderColor: palette.panelBorder, opacity: guests.length <= 0 ? 0.4 : 1 }]}
             testID="orch-1157-rsvp-plus-minus"
           >
-            <Text style={[styles.stepGlyph, { color: palette.accent }]}>–</Text>
+            <Minus size={18} color={palette.accent} />
           </Pressable>
           <Text style={[styles.stepCount, { color: palette.primaryText, fontFamily: boldFamily }]}>
             +{guests.length}
@@ -587,7 +588,7 @@ export const useRsvpOfferingState = (
             style={[styles.stepBtn, { borderColor: palette.panelBorder, opacity: guests.length >= config.plusOnesMax ? 0.4 : 1 }]}
             testID="orch-1157-rsvp-plus-plus"
           >
-            <Text style={[styles.stepGlyph, { color: palette.accent }]}>+</Text>
+            <Plus size={18} color={palette.accent} />
           </Pressable>
         </View>
       </View>
@@ -983,7 +984,7 @@ export const RsvpOfferingBody: React.FC<
           style={[styles.dateRow, { backgroundColor: palette.accentWash, borderColor: palette.panelBorder }]}
           testID="orch-1167-date-row"
         >
-          <Text style={[styles.dateGlyph, { color: palette.accent }]}>◷</Text>
+          <Calendar size={18} color={palette.accent} />
           <View style={styles.dateTextCol}>
             {event.dateLine.length > 0 ? (
               <Text
@@ -1108,7 +1109,7 @@ export const RsvpOfferingBody: React.FC<
           </Text>
           <View style={[styles.venueCard, surface.card]}>
             <View style={[styles.venueDisk, { backgroundColor: palette.accent }]}>
-              <Text style={[styles.venueGlyph, { color: palette.accentText }]}>◯</Text>
+              <Globe size={18} color={palette.accentText} />
             </View>
             <View style={styles.venueTextCol}>
               <Text style={[styles.venueName, surface.primaryText, { fontFamily: boldFamily }]}>Online</Text>
@@ -1140,7 +1141,7 @@ export const RsvpOfferingBody: React.FC<
             style={[styles.venueCard, surface.card]}
           >
             <View style={[styles.venueDisk, { backgroundColor: palette.accent }]}>
-              <Text style={[styles.venueGlyph, { color: palette.accentText }]}>⌖</Text>
+              <MapPin size={18} color={palette.accentText} />
             </View>
             <View style={styles.venueTextCol}>
               {event.venueName !== null && event.venueName.length > 0 ? (
