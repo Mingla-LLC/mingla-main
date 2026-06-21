@@ -85,7 +85,7 @@ AS $function$
       b.theme_color         AS brand_theme_color,
       b.theme_font          AS brand_theme_font,
       b.theme_animation     AS brand_theme_animation,
-      b.is_verified         AS brand_is_verified
+      (b.claim_status = 'verified') AS brand_is_verified
     FROM public.events e
     JOIN public.brands b ON b.id = e.brand_id
     LEFT JOIN public.event_dates ed
