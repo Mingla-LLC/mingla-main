@@ -559,6 +559,8 @@ const styles = StyleSheet.create({
   },
   // ---- category card ----
   categoryCard: {
+    // ORCH-1190 R2 — full-width category card on WEB (see emptyCard).
+    width: "100%",
     gap: spacing.sm,
   },
   categoryHeader: {
@@ -686,6 +688,13 @@ const styles = StyleSheet.create({
   },
   // ---- empty ----
   emptyCard: {
+    // ORCH-1190 R2 — full-width empty "Build your menu" card on WEB. The GlassCard
+    // wrapper carried no width, so on the wide web shell it collapsed to its
+    // centered content's min width (a narrow ~half-width card) while Tables/Settings
+    // content cards (width:"100%") spanned the workspace. Stretch edge-to-edge;
+    // content stays centered via alignItems.
+    width: "100%",
+    alignSelf: "stretch",
     alignItems: "center",
     paddingVertical: spacing.xl,
     gap: spacing.sm,
@@ -720,6 +729,8 @@ const styles = StyleSheet.create({
   },
   // ---- skeleton ----
   skeletonCard: {
+    // ORCH-1190 R2 — full-width loading skeleton on WEB (see emptyCard/categoryCard).
+    width: "100%",
     gap: spacing.sm,
   },
   skelBar: {

@@ -271,6 +271,13 @@ const styles = StyleSheet.create({
     color: textTokens.secondary,
   },
   emptyCard: {
+    // ORCH-1190 R2 — full-width empty card on WEB. The GlassCard wrapper carried
+    // no width, so on the wide web shell it collapsed to its centered content's
+    // min width (a narrow ~half-width card) while Tables/Settings content cards
+    // (width:"100%") spanned the workspace. The card now stretches edge-to-edge;
+    // its content stays centered via alignItems.
+    width: "100%",
+    alignSelf: "stretch",
     alignItems: "center",
     gap: spacing.sm,
   },
