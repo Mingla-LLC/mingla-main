@@ -75,6 +75,7 @@ import {
   writeCheckoutResumePayload,
 } from "../../../src/components/checkout/checkoutPersistence";
 import { CheckoutHeader } from "../../../src/components/checkout/CheckoutHeader";
+import { bookableTierCount } from "./bookableTierCount";
 import { supabase } from "../../../src/services/supabase";
 
 const NativeCheckoutPaymentBoundary = React.lazy(
@@ -589,6 +590,20 @@ function CheckoutTripPaymentScreenContent({
   const showFeesTaxLine = feesTaxLineCents > 0;
   const displayAllIn = formatCurrency(headlineCents, totals.currency, true);
 
+  // ORCH-1176 — derive the funnel length from the trip's BOOKABLE tier count so
+  // the "Review & pay" step reads "2 OF 3" on a multi-package trip and "2 OF 2"
+  // on the single-tier auto-skip path (consistent with index.tsx + buyer.tsx).
+  const totalSteps: 2 | 3 =
+    trip !== null &&
+    bookableTierCount(
+      trip.pricingTiers.map((t) => ({
+        isUnlimited: t.isUnlimited,
+        capacity: t.ticketsRemaining ?? t.quantityTotal,
+      })),
+    ) > 1
+      ? 3
+      : 2;
+
   // Defensive shell while guards redirect.
   if (
     tripEventId === null ||
@@ -601,7 +616,7 @@ function CheckoutTripPaymentScreenContent({
       <View style={styles.host}>
         <CheckoutHeader
           stepIndex={1}
-          totalSteps={2}
+          totalSteps={totalSteps}
           title="Review & pay"
           onBack={handleBack}
         />
@@ -613,7 +628,7 @@ function CheckoutTripPaymentScreenContent({
     <View style={styles.host}>
       <CheckoutHeader
         stepIndex={1}
-        totalSteps={2}
+        totalSteps={totalSteps}
         title="Review & pay"
         onBack={handleBack}
       />

@@ -73,6 +73,7 @@ import {
   useCartTotals,
 } from "../../../src/components/checkout/CartContext";
 import { CheckoutHeader } from "../../../src/components/checkout/CheckoutHeader";
+import { bookableTierCount } from "./bookableTierCount";
 
 import {
   PhoneInput,
@@ -175,6 +176,21 @@ export default function CheckoutTripBuyerScreen(): React.ReactElement {
   const trip = publicTripQuery.data?.trip ?? null;
   const { lines, buyer, setBuyer, recordResult, paymentPlanChoice } = useCart();
   const totals = useCartTotals();
+
+  // ORCH-1176 — derive the funnel length from the trip's BOOKABLE tier count.
+  // A multi-package trip keeps the cart/quantity step (3 steps); an effectively
+  // single-tier trip auto-skips it (2 steps), matching index.tsx's auto-advance
+  // gate. Bookable = unlimited OR remaining capacity > 0 (mirrors tierToTicketStub).
+  const totalSteps: 2 | 3 =
+    trip !== null &&
+    bookableTierCount(
+      trip.pricingTiers.map((t) => ({
+        isUnlimited: t.isUnlimited,
+        capacity: t.ticketsRemaining ?? t.quantityTotal,
+      })),
+    ) > 1
+      ? 3
+      : 2;
 
   // ORCH-1130 Fix #1 — "Total due today" (deposit) line for the order-summary
   // box. When pay-over-time is selected AND the cart holds a plan-active tier,
@@ -430,7 +446,7 @@ export default function CheckoutTripBuyerScreen(): React.ReactElement {
       <View style={styles.host}>
         <CheckoutHeader
           stepIndex={0}
-          totalSteps={2}
+          totalSteps={totalSteps}
           title="Your details"
           onBack={handleBack}
         />
@@ -442,7 +458,7 @@ export default function CheckoutTripBuyerScreen(): React.ReactElement {
     <View style={styles.host}>
       <CheckoutHeader
         stepIndex={0}
-        totalSteps={2}
+        totalSteps={totalSteps}
         title="Your details"
         onBack={handleBack}
       />
