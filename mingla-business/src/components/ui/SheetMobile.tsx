@@ -133,6 +133,13 @@ export interface SheetProps {
   verticalAlign?: "center" | "top";
   testID?: string;
   style?: StyleProp<ViewStyle>;
+  /**
+   * ORCH-1186 Fix 3 — opt-in SOLID panel fill (a brand `palette.page` color),
+   * replacing the default L1–L4 glass stack so a brand-themed sheet fills the
+   * ENTIRE panel edge-to-edge (rounded top + handle + bottom safe-area), with
+   * NO dark glass gaps around the brand fill. Undefined → the default glass.
+   */
+  panelBackground?: string;
 }
 
 const SNAP_RATIOS: Record<SheetSnapPoint, number> = {
@@ -171,6 +178,7 @@ const SheetNative: React.FC<SheetProps> = ({
   dismissOnScrimTap = true,
   testID,
   style,
+  panelBackground,
 }) => {
   const screenHeight = Dimensions.get("window").height;
   const { width: windowWidth } = useWindowDimensions();
@@ -343,6 +351,7 @@ const SheetNative: React.FC<SheetProps> = ({
                   blurOk={blurOk}
                   blurIntensity={blurIntensity}
                   bottomInset={insets.bottom}
+                  panelBackground={panelBackground}
                 >
                   {children}
                 </SheetMobilePanelInner>
@@ -370,6 +379,8 @@ interface SheetMobilePanelInnerProps {
   blurIntensity: number;
   bottomInset: number;
   children: React.ReactNode;
+  /** ORCH-1186 Fix 3 — solid brand fill replacing the glass stack when set. */
+  panelBackground?: string;
 }
 
 const SheetMobilePanelInner: React.FC<SheetMobilePanelInnerProps> = ({
@@ -377,7 +388,28 @@ const SheetMobilePanelInner: React.FC<SheetMobilePanelInnerProps> = ({
   blurIntensity,
   bottomInset,
   children,
-}) => (
+  panelBackground,
+}) =>
+  panelBackground !== undefined ? (
+    // ORCH-1186 Fix 3 — a single solid brand fill clipped to the rounded panel
+    // (covers the handle + bottom safe-area), so the brand color reads edge-to-
+    // edge with no dark glass gaps. The handle + body sit ON TOP of it.
+    <>
+      <View
+        style={[
+          StyleSheet.absoluteFill,
+          styles.bodyClip,
+          { backgroundColor: panelBackground },
+        ]}
+      />
+      <View style={styles.handleWrap}>
+        <View style={styles.handle} />
+      </View>
+      <View style={[styles.body, { paddingBottom: spacing.lg + bottomInset }]}>
+        {children}
+      </View>
+    </>
+  ) : (
   <>
     {/* L1 — Blur base */}
     {blurOk ? (
@@ -432,7 +464,7 @@ const SheetMobilePanelInner: React.FC<SheetMobilePanelInnerProps> = ({
       {children}
     </View>
   </>
-);
+  );
 
 // ORCH-1136 R3: web reduced-motion read (no reanimated hook on the web path).
 const useWebReducedMotion = (): boolean => {
@@ -487,6 +519,7 @@ const SheetWeb: React.FC<SheetProps> = ({
   dismissOnScrimTap = true,
   testID,
   style,
+  panelBackground,
 }) => {
   const screenHeight = Dimensions.get("window").height;
   const { width: windowWidth } = useWindowDimensions();
@@ -617,6 +650,7 @@ const SheetWeb: React.FC<SheetProps> = ({
               blurOk={blurOk}
               blurIntensity={blurIntensity}
               bottomInset={insets.bottom}
+              panelBackground={panelBackground}
             >
               {children}
             </SheetMobilePanelInner>

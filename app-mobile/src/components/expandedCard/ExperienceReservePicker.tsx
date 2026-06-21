@@ -26,7 +26,7 @@
  * checkout request stays byte-identical (eventDateId + quantity only — I-1).
  */
 
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { Platform, Pressable, StyleSheet, Text, View } from "react-native";
 import * as Haptics from "expo-haptics";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -171,6 +171,19 @@ export const ExperienceReservePicker: React.FC<
   const [selectedDateId, setSelectedDateId] = useState<string | null>(null);
   const [selectedMinute, setSelectedMinute] = useState<number | null>(null);
   const [party, setParty] = useState<number>(2);
+  // ORCH-1186 Fix 4 — open-daily is now a 3-step TAP-TO-ADVANCE wizard. Init
+  // "day"; reset to "day" each open. (Slots mode ignores `step` — single list.)
+  const [step, setStep] = useState<"day" | "time" | "party">("day");
+
+  // Reset the wizard + selection on each fresh open (parity with business).
+  useEffect(() => {
+    if (visible) {
+      setSelectedDateId(null);
+      setSelectedMinute(null);
+      setParty(2);
+      setStep("day");
+    }
+  }, [visible]);
 
   const selectedDate = useMemo(
     () => occurrences.find((o) => o.eventDateId === selectedDateId) ?? null,
@@ -222,6 +235,17 @@ export const ExperienceReservePicker: React.FC<
   // the page palette's solid fills; no translucent blur on Android.
   const sheetBg = { backgroundColor: palette.page };
 
+  // ORCH-1186 Fix 4 — wizard step machine (open-daily only). Slots mode keeps
+  // the single date list (a single tap reserves, no wizard).
+  const isWizard = mode === "open-daily";
+  const showDayStep = !isWizard || step === "day";
+  const showTimeStep = isWizard && step === "time";
+  const showPartyStep = isWizard && step === "party";
+  const chosenDayLabel =
+    selectedDate !== null ? formatDayLabel(selectedDate.startAt, timezone) : null;
+  const chosenTimeLabel =
+    selectedMinute !== null ? formatMinute(selectedMinute) : null;
+
   return (
     <BaseBottomSheet
       visible={visible}
@@ -239,6 +263,10 @@ export const ExperienceReservePicker: React.FC<
       scrollProps={{
         contentContainerStyle: [
           styles.scrollContent,
+          // ORCH-1186 Fix 3 — full-height brand fill: the content fills the sheet
+          // edge-to-edge (flexGrow + palette.page) so no dark gap shows under a
+          // short step. The gorhom `backgroundStyle` (palette.page) stays.
+          { flexGrow: 1, backgroundColor: palette.page },
           {
             paddingBottom:
               BOTTOM_NAV_CONTENT_HEIGHT + Math.max(insets.bottom, 16) + 72,
@@ -248,6 +276,18 @@ export const ExperienceReservePicker: React.FC<
       }}
     >
       <View style={styles.headerRow}>
+        {/* Back affordance — only past step 1 of the wizard. */}
+        {isWizard && step !== "day" ? (
+          <Pressable
+            style={[styles.backIcon, { backgroundColor: palette.card }]}
+            accessibilityLabel="Back"
+            accessibilityRole="button"
+            hitSlop={12}
+            onPress={() => setStep(step === "party" ? "time" : "day")}
+          >
+            <Icon name="chevron-back" size={20} color={palette.secondaryText} />
+          </Pressable>
+        ) : null}
         <Text
           style={[styles.headerTitle, { color: palette.primaryText }, fontStyle]}
         >
@@ -264,7 +304,39 @@ export const ExperienceReservePicker: React.FC<
         </Pressable>
       </View>
 
-      {/* ---- DATE LIST (both modes) ---- */}
+      {/* ORCH-1186 Fix 4 — slim summary breadcrumb (chosen day · time). Tapping
+          a crumb jumps back to that step so prior choices stay changeable. */}
+      {isWizard && (chosenDayLabel !== null || step !== "day") ? (
+        <View style={styles.breadcrumb} testID="orch-1186-consumer-experience-breadcrumb">
+          <Pressable
+            onPress={() => setStep("day")}
+            accessibilityRole="button"
+            accessibilityLabel="Change day"
+          >
+            <Text style={[styles.crumb, { color: palette.accent }, fontStyle]}>
+              {chosenDayLabel ?? "Choose a day"}
+            </Text>
+          </Pressable>
+          {chosenTimeLabel !== null ? (
+            <>
+              <Text style={[styles.crumbSep, { color: palette.tertiaryText }]}>·</Text>
+              <Pressable
+                onPress={() => setStep("time")}
+                accessibilityRole="button"
+                accessibilityLabel="Change time"
+              >
+                <Text style={[styles.crumb, { color: palette.accent }, fontStyle]}>
+                  {chosenTimeLabel}
+                </Text>
+              </Pressable>
+            </>
+          ) : null}
+        </View>
+      ) : null}
+
+      {/* ---- STEP 1: DATE LIST (slots: always; wizard: step "day") ---- */}
+      {showDayStep ? (
+        <>
       <Text style={[styles.sectionLabel, { color: palette.tertiaryText }]}>
         {mode === "open-daily" ? "CHOOSE A DAY" : "UPCOMING DATES"}
       </Text>
@@ -288,8 +360,11 @@ export const ExperienceReservePicker: React.FC<
                         void Haptics.impactAsync(
                           Haptics.ImpactFeedbackStyle.Light,
                         );
+                        // ORCH-1186 Fix 4 — tap a day → select, clear time,
+                        // advance to "time" (wizard). Slots: just select.
                         setSelectedDateId(o.eventDateId);
                         setSelectedMinute(null);
+                        if (isWizard) setStep("time");
                       }
                 }
                 disabled={soldOut}
@@ -355,17 +430,13 @@ export const ExperienceReservePicker: React.FC<
           })}
         </View>
       )}
+        </>
+      ) : null}
 
-      {/* ---- OPEN-DAILY: time-within-window + party size ---- */}
-      {mode === "open-daily" && selectedDate !== null ? (
+      {/* ---- STEP 2: TIME WINDOW (wizard only) ---- */}
+      {showTimeStep && selectedDate !== null ? (
         <>
-          <Text
-            style={[
-              styles.sectionLabel,
-              styles.sectionGap,
-              { color: palette.tertiaryText },
-            ]}
-          >
+          <Text style={[styles.sectionLabel, { color: palette.tertiaryText }]}>
             CHOOSE A TIME ·{" "}
             {formatWindow(selectedDate.startAt, selectedDate.endAt, timezone)}
           </Text>
@@ -377,7 +448,9 @@ export const ExperienceReservePicker: React.FC<
                   key={min}
                   onPress={() => {
                     void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                    // ORCH-1186 Fix 4 — tap a time → select + advance to party.
                     setSelectedMinute(min);
+                    setStep("party");
                   }}
                   accessibilityRole="radio"
                   accessibilityState={{ checked: selected }}
@@ -411,7 +484,15 @@ export const ExperienceReservePicker: React.FC<
               );
             })}
           </View>
+        </>
+      ) : null}
 
+      {/* ---- STEP 3: PARTY + RESERVE (wizard only) ---- */}
+      {showPartyStep && selectedDate !== null ? (
+        <>
+          <Text style={[styles.sectionLabel, { color: palette.tertiaryText }]}>
+            HOW MANY?
+          </Text>
           <View
             style={[
               styles.party,
@@ -488,35 +569,40 @@ export const ExperienceReservePicker: React.FC<
         </>
       ) : null}
 
-      {/* ---- Confirm Reserve ---- */}
-      <Pressable
-        onPress={canConfirm ? handleConfirm : undefined}
-        disabled={!canConfirm}
-        accessibilityRole="button"
-        accessibilityState={{ disabled: !canConfirm }}
-        accessibilityLabel="Reserve"
-        style={[
-          styles.confirm,
-          canConfirm
-            ? { backgroundColor: palette.accent }
-            : {
-                backgroundColor: palette.panelStrong,
-                borderColor: palette.panelBorder,
-                borderWidth: 1,
-              },
-        ]}
-        testID="orch-1138-consumer-experience-reserve-confirm"
-      >
-        <Text
+      {/* ---- Confirm Reserve ----
+          Slots mode (single list) or the wizard's final "party" step. The
+          {eventDateId, quantity} handoff is UNCHANGED (ORCH-1186 Fix 4 keeps the
+          exact checkout contract — only the path to it is now stepwise). */}
+      {!isWizard || showPartyStep ? (
+        <Pressable
+          onPress={canConfirm ? handleConfirm : undefined}
+          disabled={!canConfirm}
+          accessibilityRole="button"
+          accessibilityState={{ disabled: !canConfirm }}
+          accessibilityLabel="Reserve"
           style={[
-            styles.confirmText,
-            { color: canConfirm ? palette.accentText : palette.tertiaryText },
-            fontStyle,
+            styles.confirm,
+            canConfirm
+              ? { backgroundColor: palette.accent }
+              : {
+                  backgroundColor: palette.panelStrong,
+                  borderColor: palette.panelBorder,
+                  borderWidth: 1,
+                },
           ]}
+          testID="orch-1138-consumer-experience-reserve-confirm"
         >
-          Reserve →
-        </Text>
-      </Pressable>
+          <Text
+            style={[
+              styles.confirmText,
+              { color: canConfirm ? palette.accentText : palette.tertiaryText },
+              fontStyle,
+            ]}
+          >
+            Reserve →
+          </Text>
+        </Pressable>
+      ) : null}
     </BaseBottomSheet>
   );
 };
@@ -545,13 +631,28 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     borderRadius: 16,
   },
+  backIcon: {
+    width: 32,
+    height: 32,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: 16,
+  },
+  breadcrumb: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    marginBottom: 16,
+    flexWrap: "wrap",
+  },
+  crumb: { fontSize: 13, fontWeight: "800" },
+  crumbSep: { fontSize: 13, fontWeight: "800" },
   sectionLabel: {
     fontSize: 11,
     fontWeight: "800",
     letterSpacing: 1.4,
     marginBottom: 8,
   },
-  sectionGap: { marginTop: 20 },
   empty: { fontSize: 15, paddingVertical: 16 },
   dateCol: { gap: 10 },
   dateRow: {

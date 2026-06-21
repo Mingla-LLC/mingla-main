@@ -135,6 +135,7 @@ const DesktopCenteredCard: React.FC<SheetProps> = ({
   verticalAlign = "center",
   testID,
   style,
+  panelBackground,
 }) => {
   const reduceMotion = useWebReducedMotion();
 
@@ -290,7 +291,8 @@ const DesktopCenteredCard: React.FC<SheetProps> = ({
               {
                 width: cardWidth,
                 maxHeight: cardMaxHeight,
-                backgroundColor: CARD_BACKGROUND,
+                // ORCH-1186 Fix 3 — brand fill override (solid, edge-to-edge).
+                backgroundColor: panelBackground ?? CARD_BACKGROUND,
                 borderColor: glass.border.profileElevated,
               },
               shadows.glassModal,
