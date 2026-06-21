@@ -15,6 +15,7 @@
  */
 
 import {
+  deriveTripDuration,
   formatTripDateRange,
   normalizeCityCountry,
   type TripOfferingBrand,
@@ -24,17 +25,9 @@ import {
 
 import type { ConsumerTripDetail } from "./useConsumerTripDetail";
 
-function deriveDuration(startAt: string | null, endAt: string | null): string | null {
-  if (startAt === null || endAt === null) return null;
-  const s = Date.parse(startAt);
-  const e = Date.parse(endAt);
-  if (!Number.isFinite(s) || !Number.isFinite(e) || e < s) return null;
-  const dayMs = 24 * 60 * 60 * 1000;
-  const nights = Math.max(0, Math.round((e - s) / dayMs));
-  const days = nights + 1;
-  if (nights === 0) return `${days} day`;
-  return `${days} days · ${nights} night${nights === 1 ? "" : "s"}`;
-}
+// META-ORCH-1174 Leg A.3 — "N days · M nights" derives via the SHARED Hermes-safe
+// deriveTripDuration (the RPC's space-separated timestamps broke bare Date.parse
+// on native → the days&nights pill was empty). One owner across both surfaces.
 
 function toRefundPolicyShape(
   policy: ConsumerTripDetail["refundPolicy"],
@@ -46,7 +39,7 @@ function toRefundPolicyShape(
 export function buildConsumerTripOfferingData(
   detail: ConsumerTripDetail,
 ): TripOfferingData {
-  const duration = deriveDuration(detail.startAt, detail.endAt);
+  const duration = deriveTripDuration(detail.startAt, detail.endAt);
   const isSoldOut = detail.spotsLeft !== null && detail.spotsLeft <= 0;
   const cap = detail.totalCapacity;
   const spotsLabel =

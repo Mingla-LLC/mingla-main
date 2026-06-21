@@ -6,6 +6,14 @@
 // reimplementation). Package-isolated: imports nothing from any app src/.
 //
 // Inputs are ISO 8601 strings (e.g. "2026-03-12T00:00:00.000Z") or null.
+//
+// META-ORCH-1174 Leg A.3 — the canonical RPC returns Postgres timestamp text with
+// a SPACE separator ("2026-08-17 00:00:00+00"), which Hermes (React Native) does
+// NOT parse (returns NaN) even though V8/web does → the device showed the fallback
+// "Dates to be set". We now normalize to ISO-8601 (space→'T') BEFORE parsing so the
+// real range renders on native too. See ./tripDuration normalizeTimestampIso.
+
+import { normalizeTimestampIso } from "./tripDuration";
 
 export interface FormatTripDateRangeOptions {
   /** String returned when start or end is null/unparseable. Default "Dates to be set". */
@@ -26,8 +34,12 @@ export function formatTripDateRange(
   const fallback = options?.fallback ?? DEFAULT_FALLBACK;
   if (startAt === null || endAt === null) return fallback;
   try {
-    const start = new Date(startAt);
-    const end = new Date(endAt);
+    // Hermes-safe parse: normalize the space-separated backend form to ISO 8601.
+    const startIso = normalizeTimestampIso(startAt);
+    const endIso = normalizeTimestampIso(endAt);
+    if (startIso === null || endIso === null) return fallback;
+    const start = new Date(startIso);
+    const end = new Date(endIso);
     if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
       return fallback;
     }

@@ -9,6 +9,7 @@
  */
 
 import {
+  deriveTripDuration,
   formatTripDateRange,
   normalizeCityCountry,
   type TripOfferingBrand,
@@ -19,19 +20,10 @@ import {
 import type { Trip } from "../../services/tripsService";
 import type { TripPreviewBrand } from "./TripPreview";
 
-// Derived "N days · M nights" from the trip date range (rule 9 — null when not
-// derivable, never fabricated).
-function deriveDuration(startAt: string | null, endAt: string | null): string | null {
-  if (startAt === null || endAt === null) return null;
-  const s = Date.parse(startAt);
-  const e = Date.parse(endAt);
-  if (!Number.isFinite(s) || !Number.isFinite(e) || e < s) return null;
-  const dayMs = 24 * 60 * 60 * 1000;
-  const nights = Math.max(0, Math.round((e - s) / dayMs));
-  const days = nights + 1;
-  if (nights === 0) return `${days} day`;
-  return `${days} days · ${nights} night${nights === 1 ? "" : "s"}`;
-}
+// META-ORCH-1174 Leg A.3 — "N days · M nights" now derives via the SHARED
+// Hermes-safe deriveTripDuration (the canonical RPC returns space-separated
+// Postgres timestamps that bare Date.parse rejected on native → no days&nights
+// pill). One owner across both surfaces; rule 9 (null when not derivable).
 
 function coerceRefundPolicy(raw: unknown): TripRefundPolicyShape | null {
   if (raw === null || typeof raw !== "object") return null;
@@ -62,7 +54,7 @@ export function buildTripOfferingData(
 ): TripOfferingData {
   const bt = trip.businessTrip;
   const tier = trip.pricingTiers[0];
-  const duration = deriveDuration(bt.startAt, bt.endAt);
+  const duration = deriveTripDuration(bt.startAt, bt.endAt);
   const capacity = bt.capacity;
   const isSoldOut =
     tier !== undefined &&

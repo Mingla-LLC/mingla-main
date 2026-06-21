@@ -152,6 +152,18 @@ export const TripOfferingBody: React.FC<TripOfferingBodyProps> = ({
         }`
       : data.destinationCityCountry;
 
+  // (3) ONE continuous route pill — "From {departure} → {destination}" (Leg A.3
+  // bug #2). When only one leg resolves we render that single leg honestly
+  // (rule 9 — never fabricate the missing side); null hides the route pill.
+  const routeLabel: string | null =
+    data.departureCityCountry !== null && data.destinationCityCountry !== null
+      ? `From ${data.departureCityCountry} → ${data.destinationCityCountry}`
+      : data.departureCityCountry !== null
+        ? `From ${data.departureCityCountry}`
+        : data.destinationCityCountry !== null
+          ? data.destinationCityCountry
+          : null;
+
   const mapUrl =
     data.destinationLat !== null && data.destinationLng !== null
       ? buildStaticMapUrl({
@@ -189,7 +201,10 @@ export const TripOfferingBody: React.FC<TripOfferingBodyProps> = ({
         <View testID="trip-body-title" />
       )}
 
-      {/* (3) Travel dates · Leaving-from · Destination — FULL-WIDTH PILLS. */}
+      {/* (3) Travel dates · From→To route — FULL-WIDTH PILLS (Seth device fix,
+          Leg A.3 bug #2): the travel-dates is its own full-width pill, and
+          departure→destination is ONE continuous full-width pill (NOT two
+          separate blocks) reading "From {departure} → {destination}". */}
       <View testID="trip-body-route-pills">
         {data.dateRangeLabel.length > 0 ? (
           <View
@@ -211,12 +226,13 @@ export const TripOfferingBody: React.FC<TripOfferingBodyProps> = ({
             </Text>
           </View>
         ) : null}
-        {data.departureCityCountry !== null ? (
+        {routeLabel !== null ? (
           <View
             style={[
               styles.fullPill,
               { backgroundColor: palette.accentWash, borderColor: palette.panelBorder },
             ]}
+            testID="trip-body-route-pill"
           >
             <Text style={[styles.fullPillGlyph, { color: palette.accent }]}>✈</Text>
             <Text
@@ -227,27 +243,7 @@ export const TripOfferingBody: React.FC<TripOfferingBodyProps> = ({
               numberOfLines={1}
               ellipsizeMode="tail"
             >
-              Leaving from {data.departureCityCountry}
-            </Text>
-          </View>
-        ) : null}
-        {data.destinationCityCountry !== null ? (
-          <View
-            style={[
-              styles.fullPill,
-              { backgroundColor: palette.accentWash, borderColor: palette.panelBorder },
-            ]}
-          >
-            <Text style={[styles.fullPillGlyph, { color: palette.accent }]}>📍</Text>
-            <Text
-              style={[
-                styles.fullPillText,
-                { color: palette.primaryText, fontFamily: boldFamily },
-              ]}
-              numberOfLines={1}
-              ellipsizeMode="tail"
-            >
-              {data.destinationCityCountry}
+              {routeLabel}
             </Text>
           </View>
         ) : null}
@@ -416,53 +412,40 @@ export const TripOfferingBody: React.FC<TripOfferingBodyProps> = ({
         />
       </View>
 
-      {/* (10) Choose how you pay — the §10 reserve box (Leg A: single tier). The
-          inline box + the bar read the SAME `state`, so they never disagree. */}
+      {/* (10) Choose how you pay — ONE merged §10 reserve box (Leg A.3 bug #5: the
+          prior duplicate "payment-choice" box AND separate "reserve" box are now a
+          SINGLE box — payment-plan toggle (plan tiers) + the live price row + the
+          in-box Reserve CTA. The box + the docked/floating bars read the SAME
+          `state`, so they never disagree. Leg B drops N tier rows into this same
+          selectBox slot — the multi-tier seam is intact.) */}
       <View style={styles.section} testID="trip-body-pay-box">
         <Text style={[styles.secTitle, surface.primaryText, { fontFamily: boldFamily }]}>
           Choose how you pay
         </Text>
 
-        {/* The shared payment-plan toggle (renders only for a plan tier). */}
-        {state.projectedSchedule !== null && state.isClosed === false ? (
-          <TripPaymentChoice
-            schedule={state.projectedSchedule}
-            currency={data.currency}
-            depositPct={0}
-            value={paymentPlanChoice}
-            onChange={onPaymentPlanChoiceChange}
-            palette={palette}
-            fontFamily={boldFamily}
-            testID="trip-body-payment-choice"
-          />
-        ) : state.selectedTier !== null ? (
-          // No-plan trip → quiet price recap (DESIGN §D wireframe 3).
-          <View style={[styles.recapCard, surface.card]}>
-            <View style={styles.recapRow}>
-              <Text
-                style={[styles.recapTierName, surface.secondaryText]}
-                numberOfLines={1}
-              >
-                {state.selectedTier.tierName}
-              </Text>
-              <Text style={[styles.recapPrice, surface.primaryText, { fontFamily: boldFamily }]}>
-                {boxPriceLabel ?? "—"}
-              </Text>
-            </View>
-            <Text style={[styles.recapHelper, surface.tertiaryText]}>
-              One secure payment. Stripe handles it; we never see your card.
-            </Text>
-          </View>
-        ) : null}
-
-        {/* The real selection box — single tier, live all-in total, in-box CTA. The
-            box's container is a vertical list slot (Leg B drops N tier rows here —
-            SPEC §D.2). Tapping fires callbacks.onReserve (route push / open cart). */}
         {state.selectedTier !== null ? (
           <View
             style={[styles.selectBox, surface.card]}
             testID="trip-body-select-box"
           >
+            {/* The shared pay-full / pay-over-time toggle (plan tiers, open only).
+                Tapping drives `paymentPlanChoice` (Leg A.3 bug #4) → the price row
+                + the CTA below + the docked/floating bar all update live. */}
+            {state.projectedSchedule !== null && state.isClosed === false ? (
+              <View style={styles.payChoiceWrap}>
+                <TripPaymentChoice
+                  schedule={state.projectedSchedule}
+                  currency={data.currency}
+                  depositPct={0}
+                  value={paymentPlanChoice}
+                  onChange={onPaymentPlanChoiceChange}
+                  palette={palette}
+                  fontFamily={boldFamily}
+                  testID="trip-body-payment-choice"
+                />
+              </View>
+            ) : null}
+
             <View style={styles.selectRow}>
               <Text
                 style={[styles.selectTierName, surface.primaryText, { fontFamily: boldFamily }]}
@@ -642,18 +625,10 @@ const styles = StyleSheet.create({
   brandName: { fontSize: 15, fontWeight: "800" },
   brandVerifiedGlyph: { fontSize: 13, fontWeight: "900" },
   brandCta: { marginLeft: "auto", fontSize: 12, fontWeight: "800" },
-  // ---- §10 box ----
-  recapCard: { borderRadius: 16, padding: 14, marginBottom: 12 },
-  recapRow: {
-    flexDirection: "row",
-    alignItems: "baseline",
-    justifyContent: "space-between",
-    gap: 12,
-  },
-  recapTierName: { flexShrink: 1, fontSize: 13 },
-  recapPrice: { fontSize: 22, fontWeight: "900", letterSpacing: -0.4 },
-  recapHelper: { fontSize: 12, marginTop: 8, textAlign: "center" },
+  // ---- §10 box (ONE merged box: payment toggle + price row + reserve CTA) ----
   selectBox: { borderRadius: 18, padding: 14, marginTop: 12 },
+  // The payment-plan toggle sits ATOP the price row inside the same box.
+  payChoiceWrap: { marginBottom: 14 },
   selectRow: {
     flexDirection: "row",
     alignItems: "baseline",
