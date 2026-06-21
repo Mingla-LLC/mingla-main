@@ -2642,6 +2642,19 @@ jobs:
       - name: Run ORCH-1167 one-read-rpc gate
         run: node .github/scripts/strict-grep/orch-1167-one-read-rpc.mjs
 
+  orch-1158-address-hide-respected:
+    name: "ORCH-1158 (re-pointed @ ORCH-1186): the live public event/RSVP bodies gate the exact address on hideAddressUntilTicket — CLIENT belt-and-suspenders on top of the ORCH-1167 server RPC privacy (I-PROPOSED-1158-ADDRESS-HIDE-RESPECTED)"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Self-test the ORCH-1158 address-hide-respected gate
+        run: node .github/scripts/strict-grep/orch-1158-address-hide-respected.mjs --self-test
+      - name: Run ORCH-1158 address-hide-respected gate
+        run: node .github/scripts/strict-grep/orch-1158-address-hide-respected.mjs
+
   i-proposed-1161-sms-sender-kill-switch:
     name: "META-ORCH-1161 [notif-system]: SMS via approved Messaging Service + per-market kill-switch (I-PROPOSED-1161-SMS-FROM-APPROVED-SENDER-ONLY / -SMS-MARKET-KILL-SWITCH)"
     runs-on: ubuntu-latest

@@ -164,6 +164,9 @@ export const ExperienceReservePicker: React.FC<ExperienceReservePickerProps> = (
   // Open-daily: chosen time-within-window (minutes from midnight) + party size.
   const [selectedMinute, setSelectedMinute] = useState<number | null>(null);
   const [party, setParty] = useState<number>(2);
+  // ORCH-1186 Fix 4 — open-daily is now a 3-step TAP-TO-ADVANCE wizard. Init
+  // "day"; reset to "day" each open. (Slots mode ignores `step` — single list.)
+  const [step, setStep] = useState<"day" | "time" | "party">("day");
 
   // ORCH-1153 BUG-4 (Seth device, /exp date picker "dead"): reset the selection
   // whenever the sheet opens so a re-open starts clean (a stale selectedDateId
@@ -175,6 +178,7 @@ export const ExperienceReservePicker: React.FC<ExperienceReservePickerProps> = (
       setSelectedDateId(null);
       setSelectedMinute(null);
       setParty(2);
+      setStep("day");
     }
   }, [visible]);
 
@@ -225,10 +229,40 @@ export const ExperienceReservePicker: React.FC<ExperienceReservePickerProps> = (
     return `${h12}:${String(m).padStart(2, "0")} ${ampm}`;
   };
 
+  // ORCH-1186 Fix 4 — wizard step machine (open-daily only). Slots mode shows
+  // the single date list as before (no wizard — a single tap reserves).
+  const isWizard = mode === "open-daily";
+  const showDayStep = !isWizard || step === "day";
+  const showTimeStep = isWizard && step === "time";
+  const showPartyStep = isWizard && step === "party";
+
+  // breadcrumb chosen-day / chosen-time labels (changeable via Back).
+  const chosenDayLabel =
+    selectedDate !== null ? formatDayLabel(selectedDate.startAt, timezone) : null;
+  const chosenTimeLabel =
+    selectedMinute !== null ? formatMinute(selectedMinute) : null;
+
   return (
-    <Sheet visible={visible} onClose={onCancel} snapPoint={SHEET_SNAP}>
+    <Sheet
+      visible={visible}
+      onClose={onCancel}
+      snapPoint={SHEET_SNAP}
+      panelBackground={palette.page}
+    >
       <View style={[styles.host, { backgroundColor: palette.page }]}>
         <View style={styles.headerRow}>
+          {/* Back affordance — only past step 1 of the wizard. */}
+          {isWizard && step !== "day" ? (
+            <Pressable
+              onPress={() => setStep(step === "party" ? "time" : "day")}
+              accessibilityRole="button"
+              accessibilityLabel="Back"
+              hitSlop={12}
+              style={[styles.backIcon, { backgroundColor: palette.card }]}
+            >
+              <Icon name="chevL" size={20} color={palette.secondaryText} />
+            </Pressable>
+          ) : null}
           <Text style={[styles.title, { color: palette.primaryText }, fontStyle]}>
             {mode === "open-daily" ? "Reserve a spot" : "Pick a date"}
           </Text>
@@ -243,90 +277,122 @@ export const ExperienceReservePicker: React.FC<ExperienceReservePickerProps> = (
           </Pressable>
         </View>
 
+        {/* ORCH-1186 Fix 4 — slim summary breadcrumb (chosen day · time). Tapping
+            a crumb jumps back to that step so prior choices stay changeable. */}
+        {isWizard && (chosenDayLabel !== null || step !== "day") ? (
+          <View style={styles.breadcrumb} testID="orch-1186-experience-breadcrumb">
+            <Pressable
+              onPress={() => setStep("day")}
+              accessibilityRole="button"
+              accessibilityLabel="Change day"
+            >
+              <Text style={[styles.crumb, { color: palette.accent }, fontStyle]}>
+                {chosenDayLabel ?? "Choose a day"}
+              </Text>
+            </Pressable>
+            {chosenTimeLabel !== null ? (
+              <>
+                <Text style={[styles.crumbSep, { color: palette.tertiaryText }]}>·</Text>
+                <Pressable
+                  onPress={() => setStep("time")}
+                  accessibilityRole="button"
+                  accessibilityLabel="Change time"
+                >
+                  <Text style={[styles.crumb, { color: palette.accent }, fontStyle]}>
+                    {chosenTimeLabel}
+                  </Text>
+                </Pressable>
+              </>
+            ) : null}
+          </View>
+        ) : null}
+
         <ScrollView
           showsVerticalScrollIndicator={false}
           contentContainerStyle={styles.scrollContent}
         >
-          {/* ---- DATE LIST (both modes) ---- */}
-          <Text style={[styles.sectionLabel, { color: palette.tertiaryText }]}>
-            {mode === "open-daily" ? "CHOOSE A DAY" : "UPCOMING DATES"}
-          </Text>
-          {dates.length === 0 ? (
-            <Text style={[styles.empty, { color: palette.secondaryText }]}>
-              No upcoming dates available.
-            </Text>
-          ) : (
-            <View
-              accessibilityRole="radiogroup"
-              style={styles.dateCol}
-            >
-              {dates.map((d) => {
-                const soldOut =
-                  d.ticketsRemaining !== null && d.ticketsRemaining <= 0;
-                const selected = selectedDateId === d.id;
-                const chip = remainingChip(d.ticketsRemaining);
-                return (
-                  <Pressable
-                    key={d.id}
-                    onPress={
-                      soldOut
-                        ? undefined
-                        : () => {
-                            setSelectedDateId(d.id);
-                            setSelectedMinute(null);
-                          }
-                    }
-                    disabled={soldOut}
-                    accessibilityRole="radio"
-                    accessibilityState={{ checked: selected, disabled: soldOut }}
-                    accessibilityLabel={`${
-                      mode === "open-daily"
-                        ? formatDayLabel(d.startAt, timezone)
-                        : formatDateLabel(d.startAt, timezone)
-                    }${chip !== null ? `, ${chip}` : ""}`}
-                    style={[
-                      styles.dateRow,
-                      { backgroundColor: palette.card, borderColor: palette.panelBorder },
-                      selected
-                        ? { borderColor: palette.accent, backgroundColor: palette.accentWash }
-                        : null,
-                      soldOut ? styles.dateRowDisabled : null,
-                    ]}
-                  >
-                    <Text
-                      style={[styles.dateLabel, { color: palette.primaryText }, fontStyle]}
-                      numberOfLines={1}
-                    >
-                      {mode === "open-daily"
-                        ? formatDayLabel(d.startAt, timezone)
-                        : formatDateLabel(d.startAt, timezone)}
-                    </Text>
-                    {chip !== null ? (
-                      <Text
-                        style={[
-                          styles.chip,
+          {/* ---- STEP 1: DATE LIST (slots: always; wizard: step "day") ---- */}
+          {showDayStep ? (
+            <>
+              <Text style={[styles.sectionLabel, { color: palette.tertiaryText }]}>
+                {mode === "open-daily" ? "CHOOSE A DAY" : "UPCOMING DATES"}
+              </Text>
+              {dates.length === 0 ? (
+                <Text style={[styles.empty, { color: palette.secondaryText }]}>
+                  No upcoming dates available.
+                </Text>
+              ) : (
+                <View accessibilityRole="radiogroup" style={styles.dateCol}>
+                  {dates.map((d) => {
+                    const soldOut =
+                      d.ticketsRemaining !== null && d.ticketsRemaining <= 0;
+                    const selected = selectedDateId === d.id;
+                    const chip = remainingChip(d.ticketsRemaining);
+                    return (
+                      <Pressable
+                        key={d.id}
+                        onPress={
                           soldOut
-                            ? { color: "#f87171", backgroundColor: "rgba(248,113,113,0.14)" }
-                            : (d.ticketsRemaining ?? 99) <= 10
-                              ? { color: "#fbbf24", backgroundColor: "rgba(251,191,36,0.14)" }
-                              : { color: palette.accent, backgroundColor: palette.accentWash },
+                            ? undefined
+                            : () => {
+                                // ORCH-1186 Fix 4 — tap a day → select, clear time,
+                                // advance to "time" (wizard). Slots: just select.
+                                setSelectedDateId(d.id);
+                                setSelectedMinute(null);
+                                if (isWizard) setStep("time");
+                              }
+                        }
+                        disabled={soldOut}
+                        accessibilityRole="radio"
+                        accessibilityState={{ checked: selected, disabled: soldOut }}
+                        accessibilityLabel={`${
+                          mode === "open-daily"
+                            ? formatDayLabel(d.startAt, timezone)
+                            : formatDateLabel(d.startAt, timezone)
+                        }${chip !== null ? `, ${chip}` : ""}`}
+                        style={[
+                          styles.dateRow,
+                          { backgroundColor: palette.card, borderColor: palette.panelBorder },
+                          selected
+                            ? { borderColor: palette.accent, backgroundColor: palette.accentWash }
+                            : null,
+                          soldOut ? styles.dateRowDisabled : null,
                         ]}
                       >
-                        {chip}
-                      </Text>
-                    ) : null}
-                  </Pressable>
-                );
-              })}
-            </View>
-          )}
+                        <Text
+                          style={[styles.dateLabel, { color: palette.primaryText }, fontStyle]}
+                          numberOfLines={1}
+                        >
+                          {mode === "open-daily"
+                            ? formatDayLabel(d.startAt, timezone)
+                            : formatDateLabel(d.startAt, timezone)}
+                        </Text>
+                        {chip !== null ? (
+                          <Text
+                            style={[
+                              styles.chip,
+                              soldOut
+                                ? { color: "#f87171", backgroundColor: "rgba(248,113,113,0.14)" }
+                                : (d.ticketsRemaining ?? 99) <= 10
+                                  ? { color: "#fbbf24", backgroundColor: "rgba(251,191,36,0.14)" }
+                                  : { color: palette.accent, backgroundColor: palette.accentWash },
+                            ]}
+                          >
+                            {chip}
+                          </Text>
+                        ) : null}
+                      </Pressable>
+                    );
+                  })}
+                </View>
+              )}
+            </>
+          ) : null}
 
-          {/* ---- OPEN-DAILY: time-within-window + party size ---- */}
-          {mode === "open-daily" && selectedDate !== null ? (
+          {/* ---- STEP 2: TIME WINDOW (wizard only) ---- */}
+          {showTimeStep && selectedDate !== null ? (
             <>
-              <Text
-                style={[styles.sectionLabel, styles.sectionGap, { color: palette.tertiaryText }]}
-              >
+              <Text style={[styles.sectionLabel, { color: palette.tertiaryText }]}>
                 CHOOSE A TIME · {formatWindow(selectedDate.startAt, selectedDate.endAt, timezone)}
               </Text>
               <View style={styles.timeWrap}>
@@ -335,7 +401,11 @@ export const ExperienceReservePicker: React.FC<ExperienceReservePickerProps> = (
                   return (
                     <Pressable
                       key={min}
-                      onPress={() => setSelectedMinute(min)}
+                      onPress={() => {
+                        // ORCH-1186 Fix 4 — tap a time → select + advance to party.
+                        setSelectedMinute(min);
+                        setStep("party");
+                      }}
                       accessibilityRole="radio"
                       accessibilityState={{ checked: selected }}
                       accessibilityLabel={formatMinute(min)}
@@ -360,7 +430,15 @@ export const ExperienceReservePicker: React.FC<ExperienceReservePickerProps> = (
                   );
                 })}
               </View>
+            </>
+          ) : null}
 
+          {/* ---- STEP 3: PARTY + RESERVE (wizard only) ---- */}
+          {showPartyStep && selectedDate !== null ? (
+            <>
+              <Text style={[styles.sectionLabel, { color: palette.tertiaryText }]}>
+                HOW MANY?
+              </Text>
               <View
                 style={[
                   styles.party,
@@ -411,40 +489,37 @@ export const ExperienceReservePicker: React.FC<ExperienceReservePickerProps> = (
           ) : null}
 
           {/* ---- Confirm Reserve ----
-              ORCH-1153 BUG-4: the Confirm button lives INSIDE the ScrollView (the
-              LAST scroll child), mirroring the working consumer picker. When it
-              was a fixed footer OUTSIDE the scroll, the open-daily time + party
-              sections (which appear BELOW the date list after a date is tapped)
-              and the button could land off-screen / collapse inside the desktop
-              centred card (cardBody flexShrink:1, host flex:1 with no bounded
-              height), so date selection appeared to "do nothing" — the buyer
-              could never scroll to the time step that enables Reserve. One scroll
-              makes the whole date→time→party→Reserve flow reachable, and the
-              button re-renders with `canConfirm` as selection state changes. */}
-          <Pressable
-            onPress={canConfirm ? handleConfirm : undefined}
-            disabled={!canConfirm}
-            accessibilityRole="button"
-            accessibilityState={{ disabled: !canConfirm }}
-            accessibilityLabel="Reserve"
-            style={[
-              styles.confirm,
-              canConfirm
-                ? { backgroundColor: palette.accent }
-                : { backgroundColor: palette.panelStrong, borderColor: palette.panelBorder, borderWidth: 1 },
-            ]}
-            testID="orch-1138-experience-reserve-confirm"
-          >
-            <Text
+              Shown in slots mode (single list) and in the wizard's final "party"
+              step. The {eventDateId, quantity} handoff is UNCHANGED (ORCH-1186
+              Fix 4 preserves the exact checkout contract — only the path to it is
+              now stepwise). ORCH-1153 BUG-4: the button lives INSIDE the
+              ScrollView (last scroll child) so it's always reachable. */}
+          {!isWizard || showPartyStep ? (
+            <Pressable
+              onPress={canConfirm ? handleConfirm : undefined}
+              disabled={!canConfirm}
+              accessibilityRole="button"
+              accessibilityState={{ disabled: !canConfirm }}
+              accessibilityLabel="Reserve"
               style={[
-                styles.confirmText,
-                { color: canConfirm ? palette.accentText : palette.tertiaryText },
-                fontStyle,
+                styles.confirm,
+                canConfirm
+                  ? { backgroundColor: palette.accent }
+                  : { backgroundColor: palette.panelStrong, borderColor: palette.panelBorder, borderWidth: 1 },
               ]}
+              testID="orch-1138-experience-reserve-confirm"
             >
-              Reserve →
-            </Text>
-          </Pressable>
+              <Text
+                style={[
+                  styles.confirmText,
+                  { color: canConfirm ? palette.accentText : palette.tertiaryText },
+                  fontStyle,
+                ]}
+              >
+                Reserve →
+              </Text>
+            </Pressable>
+          ) : null}
         </ScrollView>
       </View>
     </Sheet>
@@ -468,6 +543,22 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     borderRadius: 16,
   },
+  backIcon: {
+    width: 32,
+    height: 32,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: 16,
+  },
+  breadcrumb: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    marginBottom: 12,
+    flexWrap: "wrap",
+  },
+  crumb: { fontSize: 13, fontWeight: "800" },
+  crumbSep: { fontSize: 13, fontWeight: "800" },
   scrollContent: { paddingBottom: 16 },
   sectionLabel: {
     fontSize: 11,
@@ -475,7 +566,6 @@ const styles = StyleSheet.create({
     letterSpacing: 1.4,
     marginBottom: 8,
   },
-  sectionGap: { marginTop: 20 },
   empty: { fontSize: 15, paddingVertical: 16 },
   dateCol: { gap: 10 },
   dateRow: {

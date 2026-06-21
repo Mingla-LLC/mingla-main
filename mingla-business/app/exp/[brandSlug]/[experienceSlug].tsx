@@ -52,7 +52,6 @@ import {
 import { useResponsiveLayout } from "@mingla/offering-rendering";
 import { useThemeFont } from "../../../src/theme/useThemeFont";
 import { ShareModal } from "../../../src/components/ui/ShareModal";
-import { Icon } from "../../../src/components/ui/Icon";
 import { TripReserveBar } from "../../../src/components/trip/TripReserveBar";
 import {
   experienceCheckoutPath,
@@ -406,27 +405,9 @@ const ResolvedExperiencePage: React.FC<{
     </View>
   ) : null;
 
-  // ORCH-1138 Leg 3 (§4.5) — "Open daily (hours)" availability strip. Shown only
-  // for an open-daily experience whose materialized occurrences carry a window.
-  const availabilityBlock =
-    openDaily && bookable.length > 0 ? (
-      <View
-        style={[
-          styles.hours,
-          { backgroundColor: palette.accentWash, borderColor: palette.panelBorder },
-        ]}
-      >
-        <Icon name="clock" size={18} color={palette.accent} />
-        <View style={styles.hoursTextCol}>
-          <Text style={[styles.hoursWhen, { color: palette.primaryText }, { fontFamily: boldFamily }]}>
-            {formatOpenHours(bookable[0], experience.timezone)}
-          </Text>
-          <Text style={[styles.hoursSub, { color: palette.tertiaryText }]}>
-            Reserve a spot any upcoming day
-          </Text>
-        </View>
-      </View>
-    ) : null;
+  // ORCH-1186 Fix 1 — the open-daily/availability strip moved INTO the shared
+  // ExperienceOfferingBody (one adaptive banner, all cases, every surface). The
+  // route no longer injects `availabilityBlock`.
 
   // desktop sticky-panel Reserve control (phone uses the floating bar).
   const reserveTappable = expCta.tappable;
@@ -499,7 +480,6 @@ const ResolvedExperiencePage: React.FC<{
         onViewBrand={handleViewBrand}
         stateBanner={stateBanner}
         reserveControl={reserveControl}
-        availabilityBlock={availabilityBlock}
         contentBottomInset={contentBottomInset}
         safeAreaTop={safeAreaTop}
         dockedReserve={dockedReserve}
@@ -564,31 +544,6 @@ function formatExpPrice(priceCents: number, currency: string): string {
   }
 }
 
-// ORCH-1138 Leg 3 — "Open daily · 8:00 AM – 9:00 PM" from an occurrence window.
-function formatOpenHours(date: PublicExperienceDate, timezone: string): string {
-  const fmt = (iso: string): string => {
-    const d = new Date(iso);
-    if (Number.isNaN(d.getTime())) return "";
-    try {
-      return new Intl.DateTimeFormat(undefined, {
-        hour: "numeric",
-        minute: "2-digit",
-        timeZone: timezone || "UTC",
-      }).format(d);
-    } catch {
-      return new Intl.DateTimeFormat(undefined, {
-        hour: "numeric",
-        minute: "2-digit",
-      }).format(d);
-    }
-  };
-  const s = fmt(date.startAt);
-  const e = fmt(date.endAt);
-  return s.length > 0 && e.length > 0
-    ? `Open daily · ${s} – ${e}`
-    : "Open daily";
-}
-
 const styles = StyleSheet.create({
   host: { flex: 1, position: "relative" },
   stateHost: {
@@ -620,18 +575,6 @@ const styles = StyleSheet.create({
     borderRadius: 999,
   },
   bannerText: { fontSize: 13, fontWeight: "800", letterSpacing: 0.3 },
-  hours: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-    marginTop: 16,
-    padding: 12,
-    borderRadius: 12,
-    borderWidth: 1,
-  },
-  hoursTextCol: { flex: 1, minWidth: 0 },
-  hoursWhen: { fontSize: 14, fontWeight: "800" },
-  hoursSub: { fontSize: 11, marginTop: 1 },
   deskReserve: {
     flexDirection: "row",
     alignItems: "center",
