@@ -60,6 +60,10 @@ import { EventCoverMedia } from "./EventCoverMedia";
 import { StopSpine } from "./StopSpine";
 import { BadgeCheck, Calendar, Clock, MapPin, Sparkles, Users } from "./LucideIcons";
 import { buildStaticMapUrl } from "./mapboxStaticImage";
+import {
+  experienceAvailabilityBanner as computeAvailabilityBanner,
+  type AvailabilityBanner,
+} from "./experienceAvailabilityBanner";
 import type {
   ExperienceOfferingBrand,
   ExperienceOfferingCallbacks,
@@ -94,6 +98,26 @@ export function experienceVibeLabels(ids: readonly string[]): string[] {
   return ids
     .map((id) => EXPERIENCE_VIBE_LABELS[id])
     .filter((label): label is string => typeof label === "string");
+}
+
+/**
+ * ORCH-1186 Fix 1 — THE single adaptive availability banner, computed INSIDE the
+ * shared body from the normalized data so EVERY surface (consumer + business/web)
+ * shows identical, correct copy. Replaces the misleading "start" pill (soonest
+ * occurrence start, wrong for open-daily) + the surface-only open-daily strip + the
+ * fixed/single-date "dates" chip. The pure logic lives in the dep-free
+ * `experienceAvailabilityBanner.ts` (deno-unit-tested); this thin wrapper adapts
+ * the body's `ExperienceOfferingData` into that pure input.
+ */
+export function experienceAvailabilityBanner(
+  data: ExperienceOfferingData,
+): AvailabilityBanner | null {
+  return computeAvailabilityBanner({
+    openDaily: data.openDaily,
+    occurrences: data.occurrences,
+    timezone: data.timezone,
+    bookable: data.bookable,
+  });
 }
 
 /**
@@ -198,6 +222,9 @@ export const ExperienceOfferingBody: React.FC<ExperienceOfferingBodyProps> = ({
 
   const vibeLabels = experienceVibeLabels(data.intents);
   const { label: priceLabel, isFree } = experiencePriceLabel(data);
+  // ORCH-1186 Fix 1 — the ONE adaptive availability banner (computed in-body so
+  // consumer + business/web render identical copy; closes the consumer gap).
+  const availability = experienceAvailabilityBanner(data);
 
   // First stop with coords → "Where you'll start" map (rule 9: no placeholder).
   const mapStop = data.stops.find((s) => s.lat !== null && s.lng !== null);
@@ -231,17 +258,11 @@ export const ExperienceOfferingBody: React.FC<ExperienceOfferingBodyProps> = ({
         <View testID="experience-body-title" />
       )}
 
-      {/* (3) Meta chips — location · dates · seats · start-time (rule 9). */}
-      {data.cityCountry !== null ||
-      data.datesLabel !== null ||
-      data.seatsLabel !== null ||
-      data.startTimeLabel !== null ? (
+      {/* (3) Meta chips — location · seats (rule 9). The dates + start-time chips
+          were retired in ORCH-1186 Fix 1; that info now lives in the adaptive
+          availability banner below (one source, all cases, every surface). */}
+      {data.cityCountry !== null || data.seatsLabel !== null ? (
         <View style={styles.metaRow} testID="experience-body-meta">
-          {data.datesLabel !== null ? (
-            <MetaChip palette={palette} surface={surface} font={boldFamily} icon="calendar">
-              {data.datesLabel}
-            </MetaChip>
-          ) : null}
           {data.cityCountry !== null ? (
             <MetaChip palette={palette} surface={surface} font={boldFamily} icon="location">
               {data.cityCountry}
@@ -250,11 +271,6 @@ export const ExperienceOfferingBody: React.FC<ExperienceOfferingBodyProps> = ({
           {data.seatsLabel !== null ? (
             <MetaChip palette={palette} surface={surface} font={boldFamily} icon="users">
               {data.seatsLabel}
-            </MetaChip>
-          ) : null}
-          {data.startTimeLabel !== null ? (
-            <MetaChip palette={palette} surface={surface} font={boldFamily} icon="clock">
-              {data.startTimeLabel}
             </MetaChip>
           ) : null}
         </View>
@@ -272,8 +288,13 @@ export const ExperienceOfferingBody: React.FC<ExperienceOfferingBodyProps> = ({
               ]}
             >
               <Sparkles size={13} color={palette.accent} />
+              {/* ORCH-1186 Fix 2 — label uses primaryText (icon stays accent) to
+                  byte-match the standard trip/event MetaPill (no brown-on-brown). */}
               <Text
-                style={[styles.vibeChipText, { color: palette.accent, fontFamily: boldFamily }]}
+                style={[
+                  styles.vibeChipText,
+                  { color: palette.primaryText, fontFamily: boldFamily },
+                ]}
               >
                 {label}
               </Text>
@@ -344,9 +365,34 @@ export const ExperienceOfferingBody: React.FC<ExperienceOfferingBodyProps> = ({
         </Pressable>
       </View>
 
-      {/* (6) "Open daily (hours)" availability strip — surface-owned (null → omit). */}
+      {/* (6) Adaptive availability banner (ORCH-1186 Fix 1) — computed in-body from
+          the normalized data so EVERY surface shows identical, correct copy. The
+          surface-injected `availabilityBlock` is honored as a legacy override only
+          if a surface still passes one (default null → the computed banner wins). */}
       {availabilityBlock !== null ? (
         <View testID="experience-body-availability">{availabilityBlock}</View>
+      ) : availability !== null ? (
+        <View
+          style={[
+            styles.availability,
+            { backgroundColor: palette.accentWash, borderColor: palette.panelBorder },
+          ]}
+          testID="experience-body-availability"
+        >
+          <Clock size={18} color={palette.accent} />
+          <View style={styles.availabilityTextCol}>
+            <Text
+              style={[styles.availabilityWhen, surface.primaryText, { fontFamily: boldFamily }]}
+            >
+              {availability.primary}
+            </Text>
+            {availability.sub !== null ? (
+              <Text style={[styles.availabilitySub, { color: palette.tertiaryText }]}>
+                {availability.sub}
+              </Text>
+            ) : null}
+          </View>
+        </View>
       ) : null}
 
       {/* (7) About — collapsible (rule 9: only when present). */}
@@ -506,6 +552,20 @@ const styles = StyleSheet.create({
     borderWidth: 1,
   },
   vibeChipText: { fontSize: 12, fontWeight: "800", letterSpacing: 0.2 },
+  // ---- availability banner (ORCH-1186 Fix 1) ----
+  availability: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    marginTop: 16,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    borderRadius: 14,
+    borderWidth: 1,
+  },
+  availabilityTextCol: { flexShrink: 1 },
+  availabilityWhen: { fontSize: 15, fontWeight: "800" },
+  availabilitySub: { fontSize: 12, marginTop: 2 },
   // ---- sections ----
   section: { marginTop: 24 },
   secTitle: { fontSize: 20, fontWeight: "900", letterSpacing: -0.3, marginBottom: 12 },

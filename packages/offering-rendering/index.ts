@@ -157,6 +157,7 @@ export {
   EXPERIENCE_VIBE_LABELS,
   experienceVibeLabels,
   experiencePriceLabel,
+  experienceAvailabilityBanner,
 } from "./ExperienceOfferingBody";
 export type { ExperienceOfferingBodyProps } from "./ExperienceOfferingBody";
 export { StopSpine, stopLabelForIndex } from "./StopSpine";
@@ -381,6 +382,14 @@ export type {
   IsOpenDailyExperienceInput,
   OpenDailyRecurrenceRule,
 } from "./experienceOpenDaily";
+// ORCH-1186 Fix 1 — the canonical adaptive availability-banner computation (pure,
+// dep-free; the shared body wraps it). Exported for the deno unit test.
+export { experienceAvailabilityBanner as computeExperienceAvailabilityBanner } from "./experienceAvailabilityBanner";
+export type {
+  AvailabilityBanner,
+  AvailabilityBannerInput,
+  AvailabilityOccurrence,
+} from "./experienceAvailabilityBanner";
 export type {
   PublicEventProps,
   PublicBrandProps,
