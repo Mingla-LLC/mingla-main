@@ -35,6 +35,9 @@ import { queryClient, asyncStoragePersister } from "../src/config/queryClient";
 import { shouldDehydrateMinglaQuery } from "../src/utils/queryPersistence";
 import { useAppStore } from "../src/store/appStore";
 import AnimatedSplashScreen from "../src/components/AnimatedSplashScreen";
+// ORCH-1171: Done-only keyboard accessory bar + native keyboard frame provider.
+import { KeyboardRoot } from "../src/wrappers/KeyboardRoot";
+import { KeyboardToolbarRoot } from "../src/wrappers/KeyboardToolbarRoot";
 
 // ORCH-0679 Wave 2B-2: SINGLE source of truth for Sentry init.
 // I-SENTRY-SINGLE-INIT — duplicate Sentry.init in app/index.tsx was deleted as
@@ -164,23 +167,27 @@ export default Sentry.wrap(function RootLayout() {
             resolves before the provider mounts. Exactly ONE provider app-wide —
             do NOT re-add one in any route file (index.tsx). */}
         {cacheReady && (
-          <PersistQueryClientProvider
-            client={queryClient}
-            persistOptions={{
-              persister: asyncStoragePersister,
-              maxAge: 24 * 60 * 60 * 1000, // 24 hours
+          <KeyboardRoot>
+            <PersistQueryClientProvider
+              client={queryClient}
+              persistOptions={{
+                persister: asyncStoragePersister,
+                maxAge: 24 * 60 * 60 * 1000, // 24 hours
 
-              dehydrateOptions: {
-                // Exclude large/transient queries from persistence to prevent
-                // Android CursorWindow overflow (2MB SQLite row limit)
-                shouldDehydrateQuery: (query) => {
-                  return shouldDehydrateMinglaQuery(query, useAppStore.getState().user?.id ?? null);
+                dehydrateOptions: {
+                  // Exclude large/transient queries from persistence to prevent
+                  // Android CursorWindow overflow (2MB SQLite row limit)
+                  shouldDehydrateQuery: (query) => {
+                    return shouldDehydrateMinglaQuery(query, useAppStore.getState().user?.id ?? null);
+                  },
                 },
-              },
-            }}
-          >
-            <Stack screenOptions={{ headerShown: false }} />
-          </PersistQueryClientProvider>
+              }}
+            >
+              <Stack screenOptions={{ headerShown: false }} />
+            </PersistQueryClientProvider>
+            {/* Sibling so the toolbar stays visually above the keyboard. */}
+            <KeyboardToolbarRoot />
+          </KeyboardRoot>
         )}
         {/* ORCH-1125: AnimatedSplashScreen renders immediately (independent of
             cacheReady) so its own useEffect fires as soon as it's painted — that's

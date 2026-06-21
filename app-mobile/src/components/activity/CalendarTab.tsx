@@ -35,6 +35,7 @@ import { formatCurrency } from "../utils/formatters";
 import { useFeatureGate } from "../../hooks/useFeatureGate";
 import { CustomPaywallScreen } from "../CustomPaywallScreen";
 import { useKeyboard } from "../../hooks/useKeyboard";
+import { KEYBOARD_TOOLBAR_HEIGHT } from "../../wrappers/keyboardConstants";
 import { useTranslation } from 'react-i18next';
 // ORCH-1019 F-1: curated reschedule validation routes through the canonical
 // shared validator (extractWeekdayText + isPlaceOpenAt), same as SavedTab.
@@ -217,6 +218,8 @@ const CalendarTab = ({
   const { t } = useTranslation(['activity', 'common']);
   const { canAccess } = useFeatureGate();
   const { keyboardHeight } = useKeyboard({ disableLayoutAnimation: true });
+  const keyboardSpacerHeight =
+    keyboardHeight > 0 ? keyboardHeight + KEYBOARD_TOOLBAR_HEIGHT : 0;
   const [showLockedPaywall, setShowLockedPaywall] = useState(false);
   const [expandedCard, setExpandedCard] = useState<string | null>(null);
   const [currentImageIndex, setCurrentImageIndex] = useState<{
@@ -2766,7 +2769,9 @@ const CalendarTab = ({
                 })}
           </View>
         )}
-        {keyboardHeight > 0 && <View style={{ height: keyboardHeight }} />}
+        {keyboardSpacerHeight > 0 && (
+          <View style={{ height: keyboardSpacerHeight }} />
+        )}
       </ScrollView>
 
       {/* Propose Date & Time Modal */}

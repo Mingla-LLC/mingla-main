@@ -70,6 +70,10 @@ import {
   pushHideBottomNav,
   popHideBottomNav,
 } from '../../store/bottomNavStore';
+// ORCH-1171: per-RN-Modal-window keyboard provider + Done bar. The app-root
+// KeyboardRoot in _layout.tsx does NOT reach into wrapInRNModal windows.
+import { KeyboardRoot } from '../../wrappers/KeyboardRoot';
+import { KeyboardToolbarRoot } from '../../wrappers/KeyboardToolbarRoot';
 
 // META-ORCH-0991 Wave B — keyboard-aware text input re-export. Form sheets
 // (ReportUserModal, CustomHolidayModal, …) need gorhom's BottomSheetTextInput
@@ -818,9 +822,12 @@ function BaseBottomSheetComponent(props: BaseBottomSheetProps): React.ReactEleme
         statusBarTranslucent
         navigationBarTranslucent
       >
-        <GestureHandlerRootView style={styles.flexContainer}>
-          {sheet}
-        </GestureHandlerRootView>
+        <KeyboardRoot>
+          <GestureHandlerRootView style={styles.flexContainer}>
+            {sheet}
+          </GestureHandlerRootView>
+          <KeyboardToolbarRoot />
+        </KeyboardRoot>
       </RNModal>
     );
   }

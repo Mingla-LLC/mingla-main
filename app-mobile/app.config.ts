@@ -6,6 +6,7 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
   slug: config.slug ?? "mingla",
   plugins: [
     ...(config.plugins ?? []),
+    "./plugins/withGooglePodsModularHeaders",
     [
       "@react-native-google-signin/google-signin",
       {
