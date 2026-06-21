@@ -135,8 +135,40 @@ export {
   Minus,
   Plus,
   BadgeCheck,
+  // ORCH-1183 — Clock (start-time chip) + Sparkles (vibe chips) for the shared
+  // ExperienceOfferingBody.
+  Clock,
+  Sparkles,
 } from "./LucideIcons";
 export type { LucideIconProps } from "./LucideIcons";
+
+// ===========================================================================
+// ORCH-1183 [experience-standardize] — THE ONE shared, shell-agnostic body for the
+// public EXPERIENCE page (event_type='experience'). Rendered byte-identically on
+// buyer-web + business iOS/Android + consumer iOS/Android. Promotes the web/business
+// FoundationExperiencePreview + the consumer hand-mirrored body into ONE component.
+// Hosts NO scroll root / cover host (each surface injects its scaffold). Experiences
+// carry ONE combined all-in price (NO installments/deposits/per-stop prices) and a
+// STOP/place-based itinerary via the shared <StopSpine>. The reserve bar is the
+// shared <TripReserveBar> (single all-in price, no split). One vibe-label map.
+// ===========================================================================
+export {
+  ExperienceOfferingBody,
+  EXPERIENCE_VIBE_LABELS,
+  experienceVibeLabels,
+  experiencePriceLabel,
+} from "./ExperienceOfferingBody";
+export type { ExperienceOfferingBodyProps } from "./ExperienceOfferingBody";
+export { StopSpine, stopLabelForIndex } from "./StopSpine";
+export type { StopSpineProps } from "./StopSpine";
+export type {
+  ExperienceOfferingData,
+  ExperienceOfferingBrand,
+  ExperienceOfferingStop,
+  ExperienceOfferingTicket,
+  ExperienceOfferingOccurrence,
+  ExperienceOfferingCallbacks,
+} from "./experienceOfferingTypes";
 
 // ===========================================================================
 // META-ORCH-1174 Leg A [trip-page-standardize] — THE ONE shared, shell-agnostic
