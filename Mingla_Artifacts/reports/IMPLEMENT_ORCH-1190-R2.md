@@ -216,3 +216,74 @@ both say the modules are full-width.
 - **COMMS:** Acked COMMS-0051 (already acked for ORCH-1190 — venue UI only, no migrations) and
   COMMS-0052 (business OTA block — deploy via Vercel web for the BUG-1 fix). No new COMMS
   written (no cross-ORCH file overlap; BrandSwitch is venue-suite-local).
+
+---
+
+## BUG-2 REWORK — empty-state cards narrow on WEB (RESOLVED at commit 7716b3351)
+
+### Corrected diagnosis (supersedes DISC-1190R2-B)
+The prior pass could NOT reproduce BUG-2 because it rendered the **populated**
+path. The narrow card is the **EMPTY STATE**: Reservations ("No reservations
+today yet."), Waitlist ("Nobody's waiting"), and Menu ("Build your menu") render
+their empty card while a fresh/quiet venue has no rows. Those empty-state
+`GlassCard` wrappers carried **no explicit width** and used `alignItems:"center"`.
+On the react-native-web target a column flex child with no width + centered items
+shrinks to its content's min width, so the card collapsed to a centered
+~half-width card — while VenueTablesModule/VenueSettingsModule content cards
+(`width:"100%"`, e.g. VenueTablesModule.tsx:314) span the workspace. Native
+(`ios`) renders don't collapse the same way, which is why source-grep + native
+render tests never caught it.
+
+### Fix
+Added `width:"100%"` + `alignSelf:"stretch"` to each module's empty-state card
+style; inner icon/text stays centered via `alignItems`. Also stretched the
+populated rows that shared the same latent gap so they stay full-width on web:
+
+| File | Style(s) made full-width |
+|---|---|
+| `mingla-business/src/components/venue/VenueReservationsModule.tsx` | `emptyCard` |
+| `mingla-business/src/components/venue/VenueWaitlistModule.tsx` | `emptyCard`, `card` (populated queue row) |
+| `mingla-business/src/components/venue/VenueMenuModule.tsx` | `emptyCard`, `categoryCard` (populated), `skeletonCard` (loading) |
+
+Tables/Settings left untouched (reference/correct surfaces; in scope = the three
+named modules). NOTE for orchestrator: `VenueTablesModule.emptyCard` has the same
+latent width gap but is never the observed symptom (Tables shows content); flagged
+below, not fixed (scope).
+
+### How verified (web render, exactly)
+Wrote a NEW web render-proof that mounts each module's REAL empty state through
+**react-native-web** (the deployed business web build) via `ReactDOMServer.
+renderToStaticMarkup` — the same harness pattern as the BUG-1 BrandSwitch web
+test. react-native-web compiles `width:"100%"` to the deterministic atomic class
+`r-width-13qz1uu` (verified by direct probe). The test asserts each module's empty
+state renders (copy present) AND the empty card carries `r-width-13qz1uu`.
+
+A DOM dump confirmed the width class lands on exactly ONE element per empty render
+— the GlassCard wrapper that also carries the elevated-variant box-shadow + 24px
+radius + the emptyCard gap/alignSelf — i.e. the visible CARD, not an inner view.
+
+- Config: `mingla-business/jest.orch1190r2.venuewidth.web.render.cjs`
+- Test: `mingla-business/src/components/venue/__tests__/venueEmptyStateFullWidth.orch1190r2.web.render.test.tsx`
+- Run: `cd mingla-business && npx jest --config jest.orch1190r2.venuewidth.web.render.cjs --runInBand`
+- Result: **3/3 PASS** (Reservations, Waitlist, Menu).
+
+### Regression / fails-on-revert
+`fails-on-revert verified at commit 7716b3351`. Proven by TRUE LINE-DELETION of
+`width:"100%"` from all three `emptyCard` styles → **3/3 FAIL** (the empty copy
+still renders, so the failure is specifically the missing width class), then
+restored → **3/3 PASS**. Append-only: new test + new config; no existing test
+modified (no `[TEST-MOD-APPROVED]` needed).
+
+Existing ORCH-1190 tests re-run green after the change: `venueSuitePolish.orch1190`
++ `venueModules` = 22/22 pass; BUG-1 `brandSwitch.orch1190r2.web.render` = 2/2 pass.
+`tsc --noEmit` clean on the three modules (the only tsc note is the pre-existing
+`react-dom/server` missing-types warning, identical to the committed BUG-1 web test).
+
+### Discoveries (BUG-2)
+- **DISC-1190R2-C:** `VenueTablesModule.emptyCard` carries the same latent
+  no-width gap as the three fixed modules — harmless today (Tables shows content,
+  never the empty card in the observed flow) so left untouched for scope, but if a
+  brand ever lands on an empty Tables state it would show the same narrow card.
+  Trivial one-line follow-on if desired.
+- **Deploy:** This is a pure-JS/CSS web fix → ships via the **Vercel `[deploy]`
+  web build** (web is unaffected by the COMMS-0052 native-module OTA block).
