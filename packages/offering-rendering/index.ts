@@ -249,6 +249,15 @@ export { shouldFreezeCoverForReduceMotion } from "./coverMediaPresentation";
 // business TripPreview/public page format trip dates identically).
 export { formatTripDateRange } from "./formatTripDateRange";
 export type { FormatTripDateRangeOptions } from "./formatTripDateRange";
+// META-ORCH-1174 Leg A.3 — the Hermes-safe trip timestamp normalizer + the shared
+// "N days · M nights" deriver. Both per-surface adapters import deriveTripDuration
+// so the §3 dates pill + §4 days&nights pill compute identically on NATIVE too
+// (the RPC's space-separated timestamps broke the prior new Date(...) on Hermes).
+export {
+  normalizeTimestampIso,
+  parseTripTimestampMs,
+  deriveTripDuration,
+} from "./tripDuration";
 // ORCH-1016 — shared refund ladder (consumer trip detail + business public/
 // preview render the identical ladder; business side is a re-export shim).
 export { RefundPolicyDisplay } from "./RefundPolicyDisplay";
