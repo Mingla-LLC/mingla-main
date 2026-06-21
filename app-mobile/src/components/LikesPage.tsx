@@ -337,13 +337,21 @@ function LikesPage({
         </View>
       </View>
 
-      {/* Content */}
+      {/* Content
+          ORCH-1189: the `content` View carries paddingTop ONLY (header clearance).
+          It must NOT carry a frame-shrinking `paddingBottom` — that would lift the
+          ScrollView frame up off the physical screen bottom and expose the black
+          app-root background (#000/#0c0e12) below it as a "black bar" under the
+          floating GlassBottomNav. Instead, `content` paints full-bleed to the
+          screen bottom (covering the black root) and the floating-nav clearance is
+          applied on each tab's INNER scroll `contentContainerStyle.paddingBottom`
+          via the threaded `bottomNavTotalHeight` prop — mirroring ConnectionsPage
+          (`content` = paddingTop only; chat list = `bottomNavTotalHeight + 24`). */}
       <View
         style={[
           styles.content,
           {
             paddingTop: HEADER_PANEL_HEIGHT + 8,
-            paddingBottom: bottomNavTotalHeight + 16,
           },
         ]}
       >
@@ -359,6 +367,7 @@ function LikesPage({
             onShareCard={onShareCard || (() => {})}
             userPreferences={userPreferences}
             accountPreferences={accountPreferences}
+            bottomNavTotalHeight={bottomNavTotalHeight}
           />
         )}
 
@@ -373,6 +382,7 @@ function LikesPage({
             userPreferences={userPreferences}
             accountPreferences={accountPreferences}
             selectedEntryId={deepLinkEntryId}
+            bottomNavTotalHeight={bottomNavTotalHeight}
           />
         )}
       </View>
