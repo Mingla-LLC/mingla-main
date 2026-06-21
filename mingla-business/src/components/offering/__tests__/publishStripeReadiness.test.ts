@@ -69,6 +69,11 @@ describe("ORCH-1076 — offeringNeedsStripeToPublish (shared predicate)", () => 
   });
 });
 
+// [TEST-MOD-APPROVED META-ORCH-1174] — tripDraftIsPaid now takes { packages:
+// [{ priceMajor }] } (multi-package, DEC-B/I). The single-package case (N=1) is
+// the exact prior contract: paid iff that one package's round(price*100) > 0.
+// Each assertion below is preserved by wrapping the priceMajor in a 1-package
+// array. New multi-package coverage (any-priced + all-free) added below.
 describe("ORCH-1076 — tripDraftIsPaid", () => {
   test("T-05 truth-table mirrors round(price*100) > 0", () => {
     const rows: { priceMajor: string; expected: boolean }[] = [
@@ -80,7 +85,9 @@ describe("ORCH-1076 — tripDraftIsPaid", () => {
       { priceMajor: "10", expected: true },
     ];
     for (const r of rows) {
-      expect(tripDraftIsPaid({ priceMajor: r.priceMajor })).toBe(r.expected);
+      expect(
+        tripDraftIsPaid({ packages: [{ priceMajor: r.priceMajor }] }),
+      ).toBe(r.expected);
     }
   });
 
@@ -88,14 +95,28 @@ describe("ORCH-1076 — tripDraftIsPaid", () => {
     // 0.005 * 100 = 0.5 exactly in IEEE-754; Math.round(0.5) = 1 cent. The
     // PostgreSQL server predicate round(0.005*100) = round(0.5) = 1 cent too
     // (numeric round-half-away-from-zero). Client and server AGREE: paid=true.
-    // (SPEC §9 T-05's "rounds to 0" note assumed float imprecision that does
-    // not occur for 0.005 — the parity-faithful value is true. The resolver +
-    // the server move together, which is the binding INV-1 contract.)
-    expect(tripDraftIsPaid({ priceMajor: "0.005" })).toBe(true);
+    expect(tripDraftIsPaid({ packages: [{ priceMajor: "0.005" }] })).toBe(true);
   });
 
   test("0.01 (one cent) is paid", () => {
-    expect(tripDraftIsPaid({ priceMajor: "0.01" })).toBe(true);
+    expect(tripDraftIsPaid({ packages: [{ priceMajor: "0.01" }] })).toBe(true);
+  });
+
+  // META-ORCH-1174 Leg B2 — multi-package coverage.
+  test("ANY priced package → paid (free + paid mix, DEC-I)", () => {
+    expect(
+      tripDraftIsPaid({
+        packages: [{ priceMajor: "0" }, { priceMajor: "50" }],
+      }),
+    ).toBe(true);
+  });
+
+  test("ALL-free packages → NOT paid (no Stripe needed)", () => {
+    expect(
+      tripDraftIsPaid({
+        packages: [{ priceMajor: "0" }, { priceMajor: "0.00" }],
+      }),
+    ).toBe(false);
   });
 });
 
@@ -177,7 +198,10 @@ describe("ORCH-1076 — T-10 trip resolver matches server predicate", () => {
     "10.50",
     "999.99",
   ])("priceMajor=%s", (priceMajor) => {
-    expect(tripDraftIsPaid({ priceMajor })).toBe(serverTripPaid(priceMajor));
+    // [TEST-MOD-APPROVED META-ORCH-1174] — single-package parity (N=1).
+    expect(tripDraftIsPaid({ packages: [{ priceMajor }] })).toBe(
+      serverTripPaid(priceMajor),
+    );
   });
 });
 

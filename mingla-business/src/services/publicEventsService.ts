@@ -1613,6 +1613,11 @@ export const getPublicTripById = async (
         ticketsRemaining,
         isUnlimited,
         installmentSchedule,
+        // META-ORCH-1174 Leg B2 — per-package description from tier_metadata.
+        description:
+          typeof t.tier_metadata?.description === "string"
+            ? (t.tier_metadata.description as string)
+            : null,
         // ORCH-1147 — server fee-grossed per-tier all-in (MAJOR units). Free
         // tier / RPC miss → null; the cart seed owns the single base fallback
         // (mirrors the event path). NEVER recompute fees in TS.

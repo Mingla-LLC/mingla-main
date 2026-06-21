@@ -134,6 +134,7 @@ import { TripCreatorStep2Itinerary } from "./TripCreatorStep2Itinerary";
 import { TripCreatorStep3Inclusions } from "./TripCreatorStep3Inclusions";
 import {
   TripCreatorStep4Pricing,
+  makePackageKey,
   type Step4Draft,
 } from "./TripCreatorStep4Pricing";
 import { InstallmentScheduleDisplay } from "./InstallmentScheduleDisplay";
@@ -253,14 +254,27 @@ function tripToLocalEditState(trip: Trip): LocalTripEditState {
       item: i.item,
       ordinal: i.ordinal,
     })),
+    // META-ORCH-1174 Leg B2 — Step4Draft is now N-package. EditPublishedTripScreen
+    // (the B4 edit-published path) remains SINGLE-package: seed exactly one
+    // package from the trip's first tier so the existing single-tier edit flow
+    // is byte-for-byte preserved. Multi-package edit-published is B4 scope.
     pricing: {
-      tierName: firstTier?.tierName ?? "Standard",
-      priceMajor:
-        firstTier === undefined ? "" : (firstTier.priceCents / 100).toFixed(2),
+      packages: [
+        {
+          key: makePackageKey(),
+          ticketTypeId: firstTier?.ticketTypeId ?? null,
+          name: firstTier?.tierName ?? "Standard",
+          priceMajor:
+            firstTier === undefined
+              ? ""
+              : (firstTier.priceCents / 100).toFixed(2),
+          description: firstTier?.description ?? "",
+          capacity: trip.businessTrip.capacity,
+          paymentPlan: firstTier?.installmentSchedule ?? null,
+          soldCount: 0,
+        },
+      ],
       currency: firstTier?.currency ?? "USD",
-      capacity: trip.businessTrip.capacity,
-      paymentPlan: firstTier?.installmentSchedule ?? null,
-      paymentPlanLocked: false,
       // ORCH-1006 — seed switches from events.pass_* (NULL = inherit).
       pricingSwitches: {
         passTax: trip.pricingSwitches?.passTax ?? null,
@@ -455,33 +469,37 @@ function buildLiveTripPatch(
     .filter((d) => d.status === "removed")
     .map((d) => d.key);
 
-  // Pricing tiers — single-tier model. Only emit when tier_name or
-  // price_cents or installmentSchedule differs from the trip's current tier.
+  // Pricing tiers — single-tier model (B4 multi-tier is a later leg). Only emit
+  // when tier_name or price_cents or installmentSchedule differs from the trip's
+  // current tier. META-ORCH-1174 Leg B2 — read the sole edited package.
+  const editPkg = state.pricing.packages[0];
   const newPriceCents = Math.round(
-    (parseFloat(state.pricing.priceMajor) || 0) * 100,
+    (parseFloat(editPkg?.priceMajor ?? "") || 0) * 100,
   );
   const firstTier = trip.pricingTiers[0];
   const tierNameChanged =
     firstTier !== undefined &&
-    state.pricing.tierName.trim().length > 0 &&
-    state.pricing.tierName.trim() !== firstTier.tierName;
+    editPkg !== undefined &&
+    editPkg.name.trim().length > 0 &&
+    editPkg.name.trim() !== firstTier.tierName;
   const tierPriceChanged =
     firstTier !== undefined && newPriceCents !== firstTier.priceCents;
   const oldPlanSig = JSON.stringify(firstTier?.installmentSchedule ?? null);
-  const newPlanSig = JSON.stringify(state.pricing.paymentPlan ?? null);
+  const newPlanSig = JSON.stringify(editPkg?.paymentPlan ?? null);
   const tierPlanChanged = oldPlanSig !== newPlanSig;
   if (
     firstTier !== undefined &&
+    editPkg !== undefined &&
     (tierNameChanged || tierPriceChanged || tierPlanChanged)
   ) {
     const tierMetadata: Record<string, unknown> = {};
-    if (state.pricing.paymentPlan !== null) {
-      tierMetadata.installments = state.pricing.paymentPlan;
+    if (editPkg.paymentPlan !== null) {
+      tierMetadata.installments = editPkg.paymentPlan;
     }
     patch.pricing_tiers = [
       {
         ticket_type_id: firstTier.ticketTypeId,
-        tier_name: tierNameChanged ? state.pricing.tierName.trim() : undefined,
+        tier_name: tierNameChanged ? editPkg.name.trim() : undefined,
         price_cents: tierPriceChanged ? newPriceCents : undefined,
         tier_metadata: tierPlanChanged ? tierMetadata : undefined,
       } as TripPricingTierInput,
@@ -1383,6 +1401,8 @@ export const EditPublishedTripScreen: React.FC<EditPublishedTripScreenProps> = (
             firstTier === undefined
               ? 0
               : (soldCountByTier[firstTier.ticketTypeId] ?? 0);
+          // META-ORCH-1174 Leg B2 — sole edited package (single-package B4).
+          const editPkg = editState.pricing.packages[0];
           // ORCH-0882 [Render Payment Plan Disclosure on Trip Buyer +
           // Planner Surfaces] — planner-variant live preview below the
           // PaymentPlanEditor. Reads from `editState.pricing.paymentPlan`
@@ -1394,29 +1414,35 @@ export const EditPublishedTripScreen: React.FC<EditPublishedTripScreenProps> = (
           // to cents for the projection. Falls back to firstTier.priceCents
           // when parse fails (NaN guard) so the preview never fabricates
           // amounts from a half-typed input.
-          const parsedPriceMajor = parseFloat(editState.pricing.priceMajor);
+          const parsedPriceMajor = parseFloat(editPkg?.priceMajor ?? "");
           const livePriceCents = Number.isFinite(parsedPriceMajor)
             ? Math.round(parsedPriceMajor * 100)
             : (firstTier?.priceCents ?? 0);
           const plannerPreviewSchedule =
             firstTier === undefined ||
-            editState.pricing.paymentPlan === null
+            editPkg === undefined ||
+            editPkg.paymentPlan === null
               ? null
               : projectInstallmentSchedule(
                   {
                     priceCents: livePriceCents,
                     currency: firstTier.currency,
-                    installmentSchedule: editState.pricing.paymentPlan,
+                    installmentSchedule: editPkg.paymentPlan,
                   },
                   new Date(),
                 );
+          // META-ORCH-1174 Leg B2 — pass the per-package sold count via the
+          // package's `soldCount` so the single edited package shows the
+          // post-sale price lock. (B4 multi-package edit comes later.)
+          const lockedPackages = editState.pricing.packages.map((p, idx) =>
+            idx === 0 ? { ...p, soldCount: soldCountForTier } : p,
+          );
           return (
             <View>
               <TripCreatorStep4Pricing
-                draft={editState.pricing}
+                draft={{ ...editState.pricing, packages: lockedPackages }}
                 onChange={handlePricingChange}
                 disabled={submitting}
-                editMode={{ soldCountForTier }}
               />
               {plannerPreviewSchedule !== null ? (
                 <View style={styles.plannerPlanPreviewWrap}>

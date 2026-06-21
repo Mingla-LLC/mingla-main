@@ -96,6 +96,16 @@ export interface TripPricingTier {
    */
   installmentSchedule: TripInstallmentScheduleData | null;
   /**
+   * META-ORCH-1174 Leg B2 — optional per-package marketing description
+   * (e.g. "Includes spa + private transfer"). Persisted to
+   * trip_pricing_tiers.tier_metadata.description (free-form jsonb — NO
+   * migration; the column already holds installments under the same object).
+   * Null when the package has no description. Surfaced by the wizard's
+   * per-package authoring rows; the public selector (B3) renders it under the
+   * package name.
+   */
+  description: string | null;
+  /**
    * ORCH-1147 — server fee-grossed per-tier all-in in MAJOR units
    * (`pg_public_event_tier_allin` → /100). Null = free tier or RPC miss;
    * the cart seed falls back to `priceCents`/base. NEVER recompute fees in TS.
@@ -268,6 +278,13 @@ export interface TripPricingPatch {
    * 1b finalize key off the JSONB presence/shape.
    */
   installmentSchedule?: TripInstallmentScheduleData | null;
+  /**
+   * META-ORCH-1174 Leg B2 — optional per-package description. When the key is
+   * PRESENT, the tier_metadata.description value is replaced (null/blank →
+   * REMOVE the key). When ABSENT from the patch, the existing description is
+   * preserved (mirrors the installmentSchedule "present vs absent" semantics).
+   */
+  description?: string | null;
 }
 
 export class SlugCollisionError extends Error {
@@ -404,7 +421,22 @@ function mapTripPricingTier(
     ticketsRemaining: null,
     isUnlimited: ticketType?.is_unlimited ?? false,
     installmentSchedule: extractInstallmentSchedule(metadata),
+    // META-ORCH-1174 Leg B2 — per-package description from tier_metadata.
+    description: extractTierDescription(metadata),
   };
+}
+
+/**
+ * META-ORCH-1174 Leg B2 — extract the optional per-package description from
+ * tier_metadata.description. Returns null on missing key / non-string / blank.
+ */
+function extractTierDescription(
+  metadata: Record<string, unknown>,
+): string | null {
+  const raw = metadata.description;
+  if (typeof raw !== "string") return null;
+  const trimmed = raw.trim();
+  return trimmed.length > 0 ? trimmed : null;
 }
 
 /**
@@ -1118,6 +1150,19 @@ export async function updateTripPricing(
     }
   }
 
+  // META-ORCH-1174 Leg B2 — merge per-package description (present-key
+  // semantics, mirroring installments). null/blank → strip the key.
+  if ("description" in patch) {
+    const { description: _stripExistingDesc, ...metadataWithoutDescription } =
+      nextMetadata as Record<string, unknown> & { description?: unknown };
+    const desc =
+      typeof patch.description === "string" ? patch.description.trim() : "";
+    nextMetadata =
+      desc.length > 0
+        ? { ...metadataWithoutDescription, description: desc }
+        : metadataWithoutDescription;
+  }
+
   // Update tier name + metadata
   const { data: tierUpdated, error: tierUpdateError } = await supabase
     .from("trip_pricing_tiers")
@@ -1237,13 +1282,17 @@ export async function createTripPricingTier(
     throw new Error("createTripPricingTier: ticket_types insert returned null");
   }
 
-  // Build tier_metadata.installments from the optional per-package plan.
+  // Build tier_metadata from the optional per-package plan + description.
   const tierMetadata: Record<string, unknown> = {};
   if (
     patch.installmentSchedule !== null &&
     patch.installmentSchedule !== undefined
   ) {
     tierMetadata.installments = patch.installmentSchedule;
+  }
+  // META-ORCH-1174 Leg B2 — persist the optional per-package description.
+  if (typeof patch.description === "string" && patch.description.trim().length > 0) {
+    tierMetadata.description = patch.description.trim();
   }
 
   const { data: tierRow, error: tierError } = await supabase

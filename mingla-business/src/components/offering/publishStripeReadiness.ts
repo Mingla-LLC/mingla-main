@@ -71,17 +71,22 @@ export const eventDraftIsPaid = (
 
 /**
  * TRIP paid mirror. Server (L2454-2473): paid iff
- * max(ticket_types.price_cents) WHERE available_online = true > 0. The trip
- * wizard has a SINGLE online-sellable tier whose price_cents is
- * `round(parseFloat(priceMajor) * 100)` (TripCreatorWizard.tsx:516,559). So
- * the client mirror is `round(parseFloat(priceMajor) * 100) > 0` — `parseFloat
- * || 0` matches the wizard's own parsing, and the cents-rounding matches the
- * server's integer comparison (so "0.005" rounds to 0 cents → not paid, just
- * like the server).
+ * max(ticket_types.price_cents) WHERE available_online = true > 0.
+ *
+ * META-ORCH-1174 Leg B2 [MULTI-PACKAGE]: a trip may now carry N packages, each
+ * online-sellable by construction. The server `max(...) > 0` is true iff ANY
+ * package has a positive price. So the client mirror is "ANY package's
+ * round(price*100) > 0". A trip with only free packages (DEC-I) is NOT paid and
+ * needs no Stripe — exactly mirroring the server. `parseFloat || 0` matches the
+ * wizard's own parsing; cents-rounding matches the server's integer comparison
+ * (so "0.005" rounds to 0 cents → not paid).
  */
 export const tripDraftIsPaid = (draft: {
-  priceMajor: string;
-}): boolean => Math.round((parseFloat(draft.priceMajor) || 0) * 100) > 0;
+  packages: readonly { priceMajor: string }[];
+}): boolean =>
+  draft.packages.some(
+    (p) => Math.round((parseFloat(p.priceMajor) || 0) * 100) > 0,
+  );
 
 /**
  * EXPERIENCE paid mirror. Server (L301-313 + L356-360 / L874-884 + L928-930):

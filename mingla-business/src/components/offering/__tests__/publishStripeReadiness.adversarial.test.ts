@@ -92,10 +92,11 @@ describe("ORCH-1076 adversarial — per-stop sub-cent client/server parity", () 
     expect(needsStripe).toBe(true); // over-block, the safe failure mode
   });
 
-  // Trip resolver has NO per-stop path (single tier) → already rounds to cents,
-  // so it is exactly server-faithful at the same boundary (control).
+  // Trip resolver rounds each package to cents, so it is exactly server-faithful
+  // at the same boundary (control). [TEST-MOD-APPROVED META-ORCH-1174] — the
+  // resolver now takes { packages: [{ priceMajor }] }; single-package N=1 case.
   test("trip resolver is exactly server-faithful at the 0.004/0.005 boundary", () => {
-    expect(tripDraftIsPaid({ priceMajor: "0.004" })).toBe(false);
-    expect(tripDraftIsPaid({ priceMajor: "0.005" })).toBe(true);
+    expect(tripDraftIsPaid({ packages: [{ priceMajor: "0.004" }] })).toBe(false);
+    expect(tripDraftIsPaid({ packages: [{ priceMajor: "0.005" }] })).toBe(true);
   });
 });

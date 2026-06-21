@@ -126,6 +126,9 @@ const trip = (patch: Partial<Trip> = {}): Trip => ({
       ticketsRemaining: null,
       isUnlimited: false,
       installmentSchedule: null,
+      // [TEST-MOD-APPROVED META-ORCH-1174] — TripPricingTier gained an optional
+      // per-package description field (Leg B2).
+      description: null,
     },
   ],
   inclusions: [],
