@@ -311,7 +311,16 @@ function AppContent() {
     });
     // META-ORCH-1187 — init PostHog alongside Mixpanel (idempotent; the root
     // provider also calls this). No-ops gracefully when the key is absent.
-    void postHogService.initialize();
+    // ORCH-1192 — fire the cold-start `app_opened` once init has resolved, so
+    // the DAU/WAU/MAU + retention dashboards key on a real session event
+    // (mirrors the mixpanel cold trackAppOpened above). capture() no-ops
+    // gracefully when the key is absent / analytics is opted out.
+    void postHogService.initialize().then(() => {
+      postHogService.capture("app_opened", {
+        cold_start: true,
+        surface: "consumer_app",
+      });
+    });
   }, []);
 
   // ── RevenueCat ─────────────────────────────────────────────────────────────

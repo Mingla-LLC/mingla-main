@@ -19,6 +19,7 @@ import { phoneInviteKeys } from './usePhoneInvite';
 import { subscriptionKeys } from './useSubscription';
 import { logger } from '../utils/logger';
 import { mixpanelService } from '../services/mixpanelService';
+import { postHogService } from '../services/postHogService';
 
 // Query key prefixes for critical queries that should refresh on resume.
 // Deck/curated/session-deck EXCLUDED — active swipe sessions that only refresh on
@@ -130,6 +131,16 @@ export function useForegroundRefresh(
         ? Math.round((Date.now() - backgroundTimestampRef.current) / 1000)
         : undefined;
       mixpanelService.trackAppOpened({ source: 'warm', secondsSinceLastOpen: secondsSinceBackground });
+      // ORCH-1192 — fire the foreground `app_opened` (cold_start:false) at the
+      // SAME genuine-resume gate as the mixpanel warm event (background→active
+      // only; the wasBackground/isNowActive guard above already excludes the
+      // very first 'active' and iOS inactive→active flickers, so this never
+      // double-fires with the cold-start capture). Feeds DAU/WAU/MAU keyed on a
+      // real session event. No-ops when opted out / key absent.
+      postHogService.capture("app_opened", {
+        cold_start: false,
+        surface: "consumer_app",
+      });
 
       // Restart the auto-refresh ticker immediately on foreground.
       supabase.auth.startAutoRefresh();

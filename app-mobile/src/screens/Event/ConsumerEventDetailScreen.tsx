@@ -402,6 +402,19 @@ export default function ConsumerEventDetailScreen({
         return;
       }
 
+      // ORCH-1192 — fire `checkout_started` BEFORE the payment sheet opens
+      // (mirrors web `web_checkout_started`; precedes the `purchase_completed`
+      // success capture below). The `checkoutInFlight` early-return at the top
+      // of handleBuy guards against a re-render / double-tap double-fire, so
+      // this fires once per checkout attempt. Props mirror purchase_completed.
+      postHogService.capture("checkout_started", {
+        event_id: seed.eventId,
+        offering_type: "event",
+        value: payload.totalCents / 100,
+        currency: seed.currency,
+        surface: "consumer_app",
+      });
+
       void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
       setCheckoutInFlight(true);
 
