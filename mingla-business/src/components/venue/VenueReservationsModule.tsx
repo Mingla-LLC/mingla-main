@@ -272,20 +272,19 @@ const styles = StyleSheet.create({
     ...typography.bodySm,
     color: textTokens.secondary,
   },
-  // ORCH-1190 R3 — full-width empty card on WEB, robustly. The empty card is now
-  // wrapped in a stretching WRAPPER (alignSelf:"stretch") and the card itself
-  // stretches via alignSelf WITHOUT width:"100%". Empirically (Playwright + real
-  // react-native-web, see Mingla_Artifacts/reports/IMPLEMENT_ORCH-1190-FULLWIDTH-WEB.md):
-  // an explicit `width:"100%"` resolves against the parent's content-box and, when
-  // a flex ancestor leaves that width indefinite, can DEFEAT `alignSelf:"stretch"`
-  // (an explicit main-size overrides stretch in flexbox) — collapsing the card to
-  // its centered content's min width while the row-based header + horizontal tab
-  // ScrollView still read full-width. Dropping `width:"100%"` and letting the
-  // wrapper + card stretch is immune to indefinite-width ancestors.
+  // ORCH-1190 R4 — full-width empty card on WEB, matching the PROVEN-working
+  // VenueTablesModule.tableCard pattern (Seth-confirmed full-width in this exact
+  // shell): BOTH width:"100%" AND alignSelf:"stretch", together. R3 dropped
+  // width:"100%" (alignSelf alone) and that REGRESSED to narrow/centered on live
+  // desktop. The sibling tableCard proves width:"100%"+alignSelf:"stretch" renders
+  // edge-to-edge in this shell; neither property alone covers every container, so
+  // both are kept on the wrapper AND the card.
   emptyWrap: {
+    width: "100%",
     alignSelf: "stretch",
   },
   emptyCard: {
+    width: "100%",
     alignSelf: "stretch",
     alignItems: "center",
     gap: spacing.sm,

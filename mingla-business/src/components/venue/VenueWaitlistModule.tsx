@@ -260,14 +260,17 @@ const styles = StyleSheet.create({
     ...typography.bodySm,
     color: textTokens.secondary,
   },
-  // ORCH-1190 R3 — full-width empty card on WEB, robustly (see
-  // VenueReservationsModule + IMPLEMENT_ORCH-1190-FULLWIDTH-WEB.md). Stretching
-  // wrapper + card stretches via alignSelf, WITHOUT width:"100%" (an explicit
-  // main-size can defeat alignSelf:"stretch" under an indefinite-width ancestor).
+  // ORCH-1190 R4 — full-width empty card on WEB, matching the PROVEN-working
+  // VenueTablesModule.tableCard pattern (BOTH width:"100%" AND alignSelf:"stretch",
+  // together). R3 dropped width:"100%" and regressed to narrow/centered on live
+  // desktop; the sibling tableCard proves both-together renders edge-to-edge in
+  // this exact shell.
   emptyWrap: {
+    width: "100%",
     alignSelf: "stretch",
   },
   emptyCard: {
+    width: "100%",
     alignSelf: "stretch",
     alignItems: "center",
     gap: spacing.sm,
