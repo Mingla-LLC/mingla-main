@@ -62,6 +62,7 @@ export default function PublicBrandRoute(): React.ReactElement {
       experiences={publicBrandQuery.data.experiences}
       upcoming={publicBrandQuery.data.upcoming}
       upcomingHasMore={publicBrandQuery.data.upcomingHasMore}
+      menu={publicBrandQuery.data.menu}
       venue={publicBrandQuery.data.venue}
     />
   );

@@ -49,6 +49,7 @@ import { Button } from "../ui/Button";
 import { GlassCard } from "../ui/GlassCard";
 import { VenueAvailabilityModule } from "./VenueAvailabilityModule";
 import { VenueIntelligenceModule } from "./VenueIntelligenceModule";
+import { VenueMenuModule } from "./VenueMenuModule";
 import { VenueReservationsModule } from "./VenueReservationsModule";
 import { VenueSettingsModule } from "./VenueSettingsModule";
 import { VenueTablesModule } from "./VenueTablesModule";
@@ -165,6 +166,12 @@ export function VenueSuiteShell({
     }
     if (activeModule === "settings") {
       return <VenueSettingsModule brandId={brandId} />;
+    }
+    // ORCH-1186-C — the always-visible command-band DISPLAY-ONLY menu builder
+    // (independent of the reservations toggle). Renders inside the shell's
+    // ScrollView (moduleSelfScrolls("menu") === false), like Settings.
+    if (activeModule === "menu") {
+      return <VenueMenuModule brandId={brandId} />;
     }
     // 2.1a — Tables + Availability LIVE. 2.1b — Reservations + Waitlist LIVE.
     // The whole booking band is now real operator UI (no ComingSoon left).

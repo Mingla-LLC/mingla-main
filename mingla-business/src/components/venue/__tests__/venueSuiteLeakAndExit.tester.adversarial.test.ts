@@ -97,7 +97,10 @@ describe("ORCH-1148 TESTER — toggle-OFF booking leak (angle A)", () => {
       expect(activeModule).toBe(booking);
       // ...but the nav (rail/pill row) renders ONLY visibleModules, which NEVER
       // includes a booking module while OFF → it cannot be a selectable entry.
-      expect(visibleModules).toEqual(["overview", "settings"]);
+      // ORCH-1186-C [TEST-MOD-APPROVED ORCH-1186-C] — OFF now also shows the
+      // command-band "menu" module (NOT gated on the toggle); the booking-leak
+      // invariant is unchanged (OFF still contains NO booking module).
+      expect(visibleModules).toEqual(["overview", "menu", "settings"]);
       expect(visibleModules).not.toContain(booking);
 
       // And the shell's snap-back guard evicts it back to overview.
@@ -107,7 +110,10 @@ describe("ORCH-1148 TESTER — toggle-OFF booking leak (angle A)", () => {
 
   it("deriveVenueModules(false) is the SOLE OFF-state gate — no booking band ever leaks", () => {
     const off = deriveVenueModules(false);
-    expect(off).toEqual(["overview", "settings"]);
+    // ORCH-1186-C [TEST-MOD-APPROVED ORCH-1186-C] — OFF includes the command-band
+    // "menu" module (not toggle-gated); the booking-leak invariant holds (no
+    // booking module ever appears in the OFF array).
+    expect(off).toEqual(["overview", "menu", "settings"]);
     for (const b of VENUE_BOOKING_MODULES) {
       expect(off).not.toContain(b);
     }

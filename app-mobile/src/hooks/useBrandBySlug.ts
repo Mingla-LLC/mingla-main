@@ -13,6 +13,7 @@ import type {
   PublicBrandExperience,
   PublicBrandTrip,
   PublicBrandUpcoming,
+  PublicMenuGroup,
 } from "@mingla/brand-rendering";
 
 import { supabase } from "../services/supabase";
@@ -134,8 +135,53 @@ export interface ConsumerBrandDetail {
   experiences: PublicBrandExperience[];
   upcoming: PublicBrandUpcoming[];
   upcomingHasMore: boolean;
+  /** ORCH-1186-C — DISPLAY-ONLY menu groups (verified venues only; [] else). */
+  menu: PublicMenuGroup[];
   resolvedTheme: ResolvedTheme;
 }
+
+// ORCH-1186-C — flat row from the anon-safe security-definer public_menus_view.
+// app-mobile reads the view directly (it does not import mingla-business
+// services); this is byte-distinct from the snap-menu parser / experience_stops
+// (I-PROPOSED-1186C-MENU-NOT-EXPERIENCE-STOPS).
+interface PublicMenuRow {
+  id: string;
+  menu_id: string;
+  menu_name: string;
+  menu_description: string | null;
+  menu_sort_order: number;
+  item_name: string;
+  item_description: string | null;
+  price_cents: number | null;
+  currency: string;
+  item_sort_order: number;
+}
+
+const groupPublicMenuRows = (rows: PublicMenuRow[]): PublicMenuGroup[] => {
+  const groups: PublicMenuGroup[] = [];
+  const byMenuId = new Map<string, PublicMenuGroup>();
+  for (const row of rows) {
+    let group = byMenuId.get(row.menu_id);
+    if (group === undefined) {
+      group = {
+        menuId: row.menu_id,
+        menuName: row.menu_name,
+        menuDescription: row.menu_description,
+        items: [],
+      };
+      byMenuId.set(row.menu_id, group);
+      groups.push(group);
+    }
+    group.items.push({
+      id: row.id,
+      name: row.item_name,
+      description: row.item_description,
+      priceCents: row.price_cents,
+      currency: row.currency,
+    });
+  }
+  return groups;
+};
 
 const asRecord = (value: unknown): Record<string, unknown> =>
   value !== null && typeof value === "object" && !Array.isArray(value)
@@ -320,7 +366,7 @@ const getBrandBySlug = async (
   if (brandData === null) return null;
 
   const brand = mapBrand(brandData as PublicBrandRow);
-  const [eventResult, tripResult, experienceResult, upcomingResult] =
+  const [eventResult, tripResult, experienceResult, upcomingResult, menuResult] =
     await Promise.all([
       supabase
         .from("business_public_events_view")
@@ -333,11 +379,21 @@ const getBrandBySlug = async (
         p_brand_slug: slug,
         p_limit: 30,
       }),
+      // ORCH-1186-C — DISPLAY-ONLY menu (verified venues only; [] otherwise).
+      supabase
+        .from("public_menus_view")
+        .select(
+          "id, menu_id, menu_name, menu_description, menu_sort_order, item_name, item_description, price_cents, currency, item_sort_order",
+        )
+        .eq("brand_slug", slug)
+        .order("menu_sort_order", { ascending: true })
+        .order("item_sort_order", { ascending: true }),
     ]);
   if (eventResult.error !== null) throw eventResult.error;
   if (tripResult.error !== null) throw tripResult.error;
   if (experienceResult.error !== null) throw experienceResult.error;
   if (upcomingResult.error !== null) throw upcomingResult.error;
+  if (menuResult.error !== null) throw menuResult.error;
 
   const allEventRows = ((eventResult.data ?? []) as PublicEventRow[]).filter(
     (row) => row.event_type === "event",
@@ -391,6 +447,7 @@ const getBrandBySlug = async (
   const upcomingHasMore = upcomingRows.length > 30;
   const upcoming = (upcomingHasMore ? upcomingRows.slice(0, 30) : upcomingRows)
     .map(mapUpcoming);
+  const menu = groupPublicMenuRows((menuResult.data ?? []) as PublicMenuRow[]);
   return {
     brand,
     events,
@@ -398,6 +455,7 @@ const getBrandBySlug = async (
     experiences,
     upcoming,
     upcomingHasMore,
+    menu,
     resolvedTheme: resolveTheme(brand.theme, null),
   };
 };

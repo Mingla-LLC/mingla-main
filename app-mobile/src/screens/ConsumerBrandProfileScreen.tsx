@@ -60,6 +60,7 @@ export default function ConsumerBrandProfileScreen(): React.ReactElement {
       experiences={query.data.experiences}
       upcoming={query.data.upcoming}
       upcomingHasMore={query.data.upcomingHasMore}
+      menu={query.data.menu}
       theme={query.data.resolvedTheme}
       // ORCH-1155 Known-Issue #1: feed the device safe-area top inset into the
       // shared shell's fixed chrome so the X / Share buttons clear the notch /

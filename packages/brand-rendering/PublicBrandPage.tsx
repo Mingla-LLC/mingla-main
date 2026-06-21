@@ -71,9 +71,16 @@ import type {
   PublicBrandTrip,
   PublicBrandUpcoming,
   PublicMediaType,
+  PublicMenuGroup,
 } from "./types";
 
-type Tab = "about" | "upcoming" | "events" | "trips" | "experiences";
+type Tab =
+  | "about"
+  | "menu"
+  | "upcoming"
+  | "events"
+  | "trips"
+  | "experiences";
 type SocialKind =
   | "website"
   | "instagram"
@@ -107,6 +114,42 @@ const formatCurrencyRound = (value: number, currency: string): string => {
     }).format(value);
   } catch {
     return `${currency} ${Math.round(value)}`;
+  }
+};
+
+// ORCH-1186-C — DISPLAY-ONLY menu price formatter. Package-local (the package
+// must NOT import mingla-business currency utils — cross-package boundary).
+// Intl renders zero-decimal currencies correctly (¥1,250 not ¥1,250.00) on both
+// Hermes (RN) and web. `priceCents === null` ⇒ no number ("price on request" is
+// shown nowhere on the public page — the price column is simply omitted). The
+// currency always arrives from the row; the catch echoes it, never "GBP" (SC-9).
+//
+// CRITICAL: the stored price is in MINOR units, whose factor is 1 (not 100) for
+// zero-decimal currencies (JPY etc.) — matching the data-layer minorFromMajor
+// convention. Dividing unconditionally by 100 would render ¥1250 as "¥13", so
+// the minor-unit factor is currency-aware (mirrors mingla-business
+// ZERO_DECIMAL_CURRENCIES without importing it — cross-package boundary).
+const MENU_ZERO_DECIMAL_CURRENCIES = new Set([
+  "BIF", "CLP", "DJF", "GNF", "JPY", "KMF", "KRW", "MGA", "PYG", "RWF", "UGX",
+  "VND", "VUV", "XAF", "XOF", "XPF",
+]);
+
+const menuMinorFactor = (currency: string): number =>
+  MENU_ZERO_DECIMAL_CURRENCIES.has(currency.toUpperCase()) ? 1 : 100;
+
+const formatMenuPrice = (
+  priceCents: number | null,
+  currency: string,
+): string | null => {
+  if (priceCents === null) return null;
+  const major = priceCents / menuMinorFactor(currency);
+  try {
+    return new Intl.NumberFormat(undefined, {
+      style: "currency",
+      currency,
+    }).format(major);
+  } catch {
+    return `${currency} ${major.toFixed(2)}`;
   }
 };
 
@@ -202,6 +245,7 @@ const openUrl = (url: string): void => {
 
 const tabLabel: Record<Tab, string> = {
   about: "About",
+  menu: "Menu",
   upcoming: "Upcoming",
   events: "Events",
   trips: "Trips",
@@ -229,6 +273,7 @@ export const PublicBrandPage: React.FC<PublicBrandPageProps> = ({
   upcoming = [],
   upcomingHasMore = false,
   venue = null,
+  menu = [],
   theme,
   // hideFloatingChrome is retained for back-compat with the props type; both live
   // callers (business adapter + consumer screen) pass it falsy, and the shell
@@ -289,8 +334,19 @@ export const PublicBrandPage: React.FC<PublicBrandPageProps> = ({
 
   // ORCH-1155 — About FIRST + default; offering tabs render ONLY when non-empty.
   // (I-PROPOSED-1155-ABOUT-FIRST-DEFAULT + I-PROPOSED-1155-TABS-HIDE-WHEN-EMPTY.)
+  // ORCH-1186-C — total available menu items across all groups (chip count +
+  // visibility gate). The view already filters to available items; menu is [] for
+  // non-venues / unverified venues, so the Menu tab simply does not appear.
+  const menuItemCount = useMemo<number>(
+    () => menu.reduce((sum, group) => sum + group.items.length, 0),
+    [menu],
+  );
+
   const visibleTabs = useMemo<Tab[]>(() => {
     const tabs: Tab[] = ["about"];
+    // ORCH-1186-C — Menu immediately after About (a venue's menu is core
+    // identity), only when there is ≥1 available item.
+    if (menuItemCount > 0) tabs.push("menu");
     if (upcoming.length > 0 || upcomingHasMore) tabs.push("upcoming");
     if (upcomingEvents.length > 0 || pastEvents.length > 0) tabs.push("events");
     if (upcomingTrips.length > 0 || pastTrips.length > 0) tabs.push("trips");
@@ -298,6 +354,7 @@ export const PublicBrandPage: React.FC<PublicBrandPageProps> = ({
     return tabs;
   }, [
     experiences.length,
+    menuItemCount,
     pastEvents.length,
     pastTrips.length,
     upcoming.length,
@@ -397,6 +454,7 @@ export const PublicBrandPage: React.FC<PublicBrandPageProps> = ({
       : null;
 
   const countForTab = (tab: Tab): number | undefined => {
+    if (tab === "menu") return menuItemCount;
     if (tab === "upcoming") return upcoming.length;
     if (tab === "events") return upcomingEvents.length + pastEvents.length;
     if (tab === "trips") return upcomingTrips.length + pastTrips.length;
@@ -464,7 +522,9 @@ export const PublicBrandPage: React.FC<PublicBrandPageProps> = ({
   );
 
   const activePane =
-    activeTab === "upcoming" ? (
+    activeTab === "menu" ? (
+      <MenuTab groups={menu} palette={palette} surface={surface} theme={resolvedTheme} />
+    ) : activeTab === "upcoming" ? (
       <UpcomingList
         rows={upcoming}
         theme={resolvedTheme}
@@ -1358,6 +1418,92 @@ const EmptyPane: React.FC<{ copy: string; palette: ThemePalette }> = ({
   </View>
 );
 
+// ORCH-1186-C — DISPLAY-ONLY public menu pane: stacked category sections, each a
+// surface.card panel; item rows are name-left / price-right; null price omits the
+// price column (no "£0"). Rows are STATIC <View> (NOT Pressable) — there is no
+// detail/buy/expand, so a tappable-looking dead row never ships. NO order/cart/
+// checkout control anywhere (SC-7, strict-grep gate).
+const MenuTab: React.FC<{
+  groups: PublicMenuGroup[];
+  palette: ThemePalette;
+  surface: Surface;
+  theme: ResolvedTheme;
+}> = ({ groups, palette, surface, theme }) => (
+  <View style={styles.menuWrap}>
+    {groups.map((group) => (
+      <View key={group.menuId} style={styles.menuSection}>
+        <Text
+          accessibilityRole="header"
+          style={[
+            styles.menuSectionName,
+            { fontFamily: theme.fontFamilyValue, color: palette.primaryText },
+          ]}
+        >
+          {group.menuName}
+        </Text>
+        {group.menuDescription !== null ? (
+          <Text style={[styles.menuSectionDesc, { color: palette.tertiaryText }]}>
+            {group.menuDescription}
+          </Text>
+        ) : null}
+        <View style={[styles.menuCard, surface.card]}>
+          {group.items.map((item, index) => {
+            const price = formatMenuPrice(item.priceCents, item.currency);
+            return (
+              <View
+                key={item.id}
+                accessibilityLabel={
+                  price !== null
+                    ? `${item.name}. ${item.description ?? ""} ${price}.`
+                    : `${item.name}. ${item.description ?? ""}`
+                }
+                style={[
+                  styles.menuItemRow,
+                  index > 0 && {
+                    borderTopWidth: StyleSheet.hairlineWidth,
+                    borderTopColor: palette.panelBorder,
+                  },
+                ]}
+              >
+                <View style={styles.menuItemLeft}>
+                  <Text
+                    style={[styles.menuItemName, { color: palette.primaryText }]}
+                  >
+                    {item.name}
+                  </Text>
+                  {item.description !== null ? (
+                    <Text
+                      numberOfLines={3}
+                      style={[
+                        styles.menuItemDesc,
+                        { color: palette.tertiaryText },
+                      ]}
+                    >
+                      {item.description}
+                    </Text>
+                  ) : null}
+                </View>
+                {price !== null ? (
+                  <View style={styles.menuItemPriceCol}>
+                    <Text
+                      style={[
+                        styles.menuItemPrice,
+                        { color: palette.primaryText },
+                      ]}
+                    >
+                      {price}
+                    </Text>
+                  </View>
+                ) : null}
+              </View>
+            );
+          })}
+        </View>
+      </View>
+    ))}
+  </View>
+);
+
 // ORCH-1155 — About pane: tagline → bio (4-line clamp + Read more) → contact.
 const AboutTab: React.FC<{
   brand: PublicBrand;
@@ -1707,6 +1853,57 @@ const styles = StyleSheet.create({
     marginTop: 6,
     lineHeight: 20,
     textAlign: "center",
+  },
+  // ---- menu (ORCH-1186-C, DISPLAY-ONLY) ----
+  menuWrap: {
+    gap: 24,
+  },
+  menuSection: {
+    gap: 8,
+  },
+  menuSectionName: {
+    fontSize: 17,
+    lineHeight: 21,
+    fontWeight: "800",
+  },
+  menuSectionDesc: {
+    fontSize: 14,
+    lineHeight: 20,
+    marginTop: 2,
+  },
+  menuCard: {
+    borderRadius: 16,
+    overflow: "hidden",
+    padding: 14,
+  },
+  menuItemRow: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    justifyContent: "space-between",
+    gap: 12,
+    paddingVertical: 10,
+  },
+  menuItemLeft: {
+    flex: 1,
+    minWidth: 0,
+    gap: 2,
+  },
+  menuItemName: {
+    fontSize: 16,
+    lineHeight: 21,
+    fontWeight: "700",
+  },
+  menuItemDesc: {
+    fontSize: 14,
+    lineHeight: 19,
+  },
+  menuItemPriceCol: {
+    alignItems: "flex-end",
+  },
+  menuItemPrice: {
+    fontSize: 16,
+    lineHeight: 21,
+    fontWeight: "800",
   },
   // ---- about ----
   aboutWrap: {

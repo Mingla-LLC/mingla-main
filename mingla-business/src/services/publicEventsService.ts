@@ -1,4 +1,7 @@
+import type { PublicMenuGroup } from "@mingla/brand-rendering";
+
 import { supabase } from "./supabase";
+import { fetchPublicMenus } from "./publicMenusService";
 import type {
   DraftEventFormat,
   DraftEventVisibility,
@@ -271,6 +274,12 @@ export interface PublicBrandDetail {
   upcomingCount: number;
   /** Present only for verified physical venues (Ve4). */
   venue: PublicVenueDetail | null;
+  /**
+   * ORCH-1186-C — DISPLAY-ONLY menu groups. [] for non-venues / unverified
+   * venues (the public_menus_view filters to verified venues), so the shared
+   * page shows no Menu tab for them.
+   */
+  menu: PublicMenuGroup[];
 }
 
 // ============================================================
@@ -1348,12 +1357,17 @@ export const getPublicBrandBySlug = async (
   if (brandData === null) return null;
 
   const brandRow = brandData as BusinessPublicBrandViewRow;
-  const [eventsAll, tripsAll, experiences, upcomingPage] = await Promise.all([
-    fetchPublicBrandEvents(brandSlug),
-    fetchPublicBrandTrips(brandSlug),
-    fetchPublicBrandExperiences(brandSlug),
-    fetchPublicBrandUpcoming(brandSlug),
-  ]);
+  const [eventsAll, tripsAll, experiences, upcomingPage, menu] =
+    await Promise.all([
+      fetchPublicBrandEvents(brandSlug),
+      fetchPublicBrandTrips(brandSlug),
+      fetchPublicBrandExperiences(brandSlug),
+      fetchPublicBrandUpcoming(brandSlug),
+      // ORCH-1186-C — DISPLAY-ONLY menu (verified venues only; [] otherwise).
+      // Cheap unconditional fetch on the SSR-safe definer view; non-venues
+      // return [] so no Menu tab renders.
+      fetchPublicMenus(brandSlug),
+    ]);
 
   const events = eventsAll.filter((event) => event.status !== "ended");
   const pastEvents = eventsAll.filter((event) => event.status === "ended");
@@ -1385,6 +1399,7 @@ export const getPublicBrandBySlug = async (
     upcomingHasMore: upcomingPage.hasMore,
     upcomingNextCursor: upcomingPage.nextCursor,
     upcomingCount: upcomingPage.rows.length,
+    menu,
   };
 };
 

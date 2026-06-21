@@ -132,6 +132,26 @@ export interface PublicVenueDetail {
   venueCategory: "restaurant" | "play" | "creative_and_arts" | null;
 }
 
+// ORCH-1186-C — DISPLAY-ONLY venue menu shapes (no ordering/cart/payment).
+// A `PublicMenuGroup` is a menu/category section; its `items` are priced rows.
+// `priceCents === null` ⇒ "price on request" (the public page renders no number
+// for that row). `currency` is a 3-letter ISO from the stored row (never
+// GBP-defaulted).
+export interface PublicMenuItem {
+  id: string;
+  name: string;
+  description: string | null;
+  priceCents: number | null;
+  currency: string;
+}
+
+export interface PublicMenuGroup {
+  menuId: string;
+  menuName: string;
+  menuDescription: string | null;
+  items: PublicMenuItem[];
+}
+
 export interface PublicBrandCallbacks {
   onClose: () => void;
   onShare: () => void;
@@ -152,6 +172,8 @@ export interface PublicBrandPageProps {
   upcoming?: PublicBrandUpcoming[];
   upcomingHasMore?: boolean;
   venue?: PublicVenueDetail | null;
+  // ORCH-1186-C — DISPLAY-ONLY menu groups. Absent / [] ⇒ no Menu tab.
+  menu?: PublicMenuGroup[];
   theme?: ResolvedTheme;
   hideFloatingChrome?: boolean;
   chromeTopOffset?: number;
