@@ -23,7 +23,9 @@
  *
  * FAILS-ON-REVERT: removing the opt-out-by-default literal, removing the GA
  * consent-default-denied call, ordering it after <GoogleAnalytics>, or flipping
- * to capture-by-default — any of these fails this gate.
+ * to capture-by-default — any of these fails this gate. All three sections
+ * comment-strip BEFORE matching, so DELETING a real line cannot be masked by a
+ * doc-comment that mentions the same literal (TEST P2-1 hardening, ORCH-1187).
  */
 
 import fs from "node:fs";
@@ -67,7 +69,12 @@ for (const rel of POSTHOG_INIT_FILES) {
     errors.push(`Missing required PostHog init file: ${rel}`);
     continue;
   }
-  const contents = fs.readFileSync(full, "utf8");
+  // Comment-strip FIRST: the provider's own doc-comment contains the literal
+  // `opt_out_capturing_by_default: true` (in prose/backticks). Without stripping,
+  // DELETING the real init line would still pass this gate because the comment
+  // satisfies the regex — a fails-on-revert blind spot (TEST P2-1). Strip so only
+  // REAL code can satisfy the check (matches sections 2 & 3 below).
+  const contents = stripComments(fs.readFileSync(full, "utf8"));
   if (!/opt_out_capturing_by_default\s*:\s*true/.test(contents)) {
     errors.push(
       `${rel}: PostHog init must set "opt_out_capturing_by_default: true" (consent gate).`,

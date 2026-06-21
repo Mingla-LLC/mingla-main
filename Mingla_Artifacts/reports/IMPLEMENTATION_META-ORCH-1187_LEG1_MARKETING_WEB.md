@@ -76,12 +76,17 @@ None. (Spec DO-NOT-TOUCH: no server-side capture this phase.)
 **Happy-path regression (implementor-owned):** `.github/scripts/strict-grep/i-proposed-1187-marketing-layout-mounts-analytics.mjs` — asserts `app/layout.tsx` mounts `<PostHogProvider>` + `<ConsentBanner>` + `<GoogleAnalytics gaId>` and the provider init uses the US host. This is the §9 marketing fails-on-revert contract. (The marketing project has no jest/vitest harness; a Node structural gate is the in-CI-runnable form and matches the §9 "unit/lint test" intent.)
 
 **fails-on-revert verified at commit `82db71f9d`:**
-- CONSENT gate: deleted the `opt_out_capturing_by_default: true` line → `i-proposed-1187-consent-gate-before-cookies.mjs` exit 1 (FAIL). Restored → exit 0 (PASS).
+- ~~CONSENT gate: deleted the `opt_out_capturing_by_default: true` line → `i-proposed-1187-consent-gate-before-cookies.mjs` exit 1 (FAIL). Restored → exit 0 (PASS).~~ **CORRECTION (ORCH-1187 P2-1 rework):** this claim was FALSE at `82db71f9d`. Section 1 of the consent gate read RAW (un-comment-stripped) file contents, but the provider's doc-comment also contains the literal `opt_out_capturing_by_default: true` — so deleting the real init line left the gate GREEN (the comment satisfied the regex). The tester caught this (TEST P2-1). See the hardened proof below.
 - REPLAY-MASKS-PII gate (SECURITY): flipped `maskAllInputs: true`→`false` → `i-proposed-1187-replay-masks-pii.mjs` exit 1 (FAIL). Restored → exit 0.
 - POSTHOG-HOST-US gate: replaced US host with `eu.i.posthog.com` → `i-proposed-1187-posthog-host-us.mjs` exit 1 (FAIL). Restored → exit 0.
 - Layout-mount regression: deleted `<GoogleAnalytics gaId` mount → exit 1; deleted `<PostHogProvider />` → exit 1; restored → exit 0.
 
-All reverts were TRUE LINE DELETION / value-flip (not comment-out). All gates comment-strip before structural checks so doc-comment prose does not produce false positives.
+**CONSENT-gate hardening (P2-1 fix, this rework):** Section 1 now comment-strips BEFORE matching (`const contents = stripComments(fs.readFileSync(...))`), exactly like Sections 2 & 3 — so only REAL code can satisfy the consent check and a doc-comment mention can no longer mask a deletion. Re-proven fails-on-revert with the real line deleted but both doc-comments left intact:
+- WITH real line present → `node .github/scripts/strict-grep/i-proposed-1187-consent-gate-before-cookies.mjs` → exit 0 (`OK: I-PROPOSED-1187-CONSENT-GATE-BEFORE-COOKIES ... verified`).
+- Real init line (`    opt_out_capturing_by_default: true,`) DELETED, doc-comment mentions (lines 7 & 53) intact → exit **1** (`FAIL ... PostHog init must set "opt_out_capturing_by_default: true" (consent gate)`). Before this fix the same deletion left the gate at exit 0.
+- Provider restored byte-identical (no `git diff`) → exit 0 again. The tester's companion gate `orch-1187-tester-consent-gate-deletion-robust.mjs` is left in place (untouched, still green).
+
+All other reverts above were TRUE LINE DELETION / value-flip (not comment-out). After this fix, ALL THREE sections of the consent gate comment-strip before structural checks, so doc-comment prose cannot produce a false positive on any of them.
 
 ---
 
