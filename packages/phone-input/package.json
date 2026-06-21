@@ -11,6 +11,7 @@
     "expo-haptics": "*",
     "react": "*",
     "react-native": "*",
+    "react-native-keyboard-controller": "*",
     "react-native-safe-area-context": "*"
   }
 }

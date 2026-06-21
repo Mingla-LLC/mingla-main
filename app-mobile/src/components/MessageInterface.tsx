@@ -60,6 +60,7 @@ import { useBoardSession } from "../hooks/useBoardSession";
 import { useConversationParticipants } from "../hooks/useConversationParticipants";
 import { useChatCardTagSource } from "../hooks/useChatCardTagSource";
 import { useChatInputController } from "../hooks/useChatInputController";
+import { KEYBOARD_TOOLBAR_HEIGHT } from "../wrappers/keyboardConstants";
 import ExpandedCardModal from "./ExpandedCardModal";  // ORCH-0667
 import { BaseBottomSheet } from "./ui/BaseBottomSheet";
 // ORCH-1138 Leg 3 — chat purchased-banner repointed off ExpandedBusinessEventSheet
@@ -1175,9 +1176,13 @@ export default function MessageInterface({
   // the actual visible keyboard, we need to account for it.
   const androidManualLift =
     Platform.OS === 'android' && keyboardVisible
-      ? Math.max(0, keyboardHeight + safeInsets.bottom - windowShrinkAmount)
+      ? Math.max(0, keyboardHeight + safeInsets.bottom - windowShrinkAmount) +
+        KEYBOARD_TOOLBAR_HEIGHT
       : 0;
-  const iosKeyboardLift = Platform.OS === 'ios' && keyboardVisible ? keyboardHeight : 0;
+  const iosKeyboardLift =
+    Platform.OS === 'ios' && keyboardVisible
+      ? keyboardHeight + KEYBOARD_TOOLBAR_HEIGHT
+      : 0;
 
   // When the keyboard is open, the floating bottom nav is hidden behind the
   // keyboard — the composer only needs a small breathing gap above the keyboard

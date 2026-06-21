@@ -46,14 +46,20 @@ function measureInWindow(
   // Neither path available — silently skip
 }
 import { useKeyboard } from "../../hooks/useKeyboard";
+import {
+  KEYBOARD_CLEARANCE_ABOVE_TOOLBAR,
+  KEYBOARD_TOOLBAR_HEIGHT,
+} from "../../wrappers/keyboardConstants";
 
 const SCREEN_HEIGHT = Dimensions.get("window").height;
 
 /**
  * Breathing room between the bottom of the focused input and the top of
- * the keyboard. Feels premium — not cramped, not wasteful.
+ * the keyboard toolbar (which sits on the keyboard). ORCH-1171: includes
+ * KEYBOARD_TOOLBAR_HEIGHT so fields stay above the Done bar.
  */
-const KEYBOARD_PADDING = 40;
+const KEYBOARD_PADDING =
+  KEYBOARD_CLEARANCE_ABOVE_TOOLBAR + KEYBOARD_TOOLBAR_HEIGHT;
 
 interface KeyboardAwareScrollViewProps extends ScrollViewProps {
   /**

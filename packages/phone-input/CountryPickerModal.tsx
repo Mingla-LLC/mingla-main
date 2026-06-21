@@ -19,6 +19,11 @@
 
 import React, { useState, useCallback, useMemo, useRef } from "react";
 import {
+  KeyboardProvider,
+  KeyboardToolbar,
+  type KeyboardToolbarProps,
+} from "react-native-keyboard-controller";
+import {
   View,
   Text,
   TextInput,
@@ -74,6 +79,26 @@ interface CountryPickerModalProps extends CountryPickerContentProps {
 
 const ROW_HEIGHT = 48;
 
+/** ORCH-1171: Done-only toolbar height (matches app-mobile keyboardConstants). */
+const KEYBOARD_TOOLBAR_HEIGHT = 42;
+
+const MINGLA_KEYBOARD_TOOLBAR_THEME: NonNullable<
+  KeyboardToolbarProps["theme"]
+> = {
+  light: {
+    primary: "#eb7825",
+    disabled: "#B0BEC5",
+    background: "#f3f3f4",
+    ripple: "#bcbcbcbc",
+  },
+  dark: {
+    primary: "#eb7825",
+    disabled: "#707070",
+    background: "#2C2C2E",
+    ripple: "#F8F8F888",
+  },
+};
+
 const CountryPickerContent: React.FC<CountryPickerContentProps> = ({
   selectedCode,
   onSelect,
@@ -92,7 +117,10 @@ const CountryPickerContent: React.FC<CountryPickerContentProps> = ({
   );
 
   const { keyboardHeight } = useKeyboard({ disableLayoutAnimation: true });
-  const bottomSpacer = keyboardHeight > 0 ? keyboardHeight : insets.bottom;
+  const bottomSpacer =
+    keyboardHeight > 0
+      ? keyboardHeight + KEYBOARD_TOOLBAR_HEIGHT
+      : insets.bottom;
 
   const filteredCountries = useMemo(() => {
     if (!search.trim()) return COUNTRIES;
@@ -266,16 +294,22 @@ export const CountryPickerModal: React.FC<CountryPickerModalProps> = ({
       presentationStyle="fullScreen"
       statusBarTranslucent
     >
-      <SafeAreaProvider>
-        <CountryPickerContent
-          selectedCode={selectedCode}
-          onSelect={onSelect}
-          onClose={onClose}
-          iconRenderer={iconRenderer}
-          labels={labels}
-          theme={theme}
+      <KeyboardProvider>
+        <SafeAreaProvider>
+          <CountryPickerContent
+            selectedCode={selectedCode}
+            onSelect={onSelect}
+            onClose={onClose}
+            iconRenderer={iconRenderer}
+            labels={labels}
+            theme={theme}
+          />
+        </SafeAreaProvider>
+        <KeyboardToolbar
+          showArrows={false}
+          theme={MINGLA_KEYBOARD_TOOLBAR_THEME}
         />
-      </SafeAreaProvider>
+      </KeyboardProvider>
     </Modal>
   );
 };

@@ -9,6 +9,7 @@ import {
   StyleProp,
 } from "react-native";
 import { useKeyboard } from "../../hooks/useKeyboard";
+import { KEYBOARD_TOOLBAR_HEIGHT } from "../../wrappers/keyboardConstants";
 
 interface KeyboardAwareViewProps {
   /**
@@ -70,9 +71,9 @@ export const KeyboardAwareView: React.FC<
 }) => {
   const { isVisible, keyboardHeight, dismiss } = useKeyboard();
 
-  // Effective padding: keyboard height minus any persistent bottom chrome
+  // Effective padding: keyboard height + Done toolbar minus persistent bottom chrome
   const effectivePadding = isVisible
-    ? Math.max(keyboardHeight - bottomOffset, 0)
+    ? Math.max(keyboardHeight + KEYBOARD_TOOLBAR_HEIGHT - bottomOffset, 0)
     : 0;
 
   const content = (
