@@ -109,6 +109,39 @@ serve(async (req) => {
           ? String((finalized as Record<string, unknown>).orderId)
           : null;
 
+      // ORCH-1188 FIX 4a: render + store the ticket PDF for the recovered order
+      // so the consumer ticket renders (orders.ticket_pdf_path was NULL on
+      // reconcile-finalized orders → "render failed" on first fetch). We invoke
+      // ticket-confirmation-dispatch in `skipNotify` mode: it renders + uploads
+      // the PDF and persists ticket_pdf_path, but does NOT email/SMS the buyer
+      // (these are historical/test sessions — no notification spam). The webhook
+      // path is unchanged.
+      let pdfStored: boolean | null = null;
+      let pdfError: string | null = null;
+      if (orderId) {
+        try {
+          const dispatchResp = await supabase.functions.invoke(
+            "ticket-confirmation-dispatch",
+            { body: { orderId, skipNotify: true } },
+          );
+          if (dispatchResp.error) {
+            pdfError = dispatchResp.error.message ?? String(dispatchResp.error);
+          } else {
+            const d = (dispatchResp.data ?? {}) as Record<string, unknown>;
+            pdfStored = d.pdfStored === true;
+            const re = d.renderError as
+              | { code?: string; message?: string }
+              | null
+              | undefined;
+            if (re) pdfError = re.code ?? re.message ?? "render_error";
+          }
+        } catch (dispatchErr) {
+          pdfError = dispatchErr instanceof Error
+            ? dispatchErr.message
+            : String(dispatchErr);
+        }
+      }
+
       results.push({
         sessionId,
         piId,
@@ -116,11 +149,9 @@ serve(async (req) => {
         chargeId,
         methodType,
         status: "finalized",
+        pdfStored,
+        pdfError,
       });
-
-      // Skip notification dispatch for historical reconciliation — these are
-      // test purchases; the operator doesn't want spam emails/SMS for old
-      // sessions. Future webhook deliveries handle dispatch normally.
     } catch (err) {
       results.push({
         sessionId,
