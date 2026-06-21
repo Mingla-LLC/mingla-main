@@ -20,7 +20,7 @@
 
 // orch-strict-grep-allow safearea-on-fullscreen-routes — design-intent full-bleed cover on the public trip share-link page (mirrors /e/{brandSlug}/{eventSlug}); the buyer-facing banner aesthetic is intentional. TripPreview renders the cover full-bleed to the screen edge by design; status-bar overlap is the chosen look. Per ORCH-0859 [Tr2 Minimum Viable Trip] REWORK 5b operator design ruling 2026-05-17 (QA report §1, pattern parity with screenshot 17-PUBLIC-EVENT-PAGE.png). ORCH-0874 preserves this; ORCH-1138 keeps the full-bleed cover via the ParallaxCoverShell foundation, chrome absolute-positioned over the cover, no SafeScreen wrapping.
 
-import React, { useCallback, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Pressable,
@@ -59,6 +59,8 @@ import {
 } from "../../../src/constants/publicUrls";
 import { usePublicTripBySlug } from "../../../src/hooks/usePublicTripBySlug";
 import { useTripTierAllIn } from "../../../src/hooks/useTripTierAllIn";
+// META-ORCH-1187 LEG 2 — buyer-web public-offering view capture (web-only).
+import { captureWeb } from "../../../src/analytics/webAnalytics";
 import { TripPreview } from "../../../src/components/trip/TripPreview";
 import {
   buildTripOfferingBrand,
@@ -95,6 +97,19 @@ export default function PublicTripRoute(): React.ReactElement {
     typeof brandSlug === "string" ? brandSlug : null,
     typeof tripSlug === "string" ? tripSlug : null,
   );
+
+  // META-ORCH-1187 LEG 2 — fire `web_public_offering_viewed` once on mount.
+  // Web-only (no-op on native).
+  const viewFiredRef = useRef<boolean>(false);
+  useEffect(() => {
+    if (viewFiredRef.current) return;
+    viewFiredRef.current = true;
+    captureWeb("web_public_offering_viewed", {
+      offering_type: "trip",
+      brand_slug: typeof brandSlug === "string" ? brandSlug : null,
+      slug: typeof tripSlug === "string" ? tripSlug : null,
+    });
+  }, [brandSlug, tripSlug]);
 
   // META-ORCH-1174 Leg B3 — the per-package selection + per-package plan choice
   // (the §10 multi-package box owns the values; the shared state derives the

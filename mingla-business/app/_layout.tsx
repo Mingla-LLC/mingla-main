@@ -57,6 +57,13 @@ import { KeyboardRoot } from "../src/wrappers/KeyboardRoot";
 // ORCH-1165: Done-only keyboard accessory bar (native-only; web variant is null).
 import { KeyboardToolbarRoot } from "../src/wrappers/KeyboardToolbarRoot";
 import { canvas } from "../src/constants/designSystem";
+// META-ORCH-1187 [Growth Analytics Hub] LEG 2 — buyer-web analytics. Both are
+// the WEB resolution of a `.web.ts(x)` split: Metro loads the real web modules
+// on web and pure no-op stubs on native (mirrors mixpanelService.web.ts), so
+// the native bundle never pulls posthog-js / gtag and native behavior is
+// byte-unaffected. The init is additionally guarded by Platform.OS === "web".
+import { initWebAnalytics } from "../src/analytics/webAnalytics";
+import { ConsentBanner } from "../src/analytics/ConsentBanner";
 import { initializeAppsFlyer } from "../src/services/appsFlyerService";
 import { mixpanelService } from "../src/services/mixpanelService";
 import { revenueCatService } from "../src/services/revenueCatService";
@@ -446,6 +453,14 @@ function RootLayoutInner(): React.ReactElement {
         void mixpanelService.initialize();
         revenueCatService.initialize();
         initializeOneSignal();
+        // META-ORCH-1187 LEG 2 — buyer-web analytics init (PostHog + GA4),
+        // consent-gated (no cookies/capture until Accept). WEB-ONLY: the call
+        // resolves to a no-op on native via the .web.ts split, and is further
+        // guarded here so native never even invokes it. Never throws (graceful
+        // no-op when keys are absent), so a missing env can't break boot.
+        if (Platform.OS === "web") {
+          void initWebAnalytics();
+        }
       }, 0);
     });
 
@@ -700,6 +715,13 @@ export default function RootLayout(): React.ReactElement {
                     stays off-screen until a field is focused. Last child keeps
                     it visually on top. Native-only (web variant returns null). */}
                 <KeyboardToolbarRoot />
+                {/* META-ORCH-1187 LEG 2 — buyer-web consent banner. Web-only
+                    (the .tsx variant returns null on native). Rendered at the
+                    root so it overlays public buyer routes (which never reach
+                    the auth gate) and authed surfaces alike; it returns null
+                    once the visitor has chosen, and stays gated (no cookies /
+                    no capture) until Accept. */}
+                <ConsentBanner />
               </KeyboardRoot>
             </AuthProvider>
           </QueryClientProvider>

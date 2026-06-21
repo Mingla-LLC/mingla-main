@@ -256,6 +256,27 @@ export default ({ config }: ConfigContext): ExpoConfig => {
       // single page, it does not break the build.
       EXPO_PUBLIC_MAPBOX_ACCESS_TOKEN:
         process.env.EXPO_PUBLIC_MAPBOX_ACCESS_TOKEN ?? null,
+      // META-ORCH-1187 [Growth Analytics Hub] LEG 2 — buyer-web analytics keys.
+      // Emitted into `extra` (the reachable-everywhere path; a DYNAMIC
+      // process.env read is NOT inlined by babel-preset-expo and would be
+      // undefined in the web export — only `extra` survives, same lesson as the
+      // GIPHY/Mapbox/supabase blocks above). All three values are PUBLIC by
+      // design and safe in the client bundle:
+      //   · the phc_ PostHog project key is the client/ingestion key (NOT the
+      //     phx_ personal/MCP key, which must NEVER appear in any client source);
+      //   · the US ingestion host is region-locked (I-PROPOSED-1187-POSTHOG-HOST-US);
+      //   · the GA4 Measurement ID is a public tag id.
+      // These are consumed ONLY on web by src/analytics/webAnalytics.web.ts; the
+      // native bundle never reads them (the .web.ts split). Vercel env overrides
+      // the fallbacks for Production/Preview. No throw — a missing key degrades
+      // to a no-op analytics layer, it never breaks the build.
+      EXPO_PUBLIC_POSTHOG_KEY:
+        process.env.EXPO_PUBLIC_POSTHOG_KEY ??
+        "phc_kiBp4PLw8jGLRkpAPtEVQYP7a3gBHYZCAd8PrjRfcVVg",
+      EXPO_PUBLIC_POSTHOG_HOST:
+        process.env.EXPO_PUBLIC_POSTHOG_HOST ?? "https://us.i.posthog.com",
+      EXPO_PUBLIC_GA4_MEASUREMENT_ID:
+        process.env.EXPO_PUBLIC_GA4_MEASUREMENT_ID ?? "G-Z4W3B9900S",
       // B2a Path C V3 forensics R-1: canonical Mingla Business public web URL.
       // Single source of truth read by mingla-business/src/constants/platformUrl.ts.
       // Production canonical: https://business.usemingla.com (Vercel-hosted Expo Web export).

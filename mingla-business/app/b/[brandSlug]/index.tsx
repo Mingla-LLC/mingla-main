@@ -8,7 +8,7 @@
 
 // orch-strict-grep-allow safearea-on-fullscreen-routes — design-intent full-bleed cover banner: PublicBrandPage applies `paddingTop: insets.top + 110` at line 341 to the brand-info content card so content sits safely below the status bar; the cover image and X close button intentionally hover on the banner. PublicBrandNotFound applies `paddingTop: insets.top + spacing.xl` at line 39. Inline loading/error states render briefly during query resolve. Per ORCH-0859 [Tr2 Minimum Viable Trip] REWORK 5b operator design ruling 2026-05-17 (QA report §1) + pixel verification on iPhone 17 Pro Max sim (screenshot 21-PUBLIC-BRAND-PAGE.png).
 
-import React from "react";
+import React, { useEffect, useRef } from "react";
 import { ActivityIndicator, StyleSheet, Text, View } from "react-native";
 import { useLocalSearchParams } from "expo-router";
 
@@ -16,6 +16,8 @@ import {
   spacing,
   text as textTokens,
 } from "../../../src/constants/designSystem";
+// META-ORCH-1187 LEG 2 — buyer-web public-offering view capture (web-only).
+import { captureWeb } from "../../../src/analytics/webAnalytics";
 import { usePublicBrandBySlug } from "../../../src/hooks/usePublicEvents";
 import { PublicBrandPage } from "../../../src/components/brand/PublicBrandPage";
 import { PublicBrandNotFound } from "../../../src/components/brand/PublicBrandNotFound";
@@ -29,6 +31,19 @@ export default function PublicBrandRoute(): React.ReactElement {
   const publicBrandQuery = usePublicBrandBySlug(
     typeof brandSlug === "string" ? brandSlug : null,
   );
+
+  // META-ORCH-1187 LEG 2 — fire `web_public_offering_viewed` once on mount.
+  // Web-only (no-op on native).
+  const viewFiredRef = useRef<boolean>(false);
+  useEffect(() => {
+    if (viewFiredRef.current) return;
+    viewFiredRef.current = true;
+    captureWeb("web_public_offering_viewed", {
+      offering_type: "brand",
+      brand_slug: typeof brandSlug === "string" ? brandSlug : null,
+      slug: typeof brandSlug === "string" ? brandSlug : null,
+    });
+  }, [brandSlug]);
 
   if (publicBrandQuery.isLoading || publicBrandQuery.isFetching) {
     return (

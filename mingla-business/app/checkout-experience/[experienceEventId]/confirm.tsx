@@ -44,6 +44,9 @@ import {
 import { TicketQrCarousel } from "../../../src/components/checkout/TicketQrCarousel";
 import { confirmTicketCheckout } from "../../../src/services/ticketCheckoutService";
 import { useOrderRealtimeSubscription } from "../../../src/hooks/useOrderRealtimeSubscription";
+// META-ORCH-1187 LEG 2 — buyer-web conversion capture (web-only; native no-op).
+import { captureWeb, gaEvent } from "../../../src/analytics/webAnalytics";
+import { phMaskProps } from "../../../src/analytics/phMask";
 
 export default function CheckoutExperienceConfirmScreen(): React.ReactElement | null {
   const [isClient, setIsClient] = useState<boolean>(false);
@@ -272,6 +275,27 @@ function CheckoutExperienceConfirmScreenInner({
     },
   });
 
+  // ----- META-ORCH-1187 LEG 2 — web purchase conversion (experience) -----
+  const purchaseFiredFor = useRef<string | null>(null);
+  useEffect(() => {
+    if (result === null) return;
+    if (purchaseFiredFor.current === result.orderId) return;
+    purchaseFiredFor.current = result.orderId;
+    captureWeb("web_purchase_completed", {
+      order_id: result.orderId,
+      total: result.total,
+      currency: result.currency,
+      ticket_count: result.tickets.length,
+      offering_type: "experience",
+    });
+    gaEvent("purchase", {
+      transaction_id: result.orderId,
+      value: result.total,
+      currency: result.currency,
+      items: result.tickets.length,
+    });
+  }, [result]);
+
   // ----- Defensive bounce -----
   useEffect(() => {
     if (experienceEventId === null) return;
@@ -375,7 +399,8 @@ function CheckoutExperienceConfirmScreenInner({
             <Icon name="check" size={36} color={textTokens.primary} />
           </View>
           <Text style={styles.heroTitle}>You&apos;re in</Text>
-          <Text style={styles.heroEmail} numberOfLines={2}>
+          {/* META-ORCH-1187 §4.H — mask buyer PII in session replay. */}
+          <Text style={styles.heroEmail} numberOfLines={2} {...phMaskProps()}>
             Sent to {buyer.email} and {buyer.phone}.
           </Text>
         </View>

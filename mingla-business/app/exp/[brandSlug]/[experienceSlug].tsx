@@ -22,7 +22,7 @@
 
 // orch-strict-grep-allow safearea-on-fullscreen-routes — design-intent full-bleed cover on the public experience share-link page (mirrors /t/{brandSlug}/{tripSlug}); the buyer-facing banner aesthetic is intentional. The ParallaxCoverShell renders the cover full-bleed to the screen edge by design; chrome absolute-positions over the cover. Per META-ORCH-1059 Sub-C + ORCH-1138 Leg 3 foundation parity.
 
-import React, { useCallback, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Pressable,
@@ -58,6 +58,8 @@ import {
   experiencePublicUrl,
 } from "../../../src/constants/publicUrls";
 import { usePublicExperienceBySlug } from "../../../src/hooks/usePublicExperience";
+// META-ORCH-1187 LEG 2 — buyer-web public-offering view capture (web-only).
+import { captureWeb } from "../../../src/analytics/webAnalytics";
 import { ExperiencePreview } from "../../../src/components/experience/ExperiencePreview";
 import {
   ExperienceReservePicker,
@@ -126,6 +128,19 @@ export default function PublicExperienceRoute(): React.ReactElement {
     typeof brandSlug === "string" ? brandSlug : null,
     typeof experienceSlug === "string" ? experienceSlug : null,
   );
+
+  // META-ORCH-1187 LEG 2 — fire `web_public_offering_viewed` once on mount.
+  // Web-only (no-op on native).
+  const viewFiredRef = useRef<boolean>(false);
+  useEffect(() => {
+    if (viewFiredRef.current) return;
+    viewFiredRef.current = true;
+    captureWeb("web_public_offering_viewed", {
+      offering_type: "experience",
+      brand_slug: typeof brandSlug === "string" ? brandSlug : null,
+      slug: typeof experienceSlug === "string" ? experienceSlug : null,
+    });
+  }, [brandSlug, experienceSlug]);
 
   const handleClose = useCallback((): void => {
     if (router.canGoBack()) {

@@ -9,9 +9,12 @@
 
 // orch-strict-grep-allow safearea-on-fullscreen-routes — design-intent full-bleed cover image on the public event share-link page; the X close + share buttons + clock overlap with the cover photo at the top is the intended banner-style buyer aesthetic (matches /b/ + /t/ + /checkout/* pattern). Per ORCH-0859 [Tr2 Minimum Viable Trip] REWORK 5b operator design ruling 2026-05-17 (QA report §1) + pixel verification on iPhone 17 Pro Max sim (screenshot 17-PUBLIC-EVENT-PAGE.png).
 
-import React from "react";
+import React, { useEffect, useRef } from "react";
 import { ActivityIndicator, StyleSheet, Text, View } from "react-native";
 import { useLocalSearchParams } from "expo-router";
+
+// META-ORCH-1187 LEG 2 — buyer-web public-offering view capture (web-only).
+import { captureWeb } from "../../../src/analytics/webAnalytics";
 
 import {
   spacing,
@@ -37,6 +40,19 @@ export default function PublicEventRoute(): React.ReactElement {
     typeof brandSlug === "string" ? brandSlug : null,
     typeof eventSlug === "string" ? eventSlug : null,
   );
+
+  // META-ORCH-1187 LEG 2 — fire `web_public_offering_viewed` once on mount
+  // (top of the web acquisition funnel). Web-only (no-op on native).
+  const viewFiredRef = useRef<boolean>(false);
+  useEffect(() => {
+    if (viewFiredRef.current) return;
+    viewFiredRef.current = true;
+    captureWeb("web_public_offering_viewed", {
+      offering_type: "event",
+      brand_slug: typeof brandSlug === "string" ? brandSlug : null,
+      slug: typeof eventSlug === "string" ? eventSlug : null,
+    });
+  }, [brandSlug, eventSlug]);
 
   if (publicEventQuery.isLoading || publicEventQuery.isFetching) {
     return (

@@ -39,13 +39,19 @@ const repoRoot = path.resolve(__dirname, "../../..");
 // PostHog init sites that MUST opt out by default.
 const POSTHOG_INIT_FILES = [
   "mingla-marketing/components/marketing/posthog-provider.tsx",
-  // LEG 2 (buyer web): "mingla-business/src/analytics/webAnalytics.web.ts",
+  // LEG 2 (buyer web) — the Expo-web PostHog init.
+  "mingla-business/src/analytics/webAnalytics.web.ts",
 ];
 
-// Root layouts that mount GA4 + the consent-default snippet.
+// Files that load GA4 + emit the consent-default snippet. On marketing this is
+// the root layout (with the <GoogleAnalytics> JSX, so the order check applies);
+// on buyer web (Expo-web) GA is loaded programmatically inside webAnalytics.web.ts
+// (no <GoogleAnalytics> JSX → the order check is a no-op, only the all-denied
+// default-consent call is asserted).
 const GA_LAYOUT_FILES = [
   "mingla-marketing/app/layout.tsx",
-  // LEG 2 (buyer web): the buyer-web GA loader (webAnalytics.web.ts).
+  // LEG 2 (buyer web) — the Expo-web GA4 loader.
+  "mingla-business/src/analytics/webAnalytics.web.ts",
 ];
 
 // Whole client trees scanned for the forbidden capture-by-default flip.
