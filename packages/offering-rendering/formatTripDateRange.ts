@@ -12,6 +12,12 @@
 // NOT parse (returns NaN) even though V8/web does → the device showed the fallback
 // "Dates to be set". We now normalize to ISO-8601 (space→'T') BEFORE parsing so the
 // real range renders on native too. See ./tripDuration normalizeTimestampIso.
+//
+// META-ORCH-1174 Leg A.4 — trip travel dates are CALENDAR DATES, not moments. The
+// master start is stored as UTC midnight ("2026-08-17 00:00:00+00"); formatting it
+// in the DEVICE timezone shifted it BACK a day west of UTC (a US viewer saw "Aug
+// 16" for a stored "Aug 17"). We now format the Y-M-D in UTC (`timeZone: "UTC"`),
+// so the displayed date always matches the stored calendar date on every surface.
 
 import { normalizeTimestampIso } from "./tripDuration";
 
@@ -43,11 +49,16 @@ export function formatTripDateRange(
     if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
       return fallback;
     }
+    // Leg A.4 — format the Y-M-D in UTC so a UTC-midnight calendar date is NOT
+    // pulled back a day by a west-of-UTC device timezone (the "Aug 16 vs Aug 17"
+    // device bug). Calendar dates are timezone-free facts; the stored instant is
+    // always 00:00:00Z, so reading its UTC Y-M-D yields the stored calendar date.
     const fmt = (d: Date): string =>
       d.toLocaleDateString(undefined, {
         month: "short",
         day: "numeric",
         year: "numeric",
+        timeZone: "UTC",
       });
     return `${fmt(start)} – ${fmt(end)}`;
   } catch {

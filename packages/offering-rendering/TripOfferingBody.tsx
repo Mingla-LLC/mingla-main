@@ -57,6 +57,7 @@ import { DayByDay } from "./DayByDay";
 import { TripRefundLadder } from "./TripRefundLadder";
 import { TripPaymentChoice } from "./TripPaymentChoice";
 import { TripCountdownPill } from "./TripCountdownPill";
+import { BadgeCheck, Calendar, Moon, Plane, Users } from "./LucideIcons";
 import { buildStaticMapUrl } from "./mapboxStaticImage";
 import type {
   TripOfferingBrand,
@@ -213,7 +214,7 @@ export const TripOfferingBody: React.FC<TripOfferingBodyProps> = ({
               { backgroundColor: palette.accentWash, borderColor: palette.panelBorder },
             ]}
           >
-            <Text style={[styles.fullPillGlyph, { color: palette.accent }]}>📅</Text>
+            <Calendar size={17} color={palette.accent} />
             <Text
               style={[
                 styles.fullPillText,
@@ -234,7 +235,7 @@ export const TripOfferingBody: React.FC<TripOfferingBodyProps> = ({
             ]}
             testID="trip-body-route-pill"
           >
-            <Text style={[styles.fullPillGlyph, { color: palette.accent }]}>✈</Text>
+            <Plane size={17} color={palette.accent} />
             <Text
               style={[
                 styles.fullPillText,
@@ -249,17 +250,26 @@ export const TripOfferingBody: React.FC<TripOfferingBodyProps> = ({
         ) : null}
       </View>
 
-      {/* (4) Pills row — days&nights · spots-left · animated live countdown. */}
+      {/* (4) Pills row — days&nights · spots-left · animated live countdown.
+          Leg A.4: the days&nights + seats-left pills are now COMPACT (tighter
+          padding/font + a lucide icon) so they sit side-by-side on ONE line
+          instead of stacking; the live countdown wraps after them as before. */}
       <View style={styles.pillsRow} testID="trip-body-meta-pills">
         {data.durationLabel !== null ? (
-          <Pill palette={palette} font={boldFamily}>
-            ⏱ {data.durationLabel}
-          </Pill>
+          <MetaPill
+            palette={palette}
+            font={boldFamily}
+            icon={<Moon size={13} color={palette.accent} />}
+            label={data.durationLabel}
+          />
         ) : null}
         {data.spotsLabel !== null ? (
-          <Pill palette={palette} font={boldFamily}>
-            👥 {data.spotsLabel}
-          </Pill>
+          <MetaPill
+            palette={palette}
+            font={boldFamily}
+            icon={<Users size={13} color={palette.accent} />}
+            label={data.spotsLabel}
+          />
         ) : null}
         {data.bookingDeadlineIso !== null && !data.bookingsClosed ? (
           <TripCountdownPill
@@ -324,9 +334,7 @@ export const TripOfferingBody: React.FC<TripOfferingBodyProps> = ({
                 {brand.name}
               </Text>
               {brand.verified ? (
-                <Text style={[styles.brandVerifiedGlyph, { color: palette.accent }]}>
-                  ✓
-                </Text>
+                <BadgeCheck size={15} color={palette.accent} />
               ) : null}
             </View>
           </View>
@@ -539,19 +547,27 @@ export const TripOfferingBody: React.FC<TripOfferingBodyProps> = ({
   );
 };
 
-const Pill: React.FC<{
+// Leg A.4 — the §4 meta pill: a COMPACT icon + label row (tighter padding/font
+// than the §3 full-width pills) so days&nights + seats-left sit side-by-side on
+// ONE line. The lucide icon replaces the prior leading emoji glyph.
+const MetaPill: React.FC<{
   palette: ThemePalette;
   font: string;
-  children: React.ReactNode;
-}> = ({ palette, font, children }) => (
+  icon: React.ReactNode;
+  label: string;
+}> = ({ palette, font, icon, label }) => (
   <View
     style={[
       styles.pill,
       { backgroundColor: palette.accentWash, borderColor: palette.panelBorder },
     ]}
   >
-    <Text style={[styles.pillText, { color: palette.primaryText, fontFamily: font }]}>
-      {children}
+    {icon}
+    <Text
+      style={[styles.pillText, { color: palette.primaryText, fontFamily: font }]}
+      numberOfLines={1}
+    >
+      {label}
     </Text>
   </View>
 );
@@ -579,17 +595,20 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     marginTop: 12,
   },
-  fullPillGlyph: { fontSize: 16, fontWeight: "900" },
   fullPillText: { flex: 1, minWidth: 0, fontSize: 15, fontWeight: "800", letterSpacing: -0.2 },
-  // ---- §4 meta pills ----
-  pillsRow: { flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 12 },
+  // ---- §4 meta pills (Leg A.4: COMPACT icon+label row — tighter padding/font so
+  //      days&nights + seats-left sit side-by-side on one line) ----
+  pillsRow: { flexDirection: "row", flexWrap: "wrap", gap: 6, marginTop: 12 },
   pill: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
     borderRadius: 999,
     borderWidth: 1,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
   },
-  pillText: { fontSize: 13, fontWeight: "700" },
+  pillText: { fontSize: 12, fontWeight: "700" },
   // ---- sections ----
   section: { marginTop: 24 },
   secTitle: { fontSize: 20, fontWeight: "900", letterSpacing: -0.3, marginBottom: 12 },
@@ -623,7 +642,6 @@ const styles = StyleSheet.create({
   },
   brandNameRow: { flexDirection: "row", alignItems: "center", gap: 6, marginTop: 1 },
   brandName: { fontSize: 15, fontWeight: "800" },
-  brandVerifiedGlyph: { fontSize: 13, fontWeight: "900" },
   brandCta: { marginLeft: "auto", fontSize: 12, fontWeight: "800" },
   // ---- §10 box (ONE merged box: payment toggle + price row + reserve CTA) ----
   selectBox: { borderRadius: 18, padding: 14, marginTop: 12 },

@@ -55,6 +55,7 @@ import {
 } from "react-native";
 
 import { boldFontFamily, offeringSurfaceStyles, type ThemePalette } from "./themePalette";
+import { Calendar, Globe, MapPin, Minus, Plus } from "./LucideIcons";
 import {
   computeOfferingVariant,
   resolveOfferingCta,
@@ -299,7 +300,7 @@ export const EventOfferingBody: React.FC<EventOfferingBodyProps> = ({
           style={[styles.dateRow, { backgroundColor: palette.accentWash, borderColor: palette.panelBorder }]}
           testID="orch-1167-date-row"
         >
-          <Text style={[styles.dateGlyph, { color: palette.accent }]}>◷</Text>
+          <Calendar size={18} color={palette.accent} />
           <View style={styles.dateTextCol}>
             {event.dateLine.length > 0 ? (
               <Text
@@ -469,7 +470,7 @@ export const EventOfferingBody: React.FC<EventOfferingBodyProps> = ({
           </Text>
           <View style={[styles.venueCard, surface.card]}>
             <View style={[styles.venueDisk, { backgroundColor: palette.accent }]}>
-              <Text style={[styles.venueGlyph, { color: palette.accentText }]}>◯</Text>
+              <Globe size={18} color={palette.accentText} />
             </View>
             <View style={styles.venueTextCol}>
               <Text
@@ -509,7 +510,7 @@ export const EventOfferingBody: React.FC<EventOfferingBodyProps> = ({
             style={[styles.venueCard, surface.card]}
           >
             <View style={[styles.venueDisk, { backgroundColor: palette.accent }]}>
-              <Text style={[styles.venueGlyph, { color: palette.accentText }]}>⌖</Text>
+              <MapPin size={18} color={palette.accentText} />
             </View>
             <View style={styles.venueTextCol}>
               <Text
@@ -923,7 +924,7 @@ const TicketStepperRow: React.FC<{
                 !canDecrement ? styles.stepBtnDisabled : null,
               ]}
             >
-              <Text style={[styles.stepGlyph, { color: palette.primaryText }]}>−</Text>
+              <Minus size={18} color={palette.primaryText} />
             </Pressable>
             <Text
               style={[styles.stepQty, surface.primaryText, { fontFamily: boldFamily }]}
@@ -942,7 +943,7 @@ const TicketStepperRow: React.FC<{
                 !canIncrement ? styles.stepBtnDisabled : null,
               ]}
             >
-              <Text style={[styles.stepGlyph, { color: palette.primaryText }]}>+</Text>
+              <Plus size={18} color={palette.primaryText} />
             </Pressable>
           </View>
         ) : (

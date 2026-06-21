@@ -120,6 +120,24 @@ export type {
 export { normalizeCityCountry } from "./normalizeCityCountry";
 export type { StructuredPlaceParts } from "./normalizeCityCountry";
 
+// META-ORCH-1174 Leg A.4 [trip-page polish · lucide pills] — the shared lucide-icon
+// module (Calendar/Plane/Moon/Users/Globe/MapPin/Minus/Plus/BadgeCheck), drawn as
+// react-native-svg paths (NO lucide dep — I-MOR-0827 isolation). Replaces the emoji
+// / geometric-glyph pill+row icons across the three shared offering bodies. Each is a
+// pure `{ size, color, strokeWidth? }` component on a 24×24 lucide-standard frame.
+export {
+  Calendar,
+  Plane,
+  Moon,
+  Users,
+  Globe,
+  MapPin,
+  Minus,
+  Plus,
+  BadgeCheck,
+} from "./LucideIcons";
+export type { LucideIconProps } from "./LucideIcons";
+
 // ===========================================================================
 // META-ORCH-1174 Leg A [trip-page-standardize] — THE ONE shared, shell-agnostic
 // body for the public TRIP page (event_type='trip'). Rendered byte-identically on
