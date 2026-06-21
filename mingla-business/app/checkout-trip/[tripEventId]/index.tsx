@@ -48,6 +48,7 @@ import { Button } from "../../../src/components/ui/Button";
 import { EmptyState } from "../../../src/components/ui/EmptyState";
 import { EventCoverMedia } from "../../../src/components/ui/EventCoverMedia";
 import { decideAutoSkip } from "./autoSkipDecision";
+import { bookableTierCount } from "./bookableTierCount";
 
 import {
   useCart,
@@ -327,6 +328,19 @@ export default function CheckoutTripTicketsScreen(): React.ReactElement {
           quantity: qty,
         });
       }
+      return;
+    }
+    // ORCH-1176 — only auto-advance to /buyer for an effectively SINGLE-tier trip
+    // (≤1 bookable tier). For a genuine MULTI-PACKAGE trip (>1 bookable tier) the
+    // cart is seeded but we STAY on index ("1 OF 3") so the buyer reviews/edits the
+    // package quantities before handleContinue routes them to /buyer. Bookable =
+    // unlimited OR remaining capacity > 0 (mirrors tierToTicketStub's capacity).
+    const bookableCount = bookableTierCount(
+      trip.pricingTiers.map(tierToTicketStub),
+    );
+    if (bookableCount > 1) {
+      // Latch so we don't keep re-seeding; the buyer drives the funnel from here.
+      multiSeedNavigatedRef.current = true;
       return;
     }
     // All seeded lines have landed → /buyer reads a populated cart.

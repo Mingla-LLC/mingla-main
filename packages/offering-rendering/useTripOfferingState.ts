@@ -365,20 +365,31 @@ export function useTripOfferingState(
 
     // Split CTAs — Leg A single-package plan fast path ONLY (multi-package rows own
     // their own per-row pay-full/over-time toggle in the body). No split for multi.
-    const priceLabel =
+    //
+    // ORCH-1175 — the split "Pay in full" / "Pay over time" prices must reflect the
+    // QTY-SCALED selected total, not the bare per-unit values, so they match the §10
+    // box and the non-split bar. Once the buyer has selected quantity (totalSelected
+    // > 0) read the already-summed labels (summedAllInLabel / summedDueTodayLabel);
+    // fall back to the per-unit all-in + unit deposit for the DEC-J empty state
+    // (nothing selected → the Leg-A "From {unit}" preview).
+    const unitPriceLabel =
       selectedTier !== null && selectedTier.priceCents > 0
         ? formatTripPrice(
             tripTierUnitAllInCents(selectedTier as TripTierLike),
             selectedTier.currency,
           )
         : "";
-    const depositLabel =
+    const unitDepositLabel =
       projectedSchedule !== null
         ? formatTripPrice(
             projectedSchedule.depositCents,
             selectedTier?.currency ?? tripCurrency,
           )
         : "";
+    const priceLabel =
+      totalSelected > 0 ? (summedAllInLabel ?? unitPriceLabel) : unitPriceLabel;
+    const depositLabel =
+      totalSelected > 0 ? (summedDueTodayLabel ?? unitDepositLabel) : unitDepositLabel;
     const splitCtas: ReserveSplitCtas | undefined =
       hasSingleTierPlan && !multiTier && cta.tappable
         ? {

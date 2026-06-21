@@ -20,8 +20,10 @@
  *     child (flush, no black void). May carry its bg at rest; pads its own bottom
  *     safe-area; `onDockLayout` reports its position so the surface hides the pill.
  *   • variant="floating" — JUST the button: a compact self-width pill (NO kicker,
- *     NO price block, NO bar bg), absolute-positioned + lifted above the home
- *     indicator + the sheet overshoot. Shown while the docked button is off-screen.
+ *     NO bar bg), absolute-positioned + lifted above the home indicator + the
+ *     sheet overshoot. Shown while the docked button is off-screen. ORCH-1175:
+ *     the pill DOES carry the live `cta.price` segment ("$130 · Reserve my spot →")
+ *     so it tracks the §10 selected total — the docked + floating bars never diverge.
  *
  * Split-plan (Seth, 2026-06-15): when `splitCtas` is set, BOTH variants render the
  * unified seam-split "Treatment B" two-tone control (accent "Pay in full" half +
@@ -314,6 +316,19 @@ export const TripReserveBar: React.FC<TripReserveBarProps> = ({
       ]}
       testID={testID !== undefined ? `${testID}-action` : undefined}
     >
+      {/* ORCH-1175 — the floating pill ALSO shows the live selected price (the
+          same `cta.price` the docked bar + §10 box read) so it never lags the
+          box. Truncates first (flexShrink) so a long price can't shove the
+          label + arrow off-edge (F-4 arrow-bleed guard parity). */}
+      {price.length > 0 ? (
+        <Text
+          style={[styles.floatPrice, { color: palette.accentText }, fontStyle]}
+          numberOfLines={1}
+          ellipsizeMode="tail"
+        >
+          {price} ·{" "}
+        </Text>
+      ) : null}
       <Text style={[styles.floatCta, { color: palette.accentText }, fontStyle]}>
         {cta.label} →
       </Text>
@@ -401,6 +416,9 @@ const styles = StyleSheet.create({
       },
     }),
   },
+  // ORCH-1175 — the live price segment inside the floating pill. Yields space
+  // first (flexShrink:1) so the label + arrow stay intact on a long price.
+  floatPrice: { fontSize: 16, fontWeight: "900", flexShrink: 1, minWidth: 0 },
   floatCta: { fontSize: 16, fontWeight: "900", flexShrink: 0 },
   floatButtonDisabled: {
     alignSelf: "center",
