@@ -16,6 +16,7 @@ import { AlertCircle, ArrowLeft, ArrowRight, Check, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/cn'
 import { useMinglaReducedMotion } from '@/lib/reduced-motion'
+import { captureMarketing } from '@/components/marketing/posthog-provider'
 import {
   submitBetaAccessLead,
   type BetaAccessSubmitResult,
@@ -246,6 +247,13 @@ export function BetaAccessModal({ open, onClose, source }: BetaAccessModalProps)
     abortRef.current = null
 
     if (result.ok) {
+      // META-ORCH-1187 — beta-access CTA conversion (analytics; consent-gated
+      // no-op). The lead-capture transport fires beta_access_submitted itself;
+      // this records the CTA-completion at the modal call site.
+      captureMarketing('marketing_cta_clicked', {
+        cta_id: 'beta_access_submitted',
+        location: source,
+      })
       setSuccessStatus(result.status)
       setStatus('success')
     } else {

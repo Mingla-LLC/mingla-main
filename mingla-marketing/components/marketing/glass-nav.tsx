@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button'
 import { SurfaceToggle } from '@/components/marketing/surface-toggle'
 import { BetaAccessModal } from '@/components/marketing/beta-access-modal'
 import { cn } from '@/lib/cn'
+import { captureMarketing } from '@/components/marketing/posthog-provider'
 
 export function GlassNav() {
   const pathname = usePathname()
@@ -92,14 +93,33 @@ export function GlassNav() {
             <Button
               variant="glass"
               size="sm"
-              onClick={() => setBetaOpen(true)}
+              onClick={() => {
+                // META-ORCH-1187 — nav CTA tap (analytics; consent-gated no-op).
+                captureMarketing('marketing_cta_clicked', {
+                  cta_id: 'get_beta_access',
+                  location: 'nav',
+                })
+                setBetaOpen(true)
+              }}
               aria-haspopup="dialog"
               aria-expanded={betaOpen}
             >
               Get Beta Access
             </Button>
           ) : (
-            <Button variant="glass" size="sm">
+            // NG-1: explorer "Get the app" stays an intentionally dead button
+            // (operator-locked). We only OBSERVE the tap for analytics — no
+            // navigation is wired (META-ORCH-1187).
+            <Button
+              variant="glass"
+              size="sm"
+              onClick={() =>
+                captureMarketing('marketing_cta_clicked', {
+                  cta_id: 'get_the_app',
+                  location: 'nav',
+                })
+              }
+            >
               Get the app
             </Button>
           )}

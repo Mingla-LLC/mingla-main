@@ -29,6 +29,9 @@ export type BetaAccessSubmitResult =
   | { ok: true; status: "created" | "already_on_list" }
   | { ok: false; error: "validation" | "rate_limited" | "server" | "network" };
 
+// META-ORCH-1187 [Growth Analytics Hub] — beta-access conversion analytics.
+import { captureMarketing } from "@/components/marketing/posthog-provider";
+
 const FUNCTIONS_URL = process.env.NEXT_PUBLIC_SUPABASE_FUNCTIONS_URL ?? "";
 const ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? "";
 
@@ -75,6 +78,14 @@ export async function submitBetaAccessLead(
         status?: "created" | "already_on_list";
       };
       if (body?.ok && (body.status === "created" || body.status === "already_on_list")) {
+        // META-ORCH-1187 — conversion event on a successful beta-access POST.
+        // Consent-gated no-op (PostHog opt-in) + never throws. `surface_role`
+        // is organiser (the beta form is organiser-only — I-1045-ORGANISER-ONLY-CTA).
+        captureMarketing("beta_access_submitted", {
+          surface_role: "organiser",
+          source: input.source,
+          status: body.status,
+        });
         return { ok: true, status: body.status };
       }
       // 200 but unexpected shape — treat as server error (no false success).

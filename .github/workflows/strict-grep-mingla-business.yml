@@ -7,6 +7,7 @@ on:
       - "mingla-business/**"
       - "app-mobile/**"
       - "mingla-admin/**"
+      - "mingla-marketing/**"
       - "supabase/migrations/**"
       - "supabase/functions/**"
       - "packages/**"
@@ -20,6 +21,7 @@ on:
       - "mingla-business/**"
       - "app-mobile/**"
       - "mingla-admin/**"
+      - "mingla-marketing/**"
       - "supabase/migrations/**"
       - "supabase/functions/**"
       - "packages/**"
@@ -2665,3 +2667,24 @@ jobs:
           node-version: "20"
       - name: Run I-PROPOSED-1161 SMS sender/kill-switch gate
         run: node .github/scripts/strict-grep/i-proposed-1161-sms-from-approved-sender-and-kill-switch.mjs
+
+  i-proposed-1187-growth-analytics:
+    name: "META-ORCH-1187 [Growth Analytics Hub]: PostHog US-host + no-phx-in-client + consent-gate-before-cookies + replay-masks-PII + web-only isolation + marketing layout mounts analytics"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Run I-PROPOSED-1187-POSTHOG-HOST-US gate
+        run: node .github/scripts/strict-grep/i-proposed-1187-posthog-host-us.mjs
+      - name: Run I-PROPOSED-1187-NO-PHX-IN-CLIENT gate
+        run: node .github/scripts/strict-grep/i-proposed-1187-no-phx-in-client.mjs
+      - name: Run I-PROPOSED-1187-CONSENT-GATE-BEFORE-COOKIES gate
+        run: node .github/scripts/strict-grep/i-proposed-1187-consent-gate-before-cookies.mjs
+      - name: Run I-PROPOSED-1187-REPLAY-MASKS-PII gate (SECURITY)
+        run: node .github/scripts/strict-grep/i-proposed-1187-replay-masks-pii.mjs
+      - name: Run I-PROPOSED-1187-ANALYTICS-WEB-ONLY-VIA-WEB-TS gate
+        run: node .github/scripts/strict-grep/i-proposed-1187-analytics-web-only-via-web-ts.mjs
+      - name: Run META-ORCH-1187 marketing-layout-mounts-analytics regression
+        run: node .github/scripts/strict-grep/i-proposed-1187-marketing-layout-mounts-analytics.mjs
