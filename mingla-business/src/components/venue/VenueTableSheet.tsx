@@ -8,7 +8,7 @@
  */
 
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { Pressable, ScrollView, StyleSheet, Switch, Text, View } from "react-native";
+import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 
 import {
   accent,
@@ -17,6 +17,7 @@ import {
   text as textTokens,
   typography,
 } from "../../constants/designSystem";
+import { BrandSwitch } from "../ui/BrandSwitch";
 import { Button } from "../ui/Button";
 import { ConfirmDialog } from "../ui/ConfirmDialog";
 import { Input } from "../ui/Input";
@@ -416,12 +417,9 @@ function ToggleRow({
   return (
     <View style={styles.toggleRow}>
       <Text style={styles.toggleLabel}>{label}</Text>
-      <Switch
+      <BrandSwitch
         value={value}
         onValueChange={onValueChange}
-        trackColor={{ false: "rgba(255,255,255,0.16)", true: accent.warm }}
-        thumbColor="#ffffff"
-        ios_backgroundColor="rgba(255,255,255,0.16)"
         accessibilityLabel={label}
         testID={testID}
       />

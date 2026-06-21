@@ -26,13 +26,13 @@ import {
   useVenueBlackouts,
 } from "../../hooks/useVenueAvailability";
 import { useVenueTables } from "../../hooks/useVenueTables";
+import { useVenueSuiteStore } from "../../store/venueSuiteStore";
 import { BRAND_ROLE_RANK } from "../../utils/brandRole";
 import { Button } from "../ui/Button";
 import { GlassCard } from "../ui/GlassCard";
 import { Icon } from "../ui/Icon";
 import { Input } from "../ui/Input";
 import { VenueBlackoutSheet } from "./VenueBlackoutSheet";
-import { VenueServicePeriodSheet } from "./VenueServicePeriodSheet";
 import type {
   ServicePeriod,
   VenueBlackout,
@@ -92,40 +92,20 @@ export function VenueAvailabilityModule({
   const blackouts = blackoutsQuery.data ?? [];
   const tables = tablesQuery.data ?? [];
 
-  const [periodSheetOpen, setPeriodSheetOpen] = useState<boolean>(false);
-  const [editPeriodIdx, setEditPeriodIdx] = useState<number | null>(null);
   const [blackoutSheetOpen, setBlackoutSheetOpen] = useState<boolean>(false);
   const [editBlackout, setEditBlackout] = useState<VenueBlackout | null>(null);
 
-  /* ----- service periods ----- */
-  const openAddPeriod = useCallback((): void => {
-    setEditPeriodIdx(null);
-    setPeriodSheetOpen(true);
+  /* ----- service periods (ORCH-1190 #2: READ-ONLY here) -----
+   * Service periods are DERIVED from the venue's opening hours (ORCH-1186 Leg 1,
+   * brand_hours = the single owner — I-PROPOSED-1186-HOURS-SINGLE-OWNER). This
+   * module DISPLAYS them read-only and routes the operator to the Settings hours
+   * editor to change them; it NEVER edits/adds hours inline (that would create a
+   * second hours owner). The in-suite switch goes through the venueSuiteStore's
+   * `selectModule` (a state change, never router.push — preserves the nav-lock).
+   */
+  const goToSettingsHours = useCallback((): void => {
+    useVenueSuiteStore.getState().selectModule?.("settings");
   }, []);
-  const openEditPeriod = useCallback((idx: number): void => {
-    setEditPeriodIdx(idx);
-    setPeriodSheetOpen(true);
-  }, []);
-  const handleSavePeriod = useCallback(
-    (period: ServicePeriod): void => {
-      const next = [...servicePeriods];
-      if (editPeriodIdx !== null) next[editPeriodIdx] = period;
-      else next.push(period);
-      upsertConfig.mutate(
-        { servicePeriods: next },
-        { onSuccess: () => setPeriodSheetOpen(false) },
-      );
-    },
-    [servicePeriods, editPeriodIdx, upsertConfig],
-  );
-  const handleDeletePeriod = useCallback((): void => {
-    if (editPeriodIdx === null) return;
-    const next = servicePeriods.filter((_, i) => i !== editPeriodIdx);
-    upsertConfig.mutate(
-      { servicePeriods: next },
-      { onSuccess: () => setPeriodSheetOpen(false) },
-    );
-  }, [servicePeriods, editPeriodIdx, upsertConfig]);
 
   /* ----- turn times ----- */
   const handleTurnTime = useCallback(
@@ -190,9 +170,6 @@ export function VenueAvailabilityModule({
     });
   }, [editBlackout, deleteBlackout]);
 
-  const editingPeriod =
-    editPeriodIdx !== null ? servicePeriods[editPeriodIdx] ?? null : null;
-
   const numberControls = useMemo(
     () => [
       {
@@ -253,34 +230,28 @@ export function VenueAvailabilityModule({
         </Text>
       </View>
 
-      {/* Service periods */}
+      {/* Service periods — ORCH-1190 #2: READ-ONLY, derived from opening hours.
+          No inline add/edit (that would create a second hours owner). The only
+          affordance routes to the Settings hours editor. */}
       <GlassCard variant="base" style={styles.section}>
         <View style={styles.sectionHead}>
           <Text style={styles.sectionTitle}>Service periods</Text>
-          {canMutate ? (
-            <Button
-              label="Add"
-              onPress={openAddPeriod}
-              variant="secondary"
-              size="sm"
-              leadingIcon="plus"
-              testID="venue-avail-add-period"
-            />
-          ) : null}
         </View>
+        <Text style={styles.sectionHint} testID="venue-avail-periods-source-note">
+          Pulled from your opening hours. Guests can reserve during the times your
+          venue is open.
+        </Text>
         {servicePeriods.length === 0 ? (
           <Text style={styles.emptyLine}>
-            No service periods yet. Add the hours guests can reserve (e.g. Dinner,
-            Tue–Sun 17:00–22:00).
+            No service periods yet. Set your opening hours in Settings and they
+            show up here automatically.
           </Text>
         ) : (
           servicePeriods.map((p, idx) => (
-            <Pressable
+            <View
               key={`${p.name}-${idx}`}
-              onPress={() => (canMutate ? openEditPeriod(idx) : undefined)}
-              disabled={!canMutate}
-              accessibilityRole="button"
-              accessibilityLabel={`Edit service period ${p.name}`}
+              accessibilityRole="text"
+              accessibilityLabel={`Service period ${p.name}, ${periodSummary(p)}`}
               style={styles.periodRow}
               testID={`venue-avail-period-${idx}`}
             >
@@ -288,12 +259,21 @@ export function VenueAvailabilityModule({
                 <Text style={styles.periodName}>{p.name}</Text>
                 <Text style={styles.periodMeta}>{periodSummary(p)}</Text>
               </View>
-              {canMutate ? (
-                <Icon name="chevR" size={18} color={textTokens.tertiary} />
-              ) : null}
-            </Pressable>
+            </View>
           ))
         )}
+        {canMutate ? (
+          <Button
+            label="Edit hours in Settings"
+            onPress={goToSettingsHours}
+            variant="secondary"
+            size="sm"
+            leadingIcon="settings"
+            style={styles.periodEditBtn}
+            accessibilityLabel="Edit opening hours in Settings"
+            testID="venue-avail-edit-hours-in-settings"
+          />
+        ) : null}
       </GlassCard>
 
       {/* Turn times */}
@@ -403,13 +383,6 @@ export function VenueAvailabilityModule({
         </Text>
       ) : null}
 
-      <VenueServicePeriodSheet
-        visible={periodSheetOpen}
-        onClose={() => setPeriodSheetOpen(false)}
-        period={editingPeriod}
-        onSave={handleSavePeriod}
-        onDelete={editPeriodIdx !== null ? handleDeletePeriod : undefined}
-      />
       <VenueBlackoutSheet
         visible={blackoutSheetOpen}
         onClose={() => setBlackoutSheetOpen(false)}
@@ -479,6 +452,10 @@ const styles = StyleSheet.create({
   periodMeta: {
     ...typography.bodySm,
     color: textTokens.secondary,
+  },
+  periodEditBtn: {
+    alignSelf: "flex-start",
+    marginTop: spacing.xs,
   },
   turnRow: {
     flexDirection: "row",

@@ -19,7 +19,7 @@
  */
 
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { ActivityIndicator, Pressable, StyleSheet, Switch, Text, View } from "react-native";
+import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
 import { useRouter } from "expo-router";
 
 import {
@@ -29,11 +29,9 @@ import {
   spacing,
   text as textTokens,
   typography,
-  venueSettingsMaxWidth,
 } from "../../constants/designSystem";
 import { useCurrentBrand } from "../../hooks/useCurrentBrand";
 import { useCurrentBrandRole } from "../../hooks/useCurrentBrandRole";
-import { useResponsiveLayout } from "../../hooks/useResponsiveLayout";
 import { useBrandHours, useUpsertBrandHours } from "../../hooks/useBrandHours";
 import { useBrandPlaceAuthoringContext } from "../../hooks/useBrandPlacePipelineState";
 import {
@@ -43,7 +41,6 @@ import {
 } from "../../hooks/useVenueReservationSettings";
 import type { BrandHourEntry } from "../../types/brand";
 import { BRAND_ROLE_RANK } from "../../utils/brandRole";
-import { buildComposeAudienceHref } from "../../utils/composeAudienceHref";
 import {
   formatCurrency,
   majorFromMinor,
@@ -55,6 +52,7 @@ import {
   paidPublishGuardCopy,
 } from "../../utils/paidPublishGuards";
 import { BrandHoursEditor } from "./BrandHoursEditor";
+import { BrandSwitch } from "../ui/BrandSwitch";
 import { Button } from "../ui/Button";
 import { GlassCard } from "../ui/GlassCard";
 import { Input } from "../ui/Input";
@@ -112,7 +110,6 @@ export function VenueSettingsModule({
   const brand = useCurrentBrand();
   const { rank } = useCurrentBrandRole(brandId);
   const canMutate = rank >= MANAGER_PLUS_RANK;
-  const { isWideDesktop } = useResponsiveLayout();
   const placePoolId = brand?.placePoolId ?? null;
 
   const settingsQuery = useVenueReservationSettings(brandId);
@@ -218,18 +215,6 @@ export function VenueSettingsModule({
     router.push(`/brand/${brandId}/team` as never);
   }, [brandId, router]);
 
-  // ORCH-1186-D — Message your guests: deep-link into the EXISTING marketing
-  // composer with this venue's brand audience pre-selected. REUSE ONLY (no new
-  // composer / send path / audience kind). The audience is the brand's ticket
-  // buyers (`brand_buyers`, orders-derived) — copy is honest about that.
-  // I-PROPOSED-BU: the `?audience={kind}:{id}` shape is a binding contract with
-  // parseAudienceParam — build it via buildComposeAudienceHref so the round-trip
-  // regression test guards it; do NOT inline a divergent URL.
-  const handleBlast = useCallback((): void => {
-    if (brandId === null) return;
-    router.push(buildComposeAudienceHref("brand", brandId) as never);
-  }, [brandId, router]);
-
   const feePreview = useMemo(() => {
     if (!feeActive) return null;
     return formatCurrency(draftCents, currency, true);
@@ -320,16 +305,15 @@ export function VenueSettingsModule({
     );
   }, [brandId, placePoolId, router]);
 
-  const hostStyle = useMemo(
-    () =>
-      isWideDesktop
-        ? [styles.host, { maxWidth: venueSettingsMaxWidth, alignSelf: "flex-start" as const }]
-        : styles.host,
-    [isWideDesktop],
-  );
-
+  // ORCH-1190 #1 — full-width parity. The Settings module previously capped its
+  // content column at `venueSettingsMaxWidth` on wide desktop, so it did NOT fill
+  // the workspace like Overview/Tables/Reservations/Waitlist/Menu (all of which
+  // render edge-to-edge in the ORCH-1184 full-width workspace). Drop the cap so
+  // every venue-suite module shares the SAME full-width container. The readable
+  // line measure is preserved by the cards' own content widths + the inner
+  // controls, not a hard column cap.
   return (
-    <View style={hostStyle} testID={testID ?? "venue-settings-module"}>
+    <View style={styles.host} testID={testID ?? "venue-settings-module"}>
       {/* 1 — Reservations (canonical toggle home). */}
       <Section title="Reservations">
         <View style={styles.rowBetween}>
@@ -339,13 +323,10 @@ export function VenueSettingsModule({
               Turn on the reservation suite for this venue. Free to switch on.
             </Text>
           </View>
-          <Switch
+          <BrandSwitch
             value={reservationsEnabled}
             onValueChange={handleToggleReservations}
             disabled={!canMutate || setEnabled.isPending}
-            trackColor={{ false: "rgba(255,255,255,0.16)", true: accent.warm }}
-            thumbColor="#ffffff"
-            ios_backgroundColor="rgba(255,255,255,0.16)"
             accessibilityLabel="Reservations toggle"
             testID="venue-settings-reservations-toggle"
           />
@@ -364,13 +345,10 @@ export function VenueSettingsModule({
                   automatically — guests see one all-in price.
                 </Text>
               </View>
-              <Switch
+              <BrandSwitch
                 value={feeEnabled}
                 onValueChange={handleToggleFee}
                 disabled={!canMutate || updateFee.isPending}
-                trackColor={{ false: "rgba(255,255,255,0.16)", true: accent.warm }}
-                thumbColor="#ffffff"
-                ios_backgroundColor="rgba(255,255,255,0.16)"
                 accessibilityLabel="Reservation fee toggle"
                 testID="venue-settings-fee-toggle"
               />
@@ -630,32 +608,11 @@ export function VenueSettingsModule({
         />
       </Section>
 
-      {/* 8 — Message your guests (ORCH-1186-D): deep-link into the existing
-          marketing composer pre-scoped to this venue's brand audience. Copy is
-          honest that the audience is ticket buyers (orders-derived), not
-          reservation guests (OQ-1 — a reservation-guest audience is a separate
-          follow-on ORCH). Manager-plus gated, consistent with the other action
-          rows in this module. */}
-      <Section title="Reach your guests">
-        <Text style={styles.rowTitle}>Message your ticket buyers</Text>
-        <Text style={styles.rowSub}>
-          Email or text the people who&apos;ve bought tickets from this venue. We
-          open the composer with your audience ready to go.
-        </Text>
-        {canMutate ? (
-          <Button
-            label="Message your guests"
-            onPress={handleBlast}
-            variant="primary"
-            size="md"
-            leadingIcon="send"
-            disabled={brandId === null}
-            style={styles.inlineBtn}
-            accessibilityLabel="Message your guests"
-            testID="venue-settings-message-guests"
-          />
-        ) : null}
-      </Section>
+      {/* ORCH-1190 #7 — the "Reach your guests / Message your guests" blast entry
+          (ORCH-1186-D Leg 4) MOVED OUT of Settings to a top-of-Overview button
+          (VenueIntelligenceModule). Same reuse-only deep-link (the EXISTING
+          composer with the brand audience pre-selected); only the placement
+          changed. I-PROPOSED-1186-D-BLAST-REUSE-ONLY still holds. */}
 
       {!canMutate ? (
         <Text style={styles.readOnlyNote}>

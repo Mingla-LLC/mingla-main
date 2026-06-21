@@ -11,7 +11,15 @@
  */
 
 import React, { useCallback, useMemo, useState } from "react";
-import { Pressable, StyleSheet, Switch, Text, View } from "react-native";
+import {
+  LayoutAnimation,
+  Platform,
+  Pressable,
+  StyleSheet,
+  Text,
+  UIManager,
+  View,
+} from "react-native";
 
 import {
   accent,
@@ -20,13 +28,21 @@ import {
   text as textTokens,
   typography,
 } from "../../constants/designSystem";
+import { BrandSwitch } from "../ui/BrandSwitch";
+import { GlassCard } from "../ui/GlassCard";
 import { Icon } from "../ui/Icon";
 import { Input } from "../ui/Input";
 import {
   CAPACITY_RULE_CATALOG,
-  CAPACITY_RULE_MVP_KINDS,
   depositThresholdMinParty,
 } from "./capacityRules";
+
+if (
+  Platform.OS === "android" &&
+  UIManager.setLayoutAnimationEnabledExperimental !== undefined
+) {
+  UIManager.setLayoutAnimationEnabledExperimental(true);
+}
 import {
   useUpsertCapacityRule,
   useVenueCapacityRules,
@@ -88,17 +104,32 @@ export function VenueCapacityRulesPanel({
     setDepositDraft("");
   }, [canMutate, depositInput, upsert, deposit]);
 
+  // ORCH-1190 #4 — clearly-affordanced accordion matching the Home To-do toggle
+  // (GlassCard wrapper + icon + bold title + chevron, LayoutAnimation on toggle).
+  const toggleOpen = useCallback((): void => {
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    setOpen((v) => !v);
+  }, []);
+
   return (
-    <View style={styles.host} testID={testID ?? "venue-capacity-rules-panel"}>
+    <GlassCard
+      variant="base"
+      padding={spacing.md}
+      style={styles.host}
+      testID={testID ?? "venue-capacity-rules-panel"}
+    >
       <Pressable
-        onPress={() => setOpen((v) => !v)}
+        onPress={toggleOpen}
         accessibilityRole="button"
         accessibilityState={{ expanded: open }}
-        accessibilityLabel="Smart capacity rules"
+        accessibilityLabel={`Smart capacity rules, ${open ? "tap to collapse" : "tap to expand"}`}
         style={styles.header}
         testID="venue-capacity-rules-toggle"
       >
-        <Text style={styles.headerTitle}>Smart capacity rules</Text>
+        <View style={styles.headerLeft}>
+          <Icon name="grid" size={16} color={accent.warm} />
+          <Text style={styles.headerTitle}>Smart capacity rules</Text>
+        </View>
         <Icon name={open ? "chevU" : "chevD"} size={18} color={textTokens.secondary} />
       </Pressable>
 
@@ -114,13 +145,10 @@ export function VenueCapacityRulesPanel({
                 {CAPACITY_RULE_CATALOG.party_fit.summary}
               </Text>
             </View>
-            <Switch
+            <BrandSwitch
               value={partyFit?.isActive ?? true}
               onValueChange={togglePartyFit}
               disabled={!canMutate || upsert.isPending}
-              trackColor={{ false: "rgba(255,255,255,0.16)", true: accent.warm }}
-              thumbColor="#ffffff"
-              ios_backgroundColor="rgba(255,255,255,0.16)"
               accessibilityLabel="Party fit rule toggle"
               testID="venue-rule-party-fit-toggle"
             />
@@ -161,24 +189,14 @@ export function VenueCapacityRulesPanel({
             </View>
           </View>
 
-          {/* blackout_scope — informational. */}
-          <View style={styles.ruleColumn}>
-            <Text style={styles.ruleTitle}>
-              {CAPACITY_RULE_CATALOG.blackout_scope.label}
-            </Text>
-            <Text style={styles.ruleSummary}>
-              {CAPACITY_RULE_CATALOG.blackout_scope.summary} Set the scope when you
-              add a blackout in Availability.
-            </Text>
-          </View>
-
-          <Text style={styles.footnote}>
-            More rules are coming. These are the {CAPACITY_RULE_MVP_KINDS.length}{" "}
-            we honour today.
-          </Text>
+          {/* ORCH-1190 #6 — the standalone blackout_scope informational block was
+              REMOVED. Scope (whole venue / zone / single table) is chosen IN the
+              add-blackout flow (Availability → Blackout dates → "Applies to"),
+              its single home. ORCH-1190 #5 — the "More rules are coming…"
+              footnote was removed. */}
         </View>
       ) : null}
-    </View>
+    </GlassCard>
   );
 }
 
@@ -190,15 +208,21 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    paddingVertical: spacing.sm,
+  },
+  // ORCH-1190 #4 — icon + bold title cluster (To-do toggle affordance).
+  headerLeft: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.xs,
   },
   headerTitle: {
-    ...typography.labelCap,
-    color: textTokens.tertiary,
+    fontSize: typography.bodySm.fontSize,
+    fontWeight: "700",
+    color: textTokens.primary,
   },
   bodyOpen: {
     gap: spacing.md,
-    paddingTop: spacing.xs,
+    paddingTop: spacing.md,
   },
   rule: {
     flexDirection: "row",
@@ -244,10 +268,6 @@ const styles = StyleSheet.create({
     ...typography.bodySm,
     color: "#0c0e12",
     fontWeight: "700",
-  },
-  footnote: {
-    ...typography.caption,
-    color: textTokens.tertiary,
   },
 });
 

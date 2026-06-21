@@ -194,42 +194,48 @@ export function VenueTablesModule({
               variant="base"
               style={[styles.tableCard, !t.isActive ? styles.tableCardInactive : null]}
             >
-              <Pressable
-                onPress={() => (canMutate ? openEdit(t) : undefined)}
-                accessibilityRole="button"
-                accessibilityLabel={`Edit ${t.name}`}
-                disabled={!canMutate}
-                style={styles.tableMain}
-                testID={`venue-table-row-${t.id}`}
-              >
-                <View style={styles.tableText}>
-                  <Text style={styles.tableName}>{t.name}</Text>
-                  <Text style={styles.tableMeta}>{tableMeta(t)}</Text>
-                </View>
-                {canMutate ? (
-                  <Icon name="chevR" size={18} color={textTokens.tertiary} />
-                ) : null}
-              </Pressable>
-              {canMutate ? (
+              {/* ORCH-1190 #8 — the row layout lives on this INNER View, not on the
+                  GlassCard wrapper. The card style only sets width:100%; the
+                  flexDirection:row + minWidth:0 children here let the meta text
+                  shrink/wrap instead of collapsing to one char per line. */}
+              <View style={styles.tableRow}>
                 <Pressable
-                  onPress={() => handleToggleActive(t)}
+                  onPress={() => (canMutate ? openEdit(t) : undefined)}
                   accessibilityRole="button"
-                  accessibilityLabel={
-                    t.isActive ? `Deactivate ${t.name}` : `Reactivate ${t.name}`
-                  }
-                  style={styles.activeToggle}
-                  testID={`venue-table-active-${t.id}`}
+                  accessibilityLabel={`Edit ${t.name}`}
+                  disabled={!canMutate}
+                  style={styles.tableMain}
+                  testID={`venue-table-row-${t.id}`}
                 >
-                  <Text
-                    style={[
-                      styles.activeToggleLabel,
-                      t.isActive ? styles.activeOn : styles.activeOff,
-                    ]}
-                  >
-                    {t.isActive ? "Active" : "Inactive"}
-                  </Text>
+                  <View style={styles.tableText}>
+                    <Text style={styles.tableName}>{t.name}</Text>
+                    <Text style={styles.tableMeta}>{tableMeta(t)}</Text>
+                  </View>
+                  {canMutate ? (
+                    <Icon name="chevR" size={18} color={textTokens.tertiary} />
+                  ) : null}
                 </Pressable>
-              ) : null}
+                {canMutate ? (
+                  <Pressable
+                    onPress={() => handleToggleActive(t)}
+                    accessibilityRole="button"
+                    accessibilityLabel={
+                      t.isActive ? `Deactivate ${t.name}` : `Reactivate ${t.name}`
+                    }
+                    style={styles.activeToggle}
+                    testID={`venue-table-active-${t.id}`}
+                  >
+                    <Text
+                      style={[
+                        styles.activeToggleLabel,
+                        t.isActive ? styles.activeOn : styles.activeOff,
+                      ]}
+                    >
+                      {t.isActive ? "Active" : "Inactive"}
+                    </Text>
+                  </Pressable>
+                ) : null}
+              </View>
             </GlassCard>
           ))}
         </View>
@@ -300,6 +306,14 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
   },
   tableCard: {
+    // ORCH-1190 #8 — full-width row card. On narrow widths the card previously
+    // collapsed to its min-content width (the GlassCard wrapper carried the
+    // flexDirection:row, so its single clipped child shrank to min-content),
+    // wrapping the meta text one character per line. The card style now only
+    // forces full width; the row layout lives on the inner `tableRow` View.
+    width: "100%",
+  },
+  tableRow: {
     flexDirection: "row",
     alignItems: "center",
     gap: spacing.sm,
@@ -309,6 +323,7 @@ const styles = StyleSheet.create({
   },
   tableMain: {
     flex: 1,
+    minWidth: 0,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
@@ -316,6 +331,7 @@ const styles = StyleSheet.create({
   },
   tableText: {
     flex: 1,
+    minWidth: 0,
     gap: spacing.xxs,
   },
   tableName: {
