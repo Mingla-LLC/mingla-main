@@ -202,6 +202,13 @@ interface CalendarTabProps {
    * inline card); no scroll. Null/absent → no selection.
    */
   selectedEntryId?: string | null;
+  /**
+   * ORCH-1189: floating-nav clearance, threaded down from LikesPage
+   * (`useAppLayout().bottomNavTotalHeight`). Applied as the INNER scroll content's
+   * paddingBottom so the list clears the floating GlassBottomNav while the tab's
+   * frame still paints full-bleed to the physical screen bottom (no black bar).
+   */
+  bottomNavTotalHeight?: number;
 }
 
 const CalendarTab = ({
@@ -214,6 +221,7 @@ const CalendarTab = ({
   userPreferences,
   accountPreferences,
   selectedEntryId,
+  bottomNavTotalHeight = 0,
 }: CalendarTabProps) => {
   const { t } = useTranslation(['activity', 'common']);
   const { canAccess } = useFeatureGate();
@@ -1633,7 +1641,10 @@ const CalendarTab = ({
       flex: 1,
     },
     mainScrollContent: {
-      paddingBottom: 100,
+      // ORCH-1189: clear the floating GlassBottomNav from the INNER scroll content
+      // (LikesPage's `content` View no longer carries a frame-shrinking
+      // paddingBottom, so the tab paints full-bleed to the screen bottom).
+      paddingBottom: bottomNavTotalHeight + 24,
     },
     accordionHeader: {
       flexDirection: "row",

@@ -121,6 +121,13 @@ interface SavedTabProps {
   scheduledCardIds?: string[];
   boardSavedCards?: SavedCard[]; // Optional: board-specific saved cards
   activeBoardSessionId?: string | null; // Session ID for invalidating board cards query
+  /**
+   * ORCH-1189: floating-nav clearance, threaded down from LikesPage
+   * (`useAppLayout().bottomNavTotalHeight`). Applied as the INNER scroll content's
+   * paddingBottom so the list clears the floating GlassBottomNav while the tab's
+   * frame still paints full-bleed to the physical screen bottom (no black bar).
+   */
+  bottomNavTotalHeight?: number;
 }
 
 const SavedTab = ({
@@ -137,6 +144,7 @@ const SavedTab = ({
   scheduledCardIds = [],
   boardSavedCards,
   activeBoardSessionId,
+  bottomNavTotalHeight = 0,
 }: SavedTabProps) => {
   const { t } = useTranslation(['activity', 'common']);
   const { keyboardHeight } = useKeyboard({ disableLayoutAnimation: true });
@@ -344,7 +352,10 @@ const SavedTab = ({
       flex: 1,
     },
     mainScrollContent: {
-      paddingBottom: 100,
+      // ORCH-1189: clear the floating GlassBottomNav from the INNER scroll content
+      // (LikesPage's `content` View no longer carries a frame-shrinking
+      // paddingBottom, so the tab paints full-bleed to the screen bottom).
+      paddingBottom: bottomNavTotalHeight + 24,
     },
     listContent: {
       gap: 16,
