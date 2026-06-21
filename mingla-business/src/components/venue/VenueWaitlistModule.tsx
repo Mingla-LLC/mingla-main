@@ -122,23 +122,25 @@ export function VenueWaitlistModule({
       {waitlistQuery.isLoading ? (
         <Text style={styles.helper}>Loading waitlist…</Text>
       ) : queue.length === 0 ? (
-        <GlassCard variant="elevated" style={styles.emptyCard}>
-          <Icon name="clock" size={26} color={textTokens.primary} />
-          <Text style={styles.emptyTitle}>Nobody&apos;s waiting</Text>
-          <Text style={styles.emptyBody}>
-            When you&apos;re full, add walk-ins here and notify them when a table
-            opens.
-          </Text>
-          {canMutate ? (
-            <Button
-              label="Add to waitlist"
-              onPress={() => setAddOpen(true)}
-              variant="secondary"
-              size="md"
-              testID="venue-waitlist-empty-add"
-            />
-          ) : null}
-        </GlassCard>
+        <View style={styles.emptyWrap} testID="venue-waitlist-empty-wrap">
+          <GlassCard variant="elevated" style={styles.emptyCard}>
+            <Icon name="clock" size={26} color={textTokens.primary} />
+            <Text style={styles.emptyTitle}>Nobody&apos;s waiting</Text>
+            <Text style={styles.emptyBody}>
+              When you&apos;re full, add walk-ins here and notify them when a table
+              opens.
+            </Text>
+            {canMutate ? (
+              <Button
+                label="Add to waitlist"
+                onPress={() => setAddOpen(true)}
+                variant="secondary"
+                size="md"
+                testID="venue-waitlist-empty-add"
+              />
+            ) : null}
+          </GlassCard>
+        </View>
       ) : (
         <View style={styles.list}>
           {queue.map((w, i) => {
@@ -258,9 +260,14 @@ const styles = StyleSheet.create({
     ...typography.bodySm,
     color: textTokens.secondary,
   },
+  // ORCH-1190 R3 — full-width empty card on WEB, robustly (see
+  // VenueReservationsModule + IMPLEMENT_ORCH-1190-FULLWIDTH-WEB.md). Stretching
+  // wrapper + card stretches via alignSelf, WITHOUT width:"100%" (an explicit
+  // main-size can defeat alignSelf:"stretch" under an indefinite-width ancestor).
+  emptyWrap: {
+    alignSelf: "stretch",
+  },
   emptyCard: {
-    // ORCH-1190 R2 — full-width empty card on WEB (see VenueReservationsModule).
-    width: "100%",
     alignSelf: "stretch",
     alignItems: "center",
     gap: spacing.sm,

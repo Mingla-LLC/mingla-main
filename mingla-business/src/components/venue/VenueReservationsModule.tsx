@@ -160,24 +160,26 @@ export function VenueReservationsModule({
       {reservationsQuery.isLoading ? (
         <Text style={styles.helper}>Loading reservations…</Text>
       ) : visible.length === 0 ? (
-        <GlassCard variant="elevated" style={styles.emptyCard}>
-          <Icon name="calendar" size={26} color={textTokens.primary} />
-          <Text style={styles.emptyTitle}>{VIEW_EMPTY[view]}</Text>
-          {view === "today" || view === "upcoming" ? (
-            <Text style={styles.emptyBody}>
-              When guests book — from Mingla or here — they land in this list.
-            </Text>
-          ) : null}
-          {canMutate && (view === "today" || view === "upcoming") ? (
-            <Button
-              label="Add one to test"
-              onPress={() => setCreateOpen(true)}
-              variant="secondary"
-              size="md"
-              testID="venue-reservations-empty-add"
-            />
-          ) : null}
-        </GlassCard>
+        <View style={styles.emptyWrap} testID="venue-reservations-empty-wrap">
+          <GlassCard variant="elevated" style={styles.emptyCard}>
+            <Icon name="calendar" size={26} color={textTokens.primary} />
+            <Text style={styles.emptyTitle}>{VIEW_EMPTY[view]}</Text>
+            {view === "today" || view === "upcoming" ? (
+              <Text style={styles.emptyBody}>
+                When guests book — from Mingla or here — they land in this list.
+              </Text>
+            ) : null}
+            {canMutate && (view === "today" || view === "upcoming") ? (
+              <Button
+                label="Add one to test"
+                onPress={() => setCreateOpen(true)}
+                variant="secondary"
+                size="md"
+                testID="venue-reservations-empty-add"
+              />
+            ) : null}
+          </GlassCard>
+        </View>
       ) : (
         <View style={styles.list}>
           {visible.map((r) => (
@@ -270,13 +272,20 @@ const styles = StyleSheet.create({
     ...typography.bodySm,
     color: textTokens.secondary,
   },
+  // ORCH-1190 R3 — full-width empty card on WEB, robustly. The empty card is now
+  // wrapped in a stretching WRAPPER (alignSelf:"stretch") and the card itself
+  // stretches via alignSelf WITHOUT width:"100%". Empirically (Playwright + real
+  // react-native-web, see Mingla_Artifacts/reports/IMPLEMENT_ORCH-1190-FULLWIDTH-WEB.md):
+  // an explicit `width:"100%"` resolves against the parent's content-box and, when
+  // a flex ancestor leaves that width indefinite, can DEFEAT `alignSelf:"stretch"`
+  // (an explicit main-size overrides stretch in flexbox) — collapsing the card to
+  // its centered content's min width while the row-based header + horizontal tab
+  // ScrollView still read full-width. Dropping `width:"100%"` and letting the
+  // wrapper + card stretch is immune to indefinite-width ancestors.
+  emptyWrap: {
+    alignSelf: "stretch",
+  },
   emptyCard: {
-    // ORCH-1190 R2 — full-width empty card on WEB. The GlassCard wrapper carried
-    // no width, so on the wide web shell it collapsed to its centered content's
-    // min width (a narrow ~half-width card) while Tables/Settings content cards
-    // (width:"100%") spanned the workspace. The card now stretches edge-to-edge;
-    // its content stays centered via alignItems.
-    width: "100%",
     alignSelf: "stretch",
     alignItems: "center",
     gap: spacing.sm,

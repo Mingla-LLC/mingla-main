@@ -246,15 +246,19 @@ export function VenueMenuModule({
         >
           Loading your menu…
         </Text>
-        <GlassCard variant="base" style={styles.skeletonCard}>
-          <View style={[styles.skelBar, styles.skelHead]} />
-          <View style={[styles.skelBar, styles.skelLine]} />
-          <View style={[styles.skelBar, styles.skelLine]} />
-        </GlassCard>
-        <GlassCard variant="base" style={styles.skeletonCard}>
-          <View style={[styles.skelBar, styles.skelHead]} />
-          <View style={[styles.skelBar, styles.skelLine]} />
-        </GlassCard>
+        <View style={styles.skeletonWrap} testID="venue-menu-skeleton-wrap">
+          <GlassCard variant="base" style={styles.skeletonCard}>
+            <View style={[styles.skelBar, styles.skelHead]} />
+            <View style={[styles.skelBar, styles.skelLine]} />
+            <View style={[styles.skelBar, styles.skelLine]} />
+          </GlassCard>
+        </View>
+        <View style={styles.skeletonWrap}>
+          <GlassCard variant="base" style={styles.skeletonCard}>
+            <View style={[styles.skelBar, styles.skelHead]} />
+            <View style={[styles.skelBar, styles.skelLine]} />
+          </GlassCard>
+        </View>
       </View>
     );
   }
@@ -274,28 +278,30 @@ export function VenueMenuModule({
   if (menus.length === 0) {
     return (
       <View style={styles.host} testID={testID ?? "venue-menu-module"}>
-        <GlassCard variant="base" style={styles.emptyCard}>
-          <Text style={styles.emptyEmoji} accessibilityElementsHidden>
-            🍽️
-          </Text>
-          <Text style={styles.emptyTitle}>Build your menu</Text>
-          <Text style={styles.emptyBody}>
-            {canMutate
-              ? "Add categories and priced items. Guests see your menu on your public page."
-              : "No menu yet. Ask a manager or owner to add one."}
-          </Text>
-          {canMutate ? (
-            <Button
-              label="Add a category"
-              onPress={openAddCategory}
-              variant="primary"
-              size="lg"
-              fullWidth
-              style={styles.emptyCta}
-              testID="venue-menu-add-category"
-            />
-          ) : null}
-        </GlassCard>
+        <View style={styles.emptyWrap} testID="venue-menu-empty-wrap">
+          <GlassCard variant="base" style={styles.emptyCard}>
+            <Text style={styles.emptyEmoji} accessibilityElementsHidden>
+              🍽️
+            </Text>
+            <Text style={styles.emptyTitle}>Build your menu</Text>
+            <Text style={styles.emptyBody}>
+              {canMutate
+                ? "Add categories and priced items. Guests see your menu on your public page."
+                : "No menu yet. Ask a manager or owner to add one."}
+            </Text>
+            {canMutate ? (
+              <Button
+                label="Add a category"
+                onPress={openAddCategory}
+                variant="primary"
+                size="lg"
+                fullWidth
+                style={styles.emptyCta}
+                testID="venue-menu-add-category"
+              />
+            ) : null}
+          </GlassCard>
+        </View>
 
         <MenuCategorySheet
           visible={categorySheetOpen}
@@ -687,13 +693,15 @@ const styles = StyleSheet.create({
     alignSelf: "stretch",
   },
   // ---- empty ----
+  // ORCH-1190 R3 — full-width empty "Build your menu" card on WEB, robustly.
+  // Stretching wrapper + card stretches via alignSelf WITHOUT width:"100%" (an
+  // explicit main-size can defeat alignSelf:"stretch" under an indefinite-width
+  // flex ancestor → the narrow centered card Seth saw while the header read full
+  // width). See IMPLEMENT_ORCH-1190-FULLWIDTH-WEB.md.
+  emptyWrap: {
+    alignSelf: "stretch",
+  },
   emptyCard: {
-    // ORCH-1190 R2 — full-width empty "Build your menu" card on WEB. The GlassCard
-    // wrapper carried no width, so on the wide web shell it collapsed to its
-    // centered content's min width (a narrow ~half-width card) while Tables/Settings
-    // content cards (width:"100%") spanned the workspace. Stretch edge-to-edge;
-    // content stays centered via alignItems.
-    width: "100%",
     alignSelf: "stretch",
     alignItems: "center",
     paddingVertical: spacing.xl,
@@ -728,9 +736,14 @@ const styles = StyleSheet.create({
     color: semantic.error,
   },
   // ---- skeleton ----
+  // ORCH-1190 R3 — full-width loading skeleton on WEB, robustly (see emptyCard +
+  // IMPLEMENT_ORCH-1190-FULLWIDTH-WEB.md). Wrapper stretches; card stretches via
+  // alignSelf WITHOUT width:"100%".
+  skeletonWrap: {
+    alignSelf: "stretch",
+  },
   skeletonCard: {
-    // ORCH-1190 R2 — full-width loading skeleton on WEB (see emptyCard/categoryCard).
-    width: "100%",
+    alignSelf: "stretch",
     gap: spacing.sm,
   },
   skelBar: {
