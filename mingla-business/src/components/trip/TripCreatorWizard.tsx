@@ -564,10 +564,10 @@ export const TripCreatorWizard: React.FC<TripCreatorWizardProps> = ({
   }, [intakeSchemasQuery.data]);
 
   // META-ORCH-1174 Leg B2 — capacity is now PER-PACKAGE (DEC-D), authored in
-  // Step 4. The old Step1→Step4 single-capacity mirror is retired. Step 1's
-  // capacity remains the trip-level number (business_trip.capacity) and seeds
-  // a package's spots only when that package has none yet (e.g. the primary
-  // package on a brand-new draft).
+  // Step 4 and persisted to each package's ticket_types.quantity_total. The old
+  // Step1→Step4 single-capacity mirror is retired. Step 1's trip-level capacity
+  // draft field seeds a package's spots only when that package has none yet
+  // (e.g. the primary package on a brand-new draft).
   useEffect(() => {
     if (step1Draft.capacity === null) return;
     setStep4Draft((s) => {
