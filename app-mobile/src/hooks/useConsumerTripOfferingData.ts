@@ -6,13 +6,12 @@
  * prop contract the shared `TripOfferingBody` reads — the single per-surface
  * adapter so the consumer screen renders the SAME body as web/business.
  *
- * NOTE (data-path parity gap, Leg-A pragmatic path): the consumer read
- * (useConsumerTripDetail) carries NO destination lat/lng today, so the §11
- * "Where you'll be" map stays omitted on consumer (rule-9 — no fabricated tile),
- * exactly as before this leg. The new `pg_public_trip_by_slug` RPC (this leg's
- * migration) RETURNS the lat/lng; a follow-up can repoint the consumer hook onto
- * it to close the map gap on every surface. I-MOR-0827: pure mapper, no app-src
- * import into the package — the package only sees the normalized shape.
+ * META-ORCH-1174 Leg A.2 — the consumer read (useConsumerTripDetail) now sources
+ * the canonical `pg_public_trip_by_slug` RPC, so `ConsumerTripDetail` carries the
+ * destination lat/lng (the §11 "Where you'll be" map now renders on consumer,
+ * closing the prior gap) AND real per-tier `ticketsRemaining`. This mapper passes
+ * both through to the shared `TripOfferingData`. I-MOR-0827: pure mapper, no
+ * app-src import into the package — the package only sees the normalized shape.
  */
 
 import {
@@ -102,14 +101,17 @@ export function buildConsumerTripOfferingData(
       currency: t.currency,
       isFree: t.isFree,
       isUnlimited: t.isUnlimited,
-      // consumer read has only aggregate spotsLeft → no per-tier remaining today.
-      ticketsRemaining: null,
+      // META-ORCH-1174 Leg A.2 — real per-tier remaining from the canonical RPC
+      // (null when unlimited; no fabricated sold-out — rule 9). Previously always
+      // null on consumer; now parity with web/business.
+      ticketsRemaining: t.isUnlimited ? null : t.ticketsRemaining,
       installmentSchedule: t.installmentSchedule,
     })),
     currency: detail.currency ?? "USD",
-    // map gap: consumer read lacks lat/lng (rule 9 — §11 omitted, as before).
-    destinationLat: null,
-    destinationLng: null,
+    // META-ORCH-1174 Leg A.2 — destination coords now arrive via the RPC, so the
+    // §11 "Where you'll be" map renders on consumer (rule 9 — both must be finite).
+    destinationLat: detail.destinationLat,
+    destinationLng: detail.destinationLng,
     bookable: detail.bookable !== false,
     bookingsClosed: detail.bookingsClosed === true,
   };

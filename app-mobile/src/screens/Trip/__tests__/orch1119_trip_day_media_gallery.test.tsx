@@ -71,13 +71,19 @@ function coerceTripDayMedia(raw) {
   ok("T1 coercer drops a typeless item", !clean.some((m) => m.url === "z"));
 }
 
-// ── T2: the hook anon-selects media (no brands/tickets read — COMMS-0009) ──
+// ── T2: the hook surfaces per-day media (no brands/tickets read — COMMS-0009) ──
+// [TEST-MOD-APPROVED META-ORCH-1174] — Leg A.2 rewired useConsumerTripDetail onto
+// the canonical `pg_public_trip_by_slug` RPC, which returns `days[].media`
+// directly (replacing the prior `.from("trip_days").select("...media")` read).
+// The per-day media invariant is unchanged (the coercer still runs); only its
+// SOURCE moved from a client select to the RPC payload.
 ok(
-  "T2 hook selects media on trip_days",
-  /\.select\("id, ordinal, title, narrative, media"\)/.test(hookSrc),
+  "T2 hook reads the canonical RPC that returns per-day media",
+  /supabase\.rpc\(\s*["']pg_public_trip_by_slug["']/.test(hookSrc) &&
+    /media:\s*unknown/.test(hookSrc),
 );
 ok(
-  "T2 hook coerces media into TripDetailDay",
+  "T2 hook coerces RPC per-day media into TripDetailDay",
   /media:\s*coerceTripDayMedia\(/.test(hookSrc),
 );
 // Strip line comments so the docstring's literal `.from('brands')` warning isn't

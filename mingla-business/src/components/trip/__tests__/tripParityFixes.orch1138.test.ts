@@ -95,14 +95,18 @@ describe("ORCH-1138 FIX-3 — brand cover is media-aware (business/web)", () => 
     ).toBe(true);
   });
 
-  test("the public-trip hook selects + maps cover_media_type and cover_hue from brands", () => {
-    expect(/cover_media_type/.test(hookSrc)).toBe(true);
-    expect(/cover_hue/.test(hookSrc)).toBe(true);
+  // [TEST-MOD-APPROVED META-ORCH-1174] — Leg A.2 moved the brand cover read off a
+  // direct `.from("brands").select("...cover_media_type, cover_hue")` onto the
+  // canonical `pg_public_trip_by_slug` RPC payload (`brand.coverMediaType` /
+  // `brand.coverHue`). The FIX-3 invariant (the chip gets a media-aware brand
+  // cover type + hue, coerced) is unchanged — only the source moved to the RPC.
+  test("the public-trip hook maps the RPC brand coverMediaType + coverHue (coerced)", () => {
     expect(
-      /coverMediaType:\s*coerceBrandCoverType\(brand\.cover_media_type\)/.test(
+      /coverMediaType:\s*coerceBrandCoverType\(p\.brand\.coverMediaType\)/.test(
         hookSrc,
       ),
     ).toBe(true);
+    expect(/coverHue:\s*numOrNull\(p\.brand\.coverHue\)/.test(hookSrc)).toBe(true);
   });
 
   test("coerceBrandCoverType maps unknown/null → null (no fabricated type, no broken alt)", () => {

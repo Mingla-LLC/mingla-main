@@ -2,12 +2,23 @@
  * usePublicTripBySlug — anon-tolerant fetch of a published trip by brand+trip
  * slug. Tr2 (ORCH-0859).
  *
- * Used by /t/[brandSlug]/[tripSlug].tsx public buyer route. Mirrors
- * usePublicEventBySlug pattern (mingla-business/src/hooks/usePublicEvents.ts).
+ * Used by /t/[brandSlug]/[tripSlug].tsx public buyer route.
+ *
+ * META-ORCH-1174 Leg A.2 (Seth single-source decision) — this hook now reads
+ * the ONE canonical anon RPC `pg_public_trip_by_slug(p_brand_slug, p_event_slug)`
+ * (SECURITY DEFINER, GRANT anon) instead of the prior per-surface fan-out of
+ * direct table reads (brands + events + 5 sidecar queries + 2 helper RPCs). The
+ * RPC returns the FULL trip payload (master dates, route legs + lat/lng, per-tier
+ * rows WITH remaining + installments, trip_days itinerary, trip_inclusions,
+ * refund_policy, booking_deadline, brand card incl. theme + verified) — the
+ * definer owner reads brands.theme_* directly, so the COMMS-0009 anon
+ * column-level grant gap that previously forced a `business_public_events_view`
+ * theme detour (ORCH-1164/#507) no longer applies here. This hook maps the RPC
+ * JSON into the SAME `PublicTripPayload` output type as before (zero downstream
+ * churn — TripPreview + tripOfferingAdapter are unchanged).
  *
  * Anon-tolerant per feedback_anon_buyer_routes.md: no useAuth call, no
- * sign-in redirect. Anon Supabase client RLS-restricted via the
- * trip-sidecar-table policies (only published trips visible to anon).
+ * sign-in redirect.
  *
  * Spec: Mingla_Artifacts/specs/SPEC_ORCH-0859_TR2_MINIMUM_VIABLE_TRIP.md §4.7
  */
@@ -27,6 +38,7 @@ import type {
   Trip,
   TripDay,
   TripInclusion,
+  TripInstallmentScheduleData,
   TripPricingTier,
 } from "../services/tripsService";
 import { coerceTripDayMedia } from "../services/tripsService";
@@ -47,67 +59,9 @@ const asThemeInput = (
   return Object.keys(out).length > 0 ? out : null;
 };
 
-// ORCH-1164 (#507 regression recovery) — COMMS-0009 anon-safe-theme contract.
-// The brand THEME (theme_color/theme_font/theme_animation) is NOT read off the
-// `brands` table: the `anon` Postgres role has NO column-level SELECT on those
-// three columns (live: HTTP 401 `42501 permission denied for table brands`),
-// which #507 introduced on the trip read path and which blanked the entire anon
-// /t/{brandSlug}/{tripSlug} page. The theme is sourced from the anon-safe
-// security-definer `business_public_events_view` (brand_theme_color/
-// brand_theme_font/brand_theme_animation — anon-readable), filtered to THIS
-// trip's row by (brand_slug, slug, event_type='trip'), exactly as the
-// experience leg does (publicExperienceService.fetchBrandThemeFromView). The
-// view has trip rows (verified live: event_type='trip' rows present). Non-fatal:
-// any view error / miss → null (the page resolves the default palette, never
-// 401s). The trip hook's direct brands select keeps only anon-granted columns.
-const fetchBrandThemeFromView = async (
-  brandSlug: string,
-  tripSlug: string,
-): Promise<ThemeInput | null> => {
-  const { data, error } = await supabase
-    .from("business_public_events_view")
-    .select("brand_theme_color, brand_theme_font, brand_theme_animation")
-    .eq("brand_slug", brandSlug)
-    .eq("slug", tripSlug)
-    .eq("event_type", "trip")
-    .maybeSingle();
-  if (error !== null || data === null) return null;
-  return asThemeInput(
-    data.brand_theme_color,
-    data.brand_theme_font,
-    data.brand_theme_animation,
-  );
-};
-
-// ORCH-1138 B2 — anon-callable remaining-capacity RPC, mirroring
-// publicEventsService.fetchTicketTypesRemaining / getPublicTripById. Fail OPEN
-// on RPC error (empty map ⇒ ticketsRemaining stays null ⇒ no fabricated
-// sold-out; the checkout RPC remains the terminal oversell backstop).
-const fetchTripTicketsRemaining = async (
-  eventId: string,
-): Promise<Map<string, number | null>> => {
-  const { data, error } = await supabase.rpc(
-    "pg_public_ticket_types_remaining",
-    { p_event_id: eventId },
-  );
-  if (error !== null) {
-    console.warn(
-      "[ORCH-1138] pg_public_ticket_types_remaining failed on /t/ slug preview; sold-out gate degrades to fail-open (checkout-RPC catch is the backstop)",
-      error,
-    );
-    return new Map();
-  }
-  const rows = (data ?? []) as Array<{
-    ticket_type_id: string;
-    sold: number;
-    remaining: number | null;
-  }>;
-  return new Map(rows.map((r) => [r.ticket_type_id, r.remaining]));
-};
-
-// ORCH-1138 FIX-3 — coerce the raw brands.cover_media_type text to the
-// EventCoverMedia union. Unknown / null ⇒ null (the chip falls back to the hue
-// avatar; rule 9 — no fabricated type, no broken alt placeholder).
+// META-ORCH-1174 Leg A.2 — coerce the raw cover_media_type text (brand OR trip)
+// to the EventCoverMedia union. Unknown / null ⇒ null (the chip falls back to the
+// hue avatar; rule 9 — no fabricated type, no broken alt placeholder).
 const coerceBrandCoverType = (
   raw: unknown,
 ): "image" | "video" | "gif" | null => {
@@ -115,7 +69,104 @@ const coerceBrandCoverType = (
   return null;
 };
 
+const numOrNull = (raw: unknown): number | null =>
+  typeof raw === "number" && Number.isFinite(raw) ? raw : null;
+
+const strOrNull = (raw: unknown): string | null =>
+  typeof raw === "string" && raw.length > 0 ? raw : null;
+
 const PUBLIC_TRIP_STALE_MS = 60 * 1000; // 1 minute
+
+// META-ORCH-1174 Leg A.2 — the raw JSON shape returned by
+// `pg_public_trip_by_slug` (mirrors the migration's json_build_object keys).
+// All fields are read defensively; the mapper below narrows them into the
+// existing typed `PublicTripPayload`.
+interface RpcTripBrand {
+  id: string;
+  slug: string;
+  name: string;
+  bio: string | null;
+  coverMediaUrl: string | null;
+  coverMediaType: string | null;
+  coverHue: number | null;
+  verified: boolean;
+  themeColor: unknown;
+  themeFont: unknown;
+  themeAnimation: unknown;
+}
+interface RpcTripDay {
+  id: string;
+  ordinal: number;
+  title: string;
+  narrative: string | null;
+  date: string | null;
+  stops: unknown;
+  media: unknown;
+}
+interface RpcTripInclusion {
+  id: string;
+  kind: "included" | "excluded";
+  item: string;
+  ordinal: number;
+}
+interface RpcTripTier {
+  id: string;
+  ticketTypeId: string;
+  tierName: string;
+  tierMetadata: Record<string, unknown> | null;
+  priceCents: number;
+  currency: string;
+  quantityTotal: number | null;
+  ticketsRemaining: number | null;
+  isUnlimited: boolean;
+  isFree: boolean;
+  installments: unknown;
+}
+interface RpcTripPayload {
+  id: string;
+  brandId: string;
+  brandSlug: string;
+  tripSlug: string;
+  title: string;
+  description: string | null;
+  status: string;
+  timezone: string | null;
+  startAt: string | null;
+  endAt: string | null;
+  departureText: string | null;
+  destinationText: string | null;
+  destinationLat: number | null;
+  destinationLng: number | null;
+  departureLat: number | null;
+  departureLng: number | null;
+  currency: string;
+  coverMediaUrl: string | null;
+  coverMediaType: string | null;
+  refundPolicy: unknown;
+  bookingDeadline: string | null;
+  bookingsClosed: boolean;
+  themeColorOverride: unknown;
+  themeFontOverride: unknown;
+  themeAnimationOverride: unknown;
+  brand: RpcTripBrand;
+  days: RpcTripDay[];
+  inclusions: RpcTripInclusion[];
+  tiers: RpcTripTier[];
+}
+
+// META-ORCH-1174 Leg A.2 — narrow tier_metadata.installments into the typed
+// TripInstallmentScheduleData (or null). Same shape as the prior inline cast in
+// the tiers mapper; null when absent/malformed (no plan).
+const asInstallmentSchedule = (
+  raw: unknown,
+): TripInstallmentScheduleData | null => {
+  if (raw === null || typeof raw !== "object") return null;
+  const obj = raw as { deposit_pct?: unknown; installments?: unknown };
+  if (typeof obj.deposit_pct !== "number" || !Array.isArray(obj.installments)) {
+    return null;
+  }
+  return raw as TripInstallmentScheduleData;
+};
 
 interface PublicTripPayload {
   trip: Trip;
@@ -197,299 +248,152 @@ export const usePublicTripBySlug = (
         typeof tripSlug !== "string" ||
         tripSlug.length === 0
       ) {
-        // mirrors `enabled` — narrows brandSlug/tripSlug to non-empty string for
-        // the view-theme lookup (ORCH-1164) without an unsafe non-null assert.
+        // mirrors `enabled` — narrows to non-empty strings for the RPC params.
         return null;
       }
 
-      // 1. Resolve brand by slug — anon-readable via brands public policy
-      // (a brand is anon-readable when it has any published event;
-      // a published trip qualifies because event_type='trip' rows count
-      // as "events with public visibility" under the existing brands_public
-      // policy).
-      const brandResp = await supabase
-        .from("brands")
-        // ORCH-1164 (#507 regression recovery) — theme_color/theme_font/
-        // theme_animation are NOT selected here. The `anon` role has no
-        // column-level SELECT on those three columns, so including them aborted
-        // the whole anon query with `42501 permission denied for table brands`
-        // and blanked the public trip page (the #507 regression). The brand
-        // theme is sourced from the anon-safe `business_public_events_view`
-        // (COMMS-0009) via fetchBrandThemeFromView below.
-        // ORCH-1138 FIX-3 — cover_media_type + cover_hue stay here: both ARE
-        // anon-granted (verified live) and the view exposes no brand_cover_hue.
-        // They let the "Presented by" brand chip render an animated (gif/video)
-        // brand cover via the media-aware EventCoverMedia.
-        .select(
-          "id, slug, name, description, cover_media_url, cover_media_type, cover_hue",
-        )
-        .eq("slug", brandSlug)
-        .is("deleted_at", null)
-        .maybeSingle();
-      if (brandResp.error) throw brandResp.error;
-      if (brandResp.data === null) return null;
+      // META-ORCH-1174 Leg A.2 — the ONE canonical anon read path. The SECURITY
+      // DEFINER RPC returns the full trip payload (identity, master dates, route
+      // legs + destination/departure lat/lng, per-tier rows WITH remaining +
+      // installments, trip_days, trip_inclusions, refund_policy, booking_deadline,
+      // and the brand card incl. theme + verified). Restricted server-side to
+      // event_type='trip' + published. Returns null when no such trip exists.
+      const { data, error } = await supabase.rpc("pg_public_trip_by_slug", {
+        p_brand_slug: brandSlug,
+        p_event_slug: tripSlug,
+      });
+      if (error !== null) throw error;
+      if (data === null || data === undefined) return null;
+      const p = data as RpcTripPayload;
 
-      const brand = brandResp.data;
-
-      // 2. Resolve trip by (brand_id, slug, event_type='trip', published)
-      const eventResp = await supabase
-        .from("events")
-        .select("*")
-        .eq("brand_id", brand.id)
-        .eq("slug", tripSlug)
-        .eq("event_type", "trip")
-        .in("status", ["scheduled", "live"])
-        .is("deleted_at", null)
-        .maybeSingle();
-      if (eventResp.error) throw eventResp.error;
-      if (eventResp.data === null) return null;
-
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const event = eventResp.data as any;
-      const eventId = event.id as string;
-
-      // 3. Sidecar tables — anon-readable via published-only RLS policies.
-      // ORCH-1138 B2 — the remaining-capacity RPC is folded into this same
-      // batch so the sold-out wiring costs ZERO extra round trips. It fails
-      // open internally (catch → empty map), so it is NOT part of the throwing
-      // error fan-out below.
-      const [
-        daysResp,
-        tiersResp,
-        inclusionsResp,
-        ticketsResp,
-        masterDateResp,
-        remainingById,
-      ] = await Promise.all([
-          supabase
-            .from("trip_days")
-            .select("*")
-            .eq("event_id", eventId)
-            .order("ordinal"),
-          supabase.from("trip_pricing_tiers").select("*").eq("event_id", eventId),
-          supabase
-            .from("trip_inclusions")
-            .select("*")
-            .eq("event_id", eventId)
-            .order("kind")
-            .order("ordinal"),
-          supabase
-            .from("ticket_types")
-            .select("*")
-            .eq("event_id", eventId)
-            .is("deleted_at", null),
-          // ORCH-1130 Fix #1 — canonical trip dates live on the event_dates
-          // master row (ORCH-0950 moved them off theme.business_trip). Mirror
-          // the event public page, which sources dates from event_dates.
-          supabase
-            .from("event_dates")
-            .select("event_id,start_at,end_at,is_master")
-            .eq("event_id", eventId)
-            .eq("is_master", true)
-            .maybeSingle(),
-          // ORCH-1138 B2 — real per-ticket remaining for the sold-out gate.
-          fetchTripTicketsRemaining(eventId),
-        ]);
-      if (daysResp.error) throw daysResp.error;
-      if (tiersResp.error) throw tiersResp.error;
-      if (inclusionsResp.error) throw inclusionsResp.error;
-      if (ticketsResp.error) throw ticketsResp.error;
-      if (masterDateResp.error) throw masterDateResp.error;
-
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const days = (daysResp.data ?? []) as any[];
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const tiers = (tiersResp.data ?? []) as any[];
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const inclusions = (inclusionsResp.data ?? []) as any[];
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const tickets = (ticketsResp.data ?? []) as any[];
-
-      const ticketsById = new Map(tickets.map((tt) => [tt.id, tt]));
-      const bt = (event.theme?.business_trip as Record<string, unknown> | undefined) ?? {};
-      // ORCH-1130 Fix #1 — canonical start/end from the event_dates master row;
-      // theme mirror is fallback only (older trips never written canonically).
-      const masterDate =
-        (masterDateResp.data as {
-          start_at: string | null;
-          end_at: string | null;
-        } | null) ?? null;
-      const tripStartAt =
-        masterDate?.start_at ?? (typeof bt.startAt === "string" ? bt.startAt : null);
-      const tripEndAt =
-        masterDate?.end_at ?? (typeof bt.endAt === "string" ? bt.endAt : null);
+      const tripStartAt = p.startAt;
+      const tripEndAt = p.endAt;
+      // Capacity = the first tier's total (mirrors the prior canonical
+      // ticket-type quantity source; theme mirror is folded into the RPC).
+      const firstTierQty = p.tiers[0]?.quantityTotal ?? null;
 
       const trip: Trip = {
-        id: event.id,
-        brandId: event.brand_id,
-        brandSlug: brand.slug,
-        title: event.title,
-        description: event.description,
-        slug: event.slug,
-        status: event.status,
-        visibility: event.visibility,
-        publishedAt: event.published_at,
-        timezone: event.timezone,
-        coverMediaUrl: event.cover_media_url,
-        coverMediaType: event.cover_media_type,
+        id: p.id,
+        brandId: p.brandId,
+        brandSlug: p.brand.slug,
+        title: p.title,
+        description: p.description,
+        slug: p.tripSlug,
+        // The RPC restricts to scheduled|live; the Trip union accepts both.
+        status: p.status as Trip["status"],
+        // The public buyer page never reads `visibility`/`publishedAt`; the RPC
+        // only surfaces published trips. Keep the prior public-path semantics
+        // (mirror the published status; published_at not needed by the body).
+        visibility: "public",
+        publishedAt: null,
+        timezone: p.timezone ?? "",
+        coverMediaUrl: p.coverMediaUrl,
+        coverMediaType: p.coverMediaType,
         businessTrip: {
           startAt: tripStartAt,
           endAt: tripEndAt,
-          destinationPlaceId:
-            typeof bt.destinationPlaceId === "string" ? bt.destinationPlaceId : null,
-          // ORCH-1138 Leg-1 (native-parity fix #1) — destination from the
-          // CANONICAL `events.destination_text` column first, theme mirror only
-          // as fallback. Mirrors the authenticated `readBusinessTrip`
-          // (tripsService.ts) — the public hook previously read ONLY the
-          // theme.business_trip JSON mirror, which is NULL for trips authored via
-          // the canonical column (e.g. "The DC Adventure"). That silently hid the
-          // destination meta-chip AND the destination half of the route block on
-          // BOTH web + native (rule-9 null-guard), while departure (already
-          // canonical-first below) rendered — the exact reported divergence.
-          destinationLocationText:
-            typeof event.destination_text === "string" &&
-            (event.destination_text as string).trim().length > 0
-              ? (event.destination_text as string)
-              : typeof bt.destinationLocationText === "string"
-                ? bt.destinationLocationText
-                : null,
-          destinationLat:
-            typeof bt.destinationLat === "number" ? bt.destinationLat : null,
-          destinationLng:
-            typeof bt.destinationLng === "number" ? bt.destinationLng : null,
-          // ORCH-1016 — departure (origin). Prefer the canonical
-          // events.departure_text column; fall back to theme.business_trip.
-          departurePlaceId:
-            typeof bt.departurePlaceId === "string" ? bt.departurePlaceId : null,
-          departureLocationText:
-            typeof event.departure_text === "string" &&
-            (event.departure_text as string).trim().length > 0
-              ? (event.departure_text as string)
-              : typeof bt.departureLocationText === "string"
-                ? bt.departureLocationText
-                : null,
-          departureLat:
-            typeof bt.departureLat === "number" ? bt.departureLat : null,
-          departureLng:
-            typeof bt.departureLng === "number" ? bt.departureLng : null,
-          // ORCH-1138 Leg-1 (native-parity fix #1) — capacity from the CANONICAL
-          // ticket-type quantity (mirrors `readBusinessTrip`: tripsService.ts uses
-          // `ticketTypes[0]?.quantity_total`), theme mirror only as fallback. The
-          // public hook previously read ONLY `bt.capacity`, which is NULL for
-          // canonical-authored trips → the "N seats left · M max" chip silently
-          // hid (rule-9) even though the ticket carried a real cap (e.g. 102).
-          capacity:
-            typeof tickets[0]?.quantity_total === "number"
-              ? (tickets[0].quantity_total as number)
-              : typeof bt.capacity === "number"
-                ? bt.capacity
-                : null,
+          // placeIds are not surfaced by the public RPC (not consumed by the
+          // body); null preserves the prior public-path behavior.
+          destinationPlaceId: null,
+          destinationLocationText: strOrNull(p.destinationText),
+          // META-ORCH-1174 — destination lat/lng now arrive via the RPC (float8)
+          // so the §11 map renders (the consumer gap this leg closes; web/business
+          // already had them via the theme mirror — same value, now single-source).
+          destinationLat: numOrNull(p.destinationLat),
+          destinationLng: numOrNull(p.destinationLng),
+          departurePlaceId: null,
+          departureLocationText: strOrNull(p.departureText),
+          departureLat: numOrNull(p.departureLat),
+          departureLng: numOrNull(p.departureLng),
+          capacity: firstTierQty,
         },
-        days: days.map(
+        days: (p.days ?? []).map(
           (d): TripDay => ({
             id: d.id,
-            eventId: d.event_id,
+            eventId: p.id,
             ordinal: d.ordinal,
             title: d.title,
             narrative: d.narrative,
             date: d.date,
             stops: Array.isArray(d.stops) ? d.stops : [],
-            // ORCH-1119 — per-day gallery (anon-readable via the existing
-            // trip_days published-only RLS; .select("*") already returns media).
             media: coerceTripDayMedia(d.media),
           }),
         ),
-        pricingTiers: tiers.map(
-          (t): TripPricingTier => {
-            const tt = ticketsById.get(t.ticket_type_id);
-            // ORCH-0882 [Render Payment Plan Disclosure on Trip Buyer +
-            // Planner Surfaces] hotfix — extract installmentSchedule from
-            // tier_metadata.installments. Mirrors `publicEventsService.ts:724`.
-            // Prior to this hotfix, the field was implicitly `undefined`
-            // (not `null`), bypassing the mapper's null-guard and crashing
-            // the public trip page on plan-active trips.
-            const installmentSchedule =
-              (t.tier_metadata?.installments as
-                | TripPricingTier["installmentSchedule"]
-                | undefined) ?? null;
-            const isUnlimited = tt?.is_unlimited ?? false;
-            return {
-              id: t.id,
-              eventId: t.event_id,
-              ticketTypeId: t.ticket_type_id,
-              tierName: t.tier_name,
-              tierMetadata: t.tier_metadata ?? {},
-              priceCents: tt?.price_cents ?? 0,
-              currency: tt?.currency ?? "",
-              quantityTotal: tt?.quantity_total ?? null,
-              // ORCH-1138 B2 — real remaining for the public-page sold-out gate,
-              // mirroring getPublicTripById (publicEventsService). null when
-              // unlimited (never "0 left") or when the RPC failed open
-              // (no fabricated sold-out — Constitution #9).
-              ticketsRemaining: isUnlimited
-                ? null
-                : (remainingById.get(t.ticket_type_id) ?? null),
-              isUnlimited,
-              installmentSchedule,
-            };
-          },
+        pricingTiers: (p.tiers ?? []).map(
+          (t): TripPricingTier => ({
+            id: t.id,
+            eventId: p.id,
+            ticketTypeId: t.ticketTypeId,
+            tierName: t.tierName,
+            tierMetadata: t.tierMetadata ?? {},
+            priceCents: t.priceCents ?? 0,
+            currency: t.currency ?? "",
+            quantityTotal: t.quantityTotal ?? null,
+            // ORCH-1138 B2 / META-ORCH-1174 — real remaining for the sold-out
+            // gate. null when unlimited (never "0 left") — the RPC already emits
+            // null for unlimited/uncapped tiers (no fabricated sold-out, rule 9).
+            ticketsRemaining: t.isUnlimited ? null : (t.ticketsRemaining ?? null),
+            isUnlimited: t.isUnlimited === true,
+            installmentSchedule: asInstallmentSchedule(t.installments),
+          }),
         ),
-        inclusions: inclusions.map(
+        inclusions: (p.inclusions ?? []).map(
           (i): TripInclusion => ({
             id: i.id,
-            eventId: i.event_id,
+            eventId: p.id,
             kind: i.kind,
             item: i.item,
             ordinal: i.ordinal,
           }),
         ),
-        createdAt: event.created_at,
-        updatedAt: event.updated_at,
-        // ORCH-0875 [Tr4 Refund Tiers + Booking Deadline] — pass-through
-        // public-facing fields. refund_policy + booking_deadline must be
-        // visible to anon buyers so the public trip page can render the
-        // RefundPolicyDisplay ladder + countdown/closed banner.
-        refundPolicy: event.refund_policy ?? null,
-        bookingDeadline: event.booking_deadline ?? null,
-        bookingsClosed: event.bookings_closed === true,
-        bookingsClosedAt: event.bookings_closed_at ?? null,
+        // createdAt/updatedAt are not surfaced by the public RPC and are not read
+        // by the public body; empty strings preserve the prior public-path shape.
+        createdAt: "",
+        updatedAt: "",
+        // ORCH-0875 — pass-through public-facing fields for the RefundPolicyDisplay
+        // ladder + countdown/closed banner.
+        refundPolicy:
+          (p.refundPolicy as Trip["refundPolicy"]) ?? null,
+        bookingDeadline: p.bookingDeadline ?? null,
+        bookingsClosed: p.bookingsClosed === true,
+        bookingsClosedAt: null,
         ticketsSoldCount: 0,
       };
 
-      // ORCH-1117 — a trip is PAID when its first pricing tier costs > 0
-      // (mirrors the trip price source above). Resolve the brand's
-      // charge-readiness so the floating bar can render its unavailable state.
+      // ORCH-1117 — a trip is PAID when its first pricing tier costs > 0. Resolve
+      // the brand's charge-readiness so the floating bar can render its
+      // unavailable state (the trip RPC does not encode charge-readiness).
       const isPaid = (trip.pricingTiers[0]?.priceCents ?? 0) > 0;
-      const bookable = await resolveTripBookable(brand.id, isPaid);
+      const bookable = await resolveTripBookable(p.brandId, isPaid);
 
-      // ORCH-1138 B1 — guard the brand theme + the per-trip overrides into
-      // ThemeInputs (the page resolves + builds the palette). Trips are events
-      // rows, so `event` (select("*")) already carries theme_*_override.
-      // ORCH-1164 (#507 regression recovery) — the BRAND theme is now sourced
-      // from the anon-safe `business_public_events_view` (COMMS-0009), NOT from
-      // brands.theme_* (which anon cannot read). The per-trip overrides still
-      // come off the `events` row (anon-readable; not on the brands table).
-      const brandTheme = await fetchBrandThemeFromView(brandSlug, tripSlug);
+      // META-ORCH-1174 Leg A.2 — the BRAND theme now comes off the RPC payload
+      // (the definer owner reads brands.theme_* directly, so the COMMS-0009 anon
+      // column-grant gap that forced the prior view detour no longer applies).
+      // Per-trip overrides ride the same RPC payload (events.theme_*_override).
+      const brandTheme = asThemeInput(
+        p.brand.themeColor,
+        p.brand.themeFont,
+        p.brand.themeAnimation,
+      );
       const themeOverrides = asThemeInput(
-        event.theme_color_override,
-        event.theme_font_override,
-        event.theme_animation_override,
+        p.themeColorOverride,
+        p.themeFontOverride,
+        p.themeAnimationOverride,
       );
 
       return {
         trip,
         brand: {
-          id: brand.id,
-          slug: brand.slug,
-          name: brand.name,
-          bio: brand.description ?? null,
-          coverMediaUrl: brand.cover_media_url ?? null,
+          id: p.brand.id,
+          slug: p.brand.slug,
+          name: p.brand.name,
+          bio: p.brand.bio ?? null,
+          coverMediaUrl: p.brand.coverMediaUrl ?? null,
           // ORCH-1138 FIX-3 — coerce the raw brand cover media type to the
           // EventCoverMedia union; unknown/null → null → image render / hue
           // fallback (rule 9, never a fabricated type).
-          coverMediaType: coerceBrandCoverType(brand.cover_media_type),
-          coverHue:
-            typeof brand.cover_hue === "number" ? brand.cover_hue : null,
+          coverMediaType: coerceBrandCoverType(p.brand.coverMediaType),
+          coverHue: numOrNull(p.brand.coverHue),
           theme: brandTheme,
         },
         themeOverrides,

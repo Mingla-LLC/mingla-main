@@ -77,28 +77,38 @@ const TRIP_HOOK = resolve(
   "usePublicTripBySlug.ts",
 );
 
-describe("ORCH-1164 — anon cannot read brands.theme_* on the TRIP read path (P0)", () => {
+// [TEST-MOD-APPROVED META-ORCH-1174] — Leg A.2 rewired usePublicTripBySlug onto
+// the canonical SECURITY DEFINER RPC `pg_public_trip_by_slug`, which removes the
+// trip hook's DIRECT `.from("brands").select(...)` entirely. The brands-select
+// scan therefore matches nothing, so the original "DOES read brands" sanity
+// assertion no longer holds. The invariant it protected (anon never reads
+// brands.theme_* on the trip path) is now satisfied in its STRONGEST form: the
+// hook makes ZERO direct brands read at all (theme rides the definer RPC). The
+// guard is re-pointed accordingly.
+describe("ORCH-1164 / META-ORCH-1174 — anon cannot read brands.theme_* on the TRIP read path (P0)", () => {
   const src = readFileSync(TRIP_HOOK, "utf8");
 
-  // The select-string capture allows an OPTIONAL trailing comma before the
-  // closing paren (the trip hook formats its column list with a trailing comma),
-  // so the lazy match terminates at the real string boundary rather than
-  // over-running to a later `")` further down the chain.
-  const brandSelects = Array.from(
-    src.matchAll(
-      /\.from\(\s*["']brands["']\s*\)[\s\S]*?\.select\(\s*([`"'])([\s\S]*?)\1\s*,?\s*\)/g,
-    ),
-  ).map((m) => m[2]);
+  test("usePublicTripBySlug reads the canonical pg_public_trip_by_slug RPC (single source)", () => {
+    expect(src).toMatch(/supabase\.rpc\(\s*["']pg_public_trip_by_slug["']/);
+  });
 
-  test("usePublicTripBySlug DOES read brands (sanity — guard targets the right call)", () => {
-    expect(brandSelects.length).toBeGreaterThan(0);
+  test("usePublicTripBySlug makes ZERO direct brands read (no theme_* column-grant surface for anon at all)", () => {
+    expect(src).not.toMatch(/\.from\(\s*["']brands["']\s*\)/);
   });
 
   const FORBIDDEN = ["theme_color", "theme_font", "theme_animation"];
 
   test.each(FORBIDDEN)(
-    "no trip-hook brands.select(...) requests the non-anon-readable column %s",
+    "the trip hook never names the non-anon-readable brand column %s in any direct table read",
     (col) => {
+      // No direct brands read exists, so no read can request the column. This
+      // holds the line if a future edit reintroduces a `.from("brands")` carrying
+      // the column.
+      const brandSelects = Array.from(
+        src.matchAll(
+          /\.from\(\s*["']brands["']\s*\)[\s\S]*?\.select\(\s*([`"'])([\s\S]*?)\1\s*,?\s*\)/g,
+        ),
+      ).map((m) => m[2]);
       const offenders = brandSelects.filter((s) => s.includes(col));
       expect(offenders).toEqual([]);
     },
