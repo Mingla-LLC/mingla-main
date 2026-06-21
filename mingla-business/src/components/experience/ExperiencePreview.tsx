@@ -1,16 +1,17 @@
 /**
  * ExperiencePreview — buyer-eye preview of a published experience. Used in:
  *   - Public buyer-anon route /exp/{brandSlug}/{experienceSlug} (FOUNDATION mode —
- *     ORCH-1138 Leg 3 Direction A: immersive parallax cover + body-level fixed
- *     chrome + brand-themed palette + responsive desktop two-column sticky panel +
- *     vibe chips + REAL per-stop itinerary with per-stop count-aware galleries +
- *     blurbs + a map of stop 1 + the "Reserve" CTA).
+ *     immersive parallax cover + body-level fixed chrome + brand-themed palette +
+ *     responsive desktop two-column sticky panel). ORCH-1183 [experience-standardize]
+ *     rebuilds FOUNDATION mode onto the ONE shared @mingla/offering-rendering
+ *     `ExperienceOfferingBody` (mirrors TripPreview's TripOfferingBody) — the
+ *     hand-mirrored body sections (meta chips, vibe chips, brand chip, about,
+ *     itinerary spine, map, price card) are RETIRED here in favor of the shared
+ *     component, so web/business + consumer render byte-identically.
  *   - Wizard Step 5 review-before-publish (LEGACY mode — the framed inline
  *     preview; no shell, no chrome, no palette; byte-stable for the wizard caller).
  *
- * META-ORCH-1059 Sub-C → rebuilt by ORCH-1138 Leg 3 onto the shared
- * @mingla/offering-rendering foundation (mirrors TripPreview Leg 1). The mode is
- * chosen by whether `palette` is provided:
+ * The mode is chosen by whether `palette` is provided:
  *   palette PRESENT → FOUNDATION mode (ParallaxCoverShell-composed full page).
  *   palette ABSENT  → LEGACY mode (the prior inline framed render, unchanged).
  *
@@ -18,17 +19,12 @@
  * resolved payload + palette/theme + chrome handlers; the wizard caller passes the
  * draft experience + currentBrand with NO palette.
  *
- * Constitution rule 9 — renders ONLY real wizard-authored fields: cover, title,
- * brand, date model, description, REAL stops (name/address/start_time/blurb/media),
- * vibe chips (experience_intents), and a stop-1 map (only when lat/lng present).
- * NO inclusions, NO refund ladder, NO per-stop price, NO placeholder map — those
- * are not authored for experiences (DESIGN §A.7 / SPEC rule 9).
+ * Constitution rule 9 — renders ONLY real wizard-authored fields. NO inclusions, NO
+ * refund ladder, NO per-stop price, NO placeholder map.
  */
 
 import React from "react";
 import {
-  Image,
-  Pressable,
   StyleSheet,
   Text,
   View,
@@ -59,23 +55,21 @@ import {
 } from "@mingla/offering-rendering";
 import {
   ParallaxCoverShell,
-  CountAwareGallery,
+  ExperienceOfferingBody,
+  experiencePriceLabel,
   useResponsiveLayout,
-  normalizeCityCountry,
-  type CountAwareGalleryItem,
 } from "@mingla/offering-rendering";
 import { EventCoverMedia } from "../ui/EventCoverMedia";
 import { Icon } from "../ui/Icon";
-import { buildStaticMapUrl } from "../../utils/mapboxStaticImage";
 import { CollapsibleDescription } from "../offering/CollapsibleDescription";
 import { formatExperienceDateSubline } from "../../utils/experienceDateSubline";
-import { EXPERIENCE_INTENTS } from "../../constants/experienceIntents";
-// ORCH-1138 rework (§4.D F-1.2) — START HERE / THEN / END WITH stop labels.
-import { labelForIndex } from "./experienceWizardTypes";
+import {
+  buildExperienceOfferingBrand,
+  buildExperienceOfferingData,
+} from "./experienceOfferingAdapter";
 import type {
   PublicExperience,
   PublicExperienceBrand,
-  PublicExperienceStop,
 } from "../../services/publicExperienceService";
 
 export interface ExperiencePreviewProps {
@@ -142,23 +136,21 @@ function formatFromPrice(experience: PublicExperience): string {
 }
 
 // ORCH-1157 Round-8 [cross-type time audit] — device-locale-aware per-stop time.
-// PREVIOUSLY forced 12h AM/PM (HH:MM branch hard-coded "PM"/"AM"; ISO branch used
-// "en-US") regardless of the device clock — a 24h-clock device/browser still saw
-// "7:00 PM". Now matches the RSVP doors treatment: device on 12h → "7:00 PM",
-// device on 24h → "19:00", always carrying minutes. `locale` exists ONLY so tests
-// can pin a clock (undefined → device/OS locale). Real-data-only: malformed → "".
-function formatStopTime(iso: string | null, locale?: string): string {
-  if (iso === null) return "";
+// Device on 12h → "7:00 PM", device on 24h → "19:00", always carrying minutes.
+// `locale` exists ONLY so tests can pin a clock (undefined → device/OS locale).
+// Real-data-only: malformed → null. The surface owns this (the pure package stays
+// locale-free); passed to the shared StopSpine via formatStopTime.
+function formatStopTime(iso: string | null, locale?: string): string | null {
+  if (iso === null) return null;
   const is24h =
     new Intl.DateTimeFormat(locale, { hour: "numeric" }).resolvedOptions()
       .hour12 === false;
-  // start_time is stored as a clock string ("HH:mm[:ss]") or an ISO instant.
   if (/^\d{2}:\d{2}/.test(iso)) {
     const [hh, mm] = iso.split(":");
     const h = Number(hh);
     const m = Number(mm);
-    if (!Number.isFinite(h) || !Number.isFinite(m)) return "";
-    if (h < 0 || h > 23 || m < 0 || m > 59) return "";
+    if (!Number.isFinite(h) || !Number.isFinite(m)) return null;
+    if (h < 0 || h > 23 || m < 0 || m > 59) return null;
     const d = new Date(2000, 0, 1, h, m, 0);
     return new Intl.DateTimeFormat(locale, {
       hour: is24h ? "2-digit" : "numeric",
@@ -169,7 +161,7 @@ function formatStopTime(iso: string | null, locale?: string): string {
       .replace(/\bpm\b/i, "PM");
   }
   const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return "";
+  if (Number.isNaN(d.getTime())) return null;
   return new Intl.DateTimeFormat(locale, {
     hour: is24h ? "2-digit" : "numeric",
     minute: "2-digit",
@@ -177,20 +169,6 @@ function formatStopTime(iso: string | null, locale?: string): string {
     .format(d)
     .replace(/\bam\b/i, "AM")
     .replace(/\bpm\b/i, "PM");
-}
-
-// ORCH-1138 Leg 3 — id → human label for the vibe chips (single source of truth:
-// EXPERIENCE_INTENTS). Unknown ids drop (rule 9 — never render a raw id).
-const INTENT_LABEL = new Map<string, string>(
-  EXPERIENCE_INTENTS.map((o) => [o.id, o.label]),
-);
-
-function stopMediaItems(stop: PublicExperienceStop): CountAwareGalleryItem[] {
-  return stop.imageUrls.map((url) => ({
-    url,
-    // experience_stops.image_urls are images (videos ride cover). Mark image.
-    type: "image",
-  }));
 }
 
 export const ExperiencePreview: React.FC<ExperiencePreviewProps> = ({
@@ -258,7 +236,7 @@ export const ExperiencePreview: React.FC<ExperiencePreviewProps> = ({
 };
 
 // =====================================================================
-// FOUNDATION mode — Direction A immersive page (ORCH-1138 Leg 3)
+// FOUNDATION mode — Direction A immersive page, now on the SHARED body.
 // =====================================================================
 
 const FoundationExperiencePreview: React.FC<{
@@ -304,23 +282,9 @@ const FoundationExperiencePreview: React.FC<{
   const surface = offeringSurfaceStyles(palette);
   const boldFamily = boldFontFamily(theme);
 
-  const dateSubline = formatExperienceDateSubline({
-    venueText: experience.venueText,
-    dateStartIsos: experience.dates.map((d) => d.startAt),
-    whenMode: experience.whenMode,
-    recurrenceRule: experience.recurrenceRule,
-  });
-
-  // "City, Country" normalized from venue text (rule 9: null → omit).
-  const cityCountry = normalizeCityCountry(experience.venueText);
-  const fromLabel = formatFromPrice(experience);
-  const isFree = experience.ticket?.isFree === true ||
-    (experience.ticket?.priceCents ?? 1) === 0;
-
-  // Vibe chips — real experience_intents only (rule 9). Unknown ids dropped.
-  const vibeChips = experience.intents
-    .map((id) => INTENT_LABEL.get(id))
-    .filter((label): label is string => typeof label === "string");
+  const data = buildExperienceOfferingData(experience);
+  const offeringBrand = buildExperienceOfferingBrand(brand);
+  const { label: priceLabel, isFree } = experiencePriceLabel(data);
 
   const coverType =
     experience.coverMediaType === "video"
@@ -331,58 +295,12 @@ const FoundationExperiencePreview: React.FC<{
           ? "image"
           : null;
 
-  // first stop with coords → map block (rule 9: no placeholder when absent).
-  const mapStop = experience.stops.find(
-    (s) => s.lat !== null && s.lng !== null,
-  );
+  const stopEyebrow =
+    experience.stops.length > 0 ? `${experience.stops.length}-stop experience` : null;
 
-  // ORCH-1138 rework (§4.D F-1.1) — the lead EYEBROW is the derived stop count
-  // ("3-stop experience"); City,Country stays a META CHIP only (no duplication).
-  const stopCount = experience.stops.length;
-  const stopEyebrow = stopCount > 0 ? `${stopCount}-stop experience` : null;
-
-  // ORCH-1138 rework (§4.D F-1.4) — seats meta chip from the ONE ticket's
-  // remaining/total (rule 9: omit when unlimited/unknown).
-  const seatsChip = (() => {
-    const t = experience.ticket;
-    if (t == null || t.isUnlimited) return null;
-    const remaining = t.ticketsRemaining;
-    const total = t.quantityTotal;
-    if (remaining == null && total == null) return null;
-    if (remaining != null && total != null) {
-      return `${Math.max(remaining, 0)} spots left · ${total} max`;
-    }
-    if (remaining != null) return `${Math.max(remaining, 0)} spots left`;
-    if (total != null) return `${total} max`;
-    return null;
-  })();
-
-  // ORCH-1138 rework (§4.D F-1.4) — start-time meta chip from the master/first
-  // occurrence start instant (rule 9: omit when no date).
-  const startTimeChip = (() => {
-    const first = experience.dates[0];
-    if (first == null) return null;
-    const d = new Date(first.startAt);
-    if (Number.isNaN(d.getTime())) return null;
-    try {
-      return `${new Intl.DateTimeFormat(undefined, {
-        hour: "numeric",
-        minute: "2-digit",
-        timeZone: first.timezone || "UTC",
-      }).format(d)} start`;
-    } catch {
-      return null;
-    }
-  })();
-
-  // ---- brand chip ----
+  // ---- brand chip (desktop sticky panel) ----
   const brandChip = (
-    <Pressable
-      onPress={onViewBrand}
-      accessibilityRole="button"
-      accessibilityLabel={`View ${brand.name}`}
-      style={[styles.brandRow, surface.card]}
-    >
+    <View style={[styles.brandRow, surface.card]}>
       <View style={styles.brandTile}>
         <EventCoverMedia
           mediaUrl={brand.coverMediaUrl ?? null}
@@ -399,167 +317,11 @@ const FoundationExperiencePreview: React.FC<{
         />
       </View>
       <View style={styles.brandTextCol}>
-        <Text style={[styles.brandKicker, surface.tertiaryText]}>
-          Presented by
-        </Text>
+        <Text style={[styles.brandKicker, surface.tertiaryText]}>Presented by</Text>
         <Text style={[styles.brandName, surface.primaryText, { fontFamily: boldFamily }]}>
           {brand.name}
         </Text>
       </View>
-      <Text style={[styles.brandCta, { color: palette.accent }]}>View</Text>
-    </Pressable>
-  );
-
-  const left = (
-    <View>
-      {/* phone-only lead eyebrow + title (desktop shows them in the hero) */}
-      {!isDesktop ? (
-        <View style={styles.leadBlock}>
-          {/* ORCH-1138 rework (§4.D F-1.1) — N-stop eyebrow (was cityCountry). */}
-          {stopEyebrow !== null ? (
-            <Text style={[styles.eyebrowLead, { color: palette.accent }]}>
-              {stopEyebrow}
-            </Text>
-          ) : null}
-          <Text style={[styles.title, surface.primaryText, { fontFamily: boldFamily }]}>
-            {experience.title}
-          </Text>
-        </View>
-      ) : null}
-
-      {/* meta chips — City,Country (shown ONCE) · dates · seats · start-time
-          (ORCH-1138 rework §4.D F-1.4; rule 9 — only when known) */}
-      <View style={styles.metaRow}>
-        {dateSubline.length > 0 ? (
-          <MetaChip palette={palette} surface={surface} icon="calendar" fontFamily={boldFamily}>
-            {dateSubline}
-          </MetaChip>
-        ) : null}
-        {cityCountry !== null ? (
-          <MetaChip palette={palette} surface={surface} icon="location" fontFamily={boldFamily}>
-            {cityCountry}
-          </MetaChip>
-        ) : null}
-        {seatsChip !== null ? (
-          <MetaChip palette={palette} surface={surface} icon="users" fontFamily={boldFamily}>
-            {seatsChip}
-          </MetaChip>
-        ) : null}
-        {startTimeChip !== null ? (
-          <MetaChip palette={palette} surface={surface} icon="clock" fontFamily={boldFamily}>
-            {startTimeChip}
-          </MetaChip>
-        ) : null}
-      </View>
-
-      {/* vibe chips — real curated intents only (rule 9) */}
-      {vibeChips.length > 0 ? (
-        <View style={styles.vibesRow}>
-          {vibeChips.map((label) => (
-            <View
-              key={label}
-              style={[
-                styles.vibeChip,
-                { backgroundColor: palette.accentWash, borderColor: palette.panelBorder },
-              ]}
-            >
-              <Icon name="sparkle" size={13} color={palette.accent} />
-              <Text style={[styles.vibeChipText, surface.primaryText, { fontFamily: boldFamily }]}>
-                {label}
-              </Text>
-            </View>
-          ))}
-        </View>
-      ) : null}
-
-      {/* brand chip — phone inline; desktop puts it in the sticky panel */}
-      {!isDesktop ? brandChip : null}
-
-      {/* "Open daily (hours)" availability strip (route-owned; null otherwise) */}
-      {availabilityBlock}
-
-      {/* about */}
-      {experience.description !== null &&
-      experience.description.trim().length > 0 ? (
-        <View style={styles.section}>
-          <Text style={[styles.secTitle, surface.primaryText, { fontFamily: boldFamily }]}>
-            About this experience
-          </Text>
-          <View style={styles.aboutWrap}>
-            <CollapsibleDescription
-              text={experience.description}
-              testID="experience-preview-description"
-            />
-          </View>
-        </View>
-      ) : null}
-
-      {/* the itinerary — REAL authored stops (rule 9) */}
-      {experience.stops.length > 0 ? (
-        <View style={styles.section}>
-          <Text style={[styles.secTitle, surface.primaryText, { fontFamily: boldFamily }]}>
-            The itinerary
-          </Text>
-          <StopSpine
-            stops={experience.stops}
-            palette={palette}
-            surface={surface}
-            fontFamily={boldFamily}
-            variant={isDesktop ? "desktop" : "phone"}
-          />
-        </View>
-      ) : null}
-
-      {/* where you'll be — stop-1 map (only when lat/lng present, rule 9) */}
-      {mapStop !== undefined ? (
-        <View style={styles.section}>
-          <Text style={[styles.secTitle, surface.primaryText, { fontFamily: boldFamily }]}>
-            {/* ORCH-1138 rework (§4.D F-1.3) */}
-            Where you&rsquo;ll start
-          </Text>
-          <View
-            style={[styles.mapBlock, surface.card, { height: isDesktop ? 300 : 180 }]}
-          >
-            {(() => {
-              const mapUrl = buildStaticMapUrl({
-                lat: mapStop.lat as number,
-                lng: mapStop.lng as number,
-                accentHex: palette.accent,
-                height: isDesktop ? 300 : 180,
-              });
-              return mapUrl !== null ? (
-                <Image
-                  source={{ uri: mapUrl }}
-                  style={styles.mapImage}
-                  resizeMode="cover"
-                  accessibilityLabel={`Map of ${mapStop.placeName}`}
-                />
-              ) : null;
-            })()}
-            <Icon name="location" size={28} color={palette.accent} />
-            <View style={[styles.mapCapPill, { backgroundColor: palette.page }]}>
-              <Text style={[styles.mapCap, surface.primaryText]}>
-                {mapStop.placeName}
-              </Text>
-            </View>
-          </View>
-        </View>
-      ) : null}
-
-      {/* phone-only price summary card */}
-      {!isDesktop ? (
-        <View style={[styles.pricingCard, surface.card]}>
-          <Text style={[styles.pricingLabel, surface.secondaryText]}>
-            {isFree ? "Price" : "From"}
-          </Text>
-          <Text style={[styles.pricingPrice, surface.primaryText, { fontFamily: boldFamily }]}>
-            {fromLabel}
-          </Text>
-        </View>
-      ) : null}
-
-      {/* DOCKED Reserve CTA — LAST phone-body child (flush, no void) */}
-      {!isDesktop && dockedReserve !== undefined ? dockedReserve : null}
     </View>
   );
 
@@ -574,7 +336,7 @@ const FoundationExperiencePreview: React.FC<{
             {isFree ? "Price" : "From"}
           </Text>
           <Text style={[styles.pricingPrice, surface.primaryText, { fontFamily: boldFamily }]}>
-            {fromLabel}
+            {priceLabel}
           </Text>
         </View>
         {reserveControl}
@@ -594,12 +356,9 @@ const FoundationExperiencePreview: React.FC<{
       showMute={coverType === "video"}
       onClose={onClose}
       onShare={onShare}
-      // ORCH-1159 — hide the floating X on web (public experience page; no
-      // parent screen for an anonymous share-link visitor). Native keeps it.
+      // ORCH-1159 — hide the floating X on web (public experience page). Native keeps it.
       hideCloseOnWeb
       heroEyebrow={
-        /* ORCH-1138 rework (§4.D F-1.1) — N-stop eyebrow (was cityCountry; city
-           is the meta chip). */
         stopEyebrow !== null ? (
           <Text style={styles.heroEyebrow}>{stopEyebrow}</Text>
         ) : undefined
@@ -609,98 +368,32 @@ const FoundationExperiencePreview: React.FC<{
           {experience.title}
         </Text>
       }
-      stateBanner={stateBanner}
       stickyPanel={stickyPanel}
       contentBottomInset={contentBottomInset}
       safeAreaTop={safeAreaTop}
       onScroll={onScroll}
       onScrollViewLayout={onScrollViewLayout}
-      // ORCH-1153 BUG-2 (Seth device): the experience body is shorter than a
-      // multi-day trip's, so the shared 4/5 cover (height ≈ 1.25× width) left
-      // only a slit of readable content on first paint. A square (1/1) cover
-      // pins full-bleed exactly as before but frees ~25% more viewport for the
-      // detail content to slide over. Trip/event/RSVP keep the 4/5 default.
+      // ORCH-1153 BUG-2 — square (1/1) cover frees ~25% more viewport for the shorter
+      // experience body. Trip/event/RSVP keep the 4/5 default.
       coverAspectRatio={1}
       testID={testID}
     >
-      {left}
+      <ExperienceOfferingBody
+        data={data}
+        brand={offeringBrand}
+        palette={palette}
+        theme={theme}
+        callbacks={{ onReserve: () => {}, onViewBrand }}
+        variant={isDesktop ? "desktop" : "phone"}
+        formatStopTime={(iso: string | null) => formatStopTime(iso)}
+        availabilityBlock={availabilityBlock}
+        stateBanner={stateBanner}
+        dockedReserve={!isDesktop ? dockedReserve : undefined}
+        testID="orch-1183-experience-body"
+      />
     </ParallaxCoverShell>
   );
 };
-
-// ---- meta chip ----
-const MetaChip: React.FC<{
-  palette: ThemePalette;
-  surface: ReturnType<typeof offeringSurfaceStyles>;
-  icon: React.ComponentProps<typeof Icon>["name"];
-  fontFamily: string;
-  children: React.ReactNode;
-}> = ({ palette, surface, icon, fontFamily, children }) => (
-  <View style={[styles.metaChip, surface.card]}>
-    <Icon name={icon} size={15} color={palette.accent} />
-    <Text style={[styles.metaChipText, surface.secondaryText, { fontFamily }]} numberOfLines={1}>
-      {children}
-    </Text>
-  </View>
-);
-
-// ---- stop spine (REAL authored stops) ----
-const StopSpine: React.FC<{
-  stops: PublicExperienceStop[];
-  palette: ThemePalette;
-  surface: ReturnType<typeof offeringSurfaceStyles>;
-  fontFamily: string;
-  variant: "phone" | "desktop";
-}> = ({ stops, palette, surface, fontFamily, variant }) => (
-  <View style={styles.itin}>
-    <View style={[styles.itinSpine, { backgroundColor: palette.accentWash }]} />
-    {stops.map((stop, idx) => {
-      const t = formatStopTime(stop.startTime);
-      const media = stopMediaItems(stop);
-      return (
-        <View key={stop.id} style={styles.stop}>
-          <View style={[styles.stopDot, { backgroundColor: palette.accent }]}>
-            <Text style={[styles.stopDotText, { color: palette.accentText }]}>
-              {stop.stopOrder + 1}
-            </Text>
-          </View>
-          <View style={[styles.stopCard, surface.card]}>
-            <View style={styles.stopHead}>
-              {/* ORCH-1138 rework (§4.D F-1.2) — START HERE / THEN / END WITH. */}
-              <Text style={[styles.stopOrd, { color: palette.accent }]}>
-                {labelForIndex(idx, stops.length)}
-              </Text>
-              {t.length > 0 ? (
-                <Text style={[styles.stopTime, surface.tertiaryText]}>{t}</Text>
-              ) : null}
-            </View>
-            <Text style={[styles.stopTitle, surface.primaryText, { fontFamily }]}>
-              {stop.placeName}
-            </Text>
-            {stop.address.trim().length > 0 ? (
-              <Text style={[styles.stopAddr, surface.tertiaryText]} numberOfLines={2}>
-                {stop.address}
-              </Text>
-            ) : null}
-            {stop.description !== null && stop.description.trim().length > 0 ? (
-              <Text style={[styles.stopBlurb, surface.secondaryText]}>
-                {stop.description}
-              </Text>
-            ) : null}
-            {media.length > 0 ? (
-              <CountAwareGallery
-                items={media}
-                palette={palette}
-                variant={variant}
-                accessibilityLabelPrefix={`Stop ${stop.stopOrder + 1} media`}
-              />
-            ) : null}
-          </View>
-        </View>
-      );
-    })}
-  </View>
-);
 
 // =====================================================================
 // LEGACY mode — the prior framed inline preview (wizard Step-5), unchanged.
@@ -720,7 +413,8 @@ const LegacyExperiencePreview: React.FC<{
   });
 
   const fromLabel = formatFromPrice(experience);
-  const isFree = experience.ticket?.isFree === true ||
+  const isFree =
+    experience.ticket?.isFree === true ||
     (experience.ticket?.priceCents ?? 1) === 0;
 
   return (
@@ -776,7 +470,7 @@ const LegacyExperiencePreview: React.FC<{
                         {stop.address}
                       </Text>
                     ) : null}
-                    {t.length > 0 ? (
+                    {t !== null && t.length > 0 ? (
                       <Text style={styles.legacyStopTime}>{t}</Text>
                     ) : null}
                   </View>
@@ -797,21 +491,7 @@ const LegacyExperiencePreview: React.FC<{
 };
 
 const styles = StyleSheet.create({
-  // ---- foundation: lead/title/eyebrow ----
-  leadBlock: { marginBottom: 4 },
-  eyebrowLead: {
-    fontSize: 11,
-    fontWeight: "900",
-    letterSpacing: 1.6,
-    textTransform: "uppercase",
-    marginBottom: 8,
-  },
-  title: {
-    fontSize: 32,
-    lineHeight: 35,
-    fontWeight: "900",
-    letterSpacing: -0.5,
-  },
+  // ---- foundation: hero ----
   heroEyebrow: {
     color: "#ffffff",
     opacity: 0.92,
@@ -829,46 +509,11 @@ const styles = StyleSheet.create({
     letterSpacing: -0.5,
     maxWidth: "72%",
   },
-  // ---- meta chips ----
-  metaRow: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 8,
-    marginTop: 16,
-  },
-  metaChip: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    borderRadius: 999,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    maxWidth: "100%",
-  },
-  metaChipText: { fontSize: 13, fontWeight: "600", flexShrink: 1 },
-  // ---- vibe chips ----
-  vibesRow: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 8,
-    marginTop: 12,
-  },
-  vibeChip: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    borderRadius: 999,
-    paddingHorizontal: 12,
-    paddingVertical: 7,
-    borderWidth: 1,
-  },
-  vibeChipText: { fontSize: 12, fontWeight: "700", letterSpacing: 0.2 },
-  // ---- brand chip ----
+  // ---- brand chip (desktop sticky panel) ----
   brandRow: {
     flexDirection: "row",
     alignItems: "center",
     gap: 12,
-    marginTop: 18,
     borderRadius: 16,
     paddingHorizontal: 14,
     paddingVertical: 12,
@@ -888,73 +533,7 @@ const styles = StyleSheet.create({
     textTransform: "uppercase",
   },
   brandName: { fontSize: 15, fontWeight: "800", marginTop: 1 },
-  brandCta: { marginLeft: "auto", fontSize: 12, fontWeight: "800" },
-  // ---- section / titles ----
-  section: { marginTop: 24 },
-  secTitle: {
-    fontSize: 20,
-    fontWeight: "900",
-    letterSpacing: -0.3,
-    marginBottom: 12,
-  },
-  aboutWrap: { marginTop: 0 },
-  // ---- stop spine ----
-  itin: { position: "relative", paddingLeft: 30, marginTop: 4 },
-  itinSpine: { position: "absolute", left: 9, top: 6, bottom: 6, width: 2 },
-  stop: { position: "relative", paddingBottom: 18 },
-  stopDot: {
-    position: "absolute",
-    left: -30,
-    top: 2,
-    width: 20,
-    height: 20,
-    borderRadius: 999,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  stopDotText: { fontSize: 10, fontWeight: "900" },
-  stopCard: { borderRadius: 14, padding: 14 },
-  stopHead: { flexDirection: "row", alignItems: "center", gap: 8 },
-  stopOrd: {
-    fontSize: 10,
-    fontWeight: "900",
-    letterSpacing: 1,
-    textTransform: "uppercase",
-  },
-  stopTime: { fontSize: 10, fontWeight: "700", letterSpacing: 0.4 },
-  stopTitle: { fontSize: 15, fontWeight: "800", marginTop: 4 },
-  stopAddr: { fontSize: 12, lineHeight: 17, marginTop: 3 },
-  stopBlurb: { fontSize: 13, lineHeight: 20, marginTop: 8 },
-  // ---- map ----
-  mapBlock: {
-    height: 180,
-    borderRadius: 16,
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 8,
-    marginTop: 12,
-    overflow: "hidden",
-  },
-  mapImage: { ...StyleSheet.absoluteFillObject, opacity: 0.9 },
-  mapCapPill: {
-    position: "absolute",
-    left: 12,
-    bottom: 12,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 999,
-  },
-  mapCap: { fontSize: 12, fontWeight: "700" },
-  // ---- price card (foundation) ----
-  pricingCard: {
-    marginTop: 24,
-    padding: spacing.lg,
-    borderRadius: radiusTokens.lg,
-    flexDirection: "row",
-    alignItems: "baseline",
-    justifyContent: "space-between",
-    gap: spacing.md,
-  },
+  // ---- price (foundation) ----
   pricingLabel: { fontSize: 13 },
   pricingPrice: { fontSize: 24, fontWeight: "900" },
   // ---- desktop sticky panel ----

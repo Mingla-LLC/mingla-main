@@ -34,8 +34,6 @@ import React, {
 } from "react";
 import {
   ActivityIndicator,
-  Image,
-  LayoutAnimation,
   Pressable,
   Share,
   StyleSheet,
@@ -55,22 +53,25 @@ import {
   computeOfferingVariant,
   createThemePalette,
   EventCoverMedia,
+  ExperienceOfferingBody,
   isOpenDailyExperience,
   offeringSurfaceStyles,
   resolveOfferingCta,
   resolveTheme,
   ThemeEntranceAnimation,
+  TripReserveBar,
   type CtaState,
   type PublicEventProps,
   type PublicTicketProps,
 } from "@mingla/offering-rendering";
 import {
   OfferingChrome,
-  CountAwareGallery,
-  normalizeCityCountry,
   useResponsiveLayout,
-  type CountAwareGalleryItem,
 } from "@mingla/offering-rendering";
+import {
+  buildExperienceOfferingDataFromSeed,
+  buildExperienceOfferingBrandFromSeed,
+} from "../../hooks/useConsumerExperienceOfferingData";
 
 import { Icon } from "../../components/ui/Icon";
 import {
@@ -88,13 +89,15 @@ import {
   ExperienceReservePicker,
   type ExperienceReserveSelection,
 } from "../../components/expandedCard/ExperienceReservePicker";
-import { buildStaticMapUrl } from "../../utils/mapboxStaticImage";
 // ORCH-1153 WS2 — open-daily detection is now the SHARED rule-based predicate
 // isOpenDailyExperience (@mingla/offering-rendering), the single owner across all
 // surfaces. The prior occurrence-density heuristic (utils/experienceOpenDaily
 // isOpenDailyModel) is retired here (kept only for its Deno test + the unused
 // medianConsecutiveGapMs export); it no longer drives the consumer picker.
-import { ConsumerEventReserveBar } from "../../components/offering/ConsumerEventReserveBar";
+// ORCH-1183 — the experience reserve bar is CONVERGED onto the shared
+// <TripReserveBar> (the single-price reserve/floating bar; no split, no
+// installments) — the SAME bar the buyer-web /exp/ route uses. The prior fork
+// (ConsumerEventReserveBar) is retired from the experience screen.
 import { useConsumerThemeFont } from "../../theme/useConsumerThemeFont";
 import { usePublicEventTickets } from "../../hooks/usePublicEventTickets";
 import { useEventTheme } from "../../hooks/useEventTheme";
@@ -110,72 +113,6 @@ import { hueFromId } from "../../utils/hueFromId";
 import type { BusinessEventCard } from "../../types/mergedDiscover";
 
 const ACCENT = "#FF6B35";
-const ABOUT_COLLAPSE_THRESHOLD = 160;
-
-// ORCH-1138 rework (§4.C.5) — canonical vibe-id → display label (mirrors the
-// business EXPERIENCE_INTENTS labels + deckService EXPERIENCE_INTENT_LABEL).
-const EXPERIENCE_INTENT_LABEL: Record<string, string> = {
-  adventurous: "Adventurous",
-  "first-date": "First Dates",
-  romantic: "Romantic",
-  "group-fun": "Group Fun",
-};
-
-// Open-daily detection — ORCH-1138 P2-2: tightened so a FIXED-start single /
-// multi-date experience is NEVER misrouted into the arbitrary date→time-within-
-// window picker. Single owner is utils/experienceOpenDaily.ts (pure + unit-
-// tested under Deno). `isOpenDailyModel` now requires a DENSE, near-DAILY run of
-// wide-window occurrences (which only the recurrence-materializer produces); a
-// handful of fixed-start sessions fall through to the slot list. (Imported above.)
-
-// "5 dates · Next: Fri 20 Jun" — derived from the real occurrences (rule 9).
-const buildDatesSubline = (
-  occ: ReadonlyArray<ExperienceOccurrence>,
-  timezone: string,
-): string | null => {
-  if (occ.length === 0) return null;
-  const next = occ[0];
-  let nextLabel = "";
-  const d = new Date(next.startAt);
-  if (!Number.isNaN(d.getTime())) {
-    try {
-      nextLabel = new Intl.DateTimeFormat(undefined, {
-        weekday: "short",
-        day: "numeric",
-        month: "short",
-        timeZone: timezone || "UTC",
-      }).format(d);
-    } catch {
-      nextLabel = new Intl.DateTimeFormat(undefined, {
-        weekday: "short",
-        day: "numeric",
-        month: "short",
-      }).format(d);
-    }
-  }
-  if (occ.length === 1) {
-    return nextLabel.length > 0 ? nextLabel : null;
-  }
-  return nextLabel.length > 0
-    ? `${occ.length} dates · Next: ${nextLabel}`
-    : `${occ.length} dates`;
-};
-
-// "3 spots left · 12 max" / "12 max" — from the soonest occurrence (rule 9).
-const buildSeatsLabel = (
-  occ: ReadonlyArray<ExperienceOccurrence>,
-): string | null => {
-  const first = occ[0];
-  if (first === undefined) return null;
-  const { remaining, capacity } = first;
-  if (remaining === null && capacity === null) return null; // unlimited
-  if (remaining !== null && capacity !== null) {
-    return `${Math.max(remaining, 0)} spots left · ${capacity} max`;
-  }
-  if (remaining !== null) return `${Math.max(remaining, 0)} spots left`;
-  if (capacity !== null) return `${capacity} max`;
-  return null;
-};
 
 // ORCH-1157 Round-8 [cross-type time audit] — device-locale-aware per-stop time
 // from an HH:MM[:SS] authored start_time (rule 9). PREVIOUSLY forced 12h AM/PM
@@ -217,26 +154,6 @@ const formatStartTime = (
   }
 };
 
-// Per-stop media → CountAwareGallery items (image/video). Honest passthrough.
-const stopGalleryItems = (
-  imageUrls: string[] | undefined,
-  fallback: string | null,
-): CountAwareGalleryItem[] => {
-  const urls =
-    Array.isArray(imageUrls) && imageUrls.length > 0
-      ? imageUrls
-      : fallback !== null
-        ? [fallback]
-        : [];
-  return urls
-    .filter((u) => typeof u === "string" && u.length > 0)
-    .map((url) => ({
-      url,
-      type: /\.(mp4|mov|webm|m4v)(\?.*)?$/i.test(url)
-        ? ("video" as const)
-        : ("image" as const),
-    }));
-};
 const SHEET_SNAP_POINTS = glass.bottomSheet.snapPoints as unknown as (
   | string
   | number
@@ -305,7 +222,6 @@ export default function ConsumerExperienceDetailScreen({
   );
   const [checkoutInFlight, setCheckoutInFlight] = useState<boolean>(false);
   const [muted, setMuted] = useState<boolean>(true);
-  const [aboutCollapsed, setAboutCollapsed] = useState<boolean>(true);
 
   // ORCH-1072 adaptive occurrence state (ported from EBES).
   const [occurrencePickerVisible, setOccurrencePickerVisible] =
@@ -368,16 +284,13 @@ export default function ConsumerExperienceDetailScreen({
   void isDesktop;
 
   const toggleMute = useCallback(() => setMuted((m) => !m), []);
-  const toggleAbout = useCallback((): void => {
-    LayoutAnimation.configureNext(
-      LayoutAnimation.create(
-        200,
-        LayoutAnimation.Types.easeInEaseOut,
-        LayoutAnimation.Properties.opacity,
-      ),
-    );
-    setAboutCollapsed((c) => !c);
-  }, []);
+
+  // ORCH-1155 [public-brand-page] — brand chip "View" opens /b/{brandSlug}.
+  const handleViewBrand = useCallback((): void => {
+    if (typeof seed?.brandSlug === "string" && seed.brandSlug.length > 0) {
+      router.push(`/b/${seed.brandSlug}` as never);
+    }
+  }, [router, seed?.brandSlug]);
 
   const handleShare = useCallback((): void => {
     const slug = seed?.brandSlug;
@@ -692,64 +605,80 @@ export default function ConsumerExperienceDetailScreen({
       ? seed.coverMediaType
       : null;
   const showMute = coverMediaType === "video";
-  const cityCountry =
-    normalizeCityCountry(seed.city) ??
-    normalizeCityCountry(seed.venueName) ??
-    normalizeCityCountry(seed.address);
-  const aboutText =
-    seed.description !== null && seed.description.trim().length > 0
-      ? seed.description
-      : null;
-  const canCollapseAbout =
-    aboutText !== null && aboutText.length > ABOUT_COLLAPSE_THRESHOLD;
-  const aboutCollapsedNow = canCollapseAbout && aboutCollapsed;
-  const stops = Array.isArray(seed.experienceStops) ? seed.experienceStops : [];
 
-  // ORCH-1138 rework (§4.C.5) — derived, real-data-gated display fields (rule 9).
-  const vibeChips = (Array.isArray(seed.experienceIntents)
-    ? seed.experienceIntents
-    : []
-  )
-    .map((id) => ({ id, label: EXPERIENCE_INTENT_LABEL[id] ?? null }))
-    .filter((v): v is { id: string; label: string } => v.label !== null);
-  const datesSubline = buildDatesSubline(occurrences, seed.timezone);
-  const seatsLabel = buildSeatsLabel(occurrences);
-  const experienceStartTime = (() => {
-    // master/first occurrence start time (HH:MM) → "7:00 PM start" chip.
-    const first = occurrences[0];
-    if (first === undefined) return null;
-    const d = new Date(first.startAt);
-    if (Number.isNaN(d.getTime())) return null;
-    try {
-      return new Intl.DateTimeFormat(undefined, {
-        hour: "numeric",
-        minute: "2-digit",
-        timeZone: seed.timezone || "UTC",
-      }).format(d);
-    } catch {
-      return null;
-    }
-  })();
-  // stop-1 coords for the "Where you'll start" map (gate on coords present).
-  const startStop = stops.find(
-    (s) => typeof s.lat === "number" && typeof s.lng === "number",
+  // ORCH-1183 — build the SHARED ExperienceOfferingBody contract from the deck/venue
+  // SEED (the existing discover→experience open). The ONE ticket's server all-in
+  // (priceAllInCents from usePublicEventTickets) → the body's combined all-in price.
+  const sellableTicket = tickets.find(
+    (t) => t.visibility !== "hidden" && t.availableAt !== "door",
   );
-  const startMapUrl =
-    startStop?.lat != null && startStop?.lng != null
-      ? buildStaticMapUrl({
-          lat: startStop.lat,
-          lng: startStop.lng,
-          accentHex: palette.accent,
-          height: 320,
-        })
+  // usePublicEventTickets / PublicTicketProps carry MAJOR-unit price + all-in
+  // (priceGbp / priceAllInGbp); the shared body works in CENTS → ×100. Free → null.
+  const sellablePriceCents =
+    sellableTicket !== undefined && typeof sellableTicket.priceGbp === "number"
+      ? Math.round(sellableTicket.priceGbp * 100)
+      : 0;
+  const sellableAllInCents =
+    sellableTicket !== undefined &&
+    typeof sellableTicket.priceAllInGbp === "number" &&
+    sellableTicket.priceAllInGbp > 0
+      ? Math.round(sellableTicket.priceAllInGbp * 100)
       : null;
+  const offeringData = buildExperienceOfferingDataFromSeed(seed, {
+    ticket:
+      sellableTicket !== undefined
+        ? {
+            ticketTypeId: sellableTicket.id,
+            name: sellableTicket.name,
+            priceCents: sellablePriceCents,
+            priceAllInCents: sellableTicket.isFree ? null : sellableAllInCents,
+            currency: sellableTicket.currency ?? seed.currency,
+            isFree: sellableTicket.isFree || sellablePriceCents === 0,
+            isUnlimited: sellableTicket.isUnlimited === true,
+            ticketsRemaining: sellableTicket.capacity,
+            quantityTotal: sellableTicket.capacity,
+          }
+        : null,
+    occurrences: occurrences.map((o) => ({
+      eventDateId: o.eventDateId,
+      startAt: o.startAt,
+      endAt: o.endAt,
+      remaining: o.remaining,
+      capacity: o.capacity,
+    })),
+    bookable: offeringCta.tappable || offeringCta.kind !== "unavailable",
+  });
+  const offeringBrand = buildExperienceOfferingBrandFromSeed(seed);
+
   // State banner driven by the resolved CTA (one owner — resolveOfferingCta).
-  // The `unavailable` variant carries the human title ("Sold out" / "Booking
-  // unavailable" / "This experience has ended") + optional subline (rule 9).
   const stateBanner =
     offeringCta.kind === "unavailable"
       ? { title: offeringCta.title, subline: offeringCta.subline }
       : null;
+  const stateBannerNode: ReactElement | null =
+    stateBanner !== null ? (
+      <View
+        style={[
+          styles.stateBanner,
+          { backgroundColor: palette.accentWash, borderColor: palette.panelBorder },
+        ]}
+        testID="orch-1138-consumer-experience-state-banner"
+      >
+        <Icon name="alert-circle" size={16} color={palette.accent} />
+        <View style={styles.stateBannerTextCol}>
+          <Text
+            style={[styles.stateBannerTitle, { color: palette.primaryText, fontFamily: boldFamily }]}
+          >
+            {stateBanner.title}
+          </Text>
+          {stateBanner.subline !== null ? (
+            <Text style={[styles.stateBannerSub, { color: palette.tertiaryText }]}>
+              {stateBanner.subline}
+            </Text>
+          ) : null}
+        </View>
+      </View>
+    ) : null;
 
   const barKicker = offeringCta.kind === "buy" ? "All-in, taxes included" : null;
   const REVEAL_MARGIN = 24;
@@ -772,7 +701,7 @@ export default function ConsumerExperienceDetailScreen({
   const reserveBarClearance = SHEET_BOTTOM_OVERSHOOT + 8;
 
   const dockedReserve: ReactElement = (
-    <ConsumerEventReserveBar
+    <TripReserveBar
       cta={offeringCta}
       palette={palette}
       kicker={barKicker}
@@ -785,7 +714,7 @@ export default function ConsumerExperienceDetailScreen({
     />
   );
   const floatingReserve: ReactElement | null = floatingPillVisible ? (
-    <ConsumerEventReserveBar
+    <TripReserveBar
       cta={offeringCta}
       palette={palette}
       kicker={barKicker}
@@ -793,6 +722,7 @@ export default function ConsumerExperienceDetailScreen({
       onPress={beginBooking}
       variant="floating"
       safeAreaBottom={insets.bottom}
+      sheetBottomOvershoot={SHEET_BOTTOM_OVERSHOOT}
       testID="orch-1138-consumer-experience-reserve"
     />
   ) : null;
@@ -849,329 +779,23 @@ export default function ConsumerExperienceDetailScreen({
               { backgroundColor: palette.page, borderColor: palette.panelBorder },
             ]}
           >
-            {/* phone lead: N-stop eyebrow + bold title (ORCH-1138 rework §4.C.5) */}
-            <View style={styles.leadBlock}>
-              {stops.length > 0 ? (
-                <Text style={[styles.eyebrowLead, { color: palette.accent }]}>
-                  {stops.length}-stop experience
-                </Text>
-              ) : null}
-              <Text
-                style={[styles.fndTitle, surface.primaryText, { fontFamily: boldFamily }]}
-              >
-                {seed.title}
-              </Text>
-            </View>
-
-            {/* meta chips — City,Country · dates · seats · start-time (real fields
-                only — rule 9; ORCH-1138 rework §4.C.5 SC-6) */}
-            {cityCountry !== null ||
-            datesSubline !== null ||
-            seatsLabel !== null ||
-            experienceStartTime !== null ? (
-              <View
-                style={styles.metaChipRow}
-                testID="orch-1138-consumer-experience-meta"
-              >
-                {cityCountry !== null ? (
-                  <View style={[styles.metaChip, surface.card]}>
-                    <Icon name="location" size={15} color={palette.accent} />
-                    <Text
-                      style={[styles.metaChipText, surface.secondaryText, { fontFamily: boldFamily }]}
-                    >
-                      {cityCountry}
-                    </Text>
-                  </View>
-                ) : null}
-                {datesSubline !== null ? (
-                  <View style={[styles.metaChip, surface.card]}>
-                    <Icon name="calendar" size={15} color={palette.accent} />
-                    <Text
-                      style={[styles.metaChipText, surface.secondaryText, { fontFamily: boldFamily }]}
-                    >
-                      {datesSubline}
-                    </Text>
-                  </View>
-                ) : null}
-                {seatsLabel !== null ? (
-                  <View style={[styles.metaChip, surface.card]}>
-                    <Icon name="people" size={15} color={palette.accent} />
-                    <Text
-                      style={[styles.metaChipText, surface.secondaryText, { fontFamily: boldFamily }]}
-                    >
-                      {seatsLabel}
-                    </Text>
-                  </View>
-                ) : null}
-                {experienceStartTime !== null ? (
-                  <View style={[styles.metaChip, surface.card]}>
-                    <Icon name="time" size={15} color={palette.accent} />
-                    <Text
-                      style={[styles.metaChipText, surface.secondaryText, { fontFamily: boldFamily }]}
-                    >
-                      {experienceStartTime} start
-                    </Text>
-                  </View>
-                ) : null}
-              </View>
-            ) : null}
-
-            {/* vibe chips (ORCH-1138 rework §4.C.5 SC-3; rule 9 — only when present) */}
-            {vibeChips.length > 0 ? (
-              <View
-                style={styles.vibeChipRow}
-                testID="orch-1138-consumer-experience-vibes"
-              >
-                {vibeChips.map((v) => (
-                  <View
-                    key={v.id}
-                    style={[styles.vibeChip, { backgroundColor: palette.accentWash }]}
-                  >
-                    <Icon name="sparkles" size={13} color={palette.accent} />
-                    <Text
-                      style={[styles.vibeChipText, { color: palette.accent, fontFamily: boldFamily }]}
-                    >
-                      {v.label}
-                    </Text>
-                  </View>
-                ))}
-              </View>
-            ) : null}
-
-            {/* state banner (sold-out / ended / unavailable) — ORCH-1138 §4.C.5 SC-9 */}
-            {stateBanner !== null ? (
-              <View
-                style={[styles.stateBanner, { backgroundColor: palette.accentWash, borderColor: palette.panelBorder }]}
-                testID="orch-1138-consumer-experience-state-banner"
-              >
-                <Icon name="alert-circle" size={16} color={palette.accent} />
-                <View style={styles.stateBannerTextCol}>
-                  <Text
-                    style={[styles.stateBannerTitle, { color: palette.primaryText, fontFamily: boldFamily }]}
-                  >
-                    {stateBanner.title}
-                  </Text>
-                  {stateBanner.subline !== null ? (
-                    <Text style={[styles.stateBannerSub, { color: palette.tertiaryText }]}>
-                      {stateBanner.subline}
-                    </Text>
-                  ) : null}
-                </View>
-              </View>
-            ) : null}
-
-            {/* brand chip — "Presented by" (anon-safe brand cover/initial).
-                ORCH-1155 [public-brand-page]: tap opens the brand page
-                /b/{brandSlug} (no dead tap). Guard empty slug (rule 9). */}
-            <Pressable
-              style={[styles.brandRow, surface.card]}
-              accessibilityRole="button"
-              accessibilityLabel={`View ${seed.brandName}`}
-              onPress={() => {
-                if (
-                  typeof seed.brandSlug === "string" &&
-                  seed.brandSlug.length > 0
-                ) {
-                  router.push(`/b/${seed.brandSlug}` as never);
-                }
-              }}
-            >
-              <View
-                style={[
-                  styles.brandTile,
-                  seed.brandProfilePhotoUrl === null
-                    ? { backgroundColor: palette.accent }
-                    : null,
-                ]}
-              >
-                {seed.brandProfilePhotoUrl !== null ? (
-                  <EventCoverMedia
-                    mediaUrl={seed.brandProfilePhotoUrl}
-                    mediaType="image"
-                    hue={hueFromId(seed.brandSlug)}
-                    label=""
-                    radius={999}
-                    autoplay
-                    playbackActive
-                    muted
-                    loop
-                    height="100%"
-                    width="100%"
-                  />
-                ) : (
-                  <View style={styles.brandInitialWrap}>
-                    <Text
-                      style={[
-                        styles.brandInitial,
-                        { color: palette.accentText, fontFamily: boldFamily },
-                      ]}
-                    >
-                      {(seed.brandName.trim()[0] ?? "•").toUpperCase()}
-                    </Text>
-                  </View>
-                )}
-              </View>
-              <View style={styles.brandTextCol}>
-                <Text style={[styles.brandKicker, surface.tertiaryText]}>
-                  Presented by
-                </Text>
-                <Text
-                  style={[styles.brandName, surface.primaryText, { fontFamily: boldFamily }]}
-                >
-                  {seed.brandName}
-                </Text>
-              </View>
-              {/* ORCH-1155 [public-brand-page] all-surface parity — trailing
-                  "View" CTA matching the trip/event consumer screens + the
-                  web/business pages. */}
-              <Text style={[styles.brandCta, { color: palette.accent }]}>
-                View
-              </Text>
-            </Pressable>
-
-            {/* About — collapsible (rule 9: only when present) */}
-            {aboutText !== null ? (
-              <View style={styles.section}>
-                <Text
-                  style={[styles.secTitle, surface.primaryText, { fontFamily: boldFamily }]}
-                >
-                  About
-                </Text>
-                <Text
-                  style={[styles.aboutText, surface.secondaryText]}
-                  numberOfLines={aboutCollapsedNow ? 3 : undefined}
-                  ellipsizeMode="tail"
-                >
-                  {aboutText}
-                </Text>
-                {canCollapseAbout ? (
-                  <Pressable
-                    onPress={toggleAbout}
-                    accessibilityRole="button"
-                    accessibilityState={{ expanded: !aboutCollapsedNow }}
-                    accessibilityLabel={aboutCollapsedNow ? "Read more" : "Show less"}
-                    style={styles.aboutToggleRow}
-                  >
-                    <Text style={[styles.aboutToggleText, { color: palette.accent }]}>
-                      {aboutCollapsedNow ? "Read more" : "Show less"}
-                    </Text>
-                    <Icon
-                      name={aboutCollapsedNow ? "chevron-down" : "chevron-up"}
-                      size={16}
-                      color={palette.accent}
-                    />
-                  </Pressable>
-                ) : null}
-              </View>
-            ) : null}
-
-            {/* The itinerary — REAL authored stops (rule 9) */}
-            {stops.length > 0 ? (
-              <View style={styles.section}>
-                <Text
-                  style={[styles.secTitle, surface.primaryText, { fontFamily: boldFamily }]}
-                >
-                  The itinerary
-                </Text>
-                <View style={styles.itin}>
-                  <View style={[styles.itinSpine, { backgroundColor: palette.accentWash }]} />
-                  {stops.map((stop, idx) => {
-                    const stopLabel =
-                      typeof stop.stopLabel === "string"
-                        ? stop.stopLabel.toUpperCase()
-                        : idx === 0
-                          ? "START HERE"
-                          : idx === stops.length - 1
-                            ? "END WITH"
-                            : "THEN";
-                    const galleryItems = stopGalleryItems(
-                      stop.imageUrls,
-                      stop.imageUrl ?? null,
-                    );
-                    const timePill = formatStartTime(stop.startTime);
-                    return (
-                      <View key={`${stop.placeName ?? "stop"}-${idx}`} style={styles.stop}>
-                        <View style={[styles.stopDot, { backgroundColor: palette.accent }]}>
-                          <Text style={[styles.stopDotText, { color: palette.accentText }]}>
-                            {stop.stopNumber > 0 ? stop.stopNumber : idx + 1}
-                          </Text>
-                        </View>
-                        <View style={[styles.stopCard, surface.card]}>
-                          <View style={styles.stopHead}>
-                            <Text style={[styles.stopOrd, { color: palette.accent }]}>
-                              {stopLabel}
-                            </Text>
-                            {timePill !== null ? (
-                              <Text style={[styles.stopTimePill, surface.tertiaryText]}>
-                                {timePill}
-                              </Text>
-                            ) : null}
-                          </View>
-                          {stop.placeName !== null ? (
-                            <Text
-                              style={[styles.stopTitle, surface.primaryText, { fontFamily: boldFamily }]}
-                            >
-                              {stop.placeName}
-                            </Text>
-                          ) : null}
-                          {stop.address !== null ? (
-                            <Text style={[styles.stopAddr, surface.tertiaryText]} numberOfLines={2}>
-                              {stop.address}
-                            </Text>
-                          ) : null}
-                          {stop.aiDescription !== null ? (
-                            <Text style={[styles.stopBlurb, surface.secondaryText]}>
-                              {stop.aiDescription}
-                            </Text>
-                          ) : null}
-                          {galleryItems.length > 0 ? (
-                            <View style={styles.stopGallery}>
-                              <CountAwareGallery
-                                items={galleryItems}
-                                palette={palette}
-                                variant="phone"
-                                accessibilityLabelPrefix={`Stop ${idx + 1} media`}
-                              />
-                            </View>
-                          ) : null}
-                        </View>
-                      </View>
-                    );
-                  })}
-                </View>
-              </View>
-            ) : null}
-
-            {/* "Where you'll start" map (ORCH-1138 rework §4.C.5 SC-5; rule 9 —
-                only when stop-1 coords + a Mapbox token resolve) */}
-            {startMapUrl !== null ? (
-              <View style={styles.section} testID="orch-1138-consumer-experience-map">
-                <Text
-                  style={[styles.secTitle, surface.primaryText, { fontFamily: boldFamily }]}
-                >
-                  Where you&apos;ll start
-                </Text>
-                <Image
-                  source={{ uri: startMapUrl }}
-                  style={[styles.startMap, { borderColor: palette.panelBorder }]}
-                  resizeMode="cover"
-                  accessibilityLabel="Map of the first stop"
-                />
-                {startStop?.placeName != null ? (
-                  <Text style={[styles.mapCaption, surface.tertiaryText]}>
-                    {startStop.placeName}
-                    {startStop.address != null ? ` · ${startStop.address}` : ""}
-                  </Text>
-                ) : null}
-              </View>
-            ) : null}
-
-            <Text style={[styles.reassure, { color: palette.tertiaryText }]}>
-              All-in price — taxes &amp; fees included, no surprises at checkout.
-            </Text>
-
-            {/* DOCKED CTA — the LAST scroll child (float→dock language) */}
-            {dockedReserve}
+            {/* ORCH-1183 — the ONE shared, shell-agnostic body. The deck/venue SEED
+                is mapped into the ExperienceOfferingData contract above; the body
+                renders the SAME sections on every surface (lead/meta/vibes/brand/
+                about/itinerary[shared StopSpine — per-stop VIDEO preserved]/map/
+                price). The DOCKED reserve bar rides as the LAST body child. */}
+            <ExperienceOfferingBody
+              data={offeringData}
+              brand={offeringBrand}
+              palette={palette}
+              theme={theme}
+              callbacks={{ onReserve: beginBooking, onViewBrand: handleViewBrand }}
+              variant="phone"
+              formatStopTime={(iso: string | null) => formatStartTime(iso)}
+              stateBanner={stateBannerNode}
+              dockedReserve={dockedReserve}
+              testID="orch-1183-consumer-experience-body"
+            />
           </View>
         </BottomSheetScrollView>
 
@@ -1245,6 +869,10 @@ export default function ConsumerExperienceDetailScreen({
 const SEAM = 28;
 
 const styles = StyleSheet.create({
+  // ORCH-1183 — the screen now owns ONLY the gorhom scaffold (cover/scroll/body/
+  // chrome) + the state banner node + the cold-deep-link state body. All section
+  // visuals (lead/meta/vibes/brand/about/itinerary[StopSpine]/map/price) moved to
+  // the shared <ExperienceOfferingBody>; their styles were retired with the body.
   nativeCover: {
     position: "absolute",
     top: 0,
@@ -1273,35 +901,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
   },
   nativeChrome: { position: "absolute", left: 16, right: 16, zIndex: 70 },
-  leadBlock: { marginBottom: 4 },
-  eyebrowLead: {
-    fontSize: 11,
-    fontWeight: "900",
-    letterSpacing: 1.6,
-    textTransform: "uppercase",
-    marginBottom: 8,
-  },
-  fndTitle: { fontSize: 32, lineHeight: 35, fontWeight: "900", letterSpacing: -0.5 },
-  metaChipRow: { flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 16 },
-  metaChip: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    borderRadius: 999,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-  },
-  metaChipText: { fontSize: 13, fontWeight: "600" },
-  vibeChipRow: { flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 12 },
-  vibeChip: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 5,
-    borderRadius: 999,
-    paddingHorizontal: 11,
-    paddingVertical: 7,
-  },
-  vibeChipText: { fontSize: 12, fontWeight: "800", letterSpacing: 0.2 },
   stateBanner: {
     flexDirection: "row",
     alignItems: "center",
@@ -1315,87 +914,6 @@ const styles = StyleSheet.create({
   stateBannerTextCol: { flexShrink: 1 },
   stateBannerTitle: { fontSize: 14, fontWeight: "800" },
   stateBannerSub: { fontSize: 12, marginTop: 1 },
-  stopHead: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: 8,
-  },
-  stopTimePill: { fontSize: 11, fontWeight: "700" },
-  stopGallery: { marginTop: 12 },
-  startMap: {
-    width: "100%",
-    height: 180,
-    borderRadius: 14,
-    borderWidth: 1,
-    backgroundColor: "#000",
-  },
-  mapCaption: { fontSize: 12, lineHeight: 17, marginTop: 8 },
-  brandRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-    marginTop: 18,
-    borderRadius: 16,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-  },
-  brandTile: {
-    width: 42,
-    height: 42,
-    borderRadius: 999,
-    overflow: "hidden",
-    backgroundColor: "#1a1c20",
-  },
-  brandInitialWrap: { flex: 1, alignItems: "center", justifyContent: "center" },
-  brandInitial: { fontSize: 18, fontWeight: "900" },
-  brandTextCol: { flexShrink: 1 },
-  // ORCH-1155 [public-brand-page] — trailing "View" CTA on the brand chip
-  // (parity with the trip/event consumer screens + web/business pages).
-  brandCta: { marginLeft: "auto", fontSize: 12, fontWeight: "800" },
-  brandKicker: {
-    fontSize: 10,
-    fontWeight: "800",
-    letterSpacing: 1.2,
-    textTransform: "uppercase",
-  },
-  brandName: { fontSize: 15, fontWeight: "800", marginTop: 1 },
-  section: { marginTop: 24 },
-  secTitle: { fontSize: 20, fontWeight: "900", letterSpacing: -0.3, marginBottom: 12 },
-  aboutText: { fontSize: 16, lineHeight: 23 },
-  aboutToggleRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 4,
-    minHeight: 44,
-  },
-  aboutToggleText: { fontSize: 14, fontWeight: "600" },
-  // itinerary spine
-  itin: { position: "relative", paddingLeft: 30, marginTop: 4 },
-  itinSpine: { position: "absolute", left: 9, top: 6, bottom: 6, width: 2 },
-  stop: { position: "relative", paddingBottom: 18 },
-  stopDot: {
-    position: "absolute",
-    left: -30,
-    top: 2,
-    width: 20,
-    height: 20,
-    borderRadius: 999,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  stopDotText: { fontSize: 10, fontWeight: "900" },
-  stopCard: { borderRadius: 14, padding: 14 },
-  stopOrd: {
-    fontSize: 10,
-    fontWeight: "900",
-    letterSpacing: 1,
-    textTransform: "uppercase",
-  },
-  stopTitle: { fontSize: 15, fontWeight: "800", marginTop: 4 },
-  stopAddr: { fontSize: 12, lineHeight: 17, marginTop: 3 },
-  stopBlurb: { fontSize: 13, lineHeight: 20, marginTop: 8 },
-  reassure: { fontSize: 12, marginTop: 20, lineHeight: 17 },
   stateBody: {
     alignItems: "center",
     justifyContent: "center",
