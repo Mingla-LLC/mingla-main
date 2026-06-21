@@ -118,14 +118,14 @@ import { VenueReservationsModule } from "../VenueReservationsModule";
 import { VenueWaitlistModule } from "../VenueWaitlistModule";
 import { VenueMenuModule } from "../VenueMenuModule";
 
-// [TEST-MOD-APPROVED ORCH-1190] — R3 supersedes the R2 contract. R2 asserted the
-// empty card carried `width:"100%"`; that property was REMOVED in R3 because it
-// can DEFEAT alignSelf:"stretch" under an indefinite-width flex ancestor (proven
-// with Playwright + real react-native-web — the bug Seth still saw after R2; see
-// Mingla_Artifacts/reports/IMPLEMENT_ORCH-1190-FULLWIDTH-WEB.md). The robust R3
-// contract is a stretching wrapper + card via alignSelf:"stretch", no width:100%.
-// This file is updated (rather than left asserting the now-removed property) so
-// CI reflects the live contract; the canonical R3 proof lives in
+// [TEST-MOD-APPROVED ORCH-1190] — R4 restores the R2 contract. R3 had rewritten
+// this file to assert `width:"100%"` was ABSENT (theory: width:100% defeats
+// alignSelf:"stretch"); that R3 build never deployed/verified and the narrow card
+// PERSISTED on live business desktop web. R4's ground truth: the proven-working
+// VenueTablesModule.tableCard uses BOTH width:"100%" AND alignSelf:"stretch"
+// together and renders full-width in this exact shell (Seth-confirmed). So this
+// file is restored to assert the empty card carries `width:"100%"` (PRESENT) again
+// — matching tableCard and the R2-original intent. The canonical R4 proof lives in
 // venueEmptyStateFullWidth.orch1190r3.web.render.test.tsx.
 
 // react-native-web compiles `alignSelf:"stretch"` to this deterministic atomic
@@ -141,25 +141,25 @@ function countClass(html: string, cls: string): number {
   return html.split(cls).length - 1;
 }
 
-describe("ORCH-1190 R3 — venue empty-state cards stretch full width on WEB", () => {
-  it("Reservations empty state: stretching wrapper, no fragile width:100%", () => {
+describe("ORCH-1190 R4 — venue empty-state cards full width on WEB (width:100% + alignSelf:stretch)", () => {
+  it("Reservations empty state: carries width:100% (and alignSelf:stretch)", () => {
     const html = renderHtml(<VenueReservationsModule brandId="b1" />);
     expect(html).toContain("No reservations today yet.");
     expect(countClass(html, ALIGN_SELF_STRETCH)).toBeGreaterThanOrEqual(2);
-    expect(html).not.toContain(WIDTH_100);
+    expect(countClass(html, WIDTH_100)).toBeGreaterThanOrEqual(2);
   });
 
-  it("Waitlist empty state: stretching wrapper, no fragile width:100%", () => {
+  it("Waitlist empty state: carries width:100% (and alignSelf:stretch)", () => {
     const html = renderHtml(<VenueWaitlistModule brandId="b1" />);
     expect(html).toContain("Nobody&#x27;s waiting");
     expect(countClass(html, ALIGN_SELF_STRETCH)).toBeGreaterThanOrEqual(2);
-    expect(html).not.toContain(WIDTH_100);
+    expect(countClass(html, WIDTH_100)).toBeGreaterThanOrEqual(2);
   });
 
-  it("Menu empty state: stretching wrapper, no fragile width:100%", () => {
+  it("Menu empty state: carries width:100% (and alignSelf:stretch)", () => {
     const html = renderHtml(<VenueMenuModule brandId="b1" />);
     expect(html).toContain("Build your menu");
     expect(countClass(html, ALIGN_SELF_STRETCH)).toBeGreaterThanOrEqual(2);
-    expect(html).not.toContain(WIDTH_100);
+    expect(countClass(html, WIDTH_100)).toBeGreaterThanOrEqual(2);
   });
 });

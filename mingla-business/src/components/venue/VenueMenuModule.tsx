@@ -693,15 +693,17 @@ const styles = StyleSheet.create({
     alignSelf: "stretch",
   },
   // ---- empty ----
-  // ORCH-1190 R3 — full-width empty "Build your menu" card on WEB, robustly.
-  // Stretching wrapper + card stretches via alignSelf WITHOUT width:"100%" (an
-  // explicit main-size can defeat alignSelf:"stretch" under an indefinite-width
-  // flex ancestor → the narrow centered card Seth saw while the header read full
-  // width). See IMPLEMENT_ORCH-1190-FULLWIDTH-WEB.md.
+  // ORCH-1190 R4 — full-width empty "Build your menu" card on WEB, matching the
+  // PROVEN-working VenueTablesModule.tableCard pattern (BOTH width:"100%" AND
+  // alignSelf:"stretch", together). R3 dropped width:"100%" and regressed to a
+  // narrow centered card while the header read full width; the sibling tableCard
+  // proves both-together renders edge-to-edge in this exact shell.
   emptyWrap: {
+    width: "100%",
     alignSelf: "stretch",
   },
   emptyCard: {
+    width: "100%",
     alignSelf: "stretch",
     alignItems: "center",
     paddingVertical: spacing.xl,
@@ -736,13 +738,14 @@ const styles = StyleSheet.create({
     color: semantic.error,
   },
   // ---- skeleton ----
-  // ORCH-1190 R3 — full-width loading skeleton on WEB, robustly (see emptyCard +
-  // IMPLEMENT_ORCH-1190-FULLWIDTH-WEB.md). Wrapper stretches; card stretches via
-  // alignSelf WITHOUT width:"100%".
+  // ORCH-1190 R4 — full-width loading skeleton on WEB, matching the proven
+  // VenueTablesModule.tableCard pattern (BOTH width:"100%" AND alignSelf:"stretch").
   skeletonWrap: {
+    width: "100%",
     alignSelf: "stretch",
   },
   skeletonCard: {
+    width: "100%",
     alignSelf: "stretch",
     gap: spacing.sm,
   },
