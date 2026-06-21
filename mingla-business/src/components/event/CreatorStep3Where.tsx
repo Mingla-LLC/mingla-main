@@ -14,7 +14,7 @@
  */
 
 import React from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { Image, Pressable, StyleSheet, Text, View } from "react-native";
 
 import {
   accent,
@@ -36,6 +36,15 @@ import { Input } from "../ui/Input";
 // the same PlaceDetails boundary: formattedAddress / city / location).
 import { MapboxAddressInput } from "../location/MapboxAddressInput";
 import type { PlaceDetails } from "../../services/mapboxGeocodeService";
+// ORCH-1186 (salvaged from ORCH-1158 Issue 3 [wizard-map-preview]) — the SAME
+// proven static-map builder the trip/experience previews use. As of ORCH-1165
+// the static map is fetched through the vendor-NEUTRAL `static-map` Supabase
+// edge proxy, so the URL carries NO map-vendor token and is a plain <Image>
+// (no map SDK, no new dependency, works native + react-native-web). FAIL-SAFE:
+// the builder returns null when coords are missing/non-finite OR the Supabase
+// functions base URL is absent, in which case we render the honest "pick an
+// address" empty state (rule 9 — never a fabricated/striped placeholder tile).
+import { buildStaticMapUrl } from "../../utils/mapboxStaticImage";
 
 import { errorForKey, type StepBodyProps } from "./types";
 
@@ -136,12 +145,39 @@ export const CreatorStep3Where: React.FC<StepBodyProps> = ({
             </View>
           </Pressable>
 
-          {/* Map placeholder */}
-          <View style={styles.mapWrap}>
-            <View style={styles.mapStripes} />
-            <View style={styles.mapPin} />
-            <Text style={styles.mapHint}>map preview</Text>
-          </View>
+          {/* ORCH-1186 (salvaged from ORCH-1158 Issue 3 [wizard-map-preview]) —
+              REAL static Mapbox map (via the `static-map` server proxy) for the
+              picked address's coords. buildStaticMapUrl(lat,lng,accent) → plain
+              <Image>. REAL-DATA-ONLY (rule 9): until an address is picked
+              (draft.locationGeo === null) OR the proxy base URL is absent at
+              runtime, we show the honest "pick an address" empty state — never a
+              fake tile. */}
+          {(() => {
+            const mapUrl = buildStaticMapUrl({
+              lat: draft.locationGeo?.lat ?? null,
+              lng: draft.locationGeo?.lng ?? null,
+              accentHex: accent.warm,
+              height: 160,
+            });
+            return mapUrl !== null ? (
+              <View style={styles.mapWrap}>
+                <Image
+                  source={{ uri: mapUrl }}
+                  style={StyleSheet.absoluteFill}
+                  resizeMode="cover"
+                  accessibilityLabel={`Map of ${draft.address ?? "the venue"}`}
+                />
+                <View style={styles.mapPin} />
+              </View>
+            ) : (
+              <View style={[styles.mapWrap, styles.mapEmpty]}>
+                <Icon name="location" size={22} color={textTokens.quaternary} />
+                <Text style={styles.mapEmptyText}>
+                  Pick an address to preview the map
+                </Text>
+              </View>
+            );
+          })()}
 
           {/* Privacy info card */}
           <GlassCard variant="base" padding={spacing.md} style={styles.infoCard}>
@@ -268,7 +304,7 @@ const styles = StyleSheet.create({
     transform: [{ translateX: 18 }],
   },
 
-  // Map placeholder ----------------------------------------------------
+  // ORCH-1186 — real static-map preview + honest empty state -----------
   mapWrap: {
     height: 160,
     borderRadius: radiusTokens.lg,
@@ -281,11 +317,15 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  mapStripes: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: "#1a1d22",
-    opacity: 0.6,
+  mapEmpty: {
+    gap: spacing.xs,
   },
+  mapEmptyText: {
+    fontSize: typography.caption.fontSize,
+    color: textTokens.quaternary,
+  },
+  // Themed center pin overlaid on the real static map (the static URL already
+  // draws a Mapbox pin; this is the consistent brand-accent dot the wizard used).
   mapPin: {
     width: 32,
     height: 32,
@@ -293,13 +333,6 @@ const styles = StyleSheet.create({
     backgroundColor: accent.warm,
     borderWidth: 3,
     borderColor: "#fff",
-  },
-  mapHint: {
-    position: "absolute",
-    bottom: spacing.xs,
-    right: spacing.sm,
-    fontSize: 10,
-    color: textTokens.quaternary,
   },
 
   // Info card ----------------------------------------------------------
