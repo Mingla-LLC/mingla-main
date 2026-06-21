@@ -75,10 +75,13 @@ ok(
   "plan trips must send an EXPLICIT choice — never silent 'auto' (DISC-1130-A)",
 );
 ok(
-  "T3b the cart's sticky bar leads with the deposit due today on pay-over-time",
-  /dueTodayCents=\{[\s\S]*?paymentPlanChoice === "installments"[\s\S]*?planSchedule\.depositCents/.test(
-    screen,
-  ),
+  // [TEST-MOD-APPROVED ORCH-1182] ORCH-1182 replaced the qty-1 `dueTodayCents`
+  // scalar with `planTiersByTicketId` — the cart now sums the QTY-SCALED deposit
+  // (tripTierDepositTodayCents) over its own live lines, so qty 2 of a €500/25%
+  // tier shows €250 today, not the stale €125 unit deposit. Still fails on revert.
+  "T3b the cart's sticky bar leads with the qty-scaled deposit due today on pay-over-time",
+  /planTiersByTicketId=\{planTiersByTicketId\}/.test(screen) &&
+    /tripTierDepositTodayCents/.test(screen),
 );
 
 // ── T-4 — checkout request stays byte-identical (no address, no taxCalculationId) ──

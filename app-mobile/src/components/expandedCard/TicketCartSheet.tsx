@@ -59,6 +59,13 @@ import {
   type PublicTicketProps,
   QuantityRow,
   type QuantityRowTheme,
+  // ORCH-1182 — the SINGLE-OWNER per-package deposit math (tripBoxTotals). The
+  // cart sums the SAME qty-scaled deposit the §10 box + the per-tile note already
+  // use, over its OWN live cart quantities, so the sticky-bar "Due today" tracks
+  // the cart (never the stale unit-deposit projectedSchedule.depositCents). Pure /
+  // RN-free (I-MOR-0827); never recomputes fees (WYSIWYP / ORCH-1147).
+  tripTierDepositTodayCents,
+  type TripTierLike,
 } from "@mingla/offering-rendering";
 
 import { Icon } from "../ui/Icon";
@@ -232,15 +239,21 @@ export interface TicketCartSheetProps {
    */
   clearFloatingNav?: boolean;
   /**
-   * ORCH-1130 ADDENDUM (Seth-BINDING) — the deposit DUE TODAY (in cents) when
-   * the buyer selected "Pay over time" on a plan trip. Provided by the trip
-   * detail screen (read from the same projected schedule the toggle renders,
-   * never recomputed here). When set, the sticky bar leads with the amount due
-   * today ("Due today") instead of the all-in total, mirroring Path A. Omitted
-   * (undefined) for events / no-plan / pay-in-full → the all-in total shows,
-   * byte-identical to today.
+   * ORCH-1182 — the plan tiers (keyed by ticketTypeId) the buyer is paying for
+   * OVER TIME, carrying the per-tier all-in + installment schedule. The cart sums
+   * the qty-scaled deposit (tripTierDepositTodayCents) over its OWN live cart
+   * quantities → the sticky-bar "Due today" tracks the cart (qty 2 of a €500 /
+   * 25% tier = €250, not the stale €125 unit deposit). When present (a pay-over-
+   * time plan cart) the sticky bar shows BOTH a "Total" line (the qty-scaled all-
+   * in) AND a "Due today" line. Absent / empty (events / no-plan / pay-in-full) →
+   * the existing single all-in line, byte-identical. The trip detail screen builds
+   * this from the SAME tiers it already derives the per-tile note from.
+   *
+   * Supersedes the prior ORCH-1130 `dueTodayCents` scalar (which carried the
+   * qty-1 unit deposit → the ORCH-1182 display bug). The cart owns the qty scaling
+   * here so it can never diverge from the cart's own line state.
    */
-  dueTodayCents?: number;
+  planTiersByTicketId?: Record<string, TripTierLike>;
   /**
    * ORCH-1181 — per-package installment sub-line copy keyed by ticketTypeId
    * (ready-formatted, e.g. "From $125.00 today · pay over time"). The trip detail
@@ -268,7 +281,7 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
   buyerPhone,
   isSubmitting,
   clearFloatingNav = true,
-  dueTodayCents,
+  planTiersByTicketId,
   installmentNoteByTicketId,
   onCancel,
   onCheckout,
@@ -379,6 +392,50 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
       hasAllInDelta: feesTaxCents > 0,
     };
   }, [lines, tickets]);
+
+  // ORCH-1182 — the qty-scaled "Due today" for a pay-over-time plan cart, summed
+  // over the cart's OWN LIVE lines (the BUG: the parent previously passed the
+  // qty-1 unit deposit `projectedSchedule.depositCents`, so qty 2 of a €500 / 25%
+  // tier showed €125 instead of €250). For each line whose tier is on a plan this
+  // buyer is paying over time (`planTiersByTicketId`), the line contributes its
+  // qty-scaled DEPOSIT (tripTierDepositTodayCents — the SAME single-owner deposit
+  // math the §10 box + the per-tile note use); every other line contributes its
+  // FULL qty-scaled all-in (tripTierUnitAllInCents × qty). Mirrors the package's
+  // tripSummedDueTodayCents semantics over the cart's actual quantities so the
+  // sticky bar can never diverge from the tiles / cart lines. NEVER recomputes
+  // fees. `hasPlanLine` gates the two-line bar — no plan line → existing behavior.
+  const dueToday = useMemo<{ cents: number; hasPlanLine: boolean }>(() => {
+    if (
+      planTiersByTicketId === undefined ||
+      Object.keys(planTiersByTicketId).length === 0
+    ) {
+      return { cents: 0, hasPlanLine: false };
+    }
+    let cents = 0;
+    let hasPlanLine = false;
+    for (const line of lines) {
+      if (line.quantity <= 0) continue;
+      const planTier = planTiersByTicketId[line.ticketTypeId];
+      if (planTier !== undefined) {
+        const deposit = tripTierDepositTodayCents(planTier, line.quantity);
+        if (deposit !== null) {
+          cents += deposit;
+          hasPlanLine = true;
+          continue;
+        }
+      }
+      // Non-plan (or 0-deposit) line: full qty-scaled all-in. Prefer the tier's
+      // server all-in when we hold it; else the cart line's own all-in subtotal
+      // (the same value `pricing` summed) so totals stay consistent.
+      const ticket = tickets?.find((t) => t.id === line.ticketTypeId);
+      const lineAllIn =
+        ticket?.priceAllInGbp != null
+          ? Math.round(ticket.priceAllInGbp * 100) * line.quantity
+          : line.unitPriceCents * line.quantity;
+      cents += lineAllIn;
+    }
+    return { cents, hasPlanLine };
+  }, [lines, planTiersByTicketId, tickets]);
 
   // META-ORCH-0991 Wave A — open/close is owned by BaseBottomSheet
   // (declarative `visible`). The prior sheetRef + snapToIndex/close effect is
@@ -582,24 +639,26 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
   // ORCH-1025 — the sticky bar shows the ALL-IN total (sum of server all_in_cents),
   // not the base subtotal, so the buyer sees the exact amount they'll pay upfront.
   //
-  // ORCH-1130 ADDENDUM (Seth-BINDING) — when the buyer selected "Pay over time"
-  // on a plan trip, the parent passes `dueTodayCents` (the deposit due today from
-  // the projected schedule). The sticky bar then leads with that amount under a
-  // "Due today" label, mirroring Path A's deposit-led CTA. Falls back to the
-  // all-in total for events / no-plan / pay-in-full (dueTodayCents undefined).
+  // ORCH-1182 (supersedes the ORCH-1130 `dueTodayCents` scalar) — when this is a
+  // pay-over-time PLAN cart (`dueToday.hasPlanLine`) the sticky bar shows BOTH a
+  // "Total" line (the qty-scaled all-in) AND a "Due today" line (the qty-scaled
+  // deposit, summed over the cart's OWN live lines — never the stale unit deposit).
+  // Otherwise (events / no-plan / pay-in-full / free / empty) it shows the single
+  // "Subtotal" all-in line, byte-identical to before.
   const showsDueToday =
-    dueTodayCents !== undefined &&
-    dueTodayCents > 0 &&
+    dueToday.hasPlanLine &&
+    dueToday.cents > 0 &&
     !totals.isEmpty &&
     !totals.isFree;
   const subtotalValueText = totals.isEmpty
     ? "—"
     : totals.isFree
     ? "Free"
-    : showsDueToday
-    ? formatCentsCurrency(dueTodayCents as number, totals.currency)
     : formatCentsCurrency(pricing.allInCents, totals.currency);
-  const subtotalLabelText = showsDueToday ? "Due today" : "Subtotal";
+  // The all-in Total is the single-line label when no plan; the upper line of the
+  // two-line bar when paying over time.
+  const subtotalLabelText = showsDueToday ? "Total" : "Subtotal";
+  const dueTodayValueText = formatCentsCurrency(dueToday.cents, totals.currency);
 
   // ORCH-1016 REWORK-4 (FIX A) — the CTA bar must clear BOTH the OS home
   // indicator AND Mingla's floating GlassBottomNav. This sheet renders BELOW the
@@ -828,6 +887,15 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
           <Text style={styles.subtotalLabel}>{subtotalLabelText}</Text>
           <Text style={styles.subtotalValue}>{subtotalValueText}</Text>
         </View>
+        {/* ORCH-1182 — pay-over-time carts show the qty-scaled deposit DUE TODAY
+            on a second line beneath the all-in Total (mirrors the business
+            buyer.tsx / payment.tsx two-line pattern). Hidden for no-plan carts. */}
+        {showsDueToday ? (
+          <View style={styles.dueTodayRow}>
+            <Text style={styles.dueTodayLabel}>Due today</Text>
+            <Text style={styles.dueTodayValue}>{dueTodayValueText}</Text>
+          </View>
+        ) : null}
         <Pressable
           onPress={handleConfirm}
           disabled={ctaDisabled}
@@ -1149,6 +1217,26 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     color: "rgba(255, 255, 255, 0.96)",
     letterSpacing: -0.3,
+  },
+  // ORCH-1182 — the second "Due today" line for a pay-over-time cart. The accent
+  // value makes the deposit the visual hero (it's the amount charged now) while
+  // the all-in Total sits above as the reference figure.
+  dueTodayRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "baseline",
+    marginBottom: 12,
+  },
+  dueTodayLabel: {
+    fontSize: 13,
+    fontWeight: "600",
+    color: "rgba(255, 255, 255, 0.72)",
+  },
+  dueTodayValue: {
+    fontSize: 17,
+    fontWeight: "700",
+    color: "#eb7825",
+    letterSpacing: -0.2,
   },
   ctaButton: {
     height: 52,

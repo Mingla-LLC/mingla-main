@@ -178,18 +178,16 @@ ok(
   "the reserve tap must still open the cart/checkout via openCart — checkout unchanged",
 );
 ok(
-  // [TEST-MOD-APPROVED ORCH-1138] assertion-drift refresh: same reserve-flow
-  // port — the native checkout wiring moved from a <ExpandedBusinessEventSheet>
-  // JSX prop onto the in-place `handleBuy` → `runNativeCheckout({...})` call
-  // (handleBuy ported verbatim from EBES). The consent invariant is IDENTICAL:
-  // paymentPlanChoice is forwarded ONLY for a plan trip (detail.hasPlan) and the
-  // cart leads with dueTodayCents. Still fails on revert (drop the hasPlan gate
-  // or the dueTodayCents wiring).
-  "T4b the consumer native checkout wiring is preserved verbatim (paymentPlanChoice + dueTodayCents)",
+  // [TEST-MOD-APPROVED ORCH-1182] assertion-drift refresh: ORCH-1182 replaced the
+  // qty-1 `dueTodayCents` scalar prop with `planTiersByTicketId` (the cart sums the
+  // qty-scaled deposit over its own live lines). The consent invariant is UNCHANGED
+  // — paymentPlanChoice is still forwarded ONLY for a plan trip (detail.hasPlan).
+  // Still fails on revert (drop the hasPlan gate or the qty-scaled plan wiring).
+  "T4b the consumer native checkout wiring is preserved verbatim (paymentPlanChoice + planTiersByTicketId)",
   /paymentPlanChoice:\s*detail\.hasPlan \? paymentPlanChoice : undefined/.test(
     screenSrc,
   ) &&
-    /dueTodayCents=\{/.test(screenSrc),
+    /planTiersByTicketId=\{planTiersByTicketId\}/.test(screenSrc),
   "the consumer native checkout (handleBuy → runNativeCheckout) must be unchanged",
 );
 
