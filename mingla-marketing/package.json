@@ -16,7 +16,9 @@
     "framer-motion": "^11.15.0",
     "clsx": "^2.1.1",
     "tailwind-merge": "^2.5.5",
-    "lucide-react": "^0.460.0"
+    "lucide-react": "^0.460.0",
+    "posthog-js": "^1.205.0",
+    "@next/third-parties": "^15.1.6"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",

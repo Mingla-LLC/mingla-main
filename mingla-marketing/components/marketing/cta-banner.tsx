@@ -2,6 +2,7 @@
 import { motion } from 'framer-motion'
 import { useMinglaReducedMotion } from '@/lib/reduced-motion'
 import { cn } from '@/lib/cn'
+import { captureMarketing } from '@/components/marketing/posthog-provider'
 
 interface CTABannerProps {
   eyebrow?: string
@@ -9,6 +10,8 @@ interface CTABannerProps {
   children?: React.ReactNode
   variant?: 'cinematic' | 'light'
   className?: string
+  /** META-ORCH-1187 — analytics id for the CTA fired from this banner. */
+  ctaId?: string
 }
 
 export function CTABanner({
@@ -17,9 +20,24 @@ export function CTABanner({
   children,
   variant = 'cinematic',
   className,
+  ctaId,
 }: CTABannerProps) {
   const reduced = useMinglaReducedMotion()
   const isDark = variant === 'cinematic'
+
+  // META-ORCH-1187 — fire marketing_cta_clicked when a CTA inside the banner is
+  // tapped (event-delegated so it works for any button/link passed as children).
+  // No-ops until consent (PostHog opt-in); never throws.
+  const onCtaCapture = (e: React.MouseEvent<HTMLDivElement>): void => {
+    const target = e.target as HTMLElement | null
+    const trigger = target?.closest('a,button')
+    if (!trigger) return
+    captureMarketing('marketing_cta_clicked', {
+      cta_id: ctaId ?? 'cta_banner',
+      location: 'cta_banner',
+      label: trigger.textContent?.trim() || undefined,
+    })
+  }
 
   return (
     <section
@@ -67,7 +85,12 @@ export function CTABanner({
           {title}
         </h2>
         {children ? (
-          <div className="flex flex-wrap items-center justify-center gap-3">{children}</div>
+          <div
+            className="flex flex-wrap items-center justify-center gap-3"
+            onClickCapture={onCtaCapture}
+          >
+            {children}
+          </div>
         ) : null}
       </div>
     </section>

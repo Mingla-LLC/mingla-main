@@ -32,8 +32,8 @@ const explorerColumns: FooterColumn[] = [
   {
     title: 'Legal',
     links: [
-      { href: '/privacy', label: 'Privacy' },
-      { href: '/terms', label: 'Terms' },
+      { href: '/privacy-policy', label: 'Privacy' },
+      { href: '/terms-of-service', label: 'Terms' },
     ],
   },
 ]
@@ -60,8 +60,8 @@ const organiserColumns: FooterColumn[] = [
   {
     title: 'Legal',
     links: [
-      { href: '/privacy', label: 'Privacy' },
-      { href: '/terms', label: 'Terms' },
+      { href: '/privacy-policy', label: 'Privacy' },
+      { href: '/terms-of-service', label: 'Terms' },
     ],
   },
 ]
