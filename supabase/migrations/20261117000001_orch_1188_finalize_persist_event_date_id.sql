@@ -337,9 +337,13 @@ $$;
 REVOKE ALL ON FUNCTION public.biz_ticket_checkout_finalize(
   uuid, text, text, text, text, text, text, boolean
 ) FROM PUBLIC;
+-- ORCH-1188: preserve the EXACT pre-existing grants (anon, authenticated,
+-- service_role) — the live function granted all three; restricting to
+-- service_role only would break callers. CREATE OR REPLACE preserves ACLs,
+-- but we re-assert the live set explicitly to be safe.
 GRANT EXECUTE ON FUNCTION public.biz_ticket_checkout_finalize(
   uuid, text, text, text, text, text, text, boolean
-) TO service_role;
+) TO anon, authenticated, service_role;
 
 DO $$
 BEGIN
