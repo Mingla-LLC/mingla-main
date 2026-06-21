@@ -287,3 +287,104 @@ Existing ORCH-1190 tests re-run green after the change: `venueSuitePolish.orch11
   Trivial one-line follow-on if desired.
 - **Deploy:** This is a pure-JS/CSS web fix → ships via the **Vercel `[deploy]`
   web build** (web is unaffected by the COMMS-0052 native-module OTA block).
+
+---
+
+## BUG-3 (REWORK) — table-card STILL cramped one-char-per-line on mobile
+
+**Commit:** `218e40943`
+
+### Symptom (Seth, on device)
+An added table tile ("Test Table · 2 seats · parties 1–2 · Indoor · Standard")
+renders cramped on a narrow mobile viewport — the title wraps one character per
+line ("T\ne\ns\nt…"). The first ORCH-1190 pass (#593 `70b74de13`) restructured
+the row (inner `tableRow` flexDirection:row + `tableMain`/`tableText` flex:1 +
+minWidth:0 + card width:100%) and claimed this fixed it, but it was STILL broken.
+
+### Diagnosis (evidence-backed)
+Modeled the EXACT native layout tree with the real Yoga engine (`yoga-layout`,
+the same engine RN uses on device) at width 375. Findings:
+
+- The chain is `list → GlassChrome outer (width:100%) → clip → content → GlassCard
+  padding View → tableRow → tableMain(flex:1,minWidth:0) → tableText(flex:1,
+  minWidth:0) → name`.
+- With the card's `width:"100%"` present AND every ancestor stretching, the text
+  column measures 251px at 375 — correct. So the prior fix IS correct in isolation.
+- The collapse reproduces ONLY when the card is NOT pinned to a definite cross
+  width: a Yoga model with an ancestor `alignItems:"flex-start"`/`"center"` and
+  the card NOT carrying `width:100%` yields card=92, text-column=0, name height
+  302 (the one-char-per-line wrap). `width:"100%"` resolves against the PARENT, so
+  it only protects when the parent itself is definite-width and stretching. The
+  shell's phone path wraps the module in a vertical `ScrollView` content container
+  (no alignItems set) — a class of container where the lone `width:100%` is not a
+  guaranteed protection across RN versions/ancestor styles.
+- **Probable why-Seth-still-saw-it:** COMMS-0052 — the business OTA has been
+  BLOCKED since `70b74de13` merged (posthog-react-native hard-import), so the #593
+  table fix never reached Seth's installed binary. He was testing a build WITHOUT
+  the prior fix. Regardless, the fix below is hardened so it cannot regress under
+  any ancestor.
+
+### Fix (`mingla-business/src/components/venue/VenueTablesModule.tsx`, +19/-5)
+- `styles.tableCard`: added `alignSelf:"stretch"` alongside the existing
+  `width:"100%"`. `alignSelf:stretch` forces the card to fill its cross-axis
+  regardless of the ancestor's `alignItems`; both are kept (neither alone covers
+  every container — width:100% for definite parents, alignSelf:stretch for
+  non-stretch ancestors).
+- `styles.tableRow`: added `width:"100%"` so the GlassCard padding wrapper (which
+  itself carries no width) cannot leave the row content-sized; the flex:1 +
+  minWidth:0 text column now measures against the full card width.
+
+Re-ran the Yoga model after the fix: card=343 / text-column=251 / height=18 under
+`alignItems:flex-start`, `center`, AND `stretch` ancestors — no collapse in any case.
+
+### Old → New receipt
+**Before:** card `{ width:"100%" }`; row `{ flexDirection:row, alignItems:center,
+gap }`. Text column collapses to min-content under a non-stretch / non-definite
+ancestor → one-char-per-line title.
+**After:** card `{ width:"100%", alignSelf:"stretch" }`; row `{ …, width:"100%" }`.
+Card fills cross-axis under any ancestor; row spans full card; title wraps
+word-level. **Why:** REWORK of #8 — make the full-width layout ancestor-proof.
+**Lines:** ~+19/-5 (styles only; no JSX/logic change).
+
+### Regression test (fails-on-revert proven)
+`mingla-business/__tests__/venueTableCardMobileWidth.orch1190r2.web.render.test.tsx`
+(+ config `jest.orch1190r2.tablecard.web.render.cjs`). Renders the POPULATED
+VenueTablesModule through react-native-web (ReactDOMServer) and asserts the
+compiled atomic classes: card carries `r-alignSelf-1pz39u2` (alignSelf:stretch) +
+`r-width-13qz1uu` (width:100%); ≥2 `r-width-13qz1uu` (card + row); text column
+carries `r-flex-13awgt0` (flex:1) + `r-minWidth-bcqeeo` (minWidth:0). 4/4 PASS.
+
+**fails-on-revert verified at commit 218e40943** — by TRUE LINE-DELETION of
+`alignSelf:"stretch"` (tableCard) and `width:"100%"` (tableRow): the two layout
+assertions FAIL (2 failed, 2 passed); restored → 4/4 PASS. Append-only: new test
++ new config, no existing test modified ([TEST-MOD-APPROVED] not needed).
+
+### Gates re-run
+- `venueTableCardMobileWidth.orch1190r2.web.render` — 4/4 PASS.
+- `venueEmptyStateFullWidth.orch1190r2.web.render` (BUG-2) — 3/3 PASS.
+- `venueSuitePolish.orch1190` — 18/18 PASS.
+- `tsc --noEmit`: no error on VenueTablesModule.tsx (styles-only). The only test-file
+  note is the pre-existing `react-dom/server` missing-types warning, identical to the
+  committed BUG-1/BUG-2 web render tests.
+
+### How verified (explicit)
+1. Reproduced the collapse with the real Yoga layout engine at 375px (not source
+   reasoning) — showed card=92 / text-column=0 / name-height=302 under a
+   non-stretch + non-definite-width ancestor.
+2. Proved the fix at 375px under flex-start / center / stretch ancestors — all
+   card=343 / text-column=251 / height=18.
+3. Rendered the populated module through react-native-web (the deployed web build)
+   and confirmed the fixed atomic classes land on the card + row + text column.
+   NOT verified on a physical device / sim (no business native build available;
+   OTA blocked by COMMS-0052). Web-render + Yoga-engine proof stands; on-device
+   confirmation arrives with the next business native build.
+
+### Cross-surface impact
+Shared RN StyleSheet → Business iOS · Business Android · Business Web (Vercel) all
+get the fix automatically (one code path). Web ships now via Vercel `[deploy]`;
+iOS/Android ship with the next business native build (COMMS-0052 OTA block).
+Unaffected: Consumer iOS/Android, Buyer/anonymous web, Admin web (no venue tables module).
+
+### COMMS
+Acked COMMS-0052 (BLOCK): no `eas update` performed; this turn is code + commit
+only (no deploy/OTA/merge), so the block is honored. BUG-3 is pure-JS/CSS.
