@@ -72,6 +72,10 @@ import {
   buildExperienceOfferingDataFromSeed,
   buildExperienceOfferingBrandFromSeed,
 } from "../../hooks/useConsumerExperienceOfferingData";
+import {
+  useConsumerExperienceDetail,
+  type ConsumerExperienceOccurrence,
+} from "../../hooks/useConsumerExperienceDetail";
 
 import { Icon } from "../../components/ui/Icon";
 import {
@@ -257,6 +261,22 @@ export default function ConsumerExperienceDetailScreen({
   const themeQuery = useEventTheme(seed);
   const runNativeCheckout = useNativeCheckoutFlow();
 
+  // ORCH-1187 FIX-3(a) (Seth device, open-daily misclassified as fixed-slot): the
+  // deck SEED can be STALE — it may lack isRecurring/recurrenceRule and carry
+  // already-ENDED occurrences (the cached deck supply). That made an open-daily
+  // restaurant render "{N} upcoming dates" with a PAST "Next", and beginBooking
+  // skipped the day→time→party wizard. We re-fetch FRESH detail by slug via the
+  // SAME canonical anon RPC the cold /exp/ route + buyer-web use
+  // (pg_public_experience_by_slug), keyed on the seed's brandSlug+experienceSlug,
+  // and PREFER the fresh isRecurring/recurrence + occurrences below. The seed
+  // still drives the instant first paint (no blank flash); fresh values override
+  // when they arrive. Mirrors ConsumerTripDetailScreen's useConsumerTripDetail.
+  const freshDetailQuery = useConsumerExperienceDetail(
+    seed?.brandSlug ?? null,
+    seed?.eventSlug ?? null,
+  );
+  const freshDetail = freshDetailQuery.detail;
+
   // ORCH-1138 rework (§4.C.5) — the seed's anon-safe brandTheme (COMMS-0009) is
   // the SYNCHRONOUS fallback so the page renders themed immediately and never
   // flashes the default palette before useEventTheme settles. resolveTheme reads
@@ -307,28 +327,70 @@ export default function ConsumerExperienceDetailScreen({
   // ORCH-1072 — the experience's bookable upcoming occurrences. Sold-out ones
   // (remaining === 0) are excluded from the auto-select / single-occurrence
   // logic but still shown disabled in the picker.
-  const occurrences: ExperienceOccurrence[] = useMemo(
-    () =>
-      Array.isArray(seed?.upcomingOccurrences) ? seed.upcomingOccurrences : [],
-    [seed?.upcomingOccurrences],
-  );
+  //
+  // ORCH-1187 FIX-3(a)/FIX-4(a): PREFER the FRESH by-slug RPC occurrences over
+  // the (possibly stale) deck seed once they arrive, and FILTER any occurrence
+  // whose endAt has already passed (endAt > now) — mirroring the server's
+  // `event_dates` end_at filter — so the reserve picker only ever offers live,
+  // future, bookable slots and the cart never submits an eventDateId that the
+  // server will 422 as occurrence_not_available. The seed still drives the first
+  // paint (instant, no blank flash) until the fresh fetch resolves.
+  const occurrences: ExperienceOccurrence[] = useMemo(() => {
+    const fresh: ConsumerExperienceOccurrence[] | null =
+      freshDetail !== null ? freshDetail.occurrences : null;
+    const raw: ExperienceOccurrence[] =
+      fresh !== null
+        ? fresh.map((o) => ({
+            eventDateId: o.eventDateId,
+            startAt: o.startAt,
+            endAt: o.endAt,
+            capacity: null,
+            sold: 0,
+            remaining: o.remaining,
+          }))
+        : Array.isArray(seed?.upcomingOccurrences)
+          ? seed.upcomingOccurrences
+          : [];
+    const now = Date.now();
+    return raw.filter((o) => {
+      const end = new Date(o.endAt).getTime();
+      // Keep occurrences with a future end; keep unparseable ones (rule 9 — no
+      // fabrication / never silently drop a malformed-but-present slot, the
+      // server is still the authoritative last line of defense).
+      return Number.isNaN(end) || end > now;
+    });
+  }, [freshDetail, seed?.upcomingOccurrences]);
   const bookableOccurrences = useMemo(
     () => occurrences.filter((o) => o.remaining === null || o.remaining > 0),
     [occurrences],
   );
   // ORCH-1153 WS2 — open-daily (restaurant) vs flat slots, from the SHARED
   // rule-based detector (same owner the buyer-web /exp/ page uses) so the SAME
-  // experience classifies IDENTICALLY across surfaces. The recurrence fields
-  // arrive on the seed via the deck-supply RPC + the seed mappers (deck +
-  // venue). undefined isRecurring/recurrenceRule (cold deep-link / pre-OTA
+  // experience classifies IDENTICALLY across surfaces.
+  //
+  // ORCH-1187 FIX-3(a): PREFER the FRESH by-slug RPC's isRecurring/recurrenceRule
+  // over the deck seed (which can be stale / lack the recurrence fields →
+  // misclassified an open-daily restaurant as fixed-slot). The seed's fields are
+  // the synchronous fallback until the fresh fetch lands. undefined on both (cold
   // payload) → false → flat slot list (safe default, no fabrication).
   const openDaily = useMemo(
     () =>
-      isOpenDailyExperience({
-        isRecurring: seed?.isRecurring === true,
-        recurrenceRule: seed?.recurrenceRule ?? null,
-      }),
-    [seed?.isRecurring, seed?.recurrenceRule],
+      isOpenDailyExperience(
+        freshDetail !== null
+          ? {
+              isRecurring: freshDetail.isRecurring,
+              recurrenceRule: freshDetail.recurrenceRule,
+            }
+          : {
+              isRecurring: seed?.isRecurring === true,
+              recurrenceRule: seed?.recurrenceRule ?? null,
+            },
+      ),
+    [
+      freshDetail,
+      seed?.isRecurring,
+      seed?.recurrenceRule,
+    ],
   );
   // The event-level remaining caps the open-daily party stepper (soonest slot).
   const eventRemaining = useMemo<number | null>(() => {
@@ -376,15 +438,20 @@ export default function ConsumerExperienceDetailScreen({
     if (sellable === undefined) return;
     setInitialTicketTypeId(sellable.id);
     setSelectedQuantity(1);
+    // ORCH-1187 FIX-3(b): branch on openDaily FIRST. An open-daily (restaurant)
+    // experience ALWAYS opens the 3-step day→time→party wizard, matching the
+    // business/web rule `usesPicker = openDaily || bookable.length > 1`. Without
+    // this, an open-daily experience with a single materialized occurrence fell
+    // through to the auto-select-and-cart path and never showed the wizard.
+    if (openDaily) {
+      setSelectedEventDateId(null);
+      setReservePickerVisible(true);
+      return;
+    }
     if (bookableOccurrences.length > 1) {
       setSelectedEventDateId(null);
-      // ORCH-1138 rework — open-daily → restaurant flow (date → time → party);
-      // discrete recurring/multi → the flat slot list.
-      if (openDaily) {
-        setReservePickerVisible(true);
-      } else {
-        setOccurrencePickerVisible(true);
-      }
+      // ORCH-1138 rework — discrete recurring/multi → the flat slot list.
+      setOccurrencePickerVisible(true);
       return;
     }
     if (bookableOccurrences.length === 1) {
@@ -506,7 +573,34 @@ export default function ConsumerExperienceDetailScreen({
         // Silent: user dismissed PaymentSheet.
       } else {
         void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-        toastManager.show(result.message, "error");
+        // ORCH-1187 FIX-4(b): the server rejects an occurrence whose end_at has
+        // already passed (or that no longer belongs to the event) with a 422
+        // carrying error="occurrence_not_available" / "occurrence_not_found"
+        // (surfaced as result.message via extractFunctionError). Map those to a
+        // FRIENDLY, actionable toast and RE-OPEN the reserve picker so the buyer
+        // immediately picks another (live) slot — never the generic
+        // "Payment failed." dead-end. The happy path is unchanged.
+        const msg = result.message ?? "";
+        const isStaleOccurrence =
+          msg.includes("occurrence_not_available") ||
+          msg.includes("occurrence_not_found");
+        if (isStaleOccurrence) {
+          toastManager.show(
+            "That time just passed — pick another.",
+            "warning",
+          );
+          // Drop the stale selection + invalidate the fresh detail so the picker
+          // re-materializes with live, future slots, then re-open the right one.
+          setSelectedEventDateId(null);
+          freshDetailQuery.refetch();
+          if (openDaily) {
+            setReservePickerVisible(true);
+          } else {
+            setOccurrencePickerVisible(true);
+          }
+        } else {
+          toastManager.show(result.message, "error");
+        }
       }
     },
     [
@@ -518,6 +612,8 @@ export default function ConsumerExperienceDetailScreen({
       selectedEventDateId,
       queryClient,
       onBack,
+      openDaily,
+      freshDetailQuery,
     ],
   );
 
@@ -648,6 +744,12 @@ export default function ConsumerExperienceDetailScreen({
     })),
     bookable: offeringCta.tappable || offeringCta.kind !== "unavailable",
   });
+  // ORCH-1187 FIX-3(a): the seed adapter derives openDaily from the (possibly
+  // stale) SEED recurrence fields. Override with the screen's fresh-preferred
+  // `openDaily` (and the already-fresh+filtered `occurrences` above) so the
+  // shared body's adaptive availability banner reads "Open daily" rather than
+  // "{N} upcoming dates" with a past "Next" — the exact Seth-device symptom.
+  offeringData.openDaily = openDaily;
   const offeringBrand = buildExperienceOfferingBrandFromSeed(seed);
 
   // State banner driven by the resolved CTA (one owner — resolveOfferingCta).
@@ -686,19 +788,17 @@ export default function ConsumerExperienceDetailScreen({
     dockTopY === null || viewportH === 0
       ? true
       : dockTopY > scrollY + viewportH - REVEAL_MARGIN;
-  // ORCH-1153 BUG-1 (Seth device, experience reserve bar cut off): the gorhom
-  // BaseBottomSheet content extends ~63pt BELOW the visible window at the 90%
-  // snap (SHEET_BOTTOM_OVERSHOOT in ConsumerEventReserveBar). A flat 8pt scroll
-  // clearance let the DOCKED bar (last scroll child, in normal flow) land in
-  // that overshoot region on short-content experiences, so its price block +
-  // "Reserve →" were clipped at the home-indicator edge and the bar never read
-  // as "floating". Pad the scroll content past the overshoot so the docked bar
-  // rests ABOVE the clipped region; the bar itself already pads its own bottom
-  // safe-area (safeBottom + 8), so do NOT re-add the inset here (would double-
-  // pad). The trip page rarely hit this — trips have long itinerary/payment
-  // content that fills the viewport, pushing the docked bar up naturally.
+  // ORCH-1187 FIX-1 (Seth device, black band below the experience page): the
+  // prior `SHEET_BOTTOM_OVERSHOOT + 8` (=71) scroll-content paddingBottom sat
+  // BELOW the docked TripReserveBar (which already self-pads its own safe area),
+  // exposing the gorhom sheet's dark #0c0e12 background → a black band at the
+  // bottom of the page. Match the consumer TRIP page EXACTLY: an 8pt clearance,
+  // no extra overshoot pad on the scroll content. The float→dock overshoot is
+  // applied ONLY on the FLOATING pill's `sheetBottomOvershoot` prop below (the
+  // SAME pattern as ConsumerTripDetailScreen), so the floating pill still clears
+  // the home indicator without padding the scroll content into the dark seam.
   const SHEET_BOTTOM_OVERSHOOT = 63;
-  const reserveBarClearance = SHEET_BOTTOM_OVERSHOOT + 8;
+  const reserveBarClearance = 8;
 
   const dockedReserve: ReactElement = (
     <TripReserveBar
