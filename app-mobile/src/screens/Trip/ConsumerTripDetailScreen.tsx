@@ -87,6 +87,7 @@ import {
   type TripOfferingData,
   type TripPaymentPlanChoice,
   type TripReserveLine,
+  type TripTierLike,
 } from "@mingla/offering-rendering";
 // ORCH-1138 Leg 1C — the shared Direction-A foundation primitives. The consumer
 // trip detail converges on the business/web trip page (TripPreview FOUNDATION
@@ -570,6 +571,37 @@ export default function ConsumerTripDetailScreen({
     return map;
   }, [detail, offeringData.tiers, planChoiceByTier, paymentPlanChoice, quantities]);
 
+  // ORCH-1182 — the per-tier plan data the cart needs to compute its OWN qty-scaled
+  // "Due today" (the cart owns its line quantities via useTicketCart, NOT the §10
+  // box `quantities`, so the package-level summedDueTodayCents can't track the cart
+  // — see the Step-0 decision). We hand the cart the SAME TripTierLike shape the
+  // shared deposit math reads, ONLY for plan tiers this buyer is paying OVER TIME
+  // (mirrors installmentNoteByTicketId's gating: detail.hasPlan + effective
+  // pay-over-time choice). The cart sums tripTierDepositTodayCents(tier, cartQty)
+  // over its live lines → the sticky-bar deposit is qty-correct + self-consistent.
+  const planTiersByTicketId = useMemo<Record<string, TripTierLike>>(() => {
+    const map: Record<string, TripTierLike> = {};
+    if (detail === null || !detail.hasPlan) return map;
+    for (const tier of offeringData.tiers) {
+      const hasPlan =
+        tier.installmentSchedule !== null &&
+        tier.installmentSchedule !== undefined;
+      if (!hasPlan) continue;
+      const choice = planChoiceByTier[tier.ticketTypeId] ?? paymentPlanChoice;
+      if (choice !== "installments") continue;
+      map[tier.ticketTypeId] = {
+        ticketTypeId: tier.ticketTypeId,
+        priceCents: tier.priceCents,
+        priceAllInCents: tier.priceAllInCents ?? null,
+        isFree: tier.isFree,
+        isUnlimited: tier.isUnlimited,
+        ticketsRemaining: tier.ticketsRemaining,
+        installmentSchedule: tier.installmentSchedule,
+      };
+    }
+    return map;
+  }, [detail, offeringData.tiers, planChoiceByTier, paymentPlanChoice]);
+
   // ORCH-1138 — handleBuy ported VERBATIM (behavior) from EBES handleBuy
   // (ExpandedBusinessEventSheet.tsx:313-432), scoped to the trip. Same buyer
   // derivation, same guards, same byte-identical runNativeCheckout request (NO
@@ -978,17 +1010,12 @@ export default function ConsumerTripDetailScreen({
         buyerPhone={profile?.phone ?? ""}
         isSubmitting={checkoutInFlight}
         clearFloatingNav={false}
-        // ORCH-1130 ADDENDUM (Seth-BINDING) — when the buyer picked "Pay over
-        // time" on a plan trip, lead the cart's sticky bar with the deposit DUE
-        // TODAY (same projected schedule the on-screen toggle renders). Undefined
-        // for no-plan / pay-in-full → the all-in total shows, byte-identical.
-        dueTodayCents={
-          detail.hasPlan &&
-          paymentPlanChoice === "installments" &&
-          offeringState.projectedSchedule !== null
-            ? offeringState.projectedSchedule.depositCents
-            : undefined
-        }
+        // ORCH-1182 (supersedes ORCH-1130's qty-1 `dueTodayCents` scalar) — hand
+        // the cart the per-tier plan data so IT sums the qty-scaled deposit over
+        // its OWN live lines (qty 2 of a €500 / 25% tier = €250 today, not the
+        // stale €125 unit deposit). When present the cart shows a "Total" + a
+        // "Due today" line; empty (no-plan / pay-in-full) → single all-in line.
+        planTiersByTicketId={planTiersByTicketId}
         // ORCH-1181 — per-package installment sub-line on each cart tile (parity
         // with business/web). Empty for events / no-plan / pay-in-full.
         installmentNoteByTicketId={installmentNoteByTicketId}
