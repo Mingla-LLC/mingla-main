@@ -29,6 +29,8 @@ import { useAuth } from "../context/AuthContext";
 // Imported from the keyless `upcomingKeys` module to avoid a require-cycle
 // (useUpcomingForBrand → useTrips → useUpcomingForBrand).
 import { upcomingKeys } from "./upcomingKeys";
+// META-ORCH-1187 [Growth Analytics Hub] — offering-published conversion (SC-6).
+import { postHogService } from "../services/postHogService";
 import {
   createTripDraft,
   getTrip,
@@ -363,6 +365,12 @@ export const usePublishTrip = (): UseMutationResult<
       });
       // ORCH-0965 — home composite-upcoming cache.
       queryClient.invalidateQueries({ queryKey: upcomingKeys.all });
+      // META-ORCH-1187 — offering-published conversion (SC-6).
+      postHogService.capture("offering_published", {
+        offering_type: "trip",
+        brand_id: brandId,
+        surface: "business_app",
+      });
     },
     onError: (error, { eventId }) => {
       console.error("[usePublishTrip] failed", {

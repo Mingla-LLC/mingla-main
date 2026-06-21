@@ -29,6 +29,8 @@ import { extractFunctionError } from "../../utils/edgeFunctionError";
 import { useAppStore } from "../../store/appStore";
 import { authService } from "../../services/authService";
 import { mixpanelService } from "../../services/mixpanelService";
+// META-ORCH-1187 [Growth Analytics Hub] — analytics opt-out toggle wiring.
+import { postHogService } from "../../services/postHogService";
 import Toggle from "./Toggle";
 import * as Haptics from "expo-haptics";
 import type { NotificationPreferences } from "../../services/smartNotificationService";
@@ -371,6 +373,24 @@ export default function AccountSettings({ user, onSignOut, visible, onClose, not
 
   // --- Field update helpers ---
   const setProfile = useAppStore((s) => s.setProfile);
+
+  // META-ORCH-1187 [Growth Analytics Hub] — in-app analytics opt-out (§4.F(b)).
+  // The toggle shows "share usage data" (= !analyticsOptOut). Flipping it OFF
+  // sets analyticsOptOut=true and calls postHogService.optOut() so subsequent
+  // events do NOT reach PostHog (T-19); ON resumes capture.
+  const analyticsOptOut = useAppStore((s) => s.analyticsOptOut);
+  const setAnalyticsOptOut = useAppStore((s) => s.setAnalyticsOptOut);
+  const handleToggleAnalytics = (): void => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    // Toggle is currently "share usage data" = !analyticsOptOut; flip it.
+    const nextOptOut = !analyticsOptOut;
+    setAnalyticsOptOut(nextOptOut);
+    if (nextOptOut) {
+      postHogService.optOut();
+    } else {
+      postHogService.optIn();
+    }
+  };
 
   const updateField = async (field: string, value: unknown) => {
     if (!user?.id) return;
@@ -814,6 +834,18 @@ export default function AccountSettings({ user, onSignOut, visible, onClose, not
                   </Text>
                 </View>
                 <Toggle value={showActivity} onToggle={handleToggleShowActivity} />
+              </View>
+
+              <View style={styles.rowDivider} />
+
+              {/* META-ORCH-1187 [Growth Analytics Hub] — Analytics opt-out.
+                  Toggle ON = sharing anonymous usage data (analyticsOptOut=false). */}
+              <View style={[styles.row, styles.rowMultiline]}>
+                <View style={styles.rowLabelWrap}>
+                  <Text style={styles.rowLabel}>{t('settings:privacy.analytics')}</Text>
+                  <Text style={styles.rowHint}>{t('settings:privacy.analytics_hint')}</Text>
+                </View>
+                <Toggle value={!analyticsOptOut} onToggle={handleToggleAnalytics} />
               </View>
 
               <View style={styles.rowDivider} />

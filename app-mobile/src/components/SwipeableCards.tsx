@@ -69,6 +69,10 @@ import { hueFromId } from "../utils/hueFromId";
 import { extractHideAddressUntilTicket } from "../utils/venueExperienceMapping";
 import { mixpanelService } from "../services/mixpanelService";
 import { logAppsFlyerEvent } from "../services/appsFlyerService";
+// META-ORCH-1187 [Growth Analytics Hub] — behavior events mirror the existing
+// Mixpanel sites (parallel run; identical event-name strings for a 1:1 future
+// retirement mapping).
+import { postHogService } from "../services/postHogService";
 import { BoardCardService } from "../services/boardCardService";
 // ORCH-0532 / ORCH-0558: shared helper for collab right-swipe — calls
 // BoardCardService.recordSwipeAndCheckMatch (atomic RPC: upsert swipe_state +
@@ -1190,6 +1194,14 @@ export default function SwipeableCards({
         position_in_deck: currentCardIndex,
         is_curated: (currentRec as any).cardType === 'curated',
       });
+      // META-ORCH-1187 — behavior event (mirror of the Mixpanel site above).
+      postHogService.capture("card_viewed", {
+        card_id: currentRec.id,
+        card_title: currentRec.title,
+        category: currentRec.category,
+        position_in_deck: currentCardIndex,
+        is_curated: (currentRec as any).cardType === 'curated',
+      });
     }
   }, [currentRec?.id, currentCardIndex]);
 
@@ -1768,6 +1780,13 @@ export default function SwipeableCards({
       category: currentRec.category,
       source: "home",
     });
+    // META-ORCH-1187 — behavior event (mirror of the Mixpanel site above).
+    postHogService.capture("card_expanded", {
+      card_id: currentRec.id,
+      card_title: currentRec.title,
+      category: currentRec.category,
+      source: "home",
+    });
 
     // ORCH-1065: brand experiences expand to the business-event sheet →
     // ticket-checkout-create (NO parallel money fn — COMMS-0014/0016), NOT the
@@ -1873,12 +1892,27 @@ export default function SwipeableCards({
         is_curated: isCurated,
         source: 'swipe',
       });
+      // META-ORCH-1187 — behavior event (mirror of the Mixpanel site above).
+      postHogService.capture("card_saved", {
+        card_id: card.id,
+        card_title: card.title,
+        category: card.category,
+        is_curated: isCurated,
+        source: 'swipe',
+      });
 
     } else {
       logAppsFlyerEvent('card_dismissed', {
         af_content_type: card.category,
       });
       mixpanelService.trackCardDismissed({
+        card_id: card.id,
+        card_title: card.title,
+        category: card.category,
+        is_curated: isCurated,
+      });
+      // META-ORCH-1187 — behavior event (mirror of the Mixpanel site above).
+      postHogService.capture("card_dismissed", {
         card_id: card.id,
         card_title: card.title,
         category: card.category,
@@ -2414,6 +2448,13 @@ export default function SwipeableCards({
           }
         } else {
           mixpanelService.trackDeckExhausted({
+            cards_seen: currentCardIndex,
+            cards_saved: savedCards.length,
+            cards_dismissed: Math.max(0, currentCardIndex - savedCards.length),
+            session_mode: currentMode === 'solo' ? 'solo' : 'collab',
+          });
+          // META-ORCH-1187 — behavior event (mirror of the Mixpanel site above).
+          postHogService.capture("deck_exhausted", {
             cards_seen: currentCardIndex,
             cards_saved: savedCards.length,
             cards_dismissed: Math.max(0, currentCardIndex - savedCards.length),

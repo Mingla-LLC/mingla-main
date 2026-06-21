@@ -112,6 +112,9 @@ import {
 } from "../../payments/nativeCheckoutFlow";
 import { toastManager } from "../../components/ui/Toast";
 import { useAppStore } from "../../store/appStore";
+// META-ORCH-1187 [Growth Analytics Hub] — purchase conversion capture (PostHog
+// runs alongside the existing analytics; no Mixpanel call exists at this site).
+import { postHogService } from "../../services/postHogService";
 import { glass } from "../../constants/designSystem";
 // ORCH-1162 Bug 2 — shared static-Mapbox builder (re-exported from
 // @mingla/offering-rendering) for the consumer EVENT "Where you'll be" map.
@@ -429,6 +432,13 @@ export default function ConsumerEventDetailScreen({
       }
 
       if (result.outcome === "succeeded") {
+        // META-ORCH-1187 — purchase conversion (SC-5). value in major units.
+        postHogService.capture("purchase_completed", {
+          event_id: seed.eventId,
+          value: payload.totalCents / 100,
+          currency: seed.currency,
+          surface: "consumer_app",
+        });
         void Haptics.notificationAsync(
           Haptics.NotificationFeedbackType.Success,
         );

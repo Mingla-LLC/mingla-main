@@ -33,6 +33,9 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useLocalSearchParams, useNavigation, useRouter } from "expo-router";
+// META-ORCH-1187 [Growth Analytics Hub] — purchase conversion (native; no-op on
+// web — buyer-web capture is a separate leg).
+import { postHogService } from "../../../src/services/postHogService";
 
 import {
   radius as radiusTokens,
@@ -257,6 +260,15 @@ function CheckoutTripConfirmScreenInner({
             paymentStatus: confirmResult.order.paymentStatus,
             notificationStatus: confirmResult.order.notificationStatus,
             tickets: confirmResult.order.tickets,
+          });
+          // META-ORCH-1187 — purchase conversion (SC-6). value in major units.
+          postHogService.capture("purchase_completed", {
+            event_id: tripEventId,
+            order_id: confirmResult.order.orderId,
+            value: confirmResult.order.totalCents / 100,
+            currency: confirmResult.order.currency,
+            offering_type: "trip",
+            surface: "business_app",
           });
           clearCheckoutResumePayload(win.sessionStorage, tripEventId);
           return;

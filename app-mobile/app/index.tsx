@@ -83,6 +83,11 @@ import { logger } from "../src/utils/logger";
 // are handled by useNotifications hook + Supabase Realtime. The old service file
 // stays in place but is no longer referenced from the app root.
 import { mixpanelService } from "../src/services/mixpanelService";
+// META-ORCH-1187 [Growth Analytics Hub] Phase 1 — PostHog runs ALONGSIDE
+// Mixpanel/AppsFlyer (parallel run; do NOT remove them). Event-name strings are
+// kept IDENTICAL across PostHog/Mixpanel so the eventual Mixpanel retirement is
+// a 1:1 mapping.
+import { postHogService } from "../src/services/postHogService";
 import { useTranslation } from 'react-i18next';
 import i18n from '../src/i18n';
 import { persistLanguage } from '../src/i18n';
@@ -304,6 +309,9 @@ function AppContent() {
     mixpanelService.initialize().then(() => {
       mixpanelService.trackAppOpened({ source: 'cold' });
     });
+    // META-ORCH-1187 — init PostHog alongside Mixpanel (idempotent; the root
+    // provider also calls this). No-ops gracefully when the key is absent.
+    void postHogService.initialize();
   }, []);
 
   // ── RevenueCat ─────────────────────────────────────────────────────────────
@@ -930,11 +938,23 @@ function AppContent() {
         onboardingCompleted: profile?.has_completed_onboarding ?? false,
         friendsCount: dbFriends?.length ?? 0,
       });
+      // META-ORCH-1187 — bind PostHog identity (distinct_id = Supabase user.id,
+      // SC-7) at the SAME site Mixpanel identifies.
+      postHogService.identify(user.id, {
+        provider: (user as any).app_metadata?.provider ?? "email",
+        onboarding_completed: profile?.has_completed_onboarding ?? false,
+      });
 
       // Track Signup Completed for new users (not yet onboarded)
       if (!profile?.has_completed_onboarding && !signupFiredRef.current) {
         mixpanelService.trackSignupCompleted({
           method: (user as any).app_metadata?.provider ?? 'email',
+          country: profile?.country ?? undefined,
+        });
+        // META-ORCH-1187 — signup conversion (event name identical to the
+        // Mixpanel intent for a clean 1:1 retirement mapping later).
+        postHogService.capture("signup_completed", {
+          method: (user as any).app_metadata?.provider ?? "email",
           country: profile?.country ?? undefined,
         });
         signupFiredRef.current = true;

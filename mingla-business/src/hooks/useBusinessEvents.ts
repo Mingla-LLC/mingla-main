@@ -27,6 +27,8 @@ import { publicEventKeys } from "./usePublicEvents";
 // Imported from the keyless `upcomingKeys` module to avoid a require-cycle
 // (useUpcomingForBrand → useBusinessEvents → useUpcomingForBrand).
 import { upcomingKeys } from "./upcomingKeys";
+// META-ORCH-1187 [Growth Analytics Hub] — offering-published conversion (SC-6).
+import { postHogService } from "../services/postHogService";
 
 const STALE_TIME_MS = 30 * 1000;
 const DISABLED_KEY = ["business-events-disabled"] as const;
@@ -202,6 +204,12 @@ export const usePublishBusinessEventDraft = (): {
       );
       queryClient.invalidateQueries({ queryKey: eventDraftKeys.list(draft.brandId) });
       writePublishedEventCaches(queryClient, published, draft.brandId);
+      // META-ORCH-1187 — offering-published conversion (SC-6).
+      postHogService.capture("offering_published", {
+        offering_type: "event",
+        brand_id: draft.brandId,
+        surface: "business_app",
+      });
     },
     onError: (error) => {
       logMutationError("usePublishBusinessEventDraft", error);

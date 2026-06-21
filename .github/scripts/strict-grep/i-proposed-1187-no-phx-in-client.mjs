@@ -32,6 +32,9 @@ const PHX_RE = /\bphx_[A-Za-z0-9]/;
 function isExempt(rel) {
   if (rel.includes("node_modules")) return true;
   if (rel.includes(".next/")) return true;
+  // DISC-B (leg-2 tester): exclude local web-export output.
+  if (rel.includes("web-build/")) return true;
+  if (rel.includes("dist/")) return true;
   if (rel.startsWith(".github/")) return true;
   if (rel.startsWith("Mingla_Artifacts/")) return true;
   return false;
@@ -47,7 +50,13 @@ function walk(dir, out) {
   for (const e of entries) {
     const full = path.join(dir, e.name);
     if (e.isDirectory()) {
-      if (e.name === "node_modules" || e.name === ".next") continue;
+      if (
+        e.name === "node_modules" ||
+        e.name === ".next" ||
+        e.name === "web-build" ||
+        e.name === "dist"
+      )
+        continue;
       walk(full, out);
     } else {
       const ext = path.extname(e.name);
