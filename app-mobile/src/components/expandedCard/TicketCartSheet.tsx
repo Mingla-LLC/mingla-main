@@ -241,6 +241,15 @@ export interface TicketCartSheetProps {
    * byte-identical to today.
    */
   dueTodayCents?: number;
+  /**
+   * ORCH-1181 — per-package installment sub-line copy keyed by ticketTypeId
+   * (ready-formatted, e.g. "From $125.00 today · pay over time"). The trip detail
+   * screen computes these from the SAME projected per-tier deposit it already
+   * derives, ONLY for plan packages when pay-over-time is the active cart choice.
+   * Absent / empty → no tile carries a note (events / no-plan / pay-in-full),
+   * byte-identical to today. The cart sheet never computes the deposit itself.
+   */
+  installmentNoteByTicketId?: Record<string, string>;
   onCancel: () => void;
   onCheckout: (payload: TicketCartCheckoutPayload) => void;
 }
@@ -260,6 +269,7 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
   isSubmitting,
   clearFloatingNav = true,
   dueTodayCents,
+  installmentNoteByTicketId,
   onCancel,
   onCheckout,
 }) => {
@@ -686,6 +696,7 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
               formatCurrency={formatMajorCurrency}
               theme={CONSUMER_TICKET_CART_THEME}
               fallbackCurrency={fallbackCurrency}
+              installmentNote={installmentNoteByTicketId?.[ticket.id] ?? null}
             />
           );
         })}

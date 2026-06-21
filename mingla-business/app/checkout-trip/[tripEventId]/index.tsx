@@ -38,6 +38,10 @@ import { usePublicTripById } from "../../../src/hooks/usePublicTripById";
 import { useTripIntakeSchemasByEvent } from "../../../src/hooks/useIntakeSchema";
 import { formatCurrency } from "../../../src/utils/currency";
 import { projectInstallmentSchedule } from "../../../src/utils/installmentScheduleProjection";
+// ORCH-1181 — the shared per-package installment sub-line copy (business + web +
+// consumer identical). The deposit-due-today still comes from the existing
+// projectInstallmentSchedule; this only formats the already-computed cents.
+import { formatTripTierInstallmentNote } from "@mingla/offering-rendering";
 import type { TripPricingTier } from "../../../src/services/tripsService";
 import type {
   TicketAvailableAt,
@@ -587,11 +591,34 @@ export default function CheckoutTripTicketsScreen(): React.ReactElement {
         {tickets.map((ticket) => {
           const line = lines.find((l) => l.ticketTypeId === ticket.id);
           const qty = line?.quantity ?? 0;
+          // ORCH-1181 — per-package installment sub-line on the tile. Shown ONLY
+          // when pay-over-time is the active cart choice AND this tier is on a
+          // plan AND it has ≥1 selected. The deposit comes from the SAME
+          // projectInstallmentSchedule the cart-level "Due today" reads (lines
+          // 195-215) — never recomputed/fabricated. No-plan / pay-in-full / cart
+          // "full" → null (events untouched: trip-only tiers carry a schedule).
+          const sourceTier =
+            paymentPlanChoice === "installments"
+              ? trip.pricingTiers.find((t) => t.ticketTypeId === ticket.id)
+              : undefined;
+          const tierDeposit =
+            sourceTier !== undefined &&
+            sourceTier.installmentSchedule !== null &&
+            qty >= 1
+              ? (projectInstallmentSchedule(sourceTier, new Date(), qty)
+                  ?.depositCents ?? null)
+              : null;
+          const installmentNote = formatTripTierInstallmentNote(
+            tierDeposit,
+            ticket.currency ?? trip.pricingTiers[0]?.currency ?? "USD",
+            (value, currency) => formatCurrency(value, currency),
+          );
           return (
             <View key={ticket.id} style={styles.tierWrap}>
               <QuantityRow
                 ticket={ticket}
                 quantity={qty}
+                installmentNote={installmentNote}
                 onQuantityChange={(next): void =>
                   setLineQuantity({
                     ticketTypeId: ticket.id,

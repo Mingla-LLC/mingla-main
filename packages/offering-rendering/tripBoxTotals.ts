@@ -182,6 +182,52 @@ export const tripAnyLineOnPlan = (
   return false;
 };
 
+/**
+ * ORCH-1181 — the SINGLE per-package deposit-due-today, in cents, for one trip
+ * tier paying over time. Reuses the SAME deposit_pct-of-all-in math as
+ * tripSummedDueTodayCents (one owner), so the per-package tile note and the
+ * cart-level "Due today" never diverge. Returns null when the tier has no plan,
+ * is free, or the qty/all-in resolves to 0 — the caller renders no note.
+ */
+export const tripTierDepositTodayCents = (
+  tier: TripTierLike,
+  quantity: number,
+): number | null => {
+  if (!Number.isFinite(quantity) || quantity <= 0) return null;
+  const template = asInstallmentTemplate(tier.installmentSchedule);
+  if (template === null) return null;
+  const lineAllIn = tripTierUnitAllInCents(tier) * Math.floor(quantity);
+  if (lineAllIn <= 0) return null;
+  const deposit = Math.round((lineAllIn * template.deposit_pct) / 100);
+  return deposit > 0 ? deposit : null;
+};
+
+/**
+ * ORCH-1181 — the SHARED, surface-identical per-package installment sub-line for
+ * the checkout/cart ticket tile. Business app + buyer web + consumer app all
+ * import THIS formatter so the copy never forks. Returns null (→ no sub-line)
+ * when there is no deposit due today (no plan / pay-in-full / free / 0).
+ *
+ * `formatCurrency` is the host's locale-aware MAJOR-unit money formatter (the
+ * same one each surface already passes to QuantityRow); we hand it the deposit
+ * in major units. Pure: no fee math, no RN import (I-MOR-0827).
+ */
+export const formatTripTierInstallmentNote = (
+  dueTodayCents: number | null,
+  currency: string,
+  formatCurrency: (value: number, currency: string) => string,
+): string | null => {
+  if (
+    dueTodayCents === null ||
+    !Number.isFinite(dueTodayCents) ||
+    dueTodayCents <= 0
+  ) {
+    return null;
+  }
+  const formatted = formatCurrency(dueTodayCents / 100, currency || "USD");
+  return `From ${formatted} today · pay over time`;
+};
+
 /** Narrow an unknown installmentSchedule into a usable template, or null. */
 function asInstallmentTemplate(raw: unknown): TripInstallmentTemplateLike | null {
   if (raw === null || typeof raw !== "object") return null;

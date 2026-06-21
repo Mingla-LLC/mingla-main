@@ -141,6 +141,15 @@ export interface QuantityRowProps {
   fallbackCurrency?: string;
   /** Called when a sold-out waitlist-enabled row is tapped. */
   onJoinWaitlist?: (ticketId: string) => void;
+  /**
+   * ORCH-1181 — an optional, READY-FORMATTED installment sub-line shown directly
+   * under the price block (e.g. "From $125.00 today · pay over time"). The caller
+   * passes it ONLY for a trip package on a payment plan when pay-over-time is the
+   * active cart choice (via the shared `formatTripTierInstallmentNote`). Null /
+   * undefined → nothing renders (byte-identical for events & no-plan tiers). This
+   * component stays pure-presentational: it never computes the deposit (I-MOR-0827).
+   */
+  installmentNote?: string | null;
 }
 
 export const QuantityRow: React.FC<QuantityRowProps> = ({
@@ -153,6 +162,7 @@ export const QuantityRow: React.FC<QuantityRowProps> = ({
   theme,
   fallbackCurrency = "GBP",
   onJoinWaitlist,
+  installmentNote,
 }) => {
   const t: Required<QuantityRowTheme> = useMemo(
     () => ({ ...DEFAULT_THEME, ...(theme ?? {}) }),
@@ -270,6 +280,14 @@ export const QuantityRow: React.FC<QuantityRowProps> = ({
     ...styles.inclusiveText,
     color: t.textTertiary,
   };
+  // ORCH-1181 — secondary installment sub-line under the price block. Only
+  // rendered when the caller passes a non-empty note (trip plan + pay-over-time).
+  const installmentTextStyle: TextStyle = {
+    ...styles.installmentText,
+    color: t.textSecondary,
+  };
+  const showInstallmentNote =
+    typeof installmentNote === "string" && installmentNote.trim().length > 0;
   const descriptionStyle: TextStyle = {
     ...styles.description,
     color: t.textTertiary,
@@ -390,6 +408,9 @@ export const QuantityRow: React.FC<QuantityRowProps> = ({
       {showInclusive ? (
         <Text style={inclusiveTextStyle}>incl. VAT &amp; fees</Text>
       ) : null}
+      {showInstallmentNote ? (
+        <Text style={installmentTextStyle}>{installmentNote}</Text>
+      ) : null}
 
       {ticket.description && ticket.description.trim().length > 0 ? (
         <Text style={descriptionStyle} numberOfLines={2}>
@@ -487,6 +508,13 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: "400",
     marginTop: 2,
+  },
+  // ORCH-1181 — installment sub-line; slightly stronger than the VAT caption
+  // (secondary, not tertiary) since it carries an actionable money figure.
+  installmentText: {
+    fontSize: 12,
+    fontWeight: "500",
+    marginTop: 3,
   },
   description: {
     marginTop: 4,
