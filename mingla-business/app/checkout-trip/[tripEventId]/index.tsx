@@ -50,6 +50,10 @@ import { EmptyState } from "../../../src/components/ui/EmptyState";
 import { EventCoverMedia } from "../../../src/components/ui/EventCoverMedia";
 import { decideAutoSkip } from "./autoSkipDecision";
 import { tripFunnelTotalSteps } from "./tripFunnelSteps";
+import {
+  parseSeededTripLines,
+  resolveSeededCartPlanChoice,
+} from "../../../src/components/trip/tripCartPlanChoice";
 
 import {
   useCart,
@@ -143,34 +147,15 @@ export default function CheckoutTripTicketsScreen(): React.ReactElement {
   // present we seed the cart with ALL selected packages (skipping tier-select),
   // mirroring ORCH-1138 "Reserve opens the cart directly". Parsed once (stable
   // string); malformed → empty (the auto-skip / tier-select path takes over).
-  const seededLinesParam = React.useMemo<
-    Array<{ ticketTypeId: string; quantity: number }>
-  >(() => {
-    if (typeof params.lines !== "string" || params.lines.length === 0) return [];
-    try {
-      const parsed: unknown = JSON.parse(params.lines);
-      if (!Array.isArray(parsed)) return [];
-      return parsed.flatMap((row) => {
-        if (
-          row !== null &&
-          typeof row === "object" &&
-          typeof (row as { ticketTypeId?: unknown }).ticketTypeId === "string" &&
-          typeof (row as { quantity?: unknown }).quantity === "number" &&
-          (row as { quantity: number }).quantity > 0
-        ) {
-          return [
-            {
-              ticketTypeId: (row as { ticketTypeId: string }).ticketTypeId,
-              quantity: Math.floor((row as { quantity: number }).quantity),
-            },
-          ];
-        }
-        return [];
-      });
-    } catch {
-      return [];
-    }
-  }, [params.lines]);
+  // ORCH-1180 — each row may also carry the per-package `paymentPlanChoice`
+  // ("full" | "installments"). It is the AUTHORITATIVE pay-over-time signal (the
+  // scalar `plan` param can lag the §10 box toggle); the seed effect below uses it
+  // to set the cart-level choice so the cart is installment-aware. Absent/unknown
+  // values are dropped (the line stays a plain full-price line).
+  const seededLinesParam = React.useMemo(
+    () => parseSeededTripLines(params.lines),
+    [params.lines],
+  );
 
   const publicTripQuery = usePublicTripById(tripEventId);
   const trip = publicTripQuery.data?.trip ?? null;
@@ -254,9 +239,16 @@ export default function CheckoutTripTicketsScreen(): React.ReactElement {
     dueTodayCents === null;
 
   // ORCH-1130 — seed the cart's payment-plan choice from the public-page param.
+  // ORCH-1180 — the `lines` JSON is the AUTHORITATIVE pay-over-time source: if ANY
+  // seeded package carries paymentPlanChoice="installments", the whole cart leads
+  // with the deposit (mirrors the consumer session-wide choice + Fix A's collapse),
+  // overriding a possibly-stale scalar `plan` param. No installments line → honor
+  // the scalar param (default "full"), so the pay-in-full opt-out is preserved.
   useEffect(() => {
-    setPaymentPlanChoice(planParam);
-    // Run once per mount with the inbound param; the Review step is the
+    setPaymentPlanChoice(
+      resolveSeededCartPlanChoice(seededLinesParam, planParam),
+    );
+    // Run once per mount with the inbound params; the Review step is the
     // last-chance editor thereafter.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
