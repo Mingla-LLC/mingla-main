@@ -716,10 +716,18 @@ export default function ConsumerEventDetailScreen({
   // light `palette.page` extends through the runway behind the floating decision
   // bar. Previously the runway was a TRANSPARENT padding area below the body, so
   // the sheet's BLACK backdrop showed through under the bar (Seth screenshot).
-  // The event (non-rsvp) branch keeps its transparent scroll-content padding
-  // unchanged (its bar/colors were fine). Same effective runway either way.
-  const scrollPaddingBottom = isRsvp ? 0 : reserveBarClearance;
-  const rsvpBodyClearance = isRsvp ? rsvpBarClearance : undefined;
+  //
+  // ORCH-1188 FIX 1 — the EVENT (non-rsvp) branch had the SAME defect: its
+  // ~177px floating-pill runway was applied as TRANSPARENT scroll-content
+  // paddingBottom, exposing the gorhom sheet's dark `#0c0e12` backdrop as a
+  // BLACK BAR under the persistent Get-tickets pill (Seth device screenshot).
+  // FIX: route the event clearance into the page-colored `nativeBody`
+  // paddingBottom too (mirroring the RSVP mechanism) and zero the scroll-content
+  // padding, so `palette.page` fills the runway behind the floating pill. The
+  // floating pill's `floatBarBottom` lift is unchanged; the runway still clears
+  // the raised pill so the last section is never hidden.
+  const scrollPaddingBottom = 0;
+  const bodyClearance = isRsvp ? rsvpBarClearance : reserveBarClearance;
 
   return (
     <>
@@ -773,9 +781,10 @@ export default function ConsumerEventDetailScreen({
             style={[
               styles.nativeBody,
               { backgroundColor: palette.page, borderColor: palette.panelBorder },
-              // ORCH-1163 R4 — RSVP runway is page-colored (no black void under
-              // the floating decision bar); event branch keeps its scroll padding.
-              rsvpBodyClearance !== undefined ? { paddingBottom: rsvpBodyClearance } : null,
+              // ORCH-1163 R4 + ORCH-1188 FIX 1 — BOTH the RSVP and the event
+              // runway are page-colored here (no black void / black bar under the
+              // floating bar/pill); the scroll-content paddingBottom is 0.
+              { paddingBottom: bodyClearance },
             ]}
           >
             {/* ORCH-1167 — STANDARD ticketed-event branch renders the ONE shared

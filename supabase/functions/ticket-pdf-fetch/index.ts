@@ -81,11 +81,17 @@ async function lazyBackfillPdf(
 ): Promise<string> {
   // Reload the inputs ticketPdf.ts expects, mirroring the assembly inside
   // ticket-confirmation-dispatch's buildRenderContext.
+  //
+  // ORCH-1188 FIX 4b: use LEFT joins on brands + ticket_types. Trip/experience
+  // orders can have a ticket whose ticket_type row is filtered/absent, or a
+  // brand row that an !inner join would DROP — which made the whole event/ticket
+  // lookup return empty and surfaced as a generic "render failed". Left joins +
+  // safe fallbacks let the PDF render for every offering type on first fetch.
   const { data: eventRaw, error: eventErr } = await supabase
     .from("events")
     .select(`
       id, title, timezone, location_text,
-      brands!inner ( id, name )
+      brands!left ( id, name )
     `)
     .eq("id", eventId)
     .maybeSingle();
@@ -98,13 +104,18 @@ async function lazyBackfillPdf(
 
   const { data: ticketRows, error: ticketsErr } = await supabase
     .from("tickets")
-    .select("id, qr_code, ticket_types!inner ( name )")
+    .select("id, qr_code, ticket_types!left ( name )")
     .eq("order_id", orderId)
     .order("created_at", { ascending: true });
-  if (ticketsErr || !ticketRows || ticketRows.length === 0) {
+  if (ticketsErr) {
     throw new Error(
-      `lazy_backfill_tickets_lookup_failed:${ticketsErr?.message ?? "empty"}`,
+      `lazy_backfill_tickets_lookup_failed:${ticketsErr.message}`,
     );
+  }
+  if (!ticketRows || ticketRows.length === 0) {
+    // No tickets is a genuine data problem (a paid order must have tickets) —
+    // surface it distinctly so the caller's `detail` is actionable.
+    throw new Error("lazy_backfill_tickets_lookup_failed:no_tickets_for_order");
   }
   const tickets = ticketRows as unknown as TicketRow[];
 

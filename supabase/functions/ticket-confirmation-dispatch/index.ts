@@ -721,6 +721,14 @@ serve(async (req) => {
   const orderId = typeof body.orderId === "string" ? body.orderId : "";
   if (!orderId) return jsonResponse({ error: "order_id_required" }, 400);
 
+  // ORCH-1188 FIX 4a: render-only mode. Historical reconciliation
+  // (reconcile-stuck-checkouts) needs the ticket PDF rendered + stored on
+  // `orders.ticket_pdf_path` so the consumer ticket renders — but MUST NOT
+  // email/SMS the buyer (these are old/test sessions; no notification spam).
+  // When `skipNotify` is true we render + upload the PDF, then return BEFORE
+  // the notification send loop. The webhook path passes no flag → unchanged.
+  const skipNotify = body.skipNotify === true;
+
   // ORCH-0869 (Tr3) Stage 1b: kind-based routing. When `kind` is one of the
   // Tr3 installment kinds, bypass the legacy ticket_order_notifications
   // polling loop and render+send directly. Non-installment kinds (the legacy
@@ -985,6 +993,20 @@ serve(async (req) => {
         `[ticket-confirmation-dispatch] storage upload threw for order=${order.id}: ${message}`,
       );
     }
+  }
+
+  // ORCH-1188 FIX 4a: render-only short-circuit. The PDF is now rendered +
+  // uploaded + persisted to orders.ticket_pdf_path above; in skipNotify mode we
+  // return here WITHOUT entering the email/SMS send loop. Surface renderError so
+  // the reconcile caller can see if the PDF failed to render (e.g. trip/exp
+  // shape) rather than silently leaving ticket_pdf_path NULL.
+  if (skipNotify) {
+    return jsonResponse({
+      orderId,
+      skipNotify: true,
+      pdfStored: Boolean(renderedPdf) && !renderError,
+      renderError,
+    });
   }
 
   // ORCH-0788: SELECT payload so we can route by template_key per row.

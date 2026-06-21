@@ -10,6 +10,24 @@ import { recordCardSchedule } from "./cardEngagementService";
 // I-PROPOSED-CONSUMER-CALENDAR-UNIONS-ORDERS.
 const BUSINESS_BUYER_DOMAIN = "https://business.mingla.app";
 
+// ORCH-1188 FIX 2: the buyer-web public page is served under a type-specific path
+// prefix — `/t/` for trips, `/exp/` for experiences, `/e/` for standard +
+// RSVP events. The `/e/` resolver REJECTS trip/experience slugs, so a hardcoded
+// `/e/` "View on web" link 404'd for trips/experiences. Map by events.event_type.
+export function buyerPagePrefixForEventType(
+  eventType: string | null | undefined,
+): "e" | "t" | "exp" {
+  switch (eventType) {
+    case "trip":
+      return "t";
+    case "experience":
+      return "exp";
+    default:
+      // standard ticketed events + "rsvp" both resolve under /e/.
+      return "e";
+  }
+}
+
 export interface CalendarEntryRecord {
   id: string;
   user_id: string;
@@ -361,9 +379,9 @@ export class CalendarService {
       .from("orders")
       .select(
         `
-          id, event_id, payment_status, created_at, ticket_pdf_path,
+          id, event_id, payment_status, created_at, ticket_pdf_path, event_date_id,
           events!inner (
-            id, title, slug, cover_media_url, timezone,
+            id, title, slug, event_type, cover_media_url, timezone,
             location_text, location_geo, is_online, online_url,
             brand:brands!inner ( id, slug, name ),
             event_dates!left ( id, start_at, end_at, is_master )
@@ -389,10 +407,16 @@ export class CalendarService {
       payment_status: BusinessEventCalendarRow["paymentStatus"];
       created_at: string;
       ticket_pdf_path: string | null;
+      // ORCH-1188 FIX 3: the buyer's BOOKED occurrence (copied onto the order by
+      // biz_ticket_checkout_finalize from the session's selected event_date_id).
+      // NULL for single-date events / legacy orders → fall back to the master date.
+      event_date_id: string | null;
       events: {
         id: string;
         title: string;
         slug: string;
+        // ORCH-1188 FIX 2: drives the public-page URL prefix (/e /t /exp).
+        event_type: string | null;
         cover_media_url: string | null;
         timezone: string | null;
         location_text: string | null;
@@ -421,9 +445,18 @@ export class CalendarService {
       (order): BusinessEventCalendarRow => {
         const event = order.events;
         const brand = event?.brand ?? null;
-        const masterDate = (event?.event_dates ?? []).find(
-          (ed) => ed?.is_master === true,
-        );
+        // ORCH-1188 FIX 3c: prefer the buyer's BOOKED occurrence (orders.event_date_id)
+        // so the calendar shows the date they actually purchased + partitions
+        // upcoming/archive correctly. Fall back to the is_master occurrence only
+        // when no booked occurrence is recorded (single-date events / legacy orders).
+        const bookedOccurrence = order.event_date_id
+          ? (event?.event_dates ?? []).find(
+              (ed) => ed?.id === order.event_date_id,
+            )
+          : undefined;
+        const masterDate =
+          bookedOccurrence ??
+          (event?.event_dates ?? []).find((ed) => ed?.is_master === true);
         const tickets: ConsumerTicketRow[] = (order.tickets ?? []).map(
           (t) => ({
             id: t.id,
@@ -459,7 +492,9 @@ export class CalendarService {
           tickets,
           publicBuyerUrl:
             brand && event
-              ? `${BUSINESS_BUYER_DOMAIN}/e/${brand.slug}/${event.slug}`
+              ? `${BUSINESS_BUYER_DOMAIN}/${buyerPagePrefixForEventType(
+                  event.event_type,
+                )}/${brand.slug}/${event.slug}`
               : null,
           ticketPdfPath: order.ticket_pdf_path ?? null,
           venue,

@@ -1,7 +1,33 @@
 import type { Metadata } from 'next'
+import Script from 'next/script'
+import { GoogleAnalytics } from '@next/third-parties/google'
 import { Mochiy_Pop_One, Nunito_Sans, Inter } from 'next/font/google'
 import './globals.css'
 import { ContentProtection } from '@/components/marketing/content-protection'
+import { PostHogProvider } from '@/components/marketing/posthog-provider'
+import { ConsentBanner } from '@/components/marketing/consent-banner'
+
+// META-ORCH-1187 [Growth Analytics Hub] Phase 1 — LEG 1 (marketing web).
+// GA4 Measurement ID — public by design (web-only). Single shared stream.
+const GA4_MEASUREMENT_ID =
+  process.env.NEXT_PUBLIC_GA4_MEASUREMENT_ID ?? 'G-Z4W3B9900S'
+
+// GA4 Consent Mode v2 — default DENIED. This snippet MUST run BEFORE the GA tag
+// loads any measurement (I-PROPOSED-1187-CONSENT-GATE-BEFORE-COOKIES). It is
+// injected with strategy="beforeInteractive" so it executes ahead of the
+// @next/third-parties <GoogleAnalytics> gtag config. The consent banner flips
+// these to 'granted' only on Accept; Reject leaves them denied (cookieless mode).
+const GA_CONSENT_DEFAULT_SNIPPET = `
+window.dataLayer = window.dataLayer || [];
+function gtag(){dataLayer.push(arguments);}
+window.gtag = window.gtag || gtag;
+gtag('consent', 'default', {
+  ad_storage: 'denied',
+  analytics_storage: 'denied',
+  ad_user_data: 'denied',
+  ad_personalization: 'denied'
+});
+`.trim()
 
 // Brand display — matches the live usemingla.com brand font.
 // Mochiy Pop One ships in a single weight (400) with no italic axis.
@@ -40,6 +66,12 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en" className={`${mochiy.variable} ${nunito.variable} ${inter.variable}`}>
+      <head>
+        {/* GA4 Consent Mode v2 default-DENIED — MUST run before the GA tag (consent gate). */}
+        <Script id="ga-consent-default" strategy="beforeInteractive">
+          {GA_CONSENT_DEFAULT_SNIPPET}
+        </Script>
+      </head>
       <body>
         <a
           href="#main"
@@ -49,6 +81,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         </a>
         {children}
         <ContentProtection />
+        {/* META-ORCH-1187 — analytics (consent-gated). */}
+        <PostHogProvider />
+        <ConsentBanner />
+        <GoogleAnalytics gaId={GA4_MEASUREMENT_ID} />
       </body>
     </html>
   )
