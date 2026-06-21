@@ -15,6 +15,7 @@ import {
   Alert,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useRouter } from "expo-router";
 import { useTranslation } from 'react-i18next';
 import { Icon } from "./ui/Icon";
 import { BaseBottomSheet } from "./ui/BaseBottomSheet";
@@ -1409,6 +1410,35 @@ export default function ExpandedCardModal({
   // non-null. Hooks above the early-return must not depend on these bindings.
   const card = target?.kind === "nightOut" ? target.data : null;
   const businessEvent = target?.kind === "businessEvent" ? target.data : null;
+
+  // ORCH-1194 — the deck EXPERIENCE card opens via the /exp/ ROUTE (a navigation,
+  // like trips), NOT the in-place ExpandedCardModal mount. The in-deck mount makes
+  // gorhom mis-measure the sheet (black band below the body + a clipped, untappable
+  // reserve bar on both platforms); the /exp/ route mount — the SAME one trips and
+  // the cold deep-link use — measures correctly. So: navigate to the route + close
+  // this card; the experience branch in the render below returns null. (Venue-opened
+  // experiences keep their in-place sub-sheet — a separate path.)
+  const router = useRouter();
+  const experienceDeckTarget =
+    businessEvent !== null &&
+    businessEvent !== undefined &&
+    isExperienceCard(businessEvent)
+      ? businessEvent
+      : null;
+  useEffect(() => {
+    if (
+      visible &&
+      experienceDeckTarget !== null &&
+      experienceDeckTarget.brandSlug.length > 0 &&
+      experienceDeckTarget.eventSlug.length > 0
+    ) {
+      router.push(
+        `/exp/${experienceDeckTarget.brandSlug}/${experienceDeckTarget.eventSlug}` as never,
+      );
+      onClose();
+    }
+  }, [visible, experienceDeckTarget, router, onClose]);
+
   const { t } = useTranslation(['cards', 'common']);
   const { user } = useAppStore();
   const viewerLocationQuery = useUserLocation(user?.id, currentMode);
@@ -1777,13 +1807,10 @@ export default function ExpandedCardModal({
     // experienceRecToBusinessEventCard). NEVER ExpandedBusinessEventSheet (EBES
     // decommissioned). I-PROPOSED-1138-EBES-DELETED.
     if (isExperienceCard(businessEvent)) {
-      return (
-        <ConsumerExperienceDetailScreen
-          seed={businessEvent}
-          onBack={onClose}
-          tabBarAware={false}
-        />
-      );
+      // ORCH-1194 — handled by the navigation effect above: the deck experience card
+      // opens the /exp/ route (correct mount) instead of this in-place sheet (which
+      // banded + clipped the reserve bar). Render nothing while the route takes over.
+      return null;
     }
     // ORCH-1138 Leg 2 — the deck EVENT card opens the foundation event detail
     // (ConsumerEventDetailScreen) DIRECTLY. Get-tickets opens TicketCartSheet
