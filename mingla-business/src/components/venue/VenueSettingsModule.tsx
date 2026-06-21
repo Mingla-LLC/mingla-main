@@ -43,6 +43,7 @@ import {
 } from "../../hooks/useVenueReservationSettings";
 import type { BrandHourEntry } from "../../types/brand";
 import { BRAND_ROLE_RANK } from "../../utils/brandRole";
+import { buildComposeAudienceHref } from "../../utils/composeAudienceHref";
 import {
   formatCurrency,
   majorFromMinor,
@@ -215,6 +216,18 @@ export function VenueSettingsModule({
   const goToTeam = useCallback((): void => {
     if (brandId === null) return;
     router.push(`/brand/${brandId}/team` as never);
+  }, [brandId, router]);
+
+  // ORCH-1186-D — Message your guests: deep-link into the EXISTING marketing
+  // composer with this venue's brand audience pre-selected. REUSE ONLY (no new
+  // composer / send path / audience kind). The audience is the brand's ticket
+  // buyers (`brand_buyers`, orders-derived) — copy is honest about that.
+  // I-PROPOSED-BU: the `?audience={kind}:{id}` shape is a binding contract with
+  // parseAudienceParam — build it via buildComposeAudienceHref so the round-trip
+  // regression test guards it; do NOT inline a divergent URL.
+  const handleBlast = useCallback((): void => {
+    if (brandId === null) return;
+    router.push(buildComposeAudienceHref("brand", brandId) as never);
   }, [brandId, router]);
 
   const feePreview = useMemo(() => {
@@ -615,6 +628,33 @@ export function VenueSettingsModule({
           size="sm"
           style={styles.inlineBtn}
         />
+      </Section>
+
+      {/* 8 — Message your guests (ORCH-1186-D): deep-link into the existing
+          marketing composer pre-scoped to this venue's brand audience. Copy is
+          honest that the audience is ticket buyers (orders-derived), not
+          reservation guests (OQ-1 — a reservation-guest audience is a separate
+          follow-on ORCH). Manager-plus gated, consistent with the other action
+          rows in this module. */}
+      <Section title="Reach your guests">
+        <Text style={styles.rowTitle}>Message your ticket buyers</Text>
+        <Text style={styles.rowSub}>
+          Email or text the people who&apos;ve bought tickets from this venue. We
+          open the composer with your audience ready to go.
+        </Text>
+        {canMutate ? (
+          <Button
+            label="Message your guests"
+            onPress={handleBlast}
+            variant="primary"
+            size="md"
+            leadingIcon="send"
+            disabled={brandId === null}
+            style={styles.inlineBtn}
+            accessibilityLabel="Message your guests"
+            testID="venue-settings-message-guests"
+          />
+        ) : null}
       </Section>
 
       {!canMutate ? (
