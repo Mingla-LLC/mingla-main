@@ -7,6 +7,49 @@
 
 ---
 
+## ACTIVE — META-ORCH-1187 (Growth Analytics Hub, Phase 1, 2026-06-21, PRs #584/#586/#591)
+
+> All seven invariants flipped DRAFT/PROPOSED → ACTIVE at META-ORCH-1187 Phase 1 CLOSE. PostHog (US host, project 479999) + GA4 (web only) now instrumented across marketing web (#584 `f1f173491`), buyer web (#586 `37be2cf1f`), and the consumer + business apps (#591 `b5ff3a5bd`); each rule is enforced by a merged strict-grep gate under `.github/scripts/strict-grep/`.
+
+### I-PROPOSED-1187-POSTHOG-HOST-US (ACTIVE)
+- **Rule:** every PostHog init (web + native, all apps) MUST use `api_host`/host = `https://us.i.posthog.com`; no `eu.i.posthog.com` / `app.posthog.com` host anywhere.
+- **Enforcement:** `.github/scripts/strict-grep/i-proposed-1187-posthog-host-us.mjs` (asserts the US host literal at every init site, forbids EU/app hosts); fails-on-revert.
+- **Established:** ACTIVE at META-ORCH-1187 Phase 1 CLOSE (#584/#586/#591).
+
+### I-PROPOSED-1187-NO-PHX-IN-CLIENT (ACTIVE)
+- **Rule:** the `phx_*` personal/MCP key MUST NOT appear in any client app source (`app-mobile/`, `mingla-business/`, `mingla-marketing/`, buyer-web).
+- **Enforcement:** `.github/scripts/strict-grep/i-proposed-1187-no-phx-in-client.mjs` (fails on any `phx_` literal in client trees); fails-on-revert.
+- **Established:** ACTIVE at META-ORCH-1187 Phase 1 CLOSE (#584/#586/#591).
+
+### I-PROPOSED-1187-CONSENT-GATE-BEFORE-COOKIES (ACTIVE)
+- **Rule:** on BOTH web surfaces, PostHog MUST init with `opt_out_capturing_by_default: true` AND GA4 MUST emit `gtag('consent','default', {…all denied})` before any GA `config`/measurement call — no analytics cookies/capture before explicit Accept.
+- **Enforcement:** `.github/scripts/strict-grep/i-proposed-1187-consent-gate-before-cookies.mjs` (asserts the `opt_out_capturing_by_default: true` literal at both web init sites + GA4 consent-default-denied ordered before GA config) + the tester deletion-robustness gate `.github/scripts/strict-grep/orch-1187-tester-consent-gate-deletion-robust.mjs`; fails-on-revert.
+- **Established:** ACTIVE at META-ORCH-1187 Phase 1 CLOSE (#584/#586).
+
+### I-PROPOSED-1187-REPLAY-MASKS-PII (ACTIVE)
+- **Rule:** session replay MUST keep masking ON everywhere — `maskAllInputs` (web) and `maskAllTextInputs` + `maskAllImages` (native) are NEVER `false`; payment/auth/PII elements carry `ph-no-capture`/`data-ph-mask`.
+- **Enforcement:** `.github/scripts/strict-grep/i-proposed-1187-replay-masks-pii.mjs` (FAILS on any `maskAllInputs: false` / `maskAllTextInputs: false` / `maskAllImages: false` / masking-defeating `disable_session_recording` toggle in any client tree); fails-on-revert. *(Tester note: source + config + library masking is proven; the rendered-recording runtime inspection (T-16/T-17) rides live-fire — deploy + replay-enable + on-device.)*
+- **Established:** ACTIVE at META-ORCH-1187 Phase 1 CLOSE (#584/#586/#591).
+
+### I-PROPOSED-1187-ANALYTICS-WEB-ONLY-VIA-WEB-TS (ACTIVE)
+- **Rule:** `posthog-js` + the gtag loader + the web ConsentBanner are referenced ONLY from `*.web.ts(x)` files or behind `Platform.OS==='web'`; never from a native-resolved module (native stubs are no-ops). Buyer-web leg analytics is wired through the web-only path.
+- **Enforcement:** `.github/scripts/strict-grep/i-proposed-1187-analytics-web-only-via-web-ts.mjs` (asserts `posthog-js`/gtag/ConsentBanner.web appear only in `.web.` files / Next client components and native stubs stay no-op) + `.github/scripts/strict-grep/orch-1187-leg2-buyer-web-analytics-wired.mjs`; fails-on-revert.
+- **Established:** ACTIVE at META-ORCH-1187 Phase 1 CLOSE (#584/#586).
+
+### I-PROPOSED-1187-POSTHOG-KEY-STATIC-READ (ACTIVE)
+- **Rule:** native PostHog key is read statically (build-time inlined via `Constants.expoConfig.extra`), never via a dynamic `process.env` read Expo can't inline — so the key is present in real builds.
+- **Enforcement:** `.github/scripts/strict-grep/i-proposed-1187-posthog-key-static-read.mjs`; fails-on-revert.
+- **Established:** ACTIVE at META-ORCH-1187 Phase 1 CLOSE (#591).
+
+### I-PROPOSED-1187-NATIVE-MOUNTS-ANALYTICS (ACTIVE)
+- **Rule:** both native apps mount PostHog at the root and keep session-replay masking ON (`maskAllTextInputs`/`maskAllImages` true) in the live `new PostHogClass(...)` constructor (`app-mobile/src/services/postHogService.ts`, `mingla-business/src/services/postHogService.ts`).
+- **Enforcement:** `.github/scripts/strict-grep/i-proposed-1187-native-mounts-analytics.mjs` (structural mount/masking gate) + node:assert/jest regression tests (fails-on-revert). *(Tester P2 carry-forward: the structural gate can be fooled by a doc-comment mention; the jest/node:assert tests are the hard fails-on-revert guard — gate hardening is a known follow-up, runtime safety holds.)*
+- **Established:** ACTIVE at META-ORCH-1187 Phase 1 CLOSE (#591).
+
+> *(Marketing-layout mount is additionally covered by `.github/scripts/strict-grep/i-proposed-1187-marketing-layout-mounts-analytics.mjs`.)*
+
+---
+
 ## ACTIVE — ORCH-1170 (business keyboard "Done" accessory bar, 2026-06-20, PR #548)
 
 ### I-PROPOSED-KEYBOARD-TOOLBAR-CLEARANCE (ACTIVE)
