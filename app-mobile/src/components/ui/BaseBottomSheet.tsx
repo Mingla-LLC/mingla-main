@@ -852,21 +852,87 @@ function BaseBottomSheetComponent(props: BaseBottomSheetProps): React.ReactEleme
   // own opaque background reaches the true screen bottom and paints over the
   // nav-bar band — the iOS mirror. Snap/scroll math is unchanged: it is still a
   // single bounded host value (we only swap WHICH bound on Android).
+  // ── ORCH-1190 [consumer-sheet-bottom-fill] — BOTTOM-STRIP OPAQUE FILLER ──────
+  // SUPERSEDES the ORCH-1157 Round-13 "host-to-physical-screen-bottom" reliance as
+  // the SOLE bottom-gap mechanism. On-device (Samsung A72, SM-A725F, 3-button nav,
+  // 1080×2400) a full-width band of PURE #000 (the app ROOT `rootView` bg in
+  // app/index.tsx, NOT the sheet's #0c0e12) STILL showed from y≈2068→2264 (~65dp)
+  // between the sheet content bottom and the system nav bar. Seth confirms the same
+  // home-indicator-region gap on iOS.
+  //
+  // ROOT CAUSE the host-height fix alone could not close: gorhom's opaque
+  // `backgroundStyle` paints ONLY the DraggableView (the rounded sheet container).
+  // Its painted region does NOT deterministically reach the host's physical bottom
+  // — it depends on gorhom's OWN containerHeight onLayout measurement (which can
+  // resolve to the WINDOW height even when our host View is the SCREEN height under
+  // Expo-54 edge-to-edge), the snap %, and `bottomInset`. Wherever the painted
+  // region stops short of the host bottom, the TRANSPARENT inline host lets the
+  // #000 root show through that strip. Extending the host bound did not guarantee
+  // the gorhom PAINT followed it to the true bottom — hence the surviving band.
+  //
+  // FIX (robust, snap-independent, both platforms): render an OPAQUE filler View
+  // painted with the sheet's OWN background color, ABSOLUTELY pinned to the BOTTOM
+  // of the inline host (`left/right/bottom: 0`), as the FIRST child of the host so
+  // it sits BEHIND `{sheet}` (siblings paint in source order; first = lowest z).
+  // It only spans the bottom strip (height = the bottom inset + a generous nav /
+  // home-indicator buffer), so:
+  //   • The #000 strip below the sheet's painted bg is now the SHEET color on BOTH
+  //     the screen-height path (Android 3-button) and the window-height path
+  //     (iOS / gesture-nav) — the filler is anchored to the host bottom = the
+  //     physical bottom on the screen-height path, and its height overshoots the
+  //     window→screen delta on any path, so it always reaches the true bottom.
+  //   • It is BEHIND the sheet, so wherever gorhom's bg DOES paint (the whole sheet
+  //     body at any 50%/90% snap) the real sheet bg shows; the filler is only
+  //     visible in the residual bottom strip the sheet bg failed to cover.
+  //   • It is a bounded BOTTOM strip (never full host height), so it NEVER paints
+  //     over the BACKDROP dim region ABOVE the sheet — the dimmed see-through-to-
+  //     deck area (sheet top at 10%/50%) stays transparent and the Discover deck
+  //     remains visible. The backdrop (BottomSheetBackdrop) renders inside {sheet}
+  //     ABOVE the filler and dims normally.
+  //   • `pointerEvents="none"` so it never intercepts a pan/tap (pan-to-dismiss,
+  //     backdrop-press, the floating reserve bar are all untouched).
+  // The filler is a SIBLING of {sheet} in the inline-host render path — it is NOT
+  // inside gorhom's <BottomSheet> body, so the ORCH-1043 direct-child viewport
+  // invariant (and its two gates, which scan only the `body` useMemo region) are
+  // unaffected: scroll / pan-dismiss / sticky footer all behave exactly as before.
+  const bottomFillerColor =
+    (StyleSheet.flatten(resolvedBackgroundStyle) as ViewStyle | undefined)
+      ?.backgroundColor ?? '#0c0e12';
+  // Height = the OS bottom inset (nav bar / home indicator) + a buffer that safely
+  // overshoots both the measured ~65dp Android band and any window↔screen height
+  // delta, while staying far below the sheet top at the 50%/90% snaps (so it can
+  // never bleed into the backdrop region).
+  const bottomFillerHeight = safeBottomInset + 96;
+  const bottomFiller = (
+    <View
+      pointerEvents="none"
+      style={[
+        styles.bottomFiller,
+        { height: bottomFillerHeight, backgroundColor: bottomFillerColor },
+      ]}
+    />
+  );
+
   const inlineHost = (
     <View
       style={[styles.inlineContainer, { height: inlineContainerHeight }]}
       pointerEvents="box-none"
       accessibilityViewIsModal
     >
+      {/* ORCH-1190: opaque bottom-strip filler — FIRST child so it paints BEHIND
+          {sheet}; covers the #000 root band below the sheet's own bg on both the
+          screen-height (Android nav-bar) and window-height (iOS home-indicator)
+          paths without darkening the backdrop above the sheet. */}
+      {bottomFiller}
       {sheet}
     </View>
   );
 
   // ORCH-1157 Round-13 [android-sheet-gap]: the inline detail sheet is rendered
-  // as the bare host on ALL platforms. The Round-12 Android full-screen RN-Modal
-  // wrap is REMOVED — extending the host to the physical screen bottom (above)
-  // lets gorhom's own opaque background fill the nav-bar band, so no separate
-  // native window or filler View is needed. iOS / gesture-nav are unchanged.
+  // as the bare host on ALL platforms (no full-screen RN-Modal wrap). The host
+  // still extends to the physical screen bottom on Android; ORCH-1190 adds the
+  // opaque bottom-strip filler above so the residual #000 band the gorhom PAINT
+  // failed to cover is now the sheet color on both platforms.
   return inlineHost;
 }
 
@@ -978,6 +1044,19 @@ const styles = StyleSheet.create({
   // `sectionList` (flex:1) stay — they are on the SCROLLABLES themselves.
   stickyBody: { flex: 1 },
   sectionList: { flex: 1 },
+  // ORCH-1190 [consumer-sheet-bottom-fill] — opaque bottom-strip filler pinned to
+  // the inline host's physical bottom, painted with the sheet's own bg color so
+  // the residual #000 root band below gorhom's painted sheet bg becomes the sheet
+  // color on BOTH platforms. Bottom-anchored + bounded height (set inline) so it
+  // covers ONLY the bottom strip and never the backdrop dim region above the sheet.
+  // It is a SIBLING of {sheet} (behind it via source order), never inside gorhom's
+  // body, so the ORCH-1043 direct-child viewport invariant is untouched.
+  bottomFiller: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+  },
   centerScrim: {
     flex: 1,
     alignItems: 'center',

@@ -82,7 +82,8 @@
     "test:orch-1163-plus-one-per-guest": "node ./scripts/ci/orch-1163-rsvp-plus-one-per-guest-check.mjs",
     "test:orch-1163-going-calendar-qr": "node ./scripts/ci/orch-1163-rsvp-going-calendar-qr-check.mjs",
     "test:orch-1163-guest-notify-match": "node ./scripts/ci/orch-1163-rsvp-guest-notify-match-check.mjs",
-    "test:orch-1171": "node ./scripts/ci/orch-1171-keyboard-done-bar-check.mjs && node --test src/wrappers/__tests__/orch_1171_keyboard_toolbar_mount_coverage.test.mjs"
+    "test:orch-1171": "node ./scripts/ci/orch-1171-keyboard-done-bar-check.mjs && node --test src/wrappers/__tests__/orch_1171_keyboard_toolbar_mount_coverage.test.mjs",
+    "test:orch-1190": "node ./src/components/ui/__tests__/orch_1190_consumer_sheet_bottom_fill.test.mjs"
   },
   "dependencies": {
     "@expo-google-fonts/anton": "^0.4.2",
