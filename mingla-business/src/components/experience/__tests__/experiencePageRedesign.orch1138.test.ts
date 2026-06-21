@@ -57,12 +57,30 @@ describe("ORCH-1138 Leg 3 — experience page redesign", () => {
     expect(serviceSrc).toMatch(/intents:\s*readIntents\(event\.experience_intents\)/);
   });
 
-  test("SC-2 the preview renders real vibe chips + per-stop blurb + a stop-1 map (rule 9: only when present)", () => {
-    expect(previewSrc).toMatch(/vibeChips/);
-    expect(previewSrc).toMatch(/stop\.description/);
-    // map block guarded on real coords (find the first stop with lat/lng).
-    expect(previewSrc).toMatch(/s\.lat !== null && s\.lng !== null/);
-    expect(previewSrc).toMatch(/buildStaticMapUrl/);
+  test("SC-2 the preview delegates vibe chips + per-stop blurb + stop-1 map to the shared ExperienceOfferingBody (ORCH-1183)", () => {
+    // ORCH-1183 [experience-standardize] — the hand-mirrored FoundationExperiencePreview
+    // sections were RETIRED in favor of the ONE shared @mingla/offering-rendering
+    // ExperienceOfferingBody, which renders the vibe chips, per-stop blurb, and the
+    // stop-1 map (the per-stop VIDEO-capable StopSpine). The preview now mounts the
+    // shared body; the adapter threads the real intents/stops/coords into the
+    // normalized contract (rule 9 — only when present). These assertions follow the
+    // sections to their new owner so the contract still fails-on-revert.
+    const adapterSrc = read(
+      "src/components/experience/experienceOfferingAdapter.ts",
+    );
+    const bodySrc = read(
+      "../packages/offering-rendering/ExperienceOfferingBody.tsx",
+    );
+    // the preview mounts the shared body.
+    expect(previewSrc).toMatch(/<ExperienceOfferingBody/);
+    // the adapter threads the real intents + per-stop blurb (description) + coords.
+    expect(adapterSrc).toMatch(/intents:\s*exp\.intents/);
+    expect(adapterSrc).toMatch(/description:\s*s\.description/);
+    expect(adapterSrc).toMatch(/lat:\s*s\.lat/);
+    // the shared body renders the vibe chips + the stop-1 map (coords-gated).
+    expect(bodySrc).toMatch(/vibeLabels/);
+    expect(bodySrc).toMatch(/s\.lat !== null && s\.lng !== null/);
+    expect(bodySrc).toMatch(/buildStaticMapUrl/);
   });
 
   // ── SC-3 adaptive Reserve ──

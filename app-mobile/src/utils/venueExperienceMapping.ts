@@ -171,7 +171,13 @@ export function experienceToBusinessEventCard(
     masterEndAtUtc: null,
     doorsOpenLocal: null,
     endsAtLocal: null,
-    timezone: "UTC",
+    // ORCH-1183 — the REAL experience timezone from pg_brand_experiences_for_place
+    // (events.timezone), no longer hardcoded "UTC". Falls back to "UTC" only when
+    // the column is absent (pre-migration payload) — honest, never fabricated.
+    timezone:
+      typeof row.timezone === "string" && row.timezone.length > 0
+        ? row.timezone
+        : "UTC",
     venueName: row.venue_text,
     city: firstCity ?? row.venue_text,
     address: null,

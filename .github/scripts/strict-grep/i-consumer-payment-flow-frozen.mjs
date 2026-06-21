@@ -91,6 +91,12 @@ const FROZEN_FILES = [
     // Experience success copy is "Reserved!" (kind-appropriate), but the
     // load-bearing payment surface (runNativeCheckout + businessEventOrders
     // invalidation) and the no-sync-confirm guarantee are identical.
+    // [CONSUMER-MOD-APPROVED ORCH-1183] — the experience-standardize leg replaced
+    // the screen's hand-mirrored RENDER body with the shared <ExperienceOfferingBody>
+    // and converged the reserve bar onto the shared <TripReserveBar>. The PAYMENT
+    // surface (runNativeCheckout + businessEventOrders invalidation, eventDateId
+    // threading, no-sync-confirm) is byte-identical — these fingerprints are
+    // intentionally unchanged.
     path: "app-mobile/src/screens/Experience/ConsumerExperienceDetailScreen.tsx",
     mustContain: [
       "runNativeCheckout",
