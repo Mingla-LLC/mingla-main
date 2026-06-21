@@ -233,6 +233,16 @@ export interface TripInclusionInput {
 }
 
 export interface TripPricingPatch {
+  /**
+   * META-ORCH-1174 Leg B1 — when a trip has MULTIPLE pricing tiers (packages),
+   * the caller MUST identify which tier this patch targets by its
+   * `ticketTypeId`. When omitted, `updateTripPricing` falls back to the trip's
+   * sole tier (deterministically the earliest-created one if, defensively, more
+   * than one exists) — preserving the single-package wizard's call shape with
+   * zero change. Lifting the historical `.maybeSingle()`-throws-on->1 choke is
+   * what makes N packages possible at the data layer (DEC-1174-B).
+   */
+  ticketTypeId?: string;
   tierName: string;
   priceCents: number;
   capacity: number;
@@ -1042,16 +1052,30 @@ export async function updateTripPricing(
   }
   const eventCurrency = (eventCurrencyResp.data.currency as string | null) ?? "USD";
 
-  // Look up the existing pricing tier + its ticket_type
-  const { data: tierRow, error: tierError } = await supabase
+  // META-ORCH-1174 Leg B1 — lift the single-tier `.maybeSingle()` choke. A trip
+  // may now carry N pricing tiers (packages). Target the tier addressed by
+  // `patch.ticketTypeId` when provided; otherwise fall back to the trip's sole
+  // tier (deterministically the earliest-created row if, defensively, >1 exists
+  // — NEVER throw on >1 as the old `.maybeSingle()` did, which was the hard
+  // single-package barrier). The per-tier validation below is unchanged.
+  let tierQuery = supabase
     .from("trip_pricing_tiers")
     .select("*")
-    .eq("event_id", eventId)
-    .maybeSingle();
+    .eq("event_id", eventId);
+  if (patch.ticketTypeId !== undefined) {
+    tierQuery = tierQuery.eq("ticket_type_id", patch.ticketTypeId);
+  }
+  const { data: tierRows, error: tierError } = await tierQuery
+    .order("created_at", { ascending: true })
+    .limit(1);
   if (tierError) throw tierError;
+  const tierRow = (tierRows ?? [])[0] ?? null;
   if (tierRow === null) {
     throw new Error(
-      "updateTripPricing: no pricing tier found for event_id=" + eventId,
+      "updateTripPricing: no pricing tier found for event_id=" + eventId +
+        (patch.ticketTypeId !== undefined
+          ? " ticketTypeId=" + patch.ticketTypeId
+          : ""),
     );
   }
 
@@ -1110,6 +1134,168 @@ export async function updateTripPricing(
     tierUpdated as TripPricingTierRow,
     ticketRow as TicketTypeRow,
   );
+}
+
+// ---------------------- META-ORCH-1174 Leg B1: N-tier data layer ----------------------
+//
+// The DB schema, checkout engine, per-tier remaining RPC, and public read RPC
+// ALREADY support N pricing tiers per trip (only the service `.maybeSingle()`
+// + the wizard UI enforced one). These functions let the data layer create,
+// list, and soft-remove additional packages WITHOUT building the wizard (B2).
+//
+// Soft-remove = set ticket_types.deleted_at. The public read RPC
+// (pg_public_trip_by_slug) and the remaining RPC (pg_public_ticket_types_remaining)
+// already filter `tt.deleted_at IS NULL`, so a soft-removed package vanishes from
+// every buyer surface while historical orders/tickets (FK → ticket_types.id) stay
+// coherent. Callers MUST gate removal on zero sales (mirrors the published-edit
+// `tier_delete_with_sales` refund-gate; enforced here for draft tiers too).
+
+/**
+ * List ALL non-deleted pricing tiers for a trip, joined to their ticket_types
+ * (price / capacity / currency / installment template). Replaces any
+ * `pricingTiers[0]` single-tier assumption in callers that need the full set.
+ */
+export async function listTripPricingTiers(
+  eventId: string,
+): Promise<TripPricingTier[]> {
+  const { data: tierRows, error: tierError } = await supabase
+    .from("trip_pricing_tiers")
+    .select("*")
+    .eq("event_id", eventId)
+    .order("created_at", { ascending: true });
+  if (tierError) throw tierError;
+  const rows = (tierRows ?? []) as TripPricingTierRow[];
+  if (rows.length === 0) return [];
+
+  const ticketTypeIds = rows.map((r) => r.ticket_type_id);
+  const { data: ttRows, error: ttError } = await supabase
+    .from("ticket_types")
+    .select("id, event_id, price_cents, currency, quantity_total, is_unlimited")
+    .in("id", ticketTypeIds)
+    .is("deleted_at", null);
+  if (ttError) throw ttError;
+  const ttById = new Map(
+    ((ttRows ?? []) as TicketTypeRow[]).map((tt) => [tt.id, tt]),
+  );
+
+  // Drop tiers whose ticket_type was soft-deleted (vanished package).
+  return rows
+    .filter((r) => ttById.has(r.ticket_type_id))
+    .map((r) => mapTripPricingTier(r, ttById.get(r.ticket_type_id)));
+}
+
+/**
+ * Create an ADDITIONAL pricing tier (package) on a trip: inserts a ticket_types
+ * row (currency derived from the event, NEVER caller-supplied — the
+ * tg_enforce_event_ticket_currency trigger rejects mismatch) + the joined
+ * trip_pricing_tiers row. Returns the new tier. Mirrors the createTripDraft
+ * placeholder insert but is additive (the trip keeps its existing tiers).
+ */
+export async function createTripPricingTier(
+  eventId: string,
+  patch: Omit<TripPricingPatch, "ticketTypeId">,
+): Promise<TripPricingTier> {
+  const eventResp = await supabase
+    .from("events")
+    .select("currency")
+    .eq("id", eventId)
+    .eq("event_type", "trip")
+    .maybeSingle();
+  if (eventResp.error) throw eventResp.error;
+  if (eventResp.data === null) {
+    throw new Error("createTripPricingTier: event not found for id=" + eventId);
+  }
+  const eventCurrency = (eventResp.data.currency as string | null) ?? "USD";
+
+  // Place the new package after the existing ones.
+  const { data: existing, error: existingErr } = await supabase
+    .from("trip_pricing_tiers")
+    .select("ticket_type_id")
+    .eq("event_id", eventId);
+  if (existingErr) throw existingErr;
+  const displayOrder = (existing ?? []).length;
+
+  const { data: ticketRow, error: ticketError } = await supabase
+    .from("ticket_types")
+    .insert({
+      event_id: eventId,
+      name: patch.tierName,
+      price_cents: patch.priceCents,
+      currency: eventCurrency,
+      quantity_total: patch.capacity,
+      is_unlimited: false,
+      is_free: patch.priceCents === 0,
+      min_purchase_qty: 1,
+      available_online: true,
+      available_in_person: false,
+      display_order: displayOrder,
+    })
+    .select()
+    .single();
+  if (ticketError) throw ticketError;
+  if (ticketRow === null) {
+    throw new Error("createTripPricingTier: ticket_types insert returned null");
+  }
+
+  // Build tier_metadata.installments from the optional per-package plan.
+  const tierMetadata: Record<string, unknown> = {};
+  if (
+    patch.installmentSchedule !== null &&
+    patch.installmentSchedule !== undefined
+  ) {
+    tierMetadata.installments = patch.installmentSchedule;
+  }
+
+  const { data: tierRow, error: tierError } = await supabase
+    .from("trip_pricing_tiers")
+    .insert({
+      event_id: eventId,
+      ticket_type_id: (ticketRow as TicketTypeRow).id,
+      tier_name: patch.tierName,
+      tier_metadata: tierMetadata,
+    })
+    .select()
+    .single();
+  if (tierError) throw tierError;
+  if (tierRow === null) {
+    throw new Error("createTripPricingTier: tier insert returned null");
+  }
+
+  return mapTripPricingTier(
+    tierRow as TripPricingTierRow,
+    ticketRow as TicketTypeRow,
+  );
+}
+
+/**
+ * Soft-remove a pricing tier (package) by its ticketTypeId. Refuses to remove a
+ * package that has sold tickets (mirrors the published-edit `tier_delete_with_sales`
+ * refund-gate — applies to draft tiers too so historical inventory is never
+ * orphaned). Sets ticket_types.deleted_at; the read + remaining RPCs filter it
+ * out, so the package disappears from every buyer surface.
+ */
+export async function removeTripPricingTier(
+  eventId: string,
+  ticketTypeId: string,
+): Promise<void> {
+  const soldByTier = await readTripSoldCountsByTier(eventId);
+  if ((soldByTier.get(ticketTypeId) ?? 0) > 0) {
+    throw new Error("tier_delete_with_sales");
+  }
+
+  // I-PROPOSED-I (MUTATION-ROWCOUNT-VERIFIED): chain .select() so a 0-row write
+  // surfaces as an error rather than a silent no-op.
+  const { data, error } = await supabase
+    .from("ticket_types")
+    .update({ deleted_at: new Date().toISOString() })
+    .eq("id", ticketTypeId)
+    .eq("event_id", eventId)
+    .is("deleted_at", null)
+    .select("id");
+  if (error) throw error;
+  if (data === null || data.length === 0) {
+    throw new Error("removeTripPricingTier: no rows updated (already removed?)");
+  }
 }
 
 export async function readTripSoldCountsByTier(
