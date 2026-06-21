@@ -1,0 +1,40 @@
+#!/usr/bin/env bash
+#
+# Mingla anchor-hygiene guard — ORCH-1185.
+#
+# Blocks `git commit` made directly while HEAD is on `main`.
+# ALL work must happen on a per-ORCH worktree branch and reach `main` via a PR
+# (or, for sanctioned doc/ledger syncs, a short-lived branch that is pushed to
+# main — never a commit authored while sitting on the `main` branch).
+#
+# This is the enforcement half of the rule: "nothing is ever created on main;
+# a worktree must be spawned before any file is created."
+#
+# Worktrees are always on an ORCH-#### branch, so their commits pass. The only
+# thing this stops is the failure mode that produced the 2026-06-21 191-file
+# anchor pollution: editing + committing straight on the shared `main` checkout.
+#
+# Sanctioned automation that genuinely must commit on main can override for a
+# single command:   MINGLA_ALLOW_MAIN_COMMIT=1 git commit ...
+# (Prefer commit-on-branch + `git push origin HEAD:main` instead.)
+
+branch="$(git symbolic-ref --short HEAD 2>/dev/null || echo '')"
+
+if [ "$branch" = "main" ] && [ "${MINGLA_ALLOW_MAIN_COMMIT:-}" != "1" ]; then
+  echo "" >&2
+  echo "✗ BLOCKED by .githooks/pre-commit — no direct commits to 'main'." >&2
+  echo "" >&2
+  echo "  The shared anchor (~/Desktop/mingla-main) must stay a clean mirror of" >&2
+  echo "  origin/main. Spawn a worktree before creating or editing any file:" >&2
+  echo "" >&2
+  echo "      scripts/orch-worktree/spawn.sh ORCH-NNNN <short-kebab-label>" >&2
+  echo "" >&2
+  echo "  Do the work on the ORCH-#### branch, then open a PR (or push the branch" >&2
+  echo "  to main for a sanctioned doc/ledger sync)." >&2
+  echo "" >&2
+  echo "  Sanctioned automation only:  MINGLA_ALLOW_MAIN_COMMIT=1 git commit ..." >&2
+  echo "" >&2
+  exit 1
+fi
+
+exit 0

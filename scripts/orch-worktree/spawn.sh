@@ -65,6 +65,13 @@ git -C "$ANCHOR" merge --ff-only origin/main --quiet || {
   echo "WARN: anchor cannot fast-forward to origin/main. Continuing with current local main." >&2
 }
 
+# Ensure the anchor-hygiene guard is active (ORCH-1185). core.hooksPath lives in
+# the shared .git/config, so setting it on the anchor covers every worktree too.
+# Blocks direct commits on `main` — enforces "spawn a worktree before any file".
+echo "==> Asserting anchor-hygiene guard (no direct commits on main)..."
+git -C "$ANCHOR" config core.hooksPath .githooks
+chmod +x "$ANCHOR/.githooks/"* 2>/dev/null || true
+
 # Spawn the worktree off main with a fresh branch.
 echo "==> Spawning worktree: $WT"
 git -C "$ANCHOR" worktree add "$WT" -b "$BRANCH" main
