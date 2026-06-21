@@ -19,7 +19,7 @@
  */
 
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { Pressable, StyleSheet, Switch, Text, View } from "react-native";
+import { ActivityIndicator, Pressable, StyleSheet, Switch, Text, View } from "react-native";
 import { useRouter } from "expo-router";
 
 import {
@@ -29,14 +29,19 @@ import {
   spacing,
   text as textTokens,
   typography,
+  venueSettingsMaxWidth,
 } from "../../constants/designSystem";
 import { useCurrentBrand } from "../../hooks/useCurrentBrand";
 import { useCurrentBrandRole } from "../../hooks/useCurrentBrandRole";
+import { useResponsiveLayout } from "../../hooks/useResponsiveLayout";
+import { useBrandHours, useUpsertBrandHours } from "../../hooks/useBrandHours";
+import { useBrandPlaceAuthoringContext } from "../../hooks/useBrandPlacePipelineState";
 import {
   useSetReservationsEnabled,
   useUpdateReservationFee,
   useVenueReservationSettings,
 } from "../../hooks/useVenueReservationSettings";
+import type { BrandHourEntry } from "../../types/brand";
 import { BRAND_ROLE_RANK } from "../../utils/brandRole";
 import {
   formatCurrency,
@@ -48,6 +53,7 @@ import {
   brandStripeOnboardingRoute,
   paidPublishGuardCopy,
 } from "../../utils/paidPublishGuards";
+import { BrandHoursEditor } from "./BrandHoursEditor";
 import { Button } from "../ui/Button";
 import { GlassCard } from "../ui/GlassCard";
 import { Input } from "../ui/Input";
@@ -69,6 +75,13 @@ const ROLE_LEGEND: readonly { label: string; perms: string }[] = [
   { label: "Finance", perms: "Payouts & reports" },
   { label: "Scanner", perms: "Check guests in" },
 ];
+
+/** ORCH-1186-A — human label for the venue category summary row. */
+const CATEGORY_LABEL: Record<string, string> = {
+  restaurant: "Restaurant",
+  play: "Play",
+  creative_and_arts: "Creative & Arts",
+};
 
 interface SectionProps {
   title: string;
@@ -98,6 +111,8 @@ export function VenueSettingsModule({
   const brand = useCurrentBrand();
   const { rank } = useCurrentBrandRole(brandId);
   const canMutate = rank >= MANAGER_PLUS_RANK;
+  const { isWideDesktop } = useResponsiveLayout();
+  const placePoolId = brand?.placePoolId ?? null;
 
   const settingsQuery = useVenueReservationSettings(brandId);
   const settings = settingsQuery.data ?? null;
@@ -207,8 +222,101 @@ export function VenueSettingsModule({
     return formatCurrency(draftCents, currency, true);
   }, [feeActive, draftCents, currency]);
 
+  // ----- ORCH-1186-A: Opening hours editor (single owner = brand_hours) -------
+  const hoursQuery = useBrandHours(brandId);
+  const upsertHours = useUpsertBrandHours(brandId);
+  const [hoursDraft, setHoursDraft] = useState<BrandHourEntry[] | null>(null);
+  const [hoursSaved, setHoursSaved] = useState<boolean>(false);
+  const [hoursError, setHoursError] = useState<boolean>(false);
+
+  // Hydrate the local draft from server data; re-sync when server data changes
+  // (and the user has no in-flight edits).
+  const serverHours = hoursQuery.data ?? null;
+  useEffect(() => {
+    if (serverHours !== null && hoursDraft === null) {
+      setHoursDraft(serverHours);
+    }
+  }, [serverHours, hoursDraft]);
+
+  const hoursDirty = useMemo<boolean>(() => {
+    if (hoursDraft === null || serverHours === null) return false;
+    return JSON.stringify(hoursDraft) !== JSON.stringify(serverHours);
+  }, [hoursDraft, serverHours]);
+
+  const hoursInvalid = useMemo<boolean>(() => {
+    if (hoursDraft === null) return false;
+    for (const h of hoursDraft) {
+      if (h.isClosed) continue;
+      const o = h.openTime ?? "";
+      const c = h.closeTime ?? "";
+      if (o.length === 0 || c.length === 0) return true;
+      if (o >= c) return true;
+    }
+    return false;
+  }, [hoursDraft]);
+
+  const handleHoursChange = useCallback((next: BrandHourEntry[]): void => {
+    setHoursDraft(next);
+    setHoursSaved(false);
+    setHoursError(false);
+  }, []);
+
+  const handleSaveHours = useCallback((): void => {
+    if (!canMutate || hoursDraft === null || !hoursDirty || hoursInvalid) return;
+    setHoursError(false);
+    upsertHours.mutate(hoursDraft, {
+      onSuccess: () => {
+        setHoursSaved(true);
+        // The mutation invalidates the hours query; the draft re-syncs above.
+        setHoursDraft(null);
+      },
+      onError: () => {
+        setHoursError(true);
+      },
+    });
+  }, [canMutate, hoursDraft, hoursDirty, hoursInvalid, upsertHours]);
+
+  // Auto-dismiss the success line.
+  useEffect(() => {
+    if (!hoursSaved) return;
+    const t = setTimeout(() => setHoursSaved(false), 2500);
+    return () => clearTimeout(t);
+  }, [hoursSaved]);
+
+  // ----- ORCH-1186-A: AI / photos / vibes read-only readout + entry point -----
+  const authoringCtx = useBrandPlaceAuthoringContext(brandId, placePoolId);
+  const galleryCount = authoringCtx.data?.gallery_urls?.length ?? 0;
+  const scoreRows = useMemo(() => {
+    const scores = authoringCtx.data?.ai_signal_scores ?? null;
+    if (scores === null) return [];
+    return Object.entries(scores)
+      .filter(([, v]) => v.inappropriate_for !== true)
+      .map(([id, v]) => ({ id, score: v.score_0_to_100 }))
+      .sort((a, b) => b.score - a.score);
+  }, [authoringCtx.data]);
+  const editsRemaining = authoringCtx.data?.recommend_edits_remaining ?? null;
+
+  const goToVenueEdit = useCallback((): void => {
+    if (brandId !== null) router.push(`/brand/${brandId}` as never);
+  }, [brandId, router]);
+
+  const goToDeckReadiness = useCallback((): void => {
+    if (brandId === null || placePoolId === null) return;
+    router.push(
+      `/venue/deck-readiness?brand_id=${brandId}&place_pool_id=${placePoolId}&focus=review&fix=review_pipeline` as never,
+    );
+  }, [brandId, placePoolId, router]);
+
+  const hostStyle = useMemo(
+    () =>
+      isWideDesktop
+        ? [styles.host, { maxWidth: venueSettingsMaxWidth, alignSelf: "flex-start" as const }]
+        : styles.host,
+    [isWideDesktop],
+  );
+
   return (
-    <View style={styles.host} testID={testID ?? "venue-settings-module"}>
+    <View style={hostStyle} testID={testID ?? "venue-settings-module"}>
       {/* 1 — Reservations (canonical toggle home). */}
       <Section title="Reservations">
         <View style={styles.rowBetween}>
@@ -354,32 +462,139 @@ export function VenueSettingsModule({
         </>
       ) : null}
 
-      {/* 3 — Venue profile (read-mostly; editing routes to existing surfaces). */}
-      <Section title="Venue profile">
+      {/* ── Band 2 — VENUE PROFILE (the editable home, ORCH-1186-A). ───────── */}
+      <Text style={styles.bandCaption}>VENUE PROFILE</Text>
+
+      {/* 4 — Opening hours (real editor; brand_hours is the single owner). */}
+      <Section title="Opening hours">
+        <Text style={styles.rowSub}>
+          These are the hours guests see — and the baseline for reservation slots.
+        </Text>
+        {hoursQuery.isError ? (
+          <Text style={styles.hoursError} testID="venue-settings-hours-error">
+            Couldn&apos;t load your hours. Pull to refresh and try again.
+          </Text>
+        ) : hoursDraft === null ? (
+          <View style={styles.hoursLoading}>
+            <ActivityIndicator color={accent.warm} />
+          </View>
+        ) : (
+          <View
+            style={
+              !canMutate || upsertHours.isPending ? styles.editorLocked : null
+            }
+            pointerEvents={
+              !canMutate || upsertHours.isPending ? "none" : "auto"
+            }
+          >
+            <BrandHoursEditor
+              hours={hoursDraft}
+              onChange={handleHoursChange}
+              showErrors={hoursDirty}
+              disabled={!canMutate || upsertHours.isPending}
+            />
+          </View>
+        )}
+        {canMutate && hoursDraft !== null ? (
+          <>
+            <Button
+              label="Save hours"
+              onPress={handleSaveHours}
+              variant="primary"
+              size="md"
+              fullWidth
+              loading={upsertHours.isPending}
+              disabled={!hoursDirty || hoursInvalid || upsertHours.isPending}
+              style={styles.saveBtn}
+              testID="venue-settings-hours-save"
+            />
+            {hoursSaved ? (
+              <Text style={styles.hoursSaved} testID="venue-settings-hours-saved">
+                Hours saved.
+              </Text>
+            ) : null}
+            {hoursError ? (
+              <Text style={styles.hoursError} testID="venue-settings-hours-save-error">
+                Couldn&apos;t save hours. Tap Save to try again.
+              </Text>
+            ) : null}
+          </>
+        ) : null}
+      </Section>
+
+      {/* 5 — Venue details (live summary + working edit affordance). */}
+      <Section title="Venue details">
         <Text style={styles.rowTitle}>{brand?.displayName ?? "Your venue"}</Text>
+        {brand?.tagline != null && brand.tagline.length > 0 ? (
+          <Text style={styles.rowSub}>{brand.tagline}</Text>
+        ) : null}
         {brand?.city != null ? (
           <Text style={styles.rowSub}>{brand.city}</Text>
         ) : null}
-        <Button
-          label="Edit venue details"
-          onPress={() => {
-            if (brandId !== null) router.push(`/brand/${brandId}` as never);
-          }}
-          variant="secondary"
-          size="sm"
-          style={styles.inlineBtn}
-        />
+        {brand?.venueCategory != null ? (
+          <Text style={styles.rowSub}>{CATEGORY_LABEL[brand.venueCategory]}</Text>
+        ) : null}
+        {canMutate ? (
+          <Button
+            label="Edit venue details"
+            onPress={goToVenueEdit}
+            variant="secondary"
+            size="md"
+            style={styles.inlineBtn}
+            testID="venue-settings-edit-details"
+          />
+        ) : null}
       </Section>
 
-      {/* 4 — Hours (read-only summary; full editor is 2.1 Availability). */}
-      <Section title="Hours">
-        <Text style={styles.rowSub}>
-          Your opening hours come from your venue profile. Reservation-specific
-          hours and turn times arrive with the Availability update.
-        </Text>
-      </Section>
+      {/* 6 — Photos & vibes & AI (read-only readout + working entry point). */}
+      {placePoolId !== null ? (
+        <Section title="Photos & vibes & AI">
+          <Text style={styles.rowSub}>
+            {galleryCount} photo{galleryCount === 1 ? "" : "s"} on your listing.
+          </Text>
+          {scoreRows.length > 0 ? (
+            <Text style={styles.rowSub}>
+              How you match Mingla moments — {scoreRows.length} signal
+              {scoreRows.length === 1 ? "" : "s"} scored.
+            </Text>
+          ) : (
+            <Text style={styles.rowSub}>
+              Run Recommend me to see how you match Mingla moments.
+            </Text>
+          )}
+          {canMutate ? (
+            <Button
+              label="Edit photos & vibes"
+              onPress={goToDeckReadiness}
+              variant="secondary"
+              size="md"
+              style={styles.inlineBtn}
+              testID="venue-settings-edit-photos"
+            />
+          ) : null}
+          {editsRemaining !== null ? (
+            <Text style={styles.rowSub}>
+              {editsRemaining > 0
+                ? `You can re-run "Recommend me" ${editsRemaining} more ${editsRemaining === 1 ? "time" : "times"}.`
+                : "You've used all your changes. Contact support if you need more."}
+            </Text>
+          ) : null}
+          {canMutate ? (
+            <Button
+              label="Re-run Recommend me"
+              onPress={goToDeckReadiness}
+              variant="primary"
+              size="md"
+              leadingIcon="sparkle"
+              disabled={editsRemaining !== null && editsRemaining <= 0}
+              style={styles.inlineBtn}
+              testID="venue-settings-rerun-recommend"
+            />
+          ) : null}
+        </Section>
+      ) : null}
 
-      {/* 5 — Team roles scaffold (DISPLAY ONLY; mutation reuses the Team surface). */}
+      {/* 7 — Team roles scaffold (DISPLAY ONLY; mutation reuses the Team surface). */}
       <Section title="Team roles">
         <Text style={styles.rowSub}>
           Who can manage reservations at this venue. Role assignment lives in your
@@ -423,6 +638,31 @@ const styles = StyleSheet.create({
   sectionTitle: {
     ...typography.labelCap,
     color: textTokens.tertiary,
+  },
+  bandCaption: {
+    ...typography.labelCap,
+    color: textTokens.tertiary,
+    marginTop: spacing.sm,
+  },
+  saveBtn: {
+    marginTop: spacing.md,
+  },
+  hoursLoading: {
+    paddingVertical: spacing.lg,
+    alignItems: "center",
+  },
+  hoursSaved: {
+    ...typography.bodySm,
+    color: semantic.success,
+    marginTop: spacing.sm,
+  },
+  hoursError: {
+    ...typography.bodySm,
+    color: semantic.error,
+    marginTop: spacing.sm,
+  },
+  editorLocked: {
+    opacity: 0.6,
   },
   rowBetween: {
     flexDirection: "row",

@@ -2665,3 +2665,16 @@ jobs:
           node-version: "20"
       - name: Run I-PROPOSED-1161 SMS sender/kill-switch gate
         run: node .github/scripts/strict-grep/i-proposed-1161-sms-from-approved-sender-and-kill-switch.mjs
+
+  orch-1186-hours-single-owner:
+    name: "ORCH-1186-A [venue-unify]: opening hours single owner — brand_hours is canonical; service_periods derived ONLY by biz_derive_service_periods_from_brand_hours, called from both hours-write RPCs (I-PROPOSED-1186-HOURS-SINGLE-OWNER)"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Self-test the ORCH-1186 hours-single-owner gate
+        run: node .github/scripts/strict-grep/orch-1186-hours-single-owner.mjs --self-test
+      - name: Run ORCH-1186 hours-single-owner gate
+        run: node .github/scripts/strict-grep/orch-1186-hours-single-owner.mjs
