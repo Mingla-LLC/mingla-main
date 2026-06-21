@@ -216,25 +216,42 @@ Deno.test("A.3#3 BOTH adapters thread destinationLat/Lng into TripOfferingData",
 });
 
 // ── A.3 bug #4 — the payment toggle is interactive (wired to the surface state) ──
-Deno.test("A.3#4 the §10 payment toggle is wired to paymentPlanChoice", () => {
-  // the toggle's value + onChange thread the surface-owned state machine.
+// [TEST-MOD-APPROVED META-ORCH-1174] Leg B3 — the §10 box became a MULTI-PACKAGE
+// selector. The single-tier toggle wiring (value={paymentPlanChoice}) lives in the
+// Leg-A fallback branch; the per-package plan toggle threads the per-tier choice.
+// The barPriceLabel branches changed from "${priceLabel} total" to the summed all-
+// in. The useMemo dep list grew (quantities + planChoiceByTier). These updated
+// assertions still prove the toggle is interactive + the price follows the toggle.
+Deno.test("A.3#4 the §10 payment toggle is wired to the surface state", () => {
+  // the single-tier (Leg-A fallback) toggle's value + onChange still thread state.
   assertStringIncludes(body, "value={paymentPlanChoice}");
   assertStringIncludes(body, "onChange={onPaymentPlanChoiceChange}");
-  // the live price label follows the SAME state the toggle drives.
-  assertStringIncludes(body, "state.barPriceLabel");
-  // the state machine's barPriceLabel BRANCHES on paymentPlanChoice (so flipping
-  // the toggle changes the price the box + bar show) — installments → deposit
-  // "today", full → "total". Deleting either branch FAILS this assertion.
+  // the per-package plan toggle (DEC-F) threads the per-tier choice.
+  assertStringIncludes(body, "value={planChoice}");
+  assertStringIncludes(body, "onChange={onChangePlanChoice}");
+  // the box price follows the SAME shared state the bar reads.
+  assertStringIncludes(body, "state.summedAllInLabel");
+  assertStringIncludes(body, "state.summedDueTodayLabel");
+  // the state machine BRANCHES on the plan choice (flipping it changes the figure)
+  // — installments → deposit "today", full → the summed all-in. Deleting either
+  // branch FAILS this assertion.
   assertStringIncludes(stateMachine, 'paymentPlanChoice === "installments"');
-  assertStringIncludes(stateMachine, "${depositLabel} today");
-  assertStringIncludes(stateMachine, "${priceLabel} total");
-  // the state machine recomputes on paymentPlanChoice (useMemo dep) — the toggle
-  // is NOT dormant.
-  assertStringIncludes(stateMachine, "}, [data, paymentPlanChoice, onReserve, now]);");
+  assertStringIncludes(stateMachine, "today`");
+  assertStringIncludes(stateMachine, "summedAllInLabel ?? \"\"");
+  // the state machine recomputes on the selection inputs (useMemo deps) — NOT dormant.
+  assertStringIncludes(
+    stateMachine,
+    "}, [data, paymentPlanChoice, quantities, planChoiceByTier, onReserve, now]);",
+  );
 });
 
 // ── A.3 bug #5 — ONE merged §10 box (no duplicate price box) ──
-Deno.test("A.3#5 §10 is ONE merged box (toggle + price + reserve), not two", () => {
+// [TEST-MOD-APPROVED META-ORCH-1174] Leg B3 — still ONE box, but now the multi-
+// package selector (N rows + per-package qty + per-package plan) + the summed total
+// + the in-box Reserve. The single-tier `trip-body-payment-choice` only appears in
+// the Leg-A fallback; the ordered toggle→price→proceed assertion is replaced by the
+// ONE-box invariant + the summed-total → proceed ordering that holds in BOTH modes.
+Deno.test("A.3#5 §10 is ONE merged box (selector + summed total + reserve), not two", () => {
   // exactly ONE pay-box section + ONE select box.
   const payBoxCount = (body.match(/testID="trip-body-pay-box"/g) ?? []).length;
   const selectBoxCount = (body.match(/testID="trip-body-select-box"/g) ?? []).length;
@@ -245,14 +262,15 @@ Deno.test("A.3#5 §10 is ONE merged box (toggle + price + reserve), not two", ()
     !body.includes("recapCard") && !body.includes("recapPrice"),
     "the duplicate 'recap' price card must be removed (merged into the one box)",
   );
-  // the payment toggle now lives INSIDE the select box (one box), before the
-  // price row — assert the toggle's testID precedes the select total.
-  const toggleIdx = body.indexOf('testID="trip-body-payment-choice"');
+  // the Leg-B3 multi-package selector renders N package rows inside the ONE box.
+  assertStringIncludes(body, "TripPackageRow");
+  assertStringIncludes(body, "sortedTiers.map");
+  // the summed total precedes the in-box Reserve CTA (holds in BOTH modes).
   const totalIdx = body.indexOf('testID="trip-body-select-total"');
   const proceedIdx = body.indexOf('testID="trip-body-box-proceed"');
-  assert(toggleIdx > -1 && totalIdx > -1 && proceedIdx > -1, "missing §10 sub-parts");
+  assert(totalIdx > -1 && proceedIdx > -1, "missing §10 sub-parts");
   assert(
-    toggleIdx < totalIdx && totalIdx < proceedIdx,
-    "inside the ONE box: toggle → price → reserve CTA, in order",
+    totalIdx < proceedIdx,
+    "inside the ONE box: summed total precedes the reserve CTA",
   );
 });

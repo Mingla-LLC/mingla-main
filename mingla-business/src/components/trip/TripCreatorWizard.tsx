@@ -67,6 +67,9 @@ import {
   useUpsertTripDays,
   useUpsertTripInclusions,
   useUpdateTripPricing,
+  // META-ORCH-1174 Leg B2 — N-package create/remove mutations.
+  useCreateTripPricingTier,
+  useRemoveTripPricingTier,
   usePublishTrip,
 } from "../../hooks/useTrips";
 // ORCH-0875 [Tr4 Refund Tiers + Booking Deadline] — Step 5 autosave hooks.
@@ -95,8 +98,12 @@ import {
 } from "./TripCreatorStep3Inclusions";
 import {
   TripCreatorStep4Pricing,
+  makePackageKey,
   type Step4Draft,
+  type Step4Package,
 } from "./TripCreatorStep4Pricing";
+// META-ORCH-1174 Leg B2 — pure (RN-free) publish-gate package validator.
+import { validateTripPackages } from "./tripPackagesValidation";
 // ORCH-0875 [Tr4 Refund Tiers + Booking Deadline] — NEW Step 5 component.
 import {
   TripCreatorStep5Policy,
@@ -244,15 +251,44 @@ function tripToInclusionsDraft(trip: Trip): InclusionDraft[] {
   }));
 }
 
-function tripToStep4Draft(trip: Trip): Step4Draft {
-  const tier = trip.pricingTiers[0];
+// META-ORCH-1174 Leg B2 — seed N packages from ALL persisted pricing tiers.
+// packages[0] is the primary tier (createTripDraft-seeded). When the trip has
+// no tiers yet (brand-new draft pre-first-autosave), seed one empty primary
+// package so the wizard always shows ≥1 row (DEC-E min 1).
+function tierToStep4Package(tier: Trip["pricingTiers"][number]): Step4Package {
   return {
-    tierName: tier?.tierName ?? "Standard",
-    priceMajor: tier === undefined ? "" : (tier.priceCents / 100).toFixed(2),
-    currency: tier?.currency ?? "USD",
-    capacity: trip.businessTrip.capacity,
-    paymentPlan: tier?.installmentSchedule ?? null,
-    paymentPlanLocked: false,
+    key: makePackageKey(),
+    ticketTypeId: tier.ticketTypeId,
+    name: tier.tierName,
+    priceMajor: (tier.priceCents / 100).toFixed(2),
+    description: tier.description ?? "",
+    capacity: tier.quantityTotal,
+    paymentPlan: tier.installmentSchedule ?? null,
+    // Drafts have no sales; the per-package post-sale lock is server-enforced.
+    soldCount: 0,
+  };
+}
+
+function tripToStep4Draft(trip: Trip): Step4Draft {
+  const currency = trip.pricingTiers[0]?.currency ?? "USD";
+  const packages: Step4Package[] =
+    trip.pricingTiers.length > 0
+      ? trip.pricingTiers.map(tierToStep4Package)
+      : [
+          {
+            key: makePackageKey(),
+            ticketTypeId: null,
+            name: "Standard",
+            priceMajor: "",
+            description: "",
+            capacity: trip.businessTrip.capacity,
+            paymentPlan: null,
+            soldCount: 0,
+          },
+        ];
+  return {
+    packages,
+    currency,
     // ORCH-1006 — seed switches from events.pass_* (NULL = inherit).
     pricingSwitches: {
       passTax: trip.pricingSwitches?.passTax ?? null,
@@ -260,6 +296,21 @@ function tripToStep4Draft(trip: Trip): Step4Draft {
       passServiceFee: trip.pricingSwitches?.passServiceFee ?? null,
     },
   };
+}
+
+// META-ORCH-1174 Leg B2 — canonical signature of the authored package set for
+// pristine / dirty comparison (ignores the client-only `key`).
+function step4PackagesSignature(packages: Step4Package[]): string {
+  return JSON.stringify(
+    packages.map((p) => ({
+      ticketTypeId: p.ticketTypeId,
+      name: p.name,
+      priceMajor: p.priceMajor,
+      description: p.description,
+      capacity: p.capacity,
+      paymentPlan: p.paymentPlan,
+    })),
+  );
 }
 
 // ORCH-0875 [Tr4 Refund Tiers + Booking Deadline] — Step 5 draft seed from
@@ -331,13 +382,13 @@ function isTripWizardPristine(
       return false;
     }
   }
-  // Step 4: tierName + priceMajor + capacity + paymentPlan equal
+  // Step 4: META-ORCH-1174 Leg B2 — the full N-package set must match the
+  // server-derived initial set (name + price + description + capacity + plan
+  // per package, and the same package count).
   const initStep4 = tripToStep4Draft(trip);
   if (
-    step4Draft.tierName !== initStep4.tierName ||
-    step4Draft.priceMajor !== initStep4.priceMajor ||
-    step4Draft.capacity !== initStep4.capacity ||
-    JSON.stringify(step4Draft.paymentPlan) !== JSON.stringify(initStep4.paymentPlan)
+    step4PackagesSignature(step4Draft.packages) !==
+    step4PackagesSignature(initStep4.packages)
   ) {
     return false;
   }
@@ -426,6 +477,14 @@ export const TripCreatorWizard: React.FC<TripCreatorWizardProps> = ({
     [step4Draft, brand.stripeStatus],
   );
 
+  // META-ORCH-1174 Leg B2 — publish gate: every authored package must be valid
+  // (≥1 package, name + price ≥0 + capacity ≥1 + valid plan terms). Blocks
+  // Publish (dock disabled = suspenders; handlePublishTap = belt).
+  const packagesValidation = useMemo(
+    () => validateTripPackages(step4Draft.packages),
+    [step4Draft.packages],
+  );
+
   // ORCH-1118 — BOTH departure and destination must be confirmed Mapbox picks
   // (placeId + lat + lng) before publish. Empty or dirty (typed-but-unpicked)
   // text on EITHER field blocks publish. Do not loosen
@@ -477,6 +536,9 @@ export const TripCreatorWizard: React.FC<TripCreatorWizardProps> = ({
   const upsertDaysMutation = useUpsertTripDays();
   const upsertInclusionsMutation = useUpsertTripInclusions();
   const updatePricingMutation = useUpdateTripPricing();
+  // META-ORCH-1174 Leg B2 — N-package create/remove.
+  const createTierMutation = useCreateTripPricingTier();
+  const removeTierMutation = useRemoveTripPricingTier();
   const publishMutation = usePublishTrip();
   // ORCH-0875 [Tr4 Refund Tiers + Booking Deadline] — Step 5 autosave hooks.
   const updateRefundPolicyMutation = useUpdateRefundPolicy();
@@ -501,12 +563,21 @@ export const TripCreatorWizard: React.FC<TripCreatorWizardProps> = ({
     intakeSeededRef.current = true;
   }, [intakeSchemasQuery.data]);
 
-  // Keep step4Draft.capacity in sync with step1Draft.capacity
+  // META-ORCH-1174 Leg B2 — capacity is now PER-PACKAGE (DEC-D), authored in
+  // Step 4 and persisted to each package's ticket_types.quantity_total. The old
+  // Step1→Step4 single-capacity mirror is retired. Step 1's trip-level capacity
+  // draft field seeds a package's spots only when that package has none yet
+  // (e.g. the primary package on a brand-new draft).
   useEffect(() => {
-    if (step4Draft.capacity !== step1Draft.capacity) {
-      setStep4Draft((s) => ({ ...s, capacity: step1Draft.capacity }));
-    }
-  }, [step1Draft.capacity, step4Draft.capacity]);
+    if (step1Draft.capacity === null) return;
+    setStep4Draft((s) => {
+      const primary = s.packages[0];
+      if (primary === undefined || primary.capacity !== null) return s;
+      const nextPackages = [...s.packages];
+      nextPackages[0] = { ...primary, capacity: step1Draft.capacity };
+      return { ...s, packages: nextPackages };
+    });
+  }, [step1Draft.capacity]);
 
   // ORCH-0859 REWORK 3: auto-seed days from Step 1 date range (unchanged).
   useEffect(() => {
@@ -576,28 +647,123 @@ export const TripCreatorWizard: React.FC<TripCreatorWizardProps> = ({
         item: i.item,
         ordinal: i.ordinal,
       })),
-      pricingTiers:
-        trip.pricingTiers.length > 0
-          ? [
-              {
-                ...trip.pricingTiers[0],
-                tierName: step4Draft.tierName,
-                priceCents: Math.round(
-                  (parseFloat(step4Draft.priceMajor) || 0) * 100,
-                ),
-                currency: step4Draft.currency,
-                quantityTotal: step1Draft.capacity,
-                isUnlimited: false,
-              },
-            ]
-          : [],
+      // META-ORCH-1174 Leg B2 — preview ALL authored packages (Step 5 review +
+      // Step 7 publish summary). Each draft package projects to one pricing
+      // tier; the matching persisted tier (by ticketTypeId) supplies the stable
+      // id/metadata, else a synthetic preview shell is used.
+      pricingTiers: step4Draft.packages.map((p, idx) => {
+        const persisted =
+          p.ticketTypeId !== null
+            ? trip.pricingTiers.find((t) => t.ticketTypeId === p.ticketTypeId)
+            : undefined;
+        const priceCents = Math.round((parseFloat(p.priceMajor) || 0) * 100);
+        return {
+          id: persisted?.id ?? `preview-tier-${idx}`,
+          eventId: trip.id,
+          ticketTypeId: p.ticketTypeId ?? `preview-tt-${idx}`,
+          tierName: p.name.trim().length > 0 ? p.name : `Package ${idx + 1}`,
+          tierMetadata: persisted?.tierMetadata ?? {},
+          priceCents,
+          currency: step4Draft.currency,
+          quantityTotal: p.capacity,
+          ticketsRemaining: persisted?.ticketsRemaining ?? null,
+          isUnlimited: false,
+          installmentSchedule: p.paymentPlan,
+          description: p.description.trim().length > 0 ? p.description.trim() : null,
+        };
+      }),
     }),
     [trip, step1Draft, daysDraft, inclusionsDraft, step4Draft],
   );
 
+  // META-ORCH-1174 Leg B2 — the set of ticketTypeIds the server is known to
+  // hold, so a package the operator removed in the UI is soft-removed on the
+  // next pricing autosave. Seeded from the initial trip; updated as packages
+  // are created/removed.
+  const persistedTierIdsRef = useRef<Set<string>>(
+    new Set(trip.pricingTiers.map((t) => t.ticketTypeId)),
+  );
+
+  // META-ORCH-1174 Leg B2 — persist the full N-package set:
+  //   • a package WITH a ticketTypeId  → updateTripPricing (in-place; never
+  //     clobbers a sold tier — see I-PROPOSED-1174-EDIT-NO-CLOBBER).
+  //   • a package WITHOUT a ticketTypeId (added in the UI) → createTripPricingTier,
+  //     then adopt the returned id into draft state so the next save updates it.
+  //   • a persisted tier no longer present in the draft → removeTripPricingTier
+  //     (soft-delete; the B1 service throws tier_delete_with_sales if it sold).
+  // Each package carries its OWN price + capacity + installments (DEC-D/F).
+  const persistPackages = useCallback(async (): Promise<void> => {
+    const currentPackages = step4Draft.packages;
+    const seenIds = new Set<string>();
+    // Map of clientKey → adopted ticketTypeId for the create-then-adopt step.
+    const adopted = new Map<string, string>();
+
+    for (const pkg of currentPackages) {
+      const priceCents = Math.round((parseFloat(pkg.priceMajor) || 0) * 100);
+      const capacity = pkg.capacity ?? 1;
+      const tierName = pkg.name.trim() || "Standard";
+      const descriptionPatch = pkg.description.trim();
+      if (pkg.ticketTypeId !== null) {
+        seenIds.add(pkg.ticketTypeId);
+        await updatePricingMutation.mutateAsync({
+          eventId: trip.id,
+          patch: {
+            ticketTypeId: pkg.ticketTypeId,
+            tierName,
+            priceCents,
+            capacity,
+            installmentSchedule: pkg.paymentPlan,
+            description: descriptionPatch.length > 0 ? descriptionPatch : null,
+          },
+        });
+      } else {
+        const created = await createTierMutation.mutateAsync({
+          eventId: trip.id,
+          patch: {
+            tierName,
+            priceCents,
+            capacity,
+            installmentSchedule: pkg.paymentPlan,
+            description: descriptionPatch.length > 0 ? descriptionPatch : null,
+          },
+        });
+        seenIds.add(created.ticketTypeId);
+        adopted.set(pkg.key, created.ticketTypeId);
+      }
+    }
+
+    // Soft-remove persisted tiers that the operator dropped from the draft.
+    for (const knownId of persistedTierIdsRef.current) {
+      if (!seenIds.has(knownId)) {
+        await removeTierMutation.mutateAsync({
+          eventId: trip.id,
+          ticketTypeId: knownId,
+        });
+      }
+    }
+    persistedTierIdsRef.current = seenIds;
+
+    // Adopt newly-created ids into draft state (one batched update).
+    if (adopted.size > 0) {
+      setStep4Draft((s) => ({
+        ...s,
+        packages: s.packages.map((p) =>
+          p.ticketTypeId === null && adopted.has(p.key)
+            ? { ...p, ticketTypeId: adopted.get(p.key) ?? null }
+            : p,
+        ),
+      }));
+    }
+  }, [
+    step4Draft.packages,
+    trip.id,
+    updatePricingMutation,
+    createTierMutation,
+    removeTierMutation,
+  ]);
+
   // ----- Autosave per step transition -----
   const autosaveStep1 = useCallback(async (): Promise<void> => {
-    const priceMajor = parseFloat(step4Draft.priceMajor) || 0;
     await updateBasicsMutation.mutateAsync({
       eventId: trip.id,
       brandId: trip.brandId,
@@ -622,22 +788,16 @@ export const TripCreatorWizard: React.FC<TripCreatorWizardProps> = ({
         coverMediaType: step1Draft.coverMediaType,
       },
     });
-    await updatePricingMutation.mutateAsync({
-      eventId: trip.id,
-      patch: {
-        tierName: step4Draft.tierName.trim() || "Standard",
-        priceCents: Math.round(priceMajor * 100),
-        capacity: step1Draft.capacity ?? 1,
-        installmentSchedule: step4Draft.paymentPlan,
-      },
-    });
+    // META-ORCH-1174 Leg B2 — persist the package set on Step 1 → Step 2 too,
+    // so the primary package's price/capacity stays in sync with Step 1's
+    // capacity seed (the historic Step-1 pricing write, now N-package-safe).
+    await persistPackages();
   }, [
     step1Draft,
-    step4Draft,
     trip.id,
     trip.brandId,
     updateBasicsMutation,
-    updatePricingMutation,
+    persistPackages,
   ]);
 
   const autosaveStep2 = useCallback(async (): Promise<void> => {
@@ -665,16 +825,10 @@ export const TripCreatorWizard: React.FC<TripCreatorWizardProps> = ({
   }, [inclusionsDraft, trip.id, upsertInclusionsMutation]);
 
   const autosaveStep4 = useCallback(async (): Promise<void> => {
-    const priceMajor = parseFloat(step4Draft.priceMajor) || 0;
-    await updatePricingMutation.mutateAsync({
-      eventId: trip.id,
-      patch: {
-        tierName: step4Draft.tierName.trim() || "Standard",
-        priceCents: Math.round(priceMajor * 100),
-        capacity: step1Draft.capacity ?? 1,
-        installmentSchedule: step4Draft.paymentPlan,
-      },
-    });
+    // META-ORCH-1174 Leg B2 — persist ALL packages (create new / update
+    // existing / soft-remove dropped), each with its own price + capacity +
+    // installments.
+    await persistPackages();
     // ORCH-1006 — persist the all-in pricing switches to events.pass_*. Skip
     // once any ticket has sold (post-sale lock): the section renders read-only
     // and the server would reject the change anyway.
@@ -682,11 +836,10 @@ export const TripCreatorWizard: React.FC<TripCreatorWizardProps> = ({
       await setTripPricingSwitches(trip.id, step4Draft.pricingSwitches);
     }
   }, [
-    step4Draft,
-    step1Draft.capacity,
+    persistPackages,
+    step4Draft.pricingSwitches,
     trip.id,
     trip.ticketsSoldCount,
-    updatePricingMutation,
   ]);
 
   // ORCH-0875 [Tr4 Refund Tiers + Booking Deadline] — Step 5 autosave.
@@ -914,9 +1067,16 @@ export const TripCreatorWizard: React.FC<TripCreatorWizardProps> = ({
       showToast("Connect a bank to publish this paid trip.");
       return;
     }
+    // META-ORCH-1174 Leg B2 — every package must be valid before publish.
+    // Surface the first failing reason + jump back to the pricing step.
+    if (!packagesValidation.ok) {
+      setStep(4);
+      showToast(packagesValidation.reason ?? "Fix your packages before publishing.");
+      return;
+    }
     // Open ConfirmDialog; actual publish runs in handleConfirmPublish.
     setPublishConfirmVisible(true);
-  }, [tripLocationValid, tripNeedsStripe, showToast]);
+  }, [tripLocationValid, tripNeedsStripe, packagesValidation, showToast]);
 
   const handleConfirmPublish = useCallback(async (): Promise<void> => {
     setPublishError(null);
@@ -1361,7 +1521,13 @@ export const TripCreatorWizard: React.FC<TripCreatorWizardProps> = ({
                   // Stripe-unready brand (proactive gate; mirrors events).
                   // ORCH-1118 — also disable until departure + destination are
                   // confirmed Mapbox picks (suspenders; belt in handlePublishTap).
-                  disabled={submitting || tripNeedsStripe || !tripLocationValid}
+                  // META-ORCH-1174 Leg B2 — and until every package is valid.
+                  disabled={
+                    submitting ||
+                    tripNeedsStripe ||
+                    !tripLocationValid ||
+                    !packagesValidation.ok
+                  }
                   fullWidth
                   testID="trip-wizard-footer-cta"
                 />

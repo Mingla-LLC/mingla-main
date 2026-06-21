@@ -73,6 +73,7 @@ import {
   type TripOfferingData,
   type TripOfferingState,
   type TripPaymentPlanChoice,
+  type TripReserveLine,
 } from "@mingla/offering-rendering";
 import { EventCoverMedia } from "../ui/EventCoverMedia";
 import { Icon } from "../ui/Icon";
@@ -155,10 +156,20 @@ export interface TripPreviewProps {
   paymentPlanChoice?: TripPaymentPlanChoice;
   onPaymentPlanChoiceChange?: (value: TripPaymentPlanChoice) => void;
   /**
-   * META-ORCH-1174 Leg A — the §10 reserve action (route push to checkout). The
-   * `choice` is set when the split buttons fire; undefined for the single Reserve.
+   * META-ORCH-1174 Leg B3 — the per-package selection + per-package plan choice
+   * (route owns the useState; the shared §10 box steppers write through these). The
+   * box + the bars read the SAME selection via offeringState.
    */
-  onReserve?: (choice?: TripPaymentPlanChoice) => void;
+  quantities?: Record<string, number>;
+  onChangeQuantity?: (ticketTypeId: string, qty: number) => void;
+  planChoiceByTier?: Record<string, TripPaymentPlanChoice>;
+  onChangePlanChoice?: (ticketTypeId: string, value: TripPaymentPlanChoice) => void;
+  /**
+   * META-ORCH-1174 Leg A/B3 — the §10 reserve action (route push to checkout). The
+   * `choice` is set when the split buttons fire; `lines` carries the selected
+   * packages (DEC-B) when the box/bar fires the multi-select Reserve.
+   */
+  onReserve?: (choice?: TripPaymentPlanChoice, lines?: TripReserveLine[]) => void;
   /** Desktop sticky-panel Reserve control + reassurance (route-owned). */
   reserveControl?: React.ReactNode;
   /** Brand "View" tap → brand page (route-owned). */
@@ -223,6 +234,10 @@ export const TripPreview: React.FC<TripPreviewProps> = ({
   offeringState,
   paymentPlanChoice = "full",
   onPaymentPlanChoiceChange,
+  quantities,
+  onChangeQuantity,
+  planChoiceByTier,
+  onChangePlanChoice,
   onReserve,
   reserveControl,
   onViewBrand,
@@ -261,6 +276,10 @@ export const TripPreview: React.FC<TripPreviewProps> = ({
         offeringState={offeringState}
         paymentPlanChoice={paymentPlanChoice}
         onPaymentPlanChoiceChange={onPaymentPlanChoiceChange}
+        quantities={quantities}
+        onChangeQuantity={onChangeQuantity}
+        planChoiceByTier={planChoiceByTier}
+        onChangePlanChoice={onChangePlanChoice}
         onReserve={onReserve}
         reserveControl={reserveControl}
         onViewBrand={onViewBrand}
@@ -306,7 +325,11 @@ const FoundationTripPreview: React.FC<{
   offeringState: TripOfferingState;
   paymentPlanChoice: TripPaymentPlanChoice;
   onPaymentPlanChoiceChange: (value: TripPaymentPlanChoice) => void;
-  onReserve: (choice?: TripPaymentPlanChoice) => void;
+  quantities?: Record<string, number>;
+  onChangeQuantity?: (ticketTypeId: string, qty: number) => void;
+  planChoiceByTier?: Record<string, TripPaymentPlanChoice>;
+  onChangePlanChoice?: (ticketTypeId: string, value: TripPaymentPlanChoice) => void;
+  onReserve: (choice?: TripPaymentPlanChoice, lines?: TripReserveLine[]) => void;
   reserveControl?: React.ReactNode;
   onViewBrand?: () => void;
   contentBottomInset: number;
@@ -330,6 +353,10 @@ const FoundationTripPreview: React.FC<{
   offeringState,
   paymentPlanChoice,
   onPaymentPlanChoiceChange,
+  quantities,
+  onChangeQuantity,
+  planChoiceByTier,
+  onChangePlanChoice,
   onReserve,
   reserveControl,
   onViewBrand,
@@ -458,6 +485,10 @@ const FoundationTripPreview: React.FC<{
         variant={isDesktop ? "desktop" : "phone"}
         paymentPlanChoice={paymentPlanChoice}
         onPaymentPlanChoiceChange={onPaymentPlanChoiceChange}
+        quantities={quantities}
+        onChangeQuantity={onChangeQuantity}
+        planChoiceByTier={planChoiceByTier}
+        onChangePlanChoice={onChangePlanChoice}
         dockedReserve={!isDesktop ? dockedReserve : undefined}
         testID="meta-orch-1174-trip-body"
       />

@@ -51,6 +51,11 @@ function coerceRefundPolicy(raw: unknown): TripRefundPolicyShape | null {
 export function buildTripOfferingData(
   trip: Trip,
   bookable: boolean,
+  // META-ORCH-1174 Leg B3 — the SERVER all-in per ticket_type (cents), resolved by
+  // the route via fetchTierAllInCents (pg_public_event_tier_allin). The §10 box +
+  // bar DISPLAY + SUM this (WYSIWYP) instead of the bare base. Absent → the body
+  // falls back to priceCents (free tiers / RPC miss). NEVER recompute fees here.
+  allInByTicketType?: Map<string, number> | null,
 ): TripOfferingData {
   const bt = trip.businessTrip;
   const tier = trip.pricingTiers[0];
@@ -100,17 +105,29 @@ export function buildTripOfferingData(
       item: i.item,
     })),
     refundPolicy: coerceRefundPolicy(trip.refundPolicy),
-    tiers: trip.pricingTiers.map((t) => ({
-      id: t.id,
-      ticketTypeId: t.ticketTypeId,
-      tierName: t.tierName,
-      priceCents: t.priceCents,
-      currency: t.currency,
-      isFree: t.priceCents === 0,
-      isUnlimited: t.isUnlimited,
-      ticketsRemaining: t.ticketsRemaining,
-      installmentSchedule: t.installmentSchedule ?? null,
-    })),
+    tiers: trip.pricingTiers.map((t) => {
+      const allInCents = allInByTicketType?.get(t.ticketTypeId);
+      return {
+        id: t.id,
+        ticketTypeId: t.ticketTypeId,
+        tierName: t.tierName,
+        priceCents: t.priceCents,
+        // META-ORCH-1174 Leg B3 — server all-in (WYSIWYP). Free tier → null (the
+        // body shows "Free"); RPC miss → null → fall back to priceCents.
+        priceAllInCents:
+          t.priceCents === 0
+            ? null
+            : typeof allInCents === "number"
+              ? allInCents
+              : null,
+        description: t.description ?? null,
+        currency: t.currency,
+        isFree: t.priceCents === 0,
+        isUnlimited: t.isUnlimited,
+        ticketsRemaining: t.ticketsRemaining,
+        installmentSchedule: t.installmentSchedule ?? null,
+      };
+    }),
     currency: tier?.currency ?? "USD",
     destinationLat: bt.destinationLat,
     destinationLng: bt.destinationLng,

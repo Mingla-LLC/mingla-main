@@ -42,20 +42,31 @@ const BUSINESS_EVENTS_SOURCE = readFileSync(
 describe("ORCH-0859 REWORK 2 — item 1 + 7 (pricing currency + stale-banner)", () => {
   test("Step 4 pricing component has NO editable currency TextInput", () => {
     // Currency input was a free-form TextInput pre-fix. Now read-only View.
-    // The mapper "trip-step4-currency" testID belonged to a TextInput;
-    // after rework it must be replaced by "trip-step4-currency-readonly".
+    // [TEST-MOD-APPROVED META-ORCH-1174] — Step 4 is now MULTI-PACKAGE (Leg B2),
+    // so the read-only currency View renders PER PACKAGE with an indexed testID
+    // `trip-step4-currency-readonly-${index}` (template literal). The ORCH-0859
+    // invariant — currency is NEVER an editable input — is fully preserved.
     expect(STEP4_SOURCE).not.toMatch(/testID="trip-step4-currency"/);
-    expect(STEP4_SOURCE).toMatch(/testID="trip-step4-currency-readonly"/);
-    // No TextInput element bound to currency — pin via the onChange handler
-    // pattern that used to write currency to draft.
+    expect(STEP4_SOURCE).toMatch(
+      /testID=\{`trip-step4-currency-readonly-\$\{index\}`\}/,
+    );
+    // No onChange/onPatch handler writes currency to draft/package state.
     expect(STEP4_SOURCE).not.toMatch(/onChange\(\s*\{\s*currency:/);
+    expect(STEP4_SOURCE).not.toMatch(/onPatch\(\s*\{\s*currency:/);
   });
 
-  test("wizard autosaveStep4 does NOT send currency in the pricing patch", () => {
-    // The autosaveStep4 callback must not include a `currency:` key in the
-    // patch payload — currency is server-derived per ORCH-0859 REWORK 2.
+  test("wizard pricing persistence does NOT send currency in the patch", () => {
+    // [TEST-MOD-APPROVED META-ORCH-1174] — autosaveStep4 now delegates to the
+    // N-package `persistPackages` callback. Currency stays server-derived per
+    // ORCH-0859 REWORK 2: neither persistPackages nor autosaveStep4 may include
+    // a `currency:` key in any updateTripPricing/createTripPricingTier patch.
+    const persistBlock = WIZARD_SOURCE.match(
+      /const persistPackages[^]*?\}, \[\s*step4Draft\.packages[^]*?\]\);/,
+    );
+    expect(persistBlock).not.toBeNull();
+    expect(persistBlock?.[0]).not.toMatch(/currency:\s/);
     const autosaveStep4Block = WIZARD_SOURCE.match(
-      /const autosaveStep4[^]*?\}, \[step4Draft[^]*?\]\);/,
+      /const autosaveStep4[^]*?\}, \[\s*persistPackages[^]*?\]\);/,
     );
     expect(autosaveStep4Block).not.toBeNull();
     expect(autosaveStep4Block?.[0]).not.toMatch(/currency:\s/);

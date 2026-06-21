@@ -61,6 +61,8 @@ const trip = (patch: Partial<Trip> = {}): Trip => ({
       ticketsRemaining: null,
       isUnlimited: false,
       installmentSchedule: null,
+      // [TEST-MOD-APPROVED META-ORCH-1174] — TripPricingTier gained `description`.
+      description: null,
     },
   ],
   inclusions: [

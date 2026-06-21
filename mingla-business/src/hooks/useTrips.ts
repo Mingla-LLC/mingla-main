@@ -37,6 +37,9 @@ import {
   upsertTripDays,
   upsertTripInclusions,
   updateTripPricing,
+  // META-ORCH-1174 Leg B2 — N-package data layer (B1 service fns).
+  createTripPricingTier,
+  removeTripPricingTier,
   publishTrip,
   softDeleteTrip,
   type Trip,
@@ -265,6 +268,70 @@ export const useUpdateTripPricing = (): UseMutationResult<
     },
     onError: (error, { eventId }) => {
       console.error("[useUpdateTripPricing] failed", {
+        message: error.message,
+        eventId,
+      });
+    },
+  });
+};
+
+// ---------------------- META-ORCH-1174 Leg B2: N-package tier mutations ----------------------
+
+export interface CreateTripPricingTierInput {
+  eventId: string;
+  patch: Omit<TripPricingPatch, "ticketTypeId">;
+}
+
+/**
+ * META-ORCH-1174 Leg B2 — create an ADDITIONAL pricing package on a trip.
+ * Returns the new tier (incl. its `ticketTypeId`) so the wizard can adopt the
+ * id for subsequent in-place updates. Invalidates the trip detail cache.
+ */
+export const useCreateTripPricingTier = (): UseMutationResult<
+  TripPricingTier,
+  Error,
+  CreateTripPricingTierInput
+> => {
+  const queryClient = useQueryClient();
+  return useMutation<TripPricingTier, Error, CreateTripPricingTierInput>({
+    mutationFn: async ({ eventId, patch }) =>
+      createTripPricingTier(eventId, patch),
+    onSuccess: (_, { eventId }) => {
+      queryClient.invalidateQueries({ queryKey: tripKeys.detail(eventId) });
+    },
+    onError: (error, { eventId }) => {
+      console.error("[useCreateTripPricingTier] failed", {
+        message: error.message,
+        eventId,
+      });
+    },
+  });
+};
+
+export interface RemoveTripPricingTierInput {
+  eventId: string;
+  ticketTypeId: string;
+}
+
+/**
+ * META-ORCH-1174 Leg B2 — soft-remove a pricing package (refuses if it has
+ * sales — the B1 service throws `tier_delete_with_sales`). Invalidates the
+ * trip detail cache.
+ */
+export const useRemoveTripPricingTier = (): UseMutationResult<
+  void,
+  Error,
+  RemoveTripPricingTierInput
+> => {
+  const queryClient = useQueryClient();
+  return useMutation<void, Error, RemoveTripPricingTierInput>({
+    mutationFn: async ({ eventId, ticketTypeId }) =>
+      removeTripPricingTier(eventId, ticketTypeId),
+    onSuccess: (_, { eventId }) => {
+      queryClient.invalidateQueries({ queryKey: tripKeys.detail(eventId) });
+    },
+    onError: (error, { eventId }) => {
+      console.error("[useRemoveTripPricingTier] failed", {
         message: error.message,
         eventId,
       });

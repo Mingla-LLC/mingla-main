@@ -233,6 +233,7 @@ function makeTripWithCover(): Trip {
         ticketsRemaining: 10,
         isUnlimited: false,
         installmentSchedule: null,
+        description: null, // [TEST-MOD-APPROVED META-ORCH-1174]
       },
     ],
     inclusions: [],

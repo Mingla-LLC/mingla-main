@@ -154,12 +154,30 @@ export {
   useTripOfferingState,
   projectTripSchedule,
   selectSellableTier,
+  tripTierPriceLabel,
 } from "./useTripOfferingState";
 export type {
   UseTripOfferingStateInput,
   TripOfferingState,
   TripPaymentPlanChoice,
 } from "./useTripOfferingState";
+// META-ORCH-1174 Leg B3 — the RN-free §10 multi-package selection + money math
+// (per-tier qty clamp, selected lines, summed all-in / due-today). Single owner.
+export {
+  clampTripTierQuantity,
+  tripTierEffectiveMax,
+  tripTierUnitAllInCents,
+  tripMinTierAllInCents,
+  tripSelectedLines,
+  tripTotalSelectedQuantity,
+  tripSummedAllInCents,
+  tripSummedDueTodayCents,
+  tripAnyLineOnPlan,
+} from "./tripBoxTotals";
+export type {
+  TripTierLike,
+  TripSelectedLine,
+} from "./tripBoxTotals";
 export { TripReserveBar } from "./TripReserveBar";
 export type { TripReserveBarProps } from "./TripReserveBar";
 export { TripPaymentChoice as TripOfferingPaymentChoice } from "./TripPaymentChoice";
@@ -182,6 +200,7 @@ export type {
   TripOfferingDay,
   TripOfferingInclusion,
   TripOfferingCallbacks,
+  TripReserveLine,
   TripInstallmentTemplate,
   TripRefundPolicyShape,
   TripRefundTier,

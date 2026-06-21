@@ -59,12 +59,22 @@ export interface TripInstallmentTemplate {
   }>;
 }
 
-/** One sellable pricing tier (Leg A: the body renders the sole/first sellable one). */
+/** One sellable pricing tier. Leg B: the body renders N of these as selectable rows. */
 export interface TripOfferingTier {
   id: string;
   ticketTypeId: string;
   tierName: string;
   priceCents: number;
+  /**
+   * META-ORCH-1174 Leg B3 — the SERVER all-in (pg_public_event_tier_allin), in
+   * cents. The §10 box + bar display + sum THIS (WYSIWYP, I-PROPOSED-1174-ALLIN-
+   * SERVER-SOURCED). null/undefined → the per-surface adapter had no all-in (free
+   * tier, or the RPC missed) → the math falls back to priceCents. NEVER recompute
+   * fees client-side. Each surface adapter resolves it via fetchTierAllInCents.
+   */
+  priceAllInCents?: number | null;
+  /** Optional per-package description (tier_metadata.description) — shown in the row. */
+  description?: string | null;
   currency: string;
   isFree: boolean;
   isUnlimited: boolean;
@@ -166,14 +176,26 @@ export interface ReserveSplitCtas {
   overTime: ReserveSplitButton;
 }
 
+/**
+ * A reserved cart line — META-ORCH-1174 Leg B3 (DEC-B multi-line). One per selected
+ * package; `paymentPlanChoice` present only for a tier carrying a plan (DEC-F).
+ */
+export interface TripReserveLine {
+  ticketTypeId: string;
+  quantity: number;
+  paymentPlanChoice?: "full" | "installments";
+}
+
 /** The body's action callbacks (all navigation/checkout owned by the surface). */
 export interface TripOfferingCallbacks {
   /** Brand chip "View" → brand page. */
   onViewBrand?: () => void;
   /**
-   * Reserve (the §10 box CTA + floating/docked bar). `choice` is the explicit
-   * payment plan ("full"/"installments") when the split buttons fire; undefined
-   * for the single Reserve (the surface reads its own toggle state).
+   * Reserve (the §10 box CTA + floating/docked bar). META-ORCH-1174 Leg B3: the
+   * surface receives the FULL selected-lines array (DEC-B multi-package). `choice`
+   * stays for the single/legacy split-button path (no selection → the surface
+   * seeds the cart from `lines` or opens it to pick). When `lines` is omitted the
+   * surface opens the cart un-seeded (Leg-A behavior preserved).
    */
-  onReserve: (choice?: "full" | "installments") => void;
+  onReserve: (choice?: "full" | "installments", lines?: TripReserveLine[]) => void;
 }

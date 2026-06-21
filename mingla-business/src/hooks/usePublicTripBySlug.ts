@@ -335,6 +335,12 @@ export const usePublicTripBySlug = (
             ticketsRemaining: t.isUnlimited ? null : (t.ticketsRemaining ?? null),
             isUnlimited: t.isUnlimited === true,
             installmentSchedule: asInstallmentSchedule(t.installments),
+            // META-ORCH-1174 Leg B2 — per-package description from tier_metadata.
+            description:
+              typeof (t.tierMetadata as Record<string, unknown> | null)?.description ===
+              "string"
+                ? ((t.tierMetadata as Record<string, unknown>).description as string)
+                : null,
           }),
         ),
         inclusions: (p.inclusions ?? []).map(

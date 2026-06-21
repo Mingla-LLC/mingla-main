@@ -36,8 +36,20 @@ function toRefundPolicyShape(
   return { kind: policy.kind, tiers: policy.tiers };
 }
 
+/**
+ * META-ORCH-1174 Leg B3 — optional per-tier enrichment from usePublicEventTickets
+ * (the SAME source the cart uses): the SERVER all-in (cents) the §10 box DISPLAYS +
+ * SUMS (WYSIWYP), plus the per-package description the consumer RPC doesn't carry.
+ * Keyed by ticket_type_id. Absent → the body falls back to base price + no desc.
+ */
+export interface ConsumerTripTierEnrichment {
+  allInCents: number | null;
+  description: string | null;
+}
+
 export function buildConsumerTripOfferingData(
   detail: ConsumerTripDetail,
+  enrichmentByTier?: Map<string, ConsumerTripTierEnrichment> | null,
 ): TripOfferingData {
   const duration = deriveTripDuration(detail.startAt, detail.endAt);
   const isSoldOut = detail.spotsLeft !== null && detail.spotsLeft <= 0;
@@ -86,20 +98,28 @@ export function buildConsumerTripOfferingData(
       item: i.item,
     })),
     refundPolicy: toRefundPolicyShape(detail.refundPolicy),
-    tiers: detail.tiers.map((t) => ({
-      id: t.ticketTypeId,
-      ticketTypeId: t.ticketTypeId,
-      tierName: t.tierName,
-      priceCents: t.priceCents,
-      currency: t.currency,
-      isFree: t.isFree,
-      isUnlimited: t.isUnlimited,
-      // META-ORCH-1174 Leg A.2 — real per-tier remaining from the canonical RPC
-      // (null when unlimited; no fabricated sold-out — rule 9). Previously always
-      // null on consumer; now parity with web/business.
-      ticketsRemaining: t.isUnlimited ? null : t.ticketsRemaining,
-      installmentSchedule: t.installmentSchedule,
-    })),
+    tiers: detail.tiers.map((t) => {
+      const enrich = enrichmentByTier?.get(t.ticketTypeId);
+      return {
+        id: t.ticketTypeId,
+        ticketTypeId: t.ticketTypeId,
+        tierName: t.tierName,
+        priceCents: t.priceCents,
+        // META-ORCH-1174 Leg B3 — server all-in (WYSIWYP) from the same tickets
+        // source the cart uses. Free → null ("Free"); miss → null → base fallback.
+        priceAllInCents:
+          t.isFree || t.priceCents === 0 ? null : (enrich?.allInCents ?? null),
+        description: enrich?.description ?? null,
+        currency: t.currency,
+        isFree: t.isFree,
+        isUnlimited: t.isUnlimited,
+        // META-ORCH-1174 Leg A.2 — real per-tier remaining from the canonical RPC
+        // (null when unlimited; no fabricated sold-out — rule 9). Previously always
+        // null on consumer; now parity with web/business.
+        ticketsRemaining: t.isUnlimited ? null : t.ticketsRemaining,
+        installmentSchedule: t.installmentSchedule,
+      };
+    }),
     currency: detail.currency ?? "USD",
     // META-ORCH-1174 Leg A.2 — destination coords now arrive via the RPC, so the
     // §11 "Where you'll be" map renders on consumer (rule 9 — both must be finite).
