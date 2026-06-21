@@ -55,6 +55,12 @@ import {
 } from "../../src/hooks/useNotificationTypePrefs";
 import { useAuth } from "../../src/context/AuthContext";
 import type { BusinessNotificationType } from "../../src/constants/businessNotificationTemplates";
+// META-ORCH-1187 [Growth Analytics Hub] §4.F(b) — in-app analytics opt-out.
+// This account/settings screen (reachable from the Settings hub) is the
+// user-facing host for the Analytics toggle. (Resolves the spec's STOP-AND-AMEND
+// premise: a real account-settings screen DOES exist beyond AriSettingsScreen.)
+import { useAnalyticsPrefsStore } from "../../src/store/analyticsPrefsStore";
+import { postHogService } from "../../src/services/postHogService";
 
 import { GlassCard } from "../../src/components/ui/GlassCard";
 import { Icon } from "../../src/components/ui/Icon";
@@ -105,6 +111,21 @@ export default function NotificationsRoute(): React.ReactElement {
     (s) => s.hydrateMarketingFromBackend,
   );
   const typePrefs = useNotificationTypePrefs(userId);
+
+  // META-ORCH-1187 — analytics opt-out. Toggle ON = sharing usage data
+  // (analyticsOptOut=false). Flipping OFF calls postHogService.optOut() so
+  // subsequent events do NOT reach PostHog (T-19); ON resumes capture.
+  const analyticsOptOut = useAnalyticsPrefsStore((s) => s.analyticsOptOut);
+  const setAnalyticsOptOut = useAnalyticsPrefsStore((s) => s.setAnalyticsOptOut);
+  const handleAnalyticsToggle = useCallback((shareEnabled: boolean): void => {
+    const optOut = !shareEnabled;
+    setAnalyticsOptOut(optOut);
+    if (optOut) {
+      postHogService.optOut();
+    } else {
+      postHogService.optIn();
+    }
+  }, [setAnalyticsOptOut]);
 
   const [toast, setToast] = useState<{ visible: boolean; message: string }>({
     visible: false,
@@ -301,6 +322,17 @@ export default function NotificationsRoute(): React.ReactElement {
             description="Newsletter and product updates from Mingla"
             value={prefs.marketing}
             onToggle={(v) => void handleZustandToggle("marketing", v)}
+          />
+        </GlassCard>
+
+        {/* META-ORCH-1187 [Growth Analytics Hub] — Privacy: analytics opt-out.
+            Toggle ON = sharing anonymous usage data (analyticsOptOut=false). */}
+        <GlassCard variant="elevated" radius="md" padding={spacing.md}>
+          <SimpleToggleRow
+            label="Analytics"
+            description="Help improve Mingla by sharing anonymous usage data. You can turn this off any time."
+            value={!analyticsOptOut}
+            onToggle={handleAnalyticsToggle}
           />
         </GlassCard>
       </ScrollView>

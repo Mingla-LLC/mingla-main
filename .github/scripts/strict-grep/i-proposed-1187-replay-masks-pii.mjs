@@ -44,6 +44,9 @@ function isExempt(rel) {
   if (/\.test\.[tj]sx?$/.test(rel)) return true;
   if (rel.includes("node_modules")) return true;
   if (rel.includes(".next/")) return true;
+  // DISC-B (leg-2 tester): exclude local web-export output.
+  if (rel.includes("web-build/")) return true;
+  if (rel.includes("dist/")) return true;
   return false;
 }
 
@@ -65,7 +68,13 @@ function walk(dir, out) {
   for (const e of entries) {
     const full = path.join(dir, e.name);
     if (e.isDirectory()) {
-      if (e.name === "node_modules" || e.name === ".next") continue;
+      if (
+        e.name === "node_modules" ||
+        e.name === ".next" ||
+        e.name === "web-build" ||
+        e.name === "dist"
+      )
+        continue;
       walk(full, out);
     } else if (CODE_EXT.has(path.extname(e.name))) {
       out.push(full);

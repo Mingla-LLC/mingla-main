@@ -32,6 +32,8 @@ import { useCurrentBrand } from "../../hooks/useCurrentBrand";
 import { useExperienceVenueDefault } from "../../hooks/useExperienceVenueDefault";
 import { useExperienceDraftAdapter } from "../../hooks/useExperienceDraftAdapter";
 import { supabase } from "../../services/supabase";
+// META-ORCH-1187 [Growth Analytics Hub] — offering-published conversion (SC-6).
+import { postHogService } from "../../services/postHogService";
 import { Button } from "../ui/Button";
 import { Icon } from "../ui/Icon";
 import { Input } from "../ui/Input";
@@ -568,6 +570,16 @@ export const ExperienceCreatorWizard: React.FC<ExperienceCreatorWizardProps> = (
         }
         const result = data as { event?: { id?: string } } | null;
         const savedId = result?.event?.id ?? targetId;
+        // META-ORCH-1187 — offering-published conversion (SC-6). Only on a real
+        // PUBLISH (not a draft save), mirroring biz_publish_experience semantics.
+        if (publish) {
+          postHogService.capture("offering_published", {
+            offering_type: "experience",
+            event_id: savedId,
+            brand_id: brandId,
+            surface: "business_app",
+          });
+        }
         onComplete(savedId);
       } catch (e) {
         setToast(e instanceof Error ? e.message : "Couldn't save experience. Tap to retry.");

@@ -78,6 +78,20 @@ export default ({ config }: ConfigContext): ExpoConfig => {
         },
       ],
       "expo-apple-authentication",
+      // META-ORCH-1187 [Growth Analytics Hub] §4.F(a) — iOS App Tracking
+      // Transparency. Business previously had the NSUserTrackingUsageDescription
+      // string in app.json infoPlist but NO expo-tracking-transparency dep/plugin
+      // and no prompt wired (the ATT gap). This plugin adds the native module +
+      // sets userTrackingPermission to the SAME existing business copy. The
+      // prompt fires once at deferred init in app/_layout.tsx BEFORE AppsFlyer
+      // starts (mirrors the consumer permissionOrchestrator ATT sequence).
+      [
+        "expo-tracking-transparency",
+        {
+          userTrackingPermission:
+            "Mingla Business uses your advertising identifier to measure the performance of our ads and help us reach more organizers like you.",
+        },
+      ],
       // expo-blur 15.0.8 has no config plugin — auto-links via React Native
       // auto-linking only. Adding it as a plugin entry throws PluginError.
       // Surfaced as D-DEV-1 in implementation report.
@@ -123,6 +137,20 @@ export default ({ config }: ConfigContext): ExpoConfig => {
     ],
     extra: {
       ...config.extra,
+      // META-ORCH-1187 [Growth Analytics Hub] Phase 1 — PostHog native keys.
+      // Read at runtime via Constants.expoConfig.extra (COMMS-0028 — a dynamic
+      // process.env read is NOT inlined by babel-preset-expo and is undefined in
+      // Hermes standalone/OTA builds; emitting into `extra` is the runtime-safe
+      // path, mirroring the supabase/giphy/mapbox keys below). The PUBLIC phc_*
+      // project key is set in EAS env per profile (eas.json) — NO key literal is
+      // committed here. SECRET HYGIENE: only the public phc_* key ever ships; the
+      // phx_* personal/MCP key MUST NEVER appear here. Absent at runtime →
+      // postHogService no-ops gracefully (does not break the build or boot).
+      EXPO_PUBLIC_POSTHOG_KEY: process.env.EXPO_PUBLIC_POSTHOG_KEY ?? null,
+      // US region — dispatch-locked. Default to the US host literal so the host
+      // is always present even if the env is unset.
+      EXPO_PUBLIC_POSTHOG_HOST:
+        process.env.EXPO_PUBLIC_POSTHOG_HOST ?? "https://us.i.posthog.com",
       EXPO_PUBLIC_SUPABASE_URL:
         process.env.EXPO_PUBLIC_SUPABASE_URL ??
         "https://gqnoajqerqhnvulmnyvv.supabase.co",

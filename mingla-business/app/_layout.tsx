@@ -66,6 +66,11 @@ import { initWebAnalytics } from "../src/analytics/webAnalytics";
 import { ConsentBanner } from "../src/analytics/ConsentBanner";
 import { initializeAppsFlyer } from "../src/services/appsFlyerService";
 import { mixpanelService } from "../src/services/mixpanelService";
+// META-ORCH-1187 [Growth Analytics Hub] Phase 1 — PostHog native (autocapture +
+// masked session replay) runs ALONGSIDE Mixpanel/AppsFlyer (parallel run; do
+// NOT remove them). Provider + boot init + iOS ATT prompt (before AppsFlyer).
+import { postHogService } from "../src/services/postHogService";
+import { PostHogAnalyticsProvider } from "../src/services/PostHogAnalyticsProvider";
 import { revenueCatService } from "../src/services/revenueCatService";
 import {
   initializeOneSignal,
@@ -449,8 +454,29 @@ function RootLayoutInner(): React.ReactElement {
     let timer: ReturnType<typeof setTimeout> | null = null;
     const task = InteractionManager.runAfterInteractions(() => {
       timer = setTimeout(() => {
-        initializeAppsFlyer();
+        // META-ORCH-1187 §4.F(a) — fire the iOS ATT prompt BEFORE AppsFlyer
+        // starts, so AppsFlyer reads the resolved IDFA state (real IDFA if
+        // allowed, zeroed → SKAdNetwork if denied). Mirrors the consumer
+        // permissionOrchestrator sequence. Android: ATT import throws
+        // "unavailable" → swallowed. PostHog does NOT use IDFA, so ATT-denied
+        // still permits anonymous product analytics.
+        void (async () => {
+          if (Platform.OS === "ios") {
+            try {
+              const { requestTrackingPermissionsAsync } = await import(
+                "expo-tracking-transparency"
+              );
+              await requestTrackingPermissionsAsync();
+            } catch (e) {
+              console.warn("[ATT] business tracking request failed:", e);
+            }
+          }
+          initializeAppsFlyer();
+        })();
         void mixpanelService.initialize();
+        // META-ORCH-1187 — init PostHog alongside Mixpanel (idempotent; the root
+        // provider also calls this). No-ops gracefully when the key is absent.
+        void postHogService.initialize();
         revenueCatService.initialize();
         initializeOneSignal();
         // META-ORCH-1187 LEG 2 — buyer-web analytics init (PostHog + GA4),
@@ -708,7 +734,12 @@ export default function RootLayout(): React.ReactElement {
                   intentionally route-scoped to checkout payment screens so Home
                   startup does not initialize the payment SDK. */}
               <KeyboardRoot>
-                <RootLayoutInner />
+                {/* META-ORCH-1187: PostHog autocapture + masked replay wraps
+                    every route (inside AuthProvider so identify works). Renders
+                    children directly when the key is absent / on web (no-op). */}
+                <PostHogAnalyticsProvider>
+                  <RootLayoutInner />
+                </PostHogAnalyticsProvider>
                 {/* ORCH-1165: Done-only accessory bar, sibling of the app shell
                     inside KeyboardProvider. KeyboardStickyView (internal) is
                     absolutely positioned, so it overlays the root window and

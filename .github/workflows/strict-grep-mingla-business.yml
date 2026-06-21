@@ -2692,6 +2692,10 @@ jobs:
         run: node .github/scripts/strict-grep/orch-1187-leg2-buyer-web-analytics-wired.mjs --self-test
       - name: Run ORCH-1187 LEG 2 buyer-web analytics-wiring gate
         run: node .github/scripts/strict-grep/orch-1187-leg2-buyer-web-analytics-wired.mjs
+      - name: Run I-PROPOSED-1187-POSTHOG-KEY-STATIC-READ gate (native, COMMS-0028)
+        run: node .github/scripts/strict-grep/i-proposed-1187-posthog-key-static-read.mjs
+      - name: Run I-PROPOSED-1187-NATIVE-MOUNTS-ANALYTICS gate (native fails-on-revert)
+        run: node .github/scripts/strict-grep/i-proposed-1187-native-mounts-analytics.mjs
 
   orch-1186-hours-single-owner:
     name: "ORCH-1186-A [venue-unify]: opening hours single owner — brand_hours is canonical; service_periods derived ONLY by biz_derive_service_periods_from_brand_hours, called from both hours-write RPCs (I-PROPOSED-1186-HOURS-SINGLE-OWNER)"

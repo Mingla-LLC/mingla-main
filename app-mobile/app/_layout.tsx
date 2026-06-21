@@ -38,6 +38,13 @@ import AnimatedSplashScreen from "../src/components/AnimatedSplashScreen";
 // ORCH-1171: Done-only keyboard accessory bar + native keyboard frame provider.
 import { KeyboardRoot } from "../src/wrappers/KeyboardRoot";
 import { KeyboardToolbarRoot } from "../src/wrappers/KeyboardToolbarRoot";
+// META-ORCH-1187 [Growth Analytics Hub] Phase 1 — PostHog native provider
+// (autocapture + masked session replay). Mounts ALONGSIDE Mixpanel/AppsFlyer
+// (parallel run). The masked-replay / US-host / opt-out / cost-guard config all
+// live in src/services/postHogService.ts; this provider supplies autocapture +
+// replay over the SAME client the service exposes (so capture/identify/reset at
+// the call sites and autocapture share one instance).
+import { PostHogAnalyticsProvider } from "../src/services/PostHogAnalyticsProvider";
 
 // ORCH-0679 Wave 2B-2: SINGLE source of truth for Sentry init.
 // I-SENTRY-SINGLE-INIT — duplicate Sentry.init in app/index.tsx was deleted as
@@ -183,7 +190,13 @@ export default Sentry.wrap(function RootLayout() {
                 },
               }}
             >
-              <Stack screenOptions={{ headerShown: false }} />
+              {/* META-ORCH-1187: PostHog autocapture + masked replay wraps
+                  every route. Inside the providers so usePostHog() + identify
+                  work app-wide; renders children directly when the key is
+                  absent / on web (no-op). */}
+              <PostHogAnalyticsProvider>
+                <Stack screenOptions={{ headerShown: false }} />
+              </PostHogAnalyticsProvider>
             </PersistQueryClientProvider>
             {/* Sibling so the toolbar stays visually above the keyboard. */}
             <KeyboardToolbarRoot />

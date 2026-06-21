@@ -25,7 +25,9 @@
     "show_activity_on": "Friends can see what you've been up to lately.",
     "show_activity_off": "Your activity is hidden from everyone.",
     "notifications": "Notifications",
-    "notifications_hint": "Invites, boards, and messages"
+    "notifications_hint": "Invites, boards, and messages",
+    "analytics": "Analytics",
+    "analytics_hint": "Help improve Mingla by sharing anonymous usage data. You can turn this off any time."
   },
   "notifications": {
     "title": "Notification Settings",

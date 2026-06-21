@@ -13,6 +13,9 @@
       },
       "ios": {
         "buildConfiguration": "Debug"
+      },
+      "env": {
+        "EXPO_PUBLIC_POSTHOG_HOST": "https://us.i.posthog.com"
       }
     },
     "development-simulator": {
@@ -27,12 +30,18 @@
       "channel": "preview",
       "android": {
         "buildType": "apk"
+      },
+      "env": {
+        "EXPO_PUBLIC_POSTHOG_HOST": "https://us.i.posthog.com"
       }
     },
     "production": {
       "channel": "production",
       "autoIncrement": true,
-      "android": {}
+      "android": {},
+      "env": {
+        "EXPO_PUBLIC_POSTHOG_HOST": "https://us.i.posthog.com"
+      }
     },
     "production-simulator": {
       "extends": "production",

@@ -178,6 +178,14 @@ interface AppState {
   // UI overlay state (not persisted)
   showAccountSettings: boolean;
 
+  // META-ORCH-1187 [Growth Analytics Hub] — in-app analytics opt-out (§4.F(b)).
+  // true = the user opted OUT of product analytics. Default false (opted in,
+  // anonymous, no IDFA) — consistent with the Mixpanel/AppsFlyer posture; the
+  // Settings "Analytics" toggle lets the user opt OUT. Persisted (a privacy
+  // choice is a device preference, NOT cleared on logout). postHogService reads
+  // it: opt-out → posthog.optOut(); opt-in → posthog.optIn().
+  analyticsOptOut: boolean;
+
   // ─── ORCH-0679 Wave 2.8 Path B — Tab state registry (NOT persisted) ────────
   // Session-scoped storage to preserve scroll position, filter state, and
   // active panel/sub-tab across tab unmount/remount. Path B switched the tab
@@ -228,6 +236,8 @@ interface AppState {
   // Recommendations actions
   setCurrentCardIndex: (index: number) => void;
   setShowAccountSettings: (show: boolean) => void;
+  // META-ORCH-1187 — toggle the analytics opt-out (Settings "Analytics" row).
+  setAnalyticsOptOut: (optOut: boolean) => void;
 
   // Deck session actions
   addSwipedCard: (card: Recommendation) => void;
@@ -273,6 +283,8 @@ export const useAppStore = create<AppState>()(
       deckSchemaVersion: DECK_SCHEMA_VERSION,
       preferencesRefreshKey: 0, // [ORCH-0504] persisted refresh counter
       showAccountSettings: false,
+      // META-ORCH-1187 — default opted IN (anonymous product analytics).
+      analyticsOptOut: false,
 
       // ─── ORCH-0679 Wave 2.8 Path B — Tab registry initial state ──────────
       tabScroll: {
@@ -341,6 +353,8 @@ export const useAppStore = create<AppState>()(
       setCurrentCardIndex: (currentCardIndex) => set({ currentCardIndex }),
       setShowAccountSettings: (showAccountSettings) =>
         set({ showAccountSettings }),
+      // META-ORCH-1187 — persist the analytics opt-out choice.
+      setAnalyticsOptOut: (analyticsOptOut) => set({ analyticsOptOut }),
 
       // [ORCH-0504] Updater supports both raw number and (prev) => next forms.
       // Mirrors React's useState setter shape so call sites using
@@ -447,6 +461,8 @@ export const useAppStore = create<AppState>()(
         // AppStateManager → reset to 0 on cold launch → orphan AsyncStorage
         // keys → deck reset to card 1.
         preferencesRefreshKey: state.preferencesRefreshKey,
+        // META-ORCH-1187 — persist the analytics opt-out (privacy preference).
+        analyticsOptOut: state.analyticsOptOut,
       }),
       onRehydrateStorage: () => (state) => {
         // Migration safety: clear old data when schema version changes.

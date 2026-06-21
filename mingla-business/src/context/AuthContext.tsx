@@ -30,6 +30,9 @@ import {
 // ORCH-0808-FOLLOWUP — Mixpanel identity binding.
 import { reportNonFatal } from "../diagnostics/reportNonFatal";
 import { mixpanelService } from "../services/mixpanelService";
+// META-ORCH-1187 [Growth Analytics Hub] — PostHog identity bind + reset runs
+// alongside Mixpanel/AppsFlyer (parallel run; do NOT remove them).
+import { postHogService } from "../services/postHogService";
 // ORCH-0808-FOLLOWUP — RevenueCat identity binding (install-only scope).
 import { revenueCatService } from "../services/revenueCatService";
 // ORCH-0808-FOLLOWUP — OneSignal identity binding (install-only scope).
@@ -376,6 +379,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         // ORCH-0808-FOLLOWUP — Mixpanel identity on warm restore. Idempotent.
         // No "Login" event fire on warm restore (mirrors AppsFlyer policy).
         mixpanelService.identify(s.user.id);
+        // META-ORCH-1187 — PostHog identity on warm restore (SC-7). Idempotent.
+        postHogService.identify(s.user.id);
         // ORCH-0808-FOLLOWUP — RevenueCat identity on warm restore. Idempotent.
         revenueCatService.identify(s.user.id);
         // ORCH-0808-FOLLOWUP — OneSignal identity on warm restore. Idempotent.
@@ -485,6 +490,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           setAppsFlyerUserId(s.user.id);
           registerAppsFlyerDevice(s.user.id);
           mixpanelService.identify(s.user.id);
+          // META-ORCH-1187 — PostHog identity bind on SIGNED_IN (SC-7).
+          postHogService.identify(s.user.id);
           revenueCatService.identify(s.user.id);
           loginToOneSignal(s.user.id);
           if (!afEventFiredRef.current) {
@@ -525,6 +532,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                   displayName: account?.display_name ?? null,
                   isFirstTime,
                 });
+                // META-ORCH-1187 — signup conversion (creator account created,
+                // first-time only — SC-6). Event-name identical to the consumer
+                // signup for a clean cross-surface funnel.
+                if (isFirstTime) {
+                  postHogService.capture("signup_completed", {
+                    method,
+                    surface: "business_app",
+                  });
+                }
               } catch (e) {
                 console.warn("[AppsFlyer/Mixpanel] first-event fire failed:", e);
               }
@@ -551,6 +567,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         // ORCH-0808-FOLLOWUP — Mixpanel: fire Logout event + reset distinct_id
         // so the next signed-in user is not attributed to the prior user.
         mixpanelService.trackLogout();
+        // META-ORCH-1187 — PostHog reset on signout (SC-7 / Constitution #6) so
+        // the next user is not attributed under the prior distinct_id.
+        postHogService.reset();
         // ORCH-0808-FOLLOWUP — RevenueCat: reset to anonymous appUserID.
         revenueCatService.logOut();
         // ORCH-0808-FOLLOWUP — OneSignal: unlink device from user alias.
@@ -868,6 +887,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     afEventFiredRef.current = false;
     // ORCH-0808-FOLLOWUP — Mixpanel: fire Logout event + reset distinct_id.
     mixpanelService.trackLogout();
+    // META-ORCH-1187 — PostHog reset on explicit signout (SC-7 / Constitution #6).
+    postHogService.reset();
     // ORCH-0808-FOLLOWUP — RevenueCat: reset to anonymous appUserID.
     revenueCatService.logOut();
     // ORCH-0808-FOLLOWUP — OneSignal: unlink device from user alias.
