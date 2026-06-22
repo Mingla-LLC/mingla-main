@@ -26,9 +26,9 @@ import {
   useVenueTables,
 } from "../../hooks/useVenueTables";
 import { BRAND_ROLE_RANK } from "../../utils/brandRole";
+import { ChevronRight, LayoutGrid } from "lucide-react-native";
 import { Button } from "../ui/Button";
 import { GlassCard } from "../ui/GlassCard";
-import { Icon } from "../ui/Icon";
 import { VenueCapacityRulesPanel } from "./VenueCapacityRulesPanel";
 import { VenueTableSheet } from "./VenueTableSheet";
 import type {
@@ -165,7 +165,7 @@ export function VenueTablesModule({
 
       {isEmpty ? (
         <GlassCard variant="elevated" style={styles.emptyCard}>
-          <Icon name="grid" size={28} color={textTokens.primary} />
+          <LayoutGrid size={28} color={textTokens.primary} />
           <Text style={styles.emptyTitle}>Set up your tables</Text>
           <Text style={styles.emptyBody}>
             Add your tables, zones, and party-size limits. The availability engine
@@ -212,7 +212,7 @@ export function VenueTablesModule({
                     <Text style={styles.tableMeta}>{tableMeta(t)}</Text>
                   </View>
                   {canMutate ? (
-                    <Icon name="chevR" size={18} color={textTokens.tertiary} />
+                    <ChevronRight size={18} color={textTokens.tertiary} />
                   ) : null}
                 </Pressable>
                 {canMutate ? (

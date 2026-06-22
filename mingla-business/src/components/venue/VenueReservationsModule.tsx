@@ -28,9 +28,9 @@ import {
 } from "../../hooks/useVenueReservations";
 import { useVenueTables } from "../../hooks/useVenueTables";
 import { BRAND_ROLE_RANK } from "../../utils/brandRole";
+import { Calendar } from "lucide-react-native";
 import { Button } from "../ui/Button";
 import { GlassCard } from "../ui/GlassCard";
-import { Icon } from "../ui/Icon";
 import { ReservationCard } from "./ReservationCard";
 import { ReservationCreateSheet } from "./ReservationCreateSheet";
 import { ReservationDetailSheet } from "./ReservationDetailSheet";
@@ -162,7 +162,7 @@ export function VenueReservationsModule({
       ) : visible.length === 0 ? (
         <View style={styles.emptyWrap} testID="venue-reservations-empty-wrap">
           <GlassCard variant="elevated" style={styles.emptyCard}>
-            <Icon name="calendar" size={26} color={textTokens.primary} />
+            <Calendar size={26} color={textTokens.primary} />
             <Text style={styles.emptyTitle}>{VIEW_EMPTY[view]}</Text>
             {view === "today" || view === "upcoming" ? (
               <Text style={styles.emptyBody}>

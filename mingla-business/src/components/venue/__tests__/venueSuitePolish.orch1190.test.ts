@@ -105,8 +105,12 @@ describe("ORCH-1190 #3 — brand-colored toggle (no native green)", () => {
 describe("ORCH-1190 #4 — Smart capacity rules is an affordanced accordion", () => {
   it("the panel header has the To-do-style icon + bold title cluster + chevron", () => {
     expect(PANEL).toContain("headerLeft");
-    expect(PANEL).toMatch(/Icon name="grid"/);
-    expect(PANEL).toMatch(/Icon name=\{open \? "chevU" : "chevD"\}/);
+    // ORCH-1196: venue glyphs migrated custom Icon → lucide-react-native.
+    // grid → LayoutGrid; the open/close chevron is now a conditional
+    // ChevronUp/ChevronDown render. Intent unchanged: icon + chevron cluster.
+    expect(PANEL).toMatch(/<LayoutGrid size=\{16\}/);
+    expect(PANEL).toMatch(/open \? \(\s*<ChevronUp/);
+    expect(PANEL).toMatch(/<ChevronDown size=\{18\}/);
     // bold (700) title, not the old tertiary labelCap caption.
     expect(PANEL).toMatch(/headerTitle:\s*\{[^}]*fontWeight:\s*"700"/);
   });
