@@ -33,17 +33,19 @@ import {
   type ScannerInvitationRow,
 } from "../services/scannerInvitationsService";
 import { brandRoleKeys } from "./useCurrentBrandRole";
+import { useAuth } from "../context/AuthContext";
 
 const STALE_TIME_MS = 30 * 1000;
 
 export const useScannerInvitationsForBrand = (
   brandId: string | null,
 ): UseQueryResult<ScannerInvitationRow[]> => {
+  const { isAuthReady } = useAuth();
   return useQuery<ScannerInvitationRow[]>({
     queryKey: brandId !== null
       ? scannerInvitationKeys.listByBrand(brandId)
       : ["scanner-invitations-brand-disabled"],
-    enabled: brandId !== null,
+    enabled: isAuthReady && brandId !== null,
     staleTime: STALE_TIME_MS,
     queryFn: () => listScannerInvitationsForBrand(brandId as string),
   });
@@ -52,11 +54,12 @@ export const useScannerInvitationsForBrand = (
 export const useScannerInvitationsForEvent = (
   eventId: string | null,
 ): UseQueryResult<ScannerInvitationRow[]> => {
+  const { isAuthReady } = useAuth();
   return useQuery<ScannerInvitationRow[]>({
     queryKey: eventId !== null
       ? scannerInvitationKeys.listByEvent(eventId)
       : ["scanner-invitations-event-disabled"],
-    enabled: eventId !== null,
+    enabled: isAuthReady && eventId !== null,
     staleTime: STALE_TIME_MS,
     queryFn: () => listScannerInvitationsForEvent(eventId as string),
   });

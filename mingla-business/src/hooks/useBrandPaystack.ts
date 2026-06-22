@@ -31,6 +31,7 @@ import {
   type PaystackSubaccountResult,
 } from "../services/brandPaystackService";
 import { brandKeys } from "./useBrands";
+import { useAuth } from "../context/AuthContext";
 
 export const brandPaystackKeys = {
   all: ["brand-paystack"] as const,
@@ -38,6 +39,8 @@ export const brandPaystackKeys = {
   status: (brandId: string) =>
     [...brandPaystackKeys.all, "status", brandId] as const,
 };
+
+const DISABLED_KEY = ["brand-paystack-status-disabled"] as const;
 
 /** NG NUBAN settlement banks. Static-ish → long stale time. */
 export function useBrandBanks(enabled = true): UseQueryResult<PaystackBankOption[], Error> {
@@ -54,10 +57,13 @@ export function useBrandBanks(enabled = true): UseQueryResult<PaystackBankOption
 export function useBrandPaystackStatus(
   brandId: string | null,
 ): UseQueryResult<PaystackOnboardStatus, Error> {
+  const { isAuthReady } = useAuth();
+  const enabled =
+    isAuthReady && typeof brandId === "string" && brandId.length > 0;
   return useQuery<PaystackOnboardStatus, Error>({
-    queryKey: brandPaystackKeys.status(brandId ?? "none"),
+    queryKey: enabled ? brandPaystackKeys.status(brandId as string) : DISABLED_KEY,
     queryFn: () => refreshPaystackStatus(brandId as string),
-    enabled: typeof brandId === "string" && brandId.length > 0,
+    enabled,
     staleTime: 1000 * 30,
   });
 }

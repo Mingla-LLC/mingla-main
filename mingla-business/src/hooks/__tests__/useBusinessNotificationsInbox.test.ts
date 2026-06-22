@@ -59,6 +59,15 @@ jest.mock("../../services/oneSignalService", () => ({
   clearNotificationBadge: jest.fn(),
 }));
 
+// ORCH-1202: useBusinessNotifications now folds isAuthReady from useAuth() into
+// its query `enabled`. Mock AuthContext (isAuthReady: true) so the node-env
+// hook runs without loading the real AuthContext.tsx (which pulls react-native
+// / expo-constants ESM that this node/ts-jest config cannot transform). With
+// isAuthReady true the enabled predicate is identical to the pre-1202 behavior.
+jest.mock("../../context/AuthContext", () => ({
+  useAuth: () => ({ isAuthReady: true, user: { id: "u1" }, session: { access_token: "t" }, loading: false }),
+}));
+
 // Stub only the three React hooks the inbox uses so it runs outside a
 // renderer; keep the rest of React real (react-query needs createContext).
 jest.mock("react", () => {

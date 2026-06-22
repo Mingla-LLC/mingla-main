@@ -10,6 +10,7 @@ import { useQuery, type UseQueryResult } from "@tanstack/react-query";
 import { listStarterTemplates } from "../../services/marketing/marketingTemplateService";
 import type { MarketingTemplateRow } from "../../types/marketing";
 import { marketingKeys } from "./marketingKeys";
+import { useAuth } from "../../context/AuthContext";
 
 const STALE_TIME_MS = 5 * 60 * 1000;
 
@@ -21,9 +22,14 @@ export interface UseStarterTemplatesState {
 }
 
 export function useStarterTemplates(): UseStarterTemplatesState {
+  const { isAuthReady } = useAuth();
+  const enabled = isAuthReady;
   const query = useQuery<MarketingTemplateRow[]>({
-    queryKey: marketingKeys.templates.starter,
+    queryKey: enabled
+      ? marketingKeys.templates.starter
+      : marketingKeys.templates.all,
     queryFn: async () => listStarterTemplates(),
+    enabled,
     staleTime: STALE_TIME_MS,
   });
   return useMemo(

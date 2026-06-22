@@ -27,14 +27,20 @@ import {
   type StartPartnerOnboardingInput,
   type StartPartnerOnboardingResult,
 } from "../services/partnerStripeService";
+import { useAuth } from "../context/AuthContext";
+
+const DISABLED_KEY = ["partner-stripe-status-disabled"] as const;
 
 export function usePartnerStripeStatus(): UseQueryResult<
   PartnerStripeStatusRow,
   Error
 > {
+  const { isAuthReady } = useAuth();
+  const enabled = isAuthReady;
   return useQuery<PartnerStripeStatusRow, Error>({
-    queryKey: partnerStripeKeys.status(),
+    queryKey: enabled ? partnerStripeKeys.status() : DISABLED_KEY,
     queryFn: getPartnerStripeStatus,
+    enabled,
     // ORCH-1052 hotfix — staleTime 0 + refetchOnWindowFocus so an admin-side
     // partner_enabled toggle becomes visible within seconds of the next
     // mingla-business foreground (no manual reload needed).

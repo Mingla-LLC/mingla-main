@@ -33,6 +33,7 @@ import {
 
 import { supabase } from "../services/supabase";
 import { clearNotificationBadge } from "../services/oneSignalService";
+import { useAuth } from "../context/AuthContext";
 
 export interface BusinessNotification {
   id: string;
@@ -77,10 +78,15 @@ function isBusinessType(type: string | undefined | null): boolean {
  * business notifications. Shared by both the legacy read hook and the inbox
  * hook so a single mount owns one channel.
  */
-function useBusinessNotificationsRealtime(userId: string | null): void {
+function useBusinessNotificationsRealtime(
+  userId: string | null,
+  enabled: boolean,
+): void {
   const queryClient = useQueryClient();
   useEffect(() => {
-    if (userId === null) return;
+    // ORCH-1202: gate the subscription on the same auth-readiness as the query
+    // so it does not open a pre-auth channel before the JWT attaches.
+    if (!enabled || userId === null) return;
     // Unique channel name per mount — prevents Supabase Realtime "after
     // subscribe" rejection on StrictMode double-mount. Same pattern as
     // useBrandStripeStatus per ORCH-V3-runtime-1.
@@ -136,7 +142,7 @@ function useBusinessNotificationsRealtime(userId: string | null): void {
     return (): void => {
       void supabase.removeChannel(channel);
     };
-  }, [userId, queryClient]);
+  }, [userId, enabled, queryClient]);
 }
 
 async function fetchBusinessNotifications(
@@ -171,8 +177,9 @@ async function fetchBusinessNotifications(
 export function useBusinessNotifications(
   userId: string | null,
 ): UseQueryResult<readonly BusinessNotification[]> {
-  const enabled = userId !== null;
-  useBusinessNotificationsRealtime(userId);
+  const { isAuthReady } = useAuth();
+  const enabled = isAuthReady && userId !== null;
+  useBusinessNotificationsRealtime(userId, enabled);
 
   return useQuery<readonly BusinessNotification[]>({
     queryKey: enabled ? businessNotificationKeys.all(userId) : DISABLED_KEY,

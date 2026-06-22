@@ -18,11 +18,14 @@
 import { useQuery } from "@tanstack/react-query";
 
 import { supabase } from "../services/supabase";
+import { useAuth } from "../context/AuthContext";
 
 const HAS_WEB_PURCHASES_STALE_MS = 5 * 60 * 1000;
 
 export const useTripHasWebPurchases = (tripEventId: string | null): boolean => {
-  const enabled = tripEventId !== null && tripEventId.length > 0;
+  const { isAuthReady } = useAuth();
+  const enabled =
+    isAuthReady && tripEventId !== null && tripEventId.length > 0;
   const query = useQuery<boolean, Error>({
     queryKey: enabled
       ? (["trips", "has-web-purchases", tripEventId] as const)

@@ -7,15 +7,22 @@ import { useQuery } from "@tanstack/react-query";
 
 import { AgentConversation, fetchConversations } from "../services/agentChatService";
 import { agentQueryKeys } from "./useAgentChat";
+import { useAuth } from "../context/AuthContext";
+
+const DISABLED_KEY = ["ari-conversations-disabled"] as const;
 
 export function useConversationList(): {
   conversations: AgentConversation[];
   isLoading: boolean;
   refetch: () => void;
 } {
+  const { isAuthReady } = useAuth();
+  const enabled = isAuthReady;
+
   const q = useQuery({
-    queryKey: agentQueryKeys.conversations(),
+    queryKey: enabled ? agentQueryKeys.conversations() : DISABLED_KEY,
     queryFn: fetchConversations,
+    enabled,
     staleTime: 10_000,
   });
 

@@ -16,6 +16,7 @@
 import { useQuery, type UseQueryResult } from "@tanstack/react-query";
 
 import { supabase } from "../services/supabase";
+import { useAuth } from "../context/AuthContext";
 
 const EDIT_LOG_STALE_MS = 30 * 1000;
 
@@ -43,7 +44,8 @@ export const useTripEditLog = (
   tripEventId: string | null,
   limit = 20,
 ): UseQueryResult<TripEditLogEntry[], Error> => {
-  const enabled = tripEventId !== null && tripEventId.length > 0;
+  const { isAuthReady } = useAuth();
+  const enabled = isAuthReady && tripEventId !== null && tripEventId.length > 0;
   return useQuery<TripEditLogEntry[], Error>({
     queryKey: enabled ? tripEditLogKeys.byTrip(tripEventId, limit) : DISABLED_KEY,
     enabled,

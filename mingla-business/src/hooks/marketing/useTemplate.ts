@@ -10,6 +10,7 @@ import { useQuery, type UseQueryResult } from "@tanstack/react-query";
 import { getTemplate } from "../../services/marketing/marketingTemplateService";
 import type { MarketingTemplateRow } from "../../types/marketing";
 import { marketingKeys } from "./marketingKeys";
+import { useAuth } from "../../context/AuthContext";
 
 const STALE_TIME_MS = 60 * 1000;
 
@@ -31,7 +32,9 @@ export function useTemplate(
 ): UseTemplateState {
   // The "new" sentinel route param (templates/new) means "no fetch" — the
   // caller renders an empty editor.
+  const { isAuthReady } = useAuth();
   const enabled =
+    isAuthReady &&
     typeof templateId === "string" &&
     templateId.length > 0 &&
     templateId !== "new";

@@ -31,6 +31,7 @@ import {
   type RefundPreview,
 } from "../services/cancelTripBookingService";
 import { orderInstallmentKeys } from "./useOrderInstallments";
+import { useAuth } from "../context/AuthContext";
 
 // SC-22 freshness window: preview re-fetches every 60s. Edge fn re-computes
 // at commit time and rejects with 409 if amount diverges, but the caption
@@ -84,7 +85,8 @@ export function useBuyerRefundPreview(
 export function useOperatorRefundPreview(
   orderId: string | null,
 ): UseQueryResult<RefundPreview, CancelTripBookingError> {
-  const enabled = orderId !== null && orderId.length > 0;
+  const { isAuthReady } = useAuth();
+  const enabled = isAuthReady && orderId !== null && orderId.length > 0;
   return useQuery<RefundPreview, CancelTripBookingError>({
     queryKey: enabled
       ? cancelTripBookingKeys.preview(orderId, "operator")

@@ -50,6 +50,15 @@
 
 ---
 
+## DRAFT — ORCH-1202 (business-web brand-load regression, 2026-06-21)
+
+### I-PROPOSED-1202-AUTH-SCOPED-HOOK-COMPLETENESS (DRAFT)
+- **Rule:** Every `.ts` file under `mingla-business/src/hooks/**` (excluding `__tests__`/`*.test.ts`/`*.spec.ts`) that CALLS `useQuery` or `useInfiniteQuery` MUST be a member of exactly one of `AUTH_SCOPED_HOOK_FILES` (then it MUST fold `isAuthReady` from `useAuth()` into its React Query `enabled`) or `PUBLIC_HOOK_ALLOWLIST` (then it MUST NOT gate on `isAuthReady` — anon buyer-web reads depend on it). A query hook in neither list is a CI failure. This inverts the ORCH-1004 gate from OPT-IN (authors must remember to register) to FAIL-CLOSED — the structural cure for the curated-list drift that shipped ORCH-1202 (~20 auth-scoped hooks added, none registered, CI green).
+- **Enforcement:** the completeness check in `.github/scripts/strict-grep/orch-1004-auth-scoped-query-readiness.mjs` (`checkCompleteness` + `collectQueryHookRelpaths`; the `useQuery(?!Client)[<(]` detection signal excludes imperative `useQueryClient` hooks and mutation-only/re-export files), wired into `mingla-business` `test:orch-1004` + the strict-grep CI workflow. Backed by the gate `--self-test` block (detection robustness + fixture completeness) and `mingla-business/src/hooks/__tests__/orch1202AuthScopedHookCompleteness.test.ts` (source-assert of the DELTA-1 fold + real-`query-core` cache proof: ungated strands `[]`, gated loads the row + completeness no-orphans). Fails-on-revert proven (deleting a fold → gate+jest RED; adding an unregistered query hook → completeness RED).
+- **Established:** DRAFT registered at ORCH-1202 SPEC; flips ACTIVE at ORCH-1202 CLOSE (orchestrator owns the flip).
+
+---
+
 ## ACTIVE — ORCH-1170 (business keyboard "Done" accessory bar, 2026-06-20, PR #548)
 
 ### I-PROPOSED-KEYBOARD-TOOLBAR-CLEARANCE (ACTIVE)

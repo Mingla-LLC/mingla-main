@@ -11,6 +11,7 @@ import {
   type CampaignReport,
 } from "../../services/marketing/marketingReportService";
 import { marketingKeys } from "./marketingKeys";
+import { useAuth } from "../../context/AuthContext";
 
 const STALE_TIME_MS = 30 * 1000;
 
@@ -29,7 +30,9 @@ export interface UseCampaignReportState {
 export function useCampaignReport(
   campaignId: string | null | undefined,
 ): UseCampaignReportState {
-  const enabled = typeof campaignId === "string" && campaignId.length > 0;
+  const { isAuthReady } = useAuth();
+  const enabled =
+    isAuthReady && typeof campaignId === "string" && campaignId.length > 0;
   const query = useQuery<CampaignReport>({
     queryKey: enabled
       ? marketingKeys.campaigns.byId(campaignId as string)

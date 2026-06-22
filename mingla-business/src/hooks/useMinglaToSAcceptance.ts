@@ -25,6 +25,7 @@ import {
   type AcceptMinglaToSResult,
   type MinglaToSAcceptanceState,
 } from "../services/brandMinglaToSService";
+import { useAuth } from "../context/AuthContext";
 
 export const minglaToSAcceptanceKeys = {
   all: ["mingla-tos-acceptance"] as const,
@@ -41,7 +42,8 @@ export function useMinglaToSAcceptance(
   brandId: string | null,
   userId: string | null,
 ): UseQueryResult<MinglaToSAcceptanceState> {
-  const enabled = brandId !== null && userId !== null;
+  const { isAuthReady } = useAuth();
+  const enabled = isAuthReady && brandId !== null && userId !== null;
 
   return useQuery<MinglaToSAcceptanceState>({
     queryKey: enabled

@@ -40,6 +40,7 @@ import {
 import { brandRoleKeys } from "./useCurrentBrandRole";
 import { brandKeys } from "./useBrands";
 import { businessNotificationKeys } from "./useBusinessNotifications";
+import { useAuth } from "../context/AuthContext";
 
 // 30s — fresh enough that revoke/accept flips show up quickly; long enough
 // that re-renders don't refetch.
@@ -48,11 +49,12 @@ const STALE_TIME_MS = 30 * 1000;
 export const useBrandInvitations = (
   brandId: string | null,
 ): UseQueryResult<BrandInvitationRow[]> => {
+  const { isAuthReady } = useAuth();
   return useQuery<BrandInvitationRow[]>({
     queryKey: brandId !== null
       ? brandInvitationKeys.list(brandId)
       : ["brand-invitations-disabled"],
-    enabled: brandId !== null,
+    enabled: isAuthReady && brandId !== null,
     staleTime: STALE_TIME_MS,
     queryFn: () => listBrandInvitations(brandId as string),
   });
@@ -61,11 +63,12 @@ export const useBrandInvitations = (
 export const useBrandTeamMembers = (
   brandId: string | null,
 ): UseQueryResult<BrandTeamMemberRow[]> => {
+  const { isAuthReady } = useAuth();
   return useQuery<BrandTeamMemberRow[]>({
     queryKey: brandId !== null
       ? brandTeamMemberKeys.list(brandId)
       : ["brand-team-members-disabled"],
-    enabled: brandId !== null,
+    enabled: isAuthReady && brandId !== null,
     staleTime: STALE_TIME_MS,
     queryFn: () => listBrandTeamMembers(brandId as string),
   });
@@ -122,11 +125,12 @@ export const useMyPendingInvites = (
   userId: string | null,
   enabled: boolean,
 ): UseQueryResult<PendingInviteRow[]> => {
+  const { isAuthReady } = useAuth();
   return useQuery<PendingInviteRow[]>({
     queryKey: userId !== null
       ? brandInvitationKeys.myPending(userId)
       : ["brand-invitations-my-pending-disabled"],
-    enabled: userId !== null && enabled,
+    enabled: isAuthReady && userId !== null && enabled,
     staleTime: STALE_TIME_MS,
     queryFn: () => listMyPendingInvites(),
   });
