@@ -141,6 +141,10 @@ export const NAV_GROUPS = [
       // ORCH-1045: read-only list of "Get Beta Access" leads from the organiser
       // marketing site. Operator growth tooling — sits next to Email.
       { id: "beta-leads",                label: "Beta Leads",         icon: "Inbox" },
+      // META-ORCH-1221: careers applications + role manager. The Briefcase icon
+      // MUST be registered in Sidebar.jsx ICON_MAP or the nav item silently
+      // falls back to LayoutDashboard.
+      { id: "careers",                   label: "Careers",            icon: "Briefcase" },
       // ORCH-1006: Mingla take-rate admin screen (global default + per-brand override).
       { id: "pricing",                   label: "Pricing",            icon: "Percent" },
       { id: "claims",                    label: "Venue claims",       icon: "ClipboardList" },

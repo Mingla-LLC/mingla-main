@@ -27,6 +27,8 @@ import { StripeModePage } from "./pages/StripeModePage";
 import { SupportDeskPage } from "./pages/SupportDeskPage";
 // ORCH-1201 — Admin API-Health hub (board of external-service health + alerts).
 import { ApiHealthPage } from "./pages/ApiHealthPage";
+// META-ORCH-1221 — Careers: applications list+detail + role CRUD (hash #/careers).
+import { CareersPage } from "./pages/CareersPage";
 // ORCH-1008: 6 pages deleted (Seed, ContentModeration, Analytics, Reports,
 //   BetaFeedback, TableBrowser). Sidebar flattened; System dropdown removed.
 //   See SPEC_ORCH-1008_ADMIN_SHELL_PRUNE_INTELLIGENCE_OVERVIEW.md §2 + §3.
@@ -59,6 +61,8 @@ const PAGES = {
   "stripe-mode": StripeModePage,
   // ORCH-1201: API-health hub (hash route #/api-health).
   "api-health": ApiHealthPage,
+  // META-ORCH-1221: careers applications + role manager (hash route #/careers).
+  careers: CareersPage,
 };
 
 function getTabFromHash() {
