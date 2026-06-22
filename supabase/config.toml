@@ -6,6 +6,13 @@ project_id = "gqnoajqerqhnvulmnyvv"
 [functions.api-health-probe]
 verify_jwt = false
 
+# ORCH-1220 [business-reviewer-bypass] — App-Store / Play reviewer email-login
+# bypass. PUBLIC (verify_jwt=false) but the function enforces its own secret-code
+# gate (REVIEWER_BYPASS_CODE) and only ever mints a session for the locked
+# REVIEWER_EMAIL. Not a "log in as anyone" oracle — see the function header.
+[functions.reviewer-signin]
+verify_jwt = false
+
 [functions.weather]
 verify_jwt = false
 

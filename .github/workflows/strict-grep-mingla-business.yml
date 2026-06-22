@@ -3034,3 +3034,16 @@ jobs:
         run: node .github/scripts/strict-grep/i-proposed-1219-form-no-autoadvance-multiselect.mjs --self-test
       - name: Run ORCH-1219 form-no-autoadvance-multiselect gate
         run: node .github/scripts/strict-grep/i-proposed-1219-form-no-autoadvance-multiselect.mjs
+
+  orch-1220-reviewer-bypass-locked:
+    name: "ORCH-1220: reviewer-signin gates on REVIEWER_EMAIL + REVIEWER_BYPASS_CODE (constant-time) + generateLink anchored to locked email; AuthContext routes ONLY appreview@usemingla.com (I-PROPOSED-1220-REVIEWER-BYPASS-LOCKED)"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Self-test the ORCH-1220 reviewer-bypass-locked gate
+        run: node .github/scripts/strict-grep/orch-1220-reviewer-bypass-locked.mjs --self-test
+      - name: Run ORCH-1220 reviewer-bypass-locked gate
+        run: node .github/scripts/strict-grep/orch-1220-reviewer-bypass-locked.mjs
