@@ -127,20 +127,27 @@ I-ORCH-1214-BUSINESS-PK-LIVE-BUILD-ACCEPTS-LIVE: PASS · violations=0
 
 ### Fails-on-revert proof
 
-At commit `__GATE_COMMIT__` (gate + fix committed), `mingla-business/app.config.ts` was
-reverted to the OLD hardcoded branch 4 and the gate re-run:
+Proven at fix commit `4e7005ae384b7bc68f46cd57169f2476f14566b5`. `mingla-business/app.config.ts`
+was reverted to the OLD hardcoded branch 4 (`git checkout HEAD~1 -- …`) and the gate re-run:
 
 ```
-$ git checkout <fix-commit>~1 -- mingla-business/app.config.ts   # restore OLD branch 4
+$ git checkout HEAD~1 -- mingla-business/app.config.ts   # restore OLD branch 4
 $ node .github/scripts/strict-grep/orch-1214-business-pk-live-build-accepts-live.mjs
-FAIL [INV-1: pk-live-accepted-under-live-mode] app.config.ts branch 4 must accept pk_live_ under live mode (acceptsPkLive=false, guardsLiveMode=false) ...
-FAIL [INV-2: no-hardcoded-pk-test-local-dev] app.config.ts still carries the OLD branch-4 message ...
+FAIL [INV-1: pk-live-accepted-under-live-mode] app.config.ts branch 4 must accept pk_live_ under live mode (acceptsPkLive=false, guardsLiveMode=true) — ...
+FAIL [INV-2: no-hardcoded-pk-test-local-dev] app.config.ts still carries the OLD branch-4 message "must be a pk_test_ value for local development." — ...
 I-ORCH-1214-BUSINESS-PK-LIVE-BUILD-ACCEPTS-LIVE: 2 violation(s)
-exit=1
+GATE EXIT=1
+
 $ git checkout HEAD -- mingla-business/app.config.ts   # restore the fix
+$ node .github/scripts/strict-grep/orch-1214-business-pk-live-build-accepts-live.mjs
+I-ORCH-1214-BUSINESS-PK-LIVE-BUILD-ACCEPTS-LIVE: PASS · violations=0
+GATE EXIT=0
 ```
 
-(Exact captured output is recorded in the session transcript; see commit notes below.)
+INV-2 (the OLD-message regression sentinel) independently catches the revert even though
+the OLD file incidentally still contains a `stripeMode !== "live"` token elsewhere
+(`guardsLiveMode=true`); INV-1 still FAILS because the pk_live_ acceptance is gone
+(`acceptsPkLive=false`).
 
 ## Defense-in-depth jest test
 
@@ -187,4 +194,6 @@ ORCH-1214 contract — flagged here for the orchestrator.
 
 ## Commit hash(es)
 
-- Implementation commit: `__FINAL_COMMIT__`
+- Implementation commit: `4e7005ae384b7bc68f46cd57169f2476f14566b5`
+- Report-hashes amend commit: see HEAD on branch `1214-business-prod-pk-live-validator`
+- Fails-on-revert proven at: `4e7005ae384b7bc68f46cd57169f2476f14566b5`
