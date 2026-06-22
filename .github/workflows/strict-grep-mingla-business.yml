@@ -2943,3 +2943,68 @@ jobs:
         run: node .github/scripts/strict-grep/orch-1218-venue-authoring-no-vendor-leak.mjs --self-test
       - name: Run ORCH-1218 gate
         run: node .github/scripts/strict-grep/orch-1218-venue-authoring-no-vendor-leak.mjs
+
+  orch-1216-testflight-behind-submit:
+    name: "ORCH-1216: TestFlight link only behind submit success (iOS-only) — get-the-app-modal (I-PROPOSED-1216-TESTFLIGHT-BEHIND-SUBMIT)"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Self-test the ORCH-1216 testflight-behind-submit gate
+        run: node .github/scripts/strict-grep/i-proposed-1216-testflight-behind-submit.mjs --self-test
+      - name: Run ORCH-1216 testflight-behind-submit gate
+        run: node .github/scripts/strict-grep/i-proposed-1216-testflight-behind-submit.mjs
+
+  orch-1216-android-no-testflight-link:
+    name: "ORCH-1216: non-iOS success branch shows no TestFlight link (I-PROPOSED-1216-ANDROID-NO-TESTFLIGHT-LINK)"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Self-test the ORCH-1216 android-no-testflight-link gate
+        run: node .github/scripts/strict-grep/i-proposed-1216-android-no-testflight-link.mjs --self-test
+      - name: Run ORCH-1216 android-no-testflight-link gate
+        run: node .github/scripts/strict-grep/i-proposed-1216-android-no-testflight-link.mjs
+
+  orch-1216-no-service-key-client:
+    name: "ORCH-1216: no service-role key/secret in mingla-marketing (I-PROPOSED-1216-NO-SERVICE-KEY-CLIENT)"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Self-test the ORCH-1216 no-service-key-client gate
+        run: node .github/scripts/strict-grep/i-proposed-1216-no-service-key-client.mjs --self-test
+      - name: Run ORCH-1216 no-service-key-client gate
+        run: node .github/scripts/strict-grep/i-proposed-1216-no-service-key-client.mjs
+
+  orch-1216-explorer-only-cta:
+    name: "ORCH-1216: GetTheAppModal explorer-only, BetaAccessModal organiser-only (I-PROPOSED-1216-EXPLORER-ONLY-CTA)"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Self-test the ORCH-1216 explorer-only-cta gate
+        run: node .github/scripts/strict-grep/i-proposed-1216-explorer-only-cta.mjs --self-test
+      - name: Run ORCH-1216 explorer-only-cta gate
+        run: node .github/scripts/strict-grep/i-proposed-1216-explorer-only-cta.mjs
+
+  orch-1216-success-mount-gated:
+    name: "ORCH-1216: SuccessPanel mounts only under status==='success' with detected platform (I-PROPOSED-1216-SUCCESS-MOUNT-GATED)"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Self-test the ORCH-1216 success-mount-gated gate
+        run: node .github/scripts/strict-grep/i-proposed-1216-success-mount-gated.mjs --self-test
+      - name: Run ORCH-1216 success-mount-gated gate
+        run: node .github/scripts/strict-grep/i-proposed-1216-success-mount-gated.mjs
