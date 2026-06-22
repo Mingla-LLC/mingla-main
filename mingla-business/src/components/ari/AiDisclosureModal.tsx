@@ -100,7 +100,7 @@ export const AiDisclosureModal: React.FC<AiDisclosureModalProps> = ({
                 </View>
                 <Text style={styles.title}>Meet Ari.</Text>
                 <Text style={styles.body}>
-                  Ari is your AI co-pilot, powered by Google Gemini. It can create brands and events
+                  Ari is your AI co-pilot, powered by Mingla's AI. It can create brands and events
                   for you, and answer questions about your business.
                 </Text>
                 <Text style={styles.subhead}>How it works</Text>
