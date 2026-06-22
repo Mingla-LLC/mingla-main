@@ -7,6 +7,16 @@
 
 ---
 
+## ACTIVE — ORCH-1204 (business-web auth-bootstrap synchronous hydration, 2026-06-22, PR #618)
+
+### I-PROPOSED-1204-WEB-AUTH-SYNC-HYDRATION (ACTIVE)
+- **Rule:** On web (`Platform.OS === "web"`), the business `AuthProvider` MUST hydrate `session`/`user`/`loading` synchronously at mount from the valid persisted token (`readStoredWebSession()` as a lazy `useState` initializer), so a present, locally-valid session yields `isAuthReady === true` and a non-null `user` on the FIRST render — independent of `getSession()` and the gotrue Navigator-Locks auth-token lock. Native must stay byte-identical (the initializer derives from the web-only, SSR-guarded `readStoredWebSession`, which returns null off-web / no-window). The background `getSession()`→`getUser()` revoked-session validation (ORCH-1106) and the ORCH-0887-A 3s race / ORCH-1102 7s ceiling safety nets MUST remain and MUST NOT clobber a synchronously-hydrated user.
+- **Why:** With many same-origin tabs (and AuthProvider remounts), the gotrue auth-token lock is orphaned/contended → `getSession()` exceeds the 3s bootstrap timeout → the 7s ceiling forced "logged-out" despite a valid stored session → `isAuthReady` never true → `useBrands` (`enabled = isAuthReady && user?.id`) never fired → brand switcher wedged on "Loading brands…" / empty "Create brand". Proven live on Seth's Samsung (adb+CDP); fixed steady-state 5/5 cold reloads.
+- **Enforcement:** `mingla-business/src/context/__tests__/authContext.sync-hydration.orch1204.test.tsx` (12, implementor — first-render `isAuthReady` true with a hung getSession; SSR/native passthrough; source-pinned initializer assertions) + `authContext.adversarial.orch1204.test.tsx` (11, tester — revoked-session still signs out, ceiling-can't-clobber, native parity, SSR). Both fails-on-revert at `fd77d2588`.
+- **Established:** DRAFT at ORCH-1204 SPEC; flipped ACTIVE 2026-06-22 at CLOSE (PR #618 `68e50e704` `[deploy]`; device-verified A5 5/5 on Seth's Samsung).
+
+---
+
 ## ACTIVE — META-ORCH-1187 (Growth Analytics Hub, Phase 1, 2026-06-21, PRs #584/#586/#591)
 
 > All seven invariants flipped DRAFT/PROPOSED → ACTIVE at META-ORCH-1187 Phase 1 CLOSE. PostHog (US host, project 479999) + GA4 (web only) now instrumented across marketing web (#584 `f1f173491`), buyer web (#586 `37be2cf1f`), and the consumer + business apps (#591 `b5ff3a5bd`); each rule is enforced by a merged strict-grep gate under `.github/scripts/strict-grep/`.
