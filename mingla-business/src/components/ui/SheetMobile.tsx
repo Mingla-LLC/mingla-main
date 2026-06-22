@@ -82,6 +82,11 @@ import { KeyboardToolbarRoot } from "../../wrappers/KeyboardToolbarRoot";
 // web-split wrapper (native = <KeyboardProvider>, web = passthrough) — keeps
 // the library import out of the web bundle exactly like the app-root mount.
 import { KeyboardRoot } from "../../wrappers/KeyboardRoot";
+// ORCH-1206: single owner of the panel-height math (pure, no RN imports) so a
+// fractional numeric snapPoint (0–1) is a RATIO of the screen, not clamped UP
+// to MIN_SNAP_PX. Shared by the native + web variants below.
+import { computeSheetHeight } from "./sheetSnapHeight";
+import type { SheetSnapPoint, SheetSnapValue } from "./sheetSnapHeight";
 
 // Inline glass-stack background — mirrors GlassChrome's L1-L4 visual layers
 // but with each layer absolute-filled at the body level so the body can be
@@ -92,29 +97,22 @@ import { KeyboardRoot } from "../../wrappers/KeyboardRoot";
 // Same pattern that TopSheet uses for the same reason.
 const FALLBACK_BACKGROUND = "rgba(20, 22, 26, 0.92)";
 
-export type SheetSnapPoint = "peek" | "half" | "full";
-
 /**
- * Sheet snap value — string preset (peek/half/full) or numeric pixel
- * height. Numeric values are clamped to [120px, 95% screen]. Pass a
- * measured content height (e.g. from `onLayout`) for content-fit sheets
- * with no wasted bottom padding. NEW in Cycle 3 J-A12 polish — additive
- * to Sheet's API; existing string callers (peek/half/full) unaffected.
+ * `SheetSnapPoint` / `SheetSnapValue` are owned by `./sheetSnapHeight`
+ * (pure, unit-testable). Re-exported here so existing consumers importing
+ * from `./SheetMobile` / `./Sheet` keep working.
  *
- * Example:
- * ```ts
- * const [contentH, setContentH] = useState<number | null>(null);
- * <Sheet snapPoint={contentH ?? "half"}>
- *   <View onLayout={(e) => setContentH(e.nativeEvent.layout.height)}>
- *     ...
- *   </View>
- * </Sheet>
- * ```
- *
- * Per Cycle 3 rework v3 ticket-sheet auto-fit (DEC-pending — additive
- * carve-out of DEC-079; documented as discovery for orchestrator).
+ * Snap value — string preset (peek/half/full) or numeric height. Numeric
+ * semantics (ORCH-1206): `0 < n <= 1` → RATIO of screen height (e.g. `0.9`
+ * = 90%, used by the venue suite); `n > 1` → ABSOLUTE PIXELS, clamped to
+ * [120px, 95% screen] (pass a measured `onLayout` height for content-fit
+ * sheets). The pixel form is from Cycle 3 J-A12; the ratio form is the
+ * additive ORCH-1206 fix — before it, a fractional numeric (e.g. `0.9`)
+ * was wrongly clamped UP to 120px, collapsing the panel and clipping its
+ * form/CTA. Per Cycle 3 rework v3 ticket-sheet auto-fit (additive
+ * carve-out of DEC-079).
  */
-export type SheetSnapValue = SheetSnapPoint | number;
+export type { SheetSnapPoint, SheetSnapValue };
 
 export interface SheetProps {
   visible: boolean;
@@ -142,14 +140,8 @@ export interface SheetProps {
   panelBackground?: string;
 }
 
-const SNAP_RATIOS: Record<SheetSnapPoint, number> = {
-  peek: 0.25,
-  half: 0.5,
-  full: 0.9,
-};
-
-const MIN_SNAP_PX = 120;
-const MAX_SNAP_RATIO = 0.95;
+// SNAP_RATIOS / MIN_SNAP_PX / MAX_SNAP_RATIO now live in ./sheetSnapHeight
+// (single owner of the panel-height math) and are imported above.
 
 const SCRIM_COLOR = "rgba(0, 0, 0, 0.5)";
 const CLOSE_THRESHOLD_PX = 80;
@@ -183,15 +175,11 @@ const SheetNative: React.FC<SheetProps> = ({
   const screenHeight = Dimensions.get("window").height;
   const { width: windowWidth } = useWindowDimensions();
   const insets = useSafeAreaInsets();
-  // Compute panel height: numeric snap (clamped) OR ratio-based preset.
-  const requestedSheetHeight =
-    typeof snapPoint === "number"
-      ? Math.min(
-          Math.max(snapPoint, MIN_SNAP_PX),
-          screenHeight * MAX_SNAP_RATIO,
-        )
-      : screenHeight * SNAP_RATIOS[snapPoint];
-
+  // ORCH-1206: single owner of the panel-height math (see ./sheetSnapHeight).
+  // Numeric snapPoint in (0, 1] = RATIO of screen height (e.g. 0.9 = 90%);
+  // > 1 = ABSOLUTE PIXELS clamped to [MIN_SNAP_PX, 95% screen]; string =
+  // SNAP_RATIOS preset. Always capped at 95% screen.
+  //
   // ORCH-0892-B v2: Sheet primitive no longer owns keyboard handling. The
   // panel rests at its designed snap point regardless of keyboard state.
   // Sheet consumers with TextInputs use SmartScrollView for their internal
@@ -202,10 +190,7 @@ const SheetNative: React.FC<SheetProps> = ({
   // Per SPEC_ORCH-0892-B_v2 §7.E + operator clarification 2026-05-20:
   // "Sheet drops keyboard logic entirely; consumers migrate their own
   // ScrollView." Supersedes ORCH-0884 follow-up #3.
-  const sheetHeight = Math.min(
-    requestedSheetHeight,
-    screenHeight * MAX_SNAP_RATIO,
-  );
+  const sheetHeight = computeSheetHeight(snapPoint, screenHeight);
 
   const closedY = sheetHeight; // pushed fully off-screen
   // ORCH-0892-B v2: panel rests at its docked position (translateY = 0
@@ -634,11 +619,10 @@ const SheetWeb: React.FC<SheetProps> = ({
   );
   const { width: windowWidth } = useWindowDimensions();
   const insets = useSafeAreaInsets();
-  const requestedSheetHeight =
-    typeof snapPoint === "number"
-      ? Math.min(Math.max(snapPoint, MIN_SNAP_PX), screenHeight * MAX_SNAP_RATIO)
-      : screenHeight * SNAP_RATIOS[snapPoint];
-  const sheetHeight = Math.min(requestedSheetHeight, screenHeight * MAX_SNAP_RATIO);
+  // ORCH-1206: single owner of the panel-height math (see ./sheetSnapHeight).
+  // Numeric snapPoint in (0, 1] = RATIO of screen height; > 1 = ABSOLUTE
+  // PIXELS (clamped); string = SNAP_RATIOS preset; capped at 95% screen.
+  const sheetHeight = computeSheetHeight(snapPoint, screenHeight);
   const closedY = sheetHeight; // pushed fully off-screen (slides up from bottom)
 
   const reduceMotion = useWebReducedMotion();
