@@ -45,9 +45,9 @@ import { buildComposeAudienceHref } from "../../utils/composeAudienceHref";
 import {
   formatCurrencyRound,
 } from "../../utils/currency";
+import { Flag } from "lucide-react-native";
 import { Button } from "../ui/Button";
 import { GlassCard } from "../ui/GlassCard";
-import { Icon } from "../ui/Icon";
 import {
   BAR_CONTEXT,
   BAR_INACTIVE,
@@ -139,7 +139,7 @@ export function VenueIntelligenceModule({
         refreshControl={refreshControl}
       >
         <GlassCard variant="base" padding={spacing.lg}>
-          <Icon name="flag" size={24} color={semantic.error} />
+          <Flag size={24} color={semantic.error} />
           <Text style={styles.tileTitle}>Couldn&apos;t load your insights</Text>
           <Text style={styles.bodySm}>Pull to refresh or try again.</Text>
           <View style={styles.actionRow}>

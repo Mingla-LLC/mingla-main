@@ -34,9 +34,9 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { VenueClaimFeedbackSheet } from "../brand/VenueClaimFeedbackSheet";
 import { VenueClaimStatusBanner } from "../brand/VenueClaimStatusBanner";
 import { Button } from "../ui/Button";
+import { ArrowLeft } from "lucide-react-native";
 import { EventCoverMedia } from "../ui/EventCoverMedia";
 import { GlassCard } from "../ui/GlassCard";
-import { Icon } from "../ui/Icon";
 import { Toast } from "../ui/Toast";
 import {
   accent,
@@ -237,7 +237,7 @@ export function VenueListingContent({
             accessibilityLabel="Back"
             hitSlop={10}
           >
-            <Icon name="arrowL" size={22} color={textTokens.primary} />
+            <ArrowLeft size={22} color={textTokens.primary} />
           </Pressable>
           <Text style={styles.headerTitle}>Your listing</Text>
           <View style={styles.headerSpacer} />

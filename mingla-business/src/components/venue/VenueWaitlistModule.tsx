@@ -27,9 +27,9 @@ import {
   useVenueWaitlist,
 } from "../../hooks/useVenueWaitlist";
 import { BRAND_ROLE_RANK } from "../../utils/brandRole";
+import { Clock, MessageSquare, X } from "lucide-react-native";
 import { Button } from "../ui/Button";
 import { GlassCard } from "../ui/GlassCard";
-import { Icon } from "../ui/Icon";
 import { WaitlistAddSheet } from "./WaitlistAddSheet";
 import { WaitlistConvertSheet } from "./WaitlistConvertSheet";
 import type {
@@ -124,7 +124,7 @@ export function VenueWaitlistModule({
       ) : queue.length === 0 ? (
         <View style={styles.emptyWrap} testID="venue-waitlist-empty-wrap">
           <GlassCard variant="elevated" style={styles.emptyCard}>
-            <Icon name="clock" size={26} color={textTokens.primary} />
+            <Clock size={26} color={textTokens.primary} />
             <Text style={styles.emptyTitle}>Nobody&apos;s waiting</Text>
             <Text style={styles.emptyBody}>
               When you&apos;re full, add walk-ins here and notify them when a table
@@ -173,7 +173,7 @@ export function VenueWaitlistModule({
                         style={styles.notifyBtn}
                         testID={`venue-waitlist-notify-${w.id}`}
                       >
-                        <Icon name="sms" size={15} color="#0c0e12" />
+                        <MessageSquare size={15} color="#0c0e12" />
                         <Text style={styles.notifyLabel}>Notify</Text>
                       </Pressable>
                     ) : null}
@@ -193,7 +193,7 @@ export function VenueWaitlistModule({
                       style={styles.lostBtn}
                       testID={`venue-waitlist-lost-${w.id}`}
                     >
-                      <Icon name="close" size={15} color={textTokens.tertiary} />
+                      <X size={15} color={textTokens.tertiary} />
                     </Pressable>
                   </View>
                 ) : null}
