@@ -177,3 +177,56 @@ No native blast radius → **no `eas update`** (COMMS-0052 OTA freeze irrelevant
 - **D-1 (verification):** prod has BOTH `is_admin_user()` (no-arg session gate — what I used) AND `is_admin_email(text)` (email-arg helper). The SPEC flagged "verify, don't guess"; verified `is_admin_user()` is the correct gate for SECURITY DEFINER RPCs called from the authed admin session. No action needed — recorded for the registry.
 - **ORCH-ID collision RESOLVED (renumber 1221 → 1222):** the OTHER work (beta-form-brand-type / explorer all-pill) shipped FIRST as ORCH-1221 — migration `20261126000000_orch_1221_beta_access_brand_type_multi.sql` + strict-grep job `orch-1221-allpill-selects-all` + invariant `I-PROPOSED-1221-ALLPILL-SELECTS-ALL` ACTIVE (PR #647 on origin/main). This careers work renumbered to META-ORCH-1222. ALL careers gate jobs are namespaced `orch-1222-careers-*` and the careers migrations are `...000001`/`...000002` (strictly > the beta-form `...000000`), so there is **no file or YAML-job-key collision**. The only shared file is `strict-grep-mingla-business.yml`, which now carries BOTH the `orch-1221-allpill-selects-all` job AND the 6 `orch-1222-careers-*` jobs.
 - **COMMS-0060 (WARN) acked + RESOLVED** — the renumber directive itself. No new COMMS entries written; no in-flight ORCH is affected by this work (disjoint file set from the shipped beta-form 1221; no shared product code). COMMS_LEDGER scanned on entry: no BLOCK row addressed to mingla-implementor / META-ORCH-1222 / ALL required action.
+
+---
+
+## 12. REWORK — P0-1 fix (careers routes 404 → routable)
+
+**Dispatch:** QA verdict FAIL (`Mingla_Artifacts/reports/QA_META-ORCH-1222_CAREERS_SITE.md`), single P0. Everything else (backend / RLS / admin / edge fns / seed / builds) PASSED and was NOT touched. Web-only — no `eas update`.
+
+### Root cause (from QA)
+The careers routes lived in `mingla-marketing/app/_careers/`. A leading underscore makes Next.js App Router treat the folder as a **private folder** — excluded from routing, `page.tsx` never compiled into a route — so `next build` emitted ZERO careers routes and `career.usemingla.com/*` returned 404 across the board.
+
+### Fix applied (exactly per the tester's prescription)
+1. **`git mv mingla-marketing/app/_careers/ → mingla-marketing/app/careers/`** (real non-underscore segment; NOT a `(careers)` group — that would collide with `(explorer)/page.tsx` at `/`). History preserved (R100 renames). The nested colocated `_careers/_components/` correctly REMAINS underscore-prefixed (Next colocated, non-routable — intended).
+2. **`mingla-marketing/middleware.ts`:** `CAREERS_PREFIX` `/_careers` → `/careers`; apex-guard rewrite line `/_careers-not-found` → `/careers-not-found`; comments updated. Behavior unchanged: `career.*` host → rewrite to `/careers*`; apex (usemingla.com / www) untouched; apex `/careers*` → 404 guard; matcher still excludes `_next` / `.well-known` / static.
+3. **`mingla-marketing/app/careers/layout.tsx`:** doc comment `/_careers/*` → `/careers/*`.
+4. **`.github/scripts/strict-grep/i-proposed-1222-careers-host-isolated.mjs`:** retargeted from the hard-coded `_careers` to `/careers` (matches the literal `'/careers'` / `CAREERS_PREFIX`); doc + self-test fixtures updated. Self-test still 3/3.
+5. **`.github/workflows/strict-grep-mingla-business.yml`:** wired the tester's new gate `i-proposed-1222-careers-routes-routable.mjs` as a 7th careers job `orch-1222-careers-routes-routable` (both `--self-test` step + real-run step, matching the other 6 careers jobs).
+
+### Files changed (rework)
+- `mingla-marketing/app/_careers/**` → `mingla-marketing/app/careers/**` (9 files renamed; `layout.tsx` rename+modify)
+- `mingla-marketing/middleware.ts` (~5 lines)
+- `.github/scripts/strict-grep/i-proposed-1222-careers-host-isolated.mjs` (~8 lines)
+- `.github/workflows/strict-grep-mingla-business.yml` (+14 lines: 7th job)
+
+### Proof — build route list (`npm ci && npm run build`, Next 15.5.15, "Compiled successfully in 4.0s", 12/12 static, Middleware 34.2 kB)
+```
+ƒ /careers                             1.58 kB         147 kB
+ƒ /careers/roles/[slug]                1.52 kB         107 kB
+ƒ /careers/roles/[slug]/apply          5.67 kB         111 kB
+```
+All three required careers routes are now compiled.
+
+### Proof — live-fire `next start` Host-header (production server, port 3199)
+| Request | Host | Result |
+|---|---|---|
+| `/` | `career.usemingla.com` | **200** (renders "Careers") |
+| `/roles/multimedia-designer` | `career.usemingla.com` | **200** |
+| `/roles/multimedia-designer/apply` | `career.usemingla.com` | **200** |
+| `/careers` | `usemingla.com` (apex) | **404** (apex guard holds) |
+| `/` | `usemingla.com` (apex) | **200** (untouched) |
+
+(Index returned 200 even without `NEXT_PUBLIC_SUPABASE_URL` set — the P2-2 graceful "couldn't load" error state, no crash. Constitution §3 satisfied. Seth still adds that env at deploy so roles list.)
+
+### Proof — gates
+- **7/7 careers gates `--self-test` PASS:** applications-deny-anon (3/3), postings-open-only (4/4), apply-six-fields (3/3), cv-bucket-private (3/3), host-isolated (3/3), admin-writes-gated (3/3), **routes-routable (5/5)**.
+- **7/7 careers gates real-run PASS** on the fixed tree (routes-routable — the P0 detector — now GREEN).
+- **fails-on-revert (routes-routable):** on-disk rename `careers`→`_careers` → real gate **FAIL (exit 1)** ("underscore-prefixed PRIVATE folder … every careers URL 404s"); restore → **PASS (exit 0)**. The host-isolated self-test fixtures also fail-on-revert (missing host check / missing apex guard).
+
+### Scope hygiene
+- Zero new careers-owned `1221` tokens introduced (grep clean).
+- ALLPILL / beta-form 1221 files: zero-byte diff — untouched (not in `git diff` name-list; only careers + the two CI files changed).
+- Backend / admin / edge / seed / migrations: NOT touched (all PASS).
+
+**Rework status: implemented and VERIFIED (build route list + live-fire Host-header 200s/404 + 7-gate self-test + fails-on-revert).** Routes back to orchestrator for RETEST dispatch.

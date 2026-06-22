@@ -1,9 +1,9 @@
 // META-ORCH-1222 [Careers site] — host-based rewrite (SPEC §4.C.1).
 //
-// career.usemingla.com (and `career.*` Vercel preview aliases) → the internal
-// `/_careers` segment, which maps to the app/_careers/** routes. usemingla.com /
+// career.usemingla.com (and `career.*` Vercel preview aliases) → the
+// `/careers` segment, which maps to the app/careers/** routes. usemingla.com /
 // www.usemingla.com are PROVABLY untouched (the rewrite fires only on the
-// `career.` host). The apex guard 404s usemingla.com/_careers/* so the internal
+// `career.` host). The apex guard 404s usemingla.com/careers/* so the careers
 // segment is not crawlable from the apex (I-PROPOSED-1222-CAREERS-SUBDOMAIN-ISOLATED).
 //
 // The matcher excludes _next, .well-known, and static assets so
@@ -12,7 +12,7 @@
 import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
 
-const CAREERS_PREFIX = '/_careers'
+const CAREERS_PREFIX = '/careers'
 
 function isCareersHost(host: string | null): boolean {
   if (!host) return false
@@ -36,10 +36,10 @@ export function middleware(req: NextRequest) {
     return NextResponse.rewrite(url)
   }
 
-  // Apex guard: a NON-careers host MUST NOT reach the internal careers segment.
+  // Apex guard: a NON-careers host MUST NOT reach the careers segment.
   if (pathname === CAREERS_PREFIX || pathname.startsWith(`${CAREERS_PREFIX}/`)) {
     const notFound = req.nextUrl.clone()
-    notFound.pathname = '/_careers-not-found'
+    notFound.pathname = '/careers-not-found'
     return NextResponse.rewrite(notFound) // resolves to the app 404 (no such route)
   }
 

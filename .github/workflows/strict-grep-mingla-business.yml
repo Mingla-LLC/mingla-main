@@ -3138,3 +3138,16 @@ jobs:
         run: node .github/scripts/strict-grep/i-proposed-1222-careers-admin-writes-gated.mjs --self-test
       - name: Run ORCH-1222 careers admin-writes-gated gate
         run: node .github/scripts/strict-grep/i-proposed-1222-careers-admin-writes-gated.mjs
+
+  orch-1222-careers-routes-routable:
+    name: "META-ORCH-1222: careers route segment is a routable (non-underscore, non-group) Next.js segment with all three pages + matching middleware (I-PROPOSED-1222-CAREERS-ROUTES-ROUTABLE)"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Self-test the ORCH-1222 careers routes-routable gate
+        run: node .github/scripts/strict-grep/i-proposed-1222-careers-routes-routable.mjs --self-test
+      - name: Run ORCH-1222 careers routes-routable gate
+        run: node .github/scripts/strict-grep/i-proposed-1222-careers-routes-routable.mjs

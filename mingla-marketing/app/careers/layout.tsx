@@ -1,5 +1,5 @@
 // META-ORCH-1222 [Careers site] — careers chrome (DESIGN §1). Reached ONLY via
-// the host-based middleware rewrite (career.usemingla.com → /_careers/*). The
+// the host-based middleware rewrite (career.usemingla.com → /careers/*). The
 // `.careers-root` class scopes the careers tokens (globals.css) so nothing here
 // touches usemingla.com. Fonts (Mochiy/Nunito/Inter) are loaded by the root
 // layout's <html> and inherited here — no new font load.

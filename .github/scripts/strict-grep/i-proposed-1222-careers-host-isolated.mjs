@@ -4,15 +4,15 @@
  *
  * WHY: career.usemingla.com is served from the SAME Vercel project as
  * usemingla.com via a host-based middleware rewrite. The middleware MUST only
- * rewrite the `career.` host into the internal `_careers` segment AND guard the
- * apex against `/_careers` (so usemingla.com is provably untouched + the
- * internal segment is not crawlable from the apex). Removing the host check or
+ * rewrite the `career.` host into the `/careers` segment AND guard the
+ * apex against `/careers` (so usemingla.com is provably untouched + the
+ * careers segment is not crawlable from the apex). Removing the host check or
  * the apex guard would either break isolation or leak careers onto the apex.
  *
  * ASSERTS (mingla-marketing/middleware.ts):
  *   (1) it reads the request host and gates on a `career.` host.
- *   (2) it references the `_careers` internal prefix (the rewrite target).
- *   (3) it has an apex guard: a NON-careers host hitting `/_careers` is blocked
+ *   (2) it references the `/careers` prefix (the rewrite target).
+ *   (3) it has an apex guard: a NON-careers host hitting `/careers` is blocked
  *       (rewrite away / notFound) rather than served.
  *
  * `--self-test` proves FAIL-on-revert (host check removed / apex guard removed).
@@ -33,19 +33,19 @@ function check(src, failures) {
         "isolation requires a host check).",
     );
   }
-  if (!/_careers/.test(src)) {
-    failures.push("middleware does not reference the `_careers` internal segment.");
+  if (!/['"`]\/careers['"`]/.test(src) && !/CAREERS_PREFIX\s*=\s*['"`]\/careers['"`]/.test(src)) {
+    failures.push("middleware does not reference the `/careers` segment.");
   }
   // Apex guard: there must be a branch handling a NON-career host that touches
-  // /_careers (a guard rewriting it away / to a not-found). We detect a guard
-  // by the presence of BOTH a `_careers` pathname test and a non-`next()`
-  // response on that branch within the file.
-  const hasApexPathTest = /(pathname[\s\S]{0,40}_careers|startsWith\(\s*[^)]*_careers)/i.test(src);
+  // /careers (a guard rewriting it away / to a not-found). We detect a guard
+  // by the presence of BOTH a `/careers` pathname test (directly or via the
+  // CAREERS_PREFIX constant) and a non-`next()` response on that branch.
+  const hasApexPathTest = /(pathname[\s\S]{0,40}(CAREERS_PREFIX|['"`]\/careers)|startsWith\(\s*[^)]*(CAREERS_PREFIX|['"`]\/careers))/i.test(src);
   const hasGuardRewrite = /(not[-_]?found|notFound|rewrite)/i.test(src);
   if (!hasApexPathTest || !hasGuardRewrite) {
     failures.push(
-      "middleware lacks an apex guard for `/_careers` (a non-career host hitting " +
-        "/_careers must be blocked, not served).",
+      "middleware lacks an apex guard for `/careers` (a non-career host hitting " +
+        "/careers must be blocked, not served).",
     );
   }
 }
@@ -53,11 +53,12 @@ function check(src, failures) {
 if (process.argv.includes("--self-test")) {
   const self = [];
   const good = `
+    const CAREERS_PREFIX = '/careers';
     const host = req.headers.get('host');
     if (host && host.startsWith('career.')) {
-      return NextResponse.rewrite(url); // -> /_careers
+      return NextResponse.rewrite(url); // -> /careers
     }
-    if (pathname.startsWith('/_careers')) {
+    if (pathname.startsWith('/careers')) {
       return NextResponse.rewrite(notFoundUrl); // apex guard -> not-found
     }
     return NextResponse.next();
@@ -68,7 +69,8 @@ if (process.argv.includes("--self-test")) {
 
   // Remove the host check → MUST fire.
   const badNoHost = `
-    if (pathname.startsWith('/_careers')) { return NextResponse.rewrite(notFoundUrl); }
+    const CAREERS_PREFIX = '/careers';
+    if (pathname.startsWith('/careers')) { return NextResponse.rewrite(notFoundUrl); }
     return NextResponse.next();
   `;
   f = [];
