@@ -200,16 +200,12 @@ export function BetaAccessModal({ open, onClose, source }: BetaAccessModalProps)
     setStep((s) => (s > 1 ? ((s - 1) as 1 | 2 | 3) : s))
   }, [])
 
-  // ── Chip select (auto-advance on pointer only; keyboard uses Next) ───────────
-  const selectChip = useCallback(
-    (value: string, viaPointer: boolean): void => {
-      setBrandType(value)
-      if (viaPointer && !reduced) {
-        window.setTimeout(() => setStep(2), 220)
-      }
-    },
-    [reduced],
-  )
+  // ── Chip select (ORCH-1219 Fix B — single-select, NO auto-advance) ──────────
+  // Brand-type stays single-select (one business type → its NOT NULL CHECK
+  // column). The 220ms pointer auto-advance was REMOVED; the user presses Next.
+  const selectChip = useCallback((value: string): void => {
+    setBrandType(value)
+  }, [])
 
   // ── Submit ───────────────────────────────────────────────────────────────────
   const handleSubmit = useCallback(async (): Promise<void> => {
@@ -486,7 +482,7 @@ interface StepBodyProps {
   reduced: boolean
   headingId: string
   brandType: string
-  onSelectChip: (value: string, viaPointer: boolean) => void
+  onSelectChip: (value: string) => void
   brandName: string
   setBrandName: (v: string) => void
   contactName: string
@@ -532,11 +528,11 @@ function StepBody(props: StepBodyProps) {
                 role="radio"
                 aria-checked={selected}
                 data-step-autofocus={i === 0 ? '' : undefined}
-                onClick={() => props.onSelectChip(bt.value, true)}
+                onClick={() => props.onSelectChip(bt.value)}
                 onKeyDown={(e) => {
                   if (e.key === ' ' || e.key === 'Enter') {
                     e.preventDefault()
-                    props.onSelectChip(bt.value, false)
+                    props.onSelectChip(bt.value)
                   }
                 }}
                 className={cn(

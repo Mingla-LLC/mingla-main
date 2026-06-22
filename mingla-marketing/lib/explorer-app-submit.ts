@@ -21,9 +21,11 @@ export interface ExplorerAppLeadInput {
   name: string; // trimmed
   email: string; // trimmed + lowercased (lead key)
   city: string; // trimmed
-  interest: string; // one of the 5 stored values
+  // ORCH-1219 Fix A — multi-select: a NON-EMPTY array of the 5 stored values.
+  interest: string[];
   consent: true; // must be true; UI guarantees it
-  platform: "ios" | "other"; // client-detected (§3.2.1)
+  // ORCH-1219 Fix C — 3-way platform: ios | android | other (other = desktop).
+  platform: "ios" | "android" | "other"; // client-detected (§3.2.1)
   source: "explorer_marketing_nav";
 }
 

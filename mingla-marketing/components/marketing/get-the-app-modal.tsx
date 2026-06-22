@@ -8,11 +8,15 @@
 // All shared modal visuals/tokens are LOCKED to DESIGN_ORCH-1045 (same warm
 // light theme; panel forces data-theme="light").
 //
-// Step 1: interest chips (single-select). Step 2: name + city + email + consent
-// → submit. On a SUCCESSFUL submit the success panel branches on the detected
-// platform (§3.2.4): iOS shows the TestFlight install link; non-iOS (Android /
-// desktop) shows Seth's "iOS-only beta" message with NO link. The hard-coded
+// Step 1: interest chips (ORCH-1219 Fix A — MULTI-SELECT toggle group, NO
+// auto-advance; user presses Next). Step 2: name + city + email + consent →
+// submit. On a SUCCESSFUL submit the success panel branches on the detected
+// platform 3-way (ORCH-1219 Fix C): iOS shows the TestFlight install link + "we
+// emailed it too"; Android shows the "iOS-only beta" message; desktop/other
+// shows the "beta on iPhone & iPad" message — neither non-iOS branch shows an
+// on-screen link, and desktop NEVER claims the user is on Android. The hard-coded
 // TestFlight URL appears in the iOS success branch ONLY (hard-gate, no fail-open).
+// (The lead is ALSO emailed the link by the edge fn on every device — Fix D.)
 
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
@@ -53,7 +57,9 @@ const INTERESTS: ReadonlyArray<{ label: string; value: string }> = [
 
 type Status = 'idle' | 'submitting' | 'success' | 'error'
 type ErrorKind = 'validation' | 'rate_limited' | 'server' | 'network'
-type Platform = 'ios' | 'other'
+// ORCH-1219 Fix C — 3-way platform. 'other' = desktop / anything non-mobile-Apple
+// and non-Android, so desktop NEVER claims the user is on Android.
+type Platform = 'ios' | 'android' | 'other'
 
 const FOCUSABLE =
   'a[href], button:not([disabled]), textarea, input:not([disabled]), select, [tabindex]:not([tabindex="-1"])'
@@ -72,16 +78,29 @@ export function isIosDevice(
   return false
 }
 
+/**
+ * ORCH-1219 Fix C — resolve a 3-way platform from UA + platform + touch points.
+ * iOS wins first (an iPad masquerading as Mac is still iOS); then Android by UA;
+ * everything else (desktop incl. real Macs, Windows, Linux, ChromeOS) is 'other'.
+ */
+export function resolvePlatform(
+  ua: string,
+  platform: string,
+  maxTouchPoints: number,
+): Platform {
+  if (isIosDevice(ua, platform, maxTouchPoints)) return 'ios'
+  if (/android/i.test(ua)) return 'android'
+  return 'other'
+}
+
 /** SSR-safe platform read (never touches navigator at module load). */
 function detectPlatform(): Platform {
   if (typeof navigator === 'undefined') return 'other'
-  return isIosDevice(
+  return resolvePlatform(
     navigator.userAgent ?? '',
     navigator.platform ?? '',
     navigator.maxTouchPoints ?? 0,
   )
-    ? 'ios'
-    : 'other'
 }
 
 export function GetTheAppModal({ open, onClose, source }: GetTheAppModalProps) {
@@ -90,7 +109,8 @@ export function GetTheAppModal({ open, onClose, source }: GetTheAppModalProps) {
   const headingId = useId()
 
   const [step, setStep] = useState<1 | 2>(1)
-  const [interest, setInterest] = useState('')
+  // ORCH-1219 Fix A — interest is multi-select: an array of toggled values.
+  const [interest, setInterest] = useState<string[]>([])
   const [name, setName] = useState('')
   const [city, setCity] = useState('')
   const [email, setEmail] = useState('')
@@ -106,7 +126,7 @@ export function GetTheAppModal({ open, onClose, source }: GetTheAppModalProps) {
   useEffect(() => {
     if (!open) return
     setStep(1)
-    setInterest('')
+    setInterest([])
     setName('')
     setCity('')
     setEmail('')
@@ -197,7 +217,8 @@ export function GetTheAppModal({ open, onClose, source }: GetTheAppModalProps) {
   const trimmedEmail = email.trim().toLowerCase()
   const emailValid = EMAIL_RE.test(trimmedEmail) && trimmedEmail.length <= 254
 
-  const step1Valid = interest !== ''
+  // ORCH-1219 Fix A — at least one interest chip toggled on. User presses Next.
+  const step1Valid = interest.length >= 1
   const canSubmit =
     name.trim().length > 0 &&
     emailValid &&
@@ -217,16 +238,16 @@ export function GetTheAppModal({ open, onClose, source }: GetTheAppModalProps) {
     setStep((s) => (s > 1 ? ((s - 1) as 1 | 2) : s))
   }, [])
 
-  // ── Chip select (auto-advance on pointer only; keyboard uses Next) ───────────
-  const selectChip = useCallback(
-    (value: string, viaPointer: boolean): void => {
-      setInterest(value)
-      if (viaPointer && !reduced) {
-        window.setTimeout(() => setStep(2), 220)
-      }
-    },
-    [reduced],
-  )
+  // ── Chip toggle (ORCH-1219 Fix A — multi-select, NO auto-advance) ────────────
+  // Each chip toggles its value on/off; the user presses Next to advance. There
+  // is NO setStep(2) here (the 220ms pointer auto-advance was removed).
+  const toggleChip = useCallback((value: string): void => {
+    setInterest((prev) =>
+      prev.includes(value)
+        ? prev.filter((v) => v !== value)
+        : [...prev, value],
+    )
+  }, [])
 
   // ── Submit ───────────────────────────────────────────────────────────────────
   const handleSubmit = useCallback(async (): Promise<void> => {
@@ -395,7 +416,7 @@ export function GetTheAppModal({ open, onClose, source }: GetTheAppModalProps) {
                   headingId={headingId}
                   // step 1
                   interest={interest}
-                  onSelectChip={selectChip}
+                  onToggleChip={toggleChip}
                   // step 2
                   name={name}
                   setName={setName}
@@ -492,8 +513,8 @@ export function GetTheAppModal({ open, onClose, source }: GetTheAppModalProps) {
 interface StepBodyProps {
   step: 1 | 2
   headingId: string
-  interest: string
-  onSelectChip: (value: string, viaPointer: boolean) => void
+  interest: string[]
+  onToggleChip: (value: string) => void
   name: string
   setName: (v: string) => void
   city: string
@@ -521,27 +542,29 @@ function StepBody(props: StepBodyProps) {
           What are you most excited for?
         </h2>
         <p className="mt-2 text-base text-text-secondary">
-          Pick the one that pulls you in. You can have it all in a sec.
+          Pick everything that pulls you in — choose as many as you like, then hit
+          Next.
         </p>
+        {/* ORCH-1219 Fix A — MULTI-SELECT toggle group (NOT a radiogroup). Each
+            chip toggles on/off via aria-pressed; the user presses Next. */}
         <div
-          role="radiogroup"
-          aria-label="What are you most excited for?"
+          role="group"
+          aria-label="What are you most excited for? Choose all that apply."
           className="mt-6 flex flex-wrap gap-3"
         >
           {INTERESTS.map((it, i) => {
-            const selected = props.interest === it.value
+            const selected = props.interest.includes(it.value)
             return (
               <button
                 key={it.value}
                 type="button"
-                role="radio"
-                aria-checked={selected}
+                aria-pressed={selected}
                 data-step-autofocus={i === 0 ? '' : undefined}
-                onClick={() => props.onSelectChip(it.value, true)}
+                onClick={() => props.onToggleChip(it.value)}
                 onKeyDown={(e) => {
                   if (e.key === ' ' || e.key === 'Enter') {
                     e.preventDefault()
-                    props.onSelectChip(it.value, false)
+                    props.onToggleChip(it.value)
                   }
                 }}
                 className={cn(
@@ -719,6 +742,7 @@ interface SuccessPanelProps {
 
 function SuccessPanel(props: SuccessPanelProps) {
   const isIos = props.platform === 'ios'
+  const isAndroid = props.platform === 'android'
   return (
     <motion.div
       initial={props.reduced ? false : { opacity: 0, y: 8 }}
@@ -764,6 +788,10 @@ function SuccessPanel(props: SuccessPanelProps) {
           >
             Open in TestFlight
           </a>
+          {/* ORCH-1219 Fix D — the link is ALSO emailed (every device). */}
+          <p className="mt-3 text-[13px] text-text-muted">
+            We&apos;ve also emailed you the link.
+          </p>
           <Button
             variant="ghost"
             size="md"
@@ -774,13 +802,23 @@ function SuccessPanel(props: SuccessPanelProps) {
           </Button>
         </>
       ) : (
-        // ── Android / non-iOS success branch — Seth's exact words, NO link. ────
+        // ── Non-iOS success branch — NO on-screen link in EITHER sub-case
+        //    (ORCH-1216 hard-gate holds). ORCH-1219 Fix C splits it 3-way so
+        //    desktop NEVER claims the user is on Android. ─────────────────────
         <>
-          <p className="mt-2 max-w-sm text-base text-text-secondary">
-            We detect you&apos;re on Android — Mingla is only available for beta
-            testing on iOS right now. We&apos;ll let you know the moment Android
-            drops.
-          </p>
+          {isAndroid ? (
+            <p className="mt-2 max-w-sm text-base text-text-secondary">
+              We detect you&apos;re on Android — Mingla is only available for beta
+              testing on iOS right now. We&apos;ll let you know the moment Android
+              drops. We&apos;ve emailed you the TestFlight link to open on your
+              iPhone.
+            </p>
+          ) : (
+            <p className="mt-2 max-w-sm text-base text-text-secondary">
+              Mingla&apos;s in beta on iPhone &amp; iPad right now. We&apos;ve
+              emailed you the TestFlight link — open it on your iPhone to install.
+            </p>
+          )}
           <Button
             variant="primary"
             size="md"
