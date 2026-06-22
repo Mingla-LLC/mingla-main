@@ -1,4 +1,4 @@
-// META-ORCH-1221 [Careers site] — minimal, safe server-side markdown → HTML for
+// META-ORCH-1222 [Careers site] — minimal, safe server-side markdown → HTML for
 // the JD `body`. Supports exactly the subset the seed bodies use + DESIGN §3.2.4
 // styles: ## h2, ### h3, - lists, **bold**, [text](url) links, paragraphs.
 //

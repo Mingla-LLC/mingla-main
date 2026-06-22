@@ -1,10 +1,10 @@
-// META-ORCH-1221 [Careers site] — host-based rewrite (SPEC §4.C.1).
+// META-ORCH-1222 [Careers site] — host-based rewrite (SPEC §4.C.1).
 //
 // career.usemingla.com (and `career.*` Vercel preview aliases) → the internal
 // `/_careers` segment, which maps to the app/_careers/** routes. usemingla.com /
 // www.usemingla.com are PROVABLY untouched (the rewrite fires only on the
 // `career.` host). The apex guard 404s usemingla.com/_careers/* so the internal
-// segment is not crawlable from the apex (I-PROPOSED-1221-CAREERS-SUBDOMAIN-ISOLATED).
+// segment is not crawlable from the apex (I-PROPOSED-1222-CAREERS-SUBDOMAIN-ISOLATED).
 //
 // The matcher excludes _next, .well-known, and static assets so
 // apple-app-site-association / assetlinks.json keep serving on the apex.

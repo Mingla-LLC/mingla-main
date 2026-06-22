@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * META-ORCH-1221 [Careers site] — I-PROPOSED-1221-POSTINGS-PUBLIC-OPEN-ONLY.
+ * META-ORCH-1222 [Careers site] — I-PROPOSED-1222-POSTINGS-PUBLIC-OPEN-ONLY.
  *
  * WHY: the public careers site must only expose OPEN roles. The only anon-SELECT
  * policy on job_postings MUST be `using (status = 'open')`, and the public read
@@ -20,7 +20,7 @@ import path from "node:path";
 const root = process.cwd();
 const MIGRATION = path.join(
   root,
-  "supabase/migrations/20261126000001_orch_1221_careers_postings_applications.sql",
+  "supabase/migrations/20261126000001_orch_1222_careers_postings_applications.sql",
 );
 const DATA_LIB = path.join(root, "mingla-marketing/lib/careers-data.ts");
 
@@ -71,11 +71,11 @@ if (process.argv.includes("--self-test")) {
   if (!f.length) self.push("single/zero filter data lib not flagged");
 
   if (self.length) {
-    console.error("ORCH-1221 postings-open-only self-test FAIL:");
+    console.error("ORCH-1222 postings-open-only self-test FAIL:");
     self.forEach((m) => console.error("  - " + m));
     process.exit(1);
   }
-  console.log("ORCH-1221 postings-open-only self-test PASS (4/4 cases).");
+  console.log("ORCH-1222 postings-open-only self-test PASS (4/4 cases).");
   process.exit(0);
 }
 
@@ -87,12 +87,12 @@ else checkDataLib(fs.readFileSync(DATA_LIB, "utf8"), failures);
 
 if (failures.length > 0) {
   console.error(
-    "ORCH-1221 I-PROPOSED-1221-POSTINGS-PUBLIC-OPEN-ONLY FAIL:\n  " +
+    "ORCH-1222 I-PROPOSED-1222-POSTINGS-PUBLIC-OPEN-ONLY FAIL:\n  " +
       failures.join("\n  "),
   );
   process.exit(1);
 }
 console.log(
-  "ORCH-1221 I-PROPOSED-1221-POSTINGS-PUBLIC-OPEN-ONLY PASS — policy + lib both " +
+  "ORCH-1222 I-PROPOSED-1222-POSTINGS-PUBLIC-OPEN-ONLY PASS — policy + lib both " +
     "restrict to status='open'.",
 );

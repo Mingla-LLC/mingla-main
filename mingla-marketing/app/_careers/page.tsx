@@ -1,4 +1,4 @@
-// META-ORCH-1221 [Careers site] — index (DESIGN §2). Server component: fetches
+// META-ORCH-1222 [Careers site] — index (DESIGN §2). Server component: fetches
 // the OPEN roles via listOpenRoles() for instant SSR + SEO, renders the hero +
 // the RoleGrid (client, motion). Empty (zero open roles) + error states per
 // DESIGN §2.4 are rendered here.

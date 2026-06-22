@@ -1,5 +1,5 @@
 'use client'
-// META-ORCH-1221 [Careers site] — shared careers CTA buttons (DESIGN §3.3 / §4.5
+// META-ORCH-1222 [Careers site] — shared careers CTA buttons (DESIGN §3.3 / §4.5
 // + ADDENDUM D-2). Solid coral buttons rest at --coral-600 (#E85D1F) and hover
 // to --coral-700 for a clean WCAG-AA pass. Ghost buttons keep coral-500 text +
 // border. ≥44px hit targets, visible coral focus ring (§5).

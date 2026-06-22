@@ -1,5 +1,5 @@
 'use client'
-// META-ORCH-1221 [Careers site] — careers nav header (DESIGN §1).
+// META-ORCH-1222 [Careers site] — careers nav header (DESIGN §1).
 // Sticky, 64px, glass (backdrop-blur), raises a hairline shadow past 8px scroll.
 // Left: Mingla wordmark → usemingla.com. Right: "All roles" → /.
 

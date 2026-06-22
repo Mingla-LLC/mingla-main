@@ -1,5 +1,5 @@
 'use client'
-// META-ORCH-1221 [Careers site] — mobile + tablet sticky Apply bar (DESIGN §3.2.5
+// META-ORCH-1222 [Careers site] — mobile + tablet sticky Apply bar (DESIGN §3.2.5
 // / §3.4). Appears (slides up) when the top Apply CTA scrolls out of view, via an
 // IntersectionObserver on a sentinel placed at the top CTA. Desktop (≥1024) never
 // shows it. Reduced-motion → instant. Glass with backdrop fallback.

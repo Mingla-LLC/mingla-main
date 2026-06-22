@@ -1,4 +1,4 @@
-// META-ORCH-1221 [Careers site] — client submit transport for the apply form.
+// META-ORCH-1222 [Careers site] — client submit transport for the apply form.
 // Clone of lib/explorer-app-submit.ts transport: a thin, anon-safe POST to the
 // public `careers-apply` edge function. The marketing app has NO Supabase
 // client, so this uses a raw fetch with the public anon key in the

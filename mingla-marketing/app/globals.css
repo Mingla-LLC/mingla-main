@@ -399,7 +399,7 @@ video {
 }
 
 /* ───────────────────────────────────────────────────────────────────────────
- * META-ORCH-1221 [Careers site at career.usemingla.com] — careers-scoped tokens.
+ * META-ORCH-1222 [Careers site at career.usemingla.com] — careers-scoped tokens.
  *
  * Scoped under `.careers-root` (applied by app/_careers/layout.tsx) so they NEVER
  * touch usemingla.com / the existing `--color-warm` brand. These match the
@@ -423,7 +423,7 @@ video {
   --danger-500: #D64545;
 }
 
-/* META-ORCH-1221 — JD markdown body typography (DESIGN §3.2.4), scoped. */
+/* META-ORCH-1222 — JD markdown body typography (DESIGN §3.2.4), scoped. */
 .careers-root .careers-md-h2 {
   font-family: var(--font-mochiy);
   font-size: 20px;

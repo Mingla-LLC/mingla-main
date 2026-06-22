@@ -1,5 +1,5 @@
 /**
- * CAREERS PAGE — META-ORCH-1221 [Careers site at career.usemingla.com]
+ * CAREERS PAGE — META-ORCH-1222 [Careers site at career.usemingla.com]
  *
  * Two sections (ADDENDUM D-1 — admin manages BOTH applications AND postings):
  *   1. Applications — list (filter by role + status) + detail modal (all fields,

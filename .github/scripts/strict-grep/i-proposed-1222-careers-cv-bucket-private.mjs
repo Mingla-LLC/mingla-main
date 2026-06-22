@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * META-ORCH-1221 [Careers site] — I-PROPOSED-1221-CV-BUCKET-PRIVATE.
+ * META-ORCH-1222 [Careers site] — I-PROPOSED-1222-CV-BUCKET-PRIVATE.
  *
  * WHY: CVs are private PII. The career-cvs bucket MUST be created private
  * (public=false) with the 5 MB cap + the PDF/DOC/DOCX mime allowlist, and there
@@ -21,7 +21,7 @@ import path from "node:path";
 const root = process.cwd();
 const MIGRATION = path.join(
   root,
-  "supabase/migrations/20261126000001_orch_1221_careers_postings_applications.sql",
+  "supabase/migrations/20261126000001_orch_1222_careers_postings_applications.sql",
 );
 
 function check(src, failures) {
@@ -86,27 +86,27 @@ if (process.argv.includes("--self-test")) {
   if (f.length === 0) self.push("anon storage policy on career-cvs not flagged");
 
   if (self.length) {
-    console.error("ORCH-1221 cv-bucket-private self-test FAIL:");
+    console.error("ORCH-1222 cv-bucket-private self-test FAIL:");
     self.forEach((m) => console.error("  - " + m));
     process.exit(1);
   }
-  console.log("ORCH-1221 cv-bucket-private self-test PASS (3/3 cases).");
+  console.log("ORCH-1222 cv-bucket-private self-test PASS (3/3 cases).");
   process.exit(0);
 }
 
 if (!fs.existsSync(MIGRATION)) {
-  console.error(`ORCH-1221 gate FAIL — migration not found at ${MIGRATION}.`);
+  console.error(`ORCH-1222 gate FAIL — migration not found at ${MIGRATION}.`);
   process.exit(1);
 }
 const failures = [];
 check(fs.readFileSync(MIGRATION, "utf8"), failures);
 if (failures.length > 0) {
   console.error(
-    "ORCH-1221 I-PROPOSED-1221-CV-BUCKET-PRIVATE FAIL:\n  " + failures.join("\n  "),
+    "ORCH-1222 I-PROPOSED-1222-CV-BUCKET-PRIVATE FAIL:\n  " + failures.join("\n  "),
   );
   process.exit(1);
 }
 console.log(
-  "ORCH-1221 I-PROPOSED-1221-CV-BUCKET-PRIVATE PASS — career-cvs private, 5 MB, " +
+  "ORCH-1222 I-PROPOSED-1222-CV-BUCKET-PRIVATE PASS — career-cvs private, 5 MB, " +
     "PDF/DOC/DOCX only, no client policy.",
 );

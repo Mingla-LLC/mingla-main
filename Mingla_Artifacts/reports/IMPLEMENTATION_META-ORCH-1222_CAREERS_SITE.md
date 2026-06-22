@@ -1,10 +1,10 @@
-# IMPLEMENTATION — META-ORCH-1221 Careers Site (`career.usemingla.com`)
+# IMPLEMENTATION — META-ORCH-1222 Careers Site (`career.usemingla.com`)
 
 > **Mode:** IMPLEMENT (mingla-implementor+claude). Built against the binding SPEC
-> `Mingla_Artifacts/specs/SPEC_META-ORCH-1221_CAREERS_SITE.md` (commit 421d76c72,
+> `Mingla_Artifacts/specs/SPEC_META-ORCH-1222_CAREERS_SITE.md` (commit 421d76c72,
 > INCLUDING the ADDENDUM Seth decisions D-1/D-2/D-3) + the DESIGN contract.
-> **Worktree:** `~/Desktop/mingla-orchs/1221-[careers-site]/` on branch
-> `1221-careers-site` (rebased onto origin/main at start).
+> **Worktree:** `~/Desktop/mingla-orchs/1222-[careers-site]/` on branch
+> `1222-careers-site` (rebased onto origin/main at start).
 > **Status:** implemented; backend type-checks + Deno tests run; gates pass
 > self-test + live. Marketing/admin TS+build are UNRUN here (no node_modules in
 > the worktree) — flagged in §9 for the tester/CI.
@@ -61,8 +61,8 @@ codebases) — both built.
 ## 3. Files changed (37 total in the closing diff; 36 mine + the pre-existing forensics artifacts)
 
 **Backend (Leg 2):**
-- `supabase/migrations/20261126000001_orch_1221_careers_postings_applications.sql` (NEW, ~340 lines)
-- `supabase/migrations/20261126000002_orch_1221_careers_seed_roles.sql` (NEW, ~110 lines)
+- `supabase/migrations/20261126000001_orch_1222_careers_postings_applications.sql` (NEW, ~340 lines)
+- `supabase/migrations/20261126000002_orch_1222_careers_seed_roles.sql` (NEW, ~110 lines)
 - `supabase/functions/careers-apply/index.ts` (NEW, ~430 lines)
 - `supabase/functions/careers-apply/__tests__/apply_happy.test.ts` (NEW, regression)
 - `supabase/functions/careers-cv-signed-url/index.ts` (NEW, ~110 lines)
@@ -81,7 +81,7 @@ codebases) — both built.
 - `mingla-admin/src/App.jsx` (MODIFY +4), `src/lib/constants.js` (MODIFY +4), `src/components/layout/Sidebar.jsx` (MODIFY +4)
 
 **CI gates (Leg 5):**
-- `.github/scripts/strict-grep/i-proposed-1221-careers-{applications-deny-anon,postings-open-only,apply-six-fields,cv-bucket-private,host-isolated,admin-writes-gated}.mjs` (6 NEW)
+- `.github/scripts/strict-grep/i-proposed-1222-careers-{applications-deny-anon,postings-open-only,apply-six-fields,cv-bucket-private,host-isolated,admin-writes-gated}.mjs` (6 NEW)
 - `.github/workflows/strict-grep-mingla-business.yml` (MODIFY +78 — 6 jobs)
 
 ---
@@ -159,7 +159,7 @@ No native blast radius → **no `eas update`** (COMMS-0052 OTA freeze irrelevant
 
 1. **Apply migrations** (linked CLI points at the WRONG project — target prod explicitly), e.g. via MCP `apply_migration` with `--project-ref gqnoajqerqhnvulmnyvv`, OR:
    ```bash
-   cd "/Users/sethogieva/Desktop/mingla-orchs/1221-[careers-site]" && /Users/sethogieva/bin/supabase db push --linked
+   cd "/Users/sethogieva/Desktop/mingla-orchs/1222-[careers-site]" && /Users/sethogieva/bin/supabase db push --linked
    ```
    (Both migrations are additive/idempotent — `if not exists`, `on conflict`. Apply A then B.)
 2. **Deploy edge fns** from merged main, targeting prod:
@@ -168,12 +168,12 @@ No native blast radius → **no `eas update`** (COMMS-0052 OTA freeze irrelevant
 4. **Marketing Vercel env (Seth):** add `NEXT_PUBLIC_SUPABASE_URL=https://gqnoajqerqhnvulmnyvv.supabase.co` (production + preview) so the careers pages can read `job_postings`. (`NEXT_PUBLIC_SUPABASE_FUNCTIONS_URL` + `NEXT_PUBLIC_SUPABASE_ANON_KEY` already exist.)
 5. **Deploy marketing** (Vercel `[deploy]`) + **admin build**. No `eas update` (no native surface).
 6. **Flip the 5 DRAFT invariants ACTIVE** (+ the D-1 delta invariant) in `INVARIANT_REGISTRY.md` at CLOSE.
-7. **Resolve the ORCH-1221 collision** (this careers work vs the beta-form-brand-type work) per shipped-first-keeps-the-number.
+7. **ID collision RESOLVED:** the beta-form/allpill work shipped first as ORCH-1221 (PR #647); this careers work renumbered to META-ORCH-1222 per shipped-first-keeps-the-number (COMMS-0060).
 
 ---
 
 ## 11. Discoveries for orchestrator
 
 - **D-1 (verification):** prod has BOTH `is_admin_user()` (no-arg session gate — what I used) AND `is_admin_email(text)` (email-arg helper). The SPEC flagged "verify, don't guess"; verified `is_admin_user()` is the correct gate for SECURITY DEFINER RPCs called from the authed admin session. No action needed — recorded for the registry.
-- **ORCH-1221 ID collision is REAL and on disk:** the OTHER 1221 (beta-form-brand-type) ships migration `20261126000000` + a strict-grep job `orch-1221-allpill-selects-all`. I deliberately namespaced ALL careers gate jobs `orch-1221-careers-*` and named my migrations `...000001`/`...000002` so there is **no file or YAML-job-key collision** even if both merge. The only shared file is `strict-grep-mingla-business.yml` (both append jobs) — a future merge keeps both job blocks. Orchestrator resolves numbering at CLOSE.
-- **No COMMS entries written** — no in-flight ORCH is affected by this work (disjoint file set from the beta-form 1221; no shared product code). COMMS_LEDGER scanned on entry: no BLOCK/WARN row addressed to mingla-implementor / META-ORCH-1221 / ALL required action.
+- **ORCH-ID collision RESOLVED (renumber 1221 → 1222):** the OTHER work (beta-form-brand-type / explorer all-pill) shipped FIRST as ORCH-1221 — migration `20261126000000_orch_1221_beta_access_brand_type_multi.sql` + strict-grep job `orch-1221-allpill-selects-all` + invariant `I-PROPOSED-1221-ALLPILL-SELECTS-ALL` ACTIVE (PR #647 on origin/main). This careers work renumbered to META-ORCH-1222. ALL careers gate jobs are namespaced `orch-1222-careers-*` and the careers migrations are `...000001`/`...000002` (strictly > the beta-form `...000000`), so there is **no file or YAML-job-key collision**. The only shared file is `strict-grep-mingla-business.yml`, which now carries BOTH the `orch-1221-allpill-selects-all` job AND the 6 `orch-1222-careers-*` jobs.
+- **COMMS-0060 (WARN) acked + RESOLVED** — the renumber directive itself. No new COMMS entries written; no in-flight ORCH is affected by this work (disjoint file set from the shipped beta-form 1221; no shared product code). COMMS_LEDGER scanned on entry: no BLOCK row addressed to mingla-implementor / META-ORCH-1222 / ALL required action.

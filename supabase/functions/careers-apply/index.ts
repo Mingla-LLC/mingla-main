@@ -1,4 +1,4 @@
-// META-ORCH-1221 [Careers site at career.usemingla.com] — public application
+// META-ORCH-1222 [Careers site at career.usemingla.com] — public application
 // endpoint. Clone of explorer-app-lead-submit (ORCH-1216), re-pointed to the
 // careers surface with a 6-field application + a CV upload.
 //
@@ -6,7 +6,7 @@
 // site is UNAUTHENTICATED. Anon callers POST an application from the per-role
 // form. The function:
 //   1. re-validates EVERY field server-side (never trusts the client) — all SIX
-//      required fields + the CV (I-PROPOSED-1221-APPLY-VALIDATES-ALL-SIX),
+//      required fields + the CV (I-PROPOSED-1222-APPLY-VALIDATES-ALL-SIX),
 //   2. resolves the role from job_slug and rejects unless status='open',
 //   3. soft-throttles by salted IP hash (raw IP is NEVER stored),
 //   4. uploads the CV to the PRIVATE career-cvs bucket via the SERVICE ROLE,

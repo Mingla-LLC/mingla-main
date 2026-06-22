@@ -42,7 +42,7 @@ const ICON_MAP = {
   // META-ORCH-1104 Phase 2 — Support nav. Without this entry the LifeBuoy icon
   // silently falls back to LayoutDashboard (renderNavItem `:77`).
   LifeBuoy,
-  // META-ORCH-1221 — Careers nav (applications + role manager). Same ICON_MAP
+  // META-ORCH-1222 — Careers nav (applications + role manager). Same ICON_MAP
   // registration requirement as Support/Beta-Leads.
   Briefcase,
 };

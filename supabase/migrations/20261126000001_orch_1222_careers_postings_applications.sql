@@ -1,4 +1,4 @@
--- META-ORCH-1221 [Careers site at career.usemingla.com] — Migration A.
+-- META-ORCH-1222 [Careers site at career.usemingla.com] — Migration A.
 -- Schema + RLS + private storage bucket + admin RPCs for the careers system.
 --
 -- SECURITY SPINE (SPEC §4.A.3 + ADDENDUM D-1):
@@ -72,7 +72,7 @@ create index if not exists job_applications_ip_hash_recent_idx
   on public.job_applications (ip_hash, created_at desc);   -- soft-throttle window
 
 comment on table public.job_applications is
-  'Careers applications (META-ORCH-1221). Deny-by-default RLS (no anon/authenticated policy). '
+  'Careers applications (META-ORCH-1222). Deny-by-default RLS (no anon/authenticated policy). '
   'Inserts only via the careers-apply edge fn (service role). Reads only via the '
   'is_admin_user()-gated admin_job_applications_list() RPC. CV in private career-cvs bucket.';
 

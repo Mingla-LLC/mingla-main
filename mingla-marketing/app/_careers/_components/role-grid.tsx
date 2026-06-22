@@ -1,5 +1,5 @@
 'use client'
-// META-ORCH-1221 [Careers site] — index role card grid (DESIGN §2.2–§2.5 + D-3).
+// META-ORCH-1222 [Careers site] — index role card grid (DESIGN §2.2–§2.5 + D-3).
 // 2-up desktop/tablet, 1-up mobile. Cards fade+rise on mount (stagger 60ms, cap
 // 6), hover lift + arrow shift (pointer:fine). Reduced-motion → opacity-only.
 // The full card is one link to /roles/{slug}.

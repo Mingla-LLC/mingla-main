@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * META-ORCH-1221 [Careers site] — I-PROPOSED-1221-APPLY-VALIDATES-ALL-SIX.
+ * META-ORCH-1222 [Careers site] — I-PROPOSED-1222-APPLY-VALIDATES-ALL-SIX.
  *
  * WHY: the careers-apply edge fn is the security/validation authority (the
  * client form is UX-only). It MUST server-validate all six required fields +
@@ -63,28 +63,28 @@ if (process.argv.includes("--self-test")) {
   if (f.length === 0) self.push("deleted cv check not flagged");
 
   if (self.length) {
-    console.error("ORCH-1221 apply-six-fields self-test FAIL:");
+    console.error("ORCH-1222 apply-six-fields self-test FAIL:");
     self.forEach((m) => console.error("  - " + m));
     process.exit(1);
   }
-  console.log("ORCH-1221 apply-six-fields self-test PASS (3/3 cases).");
+  console.log("ORCH-1222 apply-six-fields self-test PASS (3/3 cases).");
   process.exit(0);
 }
 
 if (!fs.existsSync(FN)) {
-  console.error(`ORCH-1221 gate FAIL — careers-apply/index.ts not found at ${FN}.`);
+  console.error(`ORCH-1222 gate FAIL — careers-apply/index.ts not found at ${FN}.`);
   process.exit(1);
 }
 const failures = [];
 check(fs.readFileSync(FN, "utf8"), failures);
 if (failures.length > 0) {
   console.error(
-    "ORCH-1221 I-PROPOSED-1221-APPLY-VALIDATES-ALL-SIX FAIL:\n  " +
+    "ORCH-1222 I-PROPOSED-1222-APPLY-VALIDATES-ALL-SIX FAIL:\n  " +
       failures.join("\n  "),
   );
   process.exit(1);
 }
 console.log(
-  "ORCH-1221 I-PROPOSED-1221-APPLY-VALIDATES-ALL-SIX PASS — all six fields + CV " +
+  "ORCH-1222 I-PROPOSED-1222-APPLY-VALIDATES-ALL-SIX PASS — all six fields + CV " +
     "+ job_slug have a server reject path.",
 );

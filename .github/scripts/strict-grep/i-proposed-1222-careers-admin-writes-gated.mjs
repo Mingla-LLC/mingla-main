@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * META-ORCH-1221 [Careers site] — I-PROPOSED-1221-ADMIN-WRITES-GATED (ADDENDUM
+ * META-ORCH-1222 [Careers site] — I-PROPOSED-1222-ADMIN-WRITES-GATED (ADDENDUM
  * D-1 regression delta).
  *
  * WHY: D-1 added admin CRUD for job_postings. The requirement is that admin
@@ -25,7 +25,7 @@ import path from "node:path";
 const root = process.cwd();
 const MIGRATION = path.join(
   root,
-  "supabase/migrations/20261126000001_orch_1221_careers_postings_applications.sql",
+  "supabase/migrations/20261126000001_orch_1222_careers_postings_applications.sql",
 );
 
 const WRITE_RPCS = [
@@ -95,27 +95,27 @@ if (process.argv.includes("--self-test")) {
   if (f.length === 0) self.push("broad authenticated write policy not flagged");
 
   if (self.length) {
-    console.error("ORCH-1221 admin-writes-gated self-test FAIL:");
+    console.error("ORCH-1222 admin-writes-gated self-test FAIL:");
     self.forEach((m) => console.error("  - " + m));
     process.exit(1);
   }
-  console.log("ORCH-1221 admin-writes-gated self-test PASS (3/3 cases).");
+  console.log("ORCH-1222 admin-writes-gated self-test PASS (3/3 cases).");
   process.exit(0);
 }
 
 if (!fs.existsSync(MIGRATION)) {
-  console.error(`ORCH-1221 gate FAIL — migration not found at ${MIGRATION}.`);
+  console.error(`ORCH-1222 gate FAIL — migration not found at ${MIGRATION}.`);
   process.exit(1);
 }
 const failures = [];
 check(fs.readFileSync(MIGRATION, "utf8"), failures);
 if (failures.length > 0) {
   console.error(
-    "ORCH-1221 I-PROPOSED-1221-ADMIN-WRITES-GATED FAIL:\n  " + failures.join("\n  "),
+    "ORCH-1222 I-PROPOSED-1222-ADMIN-WRITES-GATED FAIL:\n  " + failures.join("\n  "),
   );
   process.exit(1);
 }
 console.log(
-  "ORCH-1221 I-PROPOSED-1221-ADMIN-WRITES-GATED PASS — job_postings admin writes " +
+  "ORCH-1222 I-PROPOSED-1222-ADMIN-WRITES-GATED PASS — job_postings admin writes " +
     "go through is_admin_user()-gated RPCs; no broad write policy.",
 );

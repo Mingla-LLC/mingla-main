@@ -1,24 +1,22 @@
-# SPEC — META-ORCH-1221 Careers Site (`career.usemingla.com`)
+# SPEC — META-ORCH-1222 Careers Site (`career.usemingla.com`)
 
 > **Mode:** SPEC (engineering build contract). Produced by mingla-forensics 2026-06-22.
-> **Worktree:** `~/Desktop/mingla-orchs/1221-[careers-site]/` on branch `1221-careers-site` (rebased on origin/main, up to date).
-> **Design contract (binding, do NOT rewrite):** `Mingla_Artifacts/specs/DESIGN_META-ORCH-1221_CAREERS_SITE.md` — referenced by section for every Leg 3 component/state/motion detail.
-> **JD source (seed):** `Mingla_Artifacts/ORCH_1221_CAREERS_JOB_DESCRIPTIONS.md` (YAML block at §"Structured data").
+> **Worktree:** `~/Desktop/mingla-orchs/1222-[careers-site]/` on branch `1222-careers-site` (rebased on origin/main, up to date).
+> **Design contract (binding, do NOT rewrite):** `Mingla_Artifacts/specs/DESIGN_META-ORCH-1222_CAREERS_SITE.md` — referenced by section for every Leg 3 component/state/motion detail.
+> **JD source (seed):** `Mingla_Artifacts/ORCH_1222_CAREERS_JOB_DESCRIPTIONS.md` (YAML block at §"Structured data").
 > **This is a build CONTRACT, not code.** Snippets ≤2–3 lines are illustrative only.
 
 ---
 
-## ⚠️ ORCH-ID COLLISION — read first (orchestrator resolves at CLOSE)
+## ✅ ORCH-ID COLLISION — RESOLVED (this work renumbered 1221 → 1222)
 
-**Two unmerged worktrees both claim ORCH-1221 off the stale anchor:**
-- `~/Desktop/mingla-orchs/1221-[careers-site]/` (branch `1221-careers-site`) — **this** META-ORCH-1221 [Careers site]. Per the dispatch + WORLD_MAP this is the canonical META-ORCH-1221.
-- `~/Desktop/mingla-orchs/1220-form-pill-multiselect-allpill/` — carries a migration `20261126000000_orch_1221_beta_access_brand_type_multi.sql` (a DIFFERENT feature: "Organiser beta form: brand-type multi-select"). NOT on origin/main, not on WORLD_MAP.
+**Resolved 2026-06-22 per shipped-first-keeps-the-number (COMMS-0060).** Two unmerged worktrees both claimed ORCH-1221 off the stale anchor. The OTHER feature shipped first:
+- `~/Desktop/mingla-orchs/1220-form-pill-multiselect-allpill/` (branch `1220-form-pill-multiselect-allpill`, migration `20261126000000_orch_1221_beta_access_brand_type_multi.sql`) — a DIFFERENT feature, "Explorer 'All of it' = select-all + organiser brand-type multi-select" — **SHIPPED FIRST as ORCH-1221** (PR #647 `f6a8130f7`, now on origin/main with `I-PROPOSED-1221-ALLPILL-SELECTS-ALL` ACTIVE). It KEEPS the 1221 number.
+- This careers site (now `~/Desktop/mingla-orchs/1221-[careers-site]/`, branch renamed `1222-careers-site`) — the LATE merger — **renumbered to META-ORCH-1222**. All careers-owned artifacts/migrations/gates/invariants now carry 1222; the `1221` references above point at the shipped allpill/beta-form work and stay 1221.
 
-**Neither is shipped.** WORLD_MAP max on origin/main = ORCH-1219. Per shipped-first-keeps-the-number (COMMS-0011/0033/0037/0053/0055/0057), the late merger renumbers.
+**No file collision on disk:** careers touches `mingla-marketing/app/_careers/**`, `mingla-admin/src/pages/CareersPage.jsx`, `supabase/functions/careers-apply/**` + `careers-cv-signed-url/**`, new `job_postings`/`job_applications` tables, migrations `20261126000001`/`20261126000002`; the shipped beta-form work touched `beta_access_leads` + `admin_beta_leads_list` + migration `20261126000000` only. Shared append target `.github/workflows/strict-grep-mingla-business.yml` carries BOTH the `orch-1221-allpill-selects-all` job AND the 6 `orch-1222-careers-*` jobs.
 
-**RESOLUTION (orchestrator, at CLOSE):** if the beta-form-brand-type work merges first, the careers site renumbers to the next free ID (`git fetch` + scan main + WORLD_MAP + branches; frontier ≈ ORCH-1222+) and renames branch/worktree/artifacts/migrations/gates/invariants. If careers merges first, it keeps 1221 and the beta-form work renumbers. **No file collision on disk:** careers touches `mingla-marketing/app/(careers)/**`, `mingla-admin/src/pages/CareersPage.jsx`, `supabase/functions/careers-apply/**`, new `job_postings`/`job_applications` tables; the beta-form work touches `beta_access_leads` + `admin_beta_leads_list` only. **Only shared append target:** `.github/workflows/strict-grep-mingla-business.yml` (both append gate jobs) → merge-resolve keeping both sides.
-
-A `COMMS-NNNN` WARN entry is filed for this (see §10 Open Questions → routed to orchestrator).
+See COMMS-0060 (WARN, RESOLVED). The careers migration versions (`…0001`/`…0002`) are strictly > the beta-form `…0000`, so no migration-prefix clash.
 
 ---
 
@@ -76,11 +74,11 @@ Backend (`supabase/`) is shared infrastructure consumed by surfaces 6 + 7. No pr
 ### 4.A — Database (Leg 2)
 
 **Migration A — schema + RLS + bucket.** Filename:
-`supabase/migrations/20261126000001_orch_1221_careers_postings_applications.sql`
+`supabase/migrations/20261126000001_orch_1222_careers_postings_applications.sql`
 (version `20261126000001` strictly > the highest seen anywhere: main max `20261125000000`, in-flight max `20261126000000` in worktree `1220`. Confirmed monotonic + collision-free across main + all worktrees.)
 
 **Migration B — seed the two roles.** Filename:
-`supabase/migrations/20261126000002_orch_1221_careers_seed_roles.sql`
+`supabase/migrations/20261126000002_orch_1222_careers_seed_roles.sql`
 (strictly > Migration A.)
 
 > **Apply protocol (per memory + SAFE_MIGRATION):** do NOT `supabase db push` (CLI links the wrong project). Apply both via MCP `apply_migration` with `--project-ref gqnoajqerqhnvulmnyvv`, or hand to Seth. Migrations are additive/idempotent (`if not exists`, `on conflict do nothing`). The orchestrator/implementor does NOT apply during IMPLEMENT — apply happens at deploy.
@@ -221,7 +219,7 @@ on conflict (id) do nothing;
 
 #### 4.A.7 Seed migration (Migration B) — the two roles from the JD YAML
 
-`20261126000002_orch_1221_careers_seed_roles.sql`. Idempotent `insert … on conflict (slug) do update`. Seed BOTH rows with `status='open'`, `sort_order` 0 then 1, and the **full markdown JD `body`** copied from `ORCH_1221_CAREERS_JOB_DESCRIPTIONS.md` §"Role 1" / §"Role 2" (the sections About Mingla → About the role → What you'll do → What we're looking for → Nice to have → Compensation & logistics, rendered as markdown; OMIT the "How to apply" section — the apply CTA is the page itself). Verbatim values from the YAML block:
+`20261126000002_orch_1222_careers_seed_roles.sql`. Idempotent `insert … on conflict (slug) do update`. Seed BOTH rows with `status='open'`, `sort_order` 0 then 1, and the **full markdown JD `body`** copied from `ORCH_1222_CAREERS_JOB_DESCRIPTIONS.md` §"Role 1" / §"Role 2" (the sections About Mingla → About the role → What you'll do → What we're looking for → Nice to have → Compensation & logistics, rendered as markdown; OMIT the "How to apply" section — the apply CTA is the page itself). Verbatim values from the YAML block:
 
 | slug | title | department | location | employment_type | salary_min | salary_max | salary_currency | salary_period | salary_display | summary | status | sort_order |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|
@@ -404,11 +402,11 @@ Mirror **`mingla-admin/src/pages/ClaimsPage.jsx`** (the canonical list+detail wi
 - **I-PROPOSED-1216-NO-SERVICE-KEY-CLIENT** — the marketing client uses ONLY the anon key (raw fetch); no service-role key in any `mingla-marketing/**` or client bundle. New gate extends this to careers libs.
 
 **NEW (propose as DRAFT — orchestrator flips ACTIVE on CLOSE):**
-- **I-PROPOSED-1221-APPLICATIONS-DENY-ANON** *(DRAFT)* — `job_applications` MUST have RLS enabled and NO permissive `to anon`/`to public` policy; reads go only through `is_admin_user()`-gated SD RPCs; inserts only via the service-role edge fn. Gate: `i-proposed-1221-applications-deny-anon.mjs`.
-- **I-PROPOSED-1221-POSTINGS-PUBLIC-OPEN-ONLY** *(DRAFT)* — the only anon-SELECT policy on `job_postings` MUST be `using (status = 'open')`; the public read libs filter `status=eq.open`. Gate: `i-proposed-1221-postings-open-only.mjs`.
-- **I-PROPOSED-1221-APPLY-VALIDATES-ALL-SIX** *(DRAFT)* — `careers-apply/index.ts` MUST server-validate all six required fields (full_name, email, whatsapp_phone, preferred_salary, CV, portfolio_url) — a structural check that each field name + its reject path is present. Gate: `i-proposed-1221-apply-six-fields.mjs`.
-- **I-PROPOSED-1221-CV-BUCKET-PRIVATE** *(DRAFT)* — the `career-cvs` bucket migration MUST set `public, false` with the 5 MB limit + the PDF/DOC/DOCX mime allowlist, and define NO anon/authenticated `storage.objects` policy for it. Gate: `i-proposed-1221-cv-bucket-private.mjs`.
-- **I-PROPOSED-1221-CAREERS-SUBDOMAIN-ISOLATED** *(DRAFT)* — `mingla-marketing/middleware.ts` MUST only rewrite the `career.` host into `_careers` and MUST guard the apex against `/_careers` (so `usemingla.com` is untouched). Gate: `i-proposed-1221-careers-host-isolated.mjs`.
+- **I-PROPOSED-1222-APPLICATIONS-DENY-ANON** *(DRAFT)* — `job_applications` MUST have RLS enabled and NO permissive `to anon`/`to public` policy; reads go only through `is_admin_user()`-gated SD RPCs; inserts only via the service-role edge fn. Gate: `i-proposed-1222-applications-deny-anon.mjs`.
+- **I-PROPOSED-1222-POSTINGS-PUBLIC-OPEN-ONLY** *(DRAFT)* — the only anon-SELECT policy on `job_postings` MUST be `using (status = 'open')`; the public read libs filter `status=eq.open`. Gate: `i-proposed-1222-postings-open-only.mjs`.
+- **I-PROPOSED-1222-APPLY-VALIDATES-ALL-SIX** *(DRAFT)* — `careers-apply/index.ts` MUST server-validate all six required fields (full_name, email, whatsapp_phone, preferred_salary, CV, portfolio_url) — a structural check that each field name + its reject path is present. Gate: `i-proposed-1222-apply-six-fields.mjs`.
+- **I-PROPOSED-1222-CV-BUCKET-PRIVATE** *(DRAFT)* — the `career-cvs` bucket migration MUST set `public, false` with the 5 MB limit + the PDF/DOC/DOCX mime allowlist, and define NO anon/authenticated `storage.objects` policy for it. Gate: `i-proposed-1222-cv-bucket-private.mjs`.
+- **I-PROPOSED-1222-CAREERS-SUBDOMAIN-ISOLATED** *(DRAFT)* — `mingla-marketing/middleware.ts` MUST only rewrite the `career.` host into `_careers` and MUST guard the apex against `/_careers` (so `usemingla.com` is untouched). Gate: `i-proposed-1222-careers-host-isolated.mjs`.
 
 ---
 
@@ -461,11 +459,11 @@ The strict-grep workflow `strict-grep-mingla-business.yml` **already triggers on
 
 | Gate script | Asserts (structural fence) | FAIL-on-revert proof |
 |---|---|---|
-| `i-proposed-1221-applications-deny-anon.mjs` | Migration A enables RLS on `job_applications` and defines NO `to anon`/`to public` policy on it | re-add an anon SELECT policy → gate FAILS |
-| `i-proposed-1221-postings-open-only.mjs` | the `job_postings` anon policy is `using (status = 'open')` AND `careers-data.ts` filters `status=eq.open` | broaden the policy / drop the filter → FAILS |
-| `i-proposed-1221-apply-six-fields.mjs` | `careers-apply/index.ts` references all six field names + their reject paths | delete any field's server validation → FAILS |
-| `i-proposed-1221-cv-bucket-private.mjs` | Migration A inserts `career-cvs` with `false` (private) + `5242880` + the 3-mime allowlist, no anon storage policy | flip to public / widen mime / add anon policy → FAILS |
-| `i-proposed-1221-careers-host-isolated.mjs` | `middleware.ts` rewrites only the `career.` host and guards the apex against `/_careers` | remove the host check / apex guard → FAILS |
+| `i-proposed-1222-applications-deny-anon.mjs` | Migration A enables RLS on `job_applications` and defines NO `to anon`/`to public` policy on it | re-add an anon SELECT policy → gate FAILS |
+| `i-proposed-1222-postings-open-only.mjs` | the `job_postings` anon policy is `using (status = 'open')` AND `careers-data.ts` filters `status=eq.open` | broaden the policy / drop the filter → FAILS |
+| `i-proposed-1222-apply-six-fields.mjs` | `careers-apply/index.ts` references all six field names + their reject paths | delete any field's server validation → FAILS |
+| `i-proposed-1222-cv-bucket-private.mjs` | Migration A inserts `career-cvs` with `false` (private) + `5242880` + the 3-mime allowlist, no anon storage policy | flip to public / widen mime / add anon policy → FAILS |
+| `i-proposed-1222-careers-host-isolated.mjs` | `middleware.ts` rewrites only the `career.` host and guards the apex against `/_careers` | remove the host check / apex guard → FAILS |
 
 Reuse the existing `orch-1205-edge-cors-x-client-info.mjs` (already CI-wired) as the CORS regression guard for `careers-apply` (no new gate needed — importing `_shared/cors.ts` keeps it green).
 
@@ -473,7 +471,7 @@ Reuse the existing `orch-1205-edge-cors-x-client-info.mjs` (already CI-wired) as
 
 ## 10. Open questions (for Seth / orchestrator)
 
-1. **ORCH-ID collision (orchestrator):** two ORCH-1221s exist (careers + beta-form-brand-type). Resolve numbering at CLOSE per shipped-first-keeps-the-number (see top banner). A COMMS WARN is filed.
+1. **ORCH-ID collision (RESOLVED):** the beta-form/allpill work shipped first as ORCH-1221 (PR #647); this careers work renumbered to META-ORCH-1222 per shipped-first-keeps-the-number (see top banner). COMMS-0060 WARN, RESOLVED.
 2. **DNS/Vercel (Seth):** confirm the `mingla-marketing` Vercel project will host `career.usemingla.com` (vs a new project). The SPEC assumes the same project. See §B.
 3. **`NEXT_PUBLIC_SUPABASE_URL` env (Seth):** the marketing app currently has only `NEXT_PUBLIC_SUPABASE_FUNCTIONS_URL` + `NEXT_PUBLIC_SUPABASE_ANON_KEY`. The careers READS need the PostgREST base `https://gqnoajqerqhnvulmnyvv.supabase.co`. Confirm/add `NEXT_PUBLIC_SUPABASE_URL` to the marketing Vercel env (production + preview).
 4. **CTA contrast (design open Q1):** darken the careers button base to `--coral-600` everywhere for a stricter AA pass? (DESIGN §5, §183.)
@@ -485,20 +483,20 @@ Reuse the existing `orch-1205-edge-cors-x-client-info.mjs` (already CI-wired) as
 
 ## 11. Downstream routing
 
-**Next = mingla-implementor+claude (IMPLEMENT)**, in this worktree, building Legs 2→3→4 in the order of §8 against the allowlist below; then mingla-tester (TEST — RLS deny, six-field server validation, subdomain isolation, admin signed-CV, on-page form states); then mingla-orchestrator CLOSE (resolve the 1221 collision, flip the 5 DRAFT invariants ACTIVE, apply migrations via `--project-ref gqnoajqerqhnvulmnyvv`, deploy edge fns, Vercel `[deploy]` for marketing, admin build; NO `eas update` — no native surface).
+**Next = mingla-implementor+claude (IMPLEMENT)**, in this worktree, building Legs 2→3→4 in the order of §8 against the allowlist below; then mingla-tester (TEST — RLS deny, six-field server validation, subdomain isolation, admin signed-CV, on-page form states); then mingla-orchestrator CLOSE (resolve the 1222 collision, flip the 5 DRAFT invariants ACTIVE, apply migrations via `--project-ref gqnoajqerqhnvulmnyvv`, deploy edge fns, Vercel `[deploy]` for marketing, admin build; NO `eas update` — no native surface).
 
 ### Scoped allowlist (implementor may CREATE/MODIFY ONLY these)
 
 **Create:**
-- `supabase/migrations/20261126000001_orch_1221_careers_postings_applications.sql`
-- `supabase/migrations/20261126000002_orch_1221_careers_seed_roles.sql`
+- `supabase/migrations/20261126000001_orch_1222_careers_postings_applications.sql`
+- `supabase/migrations/20261126000002_orch_1222_careers_seed_roles.sql`
 - `supabase/functions/careers-apply/index.ts`
 - `supabase/functions/careers-cv-signed-url/index.ts`
 - `mingla-marketing/middleware.ts`
 - `mingla-marketing/app/_careers/layout.tsx`, `.../page.tsx`, `.../roles/[slug]/page.tsx`, `.../roles/[slug]/apply/page.tsx` (+ client sub-components under `app/_careers/` or `components/careers/`)
 - `mingla-marketing/lib/careers-data.ts`, `mingla-marketing/lib/careers-apply-submit.ts`
 - `mingla-admin/src/pages/CareersPage.jsx`, `mingla-admin/src/services/careersService.js`
-- `.github/scripts/strict-grep/i-proposed-1221-*.mjs` (5 gates)
+- `.github/scripts/strict-grep/i-proposed-1222-*.mjs` (5 gates)
 
 **Modify (surgical, additive):**
 - `supabase/config.toml` (add the two `[functions.*]` `verify_jwt` blocks)
@@ -510,7 +508,7 @@ Reuse the existing `orch-1205-edge-cors-x-client-info.mjs` (already CI-wired) as
 
 - `mingla-marketing/app/(explorer)/**`, `app/organisers/**`, any existing marketing route, `next.config.ts`, `vercel.json`, the existing fonts/root `layout.tsx` (reuse, do not edit).
 - `supabase/functions/explorer-app-lead-submit/**`, `_shared/email/**`, `_shared/cors.ts` (reuse by import; do NOT edit).
-- `beta_access_leads` / `admin_beta_leads_list` / the `1220` worktree's migration (the OTHER 1221).
+- `beta_access_leads` / `admin_beta_leads_list` / the `1220` worktree's migration (the shipped ORCH-1221 beta-form work).
 - Any `app-mobile/**`, `mingla-business/**`, `packages/**` (no mobile surface).
 - Any existing admin page/service/RPC; existing `is_admin_user()` definition (reuse, do not redefine).
 

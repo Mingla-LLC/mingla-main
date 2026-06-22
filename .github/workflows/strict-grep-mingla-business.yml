@@ -3061,80 +3061,80 @@ jobs:
       - name: Run ORCH-1221 allpill-selects-all gate
         run: node .github/scripts/strict-grep/i-proposed-1221-allpill-selects-all.mjs
 
-  orch-1221-careers-applications-deny-anon:
-    name: "META-ORCH-1221: job_applications RLS deny-by-default, no permissive anon/public policy (I-PROPOSED-1221-APPLICATIONS-DENY-ANON)"
+  orch-1222-careers-applications-deny-anon:
+    name: "META-ORCH-1222: job_applications RLS deny-by-default, no permissive anon/public policy (I-PROPOSED-1222-APPLICATIONS-DENY-ANON)"
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: "20"
-      - name: Self-test the ORCH-1221 careers applications-deny-anon gate
-        run: node .github/scripts/strict-grep/i-proposed-1221-careers-applications-deny-anon.mjs --self-test
-      - name: Run ORCH-1221 careers applications-deny-anon gate
-        run: node .github/scripts/strict-grep/i-proposed-1221-careers-applications-deny-anon.mjs
+      - name: Self-test the ORCH-1222 careers applications-deny-anon gate
+        run: node .github/scripts/strict-grep/i-proposed-1222-careers-applications-deny-anon.mjs --self-test
+      - name: Run ORCH-1222 careers applications-deny-anon gate
+        run: node .github/scripts/strict-grep/i-proposed-1222-careers-applications-deny-anon.mjs
 
-  orch-1221-careers-postings-open-only:
-    name: "META-ORCH-1221: job_postings anon-read is open-only + careers-data filters status=eq.open (I-PROPOSED-1221-POSTINGS-PUBLIC-OPEN-ONLY)"
+  orch-1222-careers-postings-open-only:
+    name: "META-ORCH-1222: job_postings anon-read is open-only + careers-data filters status=eq.open (I-PROPOSED-1222-POSTINGS-PUBLIC-OPEN-ONLY)"
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: "20"
-      - name: Self-test the ORCH-1221 careers postings-open-only gate
-        run: node .github/scripts/strict-grep/i-proposed-1221-careers-postings-open-only.mjs --self-test
-      - name: Run ORCH-1221 careers postings-open-only gate
-        run: node .github/scripts/strict-grep/i-proposed-1221-careers-postings-open-only.mjs
+      - name: Self-test the ORCH-1222 careers postings-open-only gate
+        run: node .github/scripts/strict-grep/i-proposed-1222-careers-postings-open-only.mjs --self-test
+      - name: Run ORCH-1222 careers postings-open-only gate
+        run: node .github/scripts/strict-grep/i-proposed-1222-careers-postings-open-only.mjs
 
-  orch-1221-careers-apply-six-fields:
-    name: "META-ORCH-1221: careers-apply server-validates all six fields + CV + job_slug (I-PROPOSED-1221-APPLY-VALIDATES-ALL-SIX)"
+  orch-1222-careers-apply-six-fields:
+    name: "META-ORCH-1222: careers-apply server-validates all six fields + CV + job_slug (I-PROPOSED-1222-APPLY-VALIDATES-ALL-SIX)"
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: "20"
-      - name: Self-test the ORCH-1221 careers apply-six-fields gate
-        run: node .github/scripts/strict-grep/i-proposed-1221-careers-apply-six-fields.mjs --self-test
-      - name: Run ORCH-1221 careers apply-six-fields gate
-        run: node .github/scripts/strict-grep/i-proposed-1221-careers-apply-six-fields.mjs
+      - name: Self-test the ORCH-1222 careers apply-six-fields gate
+        run: node .github/scripts/strict-grep/i-proposed-1222-careers-apply-six-fields.mjs --self-test
+      - name: Run ORCH-1222 careers apply-six-fields gate
+        run: node .github/scripts/strict-grep/i-proposed-1222-careers-apply-six-fields.mjs
 
-  orch-1221-careers-cv-bucket-private:
-    name: "META-ORCH-1221: career-cvs bucket private + 5MB + PDF/DOC/DOCX + no client policy (I-PROPOSED-1221-CV-BUCKET-PRIVATE)"
+  orch-1222-careers-cv-bucket-private:
+    name: "META-ORCH-1222: career-cvs bucket private + 5MB + PDF/DOC/DOCX + no client policy (I-PROPOSED-1222-CV-BUCKET-PRIVATE)"
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: "20"
-      - name: Self-test the ORCH-1221 careers cv-bucket-private gate
-        run: node .github/scripts/strict-grep/i-proposed-1221-careers-cv-bucket-private.mjs --self-test
-      - name: Run ORCH-1221 careers cv-bucket-private gate
-        run: node .github/scripts/strict-grep/i-proposed-1221-careers-cv-bucket-private.mjs
+      - name: Self-test the ORCH-1222 careers cv-bucket-private gate
+        run: node .github/scripts/strict-grep/i-proposed-1222-careers-cv-bucket-private.mjs --self-test
+      - name: Run ORCH-1222 careers cv-bucket-private gate
+        run: node .github/scripts/strict-grep/i-proposed-1222-careers-cv-bucket-private.mjs
 
-  orch-1221-careers-host-isolated:
-    name: "META-ORCH-1221: middleware rewrites only the career. host + guards the apex against /_careers (I-PROPOSED-1221-CAREERS-SUBDOMAIN-ISOLATED)"
+  orch-1222-careers-host-isolated:
+    name: "META-ORCH-1222: middleware rewrites only the career. host + guards the apex against /_careers (I-PROPOSED-1222-CAREERS-SUBDOMAIN-ISOLATED)"
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: "20"
-      - name: Self-test the ORCH-1221 careers host-isolated gate
-        run: node .github/scripts/strict-grep/i-proposed-1221-careers-host-isolated.mjs --self-test
-      - name: Run ORCH-1221 careers host-isolated gate
-        run: node .github/scripts/strict-grep/i-proposed-1221-careers-host-isolated.mjs
+      - name: Self-test the ORCH-1222 careers host-isolated gate
+        run: node .github/scripts/strict-grep/i-proposed-1222-careers-host-isolated.mjs --self-test
+      - name: Run ORCH-1222 careers host-isolated gate
+        run: node .github/scripts/strict-grep/i-proposed-1222-careers-host-isolated.mjs
 
-  orch-1221-careers-admin-writes-gated:
-    name: "META-ORCH-1221 (D-1): job_postings admin writes stay is_admin_user()-gated, no broad authenticated RLS write (I-PROPOSED-1221-ADMIN-WRITES-GATED)"
+  orch-1222-careers-admin-writes-gated:
+    name: "META-ORCH-1222 (D-1): job_postings admin writes stay is_admin_user()-gated, no broad authenticated RLS write (I-PROPOSED-1222-ADMIN-WRITES-GATED)"
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: "20"
-      - name: Self-test the ORCH-1221 careers admin-writes-gated gate
-        run: node .github/scripts/strict-grep/i-proposed-1221-careers-admin-writes-gated.mjs --self-test
-      - name: Run ORCH-1221 careers admin-writes-gated gate
-        run: node .github/scripts/strict-grep/i-proposed-1221-careers-admin-writes-gated.mjs
+      - name: Self-test the ORCH-1222 careers admin-writes-gated gate
+        run: node .github/scripts/strict-grep/i-proposed-1222-careers-admin-writes-gated.mjs --self-test
+      - name: Run ORCH-1222 careers admin-writes-gated gate
+        run: node .github/scripts/strict-grep/i-proposed-1222-careers-admin-writes-gated.mjs

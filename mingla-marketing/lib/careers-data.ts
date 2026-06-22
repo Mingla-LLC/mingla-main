@@ -1,10 +1,10 @@
-// META-ORCH-1221 [Careers site] — server-only data layer for the careers pages.
+// META-ORCH-1222 [Careers site] — server-only data layer for the careers pages.
 //
 // The marketing app carries NO @supabase/supabase-js client; it reads PostgREST
 // directly with a raw fetch + the PUBLIC anon key (mirrors lib/explorer-app-
 // submit.ts transport posture). RLS is the real fence: the public anon key can
 // SELECT only status='open' rows of job_postings (policy
-// I-PROPOSED-1221-POSTINGS-PUBLIC-OPEN-ONLY); job_applications is fully denied.
+// I-PROPOSED-1222-POSTINGS-PUBLIC-OPEN-ONLY); job_applications is fully denied.
 // The `status=eq.open` filter below is belt-and-suspenders on top of RLS.
 //
 // Requires NEXT_PUBLIC_SUPABASE_URL (the PostgREST base, e.g.

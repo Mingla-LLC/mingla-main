@@ -1,4 +1,4 @@
-// META-ORCH-1221 [Careers site] — role detail / JD (DESIGN §3). Server component:
+// META-ORCH-1222 [Careers site] — role detail / JD (DESIGN §3). Server component:
 // fetches the OPEN role by slug; renders header, salary, Apply CTAs (top +
 // bottom), markdown JD body, mobile sticky Apply bar. A slug that does not
 // resolve to a status='open' row → DESIGN §3.3 "not open" panel (closed/draft

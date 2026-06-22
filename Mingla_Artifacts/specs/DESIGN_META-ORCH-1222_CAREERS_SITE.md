@@ -1,4 +1,4 @@
-# DESIGN CONTRACT — META-ORCH-1221 Careers Site (`career.usemingla.com`)
+# DESIGN CONTRACT — META-ORCH-1222 Careers Site (`career.usemingla.com`)
 
 > Produced by mingla-designer (2026-06-22). Embed verbatim into the SPEC under Leg 3 → Component layer.
 > Web-only (Next.js 15 app router, Tailwind v4, framer-motion). No mobile/RN surface.
