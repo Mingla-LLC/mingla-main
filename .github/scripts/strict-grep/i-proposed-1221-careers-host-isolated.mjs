@@ -1,0 +1,112 @@
+#!/usr/bin/env node
+/**
+ * META-ORCH-1221 [Careers site] — I-PROPOSED-1221-CAREERS-SUBDOMAIN-ISOLATED.
+ *
+ * WHY: career.usemingla.com is served from the SAME Vercel project as
+ * usemingla.com via a host-based middleware rewrite. The middleware MUST only
+ * rewrite the `career.` host into the internal `_careers` segment AND guard the
+ * apex against `/_careers` (so usemingla.com is provably untouched + the
+ * internal segment is not crawlable from the apex). Removing the host check or
+ * the apex guard would either break isolation or leak careers onto the apex.
+ *
+ * ASSERTS (mingla-marketing/middleware.ts):
+ *   (1) it reads the request host and gates on a `career.` host.
+ *   (2) it references the `_careers` internal prefix (the rewrite target).
+ *   (3) it has an apex guard: a NON-careers host hitting `/_careers` is blocked
+ *       (rewrite away / notFound) rather than served.
+ *
+ * `--self-test` proves FAIL-on-revert (host check removed / apex guard removed).
+ */
+import fs from "node:fs";
+import path from "node:path";
+
+const root = process.cwd();
+const MIDDLEWARE = path.join(root, "mingla-marketing/middleware.ts");
+
+function check(src, failures) {
+  const readsHost = /headers\.get\(\s*['"]host['"]\s*\)/i.test(src) ||
+    /req\.headers\.get\(['"]host['"]\)/i.test(src);
+  const gatesCareerHost = /career\./.test(src);
+  if (!readsHost || !gatesCareerHost) {
+    failures.push(
+      "middleware does not read the host AND gate on a `career.` host (subdomain " +
+        "isolation requires a host check).",
+    );
+  }
+  if (!/_careers/.test(src)) {
+    failures.push("middleware does not reference the `_careers` internal segment.");
+  }
+  // Apex guard: there must be a branch handling a NON-career host that touches
+  // /_careers (a guard rewriting it away / to a not-found). We detect a guard
+  // by the presence of BOTH a `_careers` pathname test and a non-`next()`
+  // response on that branch within the file.
+  const hasApexPathTest = /(pathname[\s\S]{0,40}_careers|startsWith\(\s*[^)]*_careers)/i.test(src);
+  const hasGuardRewrite = /(not[-_]?found|notFound|rewrite)/i.test(src);
+  if (!hasApexPathTest || !hasGuardRewrite) {
+    failures.push(
+      "middleware lacks an apex guard for `/_careers` (a non-career host hitting " +
+        "/_careers must be blocked, not served).",
+    );
+  }
+}
+
+if (process.argv.includes("--self-test")) {
+  const self = [];
+  const good = `
+    const host = req.headers.get('host');
+    if (host && host.startsWith('career.')) {
+      return NextResponse.rewrite(url); // -> /_careers
+    }
+    if (pathname.startsWith('/_careers')) {
+      return NextResponse.rewrite(notFoundUrl); // apex guard -> not-found
+    }
+    return NextResponse.next();
+  `;
+  let f = [];
+  check(good, f);
+  if (f.length) self.push("good middleware wrongly flagged: " + f.join("; "));
+
+  // Remove the host check → MUST fire.
+  const badNoHost = `
+    if (pathname.startsWith('/_careers')) { return NextResponse.rewrite(notFoundUrl); }
+    return NextResponse.next();
+  `;
+  f = [];
+  check(badNoHost, f);
+  if (f.length === 0) self.push("missing career-host check not flagged");
+
+  // Remove the apex guard → MUST fire.
+  const badNoGuard = `
+    const host = req.headers.get('host');
+    if (host && host.startsWith('career.')) { return NextResponse.next(); }
+  `;
+  f = [];
+  check(badNoGuard, f);
+  if (f.length === 0) self.push("missing apex guard not flagged");
+
+  if (self.length) {
+    console.error("ORCH-1221 careers-host-isolated self-test FAIL:");
+    self.forEach((m) => console.error("  - " + m));
+    process.exit(1);
+  }
+  console.log("ORCH-1221 careers-host-isolated self-test PASS (3/3 cases).");
+  process.exit(0);
+}
+
+if (!fs.existsSync(MIDDLEWARE)) {
+  console.error(`ORCH-1221 gate FAIL — middleware.ts not found at ${MIDDLEWARE}.`);
+  process.exit(1);
+}
+const failures = [];
+check(fs.readFileSync(MIDDLEWARE, "utf8"), failures);
+if (failures.length > 0) {
+  console.error(
+    "ORCH-1221 I-PROPOSED-1221-CAREERS-SUBDOMAIN-ISOLATED FAIL:\n  " +
+      failures.join("\n  "),
+  );
+  process.exit(1);
+}
+console.log(
+  "ORCH-1221 I-PROPOSED-1221-CAREERS-SUBDOMAIN-ISOLATED PASS — host-gated rewrite " +
+    "+ apex guard present.",
+);
