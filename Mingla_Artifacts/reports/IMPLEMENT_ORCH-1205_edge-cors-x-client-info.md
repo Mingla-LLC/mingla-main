@@ -28,12 +28,12 @@ response shape, no business logic touched. config.toml (and every `verify_jwt` v
 
 | ID | Criterion | Result | Commit |
 |----|-----------|--------|--------|
-| SC-1 | All 7 browser-called functions include `x-client-info` in their CORS allow-headers | ✓ verified (detector empty; 9/9 test) | `<commit>` |
-| SC-2 | Cron-only `process-booking-deadlines` aligned for consistency | ✓ verified | `<commit>` |
-| SC-3 | Methods, `verify_jwt`, response shape, business logic unchanged | ✓ verified (diff = allow-headers only; config.toml untouched; methods stay `POST, OPTIONS`) | `<commit>` |
-| SC-4 | Regression test asserts each fixed function serves `x-client-info`; fails-on-revert | ✓ 9/9 pass; RED on true-deletion revert | `<commit>` |
+| SC-1 | All 7 browser-called functions include `x-client-info` in their CORS allow-headers | ✓ verified (detector empty; 9/9 test) | `239bc2997` |
+| SC-2 | Cron-only `process-booking-deadlines` aligned for consistency | ✓ verified | `239bc2997` |
+| SC-3 | Methods, `verify_jwt`, response shape, business logic unchanged | ✓ verified (diff = allow-headers only; config.toml untouched; methods stay `POST, OPTIONS`) | `239bc2997` |
+| SC-4 | Regression test asserts each fixed function serves `x-client-info`; fails-on-revert | ✓ 9/9 pass; RED on true-deletion revert | `239bc2997` |
 
-`<commit>` = closing commit hash (recorded in §6 after commit).
+`239bc2997` = closing commit hash (recorded in §6 after commit).
 
 ---
 
@@ -96,7 +96,7 @@ config.toml was NOT modified; the table reflects existing values.
   test **FAILED 8 passed | 1 failed** with
   `AssertionError: list-my-pending-invites must allow x-client-info … via-shared=false, inline-ok=false.`
   Restored the fix → **9 passed | 0 failed**.
-  `fails-on-revert verified at <commit>` (closing commit hash, §below).
+  `fails-on-revert verified at <commit>` (commit `239bc2997`).
 
 Test design: case (1) pins `_shared/cors.ts` (single source of truth) to include `x-client-info` +
 `accept-language`; cases (2..9) assert each fixed function's source either imports the shared cors
