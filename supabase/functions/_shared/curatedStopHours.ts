@@ -257,19 +257,46 @@ export function isStopOpenAtHourAnyTime(stop: any, dayOfWeek: number): boolean {
  * cascade, used by BOTH the solo (generate-curated-experiences) and collab
  * (discover-cards) call sites. Brings the curated cascade to parity with single
  * cards' filterByDateTime (discover-cards:509-707):
- *   - 'today' / 'now' / empty → instant mode with the LIVE clock (NOT the stale
- *     stored datetime_pref). This is the ROOT-CAUSE-v4 fix: a stored instant
- *     that is afternoon in Raleigh but late-night in Brussels no longer empties
- *     the Brussels deck. Mirrors discover-cards:654 `const utcNow = new Date()`.
+ *   - 'today' / 'now' / empty → [ORCH-1212] FROM-NOW-ONWARD mode
+ *     ('instantFromNowOnward') with the LIVE clock (NOT the stale stored
+ *     datetime_pref). The ORCH-1113 ROOT-CAUSE-v4 live-clock fix is preserved:
+ *     a stored instant that is afternoon in Raleigh but late-night in Brussels
+ *     no longer empties the Brussels deck. Mirrors discover-cards:654
+ *     `const utcNow = new Date()`.
  *   - 'this_weekend' / 'weekend' → open-at-ANY-hour on Sat(6) OR Sun(0)
  *     (mirror isOpenAnyTimeOnDay at discover-cards:673-677).
  *   - 'pick_dates' / 'custom' → open-at-ANY-hour on each selected date's weekday
  *     (noon-UTC day derivation, mirror discover-cards:696-700), falling back to
  *     [datetimePref] then [now] when selectedDates is absent.
- *   - unknown → safe default 'instant' with `now` (never trust a stale pref).
+ *   - unknown → safe default [ORCH-1212] 'instantFromNowOnward' with `now`
+ *     (as permissive as 'today'; never trust a stale pref, never the harsh
+ *     exact-arrival 'instant').
+ *
+ * ── ORCH-1212 [today-curated-hours] — the third mode ─────────────────────────
+ * 'instantFromNowOnward' replaces the point-in-time exact-arrival 'instant'
+ * cascade for the user-facing 'today'/'now'/empty/unknown paths. The old
+ * 'instant' mode anchored stop-0 arrival to the live wall-clock minute and
+ * walked forward; at off-hours (proven live 4:15 AM Raleigh) every multi-stop
+ * curated itinerary collapsed → empty deck. FROM-NOW-ONWARD instead probes a
+ * set of candidate START hours from floor(localNowHour) through 23 and qualifies
+ * the itinerary if ANY such start hour yields a forward arrival cascade in which
+ * every non-optional stop is open on the place-local day. This is the multi-stop
+ * generalization of the single-venue 'today' filter isOpenFromHourOnwards
+ * (discover-cards/index.ts:688-694, `for (h = floor(start); h < 24; h++)`):
+ * "open from now through end of today", same duration/travel math + optional-stop
+ * handling as the exact-arrival cascade, just sliding the start hour. It does NOT
+ * loosen to full any-hour-on-day (that stays reserved for weekend/pick_dates) —
+ * the arrival cascade still keeps the plan physically doable, and a pool with
+ * nothing open for the rest of today still empties honestly.
+ *
+ * The bare-`Date` back-compat arg to filterCuratedByStopHours stays mapped to
+ * the strict exact-arrival 'instant' mode — a distinct internal contract from the
+ * 'today' user-facing path (legacy/test callers rely on it; see T-12 / the
+ * adversarial back-compat guard).
  */
 export type CuratedHoursPolicy =
   | { mode: 'instant'; utcNow: Date }
+  | { mode: 'instantFromNowOnward'; utcNow: Date }
   | { mode: 'anyHourOnDays'; days: number[] };
 
 export function resolveCuratedHoursPolicy(opts: {
@@ -283,7 +310,9 @@ export function resolveCuratedHoursPolicy(opts: {
   const dOpt = (opts.dateOption || '').toLowerCase().replace(/-/g, '_').replace(/ /g, '_');
 
   if (dOpt === 'today' || dOpt === 'now' || !opts.dateOption) {
-    return { mode: 'instant', utcNow: now };
+    // [ORCH-1212] FROM-NOW-ONWARD: doable starting at some hour from now through
+    // end of today (live clock, never the stale stored datetime_pref).
+    return { mode: 'instantFromNowOnward', utcNow: now };
   }
 
   if (dOpt === 'this_weekend' || dOpt === 'weekend') {
@@ -308,8 +337,9 @@ export function resolveCuratedHoursPolicy(opts: {
     return { mode: 'anyHourOnDays', days };
   }
 
-  // Unknown dateOption — safe default: live clock, never the stale stored pref.
-  return { mode: 'instant', utcNow: now };
+  // Unknown dateOption — safe default: [ORCH-1212] as permissive as 'today'
+  // (from-now-onward), live clock, never the stale stored pref or harsh exact instant.
+  return { mode: 'instantFromNowOnward', utcNow: now };
 }
 
 /**
@@ -324,13 +354,48 @@ export function resolveCuratedHoursPolicy(opts: {
  * ORCH-1113: accepts a CuratedHoursPolicy. A bare `Date` (legacy callers / tests)
  * is treated as `{ mode: 'instant', utcNow: <date> }` — preserving the existing
  * fails-on-revert contract (T-2-01) and idempotence.
- *   - mode 'instant'   → the unchanged multi-stop arrival cascade from utcNow.
+ *   - mode 'instant'   → the unchanged multi-stop arrival cascade from utcNow
+ *     (point-in-time, exact-arrival). The bare-`Date` back-compat path maps here.
+ *   - mode 'instantFromNowOnward' → [ORCH-1212] the same forward arrival cascade,
+ *     but the card QUALIFIES if it can be completed starting at SOME integer
+ *     start hour s ∈ [floor(localNowHour), 23] with every non-optional stop open
+ *     at its computed arrival on the place-local day. Multi-stop generalization
+ *     of the single-venue isOpenFromHourOnwards (discover-cards:688-694): "open
+ *     from now through end of today". Used by the user-facing 'today'/'now'/empty/
+ *     unknown paths. Same duration/travel math + optional-stop handling as the
+ *     'instant' branch — only the start hour slides. Idempotent.
  *   - mode 'anyHourOnDays' → a non-optional stop passes if it is open at ANY hour
  *     on ANY day in policy.days; no wall-clock arrival cascade (a future-day
  *     plan has no "now" to anchor arrival times to — same rationale
  *     filterByDateTime uses isOpenAnyTimeOnDay, not the hour cascade, for these
- *     modes). Idempotent in both modes.
+ *     modes). Idempotent in all modes.
  */
+
+/**
+ * [ORCH-1212] Run the forward arrival cascade for a curated card on `localDay`
+ * starting stop-0 arrival at `startHour`. Returns true iff every non-optional
+ * stop is open at its computed arrival hour. This is the existing 'instant'
+ * branch's inner loop with the start hour parameterized — same duration/travel
+ * math, same optional-stop handling (optional stops skip the open-check AND the
+ * clock advance, exactly as the instant branch's `if (stop.optional) continue;`).
+ */
+function curatedArrivalCascadeOpen(card: any, startHour: number, localDay: number): boolean {
+  let currentHour = startHour;
+  for (let i = 0; i < card.stops.length; i++) {
+    const stop = card.stops[i];
+    if (stop.optional) continue;
+
+    if (!isStopOpenAtHour(stop, currentHour, localDay)) return false;
+
+    const duration = CURATED_STOP_DURATION[stop.placeType] || 45;
+    const travelToNext = (i < card.stops.length - 1)
+      ? (card.stops[i + 1]?.travelTimeFromPreviousStopMin || 15)
+      : 0;
+    currentHour += (duration + travelToNext) / 60;
+  }
+  return true;
+}
+
 export function filterCuratedByStopHours(
   cards: any[],
   policy: CuratedHoursPolicy | Date,
@@ -351,6 +416,30 @@ export function filterCuratedByStopHours(
         if (!openOnSomeDay) return false;
       }
       return true;
+    });
+  }
+
+  // [ORCH-1212] FROM-NOW-ONWARD: probe start hours from floor(localNowHour)..23.
+  if (resolved.mode === 'instantFromNowOnward') {
+    const utcNow = resolved.utcNow;
+    return cards.filter((card) => {
+      if (card.cardType !== 'curated' || !card.stops?.length) return true;
+
+      // PRESERVE place-local derivation (constitution rule 12 — no UTC drift):
+      // identical to the 'instant' branch below.
+      const offsetMin = card.utcOffsetMinutes ?? (card.lng != null ? Math.round(card.lng / 15) * 60 : 0);
+      const localMs = utcNow.getTime() + offsetMin * 60 * 1000;
+      const localDate = new Date(localMs);
+      const nowHour = localDate.getUTCHours() + localDate.getUTCMinutes() / 60;
+      const localDay = localDate.getUTCDay();
+
+      // QUALIFY if ANY integer start hour s ∈ [floor(nowHour), 23] yields a
+      // forward arrival cascade with zero closed non-optional stops. Mirrors the
+      // single-venue isOpenFromHourOnwards `for (h = floor(start); h < 24; h++)`.
+      for (let s = Math.floor(nowHour); s < 24; s++) {
+        if (curatedArrivalCascadeOpen(card, s, localDay)) return true;
+      }
+      return false;
     });
   }
 

@@ -340,6 +340,19 @@ jobs:
       - name: Run ORCH-1019 canonical-reader gate
         run: node .github/scripts/strict-grep/i-curated-hours-via-canonical-reader.mjs
 
+  orch-1212-curated-today-from-now-onward:
+    name: "ORCH-1212: curated 'today' is from-now-onward (I-CURATED-TODAY-FROM-NOW-ONWARD)"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Self-test the gate
+        run: node .github/scripts/strict-grep/i-curated-today-from-now-onward.mjs --self-test
+      - name: Run ORCH-1212 from-now-onward gate
+        run: node .github/scripts/strict-grep/i-curated-today-from-now-onward.mjs
+
   meta-orch-0991-base-bottom-sheet-sole-consumer:
     name: "META-ORCH-0991: BaseBottomSheet sole gorhom consumer invariant"
     runs-on: ubuntu-latest
