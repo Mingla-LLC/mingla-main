@@ -36,28 +36,40 @@ begin
     return;
   end if;
 
-  -- Drop the ORCH-1216 scalar CHECK (named-or-anon: find it by definition).
-  -- The constraint text contains "interest IN (" when scalar.
+  -- Drop the ORCH-1216 scalar interest CHECK (named-or-anon: find it by
+  -- definition) BEFORE the type change, else `ALTER COLUMN … TYPE text[]` aborts
+  -- with "operator does not exist: text[] = text".
+  --
+  -- IMPORTANT: Postgres normalizes the scalar `interest IN ('places',…)` CHECK to
+  -- `(interest = ANY (ARRAY['places',…]))` in pg_get_constraintdef — so an
+  -- "exclude `= any`" filter wrongly EXCLUDES the very scalar constraint it must
+  -- drop (the P1 deploy-blocker). Instead, identify the scalar CHECK as the one
+  -- that references `interest` but does NOT use the array operators of the NEW
+  -- array CHECK (`<@` containment / `cardinality` / `array_length`). Loop + drop
+  -- ALL such scalar CHECKs (defensive; idempotent — a re-run finds none left).
   declare
     scalar_con text;
   begin
-    select con.conname
-      into scalar_con
-      from pg_constraint con
-      join pg_class rel on rel.oid = con.conrelid
-      join pg_namespace nsp on nsp.oid = rel.relnamespace
-     where nsp.nspname = 'public'
-       and rel.relname = 'explorer_app_leads'
-       and con.contype = 'c'
-       and pg_get_constraintdef(con.oid) ilike '%interest%'
-       and pg_get_constraintdef(con.oid) not ilike '%= any%'   -- scalar form, not array
-     limit 1;
-    if scalar_con is not null then
+    for scalar_con in
+      select con.conname
+        from pg_constraint con
+        join pg_class rel on rel.oid = con.conrelid
+        join pg_namespace nsp on nsp.oid = rel.relnamespace
+       where nsp.nspname = 'public'
+         and rel.relname = 'explorer_app_leads'
+         and con.contype = 'c'
+         and pg_get_constraintdef(con.oid) ilike '%interest%'
+         -- exclude the NEW array CHECK (and any array-shaped CHECK): the scalar
+         -- one uses none of these array operators/functions.
+         and pg_get_constraintdef(con.oid) not ilike '%<@%'
+         and pg_get_constraintdef(con.oid) not ilike '%cardinality%'
+         and pg_get_constraintdef(con.oid) not ilike '%array_length%'
+    loop
       execute format(
         'alter table public.explorer_app_leads drop constraint %I',
         scalar_con
       );
-    end if;
+    end loop;
   end;
 
   -- Convert the column to text[] only if it is not already an array.
@@ -80,7 +92,11 @@ alter table public.explorer_app_leads
 alter table public.explorer_app_leads
   add constraint explorer_app_leads_interest_arr_chk
   check (
-    array_length(interest, 1) >= 1
+    -- cardinality() returns 0 (not NULL) for an empty array '{}', so an empty
+    -- interest array is REJECTED at the DB layer (array_length(.,1) returns NULL
+    -- for '{}' → the CHECK would PASS an empty array — the P2 hole). Defense in
+    -- depth: the edge fn already rejects empty interest.
+    cardinality(interest) >= 1
     and interest <@ array['places','events','trips','experiences','all']::text[]
   );
 

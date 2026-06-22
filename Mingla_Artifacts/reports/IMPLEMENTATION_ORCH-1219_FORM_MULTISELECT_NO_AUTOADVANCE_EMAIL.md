@@ -122,3 +122,103 @@ Working tree is clean after all restores (`git status` empty) and matches commit
 6. **No native / app-mobile / mingla-business changes; no new npm deps in mingla-marketing.** The anon
    key stays client-only; service role stays in the edge fn (the `no-service-key-client` gate still
    scans 86 marketing files clean).
+
+---
+
+## Migration P1/P2 fix (NEEDS-WORK rework — 2026-06-22)
+
+Tester reproduced two defects in `supabase/migrations/20261125000000_orch_1219_explorer_interest_multi_platform_android.sql` against the REAL ORCH-1216 baseline on ephemeral PG15. Both fixed and end-to-end re-proven on PG15.
+
+### P1 (deploy blocker) — scalar interest CHECK survived the drop → ALTER COLUMN aborted
+
+Root cause: the scalar baseline CHECK `interest in ('places',…)` is stored/rendered by Postgres as
+`(interest = ANY (ARRAY['places',…]))`. The old discovery filter used `pg_get_constraintdef(...) not ilike '%= any%'`
+to find the "scalar" constraint — but that filter EXCLUDES the very constraint it must drop, so the
+scalar CHECK survived and `ALTER COLUMN interest TYPE text[] USING …` aborted with
+`operator does not exist: text[] = text`. Confirmed live: the baseline def is exactly
+`CHECK ((interest = ANY (ARRAY['places'::text, 'events'::text, 'trips'::text, 'experiences'::text, 'all'::text])))`.
+
+Fix: identify the scalar CHECK as the one referencing `interest` that does NOT use the NEW array
+CHECK's operators (`<@`, `cardinality`, `array_length`), and drop ALL such CHECKs in a loop before the
+type change. Idempotent (a re-run finds none left) and defensive (drops every scalar interest CHECK,
+named or anon).
+
+```sql
+-- before (broken filter):
+--   and pg_get_constraintdef(con.oid) ilike '%interest%'
+--   and pg_get_constraintdef(con.oid) not ilike '%= any%'   -- WRONGLY excludes the scalar CHECK
+-- after:
+for scalar_con in
+  select con.conname
+    from pg_constraint con
+    join pg_class rel on rel.oid = con.conrelid
+    join pg_namespace nsp on nsp.oid = rel.relnamespace
+   where nsp.nspname = 'public'
+     and rel.relname = 'explorer_app_leads'
+     and con.contype = 'c'
+     and pg_get_constraintdef(con.oid) ilike '%interest%'
+     and pg_get_constraintdef(con.oid) not ilike '%<@%'
+     and pg_get_constraintdef(con.oid) not ilike '%cardinality%'
+     and pg_get_constraintdef(con.oid) not ilike '%array_length%'
+loop
+  execute format('alter table public.explorer_app_leads drop constraint %I', scalar_con);
+end loop;
+```
+
+### P2 (harden) — empty interest array '{}' passed the array CHECK
+
+Root cause: `array_length(interest, 1)` returns NULL for an empty array `{}`, so
+`array_length(interest, 1) >= 1` evaluates to NULL → the CHECK PASSES `{}`. Fixed by switching to
+`cardinality(interest)`, which returns 0 (not NULL) for `{}`, so `cardinality(interest) >= 1` rejects
+an empty array at the DB layer (defense in depth; the edge fn already rejects empty interest).
+
+```sql
+-- before:  array_length(interest, 1) >= 1
+-- after:   cardinality(interest) >= 1
+```
+
+Resulting array CHECK (verified live):
+`CHECK (((cardinality(interest) >= 1) AND (interest <@ ARRAY['places'::text,'events'::text,'trips'::text,'experiences'::text,'all'::text])))`
+
+### Ephemeral-PG15 proof (reproduced the tester's setup)
+
+`docker run postgres:15`, created the Supabase roles (anon/authenticated/service_role), applied
+baseline `20261124000000_orch_1216_explorer_app_leads.sql` FIRST, then the corrected `20261125000000`.
+
+| # | Assertion | Result |
+|---|-----------|--------|
+| (a) | corrected migration applies with NO error | **PASS** |
+| (b) | `interest` is now `text[]` (`information_schema` → `ARRAY` / `_text`) | **PASS** |
+| (c) | `interest := '{}'` is REJECTED (`violates check constraint`) | **PASS** |
+| (d) | `interest := '{places,events}'` SUCCEEDS | **PASS** |
+| (e) | `platform := 'android'` inserts cleanly | **PASS** |
+| (f) | `interest := '{bogus}'` is REJECTED | **PASS** |
+
+Bonus checks: old scalar `explorer_app_leads_interest_check` is GONE; `platform` CHECK now
+`platform = ANY (ARRAY['ios','android','other'])`; `admin_explorer_app_leads_list()` `interest` OUT
+param is `ARRAY` (text[]); re-applying the corrected migration succeeds (idempotent — still `text[]`,
+exactly 1 cardinality CHECK, 0 surviving scalar interest CHECKs).
+
+Raw run output:
+```
+=== (a) APPLY CORRECTED 20261125 ===
+PASS (a): migration applied with NO error
+=== (b) interest is now text[] ===
+ARRAY|_text
+=== (c) interest := '{}' must be REJECTED ===
+PASS (c): empty array REJECTED
+=== (d) interest := '{places,events}' must SUCCEED ===
+PASS (d): {places,events} inserted
+=== (e) platform := 'android' must insert cleanly ===
+PASS (e): platform=android inserted
+=== (f) interest := '{bogus}' must be REJECTED ===
+PASS (f): {bogus} REJECTED
+post constraint defs:
+ explorer_app_leads_interest_arr_chk | CHECK (((cardinality(interest) >= 1) AND (interest <@ ARRAY['places'::text,'events'::text,'trips'::text,'experiences'::text,'all'::text])))
+ explorer_app_leads_platform_chk     | CHECK ((platform = ANY (ARRAY['ios'::text, 'android'::text, 'other'::text])))
+final rows:
+ D | {places,events} | ios
+ E | {all}           | android
+```
+
+NOT deployed, NOT applied to the live DB, NOT merged. Migration-file change only.
