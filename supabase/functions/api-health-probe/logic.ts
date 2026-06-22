@@ -16,13 +16,14 @@ export interface ProbeResult {
 // CORRECTED to CONFIRMED feeds only (verified by curl 2026-06-22):
 //   • DROPPED paystack (status.paystack.com → 404, not Atlassian — Class C, no feed),
 //   • DROPPED posthog (status.posthog.com 301→posthogstatus.com HTML, not status.json),
-//   • DROPPED giphy (has a feed but is Class F / synthetic per the class contract).
+//   • DROPPED giphy (has a feed but is Class F / synthetic per the class contract),
+//   • DROPPED stripe (status.stripe.com/api/v2/status.json → 404, not Atlassian;
+//       Stripe health comes from its Class-C reachability/auth/webhook probe, not a feed).
 // The AUTHORITATIVE source at runtime is api_health_services.depletion_signal.status_feed
 // loaded from the DB; this map is a typed FALLBACK mirror used only when the DB
 // value is absent. The DB value WINS (feeds editable without a redeploy).
 export const STATUS_PAGE_URLS: Record<string, string> = {
   openai: "https://status.openai.com/api/v2/status.json",
-  stripe: "https://status.stripe.com/api/v2/status.json",
   twilio: "https://status.twilio.com/api/v2/status.json",
   cloudinary: "https://status.cloudinary.com/api/v2/status.json",
   mapbox: "https://status.mapbox.com/api/v2/status.json",

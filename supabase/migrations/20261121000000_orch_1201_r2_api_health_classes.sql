@@ -92,7 +92,7 @@ UPDATE public.api_health_services
 UPDATE public.api_health_services
    SET monitoring_class = 'C',
        depletion_signal = jsonb_build_object(
-         'status_feed','https://status.stripe.com/api/v2/status.json',
+         'status_feed', NULL,  -- status.stripe.com/api/v2/status.json is NOT Atlassian (404, verified 2026-06-22); Stripe health = Class-C reachability/auth/webhook probe
          'processor', jsonb_build_object(
            'restriction_fields', jsonb_build_array('charges_enabled','payouts_enabled'),
            'balance_display_only', true))
