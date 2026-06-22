@@ -161,15 +161,22 @@ Deno.test("T-01 (fails-on-revert): 'today' uses the LIVE clock, NOT the stale da
   assertEquals(result.length, 1, 'today must use the live clock; a Brussels-noon-open card is RETAINED despite a stale night-time datetime_pref');
 });
 
-Deno.test("T-02 (ORCH-1113): 'today' STILL drops a closed-now stop (preserve ORCH-1061)", () => {
-  // Live clock 03:00 Brussels-local (Wed 01:00 UTC), restaurant open 11:00–23:00.
+Deno.test("T-02 (ORCH-1212): 'today' (from-now-onward) RETAINS a stop open later today", () => {
+  // [ORCH-1212 BEHAVIOR CHANGE] Live clock 03:00 Brussels-local (Wed 01:00 UTC),
+  // restaurant open 11:00–23:00. Under the OLD exact-arrival 'instant' policy this
+  // card was DROPPED (closed at the 03:00 wall-clock arrival). Under FROM-NOW-ONWARD
+  // ('instantFromNowOnward') the probe s=11 (∈ [floor(3),23]) finds the restaurant
+  // OPEN → the itinerary is doable later today → card RETAINED. This is the
+  // intended ORCH-1212 fix, not a regression: the 4 AM collapse no longer empties a
+  // deck whose venues open later the same day. (Pre-1212 this asserted length 0.)
   const liveNow0300 = new Date(Date.UTC(2026, 5, 3, 1, 0, 0)); // 01:00 UTC → 03:00 Brussels
   const card = brusselsCard([
     { placeType: 'restaurant', openingHours: periods(3, 11, 23), travelTimeFromPreviousStopMin: 0 },
   ]);
   const policy = resolveCuratedHoursPolicy({ dateOption: 'today', datetimePref: STALE_PREF, now: liveNow0300 });
+  assertEquals(policy.mode, 'instantFromNowOnward', "'today' resolves to the from-now-onward policy");
   const result = filterCuratedByStopHours([card], policy);
-  assertEquals(result.length, 0, 'a closed-now stop is still dropped under today (ORCH-1061 preserved)');
+  assertEquals(result.length, 1, 'a stop open later today is RETAINED under today (ORCH-1212 from-now-onward)');
 });
 
 Deno.test("T-03 (ORCH-1113): 'this_weekend' = open-at-any-hour on Sat OR Sun", () => {
@@ -211,14 +218,18 @@ Deno.test("T-05 (ORCH-1113): 'pick_dates' evaluates the selected date's weekday"
   assertEquals(result.length, 1, 'a Sat-only stop is RETAINED for a Saturday pick_date');
 });
 
-Deno.test("T-06 (ORCH-1113): unknown/empty dateOption defaults to live-clock instant (never the stale pref)", () => {
+Deno.test("T-06 (ORCH-1212): unknown/empty dateOption defaults to live-clock from-now-onward (never the stale pref)", () => {
+  // [ORCH-1212] The unknown/empty fallback tightened from the harsh exact-arrival
+  // 'instant' to 'instantFromNowOnward' (as permissive as 'today'). The live-clock
+  // (never stale-pref) requirement from ORCH-1113 is preserved — only the mode name
+  // changed; utcNow still carries the LIVE clock, not the parsed datetime_pref.
   const undefinedPolicy = resolveCuratedHoursPolicy({ dateOption: undefined, datetimePref: STALE_PREF, now: LIVE_NOW_BRUSSELS_NOON });
-  assertEquals(undefinedPolicy.mode, 'instant');
-  assertEquals((undefinedPolicy as { mode: 'instant'; utcNow: Date }).utcNow.getTime(), LIVE_NOW_BRUSSELS_NOON.getTime());
+  assertEquals(undefinedPolicy.mode, 'instantFromNowOnward');
+  assertEquals((undefinedPolicy as { mode: 'instantFromNowOnward'; utcNow: Date }).utcNow.getTime(), LIVE_NOW_BRUSSELS_NOON.getTime());
 
   const garbagePolicy = resolveCuratedHoursPolicy({ dateOption: 'totally-unknown', datetimePref: STALE_PREF, now: LIVE_NOW_BRUSSELS_NOON });
-  assertEquals(garbagePolicy.mode, 'instant', 'unknown dateOption falls back to instant, never the stale pref');
-  assertEquals((garbagePolicy as { mode: 'instant'; utcNow: Date }).utcNow.getTime(), LIVE_NOW_BRUSSELS_NOON.getTime());
+  assertEquals(garbagePolicy.mode, 'instantFromNowOnward', 'unknown dateOption falls back to from-now-onward, never the stale pref');
+  assertEquals((garbagePolicy as { mode: 'instantFromNowOnward'; utcNow: Date }).utcNow.getTime(), LIVE_NOW_BRUSSELS_NOON.getTime());
 });
 
 Deno.test('T-11 (ORCH-1113): filterCuratedByStopHours is idempotent in both modes (collab double-filter no-op)', () => {
@@ -267,4 +278,76 @@ Deno.test('T-11b (ORCH-1113): isStopOpenAtHourAnyTime honors honest-unknown + al
   const satOnly = { placeType: 'restaurant', openingHours: periods(6, 14, 18) };
   assert(isStopOpenAtHourAnyTime(satOnly, 6), 'open on Saturday');
   assert(!isStopOpenAtHourAnyTime(satOnly, 3), 'closed on Wednesday');
+});
+
+// ═════════════════════════════════════════════════════════════════════════════
+// ORCH-1212 [today-curated-hours] — implementor happy-path set (SPEC §5.2).
+//
+// 'today'/'now'/empty/unknown now resolve to the FROM-NOW-ONWARD policy
+// ('instantFromNowOnward'): a curated itinerary QUALIFIES if it can be completed
+// starting at SOME hour s ∈ [floor(localNowHour), 23] with every non-optional stop
+// open at its computed arrival on the place-local day. Multi-stop generalization of
+// the single-venue isOpenFromHourOnwards (discover-cards:688-694). this_weekend /
+// pick_dates remain anyHourOnDays (UNCHANGED); the bare-Date back-compat stays the
+// strict exact-arrival 'instant'.
+// ═════════════════════════════════════════════════════════════════════════════
+
+// utcOffsetMinutes:0 card — local arrival hour == the UTC hour of `now`.
+function utcCard(stops: Record<string, unknown>[]): Record<string, unknown> {
+  return { cardType: 'curated', utcOffsetMinutes: 0, lng: 0, stops };
+}
+
+Deno.test("T-ORCH-1212-01 (fails-on-revert): 'today' at 4 AM RETAINS an itinerary the old instant policy emptied", () => {
+  // Single non-optional restaurant open 09:00–17:00 on the local day (Wed=3).
+  // `now` = 04:00 local (utcOffset 0 → 04:00 UTC). Under FROM-NOW-ONWARD the probe
+  // s=9 (∈ [floor(4),23]=[4,23]) finds the restaurant OPEN → card RETAINED.
+  //
+  // FAILS-ON-REVERT: reverting the 'today' branch of resolveCuratedHoursPolicy to
+  // `{ mode: 'instant', utcNow: now }` (the old point-in-time exact-arrival cascade)
+  // evaluates the only stop at the 04:00 arrival → CLOSED → card DROPPED →
+  // result.length === 0 → BOTH assertions below FAIL. This is the load-bearing
+  // ORCH-1212 fails-on-revert contract (mirrors T-01's prose above).
+  const card = utcCard([
+    { placeType: 'restaurant', openingHours: periods(3, 9, 17), travelTimeFromPreviousStopMin: 0 },
+  ]);
+  const fourAmLocal = new Date(Date.UTC(2026, 5, 3, 4, 0, 0)); // Wed 04:00 local (offset 0)
+  const policy = resolveCuratedHoursPolicy({ dateOption: 'today', now: fourAmLocal });
+  assertEquals(policy.mode, 'instantFromNowOnward', "'today' must resolve to the from-now-onward policy (reverting to 'instant' fails here)");
+  const result = filterCuratedByStopHours([card], policy);
+  assertEquals(result.length, 1, "a 9–17 venue qualifies 'today' at 4 AM via the from-now-onward probe (the old instant policy emptied this)");
+});
+
+Deno.test("T-ORCH-1212-02: 'today' STILL DROPS a card with nothing open for the rest of today", () => {
+  // Same 09:00–17:00 restaurant, but `now` = 18:00 local. The probe set is
+  // s ∈ [floor(18),23] = [18,23]; the restaurant is closed at every one of those
+  // hours → no s works → card DROPPED. Proves we did NOT loosen to full any-hour-on-
+  // day: the from-now bias is preserved, exactly mirroring isOpenFromHourOnwards
+  // dropping a single venue whose hours ended before `now`.
+  const card = utcCard([
+    { placeType: 'restaurant', openingHours: periods(3, 9, 17), travelTimeFromPreviousStopMin: 0 },
+  ]);
+  const sixPmLocal = new Date(Date.UTC(2026, 5, 3, 18, 0, 0)); // Wed 18:00 local
+  const policy = resolveCuratedHoursPolicy({ dateOption: 'today', now: sixPmLocal });
+  assertEquals(policy.mode, 'instantFromNowOnward');
+  const result = filterCuratedByStopHours([card], policy);
+  assertEquals(result.length, 0, "today drops a card whose only stop already closed for the rest of today");
+});
+
+Deno.test("T-ORCH-1212-03: multi-stop from-now-onward SLIDES the start hour to fit both windows", () => {
+  // stop0 restaurant open 12:00–22:00, stop1 bar open 17:00–02:00 (overnight wrap,
+  // close 26). Now = 09:00 local. At s=9 the restaurant is closed (< 12) so s=9..11
+  // fail; the cascade must slide to a start where stop0 is open AND, after stop0's
+  // 60min restaurant dwell + 30min travel, stop1's arrival falls in the bar window.
+  // e.g. s=18: restaurant open at 18:00; bar arrival = 18 + 1.0 (dwell) + 0.5 (travel)
+  // = 19.5 → open (17–26). So a valid s exists → card RETAINED. Confirms the cascade
+  // (not a flat any-hour check) drives qualification.
+  const card = utcCard([
+    { placeType: 'restaurant', openingHours: periods(3, 12, 22), travelTimeFromPreviousStopMin: 0 },
+    { placeType: 'bar', openingHours: periods(3, 17, 26), travelTimeFromPreviousStopMin: 30 },
+  ]);
+  const nineAmLocal = new Date(Date.UTC(2026, 5, 3, 9, 0, 0)); // Wed 09:00 local
+  const policy = resolveCuratedHoursPolicy({ dateOption: 'today', now: nineAmLocal });
+  assertEquals(policy.mode, 'instantFromNowOnward');
+  const result = filterCuratedByStopHours([card], policy);
+  assertEquals(result.length, 1, "multi-stop card qualifies by sliding the start hour so the chained arrivals fall in both stops' windows");
 });
