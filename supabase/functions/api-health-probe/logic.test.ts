@@ -291,6 +291,88 @@ Deno.test("R2 T4 — evaluateBalanceForSignal: twilio 14.53 low @ warn 25; 30 �
   assertEquals(ok.balanceLow, false);
 });
 
+// ── ORCH-1201 regression: REAL vendor/header SHAPES (strings) ──
+// The prior R2 T4 test used the NUMBER form {balance:14.53}, which passed even
+// with the broken `typeof === "number"`-only guard. But Twilio Balance.json
+// returns `balance` as a STRING ("14.53455"), so production marked Twilio
+// HEALTHY at $14.53 despite warn ≤ $25. These tests assert the REAL wire shapes.
+// FAILS-ON-REVERT: restoring `typeof detail.balance === "number" ? detail.balance : null`
+// makes the string cases return severity:null → the warn/crit asserts below fail.
+Deno.test("ORCH-1201 — twilio_balance STRING shape '14.53455' ⇒ low + warn (NOT null)", () => {
+  const r = evaluateBalanceForSignal(
+    "twilio",
+    { balance: "14.53455", currency: "USD" }, // real Twilio Balance.json shape
+    { kind: "twilio_balance", warn: 25, crit: 5 },
+  );
+  assertEquals(r.balanceLow, true);
+  assertEquals(r.severity, "warn"); // above crit 5 ⇒ warn, NOT null
+});
+
+Deno.test("ORCH-1201 — twilio_balance STRING '3.00' ⇒ low + crit", () => {
+  const r = evaluateBalanceForSignal(
+    "twilio",
+    { balance: "3.00", currency: "USD" },
+    { kind: "twilio_balance", warn: 25, crit: 5 },
+  );
+  assertEquals(r.balanceLow, true);
+  assertEquals(r.severity, "crit"); // 3 <= crit 5
+});
+
+Deno.test("ORCH-1201 — twilio_balance STRING '30' ⇒ healthy (above warn)", () => {
+  const r = evaluateBalanceForSignal(
+    "twilio",
+    { balance: "30", currency: "USD" },
+    { kind: "twilio_balance", warn: 25, crit: 5 },
+  );
+  assertEquals(r.balanceLow, false);
+  assertEquals(r.severity, null);
+});
+
+Deno.test("ORCH-1201 — twilio_balance NUMBER form 14.53 still works (no regression)", () => {
+  const r = evaluateBalanceForSignal(
+    "twilio",
+    { balance: 14.53, currency: "USD" },
+    { kind: "twilio_balance", warn: 25, crit: 5 },
+  );
+  assertEquals(r.balanceLow, true);
+  assertEquals(r.severity, "warn");
+});
+
+Deno.test("ORCH-1201 — twilio_balance junk strings ⇒ null, no crash", () => {
+  for (const bad of ["not-a-number", "", "  ", "abc"] as const) {
+    const r = evaluateBalanceForSignal(
+      "twilio",
+      { balance: bad, currency: "USD" },
+      { kind: "twilio_balance", warn: 25, crit: 5 },
+    );
+    assertEquals(r.balanceLow, null, `expected null for balance=${JSON.stringify(bad)}`);
+    assertEquals(r.severity, null);
+  }
+});
+
+// ── ORCH-1201 regression: header-remaining STRING shape (Pexels/Ticketmaster) ──
+// HTTP headers are ALWAYS strings on the wire. A numeric-string remaining count
+// at/below warn MUST still depElete. FAILS-ON-REVERT: a `typeof === "number"`-only
+// header guard returns depleted:false for the string "1200" below.
+Deno.test("ORCH-1201 — pexels header remaining STRING '1200' (<=warn 2500) ⇒ depleted", () => {
+  const sig = CLASS_B_DEPLETION.pexels; // header warn 2500
+  const dep = matchClassBDepletion(sig, [], "1200");
+  assertEquals(dep.depleted, true);
+  assertEquals(dep.lastErrorCode, "header_remaining");
+  // above warn as a string ⇒ not depleted
+  assertEquals(matchClassBDepletion(sig, [], "21855").depleted, false);
+});
+
+Deno.test("ORCH-1201 — ticketmaster header remaining STRING '300' (<=warn 500) ⇒ depleted", () => {
+  const sig = CLASS_B_DEPLETION.ticketmaster; // header warn 500
+  const dep = matchClassBDepletion(sig, [], "300");
+  assertEquals(dep.depleted, true);
+  assertEquals(dep.lastErrorCode, "header_remaining");
+  // junk header string ⇒ not depleted, no crash
+  assertEquals(matchClassBDepletion(sig, [], "not-a-number").depleted, false);
+  assertEquals(matchClassBDepletion(sig, [], "").depleted, false);
+});
+
 Deno.test("STATUS_PAGE_URLS keys are a subset of monitored services (canonical)", () => {
   const seeded = new Set([
     "stripe", "paystack", "gemini", "openai", "mapbox", "google_places",
