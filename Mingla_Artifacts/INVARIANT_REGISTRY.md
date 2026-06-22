@@ -7,6 +7,16 @@
 
 ---
 
+## ACTIVE — ORCH-1205 (edge-function CORS includes x-client-info, 2026-06-22, PR #621)
+
+### I-PROPOSED-1205-EDGE-CORS-X-CLIENT-INFO (ACTIVE)
+- **Rule:** Every `supabase/functions/**/index.ts` that defines `Access-Control-Allow-Headers` MUST include `x-client-info` (supabase-js sends it on every browser request; omitting it makes the CORS preflight fail and the call dies with `net::ERR_FAILED` on web). Prefer importing the shared `_shared/cors.ts` allow-list rather than hardcoding.
+- **Why:** 8 functions hardcoded `"authorization, apikey, content-type"` → team/scanner invites + pending-invites + beta-access broke on web. Found live on Seth's Samsung.
+- **Enforcement:** strict-grep `.github/scripts/strict-grep/orch-1205-edge-cors-x-client-info.mjs` (CI fails if any function's CORS omits x-client-info; self-test 4/4) + `supabase/functions/_shared/__tests__/orch1205InviteCorsXClientInfo.test.ts` (9, source) + `orch1205InviteCorsXClientInfoRuntime.test.ts` (invokes all 8 OPTIONS handlers, asserts returned header), both fails-on-revert.
+- **Established:** ACTIVE 2026-06-22 at ORCH-1205 CLOSE (PR #621 `95f550ead`; 8 functions deployed via CLI; live preflight + device end-to-end POST→200 verified).
+
+---
+
 ## ACTIVE — ORCH-1204 (business-web auth-bootstrap synchronous hydration, 2026-06-22, PR #618)
 
 ### I-PROPOSED-1204-WEB-AUTH-SYNC-HYDRATION (ACTIVE)
