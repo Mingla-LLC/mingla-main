@@ -23,7 +23,7 @@ import {
 } from "../index.ts";
 
 const GOOD_INPUT = {
-  brandType: "restaurant",
+  brandType: ["restaurant"], // ORCH-1220 — brandType is now a non-empty array
   brandName: "The Corner Table",
   contactName: "Ada",
   city: "Lagos",
@@ -38,7 +38,7 @@ Deno.test("validateLead — happy path normalises + accepts", () => {
   if (!result.ok) return;
   // Email is trimmed + lowercased.
   assertEquals(result.lead.email, "owner@thecornertable.com");
-  assertEquals(result.lead.brand_type, "restaurant");
+  assertEquals(result.lead.brand_type, ["restaurant"]);
   assertEquals(result.lead.source, "organiser_marketing_hero");
   assertEquals(result.lead.consent, true);
   assertEquals(result.lead.brand_name, "The Corner Table");
@@ -62,7 +62,7 @@ Deno.test("validateLead — trims surrounding whitespace on text fields", () => 
   assertEquals(result.lead.email, "sam@bar.com");
 });
 
-Deno.test("validateLead — accepts every one of the 7 brand types", () => {
+Deno.test("validateLead — accepts every one of the 7 brand types (each as a 1-element array)", () => {
   for (
     const bt of [
       "restaurant",
@@ -74,9 +74,31 @@ Deno.test("validateLead — accepts every one of the 7 brand types", () => {
       "other",
     ]
   ) {
-    const result = validateLead({ ...GOOD_INPUT, brandType: bt });
-    assert(result.ok, `expected ${bt} to be accepted`);
+    const result = validateLead({ ...GOOD_INPUT, brandType: [bt] });
+    assert(result.ok, `expected [${bt}] to be accepted`);
+    if (result.ok) assertEquals(result.lead.brand_type, [bt]);
   }
+});
+
+Deno.test("validateLead — ORCH-1220 accepts MULTI-value brand_type + de-dupes, preserves order", () => {
+  const result = validateLead({
+    ...GOOD_INPUT,
+    brandType: ["restaurant", "club_nightlife", "restaurant"], // dup restaurant
+  });
+  assert(result.ok, "multi-value brandType must be accepted");
+  if (!result.ok) return;
+  // De-duplicated, order preserved (first occurrence wins).
+  assertEquals(result.lead.brand_type, ["restaurant", "club_nightlife"]);
+});
+
+Deno.test("validateLead — ORCH-1220 trims each brand_type element before allow-set", () => {
+  const result = validateLead({
+    ...GOOD_INPUT,
+    brandType: ["  cafe_bar  ", "venue_space"],
+  });
+  assert(result.ok);
+  if (!result.ok) return;
+  assertEquals(result.lead.brand_type, ["cafe_bar", "venue_space"]);
 });
 
 Deno.test("validateLead — accepts both sources", () => {
@@ -88,7 +110,7 @@ Deno.test("validateLead — accepts both sources", () => {
 
 Deno.test("buildNotifyEmail — renders only captured fields, correct recipient", () => {
   const lead: ValidatedLead = {
-    brand_type: "cafe_bar",
+    brand_type: ["cafe_bar", "club_nightlife"], // ORCH-1220 — multi-value
     brand_name: "Bean & Gone",
     contact_name: "Ada",
     city: "Lagos",
@@ -100,7 +122,11 @@ Deno.test("buildNotifyEmail — renders only captured fields, correct recipient"
   assertEquals(email.to, ["seth@usemingla.com"]);
   assertEquals(email.from, "Mingla Beta <beta@usemingla.com>");
   assert(email.subject.includes("Bean & Gone"));
+  // ORCH-1220 — subject renders BOTH types (comma-joined).
   assert(email.subject.includes("cafe_bar"));
+  assert(email.subject.includes("club_nightlife"));
+  assert(email.html.includes("cafe_bar"));
+  assert(email.html.includes("club_nightlife"));
   // Body renders captured values, no fabrication.
   assert(email.text.includes("ada@beanandgone.com"));
   assert(email.text.includes("Lagos"));
@@ -110,7 +136,7 @@ Deno.test("buildNotifyEmail — renders only captured fields, correct recipient"
 
 Deno.test("buildNotifyEmail — HTML-escapes user-supplied values", () => {
   const lead: ValidatedLead = {
-    brand_type: "other",
+    brand_type: ["other"],
     brand_name: '<script>x</script>',
     contact_name: "A&B",
     city: "X",

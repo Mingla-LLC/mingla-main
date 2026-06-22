@@ -7,7 +7,8 @@
 // tokens are LOCKED to DESIGN_ORCH-1045_GET_BETA_ACCESS.md. Renders on the
 // light/warm marketing theme (panel forces data-theme="light").
 //
-// Step 1: brand-type chips (single-select). Step 2: business/name/city.
+// Step 1: brand-type chips (ORCH-1220 Fix 2 — MULTI-SELECT toggle group; a
+// business can be e.g. Restaurant AND Club). Step 2: business/name/city.
 // Step 3: email + consent → submit. Success/error/idempotent states per §6.
 
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
@@ -57,7 +58,8 @@ export function BetaAccessModal({ open, onClose, source }: BetaAccessModalProps)
   const headingId = useId()
 
   const [step, setStep] = useState<1 | 2 | 3>(1)
-  const [brandType, setBrandType] = useState('')
+  // ORCH-1220 Fix 2 — brand-type is MULTI-select: an array of toggled values.
+  const [brandType, setBrandType] = useState<string[]>([])
   const [brandName, setBrandName] = useState('')
   const [contactName, setContactName] = useState('')
   const [city, setCity] = useState('')
@@ -74,7 +76,7 @@ export function BetaAccessModal({ open, onClose, source }: BetaAccessModalProps)
   useEffect(() => {
     if (!open) return
     setStep(1)
-    setBrandType('')
+    setBrandType([])
     setBrandName('')
     setContactName('')
     setCity('')
@@ -167,7 +169,8 @@ export function BetaAccessModal({ open, onClose, source }: BetaAccessModalProps)
   const trimmedEmail = email.trim().toLowerCase()
   const emailValid = EMAIL_RE.test(trimmedEmail) && trimmedEmail.length <= 254
 
-  const step1Valid = brandType !== ''
+  // ORCH-1220 Fix 2 — at least one brand-type chip toggled on. User presses Next.
+  const step1Valid = brandType.length >= 1
   const step2Valid =
     brandName.trim().length > 0 &&
     contactName.trim().length > 0 &&
@@ -200,11 +203,16 @@ export function BetaAccessModal({ open, onClose, source }: BetaAccessModalProps)
     setStep((s) => (s > 1 ? ((s - 1) as 1 | 2 | 3) : s))
   }, [])
 
-  // ── Chip select (ORCH-1219 Fix B — single-select, NO auto-advance) ──────────
-  // Brand-type stays single-select (one business type → its NOT NULL CHECK
-  // column). The 220ms pointer auto-advance was REMOVED; the user presses Next.
-  const selectChip = useCallback((value: string): void => {
-    setBrandType(value)
+  // ── Chip toggle (ORCH-1220 Fix 2 — MULTI-select, NO auto-advance) ───────────
+  // A business can be more than one type (e.g. Restaurant AND Club). Each chip
+  // toggles its value on/off; the user presses Next. There is NO setStep here
+  // (the 220ms pointer auto-advance was removed in ORCH-1219).
+  const toggleChip = useCallback((value: string): void => {
+    setBrandType((prev) =>
+      prev.includes(value)
+        ? prev.filter((v) => v !== value)
+        : [...prev, value],
+    )
   }, [])
 
   // ── Submit ───────────────────────────────────────────────────────────────────
@@ -380,7 +388,7 @@ export function BetaAccessModal({ open, onClose, source }: BetaAccessModalProps)
                   headingId={headingId}
                   // step 1
                   brandType={brandType}
-                  onSelectChip={selectChip}
+                  onToggleChip={toggleChip}
                   // step 2
                   brandName={brandName}
                   setBrandName={setBrandName}
@@ -481,8 +489,8 @@ interface StepBodyProps {
   step: 1 | 2 | 3
   reduced: boolean
   headingId: string
-  brandType: string
-  onSelectChip: (value: string) => void
+  brandType: string[]
+  onToggleChip: (value: string) => void
   brandName: string
   setBrandName: (v: string) => void
   contactName: string
@@ -512,27 +520,29 @@ function StepBody(props: StepBodyProps) {
           What kind of business are you?
         </h2>
         <p className="mt-2 text-base text-text-secondary">
-          Pick the one that fits best. You can tell us more in a sec.
+          Pick all that fit — you can choose more than one. Tell us more in a sec.
         </p>
+        {/* ORCH-1220 Fix 2 — MULTI-SELECT toggle group (NOT a radiogroup). A
+            business can be e.g. Restaurant AND Club; each chip toggles on/off
+            via aria-pressed; the user presses Next. */}
         <div
-          role="radiogroup"
-          aria-label="What kind of business are you?"
+          role="group"
+          aria-label="What kind of business are you? Choose all that apply."
           className="mt-6 flex flex-wrap gap-3"
         >
           {BRAND_TYPES.map((bt, i) => {
-            const selected = props.brandType === bt.value
+            const selected = props.brandType.includes(bt.value)
             return (
               <button
                 key={bt.value}
                 type="button"
-                role="radio"
-                aria-checked={selected}
+                aria-pressed={selected}
                 data-step-autofocus={i === 0 ? '' : undefined}
-                onClick={() => props.onSelectChip(bt.value)}
+                onClick={() => props.onToggleChip(bt.value)}
                 onKeyDown={(e) => {
                   if (e.key === ' ' || e.key === 'Enter') {
                     e.preventDefault()
-                    props.onSelectChip(bt.value)
+                    props.onToggleChip(bt.value)
                   }
                 }}
                 className={cn(

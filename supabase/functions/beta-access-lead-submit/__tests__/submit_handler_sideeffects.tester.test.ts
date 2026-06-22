@@ -39,7 +39,7 @@ import {
 import { handler } from "../index.ts";
 
 const GOOD = {
-  brandType: "restaurant",
+  brandType: ["restaurant"], // ORCH-1220 — brandType is now a non-empty array
   brandName: "The Corner Table",
   contactName: "Ada",
   city: "Lagos",

@@ -22,7 +22,7 @@ const FROM = "Mingla Beta <beta@usemingla.com>";
 
 function hostileLead() {
   const v = validateLead({
-    brandType: "club_nightlife",
+    brandType: ["club_nightlife"], // ORCH-1220 — brandType is now a non-empty array
     brandName: "<script>alert(1)</script> Bar",
     contactName: "<img src=x onerror=alert(2)>",
     city: "Berlin",

@@ -29,6 +29,13 @@ import {
   submitExplorerAppLead,
   type ExplorerAppSubmitResult,
 } from '@/lib/explorer-app-submit'
+// ORCH-1220 Fix 1 — "All of it" select-all reducer lives in a pure module so it
+// is unit-testable without React. The chip handler delegates to nextInterest.
+import {
+  ALL_VALUE,
+  SPECIFIC_INTERESTS,
+  nextInterest,
+} from '@/lib/explorer-interest'
 
 export interface GetTheAppModalProps {
   open: boolean
@@ -238,15 +245,13 @@ export function GetTheAppModal({ open, onClose, source }: GetTheAppModalProps) {
     setStep((s) => (s > 1 ? ((s - 1) as 1 | 2) : s))
   }, [])
 
-  // ── Chip toggle (ORCH-1219 Fix A — multi-select, NO auto-advance) ────────────
-  // Each chip toggles its value on/off; the user presses Next to advance. There
-  // is NO setStep(2) here (the 220ms pointer auto-advance was removed).
+  // ── Chip toggle (ORCH-1219 Fix A multi-select / ORCH-1220 Fix 1 select-all) ──
+  // Each chip toggles via the pure `nextInterest` reducer: specific pills toggle
+  // individually, and "All of it" is a SELECT-ALL control (sets/clears all 5,
+  // and auto-reflects when every specific pill is on). NO setStep(2) here — the
+  // user presses Next (the 220ms pointer auto-advance was removed in ORCH-1219).
   const toggleChip = useCallback((value: string): void => {
-    setInterest((prev) =>
-      prev.includes(value)
-        ? prev.filter((v) => v !== value)
-        : [...prev, value],
-    )
+    setInterest((prev) => nextInterest(prev, value))
   }, [])
 
   // ── Submit ───────────────────────────────────────────────────────────────────
@@ -546,14 +551,23 @@ function StepBody(props: StepBodyProps) {
           Next.
         </p>
         {/* ORCH-1219 Fix A — MULTI-SELECT toggle group (NOT a radiogroup). Each
-            chip toggles on/off via aria-pressed; the user presses Next. */}
+            chip toggles on/off via aria-pressed; the user presses Next.
+            ORCH-1220 Fix 1 — "All of it" is a SELECT-ALL control (see
+            nextInterest): it sets/clears all 5 and auto-reflects selected when
+            every specific pill is chosen. */}
         <div
           role="group"
           aria-label="What are you most excited for? Choose all that apply."
           className="mt-6 flex flex-wrap gap-3"
         >
           {INTERESTS.map((it, i) => {
-            const selected = props.interest.includes(it.value)
+            // ORCH-1220 Fix 1 — "All of it" reflects as selected when every
+            // specific pill is chosen (the array also carries 'all' then, but
+            // derive it so the chip is robust to either representation).
+            const selected =
+              it.value === ALL_VALUE
+                ? SPECIFIC_INTERESTS.every((v) => props.interest.includes(v))
+                : props.interest.includes(it.value)
             return (
               <button
                 key={it.value}
