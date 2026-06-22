@@ -181,3 +181,121 @@ Physical-iPhone HITL: not applicable (no mobile surface in scope; nothing for Se
 ## 11. Routing
 
 **FAIL → REWORK (mingla-implementor+claude).** Single P0 (file:line cited): rename `mingla-marketing/app/_careers/` → `mingla-marketing/app/careers/` + update `mingla-marketing/middleware.ts` (`CAREERS_PREFIX` `/_careers`→`/careers`, apex-guard prefix, `/_careers-not-found` line) + update `.github/scripts/strict-grep/i-proposed-1222-careers-host-isolated.mjs` `_careers`→`careers`. Re-run `next build` + `next start` host test (must 200) and all gates' self-tests. Then re-dispatch RETEST. The backend/admin/edge/seed/security are all PASS and need no rework.
+
+---
+
+# RETEST 1 — P0 routing rework (commit `9b0ab7245`)
+
+**Tester:** mingla-tester+web · **Date:** 2026-06-22 · **Mode:** RETEST (focused — the P0 + the gate that protects it; the rest PASSED in the original QA and was spot-confirmed un-regressed) · **Worktree:** `~/Desktop/mingla-orchs/1221-[careers-site]` · **Branch:** `1222-careers-site` · **Rework commit:** `9b0ab7245` (parent = prior-QA-FAIL `48a2391c2`).
+
+## R1. Verdict
+
+# PASS
+
+**P0: 0 · P1: 0 · P2: 0 · P3: 0 · P4: 1**
+
+The single release-blocking P0 from the original QA (`app/_careers/` private folder → every careers URL 404s) is **FIXED and runtime-proven**. The route folder is now `app/careers/`, `next build` emits all three careers routes, and a live production server returns **200** on every careers-host URL and **404** on the apex `/careers` guard. All 7 careers gates are green (real-run + self-test) and the P0-detecting `routes-routable` gate **fails-on-revert** by a true on-disk rename. No regression: web-only, no app-mobile/business touched, admin/edge/migrations byte-identical to the prior PASS, beta-form/allpill ORCH-1221 files zero-byte diff. Routes to **CLOSE**.
+
+## R2. P0 fix — independent runtime verification (the primary ask)
+
+**Build (`npx next build`, Next 15.5.15, "Compiled successfully", 12/12 static, Middleware 34.2 kB) — route manifest:**
+
+| Route | Emitted? |
+|---|---|
+| `ƒ /careers` | **YES** |
+| `ƒ /careers/roles/[slug]` | **YES** |
+| `ƒ /careers/roles/[slug]/apply` | **YES** |
+| `/_careers` (any) | **absent (correct)** |
+
+**Live production server (`next start -p 3457`) — HTTP status by host:**
+
+| Host | Path | Expected | Actual |
+|---|---|---|---|
+| `career.usemingla.com` | `/` | 200 | **200** PASS |
+| `career.usemingla.com` | `/roles/multimedia-designer` | 200 | **200** PASS |
+| `career.usemingla.com` | `/roles/multimedia-designer/apply` | 200 | **200** PASS |
+| `career.usemingla.com` | `/_careers` (old private path) | not 200 | **404** PASS |
+| `usemingla.com` (apex) | `/careers` | 404 | **404** PASS (apex guard) |
+| `usemingla.com` (apex) | `/careers/roles/multimedia-designer` | 404 | **404** PASS (apex guard) |
+| `usemingla.com` (apex) | `/` | 200 | **200** PASS (apex untouched) |
+
+Careers-host `/` body renders the careers chrome (`careers-root` class, "Open roles", "find something to do"). Roles render 200 even with a dummy Supabase key (graceful error/empty state per DESIGN §2.4 — Constitution §3 satisfied, no crash). **On disk:** `app/careers/` present, `app/_careers/` absent. No stale `/_careers` references in `mingla-marketing` source.
+
+## R3. All 7 careers gates (real-run + self-test)
+
+| Gate | real-run | --self-test |
+|---|---|---|
+| `routes-routable` (tester adversarial, the P0 detector) | **PASS** | **PASS (5/5)** |
+| `host-isolated` (retargeted `_careers`→`/careers`) | **PASS** | **PASS (3/3)** |
+| `apply-six-fields` | **PASS** | **PASS (3/3)** |
+| `applications-deny-anon` | **PASS** | **PASS (3/3)** |
+| `cv-bucket-private` | **PASS** | **PASS (3/3)** |
+| `admin-writes-gated` | **PASS** | **PASS (4/4)** |
+| `postings-open-only` | **PASS** | **PASS (4/4)** |
+
+All 7 wired as CI jobs in `strict-grep-mingla-business.yml` (`orch-1222-careers-*`), each running `--self-test` then real-run. The new 7th job `orch-1222-careers-routes-routable` confirmed at L3142–3153.
+
+## R4. Step 0.5 — fails-on-revert, independently re-run by true line/folder change
+
+**`routes-routable` (tester adversarial gate, on-disk live-fire):**
+- Checked out fixed tree → `node …routes-routable.mjs` → **exit 0 (PASS)**.
+- `git mv app/careers app/_careers` → real gate run → **exit 1 (FAIL)**: "careers route segment `app/_careers/` is an underscore-prefixed PRIVATE folder … every careers URL 404s" + "middleware does not rewrite the career. host to `/_careers`".
+- Rebuilt with `_careers` → route manifest emitted **ZERO careers routes** (reproduced the exact original P0 failure mode).
+- `git mv app/_careers app/careers` (restore) → real gate run → **exit 0 (PASS)**; `git status` clean (rename round-tripped).
+- `fails-on-revert verified at 9b0ab7245`.
+
+**Implementor happy-path test (`supabase/functions/careers-apply/__tests__/apply_happy.test.ts`):** re-ran with Deno 2.7.14 → **15/15 passed** (six-field validation, per-field naming, CV mime/size, email builders, CORS/405/400 handler paths). Backend behavior unchanged from prior PASS. The `supabaseUrl is required` line is an intentional asserted output (validation clears the 400 gate before reaching the DB; no test creds) — test passes.
+
+## R5. Adversarial test / gate present, append-only, in-diff
+
+- `i-proposed-1222-careers-routes-routable.mjs` — tester-authored (first appeared in prior-QA commit `48a2391c2`), a **different angle** than the implementor's Deno happy-path test and the 6 implementor gates (it inspects the on-disk segment shape + middleware target match for the App-Router private-folder P0). In the closing diff (`git diff origin/main...HEAD`). The rework only WIRED it into CI (correct provenance: tester owns the gate, implementor wires the job). Append-only: no existing test/gate file was modified destructively; `host-isolated` was retargeted (tightened, not weakened — now matches a quoted `/careers` / `CAREERS_PREFIX = '/careers'`).
+- Implementor happy-path Deno test in the closing diff. Both visible in `git diff origin/main...HEAD --name-only`. **Regression gate satisfied.**
+
+## R6. No-regression spot checks
+
+| Check | Result |
+|---|---|
+| middleware matcher excludes `_next`/`.well-known`/static | **PASS** — `matcher: ['/((?!_next/\|.well-known/\|.*\\..*).*)']` (L50) |
+| app-mobile / mingla-business files touched | **NONE** — web-only confirmed (`git diff origin/main...HEAD` has zero `app-mobile/` or `mingla-business/` paths) |
+| admin (`mingla-admin/**`) + edge (`careers-apply`, `careers-cv-signed-url`) + migrations (`...000001`/`...000002`) vs prior-PASS `48a2391c2` | **ZERO diff** — `git diff --quiet 48a2391c2 HEAD -- mingla-admin/ supabase/` returns clean |
+| rework (`9b0ab7245`) touched only routing/gate/report files | **PASS** — middleware + host-isolated gate + workflow + impl report + the renamed careers files (pure R100 renames except `layout.tsx` import line); NO admin/edge/migration in the rework |
+| beta-form/allpill ORCH-1221 files (`beta_access_leads`, `admin_beta_leads_list`, `i-proposed-1221-allpill-selects-all`, migration `…000000`) | **zero-byte diff** — not in this branch's diff; the shipped `i-proposed-1221-allpill-selects-all.mjs` exists untouched on origin/main |
+| new `orch-1221` careers code tokens introduced | **NONE** — only documentation collision-note references in WORLD_MAP + impl report (harmless prose) |
+
+## R7. Constitution (re-check on the rework delta)
+
+The rework is a folder rename + middleware-prefix + gate-retarget + CI-wire — no new business logic. Re-checked the touched surface:
+
+| Rule | Result |
+|---|---|
+| §1 No dead taps | N/A (no new interactive surface in rework) |
+| §2 One owner per truth | **PASS** — `CAREERS_PREFIX` single source for the rewrite prefix |
+| §3 No silent failures | **PASS** — `careers-data.ts` throws on transport error → page error state; apex guard rewrites to a non-existent route → real 404 (verified) |
+| §11 One auth instance | N/A (careers public + service-role edge fn; no client auth in rework) |
+| All others (§4–10, §12–14) | N/A to this rename/routing delta |
+
+No violation introduced.
+
+## R8. Device / parity matrix
+
+| Surface | Status |
+|---|---|
+| Marketing web (`mingla-marketing`, careers subdomain) | **PASS** — build route manifest + live `next start` Host-header runtime (R2) |
+| Admin web (`mingla-admin`) | **N/A to rework** — byte-identical to prior PASS (R6); no re-test needed |
+| Consumer iOS / Android | **SKIP** — careers is a standalone recruiting property, not in the apps (SPEC scope) |
+| Business iOS / Android / Web preview | **SKIP** — same reason; COMMS-0052 OTA freeze does not apply (no native surface) |
+| Physical iPhone (HITL) | **N/A** — no mobile surface |
+
+## R9. Deploy-time CONDITIONS (Seth-owned — NOT blockers, NOT code defects)
+
+1. **`NEXT_PUBLIC_SUPABASE_URL` + `NEXT_PUBLIC_SUPABASE_ANON_KEY`** must be present in the `mingla-marketing` Vercel env for the careers pages to read `job_postings`. Without them the routes still render 200 with a graceful "couldn't load" state (verified — no crash). Add at deploy or the live index/JD shows the error state. (Carried from prior QA P2.)
+2. **Vercel domain** `career.usemingla.com` must be added to the marketing project (and `career.*` preview aliases) for the host-based rewrite to fire in production. The middleware logic is host-gated and proven via a `Host:` header locally.
+3. **Migrations** `20261126000001` / `20261126000002` must be applied (Seth-owned `supabase db push`) before the careers data reads return rows. NOT applied/deployed by this retest (hard guard).
+
+## R10. Discoveries for orchestrator
+
+- **DISC-R1 (P4, doc-only):** WORLD_MAP + the implementation report still contain prose references to the old `app/_careers/**` path inside collision-note/history paragraphs (e.g. "careers touches `mingla-marketing/app/_careers/**`"). Cosmetic — describes the pre-rework state in a history note; no code impact. Optional cleanup at CLOSE.
+
+## R11. Routing
+
+**PASS → CLOSE (mingla-orchestrator).** P0 fixed (runtime 200s + 404 apex guard, build manifest emits all 3 careers routes); 7/7 gates green with fails-on-revert proven by true on-disk rename; no regression (web-only, admin/edge/migrations byte-identical, beta-form/allpill zero-byte diff); regression gate satisfied (tester adversarial gate + implementor happy-path test both in-diff, append-only). Deploy-time items in R9 are Seth-owned CONDITIONS, not blockers. No migration applied, no deploy, no merge performed by this retest.
