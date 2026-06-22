@@ -211,9 +211,21 @@ export default ({ config }: ConfigContext): ExpoConfig => {
           );
         }
         const localValue = fromEnv ?? sandboxFallback;
+        // ORCH-1214: VERCEL_ENV undefined = native EAS build OR local dev. Accept the
+        // mode-appropriate prefix: pk_live_ only when MINGLA_STRIPE_MODE=live (live
+        // production builds); pk_test_ otherwise (local dev / test mode). Branch 4
+        // previously hardcoded pk_test_, which crashed `expo config` on live EAS builds.
+        if (localValue.startsWith("pk_live_")) {
+          if (stripeMode !== "live") {
+            throw new Error(
+              `EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY is a pk_live_ value but MINGLA_STRIPE_MODE=${stripeMode}. Set MINGLA_STRIPE_MODE=live for live production builds.`,
+            );
+          }
+          return localValue;
+        }
         if (!localValue.startsWith("pk_test_")) {
           throw new Error(
-            "EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY must be a pk_test_ value for local development.",
+            "EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY must be a pk_test_ (test/local) or pk_live_ (live) value.",
           );
         }
         return localValue;
