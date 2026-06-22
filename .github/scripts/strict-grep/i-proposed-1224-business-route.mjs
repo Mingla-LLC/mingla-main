@@ -23,7 +23,7 @@ import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { join, extname } from "node:path";
 
 const MARKETING = "mingla-marketing";
-const SCAN_DIRS = ["components", "lib"];
+const SCAN_DIRS = ["components", "lib", "app"];
 const NEXT_CONFIG = join(MARKETING, "next.config.ts");
 
 const root = process.cwd().endsWith("mingla-business")
