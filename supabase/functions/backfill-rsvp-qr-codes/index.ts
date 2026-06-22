@@ -12,11 +12,14 @@
  *      here; we PASS it into the backfill RPC.
  *   2. Call public.backfill_going_rsvp_qr_codes(pepper) — mints the qr via the
  *      SHARED biz_rsvp_mint_qr routine (I-4) and enqueues one rsvp_pass per
- *      newly-minted row with the stable key `rsvp_pass_qr:<id>` (idempotent).
- *   3. Drain: invoke rsvp-notify once per still-pending QR rsvp_pass row (the
- *      `rsvp_pass_qr:` keyspace) — rsvp_notifications has no standalone cron
- *      drainer, so we trigger sends the same per-row way the inline dispatcher
- *      does. Already-sent rows short-circuit inside rsvp-notify.
+ *      newly-minted row. ORCH-1206 (I-3): the enqueue now uses the CANONICAL
+ *      key `rsvp_pass:<rsvpId>:<guestId|primary>` (the same key submit + approve
+ *      use) so no recipient is ever double-sent across the lifecycle. The
+ *      backfill also only touches going+APPROVED rows (never pending).
+ *   3. Drain: invoke rsvp-notify once per still-pending rsvp_pass row —
+ *      rsvp_notifications has no standalone cron drainer, so we trigger sends
+ *      the same per-row way the inline dispatcher does. Already-sent rows
+ *      short-circuit inside rsvp-notify.
  *
  * verify_jwt=false (config.toml) — guarded here by a service-role Bearer match
  * (the cron presents the service-role key). NOT a public route.
@@ -96,9 +99,15 @@ serve(async (req: Request): Promise<Response> => {
     return json(500, { error: "backfill_failed" });
   }
 
-  // 3. Drain: invoke rsvp-notify per still-pending QR rsvp_pass row. The
-  //    `rsvp_pass_qr:` key prefix isolates backfill rows from the inline
-  //    `rsvp_pass:` keyspace. Cap the batch so a single tick stays bounded.
+  // 3. Drain: invoke rsvp-notify per still-pending QR rsvp_pass row.
+  //    ORCH-1206 (I-3) — the backfill now enqueues under the CANONICAL keyspace
+  //    `rsvp_pass:<rsvpId>:<guestId|primary>` (the same key the submit + approve
+  //    paths use), so the old ORCH-1203 backfill-only prefix filter would miss every
+  //    backfilled/approved pass. Drain ALL still-pending rsvp_pass rows instead
+  //    (template_key='rsvp_pass' + status='pending'). The status='pending' guard
+  //    already excludes already-sent rows, and rsvp-notify short-circuits any
+  //    row that flipped to 'sent' between this query and the invoke — so we
+  //    never double-invoke a sent pass. Cap the batch so a tick stays bounded.
   let drained = 0;
   let drainFailed = 0;
   try {
@@ -107,7 +116,6 @@ serve(async (req: Request): Promise<Response> => {
       .select("id")
       .eq("template_key", "rsvp_pass")
       .eq("status", "pending")
-      .like("idempotency_key", "rsvp_pass_qr:%")
       .order("created_at", { ascending: true })
       .limit(200);
 

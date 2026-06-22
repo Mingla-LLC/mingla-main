@@ -161,7 +161,11 @@ Deno.test("edge — backfill-rsvp-qr-codes resolves pepper from env, passes it, 
   hasFn("qrTokenPepper()", "resolves pepper from env (same source as submit)");
   hasFn("p_qr_token_pepper: pepper", "passes the pepper into the RPC");
   hasFn('"backfill_going_rsvp_qr_codes"', "calls the backfill RPC");
-  // [FAILS-ON-REVERT KEY]
-  hasFn('.like("idempotency_key", "rsvp_pass_qr:%")', "drains ONLY backfill QR rows");
+  // ORCH-1206 (I-3) SUPERSEDES the old `rsvp_pass_qr:%` drain filter: the backfill
+  // now enqueues under the SINGLE canonical `rsvp_pass:` keyspace, so the drain
+  // selects ALL still-pending rsvp_pass rows (template_key + status), which the
+  // status='pending' guard keeps from re-invoking already-sent passes.
+  hasFn('.eq("template_key", "rsvp_pass")', "drains rsvp_pass rows (canonical keyspace, ORCH-1206)");
+  hasFn('.eq("status", "pending")', "only pending (never re-invokes sent)");
   hasFn(`authHeader !== \`Bearer \${serviceKey}\``, "service-role Bearer guard");
 });

@@ -405,21 +405,26 @@ Deno.test("ADV/migration — single unique version prefix 20261122000000", async
 // ANGLE 3b — edge fn drain isolation: the drainer filters ONLY the QR keyspace
 // AND only pending rows, so it can never replay/resend an inline pass.
 // ─────────────────────────────────────────────────────────────────────────────
-Deno.test("ADV/I-3 — drainer is isolated to pending QR-pass rows only", async () => {
+Deno.test("ADV/I-3 — drainer is isolated to pending rsvp_pass rows only", async () => {
   const fn = await Deno.readTextFile(BACKFILL_FN);
+  // ORCH-1206 (I-3) SUPERSEDES the old two-keyspace split: submit / approve /
+  // backfill now share the SINGLE canonical `rsvp_pass:` keyspace, so the drain
+  // selects ALL still-pending rsvp_pass rows (template_key + status). The
+  // status='pending' guard + rsvp-notify's own already-sent short-circuit keep
+  // it from re-invoking a delivered pass.
   // [FAILS-ON-REVERT KEY]
   assert(
-    fn.includes('.like("idempotency_key", "rsvp_pass_qr:%")'),
-    "drain query is scoped to the rsvp_pass_qr: keyspace (never inline rsvp_pass:)",
+    fn.includes('.eq("template_key", "rsvp_pass")'),
+    "drain query is scoped to rsvp_pass rows (canonical keyspace, ORCH-1206)",
   );
   assert(
     fn.includes('.eq("status", "pending")'),
     "drain only touches still-pending rows (already-sent rows are skipped)",
   );
-  // The drainer never queries the bare inline keyspace.
+  // The retired `rsvp_pass_qr:` keyspace must no longer be referenced.
   assertEquals(
-    count(fn, '"rsvp_pass:'),
+    count(fn, "rsvp_pass_qr:"),
     0,
-    "the drainer must not match the inline `rsvp_pass:` keyspace",
+    "the retired rsvp_pass_qr: keyspace is gone (one keyspace, I-3)",
   );
 });
