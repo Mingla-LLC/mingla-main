@@ -5,6 +5,7 @@ import { usePathname } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { SurfaceToggle } from '@/components/marketing/surface-toggle'
 import { BetaAccessModal } from '@/components/marketing/beta-access-modal'
+import { GetTheAppModal } from '@/components/marketing/get-the-app-modal'
 import { cn } from '@/lib/cn'
 import { captureMarketing } from '@/components/marketing/posthog-provider'
 
@@ -30,6 +31,9 @@ export function GlassNav() {
 
   // ORCH-1045 — organiser-only "Get Beta Access" CTA opens the 3-step lead modal.
   const [betaOpen, setBetaOpen] = useState(false)
+  // ORCH-1216 — explorer-only "Get the app" CTA opens the 2-step lead modal
+  // (TestFlight hard-gate behind a successful submit).
+  const [appOpen, setAppOpen] = useState(false)
 
   return (
     <>
@@ -85,10 +89,9 @@ export function GlassNav() {
             <SurfaceToggle />
           </div>
 
-          {/* CTA — branches by surface (ORCH-1045).
-              explorer: NG-1 keeps the dead "Get the app" button intentionally —
-              do not wire (operator-locked, out of scope).
-              organiser: "Get Beta Access" opens the 3-step lead modal. */}
+          {/* CTA — branches by surface.
+              organiser: "Get Beta Access" opens the 3-step lead modal (ORCH-1045).
+              explorer: "Get the app" opens the 2-step lead modal (ORCH-1216). */}
           {surface === 'organiser' ? (
             <Button
               variant="glass"
@@ -107,18 +110,20 @@ export function GlassNav() {
               Get Beta Access
             </Button>
           ) : (
-            // NG-1: explorer "Get the app" stays an intentionally dead button
-            // (operator-locked). We only OBSERVE the tap for analytics — no
-            // navigation is wired (META-ORCH-1187).
+            // ORCH-1216 — explorer "Get the app" now opens the lead modal. The
+            // existing META-ORCH-1187 nav-tap analytics is PRESERVED.
             <Button
               variant="glass"
               size="sm"
-              onClick={() =>
+              onClick={() => {
                 captureMarketing('marketing_cta_clicked', {
                   cta_id: 'get_the_app',
                   location: 'nav',
                 })
-              }
+                setAppOpen(true)
+              }}
+              aria-haspopup="dialog"
+              aria-expanded={appOpen}
             >
               Get the app
             </Button>
@@ -126,12 +131,21 @@ export function GlassNav() {
         </div>
       </header>
 
-      {/* organiser-only — explorer never mounts the modal (I-1045-ORGANISER-ONLY-CTA) */}
+      {/* organiser-only — explorer never mounts the organiser modal (I-1045-ORGANISER-ONLY-CTA) */}
       {surface === 'organiser' ? (
         <BetaAccessModal
           open={betaOpen}
           onClose={() => setBetaOpen(false)}
           source="organiser_marketing_nav"
+        />
+      ) : null}
+
+      {/* explorer-only — organiser never mounts the explorer modal (I-PROPOSED-1216-EXPLORER-ONLY-CTA) */}
+      {surface === 'explorer' ? (
+        <GetTheAppModal
+          open={appOpen}
+          onClose={() => setAppOpen(false)}
+          source="explorer_marketing_nav"
         />
       ) : null}
     </>
