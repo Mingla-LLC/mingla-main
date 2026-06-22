@@ -241,8 +241,11 @@ Deno.test("ORCH-1219 Fix D — buildDownloadLinkEmail (iOS) → lead, branded, w
   assertEquals(email.to, ["ada@beanandgone.com"]);
   assertEquals(email.from, "Mingla <notifications@usemingla.com>");
   assertEquals(email.subject, "Your Mingla TestFlight invite");
-  // Branded shell (renderShell) — full doctype email, not a bare div.
-  assert(email.html.includes("<!doctype html>"), "must flow through renderShell");
+  // Branded shell (renderShell) — full branded email, not a bare div. Assert the
+  // shared Mingla logo header (renderShell emits `alt="Mingla"`) rather than the
+  // raw doctype literal, which the ORCH-0785-D email-shell-singleton gate forbids
+  // outside _shared/email/**.
+  assert(email.html.includes('alt="Mingla"'), "must flow through renderShell");
   // The TestFlight link is present in BOTH html + text.
   assert(email.html.includes("https://testflight.apple.com/join/1gvHNqkQ"));
   assert(email.text.includes("https://testflight.apple.com/join/1gvHNqkQ"));
