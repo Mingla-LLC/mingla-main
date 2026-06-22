@@ -49,8 +49,13 @@ const hooksDir = path.resolve(__dirname, "..");
 const SESSION_GATE_EQUIVALENT =
   /enabled\s*=\s*!loading\s*&&\s*session\s*!==\s*null/;
 const READS_IS_AUTH_READY = /\bisAuthReady\b/;
+// ORCH-1202 lock-step sync (see the line-47 contract: this mirrors the gate's
+// detection and drift is caught by the live-gate subprocess test). The gate's
+// regex was broadened to also accept the named-variable fold
+// `const enabledQuery = isAuthReady && ...` (useSupportStaff.ts) — keep this in
+// step so the integrity test reflects the SAME gating predicate the gate uses.
 const ENABLED_USES_IS_AUTH_READY =
-  /const\s+enabled\s*=\s*[^;]*\bisAuthReady\b|enabled:\s*[^,}\n]*\bisAuthReady\b/;
+  /const\s+enabled\w*\s*=\s*[^;]*\bisAuthReady\b|enabled:\s*[^,}\n]*\bisAuthReady\b/;
 const isGated = (src: string): boolean =>
   SESSION_GATE_EQUIVALENT.test(src) ||
   (READS_IS_AUTH_READY.test(src) && ENABLED_USES_IS_AUTH_READY.test(src));

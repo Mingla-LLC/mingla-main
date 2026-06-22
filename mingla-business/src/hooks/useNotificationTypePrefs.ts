@@ -31,6 +31,7 @@ import {
   BUSINESS_NOTIFICATION_TEMPLATES,
   type BusinessNotificationType,
 } from "../constants/businessNotificationTemplates";
+import { useAuth } from "../context/AuthContext";
 
 export type PrefChannel = "push" | "in_app";
 
@@ -75,7 +76,8 @@ interface PrefsState {
 
 export function useNotificationTypePrefs(userId: string | null): PrefsState {
   const queryClient = useQueryClient();
-  const enabled = userId !== null;
+  const { isAuthReady } = useAuth();
+  const enabled = isAuthReady && userId !== null;
 
   const query = useQuery<readonly NotificationPrefRow[]>({
     queryKey: enabled ? notificationPrefKeys.all(userId) : DISABLED_KEY,

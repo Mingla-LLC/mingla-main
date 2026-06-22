@@ -9,6 +9,7 @@ import { useQuery, type UseQueryResult } from "@tanstack/react-query";
 import { listCampaigns } from "../../services/marketing/marketingCampaignService";
 import { marketingKeys } from "./marketingKeys";
 import type { CampaignStatus, MarketingCampaignRow } from "../../types/marketing";
+import { useAuth } from "../../context/AuthContext";
 
 const STALE_TIME_MS = 30 * 1000;
 
@@ -29,8 +30,11 @@ export function useCampaigns(input: {
   account_id: string | null | undefined;
   status?: CampaignStatus;
 }): UseCampaignsState {
+  const { isAuthReady } = useAuth();
   const enabled =
-    typeof input.account_id === "string" && input.account_id.length > 0;
+    isAuthReady &&
+    typeof input.account_id === "string" &&
+    input.account_id.length > 0;
   const query = useQuery<MarketingCampaignRow[]>({
     queryKey: enabled
       ? marketingKeys.campaigns.list(input.account_id as string, input.status)

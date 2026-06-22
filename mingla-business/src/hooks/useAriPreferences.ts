@@ -13,6 +13,9 @@ import {
   upsertProfile,
 } from "../services/agentChatService";
 import { agentQueryKeys } from "./useAgentChat";
+import { useAuth } from "../context/AuthContext";
+
+const DISABLED_KEY = ["ari-preferences-disabled"] as const;
 
 export function useAriPreferences(): {
   profile: AgentUserProfileRow | null;
@@ -22,10 +25,13 @@ export function useAriPreferences(): {
   deleteAll: () => Promise<void>;
 } {
   const qc = useQueryClient();
+  const { isAuthReady } = useAuth();
+  const enabled = isAuthReady;
 
   const profileQuery = useQuery({
-    queryKey: agentQueryKeys.profile(),
+    queryKey: enabled ? agentQueryKeys.profile() : DISABLED_KEY,
     queryFn: fetchProfile,
+    enabled,
     staleTime: 30_000,
   });
 

@@ -13,6 +13,9 @@
 import { useQuery, type UseQueryResult } from "@tanstack/react-query";
 
 import { supabase } from "../services/supabase";
+import { useAuth } from "../context/AuthContext";
+
+const DISABLED_KEY = ["brand-tax-registration-disabled"] as const;
 
 interface RawResponse {
   hasActiveRegistration?: boolean;
@@ -37,9 +40,11 @@ const fetchBrandTaxRegistration = async (
 export const useBrandTaxRegistration = (
   brandId: string | null,
 ): UseQueryResult<BrandTaxRegistrationState> => {
+  const { isAuthReady } = useAuth();
+  const enabled = isAuthReady && brandId !== null;
   return useQuery<BrandTaxRegistrationState>({
-    queryKey: ["brand", brandId, "taxRegistration"],
-    enabled: brandId !== null,
+    queryKey: enabled ? ["brand", brandId, "taxRegistration"] : DISABLED_KEY,
+    enabled,
     queryFn: () => fetchBrandTaxRegistration(brandId as string),
     staleTime: 5 * 60 * 1000, // 5 min — registration state changes rarely.
     retry: 1,

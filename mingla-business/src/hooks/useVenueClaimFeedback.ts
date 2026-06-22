@@ -27,6 +27,9 @@ import {
   resubmitVenueClaim,
   type VenueClaimFeedbackItem,
 } from "../services/venueClaimService";
+import { useAuth } from "../context/AuthContext";
+
+const DISABLED_KEY = ["venue-claim-feedback-disabled"] as const;
 
 interface UseVenueClaimFeedbackArgs {
   brandId: string | null;
@@ -68,11 +71,12 @@ export function useVenueClaimFeedback({
   accountId,
 }: UseVenueClaimFeedbackArgs): UseVenueClaimFeedbackResult {
   const queryClient = useQueryClient();
-  const enabled = brandId !== null && Boolean(followUpAt);
+  const { isAuthReady } = useAuth();
+  const enabled = isAuthReady && brandId !== null && Boolean(followUpAt);
   const feedbackKey = brandId !== null ? brandKeys.feedback(brandId) : null;
 
   const query = useQuery<VenueClaimFeedbackItem[], Error>({
-    queryKey: feedbackKey ?? brandKeys.feedback("__none__"),
+    queryKey: enabled && feedbackKey !== null ? feedbackKey : DISABLED_KEY,
     queryFn: () => fetchVenueClaimFeedback(brandId as string),
     enabled,
     staleTime: 30_000,
@@ -174,10 +178,11 @@ export function useVenueClaimOpenCount(
   brandId: string | null,
   followUpAt: string | null | undefined,
 ): number {
-  const enabled = brandId !== null && Boolean(followUpAt);
+  const { isAuthReady } = useAuth();
+  const enabled = isAuthReady && brandId !== null && Boolean(followUpAt);
   const query = useQuery<VenueClaimFeedbackItem[], Error>({
     queryKey:
-      brandId !== null ? brandKeys.feedback(brandId) : brandKeys.feedback("__none__"),
+      enabled && brandId !== null ? brandKeys.feedback(brandId) : DISABLED_KEY,
     queryFn: () => fetchVenueClaimFeedback(brandId as string),
     enabled,
     staleTime: 30_000,

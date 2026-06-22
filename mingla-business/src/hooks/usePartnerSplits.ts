@@ -14,15 +14,21 @@ import {
   partnerSplitsKeys,
   type PartnerSplitRow,
 } from "../services/partnerSplitsService";
+import { useAuth } from "../context/AuthContext";
+
+const DISABLED_KEY = ["partner-splits-disabled"] as const;
 
 export function usePartnerSplits(params: {
   from?: string;
   to?: string;
   currency?: string;
 } = {}) {
+  const { isAuthReady } = useAuth();
+  const enabled = isAuthReady;
   return useQuery<PartnerSplitRow[], Error>({
-    queryKey: partnerSplitsKeys.list(params),
+    queryKey: enabled ? partnerSplitsKeys.list(params) : DISABLED_KEY,
     queryFn: () => listPartnerSplits(params),
+    enabled,
     staleTime: 60_000,
   });
 }
@@ -30,9 +36,12 @@ export function usePartnerSplits(params: {
 export function usePartnerEarningsSummary(
   params: { from?: string; to?: string } = {},
 ) {
+  const { isAuthReady } = useAuth();
+  const enabled = isAuthReady;
   return useQuery<PartnerEarningsSummary, Error>({
-    queryKey: partnerSplitsKeys.summary(params),
+    queryKey: enabled ? partnerSplitsKeys.summary(params) : DISABLED_KEY,
     queryFn: () => getPartnerEarningsSummary(params),
+    enabled,
     staleTime: 60_000,
   });
 }

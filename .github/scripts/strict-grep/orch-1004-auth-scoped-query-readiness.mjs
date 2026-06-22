@@ -27,15 +27,19 @@
  * security-definer public views, and the anon-readable trip_intake_schemas
  * published-trip policy). Gating them would break buyer-web.
  *
- * This gate is intentionally a CURATED list, not a heuristic AST walk: the set
- * of auth-scoped hooks is small, stable, and security-load-bearing, and a
- * curated list cannot silently miss a hook the way a fragile regex sweep can.
- * When a NEW auth-scoped read hook is added, register it in
- * AUTH_SCOPED_HOOK_FILES (or, if it is genuinely public/dual-use, in
- * PUBLIC_HOOK_ALLOWLIST with a one-line reason). CI then enforces the gate.
+ * The two lists are still curated (the auth-vs-public classification is a
+ * security judgment a regex cannot make), but ORCH-1202 made the gate
+ * FAIL-CLOSED: a completeness check (checkCompleteness, below) walks every
+ * src/hooks query hook and FAILS CI if any is in NEITHER list. This is the
+ * structural cure for the bug that shipped ORCH-1202: the curated list went
+ * stale (~20 auth-scoped hooks added, none registered) and CI stayed green.
+ * When a NEW query hook is added it MUST be registered in AUTH_SCOPED_HOOK_FILES
+ * (then it MUST fold isAuthReady into enabled) or, if genuinely public/dual-use,
+ * in PUBLIC_HOOK_ALLOWLIST with a one-line reason — otherwise CI fails.
  */
 import fs from "node:fs";
 import path from "node:path";
+import os from "node:os";
 
 const root = process.cwd().endsWith("mingla-business")
   ? path.resolve(process.cwd(), "..")
@@ -70,6 +74,48 @@ const AUTH_SCOPED_HOOK_FILES = [
   "marketing/useEventBuyers.ts",
   "marketing/useMarketingOverview.ts",
   "marketing/useUserTemplates.ts",
+  // ── ORCH-1202 DELTA-1 (20) — newly-fixed: folded isAuthReady into enabled.
+  //    These had fired pre-auth on cold web load and cached the RLS-empty 200.
+  "useBrandInvitations.ts",
+  "useScannerInvitations.ts",
+  "useBrandPaystack.ts",
+  "useBrandTaxRegistration.ts",
+  "useBusinessNotifications.ts",
+  "useNotificationTypePrefs.ts",
+  "useMinglaToSAcceptance.ts",
+  "useAriPreferences.ts",
+  "useConversationList.ts",
+  "usePartnerSplits.ts",
+  "usePartnerBrandLinks.ts",
+  "usePartnerStripe.ts",
+  "useTripEditLog.ts",
+  "useTripHasWebPurchases.ts",
+  "useVenueClaimFeedback.ts",
+  "useCancelTripBooking.ts",
+  "marketing/useCampaigns.ts",
+  "marketing/useCampaignReport.ts",
+  "marketing/useTemplate.ts",
+  "marketing/useStarterTemplates.ts",
+  // ── ORCH-1202 DELTA-2 (17) — already correctly gated (isAuthReady or the
+  //    SESSION_GATE_EQUIVALENT pattern), registered now so a future edit that
+  //    silently drops the gate is caught by CI (the per-file checkHook).
+  "useBrandHours.ts",
+  "useBrandPlacePipelineState.ts",
+  "useCreatorAccount.ts",
+  "useExperienceDetail.ts",
+  "useExperienceSoldCount.ts",
+  "useMenus.ts",
+  "useRsvpApprovals.ts",
+  "useSupportQueue.ts",
+  "useSupportStaff.ts",
+  "useSupportTickets.ts",
+  "useVenueAvailability.ts",
+  "useVenueCapacityRules.ts",
+  "useVenueIntelligence.ts",
+  "useVenueReservationSettings.ts",
+  "useVenueReservations.ts",
+  "useVenueTables.ts",
+  "useVenueWaitlist.ts",
 ];
 
 // ── Public / dual-use hooks. These MUST NOT be gated — buyer-web anon reads
@@ -80,6 +126,10 @@ const PUBLIC_HOOK_ALLOWLIST = [
   ["usePublicTripById.ts", "anon-readable published trips by id (buyer-web)"],
   ["useBrand.ts", "brands has a 'Public can read non-deleted brands' anon RLS policy; useBrand single-by-id is the public brand shell"],
   ["useIntakeSchema.ts", "trip_intake_schemas has trip_intake_schemas_anon_select for published trips; the buyer checkout-trip intake pages read it anonymously (dual-use)"],
+  // ── ORCH-1202 — newly-discovered genuinely-public/anon-safe hooks.
+  ["useBrandStripeCountries.ts", "static 34-country list; no auth context, no auth.uid()-scoped read (anon-safe UI helper)"],
+  ["useTripTierAllIn.ts", "fetchTierAllInCents → pg_public_event_tier_allin SECURITY DEFINER public RPC; anon buyer-web trip checkout route (ORCH-1147)"],
+  ["usePublicExperience.ts", "anon-readable published experience via public read path; buyer-web experience page (no useAuth, no sign-in)"],
 ];
 const ALLOWLIST_SET = new Set(PUBLIC_HOOK_ALLOWLIST.map(([f]) => f));
 
@@ -92,8 +142,72 @@ const SESSION_GATE_EQUIVALENT =
 // A gated hook must (a) read isAuthReady out of useAuth(), and (b) reference
 // isAuthReady inside an `enabled` computation.
 const READS_IS_AUTH_READY = /\bisAuthReady\b/;
+// Matches the canonical fold `const enabled = isAuthReady && ...` AND the
+// equivalent named-variable fold `const enabledQuery = isAuthReady && ...`
+// (useSupportStaff.ts), plus the inline `enabled: isAuthReady && ...` shape.
 const ENABLED_USES_IS_AUTH_READY =
-  /const\s+enabled\s*=\s*[^;]*\bisAuthReady\b|enabled:\s*[^,}\n]*\bisAuthReady\b/;
+  /const\s+enabled\w*\s*=\s*[^;]*\bisAuthReady\b|enabled:\s*[^,}\n]*\bisAuthReady\b/;
+
+// ── ORCH-1202 fail-closed COMPLETENESS CHECK ────────────────────────────────
+// The curated AUTH_SCOPED_HOOK_FILES list went stale: ~20 auth-scoped hooks
+// were added after the ORCH-1004 fix and none were registered, so CI stayed
+// green while the bug shipped (ORCH-1202). The structural cure is to invert the
+// model from OPT-IN (authors must remember to register) to FAIL-CLOSED: every
+// query hook MUST be classified into one of the two lists or CI fails.
+//
+// Detection signal: "the file calls useQuery or useInfiniteQuery". This is the
+// reliable signal — many auth-scoped hooks route through service modules and do
+// NOT import the supabase client directly (useTrips, useExperiencesByBrand), so
+// an "imports supabase" signal would MISS them. The `[<(]` after the identifier
+// requires a CALL (not just an import), and the `(?!Client)` negative-lookahead
+// excludes `useQueryClient(` (imperative cache hooks like
+// useEventCoverVideoUpload.ts are NOT query hooks).
+const CALLS_USE_QUERY =
+  /\buseQuery(?!Client)\s*[<(]/;
+const CALLS_USE_INFINITE_QUERY = /\buseInfiniteQuery\s*[<(]/;
+
+/** True if the source is a data-reading query hook that MUST be classified. */
+const isQueryHookSource = (source) =>
+  CALLS_USE_QUERY.test(source) || CALLS_USE_INFINITE_QUERY.test(source);
+
+/** Recursively collect *.ts query-hook files under hooksDir (POSIX relpaths). */
+const collectQueryHookRelpaths = (dir) => {
+  const out = [];
+  const walk = (abs) => {
+    for (const entry of fs.readdirSync(abs, { withFileTypes: true })) {
+      const child = path.join(abs, entry.name);
+      if (entry.isDirectory()) {
+        if (entry.name === "__tests__") continue;
+        walk(child);
+        continue;
+      }
+      if (!entry.name.endsWith(".ts")) continue;
+      if (/\.(test|spec)\.ts$/.test(entry.name)) continue;
+      const source = fs.readFileSync(child, "utf8");
+      if (!isQueryHookSource(source)) continue;
+      out.push(path.relative(dir, child).split(path.sep).join("/"));
+    }
+  };
+  walk(dir);
+  return out;
+};
+
+const checkCompleteness = (authSet, allowSet, failures) => {
+  if (!fs.existsSync(hooksDir)) {
+    failures.push(`ORCH-1202 completeness: hooks dir not found at ${hooksDir}.`);
+    return;
+  }
+  for (const relpath of collectQueryHookRelpaths(hooksDir)) {
+    if (authSet.has(relpath) || allowSet.has(relpath)) continue;
+    failures.push(
+      `ORCH-1202 completeness: unregistered query hook "${relpath}" — it calls ` +
+        `useQuery/useInfiniteQuery but is in neither AUTH_SCOPED_HOOK_FILES nor ` +
+        `PUBLIC_HOOK_ALLOWLIST. Add it to AUTH_SCOPED_HOOK_FILES (if it reads an ` +
+        `auth.uid()-scoped table/RPC/service — then it MUST fold isAuthReady into ` +
+        `enabled) or to PUBLIC_HOOK_ALLOWLIST with a one-line anon-safe reason.`,
+    );
+  }
+};
 
 const checkHook = (relFile, failures) => {
   const abs = path.join(hooksDir, relFile);
@@ -166,6 +280,11 @@ if (process.argv.includes("--self-test")) {
     'const { isAuthReady } = useAuth();\nconst enabled = brandId !== null;\nuseQuery({ enabled });',
     false,
   );
+  probe(
+    "named-variable fold (useSupportStaff: const enabledQuery = isAuthReady && ...)",
+    'const { isAuthReady } = useAuth();\nconst enabledQuery = isAuthReady && userId !== null;\nuseQuery({ enabled: enabledQuery });',
+    true,
+  );
   // Allowlist-detection self-test: a public hook that gates must be FLAGGED.
   const publicGatedFlagged = ENABLED_USES_IS_AUTH_READY.test(
     'const enabled = isAuthReady && brandSlug !== null;',
@@ -173,12 +292,75 @@ if (process.argv.includes("--self-test")) {
   if (!publicGatedFlagged) {
     selfFailures.push("SELF-TEST allowlist: a gated public hook must be detectable as gated");
   }
+
+  // ── ORCH-1202 completeness detection-robustness self-tests. ──────────────
+  const probeQueryHook = (label, source, expectQueryHook) => {
+    const got = isQueryHookSource(source);
+    if (got !== expectQueryHook) {
+      selfFailures.push(
+        `SELF-TEST completeness "${label}": expected isQueryHook=${expectQueryHook}, got ${got}`,
+      );
+    }
+  };
+  // (a) useQuery<T>( classifies as a query hook.
+  probeQueryHook("useQuery<T>( typed call", 'const q = useQuery<Row[]>({ queryKey });', true);
+  // (b) useQuery({ classifies as a query hook.
+  probeQueryHook("useQuery({ object call", 'const q = useQuery({ queryKey, queryFn });', true);
+  // (c) useQueryClient() must NOT classify (imperative cache hook).
+  probeQueryHook(
+    "useQueryClient() imperative-only",
+    'const qc = useQueryClient();\nqc.invalidateQueries({ queryKey });',
+    false,
+  );
+  // (d) useMutation(-only must NOT classify.
+  probeQueryHook(
+    "useMutation-only",
+    'const m = useMutation({ mutationFn: send });',
+    false,
+  );
+  // (e) a re-export / shim must NOT classify.
+  probeQueryHook("re-export shim", 'export { useBrands } from "./useBrands";', false);
+  // (f) useInfiniteQuery( classifies.
+  probeQueryHook("useInfiniteQuery(", 'const q = useInfiniteQuery({ queryKey });', true);
+
+  // ── ORCH-1202 completeness algorithm self-test against a temp fixture set:
+  //    an unregistered query-hook fixture MUST be reported; once allowlisted,
+  //    it MUST be clean. (Proves the fail-closed behavior independent of disk.)
+  {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "orch1202-completeness-"));
+    try {
+      fs.writeFileSync(
+        path.join(tmp, "useFixtureUnregistered.ts"),
+        "const q = useQuery({ queryKey: ['x'] });\n",
+        "utf8",
+      );
+      fs.writeFileSync(
+        path.join(tmp, "useFixtureMutationOnly.ts"),
+        "const m = useMutation({ mutationFn: x });\n",
+        "utf8",
+      );
+      const found = collectQueryHookRelpaths(tmp);
+      if (!found.includes("useFixtureUnregistered.ts")) {
+        selfFailures.push(
+          "SELF-TEST completeness: an unregistered useQuery fixture must be collected as a query hook",
+        );
+      }
+      if (found.includes("useFixtureMutationOnly.ts")) {
+        selfFailures.push(
+          "SELF-TEST completeness: a useMutation-only fixture must NOT be collected as a query hook",
+        );
+      }
+    } finally {
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
+  }
+
   if (selfFailures.length) {
     console.error("ORCH-1004 gate SELF-TEST FAILED:");
     selfFailures.forEach((f) => console.error("  - " + f));
     process.exit(1);
   }
-  console.log("ORCH-1004 gate self-test PASS (6/6 cases).");
+  console.log("ORCH-1004 gate self-test PASS (all cases, incl. ORCH-1202 completeness + named-variable fold).");
   process.exit(0);
 }
 
@@ -204,6 +386,7 @@ const checkNpmWiring = (failures) => {
 };
 
 const failures = [];
+const AUTH_SCOPED_SET = new Set(AUTH_SCOPED_HOOK_FILES);
 AUTH_SCOPED_HOOK_FILES.forEach((f) => checkHook(f, failures));
 PUBLIC_HOOK_ALLOWLIST.forEach(([f, reason]) => checkPublicNotGated(f, reason, failures));
 checkNpmWiring(failures);
@@ -215,6 +398,10 @@ for (const f of AUTH_SCOPED_HOOK_FILES) {
   }
 }
 
+// ORCH-1202 fail-closed completeness check: every on-disk query hook must be
+// classified into exactly one of the two lists, else CI fails.
+checkCompleteness(AUTH_SCOPED_SET, ALLOWLIST_SET, failures);
+
 if (failures.length) {
   console.error("ORCH-1004 auth-scoped query readiness gate FAILED:");
   failures.forEach((failure) => console.error("  - " + failure));
@@ -222,5 +409,6 @@ if (failures.length) {
 }
 console.log(
   `ORCH-1004 gate PASS: all ${AUTH_SCOPED_HOOK_FILES.length} auth-scoped hooks gate enabled on isAuthReady; ` +
-    `${PUBLIC_HOOK_ALLOWLIST.length} public/dual-use hooks left ungated (buyer-web protected).`,
+    `${PUBLIC_HOOK_ALLOWLIST.length} public/dual-use hooks left ungated (buyer-web protected). ` +
+    `ORCH-1202 completeness: every src/hooks query hook is classified.`,
 );
