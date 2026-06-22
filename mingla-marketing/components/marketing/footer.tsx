@@ -12,22 +12,8 @@ interface FooterColumn {
 
 const explorerColumns: FooterColumn[] = [
   {
-    title: 'Product',
-    links: [
-      { href: '/how-it-works', label: 'How it works' },
-      { href: '/download', label: 'Download' },
-    ],
-  },
-  {
-    title: 'Cities',
-    links: [{ href: '/cities', label: 'All cities' }],
-  },
-  {
     title: 'Company',
-    links: [
-      { href: '/about', label: 'About' },
-      { href: '/support', label: 'Support' },
-    ],
+    links: [{ href: '/support', label: 'Support' }],
   },
   {
     title: 'Legal',
@@ -39,24 +25,6 @@ const explorerColumns: FooterColumn[] = [
 ]
 
 const organiserColumns: FooterColumn[] = [
-  {
-    title: 'Product',
-    links: [
-      { href: '/organisers/features', label: 'Features' },
-      { href: '/organisers/pricing', label: 'Pricing' },
-    ],
-  },
-  {
-    title: 'Resources',
-    links: [
-      { href: '/organisers/case-studies', label: 'Case studies' },
-      { href: '/organisers/help', label: 'Help' },
-    ],
-  },
-  {
-    title: 'Get started',
-    links: [{ href: '/organisers/get-started', label: 'List your venue' }],
-  },
   {
     title: 'Legal',
     links: [
@@ -76,8 +44,8 @@ export function Footer({ surface }: FooterProps) {
   return (
     <footer className="border-t border-divider bg-vellum px-6 py-16 md:px-10 md:py-24">
       <div className="mx-auto max-w-6xl">
-        <div className="grid gap-10 md:grid-cols-[1.4fr_repeat(4,1fr)]">
-          <div className="flex flex-col gap-3">
+        <div className="flex flex-col gap-12 md:flex-row md:items-start md:justify-between md:gap-16">
+          <div className="flex max-w-md flex-col gap-3">
             <span className="font-display text-2xl font-semibold tracking-[-0.02em] text-text-primary">
               Mingla{surface === 'organiser' ? ' Business' : ''}
             </span>
@@ -86,25 +54,27 @@ export function Footer({ surface }: FooterProps) {
             </p>
           </div>
 
-          {cols.map((col) => (
-            <div key={col.title} className="flex flex-col gap-3">
-              <span className="text-xs font-semibold uppercase tracking-[0.18em] text-text-muted">
-                {col.title}
-              </span>
-              <ul className="flex flex-col gap-2">
-                {col.links.map((l) => (
-                  <li key={l.href}>
-                    <Link
-                      href={l.href}
-                      className="rounded-sm text-sm text-text-secondary transition-colors hover:text-text-primary focus-ring"
-                    >
-                      {l.label}
-                    </Link>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          ))}
+          <div className="flex flex-wrap gap-x-16 gap-y-10 md:justify-end">
+            {cols.map((col) => (
+              <div key={col.title} className="flex min-w-[7rem] flex-col gap-3">
+                <span className="text-xs font-semibold uppercase tracking-[0.18em] text-text-muted">
+                  {col.title}
+                </span>
+                <ul className="flex flex-col gap-2">
+                  {col.links.map((l) => (
+                    <li key={l.href}>
+                      <Link
+                        href={l.href}
+                        className="rounded-sm text-sm text-text-secondary transition-colors hover:text-text-primary focus-ring"
+                      >
+                        {l.label}
+                      </Link>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ))}
+          </div>
         </div>
 
         <div className="mt-14 flex flex-col items-start justify-between gap-4 border-t border-divider-strong pt-8 md:flex-row md:items-center">
