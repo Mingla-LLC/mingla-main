@@ -1340,3 +1340,7 @@ Extensive investigation, spec, implementation, and test work was completed acros
 
 
 > **2026-06-10 — ORCH-1081 [Partner workflow polish] CLOSED PASS.** PR #376 (45ef0aa16) + 5 hotfixes on origin/main. 3 pre-existing bugs caught E2E + regression tests with fails-on-revert. Worktree reaped. Full close banner in WORLD_MAP + MASTER_BUG_LIST.
+
+> **2026-06-22 — ORCH-1217 [Ari vendor-copy scrub] CLOSED PASS.** Conductor-mode dispatches: implementor (copy edits + CI gate, commit `43933e5b7`) → orchestrator REVIEW (gate self-test + fails-on-revert re-run) → tester (4 adversarial gate cases, commit `fec96faf1`, PASS 0 P0/P1). PR #639 squash-merged `3ec2f4770`. Invariant I-PROPOSED-1217 ACTIVE. Worktree reaped. Reports: `reports/IMPLEMENT_ORCH-1217.md`, `reports/TEST_ORCH-1217.md`.
+
+> **2026-06-22 — ORCH-1218 [venue-authoring vendor-error scrub] CLOSED PASS.** Conductor-mode dispatches: forensics INVESTIGATE+SPEC (commit `2cde15288`; 1 live leak + 4 defensive catches mapped) → orchestrator SPEC REVIEW → implementor (`sanitizeAuthoringError.ts` + 5 wired catches + CI gate, commit `6ec2cc8ad`) → orchestrator IMPLEMENT REVIEW (3-rule fails-on-revert re-run) → tester (4 adversarial gate cases, commit `860cf9672`, PASS 0 P0/P1). PR #641 squash-merged `64fc20b3f`. Invariant I-PROPOSED-1218 ACTIVE. Worktree reaped. Artifacts: `specs/SPEC_ORCH-1218_venue-authoring-vendor-error-scrub.md`, `investigations/INVESTIGATE_ORCH-1218_venue-authoring-vendor-leak.md`, `Mingla_Artifacts/reports/{IMPLEMENT,TEST}_ORCH-1218.md`.
