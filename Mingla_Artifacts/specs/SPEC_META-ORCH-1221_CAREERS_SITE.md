@@ -515,3 +515,35 @@ Reuse the existing `orch-1205-edge-cors-x-client-info.mjs` (already CI-wired) as
 - Any existing admin page/service/RPC; existing `is_admin_user()` definition (reuse, do not redefine).
 
 The implementor must stop-and-amend (request a SPEC amendment) before touching anything outside the allowlist.
+
+---
+
+## ADDENDUM — Seth decisions (2026-06-22, orchestrator-authorized)
+
+These three decisions OVERRIDE the body where they conflict. They are binding.
+
+### D-1 — Admin role management: FULL CRUD in v1 (REVERSES §3 line 48 "no edit/create of job_postings from admin")
+
+Admin v1 now manages BOTH applications AND postings. Add to **Leg 4 (admin)** and **Leg 2 (backend)**:
+
+- **Backend writes (Migration A or a sibling migration):** add admin write access to `job_postings`. Implement as **SECURITY DEFINER RPCs gated by the SAME `is_admin_user()` check** used elsewhere (do NOT open a broad RLS write policy to authenticated users — keep the table write-locked and route admin writes through gated RPCs, mirroring the read RPC pattern already in the spec §4.A):
+  - `admin_careers_upsert_posting(...)` — insert OR update a posting by `id` (null id = insert). Accepts every editable column: `title, slug, department, location, employment_type, salary_min, salary_max, currency, salary_period, salary_display, summary, body, status, sort_order`. Raises `forbidden` if not `is_admin_user()`. Enforces `slug` uniqueness (surface a clean error on conflict). On insert, default `status='draft'` unless provided.
+  - `admin_careers_list_postings()` — returns ALL postings (every status, not just `open`) for the admin list, `is_admin_user()`-gated. (The public path still only reads `status='open'` via the existing public RLS select — unchanged.)
+  - Optionally `admin_careers_set_posting_status(id, status)` if simpler than a full upsert for the close/open/draft toggle — implementor's call; either satisfies the requirement.
+- **Admin UI (`mingla-admin`):** the new Careers area has TWO tabs/sections (mirror the existing admin list+detail conventions the spec already cites):
+  1. **Applications** — exactly as specified in the spec body (list filter by role + status, detail with signed CV download + portfolio + status update).
+  2. **Roles** — list ALL postings with status badges + a "New role" button. Create/edit form with every editable field above, including a plain **markdown textarea** for `body` (no rich editor needed in v1; the public JD page already renders markdown per the spec). Status control = draft | open | closed. `sort_order` numeric input. Slug field with a "generate from title" helper; validate uniqueness on save (surface the RPC conflict error). Closing a role sets `status='closed'` (public page then 404s it per the design's not-found state) — postings are never hard-deleted in v1.
+- **Seed still happens** (Migration B seeds the two roles from the JD YAML) so the site is populated on day one; admin CRUD is for ongoing management + new roles.
+- **Regression guard delta:** keep the 5 planned gates AND add/extend one so the admin posting-write RPCs stay `is_admin_user()`-gated (assert no un-gated `job_postings` write path / no broad authenticated RLS write policy). Same fails-on-revert proof requirement.
+
+### D-2 — CTA color: use `--coral-600` (#E85D1F) as the solid-button base everywhere (was `--coral-500`)
+
+All solid coral CTA buttons (Apply, Submit application, ghost-button borders may stay coral-500) use `--coral-600` as the resting base for a clean WCAG-AA pass; hover goes one step deeper (define `--coral-700 ≈ #D2520F` or reuse a darken). Update the DESIGN contract references accordingly — buttons resting = coral-600, not coral-500. Non-button coral accents (chips, links, dot, arrow) are unchanged.
+
+### D-3 — Card grid: 2-per-row on desktop (confirms the design default)
+
+The role-card grid stays `repeat(2, 1fr)` on desktop/tablet, `1fr` mobile, exactly as the DESIGN contract §2.2 specifies. No change — decision confirmed, not altered.
+
+### Deploy-time items Seth owns (NOT build blockers — surfaced for CLOSE/deploy)
+- Add `career.usemingla.com` to the existing `mingla-marketing` Vercel project; create the prescribed DNS record (CNAME `career` → `cname.vercel-dns.com`).
+- Add `NEXT_PUBLIC_SUPABASE_URL=https://gqnoajqerqhnvulmnyvv.supabase.co` to the marketing Vercel env (production + preview) so the careers pages can read `job_postings`.
