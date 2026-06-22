@@ -61,7 +61,7 @@ None.
 - Deleting the `touchAction:"none"` style line -> jest touch-action test FAILS AND real Chromium measures `touch-action = auto` (the exact ORCH-1208 device bug) -> Playwright test FAILS.
 - Deleting the upward-threshold close logic (`-dragged > panelHeight * RATIO || velocity < -VELOCITY`) -> jest threshold test FAILS.
 - Restored -> jest 8/8 + Playwright 4/4 green.
-- `fails-on-revert verified at <COMMIT_HASH>`.
+- `fails-on-revert verified at c635c7952e1ecf1fba051706caae6491d14a29d6`.
 
 ## 7. Old -> New receipt — `TopSheet.tsx`
 
