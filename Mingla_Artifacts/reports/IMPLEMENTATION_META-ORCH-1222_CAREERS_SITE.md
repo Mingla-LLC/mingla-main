@@ -230,3 +230,41 @@ All three required careers routes are now compiled.
 - Backend / admin / edge / seed / migrations: NOT touched (all PASS).
 
 **Rework status: implemented and VERIFIED (build route list + live-fire Host-header 200s/404 + 7-gate self-test + fails-on-revert).** Routes back to orchestrator for RETEST dispatch.
+
+---
+
+## CI REWORK — PR #650 two RED checks fixed at root (2026-06-22)
+
+Two CI checks were RED on PR #650; both root-caused and fixed web-only (no migration apply, no deploy, no merge).
+
+### FIX 1 — "Migrations apply cleanly from baseline" (was FAIL → now PASS)
+
+**File:** `supabase/migrations/20261126000001_orch_1222_careers_postings_applications.sql` (§9, lines ~323-380).
+
+**What it did before:** a raw `insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types) … on conflict (id) do nothing;`. The CI baseline `storage.buckets` is MINIMAL (older Supabase test image pre-dates the `public`/`file_size_limit`/`allowed_mime_types` columns) → `ERROR: column "public" of relation "buckets" does not exist`, aborting the whole migration.
+
+**What it does now:** a column-existence-guarded `DO $$ … $$` block mirroring `20260531000000_orch_0807_brand_avatars_storage.sql` exactly — declares `has_public`/`has_file_size_limit`/`has_allowed_mime_types` from `information_schema.columns`; IF all three → full insert (`public=false`, 5 MB, PDF/DOC/DOCX allowlist) with `ON CONFLICT (id) DO UPDATE SET public/file_size_limit/allowed_mime_types = EXCLUDED.*`; ELSIF `has_public` → `(id,name,public=false)` ON CONFLICT DO UPDATE SET public; ELSE → `(id,name)` ON CONFLICT DO UPDATE SET name. The service-role-only comment (no storage.objects client policies) is preserved.
+
+**Why:** the bucket is PRIVATE (`public=false`); guard makes the migration apply on the lean CI baseline AND on production, landing the private bucket + limits where the columns exist.
+
+**Verification (ephemeral Docker Postgres 15):**
+- Minimal baseline (`storage.buckets` = id,name only) + FULL migration → applies with **exit 0**, `career-cvs` row exists (ELSE branch fired, no `public` column error).
+- Full baseline (`storage.buckets` with public/file_size_limit/allowed_mime_types) + FULL migration → **exit 0**; bucket lands `public=f`, `file_size_limit=5242880`, `allowed_mime_types={application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document}`.
+- Fails-on-revert: the OLD raw insert against the minimal baseline reproduces the exact CI error `ERROR: column "public" of relation "buckets" does not exist`.
+
+### FIX 2 — "ORCH-0785-A: Resend POST must declare attachments or opt out" (was FAIL → now PASS)
+
+**Gate located:** `.github/scripts/strict-grep/orch-0785-resend-attachment-aware.mjs`. It flags every `fetch("https://api.resend.com/emails"` POST in `supabase/functions/**` that lacks an `attachments:` field in the next 40 lines AND lacks a `// no-attachment: <reason>` comment in the 6 lines immediately above the fetch call.
+
+**File:** `supabase/functions/careers-apply/index.ts` — ONE shared `sendEmail` helper (single fetch call, line ~341) serves BOTH Resend sends (applicant confirmation, line ~484, and the seth@usemingla.com notification, line ~495).
+
+**What it did now:** added a `// no-attachment:` opt-out comment directly above the fetch call, mirroring explorer-app-lead-submit's wording and ending `(ORCH-0785-A opt-out)`. The careers emails carry NO attachment (the CV lives in admin, not attached) — no fabricated `attachments` field.
+
+**Verification:** ran the gate locally → `ORCH-0785-A Resend attachment-aware gate passed.` (exit 0). (Gate has no `--self-test` flag; it is a direct repo walk.)
+
+### After both fixes
+- 7/7 careers gates `--self-test` PASS; 7/7 real-run PASS (unchanged — the cv-bucket-private gate still confirms private/5MB/PDF-DOC-DOCX/no-client-policy on the new DO-block form).
+- Zero new `1221` tokens; ALLPILL / beta-form 1221 files untouched.
+- Files changed: `supabase/migrations/20261126000001_orch_1222_careers_postings_applications.sql`, `supabase/functions/careers-apply/index.ts`.
+
+**CI rework status: implemented and VERIFIED (ephemeral-PG dual-baseline apply + 0785-A gate pass + fails-on-revert).**

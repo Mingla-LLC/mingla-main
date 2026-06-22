@@ -321,14 +321,59 @@ revoke all on function public.admin_careers_set_posting_status(uuid, text) from 
 grant execute on function public.admin_careers_set_posting_status(uuid, text) to authenticated;
 
 -- ─── 9. Private career-cvs storage bucket (mirrors ticket-pdfs ORCH-0842) ────
-insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
-values (
-  'career-cvs', 'career-cvs', false,
-  5242880,                                                 -- 5 MB
-  array['application/pdf','application/msword',
-        'application/vnd.openxmlformats-officedocument.wordprocessingml.document']  -- PDF, DOC, DOCX
-)
-on conflict (id) do nothing;
+--    Use a column-detection fallback so the migration applies cleanly on
+--    older `storage.buckets` schemas in CI (the Supabase Postgres test
+--    baseline pre-dates the `public` / `file_size_limit` / `allowed_mime_types`
+--    columns; production has them). Mirrors the ORCH-0807 brand_avatars
+--    bucket precedent exactly, but PRIVATE (public = false) and with a
+--    document MIME allowlist (PDF, DOC, DOCX) at a 5 MB cap.
+DO $$
+DECLARE
+  has_public boolean;
+  has_file_size_limit boolean;
+  has_allowed_mime_types boolean;
+BEGIN
+  SELECT EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = 'storage' AND table_name = 'buckets' AND column_name = 'public'
+  ) INTO has_public;
+
+  SELECT EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = 'storage' AND table_name = 'buckets' AND column_name = 'file_size_limit'
+  ) INTO has_file_size_limit;
+
+  SELECT EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = 'storage' AND table_name = 'buckets' AND column_name = 'allowed_mime_types'
+  ) INTO has_allowed_mime_types;
+
+  IF has_public AND has_file_size_limit AND has_allowed_mime_types THEN
+    INSERT INTO storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+    VALUES (
+      'career-cvs',
+      'career-cvs',
+      false,
+      5242880, -- 5 MB
+      ARRAY['application/pdf','application/msword',
+            'application/vnd.openxmlformats-officedocument.wordprocessingml.document'] -- PDF, DOC, DOCX
+    )
+    ON CONFLICT (id) DO UPDATE
+      SET public = EXCLUDED.public,
+          file_size_limit = EXCLUDED.file_size_limit,
+          allowed_mime_types = EXCLUDED.allowed_mime_types;
+  ELSIF has_public THEN
+    INSERT INTO storage.buckets (id, name, public)
+    VALUES ('career-cvs', 'career-cvs', false)
+    ON CONFLICT (id) DO UPDATE
+      SET public = EXCLUDED.public;
+  ELSE
+    INSERT INTO storage.buckets (id, name)
+    VALUES ('career-cvs', 'career-cvs')
+    ON CONFLICT (id) DO UPDATE
+      SET name = EXCLUDED.name;
+  END IF;
+END $$;
 -- NO storage.objects client-role policies for career-cvs: writes via service
 -- role (careers-apply edge fn); reads via service-role-issued signed download
 -- URLs (careers-cv-signed-url admin edge fn). Service role bypasses RLS →

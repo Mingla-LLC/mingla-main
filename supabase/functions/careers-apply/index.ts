@@ -338,6 +338,10 @@ async function sendEmail(
   payload: ReturnType<typeof buildNotifyEmail>,
 ): Promise<{ ok: boolean; error?: string }> {
   try {
+    // no-attachment: both careers emails (the applicant confirmation AND the
+    // seth@usemingla.com new-application notification) are plain text/HTML
+    // messages. The CV lives in the Mingla admin (Careers → Applications),
+    // NOT attached to the email — there is nothing to attach (ORCH-0785-A opt-out).
     const response = await fetch("https://api.resend.com/emails", {
       method: "POST",
       headers: {
