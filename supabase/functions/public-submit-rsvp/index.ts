@@ -20,6 +20,9 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 // ORCH-1163 [rsvp-shared-body] — REUSE the existing pepper helper (the same one
 // the Stripe/Paystack webhook routers use); do NOT inline a new env read.
 import { qrTokenPepper } from "../_shared/ticketCheckout.ts";
+// ORCH-1203 GAP-C1 — surface a missing-pepper misconfig immediately. REUSE the
+// shared ops-alert helper (the same one ORCH-0956 disputes + ORCH-1201 health use).
+import { sendOpsAlertEmail } from "../_shared/stripeOpsAlertEmail.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -222,6 +225,12 @@ serve(async (req: Request): Promise<Response> => {
   // ORCH-1163 — source the QR pepper via the shared helper. A misconfigured env
   // must NOT break the RSVP write: on throw, log + proceed with a null pepper
   // (the RPC then writes the row but mints no signed pass).
+  // ORCH-1203 GAP-C1 — a missing pepper is fail-OPEN by design here (I-1: the
+  // RSVP must still be written), but it is a misconfiguration that silently
+  // suppresses every going-RSVP entry pass until the every-15-min backfill cron
+  // re-mints + delivers them. Upgrade the silent console log to an ops alert so
+  // the misconfig is caught immediately. The alert is wrapped so it can NEVER
+  // throw into the RSVP path.
   let qrPepper: string | null = null;
   try {
     qrPepper = qrTokenPepper();
@@ -231,6 +240,35 @@ serve(async (req: Request): Promise<Response> => {
       String(err),
     );
     qrPepper = null;
+    // I-1: alerting must NOT block the RSVP write. Swallow any failure.
+    try {
+      const alertEmails = (
+        Deno.env.get("RSVP_QR_ALERT_EMAILS") ?? "seth@usemingla.com"
+      )
+        .split(",")
+        .map((s) => s.trim())
+        .filter((s) => s.length > 0);
+      if (alertEmails.length > 0) {
+        await sendOpsAlertEmail({
+          subject:
+            "🚨 RSVP QR pepper unavailable — going RSVPs minting NO signed pass",
+          paragraphs: [
+            "public-submit-rsvp could not resolve the QR token pepper, so the RSVP was written WITHOUT a signed entry pass (fail-open, I-1).",
+            "Every going RSVP submitted while the pepper is missing has qr_code=NULL and no QR pass has been emailed.",
+            "The every-15-min backfill cron (backfill_going_rsvp_qr_codes) will re-mint + deliver these once the pepper is restored — but the pepper env MUST be fixed now.",
+            `Event ID: ${eventId}`,
+            `Reason: ${String(err)}`,
+          ],
+          recipients: alertEmails,
+          cta: null,
+        });
+      }
+    } catch (alertErr) {
+      console.error(
+        "[public-submit-rsvp] ops alert for missing pepper failed (non-fatal)",
+        String(alertErr),
+      );
+    }
   }
 
   const { data, error } = await admin.rpc("submit_event_rsvp", {
