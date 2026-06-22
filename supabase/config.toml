@@ -118,6 +118,20 @@ verify_jwt = false
 [functions.explorer-app-lead-submit]
 verify_jwt = false
 
+# META-ORCH-1222 — public careers application endpoint. career.usemingla.com is
+# unauthenticated; anon callers POST an application + CV. The fn re-validates all
+# six fields + the CV, resolves the role (must be status='open'), uploads the CV
+# to the private career-cvs bucket and inserts via the service role (anon has no
+# table policy — deny-by-default). No JWT required. Per SPEC_META-ORCH-1222 §4.B.
+[functions.careers-apply]
+verify_jwt = false
+
+# META-ORCH-1222 — admin CV signed-URL endpoint. Returns a 60s signed URL to a
+# private career-cvs object. ADMIN-gated (admin_users lookup) so JWT verification
+# stays ON — only an active admin may fetch a CV. Per SPEC_META-ORCH-1222 §4.D.
+[functions.careers-cv-signed-url]
+verify_jwt = true
+
 # ORCH-0880 [Tr5 Traveler Intake Forms]: anon-tolerant signed-URL endpoint
 # per feedback_anon_buyer_routes.md. Buyer is anonymous when uploading intake
 # files; authentication happens at the trip/schema/question lookup layer +
