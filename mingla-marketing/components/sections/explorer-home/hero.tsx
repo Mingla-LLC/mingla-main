@@ -29,10 +29,19 @@ interface ChipLink {
       The surface toggle in the header is hidden on mobile, so the
       bottom row carries the cross-link there. */
   mobileOnly?: boolean
+  /** When true, the href is an absolute external URL (e.g. the careers
+      subdomain) and must render as a real `<a>` anchor — a relative Next.js
+      `<Link>` would 404 on the apex (ORCH-1225). Same-tab navigation. */
+  external?: boolean
 }
 
 const SITE_CHIPS: ChipLink[] = [
   { href: '/business', label: 'Business', mobileOnly: true },
+  // ORCH-1225 — 'Career' pill links to the careers subdomain. Always visible
+  // (no mobileOnly) so it is discoverable on desktop too, where 'Business'
+  // is hidden. ABSOLUTE external URL: a relative `/careers` 404s on the apex
+  // (the marketing middleware host-rewrites `career.usemingla.com` only).
+  { href: 'https://career.usemingla.com', label: 'Career', external: true },
   // ORCH-1053 — 'About' pill removed from the consumer page per operator.
   { href: '/support', label: 'Support' },
   { href: '/privacy', label: 'Privacy' },
@@ -636,16 +645,31 @@ export function ExplorerHero({ cityKey = DEFAULT_CITY }: ExplorerHeroProps) {
             )
           }
 
-          return chip.href === '/terms' ? (
-            <button
-              key={chip.href}
-              type="button"
-              onClick={() => setTermsOpen(true)}
-              className={chipClassName}
-            >
-              {chip.label}
-            </button>
-          ) : (
+          if (chip.href === '/terms') {
+            return (
+              <button
+                key={chip.href}
+                type="button"
+                onClick={() => setTermsOpen(true)}
+                className={chipClassName}
+              >
+                {chip.label}
+              </button>
+            )
+          }
+
+          // ORCH-1225 — external absolute URL (careers subdomain) renders as a
+          // real anchor; a relative Next.js <Link> would 404 on the apex.
+          // Same-tab navigation (same brand family) — no target/rel needed.
+          if (chip.external) {
+            return (
+              <a key={chip.href} href={chip.href} className={chipClassName}>
+                {chip.label}
+              </a>
+            )
+          }
+
+          return (
             <Link key={chip.href} href={chip.href} className={chipClassName}>
               {chip.label}
             </Link>
