@@ -1,0 +1,17 @@
+<!DOCTYPE html>
+<html style="height:100%">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<style>
+  html, body { margin:0; padding:0; height:100%; background:#000; }
+  /* react-native-web mounts into a full-height root, like the deployed app. */
+  #root { display:flex; height:100%; }
+  #root > div { flex:1 1 0%; display:flex; }
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script src="./bundle.js"></script>
+</body>
+</html>
