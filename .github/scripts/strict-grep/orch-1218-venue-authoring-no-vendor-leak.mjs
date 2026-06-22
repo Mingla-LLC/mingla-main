@@ -389,6 +389,65 @@ if (process.argv.includes("--self-test")) {
     selfFailures.push("(7) missing import + too-few-calls not flagged");
   }
 
+  // ---- ORCH-1218 TESTER adversarial additions (different angle than the
+  // implementor's revert-shape proof). These attack vectors the implementor's
+  // 7 cases did NOT cover: a vendor token leaking via a fully-wired WIZARD
+  // string literal (rule (a) on the wizard, not the reverted-shape (b)); a
+  // vendor token escaping the sanitizer's sentinel-exempt block AFTER the array
+  // closes (proving dropVendorTokenListBlock does not over-exempt the rest of
+  // the file); a two-word vendor token in a wizard literal; and a partial
+  // revert that coexists with >=4 compliant calls (proving the fail-on-revert
+  // is not bypassed by call count alone).
+
+  // (8) ADVERSARIAL — vendor token in a WIZARD string literal even though the
+  // wizard is otherwise fully wired (4+ sanitizer calls, import present, no
+  // reverted shape). Rule (a) on the wizard MUST fire — a different leak vector
+  // than the reverted-shape (b) the implementor proved.
+  const leakyButWiredWizard =
+    goodWizard +
+    `setMessage("Our Gemini step failed — try again.");\n`;
+  if (run(goodSanitizer, leakyButWiredWizard).length === 0) {
+    selfFailures.push(
+      "(8) vendor token in a fully-wired wizard string literal not flagged",
+    );
+  }
+
+  // (9) ADVERSARIAL — sentinel must NOT over-exempt. A sanitizer that closes its
+  // vendor-token-list array, then leaks a vendor token in a REAL (non-comment)
+  // string literal afterward, MUST fail rule (a).
+  const sentinelEscapeSanitizer =
+    `const GENERIC = "Mingla's AI couldn't finish. Please try again.";\n` +
+    `// strict-grep-allow: vendor-token-list\n` +
+    `const FORBIDDEN = [\n  /\\bgemini(?![a-z])/i,\n];\n` +
+    `const LEAK = "powered by OpenAI";\n` + // outside the exempt block → must trip
+    `export function sanitizeAuthoringError(err, fallback) { return GENERIC; }\n`;
+  if (run(sentinelEscapeSanitizer, goodWizard).length === 0) {
+    selfFailures.push(
+      "(9) vendor token AFTER the sentinel array close was over-exempted (not flagged)",
+    );
+  }
+
+  // (10) ADVERSARIAL — a two-word vendor token ("Vertex AI") in a wizard string
+  // literal MUST be caught (multi-word \bvertex\s+ai pattern), not just the
+  // single-word tokens.
+  const twoWordLeakWizard =
+    goodWizard + `setMessage("Vertex AI is unavailable.");\n`;
+  if (run(goodSanitizer, twoWordLeakWizard).length === 0) {
+    selfFailures.push("(10) two-word vendor token 'Vertex AI' not flagged");
+  }
+
+  // (11) ADVERSARIAL — a partial revert that COEXISTS with >=4 compliant
+  // sanitizer calls MUST still fail rule (b). Proves the fail-on-revert is not
+  // bypassed by simply having enough other compliant calls present.
+  const partialRevertWizard =
+    goodWizard +
+    `setMessage(error instanceof Error ? error.message : "AI setup failed.");\n`;
+  if (run(goodSanitizer, partialRevertWizard).length === 0) {
+    selfFailures.push(
+      "(11) partial raw revert coexisting with >=4 compliant calls not flagged",
+    );
+  }
+
   if (selfFailures.length) {
     console.error(
       "ORCH-1218 I-PROPOSED-1218-VENUE-AUTHORING-NO-VENDOR-LEAK self-test FAIL:",
@@ -397,7 +456,7 @@ if (process.argv.includes("--self-test")) {
     process.exit(1);
   }
   console.log(
-    "ORCH-1218 I-PROPOSED-1218-VENUE-AUTHORING-NO-VENDOR-LEAK self-test PASS (7/7 cases).",
+    "ORCH-1218 I-PROPOSED-1218-VENUE-AUTHORING-NO-VENDOR-LEAK self-test PASS (11/11 cases; +4 tester adversarial).",
   );
   process.exit(0);
 }
