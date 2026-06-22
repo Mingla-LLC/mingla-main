@@ -29,7 +29,7 @@ export interface EventCoverMediaProps {
   hue?: number;
   mediaUrl?: string | null;
   mediaType?: EventCoverMediaType | null;
-  // ORCH-1208 — explicit still poster for a video cover. When omitted, a
+  // ORCH-1209 — explicit still poster for a video cover. When omitted, a
   // poster is auto-derived from a Cloudinary video URL (deriveCoverPosterUrl).
   // Callers that already have a real still (e.g. the venue deck `image`) pass
   // it directly. Images/GIFs ignore this prop.
@@ -226,7 +226,7 @@ const EventCoverWebVideo: React.FC<{
     video.autoplay = shouldPlayRef.current;
     video.loop = loopRef.current;
     video.controls = false;
-    // ORCH-1208 — POSTER: an instant still frame (the derived Cloudinary
+    // ORCH-1209 — POSTER: an instant still frame (the derived Cloudinary
     // first-frame .jpg, or a real sibling still passed by the caller) so a
     // bot / SSR / desktop-WebKit (play-button, no autoplay) sees an image and
     // a human sees no flash-of-black before the first decoded frame. Stable
@@ -236,7 +236,7 @@ const EventCoverWebVideo: React.FC<{
       video.poster = posterUrl;
       video.setAttribute("poster", posterUrl);
     }
-    // ORCH-1208 — bandwidth: never eagerly download the cover video. A real
+    // ORCH-1209 — bandwidth: never eagerly download the cover video. A real
     // on-screen viewer still fetches+plays (the autoplay attribute / tap drives
     // the load); bots, SSR, link-unfurlers and desktop-WebKit (which shows a
     // play button and never auto-plays) get the POSTER image only, no .mp4.
@@ -453,7 +453,7 @@ const EventCoverNativeVideo: React.FC<{
     };
   }, [loop, player, shouldPlay]);
 
-  // ORCH-1208 — POSTER: render the still BEHIND the VideoView so there is an
+  // ORCH-1209 — POSTER: render the still BEHIND the VideoView so there is an
   // instant frame before the first decoded video frame AND while paused
   // (playbackActive=false → shouldPlay=false → off-front/behind cards never
   // stream). Additive + benign when playing (the opaque video frame covers
@@ -625,7 +625,7 @@ export const EventCoverMedia: React.FC<EventCoverMediaProps> = ({
     reduceMotion: freezeForReduceMotion,
   });
 
-  // ORCH-1208 — resolve the still poster for a VIDEO cover: caller-supplied
+  // ORCH-1209 — resolve the still poster for a VIDEO cover: caller-supplied
   // override (a real sibling still, e.g. the venue deck `image`) or, when
   // omitted, auto-derive the Cloudinary first-frame .jpg. Null for image/GIF
   // covers (the <Image> branch never receives a poster) and for non-Cloudinary

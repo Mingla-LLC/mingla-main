@@ -1,4 +1,4 @@
-// ORCH-1208 [cover-video bandwidth fix] — TESTER ADVERSARIAL RUNTIME PROBE.
+// ORCH-1209 [cover-video bandwidth fix] — TESTER ADVERSARIAL RUNTIME PROBE.
 //
 // DIFFERENT ANGLE than the implementor (whose entire suite is source-structural
 // readFileSync greps + the deriveCoverPosterUrl pure-fn unit). This probe drives
@@ -22,12 +22,12 @@
 //
 // SCOPE NOTE: the AUTHORITATIVE end-to-end proof is this same probe pointed at a
 // deployed Vercel-preview /e/<slug> public event page with a real video cover
-// (set ORCH1208_LIVE_URL). Until merge/deploy there is no such URL, so the
+// (set ORCH1209_LIVE_URL). Until merge/deploy there is no such URL, so the
 // branch is run in SELF-CONTAINED mode (local server reproducing the shipped
 // attribute sequence). Both modes assert the identical invariant.
 //
-// Run (self-contained):  node playwright/orch1208-cover-video-bandwidth-runtime-probe.mjs
-// Run (live, post-deploy): ORCH1208_LIVE_URL="https://<preview>/e/<slug>" node playwright/orch1208-cover-video-bandwidth-runtime-probe.mjs
+// Run (self-contained):  node playwright/orch1209-cover-video-bandwidth-runtime-probe.mjs
+// Run (live, post-deploy): ORCH1209_LIVE_URL="https://<preview>/e/<slug>" node playwright/orch1209-cover-video-bandwidth-runtime-probe.mjs
 
 import http from "node:http";
 import { readFileSync } from "node:fs";
@@ -173,7 +173,7 @@ async function loadCase(browser, baseUrl, path) {
 }
 
 const run = async () => {
-  const liveUrl = process.env.ORCH1208_LIVE_URL;
+  const liveUrl = process.env.ORCH1209_LIVE_URL;
   const browser = await chromium.launch({ headless: true });
 
   if (liveUrl) {
@@ -243,9 +243,9 @@ const run = async () => {
     );
 
   if (process.exitCode === 1) {
-    console.error("\nORCH-1208 runtime probe: FAILED");
+    console.error("\nORCH-1209 runtime probe: FAILED");
   } else {
-    console.log("\nORCH-1208 runtime probe: PASSED (self-contained mode).");
+    console.log("\nORCH-1209 runtime probe: PASSED (self-contained mode).");
   }
 };
 

@@ -55,7 +55,7 @@ export const shouldFreezeCoverForReduceMotion = ({
   return reduceMotion === true && !isAmbientMutedLoop;
 };
 
-// ORCH-1208 — derive a poster still for a cover VIDEO with ZERO new dependency.
+// ORCH-1209 — derive a poster still for a cover VIDEO with ZERO new dependency.
 // Cloudinary video URLs (.../video/upload/<rest>.mp4) yield a first-frame JPEG
 // via the `so_0` (start-offset 0s) transform + .jpg extension. Non-Cloudinary
 // or non-video URLs return null → the hue-band EventCover placeholder shows

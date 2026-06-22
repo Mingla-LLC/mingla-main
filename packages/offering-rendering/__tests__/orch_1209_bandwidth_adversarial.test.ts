@@ -1,6 +1,6 @@
-// ORCH-1208 [cover-video bandwidth fix] — TESTER ADVERSARIAL (different angle).
+// ORCH-1209 [cover-video bandwidth fix] — TESTER ADVERSARIAL (different angle).
 //
-// The implementor's happy-path test (orch_1208_no_eager_video_preload.test.ts)
+// The implementor's happy-path test (orch_1209_no_eager_video_preload.test.ts)
 // is source-structural greps + 4 deriveCoverPosterUrl examples. This file
 // attacks DIFFERENT, harder angles:
 //   A. deriveCoverPosterUrl EDGE CASES the implementor did not test (uppercase
@@ -18,7 +18,7 @@
 //
 // The browser-network half (no .mp4 on a real bot load + real-viewer autoplay
 // intact) is proven separately by the Playwright runtime probe
-// (mingla-business/playwright/orch1208-cover-video-bandwidth-runtime-probe.mjs).
+// (mingla-business/playwright/orch1209-cover-video-bandwidth-runtime-probe.mjs).
 
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -41,7 +41,7 @@ const stripComments = (s: string): string =>
     .replace(/\{\s*\/\*[\s\S]*?\*\/\s*\}/g, "")
     .replace(/(^|[^:])\/\/.*$/gm, "$1");
 
-describe("ORCH-1208 adversarial — derivation edge cases", () => {
+describe("ORCH-1209 adversarial — derivation edge cases", () => {
   // A. Edge cases — NONE may throw; each must return the documented value.
   it("A1: uppercase extension still derives the .jpg first-frame", () => {
     expect(
@@ -118,7 +118,7 @@ describe("ORCH-1208 adversarial — derivation edge cases", () => {
   });
 });
 
-describe("ORCH-1208 adversarial — image-cover path can never receive a poster (B)", () => {
+describe("ORCH-1209 adversarial — image-cover path can never receive a poster (B)", () => {
   const coverSrc = stripComments(read(COVER));
 
   it("B1: resolvedPosterUrl is gated to video/video_still ONLY (null for image/gif/fallback)", () => {
@@ -155,7 +155,7 @@ describe("ORCH-1208 adversarial — image-cover path can never receive a poster 
   });
 });
 
-describe("ORCH-1208 adversarial — native gate boundary (C)", () => {
+describe("ORCH-1209 adversarial — native gate boundary (C)", () => {
   const coverSrc = stripComments(read(COVER));
   const cardSrc = stripComments(read(CARD));
 

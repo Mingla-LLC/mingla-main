@@ -1,4 +1,4 @@
-// ORCH-1208 [cover-video bandwidth fix — Phase 1]. Implementor happy-path
+// ORCH-1209 [cover-video bandwidth fix — Phase 1]. Implementor happy-path
 // regression test for the 3 fixes:
 //   FIX 1 — WEB: the imperative cover <video> sets preload="none" (never "auto")
 //           and sets video.poster so a bot / SSR / desktop-WebKit (play-button,
@@ -51,7 +51,7 @@ const sliceBetween = (
   return src.slice(open, next);
 };
 
-describe("ORCH-1208 — cover-video bandwidth (preload=none + poster + native gate)", () => {
+describe("ORCH-1209 — cover-video bandwidth (preload=none + poster + native gate)", () => {
   const coverSrc = stripComments(read(COVER));
   const web = sliceBetween(
     coverSrc,

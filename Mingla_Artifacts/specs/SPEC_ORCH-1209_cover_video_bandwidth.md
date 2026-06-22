@@ -1,8 +1,8 @@
-# SPEC — ORCH-1208 [cover-video bandwidth fix — Phase 1]
+# SPEC — ORCH-1209 [cover-video bandwidth fix — Phase 1]
 
 **Phase:** SPEC (build contract). **Status:** ready for IMPLEMENT dispatch.
-**Worktree:** `/Users/sethogieva/Desktop/mingla-orchs/ORCH-1208-[cover-video-bandwidth-fix]/` on `ORCH-1208-cover-video-bandwidth-fix`.
-**Investigation:** `Mingla_Artifacts/ORCH-1208_COVER_VIDEO_BANDWIDTH.md`.
+**Worktree:** `/Users/sethogieva/Desktop/mingla-orchs/ORCH-1209-[cover-video-bandwidth-fix]/` on `ORCH-1209-cover-video-bandwidth-fix`.
+**Investigation:** `Mingla_Artifacts/ORCH-1209_COVER_VIDEO_BANDWIDTH.md`.
 
 ## Goal (one sentence)
 Stop bots / SSR / off-screen instances from eagerly downloading cover **videos** — WITHOUT any
@@ -88,7 +88,7 @@ BEFORE:
 ```
 AFTER:
 ```ts
-    // ORCH-1208 — bandwidth: never eagerly download the cover video. A real
+    // ORCH-1209 — bandwidth: never eagerly download the cover video. A real
     // on-screen viewer still fetches+plays (the autoplay attribute / tap drives
     // the load); bots, SSR, link-unfurlers and desktop-WebKit (which shows a
     // play button and never auto-plays) get the POSTER image only, no .mp4.
@@ -136,7 +136,7 @@ Thread a `isTopCard` prop into the card and pass it to `EventCoverMedia` as BOTH
 
 **2a. Props type.** In `interface Props` (around line 224), add:
 ```ts
-  // ORCH-1208: only the front/active deck card streams its cover video. When
+  // ORCH-1209: only the front/active deck card streams its cover video. When
   // false the cover mounts paused on its poster (playbackActive=false) and
   // downloads nothing. Defaults true so non-deck callers (none today) are
   // unaffected. Mirrors SwipeableCards CardHero isTopCard (I-1069).
@@ -169,7 +169,7 @@ AFTER:
                 hue={experienceCover?.coverHue}
                 mediaUrl={coverUrl}
                 mediaType={coverType}
-                // ORCH-1208 — only the front card streams (parity with the
+                // ORCH-1209 — only the front card streams (parity with the
                 // venue deck CardHero, I-1069). Off-front: paused on poster.
                 autoplay={isTopCard}
                 playbackActive={isTopCard}
@@ -187,7 +187,7 @@ the **Current Card** slot (line 2925) — it is the active card — so pass `isT
 ```tsx
                   <CuratedExperienceSwipeCard
                     ...
-                    isTopCard={true}   // ORCH-1208: front card streams
+                    isTopCard={true}   // ORCH-1209: front card streams
                   />
 ```
 Add the SAME `isTopCard={true}` to the **curated** variant at line 2954 (also a front-card render;
@@ -213,7 +213,7 @@ derivation helper, so callers stay byte-identical unless they opt to override.
 **3a. Derivation helper.** `packages/offering-rendering/coverMediaPresentation.ts` — add (keeps the
 package self-contained, no app import, honoring `I-MOR-0827-PACKAGE-ISOLATION`):
 ```ts
-// ORCH-1208 — derive a poster still for a cover VIDEO with ZERO new dependency.
+// ORCH-1209 — derive a poster still for a cover VIDEO with ZERO new dependency.
 // Cloudinary video URLs (.../video/upload/<rest>.mp4) yield a first-frame JPEG
 // via the `so_0` (start-offset 0s) transform + .jpg extension. Non-Cloudinary
 // or non-video URLs return null → the hue-band EventCover placeholder shows
@@ -240,7 +240,7 @@ export const deriveCoverPosterUrl = (
 **3b. `EventCoverMedia` prop + plumbing.** `packages/offering-rendering/EventCoverMedia.tsx`.
 - Add to `EventCoverMediaProps` (after `mediaType`, ~line 30):
   ```ts
-    // ORCH-1208 — explicit still poster for a video cover. When omitted, a
+    // ORCH-1209 — explicit still poster for a video cover. When omitted, a
     // poster is auto-derived from a Cloudinary video URL (deriveCoverPosterUrl).
     // Callers that already have a real still (e.g. the venue deck `image`) pass
     // it directly. Images/GIFs ignore this prop.
@@ -370,7 +370,7 @@ bot-scale.
 
 ---
 
-## INVARIANT (DRAFT) — `I-PROPOSED-1208-NO-EAGER-VIDEO-PRELOAD`
+## INVARIANT (DRAFT) — `I-PROPOSED-1209-NO-EAGER-VIDEO-PRELOAD`
 
 **Statement:** The shared web cover `<video>` (imperative element in `EventCoverWebVideo`) MUST set
 `video.preload = "none"` and MUST NEVER set `preload = "auto"`. The cover renderer MUST always be
@@ -390,17 +390,17 @@ assert   /playbackActive=\{isTopCard\}/        present
 assert   bare /autoplay\s+muted\s+loop/ WITHOUT a sibling playbackActive  ABSENT
 ```
 
-Place under `packages/offering-rendering/__tests__/orch_1208_no_eager_video_preload.test.ts` (source
+Place under `packages/offering-rendering/__tests__/orch_1209_no_eager_video_preload.test.ts` (source
 `readFileSync` contract, matching the existing `coverWebVideoImperativeMount.orch1167r8.test.ts`
 style — no jsdom; these mounts pull react-native + expo-video so the contract is asserted at source
-level). Status `I-PROPOSED-1208-*` until orchestrator promotes it.
+level). Status `I-PROPOSED-1209-*` until orchestrator promotes it.
 
 ---
 
 ## TEST PLAN
 
 ### Implementor happy-path (MUST fail on revert)
-- **T-1 (preload):** `packages/offering-rendering/__tests__/orch_1208_no_eager_video_preload.test.ts`
+- **T-1 (preload):** `packages/offering-rendering/__tests__/orch_1209_no_eager_video_preload.test.ts`
   — assert the web slice (`EventCoverWebVideo`) contains `video.preload = "none"` and contains NO
   `preload = "auto"`. Reverting FIX 1a flips it back → test fails.
 - **T-2 (poster wired):** assert `EventCoverWebVideo` sets `video.poster`, that `EventCoverMedia`

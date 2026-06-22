@@ -1,9 +1,9 @@
-# IMPLEMENT — ORCH-1208 [cover-video bandwidth fix — Phase 1]
+# IMPLEMENT — ORCH-1209 [cover-video bandwidth fix — Phase 1]
 
 **Phase:** IMPLEMENT (executed the SPEC contract). **Status:** built, self-verified, committed (NOT merged/deployed).
-**Worktree / branch:** `/Users/sethogieva/Desktop/mingla-orchs/ORCH-1208-[cover-video-bandwidth-fix]/` on `ORCH-1208-cover-video-bandwidth-fix`.
+**Worktree / branch:** `/Users/sethogieva/Desktop/mingla-orchs/ORCH-1209-[cover-video-bandwidth-fix]/` on `ORCH-1209-cover-video-bandwidth-fix`.
 **Commit:** `afec5639f93a125270ffc7d17b32f2f2285d04cc`.
-**Spec:** `Mingla_Artifacts/specs/SPEC_ORCH-1208_cover_video_bandwidth.md`.
+**Spec:** `Mingla_Artifacts/specs/SPEC_ORCH-1209_cover_video_bandwidth.md`.
 
 ---
 
@@ -73,18 +73,18 @@ backend/migration, zero change to the image-delivery path.**
   pass `isTopCard={true}`. (Curated cards carry no cover, so it is a no-op there; kept for symmetry /
   future cover support per the spec.) A future behind-card render MUST pass `isTopCard={false}`.
 
-### 5. `.github/scripts/strict-grep/i-proposed-1208-no-eager-video-preload.mjs` (NEW — invariant gate)
-- Implements **I-PROPOSED-1208-NO-EAGER-VIDEO-PRELOAD** (DRAFT). Strips comments, then asserts on the
+### 5. `.github/scripts/strict-grep/i-proposed-1209-no-eager-video-preload.mjs` (NEW — invariant gate)
+- Implements **I-PROPOSED-1209-NO-EAGER-VIDEO-PRELOAD** (DRAFT). Strips comments, then asserts on the
   `EventCoverWebVideo` web slice: `video.preload = "none"` **present**, `preload = "auto"` **absent**,
   `video.poster =` **present**; in `coverMediaPresentation.ts`: `export … deriveCoverPosterUrl` +
   `so_0` **present**; in `CuratedExperienceSwipeCard.tsx`: `playbackActive={isTopCard}` **present**
   and the bare `autoplay\n muted\n loop` always-on form **absent**. Supports `--self-test`.
 
 ### 6. `.github/workflows/strict-grep-mingla-business.yml` (registered the gate)
-- Added the `orch-1208-no-eager-video-preload` job (self-test step + run step), mirroring the existing
+- Added the `orch-1209-no-eager-video-preload` job (self-test step + run step), mirroring the existing
   registry pattern.
 
-### 7. `packages/offering-rendering/__tests__/orch_1208_no_eager_video_preload.test.ts` (NEW — happy-path)
+### 7. `packages/offering-rendering/__tests__/orch_1209_no_eager_video_preload.test.ts` (NEW — happy-path)
 - T-1…T-4 + an image-path-unaffected assertion (see results below).
 
 ---
@@ -113,15 +113,15 @@ flash, and (b) bots/SSR/off-screen no longer download the `.mp4`.
 
 ### New strict-grep gate
 ```
-$ node .github/scripts/strict-grep/i-proposed-1208-no-eager-video-preload.mjs --self-test
-ORCH-1208 no-eager-video-preload gate self-test passed (synthetic violations detected).
-$ node .github/scripts/strict-grep/i-proposed-1208-no-eager-video-preload.mjs
-ORCH-1208 I-PROPOSED-1208-NO-EAGER-VIDEO-PRELOAD gate passed.
+$ node .github/scripts/strict-grep/i-proposed-1209-no-eager-video-preload.mjs --self-test
+ORCH-1209 no-eager-video-preload gate self-test passed (synthetic violations detected).
+$ node .github/scripts/strict-grep/i-proposed-1209-no-eager-video-preload.mjs
+ORCH-1209 I-PROPOSED-1209-NO-EAGER-VIDEO-PRELOAD gate passed.
 ```
 
 ### New happy-path jest test (runner: `npx jest --roots ../packages/offering-rendering` from `mingla-business`)
 ```
-PASS ../packages/offering-rendering/__tests__/orch_1208_no_eager_video_preload.test.ts
+PASS ../packages/offering-rendering/__tests__/orch_1209_no_eager_video_preload.test.ts
   ✓ T-1: web cover <video> sets preload="none" and NEVER preload="auto"
   ✓ T-2: web <video> sets video.poster, EventCoverMedia computes resolvedPosterUrl + threads posterUrl, deriveCoverPosterUrl exported
   ✓ T-3: deriveCoverPosterUrl produces the Cloudinary so_0 .jpg first-frame
@@ -132,7 +132,7 @@ Tests: 5 passed, 5 total
 
 ### Existing cover-contract regression (autoplay preserved)
 ```
-$ npx jest --roots ../packages/offering-rendering -- coverWebVideoImperativeMount coverWebVideoAutoplay orch_1167_r4 orch_1167_r5 orch_1167_r7 orch_1208 --runInBand
+$ npx jest --roots ../packages/offering-rendering -- coverWebVideoImperativeMount coverWebVideoAutoplay orch_1167_r4 orch_1167_r5 orch_1167_r7 orch_1209 --runInBand
 Test Suites: 6 passed, 6 total
 Tests:       33 passed, 33 total
 ```
@@ -160,7 +160,7 @@ No dependency / lockfile change.
 Compared the directly-relevant suites at my commit vs `HEAD~1` (baseline):
 - `eventCoverMedia.test`: baseline **6 failed** / mine **6 failed** (stale R6 expectations: the test
   asserts `React.createElement("video"` + `autoPlay: shouldPlay`, but the R8 imperative
-  `document.createElement('video')` shipped in #543 — unrelated to ORCH-1208).
+  `document.createElement('video')` shipped in #543 — unrelated to ORCH-1209).
 - `eventCoverMediaService.test`: baseline **5 failed** / mine **5 failed** (identical).
 - offering-rendering full `--roots` sweep: baseline = 52 tests passed, **0 test failures** (the "29
   failed suites" are RTL/render-config suites that can't load under the node/ts-jest `--roots`

@@ -1,10 +1,10 @@
-# TEST — ORCH-1208 [cover-video bandwidth fix — Phase 1]
+# TEST — ORCH-1209 [cover-video bandwidth fix — Phase 1]
 
 **Phase:** TEST (brutal gatekeeper, independent adversarial). **Verdict: CONDITIONAL PASS.**
-**Worktree / branch:** `/Users/sethogieva/Desktop/mingla-orchs/ORCH-1208-[cover-video-bandwidth-fix]/` on `ORCH-1208-cover-video-bandwidth-fix`.
+**Worktree / branch:** `/Users/sethogieva/Desktop/mingla-orchs/ORCH-1209-[cover-video-bandwidth-fix]/` on `ORCH-1209-cover-video-bandwidth-fix`.
 **Implementor commit under test:** `afec5639f` (code) + `2f6b35de1` (report).
 **Tester adversarial commit:** `88bd22b9f`.
-**Spec:** `Mingla_Artifacts/specs/SPEC_ORCH-1208_cover_video_bandwidth.md`.
+**Spec:** `Mingla_Artifacts/specs/SPEC_ORCH-1209_cover_video_bandwidth.md`.
 
 ---
 
@@ -26,14 +26,14 @@ dependency; image path byte-identical.
 The implementor's suite is entirely **source-structural greps** + a 4-example `deriveCoverPosterUrl`
 unit. I did NOT re-run those as my proof. My evidence is:
 
-1. **A REAL browser network proof** — `mingla-business/playwright/orch1208-cover-video-bandwidth-runtime-probe.mjs`.
+1. **A REAL browser network proof** — `mingla-business/playwright/orch1209-cover-video-bandwidth-runtime-probe.mjs`.
    Drives headless Chromium against a logging server, reproducing the **exact shipped imperative
    `<video>` attribute sequence** (read+anchored from `EventCoverWebVideo` source), and measures the
    actual bytes. This is the bandwidth proof the implementor could not run (no jsdom/browser in their
    bed).
 2. **Derivation EDGE cases** the implementor never tested (uppercase ext, no-extension, nested
    Cloudinary transforms, multi-param query, `/image/upload/` near-miss, protocol-relative, garbage,
-   numeric abuse) — `orch_1208_bandwidth_adversarial.test.ts`, group A.
+   numeric abuse) — `orch_1209_bandwidth_adversarial.test.ts`, group A.
 3. **The `resolvedPosterUrl` GATING contract** (image-cover can never receive a poster) — group B.
 4. **The native `shouldPlay` BOUNDARY** (`isTopCard=false ⇒ shouldPlay=false`) — group C.
 
@@ -53,7 +53,7 @@ to the shipped `EventCoverWebVideo` source (reads `video.preload="none"` + `vide
 muted/playsinline attribute pins) so a future revert fails it (see fails-on-revert). **Web off-screen
 is additionally already gated** by the pre-existing `useInViewport` IntersectionObserver (rootMargin
 400px, `EventCoverMedia.tsx:507/665`) — off-screen web cards never even mount the `<video>`.
-→ RUNTIME-GATED remainder: the same probe against the *deployed* `/e/<slug>` page (`ORCH1208_LIVE_URL`).
+→ RUNTIME-GATED remainder: the same probe against the *deployed* `/e/<slug>` page (`ORCH1209_LIVE_URL`).
 
 ### P0-b — a real viewer's autoplay is UNCHANGED  → **VERIFIED (web runtime + source) + RUNTIME-GATED (native device)**
 - **Web:** REALVIEWER case above fetched + played the `.mp4` with `preload="none"`. The 6 ORCH-1167
@@ -104,8 +104,8 @@ is additionally already gated** by the pre-existing `useInViewport` Intersection
 
 1. **Live bandwidth proof (authoritative P0-a).** After the web/JS deploy:
    ```
-   ORCH1208_LIVE_URL="https://<vercel-preview-or-prod>/e/<slug-with-video-cover>" \
-     node mingla-business/playwright/orch1208-cover-video-bandwidth-runtime-probe.mjs
+   ORCH1209_LIVE_URL="https://<vercel-preview-or-prod>/e/<slug-with-video-cover>" \
+     node mingla-business/playwright/orch1209-cover-video-bandwidth-runtime-probe.mjs
    ```
    PASS = **0** `.mp4` / `/video/upload/` requests on a bot (headless, no gesture) load of the real
    shipped page; the poster `.jpg` IS present. Repeat for a public experience page and a public
@@ -123,18 +123,18 @@ is additionally already gated** by the pre-existing `useInViewport` Intersection
 
 ## Adversarial test artifacts + fails-on-revert proof
 
-- **`mingla-business/playwright/orch1208-cover-video-bandwidth-runtime-probe.mjs`** (NEW, runtime).
+- **`mingla-business/playwright/orch1209-cover-video-bandwidth-runtime-probe.mjs`** (NEW, runtime).
   Fails-on-revert: with `preload="none"`→`"auto"` reverted in the shipped `EventCoverMedia.tsx`, the
   probe's source anchor refused to run and exited **1** (restored → exit **0**). Proven this session.
-- **`packages/offering-rendering/__tests__/orch_1208_bandwidth_adversarial.test.ts`** (NEW, 14 asserts).
+- **`packages/offering-rendering/__tests__/orch_1209_bandwidth_adversarial.test.ts`** (NEW, 14 asserts).
   Fails-on-revert: reverting the card's `playbackActive={isTopCard}` to the bare-`autoplay` form →
   **C2 FAILED** (1 failed / 13 passed); restored → **14/14 passed**. Proven this session.
 - Both are **append-only** (new files; append-only check passed) and committed at **`88bd22b9f`**.
 
 ## Suites run (this session, all green)
-- `orch_1208` + `coverWebVideoImperativeMount` + `coverWebVideoAutoplay` + `orch_1167_r4/r5/r7`:
+- `orch_1209` + `coverWebVideoImperativeMount` + `coverWebVideoAutoplay` + `orch_1167_r4/r5/r7`:
   **7 suites / 47 tests passed** (incl. my adversarial suite + the autoplay-contract regressions).
-- Strict-grep gate `i-proposed-1208-no-eager-video-preload.mjs`: self-test PASS, run PASS, **and
+- Strict-grep gate `i-proposed-1209-no-eager-video-preload.mjs`: self-test PASS, run PASS, **and
   independently proven to fail on `preload=auto` reintroduction and on poster removal**.
 - Type-check: 2 changed app-mobile files (`CuratedExperienceSwipeCard`, `SwipeableCards`) → **0
   errors**; `coverMediaPresentation.ts` helper clean. (`EventCoverMedia.tsx` cross-package

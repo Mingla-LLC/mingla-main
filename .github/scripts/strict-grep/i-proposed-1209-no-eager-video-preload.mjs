@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 /**
- * ORCH-1208 [cover-video bandwidth fix — Phase 1].
+ * ORCH-1209 [cover-video bandwidth fix — Phase 1].
  *
- * Invariant I-PROPOSED-1208-NO-EAGER-VIDEO-PRELOAD (DRAFT): the shared web cover
+ * Invariant I-PROPOSED-1209-NO-EAGER-VIDEO-PRELOAD (DRAFT): the shared web cover
  * `<video>` (the imperative element in EventCoverWebVideo) MUST set
  * `video.preload = "none"` and MUST NEVER set `preload = "auto"`, so a bot / SSR
  * / link-unfurler / desktop-WebKit (which shows a play button and never
@@ -102,7 +102,7 @@ const scan = ({ cover, presentation, card }) => {
       );
     }
     // A bare `autoplay\n muted\n loop` with NO playbackActive sibling is the
-    // pre-ORCH-1208 always-stream regression. Detect the bare `autoplay` token
+    // pre-ORCH-1209 always-stream regression. Detect the bare `autoplay` token
     // (not `autoplay={isTopCard}`) inside the EventCoverMedia cover usage.
     if (/\bautoplay\s*\n\s*muted\s*\n\s*loop\b/.test(card)) {
       hits.push(
@@ -127,13 +127,13 @@ if (process.argv.includes("--self-test")) {
   // playbackActive missing, bare autoplay-muted-loop present → >= 6.
   if (violations.length < 6) {
     console.error(
-      "ORCH-1208 no-eager-video-preload gate SELF-TEST FAILED: gate did not detect the synthetic violations.",
+      "ORCH-1209 no-eager-video-preload gate SELF-TEST FAILED: gate did not detect the synthetic violations.",
       violations,
     );
     process.exit(1);
   }
   console.log(
-    "ORCH-1208 no-eager-video-preload gate self-test passed (synthetic violations detected).",
+    "ORCH-1209 no-eager-video-preload gate self-test passed (synthetic violations detected).",
   );
   process.exit(0);
 }
@@ -150,9 +150,9 @@ const failures = scan({
 });
 
 if (failures.length > 0) {
-  console.error("ORCH-1208 I-PROPOSED-1208-NO-EAGER-VIDEO-PRELOAD gate failed:");
+  console.error("ORCH-1209 I-PROPOSED-1209-NO-EAGER-VIDEO-PRELOAD gate failed:");
   for (const failure of failures) console.error(`- ${failure}`);
   process.exit(1);
 }
 
-console.log("ORCH-1208 I-PROPOSED-1208-NO-EAGER-VIDEO-PRELOAD gate passed.");
+console.log("ORCH-1209 I-PROPOSED-1209-NO-EAGER-VIDEO-PRELOAD gate passed.");
