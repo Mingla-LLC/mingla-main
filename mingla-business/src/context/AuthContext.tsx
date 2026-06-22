@@ -81,6 +81,17 @@ export const AUTH_BOOTSTRAP_TIMEOUT_MS = 3000;
 // splash covers native boot — do not regress native).
 export const AUTH_RESOLUTION_HARD_CEILING_MS = 7000;
 const WEB_AUTH_STORAGE_KEY = "sb-gqnoajqerqhnvulmnyvv-auth-token";
+
+// ORCH-1220 [business-reviewer-bypass] — the ONE email routed through the
+// reviewer-signin edge function instead of the normal email-OTP send/verify.
+// This is NOT a secret — it is the fixed App-Store / Play reviewer login
+// address. The actual bypass is gated server-side by the secret
+// REVIEWER_BYPASS_CODE (Supabase function secret). The reviewer types this
+// email + the code (entered in the normal 6-digit code field) at the login
+// screen; we never send a real email for it and never call verifyOtp for it.
+const REVIEWER_EMAIL = "appreview@usemingla.com";
+const isReviewerEmail = (email: string): boolean =>
+  email.trim().toLowerCase() === REVIEWER_EMAIL;
 // SPEC §2.1: Symbol sentinel (NOT { __timedOut: true } flag) —
 // referentially unique, impossible to collide with any legitimate
 // getSession() return shape.
@@ -816,6 +827,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (!emailRegex.test(trimmed)) {
         return { error: new Error("That doesn't look like a valid email.") };
       }
+      // ORCH-1220 — reviewer bypass: SKIP the real OTP send so NO email goes
+      // out. Return success so the UI advances to the 6-digit code-entry screen
+      // (where the reviewer enters the secret bypass code; verifyEmailOtp routes
+      // it to the reviewer-signin edge function). Non-reviewer emails are
+      // unchanged below.
+      if (isReviewerEmail(trimmed)) {
+        return { error: null };
+      }
       const { error } = await supabase.auth.signInWithOtp({
         email: trimmed,
         options: {
@@ -855,6 +874,50 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     ): Promise<{ error: Error | null }> => {
       const trimmedEmail = email.trim().toLowerCase();
       const trimmedCode = code.trim();
+      // ORCH-1220 — reviewer bypass: route ONLY appreview@usemingla.com to the
+      // reviewer-signin edge function (the bypass code is not a 6-digit OTP, so
+      // this MUST run before the \d{6} guard below). The function gates on the
+      // secret REVIEWER_BYPASS_CODE server-side and only mints a session for the
+      // locked reviewer email. On any failure we surface the SAME "invalid code"
+      // UX as a normal wrong OTP, so the bypass is indistinguishable from a
+      // wrong-code attempt to anyone who doesn't already hold the secret.
+      if (isReviewerEmail(trimmedEmail)) {
+        try {
+          const { data, error: fnError } = await supabase.functions.invoke(
+            "reviewer-signin",
+            { body: { email: trimmedEmail, code: trimmedCode } },
+          );
+          const accessToken = (data as { access_token?: string } | null)
+            ?.access_token;
+          const refreshToken = (data as { refresh_token?: string } | null)
+            ?.refresh_token;
+          if (fnError || !accessToken || !refreshToken) {
+            return {
+              error: new Error(
+                "That code didn't match or has expired. Try again.",
+              ),
+            };
+          }
+          const { error: setError } = await supabase.auth.setSession({
+            access_token: accessToken,
+            refresh_token: refreshToken,
+          });
+          if (setError) {
+            return {
+              error: new Error(
+                "That code didn't match or has expired. Try again.",
+              ),
+            };
+          }
+          return { error: null };
+        } catch {
+          return {
+            error: new Error(
+              "That code didn't match or has expired. Try again.",
+            ),
+          };
+        }
+      }
       if (!/^\d{6}$/.test(trimmedCode)) {
         return {
           error: new Error("Enter the 6-digit code from your email."),
