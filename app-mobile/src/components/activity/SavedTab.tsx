@@ -1886,14 +1886,16 @@ const SavedTab = ({
                   onPress={() => handleSchedule(card)}
                   style={[
                     styles.primaryButton,
-                    (schedulingCardId === card.id ||
-                      isScheduled ||
-                      !isPlaceOpen) &&
+                    // ORCH-1195: do NOT disable on current open-now status. The
+                    // scheduler validates the user's SELECTED future datetime via
+                    // checkSingleCardSchedulingAvailability (isPlaceOpenAt) inside
+                    // handleProposeDateTime; disabling on isPlaceOpen would wrongly
+                    // block opening the scheduler for a place that's closed now but
+                    // open at a future time. The "currently closed" label stays.
+                    (schedulingCardId === card.id || isScheduled) &&
                       styles.primaryButtonDisabled,
                   ]}
-                  disabled={
-                    schedulingCardId === card.id || isScheduled || !isPlaceOpen
-                  }
+                  disabled={schedulingCardId === card.id || isScheduled}
                 >
                   {schedulingCardId === card.id ? (
                     <ActivityIndicator size="small" color="white" />
