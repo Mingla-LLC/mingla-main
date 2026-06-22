@@ -97,6 +97,18 @@ import type { SheetSnapPoint, SheetSnapValue } from "./sheetSnapHeight";
 // Same pattern that TopSheet uses for the same reason.
 const FALLBACK_BACKGROUND = "rgba(20, 22, 26, 0.92)";
 
+// ORCH-1207 Bug 1 — on WEB the sheet panel must be effectively OPAQUE (Android
+// glass opaque-fallback policy): page content must NOT ghost through the open
+// sheet. The native glass stack here (BlurView when blurOk, else the 0.92-alpha
+// FALLBACK_BACKGROUND, PLUS a translucent `glass.tint.profileElevated` layer on
+// top) is intentionally see-through. On web we replace that whole base with a
+// SINGLE fully-opaque elevated-surface fill (no rgba/blur → nothing bleeds
+// through). This is the solid composite of the dark-glass canvas at full alpha —
+// same family as `chrome.composerSurface` (#191c21) / `chrome.ariBubbleAndroid`
+// (#16181b), tuned to read like the sheet's existing dark-glass tone. The brand
+// `panelBackground` override path is unaffected (it was already a solid fill).
+const WEB_OPAQUE_BACKGROUND = "#16181b";
+
 /**
  * `SheetSnapPoint` / `SheetSnapValue` are owned by `./sheetSnapHeight`
  * (pure, unit-testable). Re-exported here so existing consumers importing
@@ -366,6 +378,13 @@ interface SheetMobilePanelInnerProps {
   children: React.ReactNode;
   /** ORCH-1186 Fix 3 — solid brand fill replacing the glass stack when set. */
   panelBackground?: string;
+  /**
+   * ORCH-1207 Bug 1 — WEB only: render an effectively-OPAQUE panel fill instead
+   * of the translucent native glass stack so page content does not ghost through
+   * the open sheet (Android glass opaque-fallback policy). The native variant
+   * passes `false` and keeps its real BlurView / translucent-tint stack.
+   */
+  webOpaque?: boolean;
 }
 
 const SheetMobilePanelInner: React.FC<SheetMobilePanelInnerProps> = ({
@@ -374,6 +393,7 @@ const SheetMobilePanelInner: React.FC<SheetMobilePanelInnerProps> = ({
   bottomInset,
   children,
   panelBackground,
+  webOpaque = false,
 }) =>
   panelBackground !== undefined ? (
     // ORCH-1186 Fix 3 — a single solid brand fill clipped to the rounded panel
@@ -386,6 +406,46 @@ const SheetMobilePanelInner: React.FC<SheetMobilePanelInnerProps> = ({
           styles.bodyClip,
           { backgroundColor: panelBackground },
         ]}
+      />
+      <View style={styles.handleWrap}>
+        <View style={styles.handle} />
+      </View>
+      <View style={[styles.body, { paddingBottom: spacing.lg + bottomInset }]}>
+        {children}
+      </View>
+    </>
+  ) : webOpaque ? (
+    // ORCH-1207 Bug 1 (WEB) — a single fully-opaque elevated-surface fill clipped
+    // to the rounded panel, REPLACING the see-through native glass stack (no
+    // BlurView, no translucent tint). Page content cannot bleed through. The L3
+    // top-edge highlight + L4 hairline border are decorative (do not affect
+    // opacity) and are kept for visual parity with the native glass.
+    <>
+      <View
+        style={[
+          StyleSheet.absoluteFill,
+          styles.bodyClip,
+          { backgroundColor: WEB_OPAQUE_BACKGROUND },
+        ]}
+      />
+      {/* L3 — Top edge highlight */}
+      <View
+        style={[
+          styles.topHighlight,
+          { backgroundColor: glass.highlight.profileElevated },
+        ]}
+      />
+      {/* L4 — Hairline border */}
+      <View
+        style={[
+          StyleSheet.absoluteFill,
+          styles.bodyClip,
+          {
+            borderColor: glass.border.profileElevated,
+            borderWidth: StyleSheet.hairlineWidth,
+          },
+        ]}
+        pointerEvents="none"
       />
       <View style={styles.handleWrap}>
         <View style={styles.handle} />
@@ -686,6 +746,106 @@ const SheetWeb: React.FC<SheetProps> = ({
     if (dismissOnScrimTap) onClose();
   };
 
+  // ORCH-1207 Bug 2 — WEB drag-to-dismiss. SheetWeb previously closed ONLY via a
+  // scrim tap (it calls zero reanimated hooks and had no PanGesture). Mirror the
+  // native PanGesture with raw pointer events on the panel's HANDLE/HEADER region:
+  // dragging DOWN translates the panel with the finger; on release past a
+  // threshold (dragged > 25% of panel height OR a downward flick velocity) we
+  // onClose(), else we spring back to the open position. Only the handle/header
+  // initiates the drag, so the scrollable body is never hijacked.
+  const DRAG_CLOSE_RATIO = 0.25; // fraction of panel height to commit a close
+  const DRAG_CLOSE_VELOCITY = 0.5; // px/ms downward flick that commits a close
+  const [dragY, setDragY] = useState<number>(0); // live finger offset (px, >= 0)
+  const [dragging, setDragging] = useState<boolean>(false);
+  const dragStartYRef = useRef<number | null>(null);
+  const dragYRef = useRef<number>(0); // live offset (ref = end-decision source of truth)
+  const lastMoveRef = useRef<{ y: number; t: number } | null>(null);
+  const velocityRef = useRef<number>(0); // px/ms, positive = downward
+
+  const endDrag = (commitClose: boolean): void => {
+    dragStartYRef.current = null;
+    lastMoveRef.current = null;
+    dragYRef.current = 0;
+    setDragging(false);
+    if (commitClose) {
+      // Let the CSS close transition (re-enabled once dragging=false) carry the
+      // panel the rest of the way as onClose flips `visible`.
+      setDragY(0);
+      onClose();
+    } else {
+      // Spring back to open — dragging=false restores the transition, dragY=0
+      // animates the panel home.
+      setDragY(0);
+    }
+  };
+
+  const handleDragStart = (clientY: number): void => {
+    dragStartYRef.current = clientY;
+    dragYRef.current = 0;
+    lastMoveRef.current = { y: clientY, t: Date.now() };
+    velocityRef.current = 0;
+    setDragging(true);
+  };
+
+  const handleDragMove = (clientY: number): void => {
+    if (dragStartYRef.current === null) return;
+    const delta = clientY - dragStartYRef.current;
+    // Clamp to downward-only (no rubber-band upward past the open rest position).
+    const next = delta > 0 ? delta : 0;
+    const prev = lastMoveRef.current;
+    if (prev !== null) {
+      const dt = Date.now() - prev.t;
+      if (dt > 0) velocityRef.current = (clientY - prev.y) / dt;
+    }
+    lastMoveRef.current = { y: clientY, t: Date.now() };
+    dragYRef.current = next;
+    setDragY(next);
+  };
+
+  const handleDragEnd = (): void => {
+    if (dragStartYRef.current === null) return;
+    // Use the REF, not the `dragY` state: the final pointermove's setState may not
+    // have re-rendered (and so re-closured handleDragEnd) before pointerup fires.
+    const dragged = dragYRef.current;
+    const velocity = velocityRef.current;
+    const shouldClose =
+      dragged > sheetHeight * DRAG_CLOSE_RATIO || velocity > DRAG_CLOSE_VELOCITY;
+    endDrag(shouldClose);
+  };
+
+  // Pointer Events cover mouse (desktop) + touch + pen in one path. react-native-
+  // web forwards onPointerDown/Move/Up/Cancel to the DOM node. setPointerCapture
+  // on down keeps move/up targeting the handle band even after the finger drags
+  // off it (otherwise the events retarget to whatever element is under the cursor
+  // and the drag silently stops).
+  const dragHandlers = {
+    onPointerDown: (e: {
+      nativeEvent?: { clientY?: number; pointerId?: number };
+      clientY?: number;
+      pointerId?: number;
+      currentTarget?: { setPointerCapture?: (id: number) => void };
+    }): void => {
+      const y = e.nativeEvent?.clientY ?? e.clientY;
+      const id = e.nativeEvent?.pointerId ?? e.pointerId;
+      if (typeof id === "number") {
+        try {
+          e.currentTarget?.setPointerCapture?.(id);
+        } catch {
+          // setPointerCapture can throw if the pointer is already gone — ignore;
+          // the move/up handlers still work without capture in that edge case.
+        }
+      }
+      if (typeof y === "number") handleDragStart(y);
+    },
+    onPointerMove: (e: { nativeEvent?: { clientY?: number }; clientY?: number }): void => {
+      if (dragStartYRef.current === null) return;
+      const y = e.nativeEvent?.clientY ?? e.clientY;
+      if (typeof y === "number") handleDragMove(y);
+    },
+    onPointerUp: (): void => handleDragEnd(),
+    onPointerCancel: (): void => endDrag(false),
+  } as unknown as Record<string, (e: unknown) => void>;
+
   if (!mounted) return null;
 
   const blurOk = shouldUseRealBlur(windowWidth);
@@ -705,15 +865,28 @@ const SheetWeb: React.FC<SheetProps> = ({
 
   const dur = animateOpen ? SHEET_OPEN_DURATION : SHEET_CLOSE_DURATION;
   const ease = animateOpen ? SHEET_OPEN_EASE_CSS : SHEET_CLOSE_EASE_CSS;
+  // ORCH-1207 Bug 2 — while the finger is dragging, the panel must track it 1:1
+  // with NO transition (otherwise CSS would lag the drag). The drag offset
+  // (`dragY`, downward >= 0) is added to the open resting transform. On release
+  // `dragging` flips false → the transition is restored and `dragY` returns to 0,
+  // so the panel either springs home or rides the close transition out.
+  const openWithDrag = openTranslateY + dragY;
   const panelWebStyle = {
-    transition: reduceMotion ? `opacity ${dur}ms ${ease}` : `transform ${dur}ms ${ease}`,
+    transition: dragging
+      ? "none"
+      : reduceMotion
+        ? `opacity ${dur}ms ${ease}`
+        : `transform ${dur}ms ${ease}`,
     transform: reduceMotion
-      ? `translateY(${openTranslateY}px)`
+      ? `translateY(${animateOpen ? openWithDrag : openTranslateY}px)`
       : animateOpen
-        ? `translateY(${openTranslateY}px)`
+        ? `translateY(${openWithDrag}px)`
         : `translateY(${closedY}px)`,
     opacity: reduceMotion ? (animateOpen ? 1 : 0) : 1,
     willChange: "transform",
+    // ORCH-1207: a downward drag from the handle must NOT be interpreted by the
+    // browser as a page scroll/refresh gesture; the panel owns the vertical pan.
+    touchAction: "none",
     // ORCH-1197: pad the panel bottom past the iOS home-indicator safe area so the
     // CTA clears it. `env(safe-area-inset-bottom)` resolves to 0 where there's no
     // inset (desktop / Android web), so this is a no-op there. CSS string is web-
@@ -762,9 +935,28 @@ const SheetWeb: React.FC<SheetProps> = ({
               blurIntensity={blurIntensity}
               bottomInset={insets.bottom}
               panelBackground={panelBackground}
+              webOpaque
             >
               {children}
             </SheetMobilePanelInner>
+            {/* ORCH-1207 Bug 2 — transparent drag-catch band over the handle +
+                header (top of the panel). Pointer-drag DOWN here dismisses the
+                sheet (mirrors the native PanGesture). Sits above the inner glass
+                + handle but is short enough that it never overlaps the scrollable
+                body, so form scrolling is untouched. Pointer Events cover mouse
+                (desktop) + touch + pen, so scrim-tap dismissal still works
+                independently. */}
+            <View
+              testID={testID !== undefined ? `${testID}-drag-handle` : undefined}
+              accessibilityLabel="Drag to dismiss sheet"
+              style={[
+                styles.webDragCatch,
+                // Web-only `cursor` (RN-web maps it; the string-style cast keeps
+                // it off the native ViewStyle surface).
+                { cursor: dragging ? "grabbing" : "grab" } as unknown as ViewStyle,
+              ]}
+              {...dragHandlers}
+            />
           </View>
         </View>
       </View>
@@ -804,6 +996,18 @@ const styles = StyleSheet.create({
   handleWrap: {
     alignItems: "center",
     paddingVertical: spacing.sm + 2,
+  },
+  // ORCH-1207 Bug 2 (WEB) — transparent drag-catch band pinned to the top of the
+  // panel, over the handle + header. Tall enough to be an easy drag target, short
+  // enough to never overlap the scrollable body below it (handleWrap is
+  // ~spacing.sm*2 + handle height; 52px clears it with margin to spare). Web-only
+  // style object (cursor) — only applied inside the SheetWeb panel.
+  webDragCatch: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    height: 52,
   },
   handle: {
     width: 36,
