@@ -14,9 +14,13 @@
 //   5. fires a best-effort Resend notification to seth@usemingla.com on a NEW
 //      lead only (failure is logged + non-fatal — the lead is already saved).
 //
-// NO lead-facing welcome email (NG-7): the consumer "welcome" IS the in-modal
-// platform-branched success panel + the TestFlight link (iOS only). The
-// ORCH-1056 buildWelcomeEmail was an organiser-only add and is NOT cloned here.
+// ORCH-1219 — lead-facing branded TestFlight email (Fix D): on EVERY newly
+// `created` submit (iOS, Android, AND desktop/other) we ALSO send the lead a
+// warm, on-brand email containing the iOS TestFlight install link, built through
+// the shared `renderShell` + a CTA button (mirrors buildInviteEmail). On a
+// duplicate (`already_on_list`) we send NO second email (idempotency parity with
+// the internal seth@usemingla.com notify). The internal notify still fires too.
+// (Supersedes ORCH-1216's NG-7 "no lead-facing email" — Seth follow-up.)
 //
 // HTTP contract (SPEC §3.4):
 //   POST { name, email, city, interest, consent, platform, source }
@@ -40,6 +44,17 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 // The shared object already uses "POST, OPTIONS", matching this function's
 // methods, so behavior is unchanged except the widened allow-headers.
 import { corsHeaders } from "../_shared/cors.ts";
+// ORCH-1219 (Fix D) — the lead-facing branded TestFlight email is built through
+// the shared Mingla email shell (header/footer chrome) + the canonical
+// escapeHtml, mirroring invite-brand-member/buildInviteEmail. EMAIL_SENDERS
+// resolves the no-reply system sender (RESEND_SYSTEM_FROM env-overridable).
+import { renderShell } from "../_shared/email/shell.ts";
+import { escapeHtml as sharedEscapeHtml } from "../_shared/email/escape.ts";
+import {
+  assertNotResendSandbox,
+  EMAIL_SENDERS,
+  formatSenderHeader,
+} from "../_shared/email/senders.ts";
 
 function json(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
@@ -58,6 +73,7 @@ const INTERESTS = new Set([
 ]);
 const PLATFORMS = new Set([
   "ios",
+  "android", // ORCH-1219 Fix C — distinct from desktop ('other')
   "other",
 ]);
 const SOURCES = new Set([
@@ -76,7 +92,7 @@ export interface ValidatedLead {
   name: string;
   email: string;
   city: string;
-  interest: string;
+  interest: string[]; // ORCH-1219 Fix A — multi-select; ≥1 element, all ∈ enum
   platform: string;
   consent: true;
   source: string;
@@ -85,6 +101,24 @@ export interface ValidatedLead {
 export type ValidationResult =
   | { ok: true; lead: ValidatedLead }
   | { ok: false; fields: string[] };
+
+// ORCH-1219 Fix A — normalise a raw `interest` payload to a clean string[].
+// Accepts ONLY an array (a bare string is NOT silently wrapped — the client
+// transport always sends an array; a scalar is a contract violation and must
+// reject as empty). Trims each element, drops empties, de-dupes (stable order).
+export function normaliseInterest(raw: unknown): string[] {
+  if (!Array.isArray(raw)) return [];
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const el of raw) {
+    if (typeof el !== "string") continue;
+    const v = el.trim();
+    if (v.length === 0 || seen.has(v)) continue;
+    seen.add(v);
+    out.push(v);
+  }
+  return out;
+}
 
 // Pure, exported validator — re-validates the FULL payload server-side. Exported
 // so the Deno test suite exercises the exact branching the handler ships.
@@ -99,17 +133,28 @@ export function validateLead(raw: unknown): ValidationResult {
   const name = str(body.name).trim();
   const city = str(body.city).trim();
   const email = str(body.email).trim().toLowerCase();
-  const interest = str(body.interest).trim();
   const platform = str(body.platform).trim();
   const source = str(body.source).trim();
   const consent = body.consent;
+
+  // ORCH-1219 Fix A — interest is now a NON-EMPTY array of allowed values. We
+  // normalise (trim each element, drop empties, de-dupe) then require ≥1 element
+  // and EVERY element ∈ the 5-value allow-set. A bare string, an empty array, an
+  // array with an unknown element, or a non-array all reject.
+  const interest = normaliseInterest(body.interest);
+  if (
+    interest.length < 1 ||
+    interest.length > INTERESTS.size ||
+    !interest.every((i) => INTERESTS.has(i))
+  ) {
+    fields.push("interest");
+  }
 
   if (name.length < 1 || name.length > 80) fields.push("name");
   if (!EMAIL_RE.test(email) || email.length > 254 || email.length < 3) {
     fields.push("email");
   }
   if (city.length < 1 || city.length > 80) fields.push("city");
-  if (!INTERESTS.has(interest)) fields.push("interest");
   if (!PLATFORMS.has(platform)) fields.push("platform");
   if (consent !== true) fields.push("consent");
   if (!SOURCES.has(source)) fields.push("source");
@@ -169,11 +214,12 @@ export function buildNotifyEmail(
       .replace(/>/g, "&gt;")
       .replace(/"/g, "&quot;");
 
+  const interestLabel = lead.interest.join(", "); // ORCH-1219 — multi-select
   const rows: Array<[string, string]> = [
     ["Name", lead.name],
     ["Email", lead.email],
     ["City", lead.city],
-    ["Interested in", lead.interest],
+    ["Interested in", interestLabel],
     ["Platform", lead.platform],
     ["Source", lead.source],
     ["Received (UTC)", receivedAtIso],
@@ -198,7 +244,112 @@ export function buildNotifyEmail(
   return {
     from,
     to: ["seth@usemingla.com"],
-    subject: `New app lead — ${lead.name} (${lead.interest}, ${lead.platform})`,
+    subject: `New app lead — ${lead.name} (${interestLabel}, ${lead.platform})`,
+    html,
+    text,
+  };
+}
+
+// ORCH-1219 Fix D — the LEAD-FACING branded TestFlight email.
+//
+// The live TestFlight join link is hard-coded here. NOTE: the modal-side gate
+// I-PROPOSED-1216-TESTFLIGHT-BEHIND-SUBMIT scans ONLY get-the-app-modal.tsx (the
+// MODAL), so the URL living in this edge fn does NOT trip it — the modal keeps
+// the link in its iOS-only success branch; the email is a SEPARATE, always-sent
+// channel (Seth: "also send when the user is on ios too").
+//
+// Built through the shared `renderShell` (header/footer chrome) + a CTA button,
+// mirroring invite-brand-member/buildInviteEmail. Every interpolated value flows
+// through sharedEscapeHtml. The body is warm + on-brand: invites the lead to
+// install Mingla on iPhone/iPad via TestFlight, CTA → the TestFlight URL, with a
+// soft note for Android/desktop that it opens on an iPhone.
+const TESTFLIGHT_URL = "https://testflight.apple.com/join/1gvHNqkQ";
+
+export function buildDownloadLinkEmail(
+  lead: ValidatedLead,
+  from: string,
+): { from: string; to: string[]; subject: string; html: string; text: string } {
+  const firstName = lead.name.split(/\s+/)[0] || lead.name;
+  const isIos = lead.platform === "ios";
+
+  const subject = "Your Mingla TestFlight invite";
+  const preheader =
+    "Install Mingla on your iPhone or iPad through TestFlight — tap to open.";
+
+  const greeting =
+    `<p style="margin:0 0 14px 0;font-size:15px;line-height:1.55;color:#0F1115;">
+      Hi ${sharedEscapeHtml(firstName)},
+    </p>`;
+
+  const lead1 = isIos
+    ? `<p style="margin:0 0 14px 0;font-size:15px;line-height:1.55;color:#0F1115;">
+        You're in. Mingla is in TestFlight while we polish it — tap the button
+        below on your iPhone or iPad to install it and start finding things to do.
+      </p>`
+    : `<p style="margin:0 0 14px 0;font-size:15px;line-height:1.55;color:#0F1115;">
+        Thanks for grabbing Mingla. We're in beta on iPhone &amp; iPad right now —
+        tap the button below <strong>on your iPhone or iPad</strong> to install it
+        through TestFlight and start finding things to do.
+      </p>`;
+
+  // CTA button — table-based for mail-client compatibility (mirror buildInviteEmail).
+  const cta =
+    `<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:24px 0;">
+      <tr>
+        <td style="background:#FF6B2C;border-radius:999px;">
+          <a href="${sharedEscapeHtml(TESTFLIGHT_URL)}"
+             style="display:inline-block;padding:14px 26px;color:#FFFFFF;text-decoration:none;font-weight:600;font-size:15px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
+            Install Mingla in TestFlight
+          </a>
+        </td>
+      </tr>
+    </table>`;
+
+  const softNote = isIos
+    ? ""
+    : `<p style="margin:6px 0 0 0;font-size:13px;line-height:1.5;color:#5B6172;">
+        Heads up: Mingla's beta opens on an iPhone or iPad. Open this email on your
+        Apple device and tap the button to install — we'll let you know the moment
+        we land on your platform.
+      </p>`;
+
+  const finePrint =
+    `<p style="margin:18px 0 0 0;font-size:13px;line-height:1.5;color:#5B6172;">
+      If the button doesn't work, copy and paste this link into Safari on your
+      iPhone or iPad:
+    </p>
+    <p style="margin:6px 0 0 0;word-break:break-all;font-size:12px;color:#5B6172;">
+      ${sharedEscapeHtml(TESTFLIGHT_URL)}
+    </p>`;
+
+  const bodyHtml = `${greeting}
+    ${lead1}
+    ${cta}
+    ${softNote}
+    ${finePrint}`;
+
+  const html = renderShell({
+    preheader,
+    bodyHtml,
+    supportEmail: Deno.env.get("SUPPORT_EMAIL") ?? "support@usemingla.com",
+    logoUrl: Deno.env.get("MINGLA_LOGO_URL") ??
+      "https://usemingla.com/email-assets/mingla-logo.png",
+    footerAddress: Deno.env.get("MINGLA_FOOTER_ADDRESS") ??
+      "Mingla, hello@usemingla.com",
+  });
+
+  const text = isIos
+    ? `Hi ${firstName},\n\nYou're in. Mingla is in TestFlight while we polish it — ` +
+      `install it on your iPhone or iPad here:\n${TESTFLIGHT_URL}\n\n— Mingla`
+    : `Hi ${firstName},\n\nThanks for grabbing Mingla. We're in beta on iPhone & ` +
+      `iPad right now — open this on your Apple device and install through ` +
+      `TestFlight:\n${TESTFLIGHT_URL}\n\nWe'll let you know the moment we land on ` +
+      `your platform.\n\n— Mingla`;
+
+  return {
+    from,
+    to: [lead.email],
+    subject,
     html,
     text,
   };
@@ -340,9 +491,38 @@ export async function handler(req: Request): Promise<Response> {
           notify.error,
         );
       }
+
+      // ── ORCH-1219 Fix D — ALWAYS send the LEAD the branded TestFlight email
+      //    on a NEW (created) submit (iOS, Android AND desktop/other). This path
+      //    is reached only AFTER a successful insert — i.e. never on a duplicate
+      //    (already_on_list returns above), so we keep idempotency parity with
+      //    the internal notify. Best-effort: failure is logged + non-fatal (the
+      //    lead is already saved). The system no-reply sender is used (never the
+      //    Resend sandbox — assertNotResendSandbox throws if misconfigured).
+      const userFrom = (() => {
+        try {
+          assertNotResendSandbox(EMAIL_SENDERS.system);
+          return formatSenderHeader(EMAIL_SENDERS.system);
+        } catch {
+          // Fall back to the internal notify `from` if the system sender is
+          // somehow a sandbox identity — still a real Mingla address.
+          return from;
+        }
+      })();
+      const userEmail = await sendEmail(
+        resendKey,
+        buildDownloadLinkEmail(lead, userFrom),
+      );
+      if (!userEmail.ok) {
+        console.error(
+          "[explorer-app-lead-submit] download-link email to lead failed (non-fatal):",
+          userEmail.error,
+        );
+      }
     } else {
       console.error(
-        "[explorer-app-lead-submit] RESEND_API_KEY missing — skipped notify (non-fatal)",
+        "[explorer-app-lead-submit] RESEND_API_KEY missing — skipped notify + " +
+          "download-link email (non-fatal)",
       );
     }
 

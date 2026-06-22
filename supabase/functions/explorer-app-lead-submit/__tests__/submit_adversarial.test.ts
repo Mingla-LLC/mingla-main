@@ -1,5 +1,10 @@
 // ORCH-1216 — adversarial regression for explorer-app-lead-submit.
 //
+// [TEST-MOD-APPROVED ORCH-1219] — updated for the new contract: interest is a
+// multi-select string[] (a bare string + empty array now reject), and 'android'
+// is now an ACCEPTED platform (no longer rejected). The interest/platform
+// assertions below were adjusted accordingly.
+//
 // Asserts the server REJECTS every malformed / hostile payload (the client is
 // never trusted): missing consent (T-05), invalid email (T-08), interest not in
 // the allow-set (T-06), platform not in the allow-set (T-07), unknown source,
@@ -19,7 +24,7 @@ const GOOD = {
   name: "Ada",
   email: "ada@place.com",
   city: "Lagos",
-  interest: "events",
+  interest: ["events"], // ORCH-1219 — multi-select array
   consent: true,
   platform: "ios",
   source: "explorer_marketing_nav",
@@ -54,17 +59,33 @@ Deno.test("T-08 over-length email — rejected (>254)", () => {
   assert(fieldsFor({ ...GOOD, email: `${longLocal}@b.com` }).includes("email"));
 });
 
-Deno.test("T-06 interest not in allow-set — rejected", () => {
-  // Note: values are trimmed before the allow-set check, so "events " (with a
-  // trailing space) IS accepted by design — not included here.
-  for (const bad of ["hacker", "EVENTS", "place", "", "trip", "null"]) {
+Deno.test("T-06 interest not in allow-set — rejected (ORCH-1219: array elements)", () => {
+  // Note: elements are trimmed before the allow-set check, so ["events "] (with a
+  // trailing space) IS accepted by design — not included here. Each bad case is
+  // a single-element array carrying a disallowed element (plus the scalar/empty
+  // contract violations).
+  for (const bad of [["hacker"], ["EVENTS"], ["place"], [""], ["trip"], ["null"]]) {
     assert(fieldsFor({ ...GOOD, interest: bad }).includes("interest"), `expected reject: ${bad}`);
   }
+  // ORCH-1219 — a bare string and an empty array are contract violations.
+  assert(fieldsFor({ ...GOOD, interest: "events" }).includes("interest"), "bare string rejects");
+  assert(fieldsFor({ ...GOOD, interest: [] }).includes("interest"), "empty array rejects");
+  // A mixed array with ONE bad element rejects (every element must be in-set).
+  assert(
+    fieldsFor({ ...GOOD, interest: ["events", "hacker"] }).includes("interest"),
+    "one bad element rejects the whole array",
+  );
 });
 
-Deno.test("T-07 platform not in allow-set — rejected", () => {
-  for (const bad of ["windows", "android", "IOS", "Other", "", "macos"]) {
+Deno.test("T-07 platform not in allow-set — rejected (ORCH-1219: android now valid)", () => {
+  // 'android' is now an ACCEPTED value (3-way ios|android|other) and is removed
+  // from the reject set.
+  for (const bad of ["windows", "IOS", "Other", "", "macos", "Android"]) {
     assert(fieldsFor({ ...GOOD, platform: bad }).includes("platform"), `expected reject: ${bad}`);
+  }
+  // Sanity: the 3 valid platforms are NOT flagged.
+  for (const ok of ["ios", "android", "other"]) {
+    assert(!fieldsFor({ ...GOOD, platform: ok }).includes("platform"), `expected accept: ${ok}`);
   }
 });
 

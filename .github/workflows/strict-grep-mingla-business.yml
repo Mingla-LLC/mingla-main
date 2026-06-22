@@ -3008,3 +3008,29 @@ jobs:
         run: node .github/scripts/strict-grep/i-proposed-1216-success-mount-gated.mjs --self-test
       - name: Run ORCH-1216 success-mount-gated gate
         run: node .github/scripts/strict-grep/i-proposed-1216-success-mount-gated.mjs
+
+  orch-1219-always-email-download-link:
+    name: "ORCH-1219: edge fn emails the lead the branded TestFlight link on every created submit (I-PROPOSED-1219-ALWAYS-EMAIL-DOWNLOAD-LINK)"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Self-test the ORCH-1219 always-email-download-link gate
+        run: node .github/scripts/strict-grep/i-proposed-1219-always-email-download-link.mjs --self-test
+      - name: Run ORCH-1219 always-email-download-link gate
+        run: node .github/scripts/strict-grep/i-proposed-1219-always-email-download-link.mjs
+
+  orch-1219-form-no-autoadvance-multiselect:
+    name: "ORCH-1219: explorer multi-select + no auto-advance; organiser single-select + no auto-advance (I-PROPOSED-1219-FORM-NO-AUTOADVANCE-MULTISELECT)"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Self-test the ORCH-1219 form-no-autoadvance-multiselect gate
+        run: node .github/scripts/strict-grep/i-proposed-1219-form-no-autoadvance-multiselect.mjs --self-test
+      - name: Run ORCH-1219 form-no-autoadvance-multiselect gate
+        run: node .github/scripts/strict-grep/i-proposed-1219-form-no-autoadvance-multiselect.mjs
