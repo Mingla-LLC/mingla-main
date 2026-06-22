@@ -4,6 +4,23 @@
 
 export type HealthStatus = "healthy" | "degraded" | "down" | "unknown";
 
+// ORCH-1201 — Safe numeric coercion for EXTERNALLY-SOURCED values. Vendor APIs
+// (Twilio Balance.json returns balance as a STRING "14.53455") and HTTP headers
+// (x-ratelimit-remaining, rate-limit-available) are ALWAYS strings. A bare
+// `typeof x === "number"` guard silently drops these → false-healthy. Accept a
+// number OR a numeric-string; return a FINITE number or null. Guards NaN, empty
+// string, whitespace-only, booleans, and non-numeric junk (no crash).
+export function toNum(x: unknown): number | null {
+  if (typeof x === "number") return Number.isFinite(x) ? x : null;
+  if (typeof x === "string") {
+    const t = x.trim();
+    if (t === "") return null;
+    const n = Number(t);
+    return Number.isFinite(n) ? n : null;
+  }
+  return null;
+}
+
 export interface ProbeResult {
   ok: boolean;
   latencyMs: number | null;
@@ -88,16 +105,19 @@ export interface DepletionResult {
 export function matchClassBDepletion(
   signal: { reactive?: ClassBReactive; header?: ClassBHeader } | null | undefined,
   rows: DepletionObs[],
-  cachedRemaining?: number | null,
+  cachedRemaining?: number | string | null,
 ): DepletionResult {
   const none: DepletionResult = { depleted: false, lastErrorCode: null, lastErrorText: null };
   if (!signal) return none;
 
   // header signal: depleted when the freshest cached remaining <= warn.
+  // ORCH-1201: HTTP rate-limit headers (x-ratelimit-remaining, rate-limit-available)
+  // are ALWAYS strings on the wire — accept a numeric-string too so a low remaining
+  // count is never silently dropped by a `typeof === "number"`-only guard.
   if (signal.header) {
-    if (typeof cachedRemaining === "number" && Number.isFinite(cachedRemaining) &&
-        cachedRemaining <= signal.header.warn) {
-      return { depleted: true, lastErrorCode: "header_remaining", lastErrorText: `${cachedRemaining} <= ${signal.header.warn}` };
+    const rem = toNum(cachedRemaining);
+    if (rem != null && rem <= signal.header.warn) {
+      return { depleted: true, lastErrorCode: "header_remaining", lastErrorText: `${rem} <= ${signal.header.warn}` };
     }
     return none;
   }
@@ -318,14 +338,16 @@ export function evaluateBalanceForSignal(
 
   switch (balance.kind) {
     case "twilio_balance": {
-      const v = typeof detail.balance === "number" ? detail.balance : null;
+      // ORCH-1201: Twilio Balance.json returns `balance` as a STRING ("14.53455").
+      // A `typeof === "number"`-only guard dropped it → false-healthy at $14.53.
+      const v = toNum(detail.balance);
       if (v == null || warn == null) return { balanceLow: null, balanceText: null, severity: null };
       const low = v <= warn;
       const sev = low && crit != null && v <= crit ? "crit" : (low ? "warn" : null);
       return { balanceLow: low, balanceText: `$${v} ${detail.currency ?? "USD"} (warn ≤ $${warn})`, severity: sev };
     }
     case "cloudinary_used_pct": {
-      const used = typeof detail.used_percent === "number" ? detail.used_percent : null;
+      const used = toNum(detail.used_percent);
       if (used == null || warn == null) return { balanceLow: null, balanceText: null, severity: null };
       const isCrit = crit != null && used >= crit;
       const low = used >= warn;
@@ -333,14 +355,14 @@ export function evaluateBalanceForSignal(
       return { balanceLow: low, balanceText: `${used.toFixed(2)}% used (${sevTxt})`, severity: isCrit ? "crit" : (low ? "warn" : null) };
     }
     case "exchangerate_quota": {
-      const rem = typeof detail.requests_remaining === "number" ? detail.requests_remaining : null;
+      const rem = toNum(detail.requests_remaining);
       if (rem == null || warn == null) return { balanceLow: null, balanceText: null, severity: null };
       const low = rem <= warn;
       const sev = low && crit != null && rem <= crit ? "crit" : (low ? "warn" : null);
       return { balanceLow: low, balanceText: `${rem} requests remaining (warn ≤ ${warn})`, severity: sev };
     }
     case "sentry_stats": {
-      const ratio = typeof detail.rate_limited_ratio === "number" ? detail.rate_limited_ratio : null;
+      const ratio = toNum(detail.rate_limited_ratio);
       if (ratio == null || warn == null) return { balanceLow: null, balanceText: null, severity: null };
       const low = ratio >= warn;
       const sev = low && crit != null && ratio >= crit ? "crit" : (low ? "warn" : null);

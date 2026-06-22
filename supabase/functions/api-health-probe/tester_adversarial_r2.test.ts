@@ -211,9 +211,19 @@ Deno.test("ADV-R2 A3: missing balance/used_percent field ⇒ null, NOT a fabrica
   assertEquals(evaluateBalanceForSignal("twilio", {}, { kind: "twilio_balance", warn: 25 }).balanceLow, null);
   assertEquals(evaluateBalanceForSignal("cloudinary", {}, { kind: "cloudinary_used_pct", warn: 80, crit: 100 }).balanceLow, null);
   assertEquals(evaluateBalanceForSignal("exchangerate", {}, { kind: "exchangerate_quota", warn: 3000, crit: 500 }).balanceLow, null);
-  // a non-numeric balance (string) ⇒ treated as absent ⇒ null.
+  // ORCH-1201 TEST-MOD: this previously asserted a numeric-STRING balance "14.53"
+  // ⇒ null ("treated as absent"). That assertion ENCODED the production bug — the
+  // Twilio Balance.json API returns `balance` as a STRING, so a real $14.53
+  // balance was wrongly read as absent and marked HEALTHY despite warn ≤ $25.
+  // Corrected: a numeric-string balance MUST be parsed and (here) flagged low.
+  // JUNK (non-numeric) strings still ⇒ null — see the dedicated junk-string test.
   assertEquals(
     evaluateBalanceForSignal("twilio", { balance: "14.53" as unknown as number }, { kind: "twilio_balance", warn: 25 }).balanceLow,
+    true,
+  );
+  // genuinely non-numeric balance ⇒ still treated as absent ⇒ null.
+  assertEquals(
+    evaluateBalanceForSignal("twilio", { balance: "n/a" as unknown as number }, { kind: "twilio_balance", warn: 25 }).balanceLow,
     null,
   );
 });
