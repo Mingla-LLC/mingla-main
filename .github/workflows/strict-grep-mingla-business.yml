@@ -133,6 +133,7 @@ on:
 #   - I-PROPOSED-1137-BIZ-WEB-LUCIDE-REAL (i-proposed-1137-biz-web-lucide-real.mjs) — the biz-WEB lucide shim renders REAL lucide-react icons via a Proxy and NEVER returns undefined for any name (no `() => null` null-stub); metro.config.js still aliases lucide-react-native -> the shim behind `platform === "web"`; self-tested (ORCH-1137 — DRAFT until CLOSE)
 #   - I-PROPOSED-1138-TRIP-RESERVE-STRAIGHT-TO-CART (orch-1138-trip-reserve-straight-to-cart.mjs) — consumer trip detail Reserve opens TicketCartSheet DIRECTLY; no ExpandedBusinessEventSheet import/mount, no dead tripToBusinessEventCard adapter (the duplicate-detail-page hop is forbidden); self-tested via ORCH1138_SIMULATE_REVERT (ORCH-1138 — DRAFT until CLOSE)
 #   - I-PROPOSED-1223-FOOTER-LINKS-RESOLVE (i-proposed-1223-footer-links-resolve.mjs) — every internal `href: '/...'` in mingla-marketing/components/marketing/footer.tsx must resolve to a real Next.js route under mingla-marketing/app/** (route set rebuilt by walking the App Router tree, accounting for `(group)` route groups and the `(explorer)` index => `/`); prevents ANY dead footer link returning, not just the 9 removed in ORCH-1223; self-tested (ORCH-1223 — DRAFT until CLOSE)
+#   - I-PROPOSED-1223-FOOTER-MOUNTED (i-proposed-1223-footer-mounted.mjs) — the cleaned footer must stay MOUNTED on BOTH public surfaces: mingla-marketing/app/(explorer)/layout.tsx imports `Footer` from '@/components/marketing/footer' AND renders `<Footer surface="explorer" />`, and mingla-marketing/app/organisers/layout.tsx imports it AND renders `<Footer surface="organiser" />` (comment-stripped, so a commented-out mount does NOT count); guards the exact ORCH-1053 silent-un-mount failure mode that dropped Privacy/Terms/Support from the live site; re-mount supersedes ORCH-1053 per Seth 2026-06-22; self-tested (ORCH-1223 — DRAFT until CLOSE)
 #   - I-PROPOSED-1136-WEB-SHEET-CSS-TRANSITION (i-proposed-1136-web-sheet-css-transition.mjs) — the 5 shared biz-WEB sheet/overlay primitives (TopSheet, Sheet.web, SheetMobile, Modal, Toast) drive their WEB open/close animation via a compositor CSS `transition` on transform/opacity (NOT a withTiming/withSpring useAnimatedStyle on the web main-thread rAF, which freezes under a heavy-page long task); no height/layout property is animated on the web sheet path; native keeps reanimated (web-gated via Platform.OS==='web'); self-tested (ORCH-1136 R3 — DRAFT until CLOSE)
 #
 # Future gates to register (proposed but not yet implemented):
@@ -367,6 +368,19 @@ jobs:
         run: node .github/scripts/strict-grep/i-proposed-1223-footer-links-resolve.mjs --self-test
       - name: Run ORCH-1223 footer-links-resolve gate
         run: node .github/scripts/strict-grep/i-proposed-1223-footer-links-resolve.mjs
+
+  orch-1223-footer-mounted:
+    name: "ORCH-1223: marketing footer stays mounted on both surfaces (I-PROPOSED-1223-FOOTER-MOUNTED)"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Self-test the gate
+        run: node .github/scripts/strict-grep/i-proposed-1223-footer-mounted.mjs --self-test
+      - name: Run ORCH-1223 footer-mounted gate
+        run: node .github/scripts/strict-grep/i-proposed-1223-footer-mounted.mjs
 
   meta-orch-0991-base-bottom-sheet-sole-consumer:
     name: "META-ORCH-0991: BaseBottomSheet sole gorhom consumer invariant"

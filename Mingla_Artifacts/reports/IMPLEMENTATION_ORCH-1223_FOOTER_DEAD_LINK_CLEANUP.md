@@ -131,3 +131,76 @@ tokens). Tester to add the adversarial half + any on-page visual confirmation.
 - No `*.test.*` file modified → no `[TEST-MOD-APPROVED]` token needed; append-only check clean.
 
 **NOT closed, NOT deployed, NO PR opened, NO `eas update`** — per dispatch.
+
+---
+
+# RE-MOUNT (extension — 2026-06-22)
+
+**Decision (Seth 2026-06-22):** Put the cleaned footer BACK on the public marketing site —
+the store launch needs visible Privacy/Terms/Support links. The component was MOUNTED NOWHERE
+since ORCH-1053 ("footer removed … per operator"); runtime `<footer>` count was **0** on both
+`/` and `/organisers`. This re-mount **SUPERSEDES** the ORCH-1053 removal. Marketing-web only.
+
+## R1. Files changed
+
+- `mingla-marketing/app/(explorer)/layout.tsx` — import `Footer` from `@/components/marketing/footer`;
+  render `<Footer surface="explorer" />` after `<main id="main">{children}</main>`; ORCH-1223 note added.
+- `mingla-marketing/app/organisers/layout.tsx` — import `Footer`; render `<Footer surface="organiser" />`
+  after `<main>`; replaced the `{/* ORCH-1053 — footer removed … */}` comment with a note that
+  ORCH-1223 re-mounts a cleaned footer (superseding ORCH-1053 per Seth 2026-06-22).
+- `.github/scripts/strict-grep/i-proposed-1223-footer-mounted.mjs` — NEW mount-guard gate.
+- `.github/workflows/strict-grep-mingla-business.yml` — wired the gate as job `orch-1223-footer-mounted`
+  (self-test step + live step) + header invariant line.
+
+Surface prop is passed as a literal (`Surface` from `@/lib/subdomain`) per layout — no client-side
+pathname detection. The component uses only `next/link` + `new Date().getFullYear()`.
+
+## R2. Browser proof (the load-bearing evidence — was 0 before)
+
+Marketing `next dev` on :3217 + headless Chromium (Playwright 1.61.0). **Footer count is now 1 on
+BOTH surfaces** (vs 0 before re-mount):
+
+| Surface | URL | page status | `<footer>` count | footer links rendered |
+|---|---|---|---|---|
+| explorer | `/` | 200 | **1** | Support, Privacy, Terms, "Are you a venue or organiser? → Mingla Business" (`/organisers`) |
+| organiser | `/organisers` | 200 | **1** | Privacy, Terms, "Looking for the consumer app? → Back to Mingla" (`/`) |
+
+Screenshots (full-page):
+- `Mingla_Artifacts/evidence/ORCH-1223/remount-explorer-home.png`
+- `Mingla_Artifacts/evidence/ORCH-1223/remount-organiser.png`
+
+## R3. Surviving-links-200 confirmation
+
+Every unique internal footer href, clicked/navigated, returns **200 (not 404)**:
+`/support` → 200, `/privacy-policy` → 200, `/terms-of-service` → 200, `/organisers` → 200, `/` → 200.
+
+## R4. Mount-guard gate + fails-on-revert
+
+`i-proposed-1223-footer-mounted.mjs` asserts BOTH layouts import `Footer` from
+`@/components/marketing/footer` AND render `<Footer surface="<literal>" …>` (comment-stripped, so a
+commented-out mount — the exact ORCH-1053 pattern — does NOT satisfy it). Invariant
+**I-PROPOSED-1223-FOOTER-MOUNTED** (DRAFT until CLOSE).
+
+- `--self-test`: PASS (good explorer+organiser fixtures pass; no-render, JSX-commented-out, and
+  wrong-surface fixtures each fail).
+- live: PASS.
+- **FAILS-ON-REVERT proven:** removing `<Footer surface="explorer" />` from the explorer layout →
+  gate exit **1** ("missing `<Footer surface="explorer" .../>` render"); restored → exit **0**.
+
+## R5. Gate / build / check results
+
+- `npx tsc --noEmit` (marketing): PASS (exit 0, no output).
+- `npm run build` (next build): PASS — compiled successfully; all routes incl. `/`, `/organisers`,
+  `/privacy-policy`, `/terms-of-service`, `/support` generated.
+- `i-proposed-1223-footer-mounted.mjs --self-test` + live: PASS.
+- `i-proposed-1223-footer-links-resolve.mjs --self-test` + live (pre-existing gate, kept intact): PASS.
+- `node .github/scripts/test-append-only-check.js` (GITHUB_BASE_REF=main): PASS (only an ADDED
+  adversarial test from the prior commit; no test modified).
+
+## R6. Server vs client component
+
+**Footer stayed a SERVER component.** No `'use client'` was added to `footer.tsx` or either layout;
+`next build` compiled all three with zero errors. The component uses only `next/link` and
+`new Date().getFullYear()`, both server-safe.
+
+**NOT closed, NOT deployed, NO PR opened, NO `eas update`** — per dispatch.
