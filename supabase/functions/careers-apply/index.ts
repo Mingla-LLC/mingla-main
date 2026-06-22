@@ -66,6 +66,23 @@ const THROTTLE_WINDOW_MS = 10 * 60 * 1000; // 10 minutes
 const THROTTLE_MAX = 5; // 6th attempt in-window → 429
 const FIELD_MAX = 512; // user_agent / referer truncation cap
 
+// ORCH-1226 [careers applicant email from careers@] — the APPLICANT confirmation
+// email sends from a CAREERS identity (display "Mingla Careers") with a careers
+// Reply-To, so a candidate's reply lands in the careers inbox — NOT the generic
+// notifications@ no-reply. The seth@usemingla.com NOTIFY email is UNCHANGED.
+// Built INLINE (the _shared/email/senders.ts module is DO-NOT-TOUCH per SPEC),
+// mirroring its resolveSender env-override pattern: `RESEND_CAREERS_FROM` may
+// override the display/address; default is "Mingla Careers <careers@usemingla.com>".
+const CAREERS_REPLY_TO = "careers@usemingla.com";
+function resolveCareersSender(): { name: string; address: string } {
+  const fallback = { name: "Mingla Careers", address: CAREERS_REPLY_TO };
+  const raw = Deno.env.get("RESEND_CAREERS_FROM");
+  if (raw === undefined || raw.trim().length === 0) return fallback;
+  const match = raw.trim().match(/^(?:(.+?)\s*<)?([^<>\s]+@[^<>\s]+)>?$/);
+  if (match === null) return fallback; // never throw — emails are best-effort
+  return { name: (match[1] ?? fallback.name).trim(), address: match[2] };
+}
+
 export interface CareersApplyInput {
   job_slug: string;
   full_name: string;
@@ -241,7 +258,14 @@ export function buildApplicantEmail(
   roleTitle: string,
   email: string,
   from: string,
-): { from: string; to: string[]; subject: string; html: string; text: string } {
+): {
+  from: string;
+  to: string[];
+  reply_to: string;
+  subject: string;
+  html: string;
+  text: string;
+} {
   const firstName = fullName.split(/\s+/)[0] || fullName;
   const subject = "We got your application";
   const preheader = `Thanks for applying to Mingla — we've got your application for ${roleTitle}.`;
@@ -274,7 +298,8 @@ export function buildApplicantEmail(
     `We review every one and reach out by email if there's a fit. Keep an eye ` +
     `on your inbox.\n\n— The Mingla team`;
 
-  return { from, to: [email], subject, html, text };
+  // ORCH-1226: applicant replies route to the careers inbox (Resend `reply_to`).
+  return { from, to: [email], reply_to: CAREERS_REPLY_TO, subject, html, text };
 }
 
 // ── Notification email to Seth (branded shell, captured fields only). ────────
@@ -335,7 +360,12 @@ export function buildNotifyEmail(
 // Best-effort Resend send. Returns ok/err; the CALLER decides it is non-fatal.
 async function sendEmail(
   apiKey: string,
-  payload: ReturnType<typeof buildNotifyEmail>,
+  // Accepts either email payload shape. ONLY the applicant payload carries
+  // `reply_to` (ORCH-1226) — the seth@usemingla.com notify payload omits it, so
+  // its Resend reply-to is unchanged. Resend treats an absent `reply_to` as none.
+  payload:
+    | ReturnType<typeof buildNotifyEmail>
+    | ReturnType<typeof buildApplicantEmail>,
 ): Promise<{ ok: boolean; error?: string }> {
   try {
     // no-attachment: both careers emails (the applicant confirmation AND the
@@ -474,8 +504,8 @@ export async function handler(req: Request): Promise<Response> {
     // ── Best-effort emails (NEVER fatal — the row is already saved). ─────────
     const resendKey = Deno.env.get("RESEND_API_KEY") ?? "";
     if (resendKey) {
-      // System no-reply sender (never the Resend sandbox).
-      const from = (() => {
+      // System no-reply sender for the seth@usemingla.com notify (UNCHANGED).
+      const notifyFrom = (() => {
         try {
           assertNotResendSandbox(EMAIL_SENDERS.system);
           return formatSenderHeader(EMAIL_SENDERS.system);
@@ -483,11 +513,23 @@ export async function handler(req: Request): Promise<Response> {
           return "Mingla <notifications@usemingla.com>";
         }
       })();
+      // ORCH-1226 — the APPLICANT confirmation sends from the careers identity
+      // ("Mingla Careers <careers@usemingla.com>"), guarded against the Resend
+      // sandbox exactly like the system sender.
+      const applicantFrom = (() => {
+        const careers = resolveCareersSender();
+        try {
+          assertNotResendSandbox(careers);
+          return formatSenderHeader(careers);
+        } catch {
+          return "Mingla Careers <careers@usemingla.com>";
+        }
+      })();
       const receivedAt = new Date().toISOString();
 
       const applicant = await sendEmail(
         resendKey,
-        buildApplicantEmail(app.full_name, posting.title, app.email, from),
+        buildApplicantEmail(app.full_name, posting.title, app.email, applicantFrom),
       );
       if (!applicant.ok) {
         console.error(
@@ -498,7 +540,7 @@ export async function handler(req: Request): Promise<Response> {
 
       const notify = await sendEmail(
         resendKey,
-        buildNotifyEmail(app, posting.title, from, receivedAt),
+        buildNotifyEmail(app, posting.title, notifyFrom, receivedAt),
       );
       if (!notify.ok) {
         console.error(

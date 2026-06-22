@@ -3211,3 +3211,16 @@ jobs:
         run: node .github/scripts/strict-grep/i-proposed-1222-careers-routes-routable.mjs --self-test
       - name: Run ORCH-1222 careers routes-routable gate
         run: node .github/scripts/strict-grep/i-proposed-1222-careers-routes-routable.mjs
+
+  orch-1226-careers-applicant-from:
+    name: "ORCH-1226: careers applicant confirmation sends from careers@usemingla.com (Mingla Careers) + careers Reply-To; seth@ notify untouched (I-PROPOSED-1226-CAREERS-APPLICANT-FROM)"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Self-test the ORCH-1226 careers applicant-from gate
+        run: node .github/scripts/strict-grep/i-proposed-1226-careers-applicant-from.mjs --self-test
+      - name: Run ORCH-1226 careers applicant-from gate
+        run: node .github/scripts/strict-grep/i-proposed-1226-careers-applicant-from.mjs

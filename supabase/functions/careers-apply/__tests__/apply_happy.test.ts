@@ -156,6 +156,47 @@ Deno.test("buildNotifyEmail — to seth, lists all captured fields, escapes inpu
   assert(email.html.includes("&lt;b&gt;Ada&lt;/b&gt;"));
 });
 
+// ── ORCH-1226 [careers applicant email from careers@usemingla.com] ───────────
+// The APPLICANT confirmation must carry a careers Reply-To so a candidate's
+// reply lands in the careers inbox; the seth@usemingla.com NOTIFY email stays
+// unchanged (no careers Reply-To, recipient still seth@). These fail-on-revert if
+// the applicant reply_to is dropped or the notify recipient/shape changes.
+Deno.test("ORCH-1226 — applicant email sets a careers Reply-To (careers@usemingla.com)", () => {
+  const email = buildApplicantEmail(
+    "Ada Lovelace",
+    "Multimedia Designer",
+    "ada@example.com",
+    "Mingla Careers <careers@usemingla.com>",
+  );
+  assertEquals(email.reply_to, "careers@usemingla.com");
+  // The careers identity flows through the applicant `from` header end-to-end.
+  assert(email.from.includes("careers@usemingla.com"), "applicant from is careers@");
+  assert(email.from.includes("Mingla Careers"), "applicant from display name");
+  assertEquals(email.to, ["ada@example.com"]);
+});
+
+Deno.test("ORCH-1226 — seth@ NOTIFY email is untouched: targets seth@, NO careers reply_to", () => {
+  const email = buildNotifyEmail(
+    {
+      full_name: "Ada Lovelace",
+      email: "ada@example.com",
+      whatsapp_phone: "+2348031234567",
+      preferred_salary: "₦200,000",
+      portfolio_url: "https://ada.design",
+    },
+    "Multimedia Designer",
+    "Mingla <notifications@usemingla.com>",
+    "2026-06-22T10:00:00.000Z",
+  );
+  assertEquals(email.to, ["seth@usemingla.com"]);
+  // The notify payload carries NO reply_to (only the applicant email does).
+  assertEquals(
+    (email as Record<string, unknown>).reply_to,
+    undefined,
+    "notify must not carry a careers reply_to",
+  );
+});
+
 Deno.test("firstForwardedHop + hashIp — first hop, salted, never raw IP", async () => {
   assertEquals(firstForwardedHop("1.2.3.4, 5.6.7.8"), "1.2.3.4");
   const h1 = await hashIp("1.2.3.4", "salt-a");
