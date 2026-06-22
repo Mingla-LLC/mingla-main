@@ -14,6 +14,11 @@ import {
 // deno-lint-ignore no-explicit-any
 import QRCode from "https://esm.sh/qrcode@1.5.4?bundle";
 import { formatEventDateLine } from "./email/dateLine.ts";
+// ORCH-1195 FIX 2 — pdf-lib StandardFonts use WinAnsi encoding which throws on
+// U+202F (Intl narrow NBSP before AM/PM) + other non-WinAnsi glyphs. EVERY
+// data-derived string drawn below is run through sanitizeForWinAnsi so the
+// render can never hard-fail (which previously killed the whole email).
+import { sanitizeForWinAnsi } from "./winAnsiSanitize.ts";
 
 export interface TicketPdfInput {
   event: {
@@ -97,10 +102,17 @@ export async function buildTicketPdf(
   const fontBold = await pdf.embedFont(StandardFonts.HelveticaBold);
   const fontItalic = await pdf.embedFont(StandardFonts.HelveticaOblique);
 
-  const dateLine = formatEventDateLine(
-    input.event.startAtIso,
-    input.event.endAtIso,
-    input.event.timezone,
+  // ORCH-1195 FIX 2 — sanitize at the source: formatEventDateLine uses
+  // Intl.DateTimeFormat, which inserts a U+202F narrow-no-break-space before
+  // "AM/PM" that WinAnsi cannot encode (the live drawText crash). This is the one
+  // drawText arg NOT routed through `truncate` (which already sanitizes), so it
+  // must be sanitized here.
+  const dateLine = sanitizeForWinAnsi(
+    formatEventDateLine(
+      input.event.startAtIso,
+      input.event.endAtIso,
+      input.event.timezone,
+    ),
   );
 
   // Try to embed the wordmark. Failures fall back to the text "Mingla".
@@ -263,9 +275,13 @@ export async function buildTicketPdf(
 }
 
 function truncate(value: string, max: number): string {
-  if (!value) return "";
-  if (value.length <= max) return value;
-  return `${value.slice(0, max - 1)}…`;
+  // ORCH-1195 FIX 2 — sanitize FIRST so a narrow-NBSP / emoji / curly-quote in
+  // the source string can never reach drawText (WinAnsi throws otherwise). The
+  // ellipsis appended on overflow is the ASCII "..." for the same reason.
+  const safe = sanitizeForWinAnsi(value);
+  if (!safe) return "";
+  if (safe.length <= max) return safe;
+  return `${safe.slice(0, max - 1)}...`;
 }
 
 // ORCH-1163 [rsvp-shared-body] — RSVP entry-pass PDF. Modeled on buildTicketPdf
