@@ -19,6 +19,7 @@ import Svg, { Path, Line } from "react-native-svg";
 
 import type { EventCoverMediaType } from "./types";
 import {
+  deriveCoverPosterUrl,
   resolveEventCoverMediaPresentation,
   shouldFreezeCoverForReduceMotion,
 } from "./coverMediaPresentation";
@@ -28,6 +29,11 @@ export interface EventCoverMediaProps {
   hue?: number;
   mediaUrl?: string | null;
   mediaType?: EventCoverMediaType | null;
+  // ORCH-1208 — explicit still poster for a video cover. When omitted, a
+  // poster is auto-derived from a Cloudinary video URL (deriveCoverPosterUrl).
+  // Callers that already have a real still (e.g. the venue deck `image`) pass
+  // it directly. Images/GIFs ignore this prop.
+  posterUrl?: string | null;
   radius?: number;
   label?: string;
   height?: DimensionValue;
@@ -126,6 +132,7 @@ const callNativeVideoPlayer = (action: () => void): void => {
 
 const EventCoverWebVideo: React.FC<{
   uri: string;
+  posterUrl?: string | null;
   autoplay: boolean;
   playbackActive: boolean;
   muted: boolean;
@@ -135,6 +142,7 @@ const EventCoverWebVideo: React.FC<{
   onError: () => void;
 }> = ({
   uri,
+  posterUrl,
   autoplay,
   playbackActive,
   muted,
@@ -218,7 +226,21 @@ const EventCoverWebVideo: React.FC<{
     video.autoplay = shouldPlayRef.current;
     video.loop = loopRef.current;
     video.controls = false;
-    video.preload = "auto";
+    // ORCH-1208 — POSTER: an instant still frame (the derived Cloudinary
+    // first-frame .jpg, or a real sibling still passed by the caller) so a
+    // bot / SSR / desktop-WebKit (play-button, no autoplay) sees an image and
+    // a human sees no flash-of-black before the first decoded frame. Stable
+    // for a given uri (pure fn of uri), so it is set here without joining the
+    // create-effect dep array (R8 imperative-mount teardown contract intact).
+    if (typeof posterUrl === "string" && posterUrl.length > 0) {
+      video.poster = posterUrl;
+      video.setAttribute("poster", posterUrl);
+    }
+    // ORCH-1208 — bandwidth: never eagerly download the cover video. A real
+    // on-screen viewer still fetches+plays (the autoplay attribute / tap drives
+    // the load); bots, SSR, link-unfurlers and desktop-WebKit (which shows a
+    // play button and never auto-plays) get the POSTER image only, no .mp4.
+    video.preload = "none";
     // Cover styles (objectFit cover/contain, fill the container).
     Object.assign(video.style, {
       backgroundColor: "#000000",
@@ -335,6 +357,7 @@ const EventCoverWebVideo: React.FC<{
 
 const EventCoverNativeVideo: React.FC<{
   uri: string;
+  posterUrl?: string | null;
   autoplay: boolean;
   playbackActive: boolean;
   muted: boolean;
@@ -344,6 +367,7 @@ const EventCoverNativeVideo: React.FC<{
   onError: () => void;
 }> = ({
   uri,
+  posterUrl,
   autoplay,
   playbackActive,
   muted,
@@ -429,21 +453,36 @@ const EventCoverNativeVideo: React.FC<{
     };
   }, [loop, player, shouldPlay]);
 
+  // ORCH-1208 — POSTER: render the still BEHIND the VideoView so there is an
+  // instant frame before the first decoded video frame AND while paused
+  // (playbackActive=false → shouldPlay=false → off-front/behind cards never
+  // stream). Additive + benign when playing (the opaque video frame covers
+  // the poster). Null poster → no Image, the existing behavior is unchanged.
   return (
-    <VideoView
-      player={player}
-      style={StyleSheet.absoluteFill}
-      contentFit={contentFit}
-      nativeControls={false}
-      fullscreenOptions={{ enable: false }}
-      allowsPictureInPicture={false}
-      playsInline
-    />
+    <View style={StyleSheet.absoluteFill}>
+      {typeof posterUrl === "string" && posterUrl.length > 0 ? (
+        <Image
+          source={{ uri: posterUrl }}
+          style={StyleSheet.absoluteFill}
+          resizeMode={contentFit}
+        />
+      ) : null}
+      <VideoView
+        player={player}
+        style={StyleSheet.absoluteFill}
+        contentFit={contentFit}
+        nativeControls={false}
+        fullscreenOptions={{ enable: false }}
+        allowsPictureInPicture={false}
+        playsInline
+      />
+    </View>
   );
 };
 
 const EventCoverVideo: React.FC<{
   uri: string;
+  posterUrl?: string | null;
   autoplay: boolean;
   playbackActive: boolean;
   muted: boolean;
@@ -500,6 +539,7 @@ export const EventCoverMedia: React.FC<EventCoverMediaProps> = ({
   hue = 25,
   mediaUrl = null,
   mediaType = null,
+  posterUrl,
   radius = 16,
   label = "Cover",
   height = "100%",
@@ -585,6 +625,16 @@ export const EventCoverMedia: React.FC<EventCoverMediaProps> = ({
     reduceMotion: freezeForReduceMotion,
   });
 
+  // ORCH-1208 — resolve the still poster for a VIDEO cover: caller-supplied
+  // override (a real sibling still, e.g. the venue deck `image`) or, when
+  // omitted, auto-derive the Cloudinary first-frame .jpg. Null for image/GIF
+  // covers (the <Image> branch never receives a poster) and for non-Cloudinary
+  // videos (the hue-band placeholder shows instead — still no eager download).
+  const resolvedPosterUrl =
+    presentation === "video" || presentation === "video_still"
+      ? (posterUrl ?? deriveCoverPosterUrl(mediaUrl))
+      : null;
+
   const handleMediaError = (
     surface: "image" | "video",
     nativeEvent?: unknown,
@@ -648,6 +698,7 @@ export const EventCoverMedia: React.FC<EventCoverMediaProps> = ({
       {presentation === "video" || presentation === "video_still" ? (
         <EventCoverVideo
           uri={mediaUrl}
+          posterUrl={resolvedPosterUrl}
           autoplay={presentation === "video" ? autoplay : false}
           playbackActive={playbackActive}
           muted={isMuted}

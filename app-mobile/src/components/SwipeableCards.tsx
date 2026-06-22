@@ -2949,6 +2949,10 @@ export default function SwipeableCards({
                       coverHue: hueFromId(String((currentRec as any).eventId ?? (currentRec as any).id ?? '')),
                     }}
                     ctaOverride="Book"
+                    // ORCH-1208: Current Card slot = the active front card, so it
+                    // streams its cover video (parity with CardHero, I-1069). A
+                    // future behind-card render MUST pass isTopCard={false}.
+                    isTopCard={true}
                   />
               ) : (currentRec as any).cardType === 'curated' ? (
                   <CuratedExperienceSwipeCard
@@ -2957,6 +2961,10 @@ export default function SwipeableCards({
                     travelMode={effectiveTravelMode}
                     measurementSystem={accountPreferences?.measurementSystem}
                     currencyCode={accountPreferences?.currency || 'USD'}
+                    // ORCH-1208: front-card render (curated cards carry no cover
+                    // so this is a no-op today, kept for symmetry / future cover
+                    // support). A behind-card render MUST pass isTopCard={false}.
+                    isTopCard={true}
                   />
               ) : (
                 <>
