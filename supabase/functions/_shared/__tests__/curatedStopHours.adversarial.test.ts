@@ -272,9 +272,11 @@ Deno.test("T-3-01 (adversarial): 'today' ignores the stale datetime_pref on a To
   };
   const liveNow = new Date(Date.UTC(2026, 5, 3, 4, 0, 0)); // Wed 04:00 UTC → 13:00 Tokyo
   const policy = resolveCuratedHoursPolicy({ dateOption: 'today', datetimePref: STALE_PREF_WED_NIGHT, now: liveNow });
-  // Sanity: the resolved policy must be instant-at-live-clock, never the stale pref.
-  assertEquals(policy.mode, 'instant');
-  assertEquals((policy as { mode: 'instant'; utcNow: Date }).utcNow.getTime(), liveNow.getTime(),
+  // [ORCH-1212] Sanity: 'today' now resolves to the from-now-onward mode at the
+  // LIVE clock, never the stale pref. (Was 'instant' pre-ORCH-1212; updated by the
+  // tester — this adversarial file is tester-owned per spec §5.3.)
+  assertEquals(policy.mode, 'instantFromNowOnward');
+  assertEquals((policy as { mode: 'instantFromNowOnward'; utcNow: Date }).utcNow.getTime(), liveNow.getTime(),
     'policy must carry the LIVE clock, never the parsed stale datetime_pref');
   const result = filterCuratedByStopHours([tokyoCard], policy);
   assertEquals(result.length, 1, "today must evaluate the Tokyo card at the live 13:00 local clock → RETAINED (stale Thu-06:20 pref would have dropped it)");
@@ -424,4 +426,225 @@ Deno.test("T-3-06 (adversarial): 'pick_dates' takes the UNION of selected weekda
   // Direct unit check of the any-time predicate underpinning the union.
   assert(isStopOpenAtHourAnyTime({ placeType: 'restaurant', openingHours: p(6, 14, 18) }, 6), 'Sat-open any-time true on Sat');
   assert(!isStopOpenAtHourAnyTime({ placeType: 'restaurant', openingHours: p(6, 14, 18) }, 5), 'Sat-open any-time false on Fri');
+});
+
+// ═════════════════════════════════════════════════════════════════════════════
+// ORCH-1212 [today-curated-hours] — TESTER adversarial set.
+//
+// The implementor's happy-path file (curatedStopHours.test.ts) proves the 4 AM
+// fix POSITIVELY (T-ORCH-1212-01: a 9–17 venue now RETAINED at 04:00). These
+// attack the OPPOSITE failure surface — that the fix did NOT become a no-op that
+// passes everything, that the unchanged modes are byte-identical, that bare-Date
+// stayed strict instant, and the nastiest geometry/timezone edges:
+//
+//   T-ORCH-1212-A — a pool genuinely CLOSED ALL DAY today still empties on
+//                   'today' from-now-onward (the inverse of the happy path; proves
+//                   the fix is not a no-op that fabricates availability).
+//   T-ORCH-1212-B — 'this_weekend' and 'pick_dates'(today's weekday) are PROVABLY
+//                   UNCHANGED vs pre-fix anyHourOnDays — identical mode, day-set,
+//                   and in/out card decisions; the ORCH-1212 change did not leak.
+//   T-ORCH-1212-C — bare-Date back-compat is still strict point-in-time 'instant',
+//                   NOT from-now-onward (a closed-now-but-open-later stop is
+//                   DROPPED under the bare-Date arg, RETAINED under 'today').
+//   T-ORCH-1212-D — nasty edges: utcOffsetMinutes null (lng-derived day), a venue
+//                   opening at 23:00 with nowHour=23.9 (single floor probe s=23),
+//                   and a multi-stop where stop 0 opens later today but stop 1
+//                   closes before the chained arrival for EVERY workable start →
+//                   DROPPED even from-now-onward (the cascade still constrains).
+// ═════════════════════════════════════════════════════════════════════════════
+
+// A curated card with explicit timezone + lng controls (mirrors curatedCard but
+// lets each test set offset/lng for the timezone-boundary edges).
+function tzCard(
+  offsetMin: number | null,
+  lng: number,
+  stops: Record<string, unknown>[],
+): Record<string, unknown> {
+  const c: Record<string, unknown> = { cardType: 'curated', lng, stops };
+  if (offsetMin !== null) c.utcOffsetMinutes = offsetMin;
+  return c;
+}
+
+// ─── T-ORCH-1212-A: genuinely all-day-closed pool STILL empties on 'today' ─────
+Deno.test("T-ORCH-1212-A (adversarial): a pool closed ALL DAY today still EMPTIES on 'today' (the fix is not a no-op)", () => {
+  // utcOffsetMinutes:0. Live clock Wed 04:00 local (the exact 4 AM scenario the fix
+  // targets) — but the ONLY non-optional stop has periods on TUESDAY (day=2) only.
+  // No probe hour s ∈ [4,23] on the Wed local day finds a Wed period → DROPPED.
+  // This is the closed-direction of Constitution #9: we never fabricate "open" for
+  // a stop that is genuinely closed for ALL of today, even under the permissive
+  // from-now-onward policy. If the fix had become a no-op (always return true) or
+  // loosened to any-hour-any-day, this card would wrongly survive.
+  const wed04Utc = new Date(Date.UTC(2026, 5, 3, 4, 0, 0)); // Wed (day=3) 04:00 UTC
+  const tueOnlyStop = {
+    placeType: 'restaurant',
+    openingHours: p(2, 9, 23), // open Tuesday 09:00–23:00 only — NOTHING on Wed
+    travelTimeFromPreviousStopMin: 0,
+  };
+  const policy = resolveCuratedHoursPolicy({ dateOption: 'today', now: wed04Utc });
+  assertEquals(policy.mode, 'instantFromNowOnward', "today must resolve to from-now-onward");
+  const result = filterCuratedByStopHours([tzCard(0, 0, [tueOnlyStop])], policy);
+  assertEquals(result.length, 0,
+    'a stop open only on a DIFFERENT weekday must be DROPPED on today from-now-onward (no fabricated availability)');
+
+  // Second flavor: an explicit "Closed" text for today's weekday (Wed) → dropped.
+  const closedTodayText = {
+    placeType: 'restaurant',
+    openingHours: { wednesday: 'Closed' },
+    travelTimeFromPreviousStopMin: 0,
+  };
+  assertEquals(
+    filterCuratedByStopHours([tzCard(0, 0, [closedTodayText])], policy).length,
+    0,
+    'an explicit Closed-today stop must be DROPPED on today from-now-onward');
+
+  // Control: flip the SAME card to today=Tuesday and it must be RETAINED (proves the
+  // drop above is the day filter, not a broken filter that drops everything).
+  const tue04Utc = new Date(Date.UTC(2026, 5, 2, 4, 0, 0)); // Tue (day=2) 04:00 UTC
+  const tuePolicy = resolveCuratedHoursPolicy({ dateOption: 'today', now: tue04Utc });
+  assertEquals(
+    filterCuratedByStopHours([tzCard(0, 0, [tueOnlyStop])], tuePolicy).length,
+    1,
+    'control: on its OPEN weekday (Tue) the same stop is RETAINED from-now-onward');
+});
+
+// ─── T-ORCH-1212-B: this_weekend / pick_dates(today's weekday) UNCHANGED ──────
+Deno.test("T-ORCH-1212-B (adversarial): 'this_weekend' and 'pick_dates' are byte-identical anyHourOnDays — ORCH-1212 did not leak", () => {
+  // (1) this_weekend: mode + day-set unchanged; a Sat-only stop RETAINED, a
+  //     weekday-only stop DROPPED — exactly the pre-ORCH-1212 contract.
+  const weekend = resolveCuratedHoursPolicy({ dateOption: 'this_weekend', now: new Date(Date.UTC(2026, 5, 3, 4, 0, 0)) });
+  assertEquals(weekend.mode, 'anyHourOnDays', 'this_weekend stays anyHourOnDays (NOT from-now-onward)');
+  assertEquals((weekend as { mode: 'anyHourOnDays'; days: number[] }).days, [6, 0],
+    'this_weekend day-set unchanged = [Sat, Sun]');
+  const satOnly = tzCard(0, 0, [{ placeType: 'restaurant', openingHours: p(6, 14, 18), travelTimeFromPreviousStopMin: 0 }]);
+  const wedOnly = tzCard(0, 0, [{ placeType: 'restaurant', openingHours: p(3, 14, 18), travelTimeFromPreviousStopMin: 0 }]);
+  assertEquals(filterCuratedByStopHours([satOnly], weekend).length, 1, 'this_weekend RETAINS a Sat-only stop');
+  assertEquals(filterCuratedByStopHours([wedOnly], weekend).length, 0, 'this_weekend DROPS a Wed-only stop');
+
+  // (2) pick_dates pointing at TODAY's date must STILL be anyHourOnDays (the noon-UTC
+  //     weekday), NOT from-now-onward. This is the spec's explicit guard that
+  //     pick_dates→today does not route through the new today mode. A stop open
+  //     EARLIER today (08:00–11:00) that the from-now-onward 'today' policy would
+  //     DROP at 14:00 must be RETAINED under pick_dates(today) — proving the two
+  //     paths are genuinely different and pick_dates kept the permissive any-hour.
+  const wed = '2026-06-03'; // a Wednesday (day=3)
+  const pickToday = resolveCuratedHoursPolicy({ dateOption: 'pick_dates', selectedDates: [wed] });
+  assertEquals(pickToday.mode, 'anyHourOnDays', 'pick_dates stays anyHourOnDays even when the date is today');
+  assertEquals((pickToday as { mode: 'anyHourOnDays'; days: number[] }).days, [3],
+    'pick_dates(Wed) day-set = [Wed]');
+  const morningOnly = tzCard(0, 0, [{ placeType: 'restaurant', openingHours: p(3, 8, 11), travelTimeFromPreviousStopMin: 0 }]);
+  assertEquals(filterCuratedByStopHours([morningOnly], pickToday).length, 1,
+    'pick_dates(today) RETAINS a morning-only stop (any-hour-on-day) — from-now-onward did NOT leak in');
+
+  // Cross-check: the SAME morning-only stop under 'today' from-now-onward at 14:00
+  // local is DROPPED (probe set [14,23] never finds the 08–11 window). This is the
+  // behavioral DIVERGENCE that proves pick_dates was left alone.
+  const wed14 = new Date(Date.UTC(2026, 5, 3, 14, 0, 0));
+  const todayPolicy = resolveCuratedHoursPolicy({ dateOption: 'today', now: wed14 });
+  assertEquals(filterCuratedByStopHours([morningOnly], todayPolicy).length, 0,
+    'today from-now-onward DROPS the same morning-only stop at 14:00 (divergence from pick_dates is intentional)');
+});
+
+// ─── T-ORCH-1212-C: bare-Date back-compat is still STRICT point-in-time instant ─
+Deno.test('T-ORCH-1212-C (adversarial): a bare Date arg stays strict point-in-time instant, NOT from-now-onward', () => {
+  // A stop closed-RIGHT-NOW (04:00) but open later today (09:00–17:00). Under the
+  // bare-Date contract this must be the strict exact-arrival 'instant' cascade —
+  // evaluated AT 04:00 → CLOSED → DROPPED. If the implementor accidentally rerouted
+  // bare Date through instantFromNowOnward, the card would survive (probe s=9) and
+  // this assertion would FLIP. This is the guard that bare-Date != today.
+  const wed04Utc = new Date(Date.UTC(2026, 5, 3, 4, 0, 0)); // 04:00 local at offset 0
+  const laterTodayStop = {
+    placeType: 'restaurant',
+    openingHours: p(3, 9, 17), // open Wed 09:00–17:00 — CLOSED at 04:00
+    travelTimeFromPreviousStopMin: 0,
+  };
+  const card = tzCard(0, 0, [laterTodayStop]);
+
+  // Bare Date → strict instant → DROPPED (closed at 04:00).
+  assertEquals(filterCuratedByStopHours([card], wed04Utc).length, 0,
+    'bare Date is strict instant: a closed-at-04:00 stop is DROPPED (NOT from-now-onward)');
+
+  // The SAME card under explicit 'today' policy at the SAME instant → RETAINED.
+  // The divergence is the entire point of the distinct contracts.
+  const todayPolicy = resolveCuratedHoursPolicy({ dateOption: 'today', now: wed04Utc });
+  assertEquals(filterCuratedByStopHours([card], todayPolicy).length, 1,
+    "today from-now-onward RETAINS the same card at 04:00 — proving bare-Date and 'today' are distinct contracts");
+
+  // And an explicit { mode:'instant' } policy object behaves identically to the bare Date.
+  assertEquals(
+    filterCuratedByStopHours([card], { mode: 'instant', utcNow: wed04Utc } as const).length,
+    0,
+    'explicit { mode:instant } also DROPS the closed-at-04:00 stop (back-compat parity)');
+});
+
+// ─── T-ORCH-1212-D: nasty timezone + cascade-geometry edges ───────────────────
+Deno.test('T-ORCH-1212-D (adversarial): timezone-null, 23:00-open boundary, and a multi-stop the cascade must drop even from-now-onward', () => {
+  // (D1) utcOffsetMinutes NULL → derive the local day/hour from lng
+  //      (Math.round(lng/15)*60). lng=-75 (US East ≈ -300min). The fix MUST use the
+  //      lng-derived offset, NOT silently treat the card as UTC (constitution #12,
+  //      no UTC drift). Build a UTC instant that is a known local time once the
+  //      lng offset is applied, with a stop open in that local window.
+  //      lng=-75 → offset = round(-75/15)*60 = -5*60 = -300 min (UTC-5).
+  //      UTC Wed 14:00 + (-300min) = Wed 09:00 local. Stop open Wed 09:00–17:00.
+  const wed14Utc = new Date(Date.UTC(2026, 5, 3, 14, 0, 0)); // → 09:00 local at lng -75
+  const nullOffsetCard = tzCard(null, -75, [
+    { placeType: 'restaurant', openingHours: p(3, 9, 17), travelTimeFromPreviousStopMin: 0 },
+  ]);
+  const policyD1 = resolveCuratedHoursPolicy({ dateOption: 'today', now: wed14Utc });
+  assertEquals(filterCuratedByStopHours([nullOffsetCard], policyD1).length, 1,
+    'utcOffsetMinutes null → lng-derived local day (09:00 Wed) → stop open → RETAINED (no UTC drift)');
+  // Negative control: if it had drifted to UTC (14:00 local, still open) it would
+  // ALSO pass — so prove the offset matters with a stop that is open ONLY in the
+  // lng-local morning (06:00–10:00) and CLOSED at the UTC 14:00 wall-time.
+  const morningLocalCard = tzCard(null, -75, [
+    { placeType: 'restaurant', openingHours: p(3, 6, 10), travelTimeFromPreviousStopMin: 0 },
+  ]);
+  assertEquals(filterCuratedByStopHours([morningLocalCard], policyD1).length, 1,
+    'lng-local 09:00 falls in the 06–10 window → RETAINED; a UTC-14:00 misread would DROP it (proves lng offset applied)');
+
+  // (D2) Venue opens at 23:00, nowHour = 23.9 → floor(nowHour)=23 → single probe
+  //      s=23. A stop open 23:00–24:00 (period close hour 24) must be OPEN at s=23.
+  //      offset 0, UTC Wed 23:54 → 23.9 local.
+  const wed2354Utc = new Date(Date.UTC(2026, 5, 3, 23, 54, 0)); // 23.9 local at offset 0
+  const lateNightStop = tzCard(0, 0, [
+    { placeType: 'restaurant', openingHours: { periods: [{ open: { day: 3, hour: 23, minute: 0 }, close: { day: 3, hour: 24, minute: 0 } }] }, travelTimeFromPreviousStopMin: 0 },
+  ]);
+  const policyD2 = resolveCuratedHoursPolicy({ dateOption: 'today', now: wed2354Utc });
+  assertEquals(filterCuratedByStopHours([lateNightStop], policyD2).length, 1,
+    'opens-at-23:00 venue with nowHour=23.9 (single probe s=23) → RETAINED');
+  // And a venue that closed at 22:00, same 23.9 now → single probe s=23 finds it
+  // CLOSED → DROPPED (nothing doable for the rest of today; from-now bias intact).
+  const earlyCloseStop = tzCard(0, 0, [
+    { placeType: 'restaurant', openingHours: p(3, 9, 22), travelTimeFromPreviousStopMin: 0 },
+  ]);
+  assertEquals(filterCuratedByStopHours([earlyCloseStop], policyD2).length, 0,
+    'closed-by-22:00 venue at nowHour=23.9 → DROPPED (probe s=23 only, nothing open)');
+
+  // (D3) The HARD geometry: stop 0 opens LATER today but stop 1 closes before the
+  //      chained arrival for EVERY workable start hour → DROPPED even from-now-onward.
+  //      stop0 restaurant open 14:00–23:00 (duration 60min). stop1 museum open
+  //      09:00–13:00 (closes 13:00). For ANY start s:
+  //        - s < 14 → stop0 CLOSED → cascade fails at stop0.
+  //        - s ≥ 14 → stop1 arrival = s + 1.0h (dwell) + 0.25h (15min travel) ≥ 15.25
+  //                   > 13:00 close → stop1 CLOSED → cascade fails at stop1.
+  //      No s in [floor(now),23] works → card DROPPED. This proves the arrival
+  //      cascade still CONSTRAINS under from-now-onward (we did NOT loosen to
+  //      "any stop open at any hour"). now = 08:00 local so the full probe set is open.
+  const wed08Utc = new Date(Date.UTC(2026, 5, 3, 8, 0, 0)); // 08:00 local, floor=8 → probes [8,23]
+  const impossibleChain = tzCard(0, 0, [
+    { placeType: 'restaurant', openingHours: p(3, 14, 23), travelTimeFromPreviousStopMin: 0 },
+    { placeType: 'museum', openingHours: p(3, 9, 13), travelTimeFromPreviousStopMin: 15 },
+  ]);
+  const policyD3 = resolveCuratedHoursPolicy({ dateOption: 'today', now: wed08Utc });
+  assertEquals(filterCuratedByStopHours([impossibleChain], policyD3).length, 0,
+    'a multi-stop with no feasible chained start (stop0 opens 14:00, stop1 closes 13:00) is DROPPED even from-now-onward');
+
+  // Control: widen stop1 to close at 23:00 → now a feasible chain exists (s=14:
+  // stop1 arrival ≈ 15.25 < 23) → RETAINED (proves D3 drop is the geometry, not
+  // an over-pruning filter).
+  const feasibleChain = tzCard(0, 0, [
+    { placeType: 'restaurant', openingHours: p(3, 14, 23), travelTimeFromPreviousStopMin: 0 },
+    { placeType: 'museum', openingHours: p(3, 9, 23), travelTimeFromPreviousStopMin: 15 },
+  ]);
+  assertEquals(filterCuratedByStopHours([feasibleChain], policyD3).length, 1,
+    'control: widening stop1 close to 23:00 makes the chain feasible → RETAINED');
 });
