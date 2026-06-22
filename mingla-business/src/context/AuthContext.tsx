@@ -172,9 +172,23 @@ type AuthContextValue = {
 const AuthContext = createContext<AuthContextValue | null>(null);
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const [session, setSession] = useState<Session | null>(null);
-  const [user, setUser] = useState<User | null>(null);
-  const [loading, setLoading] = useState(true);
+  // ORCH-1204 [web-auth-bootstrap-lock]: web hydrates session/user/loading
+  // SYNCHRONOUSLY from the valid persisted token so isAuthReady is true on first
+  // paint — the gotrue Navigator-Locks lock contention (multi-tab + AuthProvider
+  // remount) can make getSession() exceed the 3s bootstrap timeout, which
+  // previously left isAuthReady false → useBrands disabled → "Loading brands…"
+  // wedge. readStoredWebSession() is web-only + SSR-guarded so native is
+  // byte-identical and prerender returns null. The lazy useState initializers
+  // each run exactly once at mount (no render loop). The background bootstrap(),
+  // the ORCH-0887-A 3s race, the ORCH-1102 7s ceiling, the ORCH-1106
+  // revoked-session probe, and the ORCH-1004 late-adopt all still run to catch a
+  // locally-valid-but-server-revoked token — they just no longer gate first
+  // paint. I-PROPOSED-1204-WEB-AUTH-SYNC-HYDRATION.
+  // DO NOT revert to useState(null/null/true).
+  const initialStored = readStoredWebSession();
+  const [session, setSession] = useState<Session | null>(() => initialStored);
+  const [user, setUser] = useState<User | null>(() => initialStored?.user ?? null);
+  const [loading, setLoading] = useState<boolean>(() => initialStored === null);
   const [authError, setAuthError] = useState<Error | null>(null);
   // Cycle 14 — D-CYCLE14-FOR-6 + I-35: recover-on-sign-in flag.
   const [lastRecoveryEvent, setLastRecoveryEvent] = useState<{
@@ -230,6 +244,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         // still warms via a late SIGNED_IN/TOKEN_REFRESHED event; only the
         // spinner is released. With no stored session, user stays null and the
         // route gates send the user to the real sign-in screen.
+        // ORCH-1204: the ceiling releases only `loading`; it MUST NOT clear
+        // `user`/`session` — a synchronously-hydrated valid web session must
+        // survive the ceiling (SC-4).
         bootstrapTimedOutRef.current = true;
         setLoading(false);
       }, AUTH_RESOLUTION_HARD_CEILING_MS);
@@ -260,6 +277,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           `[auth] bootstrap-timeout: getSession() did not resolve within ${AUTH_BOOTSTRAP_TIMEOUT_MS}ms — using stored web session when available`,
         );
         if (!mounted) return;
+        // ORCH-1204: this timeout branch deliberately does NOT run the ORCH-1106
+        // getUser() probe — the probe lives only in the getSession()-resolved
+        // success branch below (gated by bootSessionProbedRef). The synchronous
+        // hydration leaves bootSessionProbedRef untouched, so the probe still
+        // fires exactly once when getSession() actually resolves, and never on
+        // the timeout path. Do NOT add a probe here (would risk signing out a
+        // valid user on a slow network — out of scope, dangerous).
         const storedWebSession = readStoredWebSession();
         bootstrapTimedOutRef.current = true;
         setAuthError(null);
