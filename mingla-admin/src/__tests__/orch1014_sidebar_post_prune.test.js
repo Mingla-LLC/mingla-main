@@ -1,8 +1,16 @@
 // ORCH-1014 Finding A regression test — Photo Labeling + Photo Scorer
-// removed from sidebar; the 10 surviving items render in the locked order.
+// removed from sidebar; the surviving items render in the locked order.
 //
 // Fails-on-revert: if either nav item is re-added or one of the 2 deleted
 // page files is restored, this test FAILS.
+//
+// [TEST-MOD-APPROVED ORCH-1196] 2026-06-21: this test's EXPECTED_IDS_POST_1014
+// was a stale 10-item snapshot that was NEVER reconciled when later ORCHs grew
+// the nav (launch-cities/deck-tuner/beta-leads/pricing/support/stripe-mode) —
+// so it was ALREADY failing on main before this cycle (verified). Reconciled
+// to the real nav and added "api-health" (this cycle). The load-bearing
+// invariant is unchanged: the two photo-* ids + page files stay deleted.
+// Nav count 10 -> 17.
 
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
@@ -20,11 +28,18 @@ const EXPECTED_IDS_POST_1014 = [
   "subscriptions",
   "admin",
   "placepool",
+  "launch-cities",
   "signals",
+  "deck-tuner",
   "place-intelligence-trial",
   "email",
+  "beta-leads",
+  "pricing",
   "claims",
+  "support",
   "users",
+  "stripe-mode",
+  "api-health",
   "settings",
 ];
 
@@ -35,16 +50,16 @@ const ORCH_1014_DELETED_PAGES = [
   "PhotoScorerPage.jsx",
 ];
 
-describe("ORCH-1014 Finding A — photo pages pruned + 10-item sidebar", () => {
-  it("NAV_GROUPS has exactly 10 items in the locked post-ORCH-1014 order", () => {
+describe("ORCH-1014 Finding A — photo pages pruned + locked sidebar order", () => {
+  it("NAV_GROUPS has exactly 17 items in the locked post-ORCH-1014 (ORCH-1196-reconciled) order", () => {
     assert.equal(NAV_GROUPS.length, 1, "expected exactly 1 nav group");
     const ids = NAV_GROUPS[0].items.map((i) => i.id);
-    assert.equal(ids.length, 10, "expected exactly 10 nav items");
+    assert.equal(ids.length, 17, "expected exactly 17 nav items");
     assert.deepEqual(ids, EXPECTED_IDS_POST_1014);
   });
 
-  it("NAV_ITEMS is the flat 10-item list (no photo-labeling, no photo-scorer)", () => {
-    assert.equal(NAV_ITEMS.length, 10);
+  it("NAV_ITEMS is the flat 17-item list (no photo-labeling, no photo-scorer)", () => {
+    assert.equal(NAV_ITEMS.length, 17);
     const ids = NAV_ITEMS.map((i) => i.id);
     for (const dead of ORCH_1014_DELETED_IDS) {
       assert.equal(

@@ -1,5 +1,8 @@
 // ORCH-0881 — Ve5 structured menu → experiences parser (Gemini 2.5 Flash).
 
+// ORCH-1196 — Layer-C passive health observation (fire-and-forget, best-effort).
+import { recordApiCall } from "./apiHealthLog.ts";
+
 const GEMINI_MODEL_ID = "gemini-2.5-flash";
 const GEMINI_API_URL =
   `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL_ID}:generateContent`;
@@ -262,11 +265,13 @@ export async function parseMenuWithGemini(args: {
     },
   };
 
+  const _t0 = Date.now();
   const response = await fetch(`${GEMINI_API_URL}?key=${apiKey}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(requestBody),
   });
+  void recordApiCall("gemini", response.ok, Date.now() - _t0, response.status); // ORCH-1196 Layer-C
 
   if (!response.ok) {
     const detail = await response.text().catch(() => "");

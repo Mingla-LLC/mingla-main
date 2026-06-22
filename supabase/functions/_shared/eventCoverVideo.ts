@@ -3,6 +3,8 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 // @ts-ignore - Deno ESM import
 import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
+// ORCH-1196 — Layer-C passive health observation (fire-and-forget, best-effort).
+import { recordApiCall } from "./apiHealthLog.ts";
 
 export const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -299,10 +301,12 @@ export async function cloudinaryDestroy(
   formData.append("api_key", apiKey);
   formData.append("signature", signature);
 
+  const _t0 = Date.now();
   const response = await fetch(
     `https://api.cloudinary.com/v1_1/${cloudName}/video/destroy`,
     { method: "POST", body: formData },
   );
+  void recordApiCall("cloudinary", response.ok, Date.now() - _t0, response.status); // ORCH-1196 Layer-C
   let body: { result?: unknown } | null = null;
   try {
     body = await response.json();

@@ -25,6 +25,8 @@ import { BetaLeadsPage } from "./pages/BetaLeadsPage";
 import { StripeModePage } from "./pages/StripeModePage";
 // META-ORCH-1104 Phase 2 — admin support desk (queue + thread + agents).
 import { SupportDeskPage } from "./pages/SupportDeskPage";
+// ORCH-1196 — Admin API-Health hub (board of external-service health + alerts).
+import { ApiHealthPage } from "./pages/ApiHealthPage";
 // ORCH-1008: 6 pages deleted (Seed, ContentModeration, Analytics, Reports,
 //   BetaFeedback, TableBrowser). Sidebar flattened; System dropdown removed.
 //   See SPEC_ORCH-1008_ADMIN_SHELL_PRUNE_INTELLIGENCE_OVERVIEW.md §2 + §3.
@@ -55,6 +57,8 @@ const PAGES = {
   "place-intelligence-trial": PlaceIntelligenceTrialPage,
   // ORCH-1056: unified Stripe mode dashboard (hash route #/stripe-mode).
   "stripe-mode": StripeModePage,
+  // ORCH-1196: API-health hub (hash route #/api-health).
+  "api-health": ApiHealthPage,
 };
 
 function getTabFromHash() {
