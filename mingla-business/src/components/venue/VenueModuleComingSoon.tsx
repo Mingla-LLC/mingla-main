@@ -21,13 +21,8 @@ import {
   text as textTokens,
   typography,
 } from "../../constants/designSystem";
-import {
-  Calendar,
-  Clock,
-  LayoutGrid,
-  List,
-  type LucideIcon,
-} from "lucide-react-native";
+import { Calendar, Clock, LayoutGrid, List } from "lucide-react-native";
+import type { LucideIcon } from "lucide-react-native";
 import { Button } from "../ui/Button";
 import { GlassCard } from "../ui/GlassCard";
 import { VENUE_MODULES } from "./venueModules";
