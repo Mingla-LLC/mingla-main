@@ -1,4 +1,4 @@
-# INVESTIGATE — ORCH-1201 [web brand-load regression]
+# INVESTIGATE — ORCH-1202 [web brand-load regression]
 
 **Skill:** mingla-forensics (INVESTIGATE)
 **Date:** 2026-06-21
@@ -19,7 +19,7 @@
 ## Comms ledger
 
 - **COMMS-0052 (BLOCK/ALL, OPEN) — ACKNOWLEDGED.** Business-app OTA is blocked (PostHog native module hard-imported in `_layout.tsx`; an OTA to the live runtime would crash on launch). INVESTIGATE ships no code and recommends no OTA, so this does not block the investigation — but it is load-bearing for the fix: **the fix must ship to web via Vercel (web bundle) and ride the NEXT business native build for the apps; it must NOT be OTA'd.** Also confirms PostHog never enters the web bundle (web-stubbed) — see F-5 RULED OUT.
-- **COMMS-0054 (WARN/ALL) — read.** ID-space hot; ORCH-1201 is clear of collisions (1200 was the last consumed).
+- **COMMS-0054 (WARN/ALL) — read.** ID-space hot; ORCH-1201 collided with the shipped api-health hub (origin/main); this effort RENUMBERED to ORCH-1202 (shipped-first-keeps-the-number; see COMMS-0055).
 
 ---
 
@@ -97,7 +97,7 @@ Verdict: **RULED OUT.** `PostHogAnalyticsProvider.web.tsx` is a pure `<>{childre
 1. **Symptom** — pre-auth RLS reads return 200 + [].
 2. **Layer** — runtime.
 3. **Probe** — `/tmp/orch-1201/repro_empty200.mjs` (Playwright real headless Chromium; in-page `fetch` with `apikey`+`Authorization` = anon key, NO user JWT; two browser profiles: desktop 1440×900 and a `SAMSUNG SM-S918B / SamsungBrowser/23.0` UA at 360×740).
-4. **Evidence** — `evidence/ORCH-1201/repro_empty200_output.txt`: for `brand_team_members`, `notifications`, `partner_splits`, BOTH profiles returned `status:200, isArray:true, length:0, body:"[]"`, `cachedAsSuccess:true, willRetry:false`. VERDICT line: *"REPRODUCED — every RLS-scoped read returns 200 + [] to a pre-auth (anon) fire; React Query caches it as success and never retries."*
+4. **Evidence** — `evidence/ORCH-1202/repro_empty200_output.txt`: for `brand_team_members`, `notifications`, `partner_splits`, BOTH profiles returned `status:200, isArray:true, length:0, body:"[]"`, `cachedAsSuccess:true, willRetry:false`. VERDICT line: *"REPRODUCED — every RLS-scoped read returns 200 + [] to a pre-auth (anon) fire; React Query caches it as success and never retries."*
 5. **Mechanism** — confirms F-2 against the live prod database from a real browser on both target surfaces.
 6. **Severity** — **CONFIRMED** (runtime proof of F-2).
 
@@ -106,7 +106,7 @@ Verdict: **RULED OUT.** `PostHogAnalyticsProvider.web.tsx` is a pure `<>{childre
 1. **Symptom** — the cached empty result strands the surface.
 2. **Layer** — runtime (cache state machine).
 3. **Probe** — `/tmp/orch-1201/repro_reactquery.mjs` using the REAL `@tanstack/query-core` v5.100.6 + mingla-business's verbatim QueryClient defaults (staleTime 5min, retry 2 error-only, refetchOnWindowFocus false). queryFn returns `[]` (no throw) pre-auth and a real row post-auth; session attaches at t=300ms.
-4. **Evidence** — `evidence/ORCH-1201/repro_reactquery_output.txt`: **ungated** → `status:success`, `finalDataLength:0`, `queryFnCalls:1` (fired once pre-auth, never re-fired after the JWT) — *"BUG REPRODUCED … never re-fetched after the JWT attached."* **gated** → `finalDataLength:1` — *"CORRECT — query stayed disabled until auth ready, then fired WITH the JWT."* VERDICT: PROVEN.
+4. **Evidence** — `evidence/ORCH-1202/repro_reactquery_output.txt`: **ungated** → `status:success`, `finalDataLength:0`, `queryFnCalls:1` (fired once pre-auth, never re-fired after the JWT) — *"BUG REPRODUCED … never re-fetched after the JWT attached."* **gated** → `finalDataLength:1` — *"CORRECT — query stayed disabled until auth ready, then fired WITH the JWT."* VERDICT: PROVEN.
 5. **Mechanism** — the definitive end-to-end proof that the ungated shape poisons the cache and the ORCH-1004 gated shape is the cure.
 6. **Severity** — **CONFIRMED** (the load-bearing runtime proof).
 
@@ -145,8 +145,8 @@ Verdict: **RULED OUT.** `PostHogAnalyticsProvider.web.tsx` is a pure `<>{childre
 
 ## Repro evidence (what was run, what happened)
 
-- **`repro_empty200.mjs`** — real headless Chromium, desktop Chrome + Samsung-Internet/Android UA. PASS/REPRODUCED: every RLS-scoped table → 200 + [] pre-auth on both surfaces. Output: `evidence/ORCH-1201/repro_empty200_output.txt`.
-- **`repro_reactquery.mjs`** — real `@tanstack/query-core` v5.100.6 + the verbatim mingla-business QueryClient config. PROVEN: ungated caches [] and never refetches after JWT attach; gated gets the real row. Output: `evidence/ORCH-1201/repro_reactquery_output.txt`.
+- **`repro_empty200.mjs`** — real headless Chromium, desktop Chrome + Samsung-Internet/Android UA. PASS/REPRODUCED: every RLS-scoped table → 200 + [] pre-auth on both surfaces. Output: `evidence/ORCH-1202/repro_empty200_output.txt`.
+- **`repro_reactquery.mjs`** — real `@tanstack/query-core` v5.100.6 + the verbatim mingla-business QueryClient config. PROVEN: ungated caches [] and never refetches after JWT attach; gated gets the real row. Output: `evidence/ORCH-1202/repro_reactquery_output.txt`.
 - **Residual (SUSPECTED ceiling):** a fully-authed live web session driven through a real brand switch on a throttled mobile connection was NOT performed headless (would require driving a real Google/Apple OAuth login in Chromium against prod). The mechanism is proven; the specific "Loading brands…" string surfacing is capped at SUSPECTED pending a **Seth authed-web eyeball** (open desktop + Samsung Internet, hard-refresh an authed page, watch the TopBar bell + any section that reads an F-1 hook come up empty until reload).
 
 ### Deterministic reproduction recipe
