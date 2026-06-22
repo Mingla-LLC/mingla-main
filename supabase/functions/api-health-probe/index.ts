@@ -1028,9 +1028,13 @@ serve(async (req) => {
         structuredLog("warn", "api_health webhook freshness failed", { fn: "api-health-probe", table, err: String(e) });
       }
     };
-    // stripe + paystack share payment_webhook_events; silence > 6h is degraded (alertable).
-    await webhookFreshness("stripe", "payment_webhook_events", "created_at", true);
-    await webhookFreshness("paystack", "payment_webhook_events", "created_at", true);
+    // ORCH-1213: stripe + paystack share payment_webhook_events. In a low/zero-traffic
+    // env webhook silence carries NO actionable signal (zero connected NG brands → zero
+    // webhooks), so it is INFORMATIONAL only — same class as cloudinary/twilio below.
+    // last_received is still recorded + displayed; silence NEVER drives failedTick/alerting.
+    // A genuine API/auth outage still pages via the synthetic probeStripe/probePaystack.
+    await webhookFreshness("stripe", "payment_webhook_events", "created_at", false);
+    await webhookFreshness("paystack", "payment_webhook_events", "created_at", false);
     // cloudinary + twilio webhooks are informational (low volume) — never alert.
     await webhookFreshness("cloudinary", "event_cover_video_jobs", "created_at", false);
     await webhookFreshness("twilio", "twilio_message_status_events", "received_at", false);
