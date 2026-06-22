@@ -7,7 +7,7 @@
 // stripe-mode without updating this locked test, so it was already failing on main).
 // Nav count 10 -> 16. The flat-sidebar + 6-deleted-pages invariants are unchanged.
 //
-// [TEST-MOD-APPROVED ORCH-1196] 2026-06-21: added the "api-health" nav id
+// [TEST-MOD-APPROVED ORCH-1199] 2026-06-21: added the "api-health" nav id
 // (API-health hub) between "stripe-mode" and "settings". Nav count 16 -> 17.
 // The flat-sidebar + 6-deleted-pages invariants are unchanged.
 

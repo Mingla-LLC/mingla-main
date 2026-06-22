@@ -1,7 +1,7 @@
-# IMPLEMENTATION REPORT — ORCH-1196 Admin API-Health Hub + Email Alerts
+# IMPLEMENTATION REPORT — ORCH-1199 Admin API-Health Hub + Email Alerts
 
 **Phase:** IMPLEMENT (executed the binding SPEC verbatim + the orchestrator-directed `api_health_meta` change).
-**Worktree:** `/Users/sethogieva/Desktop/mingla-orchs/ORCH-1196-[api-health-hub]/` · branch `ORCH-1196-api-health-hub`
+**Worktree:** `/Users/sethogieva/Desktop/mingla-orchs/ORCH-1199-[api-health-hub]/` · branch `ORCH-1199-api-health-hub`
 **Date:** 2026-06-21
 **Status:** COMPLETE — built, self-verified, committed to branch. NOT merged/deployed/closed (per dispatch).
 
@@ -22,7 +22,7 @@
 
 ## 1. Migration prefix chosen + why
 
-**Chosen: `20261120000000`** (file `supabase/migrations/20261120000000_orch_1196_api_health_hub.sql`).
+**Chosen: `20261120000000`** (file `supabase/migrations/20261120000000_orch_1199_api_health_hub.sql`).
 
 The SPEC said use `20261119000000`, but the GUARD required re-checking against latest origin/main. After `git fetch origin && git rebase origin/main`, the max prefix across the rebased tree AND all 9 sibling worktrees is **`20261119000000`** — now occupied by `20261119000000_orch_1195_reservation_confirm_email_on_insert.sql` (merged to main AFTER the SPEC was written; exactly the collision history the GUARD anticipated). I picked the next free monotonic slot `20261120000000`. Idempotent (`IF NOT EXISTS` / `ON CONFLICT` / unschedule-then-schedule).
 
@@ -30,11 +30,11 @@ The SPEC said use `20261119000000`, but the GUARD required re-checking against l
 
 ## 2. What was built, per file
 
-### Migration — `supabase/migrations/20261120000000_orch_1196_api_health_hub.sql`
+### Migration — `supabase/migrations/20261120000000_orch_1199_api_health_hub.sql`
 - **Tables:** `api_health_services` (canonical owner, seeded with the **25 real monitored services** — NO `_digest` pseudo-row), `api_health_checks`, `api_health_observations`, `api_health_alert_state`, and **`api_health_meta` (kv)** per the orchestrator-directed change.
 - **RLS:** all 5 tables `ENABLE ROW LEVEL SECURITY` with **zero policies** → anon/authenticated denied; service-role (probe) bypasses; admins read via RPC only.
 - **RPCs (SECURITY DEFINER, `is_admin_user()`-gated):** `admin_get_api_health()` (per-service rollup: latest check per layer, 24h passive rate, 24h uptime %, alert state) and `admin_get_api_health_incidents(text,int)`. No `_digest` filter needed anymore (the directed change removed the pseudo-row).
-- **Cron:** hourly `'0 * * * *'` `orch_1196_api_health_probe` via `pg_cron` + `pg_net`, vault names `supabase_url` + `service_role_key` (D0.4 — NOT the tr4 `supabase_service_role_key` one-off), `timeout_milliseconds := 60000`. RAISE-guards both extensions.
+- **Cron:** hourly `'0 * * * *'` `orch_1199_api_health_probe` via `pg_cron` + `pg_net`, vault names `supabase_url` + `service_role_key` (D0.4 — NOT the tr4 `supabase_service_role_key` one-off), `timeout_milliseconds := 60000`. RAISE-guards both extensions.
 - **Self-verify:** asserts the cron row exists at `'0 * * * *'`, exactly **25** services (no pseudo-rows), and the `api_health_meta last_digest_at` row exists.
 
 ### Edge fn — `supabase/functions/api-health-probe/index.ts` (+ `logic.ts`)
@@ -66,9 +66,9 @@ The SPEC said use `20261119000000`, but the GUARD required re-checking against l
 
 ### Strict-grep gates (all PASS)
 ```
-i-proposed-1196-alert-email-single-owner       PASS
-i-proposed-1196-probe-no-write-side-effects    PASS
-i-proposed-1196-service-key-canonical          PASS  (25 services, 19 probe keys ⊆ seeded)
+i-proposed-1199-alert-email-single-owner       PASS
+i-proposed-1199-probe-no-write-side-effects    PASS
+i-proposed-1199-service-key-canonical          PASS  (25 services, 19 probe keys ⊆ seeded)
 ```
 
 ### Deno tests (21 passed / 0 failed)
@@ -104,13 +104,13 @@ All 6 wrapped `_shared` clients type-check; every wrap is `void recordApiCall(..
 
 ## 4. Spec deviations / corrections (all bound by GUARDS or evidence)
 
-1. **ORCHESTRATOR-DIRECTED (binding):** digest cooldown lives in a new `api_health_meta(key,value,updated_at)` kv table (`key='last_digest_at'`), NOT a `_digest` pseudo-row in `api_health_services`. Updated the migration, the RPC (no `<> '_digest'` filter), the edge fn (reads/writes `api_health_meta`), and the UI (no pseudo-row to filter). This keeps `api_health_services` pure (one owner = 25 real services) and tightens I-PROPOSED-1196-SERVICE-KEY-CANONICAL.
+1. **ORCHESTRATOR-DIRECTED (binding):** digest cooldown lives in a new `api_health_meta(key,value,updated_at)` kv table (`key='last_digest_at'`), NOT a `_digest` pseudo-row in `api_health_services`. Updated the migration, the RPC (no `<> '_digest'` filter), the edge fn (reads/writes `api_health_meta`), and the UI (no pseudo-row to filter). This keeps `api_health_services` pure (one owner = 25 real services) and tightens I-PROPOSED-1199-SERVICE-KEY-CANONICAL.
 2. **Migration prefix:** `20261120000000` (not the spec's `20261119000000`, which was taken by `orch_1195` post-spec). See §1.
 3. **Stripe balance role:** the SPEC wrote `createStripeClientForRole("platform")`, but `"platform"` is NOT a valid `StripeRole`. The canonical role for balance reads is `BALANCES` (`_shared/stripe.ts:stripeBalances()`). Used `createStripeClientForRole("BALANCES")`.
 4. **`notification_deliveries` timestamp column:** the SPEC §2.3 query used `created_at`, but the real schema (`20261110000000_orch_1161_notification_foundation_tables.sql`) has **no `created_at`** — the attempt timestamp is `attempt_at`. Used `attempt_at`. (The provider column is `provider`, status `status` — as spec'd. Failure statuses mapped: `failed`/`undelivered`.)
 5. **Paystack wrap:** the SPEC assumed a single shared fetch; the file actually has separate fetches in `paystackInitializeTransaction` (`:102`) and `paystackVerifyTransaction` (`:121`). Wrapped both transaction fetches (the live payment chokepoints), not the onboarding/bank-list fetches.
-6. **Sidebar tests — `orch1014_sidebar_post_prune.test.js`:** the SPEC said it "asserts 10" and to bump the count. On inspection it does a strict `deepEqual` to a **stale 10-item list** that was NEVER reconciled when later ORCHs grew the nav (launch-cities/deck-tuner/beta-leads/pricing/support/stripe-mode) — **it was ALREADY FAILING on the current tree before this cycle** (verified: 2 subtests failing). Following the META-ORCH-1104 reconciliation precedent (same author note in `orch1008`), I reconciled its `EXPECTED_IDS_POST_1014` to the real nav + added `api-health` (10 → 17) while preserving its load-bearing invariant (the two `photo-*` ids + page files stay deleted). `orch1008` was the live test (16); bumped to 17. **Both now pass.** This is a [TEST-MOD-APPROVED ORCH-1196]-noted change in both files.
-7. **Alert-email gate refinement:** the Resend Layer-B *liveness probe* legitimately hits `api.resend.com/domains`. The I-PROPOSED-1196-ALERT-EMAIL-SINGLE-OWNER gate targets the email-SEND path only (`api.resend.com/emails` / `RESEND_API_URL`), so the health probe is allowed while a new alert-send path is forbidden.
+6. **Sidebar tests — `orch1014_sidebar_post_prune.test.js`:** the SPEC said it "asserts 10" and to bump the count. On inspection it does a strict `deepEqual` to a **stale 10-item list** that was NEVER reconciled when later ORCHs grew the nav (launch-cities/deck-tuner/beta-leads/pricing/support/stripe-mode) — **it was ALREADY FAILING on the current tree before this cycle** (verified: 2 subtests failing). Following the META-ORCH-1104 reconciliation precedent (same author note in `orch1008`), I reconciled its `EXPECTED_IDS_POST_1014` to the real nav + added `api-health` (10 → 17) while preserving its load-bearing invariant (the two `photo-*` ids + page files stay deleted). `orch1008` was the live test (16); bumped to 17. **Both now pass.** This is a [TEST-MOD-APPROVED ORCH-1199]-noted change in both files.
+7. **Alert-email gate refinement:** the Resend Layer-B *liveness probe* legitimately hits `api.resend.com/domains`. The I-PROPOSED-1199-ALERT-EMAIL-SINGLE-OWNER gate targets the email-SEND path only (`api.resend.com/emails` / `RESEND_API_URL`), so the health probe is allowed while a new alert-send path is forbidden.
 
 No other deviations. Excluded set (D0.7), resolved OQs (D0.8), thresholds (§3.5), and STATUS_PAGE_URLS (§2.1) are all as the SPEC bound them.
 
@@ -127,7 +127,7 @@ No other deviations. Excluded set (D0.7), resolved OQs (D0.8), thresholds (§3.5
 
 1. **Enable extensions** (if not already): `pg_cron` + `pg_net` on the Supabase project. The migration RAISE-guards `pg_cron` (hard fail if absent) and `RAISE NOTICE`s on missing `pg_net`.
 2. **Vault secrets:** confirm `vault.decrypted_secrets` has `supabase_url` and `service_role_key` (canonical names; 22 prior uses). The cron reads these.
-3. **Apply the migration** `20261120000000_orch_1196_api_health_hub.sql` (re-confirm no newer prefix collision at apply time).
+3. **Apply the migration** `20261120000000_orch_1199_api_health_hub.sql` (re-confirm no newer prefix collision at apply time).
 4. **Deploy the edge fn** `api-health-probe` (from MERGED main, not a stale worktree — clobber risk noted in MEMORY). `config.toml` already sets `verify_jwt=false`.
 5. **Set new Edge secrets** (defaults exist; set to override):
    - `API_HEALTH_ALERT_EMAILS` (default `seth@usemingla.com`) — comma-list.
@@ -136,7 +136,7 @@ No other deviations. Excluded set (D0.7), resolved OQs (D0.8), thresholds (§3.5
    - All probe-read secrets (RESEND/GEMINI/OPENAI/MAPBOX/GOOGLE_MAPS/TICKETMASTER/SERPER/PEXELS/ONESIGNAL_*/TWILIO_*/CLOUDINARY_*/STRIPE_*/PAYSTACK_*) are already provisioned; any missing one degrades that service to `unknown` (never crashes the tick).
 6. **Deploy mingla-admin** (Vercel web) so the `#/api-health` page ships.
 7. **No native build, no consumer/business OTA** — backend + admin web only. Blast radius verified zero against `app-mobile/`, `mingla-business/`, `mingla-marketing/`.
-8. **Invariants:** flip the 4 I-PROPOSED-1196-* invariants to ACTIVE on close (3 strict-grep + 1 UI unit test, all registered + passing). Register them in `INVARIANT_REGISTRY.md`.
+8. **Invariants:** flip the 4 I-PROPOSED-1199-* invariants to ACTIVE on close (3 strict-grep + 1 UI unit test, all registered + passing). Register them in `INVARIANT_REGISTRY.md`.
 
 ---
 

@@ -1,4 +1,4 @@
-// ORCH-1196 — Admin API-Health probe (hourly via pg_cron + pg_net).
+// ORCH-1199 — Admin API-Health probe (hourly via pg_cron + pg_net).
 //
 // One HTTP handler per hourly tick. Service-role-Bearer guarded (D0.5). Runs:
 //   Layer-A: allSettled poll of vendor statuspage /api/v2/status.json feeds.
@@ -10,8 +10,8 @@
 //
 // Hard contract: one dead/slow vendor NEVER throws the tick (allSettled +
 // per-probe AbortSignal). Alerts go ONLY through sendOpsAlertEmail (D0.6 /
-// I-PROPOSED-1196-ALERT-EMAIL-SINGLE-OWNER). Probes are read-only against
-// vendors (I-PROPOSED-1196-PROBE-NO-WRITE-SIDE-EFFECTS); the only non-GET vendor
+// I-PROPOSED-1199-ALERT-EMAIL-SINGLE-OWNER). Probes are read-only against
+// vendors (I-PROPOSED-1199-PROBE-NO-WRITE-SIDE-EFFECTS); the only non-GET vendor
 // calls are the Serper search (read-only) + the Stripe/Paystack SDK reads.
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
@@ -275,7 +275,7 @@ async function probeSerper(): Promise<ProbeResult> {
   const key = Deno.env.get("SERPER_API_KEY");
   if (!key) return { ok: false, latencyMs: null, status: "unknown", detail: { error: "SERPER_API_KEY missing" } };
   try {
-    // Read-only search (no vendor mutation) — I-PROPOSED-1196-PROBE-NO-WRITE-SIDE-EFFECTS exception.
+    // Read-only search (no vendor mutation) — I-PROPOSED-1199-PROBE-NO-WRITE-SIDE-EFFECTS exception.
     const { res, latencyMs } = await timedFetch("https://google.serper.dev/search", {
       method: "POST",
       headers: { "X-API-KEY": key, "Content-Type": "application/json" },

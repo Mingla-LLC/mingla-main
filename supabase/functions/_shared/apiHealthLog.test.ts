@@ -1,4 +1,4 @@
-// ORCH-1196 — recordApiCall best-effort regression (SPEC §8.1 item 8).
+// ORCH-1199 — recordApiCall best-effort regression (SPEC §8.1 item 8).
 // Run: deno test --allow-env --allow-net supabase/functions/_shared/apiHealthLog.test.ts
 //
 // Proves: a forced insert failure (unreachable SUPABASE_URL) is SWALLOWED and

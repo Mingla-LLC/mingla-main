@@ -22,7 +22,7 @@
  * matching resolveStripeKey.
  */
 
-// ORCH-1196 — Layer-C passive health observation (fire-and-forget, best-effort).
+// ORCH-1199 — Layer-C passive health observation (fire-and-forget, best-effort).
 import { recordApiCall } from "./apiHealthLog.ts";
 
 export type PaystackMode = "test" | "live";
@@ -108,7 +108,7 @@ export async function paystackInitializeTransaction(
     headers: { Authorization: `Bearer ${secret}`, "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });
-  void recordApiCall("paystack", res.ok, Date.now() - _t0, res.status); // ORCH-1196 Layer-C
+  void recordApiCall("paystack", res.ok, Date.now() - _t0, res.status); // ORCH-1199 Layer-C
   const json = await res.json().catch(() => ({}));
   if (!res.ok || json?.status !== true) {
     throw new Error(
@@ -128,7 +128,7 @@ export async function paystackVerifyTransaction(
     `${PAYSTACK_BASE_URL}/transaction/verify/${encodeURIComponent(reference)}`,
     { headers: { Authorization: `Bearer ${secret}` } },
   );
-  void recordApiCall("paystack", res.ok, Date.now() - _t0, res.status); // ORCH-1196 Layer-C
+  void recordApiCall("paystack", res.ok, Date.now() - _t0, res.status); // ORCH-1199 Layer-C
   const json = await res.json().catch(() => ({}));
   if (!res.ok || json?.status !== true) {
     throw new Error(

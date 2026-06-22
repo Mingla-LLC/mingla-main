@@ -1,6 +1,6 @@
-// ORCH-1196 — pure status-derivation helpers for the API-health board.
+// ORCH-1199 — pure status-derivation helpers for the API-health board.
 // Extracted from ApiHealthPage so they are node-testable without the React
-// render path (I-PROPOSED-1196-NO-FABRICATED-HEALTH UI unit test).
+// render path (I-PROPOSED-1199-NO-FABRICATED-HEALTH UI unit test).
 
 // Worst-of-layers, where `down` worst → red; `degraded` → amber; `healthy` →
 // green; everything else (no signal / unknown) → null. NEVER green for a

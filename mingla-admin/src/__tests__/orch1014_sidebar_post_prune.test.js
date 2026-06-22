@@ -4,7 +4,7 @@
 // Fails-on-revert: if either nav item is re-added or one of the 2 deleted
 // page files is restored, this test FAILS.
 //
-// [TEST-MOD-APPROVED ORCH-1196] 2026-06-21: this test's EXPECTED_IDS_POST_1014
+// [TEST-MOD-APPROVED ORCH-1199] 2026-06-21: this test's EXPECTED_IDS_POST_1014
 // was a stale 10-item snapshot that was NEVER reconciled when later ORCHs grew
 // the nav (launch-cities/deck-tuner/beta-leads/pricing/support/stripe-mode) —
 // so it was ALREADY failing on main before this cycle (verified). Reconciled
@@ -51,7 +51,7 @@ const ORCH_1014_DELETED_PAGES = [
 ];
 
 describe("ORCH-1014 Finding A — photo pages pruned + locked sidebar order", () => {
-  it("NAV_GROUPS has exactly 17 items in the locked post-ORCH-1014 (ORCH-1196-reconciled) order", () => {
+  it("NAV_GROUPS has exactly 17 items in the locked post-ORCH-1014 (ORCH-1199-reconciled) order", () => {
     assert.equal(NAV_GROUPS.length, 1, "expected exactly 1 nav group");
     const ids = NAV_GROUPS[0].items.map((i) => i.id);
     assert.equal(ids.length, 17, "expected exactly 17 nav items");

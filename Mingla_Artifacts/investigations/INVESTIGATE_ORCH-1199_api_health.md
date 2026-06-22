@@ -1,10 +1,10 @@
-# INVESTIGATE — ORCH-1196 Admin API-Health Hub + Email Alerts
+# INVESTIGATE — ORCH-1199 Admin API-Health Hub + Email Alerts
 
 **Phase:** INVESTIGATE (read-only forensics → SPEC input)
-**Worktree:** `/Users/sethogieva/Desktop/mingla-orchs/ORCH-1196-[api-health-hub]/` · branch `ORCH-1196-api-health-hub`
+**Worktree:** `/Users/sethogieva/Desktop/mingla-orchs/ORCH-1199-[api-health-hub]/` · branch `ORCH-1199-api-health-hub`
 **Date:** 2026-06-21
 **Mandate:** No assumptions. Every claim cites file:line. Resolve all 5 open verification items; document reusable infra; define the technical approach for all three health layers (A vendor status pages, B authenticated probes, C passive real-traffic), hourly cadence, single recipient via env-var list.
-**Authoritative inventory read:** `Mingla_Artifacts/ORCH-1196_API_INVENTORY.md` (incl. LOCKED DECISIONS block).
+**Authoritative inventory read:** `Mingla_Artifacts/ORCH-1199_API_INVENTORY.md` (incl. LOCKED DECISIONS block).
 
 ---
 
@@ -68,18 +68,18 @@
 
 **Migration template to copy (hourly):**
 ```sql
--- supabase/migrations/<ts>_orch_1196_api_health_probe_cron.sql
+-- supabase/migrations/<ts>_orch_1199_api_health_probe_cron.sql
 DO $$ BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_extension WHERE extname='pg_cron') THEN
-    RAISE EXCEPTION 'ORCH-1196: pg_cron required'; END IF;
+    RAISE EXCEPTION 'ORCH-1199: pg_cron required'; END IF;
   IF NOT EXISTS (SELECT 1 FROM pg_extension WHERE extname='pg_net') THEN
-    RAISE NOTICE 'ORCH-1196: pg_net missing — http_post will fail at runtime'; END IF;
+    RAISE NOTICE 'ORCH-1199: pg_net missing — http_post will fail at runtime'; END IF;
 END$$;
 DO $$ BEGIN
-  IF EXISTS (SELECT 1 FROM cron.job WHERE jobname='orch_1196_api_health_probe')
-  THEN PERFORM cron.unschedule('orch_1196_api_health_probe'); END IF;
+  IF EXISTS (SELECT 1 FROM cron.job WHERE jobname='orch_1199_api_health_probe')
+  THEN PERFORM cron.unschedule('orch_1199_api_health_probe'); END IF;
 END$$;
-SELECT cron.schedule('orch_1196_api_health_probe', '0 * * * *', $cron$
+SELECT cron.schedule('orch_1199_api_health_probe', '0 * * * *', $cron$
   SELECT net.http_post(
     url := (SELECT decrypted_secret FROM vault.decrypted_secrets WHERE name='supabase_url' LIMIT 1) || '/functions/v1/api-health-probe',
     headers := jsonb_build_object(

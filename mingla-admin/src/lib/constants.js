@@ -152,7 +152,7 @@ export const NAV_GROUPS = [
       // ORCH-1056: unified Stripe mode dashboard — verifies the three Stripe
       // signals (Supabase backend / web client pk / Vercel env) agree.
       { id: "stripe-mode",               label: "Stripe mode",        icon: "Wallet" },
-      // ORCH-1196: API-health hub — live status of every external service Mingla
+      // ORCH-1199: API-health hub — live status of every external service Mingla
       // depends on (3-layer probe + email alerts). Ops tooling, sits with
       // stripe-mode/settings. The Activity icon is already in Sidebar ICON_MAP.
       { id: "api-health",                label: "API health",         icon: "Activity" },

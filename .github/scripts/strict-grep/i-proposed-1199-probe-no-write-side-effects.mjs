@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * I-PROPOSED-1196-PROBE-NO-WRITE-SIDE-EFFECTS (DRAFT) — ORCH-1196.
+ * I-PROPOSED-1199-PROBE-NO-WRITE-SIDE-EFFECTS (DRAFT) — ORCH-1199.
  *
  * Synthetic probes are read-only against vendors. The ONLY non-GET vendor HTTP
  * calls allowed in api-health-probe are:
@@ -23,7 +23,7 @@ const stripComments = (src) =>
 
 const indexPath = join(root, "supabase/functions/api-health-probe/index.ts");
 if (!existsSync(indexPath)) {
-  console.error("I-PROPOSED-1196-PROBE-NO-WRITE-SIDE-EFFECTS: index.ts missing");
+  console.error("I-PROPOSED-1199-PROBE-NO-WRITE-SIDE-EFFECTS: index.ts missing");
   process.exit(1);
 }
 const code = stripComments(readFileSync(indexPath, "utf8"));
@@ -76,8 +76,8 @@ for (const rel of wrapFiles) {
 }
 
 if (failures.length > 0) {
-  console.error("I-PROPOSED-1196-PROBE-NO-WRITE-SIDE-EFFECTS gate failed:");
+  console.error("I-PROPOSED-1199-PROBE-NO-WRITE-SIDE-EFFECTS gate failed:");
   for (const f of failures) console.error(`- ${f}`);
   process.exit(1);
 }
-console.log("I-PROPOSED-1196-PROBE-NO-WRITE-SIDE-EFFECTS gate passed.");
+console.log("I-PROPOSED-1199-PROBE-NO-WRITE-SIDE-EFFECTS gate passed.");

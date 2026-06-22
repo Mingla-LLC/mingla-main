@@ -1,4 +1,4 @@
-// ORCH-1196 — Layer-C passive recorder for the Admin API-Health Hub.
+// ORCH-1199 — Layer-C passive recorder for the Admin API-Health Hub.
 //
 // `recordApiCall` is FIRE-AND-FORGET and BEST-EFFORT. It:
 //   1) emits a structured log line (Sentry-visible via structuredLog), and
@@ -7,7 +7,7 @@
 // and NEVER adds a blocking await to the host path. Wrap call sites as
 // `void recordApiCall(...)` so the host return is unaffected.
 //
-// Invariant I-PROPOSED-1196-PROBE-NO-WRITE-SIDE-EFFECTS: a forced insert error
+// Invariant I-PROPOSED-1199-PROBE-NO-WRITE-SIDE-EFFECTS: a forced insert error
 // here must be swallowed and the host call must still return its value.
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.4";

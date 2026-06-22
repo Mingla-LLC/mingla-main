@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * I-PROPOSED-1196-SERVICE-KEY-CANONICAL (DRAFT) — ORCH-1196.
+ * I-PROPOSED-1199-SERVICE-KEY-CANONICAL (DRAFT) — ORCH-1199.
  *
  * `public.api_health_services` is the ONE owner of the monitored-service list.
  * Every service_key the probe references (STATUS_PAGE_URLS keys + Layer-B probe
@@ -19,13 +19,13 @@ import { join } from "node:path";
 const root = process.cwd();
 const failures = [];
 
-// 1) locate the ORCH-1196 migration.
+// 1) locate the ORCH-1199 migration.
 const migDir = join(root, "supabase/migrations");
 const migFile = existsSync(migDir)
-  ? readdirSync(migDir).find((f) => /orch_1196_api_health_hub\.sql$/.test(f))
+  ? readdirSync(migDir).find((f) => /orch_1199_api_health_hub\.sql$/.test(f))
   : null;
 if (!migFile) {
-  console.error("I-PROPOSED-1196-SERVICE-KEY-CANONICAL: migration *_orch_1196_api_health_hub.sql not found");
+  console.error("I-PROPOSED-1199-SERVICE-KEY-CANONICAL: migration *_orch_1199_api_health_hub.sql not found");
   process.exit(1);
 }
 const sql = readFileSync(join(migDir, migFile), "utf8");
@@ -77,8 +77,8 @@ for (const key of probeKeys) {
 }
 
 if (failures.length > 0) {
-  console.error("I-PROPOSED-1196-SERVICE-KEY-CANONICAL gate failed:");
+  console.error("I-PROPOSED-1199-SERVICE-KEY-CANONICAL gate failed:");
   for (const f of failures) console.error(`- ${f}`);
   process.exit(1);
 }
-console.log(`I-PROPOSED-1196-SERVICE-KEY-CANONICAL gate passed (${seeded.size} services, ${probeKeys.size} probe keys ⊆ seeded).`);
+console.log(`I-PROPOSED-1199-SERVICE-KEY-CANONICAL gate passed (${seeded.size} services, ${probeKeys.size} probe keys ⊆ seeded).`);
