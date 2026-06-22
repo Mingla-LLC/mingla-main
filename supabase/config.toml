@@ -291,6 +291,13 @@ verify_jwt = false
 [functions.notify-reminders]
 verify_jwt = false
 
+# ORCH-1203 GAP-C1 — backfill-rsvp-qr-codes: every-15-min cron re-mints + delivers
+# signed QR passes for going RSVPs left with qr_code=NULL (transient missing-pepper).
+# verify_jwt=false: invoked by cron with the service-role bearer; the fn enforces a
+# service-role-Bearer auth guard internally.
+[functions.backfill-rsvp-qr-codes]
+verify_jwt = false
+
 # META-ORCH-1161 Sub-A — twilio-inbound-sms: the STOP/HELP inbound webhook.
 # verify_jwt=false: Twilio cannot present a Supabase JWT; gated on ?secret=
 # (same posture as twilio-message-status).
