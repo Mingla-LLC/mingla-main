@@ -34,6 +34,7 @@
  */
 import fs from "node:fs";
 import path from "node:path";
+import os from "node:os";
 
 const root = process.cwd().endsWith("mingla-business")
   ? path.resolve(process.cwd(), "..")
@@ -245,13 +246,82 @@ if (process.argv.includes("--self-test")) {
     selfFailures.push(`positive-assertion fixture failed to detect present "${APPROVED_COPY}"`);
   }
 
+  // ─────────────────────────────────────────────────────────────────────────
+  // TESTER ADVERSARIAL CASES (ORCH-1217 QA, append-only — do NOT modify (a)–(f)).
+  // The implementor's cases (a)–(f) exercise checkForbidden() on INLINE strings
+  // only. These cases attack a DIFFERENT angle: the END-TO-END live directory
+  // scan (listSourceFiles → checkForbidden) that a real leak in a NOT-explicitly-
+  // named file in the scoped Ari dir would actually hit, plus case/spacing
+  // variations the inline cases never cover. Mirrors tester probes 1/2a/2b.
+  // ─────────────────────────────────────────────────────────────────────────
+
+  // (g) Live directory-scan path: a vendor leak in a THIRD, NOT-NAMED file placed
+  //     inside a scoped Ari dir MUST be caught by the recursive scan — proving the
+  //     gate guards the WHOLE dir, not just AriSettingsScreen + AiDisclosureModal.
+  {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "orch1217-arigate-"));
+    try {
+      const leakFile = path.join(tmpDir, "AriHelpScreen.tsx");
+      fs.writeFileSync(
+        leakFile,
+        `import { Text } from "react-native";\nexport const AriHelp = () => <Text>Ari is powered by Gemini. Need help?</Text>;\n`,
+      );
+      const cleanFile = path.join(tmpDir, "AriOk.tsx");
+      fs.writeFileSync(
+        cleanFile,
+        `import { Text } from "react-native";\nexport const AriOk = () => <Text>Ari is powered by Mingla's AI.</Text>;\n`,
+      );
+      const dirFailures = [];
+      for (const abs of listSourceFiles(tmpDir)) {
+        checkForbidden(fs.readFileSync(abs, "utf8"), abs, dirFailures);
+      }
+      const caughtLeak = dirFailures.some((m) => m.includes("AriHelpScreen.tsx"));
+      const flaggedClean = dirFailures.some((m) => m.includes("AriOk.tsx"));
+      if (!caughtLeak) {
+        selfFailures.push(
+          "live directory scan did NOT catch a vendor leak in a THIRD, not-explicitly-named Ari-dir file (AriHelpScreen.tsx)",
+        );
+      }
+      if (flaggedClean) {
+        selfFailures.push(
+          "live directory scan wrongly flagged a clean third Ari-dir file (AriOk.tsx)",
+        );
+      }
+    } finally {
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    }
+  }
+
+  // (h) Case variation: lowercase "gemini" in user-facing text → MUST fire
+  //     (case-insensitive). Implementor cases only used the canonical-cased form.
+  const lowerCase = `<Text>Ari is powered by gemini.</Text>\n`;
+  if (runForbidden(lowerCase).length === 0) {
+    selfFailures.push('lowercase "gemini" in user-facing text was NOT flagged (case-insensitivity broken)');
+  }
+
+  // (i) Spacing variation: double-spaced "Google  Gemini" → MUST fire (the \b on
+  //     /\bgemini\b/ still matches regardless of leading whitespace count).
+  const doubleSpace = `<Text>Ari is powered by Google  Gemini.</Text>\n`;
+  if (runForbidden(doubleSpace).length === 0) {
+    selfFailures.push('double-spaced "Google  Gemini" in user-facing text was NOT flagged');
+  }
+
+  // (j) Comment-strip must NOT create a false negative: a vendor token inside a
+  //     STRING LITERAL whose content begins with "//" is still CODE (user-facing)
+  //     and MUST fire — the stripper only removes real comments, not string bodies.
+  const stringLooksLikeComment = `const x = "// powered by Gemini";\n`;
+  if (runForbidden(stringLooksLikeComment).length === 0) {
+    selfFailures.push('vendor token in a string literal beginning with "//" was wrongly stripped as a comment');
+  }
+
   if (selfFailures.length) {
     console.error("ORCH-1217 I-PROPOSED-1217-ARI-NO-VENDOR-DISCLOSURE self-test FAIL:");
     selfFailures.forEach((m) => console.error("  - " + m));
     process.exit(1);
   }
   console.log(
-    "ORCH-1217 I-PROPOSED-1217-ARI-NO-VENDOR-DISCLOSURE self-test PASS (6/6 cases).",
+    "ORCH-1217 I-PROPOSED-1217-ARI-NO-VENDOR-DISCLOSURE self-test PASS " +
+      "(6 implementor cases + 4 tester adversarial cases g–j = 10/10).",
   );
   process.exit(0);
 }
