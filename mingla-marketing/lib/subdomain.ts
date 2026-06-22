@@ -1,9 +1,11 @@
 // Path-based surface detection. Everything lives on the apex domain;
-// organiser content is a /organisers/* slug, NOT a subdomain.
+// business content is a /business/* slug, NOT a subdomain.
+// (ORCH-1224 renamed the route /organisers → /business; the internal
+//  `surface` discriminator value stays 'organiser' — it is never user-visible.)
 export type Surface = 'explorer' | 'organiser'
 
-export const ORGANISER_PATH = '/organisers'
+export const BUSINESS_PATH = '/business'
 
 export function getSurfaceFromPath(pathname: string): Surface {
-  return pathname.startsWith(ORGANISER_PATH) ? 'organiser' : 'explorer'
+  return pathname.startsWith(BUSINESS_PATH) ? 'organiser' : 'explorer'
 }

@@ -93,7 +93,7 @@ check('Audiences ships all 6 approved eyebrows verbatim (full experience economy
 //    NOT the old feature-list run-on. COPY PAGE METADATA. (Different file than
 //    any section the implementor test reads.)
 check('Page metadata description = approved sacred-line text (no feature run-on)', () => {
-  const page = readFileSync(join(process.cwd(), 'app', 'organisers', 'page.tsx'), 'utf8')
+  const page = readFileSync(join(process.cwd(), 'app', 'business', 'page.tsx'), 'utf8')
   assertHas(page, 'The businesses with the most soul are the hardest to find.', 'metadata open')
   assertHas(page, 'Your business has a vibe. Your community is looking for it. Mingla helps them find you.', 'metadata sacred close')
   // the old run-on mechanics phrasing must be gone

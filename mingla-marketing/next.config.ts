@@ -34,6 +34,16 @@ const config: NextConfig = {
   async headers() {
     return [{ source: '/:path*', headers: securityHeaders }]
   },
+  // ORCH-1224 — the business marketing surface moved /organisers → /business
+  // (Seth 2026-06-22). PERMANENT (301) redirects keep every existing link
+  // working: the business app, campaigns, and any external link pointing at
+  // usemingla.com/organisers (and its sub-paths) lands on /business.
+  async redirects() {
+    return [
+      { source: '/organisers', destination: '/business', permanent: true },
+      { source: '/organisers/:path*', destination: '/business/:path*', permanent: true },
+    ]
+  },
 }
 
 export default config

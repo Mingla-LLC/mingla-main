@@ -32,7 +32,7 @@ interface ChipLink {
 }
 
 const SITE_CHIPS: ChipLink[] = [
-  { href: '/organisers', label: 'Organiser', mobileOnly: true },
+  { href: '/business', label: 'Business', mobileOnly: true },
   // ORCH-1053 — 'About' pill removed from the consumer page per operator.
   { href: '/support', label: 'Support' },
   { href: '/privacy', label: 'Privacy' },

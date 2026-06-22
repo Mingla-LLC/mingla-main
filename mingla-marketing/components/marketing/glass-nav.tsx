@@ -11,11 +11,11 @@ import { captureMarketing } from '@/components/marketing/posthog-provider'
 
 export function GlassNav() {
   const pathname = usePathname()
-  const surface: 'explorer' | 'organiser' = pathname.startsWith('/organisers')
+  const surface: 'explorer' | 'organiser' = pathname.startsWith('/business')
     ? 'organiser'
     : 'explorer'
 
-  const homeHref = surface === 'organiser' ? '/organisers' : '/'
+  const homeHref = surface === 'organiser' ? '/business' : '/'
 
   // ORCH-1010 — the logo + toggle + CTA float over the hero with NO background.
   // Once the page scrolls off the hero, a frosted band fades in behind the nav

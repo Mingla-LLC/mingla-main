@@ -18,8 +18,9 @@
  *   - Route groups `(group)` are organizational only: their segment is stripped
  *     from the URL (e.g. app/(explorer)/page.tsx => `/`).
  *   - The (explorer) index `app/(explorer)/page.tsx` => `/` (home).
- *   - ORGANISER_PATH ('/organisers') is the cross-link target; it resolves via
- *     app/organisers/page.tsx and is validated like any other href.
+ *   - BUSINESS_PATH ('/business') is the cross-link target (renamed from
+ *     ORGANISER_PATH '/organisers' by ORCH-1224); it resolves via
+ *     app/business/page.tsx and is validated like any other href.
  *
  * Only internal hrefs (those starting with '/') are checked. External/protocol
  * hrefs (http, mailto, #, etc.) are out of scope. Dynamic segments ([slug]) are
@@ -88,7 +89,7 @@ const buildRouteSet = (appAbs) => {
  * Catches both `href: '/...'` object props and `href="/..."` plus the
  * ORGANISER_PATH symbol (resolved to its literal from subdomain.ts).
  */
-const extractFooterHrefs = (footerCode, organiserPath) => {
+const extractFooterHrefs = (footerCode, businessPath) => {
   const hrefs = new Set();
   // href: '...'  or  href="..."  or  href: "..."
   const re = /href\s*[:=]\s*(['"`])((?:\\.|(?!\1).)*)\1/g;
@@ -96,16 +97,16 @@ const extractFooterHrefs = (footerCode, organiserPath) => {
   while ((m = re.exec(footerCode)) !== null) {
     hrefs.add(m[2]);
   }
-  // ORGANISER_PATH symbol used as an href value.
-  if (/href\s*[:=]\s*ORGANISER_PATH/.test(footerCode) && organiserPath) {
-    hrefs.add(organiserPath);
+  // BUSINESS_PATH symbol used as an href value (renamed from ORGANISER_PATH by ORCH-1224).
+  if (/href\s*[:=]\s*BUSINESS_PATH/.test(footerCode) && businessPath) {
+    hrefs.add(businessPath);
   }
   return [...hrefs];
 };
 
-const evaluate = ({ footerCode, organiserPath, routes }) => {
+const evaluate = ({ footerCode, businessPath, routes }) => {
   const failures = [];
-  const hrefs = extractFooterHrefs(stripComments(footerCode), organiserPath);
+  const hrefs = extractFooterHrefs(stripComments(footerCode), businessPath);
 
   const internal = hrefs.filter((h) => h.startsWith("/"));
   if (internal.length === 0) {
@@ -135,7 +136,7 @@ if (SELF_TEST) {
     "/support",
     "/privacy-policy",
     "/terms-of-service",
-    "/organisers",
+    "/business",
   ]);
 
   // GOOD: every internal href resolves (mirrors the post-fix footer).
@@ -149,7 +150,7 @@ if (SELF_TEST) {
     ];
     const crossLink = surface === 'organiser'
       ? { href: '/', label: 'Back' }
-      : { href: ORGANISER_PATH, label: 'Business' };
+      : { href: BUSINESS_PATH, label: 'Business' };
   `;
 
   // BAD_A: a single re-added dead link (/how-it-works).
@@ -158,30 +159,30 @@ if (SELF_TEST) {
       { title: 'Product', links: [{ href: '/how-it-works', label: 'How it works' }] },
       { title: 'Legal', links: [{ href: '/privacy-policy', label: 'Privacy' }] },
     ];
-    const crossLink = { href: ORGANISER_PATH, label: 'Business' };
+    const crossLink = { href: BUSINESS_PATH, label: 'Business' };
   `;
 
-  // BAD_B: a re-added dead organiser link (/organisers/pricing).
+  // BAD_B: a re-added dead business link (/business/pricing).
   const BAD_B = `
     const organiserColumns = [
-      { title: 'Product', links: [{ href: '/organisers/pricing', label: 'Pricing' }] },
+      { title: 'Product', links: [{ href: '/business/pricing', label: 'Pricing' }] },
       { title: 'Legal', links: [{ href: '/terms-of-service', label: 'Terms' }] },
     ];
     const crossLink = { href: '/', label: 'Back' };
   `;
 
-  const goodFails = evaluate({ footerCode: GOOD, organiserPath: "/organisers", routes: FAKE_ROUTES });
-  const badAFails = evaluate({ footerCode: BAD_A, organiserPath: "/organisers", routes: FAKE_ROUTES });
-  const badBFails = evaluate({ footerCode: BAD_B, organiserPath: "/organisers", routes: FAKE_ROUTES });
+  const goodFails = evaluate({ footerCode: GOOD, businessPath: "/business", routes: FAKE_ROUTES });
+  const badAFails = evaluate({ footerCode: BAD_A, businessPath: "/business", routes: FAKE_ROUTES });
+  const badBFails = evaluate({ footerCode: BAD_B, businessPath: "/business", routes: FAKE_ROUTES });
 
   // Also exercise the real route-set builder against a synthetic tree shape:
-  // a route group (explorer) contributing '/' and a nested organisers route.
+  // a route group (explorer) contributing '/' and a nested business route.
   const routeBuilderOk = (() => {
     // Build from the actual app dir if present (sanity), else skip.
     const appAbs = join(root, APP_DIR);
     if (!existsSync(appAbs)) return true;
     const live = buildRouteSet(appAbs);
-    return live.has("/") && live.has("/organisers") && live.has("/support");
+    return live.has("/") && live.has("/business") && live.has("/support");
   })();
 
   const ok =
@@ -215,14 +216,14 @@ if (!existsSync(footerAbs)) {
   failures.push(`${APP_DIR}: expected marketing App Router dir not found.`);
 } else {
   const footerCode = readFileSync(footerAbs, "utf8");
-  let organiserPath = "/organisers";
+  let businessPath = "/business";
   if (existsSync(subdomainAbs)) {
     const sub = readFileSync(subdomainAbs, "utf8");
-    const mm = sub.match(/ORGANISER_PATH\s*=\s*(['"`])([^'"`]+)\1/);
-    if (mm) organiserPath = mm[2];
+    const mm = sub.match(/BUSINESS_PATH\s*=\s*(['"`])([^'"`]+)\1/);
+    if (mm) businessPath = mm[2];
   }
   const routes = buildRouteSet(appAbs);
-  failures.push(...evaluate({ footerCode, organiserPath, routes }));
+  failures.push(...evaluate({ footerCode, businessPath, routes }));
 }
 
 if (failures.length > 0) {
