@@ -28,9 +28,9 @@ import {
 import { useVenueTables } from "../../hooks/useVenueTables";
 import { useVenueSuiteStore } from "../../store/venueSuiteStore";
 import { BRAND_ROLE_RANK } from "../../utils/brandRole";
+import { ChevronRight } from "lucide-react-native";
 import { Button } from "../ui/Button";
 import { GlassCard } from "../ui/GlassCard";
-import { Icon } from "../ui/Icon";
 import { Input } from "../ui/Input";
 import { VenueBlackoutSheet } from "./VenueBlackoutSheet";
 import type {
@@ -370,7 +370,7 @@ export function VenueAvailabilityModule({
                 </Text>
               </View>
               {canMutate ? (
-                <Icon name="chevR" size={18} color={textTokens.tertiary} />
+                <ChevronRight size={18} color={textTokens.tertiary} />
               ) : null}
             </Pressable>
           ))

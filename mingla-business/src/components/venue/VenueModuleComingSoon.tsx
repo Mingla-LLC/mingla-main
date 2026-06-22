@@ -21,17 +21,18 @@ import {
   text as textTokens,
   typography,
 } from "../../constants/designSystem";
+import { Calendar, Clock, LayoutGrid, List } from "lucide-react-native";
+import type { LucideIcon } from "lucide-react-native";
 import { Button } from "../ui/Button";
 import { GlassCard } from "../ui/GlassCard";
-import { Icon, type IconName } from "../ui/Icon";
 import { VENUE_MODULES } from "./venueModules";
 import type { VenueBookingModule } from "../../types/venueReservation";
 
-const MODULE_ICON: Record<VenueBookingModule, IconName> = {
-  tables: "grid",
-  availability: "calendar",
-  reservations: "list",
-  waitlist: "clock",
+const MODULE_ICON: Record<VenueBookingModule, LucideIcon> = {
+  tables: LayoutGrid,
+  availability: Calendar,
+  reservations: List,
+  waitlist: Clock,
 };
 
 /** Modules whose 2.0 starter step routes to the real Settings fee/rules surface. */
@@ -54,12 +55,13 @@ export function VenueModuleComingSoon({
 }: VenueModuleComingSoonProps): React.ReactElement {
   const meta = VENUE_MODULES[module];
   const routesToSettings = ROUTES_TO_SETTINGS.has(module);
+  const ModuleIcon = MODULE_ICON[module];
 
   return (
     <View style={styles.host} testID={testID ?? `venue-coming-soon-${module}`}>
       <GlassCard variant="elevated" style={styles.card}>
         <View style={styles.iconWrap}>
-          <Icon name={MODULE_ICON[module]} size={28} color={textTokens.primary} />
+          <ModuleIcon size={28} color={textTokens.primary} />
         </View>
         <Text style={styles.title}>{meta.label}</Text>
         <Text style={styles.summary}>{meta.summary}</Text>

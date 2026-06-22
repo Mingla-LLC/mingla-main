@@ -17,6 +17,7 @@
 
 import React, { useCallback, useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
+import { UtensilsCrossed } from "lucide-react-native";
 
 import {
   glass,
@@ -280,9 +281,9 @@ export function VenueMenuModule({
       <View style={styles.host} testID={testID ?? "venue-menu-module"}>
         <View style={styles.emptyWrap} testID="venue-menu-empty-wrap">
           <GlassCard variant="base" style={styles.emptyCard}>
-            <Text style={styles.emptyEmoji} accessibilityElementsHidden>
-              🍽️
-            </Text>
+            <View style={styles.emptyEmoji} accessibilityElementsHidden>
+              <UtensilsCrossed size={34} color={textTokens.primary} />
+            </View>
             <Text style={styles.emptyTitle}>Build your menu</Text>
             <Text style={styles.emptyBody}>
               {canMutate
@@ -710,7 +711,8 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
   },
   emptyEmoji: {
-    fontSize: 34,
+    alignItems: "center",
+    justifyContent: "center",
   },
   emptyTitle: {
     ...typography.bodyLg,

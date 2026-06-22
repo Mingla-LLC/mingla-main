@@ -73,29 +73,51 @@ const iconOf = (mod) => (mod && mod.__esModule ? mod.default : mod) || null;
 // Keep this map in lockstep with the real imports; the INV-4 drift gate fails CI
 // if a `lucide-react-native` import names an icon missing from this map.
 //
-//   AlertTriangle  src/components/ari/ToolProposalCard.tsx
-//   ArrowUp        src/components/ari/InputBar.tsx
-//   Check          src/components/ari/{QuickReplyChips,MessageList,ClarifyingCard}.tsx
-//   CheckSquare    src/components/ari/MultiSelectPrompt.tsx
-//   Menu           src/screens/ari/AriChatScreen.tsx
-//   Pencil         src/components/ari/ToolProposalCard.tsx
-//   Play           src/components/ari/ToolProposalCard.tsx
-//   Plus           src/components/ari/{ToolProposalCard,EmptyState}.tsx
-//   Settings       src/screens/ari/AriChatScreen.tsx
-//   Square         src/components/ari/MultiSelectPrompt.tsx
-//   X              src/components/ari/ToolProposalCard.tsx
-//   HelpCircle     (fallback only — the always-real "unknown icon" affordance)
+//   AlertTriangle    src/components/ari/ToolProposalCard.tsx
+//   ArrowLeft        src/components/venue/* (ORCH-1196)
+//   ArrowUp          src/components/ari/InputBar.tsx
+//   Calendar         src/components/venue/* (ORCH-1196)
+//   Check            src/components/ari/{QuickReplyChips,MessageList,ClarifyingCard}.tsx
+//   CheckSquare      src/components/ari/MultiSelectPrompt.tsx
+//   ChevronDown      src/components/venue/* (ORCH-1196)
+//   ChevronRight     src/components/venue/* (ORCH-1196)
+//   ChevronUp        src/components/venue/* (ORCH-1196)
+//   Clock            src/components/venue/* (ORCH-1196)
+//   Flag             src/components/venue/* (ORCH-1196)
+//   LayoutGrid       src/components/venue/* (ORCH-1196)
+//   List             src/components/venue/* (ORCH-1196)
+//   Menu             src/screens/ari/AriChatScreen.tsx
+//   MessageSquare    src/components/venue/* (ORCH-1196)
+//   Pencil           src/components/ari/ToolProposalCard.tsx
+//   Play             src/components/ari/ToolProposalCard.tsx
+//   Plus             src/components/ari/{ToolProposalCard,EmptyState}.tsx
+//   Settings         src/screens/ari/AriChatScreen.tsx
+//   Square           src/components/ari/MultiSelectPrompt.tsx
+//   UtensilsCrossed  src/components/venue/* (ORCH-1196)
+//   X                src/components/ari/ToolProposalCard.tsx
+//   HelpCircle       (fallback only — the always-real "unknown icon" affordance)
 const USED_ICONS = {
   AlertTriangle: iconOf(require("lucide-react/dist/esm/icons/alert-triangle.js")),
+  ArrowLeft: iconOf(require("lucide-react/dist/esm/icons/arrow-left.js")),
   ArrowUp: iconOf(require("lucide-react/dist/esm/icons/arrow-up.js")),
+  Calendar: iconOf(require("lucide-react/dist/esm/icons/calendar.js")),
   Check: iconOf(require("lucide-react/dist/esm/icons/check.js")),
   CheckSquare: iconOf(require("lucide-react/dist/esm/icons/check-square.js")),
+  ChevronDown: iconOf(require("lucide-react/dist/esm/icons/chevron-down.js")),
+  ChevronRight: iconOf(require("lucide-react/dist/esm/icons/chevron-right.js")),
+  ChevronUp: iconOf(require("lucide-react/dist/esm/icons/chevron-up.js")),
+  Clock: iconOf(require("lucide-react/dist/esm/icons/clock.js")),
+  Flag: iconOf(require("lucide-react/dist/esm/icons/flag.js")),
+  LayoutGrid: iconOf(require("lucide-react/dist/esm/icons/layout-grid.js")),
+  List: iconOf(require("lucide-react/dist/esm/icons/list.js")),
   Menu: iconOf(require("lucide-react/dist/esm/icons/menu.js")),
+  MessageSquare: iconOf(require("lucide-react/dist/esm/icons/message-square.js")),
   Pencil: iconOf(require("lucide-react/dist/esm/icons/pencil.js")),
   Play: iconOf(require("lucide-react/dist/esm/icons/play.js")),
   Plus: iconOf(require("lucide-react/dist/esm/icons/plus.js")),
   Settings: iconOf(require("lucide-react/dist/esm/icons/settings.js")),
   Square: iconOf(require("lucide-react/dist/esm/icons/square.js")),
+  UtensilsCrossed: iconOf(require("lucide-react/dist/esm/icons/utensils-crossed.js")),
   X: iconOf(require("lucide-react/dist/esm/icons/x.js")),
   HelpCircle: iconOf(require("lucide-react/dist/esm/icons/help-circle.js")),
 };

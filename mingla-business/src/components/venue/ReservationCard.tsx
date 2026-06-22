@@ -18,8 +18,8 @@ import {
   text as textTokens,
   typography,
 } from "../../constants/designSystem";
+import { ChevronRight } from "lucide-react-native";
 import { GlassCard } from "../ui/GlassCard";
-import { Icon } from "../ui/Icon";
 import { STATUS_PRESENTATION } from "./reservationViews";
 import type { Reservation } from "../../types/venueReservation";
 
@@ -113,7 +113,7 @@ export function ReservationCard({
           ))}
         </View>
       </Pressable>
-      <Icon name="chevR" size={18} color={textTokens.tertiary} />
+      <ChevronRight size={18} color={textTokens.tertiary} />
     </GlassCard>
   );
 }

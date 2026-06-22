@@ -28,9 +28,9 @@ import {
   text as textTokens,
   typography,
 } from "../../constants/designSystem";
+import { ChevronDown, ChevronUp, LayoutGrid } from "lucide-react-native";
 import { BrandSwitch } from "../ui/BrandSwitch";
 import { GlassCard } from "../ui/GlassCard";
-import { Icon } from "../ui/Icon";
 import { Input } from "../ui/Input";
 import {
   CAPACITY_RULE_CATALOG,
@@ -127,10 +127,14 @@ export function VenueCapacityRulesPanel({
         testID="venue-capacity-rules-toggle"
       >
         <View style={styles.headerLeft}>
-          <Icon name="grid" size={16} color={accent.warm} />
+          <LayoutGrid size={16} color={accent.warm} />
           <Text style={styles.headerTitle}>Smart capacity rules</Text>
         </View>
-        <Icon name={open ? "chevU" : "chevD"} size={18} color={textTokens.secondary} />
+        {open ? (
+          <ChevronUp size={18} color={textTokens.secondary} />
+        ) : (
+          <ChevronDown size={18} color={textTokens.secondary} />
+        )}
       </Pressable>
 
       {open ? (
