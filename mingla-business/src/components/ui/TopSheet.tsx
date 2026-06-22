@@ -584,6 +584,16 @@ const TopSheetPanelInner: React.FC<TopSheetPanelInnerProps> = ({
  * useAnimatedStyle / withTiming) — both fixing the freeze and removing the
  * reanimated-on-web fragility for this primitive.
  *
+ * ORCH-1210: this variant ALSO has a pointer-driven swipe-UP-to-dismiss (the
+ * native variant already had a reanimated upward PanGesture; web had only
+ * scrim-tap + Escape). A drag-catch band at the BOTTOM of the panel (over the
+ * handle) translates the panel UP with the finger via the `dragY` offset on the
+ * SAME transform pipeline (transition disabled while dragging); release past 25%
+ * of panel height / an upward flick velocity calls onClose(), else it springs
+ * back. The drag-catch carries `touch-action:none` itself (ORCH-1208 lesson —
+ * the panel's does not inherit) so Android/Samsung don't steal the drag as a page
+ * scroll.
+ *
  * Transitions (matching the native timings):
  *   - Open: panel transform 280ms ease-out-cubic; scrim opacity 220ms ease-out.
  *   - Close: panel transform 240ms ease-in-cubic; scrim opacity 220ms ease-in.
@@ -596,6 +606,13 @@ const TopSheetPanelInner: React.FC<TopSheetPanelInnerProps> = ({
  */
 const TOPSHEET_OPEN_EASE = "cubic-bezier(0.33, 1, 0.68, 1)"; // Easing.out(cubic)
 const TOPSHEET_CLOSE_EASE = "cubic-bezier(0.33, 0, 0.67, 1)"; // Easing.in(cubic)
+
+// ORCH-1210 [business-web top sheet swipe-up-to-dismiss] — mirror SheetWeb's
+// pointer drag-to-dismiss (ORCH-1207/1208), INVERTED for the top-anchored sheet.
+// The top sheet opens at translateY 0 and dismisses by sliding UP toward
+// `closedY = -panelHeight`, so a dismiss is an UPWARD drag (negative offset).
+const TOPSHEET_DRAG_CLOSE_RATIO = 0.25; // fraction of panel height to commit a close
+const TOPSHEET_DRAG_CLOSE_VELOCITY = 0.5; // px/ms UPWARD flick that commits a close
 
 const TopSheetWeb: React.FC<TopSheetProps> = ({
   visible,
@@ -724,6 +741,109 @@ const TopSheetWeb: React.FC<TopSheetProps> = ({
     if (dismissOnScrimTap) onClose();
   };
 
+  // ORCH-1210 — WEB swipe-UP-to-dismiss. TopSheetWeb previously closed ONLY via a
+  // scrim tap / Escape (it calls zero reanimated hooks and had no PanGesture,
+  // unlike TopSheetNative which has a reanimated upward PanGesture). Mirror the
+  // SheetWeb pointer drag (ORCH-1207/1208) but INVERTED: the top sheet dismisses
+  // by sliding UP, so an UPWARD pointer drag on the drag-catch band (at the BOTTOM
+  // edge of the panel, over the handle) translates the panel up with the finger;
+  // on release past a threshold (dragged up > 25% of panel height OR an upward
+  // flick velocity) we onClose(), else we spring back to the open position. A
+  // DOWNWARD drag is clamped to 0 (no rubber-band below the open rest). Only the
+  // bottom handle band initiates the drag, so the scrollable body is never
+  // hijacked.
+  const [dragY, setDragY] = useState<number>(0); // live finger offset (px, <= 0 = up)
+  const [dragging, setDragging] = useState<boolean>(false);
+  const dragStartYRef = useRef<number | null>(null);
+  const dragYRef = useRef<number>(0); // live offset (ref = end-decision source of truth)
+  const lastMoveRef = useRef<{ y: number; t: number } | null>(null);
+  const velocityRef = useRef<number>(0); // px/ms, negative = upward
+
+  const endDrag = (commitClose: boolean): void => {
+    dragStartYRef.current = null;
+    lastMoveRef.current = null;
+    dragYRef.current = 0;
+    setDragging(false);
+    if (commitClose) {
+      // Let the CSS close transition (re-enabled once dragging=false) carry the
+      // panel the rest of the way as onClose flips `visible`.
+      setDragY(0);
+      onClose();
+    } else {
+      // Spring back to open — dragging=false restores the transition, dragY=0
+      // animates the panel home.
+      setDragY(0);
+    }
+  };
+
+  const handleDragStart = (clientY: number): void => {
+    dragStartYRef.current = clientY;
+    dragYRef.current = 0;
+    lastMoveRef.current = { y: clientY, t: Date.now() };
+    velocityRef.current = 0;
+    setDragging(true);
+  };
+
+  const handleDragMove = (clientY: number): void => {
+    if (dragStartYRef.current === null) return;
+    const delta = clientY - dragStartYRef.current;
+    // Clamp to UPWARD-only (no rubber-band downward past the open rest position).
+    const next = delta < 0 ? delta : 0;
+    const prev = lastMoveRef.current;
+    if (prev !== null) {
+      const dt = Date.now() - prev.t;
+      if (dt > 0) velocityRef.current = (clientY - prev.y) / dt;
+    }
+    lastMoveRef.current = { y: clientY, t: Date.now() };
+    dragYRef.current = next;
+    setDragY(next);
+  };
+
+  const handleDragEnd = (): void => {
+    if (dragStartYRef.current === null) return;
+    // Use the REF, not the `dragY` state: the final pointermove's setState may not
+    // have re-rendered (and so re-closured handleDragEnd) before pointerup fires.
+    const dragged = dragYRef.current; // <= 0 (upward)
+    const velocity = velocityRef.current; // < 0 = upward
+    const shouldClose =
+      -dragged > panelHeight * TOPSHEET_DRAG_CLOSE_RATIO ||
+      velocity < -TOPSHEET_DRAG_CLOSE_VELOCITY;
+    endDrag(shouldClose);
+  };
+
+  // Pointer Events cover mouse (desktop) + touch + pen in one path. react-native-
+  // web forwards onPointerDown/Move/Up/Cancel to the DOM node. setPointerCapture
+  // on down keeps move/up targeting the handle band even after the finger drags
+  // off it (otherwise the events retarget to whatever element is under the cursor
+  // and the drag silently stops).
+  const dragHandlers = {
+    onPointerDown: (e: {
+      nativeEvent?: { clientY?: number; pointerId?: number };
+      clientY?: number;
+      pointerId?: number;
+      currentTarget?: { setPointerCapture?: (id: number) => void };
+    }): void => {
+      const y = e.nativeEvent?.clientY ?? e.clientY;
+      const id = e.nativeEvent?.pointerId ?? e.pointerId;
+      if (typeof id === "number") {
+        try {
+          e.currentTarget?.setPointerCapture?.(id);
+        } catch {
+          // setPointerCapture can throw if the pointer is already gone — ignore;
+          // the move/up handlers still work without capture in that edge case.
+        }
+      }
+      if (typeof y === "number") handleDragStart(y);
+    },
+    onPointerMove: (e: { nativeEvent?: { clientY?: number }; clientY?: number }): void => {
+      if (dragStartYRef.current === null) return;
+      const y = e.nativeEvent?.clientY ?? e.clientY;
+      if (typeof y === "number") handleDragMove(y);
+    },
+    onPointerUp: (): void => handleDragEnd(),
+    onPointerCancel: (): void => endDrag(false),
+  } as unknown as Record<string, (e: unknown) => void>;
+
   if (!mounted) return null;
 
   const handleAreaHeight = HANDLE_AREA_HEIGHT;
@@ -739,15 +859,23 @@ const TopSheetWeb: React.FC<TopSheetProps> = ({
   // Compositor CSS transition. transform/opacity ONLY — never height/layout.
   const ease = animateOpen ? TOPSHEET_OPEN_EASE : TOPSHEET_CLOSE_EASE;
   const panelDur = animateOpen ? ENTRY_DURATION : EXIT_DURATION;
-  // Reduce-motion: opacity-only, no translate.
+  // ORCH-1210 — while the finger is dragging, the panel must track it 1:1 with NO
+  // transition (otherwise CSS would lag the drag). The drag offset (`dragY`,
+  // upward <= 0) is added to the open resting transform (0). On release `dragging`
+  // flips false → the transition is restored and `dragY` returns to 0, so the
+  // panel either springs home or rides the close transition out (translateY 0 →
+  // closedY). Reduce-motion: opacity-only, no translate (drag offset suppressed).
+  const openWithDrag = dragY; // openTranslateY (0) + dragY
   const panelWebStyle = {
-    transition: reduceMotion
-      ? `opacity ${panelDur}ms ${ease}`
-      : `transform ${panelDur}ms ${ease}`,
+    transition: dragging
+      ? "none"
+      : reduceMotion
+        ? `opacity ${panelDur}ms ${ease}`
+        : `transform ${panelDur}ms ${ease}`,
     transform: reduceMotion
       ? "translateY(0px)"
       : animateOpen
-        ? "translateY(0px)"
+        ? `translateY(${openWithDrag}px)`
         : `translateY(${closedY}px)`,
     opacity: reduceMotion ? (animateOpen ? 1 : 0) : 1,
     willChange: "transform",
@@ -814,6 +942,25 @@ const TopSheetWeb: React.FC<TopSheetProps> = ({
           >
             {children}
           </TopSheetPanelInner>
+          {/* ORCH-1210 — transparent drag-catch band over the handle at the
+              BOTTOM edge of the panel (the top sheet's handle renders last, below
+              the body). Pointer-drag UP here dismisses the sheet (mirrors the
+              native upward PanGesture). Sits above the inner glass + handle but is
+              short enough that it never overlaps the scrollable body, so form
+              scrolling is untouched. Pointer Events cover mouse (desktop) + touch
+              + pen, so scrim-tap dismissal still works independently. */}
+          <View
+            testID={testID !== undefined ? `${testID}-drag-handle` : undefined}
+            accessibilityLabel="Drag up to dismiss sheet"
+            style={[
+              styles.webDragCatch,
+              { height: handleAreaHeight + 28 },
+              // Web-only `cursor` (RN-web maps it; the string-style cast keeps it
+              // off the native ViewStyle surface).
+              { cursor: dragging ? "grabbing" : "grab" } as unknown as ViewStyle,
+            ]}
+            {...dragHandlers}
+          />
         </View>
       </View>
     </View>
@@ -858,6 +1005,26 @@ const styles = StyleSheet.create({
     borderRadius: 2,
     backgroundColor: glass.border.pending,
   },
+  // ORCH-1210 (WEB) — transparent drag-catch band pinned to the BOTTOM of the top
+  // sheet panel, over the handle (the top sheet renders its handle LAST, at the
+  // bottom edge). Tall enough to be an easy upward-drag target (handle area +
+  // margin), short enough that it never overlaps the scrollable body above it.
+  // Web-only style object (cursor + touchAction) — only applied inside the
+  // TopSheetWeb panel.
+  webDragCatch: {
+    position: "absolute",
+    bottom: 0,
+    left: 0,
+    right: 0,
+    // ORCH-1208 lesson (mirrored): the panel's `touchAction:"none"` does NOT
+    // inherit to this element, so on real touch devices (Samsung/Android Chrome)
+    // the browser computes `touch-action:auto` here and interprets the upward drag
+    // as a page scroll → pointercancel → the dismiss gesture never completes. Pin
+    // `touch-action:none` directly on the drag-catch so the vertical pan is routed
+    // to the pointer handler. Web-only string-cast (never reaches the native
+    // ViewStyle surface); the scrollable body keeps its own scrolling.
+    touchAction: "none",
+  } as unknown as ViewStyle,
 });
 
 export default TopSheet;
