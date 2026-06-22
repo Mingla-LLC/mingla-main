@@ -12,23 +12,111 @@ export interface ProbeResult {
   detail: Record<string, unknown>;
 }
 
-// Layer-A statuspage feeds (Atlassian /api/v2/status.json). Confirmed in SPEC §2.1.
+// ORCH-1201-R2 — Layer-A statuspage feeds (Atlassian /api/v2/status.json).
+// CORRECTED to CONFIRMED feeds only (verified by curl 2026-06-22):
+//   • DROPPED paystack (status.paystack.com → 404, not Atlassian — Class C, no feed),
+//   • DROPPED posthog (status.posthog.com 301→posthogstatus.com HTML, not status.json),
+//   • DROPPED giphy (has a feed but is Class F / synthetic per the class contract).
+// The AUTHORITATIVE source at runtime is api_health_services.depletion_signal.status_feed
+// loaded from the DB; this map is a typed FALLBACK mirror used only when the DB
+// value is absent. The DB value WINS (feeds editable without a redeploy).
 export const STATUS_PAGE_URLS: Record<string, string> = {
-  stripe: "https://status.stripe.com/api/v2/status.json",
-  paystack: "https://status.paystack.com/api/v2/status.json",
   openai: "https://status.openai.com/api/v2/status.json",
-  mapbox: "https://status.mapbox.com/api/v2/status.json",
-  onesignal_consumer: "https://status.onesignal.com/api/v2/status.json",
-  onesignal_business: "https://status.onesignal.com/api/v2/status.json",
-  resend: "https://resend-status.com/api/v2/status.json",
+  stripe: "https://status.stripe.com/api/v2/status.json",
   twilio: "https://status.twilio.com/api/v2/status.json",
   cloudinary: "https://status.cloudinary.com/api/v2/status.json",
+  mapbox: "https://status.mapbox.com/api/v2/status.json",
+  sentry: "https://status.sentry.io/api/v2/status.json",
   supabase: "https://status.supabase.com/api/v2/status.json",
   vercel: "https://www.vercel-status.com/api/v2/status.json",
-  sentry: "https://status.sentry.io/api/v2/status.json",
-  posthog: "https://status.posthog.com/api/v2/status.json",
-  giphy: "https://status.giphy.com/api/v2/status.json",
+  revenuecat: "https://status.revenuecat.com/api/v2/status.json",
+  mixpanel: "https://www.mixpanelstatus.com/api/v2/status.json",
+  appsflyer: "https://status.appsflyer.com/api/v2/status.json",
+  resend: "https://resend-status.com/api/v2/status.json", // verified Atlassian schema 2026-06-22
+  onesignal_consumer: "https://status.onesignal.com/api/v2/status.json",
+  onesignal_business: "https://status.onesignal.com/api/v2/status.json",
+  // google_places handled separately (incidents.json, not Atlassian status.json)
 };
+
+// ORCH-1201-R2 — Class-B depletion matcher contract (SPEC §5.3). The SINGLE
+// source for the reactive disambiguation. Mirrors api_health_services.depletion_signal
+// for the unit tests + the matcher below. `http` is the status (int or array) the
+// depletion arrives on; `field` selects which observation column carries the match
+// token: 'type' → error_code; 'body'/'status_text' → error_text. `match` is a
+// case-insensitive substring. THE LOAD-BEARING RULE: openai 'insufficient_quota'
+// is depletion; 'rate_limit_exceeded' (also 429) is NOT.
+export interface ClassBReactive {
+  http: number | number[];
+  field: "type" | "body" | "status_text";
+  match: string;
+}
+export interface ClassBHeader {
+  name: string;
+  warn: number;
+}
+export const CLASS_B_DEPLETION: Record<
+  string,
+  { reactive?: ClassBReactive; header?: ClassBHeader }
+> = {
+  openai: { reactive: { http: 429, field: "type", match: "insufficient_quota" } },
+  gemini: { reactive: { http: 429, field: "type", match: "RESOURCE_EXHAUSTED" } },
+  serper: { reactive: { http: [400, 401, 402, 403, 429], field: "body", match: "Not enough credits" } },
+  resend: { reactive: { http: 429, field: "type", match: "quota_exceeded" } },
+  mapbox: { reactive: { http: 429, field: "status_text", match: "429" } },
+  google_places: { reactive: { http: [429], field: "status_text", match: "RESOURCE_EXHAUSTED" } },
+  pexels: { header: { name: "x-ratelimit-remaining", warn: 2500 } },
+  ticketmaster: { header: { name: "rate-limit-available", warn: 500 } },
+};
+
+// ── Class-B reactive depletion matcher (pure) ──
+// Scans real-traffic observations (api_health_observations) for the documented
+// depletion fingerprint. Returns depleted=true on the FIRST matching row (quota
+// exhaustion does not recover within a tick — one insufficient_quota is enough).
+// A transient rate_limit_exceeded (429 but NOT matching the token) does NOT count.
+export interface DepletionObs {
+  http_status: number | null;
+  error_code: string | null;
+  error_text: string | null;
+  observed_at: string;
+}
+export interface DepletionResult {
+  depleted: boolean;
+  lastErrorCode: string | null;
+  lastErrorText: string | null;
+}
+export function matchClassBDepletion(
+  signal: { reactive?: ClassBReactive; header?: ClassBHeader } | null | undefined,
+  rows: DepletionObs[],
+  cachedRemaining?: number | null,
+): DepletionResult {
+  const none: DepletionResult = { depleted: false, lastErrorCode: null, lastErrorText: null };
+  if (!signal) return none;
+
+  // header signal: depleted when the freshest cached remaining <= warn.
+  if (signal.header) {
+    if (typeof cachedRemaining === "number" && Number.isFinite(cachedRemaining) &&
+        cachedRemaining <= signal.header.warn) {
+      return { depleted: true, lastErrorCode: "header_remaining", lastErrorText: `${cachedRemaining} <= ${signal.header.warn}` };
+    }
+    return none;
+  }
+
+  const r = signal.reactive;
+  if (!r) return none;
+  const httpSet = Array.isArray(r.http) ? new Set(r.http) : new Set([r.http]);
+  const needle = r.match.toLowerCase();
+  // newest-first scan so lastError* is the most recent match.
+  const sorted = [...rows].sort((a, b) =>
+    new Date(b.observed_at).getTime() - new Date(a.observed_at).getTime());
+  for (const row of sorted) {
+    if (row.http_status == null || !httpSet.has(row.http_status)) continue;
+    const hay = (r.field === "type" ? row.error_code : row.error_text) ?? "";
+    if (hay.toLowerCase().includes(needle)) {
+      return { depleted: true, lastErrorCode: row.error_code, lastErrorText: row.error_text };
+    }
+  }
+  return none;
+}
 
 // Atlassian Statuspage indicator → our status. Anything else / missing → unknown
 // (constitutional rule 9: never fabricate green).
@@ -197,6 +285,69 @@ export function decideBalanceTransition(input: BalanceInput): BalanceDecision {
   }
   // recovered above threshold
   return { nextBalanceState: "ok", setLastBalanceAlertAt: false, sendLowBalanceAlert: false };
+}
+
+// ── ORCH-1201-R2: pure Class-A balance evaluation (testable, no Deno env) ──
+// Processors ALWAYS return {balanceLow:null}. Otherwise driven by the balance
+// `kind` + warn/crit. Direction encoded by kind, never guessed. `severity` is
+// 'crit' when a crit threshold is breached (drives a red dot), else 'warn'.
+export interface BalanceSignal {
+  kind: string;
+  warn: number | null;
+  crit?: number | null;
+  unit?: string;
+}
+export interface BalanceEval {
+  balanceLow: boolean | null;
+  balanceText: string | null;
+  severity: "warn" | "crit" | null;
+}
+export function evaluateBalanceForSignal(
+  serviceKey: string,
+  detail: Record<string, unknown>,
+  balance: BalanceSignal | null | undefined,
+): BalanceEval {
+  // Processors: NEVER a balance alert (incl. balance 0).
+  if (serviceKey === "stripe" || serviceKey === "paystack") {
+    return { balanceLow: null, balanceText: null, severity: null };
+  }
+  if (!balance || !balance.kind) return { balanceLow: null, balanceText: null, severity: null };
+  const warn = typeof balance.warn === "number" ? balance.warn : null;
+  const crit = typeof balance.crit === "number" ? balance.crit : null;
+
+  switch (balance.kind) {
+    case "twilio_balance": {
+      const v = typeof detail.balance === "number" ? detail.balance : null;
+      if (v == null || warn == null) return { balanceLow: null, balanceText: null, severity: null };
+      const low = v <= warn;
+      const sev = low && crit != null && v <= crit ? "crit" : (low ? "warn" : null);
+      return { balanceLow: low, balanceText: `$${v} ${detail.currency ?? "USD"} (warn ≤ $${warn})`, severity: sev };
+    }
+    case "cloudinary_used_pct": {
+      const used = typeof detail.used_percent === "number" ? detail.used_percent : null;
+      if (used == null || warn == null) return { balanceLow: null, balanceText: null, severity: null };
+      const isCrit = crit != null && used >= crit;
+      const low = used >= warn;
+      const sevTxt = isCrit ? `crit ≥ ${crit}%` : `warn ≥ ${warn}%`;
+      return { balanceLow: low, balanceText: `${used.toFixed(2)}% used (${sevTxt})`, severity: isCrit ? "crit" : (low ? "warn" : null) };
+    }
+    case "exchangerate_quota": {
+      const rem = typeof detail.requests_remaining === "number" ? detail.requests_remaining : null;
+      if (rem == null || warn == null) return { balanceLow: null, balanceText: null, severity: null };
+      const low = rem <= warn;
+      const sev = low && crit != null && rem <= crit ? "crit" : (low ? "warn" : null);
+      return { balanceLow: low, balanceText: `${rem} requests remaining (warn ≤ ${warn})`, severity: sev };
+    }
+    case "sentry_stats": {
+      const ratio = typeof detail.rate_limited_ratio === "number" ? detail.rate_limited_ratio : null;
+      if (ratio == null || warn == null) return { balanceLow: null, balanceText: null, severity: null };
+      const low = ratio >= warn;
+      const sev = low && crit != null && ratio >= crit ? "crit" : (low ? "warn" : null);
+      return { balanceLow: low, balanceText: `rate_limited/accepted ${ratio.toFixed(3)} (warn ≥ ${warn})`, severity: sev };
+    }
+    default:
+      return { balanceLow: null, balanceText: null, severity: null };
+  }
 }
 
 // Helper retained for the test surface: assemble a check row tuple shape.

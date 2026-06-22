@@ -27,14 +27,38 @@ import { sendOpsAlertEmail } from "../_shared/stripeOpsAlertEmail.ts";
 import { logError, structuredLog } from "../_shared/structuredLog.ts";
 import {
   buildCheckRows,
+  CLASS_B_DEPLETION,
+  type ClassBHeader,
+  type ClassBReactive,
   computeEffectiveStatus,
   decideAvailabilityTransitions,
   decideBalanceTransition,
+  type DepletionObs,
+  evaluateBalanceForSignal,
   type HealthStatus,
   indicatorToStatus,
+  matchClassBDepletion,
   type ProbeResult,
   STATUS_PAGE_URLS,
 } from "./logic.ts";
+
+// ORCH-1201-R2 — per-service monitoring class + depletion signal (DB-driven).
+type MonitoringClass = "A" | "B" | "C" | "D" | "E" | "F";
+interface DepletionSignal {
+  status_feed?: string | null;
+  balance?: { kind: string; warn: number | null; crit: number | null; unit?: string };
+  reactive?: ClassBReactive;
+  header?: ClassBHeader & { cache_last_seen?: boolean };
+  processor?: { restriction_fields?: string[]; balance_display_only?: boolean };
+  synthetic?: boolean;
+  reactive_source?: string;
+}
+interface ServiceRow {
+  service_key: string;
+  display_name: string;
+  monitoring_class: MonitoringClass | null;
+  depletion_signal: DepletionSignal | null;
+}
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -172,6 +196,10 @@ async function probeOpenAI(): Promise<ProbeResult> {
   }
 }
 
+// ORCH-1201-R2 Class-C processor health (fixes D2). Reachability + auth +
+// account restriction (charges_enabled/payouts_enabled) + webhook. Balance is
+// DISPLAY-ONLY (detail.balance_display_only:true). NEVER a balanceLow signal —
+// "balance" here is settled customer funds, not API credit.
 async function probeStripe(): Promise<ProbeResult> {
   let mode: "test" | "live" | null = null;
   try {
@@ -180,18 +208,39 @@ async function probeStripe(): Promise<ProbeResult> {
   const t0 = Date.now();
   try {
     const client = createStripeClientForRole("BALANCES");
+    // 1) reachability + auth: balance.retrieve 200 ⇒ reachable + auth ok.
     const bal = await client.balance.retrieve();
     const first = bal?.available?.[0];
+    // 2) account restriction (best-effort: BALANCES key may lack account read
+    //    scope → leave flags unknown, NEVER fabricate healthy/restricted).
+    let chargesEnabled: boolean | null = null;
+    let payoutsEnabled: boolean | null = null;
+    let disabledReason: string | null = null;
+    try {
+      const acct = await client.accounts.retrieve();
+      chargesEnabled = typeof acct?.charges_enabled === "boolean" ? acct.charges_enabled : null;
+      payoutsEnabled = typeof acct?.payouts_enabled === "boolean" ? acct.payouts_enabled : null;
+      disabledReason = (acct?.requirements?.disabled_reason as string | null) ?? null;
+    } catch { /* restriction read unavailable — flags stay null (unknown) */ }
+    // status: charges_enabled===false ⇒ down (cannot take money);
+    // payouts_enabled===false but charges ok ⇒ degraded; unknown flags ⇒ healthy (reachable+auth).
+    let status: HealthStatus = "healthy";
+    if (chargesEnabled === false) status = "down";
+    else if (payoutsEnabled === false) status = "degraded";
     return {
-      ok: true, latencyMs: Date.now() - t0, status: "healthy",
+      ok: status === "healthy", latencyMs: Date.now() - t0, status,
       detail: {
         mode,
         balance: first ? first.amount : null,
         currency: first ? first.currency : null,
+        balance_display_only: true,
+        charges_enabled: chargesEnabled,
+        payouts_enabled: payoutsEnabled,
+        disabled_reason: disabledReason,
       },
     };
   } catch (e) {
-    return { ok: false, latencyMs: Date.now() - t0, status: "down", detail: { mode, error: e instanceof Error ? e.message : String(e) } };
+    return { ok: false, latencyMs: Date.now() - t0, status: "down", detail: { mode, balance_display_only: true, error: e instanceof Error ? e.message : String(e) } };
   }
 }
 
@@ -213,12 +262,21 @@ async function probePaystack(): Promise<ProbeResult> {
     const json = await res.json().catch(() => null) as
       | { status?: boolean; data?: Array<{ balance?: number; currency?: string }> }
       | null;
-    const ok = res.ok && json?.status === true;
+    // ORCH-1201-R2 Class-C: status:true ⇒ reachable+auth+unrestricted; status:false
+    // or non-200 ⇒ restriction signal (Paystack exposes no charges_enabled).
+    // Balance is DISPLAY-ONLY; NEVER a balanceLow signal.
+    const statusOk = res.ok && json?.status === true;
     const first = json?.data?.[0];
     return {
-      ok, latencyMs, httpStatus: res.status,
-      status: ok ? "healthy" : httpToStatus(res.status),
-      detail: { mode, balance: first?.balance ?? null, currency: first?.currency ?? null },
+      ok: statusOk, latencyMs, httpStatus: res.status,
+      status: statusOk ? "healthy" : httpToStatus(res.status),
+      detail: {
+        mode,
+        balance: first?.balance ?? null,
+        currency: first?.currency ?? null,
+        balance_display_only: true,
+        paystack_status_ok: statusOk,
+      },
     };
   } catch (e) {
     return { ok: false, latencyMs: null, status: "down", detail: { mode, error: String(e) } };
@@ -262,9 +320,12 @@ async function probeTicketmaster(): Promise<ProbeResult> {
     const { res, latencyMs } = await timedFetch(
       `https://app.ticketmaster.com/discovery/v2/events.json?size=1&apikey=${key}`,
     );
+    // ORCH-1201-R2: cache the remaining-count header (vanishes on 429).
+    const remRaw = res.headers.get("Rate-Limit-Available") ?? res.headers.get("rate-limit-available");
+    const rem = remRaw != null && Number.isFinite(Number(remRaw)) ? Number(remRaw) : null;
     return {
       ok: res.ok, latencyMs, httpStatus: res.status, status: httpToStatus(res.status),
-      detail: { rate_limit: res.headers.get("Rate-Limit-Available") ?? res.headers.get("rate-limit") ?? null },
+      detail: { cached_remaining: rem, rate_limit: remRaw ?? null },
     };
   } catch (e) {
     return { ok: false, latencyMs: null, status: "down", detail: { error: String(e) } };
@@ -295,10 +356,14 @@ async function probePexels(): Promise<ProbeResult> {
       "https://api.pexels.com/v1/search?query=city&per_page=1",
       { headers: { Authorization: key } },
     );
+    // ORCH-1201-R2: cache x-ratelimit-remaining (Pexels drops it on 429).
+    const remRaw = res.headers.get("X-Ratelimit-Remaining");
+    const rem = remRaw != null && Number.isFinite(Number(remRaw)) ? Number(remRaw) : null;
     return {
       ok: res.ok, latencyMs, httpStatus: res.status, status: httpToStatus(res.status),
       detail: {
-        rate_remaining: res.headers.get("X-Ratelimit-Remaining"),
+        cached_remaining: rem,
+        rate_remaining: remRaw,
         rate_reset: res.headers.get("X-Ratelimit-Reset"),
       },
     };
@@ -384,10 +449,79 @@ async function probeCloudinary(): Promise<ProbeResult> {
       { headers: { Authorization: `Basic ${basic}` } },
     );
     if (!res.ok) return { ok: false, latencyMs, httpStatus: res.status, status: httpToStatus(res.status), detail: {} };
-    const b = await res.json().catch(() => null) as { credits?: { usage?: number; limit?: number } } | null;
+    // ORCH-1201-R2: read credits.used_percent (the doc's authoritative field) —
+    // do NOT compute remaining from usage/limit (which mis-handles >100% overage).
+    const b = await res.json().catch(() => null) as
+      | { credits?: { usage?: number; limit?: number; used_percent?: number } }
+      | null;
+    const usedPct = typeof b?.credits?.used_percent === "number" ? b.credits.used_percent : null;
+    // crit (>=100%) drives a DOWN synthetic status so the dot goes red (§3.5).
+    let status: HealthStatus = "healthy";
+    if (usedPct != null && usedPct >= 100) status = "down";
+    return {
+      ok: status === "healthy", latencyMs, httpStatus: res.status, status,
+      detail: {
+        credits_used: b?.credits?.usage ?? null,
+        credits_limit: b?.credits?.limit ?? null,
+        used_percent: usedPct,
+      },
+    };
+  } catch (e) {
+    return { ok: false, latencyMs: null, status: "down", detail: { error: String(e) } };
+  }
+}
+
+// ORCH-1201-R2 Class-A — ExchangeRate-API quota poll (GET /v6/{key}/quota →
+// requests_remaining of 30k/mo). No status feed exists. ASSUMPTION-BUDGET (1):
+// thresholds (warn 3000 / crit 500) are %-of-cap, not live-probed.
+async function probeExchangeRate(): Promise<ProbeResult> {
+  const key = Deno.env.get("EXCHANGERATE_API_KEY") ?? Deno.env.get("EXCHANGE_RATE_API_KEY");
+  if (!key) return { ok: false, latencyMs: null, status: "unknown", detail: { error: "EXCHANGERATE_API_KEY missing" } };
+  try {
+    const { res, latencyMs } = await timedFetch(`https://v6.exchangerate-api.com/v6/${key}/quota`);
+    if (!res.ok) return { ok: false, latencyMs, httpStatus: res.status, status: httpToStatus(res.status), detail: {} };
+    const b = await res.json().catch(() => null) as
+      | { result?: string; requests_remaining?: number; plan_quota?: number }
+      | null;
+    const remaining = typeof b?.requests_remaining === "number" ? b.requests_remaining : null;
+    return {
+      ok: b?.result === "success", latencyMs, httpStatus: res.status,
+      status: b?.result === "success" ? "healthy" : httpToStatus(res.status),
+      detail: { requests_remaining: remaining, plan_quota: b?.plan_quota ?? null },
+    };
+  } catch (e) {
+    return { ok: false, latencyMs: null, status: "down", detail: { error: String(e) } };
+  }
+}
+
+// ORCH-1201-R2 Class-A — Sentry stats_v2 ratio poll. ASSUMPTION-BUDGET (2):
+// requires SENTRY_AUTH_TOKEN (admin). ABSENT ⇒ short-circuit to UNKNOWN (grey),
+// NEVER green, NEVER alert (constitutional rule 9 — no fabricated health).
+async function probeSentryStats(): Promise<ProbeResult> {
+  const token = Deno.env.get("SENTRY_AUTH_TOKEN");
+  const org = Deno.env.get("SENTRY_ORG_SLUG") ?? Deno.env.get("SENTRY_ORG");
+  if (!token || !org) {
+    return { ok: false, latencyMs: null, status: "unknown", detail: { error: "SENTRY_AUTH_TOKEN/SENTRY_ORG_SLUG missing — Sentry stats grey (ASSUMPTION-BUDGET 2)" } };
+  }
+  try {
+    const { res, latencyMs } = await timedFetch(
+      `https://sentry.io/api/0/organizations/${org}/stats_v2/?field=sum(quantity)&groupBy=outcome&statsPeriod=24h`,
+      { headers: { Authorization: `Bearer ${token}` } },
+    );
+    if (!res.ok) return { ok: false, latencyMs, httpStatus: res.status, status: httpToStatus(res.status), detail: {} };
+    const b = await res.json().catch(() => null) as
+      | { groups?: Array<{ by?: { outcome?: string }; totals?: Record<string, number> }> }
+      | null;
+    let accepted = 0, rateLimited = 0;
+    for (const g of b?.groups ?? []) {
+      const total = Object.values(g?.totals ?? {})[0] ?? 0;
+      if (g?.by?.outcome === "accepted") accepted += total;
+      if (g?.by?.outcome === "rate_limited") rateLimited += total;
+    }
+    const ratio = accepted > 0 ? rateLimited / accepted : 0;
     return {
       ok: true, latencyMs, httpStatus: res.status, status: "healthy",
-      detail: { credits_used: b?.credits?.usage ?? null, credits_limit: b?.credits?.limit ?? null },
+      detail: { accepted, rate_limited: rateLimited, rate_limited_ratio: ratio },
     };
   } catch (e) {
     return { ok: false, latencyMs: null, status: "down", detail: { error: String(e) } };
@@ -418,6 +552,7 @@ interface ServiceTickContext {
   // balance evaluation
   balanceLow: boolean | null; // null = no balance signal
   balanceText: string | null;
+  monitoringClass: MonitoringClass | null; // ORCH-1201-R2: digest labeling
 }
 
 // deno-lint-ignore no-explicit-any
@@ -493,13 +628,24 @@ async function runAlertStateMachine(
     };
 
     if (decision.sendDownAlert) {
+      // ORCH-1201-R2: class-aware subject + lead line.
+      const d = ctx.failingDetail ?? {};
+      let subject = `⚠️ [API HEALTH] ${ctx.displayName} is DOWN`;
+      let lead = `${ctx.displayName} failed ${decision.nextConsecutiveFailures} consecutive health checks.`;
+      if (ctx.monitoringClass === "B" && d.depleted === true) {
+        subject = `🚫 [API HEALTH] ${ctx.displayName} quota EXHAUSTED`;
+        lead = `${ctx.displayName} quota EXHAUSTED — ${(d.error_code as string) ?? "depleted"}: ${(d.error_text as string) ?? "see admin hub"}.`;
+      } else if (ctx.monitoringClass === "C" && d.charges_enabled === false) {
+        subject = `🔒 [API HEALTH] ${ctx.displayName} account restricted`;
+        lead = `${ctx.displayName} account restricted — charges_enabled=false${d.disabled_reason ? ` (${d.disabled_reason})` : ""}.`;
+      }
       await trySend(
         "alerting",
-        `⚠️ [API HEALTH] ${ctx.displayName} is DOWN`,
+        subject,
         [
-          `${ctx.displayName} failed ${decision.nextConsecutiveFailures} consecutive health checks.`,
+          lead,
           `Layer: ${ctx.failingLayer ?? "n/a"}. Last error: ${
-            (ctx.failingDetail?.error as string) || (ctx.failingDetail?.description as string) || "see admin hub"
+            (d.error as string) || (d.description as string) || (d.error_text as string) || "see admin hub"
           }.`,
           `Active mode: ${ctx.mode ?? "n/a"}.`,
           `Checked at ${new Date(nowMs).toISOString()} UTC.`,
@@ -548,8 +694,17 @@ async function maybeSendDigest(serviceClient: any, contexts: ServiceTickContext[
   const lines: string[] = [];
   const incidents: string[] = [];
   for (const ctx of contexts) {
-    const balanceLine = ctx.balanceText ? ` · ${ctx.balanceText}` : "";
-    lines.push(`${ctx.displayName}: ${ctx.effectiveStatus}${balanceLine}`);
+    // ORCH-1201-R2: label the signal correctly by class.
+    let label = "";
+    if (ctx.balanceText) {
+      const prefix = ctx.monitoringClass === "B"
+        ? "depleted"
+        : ctx.monitoringClass === "A"
+          ? (ctx.balanceLow ? "balance low" : "balance")
+          : "";
+      label = ` · ${prefix ? `${prefix}: ` : ""}${ctx.balanceText}`;
+    }
+    lines.push(`${ctx.displayName}: ${ctx.effectiveStatus}${label}`);
     if (ctx.effectiveStatus === "down" || ctx.effectiveStatus === "degraded") {
       incidents.push(`${ctx.displayName} (${ctx.effectiveStatus})`);
     }
@@ -600,10 +755,35 @@ serve(async (req) => {
 
     const checkRows: CheckRow[] = [];
 
-    // ── LAYER A ──
-    const statusEntries = Object.entries(STATUS_PAGE_URLS);
+    // ── ORCH-1201-R2: load the registry WITH monitoring_class + depletion_signal ──
+    // The DB is the single owner of feeds + thresholds; STATUS_PAGE_URLS is only a
+    // typed fallback used when the DB status_feed is absent.
+    const { data: serviceRows } = await serviceClient
+      .from("api_health_services")
+      .select("service_key,display_name,monitoring_class,depletion_signal");
+    const services = (serviceRows ?? []) as ServiceRow[];
+    const classByKey = new Map<string, MonitoringClass | null>();
+    const signalByKey = new Map<string, DepletionSignal>();
+    const feedByKey = new Map<string, string>();
+    for (const s of services) {
+      classByKey.set(s.service_key, s.monitoring_class ?? null);
+      const sig = (s.depletion_signal ?? {}) as DepletionSignal;
+      signalByKey.set(s.service_key, sig);
+      const feed = typeof sig.status_feed === "string" && sig.status_feed.length > 0
+        ? sig.status_feed
+        : STATUS_PAGE_URLS[s.service_key];
+      if (feed) feedByKey.set(s.service_key, feed);
+    }
+    // Fallback: if the registry read returned nothing (cold/migration not yet
+    // applied), drive Layer A from the typed mirror so the probe still runs.
+    if (feedByKey.size === 0) {
+      for (const [k, u] of Object.entries(STATUS_PAGE_URLS)) feedByKey.set(k, u);
+    }
+
+    // ── LAYER A — status feeds, DB-driven (allSettled isolation preserved) ──
+    const feedEntries = [...feedByKey.entries()];
     const aResults = await Promise.allSettled(
-      statusEntries.map(([k, u]) => probeStatusPage(k, u)),
+      feedEntries.map(([k, u]) => probeStatusPage(k, u)),
     );
     for (const r of aResults) {
       if (r.status === "fulfilled") checkRows.push(r.value);
@@ -625,6 +805,9 @@ serve(async (req) => {
       ["resend", probeResend, null],
       ["twilio", probeTwilio, null],
       ["cloudinary", probeCloudinary, null],
+      // ORCH-1201-R2 Class-A pollers (real-number reads):
+      ["exchangerate", probeExchangeRate, null],
+      ["sentry", probeSentryStats, null],
     ];
     const bResults = await Promise.allSettled(
       bProbes.map(async ([key, fn]) => {
@@ -651,6 +834,39 @@ serve(async (req) => {
           service_key: "supabase", layer: "synthetic", status: "down",
           latency_ms: Date.now() - t0, mode: null, http_status: null, detail: { error: String(e) },
         });
+      }
+    }
+
+    // ── ORCH-1201-R2 §3.4: cached-header carry-forward (Pexels/Ticketmaster) ──
+    // The remaining-count header VANISHES on a 429. For header Class-B services
+    // whose synthetic probe this tick has no cached_remaining, carry forward the
+    // last value from the most recent prior api_health_checks synthetic row and
+    // mark it stale, so the threshold compare uses the freshest available value.
+    for (const s of services) {
+      const signal = signalByKey.get(s.service_key);
+      if ((s.monitoring_class ?? null) !== "B" || !signal?.header) continue;
+      const synth = checkRows.find((r) => r.service_key === s.service_key && r.layer === "synthetic");
+      if (!synth) continue;
+      const cur = synth.detail.cached_remaining;
+      if (typeof cur === "number" && Number.isFinite(cur)) continue; // fresh header present
+      try {
+        const { data: prior } = await serviceClient
+          .from("api_health_checks")
+          .select("detail")
+          .eq("service_key", s.service_key)
+          .eq("layer", "synthetic")
+          .order("checked_at", { ascending: false })
+          .limit(5);
+        for (const p of (prior ?? []) as Array<{ detail: Record<string, unknown> }>) {
+          const v = p.detail?.cached_remaining;
+          if (typeof v === "number" && Number.isFinite(v)) {
+            synth.detail.cached_remaining = v;
+            synth.detail.cached_remaining_stale = true;
+            break;
+          }
+        }
+      } catch (e) {
+        structuredLog("warn", "api_health cached-header carry-forward failed", { fn: "api-health-probe", service: s.service_key, err: String(e) });
       }
     }
 
@@ -699,19 +915,54 @@ serve(async (req) => {
     }
 
     // ── LAYER C: api_health_observations (real-traffic from recordApiCall) ──
+    // ORCH-1201-R2: now reads error_code/error_text so the Class-B depletion pass
+    // (below) can disambiguate true quota exhaustion from transient rate-limits.
     try {
       const { data: obs } = await serviceClient
         .from("api_health_observations")
-        .select("service_key,ok")
+        .select("service_key,ok,http_status,error_code,error_text,observed_at")
         .gt("observed_at", new Date(nowMs - 24 * 60 * 60 * 1000).toISOString());
+      const allObs = (obs ?? []) as Array<
+        { service_key: string; ok: boolean; http_status: number | null; error_code: string | null; error_text: string | null; observed_at: string }
+      >;
       const tally = new Map<string, { total: number; failure: number }>();
-      for (const row of (obs ?? []) as Array<{ service_key: string; ok: boolean }>) {
+      const obsByService = new Map<string, DepletionObs[]>();
+      for (const row of allObs) {
         const t = tally.get(row.service_key) ?? { total: 0, failure: 0 };
         t.total += 1;
         if (!row.ok) t.failure += 1;
         tally.set(row.service_key, t);
+        const arr = obsByService.get(row.service_key) ?? [];
+        arr.push({ http_status: row.http_status, error_code: row.error_code, error_text: row.error_text, observed_at: row.observed_at });
+        obsByService.set(row.service_key, arr);
       }
       for (const [key, t] of tally) {
+        const cls = classByKey.get(key) ?? null;
+        const signal = signalByKey.get(key);
+
+        // ── Class-B reactive depletion: an explicit depletion fingerprint ⇒ down
+        //    immediately (no 5-sample floor). Transient rate-limits do NOT match.
+        if (cls === "B" && signal && (signal.reactive || signal.header)) {
+          // cached_remaining for header services comes from the synthetic probe
+          // detail this tick, with carry-forward handled in §3.4 below.
+          const synthDetail = checkRows.find((r) => r.service_key === key && r.layer === "synthetic")?.detail ?? {};
+          const cached = typeof synthDetail.cached_remaining === "number" ? synthDetail.cached_remaining as number : null;
+          const dep = matchClassBDepletion(
+            { reactive: signal.reactive, header: signal.header },
+            obsByService.get(key) ?? [],
+            cached,
+          );
+          if (dep.depleted) {
+            checkRows.push({
+              service_key: key, layer: "passive", status: "down",
+              latency_ms: null, mode: null, http_status: null,
+              detail: { depleted: true, error_code: dep.lastErrorCode, error_text: dep.lastErrorText, source: "class_b_depletion" },
+            });
+            continue; // depletion owns this service's passive status
+          }
+        }
+
+        // ── generic fail-rate passive (all other cases) ──
         const failRate = t.total > 0 ? t.failure / t.total : 0;
         let status: HealthStatus;
         if (t.total < 5) status = "unknown";
@@ -723,6 +974,26 @@ serve(async (req) => {
           latency_ms: null, mode: null, http_status: null,
           detail: { success: t.total - t.failure, failure: t.failure, total: t.total, source: "recordApiCall" },
         });
+      }
+
+      // ── Class-B header-only depletion with NO observations this window ──
+      // (e.g. Pexels/Ticketmaster threshold tripped via the synthetic probe's
+      // cached_remaining even when no recordApiCall traffic landed).
+      for (const s of services) {
+        if ((s.monitoring_class ?? null) !== "B") continue;
+        if (tally.has(s.service_key)) continue; // already handled above
+        const signal = signalByKey.get(s.service_key);
+        if (!signal?.header) continue;
+        const synthDetail = checkRows.find((r) => r.service_key === s.service_key && r.layer === "synthetic")?.detail ?? {};
+        const cached = typeof synthDetail.cached_remaining === "number" ? synthDetail.cached_remaining as number : null;
+        const dep = matchClassBDepletion({ header: signal.header }, [], cached);
+        if (dep.depleted) {
+          checkRows.push({
+            service_key: s.service_key, layer: "passive", status: "down",
+            latency_ms: null, mode: null, http_status: null,
+            detail: { depleted: true, error_code: dep.lastErrorCode, error_text: dep.lastErrorText, source: "class_b_header" },
+          });
+        }
       }
     } catch (e) {
       structuredLog("warn", "api_health layer-c observations read failed", { fn: "api-health-probe", err: String(e) });
@@ -773,13 +1044,9 @@ serve(async (req) => {
     }
 
     // ── Build per-service tick contexts for the state machine ──
-    const { data: services } = await serviceClient
-      .from("api_health_services")
-      .select("service_key,display_name");
+    // Reuse the registry loaded at handler start (display + class + signal).
     const displayByKey = new Map<string, string>();
-    for (const s of (services ?? []) as Array<{ service_key: string; display_name: string }>) {
-      displayByKey.set(s.service_key, s.display_name);
-    }
+    for (const s of services) displayByKey.set(s.service_key, s.display_name);
 
     // group checkRows by service
     const byService = new Map<string, CheckRow[]>();
@@ -794,11 +1061,13 @@ serve(async (req) => {
       const rows = byService.get(serviceKey) ?? [];
       const { effectiveStatus, failedTick, failingLayer, failingDetail, mode } =
         computeEffectiveStatus(rows);
-      // balance evaluation (from synthetic detail)
-      const { balanceLow, balanceText } = evaluateBalance(serviceKey, rows);
+      // ORCH-1201-R2: class-aware balance evaluation (DB-driven thresholds;
+      // processors ALWAYS return {balanceLow:null}).
+      const { balanceLow, balanceText } = evaluateBalance(serviceKey, rows, signalByKey.get(serviceKey));
       contexts.push({
         serviceKey, displayName, effectiveStatus, failedTick,
         failingLayer, failingDetail, mode, balanceLow, balanceText,
+        monitoringClass: classByKey.get(serviceKey) ?? null,
       });
     }
 
@@ -830,42 +1099,33 @@ serve(async (req) => {
   }
 });
 
-// ── balance threshold evaluation (uses synthetic-layer detail) ──
+// ── ORCH-1201-R2: Class-A-ONLY balance evaluation (fixes D2 + D4) ──
+// Thin wrapper over the pure evaluateBalanceForSignal: extracts the synthetic
+// detail + applies env-override fallback ONLY when the DB warn is null, then
+// delegates. Processors ALWAYS return {balanceLow:null} (enforced by
+// I-PROPOSED-1201R2-PROCESSOR-NO-BALANCE-ALERT).
 function evaluateBalance(
   serviceKey: string,
   rows: CheckRow[],
+  signal?: DepletionSignal,
 ): { balanceLow: boolean | null; balanceText: string | null } {
+  if (serviceKey === "stripe" || serviceKey === "paystack") {
+    return { balanceLow: null, balanceText: null };
+  }
+  const bal = signal?.balance;
+  if (!bal || !bal.kind) return { balanceLow: null, balanceText: null };
   const synth = rows.find((r) => r.layer === "synthetic");
   if (!synth) return { balanceLow: null, balanceText: null };
-  const d = synth.detail;
 
-  if (serviceKey === "twilio") {
-    const bal = typeof d.balance === "number" ? d.balance : null;
-    if (bal == null) return { balanceLow: null, balanceText: null };
-    const threshold = num("API_HEALTH_TWILIO_MIN_BALANCE", 20);
-    return { balanceLow: bal < threshold, balanceText: `${bal} ${d.currency ?? "USD"} (min ${threshold})` };
+  // Env fallback ONLY when the DB warn is null (DB value wins).
+  let warn = typeof bal.warn === "number" ? bal.warn : null;
+  let crit = typeof bal.crit === "number" ? bal.crit : null;
+  if (warn == null) {
+    if (bal.kind === "twilio_balance") warn = num("API_HEALTH_TWILIO_MIN_BALANCE", 25);
+    else if (bal.kind === "cloudinary_used_pct") { warn = num("API_HEALTH_CLOUDINARY_WARN_PCT", 80); if (crit == null) crit = num("API_HEALTH_CLOUDINARY_CRIT_PCT", 100); }
   }
-  if (serviceKey === "paystack") {
-    const bal = typeof d.balance === "number" ? d.balance : null;
-    if (bal == null) return { balanceLow: null, balanceText: null };
-    const threshold = num("API_HEALTH_PAYSTACK_MIN_BALANCE", 100000);
-    return { balanceLow: bal < threshold, balanceText: `${bal} ${d.currency ?? "NGN"} subunits (min ${threshold})` };
-  }
-  if (serviceKey === "cloudinary") {
-    const used = typeof d.credits_used === "number" ? d.credits_used : null;
-    const limit = typeof d.credits_limit === "number" ? d.credits_limit : null;
-    if (used == null || limit == null || limit <= 0) return { balanceLow: null, balanceText: null };
-    const remainingPct = ((limit - used) / limit) * 100;
-    const threshold = num("API_HEALTH_CLOUDINARY_MIN_CREDIT_PCT", 10);
-    return { balanceLow: remainingPct < threshold, balanceText: `${remainingPct.toFixed(1)}% credit remaining (min ${threshold}%)` };
-  }
-  if (serviceKey === "pexels") {
-    const rem = d.rate_remaining != null ? Number(d.rate_remaining) : null;
-    if (rem == null || !Number.isFinite(rem)) return { balanceLow: null, balanceText: null };
-    const threshold = num("API_HEALTH_PEXELS_MIN_RATE", 100);
-    return { balanceLow: rem < threshold, balanceText: `${rem} requests remaining (min ${threshold})` };
-  }
-  return { balanceLow: null, balanceText: null };
+  const evalResult = evaluateBalanceForSignal(serviceKey, synth.detail, { kind: bal.kind, warn, crit, unit: bal.unit });
+  return { balanceLow: evalResult.balanceLow, balanceText: evalResult.balanceText };
 }
 
 // re-export buildCheckRows so it's not tree-shaken out of the test surface

@@ -271,12 +271,20 @@ export async function parseMenuWithGemini(args: {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(requestBody),
   });
-  void recordApiCall("gemini", response.ok, Date.now() - _t0, response.status); // ORCH-1201 Layer-C
 
   if (!response.ok) {
     const detail = await response.text().catch(() => "");
+    // ORCH-1201-R2 Layer-C: capture the Gemini depletion fingerprint (429 RESOURCE_EXHAUSTED).
+    let depErr: { code?: string; text?: string } | undefined;
+    if (response.status === 429) {
+      let parsedStatus = "";
+      try { parsedStatus = (JSON.parse(detail)?.error?.status as string) ?? ""; } catch { /* non-JSON */ }
+      depErr = { code: parsedStatus || "RESOURCE_EXHAUSTED", text: detail.slice(0, 300) };
+    }
+    void recordApiCall("gemini", false, Date.now() - _t0, response.status, depErr); // ORCH-1201 Layer-C
     throw new Error(`Gemini HTTP ${response.status}: ${detail.slice(0, 300)}`);
   }
+  void recordApiCall("gemini", true, Date.now() - _t0, response.status); // ORCH-1201 Layer-C (ok path)
 
   const json = await response.json() as {
     candidates?: Array<{

@@ -39,3 +39,20 @@ Deno.test("recordApiCall is a no-op (no throw) when env is missing", async () =>
   }
   assertEquals(threw, false);
 });
+
+// ORCH-1201-R2 T6 — the new 5th `err` arg is OPTIONAL: 4-arg AND 5-arg call
+// shapes both compile + never throw (backward-compat for all 11 existing sites).
+Deno.test("recordApiCall 5-arg depletion fingerprint is optional + non-throwing", async () => {
+  Deno.env.delete("SUPABASE_URL"); // no-op insert path; only the arg shape under test
+  Deno.env.delete("SUPABASE_SERVICE_ROLE_KEY");
+  let threw = false;
+  try {
+    // 4-arg (legacy) still valid:
+    await recordApiCall("openai", false, 12, 429);
+    // 5-arg (new) depletion fingerprint:
+    await recordApiCall("openai", false, 12, 429, { code: "insufficient_quota", text: "You exceeded your current quota" });
+  } catch {
+    threw = true;
+  }
+  assertEquals(threw, false);
+});

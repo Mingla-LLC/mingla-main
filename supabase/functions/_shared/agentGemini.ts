@@ -125,10 +125,18 @@ export async function callGemini(args: {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(requestBody),
     });
-    void recordApiCall("gemini", response.ok, Date.now() - _t0, response.status); // ORCH-1201 Layer-C
 
     if (!response.ok) {
       const text = await response.text().catch(() => "");
+      // ORCH-1201-R2 Layer-C: capture the Gemini depletion fingerprint. A 429 with
+      // error.status=RESOURCE_EXHAUSTED is true quota exhaustion (vs transient).
+      let depErr: { code?: string; text?: string } | undefined;
+      if (response.status === 429) {
+        let parsedStatus = "";
+        try { parsedStatus = (JSON.parse(text)?.error?.status as string) ?? ""; } catch { /* non-JSON body */ }
+        depErr = { code: parsedStatus || "RESOURCE_EXHAUSTED", text: text.slice(0, 300) };
+      }
+      void recordApiCall("gemini", false, Date.now() - _t0, response.status, depErr); // ORCH-1201 Layer-C
       // 5xx is transient — retry once via the malformed loop.
       if (response.status >= 500 && attempt <= MAX_MALFORMED_RETRIES) {
         continue;
@@ -138,6 +146,7 @@ export async function callGemini(args: {
         detail: text.slice(0, 500),
       });
     }
+    void recordApiCall("gemini", true, Date.now() - _t0, response.status); // ORCH-1201 Layer-C (ok path)
 
     const payload = await response.json() as GeminiResponse;
 

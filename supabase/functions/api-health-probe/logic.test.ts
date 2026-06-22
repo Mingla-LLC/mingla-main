@@ -8,10 +8,14 @@
 
 import { assertEquals } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import {
+  CLASS_B_DEPLETION,
   computeEffectiveStatus,
   decideAvailabilityTransitions,
   decideBalanceTransition,
+  type DepletionObs,
+  evaluateBalanceForSignal,
   indicatorToStatus,
+  matchClassBDepletion,
   STATUS_PAGE_URLS,
 } from "./logic.ts";
 
@@ -213,6 +217,78 @@ Deno.test("balance — no signal preserves prior state, never alerts", () => {
   });
   assertEquals(d.nextBalanceState, "low");
   assertEquals(d.sendLowBalanceAlert, false);
+});
+
+// ════════════════════════════════════════════════════════════════════════
+// ORCH-1201-R2 — Class-B reactive depletion matcher (THE load-bearing
+// disambiguation) + Class-A class-aware balance evaluation.
+// ════════════════════════════════════════════════════════════════════════
+const obs = (http: number, code: string | null, text: string | null, ago = 0): DepletionObs => ({
+  http_status: http,
+  error_code: code,
+  error_text: text,
+  observed_at: new Date(Date.now() - ago).toISOString(),
+});
+
+Deno.test("R2 T1 — matchClassBDepletion: insufficient_quota ⇒ depleted; rate_limit_exceeded ⇒ NOT", () => {
+  const sig = CLASS_B_DEPLETION.openai;
+  // depletion: 429 + error_code insufficient_quota
+  const dep = matchClassBDepletion(sig, [obs(429, "insufficient_quota", "You exceeded your current quota")]);
+  assertEquals(dep.depleted, true);
+  assertEquals(dep.lastErrorCode, "insufficient_quota");
+  // transient: 429 + rate_limit_exceeded ⇒ must NOT count as depletion (load-bearing)
+  const transient = matchClassBDepletion(sig, [obs(429, "rate_limit_exceeded", "Rate limit reached")]);
+  assertEquals(transient.depleted, false);
+});
+
+Deno.test("R2 T1b — matchClassBDepletion: Serper body substring 'Not enough credits'", () => {
+  const sig = CLASS_B_DEPLETION.serper;
+  const dep = matchClassBDepletion(sig, [obs(403, "not_enough_credits", "Not enough credits")]);
+  assertEquals(dep.depleted, true);
+  // an unrelated 403 body does NOT trip it.
+  const other = matchClassBDepletion(sig, [obs(403, null, "Invalid API key")]);
+  assertEquals(other.depleted, false);
+});
+
+Deno.test("R2 T1c — matchClassBDepletion: gemini RESOURCE_EXHAUSTED on error_code", () => {
+  const dep = matchClassBDepletion(CLASS_B_DEPLETION.gemini, [obs(429, "RESOURCE_EXHAUSTED", "{...limit:0...}")]);
+  assertEquals(dep.depleted, true);
+  const plain429 = matchClassBDepletion(CLASS_B_DEPLETION.gemini, [obs(429, "", "")]);
+  assertEquals(plain429.depleted, false);
+});
+
+Deno.test("R2 T5 — header carry-forward: cached_remaining <= warn ⇒ depleted", () => {
+  const sig = CLASS_B_DEPLETION.pexels; // header warn 2500
+  // cached 21855 ⇒ not depleted
+  assertEquals(matchClassBDepletion(sig, [], 21855).depleted, false);
+  // cached 1200 (stale carried fwd) ⇒ depleted
+  const dep = matchClassBDepletion(sig, [], 1200);
+  assertEquals(dep.depleted, true);
+  assertEquals(dep.lastErrorCode, "header_remaining");
+});
+
+Deno.test("R2 T2 — evaluateBalanceForSignal: stripe/paystack ALWAYS null (incl. balance 0)", () => {
+  const s = evaluateBalanceForSignal("stripe", { balance: 0, currency: "usd" }, { kind: "twilio_balance", warn: 25 });
+  assertEquals(s.balanceLow, null);
+  const p = evaluateBalanceForSignal("paystack", { balance: 0 }, { kind: "twilio_balance", warn: 25 });
+  assertEquals(p.balanceLow, null);
+});
+
+Deno.test("R2 T3 — evaluateBalanceForSignal: cloudinary 747.88% ⇒ low + crit severity", () => {
+  const r = evaluateBalanceForSignal("cloudinary", { used_percent: 747.88 }, { kind: "cloudinary_used_pct", warn: 80, crit: 100 });
+  assertEquals(r.balanceLow, true);
+  assertEquals(r.severity, "crit");
+  // 50% used ⇒ not low
+  const ok = evaluateBalanceForSignal("cloudinary", { used_percent: 50 }, { kind: "cloudinary_used_pct", warn: 80, crit: 100 });
+  assertEquals(ok.balanceLow, false);
+});
+
+Deno.test("R2 T4 — evaluateBalanceForSignal: twilio 14.53 low @ warn 25; 30 ⇒ false", () => {
+  const low = evaluateBalanceForSignal("twilio", { balance: 14.53, currency: "USD" }, { kind: "twilio_balance", warn: 25, crit: 5 });
+  assertEquals(low.balanceLow, true);
+  assertEquals(low.severity, "warn"); // above crit 5
+  const ok = evaluateBalanceForSignal("twilio", { balance: 30 }, { kind: "twilio_balance", warn: 25, crit: 5 });
+  assertEquals(ok.balanceLow, false);
 });
 
 Deno.test("STATUS_PAGE_URLS keys are a subset of monitored services (canonical)", () => {
