@@ -2930,3 +2930,16 @@ jobs:
         run: node .github/scripts/strict-grep/orch-1217-ari-no-vendor-disclosure.mjs --self-test
       - name: Run ORCH-1217 ari-no-vendor-disclosure gate
         run: node .github/scripts/strict-grep/orch-1217-ari-no-vendor-disclosure.mjs
+
+  orch-1218-venue-authoring-no-vendor-leak:
+    name: "ORCH-1218: no AI-vendor token in venue-authoring user-facing errors; sanitizeAuthoringError wired in VenueCreatorWizard (I-PROPOSED-1218-VENUE-AUTHORING-NO-VENDOR-LEAK)"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Self-test the ORCH-1218 gate
+        run: node .github/scripts/strict-grep/orch-1218-venue-authoring-no-vendor-leak.mjs --self-test
+      - name: Run ORCH-1218 gate
+        run: node .github/scripts/strict-grep/orch-1218-venue-authoring-no-vendor-leak.mjs

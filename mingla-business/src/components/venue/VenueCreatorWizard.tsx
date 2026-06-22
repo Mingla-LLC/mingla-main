@@ -46,6 +46,7 @@ import {
 import type { Brand } from "../../types/brand";
 import { VENUE_SIGNALS } from "../../constants/venueSignals";
 import type { DeckReadinessFocus } from "../../utils/deckReadinessRoutes";
+import { sanitizeAuthoringError } from "../../utils/sanitizeAuthoringError";
 import { useDraftVenueStore } from "../../store/draftVenueStore";
 import { useCurrentBrandStore } from "../../store/currentBrandStore";
 import { venueStepError } from "./venueWizardValidation";
@@ -238,9 +239,7 @@ export const VenueCreatorWizard: React.FC<VenueCreatorWizardProps> = ({
         setSubmitErr(e.message);
         return;
       }
-      setSubmitErr(
-        e instanceof Error ? e.message : "Could not submit. Try again.",
-      );
+      setSubmitErr(sanitizeAuthoringError(e, "Could not submit. Try again."));
     }
   }, [createVenue, user?.id]);
 
@@ -607,9 +606,10 @@ export function VenueDeckReadinessSetup({
         coverMediaType: patch.coverMediaType,
       }).catch((error) => {
         setMessage(
-          error instanceof Error
-            ? error.message
-            : "Cover saved, but deck readiness did not sync yet.",
+          sanitizeAuthoringError(
+            error,
+            "Cover saved, but deck readiness did not sync yet.",
+          ),
         );
       });
     },
@@ -686,7 +686,7 @@ export function VenueDeckReadinessSetup({
       setCoaching(result.coaching);
       setMessage("Your listing is ready. Review the pitch below, edit anything, then approve it to go live.");
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "AI setup failed.");
+      setMessage(sanitizeAuthoringError(error, "AI setup failed."));
     } finally {
       setBusy(null);
     }
@@ -718,7 +718,7 @@ export function VenueDeckReadinessSetup({
       onDone();
     } catch (error) {
       setMessage(
-        error instanceof Error ? error.message : "Could not confirm AI outputs.",
+        sanitizeAuthoringError(error, "Could not confirm AI outputs."),
       );
     } finally {
       setBusy(null);
@@ -741,7 +741,7 @@ export function VenueDeckReadinessSetup({
       );
     } catch (error) {
       setMessage(
-        error instanceof Error ? error.message : "Could not refresh deck readiness.",
+        sanitizeAuthoringError(error, "Could not refresh deck readiness."),
       );
     } finally {
       setBusy(null);
