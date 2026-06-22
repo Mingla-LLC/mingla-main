@@ -317,7 +317,20 @@ serve(async (req: Request): Promise<Response> => {
   // one `rsvp_pass` row per recipient (self-contained payload + idempotency_key)
   // then invoke rsvp-notify once per row. Wrapped so a notify failure NEVER
   // fails the already-committed RSVP write.
-  if (result.status === "going" && typeof result.rsvpId === "string") {
+  //
+  // ORCH-1206 [rsvp-pass-after-approval] (C-1, I-1) — the QR entry pass is
+  // delivered IFF the recipient is going AND approved. Auto-approve events
+  // resolve straight to going+approved → pass immediate here (unchanged).
+  // MANUAL-approval events resolve to going+PENDING → NO pass yet; the host's
+  // approve RPC (host_set_rsvp_status / host_bulk_approve_rsvps) enqueues the
+  // QR pass at approval time via the shared SQL routine, using the SAME
+  // canonical idempotency key `rsvp_pass:<rsvpId>:<guestId|primary>` (I-3) so a
+  // recipient is never double-sent across submit / approve / backfill.
+  if (
+    result.status === "going" &&
+    result.approvalStatus === "approved" &&
+    typeof result.rsvpId === "string"
+  ) {
     try {
       await dispatchRsvpPasses(admin, eventId, result.rsvpId, userId);
     } catch (err) {
