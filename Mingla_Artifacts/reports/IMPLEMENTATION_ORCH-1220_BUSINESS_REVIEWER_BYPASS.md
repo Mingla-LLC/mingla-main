@@ -128,9 +128,9 @@ present on the platform.
 
 ## Commit(s) on branch `1220-business-reviewer-bypass`
 
-- `05392cd66` — ORCH-1220 implementation (all 6 files + this report). **Branch HEAD.**
-  (Pre-report-finalization the same tree was committed as `480079930`; amending
-  to embed these hashes produced `05392cd66`.)
+- `f989373ab` — ORCH-1220 implementation (all 6 deliverable files + this report).
+  A trailing docs-only commit then pins the final branch HEAD (see below); both
+  carry the identical code. Gate is GREEN on both.
 
 ## Fails-on-revert (cited hash)
 
