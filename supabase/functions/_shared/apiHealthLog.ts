@@ -13,11 +13,23 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.4";
 import { structuredLog } from "./structuredLog.ts";
 
+// ORCH-1201-R2: optional 5th arg `err` carries the vendor depletion fingerprint
+// (Class-B services: OpenAI insufficient_quota, Gemini RESOURCE_EXHAUSTED, Serper
+// "Not enough credits", Resend *_quota_exceeded). OPTIONAL so all pre-existing
+// 4-arg call sites compile unchanged. Persisted to the additive nullable
+// error_code/error_text columns; the probe's matchClassBDepletion reads them to
+// disambiguate true depletion from transient rate-limits.
+export interface ApiCallError {
+  code?: string; // vendor machine code/type, e.g. 'insufficient_quota'
+  text?: string; // short raw snippet (truncated to 300 chars on insert)
+}
+
 export async function recordApiCall(
   serviceKey: string,
   ok: boolean,
   latencyMs: number,
   httpStatus?: number,
+  err?: ApiCallError,
 ): Promise<void> {
   // 1) always log — synchronous, cheap, Sentry-visible.
   try {
@@ -26,6 +38,7 @@ export async function recordApiCall(
       ok,
       latencyMs: Math.round(latencyMs),
       httpStatus: httpStatus ?? null,
+      errorCode: err?.code ?? null,
     });
   } catch (_e) {
     /* swallow — logging must never break the host */
@@ -42,6 +55,8 @@ export async function recordApiCall(
       ok,
       latency_ms: Math.round(latencyMs),
       http_status: httpStatus ?? null,
+      error_code: err?.code ?? null,
+      error_text: err?.text ? err.text.slice(0, 300) : null,
     });
   } catch (_e) {
     /* swallow — host call must never break */

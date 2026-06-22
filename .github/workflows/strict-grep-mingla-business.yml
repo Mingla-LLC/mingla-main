@@ -2792,3 +2792,36 @@ jobs:
           node-version: "20"
       - name: Run ORCH-1201 service-key-canonical gate
         run: node .github/scripts/strict-grep/i-proposed-1201-service-key-canonical.mjs
+
+  orch-1201r2-processor-no-balance-alert:
+    name: "I-PROPOSED-1201R2-PROCESSOR-NO-BALANCE-ALERT: Stripe/Paystack never emit a balance/credit alert (settled funds != API credit); evaluateBalance returns null for processors; balance is display-only"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Run ORCH-1201R2 processor-no-balance-alert gate
+        run: node .github/scripts/strict-grep/i-proposed-1201r2-processor-no-balance-alert.mjs
+
+  orch-1201r2-class-b-reactive-error-match:
+    name: "I-PROPOSED-1201R2-CLASS-B-REACTIVE-ERROR-MATCH: every Class-B service has a reactive/header depletion signal; CLASS_B_DEPLETION covers all 8; openai matches insufficient_quota (NOT rate_limit_exceeded)"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Run ORCH-1201R2 class-b-reactive-error-match gate
+        run: node .github/scripts/strict-grep/i-proposed-1201r2-class-b-reactive-error-match.mjs
+
+  orch-1201r2-thresholds-from-baseline:
+    name: "I-PROPOSED-1201R2-THRESHOLDS-FROM-BASELINE: alert thresholds seeded from REAL baselines (twilio 25, cloudinary 80/100, pexels 2500, ticketmaster 500); no invented defaults survive in index.ts"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Run ORCH-1201R2 thresholds-from-baseline gate
+        run: node .github/scripts/strict-grep/i-proposed-1201r2-thresholds-from-baseline.mjs

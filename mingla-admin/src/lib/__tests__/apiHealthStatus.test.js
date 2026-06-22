@@ -7,7 +7,7 @@
 
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { statusDotClass, worstOfLayers } from "../apiHealthStatus.js";
+import { signalLabel, statusDotClass, worstOfLayers } from "../apiHealthStatus.js";
 
 const GREEN = "bg-[#22c55e]";
 const AMBER = "bg-[#f59e0b]";
@@ -46,5 +46,23 @@ describe("ORCH-1201 — no fabricated health (status dot derivation)", () => {
   it("alert_state='alerting' forces red regardless of layers", () => {
     assert.equal(statusDotClass({ synthetic: { status: "healthy" } }, "alerting"), RED);
     assert.equal(statusDotClass({}, "alerting"), RED);
+  });
+});
+
+describe("ORCH-1201-R2 — per-class signal label (T7)", () => {
+  it("A ⇒ Balance / usage", () => {
+    assert.equal(signalLabel({ monitoring_class: "A" }), "Balance / usage");
+  });
+  it("B ⇒ Reactive — last error", () => {
+    assert.equal(signalLabel({ monitoring_class: "B" }), "Reactive — last error");
+  });
+  it("C ⇒ Processor health", () => {
+    assert.equal(signalLabel({ monitoring_class: "C" }), "Processor health");
+  });
+  it("D/E/F + unknown labels", () => {
+    assert.equal(signalLabel({ monitoring_class: "D" }), "Status feed");
+    assert.equal(signalLabel({ monitoring_class: "E" }), "Platform");
+    assert.equal(signalLabel({ monitoring_class: "F" }), "Synthetic");
+    assert.equal(signalLabel({}), "Status");
   });
 });

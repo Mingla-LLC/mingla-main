@@ -96,7 +96,9 @@ export async function forwardGeocodeText(
   const _t0 = Date.now();
   try {
     upstream = await fetch(url, { method: "GET" });
-    void recordApiCall("mapbox", upstream.ok, Date.now() - _t0, upstream.status); // ORCH-1201 Layer-C
+    // ORCH-1201-R2 Layer-C: tag a 429 so the Class-B reactive matcher can flag depletion.
+    const mbErr = upstream.status === 429 ? { code: "429", text: "429 rate_limited" } : undefined;
+    void recordApiCall("mapbox", upstream.ok, Date.now() - _t0, upstream.status, mbErr); // ORCH-1201 Layer-C
   } catch (e) {
     void recordApiCall("mapbox", false, Date.now() - _t0); // ORCH-1201 Layer-C (network error)
     console.warn("[mapboxGeocode] forward fetch error:", e);

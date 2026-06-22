@@ -16,6 +16,29 @@ export function worstOfLayers(layers) {
   return worst; // null when there is NO real signal
 }
 
+// ORCH-1201-R2 — per-class signal descriptor for the admin board. The class
+// decides WHICH signal is authoritative, so the UI labels the metric correctly
+// (a processor's "balance" is settled funds, NOT an alertable credit). Pure +
+// node-testable.
+export function signalLabel(svc) {
+  switch (svc?.monitoring_class) {
+    case "A":
+      return "Balance / usage";
+    case "B":
+      return "Reactive — last error";
+    case "C":
+      return "Processor health";
+    case "D":
+      return "Status feed";
+    case "E":
+      return "Platform";
+    case "F":
+      return "Synthetic";
+    default:
+      return "Status";
+  }
+}
+
 // Status → dot Tailwind class. `alerting` forces red regardless. No signal →
 // grey. NEVER returns the green class for a service with no signal.
 export function statusDotClass(layers, alertState) {

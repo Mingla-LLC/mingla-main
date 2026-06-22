@@ -23,6 +23,7 @@ import {
   computeCostUsdGemini,
   MINGLA_SIGNAL_IDS,
 } from "../_shared/photoAestheticEnums.ts";
+import { recordApiCall } from "../_shared/apiHealthLog.ts"; // ORCH-1201-R2 Layer-C (Serper depletion)
 import {
   composeCollage,
   fingerprintPhotos,
@@ -915,6 +916,7 @@ async function handleFetchReviews(
     if (nextPageToken) reqBody.nextPageToken = nextPageToken;
 
     let serperRes: Response;
+    const _serperT0 = Date.now();
     try {
       serperRes = await fetch(SERPER_REVIEWS_URL, {
         method: "POST",
@@ -923,6 +925,7 @@ async function handleFetchReviews(
       });
     } catch (err) {
       lastErr = err instanceof Error ? err.message : String(err);
+      void recordApiCall("serper", false, Date.now() - _serperT0); // ORCH-1201-R2 Layer-C (network error)
       console.error(
         `[place-intel-trial:fetch_reviews] page ${page} fetch error:`,
         lastErr,
@@ -933,9 +936,17 @@ async function handleFetchReviews(
     if (!serperRes.ok) {
       const text = await serperRes.text();
       lastErr = `Serper ${serperRes.status}: ${text.slice(0, 300)}`;
+      // ORCH-1201-R2 Layer-C: capture the Serper depletion fingerprint. The body
+      // "Not enough credits" is the CONFIRMED quota-exhaustion signal.
+      const depleted = /not enough credits/i.test(text);
+      void recordApiCall(
+        "serper", false, Date.now() - _serperT0, serperRes.status,
+        depleted ? { code: "not_enough_credits", text: text.slice(0, 300) } : { text: text.slice(0, 300) },
+      );
       console.error(`[place-intel-trial:fetch_reviews] ${lastErr}`);
       break;
     }
+    void recordApiCall("serper", true, Date.now() - _serperT0, serperRes.status); // ORCH-1201-R2 Layer-C (ok)
 
     const data = await serperRes.json();
     const reviews: any[] = data.reviews || [];

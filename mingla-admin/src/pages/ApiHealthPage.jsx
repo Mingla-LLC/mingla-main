@@ -18,7 +18,7 @@ import { Modal, ModalBody } from "../components/ui/Modal";
 import { useToast } from "../context/ToastContext";
 import { timeAgo, formatDateTime } from "../lib/formatters";
 import { getApiHealth, getApiHealthIncidents } from "../services/apiHealthService";
-import { statusDotClass, worstOfLayers } from "../lib/apiHealthStatus";
+import { signalLabel, statusDotClass, worstOfLayers } from "../lib/apiHealthStatus";
 
 const LAYER_ORDER = [
   ["status_page", "Status page"],
@@ -40,22 +40,55 @@ function layerChipVariant(status) {
   }
 }
 
-// Pull a human balance line from whichever layer detail carries it.
-function balanceLine(svc) {
+// ORCH-1201-R2 — class-aware signal line. Returns { text, tone } where tone is
+// 'metric' (Class-A real number), 'depletion' (Class-B last error), 'info'
+// (Class-C processor balance — grey/informational, NEVER red), or null.
+function signalLine(svc) {
   const synth = svc.layers?.synthetic?.detail || {};
-  if (svc.service_key === "twilio" && synth.balance != null) {
-    return `${synth.balance} ${synth.currency || "USD"}`;
+  const cls = svc.monitoring_class;
+
+  // Class C processors: balance is INFORMATIONAL ONLY. Grey. Never red, never
+  // contributes to the dot (the dot comes from reachability/restriction layers).
+  if (cls === "C") {
+    if (synth.balance != null) {
+      const cur = synth.currency || (svc.service_key === "paystack" ? "NGN" : "USD");
+      return { text: `Balance (settled funds) · ${synth.balance} ${cur} — informational`, tone: "info" };
+    }
+    return { text: "Processor reachable — balance informational", tone: "info" };
   }
-  if (svc.service_key === "paystack" && synth.balance != null) {
-    return `${synth.balance} ${synth.currency || "NGN"} (subunits)`;
+
+  // Class A: show the real metric.
+  if (cls === "A") {
+    if (svc.service_key === "twilio" && synth.balance != null) {
+      return { text: `$${synth.balance} ${synth.currency || "USD"} / warn $25`, tone: "metric" };
+    }
+    if (svc.service_key === "cloudinary" && synth.used_percent != null) {
+      return { text: `${Number(synth.used_percent).toFixed(2)}% used / crit ≥ 100%`, tone: "metric" };
+    }
+    if (svc.service_key === "exchangerate" && synth.requests_remaining != null) {
+      return { text: `${synth.requests_remaining} req left / warn ≤ 3,000`, tone: "metric" };
+    }
+    if (svc.service_key === "sentry" && synth.rate_limited_ratio != null) {
+      return { text: `rate-limited ratio ${Number(synth.rate_limited_ratio).toFixed(3)}`, tone: "metric" };
+    }
+    return null;
   }
-  if (svc.service_key === "cloudinary" && synth.credits_limit != null && synth.credits_used != null) {
-    const remaining = synth.credits_limit - synth.credits_used;
-    return `${remaining.toFixed?.(0) ?? remaining} / ${synth.credits_limit} credits`;
+
+  // Class B: reactive last-error (depletion). Never a balance.
+  if (cls === "B") {
+    const dep = svc.depletion_24h;
+    if (dep?.last_error_code) {
+      const when = dep.last_error_at ? ` · ${timeAgo(dep.last_error_at)}` : "";
+      return { text: `${dep.last_error_code}${when}`, tone: "depletion" };
+    }
+    // header-metric Class-B services still show the cached remaining.
+    if (synth.cached_remaining != null) {
+      const stale = synth.cached_remaining_stale ? " (cached)" : "";
+      return { text: `${synth.cached_remaining} req left${stale}`, tone: "metric" };
+    }
+    return { text: "No depletion signal (24h)", tone: "info" };
   }
-  if (svc.service_key === "pexels" && synth.rate_remaining != null) {
-    return `${synth.rate_remaining} req remaining`;
-  }
+
   return null;
 }
 
@@ -82,7 +115,7 @@ function ServiceCard({ svc, onOpenIncidents }) {
     return max ? new Date(max).toISOString() : null;
   }, [svc.layers]);
   const noSignal = worstOfLayers(svc.layers) === null && svc.alert_state !== "alerting";
-  const bal = balanceLine(svc);
+  const sig = signalLine(svc);
 
   return (
     <div className="bg-[var(--color-background-primary)] border border-[var(--gray-200)] rounded-xl p-4 flex flex-col gap-3 shadow-[var(--shadow-sm)]">
@@ -95,6 +128,14 @@ function ServiceCard({ svc, onOpenIncidents }) {
             </p>
             <p className="text-xs text-[var(--color-text-tertiary)]">
               {CATEGORY_LABELS[svc.category] || svc.category}
+              {svc.monitoring_class ? (
+                <span
+                  className="ml-1.5 inline-flex items-center px-1.5 py-px text-[10px] font-semibold rounded bg-[var(--gray-100)] text-[var(--color-text-secondary)]"
+                  title={signalLabel(svc)}
+                >
+                  {svc.monitoring_class} · {signalLabel(svc)}
+                </span>
+              ) : null}
             </p>
           </div>
         </div>
@@ -156,10 +197,20 @@ function ServiceCard({ svc, onOpenIncidents }) {
             </span>
           </div>
         )}
-        {bal && (
-          <div>
-            <span className="text-[var(--color-text-tertiary)]">Balance</span>{" "}
-            <span className="tabular-nums font-medium text-[var(--color-text-primary)]">{bal}</span>
+        {sig && (
+          <div className="col-span-2">
+            <span className="text-[var(--color-text-tertiary)]">{signalLabel(svc)}</span>{" "}
+            <span
+              className={`tabular-nums font-medium ${
+                sig.tone === "info"
+                  ? "text-[var(--color-text-tertiary)]"
+                  : sig.tone === "depletion"
+                    ? "text-[#ef4444]"
+                    : "text-[var(--color-text-primary)]"
+              }`}
+            >
+              {sig.text}
+            </span>
           </div>
         )}
         {svc.layers?.synthetic?.mode && (
