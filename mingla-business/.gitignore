@@ -53,3 +53,4 @@ web-build-fixed/
 
 # ORCH-1118 render-proof worktree-local test-deps overlay (not committed)
 .orch1118-testdeps/
+playwright/orch1197/bundle.js
