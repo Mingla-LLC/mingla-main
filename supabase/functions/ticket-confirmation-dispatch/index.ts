@@ -42,6 +42,8 @@ import { buildTicketPdf } from "../_shared/ticketPdf.ts";
 // ORCH-0859 (Tr2): trip-shaped confirmation email helper. Used only when
 // event_type='trip' — event_type='event' path unchanged.
 import { renderTripConfirmationEmail } from "../_shared/email/tripConfirmationEmail.ts";
+// ORCH-1195 FIX 4 — experience-shaped confirmation (includes the itinerary/stops).
+import { renderExperienceConfirmationEmail } from "../_shared/email/experienceConfirmationEmail.ts";
 import { buildCalendarLinks } from "../_shared/email/calendar.ts";
 // ORCH-0869 (Tr3) Stage 1b: installment-kind renderers. Routed via body.kind
 // from installmentWebhookHandlers.ts and process-scheduled-installments.
@@ -838,8 +840,12 @@ serve(async (req) => {
   // ORCH-0859 (Tr2): trip-shaped SMS copy when event_type='trip'. Event copy
   // is byte-equivalent for event_type='event' (the default branch).
   const isTrip = order.events.event_type === "trip";
+  // ORCH-1195 FIX 4 — experiences get an itinerary-shaped email (the stops).
+  const isExperience = order.events.event_type === "experience";
   const smsBody = isTrip
     ? `Mingla: you're booked on ${eventTitle}. Order ${shortId(order.id)}.`
+    : isExperience
+    ? `Mingla: you're reserved for ${eventTitle}. Order ${shortId(order.id)}.`
     : `Mingla: your ${ticketCount} ticket${
       ticketCount === 1 ? "" : "s"
     } for ${eventTitle} are confirmed. Order ${shortId(order.id)}.`;
@@ -898,6 +904,52 @@ serve(async (req) => {
           timezone: context.bodyInput.event.timezone,
           days: tripDays,
           inclusions: tripInclusions,
+        },
+        brand: {
+          name: context.bodyInput.brand.name,
+          profilePhotoUrl: context.bodyInput.brand.profilePhotoUrl,
+        },
+        order: {
+          id: context.bodyInput.order.id,
+          shortId: context.bodyInput.order.shortId,
+          totalCents: order.total_cents,
+          currency: order.currency,
+        },
+      });
+    } else if (isExperience) {
+      // ORCH-1195 FIX 4 — experiences emailed via the generic event template
+      // before this, so the itinerary/stops were missing. Fetch the stops and
+      // render the experience-shaped email (graceful no-itinerary fallback when
+      // an experience has no authored stops — e.g. an Ari no-stops experience).
+      const stopsResp = await supabase
+        .from("experience_stops")
+        .select("stop_order, place_name, address, start_time, price_cents")
+        .eq("event_id", order.events.id)
+        .order("stop_order");
+      const expStops = (stopsResp.data ?? []) as Array<{
+        stop_order: number;
+        place_name: string | null;
+        address: string | null;
+        start_time: string | null;
+        price_cents: number | null;
+      }>;
+      renderedEmail = renderExperienceConfirmationEmail({
+        recipient: {
+          name: order.buyer_name,
+          email: order.buyer_email ?? "",
+        },
+        experience: {
+          title: context.bodyInput.event.title,
+          dateIso: context.bodyInput.event.startAt,
+          timezone: context.bodyInput.event.timezone,
+          venueText: context.bodyInput.event.locationText,
+          stops: expStops.map((s) => ({
+            stopOrder: s.stop_order,
+            placeName: s.place_name,
+            address: s.address,
+            startTime: s.start_time,
+            priceCents: s.price_cents,
+          })),
         },
         brand: {
           name: context.bodyInput.brand.name,
