@@ -38,12 +38,11 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 // rendered safely.
 import { renderShell } from "../_shared/email/shell.ts";
 import { escapeHtml as sharedEscapeHtml } from "../_shared/email/escape.ts";
-
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, apikey, content-type",
-  "Access-Control-Allow-Methods": "POST, OPTIONS",
-};
+// ORCH-1205 — use the shared CORS allow-list (it includes x-client-info, which
+// supabase-js sends on EVERY request) so the browser preflight is not rejected.
+// The shared object already uses "POST, OPTIONS", matching this function's
+// methods, so behavior is unchanged except the widened allow-headers.
+import { corsHeaders } from "../_shared/cors.ts";
 
 const PERSONAL_NOTE_MAX = 280;
 
