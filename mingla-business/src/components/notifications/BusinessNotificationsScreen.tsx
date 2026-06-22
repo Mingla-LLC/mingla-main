@@ -142,7 +142,16 @@ const isWeb = Platform.OS === "web";
 // `easings.out` token = cubic-bezier(0.33, 1, 0.68, 1) (decelerate). Reanimated
 // equivalent for the expand/collapse + chevron motion.
 const EASE_OUT = Easing.bezier(0.33, 1, 0.68, 1);
-const EXPAND_TRANSITION = LinearTransition.duration(durations.entry).easing(EASE_OUT);
+// ORCH-1211: LinearTransition is undefined on web at module-eval — calling
+// .duration() at top level throws "Cannot read properties of undefined (reading
+// 'duration')" and crashes /notifications into the global ErrorBoundary
+// ("Something broke."). Guard the builder call to native; web gets no row layout
+// animation (graceful degrade — the row still expands/collapses, just without the
+// animated reflow). Native is byte-identical to before. Do NOT remove the isWeb
+// guard.
+const EXPAND_TRANSITION = isWeb
+  ? undefined
+  : LinearTransition.duration(durations.entry).easing(EASE_OUT);
 
 // ── Date bucketing (SUB-C_DESIGN §4.1) ───────────────────────────────────────
 

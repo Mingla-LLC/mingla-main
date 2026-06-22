@@ -2864,3 +2864,16 @@ jobs:
         run: node .github/scripts/strict-grep/i-proposed-1209-no-eager-video-preload.mjs --self-test
       - name: Run ORCH-1209 no-eager-video-preload gate
         run: node .github/scripts/strict-grep/i-proposed-1209-no-eager-video-preload.mjs
+
+  orch-1211-notif-web-render-safe:
+    name: "ORCH-1211: BusinessNotificationsScreen has no unguarded top-level reanimated layout-builder + ReanimatedSwipeable stays native-only (I-PROPOSED-1211-NOTIF-WEB-RENDER-SAFE)"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Self-test the ORCH-1211 notif-web-render-safe gate
+        run: node .github/scripts/strict-grep/orch-1211-notif-web-render-safe.mjs --self-test
+      - name: Run ORCH-1211 notif-web-render-safe gate
+        run: node .github/scripts/strict-grep/orch-1211-notif-web-render-safe.mjs
