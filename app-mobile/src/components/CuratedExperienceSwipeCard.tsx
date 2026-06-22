@@ -244,9 +244,14 @@ interface Props {
     coverHue?: number;
   };
   ctaOverride?: string;
+  // ORCH-1209: only the front/active deck card streams its cover video. When
+  // false the cover mounts paused on its poster (playbackActive=false) and
+  // downloads nothing. Defaults true so non-deck callers (none today) are
+  // unaffected. Mirrors SwipeableCards CardHero isTopCard (I-1069).
+  isTopCard?: boolean;
 }
 
-export function CuratedExperienceSwipeCard({ card, onSeePlan, travelMode, measurementSystem, currencyCode, brandExperience, onBrandPress, experienceCover, ctaOverride }: Props) {
+export function CuratedExperienceSwipeCard({ card, onSeePlan, travelMode, measurementSystem, currencyCode, brandExperience, onBrandPress, experienceCover, ctaOverride, isTopCard = true }: Props) {
   const { t } = useTranslation(['common']);
   const insets = useSafeAreaInsets();
   // ORCH-0991: deck is full-bleed under the floating glass top bar (HomePage safeArea has
@@ -348,7 +353,10 @@ export function CuratedExperienceSwipeCard({ card, onSeePlan, travelMode, measur
                 hue={experienceCover?.coverHue}
                 mediaUrl={coverUrl}
                 mediaType={coverType}
-                autoplay
+                // ORCH-1209 — only the front card streams (parity with the
+                // venue deck CardHero, I-1069). Off-front: paused on poster.
+                autoplay={isTopCard}
+                playbackActive={isTopCard}
                 muted
                 loop
                 radius={0}

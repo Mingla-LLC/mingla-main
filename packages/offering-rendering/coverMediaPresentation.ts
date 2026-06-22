@@ -54,3 +54,26 @@ export const shouldFreezeCoverForReduceMotion = ({
     autoplay === true && muted === true && loop === true;
   return reduceMotion === true && !isAmbientMutedLoop;
 };
+
+// ORCH-1209 — derive a poster still for a cover VIDEO with ZERO new dependency.
+// Cloudinary video URLs (.../video/upload/<rest>.mp4) yield a first-frame JPEG
+// via the `so_0` (start-offset 0s) transform + .jpg extension. Non-Cloudinary
+// or non-video URLs return null → the hue-band EventCover placeholder shows
+// (still no eager video download — the only thing that matters for bots).
+export const deriveCoverPosterUrl = (
+  videoUrl?: string | null,
+): string | null => {
+  if (typeof videoUrl !== "string" || videoUrl.length === 0) return null;
+  const marker = "/video/upload/";
+  const i = videoUrl.indexOf(marker);
+  if (i < 0) return null;
+  const head = videoUrl.slice(0, i + marker.length);
+  let tail = videoUrl.slice(i + marker.length);
+  // Drop any query string from the derived still.
+  const q = tail.indexOf("?");
+  if (q >= 0) tail = tail.slice(0, q);
+  // Swap the video extension for .jpg (Cloudinary renders the frame as JPEG).
+  tail = tail.replace(/\.(mp4|mov|webm|m4v)$/i, ".jpg");
+  if (!/\.jpg$/i.test(tail)) tail = `${tail}.jpg`;
+  return `${head}so_0/${tail}`;
+};
