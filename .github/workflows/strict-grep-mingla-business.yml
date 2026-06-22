@@ -129,6 +129,7 @@ on:
 #   - I-NO-BIZ-GOOGLE-PLACES-AUTOCOMPLETE (i-no-biz-google-places-autocomplete.mjs) — the 4 dead Google files are gone + no mingla-business/src ref, BUT GOOGLE_MAPS_API_KEY still present in a keep-list edge fn (P0 guard); self-tested (ORCH-1079 INV-2)
 #   - I-MAPBOX-SUGGEST-NO-TYPES-FILTER (i-mapbox-suggest-no-types-filter.mjs) — mapbox-geocode suggest call stays filter-free so POIs/venues resolve by name; self-tested (ORCH-1079 INV-3)
 #   - I-GIPHY-KEY-WIRED (i-giphy-key-wired.mjs) — app.config.ts carries the GIPHY fail-loud config-eval guard + .env.example documents EXPO_PUBLIC_GIPHY_API_KEY; self-tested (ORCH-1116 — DRAFT until CLOSE)
+#   - I-ORCH-1214-BUSINESS-PK-LIVE-BUILD-ACCEPTS-LIVE (orch-1214-business-pk-live-build-accepts-live.mjs) — mingla-business/app.config.ts branch 4 (VERCEL_ENV undefined = native EAS build) accepts a pk_live_ publishable key under MINGLA_STRIPE_MODE=live (asserts the `localValue.startsWith("pk_live_")` acceptance + the `stripeMode !== "live"` guard; rejects the old pk_test_-only hardcode that killed every business prod build); self-tested (ORCH-1214 — DRAFT until CLOSE)
 #   - I-PROPOSED-1137-BIZ-WEB-LUCIDE-REAL (i-proposed-1137-biz-web-lucide-real.mjs) — the biz-WEB lucide shim renders REAL lucide-react icons via a Proxy and NEVER returns undefined for any name (no `() => null` null-stub); metro.config.js still aliases lucide-react-native -> the shim behind `platform === "web"`; self-tested (ORCH-1137 — DRAFT until CLOSE)
 #   - I-PROPOSED-1138-TRIP-RESERVE-STRAIGHT-TO-CART (orch-1138-trip-reserve-straight-to-cart.mjs) — consumer trip detail Reserve opens TicketCartSheet DIRECTLY; no ExpandedBusinessEventSheet import/mount, no dead tripToBusinessEventCard adapter (the duplicate-detail-page hop is forbidden); self-tested via ORCH1138_SIMULATE_REVERT (ORCH-1138 — DRAFT until CLOSE)
 #   - I-PROPOSED-1136-WEB-SHEET-CSS-TRANSITION (i-proposed-1136-web-sheet-css-transition.mjs) — the 5 shared biz-WEB sheet/overlay primitives (TopSheet, Sheet.web, SheetMobile, Modal, Toast) drive their WEB open/close animation via a compositor CSS `transition` on transform/opacity (NOT a withTiming/withSpring useAnimatedStyle on the web main-thread rAF, which freezes under a heavy-page long task); no height/layout property is animated on the web sheet path; native keeps reanimated (web-gated via Platform.OS==='web'); self-tested (ORCH-1136 R3 — DRAFT until CLOSE)
@@ -2338,6 +2339,19 @@ jobs:
         run: node .github/scripts/strict-grep/i-giphy-key-wired.mjs --self-test
       - name: Run ORCH-1116 giphy-key-wired gate
         run: node .github/scripts/strict-grep/i-giphy-key-wired.mjs
+
+  orch-1214-business-pk-live-build-accepts-live:
+    name: "ORCH-1214: business app.config.ts branch 4 accepts pk_live_ under live mode (I-ORCH-1214-BUSINESS-PK-LIVE-BUILD-ACCEPTS-LIVE)"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Run ORCH-1214 pk-live-build-accepts-live self-test
+        run: node .github/scripts/strict-grep/orch-1214-business-pk-live-build-accepts-live.mjs --self-test
+      - name: Run ORCH-1214 pk-live-build-accepts-live gate
+        run: node .github/scripts/strict-grep/orch-1214-business-pk-live-build-accepts-live.mjs
 
   orch-1120-published-refund-via-gated-rpc:
     name: "ORCH-1120: published refund/deadline/bookings-closed via gated RPC (I-PROPOSED-1120-PUBLISHED-REFUND-DEADLINE-VIA-GATED-RPC)"
