@@ -1,4 +1,4 @@
--- ORCH-1199 — Admin API-Health Hub + Email Alerts.
+-- ORCH-1201 — Admin API-Health Hub + Email Alerts.
 --
 -- Builds the canonical monitored-service registry + per-tick health checks +
 -- passive observations + alert state machine + a small kv meta table, all
@@ -9,7 +9,7 @@
 -- digest cooldown is stored in a dedicated kv table `api_health_meta`
 -- (key='last_digest_at'), NOT a `_digest` pseudo-row in `api_health_services`.
 -- This keeps `api_health_services` pure (one owner = REAL services only) and
--- satisfies I-PROPOSED-1199-SERVICE-KEY-CANONICAL with no pseudo-row to filter.
+-- satisfies I-PROPOSED-1201-SERVICE-KEY-CANONICAL with no pseudo-row to filter.
 --
 -- Idempotent: IF NOT EXISTS / ON CONFLICT / unschedule-then-schedule. Vault
 -- secret names are the canonical `supabase_url` + `service_role_key` (D0.4).
@@ -19,7 +19,7 @@
 -- ════════════════════════════════════════════════════════════════════════
 
 -- ── api_health_services: the ONE owner of the monitored-service list ──
--- (Invariant I-PROPOSED-1199-SERVICE-KEY-CANONICAL — real services only.)
+-- (Invariant I-PROPOSED-1201-SERVICE-KEY-CANONICAL — real services only.)
 CREATE TABLE IF NOT EXISTS public.api_health_services (
   service_key  text PRIMARY KEY,
   display_name text NOT NULL,
@@ -220,18 +220,18 @@ GRANT EXECUTE ON FUNCTION public.admin_get_api_health_incidents(text,int) TO aut
 -- ════════════════════════════════════════════════════════════════════════
 DO $$ BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_extension WHERE extname='pg_cron') THEN
-    RAISE EXCEPTION 'ORCH-1199: pg_cron extension required — operator must enable before apply'; END IF;
+    RAISE EXCEPTION 'ORCH-1201: pg_cron extension required — operator must enable before apply'; END IF;
   IF NOT EXISTS (SELECT 1 FROM pg_extension WHERE extname='pg_net') THEN
-    RAISE NOTICE 'ORCH-1199: pg_net missing — net.http_post will fail at runtime; enable pg_net'; END IF;
+    RAISE NOTICE 'ORCH-1201: pg_net missing — net.http_post will fail at runtime; enable pg_net'; END IF;
 END $$;
 
 DO $$ BEGIN
-  IF EXISTS (SELECT 1 FROM cron.job WHERE jobname='orch_1199_api_health_probe')
-  THEN PERFORM cron.unschedule('orch_1199_api_health_probe'); END IF;
+  IF EXISTS (SELECT 1 FROM cron.job WHERE jobname='orch_1201_api_health_probe')
+  THEN PERFORM cron.unschedule('orch_1201_api_health_probe'); END IF;
 END $$;
 
 SELECT cron.schedule(
-  'orch_1199_api_health_probe',
+  'orch_1201_api_health_probe',
   '0 * * * *',
   $cron$
   SELECT net.http_post(
@@ -250,13 +250,13 @@ SELECT cron.schedule(
 -- 5. SELF-VERIFICATION PROBE
 -- ════════════════════════════════════════════════════════════════════════
 DO $$ BEGIN
-  IF NOT EXISTS (SELECT 1 FROM cron.job WHERE jobname='orch_1199_api_health_probe' AND schedule='0 * * * *') THEN
-    RAISE EXCEPTION 'ORCH-1199 verify: hourly probe cron not scheduled';
+  IF NOT EXISTS (SELECT 1 FROM cron.job WHERE jobname='orch_1201_api_health_probe' AND schedule='0 * * * *') THEN
+    RAISE EXCEPTION 'ORCH-1201 verify: hourly probe cron not scheduled';
   END IF;
   IF (SELECT count(*) FROM public.api_health_services) <> 25 THEN
-    RAISE EXCEPTION 'ORCH-1199 verify: expected 25 monitored services (no pseudo-rows)';
+    RAISE EXCEPTION 'ORCH-1201 verify: expected 25 monitored services (no pseudo-rows)';
   END IF;
   IF NOT EXISTS (SELECT 1 FROM public.api_health_meta WHERE key='last_digest_at') THEN
-    RAISE EXCEPTION 'ORCH-1199 verify: api_health_meta last_digest_at row missing';
+    RAISE EXCEPTION 'ORCH-1201 verify: api_health_meta last_digest_at row missing';
   END IF;
 END $$;

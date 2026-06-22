@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * I-PROPOSED-1199-ALERT-EMAIL-SINGLE-OWNER (DRAFT) — ORCH-1199.
+ * I-PROPOSED-1201-ALERT-EMAIL-SINGLE-OWNER (DRAFT) — ORCH-1201.
  *
  * The api-health hub sends operator alerts ONLY through `sendOpsAlertEmail`.
  * No new Resend EMAIL-SEND path inside the api-health-probe edge fn.
@@ -40,7 +40,7 @@ const walk = (dir) => {
 };
 
 if (!existsSync(fnDir)) {
-  console.error("I-PROPOSED-1199-ALERT-EMAIL-SINGLE-OWNER: api-health-probe dir missing");
+  console.error("I-PROPOSED-1201-ALERT-EMAIL-SINGLE-OWNER: api-health-probe dir missing");
   process.exit(1);
 }
 
@@ -59,8 +59,8 @@ if (!sawSendOpsAlert) {
 }
 
 if (failures.length > 0) {
-  console.error("I-PROPOSED-1199-ALERT-EMAIL-SINGLE-OWNER gate failed:");
+  console.error("I-PROPOSED-1201-ALERT-EMAIL-SINGLE-OWNER gate failed:");
   for (const f of failures) console.error(`- ${f}`);
   process.exit(1);
 }
-console.log("I-PROPOSED-1199-ALERT-EMAIL-SINGLE-OWNER gate passed.");
+console.log("I-PROPOSED-1201-ALERT-EMAIL-SINGLE-OWNER gate passed.");

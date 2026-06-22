@@ -1,4 +1,4 @@
-// ORCH-1199 — I-PROPOSED-1199-NO-FABRICATED-HEALTH UI unit test.
+// ORCH-1201 — I-PROPOSED-1201-NO-FABRICATED-HEALTH UI unit test.
 // The board NEVER renders a green/healthy dot for a service with no signal;
 // `unknown`/empty → grey. `alerting` forces red.
 //
@@ -14,7 +14,7 @@ const AMBER = "bg-[#f59e0b]";
 const RED = "bg-[#ef4444]";
 const GREY = "bg-[var(--gray-400)]";
 
-describe("ORCH-1199 — no fabricated health (status dot derivation)", () => {
+describe("ORCH-1201 — no fabricated health (status dot derivation)", () => {
   it("empty layers → grey, NEVER green", () => {
     assert.equal(statusDotClass({}, "ok"), GREY);
     assert.notEqual(statusDotClass({}, "ok"), GREEN);

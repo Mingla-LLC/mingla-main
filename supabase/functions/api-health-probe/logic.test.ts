@@ -1,4 +1,4 @@
-// ORCH-1199 — Implementor regression tests (deno test) for the pure probe logic.
+// ORCH-1201 — Implementor regression tests (deno test) for the pure probe logic.
 // Run: deno test supabase/functions/api-health-probe/logic.test.ts
 //
 // Fails-on-revert proof targets (SPEC §8.1 items 2/3/4):

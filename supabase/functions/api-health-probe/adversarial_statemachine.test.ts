@@ -1,4 +1,4 @@
-// ORCH-1199 — TESTER ADVERSARIAL test (different angle than the implementor's).
+// ORCH-1201 — TESTER ADVERSARIAL test (different angle than the implementor's).
 //
 // The implementor's logic.test.ts tests each pure decision function ONCE, in
 // isolation. This test instead THREADS STATE ACROSS MANY TICKS exactly as the

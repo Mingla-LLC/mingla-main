@@ -2760,35 +2760,35 @@ jobs:
       - name: Run ORCH-1193 sheet-body-scroll-bounded gate
         run: node .github/scripts/strict-grep/orch-1193-sheet-body-scroll-bounded.mjs
 
-  orch-1199-alert-email-single-owner:
-    name: "I-PROPOSED-1199-ALERT-EMAIL-SINGLE-OWNER: api-health-probe sends operator alerts ONLY via sendOpsAlertEmail (no new Resend email-SEND path)"
+  orch-1201-alert-email-single-owner:
+    name: "I-PROPOSED-1201-ALERT-EMAIL-SINGLE-OWNER: api-health-probe sends operator alerts ONLY via sendOpsAlertEmail (no new Resend email-SEND path)"
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: "20"
-      - name: Run ORCH-1199 alert-email-single-owner gate
-        run: node .github/scripts/strict-grep/i-proposed-1199-alert-email-single-owner.mjs
+      - name: Run ORCH-1201 alert-email-single-owner gate
+        run: node .github/scripts/strict-grep/i-proposed-1201-alert-email-single-owner.mjs
 
-  orch-1199-probe-no-write-side-effects:
-    name: "I-PROPOSED-1199-PROBE-NO-WRITE-SIDE-EFFECTS: synthetic probes read-only against vendors (only Serper search + Stripe/Paystack SDK reads); recordApiCall fire-and-forget across the 6 _shared wraps"
+  orch-1201-probe-no-write-side-effects:
+    name: "I-PROPOSED-1201-PROBE-NO-WRITE-SIDE-EFFECTS: synthetic probes read-only against vendors (only Serper search + Stripe/Paystack SDK reads); recordApiCall fire-and-forget across the 6 _shared wraps"
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: "20"
-      - name: Run ORCH-1199 probe-no-write-side-effects gate
-        run: node .github/scripts/strict-grep/i-proposed-1199-probe-no-write-side-effects.mjs
+      - name: Run ORCH-1201 probe-no-write-side-effects gate
+        run: node .github/scripts/strict-grep/i-proposed-1201-probe-no-write-side-effects.mjs
 
-  orch-1199-service-key-canonical:
-    name: "I-PROPOSED-1199-SERVICE-KEY-CANONICAL: api_health_services is the ONE owner of the monitored-service list (25 real services, no _digest pseudo-row); every probe service_key is seeded"
+  orch-1201-service-key-canonical:
+    name: "I-PROPOSED-1201-SERVICE-KEY-CANONICAL: api_health_services is the ONE owner of the monitored-service list (25 real services, no _digest pseudo-row); every probe service_key is seeded"
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: "20"
-      - name: Run ORCH-1199 service-key-canonical gate
-        run: node .github/scripts/strict-grep/i-proposed-1199-service-key-canonical.mjs
+      - name: Run ORCH-1201 service-key-canonical gate
+        run: node .github/scripts/strict-grep/i-proposed-1201-service-key-canonical.mjs

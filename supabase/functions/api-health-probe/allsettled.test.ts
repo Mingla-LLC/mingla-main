@@ -1,4 +1,4 @@
-// ORCH-1199 — allSettled isolation proof (SPEC §8.1 item 2 / §2.4).
+// ORCH-1201 — allSettled isolation proof (SPEC §8.1 item 2 / §2.4).
 // The probe fan-out MUST use Promise.allSettled so one dead/rejecting vendor
 // never drops the other services' rows or throws the tick.
 //

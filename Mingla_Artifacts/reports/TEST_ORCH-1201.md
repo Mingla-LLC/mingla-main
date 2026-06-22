@@ -1,7 +1,7 @@
-# TEST REPORT — ORCH-1199 Admin API-Health Hub + Email Alerts
+# TEST REPORT — ORCH-1201 Admin API-Health Hub + Email Alerts
 
 **Phase:** TEST (brutal production gatekeeper). Assumed-broken-until-proven.
-**Worktree/branch:** `/Users/sethogieva/Desktop/mingla-orchs/ORCH-1199-[api-health-hub]/` · `ORCH-1199-api-health-hub`
+**Worktree/branch:** `/Users/sethogieva/Desktop/mingla-orchs/ORCH-1201-[api-health-hub]/` · `ORCH-1201-api-health-hub`
 **Date:** 2026-06-21
 **Tester commit:** `369e5f59a` (adversarial tests, append-only, DIFFERENT angle than implementor)
 **Implementor commits under test:** `e3dea6ca2` (core), `3e3d3ff2d` (allSettled), `dd42388a6` (report)
@@ -23,13 +23,13 @@ The implementation is correct and well-built at every layer I could test statica
 | 5 | **No fabricated data** | `computeEffectiveStatus`: zero rows → `unknown`+no-alert; unknown+down → surfaces `down` (not masked); unknown+healthy → `healthy` (not faked-down); all-unknown across 10 ticks → 0 emails. Admin UI (`statusDotClass`/`worstOfLayers`, single owner imported by `ApiHealthPage`) → empty/unknown = grey "No signal yet", never green. | **VERIFIED** |
 | 6 | **Layer-C fire-and-forget** | All 6 wrap sites use `void recordApiCall(...)` (grep-confirmed, zero `await recordApiCall` on any host path). Stripe + `notifyV2.ts` NOT wired. Adversarial test: hostile args (NaN/Infinity/negative latency, empty/500-char key, undefined http) never throw; bad-host insert swallowed; wrapped-client return value unchanged + returns in <1s (not blocked). | **VERIFIED** |
 | 7 | **Digest via api_health_meta (NO `_digest` pseudo-row)** | `api_health_services` seeds exactly 25 REAL services; the only `_digest` strings are comments documenting its absence. Digest gated on `api_health_meta.last_digest_at`. Verified the jsonb round-trip on real Postgres: seed `null` (JS typeof≠string→NaN→fires) ; post-send jsonb string (typeof===string→parses→gates within 20h). | **VERIFIED** |
-| 8 | **Canonical service_key** | Gate `i-proposed-1199-service-key-canonical` PASS (25 services, 19 probe keys ⊆ seeded). 4 dead services (Foursquare/Eventbrite/OpenWeatherMap/Firebase) absent from migration + edge fn. Both OneSignal apps surfaced separately (distinct app-id/key env per tile). DB FK on checks/alert_state → services. | **VERIFIED** |
+| 8 | **Canonical service_key** | Gate `i-proposed-1201-service-key-canonical` PASS (25 services, 19 probe keys ⊆ seeded). 4 dead services (Foursquare/Eventbrite/OpenWeatherMap/Firebase) absent from migration + edge fn. Both OneSignal apps surfaced separately (distinct app-id/key env per tile). DB FK on checks/alert_state → services. | **VERIFIED** |
 | 9 | **Mode correctness** | `detail.mode` sourced from `resolveStripeMode()` / `resolvePaystackMode()` — no hardcoded `"test"`/`"live"`. | **VERIFIED** (source); runtime mode value DEPLOY-GATED. |
 | — | **Webhook freshness column names** | Verified against real schemas: `payment_webhook_events.created_at` ✓, `event_cover_video_jobs.created_at` ✓, `twilio_message_status_events.received_at` ✓, `notification_deliveries`{`provider`,`status`,`attempt_at`} ✓ (implementor's `created_at`→`attempt_at` correction is right; `created_at` does NOT exist on that table). | **VERIFIED** |
 | — | **allSettled isolation** | Existing + re-run: one rejecting probe drops only itself; `Promise.all` revert drops all. Handler uses `allSettled` for both Layer-A/B. | **VERIFIED** |
 | — | **Sidebar reconciliation 10→17 / 16→17** | Runtime `NAV_ITEMS.length===17` and the list matches `EXPECTED_IDS` exactly; `api-health` genuinely sits between `stripe-mode` and `settings`. NOT count-fudged — assertions equal the real array. `orch1014` 10→17 reconciliation legit (test deepEquals real nav; load-bearing photo-* deletions preserved). | **VERIFIED** |
 | — | **Full regression** | 40 deno tests pass (17 logic + 2 allsettled + 2 apiHealthLog + 16 adversarial-statemachine + 3 adversarial-recordApiCall). 22 admin node tests pass (sidebar×2 + apiHealthStatus). `npm test` default 19 pass. 3 strict-grep gates pass. `deno check` clean on edge fn + all 6 wrapped clients + both adversarial files. | **VERIFIED** |
-| — | **Blast radius** | The 4 ORCH-1199 commits touch ZERO `app-mobile/`, `mingla-business/`, `mingla-marketing/` files (`git log origin/main..HEAD -- mingla-business/` empty; the 1197 files in the raw diff are pre-existing on origin/main). | **VERIFIED** |
+| — | **Blast radius** | The 4 ORCH-1201 commits touch ZERO `app-mobile/`, `mingla-business/`, `mingla-marketing/` files (`git log origin/main..HEAD -- mingla-business/` empty; the 1197 files in the raw diff are pre-existing on origin/main). | **VERIFIED** |
 
 ## What is DEPLOY-GATED (cannot be live-fired pre-deploy)
 
@@ -70,7 +70,7 @@ The implementation is correct and well-built at every layer I could test statica
 6. **Alert email:** drive 2 consecutive `down` ticks for one service (e.g. point a probe at a bad endpoint or temporarily set a threshold) → confirm exactly ONE `⚠️ [API HEALTH] … is DOWN` email arrives at **seth@usemingla.com**; a 3rd down tick within 6h → NO new email; recovery tick → ONE `✅ … recovered`.
 7. **Digest:** at the 13:00 UTC tick, confirm ONE `📊 Daily digest` email; a second 13:00 run same day → suppressed (api_health_meta gate).
 8. **Board render:** open admin `#/api-health` as an admin → cards render per category, `unknown` services grey "No signal yet" (never green), `down` red, balances shown for twilio/cloudinary/paystack/pexels, "Last probe Nm ago", 60s auto-refresh. As a NON-admin → error state, no data (RPC `not_authorized`).
-9. Flip the 4 I-PROPOSED-1199-* invariants to ACTIVE; register in INVARIANT_REGISTRY.
+9. Flip the 4 I-PROPOSED-1201-* invariants to ACTIVE; register in INVARIANT_REGISTRY.
 10. (P2) Add the 3 admin node tests to the mingla-admin test script / a CI job.
 
 ## Bottom line

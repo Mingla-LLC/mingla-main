@@ -1,11 +1,11 @@
-# SPEC — ORCH-1199 Admin API-Health Hub + Email Alerts
+# SPEC — ORCH-1201 Admin API-Health Hub + Email Alerts
 
 **Phase:** SPEC (binding build contract). The implementor executes this verbatim — no guessing, no scope widening.
-**Worktree:** `/Users/sethogieva/Desktop/mingla-orchs/ORCH-1199-[api-health-hub]/` · branch `ORCH-1199-api-health-hub`
+**Worktree:** `/Users/sethogieva/Desktop/mingla-orchs/ORCH-1201-[api-health-hub]/` · branch `ORCH-1201-api-health-hub`
 **Date:** 2026-06-21
 **Inputs (authoritative, already read):**
-- `Mingla_Artifacts/ORCH-1199_API_INVENTORY.md` (inventory + LOCKED DECISIONS)
-- `Mingla_Artifacts/investigations/INVESTIGATE_ORCH-1199_api_health.md` (evidence, §8a-8h schema sketch, probe table, chokepoints)
+- `Mingla_Artifacts/ORCH-1201_API_INVENTORY.md` (inventory + LOCKED DECISIONS)
+- `Mingla_Artifacts/investigations/INVESTIGATE_ORCH-1201_api_health.md` (evidence, §8a-8h schema sketch, probe table, chokepoints)
 
 **Mandate:** No assumptions, deep research, drive to completion. This is a contract — every path, signature, column, default, URL, and acceptance criterion below is binding.
 
@@ -28,7 +28,7 @@
 
 ## 1. MIGRATION
 
-**File:** `supabase/migrations/<PREFIX>_orch_1199_api_health_hub.sql`
+**File:** `supabase/migrations/<PREFIX>_orch_1201_api_health_hub.sql`
 
 **PREFIX RULE:** Current max prefix in this worktree = `20261118000000`. **Use `20261119000000`.** RE-CHECK at implement time: run `ls supabase/migrations/ | sort | tail -5` against the LATEST origin/main (META-ORCH/COMMS collision history — see MEMORY migration-version-prefix collisions). If `20261119000000` is taken, bump to the next free `2026111Z000000` monotonic slot and note it in the implementation report.
 
@@ -80,7 +80,7 @@ CREATE TABLE IF NOT EXISTS public.api_health_alert_state (
 );
 ```
 
-**`service_key` canonical owner table (the ONE owner of the monitored-service list — Invariant I-PROPOSED-1199-SERVICE-KEY-CANONICAL):**
+**`service_key` canonical owner table (the ONE owner of the monitored-service list — Invariant I-PROPOSED-1201-SERVICE-KEY-CANONICAL):**
 
 ```sql
 CREATE TABLE IF NOT EXISTS public.api_health_services (
@@ -248,18 +248,18 @@ GRANT EXECUTE ON FUNCTION public.admin_get_api_health_incidents(text,int) TO aut
 ```sql
 DO $$ BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_extension WHERE extname='pg_cron') THEN
-    RAISE EXCEPTION 'ORCH-1199: pg_cron extension required — operator must enable before apply'; END IF;
+    RAISE EXCEPTION 'ORCH-1201: pg_cron extension required — operator must enable before apply'; END IF;
   IF NOT EXISTS (SELECT 1 FROM pg_extension WHERE extname='pg_net') THEN
-    RAISE NOTICE 'ORCH-1199: pg_net missing — net.http_post will fail at runtime; enable pg_net'; END IF;
+    RAISE NOTICE 'ORCH-1201: pg_net missing — net.http_post will fail at runtime; enable pg_net'; END IF;
 END $$;
 
 DO $$ BEGIN
-  IF EXISTS (SELECT 1 FROM cron.job WHERE jobname='orch_1199_api_health_probe')
-  THEN PERFORM cron.unschedule('orch_1199_api_health_probe'); END IF;
+  IF EXISTS (SELECT 1 FROM cron.job WHERE jobname='orch_1201_api_health_probe')
+  THEN PERFORM cron.unschedule('orch_1201_api_health_probe'); END IF;
 END $$;
 
 SELECT cron.schedule(
-  'orch_1199_api_health_probe',
+  'orch_1201_api_health_probe',
   '0 * * * *',
   $cron$
   SELECT net.http_post(
@@ -281,11 +281,11 @@ SELECT cron.schedule(
 
 ```sql
 DO $$ BEGIN
-  IF NOT EXISTS (SELECT 1 FROM cron.job WHERE jobname='orch_1199_api_health_probe' AND schedule='0 * * * *') THEN
-    RAISE EXCEPTION 'ORCH-1199 verify: hourly probe cron not scheduled';
+  IF NOT EXISTS (SELECT 1 FROM cron.job WHERE jobname='orch_1201_api_health_probe' AND schedule='0 * * * *') THEN
+    RAISE EXCEPTION 'ORCH-1201 verify: hourly probe cron not scheduled';
   END IF;
   IF (SELECT count(*) FROM public.api_health_services WHERE service_key <> '_digest') <> 25 THEN
-    RAISE EXCEPTION 'ORCH-1199 verify: expected 25 monitored services';
+    RAISE EXCEPTION 'ORCH-1201 verify: expected 25 monitored services';
   END IF;
 END $$;
 ```
@@ -432,7 +432,7 @@ For services exposing balance, compare to threshold; on `ok`→`low` transition 
 | paystack | `/balance` data[0].balance (subunits) | `< 100000` (₦1,000) | `API_HEALTH_PAYSTACK_MIN_BALANCE` |
 | pexels | `X-Ratelimit-Remaining` | `< 100` | `API_HEALTH_PEXELS_MIN_RATE` |
 
-### 3.6 Email send — reuse `sendOpsAlertEmail` ONLY (D0.6, I-PROPOSED-1199-ALERT-EMAIL-SINGLE-OWNER)
+### 3.6 Email send — reuse `sendOpsAlertEmail` ONLY (D0.6, I-PROPOSED-1201-ALERT-EMAIL-SINGLE-OWNER)
 ```ts
 import { sendOpsAlertEmail } from "../_shared/stripeOpsAlertEmail.ts";
 function alertRecipients(): string[] {
@@ -599,10 +599,10 @@ verify_jwt = false
 
 | ID | Statement | Enforcement |
 |---|---|---|
-| **I-PROPOSED-1199-ALERT-EMAIL-SINGLE-OWNER** | The api-health hub sends operator alerts ONLY through `sendOpsAlertEmail`; no new Resend/`fetch("api.resend.com")` path in `api-health-probe`. | strict-grep: `rg "api.resend.com\|RESEND_API_URL" supabase/functions/api-health-probe` must return 0; `rg "sendOpsAlertEmail" supabase/functions/api-health-probe/index.ts` must return ≥1. |
-| **I-PROPOSED-1199-PROBE-NO-WRITE-SIDE-EFFECTS** | Synthetic probes are read-only against vendors (no POST that mutates vendor state) and `recordApiCall` never throws into the host call. EXCEPTION: the Serper liveness POST is a read-only search (no mutation). | grep: in `api-health-probe`, the only non-GET vendor calls allowed are `serper` search + the Stripe/Paystack SDK reads; a test asserts `recordApiCall` swallows a forced insert error. |
-| **I-PROPOSED-1199-SERVICE-KEY-CANONICAL** | `public.api_health_services` is the ONE owner of the monitored-service list. Every `service_key` used by the probe and the UI must exist as a seeded row; `api_health_checks.service_key` + `api_health_alert_state.service_key` are FK-constrained to it. | DB FK constraints (migration §1.1) + a test that the probe's STATUS_PAGE_URLS/probe keys ⊆ seeded services. |
-| **I-PROPOSED-1199-NO-FABRICATED-HEALTH** | The admin UI never renders a green/healthy indicator for a service with no signal; `unknown`→grey. | UI unit test: feed a service with empty `layers` → dot class is the grey/unknown variant, not healthy. |
+| **I-PROPOSED-1201-ALERT-EMAIL-SINGLE-OWNER** | The api-health hub sends operator alerts ONLY through `sendOpsAlertEmail`; no new Resend/`fetch("api.resend.com")` path in `api-health-probe`. | strict-grep: `rg "api.resend.com\|RESEND_API_URL" supabase/functions/api-health-probe` must return 0; `rg "sendOpsAlertEmail" supabase/functions/api-health-probe/index.ts` must return ≥1. |
+| **I-PROPOSED-1201-PROBE-NO-WRITE-SIDE-EFFECTS** | Synthetic probes are read-only against vendors (no POST that mutates vendor state) and `recordApiCall` never throws into the host call. EXCEPTION: the Serper liveness POST is a read-only search (no mutation). | grep: in `api-health-probe`, the only non-GET vendor calls allowed are `serper` search + the Stripe/Paystack SDK reads; a test asserts `recordApiCall` swallows a forced insert error. |
+| **I-PROPOSED-1201-SERVICE-KEY-CANONICAL** | `public.api_health_services` is the ONE owner of the monitored-service list. Every `service_key` used by the probe and the UI must exist as a seeded row; `api_health_checks.service_key` + `api_health_alert_state.service_key` are FK-constrained to it. | DB FK constraints (migration §1.1) + a test that the probe's STATUS_PAGE_URLS/probe keys ⊆ seeded services. |
+| **I-PROPOSED-1201-NO-FABRICATED-HEALTH** | The admin UI never renders a green/healthy indicator for a service with no signal; `unknown`→grey. | UI unit test: feed a service with empty `layers` → dot class is the grey/unknown variant, not healthy. |
 
 Add the strict-grep checks to the existing gate runner pattern (e.g. a `scripts/`/`__tests__` mjs gate like the project's `orch-1130-no-buyer-tax-form.mjs` precedent). The implementor locates the gate harness and registers these.
 
@@ -624,7 +624,7 @@ Add the strict-grep checks to the existing gate runner pattern (e.g. a `scripts/
 
 **Admin (vitest/node):**
 10. Service file maps RPC error → thrown `Error` with message.
-11. Page renders loading→data→error states; `unknown` service → grey dot (I-PROPOSED-1199-NO-FABRICATED-HEALTH).
+11. Page renders loading→data→error states; `unknown` service → grey dot (I-PROPOSED-1201-NO-FABRICATED-HEALTH).
 12. Sidebar count tests updated to new totals and passing.
 
 ### 8.2 Tester adversarial tests (different angle — assume broken)
