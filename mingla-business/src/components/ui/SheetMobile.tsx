@@ -466,6 +466,72 @@ const SheetMobilePanelInner: React.FC<SheetMobilePanelInnerProps> = ({
   </>
   );
 
+// ORCH-1197: web-only VISIBLE-viewport height. On iOS Safari the LAYOUT viewport
+// (`Dimensions.get("window").height` / `window.innerHeight` / `100vh`) is TALLER
+// than the VISIBLE area by the height of the dynamic bottom toolbar, so sizing a
+// bottom-anchored panel off the layout height pushes the panel (and its CTA) below
+// the visible area, behind the toolbar. `window.visualViewport.height` is the
+// VISIBLE height (toolbar excluded) — use it on web so the panel is bounded to and
+// anchored at the visible bottom. Tracks the toolbar showing/hiding via the
+// visualViewport `resize` event. Native is unaffected (this hook is web-only).
+interface WebViewportMetrics {
+  /** Visible (visual) viewport height — toolbar excluded. Panel SIZE bound. */
+  visibleHeight: number;
+  /** Layout viewport height (`window.innerHeight`) — the Modal absoluteFill's
+   *  actual pixel height; the `bottom:0` dock anchors to THIS bottom. */
+  layoutHeight: number;
+  /** Gap between layout bottom and visible bottom = the dynamic toolbar height. */
+  toolbarOffset: number;
+}
+
+const useWebViewportMetrics = (fallbackHeight: number): WebViewportMetrics => {
+  const read = (): WebViewportMetrics => {
+    if (Platform.OS !== "web") {
+      return { visibleHeight: fallbackHeight, layoutHeight: fallbackHeight, toolbarOffset: 0 };
+    }
+    const g = globalThis as unknown as {
+      visualViewport?: { height: number };
+      innerHeight?: number;
+    };
+    const inner = typeof g.innerHeight === "number" && g.innerHeight > 0 ? g.innerHeight : fallbackHeight;
+    const visible =
+      g.visualViewport !== undefined && typeof g.visualViewport.height === "number" && g.visualViewport.height > 0
+        ? g.visualViewport.height
+        : inner;
+    return { visibleHeight: visible, layoutHeight: inner, toolbarOffset: Math.max(inner - visible, 0) };
+  };
+  const [metrics, setMetrics] = useState<WebViewportMetrics>(read);
+  useEffect(() => {
+    if (Platform.OS !== "web") return;
+    const vv = (
+      globalThis as unknown as {
+        visualViewport?: {
+          addEventListener?: (t: string, l: () => void) => void;
+          removeEventListener?: (t: string, l: () => void) => void;
+        };
+      }
+    ).visualViewport;
+    const onResize = (): void => setMetrics(read());
+    onResize();
+    vv?.addEventListener?.("resize", onResize);
+    (globalThis as unknown as { addEventListener?: (t: string, l: () => void) => void }).addEventListener?.(
+      "resize",
+      onResize,
+    );
+    return (): void => {
+      vv?.removeEventListener?.("resize", onResize);
+      (globalThis as unknown as { removeEventListener?: (t: string, l: () => void) => void }).removeEventListener?.(
+        "resize",
+        onResize,
+      );
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  return Platform.OS === "web"
+    ? metrics
+    : { visibleHeight: fallbackHeight, layoutHeight: fallbackHeight, toolbarOffset: 0 };
+};
+
 // ORCH-1136 R3: web reduced-motion read (no reanimated hook on the web path).
 const useWebReducedMotion = (): boolean => {
   const [reduced, setReduced] = useState<boolean>(false);
@@ -521,7 +587,15 @@ const SheetWeb: React.FC<SheetProps> = ({
   style,
   panelBackground,
 }) => {
-  const screenHeight = Dimensions.get("window").height;
+  // ORCH-1197: size + anchor the panel against the VISIBLE (visual) viewport, not
+  // the LAYOUT viewport. The Modal's absoluteFill fills `window.innerHeight` (the
+  // layout height), which on iOS Safari is TALLER than the visible area by the
+  // dynamic bottom toolbar — so a `bottom:0` dock lands the panel partly behind the
+  // toolbar. `visibleHeight` bounds the panel SIZE; `toolbarOffset` lifts it so its
+  // bottom aligns to the visible bottom (both are no-ops on desktop / no toolbar).
+  const { visibleHeight: screenHeight, layoutHeight, toolbarOffset } = useWebViewportMetrics(
+    Dimensions.get("window").height,
+  );
   const { width: windowWidth } = useWindowDimensions();
   const insets = useSafeAreaInsets();
   const requestedSheetHeight =
@@ -597,17 +671,33 @@ const SheetWeb: React.FC<SheetProps> = ({
   const blurOk = shouldUseRealBlur(windowWidth);
   const blurIntensity = blurIntensityTokens.cardElevated;
 
+  // ORCH-1197: the dock is `position:absolute; bottom:0` inside an absoluteFill
+  // sized to the LAYOUT viewport (`window.innerHeight`). On iOS Safari the dynamic
+  // bottom toolbar overlays the layout bottom, so `bottom:0` lands BEHIND the
+  // toolbar. Lift the panel by `toolbarOffset` (layout − visible) via its OPEN
+  // resting transform so its bottom aligns to the VISIBLE bottom (the panel is
+  // already height-bounded to the visible viewport above). Riding the existing
+  // transform pipeline keeps the open/close animation intact and avoids the
+  // react-native-web atomic-class `bottom` merge conflict.
+  void layoutHeight;
+  const openTranslateY = -toolbarOffset;
+
   const dur = animateOpen ? SHEET_OPEN_DURATION : SHEET_CLOSE_DURATION;
   const ease = animateOpen ? SHEET_OPEN_EASE_CSS : SHEET_CLOSE_EASE_CSS;
   const panelWebStyle = {
     transition: reduceMotion ? `opacity ${dur}ms ${ease}` : `transform ${dur}ms ${ease}`,
     transform: reduceMotion
-      ? "translateY(0px)"
+      ? `translateY(${openTranslateY}px)`
       : animateOpen
-        ? "translateY(0px)"
+        ? `translateY(${openTranslateY}px)`
         : `translateY(${closedY}px)`,
     opacity: reduceMotion ? (animateOpen ? 1 : 0) : 1,
     willChange: "transform",
+    // ORCH-1197: pad the panel bottom past the iOS home-indicator safe area so the
+    // CTA clears it. `env(safe-area-inset-bottom)` resolves to 0 where there's no
+    // inset (desktop / Android web), so this is a no-op there. CSS string is web-
+    // only — never reaches the native variant.
+    paddingBottom: "env(safe-area-inset-bottom, 0px)",
   } as unknown as ViewStyle;
   const scrimWebStyle = {
     transition: `opacity ${dur}ms ${ease}`,
