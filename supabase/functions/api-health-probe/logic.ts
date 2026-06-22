@@ -163,9 +163,12 @@ interface MinimalCheckRow {
 }
 
 // Worst-of-layers rollup for a service this tick. `unknown` never counts as a
-// failure. `down` worst, then `degraded`, then `healthy`. Webhook-silence
-// `degraded` for stripe/paystack DOES count as a failedTick (matches the
-// existing 6h-silence alert behavior).
+// failure. `down` worst, then `degraded`, then `healthy`. A webhook layer with
+// detail.alert_on_silence===true STILL counts as a failedTick — but ORCH-1213
+// made ALL current payment/info webhook callers (stripe/paystack/cloudinary/twilio)
+// pass alertOnSilence=false, so this branch is now dormant. It is kept as a
+// generic guard for any FUTURE webhook service intentionally registered with
+// alertOnSilence=true. No code change to the branch below (lines ~196-208).
 export function computeEffectiveStatus(rows: MinimalCheckRow[]): {
   effectiveStatus: HealthStatus;
   failedTick: boolean;
@@ -189,12 +192,16 @@ export function computeEffectiveStatus(rows: MinimalCheckRow[]): {
     }
   }
 
-  // failedTick: only `down` drives alerting, EXCEPT webhook-silence degraded.
+  // failedTick: only `down` drives alerting, EXCEPT a webhook-silence `degraded`
+  // row that opted in via detail.alert_on_silence===true. Post-ORCH-1213 no
+  // current caller opts in (all pass alertOnSilence=false), so the else branch
+  // is dormant — kept only as a generic guard for a future opt-in caller.
   let failedTick = false;
   if (worst === "down") {
     failedTick = true;
   } else {
-    // webhook-silence degraded on a webhook layer counts as failed.
+    // webhook-silence degraded on a webhook layer counts as failed ONLY when the
+    // row carries detail.alert_on_silence===true (no current caller — dormant guard).
     const silentWebhook = rows.find(
       (r) => r.layer === "webhook" && r.status === "degraded" && r.detail?.alert_on_silence === true,
     );

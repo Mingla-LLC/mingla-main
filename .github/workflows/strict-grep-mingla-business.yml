@@ -2890,3 +2890,16 @@ jobs:
         run: node .github/scripts/strict-grep/orch-1211-notif-web-render-safe.mjs --self-test
       - name: Run ORCH-1211 notif-web-render-safe gate
         run: node .github/scripts/strict-grep/orch-1211-notif-web-render-safe.mjs
+
+  orch-1213-payment-webhook-silence-info-only:
+    name: "ORCH-1213: payment webhook-silence is info-only — stripe/paystack webhookFreshness pass alertOnSilence=false; no `true` revert (I-PROPOSED-1213-PAYMENT-WEBHOOK-SILENCE-INFO-ONLY)"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Self-test the ORCH-1213 payment-webhook-silence-info-only gate
+        run: node .github/scripts/strict-grep/i-proposed-1213-payment-webhook-silence-info-only.mjs --self-test
+      - name: Run ORCH-1213 payment-webhook-silence-info-only gate
+        run: node .github/scripts/strict-grep/i-proposed-1213-payment-webhook-silence-info-only.mjs
