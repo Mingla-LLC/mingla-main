@@ -40,11 +40,11 @@ const W = (rel, body) => { mkdirSync(dirname(join(root, rel)), { recursive: true
 // --- synthetic marketing App Router tree (adversarial route shapes) ---------
 PAGE('mingla-marketing/app/(explorer)');                 // group index -> "/"
 PAGE('mingla-marketing/app/(blog)/blog/[slug]');         // group-wrapped nested dynamic -> "/blog/[slug]"
-PAGE('mingla-marketing/app/organisers');                 // -> "/organisers"
+PAGE('mingla-marketing/app/business');                   // -> "/business" (renamed from organisers, ORCH-1224)
 PAGE('mingla-marketing/app/support');                    // -> "/support"
 PAGE('mingla-marketing/app/_draft/secret');              // private folder -> MUST NOT be a route
 
-W('mingla-marketing/lib/subdomain.ts', "export const ORGANISER_PATH = '/organisers'\n");
+W('mingla-marketing/lib/subdomain.ts', "export const BUSINESS_PATH = '/business'\n");
 
 // Stage the real gate inside the synthetic repo root (verbatim copy).
 mkdirSync(join(root, '.github/scripts/strict-grep'), { recursive: true });
@@ -55,15 +55,16 @@ const FOOTER = 'mingla-marketing/components/marketing/footer.tsx';
 // Mirror the REAL footer's authoring style: literal hrefs live as object
 // properties (`href: '/...'`), columns are rendered via `href={l.href}`
 // (a variable the gate does not parse as a literal), and the cross-link may
-// use the ORGANISER_PATH symbol. The gate keys off the `href:` colon form.
+// use the BUSINESS_PATH symbol (renamed from ORGANISER_PATH by ORCH-1224). The
+// gate keys off the `href:` colon form.
 const footer = (hrefs) =>
-  `import Link from 'next/link'\nimport { ORGANISER_PATH } from '@/lib/subdomain'\n` +
+  `import Link from 'next/link'\nimport { BUSINESS_PATH } from '@/lib/subdomain'\n` +
   `const cols = [\n` +
-  hrefs.filter((h) => h !== 'ORGANISER_PATH')
+  hrefs.filter((h) => h !== 'BUSINESS_PATH')
     .map((h) => `  { href: '${h}', label: 'x' },`).join('\n') +
   `\n]\n` +
-  (hrefs.includes('ORGANISER_PATH')
-    ? `const crossLink = { href: ORGANISER_PATH, label: 'biz' }\n` : '') +
+  (hrefs.includes('BUSINESS_PATH')
+    ? `const crossLink = { href: BUSINESS_PATH, label: 'biz' }\n` : '') +
   `export function Footer(){ return (<footer>{cols.map((l) => <Link key={l.href} href={l.href}>{l.label}</Link>)}</footer>) }\n`;
 
 const runGate = () => {
@@ -77,16 +78,16 @@ const runGate = () => {
 
 const cases = [
   // name, hrefs, expectedExit (0 accept / 1 reject)
-  ['GOOD: group index "/" + nested dynamic + trailing-slash + ORGANISER_PATH',
-    ['/', '/blog/[slug]', '/support/', 'ORGANISER_PATH'], 0],
+  ['GOOD: group index "/" + nested dynamic + trailing-slash + BUSINESS_PATH',
+    ['/', '/blog/[slug]', '/support/', 'BUSINESS_PATH'], 0],
   ['REJECT: href into a PRIVATE _draft folder (not a real route)',
     ['/', '/_draft/secret'], 1],
   ['REJECT: wrong dynamic shape /blog/anything (literal, not the [slug] route)',
     ['/', '/blog/anything'], 1],
   ['REJECT: plainly fake /ghost',
     ['/', '/ghost'], 1],
-  ['ACCEPT: organisers nested static route, exact',
-    ['/organisers'], 0],
+  ['ACCEPT: business nested static route, exact',
+    ['/business'], 0],
 ];
 
 let failures = 0;
