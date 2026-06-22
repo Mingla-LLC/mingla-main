@@ -1008,7 +1008,15 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     height: 52,
-  },
+    // ORCH-1208: the panel's `touchAction:"none"` does NOT inherit to this
+    // element, so on real touch devices (Samsung/Android Chrome) the browser
+    // computes `touch-action:auto` here and interprets the downward drag as a
+    // page scroll → pointercancel → the dismiss gesture never completes. Pin
+    // `touch-action:none` directly on the drag-catch so the vertical pan is
+    // routed to the pointer handler. Web-only string-cast (never reaches the
+    // native ViewStyle surface); the scrollable body keeps its own scrolling.
+    touchAction: "none",
+  } as unknown as ViewStyle,
   handle: {
     width: 36,
     height: 4,
