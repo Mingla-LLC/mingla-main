@@ -1362,6 +1362,17 @@ function checkNoNewBackendFiles() {
     // tester-authored adversarial regression (ORCH-1045 QA) — same backend dir.
     "supabase/functions/beta-access-lead-submit/__tests__/submit_handler_sideeffects.tester.test.ts",
   ];
+  // ORCH-1216 [Explorer "Get the app" → lead-capture form gated to TestFlight].
+  // Near-clone of ORCH-1045 re-pointed to the consumer/explorer surface. C7 is
+  // scoped to ORCH-0863 marketing; these are the explorer lead-capture backend
+  // touches (new table migration + new public edge fn + its 2 Deno tests). Per
+  // COMMS-0002 — must land in the SAME commit as the migration + edge fn.
+  const ORCH_1216_BACKEND_ALLOWLIST = [
+    "supabase/migrations/20261124000000_orch_1216_explorer_app_leads.sql",
+    "supabase/functions/explorer-app-lead-submit/index.ts",
+    "supabase/functions/explorer-app-lead-submit/__tests__/submit_happy.test.ts",
+    "supabase/functions/explorer-app-lead-submit/__tests__/submit_adversarial.test.ts",
+  ];
   // ORCH-1050 [Brand team invite + accept + ownership transfer]. META-ORCH-1048
   // sub-B. C7 is scoped to ORCH-0863 marketing; these are brand-team invite
   // pipeline backend touches (migration + two edge fns + tests). Per
@@ -1999,6 +2010,7 @@ function checkNoNewBackendFiles() {
     ...ORCH_1050_BACKEND_ALLOWLIST,
     ...ORCH_1044_BACKEND_ALLOWLIST,
     ...ORCH_1045_BACKEND_ALLOWLIST,
+    ...ORCH_1216_BACKEND_ALLOWLIST,
     ...ORCH_1056_BACKEND_ALLOWLIST,
     ...ORCH_1034_BACKEND_ALLOWLIST,
     ...ORCH_1043_BACKEND_ALLOWLIST,
