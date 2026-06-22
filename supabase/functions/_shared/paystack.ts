@@ -22,6 +22,9 @@
  * matching resolveStripeKey.
  */
 
+// ORCH-1201 — Layer-C passive health observation (fire-and-forget, best-effort).
+import { recordApiCall } from "./apiHealthLog.ts";
+
 export type PaystackMode = "test" | "live";
 
 export const PAYSTACK_BASE_URL = "https://api.paystack.co";
@@ -99,11 +102,13 @@ export async function paystackInitializeTransaction(
   }
   if (params.bearer) body.bearer = params.bearer;
 
+  const _t0 = Date.now();
   const res = await fetch(`${PAYSTACK_BASE_URL}/transaction/initialize`, {
     method: "POST",
     headers: { Authorization: `Bearer ${secret}`, "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });
+  void recordApiCall("paystack", res.ok, Date.now() - _t0, res.status); // ORCH-1201 Layer-C
   const json = await res.json().catch(() => ({}));
   if (!res.ok || json?.status !== true) {
     throw new Error(
@@ -118,10 +123,12 @@ export async function paystackVerifyTransaction(
   reference: string,
 ): Promise<Record<string, unknown>> {
   const secret = resolvePaystackSecretKey();
+  const _t0 = Date.now();
   const res = await fetch(
     `${PAYSTACK_BASE_URL}/transaction/verify/${encodeURIComponent(reference)}`,
     { headers: { Authorization: `Bearer ${secret}` } },
   );
+  void recordApiCall("paystack", res.ok, Date.now() - _t0, res.status); // ORCH-1201 Layer-C
   const json = await res.json().catch(() => ({}));
   if (!res.ok || json?.status !== true) {
     throw new Error(

@@ -22,6 +22,9 @@
  * per distinct text per TTL window. Edge-fn cold starts reset it — acceptable.
  */
 
+// ORCH-1201 — Layer-C passive health observation (fire-and-forget, best-effort).
+import { recordApiCall } from "./apiHealthLog.ts";
+
 // https://docs.mapbox.com/api/search/search-box/
 const MAPBOX_SEARCHBOX_BASE = "https://api.mapbox.com/search/searchbox/v1";
 
@@ -90,9 +93,12 @@ export async function forwardGeocodeText(
     `&limit=1`;
 
   let upstream: Response;
+  const _t0 = Date.now();
   try {
     upstream = await fetch(url, { method: "GET" });
+    void recordApiCall("mapbox", upstream.ok, Date.now() - _t0, upstream.status); // ORCH-1201 Layer-C
   } catch (e) {
+    void recordApiCall("mapbox", false, Date.now() - _t0); // ORCH-1201 Layer-C (network error)
     console.warn("[mapboxGeocode] forward fetch error:", e);
     return null; // transient — do not cache
   }

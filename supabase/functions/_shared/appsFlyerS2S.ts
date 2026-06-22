@@ -18,6 +18,9 @@
  * Spec: Mingla_Artifacts/specs/SPEC_ORCH-0808_APPSFLYER_MINGLA_BUSINESS.md §3.2
  */
 
+// ORCH-1201 — Layer-C passive health observation (fire-and-forget, best-effort).
+import { recordApiCall } from "./apiHealthLog.ts";
+
 // deno-lint-ignore no-explicit-any
 type SupabaseClient = any;
 
@@ -162,6 +165,7 @@ export async function postAppsFlyerS2SEvent(
         : "USD",
   };
 
+  const _t0 = Date.now();
   try {
     const res = await fetch(url, {
       method: "POST",
@@ -172,6 +176,7 @@ export async function postAppsFlyerS2SEvent(
       },
       body: JSON.stringify(body),
     });
+    void recordApiCall("appsflyer", res.ok, Date.now() - _t0, res.status); // ORCH-1201 Layer-C
     if (!res.ok) {
       const text = await res.text().catch(() => "<no body>");
       console.warn(
@@ -181,6 +186,7 @@ export async function postAppsFlyerS2SEvent(
     }
     return true;
   } catch (e) {
+    void recordApiCall("appsflyer", false, Date.now() - _t0); // ORCH-1201 Layer-C (network error)
     console.warn(
       `[AppsFlyerS2S] ${input.eventName} POST threw:`,
       e instanceof Error ? e.message : String(e),

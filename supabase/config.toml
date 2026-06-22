@@ -1,5 +1,11 @@
 project_id = "gqnoajqerqhnvulmnyvv"
 
+# ORCH-1201 — hourly API-health probe; auth via service-role Bearer (pg_cron),
+# not user JWT. verify_jwt=false so the cron POST is accepted (the fn enforces
+# its own service-role-Bearer auth-guard).
+[functions.api-health-probe]
+verify_jwt = false
+
 [functions.weather]
 verify_jwt = false
 

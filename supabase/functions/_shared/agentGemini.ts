@@ -4,6 +4,9 @@
 // (Gemini 2.5 Flash, MALFORMED_FUNCTION_CALL retry loop, function calling mode ANY).
 // Uses GEMINI_API_KEY_ARI (isolated from place-intel quota).
 
+// ORCH-1201 — Layer-C passive health observation (fire-and-forget, best-effort).
+import { recordApiCall } from "./apiHealthLog.ts";
+
 const GEMINI_MODEL_ID = "gemini-2.5-flash";
 const GEMINI_API_URL =
   `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL_ID}:generateContent`;
@@ -116,11 +119,13 @@ export async function callGemini(args: {
   while (attempt <= MAX_MALFORMED_RETRIES) {
     attempt++;
 
+    const _t0 = Date.now();
     const response = await fetch(`${GEMINI_API_URL}?key=${apiKey}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(requestBody),
     });
+    void recordApiCall("gemini", response.ok, Date.now() - _t0, response.status); // ORCH-1201 Layer-C
 
     if (!response.ok) {
       const text = await response.text().catch(() => "");

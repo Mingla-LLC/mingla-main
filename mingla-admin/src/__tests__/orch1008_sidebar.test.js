@@ -6,6 +6,10 @@
 // to the real nav (prior ORCHs added launch-cities/deck-tuner/beta-leads/pricing/
 // stripe-mode without updating this locked test, so it was already failing on main).
 // Nav count 10 -> 16. The flat-sidebar + 6-deleted-pages invariants are unchanged.
+//
+// [TEST-MOD-APPROVED ORCH-1201] 2026-06-21: added the "api-health" nav id
+// (API-health hub) between "stripe-mode" and "settings". Nav count 16 -> 17.
+// The flat-sidebar + 6-deleted-pages invariants are unchanged.
 
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
@@ -45,6 +49,7 @@ const EXPECTED_IDS = [
   "support",
   "users",
   "stripe-mode",
+  "api-health",
   "settings",
 ];
 
@@ -55,7 +60,7 @@ describe("ORCH-1008 Phase 1 — sidebar prune + flatten", () => {
     assert.notEqual(NAV_GROUPS[0].collapsible, true, "the single group must not be collapsible");
   });
 
-  it("NAV_GROUPS has exactly 16 items in the locked SPEC order", () => {
+  it("NAV_GROUPS has exactly 17 items in the locked SPEC order", () => {
     const ids = NAV_GROUPS[0].items.map((i) => i.id);
     assert.deepEqual(ids, EXPECTED_IDS);
   });
@@ -67,8 +72,8 @@ describe("ORCH-1008 Phase 1 — sidebar prune + flatten", () => {
     }
   });
 
-  it("NAV_ITEMS is the flat 16-item list (no group splits)", () => {
-    assert.equal(NAV_ITEMS.length, 16);
+  it("NAV_ITEMS is the flat 17-item list (no group splits)", () => {
+    assert.equal(NAV_ITEMS.length, 17);
     assert.deepEqual(NAV_ITEMS.map((i) => i.id), EXPECTED_IDS);
   });
 
