@@ -466,31 +466,52 @@ const SheetMobilePanelInner: React.FC<SheetMobilePanelInnerProps> = ({
   </>
   );
 
-// ORCH-1197: web-only VISIBLE-viewport height. On iOS Safari the LAYOUT viewport
-// (`Dimensions.get("window").height` / `window.innerHeight` / `100vh`) is TALLER
-// than the VISIBLE area by the height of the dynamic bottom toolbar, so sizing a
-// bottom-anchored panel off the layout height pushes the panel (and its CTA) below
-// the visible area, behind the toolbar. `window.visualViewport.height` is the
-// VISIBLE height (toolbar excluded) — use it on web so the panel is bounded to and
-// anchored at the visible bottom. Tracks the toolbar showing/hiding via the
-// visualViewport `resize` event. Native is unaffected (this hook is web-only).
+// ORCH-1197 / ORCH-1199: web-only VISIBLE-viewport metrics for a bottom-anchored
+// sheet. The Modal's absoluteFill fills the LAYOUT viewport (`window.innerHeight`),
+// so a `bottom:0` dock anchors to the LAYOUT bottom. But the VISIBLE band a user can
+// actually see is `window.visualViewport` — and on mobile that band is BOTH shorter
+// than the layout viewport AND can be shifted DOWN from the top:
+//
+//   • iOS Safari (ORCH-1197): a dynamic BOTTOM toolbar makes the layout viewport
+//     TALLER than the visible area → `innerHeight − visualViewport.height` > 0,
+//     `offsetTop == 0`. The panel must lift up by that bottom gap.
+//   • Android Chrome / Samsung Internet (ORCH-1199): when the on-screen keyboard
+//     opens the page scrolls to keep the focused field visible, so the visual
+//     viewport shifts DOWN → `visualViewport.offsetTop > 0`. With Chrome's
+//     resizes-content behaviour `innerHeight` shrinks to equal `visualViewport
+//     .height`, so the iOS-only `innerHeight − height` gap is ZERO and the 1197
+//     lift does nothing — yet the true visible bottom is `offsetTop + height`, BELOW
+//     the layout bottom the dock anchors to. The panel must lift by the FULL gap
+//     between the layout bottom and the true visible bottom:
+//         visibleBottomGap = innerHeight − (offsetTop + height)
+//     which equals the 1197 `(innerHeight − height)` when `offsetTop == 0` (no iOS
+//     regression) and additionally absorbs the Android `offsetTop` shift.
+//
+// Tracks both the visualViewport `resize` AND `scroll` events (offsetTop changes on
+// scroll). Native is unaffected (this hook is web-only).
 interface WebViewportMetrics {
-  /** Visible (visual) viewport height — toolbar excluded. Panel SIZE bound. */
+  /** Visible (visual) viewport height — toolbar/keyboard excluded. Panel SIZE bound. */
   visibleHeight: number;
   /** Layout viewport height (`window.innerHeight`) — the Modal absoluteFill's
    *  actual pixel height; the `bottom:0` dock anchors to THIS bottom. */
   layoutHeight: number;
-  /** Gap between layout bottom and visible bottom = the dynamic toolbar height. */
-  toolbarOffset: number;
+  /** ORCH-1199: amount by which the visible band is shifted DOWN from the top of the
+   *  layout viewport (`visualViewport.offsetTop`) — nonzero on Android when the
+   *  keyboard pushes the page up; always 0 on iOS Safari / desktop. */
+  offsetTop: number;
+  /** Gap between the LAYOUT bottom and the TRUE visible bottom
+   *  (`innerHeight − (offsetTop + visibleHeight)`) = how far the panel must lift so
+   *  its bottom aligns to the visible bottom on EVERY browser. */
+  visibleBottomGap: number;
 }
 
 const useWebViewportMetrics = (fallbackHeight: number): WebViewportMetrics => {
   const read = (): WebViewportMetrics => {
     if (Platform.OS !== "web") {
-      return { visibleHeight: fallbackHeight, layoutHeight: fallbackHeight, toolbarOffset: 0 };
+      return { visibleHeight: fallbackHeight, layoutHeight: fallbackHeight, offsetTop: 0, visibleBottomGap: 0 };
     }
     const g = globalThis as unknown as {
-      visualViewport?: { height: number };
+      visualViewport?: { height: number; offsetTop?: number };
       innerHeight?: number;
     };
     const inner = typeof g.innerHeight === "number" && g.innerHeight > 0 ? g.innerHeight : fallbackHeight;
@@ -498,7 +519,16 @@ const useWebViewportMetrics = (fallbackHeight: number): WebViewportMetrics => {
       g.visualViewport !== undefined && typeof g.visualViewport.height === "number" && g.visualViewport.height > 0
         ? g.visualViewport.height
         : inner;
-    return { visibleHeight: visible, layoutHeight: inner, toolbarOffset: Math.max(inner - visible, 0) };
+    const offsetTop =
+      g.visualViewport !== undefined && typeof g.visualViewport.offsetTop === "number" && g.visualViewport.offsetTop > 0
+        ? g.visualViewport.offsetTop
+        : 0;
+    return {
+      visibleHeight: visible,
+      layoutHeight: inner,
+      offsetTop,
+      visibleBottomGap: Math.max(inner - (offsetTop + visible), 0),
+    };
   };
   const [metrics, setMetrics] = useState<WebViewportMetrics>(read);
   useEffect(() => {
@@ -514,12 +544,16 @@ const useWebViewportMetrics = (fallbackHeight: number): WebViewportMetrics => {
     const onResize = (): void => setMetrics(read());
     onResize();
     vv?.addEventListener?.("resize", onResize);
+    // ORCH-1199: offsetTop changes on visualViewport SCROLL (Android keyboard) — must
+    // re-read or the panel keeps the stale anchor while the page scrolls under it.
+    vv?.addEventListener?.("scroll", onResize);
     (globalThis as unknown as { addEventListener?: (t: string, l: () => void) => void }).addEventListener?.(
       "resize",
       onResize,
     );
     return (): void => {
       vv?.removeEventListener?.("resize", onResize);
+      vv?.removeEventListener?.("scroll", onResize);
       (globalThis as unknown as { removeEventListener?: (t: string, l: () => void) => void }).removeEventListener?.(
         "resize",
         onResize,
@@ -529,7 +563,7 @@ const useWebViewportMetrics = (fallbackHeight: number): WebViewportMetrics => {
   }, []);
   return Platform.OS === "web"
     ? metrics
-    : { visibleHeight: fallbackHeight, layoutHeight: fallbackHeight, toolbarOffset: 0 };
+    : { visibleHeight: fallbackHeight, layoutHeight: fallbackHeight, offsetTop: 0, visibleBottomGap: 0 };
 };
 
 // ORCH-1136 R3: web reduced-motion read (no reanimated hook on the web path).
@@ -587,13 +621,15 @@ const SheetWeb: React.FC<SheetProps> = ({
   style,
   panelBackground,
 }) => {
-  // ORCH-1197: size + anchor the panel against the VISIBLE (visual) viewport, not
-  // the LAYOUT viewport. The Modal's absoluteFill fills `window.innerHeight` (the
-  // layout height), which on iOS Safari is TALLER than the visible area by the
-  // dynamic bottom toolbar — so a `bottom:0` dock lands the panel partly behind the
-  // toolbar. `visibleHeight` bounds the panel SIZE; `toolbarOffset` lifts it so its
-  // bottom aligns to the visible bottom (both are no-ops on desktop / no toolbar).
-  const { visibleHeight: screenHeight, layoutHeight, toolbarOffset } = useWebViewportMetrics(
+  // ORCH-1197 / ORCH-1199: size + anchor the panel against the VISIBLE (visual)
+  // viewport, not the LAYOUT viewport. The Modal's absoluteFill fills
+  // `window.innerHeight` (the layout height); the visible band can be both shorter
+  // than it (iOS bottom toolbar / Android keyboard) AND shifted down from the top
+  // (Android `visualViewport.offsetTop` when the keyboard scrolls the page up).
+  // `visibleHeight` bounds the panel SIZE; `visibleBottomGap` lifts it so its bottom
+  // aligns to the TRUE visible bottom on iOS Safari, Android Chrome AND Samsung
+  // Internet (all no-ops on desktop / no toolbar / no keyboard).
+  const { visibleHeight: screenHeight, layoutHeight, visibleBottomGap } = useWebViewportMetrics(
     Dimensions.get("window").height,
   );
   const { width: windowWidth } = useWindowDimensions();
@@ -671,16 +707,17 @@ const SheetWeb: React.FC<SheetProps> = ({
   const blurOk = shouldUseRealBlur(windowWidth);
   const blurIntensity = blurIntensityTokens.cardElevated;
 
-  // ORCH-1197: the dock is `position:absolute; bottom:0` inside an absoluteFill
-  // sized to the LAYOUT viewport (`window.innerHeight`). On iOS Safari the dynamic
-  // bottom toolbar overlays the layout bottom, so `bottom:0` lands BEHIND the
-  // toolbar. Lift the panel by `toolbarOffset` (layout − visible) via its OPEN
-  // resting transform so its bottom aligns to the VISIBLE bottom (the panel is
-  // already height-bounded to the visible viewport above). Riding the existing
-  // transform pipeline keeps the open/close animation intact and avoids the
-  // react-native-web atomic-class `bottom` merge conflict.
+  // ORCH-1197 / ORCH-1199: the dock is `position:absolute; bottom:0` inside an
+  // absoluteFill sized to the LAYOUT viewport (`window.innerHeight`). The visible
+  // bottom can sit ABOVE the layout bottom — by a dynamic bottom toolbar (iOS) and/or
+  // by the page scrolling up under the keyboard (Android `visualViewport.offsetTop`).
+  // Lift the panel by `visibleBottomGap` (layout bottom − true visible bottom) via
+  // its OPEN resting transform so its bottom aligns to the VISIBLE bottom on every
+  // browser (the panel is already height-bounded to the visible viewport above).
+  // Riding the existing transform pipeline keeps the open/close animation intact and
+  // avoids the react-native-web atomic-class `bottom` merge conflict.
   void layoutHeight;
-  const openTranslateY = -toolbarOffset;
+  const openTranslateY = -visibleBottomGap;
 
   const dur = animateOpen ? SHEET_OPEN_DURATION : SHEET_CLOSE_DURATION;
   const ease = animateOpen ? SHEET_OPEN_EASE_CSS : SHEET_CLOSE_EASE_CSS;
