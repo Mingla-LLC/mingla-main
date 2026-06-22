@@ -25,6 +25,11 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 // @ts-ignore — Deno ESM import
 import { createClient, type SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { writeAudit } from "../_shared/audit.ts";
+// ORCH-1205 — align the OPTIONS preflight allow-list with the shared one
+// (includes x-client-info + accept-language). This cron-only function is
+// service-role-invoked and never browser-called, so this is consistency-only;
+// the shared object already uses "POST, OPTIONS", matching this function.
+import { corsHeaders } from "../_shared/cors.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
@@ -64,13 +69,7 @@ function isAuthorizedServiceRole(req: Request): boolean {
 
 serve(async (req: Request): Promise<Response> => {
   if (req.method === "OPTIONS") {
-    return new Response("ok", {
-      headers: {
-        "Access-Control-Allow-Origin": "*",
-        "Access-Control-Allow-Methods": "POST, OPTIONS",
-        "Access-Control-Allow-Headers": "authorization, content-type",
-      },
-    });
+    return new Response("ok", { headers: corsHeaders });
   }
   if (req.method !== "POST") {
     return jsonResponse({ error: "method_not_allowed" }, 405);
