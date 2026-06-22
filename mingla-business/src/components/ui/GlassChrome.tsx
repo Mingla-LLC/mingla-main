@@ -137,6 +137,16 @@ export const GlassChrome: React.FC<GlassChromeProps> = ({
 const styles = StyleSheet.create({
   clip: {
     overflow: "hidden",
+    // ORCH-1190 — the clip layer (and the content inside it) MUST fill the
+    // outer View's cross size. On react-native-web a child View with no width
+    // shrinks to its content's min-content width; if the outer View sets
+    // `alignItems: "center"` (as the venue empty-state cards do), that collapse
+    // ALSO centers the visible glass surface, rendering a full-width card as a
+    // narrow centered pill. `alignSelf: "stretch"` pins the clip to the outer
+    // View's resolved width regardless of the outer's alignItems — for chrome
+    // pills (content-sized outer View) it still matches the small outer width,
+    // so this is universally correct, not just for the venue cards.
+    alignSelf: "stretch",
   },
   topHighlight: {
     position: "absolute",
@@ -147,6 +157,10 @@ const styles = StyleSheet.create({
   },
   content: {
     position: "relative",
+    // ORCH-1190 — fill the (now-stretched) clip layer so the inner padding
+    // View + children measure against the full card width instead of
+    // collapsing to the longest text line.
+    alignSelf: "stretch",
   },
 });
 
