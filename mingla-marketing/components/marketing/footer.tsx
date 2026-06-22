@@ -7,7 +7,7 @@ interface FooterProps {
 
 interface FooterColumn {
   title: string
-  links: Array<{ href: string; label: string }>
+  links: Array<{ href: string; label: string; external?: boolean }>
 }
 
 const explorerColumns: FooterColumn[] = [
@@ -25,6 +25,15 @@ const explorerColumns: FooterColumn[] = [
 ]
 
 const organiserColumns: FooterColumn[] = [
+  {
+    title: 'Company',
+    // ORCH-1225 — Careers points at the careers subdomain. ABSOLUTE external
+    // URL: a relative `/careers` 404s on the apex (the marketing middleware
+    // host-rewrites `career.usemingla.com` only). Business footer ONLY.
+    links: [
+      { href: 'https://career.usemingla.com', label: 'Careers', external: true },
+    ],
+  },
   {
     title: 'Legal',
     links: [
@@ -63,12 +72,24 @@ export function Footer({ surface }: FooterProps) {
                 <ul className="flex flex-col gap-2">
                   {col.links.map((l) => (
                     <li key={l.href}>
-                      <Link
-                        href={l.href}
-                        className="rounded-sm text-sm text-text-secondary transition-colors hover:text-text-primary focus-ring"
-                      >
-                        {l.label}
-                      </Link>
+                      {/* ORCH-1225 — external absolute URLs (careers subdomain)
+                          render as a real anchor, same tab; internal routes
+                          stay Next.js <Link>. */}
+                      {l.external ? (
+                        <a
+                          href={l.href}
+                          className="rounded-sm text-sm text-text-secondary transition-colors hover:text-text-primary focus-ring"
+                        >
+                          {l.label}
+                        </a>
+                      ) : (
+                        <Link
+                          href={l.href}
+                          className="rounded-sm text-sm text-text-secondary transition-colors hover:text-text-primary focus-ring"
+                        >
+                          {l.label}
+                        </Link>
+                      )}
                     </li>
                   ))}
                 </ul>

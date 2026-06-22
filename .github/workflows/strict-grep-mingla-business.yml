@@ -135,6 +135,7 @@ on:
 #   - I-PROPOSED-1223-FOOTER-LINKS-RESOLVE (i-proposed-1223-footer-links-resolve.mjs) — every internal `href: '/...'` in mingla-marketing/components/marketing/footer.tsx must resolve to a real Next.js route under mingla-marketing/app/** (route set rebuilt by walking the App Router tree, accounting for `(group)` route groups and the `(explorer)` index => `/`); prevents ANY dead footer link returning, not just the 9 removed in ORCH-1223; self-tested (ORCH-1223 — DRAFT until CLOSE)
 #   - I-PROPOSED-1223-FOOTER-MOUNTED (i-proposed-1223-footer-mounted.mjs) — AMENDED by ORCH-1224: the cleaned footer must stay MOUNTED on the BUSINESS surface ONLY (mingla-marketing/app/business/layout.tsx imports `Footer` from '@/components/marketing/footer' AND renders `<Footer surface="organiser" />`) and must NOT be mounted on the EXPLORER surface (mingla-marketing/app/(explorer)/layout.tsx renders NO `<Footer .../>`); comment-stripped, so a commented-out mount does not count either way; guards BOTH the ORCH-1053 silent-un-mount on business (drops Privacy/Terms) AND a stray ORCH-1223-style re-mount on the one-viewport explorer hero; per Seth 2026-06-22; self-tested (ORCH-1224 — DRAFT until CLOSE)
 #   - I-PROPOSED-1224-BUSINESS-ROUTE (i-proposed-1224-business-route.mjs) — the marketing business surface lives at /business (renamed from /organisers, Seth 2026-06-22): (a) NO navigable `/organisers` href survives in mingla-marketing/{components,lib} *.ts/*.tsx source (comment-stripped; the only tolerated `/organisers` strings are the redirect rule + comments in next.config.ts and bare historical code comments), and (b) next.config.ts has the PERMANENT (301) `/organisers` → `/business` redirect AND its `/organisers/:path*` → `/business/:path*` sub-path form so existing links / the business app / campaigns keep resolving; self-tested (ORCH-1224 — DRAFT until CLOSE)
+#   - I-PROPOSED-1225-CAREERS-LINKS (i-proposed-1225-careers-links.mjs) — the careers site lives at the `career.usemingla.com` SUBDOMAIN (META-ORCH-1222 apex guard 404s `usemingla.com/careers/*`), so every link from the main marketing site to careers must be the ABSOLUTE external URL `https://career.usemingla.com`: (a) the explorer hero (mingla-marketing/components/sections/explorer-home/hero.tsx) has a "Career" chip with href `https://career.usemingla.com`, and (b) the business footer (mingla-marketing/components/marketing/footer.tsx) has a "Careers" link with the same absolute URL; removing EITHER link or downgrading it to a relative `/careers` (404s on the apex) breaks CI; comment-stripped; self-tested (ORCH-1225 — DRAFT until CLOSE)
 #   - I-PROPOSED-1136-WEB-SHEET-CSS-TRANSITION (i-proposed-1136-web-sheet-css-transition.mjs) — the 5 shared biz-WEB sheet/overlay primitives (TopSheet, Sheet.web, SheetMobile, Modal, Toast) drive their WEB open/close animation via a compositor CSS `transition` on transform/opacity (NOT a withTiming/withSpring useAnimatedStyle on the web main-thread rAF, which freezes under a heavy-page long task); no height/layout property is animated on the web sheet path; native keeps reanimated (web-gated via Platform.OS==='web'); self-tested (ORCH-1136 R3 — DRAFT until CLOSE)
 #
 # Future gates to register (proposed but not yet implemented):
@@ -395,6 +396,23 @@ jobs:
         run: node .github/scripts/strict-grep/i-proposed-1224-business-route.mjs --self-test
       - name: Run ORCH-1224 business-route gate
         run: node .github/scripts/strict-grep/i-proposed-1224-business-route.mjs
+
+  orch-1225-careers-links:
+    name: "ORCH-1225: careers pill + footer link use absolute career.usemingla.com (I-PROPOSED-1225-CAREERS-LINKS)"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Self-test the gate
+        run: node .github/scripts/strict-grep/i-proposed-1225-careers-links.mjs --self-test
+      - name: Run ORCH-1225 careers-links gate
+        run: node .github/scripts/strict-grep/i-proposed-1225-careers-links.mjs
+      # Tester adversarial runtime-DOM gate (self-test mode runs in CI; the live
+      # mode needs a running `next start` server and is run during verification).
+      - name: Self-test the ORCH-1225 runtime-DOM adversarial gate
+        run: node .github/scripts/strict-grep/orch-1225-careers-runtime-dom.test.mjs --self-test
 
   meta-orch-0991-base-bottom-sheet-sole-consumer:
     name: "META-ORCH-0991: BaseBottomSheet sole gorhom consumer invariant"
