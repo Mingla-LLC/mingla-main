@@ -2995,3 +2995,16 @@ jobs:
         run: node .github/scripts/strict-grep/i-proposed-1216-explorer-only-cta.mjs --self-test
       - name: Run ORCH-1216 explorer-only-cta gate
         run: node .github/scripts/strict-grep/i-proposed-1216-explorer-only-cta.mjs
+
+  orch-1216-success-mount-gated:
+    name: "ORCH-1216: SuccessPanel mounts only under status==='success' with detected platform (I-PROPOSED-1216-SUCCESS-MOUNT-GATED)"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Self-test the ORCH-1216 success-mount-gated gate
+        run: node .github/scripts/strict-grep/i-proposed-1216-success-mount-gated.mjs --self-test
+      - name: Run ORCH-1216 success-mount-gated gate
+        run: node .github/scripts/strict-grep/i-proposed-1216-success-mount-gated.mjs
