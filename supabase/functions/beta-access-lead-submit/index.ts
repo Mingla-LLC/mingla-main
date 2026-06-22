@@ -66,7 +66,7 @@ const THROTTLE_MAX = 5; // 6th attempt in-window → 429
 const FIELD_MAX = 512; // user_agent / referer truncation cap
 
 export interface ValidatedLead {
-  brand_type: string;
+  brand_type: string[]; // ORCH-1221 — multi-select; ≥1 of the 7 allowed values
   brand_name: string;
   contact_name: string;
   city: string;
@@ -89,7 +89,6 @@ export function validateLead(raw: unknown): ValidationResult {
   >;
 
   const str = (v: unknown): string => (typeof v === "string" ? v : "");
-  const brandType = str(body.brandType).trim();
   const brandName = str(body.brandName).trim();
   const contactName = str(body.contactName).trim();
   const city = str(body.city).trim();
@@ -97,7 +96,37 @@ export function validateLead(raw: unknown): ValidationResult {
   const source = str(body.source).trim();
   const consent = body.consent;
 
-  if (!BRAND_TYPES.has(brandType)) fields.push("brandType");
+  // ORCH-1221 — brandType is a NON-EMPTY array of allowed values. Reject if it
+  // is not an array, is empty, contains a non-string, or contains any value
+  // outside the 7-value allow-set. De-duplicate while preserving order.
+  let brandType: string[] = [];
+  if (!Array.isArray(body.brandType)) {
+    fields.push("brandType");
+  } else {
+    const seen = new Set<string>();
+    const cleaned: string[] = [];
+    let invalid = false;
+    for (const raw of body.brandType) {
+      if (typeof raw !== "string") {
+        invalid = true;
+        break;
+      }
+      const v = raw.trim();
+      if (!BRAND_TYPES.has(v)) {
+        invalid = true;
+        break;
+      }
+      if (!seen.has(v)) {
+        seen.add(v);
+        cleaned.push(v);
+      }
+    }
+    if (invalid || cleaned.length < 1) {
+      fields.push("brandType");
+    } else {
+      brandType = cleaned;
+    }
+  }
   if (brandName.length < 1 || brandName.length > 120) fields.push("brandName");
   if (contactName.length < 1 || contactName.length > 80) {
     fields.push("contactName");
@@ -164,9 +193,11 @@ export function buildNotifyEmail(
       .replace(/>/g, "&gt;")
       .replace(/"/g, "&quot;");
 
+  // ORCH-1221 — brand_type is a multi-value array; render comma-joined.
+  const brandTypesLabel = lead.brand_type.join(", ");
   const rows: Array<[string, string]> = [
     ["Business name", lead.brand_name],
-    ["Business type", lead.brand_type],
+    ["Business type(s)", brandTypesLabel],
     ["Contact name", lead.contact_name],
     ["City", lead.city],
     ["Email", lead.email],
@@ -193,7 +224,7 @@ export function buildNotifyEmail(
   return {
     from,
     to: ["seth@usemingla.com"],
-    subject: `New beta lead — ${lead.brand_name} (${lead.brand_type})`,
+    subject: `New beta lead — ${lead.brand_name} (${brandTypesLabel})`,
     html,
     text,
   };

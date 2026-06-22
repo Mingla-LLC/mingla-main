@@ -16,7 +16,7 @@
 //     https://supabase.com/docs/reference/javascript/functions-invoke
 
 export interface BetaAccessLeadInput {
-  brandType: string; // one of the 7 stored values
+  brandType: string[]; // ORCH-1221 — multi-select; ≥1 of the 7 stored values
   brandName: string; // trimmed
   contactName: string; // trimmed
   city: string; // trimmed

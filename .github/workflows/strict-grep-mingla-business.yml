@@ -3047,3 +3047,16 @@ jobs:
         run: node .github/scripts/strict-grep/orch-1220-reviewer-bypass-locked.mjs --self-test
       - name: Run ORCH-1220 reviewer-bypass-locked gate
         run: node .github/scripts/strict-grep/orch-1220-reviewer-bypass-locked.mjs
+
+  orch-1221-allpill-selects-all:
+    name: "ORCH-1221: explorer \"All of it\" chip is a select-all control (I-PROPOSED-1221-ALLPILL-SELECTS-ALL)"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Self-test the ORCH-1221 allpill-selects-all gate
+        run: node .github/scripts/strict-grep/i-proposed-1221-allpill-selects-all.mjs --self-test
+      - name: Run ORCH-1221 allpill-selects-all gate
+        run: node .github/scripts/strict-grep/i-proposed-1221-allpill-selects-all.mjs

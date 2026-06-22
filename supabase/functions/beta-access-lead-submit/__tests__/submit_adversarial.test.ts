@@ -15,7 +15,7 @@ import {
 import { handler, validateLead } from "../index.ts";
 
 const GOOD = {
-  brandType: "restaurant",
+  brandType: ["restaurant"], // ORCH-1221 — brandType is now a non-empty array
   brandName: "Place",
   contactName: "Ada",
   city: "Lagos",
@@ -53,12 +53,24 @@ Deno.test("T-03 over-length email — rejected (>254)", () => {
   assert(fieldsFor({ ...GOOD, email: `${longLocal}@b.com` }).includes("email"));
 });
 
-Deno.test("T-10 brand_type not in allow-set — rejected", () => {
-  // Note: values are trimmed before the allow-set check, so "restaurant " (with
-  // trailing space) IS accepted by design — not included here.
-  for (const bad of ["hacker", "RESTAURANT", "bar", "", "rest", "null"]) {
-    assert(fieldsFor({ ...GOOD, brandType: bad }).includes("brandType"), `expected reject: ${bad}`);
+Deno.test("T-10 brand_type element not in allow-set — rejected (ORCH-1221 array)", () => {
+  // ORCH-1221 — brandType is an array; ANY element outside the 7-value allow-set
+  // rejects the whole array. Values are trimmed before the allow-set check, so
+  // "restaurant " (trailing space) IS accepted by design — not included here.
+  for (const bad of ["hacker", "RESTAURANT", "bar", "rest", "null"]) {
+    assert(fieldsFor({ ...GOOD, brandType: [bad] }).includes("brandType"), `expected reject: [${bad}]`);
   }
+  // A mix of valid + invalid still rejects (one bad element poisons the array).
+  assert(
+    fieldsFor({ ...GOOD, brandType: ["restaurant", "hacker"] }).includes("brandType"),
+    "valid+invalid element mix must reject",
+  );
+});
+
+Deno.test("T-10b brand_type empty / non-array — rejected (ORCH-1221)", () => {
+  assert(fieldsFor({ ...GOOD, brandType: [] }).includes("brandType"), "empty array must reject");
+  assert(fieldsFor({ ...GOOD, brandType: "restaurant" }).includes("brandType"), "scalar string must reject");
+  assert(fieldsFor({ ...GOOD, brandType: [123] }).includes("brandType"), "non-string element must reject");
 });
 
 Deno.test("unknown source — rejected", () => {
