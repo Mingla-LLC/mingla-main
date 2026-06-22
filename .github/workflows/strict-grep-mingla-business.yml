@@ -2917,3 +2917,16 @@ jobs:
         run: node .github/scripts/strict-grep/i-proposed-1213-payment-webhook-silence-info-only.mjs --self-test
       - name: Run ORCH-1213 payment-webhook-silence-info-only gate
         run: node .github/scripts/strict-grep/i-proposed-1213-payment-webhook-silence-info-only.mjs
+
+  orch-1217-ari-no-vendor-disclosure:
+    name: "ORCH-1217: no AI-vendor name (Gemini/OpenAI/Anthropic/Claude/…) in user-facing Ari copy; \"Mingla's AI\" present in AriSettingsScreen + AiDisclosureModal (I-PROPOSED-1217-ARI-NO-VENDOR-DISCLOSURE)"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Self-test the ORCH-1217 ari-no-vendor-disclosure gate
+        run: node .github/scripts/strict-grep/orch-1217-ari-no-vendor-disclosure.mjs --self-test
+      - name: Run ORCH-1217 ari-no-vendor-disclosure gate
+        run: node .github/scripts/strict-grep/orch-1217-ari-no-vendor-disclosure.mjs
