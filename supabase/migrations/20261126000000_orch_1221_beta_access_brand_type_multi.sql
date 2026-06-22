@@ -1,4 +1,4 @@
--- ORCH-1220 [Organiser beta form: brand-type multi-select] — backend half.
+-- ORCH-1221 [Organiser beta form: brand-type multi-select] — backend half.
 --
 -- Two idempotent changes to public.beta_access_leads (ORCH-1045):
 --   1. brand_type: text (single, NOT NULL CHECK in('restaurant',…)) → text[]
@@ -31,7 +31,7 @@ begin
      and column_name  = 'brand_type';
 
   if col_type is null then
-    raise notice 'ORCH-1220: beta_access_leads.brand_type not found — skipping (table missing?).';
+    raise notice 'ORCH-1221: beta_access_leads.brand_type not found — skipping (table missing?).';
     return;
   end if;
 
@@ -106,7 +106,7 @@ alter table public.beta_access_leads
   );
 
 comment on column public.beta_access_leads.brand_type is
-  'ORCH-1220: multi-select business type(s) — text[] of {restaurant,cafe_bar,'
+  'ORCH-1221: multi-select business type(s) — text[] of {restaurant,cafe_bar,'
   'club_nightlife,event_organiser,experience_tour,venue_space,other}; ≥1 element '
   '(CHECK beta_access_leads_brand_type_arr_chk).';
 

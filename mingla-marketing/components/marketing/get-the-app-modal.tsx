@@ -29,7 +29,7 @@ import {
   submitExplorerAppLead,
   type ExplorerAppSubmitResult,
 } from '@/lib/explorer-app-submit'
-// ORCH-1220 Fix 1 — "All of it" select-all reducer lives in a pure module so it
+// ORCH-1221 Fix 1 — "All of it" select-all reducer lives in a pure module so it
 // is unit-testable without React. The chip handler delegates to nextInterest.
 import {
   ALL_VALUE,
@@ -245,7 +245,7 @@ export function GetTheAppModal({ open, onClose, source }: GetTheAppModalProps) {
     setStep((s) => (s > 1 ? ((s - 1) as 1 | 2) : s))
   }, [])
 
-  // ── Chip toggle (ORCH-1219 Fix A multi-select / ORCH-1220 Fix 1 select-all) ──
+  // ── Chip toggle (ORCH-1219 Fix A multi-select / ORCH-1221 Fix 1 select-all) ──
   // Each chip toggles via the pure `nextInterest` reducer: specific pills toggle
   // individually, and "All of it" is a SELECT-ALL control (sets/clears all 5,
   // and auto-reflects when every specific pill is on). NO setStep(2) here — the
@@ -552,7 +552,7 @@ function StepBody(props: StepBodyProps) {
         </p>
         {/* ORCH-1219 Fix A — MULTI-SELECT toggle group (NOT a radiogroup). Each
             chip toggles on/off via aria-pressed; the user presses Next.
-            ORCH-1220 Fix 1 — "All of it" is a SELECT-ALL control (see
+            ORCH-1221 Fix 1 — "All of it" is a SELECT-ALL control (see
             nextInterest): it sets/clears all 5 and auto-reflects selected when
             every specific pill is chosen. */}
         <div
@@ -561,7 +561,7 @@ function StepBody(props: StepBodyProps) {
           className="mt-6 flex flex-wrap gap-3"
         >
           {INTERESTS.map((it, i) => {
-            // ORCH-1220 Fix 1 — "All of it" reflects as selected when every
+            // ORCH-1221 Fix 1 — "All of it" reflects as selected when every
             // specific pill is chosen (the array also carries 'all' then, but
             // derive it so the chip is robust to either representation).
             const selected =

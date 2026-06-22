@@ -66,7 +66,7 @@ const THROTTLE_MAX = 5; // 6th attempt in-window → 429
 const FIELD_MAX = 512; // user_agent / referer truncation cap
 
 export interface ValidatedLead {
-  brand_type: string[]; // ORCH-1220 — multi-select; ≥1 of the 7 allowed values
+  brand_type: string[]; // ORCH-1221 — multi-select; ≥1 of the 7 allowed values
   brand_name: string;
   contact_name: string;
   city: string;
@@ -96,7 +96,7 @@ export function validateLead(raw: unknown): ValidationResult {
   const source = str(body.source).trim();
   const consent = body.consent;
 
-  // ORCH-1220 — brandType is a NON-EMPTY array of allowed values. Reject if it
+  // ORCH-1221 — brandType is a NON-EMPTY array of allowed values. Reject if it
   // is not an array, is empty, contains a non-string, or contains any value
   // outside the 7-value allow-set. De-duplicate while preserving order.
   let brandType: string[] = [];
@@ -193,7 +193,7 @@ export function buildNotifyEmail(
       .replace(/>/g, "&gt;")
       .replace(/"/g, "&quot;");
 
-  // ORCH-1220 — brand_type is a multi-value array; render comma-joined.
+  // ORCH-1221 — brand_type is a multi-value array; render comma-joined.
   const brandTypesLabel = lead.brand_type.join(", ");
   const rows: Array<[string, string]> = [
     ["Business name", lead.brand_name],

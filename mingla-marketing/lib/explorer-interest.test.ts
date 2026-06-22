@@ -1,5 +1,5 @@
 // ---------------------------------------------------------------
-// ORCH-1220 [Explorer "All of it" = SELECT-ALL] — implementor happy-path
+// ORCH-1221 [Explorer "All of it" = SELECT-ALL] — implementor happy-path
 // regression for the pure `nextInterest` reducer.
 //
 // Proves the select-all contract the modal ships:
@@ -13,7 +13,7 @@
 // Written for a Jest / Vitest harness (describe/it/expect). The marketing
 // package has no test runner wired (mirrors lib/city-decks.test.ts), so this
 // also ships a self-contained Node-assert runner block at the bottom — used to
-// prove fails-on-revert for the ORCH-1220 select-all contract:
+// prove fails-on-revert for the ORCH-1221 select-all contract:
 //   npx tsc lib/explorer-interest.ts lib/explorer-interest.test.ts --outDir /tmp/o \
 //     --module commonjs --target es2020 && node /tmp/o/explorer-interest.test.js
 // (Also runnable directly under Deno: `deno test lib/explorer-interest.test.ts`
@@ -119,7 +119,7 @@ declare const describe: undefined | ((name: string, fn: () => void) => void)
 declare const it: undefined | ((name: string, fn: () => void) => void)
 
 if (typeof describe === 'function' && typeof it === 'function') {
-  describe('nextInterest (ORCH-1220 "All of it" select-all)', () => {
+  describe('nextInterest (ORCH-1221 "All of it" select-all)', () => {
     for (const [name, fn] of cases) {
       it(name, fn)
     }

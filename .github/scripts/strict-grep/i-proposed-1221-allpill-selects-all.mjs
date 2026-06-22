@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * ORCH-1220 [Form pill follow-ups] — I-PROPOSED-1220-ALLPILL-SELECTS-ALL (DRAFT).
+ * ORCH-1221 [Form pill follow-ups] — I-PROPOSED-1221-ALLPILL-SELECTS-ALL (DRAFT).
  *
  * WHY (Fix 1): the explorer "All of it" chip is a SELECT-ALL control, NOT an
  * independent toggle. Tapping it sets/clears the ENTIRE interest set (all 5
@@ -44,7 +44,7 @@ function checkReducer(src, failures) {
   if (!/export function nextInterest\(/.test(src)) {
     failures.push(
       `${REDUCER}: no exported \`nextInterest(\` select-all reducer — "All of it" ` +
-        `must be a SELECT-ALL control, not a plain toggle (ORCH-1220 Fix 1).`,
+        `must be a SELECT-ALL control, not a plain toggle (ORCH-1221 Fix 1).`,
     );
   }
   // C2 — reducer branches on the select-all value.
@@ -76,7 +76,7 @@ function checkUi(src, failures) {
     failures.push(
       `${EXPLORER}: the "All of it" chip selected-state is not derived from ` +
         `\`SPECIFIC_INTERESTS.every(\` — it must auto-reflect when every specific ` +
-        `pill is chosen (ORCH-1220 Fix 1).`,
+        `pill is chosen (ORCH-1221 Fix 1).`,
     );
   }
   // C5 — chip handler delegates to the reducer.
@@ -143,12 +143,12 @@ const selected = props.interest.includes(it.value)
   if (runU(notDerived).length === 0) selfFailures.push("non-derived all-chip not flagged");
 
   if (selfFailures.length) {
-    console.error("ORCH-1220 I-PROPOSED-1220-ALLPILL-SELECTS-ALL self-test FAIL:");
+    console.error("ORCH-1221 I-PROPOSED-1221-ALLPILL-SELECTS-ALL self-test FAIL:");
     selfFailures.forEach((m) => console.error("  - " + m));
     process.exit(1);
   }
   console.log(
-    "ORCH-1220 I-PROPOSED-1220-ALLPILL-SELECTS-ALL self-test PASS (6/6 cases).",
+    "ORCH-1221 I-PROPOSED-1221-ALLPILL-SELECTS-ALL self-test PASS (6/6 cases).",
   );
   process.exit(0);
 }
@@ -166,7 +166,7 @@ for (const [rel, fn] of [[REDUCER, checkReducer], [EXPLORER, checkUi]]) {
 
 if (failures.length > 0) {
   console.error(
-    "ORCH-1220 I-PROPOSED-1220-ALLPILL-SELECTS-ALL FAIL — the explorer \"All of it\"\n" +
+    "ORCH-1221 I-PROPOSED-1221-ALLPILL-SELECTS-ALL FAIL — the explorer \"All of it\"\n" +
       "chip must be a SELECT-ALL control (sets/clears all interest values, auto-\n" +
       "reflects when every specific pill is chosen), not a plain independent toggle.\n\nFailures:\n  " +
       failures.join("\n  "),
@@ -174,6 +174,6 @@ if (failures.length > 0) {
   process.exit(1);
 }
 console.log(
-  "ORCH-1220 I-PROPOSED-1220-ALLPILL-SELECTS-ALL PASS — \"All of it\" is a select-all\n" +
+  "ORCH-1221 I-PROPOSED-1221-ALLPILL-SELECTS-ALL PASS — \"All of it\" is a select-all\n" +
     "control (pure nextInterest reducer, sets/clears all 5, derived selected-state).",
 );

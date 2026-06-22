@@ -18,7 +18,7 @@ const FROM = "Mingla Beta <beta@usemingla.com>";
 
 function lead() {
   const v = validateLead({
-    brandType: ["restaurant"], // ORCH-1220 — brandType is now a non-empty array
+    brandType: ["restaurant"], // ORCH-1221 — brandType is now a non-empty array
     brandName: "The Corner Table",
     contactName: "Ada",
     city: "Lagos",

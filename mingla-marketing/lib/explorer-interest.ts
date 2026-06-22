@@ -1,4 +1,4 @@
-// ORCH-1220 [Explorer form: "All of it" = select-all] — pure interest reducer.
+// ORCH-1221 [Explorer form: "All of it" = select-all] — pure interest reducer.
 //
 // Extracted from get-the-app-modal.tsx so the SELECT-ALL contract is unit-
 // testable WITHOUT React (the .tsx pulls framer-motion/React at module load).

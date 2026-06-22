@@ -23,7 +23,7 @@ import {
 } from "../index.ts";
 
 const GOOD_INPUT = {
-  brandType: ["restaurant"], // ORCH-1220 — brandType is now a non-empty array
+  brandType: ["restaurant"], // ORCH-1221 — brandType is now a non-empty array
   brandName: "The Corner Table",
   contactName: "Ada",
   city: "Lagos",
@@ -80,7 +80,7 @@ Deno.test("validateLead — accepts every one of the 7 brand types (each as a 1-
   }
 });
 
-Deno.test("validateLead — ORCH-1220 accepts MULTI-value brand_type + de-dupes, preserves order", () => {
+Deno.test("validateLead — ORCH-1221 accepts MULTI-value brand_type + de-dupes, preserves order", () => {
   const result = validateLead({
     ...GOOD_INPUT,
     brandType: ["restaurant", "club_nightlife", "restaurant"], // dup restaurant
@@ -91,7 +91,7 @@ Deno.test("validateLead — ORCH-1220 accepts MULTI-value brand_type + de-dupes,
   assertEquals(result.lead.brand_type, ["restaurant", "club_nightlife"]);
 });
 
-Deno.test("validateLead — ORCH-1220 trims each brand_type element before allow-set", () => {
+Deno.test("validateLead — ORCH-1221 trims each brand_type element before allow-set", () => {
   const result = validateLead({
     ...GOOD_INPUT,
     brandType: ["  cafe_bar  ", "venue_space"],
@@ -110,7 +110,7 @@ Deno.test("validateLead — accepts both sources", () => {
 
 Deno.test("buildNotifyEmail — renders only captured fields, correct recipient", () => {
   const lead: ValidatedLead = {
-    brand_type: ["cafe_bar", "club_nightlife"], // ORCH-1220 — multi-value
+    brand_type: ["cafe_bar", "club_nightlife"], // ORCH-1221 — multi-value
     brand_name: "Bean & Gone",
     contact_name: "Ada",
     city: "Lagos",
@@ -122,7 +122,7 @@ Deno.test("buildNotifyEmail — renders only captured fields, correct recipient"
   assertEquals(email.to, ["seth@usemingla.com"]);
   assertEquals(email.from, "Mingla Beta <beta@usemingla.com>");
   assert(email.subject.includes("Bean & Gone"));
-  // ORCH-1220 — subject renders BOTH types (comma-joined).
+  // ORCH-1221 — subject renders BOTH types (comma-joined).
   assert(email.subject.includes("cafe_bar"));
   assert(email.subject.includes("club_nightlife"));
   assert(email.html.includes("cafe_bar"));

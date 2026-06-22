@@ -7,7 +7,7 @@
 // tokens are LOCKED to DESIGN_ORCH-1045_GET_BETA_ACCESS.md. Renders on the
 // light/warm marketing theme (panel forces data-theme="light").
 //
-// Step 1: brand-type chips (ORCH-1220 Fix 2 — MULTI-SELECT toggle group; a
+// Step 1: brand-type chips (ORCH-1221 Fix 2 — MULTI-SELECT toggle group; a
 // business can be e.g. Restaurant AND Club). Step 2: business/name/city.
 // Step 3: email + consent → submit. Success/error/idempotent states per §6.
 
@@ -58,7 +58,7 @@ export function BetaAccessModal({ open, onClose, source }: BetaAccessModalProps)
   const headingId = useId()
 
   const [step, setStep] = useState<1 | 2 | 3>(1)
-  // ORCH-1220 Fix 2 — brand-type is MULTI-select: an array of toggled values.
+  // ORCH-1221 Fix 2 — brand-type is MULTI-select: an array of toggled values.
   const [brandType, setBrandType] = useState<string[]>([])
   const [brandName, setBrandName] = useState('')
   const [contactName, setContactName] = useState('')
@@ -169,7 +169,7 @@ export function BetaAccessModal({ open, onClose, source }: BetaAccessModalProps)
   const trimmedEmail = email.trim().toLowerCase()
   const emailValid = EMAIL_RE.test(trimmedEmail) && trimmedEmail.length <= 254
 
-  // ORCH-1220 Fix 2 — at least one brand-type chip toggled on. User presses Next.
+  // ORCH-1221 Fix 2 — at least one brand-type chip toggled on. User presses Next.
   const step1Valid = brandType.length >= 1
   const step2Valid =
     brandName.trim().length > 0 &&
@@ -203,7 +203,7 @@ export function BetaAccessModal({ open, onClose, source }: BetaAccessModalProps)
     setStep((s) => (s > 1 ? ((s - 1) as 1 | 2 | 3) : s))
   }, [])
 
-  // ── Chip toggle (ORCH-1220 Fix 2 — MULTI-select, NO auto-advance) ───────────
+  // ── Chip toggle (ORCH-1221 Fix 2 — MULTI-select, NO auto-advance) ───────────
   // A business can be more than one type (e.g. Restaurant AND Club). Each chip
   // toggles its value on/off; the user presses Next. There is NO setStep here
   // (the 220ms pointer auto-advance was removed in ORCH-1219).
@@ -522,7 +522,7 @@ function StepBody(props: StepBodyProps) {
         <p className="mt-2 text-base text-text-secondary">
           Pick all that fit — you can choose more than one. Tell us more in a sec.
         </p>
-        {/* ORCH-1220 Fix 2 — MULTI-SELECT toggle group (NOT a radiogroup). A
+        {/* ORCH-1221 Fix 2 — MULTI-SELECT toggle group (NOT a radiogroup). A
             business can be e.g. Restaurant AND Club; each chip toggles on/off
             via aria-pressed; the user presses Next. */}
         <div
