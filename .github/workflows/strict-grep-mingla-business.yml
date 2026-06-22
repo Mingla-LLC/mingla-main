@@ -409,6 +409,10 @@ jobs:
         run: node .github/scripts/strict-grep/i-proposed-1225-careers-links.mjs --self-test
       - name: Run ORCH-1225 careers-links gate
         run: node .github/scripts/strict-grep/i-proposed-1225-careers-links.mjs
+      # Tester adversarial runtime-DOM gate (self-test mode runs in CI; the live
+      # mode needs a running `next start` server and is run during verification).
+      - name: Self-test the ORCH-1225 runtime-DOM adversarial gate
+        run: node .github/scripts/strict-grep/orch-1225-careers-runtime-dom.test.mjs --self-test
 
   meta-orch-0991-base-bottom-sheet-sole-consumer:
     name: "META-ORCH-0991: BaseBottomSheet sole gorhom consumer invariant"
