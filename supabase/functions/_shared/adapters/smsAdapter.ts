@@ -1,18 +1,27 @@
 // META-ORCH-1161 Sub-A — SMS adapter.
 //
-// GENERALIZED from send-venue-sms's sendTwilioSms (DO NOT introduce a new
-// provider — hard guard). The dispatcher never touches Twilio HTTP directly; it
-// calls smsAdapter.send(). Responsibilities (SPEC §5.5):
+// GENERALIZED from send-venue-sms's sendTwilioSms. The dispatcher never touches
+// provider HTTP directly; it calls smsAdapter.send(). Responsibilities (SPEC §5.5):
 //   - Send via TWILIO_MESSAGING_SERVICE_SID (the approved toll-free) — NEVER a
 //     raw From number (I-PROPOSED-1161-SMS-FROM-APPROVED-SENDER-ONLY).
 //   - StatusCallback wired to twilio-message-status?secret=… (reuse existing).
 //   - GSM-7 sanitizer (smart quotes/em-dash/ellipsis → ASCII) before send; flag
 //     UCS-2 fall-through; compute + record segment count.
 //   - Brand-name sender identity + "Reply STOP to opt out" footer (CTIA).
-//   - Region-routing seam (country_code → US route today; NG route is a phase).
-//   - Per-market kill-switch SMS_LIVE_ENABLED_US (default false) → return
-//     { ok:false, status:'skipped' } WITHOUT any HTTP call when off
-//     (I-PROPOSED-1161-SMS-MARKET-KILL-SWITCH).
+//   - Region-routing seam (country_code → US route / NG route).
+//   - Per-market kill-switch SMS_LIVE_ENABLED_US / SMS_LIVE_ENABLED_NG (default
+//     false) → return { ok:false, status:'skipped' } WITHOUT any HTTP call when
+//     off (I-PROPOSED-1161-SMS-MARKET-KILL-SWITCH).
+//
+// ORCH-1227 (DEC-192) — SUPERSEDES the original "DO NOT introduce a new provider
+// — hard guard". The adapter is now DUAL-PROVIDER, country-routed behind the
+// existing region seam: Twilio for US/RoW, Termii for NG. NG transactional sends
+// hit Termii's `dnd` channel (reaches DND-registered numbers, the NCC corporate
+// route); NG marketing sends hit Termii's `generic` channel. Every other country
+// keeps Twilio unchanged. NG ships text-dark behind SMS_LIVE_ENABLED_NG.
+// Invariant: I-PROPOSED-1227-NG-SMS-VIA-TERMII. The Twilio path MUST keep its
+// MessagingServiceSid usage, the SMS_LIVE_ENABLED_ kill-switch, and the
+// no-raw-`From` discipline — the I-PROPOSED-1161 CI gate still enforces all three.
 
 export interface AdapterResult {
   ok: boolean;
@@ -34,6 +43,11 @@ export interface SmsSendInput {
   // approved transactional toll-free TWILIO_MESSAGING_SERVICE_SID. NEVER a raw
   // From number either way (I-PROPOSED-1161-SMS-FROM-APPROVED-SENDER-ONLY).
   messagingServiceSid?: string | null;
+  // ORCH-1227 (DEC-192) — message class for the NG/Termii route. "transactional"
+  // (default) → Termii `dnd` channel (reaches DND-registered NG numbers);
+  // "marketing" → Termii `generic` channel. The Twilio (US/RoW) path IGNORES
+  // this field; reputation isolation there is via `messagingServiceSid`.
+  messageType?: "transactional" | "marketing";
 }
 
 const E164_RE = /^\+[1-9][0-9]{1,14}$/;
@@ -157,6 +171,65 @@ async function twilioSend(
   }
 }
 
+// ORCH-1227 (DEC-192) — Termii (Nigeria) sender. Mirrors twilioSend's shape and
+// return contract ({ ok, sid?, error?, blacklisted? }). FAIL-CLOSED: if ANY of
+// TERMII_API_KEY / TERMII_BASE_URL / TERMII_SENDER_ID is missing, return
+// { ok:false, error:"termii_env_missing" } WITHOUT any HTTP call.
+//   - POST {TERMII_BASE_URL}/api/sms/send  body { api_key, to, from, sms, type, channel }
+//   - `from` is the env sender id (TERMII_SENDER_ID, NCC-approved "Mingla") — a
+//     lowercase JSON key, NOT a Twilio raw `From` (the 1161 gate forbids that).
+//   - channel: "dnd" (transactional, reaches DND) | "generic" (marketing).
+//   - Success = HTTP 200 with a JSON `message_id` (and/or code:"ok"); map
+//     message_id → sid (providerMessageId upstream). Non-200 or missing
+//     message_id → failed with the response text in `error`. `blacklisted` true
+//     when the response indicates a DND/opt-out rejection.
+async function termiiSend(
+  to: string,
+  body: string,
+  channel: "dnd" | "generic",
+): Promise<{ ok: boolean; sid?: string; error?: string; blacklisted?: boolean }> {
+  const apiKey = Deno.env.get("TERMII_API_KEY");
+  const baseUrl = Deno.env.get("TERMII_BASE_URL");
+  const senderId = Deno.env.get("TERMII_SENDER_ID");
+  if (!apiKey || !baseUrl || !senderId) {
+    return { ok: false, error: "termii_env_missing" };
+  }
+  const payload = {
+    api_key: apiKey,
+    to,
+    from: senderId, // env sender id (NOT a Twilio raw From param).
+    sms: body,
+    type: "plain",
+    channel,
+  };
+  try {
+    const res = await fetch(`${baseUrl.replace(/\/$/, "")}/api/sms/send`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    const text = await res.text();
+    let data: { message_id?: string; code?: string; message?: string } = {};
+    try {
+      data = JSON.parse(text) as typeof data;
+    } catch {
+      // non-JSON body — treat as failure below (message_id absent).
+    }
+    // DND / opt-out style rejections — surface as blacklisted so the ledger can
+    // suppress (mirrors Twilio's 21610 mapping).
+    const lower = `${data.message ?? ""} ${text}`.toLowerCase();
+    const blacklisted =
+      lower.includes("dnd") || lower.includes("blacklist") ||
+      lower.includes("opt out") || lower.includes("opt-out");
+    if (res.ok && typeof data.message_id === "string" && data.message_id.length > 0) {
+      return { ok: true, sid: data.message_id };
+    }
+    return { ok: false, error: `Termii ${res.status}: ${text}`, blacklisted };
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : String(err) };
+  }
+}
+
 export const smsAdapter = {
   async send(input: SmsSendInput): Promise<AdapterResult> {
     const to = input.to?.trim() ?? "";
@@ -178,7 +251,12 @@ export const smsAdapter = {
     const body = composeSmsBody(input.message);
     const segments = computeSegments(body);
 
-    const result = await twilioSend(to, body, input.messagingServiceSid);
+    // ORCH-1227 (DEC-192) — country-routed dual provider behind the region seam.
+    // NG → Termii (transactional→dnd, marketing→generic); everything else → Twilio.
+    const cc = (input.countryCode ?? "US").toUpperCase();
+    const result = cc === "NG"
+      ? await termiiSend(to, body, input.messageType === "marketing" ? "generic" : "dnd")
+      : await twilioSend(to, body, input.messagingServiceSid);
     if (!result.ok) {
       return {
         ok: false,
@@ -186,7 +264,7 @@ export const smsAdapter = {
         providerMessageId: null,
         segments,
         blacklisted: result.blacklisted ?? false,
-        error: result.error ?? "twilio_error",
+        error: result.error ?? (cc === "NG" ? "termii_error" : "twilio_error"),
       };
     }
     return {
