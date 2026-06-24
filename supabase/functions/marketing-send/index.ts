@@ -775,6 +775,10 @@ async function sendSms(
         message: rewritten,
         countryCode,
         messagingServiceSid: marketingSid,
+        // ORCH-1227 (DEC-192) — NG marketing routes to Termii's `generic`
+        // channel (Twilio ignores this field; reputation isolation there is the
+        // separate marketing Messaging Service SID above).
+        messageType: "marketing",
       });
 
       if (result.status === "sent") {

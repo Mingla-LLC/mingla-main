@@ -94,6 +94,7 @@
 - **Rule:** Every user-facing notification (push, in-app, email, SMS) leaves the system through the ONE unified dispatcher; no edge fn / cron / service sends a channel message directly. The dispatcher is the single send owner that applies the channel-policy + `can_send` gates.
 - **Enforcement:** strict-grep (no direct Twilio/Expo-push/email sends outside the dispatcher) + dispatcher contract tests; CI green on #544–#553.
 - **Established:** ACTIVE at META-ORCH-1161 BUILD COMPLETE 2026-06-20.
+- **AMENDED (ORCH-1227, 2026-06-23):** still the SOLE send path — adding Termii as the NG provider does NOT introduce a new bypass. Termii is reached ONLY inside `smsAdapter.send()` (the dispatcher's single SMS chokepoint), behind the existing country seam; no edge fn / cron calls Termii directly. See `I-PROPOSED-1227-NG-SMS-VIA-TERMII`.
 
 ### I-PROPOSED-1161-SMS-ONLY-FOR-POLICY-ELIGIBLE-CATEGORIES (ACTIVE)
 - **Rule:** SMS fires ONLY for categories whose curated `default_channels` policy includes `sms` (per DEC-190 matrix); no category sends SMS as an ad-hoc fallback for a failed push. Each channel in a category fires simultaneously, independently `can_send`-gated.
@@ -129,6 +130,11 @@
 - **Rule:** SMS for a market is gated behind a per-market kill-switch (`SMS_LIVE_ENABLED_*`) that defaults OFF; no SMS leaves the system for a market until that market is explicitly flipped on. The whole platform ships text-dark by default.
 - **Enforcement:** `can_send` kill-switch gate (default false) + kill-switch tests; fails-on-revert.
 - **Established:** ACTIVE at META-ORCH-1161 BUILD COMPLETE 2026-06-20. Cross-ref DEC-190/191.
+
+### I-PROPOSED-1227-NG-SMS-VIA-TERMII (ACTIVE)
+- **Rule:** Nigeria (`countryCode === "NG"`) SMS routes to Termii via the unified `smsAdapter` (behind the existing country/region seam): transactional → Termii `dnd` channel, marketing (`messageType==="marketing"`) → Termii `generic` channel; sender identity from `TERMII_SENDER_ID` (env, NCC-approved "Mingla"); the `SMS_LIVE_ENABLED_NG` per-market kill-switch STILL gates NG (text-dark default — skipped with ZERO HTTP when off). Every other country stays on Twilio (`MessagingServiceSid`, no raw `From`). Missing Termii env FAIL-CLOSES (`termii_env_missing`, no HTTP). The `termii-delivery-status` webhook FAIL-CLOSED verifies an `X-Termii-Signature` HMAC-SHA512 over the raw body and feeds the same `notification_deliveries` / `channel_suppressions` ledger the Twilio webhooks use. (Dual-provider per DEC-192; supersedes the smsAdapter single-provider hard-guard.)
+- **Enforcement:** strict-grep gate `.github/scripts/strict-grep/i-proposed-1227-ng-sms-via-termii.mjs` (fails if termiiSend/TERMII_ refs, the `=== "NG"` branch, the dnd/generic mapping, `SMS_LIVE_ENABLED_NG`, or the webhook signature verification are removed) + deno `_shared/adapters/smsAdapter.termii.test.ts` (NG→Termii dnd/generic, kill-switch off→skipped ZERO HTTP, missing-env→failed, US-regression→Twilio); both fails-on-revert (reverting the NG→termiiSend branch makes the NG tests hit Twilio and fail).
+- **Established:** ACTIVE at ORCH-1227 BUILD COMPLETE 2026-06-23. Cross-ref DEC-192; `I-PROPOSED-1161-UNIFIED-DISPATCHER-SOLE-SEND-PATH` (AMENDED — Termii is reached only inside the dispatcher's `smsAdapter`).
 
 ---
 

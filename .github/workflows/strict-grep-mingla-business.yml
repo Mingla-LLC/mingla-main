@@ -2781,6 +2781,17 @@ jobs:
       - name: Run I-PROPOSED-1161 SMS sender/kill-switch gate
         run: node .github/scripts/strict-grep/i-proposed-1161-sms-from-approved-sender-and-kill-switch.mjs
 
+  i-proposed-1227-ng-sms-via-termii:
+    name: "ORCH-1227 [Nigeria SMS via Termii]: NG→Termii (dnd/generic) behind the country seam + SMS_LIVE_ENABLED_NG + signed delivery webhook (I-PROPOSED-1227-NG-SMS-VIA-TERMII)"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Run I-PROPOSED-1227 NG-SMS-via-Termii gate
+        run: node .github/scripts/strict-grep/i-proposed-1227-ng-sms-via-termii.mjs
+
   i-proposed-1187-growth-analytics:
     name: "META-ORCH-1187 [Growth Analytics Hub]: PostHog US-host + no-phx-in-client + consent-gate-before-cookies + replay-masks-PII + web-only isolation + marketing layout mounts analytics"
     runs-on: ubuntu-latest

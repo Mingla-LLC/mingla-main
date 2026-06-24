@@ -332,6 +332,13 @@ verify_jwt = false
 [functions.twilio-inbound-sms]
 verify_jwt = false
 
+# ORCH-1227 (DEC-192) — termii-delivery-status: the Nigeria SMS delivery webhook.
+# verify_jwt=false: Termii cannot present a Supabase JWT; the function FAIL-CLOSED
+# verifies the X-Termii-Signature HMAC-SHA512 over the raw body
+# (TERMII_WEBHOOK_SECRET ?? TERMII_API_KEY).
+[functions.termii-delivery-status]
+verify_jwt = false
+
 # META-ORCH-1161 COMPLIANCE-PAGES — self-serve-unsubscribe: the PUBLIC no-login
 # opt-out endpoint behind the marketing-site /unsubscribe page + CAN-SPAM email
 # footers. Accepts {email?, phone?, scope, token?} and writes BOTH
