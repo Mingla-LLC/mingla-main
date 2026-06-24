@@ -35,8 +35,8 @@ import { s, vs } from "../../utils/responsive";
 const googleIcon = require("../../../assets/google_icon.png");
 const logo = require("../../../assets/brand/mingla-business-logo.png");
 
-const TERMS_URL = "https://mingla.app/terms";
-const PRIVACY_URL = "https://mingla.app/privacy";
+const TERMS_URL = "https://usemingla.com/terms-of-service";
+const PRIVACY_URL = "https://usemingla.com/privacy-policy";
 const LOGO_SIZE = Math.min(s(220), 220);
 const WEB_LOGO_SRC = "/brand/mingla-business-logo.png";
 

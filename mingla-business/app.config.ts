@@ -61,7 +61,7 @@ export default ({ config }: ConfigContext): ExpoConfig => {
 
   return {
     ...config,
-    name: config.name ?? "Business",
+    name: config.name ?? "Mingla Business",
     slug: config.slug ?? "mingla-business",
     // Cycle B2a — deep link scheme for Stripe Connect onboarding return.
     // expo-web-browser.openAuthSessionAsync requires this scheme to redirect
