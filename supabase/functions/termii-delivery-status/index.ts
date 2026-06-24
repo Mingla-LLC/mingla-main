@@ -30,8 +30,8 @@ function classifyStatus(statusRaw: string): {
   const s = statusRaw.trim().toLowerCase();
   const delivered = s === "delivered" || s === "message sent" || s === "sent";
   // DND Active / Rejected / blacklist / opt-out → suppress + fail.
-  const suppress =
-    s.includes("dnd") || s.includes("reject") || s.includes("blacklist") ||
+  const suppress = s.includes("dnd") || s.includes("reject") ||
+    s.includes("blacklist") ||
     s.includes("opt out") || s.includes("opt-out");
   const failed = !delivered && (suppress || s === "expired" || s === "failed" ||
     s === "undelivered" || s === "undeliverable");
@@ -43,7 +43,9 @@ function classifyStatus(statusRaw: string): {
 function timingSafeEqual(a: string, b: string): boolean {
   if (a.length !== b.length) return false;
   let mismatch = 0;
-  for (let i = 0; i < a.length; i += 1) mismatch |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  for (let i = 0; i < a.length; i += 1) {
+    mismatch |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  }
   return mismatch === 0;
 }
 
@@ -55,18 +57,39 @@ async function hmacSha512Hex(secret: string, message: string): Promise<string> {
     false,
     ["sign"],
   );
-  const sig = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(message));
+  const sig = await crypto.subtle.sign(
+    "HMAC",
+    key,
+    new TextEncoder().encode(message),
+  );
   return Array.from(new Uint8Array(sig))
     .map((b) => b.toString(16).padStart(2, "0"))
     .join("");
 }
 
-serve(async (req) => {
-  if (req.method === "OPTIONS") return new Response("ok", { headers: ticketCorsHeaders });
-  if (req.method !== "POST") return jsonResponse({ error: "method_not_allowed" }, 405);
+// ORCH-1227 — DB-client injection seam (pure refactor, no behavior change):
+// production uses serviceClient(); tests inject a stub so the fail-closed AUTH
+// gate (403/400 paths) and the suppression-insert path can be exercised without
+// a live DB. Defaults to serviceClient — identical runtime behavior.
+type ServiceClientFactory = () => ReturnType<typeof serviceClient>;
+let _clientFactory: ServiceClientFactory = serviceClient;
+export function __setServiceClientFactory(
+  factory: ServiceClientFactory | null,
+) {
+  _clientFactory = factory ?? serviceClient;
+}
+
+export async function handleTermiiStatus(req: Request): Promise<Response> {
+  if (req.method === "OPTIONS") {
+    return new Response("ok", { headers: ticketCorsHeaders });
+  }
+  if (req.method !== "POST") {
+    return jsonResponse({ error: "method_not_allowed" }, 405);
+  }
 
   // FAIL-CLOSED signature verification over the RAW body.
-  const signingSecret = Deno.env.get("TERMII_WEBHOOK_SECRET") ?? Deno.env.get("TERMII_API_KEY");
+  const signingSecret = Deno.env.get("TERMII_WEBHOOK_SECRET") ??
+    Deno.env.get("TERMII_API_KEY");
   const provided = req.headers.get("x-termii-signature"); // Headers lookup is case-insensitive.
   if (!signingSecret || !provided) {
     return jsonResponse({ error: "forbidden" }, 403);
@@ -97,7 +120,7 @@ serve(async (req) => {
   ).trim();
 
   const { delivered, failed, suppress } = classifyStatus(status);
-  const supabase = serviceClient();
+  const supabase = _clientFactory();
 
   // Reconcile the cross-channel delivery ledger by provider_message_id + channel,
   // exactly as twilio-message-status does (META-ORCH-1161 §5.6).
@@ -114,7 +137,10 @@ serve(async (req) => {
       .eq("provider_message_id", messageId)
       .eq("channel", "sms");
     if (deliveryErr) {
-      console.warn("[termii-delivery-status] notification_deliveries reconcile note:", deliveryErr.message);
+      console.warn(
+        "[termii-delivery-status] notification_deliveries reconcile note:",
+        deliveryErr.message,
+      );
     }
   }
 
@@ -143,10 +169,20 @@ serve(async (req) => {
           brand_id: null,
         });
       if (suppErr) {
-        console.warn("[termii-delivery-status] suppression insert note:", suppErr.message);
+        console.warn(
+          "[termii-delivery-status] suppression insert note:",
+          suppErr.message,
+        );
       }
     }
   }
 
   return jsonResponse({ ok: true });
-});
+}
+
+// Only bind the HTTP listener when run as the function entrypoint; importing the
+// module (e.g. from tests) does NOT start a server. Deno deploy/edge runs the
+// file as main, so production behavior is unchanged.
+if (import.meta.main) {
+  serve(handleTermiiStatus);
+}
