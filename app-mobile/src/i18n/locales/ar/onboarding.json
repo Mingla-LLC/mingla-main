@@ -109,9 +109,9 @@
     "try_again": "حاول مرة أخرى",
     "idle_headline": "أماكن أفضل تبدأ من هنا",
     "idle_body": "فعّل GPS حتى نتمكن من إيجاد الجواهر\nالمخفية بالقرب منك.",
-    "enable_location": "تفعيل الموقع",
+    "enable_location": "متابعة",
     "privacy_hint": "موقعك يبقى خاصاً. دائماً.",
-    "cta_enable": "تفعيل الموقع"
+    "cta_enable": "متابعة"
   },
   "celebration": {
     "headline": "أحسنت.",

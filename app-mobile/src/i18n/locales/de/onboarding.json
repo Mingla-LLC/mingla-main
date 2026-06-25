@@ -109,9 +109,9 @@
     "try_again": "Erneut versuchen",
     "idle_headline": "Bessere Orte beginnen hier",
     "idle_body": "Aktiviere GPS, damit wir versteckte\nPerlen gleich um die Ecke finden können.",
-    "enable_location": "Standort aktivieren",
+    "enable_location": "Weiter",
     "privacy_hint": "Dein Standort bleibt privat. Immer.",
-    "cta_enable": "Standort aktivieren"
+    "cta_enable": "Weiter"
   },
   "celebration": {
     "headline": "Gut gemacht!",

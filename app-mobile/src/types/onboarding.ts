@@ -72,6 +72,14 @@ export interface OnboardingData {
   firstName: string
   lastName: string
 
+  // ORCH-1228 (Apple Guideline 4): true when the user authenticated via Sign in
+  // with Apple. Apple's Authentication Services already supplies the name (first
+  // sign-in only) and may hide the email behind private relay, so we must NOT
+  // block these users on a mandatory name/email entry screen. The welcome-step
+  // name gate becomes non-blocking when this is true; the Apple-provided name is
+  // still pre-filled when available.
+  isAppleSignIn: boolean
+
   phoneNumber: string       // E.164 format
   phoneCountryCode: string  // ISO 3166-1 alpha-2 (e.g., 'US')
   phoneVerified: boolean

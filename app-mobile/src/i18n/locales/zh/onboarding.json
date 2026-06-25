@@ -109,9 +109,9 @@
     "try_again": "重试",
     "idle_headline": "更好的地方从这里开始",
     "idle_body": "开启 GPS 让我们为你发现\n周边的隐藏好去处。",
-    "enable_location": "开启定位",
+    "enable_location": "继续",
     "privacy_hint": "你的位置始终保持私密。",
-    "cta_enable": "开启定位"
+    "cta_enable": "继续"
   },
   "celebration": {
     "headline": "太棒了。",

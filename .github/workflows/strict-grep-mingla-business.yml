@@ -3249,3 +3249,16 @@ jobs:
         run: node .github/scripts/strict-grep/i-proposed-1226-careers-applicant-from.mjs --self-test
       - name: Run ORCH-1226 careers applicant-from gate
         run: node .github/scripts/strict-grep/i-proposed-1226-careers-applicant-from.mjs
+
+  orch-1228-consumer-apple-review-fixes:
+    name: "ORCH-1228: consumer Apple-review fixes — neutral location button (5.1.1iv) + calendar example (5.1.1ii) + ATT-before-tracking (2.1) + SIWA name/email skip (G4) (I-PROPOSED-1228-CONSUMER-APPLE-REVIEW-FIXES)"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Self-test the ORCH-1228 consumer Apple-review fixes gate
+        run: node .github/scripts/strict-grep/orch-1228-consumer-apple-review-fixes.mjs --self-test
+      - name: Run ORCH-1228 consumer Apple-review fixes gate
+        run: node .github/scripts/strict-grep/orch-1228-consumer-apple-review-fixes.mjs

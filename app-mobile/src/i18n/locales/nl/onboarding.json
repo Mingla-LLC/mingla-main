@@ -109,9 +109,9 @@
     "try_again": "Opnieuw proberen",
     "idle_headline": "Betere plekken beginnen hier",
     "idle_body": "Schakel GPS in zodat we verborgen\nparels om de hoek kunnen vinden.",
-    "enable_location": "Locatie inschakelen",
+    "enable_location": "Doorgaan",
     "privacy_hint": "Je locatie blijft privé. Altijd.",
-    "cta_enable": "Locatie inschakelen"
+    "cta_enable": "Doorgaan"
   },
   "celebration": {
     "headline": "Goed bezig!",

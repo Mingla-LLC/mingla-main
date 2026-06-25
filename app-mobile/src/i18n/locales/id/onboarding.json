@@ -109,9 +109,9 @@
     "try_again": "Coba Lagi",
     "idle_headline": "Tempat lebih baik dimulai dari sini",
     "idle_body": "Aktifkan GPS agar kami bisa menemukan\ntempat tersembunyi di sekitarmu.",
-    "enable_location": "Aktifkan Lokasi",
+    "enable_location": "Lanjutkan",
     "privacy_hint": "Lokasimu selalu tetap privat.",
-    "cta_enable": "Aktifkan lokasi"
+    "cta_enable": "Lanjutkan"
   },
   "celebration": {
     "headline": "Keren.",

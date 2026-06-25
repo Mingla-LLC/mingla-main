@@ -109,9 +109,9 @@
     "try_again": "Intentar de nuevo",
     "idle_headline": "Los mejores lugares empiezan aquí",
     "idle_body": "Activa el GPS para que podamos encontrar\njoyas ocultas a la vuelta de la esquina.",
-    "enable_location": "Activar ubicación",
+    "enable_location": "Continuar",
     "privacy_hint": "Tu ubicación siempre es privada.",
-    "cta_enable": "Activar ubicación"
+    "cta_enable": "Continuar"
   },
   "celebration": {
     "headline": "¡Mira cómo avanzas!",

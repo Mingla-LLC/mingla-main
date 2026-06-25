@@ -109,9 +109,9 @@
     "try_again": "Try Again",
     "idle_headline": "Better spots start here",
     "idle_body": "Enable GPS so we can find hidden\ngems right around the corner.",
-    "enable_location": "Enable Местоположение",
+    "enable_location": "Продолжить",
     "privacy_hint": "Your location stays private. Always.",
-    "cta_enable": "Enable location"
+    "cta_enable": "Продолжить"
   },
   "celebration": {
     "headline": "Look at you go.",
