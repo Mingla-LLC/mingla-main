@@ -109,9 +109,9 @@
     "try_again": "ลองอีกครั้ง",
     "idle_headline": "ที่ดีๆ เริ่มจากตรงนี้",
     "idle_body": "เปิด GPS เพื่อให้เราหา\nสถานที่ลับๆ ใกล้คุณ",
-    "enable_location": "เปิดตำแหน่ง",
+    "enable_location": "ดำเนินการต่อ",
     "privacy_hint": "ตำแหน่งของคุณจะเป็นส่วนตัวเสมอ",
-    "cta_enable": "เปิดตำแหน่ง"
+    "cta_enable": "ดำเนินการต่อ"
   },
   "celebration": {
     "headline": "เก่งมาก",

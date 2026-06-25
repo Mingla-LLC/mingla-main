@@ -62,7 +62,8 @@ import {
   onNotificationClicked,
   onForegroundNotification,
 } from "../src/services/oneSignalService";
-import { initializeAppsFlyer, setAppsFlyerUserId, registerAppsFlyerDevice, logAppsFlyerEvent } from "../src/services/appsFlyerService";
+import { initializeAppsFlyer, startAppsFlyer, setAppsFlyerUserId, registerAppsFlyerDevice, logAppsFlyerEvent } from "../src/services/appsFlyerService";
+import { ensureAttRequested } from "../src/services/permissionOrchestrator";
 import { useCustomerInfoListener } from "../src/hooks/useRevenueCat";
 import { useTrialExpiryTracking } from "../src/hooks/useSubscription";
 import * as SplashScreen from 'expo-splash-screen';
@@ -900,6 +901,39 @@ function AppContent() {
     profile.has_completed_onboarding === false;
 
   // Email verification removed — all users are now OAuth (inherently verified)
+
+  // ── ATT (App Tracking Transparency) — ORCH-1228 (Apple Guideline 2.1) ────────
+  // Apple rejected build 29 because the reviewer could not locate the ATT prompt:
+  // it previously fired ONLY after the coach-mark tour completed/was skipped, and
+  // on the reviewer's iPad the tour never reached that point. This effect fires
+  // ATT DETERMINISTICALLY the first time the authenticated, onboarded user reaches
+  // the main app UI — a path that ALWAYS runs, independent of whether the
+  // coach-mark tour renders. ensureAttRequested() is single-flight (it never
+  // double-prompts, and the post-tour permission step routes through the same
+  // gate), and on a previously-answered install iOS resolves it without showing
+  // the dialog again. After ATT resolves we start AppsFlyer transmission with the
+  // now-final IDFA state. PostHog awaits the same gate (whenAttResolved) before it
+  // initializes, so no tracking SDK transmits before ATT — the ATT-before-tracking
+  // ordering Apple requires.
+  const attFiredRef = useRef(false);
+  useEffect(() => {
+    if (attFiredRef.current) return;
+    if (isLoadingAuth) return;
+    if (!isAuthenticated || !user?.id) return;
+    if (showOnboardingFlow || needsOnboarding) return; // wait until the main app UI
+    attFiredRef.current = true;
+    ensureAttRequested()
+      .then(() => {
+        // Begin AppsFlyer transmission with the resolved IDFA state (idempotent).
+        startAppsFlyer();
+      })
+      .catch((err) => {
+        console.warn("[ATT] ensureAttRequested failed:", err);
+        // Even if ATT failed, AppsFlyer should still start (gate is open).
+        startAppsFlyer();
+      });
+  }, [isAuthenticated, isLoadingAuth, user?.id, showOnboardingFlow, needsOnboarding]);
+  // ───────────────────────────────────────────────────────────────────────────
 
   // Structured navigation logging
   useEffect(() => {

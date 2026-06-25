@@ -149,6 +149,24 @@ class PostHogService {
       this.initialized = true; // mark so we don't retry every boot
       return;
     }
+    // ORCH-1228 (Apple Guideline 2.1) — ATT-before-tracking ordering. PostHog's
+    // native client starts autocapture + masked session replay (a form of
+    // tracking) the moment it is constructed. On iOS we therefore WAIT for the
+    // ATT decision before building the client, so no tracking data is collected
+    // before the App Tracking Transparency prompt resolves. `whenAttResolved()`
+    // resolves immediately on non-iOS (ATT is a no-op there) and once ATT has
+    // been requested on iOS — fired deterministically when the user first reaches
+    // the main app UI (app/index.tsx). Re-check `initialized` after the await in
+    // case a concurrent caller finished first.
+    if (Platform.OS === "ios") {
+      try {
+        const { whenAttResolved } = await import("./permissionOrchestrator");
+        await whenAttResolved();
+      } catch {
+        // If the gate import/await fails, do not block analytics forever.
+      }
+      if (this.initialized) return;
+    }
     try {
       // Lazy import so posthog-react-native never loads on web.
       const PostHogClass = (await import("posthog-react-native")).default;

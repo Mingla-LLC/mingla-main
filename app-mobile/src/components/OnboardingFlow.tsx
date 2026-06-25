@@ -2164,8 +2164,14 @@ const OnboardingFlow = ({
       case 'language':
         return { label: t('common:continue'), disabled: false, loading: false, onPress: handleGoNext, hide: false }
       case 'welcome': {
+        // ORCH-1228 (Apple Guideline 4): Sign in with Apple already supplies the
+        // user's name via Authentication Services — we must NOT block these users
+        // on a mandatory name entry. For SIWA, the CTA is always enabled (the name
+        // is pre-filled from Apple when available, or left optional). For every
+        // other auth method we keep the original required-name gate.
         const nameReady = data.firstName.trim().length > 0 && data.lastName.trim().length > 0;
-        return { label: t('common:lets_go'), disabled: !nameReady, loading: false, onPress: handleSaveName, hide: false }
+        const disabled = data.isAppleSignIn ? false : !nameReady;
+        return { label: t('common:lets_go'), disabled, loading: false, onPress: handleSaveName, hide: false }
       }
       case 'phone':
         return data.phoneVerified

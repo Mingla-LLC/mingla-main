@@ -109,9 +109,9 @@
     "try_again": "もう一度試す",
     "idle_headline": "もっといいスポットはここから",
     "idle_body": "GPSを有効にして\nすぐ近くの隠れた名所を見つけましょう。",
-    "enable_location": "位置情報を有効にする",
+    "enable_location": "続ける",
     "privacy_hint": "あなたの位置情報はいつもプライベートです。",
-    "cta_enable": "位置情報を有効にする"
+    "cta_enable": "続ける"
   },
   "celebration": {
     "headline": "その調子。",

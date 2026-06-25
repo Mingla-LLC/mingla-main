@@ -109,9 +109,9 @@
     "try_again": "נסה שוב",
     "idle_headline": "מקומות טובים יותר מתחילים כאן",
     "idle_body": "הפעל GPS כדי שנמצא\nאבני חן מוסתרות ממש מסביבך.",
-    "enable_location": "הפעל מיקום",
+    "enable_location": "המשך",
     "privacy_hint": "המיקום שלך נשאר פרטי. תמיד.",
-    "cta_enable": "הפעל מיקום"
+    "cta_enable": "המשך"
   },
   "celebration": {
     "headline": "תראו אותך.",

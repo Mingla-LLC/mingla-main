@@ -109,9 +109,9 @@
     "try_again": "Réessayer",
     "idle_headline": "De meilleurs endroits commencent ici",
     "idle_body": "Activez le GPS pour qu'on trouve des\npépites juste à côté de chez vous.",
-    "enable_location": "Activer la localisation",
+    "enable_location": "Continuer",
     "privacy_hint": "Votre position reste privée. Toujours.",
-    "cta_enable": "Activer la localisation"
+    "cta_enable": "Continuer"
   },
   "celebration": {
     "headline": "Bravo !",

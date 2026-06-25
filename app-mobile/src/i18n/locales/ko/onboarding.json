@@ -109,9 +109,9 @@
     "try_again": "다시 시도",
     "idle_headline": "더 좋은 장소는 여기서 시작",
     "idle_body": "GPS를 활성화하면\n바로 근처의 숨은 명소를 찾아드려요.",
-    "enable_location": "위치 활성화",
+    "enable_location": "계속",
     "privacy_hint": "위치 정보는 항상 비공개입니다.",
-    "cta_enable": "위치 활성화"
+    "cta_enable": "계속"
   },
   "celebration": {
     "headline": "잘하고 있어요.",

@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import * as Location from 'expo-location'
+import { supabase } from '../services/supabase'
 import { PreferencesService } from '../services/preferencesService'
 import { loadOnboardingData } from '../utils/onboardingPersistence'
 import { getDefaultCountryCode } from '../constants/countries'
@@ -42,6 +43,7 @@ export interface OnboardingResumeData {
 const BASE_INITIAL_DATA: OnboardingData = {
   firstName: '',
   lastName: '',
+  isAppleSignIn: false,
   phoneNumber: '',
   phoneCountryCode: 'US',
   phoneVerified: false,
@@ -95,7 +97,32 @@ export function useOnboardingResume(userId: string, profile: ResumeProfile): Onb
         const phoneAlreadyVerified = !!profile.phone
         base.phoneVerified = phoneAlreadyVerified
 
-        // Pre-fill name from profile (e.g. Apple Sign-In provides name automatically)
+        // ORCH-1228 (Apple Guideline 4) — detect Sign in with Apple from the
+        // Supabase auth session. The Authentication Services framework already
+        // supplies the name/email, so a SIWA user must NOT be blocked on a
+        // mandatory name (or email) entry screen. We read the session's
+        // app_metadata.provider AND the identities[] array (robust: identities is
+        // populated even when a SIWA session was later linked to other providers).
+        try {
+          const { data: { session } } = await supabase.auth.getSession()
+          const authUser = session?.user
+          const provider = (authUser?.app_metadata as { provider?: string } | undefined)?.provider
+          const providers = (authUser?.app_metadata as { providers?: string[] } | undefined)?.providers
+          const identityProviders = (authUser?.identities ?? []).map((i) => i.provider)
+          base.isAppleSignIn =
+            provider === 'apple' ||
+            (Array.isArray(providers) && providers.includes('apple')) ||
+            identityProviders.includes('apple')
+        } catch (siwaErr) {
+          // Non-fatal: if the session read fails, fall back to the standard
+          // (blocking) name gate. Never let this stall onboarding.
+          console.warn('[useOnboardingResume] SIWA detection failed', String(siwaErr))
+        }
+
+        // Pre-fill name from profile (e.g. Apple Sign-In provides name automatically).
+        // Apple only returns the name on the FIRST sign-in, so first/last may be
+        // partially present; pre-fill whatever exists without clobbering a
+        // crash-resume value.
         if (profile.first_name && !base.firstName) {
           base.firstName = profile.first_name || ''
           base.lastName = profile.last_name || ''
