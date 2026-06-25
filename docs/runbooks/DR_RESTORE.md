@@ -17,9 +17,13 @@
 - Accidental destructive migration or bad data deploy
 - Regional Supabase outage with unrecoverable project state
 - Ransomware / credential compromise requiring clean restore
-- **G4 drill:** scheduled exercise on **staging only** (`gqnoajqerqhnvulmnyvv`)
+- **G4 drill:** scheduled exercise on a **clone of `gqnoajqerqhnvulmnyvv`** (see warning below)
 
-Do **not** run a restore drill on production unless executing a real incident.
+> ⚠️ **`gqnoajqerqhnvulmnyvv` is the LIVE PRODUCTION project, not staging** (it is labelled
+> "Mingla-dev" in the dashboard but every live app points at it — see the two-projects note
+> in the master keys doc). There is no separate staging project. Therefore the G4 drill MUST
+> be run as **"Restore to a new project" (clone)** — NEVER an **in-place** restore, which would
+> overwrite live production data. An in-place restore is for a real incident only.
 
 ## Prerequisites
 
@@ -53,10 +57,10 @@ Do **not** run a restore drill on production unless executing a real incident.
 
 ### 3. Restore (T1 → T2)
 
-**Staging drill (recommended for G4 evidence):**
+**Clone drill (recommended for G4 evidence — safe on live production):**
 
-1. Prefer **Restore to a new project** (clone) so staging ref stays stable for day-to-day work.
-2. If org policy requires in-place restore, schedule a maintenance window and accept staging downtime.
+1. **Restore to a new project** (clone) so the live `gqnoajqerqhnvulmnyvv` project stays untouched and serving real users.
+2. Do NOT in-place restore for the drill — that would take live production down and overwrite real data. In-place is for a real incident only, in a scheduled maintenance window.
 
 **Production incident:**
 
