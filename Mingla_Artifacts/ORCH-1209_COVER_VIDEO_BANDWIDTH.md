@@ -31,3 +31,23 @@ NOT in Phase 1: native HTTP/disk caching (Phase 2, data-gated), CDN/storage migr
 - Confirm every cover-VIDEO row has a usable poster image source (cover image or first-frame); where none exists, generate a one-time first-frame still — NO new runtime dependency.
 - Re-verify exact current line numbers (code may have shifted since the investigation).
 - Confirm detail screens (single on-screen video, real viewer) need no change beyond the poster.
+
+## CLOSE — 2026-06-25 (Seth-approved "close it") ✅
+Phase-1 web fix SHIPPED 2026-06-22 (PR #629 `e3e98b82e`, live via Vercel). The 2026-06-25 close re-check used the daily Cloudinary `/usage/{date}` breakdown (decisive vs the cumulative meter, which lags):
+
+| Day | Bandwidth | Note |
+|---|---|---|
+| 6/18 | 73.1 GB | bot spike |
+| 6/19 | 43.1 GB | bot spike |
+| 6/21 | 51.6 GB | bot spike |
+| 6/22 | 19.4 GB | fix propagating (deployed ~03:01 EDT) |
+| **6/23** | **0.001 GB** | first clean post-fix day |
+| **6/24** | **0.0 GB** | second clean day |
+
+The leak is **dead**: two full post-fix days at ~zero new bandwidth, vs the tens-of-thousands-of-requests/day before. Web `preload=none`+poster was the entire lever (bots ~100% of the 216 GB), exactly as diagnosed. Delivery never suspended (cover `.mp4` HTTP 200 / `so_0` poster HTTP 200 throughout). Cumulative `used_percent` ~808% is cosmetic sunk cost for this billing window (trailing-~30-day rolling sum; the 6/18–6/22 spike ages out ~7/18–7/22 or zeroes on calendar reset) — no longer growing, gates nothing.
+
+**Decision: do NOT pay.** Option A (watch-and-wait) succeeded. The native autoplay-gate (Phase-1 leg 2/3, merged but DARK pending an app build) downgrades to defense-in-depth — rides the next natural build, no emergency build, no COMMS-0052 OTA-unfreeze for this. Phase 2 (native caching) + CDN/storage migration remain deferred and unneeded at current scale.
+
+**Regression protection (CLOSE Step 0.5 — SATISFIED):** CI-enforced strict-grep `.github/scripts/strict-grep/i-proposed-1209-no-eager-video-preload.mjs` (wired into `strict-grep-mingla-business.yml`) + invariant `I-PROPOSED-1209-NO-EAGER-VIDEO-PRELOAD` ACTIVE + implementor test `packages/offering-rendering/__tests__/orch_1209_no_eager_video_preload.test.ts` (afec5639f) + tester adversarial `packages/offering-rendering/__tests__/orch_1209_bandwidth_adversarial.test.ts` (88bd22b9f, distinct angle), both fails-on-revert.
+
+**Status: CLOSED ✅**
