@@ -910,7 +910,9 @@ const OnboardingFlow = ({
   const [launchGateSelectedCity, setLaunchGateSelectedCity] = useState<LaunchCityWithBbox | null>(null)
   const [launchGateWriting, setLaunchGateWriting] = useState(false)
   const [launchGateWriteError, setLaunchGateWriteError] = useState(false)
-  // Count of check failures so the "Continue anyway" escape only appears after >=2 (§B.5).
+  // Count of check-launch-city failures. ORCH-1230 (Apple 5.1.5): the "Continue
+  // anyway" escape now appears on the FIRST failure (>=1, was >=2) so a no-GPS /
+  // Location-Services-off user is never stranded on an un-runnable retry.
   const [launchCheckFailures, setLaunchCheckFailures] = useState(0)
   const [manualLocationText, setManualLocationText] = useState(initialData.manualLocation ?? '')
   const [locationSuggestions, setLocationSuggestions] = useState<import('../services/geocodingService').AutocompleteSuggestion[]>([])
@@ -922,6 +924,14 @@ const OnboardingFlow = ({
   const [locationSearchLoading, setLocationSearchLoading] = useState(false)
   const [showLocationSuggestions, setShowLocationSuggestions] = useState(false)
   const [locationHasSearched, setLocationHasSearched] = useState(false)
+  // ─── ORCH-1230 (Apple Guideline 5.1.5) ───
+  // The app MUST be fully functional with Location Services OFF / permission denied.
+  // This flag reveals the manual "Choose your city" picker INLINE on the location
+  // step (idle / settings / error states) so a no-GPS user always has an immediate,
+  // obvious path forward — never a dead-end behind "Open Settings". Picking a city
+  // here writes data.coordinates + data.manualLocation and advances into a fully
+  // working app (use_gps_location=false → runtime reads custom_lat/lng, no GPS).
+  const [manualLocationOpen, setManualLocationOpen] = useState(false)
   const locationSearchTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [savingPrefs, setSavingPrefs] = useState(false)
   const [prefsSaveError, setPrefsSaveError] = useState(false)
@@ -2727,6 +2737,123 @@ const OnboardingFlow = ({
       // and flags comparisons to 'requesting' as impossible.
       const isRequesting = locationStatus === 'requesting';
 
+      // ─── ORCH-1230 (Apple Guideline 5.1.5): manual city picker ───
+      // Fully-functional-without-GPS path. Shown INLINE (not a separate route) on the
+      // idle / settings / error location states so a reviewer with Location Services
+      // OFF, or any user who denies permission, can pick a city on the FIRST encounter
+      // and continue into a working app. Selecting a city calls handleManualLocation,
+      // which writes data.coordinates + data.manualLocation and advances; the final
+      // onboarding save persists those with use_gps_location=false (no runtime GPS).
+      const renderManualLocationPanel = () => (
+        <View style={styles.locManualPanel}>
+          <Text style={styles.locManualTitle}>{t('onboarding:location.manual_title')}</Text>
+          {selectedLocation ? (
+            <View style={styles.locationSelectedCard}>
+              <View style={styles.locationSelectedContent}>
+                <View style={styles.locationSelectedIconWrap}>
+                  <Icon name="location" size={20} color={colors.primary[500]} />
+                </View>
+                <View style={styles.locationSelectedTextWrap}>
+                  <Text style={styles.locationSelectedName} numberOfLines={1}>{selectedLocation.displayName}</Text>
+                  {!!selectedLocation.fullAddress && selectedLocation.fullAddress !== selectedLocation.displayName && (
+                    <Text style={styles.locationSelectedAddress} numberOfLines={1}>{selectedLocation.fullAddress}</Text>
+                  )}
+                </View>
+                <Pressable
+                  onPress={handleClearLocationSelection}
+                  accessibilityRole="button"
+                  accessibilityLabel={t('onboarding:location.manual_change')}
+                  hitSlop={10}
+                >
+                  <Icon name="close-circle" size={22} color={colors.text.tertiary} />
+                </Pressable>
+              </View>
+            </View>
+          ) : (
+            <View style={styles.locationSearchContainer}>
+              <View style={[styles.locationSearchInputWrap, showLocationSuggestions && styles.locationSearchInputWrapFocused]}>
+                <Icon name="search" size={20} color={colors.text.tertiary} style={styles.locationSearchIcon} />
+                <TextInput
+                  value={manualLocationText}
+                  onChangeText={setManualLocationText}
+                  style={styles.locationSearchInput}
+                  placeholder={t('onboarding:location.manual_placeholder')}
+                  placeholderTextColor={colors.text.tertiary}
+                  autoCorrect={false}
+                  returnKeyType="search"
+                  accessibilityLabel={t('onboarding:location.manual_placeholder')}
+                />
+                {locationSearchLoading && (
+                  <ActivityIndicator size="small" color={colors.primary[500]} style={styles.locationSearchSpinner} />
+                )}
+              </View>
+              {showLocationSuggestions && locationSuggestions.length > 0 && (
+                <View style={styles.locationDropdown}>
+                  <ScrollView style={styles.locationDropdownScroll} keyboardShouldPersistTaps="handled">
+                    {locationSuggestions.map((s, i) => (
+                      <Pressable
+                        key={`${s.displayName}-${i}`}
+                        style={({ pressed }) => [styles.locationSuggestionRow, pressed && styles.locationSuggestionRowPressed]}
+                        onPress={() => handleSelectLocationSuggestion(s)}
+                        accessibilityRole="button"
+                        accessibilityLabel={s.displayName}
+                      >
+                        <View style={styles.locationSuggestionIconWrap}>
+                          <Icon name="location-outline" size={18} color={colors.primary[500]} style={styles.locationSuggestionIcon} />
+                        </View>
+                        <View style={styles.locationSuggestionTextWrap}>
+                          <Text style={styles.locationSuggestionName} numberOfLines={1}>{s.displayName}</Text>
+                          {!!s.fullAddress && s.fullAddress !== s.displayName && (
+                            <Text style={styles.locationSuggestionAddress} numberOfLines={1}>{s.fullAddress}</Text>
+                          )}
+                        </View>
+                      </Pressable>
+                    ))}
+                  </ScrollView>
+                </View>
+              )}
+              {locationHasSearched && !locationSearchLoading && locationSuggestions.length === 0 && manualLocationText.trim().length >= 3 && (
+                <View style={styles.locationNoResults}>
+                  <Icon name="information-circle-outline" size={16} color={colors.text.tertiary} />
+                  <Text style={styles.locationNoResultsText}>{t('onboarding:location.manual_no_results')}</Text>
+                </View>
+              )}
+            </View>
+          )}
+          <Animated.View style={{ marginTop: spacing.md }}>
+            <Pressable
+              style={[styles.locGlassButton, (!selectedLocation || savingPrefs) && styles.locGlassButtonDisabled]}
+              onPress={handleManualLocation}
+              disabled={!selectedLocation || savingPrefs}
+              accessibilityRole="button"
+              accessibilityLabel={t('onboarding:location.manual_confirm')}
+            >
+              {savingPrefs ? (
+                <ActivityIndicator size="small" color={colors.text.inverse} style={styles.locButtonIcon} />
+              ) : (
+                <Icon name="arrow-forward" size={20} color={colors.text.inverse} style={styles.locButtonIcon} />
+              )}
+              <Text style={styles.locButtonText}>{t('onboarding:location.manual_confirm')}</Text>
+            </Pressable>
+          </Animated.View>
+        </View>
+      )
+
+      // Secondary "Choose your city instead" trigger — surfaced on every no-GPS
+      // state so the manual path is one tap away on the FIRST encounter.
+      const renderChooseCityLink = () => (
+        <Animated.View style={[{ opacity: locButtonAnim.opacity, marginTop: spacing.md }]}>
+          <Pressable
+            style={styles.gateSecondaryLink}
+            onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setManualLocationOpen(true) }}
+            accessibilityRole="button"
+            accessibilityLabel={t('onboarding:location.type_city')}
+          >
+            <Text style={styles.locManualLinkText}>{t('onboarding:location.type_city')}</Text>
+          </Pressable>
+        </Animated.View>
+      )
+
       // ─── ORCH-1028 launch-city gate renders (DESIGN §3) ───
       // Rendered BEFORE the locationStatus-driven renders, gated by launchGate.phase.
       // `checking` falls through to the existing `granted` card (DESIGN §3.0) with a
@@ -2812,8 +2939,10 @@ const OnboardingFlow = ({
             <Animated.Text style={[styles.locBody, { opacity: locBodyAnim.opacity, transform: [{ translateY: locBodyAnim.translateY }] }]}>
               {t('onboarding:launch_gate.check_failed_body')}
             </Animated.Text>
-            {/* ≥2 failures: quiet "Continue anyway" escape (§B.5) — hidden on first fail. */}
-            {launchCheckFailures >= 2 && (
+            {/* ORCH-1230 (Apple 5.1.5): the "Continue anyway" escape now appears on
+                the FIRST failure (was >=2) — a no-GPS / Location-Services-off reviewer
+                must never be stranded on a retry that can't succeed. */}
+            {launchCheckFailures >= 1 && (
               <Animated.View style={[{ opacity: locButtonAnim.opacity, marginTop: spacing.md }]}>
                 <Pressable
                   style={styles.gateSecondaryLink}
@@ -2880,32 +3009,38 @@ const OnboardingFlow = ({
             <Animated.Text style={[styles.locBody, { opacity: locBodyAnim.opacity, transform: [{ translateY: locBodyAnim.translateY }] }]}>
               {t('onboarding:location.settings_body')}
             </Animated.Text>
-            <Animated.View style={[{ opacity: locButtonAnim.opacity, transform: [{ scale: locButtonAnim.scale }, { translateY: locButtonAnim.translateY }] }]}>
-              <Pressable
-                style={styles.locGlassButton}
-                onPress={() => { logger.action('Open device settings pressed'); Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); Linking.openSettings() }}
-              >
-                <Icon name="settings-outline" size={20} color={colors.text.inverse} style={styles.locButtonIcon} />
-                <Text style={styles.locButtonText}>{t('onboarding:location.open_settings')}</Text>
-              </Pressable>
-            </Animated.View>
-            <Animated.View style={[{ opacity: locButtonAnim.opacity, marginTop: spacing.md }]}>
-              <Pressable
-                style={[styles.locRetryButton, isRequesting && styles.locGlassButtonDisabled]}
-                onPress={() => { logger.action('Retry location after settings'); handleLocationRequest() }}
-                disabled={isRequesting}
-              >
-                {isRequesting ? (
-                  <ActivityIndicator size="small" color={colors.primary[500]} style={styles.locButtonIcon} />
-                ) : (
-                  <Icon name="refresh-outline" size={18} color={colors.primary[500]} style={styles.locButtonIcon} />
-                )}
-                <Text style={styles.locRetryText}>{isRequesting ? t('onboarding:location.retry_finding') : t('onboarding:location.retry_turned_on')}</Text>
-              </Pressable>
-            </Animated.View>
-            <Animated.View style={[{ opacity: locButtonAnim.opacity, marginTop: spacing.md }]}>
-              <Text style={styles.locDeniedHelper}>We need your location to find great spots near you</Text>
-            </Animated.View>
+            {/* ORCH-1230 (5.1.5): manual city picker is shown INLINE & IMMEDIATELY
+                here — Location Services off must NOT dead-end the user. */}
+            {manualLocationOpen ? (
+              renderManualLocationPanel()
+            ) : (
+              <>
+                <Animated.View style={[{ opacity: locButtonAnim.opacity, transform: [{ scale: locButtonAnim.scale }, { translateY: locButtonAnim.translateY }] }]}>
+                  <Pressable
+                    style={styles.locGlassButton}
+                    onPress={() => { logger.action('Open device settings pressed'); Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); Linking.openSettings() }}
+                  >
+                    <Icon name="settings-outline" size={20} color={colors.text.inverse} style={styles.locButtonIcon} />
+                    <Text style={styles.locButtonText}>{t('onboarding:location.open_settings')}</Text>
+                  </Pressable>
+                </Animated.View>
+                <Animated.View style={[{ opacity: locButtonAnim.opacity, marginTop: spacing.md }]}>
+                  <Pressable
+                    style={[styles.locRetryButton, isRequesting && styles.locGlassButtonDisabled]}
+                    onPress={() => { logger.action('Retry location after settings'); handleLocationRequest() }}
+                    disabled={isRequesting}
+                  >
+                    {isRequesting ? (
+                      <ActivityIndicator size="small" color={colors.primary[500]} style={styles.locButtonIcon} />
+                    ) : (
+                      <Icon name="refresh-outline" size={18} color={colors.primary[500]} style={styles.locButtonIcon} />
+                    )}
+                    <Text style={styles.locRetryText}>{isRequesting ? t('onboarding:location.retry_finding') : t('onboarding:location.retry_turned_on')}</Text>
+                  </Pressable>
+                </Animated.View>
+                {renderChooseCityLink()}
+              </>
+            )}
           </View>
         )
       }
@@ -2923,28 +3058,34 @@ const OnboardingFlow = ({
             <Animated.Text style={[styles.locBody, { opacity: locBodyAnim.opacity, transform: [{ translateY: locBodyAnim.translateY }] }]}>
               {t('onboarding:location.error_body')}
             </Animated.Text>
-            <Animated.View style={[{ opacity: locButtonAnim.opacity, transform: [{ scale: locButtonAnim.scale }, { translateY: locButtonAnim.translateY }] }]}>
-              <Pressable
-                style={[styles.locGlassButton, isRequesting && styles.locGlassButtonDisabled]}
-                onPress={() => {
-                  logger.action('Retry location from error state')
-                  handleLocationRequest()
-                }}
-                disabled={isRequesting}
-              >
-                {isRequesting ? (
-                  <ActivityIndicator size="small" color={colors.text.inverse} style={styles.locButtonIcon} />
-                ) : (
-                  <Icon name="refresh-outline" size={20} color={colors.text.inverse} style={styles.locButtonIcon} />
-                )}
-                <Text style={styles.locButtonText}>
-                  {isRequesting ? t('onboarding:location.retry_finding') : t('onboarding:location.try_again')}
-                </Text>
-              </Pressable>
-            </Animated.View>
-            <Animated.View style={[{ opacity: locButtonAnim.opacity, marginTop: spacing.md }]}>
-              <Text style={styles.locDeniedHelper}>We need your location to find great spots near you</Text>
-            </Animated.View>
+            {/* ORCH-1230 (5.1.5): GPS error must NOT dead-end — manual city picker
+                available immediately on the first failure. */}
+            {manualLocationOpen ? (
+              renderManualLocationPanel()
+            ) : (
+              <>
+                <Animated.View style={[{ opacity: locButtonAnim.opacity, transform: [{ scale: locButtonAnim.scale }, { translateY: locButtonAnim.translateY }] }]}>
+                  <Pressable
+                    style={[styles.locGlassButton, isRequesting && styles.locGlassButtonDisabled]}
+                    onPress={() => {
+                      logger.action('Retry location from error state')
+                      handleLocationRequest()
+                    }}
+                    disabled={isRequesting}
+                  >
+                    {isRequesting ? (
+                      <ActivityIndicator size="small" color={colors.text.inverse} style={styles.locButtonIcon} />
+                    ) : (
+                      <Icon name="refresh-outline" size={20} color={colors.text.inverse} style={styles.locButtonIcon} />
+                    )}
+                    <Text style={styles.locButtonText}>
+                      {isRequesting ? t('onboarding:location.retry_finding') : t('onboarding:location.try_again')}
+                    </Text>
+                  </Pressable>
+                </Animated.View>
+                {renderChooseCityLink()}
+              </>
+            )}
           </View>
         )
       }
@@ -2962,28 +3103,37 @@ const OnboardingFlow = ({
           <Animated.Text style={[styles.locBody, { opacity: locBodyAnim.opacity, transform: [{ translateY: locBodyAnim.translateY }] }]}>
             {t('onboarding:location.idle_body')}
           </Animated.Text>
-          <Animated.View style={[{ opacity: locButtonAnim.opacity, transform: [{ scale: locButtonAnim.scale }, { translateY: locButtonAnim.translateY }] }]}>
-            <Pressable
-              style={[styles.locGlassButton, locationStatus !== 'idle' && styles.locGlassButtonDisabled]}
-              onPress={handleLocationRequest}
-              disabled={locationStatus !== 'idle'}
-            >
-              {locationStatus === 'requesting' ? (
-                <ActivityIndicator size="small" color={colors.text.inverse} style={styles.locButtonIcon} />
-              ) : (
-                <Icon name="location" size={20} color={colors.text.inverse} style={styles.locButtonIcon} />
-              )}
-              <Text style={styles.locButtonText}>
-                {locationStatus === 'requesting' ? t('onboarding:location.retry_finding') : t('onboarding:location.enable_location')}
-              </Text>
-            </Pressable>
-          </Animated.View>
-          <Animated.View style={[{ opacity: locBodyAnim.opacity }]}>
-            <View style={styles.locPrivacyRow}>
-              <Icon name="shield-checkmark-outline" size={14} color={colors.text.tertiary} />
-              <Text style={styles.locPrivacyText}>{t('onboarding:location.privacy_hint')}</Text>
-            </View>
-          </Animated.View>
+          {/* ORCH-1230 (5.1.5): manual city picker is reachable on the FIRST
+              encounter, before any GPS request — works with Location Services off. */}
+          {manualLocationOpen ? (
+            renderManualLocationPanel()
+          ) : (
+            <>
+              <Animated.View style={[{ opacity: locButtonAnim.opacity, transform: [{ scale: locButtonAnim.scale }, { translateY: locButtonAnim.translateY }] }]}>
+                <Pressable
+                  style={[styles.locGlassButton, locationStatus !== 'idle' && styles.locGlassButtonDisabled]}
+                  onPress={handleLocationRequest}
+                  disabled={locationStatus !== 'idle'}
+                >
+                  {locationStatus === 'requesting' ? (
+                    <ActivityIndicator size="small" color={colors.text.inverse} style={styles.locButtonIcon} />
+                  ) : (
+                    <Icon name="location" size={20} color={colors.text.inverse} style={styles.locButtonIcon} />
+                  )}
+                  <Text style={styles.locButtonText}>
+                    {locationStatus === 'requesting' ? t('onboarding:location.retry_finding') : t('onboarding:location.enable_location')}
+                  </Text>
+                </Pressable>
+              </Animated.View>
+              {renderChooseCityLink()}
+              <Animated.View style={[{ opacity: locBodyAnim.opacity }]}>
+                <View style={styles.locPrivacyRow}>
+                  <Icon name="shield-checkmark-outline" size={14} color={colors.text.tertiary} />
+                  <Text style={styles.locPrivacyText}>{t('onboarding:location.privacy_hint')}</Text>
+                </View>
+              </Animated.View>
+            </>
+          )}
         </View>
       )
     }
@@ -4279,6 +4429,25 @@ const styles = StyleSheet.create({
     color: colors.text.tertiary,
     marginTop: spacing.md,
     textAlign: 'center',
+  },
+  // ─── ORCH-1230 (Apple 5.1.5) manual city picker (no-GPS path) ───
+  locManualPanel: {
+    width: '100%',
+    paddingHorizontal: spacing.lg,
+    marginTop: spacing.md,
+  },
+  locManualTitle: {
+    ...typography.sm,
+    fontWeight: fontWeights.semibold,
+    color: colors.text.secondary,
+    textAlign: 'center',
+    marginBottom: spacing.md,
+  },
+  locManualLinkText: {
+    ...responsiveTypography.sm,
+    fontWeight: fontWeights.semibold,
+    color: colors.primary[500],
+    letterSpacing: 0.2,
   },
 })
 
