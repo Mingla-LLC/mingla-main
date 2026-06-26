@@ -114,7 +114,12 @@
     "idle_body": "Enable GPS so we can find hidden\ngems right around the corner.",
     "enable_location": "Continue",
     "privacy_hint": "Your location stays private. Always.",
-    "cta_enable": "Continue"
+    "cta_enable": "Continue",
+    "manual_title": "Choose your city",
+    "manual_placeholder": "Search for your city",
+    "manual_confirm": "Use this city",
+    "manual_change": "Change city",
+    "manual_no_results": "No matches — try a nearby city or check the spelling."
   },
   "launch_gate": {
     "checking": "Checking your city",
