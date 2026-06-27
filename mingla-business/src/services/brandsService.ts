@@ -41,6 +41,14 @@ import { brandHoursToRpcPayload } from "../utils/venueBrandHours";
 // brand id so a `_temp_…` optimistic id is a clean miss (null), not a thrown
 // Postgres 22P02 from `.eq("id", "_temp_…")` against the uuid `brands.id`.
 import { isPersistedBrandId } from "../utils/brandId";
+// META-ORCH-1235 — settle-guarantee: every full-screen-spinner-gating read
+// races a bounded deadline so a hung Supabase read becomes a bounded
+// error+retry instead of an infinite spinner.
+import {
+  withTimeout,
+  DATA_FETCH_TIMEOUT_MS,
+  AUTH_PROBE_TIMEOUT_MS,
+} from "../utils/withTimeout";
 
 interface EventBrandIdRow {
   brand_id: string | null;
@@ -496,9 +504,15 @@ export async function getBrands(accountId: string): Promise<Brand[]> {
   // an authenticated session is attached BEFORE the reads; if absent, THROW so the
   // consumer renders LOADING (and React Query retries), never a committed empty.
   // getSession() is a LOCAL read (no network) so this adds no round-trip.
+  // META-ORCH-1235 — getSession() is a local read but bound it anyway so a
+  // GoTrue web-lock contention can never wedge the precheck.
   const {
     data: { session },
-  } = await supabase.auth.getSession();
+  } = await withTimeout(
+    supabase.auth.getSession(),
+    AUTH_PROBE_TIMEOUT_MS,
+    "getBrands:session",
+  );
   if (session === null || session.user === undefined || session.user === null) {
     throw new BrandsAuthSessionNotAttachedError();
   }
@@ -519,12 +533,18 @@ export async function getBrands(accountId: string): Promise<Brand[]> {
   // insert. We de-dupe defensively in case any pre-trigger brand has both
   // an `owner` row and a separate `admin` row.
   type EmbeddedRow = { role: string; brand: BrandRow | null };
-  const { data, error } = await supabase
-    .from("brand_team_members")
-    .select("role, brand:brands!inner(*)")
-    .eq("user_id", accountId)
-    .is("removed_at", null)
-    .is("brand.deleted_at", null);
+  // META-ORCH-1235 — bound the membership read (gates the brand switcher /
+  // recovery list). A hung read now rejects → consumer retries / errors.
+  const { data, error } = await withTimeout(
+    supabase
+      .from("brand_team_members")
+      .select("role, brand:brands!inner(*)")
+      .eq("user_id", accountId)
+      .is("removed_at", null)
+      .is("brand.deleted_at", null),
+    DATA_FETCH_TIMEOUT_MS,
+    "getBrands:membership",
+  );
 
   if (error) throw error;
 
@@ -537,11 +557,16 @@ export async function getBrands(accountId: string): Promise<Brand[]> {
   // role attributed, `deleted_at IS NULL` kept) so an owned brand surfaces
   // whether or not its membership row exists yet. Keeps the non-owner membership
   // visibility (ORCH-1081) intact.
-  const { data: ownedData, error: ownedError } = await supabase
-    .from("brands")
-    .select("*")
-    .eq("account_id", accountId)
-    .is("deleted_at", null);
+  // META-ORCH-1235 — bound the owner-union backstop read too.
+  const { data: ownedData, error: ownedError } = await withTimeout(
+    supabase
+      .from("brands")
+      .select("*")
+      .eq("account_id", accountId)
+      .is("deleted_at", null),
+    DATA_FETCH_TIMEOUT_MS,
+    "getBrands:owned",
+  );
   if (ownedError) throw ownedError;
 
   const seen = new Set<string>();
@@ -733,20 +758,32 @@ export async function getBrand(brandId: string): Promise<Brand | null> {
   // `brands.id`; treat it as a clean miss BEFORE issuing the query so a
   // `_temp_…` optimistic id returns null instead of throwing Postgres 22P02.
   if (!isPersistedBrandId(brandId)) return null;
-  const { data, error } = await supabase
-    .from("brands")
-    .select("*")
-    .eq("id", brandId)
-    .is("deleted_at", null)
-    .maybeSingle();
+  // META-ORCH-1235 — bound the gating brand read (drives BrandProfileView's
+  // full-screen spinner). A never-settling read now rejects with TimeoutError.
+  const { data, error } = await withTimeout(
+    supabase
+      .from("brands")
+      .select("*")
+      .eq("id", brandId)
+      .is("deleted_at", null)
+      .maybeSingle(),
+    DATA_FETCH_TIMEOUT_MS,
+    "getBrand:read",
+  );
 
   if (error) throw error;
   if (data === null) return null;
   const brand = mapBrandRowToUi(data as BrandRow, { role: "owner" });
-  const [eventCounts, statsAgg] = await Promise.all([
-    getEventCountsByBrandIds([brand.id]),
-    aggregateBrandStatsByBrandIds([brand.id]),
-  ]);
+  // META-ORCH-1235 — second sequential network leg, individually bounded so it
+  // cannot wedge after the brand read succeeded.
+  const [eventCounts, statsAgg] = await withTimeout(
+    Promise.all([
+      getEventCountsByBrandIds([brand.id]),
+      aggregateBrandStatsByBrandIds([brand.id]),
+    ]),
+    DATA_FETCH_TIMEOUT_MS,
+    "getBrand:stats",
+  );
   const agg = statsAgg.get(brand.id);
   return {
     ...brand,

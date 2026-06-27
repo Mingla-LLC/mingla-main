@@ -17,6 +17,8 @@
 
 import { supabase } from "./supabase";
 import type { BrandRole } from "../store/currentBrandStore";
+// META-ORCH-1235 — settle-guarantee for the Hub trips full-screen gate.
+import { withTimeout, DATA_FETCH_TIMEOUT_MS } from "../utils/withTimeout";
 
 // ---------------------- Types ----------------------
 
@@ -810,13 +812,19 @@ export async function getTrip(eventId: string): Promise<Trip | null> {
 // ---------------------- getTripsByBrand ----------------------
 
 export async function getTripsByBrand(brandId: string): Promise<Trip[]> {
-  const { data, error } = await supabase
-    .from("events")
-    .select("*")
-    .eq("brand_id", brandId)
-    .eq("event_type", "trip")
-    .is("deleted_at", null)
-    .order("created_at", { ascending: false });
+  // META-ORCH-1235 — bound the gating trips read (hub/trips.tsx full-screen
+  // spinner). A hung read now rejects → isError + Retry.
+  const { data, error } = await withTimeout(
+    supabase
+      .from("events")
+      .select("*")
+      .eq("brand_id", brandId)
+      .eq("event_type", "trip")
+      .is("deleted_at", null)
+      .order("created_at", { ascending: false }),
+    DATA_FETCH_TIMEOUT_MS,
+    "getTripsByBrand",
+  );
   if (error) throw error;
   const events = (data ?? []) as EventRow[];
   if (events.length === 0) return [];
@@ -824,20 +832,25 @@ export async function getTripsByBrand(brandId: string): Promise<Trip[]> {
   // For list view, fetch tickets + master date only (days/inclusions/tiers shown on detail).
   // META-ORCH-1059 Pass 1: also batch-aggregate paid orders so the Hub list-card
   // can show the per-trip travelers count + revenue with parity to the events list.
+  // META-ORCH-1235 — second sequential leg individually bounded.
   const ids = events.map((e) => e.id);
-  const [ticketsResp, datesResp, ordersAgg] = await Promise.all([
-    supabase
-      .from("ticket_types")
-      .select("*")
-      .in("event_id", ids)
-      .is("deleted_at", null),
-    supabase
-      .from("event_dates")
-      .select("event_id,start_at,end_at,is_master")
-      .in("event_id", ids)
-      .eq("is_master", true),
-    aggregatePaidOrdersByEvent(ids),
-  ]);
+  const [ticketsResp, datesResp, ordersAgg] = await withTimeout(
+    Promise.all([
+      supabase
+        .from("ticket_types")
+        .select("*")
+        .in("event_id", ids)
+        .is("deleted_at", null),
+      supabase
+        .from("event_dates")
+        .select("event_id,start_at,end_at,is_master")
+        .in("event_id", ids)
+        .eq("is_master", true),
+      aggregatePaidOrdersByEvent(ids),
+    ]),
+    DATA_FETCH_TIMEOUT_MS,
+    "getTripsByBrand:detail",
+  );
   if (ticketsResp.error) throw ticketsResp.error;
   if (datesResp.error) throw datesResp.error;
   const tickets = (ticketsResp.data ?? []) as TicketTypeRow[];

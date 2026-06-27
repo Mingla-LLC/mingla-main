@@ -249,6 +249,19 @@ export default function HubTripsRoute(): React.ReactElement {
             ? tripsQuery.error.message
             : "Check your connection and try again."}
         </Text>
+        {/* META-ORCH-1235 (§4.2) — a hung read now rejects (withTimeout) →
+            isError fires; Retry refetches without a page reload. */}
+        <Pressable
+          onPress={() => {
+            void tripsQuery.refetch();
+          }}
+          accessibilityRole="button"
+          accessibilityLabel="Retry loading trips"
+          testID="trips-error-retry"
+          style={styles.retryButton}
+        >
+          <Text style={styles.retryButtonLabel}>Retry</Text>
+        </Pressable>
       </View>
     );
   }
@@ -519,6 +532,19 @@ const styles = StyleSheet.create({
     lineHeight: typography.body.lineHeight,
     color: textTokens.secondary,
     textAlign: "center",
+  },
+  // META-ORCH-1235 (§4.2) — Retry affordance on the error state.
+  retryButton: {
+    marginTop: spacing.sm,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.sm,
+    borderRadius: radiusTokens.md,
+    backgroundColor: accent.warm,
+  },
+  retryButtonLabel: {
+    fontSize: typography.body.fontSize,
+    fontWeight: "600",
+    color: "#ffffff",
   },
   list: {
     gap: spacing.sm,

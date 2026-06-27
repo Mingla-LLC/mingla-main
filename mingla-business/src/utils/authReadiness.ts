@@ -40,6 +40,48 @@ export const hasUsableBusinessSession = (
   typeof session?.access_token === "string" &&
   session.access_token.trim().length > 0;
 
+// META-ORCH-1235 (§5.2) — canonical stored-web-session predicate.
+//
+// Two readers used to decide "is there a stored web session?" with DIFFERENT
+// acceptance criteria: AuthContext's `readStoredWebSession` (strict — requires
+// a usable `access_token` via `hasUsableBusinessSession`) and `_layout.tsx`'s
+// `hasStoredSupabaseWebSession` (loose — matched any value containing the
+// substring "access_token"). When they disagreed on a stale/partial token, the
+// loose reader kept `isWebAuthResolving` true while the strict reader rejected
+// the session → lingering AuthResolvingScreen. This single predicate is the ONE
+// source of truth, built on the SAME strict `hasUsableBusinessSession` check, so
+// the two readers can no longer disagree. NEVER looser than the strict reader.
+const SUPABASE_AUTH_STORAGE_KEY_RE = /^sb-.+-auth-token$/;
+
+export const hasUsableStoredWebSession = (): boolean => {
+  if (
+    typeof window === "undefined" ||
+    typeof window.localStorage === "undefined"
+  ) {
+    return false;
+  }
+  try {
+    const { localStorage } = window;
+    for (let index = 0; index < localStorage.length; index += 1) {
+      const key = localStorage.key(index);
+      if (key === null || !SUPABASE_AUTH_STORAGE_KEY_RE.test(key)) continue;
+      const raw = localStorage.getItem(key);
+      if (raw === null) continue;
+      let parsed: MinimalAuthSession | null;
+      try {
+        parsed = JSON.parse(raw) as MinimalAuthSession;
+      } catch {
+        // Unparseable value can never be a usable session — keep scanning.
+        continue;
+      }
+      if (hasUsableBusinessSession(parsed)) return true;
+    }
+  } catch {
+    return false;
+  }
+  return false;
+};
+
 export const deriveBusinessAuthStatus = ({
   authError,
   loading,

@@ -96,6 +96,8 @@ import {
   isWebAuthResolving,
   shouldRedirectToSignInFromRoute,
 } from "../src/utils/coldLoadAuthGates";
+// META-ORCH-1235 (§5.2) — single canonical strict stored-web-session predicate.
+import { hasUsableStoredWebSession } from "../src/utils/authReadiness";
 
 // Sub-B: a tap that arrives before auth is stashed here + replayed post-login
 // (mirrors the consumer deferred-deeplink pattern). Keyed in AsyncStorage so a
@@ -179,22 +181,14 @@ function hasAuthResolutionDeadlinePassed(): boolean {
   return Date.now() - authResolveStartedAt >= AUTH_RESOLUTION_CEILING_MS;
 }
 
-const SUPABASE_AUTH_STORAGE_KEY = /^sb-.+-auth-token$/;
-
+// META-ORCH-1235 (§5.2) — delegate to the ONE canonical strict predicate
+// (`hasUsableStoredWebSession`, built on `hasUsableBusinessSession`). The old
+// loose substring scan ("access_token") could accept a stale/partial token the
+// strict AuthContext reader rejected, leaving `isWebAuthResolving` lingering on
+// AuthResolvingScreen. Now both readers share one criterion and cannot disagree.
 function hasStoredSupabaseWebSession(): boolean {
   if (Platform.OS !== "web" || typeof window === "undefined") return false;
-  try {
-    const { localStorage } = window;
-    for (let index = 0; index < localStorage.length; index += 1) {
-      const key = localStorage.key(index);
-      if (key === null || !SUPABASE_AUTH_STORAGE_KEY.test(key)) continue;
-      const value = localStorage.getItem(key);
-      if (value !== null && value.includes("access_token")) return true;
-    }
-  } catch {
-    return false;
-  }
-  return false;
+  return hasUsableStoredWebSession();
 }
 
 // ORCH-1102 — the shared LOADING screen shown while web auth is still resolving

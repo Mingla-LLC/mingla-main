@@ -32,6 +32,13 @@ export const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
       staleTime: FIVE_MINUTES_MS,
+      // META-ORCH-1235: an `online` flap (navigator.onLine === false) must not
+      // leave a never-fetched query in fetchStatus "paused" with isLoading stuck
+      // true and no attempt/error. "always" forces the query to run regardless of
+      // navigator.onLine; combined with src/utils/withTimeout (service layer), a
+      // genuinely-dead network surfaces a bounded error+retry instead of an
+      // indefinite pause-stuck spinner.
+      networkMode: "always",
       // ORCH-0964: bumped 1 -> 2 with capped exponential backoff. A single
       // transient failure on the brand/identity fetch left surfaces errored
       // (empty state behind a lifted splash = "didn't fully load"); the extra

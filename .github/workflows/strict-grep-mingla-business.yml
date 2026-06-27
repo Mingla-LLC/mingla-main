@@ -146,6 +146,9 @@ on:
 #   - I-PROPOSED-1232-F (i-proposed-1232-f-public-paths-ungated.mjs) — PUBLIC-SAFETY (CLOSE-BLOCKING): isAuthReady absent from usePublicEvents.ts + publicEventsService.ts; the single-by-id useBrand stays ungated; PUBLIC_BUYER_ROUTE_PREFIXES + SELF_AUTHENTICATING_CONNECT_ROUTE_PREFIXES membership in coldLoadAuthGates.ts is frozen to an exact snapshot (the gate IS the regression test — gating any public path fails CI); self-tested (META-ORCH-1232 — DRAFT until CLOSE)
 #   - I-PROPOSED-1234 (i-proposed-1234-stripe-connect-onboarding.mjs) — TWO Stripe Connect onboarding bug guards: (A) NO writeAudit call site in _shared/stripeWebhookRouter.ts passes a Stripe event id (event.id/eventId) into the uuid event_id column (only the real Mingla orderDetail.event_id may be non-null), the stripe-webhook/index.ts soft-fail writeAudit event_id is null, AND _shared/audit.ts coerces a non-uuid event_id to null before INSERT (defense-in-depth so a Stripe/acct id can never throw + fail the whole Connect webhook again); (B) ConnectOnboardingBody.web.tsx never SPA-router.replace/push into the auth-gated /brand/<id>/payments route from the sessionless onboarding browser, persists return_to to sessionStorage on mount, and recovers it + full-page-navigates (window.location.assign/href) on exit so the user is never stranded on "Redirecting…"; self-tested + fails-on-revert (META-ORCH-1234 — DRAFT until CLOSE)
 #   - I-PROPOSED-1236-PRICING-CURRENCY-TRACKS-DEFAULT (meta-orch-1236-pricing-currency-canonical.mjs) — brands.pricing_currency / brands.pricing_region are the AUTHORITATIVE charge currency, DERIVED from brands.default_currency by DB trigger ONLY (tg_sync_brand_stripe_cache on the Stripe path + tg_brands_derive_pricing_from_default on the brand-direct path); no app/edge code may write them directly via .from("brands").update/insert/upsert or raw SQL UPDATE/INSERT brands (allowlist tag: "orch-strict-grep-allow brands-pricing-currency-direct-write"); SQL migrations are exempt (the trigger functions own the columns); scans mingla-business/{app,src} + mingla-admin/src + supabase/functions; self-tested; prevents the live charge-in-wrong-currency drift (a USD brand charged in GBP) (META-ORCH-1236 — DRAFT until CLOSE)
+#   - I-PROPOSED-1235-A (i-proposed-1235-a-fullscreen-queries-timeboxed.mjs) — every full-screen-spinner-gating service fn (getBrand, getBrands, getExperiencesByBrand, getTripsByBrand, getMarketingOverview) imports from utils/withTimeout AND wraps its network await(s) in withTimeout(...), so a hung Supabase read settles in bounded time (TimeoutError) instead of pinning an infinite spinner; revert (raw supabase.from(...).await with no withTimeout) fails CI; self-tested + fails-on-revert (META-ORCH-1235 — DRAFT until CLOSE)
+#   - I-PROPOSED-1235-B (i-proposed-1235-b-queryclient-networkmode-always.mjs) — mingla-business/src/config/queryClient.ts sets networkMode: "always" on the queries defaults so a navigator.onLine flap cannot leave a query fetchStatus "paused" with isLoading stuck true and no attempt/error; self-tested + fails-on-revert (META-ORCH-1235 — DRAFT until CLOSE)
+#   - I-PROPOSED-1235-C (i-proposed-1235-c-loading-gate-has-error-retry.mjs) — the enumerated full-screen-gating screens (hub/experiences, hub/trips, brand profile via BrandProfileView + brand/[id]/index, marketing overview) each have BOTH a full-screen loading gate AND a sibling error branch rendering a Retry wired to refetch() (or onRetry→refetch); a bare loading-only gate (no error+retry sibling) fails CI; in-script screen registry is the source of truth; self-tested + fails-on-revert (META-ORCH-1235 — DRAFT until CLOSE)
 #
 # Future gates to register (proposed but not yet implemented):
 #   - I-32 rank parity (Cycle 13a proposal)
@@ -3374,3 +3377,42 @@ jobs:
         run: node .github/scripts/strict-grep/i-proposed-1234-stripe-connect-onboarding.mjs --self-test
       - name: Run META-ORCH-1234 onboarding gate
         run: node .github/scripts/strict-grep/i-proposed-1234-stripe-connect-onboarding.mjs
+
+  meta-orch-1235-a-fullscreen-queries-timeboxed:
+    name: "META-ORCH-1235-A: every full-screen-spinner-gating service (getBrand/getBrands/getExperiencesByBrand/getTripsByBrand/getMarketingOverview) wraps its network await(s) in withTimeout so a hung Supabase read becomes a bounded error+Retry, not an infinite spinner (I-PROPOSED-1235-A)"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Self-test the META-ORCH-1235-A gate
+        run: node .github/scripts/strict-grep/i-proposed-1235-a-fullscreen-queries-timeboxed.mjs --self-test
+      - name: Run META-ORCH-1235-A gate
+        run: node .github/scripts/strict-grep/i-proposed-1235-a-fullscreen-queries-timeboxed.mjs
+
+  meta-orch-1235-b-queryclient-networkmode-always:
+    name: "META-ORCH-1235-B: queryClient sets networkMode: \"always\" so an online flap cannot pause-stick a query (isLoading stuck true, no error) (I-PROPOSED-1235-B)"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Self-test the META-ORCH-1235-B gate
+        run: node .github/scripts/strict-grep/i-proposed-1235-b-queryclient-networkmode-always.mjs --self-test
+      - name: Run META-ORCH-1235-B gate
+        run: node .github/scripts/strict-grep/i-proposed-1235-b-queryclient-networkmode-always.mjs
+
+  meta-orch-1235-c-loading-gate-has-error-retry:
+    name: "META-ORCH-1235-C: every enumerated full-screen loading gate (hub/experiences, hub/trips, brand profile, marketing) has a sibling error branch that renders a Retry wired to refetch() — no unbounded spinner (I-PROPOSED-1235-C)"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Self-test the META-ORCH-1235-C gate
+        run: node .github/scripts/strict-grep/i-proposed-1235-c-loading-gate-has-error-retry.mjs --self-test
+      - name: Run META-ORCH-1235-C gate
+        run: node .github/scripts/strict-grep/i-proposed-1235-c-loading-gate-has-error-retry.mjs
