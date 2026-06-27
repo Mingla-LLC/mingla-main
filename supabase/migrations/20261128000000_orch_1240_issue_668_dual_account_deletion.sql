@@ -58,11 +58,7 @@ ALTER TABLE public.photo_backfill_runs
   ADD CONSTRAINT photo_backfill_runs_triggered_by_fkey
   FOREIGN KEY (triggered_by) REFERENCES auth.users(id) ON DELETE SET NULL;
 
-ALTER TABLE public.signal_anchors
-  DROP CONSTRAINT IF EXISTS signal_anchors_labeled_by_fkey;
-ALTER TABLE public.signal_anchors
-  ADD CONSTRAINT signal_anchors_labeled_by_fkey
-  FOREIGN KEY (labeled_by) REFERENCES auth.users(id) ON DELETE SET NULL;
+-- signal_anchors omitted: table decommissioned ORCH-0734 (20260505000001).
 
 -- ── NOT NULL audit actor columns → nullable + ON DELETE SET NULL ──────────────
 
