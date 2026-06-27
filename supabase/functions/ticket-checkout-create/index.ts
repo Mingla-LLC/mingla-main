@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { wrapEdgeHandler } from "../_shared/structuredLog.ts";
 import { STRIPE_API_VERSION, stripeTicketCheckout } from "../_shared/stripe.ts";
+import { resolvePublishableKey } from "../_shared/stripeMode.ts";
 import { getPaymentMethodTypes } from "../_shared/stripePaymentMethods.ts";
 // ORCH-0869 [Tr3 Installment Payments] — separate-line import so the
 // ORCH-0849 R-2 regex (single-symbol braces) keeps matching above.
@@ -1735,9 +1736,10 @@ serve(wrapEdgeHandler("ticket-checkout-create", async (req) => {
     paymentIntentId: paymentIntent.id,
     // ORCH-1006 §C.4 — canonical breakdown for the receipt/confirmation.
     pricingBreakdown,
-    publishableKey: Deno.env.get("EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY") ??
-      Deno.env.get("STRIPE_PUBLISHABLE_KEY") ??
-      null,
+    // ORCH-1238 — fail-closed mode-validated resolver. Throws (→ 500 via the
+    // wrapEdgeHandler onError envelope) rather than ever returning a pk whose
+    // prefix mismatches MINGLA_STRIPE_MODE.
+    publishableKey: resolvePublishableKey(),
     // ORCH-0844 NEW: Connect direct-charge mobile config.
     // stripeAccountId is the connected account the PI lives on (above).
     // customerId / customerEphemeralKeySecret are paired-or-absent:
