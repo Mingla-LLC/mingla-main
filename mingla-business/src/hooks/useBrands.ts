@@ -29,7 +29,11 @@ import { useAuth } from "../context/AuthContext";
 import { supabase } from "../services/supabase";
 // META-ORCH-1232 (C2) — await-until-ready guard for the imperative brand
 // mutations (mirrors how useBrands gates the read on isAuthReady).
-import { awaitAuthReady } from "../utils/authReadyGate";
+// META-ORCH-1232 follow-up (fresh-signup gap) — awaitSessionAttached additionally
+// awaits a REAL attached access token before the insert, because on a fresh signup
+// the isAuthReady flag flips true a beat before the Supabase client attaches the
+// JWT to outgoing PostgREST requests (insert would still go out as anon).
+import { awaitAuthReady, awaitSessionAttached } from "../utils/authReadyGate";
 import { queryClient } from "../config/queryClient";
 import { eventOrdersKeys } from "./useEventOrders";
 import { publicEventKeys } from "./usePublicEvents";
@@ -300,6 +304,14 @@ export const useCreateBrand = (): UseCreateBrandResult => {
       // not-ready, awaitAuthReady throws AuthNotReadyError → H1 surfaces it as a
       // visible, retryable error. NEVER silently drops the create.
       await awaitAuthReady({ isReady: isAuthReadyGetter });
+      // META-ORCH-1232 follow-up (fresh-signup gap) — the flag above is NOT
+      // sufficient on a brand-new signup: it flips true a beat BEFORE the
+      // Supabase client attaches the access token to outgoing PostgREST
+      // requests, so the insert would still go out as anon (DB throws
+      // `permission denied for table brands`). Await a REAL attached session
+      // token on the SAME client singleton the service write uses; cap-elapse
+      // throws AuthNotReadyError (visible, retryable) — never a silent anon drop.
+      await awaitSessionAttached(() => supabase.auth.getSession());
       // Service-layer call; SlugCollisionError surfaces here for hook to map
       return createBrand(input, "owner");
     },
@@ -391,6 +403,10 @@ export const useUpdateBrand = (): UseUpdateBrandResult => {
   const mutation = useMutation<Brand, Error, UpdateBrandInput, UpdateBrandContext>({
     mutationFn: async ({ brandId, patch, existingDescription }) => {
       await awaitAuthReady({ isReady: isAuthReadyGetter });
+      // META-ORCH-1232 follow-up (fresh-signup gap) — await a REAL attached
+      // session token (not merely the isAuthReady flag) before the UPDATE, so a
+      // mutation issued during the auth-warm window can never go out as anon.
+      await awaitSessionAttached(() => supabase.auth.getSession());
       return updateBrand(brandId, patch, existingDescription);
     },
     onMutate: async ({ brandId, patch, accountId }): Promise<UpdateBrandContext> => {
@@ -635,6 +651,10 @@ export const useCreateVenueBrand = (): UseCreateVenueBrandResult => {
       ...rest
     }): Promise<Brand> => {
       await awaitAuthReady({ isReady: isAuthReadyGetter });
+      // META-ORCH-1232 follow-up (fresh-signup gap) — await a REAL attached
+      // session token before the venue-brand authoring RPC, so the insert can
+      // never be issued as anon during the fresh-signup auth-warm window.
+      await awaitSessionAttached(() => supabase.auth.getSession());
       return createVenueBrandPendingReview(rest, "owner");
     },
     onSuccess: (_brand, { accountId }) => {

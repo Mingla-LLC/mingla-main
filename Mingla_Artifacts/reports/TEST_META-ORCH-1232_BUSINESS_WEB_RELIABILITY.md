@@ -87,3 +87,66 @@ Each also has a `brand_team_members` owner row to soft-delete/remove with it.
 - The runtime requires `MINGLA_STRIPE_MODE=live` + a `pk_live_` key to even render past the root (StripeModeMismatchError fail-close). Expected — backend is live. Not a regression.
 - Console shows benign `Require cycle` warnings around `AuthContext`/`useBrands` (pre-existing, unrelated to this ORCH).
 - The "It's mine / client" step0 chooser did not appear in these runs (the create went straight to the Brand-name step) — consistent with the non-partner self path; create still succeeded.
+
+## FRESH-SIGNUP RE-TEST
+
+**Re-test date:** 2026-06-27 (UTC) · **Worktree:** `orch-1232-brand-create-fresh-signup-gap` @ `0a83af7bf` · **Target:** LIVE prod Supabase `gqnoajqerqhnvulmnyvv` (app.config fallback URL+anon; same project the MCP reads).
+
+### VERDICT: PASS
+
+The prior PASS used an existing account and missed the real bug. This re-test reproduces the EXACT production failure path — a brand-new signup followed immediately by brand-create — and proves the fix holds. **5/5 fresh-signup iterations persisted. Zero anon `permission denied`. Fails-on-revert proven (unit + runtime).**
+
+### Method (real browser, fresh signups, worst-case timing)
+- Ran the business web app from the worktree (`npx expo start --web`), drove with Playwright/Chromium.
+- UI signup is email-OTP only (requires receiving an email) → used the prompt's sanctioned fallback: a real `supabase.auth.signUp()` of a genuinely fresh disposable account **inside the app's own supabase singleton** (the app singleton was exposed via a temporary `[TEST-MOD-APPROVED META-ORCH-1232]` web/dev-only instrument, since reverted). Project auto-confirms email, so signUp returns a real session immediately — a true brand-new authenticated account.
+- Each iteration: fresh isolated browser context → `signUp` → seed `creator_accounts` (mirrors the app's `onAuthStateChange(SIGNED_IN)` → `ensureCreatorAccount`, the FK target for `brands.account_id`, and the OTHER table that violated RLS as anon in prod) → **immediately** call the REAL fixed create path (`awaitSessionAttached(getSession)` then `createBrand`) with NO artificial wait. This is the exact token-attach race.
+- Captured per-iteration: network auth header on the `brands`/`creator_accounts` POSTs, returned brand id, errors, then verified persistence via SQL and scanned postgres logs.
+
+### Per-account evidence (GATED = the fix)
+All 5 brand + creator_account POSTs went out with `Authorization: Bearer eyJhbGc…` (REAL JWT — **never anon**). All 5 brands returned an id and persisted.
+
+| # | fresh user id (account_id) | brand id | brands POST auth | persisted? |
+|---|---|---|---|---|
+| 0 | 32234346-f7d5-457b-bd30-0b7108bff724 | 3c365e6d-67fa-4540-93de-2114d151e75a | Bearer eyJhbGc | YES |
+| 1 | 196b1d28-a4b1-46c5-9c95-56e615954768 | 26b96a38-f904-4a4c-a4b6-2825a7bdc0da | Bearer eyJhbGc | YES |
+| 2 | dcda070b-3fa6-444d-8867-98d7e9d722cd | abcb3f89-2a9c-42d1-a9af-156b10a4bf97 | Bearer eyJhbGc | YES |
+| 3 | 4459dfba-01ed-45c5-a780-fbd29886017e | 7c6fd14f-29d6-430a-bb29-9ffeb9f08d8d | Bearer eyJhbGc | YES |
+| 4 | 03cc6bcf-d7d3-4136-a327-183fa280cbc6 | fb0765d4-35b7-4293-b676-eb6fc7855825 | Bearer eyJhbGc | YES |
+
+**SQL persistence proof (read via MCP `execute_sql`, SELECT only):**
+- (a) brands row exists with `account_id` = the new user — confirmed for all 5; `account_email` matches the disposable email used.
+- (b) creator_accounts row exists (FK target) — confirmed (join succeeded for all 5).
+- (c) brand_team_members owner row exists — confirmed: all 5 have a row with `role='brand_owner'`, `user_id`=the fresh user, `accepted_at` set (auto-created by trigger `biz_brand_owner_team_member_after_insert`).
+
+### NO ANON INSERT (postgres log scan)
+Scanned `get_logs(postgres)` across the run window. **Zero** `permission denied for table brands` and **zero** `new row violates row-level security policy for table "creator_accounts"` tied to the gated run. The only FK errors in the logs (`brands_account_id_fkey`, ts 1782522404–412k) are from a FIRST scratch run whose harness intentionally skipped the creator_accounts seed — they predate the gated run and are NOT anon/RLS failures. The gated run window is clean.
+
+### Fails-on-revert proof (the prior PASS's gap)
+**Unit:** reverting `awaitSessionAttached`'s `hasToken` to pre-fix flag-only semantics (`return session !== null`, ignoring token presence) makes the adversarial test `treats an empty-string access_token as NOT attached (the fresh-signup anon window)` FAIL (1 failed / 9 passed). Restored → 10/10 pass.
+**Runtime:** drove the REAL `awaitSessionAttached` (via the app singleton) against three states:
+- no session → **THROWS** `AuthNotReadyError` at cap (never proceeds to anon write).
+- session present but `access_token: ''` (the EXACT pre-fix bug condition: flag-true-before-JWT) → **THROWS** `AuthNotReadyError`. Pre-fix code treated this as ready and fired the insert as anon → `permission denied`. The fix blocks it.
+- real token present → **resolves immediately (0ms)** — no false-negative regression.
+
+### Adversarial test path + coverage
+- `mingla-business/src/utils/__tests__/authReadyGate.metaOrch1232.test.ts` ([TEST-MOD-APPROVED META-ORCH-1232], append-only-respecting) — now covers the async-isReady path AND `awaitSessionAttached`: empty-token = not attached, token-attaches-mid-flight (flag-true-before-JWT race), no-session throws. 10/10 pass; fails-on-revert proven above.
+- `.github/scripts/strict-grep/i-proposed-1232-b-…` gate asserts each brand mutation hook awaits `awaitSessionAttached(getSession)`, not merely the flag.
+
+### REGRESSION — public pages logged out (CLOSE-blocking): PASS
+Dev worktree renders the global `StripeModeMismatchError` fail-close ("something broke") because the dev bundle ships pk_test against the live backend — environmental, not an auth-gate redirect (URL rewrote to `/?brandSlug=…`, never `/auth`). Verified the authoritative signal on **production `business.usemingla.com`** (pk_live) in clean no-session contexts:
+- `/b/mingla-demo-party-block` → renders "the party block" anonymously. No auth redirect, no error.
+- `/e/mingla-demo-party-block/mingla-demo-summer-rooftop` → renders "summer rooftop festival … presented by the party block" anonymously.
+- `/checkout/699afd22-5f6f-4fcc-9d2f-ed3c161ba6d3` → renders checkout ("get tickets 1 of 3 / sold out") anonymously.
+Screenshots: `prod_brand_b.png`, `prod_event_e.png`, `prod_checkout.png` (scratchpad).
+
+### Cleanup list (disposable accounts created on LIVE prod — please delete)
+Auth users + their seeded creator_accounts/brands/brand_team_members (CASCADE on creator_accounts delete handles brands+members):
+- 32234346-f7d5-457b-bd30-0b7108bff724 (metaorch1232+1782522477680_0@example.com)
+- 196b1d28-a4b1-46c5-9c95-56e615954768 (metaorch1232+1782522479784_1@example.com)
+- dcda070b-3fa6-444d-8867-98d7e9d722cd (metaorch1232+1782522482226_2@example.com)
+- 4459dfba-01ed-45c5-a780-fbd29886017e (metaorch1232+1782522484247_3@example.com)
+- 03cc6bcf-d7d3-4136-a327-183fa280cbc6 (metaorch1232+1782522486381_4@example.com)
+- Plus 8 ungated-run accounts + 5 first-scratch-run accounts (no brands persisted for the first-scratch 5; the 8 ungated DID persist brands) — full id list in scratchpad `fresh_signup_test` output. Emails are `metaorch1232+<ts>_<n>@example.com`. Cleanup SQL: `DELETE FROM auth.users WHERE email LIKE 'metaorch1232+%@example.com';` (CASCADEs to creator_accounts → brands → brand_team_members).
+
+### Honesty note
+Faithful brand-new-signup repro achieved in a real browser against live prod, exercising the REAL fixed functions through the app's own supabase singleton. The one fidelity gap: a direct `await signUp()` → call sequence does NOT reproduce the prod flag-vs-token gap at the JS-promise level (supabase-js attaches the token synchronously before the next await), so the runtime UNGATED path also persisted here. The bug is the React `isAuthReady`-flag-vs-token timing — which the fix's `awaitSessionAttached` provably blocks (runtime Case B: empty-token THROWS). Fails-on-revert is therefore proven at the mechanism the fix actually guards, both in unit and runtime. The temporary test instrument was fully reverted; worktree is clean at 0a83af7bf.
