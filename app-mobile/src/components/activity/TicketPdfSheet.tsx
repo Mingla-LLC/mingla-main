@@ -26,7 +26,6 @@ import {
   Linking,
   type NativeScrollEvent,
   type NativeSyntheticEvent,
-  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -64,15 +63,18 @@ interface SheetState {
 
 const initialState: SheetState = { status: "idle", error: null };
 
-function buildMapsUrl(
+// ORCH-1237 — universal Google Maps link. This canonical cross-platform
+// HTTPS form deep-links into the Google Maps app when installed and falls
+// back to the browser otherwise, working identically on iOS and Android.
+// Coords are the reliable anchor; `label` is unused (kept in the signature
+// for caller stability). Previously this branched on Platform.OS and opened
+// Apple Maps (`maps://`) on iOS.
+export function buildMapsUrl(
   lat: number,
   lng: number,
-  label: string | null,
+  _label: string | null,
 ): string {
-  const q = encodeURIComponent(label ?? "");
-  return Platform.OS === "ios"
-    ? `maps://?q=${q}&ll=${lat},${lng}`
-    : `geo:${lat},${lng}?q=${lat},${lng}(${q})`;
+  return `https://www.google.com/maps/search/?api=1&query=${lat},${lng}`;
 }
 
 // ORCH-0877 — formatLocalDate replaced by centralized `formatEventDateLine`
@@ -459,7 +461,11 @@ const styles = StyleSheet.create({
   },
   venueRow: {
     flexDirection: "row",
-    alignItems: "center",
+    // ORCH-1237 — align a wrapped multi-line address cleanly with the pin
+    // icon at the top instead of vertically centering it. venueText has
+    // flex:1 and no numberOfLines, so the full address already wraps; this
+    // just fixes the icon/text alignment for the multi-line case.
+    alignItems: "flex-start",
     gap: 8,
   },
   venueText: {
