@@ -32,6 +32,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { wrapEdgeHandler } from "../_shared/structuredLog.ts";
 import { STRIPE_API_VERSION, stripeTicketCheckout } from "../_shared/stripe.ts";
+import { resolvePublishableKey } from "../_shared/stripeMode.ts";
 import { getPaymentMethodTypes } from "../_shared/stripePaymentMethods.ts";
 import {
   cancelPaymentIntentIfClientAvailable,
@@ -729,8 +730,10 @@ serve(wrapEdgeHandler("venue-reservation-create", async (req) => {
     clientSecret,
     paymentIntentId: paymentIntent.id,
     pricingBreakdown,
-    publishableKey: Deno.env.get("EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY") ??
-      Deno.env.get("STRIPE_PUBLISHABLE_KEY") ?? null,
+    // ORCH-1238 — fail-closed mode-validated resolver. Throws (→ 500 via the
+    // wrapEdgeHandler onError envelope) rather than ever returning a pk whose
+    // prefix mismatches MINGLA_STRIPE_MODE.
+    publishableKey: resolvePublishableKey(),
     stripeAccountId,
     customerId,
     customerEphemeralKeySecret,

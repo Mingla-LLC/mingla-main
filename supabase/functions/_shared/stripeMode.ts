@@ -101,3 +101,54 @@ export function resolveStripeKey(role: StripeRole): string {
 export function resolvePublishablePrefix(): "pk_test_" | "pk_live_" {
   return readMode() === "live" ? "pk_live_" : "pk_test_";
 }
+
+/**
+ * Resolve the Stripe publishable key returned to the mobile app on a
+ * `requires_payment` checkout response, validated against the current mode.
+ *
+ * Lookup order:
+ *   1. Read `MINGLA_STRIPE_MODE` to pick suffix (`_TEST` or `_LIVE`).
+ *   2. Resolve the value, preferring the mode-suffixed secret and falling
+ *      back to the legacy unsuffixed secrets (transitional — see
+ *      Mingla_Artifacts/STRIPE_MODE_FLIP_RUNBOOK.md):
+ *        STRIPE_PUBLISHABLE_KEY_{LIVE|TEST}
+ *        ?? EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY
+ *        ?? STRIPE_PUBLISHABLE_KEY
+ *   3. Throw if unset/empty.
+ *   4. Validate the key prefix matches the mode (`pk_test_` vs `pk_live_`).
+ *      Throws on mismatch — this is the whole point: it prevents the silent
+ *      "live PaymentIntent + pk_test_ publishable key" drift that collapsed
+ *      every live checkout to the Stripe SDK "There was an unexpected error"
+ *      on 2026-06-22 (the mode was flipped test→live but
+ *      EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY was left a pk_test_ key).
+ *
+ * Fail-closed: callers MUST invoke this at request time inside their handler
+ * envelope so a throw surfaces as a 500-with-requestId, never as a silently
+ * shipped broken publishable key.
+ */
+export function resolvePublishableKey(): string {
+  const mode = readMode();
+  const suffix = mode === "live" ? "LIVE" : "TEST";
+  const value =
+    Deno.env.get(`STRIPE_PUBLISHABLE_KEY_${suffix}`) ??
+      Deno.env.get("EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY") ??
+      Deno.env.get("STRIPE_PUBLISHABLE_KEY");
+  if (value === undefined || value === null || value.trim().length === 0) {
+    throw new Error(
+      `No Stripe publishable key set in Supabase Edge Function secrets. ` +
+        `Expected STRIPE_PUBLISHABLE_KEY_${suffix} ` +
+        `(or legacy EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY / STRIPE_PUBLISHABLE_KEY) ` +
+        `for ${mode} mode. See Mingla_Artifacts/STRIPE_MODE_FLIP_RUNBOOK.md.`,
+    );
+  }
+  const requiredPrefix = mode === "live" ? "pk_live_" : "pk_test_";
+  if (!value.startsWith(requiredPrefix)) {
+    throw new Error(
+      `The resolved publishable key must be a ${requiredPrefix} value when ` +
+        `MINGLA_STRIPE_MODE=${mode}. Got prefix ` +
+        `"${value.slice(0, 8)}…". Refusing to return a mismatched publishable key. ` +
+        `See Mingla_Artifacts/STRIPE_MODE_FLIP_RUNBOOK.md.`,
+    );
+  }
+  return value;
+}
