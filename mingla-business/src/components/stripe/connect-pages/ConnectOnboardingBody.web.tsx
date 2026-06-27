@@ -22,7 +22,7 @@
  * src/components/stripe/connectEmbeddedPageHelpers.ts.
  */
 
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import Constants from "expo-constants";
 import {
   ConnectAccountOnboarding,
@@ -30,7 +30,7 @@ import {
   ConnectNotificationBanner,
 } from "@stripe/react-connect-js";
 import { loadConnectAndInitialize } from "@stripe/connect-js";
-import { useLocalSearchParams, useRouter } from "expo-router";
+import { useLocalSearchParams } from "expo-router";
 import {
   connectEmbeddedPageStyles,
   useStripeConnectViewportZoomLock,
@@ -38,8 +38,46 @@ import {
 
 const MINGLA_BRAND_COLOR = "#eb7825" as const; // accent.warm per designSystem.ts:147
 
+// META-ORCH-1234 (Bug B): the native "Set up payments" CTA opens this page in a
+// SESSIONLESS in-app browser (WebBrowser.openAuthSessionAsync) and asks the edge
+// function to append `return_to=mingla-business://onboarding-complete`. Stripe's
+// hosted KYC flow performs its OWN intra-flow redirects and can drop Mingla's
+// query params (only `session` + `brand_id` survive), so on completion `return_to`
+// may be ABSENT. We therefore (1) persist `return_to` to sessionStorage on first
+// mount so it survives the param drop, and (2) on exit recover it from the param
+// OR sessionStorage and perform a FULL-PAGE navigation. We must NEVER client-side
+// `router.replace` into an auth-gated SPA route (`/brand/<id>/payments`) from this
+// sessionless browser — the root layout would bounce it to sign-in and strand the
+// user on "Redirecting…". See coldLoadAuthGates.ts SELF_AUTHENTICATING_* notes.
+const RETURN_TO_STORAGE_KEY =
+  "mingla:stripe-connect:onboarding-return-to" as const;
+// Native deep link the edge function/native opener uses (BrandOnboardView.tsx:98).
+const RETURN_DEEP_LINK = "mingla-business://onboarding-complete" as const;
+// Public, SESSIONLESS-safe relay route — on SELF_AUTHENTICATING_CONNECT_ROUTE_PREFIXES
+// (coldLoadAuthGates.ts), so it renders with no Supabase session and itself bounces
+// the browser to the native deep link. Used as the last-resort fallback so the user
+// is NEVER stranded, WITHOUT weakening the auth gate on /brand/[id]/payments.
+const ONBOARDING_RETURN_RELAY = "/stripe-onboarding-return" as const;
+
+function readPersistedReturnTo(): string | null {
+  if (typeof window === "undefined") return null;
+  try {
+    return window.sessionStorage.getItem(RETURN_TO_STORAGE_KEY);
+  } catch {
+    return null;
+  }
+}
+
+function persistReturnTo(value: string): void {
+  if (typeof window === "undefined") return;
+  try {
+    window.sessionStorage.setItem(RETURN_TO_STORAGE_KEY, value);
+  } catch {
+    // sessionStorage can be unavailable in hardened browsers — non-fatal.
+  }
+}
+
 export default function ConnectOnboardingBody(): React.ReactElement {
-  const router = useRouter();
   const params = useLocalSearchParams<{
     session: string | string[];
     brand_id: string | string[];
@@ -62,6 +100,14 @@ export default function ConnectOnboardingBody(): React.ReactElement {
 
   // ORCH-1056 — block iOS auto-zoom on input focus (Stripe input font-size < 16px).
   useStripeConnectViewportZoomLock();
+
+  // META-ORCH-1234 (Bug B): persist `return_to` on first mount so it survives
+  // Stripe's intra-flow param drop and is recoverable in handleExit.
+  useEffect(() => {
+    if (typeof returnTo === "string" && returnTo.length > 0) {
+      persistReturnTo(returnTo);
+    }
+  }, [returnTo]);
 
   const stripeConnectInstance = useMemo(() => {
     if (typeof sessionClientSecret !== "string") return null;
@@ -99,19 +145,41 @@ export default function ConnectOnboardingBody(): React.ReactElement {
 
   const handleExit = (): void => {
     setHasExited(true);
+
+    // META-ORCH-1234 (Bug B): recover `return_to` from the URL param OR the copy
+    // we persisted on first mount (Stripe can drop the param mid-flow). We ALWAYS
+    // perform a FULL-PAGE navigation (window.location.assign) here — never a
+    // client-side router.replace into an auth-gated SPA route — because this page
+    // runs in a sessionless in-app browser the root layout would otherwise bounce
+    // to sign-in, stranding the user on "Redirecting…".
+    const recoveredReturnTo =
+      typeof returnTo === "string" && returnTo.length > 0
+        ? returnTo
+        : readPersistedReturnTo();
+
+    if (typeof window === "undefined") return;
+
     if (
-      typeof returnTo === "string" && returnTo.startsWith("mingla-business://")
+      typeof recoveredReturnTo === "string" &&
+      (recoveredReturnTo.startsWith("mingla-business://") ||
+        recoveredReturnTo.startsWith("https://"))
     ) {
-      // Native app deep link — redirect via window.location for cross-process navigation
-      if (typeof window !== "undefined") {
-        window.location.href = returnTo;
-      }
-    } else if (typeof brandId === "string" && brandId.length > 0) {
-      // Web direct completion → navigate to payments page
-      router.replace(`/brand/${brandId}/payments` as never);
-    } else {
-      router.replace("/" as never);
+      // Native deep link (closes the in-app browser, app handles completion) OR a
+      // full authed-web URL (full reload lets the web app re-establish its own
+      // persisted Supabase session, rather than an SPA replace the gate intercepts).
+      window.location.assign(recoveredReturnTo);
+      return;
     }
+
+    // Fallback: no recoverable return_to. Do a FULL-PAGE navigation to the public,
+    // sessionless-safe relay route (exempt via SELF_AUTHENTICATING_CONNECT_ROUTE_PREFIXES),
+    // which renders without a Supabase session and bounces to the native deep link —
+    // so the user is NEVER stranded, and we do NOT weaken the /brand/[id]/payments gate.
+    const relayUrl =
+      `${ONBOARDING_RETURN_RELAY}?return_to=${
+        encodeURIComponent(RETURN_DEEP_LINK)
+      }`;
+    window.location.assign(relayUrl);
   };
 
   const handleStepChange = (event: unknown): void => {
