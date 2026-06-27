@@ -2253,14 +2253,25 @@ const OnboardingFlow = ({
         }, hide: false }
       case 'travel_time':
         return { label: prefsSaveError ? t('common:retry') : t('common:next'), disabled: false, loading: savingPrefs, onPress: handleSavePreferences, hide: false }
-      case 'friends_and_pairing':
+      case 'friends_and_pairing': {
+        // [META-ORCH-1233 Item 2] Skip (no friend) vs Continue (>=1 friend). The
+        // trigger is a friend actually IN the list, not a number merely typed.
+        const hasFriend = data.addedFriends.length > 0
         return {
-          label: t('common:continue'),
+          label: hasFriend ? t('common:continue') : t('common:skip'),
           disabled: false,
           loading: false,
-          onPress: () => goNext(),
+          onPress: () => {
+            if (!hasFriend) {
+              // Preserve the original skip intent (resume/analytics state) that the
+              // now-dead child onSkip used to set.
+              setData((prev) => ({ ...prev, skippedFriends: true }))
+            }
+            goNext()
+          },
           hide: false,
         }
+      }
       case 'collaborations': {
         const hasActed = data.createdSessions.length > 0 || data.collabActionTaken
         return {
