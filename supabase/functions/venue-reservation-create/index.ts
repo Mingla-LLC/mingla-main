@@ -311,6 +311,35 @@ serve(wrapEdgeHandler("venue-reservation-create", async (req) => {
   }
   const currency = settlementCurrencyRaw.toLowerCase();
 
+  // META-ORCH-1236 [live-currency fix] — DEFENSE-IN-DEPTH, WARN-ONLY currency
+  // cross-check (mirrors ticket-checkout-create). The DB trigger
+  // tg_sync_brand_stripe_cache now guarantees brands.pricing_currency ==
+  // upper(brands.default_currency) (the active Stripe connected-account
+  // settlement currency), so a mismatch should be unreachable. We assert it
+  // against the already-synced brands.default_currency mirror — NO extra Stripe
+  // round-trip. Charging in the account's settlement currency = zero Stripe FX:
+  //   https://docs.stripe.com/connect/charges
+  //   https://docs.stripe.com/api/payment_intents/create
+  // Log-only (regression tripwire); the pricing_currency_missing fail-close
+  // above stays the only hard block.
+  {
+    const { data: brandCcyRow } = await supabase
+      .from("brands")
+      .select("default_currency")
+      .eq("id", brandId)
+      .maybeSingle();
+    const accountCurrencyRaw =
+      typeof (brandCcyRow as { default_currency?: string | null } | null)?.default_currency === "string"
+        ? ((brandCcyRow as { default_currency: string }).default_currency).trim().toLowerCase()
+        : "";
+    if (accountCurrencyRaw.length > 0 && accountCurrencyRaw !== currency) {
+      console.warn(
+        "[venue-reservation-create] META-ORCH-1236: settlement currency != connected-account default_currency (trigger regression?)",
+        { brandId, pricingCurrency: currency, accountCurrency: accountCurrencyRaw },
+      );
+    }
+  }
+
   const providerRouting = resolveProviderRouting({
     payment_provider: pricing.payment_provider,
     payment_country: pricing.payment_country,
