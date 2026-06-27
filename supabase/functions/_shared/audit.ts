@@ -30,6 +30,21 @@ export interface AuditWriteInput {
   user_agent?: string | null;
 }
 
+/**
+ * audit_log.event_id is a uuid column reserved for a Mingla events.id.
+ * Defense-in-depth (META-ORCH-1234): a non-uuid value (e.g. a Stripe `evt_…`
+ * or `acct_…` id) must NEVER reach the uuid column — Postgres would reject it
+ * and throw, which previously failed the ENTIRE Connect webhook. Coerce any
+ * non-uuid event_id to null so writeAudit can never fail a webhook over this.
+ */
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function coerceEventId(eventId: string | null | undefined): string | null {
+  if (typeof eventId !== "string") return null;
+  return UUID_RE.test(eventId) ? eventId : null;
+}
+
 export async function writeAudit(
   supabase: SupabaseClient,
   input: AuditWriteInput,
@@ -37,7 +52,7 @@ export async function writeAudit(
   const { error } = await supabase.from("audit_log").insert({
     user_id: input.user_id,
     brand_id: input.brand_id,
-    event_id: input.event_id ?? null,
+    event_id: coerceEventId(input.event_id),
     action: input.action,
     target_type: input.target_type,
     target_id: input.target_id,

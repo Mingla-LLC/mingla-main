@@ -259,7 +259,7 @@ async function syncAccount(
   await writeAudit(supabase, {
     user_id: null,
     brand_id: brandId,
-    event_id: eventId,
+    event_id: null, // META-ORCH-1234: Stripe event id (eventId) is not a Mingla event uuid; lives in payment_webhook_events.stripe_event_id
     action: "stripe_connect.account_updated",
     target_type: "stripe_connect_account",
     target_id: stripeAccountId,
@@ -460,7 +460,7 @@ async function handleExternalAccount(
   await writeAudit(supabase, {
     user_id: null,
     brand_id: brandId,
-    event_id: event.id,
+    event_id: null, // META-ORCH-1234: Stripe event id (event.id) is not a Mingla event uuid; lives in payment_webhook_events.stripe_event_id
     action: `stripe_connect.${event.type}`,
     target_type: "stripe_external_account",
     target_id: externalId,
@@ -521,7 +521,7 @@ async function handlePayout(
   await writeAudit(supabase, {
     user_id: null,
     brand_id: brandId,
-    event_id: event.id,
+    event_id: null, // META-ORCH-1234: Stripe event id (event.id) is not a Mingla event uuid; lives in payment_webhook_events.stripe_event_id
     action: `stripe_connect.${event.type}`,
     target_type: "payout",
     target_id: payoutId,
@@ -631,7 +631,7 @@ async function handleDeauthorized(
   await writeAudit(supabase, {
     user_id: null,
     brand_id: brandId,
-    event_id: event.id,
+    event_id: null, // META-ORCH-1234: Stripe event id (event.id) is not a Mingla event uuid; lives in payment_webhook_events.stripe_event_id
     action: "stripe_connect.account_deauthorized",
     target_type: "stripe_connect_account",
     target_id: stripeAccountId,
@@ -697,7 +697,7 @@ async function handleRefundEvent(
     await writeAudit(supabase, {
       user_id: null,
       brand_id: brandId,
-      event_id: event.id,
+      event_id: null, // META-ORCH-1234: Stripe event id (event.id) is not a Mingla event uuid; lives in payment_webhook_events.stripe_event_id
       action: "stripe_connect.detached_refund_updated",
       target_type: "detached_refund",
       target_id: refundId,
@@ -712,7 +712,7 @@ async function handleRefundEvent(
     await writeAudit(supabase, {
       user_id: null,
       brand_id: brandId,
-      event_id: event.id,
+      event_id: null, // META-ORCH-1234: Stripe event id (event.id) is not a Mingla event uuid; lives in payment_webhook_events.stripe_event_id
       action: `stripe.${event.type}.${refundStatus}`,
       target_type: "refund",
       target_id: refundId,
@@ -741,7 +741,7 @@ async function handleRefundEvent(
     await writeAudit(supabase, {
       user_id: null,
       brand_id: brandId,
-      event_id: event.id,
+      event_id: null, // META-ORCH-1234: Stripe event id (event.id) is not a Mingla event uuid; lives in payment_webhook_events.stripe_event_id
       action: `stripe.${event.type}.orphan`,
       target_type: "refund",
       target_id: refundId,
@@ -959,7 +959,7 @@ async function handleRefundEvent(
   await writeAudit(supabase, {
     user_id: null,
     brand_id: brandId,
-    event_id: event.id,
+    event_id: null, // META-ORCH-1234: Stripe event id (event.id) is not a Mingla event uuid; lives in payment_webhook_events.stripe_event_id
     action: `stripe.${event.type}.reconciled`,
     target_type: "refund",
     target_id: refundId,
@@ -1001,7 +1001,7 @@ async function handleApplicationFee(
   await writeAudit(supabase, {
     user_id: null,
     brand_id: brandId,
-    event_id: event.id,
+    event_id: null, // META-ORCH-1234: Stripe event id (event.id) is not a Mingla event uuid; lives in payment_webhook_events.stripe_event_id
     action: `stripe_connect.${event.type}`,
     target_type: "application_fee",
     target_id: feeId,
@@ -1513,7 +1513,7 @@ export async function routeStripeEvent(
       await writeAudit(supabase, {
         user_id: null,
         brand_id: null,
-        event_id: event.id,
+        event_id: null, // META-ORCH-1234: Stripe event id (event.id) is not a Mingla event uuid; lives in payment_webhook_events.stripe_event_id
         action: "stripe_connect.webhook_unhandled",
         target_type: "stripe_webhook_event",
         target_id: event.id,
