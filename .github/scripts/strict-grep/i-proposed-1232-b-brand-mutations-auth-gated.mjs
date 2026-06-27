@@ -15,8 +15,19 @@
  * throws AuthNotReadyError on cap-elapse) before the service write; AND the create CTA
  * + address CTA in BrandCreationFlow.tsx are `disabled` on `!isAuthReady`.
  *
- * This gate asserts each of the 3 hooks calls awaitAuthReady, and both CTAs gate on
- * `!isAuthReady`. A revert (dropping the gate) fails CI.
+ * META-ORCH-1232 FOLLOW-UP (fresh-signup gap): the flag-only gate above closed
+ * brand-create for EXISTING accounts but NOT for brand-new signups — on a fresh signup
+ * `isAuthReady` flips true a beat BEFORE the Supabase client attaches the access token
+ * to outgoing PostgREST requests, so an insert fired on the flag still goes out as the
+ * anon role with no JWT (`permission denied for table brands`). The fix: each mutation
+ * additionally `await awaitSessionAttached(() => supabase.auth.getSession())` — a
+ * bounded poll for a REAL non-empty `access_token` on the SAME client singleton the
+ * write uses. The flag is necessary-but-NOT-sufficient; the SESSION-TOKEN presence is
+ * the authoritative write gate.
+ *
+ * This gate asserts each of the 3 hooks calls (a) awaitAuthReady AND (b) the REAL
+ * session-token check (awaitSessionAttached + getSession), and both CTAs gate on
+ * `!isAuthReady`. A revert of EITHER the flag gate or the real-session gate fails CI.
  *
  * Exit codes: 0 pass · 1 fail · 2 fs error. Self-test (--self-test).
  */
@@ -59,6 +70,10 @@ function hookBody(src, name) {
 }
 
 const AWAIT_AUTH_READY_RE = /await\s+awaitAuthReady\s*\(/;
+// META-ORCH-1232 follow-up — the authoritative WRITE gate: a bounded poll for a
+// REAL attached access token via getSession(), not merely the isAuthReady flag.
+const AWAIT_SESSION_ATTACHED_RE =
+  /await\s+awaitSessionAttached\s*\(\s*\(\s*\)\s*=>\s*supabase\.auth\.getSession\s*\(\s*\)\s*\)/;
 
 function runSelfTest() {
   let f = 0;
@@ -67,6 +82,7 @@ function runSelfTest() {
       const isAuthReadyGetter = useIsAuthReadyGetter();
       const mutation = useMutation({ mutationFn: async (i) => {
         await awaitAuthReady({ isReady: isAuthReadyGetter });
+        await awaitSessionAttached(() => supabase.auth.getSession());
         return createBrand(i, "owner");
       }});
     };
@@ -76,12 +92,31 @@ function runSelfTest() {
       const mutation = useMutation({ mutationFn: async (i) => createBrand(i, "owner") });
     };
   `);
+  // Flag-only revert: keeps the flag gate but drops the REAL-session gate (the
+  // exact fresh-signup gap this follow-up closes). Must STILL fail CI.
+  const flagOnly = stripComments(`
+    export const useCreateBrand = () => {
+      const isAuthReadyGetter = useIsAuthReadyGetter();
+      const mutation = useMutation({ mutationFn: async (i) => {
+        await awaitAuthReady({ isReady: isAuthReadyGetter });
+        return createBrand(i, "owner");
+      }});
+    };
+  `);
   if (!AWAIT_AUTH_READY_RE.test(hookBody(good, "useCreateBrand") ?? "")) {
     console.error("SELF-TEST FAIL: good hook awaitAuthReady not detected");
     f++;
   }
+  if (!AWAIT_SESSION_ATTACHED_RE.test(hookBody(good, "useCreateBrand") ?? "")) {
+    console.error("SELF-TEST FAIL: good hook awaitSessionAttached(getSession) not detected");
+    f++;
+  }
   if (AWAIT_AUTH_READY_RE.test(hookBody(bad, "useCreateBrand") ?? "")) {
     console.error("SELF-TEST FAIL: reverted hook falsely matched awaitAuthReady");
+    f++;
+  }
+  if (AWAIT_SESSION_ATTACHED_RE.test(hookBody(flagOnly, "useCreateBrand") ?? "")) {
+    console.error("SELF-TEST FAIL: flag-only hook falsely matched the real-session gate");
     f++;
   }
   // CTA gate detector
@@ -120,6 +155,22 @@ for (const hook of ["useCreateBrand", "useUpdateBrand", "useCreateVenueBrand"]) 
       "hook-auth-gated",
       `${hook} does NOT await awaitAuthReady() — a brand mutation can fire during the ` +
         `auth-warm window (anon RLS rejection presented as a no-op). Restore the C2 gate.`,
+    );
+  }
+  // META-ORCH-1232 follow-up — the flag is necessary-but-NOT-sufficient. Each hook
+  // MUST additionally await a REAL attached access token (getSession) so a
+  // fresh-signup insert can never be issued as anon. Revert (flag-only) fails here.
+  if (AWAIT_SESSION_ATTACHED_RE.test(body)) {
+    ok(
+      "hook-session-attached",
+      `${hook} awaits a REAL attached session token (awaitSessionAttached + getSession) before the write`,
+    );
+  } else {
+    fail(
+      "hook-session-attached",
+      `${hook} does NOT await awaitSessionAttached(() => supabase.auth.getSession()) — on a fresh ` +
+        `signup the isAuthReady flag flips true BEFORE the JWT attaches, so the insert goes out as ` +
+        `anon (permission denied for table brands). Restore the real-session write gate.`,
     );
   }
 }
