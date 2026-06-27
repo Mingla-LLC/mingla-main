@@ -139,6 +139,11 @@ on:
 #   - I-PROPOSED-1227-BUSINESS-NAME-AND-LEGAL-LINKS (orch-1227-business-name-and-legal-links.mjs) — two App-Store-blocking BUSINESS-app fixes: (1) the Expo top-level name in mingla-business/app.json is "Mingla Business" (NOT the bare generic "Business" that triggered Apple ITMS-90129), and (2) the login footer legal links in BusinessWelcomeScreen.tsx point at the LIVE usemingla.com pages (TERMS_URL=https://usemingla.com/terms-of-service, PRIVACY_URL=https://usemingla.com/privacy-policy) with the DEAD mingla.app/terms + mingla.app/privacy links GONE; reverting either name or link breaks CI; self-tested 5/5 (ORCH-1227 — DRAFT until CLOSE)
 #   - I-PROPOSED-1136-WEB-SHEET-CSS-TRANSITION (i-proposed-1136-web-sheet-css-transition.mjs) — the 5 shared biz-WEB sheet/overlay primitives (TopSheet, Sheet.web, SheetMobile, Modal, Toast) drive their WEB open/close animation via a compositor CSS `transition` on transform/opacity (NOT a withTiming/withSpring useAnimatedStyle on the web main-thread rAF, which freezes under a heavy-page long task); no height/layout property is animated on the web sheet path; native keeps reanimated (web-gated via Platform.OS==='web'); self-tested (ORCH-1136 R3 — DRAFT until CLOSE)
 #   - I-PROPOSED-1230-CONSUMER-APPLE-REJECTION-ROUND2 (orch-1230-consumer-apple-rejection-round2.mjs) — two CODE fixes for Apple's SECOND consumer-app rejection (build 30): (1) Guideline 5.1.5 — the app is fully functional with Location Services OFF; OnboardingFlow.tsx surfaces the manual "choose your city" picker (manualLocationOpen + renderManualLocationPanel invoked + onPress={handleManualLocation}) on the FIRST encounter and the check-failed escape is NOT gated `launchCheckFailures >= 2` (lowered to >= 1); (2) Guideline 5.1.1(ii) — every calendar/reminder purpose string incl. the iOS-17 keys (NSCalendars{FullAccess,WriteOnlyAccess}UsageDescription + NSRemindersFullAccessUsageDescription) carries a concrete example (/reservation|ticketed show/) and the expo-calendar plugin is configured (NOT a bare string that injects a generic default); self-tested PASS-on-fix + FAIL-on-revert (ORCH-1230 — DRAFT until CLOSE)
+#   - I-PROPOSED-1232-A (i-proposed-1232-a-no-temp-id-to-uuid.mjs) — C1: the shared isPersistedBrandId validator (src/utils/brandId.ts) is imported+applied at the 4 sinks (currentBrandResolver, runBrandRecoveryWrite, setCreatorDefaultBrand, getBrand) so no `_temp_`/non-uuid id reaches a uuid column or the current-brand pointer (Postgres 22P02); getBrand guards BEFORE its .eq("id") query; self-tested (META-ORCH-1232 — DRAFT until CLOSE)
+#   - I-PROPOSED-1232-B (i-proposed-1232-b-brand-mutations-auth-gated.mjs) — C2: useCreateBrand/useUpdateBrand/useCreateVenueBrand each `await awaitAuthReady(...)` (≤5s cap, throws AuthNotReadyError) in mutationFn, and the BrandCreationFlow create + address CTAs are disabled while !isAuthReady; self-tested (META-ORCH-1232 — DRAFT until CLOSE)
+#   - I-PROPOSED-1232-D (i-proposed-1232-d-getbrands-owner-union.mjs) — H2: getBrands reads brands by account_id (deleted_at IS NULL) in addition to brand_team_members so an owned brand can't vanish when the owner-membership trigger lags/fails; self-tested (META-ORCH-1232 — DRAFT until CLOSE)
+#   - I-PROPOSED-1232-E (i-proposed-1232-e-useBrands-no-anon-empty-success.mjs) — H3: getBrands verifies an attached authed session via auth.getSession() and throws BrandsAuthSessionNotAttachedError BEFORE any list read, so an auth-warm empty read renders LOADING (not a cached authed-empty "Create your first brand"); self-tested (META-ORCH-1232 — DRAFT until CLOSE)
+#   - I-PROPOSED-1232-F (i-proposed-1232-f-public-paths-ungated.mjs) — PUBLIC-SAFETY (CLOSE-BLOCKING): isAuthReady absent from usePublicEvents.ts + publicEventsService.ts; the single-by-id useBrand stays ungated; PUBLIC_BUYER_ROUTE_PREFIXES + SELF_AUTHENTICATING_CONNECT_ROUTE_PREFIXES membership in coldLoadAuthGates.ts is frozen to an exact snapshot (the gate IS the regression test — gating any public path fails CI); self-tested (META-ORCH-1232 — DRAFT until CLOSE)
 #
 # Future gates to register (proposed but not yet implemented):
 #   - I-32 rank parity (Cycle 13a proposal)
@@ -3276,3 +3281,68 @@ jobs:
         run: node .github/scripts/strict-grep/orch-1230-consumer-apple-rejection-round2.mjs --self-test
       - name: Run ORCH-1230 consumer Apple-rejection round-2 gate
         run: node .github/scripts/strict-grep/orch-1230-consumer-apple-rejection-round2.mjs
+
+  meta-orch-1232-a-no-temp-id-to-uuid:
+    name: "META-ORCH-1232 (C1): no _temp_/non-UUID id reaches a uuid column or the current-brand pointer — shared isPersistedBrandId applied at resolver + write boundary + setCreatorDefaultBrand + getBrand (I-PROPOSED-1232-A)"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Self-test the META-ORCH-1232-A gate
+        run: node .github/scripts/strict-grep/i-proposed-1232-a-no-temp-id-to-uuid.mjs --self-test
+      - name: Run META-ORCH-1232-A gate
+        run: node .github/scripts/strict-grep/i-proposed-1232-a-no-temp-id-to-uuid.mjs
+
+  meta-orch-1232-b-brand-mutations-auth-gated:
+    name: "META-ORCH-1232 (C2): brand mutations are auth-ready-gated (await-until-ready; AuthNotReadyError on cap) + create/address CTAs disabled while !isAuthReady (I-PROPOSED-1232-B)"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Self-test the META-ORCH-1232-B gate
+        run: node .github/scripts/strict-grep/i-proposed-1232-b-brand-mutations-auth-gated.mjs --self-test
+      - name: Run META-ORCH-1232-B gate
+        run: node .github/scripts/strict-grep/i-proposed-1232-b-brand-mutations-auth-gated.mjs
+
+  meta-orch-1232-d-getbrands-owner-union:
+    name: "META-ORCH-1232 (H2): getBrands unions brands.account_id owner reads with brand_team_members (de-duped, deleted_at IS NULL) so a trigger-lagged owned brand can't vanish (I-PROPOSED-1232-D)"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Self-test the META-ORCH-1232-D gate
+        run: node .github/scripts/strict-grep/i-proposed-1232-d-getbrands-owner-union.mjs --self-test
+      - name: Run META-ORCH-1232-D gate
+        run: node .github/scripts/strict-grep/i-proposed-1232-d-getbrands-owner-union.mjs
+
+  meta-orch-1232-e-usebrands-no-anon-empty-success:
+    name: "META-ORCH-1232 (H3): getBrands verifies an attached authed session before returning the list — an auth-warm empty read is LOADING, never a cached authed-empty (I-PROPOSED-1232-E)"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Self-test the META-ORCH-1232-E gate
+        run: node .github/scripts/strict-grep/i-proposed-1232-e-useBrands-no-anon-empty-success.mjs --self-test
+      - name: Run META-ORCH-1232-E gate
+        run: node .github/scripts/strict-grep/i-proposed-1232-e-useBrands-no-anon-empty-success.mjs
+
+  meta-orch-1232-f-public-paths-ungated:
+    name: "META-ORCH-1232 (PUBLIC-SAFETY, CLOSE-BLOCKING): isAuthReady absent from public hooks/services; single-by-id useBrand stays ungated; PUBLIC_BUYER + SELF_AUTHENTICATING_CONNECT route prefix lists unchanged (I-PROPOSED-1232-F)"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Self-test the META-ORCH-1232-F public-safety gate
+        run: node .github/scripts/strict-grep/i-proposed-1232-f-public-paths-ungated.mjs --self-test
+      - name: Run META-ORCH-1232-F public-safety gate
+        run: node .github/scripts/strict-grep/i-proposed-1232-f-public-paths-ungated.mjs

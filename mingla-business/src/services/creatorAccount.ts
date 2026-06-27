@@ -1,6 +1,10 @@
 import type { User } from "@supabase/supabase-js";
 import { supabase } from "./supabase";
 import { resolveUserEmail } from "../utils/resolveUserEmail";
+// META-ORCH-1232 (C1) — reject a non-persisted (non-uuid) brand id BEFORE it can
+// reach the `creator_accounts.default_brand_id` uuid column (which throws
+// Postgres 22P02 on a `_temp_…` optimistic id).
+import { isPersistedBrandId, InvalidBrandIdError } from "../utils/brandId";
 
 export interface CreatorAccountUpdatePatch {
   display_name?: string;
@@ -90,5 +94,12 @@ export async function setCreatorDefaultBrand(
   userId: string,
   brandId: string | null,
 ): Promise<void> {
+  // META-ORCH-1232 (C1) — suspenders guard at the DB write source. `null` is a
+  // legitimate clear; a non-null id MUST be a persisted UUID. A `_temp_…` (or any
+  // non-uuid) id throws a typed app-level error and issues NO update — the
+  // Supabase call is never sent, so Postgres `22P02` can never escape here.
+  if (brandId !== null && !isPersistedBrandId(brandId)) {
+    throw new InvalidBrandIdError(brandId);
+  }
   await updateCreatorAccount(userId, { default_brand_id: brandId });
 }

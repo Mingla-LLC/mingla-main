@@ -17,7 +17,7 @@
  * SlugCollisionError to inline form error UX (caller pattern).
  */
 
-import { useEffect } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import {
   useMutation,
   useQuery,
@@ -27,6 +27,9 @@ import {
 
 import { useAuth } from "../context/AuthContext";
 import { supabase } from "../services/supabase";
+// META-ORCH-1232 (C2) — await-until-ready guard for the imperative brand
+// mutations (mirrors how useBrands gates the read on isAuthReady).
+import { awaitAuthReady } from "../utils/authReadyGate";
 import { queryClient } from "../config/queryClient";
 import { eventOrdersKeys } from "./useEventOrders";
 import { publicEventKeys } from "./usePublicEvents";
@@ -255,6 +258,25 @@ export const useBrand = (
   });
 };
 
+// ----- META-ORCH-1232 (C2) auth-ready getter for imperative mutations -----
+
+/**
+ * Returns a stable getter that reports the CURRENT `isAuthReady` value. A
+ * mutation's `mutationFn` is imperative and captures `isAuthReady` by closure at
+ * call time; this ref-backed getter lets the await-until-ready loop observe auth
+ * flipping true mid-flight (the session JWT attaching late on web) without
+ * re-creating the mutation. Used by all three brand mutation hooks so the gate is
+ * applied uniformly (SPEC §2 C2).
+ */
+const useIsAuthReadyGetter = (): (() => boolean) => {
+  const { isAuthReady } = useAuth();
+  const ref = useRef(isAuthReady);
+  useEffect(() => {
+    ref.current = isAuthReady;
+  }, [isAuthReady]);
+  return useCallback(() => ref.current, []);
+};
+
 // ----- useCreateBrand (OPTIMISTIC) --------------------------------------
 
 export interface UseCreateBrandResult {
@@ -268,8 +290,16 @@ interface CreateBrandContext {
 
 export const useCreateBrand = (): UseCreateBrandResult => {
   const queryClient = useQueryClient();
+  // META-ORCH-1232 (C2) — auth-aware gate. The brand INSERT must not run while
+  // auth is warming (anon → RLS WITH CHECK rejection presented as a no-op).
+  const isAuthReadyGetter = useIsAuthReadyGetter();
   const mutation = useMutation<Brand, Error, CreateBrandInput, CreateBrandContext>({
     mutationFn: async (input: CreateBrandInput): Promise<Brand> => {
+      // META-ORCH-1232 (C2) — await-until-ready (≤5s cap). If auth settles in the
+      // window we proceed (now correctly authed); if the cap elapses still
+      // not-ready, awaitAuthReady throws AuthNotReadyError → H1 surfaces it as a
+      // visible, retryable error. NEVER silently drops the create.
+      await awaitAuthReady({ isReady: isAuthReadyGetter });
       // Service-layer call; SlugCollisionError surfaces here for hook to map
       return createBrand(input, "owner");
     },
@@ -355,9 +385,14 @@ interface UpdateBrandContext {
 
 export const useUpdateBrand = (): UseUpdateBrandResult => {
   const queryClient = useQueryClient();
+  // META-ORCH-1232 (C2) — same auth-ready gate as useCreateBrand; a profile edit
+  // fired during the auth-warm window would otherwise hit the anon RLS rejection.
+  const isAuthReadyGetter = useIsAuthReadyGetter();
   const mutation = useMutation<Brand, Error, UpdateBrandInput, UpdateBrandContext>({
-    mutationFn: async ({ brandId, patch, existingDescription }) =>
-      updateBrand(brandId, patch, existingDescription),
+    mutationFn: async ({ brandId, patch, existingDescription }) => {
+      await awaitAuthReady({ isReady: isAuthReadyGetter });
+      return updateBrand(brandId, patch, existingDescription);
+    },
     onMutate: async ({ brandId, patch, accountId }): Promise<UpdateBrandContext> => {
       await queryClient.cancelQueries({ queryKey: brandKeys.detail(brandId) });
       await queryClient.cancelQueries({ queryKey: brandKeys.list(accountId) });
@@ -592,11 +627,16 @@ export interface UseCreateVenueBrandResult {
 
 export const useCreateVenueBrand = (): UseCreateVenueBrandResult => {
   const queryClient = useQueryClient();
+  // META-ORCH-1232 (C2) — same auth-ready gate as the other brand mutations.
+  const isAuthReadyGetter = useIsAuthReadyGetter();
   const mutation = useMutation<Brand, Error, CreateVenueBrandMutationInput>({
     mutationFn: async ({
       accountId: _accountId,
       ...rest
-    }): Promise<Brand> => createVenueBrandPendingReview(rest, "owner"),
+    }): Promise<Brand> => {
+      await awaitAuthReady({ isReady: isAuthReadyGetter });
+      return createVenueBrandPendingReview(rest, "owner");
+    },
     onSuccess: (_brand, { accountId }) => {
       void queryClient.invalidateQueries({ queryKey: brandKeys.list(accountId) });
     },

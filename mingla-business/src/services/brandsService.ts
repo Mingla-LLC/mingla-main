@@ -37,6 +37,10 @@ import type {
 // ORCH-0808 — organizer-funnel instrumentation.
 import { logAppsFlyerEvent } from "./appsFlyerService";
 import { brandHoursToRpcPayload } from "../utils/venueBrandHours";
+// META-ORCH-1232 (C1) — guard the by-id read against a non-persisted (non-uuid)
+// brand id so a `_temp_…` optimistic id is a clean miss (null), not a thrown
+// Postgres 22P02 from `.eq("id", "_temp_…")` against the uuid `brands.id`.
+import { isPersistedBrandId } from "../utils/brandId";
 
 interface EventBrandIdRow {
   brand_id: string | null;
@@ -80,6 +84,22 @@ export class SlugCollisionError extends Error {
   constructor(public attemptedSlug: string) {
     super(`Brand slug "${attemptedSlug}" is already taken by an active brand.`);
     this.name = "SlugCollisionError";
+  }
+}
+
+/**
+ * META-ORCH-1232 (H3) — thrown by `getBrands` when the authed brand list read is
+ * attempted while no Supabase session/JWT is yet attached (the auth-warm interior
+ * window). Throwing keeps React Query in a LOADING/retry state instead of caching
+ * an anon `200 + []` as a settled authed-empty success ("Create your first brand"
+ * though brands exist server-side).
+ */
+export class BrandsAuthSessionNotAttachedError extends Error {
+  constructor() {
+    super(
+      "getBrands: no authenticated session attached yet (auth-warm window); not an authed-empty result.",
+    );
+    this.name = "BrandsAuthSessionNotAttachedError";
   }
 }
 
@@ -467,6 +487,22 @@ export async function createVenueBrandPendingReview(
 // ----- getBrands (list) --------------------------------------------------
 
 export async function getBrands(accountId: string): Promise<Brand[]> {
+  // META-ORCH-1232 (H3) — auth-warm empty reads must NOT cache as authed-empty.
+  // `useBrands` gates `enabled = isAuthReady && accountId !== null`, but there is
+  // an INTERIOR window where `isAuthReady` is true yet the Supabase JWT/session is
+  // not yet attached. In that window the authenticated "Account owner can select
+  // own brands" RLS read returns `200 + []` and React Query would cache it as a
+  // settled success-empty → "Create your first brand" though brands exist. Verify
+  // an authenticated session is attached BEFORE the reads; if absent, THROW so the
+  // consumer renders LOADING (and React Query retries), never a committed empty.
+  // getSession() is a LOCAL read (no network) so this adds no round-trip.
+  const {
+    data: { session },
+  } = await supabase.auth.getSession();
+  if (session === null || session.user === undefined || session.user === null) {
+    throw new BrandsAuthSessionNotAttachedError();
+  }
+
   // ORCH-1081 hotfix: source from brand_team_members instead of
   // brands.account_id so brands you're a non-owner member of (brand_admin,
   // event_manager, finance_manager, marketing_manager, scanner) still appear
@@ -492,6 +528,22 @@ export async function getBrands(accountId: string): Promise<Brand[]> {
 
   if (error) throw error;
 
+  // META-ORCH-1232 (H2) — owner-union backstop. The membership read above sources
+  // the switcher from `brand_team_members`, whose owner row is created by the
+  // `biz_brand_owner_team_member_after_insert` AFTER-INSERT trigger. If that
+  // trigger lags/fails (or the row is `removed_at`-stamped), a genuinely-OWNED
+  // brand vanishes from the switcher though it exists in `brands.account_id`.
+  // Read brands the user owns directly and UNION them in (de-duped by id, owner
+  // role attributed, `deleted_at IS NULL` kept) so an owned brand surfaces
+  // whether or not its membership row exists yet. Keeps the non-owner membership
+  // visibility (ORCH-1081) intact.
+  const { data: ownedData, error: ownedError } = await supabase
+    .from("brands")
+    .select("*")
+    .eq("account_id", accountId)
+    .is("deleted_at", null);
+  if (ownedError) throw ownedError;
+
   const seen = new Set<string>();
   type MembershipRow = { role: string; brand: BrandRow };
   const rows: MembershipRow[] = [];
@@ -500,6 +552,12 @@ export async function getBrands(accountId: string): Promise<Brand[]> {
     if (seen.has(r.brand.id)) continue;
     seen.add(r.brand.id);
     rows.push({ role: r.role, brand: r.brand });
+  }
+  // Union the directly-owned brands (owner role) the membership read missed.
+  for (const ownedRow of ((ownedData ?? []) as unknown as BrandRow[])) {
+    if (seen.has(ownedRow.id)) continue;
+    seen.add(ownedRow.id);
+    rows.push({ role: "brand_owner", brand: ownedRow });
   }
 
   // Newest brand first — matches the pre-hotfix ordering.
@@ -671,6 +729,10 @@ function pickRev7dForCurrency(
 // ----- getBrand (single) -------------------------------------------------
 
 export async function getBrand(brandId: string): Promise<Brand | null> {
+  // META-ORCH-1232 (C1) — a non-persisted (non-uuid) id can never match a real
+  // `brands.id`; treat it as a clean miss BEFORE issuing the query so a
+  // `_temp_…` optimistic id returns null instead of throwing Postgres 22P02.
+  if (!isPersistedBrandId(brandId)) return null;
   const { data, error } = await supabase
     .from("brands")
     .select("*")
