@@ -132,6 +132,21 @@ export interface BrandProfileViewProps {
    */
   isResolving?: boolean;
   /**
+   * META-ORCH-1235 (§4.1) — true when the gating brand query rejected
+   * (including a `withTimeout` TimeoutError after retries). When `brand` is
+   * null AND `isError` is true, the view renders a recoverable error state
+   * with a Retry button (wired to `onRetry` → `refetch()`) INSTEAD of the
+   * permanent spinner or the genuine "Brand not found" empty branch. A
+   * timeout/error is recoverable; a genuine not-found is not. Defaults to
+   * false → behaviour unchanged for callers that don't pass it.
+   */
+  isError?: boolean;
+  /**
+   * META-ORCH-1235 (§4.1) — invoked when the user taps Retry on the error
+   * state. Parent wires this to the brand query's `refetch()`.
+   */
+  onRetry?: () => void;
+  /**
    * Live Stripe status wins over cached brand.stripeStatus when provided.
    * This prevents the profile banner/operations row from showing stale
    * "verifying" after Stripe has already marked the account active.
@@ -228,6 +243,8 @@ export interface BrandProfileViewProps {
 export const BrandProfileView: React.FC<BrandProfileViewProps> = ({
   brand,
   isResolving = false,
+  isError = false,
+  onRetry,
   effectiveStripeStatus,
   onBack,
   onEdit,
@@ -473,6 +490,39 @@ export const BrandProfileView: React.FC<BrandProfileViewProps> = ({
   // beat before the real row resolves. Render a spinner here instead of letting
   // the not-found branch below flash "Brand not found". Once the resolve settles
   // (auth ready + query fetched) a still-null brand falls through to not-found.
+  // META-ORCH-1235 (§4.1) — bounded error + Retry. A hung brand read now
+  // rejects (withTimeout → TimeoutError after retries) → `isError` true. Render
+  // a recoverable error state with Retry (→ refetch) INSTEAD of an unbounded
+  // spinner, and BEFORE the genuine not-found branch (a timeout is recoverable,
+  // a not-found is not). The spinner branch below stays for the brief auth-warm
+  // window but is now guaranteed to end (the underlying read settles ≤ 15s).
+  if (brand === null && isError) {
+    return (
+      <View style={styles.host}>
+        <View style={styles.barWrap}>
+          <TopBar leftKind="back" title="Brand" onBack={onBack} rightSlot={<View />} />
+        </View>
+        <ScrollView contentContainerStyle={styles.scroll}>
+          <GlassCard variant="elevated" padding={spacing.lg}>
+            <Text style={styles.notFoundTitle}>Couldn{"’"}t load this brand</Text>
+            <Text style={styles.notFoundBody}>
+              Check your connection and try again.
+            </Text>
+            <View style={styles.notFoundBtnRow}>
+              <Button
+                label="Retry"
+                onPress={() => onRetry?.()}
+                variant="primary"
+                size="md"
+                testID="brand-profile-retry"
+              />
+            </View>
+          </GlassCard>
+        </ScrollView>
+      </View>
+    );
+  }
+
   if (brand === null && isResolving) {
     return (
       <View style={styles.host}>

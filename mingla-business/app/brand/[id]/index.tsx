@@ -185,6 +185,10 @@ export default function BrandProfileRoute(): React.ReactElement {
       <BrandProfileView
         brand={brand}
         isResolving={isBrandResolving}
+        isError={brandQuery.isError}
+        onRetry={() => {
+          void brandQuery.refetch();
+        }}
         effectiveStripeStatus={effectiveStripeStatus}
         onBack={handleBack}
         onEdit={handleOpenEdit}

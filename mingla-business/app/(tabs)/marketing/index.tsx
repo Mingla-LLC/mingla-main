@@ -86,7 +86,16 @@ export default function MarketingOverviewRoute(): React.ReactElement {
           <EmptyState
             illustration="users"
             title="Couldn't load metrics"
-            description="Pull to retry, or come back in a moment."
+            description="Check your connection and try again."
+            testID="marketing-overview-error"
+            cta={{
+              label: "Retry",
+              // META-ORCH-1235 (§4.3) — a hung overview read now rejects
+              // (withTimeout) → isError fires; Retry refetches, no reload.
+              onPress: () => {
+                void overviewQuery.refetch();
+              },
+            }}
           />
         </View>
       </View>

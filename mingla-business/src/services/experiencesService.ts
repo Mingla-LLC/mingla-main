@@ -11,6 +11,8 @@
 import { supabase } from "./supabase";
 import { formatCurrency } from "../utils/currency";
 import { aggregatePaidOrdersByEvent } from "./tripsService";
+// META-ORCH-1235 — settle-guarantee for the Hub experiences full-screen gate.
+import { withTimeout, DATA_FETCH_TIMEOUT_MS } from "../utils/withTimeout";
 import {
   experienceListSubline,
   type ExperienceListWhenDraft,
@@ -157,19 +159,30 @@ function mapExperience(
 }
 
 export async function getExperiencesByBrand(brandId: string): Promise<VenueExperience[]> {
-  const { data, error } = await supabase
-    .from("events")
-    .select(
-      "id, brand_id, title, description, slug, status, visibility, created_at, currency, cover_media_url, cover_media_type, whole_price_cents, is_recurring, is_multi_date, theme",
-    )
-    .eq("brand_id", brandId)
-    .eq("event_type", "experience")
-    .is("deleted_at", null)
-    .order("created_at", { ascending: false });
+  // META-ORCH-1235 — bound the gating experiences read (hub/experiences.tsx
+  // full-screen spinner). A hung read now rejects → isError + Retry.
+  const { data, error } = await withTimeout(
+    supabase
+      .from("events")
+      .select(
+        "id, brand_id, title, description, slug, status, visibility, created_at, currency, cover_media_url, cover_media_type, whole_price_cents, is_recurring, is_multi_date, theme",
+      )
+      .eq("brand_id", brandId)
+      .eq("event_type", "experience")
+      .is("deleted_at", null)
+      .order("created_at", { ascending: false }),
+    DATA_FETCH_TIMEOUT_MS,
+    "getExperiencesByBrand",
+  );
   if (error) throw error;
   const rows = (data ?? []) as EventRow[];
   // META-ORCH-1059 Pass 1: one batched paid-orders aggregation → per-experience
   // spots-sold + revenue for the Hub list-card (parity with events + trips).
-  const agg = await aggregatePaidOrdersByEvent(rows.map((r) => r.id));
+  // META-ORCH-1235 — second sequential leg individually bounded.
+  const agg = await withTimeout(
+    aggregatePaidOrdersByEvent(rows.map((r) => r.id)),
+    DATA_FETCH_TIMEOUT_MS,
+    "getExperiencesByBrand:agg",
+  );
   return rows.map((row) => mapExperience(row, agg.get(row.id)));
 }

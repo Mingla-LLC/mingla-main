@@ -18,6 +18,9 @@
  */
 
 import { supabase } from "../supabase";
+// META-ORCH-1235 — settle-guarantee for the marketing overview full-screen
+// skeleton gate (marketing/index.tsx).
+import { withTimeout, DATA_FETCH_TIMEOUT_MS } from "../../utils/withTimeout";
 import type {
   MarketingOverviewFunnel,
   MarketingOverviewRecentCampaign,
@@ -79,11 +82,16 @@ export async function getMarketingOverview(
   // the campaigns_sent_count headline AND as a campaign_id whitelist for the
   // message + click rollups below). Pulling rows once is cheaper than two
   // separate count queries.
-  const { data: windowCampaignsData, error: windowCampaignsErr } = await supabase
-    .from("marketing_campaigns")
-    .select("id, status, sent_at, created_at")
-    .eq("account_id", input.account_id)
-    .gte("created_at", windowStartIso);
+  // META-ORCH-1235 — bound each gating read so the overview skeleton settles.
+  const { data: windowCampaignsData, error: windowCampaignsErr } = await withTimeout(
+    supabase
+      .from("marketing_campaigns")
+      .select("id, status, sent_at, created_at")
+      .eq("account_id", input.account_id)
+      .gte("created_at", windowStartIso),
+    DATA_FETCH_TIMEOUT_MS,
+    "getMarketingOverview:campaigns",
+  );
   if (windowCampaignsErr) throw windowCampaignsErr;
   const windowCampaigns = (windowCampaignsData ?? []) as Array<{
     id: string;
@@ -99,15 +107,19 @@ export async function getMarketingOverview(
 
   // Query 2 — recent 3 campaigns (broader: not windowed; the operator wants
   // to see their most recent activity even if older than 30 days).
-  const { data: recentData, error: recentErr } = await supabase
-    .from("marketing_campaigns")
-    .select(
-      "id, name, status, sent_at, scheduled_for, recipient_count, created_at",
-    )
-    .eq("account_id", input.account_id)
-    .order("sent_at", { ascending: false, nullsFirst: false })
-    .order("created_at", { ascending: false })
-    .limit(RECENT_CAMPAIGN_LIMIT);
+  const { data: recentData, error: recentErr } = await withTimeout(
+    supabase
+      .from("marketing_campaigns")
+      .select(
+        "id, name, status, sent_at, scheduled_for, recipient_count, created_at",
+      )
+      .eq("account_id", input.account_id)
+      .order("sent_at", { ascending: false, nullsFirst: false })
+      .order("created_at", { ascending: false })
+      .limit(RECENT_CAMPAIGN_LIMIT),
+    DATA_FETCH_TIMEOUT_MS,
+    "getMarketingOverview:recent",
+  );
   if (recentErr) throw recentErr;
   const recentCampaigns = (recentData ?? []) as unknown as MarketingOverviewRecentCampaign[];
 
@@ -123,11 +135,15 @@ export async function getMarketingOverview(
   }
 
   // Query 3 — message status histogram for windowed campaigns.
-  const { data: messageData, error: messageErr } = await supabase
-    .from("marketing_messages")
-    .select("status")
-    .in("campaign_id", windowCampaignIds)
-    .gte("created_at", windowStartIso);
+  const { data: messageData, error: messageErr } = await withTimeout(
+    supabase
+      .from("marketing_messages")
+      .select("status")
+      .in("campaign_id", windowCampaignIds)
+      .gte("created_at", windowStartIso),
+    DATA_FETCH_TIMEOUT_MS,
+    "getMarketingOverview:messages",
+  );
   if (messageErr) throw messageErr;
   const messageStatuses = ((messageData ?? []) as Array<{ status: MessageStatus }>).map(
     (m) => m.status,
@@ -135,12 +151,16 @@ export async function getMarketingOverview(
 
   // Query 4 — distinct message_id from marketing_clicks WHERE clicked_at NOT NULL.
   // Bounded by .limit() to match marketingReportService precedent at line 110.
-  const { data: clickData, error: clickErr } = await supabase
-    .from("marketing_clicks")
-    .select("message_id")
-    .in("campaign_id", windowCampaignIds)
-    .not("clicked_at", "is", null)
-    .limit(CLICK_QUERY_LIMIT);
+  const { data: clickData, error: clickErr } = await withTimeout(
+    supabase
+      .from("marketing_clicks")
+      .select("message_id")
+      .in("campaign_id", windowCampaignIds)
+      .not("clicked_at", "is", null)
+      .limit(CLICK_QUERY_LIMIT),
+    DATA_FETCH_TIMEOUT_MS,
+    "getMarketingOverview:clicks",
+  );
   if (clickErr) throw clickErr;
   const uniqueClickedMessageIds = new Set<string>();
   for (const row of (clickData ?? []) as Array<{ message_id: string | null }>) {

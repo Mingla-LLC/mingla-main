@@ -54,6 +54,10 @@ import {
 // triggering refetches. Imports the singleton from the same location used by
 // QueryClientProvider in app/_layout.tsx.
 import { queryClient } from "../config/queryClient";
+// META-ORCH-1235 (§5.1) — bound the boot getUser() probe so it cannot consume
+// the full 7s ceiling; on timeout it throws → existing fail-OPEN catch keeps
+// the user signed in.
+import { withTimeout, AUTH_PROBE_TIMEOUT_MS } from "../utils/withTimeout";
 
 // ORCH-0887-A [Auth getSession Promise.race timeout] — close indefinite
 // loader hang on business-web. SPEC §2.1: constant inline at top of
@@ -346,7 +350,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         if (!bootSessionProbedRef.current) {
           bootSessionProbedRef.current = true;
           try {
-            const { error: probeError } = await supabase.auth.getUser();
+            // META-ORCH-1235 (§5.1) — per-probe deadline well under the 7s
+            // ceiling. A hung GET /user now rejects with TimeoutError → caught
+            // below as a transport failure (fail-OPEN, session kept).
+            const { error: probeError } = await withTimeout(
+              supabase.auth.getUser(),
+              AUTH_PROBE_TIMEOUT_MS,
+              "auth:getUser-probe",
+            );
             if (!mounted) return;
             if (classifyBootSessionProbe(probeError) === "invalid_session") {
               console.warn(
