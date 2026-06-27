@@ -1,19 +1,12 @@
 /**
- * useAccountDeletion — React Query mutation for soft-delete + recovery (Cycle 14).
+ * useAccountDeletion — side-aware account deletion (#668 / ORCH-1240).
  *
- * Per DEC-096 D-14-12 (FORCED — schema already shipped): UPDATE creator_accounts
- * .deleted_at = now() via existing self-write UPDATE RLS policy. NO insert into
- * account_deletion_requests (B-cycle service-role edge fn writes that audit row).
+ * Business-side delete invokes the `delete-user` edge function with
+ * `{ side: 'business' }` so Stripe offboarding + brand soft-delete run
+ * server-side while the auth login survives when the explorer side remains.
  *
- * Per D-CYCLE14-FOR-6: recovery-on-sign-in auto-clears the marker — implemented
- * here as `tryRecoverAccountIfDeleted` non-hook helper (consumed by AuthContext
- * bootstrap per SPEC §4.7.5).
- *
- * I-35 invariant: deleted_at is the soft-delete marker; mobile UPDATE writes
- * self-only via existing RLS; recover-on-sign-in auto-clears the marker;
- * B-cycle hard-delete cron honors 30-day window.
- *
- * Per Cycle 14 SPEC §4.3.2.
+ * Recovery-on-sign-in (D-CYCLE14-FOR-6) still clears creator_accounts.deleted_at
+ * when the user signs in within the 30-day window.
  */
 
 import { useMutation, useQueryClient } from "@tanstack/react-query";
@@ -22,27 +15,31 @@ import { useAuth } from "../context/AuthContext";
 import { supabase } from "../services/supabase";
 import { creatorAccountKeys } from "./useCreatorAccount";
 
+export interface DeletionResponse {
+  success: boolean;
+  authDeleted?: boolean;
+  authRetained?: boolean;
+  message?: string;
+}
+
 export interface UseRequestAccountDeletionResult {
-  mutateAsync: () => Promise<void>;
+  mutateAsync: () => Promise<DeletionResponse>;
   isPending: boolean;
 }
 
-/**
- * Mutation: soft-delete current user's account by setting deleted_at = now().
- * On success the caller fires signOut() — not done here so the mutation has a
- * clean separation of concerns (caller controls navigation post-delete).
- */
 export const useRequestAccountDeletion = (): UseRequestAccountDeletionResult => {
   const { user } = useAuth();
   const queryClient = useQueryClient();
   const mutation = useMutation({
-    mutationFn: async (): Promise<void> => {
+    mutationFn: async (): Promise<DeletionResponse> => {
       if (user === null) throw new Error("Not signed in");
-      const { error } = await supabase
-        .from("creator_accounts")
-        .update({ deleted_at: new Date().toISOString() })
-        .eq("id", user.id);
+      const { data, error } = await supabase.functions.invoke("delete-user", {
+        method: "POST",
+        body: { side: "business" },
+      });
       if (error) throw error;
+      if (data?.error) throw new Error(data.error as string);
+      return data as DeletionResponse;
     },
     onSuccess: (): void => {
       if (user !== null) {
@@ -60,11 +57,6 @@ export const useRequestAccountDeletion = (): UseRequestAccountDeletionResult => 
  * a non-null deleted_at, clear it (auto-recovery within 30-day window) and
  * return true so the caller can show "Welcome back — your account has been
  * recovered." toast on next mount.
- *
- * Returns false if no recovery happened (deleted_at was already null OR query
- * failed — caller treats as no-op).
- *
- * Per SPEC §4.3.2 + D-CYCLE14-FOR-6 lock.
  */
 export const tryRecoverAccountIfDeleted = async (
   userId: string,

@@ -3430,3 +3430,25 @@ jobs:
         run: node .github/scripts/strict-grep/i-proposed-1235-c-loading-gate-has-error-retry.mjs --self-test
       - name: Run META-ORCH-1235-C gate
         run: node .github/scripts/strict-grep/i-proposed-1235-c-loading-gate-has-error-retry.mjs
+
+  orch-1240-dual-account-deletion:
+    name: "ORCH-1240 / #668: side-aware delete-user + client side payloads (dual-account deletion)"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Run ORCH-1240 structural regression
+        run: npm run test:orch-1240 --prefix app-mobile
+
+  orch-1240-support-inbox-exclusion:
+    name: "ORCH-1240 / #668: consumer inbox excludes support linked_entity_type"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Run ORCH-0901 regression (includes support exclusion check)
+        run: npm run test:orch-0901 --prefix app-mobile

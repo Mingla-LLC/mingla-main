@@ -48,6 +48,7 @@ import { usePartnerBrandLinks } from "../../src/hooks/usePartnerBrandLinks";
 // META-ORCH-1104 Phase 3 — support-staff capability (brand-DECOUPLED, keyed on
 // user.id). Gates the "Support — Live Chats" card; RLS is the real boundary.
 import { useSupportStaff } from "../../src/hooks/useSupportStaff";
+import { isFeatureEnabled } from "../../src/config/featureFlags";
 import {
   useCurrentBrandStore,
   type Brand,
@@ -398,6 +399,18 @@ export default function AccountTab(): React.ReactElement {
               label="Sign out everywhere"
               onPress={handleSignOut}
             />
+            {isFeatureEnabled("accountSideToggle") ? (
+              <SettingsNavRow
+                icon="repeat"
+                label="Switch to Explorer"
+                onPress={() =>
+                  setToast({
+                    visible: true,
+                    message: "Coming soon — same login, consumer app (preview only).",
+                  })
+                }
+              />
+            ) : null}
           </View>
         </GlassCard>
 

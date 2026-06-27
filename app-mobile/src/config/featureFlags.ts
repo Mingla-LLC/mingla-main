@@ -83,3 +83,10 @@ export const FEATURE_FLAG_PROGRESSIVE_DELIVERY: boolean = true;
  * (listed in Mingla_Artifacts/outputs/INVESTIGATION_ORCH-0525_FLAG_FLIP_RISK.md §5).
  */
 export const FEATURE_FLAG_PER_CONTEXT_DECK_STATE: boolean = true;
+
+/**
+ * #668 / ORCH-1240 — Consumer↔business account-side toggle.
+ * Present in code but OFF in production builds until the switch flow is product-ready.
+ * Default: __DEV__ only.
+ */
+export const FEATURE_FLAG_ACCOUNT_SIDE_TOGGLE: boolean = __DEV__;

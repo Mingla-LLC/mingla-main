@@ -260,6 +260,19 @@ export const useAuthSimple = () => {
                 }
               }
             } else if (profile) {
+              if (profile.explorer_deleted_at) {
+                logger.auth('Explorer side deleted — signing out consumer session');
+                await signOutWithPrivateCleanup(
+                  "explorer-side-deleted",
+                  session.user.id,
+                );
+                if (mounted) {
+                  setAuth(null);
+                  setProfile(null);
+                  setLoading(false);
+                }
+                return;
+              }
               logger.auth('Profile loaded', { displayName: profile.display_name, onboarding: profile.has_completed_onboarding });
               if (mounted) setProfile(profile);
             }

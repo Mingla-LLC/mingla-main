@@ -31,6 +31,7 @@ import { authService } from "../../services/authService";
 import { mixpanelService } from "../../services/mixpanelService";
 // META-ORCH-1187 [Growth Analytics Hub] — analytics opt-out toggle wiring.
 import { postHogService } from "../../services/postHogService";
+import { FEATURE_FLAG_ACCOUNT_SIDE_TOGGLE } from "../../config/featureFlags";
 import Toggle from "./Toggle";
 import * as Haptics from "expo-haptics";
 import type { NotificationPreferences } from "../../services/smartNotificationService";
@@ -514,7 +515,7 @@ export default function AccountSettings({ user, onSignOut, visible, onClose, not
       const WALL_CLOCK_TIMEOUT_MS = 45000;
       const invokePromise = supabase.functions.invoke("delete-user", {
         method: "POST",
-        body: { userId: user.id },
+        body: { side: "explorer" },
       });
 
       const timeoutPromise = new Promise<never>((_, reject) => {
@@ -527,7 +528,10 @@ export default function AccountSettings({ user, onSignOut, visible, onClose, not
       });
 
       const result = await Promise.race([invokePromise, timeoutPromise]);
-      const { data, error } = result as { data: { success?: boolean; error?: string } | null; error: Error | null };
+      const { data, error } = result as {
+        data: { success?: boolean; error?: string; authRetained?: boolean; message?: string } | null;
+        error: Error | null;
+      };
 
       if (error) {
         const errorMessage = await extractFunctionError(error, "An error occurred while deleting your account.");
@@ -536,12 +540,15 @@ export default function AccountSettings({ user, onSignOut, visible, onClose, not
       if (data?.error) throw new Error(data.error);
 
       setDeleteStep("success");
+      if (data?.authRetained && data.message) {
+        setDeleteError(null);
+      }
 
       setTimeout(() => {
         setShowDeleteConfirmModal(false);
         onClose();
         onSignOut?.()?.catch?.((err) => console.error("Sign-out after account deletion failed:", err));
-      }, 2000);
+      }, data?.authRetained ? 3500 : 2000);
     } catch (e: unknown) {
       console.error("Delete account error:", e);
       if (e instanceof Error && e.message === "TIMEOUT") {
@@ -1000,6 +1007,25 @@ export default function AccountSettings({ user, onSignOut, visible, onClose, not
                 <Text style={styles.rowValueMuted}>support@usemingla.com</Text>
               </TouchableOpacity>
             </AccordionCard>
+
+            {FEATURE_FLAG_ACCOUNT_SIDE_TOGGLE ? (
+              <View style={styles.card}>
+                <View style={styles.cardHeaderStatic}>
+                  <Icon name="repeat" size={20} color="#94a3b8" />
+                  <Text style={styles.cardTitle}>Switch to Business</Text>
+                </View>
+                <Text style={styles.rowHint}>
+                  Coming soon — opens the Mingla Business app on the same login.
+                </Text>
+                <TouchableOpacity
+                  style={[styles.deleteButton, styles.deleteButtonDisabled]}
+                  disabled
+                  activeOpacity={1}
+                >
+                  <Text style={styles.deleteButtonText}>Switch account (preview)</Text>
+                </TouchableOpacity>
+              </View>
+            ) : null}
 
             {/* Section 6: The Red Zone (NOT collapsible — always visible) */}
             <View style={[styles.card, styles.dangerCard]}>

@@ -272,6 +272,14 @@ check(
     " these — dropping them would break the chat-list preview rendering.",
 );
 
+// ─── #668: support inbox must not appear in consumer message list ─────────────
+
+check(
+  "T-668-01 [FAILS-ON-REVERT KEY] getConversations excludes linked_entity_type=support",
+  body !== null && /\.neq\(\s*['"]linked_entity_type['"]\s*,\s*['"]support['"]\s*\)/.test(body),
+  "Support threads belong on the business support inbox only (#668). Mirror useNotifications business.% exclusion.",
+);
+
 // ─── Report ────────────────────────────────────────────────────────────────────
 
 console.log("\nORCH-0901 regression check (happy-path, structural)\n");
