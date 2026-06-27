@@ -719,6 +719,8 @@ export class MessagingService {
       //
       // Total: ≤2 sequential Supabase round-trips on cold-load.
 
+      // #668: support threads live in the shared chat system but belong on the
+      // business support inbox only — mirror useNotifications' business.% exclusion.
       const conversationsPromise = supabase
         .from('conversations')
         .select(`
@@ -731,6 +733,7 @@ export class MessagingService {
             read_status:message_reads(user_id)
           )
         `)
+        .neq('linked_entity_type', 'support')
         .is('last_message.deleted_at', null)
         .order('last_message_at', { ascending: false, nullsFirst: false })
         .order('created_at', { referencedTable: 'last_message', ascending: false })

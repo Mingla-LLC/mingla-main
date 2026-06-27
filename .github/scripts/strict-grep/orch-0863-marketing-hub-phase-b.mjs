@@ -1373,6 +1373,14 @@ function checkNoNewBackendFiles() {
     "supabase/functions/explorer-app-lead-submit/__tests__/submit_happy.test.ts",
     "supabase/functions/explorer-app-lead-submit/__tests__/submit_adversarial.test.ts",
   ];
+  // ORCH-1240 / GitHub #668 — dual-sided account deletion (migration + edge fn rewrite).
+  const ORCH_1240_BACKEND_ALLOWLIST = [
+    "supabase/migrations/20261128000000_orch_1240_issue_668_dual_account_deletion.sql",
+    "supabase/migrations/__tests__/orch_1240_issue_668_dual_account_deletion.test.ts",
+    "supabase/functions/_shared/accountDeletionSides.ts",
+    "supabase/functions/delete-user/index.ts",
+    "supabase/functions/delete-user/index.test.ts",
+  ];
   // ORCH-1050 [Brand team invite + accept + ownership transfer]. META-ORCH-1048
   // sub-B. C7 is scoped to ORCH-0863 marketing; these are brand-team invite
   // pipeline backend touches (migration + two edge fns + tests). Per
@@ -2011,6 +2019,7 @@ function checkNoNewBackendFiles() {
     ...ORCH_1044_BACKEND_ALLOWLIST,
     ...ORCH_1045_BACKEND_ALLOWLIST,
     ...ORCH_1216_BACKEND_ALLOWLIST,
+    ...ORCH_1240_BACKEND_ALLOWLIST,
     ...ORCH_1056_BACKEND_ALLOWLIST,
     ...ORCH_1034_BACKEND_ALLOWLIST,
     ...ORCH_1043_BACKEND_ALLOWLIST,

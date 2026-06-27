@@ -182,14 +182,14 @@ export default function DeleteAccountRoute(): React.ReactElement {
   const handleConfirmDelete = useCallback(async (): Promise<void> => {
     if (!confirmMatches || deleting) return;
     try {
-      await requestDeletion();
+      const result = await requestDeletion();
       setStep(4);
       showToast(
-        "Account scheduled for deletion. Recover within 30 days by signing in again.",
+        result.authRetained
+          ? (result.message ??
+              "Business account removed. Your explorer login is unchanged.")
+          : "Account deleted. Signing you out…",
       );
-      // 1.2s → signOut → navigate. Await signOut so SIGNED_OUT fires +
-      // AuthContext clears user before router.replace evaluates index gate
-      // (Cycle 14 v2 fix Bug A — operator smoke Step 6 race).
       setTimeout(async (): Promise<void> => {
         await signOut();
         router.replace("/" as never);

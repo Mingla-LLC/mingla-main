@@ -6,7 +6,7 @@
  * and shipping an OTA update.
  */
 
-export type FeatureFlagKey = "ari" | "marketingSend" | "paystack";
+export type FeatureFlagKey = "ari" | "marketingSend" | "paystack" | "accountSideToggle";
 
 function readEnvFlag(envName: string, defaultEnabled: boolean): boolean {
   const raw = process.env[envName];
@@ -21,6 +21,8 @@ export const featureFlags: Readonly<Record<FeatureFlagKey, boolean>> = {
   ari: readEnvFlag("EXPO_PUBLIC_FF_ARI_ENABLED", true),
   marketingSend: readEnvFlag("EXPO_PUBLIC_FF_MARKETING_SEND_ENABLED", true),
   paystack: readEnvFlag("EXPO_PUBLIC_FF_PAYSTACK_ENABLED", false),
+  /** #668 — consumer↔business toggle; dark in prod until product is ready. */
+  accountSideToggle: readEnvFlag("EXPO_PUBLIC_FF_ACCOUNT_SIDE_TOGGLE", false),
 };
 
 export function isFeatureEnabled(key: FeatureFlagKey): boolean {
