@@ -144,6 +144,7 @@ on:
 #   - I-PROPOSED-1232-D (i-proposed-1232-d-getbrands-owner-union.mjs) — H2: getBrands reads brands by account_id (deleted_at IS NULL) in addition to brand_team_members so an owned brand can't vanish when the owner-membership trigger lags/fails; self-tested (META-ORCH-1232 — DRAFT until CLOSE)
 #   - I-PROPOSED-1232-E (i-proposed-1232-e-useBrands-no-anon-empty-success.mjs) — H3: getBrands verifies an attached authed session via auth.getSession() and throws BrandsAuthSessionNotAttachedError BEFORE any list read, so an auth-warm empty read renders LOADING (not a cached authed-empty "Create your first brand"); self-tested (META-ORCH-1232 — DRAFT until CLOSE)
 #   - I-PROPOSED-1232-F (i-proposed-1232-f-public-paths-ungated.mjs) — PUBLIC-SAFETY (CLOSE-BLOCKING): isAuthReady absent from usePublicEvents.ts + publicEventsService.ts; the single-by-id useBrand stays ungated; PUBLIC_BUYER_ROUTE_PREFIXES + SELF_AUTHENTICATING_CONNECT_ROUTE_PREFIXES membership in coldLoadAuthGates.ts is frozen to an exact snapshot (the gate IS the regression test — gating any public path fails CI); self-tested (META-ORCH-1232 — DRAFT until CLOSE)
+#   - I-PROPOSED-1234 (i-proposed-1234-stripe-connect-onboarding.mjs) — TWO Stripe Connect onboarding bug guards: (A) NO writeAudit call site in _shared/stripeWebhookRouter.ts passes a Stripe event id (event.id/eventId) into the uuid event_id column (only the real Mingla orderDetail.event_id may be non-null), the stripe-webhook/index.ts soft-fail writeAudit event_id is null, AND _shared/audit.ts coerces a non-uuid event_id to null before INSERT (defense-in-depth so a Stripe/acct id can never throw + fail the whole Connect webhook again); (B) ConnectOnboardingBody.web.tsx never SPA-router.replace/push into the auth-gated /brand/<id>/payments route from the sessionless onboarding browser, persists return_to to sessionStorage on mount, and recovers it + full-page-navigates (window.location.assign/href) on exit so the user is never stranded on "Redirecting…"; self-tested + fails-on-revert (META-ORCH-1234 — DRAFT until CLOSE)
 #
 # Future gates to register (proposed but not yet implemented):
 #   - I-32 rank parity (Cycle 13a proposal)
@@ -3346,3 +3347,16 @@ jobs:
         run: node .github/scripts/strict-grep/i-proposed-1232-f-public-paths-ungated.mjs --self-test
       - name: Run META-ORCH-1232-F public-safety gate
         run: node .github/scripts/strict-grep/i-proposed-1232-f-public-paths-ungated.mjs
+
+  meta-orch-1234-stripe-connect-onboarding:
+    name: "META-ORCH-1234: Connect-webhook writeAudit passes event_id null (+ audit.ts coerces non-uuid to null) AND onboarding exit never SPA-replaces into the auth-gated payments route (persists return_to, full-page navigates) (I-PROPOSED-1234)"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Self-test the META-ORCH-1234 onboarding gate
+        run: node .github/scripts/strict-grep/i-proposed-1234-stripe-connect-onboarding.mjs --self-test
+      - name: Run META-ORCH-1234 onboarding gate
+        run: node .github/scripts/strict-grep/i-proposed-1234-stripe-connect-onboarding.mjs
