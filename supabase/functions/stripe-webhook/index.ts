@@ -121,7 +121,8 @@ export async function stripeWebhookHandler(req: Request): Promise<Response> {
       await writeAudit(supabase, {
         user_id: null,
         brand_id: null,
-        event_id: event.id,
+        // META-ORCH-1234: Stripe event id is not a Mingla event uuid; it is preserved in target_id (text) below.
+        event_id: null,
         action: "stripe_connect.webhook_ip_soft_fail",
         target_type: "stripe_webhook_event",
         target_id: event.id,
