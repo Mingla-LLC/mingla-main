@@ -1012,6 +1012,10 @@ const OnboardingFlow = ({
   const welcomeAnimRan = useRef(false)
   const firstNameRef = useRef<TextInput>(null)
   const lastNameRef = useRef<TextInput>(null)
+  // [META-ORCH-1233 Item 1] One source of truth for the value-prop strip: the
+  // ScrollView is driven programmatically from valuePropBeat (Next button, 3s
+  // auto-advance, and swipe) so the visible slide + dots + state stay locked.
+  const valuePropScrollRef = useRef<ScrollView>(null)
 
   // ─── Intent Card Stagger Animations ───
   const intentAnims = useRef(
@@ -1275,6 +1279,17 @@ const OnboardingFlow = ({
     const timer = setTimeout(() => setValuePropBeat((b) => b + 1), 3000)
     return () => clearTimeout(timer)
   }, [navState.subStep, valuePropBeat])
+
+  // ─── Value Prop Strip Sync [META-ORCH-1233 Item 1] ───
+  // Keep the visible value-prop slide locked to valuePropBeat (Next button + 3s
+  // timer + swipe settle all flow through this single source of truth). pageWidth
+  // is recomputed as winWidth-48 (identical to the render) so rotation / split-view
+  // width changes stay correct; do NOT capture a module-scope width.
+  useEffect(() => {
+    if (navState.subStep !== 'value_prop') return
+    const pageWidth = winWidth - 48
+    valuePropScrollRef.current?.scrollTo({ x: valuePropBeat * pageWidth, animated: true })
+  }, [valuePropBeat, navState.subStep, winWidth])
 
   // Launch logic is now triggered from the getting_experiences substep, not via isLaunch flag
 
@@ -2238,14 +2253,25 @@ const OnboardingFlow = ({
         }, hide: false }
       case 'travel_time':
         return { label: prefsSaveError ? t('common:retry') : t('common:next'), disabled: false, loading: savingPrefs, onPress: handleSavePreferences, hide: false }
-      case 'friends_and_pairing':
+      case 'friends_and_pairing': {
+        // [META-ORCH-1233 Item 2] Skip (no friend) vs Continue (>=1 friend). The
+        // trigger is a friend actually IN the list, not a number merely typed.
+        const hasFriend = data.addedFriends.length > 0
         return {
-          label: t('common:continue'),
+          label: hasFriend ? t('common:continue') : t('common:skip'),
           disabled: false,
           loading: false,
-          onPress: () => goNext(),
+          onPress: () => {
+            if (!hasFriend) {
+              // Preserve the original skip intent (resume/analytics state) that the
+              // now-dead child onSkip used to set.
+              setData((prev) => ({ ...prev, skippedFriends: true }))
+            }
+            goNext()
+          },
           hide: false,
         }
+      }
       case 'collaborations': {
         const hasActed = data.createdSessions.length > 0 || data.collabActionTaken
         return {
@@ -2648,6 +2674,7 @@ const OnboardingFlow = ({
       return (
         <View style={[styles.valuePropCenter, { minHeight: winHeight * 0.55 }]}>
           <ScrollView
+            ref={valuePropScrollRef}
             horizontal
             pagingEnabled
             showsHorizontalScrollIndicator={false}

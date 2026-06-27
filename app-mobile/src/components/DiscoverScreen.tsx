@@ -109,6 +109,12 @@ const GRID_CARD_WIDTH = (SCREEN_WIDTH - d.grid.horizontalPadding * 2 - d.grid.co
 const GRID_CARD_HEIGHT = GRID_CARD_WIDTH / d.card.aspectRatio;
 // META-ORCH-1002 Sub-1 (S2): shared Android-opaque-fallback gate (was the per-component Android-11 version gate).
 const isAndroidPreBlur = ANDROID_GLASS_USES_OPAQUE_FALLBACK;
+// [META-ORCH-1233 Item 3] The Events/Trips spotlight pill lives in the capsule
+// padding-box (sibling of tabs1016Row), but each tab's onLayout x is relative to
+// tabs1016Row's content box, which is offset by the row's horizontal padding.
+// Add that padding to targetX so the pill aligns to the active tab and stops
+// overhanging the neighbor. MUST equal styles.tabs1016Row.paddingHorizontal.
+const TABS_1016_ROW_PADDING_H = 4;
 // META-ORCH-0991 Bug 3b: neutral dark blurhash shown under a Ticketmaster card
 // image while it decodes (expo-image placeholder) so the cell is never an empty
 // flash on Android. A flat charcoal hash matches the cards' dark hero treatment.
@@ -955,7 +961,9 @@ function DiscoverScreen({
   useEffect(() => {
     const layout = tab1016LayoutsRef.current[activeTab];
     if (!layout) return;
-    const targetX = layout.x + cc.nav.spotlightInset;
+    // [META-ORCH-1233 Item 3] tabs1016Row paddingHorizontal offsets the tab's
+    // onLayout x from the capsule padding-box where spotlight.left is applied.
+    const targetX = TABS_1016_ROW_PADDING_H + layout.x + cc.nav.spotlightInset;
     const targetWidth = layout.width - cc.nav.spotlightInset * 2;
     if (reduceMotion) {
       spotlight1016X.setValue(targetX);
