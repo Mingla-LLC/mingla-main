@@ -65,7 +65,7 @@ Deno.test("writeAudit coerces an arbitrary non-uuid string to null", async () =>
     user_id: null,
     brand_id: null,
     event_id: "not-a-uuid",
-    action: "x",
+    action: "stripe_connect.account_updated",
     target_type: "t",
     target_id: "id",
   });
@@ -79,7 +79,7 @@ Deno.test("writeAudit PRESERVES a real Mingla events.id uuid", async () => {
     user_id: null,
     brand_id: null,
     event_id: realUuid,
-    action: "x",
+    action: "stripe_connect.account_updated",
     target_type: "t",
     target_id: "id",
   });
@@ -91,7 +91,7 @@ Deno.test("writeAudit maps an omitted/undefined event_id to null", async () => {
   await writeAudit(client, {
     user_id: null,
     brand_id: null,
-    action: "x",
+    action: "stripe_connect.account_updated",
     target_type: "t",
     target_id: "id",
   });
