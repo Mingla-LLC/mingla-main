@@ -67,6 +67,12 @@ import {
   type BrandRecoveryWriteInput,
 } from "../useCurrentBrandRecovery";
 
+// [TEST-MOD-APPROVED META-ORCH-1232] — the C1 belt guard in runBrandRecoveryWrite
+// now short-circuits a non-PERSISTED (non-uuid) resolution.brandId. The original
+// fixture used "brand-A" (not a uuid), which is now correctly rejected. Swapped to
+// a real UUID so the ORCH-1133 single-writer semantics are exercised unchanged.
+const BRAND_A_UUID = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+
 const makeInput = (
   overrides: Partial<BrandRecoveryWriteInput>,
 ): BrandRecoveryWriteInput => {
@@ -79,8 +85,8 @@ const makeInput = (
     // a settled "server-default" resolution that differs from currentBrandId,
     // so an authoritative caller WILL write exactly once (and the network
     // default-write branch — "newest-brand" — is NOT taken).
-    resolution: { brandId: "brand-A", reason: "server-default" },
-    appliedKey: "user-1::null::brand-A::brand-A::server-default",
+    resolution: { brandId: BRAND_A_UUID, reason: "server-default" },
+    appliedKey: `user-1::null::${BRAND_A_UUID}::${BRAND_A_UUID}::server-default`,
     appliedKeyRef: { current: null },
     currentBrandId: null,
     setCurrentBrandId,
@@ -105,7 +111,7 @@ describe("ORCH-1133 (A) — behavioral single-writer gate (runBrandRecoveryWrite
     const wrote = runBrandRecoveryWrite(input);
     expect(wrote).toBe(true);
     expect(input.setCurrentBrandId).toHaveBeenCalledTimes(1);
-    expect(input.setCurrentBrandId).toHaveBeenCalledWith("brand-A");
+    expect(input.setCurrentBrandId).toHaveBeenCalledWith(BRAND_A_UUID);
   });
 
   test("authoritative:true is idempotent — a re-run with the same appliedKey does NOT re-write", () => {
@@ -120,11 +126,46 @@ describe("ORCH-1133 (A) — behavioral single-writer gate (runBrandRecoveryWrite
         authoritative: true,
         setCurrentBrandId,
         appliedKeyRef: ref,
-        currentBrandId: "brand-A",
+        currentBrandId: BRAND_A_UUID,
       }),
     );
     // appliedKeyRef dedupe + value-equality guard both hold → no second write
     expect(setCurrentBrandId).toHaveBeenCalledTimes(1);
+  });
+
+  // META-ORCH-1232 (C1) — belt guard: a non-PERSISTED (non-uuid / `_temp_…`)
+  // resolution.brandId MUST short-circuit the write — never poison the pointer or
+  // issue the default-brand UPDATE — even on the authoritative mount.
+  test("C1: authoritative:true with a `_temp_` resolution writes NOTHING", () => {
+    const setCurrentBrandId = jest.fn();
+    const ref = { current: null as string | null };
+    const wrote = runBrandRecoveryWrite(
+      makeInput({
+        authoritative: true,
+        setCurrentBrandId,
+        appliedKeyRef: ref,
+        resolution: { brandId: "_temp_mqvjiyi1", reason: "newest-brand" },
+      }),
+    );
+    expect(wrote).toBe(false);
+    expect(setCurrentBrandId).not.toHaveBeenCalled();
+    // dedupe ref untouched → the guard fired BEFORE any state mutation
+    expect(ref.current).toBeNull();
+  });
+
+  // A null resolution ("none") is a legitimate clear and is still allowed.
+  test("C1: a null (reason:none) resolution still clears the pointer", () => {
+    const setCurrentBrandId = jest.fn();
+    const wrote = runBrandRecoveryWrite(
+      makeInput({
+        authoritative: true,
+        setCurrentBrandId,
+        currentBrandId: BRAND_A_UUID,
+        resolution: { brandId: null, reason: "none" },
+      }),
+    );
+    expect(wrote).toBe(true);
+    expect(setCurrentBrandId).toHaveBeenCalledWith(null);
   });
 });
 

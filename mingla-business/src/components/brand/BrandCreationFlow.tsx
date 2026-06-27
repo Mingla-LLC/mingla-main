@@ -34,6 +34,9 @@ import {
   useCreateBrand,
   useUpdateBrand,
 } from "../../hooks/useBrands";
+// META-ORCH-1232 (C2/H1) — distinguish the auth-warm "finishing sign-in" failure
+// from a hard create/save failure so H1 can render distinct, retryable copy.
+import { isAuthNotReadyError } from "../../utils/authReadyGate";
 import { joinBrandDescription } from "../../services/brandMapping";
 import { Button } from "../ui/Button";
 import { GlassCard } from "../ui/GlassCard";
@@ -158,6 +161,14 @@ export const BRAND_CREATION_COPY = {
     inviteErrorToast: "Couldn't send the invite. Tap to retry.",
   },
   createErrorToast: "Couldn't create brand. Tap to retry.",
+  // META-ORCH-1232 (H1) — persistent inline error surface (NOT a lone
+  // auto-dismissing toast). The save failed; the user's typed values stay intact
+  // and a Retry re-runs the same mutation.
+  createErrorInline: "We couldn't save your brand. Your details are safe — tap Retry.",
+  // META-ORCH-1232 (C2/H1) — auth-warm failure copy, distinct + clearly retryable.
+  authNotReadyInline: "Finishing sign-in… tap Retry in a moment.",
+  saveErrorInline: "We couldn't save that. Your details are safe — tap Retry.",
+  retryCta: "Retry",
 } as const;
 
 export const brandCreationReducer = (
@@ -223,7 +234,9 @@ export const BrandCreationFlow: React.FC<BrandCreationFlowProps> = ({
   onCancel,
 }) => {
   const router = useRouter();
-  const { user } = useAuth();
+  // META-ORCH-1232 (C2) — gate the create/address CTAs on auth readiness so the
+  // common case never fires a brand write during the auth-warm window.
+  const { user, isAuthReady } = useAuth();
   // ORCH-1165: bare ScrollView (no KAS auto-scroll) → +42pt bottom padding
   // while the keyboard is up so the Done bar can't occlude the last field.
   const keyboardVisible = useKeyboardIsVisible();
@@ -296,6 +309,13 @@ export const BrandCreationFlow: React.FC<BrandCreationFlowProps> = ({
     googlePlaceId: string | null;
   }>({ lat: null, lng: null, city: null, countryCode: null, googlePlaceId: null });
   const [toast, setToast] = useState<string | null>(null);
+  // META-ORCH-1232 (H1) — persistent, non-auto-dismissing inline error for a
+  // brand create/save WRITE failure. `retry` re-invokes the same mutation with
+  // the same inputs. Stays on the failed step with the user's values intact.
+  const [writeError, setWriteError] = useState<{
+    message: string;
+    retry: () => void;
+  } | null>(null);
   const [coverPickerVisible, setCoverPickerVisible] = useState(false);
   // ORCH-1081 — partner-mode Step 5 form state.
   const [inviteeEmail, setInviteeEmail] = useState("");
@@ -324,6 +344,8 @@ export const BrandCreationFlow: React.FC<BrandCreationFlowProps> = ({
 
   const handleCreateIdentity = useCallback(async (): Promise<void> => {
     if (trimmedName.length === 0 || accountId === null) return;
+    // META-ORCH-1232 (H1) — clear any prior persistent error on a fresh attempt.
+    setWriteError(null);
     try {
       updateState({ type: "setIdentity", name: trimmedName, bio });
       const newBrand = await createBrandMutation.mutateAsync({
@@ -341,11 +363,24 @@ export const BrandCreationFlow: React.FC<BrandCreationFlowProps> = ({
       updateState({ type: "brandCreated", brandId: newBrand.id });
     } catch (error) {
       if (error instanceof SlugCollisionError) {
+        // Slug collision is a USER-correctable input error → inline form toast.
         setToast(
           `This brand name is taken. Try a small variation (e.g. "${trimmedName} Events").`,
         );
       } else {
-        setToast(BRAND_CREATION_COPY.createErrorToast);
+        // META-ORCH-1232 (H1) — any other write failure surfaces as a PERSISTENT
+        // inline error + Retry (NOT a lone auto-dismiss toast). Retry re-invokes
+        // the same mutation with the same inputs. The wizard does not advance on
+        // throw (it stays on step 1) and the typed name/bio are intact.
+        // AuthNotReadyError (C2) gets distinct, clearly-retryable copy.
+        setWriteError({
+          message: isAuthNotReadyError(error)
+            ? BRAND_CREATION_COPY.authNotReadyInline
+            : BRAND_CREATION_COPY.createErrorInline,
+          retry: () => {
+            void handleCreateIdentity();
+          },
+        });
       }
     }
   }, [
@@ -353,6 +388,7 @@ export const BrandCreationFlow: React.FC<BrandCreationFlowProps> = ({
     bio,
     commitDefaultBrand,
     createBrandMutation,
+    state.mode,
     trimmedName,
     updateState,
   ]);
@@ -388,15 +424,23 @@ export const BrandCreationFlow: React.FC<BrandCreationFlowProps> = ({
   const handleContinueAddress = useCallback(async (): Promise<void> => {
     // WS1: Continue only fires for a validated pick; Skip uses address=null.
     const nextAddress = address.trim().length > 0 ? address.trim() : null;
+    // META-ORCH-1232 (H1) — clear any prior persistent error on a fresh attempt.
+    setWriteError(null);
     try {
       await persistAddress(nextAddress, addrMeta);
       updateState({ type: "setAddress", address: nextAddress });
     } catch (error) {
-      setToast(
-        error instanceof Error
-          ? error.message
-          : "Couldn't save address. Tap to retry.",
-      );
+      // META-ORCH-1232 (H1) — persistent inline error + Retry on the address-save
+      // write failure (was a lone auto-dismiss toast). AuthNotReadyError (C2) gets
+      // distinct, clearly-retryable copy. Stays on step 2 with values intact.
+      setWriteError({
+        message: isAuthNotReadyError(error)
+          ? BRAND_CREATION_COPY.authNotReadyInline
+          : BRAND_CREATION_COPY.saveErrorInline,
+        retry: () => {
+          void handleContinueAddress();
+        },
+      });
     }
   }, [address, addrMeta, persistAddress, updateState]);
 
@@ -631,6 +675,23 @@ export const BrandCreationFlow: React.FC<BrandCreationFlowProps> = ({
               multiline
               style={styles.textArea}
             />
+            {/* META-ORCH-1232 (H1) — persistent inline error + Retry on a brand
+                create write failure (NOT a lone auto-dismiss toast). */}
+            {writeError !== null ? (
+              <View
+                style={styles.inlineError}
+                accessibilityRole="alert"
+                accessibilityLabel={writeError.message}
+              >
+                <Text style={styles.inlineErrorText}>{writeError.message}</Text>
+                <Button
+                  label={BRAND_CREATION_COPY.retryCta}
+                  onPress={writeError.retry}
+                  variant="secondary"
+                  size="sm"
+                />
+              </View>
+            ) : null}
           </View>
         ) : null}
 
@@ -679,6 +740,23 @@ export const BrandCreationFlow: React.FC<BrandCreationFlowProps> = ({
               }}
               placeholder={BRAND_CREATION_COPY.step2.addressPlaceholder}
             />
+            {/* META-ORCH-1232 (H1) — persistent inline error + Retry on an
+                address-save write failure (NOT a lone auto-dismiss toast). */}
+            {writeError !== null ? (
+              <View
+                style={styles.inlineError}
+                accessibilityRole="alert"
+                accessibilityLabel={writeError.message}
+              >
+                <Text style={styles.inlineErrorText}>{writeError.message}</Text>
+                <Button
+                  label={BRAND_CREATION_COPY.retryCta}
+                  onPress={writeError.retry}
+                  variant="secondary"
+                  size="sm"
+                />
+              </View>
+            ) : null}
           </View>
         ) : null}
 
@@ -821,7 +899,13 @@ export const BrandCreationFlow: React.FC<BrandCreationFlowProps> = ({
             onPress={() => void handleCreateIdentity()}
             variant="primary"
             size="lg"
-            disabled={trimmedName.length === 0 || createBrandMutation.isPending}
+            // META-ORCH-1232 (C2) — also gate on auth readiness so the brand
+            // INSERT can't fire during the auth-warm window (mirrors useBrands).
+            disabled={
+              trimmedName.length === 0 ||
+              createBrandMutation.isPending ||
+              !isAuthReady
+            }
             loading={createBrandMutation.isPending}
           />
         ) : null}
@@ -840,7 +924,12 @@ export const BrandCreationFlow: React.FC<BrandCreationFlowProps> = ({
               variant="primary"
               size="lg"
               loading={updateBrandMutation.isPending}
-              disabled={!addressValidated || updateBrandMutation.isPending}
+              // META-ORCH-1232 (C2) — gate the address-save CTA on auth readiness.
+              disabled={
+                !addressValidated ||
+                updateBrandMutation.isPending ||
+                !isAuthReady
+              }
               style={styles.footerButton}
             />
           </View>
@@ -999,6 +1088,23 @@ const styles = StyleSheet.create({
     fontSize: typography.body.fontSize,
     lineHeight: typography.body.lineHeight,
     textAlignVertical: "top",
+  },
+  // META-ORCH-1232 (H1) — persistent inline error surface (non-auto-dismissing).
+  inlineError: {
+    gap: spacing.sm,
+    padding: spacing.md,
+    borderRadius: radius.md,
+    overflow: "hidden",
+    backgroundColor: "rgba(220, 38, 38, 0.10)",
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: "rgba(220, 38, 38, 0.45)",
+    alignItems: "flex-start",
+  },
+  inlineErrorText: {
+    fontSize: typography.bodySm.fontSize,
+    lineHeight: typography.bodySm.lineHeight,
+    fontWeight: "600",
+    color: "#B91C1C",
   },
   coverPrompt: {
     gap: spacing.md,

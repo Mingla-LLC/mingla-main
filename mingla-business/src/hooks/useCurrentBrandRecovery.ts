@@ -3,6 +3,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useAuth } from "../context/AuthContext";
 import { setCreatorDefaultBrand } from "../services/creatorAccount";
 import { useCurrentBrandStore } from "../store/currentBrandStore";
+import { isPersistedBrandId } from "../utils/brandId";
 import { resolveCurrentBrandId } from "../utils/currentBrandResolver";
 import type { ResolveCurrentBrandResult } from "../utils/currentBrandResolver";
 import { useBrands } from "./useBrands";
@@ -100,6 +101,16 @@ export const runBrandRecoveryWrite = (input: BrandRecoveryWriteInput): boolean =
   // store. Read-only mounts return before touching anything.
   if (!authoritative) return false;
   if (!isAuthReady || userId === null || resolution === null) return false;
+
+  // META-ORCH-1232 (C1) — belt guard. The resolver should never hand back a
+  // non-persisted id, but assert it here too so a non-uuid id can NEVER reach
+  // `setCurrentBrandId` (the global pointer) or `setCreatorDefaultBrand` (the
+  // uuid default_brand_id column). A non-null, non-persisted resolution
+  // short-circuits the entire write (no pointer write, no default-brand UPDATE).
+  // A null brandId ("none") is still a legitimate clear and is allowed through.
+  if (resolution.brandId !== null && !isPersistedBrandId(resolution.brandId)) {
+    return false;
+  }
 
   if (appliedKeyRef.current === appliedKey) return false;
   appliedKeyRef.current = appliedKey;
