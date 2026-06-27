@@ -86,7 +86,7 @@ Deno.test("ADVERSARIAL: a real Mingla events.id uuid still reaches the column (n
     user_id: null,
     brand_id: null,
     event_id: realUuid,
-    action: "x",
+    action: "stripe_connect.account_updated",
     target_type: "t",
     target_id: "id",
   });
