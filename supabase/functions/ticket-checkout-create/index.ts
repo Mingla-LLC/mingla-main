@@ -880,6 +880,43 @@ serve(wrapEdgeHandler("ticket-checkout-create", async (req) => {
     );
   }
 
+  // META-ORCH-1236 [live-currency fix] — DEFENSE-IN-DEPTH, WARN-ONLY currency
+  // cross-check. The DB trigger tg_sync_brand_stripe_cache now guarantees
+  // brands.pricing_currency == upper(brands.default_currency) (the active Stripe
+  // connected-account settlement currency), so a mismatch here should be
+  // unreachable. We assert it anyway against the already-synced
+  // brands.default_currency mirror — NO extra Stripe round-trip on the checkout
+  // hot path (no stripe.accounts.retrieve). Charging in the connected account's
+  // settlement currency means presentment == settlement => zero Stripe FX:
+  //   https://docs.stripe.com/connect/charges
+  //   https://docs.stripe.com/api/payment_intents/create  (PaymentIntent currency)
+  // Behavior: log a warning if pricing_currency disagrees with the account's
+  // default_currency; do NOT hard-block (the trigger makes this a regression
+  // tripwire, not a fix — blocking risks a false-positive outage). The existing
+  // pricing_currency_missing fail-close above is untouched.
+  {
+    const { data: brandCcyRow } = await supabase
+      .from("events")
+      .select("brands!inner(default_currency)")
+      .eq("id", eventId)
+      .maybeSingle();
+    const accountCurrencyRaw = (() => {
+      const brandRel = (brandCcyRow as
+        | { brands?: { default_currency?: string | null } | { default_currency?: string | null }[] }
+        | null)?.brands;
+      const brand = Array.isArray(brandRel) ? brandRel[0] : brandRel;
+      return typeof brand?.default_currency === "string"
+        ? brand.default_currency.trim().toLowerCase()
+        : "";
+    })();
+    if (accountCurrencyRaw.length > 0 && accountCurrencyRaw !== currency) {
+      console.warn(
+        "[ticket-checkout-create] META-ORCH-1236: settlement currency != connected-account default_currency (trigger regression?)",
+        { eventId, pricingCurrency: currency, accountCurrency: accountCurrencyRaw },
+      );
+    }
+  }
+
   // ORCH-1034 — region follows the seller. The engine's taxBehaviorForRegion
   // now maps GB/EU/CH→inclusive, US→exclusive (no GB-throw). If pricing_region
   // is NULL or NOT in the enabled allowlist, we degrade to flat-absorb BEFORE
