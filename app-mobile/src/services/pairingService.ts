@@ -359,7 +359,16 @@ export async function acceptPairRequest(
     p_request_id: requestId,
   });
 
-  if (error) throw new Error(error.message);
+  if (error) {
+    // ORCH-1239: the accept-path limit guard raises
+    // 'pairing_limit_reached: <uuid> has reached the pairing limit'. Normalize to
+    // the bare 'pairing_limit_reached' token so callers key on the SAME string
+    // the send path uses (uniform paywall handling).
+    if (error.message?.startsWith("pairing_limit_reached")) {
+      throw new Error("pairing_limit_reached");
+    }
+    throw new Error(error.message);
+  }
 
   // The RPC returns a JSON result — parse if it's a string
   const result = typeof data === "string" ? JSON.parse(data) : data;
