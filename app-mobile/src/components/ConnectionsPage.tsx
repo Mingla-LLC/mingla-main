@@ -81,6 +81,7 @@ import { isPendingCollabReadyChange } from "./connections/pendingCollabChatUtils
 import MessageInterface from "./MessageInterface";
 import { CustomPaywallScreen } from "./CustomPaywallScreen";
 import { useSessionCreationGate } from "../hooks/useSessionCreationGate";
+import type { GatedFeature } from "../hooks/useFeatureGate";
 import AddToBoardModal from "./AddToBoardModal";
 import FriendActionsSheet from "./friends/FriendActionsSheet";
 import ReportUserModal from "./ReportUserModal";
@@ -770,6 +771,9 @@ function ConnectionsPageRefactored({
   const [showFriendsActionChooser, setShowFriendsActionChooser] = useState(false);
   const [showCreateGroupChatSheet, setShowCreateGroupChatSheet] = useState(false);
   const [showPaywall, setShowPaywall] = useState(false);
+  // ORCH-1239: which gated feature opened the paywall (drives header/analytics).
+  // Group-chat create path opens it as 'session_creation'; pairing paths as 'pairing'.
+  const [paywallFeature, setPaywallFeature] = useState<GatedFeature>('session_creation');
   const [processingInviteIds, setProcessingInviteIds] = useState<Set<string>>(new Set());
   const [pendingCollabChat, setPendingCollabChat] = useState<PendingCollabChatDetails | null>(null);
   const [pendingCollabWorking, setPendingCollabWorking] = useState(false);
@@ -864,7 +868,12 @@ function ConnectionsPageRefactored({
       showToast({ message: 'Pair request sent!', type: 'info' });
     } catch (err: unknown) {
       const errMsg = err instanceof Error ? err.message : '';
-      if (errMsg !== 'pairing_limit_reached') {
+      // ORCH-1239: free pairing limit reached → surface the paywall instead of
+      // swallowing the error silently (feature 'pairing').
+      if (errMsg === 'pairing_limit_reached') {
+        setPaywallFeature('pairing');
+        setShowPaywall(true);
+      } else {
         showMutationError(err, 'sending pair request', showToast);
       }
     } finally {
@@ -3857,7 +3866,20 @@ function ConnectionsPageRefactored({
                           <Text style={styles.sentCancelText}>Decline</Text>
                         </TouchableOpacity>
                         <TouchableOpacity
-                          onPress={() => acceptPairRequestMutation.mutate(req.id)}
+                          onPress={() => acceptPairRequestMutation.mutate(req.id, {
+                            // ORCH-1239: accept can now throw 'pairing_limit_reached'
+                            // (the migration closed the accept-path leak). Surface the
+                            // paywall instead of a raw error / crash.
+                            onError: (err) => {
+                              const msg = err instanceof Error ? err.message : '';
+                              if (msg === 'pairing_limit_reached') {
+                                setPaywallFeature('pairing');
+                                setShowPaywall(true);
+                              } else {
+                                showMutationError(err, 'accepting pair request', showToast);
+                              }
+                            },
+                          })}
                           style={[styles.sentCancelBtn, { backgroundColor: '#eb7825', borderColor: '#eb7825' }]}
                           activeOpacity={0.7}
                         >
@@ -3937,6 +3959,7 @@ function ConnectionsPageRefactored({
         }}
         onCreateGroupChatPaywall={() => {
           setShowFriendsActionChooser(false);
+          setPaywallFeature('session_creation');
           requestAnimationFrame(() => setShowPaywall(true));
         }}
       />
@@ -3988,7 +4011,7 @@ function ConnectionsPageRefactored({
           isVisible={showPaywall}
           onClose={() => setShowPaywall(false)}
           userId={user.id}
-          feature="session_creation"
+          feature={paywallFeature}
         />
       ) : null}
 
