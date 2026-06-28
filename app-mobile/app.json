@@ -18,8 +18,8 @@
       "bundleIdentifier": "com.mingla.app.v2",
       "infoPlist": {
         "NSLocationWhenInUseUsageDescription": "Mingla needs location access to find experiences near you and provide location-based recommendations.",
-        "NSCameraUsageDescription": "Mingla needs camera access to capture photos for your experiences.",
-        "NSPhotoLibraryUsageDescription": "Mingla needs photo library access to select images for your experiences.",
+        "NSCameraUsageDescription": "Mingla uses the camera so you can take a photo to set as your profile picture or share in a chat — for example, snapping a photo to send in a group plan conversation.",
+        "NSPhotoLibraryUsageDescription": "Mingla uses your photo library so you can choose existing photos or videos to set as your profile picture or share in chats — for example, picking a saved photo to send in a direct or group message.",
         "NSCalendarsUsageDescription": "Mingla adds events you book or RSVP to — like a dinner reservation or a ticketed show — to your calendar so you get a reminder before they start. This is only used when you tap Add to Calendar.",
         "NSCalendarsFullAccessUsageDescription": "Mingla adds events you book or RSVP to — like a dinner reservation or a ticketed show — to your calendar so you get a reminder before they start. This is only used when you tap Add to Calendar.",
         "NSCalendarsWriteOnlyAccessUsageDescription": "Mingla adds events you book or RSVP to — like a dinner reservation or a ticketed show — to your calendar so you get a reminder before they start. This is only used when you tap Add to Calendar.",
