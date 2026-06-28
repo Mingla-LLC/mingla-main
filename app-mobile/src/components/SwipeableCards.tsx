@@ -121,6 +121,16 @@ import {
   type CollabLocationChip,
 } from "./collab/CollabLocationChips";
 import { resolveParticipantLocationLabel } from "../utils/formatLocationLabel";
+// ORCH-1240: pure horizontal-swipe commit decision (translation OR velocity).
+// Single source of truth in ../utils/swipeCommit so the thresholds are unit-tested.
+import {
+  shouldCommitSwipe,
+  SWIPE_COMMIT_DISTANCE,
+  SWIPE_COMMIT_VELOCITY,
+  SWIPE_COMMIT_MIN_DX,
+} from "../utils/swipeCommit";
+// Re-export so existing import sites (if any) resolve from this module too.
+export { shouldCommitSwipe, SWIPE_COMMIT_DISTANCE, SWIPE_COMMIT_VELOCITY, SWIPE_COMMIT_MIN_DX };
 
 function getTimeOfDay(): string {
   const hour = new Date().getHours();
@@ -1607,6 +1617,17 @@ export default function SwipeableCards({
         return Math.abs(gestureState.dx) > 5 || Math.abs(gestureState.dy) > 5;
       },
       onPanResponderGrant: () => {
+        // ORCH-1240: baseline the offset from the TRUE on-screen position.
+        // The spring-back / fling animations are async; a fast re-swipe can
+        // grant mid-spring while positionX._value is a non-zero intermediate.
+        // stopAnimation halts the in-flight spring; flattenOffset collapses any
+        // stale offset into _value, so the new gesture offsets from the real
+        // current position instead of accumulating a stale offset (the
+        // "card starts the next swipe already partially translated" hang).
+        positionX.stopAnimation();
+        positionY.stopAnimation();
+        positionX.flattenOffset();
+        positionY.flattenOffset();
         // ORCH-0675 Wave 1 RC-1 — per-axis offset (Animated.ValueXY → 2× Animated.Value)
         positionX.setOffset((positionX as any)._value);
         positionY.setOffset((positionY as any)._value);
@@ -1644,9 +1665,17 @@ export default function SwipeableCards({
           return;
         }
 
-        // Check for horizontal swipe
-        if (Math.abs(gestureState.dx) > 120) {
-          const direction = gestureState.dx > 0 ? "right" : "left";
+        // Check for horizontal swipe.
+        // ORCH-1240: commit on translation OR velocity. A fast-but-short fling
+        // (high vx, dx < 120) now flings off like the deliberate recovery swipe
+        // does, instead of springing back ("card hangs"). A slow short drag
+        // (low vx AND dx < 120) still springs back — weak-swipe behavior preserved.
+        const committedDirection = shouldCommitSwipe(
+          gestureState.dx,
+          gestureState.vx
+        );
+        if (committedDirection) {
+          const direction = committedDirection;
 
           // Haptic feedback — immediate tactile response before animation
           if (direction === "right") {
@@ -1744,6 +1773,17 @@ export default function SwipeableCards({
             Animated.spring(positionY, { toValue: 0, useNativeDriver: true }),
           ]).start();
         }
+      },
+      // ORCH-1240: if the OS cancels the gesture (scroll/nav steals it), reset
+      // cleanly so no residual offset is left for the next onPanResponderGrant's
+      // setOffset. Mirrors the weak-swipe spring-back release.
+      onPanResponderTerminate: () => {
+        positionX.flattenOffset();
+        positionY.flattenOffset();
+        Animated.parallel([
+          Animated.spring(positionX, { toValue: 0, useNativeDriver: true }),
+          Animated.spring(positionY, { toValue: 0, useNativeDriver: true }),
+        ]).start();
       },
     })
   ).current;
