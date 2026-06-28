@@ -39,6 +39,10 @@ export function initializeOneSignal(): void {
     _initialized = true
     _initAttempts = 0
     if (__DEV__) logger.push('initialized')
+    // ORCH-1243: seed the OS-permission tag as soon as the SDK is up so the
+    // launch In-App Message audience can read TRUE permission, not OneSignal's
+    // async subscription state. Fire-and-forget; self-guards on _initialized.
+    void syncPushPermissionTag()
   } catch (e) {
     _initAttempts++
     console.warn(`[OneSignal] Initialization failed (attempt ${_initAttempts}/${MAX_INIT_RETRIES}):`, e)
@@ -84,6 +88,9 @@ export async function loginToOneSignal(userId: string): Promise<void> {
     await OneSignal.User.pushSubscription.optIn()
     _loginComplete = true
     if (__DEV__) logger.push('login + optIn', { userId })
+    // ORCH-1243: keep the OS-permission tag fresh once identity + subscription
+    // are established (the tag is now attached to the logged-in user).
+    await syncPushPermissionTag()
   } catch (e) {
     console.warn('[OneSignal] loginToOneSignal failed:', e)
   }
@@ -108,10 +115,52 @@ export async function requestPushPermission(): Promise<boolean> {
     const granted = await OneSignal.Notifications.requestPermission(true)
     if (__DEV__) logger.push('permission result', { granted })
     // optIn() already called at login — no need to call again here (ORCH-0407)
+    // ORCH-1243: a fresh grant/deny from the OS dialog must update the tag
+    // immediately so the In-App Message audience reconciles right away.
+    await syncPushPermissionTag()
     return granted
   } catch (e) {
     console.warn('[OneSignal] requestPushPermission failed:', e)
     return false
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// OS-permission tag (ORCH-1243)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Mirror the device's TRUE OS notification permission into a OneSignal tag.
+ *
+ * TAG CONTRACT:
+ *   key   = `push_os_permission`
+ *   value ∈ { `granted`, `denied` }
+ *
+ * Consumed by the launch "turn on notifications" In-App Message audience.
+ * The dashboard message must target this TAG (show when
+ * `push_os_permission != granted`) instead of OneSignal's subscription state:
+ * OneSignal v5 registers the push subscription ASYNCHRONOUSLY, so at launch the
+ * audience can see a device as "not subscribed" even when iOS permission is
+ * GRANTED → false "notifications are off" popup. The OS permission read below is
+ * synchronous truth, so the tag is reliable.
+ *
+ * Kept fresh by calling at init, login, after the permission dialog, and on app
+ * foreground (so returning from iOS Settings reconciles the tag). Self-guards on
+ * `_initialized` and never throws.
+ */
+export async function syncPushPermissionTag(): Promise<void> {
+  if (!_initialized) return
+  try {
+    // OneSignal v5 (react-native-onesignal 5.3.3) — TRUE OS permission read:
+    //   Notifications.getPermissionAsync(): Promise<boolean>
+    //   (node_modules/react-native-onesignal/dist/index.d.ts:355). hasPermission()
+    //   is deprecated in favour of this async form (index.d.ts:348-350).
+    const granted = await OneSignal.Notifications.getPermissionAsync()
+    // addTag(key, value): void — index.d.ts:325 (addTags({...}) is the bulk form).
+    OneSignal.User.addTag('push_os_permission', granted ? 'granted' : 'denied')
+    if (__DEV__) logger.push('os-permission tag synced', { granted })
+  } catch (e) {
+    console.warn('[OneSignal] syncPushPermissionTag failed:', e)
   }
 }
 

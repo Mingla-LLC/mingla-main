@@ -2,6 +2,7 @@ import React, { createContext, useContext, useEffect, useState, useCallback, use
 import { AppState, AppStateStatus } from 'react-native';
 import { enhancedLocationService, LocationData } from '../services/enhancedLocationService';
 import { cameraService } from '../services/cameraService';
+import { syncPushPermissionTag } from '../services/oneSignalService';
 import { useAppStore } from '../store/appStore';
 
 interface MobileFeaturesContextType {
@@ -60,6 +61,10 @@ export const MobileFeaturesProvider: React.FC<MobileFeaturesProviderProps> = ({ 
         if (isLocationTracking) {
           enhancedLocationService.getCurrentLocation().then(setCurrentLocation);
         }
+        // ORCH-1243: reconcile the OneSignal OS-permission tag on foreground so
+        // returning from iOS Settings (after enabling notifications) updates the
+        // launch In-App Message audience. Self-guards on _initialized; never throws.
+        void syncPushPermissionTag();
       } else if (nextAppState === 'background') {
         // App went to background, we can continue location tracking
       }
