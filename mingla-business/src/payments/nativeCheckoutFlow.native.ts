@@ -40,6 +40,8 @@ import { initStripe } from "@stripe/stripe-react-native";
 import * as WebBrowser from "expo-web-browser";
 
 import { supabase } from "../services/supabase";
+// ORCH-1246 (Apple 4.9) — Apple Pay sheet must show the product, not the company.
+import { buildApplePayCartItems } from "./applePayCartItems";
 
 export interface NativeCheckoutInput {
   eventId: string;
@@ -71,6 +73,14 @@ export interface NativeCheckoutInput {
    * single/no-date path. The edge fn already validates + binds it.
    */
   eventDateId?: string;
+  /**
+   * ORCH-1246 (Apple 4.9) — the on-screen event/trip/experience title, threaded
+   * from the checkout route so the Apple Pay sheet's line item shows the PRODUCT
+   * (not the company / merchantDisplayName). Optional: when absent/empty the
+   * applePay cartItem falls back to a neutral label (e.g. "Ticket") — NEVER the
+   * company name.
+   */
+  displayTitle?: string;
 }
 
 export type NativeCheckoutOutcome =
@@ -340,6 +350,15 @@ export const useNativeCheckoutFlow = (): (
         // I-PROPOSED-STRIPE-PAYMENTSHEET-PARITY (ORCH-0849).
         applePay: {
           merchantCountryCode: "US",
+          // ORCH-1246 (Apple 4.9): supply an explicit line item so the Apple Pay
+          // sheet shows the PRODUCT (event/trip/experience title), not the
+          // company. Without cartItems, PaymentSheet defaults the total line to
+          // merchantDisplayName ("Mingla"). Fallback "Ticket" — never the company.
+          cartItems: buildApplePayCartItems(
+            input.displayTitle,
+            data.totalCents,
+            "Ticket",
+          ),
         },
         googlePay: {
           merchantCountryCode: "US",

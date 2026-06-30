@@ -458,6 +458,9 @@ function CheckoutPaymentScreenContent({
           phone: buyer.phone,
           marketingOptIn: buyer.marketingOptIn === true,
         },
+        // ORCH-1246 (Apple 4.9) — event title so the Apple Pay sheet line item
+        // shows the product, not the company. Fallback "Ticket" if event unloaded.
+        displayTitle: event?.name ?? undefined,
         ...(previewCalculationId
           ? { taxCalculationId: previewCalculationId }
           : {}),

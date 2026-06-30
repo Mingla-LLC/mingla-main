@@ -481,6 +481,9 @@ function CheckoutTripPaymentScreenContent({
           phone: buyer.phone,
           marketingOptIn: buyer.marketingOptIn === true,
         },
+        // ORCH-1246 (Apple 4.9) — trip title so the Apple Pay sheet line item
+        // shows the product, not the company. Fallback "Ticket" if trip unloaded.
+        displayTitle: trip?.title ?? undefined,
         ...(previewCalculationId
           ? { taxCalculationId: previewCalculationId }
           : {}),

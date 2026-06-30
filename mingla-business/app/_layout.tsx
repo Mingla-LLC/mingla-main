@@ -98,6 +98,8 @@ import {
 } from "../src/utils/coldLoadAuthGates";
 // META-ORCH-1235 (§5.2) — single canonical strict stored-web-session predicate.
 import { hasUsableStoredWebSession } from "../src/utils/authReadiness";
+// ORCH-1246 (Apple 2.1) — gate the ATT request on foreground-active state.
+import { shouldRequestAttNow } from "../src/utils/attRequestTiming";
 
 // Sub-B: a tap that arrives before auth is stashed here + replayed post-login
 // (mirrors the consumer deferred-deeplink pattern). Keyed in AsyncStorage so a
@@ -456,15 +458,37 @@ function RootLayoutInner(): React.ReactElement {
         // still permits anonymous product analytics.
         void (async () => {
           if (Platform.OS === "ios") {
-            try {
-              const { requestTrackingPermissionsAsync } = await import(
-                "expo-tracking-transparency"
-              );
-              await requestTrackingPermissionsAsync();
-            } catch (e) {
-              console.warn("[ATT] business tracking request failed:", e);
+            // ORCH-1246 (Apple 2.1): iOS silently DROPS an ATT request issued
+            // while the app is not foreground-`active`. If active, request now;
+            // otherwise wait for the FIRST `active` transition (one-shot), then
+            // request. The reviewer "could not locate the ATT permission
+            // request" because it had been fired off-active and never shown.
+            const runAttRequest = async (): Promise<void> => {
+              try {
+                const { requestTrackingPermissionsAsync } = await import(
+                  "expo-tracking-transparency"
+                );
+                await requestTrackingPermissionsAsync();
+              } catch (e) {
+                console.warn("[ATT] business tracking request failed:", e);
+              }
+            };
+
+            if (shouldRequestAttNow(AppState.currentState)) {
+              await runAttRequest();
+            } else {
+              await new Promise<void>((resolve) => {
+                const sub = AppState.addEventListener("change", (next) => {
+                  if (shouldRequestAttNow(next)) {
+                    sub.remove();
+                    void runAttRequest().then(resolve);
+                  }
+                });
+              });
             }
           }
+          // ATT has resolved (or platform is non-iOS) — AppsFlyer now reads the
+          // settled IDFA state.
           initializeAppsFlyer();
         })();
         void mixpanelService.initialize();
