@@ -15,6 +15,7 @@
 
 import React, { useEffect } from "react";
 import { Modal, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { BlurView } from "expo-blur";
 import Animated, {
   Easing,
@@ -32,6 +33,7 @@ import {
   typography,
 } from "../../constants/designSystem";
 import { shouldUseRealBlur } from "../../utils/glassBlur";
+import { resolveSheetMaxHeight } from "./aiDisclosureSheetLayout";
 import { AriOrb } from "./AriOrb";
 
 export interface AiDisclosureModalProps {
@@ -60,6 +62,13 @@ export const AiDisclosureModal: React.FC<AiDisclosureModalProps> = ({
   visible,
   onAccept,
 }) => {
+  // ORCH-1246 (Apple 2.1a): the footer holds the ONLY dismiss path
+  // ("Got it — let's start"). On iPad's tall viewport the bottom-anchored sheet
+  // stretches and a flat paddingBottom can push the CTA under the home-indicator.
+  // Make the footer clearance safe-area aware so the CTA is always on-screen.
+  const insets = useSafeAreaInsets();
+  const { height: windowHeight } = useWindowDimensions();
+  const sheetMaxHeight = resolveSheetMaxHeight(windowHeight);
   // Scrim fade-in for premium entrance feel (Modal's slide handles the sheet).
   const scrimOpacity = useSharedValue(0);
 
@@ -81,7 +90,7 @@ export const AiDisclosureModal: React.FC<AiDisclosureModalProps> = ({
   return (
     <Modal visible={visible} animationType="slide" transparent statusBarTranslucent>
       <Animated.View style={[styles.scrim, scrimStyle]}>
-        <View style={styles.sheetWrap}>
+        <View style={[styles.sheetWrap, { maxHeight: sheetMaxHeight }]}>
           {/* META-ORCH-1002 Sub-D: Android renders an opaque frosted surface
               instead of expo-blur's thin near-transparent fallback. iOS keeps
               the real BlurView. */}
@@ -123,7 +132,12 @@ export const AiDisclosureModal: React.FC<AiDisclosureModalProps> = ({
               {/* Footer is OUTSIDE the ScrollView so the Pressable hit target
                   is never swallowed by ScrollView gesture handling. This is the
                   root-cause fix for the "Got it doesn't tap" bug. */}
-              <View style={styles.footer}>
+              <View
+                style={[
+                  styles.footer,
+                  { paddingBottom: Math.max(insets.bottom, spacing.lg) },
+                ]}
+              >
                 <Pressable
                   onPress={onAccept}
                   style={({ pressed }) => [styles.cta, pressed && styles.ctaPressed]}
@@ -149,7 +163,13 @@ const styles = StyleSheet.create({
     justifyContent: "flex-end",
   },
   sheetWrap: {
-    maxHeight: "88%",
+    // ORCH-1246 (Apple 2.1a): maxHeight is a POINT cap (see SHEET_MAX_HEIGHT)
+    // applied inline so the sheet never stretches to fill a tall iPad viewport
+    // and bury the footer CTA. Constrain width + center on large screens so the
+    // bottom-anchored sheet reads as a contained card on iPad, not a full bleed.
+    maxWidth: 520,
+    width: "100%",
+    alignSelf: "center",
     borderTopLeftRadius: radius.xl,
     borderTopRightRadius: radius.xl,
     overflow: "hidden",
@@ -222,7 +242,8 @@ const styles = StyleSheet.create({
   footer: {
     paddingHorizontal: spacing.xl,
     paddingTop: spacing.md,
-    paddingBottom: spacing.xl,
+    // paddingBottom is applied inline as Math.max(insets.bottom, spacing.lg)
+    // — see render (ORCH-1246): keeps the CTA above the home-indicator on iPad.
     borderTopWidth: 1,
     borderTopColor: glass.border.profileBase,
   },

@@ -386,6 +386,9 @@ function CheckoutExperiencePaymentScreenContent({
           phone: buyer.phone,
           marketingOptIn: buyer.marketingOptIn === true,
         },
+        // ORCH-1246 (Apple 4.9) — experience title so the Apple Pay sheet line
+        // item shows the product, not the company. Fallback "Ticket" if unloaded.
+        displayTitle: experience?.title ?? undefined,
         ...(previewCalculationId
           ? { taxCalculationId: previewCalculationId }
           : {}),
