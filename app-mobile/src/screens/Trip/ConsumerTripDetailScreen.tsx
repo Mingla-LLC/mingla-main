@@ -651,6 +651,9 @@ export default function ConsumerTripDetailScreen({
             phone: buyerPhone,
             marketingOptIn: payload.marketingOptIn,
           },
+          // ORCH-1244 (Apple 4.9) — the on-screen trip title becomes the Apple
+          // Pay summary line label (not the bare merchant name "Mingla").
+          displayTitle: detail.title,
           // ORCH-1025 — no taxCalculationId, no address: tax is computed
           // server-side from the venue. ORCH-1016 (D2) — per-tier trip intake
           // answers ride intakeFormData; empty array omitted (byte-identical).
