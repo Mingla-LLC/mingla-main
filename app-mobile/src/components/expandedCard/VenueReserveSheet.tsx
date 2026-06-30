@@ -192,16 +192,21 @@ export const VenueReserveSheet: React.FC<VenueReserveSheetProps> = ({
     setError(null);
     setSubmitting(true);
     void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    const outcome = await reserve({
-      brandId,
-      reservedForUtc: selectedSlot.slotStartUtc,
-      partySize,
-      buyer: {
-        name: buyerName,
-        email: buyerEmail,
-        phone: composedPhoneE164,
+    const outcome = await reserve(
+      {
+        brandId,
+        reservedForUtc: selectedSlot.slotStartUtc,
+        partySize,
+        buyer: {
+          name: buyerName,
+          email: buyerEmail,
+          phone: composedPhoneE164,
+        },
       },
-    });
+      // ORCH-1244 (Apple 4.9) — the on-screen venue name becomes the Apple Pay
+      // summary line label (not the bare merchant name "Mingla").
+      venueName,
+    );
     setSubmitting(false);
     if (outcome.outcome === "succeeded") {
       void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);

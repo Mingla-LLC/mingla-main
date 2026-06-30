@@ -28,6 +28,7 @@ import * as WebBrowser from "expo-web-browser";
 
 import { supabase } from "../services/supabase";
 import { extractFunctionError } from "../utils/edgeFunctionError";
+import { buildApplePayCartItems } from "./applePayCartItem";
 
 export interface NativeCheckoutInput {
   eventId: string;
@@ -72,6 +73,13 @@ export interface NativeCheckoutInput {
   // 'auto' (deposit-only) with no buyer consent. No-plan trips omit the key →
   // request shape stays byte-identical (the edge-fn default path is untouched).
   paymentPlanChoice?: "full" | "installments";
+  // ORCH-1244 (Apple Guideline 4.9) — the on-screen product name (event / trip /
+  // experience title) the caller is purchasing. Becomes the Apple Pay summary
+  // line label so the sheet shows the PRODUCT, not the bare company name. The
+  // calling detail screen always has this (it's the title on screen). Optional
+  // for back-compat; an empty/missing value falls back to "Ticket" — NEVER
+  // "Mingla". Client-only: NOT sent to the edge function.
+  displayTitle?: string;
 }
 
 export type NativeCheckoutOutcome =
@@ -310,8 +318,19 @@ export const useNativeCheckoutFlow = (): ((
         // (Mingla is a US-incorporated LLC; connected accounts use
         // direct charges with Stripe-Account header, so the platform
         // country is what Stripe checks for the wallet eligibility).
+        // ORCH-1244 (Apple Guideline 4.9): pass an explicit cartItems whose
+        // label is the PRODUCT (event/trip/experience title) so the Apple Pay
+        // summary line shows the product, not the bare company name "Mingla".
+        // Without this, Stripe defaults the total line's label to
+        // merchantDisplayName ("Mingla") — the violation Apple flagged. Empty
+        // title → "Ticket" fallback, never the merchant name.
         applePay: {
           merchantCountryCode: "US",
+          cartItems: buildApplePayCartItems(
+            input.displayTitle,
+            data.totalCents,
+            "Ticket",
+          ),
         },
         googlePay: {
           merchantCountryCode: "US",

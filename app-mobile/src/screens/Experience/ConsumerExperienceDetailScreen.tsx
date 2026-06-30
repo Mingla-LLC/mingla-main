@@ -531,6 +531,9 @@ export default function ConsumerExperienceDetailScreen({
             phone: buyerPhone,
             marketingOptIn: payload.marketingOptIn,
           },
+          // ORCH-1244 (Apple 4.9) — the on-screen experience title becomes the
+          // Apple Pay summary line label (not the bare merchant name "Mingla").
+          displayTitle: seed.title,
           ...(payload.intakeFormData.length > 0
             ? { intakeFormData: payload.intakeFormData }
             : {}),

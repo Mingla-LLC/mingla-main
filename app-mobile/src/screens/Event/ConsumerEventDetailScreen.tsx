@@ -429,6 +429,9 @@ export default function ConsumerEventDetailScreen({
             phone: buyerPhone,
             marketingOptIn: payload.marketingOptIn,
           },
+          // ORCH-1244 (Apple 4.9) — the on-screen event title becomes the Apple
+          // Pay summary line label (not the bare merchant name "Mingla").
+          displayTitle: seed.title,
           // ORCH-1025 — NO taxCalculationId, NO address: tax computed server-side
           // from the venue. Per-tier intake answers ride intakeFormData; empty
           // array omitted (byte-identical). NO paymentPlanChoice for events (no

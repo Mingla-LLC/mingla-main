@@ -330,6 +330,14 @@ export function CustomPaywallScreen({
           {/* Package pills */}
           {activePackages.length > 0 ? (
             <View style={styles.packageList}>
+              {/* ORCH-1244 (Apple Guideline 3.1.2(c)) — the auto-renewing
+                  subscription's TITLE must be shown in the purchase flow. We
+                  surface the real StoreKit product title (RevenueCat
+                  pkg.product.title), falling back to the i18n "Mingla+"
+                  (billing:tier.plus_name) if a product title is somehow empty. */}
+              <Text style={styles.subscriptionTitle}>
+                {activePackages[0]?.product.title?.trim() || t('billing:tier.plus_name')}
+              </Text>
               {activePackages.map((pkg) => {
                 const plan = getPackagePlan(pkg);
                 const planLabel = t(getPeriodLabelKey(pkg.identifier));
@@ -551,6 +559,14 @@ const styles = StyleSheet.create({
   packageList: {
     gap: spacing.sm,
     marginBottom: spacing.lg,
+  },
+  // ORCH-1244 (Apple 3.1.2(c)) — subscription title shown above the plans.
+  subscriptionTitle: {
+    color: '#fff',
+    fontSize: typography.lg.fontSize,
+    lineHeight: typography.lg.lineHeight,
+    fontWeight: fontWeights.bold,
+    marginBottom: spacing.xs,
   },
   packageCard: {
     minHeight: 76,

@@ -8,6 +8,7 @@ import {
   confirmVenueReservation,
   type CreateVenueReservationInput,
 } from "../services/venueReservationService";
+import { buildApplePayCartItems } from "../payments/applePayCartItem";
 import { myReservationsKeys } from "./useMyReservations";
 
 /**
@@ -48,13 +49,20 @@ const PAYSTACK_POLL_MAX_ATTEMPTS = 17;
 
 export const useReserveTable = (
   userId: string | null | undefined,
-): ((input: CreateVenueReservationInput) => Promise<ReserveOutcome>) => {
+): ((
+  input: CreateVenueReservationInput,
+  // ORCH-1244 (Apple 4.9) — the on-screen venue/reservation name. Becomes the
+  // Apple Pay summary line label so the sheet shows the reservation, not the
+  // bare company name "Mingla". Optional; empty → "Reservation" fallback.
+  displayTitle?: string,
+) => Promise<ReserveOutcome>) => {
   const queryClient = useQueryClient();
   const { initPaymentSheet, presentPaymentSheet, isPaymentSheetSupported } =
     useStripePaymentSheet();
 
   return async (
     input: CreateVenueReservationInput,
+    displayTitle?: string,
   ): Promise<ReserveOutcome> => {
     let created;
     try {
@@ -107,7 +115,18 @@ export const useReserveTable = (
       // exactly as nativeCheckoutFlow does). Pass it via a typed extension so
       // the keys reach the SDK without forking the package type.
       const walletConfig = {
-        applePay: { merchantCountryCode: "US" },
+        // ORCH-1244 (Apple 4.9): explicit cartItems whose label is the venue/
+        // reservation name so the Apple Pay summary line shows the reservation,
+        // not the bare company name "Mingla". Empty title → "Reservation"
+        // fallback, never the merchant name.
+        applePay: {
+          merchantCountryCode: "US",
+          cartItems: buildApplePayCartItems(
+            displayTitle,
+            created.totalCents,
+            "Reservation",
+          ),
+        },
         googlePay: {
           merchantCountryCode: "US",
           testEnv: isStripeGooglePayTestEnv(),

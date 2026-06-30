@@ -1,5 +1,5 @@
 import { Platform } from 'react-native';
-import { requestPushPermission } from './oneSignalService';
+import { requestPushPermission, canRequestPushPermission } from './oneSignalService';
 import { startAppsFlyer } from './appsFlyerService';
 
 /**
@@ -104,7 +104,11 @@ export function whenAttResolved(): Promise<void> {
  *      is never shown twice (if the home-screen effect already fired it, this
  *      resolves immediately).
  *   2. Start AppsFlyer SDK transmission with the now-resolved IDFA state.
- *   3. OneSignal push notification permission prompt.
+ *   3. OneSignal push notification permission prompt — ONLY on a never-asked
+ *      device (ORCH-1244 / Apple Guideline 4.5.4). If the OS can no longer be
+ *      asked (already allowed OR already declined), the dialog is NOT
+ *      re-surfaced — push stays optional + consent-based, the user's prior
+ *      choice is respected, and nothing nags them back toward Settings.
  */
 export async function requestPostTourPermissions(): Promise<void> {
   // Step 1: iOS ATT prompt (single-flight — never double-prompts).
@@ -113,6 +117,12 @@ export async function requestPostTourPermissions(): Promise<void> {
   // Step 2: Start AppsFlyer transmission (idempotent — only fires once).
   startAppsFlyer();
 
-  // Step 3: OneSignal push permission prompt.
-  await requestPushPermission();
+  // Step 3: OneSignal push permission prompt — gated so the OS dialog only ever
+  // appears once, on a clean never-asked device. canRequestPushPermission()
+  // wraps OneSignal's canRequestPermission() inside oneSignalService (the only
+  // module allowed to import OneSignal). A declined or already-granted user is
+  // never re-prompted (ORCH-1244).
+  if (await canRequestPushPermission()) {
+    await requestPushPermission();
+  }
 }
