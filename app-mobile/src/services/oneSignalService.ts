@@ -105,6 +105,13 @@ export async function loginToOneSignal(userId: string): Promise<void> {
  * NOTE: optIn() is now called at login time (loginToOneSignal), not here.
  * This function only handles the OS permission dialog. The push subscription
  * is already active by the time this runs.
+ *
+ * ORCH-1244 (Apple Guideline 4.5.4): push must be optional + consent-based.
+ * We pass `fallbackToSettings: false` so a user who already DECLINED is NOT
+ * nagged into the iOS Settings app — their choice is respected silently. The
+ * first OS dialog still shows (it already carries a real "Don't Allow"); a prior
+ * denial is never re-surfaced. Callers gate this behind `canRequestPushPermission()`
+ * so the dialog is only ever shown on a never-asked device.
  */
 export async function requestPushPermission(): Promise<boolean> {
   if (!_initialized) {
@@ -112,7 +119,11 @@ export async function requestPushPermission(): Promise<boolean> {
     return false
   }
   try {
-    const granted = await OneSignal.Notifications.requestPermission(true)
+    // ORCH-1244: fallbackToSettings = false (was true). `true` steered a
+    // previously-declining user into the iOS Settings app to flip notifications
+    // on — the textbook 4.5.4 "push feels mandatory" trigger. `false` respects
+    // the user's decline.
+    const granted = await OneSignal.Notifications.requestPermission(false)
     if (__DEV__) logger.push('permission result', { granted })
     // optIn() already called at login — no need to call again here (ORCH-0407)
     // ORCH-1243: a fresh grant/deny from the OS dialog must update the tag
@@ -121,6 +132,29 @@ export async function requestPushPermission(): Promise<boolean> {
     return granted
   } catch (e) {
     console.warn('[OneSignal] requestPushPermission failed:', e)
+    return false
+  }
+}
+
+/**
+ * ORCH-1244 (Apple Guideline 4.5.4): true only when the OS can STILL be asked
+ * for push permission — i.e. the device has not been prompted yet. Once the user
+ * has answered (allow OR deny), this returns false and the caller must NOT
+ * re-surface the OS dialog.
+ *
+ * Wraps OneSignal v5 `Notifications.canRequestPermission(): Promise<boolean>`
+ * (node_modules/react-native-onesignal/dist/index.d.ts:366). Lives here so the
+ * OneSignal import stays isolated to this service (import-isolation invariant);
+ * permissionOrchestrator calls THIS, never OneSignal directly. Self-guards on
+ * `_initialized` and never throws — returns false if the SDK isn't up (we cannot
+ * safely prompt before init anyway).
+ */
+export async function canRequestPushPermission(): Promise<boolean> {
+  if (!_initialized) return false
+  try {
+    return await OneSignal.Notifications.canRequestPermission()
+  } catch (e) {
+    console.warn('[OneSignal] canRequestPushPermission failed:', e)
     return false
   }
 }
