@@ -274,6 +274,9 @@ serve(async (req) => {
     // Build response (NEVER include real_lat/lng)
     result = nearbySettings
       .filter((s: any) => visibleUserIds.includes(s.user_id))
+      // ORCH-1245: never surface seed accounts (e.g. the reviewer demo friends)
+      // to real users on the nearby map, even if one ever gets a presence row.
+      .filter((s: any) => profileMap.get(s.user_id)?.is_seed !== true)
       .map((s: any) => {
         const profile = profileMap.get(s.user_id);
         const status = s.activity_status_expires_at && new Date(s.activity_status_expires_at) < now
