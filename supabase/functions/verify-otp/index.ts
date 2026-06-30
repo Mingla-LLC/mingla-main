@@ -1,5 +1,6 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { seedReviewerAccount } from '../_shared/seedReviewerAccount.ts'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -72,6 +73,14 @@ serve(async (req) => {
         .from('profiles')
         .update({ phone: REVIEWER_TEST_PHONE })
         .eq('id', user.id)
+      // ORCH-1245: pre-populate the reviewer's fresh account with friends, a
+      // group chat, and posts so Apple App Review (2.1(a)) can verify those
+      // features. Idempotent + reviewer-only; NEVER block login on a seed error.
+      try {
+        await seedReviewerAccount(reviewerClient, user.id)
+      } catch (seedErr) {
+        console.error('[verify-otp] reviewer seed failed (login continues):', seedErr?.message ?? seedErr)
+      }
       return new Response(JSON.stringify({ success: true, status: 'approved' }), {
         status: 200,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
