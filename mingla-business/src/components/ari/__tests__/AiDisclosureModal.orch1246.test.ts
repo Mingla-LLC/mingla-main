@@ -55,9 +55,10 @@ describe("AiDisclosureModal source guards (ORCH-1246 Apple 2.1a)", () => {
     expect(SOURCE).toMatch(/maxWidth:\s*520/);
   });
 
-  test("owner decision honored: NO close/X button, NO onRequestClose added", () => {
-    expect(SOURCE).not.toMatch(/onRequestClose/);
-    // The only dismiss path stays the single "Got it" CTA wired to onAccept.
+  // ORCH-1248 (Apple 2.1a) SUPERSEDES the ORCH-1246 "no X button" decision:
+  // build 15's single-CTA approach still trapped the reviewer (BlurView swallowed
+  // the tap on iOS 26). The new contract requires REDUNDANT escape routes.
+  test("CTA still present and wired to onAccept", () => {
     expect(SOURCE).toContain("Got it");
     expect(SOURCE).toContain("onPress={onAccept}");
   });

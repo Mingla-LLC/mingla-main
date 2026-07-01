@@ -46,7 +46,6 @@
       "package": "com.sethogieva.minglabusiness",
       "permissions": [
         "android.permission.CAMERA",
-        "android.permission.NFC",
         "android.permission.READ_MEDIA_IMAGES",
         "android.permission.READ_EXTERNAL_STORAGE",
         "android.permission.INTERNET",
