@@ -12,8 +12,14 @@ type AssetLinksEntry = {
 
 const EXPECTED_RELATION = ["delegate_permission/common.handle_all_urls"];
 const BUSINESS_PACKAGE = "com.sethogieva.minglabusiness";
-const BUSINESS_SHA256 =
-  "25:4F:86:64:00:44:5B:7F:EA:88:32:22:72:D1:39:B2:AB:DD:84:A9:58:E2:15:AC:51:F2:4F:F9:CD:F1:67:25";
+// ORCH-1247: both verified fingerprints from Play Console (upload key + Play App
+// Signing key) so Android App Links verify against the Play-signed install of
+// business.usemingla.com. Previously only the first was present → Play domain
+// validation failed ("Link not working").
+const BUSINESS_SHA256_FINGERPRINTS = [
+  "25:4F:86:64:00:44:5B:7F:EA:88:32:22:72:D1:39:B2:AB:DD:84:A9:58:E2:15:AC:51:F2:4F:F9:CD:F1:67:25",
+  "F7:5A:A7:54:67:6F:AE:0B:CE:2C:71:9B:A3:C3:8D:AD:96:EB:66:AD:1E:70:C7:9A:B5:AF:C4:3E:D0:A2:2F:6F",
+];
 const CONSUMER_PACKAGE = "com.mingla.app.v2";
 const CONSUMER_SHA256_FINGERPRINTS = [
   "06:4E:20:DE:0E:A7:4E:AC:72:9D:D7:68:66:5E:B2:70:56:3E:5B:9C:65:C9:12:B5:AC:E5:D6:A0:84:47:7A:BC",
@@ -40,7 +46,7 @@ describe("ORCH-0964 Android App Links asset links", () => {
       target: {
         namespace: "android_app",
         package_name: BUSINESS_PACKAGE,
-        sha256_cert_fingerprints: [BUSINESS_SHA256],
+        sha256_cert_fingerprints: BUSINESS_SHA256_FINGERPRINTS,
       },
     });
   });
