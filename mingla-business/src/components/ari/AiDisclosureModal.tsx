@@ -46,15 +46,24 @@ export interface AiDisclosureModalProps {
 // strips `backdrop-filter` — both leak busy content through the 0.78 tint. Route
 // those cases to a solid opaque frosted surface; iOS + wide desktop web keep the
 // real blur. The width-aware decision lives in `shouldUseRealBlur(windowWidth)`.
-const BlurViewOrOpaque: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+//
+// ORCH-1248 (Apple 2.1a): the blur/opaque surface is now a PURELY VISUAL
+// BACKGROUND layer with `pointerEvents="none"`. It sits BEHIND the interactive
+// content (which is a sibling overlay), so a real iOS UIVisualEffectView can
+// never sit in the touch path of the CTA or the close (X) button and swallow
+// their taps — the iOS-26 hit-testing hazard that trapped the reviewer.
+const SheetBackdropSurface: React.FC = () => {
   const { width: windowWidth } = useWindowDimensions();
   if (!shouldUseRealBlur(windowWidth)) {
-    return <View style={styles.opaqueSheet}>{children}</View>;
+    return <View pointerEvents="none" style={[styles.surfaceFill, styles.opaqueSheet]} />;
   }
   return (
-    <BlurView intensity={40} tint="dark" style={styles.blur}>
-      {children}
-    </BlurView>
+    <BlurView
+      pointerEvents="none"
+      intensity={40}
+      tint="dark"
+      style={[styles.surfaceFill, styles.blur]}
+    />
   );
 };
 
@@ -88,68 +97,101 @@ export const AiDisclosureModal: React.FC<AiDisclosureModalProps> = ({
   }));
 
   return (
-    <Modal visible={visible} animationType="slide" transparent statusBarTranslucent>
+    <Modal
+      visible={visible}
+      animationType="slide"
+      transparent
+      statusBarTranslucent
+      // ORCH-1248 (Apple 2.1a): hardware back / system gesture dismiss now closes
+      // the sheet (was a no-op → reviewer could get trapped).
+      onRequestClose={onAccept}
+    >
       <Animated.View style={[styles.scrim, scrimStyle]}>
+        {/* ORCH-1248 (Apple 2.1a): full-bleed backdrop tap-to-dismiss behind the
+            sheet. Sits UNDER the sheet in z-order so it only receives taps on the
+            dimmed area around the sheet, never the sheet's own content. Every
+            escape route funnels to the same onAccept (optimistic close + bg-ack). */}
+        <Pressable
+          style={StyleSheet.absoluteFill}
+          onPress={onAccept}
+          accessibilityRole="button"
+          accessibilityLabel="Dismiss and continue"
+        />
         <View style={[styles.sheetWrap, { maxHeight: sheetMaxHeight }]}>
-          {/* META-ORCH-1002 Sub-D: Android renders an opaque frosted surface
-              instead of expo-blur's thin near-transparent fallback. iOS keeps
-              the real BlurView. */}
-          <BlurViewOrOpaque>
-            <View style={styles.sheet}>
-              {/* Inner highlight ring at the top of the sheet — premium glass edge */}
-              <View pointerEvents="none" style={styles.topHighlight} />
+          {/* ORCH-1248 (Apple 2.1a): the blur/opaque surface is a purely visual
+              BACKGROUND sibling (pointerEvents="none"). All interactive content
+              is a separate overlay ABOVE it, so no UIVisualEffectView ever sits
+              in the touch path of the X or the CTA. */}
+          <SheetBackdropSurface />
+          <View style={styles.sheet}>
+            {/* Inner highlight ring at the top of the sheet — premium glass edge */}
+            <View pointerEvents="none" style={styles.topHighlight} />
 
-              <ScrollView
-                contentContainerStyle={styles.content}
-                showsVerticalScrollIndicator={false}
-                keyboardShouldPersistTaps="handled"
-              >
-                <View style={styles.orbWrap}>
-                  <AriOrb size="lg" decorative={false} accessibilityLabel="Ari" />
-                </View>
-                <Text style={styles.title}>Meet Ari.</Text>
-                <Text style={styles.body}>
-                  Ari is your AI co-pilot, powered by Mingla's AI. It can create brands and events
-                  for you, and answer questions about your business.
-                </Text>
-                <Text style={styles.subhead}>How it works</Text>
-                <Text style={styles.bullet}>
-                  • Ari never makes changes without asking — you always confirm before anything is
-                  created or changed.
-                </Text>
-                <Text style={styles.bullet}>
-                  • Your conversations are saved so Ari remembers context across visits.
-                </Text>
-                <Text style={styles.bullet}>
-                  • You can see and delete everything Ari knows about you in Settings.
-                </Text>
-                <Text style={[styles.body, styles.disclaimer]}>
-                  Ari is not a financial, legal, or tax advisor. Always double-check anything
-                  important.
-                </Text>
-              </ScrollView>
+            {/* ORCH-1248 (Apple 2.1a): ALWAYS-VISIBLE close (X) affordance,
+                rendered OUTSIDE the blur layer so its touch target can never be
+                swallowed. Redundant escape route #3 (with back-gesture + backdrop
+                + CTA). ≥44pt hit target. */}
+            <Pressable
+              onPress={onAccept}
+              style={styles.closeButton}
+              accessibilityRole="button"
+              accessibilityLabel="Close"
+              hitSlop={12}
+            >
+              <Text style={styles.closeGlyph}>✕</Text>
+            </Pressable>
 
-              {/* Footer is OUTSIDE the ScrollView so the Pressable hit target
-                  is never swallowed by ScrollView gesture handling. This is the
-                  root-cause fix for the "Got it doesn't tap" bug. */}
-              <View
-                style={[
-                  styles.footer,
-                  { paddingBottom: Math.max(insets.bottom, spacing.lg) },
-                ]}
-              >
-                <Pressable
-                  onPress={onAccept}
-                  style={({ pressed }) => [styles.cta, pressed && styles.ctaPressed]}
-                  accessibilityRole="button"
-                  accessibilityLabel="Acknowledge and continue to Ari"
-                  hitSlop={8}
-                >
-                  <Text style={styles.ctaText}>Got it — let&apos;s start</Text>
-                </Pressable>
+            <ScrollView
+              contentContainerStyle={styles.content}
+              showsVerticalScrollIndicator={false}
+              keyboardShouldPersistTaps="handled"
+            >
+              <View style={styles.orbWrap}>
+                <AriOrb size="lg" decorative={false} accessibilityLabel="Ari" />
               </View>
+              <Text style={styles.title}>Meet Ari.</Text>
+              <Text style={styles.body}>
+                Ari is your AI co-pilot, powered by Mingla's AI. It can create brands and events
+                for you, and answer questions about your business.
+              </Text>
+              <Text style={styles.subhead}>How it works</Text>
+              <Text style={styles.bullet}>
+                • Ari never makes changes without asking — you always confirm before anything is
+                created or changed.
+              </Text>
+              <Text style={styles.bullet}>
+                • Your conversations are saved so Ari remembers context across visits.
+              </Text>
+              <Text style={styles.bullet}>
+                • You can see and delete everything Ari knows about you in Settings.
+              </Text>
+              <Text style={[styles.body, styles.disclaimer]}>
+                Ari is not a financial, legal, or tax advisor. Always double-check anything
+                important.
+              </Text>
+            </ScrollView>
+
+            {/* Footer is OUTSIDE the ScrollView so the Pressable hit target
+                is never swallowed by ScrollView gesture handling. ORCH-1248:
+                it also renders ABOVE the visual blur sibling (not inside it), so
+                the primary CTA is never gated on UIVisualEffectView touch-forwarding. */}
+            <View
+              style={[
+                styles.footer,
+                { paddingBottom: Math.max(insets.bottom, spacing.lg) },
+              ]}
+            >
+              <Pressable
+                onPress={onAccept}
+                style={({ pressed }) => [styles.cta, pressed && styles.ctaPressed]}
+                accessibilityRole="button"
+                accessibilityLabel="Acknowledge and continue to Ari"
+                hitSlop={8}
+              >
+                <Text style={styles.ctaText}>Got it — let&apos;s start</Text>
+              </Pressable>
             </View>
-          </BlurViewOrOpaque>
+          </View>
         </View>
       </Animated.View>
     </Modal>
@@ -178,6 +220,11 @@ const styles = StyleSheet.create({
     borderRightWidth: 1,
     borderColor: glass.border.profileElevated,
   },
+  // ORCH-1248: the visual surface is an absolutely-positioned background layer
+  // filling the sheetWrap, behind the interactive content overlay.
+  surfaceFill: {
+    ...StyleSheet.absoluteFillObject,
+  },
   blur: {
     backgroundColor: "rgba(20, 17, 19, 0.78)",
   },
@@ -189,6 +236,26 @@ const styles = StyleSheet.create({
   },
   sheet: {
     flexShrink: 1,
+  },
+  // ORCH-1248 (Apple 2.1a): always-visible close affordance, top-right, above
+  // the blur layer. ≥44pt effective target via size + hitSlop.
+  closeButton: {
+    position: "absolute",
+    top: spacing.sm,
+    right: spacing.sm,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(255, 255, 255, 0.10)",
+    zIndex: 2,
+  },
+  closeGlyph: {
+    fontSize: 18,
+    lineHeight: 20,
+    fontWeight: "600",
+    color: textTokens.primary,
   },
   topHighlight: {
     position: "absolute",

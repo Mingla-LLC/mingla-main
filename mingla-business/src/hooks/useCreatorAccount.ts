@@ -13,6 +13,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { useAuth } from "../context/AuthContext";
 import { supabase } from "../services/supabase";
+import { withTimeout } from "../utils/withTimeout";
 import {
   updateCreatorAccount,
   type CreatorAccountUpdatePatch,
@@ -38,6 +39,15 @@ export interface CreatorAccountState {
 
 const STALE_TIME_MS = 5 * 60 * 1000; // 5 min — account row changes are rare
 
+// ORCH-1248 (Apple 2.1a): Edit Profile hung forever behind an untimed
+// creator_accounts read on Apple's proxied/VPN review network. Bound the fetch
+// so it is GUARANTEED to settle: an AbortController cancels the underlying
+// supabase request and withTimeout rejects the consumer, so React Query surfaces
+// isError → the screen's existing Retry state shows instead of an infinite
+// spinner. 9s sits under the withTimeout DATA_FETCH ceiling yet gives a genuinely
+// slow-but-real read room to succeed.
+const ACCOUNT_FETCH_TIMEOUT_MS = 9000;
+
 export const creatorAccountKeys = {
   all: ["creator-account"] as const,
   byId: (userId: string): readonly [string, string] =>
@@ -45,6 +55,42 @@ export const creatorAccountKeys = {
 };
 
 const DISABLED_KEY = ["creator-account-disabled"] as const;
+
+/**
+ * ORCH-1248 (Apple 2.1a): the account read, hardened to ALWAYS settle.
+ *
+ * An AbortController cancels the underlying supabase request and `withTimeout`
+ * rejects the consumer after ACCOUNT_FETCH_TIMEOUT_MS, so a stalled read on
+ * Apple's proxied/VPN review network can NEVER leave the Edit Profile spinner
+ * spinning forever — React Query surfaces isError → the existing Retry UI shows.
+ * Exported for the ORCH-1248 timeout unit test.
+ */
+export const fetchCreatorAccount = async (
+  userId: string,
+): Promise<CreatorAccountRow | null> => {
+  const controller = new AbortController();
+  const request = supabase
+    .from("creator_accounts")
+    .select(
+      "id, email, display_name, avatar_url, marketing_opt_in, default_brand_id, deleted_at",
+    )
+    .eq("id", userId)
+    .abortSignal(controller.signal)
+    .maybeSingle();
+  try {
+    const { data: row, error } = await withTimeout(
+      request,
+      ACCOUNT_FETCH_TIMEOUT_MS,
+      "useCreatorAccount",
+    );
+    if (error) throw error;
+    return row ?? null;
+  } catch (err) {
+    // On timeout, abort the in-flight socket so it doesn't linger.
+    controller.abort();
+    throw err;
+  }
+};
 
 export const useCreatorAccount = (): CreatorAccountState => {
   const { isAuthReady, user } = useAuth();
@@ -56,17 +102,14 @@ export const useCreatorAccount = (): CreatorAccountState => {
       queryKey: enabled ? creatorAccountKeys.byId(userId) : DISABLED_KEY,
       enabled,
       staleTime: STALE_TIME_MS,
+      // ORCH-1248 (Apple 2.1a): force the query to run regardless of a
+      // misreported navigator.onLine so a captive/offline-flap can't pause it
+      // into a permanent spinner. (Also the global default, pinned here so this
+      // guarantee survives an unrelated queryClient config change.)
+      networkMode: "always",
       queryFn: async (): Promise<CreatorAccountRow | null> => {
         if (!enabled || userId === null) return null;
-        const { data: row, error } = await supabase
-          .from("creator_accounts")
-          .select(
-            "id, email, display_name, avatar_url, marketing_opt_in, default_brand_id, deleted_at",
-          )
-          .eq("id", userId)
-          .maybeSingle();
-        if (error) throw error;
-        return row ?? null;
+        return fetchCreatorAccount(userId);
       },
     });
 
