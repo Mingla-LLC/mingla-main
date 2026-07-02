@@ -217,6 +217,83 @@ export interface PublicVenueDetail {
   galleryPhotoUrls: string[];
 }
 
+// ============================================================
+// META-ORCH-1255(C) — per-venue public reads (venue_public_view)
+// ============================================================
+//
+// The ONLY anon read path for venue rows is the SECURITY-DEFINER
+// `venue_public_view` (M4; verified-only, non-deleted brand). NEVER query
+// `venue_listings` from here — the CI gate
+// `orch-1255-public-venue-anon-safe.mjs` fails the build on a direct read
+// (I-PROPOSED-1255-PUBLIC-VENUE-PAGE-ANON-SAFE).
+
+/** META-ORCH-1255(C) — row shape from `venue_public_view` (M4). */
+export interface VenuePublicViewRow {
+  id: string;
+  brand_id: string;
+  brand_slug: string;
+  brand_name: string;
+  slug: string;
+  name: string;
+  address: string | null;
+  city: string | null;
+  country_code: string | null;
+  lat: number;
+  lng: number;
+  venue_category: VenueCategory | null;
+  google_place_id: string | null;
+  contact_email: string | null;
+  contact_phone: string | null;
+  cover_media_url: string | null;
+  cover_media_type: "image" | "video" | "gif" | null;
+  place_pool_id: string | null;
+  theme_color: string | null;
+  theme_font: string | null;
+  theme_animation: string | null;
+  cover_hue: number;
+  default_currency: string | null;
+  hours: unknown;
+  pool_photo_urls: string[] | null;
+  created_at: string;
+  updated_at: string;
+}
+
+/** META-ORCH-1255(C) — the anon per-venue page read model (/b/{b}/v/{v}). */
+export interface PublicVenue {
+  id: string;
+  brandId: string;
+  brandSlug: string;
+  brandName: string;
+  slug: string;
+  name: string;
+  address: string | null;
+  city: string | null;
+  countryCode: string | null;
+  lat: number;
+  lng: number;
+  venueCategory: VenueCategory | null;
+  contactEmail: string | null;
+  contactPhone: string | null;
+  coverMediaUrl: string | null;
+  coverMediaType: "image" | "video" | "gif" | null;
+  placePoolId: string | null;
+  theme: ThemeInput | null;
+  coverHue: number;
+  defaultCurrency: string | null;
+  hours: BrandHourEntry[];
+  galleryPhotoUrls: string[];
+}
+
+/** META-ORCH-1255(C) — one row of the brand page "Locations" section. */
+export interface PublicVenueSummary {
+  id: string;
+  slug: string;
+  name: string;
+  address: string | null;
+  city: string | null;
+  photoUrl: string | null;
+}
+
 interface TicketTypeRow {
   id: string;
   event_id: string;
@@ -659,6 +736,94 @@ export const claimedVenueRowToPublicVenue = (
     poolPhotoUrls: row.pool_photo_urls,
   }),
 });
+
+/** META-ORCH-1255(C) — map a `venue_public_view` row to the page model. */
+export const venuePublicViewRowToPublicVenue = (
+  row: VenuePublicViewRow,
+): PublicVenue => ({
+  id: row.id,
+  brandId: row.brand_id,
+  brandSlug: row.brand_slug,
+  brandName: row.brand_name,
+  slug: row.slug,
+  name: row.name,
+  address: asStringOrNull(row.address),
+  city: asStringOrNull(row.city),
+  countryCode: asStringOrNull(row.country_code),
+  lat: row.lat,
+  lng: row.lng,
+  venueCategory: asVenueCategory(row.venue_category),
+  contactEmail: asStringOrNull(row.contact_email),
+  contactPhone: asStringOrNull(row.contact_phone),
+  coverMediaUrl: asStringOrNull(row.cover_media_url),
+  coverMediaType: row.cover_media_type ?? null,
+  placePoolId: row.place_pool_id ?? null,
+  theme: asThemeInput(row.theme_color, row.theme_font, row.theme_animation),
+  coverHue: typeof row.cover_hue === "number" ? row.cover_hue : 25,
+  defaultCurrency: asStringOrNull(row.default_currency),
+  // Hours agg format is byte-identical to claimed_venues_public_view (M4
+  // contract) so the proven parser is reused.
+  hours: parseClaimedVenueHours(row.hours),
+  galleryPhotoUrls: buildVenueGalleryPhotoUrls({
+    coverMediaUrl: row.cover_media_url,
+    profilePhotoUrl: null,
+    poolPhotoUrls: row.pool_photo_urls,
+  }),
+});
+
+/**
+ * META-ORCH-1255(C) — resolve ONE verified venue for `/b/{brand}/v/{venue}`.
+ * Anon-safe by construction (the definer view exposes verified rows only);
+ * a pending/suspended/revoked/unknown venue is indistinguishable from a
+ * missing one (null → the single not-found state, no state leak).
+ */
+export const getPublicVenueBySlug = async (
+  brandSlug: string,
+  venueSlug: string,
+): Promise<PublicVenue | null> => {
+  const { data, error } = await supabase
+    .from("venue_public_view")
+    .select("*")
+    .eq("brand_slug", brandSlug)
+    .eq("slug", venueSlug)
+    .maybeSingle();
+  if (error !== null) throw error;
+  if (data === null) return null;
+  return venuePublicViewRowToPublicVenue(data as VenuePublicViewRow);
+};
+
+/**
+ * META-ORCH-1255(C) — all verified venues of a brand, for the public brand
+ * page "Locations" section (SC-12). [] → the section is omitted.
+ */
+export const fetchPublicBrandVenues = async (
+  brandSlug: string,
+): Promise<PublicVenueSummary[]> => {
+  const { data, error } = await supabase
+    .from("venue_public_view")
+    .select("id, slug, name, address, city, cover_media_url, pool_photo_urls, created_at")
+    .eq("brand_slug", brandSlug)
+    .order("created_at", { ascending: true });
+  if (error !== null) throw error;
+  const rows = (data ?? []) as Array<
+    Pick<
+      VenuePublicViewRow,
+      "id" | "slug" | "name" | "address" | "city" | "cover_media_url" | "pool_photo_urls"
+    >
+  >;
+  return rows.map((row) => ({
+    id: row.id,
+    slug: row.slug,
+    name: row.name,
+    address: asStringOrNull(row.address),
+    city: asStringOrNull(row.city),
+    photoUrl:
+      asStringOrNull(row.cover_media_url) ??
+      (Array.isArray(row.pool_photo_urls) && row.pool_photo_urls.length > 0
+        ? row.pool_photo_urls[0]
+        : null),
+  }));
+};
 
 export const claimedVenueRowToBrand = (
   row: ClaimedVenuePublicViewRow,

@@ -51,6 +51,21 @@ export const brandPublicPath = (brandSlug: string): string =>
 export const brandPublicUrl = (brandSlug: string): string =>
   `${BUSINESS_PUBLIC_ORIGIN}${brandPublicPath(brandSlug)}`;
 
+// META-ORCH-1255(C): per-venue public page under the brand (D-2).
+export const venuePublicPath = (input: {
+  brandSlug: string;
+  venueSlug: string;
+}): string =>
+  `/b/${requireSegment(input.brandSlug, "brandSlug")}/v/${requireSegment(
+    input.venueSlug,
+    "venueSlug",
+  )}`;
+
+export const venuePublicUrl = (input: {
+  brandSlug: string;
+  venueSlug: string;
+}): string => `${BUSINESS_PUBLIC_ORIGIN}${venuePublicPath(input)}`;
+
 export const checkoutPublicPath = (eventId: string): string =>
   `/checkout/${requireSegment(eventId, "eventId")}`;
 
