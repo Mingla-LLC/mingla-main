@@ -58,23 +58,26 @@ describe("BrandEditView — ORCH-1256 scroll-to-section contract", () => {
     expect(VIEW_SRC.indexOf(marker, first + 1)).toBe(-1);
   });
 
-  test("PHYSICAL LOCATION block (META-ORCH-1255) has NO anchor and its markers are intact", () => {
-    // Anchor on the JSX label (comments elsewhere also say "PHYSICAL
-    // LOCATION" — the block itself starts at the section label element).
-    const start = VIEW_SRC.indexOf(
+  // [TEST-MOD-APPROVED META-ORCH-1255] This pin guarded the 1255-owned
+  // PHYSICAL LOCATION block against 1256 anchor creep WHILE the block still
+  // existed. META-ORCH-1255 §D-5 then DELETED the whole block (toggle + CTA +
+  // hasPhysicalLocation write paths) — the SPEC §8 merge-order note
+  // anticipated exactly this ("that anchor dies with the section"). The
+  // contract intent survives inverted: the block must now be ABSENT, no
+  // section anchor may reference it, and no physical-location target exists
+  // in the closed section set. Supersession ordered by the orchestrator
+  // RETEST directive 2026-07-02; enforcement of non-reintroduction also
+  // lives in .github/scripts/strict-grep/
+  // orch-1255-brandedit-no-physical-location-toggle.mjs.
+  test("PHYSICAL LOCATION block (META-ORCH-1255) is fully deleted — no markers, no anchor", () => {
+    expect(VIEW_SRC).not.toContain(
       "<Text style={styles.sectionLabel}>PHYSICAL LOCATION</Text>",
     );
-    const end = VIEW_SRC.indexOf("SECTION B — About");
-    expect(start).toBeGreaterThan(-1);
-    expect(end).toBeGreaterThan(start);
-    const block = VIEW_SRC.slice(start, end);
-    // no ORCH-1256 mechanism inside the 1255-owned block
-    expect(block).not.toContain("onLayout");
-    expect(block).not.toContain("handleSectionLayout");
-    // 1255 markers untouched
-    expect(block).toContain("Customers visit you in person");
-    expect(block).toContain("hasPhysicalLocation");
-    expect(block).toContain('accessibilityLabel="Physical location"');
+    expect(VIEW_SRC).not.toContain("Customers visit you in person");
+    expect(VIEW_SRC).not.toContain("hasPhysicalLocation");
+    expect(VIEW_SRC).not.toContain('accessibilityLabel="Physical location"');
+    // and no section anchor was ever minted for it
+    expect(VIEW_SRC).not.toContain('handleSectionLayout("physical');
   });
 });
 
