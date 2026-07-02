@@ -24,44 +24,63 @@ import type { BrandHourEntry } from "../types/brand";
 import { venueAvailabilityKeys } from "./useVenueAvailability";
 
 export const brandHoursKeys = {
-  byBrand: (brandId: string): readonly ["brandHours", string] =>
-    ["brandHours", brandId] as const,
+  // META-ORCH-1255 — venue-scoped, brandId-first: the pinned brand-prefix
+  // invalidation `brandHoursKeys.byBrand(brandId)` keeps matching every venue.
+  byBrand: (
+    brandId: string,
+    venueId?: string,
+  ): readonly string[] =>
+    venueId === undefined
+      ? (["brandHours", brandId] as const)
+      : (["brandHours", brandId, venueId] as const),
 };
 
 export function useBrandHours(
   brandId: string | null,
+  venueId: string | null,
 ): UseQueryResult<BrandHourEntry[]> {
   const { isAuthReady } = useAuth();
-  const enabled = isAuthReady && brandId !== null && brandId.length > 0;
+  const enabled =
+    isAuthReady &&
+    brandId !== null &&
+    brandId.length > 0 &&
+    venueId !== null &&
+    venueId.length > 0;
   return useQuery<BrandHourEntry[]>({
-    queryKey: enabled
-      ? brandHoursKeys.byBrand(brandId)
-      : (["brandHours", "disabled"] as const),
+    queryKey:
+      enabled
+        ? brandHoursKeys.byBrand(brandId, venueId)
+        : (["brandHours", "disabled"] as const),
     enabled,
     staleTime: 30_000,
     queryFn: () =>
-      enabled ? fetchBrandHours(brandId) : Promise.resolve([]),
+      enabled ? fetchBrandHours(brandId, venueId) : Promise.resolve([]),
   });
 }
 
 export function useUpsertBrandHours(
   brandId: string | null,
+  venueId: string | null,
 ): UseMutationResult<void, Error, BrandHourEntry[]> {
   const queryClient = useQueryClient();
   return useMutation<void, Error, BrandHourEntry[]>({
     mutationFn: async (hours: BrandHourEntry[]): Promise<void> => {
       if (brandId === null) throw new Error("brand_required");
-      await upsertBrandHours(brandId, hours);
+      // META-ORCH-1255 — the upsert RPC is venue-keyed (one week per venue).
+      if (venueId === null) throw new Error("venue_required");
+      await upsertBrandHours(venueId, hours);
     },
     onSuccess: () => {
       if (brandId === null) return;
-      // The hours changed.
+      // The hours changed. Brand-prefix invalidation reaches every venue's
+      // hours key: brandHoursKeys.byBrand(brandId)
       void queryClient.invalidateQueries({
         queryKey: brandHoursKeys.byBrand(brandId),
       });
       // The live bridge (biz_upsert_brand_hours → derive helper) re-wrote
       // venue_availability_config.service_periods, so the Availability module's
       // cached config is now stale — REQUIRED cross-invalidation (SC-3).
+      // Brand-prefix match: venueAvailabilityKeys.config(brandId)
       void queryClient.invalidateQueries({
         queryKey: venueAvailabilityKeys.config(brandId),
       });

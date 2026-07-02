@@ -28,6 +28,7 @@ import type {
 interface WaitlistRow {
   id: string;
   brand_id: string;
+  venue_id: string;
   guest_name: string | null;
   guest_phone_e164: string | null;
   guest_email: string | null;
@@ -44,11 +45,12 @@ interface WaitlistRow {
 }
 
 const WAITLIST_COLUMNS =
-  "id, brand_id, guest_name, guest_phone_e164, guest_email, party_size, preferred_zone, quoted_wait_minutes, status, notify_via, notified_at, expires_at, converted_reservation_id, consumer_user_id, created_at";
+  "id, brand_id, venue_id, guest_name, guest_phone_e164, guest_email, party_size, preferred_zone, quoted_wait_minutes, status, notify_via, notified_at, expires_at, converted_reservation_id, consumer_user_id, created_at";
 
 const mapRow = (row: WaitlistRow): WaitlistEntry => ({
   id: row.id,
   brandId: row.brand_id,
+  venueId: row.venue_id,
   guestName: row.guest_name,
   guestPhoneE164: row.guest_phone_e164,
   guestEmail: row.guest_email,
@@ -65,17 +67,23 @@ const mapRow = (row: WaitlistRow): WaitlistEntry => ({
 });
 
 export const venueWaitlistKeys = {
-  list: (brandId: string): readonly ["venueWaitlist", string] =>
-    ["venueWaitlist", brandId] as const,
+  // META-ORCH-1255 — venue-scoped, brandId-first (brand-prefix invalidation safe).
+  list: (
+    brandId: string,
+    venueId: string,
+  ): readonly ["venueWaitlist", string, string] =>
+    ["venueWaitlist", brandId, venueId] as const,
 };
 
 export const fetchVenueWaitlist = async (
   brandId: string,
+  venueId: string,
 ): Promise<WaitlistEntry[]> => {
   const { data, error } = await supabase
     .from("venue_waitlist")
     .select(WAITLIST_COLUMNS)
     .eq("brand_id", brandId)
+    .eq("venue_id", venueId)
     .order("created_at", { ascending: true })
     .returns<WaitlistRow[]>();
   if (error !== null) throw error;
@@ -84,36 +92,43 @@ export const fetchVenueWaitlist = async (
 
 export function useVenueWaitlist(
   brandId: string | null,
+  venueId: string | null,
 ): UseQueryResult<WaitlistEntry[]> {
   const { isAuthReady } = useAuth();
   const queryClient = useQueryClient();
-  const enabled = isAuthReady && brandId !== null && brandId.length > 0;
+  const enabled =
+    isAuthReady &&
+    brandId !== null &&
+    brandId.length > 0 &&
+    venueId !== null &&
+    venueId.length > 0;
 
   const query = useQuery<WaitlistEntry[]>({
     queryKey: enabled
-      ? venueWaitlistKeys.list(brandId)
+      ? venueWaitlistKeys.list(brandId, venueId)
       : (["venueWaitlist", "disabled"] as const),
     enabled,
     staleTime: 15_000,
     queryFn: () =>
-      enabled ? fetchVenueWaitlist(brandId) : Promise.resolve([]),
+      enabled ? fetchVenueWaitlist(brandId, venueId) : Promise.resolve([]),
   });
 
   useEffect(() => {
     if (!enabled) return;
+    // META-ORCH-1255 — venue-scoped realtime (non-PK filter — no ORCH-0931 drop).
     const channel = supabase
-      .channel(`venue:waitlist:${brandId}`)
+      .channel(`venue:waitlist:${venueId}`)
       .on(
         "postgres_changes",
         {
           event: "*",
           schema: "public",
           table: "venue_waitlist",
-          filter: `brand_id=eq.${brandId}`,
+          filter: `venue_id=eq.${venueId}`,
         },
         () => {
           void queryClient.invalidateQueries({
-            queryKey: venueWaitlistKeys.list(brandId),
+            queryKey: venueWaitlistKeys.list(brandId, venueId),
           });
         },
       )
@@ -121,7 +136,7 @@ export function useVenueWaitlist(
     return () => {
       void supabase.removeChannel(channel);
     };
-  }, [enabled, brandId, queryClient]);
+  }, [enabled, brandId, venueId, queryClient]);
 
   return query;
 }
@@ -129,13 +144,16 @@ export function useVenueWaitlist(
 /** Add a guest to the waitlist (direct RLS-gated insert — manager+ enforced server-side). */
 export function useAddToWaitlist(
   brandId: string | null,
+  venueId: string | null,
 ): UseMutationResult<void, Error, WaitlistAddInput> {
   const queryClient = useQueryClient();
   return useMutation<void, Error, WaitlistAddInput>({
     mutationFn: async (input: WaitlistAddInput): Promise<void> => {
       if (brandId === null) throw new Error("brand_required");
+      if (venueId === null) throw new Error("venue_required");
       const { error } = await supabase.from("venue_waitlist").insert({
         brand_id: brandId,
+        venue_id: venueId,
         guest_name: input.guestName,
         guest_phone_e164: input.guestPhoneE164,
         guest_email: input.guestEmail,
@@ -147,9 +165,9 @@ export function useAddToWaitlist(
       if (error !== null) throw error as unknown as Error;
     },
     onSuccess: () => {
-      if (brandId !== null) {
+      if (brandId !== null && venueId !== null) {
         void queryClient.invalidateQueries({
-          queryKey: venueWaitlistKeys.list(brandId),
+          queryKey: venueWaitlistKeys.list(brandId, venueId),
         });
       }
     },
@@ -159,6 +177,7 @@ export function useAddToWaitlist(
 /** Mark a waitlist entry lost (guest left) — direct RLS-gated update. */
 export function useMarkWaitlistLost(
   brandId: string | null,
+  venueId: string | null,
 ): UseMutationResult<void, Error, string> {
   const queryClient = useQueryClient();
   return useMutation<void, Error, string>({
@@ -172,9 +191,9 @@ export function useMarkWaitlistLost(
       if (error !== null) throw error as unknown as Error;
     },
     onSuccess: () => {
-      if (brandId !== null) {
+      if (brandId !== null && venueId !== null) {
         void queryClient.invalidateQueries({
-          queryKey: venueWaitlistKeys.list(brandId),
+          queryKey: venueWaitlistKeys.list(brandId, venueId),
         });
       }
     },
@@ -188,6 +207,7 @@ export function useMarkWaitlistLost(
  */
 export function useNotifyWaitlist(
   brandId: string | null,
+  venueId: string | null,
 ): UseMutationResult<{ ok: boolean }, Error, string> {
   const queryClient = useQueryClient();
   return useMutation<{ ok: boolean }, Error, string>({
@@ -199,9 +219,9 @@ export function useNotifyWaitlist(
       return { ok: (data as { ok?: boolean } | null)?.ok ?? false };
     },
     onSuccess: () => {
-      if (brandId !== null) {
+      if (brandId !== null && venueId !== null) {
         void queryClient.invalidateQueries({
-          queryKey: venueWaitlistKeys.list(brandId),
+          queryKey: venueWaitlistKeys.list(brandId, venueId),
         });
       }
     },
@@ -217,6 +237,7 @@ export interface WaitlistConvertVars {
 /** Convert a waitlist entry → reservation atomically (the guarded RPC). */
 export function useConvertWaitlist(
   brandId: string | null,
+  venueId: string | null,
 ): UseMutationResult<void, Error, WaitlistConvertVars> {
   const queryClient = useQueryClient();
   return useMutation<void, Error, WaitlistConvertVars>({
@@ -232,12 +253,12 @@ export function useConvertWaitlist(
       if (error !== null) throw error as unknown as Error;
     },
     onSuccess: () => {
-      if (brandId !== null) {
+      if (brandId !== null && venueId !== null) {
         void queryClient.invalidateQueries({
-          queryKey: venueWaitlistKeys.list(brandId),
+          queryKey: venueWaitlistKeys.list(brandId, venueId),
         });
         void queryClient.invalidateQueries({
-          queryKey: venueReservationsKeys.list(brandId),
+          queryKey: venueReservationsKeys.list(brandId, venueId),
         });
       }
     },

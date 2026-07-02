@@ -360,18 +360,20 @@ export interface CreateVenueBrandPendingInput {
 }
 
 /**
- * Replaces all `brand_hours` rows for a brand (expects exactly 7 weekdays).
- * Callers must hold brand admin-plus; mirrors the RPC insert shape.
+ * Replaces all `brand_hours` rows for a VENUE (expects exactly 7 weekdays).
+ * META-ORCH-1255 — the RPC is venue-keyed (`biz_upsert_brand_hours(p_venue_id,
+ * p_hours)`, Leg A M3/deviation D5): hours are one-per-venue rows now; the
+ * brand is derived server-side. Callers must hold brand admin-plus.
  */
 export async function upsertBrandHours(
-  brandId: string,
+  venueId: string,
   hours: BrandHourEntry[],
 ): Promise<void> {
   if (hours.length !== 7) {
     throw new Error("upsertBrandHours: expected 7 weekday rows");
   }
   const { error } = await supabase.rpc("biz_upsert_brand_hours", {
-    p_brand_id: brandId,
+    p_venue_id: venueId,
     p_hours: brandHoursToRpcPayload(hours),
   });
   if (error !== null) throw error;
@@ -394,11 +396,18 @@ interface BrandHourRow {
  */
 export async function fetchBrandHours(
   brandId: string,
+  // META-ORCH-1255 — hours rows are venue-scoped; pass the venue to read ONE
+  // venue's week. Optional for legacy callers (venue_id IS NULL rows).
+  venueId?: string | null,
 ): Promise<BrandHourEntry[]> {
-  const { data, error } = await supabase
+  let query = supabase
     .from("brand_hours")
     .select("weekday, open_time, close_time, is_closed")
-    .eq("brand_id", brandId)
+    .eq("brand_id", brandId);
+  if (venueId != null && venueId.length > 0) {
+    query = query.eq("venue_id", venueId);
+  }
+  const { data, error } = await query
     .order("weekday")
     .returns<BrandHourRow[]>();
   if (error !== null) throw error;

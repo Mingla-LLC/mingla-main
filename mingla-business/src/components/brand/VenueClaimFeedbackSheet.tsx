@@ -45,6 +45,14 @@ import { Skeleton } from "../ui/Skeleton";
 export interface VenueClaimFeedbackSheetProps {
   visible: boolean;
   brand: Brand | null;
+  /**
+   * META-ORCH-1255 — the feedback round + resubmit are keyed per VENUE row.
+   * The venue's claim fields (follow-up stamp) ride in with it so the sheet
+   * no longer reads the legacy-inert brand claim columns.
+   */
+  venueId: string | null;
+  venueName?: string | null;
+  venueFollowUpAt?: string | null;
   accountId?: string | null;
   onClose: () => void;
   /** Parent fires the success Toast + lands the user on the Hub. */
@@ -87,6 +95,9 @@ const CATEGORY_ICON: Record<FeedbackCategory, IconName> = {
 export function VenueClaimFeedbackSheet({
   visible,
   brand,
+  venueId,
+  venueName,
+  venueFollowUpAt,
   accountId,
   onClose,
   onResubmitted,
@@ -106,7 +117,8 @@ export function VenueClaimFeedbackSheet({
     resubmit,
   } = useVenueClaimFeedback({
     brandId,
-    followUpAt: brand?.claimFollowUpAt ?? null,
+    venueId,
+    followUpAt: venueFollowUpAt ?? brand?.claimFollowUpAt ?? null,
     accountId,
   });
 
@@ -171,7 +183,9 @@ export function VenueClaimFeedbackSheet({
       >
         {/* Header */}
         <Text style={styles.headerTitle}>Updates requested</Text>
-        <Text style={styles.headerSubtitle}>{brand.displayName}</Text>
+        <Text style={styles.headerSubtitle}>
+          {venueName ?? brand.displayName}
+        </Text>
 
         {/* Loading */}
         {isLoading ? (

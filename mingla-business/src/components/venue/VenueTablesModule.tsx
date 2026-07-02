@@ -68,20 +68,23 @@ function tableMeta(t: VenueTable): string {
 
 export interface VenueTablesModuleProps {
   brandId: string | null;
+  /** META-ORCH-1255 — the venue this module is scoped to. */
+  venueId?: string | null;
   testID?: string;
 }
 
 export function VenueTablesModule({
   brandId,
+  venueId = null,
   testID,
 }: VenueTablesModuleProps): React.ReactElement {
   const { rank } = useCurrentBrandRole(brandId);
   const canMutate = rank >= MANAGER_PLUS_RANK;
 
-  const tablesQuery = useVenueTables(brandId);
-  const upsert = useUpsertVenueTable(brandId);
-  const setActive = useSetVenueTableActive(brandId);
-  const remove = useDeleteVenueTable(brandId);
+  const tablesQuery = useVenueTables(brandId, venueId);
+  const upsert = useUpsertVenueTable(brandId, venueId);
+  const setActive = useSetVenueTableActive(brandId, venueId);
+  const remove = useDeleteVenueTable(brandId, venueId);
 
   const [sheetOpen, setSheetOpen] = useState<boolean>(false);
   const [editing, setEditing] = useState<VenueTable | null>(null);
@@ -248,7 +251,7 @@ export function VenueTablesModule({
       ) : null}
 
       {/* Smart Capacity Rules MVP (the 3 rules). */}
-      <VenueCapacityRulesPanel brandId={brandId} canMutate={canMutate} />
+      <VenueCapacityRulesPanel brandId={brandId} venueId={venueId} canMutate={canMutate} />
 
       <VenueTableSheet
         visible={sheetOpen}

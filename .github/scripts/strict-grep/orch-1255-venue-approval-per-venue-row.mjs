@@ -33,7 +33,7 @@ const root = process.cwd().endsWith("mingla-business")
 const SELF_TEST = process.argv.includes("--self-test");
 
 // Leg B flips this to true when venueClaimService.ts is re-keyed (Leg B #12).
-const LEG_B_ACTIVE = false;
+const LEG_B_ACTIVE = true; // FLIPPED by META-ORCH-1255(B) in the venueClaimService re-key commit.
 
 const EDGE_FILES = [
   "supabase/functions/admin-review-venue-claim/index.ts",

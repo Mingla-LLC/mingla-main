@@ -18,6 +18,15 @@
  *    param, so the component can be mounted from either surface.
  *  - `chromeMode="page"` renders the page header + back button (alias fallback);
  *    `chromeMode="tab"` renders NO header/back — the Hub layout owns the chrome.
+ *
+ * META-ORCH-1255 Leg B — VENUE-SCOPED. Pre-1255 this surface read the brand's
+ * ONE listing via useBrandPlacePipelineState(brandId) and
+ * useBrandPlaceAuthoringContext(brandId, placePoolId), with the claim fields on
+ * the brand row. Venues are first-class rows now: the component takes a
+ * REQUIRED `venueId`, reads claim fields from the `venue_listings` row
+ * (useVenueListing), the pipeline row via useVenuePipelineState(venueId), and
+ * the authoring context venue-keyed. The feedback loop (banner, sheet,
+ * resubmit) is venue-keyed too (I-PROPOSED-1255-VENUE-APPROVAL-PER-VENUE-ROW).
  */
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
@@ -51,8 +60,9 @@ import { useAuth } from "../../context/AuthContext";
 import { useBrand } from "../../hooks/useBrands";
 import {
   useBrandPlaceAuthoringContext,
-  useBrandPlacePipelineState,
+  useVenuePipelineState,
 } from "../../hooks/useBrandPlacePipelineState";
+import { useVenueListing } from "../../hooks/useVenueListings";
 import { useVenueClaimOpenCount } from "../../hooks/useVenueClaimFeedback";
 import { listingStatusView, type ListingTone } from "../../utils/listingStatus";
 
@@ -77,8 +87,10 @@ const PRICE_TIER_LABEL: Record<string, string> = {
 };
 
 export interface VenueListingContentProps {
-  /** The brand whose listing to render. May be null while resolving. */
+  /** The brand that owns the venue. May be null while resolving. */
   brandId: string | null;
+  /** META-ORCH-1255 — the venue_listings row this surface manages. */
+  venueId: string | null;
   /**
    * Deep-link signal forwarded from `/brand/{id}/listing?focus=feedback`.
    * When `"feedback"` AND an active follow-up round exists, auto-opens the
@@ -94,6 +106,7 @@ export interface VenueListingContentProps {
 
 export function VenueListingContent({
   brandId,
+  venueId,
   focus,
   chromeMode,
 }: VenueListingContentProps): React.ReactElement {
@@ -102,21 +115,23 @@ export function VenueListingContent({
   const { user } = useAuth();
 
   const brand = useBrand(brandId).data ?? null;
-  const placePoolId = brand?.placePoolId ?? null;
-  const pipeline = useBrandPlacePipelineState(brandId);
-  const ctx = useBrandPlaceAuthoringContext(brandId, placePoolId);
+  const venueQuery = useVenueListing(venueId);
+  const venue = venueQuery.data ?? null;
+  const placePoolId = venue?.placePoolId ?? null;
+  const pipeline = useVenuePipelineState(venueId);
+  const ctx = useBrandPlaceAuthoringContext(brandId, placePoolId, venueId);
 
   // ORCH-1064 — venue-claim feedback affordance (re-targeted from the Hub).
   // The follow_up tile + sheet live HERE now (META-ORCH-1059 removed the Hub
   // mount). openCount drives the tile badge; the sheet + a single Toast host are
   // mounted at the bottom of this screen.
-  const followUpAt = brand?.claimFollowUpAt ?? null;
+  const followUpAt = venue?.claimFollowUpAt ?? null;
   // ORCH-1073 — a `suspended` listing also carries a follow-up stamp + to-do
   // round; surface the same interactive banner + feedback sheet + resubmit loop.
   const hasFollowUp =
-    (brand?.claimStatus === "pending_review" ||
-      brand?.claimStatus === "suspended") && Boolean(followUpAt);
-  const openFeedbackCount = useVenueClaimOpenCount(brandId, followUpAt);
+    (venue?.claimStatus === "pending_review" ||
+      venue?.claimStatus === "suspended") && Boolean(followUpAt);
+  const openFeedbackCount = useVenueClaimOpenCount(brandId, venueId, followUpAt);
   const [feedbackVisible, setFeedbackVisible] = useState<boolean>(false);
   const [toast, setToast] = useState<{
     kind: "success" | "error";
@@ -155,11 +170,11 @@ export function VenueListingContent({
     }
   }, [focus, hasFollowUp]);
 
-  const hasVenue = placePoolId !== null;
+  const hasVenue = venue !== null;
   const statusV = listingStatusView({
     hasVenue,
     status: pipeline.data?.status ?? null,
-    claimStatus: brand?.claimStatus,
+    claimStatus: venue?.claimStatus,
   });
 
   const handleBack = useCallback((): void => {
@@ -172,11 +187,11 @@ export function VenueListingContent({
   }, [router]);
 
   const handleEdit = useCallback((): void => {
-    if (brandId === null || placePoolId === null) return;
+    if (brandId === null || placePoolId === null || venueId === null) return;
     router.push(
-      `/venue/deck-readiness?brand_id=${brandId}&place_pool_id=${placePoolId}&focus=review&fix=review_pipeline` as never,
+      `/venue/deck-readiness?brand_id=${brandId}&place_pool_id=${placePoolId}&venue_id=${venueId}&focus=review&fix=review_pipeline` as never,
     );
-  }, [router, brandId, placePoolId]);
+  }, [router, brandId, placePoolId, venueId]);
 
   const handleViewPublic = useCallback((): void => {
     if (brand?.slug !== undefined && brand.slug.length > 0) {
@@ -215,10 +230,13 @@ export function VenueListingContent({
 
   const editsRemaining = ctx.data?.recommend_edits_remaining ?? null;
   const rejected =
-    brand?.claimStatus === "rejected" || pipeline.data?.status === "failed";
-  const rejectionReason = brand?.rejectionReason ?? null;
-  const isLive = brand?.claimStatus === "verified";
-  const loading = pipeline.isLoading || (hasVenue && ctx.isLoading);
+    venue?.claimStatus === "rejected" || pipeline.data?.status === "failed";
+  const rejectionReason = venue?.rejectionReason ?? null;
+  const isLive = venue?.claimStatus === "verified";
+  const loading =
+    venueQuery.isLoading ||
+    pipeline.isLoading ||
+    (hasVenue && placePoolId !== null && ctx.isLoading);
 
   const isTab = chromeMode === "tab";
   // ORCH-1145 — page mode keeps the page-internal safe-area top; tab mode lets
@@ -284,6 +302,15 @@ export function VenueListingContent({
               <View style={styles.bannerHost}>
                 <VenueClaimStatusBanner
                   brand={brand}
+                  claimRow={
+                    venue !== null
+                      ? {
+                          claimStatus: venue.claimStatus,
+                          rejectionReason: venue.rejectionReason,
+                          claimFollowUpAt: venue.claimFollowUpAt,
+                        }
+                      : null
+                  }
                   openCount={openFeedbackCount}
                   onPressFeedback={handleOpenFeedback}
                 />
@@ -316,7 +343,7 @@ export function VenueListingContent({
                   />
                 ) : null}
                 <View style={styles.submittedText}>
-                  <Text style={styles.venueName}>{brand?.displayName ?? "Your venue"}</Text>
+                  <Text style={styles.venueName}>{venue?.name ?? "Your venue"}</Text>
                   {ctx.data?.website != null && ctx.data.website.length > 0 ? (
                     <Text style={styles.metaLine} numberOfLines={1}>{ctx.data.website}</Text>
                   ) : null}
@@ -424,6 +451,9 @@ export function VenueListingContent({
       <VenueClaimFeedbackSheet
         visible={feedbackVisible}
         brand={brand}
+        venueId={venueId}
+        venueName={venue?.name ?? null}
+        venueFollowUpAt={followUpAt}
         accountId={user?.id ?? null}
         onClose={handleCloseFeedback}
         onResubmitted={handleResubmitted}

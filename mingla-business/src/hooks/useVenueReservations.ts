@@ -27,6 +27,7 @@ import type {
 interface ReservationRow {
   id: string;
   brand_id: string;
+  venue_id: string;
   place_pool_id: string | null;
   table_id: string | null;
   reserved_for: string;
@@ -48,11 +49,12 @@ interface ReservationRow {
 }
 
 const RESERVATION_COLUMNS =
-  "id, brand_id, place_pool_id, table_id, reserved_for, party_size, status, source, created_via, guest_name, guest_phone_e164, guest_email, consumer_user_id, occasion, guest_notes, tags, fee_cents, fee_currency, payment_status, created_at";
+  "id, brand_id, venue_id, place_pool_id, table_id, reserved_for, party_size, status, source, created_via, guest_name, guest_phone_e164, guest_email, consumer_user_id, occasion, guest_notes, tags, fee_cents, fee_currency, payment_status, created_at";
 
 const mapRow = (row: ReservationRow): Reservation => ({
   id: row.id,
   brandId: row.brand_id,
+  venueId: row.venue_id,
   placePoolId: row.place_pool_id,
   tableId: row.table_id,
   reservedFor: row.reserved_for,
@@ -74,17 +76,23 @@ const mapRow = (row: ReservationRow): Reservation => ({
 });
 
 export const venueReservationsKeys = {
-  list: (brandId: string): readonly ["venueReservations", string] =>
-    ["venueReservations", brandId] as const,
+  // META-ORCH-1255 — venue-scoped, brandId-first (brand-prefix invalidation safe).
+  list: (
+    brandId: string,
+    venueId: string,
+  ): readonly ["venueReservations", string, string] =>
+    ["venueReservations", brandId, venueId] as const,
 };
 
 export const fetchVenueReservations = async (
   brandId: string,
+  venueId: string,
 ): Promise<Reservation[]> => {
   const { data, error } = await supabase
     .from("reservations")
     .select(RESERVATION_COLUMNS)
     .eq("brand_id", brandId)
+    .eq("venue_id", venueId)
     .order("reserved_for", { ascending: true })
     .returns<ReservationRow[]>();
   if (error !== null) throw error;
@@ -93,19 +101,26 @@ export const fetchVenueReservations = async (
 
 export function useVenueReservations(
   brandId: string | null,
+  venueId: string | null,
 ): UseQueryResult<Reservation[]> {
   const { isAuthReady } = useAuth();
   const queryClient = useQueryClient();
-  const enabled = isAuthReady && brandId !== null && brandId.length > 0;
+  const enabled =
+    isAuthReady &&
+    brandId !== null &&
+    brandId.length > 0 &&
+    venueId !== null &&
+    venueId.length > 0;
 
   const query = useQuery<Reservation[]>({
-    queryKey: enabled
-      ? venueReservationsKeys.list(brandId)
-      : (["venueReservations", "disabled"] as const),
+    queryKey:
+      enabled
+        ? venueReservationsKeys.list(brandId, venueId)
+        : (["venueReservations", "disabled"] as const),
     enabled,
     staleTime: 15_000,
     queryFn: () =>
-      enabled ? fetchVenueReservations(brandId) : Promise.resolve([]),
+      enabled ? fetchVenueReservations(brandId, venueId) : Promise.resolve([]),
   });
 
   // Realtime (locked Q4): a brand-scoped postgres_changes subscription so an
@@ -114,19 +129,21 @@ export function useVenueReservations(
   // event:'*' catches insert/update/delete. Cleanup on unmount.
   useEffect(() => {
     if (!enabled) return;
+    // META-ORCH-1255 — venue-scoped realtime (still a non-PK filter — no
+    // ORCH-0931 silent-drop).
     const channel = supabase
-      .channel(`venue:reservations:${brandId}`)
+      .channel(`venue:reservations:${venueId}`)
       .on(
         "postgres_changes",
         {
           event: "*",
           schema: "public",
           table: "reservations",
-          filter: `brand_id=eq.${brandId}`,
+          filter: `venue_id=eq.${venueId}`,
         },
         () => {
           void queryClient.invalidateQueries({
-            queryKey: venueReservationsKeys.list(brandId),
+            queryKey: venueReservationsKeys.list(brandId, venueId),
           });
         },
       )
@@ -134,7 +151,7 @@ export function useVenueReservations(
     return () => {
       void supabase.removeChannel(channel);
     };
-  }, [enabled, brandId, queryClient]);
+  }, [enabled, brandId, venueId, queryClient]);
 
   return query;
 }
@@ -142,13 +159,16 @@ export function useVenueReservations(
 /** Manual create via the guarded RPC (FREE; created_via='operator'). */
 export function useCreateReservation(
   brandId: string | null,
+  venueId: string | null,
 ): UseMutationResult<void, Error, ReservationCreateInput> {
   const queryClient = useQueryClient();
   return useMutation<void, Error, ReservationCreateInput>({
     mutationFn: async (input: ReservationCreateInput): Promise<void> => {
       if (brandId === null) throw new Error("brand_required");
+      if (venueId === null) throw new Error("venue_required");
+      // META-ORCH-1255 — biz_reservation_create is venue-keyed (Leg A as-built).
       const { error } = await supabase.rpc("biz_reservation_create", {
-        p_brand_id: brandId,
+        p_venue_id: venueId,
         p_reserved_for: input.reservedFor,
         p_party_size: input.partySize,
         p_source: input.source,
@@ -164,9 +184,9 @@ export function useCreateReservation(
       if (error !== null) throw error as unknown as Error;
     },
     onSuccess: () => {
-      if (brandId !== null) {
+      if (brandId !== null && venueId !== null) {
         void queryClient.invalidateQueries({
-          queryKey: venueReservationsKeys.list(brandId),
+          queryKey: venueReservationsKeys.list(brandId, venueId),
         });
       }
     },
@@ -183,6 +203,7 @@ export interface ReservationTransitionVars {
 /** Lifecycle transition via the guarded RPC (legal transitions enforced server-side). */
 export function useTransitionReservation(
   brandId: string | null,
+  venueId: string | null,
 ): UseMutationResult<void, Error, ReservationTransitionVars> {
   const queryClient = useQueryClient();
   return useMutation<void, Error, ReservationTransitionVars>({
@@ -196,9 +217,9 @@ export function useTransitionReservation(
       if (error !== null) throw error as unknown as Error;
     },
     onSuccess: () => {
-      if (brandId !== null) {
+      if (brandId !== null && venueId !== null) {
         void queryClient.invalidateQueries({
-          queryKey: venueReservationsKeys.list(brandId),
+          queryKey: venueReservationsKeys.list(brandId, venueId),
         });
       }
     },

@@ -31,6 +31,7 @@ import {
   typography,
 } from "../../constants/designSystem";
 import { useCurrentBrand } from "../../hooks/useCurrentBrand";
+import { useVenueListing } from "../../hooks/useVenueListings";
 import { useCurrentBrandRole } from "../../hooks/useCurrentBrandRole";
 import { useBrandHours, useUpsertBrandHours } from "../../hooks/useBrandHours";
 import { useBrandPlaceAuthoringContext } from "../../hooks/useBrandPlacePipelineState";
@@ -98,26 +99,32 @@ function Section({ title, children }: SectionProps): React.ReactElement {
 
 export interface VenueSettingsModuleProps {
   brandId: string | null;
+  /** META-ORCH-1255 — the venue this Settings module manages. */
+  venueId?: string | null;
   /** Route the operator to payout onboarding when the paid-fee gate blocks. */
   testID?: string;
 }
 
 export function VenueSettingsModule({
   brandId,
+  venueId = null,
   testID,
 }: VenueSettingsModuleProps): React.ReactElement {
   const router = useRouter();
   const brand = useCurrentBrand();
   const { rank } = useCurrentBrandRole(brandId);
   const canMutate = rank >= MANAGER_PLUS_RANK;
-  const placePoolId = brand?.placePoolId ?? null;
+  // META-ORCH-1255 — the place pointer lives on the VENUE row (one owner per
+  // truth); brands.place_pool_id is legacy-inert.
+  const venueQuery = useVenueListing(venueId);
+  const placePoolId = venueQuery.data?.placePoolId ?? null;
 
-  const settingsQuery = useVenueReservationSettings(brandId);
+  const settingsQuery = useVenueReservationSettings(brandId, venueId);
   const settings = settingsQuery.data ?? null;
   const reservationsEnabled = settings?.reservationsEnabled ?? false;
 
-  const setEnabled = useSetReservationsEnabled(brandId);
-  const updateFee = useUpdateReservationFee(brandId);
+  const setEnabled = useSetReservationsEnabled(brandId, venueId);
+  const updateFee = useUpdateReservationFee(brandId, venueId);
 
   const currency = normalizeCurrency(brand?.defaultCurrency);
   const readiness = brandPayoutReadiness({
@@ -221,8 +228,8 @@ export function VenueSettingsModule({
   }, [feeActive, draftCents, currency]);
 
   // ----- ORCH-1186-A: Opening hours editor (single owner = brand_hours) -------
-  const hoursQuery = useBrandHours(brandId);
-  const upsertHours = useUpsertBrandHours(brandId);
+  const hoursQuery = useBrandHours(brandId, venueId);
+  const upsertHours = useUpsertBrandHours(brandId, venueId);
   const [hoursDraft, setHoursDraft] = useState<BrandHourEntry[] | null>(null);
   const [hoursSaved, setHoursSaved] = useState<boolean>(false);
   const [hoursError, setHoursError] = useState<boolean>(false);
@@ -282,7 +289,7 @@ export function VenueSettingsModule({
   }, [hoursSaved]);
 
   // ----- ORCH-1186-A: AI / photos / vibes read-only readout + entry point -----
-  const authoringCtx = useBrandPlaceAuthoringContext(brandId, placePoolId);
+  const authoringCtx = useBrandPlaceAuthoringContext(brandId, placePoolId, venueId);
   const galleryCount = authoringCtx.data?.gallery_urls?.length ?? 0;
   const scoreRows = useMemo(() => {
     const scores = authoringCtx.data?.ai_signal_scores ?? null;
@@ -299,11 +306,11 @@ export function VenueSettingsModule({
   }, [brandId, router]);
 
   const goToDeckReadiness = useCallback((): void => {
-    if (brandId === null || placePoolId === null) return;
+    if (brandId === null || placePoolId === null || venueId === null) return;
     router.push(
-      `/venue/deck-readiness?brand_id=${brandId}&place_pool_id=${placePoolId}&focus=review&fix=review_pipeline` as never,
+      `/venue/deck-readiness?brand_id=${brandId}&place_pool_id=${placePoolId}&venue_id=${venueId}&focus=review&fix=review_pipeline` as never,
     );
-  }, [brandId, placePoolId, router]);
+  }, [brandId, placePoolId, venueId, router]);
 
   // ORCH-1190 #1 — full-width parity. The Settings module previously capped its
   // content column at `venueSettingsMaxWidth` on wide desktop, so it did NOT fill
@@ -515,15 +522,19 @@ export function VenueSettingsModule({
 
       {/* 5 — Venue details (live summary + working edit affordance). */}
       <Section title="Venue details">
-        <Text style={styles.rowTitle}>{brand?.displayName ?? "Your venue"}</Text>
-        {brand?.tagline != null && brand.tagline.length > 0 ? (
-          <Text style={styles.rowSub}>{brand.tagline}</Text>
+        <Text style={styles.rowTitle}>
+          {venueQuery.data?.name ?? brand?.displayName ?? "Your venue"}
+        </Text>
+        {venueQuery.data?.address != null ? (
+          <Text style={styles.rowSub}>{venueQuery.data.address}</Text>
         ) : null}
-        {brand?.city != null ? (
-          <Text style={styles.rowSub}>{brand.city}</Text>
+        {venueQuery.data?.city != null ? (
+          <Text style={styles.rowSub}>{venueQuery.data.city}</Text>
         ) : null}
-        {brand?.venueCategory != null ? (
-          <Text style={styles.rowSub}>{CATEGORY_LABEL[brand.venueCategory]}</Text>
+        {venueQuery.data?.venueCategory != null ? (
+          <Text style={styles.rowSub}>
+            {CATEGORY_LABEL[venueQuery.data.venueCategory]}
+          </Text>
         ) : null}
         {canMutate ? (
           <Button

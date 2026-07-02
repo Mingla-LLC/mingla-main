@@ -51,18 +51,21 @@ import type { VenueCapacityRule } from "../../types/venueReservation";
 
 export interface VenueCapacityRulesPanelProps {
   brandId: string | null;
+  /** META-ORCH-1255 — the venue this panel is scoped to. */
+  venueId?: string | null;
   canMutate: boolean;
   testID?: string;
 }
 
 export function VenueCapacityRulesPanel({
   brandId,
+  venueId = null,
   canMutate,
   testID,
 }: VenueCapacityRulesPanelProps): React.ReactElement {
   const [open, setOpen] = useState<boolean>(false);
-  const rulesQuery = useVenueCapacityRules(brandId);
-  const upsert = useUpsertCapacityRule(brandId);
+  const rulesQuery = useVenueCapacityRules(brandId, venueId);
+  const upsert = useUpsertCapacityRule(brandId, venueId);
 
   const byKind = useMemo<Record<string, VenueCapacityRule | undefined>>(() => {
     const map: Record<string, VenueCapacityRule | undefined> = {};

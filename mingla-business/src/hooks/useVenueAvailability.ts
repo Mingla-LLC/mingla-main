@@ -32,6 +32,7 @@ import type {
 
 interface VenueAvailabilityConfigRow {
   brand_id: string;
+  venue_id: string;
   service_periods: ServicePeriod[] | null;
   turn_times: Record<string, number> | null;
   buffer_minutes: number;
@@ -42,12 +43,13 @@ interface VenueAvailabilityConfigRow {
 }
 
 const CONFIG_COLUMNS =
-  "brand_id, service_periods, turn_times, buffer_minutes, max_reservations_per_slot, slot_granularity_minutes, advance_window_days, min_notice_minutes";
+  "brand_id, venue_id, service_periods, turn_times, buffer_minutes, max_reservations_per_slot, slot_granularity_minutes, advance_window_days, min_notice_minutes";
 
 const mapConfigRow = (
   row: VenueAvailabilityConfigRow,
 ): VenueAvailabilityConfig => ({
   brandId: row.brand_id,
+  venueId: row.venue_id,
   servicePeriods: row.service_periods ?? [],
   turnTimes: row.turn_times ?? {},
   bufferMinutes: row.buffer_minutes,
@@ -57,26 +59,42 @@ const mapConfigRow = (
   minNoticeMinutes: row.min_notice_minutes,
 });
 
+// META-ORCH-1255 — keys are venue-scoped, brandId-FIRST so existing
+// brand-prefix invalidations (e.g. useBrandHours' pinned
+// `venueAvailabilityKeys.config(brandId)`) keep matching every venue of the
+// brand via react-query prefix matching.
 export const venueAvailabilityKeys = {
-  config: (brandId: string): readonly ["venueAvailabilityConfig", string] =>
-    ["venueAvailabilityConfig", brandId] as const,
-  blackouts: (brandId: string): readonly ["venueBlackouts", string] =>
-    ["venueBlackouts", brandId] as const,
-  slots: (
+  config: (
     brandId: string,
+    venueId?: string,
+  ): readonly ("venueAvailabilityConfig" | string)[] =>
+    venueId === undefined
+      ? (["venueAvailabilityConfig", brandId] as const)
+      : (["venueAvailabilityConfig", brandId, venueId] as const),
+  blackouts: (
+    brandId: string,
+    venueId?: string,
+  ): readonly ("venueBlackouts" | string)[] =>
+    venueId === undefined
+      ? (["venueBlackouts", brandId] as const)
+      : (["venueBlackouts", brandId, venueId] as const),
+  slots: (
+    venueScopeId: string,
     date: string,
     partySize: number,
   ): readonly ["venueAvailableSlots", string, string, number] =>
-    ["venueAvailableSlots", brandId, date, partySize] as const,
+    ["venueAvailableSlots", venueScopeId, date, partySize] as const,
 };
 
 export const fetchVenueAvailabilityConfig = async (
   brandId: string,
+  venueId: string,
 ): Promise<VenueAvailabilityConfig | null> => {
   const { data, error } = await supabase
     .from("venue_availability_config")
     .select(CONFIG_COLUMNS)
     .eq("brand_id", brandId)
+    .eq("venue_id", venueId)
     .maybeSingle<VenueAvailabilityConfigRow>();
   if (error !== null) throw error;
   return data === null ? null : mapConfigRow(data);
@@ -84,31 +102,40 @@ export const fetchVenueAvailabilityConfig = async (
 
 export function useVenueAvailabilityConfig(
   brandId: string | null,
+  venueId: string | null,
 ): UseQueryResult<VenueAvailabilityConfig | null> {
   const { isAuthReady } = useAuth();
-  const enabled = isAuthReady && brandId !== null && brandId.length > 0;
+  const enabled =
+    isAuthReady &&
+    brandId !== null &&
+    brandId.length > 0 &&
+    venueId !== null &&
+    venueId.length > 0;
   return useQuery<VenueAvailabilityConfig | null>({
     queryKey: enabled
-      ? venueAvailabilityKeys.config(brandId)
+      ? venueAvailabilityKeys.config(brandId, venueId)
       : (["venueAvailabilityConfig", "disabled"] as const),
     enabled,
     staleTime: 30_000,
     queryFn: () =>
       enabled
-        ? fetchVenueAvailabilityConfig(brandId)
+        ? fetchVenueAvailabilityConfig(brandId, venueId)
         : Promise.resolve(null),
   });
 }
 
 export function useUpsertVenueAvailabilityConfig(
   brandId: string | null,
+  venueId: string | null,
 ): UseMutationResult<void, Error, VenueAvailabilityConfigPatch> {
   const queryClient = useQueryClient();
   return useMutation<void, Error, VenueAvailabilityConfigPatch>({
     mutationFn: async (patch: VenueAvailabilityConfigPatch): Promise<void> => {
       if (brandId === null) throw new Error("brand_required");
+      if (venueId === null) throw new Error("venue_required");
       const row: Record<string, unknown> = {
         brand_id: brandId,
+        venue_id: venueId,
         updated_at: new Date().toISOString(),
       };
       if (patch.servicePeriods !== undefined) {
@@ -132,13 +159,14 @@ export function useUpsertVenueAvailabilityConfig(
       }
       const { error } = await supabase
         .from("venue_availability_config")
-        .upsert(row, { onConflict: "brand_id" });
+        // META-ORCH-1255 — the UNIQUE moved brand→venue (M3).
+        .upsert(row, { onConflict: "venue_id" });
       if (error !== null) throw error as unknown as Error;
     },
     onSuccess: () => {
-      if (brandId !== null) {
+      if (brandId !== null && venueId !== null) {
         void queryClient.invalidateQueries({
-          queryKey: venueAvailabilityKeys.config(brandId),
+          queryKey: venueAvailabilityKeys.config(brandId, venueId),
         });
       }
     },
@@ -150,6 +178,7 @@ export function useUpsertVenueAvailabilityConfig(
 interface VenueBlackoutRow {
   id: string;
   brand_id: string;
+  venue_id: string;
   date_start: string;
   date_end: string;
   reason: string | null;
@@ -159,11 +188,12 @@ interface VenueBlackoutRow {
 }
 
 const BLACKOUT_COLUMNS =
-  "id, brand_id, date_start, date_end, reason, applies_to, zone, table_id";
+  "id, brand_id, venue_id, date_start, date_end, reason, applies_to, zone, table_id";
 
 const mapBlackoutRow = (row: VenueBlackoutRow): VenueBlackout => ({
   id: row.id,
   brandId: row.brand_id,
+  venueId: row.venue_id,
   dateStart: row.date_start,
   dateEnd: row.date_end,
   reason: row.reason,
@@ -174,11 +204,13 @@ const mapBlackoutRow = (row: VenueBlackoutRow): VenueBlackout => ({
 
 export const fetchVenueBlackouts = async (
   brandId: string,
+  venueId: string,
 ): Promise<VenueBlackout[]> => {
   const { data, error } = await supabase
     .from("venue_blackouts")
     .select(BLACKOUT_COLUMNS)
     .eq("brand_id", brandId)
+    .eq("venue_id", venueId)
     .order("date_start", { ascending: true })
     .returns<VenueBlackoutRow[]>();
   if (error !== null) throw error;
@@ -187,29 +219,38 @@ export const fetchVenueBlackouts = async (
 
 export function useVenueBlackouts(
   brandId: string | null,
+  venueId: string | null,
 ): UseQueryResult<VenueBlackout[]> {
   const { isAuthReady } = useAuth();
-  const enabled = isAuthReady && brandId !== null && brandId.length > 0;
+  const enabled =
+    isAuthReady &&
+    brandId !== null &&
+    brandId.length > 0 &&
+    venueId !== null &&
+    venueId.length > 0;
   return useQuery<VenueBlackout[]>({
     queryKey: enabled
-      ? venueAvailabilityKeys.blackouts(brandId)
+      ? venueAvailabilityKeys.blackouts(brandId, venueId)
       : (["venueBlackouts", "disabled"] as const),
     enabled,
     staleTime: 30_000,
     queryFn: () =>
-      enabled ? fetchVenueBlackouts(brandId) : Promise.resolve([]),
+      enabled ? fetchVenueBlackouts(brandId, venueId) : Promise.resolve([]),
   });
 }
 
 export function useUpsertVenueBlackout(
   brandId: string | null,
+  venueId: string | null,
 ): UseMutationResult<void, Error, VenueBlackoutUpsert> {
   const queryClient = useQueryClient();
   return useMutation<void, Error, VenueBlackoutUpsert>({
     mutationFn: async (input: VenueBlackoutUpsert): Promise<void> => {
       if (brandId === null) throw new Error("brand_required");
+      if (venueId === null) throw new Error("venue_required");
       const row: Record<string, unknown> = {
         brand_id: brandId,
+        venue_id: venueId,
         date_start: input.dateStart,
         date_end: input.dateEnd,
         reason: input.reason,
@@ -223,9 +264,9 @@ export function useUpsertVenueBlackout(
       if (error !== null) throw error as unknown as Error;
     },
     onSuccess: () => {
-      if (brandId !== null) {
+      if (brandId !== null && venueId !== null) {
         void queryClient.invalidateQueries({
-          queryKey: venueAvailabilityKeys.blackouts(brandId),
+          queryKey: venueAvailabilityKeys.blackouts(brandId, venueId),
         });
       }
     },
@@ -234,6 +275,7 @@ export function useUpsertVenueBlackout(
 
 export function useDeleteVenueBlackout(
   brandId: string | null,
+  venueId: string | null,
 ): UseMutationResult<void, Error, string> {
   const queryClient = useQueryClient();
   return useMutation<void, Error, string>({
@@ -247,9 +289,9 @@ export function useDeleteVenueBlackout(
       if (error !== null) throw error as unknown as Error;
     },
     onSuccess: () => {
-      if (brandId !== null) {
+      if (brandId !== null && venueId !== null) {
         void queryClient.invalidateQueries({
-          queryKey: venueAvailabilityKeys.blackouts(brandId),
+          queryKey: venueAvailabilityKeys.blackouts(brandId, venueId),
         });
       }
     },
@@ -270,14 +312,20 @@ interface AvailableSlotRow {
  * list (I-PROPOSED-1148-AVAILABILITY-ENGINE-SOLE-SLOT-SOURCE).
  */
 export const fetchAvailableSlots = async (
-  brandId: string,
+  scope: { brandId: string | null; venueId: string | null },
   date: string,
   partySize: number,
 ): Promise<AvailableSlot[]> => {
+  // META-ORCH-1255 — the engine RPC is ONE function with optional named params
+  // (Leg A as-built, deviation D2): pass p_venue_id when the venue scope is
+  // known; the legacy p_brand_id arm resolves single-venue brands only
+  // ([TRANSITIONAL-1] shim — fail-soft empty list on multi-venue brands).
   const { data, error } = await supabase.rpc("pg_venue_available_slots", {
-    p_brand_id: brandId,
     p_date: date,
     p_party_size: partySize,
+    ...(scope.venueId !== null && scope.venueId.length > 0
+      ? { p_venue_id: scope.venueId }
+      : { p_brand_id: scope.brandId }),
   });
   if (error !== null) throw error;
   const rows = (data ?? []) as AvailableSlotRow[];
@@ -291,26 +339,29 @@ export const fetchAvailableSlots = async (
 
 export function useAvailableSlots(
   brandId: string | null,
+  venueId: string | null,
   date: string | null,
   partySize: number | null,
 ): UseQueryResult<AvailableSlot[]> {
   const { isAuthReady } = useAuth();
+  const scopeId = venueId ?? brandId;
   const enabled =
     isAuthReady &&
-    brandId !== null &&
-    brandId.length > 0 &&
+    scopeId !== null &&
+    scopeId.length > 0 &&
     date !== null &&
     partySize !== null &&
     partySize >= 1;
   return useQuery<AvailableSlot[]>({
-    queryKey: enabled
-      ? venueAvailabilityKeys.slots(brandId, date, partySize)
-      : (["venueAvailableSlots", "disabled"] as const),
+    queryKey:
+      enabled && scopeId !== null
+        ? venueAvailabilityKeys.slots(scopeId, date, partySize)
+        : (["venueAvailableSlots", "disabled"] as const),
     enabled,
     staleTime: 15_000,
     queryFn: () =>
       enabled
-        ? fetchAvailableSlots(brandId, date, partySize)
+        ? fetchAvailableSlots({ brandId, venueId }, date, partySize)
         : Promise.resolve([]),
   });
 }

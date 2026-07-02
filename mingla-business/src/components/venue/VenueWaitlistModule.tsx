@@ -50,21 +50,24 @@ const ZONE_LABEL: Record<VenueTableZone, string> = {
 
 export interface VenueWaitlistModuleProps {
   brandId: string | null;
+  /** META-ORCH-1255 — the venue this module is scoped to. */
+  venueId?: string | null;
   testID?: string;
 }
 
 export function VenueWaitlistModule({
   brandId,
+  venueId = null,
   testID,
 }: VenueWaitlistModuleProps): React.ReactElement {
   const { rank } = useCurrentBrandRole(brandId);
   const canMutate = rank >= MANAGER_PLUS_RANK;
 
-  const waitlistQuery = useVenueWaitlist(brandId);
-  const add = useAddToWaitlist(brandId);
-  const notify = useNotifyWaitlist(brandId);
-  const convert = useConvertWaitlist(brandId);
-  const markLost = useMarkWaitlistLost(brandId);
+  const waitlistQuery = useVenueWaitlist(brandId, venueId);
+  const add = useAddToWaitlist(brandId, venueId);
+  const notify = useNotifyWaitlist(brandId, venueId);
+  const convert = useConvertWaitlist(brandId, venueId);
+  const markLost = useMarkWaitlistLost(brandId, venueId);
 
   const [addOpen, setAddOpen] = useState<boolean>(false);
   const [converting, setConverting] = useState<WaitlistEntry | null>(null);
@@ -221,6 +224,7 @@ export function VenueWaitlistModule({
         saving={add.isPending}
       />
       <WaitlistConvertSheet
+        venueId={venueId}
         visible={converting !== null}
         onClose={() => setConverting(null)}
         brandId={brandId}

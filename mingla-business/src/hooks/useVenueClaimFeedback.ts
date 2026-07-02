@@ -27,13 +27,16 @@ import {
   resubmitVenueClaim,
   type VenueClaimFeedbackItem,
 } from "../services/venueClaimService";
+import { venueListingKeys } from "./useVenueListings";
 import { useAuth } from "../context/AuthContext";
 
 const DISABLED_KEY = ["venue-claim-feedback-disabled"] as const;
 
 interface UseVenueClaimFeedbackArgs {
   brandId: string | null;
-  /** The brand's claim_follow_up_at stamp — gates the query. */
+  /** META-ORCH-1255 — the feedback round is keyed per VENUE. */
+  venueId: string | null;
+  /** The VENUE's claim_follow_up_at stamp — gates the query. */
   followUpAt: string | null | undefined;
   /** The account id, for re-submit list-cache invalidation. */
   accountId?: string | null;
@@ -58,7 +61,7 @@ export interface UseVenueClaimFeedbackResult {
     { previous: VenueClaimFeedbackItem[] | undefined }
   >;
   resubmit: UseMutationResult<
-    { ok: boolean; brand_id: string; resubmitted_round: number },
+    { ok: boolean; venue_id: string; resubmitted_round: number },
     Error,
     void,
     unknown
@@ -67,17 +70,24 @@ export interface UseVenueClaimFeedbackResult {
 
 export function useVenueClaimFeedback({
   brandId,
+  venueId,
   followUpAt,
   accountId,
 }: UseVenueClaimFeedbackArgs): UseVenueClaimFeedbackResult {
   const queryClient = useQueryClient();
   const { isAuthReady } = useAuth();
-  const enabled = isAuthReady && brandId !== null && Boolean(followUpAt);
-  const feedbackKey = brandId !== null ? brandKeys.feedback(brandId) : null;
+  const enabled =
+    isAuthReady && brandId !== null && venueId !== null && Boolean(followUpAt);
+  // META-ORCH-1255 — venue-scoped key UNDER the brand feedback prefix, so the
+  // existing brand-level invalidations (useVenueClaimRefresh) still reach it.
+  const feedbackKey =
+    brandId !== null && venueId !== null
+      ? ([...brandKeys.feedback(brandId), venueId] as const)
+      : null;
 
   const query = useQuery<VenueClaimFeedbackItem[], Error>({
     queryKey: enabled && feedbackKey !== null ? feedbackKey : DISABLED_KEY,
-    queryFn: () => fetchVenueClaimFeedback(brandId as string),
+    queryFn: () => fetchVenueClaimFeedback(venueId as string),
     enabled,
     staleTime: 30_000,
   });
@@ -132,16 +142,25 @@ export function useVenueClaimFeedback({
   });
 
   const resubmit = useMutation<
-    { ok: boolean; brand_id: string; resubmitted_round: number },
+    { ok: boolean; venue_id: string; resubmitted_round: number },
     Error,
     void,
     unknown
   >({
-    mutationFn: () => resubmitVenueClaim(brandId as string),
+    mutationFn: () => resubmitVenueClaim(venueId as string),
     onSuccess: () => {
-      // The tile reverts to plain pending once claimFollowUpAt clears: invalidate
-      // the brand detail (drives the variant), the brand list, and the feedback.
+      // The tile reverts to plain pending once claimFollowUpAt clears:
+      // invalidate the VENUE row (drives the variant), the brand's listing
+      // list, the brand detail (legacy consumers), and the feedback.
+      if (venueId !== null) {
+        void queryClient.invalidateQueries({
+          queryKey: venueListingKeys.detail(venueId),
+        });
+      }
       if (brandId !== null) {
+        void queryClient.invalidateQueries({
+          queryKey: venueListingKeys.byBrand(brandId),
+        });
         void queryClient.invalidateQueries({
           queryKey: brandKeys.detail(brandId),
         });
@@ -176,14 +195,18 @@ export function useVenueClaimFeedback({
  */
 export function useVenueClaimOpenCount(
   brandId: string | null,
+  venueId: string | null,
   followUpAt: string | null | undefined,
 ): number {
   const { isAuthReady } = useAuth();
-  const enabled = isAuthReady && brandId !== null && Boolean(followUpAt);
+  const enabled =
+    isAuthReady && brandId !== null && venueId !== null && Boolean(followUpAt);
   const query = useQuery<VenueClaimFeedbackItem[], Error>({
     queryKey:
-      enabled && brandId !== null ? brandKeys.feedback(brandId) : DISABLED_KEY,
-    queryFn: () => fetchVenueClaimFeedback(brandId as string),
+      enabled && brandId !== null && venueId !== null
+        ? ([...brandKeys.feedback(brandId), venueId] as const)
+        : DISABLED_KEY,
+    queryFn: () => fetchVenueClaimFeedback(venueId as string),
     enabled,
     staleTime: 30_000,
   });

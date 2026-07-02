@@ -25,6 +25,7 @@ import type {
 interface VenueCapacityRuleRow {
   id: string;
   brand_id: string;
+  venue_id: string;
   kind: VenueCapacityRuleKind;
   params: Record<string, unknown> | null;
   table_id: string | null;
@@ -32,11 +33,12 @@ interface VenueCapacityRuleRow {
   is_active: boolean;
 }
 
-const RULE_COLUMNS = "id, brand_id, kind, params, table_id, zone, is_active";
+const RULE_COLUMNS = "id, brand_id, venue_id, kind, params, table_id, zone, is_active";
 
 const mapRow = (row: VenueCapacityRuleRow): VenueCapacityRule => ({
   id: row.id,
   brandId: row.brand_id,
+  venueId: row.venue_id,
   kind: row.kind,
   params: row.params ?? {},
   tableId: row.table_id,
@@ -45,17 +47,23 @@ const mapRow = (row: VenueCapacityRuleRow): VenueCapacityRule => ({
 });
 
 export const venueCapacityRulesKeys = {
-  list: (brandId: string): readonly ["venueCapacityRules", string] =>
-    ["venueCapacityRules", brandId] as const,
+  // META-ORCH-1255 — venue-scoped, brandId-first (brand-prefix invalidation safe).
+  list: (
+    brandId: string,
+    venueId: string,
+  ): readonly ["venueCapacityRules", string, string] =>
+    ["venueCapacityRules", brandId, venueId] as const,
 };
 
 export const fetchVenueCapacityRules = async (
   brandId: string,
+  venueId: string,
 ): Promise<VenueCapacityRule[]> => {
   const { data, error } = await supabase
     .from("venue_capacity_rules")
     .select(RULE_COLUMNS)
     .eq("brand_id", brandId)
+    .eq("venue_id", venueId)
     .returns<VenueCapacityRuleRow[]>();
   if (error !== null) throw error;
   return (data ?? []).map(mapRow);
@@ -63,17 +71,25 @@ export const fetchVenueCapacityRules = async (
 
 export function useVenueCapacityRules(
   brandId: string | null,
+  venueId: string | null,
 ): UseQueryResult<VenueCapacityRule[]> {
   const { isAuthReady } = useAuth();
-  const enabled = isAuthReady && brandId !== null && brandId.length > 0;
+  const enabled =
+    isAuthReady &&
+    brandId !== null &&
+    brandId.length > 0 &&
+    venueId !== null &&
+    venueId.length > 0;
   return useQuery<VenueCapacityRule[]>({
     queryKey: enabled
-      ? venueCapacityRulesKeys.list(brandId)
+      ? venueCapacityRulesKeys.list(brandId, venueId)
       : (["venueCapacityRules", "disabled"] as const),
     enabled,
     staleTime: 30_000,
     queryFn: () =>
-      enabled ? fetchVenueCapacityRules(brandId) : Promise.resolve([]),
+      enabled
+        ? fetchVenueCapacityRules(brandId, venueId)
+        : Promise.resolve([]),
   });
 }
 
@@ -87,13 +103,16 @@ export interface CapacityRuleUpsert {
 
 export function useUpsertCapacityRule(
   brandId: string | null,
+  venueId: string | null,
 ): UseMutationResult<void, Error, CapacityRuleUpsert> {
   const queryClient = useQueryClient();
   return useMutation<void, Error, CapacityRuleUpsert>({
     mutationFn: async (input: CapacityRuleUpsert): Promise<void> => {
       if (brandId === null) throw new Error("brand_required");
+      if (venueId === null) throw new Error("venue_required");
       const row: Record<string, unknown> = {
         brand_id: brandId,
+        venue_id: venueId,
         kind: input.kind,
         params: input.params,
         is_active: input.isActive,
@@ -106,9 +125,9 @@ export function useUpsertCapacityRule(
       if (error !== null) throw error as unknown as Error;
     },
     onSuccess: () => {
-      if (brandId !== null) {
+      if (brandId !== null && venueId !== null) {
         void queryClient.invalidateQueries({
-          queryKey: venueCapacityRulesKeys.list(brandId),
+          queryKey: venueCapacityRulesKeys.list(brandId, venueId),
         });
       }
     },
