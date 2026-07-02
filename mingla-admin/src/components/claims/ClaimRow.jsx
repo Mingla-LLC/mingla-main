@@ -98,9 +98,18 @@ export function ClaimRow({
 }
 
 function NameCell({ row }) {
+  // META-ORCH-1255(C): queue rows are venue_listings rows; the parent brand
+  // rides the embedded `brand:brand_id(...)` join ("{venue} — {brand}").
+  const brandName = row.brand?.name ?? null;
   return (
     <>
       {row.name}
+      {brandName ? (
+        <span className="text-[var(--color-text-secondary)] font-normal">
+          {" "}
+          — {brandName}
+        </span>
+      ) : null}
       <div className="text-xs font-normal text-[var(--color-text-tertiary)] mt-0.5">
         {CAT_LABELS[row.venue_category] ?? row.venue_category ?? "—"}
       </div>

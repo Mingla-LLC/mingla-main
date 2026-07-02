@@ -181,10 +181,12 @@ export function ClaimsPage() {
     // META-ORCH-1062 — fetch photos + scores + missing fields in parallel.
     void loadBundle(row.id);
     try {
+      // META-ORCH-1255(C): hours rows are venue-scoped (M3); the queue row
+      // id IS the venue_listings id.
       const { data, error } = await supabase
         .from("brand_hours")
         .select("weekday,open_time,close_time,is_closed")
-        .eq("brand_id", row.id)
+        .eq("venue_id", row.id)
         .order("weekday", { ascending: true });
       if (error) throw error;
       setHours(data ?? []);
@@ -383,7 +385,9 @@ export function ClaimsPage() {
         ? `https://www.google.com/maps/search/?api=1&query_place_id=${encodeURIComponent(detail.google_place_id)}`
         : null))
     : null;
-  const isDuplicateOfApproved = Boolean(detail?.duplicate_of_brand_id);
+  // META-ORCH-1255(C): the duplicate pointer is venue-keyed (M4 sets
+  // duplicate_of_venue_id on the venue row).
+  const isDuplicateOfApproved = Boolean(detail?.duplicate_of_venue_id);
   const canApprove =
     Boolean(detail?.marked_called_at) && !isDuplicateOfApproved;
 
@@ -500,7 +504,7 @@ export function ClaimsPage() {
                       key={r.id}
                       row={r}
                       hasDuplicateSiblings={siblings.length > 1}
-                      isDuplicateOfApproved={Boolean(r.duplicate_of_brand_id)}
+                      isDuplicateOfApproved={Boolean(r.duplicate_of_venue_id)}
                       onSelect={() => openDetail(r)}
                     />
                   );
@@ -511,7 +515,17 @@ export function ClaimsPage() {
         )}
       </SectionCard>
 
-      <Modal open={!!detail} onClose={closeDetail} title={detail?.name ?? "Venue"}>
+      <Modal
+        open={!!detail}
+        onClose={closeDetail}
+        title={
+          detail
+            ? detail.brand?.name
+              ? `${detail.name} — ${detail.brand.name}`
+              : detail.name
+            : "Venue"
+        }
+      >
         <ModalBody>
           {!detail ? null : (
             <div className="space-y-4 text-sm">

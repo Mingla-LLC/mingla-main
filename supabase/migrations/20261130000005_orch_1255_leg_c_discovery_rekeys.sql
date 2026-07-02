@@ -759,4 +759,19 @@ COMMENT ON VIEW public.public_menus_view IS
   'No ordering/cart/payment. security_invoker=false so anon reads scoped '
   'output, never the brands/venue_listings tables.';
 
+-- ---------------------------------------------------------------------------
+-- 6. Admin brand-name read for the claims queue (Leg C forced cascade).
+--    The SPEC's queue re-point embeds `brand:brand_id(id,name,slug)` on the
+--    venue_listings read, but PostgREST embedded rows are filtered by the
+--    JOINED table's RLS and brands has NO admin SELECT policy — the parent
+--    brand columns would be silently NULL for every admin (SC-13 requires
+--    "venue + brand names"). Mirror of the M1 venue_listings admin-read
+--    policy + the existing "Admins can read brand_hours for operations"
+--    precedent. READ-ONLY: no admin write path on brands is added.
+-- ---------------------------------------------------------------------------
+DROP POLICY IF EXISTS "brands admin can read" ON public.brands;
+CREATE POLICY "brands admin can read" ON public.brands
+  FOR SELECT TO authenticated
+  USING (public.is_admin_user());
+
 COMMIT;
