@@ -12,14 +12,24 @@
  * live reviewer token loads 2 brands via HTTP 200); the failure is purely the
  * client attach-timing on the setSession path.
  *
- * This test proves BOTH halves of the fix at the unit level:
- *   PART A (deterministic at source): the reviewer branch WAITS — via
- *     awaitSessionAttached (the exact mechanism it calls after setSession) — until
- *     getSession() reports the token BEFORE returning success (so the UI never
- *     navigates while the token is unattached).
+ * REVISED (ORCH-1254 auth-lock deadlock): on-device runtime diagnostics proved the
+ * TRUE root cause is a GoTrue AUTH-LOCK DEADLOCK, not a token-attach timing race —
+ * `supabase.auth.getSession()` in the getBrands precheck HANGS to its 5s timeout
+ * because the onAuthStateChange callback holds the auth lock across its awaits. The
+ * original ORCH-1254 "Part A" cure (polling getSession() after setSession) actually
+ * CONTENDED that lock and worsened the hang, so it was removed; the real cure lives
+ * in AuthContext.authLockDeadlock.orch1254.test.ts (deferring the callback's
+ * Supabase side-effects out of the lock via setTimeout).
+ *
+ * This file now proves the surviving halves at the unit level:
+ *   PART A (util contract, still used by useBrands): awaitSessionAttached resolves
+ *     only once getSession() reports a token — the cold-start settle gate useBrands
+ *     still relies on (this is NOT the reviewer branch anymore).
  *   PART B (resilient defense-in-depth): a React Query brands read that throws
  *     BrandsAuthSessionNotAttachedError on the first attempt(s) RETRIES (scoped to
  *     that transient) and ultimately SUCCEEDS with the 2 brands.
+ *   REVISED wiring guard: the reviewer branch NO LONGER polls getSession() after
+ *     setSession (the harmful poll + its import/constant are gone).
  *
  * fails-on-revert: see ORCH-1254 test report line in the PR body.
  */
@@ -176,21 +186,31 @@ describe("ORCH-1254 PART B — useBrands retries the not-attached transient and 
   });
 });
 
-describe("ORCH-1254 PART A wiring — the reviewer branch awaits token attach before returning success", () => {
-  test("AuthContext reviewer branch calls awaitSessionAttached after setSession, before returning { error: null } (regression guard)", () => {
+describe("ORCH-1254 (revised) — the reviewer branch does NOT poll getSession() after setSession (auth-lock deadlock cure)", () => {
+  test("AuthContext reviewer branch returns success right after setSession without an inline getSession() poll (the token-attach poll CONTENDED the GoTrue lock and re-created the deadlock)", () => {
+    // Runtime diagnostics (on-device) proved the reviewer failure was a GoTrue
+    // auth-lock DEADLOCK, not a token-attach timing race: the onAuthStateChange
+    // callback held the auth lock across its awaits, so the getBrands getSession()
+    // precheck hung to its 5s timeout. Polling getSession() (awaitSessionAttached)
+    // right after setSession() — while the SIGNED_IN callback still held the lock —
+    // CONTENDED that lock and worsened the hang. The real cure is deferring the
+    // callback's Supabase side-effects out of the lock (asserted in
+    // AuthContext.authLockDeadlock.orch1254.test.ts). This guards the removal of the
+    // harmful poll so it is not re-introduced.
     const source = readFileSync(
       path.resolve(__dirname, "..", "..", "context", "AuthContext.tsx"),
       "utf8",
     );
-    // The setSession() call must be followed by the token-attach wait, which must
-    // precede the reviewer branch's success return — otherwise the app navigates
-    // while the token is unattached (the ORCH-1254 race).
-    const setSessionIdx = source.indexOf("supabase.auth.setSession({");
-    const awaitAttachIdx = source.indexOf(
+    // setSession stays (it establishes the reviewer session).
+    expect(source).toContain("supabase.auth.setSession({");
+    // The harmful token-attach poll after setSession must be GONE.
+    expect(source).not.toContain(
       "awaitSessionAttached(() => supabase.auth.getSession()",
     );
-    expect(setSessionIdx).toBeGreaterThan(-1);
-    expect(awaitAttachIdx).toBeGreaterThan(setSessionIdx);
-    expect(source).toContain("REVIEWER_TOKEN_ATTACH_CAP_MS");
+    // The now-unused import + constant must be removed with it.
+    expect(source).not.toContain(
+      'import { awaitSessionAttached } from "../utils/authReadyGate"',
+    );
+    expect(source).not.toContain("REVIEWER_TOKEN_ATTACH_CAP_MS");
   });
 });
