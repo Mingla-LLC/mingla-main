@@ -114,7 +114,13 @@ serve(wrapEdgeHandler("venue-reservation-create", async (req) => {
   }
 
   // ── Input validation (mirror ticket-checkout-create's buyer gates) ──────────
-  const brandId = typeof body.brandId === "string" ? body.brandId : "";
+  // META-ORCH-1255: the reservation scope is the VENUE. New callers pass
+  // venueId; [TRANSITIONAL-1] legacy shipped binaries pass brandId only, which
+  // resolves IFF the brand has exactly one venue (else 409 venue_ambiguous).
+  // Exit condition: next consumer/business native builds ship + OTA freeze
+  // lifts → drop the legacy brandId resolution.
+  const bodyVenueId = typeof body.venueId === "string" ? body.venueId : "";
+  const legacyBrandId = typeof body.brandId === "string" ? body.brandId : "";
   const surface: ReserveSurface = body.surface === "web" ? "web" : "native";
   const reservedForUtc = typeof body.reservedForUtc === "string"
     ? body.reservedForUtc
@@ -138,8 +144,8 @@ serve(wrapEdgeHandler("venue-reservation-create", async (req) => {
 
   const uuidRe =
     /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-  if (!uuidRe.test(brandId)) {
-    return jsonResponse({ error: "brand_id_required" }, 400);
+  if (!uuidRe.test(bodyVenueId) && !uuidRe.test(legacyBrandId)) {
+    return jsonResponse({ error: "venue_id_required" }, 400);
   }
   if (!Number.isInteger(partySize) || partySize < 1 || partySize > 100) {
     return jsonResponse({ error: "party_size_invalid" }, 400);
@@ -168,13 +174,57 @@ serve(wrapEdgeHandler("venue-reservation-create", async (req) => {
   const reservationSource = surface === "web" ? "website" : "mingla";
   const supabase = serviceClient();
 
-  // ── (1) The venue must be reservable. ───────────────────────────────────────
+  // ── (0) Resolve the venue scope + derived brand (D-1: payments stay brand-
+  // keyed via the venue's parent brand). ───────────────────────────────────────
+  let venueId = "";
+  let brandId = "";
+  if (uuidRe.test(bodyVenueId)) {
+    const { data: venueRow, error: venueErr } = await supabase
+      .from("venue_listings")
+      .select("id, brand_id")
+      .eq("id", bodyVenueId)
+      .maybeSingle();
+    if (venueErr !== null) {
+      console.error("[venue-reservation-create] venue lookup failed", venueErr);
+      return jsonResponse(
+        { error: "venue_lookup_failed", detail: venueErr.message },
+        500,
+      );
+    }
+    if (venueRow === null) {
+      return jsonResponse({ error: "venue_not_reservable" }, 409);
+    }
+    venueId = String(venueRow.id);
+    brandId = String(venueRow.brand_id);
+  } else {
+    // [TRANSITIONAL-1] legacy brandId body: the brand's venue IFF exactly one.
+    const { data: venueRows, error: venuesErr } = await supabase
+      .from("venue_listings")
+      .select("id, brand_id")
+      .eq("brand_id", legacyBrandId);
+    if (venuesErr !== null) {
+      console.error("[venue-reservation-create] legacy venue resolve failed", venuesErr);
+      return jsonResponse(
+        { error: "venue_lookup_failed", detail: venuesErr.message },
+        500,
+      );
+    }
+    const rows = Array.isArray(venueRows) ? venueRows : [];
+    if (rows.length !== 1) {
+      // 0 venues → nothing bookable; >1 → ambiguous. Same 409 per SPEC §4.A.7.
+      return jsonResponse({ error: "venue_ambiguous" }, 409);
+    }
+    venueId = String((rows[0] as { id: unknown }).id);
+    brandId = legacyBrandId;
+  }
+
+  // ── (1) The venue must be reservable (settings are PER VENUE, M3). ──────────
   const { data: settingsRows, error: settingsErr } = await supabase
     .from("venue_reservation_settings")
     .select(
       "reservations_enabled, fee_enabled, fee_amount_cents, fee_currency, fee_refundable, cancel_cutoff_hours, no_show_fee_policy",
     )
-    .eq("brand_id", brandId)
+    .eq("venue_id", venueId)
     .maybeSingle();
   if (settingsErr !== null) {
     console.error("[venue-reservation-create] settings lookup failed", settingsErr);
@@ -198,7 +248,7 @@ serve(wrapEdgeHandler("venue-reservation-create", async (req) => {
   // of the instant in BOTH the UTC-day and ±1 to catch the local-date boundary.
   const slotOk = await reservedSlotIsAvailable(
     supabase,
-    brandId,
+    venueId,
     reservedForIso,
     partySize,
   );
@@ -210,7 +260,7 @@ serve(wrapEdgeHandler("venue-reservation-create", async (req) => {
   const { data: ruleRows } = await supabase
     .from("venue_capacity_rules")
     .select("kind, params, is_active")
-    .eq("brand_id", brandId)
+    .eq("venue_id", venueId)
     .eq("is_active", true)
     .eq("kind", "deposit_threshold");
   let depositRuleAmountCents: number | null = null;
@@ -249,7 +299,7 @@ serve(wrapEdgeHandler("venue-reservation-create", async (req) => {
     const { data: created, error: createErr } = await supabase.rpc(
       "pg_create_guest_reservation",
       {
-        p_brand_id: brandId,
+        p_venue_id: venueId,
         p_reserved_for: reservedForIso,
         p_party_size: partySize,
         p_source: reservationSource,
@@ -280,6 +330,7 @@ serve(wrapEdgeHandler("venue-reservation-create", async (req) => {
       reservedForUtc: reservedForIso,
       partySize,
       brandId,
+      venueId,
       guestCancelToken: guestCancelToken ?? undefined,
       receiptUrl: reservationId ? `/o/${reservationId}` : undefined,
     });
@@ -394,6 +445,7 @@ serve(wrapEdgeHandler("venue-reservation-create", async (req) => {
 
     const sessionId = await insertReservationSession(supabase, {
       brandId,
+      venueId,
       reservedForIso,
       partySize,
       buyerName,
@@ -457,6 +509,7 @@ serve(wrapEdgeHandler("venue-reservation-create", async (req) => {
       totalCents: psBuyerTotalCents,
       currency: "NGN",
       pricingBreakdown: psBreakdown,
+      venueId,
       guestCancelToken: guestCancelToken ?? undefined,
     });
   }
@@ -524,6 +577,7 @@ serve(wrapEdgeHandler("venue-reservation-create", async (req) => {
   // Persist the in-flight session FIRST (the durable charge record).
   const sessionId = await insertReservationSession(supabase, {
     brandId,
+    venueId,
     reservedForIso,
     partySize,
     buyerName,
@@ -623,6 +677,7 @@ serve(wrapEdgeHandler("venue-reservation-create", async (req) => {
       totalCents,
       currency: currency.toUpperCase(),
       pricingBreakdown,
+      venueId,
       guestCancelToken: guestCancelToken ?? undefined,
     });
   }
@@ -737,6 +792,7 @@ serve(wrapEdgeHandler("venue-reservation-create", async (req) => {
     stripeAccountId,
     customerId,
     customerEphemeralKeySecret,
+    venueId,
     guestCancelToken: guestCancelToken ?? undefined,
   });
 }, {
@@ -749,7 +805,7 @@ serve(wrapEdgeHandler("venue-reservation-create", async (req) => {
 // deno-lint-ignore no-explicit-any
 async function reservedSlotIsAvailable(
   supabase: any,
-  brandId: string,
+  venueId: string,
   reservedForIso: string,
   partySize: number,
 ): Promise<boolean> {
@@ -765,7 +821,7 @@ async function reservedSlotIsAvailable(
   }
   for (const d of dates) {
     const { data, error } = await supabase.rpc("pg_venue_available_slots", {
-      p_brand_id: brandId,
+      p_venue_id: venueId,
       p_date: d,
       p_party_size: partySize,
     });
@@ -786,6 +842,7 @@ async function reservedSlotIsAvailable(
 
 interface SessionInsert {
   brandId: string;
+  venueId: string;
   reservedForIso: string;
   partySize: number;
   buyerName: string;
@@ -812,6 +869,9 @@ async function insertReservationSession(
     .from("reservation_checkout_sessions")
     .insert({
       brand_id: s.brandId,
+      // META-ORCH-1255: the venue key rides the session so the idempotent
+      // finalize (pg_finalize_guest_reservation) mints venue-keyed.
+      venue_id: s.venueId,
       reserved_for: s.reservedForIso,
       party_size: s.partySize,
       buyer_name: s.buyerName,

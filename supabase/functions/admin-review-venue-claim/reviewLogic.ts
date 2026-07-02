@@ -44,6 +44,103 @@ export function normalizeReviewBody(
   };
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// META-ORCH-1255 Leg A — the review body is VENUE-keyed (D-4: the unit of
+// admin review is a venue_listings row). The brand-keyed normalizers above are
+// KEPT (unused by index.ts) solely because the append-only historical tests
+// (index.test.ts, orch_1064_feedback_loop.test.ts) pin their contracts; the
+// wrapper now consumes ONLY the venue-keyed variants below.
+// ─────────────────────────────────────────────────────────────────────────────
+
+export function normalizeVenueReviewBody(
+  body: unknown,
+):
+  | { ok: true; venueId: string; action: ReviewAction; rejectionReason: string }
+  | { ok: false; error: string } {
+  if (body === null || typeof body !== "object") {
+    return { ok: false, error: "invalid_body" };
+  }
+  const b = body as Record<string, unknown>;
+  const venueId = typeof b.venue_id === "string" ? b.venue_id.trim() : "";
+  const action = typeof b.action === "string" ? b.action.trim() : "";
+  const rejectionReason = typeof b.rejection_reason === "string"
+    ? b.rejection_reason.trim()
+    : "";
+
+  if (venueId.length === 0) return { ok: false, error: "venue_id_required" };
+  if (
+    action !== "mark_called" &&
+    action !== "approve" &&
+    action !== "reject" &&
+    action !== "need_more_info"
+  ) {
+    return { ok: false, error: "invalid_action" };
+  }
+  if (action === "reject" && rejectionReason.length === 0) {
+    return { ok: false, error: "rejection_reason_required" };
+  }
+
+  return {
+    ok: true,
+    venueId,
+    action: action as ReviewAction,
+    rejectionReason,
+  };
+}
+
+export function normalizeVenueFeedbackBody(
+  body: unknown,
+):
+  | {
+    ok: true;
+    venueId: string;
+    items: Array<{ category: string; note: string }>;
+    overallMessage: string | null;
+  }
+  | { ok: false; error: string } {
+  if (body === null || typeof body !== "object") {
+    return { ok: false, error: "invalid_body" };
+  }
+  const b = body as Record<string, unknown>;
+  const venueId = typeof b.venue_id === "string" ? b.venue_id.trim() : "";
+  if (venueId.length === 0) return { ok: false, error: "venue_id_required" };
+
+  if (!Array.isArray(b.items) || b.items.length === 0) {
+    return { ok: false, error: "items_required" };
+  }
+  const VALID = new Set([
+    "photos",
+    "address",
+    "hours",
+    "category",
+    "description",
+    "quality",
+    "other",
+  ]);
+  const items: Array<{ category: string; note: string }> = [];
+  for (const raw of b.items) {
+    if (raw === null || typeof raw !== "object") {
+      return { ok: false, error: "invalid_item" };
+    }
+    const it = raw as Record<string, unknown>;
+    const category = typeof it.category === "string" ? it.category.trim() : "";
+    const note = typeof it.note === "string" ? it.note.trim() : "";
+    if (!VALID.has(category)) return { ok: false, error: "invalid_category" };
+    if (note.length === 0) return { ok: false, error: "note_required" };
+    items.push({ category, note });
+  }
+
+  const rawMsg = typeof b.overall_message === "string"
+    ? b.overall_message.trim()
+    : "";
+  return {
+    ok: true,
+    venueId,
+    items,
+    overallMessage: rawMsg.length > 0 ? rawMsg : null,
+  };
+}
+
 export function auditActionForReview(action: ReviewAction): string {
   switch (action) {
     case "mark_called":
