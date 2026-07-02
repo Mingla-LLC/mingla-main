@@ -33,4 +33,17 @@ export type CoverTarget =
       accountId: string;
       /** Needed by useUpdateBrand's optimistic patch. */
       existingDescription: string | null;
+    }
+  | {
+      // META-ORCH-1255(C) D-C: venue-listing hero target. Storage upload +
+      // provider URL validation mirror the brand target, but the picker NEVER
+      // patches brands.cover_media_url — the HOST persists the emitted patch
+      // to the venue row via syncHeroMedia (venue_listings.cover_media_*).
+      // Pre-fix the venue wizard used kind:"brand", so every venue hero pick
+      // clobbered the parent brand's profile cover (and two venues of one
+      // brand fought over it).
+      kind: "venue";
+      brandId: string;
+      /** venue_listings row id — the cover's true owner (host-persisted). */
+      venueId: string;
     };

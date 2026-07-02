@@ -1118,21 +1118,19 @@ export function VenueDeckReadinessSetup({
         {message !== null ? <Text style={styles.submitErr}>{message}</Text> : null}
       </ScrollView>
 
-      {/* [TRANSITIONAL] the unified picker has no "venue" target yet — the
-          brand target ALSO patches brands.cover_media_url (see report
-          Discoveries: venue hero can overwrite the parent brand cover on
-          multi-venue brands). The venue row's cover is written by
-          syncHeroMedia (the truth); exit = CoverPicker venue target ORCH. */}
+      {/* META-ORCH-1255(C) D-C: the VENUE cover target — storage/provider
+          validation like the brand target, but the picker never patches
+          brands.cover_media_url. Persistence = handleCoverChange →
+          syncHeroMedia → venue_listings.cover_media_* + place_pool (the
+          venue row is the one owner of the venue hero; the parent brand's
+          profile cover is untouched). */}
       <CoverPickerSheet
         visible={coverVisible}
         onClose={() => setCoverVisible(false)}
         target={{
-          kind: "brand",
+          kind: "venue",
           brandId,
-          accountId,
-          existingDescription:
-            [operatorTagline, operatorDescription].filter(Boolean).join("\n\n") ||
-            null,
+          venueId,
         }}
         initial={cover}
         onCoverChange={handleCoverChange}

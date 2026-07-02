@@ -39,7 +39,13 @@ export type EventCoverVideoUploadFile = {
 // the whole pipeline (intent/source/apply all keyed on the events-row id).
 // We accept it as a distinct kind for call-site clarity, then normalize to
 // "event" for every server-facing decision below.
-export type CoverVideoTargetKind = "event" | "brand" | "experience";
+// META-ORCH-1255(C) D-C: "venue" rides the BRAND server pipeline (brand-keyed
+// processing, no events-row id) but SKIPS the on-ready apply step — that step
+// writes brands.cover_media_url, which for a venue hero would clobber the
+// parent brand's profile cover. The processed URL still surfaces through the
+// ready-emit; the venue host persists it to venue_listings via syncHeroMedia
+// (one owner per truth).
+export type CoverVideoTargetKind = "event" | "brand" | "experience" | "venue";
 
 export function useEventCoverVideoUpload(
   eventId: string,
@@ -59,7 +65,8 @@ export function useEventCoverVideoUpload(
   // META-ORCH-1059 Sub-B: experiences ride the event-cover pipeline verbatim
   // (same events.cover_media_* columns + events-row id). Normalize the target
   // for every server-facing call + cache-invalidation decision.
-  const serverTarget: "event" | "brand" = target === "brand" ? "brand" : "event";
+  const serverTarget: "event" | "brand" =
+    target === "brand" || target === "venue" ? "brand" : "event";
   const abortControllerRef = useRef<AbortController | null>(null);
   const jobIdRef = useRef<string | null>(null);
   const [stage, setStage] = useState<EventCoverVideoUploadStage>(idleStage);
@@ -69,6 +76,12 @@ export function useEventCoverVideoUpload(
   const [error, setError] = useState<Error | null>(null);
 
   const invalidateEventCaches = useCallback((): void => {
+    if (target === "venue") {
+      // META-ORCH-1255(C) D-C: the venue target never wrote the brands row —
+      // nothing brand/event-cached changed here. The venue host owns its own
+      // persistence (syncHeroMedia) + cache lifecycle.
+      return;
+    }
     if (serverTarget === "brand") {
       // ORCH-0989: brand-target writes brands.cover_media_url — invalidate
       // brand caches, not event caches (eventId is absent).
@@ -82,7 +95,7 @@ export function useEventCoverVideoUpload(
     void queryClient.invalidateQueries({ queryKey: eventDraftKeys.list(brandId) });
     void queryClient.invalidateQueries({ queryKey: publicEventKeys.detailById(eventId) });
     void queryClient.invalidateQueries({ queryKey: upcomingKeys.all });
-  }, [brandId, eventId, queryClient, serverTarget]);
+  }, [brandId, eventId, queryClient, serverTarget, target]);
 
   const start = useCallback(
     async (file: EventCoverVideoUploadFile): Promise<void> => {
@@ -167,7 +180,10 @@ export function useEventCoverVideoUpload(
         // brands.cover_media_url + cover_media_type='video'). Event-target
         // keeps its existing apply path (draft_auto auto-applies in the
         // webhook; published_manual applies through the event publish flow).
-        if (serverTarget === "brand") {
+        // META-ORCH-1255(C) D-C: the VENUE target must NOT apply — the apply
+        // fn writes brands.cover_media_url; the venue host persists the
+        // processed URL to venue_listings via syncHeroMedia instead.
+        if (target === "brand") {
           await applyEventCoverVideoJob(intent.jobId);
         }
         setStatus(ready);
@@ -201,7 +217,7 @@ export function useEventCoverVideoUpload(
         });
       }
     },
-    [applyMode, brandId, eventId, invalidateEventCaches, serverTarget],
+    [applyMode, brandId, eventId, invalidateEventCaches, serverTarget, target],
   );
 
   const cancel = useCallback(async (): Promise<void> => {
