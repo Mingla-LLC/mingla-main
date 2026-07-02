@@ -902,25 +902,33 @@ function AppContent() {
 
   // Email verification removed — all users are now OAuth (inherently verified)
 
-  // ── ATT (App Tracking Transparency) — ORCH-1228 (Apple Guideline 2.1) ────────
-  // Apple rejected build 29 because the reviewer could not locate the ATT prompt:
-  // it previously fired ONLY after the coach-mark tour completed/was skipped, and
-  // on the reviewer's iPad the tour never reached that point. This effect fires
-  // ATT DETERMINISTICALLY the first time the authenticated, onboarded user reaches
-  // the main app UI — a path that ALWAYS runs, independent of whether the
-  // coach-mark tour renders. ensureAttRequested() is single-flight (it never
-  // double-prompts, and the post-tour permission step routes through the same
-  // gate), and on a previously-answered install iOS resolves it without showing
-  // the dialog again. After ATT resolves we start AppsFlyer transmission with the
-  // now-final IDFA state. PostHog awaits the same gate (whenAttResolved) before it
+  // ── ATT (App Tracking Transparency) — ORCH-1228 / ORCH-1257 / ORCH-1258 ──────
+  // (Apple Guideline 2.1). Apple rejected build 29 because the reviewer could not
+  // locate the ATT prompt: it previously fired ONLY after the coach-mark tour
+  // completed/was skipped, and on the reviewer's iPad the tour never reached that
+  // point. ORCH-1257 moved it earlier (post-onboarding). ORCH-1258 makes ATT the
+  // FIRST permission prompt the user sees: this effect now fires ATT as soon as the
+  // user is AUTHENTICATED — WITHOUT waiting for onboarding to finish — so the ATT
+  // dialog presents standalone, before onboarding's location step and before push.
+  //
+  // ensureAttRequested() is AppState-`active` gated INTERNALLY (ORCH-1257): it waits
+  // for the first foreground-`active` transition before issuing the prompt, so
+  // firing it during onboarding still shows the dialog on-`active` (iOS would
+  // otherwise silently drop an off-`active` request). It is also single-flight — it
+  // never double-prompts, and both the onboarding location step (which awaits
+  // whenAttResolved) and requestPostTourPermissions() route through the same gate.
+  // On a previously-answered install iOS resolves it without showing the dialog
+  // again. After ATT resolves we start AppsFlyer transmission with the now-final
+  // IDFA state. PostHog awaits the same gate (whenAttResolved) before it
   // initializes, so no tracking SDK transmits before ATT — the ATT-before-tracking
-  // ordering Apple requires.
+  // ordering Apple requires. This is the FIRST of three separate system dialogs;
+  // iOS queues them one at a time: ATT → location (onboarding) → notifications.
   const attFiredRef = useRef(false);
   useEffect(() => {
     if (attFiredRef.current) return;
     if (isLoadingAuth) return;
     if (!isAuthenticated || !user?.id) return;
-    if (showOnboardingFlow || needsOnboarding) return; // wait until the main app UI
+    // ORCH-1258: do NOT wait for onboarding — fire ATT FIRST, right after sign-in.
     attFiredRef.current = true;
     ensureAttRequested()
       .then(() => {
@@ -932,7 +940,7 @@ function AppContent() {
         // Even if ATT failed, AppsFlyer should still start (gate is open).
         startAppsFlyer();
       });
-  }, [isAuthenticated, isLoadingAuth, user?.id, showOnboardingFlow, needsOnboarding]);
+  }, [isAuthenticated, isLoadingAuth, user?.id]);
   // ───────────────────────────────────────────────────────────────────────────
 
   // Structured navigation logging
