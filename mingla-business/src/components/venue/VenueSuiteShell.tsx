@@ -172,7 +172,10 @@ export function VenueSuiteShell({
               </GlassCard>
             </View>
           ) : null}
-          <VenueIntelligenceModule brandId={brandId} />
+          {/* META-ORCH-1255(C) D-D: venue-scoped so the RPC resolves THIS
+              venue's place signals + timezone (the legacy brand place pointer
+              is inert for new venues). */}
+          <VenueIntelligenceModule brandId={brandId} venueId={venueId} />
         </View>
       );
     }
