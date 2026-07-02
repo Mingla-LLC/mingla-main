@@ -8,6 +8,7 @@ import { useQueryClient } from "@tanstack/react-query";
 
 import { useAuth } from "../context/AuthContext";
 import { brandKeys } from "./useBrands";
+import { venueListingKeys } from "./useVenueListings";
 import { useCurrentBrandStore } from "../store/currentBrandStore";
 
 export function useVenueClaimRefresh(): void {
@@ -33,6 +34,12 @@ export function useVenueClaimRefresh(): void {
           // round shows without a restart (mirrors the detail invalidation).
           void queryClient.invalidateQueries({
             queryKey: brandKeys.feedback(currentBrandId),
+          });
+          // META-ORCH-1255 — claim status lives on the venue rows now; refresh
+          // the brand's venue listings so an admin decision made while the app
+          // was backgrounded shows without a restart.
+          void queryClient.invalidateQueries({
+            queryKey: venueListingKeys.byBrand(currentBrandId),
           });
         }
       },
