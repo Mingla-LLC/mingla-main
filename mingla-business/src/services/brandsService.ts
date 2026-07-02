@@ -494,7 +494,14 @@ export async function createVenueBrandPendingReview(
 
 // ----- getBrands (list) --------------------------------------------------
 
-export async function getBrands(accountId: string): Promise<Brand[]> {
+export async function getBrands(
+  accountId: string,
+  // ORCH-1249 (biz cold-start brand-hydration): optional abort signal so the
+  // hook-level withTimeout wrapper can cancel a stalled cold-start read when its
+  // 9s deadline fires (releases the orphaned socket). Omitted callers are
+  // unaffected — the internal DATA_FETCH_TIMEOUT_MS guards still apply.
+  signal?: AbortSignal,
+): Promise<Brand[]> {
   // META-ORCH-1232 (H3) — auth-warm empty reads must NOT cache as authed-empty.
   // `useBrands` gates `enabled = isAuthReady && accountId !== null`, but there is
   // an INTERIOR window where `isAuthReady` is true yet the Supabase JWT/session is
@@ -535,13 +542,16 @@ export async function getBrands(accountId: string): Promise<Brand[]> {
   type EmbeddedRow = { role: string; brand: BrandRow | null };
   // META-ORCH-1235 — bound the membership read (gates the brand switcher /
   // recovery list). A hung read now rejects → consumer retries / errors.
+  const membershipQuery = supabase
+    .from("brand_team_members")
+    .select("role, brand:brands!inner(*)")
+    .eq("user_id", accountId)
+    .is("removed_at", null)
+    .is("brand.deleted_at", null);
   const { data, error } = await withTimeout(
-    supabase
-      .from("brand_team_members")
-      .select("role, brand:brands!inner(*)")
-      .eq("user_id", accountId)
-      .is("removed_at", null)
-      .is("brand.deleted_at", null),
+    // ORCH-1249 — thread the optional abort signal so a hook-level timeout can
+    // cancel this read.
+    signal !== undefined ? membershipQuery.abortSignal(signal) : membershipQuery,
     DATA_FETCH_TIMEOUT_MS,
     "getBrands:membership",
   );
@@ -558,12 +568,14 @@ export async function getBrands(accountId: string): Promise<Brand[]> {
   // whether or not its membership row exists yet. Keeps the non-owner membership
   // visibility (ORCH-1081) intact.
   // META-ORCH-1235 — bound the owner-union backstop read too.
+  const ownedQuery = supabase
+    .from("brands")
+    .select("*")
+    .eq("account_id", accountId)
+    .is("deleted_at", null);
   const { data: ownedData, error: ownedError } = await withTimeout(
-    supabase
-      .from("brands")
-      .select("*")
-      .eq("account_id", accountId)
-      .is("deleted_at", null),
+    // ORCH-1249 — thread the optional abort signal onto the owner-union read too.
+    signal !== undefined ? ownedQuery.abortSignal(signal) : ownedQuery,
     DATA_FETCH_TIMEOUT_MS,
     "getBrands:owned",
   );

@@ -34,6 +34,7 @@ import { supabase } from "../services/supabase";
 // the isAuthReady flag flips true a beat before the Supabase client attaches the
 // JWT to outgoing PostgREST requests (insert would still go out as anon).
 import { awaitAuthReady, awaitSessionAttached } from "../utils/authReadyGate";
+import { withTimeout } from "../utils/withTimeout";
 import { queryClient } from "../config/queryClient";
 import { eventOrdersKeys } from "./useEventOrders";
 import { publicEventKeys } from "./usePublicEvents";
@@ -63,6 +64,17 @@ import { creatorAccountKeys, type CreatorAccountRow } from "./useCreatorAccount"
 // below, 30s gives a fast-enough fallback when Realtime drops the connection
 // or the publication migration has not landed.
 const STALE_TIME_MS = 30 * 1000;
+
+// ORCH-1249 (biz cold-start brand-hydration): on a COLD start (fresh install,
+// no cached session) the brand switcher / dashboard could hang on
+// "Loading your brands…" forever until a force-quit + reopen. Root cause: the
+// list read fires during the auth-bootstrap race with NO hook-level settle
+// guarantee, so a stalled first attempt left React Query pinned in `isLoading`.
+// Bound the read at 9s (mirrors ORCH-1248's useCreatorAccount) so a hung request
+// REJECTS → React Query surfaces isError → the caller's error/retry state shows
+// instead of an eternal spinner. 9s sits UNDER getBrands' internal 15s
+// DATA_FETCH ceiling yet gives a slow-but-real read room to succeed.
+const BRANDS_FETCH_TIMEOUT_MS = 9000;
 
 // ----- Query key factory -------------------------------------------------
 
@@ -131,6 +143,35 @@ export const getBrandFromCache = (brandId: string | null): Brand | null => {
 
 // ----- useBrands (list) --------------------------------------------------
 
+/**
+ * ORCH-1249 (biz cold-start brand-hydration): the brands-list read, hardened to
+ * ALWAYS settle. An AbortController lets us cancel the in-flight request when the
+ * timeout fires, and `withTimeout` rejects the consumer after
+ * BRANDS_FETCH_TIMEOUT_MS, so a stalled read on a cold-bootstrap auth race can
+ * NEVER leave "Loading your brands…" spinning forever — React Query surfaces
+ * isError → the caller's error/retry UI shows. Exported for the ORCH-1249
+ * timeout regression test.
+ *
+ * getBrands already accepts no signal, so we abort on timeout to release the
+ * orphaned socket (settle-guarantee is provided by withTimeout regardless).
+ */
+export const fetchBrandsList = async (
+  accountId: string,
+): Promise<Brand[]> => {
+  const controller = new AbortController();
+  try {
+    return await withTimeout(
+      getBrands(accountId, controller.signal),
+      BRANDS_FETCH_TIMEOUT_MS,
+      "useBrands",
+    );
+  } catch (err) {
+    // On timeout, abort the in-flight request so it doesn't linger.
+    controller.abort();
+    throw err;
+  }
+};
+
 export const useBrands = (
   accountId: string | null,
 ): UseQueryResult<Brand[]> => {
@@ -142,6 +183,21 @@ export const useBrands = (
   const { isAuthReady } = useAuth();
   const enabled = isAuthReady && accountId !== null;
   const rqClient = useQueryClient();
+
+  // ORCH-1249 (biz cold-start brand-hydration): guarantee a refetch when auth
+  // transitions to ready (enabled flips false→true). React Query normally
+  // auto-fires when `enabled` flips true, but on a cold bootstrap the FIRST
+  // attempt can settle to an error (timed-out/anon read) BEFORE auth is warm; a
+  // failed query is no longer refetched merely because `enabled` stays true.
+  // Explicitly refetch on the false→true edge so the (now-authed) read runs, and
+  // the eternal spinner cannot survive the auth-ready flip.
+  const prevEnabledRef = useRef(enabled);
+  useEffect(() => {
+    if (enabled && !prevEnabledRef.current && accountId !== null) {
+      void rqClient.refetchQueries({ queryKey: brandKeys.list(accountId) });
+    }
+    prevEnabledRef.current = enabled;
+  }, [enabled, accountId, rqClient]);
 
   // ORCH-0816 — Realtime subscription on `public.orders` for brand-stats
   // freshness. RLS gates per-brand visibility, so the owner only receives
@@ -198,9 +254,17 @@ export const useBrands = (
     queryKey: enabled ? brandKeys.list(accountId) : DISABLED_KEY,
     enabled,
     staleTime: STALE_TIME_MS,
+    // ORCH-1249 (biz cold-start brand-hydration): force the query to run
+    // regardless of a misreported navigator.onLine, and let stale cache serve
+    // during a refetch window (matches useCreatorAccount). A cold-bootstrap
+    // captive/offline-flap can't pause the read into a permanent spinner.
+    networkMode: "always",
     queryFn: async (): Promise<Brand[]> => {
       if (!enabled || accountId === null) return [];
-      return getBrands(accountId);
+      // ORCH-1249 — bounded, always-settling read (9s timeout + abort). A hung
+      // cold-start request now REJECTS → React Query surfaces isError → the
+      // caller's error/retry UI shows instead of "Loading your brands…" forever.
+      return fetchBrandsList(accountId);
     },
   });
 };
