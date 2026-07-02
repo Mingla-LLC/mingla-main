@@ -1,6 +1,8 @@
+import { AppState } from 'react-native';
 import { Platform } from 'react-native';
 import { requestPushPermission, canRequestPushPermission } from './oneSignalService';
 import { startAppsFlyer } from './appsFlyerService';
+import { shouldRequestAttNow } from '../utils/attRequestTiming';
 
 /**
  * App Tracking Transparency (ATT) gate — ORCH-1228 (Apple Guideline 2.1).
@@ -28,6 +30,16 @@ import { startAppsFlyer } from './appsFlyerService';
  * On a fresh install the OS shows the system ATT dialog once and never again; on
  * subsequent launches `requestTrackingPermissionsAsync()` resolves immediately
  * with the prior decision, so a returning user is never re-prompted.
+ *
+ * ORCH-1257 (Apple 2.1) — AppState gating. iOS SILENTLY DROPS an ATT request
+ * issued while the app is not foreground-`active` (common on iPad, where the app
+ * is briefly backgrounded during onboarding). Build 35 was rejected because the
+ * reviewer "was unable to locate the ATT permission request" on iPadOS 26.4.2 —
+ * the request had been fired off-`active` and never shown. `ensureAttRequested()`
+ * now gates the prompt on `AppState === 'active'` (via `shouldRequestAttNow`): if
+ * active it requests immediately; otherwise it waits for the FIRST `active`
+ * transition (one-shot listener), then requests. This mirrors the business app's
+ * ORCH-1246 fix, after which Apple stopped flagging the business app's ATT.
  */
 
 // Resolves once ATT has been requested (iOS) or is known to be a no-op (other
@@ -64,14 +76,11 @@ export function ensureAttRequested(): Promise<void> {
 
   _attRequestInFlight = (async () => {
     if (Platform.OS === 'ios') {
-      try {
-        const { requestTrackingPermissionsAsync } = await import('expo-tracking-transparency');
-        // Resolves with the user's decision; on a previously-answered install it
-        // returns immediately without showing the dialog again (no double-prompt).
-        await requestTrackingPermissionsAsync();
-      } catch (e) {
-        console.warn('[permissionOrchestrator] ATT request failed:', e);
-      }
+      // ORCH-1257 (Apple 2.1): iOS silently DROPS an ATT request issued while the
+      // app is not foreground-`active`. Gate on AppState: if active, request now;
+      // otherwise wait for the FIRST `active` transition (one-shot listener), then
+      // request. Guarantees the dialog is issued on-`active` so it actually shows.
+      await requestAttWhenActive();
       // Open the gate whether the prompt succeeded or threw — tracking must never
       // be blocked forever by an ATT failure.
       if (_attResolve) {
@@ -86,6 +95,40 @@ export function ensureAttRequested(): Promise<void> {
 }
 
 /**
+ * Perform the iOS ATT prompt on the app's foreground-`active` state. Resolves
+ * after `requestTrackingPermissionsAsync()` settles. If the app is not active
+ * when called, registers a one-shot AppState listener and issues the request the
+ * first time the app becomes active. iOS-only caller (see `ensureAttRequested`).
+ */
+async function requestAttWhenActive(): Promise<void> {
+  const runAttRequest = async (): Promise<void> => {
+    try {
+      const { requestTrackingPermissionsAsync } = await import('expo-tracking-transparency');
+      // Resolves with the user's decision; on a previously-answered install it
+      // returns immediately without showing the dialog again (no double-prompt).
+      await requestTrackingPermissionsAsync();
+    } catch (e) {
+      console.warn('[permissionOrchestrator] ATT request failed:', e);
+    }
+  };
+
+  if (shouldRequestAttNow(AppState.currentState)) {
+    await runAttRequest();
+    return;
+  }
+
+  // Not active — defer to the first `active` transition, then request once.
+  await new Promise<void>((resolve) => {
+    const sub = AppState.addEventListener('change', (next) => {
+      if (shouldRequestAttNow(next)) {
+        sub.remove();
+        void runAttRequest().then(resolve);
+      }
+    });
+  });
+}
+
+/**
  * Resolves once ATT has been requested (iOS) or immediately on non-iOS. Tracking
  * SDKs await this so they never transmit before the ATT decision is made.
  */
@@ -94,10 +137,15 @@ export function whenAttResolved(): Promise<void> {
 }
 
 /**
- * Deferred permission requests — called AFTER the coach-mark tour completes
- * (either naturally or via skip). NOT the only ATT trigger anymore: the
- * home-screen effect (app/index.tsx) fires `ensureAttRequested()` independently,
- * so ATT appears even when the tour never renders (ORCH-1228).
+ * Deferred permission sequence — ORCH-1257 (Apple 2.1): fired EARLY, in the
+ * onboarding `onComplete` callback (app/index.tsx), right after onboarding and
+ * BEFORE the coach-mark tour, so the reviewer encounters the ATT prompt within
+ * seconds. (It previously fired only after the 11-step coach-mark tour completed
+ * or was skipped — 1–5 minutes in — which is why Apple could not locate it.)
+ * NOT the only ATT trigger: the home-screen effect (app/index.tsx) also fires
+ * `ensureAttRequested()` independently, so a returning user who never got the
+ * prompt still gets it once on reaching home. All paths route through the same
+ * single-flight gate, so ATT / AppsFlyer never double-fire.
  *
  * Sequence:
  *   1. iOS ATT prompt — via the single-flight `ensureAttRequested()` gate, so it

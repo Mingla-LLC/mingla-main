@@ -63,7 +63,7 @@ import {
   onForegroundNotification,
 } from "../src/services/oneSignalService";
 import { initializeAppsFlyer, startAppsFlyer, setAppsFlyerUserId, registerAppsFlyerDevice, logAppsFlyerEvent } from "../src/services/appsFlyerService";
-import { ensureAttRequested } from "../src/services/permissionOrchestrator";
+import { ensureAttRequested, requestPostTourPermissions } from "../src/services/permissionOrchestrator";
 import { useCustomerInfoListener } from "../src/hooks/useRevenueCat";
 import { useTrialExpiryTracking } from "../src/hooks/useSubscription";
 import * as SplashScreen from 'expo-splash-screen';
@@ -2058,6 +2058,16 @@ function AppContent() {
             setHasCompletedOnboarding(true);
             setShowOnboardingFlow(false);
             setCurrentPage("home");
+            // ORCH-1257 (Apple 2.1): fire the deferred permission sequence HERE —
+            // right after onboarding, BEFORE the coach-mark tour — so the reviewer
+            // encounters the ATT prompt within seconds, not the 1–5 minutes it took
+            // when this fired only after the 11-step tour completed/was skipped.
+            // requestPostTourPermissions() is idempotent (single-flight ATT +
+            // idempotent AppsFlyer start), so the home-screen ATT effect and this
+            // call never double-prompt. The two coach-mark call sites were removed.
+            requestPostTourPermissions().catch((e) =>
+              console.warn('[AppContent] Post-onboarding permissions failed:', e)
+            );
             refreshAllSessions({ showLoading: true });
           }}
         />
