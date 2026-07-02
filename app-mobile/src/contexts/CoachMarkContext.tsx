@@ -4,7 +4,6 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAppStore } from '../store/appStore';
 import { supabase } from '../services/supabase';
 import { COACH_STEPS, COACH_STEP_COUNT, CoachStep } from '../constants/coachMarkSteps';
-import { requestPostTourPermissions } from '../services/permissionOrchestrator';
 import { mixpanelService } from '../services/mixpanelService';
 
 // ── Types ───────────────────────────────────────────────────────────────────
@@ -494,9 +493,11 @@ export const CoachMarkProvider: React.FC<CoachMarkProviderProps> = ({ children, 
       persistStep(TOUR_COMPLETED);
       mixpanelService.trackCoachTourCompleted();
       navigateToTabRef.current('home');
-      requestPostTourPermissions().catch((e) =>
-        console.warn('[CoachMark] Post-tour permissions failed:', e)
-      );
+      // ORCH-1257 (Apple 2.1): permissions no longer fire here. They fire EARLY —
+      // in the onboarding onComplete callback (app/index.tsx), before the coach
+      // tour — so the ATT prompt appears within seconds, not after this 11-step
+      // tour. Firing here silently dropped the prompt when the iPad was
+      // backgrounded mid-tour; the ATT gate is now single-flight + AppState-gated.
       return;
     }
 
@@ -522,9 +523,8 @@ export const CoachMarkProvider: React.FC<CoachMarkProviderProps> = ({ children, 
     setCurrentStep(TOUR_SKIPPED);
     persistStep(TOUR_SKIPPED);
     navigateToTabRef.current('home');
-    requestPostTourPermissions().catch((e) =>
-      console.warn('[CoachMark] Post-tour permissions failed:', e)
-    );
+    // ORCH-1257 (Apple 2.1): permissions no longer fire here — see nextStep().
+    // They fire early (post-onboarding, pre-tour) in app/index.tsx.
   }, [currentStep, persistStep]);
 
   // ── Derived state ───────────────────────────────────────────────────────
