@@ -265,3 +265,63 @@ Cleanup (every statement documented):
 ## R2.6 Round-2 routing
 
 **FAIL → REWORK (one targeted fix):** P1-NEW slug-availability re-key (`brandsService.ts` checkVenueSlugAvailable/suggestVenueSlugs/resolveAvailableVenueSlug → `venue_listings (brand_id, slug)`) + P2-R2-1 preview-URL fix in `VenueStep2NameSlug`. P2-R2-2 (deck-readiness exit) needs a Seth UX decision — recommend a "Do this later" affordance. Everything else in the META is runtime-proven working; after the slug fix + retest this is a PASS. Residual for CLOSE (not rework): admin-web pixel walk + admin-edge approve side-effects need an admin login (2FA) — a 2-minute Seth HITL, or CLOSE live-fire per SPEC §11.
+
+---
+---
+
+# RETEST — Round 3 (targeted: round-2 P1 slug fix, 2026-07-02)
+
+## R3.1 FINAL VERDICT (whole META): **CONDITIONAL PASS** — P0: 0 · P1: 0 · P2: 1 (accepted residual) · P3: 2 · P4: 1
+
+The round-2 P1 (venue slug availability keyed to `brands` → same-name second venue looped Available/taken forever) is **DEAD at runtime, proven on the sim against live prod**, and the P2-R2-1 preview-URL fix rode along. Everything else in the META was proven in rounds 1–2 (backend/security/logic at `proven` via SQL+REST+edge live-fire; every UI SC live-fired in round 2). Two precisely-stated residuals remain — both pre-accepted in the round-3 dispatch — hence CONDITIONAL, not clean PASS.
+
+**Fix under test:** `3cc6090b7` (checkVenueSlugAvailable / suggestVenueSlugs / resolveAvailableVenueSlug re-keyed to `venue_listings (brand_id, slug)`; wizard threads `currentBrand.id`; step-2 preview = `/b/{brandSlug}/v/{venueSlug}`; new suite `venueSlugPerBrand.metaOrch1255R.test.ts`) + `f0332f1a6` (REWORK report section).
+
+## R3.2 Task 1 — runtime kill (iPhone 17 Pro Max sim, worktree Metro :8088 w/ pk_live env, LIVE prod)
+
+Fresh disposable QA account `orch1255r3qa@web-library.net` (mail.tm OTP), fresh brand **ORCH-1255 R3 QA** (`orch1255r3qa`), per the round-2 recipe (real `npm ci` node_modules already in worktree; Maestro text + idb HID taps; latest bundle loaded — relaunch after Metro attach observed "Downloading 100%").
+
+| Step | Round-2 behavior | Round-3 observed | Evidence |
+|---|---|---|---|
+| Venue #1 "QA Same Name Cafe" step-2 | preview showed pre-1255 `/b/{venueSlug}` | preview `business.usemingla.com/b/orch1255r3qa/v/qasamenamecafe` ✓ Available — auto-selected | `R3_venue1_step2_preview_brand_v_slug.png` |
+| Venue #1 submit | n/a | clean → deck-readiness screen; home todo "Get your venue live" (singular) | `R3_home_todos_1venue.png` |
+| Venue #2, SAME name, step-2 (the screen that looped) | "Available" then "taken" contradiction forever | **auto-advanced to `qasamenamecafe1`** ✓ Available — auto-selected, preview `/b/orch1255r3qa/v/qasamenamecafe1` | `R3_P1FIX_venue2_samename_suffixed_slug_available.png` |
+| Venue #2 review + submit | bounced back to slug step | review shows SLUG `qasamenamecafe1`; **submit clean, no bounce, no loop** → post-create screen | `R3_venue2_review_suffixed_slug.png`, `R3_venue2_submit_clean_no_loop.png` |
+| DB truth | 2 phantom-free rows | 2 rows under ONE brand: `qasamenamecafe` + `qasamenamecafe1`, both `pending_review`, names identical | live SQL (brand join) |
+
+Bonus path exercised: the directory-dedup interstitial correctly surfaced venue #1 as a match for the same-name entry; "No, different business" proceeded to a fresh listing (the chain scenario end-to-end).
+
+## R3.3 Task 2 — cross-brand DB layer (prod, rollback-wrapped DO block)
+
+`ALL_PASS_ROLLBACK` raised (transaction aborted → zero commit): same slug `joescafe` under a **different** brand INSERTs fine (per-brand uniqueness); same-brand duplicate rejected by `unique_violation` (`venue_listings_brand_slug_uniq` backstop); suffixed `joescafe1` under the same brand fine; brands delta exactly the 2 fixtures. Service layer cross-brand half also pinned by the new suite ("DIFFERENT brand + same slug → AVAILABLE", "resolver keeps preferred when only ANOTHER brand holds it") — green.
+
+## R3.4 Task 3 — regression sweep on the rebased branch (contains origin/main @ 710164431)
+
+- **14 suites / 184 tests ALL GREEN** in one run: `venueSlugPerBrand.metaOrch1255R` (9) · `metaOrch1255.tester.adversarial` (21) · `metaOrch1255LegB.happy` · `metaOrch1255LegC.happy` · superseded pins `venueTab.contract` (12/12) + `brandEditView.section.orch1256` (12/12) · pre-existing slug suites `resolveAvailableVenueSlug` + `venueSlugAvailability` · `useHubTabs.venueGate.adversarial` + `useHubTabs.draftsCount` · `businessTodos` ×3 · `businessTodos.profile.orch1256.tester`.
+- Old slug suites verified NON-vacuous post-re-key: their chain mock keys availability off the final `.eq` arg (slug) — behavioral assertions still bind (the fix deliberately ordered `brand_id` eq first).
+- **All 5 orch-1255 strict-grep gates GREEN** (brandedit-no-physical-location-toggle · no-hidden-brand-on-venue-create · pipeline-no-brand-onconflict · public-venue-anon-safe · venue-approval-per-venue-row).
+- **Fails-on-revert independently re-verified at `3cc6090b7`:** true-reverted the service query (`venue_listings` scoped chain → the old `.from("brands")` block) → `venueSlugPerBrand` failed 4/9 (SAME-brand-taken, resolver-suffix, suggestions-skip, table-target assertions — exactly the fix's surface); `git checkout` restore → 9/9. Preview-URL pins (3) stayed green through the service revert, correctly isolating the two halves of the fix.
+- **Append-only gate:** currently RED at the pre-round-3 HEAD `f0332f1a6` (docs-only commit dropped the `[TEST-MOD-APPROVED …]` token the gate reads from the branch-tip commit body; the two approved supersessions therefore flag). Carried `[TEST-MOD-APPROVED META-ORCH-1255]` in THIS round-3 commit body → gate 12 passed / 0 failed at the new HEAD (verified post-commit). Finding P3-R3-1 below.
+
+## R3.5 Tasks 4 — fixtures + attestation
+
+Fixture ledger (all round-3): auth user `orch1255r3qa@web-library.net`, brand `ORCH-1255 R3 QA` (`4e2b2a31-…`), venues `qasamenamecafe` + `qasamenamecafe1` (both stayed `pending_review` — **never verified → zero public exposure**, view verified-only proven in R1/R2), 2 pipeline rows, 2 authored place_pool rows (`is_servable=false` throughout — never consumer-servable).
+
+Cleanup (single transaction): place_pool ×2 soft-deleted (`deleted_reason='META-ORCH-1255 tester R3 QA fixture cleanup'`, unclaimed, inactive) → `DELETE brands` (FK cascade took venues/pipeline) → `DELETE auth.users`. **PROD RESIDUE: NONE** — verifying SQL returned all zeros: qa_brand_residue=0, **venue_listings_total=0 (global)**, pipeline_rows=0, qa_auth_residue=0 (both R2+R3 emails), live_qa_places=0, venue_public_view rows=0. Rollback DO-block (R3.3) committed nothing by construction. Tester Metro :8088 killed by PID (port verified free before start); Max sim was already booted on arrival and left booted; no other session's ports/devices touched; no deploy/merge/eas performed.
+
+## R3.6 Findings
+
+- **P2-R3-1 (accepted residual, carried from R2)** — deck-readiness screen still has no skip/exit after venue create (had to relaunch the app between venue #1 and #2, same as round 2). Pre-accepted in the dispatch: separate ORCH pending Seth's UX call.
+- **P3-R3-1 (process)** — the append-only gate reads the override token from the branch-TIP commit body, so any token-less commit (like docs-only `f0332f1a6`) turns the branch red while the approved supersessions exist. Self-healed by this commit; for CLOSE, the squash-merge PR body/commit must carry `[TEST-MOD-APPROVED META-ORCH-1255]` or the gate re-reds on main. Worth a gate improvement note (token-in-any-branch-commit, not tip-only).
+- **P3-R3-2 (carried)** — P3-R2-1 `location-outline` icon warning not re-audited this round (deck-readiness flow only entered, not exercised).
+- **P4-R3-1 (praise)** — the resolver+preview split is cleanly testable: the service revert failed exactly the 4 service-layer tests while the 3 preview pins held; auto-advance UX ("Available — auto-selected" on the suffix, no error state shown to the operator) is the right "smart" behavior.
+
+## R3.7 Accepted conditions (the CONDITIONAL in the verdict)
+
+1. **Admin-web pixel walk + admin-edge approve side-effects** (`runApproveGoLive`/email stamp/push): requires Seth's 2FA admin account — the only active admin; no admin test credentials exist (R2 searched repo/docs/`admin_users`). RPC-layer approve walk + full UI state machine already proven in R2 (SC-13). → CLOSE-time live-fire or a 2-minute Seth HITL.
+2. **Deck-readiness no-exit trap (P2-R2-2/P2-R3-1)**: separate ORCH pending Seth's UX decision (recommend a "Do this later" affordance).
+Consumer-app venue-keyed reserve UI additionally rides the next binary (OTA frozen, COMMS-0051) — edge+REST layer already proven live (SC-14).
+
+## R3.8 Routing
+
+**CONDITIONAL PASS → CLOSE** (conditions above are dispatch-accepted). CLOSE checklist: squash-merge commit/PR body MUST carry `[TEST-MOD-APPROVED META-ORCH-1255]` (P3-R3-1); Vercel deploy rides the normal `[deploy]` gate; the two residuals route to their own follow-ups.
