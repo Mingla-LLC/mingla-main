@@ -48,6 +48,12 @@ import { VenueSlotPicker } from "./VenueSlotPicker";
 export interface VenueReserveSheetProps {
   visible: boolean;
   onClose: () => void;
+  /**
+   * META-ORCH-1255(C) — the reservable VENUE's row id (the resolver's
+   * additive venue_id). Slots + the reservation create are keyed to THIS
+   * venue so a multi-venue brand books the exact place on the card.
+   */
+  venueId: string;
   /** The reservable venue's brand id (from useVenueReservable). */
   brandId: string;
   /** Venue display name for the review/confirm summary. */
@@ -107,6 +113,7 @@ function buildDateOptions(): { value: string; label: string }[] {
 export const VenueReserveSheet: React.FC<VenueReserveSheetProps> = ({
   visible,
   onClose,
+  venueId,
   brandId,
   venueName,
   currency,
@@ -134,8 +141,10 @@ export const VenueReserveSheet: React.FC<VenueReserveSheetProps> = ({
   const [error, setError] = useState<string | null>(null);
 
   // The engine query — only fires on the slots step with all params set.
+  // META-ORCH-1255(C): venue-keyed (p_venue_id) so a multi-venue brand's
+  // slots come from THIS venue's tables/hours, never a sibling's.
   const slotsQuery = useVenueAvailability(
-    step === "slots" || step === "confirm" ? brandId : null,
+    step === "slots" || step === "confirm" ? venueId : null,
     step === "slots" || step === "confirm" ? date : null,
     step === "slots" || step === "confirm" ? partySize : null,
   );
@@ -194,6 +203,7 @@ export const VenueReserveSheet: React.FC<VenueReserveSheetProps> = ({
     void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     const outcome = await reserve(
       {
+        venueId,
         brandId,
         reservedForUtc: selectedSlot.slotStartUtc,
         partySize,
