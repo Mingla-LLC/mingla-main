@@ -61,9 +61,10 @@ import {
   logoutOneSignal,
   onNotificationClicked,
   onForegroundNotification,
+  resumeInAppMessages,
 } from "../src/services/oneSignalService";
 import { initializeAppsFlyer, startAppsFlyer, setAppsFlyerUserId, registerAppsFlyerDevice, logAppsFlyerEvent } from "../src/services/appsFlyerService";
-import { ensureAttRequested, requestPostTourPermissions } from "../src/services/permissionOrchestrator";
+import { ensureAttRequested, requestPostTourPermissions, whenAttResolved } from "../src/services/permissionOrchestrator";
 import { useCustomerInfoListener } from "../src/hooks/useRevenueCat";
 import { useTrialExpiryTracking } from "../src/hooks/useSubscription";
 import * as SplashScreen from 'expo-splash-screen';
@@ -930,6 +931,14 @@ function AppContent() {
     if (!isAuthenticated || !user?.id) return;
     // ORCH-1258: do NOT wait for onboarding — fire ATT FIRST, right after sign-in.
     attFiredRef.current = true;
+    // ORCH-1260: hold ALL OneSignal In-App Messages until the ATT decision resolves,
+    // then resume — so the ATT prompt is the SOLE first prompt at launch (a dashboard
+    // IAM was auto-rendering on app-open and clustering with ATT). IAMs are paused at
+    // OneSignal init; whenAttResolved() resolves once ATT has been requested (iOS) or
+    // immediately on non-iOS (ATT is a no-op there), so IAMs are NEVER left permanently
+    // paused — resume runs exactly once (attFiredRef gate) on BOTH iOS (after ATT is
+    // answered) and non-iOS (right away). Fail-open: the ATT gate always resolves.
+    whenAttResolved().then(() => resumeInAppMessages());
     ensureAttRequested()
       .then(() => {
         // Begin AppsFlyer transmission with the resolved IDFA state (idempotent).

@@ -36,6 +36,19 @@ export function initializeOneSignal(): void {
   try {
     OneSignal.Debug.setLogLevel(LogLevel.Verbose)
     OneSignal.initialize(ONESIGNAL_APP_ID)
+    // ORCH-1260: pause ALL In-App Messages the instant the SDK is up, BEFORE any
+    // IAM can auto-render during boot / while the iOS ATT prompt is pending. A
+    // dashboard-configured IAM (no IAM code lives in this app) was auto-rendering
+    // on app-open and CLUSTERING with the ATT prompt. Holding IAMs here — resumed
+    // only AFTER the ATT decision (see resumeInAppMessages()) — guarantees the ATT
+    // prompt is the SOLE first prompt at launch. Self-guarded in its own try/catch
+    // so an IAM-pause failure never disrupts initialization (never throws).
+    try {
+      OneSignal.InAppMessages.setPaused(true)
+      if (__DEV__) logger.push('in-app messages paused (pending ATT)')
+    } catch (e) {
+      console.warn('[OneSignal] InAppMessages.setPaused(true) failed:', e)
+    }
     _initialized = true
     _initAttempts = 0
     if (__DEV__) logger.push('initialized')
@@ -57,6 +70,34 @@ export function initializeOneSignal(): void {
 /** Returns true if the SDK has been successfully initialized. */
 export function isOneSignalReady(): boolean {
   return _initialized
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// In-App Messages (ORCH-1260)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Resume OneSignal In-App Messages after the ATT decision has resolved.
+ *
+ * IAMs are PAUSED at init (see initializeOneSignal) so no dashboard IAM can
+ * auto-render during boot and cluster with the iOS App Tracking Transparency
+ * prompt — ATT must be the SOLE first prompt at launch. Once the ATT decision has
+ * resolved (iOS: after the user answers the prompt; non-iOS: immediately, since
+ * ATT is a no-op), the caller resumes IAMs so legitimate messages are delivered as
+ * normal — just a few seconds later. IAMs are NEVER left permanently paused.
+ *
+ * Self-guards on `_initialized` (only resume if the SDK actually came up — if it
+ * never initialized, IAMs were never paused either) and never throws. Mirrors the
+ * pause call's own try/catch style.
+ */
+export function resumeInAppMessages(): void {
+  if (!_initialized) return
+  try {
+    OneSignal.InAppMessages.setPaused(false)
+    if (__DEV__) logger.push('in-app messages resumed (ATT resolved)')
+  } catch (e) {
+    console.warn('[OneSignal] InAppMessages.setPaused(false) failed:', e)
+  }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
