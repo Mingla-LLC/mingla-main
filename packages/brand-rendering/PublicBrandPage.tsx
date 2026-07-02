@@ -569,15 +569,24 @@ export const PublicBrandPage: React.FC<PublicBrandPageProps> = ({
         onPress={callbacks.onOpenExperience}
       />
     ) : (
-      <AboutTab
-        brand={brand}
-        theme={resolvedTheme}
-        palette={palette}
-        surface={surface}
-        onExternal={onExternal}
-        venues={venues}
-        onOpenVenue={callbacks.onOpenVenue}
-      />
+      <>
+        <AboutTab
+          brand={brand}
+          theme={resolvedTheme}
+          palette={palette}
+          surface={surface}
+          onExternal={onExternal}
+        />
+        {/* META-ORCH-1255(C) — Locations (SC-12): every VERIFIED venue of the
+            brand, each linking to its per-venue public page. Renders nothing
+            at 0 venues (real-data-only). */}
+        <LocationsSection
+          venues={venues}
+          palette={palette}
+          surface={surface}
+          onOpenVenue={callbacks.onOpenVenue}
+        />
+      </>
     );
 
   // ---- body (left column / phone flow) ----
@@ -1508,17 +1517,83 @@ const MenuTab: React.FC<{
   </View>
 );
 
-// ORCH-1155 — About pane: tagline → bio (4-line clamp + Read more) →
-// Locations (META-ORCH-1255(C), verified venues only) → contact.
+// META-ORCH-1255(C) — Locations section (rendered with the About pane;
+// SC-12). One pressable card per VERIFIED venue → /b/{brandSlug}/v/{venueSlug}
+// via onOpenVenue. 0 venues → renders nothing (real-data-only). Inline param
+// annotation (not React.FC) so the section stays fully typed under every
+// consumer tsconfig.
+const LocationsSection = ({
+  venues,
+  palette,
+  surface,
+  onOpenVenue,
+}: {
+  venues: PublicBrandVenueSummary[];
+  palette: ThemePalette;
+  surface: Surface;
+  onOpenVenue?: (venue: PublicBrandVenueSummary) => void;
+}): React.ReactElement | null => {
+  if (venues.length === 0) return null;
+  return (
+    <View style={styles.locationsWrap}>
+      <Text style={[styles.locationsLabel, { color: palette.tertiaryText }]}>
+        LOCATIONS
+      </Text>
+      {venues.map((v: PublicBrandVenueSummary) => {
+        const addrLine = v.address ?? v.city;
+        return (
+          <Pressable
+            key={v.id}
+            onPress={() => onOpenVenue?.(v)}
+            accessibilityRole="button"
+            accessibilityLabel={`Open ${v.name}`}
+            style={({ pressed }) => [
+              styles.venueRow,
+              surface.card,
+              pressed && styles.cardPressed,
+            ]}
+          >
+            {v.photoUrl !== null ? (
+              <Image
+                source={{ uri: v.photoUrl }}
+                style={styles.venueThumb}
+                accessibilityIgnoresInvertColors
+              />
+            ) : null}
+            <View style={styles.venueCopy}>
+              <Text
+                numberOfLines={1}
+                style={[styles.venueName, { color: palette.primaryText }]}
+              >
+                {v.name}
+              </Text>
+              {addrLine !== null ? (
+                <Text
+                  numberOfLines={1}
+                  style={[styles.venueAddr, { color: palette.tertiaryText }]}
+                >
+                  {addrLine}
+                </Text>
+              ) : null}
+            </View>
+            <Text style={[styles.venueChev, { color: palette.tertiaryText }]}>
+              ›
+            </Text>
+          </Pressable>
+        );
+      })}
+    </View>
+  );
+};
+
+// ORCH-1155 — About pane: tagline → bio (4-line clamp + Read more) → contact.
 const AboutTab: React.FC<{
   brand: PublicBrand;
   theme: ResolvedTheme;
   palette: ThemePalette;
   surface: Surface;
   onExternal: (url: string) => void;
-  venues?: PublicBrandVenueSummary[];
-  onOpenVenue?: (venue: PublicBrandVenueSummary) => void;
-}> = ({ brand, theme, palette, surface, onExternal, venues = [], onOpenVenue }) => {
+}> = ({ brand, theme, palette, surface, onExternal }) => {
   const tagline =
     brand.tagline !== undefined && brand.tagline.trim().length > 0
       ? brand.tagline.trim()
@@ -1545,59 +1620,6 @@ const AboutTab: React.FC<{
       ) : null}
       {bio !== null ? (
         <ClampedBio text={bio} palette={palette} />
-      ) : null}
-      {/* META-ORCH-1255(C) — Locations: every VERIFIED venue of the brand,
-          each linking to its per-venue public page (SC-12). Omitted at 0
-          venues (real-data-only). */}
-      {venues.length > 0 ? (
-        <View style={styles.locationsWrap}>
-          <Text style={[styles.locationsLabel, { color: palette.tertiaryText }]}>
-            LOCATIONS
-          </Text>
-          {venues.map((v) => {
-            const addrLine = v.address ?? v.city;
-            return (
-              <Pressable
-                key={v.id}
-                onPress={() => onOpenVenue?.(v)}
-                accessibilityRole="button"
-                accessibilityLabel={`Open ${v.name}`}
-                style={({ pressed }) => [
-                  styles.venueRow,
-                  surface.card,
-                  pressed && styles.cardPressed,
-                ]}
-              >
-                {v.photoUrl !== null ? (
-                  <Image
-                    source={{ uri: v.photoUrl }}
-                    style={styles.venueThumb}
-                    accessibilityIgnoresInvertColors
-                  />
-                ) : null}
-                <View style={styles.venueCopy}>
-                  <Text
-                    numberOfLines={1}
-                    style={[styles.venueName, { color: palette.primaryText }]}
-                  >
-                    {v.name}
-                  </Text>
-                  {addrLine !== null ? (
-                    <Text
-                      numberOfLines={1}
-                      style={[styles.venueAddr, { color: palette.tertiaryText }]}
-                    >
-                      {addrLine}
-                    </Text>
-                  ) : null}
-                </View>
-                <Text style={[styles.venueChev, { color: palette.tertiaryText }]}>
-                  ›
-                </Text>
-              </Pressable>
-            );
-          })}
-        </View>
       ) : null}
       {hasContact ? (
         <View style={styles.contactWrap}>
