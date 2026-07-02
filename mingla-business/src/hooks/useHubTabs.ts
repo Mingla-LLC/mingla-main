@@ -15,12 +15,22 @@ export type HubTabName =
 
 /**
  * ORCH-1145 — venue visibility input for the conditional Hub "Venue" pill.
- * Mirrors the retired brand-page `showVenueListing` gate
- * (BrandProfileView's `hasPhysicalLocation === true || placePoolId != null`).
+ *
+ * META-ORCH-1255 — the LIVE gate is `venueCount > 0` (≥1 `venue_listings`
+ * row, ANY claim/pipeline state). The legacy flags are kept as OPTIONAL
+ * dormant arms ([TRANSITIONAL]) because the append-only ORCH-1145 adversarial
+ * runtime gate executes them; in production they are permanently false —
+ * `brands.has_physical_location` / `brands.place_pool_id` lost their last
+ * writers (BrandEditView toggle removed; venue flows never touch brands).
+ * Exit condition: pinned tests superseded via TEST-MOD-APPROVED → drop flags.
  */
 export interface HubVenueVisibility {
-  hasPhysicalLocation: boolean;
-  hasPlacePool: boolean;
+  /** META-ORCH-1255 — the brand's venue_listings row count (any state). */
+  venueCount?: number;
+  /** [TRANSITIONAL] legacy pre-1255 arm — dormant in production. */
+  hasPhysicalLocation?: boolean;
+  /** [TRANSITIONAL] legacy pre-1255 arm — dormant in production. */
+  hasPlacePool?: boolean;
 }
 
 export interface HubVisibleTabsResult {
@@ -47,7 +57,7 @@ type HubVisibleTabsCounts = Pick<
 
 export const deriveHubVisibleTabs = (
   counts: HubVisibleTabsCounts,
-  venue: HubVenueVisibility = { hasPhysicalLocation: false, hasPlacePool: false },
+  venue: HubVenueVisibility = { venueCount: 0 },
 ): HubTabName[] => {
   // ORCH-1038: no "Get started" fallback pill — when the brand has no offerings,
   // the shared to-do toggle (above the pills) carries the "Create your first
@@ -65,10 +75,17 @@ export const deriveHubVisibleTabs = (
   if (counts.trips > 0 || (counts.trips_draft ?? 0) > 0) visible.push("trips");
   if (counts.experiences > 0 || (counts.experiences_draft ?? 0) > 0)
     visible.push("experiences");
-  // ORCH-1145 — Venue pill is conditional on hasPhysicalLocation || placePoolId
-  // (mirrors the retired brand-page gate). Purely-online brands never see it.
-  // Appended LAST so it sits as a rightmost peer alongside the offering pills.
-  if (venue.hasPhysicalLocation || venue.hasPlacePool) visible.push("venue");
+  // META-ORCH-1255 — Venue pill appears when the brand has ≥1 venue_listings
+  // row (ANY state, D-5); the legacy flag arms stay executable but are
+  // production-dormant (no writers — see HubVenueVisibility docs). Appended
+  // LAST so it sits as a rightmost peer alongside the offering pills.
+  if (
+    (venue.venueCount ?? 0) > 0 ||
+    venue.hasPhysicalLocation === true ||
+    venue.hasPlacePool === true
+  ) {
+    visible.push("venue");
+  }
   return visible;
 };
 
@@ -98,20 +115,24 @@ export const persistHubLastTab = (tabName: HubTabName): void => {
 
 export function useHubVisibleTabs(
   brandId: string | null,
-  // ORCH-1145 — the Hub layout already resolves `currentBrand` via
-  // useCurrentBrand(); it passes the venue flags in here so we never run a
-  // second brand fetch. Defaults keep older callers/tests (counts-only) valid.
-  venue: HubVenueVisibility = { hasPhysicalLocation: false, hasPlacePool: false },
+  // META-ORCH-1255 — the Hub layout passes `{ venueCount }` from its
+  // useVenueListings read. Defaults keep older callers/tests valid.
+  venue: HubVenueVisibility = { venueCount: 0 },
 ): HubVisibleTabsResult {
   const countsQuery = useBrandOfferingCounts(brandId);
   const data = useMemo<HubTabName[] | undefined>(() => {
     if (countsQuery.data === undefined) return undefined;
     return deriveHubVisibleTabs(countsQuery.data, venue);
-    // Depend on the primitive venue flags, not the `venue` object identity, so a
-    // fresh `{ ... }` literal from the caller doesn't force a re-derive each
+    // Depend on the primitive venue fields, not the `venue` object identity, so
+    // a fresh `{ ... }` literal from the caller doesn't force a re-derive each
     // render. The Hub layout memoizes the object on these same primitives.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [countsQuery.data, venue.hasPhysicalLocation, venue.hasPlacePool]);
+  }, [
+    countsQuery.data,
+    venue.venueCount,
+    venue.hasPhysicalLocation,
+    venue.hasPlacePool,
+  ]);
 
   return {
     data,

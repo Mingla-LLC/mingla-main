@@ -20,6 +20,31 @@ import type { BrandPlacePipelineState } from "../services/businessPlaceAuthoring
 // edit route; nothing Brand-shaped enters this module at runtime.
 import type { BusinessTodoProfileInput } from "./brandProfileCompleteness";
 
+/**
+ * META-ORCH-1255 — one per-venue pipeline row for the `get_venue_live` band.
+ * `route` is precomputed by the caller (routeForPipelineStateFix fed the
+ * venue's pipeline row) — this module stays route-string-agnostic.
+ */
+export interface VenueTodoPipeline {
+  venueId: string;
+  venueName: string;
+  status: BrandPlacePipelineState["status"];
+  route: string;
+}
+
+/** META-ORCH-1255 — one per-venue claim row for the `venue_claim_review` band. */
+export interface VenueTodoClaim {
+  venueId: string;
+  venueName: string;
+  variant: "pending_review" | "follow_up";
+  /** Open admin-feedback items in the active round (0 = plain pending). */
+  openCount: number;
+  /** Route to the venue's listing surface. */
+  route: string;
+  /** Route with the feedback sheet auto-opened (used when openCount > 0). */
+  feedbackRoute: string;
+}
+
 export type BusinessTodoAction =
   | { kind: "open_brand_switcher" }
   | { kind: "open_universal_creator" }
@@ -67,10 +92,28 @@ export interface BusinessTodoInput {
   /** A persisted, in-progress venue wizard draft exists (→ "Finish" vs "Add"). */
   venueDraftInProgress: boolean;
   /**
-   * ORCH-1040 — the brand has a physical location (opt-in toggle). Gates the
-   * add/finish-venue rows so non-physical brands are never nagged to add a venue.
+   * ORCH-1040 — the brand has a physical location (opt-in toggle).
+   * [TRANSITIONAL] META-ORCH-1255: OPTIONAL + production-dormant. The toggle
+   * is deleted (venue creation lives in the creator sheet) and the LIVE hook
+   * passes the per-venue arrays below instead; this field only keeps the
+   * append-only pinned fixtures compiling/behaving. Exit: fixture supersession.
    */
-  hasPhysicalLocation: boolean;
+  hasPhysicalLocation?: boolean;
+  /**
+   * META-ORCH-1255 — per-venue pipeline rows. WHEN PRESENT (the live hook
+   * always passes it) the legacy singular pipelineStatus/pipelineRoute venue
+   * band is REPLACED by one `get_venue_live` row PER venue with status ∈
+   * processing|needs_fix|failed, and `add_venue` never renders (creation
+   * lives in the creator sheet — an unconditional nag is what ORCH-1040
+   * forbade). Absent → legacy behavior (pinned fixtures).
+   */
+  venuePipelines?: VenueTodoPipeline[];
+  /**
+   * META-ORCH-1255 — per-venue claim rows. WHEN PRESENT the legacy singular
+   * venueClaimPending band is REPLACED by one `venue_claim_review` row per
+   * venue with a pending/follow-up claim. Absent → legacy behavior.
+   */
+  venueClaims?: VenueTodoClaim[];
   /** Upcoming buckets (total = live+upcoming+draft; past already filtered out). */
   counts: { total: number; live: number; draft: number };
   /** Brand Stripe status is "active". */
@@ -182,13 +225,40 @@ export function buildBusinessTodos(input: BusinessTodoInput): BusinessTodo[] {
 
   const todos: BusinessTodo[] = [...inviteTodos];
 
-  // 2 — Venue. ORCH-1040: "Add/Finish your venue" only shows for brands that
-  // have toggled ON a physical location (opt-in) — online-only brands, event
-  // organizers and pop-ups never get nagged. "Get your venue live" is NOT gated
-  // on the flag: it only fires once a venue row exists, which means the brand
-  // already engaged the physical path, so an in-progress venue is never stranded.
-  if (input.pipelineFetched && input.pipelineStatus === null) {
-    if (input.hasPhysicalLocation) {
+  // 2 — Venue. META-ORCH-1255: PER-VENUE rows when the caller passes the
+  // venue arrays (the live hook always does). `add_venue` is GONE on this
+  // path — creation lives in the creator sheet's 4th option; `finish_venue`
+  // stays, gated ONLY on the CURRENT brand's in-progress draft.
+  const multiVenue = input.venuePipelines !== undefined;
+  if (multiVenue) {
+    if (input.venueDraftInProgress) {
+      todos.push({
+        id: "finish_venue",
+        label: "Finish adding your venue",
+        sublabel: "Pick up where you left off",
+        action: { kind: "route", route: "/venue/create" },
+      });
+    }
+    const namedVenues = (input.venuePipelines ?? []).length > 1;
+    for (const vp of input.venuePipelines ?? []) {
+      if (
+        vp.status !== "processing" &&
+        vp.status !== "needs_fix" &&
+        vp.status !== "failed"
+      ) {
+        continue;
+      }
+      todos.push({
+        id: `get_venue_live:${vp.venueId}`,
+        label: namedVenues ? `Get ${vp.venueName} live` : "Get your venue live",
+        sublabel: venueLiveSublabel(vp.status),
+        action: { kind: "route", route: vp.route },
+      });
+    }
+  } else if (input.pipelineFetched && input.pipelineStatus === null) {
+    // [TRANSITIONAL] legacy singular band (pinned fixtures only — the live
+    // hook always passes venuePipelines). ORCH-1040 gating preserved verbatim.
+    if (input.hasPhysicalLocation === true) {
       todos.push(
         input.venueDraftInProgress
           ? {
@@ -228,7 +298,36 @@ export function buildBusinessTodos(input: BusinessTodoInput): BusinessTodo[] {
   // "Updates requested" + an "N to fix" badge — and its action deep-links the
   // listing focused on the feedback sheet. The row's presence is unchanged (it
   // still vanishes the moment the claim resolves); the count only escalates it.
-  if (input.venueClaimPending) {
+  if (input.venueClaims !== undefined) {
+    // META-ORCH-1255 — one row PER venue with a pending/follow-up claim; the
+    // label names the venue when the brand has >1 venue.
+    const namedClaims =
+      (input.venuePipelines ?? input.venueClaims).length > 1;
+    for (const vc of input.venueClaims) {
+      if (vc.variant === "follow_up" && vc.openCount > 0) {
+        todos.push({
+          id: `venue_claim_review:${vc.venueId}`,
+          label: namedClaims
+            ? `Updates requested — ${vc.venueName}`
+            : "Updates requested",
+          sublabel: "A few tweaks will get you live — tap to see what to fix",
+          badge: vc.openCount === 1 ? "1 to fix" : `${vc.openCount} to fix`,
+          action: { kind: "route", route: vc.feedbackRoute },
+        });
+      } else {
+        todos.push({
+          id: `venue_claim_review:${vc.venueId}`,
+          label: namedClaims
+            ? `${vc.venueName} claim under review`
+            : "Venue claim under review",
+          sublabel:
+            "We're verifying your venue — usually within 4 business hours",
+          action: { kind: "route", route: vc.route },
+        });
+      }
+    }
+  } else if (input.venueClaimPending) {
+    // [TRANSITIONAL] legacy singular band (pinned fixtures only).
     const openCount = input.venueClaimOpenFeedbackCount;
     if (openCount > 0) {
       todos.push({

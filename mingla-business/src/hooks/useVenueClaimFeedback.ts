@@ -11,7 +11,7 @@
  * the user-facing toast is raised by the consuming sheet/parent (DESIGN §6.7).
  */
 
-import { useCallback } from "react";
+import { useCallback, useMemo } from "react";
 import {
   useMutation,
   useQuery,
@@ -23,6 +23,7 @@ import {
 import { brandKeys } from "./useBrands";
 import {
   fetchVenueClaimFeedback,
+  fetchVenueClaimFeedbackForBrand,
   markFeedbackItemFixed,
   resubmitVenueClaim,
   type VenueClaimFeedbackItem,
@@ -215,4 +216,34 @@ export function useVenueClaimOpenCount(
     [query.data],
   );
   return openCount();
+}
+
+/**
+ * META-ORCH-1255 — per-venue OPEN feedback counts for a whole brand in one
+ * read (the venue card list's "{n} to fix" slot + the per-venue to-do badges).
+ * Returns {} until loaded; venues without an active round simply have no key.
+ */
+export function useVenueClaimOpenCountsByVenue(
+  brandId: string | null,
+  hasAnyFollowUp: boolean,
+): Record<string, number> {
+  const { isAuthReady } = useAuth();
+  const enabled = isAuthReady && brandId !== null && hasAnyFollowUp;
+  const query = useQuery<VenueClaimFeedbackItem[], Error>({
+    queryKey:
+      enabled && brandId !== null
+        ? ([...brandKeys.feedback(brandId), "all-venues"] as const)
+        : DISABLED_KEY,
+    queryFn: () => fetchVenueClaimFeedbackForBrand(brandId as string),
+    enabled,
+    staleTime: 30_000,
+  });
+  return useMemo(() => {
+    const counts: Record<string, number> = {};
+    for (const item of query.data ?? []) {
+      if (item.status !== "open") continue;
+      counts[item.venue_id] = (counts[item.venue_id] ?? 0) + 1;
+    }
+    return counts;
+  }, [query.data]);
 }

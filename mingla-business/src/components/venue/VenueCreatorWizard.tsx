@@ -1,5 +1,11 @@
 /**
  * Ve1 — 7-step venue onboarding wizard (after category selection).
+ *
+ * META-ORCH-1255 Leg B — the wizard creates a `venue_listings` ROW under the
+ * operator's CURRENT brand via `biz_create_venue_listing` (F-1 kill): NO brand
+ * creation, NO active-brand switch, ever. Success carries `{ venueId,
+ * placePoolId }` into the deck-readiness setup, and the per-brand draft store
+ * clears only THIS brand's draft.
  */
 
 import React, { useCallback, useEffect, useState } from "react";
@@ -25,10 +31,11 @@ import {
 } from "../../constants/designSystem";
 import { useAuth } from "../../context/AuthContext";
 import {
-  useCreateVenueBrand,
   SlugCollisionError,
   resolveAvailableVenueSlug,
 } from "../../hooks/useBrands";
+import { useCreateVenueListing } from "../../hooks/useVenueListings";
+import { useCurrentBrand } from "../../hooks/useCurrentBrand";
 import {
   confirmAiOutputs,
   refreshDeckReadiness,
@@ -43,12 +50,11 @@ import {
   uploadGalleryPhoto,
   VenueGalleryError,
 } from "../../services/venueGalleryService";
-import type { Brand } from "../../types/brand";
+import type { VenueCategory } from "../../types/brand";
 import { VENUE_SIGNALS } from "../../constants/venueSignals";
 import type { DeckReadinessFocus } from "../../utils/deckReadinessRoutes";
 import { sanitizeAuthoringError } from "../../utils/sanitizeAuthoringError";
 import { useDraftVenueStore } from "../../store/draftVenueStore";
-import { useCurrentBrandStore } from "../../store/currentBrandStore";
 import { venueStepError } from "./venueWizardValidation";
 import { Button } from "../ui/Button";
 import { EventCoverMedia } from "../ui/EventCoverMedia";
@@ -77,8 +83,12 @@ const STEPPER_STEPS: StepperStep[] = [
 ];
 
 export interface VenueCreatorWizardProps {
-  /** Optional warning when venue was created but cover upload failed. */
-  onDone: (coverWarning?: string | null) => void;
+  /**
+   * Optional warning when venue was created but cover upload failed.
+   * META-ORCH-1255 — also hands back the created venue id so the success
+   * screen can route to the new venue's management page.
+   */
+  onDone: (coverWarning?: string | null, venueId?: string | null) => void;
   onClose: () => void;
 }
 
@@ -88,7 +98,9 @@ export const VenueCreatorWizard: React.FC<VenueCreatorWizardProps> = ({
 }) => {
   const insets = useSafeAreaInsets();
   const { user } = useAuth();
-  const createVenue = useCreateVenueBrand();
+  // META-ORCH-1255 — the venue attaches to the CURRENT brand (F-1 kill).
+  const currentBrand = useCurrentBrand();
+  const createVenue = useCreateVenueListing();
 
   // META-ORCH-1009 Sub-E: the wizard step is sourced REACTIVELY from the
   // PERSISTED draft store so re-entry resumes where the operator stopped (not
@@ -101,8 +113,12 @@ export const VenueCreatorWizard: React.FC<VenueCreatorWizardProps> = ({
   const [slugCollision, setSlugCollision] = useState<string | null>(null);
   const [submitErr, setSubmitErr] = useState<string | null>(null);
   const [createdVenue, setCreatedVenue] = useState<{
-    brand: Brand;
+    venueId: string;
     placePoolId: string;
+    venueName: string;
+    venueCategory: VenueCategory | null;
+    operatorTagline: string | null;
+    operatorDescription: string | null;
   } | null>(null);
 
   const draft = useDraftVenueStore();
@@ -133,6 +149,12 @@ export const VenueCreatorWizard: React.FC<VenueCreatorWizardProps> = ({
 
   const handleSubmit = useCallback(async (): Promise<void> => {
     if (user?.id === undefined) return;
+    if (currentBrand === null) {
+      setSubmitErr(
+        "Pick a brand first — your venue listing lives under one of your brands.",
+      );
+      return;
+    }
     setSubmitErr(null);
     const st = useDraftVenueStore.getState();
     const last = venueStepError(TOTAL - 1, st);
@@ -172,12 +194,15 @@ export const VenueCreatorWizard: React.FC<VenueCreatorWizardProps> = ({
         user.id,
       );
 
-      const brand = await createVenue.mutateAsync({
-        accountId: user.id,
+      // META-ORCH-1255 — create the venue LISTING under the CURRENT brand.
+      // NO brand insert, NO active-brand switch (the operator stays where they
+      // are; the new venue appears in this brand's Hub venue tab).
+      const venueId = await createVenue.mutateAsync({
+        brandId: currentBrand.id,
         name: st.displayName.trim(),
         slug: resolvedSlug,
         tagline: st.tagline.trim() || undefined,
-        bio: st.description.trim(),
+        description: st.description.trim(),
         placePoolId: st.placePoolId,
         googlePlaceId: st.googlePlaceId,
         lat: st.lat,
@@ -196,7 +221,8 @@ export const VenueCreatorWizard: React.FC<VenueCreatorWizardProps> = ({
       });
 
       const tier1 = await upsertTier1Place({
-        brandId: brand.id,
+        brandId: currentBrand.id,
+        venueId,
         selectedPlacePoolId: st.placePoolId,
         draft: {
           name: st.displayName.trim(),
@@ -216,17 +242,19 @@ export const VenueCreatorWizard: React.FC<VenueCreatorWizardProps> = ({
       if (tier1.place_pool_id.length === 0) {
         throw new Error("place_pool_link_missing");
       }
-      setCreatedVenue({ brand, placePoolId: tier1.place_pool_id });
-      // META-ORCH-1009 Sub-E: make the just-created venue the ACTIVE brand. The
-      // venue is its own brand; without this the operator stays on their previous
-      // brand and Home shows "Add your venue" again after a reload instead of the
-      // deck-readiness card. currentBrandId is persisted, so this resume survives
-      // an app reload — Home lands straight on "Finish deck readiness".
-      useCurrentBrandStore.getState().setCurrentBrandId(brand.id);
+      setCreatedVenue({
+        venueId,
+        placePoolId: tier1.place_pool_id,
+        venueName: st.displayName.trim(),
+        venueCategory: st.venueCategory,
+        operatorTagline: st.tagline.trim() || null,
+        operatorDescription: st.description.trim() || null,
+      });
       // The venue is created and the flow moves to the deck-readiness screen
-      // (which reads from createdVenue, not the draft). Clear the persisted draft
-      // so the NEXT "Add a venue" starts clean instead of resuming this one.
-      useDraftVenueStore.getState().reset();
+      // (which reads from createdVenue, not the draft). Clear THIS brand's
+      // persisted draft so the NEXT "Create venue listing" starts clean —
+      // other brands' drafts are untouched (per-brand store v2).
+      useDraftVenueStore.getState().reset(currentBrand.id);
     } catch (e) {
       if (e instanceof SlugCollisionError) {
         setSlugCollision(
@@ -241,15 +269,20 @@ export const VenueCreatorWizard: React.FC<VenueCreatorWizardProps> = ({
       }
       setSubmitErr(sanitizeAuthoringError(e, "Could not submit. Try again."));
     }
-  }, [createVenue, user?.id]);
+  }, [createVenue, currentBrand, setStep, user?.id]);
 
-  if (createdVenue !== null && user?.id !== undefined) {
+  if (createdVenue !== null && user?.id !== undefined && currentBrand !== null) {
     return (
       <VenueDeckReadinessSetup
         accountId={user.id}
-        brand={createdVenue.brand}
+        brandId={currentBrand.id}
+        venueId={createdVenue.venueId}
         placePoolId={createdVenue.placePoolId}
-        onDone={() => onDone(null)}
+        venueName={createdVenue.venueName}
+        venueCategory={createdVenue.venueCategory}
+        operatorTagline={createdVenue.operatorTagline}
+        operatorDescription={createdVenue.operatorDescription}
+        onDone={() => onDone(null, createdVenue.venueId)}
       />
     );
   }
@@ -354,8 +387,16 @@ export const VenueCreatorWizard: React.FC<VenueCreatorWizardProps> = ({
 
 export interface VenueDeckReadinessSetupProps {
   accountId: string;
-  brand: Brand;
+  // META-ORCH-1255 — venue-scoped prop re-shape: the setup works on ONE
+  // venue_listings row under the (unchanged) current brand.
+  brandId: string;
+  venueId: string;
   placePoolId: string;
+  venueName: string;
+  venueCategory: VenueCategory | null;
+  /** Operator-authored seeds for the AI (wizard draft / stored tier2). */
+  operatorTagline?: string | null;
+  operatorDescription?: string | null;
   onDone: () => void;
   focus?: DeckReadinessFocus;
   initialTier2?: Record<string, unknown>;
@@ -487,8 +528,13 @@ function stringValue(value: unknown, fallback: string): string {
 
 export function VenueDeckReadinessSetup({
   accountId,
-  brand,
+  brandId,
+  venueId,
   placePoolId,
+  venueName,
+  venueCategory: venueCategoryProp,
+  operatorTagline = null,
+  operatorDescription = null,
   onDone,
   focus = "review",
   initialTier2 = EMPTY_TIER2,
@@ -499,17 +545,15 @@ export function VenueDeckReadinessSetup({
   initialGallery = EMPTY_GALLERY,
 }: VenueDeckReadinessSetupProps): React.ReactElement {
   const insets = useSafeAreaInsets();
-  const venueCategory = brand.venueCategory ?? "restaurant";
+  const venueCategory = venueCategoryProp ?? "restaurant";
   const facetQuestions = facetQuestionsForCategory(venueCategory);
   const [coverVisible, setCoverVisible] = useState(false);
   const [gallery, setGallery] = useState<string[]>(initialGallery);
   const [galleryBusy, setGalleryBusy] = useState(false);
   const [cover, setCover] = useState<CoverPatch>({
     ...EMPTY_COVER,
-    coverMediaUrl:
-      initialCover?.coverMediaUrl ?? brand.coverMediaUrl ?? null,
-    coverMediaType:
-      initialCover?.coverMediaType ?? brand.coverMediaType ?? null,
+    coverMediaUrl: initialCover?.coverMediaUrl ?? null,
+    coverMediaType: initialCover?.coverMediaType ?? null,
   });
   const [website, setWebsite] = useState(
     stringValue(initialTier2.website, ""),
@@ -572,11 +616,11 @@ export function VenueDeckReadinessSetup({
       vibe_chips: selectedVibes,
       facets,
       operator_inputs: {
-        tagline: brand.tagline ?? null,
-        description: brand.bio ?? null,
+        tagline: operatorTagline,
+        description: operatorDescription,
       },
     }),
-    [brand.bio, brand.tagline, facets, priceTiers, selectedVibes, website],
+    [operatorDescription, operatorTagline, facets, priceTiers, selectedVibes, website],
   );
 
   // WS5: "Recommend me" is only enabled once the venue has the must-haves.
@@ -600,7 +644,8 @@ export function VenueDeckReadinessSetup({
     (patch: CoverPatch): void => {
       setCover(patch);
       void syncHeroMedia({
-        brandId: brand.id,
+        brandId,
+        venueId,
         placePoolId,
         coverMediaUrl: patch.coverMediaUrl,
         coverMediaType: patch.coverMediaType,
@@ -613,7 +658,7 @@ export function VenueDeckReadinessSetup({
         );
       });
     },
-    [brand.id, placePoolId],
+    [brandId, venueId, placePoolId],
   );
 
   // META-ORCH-1009 Sub-E: multi-select gallery upload. Pick many at once (capped
@@ -632,7 +677,7 @@ export function VenueDeckReadinessSetup({
       const uploaded: string[] = [];
       for (const asset of picked) {
         try {
-          uploaded.push(await uploadGalleryPhoto(brand.id, asset));
+          uploaded.push(await uploadGalleryPhoto(brandId, asset));
         } catch (e) {
           setMessage(
             e instanceof VenueGalleryError ? e.message : "A photo failed to upload.",
@@ -642,25 +687,25 @@ export function VenueDeckReadinessSetup({
       if (uploaded.length === 0) return;
       const next = Array.from(new Set([...gallery, ...uploaded])).slice(0, GALLERY_MAX);
       setGallery(next);
-      await syncGallery({ brandId: brand.id, placePoolId, galleryUrls: next });
+      await syncGallery({ brandId, venueId, placePoolId, galleryUrls: next });
     } catch (e) {
       setMessage(e instanceof Error ? e.message : "Couldn't add photos. Try again.");
     } finally {
       setGalleryBusy(false);
     }
-  }, [brand.id, gallery, placePoolId]);
+  }, [brandId, venueId, gallery, placePoolId]);
 
   const handleRemovePhoto = useCallback(
     async (url: string): Promise<void> => {
       const next = gallery.filter((u) => u !== url);
       setGallery(next);
       try {
-        await syncGallery({ brandId: brand.id, placePoolId, galleryUrls: next });
+        await syncGallery({ brandId, venueId, placePoolId, galleryUrls: next });
       } catch (e) {
         setMessage(e instanceof Error ? e.message : "Couldn't update photos.");
       }
     },
-    [brand.id, gallery, placePoolId],
+    [brandId, venueId, gallery, placePoolId],
   );
 
   const toggleVibe = useCallback((vibe: string): void => {
@@ -676,7 +721,8 @@ export function VenueDeckReadinessSetup({
     setMessage(null);
     try {
       const result = await runTier2Pipeline({
-        brandId: brand.id,
+        brandId,
+        venueId,
         placePoolId,
         tier2: buildTier2(),
       });
@@ -690,7 +736,7 @@ export function VenueDeckReadinessSetup({
     } finally {
       setBusy(null);
     }
-  }, [brand.id, buildTier2, placePoolId]);
+  }, [brandId, venueId, buildTier2, placePoolId]);
 
   const handleConfirm = useCallback(async (): Promise<void> => {
     if (editedBio.trim().length < 20) {
@@ -701,7 +747,8 @@ export function VenueDeckReadinessSetup({
     setMessage(null);
     try {
       const result = await confirmAiOutputs({
-        brandId: brand.id,
+        brandId,
+        venueId,
         placePoolId,
         salesBio: editedBio.trim(),
         facets,
@@ -723,14 +770,15 @@ export function VenueDeckReadinessSetup({
     } finally {
       setBusy(null);
     }
-  }, [brand.id, buildTier2, editedBio, facets, onDone, placePoolId]);
+  }, [brandId, venueId, buildTier2, editedBio, facets, onDone, placePoolId]);
 
   const handleRefresh = useCallback(async (): Promise<void> => {
     setBusy("refresh");
     setMessage(null);
     try {
       const result = await refreshDeckReadiness({
-        brandId: brand.id,
+        brandId,
+        venueId,
         placePoolId,
       });
       setCoaching(result.coaching);
@@ -746,11 +794,14 @@ export function VenueDeckReadinessSetup({
     } finally {
       setBusy(null);
     }
-  }, [brand.id, placePoolId]);
+  }, [brandId, venueId, placePoolId]);
 
   return (
     <View style={[styles.root, { paddingTop: insets.top }]}>
       <View style={styles.deckHeader}>
+        {/* META-ORCH-1255 — name WHICH venue this setup belongs to (multi-venue
+            brands must never act on the wrong one). */}
+        <Text style={styles.chromeSub}>{venueName}</Text>
         <Text style={styles.deckTitle}>Get recommended on Mingla</Text>
         <Text style={styles.deckBody}>
           Mingla recommends venues to people deciding where to go out. Add a few
@@ -1067,15 +1118,21 @@ export function VenueDeckReadinessSetup({
         {message !== null ? <Text style={styles.submitErr}>{message}</Text> : null}
       </ScrollView>
 
+      {/* [TRANSITIONAL] the unified picker has no "venue" target yet — the
+          brand target ALSO patches brands.cover_media_url (see report
+          Discoveries: venue hero can overwrite the parent brand cover on
+          multi-venue brands). The venue row's cover is written by
+          syncHeroMedia (the truth); exit = CoverPicker venue target ORCH. */}
       <CoverPickerSheet
         visible={coverVisible}
         onClose={() => setCoverVisible(false)}
         target={{
           kind: "brand",
-          brandId: brand.id,
+          brandId,
           accountId,
           existingDescription:
-            [brand.tagline, brand.bio].filter(Boolean).join("\n\n") || null,
+            [operatorTagline, operatorDescription].filter(Boolean).join("\n\n") ||
+            null,
         }}
         initial={cover}
         onCoverChange={handleCoverChange}

@@ -36,6 +36,7 @@ import {
   type HubTabName,
 } from "../../../src/hooks/useHubTabs";
 import { useVenueClaimRefresh } from "../../../src/hooks/useVenueClaimRefresh";
+import { useVenueListings } from "../../../src/hooks/useVenueListings";
 import { useResponsiveLayout } from "../../../src/hooks/useResponsiveLayout";
 import { IconChrome } from "../../../src/components/ui/IconChrome";
 import { TopBar } from "../../../src/components/ui/TopBar";
@@ -77,15 +78,14 @@ export default function HubTabLayout(): React.ReactElement {
   const setCurrentBrand = useCurrentBrandStore((s) => s.setCurrentBrand);
   const currentBrand = useCurrentBrand();
   const todos = useBusinessTodos();
-  // ORCH-1145 — venue visibility for the conditional "Venue" pill. Computed
-  // from the already-resolved currentBrand (NO second brand fetch); mirrors the
-  // retired brand-page `showVenueListing` gate.
+  // META-ORCH-1255 — venue visibility = the brand has ≥1 venue_listings row
+  // (any state). Lightweight owner-RLS list read, shared with the venue tab's
+  // card list via the same query key (no double fetch).
+  const venueListings = useVenueListings(currentBrand?.id ?? null);
+  const venueCount = venueListings.data?.length ?? 0;
   const venueVisibility = React.useMemo(
-    () => ({
-      hasPhysicalLocation: currentBrand?.hasPhysicalLocation === true,
-      hasPlacePool: currentBrand?.placePoolId != null,
-    }),
-    [currentBrand?.hasPhysicalLocation, currentBrand?.placePoolId],
+    () => ({ venueCount }),
+    [venueCount],
   );
   const visibleTabs = useHubVisibleTabs(
     currentBrand?.id ?? null,
@@ -267,7 +267,7 @@ export default function HubTabLayout(): React.ReactElement {
               icon="plus"
               size={36}
               onPress={() => setIsUniversalCreatorOpen(true)}
-              accessibilityLabel="Create event, experience, or trip"
+              accessibilityLabel="Create event, experience, trip, or venue listing"
               testID="hub-universal-creator-button"
             />
           }

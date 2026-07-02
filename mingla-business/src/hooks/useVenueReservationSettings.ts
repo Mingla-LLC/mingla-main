@@ -196,3 +196,42 @@ export function useUpdateReservationFee(
     },
   });
 }
+
+/**
+ * META-ORCH-1255 — lightweight per-brand settings list for the venue CARD LIST
+ * ("Reservations on" data slot): one read for ALL venues of the brand.
+ */
+export interface VenueReservationsEnabledRow {
+  venueId: string;
+  reservationsEnabled: boolean;
+}
+
+export const venueReservationSettingsListKey = (
+  brandId: string,
+): readonly ["venueReservationSettingsList", string] =>
+  ["venueReservationSettingsList", brandId] as const;
+
+export function useBrandReservationSettingsList(
+  brandId: string | null,
+): UseQueryResult<VenueReservationsEnabledRow[]> {
+  const { isAuthReady } = useAuth();
+  const enabled = isAuthReady && brandId !== null && brandId.length > 0;
+  return useQuery<VenueReservationsEnabledRow[]>({
+    queryKey: enabled
+      ? venueReservationSettingsListKey(brandId)
+      : (["venueReservationSettingsList", "disabled"] as const),
+    enabled,
+    staleTime: 30_000,
+    queryFn: async () => {
+      if (!enabled) return [];
+      const { data, error } = await supabase
+        .from("venue_reservation_settings")
+        .select("venue_id, reservations_enabled")
+        .eq("brand_id", brandId);
+      if (error !== null) throw error;
+      return ((data ?? []) as { venue_id: string; reservations_enabled: boolean }[]).map(
+        (r) => ({ venueId: r.venue_id, reservationsEnabled: r.reservations_enabled }),
+      );
+    },
+  });
+}

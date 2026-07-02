@@ -1,37 +1,45 @@
 /**
- * /brand/[id]/listing — ORCH-1145 thin redirect to the Hub "Venue" tab.
+ * /brand/[id]/listing — ORCH-1145 thin redirect, META-ORCH-1255 venue-aware.
  *
- * The venue-listing management UI MOVED to a conditional "Venue" pill in the Hub
- * (`app/(tabs)/hub/listing.tsx`, rendering the shared `VenueListingContent`).
- * The brand-page entry ROW was removed (single doorway).
- *
- * This route is KEPT (NOT deleted) because four non-row navigators still target
+ * KEPT (NOT deleted) because non-row navigators still target
  * `/brand/{id}/listing` and must resolve (ORCH-1145 investigation F-1):
  *   - to-do rows + home cards (`useBusinessTodos`)
- *   - push deep-links `new_review` / `claim_decision` (`businessNotificationRouting`)
+ *   - push deep-links `new_review` / `claim_decision` (admin pushes now carry
+ *     `?venue={venueId}` — Leg A §4.A.7)
  *   - global search (`lib/search/registry`)
  *
- * The Hub tab is active-brand-scoped (no id param), so this redirect FIRST sets
- * the active brand to the route's `id`, THEN redirects to `/(tabs)/hub/listing`,
- * forwarding `?focus=feedback` so the to-do `venueFeedbackRoute` still auto-opens
- * the feedback sheet inside the tab.
+ * META-ORCH-1255 forwarding (DESIGN §5.6):
+ *   - `?venue={venueId}` → straight to `/venue/{venueId}` (+`?focus=feedback`
+ *     forwarded) — the per-venue management page.
+ *   - no venue param + brand has EXACTLY ONE venue → forward to that venue's
+ *     page (single-venue operators skip the one-card list).
+ *   - otherwise → the Hub venue CARD LIST at "/(tabs)/hub/listing"
+ *     (focus variant: "/(tabs)/hub/listing?focus=feedback").
  *
- * Do NOT re-add a brand-page row here or in BrandProfileView — single doorway.
+ * The redirect FIRST sets the active brand to the route's `id` (the Hub tab
+ * is active-brand-scoped), THEN redirects. Do NOT re-add a brand-page row
+ * here or in BrandProfileView — single doorway.
  */
 import React, { useEffect } from "react";
 import { Redirect, useLocalSearchParams } from "expo-router";
 
+import { useVenueListings } from "../../../src/hooks/useVenueListings";
 import { useCurrentBrandStore } from "../../../src/store/currentBrandStore";
 
-export default function BrandListingRedirect(): React.ReactElement {
+export default function BrandListingRedirect(): React.ReactElement | null {
   const params = useLocalSearchParams<{
     id: string | string[];
     focus?: string | string[];
+    venue?: string | string[];
   }>();
   const idParam = Array.isArray(params.id) ? params.id[0] : params.id;
   const focusParam = Array.isArray(params.focus) ? params.focus[0] : params.focus;
+  const venueParam = Array.isArray(params.venue) ? params.venue[0] : params.venue;
   const brandId =
     typeof idParam === "string" && idParam.length > 0 ? idParam : null;
+  const venueId =
+    typeof venueParam === "string" && venueParam.length > 0 ? venueParam : null;
+  const focusSuffix = focusParam === "feedback" ? "?focus=feedback" : "";
 
   const currentBrandId = useCurrentBrandStore((s) => s.currentBrandId);
   const setCurrentBrandId = useCurrentBrandStore((s) => s.setCurrentBrandId);
@@ -45,6 +53,22 @@ export default function BrandListingRedirect(): React.ReactElement {
       setCurrentBrandId(brandId);
     }
   }, [brandId, currentBrandId, setCurrentBrandId]);
+
+  // Single-venue forwarding needs the brand's venue list (cached with the Hub
+  // gate/card-list read). Only fetched when no explicit venue param arrived.
+  const listingsQuery = useVenueListings(venueId === null ? brandId : null);
+
+  if (venueId !== null) {
+    return <Redirect href={`/venue/${venueId}${focusSuffix}` as never} />;
+  }
+
+  // Hold the redirect one beat while the venue list resolves so a
+  // single-venue brand lands directly on its venue page (DESIGN §5.6).
+  if (listingsQuery.isLoading) return null;
+  const venues = listingsQuery.data ?? [];
+  if (venues.length === 1) {
+    return <Redirect href={`/venue/${venues[0].id}${focusSuffix}` as never} />;
+  }
 
   return (
     <Redirect

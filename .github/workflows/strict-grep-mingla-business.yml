@@ -3546,3 +3546,16 @@ jobs:
         run: node .github/scripts/strict-grep/orch-1255-public-venue-anon-safe.mjs --self-test
       - name: Run META-ORCH-1255 anon-safe gate
         run: node .github/scripts/strict-grep/orch-1255-public-venue-anon-safe.mjs
+
+  orch-1255-brandedit-no-physical-location-toggle:
+    name: "META-ORCH-1255(B): BrandEditView carries no physical-location toggle; has_physical_location write paths stay decommissioned"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Self-test the META-ORCH-1255 brand-edit toggle gate
+        run: node .github/scripts/strict-grep/orch-1255-brandedit-no-physical-location-toggle.mjs --self-test
+      - name: Run META-ORCH-1255 brand-edit toggle gate
+        run: node .github/scripts/strict-grep/orch-1255-brandedit-no-physical-location-toggle.mjs

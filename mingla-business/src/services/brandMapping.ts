@@ -446,9 +446,6 @@ export function mapUiToBrandUpdatePatch(
   if (patch.profilePhotoType !== undefined) {
     out.profile_photo_type = patch.profilePhotoType ?? null;
   }
-  if (patch.hasPhysicalLocation !== undefined) {
-    out.has_physical_location = patch.hasPhysicalLocation;
-  }
   if (patch.theme !== undefined) {
     out.theme_color = patch.theme?.color ?? null;
     out.theme_font = patch.theme?.font ?? null;
