@@ -35,6 +35,11 @@ import { sendOtp, verifyOtp, OtpChannel } from '../services/otpService'
 import { recordConsent } from '../services/consentService'
 import { CONSENT_DISCLOSURE_TEXT, DISCLOSURE_VERSION } from '../constants/consentDisclosure'
 import { logger } from '../utils/logger'
+// ORCH-1258 (Apple 2.1): ATT must be the FIRST permission prompt. The onboarding
+// location request awaits whenAttResolved() so location can NEVER precede the ATT
+// decision. Resolves immediately on non-iOS and once ATT is requested on iOS
+// (fail-open), so this can't hang.
+import { whenAttResolved } from '../services/permissionOrchestrator'
 import { saveOnboardingData, clearOnboardingData } from '../utils/onboardingPersistence'
 import { resolveOnboardingLocationOverride } from '../utils/onboardingLocationOverride'
 import { detectLocaleFromCoordinates, detectLocaleFromCountryName } from '../utils/localeDetection'
@@ -1720,6 +1725,11 @@ const OnboardingFlow = ({
         return
       }
 
+      // ORCH-1258 (Apple 2.1): ATT is the FIRST permission prompt. Wait for the ATT
+      // decision before showing the OS location dialog so location can NEVER precede
+      // ATT. whenAttResolved() resolves immediately on non-iOS and once ATT has been
+      // requested on iOS (fail-open), so this never hangs the onboarding step.
+      await whenAttResolved()
       const result = await Location.requestForegroundPermissionsAsync()
       if (result.status === 'granted') {
         logger.onboarding('Location: permission granted')
