@@ -187,13 +187,18 @@ export async function reviewClaim(venueId, action, opts = {}) {
  * the admin-review edge wrapper (action:"add_feedback") so the business push +
  * admin_audit_log fire server-side. Each call opens a fresh round and moves the
  * claim to need_more_info (pending_review + claim_follow_up_at stamp).
- * META-ORCH-1255(C): venue-keyed (the stamp lives on the venue row).
- * @param {string} venueId
+ * META-ORCH-1255(C): venue-keyed (the stamp lives on the venue row) — the
+ * param name is pinned by the append-only ORCH-1064 suite; pass the VENUE id.
+ * @param {string} brandId — the venue_listings row id (legacy pinned name)
  * @param {Array<{ category: string, note: string }>} items
  * @param {string|null} [overallMessage]
  * @returns {Promise<{ ok: boolean, round: number, item_count: number, push_sent: boolean }>}
  */
-export async function addClaimFeedback(venueId, items, overallMessage) {
+// NOTE (META-ORCH-1255(C)): the first param KEEPS the legacy name `brandId`
+// because the append-only ORCH-1064 test pins this exact signature — but the
+// VALUE is the venue_listings row id (the queue row id), sent as venue_id.
+export async function addClaimFeedback(brandId, items, overallMessage) {
+  const venueId = brandId;
   const { data, error } = await supabase.functions.invoke(
     "admin-review-venue-claim",
     {
