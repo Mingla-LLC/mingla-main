@@ -27,9 +27,9 @@ export type HubTabName =
 export interface HubVenueVisibility {
   /** META-ORCH-1255 — the brand's venue_listings row count (any state). */
   venueCount?: number;
-  /** [TRANSITIONAL] legacy pre-1255 arm — dormant in production. */
+  /** [TRANSITIONAL] legacy pre-1255 arm — dormant in production. EXIT: delete with the pinned-fixture retirement (ORCH-1261). */
   hasPhysicalLocation?: boolean;
-  /** [TRANSITIONAL] legacy pre-1255 arm — dormant in production. */
+  /** [TRANSITIONAL] legacy pre-1255 arm — dormant in production. EXIT: delete with the pinned-fixture retirement (ORCH-1261). */
   hasPlacePool?: boolean;
 }
 

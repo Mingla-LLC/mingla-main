@@ -43,7 +43,8 @@ export const brandPlacePipelineKeys = {
     ] as const,
 };
 
-/** [TRANSITIONAL] legacy brand-keyed single-row read (latest row wins) — see header. */
+/** [TRANSITIONAL] legacy brand-keyed single-row read (latest row wins) — see header.
+ * EXIT: remove when the 1255-carrying business native build ships and pre-1255 binaries retire (ORCH-1261). */
 export function useBrandPlacePipelineState(brandId: string | null) {
   const { isAuthReady } = useAuth();
   return useQuery<BrandPlacePipelineState | null>({

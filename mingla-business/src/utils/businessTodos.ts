@@ -328,6 +328,7 @@ export function buildBusinessTodos(input: BusinessTodoInput): BusinessTodo[] {
     }
   } else if (input.venueClaimPending) {
     // [TRANSITIONAL] legacy singular band (pinned fixtures only).
+    // EXIT: delete when the pinned append-only fixtures retire (ORCH-1261).
     const openCount = input.venueClaimOpenFeedbackCount;
     if (openCount > 0) {
       todos.push({
