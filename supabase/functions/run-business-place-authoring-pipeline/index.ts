@@ -1663,6 +1663,24 @@ async function handleSyncHeroMedia(
     })
     .eq("id", placePoolId);
   if (error) return errorResponse(500, "PLACE_UPDATE_FAILED", error.message);
+  // META-ORCH-1255(C) D-C: the venue row owns the venue listing's cover (M1
+  // columns cover_media_url/cover_media_type). Pre-fix the hero pick only
+  // reached place_pool here while the client CoverPicker's "brand" target
+  // clobbered brands.cover_media_url — two venues fought over the parent
+  // brand's cover. `client` is the service-role client (venue_listings has no
+  // client write policy by design); ownership was asserted upstream by
+  // loadOwnedBrand → loadOwnedVenue. mediaType is constrained by the
+  // RequestBody union (image|video|gif|null), matching the M1 CHECK.
+  const { error: venueCoverErr } = await client
+    .from("venue_listings")
+    .update({
+      cover_media_url: mediaUrl.length > 0 ? mediaUrl : null,
+      cover_media_type: mediaUrl.length > 0 ? mediaType : null,
+    })
+    .eq("id", venue.id);
+  if (venueCoverErr) {
+    return errorResponse(500, "VENUE_UPDATE_FAILED", venueCoverErr.message);
+  }
   return jsonResponse(200, {
     kind: "ok",
     action: "sync_hero_media",

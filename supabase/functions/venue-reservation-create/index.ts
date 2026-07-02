@@ -339,9 +339,12 @@ serve(wrapEdgeHandler("venue-reservation-create", async (req) => {
   // ════════════════════════════════════════════════════════════════════════════
   // FEE PATH — ride the SHARED all-in engine, charge UPFRONT.
   // ════════════════════════════════════════════════════════════════════════════
+  // META-ORCH-1255(C) D-B: pass the resolved venue so the pass_*_override
+  // source is THAT venue's settings row — deterministic at N venues (the
+  // pre-M6 resolver could return N rows and rows[0] was an arbitrary winner).
   const { data: pricingRows, error: pricingErr } = await supabase.rpc(
     "resolve_brand_pricing_inputs",
-    { p_brand_id: brandId },
+    { p_brand_id: brandId, p_venue_id: venueId },
   );
   if (pricingErr !== null || !Array.isArray(pricingRows) || pricingRows.length === 0) {
     console.error("[venue-reservation-create] resolve_brand_pricing_inputs failed", pricingErr);

@@ -447,9 +447,10 @@ serve(async (req) => {
     if (rawAction === "tweak_fields" || rawAction === "score_override") {
       const adminEarly = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
       const b = rawBody as Record<string, unknown>;
-      // META-ORCH-1255: body carries venue_id; the META-ORCH-1062 RPCs these
-      // actions call remain brand-keyed (out of the 1255 M4 re-key table), so
-      // the brand is DERIVED from the venue row server-side.
+      // META-ORCH-1255(C) D-A: body carries venue_id AND the META-ORCH-1062
+      // RPCs are now venue-keyed end-to-end (M6 re-key) — the pre-M6 bodies
+      // resolved the place via the legacy-inert brands.place_pool_id and read
+      // brands.claim_status, so they were latently broken for every new venue.
       const tweakVenueId = typeof b.venue_id === "string" ? b.venue_id.trim() : "";
       if (tweakVenueId.length === 0) return json({ error: "venue_id_required" }, 400);
       const { data: tweakVenue, error: tweakVenueErr } = await adminEarly
@@ -459,7 +460,6 @@ serve(async (req) => {
         .maybeSingle();
       if (tweakVenueErr) return json({ error: tweakVenueErr.message }, 500);
       if (!tweakVenue) return json({ error: "venue_not_found" }, 404);
-      const brandId = tweakVenue.brand_id as string;
 
       if (rawAction === "tweak_fields") {
         const patch = b.patch;
@@ -470,7 +470,7 @@ serve(async (req) => {
         // is_admin_user() sees auth.uid(); call it through userClient.
         const { data: tweakRes, error: tweakErr } = await userClient.rpc(
           "admin_tweak_venue_claim_fields",
-          { p_brand_id: brandId, p_patch: patch },
+          { p_venue_id: tweakVenueId, p_patch: patch },
         );
         if (tweakErr) return json({ error: tweakErr.message }, 400);
         await adminEarly.from("admin_audit_log").insert({
@@ -491,7 +491,7 @@ serve(async (req) => {
       if (!Number.isFinite(score)) return json({ error: "score_required" }, 400);
       const { data: ovRes, error: ovErr } = await userClient.rpc(
         "admin_apply_score_override",
-        { p_brand_id: brandId, p_signal_id: signalId, p_score: score, p_reason: reason },
+        { p_venue_id: tweakVenueId, p_signal_id: signalId, p_score: score, p_reason: reason },
       );
       if (ovErr) return json({ error: ovErr.message }, 400);
       await adminEarly.from("admin_audit_log").insert({
