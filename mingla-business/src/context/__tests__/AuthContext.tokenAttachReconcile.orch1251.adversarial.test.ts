@@ -213,16 +213,21 @@ describe("ORCH-1251 — storm-guard source-text assertions (adversarial, Surface
   );
 
   it(
-    "the reconcile does NOT re-run the SIGNED_IN-only analytics/recovery block (it lives BEFORE the if (s?.user) side-effect block, gated only on the token-attach edge)",
+    "the reconcile does NOT re-run the SIGNED_IN-only analytics/recovery block (the reconcile latch is set BEFORE the deferred SIGNED_IN-gated side-effect block, gated only on the token-attach edge)",
     () => {
-      // The reconcile block appears before the `if (s?.user) {` ensureCreatorAccount
-      // block, so a passive TOKEN_REFRESHED reconcile never triggers SIGNED_IN
-      // analytics (anti-flash preserved, per the ORCH-0887-A/1004 contract).
+      // The reconcile latch is set before the deferred `SIGNED_IN`-gated
+      // ensureCreatorAccount/analytics block, so a passive TOKEN_REFRESHED reconcile
+      // never triggers SIGNED_IN analytics (anti-flash preserved, per the
+      // ORCH-0887-A/1004 contract). ORCH-1254: the SIGNED_IN gate now reads the
+      // captured `eventForDeferred` inside the deferred macrotask (the Supabase
+      // side-effects were moved out of the auth lock), but the ordering invariant
+      // this test protects — reconcile latch BEFORE the SIGNED_IN-gated block — is
+      // unchanged.
       const reconcileIdx = AUTH_CONTEXT_SOURCE.indexOf(
         "reconciledAuthScopedForUserRef.current = s.user.id;",
       );
       const signedInGateIdx = AUTH_CONTEXT_SOURCE.indexOf(
-        'if (_event === "SIGNED_IN") {',
+        'if (eventForDeferred === "SIGNED_IN") {',
       );
       expect(reconcileIdx).toBeGreaterThan(-1);
       expect(signedInGateIdx).toBeGreaterThan(-1);

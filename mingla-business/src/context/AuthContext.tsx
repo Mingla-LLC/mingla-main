@@ -77,17 +77,6 @@ import { creatorAccountKeys } from "../hooks/creatorAccountKeys";
 // the full 7s ceiling; on timeout it throws → existing fail-OPEN catch keeps
 // the user signed in.
 import { withTimeout, AUTH_PROBE_TIMEOUT_MS } from "../utils/withTimeout";
-// ORCH-1254 — reuse the META-ORCH-1232 bounded token-attach poll to WAIT for the
-// reviewer setSession() token to actually attach before we let the UI navigate.
-import { awaitSessionAttached } from "../utils/authReadyGate";
-
-// ORCH-1254 [reviewer setSession brands-load race] — after the reviewer bypass
-// calls supabase.auth.setSession(), poll getSession() up to this bound for the
-// token to attach BEFORE returning success (which lets the UI navigate + fire
-// getBrands). ~3s comfortably covers supabase-js's local propagation without an
-// unbounded hang; the poll returns the instant the token is present, so the happy
-// path adds only a few ms.
-export const REVIEWER_TOKEN_ATTACH_CAP_MS = 3000;
 
 // ORCH-0887-A [Auth getSession Promise.race timeout] — close indefinite
 // loader hang on business-web. SPEC §2.1: constant inline at top of
@@ -569,112 +558,157 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       // session is a no-op here (no invalidation storm, no #185-style re-render
       // loop). We invalidate ONLY the two auth-scoped key roots — NOT
       // queryClient.clear() (far too broad; would nuke public/anon caches too).
-      if (
+      // ORCH-1254 [GoTrue auth-lock deadlock] — supabase-js v2 serializes auth
+      // operations behind a lock, and this onAuthStateChange callback runs WHILE
+      // HOLDING that lock. Any Supabase-touching / query-invalidating work done
+      // inline here holds the lock across its awaits, so a concurrent
+      // supabase.auth.getSession() (e.g. the getBrands precheck fired by the very
+      // invalidateQueries below) DEADLOCKS waiting on this callback to release —
+      // it times out at AUTH_PROBE_TIMEOUT_MS (5s) → "Couldn't load your brands."
+      // This is the documented supabase-js gotcha: do NOT call other Supabase
+      // functions directly inside onAuthStateChange; DEFER them with setTimeout so
+      // they run AFTER the callback returns and the lock releases. It is
+      // reviewer-specific because setSession() + an immediate read hits the locked
+      // window; Google's warm/OAuth flow does not.
+      //
+      // The SYNCHRONOUS state writes above (setAuthError/setSession/setUser and the
+      // bootstrapTimedOutRef gate) do NOT call any Supabase API, so they stay inline
+      // and update routing/isAuthReady promptly. The ORCH-1251 once-per-session
+      // reconcile LATCH (reconciledAuthScopedForUserRef) is also decided
+      // synchronously here so two events firing before the macrotask runs still
+      // reconcile exactly once; only the token-attach invalidateQueries and the
+      // s.user side-effects (ensureCreatorAccount / recovery / analytics identify)
+      // are moved into the deferred macrotask below.
+      const shouldReconcileAuthScoped =
         hasUsableBusinessSession(s) &&
         s?.user?.id !== undefined &&
-        reconciledAuthScopedForUserRef.current !== s.user.id
-      ) {
+        reconciledAuthScopedForUserRef.current !== s.user.id;
+      if (shouldReconcileAuthScoped && s?.user?.id !== undefined) {
         reconciledAuthScopedForUserRef.current = s.user.id;
         if (__DEV__) {
           console.info(
-            "[auth] token-attach reconcile — invalidating auth-scoped brand + creator-account queries (ORCH-1251)",
+            "[auth] token-attach reconcile — invalidating auth-scoped brand + creator-account queries (ORCH-1251, deferred out of the auth lock per ORCH-1254)",
           );
         }
-        // brandKeys.all covers brandKeys.list(accountId) + detail + cascade;
-        // creatorAccountKeys.all covers creatorAccountKeys.byId(userId).
-        void queryClient.invalidateQueries({ queryKey: brandKeys.all });
-        void queryClient.invalidateQueries({
-          queryKey: creatorAccountKeys.all,
-        });
       }
-      if (s?.user) {
-        // ORCH-0743 / Note A: wrap ensureCreatorAccount so a creator_accounts
-        // upsert error is surfaced (Const #3) without aborting auth state-change handler.
-        try {
-          await ensureCreatorAccount(s.user);
-        } catch (ensureError) {
-          reportNonFatal("auth.ensureCreatorAccount", ensureError, {
-            userId: s.user.id,
-          });
-        }
-        // Cycle 14 — recover-on-sign-in auto-clear (D-CYCLE14-FOR-6 + I-35).
-        // GATE to SIGNED_IN only — TOKEN_REFRESHED + USER_UPDATED + INITIAL_SESSION
-        // also fire with s.user, and would otherwise un-delete an account
-        // mid-delete-flow (race between requestDeletion's deleted_at=now() write
-        // and the next token-refresh tick). Bootstrap above handles cold-start
-        // recovery; only true SIGNED_IN events should trigger recovery from
-        // onAuthStateChange. Cycle 14 v2 fix Bug B.
-        if (_event === "SIGNED_IN") {
-          const recovered = await tryRecoverAccountIfDeleted(s.user.id);
-          if (recovered && mounted) {
-            setLastRecoveryEvent({ recoveredAt: new Date().toISOString() });
+      const userForDeferred = s?.user ?? null;
+      const eventForDeferred = _event;
+      // ORCH-1254 — run all Supabase-touching side-effects on a macrotask so the
+      // GoTrue auth lock this callback holds is RELEASED first. setTimeout(…, 0)
+      // schedules AFTER the synchronous callback returns and the lock unwinds.
+      setTimeout(() => {
+        // The provider may have unmounted between scheduling and running.
+        if (!mounted) return;
+        void (async () => {
+          // ORCH-1251 — token-attach reconciliation, deferred out of the lock.
+          // brandKeys.all covers brandKeys.list(accountId) + detail + cascade;
+          // creatorAccountKeys.all covers creatorAccountKeys.byId(userId).
+          if (shouldReconcileAuthScoped) {
+            void queryClient.invalidateQueries({ queryKey: brandKeys.all });
+            void queryClient.invalidateQueries({
+              queryKey: creatorAccountKeys.all,
+            });
           }
-          // ORCH-0808 — AppsFlyer + Mixpanel identity + first-event fire (once per session).
-          // first-time vs returning determined by creator_accounts.created_at
-          // recency: ensureCreatorAccount above just inserted-or-noop'd the row,
-          // so a created_at within the last 30 seconds means this sign-in is the
-          // creation event (first-time creator). Otherwise the row pre-existed.
-          setAppsFlyerUserId(s.user.id);
-          registerAppsFlyerDevice(s.user.id);
-          mixpanelService.identify(s.user.id);
-          // META-ORCH-1187 — PostHog identity bind on SIGNED_IN (SC-7).
-          postHogService.identify(s.user.id);
-          revenueCatService.identify(s.user.id);
-          loginToOneSignal(s.user.id);
-          if (!afEventFiredRef.current) {
-            afEventFiredRef.current = true;
-            void (async () => {
-              try {
-                const provider =
-                  (s.user.app_metadata as { provider?: string } | undefined)
-                    ?.provider ?? "email";
-                const method =
-                  provider === "google" || provider === "apple"
-                    ? provider
-                    : "email";
-                const { data: account } = await supabase
-                  .from("creator_accounts")
-                  .select("created_at, email, display_name")
-                  .eq("id", s.user.id)
-                  .maybeSingle();
-                const createdAt = account?.created_at
-                  ? new Date(account.created_at).getTime()
-                  : null;
-                const isFirstTime =
-                  createdAt !== null && Date.now() - createdAt < 30_000;
-                if (isFirstTime) {
-                  logAppsFlyerEvent("af_complete_registration", {
-                    af_registration_method: method,
-                  });
-                } else {
-                  logAppsFlyerEvent("af_login", {
-                    af_login_method: method,
-                  });
-                }
-                // Mixpanel bundled login: identify + profile + super properties + Login/Signup event.
-                mixpanelService.trackLogin({
-                  id: s.user.id,
-                  email: account?.email ?? s.user.email ?? null,
-                  provider: method,
-                  displayName: account?.display_name ?? null,
-                  isFirstTime,
-                });
-                // META-ORCH-1187 — signup conversion (creator account created,
-                // first-time only — SC-6). Event-name identical to the consumer
-                // signup for a clean cross-surface funnel.
-                if (isFirstTime) {
-                  postHogService.capture("signup_completed", {
-                    method,
-                    surface: "business_app",
-                  });
-                }
-              } catch (e) {
-                console.warn("[AppsFlyer/Mixpanel] first-event fire failed:", e);
+          if (userForDeferred) {
+            // ORCH-0743 / Note A: wrap ensureCreatorAccount so a creator_accounts
+            // upsert error is surfaced (Const #3) without aborting the handler.
+            try {
+              await ensureCreatorAccount(userForDeferred);
+            } catch (ensureError) {
+              reportNonFatal("auth.ensureCreatorAccount", ensureError, {
+                userId: userForDeferred.id,
+              });
+            }
+            // Cycle 14 — recover-on-sign-in auto-clear (D-CYCLE14-FOR-6 + I-35).
+            // GATE to SIGNED_IN only — TOKEN_REFRESHED + USER_UPDATED +
+            // INITIAL_SESSION also fire with s.user, and would otherwise un-delete
+            // an account mid-delete-flow (race between requestDeletion's
+            // deleted_at=now() write and the next token-refresh tick). Bootstrap
+            // above handles cold-start recovery; only true SIGNED_IN events should
+            // trigger recovery from onAuthStateChange. Cycle 14 v2 fix Bug B.
+            if (eventForDeferred === "SIGNED_IN") {
+              const recovered = await tryRecoverAccountIfDeleted(
+                userForDeferred.id,
+              );
+              if (recovered && mounted) {
+                setLastRecoveryEvent({ recoveredAt: new Date().toISOString() });
               }
-            })();
+              // ORCH-0808 — AppsFlyer + Mixpanel identity + first-event fire (once
+              // per session). first-time vs returning determined by
+              // creator_accounts.created_at recency: ensureCreatorAccount above
+              // just inserted-or-noop'd the row, so a created_at within the last 30
+              // seconds means this sign-in is the creation event (first-time
+              // creator). Otherwise the row pre-existed.
+              setAppsFlyerUserId(userForDeferred.id);
+              registerAppsFlyerDevice(userForDeferred.id);
+              mixpanelService.identify(userForDeferred.id);
+              // META-ORCH-1187 — PostHog identity bind on SIGNED_IN (SC-7).
+              postHogService.identify(userForDeferred.id);
+              revenueCatService.identify(userForDeferred.id);
+              loginToOneSignal(userForDeferred.id);
+              if (!afEventFiredRef.current) {
+                afEventFiredRef.current = true;
+                void (async () => {
+                  try {
+                    const provider =
+                      (
+                        userForDeferred.app_metadata as
+                          | { provider?: string }
+                          | undefined
+                      )?.provider ?? "email";
+                    const method =
+                      provider === "google" || provider === "apple"
+                        ? provider
+                        : "email";
+                    const { data: account } = await supabase
+                      .from("creator_accounts")
+                      .select("created_at, email, display_name")
+                      .eq("id", userForDeferred.id)
+                      .maybeSingle();
+                    const createdAt = account?.created_at
+                      ? new Date(account.created_at).getTime()
+                      : null;
+                    const isFirstTime =
+                      createdAt !== null && Date.now() - createdAt < 30_000;
+                    if (isFirstTime) {
+                      logAppsFlyerEvent("af_complete_registration", {
+                        af_registration_method: method,
+                      });
+                    } else {
+                      logAppsFlyerEvent("af_login", {
+                        af_login_method: method,
+                      });
+                    }
+                    // Mixpanel bundled login: identify + profile + super properties + Login/Signup event.
+                    mixpanelService.trackLogin({
+                      id: userForDeferred.id,
+                      email: account?.email ?? userForDeferred.email ?? null,
+                      provider: method,
+                      displayName: account?.display_name ?? null,
+                      isFirstTime,
+                    });
+                    // META-ORCH-1187 — signup conversion (creator account created,
+                    // first-time only — SC-6). Event-name identical to the consumer
+                    // signup for a clean cross-surface funnel.
+                    if (isFirstTime) {
+                      postHogService.capture("signup_completed", {
+                        method,
+                        surface: "business_app",
+                      });
+                    }
+                  } catch (e) {
+                    console.warn(
+                      "[AppsFlyer/Mixpanel] first-event fire failed:",
+                      e,
+                    );
+                  }
+                })();
+              }
+            }
           }
-        }
-      } else if (_event === "SIGNED_OUT") {
+        })();
+      }, 0);
+      if (_event === "SIGNED_OUT") {
         // Defensive Constitution #6 coverage — clears stores even when
         // signout happens server-side (token revoked, session expired)
         // without going through our signOut() button.
@@ -1005,30 +1039,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
               ),
             };
           }
-          // ORCH-1254 — reviewer (setSession) brands-load race. `setSession()`
-          // resolving does NOT guarantee supabase-js has yet propagated the new
-          // token to the LOCAL `getSession()` read the app makes on the next
-          // screen (`getBrands` does a `getSession()` precheck and THROWS
-          // BrandsAuthSessionNotAttachedError when the token is absent — React
-          // Query then caches that error). The Google/OAuth path never uses
-          // setSession, so it never hits this window; the reviewer path does.
-          // DETERMINISTIC fix at the source: before returning success (which is
-          // what lets the UI navigate to the dashboard and fire getBrands), WAIT
-          // (bounded poll) until the just-set token is actually attached to the
-          // SAME client singleton getBrands reads. Only then navigate. If the
-          // token never attaches within the bound, surface the SAME "invalid
-          // code" UX so the UI does NOT navigate into a broken (brand-less) state.
-          try {
-            await awaitSessionAttached(() => supabase.auth.getSession(), {
-              capMs: REVIEWER_TOKEN_ATTACH_CAP_MS,
-            });
-          } catch {
-            return {
-              error: new Error(
-                "That code didn't match or has expired. Try again.",
-              ),
-            };
-          }
+          // ORCH-1254 — a successful setSession() establishes the reviewer session
+          // synchronously for state purposes (it fires SIGNED_IN → the
+          // onAuthStateChange listener updates session/user). We DELIBERATELY do
+          // NOT poll getSession() here: doing so right after setSession() reads the
+          // GoTrue auth lock WHILE the SIGNED_IN onAuthStateChange callback is
+          // still holding it, which CONTENDS/worsens the very deadlock this ORCH
+          // fixes (the getBrands getSession() precheck then hangs to its 5s
+          // timeout → "Couldn't load your brands."). The real cure is deferring the
+          // callback's Supabase side-effects out of the lock (see onAuthStateChange
+          // above); with that in place getSession() resolves normally and the
+          // getBrands precheck works. Return success immediately after setSession.
           return { error: null };
         } catch {
           return {

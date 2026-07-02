@@ -318,11 +318,17 @@ describe("ORCH-1251 — AuthContext.tsx source-text assertions (Surface B / fail
         /queryKey: creatorAccountKeys\.all,/,
       );
       // The reconcile block references invalidateQueries, never clear().
+      // ORCH-1254: the two invalidateQueries calls were moved into a deferred
+      // macrotask (setTimeout, to release the GoTrue auth lock), so anchor the
+      // block on the DEFERRED reconcile comment which immediately precedes them.
       const reconcileBlock = AUTH_CONTEXT_SOURCE.match(
-        /token-attach reconcile[\s\S]{0,900}?creatorAccountKeys\.all,\s*\}\);/,
+        /token-attach reconciliation, deferred[\s\S]{0,600}?creatorAccountKeys\.all,\s*\}\);/,
       );
       expect(reconcileBlock).not.toBeNull();
       if (reconcileBlock) {
+        expect(reconcileBlock[0]).toMatch(
+          /invalidateQueries\(\{ queryKey: brandKeys\.all \}\)/,
+        );
         expect(reconcileBlock[0]).not.toMatch(/queryClient\.clear\(\)/);
       }
     },
