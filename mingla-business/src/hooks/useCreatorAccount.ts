@@ -18,6 +18,10 @@ import {
   updateCreatorAccount,
   type CreatorAccountUpdatePatch,
 } from "../services/creatorAccount";
+// ORCH-1251 — creatorAccountKeys now lives in a standalone keyless module so
+// AuthContext can import it for the token-attach cache reconcile without a
+// require-cycle. Imported here for internal use + re-exported below.
+import { creatorAccountKeys } from "./creatorAccountKeys";
 
 export interface CreatorAccountRow {
   id: string;
@@ -48,11 +52,10 @@ const STALE_TIME_MS = 5 * 60 * 1000; // 5 min — account row changes are rare
 // slow-but-real read room to succeed.
 const ACCOUNT_FETCH_TIMEOUT_MS = 9000;
 
-export const creatorAccountKeys = {
-  all: ["creator-account"] as const,
-  byId: (userId: string): readonly [string, string] =>
-    ["creator-account", userId] as const,
-};
+// ORCH-1251 — re-export from the standalone keyless module for backward compat
+// so existing `import { creatorAccountKeys } from "./useCreatorAccount"` call
+// sites keep working (the canonical home is now ./creatorAccountKeys).
+export { creatorAccountKeys } from "./creatorAccountKeys";
 
 const DISABLED_KEY = ["creator-account-disabled"] as const;
 

@@ -202,8 +202,28 @@ describe("ORCH-1251 — token-attach reconcile decision (Surface A)", () => {
   );
 
   it(
-    "the inline key roots match the brandKeys.all / creatorAccountKeys.all source-of-truth (guards drift between this test and production)",
+    "the inline key roots match the brandKeys.all / creatorAccountKeys.all source-of-truth (now the standalone keyless modules — guards drift between this test and production)",
     () => {
+      // ORCH-1251 — the canonical home for these factories is the standalone
+      // keyless modules (./hooks/brandKeys, ./hooks/creatorAccountKeys), extracted
+      // to break the require-cycle. Read them directly for the source-of-truth.
+      const brandKeysSource = readFileSync(
+        path.resolve(__dirname, "..", "..", "hooks", "brandKeys.ts"),
+        "utf8",
+      );
+      const creatorAccountKeysSource = readFileSync(
+        path.resolve(__dirname, "..", "..", "hooks", "creatorAccountKeys.ts"),
+        "utf8",
+      );
+      // brandKeys.all = ["brands"] as const;
+      expect(brandKeysSource).toMatch(/all:\s*\["brands"\] as const/);
+      expect(BRAND_KEYS_ALL).toEqual(["brands"]);
+      // creatorAccountKeys.all = ["creator-account"] as const;
+      expect(creatorAccountKeysSource).toMatch(
+        /all:\s*\["creator-account"\] as const/,
+      );
+      expect(CREATOR_ACCOUNT_KEYS_ALL).toEqual(["creator-account"]);
+      // The hook files still re-export the factories (backward compat).
       const useBrandsSource = readFileSync(
         path.resolve(__dirname, "..", "..", "hooks", "useBrands.ts"),
         "utf8",
@@ -212,14 +232,12 @@ describe("ORCH-1251 — token-attach reconcile decision (Surface A)", () => {
         path.resolve(__dirname, "..", "..", "hooks", "useCreatorAccount.ts"),
         "utf8",
       );
-      // brandKeys.all = ["brands"] as const;
-      expect(useBrandsSource).toMatch(/all:\s*\["brands"\] as const/);
-      expect(BRAND_KEYS_ALL).toEqual(["brands"]);
-      // creatorAccountKeys.all = ["creator-account"] as const;
-      expect(useCreatorAccountSource).toMatch(
-        /all:\s*\["creator-account"\] as const/,
+      expect(useBrandsSource).toMatch(
+        /export \{ brandKeys \} from "\.\/brandKeys";/,
       );
-      expect(CREATOR_ACCOUNT_KEYS_ALL).toEqual(["creator-account"]);
+      expect(useCreatorAccountSource).toMatch(
+        /export \{ creatorAccountKeys \} from "\.\/creatorAccountKeys";/,
+      );
     },
     5000,
   );
@@ -241,12 +259,24 @@ const AUTH_CONTEXT_SOURCE = readFileSync(
 
 describe("ORCH-1251 — AuthContext.tsx source-text assertions (Surface B / fails-on-revert)", () => {
   it(
-    "imports the auth-scoped key factories brandKeys + creatorAccountKeys",
+    "imports the auth-scoped key factories from the STANDALONE keyless modules (NOT the hooks) so no require-cycle is introduced (ORCH-1251 / I-PROPOSED-K)",
     () => {
+      // Must import from ./hooks/brandKeys + ./hooks/creatorAccountKeys — the
+      // hook files (useBrands / useCreatorAccount) import useAuth from THIS file,
+      // so importing the keys from them would create a require-cycle the
+      // I-PROPOSED-K gate rejects. The keyless modules import nothing from
+      // AuthContext.
       expect(AUTH_CONTEXT_SOURCE).toMatch(
-        /import \{ brandKeys \} from "\.\.\/hooks\/useBrands";/,
+        /import \{ brandKeys \} from "\.\.\/hooks\/brandKeys";/,
       );
       expect(AUTH_CONTEXT_SOURCE).toMatch(
+        /import \{ creatorAccountKeys \} from "\.\.\/hooks\/creatorAccountKeys";/,
+      );
+      // Guard against a regression back to the cyclic hook imports.
+      expect(AUTH_CONTEXT_SOURCE).not.toMatch(
+        /import \{ brandKeys \} from "\.\.\/hooks\/useBrands";/,
+      );
+      expect(AUTH_CONTEXT_SOURCE).not.toMatch(
         /import \{ creatorAccountKeys \} from "\.\.\/hooks\/useCreatorAccount";/,
       );
     },

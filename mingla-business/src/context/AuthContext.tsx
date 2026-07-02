@@ -65,8 +65,14 @@ import { queryClient } from "../config/queryClient";
 // recovery off the REAL token-attach signal — the onAuthStateChange event — not
 // the isAuthReady flag. brandKeys.all / creatorAccountKeys.all invalidate every
 // per-account variant of those queries.
-import { brandKeys } from "../hooks/useBrands";
-import { creatorAccountKeys } from "../hooks/useCreatorAccount";
+//
+// Import from the STANDALONE keyless key modules (NOT the hook files) — the hooks
+// import `useAuth` from this file, so importing the keys from them would create a
+// require-cycle (AuthContext ↔ useBrands / AuthContext ↔ useCreatorAccount) that
+// the I-PROPOSED-K require-cycles gate rejects. The keyless modules import
+// nothing from AuthContext, so the cycle is broken (ORCH-0965 upcomingKeys pattern).
+import { brandKeys } from "../hooks/brandKeys";
+import { creatorAccountKeys } from "../hooks/creatorAccountKeys";
 // META-ORCH-1235 (§5.1) — bound the boot getUser() probe so it cannot consume
 // the full 7s ceiling; on timeout it throws → existing fail-OPEN catch keeps
 // the user signed in.

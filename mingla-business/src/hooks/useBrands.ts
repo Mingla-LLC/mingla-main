@@ -38,6 +38,10 @@ import { withTimeout } from "../utils/withTimeout";
 import { queryClient } from "../config/queryClient";
 import { eventOrdersKeys } from "./useEventOrders";
 import { publicEventKeys } from "./usePublicEvents";
+// ORCH-1251 — brandKeys now lives in a standalone keyless module so AuthContext
+// can import it without a require-cycle. Imported here for internal use +
+// re-exported below for backward compat.
+import { brandKeys } from "./brandKeys";
 import {
   createBrand,
   createVenueBrandPendingReview,
@@ -77,35 +81,12 @@ const STALE_TIME_MS = 30 * 1000;
 const BRANDS_FETCH_TIMEOUT_MS = 9000;
 
 // ----- Query key factory -------------------------------------------------
-
-export const brandKeys = {
-  all: ["brands"] as const,
-  lists: (): readonly ["brands", "list"] => [...brandKeys.all, "list"] as const,
-  list: (
-    accountId: string,
-  ): readonly ["brands", "list", string] =>
-    [...brandKeys.lists(), accountId] as const,
-  details: (): readonly ["brands", "detail"] =>
-    [...brandKeys.all, "detail"] as const,
-  detail: (
-    brandId: string,
-  ): readonly ["brands", "detail", string] =>
-    [...brandKeys.details(), brandId] as const,
-  cascadePreview: (
-    brandId: string,
-  ): readonly ["brands", "cascade-preview", string] =>
-    [...brandKeys.all, "cascade-preview", brandId] as const,
-  offeringCounts: (
-    brandId: string,
-  ): readonly ["brand", string, "offeringCounts"] =>
-    ["brand", brandId, "offeringCounts"] as const,
-  // ORCH-1064 — venue-claim feedback (active round) for a brand. One key per
-  // entity, from the factory (Constitution #4).
-  feedback: (
-    brandId: string,
-  ): readonly ["brands", "feedback", string] =>
-    [...brandKeys.all, "feedback", brandId] as const,
-};
+// ORCH-1251 — the brandKeys factory lives in a standalone keyless module
+// (./brandKeys) so AuthContext.tsx can import it for the token-attach cache
+// reconcile without a require-cycle (AuthContext → useBrands → AuthContext).
+// Re-exported here for backward compat so existing `import { brandKeys } from
+// "./useBrands"` call sites keep working (Constitutional #4 — one key per entity).
+export { brandKeys } from "./brandKeys";
 
 const DISABLED_KEY = ["brands-disabled"] as const;
 
