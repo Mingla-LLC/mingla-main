@@ -16,9 +16,13 @@ import {
 import { useAuth } from "../../src/context/AuthContext";
 import { useBrandPlaceAuthoringContext } from "../../src/hooks/useBrandPlacePipelineState";
 import { useVenueListing } from "../../src/hooks/useVenueListings";
+// META-ORCH-1255(R2) — own module (NOT the wizard file): this route + the
+// create route both consume the setup, and a shared-file layout hoisted the
+// whole wizard + its step modules into the eager __common chunk (ORCH-1083
+// web bundle budget).
 import {
   VenueDeckReadinessSetup,
-} from "../../src/components/venue/VenueCreatorWizard";
+} from "../../src/components/venue/VenueDeckReadinessSetup";
 import { IconChrome } from "../../src/components/ui/IconChrome";
 import type { CoverPatch } from "../../src/components/ui/CoverPicker";
 import type { DeckReadinessFocus } from "../../src/utils/deckReadinessRoutes";

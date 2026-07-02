@@ -32,7 +32,7 @@ import { useResponsiveLayout } from "../../hooks/useResponsiveLayout";
 import { useBrandMenus } from "../../hooks/useMenus";
 import { useVenueClaimOpenCountsByVenue } from "../../hooks/useVenueClaimFeedback";
 import { useVenueListings } from "../../hooks/useVenueListings";
-import { useBrandReservationSettingsList } from "../../hooks/useVenueReservationSettings";
+import { useBrandReservationSettingsList } from "../../hooks/useBrandReservationSettingsList";
 import { listingStatusView } from "../../utils/listingStatus";
 import { Button } from "../ui/Button";
 import { GlassCard } from "../ui/GlassCard";

@@ -280,3 +280,128 @@ change).
 Exactly the two seams the tester scoped: one service + the wizard step-2
 preview + the param threading they force + the new test suite. No other
 changes; P2-R2-2 (deck-readiness exit) untouched (needs Seth UX decision).
+
+---
+
+# R2 — ORCH-1083 web bundle-budget rework (eager `__common` over cap)
+
+## What failed
+
+PR #710's ORCH-1083 gate: `eager __common chunk is 2,299,229 bytes, over the
+2,250,000-byte cap`. Reproduced locally at 2,299,285 (56 B env noise).
+origin/main baseline (clean worktree export): **2,241,918** — only 8 KB of
+pre-existing headroom; Leg B/C added ~57 KB of eager weight.
+
+## Root cause (source-map byte attribution, branch vs origin/main)
+
+Metro hoists any module statically shared by 2+ route chunks into the EAGER
+`__common` boot chunk. Four Leg B/C import-topology changes did that:
+
+1. **`packages/brand-rendering/PublicBrandPage.tsx` +27,432 B** — the venue
+   public page value-imported `PublicMenuSections` from the barrel, whose
+   re-export lived INSIDE PublicBrandPage.tsx → the whole brand page hoisted.
+2. **`VenueCreatorWizard.tsx` file (24,013 B) + all six venue step modules
+   (~13,500 B)** — `VenueDeckReadinessSetup` lived in the wizard file and is
+   consumed by BOTH `app/venue/create.tsx` and `app/venue/deck-readiness.tsx`
+   → the whole wizard graph hoisted (pre-existing at baseline, venue-scoped).
+3. **`useVenueReservationSettings.ts` +3,346 B** — the per-brand LIST hook
+   (hub card list chunk) shared a file with the per-venue detail/mutation
+   hooks (venue suite chunk).
+4. **`TicketTierEditSheet.tsx` 25,557 B** (pre-existing) — statically imported
+   by `CreatorStep5Tickets`, which is shared by the compose + edit chunks.
+
+## Fix (deferral restored; cap and ORCH-1083 gate script UNTOUCHED)
+
+All four are import-graph refactors — code moved VERBATIM; zero behavior
+change except one house-pattern lazy split:
+
+- `packages/brand-rendering/PublicMenuSections.tsx` (NEW): MenuTab +
+  formatMenuPrice + menu styles moved out of PublicBrandPage.tsx; barrel
+  re-exports from the new file; `PublicVenuePage.tsx` uses the DEEP specifier
+  `@mingla/brand-rendering/PublicMenuSections` (barrel import is type-only).
+- `mingla-business/src/components/venue/VenueDeckReadinessSetup.tsx` (NEW):
+  setup component + helpers + its style subset moved out of the wizard;
+  `deck-readiness.tsx` imports the new module; the wizard imports it too.
+- `mingla-business/src/hooks/useBrandReservationSettingsList.ts` (NEW): the
+  list hook + list key + row type moved out of useVenueReservationSettings.ts;
+  `VenueCardList.tsx` repointed.
+- `CreatorStep5Tickets.tsx`: `TicketTierEditSheet` → `React.lazy` +
+  `<Suspense fallback={null}>` (ORCH-1083 house pattern — Connect bodies /
+  QR renderer). fallback null is behavior-identical: the sheet renders null
+  until `visible`.
+
+## Before / after chunk bytes
+
+| Metric | Before (branch) | After (branch) | origin/main baseline | Cap |
+|---|---|---|---|---|
+| eager `__common` | 2,299,285 | **2,223,290** | 2,241,918 | 2,250,000 |
+| margin under cap | −49,285 (FAIL) | **+26,710 (PASS)** | +8,082 | — |
+| gate verdict | FAIL | **PASS** (`initial payload 3,228,765; 145 chunks; 0 deferred specifiers in entry`) | PASS | — |
+
+`__common` now sits 18.6 KB BELOW the origin/main baseline (the wizard-graph
+and ticket-sheet deferrals recovered more than Leg B/C's genuine growth in
+already-shared modules, which remains: publicEventsService venue fetchers +
+useBusinessTodos venue to-dos + useMenus/menusService shared by the hub list
+and venue suite chunks — all real cross-chunk usage).
+
+## Pin supersessions (sanctioned: `[TEST-MOD-APPROVED META-ORCH-1255]` in HEAD body)
+
+- `packages/brand-rendering/__tests__/publicMenu.render.test.tsx` — menu-block
+  reads follow the move to PublicMenuSections.tsx; EVERY assertion unchanged
+  (tab-gate asserts still read PublicBrandPage.tsx).
+- `mingla-business/__tests__/metaOrch1255LegC.happy.test.ts` (D-C) — the
+  `kind: "venue"` cover-target pin follows the setup move; adds
+  `wizard NOT kind:"brand"` retained + setup `NOT kind:"brand"`.
+- Gate anchors (NOT the 1083 gate): `orch-1186c-menu-display-only.mjs`
+  sharedPage → PublicMenuSections.tsx (same block anchor + tokens);
+  `orch-1218-venue-authoring-no-vendor-leak.mjs` scans the wizard + setup
+  files as ONE concatenated unit (same >= 4 sanitizer-call binding; both
+  self-tests pass).
+
+## Regression test (fails-on-revert)
+
+`mingla-business/__tests__/metaOrch1255R2.bundleBudgetDeferral.happy.test.ts`
+— 10 tests pinning all four deferrals in source. TRUE LINE-DELETION proofs:
+deleting the React.lazy lines fails R2-3 ("React.lazy dynamic import…" ✕);
+deleting the deep-specifier import fails R2-1 ("DEEP specifier" ✕); restored →
+10/10 pass. fails-on-revert verified at b7297df2c.
+
+## Gates (real output)
+
+- Budget: `ORCH-1083 bundle-budget PASS — initial payload 3228765 bytes
+  (ceiling 9405478), 145 chunk files, 0 deferred specifiers in the main entry
+  chunk, __common within cap.` (`__common` file = 2,223,290 B.)
+- `expo export -p web --clear`: exit 0.
+- Jest sweep (metaOrch1255* + R2 + venueTab.contract + orch1256 +
+  businessTodos + deckReadinessRoutes + venueClaimService + orch_1089 +
+  useHubTabs + venueSlug): **18 suites / 205 tests passed**; plus
+  `publicMenu.render.test.tsx` 6/6 via `npx jest --roots ..`.
+- KeyboardRoot VenueCreatorWizard pins: 2/2 pass (suite's TripBrandWizard /
+  web-bundle failures are PRE-EXISTING — identical on pristine branch).
+- `tsc --noEmit`: 721 → 722 lines; the delta is the pre-existing
+  `../packages/*` "Cannot find module 'react'" environment noise following
+  the moved lines (every packages/ file emits it); ZERO new errors in
+  mingla-business src/app. No CI tsc gate exists.
+- strict-grep: all 5 `orch-1255-*` gates + full registered sweep green
+  (only pre-existing env-dependent `orch-1225-careers-runtime-dom` fails,
+  identical on pristine branch).
+
+## Runtime smoke (anon venue page on web)
+
+Served the fixed export statically + headless Chromium at
+`/b/r2-smoke-brand/v/r2-smoke-venue` (real anon backend reads): renders the
+single indistinguishable not-found state ("This venue isn't on Mingla yet"),
+ZERO page errors. The stripe-mode handshake was stubbed to `test` — the local
+export carries the dev pk_test key while prod is live-mode, a PRE-EXISTING
+local-export condition (identical fail-close on the origin/main baseline
+export). TicketTierEditSheet's lazy body: verified structurally + by the R2
+suite; authed compose runtime is not reachable from this session (known cap) —
+tester should tap "Add ticket" once on web + iOS to see the sheet open.
+
+## Cross-surface impact (R2)
+
+Business web: boot payload −76 KB eager. Business iOS/Android: same code,
+Metro inlines async imports natively (ORCH-1083 precedent: lazy QR/Connect) —
+no behavior change. Consumer app / admin / buyer anon web funnel: untouched
+(brand-rendering package refactor is consumed identically; app-mobile imports
+the barrel only).

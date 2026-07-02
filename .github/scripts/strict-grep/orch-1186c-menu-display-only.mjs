@@ -33,9 +33,13 @@ const builderFiles = [
   "mingla-business/src/components/venue/MenuCategorySheet.tsx",
 ];
 
-// The shared public page: only the MenuTab block is in scope (the rest of the
-// page legitimately renders buy pills for ticketed offerings).
-const sharedPage = "packages/brand-rendering/PublicBrandPage.tsx";
+// The shared public menu renderer: only the MenuTab block is in scope.
+// META-ORCH-1255(R2): the MenuTab renderer moved VERBATIM from
+// PublicBrandPage.tsx to PublicMenuSections.tsx (ORCH-1083 web bundle budget —
+// the venue page's shared import was hoisting the whole brand page into the
+// eager __common chunk). Same block anchor ("const MenuTab"), same forbidden
+// tokens; only the file the block lives in follows the move.
+const sharedPage = "packages/brand-rendering/PublicMenuSections.tsx";
 
 // Forbidden ordering/payment tokens (case-insensitive).
 const FORBIDDEN = [

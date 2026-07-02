@@ -62,6 +62,10 @@ import {
 } from "@mingla/offering-rendering";
 
 import { spacing } from "./designTokens";
+// META-ORCH-1255(R2) — the DISPLAY-ONLY menu renderer lives in its own module
+// so the venue public page can share it WITHOUT dragging this whole file into
+// the eager __common chunk (ORCH-1083 bundle budget). Composition unchanged.
+import { PublicMenuSections } from "./PublicMenuSections";
 import type {
   PublicBrand,
   PublicBrandEvent,
@@ -118,41 +122,8 @@ const formatCurrencyRound = (value: number, currency: string): string => {
   }
 };
 
-// ORCH-1186-C — DISPLAY-ONLY menu price formatter. Package-local (the package
-// must NOT import mingla-business currency utils — cross-package boundary).
-// Intl renders zero-decimal currencies correctly (¥1,250 not ¥1,250.00) on both
-// Hermes (RN) and web. `priceCents === null` ⇒ no number ("price on request" is
-// shown nowhere on the public page — the price column is simply omitted). The
-// currency always arrives from the row; the catch echoes it, never "GBP" (SC-9).
-//
-// CRITICAL: the stored price is in MINOR units, whose factor is 1 (not 100) for
-// zero-decimal currencies (JPY etc.) — matching the data-layer minorFromMajor
-// convention. Dividing unconditionally by 100 would render ¥1250 as "¥13", so
-// the minor-unit factor is currency-aware (mirrors mingla-business
-// ZERO_DECIMAL_CURRENCIES without importing it — cross-package boundary).
-const MENU_ZERO_DECIMAL_CURRENCIES = new Set([
-  "BIF", "CLP", "DJF", "GNF", "JPY", "KMF", "KRW", "MGA", "PYG", "RWF", "UGX",
-  "VND", "VUV", "XAF", "XOF", "XPF",
-]);
-
-const menuMinorFactor = (currency: string): number =>
-  MENU_ZERO_DECIMAL_CURRENCIES.has(currency.toUpperCase()) ? 1 : 100;
-
-const formatMenuPrice = (
-  priceCents: number | null,
-  currency: string,
-): string | null => {
-  if (priceCents === null) return null;
-  const major = priceCents / menuMinorFactor(currency);
-  try {
-    return new Intl.NumberFormat(undefined, {
-      style: "currency",
-      currency,
-    }).format(major);
-  } catch {
-    return `${currency} ${major.toFixed(2)}`;
-  }
-};
+// ORCH-1186-C — DISPLAY-ONLY menu price formatter + menu pane: moved VERBATIM
+// to ./PublicMenuSections.tsx (META-ORCH-1255(R2), ORCH-1083 bundle budget).
 
 const hashHueFromString = (s: string): number => {
   let h = 0;
@@ -525,7 +496,7 @@ export const PublicBrandPage: React.FC<PublicBrandPageProps> = ({
 
   const activePane =
     activeTab === "menu" ? (
-      <MenuTab groups={menu} palette={palette} surface={surface} theme={resolvedTheme} />
+      <PublicMenuSections groups={menu} palette={palette} surface={surface} theme={resolvedTheme} />
     ) : activeTab === "upcoming" ? (
       <UpcomingList
         rows={upcoming}
@@ -1431,92 +1402,6 @@ const EmptyPane: React.FC<{ copy: string; palette: ThemePalette }> = ({
   </View>
 );
 
-// ORCH-1186-C — DISPLAY-ONLY public menu pane: stacked category sections, each a
-// surface.card panel; item rows are name-left / price-right; null price omits the
-// price column (no "£0"). Rows are STATIC <View> (NOT Pressable) — there is no
-// detail/buy/expand, so a tappable-looking dead row never ships. NO order/cart/
-// checkout control anywhere (SC-7, strict-grep gate).
-const MenuTab: React.FC<{
-  groups: PublicMenuGroup[];
-  palette: ThemePalette;
-  surface: Surface;
-  theme: ResolvedTheme;
-}> = ({ groups, palette, surface, theme }) => (
-  <View style={styles.menuWrap}>
-    {groups.map((group) => (
-      <View key={group.menuId} style={styles.menuSection}>
-        <Text
-          accessibilityRole="header"
-          style={[
-            styles.menuSectionName,
-            { fontFamily: theme.fontFamilyValue, color: palette.primaryText },
-          ]}
-        >
-          {group.menuName}
-        </Text>
-        {group.menuDescription !== null ? (
-          <Text style={[styles.menuSectionDesc, { color: palette.tertiaryText }]}>
-            {group.menuDescription}
-          </Text>
-        ) : null}
-        <View style={[styles.menuCard, surface.card]}>
-          {group.items.map((item, index) => {
-            const price = formatMenuPrice(item.priceCents, item.currency);
-            return (
-              <View
-                key={item.id}
-                accessibilityLabel={
-                  price !== null
-                    ? `${item.name}. ${item.description ?? ""} ${price}.`
-                    : `${item.name}. ${item.description ?? ""}`
-                }
-                style={[
-                  styles.menuItemRow,
-                  index > 0 && {
-                    borderTopWidth: StyleSheet.hairlineWidth,
-                    borderTopColor: palette.panelBorder,
-                  },
-                ]}
-              >
-                <View style={styles.menuItemLeft}>
-                  <Text
-                    style={[styles.menuItemName, { color: palette.primaryText }]}
-                  >
-                    {item.name}
-                  </Text>
-                  {item.description !== null ? (
-                    <Text
-                      numberOfLines={3}
-                      style={[
-                        styles.menuItemDesc,
-                        { color: palette.tertiaryText },
-                      ]}
-                    >
-                      {item.description}
-                    </Text>
-                  ) : null}
-                </View>
-                {price !== null ? (
-                  <View style={styles.menuItemPriceCol}>
-                    <Text
-                      style={[
-                        styles.menuItemPrice,
-                        { color: palette.primaryText },
-                      ]}
-                    >
-                      {price}
-                    </Text>
-                  </View>
-                ) : null}
-              </View>
-            );
-          })}
-        </View>
-      </View>
-    ))}
-  </View>
-);
-
 // META-ORCH-1255(C) — Locations section (rendered with the About pane;
 // SC-12). One pressable card per VERIFIED venue → /b/{brandSlug}/v/{venueSlug}
 // via onOpenVenue. 0 venues → renders nothing (real-data-only). Inline param
@@ -1936,57 +1821,6 @@ const styles = StyleSheet.create({
     lineHeight: 20,
     textAlign: "center",
   },
-  // ---- menu (ORCH-1186-C, DISPLAY-ONLY) ----
-  menuWrap: {
-    gap: 24,
-  },
-  menuSection: {
-    gap: 8,
-  },
-  menuSectionName: {
-    fontSize: 17,
-    lineHeight: 21,
-    fontWeight: "800",
-  },
-  menuSectionDesc: {
-    fontSize: 14,
-    lineHeight: 20,
-    marginTop: 2,
-  },
-  menuCard: {
-    borderRadius: 16,
-    overflow: "hidden",
-    padding: 14,
-  },
-  menuItemRow: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    justifyContent: "space-between",
-    gap: 12,
-    paddingVertical: 10,
-  },
-  menuItemLeft: {
-    flex: 1,
-    minWidth: 0,
-    gap: 2,
-  },
-  menuItemName: {
-    fontSize: 16,
-    lineHeight: 21,
-    fontWeight: "700",
-  },
-  menuItemDesc: {
-    fontSize: 14,
-    lineHeight: 19,
-  },
-  menuItemPriceCol: {
-    alignItems: "flex-end",
-  },
-  menuItemPrice: {
-    fontSize: 16,
-    lineHeight: 21,
-    fontWeight: "800",
-  },
   // ---- about ----
   aboutWrap: {
     gap: 0,
@@ -2137,8 +1971,3 @@ const styles = StyleSheet.create({
 });
 
 export default PublicBrandPage;
-
-// META-ORCH-1255(C) — the venue public page (/b/{brand}/v/{venue}) reuses the
-// brand page's Menu composition VERBATIM as an in-page section (DESIGN §6.6:
-// currency-aware incl. zero-decimal currencies; one owner for the menu render).
-export { MenuTab as PublicMenuSections };

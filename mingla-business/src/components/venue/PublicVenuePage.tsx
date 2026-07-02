@@ -36,10 +36,13 @@ import {
 import { useRouter } from "expo-router";
 import Head from "expo-router/head";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import {
-  PublicMenuSections,
-  type PublicMenuGroup,
-} from "@mingla/brand-rendering";
+// META-ORCH-1255(R2) — DEEP import, NOT the "@mingla/brand-rendering" barrel:
+// the barrel re-exports the whole PublicBrandPage module, and a barrel VALUE
+// import from this (venue-chunk) file would make Metro hoist that ~27 KB
+// module into the EAGER __common boot chunk (ORCH-1083 bundle-budget breach).
+// The type-only barrel import below is erased at compile time (safe).
+import { PublicMenuSections } from "@mingla/brand-rendering/PublicMenuSections";
+import type { PublicMenuGroup } from "@mingla/brand-rendering";
 import {
   ParallaxCoverShell,
   buildStaticMapUrl,

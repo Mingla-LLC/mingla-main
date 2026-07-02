@@ -1,9 +1,16 @@
 // ORCH-1186-C [venue-menu] — public Menu tab render contract (append-only).
 //
 // fails-on-revert: reverting the MenuTab branch / the visibleTabs menu gate /
-// the formatMenuPrice null-omit out of PublicBrandPage.tsx fails T-PUB-1/2 +
-// T-INV-1 here. Verified by TRUE LINE-DELETION of the fix (not a comment-out) —
-// see the implementation report's Regression Test section for the commit hash.
+// the formatMenuPrice null-omit fails T-PUB-1/2 + T-INV-1 here. Verified by
+// TRUE LINE-DELETION of the fix (not a comment-out) — see the implementation
+// report's Regression Test section for the commit hash.
+//
+// META-ORCH-1255(R2) [TEST-MOD-APPROVED META-ORCH-1255] pin supersession: the
+// MenuTab renderer + formatMenuPrice moved VERBATIM from PublicBrandPage.tsx
+// to PublicMenuSections.tsx (ORCH-1083 web bundle budget — the shared venue
+// page import was hoisting the whole brand page into the eager __common
+// chunk). Every assertion is UNCHANGED; only the file each block is read from
+// follows the move. The visibleTabs menu gate stays in PublicBrandPage.tsx.
 //
 // Structural (source-as-text) test, mirroring the existing brand-page tests
 // (orch_1155_brand_redesign.test.tsx): the package has no react-native / RTL
@@ -17,16 +24,21 @@ const brandPage = fs.readFileSync(
   path.join(__dirname, "..", "PublicBrandPage.tsx"),
   "utf8",
 );
+// META-ORCH-1255(R2): the menu renderer's own module (moved verbatim).
+const menuSections = fs.readFileSync(
+  path.join(__dirname, "..", "PublicMenuSections.tsx"),
+  "utf8",
+);
 const types = fs.readFileSync(path.join(__dirname, "..", "types.ts"), "utf8");
 const indexTs = fs.readFileSync(path.join(__dirname, "..", "index.ts"), "utf8");
 
 // The MenuTab component block (for scoped display-only assertions).
-const menuTabStart = brandPage.indexOf("const MenuTab");
+const menuTabStart = menuSections.indexOf("const MenuTab");
 const menuTabBlock =
   menuTabStart === -1
     ? ""
     : (() => {
-        const rest = brandPage.slice(menuTabStart);
+        const rest = menuSections.slice(menuTabStart);
         const next = rest.slice(20).search(/\n(?:const|function) [A-Za-z]/);
         return next === -1 ? rest : rest.slice(0, next + 20);
       })();
@@ -44,14 +56,15 @@ describe("ORCH-1186-C public Menu tab", () => {
   });
 
   test("T-PUB-1b — formatMenuPrice is package-local, Intl-based, never GBP-defaulted (SC-9)", () => {
-    expect(brandPage).toContain("const formatMenuPrice");
-    expect(brandPage).toContain("new Intl.NumberFormat(undefined,");
+    expect(menuSections).toContain("const formatMenuPrice");
+    expect(menuSections).toContain("new Intl.NumberFormat(undefined,");
     // null price → null (the price column is omitted, never "£0").
-    expect(brandPage).toMatch(/if \(priceCents === null\) return null;/);
+    expect(menuSections).toMatch(/if \(priceCents === null\) return null;/);
     // The package must NOT import mingla-business currency utils (cross-package).
+    expect(menuSections).not.toContain("utils/currency");
     expect(brandPage).not.toContain("utils/currency");
     // The catch fallback echoes the stored currency — never hardcodes GBP.
-    expect(brandPage).not.toMatch(/formatMenuPrice[\s\S]{0,400}"GBP"/);
+    expect(menuSections).not.toMatch(/formatMenuPrice[\s\S]{0,400}"GBP"/);
   });
 
   test("T-PUB-1c — null price omits the price column (no $0 / no 'price on request' on public page)", () => {

@@ -267,13 +267,23 @@ describe("discovery-fix seams", () => {
     );
   });
 
-  test("D-C: the venue cover target exists and the wizard uses it", () => {
+  test("D-C: the venue cover target exists and the wizard flow uses it", () => {
     const target = read("mingla-business/src/components/ui/coverTarget.ts");
     expect(target).toContain('kind: "venue"');
+    // META-ORCH-1255(R2) [TEST-MOD-APPROVED META-ORCH-1255] pin supersession:
+    // the deck-readiness setup (the cover-upload leg of the wizard flow) moved
+    // VERBATIM from VenueCreatorWizard.tsx to VenueDeckReadinessSetup.tsx
+    // (ORCH-1083 web bundle budget — the wizard-file sharing hoisted it into
+    // the eager __common chunk). Same assertions, following the move; the
+    // wizard file must still never use a brand cover target.
+    const setup = read(
+      "mingla-business/src/components/venue/VenueDeckReadinessSetup.tsx",
+    );
     const wizard = read(
       "mingla-business/src/components/venue/VenueCreatorWizard.tsx",
     );
-    expect(wizard).toContain('kind: "venue"');
+    expect(setup).toContain('kind: "venue"');
+    expect(setup).not.toContain('kind: "brand"');
     expect(wizard).not.toContain('kind: "brand"');
     // The server sync writes the venue row's cover columns (one owner).
     const pipeline = read(
