@@ -792,6 +792,37 @@ export const getPublicVenueBySlug = async (
   return venuePublicViewRowToPublicVenue(data as VenuePublicViewRow);
 };
 
+/** META-ORCH-1255(C) — anon reserve display gate for the public venue page. */
+export interface PublicVenueReservable {
+  reservable: boolean;
+  venueId: string | null;
+  currency: string | null;
+}
+
+/**
+ * META-ORCH-1255(C) — the anon-safe reserve DISPLAY GATE (§6.7). Wraps the
+ * place-keyed `pg_venue_reservable_for_place` (definer, anon EXECUTE,
+ * display-gate fields only — I-PROPOSED-1148-RESERVABLE-RESOLVER-EXPOSES-
+ * ONLY-DISPLAY-GATE). reservable:false / error → the caller renders NO
+ * reserve bar (fail closed, no dead CTA).
+ */
+export const getPublicVenueReservable = async (
+  placePoolId: string,
+): Promise<PublicVenueReservable> => {
+  const { data, error } = await supabase.rpc("pg_venue_reservable_for_place", {
+    p_place_pool_id: placePoolId,
+  });
+  if (error !== null) throw error;
+  const row = (Array.isArray(data) ? data[0] : data) as
+    | { reservable: boolean; venue_id: string | null; currency: string | null }
+    | undefined;
+  return {
+    reservable: row?.reservable === true,
+    venueId: row?.venue_id ?? null,
+    currency: row?.currency ?? null,
+  };
+};
+
 /**
  * META-ORCH-1255(C) — all verified venues of a brand, for the public brand
  * page "Locations" section (SC-12). [] → the section is omitted.

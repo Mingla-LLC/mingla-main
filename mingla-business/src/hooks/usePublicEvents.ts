@@ -6,9 +6,11 @@ import {
   getPublicEventById,
   getPublicEventBySlug,
   getPublicVenueBySlug,
+  getPublicVenueReservable,
   type PublicBrandDetail,
   type PublicEventDetail,
   type PublicVenue,
+  type PublicVenueReservable,
   type PublicVenueSummary,
 } from "../services/publicEventsService";
 
@@ -44,6 +46,11 @@ export const publicEventKeys = {
     brandSlug: string,
   ): readonly ["public-events", "brand", string, "venues"] =>
     [...publicEventKeys.all, "brand", brandSlug, "venues"] as const,
+  // META-ORCH-1255(C) — the venue page reserve display gate (§6.7).
+  venueReservable: (
+    placePoolId: string,
+  ): readonly ["public-events", "venue-reservable", string] =>
+    [...publicEventKeys.all, "venue-reservable", placePoolId] as const,
 };
 
 const DISABLED_KEY = ["public-events-disabled"] as const;
@@ -125,6 +132,30 @@ export const usePublicVenueBySlug = (
  * suite pins that function's exact from() call set + `venue` overlay shape
  * (see the Leg C report deviation ledger).
  */
+/**
+ * META-ORCH-1255(C) — reserve display gate for the anon venue page (§6.7).
+ * Disabled without a place id; error → treated as not-reservable by the
+ * caller (fail closed, no dead CTA).
+ */
+export const usePublicVenueReservable = (
+  placePoolId: string | null,
+): UseQueryResult<PublicVenueReservable> => {
+  const enabled = placePoolId !== null && placePoolId.length > 0;
+  return useQuery<PublicVenueReservable>({
+    queryKey: enabled
+      ? publicEventKeys.venueReservable(placePoolId)
+      : DISABLED_KEY,
+    enabled,
+    staleTime: PUBLIC_STALE_TIME_MS,
+    queryFn: async (): Promise<PublicVenueReservable> => {
+      if (!enabled || placePoolId === null) {
+        return { reservable: false, venueId: null, currency: null };
+      }
+      return getPublicVenueReservable(placePoolId);
+    },
+  });
+};
+
 export const usePublicBrandVenues = (
   brandSlug: string | null,
 ): UseQueryResult<PublicVenueSummary[]> => {

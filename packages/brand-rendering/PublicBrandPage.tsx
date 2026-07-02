@@ -70,6 +70,7 @@ import type {
   PublicBrandTicket,
   PublicBrandTrip,
   PublicBrandUpcoming,
+  PublicBrandVenueSummary,
   PublicMediaType,
   PublicMenuGroup,
 } from "./types";
@@ -273,6 +274,7 @@ export const PublicBrandPage: React.FC<PublicBrandPageProps> = ({
   upcoming = [],
   upcomingHasMore = false,
   venue = null,
+  venues = [],
   menu = [],
   theme,
   // hideFloatingChrome is retained for back-compat with the props type; both live
@@ -573,6 +575,8 @@ export const PublicBrandPage: React.FC<PublicBrandPageProps> = ({
         palette={palette}
         surface={surface}
         onExternal={onExternal}
+        venues={venues}
+        onOpenVenue={callbacks.onOpenVenue}
       />
     );
 
@@ -1504,14 +1508,17 @@ const MenuTab: React.FC<{
   </View>
 );
 
-// ORCH-1155 — About pane: tagline → bio (4-line clamp + Read more) → contact.
+// ORCH-1155 — About pane: tagline → bio (4-line clamp + Read more) →
+// Locations (META-ORCH-1255(C), verified venues only) → contact.
 const AboutTab: React.FC<{
   brand: PublicBrand;
   theme: ResolvedTheme;
   palette: ThemePalette;
   surface: Surface;
   onExternal: (url: string) => void;
-}> = ({ brand, theme, palette, surface, onExternal }) => {
+  venues?: PublicBrandVenueSummary[];
+  onOpenVenue?: (venue: PublicBrandVenueSummary) => void;
+}> = ({ brand, theme, palette, surface, onExternal, venues = [], onOpenVenue }) => {
   const tagline =
     brand.tagline !== undefined && brand.tagline.trim().length > 0
       ? brand.tagline.trim()
@@ -1538,6 +1545,59 @@ const AboutTab: React.FC<{
       ) : null}
       {bio !== null ? (
         <ClampedBio text={bio} palette={palette} />
+      ) : null}
+      {/* META-ORCH-1255(C) — Locations: every VERIFIED venue of the brand,
+          each linking to its per-venue public page (SC-12). Omitted at 0
+          venues (real-data-only). */}
+      {venues.length > 0 ? (
+        <View style={styles.locationsWrap}>
+          <Text style={[styles.locationsLabel, { color: palette.tertiaryText }]}>
+            LOCATIONS
+          </Text>
+          {venues.map((v) => {
+            const addrLine = v.address ?? v.city;
+            return (
+              <Pressable
+                key={v.id}
+                onPress={() => onOpenVenue?.(v)}
+                accessibilityRole="button"
+                accessibilityLabel={`Open ${v.name}`}
+                style={({ pressed }) => [
+                  styles.venueRow,
+                  surface.card,
+                  pressed && styles.cardPressed,
+                ]}
+              >
+                {v.photoUrl !== null ? (
+                  <Image
+                    source={{ uri: v.photoUrl }}
+                    style={styles.venueThumb}
+                    accessibilityIgnoresInvertColors
+                  />
+                ) : null}
+                <View style={styles.venueCopy}>
+                  <Text
+                    numberOfLines={1}
+                    style={[styles.venueName, { color: palette.primaryText }]}
+                  >
+                    {v.name}
+                  </Text>
+                  {addrLine !== null ? (
+                    <Text
+                      numberOfLines={1}
+                      style={[styles.venueAddr, { color: palette.tertiaryText }]}
+                    >
+                      {addrLine}
+                    </Text>
+                  ) : null}
+                </View>
+                <Text style={[styles.venueChev, { color: palette.tertiaryText }]}>
+                  ›
+                </Text>
+              </Pressable>
+            );
+          })}
+        </View>
       ) : null}
       {hasContact ? (
         <View style={styles.contactWrap}>
@@ -1926,6 +1986,47 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     marginTop: 8,
   },
+  // META-ORCH-1255(C) — Locations section (About pane).
+  locationsWrap: {
+    marginTop: 28,
+    gap: 10,
+  },
+  locationsLabel: {
+    fontSize: 12,
+    lineHeight: 16,
+    fontWeight: "700",
+    letterSpacing: 1.4,
+  },
+  venueRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    borderRadius: 14,
+    padding: 14,
+  },
+  venueThumb: {
+    width: 48,
+    height: 48,
+    borderRadius: 12,
+    backgroundColor: "rgba(255, 255, 255, 0.06)",
+  },
+  venueCopy: {
+    flex: 1,
+    minWidth: 0,
+  },
+  venueName: {
+    fontSize: 15,
+    fontWeight: "700",
+  },
+  venueAddr: {
+    fontSize: 13,
+    lineHeight: 18,
+    marginTop: 2,
+  },
+  venueChev: {
+    fontSize: 22,
+    fontWeight: "400",
+  },
   contactWrap: {
     marginTop: 28,
     gap: 10,
@@ -2014,3 +2115,8 @@ const styles = StyleSheet.create({
 });
 
 export default PublicBrandPage;
+
+// META-ORCH-1255(C) — the venue public page (/b/{brand}/v/{venue}) reuses the
+// brand page's Menu composition VERBATIM as an in-page section (DESIGN §6.6:
+// currency-aware incl. zero-decimal currencies; one owner for the menu render).
+export { MenuTab as PublicMenuSections };

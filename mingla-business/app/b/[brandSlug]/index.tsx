@@ -18,7 +18,10 @@ import {
 } from "../../../src/constants/designSystem";
 // META-ORCH-1187 LEG 2 — buyer-web public-offering view capture (web-only).
 import { captureWeb } from "../../../src/analytics/webAnalytics";
-import { usePublicBrandBySlug } from "../../../src/hooks/usePublicEvents";
+import {
+  usePublicBrandBySlug,
+  usePublicBrandVenues,
+} from "../../../src/hooks/usePublicEvents";
 import { PublicBrandPage } from "../../../src/components/brand/PublicBrandPage";
 import { PublicBrandNotFound } from "../../../src/components/brand/PublicBrandNotFound";
 
@@ -29,6 +32,13 @@ export default function PublicBrandRoute(): React.ReactElement {
     : params.brandSlug;
 
   const publicBrandQuery = usePublicBrandBySlug(
+    typeof brandSlug === "string" ? brandSlug : null,
+  );
+  // META-ORCH-1255(C) — the brand page "Locations" section (SC-12). Fetched
+  // as a SIBLING query (the append-only ve4 suite pins getPublicBrandBySlug's
+  // exact call shape). Loading/error → [] → the section is simply omitted;
+  // the brand page never blocks on venues.
+  const brandVenuesQuery = usePublicBrandVenues(
     typeof brandSlug === "string" ? brandSlug : null,
   );
 
@@ -79,6 +89,7 @@ export default function PublicBrandRoute(): React.ReactElement {
       upcomingHasMore={publicBrandQuery.data.upcomingHasMore}
       menu={publicBrandQuery.data.menu}
       venue={publicBrandQuery.data.venue}
+      venues={brandVenuesQuery.data ?? []}
     />
   );
 }
