@@ -14,6 +14,11 @@
  */
 
 import type { BrandPlacePipelineState } from "../services/businessPlaceAuthoringService";
+// ORCH-1256 — type-only import (8 emptiness booleans). Keeps this file's
+// no-runtime-coupling contract: the caller derives the booleans from the
+// Brand record via utils/brandProfileCompleteness.ts and precomputes the
+// edit route; nothing Brand-shaped enters this module at runtime.
+import type { BusinessTodoProfileInput } from "./brandProfileCompleteness";
 
 export type BusinessTodoAction =
   | { kind: "open_brand_switcher" }
@@ -99,6 +104,17 @@ export interface BusinessTodoInput {
    * Used as the venue-claim row's action when there is open admin feedback.
    */
   venueFeedbackRoute: string;
+  /**
+   * ORCH-1256 — brand-profile completeness (priority band 6, tail). OPTIONAL
+   * so pre-1256 callers/tests compile + behave unchanged: absent ⇒ zero
+   * profile rows. The 8 booleans (true = field empty = row shows) are derived
+   * by the caller via `deriveBrandProfileTodoInput`; `editRoute` is the
+   * precomputed `/brand/{id}/edit` route (per this file's contract, route
+   * strings are precomputed by the caller). The hook only supplies this once
+   * the brand record has RESOLVED, so profile rows can never flash while the
+   * brand loads.
+   */
+  profile?: BusinessTodoProfileInput & { editRoute: string };
 }
 
 function venueLiveSublabel(
@@ -268,6 +284,87 @@ export function buildBusinessTodos(input: BusinessTodoInput): BusinessTodo[] {
       sublabel: "Publish it to go live",
       action: { kind: "route", route: input.draftRoute },
     });
+  }
+
+  // 6 — Brand profile (ORCH-1256). TAIL band, after finish_draft: profile
+  // fields are presentation polish that block NO transaction (a brand can be
+  // discovered, list, sell and get paid with an empty tagline), so they rank
+  // BELOW every revenue/liveness gate above — and never bury the single
+  // action that makes the brand live. Emitted only when the caller supplies
+  // `profile` (absent ⇒ zero rows). Fixed internal order (operator-confirmed
+  // enumeration): cover → photo → tagline → description → address → email →
+  // phone → one AGGREGATED socials row (shows only when ALL 8 networks are
+  // empty). Each row deep-links its brand-edit section via ?section=.
+  if (input.profile !== undefined) {
+    const profile = input.profile;
+    const profileRoute = (section: string): BusinessTodoAction => ({
+      kind: "route",
+      route: `${profile.editRoute}?section=${section}`,
+    });
+    if (profile.needsCover) {
+      todos.push({
+        id: "profile_add_cover",
+        label: "Add a cover",
+        sublabel: "Make your public page pop",
+        action: profileRoute("cover"),
+      });
+    }
+    if (profile.needsPhoto) {
+      todos.push({
+        id: "profile_add_photo",
+        label: "Add a profile photo",
+        sublabel: "Put a face on your brand",
+        action: profileRoute("photo"),
+      });
+    }
+    if (profile.needsTagline) {
+      todos.push({
+        id: "profile_add_tagline",
+        label: "Add a tagline",
+        sublabel: "One line that says what you do",
+        action: profileRoute("about"),
+      });
+    }
+    if (profile.needsDescription) {
+      todos.push({
+        id: "profile_add_description",
+        label: "Describe your brand",
+        sublabel: "Tell people what you're about",
+        action: profileRoute("about"),
+      });
+    }
+    if (profile.needsAddress) {
+      todos.push({
+        id: "profile_add_address",
+        label: "Add your address",
+        sublabel: "Help people find you",
+        action: profileRoute("address"),
+      });
+    }
+    if (profile.needsEmail) {
+      todos.push({
+        id: "profile_add_email",
+        label: "Add a contact email",
+        sublabel: "So customers can reach you",
+        action: profileRoute("contact"),
+      });
+    }
+    if (profile.needsPhone) {
+      todos.push({
+        id: "profile_add_phone",
+        label: "Add a phone number",
+        sublabel: "Another way to reach you",
+        action: profileRoute("contact"),
+      });
+    }
+    if (profile.needsSocials) {
+      todos.push({
+        id: "profile_add_socials",
+        label: "Add your social links",
+        sublabel: "Instagram, TikTok, your website and more",
+        action: profileRoute("social"),
+      });
+    }
   }
 
   return todos;

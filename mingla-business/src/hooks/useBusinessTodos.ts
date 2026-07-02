@@ -24,6 +24,7 @@ import {
 } from "../store/currentBrandStore";
 import { useDraftsForBrand } from "../store/draftEventStore";
 import { useDraftVenueStore } from "../store/draftVenueStore";
+import { deriveBrandProfileTodoInput } from "../utils/brandProfileCompleteness";
 import {
   buildBusinessTodos,
   type BusinessTodo,
@@ -119,6 +120,22 @@ export function useBusinessTodos(): BusinessTodo[] {
     currentBrand?.claimFollowUpAt ?? null,
   );
 
+  // ORCH-1256 — brand-profile completeness input (band 6, tail rows). Derived
+  // ONLY once a brand is selected AND its record has resolved: `currentBrand`
+  // is null until useBrand's fetch settles, and the extra `!isBrandResolving`
+  // guard is belt-and-braces for the ORCH-1100 RC-1 hydration window — so no
+  // profile row can ever render (or flash) for a null/resolving brand.
+  const profile = useMemo(
+    () =>
+      currentBrand !== null && !isBrandResolving
+        ? {
+            ...deriveBrandProfileTodoInput(currentBrand),
+            editRoute: `/brand/${currentBrand.id}/edit`,
+          }
+        : undefined,
+    [currentBrand, isBrandResolving],
+  );
+
   const pipelineRoute = useMemo(
     () =>
       currentBrand !== null
@@ -162,8 +179,10 @@ export function useBusinessTodos(): BusinessTodo[] {
           currentBrand !== null
             ? `/brand/${currentBrand.id}/listing?focus=feedback`
             : "",
+        profile,
       }),
     [
+      profile,
       pendingInvites,
       hasNoBrands,
       hasBrandsButNoSelection,
