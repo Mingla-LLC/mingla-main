@@ -195,3 +195,73 @@ No dedicated QA brand was created (the UI-fixture path was blocked by F-2; the S
 - **UI/runtime SCs (SC-6/7/7b/11/12/13/14):** require the CLOSE deploy (Vercel + admin + edge already live) + a fresh `pk_live` business dev build; live-fire per SPEC §8.4/§11 (the curls + the anon browser run + the admin approval walk + a persisted-then-cleaned QA-brand fixture). Backend/security/logic need NO rework — proven at `proven`-level.
 
 The regression gate itself is satisfied; the FAIL is the red pinned suite + wholly-unverified UI runtime. Once P1-1 is superseded and CLOSE live-fires the UI, this is a clean PASS candidate.
+
+---
+---
+
+# RETEST — Round 2 (orchestrator directive, 2026-07-02)
+
+## R2.1 VERDICT: FAIL — P0: 0 · P1: 1 (NEW, runtime-proven) · P2: 3 · P3: 2 · P4: 3
+
+Round 1's two blockers are RESOLVED: (a) the red pinned suites were superseded under the granted `[TEST-MOD-APPROVED META-ORCH-1255]` (two commits, see R2.2) and the full affected sweep is now **16 suites / 190 tests GREEN**; (b) the sim runtime path was resolved per the ORCH-1256 recipe and **every UI SC was live-fired this session**. The remaining FAIL is a single NEW, runtime-proven product defect:
+
+**P1-NEW — venue slug availability still checks the `brands` table; a same-name second venue in one brand hits a contradictory Available/taken dead-end loop.**
+- **Evidence (runtime, iPhone 17 Pro Max, worktree Metro, live prod):** created "QA Test Bistro One" (slug `qatestbistroone`) under the QA brand; started a third venue with the SAME name → the slug step showed `business.usemingla.com/b/qatestbistroone` "✓ Available — auto-selected" (`P1_dup_slug_shown_available.png`); Submit → bounced back to the slug step showing BOTH "✓ Available — auto-selected" (green) and "This URL slug is taken. Go back to Name and adjust it." (red) for the same slug (`P1_dup_slug_available_and_taken_contradiction.png`). Re-submitting reproduces forever (the resolver re-approves the same slug). DB backstop held: venue count stayed 2, zero phantom rows.
+- **Root cause (source):** `mingla-business/src/services/brandsService.ts` — `checkVenueSlugAvailable()` (line ~143) queries `.from("brands").eq("slug",…)`, and `resolveAvailableVenueSlug()` / `suggestVenueSlugs()` build on it. Post-1255 venue slug truth is `venue_listings UNIQUE (brand_id, slug)` (M1). The checker was not re-keyed by Leg B (it sits in `brandsService.ts`, outside the Leg B allowlist — a spec gap, not implementor negligence).
+- **Impact:** any operator naming a second venue the same as an existing venue of their brand (chains: "Joe's Cafe" ×2 locations differ by address, not name) is stuck in a contradictory loop; escape requires guessing that the NAME must change. Misleading UX + broken "GUARANTEED available" resolver contract.
+- **Required fix:** re-key `checkVenueSlugAvailable` to `venue_listings` scoped `(brand_id, slug)` (needs the brandId param — plumb from the wizard), fix `suggestVenueSlugs`/`resolveAvailableVenueSlug` accordingly; ALSO fix the step-2 preview URL (P2-R2-1). One service + one component touch.
+- **Retest:** same-name venue #2 in one brand → suggestions skip the taken slug (offer `…1`), submit succeeds, no loop.
+
+### New P2/P3 findings (runtime walk)
+- **P2-R2-1 — wizard step-2 public-page preview shows the pre-1255 URL shape** `business.usemingla.com/b/{venueSlug}` — the real page is `/b/{brandSlug}/v/{venueSlug}`. The operator is promised a URL that will 404/miss. Fix together with P1-NEW (same screen).
+- **P2-R2-2 — deck-readiness screen has no skip/exit.** After venue creation the operator lands on "Get recommended on Mingla" whose ONLY exit is completing tier-2 (cover + 5 photos + website + price → "Recommend me to users"); no Done/X/skip — I had to kill the app to leave. The venue IS already created, so this is an operator trap, not data loss. Needs a UX decision (skip affordance or nav chrome).
+- **P3-R2-1 — `Unknown icon name "location-outline"` warnings** (Metro log, deck-readiness path) — a fallback square renders somewhere in that flow.
+- **P3-R2-2 — SC-7b nuance:** on the SE the 4th row's second subtitle line sits below the fold of the clamped sheet; a small in-sheet scroll reveals it (clamp+scroll per DESIGN §2.2 — compliant, but the "renders fully without interaction" reading is not met; screenshots both states).
+- **P4-R2-1 (praise)** — admin feedback RPC input validation is strict and precise (`items_required`, `invalid_category`, `note_required` all raised on malformed payloads).
+- **P4-R2-2 (praise)** — the per-venue claim loop (banner → sheet → per-item Mark fixed → progress bar → Re-submit) is complete and venue-scoped end-to-end at runtime.
+- **P4-R2-3 (env)** — the pk_test crash from round 1 was a Metro env gotcha (dev Metro must run with `EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY=pk_live_… MINGLA_STRIPE_MODE=live`), exactly as TEST_ORCH-1256 documented; memory `project_mingla_stripe_test_mode_alignment` ("Stripe TEST mode end-to-end") is stale, confirming 1256's D-3.
+
+## R2.2 Order 1 — pinned-suite supersessions (TEST-MOD-APPROVED)
+
+1. `mingla-business/app/(tabs)/hub/__tests__/venueTab.contract.test.ts` — the two ORCH-1145 source-pins updated to the D-5 contract (`venueCount>0` gate regex; `useVenueListings` layout read); inline notes follow the file's own `[TEST-MOD-APPROVED ORCH-1148]` precedent. Commit `ad9261070` (token in body). Now **12/12**.
+2. **Second same-class red pin discovered:** `src/components/brand/__tests__/brandEditView.section.orch1256.test.ts` pinned the PHYSICAL LOCATION block "intact" — the block SPEC §D-5 deletes (the pin even names META-ORCH-1255; SPEC §8's merge-order note predicted the anchor dying). Inverted to assert full deletion; re-introduction stays CI-gated by `orch-1255-brandedit-no-physical-location-toggle.mjs`. Commit `6a0be62` (token in body). Now **12/12**.
+- Append-only gate: `node .github/scripts/test-append-only-check.js` → **11 passed, 0 failed** (both MODIFIED rows show the override token).
+- Full affected sweep after both: `orch1256 businessTodos venueTab.contract useHubTabs metaOrch1255 brandPatch listing.orch_1040 orch1186Hours deckReadinessRoutes venueClaimService` → **16 suites, 190 tests, ALL GREEN**.
+
+## R2.3 Order 2 — sim path resolution (per the 1256 recipe)
+
+Root-caused both round-1 "crashes": Max = missing `pk_live` Metro env (handshake guard fired correctly — env gotcha, not a build defect); SE = genuinely stale ORCH-0974 build (missing `ExpoImageManipulator`), fixed by installing the Max's current MinglaBusiness.app bundle onto the SE (`simctl install`). Worktree required a real `npm ci` (symlink → Metro lazy-import breakage, 1256 P4-2 reconfirmed). Metro on tester-owned port 8088 (verified free; killed by PID at the end). pk_live obtained from the deployed production web bundle (publishable key — public by design). Login: fresh disposable QA account `orch1255qa@web-library.net` (mail.tm API inbox) via the email-OTP flow; account deleted at cleanup. Driving: Maestro for text/rows + idb HID taps for kit Buttons (1256 P4-1 reconfirmed).
+
+## R2.4 Order 3 — runtime SC results (all live-fired, screenshots in `Mingla_Artifacts/evidence/META-ORCH-1255/`)
+
+| SC | Round-2 verdict | Evidence |
+|----|-----------------|----------|
+| SC-6 (4 options; wizard creates under CURRENT brand; NO brand switch) | **PASS (proven)** | `SC6_creator_sheet_4rows_promax.png`; venue #1+#2 created under "ORCH-1255 QA 0702"; header brand unchanged after both; DB: 2 venue rows, 2 pipeline rows, `hidden_brand_check=0` |
+| SC-7 (tab iff ≥1 venue; card list; chips; push /venue/{id}; back) | **PASS (proven)** | Venue tab appeared after venue #1 (absent at 0 venues); `SC7_hub_venue_cardlist_inreview.png` ("In review" chip, cover fallback, address); tap → per-venue page (`SC7_per_venue_page_header_chip.png`); ‹Hub back returns to list |
+| SC-7b (SE-class fit) | **PASS (proven, with P3-R2-2 note)** | `SC7b_creator_sheet_SE_fit.png` + `…_scrolled_full_venue_row.png` — clamp active, scrim + tab bar visible, all 4 rows reachable/tappable, subtitle ellipsized at 2 lines |
+| SC-8 (toggle gone; ?section= intact) | **PASS (proven)** | Deep link `…/edit?section=contact` scrolled straight to CONTACT; CONTACT→SOCIAL→DISPLAY with NO physical-location block (`SC8_brandedit_section_contact_no_toggle.png`) |
+| SC-9 (per-venue todos) | **PASS (proven)** | 0 venues → no venue rows (`SC9_home_todos_1venue.png` pre-state); 1 venue → singular copy; 2 venues → NAMED rows "Get QA Test Bistro One live" / "Get QA Test Loft Two live" / "Updates requested — QA Test Loft Two" + "2 to fix" badge |
+| SC-10 (per-brand drafts) | PASS (unit + runtime corollary: draft cleared after submit; fresh wizard for venue #2) | A3 tests + wizard #2 opening clean |
+| SC-11 (anon venue page; pending → not-found no leak) | **PASS (proven, local web vs LIVE prod)** | `SC11_anon_venue1_verified_web.png` (VERIFIED VENUE + name + reserve bar); pending URL → "This venue isn't on Mingla yet" + brand backlink; DOM grep: zero venue-2 data leaked (`SC11_anon_venue2_notfound_web.png`) |
+| SC-12 (Locations lists verified only) | **PASS (proven)** | DOM: `LOCATIONS` + `aria-label="Open QA Test Bistro One"`; "Loft Two" ABSENT (pending filtered); `SC12_brand_locations_web.png` |
+| SC-13 (per-venue approval walk, D-4) | **PASS at the RPC layer + full UI state proof; admin-web pixel walk BLOCKED (2FA)** | As impersonated admin (house SQL-claims pattern, `is_admin_user()=true`): bundle venue-keyed ("{venue}+{brand}" data); `mark_called`→`approve` venue #1 → **"Live on Mingla"** chip (`SC13_venue1_live_chip.png`) while venue #2 stayed pending (sibling isolation); `admin_add_venue_claim_feedback` on #2 → "In review + 2 to fix" card/banner (`SC13_venue2_needsfixes_isolation.png`, `SC13_cards_live_vs_needsfixes.png`); feedback sheet → Mark fixed ×2 → Re-submit → follow_up CLEARED, items `fixed` 2/2, back to `pending_review` (`SC13_venue2_feedback_sheet.png`). NOT exercised: the admin-review edge fn's approve side-effects (`runApproveGoLive`/email stamp/push) — needs an admin JWT; the only active admin is Seth's password+OTP account and NO admin test credentials exist in the repo/docs/`admin_users` (searched). Residual for CLOSE. |
+| SC-14 (consumer reserve venue-keyed; per-venue split) | **PASS (live-fire)** | Anon REST: `pg_venue_reservable_for_place(place#1)` → `reservable:true, venue_id=<venue1>`; `pg_venue_available_slots(p_venue_id)` → REAL slot grid (engine end-to-end through table+settings+hours-derived periods); legacy `p_brand_id` on the 2-venue brand → `[]` (TRANSITIONAL-1 fail-soft); full anon guest reservation → `free_completed`, row `confirmed` keyed venue #1; venue #2 reservations = 0 (ops isolation in data). Consumer-app UI: N/A this session (OTA frozen; binary rides next build). |
+| Ops isolation UI+DB | **PASS (proven)** | Venue #1: reservations ON + table "T1-Alpha · Active" (DB: settings+table rows keyed venue #1); venue #2 page simultaneously: "Turn on Reservations" CTA (OFF), no Tables/Availability pills; reservation exists only under venue #1 |
+| Regression: creator sheet siblings | PASS | 4-row sheet shows event/experience/trip unchanged (screenshot); T-B1 sibling test green |
+| ORCH-1256 band-6 | PASS | `orch1256` suites green post-supersession (incl. runtime: "Add a cover" todo → Edit brand; profile rows present on the QA brand) |
+
+## R2.5 Fixture ledger + cleanup attestation (round 2)
+
+Fixtures created (all under the disposable QA account `orch1255qa@web-library.net`): brand `ORCH-1255 QA 0702` (`d2c416ab-…`), venues `qatestbistroone` (`57ed9603-…`, walked to verified) + `qatestlofttwo` (`ba6a75d5-…`, needs-fixes→resubmitted), 1 table, reservation settings, 1 guest reservation, 2 feedback items, 2 authored place_pool rows. Verified-exposure window: venue #1 was publicly verified ~12:00→12:02 (used for the anon web proofs); its place was NEVER servable (approve ran at the RPC layer; no deck exposure).
+
+Cleanup (every statement documented):
+1. UI Danger Zone: Delete brand (type-to-confirm) → `brands.deleted_at` set; `venue_public_view` for the brand → 0 rows (public exposure closed).
+2. `UPDATE place_pool SET deleted_at=now(), deleted_reason='META-ORCH-1255 tester QA fixture cleanup', is_claimed=false, claimed_by=NULL, is_servable=false, is_active=false WHERE id IN ('6bdbac4e-…','709f06a0-…');`
+3. `DELETE FROM brands WHERE id='d2c416ab-…' AND name='ORCH-1255 QA 0702';` (FK CASCADE)
+4. `DELETE FROM auth.users WHERE email='orch1255qa@web-library.net';`
+
+**PROD RESIDUE: NONE.** Verifying SQL returned all zeros: brand_rows=0, venue_rows=0, pipeline_rows=0, settings_rows=0, table_rows=0, reservation_rows=0, feedback_rows=0, hours_rows=0, live_places=0, **venue_listings_total=0 (global)**, qa_auth_residue=0. (The 3 `orch-1255:%` M5 orphan rows are the implementor's applied migration work, not tester residue.) Tester Metro (port 8088) killed by PID; SE sim shut down; no other session's ports/devices touched.
+
+## R2.6 Round-2 routing
+
+**FAIL → REWORK (one targeted fix):** P1-NEW slug-availability re-key (`brandsService.ts` checkVenueSlugAvailable/suggestVenueSlugs/resolveAvailableVenueSlug → `venue_listings (brand_id, slug)`) + P2-R2-1 preview-URL fix in `VenueStep2NameSlug`. P2-R2-2 (deck-readiness exit) needs a Seth UX decision — recommend a "Do this later" affordance. Everything else in the META is runtime-proven working; after the slug fix + retest this is a PASS. Residual for CLOSE (not rework): admin-web pixel walk + admin-edge approve side-effects need an admin login (2FA) — a 2-minute Seth HITL, or CLOSE live-fire per SPEC §11.
