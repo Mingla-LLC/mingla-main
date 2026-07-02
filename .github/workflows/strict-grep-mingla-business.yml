@@ -139,6 +139,7 @@ on:
 #   - I-PROPOSED-1227-BUSINESS-NAME-AND-LEGAL-LINKS (orch-1227-business-name-and-legal-links.mjs) — two App-Store-blocking BUSINESS-app fixes: (1) the Expo top-level name in mingla-business/app.json is "Mingla Business" (NOT the bare generic "Business" that triggered Apple ITMS-90129), and (2) the login footer legal links in BusinessWelcomeScreen.tsx point at the LIVE usemingla.com pages (TERMS_URL=https://usemingla.com/terms-of-service, PRIVACY_URL=https://usemingla.com/privacy-policy) with the DEAD mingla.app/terms + mingla.app/privacy links GONE; reverting either name or link breaks CI; self-tested 5/5 (ORCH-1227 — DRAFT until CLOSE)
 #   - I-STRIPE-PUBLISHABLE-KEY-VIA-RESOLVER (i-stripe-publishable-key-via-resolver.mjs) — no edge fn under supabase/functions/ reads the raw Stripe publishable-key env (EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY / STRIPE_PUBLISHABLE_KEY) except _shared/stripeMode.ts::resolvePublishableKey() (the mode-validated, prefix-checked, fail-closed resolver); ticket-checkout-create + venue-reservation-create MUST call resolvePublishableKey; prevents the 2026-06-22 pk_test_-in-live-mode outage; comment-stripped; self-tested (ORCH-1238 — ACTIVE, flipped at CLOSE 2026-06-27)
 #   - I-IOS-CAMERA-PHOTO-PURPOSE-STRINGS-SPECIFIC (i-ios-camera-photo-purpose-strings-specific.mjs) — app-mobile/app.json NSCameraUsageDescription + NSPhotoLibraryUsageDescription must clearly describe the use + give a concrete example ("for example, …"), reference a real surface (profile/chat/message), and never regress to the Apple-rejected vague wording ("capture photos for your experiences" / "select images for your experiences"); prevents a re-trip of the Apple 5.1.1(ii) build-33 rejection; self-tested (ORCH-1242 — ACTIVE, flipped at CLOSE 2026-06-28)
+#   - I-ORCH-1253-BIZ-LOCATION-PURPOSE-STRING (orch-1253-biz-location-purpose-string.mjs) — mingla-business/app.json ios.infoPlist must declare a non-empty NSLocationWhenInUseUsageDescription; a linked SDK (AppsFlyer/OneSignal) references CoreLocation, so Apple requires the purpose string or the business build trips ITMS-90683 (even though the app has no user-facing location feature — the capability is analytics/attribution only). app.config.ts spreads `...config` and never rebuilds ios.infoPlist, so app.json is the authoritative source; self-tested + fails-on-revert (ORCH-1253 — DRAFT until CLOSE)
 #   - I-PROPOSED-1136-WEB-SHEET-CSS-TRANSITION (i-proposed-1136-web-sheet-css-transition.mjs) — the 5 shared biz-WEB sheet/overlay primitives (TopSheet, Sheet.web, SheetMobile, Modal, Toast) drive their WEB open/close animation via a compositor CSS `transition` on transform/opacity (NOT a withTiming/withSpring useAnimatedStyle on the web main-thread rAF, which freezes under a heavy-page long task); no height/layout property is animated on the web sheet path; native keeps reanimated (web-gated via Platform.OS==='web'); self-tested (ORCH-1136 R3 — DRAFT until CLOSE)
 #   - I-PROPOSED-1230-CONSUMER-APPLE-REJECTION-ROUND2 (orch-1230-consumer-apple-rejection-round2.mjs) — two CODE fixes for Apple's SECOND consumer-app rejection (build 30): (1) Guideline 5.1.5 — the app is fully functional with Location Services OFF; OnboardingFlow.tsx surfaces the manual "choose your city" picker (manualLocationOpen + renderManualLocationPanel invoked + onPress={handleManualLocation}) on the FIRST encounter and the check-failed escape is NOT gated `launchCheckFailures >= 2` (lowered to >= 1); (2) Guideline 5.1.1(ii) — every calendar/reminder purpose string incl. the iOS-17 keys (NSCalendars{FullAccess,WriteOnlyAccess}UsageDescription + NSRemindersFullAccessUsageDescription) carries a concrete example (/reservation|ticketed show/) and the expo-calendar plugin is configured (NOT a bare string that injects a generic default); self-tested PASS-on-fix + FAIL-on-revert (ORCH-1230 — DRAFT until CLOSE)
 #   - I-PROPOSED-1232-A (i-proposed-1232-a-no-temp-id-to-uuid.mjs) — C1: the shared isPersistedBrandId validator (src/utils/brandId.ts) is imported+applied at the 4 sinks (currentBrandResolver, runBrandRecoveryWrite, setCreatorDefaultBrand, getBrand) so no `_temp_`/non-uuid id reaches a uuid column or the current-brand pointer (Postgres 22P02); getBrand guards BEFORE its .eq("id") query; self-tested (META-ORCH-1232 — DRAFT until CLOSE)
@@ -161,6 +162,19 @@ on:
 # .github/scripts/strict-grep/README.md.
 
 jobs:
+  orch-1253-biz-location-purpose-string:
+    name: "ORCH-1253: business iOS infoPlist declares NSLocationWhenInUseUsageDescription (fix ITMS-90683) (I-ORCH-1253-BIZ-LOCATION-PURPOSE-STRING)"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Self-test the ORCH-1253 biz-location-purpose-string gate
+        run: node .github/scripts/strict-grep/orch-1253-biz-location-purpose-string.mjs --self-test
+      - name: Run ORCH-1253 biz-location-purpose-string gate
+        run: node .github/scripts/strict-grep/orch-1253-biz-location-purpose-string.mjs
+
   orch-1227-business-name-and-legal-links:
     name: "ORCH-1227: app name is \"Mingla Business\" + login legal links point at live usemingla.com pages (I-PROPOSED-1227-BUSINESS-NAME-AND-LEGAL-LINKS)"
     runs-on: ubuntu-latest
