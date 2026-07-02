@@ -23,7 +23,10 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { BrandDeleteSheet } from "../../../src/components/brand/BrandDeleteSheet";
-import { BrandEditView } from "../../../src/components/brand/BrandEditView";
+import {
+  BrandEditView,
+  type BrandEditSection,
+} from "../../../src/components/brand/BrandEditView";
 import { canvas } from "../../../src/constants/designSystem";
 import { useAuth } from "../../../src/context/AuthContext";
 import {
@@ -35,12 +38,38 @@ import { useUpdateBrand } from "../../../src/hooks/useBrands";
 import { joinBrandDescription } from "../../../src/services/brandMapping";
 import { computeDirtyFieldsPatch } from "../../../src/utils/brandPatch";
 
+// ORCH-1256 — validate the `?section=` deep-link param against the closed
+// BrandEditSection set. Anything else (bogus values, casing drift) →
+// undefined: the page renders normally at the top, no crash, no scroll.
+const isBrandEditSection = (
+  value: string | undefined,
+): value is BrandEditSection =>
+  value === "photo" ||
+  value === "about" ||
+  value === "cover" ||
+  value === "address" ||
+  value === "contact" ||
+  value === "social";
+
 export default function BrandEditRoute(): React.ReactElement {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { user } = useAuth();
-  const params = useLocalSearchParams<{ id: string | string[] }>();
+  const params = useLocalSearchParams<{
+    id: string | string[];
+    section?: string | string[];
+  }>();
   const idParam = Array.isArray(params.id) ? params.id[0] : params.id;
+  // ORCH-1256 — normalize the array form (house pattern: listing.tsx focus
+  // param), then validate against the closed section set.
+  const sectionParam = Array.isArray(params.section)
+    ? params.section[0]
+    : params.section;
+  const initialSection: BrandEditSection | undefined = isBrandEditSection(
+    sectionParam,
+  )
+    ? sectionParam
+    : undefined;
   const brands = useBrandList();
   const setCurrentBrand = useCurrentBrandStore((s) => s.setCurrentBrand);
   const updateBrandMutation = useUpdateBrand();
@@ -117,6 +146,7 @@ export default function BrandEditRoute(): React.ReactElement {
         onSave={handleSave}
         onAfterSave={handleBack}
         onRequestDelete={handleRequestDelete}
+        initialSection={initialSection}
       />
       <BrandDeleteSheet
         visible={deleteSheetVisible}

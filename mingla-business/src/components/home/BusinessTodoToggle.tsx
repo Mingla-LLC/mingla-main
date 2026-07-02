@@ -17,6 +17,7 @@ import {
   LayoutAnimation,
   Platform,
   Pressable,
+  ScrollView,
   StyleSheet,
   Text,
   UIManager,
@@ -94,7 +95,15 @@ export const BusinessTodoToggle: React.FC<BusinessTodoToggleProps> = ({
       </Pressable>
 
       {open ? (
-        <View style={styles.list}>
+        // ORCH-1256 — bounded, internally-scrollable row list. The toggle
+        // mounts ABOVE the screen scroll area on Home/Hub (todoWrap sibling),
+        // so an unbounded list (now up to ~11 rows with the profile band)
+        // would bury the dashboard with rows running off-screen unscrollably.
+        <ScrollView
+          style={[styles.list, styles.listBounded]}
+          nestedScrollEnabled
+          showsVerticalScrollIndicator={true}
+        >
           {todos.map((todo, index) => (
             <Pressable
               key={todo.id}
@@ -136,7 +145,7 @@ export const BusinessTodoToggle: React.FC<BusinessTodoToggleProps> = ({
               <Icon name="chevR" size={16} color={textTokens.tertiary} />
             </Pressable>
           ))}
-        </View>
+        </ScrollView>
       ) : null}
     </GlassCard>
   );
@@ -165,6 +174,12 @@ const styles = StyleSheet.create({
   },
   list: {
     marginTop: spacing.sm,
+  },
+  // ORCH-1256 — capacity bound (F-4): ≈6 rows visible; rows beyond scroll
+  // internally so the Home/Hub dashboard beneath the toggle stays reachable.
+  // Tuneable constant — adjust only with a designer eyeball (SPEC OQ-3).
+  listBounded: {
+    maxHeight: 320,
   },
   row: {
     flexDirection: "row",

@@ -21,7 +21,7 @@
  * "Allow DMs" + "List in Discover" toggles belong in §5.3.6 settings — not here.
  */
 
-import React, { useCallback, useMemo, useState } from "react";
+import React, { useCallback, useMemo, useRef, useState } from "react";
 import {
   Image as RNImage,
   Platform,
@@ -30,6 +30,12 @@ import {
   Text,
   TextInput,
   View,
+} from "react-native";
+// ORCH-1256 — types only: the scroll ref is typed as RN ScrollView (the
+// SmartScrollView wrapper forwards it on native and IS RN ScrollView on web).
+import type {
+  LayoutChangeEvent,
+  ScrollView as RNScrollView,
 } from "react-native";
 // ORCH-0892-B v2: ScrollView routed through the SmartScrollView wrapper.
 // On native, resolves to KeyboardAwareScrollView (library) which scrolls
@@ -75,6 +81,20 @@ interface ToastState {
   visible: boolean;
   message: string;
 }
+
+/**
+ * ORCH-1256 — the closed set of `?section=` deep-link targets on the brand
+ * edit page (one per to-do-row destination). Each value maps to exactly one
+ * onLayout anchor below. The PHYSICAL LOCATION block is deliberately NOT a
+ * section: no to-do row targets it, and META-ORCH-1255 owns that block.
+ */
+export type BrandEditSection =
+  | "photo"
+  | "about"
+  | "cover"
+  | "address"
+  | "contact"
+  | "social";
 
 // [TRANSITIONAL] simulated async delay — replaced by real Supabase mutation
 // in B1 backend cycle. The 300ms beat creates a perceptible "Saving…" state
@@ -245,6 +265,13 @@ export interface BrandEditViewProps {
    * zone. Parent opens BrandDeleteSheet. Hidden when undefined.
    */
   onRequestDelete?: (brand: Brand) => void;
+  /**
+   * ORCH-1256 — `?section=` deep-link target (validated by the route
+   * wrapper). When set, the view scrolls ONCE to the matching section as it
+   * lays out (fire-once latch: later layouts/keyboard moves never re-scroll,
+   * and param changes after mount are ignored). Absent → renders at top.
+   */
+  initialSection?: BrandEditSection;
 }
 
 export const BrandEditView: React.FC<BrandEditViewProps> = ({
@@ -254,9 +281,37 @@ export const BrandEditView: React.FC<BrandEditViewProps> = ({
   onSave,
   onAfterSave,
   onRequestDelete,
+  initialSection,
 }) => {
   const insets = useSafeAreaInsets();
   const router = useRouter();
+
+  // ORCH-1256 — scroll-to-section mechanism (anchors only — the PHYSICAL
+  // LOCATION block is owned by META-ORCH-1255: do not anchor or edit it).
+  // SmartScrollView forwards this ref to a real ScrollView on native and IS
+  // RN ScrollView on web, so scrollTo works on both platforms.
+  const scrollRef = useRef<RNScrollView>(null);
+  // Fire-once latch: armed with the deep-linked section at mount, cleared on
+  // the first matching onLayout. Never re-scrolls on later layouts/keyboard
+  // moves; does not react to param changes after mount.
+  const pendingSectionRef = useRef<BrandEditSection | null>(
+    initialSection ?? null,
+  );
+  const handleSectionLayout = useCallback(
+    (section: BrandEditSection) =>
+      (event: LayoutChangeEvent): void => {
+        if (pendingSectionRef.current !== section) return;
+        pendingSectionRef.current = null;
+        // layout.y is relative to the ScrollView content container because
+        // every anchor node is a direct child of it. -8 keeps a breath of
+        // space above the section label.
+        scrollRef.current?.scrollTo({
+          y: Math.max(0, event.nativeEvent.layout.y - 8),
+          animated: true,
+        });
+      },
+    [],
+  );
   const resetVenueDraft = useDraftVenueStore((s) => s.reset);
   const patchVenueDraft = useDraftVenueStore((s) => s.patch);
   // Initialize draft from `brand`. Note: when brand !== null, draft is the
@@ -449,6 +504,7 @@ export const BrandEditView: React.FC<BrandEditViewProps> = ({
       </View>
 
         <ScrollView
+          ref={scrollRef}
           contentContainerStyle={[
             styles.scroll,
             { paddingBottom: spacing.xl + Math.max(insets.bottom, spacing.md) },
@@ -460,7 +516,10 @@ export const BrandEditView: React.FC<BrandEditViewProps> = ({
               Avatar + pencil-button overlay are wrapped in a relative-
               positioned View so the absolute-positioned pencil anchors
               against the avatar's bounding box. The Avatar primitive
-              itself stays atomic (no children prop) per kit discipline. */}
+              itself stays atomic (no children prop) per kit discipline.
+              ORCH-1256 — the anchor View wraps the card (GlassCard doesn't
+              forward onLayout); as the first content child its y ≈ 0. */}
+          <View onLayout={handleSectionLayout("photo")}>
           <GlassCard variant="elevated" padding={spacing.lg}>
             <View style={styles.photoBlock}>
               <View style={styles.heroAvatarWrap}>
@@ -497,6 +556,7 @@ export const BrandEditView: React.FC<BrandEditViewProps> = ({
               </Text>
             </View>
           </GlassCard>
+          </View>
 
           {/* ORCH-1040 — ONE compact physical-location block (replaces the old
               always-present "Claim a venue" card + the duplicate Display toggle).
@@ -539,7 +599,12 @@ export const BrandEditView: React.FC<BrandEditViewProps> = ({
           </GlassCard>
 
           {/* SECTION B — About */}
-          <Text style={styles.sectionLabel}>ABOUT</Text>
+          <Text
+            style={styles.sectionLabel}
+            onLayout={handleSectionLayout("about")}
+          >
+            ABOUT
+          </Text>
           <View style={styles.fieldsCol}>
             <Input
               variant="text"
@@ -570,7 +635,12 @@ export const BrandEditView: React.FC<BrandEditViewProps> = ({
               BrandCoverPickerSheet (Upload / Pexels / GIPHY). The hue value
               persists in DB as a fallback render when no media URL is set.
               Preview renders the media URL when present, the hue when not. */}
-          <Text style={styles.sectionLabel}>BRAND COVER</Text>
+          <Text
+            style={styles.sectionLabel}
+            onLayout={handleSectionLayout("cover")}
+          >
+            BRAND COVER
+          </Text>
           <View style={styles.fieldsCol}>
             <View style={styles.coverPreviewWrap}>
               {typeof draft.coverMediaUrl === "string" &&
@@ -631,7 +701,12 @@ export const BrandEditView: React.FC<BrandEditViewProps> = ({
             />
           </View>
 
-          <Text style={styles.sectionLabel}>ADDRESS</Text>
+          <Text
+            style={styles.sectionLabel}
+            onLayout={handleSectionLayout("address")}
+          >
+            ADDRESS
+          </Text>
           <View style={styles.fieldsCol}>
             <Input
               variant="text"
@@ -653,7 +728,12 @@ export const BrandEditView: React.FC<BrandEditViewProps> = ({
           </View>
 
           {/* SECTION C — Contact */}
-          <Text style={styles.sectionLabel}>CONTACT</Text>
+          <Text
+            style={styles.sectionLabel}
+            onLayout={handleSectionLayout("contact")}
+          >
+            CONTACT
+          </Text>
           <View style={styles.fieldsCol}>
             <Input
               variant="email"
@@ -685,7 +765,12 @@ export const BrandEditView: React.FC<BrandEditViewProps> = ({
           </View>
 
           {/* SECTION D — Social links */}
-          <Text style={styles.sectionLabel}>SOCIAL LINKS</Text>
+          <Text
+            style={styles.sectionLabel}
+            onLayout={handleSectionLayout("social")}
+          >
+            SOCIAL LINKS
+          </Text>
           <View style={styles.fieldsCol}>
             <Input
               variant="text"

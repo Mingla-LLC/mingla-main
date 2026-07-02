@@ -152,6 +152,7 @@ on:
 #   - I-PROPOSED-1235-A (i-proposed-1235-a-fullscreen-queries-timeboxed.mjs) — every full-screen-spinner-gating service fn (getBrand, getBrands, getExperiencesByBrand, getTripsByBrand, getMarketingOverview) imports from utils/withTimeout AND wraps its network await(s) in withTimeout(...), so a hung Supabase read settles in bounded time (TimeoutError) instead of pinning an infinite spinner; revert (raw supabase.from(...).await with no withTimeout) fails CI; self-tested + fails-on-revert (META-ORCH-1235 — DRAFT until CLOSE)
 #   - I-PROPOSED-1235-B (i-proposed-1235-b-queryclient-networkmode-always.mjs) — mingla-business/src/config/queryClient.ts sets networkMode: "always" on the queries defaults so a navigator.onLine flap cannot leave a query fetchStatus "paused" with isLoading stuck true and no attempt/error; self-tested + fails-on-revert (META-ORCH-1235 — DRAFT until CLOSE)
 #   - I-PROPOSED-1235-C (i-proposed-1235-c-loading-gate-has-error-retry.mjs) — the enumerated full-screen-gating screens (hub/experiences, hub/trips, brand profile via BrandProfileView + brand/[id]/index, marketing overview) each have BOTH a full-screen loading gate AND a sibling error branch rendering a Retry wired to refetch() (or onRetry→refetch); a bare loading-only gate (no error+retry sibling) fails CI; in-script screen registry is the source of truth; self-tested + fails-on-revert (META-ORCH-1235 — DRAFT until CLOSE)
+#   - I-PROPOSED-1256-PROFILE-TODOS-NO-FALSE-POSITIVE (orch-1256-profile-todos-no-false-positive.mjs) — brand-profile completion to-dos: every emptiness predicate in brandProfileCompleteness.ts routes through the single trim-based isBlank (whitespace-only = EMPTY; F-2 address maps untrimmed); businessTodos.ts band 6 emits all 8 profile_add_* rows gated behind the OPTIONAL input.profile; BrandEditView carries the six ?section= onLayout anchors + initialSection (NONE inside the META-ORCH-1255 PHYSICAL LOCATION block); edit.tsx validates the ?section= param; BusinessTodoToggle keeps the bounded (maxHeight) internally-scrollable list; self-tested + fails-on-revert (ORCH-1256 — DRAFT until CLOSE)
 #
 # Future gates to register (proposed but not yet implemented):
 #   - I-32 rank parity (Cycle 13a proposal)
@@ -3480,3 +3481,16 @@ jobs:
         run: node .github/scripts/strict-grep/i-ios-camera-photo-purpose-strings-specific.mjs --self-test
       - name: Run ORCH-1242 purpose-strings gate
         run: node .github/scripts/strict-grep/i-ios-camera-photo-purpose-strings-specific.mjs
+
+  orch-1256-profile-todos-no-false-positive:
+    name: "ORCH-1256: brand-profile to-dos — trim-blank predicates + band 6 + section deep-link anchors + bounded list (I-PROPOSED-1256-PROFILE-TODOS-NO-FALSE-POSITIVE)"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Self-test the ORCH-1256 profile-todos gate
+        run: node .github/scripts/strict-grep/orch-1256-profile-todos-no-false-positive.mjs --self-test
+      - name: Run ORCH-1256 profile-todos gate
+        run: node .github/scripts/strict-grep/orch-1256-profile-todos-no-false-positive.mjs
