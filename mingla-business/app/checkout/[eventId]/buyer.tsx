@@ -12,9 +12,11 @@
  *     to /confirm after durable sales rows exist.
  *   - Paid order → router.push to /checkout/{eventId}/payment.
  *
- * Keyboard handling lifted from EventCreatorWizard.tsx pattern (Keyboard
- * listener + dynamic paddingBottom + deferred scrollToEnd via
- * requestAnimationFrame). Memory rule: keyboard never blocks an Input.
+ * Keyboard handling: focused-field scroll is delegated to SmartScrollView
+ * (KeyboardAwareScrollView, bottomOffset=54). ORCH-1252 removed the prior
+ * manual keyboard-driven padding + scroll, which double-adjusted on top of the
+ * library and overshot the field off the top of the screen.
+ * Memory rule: keyboard never blocks an Input.
  *
  * Per Cycle 8 spec §4.5 + §4.7.
  */
@@ -25,21 +27,27 @@ import React, {
   useCallback,
   useEffect,
   useMemo,
-  useRef,
   useState,
 } from "react";
 import {
-  Keyboard,
-  Platform,
   Pressable,
-  ScrollView,
   StyleSheet,
   Text,
   View,
 } from "react-native";
-import type { KeyboardEvent } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useLocalSearchParams, useRouter } from "expo-router";
+
+// ORCH-1252 — keyboard-driven focused-field scroll is delegated entirely to
+// SmartScrollView (native = react-native-keyboard-controller's
+// KeyboardAwareScrollView, bottomOffset=54; web = plain RN ScrollView). The
+// prior manual keyboard listener + dynamic padding + programmatic scroll
+// DOUBLE-adjusted on top of the library's auto-scroll, overshooting the field
+// off the top of the screen. useKeyboardIsVisible supplies the minimal
+// keyboard-visible boolean retained ONLY to hide the sticky bottom bar
+// (returns false on web — no-op there, matching prior web behavior).
+import { ScrollView } from "../../../src/wrappers/SmartScrollView";
+import { useKeyboardIsVisible } from "../../../src/wrappers/useKeyboardIsVisible";
 
 import {
   accent,
@@ -275,50 +283,13 @@ export default function CheckoutBuyerScreen(): React.ReactElement {
     [phoneLocal, setBuyer],
   );
 
-  // ----- Keyboard pattern (lifted from EventCreatorWizard) ---------
-  const [keyboardHeight, setKeyboardHeight] = useState<number>(0);
-  const scrollViewRef = useRef<ScrollView | null>(null);
-  const pendingScrollToBottomRef = useRef<boolean>(false);
-
-  useEffect(() => {
-    const showEvent =
-      Platform.OS === "ios" ? "keyboardWillShow" : "keyboardDidShow";
-    const hideEvent =
-      Platform.OS === "ios" ? "keyboardWillHide" : "keyboardDidHide";
-    const showSub = Keyboard.addListener(
-      showEvent,
-      (e: KeyboardEvent): void => {
-        setKeyboardHeight(e.endCoordinates.height);
-      },
-    );
-    const hideSub = Keyboard.addListener(hideEvent, (): void => {
-      setKeyboardHeight(0);
-    });
-    return (): void => {
-      showSub.remove();
-      hideSub.remove();
-    };
-  }, []);
-
-  useEffect(() => {
-    if (keyboardHeight > 0 && pendingScrollToBottomRef.current) {
-      requestAnimationFrame((): void => {
-        scrollViewRef.current?.scrollToEnd({ animated: true });
-      });
-    }
-    if (keyboardHeight === 0) {
-      pendingScrollToBottomRef.current = false;
-    }
-  }, [keyboardHeight]);
-
-  const requestScrollToInput = useCallback((): void => {
-    pendingScrollToBottomRef.current = true;
-    if (keyboardHeight > 0) {
-      requestAnimationFrame((): void => {
-        scrollViewRef.current?.scrollToEnd({ animated: true });
-      });
-    }
-  }, [keyboardHeight]);
+  // ----- Keyboard visibility (ORCH-1252) ---------------------------
+  // SmartScrollView (KeyboardAwareScrollView, bottomOffset=54) is now the SOLE
+  // owner of focused-field scrolling — the prior manual listener + dynamic
+  // padding + programmatic scroll double-adjusted and overshot the field off the
+  // top. All that remains is a single visibility boolean, used ONLY to hide the
+  // sticky bottom bar while the keyboard is open. Returns false on web (no-op).
+  const keyboardVisible = useKeyboardIsVisible();
 
   // ----- Validation ----------------------------------------------------
   const showErrorsForName = nameTouched;
@@ -514,12 +485,10 @@ export default function CheckoutBuyerScreen(): React.ReactElement {
         onBack={handleBack}
       />
       <ScrollView
-        ref={scrollViewRef}
         style={styles.scroll}
         contentContainerStyle={[
           styles.scrollContent,
           { paddingBottom: insets.bottom + 140 },
-          keyboardHeight > 0 ? { paddingBottom: keyboardHeight + 140 + 42 } : null,
         ]}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
@@ -576,7 +545,6 @@ export default function CheckoutBuyerScreen(): React.ReactElement {
             variant="text"
             placeholder="Full name"
             accessibilityLabel="Full name, required"
-            onFocus={requestScrollToInput}
             onBlur={() => setNameTouched(true)}
           />
           {visibleErrors.name !== null ? (
@@ -596,7 +564,6 @@ export default function CheckoutBuyerScreen(): React.ReactElement {
             variant="email"
             placeholder="Email"
             accessibilityLabel="Email address, required"
-            onFocus={requestScrollToInput}
             onBlur={() => setEmailTouched(true)}
           />
           {visibleErrors.email !== null ? (
@@ -605,10 +572,7 @@ export default function CheckoutBuyerScreen(): React.ReactElement {
         </View>
 
         {/* Phone — ORCH-0847 Phase B PhoneInput with country picker */}
-        <View
-          style={styles.fieldWrap}
-          onTouchStart={requestScrollToInput}
-        >
+        <View style={styles.fieldWrap}>
           <View style={styles.fieldLabelRow}>
             <Text style={styles.fieldLabel}>Mobile number</Text>
             <Text style={styles.required}>*</Text>
@@ -709,7 +673,7 @@ export default function CheckoutBuyerScreen(): React.ReactElement {
         style={[
           styles.bottomBar,
           { paddingBottom: insets.bottom + spacing.md },
-          keyboardHeight > 0 ? styles.bottomBarHidden : null,
+          keyboardVisible ? styles.bottomBarHidden : null,
         ]}
       >
         <View style={styles.totalRow}>
@@ -936,9 +900,9 @@ const styles = StyleSheet.create({
     borderTopColor: "rgba(255, 255, 255, 0.06)",
   },
   // When keyboard is up, hide the absolute-positioned bottom bar
-  // so it doesn't sit between focused input and keyboard. The
-  // ScrollView's increased paddingBottom + scrollToEnd brings the
-  // focused field into view above the keyboard.
+  // so it doesn't sit between focused input and keyboard.
+  // SmartScrollView (KeyboardAwareScrollView) brings the focused field
+  // into view above the keyboard.
   bottomBarHidden: {
     transform: [{ translateY: 200 }],
   },

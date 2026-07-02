@@ -13,7 +13,9 @@
  *     to /confirm after durable sales rows exist.
  *   - Paid order → router.push to /checkout-trip/{tripEventId}/payment.
  *
- * Keyboard pattern + form structure are 1:1 with event-side buyer.tsx.
+ * Keyboard handling + form structure are 1:1 with event-side buyer.tsx:
+ * focused-field scroll delegated to SmartScrollView (bottomOffset=54);
+ * ORCH-1252 removed the manual double-adjust listener/padding/scroll.
  * Trip-specific swaps: usePublicEventById → usePublicTripById; route
  * literals → /checkout-trip/; event → trip variable name; copy "ticket" →
  * "spot" where buyer-facing.
@@ -32,21 +34,27 @@ import React, {
   useCallback,
   useEffect,
   useMemo,
-  useRef,
   useState,
 } from "react";
 import {
-  Keyboard,
-  Platform,
   Pressable,
-  ScrollView,
   StyleSheet,
   Text,
   View,
 } from "react-native";
-import type { KeyboardEvent } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useLocalSearchParams, useRouter } from "expo-router";
+
+// ORCH-1252 — keyboard-driven focused-field scroll is delegated entirely to
+// SmartScrollView (native = react-native-keyboard-controller's
+// KeyboardAwareScrollView, bottomOffset=54; web = plain RN ScrollView). The
+// prior manual keyboard listener + dynamic padding + programmatic scroll
+// DOUBLE-adjusted on top of the library's auto-scroll, overshooting the field
+// off the top of the screen. useKeyboardIsVisible supplies the minimal
+// keyboard-visible boolean retained ONLY to hide the sticky bottom bar
+// (returns false on web — no-op there, matching prior web behavior).
+import { ScrollView } from "../../../src/wrappers/SmartScrollView";
+import { useKeyboardIsVisible } from "../../../src/wrappers/useKeyboardIsVisible";
 
 import {
   accent,
@@ -265,50 +273,13 @@ export default function CheckoutTripBuyerScreen(): React.ReactElement {
     [phoneLocal, setBuyer],
   );
 
-  // ----- Keyboard pattern -----
-  const [keyboardHeight, setKeyboardHeight] = useState<number>(0);
-  const scrollViewRef = useRef<ScrollView | null>(null);
-  const pendingScrollToBottomRef = useRef<boolean>(false);
-
-  useEffect(() => {
-    const showEvent =
-      Platform.OS === "ios" ? "keyboardWillShow" : "keyboardDidShow";
-    const hideEvent =
-      Platform.OS === "ios" ? "keyboardWillHide" : "keyboardDidHide";
-    const showSub = Keyboard.addListener(
-      showEvent,
-      (e: KeyboardEvent): void => {
-        setKeyboardHeight(e.endCoordinates.height);
-      },
-    );
-    const hideSub = Keyboard.addListener(hideEvent, (): void => {
-      setKeyboardHeight(0);
-    });
-    return (): void => {
-      showSub.remove();
-      hideSub.remove();
-    };
-  }, []);
-
-  useEffect(() => {
-    if (keyboardHeight > 0 && pendingScrollToBottomRef.current) {
-      requestAnimationFrame((): void => {
-        scrollViewRef.current?.scrollToEnd({ animated: true });
-      });
-    }
-    if (keyboardHeight === 0) {
-      pendingScrollToBottomRef.current = false;
-    }
-  }, [keyboardHeight]);
-
-  const requestScrollToInput = useCallback((): void => {
-    pendingScrollToBottomRef.current = true;
-    if (keyboardHeight > 0) {
-      requestAnimationFrame((): void => {
-        scrollViewRef.current?.scrollToEnd({ animated: true });
-      });
-    }
-  }, [keyboardHeight]);
+  // ----- Keyboard visibility (ORCH-1252) -----
+  // SmartScrollView (KeyboardAwareScrollView, bottomOffset=54) is now the SOLE
+  // owner of focused-field scrolling — the prior manual listener + dynamic
+  // padding + programmatic scroll double-adjusted and overshot the field off the
+  // top. All that remains is a single visibility boolean, used ONLY to hide the
+  // sticky bottom bar while the keyboard is open. Returns false on web (no-op).
+  const keyboardVisible = useKeyboardIsVisible();
 
   // ----- Validation -----
   const showErrorsForName = nameTouched;
@@ -456,12 +427,10 @@ export default function CheckoutTripBuyerScreen(): React.ReactElement {
         onBack={handleBack}
       />
       <ScrollView
-        ref={scrollViewRef}
         style={styles.scroll}
         contentContainerStyle={[
           styles.scrollContent,
           { paddingBottom: insets.bottom + 140 },
-          keyboardHeight > 0 ? { paddingBottom: keyboardHeight + 140 + 42 } : null,
         ]}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
@@ -529,7 +498,6 @@ export default function CheckoutTripBuyerScreen(): React.ReactElement {
             variant="text"
             placeholder="Full name"
             accessibilityLabel="Full name, required"
-            onFocus={requestScrollToInput}
             onBlur={() => setNameTouched(true)}
           />
           {visibleErrors.name !== null ? (
@@ -549,7 +517,6 @@ export default function CheckoutTripBuyerScreen(): React.ReactElement {
             variant="email"
             placeholder="Email"
             accessibilityLabel="Email address, required"
-            onFocus={requestScrollToInput}
             onBlur={() => setEmailTouched(true)}
           />
           {visibleErrors.email !== null ? (
@@ -558,10 +525,7 @@ export default function CheckoutTripBuyerScreen(): React.ReactElement {
         </View>
 
         {/* Phone */}
-        <View
-          style={styles.fieldWrap}
-          onTouchStart={requestScrollToInput}
-        >
+        <View style={styles.fieldWrap}>
           <View style={styles.fieldLabelRow}>
             <Text style={styles.fieldLabel}>Mobile number</Text>
             <Text style={styles.required}>*</Text>
@@ -645,7 +609,7 @@ export default function CheckoutTripBuyerScreen(): React.ReactElement {
         style={[
           styles.bottomBar,
           { paddingBottom: insets.bottom + spacing.md },
-          keyboardHeight > 0 ? styles.bottomBarHidden : null,
+          keyboardVisible ? styles.bottomBarHidden : null,
         ]}
       >
         <View style={styles.totalRow}>
