@@ -6,11 +6,15 @@
  * TWO IN-PLACE STEPS (ORCH-1144 UX refinement, Seth 2026-06-15 — replaces the
  * old separate experience-chooser route that swapped one sheet for another):
  *
- *   Step "root" — three options as tappable rows:
- *     - "Create event"            → `/event/create` (close + push, unchanged)
+ *   Step "root" — four options as tappable rows (META-ORCH-1255 added venue):
+ *     - "Create event"            → steps in-place to Ticketed-vs-RSVP
  *     - "Create experience"       → does NOT navigate; transitions THIS sheet
  *                                   in-place to Step "experience" (stays open)
  *     - "Create trip or otherwise"→ `/trip/create` (close + push, unchanged)
+ *     - "Create venue listing"    → `/venue/create` (close + push) — venues
+ *                                   are first-class rows under the CURRENT
+ *                                   brand (META-ORCH-1255; unconditional per
+ *                                   I-BRAND-UNIVERSAL-AUTHORING)
  *
  *   Step "experience" — the universal experience-create chooser, in-place in the
  *   SAME sheet (no second sheet). Heading "Create An Experience", a back
