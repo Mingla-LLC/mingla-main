@@ -77,6 +77,17 @@ import { creatorAccountKeys } from "../hooks/creatorAccountKeys";
 // the full 7s ceiling; on timeout it throws → existing fail-OPEN catch keeps
 // the user signed in.
 import { withTimeout, AUTH_PROBE_TIMEOUT_MS } from "../utils/withTimeout";
+// ORCH-1254 — reuse the META-ORCH-1232 bounded token-attach poll to WAIT for the
+// reviewer setSession() token to actually attach before we let the UI navigate.
+import { awaitSessionAttached } from "../utils/authReadyGate";
+
+// ORCH-1254 [reviewer setSession brands-load race] — after the reviewer bypass
+// calls supabase.auth.setSession(), poll getSession() up to this bound for the
+// token to attach BEFORE returning success (which lets the UI navigate + fire
+// getBrands). ~3s comfortably covers supabase-js's local propagation without an
+// unbounded hang; the poll returns the instant the token is present, so the happy
+// path adds only a few ms.
+export const REVIEWER_TOKEN_ATTACH_CAP_MS = 3000;
 
 // ORCH-0887-A [Auth getSession Promise.race timeout] — close indefinite
 // loader hang on business-web. SPEC §2.1: constant inline at top of
@@ -988,6 +999,30 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             refresh_token: refreshToken,
           });
           if (setError) {
+            return {
+              error: new Error(
+                "That code didn't match or has expired. Try again.",
+              ),
+            };
+          }
+          // ORCH-1254 — reviewer (setSession) brands-load race. `setSession()`
+          // resolving does NOT guarantee supabase-js has yet propagated the new
+          // token to the LOCAL `getSession()` read the app makes on the next
+          // screen (`getBrands` does a `getSession()` precheck and THROWS
+          // BrandsAuthSessionNotAttachedError when the token is absent — React
+          // Query then caches that error). The Google/OAuth path never uses
+          // setSession, so it never hits this window; the reviewer path does.
+          // DETERMINISTIC fix at the source: before returning success (which is
+          // what lets the UI navigate to the dashboard and fire getBrands), WAIT
+          // (bounded poll) until the just-set token is actually attached to the
+          // SAME client singleton getBrands reads. Only then navigate. If the
+          // token never attaches within the bound, surface the SAME "invalid
+          // code" UX so the UI does NOT navigate into a broken (brand-less) state.
+          try {
+            await awaitSessionAttached(() => supabase.auth.getSession(), {
+              capMs: REVIEWER_TOKEN_ATTACH_CAP_MS,
+            });
+          } catch {
             return {
               error: new Error(
                 "That code didn't match or has expired. Try again.",

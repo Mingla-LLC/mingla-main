@@ -43,6 +43,7 @@ import { publicEventKeys } from "./usePublicEvents";
 // re-exported below for backward compat.
 import { brandKeys } from "./brandKeys";
 import {
+  BrandsAuthSessionNotAttachedError,
   createBrand,
   createVenueBrandPendingReview,
   getBrands,
@@ -79,6 +80,59 @@ const STALE_TIME_MS = 30 * 1000;
 // instead of an eternal spinner. 9s sits UNDER getBrands' internal 15s
 // DATA_FETCH ceiling yet gives a slow-but-real read room to succeed.
 const BRANDS_FETCH_TIMEOUT_MS = 9000;
+
+// ORCH-1254 [reviewer setSession brands-load race] — RESILIENT defense-in-depth
+// (complements the deterministic AuthContext wait). getBrands does a getSession()
+// precheck and THROWS BrandsAuthSessionNotAttachedError while the session token is
+// not-yet-attached. On the reviewer setSession() path (and any other auth path
+// where the read can momentarily beat the token-attach), that error would settle
+// in the cache and never recover on its own (ORCH-1251's onAuthStateChange
+// reconcile can race). Retry ONLY that transient attach error a few times with a
+// short backoff so a momentary not-attached self-heals — genuine non-auth errors
+// (network / 500 / RLS) are NOT retried here and surface normally.
+export const NOT_ATTACHED_RETRY_MAX = 4;
+export const NOT_ATTACHED_RETRY_DELAY_MS = 400;
+// ORCH-0964's global default retry count — preserved for genuine (non-auth)
+// errors on this query so ORCH-1254's scoped retry does NOT weaken flaky-network
+// recovery. Only the not-attached transient gets the higher NOT_ATTACHED_RETRY_MAX.
+export const GENUINE_ERROR_RETRY_MAX = 2;
+
+// ORCH-1254 — the not-attached transient predicate. Name-check as well as
+// instanceof so a copy of the error crossing a module/realm boundary still matches.
+const isBrandsAuthSessionNotAttachedError = (error: unknown): boolean =>
+  error instanceof BrandsAuthSessionNotAttachedError ||
+  (error instanceof Error &&
+    error.name === "BrandsAuthSessionNotAttachedError");
+
+/**
+ * ORCH-1254 — React Query `retry` predicate. Gives the transient
+ * BrandsAuthSessionNotAttachedError a HIGHER bounded retry budget
+ * (NOT_ATTACHED_RETRY_MAX) so a momentary token-not-attached window self-heals,
+ * while ANY OTHER error keeps the normal ORCH-0964 policy (GENUINE_ERROR_RETRY_MAX)
+ * and then surfaces to the caller's error UI — genuine network/500/RLS failures
+ * are NOT masked behind an endless retry loop, and there is no infinite hang.
+ */
+export const retryOnAuthNotAttached = (
+  failureCount: number,
+  error: unknown,
+): boolean =>
+  isBrandsAuthSessionNotAttachedError(error)
+    ? failureCount < NOT_ATTACHED_RETRY_MAX
+    : failureCount < GENUINE_ERROR_RETRY_MAX;
+
+/**
+ * ORCH-1254 — retry backoff. The not-attached transient uses a SHORT fixed delay
+ * (it self-heals in a few hundred ms once supabase-js propagates the token);
+ * genuine errors keep ORCH-0964's capped exponential backoff so this scoped fix
+ * does not change flaky-network recovery timing.
+ */
+export const retryDelayForAuthNotAttached = (
+  failureCount: number,
+  error: unknown,
+): number =>
+  isBrandsAuthSessionNotAttachedError(error)
+    ? NOT_ATTACHED_RETRY_DELAY_MS
+    : Math.min(1000 * 2 ** failureCount, 4000);
 
 // ----- Query key factory -------------------------------------------------
 // ORCH-1251 — the brandKeys factory lives in a standalone keyless module
@@ -240,6 +294,13 @@ export const useBrands = (
     // during a refetch window (matches useCreatorAccount). A cold-bootstrap
     // captive/offline-flap can't pause the read into a permanent spinner.
     networkMode: "always",
+    // ORCH-1254 [reviewer setSession brands-load race] — bounded self-heal for
+    // the transient token-not-attached window. Retry ONLY
+    // BrandsAuthSessionNotAttachedError (scoped predicate) so a momentary
+    // not-attached recovers; genuine failures still surface after the first
+    // attempt. Keeps ORCH-1249's timeout + networkMode and ORCH-1251's reconcile.
+    retry: retryOnAuthNotAttached,
+    retryDelay: retryDelayForAuthNotAttached,
     queryFn: async (): Promise<Brand[]> => {
       if (!enabled || accountId === null) return [];
       // ORCH-1249 — bounded, always-settling read (9s timeout + abort). A hung
