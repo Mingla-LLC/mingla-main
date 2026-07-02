@@ -50,6 +50,7 @@ import {
   Dimensions,
   Platform,
   Pressable,
+  ScrollView,
   StyleSheet,
   useWindowDimensions,
   View,
@@ -197,9 +198,23 @@ const TopSheetNative: React.FC<TopSheetProps> = ({
   // heightMode="fixed-70" (default) preserves Brand Switcher's 70% behavior.
   const [measuredCompactHeight, setMeasuredCompactHeight] = useState<number | null>(null);
   const fixedHeight = screenHeight * PANEL_HEIGHT_RATIO;
+  const panelTop = insets.top + TOPBAR_OFFSET;
+  // META-ORCH-1255 (DESIGN §2.2) — compact viewport clamp. Compact mode had NO
+  // clamp and no scroll: on short viewports (iPhone SE / short-Android /
+  // phone-web with browser chrome) a 4-row creator sheet overflowed the screen
+  // bottom with zero scrim. Clamp the panel to the viewport minus a spacing.xl
+  // breathing floor, and (below) scroll the content ONLY when clamped.
+  // `fixed-70` behavior untouched.
+  const compactMaxHeight = Math.max(0, screenHeight - panelTop - spacing.xl);
+  const compactClamped =
+    heightMode === "compact" &&
+    measuredCompactHeight !== null &&
+    measuredCompactHeight > compactMaxHeight;
   const panelHeight =
     heightMode === "compact"
-      ? (measuredCompactHeight ?? 0)
+      ? measuredCompactHeight === null
+        ? 0
+        : Math.min(measuredCompactHeight, compactMaxHeight)
       : fixedHeight;
 
   const handleCompactLayout = useCallback(
@@ -217,7 +232,6 @@ const TopSheetNative: React.FC<TopSheetProps> = ({
     [heightMode],
   );
 
-  const panelTop = insets.top + TOPBAR_OFFSET;
   const closedY = -panelHeight; // hidden above its anchor (slid up behind topbar)
   const openY = 0;
 
@@ -446,6 +460,7 @@ const TopSheetNative: React.FC<TopSheetProps> = ({
             bodyHeight={bodyHeight}
             handleAreaHeight={handleAreaHeight}
             handleCompactLayout={handleCompactLayout}
+            compactClamped={compactClamped}
             dismissGesture={panGesture}
           >
             {children}
@@ -470,6 +485,15 @@ interface TopSheetPanelInnerProps {
   handleAreaHeight: number;
   handleCompactLayout: (event: LayoutChangeEvent) => void;
   /**
+   * META-ORCH-1255 (DESIGN §2.2) — true when compact content overflows the
+   * viewport clamp. The body then takes the clamped height and the children
+   * scroll INSIDE it; the natural-height measurement moves to an inner wrapper
+   * (inside the ScrollView content, which lays out unconstrained) so the
+   * measured height stays the TRUE content height — no clamp/measure feedback
+   * loop. Scroll exists ONLY when clamped.
+   */
+  compactClamped: boolean;
+  /**
    * ORCH-1173 R2: the upward-drag dismiss gesture, attached ONLY to the drag
    * HANDLE region (never the scroll body). Native variant passes the
    * `Gesture.Pan()`; web passes `undefined` (web has no pan — dismiss is via
@@ -487,6 +511,7 @@ const TopSheetPanelInner: React.FC<TopSheetPanelInnerProps> = ({
   bodyHeight,
   handleAreaHeight,
   handleCompactLayout,
+  compactClamped,
   dismissGesture,
   children,
 }) => (
@@ -534,17 +559,30 @@ const TopSheetPanelInner: React.FC<TopSheetPanelInnerProps> = ({
     />
     {/* Content layer.
         - fixed-70 mode: explicit body height (panelHeight - handle).
-        - compact mode: content-driven; onLayout measures children
-          height into measuredCompactHeight. */}
-    <View
-      style={[
-        styles.body,
-        heightMode === "compact" ? null : { height: bodyHeight },
-      ]}
-      onLayout={heightMode === "compact" ? handleCompactLayout : undefined}
-    >
-      {children}
-    </View>
+        - compact mode, unclamped: content-driven; onLayout measures children
+          height into measuredCompactHeight.
+        - compact mode, CLAMPED (META-ORCH-1255, DESIGN §2.2): body takes the
+          clamped height and the children scroll inside it. The onLayout
+          measurement moves to an inner wrapper INSIDE the scroll content — it
+          lays out at natural height there, so the true content height keeps
+          being reported (no clamp/measure oscillation). */}
+    {heightMode === "compact" && compactClamped ? (
+      <View style={[styles.body, { height: bodyHeight }]}>
+        <ScrollView showsVerticalScrollIndicator={false}>
+          <View onLayout={handleCompactLayout}>{children}</View>
+        </ScrollView>
+      </View>
+    ) : (
+      <View
+        style={[
+          styles.body,
+          heightMode === "compact" ? null : { height: bodyHeight },
+        ]}
+        onLayout={heightMode === "compact" ? handleCompactLayout : undefined}
+      >
+        {children}
+      </View>
+    )}
     {/* ORCH-1173 R2: the dismiss-pan is attached ONLY to this handle region
         (native). The visual bar stays the same size; the touch target is the
         full handleWrap row + `hitSlop` so it's easy to grab. The web variant
@@ -629,8 +667,20 @@ const TopSheetWeb: React.FC<TopSheetProps> = ({
 
   const [measuredCompactHeight, setMeasuredCompactHeight] = useState<number | null>(null);
   const fixedHeight = screenHeight * PANEL_HEIGHT_RATIO;
+  const panelTop = insets.top + TOPBAR_OFFSET;
+  // META-ORCH-1255 (DESIGN §2.2) — compact viewport clamp, mirroring the
+  // native variant (short phone-web visual viewports were the worst case).
+  const compactMaxHeight = Math.max(0, screenHeight - panelTop - spacing.xl);
+  const compactClamped =
+    heightMode === "compact" &&
+    measuredCompactHeight !== null &&
+    measuredCompactHeight > compactMaxHeight;
   const panelHeight =
-    heightMode === "compact" ? (measuredCompactHeight ?? 0) : fixedHeight;
+    heightMode === "compact"
+      ? measuredCompactHeight === null
+        ? 0
+        : Math.min(measuredCompactHeight, compactMaxHeight)
+      : fixedHeight;
 
   const handleCompactLayout = useCallback(
     (event: LayoutChangeEvent): void => {
@@ -646,7 +696,6 @@ const TopSheetWeb: React.FC<TopSheetProps> = ({
     [heightMode],
   );
 
-  const panelTop = insets.top + TOPBAR_OFFSET;
   const closedY = -panelHeight;
   const reduceMotion = useWebReducedMotion();
 
@@ -939,6 +988,7 @@ const TopSheetWeb: React.FC<TopSheetProps> = ({
             bodyHeight={bodyHeight}
             handleAreaHeight={handleAreaHeight}
             handleCompactLayout={handleCompactLayout}
+            compactClamped={compactClamped}
           >
             {children}
           </TopSheetPanelInner>

@@ -87,10 +87,20 @@ export interface UniversalCreatorSheetProps {
   testID?: string;
 }
 
-type IconName = "calendar" | "sparkle" | "globe" | "flash" | "list" | "chevR";
+// META-ORCH-1255 — + "location" for the 4th root row (glyph exists in Icon.tsx;
+// already the venue affordance app-wide).
+type IconName =
+  | "calendar"
+  | "sparkle"
+  | "globe"
+  | "location"
+  | "flash"
+  | "list"
+  | "chevR";
 
 interface RootOption {
-  readonly key: "event" | "experience" | "trip";
+  // META-ORCH-1255 — + "venue" (4th root option, I-BRAND-UNIVERSAL-AUTHORING).
+  readonly key: "event" | "experience" | "trip" | "venue";
   readonly iconName: IconName;
   readonly title: string;
   readonly subtitle: string;
@@ -140,6 +150,17 @@ const ROOT_OPTIONS: readonly RootOption[] = [
     subtitle: "A multi-day curated package: retreat, tour, weekend getaway.",
     route: "/trip/create",
     testID: "universal-creator-trip",
+  },
+  {
+    key: "venue",
+    iconName: "location",
+    // META-ORCH-1255 — venue listings are first-class: the 4th peer, rendered
+    // UNCONDITIONALLY for every brand (I-BRAND-UNIVERSAL-AUTHORING). Copy per
+    // DESIGN_META-ORCH-1255_VENUE_SURFACES §2.1.
+    title: "Create venue listing",
+    subtitle: "Your place on Mingla — discovered, recommended, bookable.",
+    route: "/venue/create",
+    testID: "universal-creator-venue",
   },
 ] as const;
 
@@ -288,7 +309,11 @@ export const UniversalCreatorSheet: React.FC<UniversalCreatorSheetProps> = ({
                 </View>
                 <View style={styles.rowText}>
                   <Text style={styles.rowTitle}>{option.title}</Text>
-                  <Text style={styles.rowSubtitle}>{option.subtitle}</Text>
+                  {/* META-ORCH-1255 (DESIGN §2.2) — defensive 2-line cap; copy is
+                      authored ≤2 lines at phone width. */}
+                  <Text style={styles.rowSubtitle} numberOfLines={2}>
+                    {option.subtitle}
+                  </Text>
                 </View>
                 <Icon name="chevR" size={20} color={textTokens.tertiary} />
               </Pressable>
@@ -464,7 +489,10 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: spacing.md,
     paddingHorizontal: spacing.md,
-    paddingVertical: spacing.md,
+    // META-ORCH-1255 (DESIGN §2.2) — ROOT rows only: padV 16 → 12 so 4 rows fit
+    // short viewports (iPhone SE class). No 12 token exists — compose sm+xs,
+    // don't invent one. Icon wrap stays 44×44 (row min-height ≥ 44, I-38).
+    paddingVertical: spacing.sm + spacing.xs,
     borderRadius: radiusTokens.lg,
     overflow: "hidden",
     backgroundColor: glass.tint.profileBase,
