@@ -16,8 +16,12 @@ src/context/AuthContext.tsx | src/hooks/useAccountDeletion.ts
 src/context/AuthContext.tsx | src/hooks/useAccountDeletion.ts | src/hooks/useCreatorAccount.ts
 src/context/AuthContext.tsx | src/hooks/useBrandListShim.ts | src/store/currentBrandStore.ts | src/utils/clearAllStores.ts
 src/context/AuthContext.tsx | src/hooks/useBrandListShim.ts | src/hooks/useBrands.ts | src/hooks/useCurrentBrandRole.ts | src/store/currentBrandStore.ts | src/utils/clearAllStores.ts
-src/context/AuthContext.tsx | src/hooks/useBrands.ts | src/hooks/useCurrentBrandRole.ts | src/store/draftEventStore.ts | src/store/liveEventStore.ts | src/utils/clearAllStores.ts
-src/context/AuthContext.tsx | src/hooks/useBrands.ts | src/hooks/useCurrentBrandRole.ts | src/store/draftEventStore.ts | src/utils/clearAllStores.ts | src/utils/liveEventConverter.ts
+# ORCH-1251: two former cycles through
+# useBrands→useCurrentBrandRole→draftEventStore(→liveEventStore/liveEventConverter)
+# →clearAllStores→AuthContext no longer exist — extracting brandKeys into the
+# standalone ./brandKeys module removed the import edge that put those store
+# chains on useBrands' traversal path. Removed per the gate's "removed cycles →
+# delete stale baseline entries" instruction.
 src/hooks/useBrandListShim.ts | src/store/currentBrandStore.ts
 src/store/draftEventStore.ts | src/utils/liveEventConverter.ts
 src/store/draftEventStore.ts | src/store/liveEventStore.ts
@@ -34,8 +38,11 @@ src/store/liveEventStore.ts | src/utils/publishedEventEditGuards.ts
 # called at hook-runtime, never at module-init top level, so the cyclic import
 # resolves lazily. Intentional + reviewed (ORCH-1004 CLOSE).
 src/context/AuthContext.tsx | src/hooks/useBrandListShim.ts | src/hooks/useBrands.ts | src/store/currentBrandStore.ts | src/utils/clearAllStores.ts
-src/context/AuthContext.tsx | src/hooks/useBrands.ts | src/store/draftEventStore.ts | src/store/liveEventStore.ts | src/utils/clearAllStores.ts
-src/context/AuthContext.tsx | src/hooks/useBrands.ts | src/store/draftEventStore.ts | src/utils/clearAllStores.ts | src/utils/liveEventConverter.ts
+# ORCH-1251: two former cycles through
+# useBrands→draftEventStore(→liveEventStore/liveEventConverter)→clearAllStores→
+# AuthContext no longer exist after brandKeys was extracted into ./brandKeys
+# (removed the useBrands import edge that placed those store chains on its
+# traversal path). Removed per the gate's stale-entry instruction.
 # ORCH-1050/1052/1055 introduced new lazy hook-runtime cycles through the brand
 # graph (useBrands now pulls useEventOrders + usePublicEvents/services, and the
 # currentBrandId reliability fix wired useBrandListShim/currentBrandStore deeper).

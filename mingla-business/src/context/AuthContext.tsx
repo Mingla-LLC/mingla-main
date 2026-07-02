@@ -54,6 +54,25 @@ import {
 // triggering refetches. Imports the singleton from the same location used by
 // QueryClientProvider in app/_layout.tsx.
 import { queryClient } from "../config/queryClient";
+// ORCH-1251 (biz cold-start brands failure) — the auth-scoped query keys to
+// reconcile the moment the Supabase client actually holds the access token. On a
+// COLD native start, `isAuthReady` (the React flag) flips true a BEAT BEFORE
+// supabase-js attaches the JWT to outgoing PostgREST requests, so the
+// `enabled`-edge refetch in useBrands/useCreatorAccount can fire in the pre-token
+// window — getBrands then THROWS BrandsAuthSessionNotAttachedError → React Query
+// caches isError → "Couldn't load your brands." And because `enabled` never
+// transitions again once the token attaches, nothing refetches. We drive the
+// recovery off the REAL token-attach signal — the onAuthStateChange event — not
+// the isAuthReady flag. brandKeys.all / creatorAccountKeys.all invalidate every
+// per-account variant of those queries.
+//
+// Import from the STANDALONE keyless key modules (NOT the hook files) — the hooks
+// import `useAuth` from this file, so importing the keys from them would create a
+// require-cycle (AuthContext ↔ useBrands / AuthContext ↔ useCreatorAccount) that
+// the I-PROPOSED-K require-cycles gate rejects. The keyless modules import
+// nothing from AuthContext, so the cycle is broken (ORCH-0965 upcomingKeys pattern).
+import { brandKeys } from "../hooks/brandKeys";
+import { creatorAccountKeys } from "../hooks/creatorAccountKeys";
 // META-ORCH-1235 (§5.1) — bound the boot getUser() probe so it cannot consume
 // the full 7s ceiling; on timeout it throws → existing fail-OPEN catch keeps
 // the user signed in.
@@ -235,6 +254,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   // to the sign-in screen). This ref prevents re-probing on later
   // onAuthStateChange echoes / re-renders (no #185-style loop).
   const bootSessionProbedRef = useRef(false);
+  // ORCH-1251 [biz cold-start brands failure] — the user id we've already
+  // reconciled the auth-scoped React Query cache for, once the Supabase client
+  // holds the token. On a COLD start the auth-scoped reads (brands, creator
+  // account) can fire in the window where `isAuthReady` is already true but the
+  // JWT is NOT yet attached to outgoing requests → getBrands THROWS
+  // BrandsAuthSessionNotAttachedError → React Query caches isError and never
+  // refetches (the `enabled` edge does not transition again). This ref lets us
+  // invalidate those keys EXACTLY ONCE per session, on the token-attach edge (an
+  // onAuthStateChange event delivering a usable session for a NOT-yet-reconciled
+  // user), so the cached pre-token error clears and the read re-runs authed.
+  // Guarding on the user id means a plain TOKEN_REFRESHED that merely rotates the
+  // token for an already-reconciled session does NOT re-invalidate everything
+  // (no refetch storm, no #185 re-render loop — matches the sibling ref-guards).
+  const reconciledAuthScopedForUserRef = useRef<string | null>(null);
 
   useEffect(() => {
     let mounted = true;
@@ -506,6 +539,43 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setAuthError(null);
       setSession(s);
       setUser(s?.user ?? null);
+      // ORCH-1251 [biz cold-start brands failure] — token-attach reconciliation.
+      // This handler fires with a USABLE session (INITIAL_SESSION / SIGNED_IN /
+      // TOKEN_REFRESHED) exactly at the moment the Supabase client holds the
+      // access token. That is the REAL token-attach signal — unlike the
+      // `isAuthReady` React flag, which flips a beat EARLIER (before the JWT is
+      // attached to outgoing PostgREST requests). On a cold start the auth-scoped
+      // reads (brands list, creator account) can have already fired in that
+      // pre-token window and cached an error (getBrands throws
+      // BrandsAuthSessionNotAttachedError) or an anon-empty — and the `enabled`
+      // edge never transitions again, so nothing refetches. Invalidate the
+      // auth-scoped keys NOW that the token is attached so any query that
+      // errored/emptied pre-token re-runs authed and the "Couldn't load your
+      // brands." error clears without a force-quit.
+      //
+      // Ref-guarded to fire ONCE per session (keyed on user id): a later
+      // TOKEN_REFRESHED that merely rotates the token for an ALREADY-reconciled
+      // session is a no-op here (no invalidation storm, no #185-style re-render
+      // loop). We invalidate ONLY the two auth-scoped key roots — NOT
+      // queryClient.clear() (far too broad; would nuke public/anon caches too).
+      if (
+        hasUsableBusinessSession(s) &&
+        s?.user?.id !== undefined &&
+        reconciledAuthScopedForUserRef.current !== s.user.id
+      ) {
+        reconciledAuthScopedForUserRef.current = s.user.id;
+        if (__DEV__) {
+          console.info(
+            "[auth] token-attach reconcile — invalidating auth-scoped brand + creator-account queries (ORCH-1251)",
+          );
+        }
+        // brandKeys.all covers brandKeys.list(accountId) + detail + cascade;
+        // creatorAccountKeys.all covers creatorAccountKeys.byId(userId).
+        void queryClient.invalidateQueries({ queryKey: brandKeys.all });
+        void queryClient.invalidateQueries({
+          queryKey: creatorAccountKeys.all,
+        });
+      }
       if (s?.user) {
         // ORCH-0743 / Note A: wrap ensureCreatorAccount so a creator_accounts
         // upsert error is surfaced (Const #3) without aborting auth state-change handler.
@@ -601,6 +671,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           console.info("[auth] signed-out-store-clear");
         }
         clearAllStores();
+        // ORCH-1251 — reset the token-attach reconcile guard so the NEXT
+        // sign-in re-reconciles the auth-scoped caches (each session gets one
+        // reconcile on its token-attach edge).
+        reconciledAuthScopedForUserRef.current = null;
         // ORCH-0740 Cycle 1: companion to clearAllStores() — also clear RQ
         // cache when signOut happens server-side (closes HF-1 from ORCH-0738).
         queryClient.clear();
