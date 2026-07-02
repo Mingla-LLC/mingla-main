@@ -68,6 +68,11 @@ export function initializeOneSignal(): void {
     OneSignal!.initialize(ONESIGNAL_APP_ID!);
     _initialized = true;
     if (__DEV__) console.log("[OneSignal] initialized");
+    // ORCH-1250 (consumer ORCH-1243 parity): seed the OS-permission tag as soon
+    // as the SDK is up so the launch In-App Message audience can read TRUE OS
+    // permission, not OneSignal's async subscription state. Fire-and-forget;
+    // self-guards on _initialized.
+    void syncPushPermissionTag();
   } catch (e) {
     console.warn("[OneSignal] init failed:", e);
   }
@@ -100,6 +105,10 @@ export function loginToOneSignal(userId: string): void {
     void OneSignal!.User.pushSubscription.optIn();
     _loginComplete = true;
     if (__DEV__) console.log("[OneSignal] logged in + optIn:", userId);
+    // ORCH-1250 (consumer ORCH-1243 parity): keep the OS-permission tag fresh
+    // once identity + subscription are established (the tag is now attached to
+    // the logged-in user). Fire-and-forget; self-guards on _initialized.
+    void syncPushPermissionTag();
   } catch (e) {
     console.warn("[OneSignal] login failed:", e);
   }
@@ -113,16 +122,92 @@ export function loginToOneSignal(userId: string): void {
  *
  * optIn() is already called at login — this only handles the OS dialog.
  * https://documentation.onesignal.com/docs/permission-requests
+ *
+ * ORCH-1250 (consumer ORCH-1244 parity, Apple Guideline 4.5.4): push must be
+ * optional + consent-based. We pass `fallbackToSettings: false` so a user who
+ * already DECLINED is NOT steered into the iOS Settings app to flip
+ * notifications on — the native "Open Settings" dialog (title "Open Settings",
+ * "You currently have notifications turned off…") is exactly the false popup
+ * this ORCH kills. `false` respects a prior decline; the first OS dialog still
+ * shows (it already carries a real "Don't Allow"). Callers gate this behind the
+ * one-shot AsyncStorage guard in usePushPermissionMoment so the dialog only
+ * appears once, on a never-asked device.
  */
 export async function requestPushPermission(): Promise<boolean> {
   if (!_initialized) return false;
   try {
-    const granted = await OneSignal!.Notifications.requestPermission(true);
+    // ORCH-1250: fallbackToSettings = false (was true). `true` steered a
+    // previously-declining user into the iOS Settings app — the textbook 4.5.4
+    // "push feels mandatory" / false "notifications off" trigger.
+    const granted = await OneSignal!.Notifications.requestPermission(false);
     if (__DEV__) console.log("[OneSignal] permission result:", granted);
+    // ORCH-1250 (consumer ORCH-1243 parity): a fresh grant/deny from the OS
+    // dialog must update the tag immediately so the In-App Message audience
+    // reconciles right away.
+    await syncPushPermissionTag();
     return granted;
   } catch (e) {
     console.warn("[OneSignal] requestPushPermission failed:", e);
     return false;
+  }
+}
+
+/**
+ * ORCH-1250 (consumer ORCH-1244 parity, Apple Guideline 4.5.4): true only when
+ * the OS can STILL be asked for push permission — i.e. the device has not been
+ * prompted yet. Once the user has answered (allow OR deny), this returns false
+ * and callers must NOT re-surface the OS dialog.
+ *
+ * Wraps OneSignal v5 `Notifications.canRequestPermission(): Promise<boolean>`.
+ * Lives here so the OneSignal import stays isolated to this service; callers use
+ * THIS, never OneSignal directly. Self-guards on `_initialized` and never throws
+ * — returns false if the SDK isn't up (we cannot safely prompt before init).
+ */
+export async function canRequestPushPermission(): Promise<boolean> {
+  if (!_initialized) return false;
+  try {
+    return await OneSignal!.Notifications.canRequestPermission();
+  } catch (e) {
+    console.warn("[OneSignal] canRequestPushPermission failed:", e);
+    return false;
+  }
+}
+
+/**
+ * ORCH-1250 (consumer ORCH-1243 parity): mirror the device's TRUE OS
+ * notification permission into a OneSignal tag.
+ *
+ * TAG CONTRACT:
+ *   key   = `push_os_permission`
+ *   value ∈ { `granted`, `denied` }
+ *
+ * Consumed by the launch "turn on notifications" In-App Message audience. The
+ * dashboard message must target this TAG (show when `push_os_permission !=
+ * granted`) instead of OneSignal's subscription state: OneSignal v5 registers
+ * the push subscription ASYNCHRONOUSLY, so at launch the audience can see a
+ * device as "not subscribed" even when iOS permission is GRANTED → the false
+ * "notifications are off" / "Open Settings" popup. The OS permission read below
+ * is synchronous truth, so the tag is reliable.
+ *
+ * Kept fresh by calling at init, login, after the permission dialog, and on app
+ * foreground (so returning from iOS Settings reconciles the tag). Self-guards on
+ * `_initialized` and never throws.
+ */
+export async function syncPushPermissionTag(): Promise<void> {
+  if (!_initialized || OneSignal === null) return;
+  try {
+    // OneSignal v5 (react-native-onesignal) — TRUE OS permission read:
+    //   Notifications.getPermissionAsync(): Promise<boolean>
+    const granted = await OneSignal.Notifications.getPermissionAsync();
+    // addTag(key, value): void — reliable, synchronous-truth tag.
+    OneSignal.User.addTag(
+      "push_os_permission",
+      granted ? "granted" : "denied",
+    );
+    if (__DEV__)
+      console.log("[OneSignal] os-permission tag synced:", granted);
+  } catch (e) {
+    console.warn("[OneSignal] syncPushPermissionTag failed:", e);
   }
 }
 

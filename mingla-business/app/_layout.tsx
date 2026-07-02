@@ -76,6 +76,7 @@ import {
   initializeOneSignal,
   onForegroundNotification,
   onNotificationClicked,
+  syncPushPermissionTag,
 } from "../src/services/oneSignalService";
 import {
   processBusinessNotification,
@@ -604,6 +605,14 @@ function RootLayoutInner(): React.ReactElement {
   useEffect(() => {
     const handleAppStateChange = (status: AppStateStatus): void => {
       focusManager.setFocused(status === "active");
+      if (status === "active") {
+        // ORCH-1250 (consumer ORCH-1243 parity): reconcile the OneSignal
+        // OS-permission tag on every foreground so returning from iOS Settings
+        // (after enabling/disabling notifications) updates the launch In-App
+        // Message audience. Self-guards on _initialized; never throws. Runs on
+        // every 'active' (incl. inactive→active), matching consumer.
+        void syncPushPermissionTag();
+      }
       const wasBackground = prevAppStateRef.current === "background";
       prevAppStateRef.current = status;
       if (wasBackground && status === "active") {
