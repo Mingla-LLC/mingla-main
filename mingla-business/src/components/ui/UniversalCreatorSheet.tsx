@@ -120,7 +120,10 @@ interface ChooserOption {
   readonly testID: string;
 }
 
-const ROOT_OPTIONS: readonly RootOption[] = [
+// META-ORCH-1255 — exported for the Leg B happy-path regression test
+// (metaOrch1255LegB.happy.test.ts asserts the 4-row shape + the venue row's
+// route without mounting the RN tree under the node jest config).
+export const ROOT_OPTIONS: readonly RootOption[] = [
   {
     key: "event",
     iconName: "calendar",

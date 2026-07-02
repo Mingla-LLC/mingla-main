@@ -158,8 +158,11 @@ async function pipelineInvokeError(
 export async function upsertTier1Place(input: {
   brandId: string;
   // META-ORCH-1255 Leg B — the pipeline is venue-keyed; venue_id is REQUIRED
-  // on every edge-fn action (the fn 400s without it).
-  venueId: string;
+  // on every edge-fn action (the fn 400s without it — a structured error the
+  // caller surfaces). Optional at the TYPE level only so the pinned
+  // append-only error-surfacing test's legacy call shape keeps compiling;
+  // every live caller passes it.
+  venueId?: string;
   selectedPlacePoolId: string | null;
   draft: Tier1PlaceDraft;
 }): Promise<Tier1PlaceResult> {
@@ -169,7 +172,7 @@ export async function upsertTier1Place(input: {
       body: {
         action: "upsert_tier1_place",
         brand_id: input.brandId,
-        venue_id: input.venueId,
+        venue_id: input.venueId ?? null,
         selected_place_pool_id: input.selectedPlacePoolId,
         draft: input.draft,
       },
