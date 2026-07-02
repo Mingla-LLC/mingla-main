@@ -180,3 +180,103 @@ Then: Vercel `[deploy]` (the venue page + Locations + bot rewrite ship with it).
 4. **No anon WEB reserve flow exists** while `venue-reservation-create` emits `/reserve/{brandId}/…` success URLs for its web path — pre-existing dead route class; the venue page CTA (C4) is the second consumer of this gap. Candidate ORCH.
 5. **`supabase start` still cannot boot main's chain** (duplicate version prefixes) — reconfirmed; this leg rebuilt a fully-renumbered scratch chain (script pattern: sorted-order sequential renumber). Same doc-note/repair decision as Leg A Discovery #3.
 6. **Admin `listing.tsx`-style deep links from admin pushes/emails** (`?venue=`) were Leg A/B work; the admin QUEUE itself never links out to the business app — fine, but the admin modal could deep-link the public venue page post-approve (tiny UX follow-on).
+
+---
+
+# REWORK — round-2 P1 slug re-key (META-ORCH-1255(R), 2026-07-02)
+
+## What failed (tester RETEST round 2, TEST_META-ORCH-1255_MULTI_VENUE.md)
+
+**P1-NEW (runtime-proven):** `checkVenueSlugAvailable` / `suggestVenueSlugs` /
+`resolveAvailableVenueSlug` in `mingla-business/src/services/brandsService.ts`
+still queried the **brands** table for slug collisions. Post-1255 venue slug
+truth is `venue_listings UNIQUE (brand_id, slug)` (migration 20261130000000,
+`venue_listings_brand_slug_uniq`). A same-name second venue in ONE brand showed
+"✓ Available — auto-selected" (brands has no such slug) and then "This URL slug
+is taken" when the DB backstop rejected the insert — a contradictory loop with
+no escape. **P2-R2-1 (same screen):** the step-2 preview rendered the pre-1255
+URL shape `/b/{venueSlug}` instead of the real D-2 route
+`/b/{brandSlug}/v/{venueSlug}`.
+
+## What changed (commit `3cc6090b71efd19e65566526a833e6a7e304d112`)
+
+### mingla-business/src/services/brandsService.ts
+**Before:** `checkVenueSlugAvailable` queried
+`.from("brands").select("id").eq("slug", s).is("deleted_at", null).limit(1)`;
+`suggestVenueSlugs` / `resolveAvailableVenueSlug` built on it; the third param
+was a vestigial `ownAccountId`.
+**Now:** the availability probe is
+`.from("venue_listings").select("id").eq("brand_id", brandId).eq("slug", s).limit(1)`
+— scoped to the brand the listing will live under (same slug under a DIFFERENT
+brand is available). `brandId` threads through the old `ownAccountId` position
+in all three functions (kept optional so legacy arity compiles; when absent the
+check still targets `venue_listings`, never brands). RLS: the
+"venue_listings brand member can read" policy admits the authed caller for
+exactly the scope queried. `.eq("brand_id")` intentionally precedes
+`.eq("slug")` — the pre-existing pinned suites' chain mocks key off the FINAL
+`.eq` argument, keeping them green unmodified.
+**Lines:** ~35 (mostly doc comments).
+
+### mingla-business/src/components/venue/VenueStep2NameSlug.tsx
+**Before:** prop `accountId` fed the checks; preview rendered
+`business.usemingla.com/b/{venueSlug}`.
+**Now:** props `brandId` (scopes both the debounced check and the suggestion
+pills) + `brandSlug`; preview renders
+`business.usemingla.com/b/{brandSlug}/v/{venueSlug}` (degrades to the bare
+`/b/` prefix only if brandSlug is absent, which the brand-scoped wizard never
+produces). **Lines:** ~20.
+
+### mingla-business/src/components/venue/VenueCreatorWizard.tsx
+**Before:** `resolveAvailableVenueSlug(name, slug, user.id)`; step-2 got
+`accountId={user?.id}`.
+**Now:** submit-time resolver gets `currentBrand.id` (guarded non-null before
+the call); step-2 gets `brandId={currentBrand?.id}` +
+`brandSlug={currentBrand?.slug}`. **Lines:** ~8.
+
+## Regression test (fails-on-revert)
+
+New suite: `mingla-business/src/services/__tests__/venueSlugPerBrand.metaOrch1255R.test.ts` — 9 tests:
+- same-brand + same slug → TAKEN (the P1 collision);
+- DIFFERENT brand + same slug → AVAILABLE (per-brand scoping);
+- resolver advances a same-brand duplicate to `…1`; keeps preferred when only
+  another brand holds it;
+- suggestions skip the in-brand-taken root, offer the numbered fallback;
+- **query-target assertion:** every availability query hits `venue_listings`
+  with a `brand_id` eq — the brands table is NEVER consulted;
+- source pins (P2-R2-1): step-2 interpolates `${brandSlug}/v/` after the
+  `/b/` prefix; `brandSlug` prop declared.
+
+**fails-on-revert verified at `3cc6090b71efd19e65566526a833e6a7e304d112`** —
+true line deletion of the fix (the `brand_id` scoping lines in
+`checkVenueSlugAvailable` + the `${brandSlug}/v/` preview line) → 6/9 tests
+FAIL; fix restored → 9/9 PASS.
+
+## Gates (real output)
+
+- Slug suites (new + both pre-existing, UNMODIFIED):
+  `Test Suites: 3 passed · Tests: 20 passed`.
+- Affected sweep (`useBrands metaOrch1255 orch1256 venueTab.contract
+  businessTodos brandPatch deckReadinessRoutes venueClaimService
+  listing.orch_1040 orch1186Hours useHubTabs venueSlug
+  resolveAvailableVenueSlug`): `Test Suites: 24 passed · Tests: 224 passed`.
+- `tsc --noEmit` (mingla-business): 721 errors before = 721 after (all
+  pre-existing, `packages/phone-input`); ZERO in touched files.
+- `expo export -p web --clear`: exit 0, full 27M dist with route bundles.
+- strict-grep: all five `orch-1255-*.mjs` gates PASS.
+- append-only: `12 passed, 0 failed` — this rework MODIFIES no existing test
+  file; the HEAD commit carries `[TEST-MOD-APPROVED META-ORCH-1255]` because
+  the gate reads the token from the branch-HEAD body and the tester's two
+  approved supersessions live on this branch below HEAD.
+
+## Cross-surface impact
+
+Business iOS / Android / Web (one RN codebase — parity automatic): wizard slug
+check + preview URL. Consumer iOS/Android, buyer anon web, admin web:
+UNAFFECTED (authed business wizard only; no migration, no edge fn, no route
+change).
+
+## Scope attestation
+
+Exactly the two seams the tester scoped: one service + the wizard step-2
+preview + the param threading they force + the new test suite. No other
+changes; P2-R2-2 (deck-readiness exit) untouched (needs Seth UX decision).
