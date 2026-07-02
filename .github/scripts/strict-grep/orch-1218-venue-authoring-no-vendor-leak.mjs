@@ -47,8 +47,18 @@ const root = process.cwd().endsWith("mingla-business")
   : process.cwd();
 
 const SANITIZER = "mingla-business/src/utils/sanitizeAuthoringError.ts";
-const WIZARD =
-  "mingla-business/src/components/venue/VenueCreatorWizard.tsx";
+// META-ORCH-1255(R2) — the deck-readiness setup (handleRunAi / handleConfirm /
+// handleRefresh / handleCoverChange catch paths) moved VERBATIM from
+// VenueCreatorWizard.tsx to VenueDeckReadinessSetup.tsx (ORCH-1083 web bundle
+// budget: the shared-file layout hoisted the wizard into the eager __common
+// chunk). The venue-authoring flow is now these TWO files, scanned as ONE
+// unit — the >= 4 sanitizer-call binding and the reverted-shape checks apply
+// to their concatenation, so a raw catch reintroduced in EITHER file fails.
+const WIZARD_FILES = [
+  "mingla-business/src/components/venue/VenueCreatorWizard.tsx",
+  "mingla-business/src/components/venue/VenueDeckReadinessSetup.tsx",
+];
+const WIZARD = WIZARD_FILES.join(" + ");
 
 // Forbidden AI-vendor tokens (word-boundaried, case-insensitive). MUST mirror
 // the sanitizer's FORBIDDEN list. "Google location" (geocoding) is NOT a vendor
@@ -464,7 +474,11 @@ if (process.argv.includes("--self-test")) {
 // ---- Live mode
 const failures = [];
 const sanitizerSrc = readTarget(SANITIZER, failures);
-const wizardSrc = readTarget(WIZARD, failures);
+// META-ORCH-1255(R2): read the two venue-authoring flow files as one unit.
+const wizardParts = WIZARD_FILES.map((rel) => readTarget(rel, failures));
+const wizardSrc = wizardParts.every((s) => s !== null)
+  ? wizardParts.join("\n")
+  : null;
 if (sanitizerSrc !== null && wizardSrc !== null) {
   checkAll(sanitizerSrc, wizardSrc, failures);
 }

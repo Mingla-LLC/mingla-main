@@ -30,6 +30,15 @@ export interface VenueReservationBuyer {
 }
 
 export interface CreateVenueReservationInput {
+  /**
+   * META-ORCH-1255(C) — the venue_listings row id (from the reservable
+   * resolver's additive venue_id column). The edge fn scopes settings/
+   * capacity/slots to THIS venue and derives the brand server-side (D-1);
+   * the legacy brandId-only body is the shipped-binary shim
+   * ([TRANSITIONAL-1]) and 409s `venue_ambiguous` on multi-venue brands.
+   */
+  venueId: string;
+  /** Kept for display/analytics parity; the server re-derives it. */
   brandId: string;
   /** ISO 8601 instant of the chosen slot (UTC). */
   reservedForUtc: string;
@@ -125,6 +134,10 @@ export async function createVenueReservation(
     "venue-reservation-create",
     {
       body: {
+        // META-ORCH-1255(C): venueId is the scope key (the fn resolves the
+        // brand from the venue row); brandId rides along for back-compat
+        // logging only — the fn prefers venueId whenever present.
+        venueId: input.venueId,
         brandId: input.brandId,
         surface: "native",
         reservedForUtc: input.reservedForUtc,

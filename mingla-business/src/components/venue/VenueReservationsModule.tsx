@@ -59,20 +59,23 @@ const VIEW_EMPTY: Record<ReservationView, string> = {
 
 export interface VenueReservationsModuleProps {
   brandId: string | null;
+  /** META-ORCH-1255 — the venue this module is scoped to. */
+  venueId?: string | null;
   testID?: string;
 }
 
 export function VenueReservationsModule({
   brandId,
+  venueId = null,
   testID,
 }: VenueReservationsModuleProps): React.ReactElement {
   const { rank } = useCurrentBrandRole(brandId);
   const canMutate = rank >= MANAGER_PLUS_RANK;
 
-  const reservationsQuery = useVenueReservations(brandId);
-  const tablesQuery = useVenueTables(brandId);
-  const create = useCreateReservation(brandId);
-  const transition = useTransitionReservation(brandId);
+  const reservationsQuery = useVenueReservations(brandId, venueId);
+  const tablesQuery = useVenueTables(brandId, venueId);
+  const create = useCreateReservation(brandId, venueId);
+  const transition = useTransitionReservation(brandId, venueId);
 
   const [view, setView] = useState<ReservationView>("today");
   const [createOpen, setCreateOpen] = useState<boolean>(false);
@@ -200,6 +203,7 @@ export function VenueReservationsModule({
       ) : null}
 
       <ReservationCreateSheet
+        venueId={venueId}
         visible={createOpen}
         onClose={() => setCreateOpen(false)}
         brandId={brandId}

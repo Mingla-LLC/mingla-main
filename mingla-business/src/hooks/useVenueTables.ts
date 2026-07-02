@@ -25,6 +25,7 @@ import type {
 interface VenueTableRow {
   id: string;
   brand_id: string;
+  venue_id: string;
   place_pool_id: string | null;
   name: string;
   capacity: number;
@@ -41,11 +42,12 @@ interface VenueTableRow {
 }
 
 const TABLE_COLUMNS =
-  "id, brand_id, place_pool_id, name, capacity, min_party, max_party, zone, seating_type, combinable, accessible, is_active, reservation_policy, sort_order, notes";
+  "id, brand_id, venue_id, place_pool_id, name, capacity, min_party, max_party, zone, seating_type, combinable, accessible, is_active, reservation_policy, sort_order, notes";
 
 const mapRow = (row: VenueTableRow): VenueTable => ({
   id: row.id,
   brandId: row.brand_id,
+  venueId: row.venue_id,
   placePoolId: row.place_pool_id,
   name: row.name,
   capacity: row.capacity,
@@ -62,17 +64,29 @@ const mapRow = (row: VenueTableRow): VenueTable => ({
 });
 
 export const venueTablesKeys = {
-  list: (brandId: string): readonly ["venueTables", string] =>
-    ["venueTables", brandId] as const,
+  // META-ORCH-1255 — venue-scoped, brandId-first (brand-prefix invalidation safe).
+  list: (
+    brandId: string,
+    venueId: string,
+  ): readonly ["venueTables", string, string] =>
+    ["venueTables", brandId, venueId] as const,
 };
 
 export const fetchVenueTables = async (
   brandId: string,
+  // META-ORCH-1255 — tables are one-per-venue rows; scope reads per venue.
+  // Optional so the pinned ORCH-1148 soft-delete contract call (brand-only)
+  // keeps compiling; live callers always pass the venueId.
+  venueId?: string | null,
 ): Promise<VenueTable[]> => {
-  const { data, error } = await supabase
+  let query = supabase
     .from("venue_tables")
     .select(TABLE_COLUMNS)
-    .eq("brand_id", brandId)
+    .eq("brand_id", brandId);
+  if (venueId != null && venueId.length > 0) {
+    query = query.eq("venue_id", venueId);
+  }
+  const { data, error } = await query
     // Exclude soft-deleted tables (deleted_at set) — they must vanish from the
     // operator list AND stop producing availability (the engine excludes them
     // too). Mirrors the engine's `AND t.deleted_at IS NULL`.
@@ -86,29 +100,39 @@ export const fetchVenueTables = async (
 
 export function useVenueTables(
   brandId: string | null,
+  venueId: string | null,
 ): UseQueryResult<VenueTable[]> {
   const { isAuthReady } = useAuth();
-  const enabled = isAuthReady && brandId !== null && brandId.length > 0;
+  const enabled =
+    isAuthReady &&
+    brandId !== null &&
+    brandId.length > 0 &&
+    venueId !== null &&
+    venueId.length > 0;
   return useQuery<VenueTable[]>({
     queryKey: enabled
-      ? venueTablesKeys.list(brandId)
+      ? venueTablesKeys.list(brandId, venueId)
       : (["venueTables", "disabled"] as const),
     enabled,
     staleTime: 30_000,
-    queryFn: () => (enabled ? fetchVenueTables(brandId) : Promise.resolve([])),
+    queryFn: () =>
+      enabled ? fetchVenueTables(brandId, venueId) : Promise.resolve([]),
   });
 }
 
 /** Add (no id) or edit (id present) a table. Upsert on the PK. */
 export function useUpsertVenueTable(
   brandId: string | null,
+  venueId: string | null,
 ): UseMutationResult<void, Error, VenueTableUpsert> {
   const queryClient = useQueryClient();
   return useMutation<void, Error, VenueTableUpsert>({
     mutationFn: async (input: VenueTableUpsert): Promise<void> => {
       if (brandId === null) throw new Error("brand_required");
+      if (venueId === null) throw new Error("venue_required");
       const row: Record<string, unknown> = {
         brand_id: brandId,
+        venue_id: venueId,
         name: input.name.trim(),
         capacity: input.capacity,
         min_party: input.minParty,
@@ -126,9 +150,9 @@ export function useUpsertVenueTable(
       if (error !== null) throw error as unknown as Error;
     },
     onSuccess: () => {
-      if (brandId !== null) {
+      if (brandId !== null && venueId !== null) {
         void queryClient.invalidateQueries({
-          queryKey: venueTablesKeys.list(brandId),
+          queryKey: venueTablesKeys.list(brandId, venueId),
         });
       }
     },
@@ -144,6 +168,7 @@ export function useUpsertVenueTable(
  */
 export function useDeleteVenueTable(
   brandId: string | null,
+  venueId: string | null = null,
 ): UseMutationResult<void, Error, { id: string }> {
   const queryClient = useQueryClient();
   return useMutation<void, Error, { id: string }>({
@@ -155,9 +180,9 @@ export function useDeleteVenueTable(
       if (error !== null) throw error as unknown as Error;
     },
     onSuccess: () => {
-      if (brandId !== null) {
+      if (brandId !== null && venueId !== null) {
         void queryClient.invalidateQueries({
-          queryKey: venueTablesKeys.list(brandId),
+          queryKey: venueTablesKeys.list(brandId, venueId),
         });
       }
     },
@@ -167,6 +192,7 @@ export function useDeleteVenueTable(
 /** Toggle a table active/inactive (deactivate = soft-remove). */
 export function useSetVenueTableActive(
   brandId: string | null,
+  venueId: string | null,
 ): UseMutationResult<void, Error, { id: string; isActive: boolean }> {
   const queryClient = useQueryClient();
   return useMutation<void, Error, { id: string; isActive: boolean }>({
@@ -180,9 +206,9 @@ export function useSetVenueTableActive(
       if (error !== null) throw error as unknown as Error;
     },
     onSuccess: () => {
-      if (brandId !== null) {
+      if (brandId !== null && venueId !== null) {
         void queryClient.invalidateQueries({
-          queryKey: venueTablesKeys.list(brandId),
+          queryKey: venueTablesKeys.list(brandId, venueId),
         });
       }
     },

@@ -44,14 +44,15 @@ serve(async (req) => {
     const authHeader = req.headers.get("authorization");
     if (!authHeader) return json({ error: "No authorization header" }, 401);
 
+    // META-ORCH-1255: the claim decision lives on the VENUE row.
     const body = await req.json().catch(() => null) as {
-      brand_id?: string;
+      venue_id?: string;
       decision?: string;
       rejection_reason?: string;
     } | null;
 
-    const brandId =
-      typeof body?.brand_id === "string" ? body.brand_id.trim() : "";
+    const venueId =
+      typeof body?.venue_id === "string" ? body.venue_id.trim() : "";
     const decision =
       typeof body?.decision === "string" ? body.decision.trim() : "";
     const rejectionReason =
@@ -59,8 +60,8 @@ serve(async (req) => {
         ? body.rejection_reason.trim()
         : "";
 
-    if (brandId.length === 0) {
-      return json({ error: "brand_id required" }, 400);
+    if (venueId.length === 0) {
+      return json({ error: "venue_id required" }, 400);
     }
     if (decision !== "approved" && decision !== "rejected") {
       return json({ error: "decision must be approved or rejected" }, 400);
@@ -79,21 +80,30 @@ serve(async (req) => {
     if (isAdmin !== true) return json({ error: "Forbidden" }, 403);
 
     const admin = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+    const { data: venueRow, error: venueErr } = await admin
+      .from("venue_listings")
+      .select(
+        "id, name, slug, brand_id, claim_status, contact_email, rejection_reason",
+      )
+      .eq("id", venueId)
+      .maybeSingle();
+
+    if (venueErr) return json({ error: venueErr.message }, 500);
+    if (!venueRow) return json({ error: "Venue not found" }, 404);
+
+    const expectedStatus = decision === "approved" ? "verified" : "rejected";
+    if (venueRow.claim_status !== expectedStatus) {
+      return json({ error: "Venue claim status mismatch" }, 400);
+    }
+
     const { data: brandRow, error: brandErr } = await admin
       .from("brands")
-      .select(
-        "id, name, slug, account_id, claim_status, contact_email, rejection_reason",
-      )
-      .eq("id", brandId)
+      .select("id, name, slug, account_id, contact_email")
+      .eq("id", venueRow.brand_id as string)
       .maybeSingle();
 
     if (brandErr) return json({ error: brandErr.message }, 500);
     if (!brandRow) return json({ error: "Brand not found" }, 404);
-
-    const expectedStatus = decision === "approved" ? "verified" : "rejected";
-    if (brandRow.claim_status !== expectedStatus) {
-      return json({ error: "Brand claim status mismatch" }, 400);
-    }
 
     const { data: ownerAuth, error: ownerErr } = await admin.auth.admin
       .getUserById(brandRow.account_id as string);
@@ -105,6 +115,10 @@ serve(async (req) => {
       (typeof ownerAuth.user?.email === "string" &&
           ownerAuth.user.email.length > 0
         ? ownerAuth.user.email
+        : null) ??
+      (typeof venueRow.contact_email === "string" &&
+          venueRow.contact_email.length > 0
+        ? venueRow.contact_email
         : null) ??
       (typeof brandRow.contact_email === "string" &&
           brandRow.contact_email.length > 0
@@ -139,22 +153,27 @@ serve(async (req) => {
       );
     }
 
-    const brandName = brandRow.name as string;
+    const venueName = venueRow.name as string;
     const approved = decision === "approved";
-    const slug = typeof brandRow.slug === "string" ? brandRow.slug : "";
+    // META-ORCH-1255 (D-2): the approve email links the PER-VENUE public page
+    // /b/{brandSlug}/v/{venueSlug}.
+    const brandSlug = typeof brandRow.slug === "string" ? brandRow.slug : "";
+    const venueSlug = typeof venueRow.slug === "string" ? venueRow.slug : "";
     const persistedReason =
-      (typeof brandRow.rejection_reason === "string" &&
-          brandRow.rejection_reason.length > 0
-        ? brandRow.rejection_reason
+      (typeof venueRow.rejection_reason === "string" &&
+          venueRow.rejection_reason.length > 0
+        ? venueRow.rejection_reason
         : rejectionReason);
 
     const bodyInput = approved
       ? buildClaimApprovedEmail({
-        brandName,
-        publicVenueUrl: defaultVenuePublicUrl(slug),
+        brandName: venueName,
+        publicVenueUrl: `${defaultVenuePublicUrl(brandSlug)}/v/${
+          encodeURIComponent(venueSlug)
+        }`,
       })
       : buildClaimRejectedEmail({
-        brandName,
+        brandName: venueName,
         rejectionReason: persistedReason,
       });
 

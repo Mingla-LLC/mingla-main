@@ -46,7 +46,6 @@ import type {
 // ORCH-0892-A is DELETED — KAS supersedes it functionally.
 import { ScrollView } from "../../wrappers/SmartScrollView";
 import { Image as ExpoImage } from "expo-image";
-import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import {
@@ -61,7 +60,6 @@ import {
 import { brandPublicUrl } from "../../constants/publicUrls";
 import { joinBrandDescription } from "../../services/brandMapping";
 import type { Brand } from "../../store/currentBrandStore";
-import { useDraftVenueStore } from "../../store/draftVenueStore";
 
 import { Avatar } from "../ui/Avatar";
 import { Button } from "../ui/Button";
@@ -284,10 +282,9 @@ export const BrandEditView: React.FC<BrandEditViewProps> = ({
   initialSection,
 }) => {
   const insets = useSafeAreaInsets();
-  const router = useRouter();
-
-  // ORCH-1256 — scroll-to-section mechanism (anchors only — the PHYSICAL
-  // LOCATION block is owned by META-ORCH-1255: do not anchor or edit it).
+  // ORCH-1256 — scroll-to-section mechanism (anchors only). The PHYSICAL
+  // LOCATION block this note used to guard was removed by META-ORCH-1255
+  // (venue creation now lives in the universal creator sheet).
   // SmartScrollView forwards this ref to a real ScrollView on native and IS
   // RN ScrollView on web, so scrollTo works on both platforms.
   const scrollRef = useRef<RNScrollView>(null);
@@ -312,8 +309,6 @@ export const BrandEditView: React.FC<BrandEditViewProps> = ({
       },
     [],
   );
-  const resetVenueDraft = useDraftVenueStore((s) => s.reset);
-  const patchVenueDraft = useDraftVenueStore((s) => s.patch);
   // Initialize draft from `brand`. Note: when brand !== null, draft is the
   // editable copy. When brand === null, draft is unused (we render not-found).
   const initialDraft = useMemo<Brand | null>(() => brand, [brand]);
@@ -437,17 +432,6 @@ export const BrandEditView: React.FC<BrandEditViewProps> = ({
     [],
   );
 
-  const handleClaimVenue = useCallback((): void => {
-    if (draft === null) return;
-    resetVenueDraft();
-    patchVenueDraft({
-      workingName: draft.displayName,
-      displayName: draft.displayName,
-      formattedAddress: draft.address ?? "",
-    });
-    router.push("/venue/create" as never);
-  }, [draft, patchVenueDraft, resetVenueDraft, router]);
-
   // ----- Not-found state -----
   if (brand === null || draft === null) {
     return (
@@ -557,46 +541,6 @@ export const BrandEditView: React.FC<BrandEditViewProps> = ({
             </View>
           </GlassCard>
           </View>
-
-          {/* ORCH-1040 — ONE compact physical-location block (replaces the old
-              always-present "Claim a venue" card + the duplicate Display toggle).
-              The toggle IS the question; when it's on and there's no venue yet, a
-              small inline CTA appears right here. Off → just the question. */}
-          <Text style={styles.sectionLabel}>PHYSICAL LOCATION</Text>
-          <GlassCard variant="base" padding={spacing.md}>
-            <View style={styles.toggleRow}>
-              <View style={styles.toggleTextCol}>
-                <Text style={styles.toggleLabel}>Customers visit you in person</Text>
-                <Text style={styles.toggleSub}>
-                  Turn on to list your venue so Mingla can recommend it for local
-                  plans. Leave off if you're online-only or run pop-ups/events.
-                </Text>
-              </View>
-              <InlineToggle
-                value={draft.hasPhysicalLocation === true}
-                onPress={() =>
-                  setDraft({
-                    ...draft,
-                    hasPhysicalLocation: !(draft.hasPhysicalLocation === true),
-                  })
-                }
-                accessibilityLabel="Physical location"
-              />
-            </View>
-            {draft.hasPhysicalLocation === true &&
-            draft.claimStatus === "none" &&
-            draft.placePoolId == null ? (
-              <View style={styles.claimCtaRow}>
-                <Button
-                  label="Add your venue"
-                  onPress={handleClaimVenue}
-                  variant="secondary"
-                  size="md"
-                  leadingIcon="location"
-                />
-              </View>
-            ) : null}
-          </GlassCard>
 
           {/* SECTION B — About */}
           <Text
@@ -1063,40 +1007,6 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
   },
 
-  claimAffordance: {
-    flexDirection: "row",
-    gap: spacing.md,
-    alignItems: "flex-start",
-  },
-  claimIconWrap: {
-    width: 36,
-    height: 36,
-    borderRadius: 999,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "rgba(235, 120, 37, 0.12)",
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: accent.border,
-  },
-  claimTextCol: {
-    flex: 1,
-  },
-  claimTitle: {
-    fontSize: typography.body.fontSize,
-    lineHeight: typography.body.lineHeight,
-    fontWeight: "600",
-    color: textTokens.primary,
-  },
-  claimBody: {
-    marginTop: spacing.xs,
-    fontSize: typography.bodySm.fontSize,
-    lineHeight: typography.bodySm.lineHeight,
-    color: textTokens.secondary,
-  },
-  claimCtaRow: {
-    flexDirection: "row",
-    marginTop: spacing.md,
-  },
   kindHint: {
     fontSize: typography.caption.fontSize,
     color: textTokens.tertiary,

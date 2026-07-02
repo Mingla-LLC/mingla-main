@@ -104,6 +104,14 @@ import {
 import type { EventCoverMediaProvider } from "../../types/eventCoverProvider";
 import type { EventCoverMediaType } from "../../store/draftEventStore";
 import { useBrandCoverUpload } from "../../hooks/useBrandCoverUpload";
+// META-ORCH-1255(C) D-C: the VENUE target uses the storage-only upload +
+// provider URL validation directly — never useBrandCoverUpload, whose
+// updateBrand mutation patches brands.cover_media_url (the venue row is the
+// cover's owner; the host persists via syncHeroMedia).
+import {
+  coverFromProviderRef,
+  uploadBrandCover,
+} from "../../services/brandCoverService";
 import { BrandCoverError } from "../../utils/brandCoverRules";
 import { Button } from "./Button";
 import { findSelectedProviderId } from "./coverPickerSelection";
@@ -205,6 +213,9 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
 }) => {
   const { isAuthReady } = useAuth();
   const isBrand = target.kind === "brand";
+  // META-ORCH-1255(C) D-C: venue-listing hero target — brand-like storage +
+  // video pipeline, ZERO brands-row writes (host persists the emitted patch).
+  const isVenue = target.kind === "venue";
   const isNative = Platform.OS !== "web";
   const isPhoneWeb =
     Platform.OS === "web" &&
@@ -219,13 +230,23 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
   // brands.cover_media_url (via the apply step on ready). For brand, eventRowId
   // is unused server-side (sentinel passed for the hook's signature).
   const videoUpload = useEventCoverVideoUpload(
-    isBrand ? "" : target.eventRowId,
+    isBrand || isVenue ? "" : target.eventRowId,
     target.brandId,
-    isBrand ? "published_manual" : target.coverMediaApplyMode,
+    isBrand || isVenue ? "published_manual" : target.coverMediaApplyMode,
     // META-ORCH-1059 Sub-B: experiences ride the event-cover video pipeline
     // (same events.cover_media_* columns + events-row id). Pass "experience"
     // for call-site clarity; the hook normalizes it to the "event" server path.
-    isBrand ? "brand" : target.kind === "experience" ? "experience" : "event",
+    // META-ORCH-1255(C) D-C: "venue" rides the brand server pipeline for
+    // processing but SKIPS the apply step (which writes brands.cover_media_url)
+    // — the processed URL flows out via the ready-emit and the host persists
+    // it to the venue row.
+    isBrand
+      ? "brand"
+      : isVenue
+        ? "venue"
+        : target.kind === "experience"
+          ? "experience"
+          : "event",
   );
   const lastVideoUploadFileRef = useRef<EventCoverVideoUploadFile | null>(null);
   const lastEmittedProcessedVideoUrlRef = useRef<string | null>(null);
@@ -389,7 +410,7 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
   }, [showUploadError]);
 
   const validateEventRowId = useCallback((): boolean => {
-    if (isBrand) return true;
+    if (target.kind === "brand" || target.kind === "venue") return true;
     if (target.eventRowId.trim().length === 0) {
       showUploadError(
         new EventCoverMediaError("missing_server_event_id", "Missing server row id."),
@@ -397,7 +418,7 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
       return false;
     }
     return true;
-  }, [isBrand, target, showUploadError]);
+  }, [target, showUploadError]);
 
   const pickImageOrGifCover = useCallback(async (): Promise<void> => {
     if (uploading || disabled || activeVideoUpload) return;
@@ -415,6 +436,37 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
       if (result.canceled || result.assets.length === 0) return;
       pickedAssets = result.assets;
       const asset = result.assets[0];
+
+      if (target.kind === "venue") {
+        // META-ORCH-1255(C) D-C: venue device upload → brand_covers bucket
+        // (brand-keyed storage path) but NO brands-row patch — the emitted
+        // patch is persisted by the host to venue_listings via syncHeroMedia.
+        const uploaded = await uploadBrandCover(
+          target.brandId,
+          {
+            uri: asset.uri,
+            mimeType: asset.mimeType,
+            fileName: asset.fileName,
+            fileSize: asset.fileSize,
+          },
+          { previousPublicUrl: localCover.coverMediaUrl },
+        );
+        setMediaDisplayError(null);
+        emitChange({
+          coverMediaUrl: uploaded.publicUrl,
+          coverMediaType: uploaded.mediaType === "gif" ? "gif" : "image",
+          coverMediaProvider: UPLOAD_EVENT_COVER_PROVIDER_METADATA.provider,
+          coverMediaSourceUrl: UPLOAD_EVENT_COVER_PROVIDER_METADATA.sourceUrl,
+          coverMediaCredit: UPLOAD_EVENT_COVER_PROVIDER_METADATA.credit,
+          coverMediaCreditUrl: UPLOAD_EVENT_COVER_PROVIDER_METADATA.creditUrl,
+          coverMediaAlt: UPLOAD_EVENT_COVER_PROVIDER_METADATA.alt,
+        });
+        if (Platform.OS !== "web") {
+          void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+        }
+        onShowToast("Cover updated.");
+        return;
+      }
 
       if (target.kind === "brand") {
         // Brand device upload → brand_covers bucket + brands.cover_media_url.
@@ -729,6 +781,22 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
           showUploadError(error);
           return;
         }
+      } else if (target.kind === "venue") {
+        // META-ORCH-1255(C) D-C: same anti-injection URL validation as the
+        // brand path, ZERO brands-row write (host persists to the venue row).
+        try {
+          coverFromProviderRef({
+            provider: "giphy",
+            publicUrl: result.mediaUrl,
+            attribution:
+              result.creditUrl !== null
+                ? { name: result.credit, url: result.creditUrl }
+                : null,
+          });
+        } catch (error) {
+          showUploadError(error);
+          return;
+        }
       }
       emitChange({
         coverMediaUrl: result.mediaUrl,
@@ -764,6 +832,18 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
                 attribution: { name: result.credit, url: result.creditUrl },
               },
             },
+          });
+        } catch (error) {
+          showUploadError(error);
+          return;
+        }
+      } else if (target.kind === "venue") {
+        // META-ORCH-1255(C) D-C: validate only — never patch the brands row.
+        try {
+          coverFromProviderRef({
+            provider: "pexels",
+            publicUrl: result.mediaUrl,
+            attribution: { name: result.credit, url: result.creditUrl },
           });
         } catch (error) {
           showUploadError(error);

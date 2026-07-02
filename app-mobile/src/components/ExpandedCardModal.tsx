@@ -2147,7 +2147,8 @@ export default function ExpandedCardModal({
                     → nothing renders (NO dead tap). Tapping opens the 3-step
                     reserve sheet (mounted as a sibling of the root sheet). */}
                 {venueReservable?.reservable === true &&
-                  venueReservable.brand_id !== null && (
+                  venueReservable.brand_id !== null &&
+                  venueReservable.venue_id !== null && (
                     <TouchableOpacity
                       style={reserveStyles.reserveButton}
                       activeOpacity={0.85}
@@ -2395,10 +2396,12 @@ export default function ExpandedCardModal({
           can open the sheet. Regression test asserts both gates share the
           condition so they can't drift again. */}
       {venueReservable?.reservable === true &&
-        venueReservable.brand_id !== null && isReserveSheetOpen && (
+        venueReservable.brand_id !== null &&
+        venueReservable.venue_id !== null && isReserveSheetOpen && (
           <VenueReserveSheet
             visible={isReserveSheetOpen}
             onClose={() => setIsReserveSheetOpen(false)}
+            venueId={venueReservable.venue_id}
             brandId={venueReservable.brand_id}
             venueName={card.title}
             currency={venueReservable.currency}

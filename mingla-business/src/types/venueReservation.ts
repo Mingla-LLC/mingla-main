@@ -48,6 +48,12 @@ export type NoShowFeePolicy = "forfeit" | "none";
  */
 export interface VenueReservationSettings {
   brandId: string;
+  /**
+   * META-ORCH-1255 — one settings row per VENUE (PK moved brand→venue).
+   * Optional at the TYPE level only ([TRANSITIONAL] — append-only test
+   * fixtures predate the column; DB is NOT NULL). Exit: fixture supersession.
+   */
+  venueId?: string;
   placePoolId: string | null;
   /** The LOCKED single toggle (VISION dec 4). */
   reservationsEnabled: boolean;
@@ -107,6 +113,7 @@ export type VenueReservationPolicy =
 export interface VenueTable {
   id: string;
   brandId: string;
+  venueId?: string;
   placePoolId: string | null;
   name: string;
   capacity: number;
@@ -150,6 +157,7 @@ export type VenueCapacityRuleKind =
 export interface VenueCapacityRule {
   id: string;
   brandId: string;
+  venueId?: string;
   kind: VenueCapacityRuleKind;
   params: Record<string, unknown>;
   tableId: string | null;
@@ -169,9 +177,10 @@ export interface ServicePeriod {
   type?: string;
 }
 
-/** `venue_availability_config` row, camelCased (one row per brand). */
+/** `venue_availability_config` row, camelCased (META-ORCH-1255: one row per venue). */
 export interface VenueAvailabilityConfig {
   brandId: string;
+  venueId?: string;
   servicePeriods: ServicePeriod[];
   /** { p2: 75, p4: 90, p6: 120 } minutes by party bucket. */
   turnTimes: Record<string, number>;
@@ -200,6 +209,7 @@ export type BlackoutAppliesTo = "all" | "zone" | "table";
 export interface VenueBlackout {
   id: string;
   brandId: string;
+  venueId?: string;
   dateStart: string;
   dateEnd: string;
   reason: string | null;
@@ -277,6 +287,7 @@ export type ReservationView =
 export interface Reservation {
   id: string;
   brandId: string;
+  venueId?: string;
   placePoolId: string | null;
   tableId: string | null;
   /** Slot start, UTC ISO. */
@@ -342,6 +353,7 @@ export type WaitlistStatus =
 export interface WaitlistEntry {
   id: string;
   brandId: string;
+  venueId?: string;
   guestName: string | null;
   guestPhoneE164: string | null;
   guestEmail: string | null;

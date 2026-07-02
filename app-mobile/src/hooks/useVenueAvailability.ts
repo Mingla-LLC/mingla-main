@@ -5,8 +5,9 @@ import { supabase } from "../services/supabase";
 /**
  * useVenueAvailability — META-ORCH-1148 sub-ORCH 2.2b (SPEC §4.D).
  * ---------------------------------------------------------------------------
- * Reads the truthful availability ENGINE `pg_venue_available_slots(brand,date,
- * party_size)` (anon+authenticated EXECUTE post-2.2a keystone grant). The engine
+ * Reads the truthful availability ENGINE `pg_venue_available_slots(venue,date,
+ * party_size)` — venue-keyed since META-ORCH-1255(C)
+ * (anon+authenticated EXECUTE post-2.2a keystone grant). The engine
  * is the SOLE slot source — this hook NEVER fabricates slots: an empty array =
  * "fully booked", NOT a fallback (I-PROPOSED-1148-AVAILABILITY-ENGINE-SOLE-SLOT-
  * SOURCE). Short staleTime — slots go stale fast as other guests book.
@@ -35,17 +36,23 @@ interface EngineSlotRow {
 
 export const venueAvailabilityKeys = {
   all: ["venueAvailability"] as const,
-  query: (brandId: string, date: string, partySize: number) =>
-    [...venueAvailabilityKeys.all, brandId, date, partySize] as const,
+  // META-ORCH-1255(C): the engine is venue-keyed — the key carries venueId.
+  query: (venueId: string, date: string, partySize: number) =>
+    [...venueAvailabilityKeys.all, venueId, date, partySize] as const,
 };
 
 async function fetchVenueSlots(
-  brandId: string,
+  venueId: string,
   date: string,
   partySize: number,
 ): Promise<VenueSlot[]> {
+  // META-ORCH-1255(C): pass p_venue_id — the venue_listings row from the
+  // reservable resolver's additive venue_id column. The legacy p_brand_id arm
+  // ([TRANSITIONAL-1], single-venue-only resolution) is for SHIPPED binaries;
+  // new code always books the exact venue, so a multi-venue brand never gets
+  // the fail-soft empty slot list.
   const { data, error } = await supabase.rpc("pg_venue_available_slots", {
-    p_brand_id: brandId,
+    p_venue_id: venueId,
     p_date: date,
     p_party_size: partySize,
   });
@@ -60,13 +67,13 @@ async function fetchVenueSlots(
 }
 
 export function useVenueAvailability(
-  brandId: string | null | undefined,
+  venueId: string | null | undefined,
   date: string | null | undefined,
   partySize: number | null | undefined,
 ): UseQueryResult<VenueSlot[]> {
   const enabled =
-    typeof brandId === "string" &&
-    brandId.length > 0 &&
+    typeof venueId === "string" &&
+    venueId.length > 0 &&
     typeof date === "string" &&
     date.length > 0 &&
     typeof partySize === "number" &&
@@ -74,12 +81,12 @@ export function useVenueAvailability(
     partySize >= 1;
   return useQuery({
     queryKey: venueAvailabilityKeys.query(
-      brandId ?? "none",
+      venueId ?? "none",
       date ?? "none",
       partySize ?? 0,
     ),
     queryFn: () =>
-      fetchVenueSlots(brandId as string, date as string, partySize as number),
+      fetchVenueSlots(venueId as string, date as string, partySize as number),
     enabled,
     // Slots go stale fast — short window, refetch on focus.
     // ORCH-1148: the focus comment was aspirational — make it real so returning to

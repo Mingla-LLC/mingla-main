@@ -31,8 +31,8 @@ import { dispatchNotification } from "../_shared/stripeEdgeAuth.ts";
 import {
   auditActionForReview,
   feedbackPushCopy,
-  normalizeFeedbackBody,
-  normalizeReviewBody,
+  normalizeVenueFeedbackBody,
+  normalizeVenueReviewBody,
   pushCopyForReview,
 } from "./reviewLogic.ts";
 
@@ -268,13 +268,14 @@ serve(async (req) => {
     // no server-only side-effect; the wrapper owns the push + audit). Returns early.
     if (rawAction === "add_feedback") {
       const adminEarly = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
-      const parsed = normalizeFeedbackBody(rawBody);
+      // META-ORCH-1255: feedback is keyed to the VENUE row.
+      const parsed = normalizeVenueFeedbackBody(rawBody);
       if (!parsed.ok) return json({ error: parsed.error }, 400);
 
       const { data: fbRes, error: fbErr } = await userClient.rpc(
         "admin_add_venue_claim_feedback",
         {
-          p_brand_id: parsed.brandId,
+          p_venue_id: parsed.venueId,
           p_items: parsed.items,
           p_overall_message: parsed.overallMessage,
         },
@@ -294,36 +295,54 @@ serve(async (req) => {
         admin_email: user.email ?? "unknown",
         action: "venue_claim_feedback",
         target_type: "venue_claim",
-        target_id: parsed.brandId,
+        target_id: parsed.venueId,
         metadata: { round, item_count: itemCount },
       });
 
-      // Push the business owner (brand.account_id = OneSignal external_id).
+      // Push the business owner. META-ORCH-1255: resolve the venue row first
+      // (name for the copy), then its brand for account_id.
       let pushSent = false;
-      const { data: fbBrand, error: fbBrandErr } = await adminEarly
-        .from("brands")
-        .select("name, account_id")
-        .eq("id", parsed.brandId)
+      const { data: fbVenue, error: fbVenueErr } = await adminEarly
+        .from("venue_listings")
+        .select("id, name, brand_id")
+        .eq("id", parsed.venueId)
         .maybeSingle();
+      if (fbVenueErr) {
+        console.warn(
+          "[admin-review-venue-claim] add_feedback venue lookup",
+          fbVenueErr.message,
+        );
+      }
+      const fbBrandId = typeof fbVenue?.brand_id === "string" ? fbVenue.brand_id : null;
+      const { data: fbBrand, error: fbBrandErr } = fbBrandId !== null
+        ? await adminEarly
+          .from("brands")
+          .select("name, account_id")
+          .eq("id", fbBrandId)
+          .maybeSingle()
+        : { data: null, error: null };
       if (fbBrandErr) {
         console.warn(
           "[admin-review-venue-claim] add_feedback brand lookup",
           fbBrandErr.message,
         );
       }
-      if (fbBrand && typeof fbBrand.account_id === "string") {
-        const copy = feedbackPushCopy((fbBrand.name as string) ?? "Your venue");
+      if (fbBrand && typeof fbBrand.account_id === "string" && fbBrandId !== null) {
+        const copy = feedbackPushCopy(
+          (fbVenue?.name as string | null) ?? (fbBrand.name as string) ?? "Your venue",
+        );
         pushSent = await sendPush({
           targetUserId: fbBrand.account_id,
           title: copy.title,
           body: copy.body,
           data: {
             type: "venue_claim_feedback",
-            brand_id: parsed.brandId,
+            brand_id: fbBrandId,
+            venue_id: parsed.venueId,
             round,
-            // ORCH-1082 Gap VC: land on the venue listing (matches the
-            // business.claim_decision sibling) instead of the account tab.
-            deepLink: `mingla-business://brand/${parsed.brandId}/listing`,
+            // ORCH-1082 Gap VC + META-ORCH-1255: land on the venue-scoped
+            // listing (the kept alias route forwards, Leg B #13).
+            deepLink: `mingla-business://brand/${fbBrandId}/listing?venue=${parsed.venueId}&focus=feedback`,
           },
           androidChannelId: "system",
           // ORCH-1082 Gap VC: this is a direct sendPush (bypasses notify-dispatch),
@@ -428,8 +447,19 @@ serve(async (req) => {
     if (rawAction === "tweak_fields" || rawAction === "score_override") {
       const adminEarly = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
       const b = rawBody as Record<string, unknown>;
-      const brandId = typeof b.brand_id === "string" ? b.brand_id.trim() : "";
-      if (brandId.length === 0) return json({ error: "brand_id_required" }, 400);
+      // META-ORCH-1255(C) D-A: body carries venue_id AND the META-ORCH-1062
+      // RPCs are now venue-keyed end-to-end (M6 re-key) — the pre-M6 bodies
+      // resolved the place via the legacy-inert brands.place_pool_id and read
+      // brands.claim_status, so they were latently broken for every new venue.
+      const tweakVenueId = typeof b.venue_id === "string" ? b.venue_id.trim() : "";
+      if (tweakVenueId.length === 0) return json({ error: "venue_id_required" }, 400);
+      const { data: tweakVenue, error: tweakVenueErr } = await adminEarly
+        .from("venue_listings")
+        .select("id, brand_id")
+        .eq("id", tweakVenueId)
+        .maybeSingle();
+      if (tweakVenueErr) return json({ error: tweakVenueErr.message }, 500);
+      if (!tweakVenue) return json({ error: "venue_not_found" }, 404);
 
       if (rawAction === "tweak_fields") {
         const patch = b.patch;
@@ -440,14 +470,14 @@ serve(async (req) => {
         // is_admin_user() sees auth.uid(); call it through userClient.
         const { data: tweakRes, error: tweakErr } = await userClient.rpc(
           "admin_tweak_venue_claim_fields",
-          { p_brand_id: brandId, p_patch: patch },
+          { p_venue_id: tweakVenueId, p_patch: patch },
         );
         if (tweakErr) return json({ error: tweakErr.message }, 400);
         await adminEarly.from("admin_audit_log").insert({
           admin_email: user.email ?? "unknown",
           action: "venue_claim_tweak",
           target_type: "venue_claim",
-          target_id: brandId,
+          target_id: tweakVenueId,
           metadata: { patch, result: tweakRes ?? null },
         });
         return json({ ok: true, result: tweakRes });
@@ -461,20 +491,21 @@ serve(async (req) => {
       if (!Number.isFinite(score)) return json({ error: "score_required" }, 400);
       const { data: ovRes, error: ovErr } = await userClient.rpc(
         "admin_apply_score_override",
-        { p_brand_id: brandId, p_signal_id: signalId, p_score: score, p_reason: reason },
+        { p_venue_id: tweakVenueId, p_signal_id: signalId, p_score: score, p_reason: reason },
       );
       if (ovErr) return json({ error: ovErr.message }, 400);
       await adminEarly.from("admin_audit_log").insert({
         admin_email: user.email ?? "unknown",
         action: "venue_claim_score_override",
         target_type: "venue_claim",
-        target_id: brandId,
+        target_id: tweakVenueId,
         metadata: { signal_id: signalId, score, reason, result: ovRes ?? null },
       });
       return json({ ok: true, result: ovRes });
     }
 
-    const parsed = normalizeReviewBody(rawBody);
+    // META-ORCH-1255: the review body is VENUE-keyed (D-4).
+    const parsed = normalizeVenueReviewBody(rawBody);
     if (!parsed.ok) return json({ error: parsed.error }, 400);
     // META-ORCH-1009 Sub-F WS7: optional admin reduce-only score vetoes applied
     // at go-live. Shape: { "<signal_id>": { vetoed_score, reason } }.
@@ -489,7 +520,7 @@ serve(async (req) => {
     const { data: rpcResult, error: rpcErr } = await userClient.rpc(
       "biz_review_venue_claim",
       {
-        p_brand_id: parsed.brandId,
+        p_venue_id: parsed.venueId,
         p_action: parsed.action,
         p_rejection_reason: parsed.action === "reject"
           ? parsed.rejectionReason
@@ -498,27 +529,40 @@ serve(async (req) => {
     );
     if (rpcErr) return json({ error: rpcErr.message }, 400);
 
+    // META-ORCH-1255: the claim lifecycle lives on the VENUE row; the parent
+    // brand supplies the owner identity (account_id) + brand slug for email.
+    const { data: venueRow, error: venueErr } = await admin
+      .from("venue_listings")
+      .select(
+        "id, name, slug, brand_id, claim_status, contact_email, rejection_reason, claim_decision_emailed_at, place_pool_id",
+      )
+      .eq("id", parsed.venueId)
+      .maybeSingle();
+
+    if (venueErr) return json({ error: venueErr.message }, 500);
+    if (!venueRow) return json({ error: "Venue not found" }, 404);
+
     const { data: brandRow, error: brandErr } = await admin
       .from("brands")
-      .select(
-        "id, name, slug, account_id, claim_status, contact_email, rejection_reason, claim_decision_emailed_at, place_pool_id",
-      )
-      .eq("id", parsed.brandId)
+      .select("id, name, slug, account_id, contact_email")
+      .eq("id", venueRow.brand_id as string)
       .maybeSingle();
 
     if (brandErr) return json({ error: brandErr.message }, 500);
     if (!brandRow) return json({ error: "Brand not found" }, 404);
 
     const noop = rpcResult?.noop === true;
-    const brandName = brandRow.name as string;
+    const venueName = venueRow.name as string;
+    const brandId = brandRow.id as string;
 
     await admin.from("admin_audit_log").insert({
       admin_email: user.email ?? "unknown",
       action: auditActionForReview(parsed.action),
       target_type: "venue_claim",
-      target_id: parsed.brandId,
+      target_id: parsed.venueId,
       metadata: {
         noop,
+        brand_id: brandId,
         rpc_result: rpcResult ?? null,
       },
     });
@@ -540,7 +584,7 @@ serve(async (req) => {
     //      to false so we never leave a servable-but-unscored row.
     // REJECT = re-open editing by resetting the operator's "Recommend" edit cap.
     const placePoolId =
-      (brandRow as { place_pool_id?: string | null }).place_pool_id ?? null;
+      (venueRow as { place_pool_id?: string | null }).place_pool_id ?? null;
     let goLive: GoLiveResult | null = null;
     if (!noop && placePoolId !== null) {
       if (parsed.action === "approve") {
@@ -559,7 +603,7 @@ serve(async (req) => {
     const shouldNotify = (parsed.action === "approve" ||
       parsed.action === "reject") &&
       !noop &&
-      brandRow.claim_decision_emailed_at == null;
+      venueRow.claim_decision_emailed_at == null; // once per VENUE (R-7)
 
     if (shouldNotify) {
       const { data: ownerAuth, error: ownerErr } = await admin.auth.admin
@@ -573,21 +617,30 @@ serve(async (req) => {
             ownerAuth.user.email.length > 0
           ? ownerAuth.user.email
           : null) ??
+        (typeof venueRow.contact_email === "string" &&
+            venueRow.contact_email.length > 0
+          ? venueRow.contact_email
+          : null) ??
         (typeof brandRow.contact_email === "string" &&
             brandRow.contact_email.length > 0
           ? brandRow.contact_email
           : null);
 
       if (to && RESEND_API_KEY) {
-        const slug = typeof brandRow.slug === "string" ? brandRow.slug : "";
+        // META-ORCH-1255 (D-2): the approve email links the PER-VENUE page
+        // /b/{brandSlug}/v/{venueSlug}.
+        const brandSlug = typeof brandRow.slug === "string" ? brandRow.slug : "";
+        const venueSlug = typeof venueRow.slug === "string" ? venueRow.slug : "";
         const bodyInput = parsed.action === "approve"
           ? buildClaimApprovedEmail({
-            brandName,
-            publicVenueUrl: defaultVenuePublicUrl(slug),
+            brandName: venueName,
+            publicVenueUrl: `${defaultVenuePublicUrl(brandSlug)}/v/${
+              encodeURIComponent(venueSlug)
+            }`,
           })
           : buildClaimRejectedEmail({
-            brandName,
-            rejectionReason: (brandRow.rejection_reason as string) ??
+            brandName: venueName,
+            rejectionReason: (venueRow.rejection_reason as string) ??
               parsed.rejectionReason,
           });
 
@@ -630,13 +683,13 @@ serve(async (req) => {
 
         emailSent = true;
         await admin
-          .from("brands")
+          .from("venue_listings")
           .update({ claim_decision_emailed_at: new Date().toISOString() })
-          .eq("id", parsed.brandId);
+          .eq("id", parsed.venueId);
       }
     }
 
-    const pushCopy = pushCopyForReview(parsed.action, brandName);
+    const pushCopy = pushCopyForReview(parsed.action, venueName);
     if (pushCopy && !noop && typeof brandRow.account_id === "string") {
       pushSent = await sendPush({
         targetUserId: brandRow.account_id,
@@ -644,11 +697,12 @@ serve(async (req) => {
         body: pushCopy.body,
         data: {
           type: "venue_claim_review",
-          brand_id: parsed.brandId,
+          brand_id: brandId,
+          venue_id: parsed.venueId,
           action: parsed.action,
-          // ORCH-1082 Gap VC: land on the venue listing (matches the
-          // business.claim_decision sibling) instead of the account tab.
-          deepLink: `mingla-business://brand/${parsed.brandId}/listing`,
+          // ORCH-1082 Gap VC + META-ORCH-1255: land on the venue-scoped
+          // listing (the kept alias route forwards, Leg B #13).
+          deepLink: `mingla-business://brand/${brandId}/listing?venue=${parsed.venueId}`,
         },
         androidChannelId: "system",
         // ORCH-1082 Gap VC: direct sendPush (bypasses notify-dispatch) targeting
@@ -666,24 +720,25 @@ serve(async (req) => {
     if (!noop && typeof brandRow.account_id === "string") {
       const decision = parsed.action === "approve" ? "approved" : "rejected";
       const rejectionReason = decision === "rejected"
-        ? ((brandRow.rejection_reason as string | null) ?? parsed.rejectionReason ?? "")
+        ? ((venueRow.rejection_reason as string | null) ?? parsed.rejectionReason ?? "")
         : "";
       const title = decision === "approved" ? "Claim approved" : "Claim update";
       const body = decision === "approved"
-        ? `${brandName} is yours. Tap to finish setup.`
-        : `We couldn't approve your ${brandName} claim. Tap for next steps.`;
+        ? `${venueName} is yours. Tap to finish setup.`
+        : `We couldn't approve your ${venueName} claim. Tap for next steps.`;
       try {
         await dispatchNotification({
           userId: brandRow.account_id,
-          brandId: parsed.brandId,
+          brandId: brandId,
           type: "business.claim_decision",
           title,
           body,
           data: { decision, rejectionReason: rejectionReason || undefined },
-          relatedId: parsed.brandId,
+          relatedId: brandId,
           relatedType: "brand",
-          idempotencyKey: `business.claim_decision:${parsed.brandId}:${decision}`,
-          deepLink: `mingla-business://brand/${parsed.brandId}/listing`,
+          // META-ORCH-1255 (R-7): idempotent once per VENUE per decision.
+          idempotencyKey: `business.claim_decision:${parsed.venueId}:${decision}`,
+          deepLink: `mingla-business://brand/${brandId}/listing?venue=${parsed.venueId}`,
         });
       } catch (claimNotifyErr) {
         console.warn(

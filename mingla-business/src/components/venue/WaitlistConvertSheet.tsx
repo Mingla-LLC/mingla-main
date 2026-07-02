@@ -48,6 +48,8 @@ export interface WaitlistConvertSheetProps {
   visible: boolean;
   onClose: () => void;
   brandId: string | null;
+  /** META-ORCH-1255 — the venue the entry converts into a reservation for. */
+  venueId?: string | null;
   entry: WaitlistEntry | null;
   onConvert: (reservedFor: string, tableId: string | null) => void;
   converting: boolean;
@@ -58,6 +60,7 @@ export function WaitlistConvertSheet({
   visible,
   onClose,
   brandId,
+  venueId = null,
   entry,
   onConvert,
   converting,
@@ -77,9 +80,9 @@ export function WaitlistConvertSheet({
   }, [visible, dates]);
 
   const partySize = entry?.partySize ?? 2;
-  const slotsQuery = useAvailableSlots(brandId, date, partySize);
+  const slotsQuery = useAvailableSlots(brandId, venueId, date, partySize);
   const slots = slotsQuery.data ?? [];
-  const tablesQuery = useVenueTables(brandId);
+  const tablesQuery = useVenueTables(brandId, venueId);
   const tables = (tablesQuery.data ?? []).filter((t) => t.isActive);
 
   const handleConvert = useCallback((): void => {

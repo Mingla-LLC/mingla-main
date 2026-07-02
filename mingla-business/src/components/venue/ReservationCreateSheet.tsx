@@ -79,6 +79,8 @@ export interface ReservationCreateSheetProps {
   visible: boolean;
   onClose: () => void;
   brandId: string | null;
+  /** META-ORCH-1255 — the venue the reservation is created for. */
+  venueId?: string | null;
   onSave: (input: ReservationCreateInput) => void;
   saving: boolean;
   testID?: string;
@@ -88,6 +90,7 @@ export function ReservationCreateSheet({
   visible,
   onClose,
   brandId,
+  venueId = null,
   onSave,
   saving,
   testID,
@@ -119,11 +122,11 @@ export function ReservationCreateSheet({
     setNotes("");
   }, [visible, dates]);
 
-  const tablesQuery = useVenueTables(brandId);
+  const tablesQuery = useVenueTables(brandId, venueId);
   const tables = (tablesQuery.data ?? []).filter((t) => t.isActive);
 
   // The SOLE slot source — engine RPC via the owner hook. No fabrication.
-  const slotsQuery = useAvailableSlots(brandId, date, partySize);
+  const slotsQuery = useAvailableSlots(brandId, venueId, date, partySize);
   const slots = slotsQuery.data ?? [];
 
   const phoneValid = phone.trim().length === 0 || isValidE164(phone.trim());

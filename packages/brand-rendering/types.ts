@@ -132,6 +132,18 @@ export interface PublicVenueDetail {
   venueCategory: "restaurant" | "play" | "creative_and_arts" | null;
 }
 
+// META-ORCH-1255(C) — one row of the brand page "Locations" section (SC-12).
+// Data comes from the anon-safe venue_public_view (verified venues only);
+// the adapter maps + passes it in. [] / undefined → the section is omitted.
+export interface PublicBrandVenueSummary {
+  id: string;
+  slug: string;
+  name: string;
+  address: string | null;
+  city: string | null;
+  photoUrl: string | null;
+}
+
 // ORCH-1186-C — DISPLAY-ONLY venue menu shapes (no ordering/cart/payment).
 // A `PublicMenuGroup` is a menu/category section; its `items` are priced rows.
 // `priceCents === null` ⇒ "price on request" (the public page renders no number
@@ -160,6 +172,8 @@ export interface PublicBrandCallbacks {
   onOpenExperience?: (experience: PublicBrandExperience) => void;
   onOpenUpcoming?: (item: PublicBrandUpcoming) => void;
   onOpenExternal?: (url: string) => void;
+  // META-ORCH-1255(C) — a Locations card tap → /b/{brandSlug}/v/{venueSlug}.
+  onOpenVenue?: (venue: PublicBrandVenueSummary) => void;
 }
 
 export interface PublicBrandPageProps {
@@ -172,6 +186,9 @@ export interface PublicBrandPageProps {
   upcoming?: PublicBrandUpcoming[];
   upcomingHasMore?: boolean;
   venue?: PublicVenueDetail | null;
+  // META-ORCH-1255(C) — verified venues for the "Locations" section (SC-12).
+  // Absent / [] ⇒ section omitted (real-data-only).
+  venues?: PublicBrandVenueSummary[];
   // ORCH-1186-C — DISPLAY-ONLY menu groups. Absent / [] ⇒ no Menu tab.
   menu?: PublicMenuGroup[];
   theme?: ResolvedTheme;

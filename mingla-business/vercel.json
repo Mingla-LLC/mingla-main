@@ -43,6 +43,17 @@
       ],
       "destination": "/api/public-brand?brandSlug=:brandSlug"
     },
+    {
+      "source": "/b/:brandSlug/v/:venueSlug",
+      "has": [
+        {
+          "type": "header",
+          "key": "user-agent",
+          "value": "(.*)(facebookexternalhit|Twitterbot|Slackbot|Discordbot|WhatsApp|LinkedInBot|TelegramBot|Applebot|bot|crawler|spider)(.*)"
+        }
+      ],
+      "destination": "/api/public-brand?brandSlug=:brandSlug"
+    },
     { "source": "/stripe-onboarding-return", "destination": "/stripe-onboarding-return.html" },
     { "source": "/auth/callback", "destination": "/auth/callback.html" },
     { "source": "/(.*)", "destination": "/" }

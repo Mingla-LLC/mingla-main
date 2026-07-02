@@ -18,7 +18,7 @@
  * Free events bypass the publish-gate Stripe requirement (Cycle 3).
  */
 
-import React, { useCallback, useState } from "react";
+import React, { Suspense, useCallback, useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { useRouter } from "expo-router";
 
@@ -51,7 +51,18 @@ import { useCurrentBrand } from "../../hooks/useCurrentBrand";
 import { useBrandTaxRegistration } from "../../hooks/useBrandTaxRegistration";
 
 import { TicketTierCard } from "./TicketTierCard";
-import { TicketTierEditSheet } from "./TicketTierEditSheet";
+// META-ORCH-1255(R2) [web bundle budget] — the ~25 KB TicketTierEditSheet is a
+// tap-to-open sheet (renders NOTHING until `visible`), and this step body is
+// shared by the compose + edit route chunks, so a STATIC import hoisted the
+// sheet into the EAGER `__common` boot chunk (ORCH-1083 budget breach).
+// React.lazy + Suspense defers it to its own on-demand chunk — the ORCH-1083
+// house pattern (Stripe Connect bodies / QR renderer). fallback={null} is
+// behavior-identical: the sheet itself renders null while closed.
+const TicketTierEditSheet = React.lazy(() =>
+  import("./TicketTierEditSheet").then((m) => ({
+    default: m.TicketTierEditSheet,
+  })),
+);
 import { errorForKey, type StepBodyProps } from "./types";
 
 // ---- Main component (Step 5 body) -----------------------------------
@@ -360,19 +371,23 @@ export const CreatorStep5Tickets: React.FC<StepBodyProps> = ({
         />
       ) : null}
 
-      <TicketTierEditSheet
-        visible={sheetVisible}
-        onClose={handleCloseSheet}
-        onSave={handleSaveTicket}
-        initial={editingTicket}
-        nextOrder={nextOrder}
-        soldCount={
-          editingTicket !== null ? (soldCountByTier[editingTicket.id] ?? 0) : 0
-        }
-        canEditPrice={canEditTicketPrice}
-        eventCurrency={hasDisplayCurrency ? displayCurrency : undefined}
-        eventId={coverMediaEventId}
-      />
+      {/* META-ORCH-1255(R2) — lazy body (own chunk); null fallback matches the
+          sheet's own closed state (it renders null until `visible`). */}
+      <Suspense fallback={null}>
+        <TicketTierEditSheet
+          visible={sheetVisible}
+          onClose={handleCloseSheet}
+          onSave={handleSaveTicket}
+          initial={editingTicket}
+          nextOrder={nextOrder}
+          soldCount={
+            editingTicket !== null ? (soldCountByTier[editingTicket.id] ?? 0) : 0
+          }
+          canEditPrice={canEditTicketPrice}
+          eventCurrency={hasDisplayCurrency ? displayCurrency : undefined}
+          eventId={coverMediaEventId}
+        />
+      </Suspense>
 
       <ConfirmDialog
         visible={pendingDeleteId !== null}

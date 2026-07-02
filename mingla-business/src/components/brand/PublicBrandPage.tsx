@@ -10,6 +10,7 @@ import {
   type PublicBrandExperience,
   type PublicBrandTrip,
   type PublicBrandUpcoming,
+  type PublicBrandVenueSummary,
   type PublicMenuGroup,
 } from "@mingla/brand-rendering";
 import { resolveTheme, type ResolvedTheme } from "@mingla/offering-rendering";
@@ -19,6 +20,7 @@ import {
   brandPublicUrl,
   eventPublicPath,
   tripPublicPath,
+  venuePublicPath,
 } from "../../constants/publicUrls";
 import type {
   PublicExperienceCard,
@@ -43,6 +45,11 @@ interface PublicBrandPageProps {
   upcoming?: PublicUpcomingRow[];
   upcomingHasMore?: boolean;
   venue?: PublicVenueDetail | null;
+  /**
+   * META-ORCH-1255(C) — verified venues for the "Locations" section (SC-12),
+   * mapped from venue_public_view by the route. Absent / [] → section omitted.
+   */
+  venues?: PublicBrandVenueSummary[];
   /** ORCH-1186-C — DISPLAY-ONLY menu groups (shared shape; passed through). */
   menu?: PublicMenuGroup[];
   resolvedTheme?: ResolvedTheme;
@@ -160,6 +167,7 @@ export const PublicBrandPage: React.FC<PublicBrandPageProps> = ({
   upcoming = [],
   upcomingHasMore = false,
   venue = null,
+  venues = [],
   menu = [],
   resolvedTheme,
 }) => {
@@ -222,6 +230,16 @@ export const PublicBrandPage: React.FC<PublicBrandPageProps> = ({
       );
     },
     [router],
+  );
+
+  // META-ORCH-1255(C) — Locations card tap → the per-venue public page.
+  const handleOpenVenue = useCallback(
+    (item: PublicBrandVenueSummary): void => {
+      router.push(
+        venuePublicPath({ brandSlug: brand.slug, venueSlug: item.slug }) as never,
+      );
+    },
+    [brand.slug, router],
   );
 
   const handleOpenUpcoming = useCallback(
@@ -306,6 +324,7 @@ export const PublicBrandPage: React.FC<PublicBrandPageProps> = ({
         upcoming={sharedUpcoming}
         upcomingHasMore={upcomingHasMore}
         menu={menu}
+        venues={venues}
         venue={
           venue === null
             ? null
@@ -324,6 +343,7 @@ export const PublicBrandPage: React.FC<PublicBrandPageProps> = ({
           onOpenTrip: handleOpenTrip,
           onOpenExperience: handleOpenExperience,
           onOpenUpcoming: handleOpenUpcoming,
+          onOpenVenue: handleOpenVenue,
         }}
       />
       <ShareModal

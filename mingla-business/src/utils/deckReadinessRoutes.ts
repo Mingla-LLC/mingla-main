@@ -38,6 +38,8 @@ export function routeForDeckReadinessFix(input: {
   brandId: string;
   placePoolId: string | null;
   fix: string;
+  /** META-ORCH-1255 — the pipeline is venue-keyed; carried into the route. */
+  venueId?: string | null;
 }): string {
   const normalizedFix = normalizeDeckReadinessFix(input.fix);
   const params = new URLSearchParams({
@@ -47,6 +49,9 @@ export function routeForDeckReadinessFix(input: {
   });
   if (input.placePoolId !== null && input.placePoolId.length > 0) {
     params.set("place_pool_id", input.placePoolId);
+  }
+  if (input.venueId != null && input.venueId.length > 0) {
+    params.set("venue_id", input.venueId);
   }
   return `/venue/deck-readiness?${params.toString()}`;
 }
@@ -59,6 +64,7 @@ export function routeForPipelineStateFix(input: {
   return routeForDeckReadinessFix({
     brandId: input.brandId,
     placePoolId: input.state?.place_pool_id ?? null,
+    venueId: input.state?.venue_id ?? null,
     fix: input.fix,
   });
 }

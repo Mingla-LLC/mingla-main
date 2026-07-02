@@ -63,22 +63,25 @@ function parseIntClamp(raw: string, min: number, max: number): number | null {
 
 export interface VenueAvailabilityModuleProps {
   brandId: string | null;
+  /** META-ORCH-1255 — the venue this module is scoped to. */
+  venueId?: string | null;
   testID?: string;
 }
 
 export function VenueAvailabilityModule({
   brandId,
+  venueId = null,
   testID,
 }: VenueAvailabilityModuleProps): React.ReactElement {
   const { rank } = useCurrentBrandRole(brandId);
   const canMutate = rank >= MANAGER_PLUS_RANK;
 
-  const configQuery = useVenueAvailabilityConfig(brandId);
-  const upsertConfig = useUpsertVenueAvailabilityConfig(brandId);
-  const blackoutsQuery = useVenueBlackouts(brandId);
-  const upsertBlackout = useUpsertVenueBlackout(brandId);
-  const deleteBlackout = useDeleteVenueBlackout(brandId);
-  const tablesQuery = useVenueTables(brandId);
+  const configQuery = useVenueAvailabilityConfig(brandId, venueId);
+  const upsertConfig = useUpsertVenueAvailabilityConfig(brandId, venueId);
+  const blackoutsQuery = useVenueBlackouts(brandId, venueId);
+  const upsertBlackout = useUpsertVenueBlackout(brandId, venueId);
+  const deleteBlackout = useDeleteVenueBlackout(brandId, venueId);
+  const tablesQuery = useVenueTables(brandId, venueId);
 
   const config = configQuery.data;
   const servicePeriods = useMemo<ServicePeriod[]>(

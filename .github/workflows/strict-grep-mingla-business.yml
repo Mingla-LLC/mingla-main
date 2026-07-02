@@ -3494,3 +3494,68 @@ jobs:
         run: node .github/scripts/strict-grep/orch-1256-profile-todos-no-false-positive.mjs --self-test
       - name: Run ORCH-1256 profile-todos gate
         run: node .github/scripts/strict-grep/orch-1256-profile-todos-no-false-positive.mjs
+
+  orch-1255-pipeline-no-brand-onconflict:
+    name: "META-ORCH-1255: authoring pipeline state is keyed one-per-venue — no onConflict brand_id clobber (I-PROPOSED-1255-PER-VENUE-OPS-NO-SHARED-INVENTORY)"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Self-test the META-ORCH-1255 pipeline gate
+        run: node .github/scripts/strict-grep/orch-1255-pipeline-no-brand-onconflict.mjs --self-test
+      - name: Run META-ORCH-1255 pipeline gate
+        run: node .github/scripts/strict-grep/orch-1255-pipeline-no-brand-onconflict.mjs
+
+  orch-1255-no-hidden-brand-on-venue-create:
+    name: "META-ORCH-1255: venue creation never inserts a brands row; decommissioned RPCs stay stubs (I-PROPOSED-1255-NO-HIDDEN-BRAND-ON-VENUE-CREATE)"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Self-test the META-ORCH-1255 no-hidden-brand gate
+        run: node .github/scripts/strict-grep/orch-1255-no-hidden-brand-on-venue-create.mjs --self-test
+      - name: Run META-ORCH-1255 no-hidden-brand gate
+        run: node .github/scripts/strict-grep/orch-1255-no-hidden-brand-on-venue-create.mjs
+
+  orch-1255-venue-approval-per-venue-row:
+    name: "META-ORCH-1255: admin venue review is keyed to the venue_listings row; no brands claim-lifecycle writes (I-PROPOSED-1255-VENUE-APPROVAL-PER-VENUE-ROW)"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Self-test the META-ORCH-1255 per-venue-row gate
+        run: node .github/scripts/strict-grep/orch-1255-venue-approval-per-venue-row.mjs --self-test
+      - name: Run META-ORCH-1255 per-venue-row gate
+        run: node .github/scripts/strict-grep/orch-1255-venue-approval-per-venue-row.mjs
+
+  orch-1255-public-venue-anon-safe:
+    name: "META-ORCH-1255: public venue reads go through venue_public_view only — no direct venue_listings client reads (I-PROPOSED-1255-PUBLIC-VENUE-PAGE-ANON-SAFE)"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Self-test the META-ORCH-1255 anon-safe gate
+        run: node .github/scripts/strict-grep/orch-1255-public-venue-anon-safe.mjs --self-test
+      - name: Run META-ORCH-1255 anon-safe gate
+        run: node .github/scripts/strict-grep/orch-1255-public-venue-anon-safe.mjs
+
+  orch-1255-brandedit-no-physical-location-toggle:
+    name: "META-ORCH-1255(B): BrandEditView carries no physical-location toggle; has_physical_location write paths stay decommissioned"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Self-test the META-ORCH-1255 brand-edit toggle gate
+        run: node .github/scripts/strict-grep/orch-1255-brandedit-no-physical-location-toggle.mjs --self-test
+      - name: Run META-ORCH-1255 brand-edit toggle gate
+        run: node .github/scripts/strict-grep/orch-1255-brandedit-no-physical-location-toggle.mjs

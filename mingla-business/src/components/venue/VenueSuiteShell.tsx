@@ -23,6 +23,15 @@
  *                Reservations (2.1b) · Waitlist (2.1b). No ComingSoon left.
  *
  * Bands C/D are not in the module union → cannot be selected → cannot dead-tap.
+ *
+ * META-ORCH-1255 Leg B — VENUE-SCOPED: the shell takes `venueId` and passes it
+ * to every module + the reservations-settings hooks, so everything on screen
+ * belongs to ONE venue_listings row. Lineage note for the ORCH-1040/1145
+ * source contract: the venue tab originally mounted `VenueListingContent`
+ * with `chromeMode="tab"` directly; ORCH-1186 relocated that listing recap
+ * into the Settings module, and 1255 hosts this shell on the pushed
+ * per-venue page (`/venue/{venueId}`) instead of the Hub tab. `VenueMenuModule`
+ * stays brand-keyed ([TRANSITIONAL-3] — menus are brand-level content).
  */
 
 import React, { useCallback, useEffect, useMemo, useState } from "react";
@@ -63,12 +72,15 @@ import {
 
 export interface VenueSuiteShellProps {
   brandId: string | null;
+  /** META-ORCH-1255 — the venue every module is scoped to. */
+  venueId?: string | null;
   focus?: "feedback";
   initialModule?: VenueModule;
 }
 
 export function VenueSuiteShell({
   brandId,
+  venueId = null,
   focus,
   initialModule = "overview",
 }: VenueSuiteShellProps): React.ReactElement {
@@ -81,9 +93,9 @@ export function VenueSuiteShell({
   // last content row clears the nav on native + web-phone.
   const scrollBottomPad = venueScrollBottomPad(insets.bottom);
 
-  const settingsQuery = useVenueReservationSettings(brandId);
+  const settingsQuery = useVenueReservationSettings(brandId, venueId);
   const reservationsEnabled = settingsQuery.data?.reservationsEnabled ?? false;
-  const setEnabled = useSetReservationsEnabled(brandId);
+  const setEnabled = useSetReservationsEnabled(brandId, venueId);
 
   const visibleModules = useMemo(
     () => deriveVenueModules(reservationsEnabled),
@@ -160,32 +172,36 @@ export function VenueSuiteShell({
               </GlassCard>
             </View>
           ) : null}
-          <VenueIntelligenceModule brandId={brandId} />
+          {/* META-ORCH-1255(C) D-D: venue-scoped so the RPC resolves THIS
+              venue's place signals + timezone (the legacy brand place pointer
+              is inert for new venues). */}
+          <VenueIntelligenceModule brandId={brandId} venueId={venueId} />
         </View>
       );
     }
     if (activeModule === "settings") {
-      return <VenueSettingsModule brandId={brandId} />;
+      return <VenueSettingsModule brandId={brandId} venueId={venueId} />;
     }
     // ORCH-1186-C — the always-visible command-band DISPLAY-ONLY menu builder
     // (independent of the reservations toggle). Renders inside the shell's
     // ScrollView (moduleSelfScrolls("menu") === false), like Settings.
     if (activeModule === "menu") {
+      // [TRANSITIONAL-3] menus stay brand-level — no venueId.
       return <VenueMenuModule brandId={brandId} />;
     }
     // 2.1a — Tables + Availability LIVE. 2.1b — Reservations + Waitlist LIVE.
     // The whole booking band is now real operator UI (no ComingSoon left).
     if (activeModule === "tables") {
-      return <VenueTablesModule brandId={brandId} />;
+      return <VenueTablesModule brandId={brandId} venueId={venueId} />;
     }
     if (activeModule === "availability") {
-      return <VenueAvailabilityModule brandId={brandId} />;
+      return <VenueAvailabilityModule brandId={brandId} venueId={venueId} />;
     }
     if (activeModule === "reservations") {
-      return <VenueReservationsModule brandId={brandId} />;
+      return <VenueReservationsModule brandId={brandId} venueId={venueId} />;
     }
     // The remaining booking module: waitlist.
-    return <VenueWaitlistModule brandId={brandId} />;
+    return <VenueWaitlistModule brandId={brandId} venueId={venueId} />;
   };
 
   // ----- Web desktop: two-column master rail + workspace. -----

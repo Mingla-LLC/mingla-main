@@ -6,11 +6,15 @@
  * TWO IN-PLACE STEPS (ORCH-1144 UX refinement, Seth 2026-06-15 — replaces the
  * old separate experience-chooser route that swapped one sheet for another):
  *
- *   Step "root" — three options as tappable rows:
- *     - "Create event"            → `/event/create` (close + push, unchanged)
+ *   Step "root" — four options as tappable rows (META-ORCH-1255 added venue):
+ *     - "Create event"            → steps in-place to Ticketed-vs-RSVP
  *     - "Create experience"       → does NOT navigate; transitions THIS sheet
  *                                   in-place to Step "experience" (stays open)
  *     - "Create trip or otherwise"→ `/trip/create` (close + push, unchanged)
+ *     - "Create venue listing"    → `/venue/create` (close + push) — venues
+ *                                   are first-class rows under the CURRENT
+ *                                   brand (META-ORCH-1255; unconditional per
+ *                                   I-BRAND-UNIVERSAL-AUTHORING)
  *
  *   Step "experience" — the universal experience-create chooser, in-place in the
  *   SAME sheet (no second sheet). Heading "Create An Experience", a back
@@ -87,10 +91,20 @@ export interface UniversalCreatorSheetProps {
   testID?: string;
 }
 
-type IconName = "calendar" | "sparkle" | "globe" | "flash" | "list" | "chevR";
+// META-ORCH-1255 — + "location" for the 4th root row (glyph exists in Icon.tsx;
+// already the venue affordance app-wide).
+type IconName =
+  | "calendar"
+  | "sparkle"
+  | "globe"
+  | "location"
+  | "flash"
+  | "list"
+  | "chevR";
 
 interface RootOption {
-  readonly key: "event" | "experience" | "trip";
+  // META-ORCH-1255 — + "venue" (4th root option, I-BRAND-UNIVERSAL-AUTHORING).
+  readonly key: "event" | "experience" | "trip" | "venue";
   readonly iconName: IconName;
   readonly title: string;
   readonly subtitle: string;
@@ -110,7 +124,10 @@ interface ChooserOption {
   readonly testID: string;
 }
 
-const ROOT_OPTIONS: readonly RootOption[] = [
+// META-ORCH-1255 — exported for the Leg B happy-path regression test
+// (metaOrch1255LegB.happy.test.ts asserts the 4-row shape + the venue row's
+// route without mounting the RN tree under the node jest config).
+export const ROOT_OPTIONS: readonly RootOption[] = [
   {
     key: "event",
     iconName: "calendar",
@@ -140,6 +157,17 @@ const ROOT_OPTIONS: readonly RootOption[] = [
     subtitle: "A multi-day curated package: retreat, tour, weekend getaway.",
     route: "/trip/create",
     testID: "universal-creator-trip",
+  },
+  {
+    key: "venue",
+    iconName: "location",
+    // META-ORCH-1255 — venue listings are first-class: the 4th peer, rendered
+    // UNCONDITIONALLY for every brand (I-BRAND-UNIVERSAL-AUTHORING). Copy per
+    // DESIGN_META-ORCH-1255_VENUE_SURFACES §2.1.
+    title: "Create venue listing",
+    subtitle: "Your place on Mingla — discovered, recommended, bookable.",
+    route: "/venue/create",
+    testID: "universal-creator-venue",
   },
 ] as const;
 
@@ -288,7 +316,11 @@ export const UniversalCreatorSheet: React.FC<UniversalCreatorSheetProps> = ({
                 </View>
                 <View style={styles.rowText}>
                   <Text style={styles.rowTitle}>{option.title}</Text>
-                  <Text style={styles.rowSubtitle}>{option.subtitle}</Text>
+                  {/* META-ORCH-1255 (DESIGN §2.2) — defensive 2-line cap; copy is
+                      authored ≤2 lines at phone width. */}
+                  <Text style={styles.rowSubtitle} numberOfLines={2}>
+                    {option.subtitle}
+                  </Text>
                 </View>
                 <Icon name="chevR" size={20} color={textTokens.tertiary} />
               </Pressable>
@@ -464,7 +496,10 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: spacing.md,
     paddingHorizontal: spacing.md,
-    paddingVertical: spacing.md,
+    // META-ORCH-1255 (DESIGN §2.2) — ROOT rows only: padV 16 → 12 so 4 rows fit
+    // short viewports (iPhone SE class). No 12 token exists — compose sm+xs,
+    // don't invent one. Icon wrap stays 44×44 (row min-height ≥ 44, I-38).
+    paddingVertical: spacing.sm + spacing.xs,
     borderRadius: radiusTokens.lg,
     overflow: "hidden",
     backgroundColor: glass.tint.profileBase,

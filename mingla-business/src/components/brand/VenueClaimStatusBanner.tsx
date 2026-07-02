@@ -26,6 +26,7 @@ import {
   typography,
 } from "../../constants/designSystem";
 import type { Brand } from "../../store/currentBrandStore";
+import type { BrandClaimStatus } from "../../types/brand";
 import { HapticFeedback } from "../../utils/hapticFeedback";
 import { Icon } from "../ui/Icon";
 import {
@@ -35,6 +36,16 @@ import {
 
 interface VenueClaimStatusBannerProps {
   brand: Brand | null | undefined;
+  /**
+   * META-ORCH-1255 — when the caller is venue-scoped it passes the VENUE row's
+   * claim fields here; they take precedence over the legacy-inert brand claim
+   * columns. Absent → legacy brand-field read (pre-1255 callers).
+   */
+  claimRow?: {
+    claimStatus: BrandClaimStatus | null;
+    rejectionReason: string | null;
+    claimFollowUpAt: string | null;
+  } | null;
   /** ORCH-1064 — count of open feedback items in the active round (follow_up only). */
   openCount?: number;
   /** ORCH-1064 — opens the feedback sheet (follow_up only). */
@@ -43,6 +54,7 @@ interface VenueClaimStatusBannerProps {
 
 export function VenueClaimStatusBanner({
   brand,
+  claimRow,
   openCount = 0,
   onPressFeedback,
 }: VenueClaimStatusBannerProps): React.ReactElement | null {
@@ -55,17 +67,30 @@ export function VenueClaimStatusBanner({
     return null;
   }
 
-  const variant = venueClaimBannerVariant({
-    claim_status: brand.claimStatus ?? "none",
-    rejection_reason: brand.rejectionReason ?? null,
-    claim_follow_up_at: brand.claimFollowUpAt ?? null,
-  });
+  const variant = venueClaimBannerVariant(
+    claimRow != null
+      ? {
+          claim_status: claimRow.claimStatus ?? "none",
+          rejection_reason: claimRow.rejectionReason,
+          claim_follow_up_at: claimRow.claimFollowUpAt,
+        }
+      : {
+          claim_status: brand.claimStatus ?? "none",
+          rejection_reason: brand.rejectionReason ?? null,
+          claim_follow_up_at: brand.claimFollowUpAt ?? null,
+        },
+  );
 
   if (variant === null) {
     return null;
   }
 
-  const copy = venueClaimBannerCopy(variant, brand.rejectionReason);
+  const copy = venueClaimBannerCopy(
+    variant,
+    claimRow != null
+      ? (claimRow.rejectionReason ?? undefined)
+      : brand.rejectionReason,
+  );
   if (copy === null) return null;
 
   // ── ORCH-1064 — interactive follow_up tile (ORCH-1073: `suspended` shares it

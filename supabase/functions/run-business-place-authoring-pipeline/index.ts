@@ -138,6 +138,9 @@ interface Tier1Draft {
 interface RequestBody {
   action?: Action;
   brand_id?: string;
+  // META-ORCH-1255 Leg A: the pipeline is keyed one-row-per-VENUE. venue_id is
+  // REQUIRED on every action; the venue must belong to the authed brand.
+  venue_id?: string;
   selected_place_pool_id?: string | null;
   place_pool_id?: string | null;
   draft?: Tier1Draft;
@@ -157,6 +160,19 @@ interface OwnedBrand {
   place_pool_id: string | null;
   google_place_id: string | null;
   venue_category: VenueCategory | null;
+  cover_media_url: string | null;
+  cover_media_type: string | null;
+}
+
+// META-ORCH-1255 Leg A: the venue row the pipeline run is scoped to. The venue
+// row (NOT brands.place_pool_id) is the place-pointer truth from here on.
+interface OwnedVenue {
+  id: string;
+  brand_id: string;
+  place_pool_id: string | null;
+  google_place_id: string | null;
+  venue_category: VenueCategory | null;
+  name: string | null;
   cover_media_url: string | null;
   cover_media_type: string | null;
 }
@@ -498,21 +514,46 @@ async function loadOwnedBrand(
   return brand;
 }
 
+// META-ORCH-1255 Leg A: load the venue row and assert it belongs to the authed
+// brand (loadOwnedBrand already proved the caller owns the brand).
+async function loadOwnedVenue(
+  client: SupabaseClient,
+  venueId: string,
+  brand: OwnedBrand,
+): Promise<OwnedVenue | Response> {
+  const { data, error } = await client
+    .from("venue_listings")
+    .select("id, brand_id, place_pool_id, google_place_id, venue_category, name, cover_media_url, cover_media_type")
+    .eq("id", venueId)
+    .maybeSingle();
+
+  if (error) return errorResponse(500, "VENUE_READ_FAILED", error.message);
+  if (!data) return errorResponse(404, "VENUE_NOT_FOUND", "Venue not found");
+  const venue = data as OwnedVenue;
+  if (venue.brand_id !== brand.id) {
+    return errorResponse(403, "FORBIDDEN", "Venue does not belong to this brand");
+  }
+  return venue;
+}
+
 async function handleTier1(
   client: SupabaseClient,
   userId: string,
   brand: OwnedBrand,
+  venue: OwnedVenue,
   body: RequestBody,
 ): Promise<Response> {
   const draft = body.draft ?? {};
   const selectedPlacePoolId = body.selected_place_pool_id ?? null;
-  const category = draft.venueCategory ?? brand.venue_category ?? "restaurant";
-  const name = asString(draft.name, brand.name ?? "");
+  const category = draft.venueCategory ?? venue.venue_category ?? brand.venue_category ?? "restaurant";
+  const name = asString(draft.name, venue.name ?? brand.name ?? "");
   const address = asString(draft.address, "");
   const lat = typeof draft.lat === "number" ? draft.lat : null;
   const lng = typeof draft.lng === "number" ? draft.lng : null;
-  const coverMediaType = draft.coverMediaType ?? (brand.cover_media_type as Tier1Draft["coverMediaType"]) ?? null;
-  const coverMediaUrl = draft.coverMediaUrl ?? brand.cover_media_url ?? null;
+  const coverMediaType = draft.coverMediaType ??
+    (venue.cover_media_type as Tier1Draft["coverMediaType"]) ??
+    (brand.cover_media_type as Tier1Draft["coverMediaType"]) ?? null;
+  const coverMediaUrl = draft.coverMediaUrl ?? venue.cover_media_url ?? brand.cover_media_url ?? null;
 
   if (selectedPlacePoolId !== null) {
     if (!isUuid(selectedPlacePoolId)) {
@@ -542,16 +583,20 @@ async function handleTier1(
       .eq("id", selectedPlacePoolId);
     if (placeUpdateErr) return errorResponse(500, "PLACE_UPDATE_FAILED", placeUpdateErr.message);
 
-    const { error: brandUpdateErr } = await client
-      .from("brands")
+    // META-ORCH-1255: the VENUE row is the place-pointer truth. brands.
+    // place_pool_id gains NO new writers — one owner per truth
+    // (I-PROPOSED-1255-VENUE-APPROVAL-PER-VENUE-ROW; the brand column is
+    // legacy-inert, readers migrate in Legs B/C).
+    const { error: venueUpdateErr } = await client
+      .from("venue_listings")
       .update({
         place_pool_id: selectedPlacePoolId,
         google_place_id: (place as { google_place_id: string | null }).google_place_id,
       })
-      .eq("id", brand.id);
-    if (brandUpdateErr) return errorResponse(500, "BRAND_UPDATE_FAILED", brandUpdateErr.message);
+      .eq("id", venue.id);
+    if (venueUpdateErr) return errorResponse(500, "VENUE_UPDATE_FAILED", venueUpdateErr.message);
 
-    await upsertPipelineState(client, brand.id, selectedPlacePoolId, "processing", {
+    await upsertPipelineState(client, brand.id, venue.id, selectedPlacePoolId, "processing", {
       stageStatus: { tier1: "linked_existing" },
       coaching: [],
       bouncerReasons: [],
@@ -609,8 +654,10 @@ async function handleTier1(
   if (insertErr) return errorResponse(500, "PLACE_INSERT_FAILED", insertErr.message);
 
   const placePoolId = (inserted as { id: string }).id;
-  const { error: brandUpdateErr } = await client
-    .from("brands")
+  // META-ORCH-1255: pointer + location land on the VENUE row (brands gains NO
+  // new writers — one owner per truth; the venue row IS the truth).
+  const { error: venueCreateUpdateErr } = await client
+    .from("venue_listings")
     .update({
       place_pool_id: placePoolId,
       google_place_id: null,
@@ -619,10 +666,10 @@ async function handleTier1(
       city: asString(draft.city, ""),
       country_code: asString(draft.countryCode, ""),
     })
-    .eq("id", brand.id);
-  if (brandUpdateErr) return errorResponse(500, "BRAND_UPDATE_FAILED", brandUpdateErr.message);
+    .eq("id", venue.id);
+  if (venueCreateUpdateErr) return errorResponse(500, "VENUE_UPDATE_FAILED", venueCreateUpdateErr.message);
 
-  await upsertPipelineState(client, brand.id, placePoolId, "processing", {
+  await upsertPipelineState(client, brand.id, venue.id, placePoolId, "processing", {
     stageStatus: { tier1: "created_business_authored" },
     coaching: [],
     bouncerReasons: [],
@@ -649,15 +696,22 @@ interface PipelineStatePatch {
 
 // SPEC §5.2 canonical shape: writes bouncer_reasons text[] (plural),
 // tier1_completed_at / tier2_completed_at, last_error_code / last_error_message.
+// META-ORCH-1255 (R-1 kill): the pipeline row is keyed one-per-VENUE. The
+// conflict target is venue_id — NEVER the brand column (a brand-keyed conflict
+// target was the venue-#2-clobbers-venue-#1 bug; CI gate
+// .github/scripts/strict-grep/orch-1255-pipeline-no-brand-onconflict.mjs
+// fails any revert).
 async function upsertPipelineState(
   client: SupabaseClient,
   brandId: string,
+  venueId: string,
   placePoolId: string | null,
   status: "draft" | "processing" | "needs_fix" | "deck_eligible" | "failed",
   patch: PipelineStatePatch,
 ): Promise<void> {
   const row: Record<string, unknown> = {
     brand_id: brandId,
+    venue_id: venueId,
     place_pool_id: placePoolId,
     status,
     stage_status: patch.stageStatus,
@@ -670,7 +724,7 @@ async function upsertPipelineState(
   if (patch.tier2CompletedAt !== undefined) row.tier2_completed_at = patch.tier2CompletedAt;
   await client
     .from("brand_place_pipeline_state")
-    .upsert(row, { onConflict: "brand_id" });
+    .upsert(row, { onConflict: "venue_id" });
 }
 
 async function loadSignals(client: SupabaseClient): Promise<SignalRow[]> {
@@ -1153,9 +1207,10 @@ export function buildAiSignalScores(
 async function handleTier2(
   client: SupabaseClient,
   brand: OwnedBrand,
+  venue: OwnedVenue,
   body: RequestBody,
 ): Promise<Response> {
-  const placePoolId = body.place_pool_id ?? brand.place_pool_id;
+  const placePoolId = body.place_pool_id ?? venue.place_pool_id;
   if (!isUuid(placePoolId)) {
     return errorResponse(400, "BAD_REQUEST", "place_pool_id is required");
   }
@@ -1225,7 +1280,7 @@ async function handleTier2(
     aiSignalScores = buildAiSignalScores(signals, gemini.evaluations, evaluatedAt);
   } catch (aiErr) {
     const aiMsg = aiErr instanceof Error ? aiErr.message : "ai_stage_failed";
-    await upsertPipelineState(client, brand.id, placePoolId, "needs_fix", {
+    await upsertPipelineState(client, brand.id, venue.id, placePoolId, "needs_fix", {
       stageStatus: { tier2: "ai_stage_failed" },
       coaching: coachingForReasons(["AI_STAGE_FAILED"]),
       bouncerReasons: [],
@@ -1306,7 +1361,7 @@ async function handleTier2(
     .eq("id", placePoolId);
   if (updateErr) return errorResponse(500, "PLACE_UPDATE_FAILED", updateErr.message);
 
-  await upsertPipelineState(client, brand.id, placePoolId, nextStatus, {
+  await upsertPipelineState(client, brand.id, venue.id, placePoolId, nextStatus, {
     stageStatus: fullStageStatus({
       photo_analysis: photoAnalysis && Object.keys(photoAnalysis).length > 0 ? "complete" : "skipped_no_images",
       sales_bio_generation: "generated_pending_confirmation",
@@ -1334,9 +1389,10 @@ async function handleTier2(
 async function handleConfirmAiOutputs(
   client: SupabaseClient,
   brand: OwnedBrand,
+  venue: OwnedVenue,
   body: RequestBody,
 ): Promise<Response> {
-  const placePoolId = body.place_pool_id ?? brand.place_pool_id;
+  const placePoolId = body.place_pool_id ?? venue.place_pool_id;
   if (!isUuid(placePoolId)) {
     return errorResponse(400, "BAD_REQUEST", "place_pool_id is required");
   }
@@ -1425,7 +1481,7 @@ async function handleConfirmAiOutputs(
     .eq("id", placePoolId);
   if (updateErr) return errorResponse(500, "PLACE_UPDATE_FAILED", updateErr.message);
 
-  await upsertPipelineState(client, brand.id, placePoolId, nextStatus, {
+  await upsertPipelineState(client, brand.id, venue.id, placePoolId, nextStatus, {
     stageStatus: fullStageStatus({
       photo_analysis: "complete",
       sales_bio_generation: "confirmed",
@@ -1451,9 +1507,10 @@ async function handleConfirmAiOutputs(
 async function handleRefreshDeckReadiness(
   client: SupabaseClient,
   brand: OwnedBrand,
+  venue: OwnedVenue,
   body: RequestBody,
 ): Promise<Response> {
-  const placePoolId = body.place_pool_id ?? brand.place_pool_id;
+  const placePoolId = body.place_pool_id ?? venue.place_pool_id;
   if (!isUuid(placePoolId)) {
     return errorResponse(400, "BAD_REQUEST", "place_pool_id is required");
   }
@@ -1491,7 +1548,7 @@ async function handleRefreshDeckReadiness(
     .eq("id", placePoolId);
   if (updateErr) return errorResponse(500, "PLACE_UPDATE_FAILED", updateErr.message);
 
-  await upsertPipelineState(client, brand.id, placePoolId, status, {
+  await upsertPipelineState(client, brand.id, venue.id, placePoolId, status, {
     stageStatus: fullStageStatus({
       photo_analysis: "complete_or_not_applicable",
       sales_bio_generation: confirmed ? "confirmed" : "pending_confirmation",
@@ -1517,9 +1574,10 @@ async function handleRefreshDeckReadiness(
 async function handleGetAuthoringContext(
   client: SupabaseClient,
   brand: OwnedBrand,
+  venue: OwnedVenue,
   body: RequestBody,
 ): Promise<Response> {
-  const placePoolId = body.place_pool_id ?? brand.place_pool_id;
+  const placePoolId = body.place_pool_id ?? venue.place_pool_id;
   if (!isUuid(placePoolId)) {
     return errorResponse(400, "BAD_REQUEST", "place_pool_id is required");
   }
@@ -1534,7 +1592,9 @@ async function handleGetAuthoringContext(
   const { data: pipeline } = await client
     .from("brand_place_pipeline_state")
     .select("status, coaching")
-    .eq("brand_id", brand.id)
+    // META-ORCH-1255: one pipeline row PER VENUE — the brand-keyed
+    // .maybeSingle() breaks the moment a brand has 2 venues (F-2 client leg).
+    .eq("venue_id", venue.id)
     .maybeSingle();
   const inputs =
     ((place as { business_authoring_inputs?: Record<string, unknown> | null }).business_authoring_inputs ?? {});
@@ -1586,9 +1646,10 @@ async function handleGetAuthoringContext(
 async function handleSyncHeroMedia(
   client: SupabaseClient,
   brand: OwnedBrand,
+  venue: OwnedVenue,
   body: RequestBody,
 ): Promise<Response> {
-  const placePoolId = body.place_pool_id ?? brand.place_pool_id;
+  const placePoolId = body.place_pool_id ?? venue.place_pool_id;
   if (!isUuid(placePoolId)) {
     return errorResponse(400, "BAD_REQUEST", "place_pool_id is required");
   }
@@ -1602,6 +1663,24 @@ async function handleSyncHeroMedia(
     })
     .eq("id", placePoolId);
   if (error) return errorResponse(500, "PLACE_UPDATE_FAILED", error.message);
+  // META-ORCH-1255(C) D-C: the venue row owns the venue listing's cover (M1
+  // columns cover_media_url/cover_media_type). Pre-fix the hero pick only
+  // reached place_pool here while the client CoverPicker's "brand" target
+  // clobbered brands.cover_media_url — two venues fought over the parent
+  // brand's cover. `client` is the service-role client (venue_listings has no
+  // client write policy by design); ownership was asserted upstream by
+  // loadOwnedBrand → loadOwnedVenue. mediaType is constrained by the
+  // RequestBody union (image|video|gif|null), matching the M1 CHECK.
+  const { error: venueCoverErr } = await client
+    .from("venue_listings")
+    .update({
+      cover_media_url: mediaUrl.length > 0 ? mediaUrl : null,
+      cover_media_type: mediaUrl.length > 0 ? mediaType : null,
+    })
+    .eq("id", venue.id);
+  if (venueCoverErr) {
+    return errorResponse(500, "VENUE_UPDATE_FAILED", venueCoverErr.message);
+  }
   return jsonResponse(200, {
     kind: "ok",
     action: "sync_hero_media",
@@ -1613,9 +1692,10 @@ async function handleSyncHeroMedia(
 async function handleSyncGallery(
   client: SupabaseClient,
   brand: OwnedBrand,
+  venue: OwnedVenue,
   body: RequestBody,
 ): Promise<Response> {
-  const placePoolId = body.place_pool_id ?? brand.place_pool_id;
+  const placePoolId = body.place_pool_id ?? venue.place_pool_id;
   if (!isUuid(placePoolId)) {
     return errorResponse(400, "BAD_REQUEST", "place_pool_id is required");
   }
@@ -1664,30 +1744,37 @@ Deno.serve(async (req) => {
   if (!isUuid(body.brand_id)) {
     return errorResponse(400, "BAD_REQUEST", "brand_id must be a uuid");
   }
+  // META-ORCH-1255 Leg A: venue_id is REQUIRED on every action (the pipeline
+  // is one-row-per-venue). Validated at entry next to brand_id.
+  if (!isUuid(body.venue_id)) {
+    return errorResponse(400, "BAD_REQUEST", "venue_id must be a uuid");
+  }
   const brand = await loadOwnedBrand(userResult.serviceClient, body.brand_id, userResult.userId);
   if (brand instanceof Response) return brand;
+  const venue = await loadOwnedVenue(userResult.serviceClient, body.venue_id, brand);
+  if (venue instanceof Response) return venue;
 
   try {
     if (body.action === "upsert_tier1_place") {
-      return await handleTier1(userResult.serviceClient, userResult.userId, brand, body);
+      return await handleTier1(userResult.serviceClient, userResult.userId, brand, venue, body);
     }
     if (body.action === "run_tier2_pipeline" || body.action === "regenerate_sales_bio") {
-      return await handleTier2(userResult.serviceClient, brand, body);
+      return await handleTier2(userResult.serviceClient, brand, venue, body);
     }
     if (body.action === "confirm_ai_outputs") {
-      return await handleConfirmAiOutputs(userResult.serviceClient, brand, body);
+      return await handleConfirmAiOutputs(userResult.serviceClient, brand, venue, body);
     }
     if (body.action === "refresh_deck_readiness") {
-      return await handleRefreshDeckReadiness(userResult.serviceClient, brand, body);
+      return await handleRefreshDeckReadiness(userResult.serviceClient, brand, venue, body);
     }
     if (body.action === "get_authoring_context") {
-      return await handleGetAuthoringContext(userResult.serviceClient, brand, body);
+      return await handleGetAuthoringContext(userResult.serviceClient, brand, venue, body);
     }
     if (body.action === "sync_hero_media") {
-      return await handleSyncHeroMedia(userResult.serviceClient, brand, body);
+      return await handleSyncHeroMedia(userResult.serviceClient, brand, venue, body);
     }
     if (body.action === "sync_gallery") {
-      return await handleSyncGallery(userResult.serviceClient, brand, body);
+      return await handleSyncGallery(userResult.serviceClient, brand, venue, body);
     }
   } catch (err) {
     const msg = err instanceof Error ? err.message : "Pipeline failed";

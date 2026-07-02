@@ -33,14 +33,27 @@ const PROFILE = biz("src/components/brand/BrandProfileView.tsx");
 
 describe("ORCH-1145 — Venue Hub tab visibility gate (useHubTabs)", () => {
   // T-1 / T-2 / T-3 / T-4 — deriveHubVisibleTabs conditional venue append.
-  test("T-1/T-2/T-3 — venue appended IFF hasPhysicalLocation || hasPlacePool", () => {
-    // The append condition (venue pill conditional on the two venue flags).
+  // [TEST-MOD-APPROVED META-ORCH-1255] The ORCH-1145 gate shape
+  // (hasPhysicalLocation || hasPlacePool) is SUPERSEDED by SPEC
+  // META-ORCH-1255 §D-5: the LIVE gate is `venueCount > 0` (≥1
+  // venue_listings row, any state); the legacy flags survive only as
+  // dormant [TRANSITIONAL] optional arms with no production writer
+  // (Leg B deviation D-B1 — kept executable for the 1145 adversarial
+  // suite). The contract intent is unchanged — the Venue pill is still
+  // CONDITIONAL, never unconditional — only the predicate moved to the
+  // venue-row count. Behavioral coverage of the new gate:
+  // src/hooks/__tests__/useHubTabs.venueGate.adversarial.test.ts +
+  // __tests__/metaOrch1255LegB.happy.test.ts (T-B2). Approved by the
+  // orchestrator RETEST directive, 2026-07-02.
+  test("T-1/T-2/T-3 — venue appended IFF venueCount>0 (or dormant legacy flags)", () => {
+    // The append condition: venueCount-first, legacy flags as fallback arms.
     expect(USE_HUB_TABS).toMatch(
-      /if\s*\(\s*venue\.hasPhysicalLocation\s*\|\|\s*venue\.hasPlacePool\s*\)\s*visible\.push\(\s*["']venue["']\s*\)/,
+      /if\s*\(\s*\(venue\.venueCount\s*\?\?\s*0\)\s*>\s*0\s*\|\|\s*venue\.hasPhysicalLocation\s*===\s*true\s*\|\|\s*venue\.hasPlacePool\s*===\s*true\s*\)\s*\{\s*visible\.push\(\s*["']venue["']\s*\);?\s*\}/,
     );
-    // The venue flags input type exists.
-    expect(USE_HUB_TABS).toContain("hasPhysicalLocation: boolean");
-    expect(USE_HUB_TABS).toContain("hasPlacePool: boolean");
+    // The venue visibility input type: venueCount + optional legacy flags.
+    expect(USE_HUB_TABS).toContain("venueCount?: number");
+    expect(USE_HUB_TABS).toContain("hasPhysicalLocation?: boolean");
+    expect(USE_HUB_TABS).toContain("hasPlacePool?: boolean");
   });
 
   test("T-4 — venue appended LAST (after events/trips/experiences) for rightmost peer order", () => {
@@ -120,9 +133,15 @@ describe("ORCH-1145 — content-only Venue tab (no dead tap)", () => {
 });
 
 describe("ORCH-1145 — layout threads venue visibility, preserves nav-lock", () => {
-  test("_layout computes venue flags from currentBrand (no second fetch) + threads them", () => {
-    expect(HUB_LAYOUT).toContain("currentBrand?.hasPhysicalLocation === true");
-    expect(HUB_LAYOUT).toContain("currentBrand?.placePoolId != null");
+  // [TEST-MOD-APPROVED META-ORCH-1255] The layout no longer derives venue
+  // visibility from currentBrand flags (SPEC §D-5 / Leg B #9): it counts the
+  // brand's venue_listings rows via useVenueListings (shared react-query
+  // cache with the Hub card list — still no duplicate fetch of brand data)
+  // and threads { venueCount }. Threading pin preserved verbatim. Approved
+  // by the orchestrator RETEST directive, 2026-07-02.
+  test("_layout derives venueCount from useVenueListings + threads venueVisibility", () => {
+    expect(HUB_LAYOUT).toContain("useVenueListings(currentBrand?.id ?? null)");
+    expect(HUB_LAYOUT).toMatch(/venueCount\s*=\s*venueListings\.data\?\.length\s*\?\?\s*0/);
     expect(HUB_LAYOUT).toMatch(/useHubVisibleTabs\([^)]*venueVisibility/s);
   });
 

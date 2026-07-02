@@ -22,6 +22,13 @@ export interface VenueReservableRow {
   reservable: boolean;
   brand_id: string | null;
   currency: string | null;
+  /**
+   * META-ORCH-1255(C) — the venue_listings row id (ADDITIVE resolver column;
+   * NULL unless reservable — same no-dead-tap NULL discipline as brand_id).
+   * The reserve flow passes THIS to pg_venue_available_slots +
+   * venue-reservation-create so a multi-venue brand books the right venue.
+   */
+  venue_id: string | null;
 }
 
 const UUID_RE =
@@ -44,7 +51,7 @@ async function fetchVenueReservable(
     | VenueReservableRow
     | undefined;
   return (
-    row ?? { reservable: false, brand_id: null, currency: null }
+    row ?? { reservable: false, brand_id: null, currency: null, venue_id: null }
   );
 }
 

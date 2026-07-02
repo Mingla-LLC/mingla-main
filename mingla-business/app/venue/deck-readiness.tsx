@@ -14,11 +14,15 @@ import {
   typography,
 } from "../../src/constants/designSystem";
 import { useAuth } from "../../src/context/AuthContext";
-import { useBrand } from "../../src/hooks/useBrands";
 import { useBrandPlaceAuthoringContext } from "../../src/hooks/useBrandPlacePipelineState";
+import { useVenueListing } from "../../src/hooks/useVenueListings";
+// META-ORCH-1255(R2) — own module (NOT the wizard file): this route + the
+// create route both consume the setup, and a shared-file layout hoisted the
+// whole wizard + its step modules into the eager __common chunk (ORCH-1083
+// web bundle budget).
 import {
   VenueDeckReadinessSetup,
-} from "../../src/components/venue/VenueCreatorWizard";
+} from "../../src/components/venue/VenueDeckReadinessSetup";
 import { IconChrome } from "../../src/components/ui/IconChrome";
 import type { CoverPatch } from "../../src/components/ui/CoverPicker";
 import type { DeckReadinessFocus } from "../../src/utils/deckReadinessRoutes";
@@ -51,15 +55,38 @@ export default function VenueDeckReadinessRoute(): React.ReactElement {
   const params = useLocalSearchParams<{
     brand_id?: string | string[];
     place_pool_id?: string | string[];
+    // META-ORCH-1255 — the pipeline is venue-keyed; routes carry venue_id.
+    venue_id?: string | string[];
     focus?: string | string[];
   }>();
   const brandId = paramValue(params.brand_id);
   const requestedPlacePoolId = paramValue(params.place_pool_id);
+  const venueId = paramValue(params.venue_id);
   const focus = normalizeFocus(paramValue(params.focus));
-  const brandQuery = useBrand(brandId);
-  const brand = brandQuery.data ?? null;
-  const placePoolId = requestedPlacePoolId ?? brand?.placePoolId ?? null;
-  const contextQuery = useBrandPlaceAuthoringContext(brandId, placePoolId);
+  const venueQuery = useVenueListing(venueId);
+  const venue = venueQuery.data ?? null;
+  // One owner per truth: the place pointer lives on the venue row.
+  const placePoolId = requestedPlacePoolId ?? venue?.placePoolId ?? null;
+  const contextQuery = useBrandPlaceAuthoringContext(
+    brandId,
+    placePoolId,
+    venueId,
+  );
+
+  // META-ORCH-1255 — operator inputs resume from the stored tier2 (the wizard
+  // path seeds them from the draft; here they come back from the server).
+  const operatorInputs = useMemo<{
+    tagline: string | null;
+    description: string | null;
+  }>(() => {
+    const op = (contextQuery.data?.tier2 as
+      | { operator_inputs?: { tagline?: unknown; description?: unknown } }
+      | undefined)?.operator_inputs;
+    return {
+      tagline: typeof op?.tagline === "string" ? op.tagline : null,
+      description: typeof op?.description === "string" ? op.description : null,
+    };
+  }, [contextQuery.data]);
 
   const cover = useMemo<CoverPatch | null>(() => {
     const context = contextQuery.data;
@@ -80,7 +107,7 @@ export default function VenueDeckReadinessRoute(): React.ReactElement {
   }
 
   const loading =
-    brandQuery.isLoading ||
+    venueQuery.isLoading ||
     (placePoolId !== null && contextQuery.isLoading);
 
   if (loading) {
@@ -94,7 +121,12 @@ export default function VenueDeckReadinessRoute(): React.ReactElement {
     );
   }
 
-  if (brand === null || placePoolId === null || contextQuery.data === undefined) {
+  if (
+    brandId === null ||
+    venue === null ||
+    placePoolId === null ||
+    contextQuery.data === undefined
+  ) {
     return (
       <View style={[styles.root, { paddingTop: insets.top }]}>
         <View style={styles.chrome}>
@@ -129,8 +161,13 @@ export default function VenueDeckReadinessRoute(): React.ReactElement {
       </View>
       <VenueDeckReadinessSetup
         accountId={user.id}
-        brand={brand}
+        brandId={brandId}
+        venueId={venue.id}
         placePoolId={placePoolId}
+        venueName={venue.name}
+        venueCategory={venue.venueCategory}
+        operatorTagline={operatorInputs.tagline}
+        operatorDescription={operatorInputs.description}
         focus={focus}
         initialTier2={contextQuery.data.tier2}
         initialPendingBio={

@@ -1,8 +1,10 @@
 /**
- * Ve1 — transactional email when a venue brand is submitted (pending_review).
- * Invoked from mingla-business `createVenueBrandPendingReview` after RPC success.
+ * Ve1 → META-ORCH-1255: transactional email when a VENUE LISTING is submitted
+ * (venue_listings.claim_status = pending_review). Invoked from mingla-business
+ * `invokeVenueClaimSubmittedEmail` (Leg B) after biz_create_venue_listing.
  *
- * Auth: caller JWT must own the brand (account_id = auth.uid()).
+ * Auth: caller JWT must own the venue's brand (brands.account_id = auth.uid()).
+ * Body: { venue_id } (was { brand_id } pre-1255).
  */
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
@@ -42,12 +44,12 @@ serve(async (req) => {
     if (!authHeader) return json({ error: "No authorization header" }, 401);
 
     const body = await req.json().catch(() => null) as {
-      brand_id?: string;
+      venue_id?: string;
     } | null;
-    const brandId =
-      typeof body?.brand_id === "string" ? body.brand_id.trim() : "";
-    if (brandId.length === 0) {
-      return json({ error: "brand_id required" }, 400);
+    const venueId =
+      typeof body?.venue_id === "string" ? body.venue_id.trim() : "";
+    if (venueId.length === 0) {
+      return json({ error: "venue_id required" }, 400);
     }
 
     const userClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
@@ -57,10 +59,24 @@ serve(async (req) => {
     if (userErr || !user) return json({ error: "Unauthorized" }, 401);
 
     const admin = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+    // META-ORCH-1255: the claim lives on the VENUE row; ownership resolves via
+    // its parent brand.
+    const { data: venueRow, error: venueErr } = await admin
+      .from("venue_listings")
+      .select("id, name, brand_id, claim_status, contact_email")
+      .eq("id", venueId)
+      .maybeSingle();
+
+    if (venueErr) return json({ error: venueErr.message }, 500);
+    if (!venueRow) return json({ error: "Venue not found" }, 404);
+    if (venueRow.claim_status !== "pending_review") {
+      return json({ error: "Not a pending venue submission" }, 400);
+    }
+
     const { data: brandRow, error: brandErr } = await admin
       .from("brands")
-      .select("id, name, account_id, claim_status, contact_email")
-      .eq("id", brandId)
+      .select("id, name, account_id, contact_email")
+      .eq("id", venueRow.brand_id as string)
       .maybeSingle();
 
     if (brandErr) return json({ error: brandErr.message }, 500);
@@ -68,13 +84,14 @@ serve(async (req) => {
     if (brandRow.account_id !== user.id) {
       return json({ error: "Forbidden" }, 403);
     }
-    if (brandRow.claim_status !== "pending_review") {
-      return json({ error: "Not a pending venue submission" }, 400);
-    }
 
     const to =
       (typeof user.email === "string" && user.email.length > 0
         ? user.email
+        : null) ??
+      (typeof venueRow.contact_email === "string" &&
+          venueRow.contact_email.length > 0
+        ? venueRow.contact_email
         : null) ??
       (typeof brandRow.contact_email === "string" &&
           brandRow.contact_email.length > 0
@@ -110,7 +127,7 @@ serve(async (req) => {
 
     const title = "Venue submitted — we’re reviewing it";
     const paragraphs = [
-      `Thanks for submitting ${brandRow.name as string}.`,
+      `Thanks for submitting ${venueRow.name as string} under ${brandRow.name as string}.`,
       "Your venue is under review. We typically respond within 4 business hours.",
       "We’ll email you when it’s approved or if we need more information.",
     ];

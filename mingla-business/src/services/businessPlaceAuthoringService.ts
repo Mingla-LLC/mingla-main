@@ -67,6 +67,8 @@ export interface RefreshDeckReadinessResult {
 export interface BrandPlacePipelineState {
   id: string;
   brand_id: string;
+  // META-ORCH-1255 — the pipeline row is keyed one-per-VENUE.
+  venue_id: string;
   place_pool_id: string | null;
   status: "draft" | "processing" | "needs_fix" | "deck_eligible" | "failed";
   tier1_completed_at: string | null;
@@ -155,6 +157,12 @@ async function pipelineInvokeError(
 
 export async function upsertTier1Place(input: {
   brandId: string;
+  // META-ORCH-1255 Leg B — the pipeline is venue-keyed; venue_id is REQUIRED
+  // on every edge-fn action (the fn 400s without it — a structured error the
+  // caller surfaces). Optional at the TYPE level only so the pinned
+  // append-only error-surfacing test's legacy call shape keeps compiling;
+  // every live caller passes it.
+  venueId?: string;
   selectedPlacePoolId: string | null;
   draft: Tier1PlaceDraft;
 }): Promise<Tier1PlaceResult> {
@@ -164,6 +172,7 @@ export async function upsertTier1Place(input: {
       body: {
         action: "upsert_tier1_place",
         brand_id: input.brandId,
+        venue_id: input.venueId ?? null,
         selected_place_pool_id: input.selectedPlacePoolId,
         draft: input.draft,
       },
@@ -177,6 +186,7 @@ export async function upsertTier1Place(input: {
 
 export async function syncHeroMedia(input: {
   brandId: string;
+  venueId: string;
   placePoolId: string;
   coverMediaUrl: string | null;
   coverMediaType: "image" | "video" | "gif" | null;
@@ -187,6 +197,7 @@ export async function syncHeroMedia(input: {
       body: {
         action: "sync_hero_media",
         brand_id: input.brandId,
+        venue_id: input.venueId,
         place_pool_id: input.placePoolId,
         cover_media_url: input.coverMediaUrl,
         cover_media_type: input.coverMediaType,
@@ -208,6 +219,7 @@ export interface SyncGalleryResult {
 // the photos to storage; this writes the authoritative URL set server-side).
 export async function syncGallery(input: {
   brandId: string;
+  venueId: string;
   placePoolId: string;
   galleryUrls: string[];
 }): Promise<SyncGalleryResult> {
@@ -217,6 +229,7 @@ export async function syncGallery(input: {
       body: {
         action: "sync_gallery",
         brand_id: input.brandId,
+        venue_id: input.venueId,
         place_pool_id: input.placePoolId,
         gallery_urls: input.galleryUrls,
       },
@@ -231,6 +244,7 @@ export async function syncGallery(input: {
 
 export async function runTier2Pipeline(input: {
   brandId: string;
+  venueId: string;
   placePoolId: string;
   tier2: Record<string, unknown>;
 }): Promise<Tier2PipelineResult> {
@@ -240,6 +254,7 @@ export async function runTier2Pipeline(input: {
       body: {
         action: "run_tier2_pipeline",
         brand_id: input.brandId,
+        venue_id: input.venueId,
         place_pool_id: input.placePoolId,
         tier2: input.tier2,
       },
@@ -257,6 +272,7 @@ export async function runTier2Pipeline(input: {
 
 export async function confirmAiOutputs(input: {
   brandId: string;
+  venueId: string;
   placePoolId: string;
   salesBio: string;
   facets: Record<string, boolean | null>;
@@ -268,6 +284,7 @@ export async function confirmAiOutputs(input: {
       body: {
         action: "confirm_ai_outputs",
         brand_id: input.brandId,
+        venue_id: input.venueId,
         place_pool_id: input.placePoolId,
         sales_bio: input.salesBio,
         facets: input.facets,
@@ -284,6 +301,7 @@ export async function confirmAiOutputs(input: {
 
 export async function refreshDeckReadiness(input: {
   brandId: string;
+  venueId: string;
   placePoolId: string;
 }): Promise<RefreshDeckReadinessResult> {
   const { data, error } = await supabase.functions.invoke(
@@ -292,6 +310,7 @@ export async function refreshDeckReadiness(input: {
       body: {
         action: "refresh_deck_readiness",
         brand_id: input.brandId,
+        venue_id: input.venueId,
         place_pool_id: input.placePoolId,
       },
     },
@@ -306,6 +325,7 @@ export async function refreshDeckReadiness(input: {
 export async function fetchBrandPlaceAuthoringContext(input: {
   brandId: string;
   placePoolId: string;
+  venueId: string;
 }): Promise<BrandPlaceAuthoringContext> {
   const { data, error } = await supabase.functions.invoke(
     "run-business-place-authoring-pipeline",
@@ -313,6 +333,7 @@ export async function fetchBrandPlaceAuthoringContext(input: {
       body: {
         action: "get_authoring_context",
         brand_id: input.brandId,
+        venue_id: input.venueId,
         place_pool_id: input.placePoolId,
       },
     },
@@ -324,14 +345,51 @@ export async function fetchBrandPlaceAuthoringContext(input: {
   );
 }
 
+const PIPELINE_STATE_COLUMNS =
+  "id, brand_id, venue_id, place_pool_id, status, tier1_completed_at, tier2_completed_at, stage_status, bouncer_reasons, last_error_code, last_error_message, coaching, updated_at";
+
+/**
+ * [TRANSITIONAL] legacy brand-keyed single-row read. Pre-1255 this was a
+ * `.maybeSingle()` on the brand's ONE pipeline row; with N venue rows per
+ * brand that errors, so it now returns the LATEST row (or null). Live
+ * surfaces read `fetchVenuePipelineState` / `fetchBrandPipelineStates`.
+ * Exit condition: pinned source-contract tests superseded → delete.
+ */
 export async function fetchBrandPlacePipelineState(
   brandId: string,
 ): Promise<BrandPlacePipelineState | null> {
   const { data, error } = await supabase
     .from("brand_place_pipeline_state")
-    .select("id, brand_id, place_pool_id, status, tier1_completed_at, tier2_completed_at, stage_status, bouncer_reasons, last_error_code, last_error_message, coaching, updated_at")
+    .select(PIPELINE_STATE_COLUMNS)
     .eq("brand_id", brandId)
+    .order("updated_at", { ascending: false })
+    .limit(1);
+  if (error !== null) throw error;
+  const rows = (data ?? []) as BrandPlacePipelineState[];
+  return rows[0] ?? null;
+}
+
+/** META-ORCH-1255 — the pipeline row for ONE venue. */
+export async function fetchVenuePipelineState(
+  venueId: string,
+): Promise<BrandPlacePipelineState | null> {
+  const { data, error } = await supabase
+    .from("brand_place_pipeline_state")
+    .select(PIPELINE_STATE_COLUMNS)
+    .eq("venue_id", venueId)
     .maybeSingle();
   if (error !== null) throw error;
   return (data ?? null) as BrandPlacePipelineState | null;
+}
+
+/** META-ORCH-1255 — ALL pipeline rows of a brand (per-venue statuses). */
+export async function fetchBrandPipelineStates(
+  brandId: string,
+): Promise<BrandPlacePipelineState[]> {
+  const { data, error } = await supabase
+    .from("brand_place_pipeline_state")
+    .select(PIPELINE_STATE_COLUMNS)
+    .eq("brand_id", brandId);
+  if (error !== null) throw error;
+  return (data ?? []) as BrandPlacePipelineState[];
 }

@@ -77,9 +77,14 @@ const emptyIntelligence = (currency: string): VenueIntelligence => ({
 
 export async function fetchVenueIntelligence(
   brandId: string,
+  // META-ORCH-1255(C) D-D: the venue in scope. When set, the RPC resolves
+  // THIS venue's place signals + availability-config timezone; when null the
+  // server falls back to single-venue resolution (legacy brand pointer last).
+  venueId: string | null = null,
 ): Promise<VenueIntelligence> {
   const { data, error } = await supabase.rpc("venue_intelligence_overview", {
     p_brand_id: brandId,
+    ...(venueId !== null ? { p_venue_id: venueId } : {}),
   });
 
   if (error !== null) {

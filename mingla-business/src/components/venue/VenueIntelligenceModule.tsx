@@ -76,14 +76,23 @@ const HOUR_TICKS: { hour: number; label: string }[] = [
 
 export interface VenueIntelligenceModuleProps {
   brandId: string | null;
+  /**
+   * META-ORCH-1255(C) D-D — the venue_listings row in scope. When present the
+   * RPC resolves THIS venue's place signals + availability-config timezone
+   * (the legacy brands.place_pool_id is inert for new venues). Optional
+   * (default null) so pinned render tests compile/behave unchanged; the
+   * server then falls back to single-venue resolution.
+   */
+  venueId?: string | null;
 }
 
 export function VenueIntelligenceModule({
   brandId,
+  venueId = null,
 }: VenueIntelligenceModuleProps): React.ReactElement {
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const query = useVenueIntelligence(brandId);
+  const query = useVenueIntelligence(brandId, venueId);
   const data = query.data ?? null;
 
   // ORCH-1190 #7 — "Message your guests" blast entry, RELOCATED from Settings

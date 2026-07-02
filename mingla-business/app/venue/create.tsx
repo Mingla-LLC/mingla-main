@@ -30,6 +30,7 @@ import { Icon } from "../../src/components/ui/Icon";
 import { IconChrome } from "../../src/components/ui/IconChrome";
 import { Input } from "../../src/components/ui/Input";
 import { usePoolMatchSearch } from "../../src/hooks/usePoolMatchSearch";
+import { useCurrentBrand } from "../../src/hooks/useCurrentBrand";
 import { useDraftVenueStore } from "../../src/store/draftVenueStore";
 import { prefillDraftFromPoolMatch } from "../../src/utils/prefillDraftFromPoolMatch";
 import { slugifyBrandSlug } from "../../src/utils/brandSlugify";
@@ -59,6 +60,9 @@ export default function VenueCreateRoute(): React.ReactElement {
   const fromPoolParam = params.pool === "1";
   const insets = useSafeAreaInsets();
   const { user, isAuthReady } = useAuth();
+  // META-ORCH-1255 — the wizard drafts + creates under the CURRENT brand.
+  const currentBrand = useCurrentBrand();
+  const activateBrand = useDraftVenueStore((s) => s.activateBrand);
   const reset = useDraftVenueStore((s) => s.reset);
   const patch = useDraftVenueStore((s) => s.patch);
   const workingName = useDraftVenueStore((s) => s.workingName);
@@ -70,6 +74,8 @@ export default function VenueCreateRoute(): React.ReactElement {
   );
   const [poolNote, setPoolNote] = useState<string | null>(null);
   const [coverWarning, setCoverWarning] = useState<string | null>(null);
+  // META-ORCH-1255 — the created venue id, so Done lands on ITS management page.
+  const [createdVenueId, setCreatedVenueId] = useState<string | null>(null);
 
   // META-ORCH-1009 Sub-E: the venue draft is now AsyncStorage-persisted, which
   // hydrates asynchronously. We must NOT read the draft (to pick the resume
@@ -94,11 +100,17 @@ export default function VenueCreateRoute(): React.ReactElement {
 
   // Once hydrated, recompute the resume phase from the now-real persisted draft
   // (the useState initializer ran pre-hydration against defaults).
+  // META-ORCH-1255 — FIRST activate the current brand's draft slot (per-brand
+  // multi-draft store v2): the resume phase must read THIS brand's draft, not
+  // whichever brand drafted last.
   useEffect(() => {
     if (!hydrated || phaseResumedRef.current) return;
     phaseResumedRef.current = true;
+    if (currentBrand !== null) {
+      activateBrand(currentBrand.id);
+    }
     setPhase(resolveInitialPhase(fromPoolParam));
-  }, [fromPoolParam, hydrated]);
+  }, [activateBrand, currentBrand, fromPoolParam, hydrated]);
 
   const {
     matches: poolMatches,
@@ -173,8 +185,9 @@ export default function VenueCreateRoute(): React.ReactElement {
     return (
       <VenueCreatorWizard
         onClose={handleClose}
-        onDone={(warning) => {
+        onDone={(warning, venueId) => {
           setCoverWarning(warning ?? null);
+          setCreatedVenueId(venueId ?? null);
           setPhase("success");
         }}
       />
@@ -196,7 +209,14 @@ export default function VenueCreateRoute(): React.ReactElement {
             label="Done"
             variant="primary"
             size="lg"
-            onPress={() => router.replace("/(tabs)/home" as never)}
+            onPress={() =>
+              // META-ORCH-1255 — land on the NEW venue's management page.
+              router.replace(
+                (createdVenueId !== null
+                  ? `/venue/${createdVenueId}`
+                  : "/(tabs)/home") as never,
+              )
+            }
           />
         </View>
       </View>

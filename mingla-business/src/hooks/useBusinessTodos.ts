@@ -10,8 +10,9 @@
 import { useMemo } from "react";
 
 import { useAuth } from "../context/AuthContext";
-import { useBrandPlacePipelineState } from "./useBrandPlacePipelineState";
+import { useBrandPipelineStates } from "./useBrandPlacePipelineState";
 import { useBrands } from "./useBrands";
+import { useVenueListings } from "./useVenueListings";
 import { useMyPendingInvites } from "./useBrandInvitations";
 import { useCurrentBrand } from "./useCurrentBrand";
 import { useCurrentBrandRecovery } from "./useCurrentBrandRecovery";
@@ -23,11 +24,17 @@ import {
   useCurrentBrandHasHydrated,
 } from "../store/currentBrandStore";
 import { useDraftsForBrand } from "../store/draftEventStore";
-import { useDraftVenueStore } from "../store/draftVenueStore";
+import {
+  draftVenueForBrand,
+  draftVenueInProgress,
+  useDraftVenueStore,
+} from "../store/draftVenueStore";
 import { deriveBrandProfileTodoInput } from "../utils/brandProfileCompleteness";
 import {
   buildBusinessTodos,
   type BusinessTodo,
+  type VenueTodoClaim,
+  type VenueTodoPipeline,
 } from "../utils/businessTodos";
 import {
   hasAnyDraftPaidOffering,
@@ -35,7 +42,7 @@ import {
 } from "../utils/homeNextAction";
 import { routeForPipelineStateFix } from "../utils/deckReadinessRoutes";
 import { venueClaimBannerVariant } from "../services/venueClaimBannerLogic";
-import { useVenueClaimOpenCount } from "./useVenueClaimFeedback";
+import { useVenueClaimOpenCountsByVenue } from "./useVenueClaimFeedback";
 
 export function useBusinessTodos(): BusinessTodo[] {
   const { user, isAuthReady } = useAuth();
@@ -50,14 +57,16 @@ export function useBusinessTodos(): BusinessTodo[] {
   const hasBrandHydrated = useCurrentBrandHasHydrated();
   const brandRecovery = useCurrentBrandRecovery();
   useServerDraftsForBrand(currentBrand?.id ?? null);
-  const pipelineState = useBrandPlacePipelineState(currentBrand?.id ?? null);
+  // META-ORCH-1255 — venues are first-class rows: read the brand's venue
+  // listings + ALL its per-venue pipeline rows.
+  const venueListings = useVenueListings(currentBrand?.id ?? null);
+  const pipelineStates = useBrandPipelineStates(currentBrand?.id ?? null);
   const drafts = useDraftsForBrand(currentBrand?.id ?? null);
   const upcoming = useUpcomingForBrand(currentBrand?.id ?? null);
-  const venueDraftInProgress = useDraftVenueStore(
-    (s) =>
-      s.displayName.trim().length > 0 ||
-      s.workingName.trim().length > 0 ||
-      s.step > 0,
+  const currentBrandIdForDraft = currentBrand?.id ?? null;
+  // Per-brand multi-draft store v2 — check the CURRENT brand's draft only.
+  const venueDraftInProgress = useDraftVenueStore((s) =>
+    draftVenueInProgress(draftVenueForBrand(s, currentBrandIdForDraft)),
   );
 
   const isBrandResolving =
@@ -97,27 +106,15 @@ export function useBusinessTodos(): BusinessTodo[] {
     [myPendingData],
   );
 
-  // META-ORCH-1059 — the venue-claim "under review" to-do row (replaces the Hub
-  // blue banner). Reuse the SAME variant logic the banner used so the row shows
-  // for exactly the pending/under-review states (pending_review + admin follow-up).
-  const venueClaimVariant = venueClaimBannerVariant(
-    currentBrand !== null
-      ? {
-          claim_status: currentBrand.claimStatus ?? "none",
-          rejection_reason: currentBrand.rejectionReason ?? null,
-          claim_follow_up_at: currentBrand.claimFollowUpAt ?? null,
-        }
-      : null,
-  );
-  const venueClaimPending =
-    venueClaimVariant === "pending_review" || venueClaimVariant === "follow_up";
-
-  // ORCH-1064 — open admin-feedback count for the active follow-up round. Reads
-  // the feedback query cache (enabled only when a follow-up stamp exists), so it
-  // never forces an extra fetch for plain pending / verified / rejected claims.
-  const venueClaimOpenFeedbackCount = useVenueClaimOpenCount(
+  // META-ORCH-1255 — per-venue claim rows. The variant logic is REUSED
+  // unchanged, fed each VENUE row's claim fields (the brand claim columns are
+  // legacy-inert). Open-feedback counts come from ONE brand-level read,
+  // grouped per venue — enabled only when some venue carries a follow-up.
+  const venues = venueListings.data ?? [];
+  const hasAnyFollowUp = venues.some((v) => v.claimFollowUpAt !== null);
+  const openCountsByVenue = useVenueClaimOpenCountsByVenue(
     currentBrand?.id ?? null,
-    currentBrand?.claimFollowUpAt ?? null,
+    hasAnyFollowUp,
   );
 
   // ORCH-1256 — brand-profile completeness input (band 6, tail rows). Derived
@@ -136,17 +133,43 @@ export function useBusinessTodos(): BusinessTodo[] {
     [currentBrand, isBrandResolving],
   );
 
-  const pipelineRoute = useMemo(
-    () =>
-      currentBrand !== null
-        ? routeForPipelineStateFix({
-            brandId: currentBrand.id,
-            state: pipelineState.data,
-            fix: "review_pipeline",
-          })
-        : "",
-    [currentBrand, pipelineState.data],
-  );
+  const venueClaims = useMemo<VenueTodoClaim[]>(() => {
+    if (currentBrand === null) return [];
+    const rows: VenueTodoClaim[] = [];
+    for (const v of venues) {
+      const variant = venueClaimBannerVariant({
+        claim_status: v.claimStatus,
+        rejection_reason: v.rejectionReason,
+        claim_follow_up_at: v.claimFollowUpAt,
+      });
+      if (variant !== "pending_review" && variant !== "follow_up") continue;
+      rows.push({
+        venueId: v.id,
+        venueName: v.name,
+        variant,
+        openCount: openCountsByVenue[v.id] ?? 0,
+        route: `/brand/${currentBrand.id}/listing?venue=${v.id}`,
+        feedbackRoute: `/brand/${currentBrand.id}/listing?venue=${v.id}&focus=feedback`,
+      });
+    }
+    return rows;
+  }, [currentBrand, venues, openCountsByVenue]);
+
+  // META-ORCH-1255 — per-venue pipeline rows for `get_venue_live`.
+  const venuePipelines = useMemo<VenueTodoPipeline[]>(() => {
+    if (currentBrand === null) return [];
+    const nameByVenue = new Map(venues.map((v) => [v.id, v.name] as const));
+    return (pipelineStates.data ?? []).map((state) => ({
+      venueId: state.venue_id,
+      venueName: nameByVenue.get(state.venue_id) ?? "your venue",
+      status: state.status,
+      route: routeForPipelineStateFix({
+        brandId: currentBrand.id,
+        state,
+        fix: "review_pipeline",
+      }),
+    }));
+  }, [currentBrand, venues, pipelineStates.data]);
 
   return useMemo(
     () =>
@@ -156,11 +179,14 @@ export function useBusinessTodos(): BusinessTodo[] {
         hasBrandsButNoSelection,
         brandResolving: isBrandResolving,
         hasBrand: currentBrand !== null,
-        pipelineFetched: pipelineState.isFetched,
-        pipelineStatus: pipelineState.data?.status ?? null,
-        pipelineRoute,
+        // META-ORCH-1255 — the per-venue arrays REPLACE the legacy singular
+        // pipeline/claim inputs (which stay only for pinned test fixtures).
+        pipelineFetched: pipelineStates.isFetched,
+        pipelineStatus: null,
+        pipelineRoute: "",
+        venuePipelines,
+        venueClaims,
         venueDraftInProgress,
-        hasPhysicalLocation: currentBrand?.hasPhysicalLocation === true,
         counts: {
           total: upcoming.counts.total,
           live: upcoming.counts.live,
@@ -171,10 +197,10 @@ export function useBusinessTodos(): BusinessTodo[] {
         stripeRoute:
           currentBrand !== null ? `/brand/${currentBrand.id}/payments` : "",
         draftRoute: mostRecentDraftRoute(drafts),
-        venueClaimPending,
+        venueClaimPending: false,
         venueListingRoute:
           currentBrand !== null ? `/brand/${currentBrand.id}/listing` : "",
-        venueClaimOpenFeedbackCount,
+        venueClaimOpenFeedbackCount: 0,
         venueFeedbackRoute:
           currentBrand !== null
             ? `/brand/${currentBrand.id}/listing?focus=feedback`
@@ -188,14 +214,12 @@ export function useBusinessTodos(): BusinessTodo[] {
       hasBrandsButNoSelection,
       isBrandResolving,
       currentBrand,
-      pipelineState.isFetched,
-      pipelineState.data,
-      pipelineRoute,
+      pipelineStates.isFetched,
+      venuePipelines,
+      venueClaims,
       venueDraftInProgress,
       upcoming.counts,
       drafts,
-      venueClaimPending,
-      venueClaimOpenFeedbackCount,
     ],
   );
 }

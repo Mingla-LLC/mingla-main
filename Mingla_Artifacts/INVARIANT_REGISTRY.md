@@ -7,6 +7,34 @@
 
 ---
 
+## ACTIVE — META-ORCH-1255 (multi-venue first-class creation, 2026-07-02)
+
+> All four invariants flipped DRAFT → ACTIVE at META-ORCH-1255 CLOSE (registered DRAFT in `specs/SPEC_META-ORCH-1255_MULTI_VENUE_FIRST_CLASS.md` §6; house style keeps the `I-PROPOSED-1255-*` names). Backend live on prod `gqnoajqerqhnvulmnyvv` (migrations `20261130000000`–`20261130000005` + 5 edge fns, verified); enforcement = the 5 `orch-1255-*` strict-grep gates in `strict-grep-mingla-business.yml` (each with `--self-test`) + the `orch_1255_*.test.sql` SQL suites + the tester adversarial suite `metaOrch1255.tester.adversarial.test.ts` (21 tests, fails-on-revert). Cross-ref DEC-193 (D-1..D-4).
+
+### I-PROPOSED-1255-VENUE-APPROVAL-PER-VENUE-ROW (ACTIVE)
+- **Rule:** the unit of venue admin review is a `venue_listings` row; claim lifecycle columns live there; review/resubmit RPCs are venue-keyed; NO code path writes `brands.claim_status` from any venue flow (`brands.claim_status`/`place_pool_id` are legacy-inert). The D-4 state machine is unchanged, only re-keyed per venue row.
+- **Enforcement:** strict-grep gate `.github/scripts/strict-grep/orch-1255-venue-approval-per-venue-row.mjs` (`--self-test`, GOOD + BAD fixtures): FAILS if `supabase/functions/admin-review-venue-claim` or `venue-claim-*-email` reference `brands.claim_status` / `from("brands")` claim writes, or if `mingla-business/src/services/venueClaimService.ts` calls a `p_brand_id`-keyed review RPC. Backed by `orch_1255_claim_state_machine.test.sql` (full 8-step RPC walk + sibling isolation, live-fired on prod at TEST).
+- **Established:** DRAFT at META-ORCH-1255 SPEC (`b236bfaf9`); flipped ACTIVE 2026-07-02 at CLOSE (SC-3/SC-13 proven live on prod incl. sibling isolation; admin-web pixel walk capped — needs Seth 2FA).
+
+### I-PROPOSED-1255-NO-HIDDEN-BRAND-ON-VENUE-CREATE (ACTIVE)
+- **Rule:** venue creation NEVER inserts a `brands` row. Venues are `venue_listings` rows under ONE brand; the legacy hidden-brand RPCs (`biz_create_venue_brand_authoring` / `biz_create_venue_brand_pending_review`) are fail-soft stubs (`venue_creation_moved:update_app`) and MUST stay stubs.
+- **Enforcement:** (a) SQL test `supabase/migrations/orch_1255_no_hidden_brand.test.sql` — calls `biz_create_venue_listing`, asserts `brands` count delta = 0 and `pg_get_functiondef('public.biz_create_venue_listing'::regproc)` contains no `INSERT INTO public.brands`; (b) strict-grep gate `orch-1255-no-hidden-brand-on-venue-create.mjs`: FAILS if `VenueCreatorWizard.tsx` / `venueListingsService.ts` reference the legacy RPCs, or if any migration ≥ `20261130000000` adds a functional (non-stub) body to them.
+- **Established:** DRAFT at META-ORCH-1255 SPEC; flipped ACTIVE 2026-07-02 at CLOSE (SC-1 live-fired on prod: 3 creates, `brands` delta 0). Cross-ref COMMS-0064.
+
+### I-PROPOSED-1255-PER-VENUE-OPS-NO-SHARED-INVENTORY (ACTIVE)
+- **Rule:** every row of `brand_place_pipeline_state`, `venue_reservation_settings`, `venue_tables`, `venue_capacity_rules`, `venue_availability_config`, `venue_blackouts`, `venue_waitlist`, `reservations` carries `venue_id NOT NULL` matching its `brand_id`'s venue — two venues of one brand never share inventory. (Menus stay brand-level under `[TRANSITIONAL-3]`; exit = a follow-on ORCH re-keying `menus.venue_id`.)
+- **Enforcement:** (a) SQL probe test `orch_1255_ops_venue_not_null.test.sql` (information_schema NOT NULL assertions + cross-brand-splice trigger probe expecting `venue_brand_mismatch`); (b) strict-grep `orch-1255-pipeline-no-brand-onconflict.mjs`: FAILS on `onConflict: "brand_id"` in `run-business-place-authoring-pipeline/index.ts` (the R-1 pipeline-clobber revert).
+- **Established:** DRAFT at META-ORCH-1255 SPEC; flipped ACTIVE 2026-07-02 at CLOSE (SC-4 clobber-dead + T-A4 splice live-fired on prod; fails-on-revert re-proven by the tester).
+
+### I-PROPOSED-1255-PUBLIC-VENUE-PAGE-ANON-SAFE (ACTIVE)
+- **Rule:** anon venue reads flow ONLY through `venue_public_view` (security-definer, verified-only); `venue_listings` has no anon grant — a logged-out visitor can never read a pending/suspended venue, and suspension revokes public visibility immediately.
+- **Enforcement:** (a) adversarial SQL test `orch_1255_public_view_anon.test.sql` (anon role: table read denied, view shows verified-only); (b) strict-grep `orch-1255-public-venue-anon-safe.mjs`: FAILS if `publicEventsService.ts` / `PublicVenuePage.tsx` query `from("venue_listings")` directly.
+- **Established:** DRAFT at META-ORCH-1255 SPEC; flipped ACTIVE 2026-07-02 at CLOSE (SC-2/SC-5 live-fired on prod: anon REST 401 on the table, view verified-only, suspend→dropped).
+
+> *(Leg B's toggle removal is additionally locked by the 5th gate `.github/scripts/strict-grep/orch-1255-brandedit-no-physical-location-toggle.mjs` + T-B7 — `BrandEditView` carries no physical-location toggle and `brandPatch` emits no `has_physical_location`.)*
+
+---
+
 ## ACTIVE — ORCH-1205 (edge-function CORS includes x-client-info, 2026-06-22, PR #621)
 
 ### I-PROPOSED-1205-EDGE-CORS-X-CLIENT-INFO (ACTIVE)
