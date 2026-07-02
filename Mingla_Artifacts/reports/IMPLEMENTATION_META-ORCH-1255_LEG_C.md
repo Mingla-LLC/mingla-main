@@ -364,7 +364,7 @@ and venue suite chunks — all real cross-chunk usage).
 — 10 tests pinning all four deferrals in source. TRUE LINE-DELETION proofs:
 deleting the React.lazy lines fails R2-3 ("React.lazy dynamic import…" ✕);
 deleting the deep-specifier import fails R2-1 ("DEEP specifier" ✕); restored →
-10/10 pass. fails-on-revert verified at b7297df2c.
+10/10 pass. fails-on-revert verified at 4f2725af6 (the R2 code commit).
 
 ## Gates (real output)
 
