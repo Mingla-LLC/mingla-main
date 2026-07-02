@@ -114,40 +114,43 @@ export class BrandsAuthSessionNotAttachedError extends Error {
 // ----- Venue slug availability (META-ORCH-1009 Sub-E B3 + B5) -------------
 
 /**
- * Returns true when `slug` is free for a NEW venue brand.
+ * Returns true when `slug` is free for a NEW venue listing under `brandId`.
  *
- * ROOT-CAUSE FIX (META-ORCH-1009 Sub-E, 2026-05-31): the slug is the brand's
- * public URL (business.usemingla.com/b/<slug>) and is GLOBALLY UNIQUE — the DB
- * enforces `UNIQUE(slug) WHERE deleted_at IS NULL`. The venue-create flow ALWAYS
- * INSERTs a brand-new brand (`biz_create_venue_brand_authoring` → INSERT INTO
- * brands); it never reuses/links an existing one. Therefore a slug already held
- * by ANY live brand — INCLUDING one the caller owns — is NOT available for a new
- * venue: inserting it collides with the unique index.
+ * META-ORCH-1255(R) ROOT-CAUSE FIX (tester round-2 P1, 2026-07-02): post-1255
+ * a venue is a `venue_listings` ROW under the operator's CURRENT brand — venue
+ * creation NEVER inserts a brands row, so the old brands-table check was
+ * answering the wrong question. Symptom: a second venue with the same name in
+ * one brand showed "Available — auto-selected" (brands has no such slug) while
+ * the DB rejected the insert on `venue_listings_brand_slug_uniq` — a
+ * contradictory Available/taken loop with no escape. Truth is
+ * `venue_listings UNIQUE (brand_id, slug)` (migration 20261130000000): the SAME
+ * slug under a DIFFERENT brand is fine (public route is
+ * /b/{brandSlug}/v/{venueSlug}, D-2), only a duplicate within ONE brand
+ * collides. RLS: the "venue_listings brand member can read" policy admits the
+ * authed caller for their own brand's rows, which is exactly the scope queried.
  *
- * A prior change added an "own-account exemption" (return true if only the
- * caller's own brands hold the slug) to silence a false-positive from a partial
- * submit. That was wrong: it turned a false-positive into a FALSE-NEGATIVE — the
- * UI auto-selected a slug the caller already used (e.g. typing the exact same
- * venue name twice), which then failed at submit with a unique-violation. The
- * `ownAccountId` parameter is retained for signature compatibility but is now
- * intentionally ignored: availability is purely "no live brand holds this slug".
+ * `brandId` is positionally where the retired `ownAccountId` sat (kept optional
+ * so legacy arity compiles); when absent the check degrades to
+ * "any venue listing visible to the caller holds this slug" — still the
+ * venue_listings table, NEVER brands.
  */
 export async function checkVenueSlugAvailable(
   slug: string,
-  _ownAccountId?: string | null,
+  brandId?: string | null,
 ): Promise<boolean> {
   const normalized = slug.trim().toLowerCase();
   if (normalized.length === 0) return false;
 
-  const { data, error } = await supabase
-    .from("brands")
-    .select("id")
-    .eq("slug", normalized)
-    .is("deleted_at", null)
-    .limit(1);
+  // NOTE: `brand_id` eq FIRST, `slug` eq LAST — pinned suites' chain mocks key
+  // availability off the final `.eq` argument.
+  let query = supabase.from("venue_listings").select("id");
+  if (brandId != null && brandId.length > 0) {
+    query = query.eq("brand_id", brandId);
+  }
+  const { data, error } = await query.eq("slug", normalized).limit(1);
   if (error !== null) throw error;
 
-  // Available iff NO live brand (anyone's) already holds this slug.
+  // Available iff THIS brand has no venue listing holding the slug.
   return (data ?? []).length === 0;
 }
 
@@ -163,7 +166,8 @@ export async function checkVenueSlugAvailable(
 export async function suggestVenueSlugs(
   name: string,
   limit = 3,
-  ownAccountId?: string | null,
+  // META-ORCH-1255(R) — scopes availability to ONE brand's venue listings.
+  brandId?: string | null,
 ): Promise<string[]> {
   const root = name
     .toLowerCase()
@@ -176,7 +180,7 @@ export async function suggestVenueSlugs(
   for (const candidate of candidates) {
     if (available.length >= limit) break;
     try {
-      if (await checkVenueSlugAvailable(candidate, ownAccountId)) {
+      if (await checkVenueSlugAvailable(candidate, brandId)) {
         available.push(candidate);
       }
     } catch {
@@ -198,14 +202,16 @@ export async function suggestVenueSlugs(
  *
  * The caller passes the slug the UI currently shows as `preferred`; if that one
  * is still available we keep it (stable URLs), otherwise we advance. The DB's
- * UNIQUE(slug) constraint remains the final backstop for the submit-time race.
+ * `venue_listings_brand_slug_uniq` UNIQUE (brand_id, slug) constraint remains
+ * the final backstop for the submit-time race (META-ORCH-1255(R)).
  *
  * Throws only if a venue name yields an empty root (caller validates name first).
  */
 export async function resolveAvailableVenueSlug(
   name: string,
   preferred: string | null,
-  ownAccountId?: string | null,
+  // META-ORCH-1255(R) — the brand the venue listing will live under.
+  brandId?: string | null,
 ): Promise<string> {
   const sanitize = (s: string): string =>
     s.toLowerCase().replace(/[^a-z0-9]+/g, "").slice(0, 32);
@@ -217,7 +223,7 @@ export async function resolveAvailableVenueSlug(
 
   // 1) Honor the UI's preferred slug if it's still free (keeps the shown URL).
   const pref = preferred !== null ? sanitize(preferred) : "";
-  if (pref.length > 0 && (await checkVenueSlugAvailable(pref, ownAccountId))) {
+  if (pref.length > 0 && (await checkVenueSlugAvailable(pref, brandId))) {
     return pref;
   }
 
@@ -226,7 +232,7 @@ export async function resolveAvailableVenueSlug(
     const suffix = i === 0 ? "" : String(i);
     const base = root.slice(0, 32 - suffix.length);
     const candidate = `${base}${suffix}`;
-    if (await checkVenueSlugAvailable(candidate, ownAccountId)) {
+    if (await checkVenueSlugAvailable(candidate, brandId)) {
       return candidate;
     }
   }
@@ -237,7 +243,7 @@ export async function resolveAvailableVenueSlug(
   const candidate = `${base}${stamp}`;
   // One last check; if even this is taken (astronomically unlikely), surface it
   // so the DB unique constraint isn't the first line of defense.
-  if (await checkVenueSlugAvailable(candidate, ownAccountId)) {
+  if (await checkVenueSlugAvailable(candidate, brandId)) {
     return candidate;
   }
   // Final fallback: return it anyway — the DB UNIQUE constraint is the backstop.

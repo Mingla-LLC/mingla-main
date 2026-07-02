@@ -188,10 +188,12 @@ export const VenueCreatorWizard: React.FC<VenueCreatorWizardProps> = ({
       // still in flight, all 4 displayed candidates taken, or a race since the
       // check ran). resolveAvailableVenueSlug honors the shown slug if still free,
       // else advances suffixes, with a timestamp fallback that cannot run out.
+      // META-ORCH-1255(R) — scoped to the CURRENT brand: venue slug truth is
+      // `venue_listings UNIQUE (brand_id, slug)`, not the brands table.
       const resolvedSlug = await resolveAvailableVenueSlug(
         st.displayName.trim(),
         st.slug.trim() || null,
-        user.id,
+        currentBrand.id,
       );
 
       // META-ORCH-1255 — create the venue LISTING under the CURRENT brand.
@@ -296,7 +298,8 @@ export const VenueCreatorWizard: React.FC<VenueCreatorWizardProps> = ({
           <VenueStep2NameSlug
             showErrors={showErr}
             slugError={slugCollision}
-            accountId={user?.id ?? null}
+            brandId={currentBrand?.id ?? null}
+            brandSlug={currentBrand?.slug ?? null}
           />
         );
       case 2:

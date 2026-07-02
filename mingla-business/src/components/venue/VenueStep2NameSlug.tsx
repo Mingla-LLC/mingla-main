@@ -7,7 +7,9 @@
  *        Alternate slug PILLS appear only when the auto slug is already taken;
  *        tapping a pill selects it. The name field is the only text input here.
  *   B5 — debounced live availability check that only reports "taken" for a real
- *        live conflict (not the caller's own brand, not soft-deleted rows).
+ *        conflict. META-ORCH-1255(R): "taken" means THIS brand already has a
+ *        venue listing with the slug (`venue_listings UNIQUE (brand_id, slug)`)
+ *        — the same slug under a different brand is fine (/b/{brandSlug}/v/…).
  */
 
 import React, { useCallback, useEffect, useRef, useState } from "react";
@@ -37,14 +39,24 @@ import {
 export interface VenueStep2NameSlugProps {
   showErrors: boolean;
   slugError: string | null;
-  /** Caller account id — excludes the caller's own brand from "taken". */
-  accountId?: string | null;
+  /**
+   * META-ORCH-1255(R) — the CURRENT brand the venue listing will live under.
+   * Venue slugs are unique PER BRAND (`venue_listings UNIQUE (brand_id, slug)`),
+   * so availability checks are scoped to this brand.
+   */
+  brandId?: string | null;
+  /**
+   * META-ORCH-1255(R) — the current brand's slug, for the real public-route
+   * preview `/b/{brandSlug}/v/{venueSlug}` (D-2).
+   */
+  brandSlug?: string | null;
 }
 
 export const VenueStep2NameSlug: React.FC<VenueStep2NameSlugProps> = ({
   showErrors,
   slugError,
-  accountId,
+  brandId,
+  brandSlug,
 }) => {
   const displayName = useDraftVenueStore((s) => s.displayName);
   const slug = useDraftVenueStore((s) => s.slug);
@@ -93,7 +105,8 @@ export const VenueStep2NameSlug: React.FC<VenueStep2NameSlugProps> = ({
     const timer = setTimeout(() => {
       void (async () => {
         try {
-          const ok = await checkVenueSlugAvailable(value, accountId);
+          // META-ORCH-1255(R) — scoped to the current brand's venue listings.
+          const ok = await checkVenueSlugAvailable(value, brandId);
           if (seq === checkSeq.current) setAvailable(ok);
         } catch {
           if (seq === checkSeq.current) setAvailable(null);
@@ -103,7 +116,7 @@ export const VenueStep2NameSlug: React.FC<VenueStep2NameSlugProps> = ({
       })();
     }, 400);
     return () => clearTimeout(timer);
-  }, [slug, accountId]);
+  }, [slug, brandId]);
 
   // B3 (operator-directed: "it should be smart") — when the derived slug is
   // taken, auto-ADVANCE the selection to the first AVAILABLE candidate
@@ -118,7 +131,7 @@ export const VenueStep2NameSlug: React.FC<VenueStep2NameSlugProps> = ({
     }
     let cancelled = false;
     void (async () => {
-      const picks = await suggestVenueSlugs(displayName, 4, accountId);
+      const picks = await suggestVenueSlugs(displayName, 4, brandId);
       if (cancelled) return;
       if (!slugChosen.current && picks.length > 0) {
         // Auto-select the first available slug; the availability effect will
@@ -132,7 +145,7 @@ export const VenueStep2NameSlug: React.FC<VenueStep2NameSlugProps> = ({
     return () => {
       cancelled = true;
     };
-  }, [available, displayName, accountId, slug, patch]);
+  }, [available, displayName, brandId, slug, patch]);
 
   const nameErr =
     showErrors && displayName.trim().length === 0
@@ -166,7 +179,12 @@ export const VenueStep2NameSlug: React.FC<VenueStep2NameSlugProps> = ({
         <View style={styles.urlPreview}>
           <Text style={styles.urlLabel}>Your public page</Text>
           <Text style={styles.urlValue}>
+            {/* META-ORCH-1255(R) / P2-R2-1 — the venue's REAL public route is
+                /b/{brandSlug}/v/{venueSlug} (D-2), not the pre-1255 /b/{slug}.
+                Degrade to the bare /b/ prefix only if the brand slug is
+                unavailable (the wizard is brand-scoped, so it never is). */}
             business.usemingla.com/b/
+            {brandSlug != null && brandSlug.length > 0 ? `${brandSlug}/v/` : ""}
             <Text style={styles.urlSlug}>{slug}</Text>
           </Text>
           {checking ? (
