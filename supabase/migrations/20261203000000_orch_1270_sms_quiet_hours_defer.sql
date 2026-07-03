@@ -139,7 +139,7 @@ BEGIN
 END;
 $$;
 
-REVOKE ALL ON FUNCTION public.mkt_finalize_campaign(uuid) FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.mkt_finalize_campaign(uuid) FROM PUBLIC, anon, authenticated;
 -- Only service-role (edge function) + superuser may execute. No GRANT to
 -- authenticated — caller-facing code must never flip campaign status directly.
 GRANT EXECUTE ON FUNCTION public.mkt_finalize_campaign(uuid) TO service_role;
