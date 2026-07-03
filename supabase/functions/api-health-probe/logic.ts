@@ -361,6 +361,29 @@ export function evaluateBalanceForSignal(
       const sevTxt = isCrit ? `crit ≥ ${crit}%` : `warn ≥ ${warn}%`;
       return { balanceLow: low, balanceText: `${used.toFixed(2)}% used (${sevTxt})`, severity: isCrit ? "crit" : (low ? "warn" : null) };
     }
+    case "bunny_usage_pct": {
+      // META-ORCH-1270 (Phase 2) — Bunny storage/traffic usage %.
+      // VECTOR-D ROOT-CAUSE FIX: a config-present-but-unreadable usage read
+      // (probeBunny sets detail.probe_unreadable=true when the account API is
+      // reachable-in-principle but returns non-numeric / errors) must FIRE a
+      // DISTINCT warn — it may NOT fall through to {balanceLow:null} and silently
+      // resolve to green (the exact way the Cloudinary alarm went blind). A
+      // config-ABSENT probe carries neither used_percent nor probe_unreadable,
+      // so it still returns {balanceLow:null} (grey, pre-cutover — no alert).
+      if (detail.probe_unreadable === true) {
+        return {
+          balanceLow: true,
+          balanceText: "usage read unavailable (probe_unreadable) — alarm is blind, investigate",
+          severity: "warn",
+        };
+      }
+      const used = toNum(detail.used_percent);
+      if (used == null || warn == null) return { balanceLow: null, balanceText: null, severity: null };
+      const isCrit = crit != null && used >= crit;
+      const low = used >= warn;
+      const sevTxt = isCrit ? `crit ≥ ${crit}%` : `warn ≥ ${warn}%`;
+      return { balanceLow: low, balanceText: `${used.toFixed(2)}% used (${sevTxt})`, severity: isCrit ? "crit" : (low ? "warn" : null) };
+    }
     case "exchangerate_quota": {
       const rem = toNum(detail.requests_remaining);
       if (rem == null || warn == null) return { balanceLow: null, balanceText: null, severity: null };

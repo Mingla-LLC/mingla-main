@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import {
   corsHeaders,
+  destroyCoverVideoAsset,
   isValidUuid,
   jsonResponse,
   mapEventCoverVideoStatus,
@@ -9,6 +10,46 @@ import {
   requireUserId,
   serviceRoleClient,
 } from "../_shared/eventCoverVideo.ts";
+
+// META-ORCH-1270 (Phase 2) — cover-replace reaping. Before a new cover overwrites
+// a prior applied one, reclaim the PRIOR applied Bunny asset for this target so
+// it does not linger. Bunny-only (Cloudinary rows carry no source_asset_id; their
+// reaping is out of scope until Phase 4). Best-effort; never fails the apply.
+// deno-lint-ignore no-explicit-any
+const reapPriorAppliedBunnyCover = async (
+  supabase: any,
+  job: { id: string; provider?: string | null; target_kind?: string | null; event_id?: string | null; brand_id: string },
+): Promise<void> => {
+  if (job.provider !== "bunny") return;
+  const base = supabase
+    .from("event_cover_video_jobs")
+    .select("id,provider,source_asset_id,source_public_id")
+    .eq("status", "applied")
+    .eq("provider", "bunny")
+    .neq("id", job.id)
+    .not("source_asset_id", "is", null)
+    .is("reaped_at", null);
+  const scoped = job.target_kind === "brand"
+    ? base.eq("brand_id", job.brand_id).eq("target_kind", "brand")
+    : base.eq("event_id", job.event_id as string);
+  const { data, error } = await scoped;
+  if (error) return;
+  for (
+    const row of (data ?? []) as Array<
+      { id: string; provider?: string | null; source_asset_id?: unknown; source_public_id?: unknown }
+    >
+  ) {
+    const destroyed = await destroyCoverVideoAsset(row);
+    if (destroyed.ok) {
+      await supabase
+        .from("event_cover_video_jobs")
+        .update({ reaped_at: new Date().toISOString() })
+        .eq("id", row.id);
+    } else {
+      console.warn("[event-cover-video-apply] prior cover reap failed:", { jobId: row.id, reason: destroyed.reason });
+    }
+  }
+};
 
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
@@ -51,6 +92,11 @@ serve(async (req) => {
       status: mapEventCoverVideoStatus(job),
     }, 409);
   }
+
+  // META-ORCH-1270 (Phase 2) — reclaim the prior applied Bunny cover for this
+  // target BEFORE overwriting cover_media_url, so the replaced asset is not left
+  // orphaned in the library.
+  await reapPriorAppliedBunnyCover(supabase, job);
 
   if (isBrandTarget) {
     // ORCH-0989: brand target writes brands.cover_media_url (not events).

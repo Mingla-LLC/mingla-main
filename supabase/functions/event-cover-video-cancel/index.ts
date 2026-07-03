@@ -1,7 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import {
-  cloudinaryDestroy,
   corsHeaders,
+  destroyCoverVideoAsset,
   isValidUuid,
   jsonResponse,
   mapEventCoverVideoStatus,
@@ -91,16 +91,27 @@ serve(async (req) => {
     return jsonResponse({ error: "internal_error", detail: "cancel_failed" }, 500);
   }
 
+  // META-ORCH-1270 (Phase 2) — route the terminal destroy through the
+  // provider-agnostic helper (behavior-preserving for Cloudinary — it still
+  // destroys the resolved public_id — and adds the Bunny delete). On success
+  // stamp reaped_at so the reaper never re-hits an already-gone asset. On
+  // failure leave reaped_at null so the reaper cron retries (fail-safe).
   const sourcePublicId = sourcePublicIdFromJob(job);
-  if (sourcePublicId !== null) {
-    const destroyResult = await cloudinaryDestroy(sourcePublicId);
-    if (!destroyResult.ok) {
-      console.warn("[event-cover-video-cancel] cloudinary destroy failed:", {
-        jobId: job.id,
-        publicId: sourcePublicId,
-        reason: destroyResult.reason,
-      });
-    }
+  const destroyResult = await destroyCoverVideoAsset({
+    provider: job.provider,
+    source_public_id: sourcePublicId,
+    source_asset_id: job.source_asset_id,
+  });
+  if (destroyResult.ok) {
+    await supabase
+      .from("event_cover_video_jobs")
+      .update({ reaped_at: new Date().toISOString() })
+      .eq("id", job.id);
+  } else {
+    console.warn("[event-cover-video-cancel] asset destroy failed:", {
+      jobId: job.id,
+      reason: destroyResult.reason,
+    });
   }
 
   return jsonResponse(mapEventCoverVideoStatus(updatedJob));

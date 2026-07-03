@@ -19,6 +19,10 @@ const BUNNY_HOST = "https://video.bunnycdn.com";
 // TUS resumable creation endpoint (client-direct, signed).
 // https://docs.bunny.net/stream/tus-resumable-uploads
 const BUNNY_TUS = "https://video.bunnycdn.com/tusupload";
+// META-ORCH-1270 (Phase 2) — account-level API host for the usage read (alarm +
+// circuit-breaker). Authenticates with the ACCOUNT key (BUNNY_ACCOUNT_API_KEY),
+// distinct from the Stream library key. https://docs.bunny.net/reference/videolibrarypublic_index
+const BUNNY_ACCOUNT_HOST = "https://api.bunny.net";
 
 export type BunnyVideo = {
   guid: string;
@@ -40,6 +44,10 @@ function bunnyApiKey(): string {
 }
 function bunnyCdnHost(): string {
   return Deno.env.get("BUNNY_STREAM_CDN_HOSTNAME") ?? "";
+}
+// META-ORCH-1270 (Phase 2) — the ACCOUNT-level API key for the usage read.
+function bunnyAccountApiKey(): string {
+  return Deno.env.get("BUNNY_ACCOUNT_API_KEY") ?? "";
 }
 
 // Hex-encoded SHA-256 of the input (used for the TUS AuthorizationSignature).
@@ -328,4 +336,78 @@ export async function verifyBunnyWebhookSignature(input: {
     };
   }
   return { ok: true };
+}
+
+// ── META-ORCH-1270 (Phase 2): account-level usage read (alarm + circuit-breaker) ──
+
+export type BunnyLibraryUsage = { storageUsage: number; trafficUsage: number };
+
+// GET https://api.bunny.net/videolibrary/{libraryId} with the ACCOUNT key.
+// Returns StorageUsage + TrafficUsage (bytes). Shared by probeBunny (the health
+// alarm) and the upload-intent circuit-breaker so both read usage the same way.
+// FAIL CLOSED on ambiguity: a config-present-but-non-numeric body returns
+// { ok:false, reason:"bunny_usage_non_numeric" } — the caller must NOT treat an
+// unreadable usage as healthy (Vector-D root cause). Config-ABSENT is a distinct
+// { ok:false, reason:"bunny_usage_not_configured" } (grey, pre-cutover).
+// https://docs.bunny.net/reference/videolibrarypublic_index
+export async function bunnyFetchLibraryUsage(
+  timeoutMs = 5000,
+): Promise<
+  { ok: true; usage: BunnyLibraryUsage } | { ok: false; status: number; reason: string }
+> {
+  const libraryId = bunnyLibraryId();
+  const accountKey = bunnyAccountApiKey();
+  if (libraryId.length === 0 || accountKey.length === 0) {
+    return { ok: false, status: 0, reason: "bunny_usage_not_configured" };
+  }
+  let response: Response;
+  try {
+    response = await fetch(`${BUNNY_ACCOUNT_HOST}/videolibrary/${libraryId}`, {
+      method: "GET",
+      headers: { AccessKey: accountKey, accept: "application/json" },
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+  } catch (error) {
+    return { ok: false, status: 0, reason: networkReason("bunny_usage_network", error) };
+  }
+  if (!response.ok) {
+    return { ok: false, status: response.status, reason: `bunny_usage_http_${response.status}` };
+  }
+  let body: Record<string, unknown> | null = null;
+  try {
+    body = await response.json();
+  } catch {
+    body = null;
+  }
+  if (body === null) {
+    return { ok: false, status: response.status, reason: "bunny_usage_malformed" };
+  }
+  const storageUsage =
+    typeof body.StorageUsage === "number" ? body.StorageUsage : Number(body.StorageUsage);
+  const trafficUsage =
+    typeof body.TrafficUsage === "number" ? body.TrafficUsage : Number(body.TrafficUsage);
+  if (!Number.isFinite(storageUsage) || !Number.isFinite(trafficUsage)) {
+    // Config present but the vendor returned non-numeric usage — the DANGEROUS
+    // state the alarm must surface loudly, never resolve to green.
+    return { ok: false, status: response.status, reason: "bunny_usage_non_numeric" };
+  }
+  return { ok: true, usage: { storageUsage, trafficUsage } };
+}
+
+// Pure: percent used = the HIGHER of the storage/traffic ratios against their
+// caps. Returns null when a value is non-numeric or a cap is <= 0 (cannot
+// compute → the caller must treat it as UNREADABLE, never healthy).
+export function bunnyUsagePct(input: {
+  storageUsage: unknown;
+  trafficUsage: unknown;
+  storageCapBytes: number;
+  trafficCapBytes: number;
+}): { usedPercent: number; storagePct: number; trafficPct: number } | null {
+  const s = typeof input.storageUsage === "number" ? input.storageUsage : Number(input.storageUsage);
+  const t = typeof input.trafficUsage === "number" ? input.trafficUsage : Number(input.trafficUsage);
+  if (!Number.isFinite(s) || !Number.isFinite(t)) return null;
+  if (!(input.storageCapBytes > 0) || !(input.trafficCapBytes > 0)) return null;
+  const storagePct = (100 * s) / input.storageCapBytes;
+  const trafficPct = (100 * t) / input.trafficCapBytes;
+  return { usedPercent: Math.max(storagePct, trafficPct), storagePct, trafficPct };
 }
