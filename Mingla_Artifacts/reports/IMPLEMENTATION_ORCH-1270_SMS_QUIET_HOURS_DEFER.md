@@ -231,4 +231,4 @@ note is intentionally always-on for SMS send-now.
 - `tsc --noEmit` (business) → **727 errors, identical to the origin/main baseline** (§3); **0** in the 3 touched files.
 - Fails-on-revert re-proven: mangling the "How SMS timing works" title → copy test FAILS; drifting client `SMS_QUIET_HOURS.US.endHour` 21→22 → T-9 drift test FAILS. Both restored; suite green.
 
-**F-1 fix commit:** `__F1_COMMIT__`
+**F-1 fix commit:** `6d8da3c19` (this docs hash-fill follows in a small docs commit, per the same convention as §7).
