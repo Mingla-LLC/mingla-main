@@ -68,6 +68,27 @@
 
 ---
 
+## ACTIVE — ORCH-1270 (SMS blast quiet-hours defer + honest status + idempotent send, 2026-07-03)
+
+> All three invariants registered directly ACTIVE at ORCH-1270 CLOSE (SHIPPED; PR #725 / `dd107a464`; house style strips the `I-PROPOSED-` prefix on activation, mirroring the ORCH-1269 precedent). Backend live on prod `gqnoajqerqhnvulmnyvv` — migration `20261203000000_orch_1270_sms_quiet_hours_defer` applied + read-back verified, marketing-send edge fn v237 deployed + verified HTTP 200, US + NG SMS flags live. Enforcement = the three merged strict-grep gates wired in `strict-grep-mingla-business.yml` — `.github/scripts/strict-grep/i-proposed-1270-quiet-hours-defers-not-fails.mjs` + `.github/scripts/strict-grep/i-proposed-1270-no-empty-sent.mjs` + `.github/scripts/strict-grep/i-proposed-1270-send-idempotent.mjs` (each `--self-test` + GOOD/BAD fixtures) — plus the Deno/SQL regression suites. QA CONDITIONAL PASS → F-DS-1 (latent double-send) sealed in `de66781f7` → clean. Cross-ref `reports/TEST_ORCH-1270_SMS_QUIET_HOURS_DEFER.md`.
+
+### I-1270-QUIET-HOURS-DEFERS-NOT-FAILS (ACTIVE)
+- **Rule:** a marketing send that falls outside the recipient's quiet-hours window is DEFERRED to the next in-window slot and still delivers — quiet-hours enforcement NEVER hard-fails or drops a recipient (the pre-fix behavior that permanently failed a 04:39 UTC blast is banned).
+- **Enforcement:** strict-grep gate `.github/scripts/strict-grep/i-proposed-1270-quiet-hours-defers-not-fails.mjs` (`--self-test` + GOOD/BAD fixtures, wired as a job in `strict-grep-mingla-business.yml`) + the Deno/SQL regression suite asserting an out-of-window send reschedules to the next slot rather than erroring, in `reports/TEST_ORCH-1270_SMS_QUIET_HOURS_DEFER.md`.
+- **Established:** ACTIVE 2026-07-03 at ORCH-1270 CLOSE (migration `20261203000000` applied to prod `gqnoajqerqhnvulmnyvv`; marketing-send edge fn v237 deployed + verified HTTP 200; US + NG SMS live).
+
+### I-1270-NO-EMPTY-SENT (ACTIVE)
+- **Rule:** `mkt_finalize_campaign` NEVER marks a campaign `sent` with `recipient_count = 0` — a blast that delivered to nobody reports an honest non-`sent` status, so a 100%-failed send can never look successful.
+- **Enforcement:** strict-grep gate `.github/scripts/strict-grep/i-proposed-1270-no-empty-sent.mjs` (`--self-test` + GOOD/BAD fixtures) + the SQL regression suite over `mkt_finalize_campaign` asserting the zero-recipient path yields an honest status and never `sent`.
+- **Established:** ACTIVE 2026-07-03 at ORCH-1270 CLOSE (migration `20261203000000` applied + read-back verified; `reports/TEST_ORCH-1270_SMS_QUIET_HOURS_DEFER.md`).
+
+### I-1270-SEND-IDEMPOTENT (ACTIVE)
+- **Rule:** a marketing send is idempotent — a recipient already in a terminal status or already carrying a `provider_message_id` is SKIPPED on re-run, and the unique indexes make a double-send physically impossible (no recipient is messaged twice).
+- **Enforcement:** strict-grep gate `.github/scripts/strict-grep/i-proposed-1270-send-idempotent.mjs` (`--self-test` + GOOD/BAD fixtures) + the unique indexes added by migration `20261203000000` + the Deno/SQL regression suite driving a re-run and asserting terminal / `provider_message_id` rows are skipped (F-DS-1 latent double-send sealed + fails-on-revert re-proven at `de66781f7`).
+- **Established:** ACTIVE 2026-07-03 at ORCH-1270 CLOSE (QA CONDITIONAL PASS → F-DS-1 sealed in `de66781f7` → clean; `reports/TEST_ORCH-1270_SMS_QUIET_HOURS_DEFER.md`).
+
+---
+
 ## ACTIVE — ORCH-1269 (claim-adoption phone country, 2026-07-03)
 
 > Registered directly ACTIVE at ORCH-1269 CLOSE (same-day live-fire hotfix — no spec phase, so no prior DRAFT to flip; direct-to-ACTIVE on the CLOSE evidence). Client-only fix (`522834656`); enforcement = the two append-only jest suites in `mingla-business/src/utils/__tests__/` — implementor `claimPhoneCountry.orch1269.test.ts` (17) + tester `claimPhoneCountry.orch1269.tester.adversarial.test.ts` (17) — BOTH fails-on-revert proven at `522834656` (implementor 8-fail set independently re-proven by the tester, Step 0.5; tester 7-fail set). Cross-ref `reports/TEST_ORCH-1269_CLAIM_PHONE_COUNTRY.md`. (same-day live-fire hotfix — no spec phase, so no prior DRAFT to flip; direct-to-ACTIVE on the CLOSE evidence). Client-only fix (`522834656`); enforcement = the two append-only jest suites in `mingla-business/src/utils/__tests__/` — implementor `claimPhoneCountry.orch1269.test.ts` (17) + tester `claimPhoneCountry.orch1269.tester.adversarial.test.ts` (17) — BOTH fails-on-revert proven at `522834656` (implementor 8-fail set independently re-proven by the tester, Step 0.5; tester 7-fail set). Cross-ref `reports/TEST_ORCH-1269_CLAIM_PHONE_COUNTRY.md`.
