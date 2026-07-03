@@ -33,9 +33,9 @@ const REPO_ROOT = path.resolve(__dirname, "../../..");
 const read = (rel) => fs.readFileSync(path.join(REPO_ROOT, rel), "utf8");
 const readSrc = (rel) => fs.readFileSync(path.join(ADMIN_SRC, rel), "utf8");
 
-const MIG_GATE = "supabase/migrations/20261203000000_orch_1271_single_admin_gate.sql";
-const MIG_EXTEND = "supabase/migrations/20261203000001_orch_1271_audit_log_extend.sql";
-const MIG_PRIMITIVE = "supabase/migrations/20261203000002_orch_1271_admin_write_primitive.sql";
+const MIG_GATE = "supabase/migrations/20261204000000_orch_1271_single_admin_gate.sql";
+const MIG_EXTEND = "supabase/migrations/20261204000001_orch_1271_audit_log_extend.sql";
+const MIG_PRIMITIVE = "supabase/migrations/20261204000002_orch_1271_admin_write_primitive.sql";
 const EDGE = "supabase/functions/admin-write-primitive/index.ts";
 
 describe("ORCH-1271 — single-gate migration", () => {
