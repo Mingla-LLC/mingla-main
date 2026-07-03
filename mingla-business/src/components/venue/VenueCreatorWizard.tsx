@@ -3,9 +3,11 @@
  *
  * META-ORCH-1255 Leg B — the wizard creates a `venue_listings` ROW under the
  * operator's CURRENT brand via `biz_create_venue_listing` (F-1 kill): NO brand
- * creation, NO active-brand switch, ever. Success carries `{ venueId,
- * placePoolId }` into the deck-readiness setup, and the per-brand draft store
- * clears only THIS brand's draft.
+ * creation, NO active-brand switch, ever. ORCH-1272 — create success now
+ * `router.replace`s to the DURABLE `/venue/deck-readiness` route (was an
+ * ephemeral inline mount that flashed/unmounted on web, stranding the venue at
+ * `business_authoring_status='processing'`); the per-brand draft store still
+ * clears only THIS brand's draft first.
  *
  * ORCH-1263 [claim-adoption] — the wizard now hosts TWO step maps on the same
  * shell (SPEC §B0):
@@ -57,8 +59,10 @@ import {
   PlaceClaimConflictError,
   findOwnListingForPlace,
 } from "../../services/venueListingsService";
-import type { VenueCategory } from "../../types/brand";
 import { sanitizeAuthoringError } from "../../utils/sanitizeAuthoringError";
+// ORCH-1272 — the create post-submit leg lands on the DURABLE deck-readiness
+// route (same builder the Hub "Edit listing" recovery path uses).
+import { routeForDeckReadinessFix } from "../../utils/deckReadinessRoutes";
 import { useDraftVenueStore } from "../../store/draftVenueStore";
 import {
   claimDockLabel,
@@ -71,11 +75,13 @@ import {
 import { Button } from "../ui/Button";
 import { IconChrome } from "../ui/IconChrome";
 import { Stepper, type StepperStep } from "../ui/Stepper";
-// META-ORCH-1255(R2) — the deck-readiness setup lives in its own module (it is
-// ALSO consumed by the durable resume route app/venue/deck-readiness.tsx; a
-// shared-file layout hoisted this whole wizard into the eager __common chunk,
-// breaching the ORCH-1083 web bundle budget).
-import { VenueDeckReadinessSetup } from "./VenueDeckReadinessSetup";
+// ORCH-1272 — the wizard NO LONGER imports/mounts VenueDeckReadinessSetup: the
+// create post-submit leg used to render it inline from ephemeral `createdVenue`
+// state, which unmounted on any one-frame /venue/create re-resolution on web
+// (auth/hydration/chunk reflow) and stranded the venue at 'processing'. Create
+// success now `router.replace`s to the durable app/venue/deck-readiness.tsx
+// route (server-state-reloading), so the setup module is consumed there ONLY —
+// which also keeps it out of this wizard's chunk (ORCH-1083 web bundle budget).
 import { VenueStep1Address } from "./VenueStep1Address";
 import { VenueStep2NameSlug } from "./VenueStep2NameSlug";
 import { VenueStep4Hours } from "./VenueStep4Hours";
@@ -182,14 +188,6 @@ export const VenueCreatorWizard: React.FC<VenueCreatorWizardProps> = ({
   const [submitting, setSubmitting] = useState(false);
   // ORCH-1263 — the §8.2 (foreign) / §8.3 (retry) submit edge states.
   const [claimBlock, setClaimBlock] = useState<ClaimSubmitBlock | null>(null);
-  const [createdVenue, setCreatedVenue] = useState<{
-    venueId: string;
-    placePoolId: string;
-    venueName: string;
-    venueCategory: VenueCategory | null;
-    operatorTagline: string | null;
-    operatorDescription: string | null;
-  } | null>(null);
   const lastDirection = useRef<1 | -1>(1);
 
   const draft = useDraftVenueStore();
@@ -404,19 +402,28 @@ export const VenueCreatorWizard: React.FC<VenueCreatorWizardProps> = ({
         return;
       }
 
-      setCreatedVenue({
-        venueId,
-        placePoolId: tier1.place_pool_id,
-        venueName: st.displayName.trim(),
-        venueCategory: st.venueCategory,
-        operatorTagline: st.tagline.trim() || null,
-        operatorDescription: st.description.trim() || null,
-      });
-      // The venue is created and the flow moves to the deck-readiness screen
-      // (which reads from createdVenue, not the draft). Clear THIS brand's
-      // persisted draft so the NEXT "Create venue listing" starts clean —
-      // other brands' drafts are untouched (per-brand store v2).
+      // ORCH-1272 — create tier-1 success lands on the DURABLE, server-state-
+      // reloading deck-readiness route — the SAME route the Hub "Edit listing"
+      // recovery path uses (VenueListingContent handleEdit) — NOT an ephemeral
+      // inline mount held in this component's transient state. The old inline
+      // `createdVenue` leg was multiply-gated on volatile auth/hydration/brand
+      // signals, so any one-frame /venue/create re-resolution on web tore it
+      // down and stranded the venue at business_authoring_status='processing'
+      // with no in-session way back. Addressing the screen by URL params +
+      // reloading from the server makes the landing trigger-agnostic.
+      // Clear THIS brand's persisted draft FIRST so the next "Create venue
+      // listing" starts clean (per-brand store v2 — other brands untouched),
+      // THEN replace-navigate so Back can't return to the blanked wizard.
       useDraftVenueStore.getState().reset(currentBrand.id);
+      router.replace(
+        routeForDeckReadinessFix({
+          brandId: currentBrand.id,
+          placePoolId: tier1.place_pool_id,
+          venueId,
+          fix: "review_pipeline",
+        }) as never,
+      );
+      return;
     } catch (e) {
       if (e instanceof SlugCollisionError) {
         setSlugCollision(
@@ -456,23 +463,7 @@ export const VenueCreatorWizard: React.FC<VenueCreatorWizardProps> = ({
     } finally {
       setSubmitting(false);
     }
-  }, [createVenue, currentBrand, onDone, setStep, user?.id]);
-
-  if (createdVenue !== null && user?.id !== undefined && currentBrand !== null) {
-    return (
-      <VenueDeckReadinessSetup
-        accountId={user.id}
-        brandId={currentBrand.id}
-        venueId={createdVenue.venueId}
-        placePoolId={createdVenue.placePoolId}
-        venueName={createdVenue.venueName}
-        venueCategory={createdVenue.venueCategory}
-        operatorTagline={createdVenue.operatorTagline}
-        operatorDescription={createdVenue.operatorDescription}
-        onDone={() => onDone(null, createdVenue.venueId)}
-      />
-    );
-  }
+  }, [createVenue, currentBrand, onDone, router, setStep, user?.id]);
 
   const body = ((): React.ReactElement => {
     switch (stepId) {
