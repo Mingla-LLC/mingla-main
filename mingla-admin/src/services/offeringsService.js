@@ -229,6 +229,9 @@ export function mapOfferingWriteError(error) {
   if (msg.includes("invalid_address")) return "The address can't be empty.";
   if (msg.includes("invalid_title")) return "The day title can't be empty.";
   if (msg.includes("no_editable_fields")) return "No editable fields were provided.";
+  // Residual raw DB constraint codes surfaced to the modal (ORCH-1277 P3-a/P3-b):
+  if (msg.includes("trip_days_ordinal_check")) return "That position isn't valid — day order must stay 1 or higher.";
+  if (msg.includes("event_currency_required")) return "This offering needs a currency set before it can be published.";
   return msg || "Something went wrong. Please try again.";
 }
 

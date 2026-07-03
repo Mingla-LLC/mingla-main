@@ -129,13 +129,27 @@ describe("ORCH-1277 — schema-correct mutations", () => {
     assert.match(fnSlice(MIG.offerings, "admin_update_experience_stop"), /updated_at\s*=\s*now\(\)/i);
   });
 
-  it("both reorders use the loop-based sentinel (min-1) collision-free renumber", () => {
+  it("both reorders use a loop-based, constraint-safe collision-free renumber", () => {
     for (const name of AUDIT_ONLY_RPCS) {
       const slice = fnSlice(MIG.offerings, name);
-      assert.match(slice, /v_sentinel\s*:=\s*v_min\s*-\s*1/i, `${name} must move the target to a min-1 sentinel`);
       assert.match(slice, /FOR\s+r\s+IN\s+SELECT/i, `${name} must shift the block one row at a time`);
       assert.match(slice, /ORDER BY[\s\S]*?LOOP/i, `${name} must order the shift to vacate-before-fill`);
     }
+    // trip_days enforces CHECK (ordinal > 0) → the sentinel MUST park ABOVE the range
+    // (v_max + 1), never at v_min - 1 (= 0, which raises trip_days_ordinal_check) — ORCH-1277 P1.
+    const tripBody = fnSlice(MIG.offerings, "admin_reorder_trip_day");
+    assert.match(tripBody, /v_sentinel\s*:=\s*v_max\s*\+\s*1/i, "admin_reorder_trip_day must park the sentinel at v_max + 1");
+    assert.ok(!/v_sentinel\s*:=\s*v_min\s*-\s*1/i.test(tripBody), "admin_reorder_trip_day must NOT use the ordinal>0-unsafe v_min - 1 sentinel");
+    // experience_stops has NO ordinal>0 floor → v_min - 1 is correct there.
+    assert.match(fnSlice(MIG.offerings, "admin_reorder_experience_stop"), /v_sentinel\s*:=\s*v_min\s*-\s*1/i);
+  });
+
+  it("the 000003 redeploy migration re-creates admin_reorder_trip_day with the v_max+1 fix", () => {
+    const fix = read(path.join(REPO_ROOT, "supabase/migrations/20261209000003_orch_1277_fix_reorder_trip_day.sql"));
+    assert.match(fix, /CREATE OR REPLACE FUNCTION public\.admin_reorder_trip_day/i);
+    assert.match(fix, /v_sentinel\s*:=\s*v_max\s*\+\s*1/i);
+    assert.match(fix, /REVOKE EXECUTE ON FUNCTION public\.admin_reorder_trip_day\([^)]*\) FROM anon, PUBLIC/i);
+    assert.match(fix, /has_function_privilege\('anon',\s*'public\.admin_reorder_trip_day\(/i);
   });
 
   it("hard-delete RPCs DELETE FROM (no soft-delete column)", () => {

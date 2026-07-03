@@ -298,7 +298,10 @@ BEGIN
   IF v_target = v_old THEN
     v_after := v_before;  -- no move needed (idempotent); still audited below.
   ELSE
-    v_sentinel := v_min - 1;  -- strictly below every live ordinal → guaranteed free
+    -- Park the target ABOVE the live range (v_max + 1): guaranteed free AND > 0, so it
+    -- never trips trip_days CHECK (ordinal > 0). (A v_min - 1 sentinel = 0 for 1-based
+    -- days violated that CHECK — ORCH-1277 P1, fixed here + in 20261209000003.)
+    v_sentinel := v_max + 1;
     UPDATE public.trip_days SET ordinal = v_sentinel, updated_at = now() WHERE id = p_trip_day_id;
     IF v_target > v_old THEN
       -- shift the block (v_old, v_target] DOWN by 1, ascending so each slot vacates first.
