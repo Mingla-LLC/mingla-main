@@ -166,18 +166,18 @@ on:
 # .github/scripts/strict-grep/README.md.
 
 jobs:
-  orch-1272-create-lands-on-durable-deck-readiness:
-    name: "ORCH-1272: venue create tier-1 success lands on the durable /venue/deck-readiness route, not an ephemeral inline mount (I-PROPOSED-1272-CREATE-LANDS-ON-DURABLE-DECK-READINESS)"
+  orch-1273-create-lands-on-durable-deck-readiness:
+    name: "ORCH-1273: venue create tier-1 success lands on the durable /venue/deck-readiness route, not an ephemeral inline mount (I-PROPOSED-1273-CREATE-LANDS-ON-DURABLE-DECK-READINESS)"
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: "20"
-      - name: Self-test the ORCH-1272 create-durable-deck-readiness gate
-        run: node .github/scripts/strict-grep/i-proposed-1272-create-lands-on-durable-deck-readiness.mjs --self-test
-      - name: Run ORCH-1272 create-durable-deck-readiness gate
-        run: node .github/scripts/strict-grep/i-proposed-1272-create-lands-on-durable-deck-readiness.mjs
+      - name: Self-test the ORCH-1273 create-durable-deck-readiness gate
+        run: node .github/scripts/strict-grep/i-proposed-1273-create-lands-on-durable-deck-readiness.mjs --self-test
+      - name: Run ORCH-1273 create-durable-deck-readiness gate
+        run: node .github/scripts/strict-grep/i-proposed-1273-create-lands-on-durable-deck-readiness.mjs
 
   orch-1253-biz-location-purpose-string:
     name: "ORCH-1253: business iOS infoPlist declares NSLocationWhenInUseUsageDescription (fix ITMS-90683) (I-ORCH-1253-BIZ-LOCATION-PURPOSE-STRING)"

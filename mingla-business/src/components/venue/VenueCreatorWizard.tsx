@@ -3,7 +3,7 @@
  *
  * META-ORCH-1255 Leg B — the wizard creates a `venue_listings` ROW under the
  * operator's CURRENT brand via `biz_create_venue_listing` (F-1 kill): NO brand
- * creation, NO active-brand switch, ever. ORCH-1272 — create success now
+ * creation, NO active-brand switch, ever. ORCH-1273 — create success now
  * `router.replace`s to the DURABLE `/venue/deck-readiness` route (was an
  * ephemeral inline mount that flashed/unmounted on web, stranding the venue at
  * `business_authoring_status='processing'`); the per-brand draft store still
@@ -60,7 +60,7 @@ import {
   findOwnListingForPlace,
 } from "../../services/venueListingsService";
 import { sanitizeAuthoringError } from "../../utils/sanitizeAuthoringError";
-// ORCH-1272 — the create post-submit leg lands on the DURABLE deck-readiness
+// ORCH-1273 — the create post-submit leg lands on the DURABLE deck-readiness
 // route (same builder the Hub "Edit listing" recovery path uses).
 import { routeForDeckReadinessFix } from "../../utils/deckReadinessRoutes";
 import { useDraftVenueStore } from "../../store/draftVenueStore";
@@ -75,7 +75,7 @@ import {
 import { Button } from "../ui/Button";
 import { IconChrome } from "../ui/IconChrome";
 import { Stepper, type StepperStep } from "../ui/Stepper";
-// ORCH-1272 — the wizard NO LONGER imports/mounts VenueDeckReadinessSetup: the
+// ORCH-1273 — the wizard NO LONGER imports/mounts VenueDeckReadinessSetup: the
 // create post-submit leg used to render it inline from ephemeral `createdVenue`
 // state, which unmounted on any one-frame /venue/create re-resolution on web
 // (auth/hydration/chunk reflow) and stranded the venue at 'processing'. Create
@@ -402,7 +402,7 @@ export const VenueCreatorWizard: React.FC<VenueCreatorWizardProps> = ({
         return;
       }
 
-      // ORCH-1272 — create tier-1 success lands on the DURABLE, server-state-
+      // ORCH-1273 — create tier-1 success lands on the DURABLE, server-state-
       // reloading deck-readiness route — the SAME route the Hub "Edit listing"
       // recovery path uses (VenueListingContent handleEdit) — NOT an ephemeral
       // inline mount held in this component's transient state. The old inline

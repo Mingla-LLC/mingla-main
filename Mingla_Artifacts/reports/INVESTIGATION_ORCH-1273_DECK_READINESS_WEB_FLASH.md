@@ -1,4 +1,4 @@
-# INVESTIGATION — ORCH-1272 · Venue deck-readiness "Recommend me" step flashes and closes on web after Submit (new venue stuck at `business_authoring_status='processing'`)
+# INVESTIGATION — ORCH-1273 · Venue deck-readiness "Recommend me" step flashes and closes on web after Submit (new venue stuck at `business_authoring_status='processing'`)
 
 - **Phase:** INVESTIGATE (no code changes; fix recommended, not built)
 - **Date:** 2026-07-03
@@ -130,7 +130,7 @@ When you finish creating a **brand-new** venue in the Business app on the **web*
 ### F-8 — Claiming a REAL seeded place mutated its live authoring state pre-approval — **DISCOVERY (secondary; flag for orchestrator)**
 - **Layer:** data.
 - **Evidence:** Academy place_pool `008c13b3` (`fetched_via='detail_refresh'`, real Google place, `is_servable=true`, `is_claimed=false`) now shows `business_authoring_status='processing'` and `business_authoring_inputs` keys = `['tier1','tier2','adoption','selected_place_pool_id']`, `ai_signal_scores` present. The pending claim's `upsert_tier1_place` (linked_existing) flipped the live row's status to `processing` and staged `adoption`/`tier1` onto the live `business_authoring_inputs` **before** admin approval. `is_servable` stayed true (still on the deck), so it's functionally benign for explorers, but it contradicts the "stage-only until approve" intent for the *status/inputs* fields.
-- **Severity:** DISCOVERY — not part of ORCH-1272's flash; register separately. Cleanup below preserves the place but flags an optional status/inputs revert.
+- **Severity:** DISCOVERY — not part of ORCH-1273's flash; register separately. Cleanup below preserves the place but flags an optional status/inputs revert.
 
 ---
 
