@@ -232,3 +232,72 @@ note is intentionally always-on for SMS send-now.
 - Fails-on-revert re-proven: mangling the "How SMS timing works" title → copy test FAILS; drifting client `SMS_QUIET_HOURS.US.endHour` 21→22 → T-9 drift test FAILS. Both restored; suite green.
 
 **F-1 fix commit:** `6d8da3c19` (this docs hash-fill follows in a small docs commit, per the same convention as §7).
+
+---
+
+## 9. F-DS-1 fix — no re-dispatch after a lost terminal 'sent' write (closes tester CONDITIONAL PASS)
+
+**Finding (tester QA, MEDIUM latent).** In `sendSms`, after `smsAdapter.send()` SUCCEEDS
+(Twilio accepted the message, `provider_message_id` returned), the terminal UPDATE that
+writes `status='sent'` + `provider_message_id` had its returned `{ error }` **discarded**. A
+lost terminal write (a DB error that returns rather than throws) left the row at the
+NON-terminal status `'queued'`. The in-loop skip guard only skipped rows whose status was in
+`SMS_TERMINAL_STATUSES` — `'queued'` is not terminal — so when a DEFERRED sibling re-parked
+the campaign to `'scheduled'`, cron re-picked it, `decideSmsDisposition` ran again → in-window
+→ `send` → a **second adapter call to a recipient who was already texted** (proven on real
+Postgres in `TEST_ORCH-1270_SMS_QUIET_HOURS_DEFER.md`, defect F-DS-1). This contradicted the
+"no recipient is EVER texted twice" claim (§1).
+
+**What changed (edge function ONLY — `supabase/functions/marketing-send/index.ts`; DEFER path,
+finalizer, migration, composer, adapter all UNTOUCHED):**
+
+- **Step 1 — guard also skips already-DISPATCHED rows.** Extracted the in-loop skip decision
+  into the new exported pure helper `shouldSkipDispatchedRecipient(existing)`, which skips when
+  the row is terminal (`SMS_TERMINAL_STATUSES.includes(existing.status)`) **OR** carries a
+  non-null `provider_message_id`. A non-null provider id proves the adapter already dispatched
+  to Twilio on a prior pass — that recipient is NEVER re-sent, whatever the status. The
+  existing-row SELECT now also fetches `provider_message_id` (`select("id, status,
+  attempt_count, created_at, provider_message_id")`) so the guard can see a
+  dispatched-but-non-terminal row. (The `.includes(existing.status)` term lives inside the
+  helper, so the `i-proposed-1270-send-idempotent` strict-grep gate still passes untouched.)
+- **Step 2 — error-check the post-send terminal UPDATE.** The `status='sent'` +
+  `provider_message_id` write now captures its `{ error }`, RETRIES once (transient
+  timeout/serialization usually clears), and if it STILL fails, **THROWS**
+  (`sms_sent_terminal_update_lost:<id>:<msg>`) instead of silently `delivered += 1`. A throw
+  aborts the campaign → caught by the serve loop → `marketing_campaigns.status='failed'`, which
+  cron never re-picks. So a successfully-dispatched recipient can never be re-selected on a
+  later pass. Loud failure > silent double-send. (The sibling `failed`/`skipped` UPDATE is
+  intentionally left as-is with a clarifying comment: neither branch reached Twilio, so a lost
+  write there can only cause a RETRY of an unsent recipient, never a double-send.)
+
+**Invariant now enforced:** a recipient whose message reached Twilio is NEVER re-dispatched —
+via the provider-id guard (step 1) for a persisted-id orphan, and via the throw (step 2) for a
+fully-lost write (campaign fails, no re-pick).
+
+**Regression test (NEW):** `supabase/functions/marketing-send/orch-1270-fds1.test.ts` — drives
+the **REAL exported** `shouldSkipDispatchedRecipient` (not a re-implementation) + a behavioral
+two-pass mock DB/adapter reproduction of the fault path: a `'queued'` row WITH a
+`provider_message_id` is SKIPPED on the next pass (mock adapter NOT called a second time),
+while a fresh in-window recipient IS dispatched once. Plus source-contract teeth for the
+DB-coupled halves (the SELECT fetches `provider_message_id`; the sent-UPDATE captures its error
+and throws). Unit-level mock (stated): real Twilio + the authed biz-web path cannot be driven
+here, matching the tester's live-fire cap.
+
+**Test output (actual, from the worktree):**
+- `deno check supabase/functions/marketing-send/index.ts` → clean (0 errors).
+- `deno test --no-check supabase/functions/marketing-send/` (full suite) → **64 passed / 0 failed** (53 prior + 11 new F-DS-1).
+- All 3 strict-grep gates (`send-idempotent`, `no-empty-sent`, `quiet-hours-defers-not-fails`) → **PASS** (unchanged).
+
+**Fails-on-revert (proven).** Transiently reverted step 1 (deleted the `provider_message_id`
+branch in `shouldSkipDispatchedRecipient` → `return false;`) and re-ran `orch-1270-fds1.test.ts`:
+**4 tests FAILED / 7 passed** — the `'queued'+provider_id → SKIPPED` guard-matrix assertions, the
+behavioral "cron re-pick never re-texts an already-dispatched recipient" reproduction (mock
+adapter was called a SECOND time), and the step-1 source-contract. Product code restored from
+backup (`provider_message_id !== null` branch present; no `TRANSIENT REVERT` marker remains); full
+suite re-run green (64/64).
+
+**Guards honored.** Edited ONLY `marketing-send/index.ts` + the new test file. DEFER path,
+`mkt_finalize_campaign`, the migration, `smsAdapter.ts`, the composer, `marketing.ts` types, and
+all strict-grep scripts untouched. No unique-index / upsert guarantees weakened.
+
+**F-DS-1 fix commit:** `de66781f7` (this docs hash-fill follows in a small docs commit, per the §7/§8 convention).
