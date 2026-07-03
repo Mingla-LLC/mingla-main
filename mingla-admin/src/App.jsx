@@ -33,6 +33,11 @@ import { CareersPage } from "./pages/CareersPage";
 // + Brands (#/business-brands). Replaces the ORCH-1271 scaffolding placeholder.
 import { PeopleConsolePage } from "./pages/PeopleConsolePage";
 import { BrandsConsolePage } from "./pages/BrandsConsolePage";
+// ORCH-1273 — Business offerings console (READ-ONLY): Offerings
+// (#/business-offerings) + Venues (#/business-venues). Detail views deep-link via
+// ?offeringId= / ?venueId= within the same tab (matches the 1272 pattern).
+import { OfferingsConsolePage } from "./pages/OfferingsConsolePage";
+import { VenuesConsolePage } from "./pages/VenuesConsolePage";
 // ORCH-1008: 6 pages deleted (Seed, ContentModeration, Analytics, Reports,
 //   BetaFeedback, TableBrowser). Sidebar flattened; System dropdown removed.
 //   See SPEC_ORCH-1008_ADMIN_SHELL_PRUNE_INTELLIGENCE_OVERVIEW.md §2 + §3.
@@ -71,6 +76,10 @@ const PAGES = {
   // (hash routes #/business-people, #/business-brands).
   "business-people": PeopleConsolePage,
   "business-brands": BrandsConsolePage,
+  // ORCH-1273: Business offerings console (READ-ONLY) — Offerings + Venues
+  // (hash routes #/business-offerings, #/business-venues).
+  "business-offerings": OfferingsConsolePage,
+  "business-venues": VenuesConsolePage,
 };
 
 function getTabFromHash() {

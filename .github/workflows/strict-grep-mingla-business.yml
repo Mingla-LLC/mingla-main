@@ -3642,3 +3642,20 @@ jobs:
         run: node .github/scripts/strict-grep/i-1272-identity-admin-read.mjs --self-test
       - name: Run ORCH-1272 identity-admin-read gate
         run: node .github/scripts/strict-grep/i-1272-identity-admin-read.mjs
+
+  orch-1273-offerings-read-only:
+    name: "ORCH-1273: offerings/venues admin-read RLS + read RPCs are READ-ONLY (I-PROPOSED-1273-OFFERINGS-READ-ONLY + I-PROPOSED-1273-OFFERINGS-ADMIN-READ-CROSSBRAND)"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Self-test the ORCH-1273 offerings-read-only gate
+        run: node .github/scripts/strict-grep/i-offerings-read-only.mjs --self-test
+      - name: Run ORCH-1273 offerings-read-only gate
+        run: node .github/scripts/strict-grep/i-offerings-read-only.mjs
+      - name: Run ORCH-1273 offerings-read-only gate fixture test
+        run: node --test .github/scripts/strict-grep/__tests__/i-offerings-read-only.test.mjs
+      - name: Run ORCH-1273 offerings console read node:test suite (happy-path)
+        run: node --test mingla-admin/src/__tests__/orch1273_offerings_console_read.test.js
