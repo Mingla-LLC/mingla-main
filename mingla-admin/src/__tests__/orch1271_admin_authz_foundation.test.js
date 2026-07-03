@@ -125,22 +125,29 @@ describe("ORCH-1271 — admin-write-primitive edge fn", () => {
 });
 
 describe("ORCH-1271 — admin UI scaffolding", () => {
-  it("NAV_GROUPS has a 'Business' group with the business-console item", () => {
+  // ORCH-1272 [Admin Identity console — READ-ONLY] superseded the foundation's
+  // `business-console` placeholder with the first two real domain pages (People +
+  // Brands). These three scaffolding assertions are repointed accordingly; the
+  // migration / edge-fn / HighRiskActionModal / adminWriteService coverage below
+  // is unchanged. [TEST-MOD-APPROVED ORCH-1272]
+  it("NAV_GROUPS has a 'Business' group with the People + Brands items", () => {
     const biz = NAV_GROUPS.find((g) => g.label === "Business");
     assert.ok(biz, "Business group present");
-    assert.ok(biz.items.some((i) => i.id === "business-console" && i.icon === "Building2"));
-    // NAV_ITEMS (flattened) exposes the new item too.
-    assert.ok(NAV_ITEMS.some((i) => i.id === "business-console"));
+    assert.ok(biz.items.some((i) => i.id === "business-people" && i.icon === "Users"));
+    assert.ok(biz.items.some((i) => i.id === "business-brands" && i.icon === "Building2"));
+    // NAV_ITEMS (flattened) exposes the new items too.
+    assert.ok(NAV_ITEMS.some((i) => i.id === "business-people"));
+    assert.ok(NAV_ITEMS.some((i) => i.id === "business-brands"));
   });
   it("Sidebar registers Building2 in ICON_MAP (else silent LayoutDashboard fallback)", () => {
     const sb = readSrc("components/layout/Sidebar.jsx");
     assert.match(sb, /import \{[\s\S]*?\bBuilding2\b[\s\S]*?\} from "lucide-react"/);
     assert.match(sb, /const ICON_MAP = \{[\s\S]*?\bBuilding2\b[\s\S]*?\};/);
   });
-  it("App.jsx routes #/business-console → BusinessConsolePage", () => {
+  it("App.jsx routes #/business-people + #/business-brands (ORCH-1272 repoint)", () => {
     const app = readSrc("App.jsx");
-    assert.match(app, /import \{ BusinessConsolePage \} from "\.\/pages\/BusinessConsolePage"/);
-    assert.match(app, /"business-console": BusinessConsolePage/);
+    assert.match(app, /"business-people": PeopleConsolePage/);
+    assert.match(app, /"business-brands": BrandsConsolePage/);
   });
   it("HighRiskActionModal disables confirm until a non-empty reason (+ never fires onConfirm empty)", () => {
     const m = readSrc("components/entity/HighRiskActionModal.jsx");
@@ -150,12 +157,12 @@ describe("ORCH-1271 — admin UI scaffolding", () => {
     // hard guard inside handleConfirm
     assert.match(m, /if \(requireReason && reason\.trim\(\)\.length === 0\) return;/);
   });
-  it("BusinessConsolePage round-trips runAuditProbe and holds scope (no domain tables)", () => {
-    const p = readSrc("pages/BusinessConsolePage.jsx");
-    assert.match(p, /runAuditProbe/);
-    for (const forbidden of ["creator_accounts", "events", "orders", "stripe_connect_accounts"]) {
-      assert.doesNotMatch(p, new RegExp(forbidden), `scope held: no ${forbidden}`);
-    }
+  it("the business-console placeholder is retired but adminWriteService stays for Wave-2", () => {
+    // ORCH-1272 deleted pages/BusinessConsolePage.jsx (the scaffolding smoke page);
+    // adminWriteService (the audited-write seam) is preserved for Wave-2 edits.
+    assert.ok(!fs.existsSync(path.join(ADMIN_SRC, "pages/BusinessConsolePage.jsx")));
+    const s = readSrc("services/adminWriteService.js");
+    assert.match(s, /callAdminWriteRpc/);
   });
   it("adminWriteService.runAuditProbe calls the admin_audit_probe RPC", () => {
     const s = readSrc("services/adminWriteService.js");

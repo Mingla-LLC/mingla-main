@@ -27,6 +27,10 @@ const MIGRATIONS_DIR = path.join(process.cwd(), "supabase/migrations");
 const GUARDED_DEFINER_FNS = [
   "admin_write_audit",
   "admin_audit_probe",
+  // ORCH-1272 [Admin Identity console — READ-ONLY]: the unified Person read-RPC.
+  // READ-ONLY (no admin_write_audit / write-RPC registry) but its is_admin_user()
+  // guard MUST still be the first statement.
+  "admin_get_person",
 ];
 
 function fnBody(src, name) {
@@ -89,10 +93,17 @@ if (process.argv.includes("--self-test")) {
     "create or replace function public.admin_audit_probe(p_reason text) returns uuid " +
     "language plpgsql security definer as $$ begin if not public.is_admin_user() then " +
     "raise exception 'not_authorized'; end if; return public.admin_write_audit('x'); end; $$;\n";
+  // ORCH-1272: the READ-ONLY admin_get_person read-RPC — registered here (guard MUST
+  // be first). Included in the good/other-subject fixtures so the self-test isolates
+  // the intended violation instead of tripping on a missing registry fn.
+  const getPerson =
+    "create or replace function public.admin_get_person(p_user_id uuid) returns jsonb " +
+    "language plpgsql security definer as $$ declare v_out jsonb; begin if not public.is_admin_user() then " +
+    "raise exception 'not_authorized'; end if; return '{}'::jsonb; end; $$;\n";
 
-  // GOOD: both guard-first.
+  // GOOD: all guard-first.
   let f = [];
-  check(helper + probe, f);
+  check(helper + probe + getPerson, f);
   if (f.length) self.push("good fixture wrongly flagged: " + f.join("; "));
 
   // BAD: a SELECT before the guard in the probe.
@@ -101,7 +112,7 @@ if (process.argv.includes("--self-test")) {
     "language plpgsql security definer as $$ declare v int; begin select 1 into v; " +
     "if not public.is_admin_user() then raise exception 'not_authorized'; end if; return null; end; $$;\n";
   f = [];
-  check(helper + probeQueryFirst, f);
+  check(helper + probeQueryFirst + getPerson, f);
   if (f.length === 0) self.push("query-before-guard probe not flagged");
 
   // BAD2: guard missing entirely.
@@ -109,7 +120,7 @@ if (process.argv.includes("--self-test")) {
     "create or replace function public.admin_audit_probe(p_reason text) returns uuid " +
     "language plpgsql security definer as $$ begin return public.admin_write_audit('x'); end; $$;\n";
   f = [];
-  check(helper + probeNoGuard, f);
+  check(helper + probeNoGuard + getPerson, f);
   if (f.length === 0) self.push("guard-less probe not flagged");
 
   // BAD3: revert primitive → fns absent.

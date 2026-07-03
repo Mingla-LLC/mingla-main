@@ -164,14 +164,15 @@ export const NAV_GROUPS = [
     ],
   },
   // ORCH-1271: "Business" nav group — the META-ORCH-1237 admin full-visibility
-  // console lives here. Foundation ships the Business Console scaffolding page;
-  // domain pages (people / brands / offerings / money) arrive in 1272/1273/1274.
-  // The Building2 icon MUST be registered in Sidebar.jsx ICON_MAP or the nav item
-  // silently falls back to LayoutDashboard (the Careers/Support footgun).
+  // console lives here. ORCH-1272 replaces the foundation scaffolding placeholder
+  // with the first two real domain pages (People + Brands). Offerings / money
+  // arrive in 1273 / 1274 as sibling entries. Both icons (Users, Building2) are
+  // already registered in Sidebar.jsx ICON_MAP — no Sidebar edit needed.
   {
     label: "Business",
     items: [
-      { id: "business-console",          label: "Business Console",   icon: "Building2" },
+      { id: "business-people",           label: "People",             icon: "Users" },
+      { id: "business-brands",           label: "Brands",             icon: "Building2" },
     ],
   },
 ];

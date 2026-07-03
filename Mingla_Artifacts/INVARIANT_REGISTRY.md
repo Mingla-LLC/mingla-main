@@ -35,6 +35,19 @@
 
 ---
 
+## DRAFT — ORCH-1272 (admin Identity console — READ-ONLY, 2026-07-03)
+
+> Registered DRAFT at ORCH-1272 SPEC §6 (`reports/SPEC_ORCH-1272_ADMIN_IDENTITY_CONSOLE_READ.md`). Builds ON the ORCH-1271 foundation (single gate + gate-first registry — `admin_get_person` is APPENDED to `i-admin-gate-first-statement.mjs`, NOT to the write-RPC registry, since it performs no mutation). The orchestrator flips DRAFT → ACTIVE at CLOSE once (a) the two migrations are applied to prod `gqnoajqerqhnvulmnyvv` (`20261205000001_orch_1272_identity_admin_read_rls.sql` + `20261205000002_orch_1272_admin_get_person.sql`), and (b) the tester live-fires the AC matrix — esp. the ADV cross-row proofs (an admin sees a soft-deleted account/brand + a non-owned team/invite that a non-admin session gets `[]` for) + the read-only-held grep. Enforcement = strict-grep `.github/scripts/strict-grep/i-1272-identity-admin-read.mjs` (`--self-test` + GOOD/BAD fixtures + the `__tests__/i-1272-identity-admin-read.test.mjs` fixture, wired as job `orch-1272-identity-admin-read` in `strict-grep-mingla-business.yml`) + the implementor/tester regression suites. Cross-ref META-ORCH-1237.
+
+### I-PROPOSED-1272-IDENTITY-ADMIN-READ (DRAFT)
+
+- **Rule:** The four identity tables `creator_accounts`, `brand_team_members`, `brand_invitations`, `partner_brand_links` each carry an `is_admin_user()` SELECT RLS policy (`"<table> admin can read"`); the unified admin Person bundle reads the sensitive `subscriptions` / `admin_subscription_overrides` ONLY through the guard-first, READ-ONLY `admin_get_person(uuid)` RPC — NEVER a direct browser read. Visibility-first: NO admin write/edit ships on the identity surface in 1272.
+- **Enforcement:** strict-grep `i-1272-identity-admin-read.mjs` — asserts (a) each of the four `CREATE POLICY "<table> admin can read" ON public.<table> FOR SELECT USING (public.is_admin_user())` tokens is present in `supabase/migrations/**`, (b) `admin_get_person(` is defined, and (c) `mingla-admin/src/services/identityReadService.js` takes NO direct `.from("subscriptions")` / `.from("admin_subscription_overrides")` read. Also protected by `i-admin-gate-first-statement.mjs` (guard-first, `admin_get_person` in its registry).
+- **Fails-on-revert:** deleting the RLS migration removes the four policy tokens → gate FAILS; deleting the RPC migration removes `admin_get_person` → gate FAILS; a browser-side subscriptions read regression → gate FAILS.
+- **Established:** DRAFT at ORCH-1272 SPEC; flips ACTIVE at CLOSE.
+
+---
+
 ## ACTIVE — ORCH-1269 (claim-adoption phone country, 2026-07-03)
 
 > Registered directly ACTIVE at ORCH-1269 CLOSE (same-day live-fire hotfix — no spec phase, so no prior DRAFT to flip; direct-to-ACTIVE on the CLOSE evidence). Client-only fix (`522834656`); enforcement = the two append-only jest suites in `mingla-business/src/utils/__tests__/` — implementor `claimPhoneCountry.orch1269.test.ts` (17) + tester `claimPhoneCountry.orch1269.tester.adversarial.test.ts` (17) — BOTH fails-on-revert proven at `522834656` (implementor 8-fail set independently re-proven by the tester, Step 0.5; tester 7-fail set). Cross-ref `reports/TEST_ORCH-1269_CLAIM_PHONE_COUNTRY.md`. (same-day live-fire hotfix — no spec phase, so no prior DRAFT to flip; direct-to-ACTIVE on the CLOSE evidence). Client-only fix (`522834656`); enforcement = the two append-only jest suites in `mingla-business/src/utils/__tests__/` — implementor `claimPhoneCountry.orch1269.test.ts` (17) + tester `claimPhoneCountry.orch1269.tester.adversarial.test.ts` (17) — BOTH fails-on-revert proven at `522834656` (implementor 8-fail set independently re-proven by the tester, Step 0.5; tester 7-fail set). Cross-ref `reports/TEST_ORCH-1269_CLAIM_PHONE_COUNTRY.md`.
