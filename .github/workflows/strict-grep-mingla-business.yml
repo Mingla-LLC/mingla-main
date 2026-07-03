@@ -3629,3 +3629,16 @@ jobs:
           node --test
           mingla-admin/src/__tests__/orch1271_admin_authz_foundation.test.js
           mingla-admin/src/__tests__/orch1271_admin_authz_adversarial.test.js
+
+  orch-1272-identity-admin-read:
+    name: "ORCH-1272: identity admin-read RLS + admin_get_person read-RPC (I-PROPOSED-1272-IDENTITY-ADMIN-READ)"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Self-test the ORCH-1272 identity-admin-read gate
+        run: node .github/scripts/strict-grep/i-1272-identity-admin-read.mjs --self-test
+      - name: Run ORCH-1272 identity-admin-read gate
+        run: node .github/scripts/strict-grep/i-1272-identity-admin-read.mjs

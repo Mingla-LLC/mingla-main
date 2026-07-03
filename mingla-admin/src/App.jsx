@@ -29,8 +29,10 @@ import { SupportDeskPage } from "./pages/SupportDeskPage";
 import { ApiHealthPage } from "./pages/ApiHealthPage";
 // META-ORCH-1222 — Careers: applications list+detail + role CRUD (hash #/careers).
 import { CareersPage } from "./pages/CareersPage";
-// ORCH-1271 — Business Console (admin full-visibility console foundation, hash #/business-console).
-import { BusinessConsolePage } from "./pages/BusinessConsolePage";
+// ORCH-1272 — Business identity console (READ-ONLY): People (#/business-people)
+// + Brands (#/business-brands). Replaces the ORCH-1271 scaffolding placeholder.
+import { PeopleConsolePage } from "./pages/PeopleConsolePage";
+import { BrandsConsolePage } from "./pages/BrandsConsolePage";
 // ORCH-1008: 6 pages deleted (Seed, ContentModeration, Analytics, Reports,
 //   BetaFeedback, TableBrowser). Sidebar flattened; System dropdown removed.
 //   See SPEC_ORCH-1008_ADMIN_SHELL_PRUNE_INTELLIGENCE_OVERVIEW.md §2 + §3.
@@ -65,8 +67,10 @@ const PAGES = {
   "api-health": ApiHealthPage,
   // META-ORCH-1222: careers applications + role manager (hash route #/careers).
   careers: CareersPage,
-  // ORCH-1271: Business Console foundation (hash route #/business-console).
-  "business-console": BusinessConsolePage,
+  // ORCH-1272: Business identity console (READ-ONLY) — People + Brands
+  // (hash routes #/business-people, #/business-brands).
+  "business-people": PeopleConsolePage,
+  "business-brands": BrandsConsolePage,
 };
 
 function getTabFromHash() {
