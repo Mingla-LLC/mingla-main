@@ -51,8 +51,13 @@ export interface SmsSendInput {
   // ORCH-1282 — MMS media. Publicly-fetchable HTTPS URL(s) Twilio attaches via
   // the `MediaUrl` param (presence promotes the message to MMS). US/Twilio ONLY;
   // the NG/Termii path IGNORES media and sends SMS-only (Termii `/api/sms/send`
-  // `type:"plain"` carries no media param). The composer sets exactly one.
+  // `type:"plain"` carries no media param). ORCH-1289 — up to 10 per message.
   mediaUrls?: string[];
+  // ORCH-1289 — marketing sends render the STOP footer on its OWN line (blank
+  // line + STOP line) so the delivered SMS matches the composer preview.
+  // Transactional sends omit this (default false → single-space footer,
+  // byte-identical to the prior behavior + every existing transactional test).
+  stopFooterOwnLine?: boolean;
 }
 
 const E164_RE = /^\+[1-9][0-9]{1,14}$/;
@@ -104,10 +109,18 @@ const STOP_FOOTER = "Reply STOP to opt out.";
 // Compose the final body: brand-name identity is the caller's responsibility in
 // `message` (the COPY templates already lead with "{Brand}:"). We append the
 // STOP footer only if not already present, then GSM-7-sanitize the whole thing.
-export function composeSmsBody(message: string): string {
+export function composeSmsBody(
+  message: string,
+  stopFooterOwnLine = false,
+): string {
   let body = message.trim();
   if (!/reply stop/i.test(body)) {
-    body = `${body} ${STOP_FOOTER}`;
+    // ORCH-1289 — marketing sends put the STOP footer on its OWN line (blank
+    // line + STOP line, `\n\n`) so the delivered SMS matches the composer
+    // preview (bodyWithFooter). Transactional callers keep the single-space
+    // form (default) — `\n` is a GSM-7 char, so segmentation is unaffected.
+    const sep = stopFooterOwnLine ? "\n\n" : " ";
+    body = `${body}${sep}${STOP_FOOTER}`;
   }
   return sanitizeGsm7(body);
 }
@@ -264,7 +277,7 @@ export const smsAdapter = {
       };
     }
 
-    const body = composeSmsBody(input.message);
+    const body = composeSmsBody(input.message, input.stopFooterOwnLine === true);
     const segments = computeSegments(body);
 
     // ORCH-1227 (DEC-192) — country-routed dual provider behind the region seam.

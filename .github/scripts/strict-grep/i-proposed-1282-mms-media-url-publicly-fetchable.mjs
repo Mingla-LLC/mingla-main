@@ -10,9 +10,16 @@
  *   (1) marketingMmsImageService.ts: uploads under the `marketing-mms/` prefix,
  *       caps at 5 MB, excludes webp, calls getPublicUrl THEN
  *       verifyBrandCoverPublicUrl, and returns the verified public URL.
- *   (2) compose.tsx: sets media_urls from the uploaded (verified) URL, the
- *       payload uses mmsMediaUrls, and the LOCAL preview uri (mmsLocalUri) is
- *       NEVER written into media_urls.
+ *   (2) compose.tsx: media URLs come from uploadMarketingMmsImage (the verified
+ *       upload), the payload uses `media_urls: mmsMediaUrls`, and mmsMediaUrls is
+ *       DERIVED from the verified `remoteUrl` values ONLY — a LOCAL blob/file
+ *       preview uri is NEVER written into media_urls.
+ *
+ * ORCH-1289 (2026-07-03) — AMENDED for the multi-select refactor: compose.tsx
+ * now models each photo as an item {localUri, remoteUrl, …} and DERIVES
+ * mmsMediaUrls (verified `remoteUrl`s) instead of the old `setMmsMediaUrls([url])`
+ * single-item setter. The invariant is unchanged: only verified public URLs
+ * reach the payload; no local uri ever does.
  *
  * Mirrors the modular self-testing gate pattern.
  */
@@ -57,15 +64,21 @@ const evaluateService = (rawCode) => {
 const evaluateCompose = (rawCode) => {
   const code = stripLineComments(rawCode);
   const failures = [];
-  if (!/setMmsMediaUrls\(\[\s*url\s*\]\)/.test(code)) {
-    failures.push(`${COMPOSE}: media_urls must be set from the uploaded (verified) URL — setMmsMediaUrls([url]). I-PROPOSED-1282-MMS-MEDIA-URL-PUBLICLY-FETCHABLE.`);
+  // The media URL(s) must come from the verified upload service.
+  if (!/uploadMarketingMmsImage\s*\(/.test(code)) {
+    failures.push(`${COMPOSE}: media URLs must come from uploadMarketingMmsImage() (the verified public URL). I-PROPOSED-1282-MMS-MEDIA-URL-PUBLICLY-FETCHABLE.`);
   }
+  // The payload must carry the verified array.
   if (!/media_urls:\s*mmsMediaUrls/.test(code)) {
     failures.push(`${COMPOSE}: the payload must carry media_urls: mmsMediaUrls (the verified array). I-PROPOSED-1282-MMS-MEDIA-URL-PUBLICLY-FETCHABLE.`);
   }
-  // The local preview uri must NEVER be written into the payload.
-  if (/media_urls:\s*\[?\s*mmsLocalUri/.test(code)) {
-    failures.push(`${COMPOSE}: mmsLocalUri (a local file:// / blob uri) must NEVER reach media_urls. I-PROPOSED-1282-MMS-MEDIA-URL-PUBLICLY-FETCHABLE.`);
+  // mmsMediaUrls must be DERIVED from verified remoteUrl values only.
+  if (!/mmsMediaUrls[\s\S]{0,240}remoteUrl/.test(code)) {
+    failures.push(`${COMPOSE}: mmsMediaUrls must be derived from verified remoteUrl values only. I-PROPOSED-1282-MMS-MEDIA-URL-PUBLICLY-FETCHABLE.`);
+  }
+  // A local blob/file preview uri must NEVER be written into media_urls.
+  if (/media_urls:\s*\[?\s*\w*[lL]ocal(?:Uri|Uris)?/.test(code)) {
+    failures.push(`${COMPOSE}: a local file:// / blob uri must NEVER reach media_urls. I-PROPOSED-1282-MMS-MEDIA-URL-PUBLICLY-FETCHABLE.`);
   }
   return failures;
 };
@@ -96,19 +109,26 @@ if (SELF_TEST) {
   `;
   const CMP_GOOD = `
     const url = await uploadMarketingMmsImage(brandId, input);
-    setMmsMediaUrls([url]);
+    setMmsMedia((prev) => prev.map((m) => (m.key === item.key ? { ...m, remoteUrl: url } : m)));
+    const mmsMediaUrls = useMemo(() => mmsMedia.reduce((acc, m) => { if (m.remoteUrl !== null) acc.push(m.remoteUrl); return acc; }, []), [mmsMedia]);
     return { kind: "sms", body: smsBody, ...(mmsMediaUrls.length > 0 ? { media_urls: mmsMediaUrls } : {}) };
   `;
-  // BAD_C: local uri leaks into the payload.
+  // BAD_C: a local preview uri leaks into the payload (and no verified derivation).
   const CMP_BAD_C = `
-    setMmsMediaUrls([url]);
+    const url = await uploadMarketingMmsImage(brandId, input);
     return { kind: "sms", body: smsBody, media_urls: [mmsLocalUri] };
   `;
+  // BAD_D: URL not sourced from the verified upload service.
+  const CMP_BAD_D = `
+    const mmsMediaUrls = useMemo(() => mmsMedia.map((m) => m.remoteUrl), [mmsMedia]);
+    return { kind: "sms", body: smsBody, media_urls: mmsMediaUrls };
+  `;
   const sg = evaluateService(SVC_GOOD), sa = evaluateService(SVC_BAD_A), sb = evaluateService(SVC_BAD_B);
-  const cg = evaluateCompose(CMP_GOOD), cc = evaluateCompose(CMP_BAD_C);
-  const ok = sg.length === 0 && sa.length >= 1 && sb.length >= 1 && cg.length === 0 && cc.length >= 1;
+  const cg = evaluateCompose(CMP_GOOD), cc = evaluateCompose(CMP_BAD_C), cd = evaluateCompose(CMP_BAD_D);
+  const ok = sg.length === 0 && sa.length >= 1 && sb.length >= 1
+    && cg.length === 0 && cc.length >= 1 && cd.length >= 1;
   if (!ok) {
-    console.error("ORCH-1282 media-url-fetchable SELF-TEST failed:", { sg, sa, sb, cg, cc });
+    console.error("ORCH-1282 media-url-fetchable SELF-TEST failed:", { sg, sa, sb, cg, cc, cd });
     process.exit(1);
   }
   console.log("ORCH-1282 media-url-fetchable gate self-test passed.");

@@ -44,10 +44,15 @@ export interface SmsPreviewPaneProps {
   reachableSms: number | null;
   /** Brand default currency — reserved for a future cost line (SPEC §3.3). */
   currencyCode: string;
-  /** ORCH-1282 — draw the MMS image tile + MMS label. */
+  /** ORCH-1282 — draw the MMS image tile(s) + MMS label. */
   hasMedia?: boolean;
-  /** ORCH-1282 — local/remote uri for the thumbnail. */
-  mediaUri?: string | null;
+  /**
+   * ORCH-1289 — display uris for ALL attached photos (up to 10). Each is the
+   * verified public URL once uploaded, or the local preview while uploading.
+   * Cross-platform-renderable (prefer the public URL) so web + native both show
+   * the same tiles that will be sent.
+   */
+  mediaUris?: (string | null)[];
 }
 
 /**
@@ -76,7 +81,7 @@ export const SmsPreviewPane: React.FC<SmsPreviewPaneProps> = ({
   brandName,
   reachableSms,
   hasMedia = false,
-  mediaUri = null,
+  mediaUris = [],
 }) => {
   const wire = bodyWithFooter(body);
   const isEmpty = body.trim().length === 0 && !hasMedia;
@@ -121,14 +126,20 @@ export const SmsPreviewPane: React.FC<SmsPreviewPaneProps> = ({
       ) : (
         <>
           <View style={styles.bubble}>
-            {hasMedia && mediaUri !== null ? (
-              <Image
-                source={{ uri: mediaUri }}
-                style={styles.imageTile}
-                resizeMode="cover"
-                accessibilityLabel="Attached photo preview"
-              />
-            ) : null}
+            {/* ORCH-1289 — render ALL attached photos (MMS carries up to 10). */}
+            {hasMedia
+              ? mediaUris.map((uri, idx) =>
+                  uri !== null && uri.length > 0 ? (
+                    <Image
+                      key={`${idx}-${uri}`}
+                      source={{ uri }}
+                      style={styles.imageTile}
+                      resizeMode="cover"
+                      accessibilityLabel="Attached photo preview"
+                    />
+                  ) : null,
+                )
+              : null}
             <Text
               style={styles.bubbleText}
               accessibilityLabel={wire}

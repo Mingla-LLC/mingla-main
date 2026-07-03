@@ -30,7 +30,10 @@ const STOP_FOOTER = "Reply STOP to opt out.";
 export function bodyWithFooter(message: string): string {
   const body = message.trim();
   if (/reply stop/i.test(body)) return body;
-  return body.length === 0 ? body : `${body} ${STOP_FOOTER}`;
+  // ORCH-1289 — the STOP footer sits on its OWN line (a blank line, then the
+  // STOP line) so this preview matches the wire body the adapter composes
+  // (composeSmsBody with stopFooterOwnLine=true on the marketing route).
+  return body.length === 0 ? body : `${body}\n\n${STOP_FOOTER}`;
 }
 
 /** Segment count for a body. GSM-7 = 160 single / 153 concat; UCS-2 = 70 / 67. */
