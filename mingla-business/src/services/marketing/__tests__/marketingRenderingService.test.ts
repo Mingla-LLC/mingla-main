@@ -87,16 +87,13 @@ describe("validateChannelPayload", () => {
     ).toEqual(["Subject required", "Body required"]);
   });
 
-  it("rejects sms + rcs payloads in Phase B", () => {
+  // [TEST-MOD-APPROVED ORCH-1283] — RCS channel decommissioned in ORCH-1283
+  // (ChannelPayloadRcs, the "rcs" kind, and the marketing-send `case "rcs"`
+  // were deleted). The rcs half of this case referenced a type that no longer
+  // exists, so it is removed here. The sms coverage below is unchanged.
+  it("rejects sms payloads in Phase B", () => {
     expect(
       validateChannelPayload({ kind: "sms", body: "x" }),
     ).toEqual(["SMS channel not yet enabled"]);
-    expect(
-      validateChannelPayload({
-        kind: "rcs",
-        rich_card: { title: "x" },
-        fallback_sms: "x",
-      }),
-    ).toEqual(["RCS channel not yet enabled"]);
   });
 });

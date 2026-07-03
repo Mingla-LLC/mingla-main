@@ -95,8 +95,6 @@ export function validateChannelPayload(
     if (payload.body_html.trim().length === 0) issues.push("Body required");
   } else if (payload.kind === "sms") {
     issues.push("SMS channel not yet enabled");
-  } else if (payload.kind === "rcs") {
-    issues.push("RCS channel not yet enabled");
   } else {
     const _exhaustive: never = payload;
     issues.push(`Unknown channel kind: ${String(_exhaustive)}`);

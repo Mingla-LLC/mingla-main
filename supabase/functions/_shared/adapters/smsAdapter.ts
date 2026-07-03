@@ -48,6 +48,11 @@ export interface SmsSendInput {
   // "marketing" → Termii `generic` channel. The Twilio (US/RoW) path IGNORES
   // this field; reputation isolation there is via `messagingServiceSid`.
   messageType?: "transactional" | "marketing";
+  // ORCH-1282 — MMS media. Publicly-fetchable HTTPS URL(s) Twilio attaches via
+  // the `MediaUrl` param (presence promotes the message to MMS). US/Twilio ONLY;
+  // the NG/Termii path IGNORES media and sends SMS-only (Termii `/api/sms/send`
+  // `type:"plain"` carries no media param). The composer sets exactly one.
+  mediaUrls?: string[];
 }
 
 const E164_RE = /^\+[1-9][0-9]{1,14}$/;
@@ -124,6 +129,7 @@ async function twilioSend(
   to: string,
   body: string,
   messagingServiceSidOverride?: string | null,
+  mediaUrls?: string[],
 ): Promise<{ ok: boolean; sid?: string; error?: string; blacklisted?: boolean }> {
   const accountSid = Deno.env.get("TWILIO_ACCOUNT_SID");
   const authToken = Deno.env.get("TWILIO_AUTH_TOKEN");
@@ -147,6 +153,16 @@ async function twilioSend(
     Body: body,
   });
   if (statusCallback) params.set("StatusCallback", statusCallback);
+  // ORCH-1282 — MMS: `MediaUrl` is an optional, REPEATABLE param; a publicly
+  // accessible URL Twilio fetches server-side, and its presence promotes the
+  // message to MMS. Ref: https://www.twilio.com/docs/messaging/api/message-resource#create-a-message-resource
+  // (param `MediaUrl`). Single-image v1 appends one; append() keeps the repeat
+  // semantics for forward-compat.
+  if (mediaUrls) {
+    for (const u of mediaUrls) {
+      if (u && u.length > 0) params.append("MediaUrl", u);
+    }
+  }
   try {
     const res = await fetch(
       `https://api.twilio.com/2010-04-01/Accounts/${accountSid}/Messages.json`,
@@ -255,8 +271,9 @@ export const smsAdapter = {
     // NG → Termii (transactional→dnd, marketing→generic); everything else → Twilio.
     const cc = (input.countryCode ?? "US").toUpperCase();
     const result = cc === "NG"
+      // NG/Termii is SMS-only — media is intentionally NOT passed (ORCH-1282).
       ? await termiiSend(to, body, input.messageType === "marketing" ? "generic" : "dnd")
-      : await twilioSend(to, body, input.messagingServiceSid);
+      : await twilioSend(to, body, input.messagingServiceSid, input.mediaUrls);
     if (!result.ok) {
       return {
         ok: false,

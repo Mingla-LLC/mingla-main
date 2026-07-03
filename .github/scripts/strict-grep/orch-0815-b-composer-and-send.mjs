@@ -9,7 +9,8 @@
  * Checks:
  *   1. marketing-send/index.ts has `switch (kind)` with `default:` throw
  *      (I-PROPOSED-BR — channel-extensibility dispatcher).
- *   2. ChannelTabs.tsx renders 3 tabs (`email` + `sms` + `rcs` literals).
+ *   2. ChannelTabs.tsx renders 2 tabs (`email` + `sms` literals).
+ *      (ORCH-1283 removed the dead `rcs` tab + its assertion.)
  *   3. compose.tsx parses query param shape `audience={kind}:{id}`
  *      (I-PROPOSED-BU — uses parseAudienceParam).
  *   4. No bare `crypto.randomUUID()` in any new mingla-business/src/**.
@@ -25,8 +26,8 @@
  *  10. marketing-unsubscribe/index.ts calls `verifyUnsubscribeToken`
  *      BEFORE any DB write.
  *  11. New pg_cron migration uses `DO $$` probes for extensions / cron job.
- *  12. ChannelTabs.tsx defines all 3 tab spec literals adjacent
- *      (I-PROPOSED-BS).
+ *  12. ChannelTabs.tsx defines both tab spec literals adjacent
+ *      (I-PROPOSED-BS — email + sms).
  *
  * Exit: 0 = clean, 1 = at least one violation, 2 = script error.
  */
@@ -111,7 +112,6 @@ function readOrSkip(absolutePath) {
     }
     if (!/case\s+["']email["']/.test(src)) fail("check-1", MARKETING_SEND, "missing email case");
     if (!/case\s+["']sms["']/.test(src)) fail("check-1", MARKETING_SEND, "missing sms case");
-    if (!/case\s+["']rcs["']/.test(src)) fail("check-1", MARKETING_SEND, "missing rcs case");
     if (!/default\s*:\s*\{[\s\S]*?throw new Error/.test(src)) {
       fail("check-1", MARKETING_SEND, "default case must throw");
     }
@@ -129,7 +129,6 @@ function readOrSkip(absolutePath) {
   } else {
     if (!/kind:\s*["']email["']/.test(src)) fail("check-2", CHANNEL_TABS, "literal `email` tab missing");
     if (!/kind:\s*["']sms["']/.test(src)) fail("check-2", CHANNEL_TABS, "literal `sms` tab missing");
-    if (!/kind:\s*["']rcs["']/.test(src)) fail("check-2", CHANNEL_TABS, "literal `rcs` tab missing");
   }
 }
 

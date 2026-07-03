@@ -1,11 +1,11 @@
 /**
- * ChannelTabs — 3-segment tab row (Email · SMS · RCS) inside the composer
+ * ChannelTabs — 2-segment tab row (Email · SMS) inside the composer
  * Step 2 "What" card.
  *
- * Phase B: Email active. SMS + RCS rendered visibly but disabled with a
- * "pending" caption. This enforces I-PROPOSED-BS (literal `email`, `sms`,
- * `rcs` strings co-located in this file — checked by strict-grep gate so
- * future phases plugging in SMS/RCS know exactly where to enable them).
+ * Both channels are live. The dead "RCS" tab was removed in ORCH-1283 (it
+ * did nothing and no RCS infrastructure ever shipped). This enforces
+ * I-PROPOSED-BS (literal `email` + `sms` strings co-located in this file —
+ * checked by the ORCH-0815-B strict-grep gate).
  *
  * Accessibility (I-39): every Pressable has accessibilityLabel +
  * accessibilityState.disabled.
@@ -23,7 +23,7 @@ import {
   typography,
 } from "../../constants/designSystem";
 
-export type MarketingChannelKind = "email" | "sms" | "rcs";
+export type MarketingChannelKind = "email" | "sms";
 
 export interface ChannelTabsProps {
   active: MarketingChannelKind;
@@ -42,9 +42,8 @@ const TABS: ReadonlyArray<TabSpec> = [
   // META-ORCH-1161 Sub-B — SMS enabled. The send still ships text-dark: the
   // per-market kill-switch (SMS_LIVE_ENABLED_US/_NG) defaults false server-side,
   // so composing/scheduling an SMS blast is live UI but no Twilio HTTP fires
-  // until the operator flips the switch. RCS stays disabled.
+  // until the operator flips the switch.
   { kind: "sms", label: "SMS", enabled: true, caption: "" },
-  { kind: "rcs", label: "RCS", enabled: false, caption: "pending" },
 ];
 
 export const ChannelTabs: React.FC<ChannelTabsProps> = ({ active, onChange }) => {

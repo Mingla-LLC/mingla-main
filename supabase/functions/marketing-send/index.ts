@@ -10,8 +10,9 @@
 //      campaign (via userClient + RLS), then dispatches that one campaign.
 //
 // Channel routing (I-PROPOSED-BR) is an exhaustive switch on
-// `channel_payload.kind`. SMS / RCS throw `not_yet_enabled` so a future
-// phase can plug them in without touching the dispatcher core.
+// `channel_payload.kind`. Email + SMS are live; any unknown kind throws
+// via the `default:` branch (the exhaustiveness sentinel keeps the switch
+// total at compile time). ORCH-1283 removed the dead `rcs` kind.
 //
 // Live-broadcast gate (SPEC §7.4): the `MARKETING_SEND_LIVE_ENABLED`
 // env-flag defaults `false`. When false, every recipient gets a
@@ -191,7 +192,7 @@ interface CampaignRow {
   audience_id: string;
   channel: string;
   channel_payload: {
-    kind: "email" | "sms" | "rcs";
+    kind: "email" | "sms";
     subject?: string;
     body_html?: string;
     body_text?: string;
@@ -200,6 +201,10 @@ interface CampaignRow {
     // adapter appends it). short_url_token is reserved; SMS links use the
     // existing /m/{tracking_id} Mingla redirect (Sub-B §6.7).
     body?: string;
+    // ORCH-1282 — MMS media (publicly-fetchable brand_covers URLs). US/Twilio
+    // only; NG/Termii drops it (SMS-only). Passenger on the existing send — does
+    // NOT alter disposition or the ORCH-1270 dedupe.
+    media_urls?: string[];
   };
   name: string;
   scheduled_for: string | null;
@@ -421,8 +426,6 @@ async function dispatchByKind(
       // any Twilio HTTP, so this ships text-dark until the operator flips it.
       // (The Phase-A sentinel string "sms_not_yet_enabled" is retired here.)
       return await sendSms(supabase, campaign, options);
-    case "rcs":
-      throw new Error("rcs_not_yet_enabled");
     default: {
       // Exhaustiveness sentinel — TS errors at compile time if a new kind
       // is added without a case branch.
@@ -830,6 +833,16 @@ async function sendSms(
   const rawBody = (campaign.channel_payload.body ?? "").trim();
   if (rawBody.length === 0) throw new Error("sms_body_empty");
 
+  // ORCH-1282 — MMS media. A passenger on the existing send: it rides the Twilio
+  // MediaUrl param (US only); the NG/Termii branch inside the adapter never
+  // receives it. Does NOT alter disposition/dedupe (all ORCH-1270 logic below
+  // is byte-for-byte unchanged).
+  const mediaUrls = Array.isArray(campaign.channel_payload.media_urls)
+    ? campaign.channel_payload.media_urls.filter(
+        (u) => typeof u === "string" && u.length > 0,
+      )
+    : [];
+
   const marketingSid = Deno.env.get("TWILIO_MARKETING_MESSAGING_SERVICE_SID") ?? null;
 
   // 3. Throttled batches.
@@ -985,6 +998,9 @@ async function sendSms(
         // channel (Twilio ignores this field; reputation isolation there is the
         // separate marketing Messaging Service SID above).
         messageType: "marketing",
+        // ORCH-1282 — MMS media (US/Twilio only; the adapter's NG/Termii branch
+        // ignores it → NG silently sends SMS-only).
+        mediaUrls,
       });
 
       if (result.status === "sent") {

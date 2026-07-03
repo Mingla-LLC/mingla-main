@@ -45,13 +45,16 @@ export function computeSegments(text: string): number {
 }
 
 export interface SmsEstimate {
-  /** Encoding the body will use on the wire. */
-  encoding: "GSM-7" | "UCS-2";
+  /**
+   * Encoding the body will use on the wire. ORCH-1282: "MMS" when a photo is
+   * attached (the text still rides the MMS, but it is billed per message).
+   */
+  encoding: "GSM-7" | "UCS-2" | "MMS";
   /** Characters counted (body + STOP footer). */
   charCount: number;
-  /** Segments per recipient. */
+  /** Segments per recipient (always 1 for MMS — billed per message). */
   segmentsPerRecipient: number;
-  /** Total segments across the reachable audience. */
+  /** Total segments across the reachable audience (message count for MMS). */
   totalSegments: number;
   /** Estimated cost in MINOR units of the display currency (cents). */
   estimatedCostMinor: number;
@@ -61,22 +64,42 @@ export interface SmsEstimate {
 // outbound; we use a conservative whole-cent estimate. Operator can tune later.
 const DEFAULT_SEGMENT_COST_MINOR = 1; // 1 cent per segment (rounded up from ~0.79c)
 
+// ORCH-1282 — default per-MESSAGE MMS price (US cents). US MMS ~ $0.02/msg;
+// billed per message, not per segment. Conservative whole-cent estimate
+// (operator can tune later — see SPEC §10 OQ-1). Estimate only; Twilio meters
+// authoritatively (Constitution #9).
+const DEFAULT_MMS_COST_MINOR = 2;
+
 /**
- * Estimate segments + cost for an SMS blast.
+ * Estimate segments + cost for an SMS/MMS blast.
  *
  * @param message       composer body (without the STOP footer — added here)
  * @param reachableSms  recipients reachable on SMS (truthful reach from audience)
  * @param segmentCostMinor optional per-segment cost in minor units (default 1c)
+ * @param hasMedia      ORCH-1282 — when true the blast is an MMS (photo attached):
+ *                      billed per MESSAGE (1 "segment"/recipient) at the MMS rate,
+ *                      not per SMS segment. The text still counts toward charCount.
  */
 export function estimateSmsCost(
   message: string,
   reachableSms: number,
   segmentCostMinor: number = DEFAULT_SEGMENT_COST_MINOR,
+  hasMedia: boolean = false,
 ): SmsEstimate {
   const wire = bodyWithFooter(message);
+  const safeReach = reachableSms > 0 ? reachableSms : 0;
+  if (hasMedia) {
+    // MMS — one message per recipient, billed at the MMS per-message rate.
+    return {
+      encoding: "MMS",
+      charCount: wire.length,
+      segmentsPerRecipient: 1,
+      totalSegments: safeReach,
+      estimatedCostMinor: safeReach * DEFAULT_MMS_COST_MINOR,
+    };
+  }
   const encoding: "GSM-7" | "UCS-2" = isGsm7(wire) ? "GSM-7" : "UCS-2";
   const segmentsPerRecipient = computeSegments(wire);
-  const safeReach = reachableSms > 0 ? reachableSms : 0;
   const totalSegments = segmentsPerRecipient * safeReach;
   return {
     encoding,

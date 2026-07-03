@@ -59,4 +59,36 @@ describe("smsCost", () => {
     expect(est.totalSegments).toBe(0);
     expect(est.estimatedCostMinor).toBe(0);
   });
+
+  // ORCH-1282 — MMS branch. Fails-on-revert: deleting the `hasMedia` branch in
+  // estimateSmsCost makes encoding fall back to "GSM-7", segmentsPerRecipient
+  // compute from the body, and the cost drop to 100 * 1c (=100) → the "MMS"
+  // encoding assertion AND the 200c cost assertion BOTH fail.
+  it("estimates MMS as one message per recipient at the MMS rate", () => {
+    const est = estimateSmsCost("Sale today!", 100, undefined, true);
+    expect(est.encoding).toBe("MMS");
+    expect(est.segmentsPerRecipient).toBe(1);
+    expect(est.totalSegments).toBe(100); // message count, not SMS segments
+    // DEFAULT_MMS_COST_MINOR = 2c/message → 100 * 2 = 200.
+    expect(est.estimatedCostMinor).toBe(200);
+    // The text still counts toward charCount (body + STOP footer).
+    expect(est.charCount).toBeGreaterThan("Sale today!".length);
+  });
+
+  it("MMS charges per message regardless of segment length (long body still 1 message)", () => {
+    const long = "a".repeat(500); // would be many SMS segments
+    const est = estimateSmsCost(long, 10, undefined, true);
+    expect(est.encoding).toBe("MMS");
+    expect(est.segmentsPerRecipient).toBe(1);
+    expect(est.totalSegments).toBe(10);
+    expect(est.estimatedCostMinor).toBe(20); // 10 * 2c
+  });
+
+  it("regression pin: hasMedia=false path is unchanged (SMS segments/cost)", () => {
+    const est = estimateSmsCost("Sale today!", 100, undefined, false);
+    expect(est.encoding).toBe("GSM-7");
+    expect(est.segmentsPerRecipient).toBe(1);
+    expect(est.totalSegments).toBe(100);
+    expect(est.estimatedCostMinor).toBe(100); // 100 * 1c SMS rate
+  });
 });
