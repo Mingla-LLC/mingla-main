@@ -15,14 +15,14 @@
 
 - **Rule:** No META-ORCH-1237 in-scope admin authorization path uses `profiles.account_type='admin'`; `public.is_admin_user()` is the sole admin-identity gate. The two split-gate partner-money SELECT policies (`partner_stripe_self_select` on `partner_stripe_connect_accounts`, `partner_splits_partner_self_select` on `partner_splits`) are reconciled to `is_admin_user()` with their self-access branches preserved.
 - **Enforcement:** strict-grep `i-admin-single-gate.mjs` (last-writer-wins over `supabase/migrations/**` — the latest CREATE POLICY for each in-scope policy must use `is_admin_user()` and NOT `account_type`) + the flip migration's `DO $$` self-assert (apply FAILS if any `public` policy still references `account_type='admin'`).
-- **Fails-on-revert:** deleting the flip migration (`20261203000000_orch_1271_single_admin_gate.sql`) makes the old ORCH-1052/1054 `account_type` definer the last writer → `i-admin-single-gate.mjs` FAILS.
+- **Fails-on-revert:** deleting the flip migration (`20261204000000_orch_1271_single_admin_gate.sql`) makes the old ORCH-1052/1054 `account_type` definer the last writer → `i-admin-single-gate.mjs` FAILS.
 - **Established:** DRAFT at ORCH-1271 SPEC; flips ACTIVE at CLOSE.
 
 ### I-PROPOSED-1271-ADMIN-WRITE-AUDITED (DRAFT)
 
 - **Rule:** Every `admin_*` SECURITY DEFINER write RPC (a) guards on `is_admin_user()` AND (b) writes `admin_audit_log` — directly or via the shared `admin_write_audit(...)` helper.
 - **Enforcement:** strict-grep `i-admin-write-audited.mjs` — asserts `admin_write_audit` (which INSERTs into `admin_audit_log`) + `admin_audit_probe` exist in migrations, and every fn in the APPEND-ONLY write-RPC registry (seed = `admin_audit_probe`) references `admin_write_audit(`/`INSERT INTO admin_audit_log`. 1272/1273/1274 append their write RPCs to the registry.
-- **Fails-on-revert:** deleting the primitive migration (`20261203000002_orch_1271_admin_write_primitive.sql`) removes the helper/probe → gate FAILS.
+- **Fails-on-revert:** deleting the primitive migration (`20261204000002_orch_1271_admin_write_primitive.sql`) removes the helper/probe → gate FAILS.
 - **Established:** DRAFT at ORCH-1271 SPEC; flips ACTIVE at CLOSE.
 
 ### I-PROPOSED-1271-ADMIN-GATE-FIRST-STATEMENT (DRAFT)

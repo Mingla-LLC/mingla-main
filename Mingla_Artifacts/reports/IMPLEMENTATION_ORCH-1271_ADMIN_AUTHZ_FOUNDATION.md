@@ -23,10 +23,10 @@ Plus 3 CI guard scripts, 3 DRAFT invariants, and 2 decision-log records.
 
 | AC | What | Status | Evidence (commit `2b91e1e6c`) |
 |---|---|---|---|
-| AC-1.1/1.2 | Both partner SELECT policies flip to `is_admin_user()`, self-branches preserved, `account_type` gone | ✓ code | `20261203000000_orch_1271_single_admin_gate.sql`; happy-path test 2 assertions; prod probe = 2 account_type policies (both are these) |
+| AC-1.1/1.2 | Both partner SELECT policies flip to `is_admin_user()`, self-branches preserved, `account_type` gone | ✓ code | `20261204000000_orch_1271_single_admin_gate.sql`; happy-path test 2 assertions; prod probe = 2 account_type policies (both are these) |
 | AC-1.3 | `i-admin-single-gate.mjs` FAILS on revert; migration `DO $$` self-assert | ✓ | strict-grep `--self-test` 3/3 PASS; fails-on-revert proven (§6) |
-| AC-2.1 | `admin_audit_log` gains `actor_uid`/`reason` (nullable) + `idx_audit_log_target`; legacy insert still works | ✓ code | `20261203000001_orch_1271_audit_log_extend.sql` (ADD COLUMN IF NOT EXISTS, nullable); `logAdminAction` untouched |
-| AC-2.2 | `admin_audit_probe` returns uuid + writes audit row | ✓ code (live-fire deferred) | `20261203000002_...` §2c verbatim; runtime proof = tester post-deploy |
+| AC-2.1 | `admin_audit_log` gains `actor_uid`/`reason` (nullable) + `idx_audit_log_target`; legacy insert still works | ✓ code | `20261204000001_orch_1271_audit_log_extend.sql` (ADD COLUMN IF NOT EXISTS, nullable); `logAdminAction` untouched |
+| AC-2.2 | `admin_audit_probe` returns uuid + writes audit row | ✓ code (live-fire deferred) | `20261204000002_...` §2c verbatim; runtime proof = tester post-deploy |
 | AC-2.3/2.4 | blank/whitespace reason → `reason_required`; non-admin → `not_authorized`; no row | ✓ code (live-fire deferred) | helper guard-first + reason gate verbatim; tester live-fires |
 | AC-2.5 | edge fn 401/403/400/200 matrix | ✓ code (live-fire deferred) | `admin-write-primitive/index.ts` mirrors `careers-cv-signed-url`; `deno check` PASS; tester curls post-deploy |
 | AC-2.6 | `i-admin-write-audited.mjs` + `i-admin-gate-first-statement.mjs` FAIL on revert | ✓ | both `--self-test` PASS (3/3, 4/4); helper/probe absence → FAIL |
@@ -45,9 +45,9 @@ Plus 3 CI guard scripts, 3 DRAFT invariants, and 2 decision-log records.
 ## 3. Files changed (20 files, +1834 / −1)
 
 **Migrations (author only — DO NOT apply here):**
-- `supabase/migrations/20261203000000_orch_1271_single_admin_gate.sql` (+79) — DROP+CREATE the two partner SELECT policies with `is_admin_user()` (self-branches preserved verbatim) + `DO $$` self-assert.
-- `supabase/migrations/20261203000001_orch_1271_audit_log_extend.sql` (+60) — `ADD COLUMN actor_uid uuid, reason text` (nullable) + `idx_audit_log_target` + column comments + self-assert.
-- `supabase/migrations/20261203000002_orch_1271_admin_write_primitive.sql` (+96) — `admin_write_audit(...)` helper + `admin_audit_probe(...)` golden RPC (spec §2b/§2c verbatim) + self-assert.
+- `supabase/migrations/20261204000000_orch_1271_single_admin_gate.sql` (+79) — DROP+CREATE the two partner SELECT policies with `is_admin_user()` (self-branches preserved verbatim) + `DO $$` self-assert.
+- `supabase/migrations/20261204000001_orch_1271_audit_log_extend.sql` (+60) — `ADD COLUMN actor_uid uuid, reason text` (nullable) + `idx_audit_log_target` + column comments + self-assert.
+- `supabase/migrations/20261204000002_orch_1271_admin_write_primitive.sql` (+96) — `admin_write_audit(...)` helper + `admin_audit_probe(...)` golden RPC (spec §2b/§2c verbatim) + self-assert.
 
 **Edge fn:**
 - `supabase/functions/admin-write-primitive/index.ts` (+95) — guarded no-op prover.
@@ -100,7 +100,7 @@ No unexpected third `account_type='admin'` policy → the migration's post-flip 
 ## 6. Regression test + fails-on-revert proof
 
 - **Happy-path test:** `mingla-admin/src/__tests__/orch1271_admin_authz_foundation.test.js` (21 assertions, `node:test` + `fs` source-assertion, node_modules-free). `node --test` → **21 pass / 0 fail**.
-- **Fails-on-revert verified at commit `2b91e1e6c`:** true LINE DELETION (not comment-out) of both `OR public.is_admin_user()` lines in `20261203000000_orch_1271_single_admin_gate.sql`:
+- **Fails-on-revert verified at commit `7e58a7400`:** true LINE DELETION (not comment-out) of both `OR public.is_admin_user()` lines in `20261204000000_orch_1271_single_admin_gate.sql`:
   - happy-path test → **19 pass / 2 fail** (the two single-gate assertions fail).
   - `i-admin-single-gate.mjs` (real tree) → **FAIL, exit 1** ("latest partner_stripe_self_select / partner_splits_partner_self_select definer does not gate on is_admin_user()").
   - `git checkout` restore → happy-path **21/21 PASS**, `i-admin-single-gate.mjs` **exit 0**, tree clean.
@@ -169,7 +169,7 @@ Parity is automatic (single admin codebase; single backend). No manual multi-sur
    ```bash
    cd "/Users/sethogieva/Desktop/mingla-orchs/1271-[admin-authz-foundation]" && /Users/sethogieva/bin/supabase db push --linked
    ```
-   Order is monotonic: `20261203000000` → `...01` → `...02`. Read-only probe (§4) confirms all three apply cleanly (no pre-flight abort). Max prior prefix on main = `20261202000000`.
+   Order is monotonic: `20261204000000` → `...01` → `...02`. Read-only probe (§4) confirms all three apply cleanly (no pre-flight abort). Max prior prefix on main = `20261202000000`. NOTE: renumbered from 20261203* → 20261204* after 1270-[sms-quiet-hours-defer] concurrently claimed `20261203000000` (renumber commit `7e58a7400`).
 2. **Deploy edge fn** (from MERGED main): `admin-write-primitive` (preserve `verify_jwt=true`). Verify with the AC-2.5 curl matrix (401/403/400/200 + audit row).
 3. **Flip 3 invariants** DRAFT → ACTIVE in `INVARIANT_REGISTRY.md` at CLOSE.
 4. **Merge one PR** (all CI green incl. the new `orch-1271-admin-authz-foundation` strict-grep job).
