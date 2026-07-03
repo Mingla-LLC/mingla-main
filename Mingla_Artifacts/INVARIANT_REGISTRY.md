@@ -86,6 +86,30 @@
 - **Rule:** a marketing send is idempotent — a recipient already in a terminal status or already carrying a `provider_message_id` is SKIPPED on re-run, and the unique indexes make a double-send physically impossible (no recipient is messaged twice).
 - **Enforcement:** strict-grep gate `.github/scripts/strict-grep/i-proposed-1270-send-idempotent.mjs` (`--self-test` + GOOD/BAD fixtures) + the unique indexes added by migration `20261203000000` + the Deno/SQL regression suite driving a re-run and asserting terminal / `provider_message_id` rows are skipped (F-DS-1 latent double-send sealed + fails-on-revert re-proven at `de66781f7`).
 - **Established:** ACTIVE 2026-07-03 at ORCH-1270 CLOSE (QA CONDITIONAL PASS → F-DS-1 sealed in `de66781f7` → clean; `reports/TEST_ORCH-1270_SMS_QUIET_HOURS_DEFER.md`).
+
+---
+
+## ACTIVE — META-ORCH-1281 (marketing SMS wave 2 — SMS preview + photo/MMS + RCS-tab removal, 2026-07-03)
+
+> All invariants registered directly ACTIVE at META-ORCH-1281 CLOSE (SHIPPED; PR #733 / `80eb0fe40`; house style strips the `I-PROPOSED-` prefix on activation, mirroring the ORCH-1269/1270 precedent — the gate FILENAMES keep their on-disk `i-proposed-` prefix; only the invariant NAME strips it). Second wave building on ORCH-1270: the `marketing-send` edge fn was redeployed to prod `gqnoajqerqhnvulmnyvv` for MMS (**no migration** — `media_urls` is a JSON key on the jsonb `channel_payload`; the CHECK inspects only `kind`). Enforcement = three merged strict-grep gates — `.github/scripts/strict-grep/i-proposed-1282-mms-media-url-publicly-fetchable.mjs` + `i-proposed-1282-mms-ng-drops-media.mjs` (job `orch-1282-mms-strict-grep` in `supabase-migrations-and-stripe-deno.yml`) + `i-proposed-1283-no-rcs-tab.mjs` (job `meta-orch-1281-marketing-sms-wave2` in `strict-grep-mingla-business.yml`, which also runs the amended `orch-0815-b-composer-and-send.mjs`) — each `--self-test` + GOOD/BAD fixtures, plus the Deno adapter regression suite. ORCH-1281's SMS-preview leg carries no strict-grep gate (covered by the source-contract jest suites `metaOrch1281SmsPreview.test.tsx` + `metaOrch1283NoRcsTab.test.tsx`), so no `I-1281-*` invariant is registered. QA CONDITIONAL PASS → D-1 (removing `ChannelPayloadRcs` orphaned a pre-existing `marketingRenderingService.test.ts` case) sealed → clean. Cross-ref `reports/TEST_META-ORCH-1281_MARKETING_SMS_WAVE2.md`.
+
+### I-1282-MMS-MEDIA-URL-PUBLICLY-FETCHABLE (ACTIVE)
+- **Rule:** a marketing-SMS photo attachment reaches Twilio ONLY as a `MediaUrl` whose URL has been verified publicly fetchable (a real HEAD + GET-range reachability check) BEFORE it is written into `channel_payload.media_urls` — an unverified / non-public / 404 / 403 URL fails-close (`BrandCoverError`) and never enters the payload or the send path. Attach type/size is restricted to JPEG/PNG/GIF ≤ 5 MB (webp excluded — carrier-inconsistent).
+- **Enforcement:** strict-grep gate `.github/scripts/strict-grep/i-proposed-1282-mms-media-url-publicly-fetchable.mjs` (`--self-test` + GOOD/BAD fixtures, wired as job `orch-1282-mms-strict-grep` in `supabase-migrations-and-stripe-deno.yml`) + the `marketingMmsImageService.test.ts` jest suite (over-5MB / webp / pdf reject; verify-called-with-public-URL on success; no-unverified-URL-leak on upload error) + the Deno `marketing_send_mms_adapter.test.ts` suite asserting the `MediaUrl` form param.
+- **Established:** ACTIVE 2026-07-03 at META-ORCH-1281 CLOSE (SHIPPED; PR #733 / `80eb0fe40`; `marketing-send` edge fn redeployed to prod `gqnoajqerqhnvulmnyvv` for MMS, no migration; `reports/TEST_META-ORCH-1281_MARKETING_SMS_WAVE2.md`).
+
+### I-1282-MMS-NG-DROPS-MEDIA (ACTIVE)
+- **Rule:** MMS media rides the Twilio (US) send path ONLY — the Nigeria / Termii branch NEVER transmits a media param, so a Nigerian recipient of an MMS-carrying blast receives an SMS-only (words-only) message. The composer discloses this with a persistent caption.
+- **Enforcement:** strict-grep gate `.github/scripts/strict-grep/i-proposed-1282-mms-ng-drops-media.mjs` (`--self-test` + GOOD/BAD fixtures, wired as job `orch-1282-mms-strict-grep` in `supabase-migrations-and-stripe-deno.yml`) + the Deno `marketing_send_mms_adapter.test.ts` real-adapter test (US MMS carries `MediaUrl`; US no-media pin; NG Termii path carries no media param) + the tester's `meta_orch_1281_mms_defer_no_double_send.test.ts` (media survives defer→send→lost-write→cron-repick with NO double-send; NG drops media).
+- **Established:** ACTIVE 2026-07-03 at META-ORCH-1281 CLOSE (SHIPPED; PR #733 / `80eb0fe40`; `reports/TEST_META-ORCH-1281_MARKETING_SMS_WAVE2.md`).
+
+### I-1283-NO-RCS-TAB (ACTIVE)
+- **Rule:** the marketing composer exposes exactly the `email` + `sms` channel tabs — no `rcs` tab, no `ChannelPayloadRcs` type, no marketing-send `case "rcs"`; and the `orch-0815-b-composer-and-send.mjs` gate MUST NOT be re-tightened to require the `rcs` literal (that requirement is what made a straight removal revert). The email + sms tab assertions in that gate MUST remain (removal of the disabled RCS tab must never gut the two live channels).
+- **Enforcement:** strict-grep gate `.github/scripts/strict-grep/i-proposed-1283-no-rcs-tab.mjs` (`--self-test` + GOOD/BAD fixtures, wired as job `meta-orch-1281-marketing-sms-wave2` in `strict-grep-mingla-business.yml`) + the amended `orch-0815-b-composer-and-send.mjs` (email + sms assertions kept, adversarially re-proven still-failing when a required literal is removed) + the source-contract jest suite `metaOrch1283NoRcsTab.test.tsx`.
+- **Established:** ACTIVE 2026-07-03 at META-ORCH-1281 CLOSE (SHIPPED; PR #733 / `80eb0fe40`; QA CONDITIONAL PASS → D-1 orphaned `rcs` test sealed → clean; `reports/TEST_META-ORCH-1281_MARKETING_SMS_WAVE2.md`).
+
+---
+
 ## PROPOSED — ORCH-1276 (identity console WAVE-2 EDIT — 11 audited write RPCs, 2026-07-03)
 
 ### I-PROPOSED-1276-IDENTITY-ADMIN-WRITE-AUDITED (DRAFT)
