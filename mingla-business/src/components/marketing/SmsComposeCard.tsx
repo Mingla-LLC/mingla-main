@@ -1,3 +1,4 @@
+// orch-strict-grep-allow orch-0892 — horizontal MMS thumbnail row (image list), not keyboard-avoiding scroll; no keyboard insets/listeners
 /**
  * SmsComposeCard — META-ORCH-1161 Sub-B.
  *
@@ -21,6 +22,7 @@
  */
 
 import React, { useMemo } from "react";
+// orch-strict-grep-allow orch-0892 — horizontal MMS thumbnail row (image list), not keyboard-avoiding scroll; no keyboard insets/listeners
 import {
   ActivityIndicator,
   Image,
