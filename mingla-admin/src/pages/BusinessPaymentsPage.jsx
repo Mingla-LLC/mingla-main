@@ -12,11 +12,38 @@ import { useState, useEffect, useCallback } from "react";
 import { CreditCard } from "lucide-react";
 import { EntityListView } from "../components/entity/EntityListView";
 import { EntityDetailView } from "../components/entity/EntityDetailView";
+import { HighRiskActionModal } from "../components/entity/HighRiskActionModal";
 import { Badge } from "../components/ui/Badge";
 import { Button } from "../components/ui/Button";
 import { AlertCard } from "../components/ui/Card";
 import { listBrandStripeStatus, getBrandStripeStatus } from "../services/adminMoneyService";
+import { connectAction } from "../services/adminMoneyActService";
 import { formatDateTime } from "../lib/formatters";
+
+// Map admin-stripe-connect-action edge-fn error codes → user-facing copy.
+function connectErrorCopy(code) {
+  switch (code) {
+    case "no_connect_account": return "This brand has no Stripe account — the brand must onboard first.";
+    case "stripe_api_error": return "Stripe request failed — try again in a moment.";
+    case "forbidden": return "Admin access required.";
+    case "unauthorized": return "Your session expired — sign in again.";
+    case "validation_error": return "Invalid request.";
+    default: return null;
+  }
+}
+
+async function parseEdgeError(error) {
+  let code = null;
+  let detail = null;
+  try {
+    const b = await error.context?.json();
+    code = b?.error;
+    detail = b?.detail;
+  } catch {
+    // non-JSON error body — fall through to the caller's fallback.
+  }
+  return { code, detail };
+}
 
 // ── Maps ──────────────────────────────────────────────────────────────────────
 
@@ -239,12 +266,35 @@ export function BusinessPaymentsPage() {
   const [detail, setDetail] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+  const [actionMode, setActionMode] = useState(null); // null | 'refresh' | 'onboarding_link'
+  const [onboardingUrl, setOnboardingUrl] = useState(null);
+  const [copied, setCopied] = useState(false);
 
   useEffect(() => {
     const sync = () => setSelectedBrandId(brandIdFromHash());
     window.addEventListener("hashchange", sync);
     return () => window.removeEventListener("hashchange", sync);
   }, []);
+
+  // Clear the generated link whenever the viewed brand changes.
+  useEffect(() => {
+    setOnboardingUrl(null);
+    setCopied(false);
+  }, [selectedBrandId]);
+
+  const runConnectAction = useCallback(async ({ reason }) => {
+    const { data, error: err } = await connectAction({ brand_id: selectedBrandId, mode: actionMode, reason });
+    if (err) {
+      const { code, detail } = await parseEdgeError(err);
+      throw new Error(connectErrorCopy(code) || detail || err.message || "Action failed.");
+    }
+    if (actionMode === "onboarding_link") {
+      setOnboardingUrl(data?.onboarding_url || null);
+      setCopied(false);
+    } else {
+      loadDetail(selectedBrandId);
+    }
+  }, [selectedBrandId, actionMode]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const loadDetail = useCallback(async (brandId) => {
     setLoading(true);
@@ -306,16 +356,59 @@ export function BusinessPaymentsPage() {
           sections={detail ? buildSections(detail) : []}
         />
         {detail && (
-          <div className="mt-4 flex flex-wrap items-center justify-end gap-2 border-t border-[var(--gray-200)] pt-4">
-            <Badge variant="outline">WAVE-2</Badge>
-            <Button variant="secondary" size="md" disabled title="Available in a later wave">
-              Refresh from Stripe
-            </Button>
-            <Button variant="secondary" size="md" disabled title="Available in a later wave">
-              Generate onboarding link
-            </Button>
+          <div className="mt-4 flex flex-col gap-3 border-t border-[var(--gray-200)] pt-4">
+            <div className="flex flex-wrap items-center justify-end gap-2">
+              <Button variant="secondary" size="md" onClick={() => setActionMode("refresh")}>
+                Refresh from Stripe
+              </Button>
+              <Button variant="secondary" size="md" onClick={() => setActionMode("onboarding_link")}>
+                Generate onboarding link
+              </Button>
+            </div>
+            {onboardingUrl && (
+              <div className="flex flex-col gap-1.5 rounded-lg border border-[var(--gray-200)] bg-[var(--gray-50)] p-3">
+                <span className="text-xs font-medium text-[var(--color-text-secondary)]">
+                  Onboarding link (send to the brand out-of-band)
+                </span>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="text"
+                    value={onboardingUrl}
+                    readOnly
+                    className="flex-1 h-9 px-2 text-xs font-mono rounded-lg border border-[var(--gray-300)] bg-[var(--color-background-primary)] text-[var(--color-text-primary)] outline-none"
+                  />
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    onClick={async () => {
+                      try {
+                        await navigator.clipboard.writeText(onboardingUrl);
+                        setCopied(true);
+                      } catch {
+                        setCopied(false);
+                      }
+                    }}
+                  >
+                    {copied ? "Copied" : "Copy"}
+                  </Button>
+                </div>
+              </div>
+            )}
           </div>
         )}
+        <HighRiskActionModal
+          open={actionMode != null}
+          onClose={() => setActionMode(null)}
+          title={actionMode === "onboarding_link" ? "Generate onboarding link" : "Refresh from Stripe"}
+          description={
+            actionMode === "onboarding_link"
+              ? "Mints a fresh Stripe onboarding link for this brand's existing account. No money moves."
+              : "Pulls this brand's live Connect status from Stripe and updates the record. No money moves."
+          }
+          confirmLabel={actionMode === "onboarding_link" ? "Generate link" : "Refresh"}
+          onConfirm={runConnectAction}
+          successMessage={actionMode === "onboarding_link" ? "Onboarding link generated." : "Status refreshed from Stripe."}
+        />
       </div>
     );
   }

@@ -363,3 +363,16 @@ verify_jwt = false
 # careers-cv-signed-url's admin-gated service_role contract.
 [functions.admin-write-primitive]
 verify_jwt = true
+
+# ORCH-1278 — admin money-act edge fns (Stripe-touching). verify_jwt=true: the
+# gateway rejects no-JWT callers (401); each fn then re-verifies the JWT is a real
+# user AND an active admin (admin_users status='active' → else 403) before any Stripe
+# or DB write. admin-refund-order calls the service_role refund twins + Stripe
+# refunds.create (TEST-mode safe today; LIVE needs Seth's go). admin-stripe-connect-
+# action does refresh (accounts.retrieve) / onboarding_link (account_sessions.create)
+# over an EXISTING account only — no account creation, no money movement.
+[functions.admin-refund-order]
+verify_jwt = true
+
+[functions.admin-stripe-connect-action]
+verify_jwt = true

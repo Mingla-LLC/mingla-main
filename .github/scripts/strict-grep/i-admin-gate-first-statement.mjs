@@ -68,6 +68,16 @@ const GUARDED_DEFINER_FNS = [
   "admin_revoke_brand_invitation",
   "admin_set_user_active",
   "admin_set_user_beta",
+  // ORCH-1278 [Admin Money console — WAVE-2 ACT]: the 5 audited money-act RPCs. The
+  // two refund twins use the service_role-safe guard form (auth.uid() IS NOT NULL AND
+  // NOT is_admin_user()); the 3 DB-only acts use the plain is_admin_user() form. Both
+  // are accepted by GUARD_RE and MUST be the first statement. Reverting 20261210000000
+  // removes these fns → this gate FAILS.
+  "admin_refund_order",
+  "admin_refund_order_commit",
+  "admin_annotate_dispute",
+  "admin_grant_override_audited",
+  "admin_revoke_override_audited",
 ];
 
 function fnBody(src, name) {
@@ -179,7 +189,26 @@ if (process.argv.includes("--self-test")) {
         "begin if not public.is_admin_user() then raise exception 'not_authorized'; end if; return '{}'::jsonb; end; $$;\n",
     )
     .join("");
-  const reads = getPerson + offerings1273 + moneyFns + identity1276;
+  // ORCH-1278: the 5 audited money-act RPCs — registered above (guard MUST be first).
+  // The two refund twins use the service_role-safe guard form; include all 5 in the
+  // good/other-subject fixtures so the self-test isolates the intended violation.
+  const money1278 =
+    ["admin_refund_order", "admin_refund_order_commit"]
+      .map(
+        (n) =>
+          `create or replace function public.${n}(p_id uuid) returns jsonb language plpgsql security definer as $$ ` +
+          "begin if auth.uid() is not null and not public.is_admin_user() then raise exception 'not_authorized'; end if; " +
+          "return '{}'::jsonb; end; $$;\n",
+      )
+      .join("") +
+    ["admin_annotate_dispute", "admin_grant_override_audited", "admin_revoke_override_audited"]
+      .map(
+        (n) =>
+          `create or replace function public.${n}(p_id uuid) returns jsonb language plpgsql security definer as $$ ` +
+          "begin if not public.is_admin_user() then raise exception 'not_authorized'; end if; return '{}'::jsonb; end; $$;\n",
+      )
+      .join("");
+  const reads = getPerson + offerings1273 + moneyFns + identity1276 + money1278;
 
   // GOOD: all guard-first.
   let f = [];

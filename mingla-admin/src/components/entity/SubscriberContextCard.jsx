@@ -9,12 +9,14 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { Modal, ModalBody } from "../ui/Modal";
+import { HighRiskActionModal } from "./HighRiskActionModal";
 import { Badge } from "../ui/Badge";
 import { AlertCard } from "../ui/Card";
 import { Spinner } from "../ui/Spinner";
 import { Button } from "../ui/Button";
 import { RotateCcw } from "lucide-react";
 import { getSubscriptionDetail } from "../../services/adminMoneyService";
+import { grantOverrideAudited, revokeOverrideAudited } from "../../services/adminMoneyActService";
 import { formatDateTime, formatDate } from "../../lib/formatters";
 
 function tierLabel(tier) {
@@ -35,6 +37,9 @@ export function SubscriberContextCard({ open, onClose, userId }) {
   const [bundle, setBundle] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+  const [action, setAction] = useState(null); // null | 'grant' | 'revoke'
+  const [tier, setTier] = useState("mingla_plus");
+  const [durationDays, setDurationDays] = useState(30);
 
   const load = useCallback(async () => {
     if (!userId) return;
@@ -59,11 +64,57 @@ export function SubscriberContextCard({ open, onClose, userId }) {
     if (open && userId) load();
   }, [open, userId, load]);
 
+  // Reset the grant form each time the grant modal opens.
+  useEffect(() => {
+    if (action === "grant") {
+      setTier("mingla_plus");
+      setDurationDays(30);
+    }
+  }, [action]);
+
   const sub = bundle?.subscription || null;
   const override = bundle?.override || null;
   const history = Array.isArray(bundle?.override_history) ? bundle.override_history : [];
+  // The active override's id lives on the history rows (is_active), not on the
+  // `override` summary object — use it to revoke.
+  const activeOverride = history.find((h) => h.is_active) || null;
+
+  const runGrant = useCallback(async ({ reason }) => {
+    const days = Math.max(1, Math.floor(Number(durationDays) || 0));
+    const { error: err } = await grantOverrideAudited({
+      user_id: userId,
+      tier,
+      reason,
+      duration_days: days,
+    });
+    if (err) {
+      const msg = err.message || "";
+      if (msg.includes("not_authorized")) throw new Error("Admin access required.");
+      if (msg.toLowerCase().includes("invalid tier")) throw new Error("Tier must be Free or Mingla+.");
+      if (msg.includes("reason_required")) throw new Error("A reason is required.");
+      throw new Error(msg || "Couldn't grant the override.");
+    }
+    load();
+  }, [userId, tier, durationDays, load]);
+
+  const runRevoke = useCallback(async ({ reason }) => {
+    if (!activeOverride) throw new Error("No active override to revoke.");
+    const { error: err } = await revokeOverrideAudited({
+      override_id: activeOverride.id,
+      user_id: userId,
+      reason,
+    });
+    if (err) {
+      const msg = err.message || "";
+      if (msg.includes("not_authorized")) throw new Error("Admin access required.");
+      if (msg.includes("reason_required")) throw new Error("A reason is required.");
+      throw new Error(msg || "Couldn't revoke the override.");
+    }
+    load();
+  }, [activeOverride, userId, load]);
 
   return (
+    <>
     <Modal open={open} onClose={onClose} title="Subscriber context" size="md">
       <ModalBody>
         {loading ? (
@@ -148,11 +199,72 @@ export function SubscriberContextCard({ open, onClose, userId }) {
                 </ul>
               )}
             </div>
+
+            <div className="flex flex-wrap items-center justify-end gap-2 border-t border-[var(--gray-200)] pt-4">
+              <Button variant="secondary" size="sm" onClick={() => setAction("grant")}>
+                {activeOverride ? "Extend Plus" : "Comp Plus"}
+              </Button>
+              {activeOverride && (
+                <Button variant="danger" size="sm" onClick={() => setAction("revoke")}>
+                  Revoke override
+                </Button>
+              )}
+            </div>
           </div>
         ) : (
           <p className="text-sm text-[var(--color-text-muted)]">No subscriber selected.</p>
         )}
       </ModalBody>
     </Modal>
+
+      {/* W2-D grant / revoke — DB entitlement override only (not billing). Rendered
+          outside the card Modal so its position:fixed is viewport-relative. */}
+      <HighRiskActionModal
+        open={action === "grant"}
+        onClose={() => setAction(null)}
+        title={activeOverride ? "Extend Plus override" : "Comp Plus override"}
+        description="Grants a DB subscription-tier override (not a real subscription). Billing is unchanged."
+        confirmLabel="Grant override"
+        onConfirm={runGrant}
+        successMessage="Override granted."
+      >
+        <div className="flex flex-wrap gap-3">
+          <div className="flex flex-col gap-1.5">
+            <label htmlFor="override-tier" className="text-xs font-medium text-[var(--color-text-secondary)]">Tier</label>
+            <select
+              id="override-tier"
+              value={tier}
+              onChange={(e) => setTier(e.target.value)}
+              className="h-10 px-3 text-sm rounded-lg bg-[var(--color-background-primary)] text-[var(--color-text-primary)] border border-[var(--gray-300)] outline-none focus:border-[var(--color-brand-500)] focus:ring-2 focus:ring-[var(--color-brand-100)]"
+            >
+              <option value="mingla_plus">Mingla+</option>
+              <option value="free">Free</option>
+            </select>
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <label htmlFor="override-duration" className="text-xs font-medium text-[var(--color-text-secondary)]">Duration (days)</label>
+            <input
+              id="override-duration"
+              type="number"
+              min={1}
+              value={durationDays}
+              onChange={(e) => setDurationDays(e.target.value)}
+              className="w-28 h-10 px-3 text-sm rounded-lg bg-[var(--color-background-primary)] text-[var(--color-text-primary)] border border-[var(--gray-300)] outline-none focus:border-[var(--color-brand-500)] focus:ring-2 focus:ring-[var(--color-brand-100)]"
+            />
+          </div>
+        </div>
+      </HighRiskActionModal>
+
+      <HighRiskActionModal
+        open={action === "revoke"}
+        onClose={() => setAction(null)}
+        title="Revoke override"
+        description="Revokes the active DB subscription override. Billing is unchanged."
+        confirmLabel="Revoke"
+        destructive
+        onConfirm={runRevoke}
+        successMessage="Override revoked."
+      />
+    </>
   );
 }

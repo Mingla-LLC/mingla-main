@@ -11,10 +11,32 @@ import { Receipt } from "lucide-react";
 import { EntityListView } from "../components/entity/EntityListView";
 import { EntityDetailView } from "../components/entity/EntityDetailView";
 import { SubscriberContextCard } from "../components/entity/SubscriberContextCard";
+import { HighRiskActionModal } from "../components/entity/HighRiskActionModal";
 import { Badge } from "../components/ui/Badge";
 import { Button } from "../components/ui/Button";
 import { listOrders, getOrder } from "../services/adminMoneyService";
+import { refundOrder } from "../services/adminMoneyActService";
 import { timeAgo, formatDateTime } from "../lib/formatters";
+
+// Order payment_status values (DB enum) an admin may refund.
+const REFUNDABLE_STATUSES = ["paid", "partial_refund"];
+
+// Map admin-refund-order edge-fn error codes → user-facing copy.
+function refundErrorCopy(code) {
+  switch (code) {
+    case "refund_exceeds_remaining": return "Amount exceeds what's left to refund.";
+    case "line_overrefund": return "One or more items are already fully refunded.";
+    case "stripe_declined": return "Stripe declined — no money moved.";
+    case "order_not_refundable": return "This order can't be refunded.";
+    case "missing_connected_account": return "This brand has no Stripe account to refund from.";
+    case "missing_payment_intent": return "This order has no Stripe charge to refund.";
+    case "reason_invalid_length": return "Reason must be 10–200 characters.";
+    case "forbidden": return "Admin access required.";
+    case "unauthorized": return "Your session expired — sign in again.";
+    case "idempotency_key_required": return "Couldn't start the refund. Please retry.";
+    default: return null;
+  }
+}
 
 // ── Money formatter (cents + currency → string; never throws — I-1152 lesson) ──
 
@@ -287,6 +309,139 @@ function buildOrderSections(bundle, onViewSubscriber) {
   return sections;
 }
 
+// ── Refund modal (W2-A) — line-picker + typed-amount confirm ──────────────────
+// A HighRiskActionModal variant: picks per-line quantities (bounded by remaining
+// refundable), auto-computes each line amount (unit_price × qty, read-only), and
+// requires typing the exact refund total to confirm. amount_cents is integer cents
+// throughout. On success, refetches the order.
+
+// Mounted only while open (parent gates with `refundOpen &&`), so picks reset on
+// each open without a setState-in-effect.
+function RefundModal({ onClose, order, lineItems, onRefunded }) {
+  const [qtys, setQtys] = useState({});
+
+  const rows = (lineItems || []).map((li) => {
+    const remaining = Math.max(0, (li.quantity ?? 0) - (li.refunded_quantity ?? 0));
+    const qty = qtys[li.order_line_item_id] ?? 0;
+    return {
+      id: li.order_line_item_id,
+      name: li.ticket_type_name,
+      unit: li.unit_price_cents ?? 0,
+      remaining,
+      qty,
+      amount: (li.unit_price_cents ?? 0) * qty,
+    };
+  });
+  const totalCents = rows.reduce((s, r) => s + r.amount, 0);
+  const confirmPhrase = (totalCents / 100).toFixed(2);
+
+  const setQty = (id, val, max) => {
+    const parsed = Math.floor(Number(val));
+    const n = Number.isFinite(parsed) ? Math.max(0, Math.min(max, parsed)) : 0;
+    setQtys((prev) => ({ ...prev, [id]: n }));
+  };
+
+  const selectFull = () => {
+    const next = {};
+    rows.forEach((r) => {
+      if (r.remaining > 0) next[r.id] = r.remaining;
+    });
+    setQtys(next);
+  };
+
+  const handleConfirm = async ({ reason }) => {
+    const lines = rows
+      .filter((r) => r.qty > 0)
+      .map((r) => ({ order_line_item_id: r.id, quantity: r.qty, amount_cents: r.amount }));
+    if (lines.length === 0) throw new Error("Pick at least one item to refund.");
+    const { error } = await refundOrder({ order_id: order.id, lines, reason });
+    if (error) {
+      let code = null;
+      let detail = null;
+      try {
+        const b = await error.context?.json();
+        code = b?.error;
+        detail = b?.detail;
+      } catch {
+        // non-JSON error body — fall through to the generic message.
+      }
+      throw new Error(refundErrorCopy(code) || detail || error.message || "Refund failed.");
+    }
+    onRefunded?.();
+  };
+
+  const inputClass = [
+    "w-16 h-9 px-2 text-sm text-right rounded-lg",
+    "bg-[var(--color-background-primary)] text-[var(--color-text-primary)]",
+    "border border-[var(--gray-300)] outline-none",
+    "focus:border-[var(--color-brand-500)] focus:ring-2 focus:ring-[var(--color-brand-100)]",
+    "disabled:opacity-50 disabled:cursor-not-allowed",
+  ].join(" ");
+
+  return (
+    <HighRiskActionModal
+      open
+      onClose={onClose}
+      title="Issue refund"
+      description="Refunds move real money in Stripe LIVE mode. Pick the items, then type the exact total to confirm."
+      confirmLabel="Refund"
+      destructive
+      confirmPhrase={confirmPhrase}
+      onConfirm={handleConfirm}
+      successMessage="Refund issued."
+    >
+      <div className="flex flex-col gap-2">
+        <div className="flex items-center justify-between">
+          <span className="text-xs font-medium text-[var(--color-text-secondary)]">Items to refund</span>
+          <button
+            type="button"
+            onClick={selectFull}
+            className="text-xs text-[var(--color-brand-500)] underline cursor-pointer hover:opacity-80"
+          >
+            Full refund
+          </button>
+        </div>
+        {rows.length === 0 ? (
+          <p className="text-sm text-[var(--color-text-muted)]">No refundable line items on this order.</p>
+        ) : (
+          rows.map((r) => (
+            <div
+              key={r.id}
+              className="flex items-center justify-between gap-2 rounded-lg border border-[var(--gray-200)] px-3 py-2"
+            >
+              <div className="min-w-0">
+                <span className="block truncate text-sm font-medium text-[var(--color-text-primary)]">
+                  {r.name || "Item"}
+                </span>
+                <span className="block text-xs text-[var(--color-text-tertiary)]">
+                  {formatMoney(r.unit, order.currency)} ea · {r.remaining} refundable
+                </span>
+              </div>
+              <div className="flex items-center gap-2 shrink-0">
+                <input
+                  type="number"
+                  min={0}
+                  max={r.remaining}
+                  value={r.qty}
+                  onChange={(e) => setQty(r.id, e.target.value, r.remaining)}
+                  disabled={r.remaining === 0}
+                  className={inputClass}
+                  aria-label={`Refund quantity for ${r.name || "item"}`}
+                />
+                <span className="w-20 text-right text-sm font-medium">{formatMoney(r.amount, order.currency)}</span>
+              </div>
+            </div>
+          ))
+        )}
+        <div className="flex items-center justify-between border-t border-[var(--gray-200)] pt-2">
+          <span className="text-sm font-semibold text-[var(--color-text-primary)]">Refund total</span>
+          <span className="text-sm font-bold text-[var(--color-text-primary)]">{formatMoney(totalCents, order.currency)}</span>
+        </div>
+      </div>
+    </HighRiskActionModal>
+  );
+}
+
 // ── Component ─────────────────────────────────────────────────────────────────
 
 export function BusinessOrdersPage() {
@@ -295,6 +450,7 @@ export function BusinessOrdersPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [subUserId, setSubUserId] = useState(null);
+  const [refundOpen, setRefundOpen] = useState(false);
 
   useEffect(() => {
     const sync = () => setSelectedOrderId(orderIdFromHash());
@@ -367,13 +523,20 @@ export function BusinessOrdersPage() {
           }}
           sections={bundle ? buildOrderSections(bundle, setSubUserId) : []}
         />
-        {bundle && (
+        {bundle && REFUNDABLE_STATUSES.includes(order.payment_status) && (
           <div className="mt-4 flex flex-wrap items-center justify-end gap-2 border-t border-[var(--gray-200)] pt-4">
-            <Badge variant="outline">WAVE-2</Badge>
-            <Button variant="secondary" size="md" disabled title="Available in a later wave">
+            <Button variant="danger" size="md" onClick={() => setRefundOpen(true)}>
               Issue refund
             </Button>
           </div>
+        )}
+        {refundOpen && (
+          <RefundModal
+            onClose={() => setRefundOpen(false)}
+            order={order}
+            lineItems={bundle?.line_items || []}
+            onRefunded={() => loadOrder(selectedOrderId)}
+          />
         )}
         <SubscriberContextCard open={subUserId != null} onClose={() => setSubUserId(null)} userId={subUserId} />
       </div>

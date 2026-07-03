@@ -133,6 +133,31 @@
 - **Fails-on-revert:** deleting the `router.replace(routeForDeckReadinessFix(...))` seam (or reverting to `setCreatedVenue(...)` + the inline `<VenueDeckReadinessSetup>` mount) → gate exit 1 AND the jest core assertion fails. Proven by TRUE LINE DELETION at `bf4b89a6e` (implementor) and independently re-proven by the tester (Step 0.5); see `reports/IMPLEMENTATION_ORCH-1285_DECK_READINESS_WEB_FLASH.md` + `reports/TEST_ORCH-1285_DECK_READINESS_WEB_FLASH.md`.
 - **Established:** ACTIVE 2026-07-03 at ORCH-1285 CLOSE (SHIPPED; merged squash `5922e15d8` / PR #734; tester PASS `c02ed200e`, P0:0 P1:0 P2:0; client-only web fix via Vercel `[deploy]`, native rides the next business build).
 
+## DRAFT — ORCH-1278 [Admin Money console — WAVE-2 EDIT / ACT] (2026-07-03)
+
+> Registered DRAFT at ORCH-1278 IMPLEMENT (`reports/SPEC_ORCH-1278_ADMIN_MONEY_CONSOLE_EDIT.md` §7). Child of META-ORCH-1237; builds on ORCH-1271 (authz+audit) + ORCH-1274 (money reads). The orchestrator flips these DRAFT → ACTIVE at CLOSE once (a) the migration `20261210000000_orch_1278_money_act.sql` is applied to prod `gqnoajqerqhnvulmnyvv`, (b) the two edge fns `admin-refund-order` + `admin-stripe-connect-action` are deployed (verify_jwt=true), and (c) the tester live-fires the §8 matrix in TEST mode (a real LIVE-mode refund is a separate Seth-gated step). Enforcement = the strict-grep gate `.github/scripts/strict-grep/i-admin-refund-bounded.mjs` (+ `__tests__/i-admin-refund-bounded.test.mjs` fixture) plus the 5 RPC names appended to `i-admin-write-audited.mjs` (the 3 DB-only acts) + `i-admin-gate-first-statement.mjs` (all 5), wired as job `orch-1278-money-act` in `strict-grep-mingla-business.yml`, plus the migration `DO $$` self-asserts.
+
+### I-PROPOSED-1278-MONEY-ACT-AUDITED (DRAFT)
+
+- **Rule:** Every admin money-act path is admin-gated AND writes exactly one `admin_write_audit` row per successful act. The 3 DB-only acts (`admin_annotate_dispute`, `admin_grant_override_audited`, `admin_revoke_override_audited`) call `admin_write_audit` in-body; the 2 refund twins (`admin_refund_order`, `admin_refund_order_commit`) audit at the EDGE-FN layer (`admin-refund-order` writes `order.refund` post-commit) because a service_role caller cannot self-resolve the audit actor. `admin-stripe-connect-action` audits `connect.refresh` / `connect.onboarding_link`.
+- **Enforcement:** `i-admin-write-audited.mjs` registry (3 DB-only acts appended — each body references `admin_write_audit(`) + `i-admin-refund-bounded.mjs` (asserts the `admin-refund-order` edge fn calls `admin_write_audit`). The money UI (`BusinessOrdersPage`/`BusinessPaymentsPage`/`BusinessMoneyLedgerPage`/`SubscriberContextCard`) performs NO direct browser `.update()/.insert()/.delete()` — every write routes through `adminMoneyActService`.
+- **Fails-on-revert:** deleting an in-body `admin_write_audit(` call → `i-admin-write-audited.mjs` FAILS; deleting the edge-fn audit → `i-admin-refund-bounded.mjs` FAILS; a direct browser money write → `i-admin-refund-bounded.mjs` FAILS. Restore → PASS.
+- **Established:** DRAFT at ORCH-1278 IMPLEMENT; flips ACTIVE at CLOSE.
+
+### I-PROPOSED-1278-ADMIN-GATE-FIRST (DRAFT)
+
+- **Rule:** Every 1278 write RPC's FIRST executable statement is the admin guard. The 3 DB-only acts use `IF NOT public.is_admin_user() THEN RAISE 'not_authorized'`; the 2 refund twins use the service_role-safe form `IF auth.uid() IS NOT NULL AND NOT public.is_admin_user() THEN RAISE 'not_authorized'` and are `GRANT EXECUTE ... TO service_role` ONLY (revoked from PUBLIC/anon/authenticated) — a JWT caller can never reach the twin; the real gate is the edge fn's `admin_users` active-check.
+- **Enforcement:** the 5 RPC names appended to `i-admin-gate-first-statement.mjs` (guard-first) + `i-admin-refund-bounded.mjs` (asserts the twins are `service_role`-granted, `PUBLIC`-revoked, and NEVER `authenticated`-granted) + the migration `DO $$` privilege self-asserts.
+- **Fails-on-revert:** moving a guard below a mutation → `i-admin-gate-first-statement.mjs` FAILS; granting a twin to `authenticated` → `i-admin-refund-bounded.mjs` + the migration self-assert FAIL. Restore → PASS.
+- **Established:** DRAFT at ORCH-1278 IMPLEMENT; flips ACTIVE at CLOSE.
+
+### I-PROPOSED-1278-ADMIN-REFUND-BOUNDED (DRAFT)
+
+- **Rule:** `admin_refund_order` enforces the total-amount ceiling (`Σ amount ≤ orders.total_cents − refunded_amount_cents`, raising `refund_exceeds_remaining`) on top of the inherited per-line quantity bound + order-state check, and requires an idempotency key; the `admin-refund-order` edge fn requires the `Idempotency-Key` header and uses a per-attempt Stripe key (`admin_refund:<refundId>`) so a retried call never double-refunds.
+- **Enforcement:** `i-admin-refund-bounded.mjs` strict-grep over the 1278 migration + edge fn (+ `__tests__/i-admin-refund-bounded.test.mjs` fixture, 7 cases) + the `orch1278_money_console_act.test.js` happy-path regression.
+- **Fails-on-revert:** deleting the ceiling guard line (`refund_exceeds_remaining`) → `i-admin-refund-bounded.mjs` + `orch1278_money_console_act.test.js` FAIL; removing the edge `Idempotency-Key` requirement → `i-admin-refund-bounded.mjs` FAILS. Restore → PASS.
+- **Established:** DRAFT at ORCH-1278 IMPLEMENT; flips ACTIVE at CLOSE.
+
 ---
 
 ## ACTIVE — ORCH-1269 (claim-adoption phone country, 2026-07-03)
