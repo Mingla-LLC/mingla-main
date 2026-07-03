@@ -48,6 +48,27 @@ if (seeded.size !== 25) {
   failures.push(`migration: expected exactly 25 seeded services, found ${seeded.size}.`);
 }
 
+// 2b) META-ORCH-1270: the monitored-service list is EXTENSIBLE by LATER migrations.
+// ORCH-1201's migration seeds the canonical 25 (asserted above, unchanged); a
+// subsequent ORCH may seed ADDITIONAL services in its own migration (META-ORCH-1270
+// seeds `bunny` for the Bunny Stream usage alarm). The invariant still holds across
+// the union — every probe key is a seeded api_health_services row, no `_digest`
+// pseudo-row — so union in those extra seeds before the probe⊆seeded check below.
+for (const extraFile of readdirSync(migDir)) {
+  if (!extraFile.endsWith(".sql") || extraFile === migFile) continue;
+  const extraSql = readFileSync(join(migDir, extraFile), "utf8");
+  const blockRe = /INSERT INTO public\.api_health_services[\s\S]*?VALUES([\s\S]*?)ON CONFLICT/g;
+  let block;
+  while ((block = blockRe.exec(extraSql)) !== null) {
+    const tupleRe = /\(\s*'([a-z0-9_]+)'/g;
+    let t;
+    while ((t = tupleRe.exec(block[1])) !== null) seeded.add(t[1]);
+  }
+}
+if (seeded.has("_digest")) {
+  failures.push("migration: `_digest` pseudo-row seeded by a later migration — digest cooldown must live in api_health_meta.");
+}
+
 // 3) extract probe keys used in the edge fn (STATUS_PAGE_URLS + probe tuples + tiles).
 const probeKeys = new Set();
 const collect = (file) => {
