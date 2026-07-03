@@ -24,6 +24,13 @@ import {
   shouldFreezeCoverForReduceMotion,
 } from "./coverMediaPresentation";
 import { EventCover } from "./EventCover";
+// META-ORCH-1270 Phase 3 (Vector A/C) — native "preload none" cache seam. On
+// native this returns the remote uri wrapped as a cached expo-video source
+// (useCaching:true) so a re-open replays from disk; on web it passes the uri
+// through (browser HTTP cache). The result is only ATTACHED to the player on a
+// legitimate play (source-defer below), so a paused/off-screen/grid cover fetches
+// zero bytes.
+import { useCachedCoverVideoUri } from "./useCachedCoverVideoUri";
 
 export interface EventCoverMediaProps {
   hue?: number;
@@ -377,18 +384,40 @@ const EventCoverNativeVideo: React.FC<{
   onError,
 }) => {
   const shouldPlay = autoplay && playbackActive;
-  const player = useVideoPlayer(uri, (nextPlayer) => {
+  // META-ORCH-1270 Phase 3 (Vector A/C — the true closer of the cover-video
+  // bandwidth leak). ROOT CAUSE (Finding A): `useVideoPlayer(uri, …)` sourced the
+  // player ON CREATION, so expo-video opened the HTTP connection and buffered the
+  // mp4 the instant ANY video cover mounted — off-screen, behind another card, a
+  // reduce-motion still, a whole discover grid — regardless of play state. The
+  // ORCH-1209 "gate" only `pause()`d; pausing never releases the source or cancels
+  // the in-flight download. THE FIX: create the player with a NULL source (native
+  // "preload none") and attach the real source via `replaceAsync` ONLY the first
+  // time the cover is genuinely meant to play (`shouldPlay` true). A paused /
+  // off-screen / grid cover therefore fetches ZERO bytes and shows only the poster
+  // <Image>. `source` carries expo-video's on-device cache flag (useCaching) so a
+  // re-open replays from disk instead of re-downloading (Finding C). Web is
+  // unchanged (EventCoverWebVideo already sets <video preload="none">).
+  const source = useCachedCoverVideoUri(uri);
+  const sourcedRef = useRef(false);
+  const player = useVideoPlayer(null, (nextPlayer) => {
     nextPlayer.loop = loop;
     nextPlayer.muted = muted;
     nextPlayer.volume = muted ? 0 : 1;
     nextPlayer.staysActiveInBackground = false;
     nextPlayer.showNowPlayingNotification = false;
-    if (shouldPlay) callNativeVideoPlayer(() => nextPlayer.play());
   });
+
+  // A new media url must re-arm the source-defer latch so the next cover attaches
+  // its own source the first time IT is meant to play (and never before).
+  useEffect(() => {
+    sourcedRef.current = false;
+  }, [uri]);
 
   useEffect(() => {
     const sub = player.addListener("statusChange", (payload) => {
       if (payload.status === "error") onError();
+      // Only fires once a source has been attached (an unsourced player never
+      // reaches readyToPlay) — belt-and-suspenders resume for a real play.
       if (payload.status === "readyToPlay" && shouldPlay) {
         callNativeVideoPlayer(() => player.play());
       }
@@ -422,13 +451,31 @@ const EventCoverNativeVideo: React.FC<{
     player.volume = muted ? 0 : 1;
   }, [muted, player]);
 
+  // Source-defer play/pause. shouldPlay=false NEVER attaches the source (the
+  // player stays unsourced → ZERO bytes when off-screen / paused / in a grid).
+  // shouldPlay=true attaches the source exactly ONCE (replaceAsync) and plays;
+  // subsequent shouldPlay toggles just resume the already-sourced player.
   useEffect(() => {
     if (shouldPlay) {
-      callNativeVideoPlayer(() => player.play());
+      if (sourcedRef.current) {
+        callNativeVideoPlayer(() => player.play());
+      } else {
+        sourcedRef.current = true;
+        player
+          .replaceAsync(source)
+          .then(() => {
+            callNativeVideoPlayer(() => player.play());
+          })
+          .catch((error) => {
+            if (!isDisposedNativeVideoPlayerError(error)) onError();
+          });
+      }
       return;
     }
-    callNativeVideoPlayer(() => player.pause());
-  }, [player, shouldPlay]);
+    if (sourcedRef.current) {
+      callNativeVideoPlayer(() => player.pause());
+    }
+  }, [onError, player, shouldPlay, source]);
 
   useEffect(() => {
     const playToEndSub = player.addListener("playToEnd", () => {

@@ -140,6 +140,16 @@ const BusinessEventCardImpl: React.FC<BusinessEventCardProps> = ({
           mediaType={data.coverMediaType}
           radius={CARD_RADIUS}
           videoContentFit="cover"
+          // META-ORCH-1270 Vector-A — poster-only grid. The discover grid mounts
+          // EVERY business-event card at once (non-windowed ScrollView), so
+          // autoplaying each video cover streamed N clips concurrently — the leak
+          // that killed the media account. autoplay/playbackActive both default
+          // true; forcing them false makes the shared cover show the still poster
+          // (Bunny thumbnail / Cloudinary so_0) and fetch ZERO video bytes until a
+          // card is opened. Makes this file's own header contract ("autoplay
+          // disabled for the grid") finally true.
+          autoplay={false}
+          playbackActive={false}
           label={data.title}
           style={StyleSheet.absoluteFill}
         />

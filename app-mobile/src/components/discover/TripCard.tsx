@@ -108,6 +108,13 @@ const TripCardImpl: React.FC<TripCardProps> = ({ trip, onPress }) => {
             mediaType={trip.coverMediaType}
             radius={CARD_RADIUS}
             videoContentFit="cover"
+            // META-ORCH-1270 Vector-A — poster-only grid (mirrors
+            // BusinessEventCard). A trips feed video cover autoplayed by default
+            // (both props default true) and streamed while scrolling. Forcing
+            // autoplay/playbackActive false shows the still poster and fetches ZERO
+            // video bytes until the trip is opened; the detail screen still plays.
+            autoplay={false}
+            playbackActive={false}
             label={trip.title}
             style={StyleSheet.absoluteFill}
           />
