@@ -7,9 +7,36 @@
 
 ---
 
+## DRAFT — ORCH-1271 (admin authorization & audit FOUNDATION, 2026-07-03)
+
+> Registered DRAFT at ORCH-1271 SPEC §5 (`reports/SPEC_ORCH-1271_ADMIN_AUTHZ_FOUNDATION.md`). House style keeps the `I-PROPOSED-1271-*` names. The orchestrator flips these DRAFT → ACTIVE at CLOSE once (a) the 3 migrations are applied to prod `gqnoajqerqhnvulmnyvv` (single-gate flip + audit-log extend + write primitive), (b) the `admin-write-primitive` edge fn is deployed, and (c) the tester live-fires the AC-2 matrix (probe returns uuid + writes the audit row; blank/whitespace reason raises `reason_required`; non-admin raises `not_authorized`; edge fn 401/403/400/200). Enforcement = the 3 strict-grep gates `.github/scripts/strict-grep/i-admin-single-gate.mjs` + `i-admin-write-audited.mjs` + `i-admin-gate-first-statement.mjs` (each `--self-test` + GOOD/BAD fixtures, wired as job `orch-1271-admin-authz-foundation` in `strict-grep-mingla-business.yml`) + the migration self-asserts (`DO $$` blocks) + the implementor/tester regression suites. Cross-ref DEC-194 (`brands.kind` alive) + DEC-195 (single admin gate).
+
+### I-PROPOSED-1271-ADMIN-SINGLE-GATE (DRAFT)
+
+- **Rule:** No META-ORCH-1237 in-scope admin authorization path uses `profiles.account_type='admin'`; `public.is_admin_user()` is the sole admin-identity gate. The two split-gate partner-money SELECT policies (`partner_stripe_self_select` on `partner_stripe_connect_accounts`, `partner_splits_partner_self_select` on `partner_splits`) are reconciled to `is_admin_user()` with their self-access branches preserved.
+- **Enforcement:** strict-grep `i-admin-single-gate.mjs` (last-writer-wins over `supabase/migrations/**` — the latest CREATE POLICY for each in-scope policy must use `is_admin_user()` and NOT `account_type`) + the flip migration's `DO $$` self-assert (apply FAILS if any `public` policy still references `account_type='admin'`).
+- **Fails-on-revert:** deleting the flip migration (`20261203000000_orch_1271_single_admin_gate.sql`) makes the old ORCH-1052/1054 `account_type` definer the last writer → `i-admin-single-gate.mjs` FAILS.
+- **Established:** DRAFT at ORCH-1271 SPEC; flips ACTIVE at CLOSE.
+
+### I-PROPOSED-1271-ADMIN-WRITE-AUDITED (DRAFT)
+
+- **Rule:** Every `admin_*` SECURITY DEFINER write RPC (a) guards on `is_admin_user()` AND (b) writes `admin_audit_log` — directly or via the shared `admin_write_audit(...)` helper.
+- **Enforcement:** strict-grep `i-admin-write-audited.mjs` — asserts `admin_write_audit` (which INSERTs into `admin_audit_log`) + `admin_audit_probe` exist in migrations, and every fn in the APPEND-ONLY write-RPC registry (seed = `admin_audit_probe`) references `admin_write_audit(`/`INSERT INTO admin_audit_log`. 1272/1273/1274 append their write RPCs to the registry.
+- **Fails-on-revert:** deleting the primitive migration (`20261203000002_orch_1271_admin_write_primitive.sql`) removes the helper/probe → gate FAILS.
+- **Established:** DRAFT at ORCH-1271 SPEC; flips ACTIVE at CLOSE.
+
+### I-PROPOSED-1271-ADMIN-GATE-FIRST-STATEMENT (DRAFT)
+
+- **Rule:** In every admin SECURITY DEFINER RPC, the `is_admin_user()` guard (`IF NOT ... is_admin_user() THEN RAISE`, or the service-role-aware `IF auth.uid() IS NOT NULL AND NOT is_admin_user() THEN RAISE`) is the FIRST executable statement — after `DECLARE`/comments, before ANY query. A query before the guard opens a fail-open exposure window.
+- **Enforcement:** strict-grep `i-admin-gate-first-statement.mjs` — slices each registered definer fn body, strips comments, and asserts the first statement (to the first `;`) is an `IF ... is_admin_user() ... THEN ... RAISE` guard. Registry seed = `admin_write_audit`, `admin_audit_probe`.
+- **Fails-on-revert:** deleting the primitive migration removes the fns → gate FAILS; moving a query before the guard → gate FAILS.
+- **Established:** DRAFT at ORCH-1271 SPEC; flips ACTIVE at CLOSE.
+
+---
+
 ## ACTIVE — ORCH-1269 (claim-adoption phone country, 2026-07-03)
 
-> Registered directly ACTIVE at ORCH-1269 CLOSE (same-day live-fire hotfix — no spec phase, so no prior DRAFT to flip; direct-to-ACTIVE on the CLOSE evidence). Client-only fix (`522834656`); enforcement = the two append-only jest suites in `mingla-business/src/utils/__tests__/` — implementor `claimPhoneCountry.orch1269.test.ts` (17) + tester `claimPhoneCountry.orch1269.tester.adversarial.test.ts` (17) — BOTH fails-on-revert proven at `522834656` (implementor 8-fail set independently re-proven by the tester, Step 0.5; tester 7-fail set). Cross-ref `reports/TEST_ORCH-1269_CLAIM_PHONE_COUNTRY.md`.
+> Registered directly ACTIVE at ORCH-1269 CLOSE (same-day live-fire hotfix — no spec phase, so no prior DRAFT to flip; direct-to-ACTIVE on the CLOSE evidence). Client-only fix (`522834656`); enforcement = the two append-only jest suites in `mingla-business/src/utils/__tests__/` — implementor `claimPhoneCountry.orch1269.test.ts` (17) + tester `claimPhoneCountry.orch1269.tester.adversarial.test.ts` (17) — BOTH fails-on-revert proven at `522834656` (implementor 8-fail set independently re-proven by the tester, Step 0.5; tester 7-fail set). Cross-ref `reports/TEST_ORCH-1269_CLAIM_PHONE_COUNTRY.md`. (same-day live-fire hotfix — no spec phase, so no prior DRAFT to flip; direct-to-ACTIVE on the CLOSE evidence). Client-only fix (`522834656`); enforcement = the two append-only jest suites in `mingla-business/src/utils/__tests__/` — implementor `claimPhoneCountry.orch1269.test.ts` (17) + tester `claimPhoneCountry.orch1269.tester.adversarial.test.ts` (17) — BOTH fails-on-revert proven at `522834656` (implementor 8-fail set independently re-proven by the tester, Step 0.5; tester 7-fail set). Cross-ref `reports/TEST_ORCH-1269_CLAIM_PHONE_COUNTRY.md`.
 
 ### I-1269-NO-FABRICATED-PHONE-COUNTRY (ACTIVE)
 - **Rule:** the claim-adoption phone-country ISO is only ever a REAL resolution of `place_pool.country` through the shared `packages/phone-input/countries.ts` directory (names / ISO-2 / ISO-3 / known aliases); an unmappable value maps to null (the picker keeps its own default, chip-free) — the UI NEVER presents a guessed or fabricated flag as adopted truth, and no country→ISO derivation may prefix-slice a country name into an ISO code.

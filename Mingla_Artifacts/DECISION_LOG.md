@@ -509,3 +509,34 @@
 - META-ORCH-1009 Sub-D implementation report (`Mingla_Artifacts/reports/IMPLEMENTATION_META-ORCH-1009_SUB_D_REFRESH_CRON.md`)
 - I-AI-SCORE-STALENESS-AUTO-RECOVERED (new ACTIVE)
 - COMMS-0003 (Gemini docs URLs cited inline in migration + new admin_reeval_place handler)
+
+## DEC-194 — `brands.kind` is ALIVE in schema; the decommission was product-layer only (2026-07-03, ORCH-1271)
+
+**Decision:** `brands.kind` is a LIVE, editable column. Verified against live PROD `gqnoajqerqhnvulmnyvv` on 2026-07-03: `brands.kind text NOT NULL DEFAULT 'popup'` with `CHECK (kind = ANY (ARRAY['physical','popup','trip_planner']))` (constraint `brands_kind_check`). The wave-2 admin brand editor (ORCH-1273) treats `kind` as a live, editable column (values physical/popup/trip_planner). No migration drops it; ORCH-1271 does not touch it.
+
+**Rationale:** DEC-170 decommissioned `brands.kind` as an **authoring/feature gate** (every brand can author every offering type; public tabs derive from real counts, not from kind) and deleted the `Brand.kind` TS field — a PRODUCT-LAYER change. DEC-170 explicitly retained the DB column "until Stage 4 … actually drops it" (migration `20260730000000_meta_orch_0972_drop_brand_kind.sql`). That Stage-4 drop was NEVER applied — the column, default, and CHECK are all still present in prod. The memory rule `feedback_brand_kind_decommissioned` therefore refers to the removed persona-picker / `brand.kind`-immutable product flow, NOT a dropped column.
+
+**Supersedes:** any reading of `feedback_brand_kind_decommissioned` or DEC-170 as "the `brands.kind` column was removed." It was not.
+
+**Enforcement:** documentation ruling (no code in ORCH-1271). The admin brand-editor domain spec (ORCH-1273) inherits this: `kind` is an editable field with the 3-value CHECK allowlist.
+
+**Cross-references:**
+- DEC-170 (`brands.kind` decommissioned as authoring gate; column retained pending Stage-4 drop — never executed)
+- `feedback_brand_kind_decommissioned.md` (memory; product-flow scope, not schema)
+- SPEC_ORCH-1271_ADMIN_AUTHZ_FOUNDATION.md §6 (brands.kind alive DEC)
+- META-ORCH-1237 (admin full-visibility console — parent)
+
+## DEC-195 — Single admin gate is `is_admin_user()`; no super-admin tier (2026-07-03, ORCH-1271)
+
+**Decision:** `public.is_admin_user()` (auth.uid → auth.users.email → `admin_users` status='active') is THE canonical admin-identity check for every META-ORCH-1237 in-scope table and admin code path. The two `profiles.account_type='admin'` partner-money SELECT policies (`partner_stripe_self_select`, `partner_splits_partner_self_select`) are retired to `is_admin_user()` (ORCH-1271 migration `20261203000000_orch_1271_single_admin_gate.sql`, self-access branches preserved). `admin_users.role` is nullable free-text (verified) — there is NO enforced tier; every active admin is fully privileged. Destructive-action safety is delivered by **typed reason + confirm + server-side audit** (D2: `admin_write_audit` reason gate + `admin_audit_log`), NOT by a super-admin sub-tier. Any future tier is a separate DEC.
+
+**Rationale:** `profiles.account_type='admin'` had exactly 1 row (Seth), so the split gate worked only by accident of Seth's dual flag — a new `admin_users` admin without `account_type='admin'` on their profile would silently lose partner-money read. Standardizing on `is_admin_user()` removes that drift and gives 1272/1273/1274 one authorization convention. `is_admin_user()` itself is unchanged (used platform-wide; hardening its missing `SET search_path` is routed to a separate ORCH — out of 1271 blast radius).
+
+**Enforcement:** migration flip + `DO $$` self-assert (apply fails if any `public` policy still references `account_type='admin'`) + strict-grep `i-admin-single-gate.mjs` (last-writer-wins) + invariant `I-PROPOSED-1271-ADMIN-SINGLE-GATE` (DRAFT → ACTIVE at CLOSE).
+
+**Cross-references:**
+- I-PROPOSED-1271-ADMIN-SINGLE-GATE (DRAFT)
+- I-PROPOSED-1271-ADMIN-WRITE-AUDITED + I-PROPOSED-1271-ADMIN-GATE-FIRST-STATEMENT (the audited-write half of the same foundation)
+- SPEC_ORCH-1271_ADMIN_AUTHZ_FOUNDATION.md §1 + §6
+- ORCH-1052 / ORCH-1054 (original split-gate partner policies, now reconciled)
+- META-ORCH-1237 (admin full-visibility console — parent)

@@ -30,6 +30,7 @@ import {
   SlidersHorizontal,
   LifeBuoy,
   Briefcase,
+  Building2,
 } from "lucide-react";
 import { useAuth } from "../../context/AuthContext";
 import { NAV_GROUPS } from "../../lib/constants";
@@ -45,6 +46,9 @@ const ICON_MAP = {
   // META-ORCH-1222 — Careers nav (applications + role manager). Same ICON_MAP
   // registration requirement as Support/Beta-Leads.
   Briefcase,
+  // ORCH-1271 — Business Console nav (admin full-visibility console foundation).
+  // Without this entry the Building2 icon silently falls back to LayoutDashboard.
+  Building2,
 };
 
 export function Sidebar({

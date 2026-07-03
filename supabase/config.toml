@@ -348,3 +348,12 @@ verify_jwt = false
 # record-consent).
 [functions.self-serve-unsubscribe]
 verify_jwt = false
+
+# ORCH-1271 — admin-write-primitive is the audited-write PRIMITIVE prover (and
+# the wave-2 skeleton for Stripe-touching admin actions). verify_jwt=true: the
+# gateway rejects callers with no JWT (401); the fn then re-verifies the JWT is
+# a real user AND an active admin (admin_users status='active' → else 403) before
+# writing an admin.edge_probe audit row via admin_write_audit. Mirrors
+# careers-cv-signed-url's admin-gated service_role contract.
+[functions.admin-write-primitive]
+verify_jwt = true
