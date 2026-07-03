@@ -20,10 +20,11 @@
 
 ### I-PROPOSED-1271-ADMIN-WRITE-AUDITED (DRAFT)
 
-- **Rule:** Every `admin_*` SECURITY DEFINER write RPC (a) guards on `is_admin_user()` AND (b) writes `admin_audit_log` — directly or via the shared `admin_write_audit(...)` helper.
-- **Enforcement:** strict-grep `i-admin-write-audited.mjs` — asserts `admin_write_audit` (which INSERTs into `admin_audit_log`) + `admin_audit_probe` exist in migrations, and every fn in the APPEND-ONLY write-RPC registry (seed = `admin_audit_probe`) references `admin_write_audit(`/`INSERT INTO admin_audit_log`. 1272/1273/1274 append their write RPCs to the registry.
-- **Fails-on-revert:** deleting the primitive migration (`20261204000002_orch_1271_admin_write_primitive.sql`) removes the helper/probe → gate FAILS.
-- **Established:** DRAFT at ORCH-1271 SPEC; flips ACTIVE at CLOSE.
+- **Rule:** Every `admin_*` SECURITY DEFINER write RPC (a) guards on `is_admin_user()` as the first statement, (b) writes `admin_audit_log` — directly or via the shared `admin_write_audit(...)` helper — binding the actor **server-side** (`auth.uid()` for JWT callers; `p_actor_*` only on the no-JWT service_role path), AND (c) is EXECUTE-**least-privileged** (`REVOKE EXECUTE … FROM anon, PUBLIC` — and `authenticated` too for service_role-only fns; explicit `GRANT` to exactly the role that may call it). The shared helper `admin_write_audit` is EXECUTE-able by `service_role` only (definer RPCs reach it in definer context).
+- **Enforcement:** strict-grep `i-admin-write-audited.mjs` — asserts `admin_write_audit` (which INSERTs into `admin_audit_log`) + `admin_audit_probe` exist in migrations, and every fn in the APPEND-ONLY write-RPC registry (seed = `admin_audit_probe`) references `admin_write_audit(`/`INSERT INTO admin_audit_log`. 1272/1273/1274 append their write RPCs to the registry. The hardening migration's `DO $$` `has_function_privilege` self-assert fails apply if the least-privilege lockdown is missing. The golden template (with the mandatory `REVOKE`/`GRANT`) is baked into `20261204000003_orch_1271_p0_hardening.sql`.
+- **Fails-on-revert:** deleting the primitive migration (`20261204000002_orch_1271_admin_write_primitive.sql`) removes the helper/probe → gate FAILS; reverting the hardening migration (`20261204000003_orch_1271_p0_hardening.sql`) re-opens the fail-open/forgery + drops the privilege self-assert → the `admin_authz_adversarial` + `admin_authz_foundation` node:test suites FAIL.
+- **P0 note (2026-07-03):** the original helper was EXECUTE-granted to anon/authenticated/PUBLIC and fail-open for anon (`auth.uid()` NULL) with `COALESCE(p_actor_*, auth.uid())` actor forgery — anon curl returned 200 + a forged row. Contained by live prod hotfix; made permanent by `20261204000003` (server-side actor binding + REVOKE + invisible-whitespace reason normalization).
+- **Established:** DRAFT at ORCH-1271 SPEC; hardened at ORCH-1271 P0 rework; flips ACTIVE at CLOSE.
 
 ### I-PROPOSED-1271-ADMIN-GATE-FIRST-STATEMENT (DRAFT)
 

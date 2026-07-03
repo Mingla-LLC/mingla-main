@@ -3609,3 +3609,23 @@ jobs:
         run: node .github/scripts/strict-grep/i-admin-gate-first-statement.mjs --self-test
       - name: Run ORCH-1271 gate-first-statement gate
         run: node .github/scripts/strict-grep/i-admin-gate-first-statement.mjs
+
+  # ORCH-1271 P0 (Discovery D-2): the admin node:test audit-integrity guards did NOT
+  # gate CI. This job runs the ORCH-1271 source-assertion suites (happy-path +
+  # tester adversarial) so a revert of the authz/audit hardening blocks the PR. The
+  # suites are fs-based + import only pure modules → no npm ci needed. (Gating the
+  # FULL mingla-admin/src/__tests__ suite is blocked by 19 pre-existing failures in
+  # stale ORCH-1008/1013/1014/1015 suites — a separate cleanup ORCH.)
+  orch-1271-admin-authz-node-tests:
+    name: "ORCH-1271: admin authz/audit node:test suites (happy-path + adversarial)"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Run ORCH-1271 admin authz/audit node:test suites
+        run: >-
+          node --test
+          mingla-admin/src/__tests__/orch1271_admin_authz_foundation.test.js
+          mingla-admin/src/__tests__/orch1271_admin_authz_adversarial.test.js
