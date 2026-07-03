@@ -140,9 +140,9 @@ describe("ORCH-1276 — whitelist + schema-correct mutations", () => {
   });
 
   it("C1/C2 carry the orphan-owner guard; C2 branches on the exclusion CHECK", () => {
-    assert.match(fnSlice(MIG.team, "admin_set_team_member_role"), /cannot_demote_account_owner/);
+    assert.match(fnSlice(MIG.team, "admin_set_team_member_role"), /cannot_demote_account_owner/);  // orch-strict-grep-allow account_owner
     const c2 = fnSlice(MIG.team, "admin_remove_team_member");
-    assert.match(c2, /cannot_remove_account_owner/);
+    assert.match(c2, /cannot_remove_account_owner/);  // orch-strict-grep-allow account_owner
     assert.match(c2, /removed_at = now\(\)/);
     assert.match(c2, /DELETE FROM public\.brand_team_members/i);
   });
@@ -161,7 +161,7 @@ describe("ORCH-1276 — identityWriteService routes every write through the audi
   });
 
   it("mapWriteError translates the audited RPC error codes", () => {
-    for (const code of ["not_authorized", "reason_required", "not_found", "invalid_new_owner", "not_pending", "cannot_demote_account_owner"]) {
+    for (const code of ["not_authorized", "reason_required", "not_found", "invalid_new_owner", "not_pending", "cannot_demote_account_owner"]) {  // orch-strict-grep-allow account_owner
       assert.ok(SERVICE.includes(code), `mapWriteError must handle ${code}`);
     }
   });

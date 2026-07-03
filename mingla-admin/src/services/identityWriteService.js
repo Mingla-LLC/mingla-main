@@ -25,7 +25,7 @@ export function mapWriteError(error) {
   if (msg.includes("invalid_new_owner")) return "That account can't own a brand (missing or deleted).";
   if (msg.includes("invalid_status") || msg.includes("invalid_role")) return "Invalid selection.";
   if (msg.includes("not_pending")) return "This invite is no longer pending.";
-  if (msg.includes("cannot_demote_account_owner") || msg.includes("cannot_remove_account_owner")) {
+  if (msg.includes("cannot_demote_account_owner") || msg.includes("cannot_remove_account_owner")) {  // orch-strict-grep-allow account_owner (error code, not the renamed role)
     return "You can't remove or demote the brand's account owner.";
   }
   // ORCH-1276 P1: the brands.account_id immutability trigger (surfaces if the

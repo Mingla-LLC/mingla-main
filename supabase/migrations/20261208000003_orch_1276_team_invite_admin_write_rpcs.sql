@@ -39,7 +39,7 @@ BEGIN
   IF (v_before->>'user_id') = (SELECT b.account_id::text FROM public.brands b
                                WHERE b.id = (v_before->>'brand_id')::uuid)
      AND p_role <> 'brand_owner' THEN
-    RAISE EXCEPTION 'cannot_demote_account_owner';
+    RAISE EXCEPTION 'cannot_demote_account_owner';  -- orch-strict-grep-allow account_owner (error code for brands.account_id owner, not the renamed role)
   END IF;
   UPDATE public.brand_team_members SET role = p_role  -- NO updated_at on this table
    WHERE id = p_member_id RETURNING to_jsonb(brand_team_members) INTO v_after;
@@ -79,7 +79,7 @@ BEGIN
   -- Orphan-owner guard: cannot remove the member who IS the brand's account owner.
   IF (v_before->>'user_id') = (SELECT b.account_id::text FROM public.brands b
                                WHERE b.id = (v_before->>'brand_id')::uuid) THEN
-    RAISE EXCEPTION 'cannot_remove_account_owner';
+    RAISE EXCEPTION 'cannot_remove_account_owner';  -- orch-strict-grep-allow account_owner (error code for brands.account_id owner, not the renamed role)
   END IF;
   IF (v_before->>'accepted_at') IS NOT NULL THEN
     UPDATE public.brand_team_members SET removed_at = now()  -- NO updated_at on this table
