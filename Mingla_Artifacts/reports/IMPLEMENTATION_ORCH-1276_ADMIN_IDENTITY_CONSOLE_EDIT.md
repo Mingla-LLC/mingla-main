@@ -2,8 +2,8 @@
 
 **Parent:** META-ORCH-1237. **Predecessor:** ORCH-1272 (READ, shipped). **Phase:** IMPLEMENT.
 **Worktree:** `~/Desktop/mingla-orchs/1276-[admin-identity-edit]/` on branch `1276-admin-identity-edit`, rebased on `origin/main` (contains 1271+1272+1273+1274).
-**Commit:** `97be234f35faa05bce189cb4b67ee4db75ced42e`.
-**Status:** implemented + self-verified (source + read-only prod probe + gates green + fails-on-revert proven). Migrations NOT applied (orchestrator/operator owns DEPLOY from merged main).
+**Commits:** initial `97be234f3`; **REWORK (P1+P2) `dbd19abab844618d90f51c4b448e4982e395d3cf`** (see §13).
+**Status:** implemented + self-verified + REWORK landed (tester's adversarial G3 flipped GREEN). Migrations NOT applied (orchestrator/operator owns DEPLOY from merged main). §13 has the P1 redeploy vehicle (migration 000005).
 
 ---
 
@@ -143,3 +143,17 @@ Each migration's `DO $$ has_function_privilege` self-assert runs at apply and AB
 1. **`admin_toggle_partner` (partner_enabled) is un-audited** — predates the golden template, writes no `admin_audit_log` row. Housekeeping candidate to wrap in the audited pattern (out of 1276 scope; already flagged by the SPEC).
 2. **1272 read doesn't surface `contact_email`/`contact_phone`** — a future read extension would let the A1 form expose those two whitelisted brand contact fields safely.
 3. **Pre-existing admin test failures (NOT ORCH-1276):** the full `node --test` shows 19 failures in untouched suites — ORCH-1008 (sidebar), ORCH-1013 (intelligence), ORCH-1014 (photo/edge-fn), ORCH-1015 (edge-fn QA). None are in this diff; they fail on `origin/main` independently. Worth a housekeeping ORCH.
+
+---
+
+## 13. REWORK — tester live-fire (1 P1 + 1 P2), fixed at `dbd19abab`
+
+**P1-1 `admin_reassign_brand_owner` (was BROKEN in prod).** Live-fire: valid reassign → `ERROR: brands.account_id is immutable`. Verified mechanism against the LIVE trigger body (`pg_get_functiondef(biz_prevent_brand_account_id_change)`) + the ORCH-1081 transfer path: `brands.account_id` has a BEFORE-UPDATE trigger that `RAISE EXCEPTION 'brands.account_id is immutable'` unless `current_setting('app.allow_brand_owner_transfer', true) = 'on'`; ORCH-1081's `accept_invite_and_transfer_brand_ownership` arms it with `PERFORM set_config('app.allow_brand_owner_transfer', 'on', true)` (txn-local) right before its account_id UPDATE. **Fix:** added that exact arming call after the `invalid_new_owner` guard and before the UPDATE — in migration `20261208000001` (so the tester's adversarial G3 source-check on that file, and fresh installs, pass) AND shipped it as the idempotent redeploy vehicle `20261208000005_orch_1276_fix_reassign_owner.sql` (`CREATE OR REPLACE` + REVOKE anon/PUBLIC + GRANT authenticated + `DO $$` self-assert) — because 000001 is already applied to prod (tester deployed it for live-fire) and won't be re-run, so 000005 is what delivers the fix to prod. `mapWriteError` now maps the immutable error to "Couldn't transfer ownership — please try again." so no raw DB error surfaces.
+
+**P2-1 `pricing_currency` edit was a silent no-op.** Verified the LIVE trigger `trg_brands_derive_pricing_from_default` fires `BEFORE UPDATE OF default_currency` and sets `pricing_currency := upper(trim(default_currency))` — and `admin_update_brand` always targets `default_currency` in its SET clause, so the trigger always re-derives and overwrites any submitted `pricing_currency`. **Fix (UI-only):** the A1 form now shows `pricing_currency` READ-ONLY (new generic `EntityEditModal` `readonly` field type — displayed, never submitted) and edits `default_currency` (the source of truth) with corrected help text ("Pricing currency is derived from this"). The `admin_update_brand` RPC + SET clause are UNCHANGED (it still harmlessly accepts the key; the adversarial G1 whitelist parse stays green).
+
+**Rework files:** `supabase/migrations/20261208000001_…` (arming call), `supabase/migrations/20261208000005_orch_1276_fix_reassign_owner.sql` (new redeploy vehicle), `mingla-admin/src/services/identityWriteService.js` (mapWriteError), `mingla-admin/src/components/entity/EntityEditModal.jsx` (`readonly` field type), `mingla-admin/src/pages/BrandsConsolePage.jsx` (currency fields), `mingla-admin/src/__tests__/orch1276_identity_console_edit.test.js` (+5 assertions, additive/append-only). Tester's adversarial file UNTOUCHED.
+
+**Rework verification:** tester adversarial `orch1276_identity_console_edit.adversarial.test.js` **14/14 PASS (G3 flipped GREEN)**; my happy-path **56/56 PASS**; i-1276 + i-admin-write-audited + i-admin-gate-first-statement + 0972 all PASS; changed-file eslint 0; `npm run build` clean. **fails-on-revert verified at `dbd19abab844618d90f51c4b448e4982e395d3cf`:** deleting the `set_config('app.allow_brand_owner_transfer','on',true)` line from migration 000001 → adversarial G3 FAIL (13/14) + happy-path P1 FAIL (55/56); restore → both fully green (14/14, 56/56).
+
+**Operator (redeploy):** apply `20261208000005_orch_1276_fix_reassign_owner.sql` to prod (idempotent `CREATE OR REPLACE`; self-assert proves least-privilege at apply). Migration collision re-checked: no `20261208*` on origin/main, no sibling worktree holds `20261208000005`.
