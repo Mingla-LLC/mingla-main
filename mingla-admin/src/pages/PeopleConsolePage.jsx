@@ -1,20 +1,33 @@
 // ORCH-1272 [Admin Identity console — READ-ONLY] — People console.
+// ORCH-1276 [Admin Identity console — WAVE-2 EDIT] — audited support actions wired
+// onto the Person detail: edit account (B1) + soft-delete/restore account (B2) +
+// disable/enable user (D1) + beta toggle (D2). EVERY write routes through
+// identityWriteService → callAdminWriteRpc (audited SECURITY DEFINER RPC); the
+// page NEVER touches creator_accounts/profiles directly. Every success REFETCHES
+// via loadPerson.
 //
 // The missing business-account layer: a searchable creator_accounts list →
 // a unified Person detail that shows BOTH halves of a user (consumer profile +
 // business account + brands owned/member + subscription + support tickets),
-// served by the guard-first admin_get_person RPC.
-//
-// READ-ONLY (visibility-first). No edit / mutation. The EntityDetailView `actions`
-// slot is intentionally left empty — Wave-2 attaches audited edits there.
-// Consumer-only users are reachable via the ?userId= deep-link.
+// served by the guard-first admin_get_person RPC. Consumer-only users are reachable
+// via the ?userId= deep-link.
 
 import { useState, useEffect, useCallback } from "react";
 import { Users, Building2 } from "lucide-react";
 import { EntityListView } from "../components/entity/EntityListView";
 import { EntityDetailView } from "../components/entity/EntityDetailView";
+import { EntityEditModal } from "../components/entity/EntityEditModal";
 import { Badge } from "../components/ui/Badge";
+import { Button } from "../components/ui/Button";
 import { getPerson, listAccounts } from "../services/identityReadService";
+import {
+  updateAccount,
+  setAccountDeleted,
+  setUserActive,
+  setUserBeta,
+  mapWriteError,
+} from "../services/identityWriteService";
+import { useToast } from "../context/ToastContext";
 import { timeAgo, formatDate, formatDateTime } from "../lib/formatters";
 
 // ── Shared badge maps (read-only) ─────────────────────────────────────────────
@@ -307,10 +320,15 @@ function buildPersonSections(bundle, onOpenBrand) {
 // ── Component ─────────────────────────────────────────────────────────────────
 
 export function PeopleConsolePage() {
+  const { addToast } = useToast();
   const [selectedUserId, setSelectedUserId] = useState(() => userIdFromHash());
   const [bundle, setBundle] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+
+  // ORCH-1276 mutation state (page owns the modal + refetch-on-success).
+  const [editAccountOpen, setEditAccountOpen] = useState(false);
+  const [betaBusy, setBetaBusy] = useState(false);
 
   // Sync the selected user from the hash (?userId=) — supports cross-page
   // deep-links (Wave-2 links from UserManagementPage, brand-owner links) while
@@ -379,8 +397,89 @@ export function PeopleConsolePage() {
     );
     if (account?.deleted_at) badges.push({ label: "Account deleted", variant: "error" });
 
+    // Entity-level footer HIGH actions → EntityDetailView renders HighRiskActionModal.
+    const footerActions = [];
+    if (bundle) {
+      const afterWrite = async (fn) => {
+        const { error: e } = await fn();
+        if (e) throw new Error(mapWriteError(e));
+        await loadPerson(selectedUserId);
+      };
+      if (person.active === false) {
+        footerActions.push({
+          label: "Enable user",
+          title: "Enable user",
+          description: "Re-enable this user's account access. Recorded in the audit log.",
+          confirmLabel: "Enable",
+          requireReason: true,
+          onConfirm: ({ reason }) => afterWrite(() => setUserActive(selectedUserId, true, reason)),
+        });
+      } else {
+        footerActions.push({
+          label: "Disable user",
+          title: "Disable user",
+          description: "Disable this user's account access (reversible). Recorded in the audit log.",
+          confirmLabel: "Disable",
+          destructive: true,
+          requireReason: true,
+          confirmPhrase: person.email || undefined,
+          onConfirm: ({ reason }) => afterWrite(() => setUserActive(selectedUserId, false, reason)),
+        });
+      }
+      if (account) {
+        if (account.deleted_at) {
+          footerActions.push({
+            label: "Restore account",
+            title: "Restore business account",
+            description: "Clear the soft-delete on this business account. Recorded in the audit log.",
+            confirmLabel: "Restore",
+            requireReason: true,
+            onConfirm: ({ reason }) => afterWrite(() => setAccountDeleted(selectedUserId, false, reason)),
+          });
+        } else {
+          footerActions.push({
+            label: "Soft-delete account",
+            title: "Soft-delete business account",
+            description: "Soft-delete this business account (reversible). Recorded in the audit log.",
+            confirmLabel: "Soft-delete",
+            destructive: true,
+            requireReason: true,
+            confirmPhrase: account.business_name || person.email || undefined,
+            onConfirm: ({ reason }) => afterWrite(() => setAccountDeleted(selectedUserId, true, reason)),
+          });
+        }
+      }
+    }
+
+    // D2 — beta toggle: direct button, NO modal (LOW / audit-only).
+    const toggleBeta = async () => {
+      if (betaBusy) return;
+      setBetaBusy(true);
+      const { error: e } = await setUserBeta(selectedUserId, !person.is_beta_tester);
+      setBetaBusy(false);
+      if (e) {
+        addToast({ variant: "error", title: mapWriteError(e) });
+        return;
+      }
+      addToast({ variant: "success", title: person.is_beta_tester ? "Beta disabled." : "Beta enabled." });
+      await loadPerson(selectedUserId);
+    };
+
     return (
-      <div className="py-8">
+      <div className="py-8 flex flex-col gap-4">
+        {bundle && !loading && !error && (
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            {account && (
+              <Button variant="secondary" size="md" onClick={() => setEditAccountOpen(true)}>
+                Edit account
+              </Button>
+            )}
+            <Button variant="secondary" size="md" onClick={toggleBeta} loading={betaBusy} disabled={betaBusy}>
+              {person.is_beta_tester ? "Disable beta" : "Enable beta"}
+            </Button>
+          </div>
+        )}
+
         <EntityDetailView
           loading={loading}
           error={error}
@@ -392,8 +491,40 @@ export function PeopleConsolePage() {
             backLabel: "People",
             onBack: backToList,
           }}
+          actions={footerActions}
           sections={bundle ? buildPersonSections(bundle, openBrand) : []}
         />
+
+        {/* B1 — edit business account core (LOW, audit-only). Mounted fresh per open. */}
+        {account && editAccountOpen && (
+          <EntityEditModal
+            open
+            onClose={() => setEditAccountOpen(false)}
+            title="Edit business account"
+            description="Account-only edits. Deletion and user access are separate audited actions."
+            fields={[
+              { key: "business_name", label: "Business name", type: "text" },
+              { key: "phone_e164", label: "Phone (E.164)", type: "text" },
+              { key: "display_name", label: "Display name", type: "text" },
+              { key: "email", label: "Email", type: "text" },
+              { key: "marketing_opt_in", label: "Marketing opt-in", type: "switch" },
+            ]}
+            initialValues={{
+              business_name: account.business_name ?? "",
+              phone_e164: account.phone_e164 ?? "",
+              display_name: account.display_name ?? "",
+              email: account.email ?? "",
+              marketing_opt_in: Boolean(account.marketing_opt_in),
+            }}
+            submitLabel="Save account"
+            successMessage="Business account updated."
+            onSave={async (values, { reason }) => {
+              const { error: e } = await updateAccount(selectedUserId, values, reason || null);
+              if (e) throw new Error(mapWriteError(e));
+              await loadPerson(selectedUserId);
+            }}
+          />
+        )}
       </div>
     );
   }

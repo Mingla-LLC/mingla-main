@@ -25,6 +25,20 @@ const MIGRATIONS_DIR = path.join(process.cwd(), "supabase/migrations");
 // ORCH-1271 admin write RPC set — seed. Domains append (append-only).
 const ADMIN_WRITE_RPCS = [
   "admin_audit_probe",
+  // ORCH-1276 [Admin Identity console — WAVE-2 EDIT]: the 11 audited identity
+  // write RPCs (A1–A5, B1–B2, C1–C3, D1–D2). Each calls admin_write_audit with a
+  // before/after metadata object. Reverting 20261208000001-4 removes them → FAILS.
+  "admin_update_brand",
+  "admin_reassign_brand_owner",
+  "admin_set_brand_claim_status",
+  "admin_set_brand_deleted",
+  "admin_update_account",
+  "admin_set_account_deleted",
+  "admin_set_team_member_role",
+  "admin_remove_team_member",
+  "admin_revoke_brand_invitation",
+  "admin_set_user_active",
+  "admin_set_user_beta",
 ];
 
 // Slice a plpgsql function body (between the first `$$` pair after its def).
@@ -87,10 +101,28 @@ if (process.argv.includes("--self-test")) {
     "create or replace function public.admin_audit_probe(p_reason text) returns uuid " +
     "language plpgsql security definer as $$ begin if not public.is_admin_user() then " +
     "raise exception 'not_authorized'; end if; return public.admin_write_audit('admin.audit_probe'); end; $$;\n";
+  // ORCH-1276: the 11 audited identity write RPCs — registered above, so include
+  // them in the good/other-subject fixtures (as 1272/1273/1274 do for their reads)
+  // so the self-test isolates the intended violation instead of tripping on missing
+  // registry fns.
+  const identity1276 = [
+    "admin_update_brand", "admin_reassign_brand_owner", "admin_set_brand_claim_status",
+    "admin_set_brand_deleted", "admin_update_account", "admin_set_account_deleted",
+    "admin_set_team_member_role", "admin_remove_team_member", "admin_revoke_brand_invitation",
+    "admin_set_user_active", "admin_set_user_beta",
+  ]
+    .map(
+      (n) =>
+        `create or replace function public.${n}(p_id uuid) returns jsonb language plpgsql security definer as $$ ` +
+        "begin if not public.is_admin_user() then raise exception 'not_authorized'; end if; " +
+        "perform public.admin_write_audit('x','x',p_id::text,null,jsonb_build_object('before','{}'::jsonb,'after','{}'::jsonb)); " +
+        "return '{}'::jsonb; end; $$;\n",
+    )
+    .join("");
 
   // GOOD.
   let f = [];
-  check(helper + probe, f);
+  check(helper + probe + identity1276, f);
   if (f.length) self.push("good fixture wrongly flagged: " + f.join("; "));
 
   // BAD (revert primitive): helper + probe absent.
@@ -104,7 +136,7 @@ if (process.argv.includes("--self-test")) {
     "language plpgsql security definer as $$ begin if not public.is_admin_user() then " +
     "raise exception 'not_authorized'; end if; return null; end; $$;\n";
   f = [];
-  check(helper + probeNoAudit, f);
+  check(helper + probeNoAudit + identity1276, f);
   if (f.length === 0) self.push("un-audited probe not flagged");
 
   if (self.length) {

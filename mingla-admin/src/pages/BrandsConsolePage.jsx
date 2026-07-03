@@ -1,21 +1,50 @@
 // ORCH-1272 [Admin Identity console — READ-ONLY] — Brands console.
+// ORCH-1276 [Admin Identity console — WAVE-2 EDIT] — audited support actions wired
+// onto the detail: edit profile (A1) + reassign owner (A2) + suspend/unsuspend
+// (A3/A4) + soft-delete/restore (A5) + per-member change-role/remove (C1/C2) +
+// revoke invite (C3). EVERY write routes through identityWriteService →
+// callAdminWriteRpc (audited SECURITY DEFINER RPC); the page NEVER touches a
+// brands/team/invite table directly. Every success REFETCHES via loadBrand.
 //
 // Cross-brand list → Brand detail (profile + claim/verify + money + owner + team
 // + invites + partner links + brand support tickets). Reuses the existing
 // "brands admin can read" RLS (which also exposes soft-deleted brands); team /
-// invites / partner-links come from the new ORCH-1272 admin-read RLS policies.
-//
-// READ-ONLY (visibility-first). No edit / mutation; no live Stripe call (that is
-// ORCH-1274). The EntityDetailView `actions` slot is empty — Wave-2 attaches
-// audited edits there.
+// invites / partner-links come from the ORCH-1272 admin-read RLS policies.
 
 import { useState, useEffect, useCallback } from "react";
 import { Building2 } from "lucide-react";
 import { EntityListView } from "../components/entity/EntityListView";
 import { EntityDetailView } from "../components/entity/EntityDetailView";
+import { EntityEditModal } from "../components/entity/EntityEditModal";
+import { HighRiskActionModal } from "../components/entity/HighRiskActionModal";
 import { Badge } from "../components/ui/Badge";
-import { listBrands, getBrandDetail } from "../services/identityReadService";
+import { Button } from "../components/ui/Button";
+import { listBrands, getBrandDetail, listAccounts } from "../services/identityReadService";
+import {
+  updateBrand,
+  reassignBrandOwner,
+  setBrandClaimStatus,
+  setBrandDeleted,
+  setTeamMemberRole,
+  removeTeamMember,
+  revokeInvitation,
+  mapWriteError,
+} from "../services/identityWriteService";
 import { timeAgo, formatDate, formatDateTime } from "../lib/formatters";
+
+const TEAM_ROLE_OPTIONS = [
+  { value: "brand_owner", label: "Brand owner" },
+  { value: "brand_admin", label: "Brand admin" },
+  { value: "event_manager", label: "Event manager" },
+  { value: "finance_manager", label: "Finance manager" },
+  { value: "marketing_manager", label: "Marketing manager" },
+  { value: "scanner", label: "Scanner" },
+];
+const VENUE_CATEGORY_OPTIONS = [
+  { value: "restaurant", label: "Restaurant" },
+  { value: "play", label: "Play" },
+  { value: "creative_and_arts", label: "Creative & arts" },
+];
 
 // ── Shared maps / helpers ─────────────────────────────────────────────────────
 
@@ -203,7 +232,8 @@ function field(label, value, render) {
 }
 const noneField = () => field("", "None", (v) => <span className="text-[var(--color-text-muted)]">{v}</span>);
 
-function buildBrandSections(detail, onOpenOwner) {
+function buildBrandSections(detail, callbacks) {
+  const { onOpenOwner, onEditRole, onRemoveMember, onRevokeInvite } = callbacks || {};
   const b = detail.brand || {};
   const owner = detail.owner || null;
   const team = detail.team || [];
@@ -304,6 +334,24 @@ function buildBrandSections(detail, onOpenOwner) {
                   <span className="text-xs text-[var(--color-text-tertiary)]">joined {formatDate(mem.accepted_at)}</span>
                 )}
                 {mem.removed_at && <Badge variant="error">removed</Badge>}
+                {!mem.removed_at && onEditRole && (
+                  <button
+                    type="button"
+                    onClick={() => onEditRole(mem)}
+                    className="text-xs text-[var(--color-brand-500)] underline cursor-pointer hover:opacity-80"
+                  >
+                    Change role
+                  </button>
+                )}
+                {!mem.removed_at && onRemoveMember && (
+                  <button
+                    type="button"
+                    onClick={() => onRemoveMember(mem)}
+                    className="text-xs text-[var(--color-error-700)] underline cursor-pointer hover:opacity-80"
+                  >
+                    Remove
+                  </button>
+                )}
               </span>
             )),
           ),
@@ -322,6 +370,15 @@ function buildBrandSections(detail, onOpenOwner) {
                 {iv.role && <Badge variant="outline">{iv.role}</Badge>}
                 {iv.expires_at && (
                   <span className="text-xs text-[var(--color-text-tertiary)]">expires {formatDate(iv.expires_at)}</span>
+                )}
+                {iv.status === "pending" && onRevokeInvite && (
+                  <button
+                    type="button"
+                    onClick={() => onRevokeInvite(iv)}
+                    className="text-xs text-[var(--color-error-700)] underline cursor-pointer hover:opacity-80"
+                  >
+                    Revoke
+                  </button>
                 )}
               </span>
             )),
@@ -378,11 +435,36 @@ export function BrandsConsolePage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
 
+  // ORCH-1276 mutation state (page owns all modals + refetch-on-success).
+  const [editProfileOpen, setEditProfileOpen] = useState(false);
+  const [reassignOpen, setReassignOpen] = useState(false);
+  const [accountOptions, setAccountOptions] = useState([]);
+  // Per-row team/invite action: { type: 'role' | 'remove' | 'revoke', row }.
+  const [teamAction, setTeamAction] = useState(null);
+
   useEffect(() => {
     const sync = () => setSelectedBrandId(brandIdFromHash());
     window.addEventListener("hashchange", sync);
     return () => window.removeEventListener("hashchange", sync);
   }, []);
+
+  // Load the account picker (reassign-owner A2) once a brand is opened. Small set
+  // (live creator_accounts ≈ 13); the RPC's invalid_new_owner guard backstops.
+  useEffect(() => {
+    if (!selectedBrandId || accountOptions.length > 0) return;
+    let cancelled = false;
+    listAccounts({ sortKey: "business_name", sortDir: "asc", pageSize: 500 })
+      .then(({ rows }) => {
+        if (cancelled) return;
+        setAccountOptions(
+          (rows || []).map((r) => ({ value: r.id, label: r.business_name || r.email || r.id })),
+        );
+      })
+      .catch((err) => console.warn("[BrandsConsolePage] account picker load failed:", err?.message || err));
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedBrandId, accountOptions.length]);
 
   const loadBrand = useCallback(async (brandId) => {
     setLoading(true);
@@ -426,8 +508,100 @@ export function BrandsConsolePage() {
     if (b.claim_status) badges.push({ label: b.claim_status, variant: CLAIM_VARIANT[b.claim_status] || "default" });
     badges.push(b.deleted_at ? { label: "Deleted", variant: "error" } : { label: "Live", variant: "success" });
 
+    // Entity-level footer HIGH actions → EntityDetailView renders HighRiskActionModal.
+    const footerActions = [];
+    if (detail) {
+      const afterWrite = async (fn) => {
+        const { error: e } = await fn();
+        if (e) throw new Error(mapWriteError(e));
+        await loadBrand(selectedBrandId);
+      };
+      if (b.claim_status === "suspended") {
+        footerActions.push({
+          label: "Unsuspend brand",
+          title: "Unsuspend brand",
+          description: "Restore this brand's claim status to verified. Recorded in the audit log.",
+          confirmLabel: "Unsuspend",
+          requireReason: true,
+          onConfirm: ({ reason }) => afterWrite(() => setBrandClaimStatus(selectedBrandId, "verified", reason)),
+        });
+      } else {
+        footerActions.push({
+          label: "Suspend brand",
+          title: "Suspend brand",
+          description: "Suspend this brand. Its public pages and selling stop. Recorded in the audit log.",
+          confirmLabel: "Suspend",
+          destructive: true,
+          requireReason: true,
+          confirmPhrase: b.slug || undefined,
+          onConfirm: ({ reason }) => afterWrite(() => setBrandClaimStatus(selectedBrandId, "suspended", reason)),
+        });
+      }
+      if (b.deleted_at) {
+        footerActions.push({
+          label: "Restore brand",
+          title: "Restore brand",
+          description: "Clear the soft-delete on this brand. Recorded in the audit log.",
+          confirmLabel: "Restore",
+          requireReason: true,
+          onConfirm: ({ reason }) => afterWrite(() => setBrandDeleted(selectedBrandId, false, reason)),
+        });
+      } else {
+        footerActions.push({
+          label: "Soft-delete brand",
+          title: "Soft-delete brand",
+          description: "Soft-delete this brand (reversible). Recorded in the audit log.",
+          confirmLabel: "Soft-delete",
+          destructive: true,
+          requireReason: true,
+          confirmPhrase: b.slug || undefined,
+          onConfirm: ({ reason }) => afterWrite(() => setBrandDeleted(selectedBrandId, true, reason)),
+        });
+      }
+    }
+
+    // A1 edit-profile fields (only columns the 1272 read surfaces — no data loss).
+    const profileFields = [
+      { key: "name", label: "Name", type: "text", required: true },
+      { key: "description", label: "Description", type: "textarea" },
+      { key: "venue_category", label: "Venue category", type: "select", options: VENUE_CATEGORY_OPTIONS },
+      { key: "pricing_currency", label: "Pricing currency", type: "text", required: true },
+      { key: "default_currency", label: "Default currency", type: "text", help: "Display currency (tracks pricing)." },
+      { key: "theme_color", label: "Theme color", type: "text" },
+      { key: "theme_font", label: "Theme font", type: "text" },
+      { key: "theme_animation", label: "Theme animation", type: "text" },
+      { key: "social_links", label: "Social links (JSON)", type: "json" },
+      { key: "custom_links", label: "Custom links (JSON)", type: "json" },
+    ];
+    const profileInitial = {
+      name: b.name ?? "",
+      description: b.description ?? "",
+      venue_category: b.venue_category ?? "",
+      pricing_currency: b.pricing_currency ?? "",
+      default_currency: b.default_currency ?? "",
+      theme_color: b.theme_color ?? "",
+      theme_font: b.theme_font ?? "",
+      theme_animation: b.theme_animation ?? "",
+      social_links: b.social_links ? JSON.stringify(b.social_links, null, 2) : "",
+      custom_links: b.custom_links ? JSON.stringify(b.custom_links, null, 2) : "",
+    };
+
+    const activeMember = teamAction?.row;
+    const memberPhrase = activeMember?.member_email || activeMember?.user_id || "";
+
     return (
-      <div className="py-8">
+      <div className="py-8 flex flex-col gap-4">
+        {detail && !loading && !error && (
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            <Button variant="secondary" size="md" onClick={() => setEditProfileOpen(true)}>
+              Edit profile
+            </Button>
+            <Button variant="secondary" size="md" onClick={() => setReassignOpen(true)}>
+              Reassign owner
+            </Button>
+          </div>
+        )}
+
         <EntityDetailView
           loading={loading}
           error={error}
@@ -439,7 +613,116 @@ export function BrandsConsolePage() {
             backLabel: "Brands",
             onBack: backToList,
           }}
-          sections={detail ? buildBrandSections(detail, openOwner) : []}
+          actions={footerActions}
+          sections={
+            detail
+              ? buildBrandSections(detail, {
+                  onOpenOwner: openOwner,
+                  onEditRole: (mem) => setTeamAction({ type: "role", row: mem }),
+                  onRemoveMember: (mem) => setTeamAction({ type: "remove", row: mem }),
+                  onRevokeInvite: (inv) => setTeamAction({ type: "revoke", row: inv }),
+                })
+              : []
+          }
+        />
+
+        {/* A1 — edit brand profile (LOW, audit-only). Mounted fresh per open. */}
+        {editProfileOpen && (
+          <EntityEditModal
+            open
+            onClose={() => setEditProfileOpen(false)}
+            title="Edit brand profile"
+            description="Profile-only edits. Ownership, claim status, deletion and money are separate audited actions."
+            fields={profileFields}
+            initialValues={profileInitial}
+            submitLabel="Save profile"
+            successMessage="Brand profile updated."
+            onSave={async (values, { reason }) => {
+              const { error: e } = await updateBrand(selectedBrandId, values, reason || null);
+              if (e) throw new Error(mapWriteError(e));
+              await loadBrand(selectedBrandId);
+            }}
+          />
+        )}
+
+        {/* A2 — reassign brand owner (HIGH, phrase = slug). Mounted fresh per open. */}
+        {reassignOpen && (
+          <EntityEditModal
+            open
+            onClose={() => setReassignOpen(false)}
+            title="Reassign brand owner"
+            description="Move this brand to a different account. The new owner gains full control."
+            fields={[
+              { key: "new_account_id", label: "New owner account", type: "select", options: accountOptions, required: true },
+            ]}
+            initialValues={{ new_account_id: "" }}
+            submitLabel="Reassign owner"
+            requireReason
+            destructive
+            confirmPhrase={b.slug || undefined}
+            successMessage="Brand owner reassigned."
+            onSave={async (values, { reason }) => {
+              const { error: e } = await reassignBrandOwner(selectedBrandId, values.new_account_id, reason);
+              if (e) throw new Error(mapWriteError(e));
+              await loadBrand(selectedBrandId);
+            }}
+          />
+        )}
+
+        {/* C1 — change team-member role (HIGH). Mounted fresh per open. */}
+        {teamAction?.type === "role" && (
+          <EntityEditModal
+            open
+            onClose={() => setTeamAction(null)}
+            title="Change team-member role"
+            description={activeMember ? `Change the role for ${activeMember.member_email || activeMember.user_id}.` : ""}
+            fields={[{ key: "role", label: "Role", type: "select", options: TEAM_ROLE_OPTIONS, required: true }]}
+            initialValues={{ role: activeMember?.role || "" }}
+            submitLabel="Change role"
+            requireReason
+            successMessage="Role updated."
+            onSave={async (values, { reason }) => {
+              const { error: e } = await setTeamMemberRole(activeMember.id, values.role, reason);
+              if (e) throw new Error(mapWriteError(e));
+              setTeamAction(null);
+              await loadBrand(selectedBrandId);
+            }}
+          />
+        )}
+
+        {/* C2 — remove team member (HIGH, phrase = member email). */}
+        <HighRiskActionModal
+          open={teamAction?.type === "remove"}
+          onClose={() => setTeamAction(null)}
+          title="Remove team member"
+          description={activeMember ? `Remove ${activeMember.member_email || activeMember.user_id} from this brand's team.` : ""}
+          confirmLabel="Remove member"
+          destructive
+          confirmPhrase={memberPhrase || undefined}
+          successMessage="Team member removed."
+          onConfirm={async ({ reason }) => {
+            const { error: e } = await removeTeamMember(activeMember.id, reason);
+            if (e) throw new Error(mapWriteError(e));
+            setTeamAction(null);
+            await loadBrand(selectedBrandId);
+          }}
+        />
+
+        {/* C3 — revoke invite (HIGH, reason only). */}
+        <HighRiskActionModal
+          open={teamAction?.type === "revoke"}
+          onClose={() => setTeamAction(null)}
+          title="Revoke invitation"
+          description={teamAction?.row ? `Revoke the pending invite for ${teamAction.row.email || teamAction.row.id}.` : ""}
+          confirmLabel="Revoke invite"
+          destructive
+          successMessage="Invitation revoked."
+          onConfirm={async ({ reason }) => {
+            const { error: e } = await revokeInvitation(teamAction.row.id, reason);
+            if (e) throw new Error(mapWriteError(e));
+            setTeamAction(null);
+            await loadBrand(selectedBrandId);
+          }}
         />
       </div>
     );

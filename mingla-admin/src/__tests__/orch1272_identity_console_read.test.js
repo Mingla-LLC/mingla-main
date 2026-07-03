@@ -140,24 +140,31 @@ describe("ORCH-1272 — identityReadService (single READ authority)", () => {
 describe("ORCH-1272 — People + Brands pages", () => {
   const people = readSrc("pages/PeopleConsolePage.jsx");
   const brands = readSrc("pages/BrandsConsolePage.jsx");
-  it("People uses EntityListView + getPerson + the ?userId= deep-link, no edits", () => {
+  // [TEST-MOD-APPROVED ORCH-1276] Wave-2 EDIT repoint: the pages are no longer
+  // read-only — they now carry audited edit modals. The read wiring + the
+  // no-direct-browser-write / no-inline-audit invariant STILL hold (writes route
+  // through identityWriteService → the audited RPCs); only the "no edit modal"
+  // clause is retired (now enforced positively by ORCH-1276's own gate/tests).
+  it("People uses EntityListView + getPerson + the ?userId= deep-link; writes route through the audited service", () => {
     assert.match(people, /EntityListView/);
     assert.match(people, /EntityDetailView/);
     assert.match(people, /getPerson/);
     assert.match(people, /listAccounts/);
     assert.match(people, /userId/);
-    for (const forbidden of [".update(", ".insert(", ".delete(", "admin_write_audit", "HighRiskActionModal"]) {
-      assert.ok(!people.includes(forbidden), `read-only held: no ${forbidden} in People`);
+    assert.match(people, /identityWriteService/);
+    for (const forbidden of [".update(", ".insert(", ".delete(", "admin_write_audit"]) {
+      assert.ok(!people.includes(forbidden), `no direct browser write: no ${forbidden} in People`);
     }
   });
-  it("Brands uses EntityListView + getBrandDetail + the ?brandId= deep-link, no edits", () => {
+  it("Brands uses EntityListView + getBrandDetail + the ?brandId= deep-link; writes route through the audited service", () => {
     assert.match(brands, /EntityListView/);
     assert.match(brands, /EntityDetailView/);
     assert.match(brands, /getBrandDetail/);
     assert.match(brands, /listBrands/);
     assert.match(brands, /brandId/);
-    for (const forbidden of [".update(", ".insert(", ".delete(", "admin_write_audit", "HighRiskActionModal"]) {
-      assert.ok(!brands.includes(forbidden), `read-only held: no ${forbidden} in Brands`);
+    assert.match(brands, /identityWriteService/);
+    for (const forbidden of [".update(", ".insert(", ".delete(", "admin_write_audit"]) {
+      assert.ok(!brands.includes(forbidden), `no direct browser write: no ${forbidden} in Brands`);
     }
   });
 });
