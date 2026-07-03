@@ -188,6 +188,9 @@ export const handleBunnyWebhook = async (
   deps: typeof defaultDeps,
 ): Promise<Response> => {
   const signatureHeader = req.headers.get("x-bunnystream-signature");
+  // META-ORCH-1270 — Bunny's confirmed v1 signing envelope (docs.bunny.net/stream/webhooks).
+  const signatureVersion = req.headers.get("x-bunnystream-signature-version");
+  const signatureAlgorithm = req.headers.get("x-bunnystream-signature-algorithm");
   const secret = Deno.env.get("BUNNY_STREAM_WEBHOOK_KEY") ?? "";
 
   let payload: { VideoLibraryId?: unknown; VideoGuid?: unknown; Status?: unknown };
@@ -202,12 +205,21 @@ export const handleBunnyWebhook = async (
     return jsonResponse({ error: "validation_error", detail: "bunny_payload_invalid" }, 400);
   }
 
-  // 1) Authenticity. If the signature header is present, verify the HMAC.
-  //    If it is ABSENT (older libraries send unsigned), fall back to fetch
-  //    authenticity: the video must exist AND a job row must match (checked in
-  //    step 2). A present-but-mismatched signature is a hard 403.
+  // 1) Authenticity. If the signature header is present, verify the v1 envelope
+  //    (X-BunnyStream-Signature-Version=v1, -Algorithm=hmac-sha256) + the HMAC
+  //    over the exact raw body. A present signature with a wrong/missing version
+  //    or algorithm is a hard 403 (never silently accepted). If the signature is
+  //    ABSENT (older libraries send unsigned), fall back to fetch authenticity:
+  //    the video must exist AND a job row must match (checked in step 2). A
+  //    present-but-mismatched signature is a hard 403.
   if (signatureHeader !== null && signatureHeader.trim().length > 0) {
-    const verification = await verifyBunnyWebhookSignature({ rawBody, signatureHeader, secret });
+    const verification = await verifyBunnyWebhookSignature({
+      rawBody,
+      signatureHeader,
+      signatureVersion,
+      signatureAlgorithm,
+      secret,
+    });
     if (!verification.ok) {
       console.warn("[event-cover-video-webhook]", JSON.stringify({
         code: verification.code,

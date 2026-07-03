@@ -115,10 +115,36 @@ const makeSignedRequest = async (payload: Record<string, unknown>): Promise<Requ
     headers: {
       "Content-Type": "application/json",
       "x-bunnystream-signature": await hmacSha256Hex(WEBHOOK_KEY, rawBody),
+      // META-ORCH-1270 — Bunny's confirmed v1 signing envelope headers.
+      "x-bunnystream-signature-version": "v1",
+      "x-bunnystream-signature-algorithm": "hmac-sha256",
     },
     method: "POST",
   });
 };
+
+// META-ORCH-1270 — build a raw-body POST with an arbitrary header set (the
+// signed-envelope cases need explicit control over the version/algorithm/sig).
+const buildRequest = (rawBody: string, headers: Record<string, string>): Request =>
+  new Request("https://example.test/functions/v1/event-cover-video-webhook", {
+    body: rawBody,
+    headers: { "Content-Type": "application/json", ...headers },
+    method: "POST",
+  });
+
+const processingJob = (): Record<string, unknown> => ({
+  id: JOB_ID,
+  status: "processing",
+  event_id: EVENT_ID,
+  target_kind: "event",
+  apply_mode: "published_manual",
+  trim_start_ms: 0,
+  trim_end_ms: 12_000,
+  provider: "bunny",
+  source_public_id: null,
+  source_asset_id: VIDEO_GUID,
+  provider_payload: { bunny: { videoId: VIDEO_GUID } },
+});
 
 Deno.test("bunny webhook Finished (Status 3) drives the job to ready via the shared core", async () => {
   await withBunnyEnv(async () => {
@@ -184,5 +210,113 @@ Deno.test("bunny webhook for an unknown VideoGuid is idempotently ignored (200, 
     assert(response.status === 200, `expected 200 for a foreign video, received ${response.status}`);
     assert(body.ignored === "unknown_guid", "expected unknown_guid ignore");
     assert(stub.updates.length === 0, "no job state change for a foreign video");
+  });
+});
+
+// META-ORCH-1270 — Bunny's confirmed v1 signing envelope: a signed POST carries
+// X-BunnyStream-Signature-Version=v1 + X-BunnyStream-Signature-Algorithm=hmac-sha256
+// alongside the HMAC. A present signature with a wrong/missing envelope is a hard
+// 403 (never silently accepted). FAILS ON REVERT: delete the version/algorithm
+// checks in verifyBunnyWebhookSignature and the v2 / md5 requests pass verify →
+// the handler returns 200 (unknown_guid) instead of 403, so these assertions throw.
+
+Deno.test("bunny webhook with a valid v1 + hmac-sha256 envelope + correct signature is accepted", async () => {
+  await withBunnyEnv(async () => {
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = (() =>
+      Promise.resolve({
+        ok: true,
+        status: 200,
+        headers: new Headers({ "content-length": "8000000" }),
+      } as unknown as Response)) as typeof fetch;
+    const stub = createSupabaseStub({ existingJob: processingJob() });
+    try {
+      const rawBody = JSON.stringify({ VideoLibraryId: 778899, VideoGuid: VIDEO_GUID, Status: 3 });
+      const response = await handleEventCoverVideoWebhook(
+        buildRequest(rawBody, {
+          "x-bunnystream-signature": await hmacSha256Hex(WEBHOOK_KEY, rawBody),
+          "x-bunnystream-signature-version": "v1",
+          "x-bunnystream-signature-algorithm": "hmac-sha256",
+        }),
+        createDeps(stub),
+      );
+      const body = await response.json() as Record<string, unknown>;
+      assert(response.status === 200, `expected 200 for a valid v1 envelope, received ${response.status}`);
+      assert(body.ok === true, "expected ok:true for the valid v1 envelope");
+      assert(stub.updates.some((call) => call.payload.status === "ready"), "expected a ready update");
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+});
+
+Deno.test("bunny webhook with a correct signature but version != v1 is rejected 403", async () => {
+  await withBunnyEnv(async () => {
+    const stub = createSupabaseStub({ existingJob: processingJob() });
+    const rawBody = JSON.stringify({ VideoLibraryId: 778899, VideoGuid: VIDEO_GUID, Status: 3 });
+    const response = await handleEventCoverVideoWebhook(
+      buildRequest(rawBody, {
+        "x-bunnystream-signature": await hmacSha256Hex(WEBHOOK_KEY, rawBody),
+        "x-bunnystream-signature-version": "v2",
+        "x-bunnystream-signature-algorithm": "hmac-sha256",
+      }),
+      createDeps(stub),
+    );
+    const body = await response.json() as Record<string, unknown>;
+    assert(response.status === 403, `expected 403 for version!=v1, received ${response.status}`);
+    assert(
+      body.detail === "unsupported_signature_version",
+      `expected unsupported_signature_version, got ${String(body.detail)}`,
+    );
+    assert(!stub.updates.some((call) => call.payload.status === "ready"), "no ready write on a rejected envelope");
+  });
+});
+
+Deno.test("bunny webhook with a correct signature but algorithm != hmac-sha256 is rejected 403", async () => {
+  await withBunnyEnv(async () => {
+    const stub = createSupabaseStub({ existingJob: processingJob() });
+    const rawBody = JSON.stringify({ VideoLibraryId: 778899, VideoGuid: VIDEO_GUID, Status: 3 });
+    const response = await handleEventCoverVideoWebhook(
+      buildRequest(rawBody, {
+        "x-bunnystream-signature": await hmacSha256Hex(WEBHOOK_KEY, rawBody),
+        "x-bunnystream-signature-version": "v1",
+        "x-bunnystream-signature-algorithm": "sha256",
+      }),
+      createDeps(stub),
+    );
+    const body = await response.json() as Record<string, unknown>;
+    assert(response.status === 403, `expected 403 for algorithm!=hmac-sha256, received ${response.status}`);
+    assert(
+      body.detail === "unsupported_signature_algorithm",
+      `expected unsupported_signature_algorithm, got ${String(body.detail)}`,
+    );
+    assert(!stub.updates.some((call) => call.payload.status === "ready"), "no ready write on a rejected envelope");
+  });
+});
+
+Deno.test("bunny webhook with an ABSENT signature still authenticates via the bunnyGetVideo re-fetch fallback", async () => {
+  await withBunnyEnv(async () => {
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = (() =>
+      Promise.resolve({
+        ok: true,
+        status: 200,
+        headers: new Headers({ "content-length": "8000000" }),
+      } as unknown as Response)) as typeof fetch;
+    const stub = createSupabaseStub({ existingJob: processingJob() });
+    try {
+      const rawBody = JSON.stringify({ VideoLibraryId: 778899, VideoGuid: VIDEO_GUID, Status: 3 });
+      // No signature/version/algorithm headers at all → unsigned webhook path.
+      const response = await handleEventCoverVideoWebhook(
+        buildRequest(rawBody, {}),
+        createDeps(stub),
+      );
+      const body = await response.json() as Record<string, unknown>;
+      assert(response.status === 200, `expected 200 via the re-fetch fallback, received ${response.status}`);
+      assert(body.ok === true, "expected ok:true from the unsigned-webhook re-fetch fallback");
+      assert(stub.updates.some((call) => call.payload.status === "ready"), "expected a ready update via fallback");
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
   });
 });

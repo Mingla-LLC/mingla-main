@@ -276,8 +276,11 @@ export function bunnyBestMp4(video: BunnyVideo): { url: string; heightP: number 
 
 // Map the Bunny numeric webhook Status → our provider-agnostic job lifecycle.
 // 0 Queued / 1 Processing / 2 Encoding → processing; 3 Finished → ready;
-// 4 Resolution finished → processing (wait for 3); 5 Failed → failed; else ignore.
-// https://docs.bunny.net/docs/stream-webhook
+// 4 Resolution finished → processing (wait for 3); 5 Failed → failed.
+// 6 PresignedUploadStarted / 7 PresignedUploadFinished / 8 PresignedUploadFailed
+// / 9 CaptionsGenerated / 10 TitleOrDescriptionGenerated are NOT part of the
+// cover-video encode lifecycle → intentionally ignored (fall through to default).
+// https://docs.bunny.net/stream/webhooks (verified 2026-07-03)
 export function mapBunnyStatus(
   status: number,
 ): "processing" | "ready" | "failed" | "ignore" {
@@ -293,6 +296,7 @@ export function mapBunnyStatus(
     case 5:
       return "failed";
     default:
+      // 6/7/8/9/10 and any future/unknown status are intentionally ignored.
       return "ignore";
   }
 }
@@ -301,12 +305,23 @@ export type BunnyWebhookSignatureResult =
   | { ok: true }
   | { ok: false; code: string; status: number; message: string };
 
-// Verify a library webhook: HMAC-SHA256 of the RAW body with the read-only
-// webhook key, constant-time compared against the X-BunnyStream-Signature header.
-// https://docs.bunny.net/docs/stream-webhook
+// Verify a library webhook against Bunny's confirmed v1 signing envelope
+// (docs.bunny.net/stream/webhooks, verified 2026-07-03). A signed POST carries
+// THREE headers: X-BunnyStream-Signature-Version (v1), -Signature-Algorithm
+// (hmac-sha256), and -Signature = lowercase-hex HMAC-SHA256 of the EXACT RAW
+// body keyed by the library read-only key (BUNNY_STREAM_WEBHOOK_KEY). We
+// lowercase-normalize + constant-time compare the hex. A PRESENT signature whose
+// version or algorithm is wrong or missing is REJECTED 403 — never silently
+// accepted. `signatureVersion`/`signatureAlgorithm` are the header values (string
+// when present, null when absent) supplied by the webhook handler; omitting them
+// (undefined) preserves the legacy signature-only check for the exported-helper
+// unit tests. A truly ABSENT signature is handled by the caller (fetch re-verify
+// fallback), not here.
 export async function verifyBunnyWebhookSignature(input: {
   rawBody: string;
   signatureHeader: string | null;
+  signatureVersion?: string | null;
+  signatureAlgorithm?: string | null;
   secret: string;
 }): Promise<BunnyWebhookSignatureResult> {
   if (input.secret.length === 0) {
@@ -324,6 +339,30 @@ export async function verifyBunnyWebhookSignature(input: {
       status: 403,
       message: "Bunny webhook signature header is missing.",
     };
+  }
+  // The signature is present → its v1 envelope MUST be valid. The handler always
+  // supplies both header values (string|null); a null/wrong value here means the
+  // POST claimed a signature without the confirmed v1/hmac-sha256 envelope, which
+  // we reject rather than trust. (Undefined = exported-helper unit test → skip.)
+  if (input.signatureVersion !== undefined || input.signatureAlgorithm !== undefined) {
+    const version = (input.signatureVersion ?? "").trim().toLowerCase();
+    if (version !== "v1") {
+      return {
+        ok: false,
+        code: "unsupported_signature_version",
+        status: 403,
+        message: "Bunny webhook signature version is unsupported.",
+      };
+    }
+    const algorithm = (input.signatureAlgorithm ?? "").trim().toLowerCase();
+    if (algorithm !== "hmac-sha256") {
+      return {
+        ok: false,
+        code: "unsupported_signature_algorithm",
+        status: 403,
+        message: "Bunny webhook signature algorithm is unsupported.",
+      };
+    }
   }
   const expected = await hmacSha256Hex(input.secret, input.rawBody);
   const provided = input.signatureHeader.trim().toLowerCase();
