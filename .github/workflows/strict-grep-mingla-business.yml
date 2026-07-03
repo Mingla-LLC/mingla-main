@@ -3559,3 +3559,29 @@ jobs:
         run: node .github/scripts/strict-grep/orch-1255-brandedit-no-physical-location-toggle.mjs --self-test
       - name: Run META-ORCH-1255 brand-edit toggle gate
         run: node .github/scripts/strict-grep/orch-1255-brandedit-no-physical-location-toggle.mjs
+
+  orch-1263-claim-stage-only-preapprove:
+    name: "ORCH-1263: pre-approval claim stages only — no live-place hours/gallery/ownership writes before admin approve (I-PROPOSED-1263-NO-LIVE-PLACE-MUTATION-PRE-APPROVE + I-PROPOSED-1263-GALLERY-NEVER-WIPED-BY-HERO)"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Self-test the ORCH-1263 stage-only gate
+        run: node .github/scripts/strict-grep/orch-1263-claim-stage-only-preapprove.mjs --self-test
+      - name: Run ORCH-1263 stage-only gate
+        run: node .github/scripts/strict-grep/orch-1263-claim-stage-only-preapprove.mjs
+
+  orch-1263-claim-front-load-and-overnight:
+    name: "ORCH-1263: claim search carries claim_state + blocked variants render at the gate + both hours validators accept overnight (I-PROPOSED-1263-CLAIMED-STATE-FRONT-LOADED + I-PROPOSED-1263-OVERNIGHT-HOURS-VALID)"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Self-test the ORCH-1263 front-load/overnight gate
+        run: node .github/scripts/strict-grep/orch-1263-claim-front-load-and-overnight.mjs --self-test
+      - name: Run ORCH-1263 front-load/overnight gate
+        run: node .github/scripts/strict-grep/orch-1263-claim-front-load-and-overnight.mjs
