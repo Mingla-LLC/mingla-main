@@ -126,6 +126,21 @@ export async function loginToOneSignal(userId: string): Promise<void> {
   }
   try {
     await OneSignal.login(userId)
+    // ORCH-1264: refresh OneSignal's cached notification-permission to the TRUE OS
+    // value BEFORE optIn() so optIn cannot pop the native fallbackToSettings
+    // "notifications turned off / Open Settings" dialog on a stale/denied cache.
+    // Proven on-device: for a returning user whose iOS notifications are ON, optIn()
+    // fired with OneSignal's permission cache stale ("off") and surfaced that false
+    // dialog. getPermissionAsync() is a pure READ (no prompt) that reconciles the
+    // cache to real OS truth first, so optIn() sees "on" and never falls back.
+    // Self-guarded so a read failure never disrupts login or skips optIn (mirrors
+    // syncPushPermissionTag's try/catch style — the diagnostic build proved this
+    // read is exactly what suppressed the popup).
+    try {
+      await OneSignal.Notifications.getPermissionAsync()
+    } catch (permErr) {
+      console.warn('[OneSignal] pre-optIn getPermissionAsync failed:', permErr)
+    }
     await OneSignal.User.pushSubscription.optIn()
     _loginComplete = true
     if (__DEV__) logger.push('login + optIn', { userId })
