@@ -19,8 +19,22 @@
  *     the current fields under the previous brand and loads (or blanks) the
  *     new brand's draft. `reset(brandId)` clears ONE brand's draft;
  *     `reset()` (no arg) wipes everything (logout, Constitution #6).
- * Persist name bumped `…-draft-venue-v1` → `…-draft-venue-v2`; the v1 blob is
- * abandoned (prod-safe: it is a pre-submit draft).
+ *
+ * ORCH-1263 [claim-adoption] — v3 (D-B copy-on-start adoption):
+ *   - NEW `claim` block: an immutable snapshot of the seeded listing copied at
+ *     "Yes, this is me" (I-PROPOSED-1263-CLAIM-ADOPTION-COPY-ON-START —
+ *     pre-submit abandon leaves zero server writes; the snapshot only ever
+ *     lives in this client draft).
+ *   - NEW top-level `website` / `priceTiers` / `wantsReservations` (claim
+ *     collects c6/c7/c8; the create path ignores them — website/price stay
+ *     deck-readiness-owned for create, SC-12).
+ *   - Provenance is COMPUTED, never stored (`provenanceFor` below): editing an
+ *     adopted field flips its chip to Edited; reverting to the exact adopted
+ *     value flips it back (DESIGN §3).
+ *   - `photoUris` REMOVED (dead since the Sub-E cover-step removal — nothing
+ *     read it downstream of the wizard).
+ * Persist name bumped v2 → v3 (house precedent v1→v2); the v2 blob is
+ * abandoned (prod-safe: pre-submit drafts only).
  */
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -29,6 +43,52 @@ import { createJSONStorage, persist } from "zustand/middleware";
 
 import type { BrandHourEntry, VenueCategory } from "../types/brand";
 import { defaultBrandHoursWeek } from "../utils/venueBrandHours";
+
+/**
+ * ORCH-1263 — the copy-on-start snapshot of the seeded listing. IMMUTABLE
+ * after prefill: chips and the review groups diff live fields against it.
+ * `hours: []` means NO seeded hours (the grid then holds the default week and
+ * renders no chip — an empty field with an "On Mingla" chip would be a lie).
+ */
+export interface DraftVenueClaimAdopted {
+  name: string;
+  address: string;
+  hours: BrandHourEntry[];
+  phone: string | null;
+  website: string | null;
+  priceTiers: string[];
+  facets: Record<string, boolean | null>;
+  summary: string | null;
+  summarySource: "generative" | "editorial" | null;
+  galleryUrls: string[];
+  category: VenueCategory;
+  categoryConfident: boolean;
+  reservableHint: boolean;
+}
+
+export interface DraftVenueClaim {
+  adopted: DraftVenueClaimAdopted;
+  /**
+   * The ordered c3 grid (= the public gallery order and the submit payload
+   * order). Holds every photo currently in the gallery — adopted keeps AND
+   * operator uploads — so "Make first" works on an upload too (DESIGN §6.4
+   * orders the WHOLE grid). Provenance per tile is derived from membership:
+   * adopted ⇔ url ∈ adopted.galleryUrls, New ⇔ url ∈ addedGalleryUrls.
+   */
+  keptGalleryUrls: string[];
+  /** Operator uploads (`New` chips) — always a subset of keptGalleryUrls. */
+  addedGalleryUrls: string[];
+  /** c4 — THE mandatory decision. null until chosen; dock blocks on it. */
+  coverChoice: {
+    url: string;
+    type: "image" | "video" | "gif";
+    isNew: boolean;
+  } | null;
+  /** false on "Continue anyway" — chips render only for arrived fields. */
+  detailFetched: boolean;
+  /** Copy-on-start timestamp — rides the tier-1 adoption payload (R-5). */
+  adoptedAt: string;
+}
 
 export interface DraftVenueState {
   /** Ve2 — set when operator accepts a pool match card */
@@ -44,12 +104,19 @@ export interface DraftVenueState {
   lng: number | null;
   city: string | null;
   countryCode: string | null;
-  photoUris: string[];
   hours: BrandHourEntry[];
   contactEmail: string;
   contactPhone: string;
   tagline: string;
   description: string;
+  /** ORCH-1263 — claim c6 website (create path ignores; deck-readiness owns). */
+  website: string;
+  /** ORCH-1263 — claim c7 price tiers (create path ignores). */
+  priceTiers: string[];
+  /** ORCH-1263 — claim c8 reservations intent (switch always starts OFF). */
+  wantsReservations: boolean;
+  /** ORCH-1263 — non-null ⇔ claim mode (10-step wizard variant). */
+  claim: DraftVenueClaim | null;
   /**
    * Current wizard step index (0-based) so re-entry resumes where the operator
    * stopped instead of always restarting at step 0. Owned here (not in the
@@ -70,12 +137,15 @@ const initial: DraftVenueState = {
   lng: null,
   city: null,
   countryCode: null,
-  photoUris: [],
   hours: defaultBrandHoursWeek(),
   contactEmail: "",
   contactPhone: "",
   tagline: "",
   description: "",
+  website: "",
+  priceTiers: [],
+  wantsReservations: false,
+  claim: null,
   step: 0,
 };
 
@@ -96,12 +166,16 @@ const pickDraft = (s: DraftVenueState): DraftVenueState => ({
   lng: s.lng,
   city: s.city,
   countryCode: s.countryCode,
-  photoUris: s.photoUris,
   hours: s.hours,
   contactEmail: s.contactEmail,
   contactPhone: s.contactPhone,
   tagline: s.tagline,
   description: s.description,
+  website: s.website,
+  priceTiers: s.priceTiers,
+  wantsReservations: s.wantsReservations,
+  // ORCH-1263 — the claim block must survive activateBrand stash/restore.
+  claim: s.claim,
   step: s.step,
 });
 
@@ -110,6 +184,104 @@ export const draftVenueInProgress = (d: DraftVenueState): boolean =>
   d.displayName.trim().length > 0 ||
   d.workingName.trim().length > 0 ||
   d.step > 0;
+
+// ─── ORCH-1263 — computed provenance (DESIGN §3; never stored) ──────────────
+
+export type ProvenanceState = "adopted" | "edited" | "new";
+
+export type ProvenanceField =
+  | "category"
+  | "name"
+  | "address"
+  | "hours"
+  | "pitch"
+  | "phone"
+  | "website"
+  | "price";
+
+const sameHours = (a: BrandHourEntry[], b: BrandHourEntry[]): boolean => {
+  if (a.length !== b.length) return false;
+  const key = (rows: BrandHourEntry[]): string =>
+    [...rows]
+      .sort((x, y) => x.weekday - y.weekday)
+      .map((r) => `${r.weekday}|${r.isClosed ? "c" : `${r.openTime ?? ""}-${r.closeTime ?? ""}`}`)
+      .join(";");
+  return key(a) === key(b);
+};
+
+const sameTierSet = (a: string[], b: string[]): boolean =>
+  a.length === b.length && [...a].sort().join(",") === [...b].sort().join(",");
+
+const textProvenance = (
+  current: string,
+  adopted: string | null,
+): ProvenanceState | null => {
+  const cur = current.trim();
+  const adp = (adopted ?? "").trim();
+  if (adp.length === 0) {
+    return cur.length > 0 ? "new" : null;
+  }
+  if (cur.length === 0) return null;
+  return cur === adp ? "adopted" : "edited";
+};
+
+/**
+ * ORCH-1263 — live provenance for one field: `adopted` (came from the listing,
+ * untouched), `edited` (adopted then changed), `new` (operator-added, nothing
+ * seeded), null (no chip — nothing seeded and nothing entered, or the field's
+ * variant renders chipless per the DESIGN). Reverting a field to the exact
+ * adopted value flips the chip back (DESIGN §3 rules).
+ */
+export const provenanceFor = (
+  field: ProvenanceField,
+  d: DraftVenueState,
+): ProvenanceState | null => {
+  const claim = d.claim;
+  if (claim === null) return null;
+  const a = claim.adopted;
+  switch (field) {
+    case "category": {
+      // DESIGN §6.1 — the unconfident variant is chipless (nothing was
+      // honestly adopted; 34k silent "restaurant"s would be fabrication).
+      if (!a.categoryConfident) return null;
+      if (d.venueCategory === null) return null;
+      return d.venueCategory === a.category ? "adopted" : "edited";
+    }
+    case "name":
+      return textProvenance(d.displayName, a.name);
+    case "address":
+      return textProvenance(d.formattedAddress, a.address);
+    case "hours": {
+      if (a.hours.length === 0) return null;
+      return sameHours(d.hours, a.hours) ? "adopted" : "edited";
+    }
+    case "pitch": {
+      // OQ-2 — only OUR generative summary pre-fills the pitch; an editorial
+      // (Google-authored) summary rides the snapshot as AI seed only, so the
+      // textarea starts empty and stays chipless until the operator types.
+      const surfaced =
+        a.summarySource === "generative" && (a.summary ?? "").trim().length > 0
+          ? a.summary
+          : null;
+      return textProvenance(d.description, surfaced);
+    }
+    case "phone":
+      return textProvenance(d.contactPhone, a.phone);
+    case "website":
+      return textProvenance(d.website, a.website);
+    case "price": {
+      if (a.priceTiers.length === 0) {
+        return d.priceTiers.length > 0 ? "new" : null;
+      }
+      if (d.priceTiers.length === 0) return null;
+      return sameTierSet(d.priceTiers, a.priceTiers) ? "adopted" : "edited";
+    }
+    default: {
+      const exhaustive: never = field;
+      return exhaustive;
+    }
+  }
+};
 
 interface DraftVenuePersisted extends DraftVenueState {
   /** META-ORCH-1255 — which brand owns the ACTIVE (top-level) draft fields. */
@@ -186,8 +358,9 @@ export const useDraftVenueStore = create<DraftVenueStore>()(
         }),
     }),
     {
-      // META-ORCH-1255 — v2: per-brand multi-draft. v1 blob abandoned.
-      name: "mingla-business-draft-venue-v2",
+      // ORCH-1263 — v3: claim-adoption block + website/price/reservations;
+      // photoUris dropped. v2 blob abandoned (pre-submit drafts, prod-safe).
+      name: "mingla-business-draft-venue-v3",
       storage: createJSONStorage(() => AsyncStorage),
       // Only the data fields are persisted; the action functions are recreated on
       // each store init, so we partialize them out.

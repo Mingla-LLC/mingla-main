@@ -1,14 +1,26 @@
 /**
  * Ve2 — authenticated place_pool name search for venue claim comparison.
  * Returns public-safe fields only (no scoring / bouncer / AI columns).
+ *
+ * ORCH-1263 §A2: TWO modes on one authed + rate-limited surface —
+ *   body {query}    → search mode (unchanged shape + presence facts/claim_state);
+ *   body {place_id} → adoption-detail mode: the FULL whitelist payload for ONE
+ *                     unclaimed place, fetched only on explicit claim intent
+ *                     ("Yes, this is me"). Single id per call, same shared
+ *                     10/min bucket — the detail RPC fail-closes (zero rows)
+ *                     for claimed/pending/inactive places, so this can never
+ *                     become a pool scraper
+ *                     (I-PROPOSED-1263-ADOPTION-PAYLOAD-WHITELISTED).
  */
 
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import {
   assertNoForbiddenKeys,
-  rowToPoolMatch,
+  type PoolAdoptionDetailRow,
   type PoolMatchRow,
+  rowToAdoptionDetail,
+  rowToPoolMatch,
 } from "../_shared/poolMatchResponse.ts";
 
 const corsHeaders = {
@@ -50,6 +62,39 @@ export function normalizeSearchBody(
     limit = Math.max(1, Math.floor(b.limit));
   }
   return { ok: true, query, limit: fetchAll ? null : limit, fetchAll };
+}
+
+// ORCH-1263 §A2 — detail-mode body contract. A body carrying `place_id` routes
+// to adoption-detail mode; a non-uuid place_id is a 400 (`invalid_place_id`).
+// Exported for the T-E2 guard test.
+export function isUuid(v: unknown): v is string {
+  return typeof v === "string" &&
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v);
+}
+
+export function normalizeDetailBody(
+  body: unknown,
+): { ok: true; placeId: string } | { ok: false; error: string } {
+  if (body === null || typeof body !== "object") {
+    return { ok: false, error: "invalid_json" };
+  }
+  const placeId = (body as { place_id?: unknown }).place_id;
+  if (!isUuid(placeId)) {
+    return { ok: false, error: "invalid_place_id" };
+  }
+  return { ok: true, placeId };
+}
+
+// ORCH-1263 §A2 — detail-mode RPC rows → HTTP response. Zero rows is the
+// A1.2 fail-close signal (claimed / pending / inactive / unknown id) and maps
+// to 404 `place_not_available`. Exported for the T-E2 guard test.
+export function detailResponseForRows(rows: PoolAdoptionDetailRow[]): Response {
+  if (rows.length === 0) {
+    return jsonResponse({ error: "place_not_available" }, 404);
+  }
+  const detail = rowToAdoptionDetail(rows[0]);
+  assertNoForbiddenKeys(detail as unknown as Record<string, unknown>);
+  return jsonResponse({ detail });
 }
 
 export function checkRateLimit(userId: string, now = Date.now()): boolean {
@@ -109,16 +154,34 @@ serve(async (req: Request): Promise<Response> => {
     return jsonResponse({ error: "invalid_json" }, 400);
   }
 
-  const normalized = normalizeSearchBody(body);
-  if (!normalized.ok) {
-    return jsonResponse({ error: normalized.error }, 400);
-  }
-
   const supabaseUrl = Deno.env.get("SUPABASE_URL") ?? "";
   const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
   const client = createClient(supabaseUrl, serviceRoleKey, {
     auth: { persistSession: false },
   });
+
+  // ── ORCH-1263 detail mode: body {place_id} → full adoption payload ────────
+  if (body !== null && typeof body === "object" && "place_id" in body) {
+    const detailBody = normalizeDetailBody(body);
+    if (!detailBody.ok) {
+      return jsonResponse({ error: detailBody.error }, 400);
+    }
+    const { data: detailData, error: detailErr } = await client.rpc(
+      "biz_get_place_adoption_detail",
+      { p_place_pool_id: detailBody.placeId },
+    );
+    if (detailErr !== null) {
+      console.error("[claim-search-pool] detail", detailErr.message);
+      return jsonResponse({ error: "detail_failed" }, 500);
+    }
+    return detailResponseForRows((detailData ?? []) as PoolAdoptionDetailRow[]);
+  }
+
+  // ── search mode (unchanged shape + ORCH-1263 presence facts) ──────────────
+  const normalized = normalizeSearchBody(body);
+  if (!normalized.ok) {
+    return jsonResponse({ error: normalized.error }, 400);
+  }
 
   const { data, error } = await client.rpc("biz_search_place_pool_for_claim", {
     p_query: normalized.query,

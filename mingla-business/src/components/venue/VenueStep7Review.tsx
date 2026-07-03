@@ -46,10 +46,8 @@ export const VenueStep7Review: React.FC<VenueStep7ReviewProps> = ({
         <Row k="Category" v={d.venueCategory ? CAT_LABEL[d.venueCategory] : "—"} />
         <Row k="Address" v={d.formattedAddress} />
         <Row k="Contact" v={[d.contactEmail, d.contactPhone].filter(Boolean).join(" · ") || "—"} />
-        <Row
-          k="Photos"
-          v={`${d.photoUris.length} selected`}
-        />
+        {/* ORCH-1263 — the dead "Photos: N selected" row died with the dead
+            `photoUris` draft field (nothing downstream ever read it). */}
         <Row
           k="Description"
           v={

@@ -162,7 +162,9 @@ export const BrandHoursEditor: React.FC<BrandHoursEditorProps> = ({
       if (o.length === 0 || c.length === 0) {
         return "Open and close times are required for open days.";
       }
-      if (o >= c) return "Close time must be after open time.";
+      // ORCH-1263 D-D — overnight (close < open) is valid; only equality is
+      // rejected (DESIGN §6.3 copy; 24h venues are out of scope).
+      if (o === c) return "Open and close can't be the same time.";
     }
     return null;
   }, [hours, showErrors]);
@@ -384,7 +386,16 @@ export const BrandHoursEditor: React.FC<BrandHoursEditorProps> = ({
         )}
       </View>
 
-      {hours.map((row) => (
+      {hours.map((row) => {
+        // ORCH-1263 D-D display contract (DESIGN §6.3): close <= open on an
+        // open day with both times set = an OVERNIGHT span — say "next day"
+        // in plain words inside the Closes control (no "+1" jargon).
+        const isOvernight =
+          !row.isClosed &&
+          (row.openTime ?? "").length > 0 &&
+          (row.closeTime ?? "").length > 0 &&
+          (row.closeTime as string) < (row.openTime as string);
+        return (
         <View key={row.weekday} style={styles.dayRow}>
           <View style={styles.dayHead}>
             <Text style={styles.dayName}>{DAY_NAMES[row.weekday]}</Text>
@@ -422,6 +433,9 @@ export const BrandHoursEditor: React.FC<BrandHoursEditorProps> = ({
                       onCommit={(v) => onWebTime(row.weekday, "close", v)}
                       ariaLabel={`${DAY_NAMES[row.weekday]} closing time`}
                     />
+                    {isOvernight ? (
+                      <Text style={styles.nextDay}>next day</Text>
+                    ) : null}
                   </View>
                 </>
               ) : (
@@ -441,17 +455,25 @@ export const BrandHoursEditor: React.FC<BrandHoursEditorProps> = ({
                     disabled={disabled}
                     onPress={() => openPicker(row.weekday, "close", row)}
                     accessibilityRole="button"
-                    accessibilityLabel={`Pick ${DAY_NAMES[row.weekday]} closing time`}
+                    accessibilityLabel={
+                      isOvernight
+                        ? `Pick ${DAY_NAMES[row.weekday]} closing time, currently ${row.closeTime} next day`
+                        : `Pick ${DAY_NAMES[row.weekday]} closing time`
+                    }
                   >
                     <Text style={styles.timeLbl}>Closes</Text>
                     <Text style={styles.timeVal}>{row.closeTime ?? "—"}</Text>
+                    {isOvernight ? (
+                      <Text style={styles.nextDay}>next day</Text>
+                    ) : null}
                   </Pressable>
                 </>
               )}
             </View>
           ) : null}
         </View>
-      ))}
+        );
+      })}
 
       {Platform.OS === "ios" && picker !== null ? (
         <Modal transparent visible animationType="fade">
@@ -628,6 +650,16 @@ const styles = StyleSheet.create({
     fontWeight: "600",
     color: textTokens.primary,
     marginTop: 2,
+  },
+  // ORCH-1263 — overnight micro-line (DESIGN §6.3: typography.micro,
+  // text.tertiary, marginTop 1, inside the Closes control).
+  nextDay: {
+    fontSize: typography.micro.fontSize,
+    lineHeight: typography.micro.lineHeight,
+    fontWeight: typography.micro.fontWeight,
+    letterSpacing: typography.micro.letterSpacing,
+    color: textTokens.tertiary,
+    marginTop: 1,
   },
   webTimeInput: {
     fontSize: typography.body.fontSize,

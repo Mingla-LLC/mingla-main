@@ -23,6 +23,15 @@ import { sendPush } from "../_shared/push-utils.ts";
 // on approve. The approval wrapper is already the sole go-live writer for claims
 // (Constitution #2 preserved — no third uncoordinated is_servable writer added).
 import { bounce, type PlaceRow } from "../_shared/bouncer.ts";
+// ORCH-1263 §A5 (D-A) — approve-time application of authored content. The
+// claim path stages everything pre-approve (stage-only write model); THIS
+// function is where authored truth (venue cover + venue-keyed brand_hours +
+// business_authoring_inputs + business_gallery_urls) lands on the live place,
+// with pre-application values archived first-archive-wins.
+import {
+  type BrandHoursDbRow,
+  buildAuthoredApplyPatch,
+} from "../_shared/authoredApply.ts";
 // META-ORCH-1074 Sub-A: write a business.claim_decision notification row
 // (inbox + business-app push) alongside the existing email + legacy raw push.
 // Single recipient = the brand owner (brandRow.account_id). business.* routes
@@ -227,6 +236,99 @@ export async function runApproveGoLive(
   }
 
   return result;
+}
+
+// ORCH-1263 §A5 — read authored truth for ONE venue and apply it to the live
+// place in a single UPDATE. Exported for the T-C3 ordering test. Idempotent:
+// a resubmit → re-approve re-applies current authored truth (the archive is
+// first-archive-wins inside buildAuthoredApplyPatch and untouched on re-runs).
+// Throws on any read/write failure — the caller treats that as fail-close.
+export async function applyAuthoredContentOnApprove(
+  admin: AdminClient,
+  venueId: string,
+): Promise<{ place_pool_id: string; applied_keys: string[] }> {
+  const { data: venueRow, error: venueErr } = await admin
+    .from("venue_listings")
+    .select("id, brand_id, place_pool_id, cover_media_url, cover_media_type")
+    .eq("id", venueId)
+    .maybeSingle();
+  if (venueErr) throw new Error(`authored_apply_venue_read:${venueErr.message}`);
+  if (!venueRow) throw new Error("authored_apply_venue_not_found");
+  const placePoolId = (venueRow as { place_pool_id?: string | null }).place_pool_id ?? null;
+  if (placePoolId === null) throw new Error("authored_apply_no_place_pool_id");
+
+  const { data: brandRow, error: brandErr } = await admin
+    .from("brands")
+    .select("id, account_id")
+    .eq("id", (venueRow as { brand_id: string }).brand_id)
+    .maybeSingle();
+  if (brandErr) throw new Error(`authored_apply_brand_read:${brandErr.message}`);
+  if (!brandRow || typeof brandRow.account_id !== "string") {
+    throw new Error("authored_apply_brand_not_found");
+  }
+
+  const { data: hoursRows, error: hoursErr } = await admin
+    .from("brand_hours")
+    .select("weekday, open_time, close_time, is_closed")
+    .eq("venue_id", venueId)
+    .order("weekday", { ascending: true });
+  if (hoursErr) throw new Error(`authored_apply_hours_read:${hoursErr.message}`);
+
+  const { data: placeRow, error: placeErr } = await admin
+    .from("place_pool")
+    .select("*")
+    .eq("id", placePoolId)
+    .maybeSingle();
+  if (placeErr) throw new Error(`authored_apply_place_read:${placeErr.message}`);
+  if (!placeRow) throw new Error("authored_apply_place_not_found");
+
+  const patch = buildAuthoredApplyPatch({
+    place: placeRow as Record<string, unknown>,
+    venue: {
+      cover_media_url: (venueRow as { cover_media_url?: string | null }).cover_media_url ?? null,
+      cover_media_type: (venueRow as { cover_media_type?: string | null }).cover_media_type ?? null,
+    },
+    brandHours: (hoursRows ?? []) as BrandHoursDbRow[],
+    ownerUserId: brandRow.account_id,
+  });
+
+  const { error: applyErr } = await admin
+    .from("place_pool")
+    .update(patch)
+    .eq("id", placePoolId);
+  if (applyErr) throw new Error(`authored_apply_update:${applyErr.message}`);
+
+  return { place_pool_id: placePoolId, applied_keys: Object.keys(patch) };
+}
+
+// ORCH-1263 §A5 ordering (binding): authored content applies AFTER
+// biz_review_venue_claim('approve'), BEFORE runApproveGoLive — so the
+// re-bounce + per-signal scoring run over AUTHORED content (and the scorer's
+// business_hero_video_present boost sees the authored hero). Application
+// failure → structured error, go-live NOT attempted (fail-close: never a
+// verified claim whose authored content failed to land — admin re-approves,
+// which is idempotent). Exported for the T-C3 fake-client ordering test.
+export async function approveGoLiveWithAuthoredApply(
+  admin: AdminClient,
+  venueId: string,
+  placePoolId: string,
+  scoreVetoes: Record<string, unknown> | null,
+): Promise<
+  | { ok: true; applied_keys: string[]; goLive: GoLiveResult }
+  | { ok: false; error: string }
+> {
+  let appliedKeys: string[];
+  try {
+    const applied = await applyAuthoredContentOnApprove(admin, venueId);
+    appliedKeys = applied.applied_keys;
+  } catch (applyErr) {
+    const msg = applyErr instanceof Error ? applyErr.message : String(applyErr);
+    console.error("[admin-review-venue-claim] authored apply failed", msg);
+    // Fail-close: runApproveGoLive is NOT invoked (no servable flip, no scoring).
+    return { ok: false, error: msg };
+  }
+  const goLive = await runApproveGoLive(admin, placePoolId, scoreVetoes);
+  return { ok: true, applied_keys: appliedKeys, goLive };
 }
 
 serve(async (req) => {
@@ -586,9 +688,32 @@ serve(async (req) => {
     const placePoolId =
       (venueRow as { place_pool_id?: string | null }).place_pool_id ?? null;
     let goLive: GoLiveResult | null = null;
+    let authoredAppliedKeys: string[] | null = null;
     if (!noop && placePoolId !== null) {
       if (parsed.action === "approve") {
-        goLive = await runApproveGoLive(admin, placePoolId, scoreVetoes);
+        // ORCH-1263 §A5 (D-A): apply authored content (hours/photos/summary/
+        // price/facets/website + claimed_by/is_claimed, archive-first) BEFORE
+        // go-live so the re-bounce + scorers see authored truth. Failure is
+        // fail-close: structured error, go-live not attempted, claim stays
+        // re-approvable (idempotent application).
+        const approveResult = await approveGoLiveWithAuthoredApply(
+          admin,
+          parsed.venueId,
+          placePoolId,
+          scoreVetoes,
+        );
+        if (!approveResult.ok) {
+          return json(
+            {
+              error: "authored_apply_failed",
+              detail: approveResult.error,
+              go_live: null,
+            },
+            500,
+          );
+        }
+        authoredAppliedKeys = approveResult.applied_keys;
+        goLive = approveResult.goLive;
       } else if (parsed.action === "reject") {
         await admin
           .from("place_pool")
@@ -759,6 +884,9 @@ serve(async (req) => {
       // re-bounce verdict + which signals scored / failed (Constitution #5 — no
       // silent failure). null for non-approve actions or noop.
       go_live: goLive,
+      // ORCH-1263: which place_pool keys the authored application patched
+      // (null for non-approve/noop) — admin-visible receipt, no silent apply.
+      authored_applied_keys: authoredAppliedKeys,
     });
   } catch (e) {
     console.error("[admin-review-venue-claim]", e);

@@ -1,40 +1,69 @@
 /**
  * Ve2 — debounced place_pool search via claim-search-pool edge function.
+ *
+ * ORCH-1263 §B1 — the row mapper grows the presence facts + claimState +
+ * venueCategoryConfident (old-fn tolerant defaults: booleans false, count 0,
+ * claimState "available"), and `fetchPlaceAdoptionDetail` fetches the FULL
+ * adoption payload via the same edge fn's `{place_id}` detail mode — fired
+ * ONLY on explicit claim intent ("Yes, this is me"), shared 10/min bucket.
  */
 
-import type { PoolMatch, PoolSearchResponse } from "../types/poolMatch";
-import { POOL_SEARCH_DEFAULT_LIMIT, POOL_SEARCH_MIN_QUERY_LENGTH } from "../types/poolMatch";
+import type {
+  PoolAdoptionDetail,
+  PoolMatch,
+  PoolSearchResponse,
+} from "../types/poolMatch";
+import {
+  POOL_SEARCH_DEFAULT_LIMIT,
+  POOL_SEARCH_MIN_QUERY_LENGTH,
+} from "../types/poolMatch";
 import { supabase } from "./supabase";
 
+/** ORCH-1263 — typed 404 for the detail mode's `place_not_available`. */
+export class PlaceNotAvailableError extends Error {
+  constructor() {
+    super("place_not_available");
+    this.name = "PlaceNotAvailableError";
+  }
+}
+
+function asOptionalString(v: unknown): string | null {
+  return v === null || v === undefined ? null : String(v);
+}
+
 function mapMatchRow(raw: Record<string, unknown>): PoolMatch {
+  const claimState = raw.claimState === "claimed" || raw.claimState === "pending"
+    ? raw.claimState
+    : "available";
   return {
     id: String(raw.id),
     name: String(raw.name),
-    address: raw.address === null || raw.address === undefined
-      ? null
-      : String(raw.address),
-    city: raw.city === null || raw.city === undefined ? null : String(raw.city),
-    country: raw.country === null || raw.country === undefined
-      ? null
-      : String(raw.country),
+    address: asOptionalString(raw.address),
+    city: asOptionalString(raw.city),
+    country: asOptionalString(raw.country),
     lat: Number(raw.lat),
     lng: Number(raw.lng),
-    googlePlaceId: raw.googlePlaceId === null || raw.googlePlaceId === undefined
-      ? null
-      : String(raw.googlePlaceId),
-    primaryPhotoUrl: raw.primaryPhotoUrl === null ||
-        raw.primaryPhotoUrl === undefined
-      ? null
-      : String(raw.primaryPhotoUrl),
-    primaryType: raw.primaryType === null || raw.primaryType === undefined
-      ? null
-      : String(raw.primaryType),
+    googlePlaceId: asOptionalString(raw.googlePlaceId),
+    primaryPhotoUrl: asOptionalString(raw.primaryPhotoUrl),
+    primaryType: asOptionalString(raw.primaryType),
     types: Array.isArray(raw.types) ? raw.types.map(String) : [],
     venueCategory: raw.venueCategory as PoolMatch["venueCategory"],
     openingHours: raw.openingHours ?? null,
     photoUrls: Array.isArray(raw.photoUrls)
       ? raw.photoUrls.map(String)
       : [],
+    // ORCH-1263 §B1 — old-fn tolerance: absent fields default false/0/available
+    // (pre-1263 edge shape keeps the shipped wizard working; the 23505 submit
+    // backstop still guards the race).
+    hasHours: raw.hasHours === true,
+    hasPhone: raw.hasPhone === true,
+    hasWebsite: raw.hasWebsite === true,
+    hasRating: raw.hasRating === true,
+    photoCount: typeof raw.photoCount === "number" && raw.photoCount > 0
+      ? raw.photoCount
+      : 0,
+    claimState,
+    venueCategoryConfident: raw.venueCategoryConfident === true,
   };
 }
 
@@ -75,4 +104,102 @@ export async function searchPoolMatches(
   return matches.map((m) =>
     mapMatchRow(m as unknown as Record<string, unknown>),
   );
+}
+
+/**
+ * ORCH-1263 §B1 — read the structured `{ error }` body off a non-2xx edge
+ * response (supabase-js stashes the real Response on `.context` behind the
+ * opaque FunctionsHttpError message — same posture as pipelineInvokeError).
+ */
+async function detailErrorCode(
+  error: { message?: string; context?: unknown },
+): Promise<string | null> {
+  const ctx = (error as { context?: unknown }).context;
+  if (
+    ctx !== null && ctx !== undefined &&
+    typeof (ctx as Response).json === "function"
+  ) {
+    try {
+      const parsed = (await (ctx as Response).json()) as { error?: string };
+      if (typeof parsed?.error === "string" && parsed.error.length > 0) {
+        return parsed.error;
+      }
+    } catch {
+      // fall through — opaque failure surfaces below
+    }
+  }
+  return null;
+}
+
+function mapDetailBody(raw: Record<string, unknown>): PoolAdoptionDetail {
+  const facetsRaw = raw.facets;
+  const facets: Record<string, boolean | null> = {};
+  if (facetsRaw !== null && typeof facetsRaw === "object") {
+    for (const [k, v] of Object.entries(facetsRaw as Record<string, unknown>)) {
+      facets[k] = typeof v === "boolean" ? v : null;
+    }
+  }
+  return {
+    id: String(raw.id),
+    name: String(raw.name),
+    address: asOptionalString(raw.address),
+    city: asOptionalString(raw.city),
+    country: asOptionalString(raw.country),
+    lat: Number(raw.lat),
+    lng: Number(raw.lng),
+    googlePlaceId: asOptionalString(raw.googlePlaceId),
+    primaryType: asOptionalString(raw.primaryType),
+    types: Array.isArray(raw.types) ? raw.types.map(String) : [],
+    openingHours: raw.openingHours ?? null,
+    photoUrls: Array.isArray(raw.photoUrls) ? raw.photoUrls.map(String) : [],
+    nationalPhoneNumber: asOptionalString(raw.nationalPhoneNumber),
+    website: asOptionalString(raw.website),
+    priceTiers: Array.isArray(raw.priceTiers)
+      ? raw.priceTiers.map(String)
+      : [],
+    priceLevel: asOptionalString(raw.priceLevel),
+    generativeSummary: asOptionalString(raw.generativeSummary),
+    editorialSummary: asOptionalString(raw.editorialSummary),
+    reservable: raw.reservable === true,
+    facets,
+    venueCategory: raw.venueCategory as PoolAdoptionDetail["venueCategory"],
+    venueCategoryConfident: raw.venueCategoryConfident === true,
+  };
+}
+
+/**
+ * ORCH-1263 §B1 — full adoption payload for ONE unclaimed place. Fired ONLY on
+ * explicit claim intent (D-B copy-on-start). Throws PlaceNotAvailableError on
+ * the fail-close 404 (claimed/pending/inactive → blocked-at-the-gate swap).
+ */
+export async function fetchPlaceAdoptionDetail(
+  placePoolId: string,
+  _options: { signal?: AbortSignal } = {},
+): Promise<PoolAdoptionDetail> {
+  const { data, error } = await supabase.functions.invoke("claim-search-pool", {
+    body: { place_id: placePoolId },
+  });
+
+  if (error !== null) {
+    const code = await detailErrorCode(error);
+    if (code === "place_not_available") {
+      throw new PlaceNotAvailableError();
+    }
+    if (code === "rate_limited") {
+      throw new Error("rate_limited");
+    }
+    throw new Error(code ?? error.message ?? "detail_failed");
+  }
+
+  const body = data as { detail?: unknown; error?: string } | null;
+  if (body !== null && typeof body === "object" && "error" in body) {
+    const code = String((body as { error: string }).error);
+    if (code === "place_not_available") throw new PlaceNotAvailableError();
+    throw new Error(code);
+  }
+  const detail = body?.detail;
+  if (detail === null || detail === undefined || typeof detail !== "object") {
+    throw new Error("detail_failed");
+  }
+  return mapDetailBody(detail as Record<string, unknown>);
 }

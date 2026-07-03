@@ -58,6 +58,20 @@ interface VenueListingRow {
   created_at: string;
 }
 
+/**
+ * ORCH-1263 — `venue_listings_place_uniq` 23505: the place already has a
+ * listing row (any claim state). The claim wizard branches own-vs-foreign on
+ * this; every other consumer still sees the same friendly message.
+ */
+export class PlaceClaimConflictError extends Error {
+  constructor() {
+    super(
+      "This place is already in our verification queue. Contact support if you need help.",
+    );
+    this.name = "PlaceClaimConflictError";
+  }
+}
+
 const VENUE_LISTING_COLUMNS =
   "id, brand_id, place_pool_id, slug, name, address, city, country_code, venue_category, cover_media_url, cover_media_type, claim_status, claim_follow_up_at, rejection_reason, created_at";
 
@@ -101,6 +115,26 @@ export async function fetchVenueListing(
     .from("venue_listings")
     .select(VENUE_LISTING_COLUMNS)
     .eq("id", venueId)
+    .maybeSingle<VenueListingRow>();
+  if (error !== null) throw error;
+  return data === null ? null : mapRow(data);
+}
+
+/**
+ * ORCH-1263 §B1 (R-10 resume probe) — the CURRENT brand's own listing for a
+ * place, if any (own-RLS read). Powers the half-claim resume-not-recreate
+ * pre-check (SC-10): an own row + incomplete tier-1 means the earlier submit
+ * died mid-flight and the retry must reuse the venue row, never re-insert.
+ */
+export async function findOwnListingForPlace(
+  brandId: string,
+  placePoolId: string,
+): Promise<VenueListing | null> {
+  const { data, error } = await supabase
+    .from("venue_listings")
+    .select(VENUE_LISTING_COLUMNS)
+    .eq("brand_id", brandId)
+    .eq("place_pool_id", placePoolId)
     .maybeSingle<VenueListingRow>();
   if (error !== null) throw error;
   return data === null ? null : mapRow(data);
@@ -164,9 +198,10 @@ export async function createVenueListing(
         throw new SlugCollisionError(input.slug);
       }
       // venue_listings_place_uniq — the place is already claimed by a listing.
-      throw new Error(
-        "This place is already in our verification queue. Contact support if you need help.",
-      );
+      // ORCH-1263 — typed so the claim wizard's 23505 backstop can branch
+      // own-row (resume, DESIGN §8.3) vs foreign (§8.2 card) without string
+      // matching. Message unchanged for pre-1263 consumers.
+      throw new PlaceClaimConflictError();
     }
     throw error;
   }

@@ -7,6 +7,42 @@
 
 ---
 
+## ACTIVE — ORCH-1263 (claim-adoption: seeded-venue claim pre-fill, 2026-07-03)
+
+> All six invariants flipped DRAFT → ACTIVE at ORCH-1263 CLOSE (registered DRAFT in `specs/SPEC_ORCH-1263_CLAIM_ADOPTION.md` §6; house style keeps the `I-PROPOSED-1263-*` names). Backend live on prod `gqnoajqerqhnvulmnyvv` (migration `20261202000000` + edge fns `claim-search-pool` v202 / `admin-review-venue-claim` v199 / `run-business-place-authoring-pipeline` v128, read-backs verified); enforcement = the 2 `orch-1263-*` strict-grep gates in `strict-grep-mingla-business.yml` — G-1 `.github/scripts/strict-grep/orch-1263-claim-stage-only-preapprove.mjs` + G-2 `.github/scripts/strict-grep/orch-1263-claim-front-load-and-overnight.mjs` (each `--self-test` + GOOD/BAD fixtures) — plus the deno suites (`orch_1263_stage_only_claim.test.ts`, `orch_1263_claim_detail.test.ts`, `orch_1263_authored_apply_on_approve.test.ts`, tester `orch1263_tester_adversarial.test.ts`), the SQL suites (`orch_1263_claim_adoption.test.sql` + tester `orch_1263_tester_adversarial.test.sql`), and the jest suites (`orch1263ClaimAdoption.happy.test.tsx` + tester `orch1263ClaimAdoption.tester.adversarial.test.tsx`); fails-on-revert `ce220e4da` (Leg A) / `fe587db6f` (Leg B), independently re-proven by the tester (Step 0.5) + drilled per adversarial suite.
+
+### I-PROPOSED-1263-NO-LIVE-PLACE-MUTATION-PRE-APPROVE (ACTIVE)
+- **Rule:** stage mode (any claim write before admin approve) NEVER writes a serving-read place column (`opening_hours, stored_photo_urls, generative_summary, price_tiers, price_level, website, facets, is_servable, name, address, lat, lng`) nor `claimed_by`/`is_claimed` — the live place a consumer sees is byte-untouched until approve applies authored content in one patch.
+- **Enforcement:** T-A1..T-A6 exact stage-payload key-set assertions in `supabase/functions/run-business-place-authoring-pipeline/__tests__/orch_1263_stage_only_claim.test.ts` + gate G-1 `.github/scripts/strict-grep/orch-1263-claim-stage-only-preapprove.mjs` (FAILS if `opening_hours: normalizeBusinessHoursForPool` appears >1×, any one-element `stored_photo_urls` write from `mediaUrl` exists, `handleSyncHeroMedia` drops `nextStoredPhotosForHero(`, or the claim branch contains `claimed_by:`/`is_claimed:`) + the tester deno deep-scan (polluted-row forbidden-set) in `orch1263_tester_adversarial.test.ts`.
+- **Established:** DRAFT at SPEC v2 (`338e2fca0`); flipped ACTIVE 2026-07-03 at CLOSE (SC-6/SC-7 live-fired on prod: serving-column hashes byte-identical through TWO full claim submits, synthetic + REAL place).
+
+### I-PROPOSED-1263-CLAIM-ADOPTION-COPY-ON-START (ACTIVE)
+- **Rule:** adoption is a client-draft COPY made at YES — the wizard prefill reads the adoption-detail RPC into local draft state only; a pre-submit abandon leaves ZERO server writes.
+- **Enforcement:** T-B2 (prefill purity, jest `orch1263ClaimAdoption.happy.test.tsx` + tester prefill-purity arm in `orch1263ClaimAdoption.tester.adversarial.test.tsx`) + T-D2 (`provolatile='s'` stable-function probe in `supabase/migrations/__tests__/orch_1263_claim_adoption.test.sql`).
+- **Established:** DRAFT at SPEC v2; flipped ACTIVE 2026-07-03 at CLOSE (half-claim resume drill + abandon path live-fired; prod residue NONE attested).
+
+### I-PROPOSED-1263-GALLERY-NEVER-WIPED-BY-HERO (ACTIVE)
+- **Rule:** `nextStoredPhotosForHero` output is ALWAYS a superset of the gallery (`⊇ gallery`); the legacy one-element `stored_photo_urls = [hero]` write is banned — clearing or changing a hero can never empty a non-empty gallery.
+- **Enforcement:** T-A4 pure-function matrix (deno, `orch_1263_stage_only_claim.test.ts`) + gate G-1 (the `nextStoredPhotosForHero(` call-token + one-element-write arms) + the tester repeated-hero-picks superset-law suite (deno D-arm).
+- **Established:** DRAFT at SPEC v2; flipped ACTIVE 2026-07-03 at CLOSE (SC-9 proven; fails-on-revert drilled).
+
+### I-PROPOSED-1263-CLAIMED-STATE-FRONT-LOADED (ACTIVE)
+- **Rule:** claim search carries `claim_state` (`available`/`pending`/`claimed`) so blocked variants render AT THE GATE (the match card), the DESIGN §8.2 submit-time backstop is foreign-claim-only, and a same-brand retry RESUMES the half-claim instead of dead-ending on 23505.
+- **Enforcement:** T-B5/T-B6 (jest blocked-gate variants + resume) + T-D1 (SQL: search RPC output contains `claim_state`, exact-match semantics, all non-verified claim_status values block pending) + gate G-2 `.github/scripts/strict-grep/orch-1263-claim-front-load-and-overnight.mjs` (FAILS if `ClaimMatchCard.tsx` drops the `claimState` handling tokens or the search-RPC migration CREATE lacks `claim_state`) + the tester race-honest 23505-ordering jest arm.
+- **Established:** DRAFT at SPEC v2; flipped ACTIVE 2026-07-03 at CLOSE (both blocked-gate variants + the half-claim resume drill live-fired on prod).
+
+### I-PROPOSED-1263-ADOPTION-PAYLOAD-WHITELISTED (ACTIVE)
+- **Rule:** `rating`/`review_count` VALUES and every AI/bouncer/scoring column NEVER cross the claim-search response or the adoption-detail response (booleans/counts like `has_rating`/`photo_count` only); the detail RPC is single-place, authed, rate-limited, and fail-closed (zero rows for claimed/pending/inactive places).
+- **Enforcement:** T-E1 (deno, `supabase/functions/claim-search-pool/__tests__/orch_1263_claim_detail.test.ts` — both mappers pass `assertNoForbiddenKeys`) + T-D2 (SQL: proargnames probe excludes `rating`/`review_count` as outputs, detail fail-close, pinned `search_path`, RPC grants) + the tester hostile-input omission-rules + output-contract-whitelist suites (deno D-arm + SQL TA-arm).
+- **Established:** DRAFT at SPEC v2; flipped ACTIVE 2026-07-03 at CLOSE (SC-11 proven live incl. the search-RPC grant hardening; the systemic grant sweep spun out as ORCH-1266).
+
+### I-PROPOSED-1263-OVERNIGHT-HOURS-VALID (ACTIVE)
+- **Rule:** BOTH hours validators (`venueWizardValidation.ts` + `VenueSettingsModule.tsx`) accept overnight windows (`close < open`, e.g. 20:00–02:00) and reject ONLY open==close equality — venues open past midnight are never rejected by the hours form.
+- **Enforcement:** T-B3 (jest) + the tester overnight boundary matrix (both arms, both validators, `orch1263ClaimAdoption.tester.adversarial.test.tsx` A-arm) + gate G-2 (FAILS if either file re-grows the reverted `o >= c` predicate).
+- **Established:** DRAFT at SPEC v2; flipped ACTIVE 2026-07-03 at CLOSE (SC sim-proven on iOS; G-2 red-to-green proven across Leg A → Leg B).
+
+---
+
 ## ACTIVE — META-ORCH-1255 (multi-venue first-class creation, 2026-07-02)
 
 > All four invariants flipped DRAFT → ACTIVE at META-ORCH-1255 CLOSE (registered DRAFT in `specs/SPEC_META-ORCH-1255_MULTI_VENUE_FIRST_CLASS.md` §6; house style keeps the `I-PROPOSED-1255-*` names). Backend live on prod `gqnoajqerqhnvulmnyvv` (migrations `20261130000000`–`20261130000005` + 5 edge fns, verified); enforcement = the 5 `orch-1255-*` strict-grep gates in `strict-grep-mingla-business.yml` (each with `--self-test`) + the `orch_1255_*.test.sql` SQL suites + the tester adversarial suite `metaOrch1255.tester.adversarial.test.ts` (21 tests, fails-on-revert). Cross-ref DEC-193 (D-1..D-4).

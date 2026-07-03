@@ -255,7 +255,10 @@ export function VenueSettingsModule({
       const o = h.openTime ?? "";
       const c = h.closeTime ?? "";
       if (o.length === 0 || c.length === 0) return true;
-      if (o >= c) return true;
+      // ORCH-1263 D-D (I-PROPOSED-1263-OVERNIGHT-HOURS-VALID): close < open is
+      // a VALID overnight span (22:00→02:00) — only equality is invalid, so a
+      // claimed late-night venue can SAVE its real hours post-approve.
+      if (o === c) return true;
     }
     return false;
   }, [hoursDraft]);

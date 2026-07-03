@@ -18,6 +18,20 @@ export interface Tier1PlaceDraft {
   tagline: string;
   description: string;
   hours: BrandHourEntry[];
+  // ORCH-1263 §B1 — claim-adoption extras (Leg A §A3.1 stage payload reads
+  // draft.website / draft.priceTiers → tier2 seed, draft.adoptedGalleryUrls →
+  // business_gallery_urls, draft.adoption → provenance). Optional: the
+  // create-from-scratch path never sets them (SC-12 byte-compat).
+  website?: string | null;
+  priceTiers?: string[];
+  /** Kept + added gallery, in c3 order (the public order). */
+  adoptedGalleryUrls?: string[];
+  adoption?: {
+    source: "place_pool";
+    adoptedAt: string;
+    summarySource: "generative" | "editorial" | null;
+    wantsReservations: boolean;
+  } | null;
 }
 
 export interface Tier1PlaceResult {
