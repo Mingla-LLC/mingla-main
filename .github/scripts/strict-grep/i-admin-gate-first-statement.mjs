@@ -54,6 +54,20 @@ const GUARDED_DEFINER_FNS = [
   "admin_list_payouts",
   "admin_list_revenue_log",
   "admin_get_subscription_detail",
+  // ORCH-1276 [Admin Identity console — WAVE-2 EDIT]: the 11 audited identity write
+  // RPCs (A1–A5, B1–B2, C1–C3, D1–D2). Each is_admin_user() guard MUST be the first
+  // statement. Reverting 20261208000001-4 removes these fns → this gate FAILS.
+  "admin_update_brand",
+  "admin_reassign_brand_owner",
+  "admin_set_brand_claim_status",
+  "admin_set_brand_deleted",
+  "admin_update_account",
+  "admin_set_account_deleted",
+  "admin_set_team_member_role",
+  "admin_remove_team_member",
+  "admin_revoke_brand_invitation",
+  "admin_set_user_active",
+  "admin_set_user_beta",
 ];
 
 function fnBody(src, name) {
@@ -150,7 +164,22 @@ if (process.argv.includes("--self-test")) {
         "begin if not public.is_admin_user() then raise exception 'not_authorized'; end if; return '{}'::jsonb; end; $$;\n",
     )
     .join("");
-  const reads = getPerson + offerings1273 + moneyFns;
+  // ORCH-1276: the 11 audited identity write RPCs — registered above (guard MUST be
+  // first). Included in the good/other-subject fixtures (as 1272/1273/1274 do) so the
+  // self-test isolates the intended violation instead of tripping on missing fns.
+  const identity1276 = [
+    "admin_update_brand", "admin_reassign_brand_owner", "admin_set_brand_claim_status",
+    "admin_set_brand_deleted", "admin_update_account", "admin_set_account_deleted",
+    "admin_set_team_member_role", "admin_remove_team_member", "admin_revoke_brand_invitation",
+    "admin_set_user_active", "admin_set_user_beta",
+  ]
+    .map(
+      (n) =>
+        `create or replace function public.${n}(p_id uuid) returns jsonb language plpgsql security definer as $$ ` +
+        "begin if not public.is_admin_user() then raise exception 'not_authorized'; end if; return '{}'::jsonb; end; $$;\n",
+    )
+    .join("");
+  const reads = getPerson + offerings1273 + moneyFns + identity1276;
 
   // GOOD: all guard-first.
   let f = [];

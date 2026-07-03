@@ -3678,3 +3678,24 @@ jobs:
         run: node --test mingla-admin/src/__tests__/orch1274_money_console_read.test.js
       - name: Run ORCH-1274 money-containment TESTER adversarial regression
         run: node --test mingla-admin/src/__tests__/orch1274_money_containment_adversarial.test.js
+
+  orch-1276-identity-admin-write:
+    name: "ORCH-1276: identity write RPCs are guard-first + audited + least-privilege; console takes no direct browser write (I-PROPOSED-1276-IDENTITY-ADMIN-WRITE-AUDITED)"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Self-test the ORCH-1276 identity-admin-write gate
+        run: node .github/scripts/strict-grep/i-1276-identity-admin-write.mjs --self-test
+      - name: Run ORCH-1276 identity-admin-write gate
+        run: node .github/scripts/strict-grep/i-1276-identity-admin-write.mjs
+      - name: Run ORCH-1276 identity-admin-write gate fixture test
+        run: node --test .github/scripts/strict-grep/__tests__/i-1276-identity-admin-write.test.mjs
+      - name: Self-test the ORCH-1271 write-audited registry (1276 RPCs appended)
+        run: node .github/scripts/strict-grep/i-admin-write-audited.mjs --self-test
+      - name: Self-test the ORCH-1271 gate-first-statement registry (1276 RPCs appended)
+        run: node .github/scripts/strict-grep/i-admin-gate-first-statement.mjs --self-test
+      - name: Run ORCH-1276 identity console edit happy-path regression
+        run: node --test mingla-admin/src/__tests__/orch1276_identity_console_edit.test.js
