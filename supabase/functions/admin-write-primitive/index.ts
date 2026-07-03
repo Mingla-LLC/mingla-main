@@ -66,11 +66,17 @@ serve(async (req) => {
   }
 
   // ── Reason is required for a high-risk write. ──────────────────────────────
+  // Normalize ASCII + Unicode invisible whitespace (NBSP, ZWSP/ZWNJ/ZWJ, LSEP/PSEP,
+  // BOM) before the emptiness check so an invisible-char reason cannot bypass the gate.
+  // Mirrors the server-side admin_write_audit reason gate (the DB is the real gate;
+  // this 400 is the client-facing status). ORCH-1271 P0 (c).
+  const INVISIBLE_WS = /[\s\u00A0\u200B\u200C\u200D\u2028\u2029\uFEFF]/g;
   const body = await req.json().catch(() => ({})) as { reason?: string };
-  const reason = typeof body.reason === "string" ? body.reason.trim() : "";
-  if (!reason) {
+  const rawReason = typeof body.reason === "string" ? body.reason : "";
+  if (rawReason.replace(INVISIBLE_WS, "") === "") {
     return json({ error: "reason_required", field: "reason" }, 400);
   }
+  const reason = rawReason.trim();
 
   // ── Audited no-op write via the shared helper (service-role → pass actor). ──
   const { data: auditId, error: rpcError } = await supabase.rpc("admin_write_audit", {

@@ -178,3 +178,49 @@ describe("ORCH-1271 — strict-grep gates + workflow", () => {
     assert.match(wf, /i-admin-gate-first-statement\.mjs/);
   });
 });
+
+// ── P0 HARDENING (appended at ORCH-1271 P0 rework — additive) ─────────────────
+// Source-level fails-on-revert coverage for 20261204000003_orch_1271_p0_hardening.sql
+// (actor-forgery + fail-open + reason-bypass) + the edge-fn reason normalization.
+describe("ORCH-1271 P0 — audited-write hardening", () => {
+  const HARDEN = "supabase/migrations/20261204000003_orch_1271_p0_hardening.sql";
+  const sql = read(HARDEN);
+  const edge = read("supabase/functions/admin-write-primitive/index.ts");
+
+  it("REVOKEs admin_write_audit EXECUTE from anon/authenticated/PUBLIC + GRANTs service_role only", () => {
+    assert.match(sql, /REVOKE EXECUTE ON FUNCTION public\.admin_write_audit\([^)]*\)\s*\n?\s*FROM anon, authenticated, PUBLIC/i);
+    assert.match(sql, /GRANT\s+EXECUTE ON FUNCTION public\.admin_write_audit\([^)]*\)\s*\n?\s*TO service_role/i);
+  });
+
+  it("locks admin_audit_probe to authenticated (revokes anon/PUBLIC)", () => {
+    assert.match(sql, /REVOKE EXECUTE ON FUNCTION public\.admin_audit_probe\(text,text\) FROM anon, PUBLIC/i);
+    assert.match(sql, /GRANT\s+EXECUTE ON FUNCTION public\.admin_audit_probe\(text,text\) TO authenticated/i);
+  });
+
+  it("binds the actor SERVER-SIDE (auth.uid()), never COALESCE(p_actor_*) forgery", () => {
+    // The rebound helper resolves the actor from auth.uid() for JWT callers…
+    assert.match(sql, /IF auth\.uid\(\) IS NOT NULL THEN\s*\n\s*v_uid\s*:=\s*auth\.uid\(\)/i);
+    // …and MUST NOT use the forgeable COALESCE(p_actor_uid, auth.uid()) pattern.
+    assert.doesNotMatch(sql, /v_uid\s*:=\s*COALESCE\(p_actor_uid/i);
+  });
+
+  it("normalizes invisible-whitespace reason before the emptiness gate (translate delete)", () => {
+    assert.match(sql, /translate\(\s*\n?\s*COALESCE\(p_reason, ''\)/i);
+    assert.match(sql, /chr\(160\)/); // NBSP among the deleted invisibles
+    assert.match(sql, /chr\(8203\)/); // ZWSP
+    assert.match(sql, /RAISE EXCEPTION 'reason_required'/);
+  });
+
+  it("carries a has_function_privilege self-assert that fails apply if lockdown missing", () => {
+    assert.match(sql, /has_function_privilege\('anon',\s*'public\.admin_write_audit/i);
+    assert.match(sql, /admin_write_audit still EXECUTE-able by anon\/authenticated/i);
+  });
+
+  it("edge fn normalizes invisible-whitespace reason + binds actor to the verified caller", () => {
+    assert.match(edge, /INVISIBLE_WS\s*=\s*\/\[/);
+    assert.match(edge, /rawReason\.replace\(INVISIBLE_WS, ""\) === ""/);
+    assert.match(edge, /p_actor_email: user\.email/);
+    assert.match(edge, /p_actor_uid: user\.id/);
+    assert.doesNotMatch(edge, /body\.(actor|actor_email|actor_uid|admin_email)/i);
+  });
+});
