@@ -14,3 +14,15 @@ export const createMultipartUploadTask = async (): Promise<{
     throw new Error("Native multipart upload tasks are unavailable on web.");
   },
 });
+
+// META-ORCH-1270 — web never uses the native binary task; the Bunny TUS PATCH
+// on web is driven by XHR in the processing service. This stub keeps the module
+// shape symmetric so imports resolve on web.
+export const createBinaryUploadTask = async (): Promise<{
+  uploadAsync: () => Promise<unknown>;
+  cancelAsync?: () => Promise<void>;
+}> => ({
+  uploadAsync: async () => {
+    throw new Error("Native binary upload tasks are unavailable on web.");
+  },
+});

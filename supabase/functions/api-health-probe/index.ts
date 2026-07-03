@@ -25,6 +25,8 @@ import {
 } from "../_shared/paystack.ts";
 import { sendOpsAlertEmail } from "../_shared/stripeOpsAlertEmail.ts";
 import { logError, structuredLog } from "../_shared/structuredLog.ts";
+// META-ORCH-1270 (Phase 2) — Bunny Stream account usage read for the alarm.
+import { bunnyFetchLibraryUsage, bunnyUsagePct } from "../_shared/bunnyStream.ts";
 import {
   buildCheckRows,
   CLASS_B_DEPLETION,
@@ -471,6 +473,62 @@ async function probeCloudinary(): Promise<ProbeResult> {
   }
 }
 
+// META-ORCH-1270 (Phase 2) Class-A — Bunny Stream usage alarm. Reads the
+// account-level videolibrary usage (StorageUsage + TrafficUsage bytes) and
+// expresses it as a percent of the configured caps (the HIGHER of the two
+// ratios). The alarm that ACTUALLY fires:
+//   • config ABSENT (any of the account key / library id / caps missing) →
+//     status "unknown" (grey), NEVER green, NO alert — the pre-cutover state.
+//   • config PRESENT but the usage read fails / is non-numeric → status
+//     "degraded" + detail.probe_unreadable=true so the balance eval fires a
+//     DISTINCT warn (Vector-D fix: a null usage may NOT resolve to healthy).
+//   • readable → healthy, or "down" iff used_percent >= crit.
+async function probeBunny(): Promise<ProbeResult> {
+  const libraryId = Deno.env.get("BUNNY_STREAM_LIBRARY_ID");
+  const accountKey = Deno.env.get("BUNNY_ACCOUNT_API_KEY");
+  const storageCap = num("BUNNY_STORAGE_CAP_BYTES", 0);
+  const trafficCap = num("BUNNY_TRAFFIC_CAP_BYTES", 0);
+  if (!libraryId || !accountKey || !(storageCap > 0) || !(trafficCap > 0)) {
+    return {
+      ok: false, latencyMs: null, status: "unknown",
+      detail: { error: "BUNNY_ACCOUNT_API_KEY/BUNNY_STREAM_LIBRARY_ID/BUNNY_STORAGE_CAP_BYTES/BUNNY_TRAFFIC_CAP_BYTES missing" },
+    };
+  }
+  const crit = num("API_HEALTH_BUNNY_CRIT_PCT", 85);
+  const t0 = Date.now();
+  const usage = await bunnyFetchLibraryUsage(PROBE_TIMEOUT_MS);
+  const latencyMs = Date.now() - t0;
+  if (!usage.ok) {
+    return {
+      ok: false, latencyMs, httpStatus: usage.status || undefined, status: "degraded",
+      detail: { probe_unreadable: true, used_percent: null, error: usage.reason },
+    };
+  }
+  const pct = bunnyUsagePct({
+    storageUsage: usage.usage.storageUsage,
+    trafficUsage: usage.usage.trafficUsage,
+    storageCapBytes: storageCap,
+    trafficCapBytes: trafficCap,
+  });
+  if (pct === null) {
+    return {
+      ok: false, latencyMs, status: "degraded",
+      detail: { probe_unreadable: true, used_percent: null, error: "usage_pct_uncomputable" },
+    };
+  }
+  const status: HealthStatus = pct.usedPercent >= crit ? "down" : "healthy";
+  return {
+    ok: status === "healthy", latencyMs, status,
+    detail: {
+      used_percent: pct.usedPercent,
+      storage_pct: pct.storagePct,
+      traffic_pct: pct.trafficPct,
+      storage_bytes: usage.usage.storageUsage,
+      traffic_bytes: usage.usage.trafficUsage,
+    },
+  };
+}
+
 // ORCH-1201-R2 Class-A — ExchangeRate-API quota poll (GET /v6/{key}/quota →
 // requests_remaining of 30k/mo). No status feed exists. ASSUMPTION-BUDGET (1):
 // thresholds (warn 3000 / crit 500) are %-of-cap, not live-probed.
@@ -805,6 +863,8 @@ serve(async (req) => {
       ["resend", probeResend, null],
       ["twilio", probeTwilio, null],
       ["cloudinary", probeCloudinary, null],
+      // META-ORCH-1270 (Phase 2) — Bunny Stream usage alarm (Class-A):
+      ["bunny", probeBunny, null],
       // ORCH-1201-R2 Class-A pollers (real-number reads):
       ["exchangerate", probeExchangeRate, null],
       ["sentry", probeSentryStats, null],
@@ -1037,6 +1097,9 @@ serve(async (req) => {
     await webhookFreshness("paystack", "payment_webhook_events", "created_at", false);
     // cloudinary + twilio webhooks are informational (low volume) — never alert.
     await webhookFreshness("cloudinary", "event_cover_video_jobs", "created_at", false);
+    // META-ORCH-1270 (Phase 2) — bunny cover-video webhook freshness (informational,
+    // low volume — never drives failedTick/alerting; the usage alarm is the pager).
+    await webhookFreshness("bunny", "event_cover_video_jobs", "created_at", false);
     await webhookFreshness("twilio", "twilio_message_status_events", "received_at", false);
 
     // ── BULK INSERT ──
@@ -1127,6 +1190,8 @@ function evaluateBalance(
   if (warn == null) {
     if (bal.kind === "twilio_balance") warn = num("API_HEALTH_TWILIO_MIN_BALANCE", 25);
     else if (bal.kind === "cloudinary_used_pct") { warn = num("API_HEALTH_CLOUDINARY_WARN_PCT", 80); if (crit == null) crit = num("API_HEALTH_CLOUDINARY_CRIT_PCT", 100); }
+    // META-ORCH-1270 (Phase 2) — Bunny usage %: env-overridable warn 60 / crit 85.
+    else if (bal.kind === "bunny_usage_pct") { warn = num("API_HEALTH_BUNNY_WARN_PCT", 60); if (crit == null) crit = num("API_HEALTH_BUNNY_CRIT_PCT", 85); }
   }
   const evalResult = evaluateBalanceForSignal(serviceKey, synth.detail, { kind: bal.kind, warn, crit, unit: bal.unit });
   return { balanceLow: evalResult.balanceLow, balanceText: evalResult.balanceText };

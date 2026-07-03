@@ -2,6 +2,7 @@ import { supabase } from "./supabase";
 import { BusinessAuthNotReadyError } from "../utils/authReadiness";
 import { Platform } from "react-native";
 import {
+  createBinaryUploadTask,
   createMultipartUploadTask,
   getFileInfoAsync,
 } from "../utils/platformFileSystem";
@@ -34,12 +35,31 @@ export type EventCoverVideoJobStatus =
   | "cancelled"
   | "applied";
 
+// META-ORCH-1270 — transport discriminator. "tus" → Bunny resumable upload;
+// absent / any other value → the existing Cloudinary multipart path.
+export type EventCoverVideoUploadProtocol = "cloudinary" | "tus";
+
+// META-ORCH-1270 — the upload descriptor the client acts on. `fields` are opaque
+// server-supplied strings the client forwards blindly (Cloudinary signed params
+// OR the Bunny TUS creation headers). NO provider secret ever appears here.
+export type EventCoverVideoUploadDescriptor = {
+  url: string;
+  fields: Record<string, string>;
+  protocol?: EventCoverVideoUploadProtocol;
+  videoId?: string;
+  metadata?: { filetype?: string; title?: string };
+};
+
 interface UploadIntentResponse {
   jobId?: string;
-  provider?: "cloudinary";
+  // C1 (META-ORCH-1270): widened to include "bunny" (logged only, never branched).
+  provider?: "cloudinary" | "bunny";
   upload?: {
     url?: string;
+    protocol?: EventCoverVideoUploadProtocol;
+    videoId?: string;
     fields?: Record<string, string>;
+    metadata?: { filetype?: string; title?: string };
   };
   error?: string;
   detail?: string;
@@ -644,7 +664,7 @@ export const createEventCoverVideoUploadIntent = async (input: {
   sourceDurationMs: number;
   trimStartMs?: number;
   trimEndMs?: number;
-}): Promise<{ jobId: string; upload: { url: string; fields: Record<string, string> } }> => {
+}): Promise<{ jobId: string; upload: EventCoverVideoUploadDescriptor }> => {
   const requestId = `${Date.now().toString(36)}-${Math.random()
     .toString(36)
     .slice(2, 10)}`;
@@ -761,12 +781,264 @@ export const createEventCoverVideoUploadIntent = async (input: {
     upload: {
       fields: uploadFields as Record<string, string>,
       url: uploadUrl as string,
+      // META-ORCH-1270 — carry the transport discriminator + Bunny-only fields
+      // through so the upload leg can branch. Absent for the Cloudinary path.
+      protocol: data?.upload?.protocol,
+      videoId: data?.upload?.videoId,
+      metadata: data?.upload?.metadata,
     },
   };
 };
 
+// META-ORCH-1270 — TUS (Bunny) transport helpers ────────────────────────────
+const cancelledUploadError = (): EventCoverVideoProcessingError =>
+  new EventCoverVideoProcessingError(
+    "source_upload_cancelled",
+    "Video upload was cancelled.",
+  );
+
+const BASE64_ALPHABET =
+  "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+
+// TUS Upload-Metadata values are base64. filetype/title are ASCII (mime + a job
+// UUID), so a tiny pure encoder works on BOTH native (no global btoa) and web.
+const toBase64 = (input: string): string => {
+  const bytes: number[] = [];
+  for (let i = 0; i < input.length; i += 1) {
+    const code = input.charCodeAt(i);
+    if (code < 0x80) {
+      bytes.push(code);
+    } else if (code < 0x800) {
+      bytes.push(0xc0 | (code >> 6), 0x80 | (code & 0x3f));
+    } else {
+      bytes.push(0xe0 | (code >> 12), 0x80 | ((code >> 6) & 0x3f), 0x80 | (code & 0x3f));
+    }
+  }
+  let out = "";
+  for (let i = 0; i < bytes.length; i += 3) {
+    const b0 = bytes[i];
+    const b1 = i + 1 < bytes.length ? bytes[i + 1] : 0;
+    const b2 = i + 2 < bytes.length ? bytes[i + 2] : 0;
+    out += BASE64_ALPHABET[b0 >> 2];
+    out += BASE64_ALPHABET[((b0 & 3) << 4) | (b1 >> 4)];
+    out += i + 1 < bytes.length ? BASE64_ALPHABET[((b1 & 15) << 2) | (b2 >> 6)] : "=";
+    out += i + 2 < bytes.length ? BASE64_ALPHABET[b2 & 63] : "=";
+  }
+  return out;
+};
+
+export const tusMetadata = (
+  metadata: { filetype?: string; title?: string } | undefined,
+): string => {
+  const filetype = metadata?.filetype ?? "video/mp4";
+  const parts = [`filetype ${toBase64(filetype)}`];
+  const title = metadata?.title;
+  if (typeof title === "string" && title.length > 0) {
+    parts.push(`title ${toBase64(title)}`);
+  }
+  return parts.join(",");
+};
+
+const resolveTusLocation = (base: string, location: string): string => {
+  if (/^https?:\/\//i.test(location)) return location;
+  try {
+    return new URL(location, base).toString();
+  } catch {
+    return location;
+  }
+};
+
+const patchTusWithXhr = (input: {
+  url: string;
+  blob: Blob;
+  headers: Record<string, string>;
+  onProgress?: (progress: EventCoverVideoUploadProgress) => void;
+  signal?: AbortSignal;
+}): Promise<void> =>
+  new Promise<void>((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    const abort = (): void => {
+      xhr.abort();
+      reject(cancelledUploadError());
+    };
+    if (input.signal?.aborted) {
+      abort();
+      return;
+    }
+    input.signal?.addEventListener("abort", abort, { once: true });
+    xhr.upload.onprogress = (event) => {
+      emitUploadProgress(input.onProgress, event.loaded, event.total);
+    };
+    xhr.onerror = () => {
+      input.signal?.removeEventListener("abort", abort);
+      reject(
+        new EventCoverVideoProcessingError(
+          "source_upload_failed",
+          "Video upload failed before processing. Try again.",
+        ),
+      );
+    };
+    xhr.onload = () => {
+      input.signal?.removeEventListener("abort", abort);
+      if (xhr.status === 200 || xhr.status === 204) {
+        resolve();
+        return;
+      }
+      reject(
+        new EventCoverVideoProcessingError(
+          "source_upload_failed",
+          `Video upload failed (${xhr.status}).`,
+        ),
+      );
+    };
+    xhr.open("PATCH", input.url);
+    Object.entries(input.headers).forEach(([key, value]) => {
+      xhr.setRequestHeader(key, value);
+    });
+    xhr.send(input.blob);
+  });
+
+const patchTusNative = async (input: {
+  url: string;
+  uri: string;
+  headers: Record<string, string>;
+  onProgress?: (progress: EventCoverVideoUploadProgress) => void;
+  signal?: AbortSignal;
+}): Promise<void> => {
+  let task:
+    | { uploadAsync: () => Promise<unknown>; cancelAsync?: () => Promise<void> }
+    | null = null;
+  const abort = (): void => {
+    void task?.cancelAsync?.();
+  };
+  try {
+    if (input.signal?.aborted) throw cancelledUploadError();
+    input.signal?.addEventListener("abort", abort, { once: true });
+    task = await createBinaryUploadTask(
+      input.url,
+      input.uri,
+      { headers: input.headers, httpMethod: "PATCH" },
+      (event: { totalBytesSent: number; totalBytesExpectedToSend: number }) => {
+        emitUploadProgress(
+          input.onProgress,
+          event.totalBytesSent,
+          event.totalBytesExpectedToSend,
+        );
+      },
+    );
+    const result = (await task.uploadAsync()) as
+      | { body?: string; status: number }
+      | null
+      | undefined;
+    input.signal?.removeEventListener("abort", abort);
+    if (input.signal?.aborted) throw cancelledUploadError();
+    if (result === null || result === undefined) {
+      throw new EventCoverVideoProcessingError(
+        "source_upload_failed",
+        "Video upload did not return a response.",
+      );
+    }
+    if (result.status !== 200 && result.status !== 204) {
+      throw new EventCoverVideoProcessingError(
+        "source_upload_failed",
+        `Video upload failed (${result.status}).`,
+      );
+    }
+  } catch (error) {
+    input.signal?.removeEventListener("abort", abort);
+    if (error instanceof EventCoverVideoProcessingError) throw error;
+    if (input.signal?.aborted) throw cancelledUploadError();
+    throw new EventCoverVideoProcessingError(
+      "source_upload_failed",
+      error instanceof Error ? error.message : "Video upload failed.",
+    );
+  }
+};
+
+// Bunny resumable (TUS) upload: create → single-shot PATCH of the bytes. Valid
+// TUS for a <=25 MB clip. Returns null — the server reads the source truth from
+// Bunny (no provider JSON to forward to the ack).
+export const uploadEventCoverVideoSourceViaTus = async (input: {
+  upload: EventCoverVideoUploadDescriptor;
+  uri: string;
+  bytes?: number;
+  onProgress?: (progress: EventCoverVideoUploadProgress) => void;
+  signal?: AbortSignal;
+}): Promise<EventCoverVideoProviderUploadResponse | null> => {
+  if (input.signal?.aborted) throw cancelledUploadError();
+
+  let bytes = typeof input.bytes === "number" && input.bytes > 0 ? input.bytes : 0;
+  let webBlob: Blob | null = null;
+  if (Platform.OS === "web") {
+    const blobResponse = await fetch(input.uri);
+    webBlob = await blobResponse.blob();
+    if (bytes <= 0) bytes = webBlob.size;
+  } else if (bytes <= 0) {
+    bytes = await statFileSize(input.uri, 0);
+  }
+  if (bytes <= 0) {
+    throw new EventCoverVideoProcessingError(
+      "source_upload_failed",
+      "Video file was empty.",
+    );
+  }
+
+  // 1) TUS creation → Location (the resumable upload URL).
+  const createResponse = await fetch(input.upload.url, {
+    headers: {
+      ...input.upload.fields,
+      "Tus-Resumable": "1.0.0",
+      "Upload-Length": String(bytes),
+      "Upload-Metadata": tusMetadata(input.upload.metadata),
+    },
+    method: "POST",
+    signal: input.signal,
+  });
+  if (createResponse.status !== 201) {
+    throw new EventCoverVideoProcessingError(
+      "source_upload_failed",
+      `Video upload could not start (${createResponse.status}).`,
+    );
+  }
+  const location =
+    createResponse.headers.get("location") ?? createResponse.headers.get("Location");
+  if (location === null || location.length === 0) {
+    throw new EventCoverVideoProcessingError(
+      "source_upload_failed",
+      "Video upload endpoint was missing.",
+    );
+  }
+  const patchUrl = resolveTusLocation(input.upload.url, location);
+  const patchHeaders = {
+    "Content-Type": "application/offset+octet-stream",
+    "Tus-Resumable": "1.0.0",
+    "Upload-Offset": "0",
+  };
+
+  // 2) Single-shot PATCH of the bytes.
+  if (Platform.OS === "web") {
+    await patchTusWithXhr({
+      blob: webBlob as Blob,
+      headers: patchHeaders,
+      onProgress: input.onProgress,
+      signal: input.signal,
+      url: patchUrl,
+    });
+  } else {
+    await patchTusNative({
+      headers: patchHeaders,
+      onProgress: input.onProgress,
+      signal: input.signal,
+      uri: input.uri,
+      url: patchUrl,
+    });
+  }
+  emitUploadProgress(input.onProgress, 1, 1);
+  return null;
+};
+
 export const uploadEventCoverVideoSource = async (input: {
-  upload: { url: string; fields: Record<string, string> };
+  upload: EventCoverVideoUploadDescriptor;
   uri: string;
   bytes?: number;
   jobId?: string;
@@ -775,6 +1047,11 @@ export const uploadEventCoverVideoSource = async (input: {
   onProgress?: (progress: EventCoverVideoUploadProgress) => void;
   signal?: AbortSignal;
 }): Promise<EventCoverVideoProviderUploadResponse | null> => {
+  // C7 (META-ORCH-1270): transport dispatch. "tus" → Bunny resumable leg; every
+  // other value (including absent) → the existing Cloudinary path (unchanged).
+  if (input.upload.protocol === "tus") {
+    return await uploadEventCoverVideoSourceViaTus(input);
+  }
   if (
     Platform.OS === "web" &&
     typeof input.bytes === "number" &&

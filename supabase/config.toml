@@ -57,6 +57,12 @@ verify_jwt = true
 [functions.event-cover-video-webhook]
 verify_jwt = false
 
+# META-ORCH-1270 (Phase 2) — cover-video storage reaper; invoked by pg_cron with
+# the service-role Bearer (not a user JWT). verify_jwt=false so the cron POST is
+# accepted; the function enforces its own service-role-Bearer guard.
+[functions.event-cover-video-reaper]
+verify_jwt = false
+
 [functions.event-cover-pexels-search]
 verify_jwt = true
 

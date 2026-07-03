@@ -23,8 +23,13 @@ if (!/uploadAbortController\?\.abort\(\)[\s\S]*supabase\.functions\.invoke<Statu
 if (!/uploadAbortController\?\.abort\(\)[\s\S]*cancelEventCoverVideoJob\(\{/.test(hook)) {
   failures.push("useEventCoverVideoUpload.cancel must abort before calling cancelEventCoverVideoJob.");
 }
-if (!cancelEdge.includes("cloudinaryDestroy") || !cancelEdge.includes("source_public_id")) {
-  failures.push("event-cover-video-cancel must use source_public_id and call Cloudinary destroy.");
+// META-ORCH-1270: cancel now destroys the source via the provider-agnostic
+// destroyCoverVideoAsset (routes to Cloudinary destroy OR Bunny delete by the
+// job's source_public_id / source_asset_id). The behavioral guarantee is
+// UNCHANGED — cancel still destroys the source asset using its source id — the
+// mechanism was generalized off the Cloudinary-only cloudinaryDestroy call.
+if (!/destroyCoverVideoAsset|cloudinaryDestroy/.test(cancelEdge) || !/source_public_id|source_asset_id/.test(cancelEdge)) {
+  failures.push("event-cover-video-cancel must destroy the source asset (provider-agnostic destroyCoverVideoAsset) using its source id (source_public_id / source_asset_id).");
 }
 
 if (failures.length > 0) {

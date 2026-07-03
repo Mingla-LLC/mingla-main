@@ -2,6 +2,8 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import {
   cloudinarySignature,
   corsHeaders,
+  coverVideoProvider,
+  destroyCoverVideoAsset,
   isValidUuid,
   jsonResponse,
   MAX_DURATION_MS,
@@ -14,6 +16,13 @@ import {
   serviceRoleClient,
   validateTrimRange,
 } from "../_shared/eventCoverVideo.ts";
+// META-ORCH-1270 — Bunny provider branch (Cloudinary path unchanged).
+import {
+  bunnyCreateVideo,
+  bunnyFetchLibraryUsage,
+  bunnyPresignTusUpload,
+  bunnyUsagePct,
+} from "../_shared/bunnyStream.ts";
 
 export const SOURCE_CEILING_MS = 33_000;
 
@@ -40,9 +49,129 @@ const logWarn = (requestId: string, stage: string, payload: Record<string, unkno
   }));
 };
 
+// ── META-ORCH-1270 (Phase 2): pre-upload circuit-breaker ──
+// A short in-process cache so concurrent intent calls don't each hit Bunny's
+// account API when the hourly health row is stale. The freshest api_health_checks
+// bunny row is the PRIMARY cache (costs zero Bunny calls); this covers the gap.
+let bunnyUsageCache: { value: number | null; atMs: number } | null = null;
+const BUNNY_USAGE_CACHE_TTL_MS = 60_000;
+const BUNNY_HEALTH_ROW_FRESH_MS = 60 * 60 * 1000; // 1h
+
+// PURE threshold decision. FAIL-OPEN on an unreadable usage (a Bunny read outage
+// must NOT wedge ALL uploads permanently) — only a real numeric >= the hard cap
+// fails CLOSED. This choice is deliberate + documented in the Phase-2 report.
+export function evaluateCapacityBreaker(
+  usedPercent: number | null,
+  hardCapPct: number,
+): { blocked: boolean; reason: string } {
+  if (usedPercent == null) return { blocked: false, reason: "usage_unreadable_fail_open" };
+  if (usedPercent >= hardCapPct) return { blocked: true, reason: "capacity_reached" };
+  return { blocked: false, reason: "under_cap" };
+}
+
+// deno-lint-ignore no-explicit-any
+async function readBunnyUsagePercent(supabase: any): Promise<number | null> {
+  // 1) freshest api_health_checks bunny synthetic row < 1h wins (the hourly probe
+  //    already wrote it — the primary cache, zero Bunny calls).
+  try {
+    const { data } = await supabase
+      .from("api_health_checks")
+      .select("detail,checked_at")
+      .eq("service_key", "bunny")
+      .eq("layer", "synthetic")
+      .order("checked_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    const row = (data ?? null) as { detail?: Record<string, unknown>; checked_at?: string } | null;
+    if (row?.checked_at) {
+      const ageMs = Date.now() - new Date(row.checked_at).getTime();
+      if (ageMs >= 0 && ageMs < BUNNY_HEALTH_ROW_FRESH_MS) {
+        const used = row.detail?.used_percent;
+        if (typeof used === "number" && Number.isFinite(used)) return used;
+        // A fresh but probe_unreadable row → unreadable (fail-open below).
+        if (row.detail?.probe_unreadable === true) return null;
+      }
+    }
+  } catch {
+    // fall through to the live fetch
+  }
+  // 2) no fresh row → live fetch, module-cached 60s so a burst of intents does
+  //    not hammer Bunny's account API.
+  if (bunnyUsageCache && Date.now() - bunnyUsageCache.atMs < BUNNY_USAGE_CACHE_TTL_MS) {
+    return bunnyUsageCache.value;
+  }
+  const storageCap = Number(Deno.env.get("BUNNY_STORAGE_CAP_BYTES") ?? "0");
+  const trafficCap = Number(Deno.env.get("BUNNY_TRAFFIC_CAP_BYTES") ?? "0");
+  const usage = await bunnyFetchLibraryUsage();
+  let value: number | null = null;
+  if (usage.ok) {
+    const pct = bunnyUsagePct({
+      storageUsage: usage.usage.storageUsage,
+      trafficUsage: usage.usage.trafficUsage,
+      storageCapBytes: storageCap,
+      trafficCapBytes: trafficCap,
+    });
+    value = pct ? pct.usedPercent : null;
+  }
+  bunnyUsageCache = { value, atMs: Date.now() };
+  return value;
+}
+
+// deno-lint-ignore no-explicit-any
+async function checkBunnyCapacity(
+  supabase: any,
+): Promise<{ blocked: boolean; reason: string; usedPercent: number | null }> {
+  const rawCap = Number(Deno.env.get("EVENT_COVER_UPLOAD_HARD_CAP_PCT") ?? "90");
+  const hardCap = Number.isFinite(rawCap) ? rawCap : 90;
+  const usedPercent = await readBunnyUsagePercent(supabase);
+  return { ...evaluateCapacityBreaker(usedPercent, hardCap), usedPercent };
+}
+
+// ── META-ORCH-1270 (Phase 2): supersede reaping ──
+// After the supersede UPDATE flips prior ACTIVE jobs to cancelled/superseded,
+// reclaim their Bunny assets so an orphaned upload never lingers. Gated to
+// bunny-provider rows: Cloudinary rows carry no source_asset_id and are left
+// byte-for-byte unchanged (their reaping stays out of scope until Phase 4).
+// deno-lint-ignore no-explicit-any
+export async function reapSupersededBunnyAssets(
+  supabase: any,
+  filter: { targetKind: "event" | "brand"; eventId: string | null; brandId: string; provider: string },
+): Promise<void> {
+  if (filter.provider !== "bunny") return;
+  const base = supabase
+    .from("event_cover_video_jobs")
+    .select("id,provider,source_asset_id,source_public_id")
+    .eq("failure_code", "superseded")
+    .eq("provider", "bunny")
+    .not("source_asset_id", "is", null)
+    .is("reaped_at", null);
+  const scoped = filter.targetKind === "brand"
+    ? base.eq("brand_id", filter.brandId).eq("target_kind", "brand")
+    : base.eq("event_id", filter.eventId as string);
+  const { data, error } = await scoped;
+  if (error) return;
+  for (
+    const row of (data ?? []) as Array<
+      { id: string; provider?: string | null; source_asset_id?: unknown; source_public_id?: unknown }
+    >
+  ) {
+    const destroyed = await destroyCoverVideoAsset(row);
+    if (destroyed.ok) {
+      await supabase
+        .from("event_cover_video_jobs")
+        .update({ reaped_at: new Date().toISOString() })
+        .eq("id", row.id);
+    }
+  }
+}
+
 const defaultDeps = {
+  bunnyCreateVideo,
+  bunnyPresignTusUpload,
+  checkBunnyCapacity,
   cloudinarySignature,
   providerConfigured,
+  reapSupersededBunnyAssets,
   requireBrandCoverManager,
   requireEventManager,
   requireUserId,
@@ -228,6 +357,34 @@ export const handleEventCoverVideoUploadIntent = async (
     targetKind,
   });
 
+  // META-ORCH-1270 (Phase 2) — active provider decides host + upload descriptor.
+  // Determined here (before supersede) so the circuit-breaker can refuse a new
+  // upload WITHOUT cancelling the user's prior in-progress upload.
+  const provider = coverVideoProvider();
+
+  // META-ORCH-1270 (Phase 2) — pre-upload circuit-breaker (Bunny only). BEFORE
+  // creating any Bunny video, refuse if usage% >= the hard cap so blowing past
+  // the cap is structurally impossible even if the alert email never sends.
+  // FAIL-OPEN on an unreadable usage (documented); a real reading >= cap fails
+  // CLOSED with {error:"capacity_reached"}. Optional-chained so the Phase-1 test
+  // deps (which omit checkBunnyCapacity) are unaffected.
+  if (provider === "bunny" && deps.checkBunnyCapacity) {
+    const capacity = await deps.checkBunnyCapacity(supabase);
+    if (capacity.blocked) {
+      logWarn(requestId, "capacity_reached", { usedPercent: capacity.usedPercent });
+      return jsonResponse(
+        {
+          error: "capacity_reached",
+          detail: "Cover video uploads are temporarily paused (storage/traffic cap reached). Try again later.",
+        },
+        503,
+      );
+    }
+    if (capacity.reason === "usage_unreadable_fail_open") {
+      logWarn(requestId, "bunny_usage_unreadable_fail_open", { usedPercent: capacity.usedPercent });
+    }
+  }
+
   // ORCH-0989: supersede prior active jobs. Event-target keys on event_id
   // (filter order preserved: .eq() then .not()); brand-target keys on
   // brand_id + target_kind='brand' (no event_id).
@@ -257,8 +414,19 @@ export const handleEventCoverVideoUploadIntent = async (
     });
   } else {
     logInfo(requestId, "active_jobs_cancelled", { eventId });
+    // META-ORCH-1270 (Phase 2) — reap the superseded Bunny assets so an orphaned
+    // upload never lingers in the library. Optional-chained (Phase-1 test deps
+    // omit it) and best-effort (never fails the intent).
+    await deps.reapSupersededBunnyAssets?.(supabase, {
+      targetKind,
+      eventId: eventId ?? null,
+      brandId: brandId as string,
+      provider,
+    });
   }
 
+  // META-ORCH-1270 — stamp the active provider on the job row so the webhook +
+  // destroy path route on the row's own provider value (not just the current env).
   const { data: job, error: insertError } = await supabase
     .from("event_cover_video_jobs")
     .insert({
@@ -267,7 +435,7 @@ export const handleEventCoverVideoUploadIntent = async (
       target_kind: targetKind,
       brand_id: brandId,
       requested_by: userId,
-      provider: "cloudinary",
+      provider,
       status: "source_uploading",
       apply_mode: applyMode,
       source_file_name: body.sourceFileName ?? null,
@@ -296,6 +464,75 @@ export const handleEventCoverVideoUploadIntent = async (
     );
   }
   logInfo(requestId, "job_insert_pass", { jobId: job.id });
+
+  // META-ORCH-1270 — Bunny branch. Create the Bunny video object, persist its
+  // guid into source_asset_id (the webhook + destroy lookup key), and return a
+  // TUS upload descriptor (the AccessKey NEVER reaches the client — only the
+  // presigned AuthorizationSignature does). Cloudinary branch below is untouched.
+  if (provider === "bunny") {
+    const create = await deps.bunnyCreateVideo(job.id);
+    if (!create.ok) {
+      await supabase
+        .from("event_cover_video_jobs")
+        .update({
+          status: "failed",
+          completed_at: new Date().toISOString(),
+          failure_code: "provider_create_failed",
+          failure_message: "Could not create the video on the media host. Try again.",
+        })
+        .eq("id", job.id);
+      logWarn(requestId, "bunny_create_failed", { jobId: job.id, reason: create.reason });
+      return jsonResponse(
+        { error: "internal_error", detail: "provider_create_failed" },
+        500,
+      );
+    }
+    const libraryId = Deno.env.get("BUNNY_STREAM_LIBRARY_ID") ?? "";
+    const cdnHostname = Deno.env.get("BUNNY_STREAM_CDN_HOSTNAME") ?? "";
+    const { error: bunnyPayloadError } = await supabase
+      .from("event_cover_video_jobs")
+      .update({
+        source_asset_id: create.guid,
+        provider_payload: {
+          bunny: { videoId: create.guid, libraryId, cdnHostname },
+        },
+      })
+      .eq("id", job.id);
+    if (bunnyPayloadError) {
+      logWarn(requestId, "bunny_payload_update_failed", {
+        code: bunnyPayloadError.code,
+        jobId: job.id,
+        message: bunnyPayloadError.message,
+      });
+    }
+    const presign = await deps.bunnyPresignTusUpload(create.guid);
+    logInfo(requestId, "returned", { jobId: job.id, provider: "bunny" });
+    return jsonResponse({
+      jobId: job.id,
+      provider: "bunny",
+      maxDurationMs: MAX_DURATION_MS,
+      finalMaxBytes: 25 * 1024 * 1024,
+      upload: {
+        url: presign.tusEndpoint,
+        // NEW discriminator the client branches on ("tus" vs the implicit
+        // Cloudinary multipart path). The Cloudinary branch omits `protocol`;
+        // the client treats any non-"tus" value (including absent) as Cloudinary.
+        protocol: "tus",
+        videoId: presign.videoId,
+        // Sent as TUS creation request headers by the client. NO AccessKey here.
+        fields: {
+          AuthorizationSignature: presign.authorizationSignature,
+          AuthorizationExpire: String(presign.authorizationExpire),
+          LibraryId: presign.libraryId,
+          VideoId: presign.videoId,
+        },
+        metadata: {
+          filetype: body.sourceMimeType ?? "video/mp4",
+          title: job.id,
+        },
+      },
+    });
+  }
 
   const cloudName = Deno.env.get("CLOUDINARY_CLOUD_NAME") ?? "";
   const apiKey = Deno.env.get("CLOUDINARY_API_KEY") ?? "";
