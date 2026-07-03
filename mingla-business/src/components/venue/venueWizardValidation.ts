@@ -16,6 +16,8 @@
 import type { DraftVenueState } from "../../store/draftVenueStore";
 import type { BrandHourEntry } from "../../types/brand";
 import { provenanceFor } from "../../store/draftVenueStore";
+import { composeE164 } from "../../utils/phone";
+import { COUNTRIES } from "../../../../packages/phone-input/countries";
 
 // ─── Step model ─────────────────────────────────────────────────────────────
 
@@ -80,6 +82,15 @@ function hoursError(rows: BrandHourEntry[]): string | null {
 /** Loose URL shape for the optional claim website field (c6). */
 const looksLikeUrl = (v: string): boolean =>
   /^(https?:\/\/)?[^\s/]+\.[^\s]{2,}$/i.test(v.trim());
+
+/**
+ * ORCH-1269 — dial code for the c6 picker's CURRENT country. Mirrors the
+ * Input phone variant exactly: null/unknown ISO → the GB default. Shared
+ * directory truth (`packages/phone-input/countries.ts`), no new table.
+ */
+const c6DialCode = (iso: string | null | undefined): string =>
+  COUNTRIES.find((c) => c.code === (iso ?? "GB").toUpperCase())?.dialCode ??
+  "+44";
 
 export function venueStepError(
   stepId: string,
@@ -147,6 +158,15 @@ export function venueStepError(
       const ph = d.contactPhone.trim();
       if (em.length === 0 && ph.length === 0) {
         return "Add an email or phone number.";
+      }
+      // ORCH-1269 belt-and-braces — a phone that cannot compose to E.164
+      // under the picker's current country never leaves this step (blocks
+      // storing a mangled number; the s3 create rule is untouched).
+      if (
+        ph.length > 0 &&
+        composeE164(c6DialCode(d.contactPhoneCountryIso), ph) === null
+      ) {
+        return "That phone number doesn't look right — check it.";
       }
       const web = d.website.trim();
       if (web.length > 0 && !looksLikeUrl(web)) {

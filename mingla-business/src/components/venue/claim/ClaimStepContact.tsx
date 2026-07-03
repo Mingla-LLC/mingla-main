@@ -49,6 +49,14 @@ export const ClaimStepContact: React.FC<ClaimStepContactProps> = ({
         onChangeText={(t) => patch({ contactPhone: t })}
         placeholder="Phone"
         clearable
+        // ORCH-1269 — the picker opens on the ADOPTED place's country (mapped
+        // from place_pool.country at prefill), not the component's GB default;
+        // undefined (unmappable) keeps the default. Operator picks persist to
+        // the draft so the ISO survives step navigation and resume.
+        defaultCountryIso={draft.contactPhoneCountryIso ?? undefined}
+        onCountryChange={(country) =>
+          patch({ contactPhoneCountryIso: country.iso })
+        }
         accessibilityLabel={
           phoneChip === "adopted"
             ? "Contact phone, from your existing listing"
