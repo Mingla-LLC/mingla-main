@@ -408,6 +408,20 @@
 - **Test that catches a regression:** any orchestrator cleanup path that deletes a shared-surface item without proving closing-ORCH ownership, or that runs a destructive anchor op / global `pkill`, violates this invariant (caught at REVIEW by inspecting the cited `Hygiene: <N owned removed>, <M unowned flagged>, anchor on <branch>` banner against the actual deletions).
 - **Established:** registered DRAFT 2026-06-10 by the Environment Hygiene Sweep addition to mingla-orchestrator.
 
+### I-PROPOSED-1274-MONEY-READ-VIA-DEFINER-RPC (DRAFT — flips ACTIVE at ORCH-1274 CLOSE)
+
+- **Rule:** Every admin money read goes through an `admin_*` SECURITY DEFINER RPC gated on `is_admin_user()` as its first statement; there is **NO** `is_admin_user()` SELECT RLS policy on any money table (`orders` / `order_line_items` / `order_installments` / `refunds` / `refund_line_items` / `payouts` / `stripe_disputes` / `stripe_connect_accounts` / `mingla_revenue_log` / `stripe_external_accounts`). **`partner_splits` is EXCLUDED from this no-admin-RLS set** — ORCH-1271's `single_admin_gate` migration already grants admin read on it via an `OR public.is_admin_user()` branch (a foundation decision 1274 must not touch); 1274 still reads `partner_splits` only through `admin_get_order` (SECURITY DEFINER), so the read-path containment holds. The admin console reads money ONLY via the 10 definer RPCs (`admin_list_brand_stripe_status`, `admin_get_brand_stripe_status`, `admin_list_orders`, `admin_get_order`, `admin_list_refunds`, `admin_list_disputes`, `admin_get_dispute`, `admin_list_payouts`, `admin_list_revenue_log`, `admin_get_subscription_detail`) — never a browser `.from(<money table>)` read and never an admin RLS grant on a sensitive financial table.
+- **Why it exists:** ORCH-1274 [Admin Money console — READ-ONLY] — money is the most sensitive surface; a broad admin SELECT RLS grant on `orders`/`refunds`/`payouts`/etc. would expose every row to any bug that reaches the anon key. Routing every money read through a guard-first definer RPC keeps the data server-side and admin-only (the money-containment posture), consistent with the ORCH-1271 §3 read-authz rule (derived/joined/cross-brand → read-RPC, not RLS).
+- **Enforcement:** strict-grep gate `i-money-no-admin-rls.mjs` (CI job `orch-1274-money-read-authz`) + the 10 RPC names appended to the `i-admin-gate-first-statement.mjs` registry (guard must be the first statement). The gate FAILS if any migration adds an admin SELECT RLS policy on a money table OR if any of the 10 read-RPC definitions is missing (revert of `20261207000000_orch_1274_money_read_rpcs.sql`). Fixture: `.github/scripts/strict-grep/__tests__/i-money-no-admin-rls.test.mjs` (+ `--self-test`).
+- **Established:** registered DRAFT 2026-07-03 in the ORCH-1274 SPEC §10; flips ACTIVE at ORCH-1274 CLOSE (orchestrator owns the flip after tester PASS + migration deploy).
+
+### I-PROPOSED-1274-MONEY-READ-CENTS-CONTRACT (DRAFT — flips ACTIVE at ORCH-1274 CLOSE)
+
+- **Rule:** The money read-RPCs return money as **integer cents + a currency code**, never a pre-formatted currency string. The `20261207000000_orch_1274_money_read_rpcs.sql` migration contains no `to_char(` and no embedded `'$'` in any RPC body; currency formatting happens client-side in the admin pages.
+- **Why it exists:** ORCH-1274 — a formatted-string money return (`to_char`, `'$'`) bakes locale/currency into the data layer, breaks multi-currency correctness, and makes CSV/aggregation lossy. The data layer stays numeric; presentation formats.
+- **Enforcement:** folded into `i-money-no-admin-rls.mjs` (asserts no `to_char(`/`'$'` in the money read-RPC migration, SQL comments stripped first). Reverting to a formatted-string return → FAIL. Same fixture + `--self-test` as above.
+- **Established:** registered DRAFT 2026-07-03 in the ORCH-1274 SPEC §10; flips ACTIVE at ORCH-1274 CLOSE.
+
 ---
 
 ## ACTIVE (post ORCH-1152 [checkout currency crash] CLOSE 2026-06-16)

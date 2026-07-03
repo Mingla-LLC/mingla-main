@@ -40,6 +40,20 @@ const GUARDED_DEFINER_FNS = [
   "admin_list_event_rsvps",
   "admin_list_venue_reservations",
   "admin_offering_stats",
+  // ORCH-1274 [Admin Money console — READ-ONLY]: the 10 money read-RPCs. READ-ONLY
+  // (no admin_write_audit / write-RPC registry) but each is_admin_user() guard MUST
+  // be the first statement. Reverting 20261207000000_orch_1274_money_read_rpcs.sql
+  // removes these fns → this gate FAILS.
+  "admin_list_brand_stripe_status",
+  "admin_get_brand_stripe_status",
+  "admin_list_orders",
+  "admin_get_order",
+  "admin_list_refunds",
+  "admin_list_disputes",
+  "admin_get_dispute",
+  "admin_list_payouts",
+  "admin_list_revenue_log",
+  "admin_get_subscription_detail",
 ];
 
 function fnBody(src, name) {
@@ -122,7 +136,21 @@ if (process.argv.includes("--self-test")) {
         `create or replace function public.${n}() returns jsonb language plpgsql stable security definer as $$ declare v jsonb; begin if not public.is_admin_user() then raise exception 'not_authorized'; end if; return '{}'::jsonb; end; $$;\n`,
     )
     .join("");
-  const reads = getPerson + offerings1273;
+  // ORCH-1274: the 10 READ-ONLY money read-RPCs — registered here (guard MUST be
+  // first). Included in the good/other-subject fixtures so the self-test isolates
+  // the intended violation instead of tripping on missing registry fns.
+  const moneyFns = [
+    "admin_list_brand_stripe_status", "admin_get_brand_stripe_status", "admin_list_orders",
+    "admin_get_order", "admin_list_refunds", "admin_list_disputes", "admin_get_dispute",
+    "admin_list_payouts", "admin_list_revenue_log", "admin_get_subscription_detail",
+  ]
+    .map(
+      (n) =>
+        `create or replace function public.${n}() returns jsonb language plpgsql security definer as $$ ` +
+        "begin if not public.is_admin_user() then raise exception 'not_authorized'; end if; return '{}'::jsonb; end; $$;\n",
+    )
+    .join("");
+  const reads = getPerson + offerings1273 + moneyFns;
 
   // GOOD: all guard-first.
   let f = [];
