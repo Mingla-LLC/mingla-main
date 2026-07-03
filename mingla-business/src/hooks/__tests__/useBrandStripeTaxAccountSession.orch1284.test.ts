@@ -1,7 +1,7 @@
 import { describe, expect, jest, test } from "@jest/globals";
 
 /**
- * ORCH-1279 — the "Manage tax and registrations" CTA opened
+ * ORCH-1284 — the "Manage tax and registrations" CTA opened
  * `usemingla.com/connect-tax-registrations` (the marketing app, which 404s that
  * route) instead of `business.usemingla.com/connect-tax-registrations` (the
  * mingla-business web export, the ONLY surface that serves it). This regression
@@ -40,7 +40,7 @@ jest.mock("../../services/brandStripeTaxAccountSessionService", () => ({
 
 import { taxToolsUrl } from "../useBrandStripeTaxAccountSession";
 
-describe("ORCH-1279 — tax-registrations CTA targets business.usemingla.com, not the marketing apex", () => {
+describe("ORCH-1284 — tax-registrations CTA targets business.usemingla.com, not the marketing apex", () => {
   // Synthetic values chosen with a slash + space so encoding is exercised.
   const result = {
     clientSecret: "cs_test_abc/123 secret",

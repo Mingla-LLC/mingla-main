@@ -1,7 +1,9 @@
-# IMPLEMENTATION — ORCH-1279 · Business "Manage tax and registrations" CTA 404s (wrong web domain)
+# IMPLEMENTATION — ORCH-1284 · Business "Manage tax and registrations" CTA 404s (wrong web domain)
+
+> **ID RENUMBER (orchestrator, 2026-07-03):** this work was dispatched as ORCH-1279 but ORCH-1279 was already authoritatively assigned on origin/main to the `venue_listings.country_code` bug (COMMS-0069; registered-but-unspawned = taken). Neither was shipped; the country_code claim predates this one, so per shipped-first-keeps-the-number the tax-registrations work **renumbers to ORCH-1284** (next free after 1279–1283). Branch renamed to `orch-1284-tax-registrations-wrong-domain`; the worktree folder keeps its `orch-1279-` label for continuity (COMMS-0059 precedent). The `bb3d684c`/`35ad98e8` commit messages retain the historical `1279` label (immutable history; CI keys off content).
 
 **Status:** implemented and verified (unit/gate level; runtime unchanged behaviorally except the target host).
-**Worktree:** `~/Desktop/mingla-orchs/orch-1279-[tax-registrations-wrong-domain]/` on branch `orch-1279-tax-registrations-wrong-domain`
+**Worktree:** `~/Desktop/mingla-orchs/orch-1279-[tax-registrations-wrong-domain]/` on branch `orch-1284-tax-registrations-wrong-domain` (folder label retained; canonical ID ORCH-1284)
 **Fix + test commit:** `bb3d684cc070bd98ff9fe2aaf0583cf6d66a867c`
 
 ---
@@ -42,7 +44,7 @@ a happy-path regression test.
 | File | Δ |
 |------|---|
 | `mingla-business/src/hooks/useBrandStripeTaxAccountSession.ts` | +19 / −7 (net; env-var reads + fallback removed, canonical import + doc comment added, `taxToolsUrl` now exported) |
-| `mingla-business/src/hooks/__tests__/useBrandStripeTaxAccountSession.orch1279.test.ts` | +80 (new) |
+| `mingla-business/src/hooks/__tests__/useBrandStripeTaxAccountSession.orch1284.test.ts` | +80 (new) |
 
 `git diff origin/main...HEAD --stat`: 2 files changed, 99 insertions(+), 7 deletions(-).
 
@@ -63,7 +65,7 @@ AccountSession; only the client's post-session web URL host changed.)
 
 ## 6. Regression tests added
 
-- **Path:** `mingla-business/src/hooks/__tests__/useBrandStripeTaxAccountSession.orch1279.test.ts` (3 tests)
+- **Path:** `mingla-business/src/hooks/__tests__/useBrandStripeTaxAccountSession.orch1284.test.ts` (3 tests)
 - **Approach:** mocks `expo-constants` extra to supply the canonical `EXPO_PUBLIC_MINGLA_BUSINESS_WEB_URL`
   (same pattern as `src/constants/__tests__/publicUrls.test.ts`); mocks `expo-web-browser` and the
   Supabase-backed service to keep the import hermetic; imports the now-exported pure `taxToolsUrl`
@@ -101,7 +103,7 @@ are unchanged. Doc comment added explaining why the base must be the business su
 **Why:** SC-1/SC-2/SC-3 — point the CTA at the domain that actually serves the route.
 **Lines changed:** ~19 added / 7 removed.
 
-### `mingla-business/src/hooks/__tests__/useBrandStripeTaxAccountSession.orch1279.test.ts` (new)
+### `mingla-business/src/hooks/__tests__/useBrandStripeTaxAccountSession.orch1284.test.ts` (new)
 **What it did before:** did not exist.
 **What it does now:** pins the URL builder to `business.usemingla.com`; fails on any regression to the
 marketing apex.
@@ -160,13 +162,13 @@ untouched and unrelated.)
 
 ## 12. Discoveries for Orchestrator
 
-1. **ID-numbering note (COMMS-0069, WARN):** COMMS-0069 (2026-07-03, mingla-orchestrator ORCH-1270
-   CLOSE) records that `ORCH-1279` was *renumbered from a stray WORLD_MAP registration* for the
-   `country?.slice(0,2)`→`venue_listings.country_code` bug (S2). This dispatch and the worktree/branch
-   (`orch-1279-tax-registrations-wrong-domain`) use ORCH-1279 for the **tax-registrations wrong-domain**
-   bug instead. Both cannot own 1279 — flagging the collision for orchestrator reconciliation of the
-   World Map / registry. I proceeded on the dispatch as authoritative (branch + spec both name
-   tax-registrations); the numbering is an orchestrator-owned bookkeeping decision, not a code issue.
+1. **ID collision RESOLVED (COMMS-0069, WARN):** COMMS-0069 (2026-07-03, ORCH-1270 CLOSE) authoritatively
+   assigns `ORCH-1279` on origin/main to the `country?.slice(0,2)`→`venue_listings.country_code` bug (S2,
+   registered-but-unspawned = taken), and declares 1279–1283 taken with next-free ≥ 1284. The orchestrator's
+   on-entry ledger read missed this because the **anchor's local `main` is behind origin/main** (its
+   `COMMS_LEDGER.md`/`WORLD_MAP.md` working copies are stale — max COMMS-0061). Resolution: country_code keeps
+   1279; this tax-registrations work **renumbers to ORCH-1284**. Reconciliation done by the orchestrator
+   (branch/test/report/WORLD_MAP renumbered).
 2. **No behavioral coupling found:** the hook's only runtime consumers (`BrandPaymentsView.tsx`,
    `src/lib/search/registry.ts`) use the unchanged `useBrandStripeTaxAccountSession()` public API — no
    cascade changes needed.
