@@ -38,6 +38,11 @@ import { BrandsConsolePage } from "./pages/BrandsConsolePage";
 // ?offeringId= / ?venueId= within the same tab (matches the 1272 pattern).
 import { OfferingsConsolePage } from "./pages/OfferingsConsolePage";
 import { VenuesConsolePage } from "./pages/VenuesConsolePage";
+// ORCH-1274 — Business Money console (READ-ONLY): Payments (#/business-payments),
+// Orders (#/business-orders), Money ledger (#/business-money-ledger).
+import { BusinessPaymentsPage } from "./pages/BusinessPaymentsPage";
+import { BusinessOrdersPage } from "./pages/BusinessOrdersPage";
+import { BusinessMoneyLedgerPage } from "./pages/BusinessMoneyLedgerPage";
 // ORCH-1008: 6 pages deleted (Seed, ContentModeration, Analytics, Reports,
 //   BetaFeedback, TableBrowser). Sidebar flattened; System dropdown removed.
 //   See SPEC_ORCH-1008_ADMIN_SHELL_PRUNE_INTELLIGENCE_OVERVIEW.md §2 + §3.
@@ -80,6 +85,11 @@ const PAGES = {
   // (hash routes #/business-offerings, #/business-venues).
   "business-offerings": OfferingsConsolePage,
   "business-venues": VenuesConsolePage,
+  // ORCH-1274: Business Money console (READ-ONLY) — Payments + Orders + Money
+  // ledger (hash routes #/business-payments, #/business-orders, #/business-money-ledger).
+  "business-payments": BusinessPaymentsPage,
+  "business-orders": BusinessOrdersPage,
+  "business-money-ledger": BusinessMoneyLedgerPage,
 };
 
 function getTabFromHash() {

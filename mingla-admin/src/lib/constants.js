@@ -166,10 +166,14 @@ export const NAV_GROUPS = [
   // ORCH-1271: "Business" nav group — the META-ORCH-1237 admin full-visibility
   // console lives here. ORCH-1272 replaces the foundation scaffolding placeholder
   // with the first two real domain pages (People + Brands). Offerings / Venues
-  // arrive in 1273; money arrives in 1274 as a sibling entry.
+  // arrive in 1273; money arrives in 1274 as sibling entries.
   // ORCH-1273: Offerings (CalendarDays) + Venues (Store) — both icons MUST be
   // registered in Sidebar.jsx ICON_MAP or the item silently falls back to
-  // LayoutDashboard. Append-only-friendly for the 1274 money sibling.
+  // LayoutDashboard.
+  // ORCH-1274 [Admin Money console — READ-ONLY]: appends Payments / Orders /
+  //   Money ledger. `CreditCard` is already in Sidebar.jsx ICON_MAP; `Receipt`
+  //   and `Landmark` MUST be registered there too or they silently fall back to
+  //   LayoutDashboard (the documented Careers/Support ICON_MAP footgun).
   {
     label: "Business",
     items: [
@@ -177,6 +181,9 @@ export const NAV_GROUPS = [
       { id: "business-brands",           label: "Brands",             icon: "Building2" },
       { id: "business-offerings",        label: "Offerings",          icon: "CalendarDays" },
       { id: "business-venues",           label: "Venues",             icon: "Store" },
+      { id: "business-payments",         label: "Payments",           icon: "CreditCard" },
+      { id: "business-orders",           label: "Orders",             icon: "Receipt" },
+      { id: "business-money-ledger",     label: "Money ledger",       icon: "Landmark" },
     ],
   },
 ];

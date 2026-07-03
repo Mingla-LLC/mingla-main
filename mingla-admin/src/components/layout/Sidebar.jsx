@@ -33,6 +33,8 @@ import {
   Building2,
   CalendarDays,
   Store,
+  Receipt,
+  Landmark,
 } from "lucide-react";
 import { useAuth } from "../../context/AuthContext";
 import { NAV_GROUPS } from "../../lib/constants";
@@ -56,6 +58,10 @@ const ICON_MAP = {
   // LayoutDashboard (renderNavItem `:89`).
   CalendarDays,
   Store,
+  // ORCH-1274 — Money console nav (Orders + Money ledger). Without these entries
+  // the Receipt / Landmark icons silently fall back to LayoutDashboard.
+  Receipt,
+  Landmark,
 };
 
 export function Sidebar({

@@ -3659,3 +3659,22 @@ jobs:
         run: node --test .github/scripts/strict-grep/__tests__/i-offerings-read-only.test.mjs
       - name: Run ORCH-1273 offerings console read node:test suite (happy-path)
         run: node --test mingla-admin/src/__tests__/orch1273_offerings_console_read.test.js
+
+  orch-1274-money-read-authz:
+    name: "ORCH-1274: money reads via definer RPCs, no admin money RLS + cents contract (I-PROPOSED-1274-MONEY-READ-VIA-DEFINER-RPC + I-PROPOSED-1274-MONEY-READ-CENTS-CONTRACT)"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Self-test the ORCH-1274 money-no-admin-rls gate
+        run: node .github/scripts/strict-grep/i-money-no-admin-rls.mjs --self-test
+      - name: Run ORCH-1274 money-no-admin-rls gate
+        run: node .github/scripts/strict-grep/i-money-no-admin-rls.mjs
+      - name: Run ORCH-1274 money-no-admin-rls fixture test
+        run: node --test .github/scripts/strict-grep/__tests__/i-money-no-admin-rls.test.mjs
+      - name: Run ORCH-1274 money console happy-path regression
+        run: node --test mingla-admin/src/__tests__/orch1274_money_console_read.test.js
+      - name: Run ORCH-1274 money-containment TESTER adversarial regression
+        run: node --test mingla-admin/src/__tests__/orch1274_money_containment_adversarial.test.js
