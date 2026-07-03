@@ -29,6 +29,16 @@ export interface ComposerReviewSheetProps {
   onBack: () => void;
   onClose: () => void;
   onConfirm: () => void;
+  /**
+   * ORCH-1270 RC-3 — SMS pre-send guardrail (all additive + optional; email
+   * and every existing caller are unaffected). When `isSendNow &&
+   * smsOutsideWindow`, a NON-blocking warning + a "Schedule for …" secondary
+   * CTA render above the actions row. "Send now" stays primary (RC-1 defers
+   * safely). Undefined ⇒ nothing changes.
+   */
+  smsOutsideWindow?: boolean;
+  nextWindowLabel?: string;
+  onScheduleForNextWindow?: () => void;
 }
 
 export const ComposerReviewSheet: React.FC<ComposerReviewSheetProps> = ({
@@ -42,8 +52,15 @@ export const ComposerReviewSheet: React.FC<ComposerReviewSheetProps> = ({
   onBack,
   onClose,
   onConfirm,
+  smsOutsideWindow,
+  nextWindowLabel,
+  onScheduleForNextWindow,
 }) => {
   const ctaLabel = isSendNow ? "Send now" : "Schedule";
+  // ORCH-1270 RC-3 — show the out-of-window heads-up only on a Send-now review
+  // when the whole audience is currently outside sending hours. Non-blocking.
+  const showOutsideWindowWarning = isSendNow && smsOutsideWindow === true;
+  const scheduleForLabel = `Schedule for ${nextWindowLabel ?? ""}`.trim();
   return (
     <Sheet visible={visible} onClose={onClose} snapPoint="half">
       <ScrollView contentContainerStyle={styles.scrollContent}>
@@ -70,6 +87,30 @@ export const ComposerReviewSheet: React.FC<ComposerReviewSheetProps> = ({
           <Text style={styles.label}>{isSendNow ? "DELIVERY" : "SCHEDULED FOR"}</Text>
           <Text style={styles.value}>{scheduledLabel}</Text>
         </View>
+        {showOutsideWindowWarning ? (
+          <View style={styles.warningSection}>
+            <Text style={styles.warningTitle}>Outside texting hours right now</Text>
+            <Text style={styles.warningBody}>
+              {"It's before 8 AM or after 9 PM local for your whole audience, so nothing sends this instant. Tap Send now and Mingla holds each text until that person's next morning window — or schedule it for "}
+              {nextWindowLabel ?? ""}
+              {"."}
+            </Text>
+            {onScheduleForNextWindow !== undefined ? (
+              <Pressable
+                onPress={onScheduleForNextWindow}
+                disabled={submitting}
+                accessibilityRole="button"
+                accessibilityLabel={scheduleForLabel}
+                style={({ pressed }) => [
+                  styles.scheduleForBtn,
+                  pressed && !submitting ? styles.ghostBtnPressed : null,
+                ]}
+              >
+                <Text style={styles.scheduleForBtnLabel}>{scheduleForLabel}</Text>
+              </Pressable>
+            ) : null}
+          </View>
+        ) : null}
         <View style={styles.actionsRow}>
           <Pressable
             onPress={onBack}
@@ -141,6 +182,43 @@ const styles = StyleSheet.create({
   metaText: {
     ...typography.bodySm,
     color: textTokens.secondary,
+  },
+  // ORCH-1270 RC-3 — out-of-window warning block. Reuses the section container
+  // shape with an accent border (no new design tokens).
+  warningSection: {
+    gap: spacing.sm,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+    borderRadius: radius.lg,
+    overflow: "hidden",
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: accent.border,
+    backgroundColor: glass.tint.profileBase,
+  },
+  warningTitle: {
+    ...typography.bodySm,
+    color: textTokens.primary,
+    fontWeight: "700",
+  },
+  warningBody: {
+    ...typography.bodySm,
+    color: textTokens.secondary,
+  },
+  scheduleForBtn: {
+    minHeight: 44,
+    paddingHorizontal: spacing.md,
+    borderRadius: radius.full,
+    overflow: "hidden",
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: accent.border,
+    backgroundColor: glass.tint.profileBase,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  scheduleForBtnLabel: {
+    ...typography.bodySm,
+    fontWeight: "600",
+    color: textTokens.primary,
   },
   actionsRow: {
     flexDirection: "row",

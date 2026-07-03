@@ -63,6 +63,98 @@ const QUIET_HOURS = {
   NG: { startHour: 8, endHour: 20 }, // 8 AM–8 PM WAT
 } as const;
 
+// ORCH-1270 — quiet-hours DEFER termination bounds (SPEC §5.1). An out-of-window
+// recipient with a RESOLVABLE tz is held (status='deferred') and re-attempted by
+// the existing cron until it either sends in-window OR crosses a bound below, at
+// which point it becomes terminal failed('quiet_hours_unreachable') so a
+// perpetually-unreachable recipient can never loop forever.
+const MAX_DEFER_AGE_MS = 24 * 60 * 60 * 1000; // 24 h — guarantees every resolvable tz had ≥1 in-window shot.
+const MAX_DEFER_ATTEMPTS = 30; // belt-and-suspenders attempt cap.
+const MIN_DEFER_INTERVAL_MS = 5 * 60 * 1000; // never re-check sooner than 5 min.
+
+// ORCH-1270 — a marketing_messages row in any of these statuses is TERMINAL:
+// the sendSms loop SKIPS it entirely (no write, no send) so a recipient is never
+// re-dispatched under cron re-invocation (idempotency guard, SPEC §5.1 rule 1).
+// The pure decideSmsDisposition helper is only called for fresh / 'deferred' rows.
+const SMS_TERMINAL_STATUSES = [
+  "sent",
+  "delivered",
+  "opened",
+  "clicked",
+  "failed",
+  "bounced",
+  "unsubscribed",
+  "preview_skipped",
+] as const;
+
+// ORCH-1270 — SMS dispatch disposition (SPEC §5.1). Pure, DB-free, unit-testable.
+export type SmsDisposition =
+  | { action: "send" }
+  | { action: "defer"; next_attempt_at: string; attempt_count: number }
+  | { action: "fail"; reason: "unknown_timezone" | "quiet_hours_unreachable" };
+
+/**
+ * ORCH-1270 — decide what to do with ONE SMS recipient (SPEC §5.1 rules 2-4).
+ * Rule 1 (already-terminal skip) is enforced by the caller BEFORE this is
+ * called, so `existing` here is either null (fresh) or a 'deferred' row.
+ *
+ *  2. Unknown timezone (unresolvable market / area code) → fail('unknown_timezone').
+ *     Do NOT defer — it can never pass the window check, so deferring loops forever.
+ *  3. In window → send.
+ *  4. Out of window, resolvable tz → defer with an approximate next_attempt_at,
+ *     UNLESS the row has aged past MAX_DEFER_AGE_MS or exceeded MAX_DEFER_ATTEMPTS,
+ *     in which case fail('quiet_hours_unreachable'). The estimate is self-correcting:
+ *     the next pass re-runs isWithinQuietHours, so a slightly-early guess re-defers.
+ */
+export function decideSmsDisposition(
+  phone: string,
+  countryCode: string | null,
+  now: Date,
+  existing:
+    | { status?: string | null; attempt_count?: number | null; created_at?: string | null }
+    | null,
+): SmsDisposition {
+  // Rule 2 — unresolvable recipient timezone is terminal (honest), never deferred.
+  const tz = resolveRecipientTz(phone, countryCode);
+  if (tz === null) return { action: "fail", reason: "unknown_timezone" };
+
+  // Rule 3 — inside the recipient-local window → send now.
+  if (isWithinQuietHours(phone, countryCode, now)) return { action: "send" };
+
+  // Rule 4 — out of window with a resolvable tz → defer (bounded).
+  const attempt = (existing?.attempt_count ?? 0) + 1;
+  const ageMs = existing?.created_at
+    ? now.getTime() - new Date(existing.created_at).getTime()
+    : 0;
+  if (ageMs > MAX_DEFER_AGE_MS || attempt > MAX_DEFER_ATTEMPTS) {
+    return { action: "fail", reason: "quiet_hours_unreachable" };
+  }
+
+  const cc = (countryCode ?? "").toUpperCase();
+  const market: "US" | "NG" = cc === "NG" ? "NG" : "US";
+  const { startHour } = QUIET_HOURS[market];
+  let localHour: number = startHour;
+  try {
+    const fmt = new Intl.DateTimeFormat("en-US", {
+      timeZone: tz,
+      hour: "numeric",
+      hour12: false,
+    });
+    const parsed = parseInt(fmt.format(now), 10);
+    if (!Number.isNaN(parsed)) localHour = parsed;
+  } catch {
+    // Fall back to startHour → hoursUntilOpen 0 → MIN_DEFER_INTERVAL_MS re-check.
+    localHour = startHour;
+  }
+  const hoursUntilOpen = (startHour - localHour + 24) % 24;
+  const deltaMs = Math.max(hoursUntilOpen * 60 * 60 * 1000, MIN_DEFER_INTERVAL_MS);
+  return {
+    action: "defer",
+    next_attempt_at: new Date(now.getTime() + deltaMs).toISOString(),
+    attempt_count: attempt,
+  };
+}
+
 interface CampaignRow {
   id: string;
   account_id: string;
@@ -94,7 +186,11 @@ interface DispatchResult {
   campaign_id: string;
   status: "succeeded" | "failed";
   reason?: string;
-  recipients?: number;
+  // ORCH-1270 — per-campaign running counts for the JSON response body only.
+  // The campaign row itself is written by mkt_finalize_campaign (RC-2), not these.
+  delivered?: number;
+  deferred?: number;
+  failed?: number;
   preview_skipped?: number;
 }
 
@@ -166,19 +262,23 @@ serve(async (req) => {
         resendApiKey: RESEND_API_KEY,
       });
       previewSkippedTotal += outcome.preview_skipped;
-      await supabase
-        .from("marketing_campaigns")
-        .update({
-          status: "sent",
-          sent_at: new Date().toISOString(),
-          recipient_count: outcome.recipients,
-          updated_at: new Date().toISOString(),
-        })
-        .eq("id", campaign.id);
+      // ORCH-1270 RC-2 — honest campaign status. The old inline
+      // `UPDATE ... SET status='sent', recipient_count=outcome.recipients`
+      // lied when every recipient was quiet-hours-failed (0 delivered → still
+      // 'sent'). mkt_finalize_campaign recomputes the true outcome from
+      // marketing_messages and NEVER marks 'sent' unless delivered>0 OR
+      // preview_skipped>0 — a deferred cohort parks it back in 'scheduled' with
+      // a future scheduled_for so the existing cron re-picks it in-window.
+      const { error: finalizeErr } = await supabase.rpc("mkt_finalize_campaign", {
+        p_campaign_id: campaign.id,
+      });
+      if (finalizeErr) throw new Error(`finalize:${finalizeErr.message}`);
       results.push({
         campaign_id: campaign.id,
         status: "succeeded",
-        recipients: outcome.recipients,
+        delivered: outcome.delivered,
+        deferred: outcome.deferred,
+        failed: outcome.failed,
         preview_skipped: outcome.preview_skipped,
       });
       succeeded += 1;
@@ -262,7 +362,16 @@ interface DispatchOptions {
 }
 
 interface DispatchOutcome {
-  recipients: number;
+  // ORCH-1270 (SPEC §5.1) — honest per-recipient outcome counts.
+  //   delivered      = provider send succeeded (status → sent)
+  //   deferred       = held for the next in-window pass (status → deferred)
+  //   failed         = terminal failure (unknown tz / unreachable / provider error)
+  //   preview_skipped = live-gate OFF or adapter kill-switch (no provider HTTP)
+  // Used ONLY for the JSON response body; the campaign row is written by the
+  // mkt_finalize_campaign RPC which recomputes truth from marketing_messages.
+  delivered: number;
+  deferred: number;
+  failed: number;
   preview_skipped: number;
 }
 
@@ -484,7 +593,11 @@ async function sendEmail(
     );
   }
 
-  return { recipients: sent + previewSkipped, preview_skipped: previewSkipped };
+  // ORCH-1270 — return-shape adaptation ONLY (DispatchOutcome changed per SPEC
+  // §5.1). Email NEVER defers and its send logic is UNCHANGED: delivered = live
+  // sends, preview_skipped = preview-gate skips. The finalizer recomputes truth
+  // from marketing_messages, so these counts drive only the JSON response body.
+  return { delivered: sent, deferred: 0, failed: 0, preview_skipped: previewSkipped };
 }
 
 // ---------------------------------------------------------------------------
@@ -695,7 +808,9 @@ async function sendSms(
     (c) => c.sms_marketing_ok && c.raw_phone !== null,
   ) as unknown as SmsContact[];
 
-  let sent = 0;
+  let delivered = 0;
+  let deferred = 0;
+  let failed = 0;
   let previewSkipped = 0;
   const now = new Date();
 
@@ -710,40 +825,102 @@ async function sendSms(
       }
       const countryCode = countryFromE164(phone);
 
-      // Quiet hours — defer (do NOT send) outside the recipient-local window.
-      // TZ is derived from the phone (US area code; NG = Lagos), not a fixed
-      // Eastern anchor, so a West-Coast +1 is judged in Pacific time.
-      if (!isWithinQuietHours(phone, countryCode, now)) {
-        const messageId = crypto.randomUUID();
-        await supabase.from("marketing_messages").insert({
-          id: messageId,
-          campaign_id: campaign.id,
-          recipient_phone: phone,
-          channel: "sms",
-          status: "failed",
-          failure_reason: "quiet_hours_deferred",
-        });
+      // ORCH-1270 RC-1 — idempotency guard (SPEC §5.1 rule 1). Read the existing
+      // row for (campaign, phone). If it is already TERMINAL, SKIP entirely: no
+      // write, no send, no clicks — so cron re-invocation can never re-dispatch a
+      // recipient who already sent/failed. The helper is only consulted for a
+      // fresh (null) or retryable 'deferred' row.
+      const { data: existing, error: selErr } = await supabase
+        .from("marketing_messages")
+        .select("id, status, attempt_count, created_at")
+        .eq("campaign_id", campaign.id)
+        .eq("recipient_phone", phone)
+        .maybeSingle();
+      if (selErr) throw new Error(`message_select:${selErr.message}`);
+      if (
+        existing !== null &&
+        (SMS_TERMINAL_STATUSES as readonly string[]).includes(existing.status)
+      ) {
         continue;
       }
 
+      // ORCH-1270 RC-1 — quiet-hours DEFER (not terminal fail). TZ is derived
+      // from the phone (US area code; NG = Lagos), not a fixed Eastern anchor.
+      const disposition = decideSmsDisposition(phone, countryCode, now, existing);
+
+      if (disposition.action === "fail") {
+        // Terminal + honest: unresolvable tz OR aged/attempt-capped past the
+        // defer bound. No provider call. UPSERT so a re-pick over an existing
+        // 'deferred' row transitions it cleanly (double-send guarded by the
+        // uq_mkt_msg_campaign_phone unique index).
+        const { error: upFailErr } = await supabase
+          .from("marketing_messages")
+          .upsert(
+            {
+              campaign_id: campaign.id,
+              recipient_phone: phone,
+              channel: "sms",
+              status: "failed",
+              failure_reason: disposition.reason,
+            },
+            { onConflict: "campaign_id,recipient_phone" },
+          );
+        if (upFailErr) throw new Error(`message_upsert:${upFailErr.message}`);
+        failed += 1;
+        continue;
+      }
+
+      if (disposition.action === "defer") {
+        // Held for the next in-window pass. failure_reason kept as an
+        // informational label; status='deferred' carries the real meaning.
+        const { error: upDeferErr } = await supabase
+          .from("marketing_messages")
+          .upsert(
+            {
+              campaign_id: campaign.id,
+              recipient_phone: phone,
+              channel: "sms",
+              status: "deferred",
+              next_attempt_at: disposition.next_attempt_at,
+              attempt_count: disposition.attempt_count,
+              failure_reason: "quiet_hours_deferred",
+            },
+            { onConflict: "campaign_id,recipient_phone" },
+          );
+        if (upDeferErr) throw new Error(`message_upsert:${upDeferErr.message}`);
+        deferred += 1;
+        continue;
+      }
+
+      // disposition.action === "send" — in-window: existing send path.
       // Branded links + per-link click rows.
       const { rewritten, links } = rewriteSmsLinks(rawBody);
       const segments = computeSegments(rewritten);
-      const messageId = crypto.randomUUID();
 
-      const { error: insMsgErr } = await supabase
+      // UPSERT the queued row (∅→queued or deferred→queued). onConflict clears
+      // next_attempt_at so a formerly-deferred row is no longer due.
+      const { data: upserted, error: upQueuedErr } = await supabase
         .from("marketing_messages")
-        .insert({
-          id: messageId,
-          campaign_id: campaign.id,
-          recipient_phone: phone,
-          channel: "sms",
-          status: "queued",
-          segments,
-        });
-      if (insMsgErr) throw new Error(`message_insert:${insMsgErr.message}`);
+        .upsert(
+          {
+            campaign_id: campaign.id,
+            recipient_phone: phone,
+            channel: "sms",
+            status: "queued",
+            segments,
+            next_attempt_at: null,
+          },
+          { onConflict: "campaign_id,recipient_phone" },
+        )
+        .select("id")
+        .maybeSingle();
+      if (upQueuedErr) throw new Error(`message_upsert:${upQueuedErr.message}`);
+      const messageId = (upserted as { id: string }).id;
 
       if (links.length > 0) {
+        // Clicks are written only on the actual send pass (a deferred row wrote
+        // none). Each send re-runs rewriteSmsLinks producing fresh unique
+        // tracking_ids — no dup because a recipient sends at most once.
         const { error: insClicksErr } = await supabase
           .from("marketing_clicks")
           .insert(
@@ -791,7 +968,7 @@ async function sendSms(
             segments: result.segments ?? segments,
           })
           .eq("id", messageId);
-        sent += 1;
+        delivered += 1;
       } else {
         // skipped (kill-switch) OR failed — record honestly; no silent drop.
         await supabase
@@ -802,6 +979,7 @@ async function sendSms(
           })
           .eq("id", messageId);
         if (result.status === "skipped") previewSkipped += 1;
+        else failed += 1;
       }
     }
     // Pace between batches (skip the trailing pause).
@@ -810,7 +988,7 @@ async function sendSms(
     }
   }
 
-  return { recipients: sent + previewSkipped, preview_skipped: previewSkipped };
+  return { delivered, deferred, failed, preview_skipped: previewSkipped };
 }
 
 async function writeBlastIntoEventChat(

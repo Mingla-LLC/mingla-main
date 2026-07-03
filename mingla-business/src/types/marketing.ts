@@ -146,7 +146,14 @@ export type MessageStatus =
   | "failed"
   | "unsubscribed"
   /** Live-broadcast gate (MARKETING_SEND_LIVE_ENABLED=false). */
-  | "preview_skipped";
+  | "preview_skipped"
+  /**
+   * ORCH-1270 — SMS recipient held OUT of the recipient-local quiet-hours
+   * window; re-attempted in-window by the cron. Neither delivered nor failed
+   * (the Marketing Overview funnel counts it as pending in NEITHER bucket).
+   * The deferred cohort's campaign reuses CampaignStatus='scheduled'.
+   */
+  | "deferred";
 
 export type UnsubscribeScope = "account" | "brand" | "global";
 export type UnsubscribeChannel = MarketingChannel | "all";
