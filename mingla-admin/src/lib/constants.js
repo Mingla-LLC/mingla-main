@@ -163,6 +163,17 @@ export const NAV_GROUPS = [
       { id: "settings",                  label: "Settings",           icon: "Settings" },
     ],
   },
+  // ORCH-1271: "Business" nav group — the META-ORCH-1237 admin full-visibility
+  // console lives here. Foundation ships the Business Console scaffolding page;
+  // domain pages (people / brands / offerings / money) arrive in 1272/1273/1274.
+  // The Building2 icon MUST be registered in Sidebar.jsx ICON_MAP or the nav item
+  // silently falls back to LayoutDashboard (the Careers/Support footgun).
+  {
+    label: "Business",
+    items: [
+      { id: "business-console",          label: "Business Console",   icon: "Building2" },
+    ],
+  },
 ];
 
 // Backward-compatible flat list (used by AppShell.currentTitle)

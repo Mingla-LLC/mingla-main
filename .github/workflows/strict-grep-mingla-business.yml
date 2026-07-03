@@ -158,6 +158,9 @@ on:
 #   - I-32 rank parity (Cycle 13a proposal)
 #   - I-34 canManualCheckIn decommission (Cycle 13b proposal)
 #   - I-36 ROOT-ERROR-BOUNDARY (Cycle 16a proposal)
+#   - I-PROPOSED-1271-ADMIN-SINGLE-GATE (i-admin-single-gate.mjs) — in-scope admin authz uses is_admin_user(), not account_type='admin' (ORCH-1271)
+#   - I-PROPOSED-1271-ADMIN-WRITE-AUDITED (i-admin-write-audited.mjs) — every registered admin write RPC guards + audits via admin_write_audit (ORCH-1271)
+#   - I-PROPOSED-1271-ADMIN-GATE-FIRST-STATEMENT (i-admin-gate-first-statement.mjs) — is_admin_user() guard is the first statement in every admin definer RPC (ORCH-1271)
 #
 # When adding a new gate, follow the 4 steps in
 # .github/scripts/strict-grep/README.md.
@@ -3585,3 +3588,24 @@ jobs:
         run: node .github/scripts/strict-grep/orch-1263-claim-front-load-and-overnight.mjs --self-test
       - name: Run ORCH-1263 front-load/overnight gate
         run: node .github/scripts/strict-grep/orch-1263-claim-front-load-and-overnight.mjs
+
+  orch-1271-admin-authz-foundation:
+    name: "ORCH-1271: admin single-gate + audited-write primitive + gate-first (I-PROPOSED-1271-ADMIN-SINGLE-GATE + I-PROPOSED-1271-ADMIN-WRITE-AUDITED + I-PROPOSED-1271-ADMIN-GATE-FIRST-STATEMENT)"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Self-test the ORCH-1271 single-gate gate
+        run: node .github/scripts/strict-grep/i-admin-single-gate.mjs --self-test
+      - name: Run ORCH-1271 single-gate gate
+        run: node .github/scripts/strict-grep/i-admin-single-gate.mjs
+      - name: Self-test the ORCH-1271 write-audited gate
+        run: node .github/scripts/strict-grep/i-admin-write-audited.mjs --self-test
+      - name: Run ORCH-1271 write-audited gate
+        run: node .github/scripts/strict-grep/i-admin-write-audited.mjs
+      - name: Self-test the ORCH-1271 gate-first-statement gate
+        run: node .github/scripts/strict-grep/i-admin-gate-first-statement.mjs --self-test
+      - name: Run ORCH-1271 gate-first-statement gate
+        run: node .github/scripts/strict-grep/i-admin-gate-first-statement.mjs
