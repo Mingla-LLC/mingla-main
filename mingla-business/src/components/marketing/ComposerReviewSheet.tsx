@@ -30,13 +30,15 @@ export interface ComposerReviewSheetProps {
   onClose: () => void;
   onConfirm: () => void;
   /**
-   * ORCH-1270 RC-3 — SMS pre-send guardrail (all additive + optional; email
-   * and every existing caller are unaffected). When `isSendNow &&
-   * smsOutsideWindow`, a NON-blocking warning + a "Schedule for …" secondary
-   * CTA render above the actions row. "Send now" stays primary (RC-1 defers
+   * ORCH-1270 F-1 — SMS timing info note (all additive + optional; email and
+   * every existing caller are unaffected). When `isSendNow && smsInfoNote`, an
+   * always-on INFORMATIONAL note ("How SMS timing works") + a "Schedule for …"
+   * secondary CTA render above the actions row. It is NOT a warning — it simply
+   * explains that off-hours recipients are held and auto-sent in their next
+   * morning window (nothing is lost). "Send now" stays primary (RC-1 defers
    * safely). Undefined ⇒ nothing changes.
    */
-  smsOutsideWindow?: boolean;
+  smsInfoNote?: boolean;
   nextWindowLabel?: string;
   onScheduleForNextWindow?: () => void;
 }
@@ -52,14 +54,15 @@ export const ComposerReviewSheet: React.FC<ComposerReviewSheetProps> = ({
   onBack,
   onClose,
   onConfirm,
-  smsOutsideWindow,
+  smsInfoNote,
   nextWindowLabel,
   onScheduleForNextWindow,
 }) => {
   const ctaLabel = isSendNow ? "Send now" : "Schedule";
-  // ORCH-1270 RC-3 — show the out-of-window heads-up only on a Send-now review
-  // when the whole audience is currently outside sending hours. Non-blocking.
-  const showOutsideWindowWarning = isSendNow && smsOutsideWindow === true;
+  // ORCH-1270 F-1 — always show the SMS timing info note on an SMS Send-now
+  // review. Informational (not a warning): it tells the operator that off-hours
+  // recipients are held and auto-sent in their next window, nothing is lost.
+  const showSmsInfoNote = isSendNow && smsInfoNote === true;
   const scheduleForLabel = `Schedule for ${nextWindowLabel ?? ""}`.trim();
   return (
     <Sheet visible={visible} onClose={onClose} snapPoint="half">
@@ -87,11 +90,11 @@ export const ComposerReviewSheet: React.FC<ComposerReviewSheetProps> = ({
           <Text style={styles.label}>{isSendNow ? "DELIVERY" : "SCHEDULED FOR"}</Text>
           <Text style={styles.value}>{scheduledLabel}</Text>
         </View>
-        {showOutsideWindowWarning ? (
-          <View style={styles.warningSection}>
-            <Text style={styles.warningTitle}>Outside texting hours right now</Text>
-            <Text style={styles.warningBody}>
-              {"It's before 8 AM or after 9 PM local for your whole audience, so nothing sends this instant. Tap Send now and Mingla holds each text until that person's next morning window — or schedule it for "}
+        {showSmsInfoNote ? (
+          <View style={styles.infoSection}>
+            <Text style={styles.infoTitle}>How SMS timing works</Text>
+            <Text style={styles.infoBody}>
+              {"Texts only send during each recipient's local hours (8 AM–9 PM). Anyone outside that window right now is automatically held and sent in their next morning window — nothing is lost. You can also schedule the whole blast for "}
               {nextWindowLabel ?? ""}
               {"."}
             </Text>
@@ -183,24 +186,25 @@ const styles = StyleSheet.create({
     ...typography.bodySm,
     color: textTokens.secondary,
   },
-  // ORCH-1270 RC-3 — out-of-window warning block. Reuses the section container
-  // shape with an accent border (no new design tokens).
-  warningSection: {
+  // ORCH-1270 F-1 — neutral SMS-timing INFO note (not a warning). Reuses the
+  // plain section container shape + neutral border (no accent, no new tokens)
+  // so it reads as a helpful heads-up, not an error.
+  infoSection: {
     gap: spacing.sm,
     paddingVertical: spacing.sm,
     paddingHorizontal: spacing.md,
     borderRadius: radius.lg,
     overflow: "hidden",
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: accent.border,
+    borderColor: glass.border.profileBase,
     backgroundColor: glass.tint.profileBase,
   },
-  warningTitle: {
+  infoTitle: {
     ...typography.bodySm,
     color: textTokens.primary,
     fontWeight: "700",
   },
-  warningBody: {
+  infoBody: {
     ...typography.bodySm,
     color: textTokens.secondary,
   },

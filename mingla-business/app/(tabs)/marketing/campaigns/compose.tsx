@@ -112,12 +112,10 @@ import { useResponsiveLayout } from "../../../../src/hooks/useResponsiveLayout";
 // On native this resolves to the no-op `.ts` sibling; web picks the
 // .web.ts implementation that installs the global keydown listener.
 import { useComposerKeyboardShortcuts } from "../../../../src/hooks/useComposerKeyboardShortcuts";
-// ORCH-1270 RC-3 — SMS pre-send guardrail: point-in-time check of whether the
-// whole audience is currently outside recipient-local sending hours.
-import {
-  isAnyMarketInSendWindow,
-  nextGlobalSendWindowOpen,
-} from "../../../../src/utils/marketing/smsSendWindow";
+// ORCH-1270 F-1 — SMS timing helper: the soonest global send window, used to
+// label + drive the "Schedule for …" secondary CTA in the review sheet's
+// always-on "How SMS timing works" info note.
+import { nextGlobalSendWindowOpen } from "../../../../src/utils/marketing/smsSendWindow";
 
 export default function ComposeCampaignRoute(): React.ReactElement {
   const router = useRouter();
@@ -163,9 +161,9 @@ export default function ComposeCampaignRoute(): React.ReactElement {
   const [isDirty, setIsDirty] = useState(false);
   const [showAudiencePicker, setShowAudiencePicker] = useState(false);
   const [showReview, setShowReview] = useState(false);
-  // ORCH-1270 RC-3 — point-in-time send-window snapshot, captured at the Send-now
-  // tap (no live re-render needed). Only meaningful for channel === 'sms'.
-  const [smsOutsideWindow, setSmsOutsideWindow] = useState(false);
+  // ORCH-1270 F-1 — soonest global send window, captured at the Send-now tap
+  // (no live re-render needed) to label the "Schedule for …" CTA. Only
+  // meaningful for channel === 'sms'.
   const [nextWindowIso, setNextWindowIso] = useState<string | null>(null);
   // F.10b: preview modal + schedule-picker sheet — both live in compose.tsx
   // so the footer buttons can drive them directly.
@@ -453,18 +451,17 @@ export default function ComposeCampaignRoute(): React.ReactElement {
     });
   }, [campaignId, sendMode, scheduledForIso, campaignName, buildPayload, scheduleMutation]);
 
-  // ORCH-1270 RC-3 — capture whether the audience is currently outside sending
-  // hours at the moment the operator taps Send now (SMS only). Non-blocking:
-  // just drives the review-sheet heads-up + the "Schedule for …" affordance.
+  // ORCH-1270 F-1 — capture the soonest global send window at the moment the
+  // operator taps Send now (SMS only), to label the review sheet's "Schedule
+  // for …" secondary CTA. The info note itself is always shown for an SMS
+  // send-now — it's informational (off-hours recipients are held, not lost),
+  // not a conditional warning.
   const captureSmsSendWindow = useCallback((): void => {
     if (channel !== "sms") {
-      setSmsOutsideWindow(false);
       setNextWindowIso(null);
       return;
     }
-    const now = new Date();
-    setSmsOutsideWindow(!isAnyMarketInSendWindow(now));
-    setNextWindowIso(nextGlobalSendWindowOpen(now).toISOString());
+    setNextWindowIso(nextGlobalSendWindowOpen(new Date()).toISOString());
   }, [channel]);
 
   // ORCH-1270 RC-3 — "Schedule for {next window}" secondary CTA. Schedules the
@@ -866,7 +863,7 @@ export default function ComposeCampaignRoute(): React.ReactElement {
           onBack={() => setShowReview(false)}
           onClose={() => setShowReview(false)}
           onConfirm={handleConfirmSchedule}
-          smsOutsideWindow={channel === "sms" && smsOutsideWindow}
+          smsInfoNote={channel === "sms"}
           nextWindowLabel={nextWindowLabel}
           onScheduleForNextWindow={handleScheduleForNextWindow}
         />

@@ -1,5 +1,5 @@
 /**
- * ORCH-1270 RC-3 — ComposerReviewSheet out-of-window warning contract.
+ * ORCH-1270 F-1 — ComposerReviewSheet SMS timing info-note contract.
  *
  * Run: npx jest src/components/marketing/__tests__/orch_1270_review_sheet_warning.test.tsx --runInBand
  *
@@ -8,11 +8,15 @@
  * provisioned per-worktree for the dedicated render configs), and the sheet
  * pulls in the Sheet primitive → reanimated/gesture-handler which the default
  * node/ts-jest config cannot mount. Per feedback_biz_web_authed_runtime_unreachable_cap_claims,
- * source-contract is the honest ceiling here. It reads ComposerReviewSheet.tsx and
- * asserts the warning renders ONLY when isSendNow && smsOutsideWindow, carries the
- * EXACT copy, wires the secondary CTA to onScheduleForNextWindow, and meets the
- * 44 px WCAG target. fails-on-revert: deleting the warning block / copy / gate /
- * wiring fails these assertions.
+ * source-contract is the honest ceiling here.
+ *
+ * F-1 turned the old dead conditional warning (gated on an always-true
+ * predicate) into an ALWAYS-ON informational note for an SMS "Send now": it
+ * reads ComposerReviewSheet.tsx and asserts the note renders whenever
+ * `isSendNow && smsInfoNote`, carries the EXACT approved "How SMS timing works"
+ * copy (neutral, not alarming), wires the "Schedule for …" secondary CTA to
+ * onScheduleForNextWindow, and meets the 44 px WCAG target. fails-on-revert:
+ * deleting the note block / copy / gate / wiring fails these assertions.
  */
 
 import { readFileSync } from "fs";
@@ -23,26 +27,29 @@ const SRC = readFileSync(
   "utf8",
 );
 
-describe("ORCH-1270 ComposerReviewSheet — out-of-window warning", () => {
+describe("ORCH-1270 F-1 ComposerReviewSheet — SMS timing info note", () => {
   it("declares the three additive optional props", () => {
-    expect(SRC).toMatch(/smsOutsideWindow\?\s*:\s*boolean/);
+    expect(SRC).toMatch(/smsInfoNote\?\s*:\s*boolean/);
     expect(SRC).toMatch(/nextWindowLabel\?\s*:\s*string/);
     expect(SRC).toMatch(/onScheduleForNextWindow\?\s*:\s*\(\)\s*=>\s*void/);
   });
 
-  it("gates the warning on isSendNow && smsOutsideWindow (non-blocking)", () => {
-    // The derived predicate must require BOTH send-now and the out-of-window flag.
+  it("shows the note for every SMS send-now (isSendNow && smsInfoNote — always-on, not conditional)", () => {
+    // The derived predicate requires ONLY send-now + the SMS flag — there is no
+    // longer an in/out-of-window gate (F-1 removed the dead conditional).
     expect(SRC).toMatch(
-      /isSendNow\s*&&\s*smsOutsideWindow\s*===\s*true/,
+      /isSendNow\s*&&\s*smsInfoNote\s*===\s*true/,
     );
     // …and the block is conditionally rendered on it.
-    expect(SRC).toMatch(/showOutsideWindowWarning\s*\?/);
+    expect(SRC).toMatch(/showSmsInfoNote\s*\?/);
+    // The dead out-of-window predicate must be gone.
+    expect(SRC).not.toMatch(/isAnyMarketInSendWindow|smsOutsideWindow/);
   });
 
-  it("uses the EXACT approved title + body copy", () => {
-    expect(SRC).toContain("Outside texting hours right now");
+  it("uses the EXACT approved informational title + body copy", () => {
+    expect(SRC).toContain("How SMS timing works");
     expect(SRC).toContain(
-      "It's before 8 AM or after 9 PM local for your whole audience, so nothing sends this instant. Tap Send now and Mingla holds each text until that person's next morning window — or schedule it for ",
+      "Texts only send during each recipient's local hours (8 AM–9 PM). Anyone outside that window right now is automatically held and sent in their next morning window — nothing is lost. You can also schedule the whole blast for ",
     );
   });
 

@@ -1,26 +1,27 @@
 /**
- * ORCH-1270 RC-3 — SMS send-window helper for the composer pre-send guardrail.
+ * ORCH-1270 — SMS send-window helper for the composer.
  *
  * The composer cannot read the edge function's env flags, so this is a
- * point-in-time, audience-agnostic check of whether ANY supported market is
- * currently inside its recipient-local sending window. It powers a NON-blocking
- * warning + a "schedule for the next window" affordance (RC-1's defer already
- * makes a blind "Send now" safe — this is purely a heads-up).
+ * point-in-time, audience-agnostic helper. It powers the always-on
+ * "How SMS timing works" info note shown for an SMS "Send now" review:
+ *   - `nextGlobalSendWindowOpen` → the soonest global sending window, used both
+ *     to label the "Schedule for …" secondary CTA and to schedule the whole
+ *     blast for that instant instead of firing a blind out-of-hours send.
+ *   - `SMS_QUIET_HOURS` → the recipient-local window (8 AM–9 PM) shown in the
+ *     copy and the source of truth the T-9 drift test compares to the edge fn.
+ *
+ * ORCH-1270 F-1: the earlier `isAnyMarketInSendWindow` gate was dead code.
+ * SUPPORTED_SMS_ZONES span Honolulu (UTC-10) through Lagos (UTC+1), whose
+ * per-market windows union to all 24 UTC hours, so it returned `true` for every
+ * instant and the conditional warning it gated NEVER fired. The note is now
+ * ALWAYS shown for an SMS "Send now" (informational, not a warning — RC-1's
+ * defer already makes a blind send safe; the note just explains that off-hours
+ * recipients are held, not lost), so the dead predicate was removed.
  *
  * SMS_QUIET_HOURS MUST equal the edge fn's QUIET_HOURS
  * (supabase/functions/marketing-send/index.ts). The T-9 drift test
  * (src/utils/__tests__/smsSendWindow.test.ts) reads both source files and
  * compares the {US,NG}×{start,end} tuples so the two copies can't drift.
- *
- * KNOWN LIMITATION (see IMPLEMENTATION_ORCH-1270 report, "spec deviations"):
- * because SUPPORTED_SMS_ZONES spans Hawaii (UTC-10) through Lagos (UTC+1), the
- * union of the per-market windows covers all 24 UTC hours — so in practice at
- * least one supported zone is ALWAYS in window and `isAnyMarketInSendWindow`
- * returns true for every instant. The warning is therefore effectively
- * always-suppressed with the spec's zone set. This is a SPEC-DESIGN issue
- * (RC-3 §5.3), not an implementation bug; the plumbing is correct and will
- * light up the moment the zone scope is narrowed (e.g. to the audience's actual
- * markets). Filed back for forensics.
  */
 
 /** Recipient-local sending window per market. MUST equal edge fn QUIET_HOURS. */
@@ -59,21 +60,6 @@ function localHourInZone(zone: string, now: Date): number | null {
   } catch {
     return null;
   }
-}
-
-/**
- * True iff ≥1 supported zone's current local hour is inside its market window.
- * `false` ⇒ the whole audience is PROVABLY unreachable right now (a sufficient
- * condition regardless of the audience's timezone mix).
- */
-export function isAnyMarketInSendWindow(now: Date): boolean {
-  for (const { zone, market } of SUPPORTED_SMS_ZONES) {
-    const h = localHourInZone(zone, now);
-    if (h === null) continue;
-    const { startHour, endHour } = SMS_QUIET_HOURS[market];
-    if (h >= startHour && h < endHour) return true;
-  }
-  return false;
 }
 
 /**

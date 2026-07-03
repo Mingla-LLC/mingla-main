@@ -1,19 +1,19 @@
 /**
- * ORCH-1270 RC-3 — composer send-window helper + T-9 drift guard.
+ * ORCH-1270 — composer send-window helper + T-9 drift guard.
  *
  * Run: npx jest src/utils/__tests__/smsSendWindow.test.ts --runInBand
  *
- * fails-on-revert: if isAnyMarketInSendWindow stops honoring the window (e.g.
- * always returns false), the "true when a market is open" cases fail. The T-9
- * block fails if the client SMS_QUIET_HOURS drifts from the edge fn QUIET_HOURS.
+ * fails-on-revert: the T-9 block fails if the client SMS_QUIET_HOURS drifts
+ * from the edge fn QUIET_HOURS; the nextGlobalSendWindowOpen cases fail if the
+ * "already-open ⇒ now / else soonest-open" math breaks.
  *
- * NOTE (documented in IMPLEMENTATION_ORCH-1270 report): with the SPEC §5.3 zone
- * set, Hawaii (UTC-10) and Lagos (UTC+1) between them keep at least one zone in
- * window every hour of the day — so isAnyMarketInSendWindow is true for EVERY
- * instant and the composer warning never actually fires. These tests assert the
- * ACTUAL behavior (not the spec's "04:39 UTC → false" example, which is wrong
- * for this zone set). This is a SPEC-DESIGN issue flagged back to forensics, not
- * an implementation bug.
+ * ORCH-1270 F-1: `isAnyMarketInSendWindow` was removed as dead code — with the
+ * SUPPORTED_SMS_ZONES set (Honolulu UTC-10 … Lagos UTC+1) it returned true for
+ * every instant, so the composer warning it gated never fired. The review-sheet
+ * note is now always-on informational for an SMS send-now, so the predicate has
+ * no caller and its always-true assertions were dropped. What remains is the
+ * genuinely load-bearing surface: nextGlobalSendWindowOpen (labels + drives the
+ * "Schedule for …" CTA) and the T-9 drift guard.
  */
 
 import { readFileSync } from "fs";
@@ -22,45 +22,31 @@ import path from "path";
 import {
   SMS_QUIET_HOURS,
   SUPPORTED_SMS_ZONES,
-  isAnyMarketInSendWindow,
   nextGlobalSendWindowOpen,
 } from "../marketing/smsSendWindow";
 
-describe("ORCH-1270 smsSendWindow — isAnyMarketInSendWindow", () => {
-  it("is true at 15:00 UTC (US morning + NG afternoon are open)", () => {
-    // 15:00 UTC summer: NY 11:00, LA 08:00, Lagos 16:00 — all inside their windows.
-    expect(isAnyMarketInSendWindow(new Date("2026-06-29T15:00:00Z"))).toBe(true);
-  });
-
-  it("is true at the ORCH-1270 04:39 UTC instant (Hawaii 18:39 / Anchorage 20:39 are still open)", () => {
-    // The mainland-US + NG recipients of the real blast were all out of window,
-    // but isAnyMarketInSendWindow is audience-agnostic and Hawaii/Anchorage keep
-    // it open. See report: this reveals the RC-3 zone-coverage limitation.
-    expect(isAnyMarketInSendWindow(new Date("2026-06-29T04:39:00Z"))).toBe(true);
-  });
-
-  it("returns a boolean and never throws across all 24 UTC hours", () => {
-    for (let h = 0; h < 24; h += 1) {
-      const d = new Date(Date.UTC(2026, 5, 29, h, 0, 0));
-      expect(typeof isAnyMarketInSendWindow(d)).toBe("boolean");
-    }
-  });
-
-  it("detects a closed zone correctly via nextGlobalSendWindowOpen math", () => {
-    // Cross-check: at an instant when SOME zone is open, nextGlobalSendWindowOpen
-    // returns ~now (0 hours until open). This exercises the in-window=0 branch.
+describe("ORCH-1270 smsSendWindow — nextGlobalSendWindowOpen", () => {
+  it("returns ~now when some zone is already open (in-window ⇒ 0 hours)", () => {
+    // 15:00 UTC summer: NY 11:00, LA 08:00, Lagos 16:00 — all inside their
+    // windows, so the soonest window is now.
     const now = new Date("2026-06-29T15:00:00Z");
     const next = nextGlobalSendWindowOpen(now);
     expect(next.getTime()).toBe(now.getTime());
   });
-});
 
-describe("ORCH-1270 smsSendWindow — nextGlobalSendWindowOpen", () => {
   it("returns a Date at or after now and within the next 24 h", () => {
     const now = new Date("2026-01-15T03:00:00Z");
     const next = nextGlobalSendWindowOpen(now);
     expect(next.getTime()).toBeGreaterThanOrEqual(now.getTime());
     expect(next.getTime()).toBeLessThanOrEqual(now.getTime() + 24 * 60 * 60 * 1000);
+  });
+
+  it("returns a valid Date and never throws across all 24 UTC hours", () => {
+    for (let h = 0; h < 24; h += 1) {
+      const d = new Date(Date.UTC(2026, 5, 29, h, 0, 0));
+      const next = nextGlobalSendWindowOpen(d);
+      expect(Number.isNaN(next.getTime())).toBe(false);
+    }
   });
 });
 

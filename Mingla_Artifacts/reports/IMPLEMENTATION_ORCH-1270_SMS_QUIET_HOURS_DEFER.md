@@ -182,3 +182,53 @@ campaign_id,recipient_phone)` + the DB unique index, verified end-to-end (§3 do
 
 (A follow-up commit amends this report with the hash above; run `git log --oneline` for the
 authoritative final list.)
+
+---
+
+## 8. F-1 fix — dead conditional warning → always-on informational note
+
+**Finding.** F-1 (§5) was a real dead-code defect, not just a spec-design note: the composer's
+RC-3 pre-send warning was gated on `!isAnyMarketInSendWindow(now)`, which is **always false**
+(SUPPORTED_SMS_ZONES span Honolulu UTC-10 … Lagos UTC+1, unioning to all 24 UTC hours), so the
+warning + "Schedule for …" affordance NEVER rendered. Rather than redesign the zone set, the
+honest fix keeps the genuinely-useful information but stops pretending it's conditional: the note
+is now **always shown** for an SMS "Send now", framed as neutral info (off-hours recipients are
+held and auto-sent in their next window — nothing is lost), with the still-useful "Schedule for
+the next window" secondary CTA retained.
+
+**What changed (composer-only; backend RC-1/RC-2/RC-3 untouched):**
+
+- **`mingla-business/src/utils/marketing/smsSendWindow.ts`** — removed the dead
+  `isAnyMarketInSendWindow` predicate (no remaining caller). Kept `nextGlobalSendWindowOpen`
+  (labels + drives the CTA), `SMS_QUIET_HOURS`, and `SUPPORTED_SMS_ZONES` (T-9 drift guard).
+  Header comment rewritten to document the F-1 removal.
+- **`mingla-business/src/components/marketing/ComposerReviewSheet.tsx`** — prop
+  `smsOutsideWindow?` → `smsInfoNote?`; derived predicate `showOutsideWindowWarning`
+  (`isSendNow && smsOutsideWindow`) → `showSmsInfoNote` (`isSendNow && smsInfoNote === true`).
+  Copy changed to the approved neutral **"How SMS timing works"** title + body ("Texts only send
+  during each recipient's local hours (8 AM–9 PM). Anyone outside that window right now is
+  automatically held and sent in their next morning window — nothing is lost. You can also
+  schedule the whole blast for {label}."). Styles `warning*` → neutral `info*` (border swapped
+  from `accent.border` to `glass.border.profileBase` so it no longer reads as an alarm). The
+  "Schedule for {label}" secondary CTA (role=button, ≥44 px) is unchanged.
+- **`mingla-business/app/(tabs)/marketing/campaigns/compose.tsx`** — dropped the
+  `isAnyMarketInSendWindow` import and the `smsOutsideWindow` state; `captureSmsSendWindow()` now
+  only captures `nextWindowIso` (for the CTA label). The review sheet is passed
+  `smsInfoNote={channel === "sms"}` (always-on for SMS send-now) instead of the old conditional.
+- **Tests updated** — `orch_1270_review_sheet_warning.test.tsx` now asserts the always-on note,
+  the new prop/predicate names, the exact new copy, the wired CTA, the 44 px target, AND that the
+  dead `isAnyMarketInSendWindow`/`smsOutsideWindow` symbols are gone. `smsSendWindow.test.ts`
+  dropped the `isAnyMarketInSendWindow` always-true assertions; kept `nextGlobalSendWindowOpen`
+  behavior, `SUPPORTED_SMS_ZONES`, and the **T-9 drift guard** (all still fail-on-revert).
+
+**Guards honored.** Edited only the 3 source files + 2 test files in the F-1 allowlist. Backend
+edge function, migration, `marketing.ts` types, and strict-grep scripts untouched (verified no
+strict-grep script references the changed copy/symbols). No broken conditional reintroduced — the
+note is intentionally always-on for SMS send-now.
+
+**Test output (actual, from the worktree):**
+- `jest smsSendWindow.test.ts orch_1270_review_sheet_warning.test.tsx --runInBand` → **10 passed / 0 failed** (2 suites).
+- `tsc --noEmit` (business) → **727 errors, identical to the origin/main baseline** (§3); **0** in the 3 touched files.
+- Fails-on-revert re-proven: mangling the "How SMS timing works" title → copy test FAILS; drifting client `SMS_QUIET_HOURS.US.endHour` 21→22 → T-9 drift test FAILS. Both restored; suite green.
+
+**F-1 fix commit:** `__F1_COMMIT__`
