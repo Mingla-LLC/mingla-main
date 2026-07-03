@@ -31,6 +31,8 @@ import {
   LifeBuoy,
   Briefcase,
   Building2,
+  CalendarDays,
+  Store,
 } from "lucide-react";
 import { useAuth } from "../../context/AuthContext";
 import { NAV_GROUPS } from "../../lib/constants";
@@ -49,6 +51,11 @@ const ICON_MAP = {
   // ORCH-1271 — Business Console nav (admin full-visibility console foundation).
   // Without this entry the Building2 icon silently falls back to LayoutDashboard.
   Building2,
+  // ORCH-1273 — Offerings (CalendarDays) + Venues (Store) nav. Same ICON_MAP
+  // registration requirement: without these the icons silently fall back to
+  // LayoutDashboard (renderNavItem `:89`).
+  CalendarDays,
+  Store,
 };
 
 export function Sidebar({

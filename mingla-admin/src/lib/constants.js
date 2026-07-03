@@ -165,14 +165,18 @@ export const NAV_GROUPS = [
   },
   // ORCH-1271: "Business" nav group — the META-ORCH-1237 admin full-visibility
   // console lives here. ORCH-1272 replaces the foundation scaffolding placeholder
-  // with the first two real domain pages (People + Brands). Offerings / money
-  // arrive in 1273 / 1274 as sibling entries. Both icons (Users, Building2) are
-  // already registered in Sidebar.jsx ICON_MAP — no Sidebar edit needed.
+  // with the first two real domain pages (People + Brands). Offerings / Venues
+  // arrive in 1273; money arrives in 1274 as a sibling entry.
+  // ORCH-1273: Offerings (CalendarDays) + Venues (Store) — both icons MUST be
+  // registered in Sidebar.jsx ICON_MAP or the item silently falls back to
+  // LayoutDashboard. Append-only-friendly for the 1274 money sibling.
   {
     label: "Business",
     items: [
       { id: "business-people",           label: "People",             icon: "Users" },
       { id: "business-brands",           label: "Brands",             icon: "Building2" },
+      { id: "business-offerings",        label: "Offerings",          icon: "CalendarDays" },
+      { id: "business-venues",           label: "Venues",             icon: "Store" },
     ],
   },
 ];
