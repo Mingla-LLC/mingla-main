@@ -107,6 +107,15 @@ export interface DraftVenueState {
   hours: BrandHourEntry[];
   contactEmail: string;
   contactPhone: string;
+  /**
+   * ORCH-1269 — ISO alpha-2 country for the c6 phone picker. Set by the claim
+   * prefill (mapped from the adopted place's country) and by the operator's
+   * manual picker choice; null = unknown (picker keeps its own default).
+   * OPTIONAL at the type level ONLY so pinned pre-1269 full-literal test
+   * drafts keep compiling (append-only gate — same precedent as PoolMatch's
+   * 1263 fields); `initial`/`pickDraft` always carry it.
+   */
+  contactPhoneCountryIso?: string | null;
   tagline: string;
   description: string;
   /** ORCH-1263 — claim c6 website (create path ignores; deck-readiness owns). */
@@ -140,6 +149,7 @@ const initial: DraftVenueState = {
   hours: defaultBrandHoursWeek(),
   contactEmail: "",
   contactPhone: "",
+  contactPhoneCountryIso: null,
   tagline: "",
   description: "",
   website: "",
@@ -169,6 +179,8 @@ const pickDraft = (s: DraftVenueState): DraftVenueState => ({
   hours: s.hours,
   contactEmail: s.contactEmail,
   contactPhone: s.contactPhone,
+  // ORCH-1269 — `?? null` tolerates a pre-1269 persisted v3 blob (field absent).
+  contactPhoneCountryIso: s.contactPhoneCountryIso ?? null,
   tagline: s.tagline,
   description: s.description,
   website: s.website,

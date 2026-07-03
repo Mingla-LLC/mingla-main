@@ -24,6 +24,7 @@ import type {
 } from "../store/draftVenueStore";
 import { slugifyBrandSlug } from "./brandSlugify";
 import { mapPoolOpeningHoursToBrandHours } from "./mapPoolOpeningHoursToBrandHours";
+import { phoneCountryIsoFromPlaceCountry } from "./phoneCountryIsoFromPlaceCountry";
 
 /** The four price tiers the wizard's c7 chips understand (consumer taxonomy). */
 const KNOWN_PRICE_TIERS = new Set(["chill", "comfy", "bougie", "lavish"]);
@@ -85,6 +86,9 @@ export function prefillDraftFromPoolMatch(
     hours,
     contactEmail: "",
     contactPhone: "",
+    // ORCH-1269 — c6 phone picker country follows the place, not the GB
+    // default. Unmappable → null (picker keeps its own default, chip-free).
+    contactPhoneCountryIso: phoneCountryIsoFromPlaceCountry(match.country),
     tagline: "",
     description: "",
     website: "",
@@ -157,6 +161,12 @@ export function prefillDraftFromAdoption(
     hours,
     contactEmail: "",
     contactPhone: detail.nationalPhoneNumber ?? "",
+    // ORCH-1269 — the adopted NATIONAL number must ride with its own
+    // country's ISO, never the picker's GB default ("(919) 377-0509" under
+    // +44 would be a wrong-country flag presented as adopted truth).
+    // Unmappable country → null: the picker falls back to its default and
+    // the phone value alone keeps its provenance chip.
+    contactPhoneCountryIso: phoneCountryIsoFromPlaceCountry(detail.country),
     tagline: "",
     // OQ-2 — generative (our AI) pre-fills; editorial seeds AI context only.
     description: summarySource === "generative" ? (summary ?? "") : "",
