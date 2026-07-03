@@ -1,5 +1,13 @@
 /**
  * Ve2 — inline pool match comparison card ("Is this you?").
+ *
+ * [TRANSITIONAL] ORCH-1263 superseded this card with ClaimMatchCard (the
+ * DESIGN §4 evolution — photo strip, presence facts, blocked-at-the-gate
+ * variants); no live call site imports PoolMatchCard anymore. The file is
+ * retained ONLY because the pinned append-only suite
+ * `src/services/__tests__/ve2PoolMatchFlow.test.ts` reads this source path.
+ * Exit condition: a [TEST-MOD-APPROVED] ORCH retires that pinned read, then
+ * this file is deleted.
  */
 
 import React from "react";

@@ -26,6 +26,7 @@ import Animated, {
 import {
   accent,
   glass,
+  semantic,
   spacing,
   text as textTokens,
   typography,
@@ -34,6 +35,13 @@ import {
 export interface StepperStep {
   id: string;
   label: string;
+  /**
+   * ORCH-1263 (DESIGN §5.2) — the step's content ARRIVED filled (claim
+   * adoption). Future prefilled dots render green-45 ("already has content,
+   * awaiting your look"); a visited prefilled dot becomes standard white —
+   * confirmation converts green to done. No checkmarks, no % bar.
+   */
+  prefilled?: boolean;
 }
 
 export interface StepperProps {
@@ -50,6 +58,45 @@ const DOT_SIZE = 8;
 const CIRCLE_SIZE = 24;
 const CONNECTOR_FILL_DURATION = 280;
 const FUTURE_DOT_BG = "rgba(255, 255, 255, 0.32)";
+// ORCH-1263 (DESIGN §5.2) — success at dot-legible alpha for prefilled-future.
+const PREFILLED_DOT_BG = "rgba(34, 197, 94, 0.45)";
+const PREFILLED_CIRCLE_BORDER = "rgba(34, 197, 94, 0.45)";
+// M-8: prefilled → confirmed dot color transition.
+const DOT_CONFIRM_DURATION = 120;
+
+/** One mobile dot — animated so M-8 (green-45 → white on confirm) can run. */
+const StepDot: React.FC<{ color: string }> = ({ color }) => {
+  const reduceMotion = useReducedMotion();
+  const progress = useSharedValue(1);
+  const prevColor = React.useRef(color);
+  const fromColor = React.useRef(color);
+
+  useEffect(() => {
+    if (prevColor.current !== color) {
+      fromColor.current = prevColor.current;
+      prevColor.current = color;
+      if (!reduceMotion) {
+        progress.value = 0;
+        progress.value = withTiming(1, { duration: DOT_CONFIRM_DURATION });
+      } else {
+        progress.value = 1;
+      }
+    }
+    return (): void => {
+      cancelAnimation(progress);
+    };
+  }, [color, progress, reduceMotion]);
+
+  const style = useAnimatedStyle(() => ({
+    // Cross-fade via opacity over the target color (color interpolation of
+    // rgba strings on the UI thread is host-dependent; an opacity ramp on the
+    // new color reads identically at 8px).
+    backgroundColor: color,
+    opacity: 0.4 + 0.6 * progress.value,
+  }));
+
+  return <Animated.View style={[styles.dot, style]} />;
+};
 
 interface ConnectorProps {
   filled: boolean;
@@ -91,31 +138,34 @@ const StepperMobile: React.FC<StepperProps> = ({
   showCaption = true,
   testID,
   style,
-}) => (
-  <View testID={testID} style={[styles.mobileWrap, style]}>
-    <View style={styles.dotRow}>
-      {steps.map((step, index) => {
-        const dotColor =
-          index === currentIndex
-            ? accent.warm
-            : index < currentIndex
-              ? textTokens.inverse
-              : FUTURE_DOT_BG;
-        return (
-          <View
-            key={step.id}
-            style={[styles.dot, { backgroundColor: dotColor }]}
-          />
-        );
-      })}
+}) => {
+  // ORCH-1263 (DESIGN §5.2) — the caption promises quick confirms only when
+  // most steps genuinely arrived filled (never overpromise a sparse place).
+  const prefilledCount = steps.filter((s) => s.prefilled === true).length;
+  return (
+    <View testID={testID} style={[styles.mobileWrap, style]}>
+      <View style={styles.dotRow}>
+        {steps.map((step, index) => {
+          const dotColor =
+            index === currentIndex
+              ? accent.warm
+              : index < currentIndex
+                ? textTokens.inverse
+                : step.prefilled === true
+                  ? PREFILLED_DOT_BG
+                  : FUTURE_DOT_BG;
+          return <StepDot key={step.id} color={dotColor} />;
+        })}
+      </View>
+      {showCaption ? (
+        <Text style={styles.caption}>
+          Step {Math.min(currentIndex + 1, steps.length)} of {steps.length}
+          {prefilledCount >= 6 ? " · most are quick confirms" : ""}
+        </Text>
+      ) : null}
     </View>
-    {showCaption ? (
-      <Text style={styles.caption}>
-        Step {Math.min(currentIndex + 1, steps.length)} of {steps.length}
-      </Text>
-    ) : null}
-  </View>
-);
+  );
+};
 
 const StepperWeb: React.FC<StepperProps> = ({
   steps,
@@ -128,10 +178,25 @@ const StepperWeb: React.FC<StepperProps> = ({
       const isCurrent = index === currentIndex;
       const isCompleted = index < currentIndex;
       const isFuture = index > currentIndex;
+      // ORCH-1263 (DESIGN §5.2) — future-prefilled circles: successTint fill,
+      // green-45 border, number text.secondary. Current/completed unchanged.
+      const isPrefilledFuture = isFuture && step.prefilled === true;
 
-      const circleBg = isCurrent || isCompleted ? accent.warm : glass.tint.profileBase;
-      const circleBorder = isCurrent ? accent.border : glass.border.profileBase;
-      const numberColor = isFuture ? textTokens.tertiary : textTokens.inverse;
+      const circleBg = isCurrent || isCompleted
+        ? accent.warm
+        : isPrefilledFuture
+          ? semantic.successTint
+          : glass.tint.profileBase;
+      const circleBorder = isCurrent
+        ? accent.border
+        : isPrefilledFuture
+          ? PREFILLED_CIRCLE_BORDER
+          : glass.border.profileBase;
+      const numberColor = isPrefilledFuture
+        ? textTokens.secondary
+        : isFuture
+          ? textTokens.tertiary
+          : textTokens.inverse;
       const labelColor = isFuture ? textTokens.tertiary : textTokens.primary;
 
       return (
