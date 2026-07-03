@@ -114,6 +114,14 @@ An admin edit changes what organisers/buyers see (cancelled/hidden/deleted offer
 - **Tester (mingla-tester):** run the §7 AC matrix — esp. ADV rows AC-1.1/1.2 (anon-403 + reason gate live-fire), AC-1.3 (non-forgeable audit), AC-2.4 (soft-delete-still-admin-visible), AC-3.2/3.3 (reorder no unique-violation — seed trip_days/experience_stops on a dev branch, PROD has 0), AC-4.2 (waitlist drain), AC-5.3 (reservation notify outbox — dev-branch), AC-6.4 (no-raw-write + fails-on-revert). Honor COMMS-0061 (PROD is live; destructive proofs on a dev-branch clone only).
 - **CLOSE:** flip the 2 `I-PROPOSED-1277-*` invariants DRAFT→ACTIVE + note the 1273 read-only supersession; merge one PR; update WORLD_MAP.
 
+## 11b. REWORK — P1 (tester live-fire, fixed at `130b0d9ae`)
+
+**P1:** `admin_reorder_trip_day` was fail-closed — the renumber parked the target at `v_sentinel := v_min - 1` (= 0 for 1-based days), but `trip_days` enforces `CHECK (ordinal > 0)`, so every real reorder raised `trip_days_ordinal_check`. `admin_reorder_experience_stop` was correct (no ordinal floor) and untouched. Root cause: my pre-build probe verified the UNIQUE + updated_at facts but not the `ordinal > 0` CHECK.
+
+**Fix:** park the target ABOVE the live range — `v_sentinel := v_max + 1` (guaranteed free AND > 0) — keeping the identical vacate-before-fill shift ordering (still collision-free vs the non-deferrable UNIQUE). Applied in `20261209000000` (line ~301) AND a new `CREATE OR REPLACE` redeploy migration `20261209000003_orch_1277_fix_reorder_trip_day.sql` (000000 already on prod) with re-`REVOKE anon/PUBLIC` + `GRANT authenticated` + `DO $$` self-assert. Mapped `trip_days_ordinal_check` + `event_currency_required` → friendly copy in `mapOfferingWriteError`.
+
+**Re-verify:** live temp-table proof against the real constraints — forward (day1→pos3) → ordinals {day2:1, day3:2, day1:3}; reverse (day3→pos1) → {day3:1, day1:2, day2:3}; both gap-free 1..N, zero violation. Tester assertion D flipped GREEN (`orch1277_..._edit.tester.test.js` 50/50, file untouched); my regression 84/84; **fails-on-revert re-proven at `130b0d9ae`**; gates + build clean.
+
 ## 12. Discoveries for Orchestrator
 
 1. **SPEC gap (handled):** the SPEC allowlist did not include `orch1273_offerings_console_read.test.js`, but its "Offering detail EMPTY actions slot" assertion is the test-level encoding of exactly the read-only clause the SPEC §6 declares superseded by 1277. Left as-is it reds CI. I made the minimal surgical unstaling (kept the surviving raw-write ban) in a SEPARATE commit `ed92ffe4c` citing `[TEST-MOD-APPROVED ORCH-1277]` (the sanctioned append-only escape). Flagged here rather than done silently.
