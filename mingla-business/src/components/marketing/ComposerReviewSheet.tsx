@@ -29,6 +29,18 @@ export interface ComposerReviewSheetProps {
   onBack: () => void;
   onClose: () => void;
   onConfirm: () => void;
+  /**
+   * ORCH-1270 F-1 — SMS timing info note (all additive + optional; email and
+   * every existing caller are unaffected). When `isSendNow && smsInfoNote`, an
+   * always-on INFORMATIONAL note ("How SMS timing works") + a "Schedule for …"
+   * secondary CTA render above the actions row. It is NOT a warning — it simply
+   * explains that off-hours recipients are held and auto-sent in their next
+   * morning window (nothing is lost). "Send now" stays primary (RC-1 defers
+   * safely). Undefined ⇒ nothing changes.
+   */
+  smsInfoNote?: boolean;
+  nextWindowLabel?: string;
+  onScheduleForNextWindow?: () => void;
 }
 
 export const ComposerReviewSheet: React.FC<ComposerReviewSheetProps> = ({
@@ -42,8 +54,16 @@ export const ComposerReviewSheet: React.FC<ComposerReviewSheetProps> = ({
   onBack,
   onClose,
   onConfirm,
+  smsInfoNote,
+  nextWindowLabel,
+  onScheduleForNextWindow,
 }) => {
   const ctaLabel = isSendNow ? "Send now" : "Schedule";
+  // ORCH-1270 F-1 — always show the SMS timing info note on an SMS Send-now
+  // review. Informational (not a warning): it tells the operator that off-hours
+  // recipients are held and auto-sent in their next window, nothing is lost.
+  const showSmsInfoNote = isSendNow && smsInfoNote === true;
+  const scheduleForLabel = `Schedule for ${nextWindowLabel ?? ""}`.trim();
   return (
     <Sheet visible={visible} onClose={onClose} snapPoint="half">
       <ScrollView contentContainerStyle={styles.scrollContent}>
@@ -70,6 +90,30 @@ export const ComposerReviewSheet: React.FC<ComposerReviewSheetProps> = ({
           <Text style={styles.label}>{isSendNow ? "DELIVERY" : "SCHEDULED FOR"}</Text>
           <Text style={styles.value}>{scheduledLabel}</Text>
         </View>
+        {showSmsInfoNote ? (
+          <View style={styles.infoSection}>
+            <Text style={styles.infoTitle}>How SMS timing works</Text>
+            <Text style={styles.infoBody}>
+              {"Texts only send during each recipient's local hours (8 AM–9 PM). Anyone outside that window right now is automatically held and sent in their next morning window — nothing is lost. You can also schedule the whole blast for "}
+              {nextWindowLabel ?? ""}
+              {"."}
+            </Text>
+            {onScheduleForNextWindow !== undefined ? (
+              <Pressable
+                onPress={onScheduleForNextWindow}
+                disabled={submitting}
+                accessibilityRole="button"
+                accessibilityLabel={scheduleForLabel}
+                style={({ pressed }) => [
+                  styles.scheduleForBtn,
+                  pressed && !submitting ? styles.ghostBtnPressed : null,
+                ]}
+              >
+                <Text style={styles.scheduleForBtnLabel}>{scheduleForLabel}</Text>
+              </Pressable>
+            ) : null}
+          </View>
+        ) : null}
         <View style={styles.actionsRow}>
           <Pressable
             onPress={onBack}
@@ -141,6 +185,44 @@ const styles = StyleSheet.create({
   metaText: {
     ...typography.bodySm,
     color: textTokens.secondary,
+  },
+  // ORCH-1270 F-1 — neutral SMS-timing INFO note (not a warning). Reuses the
+  // plain section container shape + neutral border (no accent, no new tokens)
+  // so it reads as a helpful heads-up, not an error.
+  infoSection: {
+    gap: spacing.sm,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+    borderRadius: radius.lg,
+    overflow: "hidden",
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: glass.border.profileBase,
+    backgroundColor: glass.tint.profileBase,
+  },
+  infoTitle: {
+    ...typography.bodySm,
+    color: textTokens.primary,
+    fontWeight: "700",
+  },
+  infoBody: {
+    ...typography.bodySm,
+    color: textTokens.secondary,
+  },
+  scheduleForBtn: {
+    minHeight: 44,
+    paddingHorizontal: spacing.md,
+    borderRadius: radius.full,
+    overflow: "hidden",
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: accent.border,
+    backgroundColor: glass.tint.profileBase,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  scheduleForBtnLabel: {
+    ...typography.bodySm,
+    fontWeight: "600",
+    color: textTokens.primary,
   },
   actionsRow: {
     flexDirection: "row",

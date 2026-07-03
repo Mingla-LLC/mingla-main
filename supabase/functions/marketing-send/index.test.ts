@@ -39,8 +39,13 @@ Deno.test("marketing-send: SMS leg dispatches via smsAdapter with marketing SID 
   // Separate marketing Messaging Service SID (§12 Q2), with adapter fallback.
   assert(SOURCE.includes("TWILIO_MARKETING_MESSAGING_SERVICE_SID"));
   // Quiet hours gate (marketing only).
+  // [TEST-MOD-APPROVED ORCH-1270] SMS quiet-hours now DEFERS (retryable) instead
+  // of terminal-failing. `quiet_hours_deferred` survives as an informational
+  // failure_reason on the DEFERRED row, so this string still holds — but the row
+  // is now written status:"deferred", so we additionally require that literal.
   assert(/isWithinQuietHours\(/.test(SOURCE));
   assert(SOURCE.includes("quiet_hours_deferred"));
+  assert(SOURCE.includes('status: "deferred"'), "quiet-hours recipients must defer, not terminal-fail (ORCH-1270)");
   // Branded short links via the Mingla /m redirect, never a public shortener.
   assert(SOURCE.includes("marketing-track-click"));
   assert(/rewriteSmsLinks\(/.test(SOURCE));
