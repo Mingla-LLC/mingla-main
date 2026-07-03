@@ -1,7 +1,7 @@
 /**
- * ORCH-1273(tester) [venue deck-readiness AI step flashes/closes on web create]
+ * ORCH-1285(tester) [venue deck-readiness AI step flashes/closes on web create]
  * — tester adversarial regression test (DIFFERENT ANGLE than the implementor's
- * happy-path AST test `venueCreateDurableDeckReadiness.orch1273.test.ts`).
+ * happy-path AST test `venueCreateDurableDeckReadiness.orch1285.test.ts`).
  *
  * The implementor's test proves the create seam EXISTS (AST) and the durable
  * route imports the right hooks. This tester test attacks three distinct angles
@@ -88,7 +88,7 @@ function paramsOf(url: string): Record<string, string> {
   return out;
 }
 
-describe("ORCH-1273(tester) — create lands on the durable deck-readiness contract", () => {
+describe("ORCH-1285(tester) — create lands on the durable deck-readiness contract", () => {
   test("T1 — create builder output EXACT-MATCHES the recovery handleEdit route contract", () => {
     // The create path calls routeForDeckReadinessFix({ ..., fix: "review_pipeline" }).
     const createUrl = routeForDeckReadinessFix({

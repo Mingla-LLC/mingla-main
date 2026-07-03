@@ -1,5 +1,5 @@
 /**
- * ORCH-1273 [venue deck-readiness AI step flashes/closes on web create] —
+ * ORCH-1285 [venue deck-readiness AI step flashes/closes on web create] —
  * implementor happy-path regression test.
  *
  * PROVES: after a CREATE-path tier-1 success, VenueCreatorWizard navigates to
@@ -69,7 +69,7 @@ function walk(node: unknown, visit: (n: Record<string, unknown>) => void): void 
   }
 }
 
-describe("ORCH-1273 — create tier-1 success lands on the durable deck-readiness route", () => {
+describe("ORCH-1285 — create tier-1 success lands on the durable deck-readiness route", () => {
   const wizardAst = parseTsx(WIZARD);
 
   test("wizard calls router.replace(routeForDeckReadinessFix({...})) with the review_pipeline contract", () => {

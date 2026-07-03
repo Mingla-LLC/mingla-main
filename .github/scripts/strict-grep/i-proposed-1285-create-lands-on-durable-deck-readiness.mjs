@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
- * ORCH-1273 [venue deck-readiness AI step flashes/closes on web create] —
- * I-PROPOSED-1273-CREATE-LANDS-ON-DURABLE-DECK-READINESS.
+ * ORCH-1285 [venue deck-readiness AI step flashes/closes on web create] —
+ * I-PROPOSED-1285-CREATE-LANDS-ON-DURABLE-DECK-READINESS.
  *
  * RULE: after a CREATE-path "Submit for review" (tier-1 success) the venue
  * wizard must navigate to the DURABLE, server-state-reloading deck-readiness
@@ -28,7 +28,7 @@
  * GOOD/BAD fixtures.
  *
  * DRAFT until CLOSE (orchestrator flips
- * I-PROPOSED-1273-CREATE-LANDS-ON-DURABLE-DECK-READINESS ACTIVE).
+ * I-PROPOSED-1285-CREATE-LANDS-ON-DURABLE-DECK-READINESS ACTIVE).
  */
 import fs from "node:fs";
 import path from "node:path";
@@ -123,25 +123,25 @@ if (process.argv.includes("--self-test")) {
   // GUARD: comment mentioning the retired tokens must NOT count (comment-stripped).
   const commentOnly =
     goodMount +
-    "// ORCH-1273 — no longer mounts <VenueDeckReadinessSetup> from createdVenue.\n";
+    "// ORCH-1285 — no longer mounts <VenueDeckReadinessSetup> from createdVenue.\n";
   f = [];
   check(commentOnly, f);
   if (f.length) self.push("comment mention wrongly flagged: " + f.join("; "));
 
   if (self.length) {
-    console.error("I-PROPOSED-1273-CREATE-LANDS-ON-DURABLE-DECK-READINESS self-test FAIL:");
+    console.error("I-PROPOSED-1285-CREATE-LANDS-ON-DURABLE-DECK-READINESS self-test FAIL:");
     self.forEach((m) => console.error("  - " + m));
     process.exit(1);
   }
   console.log(
-    "I-PROPOSED-1273-CREATE-LANDS-ON-DURABLE-DECK-READINESS self-test PASS (5/5 cases).",
+    "I-PROPOSED-1285-CREATE-LANDS-ON-DURABLE-DECK-READINESS self-test PASS (5/5 cases).",
   );
   process.exit(0);
 }
 
 if (!fs.existsSync(WIZARD_FILE)) {
   console.error(
-    `I-PROPOSED-1273-CREATE-LANDS-ON-DURABLE-DECK-READINESS FAIL — wizard not found at ${WIZARD_FILE}.`,
+    `I-PROPOSED-1285-CREATE-LANDS-ON-DURABLE-DECK-READINESS FAIL — wizard not found at ${WIZARD_FILE}.`,
   );
   process.exit(1);
 }
@@ -150,13 +150,13 @@ const failures = [];
 check(fs.readFileSync(WIZARD_FILE, "utf8"), failures);
 if (failures.length > 0) {
   console.error(
-    "I-PROPOSED-1273-CREATE-LANDS-ON-DURABLE-DECK-READINESS FAIL:\n  " +
+    "I-PROPOSED-1285-CREATE-LANDS-ON-DURABLE-DECK-READINESS FAIL:\n  " +
       failures.join("\n  "),
   );
   process.exit(1);
 }
 console.log(
-  "I-PROPOSED-1273-CREATE-LANDS-ON-DURABLE-DECK-READINESS PASS — create tier-1 " +
+  "I-PROPOSED-1285-CREATE-LANDS-ON-DURABLE-DECK-READINESS PASS — create tier-1 " +
     "success routes to the durable /venue/deck-readiness route via router.replace + " +
     "routeForDeckReadinessFix; no ephemeral inline mount or createdVenue state remains.",
 );

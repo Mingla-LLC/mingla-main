@@ -1,9 +1,9 @@
-# TEST — ORCH-1273 · Venue deck-readiness "Recommend me" step flashed/closed on web create → fix routes create to the durable deck-readiness route
+# TEST — ORCH-1285 · Venue deck-readiness "Recommend me" step flashed/closed on web create → fix routes create to the durable deck-readiness route
 
 - **Phase:** TEST (independent verification; no product-code edits)
 - **Date:** 2026-07-03
-- **Worktree:** `~/Desktop/mingla-orchs/orch-1272-[deck-readiness-web-flash]/` on branch `orch-1273-deck-readiness-web-flash` (head `dfe2c7948`; fix commit `bf4b89a6e`)
-- **Inputs verified against:** `INVESTIGATION_ORCH-1273_…` §G/§F-9 + `IMPLEMENTATION_ORCH-1273_…`
+- **Worktree:** `~/Desktop/mingla-orchs/orch-1272-[deck-readiness-web-flash]/` on branch `orch-1285-deck-readiness-web-flash` (head `dfe2c7948`; fix commit `bf4b89a6e`)
+- **Inputs verified against:** `INVESTIGATION_ORCH-1285_…` §G/§F-9 + `IMPLEMENTATION_ORCH-1285_…`
 - **Runtime surface used:** iOS sim (iPhone 17 Pro Max, iOS 26.4) driving the **branch** bundle via worktree Metro (`:8089`, `pk_live` env) against LIVE prod — authed via a disposable mail.tm QA account. (Authed biz-web is the documented cap; resolved on native per the ORCH-1255 recipe.)
 
 ---
@@ -58,7 +58,7 @@ Restored via `git checkout --` → file sha back to `aee6257b108f4899d95651b3bc6
 
 ## 5. Adversarial test added
 
-- **Path:** `mingla-business/src/components/venue/__tests__/venueCreateDurableDeckReadiness.orch1273.tester.test.ts` (NEW; append-only).
+- **Path:** `mingla-business/src/components/venue/__tests__/venueCreateDurableDeckReadiness.orch1285.tester.test.ts` (NEW; append-only).
 - **Different angle** than the implementor's happy-path AST test:
   - **T1 (functional parity):** executes the real `routeForDeckReadinessFix({fix:"review_pipeline"})` AND parses the LITERAL route in `VenueListingContent.handleEdit`, asserting identical param key-set + `focus=review`/`fix=review_pipeline` — proves create lands on the *exact* recovery contract, not merely "a" deck route. (Implementor never compared cross-file.)
   - **T2 (claim-defer regression guard):** AST-isolates the submit-path `if (claimMode)` branch (the one calling `onDone`) and asserts it contains NO `routeForDeckReadinessFix` and DOES `return` — guards F-6.
@@ -95,7 +95,7 @@ No violations.
 
 | Surface | Verdict | Notes |
 |---------|---------|-------|
-| Business iOS (native) | **PASS (proven, live-fire)** | Full authed create→durable-route landing + persistence + recover walked on iPhone 17 Pro Max against the branch bundle. Screenshots `01`–`38` in `Mingla_Artifacts/evidence/ORCH-1273/`. |
+| Business iOS (native) | **PASS (proven, live-fire)** | Full authed create→durable-route landing + persistence + recover walked on iPhone 17 Pro Max against the branch bundle. Screenshots `01`–`38` in `Mingla_Artifacts/evidence/ORCH-1285/`. |
 | Business **Web** (Vercel — the ship target) | **PASS (source+unit+bundle proven); authed-runtime cap** | The pipeline cannot authenticate to business.usemingla.com (`feedback_biz_web_authed_runtime_unreachable_cap_claims`) and the fix ships web-only. The fix is **trigger-agnostic** (it deletes the ephemeral state entirely — the flash cannot occur without it), single RN codebase, and the create chunk provably bundles the durable-nav seam (`create-*.js`). Native live-fire proves the identical RN path. Residual: Seth's authed eyeball on the deployed Vercel build (see §Cap). |
 | Business Android | N/A this session | same RN path; ships on next native build (OTA prohibited). |
 | Buyer/anon Web · Consumer iOS/Android · Admin Web | N/A | not touched (client-nav within business create only). |
@@ -108,13 +108,13 @@ No violations.
 
 ## 8. Runtime cap (documented)
 
-Authed **web** runtime is unreachable to the pipeline (standing cap). Resolved on the **iOS sim** per the ORCH-1255 recipe: worktree Metro `:8089` + `pk_live` env, disposable mail.tm account (`orch1273qa…@web-library.net`) via email-OTP, Maestro (text) + idb (taps). One residual: a human (Seth) eyeball on the *deployed Vercel* build would upgrade the web surface from "proven-by-equivalence" to "proven-on-web" — optional, since the fix is trigger-agnostic and the native RN path is live-fire-proven. The `run_tier2_pipeline→deck_eligible` completion was not re-driven (unchanged screen; proven in META-ORCH-1255 R2/R3).
+Authed **web** runtime is unreachable to the pipeline (standing cap). Resolved on the **iOS sim** per the ORCH-1255 recipe: worktree Metro `:8089` + `pk_live` env, disposable mail.tm account (`orch1285qa…@web-library.net`) via email-OTP, Maestro (text) + idb (taps). One residual: a human (Seth) eyeball on the *deployed Vercel* build would upgrade the web surface from "proven-by-equivalence" to "proven-on-web" — optional, since the fix is trigger-agnostic and the native RN path is live-fire-proven. The `run_tier2_pipeline→deck_eligible` completion was not re-driven (unchanged screen; proven in META-ORCH-1255 R2/R3).
 
 ---
 
 ## 9. Discoveries for Orchestrator
 
-1. **ORCH-ID collision (confirm at CLOSE).** `strict-grep-mingla-business.yml` now carries TWO "ORCH-1273" display names: this deck-readiness job (`orch-1273-create-lands-on-durable-deck-readiness`) and the already-merged admin console (`orch-1273-offerings-read-only`). YAML job KEYS are distinct (no CI break), but the label collision should be reconciled — renumber one at CLOSE (matches implementor Discovery #1).
+1. **ORCH-ID collision (confirm at CLOSE).** `strict-grep-mingla-business.yml` now carries TWO "ORCH-1285" display names: this deck-readiness job (`orch-1285-create-lands-on-durable-deck-readiness`) and the already-merged admin console (`orch-1285-offerings-read-only`). YAML job KEYS are distinct (no CI break), but the label collision should be reconciled — renumber one at CLOSE (matches implementor Discovery #1).
 2. **Worktree `node_modules` is a symlink** to the anchor. Native Metro bundled fine, but lazy-imports for `posthog-react-native`, `expo-tracking-transparency` failed to resolve through the symlink (non-fatal warnings; analytics/ATT only). For a clean native Metro, a real `npm ci` in the worktree is advised (matches `feedback_ota_from_worktree_needs_real_npm_ci`).
 3. **Pre-existing stale test** `VenueCreatorWizard.ve2.test.ts` fails identically on `origin/main` (tokens removed by META-ORCH-1255 R2) — not caused by this ORCH; recommend a `[TEST-MOD-APPROVED]` retarget/retire (matches implementor Discovery #2).
 4. **create.tsx dead create-success sub-branch** (implementor §10) — harmless unreachable code (only claim reaches `phase="success"` now); small follow-up cleanup ORCH.
@@ -123,4 +123,4 @@ Authed **web** runtime is unreachable to the pipeline (standing cap). Resolved o
 
 ## 10. Cleanup attestation
 
-**PROD RESIDUE: NONE.** All QA fixtures created this session were deleted and verified zero: venue `76823ea2…` (0), place_pool `40da7312…` (0, `business_authored`/`is_servable=false` guard), brand `9bbe8d4f…` "ORCH1273 QA Venue Brand" (0), `brand_team_members` (0), `creator_accounts` (0), auth user `76bb9946…`/`orch1273qa…@web-library.net` (0). Orchestrator's live row "The Cluster Fuck" (`f41cbabe…`/`cd41f4e8…`) **PRESERVED** (verified count 1 each, untouched). Tester Metro killed by PID (port 8089 free); business app terminated; sim left booted; no other session's ports/devices touched; no global pkill.
+**PROD RESIDUE: NONE.** All QA fixtures created this session were deleted and verified zero: venue `76823ea2…` (0), place_pool `40da7312…` (0, `business_authored`/`is_servable=false` guard), brand `9bbe8d4f…` "ORCH1285 QA Venue Brand" (0), `brand_team_members` (0), `creator_accounts` (0), auth user `76bb9946…`/`orch1285qa…@web-library.net` (0). Orchestrator's live row "The Cluster Fuck" (`f41cbabe…`/`cd41f4e8…`) **PRESERVED** (verified count 1 each, untouched). Tester Metro killed by PID (port 8089 free); business app terminated; sim left booted; no other session's ports/devices touched; no global pkill.
