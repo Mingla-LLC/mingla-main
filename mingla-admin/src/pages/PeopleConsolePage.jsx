@@ -223,7 +223,6 @@ function buildPersonSections(bundle, onOpenBrand) {
                 onClick={() => onOpenBrand(brand.id)}
                 className="flex flex-wrap items-center gap-1.5 text-left cursor-pointer hover:opacity-80"
               >
-                {brand.kind && <Badge variant="outline">{brand.kind}</Badge>}
                 {brand.claim_status && (
                   <Badge variant={CLAIM_VARIANT[brand.claim_status] || "default"}>{brand.claim_status}</Badge>
                 )}
