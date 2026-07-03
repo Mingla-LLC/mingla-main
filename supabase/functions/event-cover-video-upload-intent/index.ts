@@ -2,6 +2,7 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import {
   cloudinarySignature,
   corsHeaders,
+  coverVideoProvider,
   isValidUuid,
   jsonResponse,
   MAX_DURATION_MS,
@@ -14,6 +15,11 @@ import {
   serviceRoleClient,
   validateTrimRange,
 } from "../_shared/eventCoverVideo.ts";
+// META-ORCH-1270 — Bunny provider branch (Cloudinary path unchanged).
+import {
+  bunnyCreateVideo,
+  bunnyPresignTusUpload,
+} from "../_shared/bunnyStream.ts";
 
 export const SOURCE_CEILING_MS = 33_000;
 
@@ -41,6 +47,8 @@ const logWarn = (requestId: string, stage: string, payload: Record<string, unkno
 };
 
 const defaultDeps = {
+  bunnyCreateVideo,
+  bunnyPresignTusUpload,
   cloudinarySignature,
   providerConfigured,
   requireBrandCoverManager,
@@ -259,6 +267,10 @@ export const handleEventCoverVideoUploadIntent = async (
     logInfo(requestId, "active_jobs_cancelled", { eventId });
   }
 
+  // META-ORCH-1270 — active provider decides which host + upload descriptor is
+  // returned. Stamp it on the job row so the webhook + destroy path route on the
+  // row's own provider value (not just the current env).
+  const provider = coverVideoProvider();
   const { data: job, error: insertError } = await supabase
     .from("event_cover_video_jobs")
     .insert({
@@ -267,7 +279,7 @@ export const handleEventCoverVideoUploadIntent = async (
       target_kind: targetKind,
       brand_id: brandId,
       requested_by: userId,
-      provider: "cloudinary",
+      provider,
       status: "source_uploading",
       apply_mode: applyMode,
       source_file_name: body.sourceFileName ?? null,
@@ -296,6 +308,75 @@ export const handleEventCoverVideoUploadIntent = async (
     );
   }
   logInfo(requestId, "job_insert_pass", { jobId: job.id });
+
+  // META-ORCH-1270 — Bunny branch. Create the Bunny video object, persist its
+  // guid into source_asset_id (the webhook + destroy lookup key), and return a
+  // TUS upload descriptor (the AccessKey NEVER reaches the client — only the
+  // presigned AuthorizationSignature does). Cloudinary branch below is untouched.
+  if (provider === "bunny") {
+    const create = await deps.bunnyCreateVideo(job.id);
+    if (!create.ok) {
+      await supabase
+        .from("event_cover_video_jobs")
+        .update({
+          status: "failed",
+          completed_at: new Date().toISOString(),
+          failure_code: "provider_create_failed",
+          failure_message: "Could not create the video on the media host. Try again.",
+        })
+        .eq("id", job.id);
+      logWarn(requestId, "bunny_create_failed", { jobId: job.id, reason: create.reason });
+      return jsonResponse(
+        { error: "internal_error", detail: "provider_create_failed" },
+        500,
+      );
+    }
+    const libraryId = Deno.env.get("BUNNY_STREAM_LIBRARY_ID") ?? "";
+    const cdnHostname = Deno.env.get("BUNNY_STREAM_CDN_HOSTNAME") ?? "";
+    const { error: bunnyPayloadError } = await supabase
+      .from("event_cover_video_jobs")
+      .update({
+        source_asset_id: create.guid,
+        provider_payload: {
+          bunny: { videoId: create.guid, libraryId, cdnHostname },
+        },
+      })
+      .eq("id", job.id);
+    if (bunnyPayloadError) {
+      logWarn(requestId, "bunny_payload_update_failed", {
+        code: bunnyPayloadError.code,
+        jobId: job.id,
+        message: bunnyPayloadError.message,
+      });
+    }
+    const presign = await deps.bunnyPresignTusUpload(create.guid);
+    logInfo(requestId, "returned", { jobId: job.id, provider: "bunny" });
+    return jsonResponse({
+      jobId: job.id,
+      provider: "bunny",
+      maxDurationMs: MAX_DURATION_MS,
+      finalMaxBytes: 25 * 1024 * 1024,
+      upload: {
+        url: presign.tusEndpoint,
+        // NEW discriminator the client branches on ("tus" vs the implicit
+        // Cloudinary multipart path). The Cloudinary branch omits `protocol`;
+        // the client treats any non-"tus" value (including absent) as Cloudinary.
+        protocol: "tus",
+        videoId: presign.videoId,
+        // Sent as TUS creation request headers by the client. NO AccessKey here.
+        fields: {
+          AuthorizationSignature: presign.authorizationSignature,
+          AuthorizationExpire: String(presign.authorizationExpire),
+          LibraryId: presign.libraryId,
+          VideoId: presign.videoId,
+        },
+        metadata: {
+          filetype: body.sourceMimeType ?? "video/mp4",
+          title: job.id,
+        },
+      },
+    });
+  }
 
   const cloudName = Deno.env.get("CLOUDINARY_CLOUD_NAME") ?? "";
   const apiKey = Deno.env.get("CLOUDINARY_API_KEY") ?? "";

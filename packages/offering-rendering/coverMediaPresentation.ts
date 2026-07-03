@@ -60,10 +60,19 @@ export const shouldFreezeCoverForReduceMotion = ({
 // via the `so_0` (start-offset 0s) transform + .jpg extension. Non-Cloudinary
 // or non-video URLs return null → the hue-band EventCover placeholder shows
 // (still no eager video download — the only thing that matters for bots).
+//
+// META-ORCH-1270 — Bunny-hosted covers deliver at .../{guid}/play_{H}p.mp4 and
+// expose an auto-generated poster at .../{guid}/thumbnail.jpg. Detect the Bunny
+// delivery URL first and swap to the thumbnail. Cloudinary so_0 branch kept
+// until Phase 4.
 export const deriveCoverPosterUrl = (
   videoUrl?: string | null,
 ): string | null => {
   if (typeof videoUrl !== "string" || videoUrl.length === 0) return null;
+  // Bunny: https://{cdn}/{guid}/play_{H}p.mp4 → https://{cdn}/{guid}/thumbnail.jpg
+  if (/\/play_\d+p\.mp4($|\?)/i.test(videoUrl)) {
+    return videoUrl.replace(/\/play_\d+p\.mp4(\?.*)?$/i, "/thumbnail.jpg");
+  }
   const marker = "/video/upload/";
   const i = videoUrl.indexOf(marker);
   if (i < 0) return null;

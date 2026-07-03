@@ -5,6 +5,8 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
 // ORCH-1201 — Layer-C passive health observation (fire-and-forget, best-effort).
 import { recordApiCall } from "./apiHealthLog.ts";
+// META-ORCH-1270 — Bunny Stream provider branch (Cloudinary path stays intact).
+import { bunnyDeleteVideo } from "./bunnyStream.ts";
 
 export const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -246,13 +248,56 @@ export async function requireBrandCoverManager(
   return { brandId };
 }
 
+// META-ORCH-1270 — real provider dispatch. EVENT_COVER_VIDEO_PROVIDER now selects
+// a genuine cloudinary | bunny branch (previously it only gated a boolean inside
+// providerConfigured). Default stays "cloudinary"; the Cloudinary path is
+// byte-for-byte unchanged until Phase 4.
+export type CoverVideoProvider = "cloudinary" | "bunny";
+
+export function coverVideoProvider(): CoverVideoProvider {
+  return (Deno.env.get("EVENT_COVER_VIDEO_PROVIDER") ?? "cloudinary") === "bunny"
+    ? "bunny"
+    : "cloudinary";
+}
+
+// providerConfigured() dispatches to the active provider's readiness check.
+// Cloudinary branch preserves the EXACT pre-1270 three-secret + env check.
 export function providerConfigured(): boolean {
+  return coverVideoProvider() === "bunny" ? bunnyConfigured() : cloudinaryConfigured();
+}
+
+function cloudinaryConfigured(): boolean {
   return (
     (Deno.env.get("EVENT_COVER_VIDEO_PROVIDER") ?? "cloudinary") === "cloudinary" &&
     Boolean(Deno.env.get("CLOUDINARY_CLOUD_NAME")) &&
     Boolean(Deno.env.get("CLOUDINARY_API_KEY")) &&
     Boolean(Deno.env.get("CLOUDINARY_API_SECRET"))
   );
+}
+
+function bunnyConfigured(): boolean {
+  return (
+    Boolean(Deno.env.get("BUNNY_STREAM_LIBRARY_ID")) &&
+    Boolean(Deno.env.get("BUNNY_STREAM_API_KEY")) &&
+    Boolean(Deno.env.get("BUNNY_STREAM_CDN_HOSTNAME"))
+  );
+}
+
+// Provider-agnostic terminal cleanup — routes to the active provider's delete.
+// Replaces the direct cloudinaryDestroy call sites (Cloudinary path unchanged).
+export async function destroyCoverVideoAsset(job: {
+  provider?: string | null;
+  source_public_id?: unknown;
+  source_asset_id?: unknown;
+}): Promise<{ ok: true } | { ok: false; reason: string }> {
+  const provider =
+    typeof job.provider === "string" && job.provider.length > 0
+      ? job.provider
+      : coverVideoProvider();
+  if (provider === "bunny") {
+    return bunnyDeleteVideo(String(job.source_asset_id ?? ""));
+  }
+  return cloudinaryDestroy(String(job.source_public_id ?? ""));
 }
 
 export async function sha1Hex(input: string): Promise<string> {
