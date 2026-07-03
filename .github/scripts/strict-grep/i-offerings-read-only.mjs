@@ -61,8 +61,34 @@ const READ_ONLY_FILES = [
   "mingla-admin/src/pages/VenueDetailView.jsx",
 ];
 
-// Only these RPC names may be called from the 1273 read-only files (all read RPCs).
-const ALLOWED_RPCS = new Set([...READ_RPCS, "admin_offering_stats"]);
+// ORCH-1277 [WAVE-2 EDIT]: the 16 audited offerings/venues WRITE RPCs. The service/
+// page layer of I-PROPOSED-1273-OFFERINGS-READ-ONLY (part c) is SUPERSEDED by
+// I-PROPOSED-1277-OFFERINGS-WRITE-VIA-AUDITED-RPC — the console MAY now call these
+// audited write RPCs. The read-table (a) + read-RPC (b) halves stay read-only forever;
+// and the raw `.update/.insert/.delete/.upsert` ban + the "no direct admin_write_audit"
+// ban in part (c) REMAIN (admin writes must never be raw table writes).
+const WRITE_RPCS = [
+  "admin_set_offering_visibility",
+  "admin_cancel_offering",
+  "admin_set_offering_bookings_closed",
+  "admin_set_offering_deleted",
+  "admin_set_ticket_price",
+  "admin_update_trip_day",
+  "admin_reorder_trip_day",
+  "admin_update_experience_stop",
+  "admin_delete_experience_stop",
+  "admin_reorder_experience_stop",
+  "admin_set_rsvp_approval",
+  "admin_remove_rsvp_guest",
+  "admin_set_rsvp_capacity",
+  "admin_update_venue_reservation_settings",
+  "admin_update_venue_capacity_rule",
+  "admin_set_reservation_status",
+];
+
+// These RPC names may be called from the offerings/venues files: the read RPCs +
+// offering-stats + (ORCH-1277) the 16 audited write RPCs.
+const ALLOWED_RPCS = new Set([...READ_RPCS, "admin_offering_stats", ...WRITE_RPCS]);
 
 const WRITE_METHOD_RE = /\.(update|insert|delete|upsert)\s*\(/;
 const RPC_NAME_RE = /\.rpc\(\s*["']([a-zA-Z0-9_]+)["']/g;
@@ -194,17 +220,23 @@ if (process.argv.includes("--self-test")) {
   check(goodMig, { ...goodFiles, "svc.js": goodFiles["svc.js"] + 'supabase.from("events").update({});\n' }, f);
   if (f.length === 0) self.push("write call in read-only file not flagged");
 
-  // BAD5: a service calls a write RPC → MUST fire.
+  // GOOD2 (ORCH-1277): a service calling a WHITELISTED audited write RPC is now allowed
+  // (part (c) service/page layer superseded by I-PROPOSED-1277-OFFERINGS-WRITE-VIA-AUDITED-RPC).
   f = [];
   check(goodMig, { ...goodFiles, "svc.js": goodFiles["svc.js"] + 'supabase.rpc("admin_cancel_offering", {});\n' }, f);
-  if (f.length === 0) self.push("write RPC call in read-only file not flagged");
+  if (f.length) self.push("whitelisted write RPC call wrongly flagged: " + f.join("; "));
+
+  // BAD5: a service calls an UN-whitelisted RPC → MUST fire (only read + the 16 write RPCs allowed).
+  f = [];
+  check(goodMig, { ...goodFiles, "svc.js": goodFiles["svc.js"] + 'supabase.rpc("admin_frobnicate", {});\n' }, f);
+  if (f.length === 0) self.push("un-whitelisted RPC call in offerings file not flagged");
 
   if (self.length) {
     console.error("I-OFFERINGS-READ-ONLY self-test FAIL:");
     self.forEach((m) => console.error("  - " + m));
     process.exit(1);
   }
-  console.log("I-OFFERINGS-READ-ONLY self-test PASS (6/6 cases).");
+  console.log("I-OFFERINGS-READ-ONLY self-test PASS (7/7 cases).");
   process.exit(0);
 }
 
