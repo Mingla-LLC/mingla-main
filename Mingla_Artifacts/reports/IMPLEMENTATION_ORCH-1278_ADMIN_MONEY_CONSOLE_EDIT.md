@@ -22,7 +22,7 @@ Every action is admin-gated at the server, and only the refund can move real mon
 
 ## 2. SPEC success-criteria coverage
 
-Fix commit hash: `<COMMIT>` (see §Commit). All satisfied against it.
+Fix commit hash: `c6f605934` (see §Commit). All satisfied against it.
 
 | SC | Criterion | Status | Where |
 |----|-----------|--------|-------|
@@ -103,7 +103,7 @@ Both registered in `supabase/config.toml`.
 
 - **Happy-path (implementor):** `mingla-admin/src/__tests__/orch1278_money_console_act.test.js` — 43 tests, 43 pass (source-level, node:test).
 - **Gate + fixture:** `.github/scripts/strict-grep/i-admin-refund-bounded.mjs` (`--self-test` 7/7) + `__tests__/i-admin-refund-bounded.test.mjs` (7/7). 5 RPCs appended to the two 1271 registries (both `--self-test` + REAL PASS).
-- **Fails-on-revert (TRUE LINE DELETION):** deleted the amount-ceiling guard block (`v_remaining_cents := …; IF v_refund_amount_cents > v_remaining_cents THEN RAISE 'refund_exceeds_remaining' …`) from the migration → `i-admin-refund-bounded.mjs` **FAILED** (exit 1) AND `orch1278_money_console_act.test.js` **FAILED** (42/43). Restored → both PASS again. **fails-on-revert verified at `<COMMIT>`.**
+- **Fails-on-revert (TRUE LINE DELETION):** deleted the amount-ceiling guard block (`v_remaining_cents := …; IF v_refund_amount_cents > v_remaining_cents THEN RAISE 'refund_exceeds_remaining' …`) from the migration → `i-admin-refund-bounded.mjs` **FAILED** (exit 1) AND `orch1278_money_console_act.test.js` **FAILED** (42/43). Restored → both PASS again. **fails-on-revert verified at `c6f605934`.**
 
 ---
 
