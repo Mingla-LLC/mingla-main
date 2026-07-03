@@ -12,11 +12,29 @@
 // absent / on web) — analytics never gates the app. On web and when the key is
 // missing, getClient() returns null and we render children with no provider
 // (graceful no-op — T-10, web-isolation). Buyer-web capture is a separate leg.
+//
+// META-ORCH-1270 — OTA-SAFETY (COMMS-0052 fix). `posthog-react-native` is a
+// NATIVE module. A STATIC value-import of `PostHogProvider` throws at
+// MODULE-LOAD on any shipped binary that does not contain the native module —
+// e.g. an OTA pushed to a pre-PostHog binary — which CRASHES the app on launch
+// (this is exactly what froze business OTAs and bricked the ORCH-1254 OTA). We
+// therefore import the provider LAZILY + GUARDED: only after
+// postHogService.initialize() yields a client (which itself only succeeds when
+// the native module is present) do we dynamically import the provider. On a
+// binary without the module, getClient() stays null → the dynamic import never
+// runs → children render plainly → NO crash (analytics degrades gracefully).
+// This mirrors the guarded lazy import already in postHogService.ts:120-144.
+// The `import type` below is fully erased at build time (no runtime require).
 
 import React, { useEffect, useState } from "react";
 import type { PostHog } from "posthog-react-native";
-import { PostHogProvider } from "posthog-react-native";
 import { postHogService } from "./postHogService";
+
+type PostHogProviderComponent = React.ComponentType<{
+  client: PostHog;
+  autocapture?: boolean;
+  children?: React.ReactNode;
+}>;
 
 export function PostHogAnalyticsProvider({
   children,
@@ -26,26 +44,46 @@ export function PostHogAnalyticsProvider({
   const [client, setClient] = useState<PostHog | null>(() =>
     postHogService.getClient(),
   );
+  const [Provider, setProvider] = useState<PostHogProviderComponent | null>(
+    null,
+  );
 
   useEffect(() => {
     let cancelled = false;
-    void postHogService.initialize().then(() => {
+    void postHogService.initialize().then(async () => {
       if (cancelled) return;
       const c = postHogService.getClient();
-      if (c !== null) setClient(c);
+      if (c === null) return;
+      try {
+        // Guarded lazy import — only reached when a client exists, i.e. the
+        // native module IS present. On binaries without it this never runs.
+        const mod = await import("posthog-react-native");
+        if (cancelled) return;
+        setProvider(() => mod.PostHogProvider as PostHogProviderComponent);
+        setClient(c);
+      } catch (error) {
+        // Native module absent (e.g. OTA on a pre-PostHog binary). Render
+        // children with NO provider — analytics degrades, the app never crashes.
+        if (typeof __DEV__ !== "undefined" && __DEV__) {
+          console.warn(
+            "[PostHogAnalyticsProvider] native provider unavailable; skipping:",
+            error,
+          );
+        }
+      }
     });
     return () => {
       cancelled = true;
     };
   }, []);
 
-  if (client === null) {
+  if (client === null || Provider === null) {
     return <>{children}</>;
   }
 
   return (
-    <PostHogProvider client={client} autocapture>
+    <Provider client={client} autocapture>
       {children}
-    </PostHogProvider>
+    </Provider>
   );
 }

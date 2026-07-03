@@ -42,7 +42,6 @@ export interface ProbeResult {
 export const STATUS_PAGE_URLS: Record<string, string> = {
   openai: "https://status.openai.com/api/v2/status.json",
   twilio: "https://status.twilio.com/api/v2/status.json",
-  cloudinary: "https://status.cloudinary.com/api/v2/status.json",
   mapbox: "https://status.mapbox.com/api/v2/status.json",
   sentry: "https://status.sentry.io/api/v2/status.json",
   supabase: "https://status.supabase.com/api/v2/status.json",
@@ -353,6 +352,9 @@ export function evaluateBalanceForSignal(
       const sev = low && crit != null && v <= crit ? "crit" : (low ? "warn" : null);
       return { balanceLow: low, balanceText: `$${v} ${detail.currency ?? "USD"} (warn ≤ $${warn})`, severity: sev };
     }
+    // META-ORCH-1270 — Cloudinary is RETIRED (no probe emits this kind anymore);
+    // the pure severity math is retained so the append-only ORCH-1201 balance
+    // tests keep passing. It is never reached at runtime (no cloudinary probe).
     case "cloudinary_used_pct": {
       const used = toNum(detail.used_percent);
       if (used == null || warn == null) return { balanceLow: null, balanceText: null, severity: null };
