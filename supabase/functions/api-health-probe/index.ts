@@ -437,42 +437,6 @@ async function probeTwilio(): Promise<ProbeResult> {
   }
 }
 
-async function probeCloudinary(): Promise<ProbeResult> {
-  const cloud = Deno.env.get("CLOUDINARY_CLOUD_NAME");
-  const apiKey = Deno.env.get("CLOUDINARY_API_KEY");
-  const apiSecret = Deno.env.get("CLOUDINARY_API_SECRET");
-  if (!cloud || !apiKey || !apiSecret) {
-    return { ok: false, latencyMs: null, status: "unknown", detail: { error: "CLOUDINARY_* missing" } };
-  }
-  const basic = btoa(`${apiKey}:${apiSecret}`);
-  try {
-    const { res, latencyMs } = await timedFetch(
-      `https://api.cloudinary.com/v1_1/${cloud}/usage`,
-      { headers: { Authorization: `Basic ${basic}` } },
-    );
-    if (!res.ok) return { ok: false, latencyMs, httpStatus: res.status, status: httpToStatus(res.status), detail: {} };
-    // ORCH-1201-R2: read credits.used_percent (the doc's authoritative field) —
-    // do NOT compute remaining from usage/limit (which mis-handles >100% overage).
-    const b = await res.json().catch(() => null) as
-      | { credits?: { usage?: number; limit?: number; used_percent?: number } }
-      | null;
-    const usedPct = typeof b?.credits?.used_percent === "number" ? b.credits.used_percent : null;
-    // crit (>=100%) drives a DOWN synthetic status so the dot goes red (§3.5).
-    let status: HealthStatus = "healthy";
-    if (usedPct != null && usedPct >= 100) status = "down";
-    return {
-      ok: status === "healthy", latencyMs, httpStatus: res.status, status,
-      detail: {
-        credits_used: b?.credits?.usage ?? null,
-        credits_limit: b?.credits?.limit ?? null,
-        used_percent: usedPct,
-      },
-    };
-  } catch (e) {
-    return { ok: false, latencyMs: null, status: "down", detail: { error: String(e) } };
-  }
-}
-
 // META-ORCH-1270 (Phase 2) Class-A — Bunny Stream usage alarm. Reads the
 // account-level videolibrary usage (StorageUsage + TrafficUsage bytes) and
 // expresses it as a percent of the configured caps (the HIGHER of the two
@@ -862,7 +826,6 @@ serve(async (req) => {
       ["onesignal_business", () => probeOneSignal("ONESIGNAL_BUSINESS_APP_ID", "ONESIGNAL_BUSINESS_REST_API_KEY"), null],
       ["resend", probeResend, null],
       ["twilio", probeTwilio, null],
-      ["cloudinary", probeCloudinary, null],
       // META-ORCH-1270 (Phase 2) — Bunny Stream usage alarm (Class-A):
       ["bunny", probeBunny, null],
       // ORCH-1201-R2 Class-A pollers (real-number reads):
@@ -1095,7 +1058,8 @@ serve(async (req) => {
     // A genuine API/auth outage still pages via the synthetic probeStripe/probePaystack.
     await webhookFreshness("stripe", "payment_webhook_events", "created_at", false);
     await webhookFreshness("paystack", "payment_webhook_events", "created_at", false);
-    // cloudinary + twilio webhooks are informational (low volume) — never alert.
+    // cloudinary webhook-freshness is INFORMATIONAL only (never alerts) — retained
+    // so append-only ORCH-1213 tests pass; Cloudinary probing itself is retired.
     await webhookFreshness("cloudinary", "event_cover_video_jobs", "created_at", false);
     // META-ORCH-1270 (Phase 2) — bunny cover-video webhook freshness (informational,
     // low volume — never drives failedTick/alerting; the usage alarm is the pager).
@@ -1189,6 +1153,8 @@ function evaluateBalance(
   let crit = typeof bal.crit === "number" ? bal.crit : null;
   if (warn == null) {
     if (bal.kind === "twilio_balance") warn = num("API_HEALTH_TWILIO_MIN_BALANCE", 25);
+    // META-ORCH-1270 — Cloudinary RETIRED: no probe emits cloudinary_used_pct;
+    // thresholds retained only so append-only ORCH-1201 tests keep passing.
     else if (bal.kind === "cloudinary_used_pct") { warn = num("API_HEALTH_CLOUDINARY_WARN_PCT", 80); if (crit == null) crit = num("API_HEALTH_CLOUDINARY_CRIT_PCT", 100); }
     // META-ORCH-1270 (Phase 2) — Bunny usage %: env-overridable warn 60 / crit 85.
     else if (bal.kind === "bunny_usage_pct") { warn = num("API_HEALTH_BUNNY_WARN_PCT", 60); if (crit == null) crit = num("API_HEALTH_BUNNY_CRIT_PCT", 85); }
