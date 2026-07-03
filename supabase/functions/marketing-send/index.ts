@@ -998,8 +998,12 @@ async function sendSms(
         // channel (Twilio ignores this field; reputation isolation there is the
         // separate marketing Messaging Service SID above).
         messageType: "marketing",
+        // ORCH-1289 — marketing SMS puts the "Reply STOP to opt out." footer on
+        // its own line (blank line + STOP line) so the delivered text matches
+        // the composer preview. Wire-body change → marketing-send needs redeploy.
+        stopFooterOwnLine: true,
         // ORCH-1282 — MMS media (US/Twilio only; the adapter's NG/Termii branch
-        // ignores it → NG silently sends SMS-only).
+        // ignores it → NG silently sends SMS-only). ORCH-1289 — up to 10 items.
         mediaUrls,
       });
 

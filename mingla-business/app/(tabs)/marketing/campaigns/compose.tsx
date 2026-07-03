@@ -134,6 +134,28 @@ import { useComposerKeyboardShortcuts } from "../../../../src/hooks/useComposerK
 // always-on "How SMS timing works" info note.
 import { nextGlobalSendWindowOpen } from "../../../../src/utils/marketing/smsSendWindow";
 
+// ORCH-1289 — Twilio MMS accepts up to 10 media items per message.
+const MMS_MAX_MEDIA = 10;
+
+// ORCH-1289 — one attached MMS photo. `remoteUrl` is the VERIFIED public URL
+// (the only thing that ever rides the payload); `localUri` is an optimistic
+// preview shown while uploading; `objectUrl` (web only) is revoked on removal so
+// blob URLs don't leak. Display prefers `remoteUrl` (cross-platform-renderable
+// and == what is sent) and falls back to `localUri` only pre-upload.
+type MmsMediaItem = {
+  key: string;
+  localUri: string | null;
+  objectUrl: string | null;
+  remoteUrl: string | null;
+  uploading: boolean;
+};
+
+let mmsKeySeq = 0;
+function makeMediaKey(): string {
+  mmsKeySeq += 1;
+  return `mms-${Date.now().toString(36)}-${mmsKeySeq}`;
+}
+
 export default function ComposeCampaignRoute(): React.ReactElement {
   const router = useRouter();
   const navigation = useNavigation();
@@ -170,12 +192,48 @@ export default function ComposeCampaignRoute(): React.ReactElement {
   // META-ORCH-1161 Sub-B — SMS blast body (plain text, separate from the HTML
   // email `body`). Only used when channel === 'sms'.
   const [smsBody, setSmsBody] = useState("");
-  // ORCH-1282 — MMS photo attach. `mmsMediaUrls` are the VERIFIED public URLs
-  // persisted into the payload (v1 = exactly one); `mmsLocalUri` is the local
-  // preview uri for the thumbnail; `mmsUploading` gates the attach affordance.
-  const [mmsMediaUrls, setMmsMediaUrls] = useState<string[]>([]);
-  const [mmsLocalUri, setMmsLocalUri] = useState<string | null>(null);
-  const [mmsUploading, setMmsUploading] = useState(false);
+  // ORCH-1282 / ORCH-1289 — MMS photo attach (up to MMS_MAX_MEDIA). `mmsMedia`
+  // holds each picked photo with its optimistic local preview + verified public
+  // URL. `mmsMediaUrls` (derived) is the VERIFIED-URL-only array that rides the
+  // payload — a local blob/file uri NEVER reaches it.
+  const [mmsMedia, setMmsMedia] = useState<MmsMediaItem[]>([]);
+  // Keep the latest media in a ref so the unmount cleanup can revoke web blob
+  // URLs without re-registering the effect on every change.
+  const mmsMediaRef = useRef<MmsMediaItem[]>([]);
+  mmsMediaRef.current = mmsMedia;
+  // Verified public URLs only — the array persisted into channel_payload.media_urls.
+  const mmsMediaUrls = useMemo<string[]>(
+    () =>
+      mmsMedia.reduce<string[]>((acc, m) => {
+        if (m.remoteUrl !== null) acc.push(m.remoteUrl);
+        return acc;
+      }, []),
+    [mmsMedia],
+  );
+  // True while ANY attached photo is still uploading.
+  const mmsUploading = useMemo(
+    () => mmsMedia.some((m) => m.uploading),
+    [mmsMedia],
+  );
+  // Display projections for the compose card (thumb row) + preview pane (tiles).
+  const mmsComposeItems = useMemo(
+    () =>
+      mmsMedia.map((m) => ({
+        key: m.key,
+        uri: m.remoteUrl ?? m.localUri,
+        uploading: m.uploading,
+      })),
+    [mmsMedia],
+  );
+  const mmsPreviewUris = useMemo<string[]>(
+    () =>
+      mmsMedia.reduce<string[]>((acc, m) => {
+        const uri = m.remoteUrl ?? m.localUri;
+        if (uri !== null) acc.push(uri);
+        return acc;
+      }, []),
+    [mmsMedia],
+  );
   const [audienceId, setAudienceId] = useState<string | null>(null);
   const [audienceName, setAudienceName] = useState<string | null>(null);
   const [sendMode, setSendMode] = useState<SendMode>("now");
@@ -218,6 +276,18 @@ export default function ComposeCampaignRoute(): React.ReactElement {
     const userOnes = userTemplatesQuery.data ?? [];
     return [...starters, ...userOnes];
   }, [starterTemplatesQuery.data, userTemplatesQuery.data]);
+
+  // ORCH-1289 — revoke any web object URLs on unmount so blob previews don't
+  // leak (native items carry objectUrl === null; this is a no-op there).
+  useEffect(() => {
+    return () => {
+      revokeBrowserPickedFiles(
+        mmsMediaRef.current
+          .filter((m) => m.objectUrl !== null)
+          .map((m) => ({ objectUrl: m.objectUrl })),
+      );
+    };
+  }, []);
 
   // Hydrate audience from query param (lazy: ensures system audience row exists).
   useEffect(() => {
@@ -299,9 +369,17 @@ export default function ComposeCampaignRoute(): React.ReactElement {
           setBody(row.channel_payload.body_html);
         } else if (row.channel_payload.kind === "sms") {
           setSmsBody(row.channel_payload.body);
-          // ORCH-1282 — restore a reopened MMS draft's attachment.
-          setMmsMediaUrls(row.channel_payload.media_urls ?? []);
-          setMmsLocalUri(row.channel_payload.media_urls?.[0] ?? null);
+          // ORCH-1282 / ORCH-1289 — restore a reopened MMS draft's attachments as
+          // already-verified remote items (no local preview / objectUrl needed).
+          setMmsMedia(
+            (row.channel_payload.media_urls ?? []).map((url) => ({
+              key: makeMediaKey(),
+              localUri: null,
+              objectUrl: null,
+              remoteUrl: url,
+              uploading: false,
+            })),
+          );
         }
         if (row.scheduled_for !== null) {
           setScheduledForIso(row.scheduled_for);
@@ -417,6 +495,11 @@ export default function ComposeCampaignRoute(): React.ReactElement {
   // that fires when an operator taps Send Now / Schedule before filling
   // the required fields. Returns null when everything is filled.
   const missingFieldsLabel = useCallback((): string | null => {
+    // ORCH-1289 — never fire a send while a photo is mid-upload; only VERIFIED
+    // public URLs ride the payload, so a partial send would silently drop media.
+    if (channel === "sms" && mmsUploading) {
+      return "Photos are still uploading — try again in a moment.";
+    }
     const missing: string[] = [];
     if (audienceId === null) missing.push("an audience");
     if (channel === "sms") {
@@ -429,7 +512,7 @@ export default function ComposeCampaignRoute(): React.ReactElement {
     if (missing.length === 1) return `Pick ${missing[0]} before sending.`;
     if (missing.length === 2) return `Add ${missing[0]} and ${missing[1]} first.`;
     return `Add ${missing[0]}, ${missing[1]}, and ${missing[2]} first.`;
-  }, [audienceId, channel, smsBody, subject, body]);
+  }, [audienceId, channel, smsBody, subject, body, mmsUploading]);
 
   // Validation — Review CTA disabled until required fields are present.
   const validationIssues = useMemo<string[]>(() => {
@@ -594,44 +677,56 @@ export default function ComposeCampaignRoute(): React.ReactElement {
   const handleChannelChange = useCallback((next: MarketingChannelKind): void => {
     setChannel(next);
     setIsDirty(true);
-    // ORCH-1282 — an attached photo is meaningless off the SMS channel; clear it.
+    // ORCH-1282 / ORCH-1289 — attached photos are meaningless off the SMS
+    // channel; clear them (and revoke any web blob URLs first).
     if (next !== "sms") {
-      setMmsMediaUrls([]);
-      setMmsLocalUri(null);
-      setMmsUploading(false);
+      revokeBrowserPickedFiles(
+        mmsMedia
+          .filter((m) => m.objectUrl !== null)
+          .map((m) => ({ objectUrl: m.objectUrl })),
+      );
+      setMmsMedia([]);
     }
-  }, []);
+  }, [mmsMedia]);
 
-  // ORCH-1282 — pick + upload a single MMS photo. Mirrors
-  // ExperienceStopPhotoSheet.pickFromLibrary cross-platform acquisition so web
-  // parity follows the already-shipped pattern (R-3). The parent owns the
-  // pick+upload; SmsComposeCard only renders the affordance.
+  // ORCH-1282 / ORCH-1289 — pick + upload up to MMS_MAX_MEDIA photos. Mirrors
+  // ExperienceStopPhotoSheet.pickFromLibrary cross-platform acquisition (native
+  // picker / browser file input) so web parity follows the shipped pattern.
+  // Each picked photo is added optimistically (uploading), then swapped to its
+  // VERIFIED public URL as its upload resolves. The local blob is kept alive for
+  // the optimistic preview and revoked on removal / channel-change / unmount —
+  // NOT immediately after upload (the old finally-revoke killed the web preview).
   const handlePickMms = useCallback(async (): Promise<void> => {
-    if (brandId === null || mmsUploading) return;
-    let browserFiles: BrowserPickedFile[] = [];
+    if (brandId === null) return;
+    const remaining = MMS_MAX_MEDIA - mmsMedia.length;
+    if (remaining <= 0) {
+      setErrorBanner(`A picture message can carry up to ${MMS_MAX_MEDIA} photos.`);
+      return;
+    }
+    type PickedAsset = {
+      uri: string;
+      mimeType?: string | null;
+      fileName?: string | null;
+      fileSize?: number | null;
+      objectUrl: string | null;
+    };
     try {
-      let asset: {
-        uri: string;
-        mimeType?: string | null;
-        fileName?: string | null;
-        fileSize?: number | null;
-      } | null = null;
+      let assets: PickedAsset[] = [];
       if (Platform.OS === "web") {
         const result = await pickBrowserFiles({
           accept: "image/jpeg,image/png,image/gif",
-          maxFiles: 1,
-          multiple: false,
+          maxFiles: remaining,
+          multiple: true,
           validate: false,
         });
         if (result.canceled || result.files.length === 0) return;
-        browserFiles = result.files;
-        const file = result.files[0];
-        asset = {
-          uri: file.uri,
-          mimeType: file.mimeType,
-          fileName: file.name,
-          fileSize: file.size,
-        };
+        assets = result.files.map((f: BrowserPickedFile) => ({
+          uri: f.uri,
+          mimeType: f.mimeType,
+          fileName: f.name,
+          fileSize: f.size,
+          objectUrl: f.objectUrl,
+        }));
       } else {
         const permission = await requestMediaLibraryPermissionsAsync();
         if (!permission.granted) {
@@ -642,49 +737,97 @@ export default function ComposeCampaignRoute(): React.ReactElement {
           mediaTypes: ["images"],
           allowsEditing: false,
           quality: 1,
-          allowsMultipleSelection: false,
-          selectionLimit: 1,
+          allowsMultipleSelection: true,
+          selectionLimit: remaining,
         });
         if (result.canceled || result.assets.length === 0) return;
-        const picked = result.assets[0];
-        asset = {
+        assets = result.assets.map((picked) => ({
           uri: picked.uri,
           mimeType: picked.mimeType,
           fileName: picked.fileName,
           fileSize: picked.fileSize,
-        };
+          objectUrl: null,
+        }));
       }
-      if (asset === null) return;
-      setMmsLocalUri(asset.uri);
-      setMmsUploading(true);
-      const url = await uploadMarketingMmsImage(brandId, {
-        uri: asset.uri,
-        mimeType: asset.mimeType,
-        fileName: asset.fileName,
-        fileSize: asset.fileSize,
-      });
-      setMmsMediaUrls([url]);
+
+      // Clamp to the remaining slots (selectionLimit / maxFiles clamp already,
+      // but defend + revoke any dropped web blobs so they don't leak).
+      let overflow = false;
+      if (assets.length > remaining) {
+        const dropped = assets.slice(remaining);
+        revokeBrowserPickedFiles(
+          dropped
+            .filter((a) => a.objectUrl !== null)
+            .map((a) => ({ objectUrl: a.objectUrl })),
+        );
+        assets = assets.slice(0, remaining);
+        overflow = true;
+      }
+
+      // Add all picked photos optimistically (uploading), then upload in parallel.
+      const newItems: MmsMediaItem[] = assets.map((a) => ({
+        key: makeMediaKey(),
+        localUri: a.uri,
+        objectUrl: a.objectUrl,
+        remoteUrl: null,
+        uploading: true,
+      }));
+      setMmsMedia((prev) => [...prev, ...newItems]);
       setIsDirty(true);
-    } catch (err) {
-      if (err instanceof BrandCoverError) {
-        setErrorBanner(err.message);
-      } else {
+      if (overflow) {
         setErrorBanner(
-          err instanceof Error ? err.message : "Couldn't add that photo. Try another.",
+          `Added the first ${remaining} — a picture message can carry up to ${MMS_MAX_MEDIA} photos.`,
         );
       }
-      setMmsLocalUri(null);
-    } finally {
-      revokeBrowserPickedFiles(browserFiles);
-      setMmsUploading(false);
-    }
-  }, [brandId, mmsUploading]);
 
-  const handleRemoveMms = useCallback((): void => {
-    setMmsMediaUrls([]);
-    setMmsLocalUri(null);
+      await Promise.all(
+        newItems.map(async (item, i) => {
+          const a = assets[i];
+          try {
+            const url = await uploadMarketingMmsImage(brandId, {
+              uri: a.uri,
+              mimeType: a.mimeType,
+              fileName: a.fileName,
+              fileSize: a.fileSize,
+            });
+            // Swap this item to its verified public URL — display now prefers it.
+            setMmsMedia((prev) =>
+              prev.map((m) =>
+                m.key === item.key ? { ...m, remoteUrl: url, uploading: false } : m,
+              ),
+            );
+            setIsDirty(true);
+          } catch (err) {
+            // Drop the failed item + revoke its blob; surface the reason.
+            setMmsMedia((prev) => prev.filter((m) => m.key !== item.key));
+            if (item.objectUrl !== null) {
+              revokeBrowserPickedFiles([{ objectUrl: item.objectUrl }]);
+            }
+            setErrorBanner(
+              err instanceof BrandCoverError
+                ? err.message
+                : err instanceof Error
+                  ? err.message
+                  : "Couldn't add that photo. Try another.",
+            );
+          }
+        }),
+      );
+    } catch (err) {
+      setErrorBanner(
+        err instanceof Error ? err.message : "Couldn't add that photo. Try another.",
+      );
+    }
+  }, [brandId, mmsMedia.length]);
+
+  const handleRemoveMms = useCallback((key: string): void => {
+    const removed = mmsMedia.find((m) => m.key === key);
+    if (removed?.objectUrl != null) {
+      revokeBrowserPickedFiles([{ objectUrl: removed.objectUrl }]);
+    }
+    setMmsMedia((prev) => prev.filter((m) => m.key !== key));
     setIsDirty(true);
-  }, []);
+  }, [mmsMedia]);
 
   // Reachability shown in the Who row + review sheet depends on the channel.
   const channelReachable = channel === "sms"
@@ -890,14 +1033,13 @@ export default function ComposeCampaignRoute(): React.ReactElement {
                   currencyCode={currentBrand?.defaultCurrency ?? "USD"}
                   editable={!scheduleMutation.isPending}
                   brandId={brandId}
-                  mediaUrl={mmsMediaUrls[0] ?? null}
-                  mediaLocalUri={mmsLocalUri}
+                  media={mmsComposeItems}
+                  maxMedia={MMS_MAX_MEDIA}
                   uploading={mmsUploading}
                   onPickMedia={() => {
                     void handlePickMms();
                   }}
                   onRemoveMedia={handleRemoveMms}
-                  hasMedia={mmsMediaUrls.length > 0}
                 />
               ) : (
                 <ComposerV2Editor
@@ -963,8 +1105,8 @@ export default function ComposeCampaignRoute(): React.ReactElement {
                   brandName={brandName}
                   reachableSms={reach?.reachable_sms ?? null}
                   currencyCode={currentBrand?.defaultCurrency ?? "USD"}
-                  hasMedia={mmsMediaUrls.length > 0}
-                  mediaUri={mmsLocalUri}
+                  hasMedia={mmsMedia.length > 0}
+                  mediaUris={mmsPreviewUris}
                 />
               ) : (
                 <EmailPreviewPane
@@ -1013,7 +1155,7 @@ export default function ComposeCampaignRoute(): React.ReactElement {
           // ORCH-1281 — SMS shows a MESSAGE row (wire body) instead of SUBJECT.
           channelKind={channel === "sms" ? "sms" : "email"}
           messagePreview={bodyWithFooter(smsBody).slice(0, 160)}
-          hasMedia={mmsMediaUrls.length > 0}
+          hasMedia={mmsMedia.length > 0}
         />
         <SchedulePickerSheet
           visible={showSchedulePicker}
@@ -1070,8 +1212,8 @@ export default function ComposeCampaignRoute(): React.ReactElement {
                 brandName={brandName}
                 reachableSms={reach?.reachable_sms ?? null}
                 currencyCode={currentBrand?.defaultCurrency ?? "USD"}
-                hasMedia={mmsMediaUrls.length > 0}
-                mediaUri={mmsLocalUri}
+                hasMedia={mmsMedia.length > 0}
+                mediaUris={mmsPreviewUris}
               />
             ) : (
               <EmailPreviewPane

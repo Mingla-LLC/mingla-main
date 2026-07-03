@@ -16,15 +16,22 @@ const SOURCE = await Deno.readTextFile(new URL("./index.ts", import.meta.url));
 // T-B07 — channel dispatcher switch with `default: throw`
 // [TEST-MOD-APPROVED ORCH-1161] META-ORCH-1161 Sub-B [marketing SMS send] —
 // the Phase-A `sms_not_yet_enabled` sentinel is intentionally retired: the SMS
-// case now dispatches via sendSms() (smsAdapter). RCS stays a throw.
+// case now dispatches via sendSms() (smsAdapter).
+// [TEST-MOD-APPROVED ORCH-1289] ORCH-1283 DECOMMISSIONED the `rcs` kind: the
+// `case "rcs":` branch and its `rcs_not_yet_enabled` sentinel were deleted from
+// index.ts, so the stale assertions for them are removed here and replaced with
+// a negative guard that keeps RCS from being reintroduced. `kind` is now the
+// two-member union "email" | "sms"; the exhaustiveness sentinel enforces it.
 Deno.test("marketing-send: dispatchByKind uses switch with default throw (I-PROPOSED-BR)", () => {
   assert(/switch\s*\(\s*kind\s*\)/.test(SOURCE), "switch on kind missing");
   assert(SOURCE.includes('case "email":'));
   assert(SOURCE.includes('case "sms":'));
-  assert(SOURCE.includes('case "rcs":'));
-  // SMS now dispatches (no longer throws); RCS still throws.
+  // ORCH-1283 — RCS is decommissioned: no rcs case, no rcs_not_yet_enabled.
+  assertFalse(SOURCE.includes('case "rcs":'), "rcs kind is decommissioned (ORCH-1283) — must not return");
+  assertFalse(/rcs_not_yet_enabled/.test(SOURCE), "rcs_not_yet_enabled sentinel is decommissioned (ORCH-1283)");
+  // SMS dispatches (no longer throws).
   assert(/return await sendSms\(/.test(SOURCE), "sms case must dispatch via sendSms");
-  assert(/rcs_not_yet_enabled/.test(SOURCE));
+  // Unknown kinds throw via the default branch.
   assert(/unknown_channel_kind/.test(SOURCE));
   // Exhaustiveness sentinel — TS compile error if a kind is added without
   // a case branch.
