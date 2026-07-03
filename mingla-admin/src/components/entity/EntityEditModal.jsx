@@ -114,7 +114,9 @@ export function EntityEditModal({
   const buildValues = () => {
     const out = {};
     for (const f of fields) {
-      if (f.type === "json") {
+      if (f.type === "readonly") {
+        continue; // display-only, never submitted (e.g. a trigger-derived column)
+      } else if (f.type === "json") {
         out[f.key] = jsonState[f.key].value; // parsed object or undefined (blank)
       } else if (f.type === "switch") {
         out[f.key] = Boolean(values[f.key]);
@@ -158,6 +160,18 @@ export function EntityEditModal({
                 {f.label}
                 {f.required && <span className="text-[var(--color-error-700)]"> *</span>}
               </label>
+
+              {f.type === "readonly" && (
+                <input
+                  id={id}
+                  type="text"
+                  value={values[f.key] ?? ""}
+                  readOnly
+                  disabled
+                  aria-readonly="true"
+                  className={INPUT_CLASS}
+                />
+              )}
 
               {f.type === "textarea" && (
                 <textarea

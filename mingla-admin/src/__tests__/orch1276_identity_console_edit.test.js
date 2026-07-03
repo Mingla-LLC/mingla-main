@@ -218,4 +218,47 @@ describe("ORCH-1276 — EntityEditModal is generic + gated", () => {
     assert.match(EEM, /phrase === confirmPhrase/);
     assert.match(EEM, /role="switch"/);
   });
+
+  it("supports a readonly (display-only, never-submitted) field type", () => {
+    assert.match(EEM, /f\.type === "readonly"/);
+    // readonly fields are skipped in the submitted payload.
+    assert.match(EEM, /if \(f\.type === "readonly"\) \{\s*\n\s*continue;/);
+  });
+});
+
+// ── ORCH-1276 REWORK: P1 (reassign owner immutability bypass) + P2 (currency form) ──
+describe("ORCH-1276 REWORK — P1 reassign-owner arms the account_id immutability bypass", () => {
+  it("admin_reassign_brand_owner (mig 000001) arms app.allow_brand_owner_transfer before the account_id UPDATE", () => {
+    const body = fnSlice(MIG.brand, "admin_reassign_brand_owner");
+    const armIdx = body.search(/set_config\s*\(\s*'app\.allow_brand_owner_transfer'\s*,\s*'on'\s*,\s*true\s*\)/i);
+    const updIdx = body.search(/UPDATE\s+public\.brands\s+SET\s+account_id/i);
+    assert.ok(armIdx >= 0, "must arm the transfer bypass GUC (else the trigger raises 'brands.account_id is immutable')");
+    assert.ok(updIdx >= 0, "must UPDATE brands SET account_id");
+    assert.ok(armIdx < updIdx, "the bypass must be armed BEFORE the account_id UPDATE");
+  });
+
+  it("the 000005 redeploy migration also carries the fixed CREATE OR REPLACE + REVOKE anon", () => {
+    const fix = read(path.join(REPO_ROOT, "supabase/migrations/20261208000005_orch_1276_fix_reassign_owner.sql"));
+    assert.match(fix, /CREATE OR REPLACE FUNCTION public\.admin_reassign_brand_owner/i);
+    assert.match(fix, /set_config\s*\(\s*'app\.allow_brand_owner_transfer'\s*,\s*'on'\s*,\s*true\s*\)/i);
+    assert.match(fix, /REVOKE EXECUTE ON FUNCTION public\.admin_reassign_brand_owner\([^)]*\) FROM anon, PUBLIC/i);
+  });
+
+  it("mapWriteError translates the account_id immutability error to friendly copy", () => {
+    assert.match(SERVICE, /account_id is immutable|immutable/);
+  });
+});
+
+describe("ORCH-1276 REWORK — P2 pricing_currency is read-only/derived in the A1 form", () => {
+  it("pricing_currency is a readonly field (displayed, not submitted); default_currency is editable + required", () => {
+    // pricing_currency present as readonly, NOT as an editable required text field.
+    assert.match(BRANDS, /key:\s*"pricing_currency"[\s\S]{0,120}type:\s*"readonly"/);
+    assert.ok(
+      !/key:\s*"pricing_currency",\s*label:\s*"Pricing currency",\s*type:\s*"text",\s*required:\s*true/.test(BRANDS),
+      "pricing_currency must not be presented as an editable required field",
+    );
+    // default_currency is the editable source of truth.
+    assert.match(BRANDS, /key:\s*"default_currency"[\s\S]{0,160}required:\s*true/);
+    assert.match(BRANDS, /derived from this/i);
+  });
 });

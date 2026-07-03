@@ -28,6 +28,11 @@ export function mapWriteError(error) {
   if (msg.includes("cannot_demote_account_owner") || msg.includes("cannot_remove_account_owner")) {
     return "You can't remove or demote the brand's account owner.";
   }
+  // ORCH-1276 P1: the brands.account_id immutability trigger (surfaces if the
+  // reassign RPC's transfer-bypass GUC is ever missing) — friendly copy, never a raw DB error.
+  if (msg.includes("account_id is immutable") || msg.includes("immutable")) {
+    return "Couldn't transfer ownership — please try again.";
+  }
   return msg || "Something went wrong. Please try again.";
 }
 

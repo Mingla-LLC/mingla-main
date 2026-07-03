@@ -111,6 +111,13 @@ BEGIN
                  WHERE id = p_new_account_id AND deleted_at IS NULL) THEN
     RAISE EXCEPTION 'invalid_new_owner';
   END IF;
+  -- ORCH-1276 P1 fix: brands.account_id is protected by the BEFORE-UPDATE trigger
+  -- biz_prevent_brand_account_id_change(), which RAISES 'brands.account_id is
+  -- immutable' unless the txn-local bypass GUC is armed. Arm it here (is_local=true
+  -- → transaction-scoped) — the SAME mechanism ORCH-1081's
+  -- accept_invite_and_transfer_brand_ownership uses. Without this the reassign
+  -- fails 100% of the time in prod.
+  PERFORM set_config('app.allow_brand_owner_transfer', 'on', true);
   UPDATE public.brands SET account_id = p_new_account_id, updated_at = now()
    WHERE id = p_brand_id RETURNING to_jsonb(brands) INTO v_after;
   PERFORM public.admin_write_audit('brand.reassign_owner', 'brand', p_brand_id::text, p_reason,

@@ -561,12 +561,27 @@ export function BrandsConsolePage() {
     }
 
     // A1 edit-profile fields (only columns the 1272 read surfaces — no data loss).
+    // Currency: default_currency is the SOURCE OF TRUTH — the DB trigger
+    // trg_brands_derive_pricing_from_default forces pricing_currency :=
+    // upper(default_currency) on any write, so pricing_currency is shown READ-ONLY
+    // (derived, never submitted) and the admin edits default_currency instead.
     const profileFields = [
       { key: "name", label: "Name", type: "text", required: true },
       { key: "description", label: "Description", type: "textarea" },
       { key: "venue_category", label: "Venue category", type: "select", options: VENUE_CATEGORY_OPTIONS },
-      { key: "pricing_currency", label: "Pricing currency", type: "text", required: true },
-      { key: "default_currency", label: "Default currency", type: "text", help: "Display currency (tracks pricing)." },
+      {
+        key: "default_currency",
+        label: "Default currency",
+        type: "text",
+        required: true,
+        help: "3-letter ISO (e.g. USD). Pricing currency is derived from this (upper-cased).",
+      },
+      {
+        key: "pricing_currency",
+        label: "Pricing currency (derived)",
+        type: "readonly",
+        help: "Set automatically from the default currency — not editable here.",
+      },
       { key: "theme_color", label: "Theme color", type: "text" },
       { key: "theme_font", label: "Theme font", type: "text" },
       { key: "theme_animation", label: "Theme animation", type: "text" },
@@ -577,8 +592,10 @@ export function BrandsConsolePage() {
       name: b.name ?? "",
       description: b.description ?? "",
       venue_category: b.venue_category ?? "",
+      // Pre-fill default_currency from itself, falling back to the (always-present,
+      // NOT NULL) pricing_currency so a brand with a null default isn't blocked.
+      default_currency: b.default_currency ?? b.pricing_currency ?? "",
       pricing_currency: b.pricing_currency ?? "",
-      default_currency: b.default_currency ?? "",
       theme_color: b.theme_color ?? "",
       theme_font: b.theme_font ?? "",
       theme_animation: b.theme_animation ?? "",
