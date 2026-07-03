@@ -87,6 +87,35 @@ const SMS_TERMINAL_STATUSES = [
   "preview_skipped",
 ] as const;
 
+/**
+ * ORCH-1270 F-DS-1 — in-loop idempotency guard (SPEC §5.1 rule 1). Given the
+ * EXISTING marketing_messages row for a (campaign, phone), decide whether the
+ * sendSms loop must SKIP it entirely (no write, no send, no clicks) so cron
+ * re-invocation can never re-dispatch a recipient. Skip when the row is EITHER:
+ *   - already TERMINAL (status in SMS_TERMINAL_STATUSES), OR
+ *   - already DISPATCHED — a non-null `provider_message_id` proves
+ *     smsAdapter.send() already handed this recipient to Twilio on a prior pass.
+ *     This is the F-DS-1 fix: if a post-send terminal UPDATE was lost, the row
+ *     can linger at a NON-terminal status ('queued') while STILL carrying the
+ *     provider id; the terminal-only check missed it and a deferred sibling
+ *     re-parking the campaign to 'scheduled' let cron re-pick and text the
+ *     recipient a SECOND time. A non-null provider id means "already reached the
+ *     provider" — NEVER re-send it, whatever the status.
+ * Pure + DB-free so it is unit-testable against the real shipped logic.
+ */
+export function shouldSkipDispatchedRecipient(
+  existing: { status: string; provider_message_id?: string | null } | null,
+): boolean {
+  if (existing === null) return false;
+  // Terminal row (sent/failed/…): already resolved — never re-process.
+  if ((SMS_TERMINAL_STATUSES as readonly string[]).includes(existing.status)) {
+    return true;
+  }
+  // Already dispatched to Twilio (provider id present) even if non-terminal.
+  return existing.provider_message_id !== null &&
+    existing.provider_message_id !== undefined;
+}
+
 // ORCH-1270 — SMS dispatch disposition (SPEC §5.1). Pure, DB-free, unit-testable.
 export type SmsDisposition =
   | { action: "send" }
@@ -825,22 +854,22 @@ async function sendSms(
       }
       const countryCode = countryFromE164(phone);
 
-      // ORCH-1270 RC-1 — idempotency guard (SPEC §5.1 rule 1). Read the existing
-      // row for (campaign, phone). If it is already TERMINAL, SKIP entirely: no
-      // write, no send, no clicks — so cron re-invocation can never re-dispatch a
-      // recipient who already sent/failed. The helper is only consulted for a
-      // fresh (null) or retryable 'deferred' row.
+      // ORCH-1270 RC-1 + F-DS-1 — idempotency guard (SPEC §5.1 rule 1). Read the
+      // existing row for (campaign, phone), INCLUDING provider_message_id. If it is
+      // already TERMINAL *or* already DISPATCHED (non-null provider_message_id), SKIP
+      // entirely: no write, no send, no clicks — so cron re-invocation can never
+      // re-dispatch a recipient who already sent/failed OR whose message already
+      // reached Twilio (even if a lost terminal write left the row at 'queued'). The
+      // decideSmsDisposition helper is only consulted for a fresh (null) or retryable
+      // 'deferred' row.
       const { data: existing, error: selErr } = await supabase
         .from("marketing_messages")
-        .select("id, status, attempt_count, created_at")
+        .select("id, status, attempt_count, created_at, provider_message_id")
         .eq("campaign_id", campaign.id)
         .eq("recipient_phone", phone)
         .maybeSingle();
       if (selErr) throw new Error(`message_select:${selErr.message}`);
-      if (
-        existing !== null &&
-        (SMS_TERMINAL_STATUSES as readonly string[]).includes(existing.status)
-      ) {
+      if (shouldSkipDispatchedRecipient(existing)) {
         continue;
       }
 
@@ -959,18 +988,48 @@ async function sendSms(
       });
 
       if (result.status === "sent") {
-        await supabase
+        // ORCH-1270 F-DS-1 — the adapter has DISPATCHED to Twilio
+        // (provider_message_id returned): the point of no return. This terminal
+        // write persists that id (and status='sent'); the in-loop guard above
+        // treats a non-null provider_message_id as "already dispatched — never
+        // re-send". This UPDATE's error was previously DISCARDED: a lost terminal
+        // write left the row non-terminal ('queued') with a NULL
+        // provider_message_id, and a deferred sibling re-parking the campaign to
+        // 'scheduled' let cron re-pick and TEXT THE RECIPIENT A SECOND TIME. Now:
+        // check the error, RETRY once (transient timeout/serialization usually
+        // clears), and if it STILL fails THROW rather than leave a silently
+        // re-sendable orphan. A throw aborts the campaign (caught by the serve loop
+        // → marketing_campaigns.status='failed', which cron never re-picks), so a
+        // dispatched recipient can never be re-selected. Loud failure > silent
+        // double-send (SPEC §5.1 rule 1).
+        const sentPatch = {
+          status: "sent",
+          sent_at: new Date().toISOString(),
+          provider_message_id: result.providerMessageId,
+          segments: result.segments ?? segments,
+        };
+        let { error: sentErr } = await supabase
           .from("marketing_messages")
-          .update({
-            status: "sent",
-            sent_at: new Date().toISOString(),
-            provider_message_id: result.providerMessageId,
-            segments: result.segments ?? segments,
-          })
+          .update(sentPatch)
           .eq("id", messageId);
+        if (sentErr) {
+          ({ error: sentErr } = await supabase
+            .from("marketing_messages")
+            .update(sentPatch)
+            .eq("id", messageId));
+        }
+        if (sentErr) {
+          throw new Error(
+            `sms_sent_terminal_update_lost:${messageId}:${sentErr.message ?? String(sentErr)}`,
+          );
+        }
         delivered += 1;
       } else {
-        // skipped (kill-switch) OR failed — record honestly; no silent drop.
+        // skipped (kill-switch) OR failed — record honestly; no silent drop. This
+        // twin UPDATE is intentionally NOT gated the same way: neither branch
+        // reached Twilio (skipped = kill-switch, no HTTP; failed = adapter reported
+        // no dispatch), so a lost write here can only cause a RETRY of an unsent
+        // recipient on the next pass, never a double-send (F-DS-1 is send-only).
         await supabase
           .from("marketing_messages")
           .update({
