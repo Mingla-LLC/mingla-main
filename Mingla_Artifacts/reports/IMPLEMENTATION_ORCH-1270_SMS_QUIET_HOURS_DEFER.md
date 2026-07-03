@@ -174,4 +174,11 @@ campaign_id,recipient_phone)` + the DB unique index, verified end-to-end (§3 do
 
 ## 7. Commits on the branch
 
-_(see `git log --oneline` appended by the commit step)_
+`git log --oneline origin/main..HEAD`:
+
+```
+68eccb06c ORCH-1270: SMS quiet-hours DEFER + honest campaign status + double-send guards
+```
+
+(A follow-up commit amends this report with the hash above; run `git log --oneline` for the
+authoritative final list.)
