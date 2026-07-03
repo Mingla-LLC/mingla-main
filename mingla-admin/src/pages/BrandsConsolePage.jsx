@@ -74,11 +74,6 @@ const COLUMNS = [
     ),
   },
   {
-    key: "kind",
-    label: "Kind",
-    render: (val) => (val ? <Badge variant="outline">{val}</Badge> : <span className="text-[var(--color-text-muted)]">—</span>),
-  },
-  {
     key: "claim_status",
     label: "Claim",
     render: (val) => (val ? <Badge variant={CLAIM_VARIANT[val] || "default"}>{val}</Badge> : <span className="text-[var(--color-text-muted)]">—</span>),
@@ -160,15 +155,6 @@ const FILTERS = [
     ],
   },
   {
-    key: "kind",
-    label: "Kind",
-    options: [
-      { value: "physical", label: "Physical" },
-      { value: "popup", label: "Popup" },
-      { value: "trip_planner", label: "Trip planner" },
-    ],
-  },
-  {
     key: "status",
     label: "Status",
     options: [
@@ -191,7 +177,6 @@ const CSV = {
     { key: "id", label: "ID" },
     { key: "name", label: "Name" },
     { key: "slug", label: "Slug" },
-    { key: "kind", label: "Kind" },
     { key: "claim_status", label: "Claim status" },
     { key: "city", label: "City" },
     { key: "country_code", label: "Country" },
@@ -233,7 +218,6 @@ function buildBrandSections(detail, onOpenOwner) {
         field("Name", b.name),
         field("Slug", b.slug),
         field("Description", b.description),
-        field("Kind", null, () => (b.kind ? <Badge variant="outline">{b.kind}</Badge> : "—")),
         field("Venue category", b.venue_category),
         field("City", b.city),
         field("Country", b.country_code),
@@ -439,7 +423,6 @@ export function BrandsConsolePage() {
   if (selectedBrandId) {
     const b = detail?.brand || {};
     const badges = [];
-    if (b.kind) badges.push({ label: b.kind, variant: "outline" });
     if (b.claim_status) badges.push({ label: b.claim_status, variant: CLAIM_VARIANT[b.claim_status] || "default" });
     badges.push(b.deleted_at ? { label: "Deleted", variant: "error" } : { label: "Live", variant: "success" });
 

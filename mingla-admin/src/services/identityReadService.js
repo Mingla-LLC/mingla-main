@@ -89,8 +89,10 @@ export async function listAccounts({ search, sortKey, sortDir, filters = {}, pag
 
 // ── Brands list ───────────────────────────────────────────────────────────────
 
+// NB: the brand "kind" column is intentionally NOT selected — the admin console
+// displays no brand kind anywhere (META-ORCH-0972 decommission, honored in spirit).
 const BRAND_LIST_COLS =
-  "id,name,slug,kind,claim_status,city,country_code,pricing_currency,default_currency,take_rate_bps_override,payment_provider,stripe_charges_enabled,account_id,deleted_at,created_at";
+  "id,name,slug,claim_status,city,country_code,pricing_currency,default_currency,take_rate_bps_override,payment_provider,stripe_charges_enabled,account_id,deleted_at,created_at";
 
 /**
  * brands list for the Brands console (reuses the existing "brands admin can read"
@@ -108,7 +110,6 @@ export async function listBrands({ search, sortKey, sortDir, filters = {}, page 
   }
 
   if (filters.claim_status) query = query.eq("claim_status", filters.claim_status);
-  if (filters.kind) query = query.eq("kind", filters.kind);
   if (filters.status === "live") query = query.is("deleted_at", null);
   else if (filters.status === "deleted") query = query.not("deleted_at", "is", null);
   if (filters.payment_provider) query = query.eq("payment_provider", filters.payment_provider);
@@ -135,8 +136,9 @@ export async function listBrands({ search, sortKey, sortDir, filters = {}, page 
 
 // ── Brand detail (composed sub-reads) ─────────────────────────────────────────
 
+// NB: the brand "kind" column is intentionally NOT selected (META-ORCH-0972 — no admin kind display).
 const BRAND_DETAIL_COLS =
-  "id,account_id,name,slug,description,kind,venue_category,claim_status,verified_at,verified_by," +
+  "id,account_id,name,slug,description,venue_category,claim_status,verified_at,verified_by," +
   "rejection_reason,marked_called_at,duplicate_of_brand_id,city,country_code,latitude,longitude," +
   "cover_media_url,profile_media_url,theme_color,theme_font,theme_animation,social_links,custom_links," +
   "pricing_currency,default_currency,pricing_region,take_rate_bps_override,payment_provider,payment_country," +
