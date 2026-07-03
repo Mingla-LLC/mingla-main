@@ -11,35 +11,25 @@ import { bounce } from "../_shared/bouncer.ts";
 // ARRAY [{weekday(0=Mon),isClosed,openTime,closeTime}] → canonical Google v1
 // {periods,…} object on the place_pool write so the consumer deck's open-hours
 // filter (which reads {periods}) includes the venue. day = (weekday+1)%7.
+// I-1263-NO-LIVE-PLACE-MUTATION-PRE-APPROVE: since ORCH-1263 the ONLY legal
+// call site for this converter in THIS function is the create-new place INSERT
+// (that row is never served pre-approve). The claim path stages hours in the
+// venue-keyed brand_hours rows; they reach place_pool.opening_hours at admin
+// approve via _shared/authoredApply.ts (gate: orch-1263-claim-stage-only-preapprove.mjs).
 import { normalizeBusinessHoursForPool } from "../_shared/businessHoursToGoogle.ts";
+// ORCH-1263 §A4: the price/facet vocabulary + the approve-time patch builder
+// moved to _shared/authoredApply.ts (ONE owner — the pipeline and the admin
+// approve application can never drift). Re-exported below for the pinned
+// behavioral suite which imports them from this module.
+import {
+  FACET_COLUMNS,
+  priceLevelFromTiers,
+  priceTiersFromTier2,
+} from "../_shared/authoredApply.ts";
+export { priceLevelFromTiers, priceTiersFromTier2 };
 
 const GEMINI_MODEL = "gemini-2.5-flash";
 const PROMPT_VERSION = "v4";
-const FACET_COLUMNS = new Set([
-  "serves_brunch",
-  "serves_lunch",
-  "serves_dinner",
-  "serves_breakfast",
-  "serves_beer",
-  "serves_wine",
-  "serves_cocktails",
-  "serves_coffee",
-  "serves_dessert",
-  "serves_vegetarian_food",
-  "outdoor_seating",
-  "live_music",
-  "good_for_groups",
-  "good_for_children",
-  "good_for_watching_sports",
-  "allows_dogs",
-  "has_restroom",
-  "reservable",
-  "menu_for_children",
-  "dine_in",
-  "takeout",
-  "delivery",
-  "curbside_pickup",
-]);
 
 // META-ORCH-1009 Sub-E: FORCE Gemini's output shape with a responseSchema
 // (structured output) instead of relying on the model to volunteer the right
@@ -133,6 +123,19 @@ interface Tier1Draft {
   description?: string | null;
   priceTier?: string | null;
   vibeAnswers?: Record<string, unknown> | null;
+  // ORCH-1263 §B1/§A3.1 — claim-adoption draft additions. website (above) +
+  // priceTiers seed business_authoring_inputs.tier2 at tier-1 so the
+  // deck-readiness resume + tier-2 AI start from the adopted values;
+  // adoptedGalleryUrls (kept+added, in c3 order) stages business_gallery_urls;
+  // adoption carries provenance (R-5).
+  priceTiers?: string[];
+  adoptedGalleryUrls?: string[];
+  adoption?: {
+    source: "place_pool";
+    adoptedAt: string;
+    summarySource: "generative" | "editorial" | null;
+    wantsReservations: boolean;
+  } | null;
 }
 
 interface RequestBody {
@@ -175,6 +178,8 @@ interface OwnedVenue {
   name: string | null;
   cover_media_url: string | null;
   cover_media_type: string | null;
+  // ORCH-1263 §A3 plumbing: claim_status feeds placeWriteMode (stage vs apply).
+  claim_status: string | null;
 }
 
 interface SignalRow {
@@ -417,33 +422,53 @@ export function nextIsServableForConfirm(
   return priorIsServable === true;
 }
 
-// WS6: map the Mingla price tiers (chill/comfy/bougie/lavish — the consumer deck
-// taxonomy) to Google price levels. The deck DISPLAYS price_level, so we persist
-// the highest selected tier's level alongside the price_tiers array.
-const PRICE_TIER_ORDER = ["chill", "comfy", "bougie", "lavish"] as const;
-const PRICE_TIER_TO_GOOGLE_LEVEL: Record<string, string> = {
-  chill: "PRICE_LEVEL_INEXPENSIVE",
-  comfy: "PRICE_LEVEL_MODERATE",
-  bougie: "PRICE_LEVEL_EXPENSIVE",
-  lavish: "PRICE_LEVEL_VERY_EXPENSIVE",
-};
-export function priceTiersFromTier2(tier2: Record<string, unknown>): string[] {
-  const raw = (tier2 as { price_tiers?: unknown }).price_tiers;
-  return Array.isArray(raw)
-    ? raw.filter(
-        (t): t is string =>
-          typeof t === "string" && PRICE_TIER_TO_GOOGLE_LEVEL[t] !== undefined,
-      )
-    : [];
+// ORCH-1263 §A3 (D-A) — the pre-approve/post-approve place write boundary.
+// "apply" iff the venue's claim is already verified OR the place is a
+// create-new business-authored row (it owns its never-served-until-approve
+// row); everything else — i.e. a pre-approval CLAIM of a seeded place — is
+// "stage": staging columns (business_*) + the venue row only, NEVER a
+// serving-read place column and NEVER claimed_by/is_claimed
+// (I-PROPOSED-1263-NO-LIVE-PLACE-MUTATION-PRE-APPROVE). Pure + exported for
+// the T-A7 matrix test.
+export function placeWriteMode(
+  venueClaimStatus: string | null | undefined,
+  placeAuthorBrandId: string | null | undefined,
+): "apply" | "stage" {
+  if (venueClaimStatus === "verified") return "apply";
+  if (placeAuthorBrandId !== null && placeAuthorBrandId !== undefined) return "apply";
+  return "stage";
 }
-export function priceLevelFromTiers(tiers: string[]): string | null {
-  let best = -1;
-  for (const t of tiers) {
-    const i = PRICE_TIER_ORDER.indexOf(t as (typeof PRICE_TIER_ORDER)[number]);
-    if (i > best) best = i;
+
+// ORCH-1263 §A3.2 (D-E) — non-destructive hero semantics for apply mode.
+// Replaces the pre-1263 one-element wipe (`stored_photo_urls = [mediaUrl]`).
+// previous-hero = the FIRST prior entry not in the gallery (mirror of
+// storedPhotosForDeck below): the deck's hero IS the first stored entry that
+// isn't a gallery photo, so replacing exactly that one entry is "swap the
+// hero, keep everything else". Guarantees (I-PROPOSED-1263-GALLERY-NEVER-
+// WIPED-BY-HERO, T-A4): result ⊇ gallery always; never [hero] with a
+// non-empty gallery; [] only when prior, gallery AND hero are all empty —
+// clearing the hero never empties a non-empty set.
+export function nextStoredPhotosForHero(
+  prior: string[],
+  gallery: string[],
+  hero: string | null,
+): string[] {
+  const cleanPrior = prior.filter((u) => typeof u === "string" && u.length > 0);
+  const cleanGallery = gallery.filter((u) => typeof u === "string" && u.length > 0);
+  const previousHero =
+    cleanPrior.find((u) => !cleanGallery.includes(u) && u !== hero) ?? null;
+  const keptPrior = cleanPrior.filter((u) => u !== previousHero);
+  const merged = Array.from(
+    new Set([...(hero ? [hero] : []), ...cleanGallery, ...keptPrior]),
+  );
+  if (merged.length === 0 && cleanPrior.length > 0) {
+    // Degenerate clear (no gallery, prior held only the hero): keep the prior
+    // set rather than regressing a non-empty stored_photo_urls to [].
+    return Array.from(new Set(cleanPrior));
   }
-  return best >= 0 ? PRICE_TIER_TO_GOOGLE_LEVEL[PRICE_TIER_ORDER[best]] : null;
+  return merged;
 }
+
 // WS6: the consumer deck shows photos from stored_photo_urls (NOT the gallery
 // column). Mirror hero + gallery into stored_photo_urls so a self-listed venue's
 // photos actually render on its deck card. Hero = the first existing stored URL
@@ -523,7 +548,8 @@ async function loadOwnedVenue(
 ): Promise<OwnedVenue | Response> {
   const { data, error } = await client
     .from("venue_listings")
-    .select("id, brand_id, place_pool_id, google_place_id, venue_category, name, cover_media_url, cover_media_type")
+    // ORCH-1263 §A3: + claim_status (placeWriteMode input).
+    .select("id, brand_id, place_pool_id, google_place_id, venue_category, name, cover_media_url, cover_media_type, claim_status")
     .eq("id", venueId)
     .maybeSingle();
 
@@ -536,7 +562,10 @@ async function loadOwnedVenue(
   return venue;
 }
 
-async function handleTier1(
+// ORCH-1263: exported (was module-private) so the T-A1 stage-payload contract
+// test can drive the handler with a fake client. No behavior change from the
+// export keyword itself.
+export async function handleTier1(
   client: SupabaseClient,
   userId: string,
   brand: OwnedBrand,
@@ -562,23 +591,55 @@ async function handleTier1(
 
     const { data: place, error: placeErr } = await client
       .from("place_pool")
-      .select("id, google_place_id")
+      // ORCH-1263 §A3 plumbing: + business_author_brand_id (placeWriteMode input).
+      .select("id, google_place_id, business_author_brand_id")
       .eq("id", selectedPlacePoolId)
       .eq("is_active", true)
       .maybeSingle();
     if (placeErr) return errorResponse(500, "PLACE_READ_FAILED", placeErr.message);
     if (!place) return errorResponse(404, "PLACE_NOT_FOUND", "Selected place not found");
 
+    // ORCH-1263 §A3.1 (D-A stage-only tier-1). A pre-approval claim of a
+    // seeded place is ALWAYS "stage" (placeWriteMode); and on THIS branch even
+    // a vestigial "apply" caller gets the same staging payload — serving-column
+    // + ownership writes are approve-owned in every mode.
+    // I-1263-NO-LIVE-PLACE-MUTATION-PRE-APPROVE: the pre-1263 writes of
+    // opening_hours (live deck-hours overwrite at submit), is_claimed and
+    // claimed_by (raw RLS place-UPDATE power before any admin review) are
+    // KILLED here — all three move to admin approve
+    // (admin-review-venue-claim → buildAuthoredApplyPatch).
+    const tier1Mode = placeWriteMode(
+      venue.claim_status,
+      (place as { business_author_brand_id?: string | null }).business_author_brand_id ?? null,
+    );
+    void tier1Mode; // computed for parity with §A3.2–.4; both modes stage here.
+    const adoptedGallery = Array.from(
+      new Set(
+        (draft.adoptedGalleryUrls ?? []).filter(
+          (u): u is string => typeof u === "string" && /^https?:\/\//i.test(u),
+        ),
+      ),
+    ).slice(0, GALLERY_MAX);
     const { error: placeUpdateErr } = await client
       .from("place_pool")
       .update({
-        is_claimed: true,
-        claimed_by: userId,
-        business_hero_video_present: coverMediaType === "video",
         business_authoring_status: "processing",
-        // ORCH-1068: normalize wizard array hours → Google {periods} object.
-        opening_hours: normalizeBusinessHoursForPool(draft.hours ?? draft.openingHours),
-        business_authoring_inputs: { tier1: draft, selected_place_pool_id: selectedPlacePoolId },
+        business_hero_video_present: coverMediaType === "video",
+        business_authoring_inputs: {
+          tier1: draft,
+          selected_place_pool_id: selectedPlacePoolId,
+          // Provenance (R-5): source, adoptedAt, summarySource, wantsReservations.
+          adoption: draft.adoption ?? null,
+          // c6/c7 staging seed → deck-readiness resume + tier-2 AI.
+          tier2: {
+            website: draft.website ?? null,
+            price_tiers: draft.priceTiers ?? [],
+            vibe_chips: [],
+          },
+        },
+        // kept+added, in c3 order (cleaned exactly like the authoritative
+        // sync_gallery write: http(s)-only, de-duped, capped GALLERY_MAX).
+        ...(adoptedGallery.length > 0 ? { business_gallery_urls: adoptedGallery } : {}),
       })
       .eq("id", selectedPlacePoolId);
     if (placeUpdateErr) return errorResponse(500, "PLACE_UPDATE_FAILED", placeUpdateErr.message);
@@ -1204,7 +1265,9 @@ export function buildAiSignalScores(
   return out;
 }
 
-async function handleTier2(
+// ORCH-1263: exported (was module-private) so the T-A6 stage-payload contract
+// test can drive the handler with a fake client + stubbed Gemini fetch.
+export async function handleTier2(
   client: SupabaseClient,
   brand: OwnedBrand,
   venue: OwnedVenue,
@@ -1344,6 +1407,17 @@ async function handleTier2(
     (place as { is_servable?: boolean | null }).is_servable,
   );
 
+  // ORCH-1263 §A3.4 (D-A): a pre-approval claim ("stage") keeps every
+  // authoring/diagnostic column the admin bundle needs (ai_signal_scores,
+  // photo_analysis, raw_google_data claim-diff archive, inputs, status,
+  // bouncer_*, edit count — none serving-read) but OMITS the two live-place
+  // writes: website (:pre-1263 wrote it here) and is_servable (prior true is
+  // preserved by omission — stricter than the identity write).
+  // I-1263-NO-LIVE-PLACE-MUTATION-PRE-APPROVE.
+  const tier2Mode = placeWriteMode(
+    venue.claim_status,
+    (place as { business_author_brand_id?: string | null }).business_author_brand_id ?? null,
+  );
   const { error: updateErr } = await client
     .from("place_pool")
     .update({
@@ -1352,11 +1426,12 @@ async function handleTier2(
       raw_google_data: crossValidation.raw_google_data,
       business_authoring_inputs: mergedInputs,
       business_authoring_status: nextStatus,
-      is_servable: tier2NextIsServable,
       bouncer_reason: reasons.join(",") || null,
       bouncer_validated_at: evaluatedAt,
-      website: bouncerPlace.website,
       business_recommend_edit_count: editCount + 1,
+      ...(tier2Mode === "apply"
+        ? { is_servable: tier2NextIsServable, website: bouncerPlace.website }
+        : {}),
     })
     .eq("id", placePoolId);
   if (updateErr) return errorResponse(500, "PLACE_UPDATE_FAILED", updateErr.message);
@@ -1386,7 +1461,9 @@ async function handleTier2(
   });
 }
 
-async function handleConfirmAiOutputs(
+// ORCH-1263: exported (was module-private) so the T-A5 stage-payload contract
+// test can drive the handler with a fake client.
+export async function handleConfirmAiOutputs(
   client: SupabaseClient,
   brand: OwnedBrand,
   venue: OwnedVenue,
@@ -1460,9 +1537,25 @@ async function handleConfirmAiOutputs(
     (place as { is_servable?: boolean | null }).is_servable,
   );
 
-  const { error: updateErr } = await client
-    .from("place_pool")
-    .update({
+  // ORCH-1263 §A3.3 (D-A): a pre-approval claim ("stage") confirms the AI
+  // outputs into business_authoring_inputs.confirmed_ai_outputs + status +
+  // bouncer diagnostics ONLY — the live place's generative_summary, website,
+  // price, stored_photo_urls, facet columns and is_servable stay byte-identical
+  // until admin approve applies authored truth (authoredApply.ts).
+  // I-1263-NO-LIVE-PLACE-MUTATION-PRE-APPROVE. Apply mode (verified claim /
+  // create-new authored row) keeps the pre-1263 behavior unchanged.
+  const confirmMode = placeWriteMode(
+    venue.claim_status,
+    (place as { business_author_brand_id?: string | null }).business_author_brand_id ?? null,
+  );
+  const confirmPatch: Record<string, unknown> = confirmMode === "stage"
+    ? {
+      business_authoring_inputs: mergedInputs,
+      business_authoring_status: nextStatus,
+      bouncer_reason: reasons.join(",") || null,
+      bouncer_validated_at: new Date().toISOString(),
+    }
+    : {
       business_authoring_inputs: mergedInputs,
       business_authoring_status: nextStatus,
       generative_summary: salesBio,
@@ -1477,7 +1570,10 @@ async function handleConfirmAiOutputs(
       ...(priceLevel !== null ? { price_level: priceLevel } : {}),
       ...(storedPhotos.length > 0 ? { stored_photo_urls: storedPhotos } : {}),
       ...facetPatch,
-    })
+    };
+  const { error: updateErr } = await client
+    .from("place_pool")
+    .update(confirmPatch)
     .eq("id", placePoolId);
   if (updateErr) return errorResponse(500, "PLACE_UPDATE_FAILED", updateErr.message);
 
@@ -1609,7 +1705,6 @@ async function handleGetAuthoringContext(
       inputs.confirmed_ai_outputs !== null
     ? inputs.confirmed_ai_outputs as Record<string, unknown>
     : null;
-  const storedPhotoUrls = (place as { stored_photo_urls?: string[] | null }).stored_photo_urls ?? [];
   return jsonResponse(200, {
     kind: "ok",
     action: "get_authoring_context",
@@ -1621,12 +1716,11 @@ async function handleGetAuthoringContext(
     tier2,
     pending_ai_outputs: pending,
     confirmed_ai_outputs: confirmed,
-    cover_media_url: storedPhotoUrls[0] ?? null,
-    cover_media_type: (place as { business_hero_video_present?: boolean | null }).business_hero_video_present === true
-      ? "video"
-      : storedPhotoUrls.length > 0
-        ? "image"
-        : null,
+    // ORCH-1263 §A3.5 (Q-1 fix): the VENUE row is the cover truth (1255(C)
+    // D-C). The pre-1263 `stored_photo_urls[0]` + video-flag inference
+    // misreported a seeded gallery photo as "the cover" on claim resumes.
+    cover_media_url: venue.cover_media_url ?? null,
+    cover_media_type: venue.cover_media_type ?? null,
     website: (place as { website?: string | null }).website ?? null,
     gallery_urls: galleryUrls(place as Record<string, unknown>),
     gallery_min: GALLERY_MIN,
@@ -1643,7 +1737,9 @@ async function handleGetAuthoringContext(
   });
 }
 
-async function handleSyncHeroMedia(
+// ORCH-1263: exported (was module-private) so the T-A3 stage/apply contract
+// test can drive the handler with a fake client.
+export async function handleSyncHeroMedia(
   client: SupabaseClient,
   brand: OwnedBrand,
   venue: OwnedVenue,
@@ -1655,12 +1751,46 @@ async function handleSyncHeroMedia(
   }
   const mediaType = body.cover_media_type ?? null;
   const mediaUrl = asString(body.cover_media_url ?? "");
+  // ORCH-1263 §A3.2 (D-E) plumbing: one place read supplies the placeWriteMode
+  // input plus the prior stored set + authored gallery apply mode needs.
+  const { data: heroPlace, error: heroPlaceErr } = await client
+    .from("place_pool")
+    .select("business_author_brand_id, stored_photo_urls, business_gallery_urls")
+    .eq("id", placePoolId)
+    .maybeSingle();
+  if (heroPlaceErr) return errorResponse(500, "PLACE_READ_FAILED", heroPlaceErr.message);
+  if (!heroPlace) return errorResponse(404, "PLACE_NOT_FOUND", "Place not found");
+
+  const heroMode = placeWriteMode(
+    venue.claim_status,
+    (heroPlace as { business_author_brand_id?: string | null }).business_author_brand_id ?? null,
+  );
+  // I-1263-GALLERY-NEVER-WIPED-BY-HERO: the pre-1263 one-element write
+  // (`stored_photo_urls = [mediaUrl]`) wiped a seeded place's entire live
+  // gallery the moment a hero was picked. KILLED. Stage mode (pre-approval
+  // claim) writes the video flag ONLY — stored_photo_urls is untouched until
+  // approve. Apply mode swaps the hero non-destructively via
+  // nextStoredPhotosForHero (result ⊇ gallery, never a wipe).
+  const priorStored = Array.isArray(
+      (heroPlace as { stored_photo_urls?: unknown }).stored_photo_urls,
+    )
+    ? ((heroPlace as { stored_photo_urls: unknown[] }).stored_photo_urls.filter(
+      (u): u is string => typeof u === "string" && u.length > 0,
+    ))
+    : [];
+  const heroPatch: Record<string, unknown> = heroMode === "stage"
+    ? { business_hero_video_present: mediaType === "video" }
+    : {
+      business_hero_video_present: mediaType === "video",
+      stored_photo_urls: nextStoredPhotosForHero(
+        priorStored,
+        galleryUrls(heroPlace as Record<string, unknown>),
+        mediaUrl.length > 0 ? mediaUrl : null,
+      ),
+    };
   const { error } = await client
     .from("place_pool")
-    .update({
-      business_hero_video_present: mediaType === "video",
-      stored_photo_urls: mediaUrl.length > 0 ? [mediaUrl] : [],
-    })
+    .update(heroPatch)
     .eq("id", placePoolId);
   if (error) return errorResponse(500, "PLACE_UPDATE_FAILED", error.message);
   // META-ORCH-1255(C) D-C: the venue row owns the venue listing's cover (M1
