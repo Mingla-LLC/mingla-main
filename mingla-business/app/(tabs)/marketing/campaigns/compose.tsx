@@ -61,6 +61,8 @@ import { type SendMode } from "../../../../src/components/marketing/ComposerStep
 import { ComposerFooter } from "../../../../src/components/marketing/ComposerFooter";
 import { ComposerCanvas } from "../../../../src/components/marketing/ComposerV2/ComposerCanvas";
 import { EmailPreviewPane } from "../../../../src/components/marketing/EmailPreviewPane";
+// ORCH-1281 — phone-text-bubble preview, branched in for channel === 'sms'.
+import { SmsPreviewPane } from "../../../../src/components/marketing/SmsPreviewPane";
 import { SchedulePickerSheet } from "../../../../src/components/marketing/ComposerV2/SchedulePickerSheet";
 import {
   AudiencePickerSheet,
@@ -105,6 +107,21 @@ import type { MarketingChannelKind } from "../../../../src/components/marketing/
 import { SmsComposeCard } from "../../../../src/components/marketing/SmsComposeCard";
 import type { PreviewVariables } from "../../../../src/services/marketing/marketingRenderingService";
 import type { CampaignChannelPayload } from "../../../../src/types/marketing";
+// ORCH-1282 — MMS photo attach: cross-platform pick (native picker / browser
+// file input), upload to the public brand_covers bucket, verified public URL.
+import { uploadMarketingMmsImage } from "../../../../src/services/marketingMmsImageService";
+import {
+  launchImageLibraryAsync,
+  requestMediaLibraryPermissionsAsync,
+} from "../../../../src/utils/platformImagePicker";
+import {
+  pickBrowserFiles,
+  revokeBrowserPickedFiles,
+  type BrowserPickedFile,
+} from "../../../../src/utils/browserFilePicker";
+import { BrandCoverError } from "../../../../src/utils/brandCoverRules";
+// ORCH-1281 — wire body (incl. STOP footer) for the review-sheet MESSAGE row.
+import { bodyWithFooter } from "../../../../src/utils/smsCost";
 import { useCurrentBrand } from "../../../../src/hooks/useCurrentBrand";
 import { useAuth } from "../../../../src/context/AuthContext";
 import { useResponsiveLayout } from "../../../../src/hooks/useResponsiveLayout";
@@ -153,6 +170,12 @@ export default function ComposeCampaignRoute(): React.ReactElement {
   // META-ORCH-1161 Sub-B — SMS blast body (plain text, separate from the HTML
   // email `body`). Only used when channel === 'sms'.
   const [smsBody, setSmsBody] = useState("");
+  // ORCH-1282 — MMS photo attach. `mmsMediaUrls` are the VERIFIED public URLs
+  // persisted into the payload (v1 = exactly one); `mmsLocalUri` is the local
+  // preview uri for the thumbnail; `mmsUploading` gates the attach affordance.
+  const [mmsMediaUrls, setMmsMediaUrls] = useState<string[]>([]);
+  const [mmsLocalUri, setMmsLocalUri] = useState<string | null>(null);
+  const [mmsUploading, setMmsUploading] = useState(false);
   const [audienceId, setAudienceId] = useState<string | null>(null);
   const [audienceName, setAudienceName] = useState<string | null>(null);
   const [sendMode, setSendMode] = useState<SendMode>("now");
@@ -276,6 +299,9 @@ export default function ComposeCampaignRoute(): React.ReactElement {
           setBody(row.channel_payload.body_html);
         } else if (row.channel_payload.kind === "sms") {
           setSmsBody(row.channel_payload.body);
+          // ORCH-1282 — restore a reopened MMS draft's attachment.
+          setMmsMediaUrls(row.channel_payload.media_urls ?? []);
+          setMmsLocalUri(row.channel_payload.media_urls?.[0] ?? null);
         }
         if (row.scheduled_for !== null) {
           setScheduledForIso(row.scheduled_for);
@@ -304,7 +330,12 @@ export default function ComposeCampaignRoute(): React.ReactElement {
   // `channel` from `kind`, so the discriminated union drives everything.
   const buildPayload = useCallback((): CampaignChannelPayload => {
     if (channel === "sms") {
-      return { kind: "sms", body: smsBody };
+      // ORCH-1282 — only attach media_urls when a verified photo is present.
+      return {
+        kind: "sms",
+        body: smsBody,
+        ...(mmsMediaUrls.length > 0 ? { media_urls: mmsMediaUrls } : {}),
+      };
     }
     return {
       kind: "email",
@@ -313,7 +344,7 @@ export default function ComposeCampaignRoute(): React.ReactElement {
       body_text: stripHtml(body),
       embedded_events: extractEmbeddedEventIds(body),
     };
-  }, [channel, smsBody, subject, body]);
+  }, [channel, smsBody, mmsMediaUrls, subject, body]);
 
   // Campaign name — email uses the subject; SMS uses the first ~40 chars of the
   // body (SMS has no subject line).
@@ -359,7 +390,8 @@ export default function ComposeCampaignRoute(): React.ReactElement {
   );
 
   useComposerDraft({
-    state: { channel, subject, body, smsBody, embeddedEvents: extractEmbeddedEventIds(body), audienceId },
+    // ORCH-1282 — include mmsMediaUrls so autosave re-fires when media changes.
+    state: { channel, subject, body, smsBody, mmsMediaUrls, embeddedEvents: extractEmbeddedEventIds(body), audienceId },
     isDirty,
     flush: async () => {
       await flushDraft();
@@ -562,6 +594,96 @@ export default function ComposeCampaignRoute(): React.ReactElement {
   const handleChannelChange = useCallback((next: MarketingChannelKind): void => {
     setChannel(next);
     setIsDirty(true);
+    // ORCH-1282 — an attached photo is meaningless off the SMS channel; clear it.
+    if (next !== "sms") {
+      setMmsMediaUrls([]);
+      setMmsLocalUri(null);
+      setMmsUploading(false);
+    }
+  }, []);
+
+  // ORCH-1282 — pick + upload a single MMS photo. Mirrors
+  // ExperienceStopPhotoSheet.pickFromLibrary cross-platform acquisition so web
+  // parity follows the already-shipped pattern (R-3). The parent owns the
+  // pick+upload; SmsComposeCard only renders the affordance.
+  const handlePickMms = useCallback(async (): Promise<void> => {
+    if (brandId === null || mmsUploading) return;
+    let browserFiles: BrowserPickedFile[] = [];
+    try {
+      let asset: {
+        uri: string;
+        mimeType?: string | null;
+        fileName?: string | null;
+        fileSize?: number | null;
+      } | null = null;
+      if (Platform.OS === "web") {
+        const result = await pickBrowserFiles({
+          accept: "image/jpeg,image/png,image/gif",
+          maxFiles: 1,
+          multiple: false,
+          validate: false,
+        });
+        if (result.canceled || result.files.length === 0) return;
+        browserFiles = result.files;
+        const file = result.files[0];
+        asset = {
+          uri: file.uri,
+          mimeType: file.mimeType,
+          fileName: file.name,
+          fileSize: file.size,
+        };
+      } else {
+        const permission = await requestMediaLibraryPermissionsAsync();
+        if (!permission.granted) {
+          setErrorBanner("Photo library permission is needed to add a photo.");
+          return;
+        }
+        const result = await launchImageLibraryAsync({
+          mediaTypes: ["images"],
+          allowsEditing: false,
+          quality: 1,
+          allowsMultipleSelection: false,
+          selectionLimit: 1,
+        });
+        if (result.canceled || result.assets.length === 0) return;
+        const picked = result.assets[0];
+        asset = {
+          uri: picked.uri,
+          mimeType: picked.mimeType,
+          fileName: picked.fileName,
+          fileSize: picked.fileSize,
+        };
+      }
+      if (asset === null) return;
+      setMmsLocalUri(asset.uri);
+      setMmsUploading(true);
+      const url = await uploadMarketingMmsImage(brandId, {
+        uri: asset.uri,
+        mimeType: asset.mimeType,
+        fileName: asset.fileName,
+        fileSize: asset.fileSize,
+      });
+      setMmsMediaUrls([url]);
+      setIsDirty(true);
+    } catch (err) {
+      if (err instanceof BrandCoverError) {
+        setErrorBanner(err.message);
+      } else {
+        setErrorBanner(
+          err instanceof Error ? err.message : "Couldn't add that photo. Try another.",
+        );
+      }
+      setMmsLocalUri(null);
+    } finally {
+      revokeBrowserPickedFiles(browserFiles);
+      setMmsUploading(false);
+    }
+  }, [brandId, mmsUploading]);
+
+  const handleRemoveMms = useCallback((): void => {
+    setMmsMediaUrls([]);
+    setMmsLocalUri(null);
+    setIsDirty(true);
   }, []);
 
   // Reachability shown in the Who row + review sheet depends on the channel.
@@ -752,7 +874,7 @@ export default function ComposeCampaignRoute(): React.ReactElement {
                 />
               </View>
 
-              {/* META-ORCH-1161 Sub-B — channel selector (Email · SMS · RCS). */}
+              {/* META-ORCH-1161 Sub-B — channel selector (Email · SMS). */}
               <View style={styles.channelRow}>
                 <ChannelTabs active={channel} onChange={handleChannelChange} />
               </View>
@@ -767,6 +889,15 @@ export default function ComposeCampaignRoute(): React.ReactElement {
                   reachableSms={reach?.reachable_sms ?? null}
                   currencyCode={currentBrand?.defaultCurrency ?? "USD"}
                   editable={!scheduleMutation.isPending}
+                  brandId={brandId}
+                  mediaUrl={mmsMediaUrls[0] ?? null}
+                  mediaLocalUri={mmsLocalUri}
+                  uploading={mmsUploading}
+                  onPickMedia={() => {
+                    void handlePickMms();
+                  }}
+                  onRemoveMedia={handleRemoveMms}
+                  hasMedia={mmsMediaUrls.length > 0}
                 />
               ) : (
                 <ComposerV2Editor
@@ -824,20 +955,33 @@ export default function ComposeCampaignRoute(): React.ReactElement {
           }
           preview={
             isWideDesktop ? (
-              <EmailPreviewPane
-                subject={subject}
-                bodyHtml={body}
-                variables={previewVariables}
-                brandName={brandName}
-                brandHeaderImageUrl={
-                  currentBrand?.coverMediaType !== "video"
-                    ? (currentBrand?.coverMediaUrl ?? null)
-                    : null
-                }
-                embeddedEvents={brandEvents.filter((e) =>
-                  extractEmbeddedEventIds(body).includes(e.id),
-                )}
-              />
+              // ORCH-1281 — SMS channel shows the phone-bubble preview; email
+              // keeps EmailPreviewPane (untouched).
+              channel === "sms" ? (
+                <SmsPreviewPane
+                  body={smsBody}
+                  brandName={brandName}
+                  reachableSms={reach?.reachable_sms ?? null}
+                  currencyCode={currentBrand?.defaultCurrency ?? "USD"}
+                  hasMedia={mmsMediaUrls.length > 0}
+                  mediaUri={mmsLocalUri}
+                />
+              ) : (
+                <EmailPreviewPane
+                  subject={subject}
+                  bodyHtml={body}
+                  variables={previewVariables}
+                  brandName={brandName}
+                  brandHeaderImageUrl={
+                    currentBrand?.coverMediaType !== "video"
+                      ? (currentBrand?.coverMediaUrl ?? null)
+                      : null
+                  }
+                  embeddedEvents={brandEvents.filter((e) =>
+                    extractEmbeddedEventIds(body).includes(e.id),
+                  )}
+                />
+              )
             ) : undefined
           }
         />
@@ -866,6 +1010,10 @@ export default function ComposeCampaignRoute(): React.ReactElement {
           smsInfoNote={channel === "sms"}
           nextWindowLabel={nextWindowLabel}
           onScheduleForNextWindow={handleScheduleForNextWindow}
+          // ORCH-1281 — SMS shows a MESSAGE row (wire body) instead of SUBJECT.
+          channelKind={channel === "sms" ? "sms" : "email"}
+          messagePreview={bodyWithFooter(smsBody).slice(0, 160)}
+          hasMedia={mmsMediaUrls.length > 0}
         />
         <SchedulePickerSheet
           visible={showSchedulePicker}
@@ -897,7 +1045,10 @@ export default function ComposeCampaignRoute(): React.ReactElement {
         >
           <View style={styles.previewModal}>
             <View style={styles.previewHeader}>
-              <Text style={styles.previewTitle}>Inbox preview</Text>
+              {/* ORCH-1281 — title tracks the channel. */}
+              <Text style={styles.previewTitle}>
+                {channel === "sms" ? "Message preview" : "Inbox preview"}
+              </Text>
               <Pressable
                 onPress={() => setShowPreview(false)}
                 accessibilityRole="button"
@@ -911,20 +1062,33 @@ export default function ComposeCampaignRoute(): React.ReactElement {
                 <Text style={styles.previewDoneLabel}>Done</Text>
               </Pressable>
             </View>
-            <EmailPreviewPane
-              subject={subject}
-              bodyHtml={body}
-              variables={previewVariables}
-              brandName={brandName}
-              brandHeaderImageUrl={
-                currentBrand?.coverMediaType !== "video"
-                  ? (currentBrand?.coverMediaUrl ?? null)
-                  : null
-              }
-              embeddedEvents={brandEvents.filter((e) =>
-                extractEmbeddedEventIds(body).includes(e.id),
-              )}
-            />
+            {/* ORCH-1281 — SMS gets the phone-bubble preview (brings its own
+                dark canvas); email keeps EmailPreviewPane. */}
+            {channel === "sms" ? (
+              <SmsPreviewPane
+                body={smsBody}
+                brandName={brandName}
+                reachableSms={reach?.reachable_sms ?? null}
+                currencyCode={currentBrand?.defaultCurrency ?? "USD"}
+                hasMedia={mmsMediaUrls.length > 0}
+                mediaUri={mmsLocalUri}
+              />
+            ) : (
+              <EmailPreviewPane
+                subject={subject}
+                bodyHtml={body}
+                variables={previewVariables}
+                brandName={brandName}
+                brandHeaderImageUrl={
+                  currentBrand?.coverMediaType !== "video"
+                    ? (currentBrand?.coverMediaUrl ?? null)
+                    : null
+                }
+                embeddedEvents={brandEvents.filter((e) =>
+                  extractEmbeddedEventIds(body).includes(e.id),
+                )}
+              />
+            )}
           </View>
         </Modal>
         {/* F.9: TemplatePreviewDrawer and InsertionBar moved back inside

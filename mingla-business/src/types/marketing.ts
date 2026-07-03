@@ -69,30 +69,23 @@ export interface ChannelPayloadEmail {
   embedded_events?: string[];
 }
 
-/** Phase B (SMS via Twilio 10DLC — not yet shippable). */
+/** SMS blast payload (live via Twilio US / Termii NG). */
 export interface ChannelPayloadSms {
   kind: "sms";
   body: string;
   short_url_token?: string;
-}
-
-/** Phase C (RCS via Twilio RBM — not yet shippable). */
-export interface ChannelPayloadRcs {
-  kind: "rcs";
-  rich_card: {
-    title: string;
-    description?: string;
-    image_url?: string;
-    buttons?: Array<{ label: string; url: string }>;
-  };
-  quick_replies?: string[];
-  fallback_sms: string;
+  /**
+   * ORCH-1282 — MMS photo attachment. Verified PUBLIC URLs on the
+   * `brand_covers` bucket (obtained via getPublicUrl + verifyBrandCoverPublicUrl
+   * before write). Array for forward-compat; the composer sets exactly one.
+   * US/Twilio only — the NG/Termii send path ignores media (SMS-only).
+   */
+  media_urls?: string[];
 }
 
 export type CampaignChannelPayload =
   | ChannelPayloadEmail
-  | ChannelPayloadSms
-  | ChannelPayloadRcs;
+  | ChannelPayloadSms;
 
 // ---------------------------------------------------------------------------
 // Row types — match table shapes

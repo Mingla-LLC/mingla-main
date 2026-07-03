@@ -41,6 +41,17 @@ export interface ComposerReviewSheetProps {
   smsInfoNote?: boolean;
   nextWindowLabel?: string;
   onScheduleForNextWindow?: () => void;
+  /**
+   * ORCH-1281 — channel-aware review row (all additive + optional; email and
+   * every existing caller are unaffected). When `channelKind === "sms"` the
+   * SUBJECT section is replaced with a MESSAGE section showing `messagePreview`
+   * (the SMS wire body, first ~140 chars) and, when `hasMedia`, a "+ 1 photo
+   * (MMS)" caption. Undefined / "email" ⇒ the existing SUBJECT section renders
+   * verbatim.
+   */
+  channelKind?: "email" | "sms";
+  messagePreview?: string;
+  hasMedia?: boolean;
 }
 
 export const ComposerReviewSheet: React.FC<ComposerReviewSheetProps> = ({
@@ -57,6 +68,9 @@ export const ComposerReviewSheet: React.FC<ComposerReviewSheetProps> = ({
   smsInfoNote,
   nextWindowLabel,
   onScheduleForNextWindow,
+  channelKind,
+  messagePreview,
+  hasMedia,
 }) => {
   const ctaLabel = isSendNow ? "Send now" : "Schedule";
   // ORCH-1270 F-1 — always show the SMS timing info note on an SMS Send-now
@@ -80,12 +94,28 @@ export const ComposerReviewSheet: React.FC<ComposerReviewSheetProps> = ({
             </Text>
           ) : null}
         </View>
-        <View style={styles.section}>
-          <Text style={styles.label}>SUBJECT</Text>
-          <Text style={styles.value} numberOfLines={2}>
-            {subject.length > 0 ? subject : "(no subject)"}
-          </Text>
-        </View>
+        {channelKind === "sms" ? (
+          // ORCH-1281 — SMS has no subject line; show the actual message (wire
+          // body incl. STOP footer) + an MMS-photo caption when attached.
+          <View style={styles.section}>
+            <Text style={styles.label}>MESSAGE</Text>
+            <Text style={styles.value} numberOfLines={4}>
+              {messagePreview !== undefined && messagePreview.length > 0
+                ? messagePreview
+                : "(no message)"}
+            </Text>
+            {hasMedia === true ? (
+              <Text style={styles.metaText}>+ 1 photo (MMS)</Text>
+            ) : null}
+          </View>
+        ) : (
+          <View style={styles.section}>
+            <Text style={styles.label}>SUBJECT</Text>
+            <Text style={styles.value} numberOfLines={2}>
+              {subject.length > 0 ? subject : "(no subject)"}
+            </Text>
+          </View>
+        )}
         <View style={styles.section}>
           <Text style={styles.label}>{isSendNow ? "DELIVERY" : "SCHEDULED FOR"}</Text>
           <Text style={styles.value}>{scheduledLabel}</Text>
