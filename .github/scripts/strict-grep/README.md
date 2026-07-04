@@ -35,6 +35,7 @@ scaffold rewrite needed.
 | I-COMMS-LEDGER-ENTRY-STANZA + I-RESPONSE-2-SECTION-SHAPE | `meta-orch-0954-comms-ledger-stanza.mjs` | META-ORCH-0954 | `Mingla_Artifacts/INVARIANT_REGISTRY.md` I-COMMS-LEDGER-ENTRY-STANZA + I-RESPONSE-2-SECTION-SHAPE |
 | I-1292-TAXONOMY-LABEL-AT-RENDER | `orch-1292-taxonomy-label-parity.mjs` | ORCH-1292 | ORCH-1292 — public-page taxonomy slug→canonical-label resolution + drift/fails-on-revert / adversarial scope+fallback-masking; `Mingla_Artifacts/INVARIANT_REGISTRY.md` I-1292-TAXONOMY-LABEL-AT-RENDER |
 | I-1292-TAXONOMY-LABEL-AT-RENDER | `orch-1292-taxonomy-label-adversarial.mjs` | ORCH-1292 | ORCH-1292 — public-page taxonomy slug→canonical-label resolution + drift/fails-on-revert / adversarial scope+fallback-masking; `Mingla_Artifacts/INVARIANT_REGISTRY.md` I-1292-TAXONOMY-LABEL-AT-RENDER |
+| I-PROPOSED-1303-WEB-COVER-VIDEO-URI-UNMANGLED | `orch-1303-web-cover-video-uri.mjs` | ORCH-1303 | ORCH-1303 — business-WEB picked-video blob: URL reaches the uploader unmangled (`resolveRawClipUploadUri` web branch); no `file://blob:` mangle; native byte-identical; `Mingla_Artifacts/reports/INVESTIGATION_ORCH-1303_HERO_COVER_VIDEO_WEB_UPLOAD.md` |
 
 ## Future gates (proposed but not yet implemented)
 

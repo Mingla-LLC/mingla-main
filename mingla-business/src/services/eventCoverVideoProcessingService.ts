@@ -985,8 +985,20 @@ export const uploadEventCoverVideoSourceViaTus = async (input: {
   let bytes = typeof input.bytes === "number" && input.bytes > 0 ? input.bytes : 0;
   let webBlob: Blob | null = null;
   if (Platform.OS === "web") {
-    const blobResponse = await fetch(input.uri);
-    webBlob = await blobResponse.blob();
+    // ORCH-1303: read the picked clip's bytes from its browser object URL.
+    // A raw fetch() rejection here surfaces an opaque "Failed to fetch"
+    // (Constitution #3 non-actionable). Wrap it in an honest, actionable
+    // error so the operator knows what to do next. The happy path (a valid
+    // `blob:` uri) is unchanged.
+    try {
+      const blobResponse = await fetch(input.uri);
+      webBlob = await blobResponse.blob();
+    } catch {
+      throw new EventCoverVideoProcessingError(
+        "source_upload_failed",
+        "Could not read the selected video in your browser. Try a shorter MP4, or upload the cover from the Mingla Business app.",
+      );
+    }
     if (bytes <= 0) bytes = webBlob.size;
   } else if (bytes <= 0) {
     bytes = await statFileSize(input.uri, 0);

@@ -162,6 +162,7 @@ on:
 #   - I-PROPOSED-1300-RSVP-PHONE-PICKER-MOBILE-PORTAL (orch-1300-rsvp-phone-picker-mobile-portal.mjs) — ORCH-1299's position:'fixed' overlay stayed broken on real MOBILE web because it renders INLINE under the RSVP page's Animated transform ancestors, so mobile WebKit resolves 'fixed' against a transformed ancestor (measured y=-683, off-screen) not the viewport. FIX portals the overlay to document.body: (A) CountryPickerModal.tsx imports WebOverlayPortal and wraps the fixed <View style={overlayStyle...}> in <WebOverlayPortal>…</WebOverlayPortal>; (B) WebOverlayPortal.web.tsx imports { createPortal } from "react-dom" and calls createPortal(children, document.body); (C) WebOverlayPortal.tsx (NATIVE build) references NO react-dom (Metro keeps the web-only dep out of the native bundle); (D) CountryPickerModal.tsx still pins position:'fixed' on web; comment-stripped; self-tested 7/7 + fails-on-revert (ORCH-1300 — DRAFT until CLOSE)
 #   - ORCH-1297 TUS-PATCH-AUTH-HEADERS (orch-1297-tus-patch-carries-auth-headers.mjs) [ORCH-1301 close-hardening for META-ORCH-1270 Bunny migration; NOT the chip-in ORCH-1297] — the Bunny resumable (TUS) PATCH in eventCoverVideoProcessingService.ts::uploadEventCoverVideoSourceViaTus must re-send the CREATE-time auth headers or Bunny rejects the byte upload with 400 "Library ID missing or invalid": the `patchHeaders` object must (A) spread `...input.upload.fields` (AuthorizationSignature/AuthorizationExpire/LibraryId/VideoId), (B) carry `Upload-Offset`, (C) carry `Content-Type: application/offset+octet-stream`, (D) carry `Tus-Resumable`. Comment-stripped + scoped to the patchHeaders object body; npm-wiring self-check (test:orch-1297); self-tested 4/4 + fails-on-revert (ORCH-1301 — DRAFT until CLOSE)
 #   - ORCH-1298 COVER-PREVIEW-VIDEO-CAPABLE (orch-1298-cover-preview-video-capable.mjs) [ORCH-1301 close-hardening for META-ORCH-1270; NOT the chip-in ORCH-1298] — BrandEditView.tsx AND TripPreview.tsx must render the cover through the video-capable EventCoverMedia (image/gif/video/empty), never a raw Image/ExpoImage/RNImage sourced from the cover URL: per file (A) imports EventCoverMedia, (B) binds a cover via `mediaUrl={…coverMediaUrl}`, (C) has NO `source={{ uri: …coverMediaUrl }}` raw-image cover path. Scoped so the per-day GALLERY Image (source={{ uri: m.url }}) is not tripped; comment-stripped; npm-wiring self-check (test:orch-1298); self-tested 4/4 + fails-on-revert (ORCH-1301 — DRAFT until CLOSE)
+#   - I-PROPOSED-1303-WEB-COVER-VIDEO-URI-UNMANGLED (orch-1303-web-cover-video-uri.mjs) — on business WEB the picked video's browser blob: object URL must reach the uploader UNMANGLED: (A) CoverPicker.tsx raw-clip branch calls `resolveRawClipUploadUri(asset.uri, Platform.OS === "web")` and carries NO unconditional `uri: normalizeLocalFileUri(asset.uri)` (which prefixes file:// → file://blob:… so the web TUS fetch(input.uri) rejects "Failed to fetch"); (B) coverPickerVideoTrimUpload.ts::resolveRawClipUploadUri returns the raw uri on web (`isWeb ? assetUri : normalizeLocalFileUri(assetUri)`) — dropping the isWeb guard re-normalizes the blob URL. Web-only; native (real file:// paths) byte-identical; Bunny signing/edge/TUS transport untouched. Comment-stripped; self-tested 4/4 + fails-on-revert (ORCH-1303 — DRAFT until CLOSE)
 #
 # Future gates to register (proposed but not yet implemented):
 #   - I-32 rank parity (Cycle 13a proposal)
@@ -175,6 +176,19 @@ on:
 # .github/scripts/strict-grep/README.md.
 
 jobs:
+  orch-1303-web-cover-video-uri:
+    name: "ORCH-1303: web picked-video blob: URL reaches the uploader UNMANGLED (resolveRawClipUploadUri web branch); no file://blob: mangle; native byte-identical (I-PROPOSED-1303-WEB-COVER-VIDEO-URI-UNMANGLED)"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Self-test the ORCH-1303 web-cover-video-uri gate
+        run: node .github/scripts/strict-grep/orch-1303-web-cover-video-uri.mjs --self-test
+      - name: Run ORCH-1303 web-cover-video-uri gate
+        run: node .github/scripts/strict-grep/orch-1303-web-cover-video-uri.mjs
+
   orch-1292-taxonomy-label-parity:
     name: "ORCH-1292: public event/RSVP pills resolve party/vibe/music slugs to canonical labels; in-package map stays in parity with eventTaxonomy.ts (I-PROPOSED-1292-TAXONOMY-LABEL-AT-RENDER)"
     runs-on: ubuntu-latest

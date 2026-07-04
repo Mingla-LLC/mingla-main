@@ -17,6 +17,16 @@ export const normalizePickerDurationMs = (duration?: number | null): number => {
 export const normalizeLocalFileUri = (path: string): string =>
   path.startsWith("file://") ? path : `file://${path}`;
 
+// ORCH-1303 — resolve the upload uri for the RAW (un-trimmed) picked clip.
+// On NATIVE the picker returns a real filesystem path that must be prefixed
+// with `file://` (normalizeLocalFileUri). On WEB the picker returns a browser
+// object URL (`blob:https://…`) that is already fetch-able as-is; prefixing
+// `file://` corrupts it to `file://blob:…`, which the web TUS upload's
+// `fetch(input.uri)` rejects ("Failed to fetch") — see the ORCH-1303
+// investigation. So on web the blob uri MUST pass through UNMANGLED.
+export const resolveRawClipUploadUri = (assetUri: string, isWeb: boolean): string =>
+  isWeb ? assetUri : normalizeLocalFileUri(assetUri);
+
 export const buildTrimmedVideoUploadFile = async (input: {
   trimResult: VideoTrimFinishPayload;
   originalFileName?: string | null;
