@@ -182,6 +182,19 @@ jobs:
       - name: Run ORCH-1292 taxonomy-label-parity gate
         run: node .github/scripts/strict-grep/orch-1292-taxonomy-label-parity.mjs
 
+  orch-1292-taxonomy-label-adversarial:
+    name: "ORCH-1292 (tester adversarial): scope-bound render + strict byte-exact drift — each taxonomy .map resolves ITS OWN var via taxonomyLabel (catches wrong-var/out-of-scope), labels reject substring/whitespace/case drift + fallback-masking drops (I-PROPOSED-1292-TAXONOMY-LABEL-AT-RENDER)"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Self-test the ORCH-1292 taxonomy-label ADVERSARIAL gate
+        run: node .github/scripts/strict-grep/orch-1292-taxonomy-label-adversarial.mjs --self-test
+      - name: Run ORCH-1292 taxonomy-label ADVERSARIAL gate
+        run: node .github/scripts/strict-grep/orch-1292-taxonomy-label-adversarial.mjs
+
   orch-1285-create-lands-on-durable-deck-readiness:
     name: "ORCH-1285: venue create tier-1 success lands on the durable /venue/deck-readiness route, not an ephemeral inline mount (I-PROPOSED-1285-CREATE-LANDS-ON-DURABLE-DECK-READINESS)"
     runs-on: ubuntu-latest
