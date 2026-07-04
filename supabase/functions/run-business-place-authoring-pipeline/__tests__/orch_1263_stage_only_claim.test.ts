@@ -510,8 +510,9 @@ Deno.test("T-A6: run_tier2_pipeline on a pending claim (prior servable TRUE) omi
   assertEquals(updates.length, 1);
   const payload = updates[0];
   // EXACT stage key-set per §A3.4 — diagnostics kept, live-place writes omitted.
+  // META-ORCH-1290 supersession: `ai_signal_scores` is NO LONGER written at tier-2
+  // (submit) — the 16-signal eval moved to the approve path (D-2). [TEST-MOD-APPROVED META-ORCH-1290]
   assertEquals(Object.keys(payload).sort(), [
-    "ai_signal_scores",
     "bouncer_reason",
     "bouncer_validated_at",
     "business_authoring_inputs",

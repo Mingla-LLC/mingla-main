@@ -159,6 +159,11 @@ export function buildAuthoredApplyPatch(input: AuthoredApplyInput): Record<strin
   if (storedUnion.length > 0) patch.stored_photo_urls = storedUnion;
 
   // ── generative_summary ────────────────────────────────────────────────────
+  // META-ORCH-1290 D-1/D-4: the confirm step is retired, so
+  // confirmed_ai_outputs.sales_bio is LEGACY (kept only for old rows). New venues
+  // fall through to tier1.description — the single Pitch field (AI-drafted at
+  // submit, owner-editable) — which is the intended pitch source. No behavior
+  // change: this branch already prefers confirmed → tier1.description(≥20).
   const inputs = asRecord(place.business_authoring_inputs);
   const confirmed = asRecord(inputs.confirmed_ai_outputs);
   const tier1 = asRecord(inputs.tier1);
@@ -182,6 +187,10 @@ export function buildAuthoredApplyPatch(input: AuthoredApplyInput): Record<strin
   }
 
   // ── facets (confirmed only) ───────────────────────────────────────────────
+  // META-ORCH-1290 D-1: with the confirm step retired, confirmed_ai_outputs.facets
+  // is a LEGACY no-op for new venues (absent → this loop is empty). Facets are now
+  // AI-INFERRED at approve by the pipeline's evaluate_signals action (§4.2.A),
+  // which replaces the retired operator-confirm facet application. Kept for old rows.
   const confirmedFacets = asRecord(confirmed.facets);
   for (const [key, value] of Object.entries(confirmedFacets)) {
     if (FACET_COLUMNS.has(key) && (typeof value === "boolean" || value === null)) {

@@ -116,6 +116,7 @@ const USED_ICONS = {
   Play: iconOf(require("lucide-react/dist/esm/icons/play.js")),
   Plus: iconOf(require("lucide-react/dist/esm/icons/plus.js")),
   Settings: iconOf(require("lucide-react/dist/esm/icons/settings.js")),
+  Sparkles: iconOf(require("lucide-react/dist/esm/icons/sparkles.js")),
   Square: iconOf(require("lucide-react/dist/esm/icons/square.js")),
   UtensilsCrossed: iconOf(require("lucide-react/dist/esm/icons/utensils-crossed.js")),
   X: iconOf(require("lucide-react/dist/esm/icons/x.js")),

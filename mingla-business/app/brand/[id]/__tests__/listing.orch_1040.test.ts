@@ -40,10 +40,14 @@ describe("ORCH-1040 listing management surface (ORCH-1145 relocation)", () => {
     expect(CONTENT).toContain("listingStatusView(");
   });
 
-  test("surfaces the previously-hidden loop data: scores, changes-remaining, rejection", () => {
+  // [TEST-MOD-APPROVED META-ORCH-1290] — the "changes remaining"
+  // (`recommend_edits_remaining`) surface is RETIRED: D-1 folds the user-driven
+  // "Recommend me" edit-cap flow into the single submit + score-on-approve, so the
+  // listing no longer shows a remaining-edits counter. The scores + rejection
+  // surfaces remain (scores card is now always-rendered per D-5).
+  test("surfaces the previously-hidden loop data: scores + rejection", () => {
     expect(CONTENT).toContain("ai_signal_scores");
     expect(CONTENT).toContain("venueSignalLabel(");
-    expect(CONTENT).toContain("recommend_edits_remaining");
     expect(CONTENT).toContain("rejectionReason");
   });
 

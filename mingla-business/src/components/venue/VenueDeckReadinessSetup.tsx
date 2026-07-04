@@ -34,11 +34,11 @@ import {
   typography,
 } from "../../constants/designSystem";
 import {
-  confirmAiOutputs,
   refreshDeckReadiness,
   runTier2Pipeline,
   syncGallery,
   syncHeroMedia,
+  updateVenuePitch,
   type PipelineCoachingCard,
 } from "../../services/businessPlaceAuthoringService";
 import {
@@ -400,47 +400,42 @@ export function VenueDeckReadinessSetup({
       setEditedBio(result.generated_bio);
       setFacets(result.facets);
       setCoaching(result.coaching);
-      setMessage("Your listing is ready. Review the pitch below, edit anything, then approve it to go live.");
+      // META-ORCH-1290 D-2 — no owner "approve": scoring + go-live are admin-
+      // owned now. The AI writes a pitch DRAFT; the owner reviews/edits + saves.
+      setMessage("Your pitch is ready — review it below and make it yours.");
     } catch (error) {
-      setMessage(sanitizeAuthoringError(error, "AI setup failed."));
+      setMessage(sanitizeAuthoringError(error, "Couldn't draft your pitch."));
     } finally {
       setBusy(null);
     }
   }, [brandId, venueId, buildTier2, placePoolId]);
 
-  const handleConfirm = useCallback(async (): Promise<void> => {
-    if (editedBio.trim().length < 20) {
-      setMessage("Confirm a public bio of at least 20 characters.");
+  // META-ORCH-1290 Leg B (§4.3.E) — the old owner self-publish confirm seam
+  // (which flipped deck_eligible before any admin review) is REMOVED (D-2).
+  // Editing here now just SAVES the pitch draft (staged; applied at approve) and
+  // returns — it flips NO serving column and NEVER sets deck_eligible. This is
+  // the pre-approval edit surface, so pitch saves stage (a live venue edits its
+  // pitch on the listing page, which writes generative_summary directly).
+  const handleSavePitch = useCallback(async (): Promise<void> => {
+    const pitch = editedBio.trim();
+    if (pitch.length > 0 && pitch.length < 20) {
+      setMessage("Your pitch needs at least 20 characters — or clear it.");
       return;
     }
     setBusy("confirm");
     setMessage(null);
     try {
-      const result = await confirmAiOutputs({
-        brandId,
-        venueId,
-        placePoolId,
-        salesBio: editedBio.trim(),
-        facets,
-        tier2: buildTier2(),
-      });
-      setCoaching(result.coaching);
-      if (result.status !== "deck_eligible") {
-        setMessage(
-          result.coaching[0]?.body ??
-            "One more fix is needed before this venue is deck-ready.",
-        );
-        return;
-      }
+      // META-ORCH-1290 (B2): pitch write via the `update_pitch` pipeline action
+      // (owner-authed, column-scoped). This is the pre-approval edit surface, so
+      // the server's placeWriteMode stages it (never a serving column).
+      await updateVenuePitch({ brandId, venueId, placePoolId, pitch });
       onDone();
     } catch (error) {
-      setMessage(
-        sanitizeAuthoringError(error, "Could not confirm AI outputs."),
-      );
+      setMessage(sanitizeAuthoringError(error, "Could not save your pitch."));
     } finally {
       setBusy(null);
     }
-  }, [brandId, venueId, buildTier2, editedBio, facets, onDone, placePoolId]);
+  }, [editedBio, onDone, brandId, venueId, placePoolId]);
 
   const handleRefresh = useCallback(async (): Promise<void> => {
     setBusy("refresh");
@@ -701,11 +696,12 @@ export function VenueDeckReadinessSetup({
           })}
 
           <Text style={styles.fieldHint}>
-            Our AI scans your website + photos, writes your pitch, and scores how
-            well you match each vibe. You can edit everything before it goes live.
+            Our AI scans your website + photos and writes a first-draft pitch you
+            can edit. Mingla scores your vibes and decides go-live after you
+            submit — you never approve yourself.
           </Text>
           <Button
-            label={busy === "ai" ? "Working on it…" : "Recommend me to users"}
+            label={busy === "ai" ? "Working on it…" : "Generate pitch with AI"}
             variant="primary"
             size="md"
             leadingIcon="sparkle"
@@ -748,8 +744,8 @@ export function VenueDeckReadinessSetup({
           <View style={styles.deckBlock}>
             <Text style={styles.blockTitle}>Your venue&apos;s pitch</Text>
             <Text style={styles.blockBody}>
-              This is what customers read when Mingla recommends you. Edit anything,
-              then approve it to go live.
+              This is what people read when Mingla recommends you. Edit anything,
+              then save — we take it from here.
             </Text>
             <TextInput
               value={editedBio}
@@ -761,12 +757,12 @@ export function VenueDeckReadinessSetup({
               style={[styles.input, styles.bioInput]}
             />
             <Button
-              label={busy === "confirm" ? "Publishing..." : "Approve & publish"}
+              label={busy === "confirm" ? "Saving…" : "Save pitch"}
               variant="primary"
               size="md"
               loading={busy === "confirm"}
               disabled={busy !== null}
-              onPress={() => void handleConfirm()}
+              onPress={() => void handleSavePitch()}
             />
           </View>
         ) : null}

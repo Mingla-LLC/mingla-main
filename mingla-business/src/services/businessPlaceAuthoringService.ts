@@ -336,6 +336,89 @@ export async function refreshDeckReadiness(input: {
   );
 }
 
+// META-ORCH-1290 Leg B (D-3/D-5) — the true current pitch for the listing page.
+// `get_authoring_context` returns only the AI-generated bio; the owner-authored
+// pitch lives in `place_pool.generative_summary` (live) or the staged
+// `business_authoring_inputs.tier1.description` (pending). Read both so the
+// listing seeds the real pitch, not a stale generated one. RLS SELECT is open to
+// authenticated (`authenticated_read_place_pool`).
+export interface VenuePitchSource {
+  generativeSummary: string | null;
+  tier1Description: string | null;
+}
+
+export async function fetchVenuePitchSource(
+  placePoolId: string,
+): Promise<VenuePitchSource> {
+  const { data, error } = await supabase
+    .from("place_pool")
+    .select("generative_summary, business_authoring_inputs")
+    .eq("id", placePoolId)
+    .maybeSingle();
+  if (error !== null) throw error;
+  const row = (data ?? null) as {
+    generative_summary?: string | null;
+    business_authoring_inputs?: { tier1?: { description?: unknown } } | null;
+  } | null;
+  const t1 = row?.business_authoring_inputs?.tier1;
+  const desc =
+    t1 !== null &&
+    t1 !== undefined &&
+    typeof t1 === "object" &&
+    typeof (t1 as { description?: unknown }).description === "string"
+      ? (t1 as { description: string }).description
+      : null;
+  return {
+    generativeSummary:
+      typeof row?.generative_summary === "string"
+        ? row.generative_summary
+        : null,
+    tier1Description: desc,
+  };
+}
+
+/**
+ * META-ORCH-1290 Leg B (D-3, F-13) + B2 addendum — the venue owner edits the
+ * pitch on the listing/management page.
+ *
+ * B2 RESOLUTION: Leg B wrote the pitch by a DIRECT client place_pool
+ * row-UPDATE call (via supabase-js) gated only by the row-level RLS
+ * policy `place_pool_business_owner_update` + `GRANT ALL ON place_pool TO
+ * authenticated`. That row-level UPDATE power lets an owner set ANY column of
+ * their own place_pool row via PostgREST (self-publish `is_servable`, forge
+ * `ai_signal_scores`), bypassing admin approval + the bouncer + scoring — a
+ * violation of the authored-writes-are-RPC/service-role-only architecture
+ * (META-ORCH-1255/1263). This now INVOKES the `update_pitch` pipeline action,
+ * which owns all authored writes: it asserts ownership (requireUser →
+ * loadOwnedBrand → loadOwnedVenue) and column-scopes the write to the pitch
+ * ONLY. The stage-vs-apply split is decided SERVER-SIDE via `placeWriteMode`
+ * (apply → `place_pool.generative_summary`; stage → the staged
+ * `business_authoring_inputs.tier1.description`), so the client can no longer
+ * force a live write onto a pre-approval claim
+ * (I-PROPOSED-1290-PITCH-WRITES-VIA-PIPELINE-ACTION).
+ */
+export async function updateVenuePitch(input: {
+  brandId: string;
+  venueId: string;
+  placePoolId: string;
+  pitch: string;
+}): Promise<void> {
+  const { data, error } = await supabase.functions.invoke(
+    "run-business-place-authoring-pipeline",
+    {
+      body: {
+        action: "update_pitch",
+        brand_id: input.brandId,
+        venue_id: input.venueId,
+        place_pool_id: input.placePoolId,
+        pitch: input.pitch,
+      },
+    },
+  );
+  if (error !== null) throw await pipelineInvokeError(error, "update_pitch_failed");
+  assertPipelineOk(data as { kind: "ok" } | PipelineErrorBody, "update_pitch_failed");
+}
+
 export async function fetchBrandPlaceAuthoringContext(input: {
   brandId: string;
   placePoolId: string;

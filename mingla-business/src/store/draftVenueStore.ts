@@ -120,10 +120,26 @@ export interface DraftVenueState {
   description: string;
   /** ORCH-1263 — claim c6 website (create path ignores; deck-readiness owns). */
   website: string;
-  /** ORCH-1263 — claim c7 price tiers (create path ignores). */
+  /** ORCH-1263 — claim c7 price tiers. META-ORCH-1290 Leg B — the folded create
+   *  wizard (s7) now collects these too (no longer deck-readiness-owned). */
   priceTiers: string[];
   /** ORCH-1263 — claim c8 reservations intent (switch always starts OFF). */
   wantsReservations: boolean;
+  /**
+   * META-ORCH-1290 Leg B (D-1 folded create wizard) — the create path's own
+   * photo gallery (s3) + cover choice (s4), collected IN the wizard now that the
+   * post-submit deck-readiness leg is gone. Claim keeps its gallery/cover under
+   * `claim.*` (adopted-photo provenance); these top-level fields are the
+   * create-from-scratch equivalents (no adoption, no provenance). Optional at
+   * the type level so a pre-1290 persisted blob (fields absent) rehydrates via
+   * pickDraft's `?? []`/`?? null` — no persist-version bump needed.
+   */
+  galleryUrls?: string[];
+  coverChoice?: {
+    url: string;
+    type: "image" | "video" | "gif";
+    isNew: boolean;
+  } | null;
   /** ORCH-1263 — non-null ⇔ claim mode (10-step wizard variant). */
   claim: DraftVenueClaim | null;
   /**
@@ -155,6 +171,8 @@ const initial: DraftVenueState = {
   website: "",
   priceTiers: [],
   wantsReservations: false,
+  galleryUrls: [],
+  coverChoice: null,
   claim: null,
   step: 0,
 };
@@ -186,6 +204,9 @@ const pickDraft = (s: DraftVenueState): DraftVenueState => ({
   website: s.website,
   priceTiers: s.priceTiers,
   wantsReservations: s.wantsReservations,
+  // META-ORCH-1290 — `?? []`/`?? null` tolerates a pre-1290 persisted blob.
+  galleryUrls: s.galleryUrls ?? [],
+  coverChoice: s.coverChoice ?? null,
   // ORCH-1263 — the claim block must survive activateBrand stash/restore.
   claim: s.claim,
   step: s.step,

@@ -28,7 +28,13 @@
  * the authoring context venue-keyed. The feedback loop (banner, sheet,
  * resubmit) is venue-keyed too (I-PROPOSED-1255-VENUE-APPROVAL-PER-VENUE-ROW).
  */
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import {
   ActivityIndicator,
   Pressable,
@@ -43,10 +49,12 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { VenueClaimFeedbackSheet } from "../brand/VenueClaimFeedbackSheet";
 import { VenueClaimStatusBanner } from "../brand/VenueClaimStatusBanner";
 import { Button } from "../ui/Button";
-import { ArrowLeft } from "lucide-react-native";
+import { ArrowLeft, Sparkles } from "lucide-react-native";
 import { EventCoverMedia } from "../ui/EventCoverMedia";
 import { GlassCard } from "../ui/GlassCard";
+import { Skeleton } from "../ui/Skeleton";
 import { Toast } from "../ui/Toast";
+import { VenuePitchField } from "./VenuePitchField";
 import {
   accent,
   canvas,
@@ -64,7 +72,22 @@ import {
 } from "../../hooks/useBrandPlacePipelineState";
 import { useVenueListing } from "../../hooks/useVenueListings";
 import { useVenueClaimOpenCount } from "../../hooks/useVenueClaimFeedback";
+import {
+  fetchVenuePitchSource,
+  runTier2Pipeline,
+  updateVenuePitch,
+} from "../../services/businessPlaceAuthoringService";
 import { listingStatusView, type ListingTone } from "../../utils/listingStatus";
+
+// META-ORCH-1290 Leg B (D-5, DESIGN §4.2) — the populated scores fill ramps by
+// strength for glanceability (one hue, the number is always shown so color is
+// never the only signal). ≥70 full warm, 40–69 mid, <40 faint.
+function scoreFill(score: number): string {
+  if (score >= 70) return accent.warm;
+  if (score >= 40) return "rgba(235,120,37,0.66)";
+  return "rgba(235,120,37,0.38)";
+}
+const SCORES_TOP_N = 6;
 
 const TONE_COLOR: Record<ListingTone, string> = {
   neutral: textTokens.secondary,
@@ -199,20 +222,6 @@ export function VenueListingContent({
     }
   }, [router, brand?.slug]);
 
-  const bio = useMemo<string | null>(() => {
-    const confirmed = ctx.data?.confirmed_ai_outputs as
-      | { generated_bio?: string; sales_bio?: string }
-      | null
-      | undefined;
-    const pending = ctx.data?.pending_ai_outputs;
-    return (
-      confirmed?.generated_bio ??
-      confirmed?.sales_bio ??
-      pending?.generated_bio ??
-      null
-    );
-  }, [ctx.data]);
-
   const priceTiers = useMemo<string[]>(() => {
     const raw = (ctx.data?.tier2 as { price_tiers?: unknown } | undefined)
       ?.price_tiers;
@@ -228,11 +237,83 @@ export function VenueListingContent({
       .sort((a, b) => b.score - a.score);
   }, [ctx.data]);
 
-  const editsRemaining = ctx.data?.recommend_edits_remaining ?? null;
   const rejected =
     venue?.claimStatus === "rejected" || pipeline.data?.status === "failed";
   const rejectionReason = venue?.rejectionReason ?? null;
   const isLive = venue?.claimStatus === "verified";
+  const hasScores = scoreRows.length > 0;
+
+  // META-ORCH-1290 Leg B (D-5, DESIGN §4.2) — top-6 by default, Show all toggle.
+  const [showAllScores, setShowAllScores] = useState(false);
+  const visibleScores = showAllScores
+    ? scoreRows
+    : scoreRows.slice(0, SCORES_TOP_N);
+
+  // ── Editable pitch (D-3, §4.1) ──────────────────────────────────────────
+  const [pitchText, setPitchText] = useState<string>("");
+  const [persistedPitch, setPersistedPitch] = useState<string>("");
+  const [reScoring, setReScoring] = useState(false);
+  const pitchSeededFor = useRef<string | null>(null);
+
+  // Seed the pitch from the REAL owner-authored source (generative_summary for a
+  // live venue, the staged tier1.description for a pending one) — NOT the stale
+  // AI-generated bio. Seed once per place (re-seed only if the owner hasn't
+  // touched it).
+  useEffect(() => {
+    if (placePoolId === null) return;
+    if (pitchSeededFor.current === placePoolId) return;
+    let cancelled = false;
+    void fetchVenuePitchSource(placePoolId)
+      .then((src) => {
+        if (cancelled) return;
+        const seed = (
+          isLive
+            ? src.generativeSummary ?? src.tier1Description
+            : src.tier1Description ?? src.generativeSummary
+        ) ?? "";
+        pitchSeededFor.current = placePoolId;
+        setPitchText(seed);
+        setPersistedPitch(seed);
+      })
+      .catch(() => {
+        // non-blocking — the field falls back to empty (owner can draft/type).
+      });
+    return (): void => {
+      cancelled = true;
+    };
+  }, [placePoolId, isLive]);
+
+  const handleGeneratePitch = useCallback(async (): Promise<string> => {
+    if (brandId === null || venueId === null || placePoolId === null) {
+      throw new Error("missing_ids");
+    }
+    const res = await runTier2Pipeline({
+      brandId,
+      venueId,
+      placePoolId,
+      // Preserve the staged website/price while regenerating just the bio.
+      tier2: (ctx.data?.tier2 as Record<string, unknown> | undefined) ?? {},
+    });
+    return res.generated_bio;
+  }, [brandId, venueId, placePoolId, ctx.data]);
+
+  const handleSavePitch = useCallback(async (): Promise<void> => {
+    // META-ORCH-1290 (B2): the pitch write now goes through the `update_pitch`
+    // pipeline action, which requires the owning brand + venue (server decides
+    // apply-vs-stage via placeWriteMode). isLive stays a CLIENT-only flag for the
+    // re-scoring caption below.
+    if (placePoolId === null || brandId === null || venueId === null) return;
+    await updateVenuePitch({ brandId, venueId, placePoolId, pitch: pitchText });
+    setPersistedPitch(pitchText.trim());
+    if (isLive) setReScoring(true);
+    setToast({ kind: "success", message: "Pitch updated." });
+    void ctx.refetch();
+  }, [placePoolId, brandId, venueId, pitchText, isLive, ctx]);
+
+  const pitchTrimmed = pitchText.trim();
+  const pitchSaveDisabled =
+    pitchTrimmed === persistedPitch.trim() ||
+    (pitchTrimmed.length > 0 && pitchTrimmed.length < 20);
   const loading =
     venueQuery.isLoading ||
     pipeline.isLoading ||
@@ -355,51 +436,115 @@ export function VenueListingContent({
                   </Text>
                 </View>
               </View>
-              {bio !== null && bio.length > 0 ? (
-                <>
-                  <Text style={styles.fieldLabel}>Your pitch</Text>
-                  <Text style={styles.body}>{bio}</Text>
-                </>
-              ) : null}
+              {/* META-ORCH-1290 D-3 — the pitch is now EDITABLE here (the shared
+                  VenuePitchField): Draft/Regenerate with AI, edit, and Save. On
+                  a live venue Save re-scores (SC-6); on a pending one it stages
+                  the pitch for approve (SC-5). */}
+              <Text style={styles.fieldLabel}>Your pitch</Text>
+              <VenuePitchField
+                value={pitchText}
+                onChangeText={setPitchText}
+                onGenerate={handleGeneratePitch}
+                onSave={handleSavePitch}
+                saveDisabled={pitchSaveDisabled}
+                reScoreCaption={
+                  isLive
+                    ? "Editing your pitch sends it back for a quick re-score — your listing stays live."
+                    : null
+                }
+                testIDPrefix="listing-pitch"
+              />
             </GlassCard>
 
-            {/* AI match scores */}
-            {scoreRows.length > 0 ? (
-              <GlassCard variant="base" padding={spacing.lg}>
-                <Text style={styles.sectionTitle}>How you match Mingla moments</Text>
-                <Text style={styles.subtle}>
-                  Your AI scores per signal — higher means we recommend you more for that moment.
-                </Text>
-                <View style={styles.scoreList}>
-                  {scoreRows.map((row) => (
-                    <View key={row.id} style={styles.scoreRow}>
-                      <Text style={styles.scoreLabel} numberOfLines={1}>{row.label}</Text>
-                      <View style={styles.scoreBarTrack}>
-                        <View
-                          style={[
-                            styles.scoreBarFill,
-                            { width: `${Math.max(0, Math.min(100, row.score))}%` },
-                          ]}
-                        />
-                      </View>
-                      <Text style={styles.scoreValue}>{row.score}</Text>
+            {/* META-ORCH-1290 D-5 — the vibe-scores card ALWAYS renders: a LOCKED
+                pre-approval state (honest ghost preview, NO fake numbers) and a
+                POPULATED post-approval state (human labels, strength ramp, top-6
+                + Show all). The old edit-cap "changes-left" card is RETIRED with
+                the self-run "Recommend me" edit-cap (OQ-4). */}
+            <GlassCard variant="base" padding={spacing.lg}>
+              {hasScores ? (
+                <>
+                  <View style={styles.scoreHeader}>
+                    <Sparkles size={16} color={accent.warm} />
+                    <Text style={styles.sectionTitleInline}>
+                      How you match Mingla moments
+                    </Text>
+                  </View>
+                  <Text style={styles.subtle}>
+                    Higher means we recommend you more for that moment.
+                  </Text>
+                  {reScoring ? (
+                    <View style={styles.reScoreRow}>
+                      <ActivityIndicator size="small" color={accent.warm} />
+                      <Text style={styles.reScoreText}>
+                        Re-scoring your latest changes — this updates shortly.
+                      </Text>
                     </View>
-                  ))}
-                </View>
-              </GlassCard>
-            ) : null}
-
-            {/* Changes remaining */}
-            {editsRemaining !== null ? (
-              <GlassCard variant="base" padding={spacing.lg}>
-                <Text style={styles.sectionTitle}>Changes remaining</Text>
-                <Text style={styles.body}>
-                  {editsRemaining > 0
-                    ? `You can re-run "Recommend me" ${editsRemaining} more ${editsRemaining === 1 ? "time" : "times"}.`
-                    : "You've used all your changes. Contact support if you need more."}
-                </Text>
-              </GlassCard>
-            ) : null}
+                  ) : null}
+                  <View style={styles.scoreList}>
+                    {visibleScores.map((row) => (
+                      <View
+                        key={row.id}
+                        style={styles.scoreRow}
+                        accessibilityRole="progressbar"
+                        accessibilityValue={{ min: 0, max: 100, now: row.score }}
+                        accessibilityLabel={`${row.label}, ${row.score} out of 100`}
+                      >
+                        <Text style={styles.scoreLabel} numberOfLines={1}>
+                          {row.label}
+                        </Text>
+                        <View style={styles.scoreBarTrack}>
+                          <View
+                            style={[
+                              styles.scoreBarFill,
+                              {
+                                width: `${Math.max(0, Math.min(100, row.score))}%`,
+                                backgroundColor: scoreFill(row.score),
+                              },
+                            ]}
+                          />
+                        </View>
+                        <Text style={styles.scoreValue}>{row.score}</Text>
+                      </View>
+                    ))}
+                  </View>
+                  {scoreRows.length > SCORES_TOP_N ? (
+                    <View style={styles.showAllRow}>
+                      <Button
+                        label={
+                          showAllScores
+                            ? `Show top ${SCORES_TOP_N}`
+                            : `Show all ${scoreRows.length}`
+                        }
+                        variant="ghost"
+                        size="sm"
+                        onPress={() => setShowAllScores((v) => !v)}
+                      />
+                    </View>
+                  ) : null}
+                </>
+              ) : (
+                <>
+                  <View style={styles.scoreHeader}>
+                    <Sparkles size={16} color={textTokens.tertiary} />
+                    <Text style={styles.sectionTitleInline}>Your vibe scores</Text>
+                  </View>
+                  <Text style={styles.body} accessibilityLiveRegion="polite">
+                    Your vibe scores appear once an admin approves your listing —
+                    they decide which explorer feeds you show up in.
+                  </Text>
+                  <View style={styles.ghostPreview}>
+                    {[0, 1, 2, 3].map((i) => (
+                      <View key={i} style={styles.scoreRow}>
+                        <Skeleton width={88} height={12} radius="sm" />
+                        <View style={styles.scoreBarTrack} />
+                        <Text style={styles.scoreValueGhost}>—</Text>
+                      </View>
+                    ))}
+                  </View>
+                </>
+              )}
+            </GlassCard>
 
             {/* Manage actions */}
             <View style={styles.actionsCol}>
@@ -555,6 +700,38 @@ const styles = StyleSheet.create({
     fontSize: typography.caption.fontSize,
     fontWeight: "700",
     color: textTokens.primary,
+  },
+  // META-ORCH-1290 D-5 scores card
+  scoreHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.xs,
+    marginBottom: spacing.xs,
+  },
+  sectionTitleInline: {
+    fontSize: typography.body.fontSize,
+    fontWeight: "700",
+    color: textTokens.primary,
+  },
+  reScoreRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.xs,
+    marginTop: spacing.xs,
+  },
+  reScoreText: {
+    flex: 1,
+    fontSize: typography.caption.fontSize,
+    color: textTokens.tertiary,
+  },
+  showAllRow: { marginTop: spacing.sm, alignItems: "flex-start" },
+  ghostPreview: { marginTop: spacing.sm, gap: spacing.sm, opacity: 0.6 },
+  scoreValueGhost: {
+    width: 28,
+    textAlign: "right",
+    fontSize: typography.caption.fontSize,
+    fontWeight: "700",
+    color: textTokens.tertiary,
   },
   actionRow: { marginTop: spacing.md, alignItems: "flex-start" },
   actionsCol: { gap: spacing.sm, marginTop: spacing.xs },

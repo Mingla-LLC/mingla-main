@@ -3039,9 +3039,16 @@ export default function SwipeableCards({
                         transform: [{ translateY: titleOverlaySlide }],
                       },
                     ]}>
-                      <Text style={styles.cardTitle}>{currentRec.title || t('cards:swipeable.experience')}</Text>
+                      {/* META-ORCH-1290(C) D-6a: a place venue's owner-authored
+                          pitch (place_pool.generative_summary) lands in this
+                          existing `oneLiner` slot as a 2-line one-taste hook
+                          (DESIGN §5a). When a pitch is present the title tightens
+                          to marginBottom 6 so title+blurb read as one unit; with
+                          NO pitch the guard renders nothing and the title keeps its
+                          16pt gap (today's exact look — no fabricated blurb). */}
+                      <Text style={[styles.cardTitle, currentRec.oneLiner ? styles.cardTitleWithBlurb : null]}>{currentRec.title || t('cards:swipeable.experience')}</Text>
                       {currentRec.oneLiner && (
-                        <Text style={styles.oneLiner} numberOfLines={1}>{currentRec.oneLiner}</Text>
+                        <Text style={styles.oneLiner} numberOfLines={2}>{currentRec.oneLiner}</Text>
                       )}
 
                       {/* ORCH-0566: glass info badges (front card — entry motion via entryIndex) */}
@@ -3371,6 +3378,13 @@ const styles = StyleSheet.create({
     textShadowOffset: { width: 0, height: 1 },
     textShadowRadius: 3,
   },
+  // META-ORCH-1290(C) D-6a (DESIGN §5a.2): scoped tighten applied to the front
+  // place card's title ONLY when a pitch blurb follows, so title (24) → 6 →
+  // blurb → 10 → badges reads as one unit. The behind-card title (no blurb)
+  // keeps the base 16pt gap.
+  cardTitleWithBlurb: {
+    marginBottom: 6,
+  },
   // ORCH-0589 v2 (G4): premium bottom gradient over the hero photo — gives the
   // title + chips a darker canvas to sit on, without burying the photo itself.
   heroGradient: {
@@ -3381,12 +3395,16 @@ const styles = StyleSheet.create({
     height: "45%",
     zIndex: 1,
   },
+  // META-ORCH-1290(C) D-6a (DESIGN §5a.2/5a.3): the place pitch blurb — 2-line
+  // clamp (numberOfLines={2}), sitting on the darkened heroGradient band. Type
+  // treatment unchanged; margins tightened to marginTop 0 / marginBottom 10 so
+  // the +56pt of blurb stays inside the existing 45% gradient (photo not buried).
   oneLiner: {
     fontSize: 15,
     fontWeight: "600",
     color: "#FFFFFF",
-    marginTop: 4,
-    marginBottom: 8,
+    marginTop: 0,
+    marginBottom: 10,
     textShadowColor: "rgba(0, 0, 0, 0.7)",
     textShadowOffset: { width: 0, height: 1 },
     textShadowRadius: 3,

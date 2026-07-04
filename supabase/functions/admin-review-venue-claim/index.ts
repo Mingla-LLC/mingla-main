@@ -72,6 +72,20 @@ type AdminClient = any;
 const BOUNCER_SELECT =
   "id, name, lat, lng, types, business_status, website, opening_hours, photos, stored_photo_urls, fetched_via, review_count, rating";
 
+// META-ORCH-1290 D-1 / SC-10 — the ≥5-gallery deck gate, RELOCATED from the
+// retired pipeline confirm step (handleConfirmAiOutputs) to approve. Duplicated
+// here (NOT imported from run-business-place-authoring-pipeline) because a
+// cross-edge-function import would pull the pipeline's entire Gemini dependency
+// tree into this function's deploy bundle. Kept identical in intent to the
+// pipeline's businessGateReasons(GALLERY_MIN=5).
+const GALLERY_MIN = 5;
+function galleryCount(place: Record<string, unknown>): number {
+  const raw = (place as { business_gallery_urls?: unknown }).business_gallery_urls;
+  return Array.isArray(raw)
+    ? raw.filter((u): u is string => typeof u === "string" && u.length > 0).length
+    : 0;
+}
+
 interface GoLiveResult {
   rebounced: boolean;
   servable: boolean;
@@ -106,6 +120,10 @@ export async function runApproveGoLive(
   admin: AdminClient,
   placePoolId: string,
   scoreVetoes: Record<string, unknown> | null,
+  // META-ORCH-1290 D-1 / SC-10: opt-in ≥5-gallery deck gate at approve. Defaults
+  // false so the pre-1290 3-arg callers (incl. pinned tests) are unchanged; the
+  // real approve path (approveGoLiveWithAuthoredApply, one-submission) passes true.
+  enforceBusinessGalleryGate = false,
 ): Promise<GoLiveResult> {
   const result: GoLiveResult = {
     rebounced: false,
@@ -117,9 +135,10 @@ export async function runApproveGoLive(
   };
 
   // ── Phase 2: re-bounce the linked row over its CURRENT data ────────────────
+  // META-ORCH-1290: + business_gallery_urls for the relocated ≥5 gallery gate.
   const { data: ppRow, error: ppErr } = await admin
     .from("place_pool")
-    .select(BOUNCER_SELECT)
+    .select(`${BOUNCER_SELECT}, business_gallery_urls`)
     .eq("id", placePoolId)
     .maybeSingle();
   if (ppErr || !ppRow) {
@@ -132,21 +151,32 @@ export async function runApproveGoLive(
 
   const verdict = bounce(ppRow as PlaceRow);
   result.rebounced = true;
-  result.bounce_reasons = verdict.reasons;
+
+  // META-ORCH-1290 D-1 / SC-10: fold the relocated ≥5-gallery deck gate into the
+  // go-live servability decision when enforced. A venue that clears the shared
+  // bouncer but has <5 gallery photos is verified-but-off-deck (identical
+  // semantics to today's needs_fix, now enforced at approve).
+  const galleryReasons = (enforceBusinessGalleryGate &&
+      galleryCount(ppRow as Record<string, unknown>) < GALLERY_MIN)
+    ? [`GALLERY_MIN:${galleryCount(ppRow as Record<string, unknown>)}`]
+    : [];
+  const allReasons = [...verdict.reasons, ...galleryReasons];
+  result.bounce_reasons = allReasons;
 
   // Always record the bouncer verdict + reasons so the admin can see why a
   // venue can't go live yet (Q3=(b): verified identity, deck-eligibility stored
   // separately as a reason).
   const nowIso = new Date().toISOString();
-  if (!verdict.is_servable) {
+  if (!verdict.is_servable || galleryReasons.length > 0) {
     await admin
       .from("place_pool")
       .update({
-        bouncer_reason: verdict.reasons.join(";") || null,
+        bouncer_reason: allReasons.join(";") || null,
         bouncer_validated_at: nowIso,
       })
       .eq("id", placePoolId);
-    // Do NOT flip is_servable. Claim stays verified; venue stays off-deck.
+    // Do NOT flip is_servable. Claim stays verified; venue stays off-deck
+    // (a bouncer reason or a short gallery).
     return result;
   }
 
@@ -313,6 +343,12 @@ export async function approveGoLiveWithAuthoredApply(
   venueId: string,
   placePoolId: string,
   scoreVetoes: Record<string, unknown> | null,
+  // META-ORCH-1290 D-2: the brand id for the approve-time evaluate_signals
+  // invoke. Trailing + optional so the pre-1290 4-arg callers (incl. the pinned
+  // T-C3 tests) are unchanged: WITHOUT brandId this behaves exactly as pre-1290
+  // (no eval, no gallery gate); WITH brandId (the real one-submission approve
+  // path) it runs the score-on-approve eval + the ≥5-gallery gate.
+  brandId?: string,
 ): Promise<
   | { ok: true; applied_keys: string[]; goLive: GoLiveResult }
   | { ok: false; error: string }
@@ -327,7 +363,61 @@ export async function approveGoLiveWithAuthoredApply(
     // Fail-close: runApproveGoLive is NOT invoked (no servable flip, no scoring).
     return { ok: false, error: msg };
   }
-  const goLive = await runApproveGoLive(admin, placePoolId, scoreVetoes);
+
+  const isOneSubmissionApprove = typeof brandId === "string" && brandId.length > 0;
+
+  // META-ORCH-1290 D-2/OQ-3: score-on-approve. BETWEEN authored-apply and go-live
+  // (F-9 ordering), invoke the pipeline's evaluate_signals action service-to-
+  // service (admin uses the service-role key → the Authorization the pipeline's
+  // requireServiceRole accepts). The eval writes place_pool.ai_signal_scores +
+  // photo_analysis + facet columns over the JUST-APPLIED authored content, so
+  // run-signal-scorer (in runApproveGoLive) blends FRESH AI scores. FAIL-CLOSE:
+  // any eval error means NO servable flip + NO place_scores — the claim stays
+  // verified (identity) but off-deck; the admin re-approves (idempotent). Mirrors
+  // the authored-apply fail-close above.
+  // (I-PROPOSED-1290-NO-BUSINESS-SIGNAL-SCORES-PRE-APPROVE: scores are computed
+  // HERE at approve, never at authoring — reverting re-introduces pre-approval scoring.)
+  if (isOneSubmissionApprove) {
+    try {
+      const { data: evData, error: evErr } = await admin.functions.invoke(
+        "run-business-place-authoring-pipeline",
+        {
+          body: {
+            action: "evaluate_signals",
+            brand_id: brandId,
+            venue_id: venueId,
+            place_pool_id: placePoolId,
+          },
+        },
+      );
+      // functions.invoke sets evErr on a non-2xx eval; a 2xx error-kind body is
+      // also treated as fail-close.
+      if (evErr) {
+        const detail = evErr instanceof Error ? evErr.message : String(evErr);
+        console.error("[admin-review-venue-claim] signal eval failed", detail);
+        return { ok: false, error: `signal_eval_failed:${detail}` };
+      }
+      if (
+        evData !== null && typeof evData === "object" &&
+        (evData as { kind?: unknown }).kind === "error"
+      ) {
+        const detail = String((evData as { message?: unknown }).message ?? "eval_error");
+        console.error("[admin-review-venue-claim] signal eval error body", detail);
+        return { ok: false, error: `signal_eval_failed:${detail}` };
+      }
+    } catch (evThrow) {
+      const detail = evThrow instanceof Error ? evThrow.message : String(evThrow);
+      console.error("[admin-review-venue-claim] signal eval threw", detail);
+      return { ok: false, error: `signal_eval_failed:${detail}` };
+    }
+  }
+
+  const goLive = await runApproveGoLive(
+    admin,
+    placePoolId,
+    scoreVetoes,
+    isOneSubmissionApprove, // enforce the ≥5-gallery deck gate on the real path
+  );
   return { ok: true, applied_keys: appliedKeys, goLive };
 }
 
@@ -701,11 +791,17 @@ serve(async (req) => {
           parsed.venueId,
           placePoolId,
           scoreVetoes,
+          // META-ORCH-1290 D-2: brandId activates score-on-approve + the ≥5
+          // gallery gate. brandId is already resolved above (brandRow.id).
+          brandId,
         );
         if (!approveResult.ok) {
+          // META-ORCH-1290 D-2: the eval fail-close surfaces as signal_eval_failed;
+          // the authored-apply fail-close keeps its authored_apply_failed code.
+          const isEvalFail = approveResult.error.startsWith("signal_eval_failed");
           return json(
             {
-              error: "authored_apply_failed",
+              error: isEvalFail ? "signal_eval_failed" : "authored_apply_failed",
               detail: approveResult.error,
               go_live: null,
             },

@@ -84,6 +84,20 @@ const RESERVE_APP_HANDOFF_URL = "https://usemingla.com";
 
 const WEEKDAY_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
+// META-ORCH-1290(C) §6.2 — pitch-first meta description: one line, all
+// whitespace/newlines collapsed to single spaces, clamped to the ≤155-char SEO
+// budget with an ellipsis when it overruns.
+const META_MAX = 155;
+const clampPitchForMeta = (text: string): string => {
+  const flat = text.replace(/\s+/g, " ").trim();
+  return flat.length > META_MAX ? `${flat.slice(0, META_MAX - 1).trimEnd()}…` : flat;
+};
+
+// META-ORCH-1290(C) §6.1 — "Read more" heuristic (mirrors BrandProfileView's
+// About clamp): a pitch longer than ~4 lines' worth of characters gets the
+// toggle. Deterministic + cross-platform (no onTextLayout dependence).
+const PITCH_CLAMP_CHARS = 160;
+
 /** Local hue hash — same algorithm as the brand page's cover fallback. */
 const hashHueFromString = (s: string): number => {
   let h = 0;
@@ -111,6 +125,11 @@ export const PublicVenuePage: React.FC<PublicVenuePageProps> = ({
   const { isDesktop } = useResponsiveLayout();
   const [shareModalVisible, setShareModalVisible] = useState(false);
   const [muted, setMuted] = useState<boolean>(true);
+  // META-ORCH-1290(C) §6.1 — About pitch clamp/expand state.
+  const [aboutExpanded, setAboutExpanded] = useState<boolean>(false);
+  const toggleAboutExpanded = useCallback((): void => {
+    setAboutExpanded((v) => !v);
+  }, []);
 
   const resolvedTheme = useMemo<ResolvedTheme>(
     () => resolveTheme(venue.theme, null),
@@ -188,7 +207,16 @@ export const PublicVenuePage: React.FC<PublicVenuePageProps> = ({
   const gallery = venue.galleryPhotoUrls;
   const menuItemCount = menu.reduce((sum, g) => sum + g.items.length, 0);
 
-  const metaDescription = `${venue.name} — ${venue.brandName} on Mingla`;
+  // META-ORCH-1290(C) §6.1/§6.2 — the owner-authored pitch. Empty/whitespace →
+  // treated as absent so the About section, desktop clamp, and pitch-first meta
+  // all fall back honestly (no fabricated prose anywhere).
+  const pitchText = venue.pitch !== null ? venue.pitch.trim() : "";
+  const hasPitch = pitchText.length > 0;
+  const pitchIsLong = hasPitch && pitchText.length > PITCH_CLAMP_CHARS;
+
+  const metaDescription = hasPitch
+    ? clampPitchForMeta(pitchText)
+    : `${venue.name} — ${venue.brandName} on Mingla`;
   const pageTitle =
     venue.city !== null
       ? `${venue.name} · ${venue.city} on Mingla`
@@ -225,6 +253,36 @@ export const PublicVenuePage: React.FC<PublicVenuePageProps> = ({
       ) : null}
     </View>
   );
+
+  // ── §6.1 About / pitch — the venue's voice, right under the identity ──────
+  // Themed prose (palette + brand font), 4-line clamp + Read more. Hidden
+  // entirely when the owner wrote no pitch (real-data-only, Constitution #9).
+  const aboutBlock = hasPitch ? (
+    <View>
+      <Text
+        style={[styles.aboutBody, themedFont, { color: palette.secondaryText }]}
+        numberOfLines={aboutExpanded ? undefined : 4}
+      >
+        {pitchText}
+      </Text>
+      {pitchIsLong ? (
+        <Pressable
+          onPress={toggleAboutExpanded}
+          accessibilityRole="button"
+          accessibilityLabel={aboutExpanded ? "Show less" : "Read more"}
+          hitSlop={8}
+          style={({ pressed }) => [
+            styles.aboutToggle,
+            pressed && styles.pressed,
+          ]}
+        >
+          <Text style={[styles.aboutToggleText, { color: palette.accent }]}>
+            {aboutExpanded ? "Show less" : "Read more"}
+          </Text>
+        </Pressable>
+      ) : null}
+    </View>
+  ) : null;
 
   // ── §6.4 map + address card ───────────────────────────────────────────────
   const mapBlock =
@@ -413,6 +471,17 @@ export const PublicVenuePage: React.FC<PublicVenuePageProps> = ({
             {venue.address}
           </Text>
         ) : null}
+        {/* META-ORCH-1290(C) §6.3 — desktop viewers see the venue's voice
+            (2-line clamp) without scrolling; the full pitch stays in the
+            in-body aboutBlock on the left column. Hidden when empty. */}
+        {hasPitch ? (
+          <Text
+            style={[styles.deskPitch, themedFont, { color: palette.secondaryText }]}
+            numberOfLines={2}
+          >
+            {pitchText}
+          </Text>
+        ) : null}
         {todayLine !== null ? (
           <Text style={[styles.deskToday, { color: palette.secondaryText }]}>
             {todayLine}
@@ -465,6 +534,7 @@ export const PublicVenuePage: React.FC<PublicVenuePageProps> = ({
   const bodyContent = (
     <View style={styles.body}>
       {!isDesktop ? identityBlock : null}
+      {aboutBlock}
       {mapBlock}
       {addressCard}
       {hoursBlock}
@@ -570,6 +640,22 @@ const styles = StyleSheet.create({
   addrLine: {
     fontSize: 13,
     lineHeight: 18,
+  },
+  // ---- about / pitch (§6.1) ----
+  // The block groups the prose + `Read more` in a bare View; the toggle carries
+  // its own paddingVertical, and the parent `body` gap (20) spaces the block.
+  aboutBody: {
+    fontSize: 15,
+    lineHeight: 23,
+  },
+  aboutToggle: {
+    paddingVertical: 8,
+    alignSelf: "flex-start",
+  },
+  aboutToggleText: {
+    fontSize: 13,
+    lineHeight: 18,
+    fontWeight: "600",
   },
   // ---- map + address (§6.4) ----
   mapCard: {
@@ -748,6 +834,12 @@ const styles = StyleSheet.create({
     fontSize: 14,
     lineHeight: 20,
     fontWeight: "600",
+  },
+  // META-ORCH-1290(C) §6.3 — desktop sticky-panel pitch (2-line clamp).
+  deskPitch: {
+    fontSize: 14,
+    lineHeight: 20,
+    marginTop: 4,
   },
   deskShareBtn: {
     alignItems: "center",

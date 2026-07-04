@@ -463,10 +463,12 @@ export function VenueIntelligenceModule({
             </>
           ) : (
             <>
+              {/* META-ORCH-1290 D-5 — the "Recommend me" self-run is retired;
+                  scores are admin-approval-gated now. Honest locked copy. */}
               <Text style={styles.insufficientTitle}>Not scored yet</Text>
               <Text style={styles.bodySm}>
-                We haven&apos;t scored this venue yet. Add details in Settings and
-                run &apos;Recommend me&apos; to see where you win.
+                Your vibe scores appear once an admin approves your listing — they
+                decide which explorer feeds you show up in.
               </Text>
             </>
           )}

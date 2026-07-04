@@ -208,4 +208,34 @@ begin
   raise notice 'AUTH-1 PASS: cross-brand member reads zero venue rows';
 end $$;
 
+-- ── ORCH-1290 M1: venue_public_view exposes the owner-authored pitch ─────────
+-- META-ORCH-1290 D-6/D-2: the pitch (place_pool.generative_summary) surfaces on
+-- the anon public page, verified-only. Reverting M1 (dropping
+-- `pp.generative_summary AS pitch`) → PITCH-1 fails (column absent). Reverting
+-- the verified-only WHERE → PITCH-2 fails (pending pitch leaks).
+do $$
+declare v_pitch text; n int;
+begin
+  -- Give the verified venue's place an owner-authored pitch, and the pending
+  -- venue's place a pitch too (to prove the pending one never surfaces).
+  update public.place_pool set generative_summary = 'A candlelit wine bar with a 200-label list and a courtyard.'
+   where id = 'e1255aaa-0000-4000-8000-000000000041';
+  update public.place_pool set generative_summary = 'This pending venue pitch must never reach anon.'
+   where id = 'e1255bbb-0000-4000-8000-000000000042';
+
+  set local role anon;
+  -- PITCH-1: the verified venue's pitch is present + equals generative_summary.
+  select pitch into v_pitch from public.venue_public_view where slug = 'pvverified';
+  if v_pitch is distinct from 'A candlelit wine bar with a 200-label list and a courtyard.' then
+    raise exception 'PITCH-1 FAIL: verified venue pitch = %, expected the generative_summary', coalesce(v_pitch, '<null>');
+  end if;
+  -- PITCH-2: the pending venue (with a pitch set) is still absent from the view.
+  select count(*) into n from public.venue_public_view where slug = 'pvpending';
+  if n <> 0 then
+    raise exception 'PITCH-2 FAIL: pending venue (pitch set) leaked into the anon view (% rows)', n;
+  end if;
+  reset role;
+  raise notice 'PITCH-1/2 PASS: verified pitch surfaces; pending pitch never leaks (anon-safe)';
+end $$;
+
 rollback;
