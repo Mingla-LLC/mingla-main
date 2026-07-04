@@ -157,6 +157,7 @@ on:
 #   - I-PROPOSED-1256-PROFILE-TODOS-NO-FALSE-POSITIVE (orch-1256-profile-todos-no-false-positive.mjs) — brand-profile completion to-dos: every emptiness predicate in brandProfileCompleteness.ts routes through the single trim-based isBlank (whitespace-only = EMPTY; F-2 address maps untrimmed); businessTodos.ts band 6 emits all 8 profile_add_* rows gated behind the OPTIONAL input.profile; BrandEditView carries the six ?section= onLayout anchors + initialSection (NONE inside the META-ORCH-1255 PHYSICAL LOCATION block); edit.tsx validates the ?section= param; BusinessTodoToggle keeps the bounded (maxHeight) internally-scrollable list; self-tested + fails-on-revert (ORCH-1256 — DRAFT until CLOSE)
 #   - I-PROPOSED-1292-TAXONOMY-LABEL-AT-RENDER (orch-1292-taxonomy-label-parity.mjs) — the shared public event/RSVP page bodies resolve party/vibe/music SLUGS to canonical LABELS at every render site: (A) DRIFT — packages/offering-rendering/taxonomyLabels.ts::TAXONOMY_LABELS stays in SET-EQUALITY + byte-exact label-parity with the PARTY_TYPES/VIBE_TAGS/MUSIC_GENRES {slug,label} pairs in supabase/functions/_shared/eventTaxonomy.ts (a renamed/dropped/added/extra slug on either side fails CI; ORCH-0824-style SEMANTIC parity extension); (B) RENDER SITES — EventOfferingBody.tsx + RsvpOfferingBody.tsx pills call taxonomyLabel(tag) and NOT the raw {tag}, and RsvpMomentumDecision.tsx chip calls taxonomyLabel(slug) and NOT the humanized partyTypeLabel(slug) (comment-stripped); --self-test runs BEFORE the real run (gates it) and proves GOOD passes + BAD (dropped/renamed/extra label; render site reverted to {tag}; momentum reverted to partyTypeLabel) fails; fails-on-revert (ORCH-1292 — DRAFT until CLOSE)
 #   - I-PROPOSED-1297-CHIPIN-BANNER-OPAQUE (orch-1297-chipin-banner-opaque.mjs) — the ORCH-1295 chip-in post-payment return banner keeps an OPAQUE fill so the event cover image can't bleed through it: the inline style beside styles.returnBannerCard sets backgroundColor: palette.page (NOT the translucent palette.card), and neither returnBannerCard nor returnBannerWrap carries an opacity or an rgba(...) alpha fill; comment-stripped (the fix comment names palette.card/rgba/opacity to explain the bug), checks A/B scoped to the render site + C to the two banner style blocks; self-tested + fails-on-revert (ORCH-1297 — DRAFT until CLOSE)
+#   - I-PROPOSED-1298-CHIP-IN-RECEIPT-ENQUEUE (i-proposed-1298-chip-in-receipt-enqueue.mjs) — a paid chip-in enqueues a guest gift-receipt + host gift-received notification, once, both rails, idempotently: (a) the ORCH-1298 migration that CREATE-OR-REPLACEs finalize_rsvp_contribution INSERTs INTO public.notification_outbox with `chip_in_receipt:` idempotency keys for BOTH the guest (`:guest`) and a host recipient (`:host`), each ON CONFLICT (idempotency_key) DO NOTHING; (b) the same migration seeds BOTH categories (buyer_contribution_receipt + business.rsvp_contribution_received) and neither seeds an `sms` channel (DC-3 / I-PROPOSED-1161 closed SMS set); (c) _shared/notifyTemplates.ts has a renderCategoryMessage case for BOTH keys and neither case body contains tax/invoice/VAT gift-breaking language; comment-stripped; self-tested 7/7 + fails-on-revert (ORCH-1298 — DRAFT until CLOSE)
 #
 # Future gates to register (proposed but not yet implemented):
 #   - I-32 rank parity (Cycle 13a proposal)
@@ -208,6 +209,19 @@ jobs:
         run: node .github/scripts/strict-grep/orch-1297-chipin-banner-opaque.mjs --self-test
       - name: Run ORCH-1297 chipin-banner-opaque gate
         run: node .github/scripts/strict-grep/orch-1297-chipin-banner-opaque.mjs
+
+  orch-1298-chip-in-receipt-enqueue:
+    name: "ORCH-1298: paid chip-in enqueues guest+host gift receipts, idempotent, both rails, no-sms seed, gift copy (I-PROPOSED-1298-CHIP-IN-RECEIPT-ENQUEUE)"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Self-test the ORCH-1298 chip-in-receipt-enqueue gate
+        run: node .github/scripts/strict-grep/i-proposed-1298-chip-in-receipt-enqueue.mjs --self-test
+      - name: Run ORCH-1298 chip-in-receipt-enqueue gate
+        run: node .github/scripts/strict-grep/i-proposed-1298-chip-in-receipt-enqueue.mjs
 
   # META-ORCH-1290 D-1: the ORCH-1285 create-durable-deck-readiness gate is
   # RETIRED — D-1's single-submit deletes the create→deck-readiness nav that gate

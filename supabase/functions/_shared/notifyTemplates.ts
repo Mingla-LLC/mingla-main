@@ -221,6 +221,51 @@ export function renderCategoryMessage(
         sms: `${brand}: Your order for ${eventTitle} was cancelled. Any payment will be refunded.`,
       };
 
+    case "buyer_contribution_receipt": {
+      // ORCH-1298 [chip-in-receipt-emails] — GUEST gift receipt. Gift-framed
+      // thank-you, NOT a tax/invoice/receipt-of-sale document (Seth-locked
+      // ORCH-1291 gift semantics: NO "tax", NO "invoice", NO "VAT"). Amount is
+      // currency-aware via fmtAmount (reads amount_cents + currency). NO sms
+      // channel on the seeded category, so the sms string is defensive only.
+      const amount = fmtAmount(payload);
+      return {
+        push: {
+          title: "Gift received 💛",
+          body: `Your ${amount} gift to ${eventTitle} is in — thank you!`,
+        },
+        email: {
+          subject: `Thanks for chipping in to ${eventTitle} 💛`,
+          body:
+            `Thank you for chipping in ${amount} to ${eventTitle}.\n\n` +
+            `Your gift is confirmed. This is a thank-you, not a bill — there is nothing more to pay.\n\n` +
+            `See you there!`,
+        },
+        sms: `${brand}: Your ${amount} gift to ${eventTitle} is in. Thank you!`,
+      };
+    }
+
+    case "business.rsvp_contribution_received": {
+      // ORCH-1298 [chip-in-receipt-emails] — HOST "you got a gift" moment. Routes
+      // to the BUSINESS OneSignal app via the `business.` category prefix
+      // (resolveOneSignalApp / I-PROPOSED-W). Positive gift framing, NO
+      // tax/invoice language. Amount currency-aware; guest label from payload.
+      const amount = fmtAmount(payload);
+      const guest = str(payload.guest_name, "Someone");
+      return {
+        push: {
+          title: "You got a gift 🎁",
+          body: `${guest} chipped in ${amount} to ${eventTitle}.`,
+        },
+        email: {
+          subject: `${guest} chipped in ${amount} to ${eventTitle}`,
+          body:
+            `Good news — ${guest} just chipped in ${amount} to ${eventTitle}.\n\n` +
+            `It's on its way to your connected account. See the details in Mingla Business.`,
+        },
+        sms: `${brand}: ${guest} chipped in ${amount} to ${eventTitle}.`,
+      };
+    }
+
     default:
       // Generic fallback — never fabricate; render a plain notice from payload.
       return {
