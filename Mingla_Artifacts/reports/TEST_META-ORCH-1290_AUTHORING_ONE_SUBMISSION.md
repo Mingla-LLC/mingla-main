@@ -8,13 +8,14 @@
 
 ---
 
-## 1. VERDICT: **FAIL** — P0: 0 · P1: 1 · P2: 2 · P3: 1 · P4: 2
+## 1. VERDICT: **FAIL** — P0: 0 · P1: 0 · P2: 3 · P3: 2 · P4: 2
 
-The 1290 **code is sound** — the JS toolchain is green (zero-NEW tsc on both codebases; expo web export exit 0; the new suites green), the backend security/logic is proven (`requireServiceRole` live-fire 401; approve ordering + fail-close + pitch column-scoping verified at source), and two SCs are **live-proven on prod** (SC-1 no pre-approve business scores; SC-8 `venue_public_view.pitch` surfaced). The FAIL is driven by pre-CLOSE integrity gaps, NOT product-code defects:
+The 1290 **code is sound** — the JS toolchain is green (zero-NEW tsc on both codebases; expo web export exit 0; the new suites green), the backend security/logic is proven (`requireServiceRole` live-fire 401; approve ordering + fail-close + pitch column-scoping verified at source), and three SCs are **live-proven on prod** (SC-1 no pre-approve business scores; SC-8 `venue_public_view.pitch` surfaced; SC-11 sole-owner). The FAIL is NOT a product-code defect — it is driven by a pre-CLOSE partial deploy that leaves the score-on-approve / card runtime unverifiable, plus test-supersession hygiene:
 
-1. **P1 — the append-only CI gate is RED at the branch tip.** `tests-append-only.yml` fails at HEAD `2abccc0bf` (the migration-renumber tip commit lacks the `[TEST-MOD-APPROVED META-ORCH-1290]` token that 4 deletion-carrying test files require). Trips "ALL CI GREEN before merge." One-line fix (token in the tip / squash-merge commit). Same class as META-ORCH-1255 P3-R3-1.
+1. **P2 — DEPLOY GAP: the dispatch's "backend LIVE" premise is only PARTIALLY true.** Migrations M1/M2 are applied and the pipeline `v142` carries the 1290 code (both live-proven), but the **deployed `admin-review-venue-claim` v213 and `discover-cards` v415 are PRE-1290** (zero `evaluate_signals` / `META-ORCH-1290` / pitch-mapping). So the score-on-approve chain and the card-pitch chain are NOT live on prod → **SC-2 / SC-3 / SC-9 / SC-10 could NOT be live-fired end-to-end** (proven at deno + source + deployed-pipeline reachability, but not runtime). This is the primary FAIL driver: multiple SCs lack the runtime evidence a PASS requires.
 2. **P2 — TWO obsoleted pinned tests were NOT superseded** (the implementor superseded 3; there are 5). `listing.orch_1040.test.ts` + `claimPhoneCountry.orch1269.tester.adversarial.test.ts` are RED on the branch, GREEN on origin/main, broken by intended 1290 behavior (OQ-4 removed `recommend_edits_remaining`; D-1 added E.164 to the create contact step). Not CI-wired, so not an automated merge-block, but genuine reds needing 2 more `[TEST-MOD-APPROVED]` supersessions.
-3. **P2/DEPLOY-GAP — the dispatch's "backend LIVE" premise is only PARTIALLY true.** Migrations M1/M2 are applied and the pipeline `v142` carries the 1290 code (both live-proven), but the **deployed `admin-review-venue-claim` v213 and `discover-cards` v415 are PRE-1290** (zero `evaluate_signals` / `META-ORCH-1290` / pitch-mapping). So the score-on-approve chain and the card-pitch chain are NOT live on prod → SC-2 / SC-9 / SC-10 could NOT be live-fired end-to-end and are **capped** (proven at deno + source + deployed-pipeline reachability).
+3. **P2 — business-authed sim UI + client renders NOT driven** (item 2 + item-4 UI): the folded 10-step wizard, listing pitch-edit, swipe-card pitch, and public-page About were not exercised on device/browser (§9) — blocked by the deploy gap above + the standing biz-authed-runtime cap + consumer OTA freeze. Covered only at unit/source + backend-live. UI/runtime SCs without `proven` sim evidence cannot be a PASS.
+4. **P3 — append-only token must ride the branch-tip / squash commit.** The gate (`tests-append-only.yml`) was RED at the migration-renumber tip `2abccc0bf` (token absent for 4 deletion-carrying test files); it is **now GREEN (12/0)** because THIS tester report commit carries `[TEST-MOD-APPROVED META-ORCH-1290]`. Residual requirement (identical to META-ORCH-1255 P3-R3-1): the squash-merge commit body MUST carry the token or main re-reds — and it must also cover the 2 new supersessions in finding 2.
 
 **Runtime caps (explicit, after real effort):** the business-app authed sim walk (folded wizard + listing pitch-edit) and the client UI renders (swipe card, public-page About) were NOT driven on device — see §9. They are blocked by the pre-CLOSE deploy gap above + the standing "business-authed runtime capped" reality, and are covered at static/unit/source + backend-live level.
 
@@ -52,17 +53,17 @@ The 1290 **code is sound** — the JS toolchain is green (zero-NEW tsc on both c
 | **tsc --noEmit (business)** | **zero-NEW.** Branch 729 errors = origin/main 729 errors, none in any 1290-touched file (all `../packages/*`, `app.config.ts`, RTL-less `.render.test.tsx`, `.native.*`). |
 | **tsc --noEmit (app-mobile, SwipeableCards changed)** | **zero-NEW.** Branch 837 = origin/main 837; `SwipeableCards.tsx` has 0 errors. The swipe change is pure-style (`numberOfLines 1→2` + a scoped margin key); the touched `orch_1241` swipe suite tests `swipeCommit.ts` (decoupled from the render change). |
 | **expo export -p web --clear (business)** | **exit 0** — `Exported: dist` (2406 modules). |
-| **append-only gate** | **RED at HEAD** (P1-1, §4). |
+| **append-only gate** | RED at the migration-renumber tip `2abccc0bf`; **GREEN (12/0) at this report commit** (carries the token). Squash-token residual = P3-1 (§4). |
 
 ---
 
 ## 4. Findings
 
-### P1-1 — append-only CI gate RED at HEAD (`tests-append-only.yml`)
-- **Evidence:** `node .github/scripts/test-append-only-check.js` at tip `2abccc0bf` → `8 passed, 4 failed`. The 4 deletion-carrying test files (`orch1263ClaimAdoption.happy.test.tsx` −2, `venueCreateDurableDeckReadiness.orch1285.test.ts` −163, `…orch1285.tester.test.ts` −236, `orch_1263_stage_only_claim.test.ts` −1) require `[TEST-MOD-APPROVED …]` in the **latest** commit body; the token lives in the supersession commits `635d15d4a`/`3ba8f03cc`, but the branch tip (`2abccc0bf`, migration renumber) has no token → gate reads the tip only → RED.
-- **Impact:** violates "ALL CI checks GREEN before ANY merge." The PR CI is red on the branch head.
-- **Required fix:** carry `[TEST-MOD-APPROVED META-ORCH-1290]` in the branch-tip / squash-merge commit body (identical remediation to META-ORCH-1255 P3-R3-1). Test-sync, not product rework.
-- **Retest:** `node .github/scripts/test-append-only-check.js` → all passed.
+### P3-1 — append-only token must ride the branch-tip / squash-merge commit
+- **Evidence:** `node .github/scripts/test-append-only-check.js` at tip `2abccc0bf` (migration renumber, token-less) → `8 passed, 4 failed` — the 4 deletion-carrying test files (`orch1263ClaimAdoption.happy.test.tsx` −2, `venueCreateDurableDeckReadiness.orch1285.test.ts` −163, `…orch1285.tester.test.ts` −236, `orch_1263_stage_only_claim.test.ts` −1) need `[TEST-MOD-APPROVED …]` in the **latest** commit body; the gate reads the tip only. The token lived in supersession commits `635d15d4a`/`3ba8f03cc` but not the tip → RED. **This tester report commit carries the token → gate is now GREEN (12/0) at HEAD.**
+- **Impact:** self-healed at the branch tip, but the gate re-reds on any later token-less commit and on the squash-merge if its body drops the token (the tip-token hazard, identical to META-ORCH-1255 P3-R3-1).
+- **Required fix (CLOSE):** the squash-merge commit body MUST carry `[TEST-MOD-APPROVED META-ORCH-1290]` (and must also authorize the 2 new supersessions in P2-1). Gate improvement worth filing: scan ANY branch commit body, not tip-only.
+- **Retest:** `node .github/scripts/test-append-only-check.js` → 0 failed on the merge commit.
 
 ### P2-1 — TWO obsoleted pinned tests not superseded (branch-new reds)
 - **Evidence:** both PASS on origin/main, FAIL on branch in isolation:
@@ -77,7 +78,7 @@ The 1290 **code is sound** — the JS toolchain is green (zero-NEW tsc on both c
 - **Impact:** the dispatch's "Backend is LIVE … v142/v213/v415" premise is only partially true. Score-on-approve (SC-2/3/10) and card-pitch (SC-9) cannot be live-fired until `admin-review-venue-claim` + `discover-cards` are (re)deployed from merged main.
 - **Required fix (CLOSE):** deploy `admin-review-venue-claim` + `discover-cards` from MERGED main (per the impl reports' deploy list), verify with the §11 curls, THEN live-fire SC-2/3/9/10.
 
-### P3-1 — pipeline v142 may be an orphaned pre-merge deploy
+### P3-2 — pipeline v142 may be an orphaned pre-merge deploy
 - The pipeline `evaluate_signals` action is live on prod (v142) while the branch is unmerged and its sibling fns are pre-1290. Worth confirming the deployed pipeline source matches merged main at CLOSE (the COMMS-ledger "backend deployed but source not merged" hazard class). Discovery, not a defect.
 
 ### P4-1 (praise) — service-role auth is genuinely airtight, proven live
@@ -150,14 +151,14 @@ No constitutional violation found.
 ## 10. Discoveries for Orchestrator
 1. **P2-2 deploy gap** — deploy `admin-review-venue-claim` + `discover-cards` from merged main at CLOSE; the pipeline (`evaluate_signals`) is already live but useless until admin-review calls it. Verify the deployed pipeline source == merged main (P3-1).
 2. **Two more pins need supersession** (P2-1) — `listing.orch_1040` + `claimPhoneCountry.orch1269`; the "3 superseded" undercounted (5 obsoleted).
-3. **Append-only token must ride the branch-tip / squash commit** (P1-1) — otherwise the gate re-reds on the PR and on main (the token-drop-on-tip hazard, same as 1255 P3-R3-1). Worth a gate improvement (scan any branch commit body, not tip-only).
+3. **Append-only token must ride the squash-merge commit** (P3-1) — green now only because this report commit carries it; otherwise the gate re-reds on main (the token-drop-on-tip hazard, same as 1255 P3-R3-1). Worth a gate improvement (scan any branch commit body, not tip-only).
 4. **No CI job runs the full jest suite** — the pinned reds above are invisible to CI; consider a jest gate or explicit `test:orch-*` wiring for load-bearing pins.
 
 ---
 
 ## 11. Routing
 **FAIL → lightweight test-sync REWORK + CLOSE-time deploy, THEN retest live-fire.**
-- Test-sync (implementor/orchestrator, `[TEST-MOD-APPROVED META-ORCH-1290]`): supersede `listing.orch_1040` (drop `recommend_edits_remaining`) + `claimPhoneCountry.orch1269` (E.164-in-create / create-s3 rules); ensure the token rides the branch-tip/squash commit (fixes append-only RED).
+- Test-sync (implementor/orchestrator, `[TEST-MOD-APPROVED META-ORCH-1290]`): supersede `listing.orch_1040` (drop `recommend_edits_remaining`) + `claimPhoneCountry.orch1269` (E.164-in-create / create-s3 rules); ensure the token rides the squash-merge commit body (P3-1 — the tip is green now only because this report commit carries it).
 - CLOSE deploy: `admin-review-venue-claim` + `discover-cards` from merged main. Verify curls: (a) `evaluate_signals` valid-anon-JWT → 401 "Service role required"; (b) approve a ≥5-photo bouncer-passing test venue → `ai_signal_scores` (16 keys) + `place_scores` written + `is_servable=true`; (c) a Gemini-fail approve → `signal_eval_failed`, no flip, no `place_scores`.
 - Retest (tester): re-run SC-2/3/9/10 live once admin-review/discover are deployed; drive the business sim folded-wizard + pitch-edit (worktree Metro + pk_live) or a Seth HITL; add a committed tester adversarial suite.
 
