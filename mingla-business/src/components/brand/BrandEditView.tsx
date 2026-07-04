@@ -23,8 +23,6 @@
 
 import React, { useCallback, useMemo, useRef, useState } from "react";
 import {
-  Image as RNImage,
-  Platform,
   Pressable,
   StyleSheet,
   Text,
@@ -45,7 +43,6 @@ import type {
 // Per SPEC_ORCH-0892-B_v2 §7.D. KeyboardAvoidingView wrapper from
 // ORCH-0892-A is DELETED — KAS supersedes it functionally.
 import { ScrollView } from "../../wrappers/SmartScrollView";
-import { Image as ExpoImage } from "expo-image";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import {
@@ -64,7 +61,7 @@ import type { Brand } from "../../store/currentBrandStore";
 import { Avatar } from "../ui/Avatar";
 import { Button } from "../ui/Button";
 import { ConfirmDialog } from "../ui/ConfirmDialog";
-import { EventCover } from "../ui/EventCover";
+import { EventCoverMedia } from "../ui/EventCoverMedia";
 import { GlassCard } from "../ui/GlassCard";
 import { Icon } from "../ui/Icon";
 import { Input } from "../ui/Input";
@@ -587,36 +584,28 @@ export const BrandEditView: React.FC<BrandEditViewProps> = ({
           </Text>
           <View style={styles.fieldsCol}>
             <View style={styles.coverPreviewWrap}>
-              {typeof draft.coverMediaUrl === "string" &&
-              draft.coverMediaUrl.length > 0 ? (
-                // ORCH-0805-WEB hotfix (2026-05-12) — expo-image only on
-                // Android (where it correctly animates GIFs). iOS + web use
-                // RN core Image, which renders + animates GIFs natively
-                // and avoids the expo-image-web-shim failure mode that hid
-                // covers on the public brand page in a browser.
-                Platform.OS === "android" ? (
-                  <ExpoImage
-                    source={{ uri: draft.coverMediaUrl }}
-                    style={styles.coverPreviewMedia}
-                    contentFit="cover"
-                    accessibilityLabel="Cover preview"
-                  />
-                ) : (
-                  <RNImage
-                    source={{ uri: draft.coverMediaUrl }}
-                    style={styles.coverPreviewMedia}
-                    resizeMode="cover"
-                    accessibilityLabel="Cover preview"
-                  />
-                )
-              ) : (
-                <EventCover
-                  hue={draft.coverHue}
-                  radius={radiusTokens.lg}
-                  label=""
-                  height={120}
-                />
-              )}
+              {/* ORCH-1298 — the brand cover preview must be VIDEO-capable. A
+                  video cover's coverMediaUrl is a Bunny …/play_720p.mp4 that a
+                  plain Image cannot render → the preview came up empty after a
+                  video upload. EventCoverMedia handles image / gif / video /
+                  empty in ONE component — the shared pattern already used by
+                  every other authoring surface (event / trip / venue /
+                  experience). Pause the inline player while the picker sheet
+                  (which shows its own live preview) is open. */}
+              <EventCoverMedia
+                hue={draft.coverHue}
+                mediaUrl={draft.coverMediaUrl ?? null}
+                mediaType={draft.coverMediaType ?? null}
+                radius={radiusTokens.lg}
+                label="cover"
+                height={120}
+                muted={true}
+                autoplay={!coverPickerVisible}
+                playbackActive={!coverPickerVisible}
+                showAudioControl={
+                  draft.coverMediaType === "video" && !coverPickerVisible
+                }
+              />
             </View>
             <Text style={styles.kindHint}>
               This shows up at the top of your public brand page.
@@ -1020,10 +1009,6 @@ const styles = StyleSheet.create({
     overflow: "hidden",
     marginBottom: spacing.xs,
     height: 120,
-  },
-  coverPreviewMedia: {
-    width: "100%",
-    height: "100%",
   },
   coverCtaRow: {
     flexDirection: "row",
