@@ -526,20 +526,36 @@ const LegacyTripPreview: React.FC<{
     null,
   );
 
+  // ORCH-1299 — narrow the wide `coverMediaType: string | null` to the media
+  // component's union (mirrors FoundationTripPreview) so a VIDEO cover renders.
+  const coverType =
+    trip.coverMediaType === "video"
+      ? "video"
+      : trip.coverMediaType === "gif"
+        ? "gif"
+        : trip.coverMediaUrl !== null
+          ? "image"
+          : null;
+
   return (
     <View style={styles.legacyHost} testID={testID}>
-      {/* Cover image */}
-      {trip.coverMediaUrl !== null ? (
-        <Image
-          source={{ uri: trip.coverMediaUrl }}
-          style={styles.legacyCover}
-          accessibilityLabel={`Cover image for ${trip.title}`}
-        />
-      ) : (
-        <View style={[styles.legacyCover, styles.legacyCoverPlaceholder]}>
-          <Text style={styles.legacyCoverPlaceholderText}>No cover image</Text>
-        </View>
-      )}
+      {/* ORCH-1299 — the trip cover on this review/checkout preview was a raw
+          Image, so a VIDEO cover (Bunny …/play_720p.mp4) rendered empty. Render
+          it through the shared, media-aware EventCoverMedia (image / gif / video
+          / empty hue fallback), matching the legacyCover box (full-width, 220,
+          square). Calm still poster — no autoplay in a checkout summary. */}
+      <EventCoverMedia
+        mediaUrl={trip.coverMediaUrl}
+        mediaType={coverType}
+        label={`Cover for ${trip.title}`}
+        radius={0}
+        height={220}
+        width="100%"
+        muted
+        autoplay={false}
+        playbackActive={false}
+        showAudioControl={false}
+      />
 
       <View style={[styles.legacyBody, { padding: contentPadding }]}>
         <Text style={styles.legacyTitle}>{trip.title}</Text>
@@ -1020,19 +1036,6 @@ const styles = StyleSheet.create({
   // ===================== LEGACY styles (unchanged from pre-1138) =====================
   legacyHost: {
     backgroundColor: "transparent",
-  },
-  legacyCover: {
-    width: "100%",
-    height: 220,
-    backgroundColor: "rgba(255, 255, 255, 0.04)",
-  },
-  legacyCoverPlaceholder: {
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  legacyCoverPlaceholderText: {
-    color: textTokens.tertiary,
-    fontSize: typography.caption.fontSize,
   },
   legacyBody: {
     padding: spacing.lg,
