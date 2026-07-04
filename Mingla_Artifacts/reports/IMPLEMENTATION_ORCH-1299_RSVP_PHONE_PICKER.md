@@ -116,7 +116,7 @@ Parity: automatic (shared `@mingla/phone-input` package). No manual parity paths
 `.github/scripts/strict-grep/orch-1299-rsvp-phone-picker-overlay.mjs`, registered in `strict-grep-mingla-business.yml`. Checks: A (helper web-gate), B (PhoneInput renders both surfaces via `resolvePickerPresentation`), C (RSVP passes overlay), D (checkout hosts do NOT), E (overlay web-`fixed`), **F (handleOpenPicker web-immediate `setPickerVisible`)**.
 - Self-test: **PASS 11/11** (5 fixed shapes pass; 6 reverts fail).
 - Live run: **PASS**.
-- **Fails-on-revert by TRUE LINE DELETION (both fixes), verified at commit `30022ded2`:**
+- **Fails-on-revert by TRUE LINE DELETION (both fixes), verified against the fix at commit `329798a7f`:**
   - Deleted `pickerPresentation="overlay"` from PublicEventPage → gate FAIL (check C), exit 1 → restored → PASS.
   - Deleted the `if (Platform.OS === "web") { setPickerVisible(true); return; }` block from PhoneInput → gate FAIL (check F), exit 1 → restored → PASS.
 
