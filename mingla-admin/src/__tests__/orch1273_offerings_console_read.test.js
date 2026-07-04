@@ -252,9 +252,13 @@ describe("ORCH-1273 — gate + workflow + registry", () => {
     const writeGate = read(".github/scripts/strict-grep/i-admin-write-audited.mjs");
     for (const n of READ_RPCS) assert.doesNotMatch(writeGate, new RegExp(n), `${n} NOT in write-RPC registry`);
   });
-  it("both DRAFT invariants are registered", () => {
+  it("both invariants are registered (ACTIVE after META-ORCH-1237 CLOSE)", () => {
     const reg = read("Mingla_Artifacts/INVARIANT_REGISTRY.md");
-    assert.match(reg, /I-PROPOSED-1273-OFFERINGS-ADMIN-READ-CROSSBRAND \(DRAFT\)/);
-    assert.match(reg, /I-PROPOSED-1273-OFFERINGS-READ-ONLY \(DRAFT\)/);
+    // ORCH-1293 [TEST-MOD-APPROVED ORCH-1293]: META-ORCH-1237 CLOSE flipped these
+    // two ORCH-1273 invariants DRAFT -> ACTIVE in INVARIANT_REGISTRY.md (PR #743)
+    // but did not update this assertion, leaving main red on any strict-grep-
+    // triggering PR. Assert the current, correct ACTIVE status.
+    assert.match(reg, /I-PROPOSED-1273-OFFERINGS-ADMIN-READ-CROSSBRAND \(ACTIVE\)/);
+    assert.match(reg, /I-PROPOSED-1273-OFFERINGS-READ-ONLY \(ACTIVE\)/);
   });
 });
