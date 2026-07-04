@@ -146,12 +146,13 @@ The RSVP publish gate calls `pg_brand_can_collect`, NOT `pg_brand_can_charge` (r
 ### 4.4 Edge function — contribution refund (extend or sibling of `refund-order`)
 
 - A contribution has no `order` → `refund-order` cannot handle it (investigation F-7). Add `rsvp-contribution-refund` (or a `contribution` branch keyed on `contribution_id`):
-  - Stripe: `refunds.create({ payment_intent, amount?, refund_application_fee: <decision> }, { stripeAccount })` on the connected account. Set `refund_application_fee` per policy (v1: refund the full amount incl. Mingla's fee on a gift refund — a gift refund should make the guest whole; flag if Seth wants Mingla to keep its cut).
+  - **Refund policy (Seth-locked Q-C 2026-07-03): Mingla KEEPS its cut on a discretionary/guest-initiated refund.** One fn, one flag, two cases:
+    - **Discretionary refund** (guest changed their mind / organiser goodwill): Stripe `refunds.create({ payment_intent, amount?, refund_application_fee: FALSE }, { stripeAccount })` — Mingla retains its `application_fee`; the guest is returned `amount_cents − application_fee_amount_cents` (NOT made whole). Paystack: `POST /refund { transaction, amount: (buyer_total_cents − application_fee_amount_cents) }` so the `transaction_charge` already routed to Mingla's main account is retained.
+    - **Event-cancellation refund** (conductor default — chargeback/goodwill protection, because the guest receives nothing): make the guest WHOLE — Stripe `refund_application_fee: TRUE`, Paystack refund the full `buyer_total_cents`. This is the ONE place we override "Mingla keeps its cut" (a for-cause cancellation that refunds only part reads as a dispute magnet). Flagged for Seth in §10 Q-C.
     - Doc: refunds + `refund_application_fee` — https://docs.stripe.com/connect/direct-charges#issue-refunds
-  - Paystack: `POST /refund { transaction: <reference|id>, amount? }`.
     - Doc: refunds — https://paystack.com/docs/api/refund/#create
-  - Flip `event_rsvp_contributions.status` → `refunded` / `partially_refunded`, set `refunded_amount_cents`.
-- **Cancellation:** when an RSVP event is cancelled, all `status='paid'` contributions for it are refunded (batch) and set to `cancelled`/`refunded`; the guest's RSVP status is unchanged (free RSVP survives; only the gift is returned).
+  - Flip `event_rsvp_contributions.status` → `refunded` / `partially_refunded`, set `refunded_amount_cents` (the amount actually returned to the guest).
+- **Cancellation:** when an RSVP event is cancelled, all `status='paid'` contributions for it are refunded WHOLE (batch, `refund_application_fee=true`) and set to `cancelled`/`refunded`; the guest's RSVP status is unchanged (free RSVP survives; only the gift is returned).
 
 ### 4.5 Service / hooks (business + consumer)
 
@@ -170,15 +171,15 @@ The RSVP publish gate calls `pg_brand_can_collect`, NOT `pg_brand_can_charge` (r
 ## 5. Success criteria (numbered, observable; per-surface where parity is manual)
 
 - **SC-1** — A guest can RSVP FREE to a chip-in-enabled event without paying anything (chip-in never blocks RSVP). (all surfaces via shared body)
-- **SC-2** — After RSVP, a chip-in affordance appears iff `rsvp_contribution_enabled=true`.
-  - SC-2-iOS / SC-2-Android / SC-2-Web — visible on each.
+- **SC-2** — After RSVP, a chip-in affordance appears iff `rsvp_contribution_enabled=true` AND the guest's status ∈ {`going`, `pending`} (Seth/conductor-locked: NOT `maybe`, NOT `waitlisted` — do not solicit gifts from uncommitted or capacity-gated guests). Both mounts (success popup + inline §5.5 body section) use the SAME `{going, pending}` gate.
+  - SC-2-iOS / SC-2-Android / SC-2-Web — visible on each for a `going`/`pending` guest; absent for `maybe`/`waitlisted`/`not_going`.
 - **SC-3 (Stripe)** — A guest chip-in of X on a Stripe brand charges the buyer exactly X (no tax, no service fee added), lands `event_rsvp_contributions.status='paid'` with `pricing_breakdown.tax_cents=0`, `tax_basis='voluntary_contribution'`, and `application_fee_amount_cents = round(X * take_rate_bps / 10000)` collected to Mingla.
 - **SC-4 (Paystack)** — A guest chip-in of X (NGN) on a Paystack brand charges X kobo on the brand's subaccount, routes `transaction_charge = miglaFee` to Mingla's main account, and the verified `charge.success` webhook finalizes the contribution row (amount+currency matched).
 - **SC-5** — The persisted receipt/confirmation reads as a voluntary contribution (no tax line, no "tax invoice", no admission-ticket/QR), amount + brand + event present.
 - **SC-6** — Publishing a chip-in-enabled RSVP with NO connected bank is BLOCKED with the fail-close reason and routes to the correct inline connect flow for the brand's provider; a FREE (chip-in OFF) RSVP publishes with NO bank requirement.
   - SC-6-Stripe — Stripe brand without `charges_enabled` blocked; SC-6-Paystack — Paystack brand without `paystack_subaccount_code` blocked; SC-6-Paystack-ready — Paystack brand WITH a subaccount is NOT blocked (guards against the `pg_brand_can_charge` Stripe-blind trap).
 - **SC-7** — An ANON web guest can chip in end-to-end (no login) and receives confirmation.
-- **SC-8** — A refund of a paid contribution flips status to `refunded`/`partially_refunded` and returns funds on the correct rail; cancelling the event refunds all its paid contributions and leaves guests' free RSVPs intact.
+- **SC-8** — A DISCRETIONARY refund of a paid contribution flips status to `refunded`/`partially_refunded` and returns `amount − application_fee` on the correct rail (Mingla KEEPS its cut, Q-C); an EVENT-CANCELLATION refund returns the FULL `buyer_total` (guest made whole) and sets status `cancelled`/`refunded`; both leave guests' free RSVPs intact.
 - **SC-9** — `event_rsvps` has NO new payment column and `business_publish_rsvp_draft` still soft-deletes stray `ticket_types` (wall preserved).
 - **SC-10** — The ticket/all-in money path is byte-unchanged for non-contribution charges (no tax-behavior regression on tickets).
 
@@ -262,12 +263,14 @@ Orchestrator (NOT the implementor) applies the migration and deploys the edge fn
 
 ---
 
-## 10. Open questions (need Seth / a decision — do NOT silently resolve)
+## 10. Decisions (all RESOLVED — was "open questions")
 
-- **Q-A (FINANCE/LEGAL — NOTIFY, investigation F-10):** the zero-tax gift model is defensible in v1 ONLY because chip-in is optional (attendance is free → not taxable consideration). This SPEC ships the zero-tax mechanism Seth locked. **Seth to acknowledge:** (1) the organiser's own income-tax treatment of receipts is out of Mingla's checkout scope; (2) the required-to-attend mode (reserved) will need a taxable-consideration path, not this gift path. No code blocker.
-- **Q-B (PRODUCT FORK — NOTIFY, investigation F-11):** processing-fee incidence. **Recommendation shipped in this SPEC:** organiser absorbs processing (guest charged exactly the amount typed; `pass_service_fee=false`, `pass_mingla_fee=false`, Paystack `bearer:'subaccount'`); Mingla still takes `application_fee`. Alternative (deferred): a "cover the fees" guest toggle. **Seth to confirm** the organiser-absorbs default.
-- **Q-C:** refund of a gift — does Mingla return its `application_fee` too (make the guest fully whole, SPEC default `refund_application_fee=true`) or keep its cut? Confirm.
-- **Q-D:** does an anon web contribution require linking to a prior `event_rsvps` row, or can a guest chip in without a formal RSVP row (`rsvp_id` nullable already allows either)? Product call on whether "chip in" implies "RSVP going."
+**ALL RESOLVED by Seth 2026-07-03 (conductor REVIEW turn). Authoritative — the implementor builds to these.**
+
+- **Q-A (tax posture) → RESOLVED: acknowledge & proceed.** Ship the zero-tax mechanism for optional chip-in. (1) The organiser's own income-tax treatment of what they receive is OUT of Mingla's checkout scope. (2) The reserved required-to-attend mode will get its OWN taxable-consideration path later — NOT this gift path. No code blocker.
+- **Q-B (fee incidence) → RESOLVED: organiser absorbs (WYSIWYG).** Guest charged EXACTLY the amount typed (`pass_service_fee=false`, `pass_mingla_fee=false`, Paystack `bearer:'subaccount'`); Mingla still takes `application_fee`. The "cover the fees" guest toggle stays deferred (§2 non-goal). Confirm-line copy isolated to ONE swappable string (per design) for a cheap future flip.
+- **Q-C (refund cut) → RESOLVED: Mingla KEEPS its cut on discretionary refunds** (`refund_application_fee=false`; Paystack refund excludes `transaction_charge`). Guest is NOT made whole on a change-of-mind refund. EXCEPTION (conductor default, §4.4): **event-cancellation refunds ARE made whole** (`refund_application_fee=true`) — chargeback/goodwill protection since a cancelled event returns nothing to the guest. Seth may veto the cancellation exception; otherwise it stands.
+- **Q-D (entry point) → RESOLVED: chip-in AFTER RSVP, linked to the guest's RSVP row.** No standalone tip-jar entry in v1 (the `<RsvpChipInPanel>` block is kept self-contained so a future standalone entry can reuse it — design annotation only). Combined with SC-2's status gate: chip-in shows for `going`/`pending` guests only.
 
 ---
 
