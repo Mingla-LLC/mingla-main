@@ -26,7 +26,7 @@
  * (checkoutPublicPathWithSeed(event.id, …)) — no address, no taxCalculationId.
  */
 
-import React, { useCallback, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Linking,
   Platform,
@@ -38,7 +38,7 @@ import {
   type NativeScrollEvent,
   type NativeSyntheticEvent,
 } from "react-native";
-import { useRouter } from "expo-router";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import Head from "expo-router/head";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -63,7 +63,20 @@ import {
   useResponsiveLayout,
   EventOfferingFloatingBar,
   EventTicketBox,
+  type RsvpPhoneFieldRenderer,
 } from "@mingla/offering-rendering";
+// ORCH-1295 [chip-in-post-payment-polish] — BUG 2: the shared country-picker phone
+// input already used on the buyer checkout form (ORCH-0847). Reused here so the
+// public RSVP phone field is country-code aware. No new npm dependency.
+import {
+  PhoneInput,
+  COUNTRIES,
+  getCountryByCode,
+  type PhoneInputTheme,
+  type PhoneInputIconName,
+} from "@mingla/phone-input";
+import { composeE164 } from "../../utils/phone";
+import { Icon } from "../ui/Icon";
 
 import { FoundationEventPreview } from "./FoundationEventPreview";
 import { FoundationRsvpPreview } from "./FoundationRsvpPreview";
@@ -231,6 +244,34 @@ const openMapsForQuery = (query: string): void => {
   });
 };
 
+// ORCH-1295 [chip-in-post-payment-polish] — BUG 2: seed the guest phone picker's
+// initial country. Guest's device locale first (they enter their OWN number),
+// then a brand-currency hint (the brand's settlement currency is a country
+// proxy), then "US". Mirrors buyer.tsx's locale-first resolveInitialCountry.
+const CURRENCY_DEFAULT_COUNTRY: Record<string, string> = {
+  NGN: "NG",
+  GBP: "GB",
+  USD: "US",
+  CAD: "CA",
+  AUD: "AU",
+  EUR: "IE",
+  ZAR: "ZA",
+  KES: "KE",
+  GHS: "GH",
+};
+const resolveGuestPhoneCountry = (currency?: string | null): string => {
+  try {
+    const locale = Intl.DateTimeFormat().resolvedOptions().locale;
+    const region = locale.split("-")[1]?.toUpperCase();
+    if (region && COUNTRIES.some((c) => c.code === region)) return region;
+  } catch {
+    // Intl unavailable — fall through to the currency hint.
+  }
+  const byCurrency = currency ? CURRENCY_DEFAULT_COUNTRY[currency.toUpperCase()] : undefined;
+  if (byCurrency && COUNTRIES.some((c) => c.code === byCurrency)) return byCurrency;
+  return "US";
+};
+
 const canonicalUrl = (event: LiveEvent): string =>
   eventPublicUrl({
     brandSlug: event.brandSlug,
@@ -253,6 +294,11 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
   bookable = true,
 }) => {
   const router = useRouter();
+  // ORCH-1295 [chip-in-post-payment-polish] — BUG 1: the chip-in web return lands
+  // here as `?contribution=paid` (or `=cancel`). Read it to show a gift-framed
+  // return banner (the shared chip-in panel mounts are gated on a live RSVP status
+  // that a fresh page load no longer has, so the confirmation must live here).
+  const routeParams = useLocalSearchParams<{ contribution?: string | string[] }>();
   const insets = useSafeAreaInsets();
   const { user } = useAuth();
   const userBrands = useBrandList();
@@ -625,6 +671,114 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
     [event.id],
   );
 
+  // ── ORCH-1295 [chip-in-post-payment-polish] — BUG 1: the post-payment web return
+  // banner. Read `?contribution=paid|cancel` ONCE, then strip the param (web) so a
+  // refresh / back doesn't re-trigger it. Gift-framed; NO ticket/tax/purchase words. ──
+  const contributionParam = Array.isArray(routeParams.contribution)
+    ? routeParams.contribution[0]
+    : routeParams.contribution;
+  const [returnBanner, setReturnBanner] = useState<"paid" | "cancel" | null>(
+    contributionParam === "paid"
+      ? "paid"
+      : contributionParam === "cancel"
+        ? "cancel"
+        : null,
+  );
+  const returnBannerHandledRef = useRef<boolean>(false);
+  useEffect(() => {
+    if (returnBannerHandledRef.current) return;
+    if (contributionParam !== "paid" && contributionParam !== "cancel") return;
+    returnBannerHandledRef.current = true;
+    setReturnBanner(contributionParam);
+    if (Platform.OS === "web" && typeof window !== "undefined") {
+      try {
+        const url = new URL(window.location.href);
+        url.searchParams.delete("contribution");
+        url.searchParams.delete("contrib");
+        window.history.replaceState(
+          null,
+          "",
+          url.pathname + url.search + url.hash,
+        );
+      } catch {
+        // Stripping the param is a nicety; the banner already shows from state.
+      }
+    }
+  }, [contributionParam]);
+
+  // ── ORCH-1295 [chip-in-post-payment-polish] — BUG 2: the country-code-aware guest
+  // phone field. Reuses @mingla/phone-input (as on the buyer checkout form). The
+  // hook owns country + local-digits state; here we render the picker + compose
+  // the E.164 value the RSVP submit expects. ──
+  const defaultPhoneCountry = useMemo(
+    () => resolveGuestPhoneCountry(event.currency ?? null),
+    [event.currency],
+  );
+  const phoneFieldTheme = useMemo<PhoneInputTheme>(
+    () => ({
+      backgroundPrimary: palette.page,
+      textPrimary: palette.primaryText,
+      textTertiary: palette.tertiaryText,
+      borderDefault: palette.panelBorder,
+      borderFocused: palette.accent,
+      borderError: "#ef4444",
+      searchBackground: palette.card,
+      rowPressedBackground: palette.accentWash,
+      divider: palette.panelBorder,
+      accessoryBackground: palette.page,
+      accessoryBorder: palette.panelBorder,
+      accent: palette.accent,
+      errorText: "#ef4444",
+    }),
+    [palette],
+  );
+  const renderRsvpPhoneField = useCallback<RsvpPhoneFieldRenderer>(
+    ({ countryCode, localDigits, onChangeCountry, onChangeLocalDigits, invalid, disabled }) => (
+      <View style={styles.rsvpPhoneFieldWrap}>
+        <Text style={[styles.rsvpPhoneFieldLabel, { color: palette.tertiaryText }]}>
+          Phone
+        </Text>
+        <PhoneInput
+          value={localDigits}
+          countryCode={countryCode}
+          onChangePhone={(next: string) => {
+            const dial = getCountryByCode(countryCode)?.dialCode ?? "+1";
+            onChangeLocalDigits(next, composeE164(dial, next) ?? "");
+          }}
+          onChangeCountry={(nextIso: string) => {
+            const dial = getCountryByCode(nextIso)?.dialCode ?? "+1";
+            onChangeCountry(nextIso, composeE164(dial, localDigits) ?? "");
+          }}
+          error={invalid ? "Enter a valid phone number" : null}
+          disabled={disabled}
+          iconRenderer={(name: PhoneInputIconName, iconProps: { size: number; color: string }) => {
+            const iconName =
+              name === "chevronDown"
+                ? "chevD"
+                : name === "checkmark"
+                  ? "check"
+                  : name === "close"
+                    ? "close"
+                    : "search";
+            return <Icon name={iconName} size={iconProps.size} color={iconProps.color} />;
+          }}
+          labels={{
+            phonePlaceholder: "Phone number",
+            countryButtonAccessibilityLabel: (name: string) =>
+              `Country code, ${name}, tap to change`,
+            phoneInputAccessibilityLabel: "Phone number",
+            doneButton: "Done",
+            pickerTitle: "Select Country",
+            pickerSearchPlaceholder: "Search country or dial code",
+            pickerCloseAccessibilityLabel: "Close country picker",
+          }}
+          theme={phoneFieldTheme}
+        />
+      </View>
+    ),
+    [palette, phoneFieldTheme],
+  );
+
   // ORCH-1157 Issue 4 [doors] — derive the tz-aware doors labels from the live
   // event's master start/end instants (event_dates). REAL-DATA-ONLY.
   const rsvpDoors = useMemo(
@@ -682,6 +836,10 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
             hostShortName: brand?.displayName ?? undefined,
           }}
           onChipIn={handleChipIn}
+          // ORCH-1295 [chip-in-post-payment-polish] — BUG 2: inject the country-code-
+          // aware guest phone field on buyer web (native surfaces keep the plain field).
+          renderPhoneField={renderRsvpPhoneField}
+          defaultPhoneCountry={defaultPhoneCountry}
           isLoggedIn={user !== null}
           muted={muted}
           onToggleMute={handleToggleMute}
@@ -722,6 +880,55 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
             onDismiss={dismissToast}
           />
         </View>
+
+        {/* ORCH-1295 [chip-in-post-payment-polish] — BUG 1: post-payment web return
+            banner. A guest who chipped in on Stripe/Paystack lands back here; show a
+            clear gift-framed confirmation (or a neutral canceled state) instead of a
+            silent page. Dismissible; the param is stripped so a refresh won't repeat it. */}
+        {returnBanner !== null ? (
+          <View
+            style={[styles.returnBannerWrap, { paddingTop: insets.top + 12 }]}
+            pointerEvents="box-none"
+          >
+            <View
+              style={[
+                styles.returnBannerCard,
+                { backgroundColor: palette.card, borderColor: palette.panelBorder },
+              ]}
+              testID="orch-1295-chipin-return-banner"
+            >
+              <View style={styles.returnBannerText}>
+                <Text
+                  style={[
+                    styles.returnBannerTitle,
+                    { color: palette.primaryText, fontFamily: boldFamily },
+                  ]}
+                >
+                  {returnBanner === "paid"
+                    ? "Thanks for chipping in 💛"
+                    : "Payment canceled"}
+                </Text>
+                <Text style={[styles.returnBannerBody, { color: palette.secondaryText }]}>
+                  {returnBanner === "paid"
+                    ? `Your gift to ${brand?.displayName ?? "the host"} came through — your RSVP's all set.`
+                    : "No charge was made. Your RSVP is still confirmed."}
+                </Text>
+              </View>
+              <Pressable
+                onPress={() => setReturnBanner(null)}
+                accessibilityRole="button"
+                accessibilityLabel="Dismiss"
+                hitSlop={10}
+                style={styles.returnBannerClose}
+                testID="orch-1295-chipin-return-banner-dismiss"
+              >
+                <Text style={[styles.returnBannerCloseText, { color: palette.tertiaryText }]}>
+                  ✕
+                </Text>
+              </Pressable>
+            </View>
+          </View>
+        ) : null}
       </View>
     );
   }
@@ -916,4 +1123,37 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     zIndex: 5,
   },
+  // ORCH-1295 [chip-in-post-payment-polish] — BUG 1 post-payment web return banner.
+  // Pinned top, above the parallax chrome (zIndex 6 in the shell), dismissible.
+  returnBannerWrap: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    paddingHorizontal: 16,
+    zIndex: 20,
+  },
+  returnBannerCard: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 12,
+    borderRadius: 16,
+    borderWidth: 1,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+  },
+  returnBannerText: { flex: 1, minWidth: 0 },
+  returnBannerTitle: { fontSize: 15, fontWeight: "900", letterSpacing: -0.2 },
+  returnBannerBody: { fontSize: 13, lineHeight: 18, fontWeight: "600", marginTop: 3 },
+  returnBannerClose: {
+    width: 28,
+    height: 28,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  returnBannerCloseText: { fontSize: 16, fontWeight: "800" },
+  // ORCH-1295 — BUG 2 injected phone field wrapper (matches the RSVP form's field
+  // label spacing so the country-picker input aligns with the name/email fields).
+  rsvpPhoneFieldWrap: { marginBottom: 12 },
+  rsvpPhoneFieldLabel: { fontSize: 12, fontWeight: "700", marginBottom: 5 },
 });

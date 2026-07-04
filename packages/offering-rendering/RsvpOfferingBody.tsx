@@ -117,6 +117,36 @@ export interface RsvpOfferingConfig {
 // (→ "redirecting"). It throws Error(code) on failure; the body maps code → copy.
 export type ChipInResult = { kind: "paid" } | { kind: "redirecting" };
 
+// ORCH-1295 [chip-in-post-payment-polish] — BUG 2: country-code-aware phone.
+// This package is host-agnostic (I-MOR-0827): the phone-with-country-picker
+// widget (@mingla/phone-input) is HOST-SUPPLIED (it needs the host's icon set +
+// i18n labels), so the SURFACE injects it via this render-prop. The COUNTRY +
+// LOCAL-DIGITS state is lifted into useRsvpOfferingState (single owner) so the
+// injected field stays fully controlled and never diverges across the two
+// contact-form mounts (inline body + floating-bar details modal). The surface
+// owns E.164 composition and passes the composed value back. When the prop is
+// absent (native surfaces today) the body renders the existing plain phone
+// field — ZERO regression.
+export interface RsvpPhoneFieldRenderArgs {
+  /** ISO 3166-1 alpha-2 country code (controlled by the hook). */
+  countryCode: string;
+  /** National digits only (controlled by the hook). */
+  localDigits: string;
+  /** New country picked → surface passes the freshly-composed E.164 too. */
+  onChangeCountry: (isoCode: string, composedE164: string) => void;
+  /** Digits edited → surface passes the freshly-composed E.164 too. */
+  onChangeLocalDigits: (digits: string, composedE164: string) => void;
+  /** True when the composed value is present but not a valid phone number. */
+  invalid: boolean;
+  /** Brand palette so the injected field matches the themed RSVP form. */
+  palette: ThemePalette;
+  /** Disable while a submit is in flight. */
+  disabled: boolean;
+}
+export type RsvpPhoneFieldRenderer = (
+  args: RsvpPhoneFieldRenderArgs,
+) => React.ReactNode;
+
 export interface RsvpGuestContact {
   name: string;
   email: string;
@@ -175,6 +205,15 @@ export interface RsvpOfferingBodyProps {
    * 'idle'. When 'paid', both mounts render the thank-you.
    */
   contributionState?: "idle" | "paid";
+  /**
+   * ORCH-1295 [chip-in-post-payment-polish] — BUG 2: the surface's country-code-
+   * aware phone field. Absent → the plain phone text field renders (native
+   * fallback, zero regression). Present → it replaces the phone field in the
+   * guest contact form; the hook owns the country + local-digits state.
+   */
+  renderPhoneField?: RsvpPhoneFieldRenderer;
+  /** ISO 3166-1 alpha-2 seed for the phone picker's initial country. */
+  defaultPhoneCountry?: string;
   testID?: string;
 }
 
@@ -233,12 +272,23 @@ export const useRsvpOfferingState = (
 ): RsvpOfferingState => {
   const { event, brand, palette, theme, config, isLoggedIn, onSubmit } = props;
   const { onChipIn, contributionState } = props;
+  // ORCH-1295 [chip-in-post-payment-polish] — BUG 2 phone injection (see prop docs).
+  const { renderPhoneField, defaultPhoneCountry } = props;
   const surface = offeringSurfaceStyles(palette);
   const boldFamily = boldFontFamily(theme);
 
   const [guestName, setGuestName] = useState("");
   const [guestEmail, setGuestEmail] = useState("");
+  // `guestPhone` remains the single submitted value (a composed E.164 when the
+  // country picker is injected, else the raw text the guest typed).
   const [guestPhone, setGuestPhone] = useState("");
+  // ORCH-1295 — country + local-digits state for the injected picker (unused when
+  // renderPhoneField is absent). Lifted here so the field stays controlled across
+  // BOTH contact-form mounts (inline body + details modal) without divergence.
+  const [phoneCountry, setPhoneCountry] = useState<string>(
+    defaultPhoneCountry ?? "US",
+  );
+  const [phoneLocalDigits, setPhoneLocalDigits] = useState("");
   const [guests, setGuests] = useState<RsvpGuestContact[]>([]);
 
   const [submitting, setSubmitting] = useState(false);
@@ -652,18 +702,39 @@ export const useRsvpOfferingState = (
         autoCapitalize="none"
         testID="orch-1150-rsvp-email"
       />
-      <RsvpField
-        label="Phone"
-        value={guestPhone}
-        onChangeText={setGuestPhone}
-        placeholder="+1 555 123 4567"
-        palette={palette}
-        invalid={guestPhone.length > 0 && !PHONE_RE.test(guestPhone.trim())}
-        invalidMsg="Enter a valid phone number"
-        keyboardType="phone-pad"
-        autoCapitalize="none"
-        testID="orch-1150-rsvp-phone"
-      />
+      {/* ORCH-1295 [chip-in-post-payment-polish] — BUG 2: the surface may inject a
+          country-code-aware phone field (@mingla/phone-input). Absent → the plain
+          text field (native fallback, unchanged). */}
+      {renderPhoneField
+        ? renderPhoneField({
+            countryCode: phoneCountry,
+            localDigits: phoneLocalDigits,
+            onChangeCountry: (isoCode, composedE164) => {
+              setPhoneCountry(isoCode);
+              setGuestPhone(composedE164);
+            },
+            onChangeLocalDigits: (digits, composedE164) => {
+              setPhoneLocalDigits(digits);
+              setGuestPhone(composedE164);
+            },
+            invalid: guestPhone.length > 0 && !PHONE_RE.test(guestPhone.trim()),
+            palette,
+            disabled: submitting,
+          })
+        : (
+          <RsvpField
+            label="Phone"
+            value={guestPhone}
+            onChangeText={setGuestPhone}
+            placeholder="+1 555 123 4567"
+            palette={palette}
+            invalid={guestPhone.length > 0 && !PHONE_RE.test(guestPhone.trim())}
+            invalidMsg="Enter a valid phone number"
+            keyboardType="phone-pad"
+            autoCapitalize="none"
+            testID="orch-1150-rsvp-phone"
+          />
+        )}
     </View>
   ) : null;
 

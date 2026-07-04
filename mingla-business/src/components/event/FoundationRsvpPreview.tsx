@@ -43,6 +43,7 @@ import {
   type RsvpGuestContact,
   type RsvpSubmitResult,
   type ChipInResult,
+  type RsvpPhoneFieldRenderer,
   type ThemePalette,
 } from "@mingla/offering-rendering";
 
@@ -74,6 +75,10 @@ export interface FoundationRsvpPreviewProps {
   // preview/no-op. Absent → the chip-in panel never renders.
   onChipIn?: (input: { amountCents: number }) => Promise<ChipInResult>;
   contributionState?: "idle" | "paid";
+  // ORCH-1295 [chip-in-post-payment-polish] — BUG 2: the buyer-web surface injects
+  // a country-code-aware phone field (@mingla/phone-input). Absent → plain field.
+  renderPhoneField?: RsvpPhoneFieldRenderer;
+  defaultPhoneCountry?: string;
   contentBottomInset?: number;
   onScroll?: (event: NativeSyntheticEvent<NativeScrollEvent>) => void;
   onScrollViewLayout?: (event: LayoutChangeEvent) => void;
@@ -100,6 +105,8 @@ export const FoundationRsvpPreview: React.FC<FoundationRsvpPreviewProps> = (prop
     onSubmit,
     onChipIn,
     contributionState,
+    renderPhoneField,
+    defaultPhoneCountry,
     contentBottomInset = 96,
     onScroll,
     onScrollViewLayout,
@@ -139,6 +146,8 @@ export const FoundationRsvpPreview: React.FC<FoundationRsvpPreviewProps> = (prop
     onSubmit,
     onChipIn,
     contributionState,
+    renderPhoneField,
+    defaultPhoneCountry,
     onOpenBrand,
     onOpenMaps,
     staticMapUrl,
