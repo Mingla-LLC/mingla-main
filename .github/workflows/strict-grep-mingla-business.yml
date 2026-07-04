@@ -3735,3 +3735,28 @@ jobs:
       # The amended ORCH-0815-B gate must stay green after the rcs removal.
       - name: orch-0815-b composer + send (amended, 2-channel)
         run: node .github/scripts/strict-grep/orch-0815-b-composer-and-send.mjs
+
+  orch-1278-money-act:
+    name: "ORCH-1278: money-act RPCs guard-first + audited; refund amount-bounded + idempotent + service_role-only twins (I-PROPOSED-1278-MONEY-ACT-AUDITED + ADMIN-GATE-FIRST + ADMIN-REFUND-BOUNDED)"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Self-test the ORCH-1278 refund-bounded gate
+        run: node .github/scripts/strict-grep/i-admin-refund-bounded.mjs --self-test
+      - name: Run ORCH-1278 refund-bounded gate
+        run: node .github/scripts/strict-grep/i-admin-refund-bounded.mjs
+      - name: Run ORCH-1278 refund-bounded gate fixture test
+        run: node --test .github/scripts/strict-grep/__tests__/i-admin-refund-bounded.test.mjs
+      - name: Self-test the ORCH-1271 write-audited registry (1278 RPCs appended)
+        run: node .github/scripts/strict-grep/i-admin-write-audited.mjs --self-test
+      - name: Run ORCH-1271 write-audited registry (1278 RPCs appended)
+        run: node .github/scripts/strict-grep/i-admin-write-audited.mjs
+      - name: Self-test the ORCH-1271 gate-first-statement registry (1278 RPCs appended)
+        run: node .github/scripts/strict-grep/i-admin-gate-first-statement.mjs --self-test
+      - name: Run ORCH-1271 gate-first-statement registry (1278 RPCs appended)
+        run: node .github/scripts/strict-grep/i-admin-gate-first-statement.mjs
+      - name: Run ORCH-1278 money console act happy-path regression
+        run: node --test mingla-admin/src/__tests__/orch1278_money_console_act.test.js

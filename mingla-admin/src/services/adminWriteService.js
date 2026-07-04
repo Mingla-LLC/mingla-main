@@ -35,7 +35,16 @@ export async function callAdminWriteRpc(rpcName, params) {
  * Generic service_role admin-write edge invoker (domains reuse for Stripe-
  * touching actions). Uses invokeWithRefresh so an idle admin tab's aged JWT is
  * refreshed before the call. Returns { data, error }.
+ *
+ * `opts.idempotencyKey` (ORCH-1278) attaches an `Idempotency-Key` header — required
+ * by the admin-refund-order edge fn so a retried call after a network blip dedupes
+ * (the client generates ONE crypto.randomUUID() per refund attempt and reuses it).
+ * Backward compatible: 2-arg callers pass no opts and behave unchanged.
  */
-export async function invokeAdminWriteEdge(fnName, body) {
-  return invokeWithRefresh(fnName, { body });
+export async function invokeAdminWriteEdge(fnName, body, opts = {}) {
+  const options = { body };
+  if (opts.idempotencyKey) {
+    options.headers = { "Idempotency-Key": opts.idempotencyKey };
+  }
+  return invokeWithRefresh(fnName, options);
 }

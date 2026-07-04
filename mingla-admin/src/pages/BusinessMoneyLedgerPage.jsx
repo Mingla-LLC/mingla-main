@@ -10,9 +10,12 @@ import { useState, useEffect, useCallback } from "react";
 import { Landmark } from "lucide-react";
 import { EntityListView } from "../components/entity/EntityListView";
 import { EntityDetailView } from "../components/entity/EntityDetailView";
+import { HighRiskActionModal } from "../components/entity/HighRiskActionModal";
 import { Tabs } from "../components/ui/Tabs";
 import { Badge } from "../components/ui/Badge";
+import { Button } from "../components/ui/Button";
 import { listRefunds, listDisputes, getDispute, listPayouts, listRevenueLog } from "../services/adminMoneyService";
+import { annotateDispute } from "../services/adminMoneyActService";
 import { timeAgo, formatDateTime, formatDate } from "../lib/formatters";
 
 // ── Money formatter (cents + currency → string; never throws — I-1152 lesson) ──
@@ -186,6 +189,22 @@ function buildDisputeSections(bundle) {
         : [field("", "No brand on file", (v) => <span className="text-[var(--color-text-muted)]">{v}</span>)],
     },
     {
+      label: "Admin review",
+      fields: [
+        field("Internal note", d.admin_internal_note, (v) => v || <span className="text-[var(--color-text-muted)]">—</span>),
+        field("Reviewed", null, () =>
+          d.admin_reviewed_at ? (
+            <span className="flex items-center gap-1.5">
+              <Badge variant="success">Reviewed</Badge>
+              <span className="text-xs text-[var(--color-text-tertiary)]">{formatDateTime(d.admin_reviewed_at)}</span>
+            </span>
+          ) : (
+            <span className="text-[var(--color-text-muted)]">Not reviewed</span>
+          ),
+        ),
+      ],
+    },
+    {
       label: "Raw event",
       fields: [
         field("", null, () =>
@@ -215,6 +234,9 @@ export function BusinessMoneyLedgerPage() {
   const [disputeBundle, setDisputeBundle] = useState(null);
   const [disputeLoading, setDisputeLoading] = useState(false);
   const [disputeError, setDisputeError] = useState(null);
+  const [annotateOpen, setAnnotateOpen] = useState(false);
+  const [note, setNote] = useState("");
+  const [markReviewed, setMarkReviewed] = useState(false);
 
   useEffect(() => {
     const sync = () => {
@@ -265,6 +287,35 @@ export function BusinessMoneyLedgerPage() {
     if (disputeId) loadDispute(disputeId);
   }, [disputeId, loadDispute]);
 
+  // Reset the annotate form each time the modal opens.
+  useEffect(() => {
+    if (annotateOpen) {
+      setNote(disputeBundle?.dispute?.admin_internal_note || "");
+      setMarkReviewed(false);
+    }
+  }, [annotateOpen, disputeBundle]);
+
+  const runAnnotate = useCallback(async ({ reason }) => {
+    const trimmedNote = note.trim();
+    if (trimmedNote === "" && !markReviewed) {
+      throw new Error("Add a note or mark the dispute reviewed.");
+    }
+    const { error: err } = await annotateDispute({
+      dispute_id: disputeId,
+      note: trimmedNote === "" ? null : trimmedNote,
+      mark_reviewed: markReviewed,
+      reason,
+    });
+    if (err) {
+      const msg = err.message || "";
+      if (msg.includes("not_authorized")) throw new Error("Admin access required.");
+      if (msg.includes("reason_required")) throw new Error("A reason is required.");
+      if (msg.includes("dispute_not_found")) throw new Error("This dispute no longer exists.");
+      throw new Error(msg || "Couldn't save the annotation.");
+    }
+    loadDispute(disputeId);
+  }, [disputeId, note, markReviewed, loadDispute]);
+
   // ── Dispute detail view ─────────────────────────────────────────────────────
   if (disputeId) {
     const d = disputeBundle?.dispute || {};
@@ -288,6 +339,41 @@ export function BusinessMoneyLedgerPage() {
           }}
           sections={disputeBundle ? buildDisputeSections(disputeBundle) : []}
         />
+        {disputeBundle && (
+          <div className="mt-4 flex flex-wrap items-center justify-end gap-2 border-t border-[var(--gray-200)] pt-4">
+            <Button variant="secondary" size="md" onClick={() => setAnnotateOpen(true)}>
+              Add internal note / Mark reviewed
+            </Button>
+          </div>
+        )}
+        <HighRiskActionModal
+          open={annotateOpen}
+          onClose={() => setAnnotateOpen(false)}
+          title="Annotate dispute"
+          description="Adds an internal note and/or marks this dispute reviewed. This does NOT touch the dispute's Stripe status — it never moves money."
+          confirmLabel="Save"
+          onConfirm={runAnnotate}
+          successMessage="Dispute annotation saved."
+        >
+          <div className="flex flex-col gap-3">
+            <div className="flex flex-col gap-1.5">
+              <label htmlFor="dispute-note" className="text-xs font-medium text-[var(--color-text-secondary)]">
+                Internal note
+              </label>
+              <textarea
+                id="dispute-note"
+                value={note}
+                onChange={(e) => setNote(e.target.value)}
+                placeholder="Context for the team (internal only)"
+                className="w-full min-h-[72px] px-3 py-2 text-sm rounded-lg resize-y bg-[var(--color-background-primary)] text-[var(--color-text-primary)] border border-[var(--gray-300)] outline-none focus:border-[var(--color-brand-500)] focus:ring-2 focus:ring-[var(--color-brand-100)]"
+              />
+            </div>
+            <label className="flex items-center gap-2 text-sm text-[var(--color-text-primary)] cursor-pointer">
+              <input type="checkbox" checked={markReviewed} onChange={(e) => setMarkReviewed(e.target.checked)} />
+              Mark this dispute reviewed
+            </label>
+          </div>
+        </HighRiskActionModal>
       </div>
     );
   }

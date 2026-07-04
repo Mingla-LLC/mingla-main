@@ -30,6 +30,7 @@ export function HighRiskActionModal({
   confirmPhrase,
   onConfirm,
   successMessage = "Action completed.",
+  children,
 }) {
   const { addToast } = useToast();
   const [reason, setReason] = useState("");
@@ -93,6 +94,11 @@ export function HighRiskActionModal({
         {description && (
           <p className="text-sm text-[var(--color-text-secondary)]">{description}</p>
         )}
+
+        {/* ORCH-1278 optional slot: extra inputs (refund line-picker, tier/duration)
+            render above the reason field while keeping the typed-reason + confirm
+            contract. Callers own this content's state and derive confirmPhrase from it. */}
+        {children}
 
         <div className="flex flex-col gap-1.5">
           <label

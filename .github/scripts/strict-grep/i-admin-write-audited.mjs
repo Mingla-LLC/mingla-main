@@ -39,6 +39,16 @@ const ADMIN_WRITE_RPCS = [
   "admin_revoke_brand_invitation",
   "admin_set_user_active",
   "admin_set_user_beta",
+  // ORCH-1278 [Admin Money console — WAVE-2 ACT]: the DB-only audited money-act RPCs.
+  // Each calls admin_write_audit in its body. (The refund twins admin_refund_order /
+  // admin_refund_order_commit audit at the EDGE-FN layer — service_role can't self-
+  // resolve the actor — so they are covered by i-admin-refund-bounded.mjs, which asserts
+  // the admin-refund-order edge fn calls admin_write_audit; registering them here, where
+  // the gate greps the SQL body for admin_write_audit(, would be unsatisfiable.)
+  // Reverting 20261210000000 removes these fns → FAILS.
+  "admin_annotate_dispute",
+  "admin_grant_override_audited",
+  "admin_revoke_override_audited",
 ];
 
 // Slice a plpgsql function body (between the first `$$` pair after its def).
@@ -119,10 +129,24 @@ if (process.argv.includes("--self-test")) {
         "return '{}'::jsonb; end; $$;\n",
     )
     .join("");
+  // ORCH-1278: the 3 DB-only audited money-act RPCs — registered above, so include
+  // them in the good/other-subject fixtures so the self-test isolates the intended
+  // violation instead of tripping on missing registry fns.
+  const money1278 = [
+    "admin_annotate_dispute", "admin_grant_override_audited", "admin_revoke_override_audited",
+  ]
+    .map(
+      (n) =>
+        `create or replace function public.${n}(p_id uuid) returns jsonb language plpgsql security definer as $$ ` +
+        "begin if not public.is_admin_user() then raise exception 'not_authorized'; end if; " +
+        "perform public.admin_write_audit('x','x',p_id::text,'r',jsonb_build_object('k','v')); " +
+        "return '{}'::jsonb; end; $$;\n",
+    )
+    .join("");
 
   // GOOD.
   let f = [];
-  check(helper + probe + identity1276, f);
+  check(helper + probe + identity1276 + money1278, f);
   if (f.length) self.push("good fixture wrongly flagged: " + f.join("; "));
 
   // BAD (revert primitive): helper + probe absent.
@@ -136,7 +160,7 @@ if (process.argv.includes("--self-test")) {
     "language plpgsql security definer as $$ begin if not public.is_admin_user() then " +
     "raise exception 'not_authorized'; end if; return null; end; $$;\n";
   f = [];
-  check(helper + probeNoAudit + identity1276, f);
+  check(helper + probeNoAudit + identity1276 + money1278, f);
   if (f.length === 0) self.push("un-audited probe not flagged");
 
   if (self.length) {
