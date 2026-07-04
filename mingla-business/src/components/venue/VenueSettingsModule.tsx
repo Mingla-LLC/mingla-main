@@ -302,7 +302,8 @@ export function VenueSettingsModule({
       .map(([id, v]) => ({ id, score: v.score_0_to_100 }))
       .sort((a, b) => b.score - a.score);
   }, [authoringCtx.data]);
-  const editsRemaining = authoringCtx.data?.recommend_edits_remaining ?? null;
+  // ORCH-1304 — the client edit-cap readout is retired (the DB column stays,
+  // dead-but-harmless). No edit-cap copy or disabled tie here.
 
   const goToVenueEdit = useCallback((): void => {
     if (brandId !== null) router.push(`/brand/${brandId}` as never);
@@ -564,7 +565,8 @@ export function VenueSettingsModule({
             </Text>
           ) : (
             <Text style={styles.rowSub}>
-              Run Recommend me to see how you match Mingla moments.
+              Your pitch and match scores are written when Mingla approves your
+              venue.
             </Text>
           )}
           {canMutate ? (
@@ -577,21 +579,16 @@ export function VenueSettingsModule({
               testID="venue-settings-edit-photos"
             />
           ) : null}
-          {editsRemaining !== null ? (
-            <Text style={styles.rowSub}>
-              {editsRemaining > 0
-                ? `You can re-run "Recommend me" ${editsRemaining} more ${editsRemaining === 1 ? "time" : "times"}.`
-                : "You've used all your changes. Contact support if you need more."}
-            </Text>
-          ) : null}
+          {/* ORCH-1304 [approve generates the pitch] — the old re-run edit-cap
+              affordance is retired (no owner-side pitch/score self-run). This is
+              now just the edit entry point into the deck-readiness inputs
+              surface; the pitch + match scores are written by Mingla at approve. */}
           {canMutate ? (
             <Button
-              label="Re-run Recommend me"
+              label="Edit photos & details"
               onPress={goToDeckReadiness}
               variant="primary"
               size="md"
-              leadingIcon="sparkle"
-              disabled={editsRemaining !== null && editsRemaining <= 0}
               style={styles.inlineBtn}
               testID="venue-settings-rerun-recommend"
             />

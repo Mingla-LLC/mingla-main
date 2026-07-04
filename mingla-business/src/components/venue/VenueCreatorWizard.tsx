@@ -89,10 +89,11 @@ import { VenueStep7Review } from "./VenueStep7Review";
 // META-ORCH-1290 Leg B — the folded create wizard reuses the claim step
 // components (Contact/Price/Bookings share top-level draft fields; provenance
 // chips resolve to null in create mode) + two new create-specific steps for
-// the photo gallery + cover, and the shared VenuePitchField for the pitch.
+// the photo gallery + cover. ORCH-1304 removed the Pitch step — the shared
+// pitch field and the claim pitch step no longer mount here; Mingla writes the
+// pitch at approve.
 import { VenuePhotosStep } from "./VenuePhotosStep";
 import { VenueCoverStep } from "./VenueCoverStep";
-import { VenuePitchField } from "./VenuePitchField";
 import { ClaimAdoptionBanner } from "./claim/ClaimAdoptionBanner";
 import { ClaimStepBookings } from "./claim/ClaimStepBookings";
 import { ClaimStepCategory } from "./claim/ClaimStepCategory";
@@ -100,7 +101,6 @@ import { ClaimStepContact } from "./claim/ClaimStepContact";
 import { ClaimStepCover } from "./claim/ClaimStepCover";
 import { ClaimStepHours } from "./claim/ClaimStepHours";
 import { ClaimStepPhotos } from "./claim/ClaimStepPhotos";
-import { ClaimStepPitch } from "./claim/ClaimStepPitch";
 import { ClaimStepPlace } from "./claim/ClaimStepPlace";
 import { ClaimStepPrice } from "./claim/ClaimStepPrice";
 import {
@@ -508,17 +508,8 @@ export const VenueCreatorWizard: React.FC<VenueCreatorWizardProps> = ({
         return <VenueCoverStep brandId={currentBrand?.id ?? null} />;
       case "s5":
         return <ClaimStepContact showErrors={showErr} />;
-      case "s6":
-        return (
-          <View style={styles.pitchStep}>
-            <VenuePitchField
-              value={draft.description}
-              onChangeText={(t) => draft.patch({ description: t })}
-              showTitle
-              errorText={showErr ? venueStepError("s6", draft) : null}
-            />
-          </View>
-        );
+      // ORCH-1304 — the create Pitch step (s6) is removed; Mingla writes the
+      // pitch at approve, edited later on the listing page.
       case "s7":
         return <ClaimStepPrice showErrors={showErr} />;
       case "s8":
@@ -549,8 +540,8 @@ export const VenueCreatorWizard: React.FC<VenueCreatorWizardProps> = ({
         return <ClaimStepPhotos brandId={currentBrand?.id ?? null} />;
       case "c4":
         return <ClaimStepCover brandId={currentBrand?.id ?? null} />;
-      case "c5":
-        return <ClaimStepPitch showErrors={showErr} />;
+      // ORCH-1304 — the claim Pitch step (c5) is removed; Mingla writes the
+      // pitch at approve, edited later on the listing page.
       case "c6":
         return <ClaimStepContact showErrors={showErr} />;
       case "c7":
@@ -696,12 +687,6 @@ const styles = StyleSheet.create({
   },
   scroll: {
     flex: 1,
-  },
-  // META-ORCH-1290 — the shared VenuePitchField carries no host padding; the
-  // create s6 step supplies the wizard body padding (matches other steps).
-  pitchStep: {
-    paddingHorizontal: spacing.lg,
-    paddingBottom: spacing.xl,
   },
   dock: {
     paddingHorizontal: spacing.lg,

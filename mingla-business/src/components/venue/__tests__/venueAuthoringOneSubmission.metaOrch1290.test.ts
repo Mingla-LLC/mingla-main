@@ -74,7 +74,11 @@ function draft(overrides: Partial<DraftVenueState> = {}): DraftVenueState {
 }
 
 describe("META-ORCH-1290 Leg B — folded one-submission create wizard", () => {
-  test("create is the folded 10-step map (mirrors claim)", () => {
+  // ORCH-1304 [approve generates the pitch] SUPERSEDES META-ORCH-1290 D-3: the
+  // owner-side Pitch step (create s6 / claim c5) is REMOVED — Mingla writes the
+  // pitch at admin-approve. The step map below is the post-1304 truth (Pitch
+  // gone, ids intentionally gapped). Modified under [TEST-MOD-APPROVED ORCH-1304].
+  test("create is the folded map with NO Pitch step (ORCH-1304)", () => {
     const steps = venueWizardSteps(false);
     expect(steps.map((s) => s.id)).toEqual([
       "s0",
@@ -83,7 +87,6 @@ describe("META-ORCH-1290 Leg B — folded one-submission create wizard", () => {
       "s3",
       "s4",
       "s5",
-      "s6",
       "s7",
       "s8",
       "s9",
@@ -95,11 +98,15 @@ describe("META-ORCH-1290 Leg B — folded one-submission create wizard", () => {
       "Photos",
       "Cover",
       "Contact",
-      "Pitch",
       "Price",
       "Bookings",
       "Review",
     ]);
+    // The Pitch step is gone from BOTH the id and label sets (create + claim).
+    expect(steps.map((s) => s.id)).not.toContain("s6");
+    expect(steps.map((s) => s.label)).not.toContain("Pitch");
+    expect(venueWizardSteps(true).map((s) => s.id)).not.toContain("c5");
+    expect(venueWizardSteps(true).map((s) => s.label)).not.toContain("Pitch");
   });
 
   test("s3 Photos never hard-blocks (≥5 enforced at approve, not submit)", () => {
@@ -111,12 +118,14 @@ describe("META-ORCH-1290 Leg B — folded one-submission create wizard", () => {
     expect(venueStepError("s4", draft())).toBeNull();
   });
 
-  test("s6 Pitch is empty-allowed OR ≥20 chars (mirror claim c5)", () => {
+  // ORCH-1304 — the s6/c5 Pitch validation branch is REMOVED. There is no Pitch
+  // step to gate, so venueStepError never returns a pitch error for s6/c5 (the
+  // switch falls through to the default `null`). Modified under
+  // [TEST-MOD-APPROVED ORCH-1304].
+  test("ORCH-1304 — the s6/c5 Pitch validation branch is gone (no gate)", () => {
     expect(venueStepError("s6", draft({ description: "" }))).toBeNull();
-    expect(venueStepError("s6", draft({ description: "too short" }))).not.toBeNull();
-    expect(
-      venueStepError("s6", draft({ description: "a".repeat(25) })),
-    ).toBeNull();
+    expect(venueStepError("s6", draft({ description: "too short" }))).toBeNull();
+    expect(venueStepError("c5", draft({ description: "too short" }))).toBeNull();
   });
 
   test("s7 Price requires at least one tier", () => {
@@ -132,7 +141,11 @@ describe("META-ORCH-1290 Leg B — folded one-submission create wizard", () => {
     expect(src).toContain("syncGallery");
     expect(src).toContain("VenuePhotosStep");
     expect(src).toContain("VenueCoverStep");
-    expect(src).toContain("VenuePitchField");
+    // ORCH-1304 — the wizard no longer mounts VenuePitchField or ClaimStepPitch
+    // (the owner writes no pitch; Mingla generates it at approve). Modified
+    // under [TEST-MOD-APPROVED ORCH-1304].
+    expect(src).not.toContain("VenuePitchField");
+    expect(src).not.toContain("ClaimStepPitch");
   });
 });
 
@@ -183,8 +196,15 @@ describe("META-ORCH-1290 Leg B — deck-readiness edit surface (§4.3.E)", () =>
     expect(src).not.toContain("confirmAiOutputs");
   });
 
-  test("the AI button drafts the pitch (no scoring self-run)", () => {
-    expect(src).toContain("Generate pitch with AI");
+  // ORCH-1304 — the deck-readiness screen no longer drafts a pitch: the
+  // "Generate pitch with AI" button + pitch textarea are removed and replaced
+  // with a single "Save changes" button that persists inputs via `save_tier2`
+  // (no pitch generation). Modified under [TEST-MOD-APPROVED ORCH-1304].
+  test("ORCH-1304 — no owner-side pitch generation; Save changes persists inputs", () => {
+    expect(src).not.toContain("Generate pitch with AI");
+    expect(src).not.toContain("runTier2Pipeline");
+    expect(src).toContain("Save changes");
+    expect(src).toContain("saveTier2");
   });
 });
 

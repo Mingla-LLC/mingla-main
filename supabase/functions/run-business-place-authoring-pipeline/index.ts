@@ -116,6 +116,10 @@ type Action =
   // write of the pitch ONLY, replacing Leg B's direct client place_pool RLS
   // UPDATE (blocker B-2). See handleUpdatePitch.
   | "update_pitch"
+  // ORCH-1304: owner-authed save of tier2 inputs (website/price/vibes/facets)
+  // WITHOUT pitch generation — the deck-readiness edit surface after pitch-gen
+  // moved to approve. Stages into business_authoring_inputs; no serving write.
+  | "save_tier2"
   // META-ORCH-1290 D-2: approve-time 16-signal eval, invoked service-to-service
   // by admin-review-venue-claim (service-role auth branch) — never user-callable.
   | "evaluate_signals";
@@ -2098,6 +2102,56 @@ export async function handleUpdatePitch(
   });
 }
 
+// ORCH-1304: owner-authed save of the tier2 inputs (website / price_tiers /
+// vibe_chips / facets) WITHOUT generating a pitch. The pre-approval edit surface
+// (VenueDeckReadinessSetup) uses this after pitch generation moved to APPROVE
+// (handleEvaluateSignals). Column-scoped to business_authoring_inputs.tier2
+// (merged, never clobbering sibling staging); writes NO serving column and calls
+// NO Gemini (I-1263-NO-LIVE-PLACE-MUTATION-PRE-APPROVE). Ownership was already
+// asserted upstream (requireUser → loadOwnedBrand → loadOwnedVenue).
+export async function handleSaveTier2(
+  client: SupabaseClient,
+  brand: OwnedBrand,
+  venue: OwnedVenue,
+  body: RequestBody,
+): Promise<Response> {
+  void brand;
+  const placePoolId = body.place_pool_id ?? venue.place_pool_id;
+  if (!isUuid(placePoolId)) {
+    return errorResponse(400, "BAD_REQUEST", "place_pool_id is required");
+  }
+  const tier2 = body.tier2 && typeof body.tier2 === "object"
+    ? body.tier2 as Record<string, unknown>
+    : {};
+
+  const { data: place, error: placeErr } = await client
+    .from("place_pool")
+    .select("business_authoring_inputs")
+    .eq("id", placePoolId)
+    .maybeSingle();
+  if (placeErr) return errorResponse(500, "PLACE_READ_FAILED", placeErr.message);
+  if (!place) return errorResponse(404, "PLACE_NOT_FOUND", "Place not found");
+
+  const inputs = ((place as {
+    business_authoring_inputs?: Record<string, unknown> | null;
+  }).business_authoring_inputs ?? {}) as Record<string, unknown>;
+  const prevTier2 = typeof inputs.tier2 === "object" && inputs.tier2 !== null
+    ? inputs.tier2 as Record<string, unknown>
+    : {};
+  const nextInputs = { ...inputs, tier2: { ...prevTier2, ...tier2 } };
+  const { error } = await client
+    .from("place_pool")
+    .update({ business_authoring_inputs: nextInputs })
+    .eq("id", placePoolId);
+  if (error) return errorResponse(500, "PLACE_UPDATE_FAILED", error.message);
+
+  return jsonResponse(200, {
+    kind: "ok",
+    action: "save_tier2",
+    place_pool_id: placePoolId,
+  });
+}
+
 // META-ORCH-1290 D-2 (evaluate_signals) — the approve-time 16-signal eval.
 // INVOKED SERVICE-TO-SERVICE by admin-review-venue-claim (the requireServiceRole
 // gate above) — never reachable from a user session. Loads the place, runs the
@@ -2110,6 +2164,38 @@ export async function handleUpdatePitch(
 // re-approve re-evaluates + overwrites (last-writer-wins for the AI slice). A
 // Gemini/build failure THROWS → the top-level catch returns a structured 500 the
 // caller (admin-review) treats as fail-close (no is_servable flip, no place_scores).
+
+// ORCH-1304 — pure: approve drafts a pitch ONLY when the venue has none yet, so a
+// re-approve never clobbers an owner edit (update_pitch → generative_summary) or a
+// seeded Google-trial summary. Exported for the pitch-on-approve unit test.
+export function shouldDraftPitchOnApprove(existingSummary: unknown): boolean {
+  return asString(existingSummary ?? "", "").trim().length === 0;
+}
+
+// ORCH-1304 — resolve the pitch to write at approve. Returns the trimmed drafted
+// bio (non-empty), or null when: the venue already has a pitch (skip — draftFn is
+// NOT called), the draft came back empty, OR the draft threw (FAIL-SOFT — scoring
+// already succeeded, so a pitch-draft failure must NOT fail the approve; the venue
+// still goes live and the owner regenerates on the listing page). `draftFn`
+// returns the raw bio (may throw). Exported for the pitch-on-approve unit test.
+export async function resolvePitchOnApprove(
+  existingSummary: unknown,
+  draftFn: () => Promise<string>,
+): Promise<string | null> {
+  if (!shouldDraftPitchOnApprove(existingSummary)) return null;
+  try {
+    const bio = (await draftFn()).trim();
+    return bio.length > 0 ? bio : null;
+  } catch (bioErr) {
+    const msg = bioErr instanceof Error ? bioErr.message : String(bioErr);
+    console.error(
+      "[run-business-place-authoring-pipeline] approve pitch-gen failed (fail-soft)",
+      msg.slice(0, 300),
+    );
+    return null;
+  }
+}
+
 export async function handleEvaluateSignals(
   client: SupabaseClient,
   body: RequestBody,
@@ -2173,12 +2259,35 @@ export async function handleEvaluateSignals(
     ),
   );
 
+  // ORCH-1304: the pitch is generated at APPROVE (supersedes META-ORCH-1290 D-3's
+  // owner-side pre-approval "Generate pitch with AI"). resolvePitchOnApprove drafts
+  // it ONLY when the venue has no pitch yet (never clobbers an owner edit or a
+  // seeded Google-trial summary) and is FAIL-SOFT (a draft failure returns null so
+  // the venue still goes live; scoring stays fail-CLOSE via the throws above).
+  // Reverting this re-introduces owner-side pre-approval pitch generation
+  // (I-PROPOSED-1304-PITCH-GENERATED-AT-APPROVE).
+  const generatedPitch = await resolvePitchOnApprove(
+    (place as { generative_summary?: unknown }).generative_summary,
+    async () => {
+      const bioDraft = await callGeminiForBioDraft({
+        brand: brandForPrompt,
+        place: place as Record<string, unknown>,
+        tier2,
+        imageUrls,
+        websiteText: websiteScan?.text ?? null,
+      });
+      return bioDraft.bio;
+    },
+  );
+
   const { error: updateErr } = await client
     .from("place_pool")
     .update({
       ai_signal_scores: aiSignalScores,
       photo_analysis: photoAnalysis,
       ...facetPatch,
+      // Never write generative_summary: null here (don't wipe a seeded summary).
+      ...(generatedPitch !== null ? { generative_summary: generatedPitch } : {}),
     })
     .eq("id", placePoolId);
   if (updateErr) return errorResponse(500, "PLACE_UPDATE_FAILED", updateErr.message);
@@ -2188,6 +2297,7 @@ export async function handleEvaluateSignals(
     action: "evaluate_signals",
     signals_evaluated: signals.length,
     place_pool_id: placePoolId,
+    pitch_generated: generatedPitch !== null,
   });
 }
 
@@ -2266,6 +2376,10 @@ Deno.serve(async (req) => {
     // requireUser + loadOwnedBrand + loadOwnedVenue ownership gate above.
     if (body.action === "update_pitch") {
       return await handleUpdatePitch(userResult.serviceClient, brand, venue, body);
+    }
+    // ORCH-1304: owner saves tier2 inputs without generating a pitch.
+    if (body.action === "save_tier2") {
+      return await handleSaveTier2(userResult.serviceClient, brand, venue, body);
     }
   } catch (err) {
     const msg = err instanceof Error ? err.message : "Pipeline failed";

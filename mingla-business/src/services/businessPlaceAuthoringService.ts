@@ -419,6 +419,36 @@ export async function updateVenuePitch(input: {
   assertPipelineOk(data as { kind: "ok" } | PipelineErrorBody, "update_pitch_failed");
 }
 
+/**
+ * ORCH-1304 — persist the venue's tier2 inputs (website / price_tiers /
+ * vibe_chips / facets) WITHOUT generating a pitch. The deck-readiness edit
+ * surface uses this after pitch generation moved to admin-approve. Staged into
+ * `business_authoring_inputs.tier2` server-side; writes NO serving column and
+ * calls NO Gemini. The pitch is written at approve; the owner edits it later on
+ * the listing page via `updateVenuePitch`.
+ */
+export async function saveTier2(input: {
+  brandId: string;
+  venueId: string;
+  placePoolId: string;
+  tier2: Record<string, unknown>;
+}): Promise<void> {
+  const { data, error } = await supabase.functions.invoke(
+    "run-business-place-authoring-pipeline",
+    {
+      body: {
+        action: "save_tier2",
+        brand_id: input.brandId,
+        venue_id: input.venueId,
+        place_pool_id: input.placePoolId,
+        tier2: input.tier2,
+      },
+    },
+  );
+  if (error !== null) throw await pipelineInvokeError(error, "save_tier2_failed");
+  assertPipelineOk(data as { kind: "ok" } | PipelineErrorBody, "save_tier2_failed");
+}
+
 export async function fetchBrandPlaceAuthoringContext(input: {
   brandId: string;
   placePoolId: string;
