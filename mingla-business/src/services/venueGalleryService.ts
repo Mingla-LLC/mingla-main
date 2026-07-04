@@ -20,10 +20,17 @@
 
 import { supabase } from "./supabase";
 import { readBrandAvatarFileBytes } from "./brandAvatarFileReader";
+// ORCH-1300: the gallery picker is now platform-split. Web resolves
+// `venueGalleryDeviceMedia.ts` (real `<input type=file>` via the CI-guarded
+// `pickBrowserFiles`, mirroring the ORCH-1097 cover path); native resolves
+// `venueGalleryDeviceMedia.native.ts` (unchanged expo-image-picker). Before
+// ORCH-1300 this imported `launchImageLibraryAsync` from `platformImagePicker`,
+// whose WEB variant is a permanent-cancel stub — so "Add photos" was a silent
+// dead tap on business web.
 import {
-  launchImageLibraryAsync,
-  type PlatformImagePickerResult,
-} from "../utils/platformImagePicker";
+  launchGalleryImagePicker,
+  type GalleryDeviceMediaResult,
+} from "./venueGalleryDeviceMedia";
 import { generateBrandAvatarPathToken } from "../utils/brandAvatarRules";
 
 export const VENUE_GALLERY_BUCKET = "brand_covers";
@@ -88,15 +95,14 @@ export async function pickGalleryPhotos(
   remainingSlots: number,
 ): Promise<GalleryPickAsset[]> {
   if (remainingSlots <= 0) return [];
-  let result: PlatformImagePickerResult;
+  let result: GalleryDeviceMediaResult;
   try {
-    result = await launchImageLibraryAsync({
-      mediaTypes: ["images"],
-      allowsMultipleSelection: true,
-      selectionLimit: remainingSlots,
-      quality: 0.7,
-    });
+    result = await launchGalleryImagePicker(remainingSlots);
   } catch {
+    // ORCH-1300: a genuine cancel resolves `{ canceled: true }` (silent, below);
+    // any thrown error (web picker unavailable, native permission/IO failure)
+    // surfaces here as a non-silent VenueGalleryError the handler shows on
+    // screen (Constitution #3 — no silent failure).
     throw new VenueGalleryError("picker_failed", "Couldn't open photos. Try again.");
   }
   if (result.canceled) return [];
