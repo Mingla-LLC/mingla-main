@@ -52,6 +52,7 @@ import type {
   PhoneInputTheme,
 } from "./types";
 import { useKeyboard } from "./useKeyboard";
+import { WebOverlayPortal } from "./WebOverlayPortal";
 import {
   DEFAULT_PHONE_INPUT_THEME,
   fontWeights,
@@ -342,12 +343,22 @@ export const CountryPickerOverlay: React.FC<CountryPickerContentProps> = (
     backgroundColor: t.backgroundPrimary,
     position: Platform.OS === "web" ? "fixed" : "absolute",
   };
+  // ORCH-1300 — `position:'fixed'` alone is NOT enough on mobile WebKit: the RSVP
+  // page nests the phone field inside `Animated`/transform ancestors, and `fixed`
+  // resolves against the nearest TRANSFORMED ancestor (not the viewport), landing
+  // the overlay OFF-SCREEN (measured y=-683 on iPhone WebKit). Portal the whole
+  // fixed layer to `document.body` (WebOverlayPortal → react-dom createPortal on
+  // web; passthrough on native) so it has ZERO transformed ancestors and `fixed`
+  // is truly viewport-relative on every engine. React portals keep props/state +
+  // onSelect/onClose working unchanged.
   return (
-    <View style={overlayStyle as StyleProp<ViewStyle>}>
-      <SafeAreaProvider>
-        <CountryPickerContent {...props} />
-      </SafeAreaProvider>
-    </View>
+    <WebOverlayPortal>
+      <View style={overlayStyle as StyleProp<ViewStyle>}>
+        <SafeAreaProvider>
+          <CountryPickerContent {...props} />
+        </SafeAreaProvider>
+      </View>
+    </WebOverlayPortal>
   );
 };
 
