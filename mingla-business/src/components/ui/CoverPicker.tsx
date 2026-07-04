@@ -80,8 +80,8 @@ import {
 } from "../../hooks/useEventCoverVideoUpload";
 import {
   buildTrimmedVideoUploadFile,
-  normalizeLocalFileUri,
   normalizePickerDurationMs,
+  resolveRawClipUploadUri,
 } from "./coverPickerVideoTrimUpload";
 import {
   searchGiphyEventCovers,
@@ -590,7 +590,11 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
               mimeType: asset.mimeType ?? "video/mp4",
               trimEndMs: normalizePickerDurationMs(asset.duration),
               trimStartMs: 0,
-              uri: normalizeLocalFileUri(asset.uri),
+              // ORCH-1303: on web `asset.uri` is a browser blob: object URL that
+              // is fetch-able as-is; normalizeLocalFileUri would prefix `file://`
+              // → `file://blob:…` and the web TUS upload's fetch(input.uri) would
+              // reject. Native still normalizes its real file path.
+              uri: resolveRawClipUploadUri(asset.uri, Platform.OS === "web"),
             };
       const { durationMs } = uploadFile;
       if (durationMs <= 0) {
