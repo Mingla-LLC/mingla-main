@@ -69,6 +69,14 @@ export {
 } from "./rsvpMomentum";
 export type { RsvpMomentumModel } from "./rsvpMomentum";
 
+// ORCH-1292 [public-page-tag-slug-labels] — the in-package canonical taxonomy
+// label resolver. Turns party/vibe/music SLUGS into their display LABELS at the
+// shared pill/chip render sites (EventOfferingBody / RsvpOfferingBody /
+// RsvpMomentumDecision). Self-contained (I-MOR-0827); kept in set-equality +
+// label-parity with supabase/functions/_shared/eventTaxonomy.ts by the
+// orch-1292-taxonomy-label-parity.mjs drift gate.
+export { taxonomyLabel, TAXONOMY_LABELS } from "./taxonomyLabels";
+
 // ORCH-1163 [rsvp-shared-body] — THE ONE shared, shell-agnostic body for the public
 // RSVP page (event_type='rsvp'). Rendered byte-identically on buyer-web + business
 // iOS/Android + consumer iOS/Android. Hosts NO scroll root / cover host (each surface

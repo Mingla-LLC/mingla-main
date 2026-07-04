@@ -56,6 +56,8 @@ import {
 
 import { boldFontFamily, offeringSurfaceStyles, type ThemePalette } from "./themePalette";
 import { Calendar, Globe, MapPin, Minus, Plus } from "./LucideIcons";
+// ORCH-1292 — resolve party/vibe/music slugs to canonical labels at the pills row.
+import { taxonomyLabel } from "./taxonomyLabels";
 import {
   computeOfferingVariant,
   resolveOfferingCta,
@@ -336,17 +338,17 @@ export const EventOfferingBody: React.FC<EventOfferingBodyProps> = ({
         </Pill>
         {vibeTags.map((tag, i) => (
           <Pill key={`vibe-${i}`} palette={palette} surface={surface} font={boldFamily}>
-            {tag}
+            {taxonomyLabel(tag)}
           </Pill>
         ))}
         {partyTypes.map((tag, i) => (
           <Pill key={`party-${i}`} palette={palette} surface={surface} font={boldFamily}>
-            {tag}
+            {taxonomyLabel(tag)}
           </Pill>
         ))}
         {musicGenres.map((tag, i) => (
           <Pill key={`music-${i}`} palette={palette} surface={surface} font={boldFamily}>
-            {tag}
+            {taxonomyLabel(tag)}
           </Pill>
         ))}
         {ticketsLeftLabel !== null ? (
