@@ -902,11 +902,15 @@ function transformServablePlaceToCard(
     placeTypeLabel: row.primary_type,
     category: categoryLabel,
     matchScore: Math.round(Number(row.signal_score ?? 0)),
-    description: '',
+    // META-ORCH-1290 D-6: the owner-authored pitch (place_pool.generative_summary,
+    // surfaced by the M2 servable RPCs) becomes the card blurb. The edge fn
+    // supplies the FULL text; the app clamps oneLiner to 2 lines (DESIGN). Absent/
+    // empty pitch → '' / null → degrades to today's name-only card (no fabrication).
+    description: (row.generative_summary as string | null) ?? '',
     distanceKm,
     travelTimeMin,
     travelMode,  // Mobile uses this to render the matching mode-icon
-    oneLiner: null,
+    oneLiner: (row.generative_summary as string | null) ?? null,
     tip: null,
     // META-ORCH-1009 Sub-B — per-signal Gemini Q2 reasoning slice for the
     // "Why we picked this for you" expand-modal section. undefined when AI
