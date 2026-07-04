@@ -111,7 +111,7 @@ Parity: automatic (single shared `@mingla/phone-input` package). No manual parit
 `.github/scripts/strict-grep/orch-1300-rsvp-phone-picker-mobile-portal.mjs`, registered in `strict-grep-mingla-business.yml`. Checks: A (CountryPickerModal imports WebOverlayPortal AND wraps the overlay `<View>` in `<WebOverlayPortal>`), B (WebOverlayPortal.web.tsx `createPortal(children, document.body)`), C (WebOverlayPortal.tsx native has NO react-dom), D (web `position:'fixed'` preserved).
 - Self-test: **PASS 7/7** (3 fixed shapes pass; 4 reverts fail).
 - Live run: **PASS**.
-- **Fails-on-revert by TRUE LINE DELETION, verified against the fix at commit `__FIXHASH__`:**
+- **Fails-on-revert by TRUE LINE DELETION, verified against the fix at commit `627b0c8dc`:**
   - Deleted the `<WebOverlayPortal>` wrap in CountryPickerModal.tsx (overlay back to inline) → gate **FAIL** (check A), exit 1 → restored → **PASS**.
   - Deleted the `createPortal(children, document.body)` line in WebOverlayPortal.web.tsx → gate **FAIL** (check B), exit 1 → restored → **PASS**.
 
