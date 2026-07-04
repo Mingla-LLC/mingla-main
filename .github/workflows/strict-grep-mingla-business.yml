@@ -3897,3 +3897,17 @@ jobs:
         run: node .github/scripts/strict-grep/i-proposed-1290-pitch-via-pipeline.mjs --self-test
       - name: Run META-ORCH-1290 pitch-via-pipeline gate
         run: node .github/scripts/strict-grep/i-proposed-1290-pitch-via-pipeline.mjs
+
+  orch-1300-web-gallery-picker:
+    name: "ORCH-1300: venue gallery 'Add photos' web picker routes through the real browser file input, never the platformImagePicker cancel-stub (mirrors the ORCH-1097 cover lock)"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      # Self-tests (GOOD/BAD fixtures) then runs against the tree.
+      - name: Self-test the ORCH-1300 web-gallery-picker gate
+        run: node .github/scripts/strict-grep/orch-1300-web-gallery-picker.mjs --self-test
+      - name: Run ORCH-1300 web-gallery-picker gate
+        run: node .github/scripts/strict-grep/orch-1300-web-gallery-picker.mjs
