@@ -32,7 +32,7 @@ same canonical resolver ("Rooftop Party", "Hip-Hop/Rap"), matching the pills row
 
 ## 2. SPEC success-criteria coverage
 
-All satisfied by commit `<COMMIT_HASH>` (single commit; see §3 for per-file `git log`).
+All satisfied by commit `61dbece87` (single commit; see §3 for per-file `git log`).
 
 | SC | Criterion (SPEC §7/§8) | Evidence | Status |
 |----|------------------------|----------|--------|
@@ -108,7 +108,7 @@ exit=1
 ```
 
 Restored → `exit=0` (clean). The gate catches even a *partial* revert (party+music pills
-still resolved, only vibe reverted — still failed). **fails-on-revert verified at commit `<COMMIT_HASH>`.**
+still resolved, only vibe reverted — still failed). **fails-on-revert verified at commit `61dbece87`.**
 
 ### Deno unit test
 
