@@ -33,6 +33,7 @@ import {
   Modal,
   StyleSheet,
   Platform,
+  type StyleProp,
   type TextStyle,
   type ViewStyle,
 } from "react-native";
@@ -76,6 +77,15 @@ interface CountryPickerContentProps {
 interface CountryPickerModalProps extends CountryPickerContentProps {
   visible: boolean;
 }
+
+/**
+ * react-native-web honors CSS position values RN's core types omit ('fixed').
+ * Single sanctioned widening (mirrors packages/offering-rendering ParallaxCoverShell
+ * `webStyle`) — NOT an `as unknown as` cast. Used only for the web overlay pin.
+ */
+type WebViewStyle = ViewStyle & {
+  position?: ViewStyle["position"] | "fixed";
+};
 
 const ROW_HEIGHT = 48;
 
@@ -321,12 +331,19 @@ export const CountryPickerOverlay: React.FC<CountryPickerContentProps> = (
     () => ({ ...DEFAULT_PHONE_INPUT_THEME, ...(props.theme ?? {}) }),
     [props.theme],
   );
-  const overlayStyle: ViewStyle = {
+  // ORCH-1299 — on web, this overlay is rendered while PhoneInput lives INSIDE
+  // another <Modal> (the RSVP details modal). `absoluteFillObject` (position:
+  // absolute) would only fill PhoneInput's ~56px field box, so pin it with
+  // position:'fixed' → it covers the details modal's full-screen container (the
+  // viewport) and sits ABOVE the details card with its rows tappable. Native
+  // keeps 'absolute' (the overlay only renders on web; native uses the modal).
+  const overlayStyle: WebViewStyle = {
     ...styles.overlayContainer,
     backgroundColor: t.backgroundPrimary,
+    position: Platform.OS === "web" ? "fixed" : "absolute",
   };
   return (
-    <View style={overlayStyle}>
+    <View style={overlayStyle as StyleProp<ViewStyle>}>
       <SafeAreaProvider>
         <CountryPickerContent {...props} />
       </SafeAreaProvider>
