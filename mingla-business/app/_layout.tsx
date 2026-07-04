@@ -123,6 +123,15 @@ if (sentryDsn) {
     // cost vs visibility. Adjust via DEC if production volume changes.
     tracesSampleRate: __DEV__ ? 1.0 : 0.2,
   });
+} else if (!__DEV__) {
+  // ORCH-1296 — a production bundle with NO DSN means crash reporting is OFF.
+  // This happens when an OTA is published without `--environment production`,
+  // which omits the EAS-only EXPO_PUBLIC_SENTRY_DSN. Make it loud so a keyless
+  // production bundle is at least visible in logs (the canonical publisher
+  // scripts/ota/publish-production-ota.sh pre-flights this same key).
+  console.warn(
+    "[sentry] EXPO_PUBLIC_SENTRY_DSN absent in a production bundle — crash reporting is OFF",
+  );
 }
 
 // J-X5 — splash polish (DEC-098 D-16-8). Prevent auto-hide so we control
