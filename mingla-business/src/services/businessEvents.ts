@@ -351,6 +351,12 @@ const eventFromRow = (
     rsvpApprovalMode: "auto" | "manual";
     rsvpDiscoverable: boolean;
     rsvpGoingCount: number;
+    // ORCH-1296 [chip-in-edit-published-gap] — voluntary chip-in config from the
+    // same probe, so a server-loaded RSVP editor hydrates the TRUE chip-in state
+    // (was always false/null → toggle showed OFF + blank amounts on open).
+    rsvpContributionEnabled: boolean;
+    rsvpContributionSuggestedCents: number | null;
+    rsvpContributionMinCents: number | null;
   } | null = null,
 ): LiveEvent => {
   const theme = asRecord(row.management_theme);
@@ -386,6 +392,12 @@ const eventFromRow = (
     rsvpApprovalMode: rsvpMeta?.rsvpApprovalMode ?? "auto",
     rsvpDiscoverable: rsvpMeta?.rsvpDiscoverable ?? false,
     rsvpGoingCount: rsvpMeta?.rsvpGoingCount ?? 0,
+    // ORCH-1296 — voluntary chip-in config snapshot (inert for non-chip-in rows).
+    // Feeds liveEventToEditableDraft so the edit-published chip-in toggle + amounts
+    // hydrate to the TRUE stored state instead of always-off.
+    rsvpContributionEnabled: rsvpMeta?.rsvpContributionEnabled ?? false,
+    rsvpContributionSuggestedCents: rsvpMeta?.rsvpContributionSuggestedCents ?? null,
+    rsvpContributionMinCents: rsvpMeta?.rsvpContributionMinCents ?? null,
     name: row.title,
     description: row.description ?? "",
     format: asFormat(businessEvent.format, row.is_online),
@@ -516,6 +528,10 @@ const detailFromRow = async (
     rsvpApprovalMode: "auto" | "manual";
     rsvpDiscoverable: boolean;
     rsvpGoingCount: number;
+    // ORCH-1296 — voluntary chip-in config threaded from the by-id probe.
+    rsvpContributionEnabled: boolean;
+    rsvpContributionSuggestedCents: number | null;
+    rsvpContributionMinCents: number | null;
   } | null = null,
 ): Promise<BusinessEventDetail> => {
   const tickets = await fetchTicketsForEvent(row.id);
@@ -564,6 +580,10 @@ export const fetchBusinessEventsForBrand = async (
       rsvpApprovalMode: "auto" | "manual";
       rsvpDiscoverable: boolean;
       rsvpGoingCount: number;
+      // ORCH-1296 — voluntary chip-in config (same probe as the 6 host-controls).
+      rsvpContributionEnabled: boolean;
+      rsvpContributionSuggestedCents: number | null;
+      rsvpContributionMinCents: number | null;
     }
   >();
   if (rows.length > 0) {
@@ -574,7 +594,7 @@ export const fetchBusinessEventsForBrand = async (
     const typesResp = await supabase
       .from("events")
       .select(
-        "id, event_type, rsvp_capacity, rsvp_allow_plus_ones, rsvp_plus_ones_max, rsvp_waitlist_enabled, rsvp_approval_mode, rsvp_discoverable",
+        "id, event_type, rsvp_capacity, rsvp_allow_plus_ones, rsvp_plus_ones_max, rsvp_waitlist_enabled, rsvp_approval_mode, rsvp_discoverable, rsvp_contribution_enabled, rsvp_contribution_suggested_cents, rsvp_contribution_min_cents",
       )
       .in("id", ids);
     if (typesResp.error !== null) throw typesResp.error;
@@ -589,6 +609,10 @@ export const fetchBusinessEventsForBrand = async (
       rsvp_waitlist_enabled: boolean | null;
       rsvp_approval_mode: "auto" | "manual" | null;
       rsvp_discoverable: boolean | null;
+      // ORCH-1296 — chip-in columns (not modelled on the generated types).
+      rsvp_contribution_enabled: boolean | null;
+      rsvp_contribution_suggested_cents: number | null;
+      rsvp_contribution_min_cents: number | null;
     }>) {
       const t = r.event_type ?? "event";
       eventTypeById.set(r.id, t);
@@ -603,6 +627,9 @@ export const fetchBusinessEventsForBrand = async (
           rsvpApprovalMode: r.rsvp_approval_mode ?? "auto",
           rsvpDiscoverable: r.rsvp_discoverable ?? false,
           rsvpGoingCount: 0,
+          rsvpContributionEnabled: r.rsvp_contribution_enabled ?? false,
+          rsvpContributionSuggestedCents: r.rsvp_contribution_suggested_cents ?? null,
+          rsvpContributionMinCents: r.rsvp_contribution_min_cents ?? null,
         });
       }
     }
@@ -658,6 +685,9 @@ export const fetchBusinessEventById = async (
   // ORCH-1172 R3: ALSO grab the 6 rsvp_* host-control columns (same view-
   // doesn't-expose-these reason) so a server-loaded RSVP editor hydrates the
   // REAL saved values instead of defaults — mirrors fetchBusinessEventsForBrand.
+  // ORCH-1296 [chip-in-edit-published-gap]: ALSO grab the 3 rsvp_contribution_*
+  // columns (same view-doesn't-expose-these reason) so a server-loaded RSVP editor
+  // hydrates the TRUE chip-in state (toggle + amounts) instead of always-off/blank.
   // orch-strict-grep-allow events-type-filter — by-id probe (.eq("id")) that READS
   // event_type to resolve the row's type + rsvp meta; it must not filter by it.
   const typeResp = await supabase
@@ -665,7 +695,8 @@ export const fetchBusinessEventById = async (
     .select(
       "id, event_type, pass_tax, pass_mingla_fee, pass_service_fee, " +
         "rsvp_capacity, rsvp_allow_plus_ones, rsvp_plus_ones_max, " +
-        "rsvp_waitlist_enabled, rsvp_approval_mode, rsvp_discoverable",
+        "rsvp_waitlist_enabled, rsvp_approval_mode, rsvp_discoverable, " +
+        "rsvp_contribution_enabled, rsvp_contribution_suggested_cents, rsvp_contribution_min_cents",
     )
     .eq("id", eventId)
     .maybeSingle();
@@ -685,6 +716,10 @@ export const fetchBusinessEventById = async (
     rsvp_waitlist_enabled?: boolean | null;
     rsvp_approval_mode?: "auto" | "manual" | null;
     rsvp_discoverable?: boolean | null;
+    // ORCH-1296 — chip-in columns (not modelled on the generated events types).
+    rsvp_contribution_enabled?: boolean | null;
+    rsvp_contribution_suggested_cents?: number | null;
+    rsvp_contribution_min_cents?: number | null;
   } | null;
   if (probeRow !== null && probeRow.event_type === "trip") {
     return null;
@@ -706,6 +741,11 @@ export const fetchBusinessEventById = async (
           rsvpApprovalMode: probeRow.rsvp_approval_mode ?? "auto",
           rsvpDiscoverable: probeRow.rsvp_discoverable ?? false,
           rsvpGoingCount: 0,
+          // ORCH-1296 — the TRUE stored chip-in config so the editor hydrates the
+          // toggle + amounts correctly (was always off/blank on open — the LOAD gap).
+          rsvpContributionEnabled: probeRow.rsvp_contribution_enabled ?? false,
+          rsvpContributionSuggestedCents: probeRow.rsvp_contribution_suggested_cents ?? null,
+          rsvpContributionMinCents: probeRow.rsvp_contribution_min_cents ?? null,
         }
       : null;
 

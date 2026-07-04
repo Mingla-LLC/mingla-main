@@ -178,6 +178,11 @@ export const FIELD_LABELS: Record<keyof EditableLiveEventFields, string> = {
   rsvpWaitlistEnabled: "Waitlist",
   rsvpApprovalMode: "Approval mode",
   rsvpDiscoverable: "Discoverable",
+  // ORCH-1296 — voluntary chip-in config (surface in the ChangeSummaryModal +
+  // drive the rsvp-setup "Edited" indicator).
+  rsvpContributionEnabled: "Guest chip-in",
+  rsvpContributionSuggestedCents: "Suggested amount",
+  rsvpContributionMinCents: "Minimum amount",
 };
 
 /**
@@ -240,6 +245,13 @@ export const SAFE_KEYS: ReadonlyArray<keyof EditableLiveEventFields> = [
   "rsvpWaitlistEnabled",
   "rsvpApprovalMode",
   "rsvpDiscoverable",
+  // ORCH-1296 — voluntary chip-in config is additive (RSVP is moneyless from a
+  // ticket-buyer standpoint; the chip-in is a voluntary gift, not a sold ticket).
+  // Banner-only notification when changed alone. The provider-aware bank-gate on
+  // ENABLE lives server-side in biz_update_live_rsvp, not in this severity map.
+  "rsvpContributionEnabled",
+  "rsvpContributionSuggestedCents",
+  "rsvpContributionMinCents",
 ];
 
 /**
@@ -419,6 +431,26 @@ export const editableDraftToPatch = (
   const origRsvpDiscoverable = original.rsvpDiscoverable ?? false;
   if (origRsvpDiscoverable !== edited.rsvpDiscoverable) {
     patch.rsvpDiscoverable = edited.rsvpDiscoverable;
+  }
+  // ORCH-1296 [chip-in-edit-published-gap] — diff the 3 voluntary chip-in fields
+  // so toggling chip-in on/off or changing the suggested/minimum amount on a
+  // PUBLISHED RSVP registers a real change (BUG: these were never diffed, so
+  // every chip-in edit fell through to "No changes to save" silently — exactly
+  // the Cycle-12 inPersonPayments / ORCH-0824 taxonomy / ORCH-1172 host-control
+  // class). Originals are undefined on legacy / non-chip-in LiveEvents → coalesce
+  // to the create-wizard defaults (false / null) so the diff is honest.
+  const origRsvpContributionEnabled = original.rsvpContributionEnabled ?? false;
+  if (origRsvpContributionEnabled !== edited.rsvpContributionEnabled) {
+    patch.rsvpContributionEnabled = edited.rsvpContributionEnabled;
+  }
+  const origRsvpContributionSuggestedCents =
+    original.rsvpContributionSuggestedCents ?? null;
+  if (origRsvpContributionSuggestedCents !== edited.rsvpContributionSuggestedCents) {
+    patch.rsvpContributionSuggestedCents = edited.rsvpContributionSuggestedCents;
+  }
+  const origRsvpContributionMinCents = original.rsvpContributionMinCents ?? null;
+  if (origRsvpContributionMinCents !== edited.rsvpContributionMinCents) {
+    patch.rsvpContributionMinCents = edited.rsvpContributionMinCents;
   }
   return patch;
 };

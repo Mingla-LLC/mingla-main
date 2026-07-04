@@ -129,6 +129,16 @@ export type EditableLiveEventFields = Pick<
   | "rsvpWaitlistEnabled"
   | "rsvpApprovalMode"
   | "rsvpDiscoverable"
+  // ORCH-1296 [chip-in-edit-published-gap] — voluntary chip-in config editable
+  // post-publish (parity with the create RSVP wizard's Step-5 chip-in card).
+  // Additive (no buyer-protection guard rail — RSVP is moneyless; the chip-in is
+  // a voluntary gift). Reach biz_update_live_rsvp via buildRsvpUpdatePayloadDiff,
+  // provider-aware bank-gated when enabled. Listed as SAFE_KEYS below. Optional on
+  // LiveEvent (present only on chip-in RSVP rows); the Pick is legal because the
+  // keys exist on the type.
+  | "rsvpContributionEnabled"
+  | "rsvpContributionSuggestedCents"
+  | "rsvpContributionMinCents"
 >;
 
 /**

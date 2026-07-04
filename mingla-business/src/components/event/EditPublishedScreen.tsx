@@ -820,7 +820,13 @@ export const EditPublishedScreen: React.FC<EditPublishedScreenProps> = ({
             ? "This event isn't an RSVP — reopen it to edit."
             : code.includes("insufficient_event_permission")
               ? "You don't have permission to edit this event."
-              : "Couldn't save your changes. Tap to try again.";
+              : // ORCH-1296 [chip-in-edit-published-gap] — the provider-aware
+                // bank-gate raised because chip-in was turned on for a brand that
+                // can't collect yet. Surface an actionable message (connect a bank)
+                // instead of the generic failure, mirroring the publish-time guard.
+                code.includes("stripe_charges_disabled")
+                ? "Connect a bank to collect chip-in contributions before turning it on."
+                : "Couldn't save your changes. Tap to try again.";
           showToast(message);
           return;
         }
