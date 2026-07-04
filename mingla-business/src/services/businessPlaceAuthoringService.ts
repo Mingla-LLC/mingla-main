@@ -381,8 +381,8 @@ export async function fetchVenuePitchSource(
  * META-ORCH-1290 Leg B (D-3, F-13) + B2 addendum — the venue owner edits the
  * pitch on the listing/management page.
  *
- * B2 RESOLUTION: Leg B wrote the pitch by a DIRECT client
- * `supabase.from("place_pool").update(...)` gated only by the row-level RLS
+ * B2 RESOLUTION: Leg B wrote the pitch by a DIRECT client place_pool
+ * row-UPDATE call (via supabase-js) gated only by the row-level RLS
  * policy `place_pool_business_owner_update` + `GRANT ALL ON place_pool TO
  * authenticated`. That row-level UPDATE power lets an owner set ANY column of
  * their own place_pool row via PostgREST (self-publish `is_servable`, forge

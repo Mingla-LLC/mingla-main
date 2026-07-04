@@ -3,7 +3,7 @@
  * blocker B-2. The listing-page pitch edit must NOT write place_pool via a
  * client-side RLS UPDATE. `updateVenuePitch` now INVOKES the `update_pitch`
  * pipeline action (which owns all authored writes, column-scoped) instead of a
- * direct `supabase.from("place_pool").update(...)`.
+ * direct client place_pool row-UPDATE call.
  *
  * PROVES (I-PROPOSED-1290-PITCH-WRITES-VIA-PIPELINE-ACTION):
  *   1. updateVenuePitch calls supabase.functions.invoke on the pipeline with
