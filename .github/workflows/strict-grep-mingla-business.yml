@@ -155,6 +155,7 @@ on:
 #   - I-PROPOSED-1235-B (i-proposed-1235-b-queryclient-networkmode-always.mjs) — mingla-business/src/config/queryClient.ts sets networkMode: "always" on the queries defaults so a navigator.onLine flap cannot leave a query fetchStatus "paused" with isLoading stuck true and no attempt/error; self-tested + fails-on-revert (META-ORCH-1235 — DRAFT until CLOSE)
 #   - I-PROPOSED-1235-C (i-proposed-1235-c-loading-gate-has-error-retry.mjs) — the enumerated full-screen-gating screens (hub/experiences, hub/trips, brand profile via BrandProfileView + brand/[id]/index, marketing overview) each have BOTH a full-screen loading gate AND a sibling error branch rendering a Retry wired to refetch() (or onRetry→refetch); a bare loading-only gate (no error+retry sibling) fails CI; in-script screen registry is the source of truth; self-tested + fails-on-revert (META-ORCH-1235 — DRAFT until CLOSE)
 #   - I-PROPOSED-1256-PROFILE-TODOS-NO-FALSE-POSITIVE (orch-1256-profile-todos-no-false-positive.mjs) — brand-profile completion to-dos: every emptiness predicate in brandProfileCompleteness.ts routes through the single trim-based isBlank (whitespace-only = EMPTY; F-2 address maps untrimmed); businessTodos.ts band 6 emits all 8 profile_add_* rows gated behind the OPTIONAL input.profile; BrandEditView carries the six ?section= onLayout anchors + initialSection (NONE inside the META-ORCH-1255 PHYSICAL LOCATION block); edit.tsx validates the ?section= param; BusinessTodoToggle keeps the bounded (maxHeight) internally-scrollable list; self-tested + fails-on-revert (ORCH-1256 — DRAFT until CLOSE)
+#   - I-PROPOSED-1292-TAXONOMY-LABEL-AT-RENDER (orch-1292-taxonomy-label-parity.mjs) — the shared public event/RSVP page bodies resolve party/vibe/music SLUGS to canonical LABELS at every render site: (A) DRIFT — packages/offering-rendering/taxonomyLabels.ts::TAXONOMY_LABELS stays in SET-EQUALITY + byte-exact label-parity with the PARTY_TYPES/VIBE_TAGS/MUSIC_GENRES {slug,label} pairs in supabase/functions/_shared/eventTaxonomy.ts (a renamed/dropped/added/extra slug on either side fails CI; ORCH-0824-style SEMANTIC parity extension); (B) RENDER SITES — EventOfferingBody.tsx + RsvpOfferingBody.tsx pills call taxonomyLabel(tag) and NOT the raw {tag}, and RsvpMomentumDecision.tsx chip calls taxonomyLabel(slug) and NOT the humanized partyTypeLabel(slug) (comment-stripped); --self-test runs BEFORE the real run (gates it) and proves GOOD passes + BAD (dropped/renamed/extra label; render site reverted to {tag}; momentum reverted to partyTypeLabel) fails; fails-on-revert (ORCH-1292 — DRAFT until CLOSE)
 #
 # Future gates to register (proposed but not yet implemented):
 #   - I-32 rank parity (Cycle 13a proposal)
@@ -168,6 +169,32 @@ on:
 # .github/scripts/strict-grep/README.md.
 
 jobs:
+  orch-1292-taxonomy-label-parity:
+    name: "ORCH-1292: public event/RSVP pills resolve party/vibe/music slugs to canonical labels; in-package map stays in parity with eventTaxonomy.ts (I-PROPOSED-1292-TAXONOMY-LABEL-AT-RENDER)"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Self-test the ORCH-1292 taxonomy-label-parity gate
+        run: node .github/scripts/strict-grep/orch-1292-taxonomy-label-parity.mjs --self-test
+      - name: Run ORCH-1292 taxonomy-label-parity gate
+        run: node .github/scripts/strict-grep/orch-1292-taxonomy-label-parity.mjs
+
+  orch-1292-taxonomy-label-adversarial:
+    name: "ORCH-1292 (tester adversarial): scope-bound render + strict byte-exact drift — each taxonomy .map resolves ITS OWN var via taxonomyLabel (catches wrong-var/out-of-scope), labels reject substring/whitespace/case drift + fallback-masking drops (I-PROPOSED-1292-TAXONOMY-LABEL-AT-RENDER)"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Self-test the ORCH-1292 taxonomy-label ADVERSARIAL gate
+        run: node .github/scripts/strict-grep/orch-1292-taxonomy-label-adversarial.mjs --self-test
+      - name: Run ORCH-1292 taxonomy-label ADVERSARIAL gate
+        run: node .github/scripts/strict-grep/orch-1292-taxonomy-label-adversarial.mjs
+
   orch-1285-create-lands-on-durable-deck-readiness:
     name: "ORCH-1285: venue create tier-1 success lands on the durable /venue/deck-readiness route, not an ephemeral inline mount (I-PROPOSED-1285-CREATE-LANDS-ON-DURABLE-DECK-READINESS)"
     runs-on: ubuntu-latest

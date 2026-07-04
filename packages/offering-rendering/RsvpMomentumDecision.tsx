@@ -62,7 +62,10 @@ import { type ResolvedTheme } from "./designTokens";
 import { type RsvpCtaState } from "./offeringCta";
 
 // Pure, dep-free momentum derivation (Deno/node-testable; no renderer).
-import { deriveMomentum, partyTypeLabel } from "./rsvpMomentum";
+import { deriveMomentum } from "./rsvpMomentum";
+// ORCH-1292 — the party chips now resolve to CANONICAL labels (via the shared
+// in-package resolver), matching the pills row — not the humanized partyTypeLabel.
+import { taxonomyLabel } from "./taxonomyLabels";
 
 // ───────────────────────── presentational types ─────────────────────────────
 
@@ -323,7 +326,7 @@ export const RsvpMomentumDecision: React.FC<RsvpMomentumDecisionProps> = ({
             ]}
           >
             <Text style={[styles.chipText, { color: palette.primaryText }]}>
-              {partyTypeLabel(slug)}
+              {taxonomyLabel(slug)}
             </Text>
           </View>
         ))}

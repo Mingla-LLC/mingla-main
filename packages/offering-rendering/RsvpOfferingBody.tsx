@@ -68,6 +68,8 @@ import {
 
 import { boldFontFamily, offeringSurfaceStyles, type ThemePalette } from "./themePalette";
 import { Calendar, Globe, MapPin, Minus, Plus } from "./LucideIcons";
+// ORCH-1292 — resolve party/vibe/music slugs to canonical labels at the pills row.
+import { taxonomyLabel } from "./taxonomyLabels";
 import { resolveRsvpCta, type RsvpCtaState } from "./offeringCta";
 import { type PublicBrandProps, type PublicEventProps } from "./types";
 import { type ResolvedTheme } from "./designTokens";
@@ -1015,13 +1017,13 @@ export const RsvpOfferingBody: React.FC<
       <View style={styles.pillsRow} testID="orch-1167-pills-row">
         <Pill palette={palette} font={boldFamily}>{formatLabel}</Pill>
         {vibeTags.map((tag, i) => (
-          <Pill key={`vibe-${i}`} palette={palette} font={boldFamily}>{tag}</Pill>
+          <Pill key={`vibe-${i}`} palette={palette} font={boldFamily}>{taxonomyLabel(tag)}</Pill>
         ))}
         {partyTypes.map((tag, i) => (
-          <Pill key={`party-${i}`} palette={palette} font={boldFamily}>{tag}</Pill>
+          <Pill key={`party-${i}`} palette={palette} font={boldFamily}>{taxonomyLabel(tag)}</Pill>
         ))}
         {musicGenres.map((tag, i) => (
-          <Pill key={`music-${i}`} palette={palette} font={boldFamily}>{tag}</Pill>
+          <Pill key={`music-${i}`} palette={palette} font={boldFamily}>{taxonomyLabel(tag)}</Pill>
         ))}
       </View>
 

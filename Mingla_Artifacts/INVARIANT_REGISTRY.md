@@ -89,6 +89,17 @@
 
 ---
 
+## ACTIVE — ORCH-1292 (public-page taxonomy slug→canonical-label resolution at render, 2026-07-03)
+
+> Registered DRAFT at ORCH-1292 SPEC and flipped ACTIVE directly at ORCH-1292 CLOSE (SHIPPED web; fix commit `61dbece87`, tester commit `0e306b1f1`; house style strips the `I-PROPOSED-` prefix on activation, mirroring the ORCH-1270 precedent). Display-only — no DB/adapter/edge/migration change; the shared `@mingla/offering-rendering` body drives all surfaces (buyer/anon web + consumer iOS/Android + business preview) so parity is automatic. QA PASS 0 P0/P1 with a real-browser resolver render + screenshot. Enforcement = the two merged strict-grep gates wired in `strict-grep-mingla-business.yml` (`orch-1292-taxonomy-label-parity.mjs` drift + fails-on-revert; `orch-1292-taxonomy-label-adversarial.mjs` scope-bound render + byte-exact drift + fallback-masking, each `--self-test`) + the Deno unit + adversarial suites. Cross-ref `reports/TEST_ORCH-1292_PUBLIC_PAGE_TAG_SLUG_LABELS.md`.
+
+### I-1292-TAXONOMY-LABEL-AT-RENDER (ACTIVE)
+- **Rule:** The shared public event/RSVP page bodies in `@mingla/offering-rendering` resolve party/vibe/music taxonomy SLUGS to canonical LABELS at every render site — `EventOfferingBody.tsx` + `RsvpOfferingBody.tsx` pills call `taxonomyLabel(tag)` (never raw `{tag}`), `RsvpMomentumDecision.tsx` chip calls `taxonomyLabel(slug)` (never the humanized `partyTypeLabel`). The in-package `packages/offering-rendering/taxonomyLabels.ts::TAXONOMY_LABELS` map stays in SET-EQUALITY + byte-exact label-parity with the `PARTY_TYPES`/`VIBE_TAGS`/`MUSIC_GENRES` `{slug,label}` pairs in `supabase/functions/_shared/eventTaxonomy.ts`. Unknown slugs Title-Case-fallback, never raw kebab. Respects I-MOR-0827-PACKAGE-ISOLATION (no app `src/` import).
+- **Enforcement:** strict-grep gates `.github/scripts/strict-grep/orch-1292-taxonomy-label-parity.mjs` (drift + fails-on-revert, `--self-test`) AND `.github/scripts/strict-grep/orch-1292-taxonomy-label-adversarial.mjs` (scope-bound per-.map render check + byte-exact drift + fallback-masking), both wired in `strict-grep-mingla-business.yml`; plus Deno tests `packages/offering-rendering/__tests__/orch_1292_taxonomy_labels.test.ts` + `..._adversarial.test.ts`.
+- **Established:** DRAFT at ORCH-1292 SPEC; flipped ACTIVE at ORCH-1292 CLOSE 2026-07-03.
+
+---
+
 ## ACTIVE — ORCH-1270 (SMS blast quiet-hours defer + honest status + idempotent send, 2026-07-03)
 
 > All three invariants registered directly ACTIVE at ORCH-1270 CLOSE (SHIPPED; PR #725 / `dd107a464`; house style strips the `I-PROPOSED-` prefix on activation, mirroring the ORCH-1269 precedent). Backend live on prod `gqnoajqerqhnvulmnyvv` — migration `20261203000000_orch_1270_sms_quiet_hours_defer` applied + read-back verified, marketing-send edge fn v237 deployed + verified HTTP 200, US + NG SMS flags live. Enforcement = the three merged strict-grep gates wired in `strict-grep-mingla-business.yml` — `.github/scripts/strict-grep/i-proposed-1270-quiet-hours-defers-not-fails.mjs` + `.github/scripts/strict-grep/i-proposed-1270-no-empty-sent.mjs` + `.github/scripts/strict-grep/i-proposed-1270-send-idempotent.mjs` (each `--self-test` + GOOD/BAD fixtures) — plus the Deno/SQL regression suites. QA CONDITIONAL PASS → F-DS-1 (latent double-send) sealed in `de66781f7` → clean. Cross-ref `reports/TEST_ORCH-1270_SMS_QUIET_HOURS_DEFER.md`.
