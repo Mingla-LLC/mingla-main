@@ -893,7 +893,13 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
             <View
               style={[
                 styles.returnBannerCard,
-                { backgroundColor: palette.card, borderColor: palette.panelBorder },
+                // ORCH-1297 [chip-in-banner-opacity] — the banner sits in an absolute
+                // overlay OVER the cover image. `palette.card` is a TRANSLUCENT token
+                // (rgba alpha 0.10/0.72) so the cover bled through and hurt legibility.
+                // `palette.page` is the guaranteed-OPAQUE 6-digit hex the palette is
+                // built on (and the exact opaque fill RsvpChipInPanel uses on Android),
+                // so the cover can no longer show through on web or native; border kept.
+                { backgroundColor: palette.page, borderColor: palette.panelBorder },
               ]}
               testID="orch-1295-chipin-return-banner"
             >
