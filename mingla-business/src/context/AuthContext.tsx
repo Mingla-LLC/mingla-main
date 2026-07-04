@@ -364,115 +364,148 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (__DEV__) {
         console.info(s?.user ? "[auth] bootstrap-ready" : "[auth] bootstrap-no-session");
       }
-      if (s?.user) {
-        // ORCH-1106 [native authenticated, no-brand degraded shell] — the
-        // session above came from `getSession()`, a LOCAL read that trusts
-        // the cached access token's `expires_at` without ever contacting the
-        // server. A session killed server-side (revoked / signed-out-elsewhere
-        // / password change) but whose cached token has not locally expired
-        // deserializes here into a truthy `s.user`, so the app routes to Home,
-        // the brand list comes back empty under the dead JWT, and the user is
-        // stranded on a brand-less degraded shell — NO `SIGNED_OUT` ever fires.
-        //
-        // Validate the locally-trusted session with ONE real authenticated
-        // network call (`getUser()` → `GET /user`). Run it AT MOST ONCE per
-        // cold start (ref-guarded; onAuthStateChange echoes never re-probe).
-        // De-gated: this runs on native AND web (web shares the same latent
-        // stale-valid-session gap — its existing guards only handle "no user
-        // at all", never a stale-but-present session).
-        //
-        // HARD GUARD: sign out ONLY on a POSITIVELY-identified auth/token
-        // invalidation (401/403, session_not_found, AuthSessionMissingError,
-        // bad_jwt, …). A network / offline / timeout / 5xx error MUST keep the
-        // user signed in (classifier fails OPEN). We NEVER key the sign-out off
-        // empty brand data — a legitimately brand-less new user with a VALID
-        // session stays signed in and sees the normal "Create brand" home.
-        if (!bootSessionProbedRef.current) {
-          bootSessionProbedRef.current = true;
-          try {
-            // META-ORCH-1235 (§5.1) — per-probe deadline well under the 7s
-            // ceiling. A hung GET /user now rejects with TimeoutError → caught
-            // below as a transport failure (fail-OPEN, session kept).
-            const { error: probeError } = await withTimeout(
-              supabase.auth.getUser(),
-              AUTH_PROBE_TIMEOUT_MS,
-              "auth:getUser-probe",
-            );
-            if (!mounted) return;
-            if (classifyBootSessionProbe(probeError) === "invalid_session") {
-              console.warn(
-                "[auth] boot-session-probe: stored session rejected by server",
-                `(${probeError?.message ?? "auth error"})`,
-                "— signing out and routing to sign-in (ORCH-1106)",
-              );
-              // signOut() clears stores + RQ cache and fires SIGNED_OUT, which
-              // sets user=null so index.tsx lands on BusinessWelcomeScreen.
-              await supabase.auth.signOut();
-              if (!mounted) return;
-              clearAllStores();
-              queryClient.clear();
-              clearAppsFlyerUserId();
-              resetAppsFlyerDeviceCache();
-              afEventFiredRef.current = false;
-              mixpanelService.trackLogout();
-              revenueCatService.logOut();
-              logoutOneSignal();
-              setAuthError(null);
-              setSession(null);
-              setUser(null);
-              setLoading(false);
-              return;
-            }
-            if (__DEV__) {
-              console.info("[auth] boot-session-probe: session valid");
-            }
-          } catch (probeException) {
-            // A thrown exception here is a transport-level failure (the auth-js
-            // contract returns auth errors in `{ error }`, not by throwing).
-            // Fail OPEN — keep the user signed in; the normal app paths retry.
-            if (!mounted) return;
-            console.warn(
-              "[auth] boot-session-probe: probe threw (transport) — keeping session (ORCH-1106):",
-              probeException instanceof Error
-                ? probeException.message
-                : String(probeException),
-            );
-          }
-        }
-        // ORCH-0743 / Note A: wrap ensureCreatorAccount so a creator_accounts
-        // upsert error is surfaced (Const #3) without aborting auth bootstrap.
-        // Mirrors the getSession error pattern above (line 119).
-        try {
-          await ensureCreatorAccount(s.user);
-        } catch (ensureError) {
-          reportNonFatal("auth.ensureCreatorAccount", ensureError, {
-            userId: s.user.id,
-          });
-        }
-        // Cycle 14 — recover-on-sign-in auto-clear (D-CYCLE14-FOR-6 + I-35).
-        // If creator_accounts.deleted_at is non-null, clear it and emit
-        // recovery event so account.tsx shows "Welcome back" toast.
-        const recovered = await tryRecoverAccountIfDeleted(s.user.id);
-        if (recovered && mounted) {
-          setLastRecoveryEvent({ recoveredAt: new Date().toISOString() });
-        }
-        // ORCH-0808 — bind AppsFlyer identity on warm restore (cold-start
-        // with persisted session). Idempotent. No first-event fire here —
-        // that lives in the SIGNED_IN branch of onAuthStateChange so we
-        // don't inflate af_login counts on every cold launch.
-        setAppsFlyerUserId(s.user.id);
-        registerAppsFlyerDevice(s.user.id);
-        // ORCH-0808-FOLLOWUP — Mixpanel identity on warm restore. Idempotent.
-        // No "Login" event fire on warm restore (mirrors AppsFlyer policy).
-        mixpanelService.identify(s.user.id);
-        // META-ORCH-1187 — PostHog identity on warm restore (SC-7). Idempotent.
-        postHogService.identify(s.user.id);
-        // ORCH-0808-FOLLOWUP — RevenueCat identity on warm restore. Idempotent.
-        revenueCatService.identify(s.user.id);
-        // ORCH-0808-FOLLOWUP — OneSignal identity on warm restore. Idempotent.
-        loginToOneSignal(s.user.id);
-      }
+      // ORCH-1294 [boot-paint-decouple] — RELEASE THE LOADING GATE HERE, before
+      // any post-getSession network call, for BOTH the signed-in and no-session
+      // cases. `getSession()` above is a LOCAL read (cached token, no server
+      // round-trip); once its session/user state is applied, first paint already
+      // has everything it needs — session/user feed deriveBusinessAuthStatus →
+      // signed_in_ready → isAuthReady → the brand-profile route resolves.
+      //
+      // The signed-in continuation below — the ORCH-1106 getUser() revoked-session
+      // probe, ensureCreatorAccount, tryRecoverAccountIfDeleted, and the
+      // analytics/identity binds — is NETWORK work. Only getUser() is time-bounded
+      // (withTimeout); ensureCreatorAccount and tryRecoverAccountIfDeleted are
+      // UN-TIMED. When any of them was awaited BEFORE setLoading(false), a single
+      // stalled/proxied request kept `loading` true → deriveBusinessAuthStatus
+      // never reached signed_in_ready → isAuthReady stayed false → the
+      // brand-profile spinner (isBrandRouteResolving) froze and the brand list
+      // stayed disabled until the 7s AUTH_RESOLUTION_HARD_CEILING_MS backstop
+      // fired. We now paint within that one local read and run the whole chain as
+      // a NON-AWAITED background task. The 7s ceiling remains armed as
+      // defense-in-depth; it is no longer the primary escape from the spinner.
       setLoading(false);
+      const bootUser = s?.user ?? null;
+      if (bootUser) {
+        // ORCH-1294 — background continuation: deliberately NOT awaited before the
+        // setLoading(false) above. It re-checks `mounted` at every await boundary
+        // so a resolution arriving after the provider unmounts is a no-op (the
+        // effect cleanup flips `mounted`). All prior invariants are preserved: the
+        // probe still runs at most once per cold start (bootSessionProbedRef) and
+        // still signs out a positively-invalid session; ensureCreatorAccount errors
+        // still surface via reportNonFatal; recovery/analytics binds are unchanged.
+        void (async () => {
+          // ORCH-1106 [native authenticated, no-brand degraded shell] — the
+          // session above came from `getSession()`, a LOCAL read that trusts
+          // the cached access token's `expires_at` without ever contacting the
+          // server. A session killed server-side (revoked / signed-out-elsewhere
+          // / password change) but whose cached token has not locally expired
+          // deserializes here into a truthy `bootUser`, so the app routes to Home,
+          // the brand list comes back empty under the dead JWT, and the user is
+          // stranded on a brand-less degraded shell — NO `SIGNED_OUT` ever fires.
+          //
+          // Validate the locally-trusted session with ONE real authenticated
+          // network call (`getUser()` → `GET /user`). Run it AT MOST ONCE per
+          // cold start (ref-guarded; onAuthStateChange echoes never re-probe).
+          // De-gated: this runs on native AND web (web shares the same latent
+          // stale-valid-session gap — its existing guards only handle "no user
+          // at all", never a stale-but-present session).
+          //
+          // HARD GUARD: sign out ONLY on a POSITIVELY-identified auth/token
+          // invalidation (401/403, session_not_found, AuthSessionMissingError,
+          // bad_jwt, …). A network / offline / timeout / 5xx error MUST keep the
+          // user signed in (classifier fails OPEN). We NEVER key the sign-out off
+          // empty brand data — a legitimately brand-less new user with a VALID
+          // session stays signed in and sees the normal "Create brand" home.
+          if (!bootSessionProbedRef.current) {
+            bootSessionProbedRef.current = true;
+            try {
+              // META-ORCH-1235 (§5.1) — per-probe deadline well under the 7s
+              // ceiling. A hung GET /user now rejects with TimeoutError → caught
+              // below as a transport failure (fail-OPEN, session kept).
+              const { error: probeError } = await withTimeout(
+                supabase.auth.getUser(),
+                AUTH_PROBE_TIMEOUT_MS,
+                "auth:getUser-probe",
+              );
+              if (!mounted) return;
+              if (classifyBootSessionProbe(probeError) === "invalid_session") {
+                console.warn(
+                  "[auth] boot-session-probe: stored session rejected by server",
+                  `(${probeError?.message ?? "auth error"})`,
+                  "— signing out and routing to sign-in (ORCH-1106)",
+                );
+                // signOut() clears stores + RQ cache and fires SIGNED_OUT, which
+                // sets user=null so index.tsx lands on BusinessWelcomeScreen.
+                await supabase.auth.signOut();
+                if (!mounted) return;
+                clearAllStores();
+                queryClient.clear();
+                clearAppsFlyerUserId();
+                resetAppsFlyerDeviceCache();
+                afEventFiredRef.current = false;
+                mixpanelService.trackLogout();
+                revenueCatService.logOut();
+                logoutOneSignal();
+                setAuthError(null);
+                setSession(null);
+                setUser(null);
+                // ORCH-1294 — `loading` is already false; a revoked session simply
+                // paints briefly then the route gates bounce it to sign-in. Do
+                // NOT re-block loading here (that would re-introduce the freeze).
+                return;
+              }
+              if (__DEV__) {
+                console.info("[auth] boot-session-probe: session valid");
+              }
+            } catch (probeException) {
+              // A thrown exception here is a transport-level failure (the auth-js
+              // contract returns auth errors in `{ error }`, not by throwing).
+              // Fail OPEN — keep the user signed in; the normal app paths retry.
+              if (!mounted) return;
+              console.warn(
+                "[auth] boot-session-probe: probe threw (transport) — keeping session (ORCH-1106):",
+                probeException instanceof Error
+                  ? probeException.message
+                  : String(probeException),
+              );
+            }
+          }
+          // ORCH-0743 / Note A: wrap ensureCreatorAccount so a creator_accounts
+          // upsert error is surfaced (Const #3) without aborting auth bootstrap.
+          // Mirrors the getSession error pattern above (line 119).
+          try {
+            await ensureCreatorAccount(bootUser);
+          } catch (ensureError) {
+            reportNonFatal("auth.ensureCreatorAccount", ensureError, {
+              userId: bootUser.id,
+            });
+          }
+          if (!mounted) return;
+          // Cycle 14 — recover-on-sign-in auto-clear (D-CYCLE14-FOR-6 + I-35).
+          // If creator_accounts.deleted_at is non-null, clear it and emit
+          // recovery event so account.tsx shows "Welcome back" toast.
+          const recovered = await tryRecoverAccountIfDeleted(bootUser.id);
+          if (recovered && mounted) {
+            setLastRecoveryEvent({ recoveredAt: new Date().toISOString() });
+          }
+          if (!mounted) return;
+          // ORCH-0808 — bind AppsFlyer identity on warm restore (cold-start
+          // with persisted session). Idempotent. No first-event fire here —
+          // that lives in the SIGNED_IN branch of onAuthStateChange so we
+          // don't inflate af_login counts on every cold launch.
+          setAppsFlyerUserId(bootUser.id);
+          registerAppsFlyerDevice(bootUser.id);
+          // ORCH-0808-FOLLOWUP — Mixpanel identity on warm restore. Idempotent.
+          // No "Login" event fire on warm restore (mirrors AppsFlyer policy).
+          mixpanelService.identify(bootUser.id);
+          // META-ORCH-1187 — PostHog identity on warm restore (SC-7). Idempotent.
+          postHogService.identify(bootUser.id);
+          // ORCH-0808-FOLLOWUP — RevenueCat identity on warm restore. Idempotent.
+          revenueCatService.identify(bootUser.id);
+          // ORCH-0808-FOLLOWUP — OneSignal identity on warm restore. Idempotent.
+          loginToOneSignal(bootUser.id);
+        })();
+      }
     };
 
     bootstrap();
