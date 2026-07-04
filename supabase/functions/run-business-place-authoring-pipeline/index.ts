@@ -31,59 +31,75 @@ export { priceLevelFromTiers, priceTiersFromTier2 };
 const GEMINI_MODEL = "gemini-2.5-flash";
 const PROMPT_VERSION = "v4";
 
-// META-ORCH-1009 Sub-E: FORCE Gemini's output shape with a responseSchema
-// (structured output) instead of relying on the model to volunteer the right
-// JSON keys. The earlier free-form `responseMimeType: application/json` let
-// Gemini return a structure WITHOUT an `evaluations` array -> "gemini_missing
-// _evaluations". A schema guarantees the array (and the per-signal object shape)
-// is always present. Schema vocabulary per the Gemini structured-output docs:
+// META-ORCH-1009 Sub-E / META-ORCH-1290 D-3 (OQ-2 SPLIT): FORCE Gemini's output
+// shape with a responseSchema (structured output) instead of relying on the
+// model to volunteer keys. The original single call (bio + facets + 16 evals +
+// consistency) is SPLIT into a bio-DRAFT call at submit (no evaluations) and a
+// 16-signal EVAL call at approve (no bio). Shared property fragments below feed
+// both schemas. Schema vocabulary per the Gemini structured-output docs:
 //   https://ai.google.dev/gemini-api/docs/structured-output
-const GEMINI_RESPONSE_SCHEMA: Record<string, unknown> = {
+const GEMINI_FACETS_SCHEMA = {
+  type: "object",
+  properties: Object.fromEntries(
+    [...FACET_COLUMNS].map((k) => [k, { type: "boolean", nullable: true }]),
+  ),
+};
+const GEMINI_PHOTO_ANALYSIS_SCHEMA = {
+  type: "object",
+  nullable: true,
+  properties: {
+    lighting: { type: "string", nullable: true },
+    ambience: { type: "string", nullable: true },
+    composition_score_0_to_100: { type: "integer", nullable: true },
+    reasoning: { type: "string", nullable: true },
+  },
+};
+// WS6: consistency check (operator claims vs website/photos) — informational.
+const GEMINI_CONSISTENCY_SCHEMA = {
+  type: "object",
+  nullable: true,
+  properties: {
+    verdict: { type: "string", nullable: true },
+    confidence_0_to_100: { type: "integer", nullable: true },
+    summary: { type: "string", nullable: true },
+    flags: { type: "array", nullable: true, items: { type: "string" } },
+  },
+};
+const GEMINI_EVALUATIONS_SCHEMA = {
+  type: "array",
+  items: {
+    type: "object",
+    properties: {
+      signal_id: { type: "string" },
+      score_0_to_100: { type: "integer" },
+      inappropriate_for: { type: "boolean" },
+      reasoning: { type: "string" },
+    },
+    required: ["signal_id", "score_0_to_100", "inappropriate_for", "reasoning"],
+  },
+};
+// META-ORCH-1290 D-3 (a) bio-DRAFT-only (submit): bio + facets + photo_analysis;
+// NO `evaluations` — scoring is deferred to approve.
+const GEMINI_BIO_DRAFT_SCHEMA: Record<string, unknown> = {
   type: "object",
   properties: {
     bio: { type: "string" },
-    facets: {
-      type: "object",
-      properties: Object.fromEntries(
-        [...FACET_COLUMNS].map((k) => [k, { type: "boolean", nullable: true }]),
-      ),
-    },
-    photo_analysis: {
-      type: "object",
-      nullable: true,
-      properties: {
-        lighting: { type: "string", nullable: true },
-        ambience: { type: "string", nullable: true },
-        composition_score_0_to_100: { type: "integer", nullable: true },
-        reasoning: { type: "string", nullable: true },
-      },
-    },
-    evaluations: {
-      type: "array",
-      items: {
-        type: "object",
-        properties: {
-          signal_id: { type: "string" },
-          score_0_to_100: { type: "integer" },
-          inappropriate_for: { type: "boolean" },
-          reasoning: { type: "string" },
-        },
-        required: ["signal_id", "score_0_to_100", "inappropriate_for", "reasoning"],
-      },
-    },
-    // WS6: consistency check (operator claims vs website/photos) — informational.
-    consistency: {
-      type: "object",
-      nullable: true,
-      properties: {
-        verdict: { type: "string", nullable: true },
-        confidence_0_to_100: { type: "integer", nullable: true },
-        summary: { type: "string", nullable: true },
-        flags: { type: "array", nullable: true, items: { type: "string" } },
-      },
-    },
+    facets: GEMINI_FACETS_SCHEMA,
+    photo_analysis: GEMINI_PHOTO_ANALYSIS_SCHEMA,
+    consistency: GEMINI_CONSISTENCY_SCHEMA,
   },
-  required: ["bio", "facets", "evaluations"],
+  required: ["bio", "facets"],
+};
+// META-ORCH-1290 D-2 (b) 16-signal EVAL (approve): evaluations + facets; NO bio.
+const GEMINI_SIGNAL_EVAL_SCHEMA: Record<string, unknown> = {
+  type: "object",
+  properties: {
+    facets: GEMINI_FACETS_SCHEMA,
+    photo_analysis: GEMINI_PHOTO_ANALYSIS_SCHEMA,
+    evaluations: GEMINI_EVALUATIONS_SCHEMA,
+    consistency: GEMINI_CONSISTENCY_SCHEMA,
+  },
+  required: ["evaluations", "facets"],
 };
 
 type Action =
@@ -94,7 +110,10 @@ type Action =
   | "refresh_deck_readiness"
   | "get_authoring_context"
   | "sync_hero_media"
-  | "sync_gallery";
+  | "sync_gallery"
+  // META-ORCH-1290 D-2: approve-time 16-signal eval, invoked service-to-service
+  // by admin-review-venue-claim (service-role auth branch) — never user-callable.
+  | "evaluate_signals";
 type VenueCategory = "restaurant" | "play" | "creative_and_arts";
 
 // META-ORCH-1009 Sub-E: a self-listed/claimed venue must upload 5–20 gallery
@@ -516,6 +535,50 @@ async function requireUser(req: Request): Promise<
     auth: { autoRefreshToken: false, persistSession: false },
   });
   return { userId: userData.user.id, authHeader, serviceClient };
+}
+
+// META-ORCH-1290 D-2/OQ-3: constant-time secret comparison for the service-role
+// auth branch. Hash-then-compare (both digests are a fixed 32 bytes) avoids a
+// length-leak or short-circuit timing signal on the service-role key.
+async function constantTimeEqualSecret(provided: string, expected: string): Promise<boolean> {
+  if (expected.length === 0) return false;
+  const enc = new TextEncoder();
+  const [ph, eh] = await Promise.all([
+    crypto.subtle.digest("SHA-256", enc.encode(provided)),
+    crypto.subtle.digest("SHA-256", enc.encode(expected)),
+  ]);
+  const pa = new Uint8Array(ph);
+  const ea = new Uint8Array(eh);
+  let diff = 0;
+  for (let i = 0; i < pa.length; i++) diff |= pa[i] ^ ea[i];
+  return diff === 0;
+}
+
+// META-ORCH-1290 D-2/OQ-3: service-to-service auth for the `evaluate_signals`
+// action ONLY. admin-review-venue-claim invokes the approve-time eval with the
+// service-role key as the bearer; this branch accepts iff the token equals
+// SUPABASE_SERVICE_ROLE_KEY (constant-time). Every OTHER action keeps
+// requireUser (which rejects a service-role token), so ai_signal_scores' sole
+// writer stays this file and NO user session can trigger the eval
+// (I-AI-SIGNAL-SCORES-COLUMN-SOLE-OWNER unchanged).
+export async function requireServiceRole(req: Request): Promise<
+  | { serviceClient: SupabaseClient }
+  | Response
+> {
+  const authHeader = req.headers.get("Authorization") ?? "";
+  const tokenMatch = authHeader.match(/^Bearer\s+(.+)$/i);
+  if (!tokenMatch) return errorResponse(401, "UNAUTHORIZED", "Missing authorization");
+  const supabaseUrl = Deno.env.get("SUPABASE_URL") ?? "";
+  const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
+  if (!supabaseUrl || !serviceRoleKey) {
+    return errorResponse(500, "INTERNAL", "Supabase config missing");
+  }
+  const ok = await constantTimeEqualSecret(tokenMatch[1], serviceRoleKey);
+  if (!ok) return errorResponse(401, "UNAUTHORIZED", "Service role required for this action");
+  const serviceClient = createClient(supabaseUrl, serviceRoleKey, {
+    auth: { autoRefreshToken: false, persistSession: false },
+  });
+  return { serviceClient };
 }
 
 async function loadOwnedBrand(
@@ -953,34 +1016,69 @@ export async function scanWebsite(
   return { text, pages_read: pages.length };
 }
 
-async function callGeminiForEvaluations(input: {
+// META-ORCH-1290 D-3: shared low-level Gemini call — ONE attempt. Returns the
+// parsed JSON or a structured retryable/non-retryable error, so the fetch/parse
+// plumbing lives in ONE place for both the bio-DRAFT (submit) and the 16-signal
+// EVAL (approve) calls. Structured output docs:
+//   https://ai.google.dev/gemini-api/docs/structured-output
+async function fetchGeminiCandidate(
+  apiKey: string,
+  parts: Array<Record<string, unknown>>,
+  schema: Record<string, unknown>,
+  maxOutputTokens: number,
+): Promise<
+  | { ok: true; parsed: Record<string, unknown> }
+  | { ok: false; err: string; retryable: boolean }
+> {
+  const res = await fetch(
+    `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${apiKey}`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        contents: [{ role: "user", parts }],
+        generationConfig: {
+          responseMimeType: "application/json",
+          responseSchema: schema,
+          maxOutputTokens,
+          temperature: 0.4,
+        },
+      }),
+    },
+  );
+  if (!res.ok) {
+    const body = await res.text();
+    // 4xx (bad key / quota / bad request) won't fix on retry — non-retryable.
+    return {
+      ok: false,
+      err: `gemini_failed:${res.status}:${body.slice(0, 200)}`,
+      retryable: res.status >= 500,
+    };
+  }
+  const payload = await res.json() as {
+    candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
+  };
+  const text = payload.candidates?.[0]?.content?.parts?.[0]?.text;
+  if (!text) return { ok: false, err: "gemini_empty", retryable: true };
+  try {
+    return { ok: true, parsed: JSON.parse(text) as Record<string, unknown> };
+  } catch {
+    // Truncated / malformed JSON — retryable.
+    return { ok: false, err: "gemini_unparseable_json", retryable: true };
+  }
+}
+
+// META-ORCH-1009 Sub-E: send a SLIM place projection + shared prompt context to
+// Gemini, not the whole row (raw_google_data / large blobs bloat the prompt and
+// truncate JSON). Shared by both Gemini calls (bio-draft + signal-eval).
+function buildGeminiBasePrompt(input: {
   brand: OwnedBrand;
   place: Record<string, unknown>;
-  signals: SignalRow[];
   tier2: Record<string, unknown>;
-  imageUrls: string[];
   websiteText: string | null;
-}): Promise<{
-  bio: string;
-  photo_analysis: Record<string, unknown> | null;
-  facets: Record<string, unknown>;
-  evaluations: AiEvaluation[];
-  consistency: Record<string, unknown> | null;
-}> {
-  const apiKey = Deno.env.get("GEMINI_API_KEY") ?? Deno.env.get("GOOGLE_AI_API_KEY") ?? "";
-  if (!apiKey) {
-    throw new Error("gemini_unconfigured");
-  }
-
-  // D1: fetch real image bytes for the vision stage. May be empty -> no fabrication.
-  const imageParts = await fetchImageParts(input.imageUrls);
-  const hasImages = imageParts.length > 0;
-
-  // META-ORCH-1009 Sub-E: send a SLIM place projection, not the whole row. The
-  // raw place_pool row carries raw_google_data / stored_photo_urls / large JSON
-  // blobs that bloat the prompt, push Gemini toward the output-token cap, and
-  // cause truncated JSON (which previously threw gemini_missing_signal -> opaque
-  // 546/500). Only the fields the model actually needs to reason are included.
+  hasImages: boolean;
+  imageCount: number;
+}): Record<string, unknown> {
   const slimPlace = {
     name: (input.place as { name?: unknown }).name ?? null,
     address: (input.place as { address?: unknown }).address ?? null,
@@ -992,126 +1090,73 @@ async function callGeminiForEvaluations(input: {
     business_status: (input.place as { business_status?: unknown }).business_status ?? null,
     generative_summary: (input.place as { generative_summary?: unknown }).generative_summary ?? null,
   };
-
-  const prompt = {
-    instruction: hasImages
-      ? "You are given venue photos as inline images plus structured venue data. Generate (1) an AI-authored sales bio, (2) a photo_analysis object from the ACTUAL images provided (lighting, ambience, composition_score_0_to_100, near_duplicate_groups, facet_hints, reasoning), (3) structured facet inference, and (4) one Q2 score per active Mingla signal. You MUST return exactly one evaluation object per signal id provided in `signals` — never omit a signal. Return strict JSON only."
-      : "Generate an AI-authored sales bio, structured facet inference, and one score per active Mingla signal from the venue's text details. You MUST return exactly one evaluation object per signal id provided in `signals` — never omit a signal. Keep each signal's reasoning to ONE short phrase (max 10 words). Set photo_analysis to null. Return strict JSON only.",
-    model_contract: {
-      model: GEMINI_MODEL,
-      prompt_version: PROMPT_VERSION,
-      score_keys: ["score_0_to_100", "inappropriate_for", "reasoning"],
-      photo_analysis_shape: {
-        model: GEMINI_MODEL,
-        evaluated_at: "ISO-8601",
-        aesthetic: { lighting: "string", ambience: "string", composition_score_0_to_100: 0 },
-        dedupe: { near_duplicate_groups: [] },
-        facet_hints: {},
-        reasoning: "short plain-English summary",
-      },
-    },
-    has_images: hasImages,
-    image_count: imageParts.length,
+  return {
+    model_contract: { model: GEMINI_MODEL, prompt_version: PROMPT_VERSION },
+    has_images: input.hasImages,
+    image_count: input.imageCount,
     brand: { id: input.brand.id, name: (input.brand as { name?: unknown }).name ?? null },
     place: slimPlace,
     tier2: input.tier2,
-    // WS6: the venue's own website content (homepage + About/Menu pages) for real
-    // context — base the bio + scores on this, not guesswork.
+    // WS6: the venue's own website content (homepage + About/Menu pages).
     website_content: input.websiteText,
-    signals: input.signals.map((s) => ({ id: s.id, label: s.label })),
-    // WS6: also return a `consistency` object judging whether the website +
-    // photos SUPPORT the operator's claims (tier2 price_tiers, facet answers,
-    // vibe signal picks). Informational for an admin — do NOT change scores
-    // because of it. Shape: { verdict: "consistent"|"mixed"|"contradicted",
-    // confidence_0_to_100: int, summary: short text, flags: [short strings] }.
+    // WS6: also return a `consistency` object judging whether website + photos
+    // SUPPORT the operator's claims. Informational; never changes scores.
     consistency_required: true,
   };
+}
 
+// META-ORCH-1290 D-3 (a): the bio-DRAFT-only call at submit. Returns bio + facets
+// (+ photo_analysis/consistency) ONLY — NO per-signal evaluations, so NO
+// ai_signal_scores are produced here. handleTier2 stages the bio into
+// business_authoring_inputs; scoring is deferred to approve (evaluate_signals).
+// (I-PROPOSED-1290-NO-BUSINESS-SIGNAL-SCORES-PRE-APPROVE.)
+async function callGeminiForBioDraft(input: {
+  brand: OwnedBrand;
+  place: Record<string, unknown>;
+  tier2: Record<string, unknown>;
+  imageUrls: string[];
+  websiteText: string | null;
+}): Promise<{
+  bio: string;
+  photo_analysis: Record<string, unknown> | null;
+  facets: Record<string, unknown>;
+  consistency: Record<string, unknown> | null;
+}> {
+  const apiKey = Deno.env.get("GEMINI_API_KEY") ?? Deno.env.get("GOOGLE_AI_API_KEY") ?? "";
+  if (!apiKey) throw new Error("gemini_unconfigured");
+  // D1: fetch real image bytes for the vision stage. May be empty -> no fabrication.
+  const imageParts = await fetchImageParts(input.imageUrls);
+  const hasImages = imageParts.length > 0;
+  const prompt = {
+    instruction: hasImages
+      ? "You are given venue photos as inline images plus structured venue data. Generate (1) an AI-authored sales bio (a single vivid paragraph a guest would read), (2) a photo_analysis object from the ACTUAL images provided (lighting, ambience, composition_score_0_to_100, reasoning), and (3) structured facet inference. Do NOT score signals. Return strict JSON only."
+      : "Generate an AI-authored sales bio (a single vivid paragraph a guest would read) and structured facet inference from the venue's text details. Set photo_analysis to null. Do NOT score signals. Return strict JSON only.",
+    ...buildGeminiBasePrompt({
+      brand: input.brand,
+      place: input.place,
+      tier2: input.tier2,
+      websiteText: input.websiteText,
+      hasImages,
+      imageCount: imageParts.length,
+    }),
+  };
   const parts: Array<Record<string, unknown>> = [{ text: JSON.stringify(prompt) }, ...imageParts];
-  const requiredSignalIds = new Set(input.signals.map((s) => s.id));
-
-  // META-ORCH-1009 Sub-E: a bio + facets + photo_analysis + 16 per-signal
-  // evaluations is a large JSON payload. Gemini occasionally truncates or omits a
-  // signal even with the token cap. We do NOT fabricate the missing score
-  // (buildAiSignalScores fail-closes by design). Instead we retry the model call
-  // up to ONE extra time when the response is truncated, unparseable, or doesn't
-  // cover every signal — re-asking the model rather than inventing data.
   const MAX_ATTEMPTS = 2;
   let lastErr = "";
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
-    const res = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${apiKey}`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          contents: [{ role: "user", parts }],
-          generationConfig: {
-            responseMimeType: "application/json",
-            responseSchema: GEMINI_RESPONSE_SCHEMA,
-            // WS6: bio + facets + 16 evals + a consistency block. 6144 fits it with
-            // terse per-signal reasoning.
-            maxOutputTokens: 6144,
-            temperature: 0.4,
-          },
-        }),
-      },
-    );
-    if (!res.ok) {
-      const body = await res.text();
-      lastErr = `gemini_failed:${res.status}:${body.slice(0, 200)}`;
-      // 4xx (bad key / quota / bad request) won't fix on retry — fail fast.
-      if (res.status < 500) throw new Error(lastErr);
+    const r = await fetchGeminiCandidate(apiKey, parts, GEMINI_BIO_DRAFT_SCHEMA, 2048);
+    if (!r.ok) {
+      lastErr = r.err;
+      if (!r.retryable) throw new Error(lastErr);
       continue;
     }
-    const payload = await res.json() as {
-      candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
-    };
-    const text = payload.candidates?.[0]?.content?.parts?.[0]?.text;
-    if (!text) {
-      lastErr = "gemini_empty";
-      continue;
-    }
-    let parsed: {
+    const parsed = r.parsed as {
       bio?: unknown;
       photo_analysis?: unknown;
       facets?: unknown;
-      evaluations?: unknown;
       consistency?: unknown;
     };
-    try {
-      parsed = JSON.parse(text);
-    } catch {
-      // Truncated / malformed JSON — retry once.
-      lastErr = "gemini_unparseable_json";
-      continue;
-    }
-    if (!Array.isArray(parsed.evaluations)) {
-      lastErr = "gemini_missing_evaluations";
-      continue;
-    }
-
-    const evaluations = parsed.evaluations.map((ev) => {
-      const row = ev as Record<string, unknown>;
-      return {
-        signal_id: asString(row.signal_id),
-        score_0_to_100: Math.max(0, Math.min(100, Number(row.score_0_to_100) || 0)),
-        inappropriate_for: row.inappropriate_for === true,
-        reasoning: asString(row.reasoning, "No reasoning returned."),
-      };
-    }).filter((ev) => ev.signal_id.length > 0);
-
-    // Coverage check: every active signal must have an evaluation. If not, retry
-    // (re-ask the model) before letting buildAiSignalScores fail-close.
-    const covered = new Set(evaluations.map((ev) => ev.signal_id));
-    const missing = [...requiredSignalIds].filter((id) => !covered.has(id));
-    if (missing.length > 0 && attempt < MAX_ATTEMPTS) {
-      lastErr = `gemini_incomplete_coverage:${missing.slice(0, 5).join(",")}`;
-      continue;
-    }
-
     // D1 honesty guard: only accept photo_analysis when we actually sent images.
-    // With no images, photo_analysis is NULL regardless of what Gemini returned.
     let photoAnalysis: Record<string, unknown> | null = null;
     if (hasImages && parsed.photo_analysis && typeof parsed.photo_analysis === "object") {
       photoAnalysis = {
@@ -1127,11 +1172,106 @@ async function callGeminiForEvaluations(input: {
       facets: parsed.facets && typeof parsed.facets === "object"
         ? parsed.facets as Record<string, unknown>
         : {},
+      consistency: parsed.consistency && typeof parsed.consistency === "object"
+        ? parsed.consistency as Record<string, unknown>
+        : null,
+    };
+  }
+  throw new Error(lastErr || "gemini_failed");
+}
+
+// META-ORCH-1290 D-2 (b): the 16-signal EVAL call at approve. Returns per-signal
+// evaluations (+ facets/photo_analysis/consistency). The coverage retry re-asks
+// the model when a signal is missing rather than fabricating a score;
+// buildAiSignalScores then fail-closes on any still-uncovered signal.
+async function callGeminiForSignalEval(input: {
+  brand: OwnedBrand;
+  place: Record<string, unknown>;
+  signals: SignalRow[];
+  tier2: Record<string, unknown>;
+  imageUrls: string[];
+  websiteText: string | null;
+}): Promise<{
+  photo_analysis: Record<string, unknown> | null;
+  facets: Record<string, unknown>;
+  evaluations: AiEvaluation[];
+  consistency: Record<string, unknown> | null;
+}> {
+  const apiKey = Deno.env.get("GEMINI_API_KEY") ?? Deno.env.get("GOOGLE_AI_API_KEY") ?? "";
+  if (!apiKey) throw new Error("gemini_unconfigured");
+  const imageParts = await fetchImageParts(input.imageUrls);
+  const hasImages = imageParts.length > 0;
+  const prompt = {
+    instruction: hasImages
+      ? "You are given venue photos as inline images plus structured venue data. Produce (1) a photo_analysis object from the ACTUAL images provided (lighting, ambience, composition_score_0_to_100, reasoning), (2) structured facet inference, and (3) one Q2 score per active Mingla signal. You MUST return exactly one evaluation object per signal id provided in `signals` — never omit a signal. Return strict JSON only."
+      : "Produce structured facet inference and one score per active Mingla signal from the venue's text details. You MUST return exactly one evaluation object per signal id provided in `signals` — never omit a signal. Keep each signal's reasoning to ONE short phrase (max 10 words). Set photo_analysis to null. Return strict JSON only.",
+    ...buildGeminiBasePrompt({
+      brand: input.brand,
+      place: input.place,
+      tier2: input.tier2,
+      websiteText: input.websiteText,
+      hasImages,
+      imageCount: imageParts.length,
+    }),
+    signals: input.signals.map((s) => ({ id: s.id, label: s.label })),
+  };
+  const parts: Array<Record<string, unknown>> = [{ text: JSON.stringify(prompt) }, ...imageParts];
+  const requiredSignalIds = new Set(input.signals.map((s) => s.id));
+  const MAX_ATTEMPTS = 2;
+  let lastErr = "";
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    const r = await fetchGeminiCandidate(apiKey, parts, GEMINI_SIGNAL_EVAL_SCHEMA, 6144);
+    if (!r.ok) {
+      lastErr = r.err;
+      if (!r.retryable) throw new Error(lastErr);
+      continue;
+    }
+    const parsed = r.parsed as {
+      photo_analysis?: unknown;
+      facets?: unknown;
+      evaluations?: unknown;
+      consistency?: unknown;
+    };
+    if (!Array.isArray(parsed.evaluations)) {
+      lastErr = "gemini_missing_evaluations";
+      continue;
+    }
+    const evaluations = parsed.evaluations.map((ev) => {
+      const row = ev as Record<string, unknown>;
+      return {
+        signal_id: asString(row.signal_id),
+        score_0_to_100: Math.max(0, Math.min(100, Number(row.score_0_to_100) || 0)),
+        inappropriate_for: row.inappropriate_for === true,
+        reasoning: asString(row.reasoning, "No reasoning returned."),
+      };
+    }).filter((ev) => ev.signal_id.length > 0);
+    // Coverage check: every active signal must have an evaluation. If not, retry
+    // (re-ask the model) before letting buildAiSignalScores fail-close.
+    const covered = new Set(evaluations.map((ev) => ev.signal_id));
+    const missing = [...requiredSignalIds].filter((id) => !covered.has(id));
+    if (missing.length > 0 && attempt < MAX_ATTEMPTS) {
+      lastErr = `gemini_incomplete_coverage:${missing.slice(0, 5).join(",")}`;
+      continue;
+    }
+    // D1 honesty guard: only accept photo_analysis when we actually sent images.
+    let photoAnalysis: Record<string, unknown> | null = null;
+    if (hasImages && parsed.photo_analysis && typeof parsed.photo_analysis === "object") {
+      photoAnalysis = {
+        ...(parsed.photo_analysis as Record<string, unknown>),
+        model: GEMINI_MODEL,
+        evaluated_at: new Date().toISOString(),
+        image_count: imageParts.length,
+      };
+    }
+    return {
+      photo_analysis: photoAnalysis,
+      facets: parsed.facets && typeof parsed.facets === "object"
+        ? parsed.facets as Record<string, unknown>
+        : {},
       evaluations,
-      consistency:
-        parsed.consistency && typeof parsed.consistency === "object"
-          ? parsed.consistency as Record<string, unknown>
-          : null,
+      consistency: parsed.consistency && typeof parsed.consistency === "object"
+        ? parsed.consistency as Record<string, unknown>
+        : null,
     };
   }
   throw new Error(lastErr || "gemini_failed");
@@ -1321,26 +1461,27 @@ export async function handleTier2(
     typeof websiteForScan === "string" ? websiteForScan : null,
   );
 
-  // META-ORCH-1009 Sub-E: the AI stage (Gemini call + fail-closed score assembly)
-  // is the one place this handler can throw on external/model conditions. Persist
-  // the real reason to brand_place_pipeline_state.last_error_* so a failed
-  // "Generate AI bio and scores" is diagnosable instead of an opaque 500/546, then
-  // rethrow to the top-level catch (which returns the structured error body the
-  // client now surfaces).
-  let gemini: Awaited<ReturnType<typeof callGeminiForEvaluations>>;
+  // META-ORCH-1290 D-2/D-3: submit runs the bio-DRAFT ONLY — NO ai_signal_scores
+  // are computed or persisted here. The 16-signal eval + the ai_signal_scores
+  // write happen at APPROVE (the evaluate_signals action, invoked service-to-
+  // service by admin-review-venue-claim). buildAiSignalScores is NOT called on
+  // this path. (I-PROPOSED-1290-NO-BUSINESS-SIGNAL-SCORES-PRE-APPROVE.)
+  // META-ORCH-1009 Sub-E: the AI stage (the Gemini call) is the one place this
+  // handler can throw on external/model conditions. Persist the real reason to
+  // brand_place_pipeline_state.last_error_* so a failed "Generate pitch" is
+  // diagnosable instead of an opaque 500/546, then rethrow to the top-level
+  // catch (which returns the structured error body the client surfaces).
+  let gemini: Awaited<ReturnType<typeof callGeminiForBioDraft>>;
   let evaluatedAt: string;
-  let aiSignalScores: ReturnType<typeof buildAiSignalScores>;
   try {
-    gemini = await callGeminiForEvaluations({
+    gemini = await callGeminiForBioDraft({
       brand,
-      place,
-      signals,
+      place: place as Record<string, unknown>,
       tier2,
       imageUrls,
       websiteText: websiteScan?.text ?? null,
     });
     evaluatedAt = new Date().toISOString();
-    aiSignalScores = buildAiSignalScores(signals, gemini.evaluations, evaluatedAt);
   } catch (aiErr) {
     const aiMsg = aiErr instanceof Error ? aiErr.message : "ai_stage_failed";
     await upsertPipelineState(client, brand.id, venue.id, placePoolId, "needs_fix", {
@@ -1421,7 +1562,9 @@ export async function handleTier2(
   const { error: updateErr } = await client
     .from("place_pool")
     .update({
-      ai_signal_scores: aiSignalScores,
+      // META-ORCH-1290 D-2: ai_signal_scores is NOT written here — the
+      // business-authored signal scores are computed at APPROVE only
+      // (evaluate_signals). This submit write stages the bio-draft + diagnostics.
       photo_analysis: photoAnalysis,
       raw_google_data: crossValidation.raw_google_data,
       business_authoring_inputs: mergedInputs,
@@ -1853,6 +1996,99 @@ async function handleSyncGallery(
   });
 }
 
+// META-ORCH-1290 D-2 (evaluate_signals) — the approve-time 16-signal eval.
+// INVOKED SERVICE-TO-SERVICE by admin-review-venue-claim (the requireServiceRole
+// gate above) — never reachable from a user session. Loads the place, runs the
+// Gemini signal eval over the SAME inputs handleTier2 uses (gallery + website),
+// and writes place_pool.ai_signal_scores + photo_analysis + the AI-inferred
+// facet columns in ONE update. This is the ONLY business-path writer of
+// ai_signal_scores and it runs at APPROVE — never at authoring
+// (I-PROPOSED-1290-NO-BUSINESS-SIGNAL-SCORES-PRE-APPROVE). The facet write here
+// replaces the retired operator-confirm facet application. Idempotent: a
+// re-approve re-evaluates + overwrites (last-writer-wins for the AI slice). A
+// Gemini/build failure THROWS → the top-level catch returns a structured 500 the
+// caller (admin-review) treats as fail-close (no is_servable flip, no place_scores).
+export async function handleEvaluateSignals(
+  client: SupabaseClient,
+  body: RequestBody,
+): Promise<Response> {
+  const placePoolId = body.place_pool_id ?? null;
+  if (!isUuid(body.brand_id)) return errorResponse(400, "BAD_REQUEST", "brand_id must be a uuid");
+  if (!isUuid(body.venue_id)) return errorResponse(400, "BAD_REQUEST", "venue_id must be a uuid");
+  if (!isUuid(placePoolId)) return errorResponse(400, "BAD_REQUEST", "place_pool_id must be a uuid");
+
+  const { data: place, error: placeErr } = await client
+    .from("place_pool")
+    .select("*")
+    .eq("id", placePoolId)
+    .maybeSingle();
+  if (placeErr) return errorResponse(500, "PLACE_READ_FAILED", placeErr.message);
+  if (!place) return errorResponse(404, "PLACE_NOT_FOUND", "Place not found");
+
+  // Brand name is prompt context only (service-to-service; the admin already
+  // authorized the approve — no ownership re-check here).
+  const { data: brandRow, error: brandErr } = await client
+    .from("brands")
+    .select("id, name")
+    .eq("id", body.brand_id)
+    .maybeSingle();
+  if (brandErr) return errorResponse(500, "BRAND_READ_FAILED", brandErr.message);
+  const brandForPrompt = {
+    id: body.brand_id,
+    name: (brandRow as { name?: string | null } | null)?.name ?? null,
+  } as OwnedBrand;
+
+  const signals = await loadSignals(client);
+  const inputs =
+    ((place as { business_authoring_inputs?: Record<string, unknown> | null }).business_authoring_inputs ?? {});
+  const tier2 = typeof inputs.tier2 === "object" && inputs.tier2 !== null
+    ? inputs.tier2 as Record<string, unknown>
+    : {};
+  const imageUrls = galleryUrls(place as Record<string, unknown>);
+  const websiteForScan =
+    (tier2 as { website?: unknown }).website ??
+    (place as { website?: unknown }).website ?? null;
+  const websiteScan = await scanWebsite(
+    typeof websiteForScan === "string" ? websiteForScan : null,
+  );
+
+  const gemini = await callGeminiForSignalEval({
+    brand: brandForPrompt,
+    place: place as Record<string, unknown>,
+    signals,
+    tier2,
+    imageUrls,
+    websiteText: websiteScan?.text ?? null,
+  });
+  const evaluatedAt = new Date().toISOString();
+  // buildAiSignalScores fail-closes (throws gemini_missing_signal) on any
+  // uncovered signal — never fabricates a score.
+  const aiSignalScores = buildAiSignalScores(signals, gemini.evaluations, evaluatedAt);
+  const photoAnalysis = gemini.photo_analysis;
+  const facetPatch = Object.fromEntries(
+    Object.entries(gemini.facets).filter(([key, value]) =>
+      FACET_COLUMNS.has(key) && (typeof value === "boolean" || value === null)
+    ),
+  );
+
+  const { error: updateErr } = await client
+    .from("place_pool")
+    .update({
+      ai_signal_scores: aiSignalScores,
+      photo_analysis: photoAnalysis,
+      ...facetPatch,
+    })
+    .eq("id", placePoolId);
+  if (updateErr) return errorResponse(500, "PLACE_UPDATE_FAILED", updateErr.message);
+
+  return jsonResponse(200, {
+    kind: "ok",
+    action: "evaluate_signals",
+    signals_evaluated: signals.length,
+    place_pool_id: placePoolId,
+  });
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
@@ -1861,15 +2097,32 @@ Deno.serve(async (req) => {
     return errorResponse(405, "METHOD_NOT_ALLOWED", "POST required");
   }
 
-  const userResult = await requireUser(req);
-  if (userResult instanceof Response) return userResult;
-
   let body: RequestBody;
   try {
     body = await req.json() as RequestBody;
   } catch {
     return errorResponse(400, "BAD_REQUEST", "Invalid JSON body");
   }
+
+  // META-ORCH-1290 D-2/OQ-3: `evaluate_signals` is the ONE action authenticated
+  // by the service-role key (invoked service-to-service by admin-review-venue-
+  // claim), NOT a user session. Its auth + handler run BEFORE requireUser so no
+  // user token can reach it; requireUser still rejects service-role tokens for
+  // every OTHER action, so ai_signal_scores' sole writer stays this file.
+  if (body.action === "evaluate_signals") {
+    const guard = await requireServiceRole(req);
+    if (guard instanceof Response) return guard;
+    try {
+      return await handleEvaluateSignals(guard.serviceClient, body);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Pipeline failed";
+      console.error("[run-business-place-authoring-pipeline] evaluate_signals", msg.slice(0, 400));
+      return errorResponse(500, "PIPELINE_FAILED", msg);
+    }
+  }
+
+  const userResult = await requireUser(req);
+  if (userResult instanceof Response) return userResult;
 
   if (!isUuid(body.brand_id)) {
     return errorResponse(400, "BAD_REQUEST", "brand_id must be a uuid");
