@@ -11,27 +11,27 @@
 
 > Registered DRAFT at ORCH-1271 SPEC §5 (`reports/SPEC_ORCH-1271_ADMIN_AUTHZ_FOUNDATION.md`). House style keeps the `I-PROPOSED-1271-*` names. The orchestrator flips these DRAFT → ACTIVE at CLOSE once (a) the 3 migrations are applied to prod `gqnoajqerqhnvulmnyvv` (single-gate flip + audit-log extend + write primitive), (b) the `admin-write-primitive` edge fn is deployed, and (c) the tester live-fires the AC-2 matrix (probe returns uuid + writes the audit row; blank/whitespace reason raises `reason_required`; non-admin raises `not_authorized`; edge fn 401/403/400/200). Enforcement = the 3 strict-grep gates `.github/scripts/strict-grep/i-admin-single-gate.mjs` + `i-admin-write-audited.mjs` + `i-admin-gate-first-statement.mjs` (each `--self-test` + GOOD/BAD fixtures, wired as job `orch-1271-admin-authz-foundation` in `strict-grep-mingla-business.yml`) + the migration self-asserts (`DO $$` blocks) + the implementor/tester regression suites. Cross-ref DEC-194 (`brands.kind` alive) + DEC-195 (single admin gate).
 
-### I-PROPOSED-1271-ADMIN-SINGLE-GATE (DRAFT)
+### I-PROPOSED-1271-ADMIN-SINGLE-GATE (ACTIVE)
 
 - **Rule:** No META-ORCH-1237 in-scope admin authorization path uses `profiles.account_type='admin'`; `public.is_admin_user()` is the sole admin-identity gate. The two split-gate partner-money SELECT policies (`partner_stripe_self_select` on `partner_stripe_connect_accounts`, `partner_splits_partner_self_select` on `partner_splits`) are reconciled to `is_admin_user()` with their self-access branches preserved.
 - **Enforcement:** strict-grep `i-admin-single-gate.mjs` (last-writer-wins over `supabase/migrations/**` — the latest CREATE POLICY for each in-scope policy must use `is_admin_user()` and NOT `account_type`) + the flip migration's `DO $$` self-assert (apply FAILS if any `public` policy still references `account_type='admin'`).
 - **Fails-on-revert:** deleting the flip migration (`20261204000000_orch_1271_single_admin_gate.sql`) makes the old ORCH-1052/1054 `account_type` definer the last writer → `i-admin-single-gate.mjs` FAILS.
-- **Established:** DRAFT at ORCH-1271 SPEC; flips ACTIVE at CLOSE.
+- **Established:** ACTIVE 2026-07-03 at META-ORCH-1237 CLOSE.
 
-### I-PROPOSED-1271-ADMIN-WRITE-AUDITED (DRAFT)
+### I-PROPOSED-1271-ADMIN-WRITE-AUDITED (ACTIVE)
 
 - **Rule:** Every `admin_*` SECURITY DEFINER write RPC (a) guards on `is_admin_user()` as the first statement, (b) writes `admin_audit_log` — directly or via the shared `admin_write_audit(...)` helper — binding the actor **server-side** (`auth.uid()` for JWT callers; `p_actor_*` only on the no-JWT service_role path), AND (c) is EXECUTE-**least-privileged** (`REVOKE EXECUTE … FROM anon, PUBLIC` — and `authenticated` too for service_role-only fns; explicit `GRANT` to exactly the role that may call it). The shared helper `admin_write_audit` is EXECUTE-able by `service_role` only (definer RPCs reach it in definer context).
 - **Enforcement:** strict-grep `i-admin-write-audited.mjs` — asserts `admin_write_audit` (which INSERTs into `admin_audit_log`) + `admin_audit_probe` exist in migrations, and every fn in the APPEND-ONLY write-RPC registry (seed = `admin_audit_probe`) references `admin_write_audit(`/`INSERT INTO admin_audit_log`. 1272/1273/1274 append their write RPCs to the registry. The hardening migration's `DO $$` `has_function_privilege` self-assert fails apply if the least-privilege lockdown is missing. The golden template (with the mandatory `REVOKE`/`GRANT`) is baked into `20261204000003_orch_1271_p0_hardening.sql`.
 - **Fails-on-revert:** deleting the primitive migration (`20261204000002_orch_1271_admin_write_primitive.sql`) removes the helper/probe → gate FAILS; reverting the hardening migration (`20261204000003_orch_1271_p0_hardening.sql`) re-opens the fail-open/forgery + drops the privilege self-assert → the `admin_authz_adversarial` + `admin_authz_foundation` node:test suites FAIL.
 - **P0 note (2026-07-03):** the original helper was EXECUTE-granted to anon/authenticated/PUBLIC and fail-open for anon (`auth.uid()` NULL) with `COALESCE(p_actor_*, auth.uid())` actor forgery — anon curl returned 200 + a forged row. Contained by live prod hotfix; made permanent by `20261204000003` (server-side actor binding + REVOKE + invisible-whitespace reason normalization).
-- **Established:** DRAFT at ORCH-1271 SPEC; hardened at ORCH-1271 P0 rework; flips ACTIVE at CLOSE.
+- **Established:** ACTIVE 2026-07-03 at META-ORCH-1237 CLOSE.
 
-### I-PROPOSED-1271-ADMIN-GATE-FIRST-STATEMENT (DRAFT)
+### I-PROPOSED-1271-ADMIN-GATE-FIRST-STATEMENT (ACTIVE)
 
 - **Rule:** In every admin SECURITY DEFINER RPC, the `is_admin_user()` guard (`IF NOT ... is_admin_user() THEN RAISE`, or the service-role-aware `IF auth.uid() IS NOT NULL AND NOT is_admin_user() THEN RAISE`) is the FIRST executable statement — after `DECLARE`/comments, before ANY query. A query before the guard opens a fail-open exposure window.
 - **Enforcement:** strict-grep `i-admin-gate-first-statement.mjs` — slices each registered definer fn body, strips comments, and asserts the first statement (to the first `;`) is an `IF ... is_admin_user() ... THEN ... RAISE` guard. Registry seed = `admin_write_audit`, `admin_audit_probe`.
 - **Fails-on-revert:** deleting the primitive migration removes the fns → gate FAILS; moving a query before the guard → gate FAILS.
-- **Established:** DRAFT at ORCH-1271 SPEC; flips ACTIVE at CLOSE.
+- **Established:** ACTIVE 2026-07-03 at META-ORCH-1237 CLOSE.
 
 ---
 
@@ -39,19 +39,19 @@
 
 > Registered DRAFT at ORCH-1277 IMPLEMENT (`reports/SPEC_ORCH-1277_ADMIN_OFFERINGS_CONSOLE_EDIT.md` §6). Child of META-ORCH-1237; predecessor ORCH-1273 (READ, shipped). Builds ON the ORCH-1271 foundation (single gate + `admin_write_audit` + `HighRiskActionModal`) + the ORCH-1276 shared `EntityEditModal` (REUSED — no bespoke edit modal). The 16 write RPCs are APPENDED to `i-admin-write-audited.mjs` + `i-admin-gate-first-statement.mjs` (both registries). The orchestrator flips DRAFT → ACTIVE at CLOSE once (a) the two migrations are applied to prod `gqnoajqerqhnvulmnyvv` (`20261209000000_orch_1277_offerings_edit_rpcs.sql` + `20261209000001_orch_1277_venue_edit_rpcs.sql`), and (b) the tester live-fires the AC matrix — esp. AC-1.1/1.2 guard+reason gates, AC-1.3 non-forgeable audit, AC-2.4 soft-delete-still-admin-visible, AC-3.2/3.3 reorder-without-unique-violation (dev-branch), AC-4.2 waitlist-drain side-effect, AC-6.4 no-raw-write + fails-on-revert. Enforcement = the new strict-grep `.github/scripts/strict-grep/i-offerings-writes-audited.mjs` (`--self-test` + GOOD/BAD fixtures + the `__tests__/i-offerings-writes-audited.test.mjs` fixture, wired as job `orch-1277-offerings-admin-write` in `strict-grep-mingla-business.yml`) + the evolved `i-offerings-read-only.mjs` + the implementor/tester regression suites. Cross-ref META-ORCH-1237.
 
-### I-PROPOSED-1277-OFFERINGS-WRITE-VIA-AUDITED-RPC (DRAFT)
+### I-PROPOSED-1277-OFFERINGS-WRITE-VIA-AUDITED-RPC (ACTIVE)
 
 - **Rule:** Every offerings/venues admin mutation goes through an `is_admin_user()`-gated `SECURITY DEFINER` RPC — the 16 audited write RPCs (`admin_set_offering_visibility`, `admin_cancel_offering`, `admin_set_offering_bookings_closed`, `admin_set_offering_deleted`, `admin_set_ticket_price`, `admin_update_trip_day`, `admin_reorder_trip_day`, `admin_update_experience_stop`, `admin_delete_experience_stop`, `admin_reorder_experience_stop`, `admin_set_rsvp_approval`, `admin_remove_rsvp_guest`, `admin_set_rsvp_capacity`, `admin_update_venue_reservation_settings`, `admin_update_venue_capacity_rule`, `admin_set_reservation_status`) — that (a) guards `is_admin_user()` as its FIRST executable statement, (b) audits via `admin_write_audit` with a `before` metadata object, (c) is `REVOKE`d from anon/PUBLIC + `GRANT`ed only to authenticated (+ a `DO $$` self-assert), and is the ONLY write path — the console service/page files (`offeringsService.js`, `venuesService.js`, `OfferingDetailView.jsx`, `VenueDetailView.jsx`) contain ZERO raw `.update/.insert/.delete/.upsert`, reference NO `admin_write_audit`, and route every write through `callAdminWriteRpc`. The admin twins are INDEPENDENT of the brand-team `biz_update_live_*` organiser path. NO refunds/money movement (that is ORCH-1274). NO `brands.kind`.
 - **Enforcement:** strict-grep `i-offerings-writes-audited.mjs` (+ `__tests__/i-offerings-writes-audited.test.mjs` fixture) — asserts each of the 16 RPC bodies is guard-first, mutates (`UPDATE public.`/`DELETE FROM`), references `admin_write_audit(` with `'before'`, and carries a `REVOKE EXECUTE ... FROM anon` line; AND that the four console files take no direct browser write / no `admin_write_audit`. Also protected by `i-admin-write-audited.mjs` + `i-admin-gate-first-statement.mjs` (the 16 RPC names appended to both registries) + the evolved `i-offerings-read-only.mjs` (the 16 RPCs whitelisted in `ALLOWED_RPCS`; the raw-write + client-audit bans retained).
 - **Fails-on-revert:** reverting either write migration → the 16 RPCs vanish → `i-offerings-writes-audited` + `i-admin-write-audited` + `i-admin-gate-first-statement` FAIL; adding a raw `.update()` in a console file → `i-offerings-writes-audited` + `i-offerings-read-only` FAIL; deleting a guard / `admin_write_audit` call / `REVOKE anon` line → FAIL. Restore → all PASS.
-- **Established:** DRAFT at ORCH-1277 IMPLEMENT; flips ACTIVE at CLOSE (orchestrator owns the flip after tester live-fires the DEPLOYED migrations).
+- **Established:** ACTIVE 2026-07-03 at META-ORCH-1237 CLOSE.
 
-### I-PROPOSED-1277-HIGH-RISK-REASON-REQUIRED (DRAFT)
+### I-PROPOSED-1277-HIGH-RISK-REASON-REQUIRED (ACTIVE)
 
 - **Rule:** Every HIGH-risk offerings/venues write RPC (all 16 except the 2 audit-only reorders `admin_reorder_trip_day` / `admin_reorder_experience_stop`) RAISEs `reason_required` on an empty/whitespace reason — a SERVER gate independent of the modal. `admin_set_rsvp_approval` gates conditionally (reason required IFF `denied`). The 2 audit-only reorders pass `p_require_reason => false` to `admin_write_audit` and still write an audit row. Value-bearing HIGH actions collect the reason via the shared `EntityEditModal`; valueless HIGH actions via `HighRiskActionModal`; both are UX-only — the server RPC is the real gate.
 - **Enforcement:** `i-offerings-writes-audited.mjs` asserts each HIGH RPC body contains the `reason_required` gate and the 2 reorders do NOT; the ORCH-1277 node:test regression suite asserts the split + the `p_require_reason => false` audit flag on the reorders.
 - **Fails-on-revert:** removing the `reason_required` gate from any HIGH RPC → gate + node:test FAIL; adding a reason gate to an audit-only reorder → node:test FAIL.
-- **Established:** DRAFT at ORCH-1277 IMPLEMENT; flips ACTIVE at CLOSE.
+- **Established:** ACTIVE 2026-07-03 at META-ORCH-1237 CLOSE.
 
 ---
 
@@ -59,19 +59,19 @@
 
 > Registered DRAFT at ORCH-1273 SPEC §8 (`reports/SPEC_ORCH-1273_ADMIN_OFFERINGS_CONSOLE_READ.md`). Child of META-ORCH-1237; builds ON the ORCH-1271 foundation (single gate + gate-first registry — the 5 offerings read RPCs + `admin_offering_stats` are APPENDED to `i-admin-gate-first-statement.mjs`, NOT to the write-RPC registry, since they perform no mutation) + the ORCH-1273 `EntityListView`/`EntityDetailView` shells + "Business" nav group. The orchestrator flips DRAFT → ACTIVE at CLOSE once (a) the two migrations are applied to prod `gqnoajqerqhnvulmnyvv` (`20261206000000_orch_1273_offerings_admin_read_rls.sql` + `20261206000001_orch_1273_offerings_read_rpcs.sql`), and (b) the tester live-fires the AC matrix — esp. the ADV cross-row proofs (an admin sees the known DRAFT/PRIVATE/cross-brand `events` rows a non-admin session gets `[]` for; PII stays RPC-gated — a direct `from("orders")`/`from("event_rsvps")`/`from("reservations")` returns 0 rows) + the read-only-held grep. Enforcement = strict-grep `.github/scripts/strict-grep/i-offerings-read-only.mjs` (`--self-test` + GOOD/BAD fixtures + the `__tests__/i-offerings-read-only.test.mjs` fixture, wired as job `orch-1273-offerings-read-only` in `strict-grep-mingla-business.yml`) + the implementor/tester regression suites. NB: the SPEC prose says "13 policies" but its own §5/§9.1 enumerate 14 named tables — the "13" is an arithmetic miscount; all 14 are implemented (each backs a live read surface). Cross-ref META-ORCH-1237.
 
-### I-PROPOSED-1273-OFFERINGS-ADMIN-READ-CROSSBRAND (DRAFT)
+### I-PROPOSED-1273-OFFERINGS-ADMIN-READ-CROSSBRAND (ACTIVE)
 
 - **Rule:** The admin offerings console surfaces DRAFT / PRIVATE / cross-brand / soft-deleted `events` rows (no silent-empty-read) — the 14 offerings/venue-config tables (`events`, `event_dates`, `ticket_types`, `trip_days`, `trip_pricing_tiers`, `trip_inclusions`, `trip_intake_schemas`, `experience_stops`, `experience_feedback`, `venue_reservation_settings`, `venue_capacity_rules`, `venue_tables`, `venue_blackouts`, `venue_waitlist`) each carry an `is_admin_user()` SELECT RLS policy; cross-brand aggregation + derived lifecycle bucket + PII/money bundles flow through the guard-first, STABLE, READ-ONLY definer RPCs (`admin_list_offerings`, `admin_get_offering`, `admin_list_event_orders`, `admin_list_event_rsvps`, `admin_list_venue_reservations`, `admin_offering_stats`). The PII/money base tables (`orders`/`order_line_items`/`tickets`/`order_installments`, `event_rsvps`/`event_rsvp_guests`, `reservations`) get NO admin RLS — reachable ONLY through the definer RPCs.
 - **Enforcement:** strict-grep `i-offerings-read-only.mjs` — asserts each of the 14 `CREATE POLICY "<table> admin can read" ON public.<table> FOR SELECT USING (public.is_admin_user())` tokens is present in `supabase/migrations/**` and the 5 read RPCs are defined. Also protected by `i-admin-gate-first-statement.mjs` (guard-first; the 6 RPCs in its registry) + the RLS migration's `DO $$` assert (all 14 policies `cmd=SELECT`) + the RPC migration's `has_function_privilege` least-privilege self-assert.
 - **Fails-on-revert:** deleting the RLS migration removes the 14 policy tokens → gate FAILS (and the admin's draft-row read collapses); deleting the RPC migration removes the read RPCs → gate FAILS.
-- **Established:** DRAFT at ORCH-1273 SPEC; flips ACTIVE at CLOSE.
+- **Established:** ACTIVE 2026-07-03 at META-ORCH-1237 CLOSE.
 
-### I-PROPOSED-1273-OFFERINGS-READ-ONLY (DRAFT)
+### I-PROPOSED-1273-OFFERINGS-READ-ONLY (ACTIVE)
 
 - **Rule:** The 1273 offerings/venues service + page files contain NO write path; every new offering/venue RLS policy is SELECT-only; every new RPC is `STABLE` and mutation-free. Every wave-2 offering edit (unpublish / cancel / close-bookings / price fix / RSVP approve / reservation override / venue edit) ships its OWN write RLS or (preferably) a definer write RPC on the ORCH-1271 audited primitive — it does NOT loosen the 1273 read policies into write policies.
 - **Enforcement:** strict-grep `i-offerings-read-only.mjs` — asserts (a) the 14 SELECT-only policies, (b) the 5 read RPCs are declared `STABLE` and carry no `INSERT/UPDATE/DELETE`/`admin_write_audit` in their bodies, and (c) the offerings/venues service + page files (`offeringsService.js`, `venuesService.js`, `OfferingsConsolePage.jsx`, `OfferingDetailView.jsx`, `VenuesConsolePage.jsx`, `VenueDetailView.jsx`) contain ZERO `.update(`/`.insert(`/`.delete(`/`.upsert(`/`admin_write_audit` and call only READ RPCs. The RLS migration's `DO $$` also aborts apply if any `"<table> admin can read"` policy is non-SELECT.
 - **Fails-on-revert:** adding any write call / write RPC / non-SELECT policy → grep FAILS; a mutation snuck into a read RPC body → grep FAILS.
-- **Established:** DRAFT at ORCH-1273 SPEC; flips ACTIVE at CLOSE.
+- **Established:** ACTIVE 2026-07-03 at META-ORCH-1237 CLOSE.
 - **SUPERSESSION (ORCH-1277, 2026-07-03):** the **service/page (part c) clause** is superseded by `I-PROPOSED-1277-OFFERINGS-WRITE-VIA-AUDITED-RPC` — the offerings/venues service + page files MAY now call the 16 audited write RPCs (added to `i-offerings-read-only.mjs` `ALLOWED_RPCS`). The **read-table (a) + read-RPC (b) halves remain fully ACTIVE/DRAFT** (those 14 tables + 5 read RPCs are read-only forever), and the raw `.update/.insert/.delete/.upsert` ban + the "no direct `admin_write_audit`" ban in part (c) REMAIN (admin writes must never be raw table writes or client-side audits).
 
 ---
@@ -80,12 +80,12 @@
 
 > Registered DRAFT at ORCH-1273 SPEC §6 (`reports/SPEC_ORCH-1273_ADMIN_IDENTITY_CONSOLE_READ.md`). Builds ON the ORCH-1271 foundation (single gate + gate-first registry — `admin_get_person` is APPENDED to `i-admin-gate-first-statement.mjs`, NOT to the write-RPC registry, since it performs no mutation). The orchestrator flips DRAFT → ACTIVE at CLOSE once (a) the two migrations are applied to prod `gqnoajqerqhnvulmnyvv` (`20261205000001_orch_1273_identity_admin_read_rls.sql` + `20261205000002_orch_1273_admin_get_person.sql`), and (b) the tester live-fires the AC matrix — esp. the ADV cross-row proofs (an admin sees a soft-deleted account/brand + a non-owned team/invite that a non-admin session gets `[]` for) + the read-only-held grep. Enforcement = strict-grep `.github/scripts/strict-grep/i-1273-identity-admin-read.mjs` (`--self-test` + GOOD/BAD fixtures + the `__tests__/i-1273-identity-admin-read.test.mjs` fixture, wired as job `orch-1273-identity-admin-read` in `strict-grep-mingla-business.yml`) + the implementor/tester regression suites. Cross-ref META-ORCH-1237.
 
-### I-PROPOSED-1273-IDENTITY-ADMIN-READ (DRAFT)
+### I-PROPOSED-1273-IDENTITY-ADMIN-READ (ACTIVE)
 
 - **Rule:** The four identity tables `creator_accounts`, `brand_team_members`, `brand_invitations`, `partner_brand_links` each carry an `is_admin_user()` SELECT RLS policy (`"<table> admin can read"`); the unified admin Person bundle reads the sensitive `subscriptions` / `admin_subscription_overrides` ONLY through the guard-first, READ-ONLY `admin_get_person(uuid)` RPC — NEVER a direct browser read. Visibility-first: NO admin write/edit ships on the identity surface in 1273.
 - **Enforcement:** strict-grep `i-1273-identity-admin-read.mjs` — asserts (a) each of the four `CREATE POLICY "<table> admin can read" ON public.<table> FOR SELECT USING (public.is_admin_user())` tokens is present in `supabase/migrations/**`, (b) `admin_get_person(` is defined, and (c) `mingla-admin/src/services/identityReadService.js` takes NO direct `.from("subscriptions")` / `.from("admin_subscription_overrides")` read. Also protected by `i-admin-gate-first-statement.mjs` (guard-first, `admin_get_person` in its registry).
 - **Fails-on-revert:** deleting the RLS migration removes the four policy tokens → gate FAILS; deleting the RPC migration removes `admin_get_person` → gate FAILS; a browser-side subscriptions read regression → gate FAILS.
-- **Established:** DRAFT at ORCH-1273 SPEC; flips ACTIVE at CLOSE.
+- **Established:** ACTIVE 2026-07-03 at META-ORCH-1237 CLOSE.
 
 ---
 
@@ -134,12 +134,12 @@
 
 ## PROPOSED — ORCH-1276 (identity console WAVE-2 EDIT — 11 audited write RPCs, 2026-07-03)
 
-### I-PROPOSED-1276-IDENTITY-ADMIN-WRITE-AUDITED (DRAFT)
+### I-PROPOSED-1276-IDENTITY-ADMIN-WRITE-AUDITED (ACTIVE)
 
 - **Rule:** Every ORCH-1276 identity write RPC — the 11 audited support actions `admin_update_brand`, `admin_reassign_brand_owner`, `admin_set_brand_claim_status`, `admin_set_brand_deleted`, `admin_update_account`, `admin_set_account_deleted`, `admin_set_team_member_role`, `admin_remove_team_member`, `admin_revoke_brand_invitation`, `admin_set_user_active`, `admin_set_user_beta` — is a SECURITY DEFINER function that guards `is_admin_user()` as its FIRST executable statement, calls `admin_write_audit` with a `before`/`after` metadata object, and carries the least-privilege `REVOKE EXECUTE ... FROM anon, PUBLIC` line. The admin console performs identity mutations ONLY via these RPCs — NEVER a direct browser `.update()/.insert()/.delete()` on `brands`/`creator_accounts`/`brand_team_members`/`brand_invitations`/`profiles`. Profile edits (A1/B1) apply a jsonb-patch WHITELIST that can never write `kind`/`account_id`/`claim_status`/`deleted_at`/money keys.
 - **Enforcement:** strict-grep `i-1276-identity-admin-write.mjs` (+ `__tests__/i-1276-identity-admin-write.test.mjs` fixture) — asserts each of the 11 RPC bodies is guard-first, references `admin_write_audit(` with `'before'`+`'after'`, and carries a `REVOKE EXECUTE ... FROM anon` line; AND that `identityWriteService.js` + `BrandsConsolePage.jsx` + `PeopleConsolePage.jsx` contain zero `.update(`/`.insert(`/`.delete(`. Also protected by `i-admin-write-audited.mjs` + `i-admin-gate-first-statement.mjs` (the 11 RPC names appended to both registries).
 - **Fails-on-revert:** deleting any RPC's `is_admin_user()` guard → `i-admin-gate-first-statement.mjs` + `i-1276` FAIL; deleting its `admin_write_audit(` call → `i-admin-write-audited.mjs` + `i-1276` FAIL; deleting its `REVOKE ... FROM anon` line → `i-1276` FAILS; a direct browser write on an identity table → `i-1276` FAILS. Restore → all PASS.
-- **Established:** DRAFT at ORCH-1276 IMPLEMENT; flips ACTIVE at CLOSE (orchestrator owns the flip after tester live-fires the DEPLOYED migrations).
+- **Established:** ACTIVE 2026-07-03 at META-ORCH-1237 CLOSE.
 
 ---
 
@@ -158,26 +158,26 @@
 
 > Registered DRAFT at ORCH-1278 IMPLEMENT (`reports/SPEC_ORCH-1278_ADMIN_MONEY_CONSOLE_EDIT.md` §7). Child of META-ORCH-1237; builds on ORCH-1271 (authz+audit) + ORCH-1274 (money reads). The orchestrator flips these DRAFT → ACTIVE at CLOSE once (a) the migration `20261210000000_orch_1278_money_act.sql` is applied to prod `gqnoajqerqhnvulmnyvv`, (b) the two edge fns `admin-refund-order` + `admin-stripe-connect-action` are deployed (verify_jwt=true), and (c) the tester live-fires the §8 matrix in TEST mode (a real LIVE-mode refund is a separate Seth-gated step). Enforcement = the strict-grep gate `.github/scripts/strict-grep/i-admin-refund-bounded.mjs` (+ `__tests__/i-admin-refund-bounded.test.mjs` fixture) plus the 5 RPC names appended to `i-admin-write-audited.mjs` (the 3 DB-only acts) + `i-admin-gate-first-statement.mjs` (all 5), wired as job `orch-1278-money-act` in `strict-grep-mingla-business.yml`, plus the migration `DO $$` self-asserts.
 
-### I-PROPOSED-1278-MONEY-ACT-AUDITED (DRAFT)
+### I-PROPOSED-1278-MONEY-ACT-AUDITED (ACTIVE)
 
 - **Rule:** Every admin money-act path is admin-gated AND writes exactly one `admin_write_audit` row per successful act. The 3 DB-only acts (`admin_annotate_dispute`, `admin_grant_override_audited`, `admin_revoke_override_audited`) call `admin_write_audit` in-body; the 2 refund twins (`admin_refund_order`, `admin_refund_order_commit`) audit at the EDGE-FN layer (`admin-refund-order` writes `order.refund` post-commit) because a service_role caller cannot self-resolve the audit actor. `admin-stripe-connect-action` audits `connect.refresh` / `connect.onboarding_link`.
 - **Enforcement:** `i-admin-write-audited.mjs` registry (3 DB-only acts appended — each body references `admin_write_audit(`) + `i-admin-refund-bounded.mjs` (asserts the `admin-refund-order` edge fn calls `admin_write_audit`). The money UI (`BusinessOrdersPage`/`BusinessPaymentsPage`/`BusinessMoneyLedgerPage`/`SubscriberContextCard`) performs NO direct browser `.update()/.insert()/.delete()` — every write routes through `adminMoneyActService`.
 - **Fails-on-revert:** deleting an in-body `admin_write_audit(` call → `i-admin-write-audited.mjs` FAILS; deleting the edge-fn audit → `i-admin-refund-bounded.mjs` FAILS; a direct browser money write → `i-admin-refund-bounded.mjs` FAILS. Restore → PASS.
-- **Established:** DRAFT at ORCH-1278 IMPLEMENT; flips ACTIVE at CLOSE.
+- **Established:** ACTIVE 2026-07-03 at META-ORCH-1237 CLOSE.
 
-### I-PROPOSED-1278-ADMIN-GATE-FIRST (DRAFT)
+### I-PROPOSED-1278-ADMIN-GATE-FIRST (ACTIVE)
 
 - **Rule:** Every 1278 write RPC's FIRST executable statement is the admin guard. The 3 DB-only acts use `IF NOT public.is_admin_user() THEN RAISE 'not_authorized'`; the 2 refund twins use the service_role-safe form `IF auth.uid() IS NOT NULL AND NOT public.is_admin_user() THEN RAISE 'not_authorized'` and are `GRANT EXECUTE ... TO service_role` ONLY (revoked from PUBLIC/anon/authenticated) — a JWT caller can never reach the twin; the real gate is the edge fn's `admin_users` active-check.
 - **Enforcement:** the 5 RPC names appended to `i-admin-gate-first-statement.mjs` (guard-first) + `i-admin-refund-bounded.mjs` (asserts the twins are `service_role`-granted, `PUBLIC`-revoked, and NEVER `authenticated`-granted) + the migration `DO $$` privilege self-asserts.
 - **Fails-on-revert:** moving a guard below a mutation → `i-admin-gate-first-statement.mjs` FAILS; granting a twin to `authenticated` → `i-admin-refund-bounded.mjs` + the migration self-assert FAIL. Restore → PASS.
-- **Established:** DRAFT at ORCH-1278 IMPLEMENT; flips ACTIVE at CLOSE.
+- **Established:** ACTIVE 2026-07-03 at META-ORCH-1237 CLOSE.
 
-### I-PROPOSED-1278-ADMIN-REFUND-BOUNDED (DRAFT)
+### I-PROPOSED-1278-ADMIN-REFUND-BOUNDED (ACTIVE)
 
 - **Rule:** `admin_refund_order` enforces the total-amount ceiling (`Σ amount ≤ orders.total_cents − refunded_amount_cents`, raising `refund_exceeds_remaining`) on top of the inherited per-line quantity bound + order-state check, and requires an idempotency key; the `admin-refund-order` edge fn requires the `Idempotency-Key` header and uses a per-attempt Stripe key (`admin_refund:<refundId>`) so a retried call never double-refunds.
 - **Enforcement:** `i-admin-refund-bounded.mjs` strict-grep over the 1278 migration + edge fn (+ `__tests__/i-admin-refund-bounded.test.mjs` fixture, 7 cases) + the `orch1278_money_console_act.test.js` happy-path regression.
 - **Fails-on-revert:** deleting the ceiling guard line (`refund_exceeds_remaining`) → `i-admin-refund-bounded.mjs` + `orch1278_money_console_act.test.js` FAIL; removing the edge `Idempotency-Key` requirement → `i-admin-refund-bounded.mjs` FAILS. Restore → PASS.
-- **Established:** DRAFT at ORCH-1278 IMPLEMENT; flips ACTIVE at CLOSE.
+- **Established:** ACTIVE 2026-07-03 at META-ORCH-1237 CLOSE.
 
 ---
 
@@ -521,19 +521,19 @@
 - **Test that catches a regression:** any orchestrator cleanup path that deletes a shared-surface item without proving closing-ORCH ownership, or that runs a destructive anchor op / global `pkill`, violates this invariant (caught at REVIEW by inspecting the cited `Hygiene: <N owned removed>, <M unowned flagged>, anchor on <branch>` banner against the actual deletions).
 - **Established:** registered DRAFT 2026-06-10 by the Environment Hygiene Sweep addition to mingla-orchestrator.
 
-### I-PROPOSED-1274-MONEY-READ-VIA-DEFINER-RPC (DRAFT — flips ACTIVE at ORCH-1274 CLOSE)
+### I-PROPOSED-1274-MONEY-READ-VIA-DEFINER-RPC (ACTIVE)
 
 - **Rule:** Every admin money read goes through an `admin_*` SECURITY DEFINER RPC gated on `is_admin_user()` as its first statement; there is **NO** `is_admin_user()` SELECT RLS policy on any money table (`orders` / `order_line_items` / `order_installments` / `refunds` / `refund_line_items` / `payouts` / `stripe_disputes` / `stripe_connect_accounts` / `mingla_revenue_log` / `stripe_external_accounts`). **`partner_splits` is EXCLUDED from this no-admin-RLS set** — ORCH-1271's `single_admin_gate` migration already grants admin read on it via an `OR public.is_admin_user()` branch (a foundation decision 1274 must not touch); 1274 still reads `partner_splits` only through `admin_get_order` (SECURITY DEFINER), so the read-path containment holds. The admin console reads money ONLY via the 10 definer RPCs (`admin_list_brand_stripe_status`, `admin_get_brand_stripe_status`, `admin_list_orders`, `admin_get_order`, `admin_list_refunds`, `admin_list_disputes`, `admin_get_dispute`, `admin_list_payouts`, `admin_list_revenue_log`, `admin_get_subscription_detail`) — never a browser `.from(<money table>)` read and never an admin RLS grant on a sensitive financial table.
 - **Why it exists:** ORCH-1274 [Admin Money console — READ-ONLY] — money is the most sensitive surface; a broad admin SELECT RLS grant on `orders`/`refunds`/`payouts`/etc. would expose every row to any bug that reaches the anon key. Routing every money read through a guard-first definer RPC keeps the data server-side and admin-only (the money-containment posture), consistent with the ORCH-1271 §3 read-authz rule (derived/joined/cross-brand → read-RPC, not RLS).
 - **Enforcement:** strict-grep gate `i-money-no-admin-rls.mjs` (CI job `orch-1274-money-read-authz`) + the 10 RPC names appended to the `i-admin-gate-first-statement.mjs` registry (guard must be the first statement). The gate FAILS if any migration adds an admin SELECT RLS policy on a money table OR if any of the 10 read-RPC definitions is missing (revert of `20261207000000_orch_1274_money_read_rpcs.sql`). Fixture: `.github/scripts/strict-grep/__tests__/i-money-no-admin-rls.test.mjs` (+ `--self-test`).
-- **Established:** registered DRAFT 2026-07-03 in the ORCH-1274 SPEC §10; flips ACTIVE at ORCH-1274 CLOSE (orchestrator owns the flip after tester PASS + migration deploy).
+- **Established:** ACTIVE 2026-07-03 at META-ORCH-1237 CLOSE.
 
-### I-PROPOSED-1274-MONEY-READ-CENTS-CONTRACT (DRAFT — flips ACTIVE at ORCH-1274 CLOSE)
+### I-PROPOSED-1274-MONEY-READ-CENTS-CONTRACT (ACTIVE)
 
 - **Rule:** The money read-RPCs return money as **integer cents + a currency code**, never a pre-formatted currency string. The `20261207000000_orch_1274_money_read_rpcs.sql` migration contains no `to_char(` and no embedded `'$'` in any RPC body; currency formatting happens client-side in the admin pages.
 - **Why it exists:** ORCH-1274 — a formatted-string money return (`to_char`, `'$'`) bakes locale/currency into the data layer, breaks multi-currency correctness, and makes CSV/aggregation lossy. The data layer stays numeric; presentation formats.
 - **Enforcement:** folded into `i-money-no-admin-rls.mjs` (asserts no `to_char(`/`'$'` in the money read-RPC migration, SQL comments stripped first). Reverting to a formatted-string return → FAIL. Same fixture + `--self-test` as above.
-- **Established:** registered DRAFT 2026-07-03 in the ORCH-1274 SPEC §10; flips ACTIVE at ORCH-1274 CLOSE.
+- **Established:** ACTIVE 2026-07-03 at META-ORCH-1237 CLOSE.
 
 ---
 
