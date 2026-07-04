@@ -298,13 +298,17 @@ export function VenueListingContent({
   }, [brandId, venueId, placePoolId, ctx.data]);
 
   const handleSavePitch = useCallback(async (): Promise<void> => {
-    if (placePoolId === null) return;
-    await updateVenuePitch({ placePoolId, pitch: pitchText, isLive });
+    // META-ORCH-1290 (B2): the pitch write now goes through the `update_pitch`
+    // pipeline action, which requires the owning brand + venue (server decides
+    // apply-vs-stage via placeWriteMode). isLive stays a CLIENT-only flag for the
+    // re-scoring caption below.
+    if (placePoolId === null || brandId === null || venueId === null) return;
+    await updateVenuePitch({ brandId, venueId, placePoolId, pitch: pitchText });
     setPersistedPitch(pitchText.trim());
     if (isLive) setReScoring(true);
     setToast({ kind: "success", message: "Pitch updated." });
     void ctx.refetch();
-  }, [placePoolId, pitchText, isLive, ctx]);
+  }, [placePoolId, brandId, venueId, pitchText, isLive, ctx]);
 
   const pitchTrimmed = pitchText.trim();
   const pitchSaveDisabled =

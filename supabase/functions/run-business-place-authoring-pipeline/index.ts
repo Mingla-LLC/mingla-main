@@ -111,6 +111,11 @@ type Action =
   | "get_authoring_context"
   | "sync_hero_media"
   | "sync_gallery"
+  // META-ORCH-1290 (B2 addendum): owner edits the listing/deck-readiness pitch.
+  // USER action (requireUser → loadOwnedBrand → loadOwnedVenue) — column-scoped
+  // write of the pitch ONLY, replacing Leg B's direct client place_pool RLS
+  // UPDATE (blocker B-2). See handleUpdatePitch.
+  | "update_pitch"
   // META-ORCH-1290 D-2: approve-time 16-signal eval, invoked service-to-service
   // by admin-review-venue-claim (service-role auth branch) — never user-callable.
   | "evaluate_signals";
@@ -172,6 +177,9 @@ interface RequestBody {
   cover_media_url?: string | null;
   cover_media_type?: "image" | "video" | "gif" | null;
   gallery_urls?: string[];
+  // META-ORCH-1290 (B2 addendum): the owner-authored pitch for update_pitch.
+  // Trimmed server-side; empty → NULL (apply) / "" (stage) per Leg B semantics.
+  pitch?: string;
 }
 
 interface OwnedBrand {
@@ -604,7 +612,10 @@ async function loadOwnedBrand(
 
 // META-ORCH-1255 Leg A: load the venue row and assert it belongs to the authed
 // brand (loadOwnedBrand already proved the caller owns the brand).
-async function loadOwnedVenue(
+// META-ORCH-1290 (B2 addendum): exported (was module-private) so the
+// update_pitch ownership-rejection test can drive the exact assertion (a venue
+// whose brand_id != the authed brand → 403). No behavior change from `export`.
+export async function loadOwnedVenue(
   client: SupabaseClient,
   venueId: string,
   brand: OwnedBrand,
@@ -1996,6 +2007,97 @@ async function handleSyncGallery(
   });
 }
 
+// META-ORCH-1290 (B2 addendum) — the venue owner edits the pitch on the listing
+// / deck-readiness page. RESOLVES blocker B-2: Leg B wrote the pitch by a DIRECT
+// client `place_pool` UPDATE gated only by the row-level RLS policy
+// `place_pool_business_owner_update` + `GRANT ALL ON place_pool TO authenticated`.
+// A row-level UPDATE policy lets an owner set ANY column of their own place_pool
+// row via PostgREST (self-publish `is_servable=true`, forge `ai_signal_scores`),
+// bypassing admin approval + the bouncer + scoring — a violation of the authored-
+// writes-are-RPC/service-role-only architecture (META-ORCH-1255/1263). This USER
+// action moves the write server-side (requireUser → loadOwnedBrand →
+// loadOwnedVenue asserted the caller owns the venue in the dispatch pre-amble)
+// and COLUMN-SCOPES it: it writes ONLY the pitch, and NEVER a serving/scoring
+// column (no `is_servable`, no `ai_signal_scores`, nothing else)
+// (I-PROPOSED-1290-PITCH-WRITES-VIA-PIPELINE-ACTION).
+//
+// The stage-vs-apply split reuses `placeWriteMode` — the SAME rule
+// sync_hero_media/confirm use — computed SERVER-SIDE from the loaded
+// `venue.claim_status` + the place's `business_author_brand_id`, so a client can
+// NEVER force an apply-mode live write onto a pre-approval CLAIM of a seeded
+// place (I-1263-NO-LIVE-PLACE-MUTATION-PRE-APPROVE):
+//   * apply (verified venue OR a create-owned business-authored row): write
+//     `place_pool.generative_summary` (the SAME column authoredApply/confirm
+//     already own) — empty pitch → NULL. This fires the Sub-D generative_summary
+//     AFTER-UPDATE trigger → re-queues the eval (D-5/SC-6).
+//   * stage (pre-approval claim of a seeded place): write ONLY the STAGED pitch
+//     `business_authoring_inputs.tier1.description` — empty pitch → "" — never a
+//     serving column. authoredApply applies it to generative_summary at approve
+//     (SC-5).
+export async function handleUpdatePitch(
+  client: SupabaseClient,
+  brand: OwnedBrand,
+  venue: OwnedVenue,
+  body: RequestBody,
+): Promise<Response> {
+  void brand; // ownership already asserted upstream (loadOwnedBrand→loadOwnedVenue).
+  const placePoolId = body.place_pool_id ?? venue.place_pool_id;
+  if (!isUuid(placePoolId)) {
+    return errorResponse(400, "BAD_REQUEST", "place_pool_id is required");
+  }
+  const pitch = asString(body.pitch ?? "");
+
+  // ONE read: business_author_brand_id feeds placeWriteMode; the existing inputs
+  // are merged (never clobbered) on the stage path.
+  const { data: place, error: placeErr } = await client
+    .from("place_pool")
+    .select("business_author_brand_id, business_authoring_inputs")
+    .eq("id", placePoolId)
+    .maybeSingle();
+  if (placeErr) return errorResponse(500, "PLACE_READ_FAILED", placeErr.message);
+  if (!place) return errorResponse(404, "PLACE_NOT_FOUND", "Place not found");
+
+  const mode = placeWriteMode(
+    venue.claim_status,
+    (place as { business_author_brand_id?: string | null }).business_author_brand_id ?? null,
+  );
+
+  if (mode === "apply") {
+    // Apply → the live pitch column ONLY (empty → NULL). Column-scoped: NOTHING
+    // else is written (no is_servable / ai_signal_scores / any other column).
+    const { error } = await client
+      .from("place_pool")
+      .update({ generative_summary: pitch.length > 0 ? pitch : null })
+      .eq("id", placePoolId);
+    if (error) return errorResponse(500, "PLACE_UPDATE_FAILED", error.message);
+  } else {
+    // Stage → the STAGED pitch ONLY (empty → ""), never a serving column
+    // (I-1263-NO-LIVE-PLACE-MUTATION-PRE-APPROVE). Merge into the existing
+    // business_authoring_inputs so tier2/adoption/selected_place_pool_id staging
+    // survives.
+    const inputs = ((place as {
+      business_authoring_inputs?: Record<string, unknown> | null;
+    }).business_authoring_inputs ?? {}) as Record<string, unknown>;
+    const tier1 =
+      typeof inputs.tier1 === "object" && inputs.tier1 !== null
+        ? (inputs.tier1 as Record<string, unknown>)
+        : {};
+    const nextInputs = { ...inputs, tier1: { ...tier1, description: pitch } };
+    const { error } = await client
+      .from("place_pool")
+      .update({ business_authoring_inputs: nextInputs })
+      .eq("id", placePoolId);
+    if (error) return errorResponse(500, "PLACE_UPDATE_FAILED", error.message);
+  }
+
+  return jsonResponse(200, {
+    kind: "ok",
+    action: "update_pitch",
+    place_pool_id: placePoolId,
+    mode,
+  });
+}
+
 // META-ORCH-1290 D-2 (evaluate_signals) — the approve-time 16-signal eval.
 // INVOKED SERVICE-TO-SERVICE by admin-review-venue-claim (the requireServiceRole
 // gate above) — never reachable from a user session. Loads the place, runs the
@@ -2158,6 +2260,12 @@ Deno.serve(async (req) => {
     }
     if (body.action === "sync_gallery") {
       return await handleSyncGallery(userResult.serviceClient, brand, venue, body);
+    }
+    // META-ORCH-1290 (B2 addendum): owner-authed pitch edit — column-scoped,
+    // replaces Leg B's direct client place_pool RLS UPDATE. Uses the SAME
+    // requireUser + loadOwnedBrand + loadOwnedVenue ownership gate above.
+    if (body.action === "update_pitch") {
+      return await handleUpdatePitch(userResult.serviceClient, brand, venue, body);
     }
   } catch (err) {
     const msg = err instanceof Error ? err.message : "Pipeline failed";

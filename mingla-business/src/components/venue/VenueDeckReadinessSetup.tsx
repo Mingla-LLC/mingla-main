@@ -425,14 +425,17 @@ export function VenueDeckReadinessSetup({
     setBusy("confirm");
     setMessage(null);
     try {
-      await updateVenuePitch({ placePoolId, pitch, isLive: false });
+      // META-ORCH-1290 (B2): pitch write via the `update_pitch` pipeline action
+      // (owner-authed, column-scoped). This is the pre-approval edit surface, so
+      // the server's placeWriteMode stages it (never a serving column).
+      await updateVenuePitch({ brandId, venueId, placePoolId, pitch });
       onDone();
     } catch (error) {
       setMessage(sanitizeAuthoringError(error, "Could not save your pitch."));
     } finally {
       setBusy(null);
     }
-  }, [editedBio, onDone, placePoolId]);
+  }, [editedBio, onDone, brandId, venueId, placePoolId]);
 
   const handleRefresh = useCallback(async (): Promise<void> => {
     setBusy("refresh");

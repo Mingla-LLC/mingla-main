@@ -378,54 +378,45 @@ export async function fetchVenuePitchSource(
 }
 
 /**
- * META-ORCH-1290 Leg B (D-3, F-13) — the venue owner edits the pitch on the
- * listing/management page. The SPEC's preferred mechanism was a backend
- * `update_pitch` action; Leg A did NOT ship it and Leg B is barred from
- * supabase/functions, so this uses the RLS-permitted owner UPDATE on place_pool
- * (policy `place_pool_business_owner_update` — brand-author / venue-manager+ /
- * claimed_by; `GRANT ALL ON place_pool TO authenticated`). See the
- * IMPLEMENTATION report §Deviations.
- *   - LIVE (verified): write `generative_summary` directly → the Sub-D
- *     AFTER-UPDATE trigger re-queues the 16-signal eval (SC-6) and the pitch
- *     goes public immediately.
- *   - PENDING: write ONLY the STAGED pitch
- *     (`business_authoring_inputs.tier1.description`) — never a serving column
- *     pre-approve (I-1263-NO-LIVE-PLACE-MUTATION-PRE-APPROVE). authoredApply
- *     applies it to generative_summary at approve (SC-5).
+ * META-ORCH-1290 Leg B (D-3, F-13) + B2 addendum — the venue owner edits the
+ * pitch on the listing/management page.
+ *
+ * B2 RESOLUTION: Leg B wrote the pitch by a DIRECT client
+ * `supabase.from("place_pool").update(...)` gated only by the row-level RLS
+ * policy `place_pool_business_owner_update` + `GRANT ALL ON place_pool TO
+ * authenticated`. That row-level UPDATE power lets an owner set ANY column of
+ * their own place_pool row via PostgREST (self-publish `is_servable`, forge
+ * `ai_signal_scores`), bypassing admin approval + the bouncer + scoring — a
+ * violation of the authored-writes-are-RPC/service-role-only architecture
+ * (META-ORCH-1255/1263). This now INVOKES the `update_pitch` pipeline action,
+ * which owns all authored writes: it asserts ownership (requireUser →
+ * loadOwnedBrand → loadOwnedVenue) and column-scopes the write to the pitch
+ * ONLY. The stage-vs-apply split is decided SERVER-SIDE via `placeWriteMode`
+ * (apply → `place_pool.generative_summary`; stage → the staged
+ * `business_authoring_inputs.tier1.description`), so the client can no longer
+ * force a live write onto a pre-approval claim
+ * (I-PROPOSED-1290-PITCH-WRITES-VIA-PIPELINE-ACTION).
  */
 export async function updateVenuePitch(input: {
+  brandId: string;
+  venueId: string;
   placePoolId: string;
   pitch: string;
-  isLive: boolean;
 }): Promise<void> {
-  const pitch = input.pitch.trim();
-  if (input.isLive) {
-    const { error } = await supabase
-      .from("place_pool")
-      .update({ generative_summary: pitch.length > 0 ? pitch : null })
-      .eq("id", input.placePoolId);
-    if (error !== null) throw error;
-    return;
-  }
-  const { data, error: readErr } = await supabase
-    .from("place_pool")
-    .select("business_authoring_inputs")
-    .eq("id", input.placePoolId)
-    .maybeSingle();
-  if (readErr !== null) throw readErr;
-  const inputs = ((data as {
-    business_authoring_inputs?: Record<string, unknown> | null;
-  } | null)?.business_authoring_inputs ?? {}) as Record<string, unknown>;
-  const tier1 =
-    typeof inputs.tier1 === "object" && inputs.tier1 !== null
-      ? (inputs.tier1 as Record<string, unknown>)
-      : {};
-  const nextInputs = { ...inputs, tier1: { ...tier1, description: pitch } };
-  const { error: writeErr } = await supabase
-    .from("place_pool")
-    .update({ business_authoring_inputs: nextInputs })
-    .eq("id", input.placePoolId);
-  if (writeErr !== null) throw writeErr;
+  const { data, error } = await supabase.functions.invoke(
+    "run-business-place-authoring-pipeline",
+    {
+      body: {
+        action: "update_pitch",
+        brand_id: input.brandId,
+        venue_id: input.venueId,
+        place_pool_id: input.placePoolId,
+        pitch: input.pitch,
+      },
+    },
+  );
+  if (error !== null) throw await pipelineInvokeError(error, "update_pitch_failed");
+  assertPipelineOk(data as { kind: "ok" } | PipelineErrorBody, "update_pitch_failed");
 }
 
 export async function fetchBrandPlaceAuthoringContext(input: {

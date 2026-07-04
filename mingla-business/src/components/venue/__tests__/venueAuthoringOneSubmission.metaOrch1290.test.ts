@@ -187,3 +187,35 @@ describe("META-ORCH-1290 Leg B — deck-readiness edit surface (§4.3.E)", () =>
     expect(src).toContain("Generate pitch with AI");
   });
 });
+
+// META-ORCH-1290 (B2 addendum) — blocker B-2: the listing-page pitch edit must
+// NOT write place_pool via a client-side RLS UPDATE. `updateVenuePitch` now
+// INVOKES the `update_pitch` pipeline action (owner-authed, column-scoped).
+describe("META-ORCH-1290 (B2) — updateVenuePitch invokes the pipeline, not a direct place_pool write", () => {
+  const serviceSrc = readFileSync(
+    join(__dirname, "..", "..", "..", "services", "businessPlaceAuthoringService.ts"),
+    "utf8",
+  );
+  // Isolate the updateVenuePitch function body (export … until the next export).
+  const fnStart = serviceSrc.indexOf("export async function updateVenuePitch");
+  const fnBody = serviceSrc.slice(
+    fnStart,
+    serviceSrc.indexOf("\nexport ", fnStart + 1),
+  );
+
+  test("updateVenuePitch exists and its body invokes the update_pitch action", () => {
+    expect(fnStart).toBeGreaterThan(-1);
+    expect(fnBody).toContain("supabase.functions.invoke");
+    expect(fnBody).toContain("run-business-place-authoring-pipeline");
+    expect(fnBody).toContain('action: "update_pitch"');
+  });
+
+  test("updateVenuePitch does NOT do a direct client place_pool write (B-2 fixed)", () => {
+    // The direct RLS write path (`.from("place_pool").update`) is GONE from the
+    // pitch persistence function — reverting to it re-adds these tokens.
+    expect(fnBody).not.toContain('.from("place_pool")');
+    expect(fnBody).not.toContain(".update(");
+    // It no longer keys off a client-supplied isLive (server decides the mode).
+    expect(fnBody).not.toContain("isLive");
+  });
+});
