@@ -1,15 +1,18 @@
 // ORCH-1273 [Admin Offerings console — READ-ONLY] — venue detail.
+// ORCH-1277 [Admin Offerings console — WAVE-2 EDIT] — audited venue reservation-stack
+// edits wired onto the detail: edit reservation settings (incl. the enabled toggle) +
+// edit a capacity rule + override a reservation status. EVERY write routes through
+// venuesService → callAdminWriteRpc (audited SECURITY DEFINER RPC); the page NEVER
+// touches a venue table directly. Every success REFETCHES via load(). NO venue-listing
+// field edit (name/address/hours/category/contact) — that is a follow-on ORCH (Q6).
 //
 // Venue core (RLS-direct) + reservation-config stack (settings / tables / capacity
 // rules / blackouts / waitlist, RLS-direct) + reservations rollup (guest PII →
-// admin_list_venue_reservations definer RPC). Every panel renders empty gracefully
-// (0 reservations in PROD today → empty state, not a crash).
-//
-// READ-ONLY: EntityDetailView `actions` slot EMPTY. No venue edit / reservation
-// override — Wave-2 (SPEC §6).
+// admin_list_venue_reservations definer RPC). Every panel renders empty gracefully.
 
 import { useState, useEffect, useCallback } from "react";
 import { EntityDetailView } from "../components/entity/EntityDetailView";
+import { EntityEditModal } from "../components/entity/EntityEditModal";
 import { Badge } from "../components/ui/Badge";
 import {
   getVenue,
@@ -19,6 +22,10 @@ import {
   getVenueBlackouts,
   getVenueWaitlist,
   listVenueReservations,
+  updateVenueReservationSettings,
+  updateVenueCapacityRule,
+  setReservationStatus,
+  mapVenueWriteError,
 } from "../services/venuesService";
 import { formatDate, formatDateTime } from "../lib/formatters";
 
@@ -32,6 +39,28 @@ function money(cents, currency) {
     return `${amount.toFixed(2)}${cur ? " " + cur : ""}`;
   }
 }
+
+const NO_SHOW_POLICY_OPTIONS = [
+  { value: "forfeit", label: "Forfeit" },
+  { value: "none", label: "None" },
+];
+const ZONE_OPTIONS = [
+  { value: "indoor", label: "Indoor" },
+  { value: "outdoor", label: "Outdoor" },
+  { value: "private_room", label: "Private room" },
+  { value: "bar", label: "Bar" },
+  { value: "patio", label: "Patio" },
+];
+const RESERVATION_STATUS_OPTIONS = [
+  { value: "requested", label: "Requested" },
+  { value: "confirmed", label: "Confirmed" },
+  { value: "seated", label: "Seated" },
+  { value: "completed", label: "Completed" },
+  { value: "no_show", label: "No-show" },
+  { value: "cancelled_by_guest", label: "Cancelled by guest" },
+  { value: "cancelled_by_venue", label: "Cancelled by venue" },
+  { value: "waitlisted", label: "Waitlisted" },
+];
 
 const CATEGORY_VARIANT = { restaurant: "info", play: "brand", creative_and_arts: "warning" };
 const CLAIM_VARIANT = {
@@ -63,7 +92,20 @@ function boolBadge(v) {
   return <Badge variant={v ? "success" : "default"} dot>{v ? "Yes" : "No"}</Badge>;
 }
 
-function venueSections(data) {
+// Inline per-row action affordance (mirrors the ORCH-1276 pattern).
+function RowAction({ onClick, children }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="text-xs underline cursor-pointer hover:opacity-80 text-[var(--color-brand-500)]"
+    >
+      {children}
+    </button>
+  );
+}
+
+function venueSections(data, cb) {
   const v = data.venue || {};
   const rs = data.settings;
   const sections = [];
@@ -104,6 +146,28 @@ function venueSections(data) {
           field("No-show fee policy", rs.no_show_fee_policy),
           field("Pass fee override", rs.pass_fee_override == null ? null : String(rs.pass_fee_override)),
           field("Pass tax override", rs.pass_tax_override == null ? null : String(rs.pass_tax_override)),
+          ...(cb?.dispatch
+            ? [
+                field("Edit", null, () => (
+                  <RowAction
+                    onClick={() =>
+                      cb.dispatch({
+                        kind: "settings",
+                        initial: {
+                          reservations_enabled: Boolean(rs.reservations_enabled),
+                          fee_amount_cents: rs.fee_amount_cents == null ? "" : String(rs.fee_amount_cents),
+                          fee_currency: rs.fee_currency ?? "",
+                          cancel_cutoff_hours: rs.cancel_cutoff_hours == null ? "" : String(rs.cancel_cutoff_hours),
+                          no_show_fee_policy: rs.no_show_fee_policy ?? "forfeit",
+                        },
+                      })
+                    }
+                  >
+                    Edit reservation settings
+                  </RowAction>
+                )),
+              ]
+            : []),
         ],
   });
 
@@ -139,6 +203,24 @@ function venueSections(data) {
                 {cr.zone && <Badge variant="outline">{cr.zone}</Badge>}
                 <span className="text-xs text-[var(--color-text-tertiary)] break-all">{cr.params ? JSON.stringify(cr.params) : ""}</span>
                 <Badge variant={cr.is_active ? "success" : "default"} dot>{cr.is_active ? "active" : "inactive"}</Badge>
+                {cb?.dispatch && (
+                  <RowAction
+                    onClick={() =>
+                      cb.dispatch({
+                        kind: "capacityRule",
+                        targetId: cr.id,
+                        label: cr.kind || cr.id,
+                        initial: {
+                          params: cr.params ? JSON.stringify(cr.params, null, 2) : "",
+                          is_active: Boolean(cr.is_active),
+                          zone: cr.zone ?? "",
+                        },
+                      })
+                    }
+                  >
+                    Edit rule
+                  </RowAction>
+                )}
               </span>
             )),
           ),
@@ -207,6 +289,20 @@ function venueSections(data) {
                   {rv.reserved_for && <span className="text-xs text-[var(--color-text-tertiary)]">{formatDateTime(rv.reserved_for)}</span>}
                   {rv.table_name && <Badge variant="outline">{rv.table_name}</Badge>}
                   {rv.fee_cents != null && rv.fee_cents > 0 && <span className="text-xs">{money(rv.fee_cents, rv.fee_currency)}</span>}
+                  {cb?.dispatch && (
+                    <RowAction
+                      onClick={() =>
+                        cb.dispatch({
+                          kind: "reservationStatus",
+                          targetId: rv.reservation_id,
+                          label: rv.guest_name || rv.guest_email || rv.reservation_id,
+                          initial: { status: rv.status || "" },
+                        })
+                      }
+                    >
+                      Override status
+                    </RowAction>
+                  )}
                 </span>
                 {(rv.guest_email || rv.guest_phone_e164) && (
                   <span className="text-xs text-[var(--color-text-tertiary)]">{[rv.guest_email, rv.guest_phone_e164].filter(Boolean).join(" · ")}</span>
@@ -223,6 +319,11 @@ export function VenueDetailView({ venueId, onBack }) {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+
+  // ORCH-1277 mutation state: one shared modal instance keyed by { kind, targetId, ... }.
+  const [activeAction, setActiveAction] = useState(null);
+  const dispatch = useCallback((a) => setActiveAction(a), []);
+  const closeAction = useCallback(() => setActiveAction(null), []);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -264,19 +365,109 @@ export function VenueDetailView({ venueId, onBack }) {
   if (v.venue_category) badges.push({ label: v.venue_category, variant: CATEGORY_VARIANT[v.venue_category] || "default" });
   if (v.claim_status) badges.push({ label: v.claim_status, variant: CLAIM_VARIANT[v.claim_status] || "default" });
 
+  const a = activeAction;
+
   return (
-    <EntityDetailView
-      loading={loading}
-      error={error}
-      onRetry={load}
-      header={{
-        title: v.name || "Venue",
-        subtitle: data ? <span className="font-mono">{v.slug ? `/${v.slug}` : venueId}</span> : undefined,
-        badges: data ? badges : [],
-        backLabel: "Venues",
-        onBack,
-      }}
-      sections={data ? venueSections(data) : []}
-    />
+    <div className="flex flex-col gap-4">
+      <EntityDetailView
+        loading={loading}
+        error={error}
+        onRetry={load}
+        header={{
+          title: v.name || "Venue",
+          subtitle: data ? <span className="font-mono">{v.slug ? `/${v.slug}` : venueId}</span> : undefined,
+          badges: data ? badges : [],
+          backLabel: "Venues",
+          onBack,
+        }}
+        sections={data ? venueSections(data, { dispatch }) : []}
+      />
+
+      {/* ── ORCH-1277 venue reservation-stack edit modals (mounted fresh per open) ── */}
+
+      {a?.kind === "settings" && (
+        <EntityEditModal
+          open
+          onClose={closeAction}
+          title="Edit reservation settings"
+          description="Toggle reservations, the fee, cancellation cutoff, and no-show policy. Recorded in the audit log."
+          fields={[
+            { key: "reservations_enabled", label: "Reservations enabled", type: "switch" },
+            { key: "fee_amount_cents", label: "Fee amount (cents, blank = none)", type: "text" },
+            { key: "fee_currency", label: "Fee currency (ISO, blank = none)", type: "text" },
+            { key: "cancel_cutoff_hours", label: "Cancel cutoff (hours)", type: "text" },
+            { key: "no_show_fee_policy", label: "No-show fee policy", type: "select", options: NO_SHOW_POLICY_OPTIONS, required: true },
+          ]}
+          initialValues={a.initial}
+          submitLabel="Save settings"
+          requireReason
+          successMessage="Reservation settings updated."
+          onSave={async (values, { reason }) => {
+            const { error: e } = await updateVenueReservationSettings(
+              venueId,
+              {
+                reservations_enabled: Boolean(values.reservations_enabled),
+                fee_amount_cents: values.fee_amount_cents,
+                fee_currency: values.fee_currency,
+                cancel_cutoff_hours: values.cancel_cutoff_hours,
+                no_show_fee_policy: values.no_show_fee_policy,
+              },
+              reason,
+            );
+            if (e) throw new Error(mapVenueWriteError(e));
+            closeAction();
+            await load();
+          }}
+        />
+      )}
+
+      {a?.kind === "capacityRule" && (
+        <EntityEditModal
+          open
+          onClose={closeAction}
+          title={`Edit capacity rule — ${a.label}`}
+          description="Edit the rule params (JSON), active toggle, and zone. The rule kind cannot be changed. Recorded in the audit log."
+          fields={[
+            { key: "params", label: "Params (JSON)", type: "json", required: true },
+            { key: "is_active", label: "Active", type: "switch" },
+            { key: "zone", label: "Zone (blank = none)", type: "select", options: ZONE_OPTIONS },
+          ]}
+          initialValues={a.initial}
+          submitLabel="Save rule"
+          requireReason
+          successMessage="Capacity rule updated."
+          onSave={async (values, { reason }) => {
+            const { error: e } = await updateVenueCapacityRule(
+              a.targetId,
+              { params: values.params, is_active: Boolean(values.is_active), zone: values.zone },
+              reason,
+            );
+            if (e) throw new Error(mapVenueWriteError(e));
+            closeAction();
+            await load();
+          }}
+        />
+      )}
+
+      {a?.kind === "reservationStatus" && (
+        <EntityEditModal
+          open
+          onClose={closeAction}
+          title={`Override reservation status — ${a.label}`}
+          description="Set this reservation to a new status. The guest is notified of the change. Recorded in the audit log."
+          fields={[{ key: "status", label: "Status", type: "select", options: RESERVATION_STATUS_OPTIONS, required: true }]}
+          initialValues={a.initial}
+          submitLabel="Save status"
+          requireReason
+          successMessage="Reservation status updated."
+          onSave={async (values, { reason }) => {
+            const { error: e } = await setReservationStatus(a.targetId, values.status, reason);
+            if (e) throw new Error(mapVenueWriteError(e));
+            closeAction();
+            await load();
+          }}
+        />
+      )}
+    </div>
   );
 }

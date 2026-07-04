@@ -21,6 +21,11 @@
 
 import { supabase } from "../lib/supabase";
 import { escapeLike } from "../lib/formatters";
+// ORCH-1277 [Admin Offerings console — WAVE-2 EDIT]: audited-write seam for the venue
+// reservation stack. Reservation-settings / capacity-rule / reservation-status edits
+// route ONLY through callAdminWriteRpc → guard-first is_admin_user() SECURITY DEFINER
+// RPCs (audited, REVOKE'd from anon); NEVER a raw .update on a venue table.
+import { callAdminWriteRpc } from "./adminWriteService";
 
 const VENUE_SORT = { name: "name", created_at: "created_at" };
 
@@ -157,4 +162,52 @@ function pickList(res, label) {
     return [];
   }
   return res.data || [];
+}
+
+// ── ORCH-1277 audited writes (venue reservation stack) ────────────────────────
+//
+// Every mutation routes through callAdminWriteRpc('<audited rpc>', {...}) → { data,
+// error }. The console NEVER calls .update()/.insert()/.delete() on a venue table
+// directly. Callers surface { error } via mapVenueWriteError().
+
+/** Translate a venue-write RPC error into human copy for the modal error slot. */
+export function mapVenueWriteError(error) {
+  const msg = error?.message || "";
+  if (msg.includes("not_authorized")) return "You are not authorized to do this.";
+  if (msg.includes("reason_required")) return "A reason is required.";
+  if (msg.includes("not_found")) return "That record no longer exists.";
+  if (msg.includes("invalid_no_show_policy")) return "No-show policy must be “forfeit” or “none”.";
+  if (msg.includes("invalid_fee")) return "The fee must be 0 or more (in cents).";
+  if (msg.includes("invalid_cutoff")) return "The cancellation cutoff must be 0 or more hours.";
+  if (msg.includes("invalid_zone")) return "Invalid zone value.";
+  if (msg.includes("invalid_status")) return "Invalid reservation status.";
+  if (msg.includes("no_editable_fields")) return "No editable fields were provided.";
+  return msg || "Something went wrong. Please try again.";
+}
+
+/** #14 — edit venue reservation settings (HIGH). patch = whitelisted jsonb (incl. the enabled toggle). */
+export function updateVenueReservationSettings(venueId, patch, reason) {
+  return callAdminWriteRpc("admin_update_venue_reservation_settings", {
+    p_venue_id: venueId,
+    p_patch: patch,
+    p_reason: reason,
+  });
+}
+
+/** #15 — edit a venue capacity rule (HIGH). patch = whitelisted { params, is_active, zone } (kind immutable). */
+export function updateVenueCapacityRule(ruleId, patch, reason) {
+  return callAdminWriteRpc("admin_update_venue_capacity_rule", {
+    p_rule_id: ruleId,
+    p_patch: patch,
+    p_reason: reason,
+  });
+}
+
+/** #16 — override a reservation status (HIGH). Fires the guest-notify trigger (modal warns). */
+export function setReservationStatus(reservationId, status, reason) {
+  return callAdminWriteRpc("admin_set_reservation_status", {
+    p_reservation_id: reservationId,
+    p_status: status,
+    p_reason: reason,
+  });
 }

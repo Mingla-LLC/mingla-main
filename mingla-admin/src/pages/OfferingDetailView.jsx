@@ -1,4 +1,13 @@
 // ORCH-1273 [Admin Offerings console — READ-ONLY] — type-aware offering detail.
+// ORCH-1277 [Admin Offerings console — WAVE-2 EDIT] — audited edit/moderation wired
+// onto the detail: offering-level unpublish / cancel / close-reopen bookings /
+// soft-delete-restore (footer + top row) + per-row price fix, trip-day edit/reorder,
+// experience-stop edit/remove/reorder, RSVP approve/deny/remove, and RSVP capacity.
+// EVERY write routes through offeringsService → callAdminWriteRpc (audited SECURITY
+// DEFINER RPC); the page NEVER touches an offering table directly. Every success
+// REFETCHES via load(). HIGH valueless actions use HighRiskActionModal; value-bearing
+// actions use the shared EntityEditModal (ORCH-1276); audit-only reorders/approve skip
+// the reason gate.
 //
 // ONE header bundle (admin_get_offering) drives the header + which section set
 // renders, per event_type:
@@ -6,13 +15,14 @@
 //   rsvp       → guest list + counts (admin_list_event_rsvps)
 //   trip       → itinerary + pricing tiers + inclusions + intake (RLS-direct)
 //   experience → stops (RLS-direct); feedback = Wave-2 (card_id mapping, Open Q4)
-//
-// READ-ONLY: the EntityDetailView `actions` slot is left EMPTY. No refund / cancel
-// / approve / override — every such action is Wave-2 (SPEC §6).
 
 import { useState, useEffect, useCallback } from "react";
 import { EntityDetailView } from "../components/entity/EntityDetailView";
+import { EntityEditModal } from "../components/entity/EntityEditModal";
+import { HighRiskActionModal } from "../components/entity/HighRiskActionModal";
 import { Badge } from "../components/ui/Badge";
+import { Button } from "../components/ui/Button";
+import { useToast } from "../context/ToastContext";
 import {
   getOffering,
   getTicketTypes,
@@ -20,6 +30,20 @@ import {
   listEventRsvps,
   getTripDetail,
   getExperienceDetail,
+  setOfferingVisibility,
+  cancelOffering,
+  setBookingsClosed,
+  setOfferingDeleted,
+  setTicketPrice,
+  updateTripDay,
+  reorderTripDay,
+  updateExperienceStop,
+  deleteExperienceStop,
+  reorderExperienceStop,
+  setRsvpApproval,
+  removeRsvpGuest,
+  setRsvpCapacity,
+  mapOfferingWriteError,
 } from "../services/offeringsService";
 import { formatDate, formatDateTime } from "../lib/formatters";
 
@@ -36,6 +60,14 @@ function money(cents, currency) {
   }
 }
 
+const VISIBILITY_OPTIONS = [
+  { value: "public", label: "Public" },
+  { value: "discover", label: "Discover" },
+  { value: "private", label: "Private" },
+  { value: "hidden", label: "Hidden" },
+  { value: "draft", label: "Draft" },
+];
+
 const STATUS_VARIANT = { draft: "default", scheduled: "info", live: "success", ended: "default", cancelled: "error" };
 const VISIBILITY_VARIANT = { public: "success", discover: "info", private: "warning", hidden: "default", draft: "default" };
 const LIFECYCLE_VARIANT = { draft: "default", upcoming: "info", live: "success", past: "default", cancelled: "error" };
@@ -51,6 +83,22 @@ const noneField = (label) => field(label, "None", (v) => muted(v));
 
 function boolBadge(v) {
   return <Badge variant={v ? "success" : "default"} dot>{v ? "Yes" : "No"}</Badge>;
+}
+
+// Inline per-row action affordance (mirrors the ORCH-1276 BrandsConsolePage pattern).
+function RowAction({ onClick, danger, disabled, children }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      className={`text-xs underline cursor-pointer hover:opacity-80 disabled:opacity-40 disabled:cursor-not-allowed ${
+        danger ? "text-[var(--color-error-700)]" : "text-[var(--color-brand-500)]"
+      }`}
+    >
+      {children}
+    </button>
+  );
 }
 
 // ── Section builders ──────────────────────────────────────────────────────────
@@ -82,7 +130,7 @@ function coreSection(b) {
   };
 }
 
-function ticketTiersSection(tiers) {
+function ticketTiersSection(tiers, cb) {
   return {
     label: `Ticket tiers (${tiers.length})`,
     fields:
@@ -102,6 +150,21 @@ function ticketTiersSection(tiers) {
                 {tt.requires_approval && <Badge variant="warning">approval</Badge>}
                 {tt.waitlist_enabled && <Badge variant="info">waitlist</Badge>}
                 {tt.deleted_at && <Badge variant="error">deleted</Badge>}
+                {cb?.dispatch && !tt.is_free && (
+                  <RowAction
+                    onClick={() =>
+                      cb.dispatch({
+                        kind: "ticketPrice",
+                        targetId: tt.id,
+                        label: tt.name || tt.id,
+                        current: money(tt.price_cents, tt.currency),
+                        initial: { price_cents: String(tt.price_cents ?? "") },
+                      })
+                    }
+                  >
+                    Fix price
+                  </RowAction>
+                )}
               </span>
             )),
           ),
@@ -147,7 +210,7 @@ function ordersSection(orders) {
   ];
 }
 
-function rsvpSection(rsvps) {
+function rsvpSection(rsvps, cb) {
   const c = rsvps.counts || {};
   const countFields = [
     field("Going", c.going ?? 0),
@@ -162,6 +225,25 @@ function rsvpSection(rsvps) {
     field("Capacity", c.capacity == null ? "Uncapped" : c.capacity),
     field("Capacity remaining", c.capacity_remaining == null ? "—" : c.capacity_remaining),
   ];
+  if (cb?.dispatch) {
+    countFields.push(
+      field("Adjust", null, () => (
+        <RowAction
+          onClick={() =>
+            cb.dispatch({
+              kind: "rsvpCapacity",
+              initial: {
+                rsvp_capacity: c.capacity == null ? "" : String(c.capacity),
+                rsvp_waitlist_enabled: Boolean(cb.waitlistEnabled),
+              },
+            })
+          }
+        >
+          Adjust capacity / waitlist
+        </RowAction>
+      )),
+    );
+  }
   const rowFields =
     rsvps.rows.length === 0
       ? [noneField("Guest list")]
@@ -173,6 +255,33 @@ function rsvpSection(rsvps) {
                 <Badge variant={APPROVAL_VARIANT[g.approval_status] || "default"}>{g.approval_status}</Badge>
                 {g.plus_count > 0 && <span className="text-xs text-[var(--color-text-tertiary)]">+{g.plus_count}</span>}
                 {!g.user_id && <Badge variant="outline">guest</Badge>}
+                {cb?.dispatch && (
+                  <>
+                    {g.approval_status !== "approved" && (
+                      <RowAction disabled={cb.approvingId === g.rsvp_id} onClick={() => cb.onApprove(g.rsvp_id)}>
+                        Approve
+                      </RowAction>
+                    )}
+                    {g.approval_status !== "denied" && (
+                      <RowAction
+                        danger
+                        onClick={() =>
+                          cb.dispatch({ kind: "rsvpDeny", targetId: g.rsvp_id, label: g.guest_name || g.guest_email || g.rsvp_id })
+                        }
+                      >
+                        Deny
+                      </RowAction>
+                    )}
+                    <RowAction
+                      danger
+                      onClick={() =>
+                        cb.dispatch({ kind: "rsvpRemove", targetId: g.rsvp_id, label: g.guest_name || g.guest_email || g.rsvp_id })
+                      }
+                    >
+                      Remove
+                    </RowAction>
+                  </>
+                )}
               </span>
               {g.guest_email && <span className="text-xs text-[var(--color-text-tertiary)]">{g.guest_email}</span>}
               {Array.isArray(g.plus_guests) && g.plus_guests.length > 0 && (
@@ -189,7 +298,7 @@ function rsvpSection(rsvps) {
   ];
 }
 
-function tripSections(trip) {
+function tripSections(trip, cb) {
   const priceByTicketType = {};
   for (const tt of trip.ticketTypes || []) priceByTicketType[tt.id] = tt;
   const included = (trip.inclusions || []).filter((i) => i.kind === "included");
@@ -209,6 +318,38 @@ function tripSections(trip) {
                   <span className="text-xs text-[var(--color-text-tertiary)]">
                     {(Array.isArray(day.stops) ? day.stops.length : 0)} stops · {(Array.isArray(day.media) ? day.media.length : 0)} media
                   </span>
+                  {cb?.dispatch && (
+                    <span className="flex flex-wrap items-center gap-2 pt-0.5">
+                      <RowAction
+                        onClick={() =>
+                          cb.dispatch({
+                            kind: "tripDayEdit",
+                            targetId: day.id,
+                            label: `Day ${day.ordinal ?? "?"}`,
+                            initial: {
+                              title: day.title ?? "",
+                              narrative: day.narrative ?? "",
+                              date: day.date ?? "",
+                            },
+                          })
+                        }
+                      >
+                        Edit
+                      </RowAction>
+                      <RowAction
+                        onClick={() =>
+                          cb.dispatch({
+                            kind: "tripDayReorder",
+                            targetId: day.id,
+                            label: `Day ${day.ordinal ?? "?"}`,
+                            initial: { ordinal: String(day.ordinal ?? "") },
+                          })
+                        }
+                      >
+                        Reorder
+                      </RowAction>
+                    </span>
+                  )}
                 </span>
               )),
             ),
@@ -223,6 +364,21 @@ function tripSections(trip) {
               return field(t.tier_name || t.id, t, () => (
                 <span className="flex flex-wrap items-center gap-1.5">
                   {tt ? <span className="font-medium">{money(tt.price_cents, tt.currency)}</span> : muted("no linked tier")}
+                  {cb?.dispatch && tt && (
+                    <RowAction
+                      onClick={() =>
+                        cb.dispatch({
+                          kind: "ticketPrice",
+                          targetId: tt.id,
+                          label: t.tier_name || tt.name || tt.id,
+                          current: money(tt.price_cents, tt.currency),
+                          initial: { price_cents: String(tt.price_cents ?? "") },
+                        })
+                      }
+                    >
+                      Fix price
+                    </RowAction>
+                  )}
                 </span>
               ));
             }),
@@ -256,7 +412,7 @@ function tripSections(trip) {
   ];
 }
 
-function experienceSections(exp) {
+function experienceSections(exp, cb) {
   return [
     {
       label: `Stops (${exp.stops.length})`,
@@ -275,6 +431,47 @@ function experienceSections(exp) {
                     </span>
                   </span>
                   {stop.ai_description && <span className="text-sm">{stop.ai_description}</span>}
+                  {cb?.dispatch && (
+                    <span className="flex flex-wrap items-center gap-2 pt-0.5">
+                      <RowAction
+                        onClick={() =>
+                          cb.dispatch({
+                            kind: "expStopEdit",
+                            targetId: stop.id,
+                            label: stop.place_name || stop.id,
+                            initial: {
+                              ai_description: stop.ai_description ?? "",
+                              place_name: stop.place_name ?? "",
+                              address: stop.address ?? "",
+                              start_time: stop.start_time ?? "",
+                            },
+                          })
+                        }
+                      >
+                        Edit
+                      </RowAction>
+                      <RowAction
+                        onClick={() =>
+                          cb.dispatch({
+                            kind: "expStopReorder",
+                            targetId: stop.id,
+                            label: stop.place_name || stop.id,
+                            initial: { stop_order: String(stop.stop_order ?? "") },
+                          })
+                        }
+                      >
+                        Reorder
+                      </RowAction>
+                      <RowAction
+                        danger
+                        onClick={() =>
+                          cb.dispatch({ kind: "expStopRemove", targetId: stop.id, label: stop.place_name || stop.id })
+                        }
+                      >
+                        Remove
+                      </RowAction>
+                    </span>
+                  )}
                 </span>
               )),
             ),
@@ -289,10 +486,17 @@ function experienceSections(exp) {
 // ── Component ─────────────────────────────────────────────────────────────────
 
 export function OfferingDetailView({ eventId, onBack }) {
+  const { addToast } = useToast();
   const [bundle, setBundle] = useState(null);
   const [children, setChildren] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+
+  // ORCH-1277 mutation state: one shared modal instance keyed by { kind, targetId, ... }.
+  const [activeAction, setActiveAction] = useState(null);
+  const [approvingId, setApprovingId] = useState(null);
+  const dispatch = useCallback((a) => setActiveAction(a), []);
+  const closeAction = useCallback(() => setActiveAction(null), []);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -334,22 +538,41 @@ export function OfferingDetailView({ eventId, onBack }) {
     load();
   }, [load]);
 
+  // One-tap RSVP approve (AUDIT-ONLY: no reason gate). Disabled while in flight.
+  const onApprove = useCallback(
+    async (rsvpId) => {
+      setApprovingId(rsvpId);
+      try {
+        const { error: e } = await setRsvpApproval(rsvpId, "approved", null);
+        if (e) throw new Error(mapOfferingWriteError(e));
+        addToast({ variant: "success", title: "Guest approved." });
+        await load();
+      } catch (err) {
+        addToast({ variant: "error", title: "Couldn't approve", description: err?.message });
+      } finally {
+        setApprovingId(null);
+      }
+    },
+    [addToast, load],
+  );
+
   const sections = [];
   if (bundle) {
-    sections.push(coreSection(bundle));
     const k = children || {};
+    const cb = { dispatch, onApprove, approvingId, waitlistEnabled: bundle.rsvp_waitlist_enabled };
+    sections.push(coreSection(bundle));
     if (bundle.event_type === "event") {
-      sections.push(ticketTiersSection(k.tiers || []));
+      sections.push(ticketTiersSection(k.tiers || [], cb));
       if (k.orders) sections.push(...ordersSection(k.orders));
     } else if (bundle.event_type === "rsvp") {
-      if (k.rsvps) sections.push(...rsvpSection(k.rsvps));
+      if (k.rsvps) sections.push(...rsvpSection(k.rsvps, cb));
     } else if (bundle.event_type === "trip") {
       // Trip pricing tiers cross-ref the event's ticket_types (loaded into trip).
       const trip = k.trip ? { ...k.trip, ticketTypes: k.trip.ticketTypes?.length ? k.trip.ticketTypes : k.tiers || [] } : null;
-      if (trip) sections.push(...tripSections(trip));
-      sections.push(ticketTiersSection(k.tiers || []));
+      if (trip) sections.push(...tripSections(trip, cb));
+      sections.push(ticketTiersSection(k.tiers || [], cb));
     } else if (bundle.event_type === "experience") {
-      if (k.exp) sections.push(...experienceSections(k.exp));
+      if (k.exp) sections.push(...experienceSections(k.exp, cb));
     }
   }
 
@@ -360,19 +583,324 @@ export function OfferingDetailView({ eventId, onBack }) {
     if (bundle.lifecycle_bucket) badges.push({ label: bundle.lifecycle_bucket, variant: LIFECYCLE_VARIANT[bundle.lifecycle_bucket] || "default" });
   }
 
+  // Offering-level footer HIGH actions (valueless) → EntityDetailView renders HighRiskActionModal.
+  const footerActions = [];
+  if (bundle) {
+    const afterWrite = async (fn) => {
+      const { error: e } = await fn();
+      if (e) throw new Error(mapOfferingWriteError(e));
+      await load();
+    };
+    if (bundle.status !== "cancelled") {
+      footerActions.push({
+        label: "Cancel offering",
+        title: "Cancel offering",
+        description: "Set this offering to cancelled. Refunds are handled in the Money console — cancelling issues none. Recorded in the audit log.",
+        confirmLabel: "Cancel offering",
+        destructive: true,
+        requireReason: true,
+        confirmPhrase: "CANCEL",
+        onConfirm: ({ reason }) => afterWrite(() => cancelOffering(eventId, reason)),
+      });
+    }
+    footerActions.push({
+      label: bundle.bookings_closed ? "Reopen bookings" : "Close bookings",
+      title: bundle.bookings_closed ? "Reopen bookings" : "Close bookings",
+      description: bundle.bookings_closed
+        ? "Reopen bookings for this offering. Recorded in the audit log."
+        : "Close bookings for this offering (stops new purchases). Recorded in the audit log.",
+      confirmLabel: bundle.bookings_closed ? "Reopen" : "Close",
+      requireReason: true,
+      onConfirm: ({ reason }) => afterWrite(() => setBookingsClosed(eventId, !bundle.bookings_closed, reason)),
+    });
+    if (bundle.deleted_at) {
+      footerActions.push({
+        label: "Restore offering",
+        title: "Restore offering",
+        description: "Clear the soft-delete on this offering. Recorded in the audit log.",
+        confirmLabel: "Restore",
+        requireReason: true,
+        onConfirm: ({ reason }) => afterWrite(() => setOfferingDeleted(eventId, false, reason)),
+      });
+    } else {
+      footerActions.push({
+        label: "Soft-delete offering",
+        title: "Soft-delete offering",
+        description: "Soft-delete this offering (reversible). It disappears from organiser/buyer reads but stays admin-visible. Recorded in the audit log.",
+        confirmLabel: "Soft-delete",
+        destructive: true,
+        requireReason: true,
+        confirmPhrase: "DELETE",
+        onConfirm: ({ reason }) => afterWrite(() => setOfferingDeleted(eventId, true, reason)),
+      });
+    }
+  }
+
+  const a = activeAction; // shorthand for the modal switch
+
   return (
-    <EntityDetailView
-      loading={loading}
-      error={error}
-      onRetry={load}
-      header={{
-        title: bundle?.title || "Offering",
-        subtitle: bundle ? <span className="font-mono">{eventId}</span> : undefined,
-        badges,
-        backLabel: "Offerings",
-        onBack,
-      }}
-      sections={sections}
-    />
+    <div className="flex flex-col gap-4">
+      {bundle && !loading && !error && (
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          <Button
+            variant="secondary"
+            size="md"
+            onClick={() => dispatch({ kind: "visibility", initial: { visibility: bundle.visibility || "" } })}
+          >
+            Change visibility
+          </Button>
+        </div>
+      )}
+
+      <EntityDetailView
+        loading={loading}
+        error={error}
+        onRetry={load}
+        header={{
+          title: bundle?.title || "Offering",
+          subtitle: bundle ? <span className="font-mono">{eventId}</span> : undefined,
+          badges,
+          backLabel: "Offerings",
+          onBack,
+        }}
+        actions={footerActions}
+        sections={sections}
+      />
+
+      {/* ── ORCH-1277 value-bearing + per-row modals (mounted fresh per open) ── */}
+
+      {a?.kind === "visibility" && (
+        <EntityEditModal
+          open
+          onClose={closeAction}
+          title="Change visibility"
+          description="Unpublish (hidden) or republish an offering. Recorded in the audit log."
+          fields={[{ key: "visibility", label: "Visibility", type: "select", options: VISIBILITY_OPTIONS, required: true }]}
+          initialValues={a.initial}
+          submitLabel="Save visibility"
+          requireReason
+          successMessage="Visibility updated."
+          onSave={async (values, { reason }) => {
+            const { error: e } = await setOfferingVisibility(eventId, values.visibility, reason);
+            if (e) throw new Error(mapOfferingWriteError(e));
+            closeAction();
+            await load();
+          }}
+        />
+      )}
+
+      {a?.kind === "ticketPrice" && (
+        <EntityEditModal
+          open
+          onClose={closeAction}
+          title="Fix ticket price"
+          description={`Correct the price for “${a.label}”. Current: ${a.current}. Enter the new price in cents (currency is unchanged).`}
+          fields={[{ key: "price_cents", label: "New price (cents)", type: "text", required: true, help: "Whole number of cents, e.g. 1500 = $15.00." }]}
+          initialValues={a.initial}
+          submitLabel="Save price"
+          requireReason
+          successMessage="Price updated."
+          onSave={async (values, { reason }) => {
+            const cents = Number.parseInt(values.price_cents, 10);
+            if (!Number.isInteger(cents) || cents < 0) throw new Error("Enter a whole number of cents (0 or more).");
+            const { error: e } = await setTicketPrice(a.targetId, cents, reason);
+            if (e) throw new Error(mapOfferingWriteError(e));
+            closeAction();
+            await load();
+          }}
+        />
+      )}
+
+      {a?.kind === "tripDayEdit" && (
+        <EntityEditModal
+          open
+          onClose={closeAction}
+          title={`Edit ${a.label}`}
+          description="Correct this itinerary day's title, narrative, or date. Recorded in the audit log."
+          fields={[
+            { key: "title", label: "Title", type: "text", required: true },
+            { key: "narrative", label: "Narrative", type: "textarea" },
+            { key: "date", label: "Date (YYYY-MM-DD, blank to clear)", type: "text" },
+          ]}
+          initialValues={a.initial}
+          submitLabel="Save day"
+          requireReason
+          successMessage="Itinerary day updated."
+          onSave={async (values, { reason }) => {
+            const { error: e } = await updateTripDay(
+              a.targetId,
+              { title: values.title, narrative: values.narrative, date: values.date },
+              reason,
+            );
+            if (e) throw new Error(mapOfferingWriteError(e));
+            closeAction();
+            await load();
+          }}
+        />
+      )}
+
+      {a?.kind === "tripDayReorder" && (
+        <EntityEditModal
+          open
+          onClose={closeAction}
+          title={`Reorder ${a.label}`}
+          description="Move this day to a new position. A reason is optional (still audited)."
+          fields={[{ key: "ordinal", label: "New position", type: "text", required: true }]}
+          initialValues={a.initial}
+          submitLabel="Reorder"
+          successMessage="Day reordered."
+          onSave={async (values, { reason }) => {
+            const ord = Number.parseInt(values.ordinal, 10);
+            if (!Number.isInteger(ord)) throw new Error("Enter a whole-number position.");
+            const { error: e } = await reorderTripDay(a.targetId, ord, reason || null);
+            if (e) throw new Error(mapOfferingWriteError(e));
+            closeAction();
+            await load();
+          }}
+        />
+      )}
+
+      {a?.kind === "expStopEdit" && (
+        <EntityEditModal
+          open
+          onClose={closeAction}
+          title={`Edit stop — ${a.label}`}
+          description="Correct or moderate this stop's AI description, place name, address, or start time. Recorded in the audit log."
+          fields={[
+            { key: "ai_description", label: "AI description", type: "textarea", required: true },
+            { key: "place_name", label: "Place name", type: "text", required: true },
+            { key: "address", label: "Address", type: "text", required: true },
+            { key: "start_time", label: "Start time (HH:MM, blank to clear)", type: "text" },
+          ]}
+          initialValues={a.initial}
+          submitLabel="Save stop"
+          requireReason
+          successMessage="Stop updated."
+          onSave={async (values, { reason }) => {
+            const { error: e } = await updateExperienceStop(
+              a.targetId,
+              {
+                ai_description: values.ai_description,
+                place_name: values.place_name,
+                address: values.address,
+                start_time: values.start_time,
+              },
+              reason,
+            );
+            if (e) throw new Error(mapOfferingWriteError(e));
+            closeAction();
+            await load();
+          }}
+        />
+      )}
+
+      {a?.kind === "expStopReorder" && (
+        <EntityEditModal
+          open
+          onClose={closeAction}
+          title={`Reorder stop — ${a.label}`}
+          description="Move this stop to a new position. A reason is optional (still audited)."
+          fields={[{ key: "stop_order", label: "New position", type: "text", required: true }]}
+          initialValues={a.initial}
+          submitLabel="Reorder"
+          successMessage="Stop reordered."
+          onSave={async (values, { reason }) => {
+            const ord = Number.parseInt(values.stop_order, 10);
+            if (!Number.isInteger(ord)) throw new Error("Enter a whole-number position.");
+            const { error: e } = await reorderExperienceStop(a.targetId, ord, reason || null);
+            if (e) throw new Error(mapOfferingWriteError(e));
+            closeAction();
+            await load();
+          }}
+        />
+      )}
+
+      {a?.kind === "rsvpCapacity" && (
+        <EntityEditModal
+          open
+          onClose={closeAction}
+          title="Adjust RSVP capacity"
+          description="Set the capacity (blank = uncapped) and waitlist toggle. Raising capacity may auto-promote waitlisted guests. Recorded in the audit log."
+          fields={[
+            { key: "rsvp_capacity", label: "Capacity (blank = uncapped)", type: "text" },
+            { key: "rsvp_waitlist_enabled", label: "Waitlist enabled", type: "switch" },
+          ]}
+          initialValues={a.initial}
+          submitLabel="Save capacity"
+          requireReason
+          successMessage="Capacity updated."
+          onSave={async (values, { reason }) => {
+            const raw = (values.rsvp_capacity ?? "").toString().trim();
+            let capacity = null;
+            if (raw !== "") {
+              capacity = Number.parseInt(raw, 10);
+              if (!Number.isInteger(capacity) || capacity < 0) throw new Error("Capacity must be a whole number (0 or more), or blank for uncapped.");
+            }
+            const { error: e } = await setRsvpCapacity(eventId, capacity, Boolean(values.rsvp_waitlist_enabled), reason);
+            if (e) throw new Error(mapOfferingWriteError(e));
+            closeAction();
+            await load();
+          }}
+        />
+      )}
+
+      {/* HIGH valueless per-row actions → HighRiskActionModal (mounted per open). */}
+      {a?.kind === "expStopRemove" && (
+        <HighRiskActionModal
+          open
+          onClose={closeAction}
+          title="Remove experience stop"
+          description={`Permanently remove the stop “${a.label}”. This cannot be undone (no soft-delete). Recorded in the audit log.`}
+          confirmLabel="Remove stop"
+          destructive
+          confirmPhrase="REMOVE"
+          successMessage="Stop removed."
+          onConfirm={async ({ reason }) => {
+            const { error: e } = await deleteExperienceStop(a.targetId, reason);
+            if (e) throw new Error(mapOfferingWriteError(e));
+            closeAction();
+            await load();
+          }}
+        />
+      )}
+
+      {a?.kind === "rsvpDeny" && (
+        <HighRiskActionModal
+          open
+          onClose={closeAction}
+          title="Deny RSVP guest"
+          description={`Deny ${a.label}. If they were going on a full RSVP, the next waitlisted guest is auto-promoted. Recorded in the audit log.`}
+          confirmLabel="Deny guest"
+          destructive
+          requireReason
+          successMessage="Guest denied."
+          onConfirm={async ({ reason }) => {
+            const { error: e } = await setRsvpApproval(a.targetId, "denied", reason);
+            if (e) throw new Error(mapOfferingWriteError(e));
+            closeAction();
+            await load();
+          }}
+        />
+      )}
+
+      {a?.kind === "rsvpRemove" && (
+        <HighRiskActionModal
+          open
+          onClose={closeAction}
+          title="Remove RSVP guest"
+          description={`Permanently remove ${a.label} and their plus-guests from this RSVP. This cannot be undone. Recorded in the audit log.`}
+          confirmLabel="Remove guest"
+          destructive
+          confirmPhrase="REMOVE"
+          successMessage="Guest removed."
+          onConfirm={async ({ reason }) => {
+            const { error: e } = await removeRsvpGuest(a.targetId, reason);
+            if (e) throw new Error(mapOfferingWriteError(e));
+            closeAction();
+            await load();
+          }}
+        />
+      )}
+    </div>
   );
 }

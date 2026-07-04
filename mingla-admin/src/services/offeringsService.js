@@ -24,6 +24,12 @@
  */
 
 import { supabase } from "../lib/supabase";
+// ORCH-1277 [Admin Offerings console — WAVE-2 EDIT]: audited-write seam. Every
+// offering/event/trip/experience/RSVP mutation routes through callAdminWriteRpc →
+// a guard-first is_admin_user() SECURITY DEFINER RPC that audits + is REVOKE'd from
+// anon — the console NEVER touches an offering table with a raw .update/.insert/
+// .delete/.upsert (I-PROPOSED-1277-OFFERINGS-WRITE-VIA-AUDITED-RPC).
+import { callAdminWriteRpc } from "./adminWriteService";
 
 // ── Unified offerings list (RPC) ──────────────────────────────────────────────
 
@@ -197,4 +203,140 @@ function pick(res, label) {
     return [];
   }
   return res.data || [];
+}
+
+// ── ORCH-1277 audited writes (offering / event / trip / experience / RSVP) ────────
+//
+// Thin typed wrappers over the ORCH-1271 audited-write primitive: EVERY mutation
+// routes through callAdminWriteRpc('<audited rpc>', {...}) → { data, error }. The
+// console NEVER calls .update()/.insert()/.delete() on an offering table directly.
+// Each maps camelCase args → the RPC's p_* params; callers surface { error } to the
+// modal's inline error slot via mapOfferingWriteError().
+
+/** Translate an offerings-write RPC error into human copy for the modal error slot. */
+export function mapOfferingWriteError(error) {
+  const msg = error?.message || "";
+  if (msg.includes("not_authorized")) return "You are not authorized to do this.";
+  if (msg.includes("reason_required")) return "A reason is required.";
+  if (msg.includes("not_found")) return "That record no longer exists.";
+  if (msg.includes("already_cancelled")) return "This offering is already cancelled.";
+  if (msg.includes("invalid_visibility")) return "Invalid visibility value.";
+  if (msg.includes("invalid_price")) return "Enter a whole number of cents (0 or more).";
+  if (msg.includes("invalid_capacity")) return "Capacity must be 0 or more (blank = uncapped).";
+  if (msg.includes("invalid_approval_status")) return "Invalid approval value.";
+  if (msg.includes("ai_description_empty")) return "The AI description can't be empty.";
+  if (msg.includes("invalid_place_name")) return "The place name can't be empty.";
+  if (msg.includes("invalid_address")) return "The address can't be empty.";
+  if (msg.includes("invalid_title")) return "The day title can't be empty.";
+  if (msg.includes("no_editable_fields")) return "No editable fields were provided.";
+  // Residual raw DB constraint codes surfaced to the modal (ORCH-1277 P3-a/P3-b):
+  if (msg.includes("trip_days_ordinal_check")) return "That position isn't valid — day order must stay 1 or higher.";
+  if (msg.includes("event_currency_required")) return "This offering needs a currency set before it can be published.";
+  return msg || "Something went wrong. Please try again.";
+}
+
+/** #1 — unpublish / republish an offering (HIGH). visibility ∈ public|discover|private|hidden|draft. */
+export function setOfferingVisibility(eventId, visibility, reason) {
+  return callAdminWriteRpc("admin_set_offering_visibility", {
+    p_event_id: eventId,
+    p_visibility: visibility,
+    p_reason: reason,
+  });
+}
+
+/** #2 — cancel an offering (HIGH, destructive). NO refund (money = ORCH-1274). */
+export function cancelOffering(eventId, reason) {
+  return callAdminWriteRpc("admin_cancel_offering", { p_event_id: eventId, p_reason: reason });
+}
+
+/** #3 — close / reopen bookings (HIGH). */
+export function setBookingsClosed(eventId, closed, reason) {
+  return callAdminWriteRpc("admin_set_offering_bookings_closed", {
+    p_event_id: eventId,
+    p_closed: closed,
+    p_reason: reason,
+  });
+}
+
+/** #4 — soft-delete / restore an offering (HIGH). */
+export function setOfferingDeleted(eventId, deleted, reason) {
+  return callAdminWriteRpc("admin_set_offering_deleted", {
+    p_event_id: eventId,
+    p_deleted: deleted,
+    p_reason: reason,
+  });
+}
+
+/** #5 — fix a mispriced ticket / trip tier (HIGH). priceCents = integer cents. */
+export function setTicketPrice(ticketTypeId, priceCents, reason) {
+  return callAdminWriteRpc("admin_set_ticket_price", {
+    p_ticket_type_id: ticketTypeId,
+    p_price_cents: priceCents,
+    p_reason: reason,
+  });
+}
+
+/** #6 — edit a trip itinerary day (HIGH). patch = whitelisted { title, narrative, date }. */
+export function updateTripDay(tripDayId, patch, reason) {
+  return callAdminWriteRpc("admin_update_trip_day", {
+    p_trip_day_id: tripDayId,
+    p_patch: patch,
+    p_reason: reason,
+  });
+}
+
+/** #7 — reorder a trip itinerary day (AUDIT-ONLY). reason optional. */
+export function reorderTripDay(tripDayId, newOrdinal, reason = null) {
+  return callAdminWriteRpc("admin_reorder_trip_day", {
+    p_trip_day_id: tripDayId,
+    p_new_ordinal: newOrdinal,
+    p_reason: reason,
+  });
+}
+
+/** #8 — edit / moderate an experience stop (HIGH). patch = { ai_description, place_name, address, start_time }. */
+export function updateExperienceStop(stopId, patch, reason) {
+  return callAdminWriteRpc("admin_update_experience_stop", {
+    p_stop_id: stopId,
+    p_patch: patch,
+    p_reason: reason,
+  });
+}
+
+/** #9 — remove an experience stop (HIGH, destructive — hard DELETE, no deleted_at column). */
+export function deleteExperienceStop(stopId, reason) {
+  return callAdminWriteRpc("admin_delete_experience_stop", { p_stop_id: stopId, p_reason: reason });
+}
+
+/** #10 — reorder an experience stop (AUDIT-ONLY). reason optional. */
+export function reorderExperienceStop(stopId, newOrder, reason = null) {
+  return callAdminWriteRpc("admin_reorder_experience_stop", {
+    p_stop_id: stopId,
+    p_new_order: newOrder,
+    p_reason: reason,
+  });
+}
+
+/** #11 — approve / deny an RSVP guest. deny = HIGH (reason required); approve = audit-only. */
+export function setRsvpApproval(rsvpId, approvalStatus, reason = null) {
+  return callAdminWriteRpc("admin_set_rsvp_approval", {
+    p_rsvp_id: rsvpId,
+    p_approval_status: approvalStatus,
+    p_reason: reason,
+  });
+}
+
+/** #12 — remove an RSVP guest (HIGH, destructive — cascades event_rsvp_guests). */
+export function removeRsvpGuest(rsvpId, reason) {
+  return callAdminWriteRpc("admin_remove_rsvp_guest", { p_rsvp_id: rsvpId, p_reason: reason });
+}
+
+/** #13 — adjust RSVP capacity / waitlist (HIGH). capacity = null → uncapped. */
+export function setRsvpCapacity(eventId, rsvpCapacity, waitlistEnabled, reason) {
+  return callAdminWriteRpc("admin_set_rsvp_capacity", {
+    p_event_id: eventId,
+    p_rsvp_capacity: rsvpCapacity,
+    p_waitlist_enabled: waitlistEnabled,
+    p_reason: reason,
+  });
 }

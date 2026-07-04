@@ -182,12 +182,19 @@ describe("ORCH-1273 — Offerings + Venues pages", () => {
       assert.ok(!offList.includes(forbidden), `no ${forbidden} in Offerings list`);
     }
   });
-  it("Offering detail is type-aware via EntityDetailView with an EMPTY actions slot", () => {
+  it("Offering detail is type-aware via EntityDetailView; wave-2 (ORCH-1277) adds audited actions but NO raw table writes", () => {
+    // [TEST-MOD-APPROVED ORCH-1277] The ORCH-1273 read-only "EMPTY actions slot"
+    // assertion is SUPERSEDED by ORCH-1277 [Admin Offerings console — WAVE-2 EDIT]:
+    // OfferingDetailView now passes an `actions` footer + reason/confirm modals
+    // (HighRiskActionModal for valueless HIGH actions). The read-only clause that
+    // SURVIVES — and is asserted below — is the raw-table-write ban: every mutation
+    // routes through the audited callAdminWriteRpc RPCs, never a direct .update/.insert/
+    // .delete/.upsert. (See I-PROPOSED-1277-OFFERINGS-WRITE-VIA-AUDITED-RPC.)
     assert.match(offDetail, /EntityDetailView/);
     assert.match(offDetail, /getOffering/);
-    assert.doesNotMatch(offDetail, /actions=\{/); // never passes actions → read-only
-    for (const forbidden of [".update(", ".insert(", ".delete(", ".upsert(", "HighRiskActionModal"]) {
-      assert.ok(!offDetail.includes(forbidden), `no ${forbidden} in Offering detail`);
+    assert.match(offDetail, /actions=\{/); // wave-2: carries the audited edit actions
+    for (const forbidden of [".update(", ".insert(", ".delete(", ".upsert("]) {
+      assert.ok(!offDetail.includes(forbidden), `no raw ${forbidden} in Offering detail (writes go via audited RPCs)`);
     }
   });
   it("Venues list + detail use the entity shells + the ?venueId= deep-link, no edits", () => {

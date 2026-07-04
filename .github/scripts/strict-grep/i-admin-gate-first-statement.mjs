@@ -78,6 +78,25 @@ const GUARDED_DEFINER_FNS = [
   "admin_annotate_dispute",
   "admin_grant_override_audited",
   "admin_revoke_override_audited",
+  // ORCH-1277 [Admin Offerings console — WAVE-2 EDIT]: the 16 audited offerings/venues
+  // write RPCs (#1–16). Each is_admin_user() guard MUST be the first statement.
+  // Reverting 20261209000000-1 removes these fns → this gate FAILS.
+  "admin_set_offering_visibility",
+  "admin_cancel_offering",
+  "admin_set_offering_bookings_closed",
+  "admin_set_offering_deleted",
+  "admin_set_ticket_price",
+  "admin_update_trip_day",
+  "admin_reorder_trip_day",
+  "admin_update_experience_stop",
+  "admin_delete_experience_stop",
+  "admin_reorder_experience_stop",
+  "admin_set_rsvp_approval",
+  "admin_remove_rsvp_guest",
+  "admin_set_rsvp_capacity",
+  "admin_update_venue_reservation_settings",
+  "admin_update_venue_capacity_rule",
+  "admin_set_reservation_status",
 ];
 
 function fnBody(src, name) {
@@ -208,7 +227,24 @@ if (process.argv.includes("--self-test")) {
           "begin if not public.is_admin_user() then raise exception 'not_authorized'; end if; return '{}'::jsonb; end; $$;\n",
       )
       .join("");
-  const reads = getPerson + offerings1273 + moneyFns + identity1276 + money1278;
+  // ORCH-1277: the 16 audited offerings/venues write RPCs — registered above (guard MUST
+  // be first). Included in the good/other-subject fixtures so the self-test isolates the
+  // intended violation instead of tripping on missing fns.
+  const offerings1277 = [
+    "admin_set_offering_visibility", "admin_cancel_offering", "admin_set_offering_bookings_closed",
+    "admin_set_offering_deleted", "admin_set_ticket_price", "admin_update_trip_day",
+    "admin_reorder_trip_day", "admin_update_experience_stop", "admin_delete_experience_stop",
+    "admin_reorder_experience_stop", "admin_set_rsvp_approval", "admin_remove_rsvp_guest",
+    "admin_set_rsvp_capacity", "admin_update_venue_reservation_settings",
+    "admin_update_venue_capacity_rule", "admin_set_reservation_status",
+  ]
+    .map(
+      (n) =>
+        `create or replace function public.${n}(p_id uuid) returns jsonb language plpgsql security definer as $$ ` +
+        "begin if not public.is_admin_user() then raise exception 'not_authorized'; end if; return '{}'::jsonb; end; $$;\n",
+    )
+    .join("");
+  const reads = getPerson + offerings1273 + moneyFns + identity1276 + money1278 + offerings1277;
 
   // GOOD: all guard-first.
   let f = [];

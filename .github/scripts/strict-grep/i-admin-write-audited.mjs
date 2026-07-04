@@ -49,6 +49,25 @@ const ADMIN_WRITE_RPCS = [
   "admin_annotate_dispute",
   "admin_grant_override_audited",
   "admin_revoke_override_audited",
+  // ORCH-1277 [Admin Offerings console — WAVE-2 EDIT]: the 16 audited offerings/venues
+  // write RPCs (#1–16). Each calls admin_write_audit with a before(/after) metadata
+  // object. Reverting 20261209000000-1 removes them → FAILS.
+  "admin_set_offering_visibility",
+  "admin_cancel_offering",
+  "admin_set_offering_bookings_closed",
+  "admin_set_offering_deleted",
+  "admin_set_ticket_price",
+  "admin_update_trip_day",
+  "admin_reorder_trip_day",
+  "admin_update_experience_stop",
+  "admin_delete_experience_stop",
+  "admin_reorder_experience_stop",
+  "admin_set_rsvp_approval",
+  "admin_remove_rsvp_guest",
+  "admin_set_rsvp_capacity",
+  "admin_update_venue_reservation_settings",
+  "admin_update_venue_capacity_rule",
+  "admin_set_reservation_status",
 ];
 
 // Slice a plpgsql function body (between the first `$$` pair after its def).
@@ -143,10 +162,30 @@ if (process.argv.includes("--self-test")) {
         "return '{}'::jsonb; end; $$;\n",
     )
     .join("");
+  // ORCH-1277: the 16 audited offerings/venues write RPCs — registered above, so include
+  // them in the good/other-subject fixtures (as 1272/1273/1274/1276 do) so the self-test
+  // isolates the intended violation instead of tripping on missing registry fns.
+  const offerings1277 = [
+    "admin_set_offering_visibility", "admin_cancel_offering", "admin_set_offering_bookings_closed",
+    "admin_set_offering_deleted", "admin_set_ticket_price", "admin_update_trip_day",
+    "admin_reorder_trip_day", "admin_update_experience_stop", "admin_delete_experience_stop",
+    "admin_reorder_experience_stop", "admin_set_rsvp_approval", "admin_remove_rsvp_guest",
+    "admin_set_rsvp_capacity", "admin_update_venue_reservation_settings",
+    "admin_update_venue_capacity_rule", "admin_set_reservation_status",
+  ]
+    .map(
+      (n) =>
+        `create or replace function public.${n}(p_id uuid) returns jsonb language plpgsql security definer as $$ ` +
+        "begin if not public.is_admin_user() then raise exception 'not_authorized'; end if; " +
+        "perform public.admin_write_audit('x','x',p_id::text,null,jsonb_build_object('before','{}'::jsonb)); " +
+        "return '{}'::jsonb; end; $$;\n",
+    )
+    .join("");
+  const registered = identity1276 + money1278 + offerings1277;
 
   // GOOD.
   let f = [];
-  check(helper + probe + identity1276 + money1278, f);
+  check(helper + probe + registered, f);
   if (f.length) self.push("good fixture wrongly flagged: " + f.join("; "));
 
   // BAD (revert primitive): helper + probe absent.
@@ -160,7 +199,7 @@ if (process.argv.includes("--self-test")) {
     "language plpgsql security definer as $$ begin if not public.is_admin_user() then " +
     "raise exception 'not_authorized'; end if; return null; end; $$;\n";
   f = [];
-  check(helper + probeNoAudit + identity1276 + money1278, f);
+  check(helper + probeNoAudit + registered, f);
   if (f.length === 0) self.push("un-audited probe not flagged");
 
   if (self.length) {
