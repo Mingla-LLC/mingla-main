@@ -195,18 +195,10 @@ jobs:
       - name: Run ORCH-1292 taxonomy-label ADVERSARIAL gate
         run: node .github/scripts/strict-grep/orch-1292-taxonomy-label-adversarial.mjs
 
-  orch-1285-create-lands-on-durable-deck-readiness:
-    name: "ORCH-1285: venue create tier-1 success lands on the durable /venue/deck-readiness route, not an ephemeral inline mount (I-PROPOSED-1285-CREATE-LANDS-ON-DURABLE-DECK-READINESS)"
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "20"
-      - name: Self-test the ORCH-1285 create-durable-deck-readiness gate
-        run: node .github/scripts/strict-grep/i-proposed-1285-create-lands-on-durable-deck-readiness.mjs --self-test
-      - name: Run ORCH-1285 create-durable-deck-readiness gate
-        run: node .github/scripts/strict-grep/i-proposed-1285-create-lands-on-durable-deck-readiness.mjs
+  # META-ORCH-1290 D-1: the ORCH-1285 create-durable-deck-readiness gate is
+  # RETIRED — D-1's single-submit deletes the create→deck-readiness nav that gate
+  # hard-required (the durable /venue/deck-readiness route survives only as
+  # Hub→Edit). Superseded by META-ORCH-1290; see DECISION_LOG at CLOSE.
 
   orch-1253-biz-location-purpose-string:
     name: "ORCH-1253: business iOS infoPlist declares NSLocationWhenInUseUsageDescription (fix ITMS-90683) (I-ORCH-1253-BIZ-LOCATION-PURPOSE-STRING)"
@@ -3812,3 +3804,21 @@ jobs:
         run: node .github/scripts/strict-grep/i-admin-gate-first-statement.mjs --self-test
       - name: Run ORCH-1277 offerings console edit happy-path regression
         run: node --test mingla-admin/src/__tests__/orch1277_offerings_console_edit.test.js
+
+  meta-orch-1290-venue-authoring-one-submission:
+    name: "META-ORCH-1290: no business signal scores pre-approve + pitch consumer-facing (I-PROPOSED-1290-NO-BUSINESS-SIGNAL-SCORES-PRE-APPROVE + I-PROPOSED-1290-PITCH-CONSUMER-FACING)"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      # Each gate self-tests (GOOD/BAD fixtures) then runs against the tree.
+      - name: Self-test the META-ORCH-1290 no-business-signal-scores-pre-approve gate
+        run: node .github/scripts/strict-grep/i-proposed-1290-no-business-signal-scores-pre-approve.mjs --self-test
+      - name: Run META-ORCH-1290 no-business-signal-scores-pre-approve gate
+        run: node .github/scripts/strict-grep/i-proposed-1290-no-business-signal-scores-pre-approve.mjs
+      - name: Self-test the META-ORCH-1290 pitch-consumer-facing gate
+        run: node .github/scripts/strict-grep/i-proposed-1290-pitch-consumer-facing.mjs --self-test
+      - name: Run META-ORCH-1290 pitch-consumer-facing gate
+        run: node .github/scripts/strict-grep/i-proposed-1290-pitch-consumer-facing.mjs
