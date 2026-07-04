@@ -261,6 +261,10 @@ export interface VenuePublicViewRow {
   default_currency: string | null;
   hours: unknown;
   pool_photo_urls: string[] | null;
+  // META-ORCH-1290(C) D-6b: the owner-authored pitch surfaced by M1 as
+  // `pp.generative_summary AS pitch` on `venue_public_view` (verified-only,
+  // anon-safe public-directory prose). Null when the owner wrote none.
+  pitch: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -289,6 +293,9 @@ export interface PublicVenue {
   defaultCurrency: string | null;
   hours: BrandHourEntry[];
   galleryPhotoUrls: string[];
+  // META-ORCH-1290(C) D-6b: the venue's public pitch (generative_summary).
+  // Null/empty → the public page omits the About section (honest, no filler).
+  pitch: string | null;
 }
 
 /** META-ORCH-1255(C) — one row of the brand page "Locations" section. */
@@ -776,6 +783,10 @@ export const venuePublicViewRowToPublicVenue = (
     profilePhotoUrl: null,
     poolPhotoUrls: row.pool_photo_urls,
   }),
+  // META-ORCH-1290(C) D-6b: pitch = generative_summary AS pitch (M1). The
+  // resolve query already selects "*", so the column arrives without a query
+  // change; null-normalize so an empty string never renders an empty section.
+  pitch: asStringOrNull(row.pitch),
 });
 
 /**
