@@ -7,6 +7,18 @@
 
 ---
 
+## ACTIVE — ORCH-1303 (RSVP momentum loop no longer starves the web InteractionManager queue, 2026-07-04)
+
+> Registered directly ACTIVE at ORCH-1303 CLOSE (SHIPPED; merged squash `cc47cf937` / PR #773 `[deploy]`; web via Vercel; native unchanged). Root proven in the real react-native-web engine (`Mingla_Artifacts/evidence/ORCH-1303/im_starvation_probe.js` — current config starves the queue, the fix drains it). ⚠️ SHARED ORCH-1303 with the parallel session's `[web-cover-video-uri]` fix (distinct gate `orch-1303-web-cover-video-uri.mjs`; both jobs coexist) — COMMS-0076. Cross-ref `reports/IMPLEMENTATION_ORCH-1303_RSVP_IM_STARVATION.md` + `reports/INVESTIGATION_ORCH-1303_RSVP_IM_STARVATION.md`.
+
+### I-1303-RSVP-LOOP-NO-INTERACTION-HANDLE (ACTIVE)
+- **Rule:** any never-ending `Animated.loop` / decorative looping `Animated.timing`/`spring` on the RSVP shared-body (`packages/offering-rendering/RsvpMomentumDecision.tsx`, `RsvpOfferingBody.tsx`, `RsvpChipInPanel.tsx`) MUST carry `isInteraction: false`. On react-native-web `useNativeDriver:true` is nullified, so a looping timing without `isInteraction:false` defaults `isInteraction` TRUE and holds an `InteractionManager` handle open forever → `runAfterInteractions` never drains page-wide on web (this is the root that froze the ORCH-1299/1300 guest phone-picker). `isInteraction` is scheduling-only — the animation is visually identical.
+- **Enforcement:** strict-grep gate `.github/scripts/strict-grep/orch-1303-rsvp-loop-interaction-handle.mjs` (comment-stripped, `--self-test` 8/8, job `orch-1303-rsvp-loop-interaction-handle` in `strict-grep-mingla-business.yml`; the ADVERSARIAL rule fails CI if a new flagless looping Animated appears in any of the 3 RSVP shared-body files) + Deno probe test `packages/offering-rendering/__tests__/orch1303_im_starvation.test.ts` (RNW engine: fix drains / revert starves).
+- **Fails-on-revert:** removing `isInteraction:false` from the pulse loop or meter timing → the gate exits 1 AND the probe test fails (proven at `656782cdf`).
+- **Established:** ACTIVE 2026-07-04 at ORCH-1303 CLOSE.
+
+---
+
 ## ACTIVE — Chip-In program (RSVP voluntary gift contributions, 2026-07-04)
 
 > Registered directly ACTIVE at the Chip-In program CLOSE (SHIPPED + LIVE + Seth-verified incl. real-device mobile-WebKit; ORCH-1291 + 1295–1300, merged PRs #749/#751/#754/#755/#756/#759/#762; backend live on prod `gqnoajqerqhnvulmnyvv`; web via Vercel `[deploy]`; native rides the next build — OTA frozen COMMS-0047/0052). House style strips the `I-PROPOSED-` prefix on activation (gate FILENAMES keep their on-disk names). ⚠️ ID-COLLISION (COMMS-0073): ORCH-1291 + 1295–1300 are shared with the parallel Bunny/venue session — disambiguate by bracket-label; the chip-in gates (`orch-1297-chipin-banner-opaque`, `i-proposed-1298-chip-in-receipt-enqueue`, `orch-1299-rsvp-phone-picker-overlay`, `orch-1300-rsvp-phone-picker-mobile-portal`, + the ORCH-1291 SQL wall + engine-guard tests) are all distinct on-disk from the Bunny/venue gates. Cross-ref `reports/IMPLEMENTATION_ORCH-1291_RSVP_CHIP_IN.md` (+ 1295/1296/1298/1299/1300 impl reports) + `specs/SPEC_ORCH-1291_RSVP_CHIP_IN.md`.
