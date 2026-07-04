@@ -250,12 +250,17 @@ export const RsvpMomentumDecision: React.FC<RsvpMomentumDecisionProps> = ({
   const momentum = deriveMomentum(goingCount, capacity);
 
   // Kicker dot pulse (1.8s) + meter fill width transition (0.5s ease) — subtle.
+  // isInteraction:false — a looping/animating timing on the RSVP page must NOT hold an
+  // InteractionManager handle, or runAfterInteractions starves page-wide on web: react-native-web
+  // nullifies useNativeDriver (no native module) → isInteraction defaults TRUE → the never-ending
+  // loop keeps a handle open forever and the interaction queue never drains. isInteraction is
+  // scheduling-only (NOT visual) — the pulse looks identical. Ref ORCH-1299/1300/1303.
   const pulse = useRef(new Animated.Value(0)).current;
   useEffect(() => {
     const loop = Animated.loop(
       Animated.sequence([
-        Animated.timing(pulse, { toValue: 1, duration: 900, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
-        Animated.timing(pulse, { toValue: 0, duration: 900, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
+        Animated.timing(pulse, { toValue: 1, duration: 900, easing: Easing.inOut(Easing.ease), useNativeDriver: true, isInteraction: false }),
+        Animated.timing(pulse, { toValue: 0, duration: 900, easing: Easing.inOut(Easing.ease), useNativeDriver: true, isInteraction: false }),
       ]),
     );
     loop.start();
@@ -271,6 +276,11 @@ export const RsvpMomentumDecision: React.FC<RsvpMomentumDecisionProps> = ({
       duration: 500,
       easing: Easing.out(Easing.ease),
       useNativeDriver: false,
+      // isInteraction:false — this timing re-fires on every going-count change; without it each
+      // run holds a ~500ms InteractionManager handle (useNativeDriver:false ⇒ isInteraction TRUE
+      // on ALL platforms), transiently re-starving runAfterInteractions. Scheduling-only, not
+      // visual — the meter fill is identical. Ref ORCH-1303.
+      isInteraction: false,
     }).start();
   }, [meterWidth, momentum.meterPercent]);
   const meterFillWidth = meterWidth.interpolate({
