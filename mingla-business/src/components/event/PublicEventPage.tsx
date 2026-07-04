@@ -739,6 +739,10 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
           Phone
         </Text>
         <PhoneInput
+          // ORCH-1299 — this RSVP phone field renders inside RsvpDetailsModal (a
+          // portal <Modal>). The default nested-<Modal> country picker freezes on
+          // web, so use the in-place overlay picker (web-only; native keeps modal).
+          pickerPresentation="overlay"
           value={localDigits}
           countryCode={countryCode}
           onChangePhone={(next: string) => {

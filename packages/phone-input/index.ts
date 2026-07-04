@@ -13,6 +13,8 @@ export {
   CountryPickerModal,
   CountryPickerOverlay,
 } from "./CountryPickerModal";
+export { resolvePickerPresentation } from "./pickerPresentation";
+export type { PhoneInputPickerPresentation } from "./pickerPresentation";
 export {
   COUNTRIES,
   getCountryByCode,

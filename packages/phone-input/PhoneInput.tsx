@@ -33,8 +33,12 @@ import {
   type ViewStyle,
 } from "react-native";
 
-import { CountryPickerModal } from "./CountryPickerModal";
+import { CountryPickerModal, CountryPickerOverlay } from "./CountryPickerModal";
 import { getCountryByCode } from "./countries";
+import {
+  resolvePickerPresentation,
+  type PhoneInputPickerPresentation,
+} from "./pickerPresentation";
 import type {
   IconRenderer,
   PhoneInputLabels,
@@ -67,6 +71,17 @@ export interface PhoneInputProps {
   theme?: PhoneInputTheme;
   /** iOS phone-pad has no native return key; hosts can opt out of the accessory toolbar. */
   showDoneAccessory?: boolean;
+  /**
+   * Which country-picker surface to render. Default `'modal'` — a nested RN
+   * <Modal> (CountryPickerModal), used by the standalone buyer-checkout form.
+   *
+   * Pass `'overlay'` when this PhoneInput itself lives INSIDE another <Modal>
+   * (e.g. the RSVP details modal): on react-native-web a <Modal> nested in a
+   * <Modal> never opens, freezing the picker (ORCH-1299 dead-tap). `'overlay'`
+   * renders CountryPickerOverlay (an in-place fixed-fill picker) on web instead.
+   * Native keeps the modal either way (a nested <Modal> works on native RN).
+   */
+  pickerPresentation?: PhoneInputPickerPresentation;
 }
 
 export const PhoneInput: React.FC<PhoneInputProps> = ({
@@ -80,9 +95,14 @@ export const PhoneInput: React.FC<PhoneInputProps> = ({
   labels,
   theme,
   showDoneAccessory = true,
+  pickerPresentation = "modal",
 }) => {
   const [focused, setFocused] = useState(false);
   const [pickerVisible, setPickerVisible] = useState(false);
+  // ORCH-1299 — resolve the effective picker surface once. `'overlay'` only
+  // takes effect on web (nested-<Modal> freeze); native always keeps the modal.
+  const usePickerOverlay =
+    resolvePickerPresentation(pickerPresentation, Platform.OS) === "overlay";
   const shakeAnim = useRef(new Animated.Value(0)).current;
   const prevError = useRef<string | null>(null);
 
@@ -137,6 +157,18 @@ export const PhoneInput: React.FC<PhoneInputProps> = ({
   const handleOpenPicker = useCallback((): void => {
     if (disabled) return;
     Keyboard.dismiss();
+    // ORCH-1299 — the ACTUAL dead-tap fix (runtime-proven). On web, DO NOT defer
+    // opening the picker behind InteractionManager.runAfterInteractions: the RSVP
+    // public page holds a long-running Animated interaction handle (a looping
+    // animation), so runAfterInteractions NEVER fires — its callback is queued
+    // forever and setPickerVisible(true) never runs, so the picker (CountryPicker
+    // Modal OR CountryPickerOverlay) never mounts. `Keyboard.dismiss()` is a no-op
+    // on web, so there is nothing to wait for. Native keeps the defer (it exists
+    // for Android keyboard-dismiss timing before the full-screen picker slides in).
+    if (Platform.OS === "web") {
+      setPickerVisible(true);
+      return;
+    }
     InteractionManager.runAfterInteractions(() => {
       setPickerVisible(true);
     });
@@ -228,15 +260,28 @@ export const PhoneInput: React.FC<PhoneInputProps> = ({
       {error ? <Text style={errorTextStyle}>{error}</Text> : null}
 
       {pickerVisible ? (
-        <CountryPickerModal
-          visible={pickerVisible}
-          selectedCode={countryCode}
-          onSelect={handleCountrySelect}
-          onClose={() => setPickerVisible(false)}
-          iconRenderer={iconRenderer}
-          labels={labels}
-          theme={theme}
-        />
+        usePickerOverlay ? (
+          // ORCH-1299 — in-place overlay (NOT a nested <Modal>) for the RSVP
+          // details-modal context, where a nested <Modal> freezes on web.
+          <CountryPickerOverlay
+            selectedCode={countryCode}
+            onSelect={handleCountrySelect}
+            onClose={() => setPickerVisible(false)}
+            iconRenderer={iconRenderer}
+            labels={labels}
+            theme={theme}
+          />
+        ) : (
+          <CountryPickerModal
+            visible={pickerVisible}
+            selectedCode={countryCode}
+            onSelect={handleCountrySelect}
+            onClose={() => setPickerVisible(false)}
+            iconRenderer={iconRenderer}
+            labels={labels}
+            theme={theme}
+          />
+        )
       ) : null}
 
       {Platform.OS === "ios" && showDoneAccessory ? (
