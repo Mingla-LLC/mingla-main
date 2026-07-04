@@ -160,6 +160,8 @@ on:
 #   - I-PROPOSED-1298-CHIP-IN-RECEIPT-ENQUEUE (i-proposed-1298-chip-in-receipt-enqueue.mjs) — a paid chip-in enqueues a guest gift-receipt + host gift-received notification, once, both rails, idempotently: (a) the ORCH-1298 migration that CREATE-OR-REPLACEs finalize_rsvp_contribution INSERTs INTO public.notification_outbox with `chip_in_receipt:` idempotency keys for BOTH the guest (`:guest`) and a host recipient (`:host`), each ON CONFLICT (idempotency_key) DO NOTHING; (b) the same migration seeds BOTH categories (buyer_contribution_receipt + business.rsvp_contribution_received) and neither seeds an `sms` channel (DC-3 / I-PROPOSED-1161 closed SMS set); (c) _shared/notifyTemplates.ts has a renderCategoryMessage case for BOTH keys and neither case body contains tax/invoice/VAT gift-breaking language; comment-stripped; self-tested 7/7 + fails-on-revert (ORCH-1298 — DRAFT until CLOSE)
 #   - I-PROPOSED-1299-RSVP-PHONE-PICKER-OVERLAY (orch-1299-rsvp-phone-picker-overlay.mjs) — the RSVP guest phone country-picker (inside RsvpDetailsModal, a portal <Modal>) opens on web via CountryPickerOverlay instead of the nested <Modal> that freezes on react-native-web: (A) pickerPresentation.ts::resolvePickerPresentation returns 'overlay' ONLY for (presentation === "overlay" && platformOS === "web"); (B) PhoneInput.tsx drives the choice through resolvePickerPresentation and renders BOTH <CountryPickerOverlay> (overlay branch) and <CountryPickerModal> (default branch); (C) PublicEventPage.tsx's RSVP <PhoneInput> passes pickerPresentation="overlay"; (D) the 3 buyer-checkout PhoneInput hosts do NOT pass overlay (standalone pages keep the nested-<Modal> picker); (E) CountryPickerOverlay pins position:'fixed' on web so it covers the details modal, not PhoneInput's 56px box; comment-stripped; self-tested 10/10 + fails-on-revert (ORCH-1299 — DRAFT until CLOSE)
 #   - I-PROPOSED-1300-RSVP-PHONE-PICKER-MOBILE-PORTAL (orch-1300-rsvp-phone-picker-mobile-portal.mjs) — ORCH-1299's position:'fixed' overlay stayed broken on real MOBILE web because it renders INLINE under the RSVP page's Animated transform ancestors, so mobile WebKit resolves 'fixed' against a transformed ancestor (measured y=-683, off-screen) not the viewport. FIX portals the overlay to document.body: (A) CountryPickerModal.tsx imports WebOverlayPortal and wraps the fixed <View style={overlayStyle...}> in <WebOverlayPortal>…</WebOverlayPortal>; (B) WebOverlayPortal.web.tsx imports { createPortal } from "react-dom" and calls createPortal(children, document.body); (C) WebOverlayPortal.tsx (NATIVE build) references NO react-dom (Metro keeps the web-only dep out of the native bundle); (D) CountryPickerModal.tsx still pins position:'fixed' on web; comment-stripped; self-tested 7/7 + fails-on-revert (ORCH-1300 — DRAFT until CLOSE)
+#   - ORCH-1297 TUS-PATCH-AUTH-HEADERS (orch-1297-tus-patch-carries-auth-headers.mjs) [ORCH-1301 close-hardening for META-ORCH-1270 Bunny migration; NOT the chip-in ORCH-1297] — the Bunny resumable (TUS) PATCH in eventCoverVideoProcessingService.ts::uploadEventCoverVideoSourceViaTus must re-send the CREATE-time auth headers or Bunny rejects the byte upload with 400 "Library ID missing or invalid": the `patchHeaders` object must (A) spread `...input.upload.fields` (AuthorizationSignature/AuthorizationExpire/LibraryId/VideoId), (B) carry `Upload-Offset`, (C) carry `Content-Type: application/offset+octet-stream`, (D) carry `Tus-Resumable`. Comment-stripped + scoped to the patchHeaders object body; npm-wiring self-check (test:orch-1297); self-tested 4/4 + fails-on-revert (ORCH-1301 — DRAFT until CLOSE)
+#   - ORCH-1298 COVER-PREVIEW-VIDEO-CAPABLE (orch-1298-cover-preview-video-capable.mjs) [ORCH-1301 close-hardening for META-ORCH-1270; NOT the chip-in ORCH-1298] — BrandEditView.tsx AND TripPreview.tsx must render the cover through the video-capable EventCoverMedia (image/gif/video/empty), never a raw Image/ExpoImage/RNImage sourced from the cover URL: per file (A) imports EventCoverMedia, (B) binds a cover via `mediaUrl={…coverMediaUrl}`, (C) has NO `source={{ uri: …coverMediaUrl }}` raw-image cover path. Scoped so the per-day GALLERY Image (source={{ uri: m.url }}) is not tripped; comment-stripped; npm-wiring self-check (test:orch-1298); self-tested 4/4 + fails-on-revert (ORCH-1301 — DRAFT until CLOSE)
 #
 # Future gates to register (proposed but not yet implemented):
 #   - I-32 rank parity (Cycle 13a proposal)
@@ -250,6 +252,35 @@ jobs:
         run: node .github/scripts/strict-grep/orch-1300-rsvp-phone-picker-mobile-portal.mjs --self-test
       - name: Run ORCH-1300 rsvp-phone-picker-mobile-portal gate
         run: node .github/scripts/strict-grep/orch-1300-rsvp-phone-picker-mobile-portal.mjs
+
+  # ORCH-1301 [close-hardening for META-ORCH-1270 Bunny migration] — two
+  # tester-adversarial CI gates protecting the shipped + device-verified Bunny
+  # video-cover fixes (distinct from the chip-in ORCH-1297/1298 gates above).
+  orch-1297-tus-patch-auth-headers:
+    name: "ORCH-1297 (ORCH-1301 hardening): Bunny TUS PATCH re-sends its CREATE auth headers (spread ...input.upload.fields) + Upload-Offset/Content-Type/Tus-Resumable — else Bunny 400 'Library ID missing or invalid'"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Self-test the ORCH-1297 tus-patch-auth-headers gate
+        run: node .github/scripts/strict-grep/orch-1297-tus-patch-carries-auth-headers.mjs --self-test
+      - name: Run ORCH-1297 tus-patch-auth-headers gate
+        run: node .github/scripts/strict-grep/orch-1297-tus-patch-carries-auth-headers.mjs
+
+  orch-1298-cover-preview-video-capable:
+    name: "ORCH-1298 (ORCH-1301 hardening): brand-edit + trip-review cover previews render via video-capable EventCoverMedia, never a raw Image on coverMediaUrl (a video cover mp4 must not reach an Image)"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Self-test the ORCH-1298 cover-preview-video-capable gate
+        run: node .github/scripts/strict-grep/orch-1298-cover-preview-video-capable.mjs --self-test
+      - name: Run ORCH-1298 cover-preview-video-capable gate
+        run: node .github/scripts/strict-grep/orch-1298-cover-preview-video-capable.mjs
 
   # META-ORCH-1290 D-1: the ORCH-1285 create-durable-deck-readiness gate is
   # RETIRED — D-1's single-submit deletes the create→deck-readiness nav that gate
