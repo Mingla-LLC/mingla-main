@@ -1025,6 +1025,12 @@ export const uploadEventCoverVideoSourceViaTus = async (input: {
   }
   const patchUrl = resolveTusLocation(input.upload.url, location);
   const patchHeaders = {
+    // ORCH-1297 — Bunny's TUS PATCH requires the SAME auth headers as the CREATE
+    // (AuthorizationSignature / AuthorizationExpire / LibraryId / VideoId).
+    // Without them the PATCH returns 400 "Library ID missing or invalid".
+    // Spread the auth fields FIRST so the explicit TUS headers below win on any
+    // key collision. Both legs (native expo/fetch + web XHR) consume patchHeaders.
+    ...input.upload.fields,
     "Content-Type": "application/offset+octet-stream",
     "Tus-Resumable": "1.0.0",
     "Upload-Offset": "0",
