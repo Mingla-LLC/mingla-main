@@ -336,6 +336,98 @@ export async function refreshDeckReadiness(input: {
   );
 }
 
+// META-ORCH-1290 Leg B (D-3/D-5) — the true current pitch for the listing page.
+// `get_authoring_context` returns only the AI-generated bio; the owner-authored
+// pitch lives in `place_pool.generative_summary` (live) or the staged
+// `business_authoring_inputs.tier1.description` (pending). Read both so the
+// listing seeds the real pitch, not a stale generated one. RLS SELECT is open to
+// authenticated (`authenticated_read_place_pool`).
+export interface VenuePitchSource {
+  generativeSummary: string | null;
+  tier1Description: string | null;
+}
+
+export async function fetchVenuePitchSource(
+  placePoolId: string,
+): Promise<VenuePitchSource> {
+  const { data, error } = await supabase
+    .from("place_pool")
+    .select("generative_summary, business_authoring_inputs")
+    .eq("id", placePoolId)
+    .maybeSingle();
+  if (error !== null) throw error;
+  const row = (data ?? null) as {
+    generative_summary?: string | null;
+    business_authoring_inputs?: { tier1?: { description?: unknown } } | null;
+  } | null;
+  const t1 = row?.business_authoring_inputs?.tier1;
+  const desc =
+    t1 !== null &&
+    t1 !== undefined &&
+    typeof t1 === "object" &&
+    typeof (t1 as { description?: unknown }).description === "string"
+      ? (t1 as { description: string }).description
+      : null;
+  return {
+    generativeSummary:
+      typeof row?.generative_summary === "string"
+        ? row.generative_summary
+        : null,
+    tier1Description: desc,
+  };
+}
+
+/**
+ * META-ORCH-1290 Leg B (D-3, F-13) — the venue owner edits the pitch on the
+ * listing/management page. The SPEC's preferred mechanism was a backend
+ * `update_pitch` action; Leg A did NOT ship it and Leg B is barred from
+ * supabase/functions, so this uses the RLS-permitted owner UPDATE on place_pool
+ * (policy `place_pool_business_owner_update` — brand-author / venue-manager+ /
+ * claimed_by; `GRANT ALL ON place_pool TO authenticated`). See the
+ * IMPLEMENTATION report §Deviations.
+ *   - LIVE (verified): write `generative_summary` directly → the Sub-D
+ *     AFTER-UPDATE trigger re-queues the 16-signal eval (SC-6) and the pitch
+ *     goes public immediately.
+ *   - PENDING: write ONLY the STAGED pitch
+ *     (`business_authoring_inputs.tier1.description`) — never a serving column
+ *     pre-approve (I-1263-NO-LIVE-PLACE-MUTATION-PRE-APPROVE). authoredApply
+ *     applies it to generative_summary at approve (SC-5).
+ */
+export async function updateVenuePitch(input: {
+  placePoolId: string;
+  pitch: string;
+  isLive: boolean;
+}): Promise<void> {
+  const pitch = input.pitch.trim();
+  if (input.isLive) {
+    const { error } = await supabase
+      .from("place_pool")
+      .update({ generative_summary: pitch.length > 0 ? pitch : null })
+      .eq("id", input.placePoolId);
+    if (error !== null) throw error;
+    return;
+  }
+  const { data, error: readErr } = await supabase
+    .from("place_pool")
+    .select("business_authoring_inputs")
+    .eq("id", input.placePoolId)
+    .maybeSingle();
+  if (readErr !== null) throw readErr;
+  const inputs = ((data as {
+    business_authoring_inputs?: Record<string, unknown> | null;
+  } | null)?.business_authoring_inputs ?? {}) as Record<string, unknown>;
+  const tier1 =
+    typeof inputs.tier1 === "object" && inputs.tier1 !== null
+      ? (inputs.tier1 as Record<string, unknown>)
+      : {};
+  const nextInputs = { ...inputs, tier1: { ...tier1, description: pitch } };
+  const { error: writeErr } = await supabase
+    .from("place_pool")
+    .update({ business_authoring_inputs: nextInputs })
+    .eq("id", input.placePoolId);
+  if (writeErr !== null) throw writeErr;
+}
+
 export async function fetchBrandPlaceAuthoringContext(input: {
   brandId: string;
   placePoolId: string;

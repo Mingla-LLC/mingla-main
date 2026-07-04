@@ -28,13 +28,23 @@ export interface VenueWizardStep {
   prefilled?: boolean;
 }
 
+// META-ORCH-1290 Leg B (D-1) — the folded ONE-submission create wizard. Create
+// now collects everything the post-submit deck-readiness leg used to (photos,
+// cover, price) so submit lands the owner on the management page "In review"
+// with NO second leg. The map mirrors claim (converge-to-claim, DESIGN §2.1);
+// the only re-order vs claim is Contact (s5) BEFORE Pitch (s6) so the pitch can
+// read the just-entered website. Category is chosen at the pre-wizard gate.
 const CREATE_STEPS: readonly VenueWizardStep[] = [
   { id: "s0", label: "Address" },
   { id: "s1", label: "Name" },
   { id: "s2", label: "Hours" },
-  { id: "s3", label: "Contact" },
-  { id: "s4", label: "Inputs" },
-  { id: "s5", label: "Review" },
+  { id: "s3", label: "Photos" },
+  { id: "s4", label: "Cover" },
+  { id: "s5", label: "Contact" },
+  { id: "s6", label: "Pitch" },
+  { id: "s7", label: "Price" },
+  { id: "s8", label: "Bookings" },
+  { id: "s9", label: "Review" },
 ];
 
 const CLAIM_STEPS: readonly VenueWizardStep[] = [
@@ -97,7 +107,9 @@ export function venueStepError(
   d: DraftVenueState,
 ): string | null {
   switch (stepId) {
-    // ── create path (rules unchanged except D-D in hoursError) ─────────────
+    // ── create path — META-ORCH-1290 Leg B folded 10-step map (mirrors claim,
+    //    SPEC §4.3.A). s3 Photos / s4 Cover / s5 Contact / s6 Pitch / s7 Price
+    //    / s8 Bookings mirror claim c3/c4/c6/c5/c7/c8 exactly. ─────────────
     case "s0":
       if (d.formattedAddress.trim().length === 0) return "Address is required.";
       if (d.lat === null || d.lng === null) return "Address is missing location.";
@@ -109,22 +121,50 @@ export function venueStepError(
     }
     case "s2":
       return hoursError(d.hours);
-    case "s3": {
+    case "s3":
+      // Mirror claim c3: GALLERY_MIN (≥5) is enforced at go-live/approve, NOT
+      // at submit (SPEC §4.3.A / OQ-7 converge-to-claim). The counter shows
+      // "≥5 to go live"; the step never hard-blocks.
+      return null;
+    case "s4":
+      // Mirror claim c4: the cover is THE one mandatory decision.
+      return d.coverChoice == null ? "Pick a cover to continue" : null;
+    case "s5": {
+      // Mirror claim c6: email OR phone required; phone must compose to E.164;
+      // website optional but URL-shaped.
       const em = d.contactEmail.trim();
       const ph = d.contactPhone.trim();
       if (em.length === 0 && ph.length === 0) {
         return "Add an email or phone number.";
       }
-      return null;
-    }
-    case "s4": {
-      const bio = d.description.trim();
-      if (bio.length < 20) {
-        return "Description must be at least 20 characters.";
+      if (
+        ph.length > 0 &&
+        composeE164(c6DialCode(d.contactPhoneCountryIso), ph) === null
+      ) {
+        return "That phone number doesn't look right — check it.";
+      }
+      const web = d.website.trim();
+      if (web.length > 0 && !looksLikeUrl(web)) {
+        return "That website doesn't look like a link — check it.";
       }
       return null;
     }
-    case "s5":
+    case "s6": {
+      // Mirror claim c5: the pitch may be EMPTY (AI drafts it after review, or
+      // the owner writes it later on the listing). Entered text needs ≥20.
+      const bio = d.description.trim();
+      if (bio.length === 0) return null;
+      if (bio.length < 20) {
+        return "Your pitch needs at least 20 characters — or clear it for now.";
+      }
+      return null;
+    }
+    case "s7":
+      // Mirror claim c7: at least one price range.
+      return d.priceTiers.length === 0 ? "Pick at least one price range." : null;
+    case "s8":
+      return null; // Bookings — off is a valid keep; never blocks (mirror c8).
+    case "s9":
       return null; // Review — submit handled separately
 
     // ── claim path (ORCH-1263 §B4) ──────────────────────────────────────────

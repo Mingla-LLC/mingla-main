@@ -53,6 +53,7 @@ import { useCreateVenueListing } from "../../hooks/useVenueListings";
 import { useCurrentBrand } from "../../hooks/useCurrentBrand";
 import {
   fetchVenuePipelineState,
+  syncGallery,
   upsertTier1Place,
 } from "../../services/businessPlaceAuthoringService";
 import {
@@ -60,9 +61,11 @@ import {
   findOwnListingForPlace,
 } from "../../services/venueListingsService";
 import { sanitizeAuthoringError } from "../../utils/sanitizeAuthoringError";
-// ORCH-1285 — the create post-submit leg lands on the DURABLE deck-readiness
-// route (same builder the Hub "Edit listing" recovery path uses).
-import { routeForDeckReadinessFix } from "../../utils/deckReadinessRoutes";
+// META-ORCH-1290 Leg B (D-1) — the create post-submit deck-readiness NAV is
+// RETIRED: create is now ONE folded submission that lands directly on the
+// management page "In review" (the durable-route builder import is gone). The
+// durable /venue/deck-readiness route SURVIVES as the Hub→Edit surface
+// (VenueListingContent.handleEdit) — it is just no longer a create step.
 import { useDraftVenueStore } from "../../store/draftVenueStore";
 import {
   claimDockLabel,
@@ -75,19 +78,21 @@ import {
 import { Button } from "../ui/Button";
 import { IconChrome } from "../ui/IconChrome";
 import { Stepper, type StepperStep } from "../ui/Stepper";
-// ORCH-1285 — the wizard NO LONGER imports/mounts VenueDeckReadinessSetup: the
-// create post-submit leg used to render it inline from ephemeral `createdVenue`
-// state, which unmounted on any one-frame /venue/create re-resolution on web
-// (auth/hydration/chunk reflow) and stranded the venue at 'processing'. Create
-// success now `router.replace`s to the durable app/venue/deck-readiness.tsx
-// route (server-state-reloading), so the setup module is consumed there ONLY —
-// which also keeps it out of this wizard's chunk (ORCH-1083 web bundle budget).
+// META-ORCH-1290 Leg B (D-1) — the wizard NEVER mounts VenueDeckReadinessSetup:
+// create now collects photos/cover/price/pitch IN the folded wizard (steps
+// below) and submit lands on the management page. The deck-readiness module
+// lives ONLY on the durable Hub→Edit route now.
 import { VenueStep1Address } from "./VenueStep1Address";
 import { VenueStep2NameSlug } from "./VenueStep2NameSlug";
 import { VenueStep4Hours } from "./VenueStep4Hours";
-import { VenueStep5Contact } from "./VenueStep5Contact";
-import { VenueStep6Description } from "./VenueStep6Description";
 import { VenueStep7Review } from "./VenueStep7Review";
+// META-ORCH-1290 Leg B — the folded create wizard reuses the claim step
+// components (Contact/Price/Bookings share top-level draft fields; provenance
+// chips resolve to null in create mode) + two new create-specific steps for
+// the photo gallery + cover, and the shared VenuePitchField for the pitch.
+import { VenuePhotosStep } from "./VenuePhotosStep";
+import { VenueCoverStep } from "./VenueCoverStep";
+import { VenuePitchField } from "./VenuePitchField";
 import { ClaimAdoptionBanner } from "./claim/ClaimAdoptionBanner";
 import { ClaimStepBookings } from "./claim/ClaimStepBookings";
 import { ClaimStepCategory } from "./claim/ClaimStepCategory";
@@ -282,7 +287,11 @@ export const VenueCreatorWizard: React.FC<VenueCreatorWizardProps> = ({
       setShowErr(false);
 
       const claim = st.claim;
-      const coverChoice = claim?.coverChoice ?? null;
+      // META-ORCH-1290 Leg B — the folded create wizard collects the cover in
+      // step s4 (top-level `coverChoice`); claim keeps its own under `claim`.
+      const coverChoice = claim?.coverChoice ?? st.coverChoice ?? null;
+      // create s3 gallery (claim carries its own kept+added set).
+      const createGalleryUrls = st.galleryUrls ?? [];
 
       // ORCH-1263 D-C/R-7 (DESIGN §8.3) — half-claim RESUME-NOT-RECREATE: when
       // an own listing row already exists for this place, never re-insert.
@@ -370,16 +379,26 @@ export const VenueCreatorWizard: React.FC<VenueCreatorWizardProps> = ({
           venueCategory: st.venueCategory,
           coverMediaUrl: coverChoice?.url ?? null,
           coverMediaType: coverChoice?.type ?? null,
+          // META-ORCH-1290 D-4 — tagline collapsed into the single Pitch field;
+          // the wizard no longer collects a tagline (vestigial empty string).
           tagline: st.tagline.trim(),
           description: st.description.trim(),
           hours: st.hours,
-          // ORCH-1263 §B4.3 — claim payload deltas (Leg A §A3.1 reads these
-          // into the STAGING columns; create path leaves them undefined).
+          // META-ORCH-1290 Leg B (D-1) — the folded create wizard now collects
+          // website/price/gallery too, so the CREATE branch passes them as well
+          // (Leg A §A3.1 stage payload reads website/priceTiers → tier2 seed,
+          // adoptedGalleryUrls → business_gallery_urls when the place row is a
+          // linked/seeded pool). A pure create-from-scratch INSERT stages the
+          // draft blob only, so submit ALSO calls syncGallery below.
+          website: st.website.trim() || null,
+          priceTiers: st.priceTiers,
+          adoptedGalleryUrls:
+            claimMode && claim !== null
+              ? claim.keptGalleryUrls
+              : createGalleryUrls,
+          // adoption provenance is claim-only (create has nothing to adopt).
           ...(claimMode && claim !== null
             ? {
-                website: st.website.trim() || null,
-                priceTiers: st.priceTiers,
-                adoptedGalleryUrls: claim.keptGalleryUrls,
                 adoption: {
                   source: "place_pool" as const,
                   adoptedAt: claim.adoptedAt,
@@ -402,27 +421,29 @@ export const VenueCreatorWizard: React.FC<VenueCreatorWizardProps> = ({
         return;
       }
 
-      // ORCH-1285 — create tier-1 success lands on the DURABLE, server-state-
-      // reloading deck-readiness route — the SAME route the Hub "Edit listing"
-      // recovery path uses (VenueListingContent handleEdit) — NOT an ephemeral
-      // inline mount held in this component's transient state. The old inline
-      // `createdVenue` leg was multiply-gated on volatile auth/hydration/brand
-      // signals, so any one-frame /venue/create re-resolution on web tore it
-      // down and stranded the venue at business_authoring_status='processing'
-      // with no in-session way back. Addressing the screen by URL params +
-      // reloading from the server makes the landing trigger-agnostic.
-      // Clear THIS brand's persisted draft FIRST so the next "Create venue
-      // listing" starts clean (per-brand store v2 — other brands untouched),
-      // THEN replace-navigate so Back can't return to the blanked wizard.
+      // META-ORCH-1290 Leg B (D-1) — the create post-submit deck-readiness leg
+      // is RETIRED. Create is ONE folded submission: tier-1 success lands the
+      // owner DIRECTLY on the venue management page in "In review", exactly like
+      // the claim path. First persist the wizard-collected gallery to
+      // business_gallery_urls (the create-from-scratch INSERT stages the draft
+      // blob but not the authoritative gallery column, which the ≥5-at-approve
+      // deck gate + the deck gallery read) — non-blocking: a failure here just
+      // means the owner adds photos later on the listing. Then clear THIS
+      // brand's draft and hand back the venue id (onDone → management page).
+      if (createGalleryUrls.length > 0) {
+        try {
+          await syncGallery({
+            brandId: currentBrand.id,
+            venueId,
+            placePoolId: tier1.place_pool_id,
+            galleryUrls: createGalleryUrls,
+          });
+        } catch {
+          // non-blocking — the pitch/photos are editable on the listing page.
+        }
+      }
       useDraftVenueStore.getState().reset(currentBrand.id);
-      router.replace(
-        routeForDeckReadinessFix({
-          brandId: currentBrand.id,
-          placePoolId: tier1.place_pool_id,
-          venueId,
-          fix: "review_pipeline",
-        }) as never,
-      );
+      onDone(null, venueId, st.displayName.trim());
       return;
     } catch (e) {
       if (e instanceof SlugCollisionError) {
@@ -467,7 +488,7 @@ export const VenueCreatorWizard: React.FC<VenueCreatorWizardProps> = ({
 
   const body = ((): React.ReactElement => {
     switch (stepId) {
-      // ── create path (unchanged) ───────────────────────────────────────────
+      // ── create path — META-ORCH-1290 Leg B folded 10-step wizard ──────────
       case "s0":
         return <VenueStep1Address showErrors={showErr} />;
       case "s1":
@@ -482,10 +503,27 @@ export const VenueCreatorWizard: React.FC<VenueCreatorWizardProps> = ({
       case "s2":
         return <VenueStep4Hours showErrors={showErr} />;
       case "s3":
-        return <VenueStep5Contact showErrors={showErr} />;
+        return <VenuePhotosStep brandId={currentBrand?.id ?? null} />;
       case "s4":
-        return <VenueStep6Description showErrors={showErr} />;
+        return <VenueCoverStep brandId={currentBrand?.id ?? null} />;
       case "s5":
+        return <ClaimStepContact showErrors={showErr} />;
+      case "s6":
+        return (
+          <View style={styles.pitchStep}>
+            <VenuePitchField
+              value={draft.description}
+              onChangeText={(t) => draft.patch({ description: t })}
+              showTitle
+              errorText={showErr ? venueStepError("s6", draft) : null}
+            />
+          </View>
+        );
+      case "s7":
+        return <ClaimStepPrice showErrors={showErr} />;
+      case "s8":
+        return <ClaimStepBookings />;
+      case "s9":
         return (
           <VenueStep7Review
             submitting={createVenue.isPending || submitting}
@@ -538,7 +576,8 @@ export const VenueCreatorWizard: React.FC<VenueCreatorWizardProps> = ({
 
   const dockLabel = isClaim ? claimDockLabel(stepId, draft) : "Continue";
   const coverGateCaption =
-    isClaim && stepId === "c4" && !stepValid
+    ((isClaim && stepId === "c4") || (!isClaim && stepId === "s4")) &&
+    !stepValid
       ? "Pick a cover to continue"
       : null;
 
@@ -657,6 +696,12 @@ const styles = StyleSheet.create({
   },
   scroll: {
     flex: 1,
+  },
+  // META-ORCH-1290 — the shared VenuePitchField carries no host padding; the
+  // create s6 step supplies the wizard body padding (matches other steps).
+  pitchStep: {
+    paddingHorizontal: spacing.lg,
+    paddingBottom: spacing.xl,
   },
   dock: {
     paddingHorizontal: spacing.lg,
