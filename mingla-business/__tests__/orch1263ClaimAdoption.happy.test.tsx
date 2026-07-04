@@ -239,7 +239,9 @@ const week = (
 // T-B1 — venueWizardSteps: 10 vs 6, IDs stable, create byte-identical.
 // ---------------------------------------------------------------------------
 describe("T-B1 — venueWizardSteps step model", () => {
-  test("create = the pre-1263 six steps, IDs + labels byte-stable", () => {
+  // META-ORCH-1290 supersession (D-1): create folds into ONE 10-step submit
+  // mirroring claim (deck-readiness leg removed). [TEST-MOD-APPROVED META-ORCH-1290]
+  test("create = the folded META-ORCH-1290 ten steps, IDs + labels byte-stable", () => {
     const steps = venueWizardSteps(false);
     expect(steps.map((s) => s.id)).toEqual([
       "s0",
@@ -248,13 +250,21 @@ describe("T-B1 — venueWizardSteps step model", () => {
       "s3",
       "s4",
       "s5",
+      "s6",
+      "s7",
+      "s8",
+      "s9",
     ]);
     expect(steps.map((s) => s.label)).toEqual([
       "Address",
       "Name",
       "Hours",
+      "Photos",
+      "Cover",
       "Contact",
-      "Inputs",
+      "Pitch",
+      "Price",
+      "Bookings",
       "Review",
     ]);
   });
