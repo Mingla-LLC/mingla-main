@@ -7,6 +7,52 @@
 
 ---
 
+## ACTIVE — Chip-In program (RSVP voluntary gift contributions, 2026-07-04)
+
+> Registered directly ACTIVE at the Chip-In program CLOSE (SHIPPED + LIVE + Seth-verified incl. real-device mobile-WebKit; ORCH-1291 + 1295–1300, merged PRs #749/#751/#754/#755/#756/#759/#762; backend live on prod `gqnoajqerqhnvulmnyvv`; web via Vercel `[deploy]`; native rides the next build — OTA frozen COMMS-0047/0052). House style strips the `I-PROPOSED-` prefix on activation (gate FILENAMES keep their on-disk names). ⚠️ ID-COLLISION (COMMS-0073): ORCH-1291 + 1295–1300 are shared with the parallel Bunny/venue session — disambiguate by bracket-label; the chip-in gates (`orch-1297-chipin-banner-opaque`, `i-proposed-1298-chip-in-receipt-enqueue`, `orch-1299-rsvp-phone-picker-overlay`, `orch-1300-rsvp-phone-picker-mobile-portal`, + the ORCH-1291 SQL wall + engine-guard tests) are all distinct on-disk from the Bunny/venue gates. Cross-ref `reports/IMPLEMENTATION_ORCH-1291_RSVP_CHIP_IN.md` (+ 1295/1296/1298/1299/1300 impl reports) + `specs/SPEC_ORCH-1291_RSVP_CHIP_IN.md`.
+
+### I-1291-RSVP-NO-PAYMENT-COLUMNS (ACTIVE)
+- **Rule:** `event_rsvps` NEVER carries a price/amount/currency/contribution/paid/application_fee column; voluntary chip-in gifts live ONLY in the `event_rsvp_contributions` child table — preserving the RSVP payment-free wall (with I-PROPOSED-1150-RSVP-NO-TICKET-ROWS: publish still soft-deletes stray ticket_types).
+- **Enforcement:** SQL wall test `supabase/migrations/__tests__/orch_1291_rsvp_contribution_wall.test.sql` (W1 asserts zero payment columns on event_rsvps).
+- **Fails-on-revert:** adding any payment column to `event_rsvps` → W1 raises. **Established:** ACTIVE 2026-07-04 at ORCH-1291 CLOSE (migration `20261220000000` applied to prod).
+
+### I-1291-CONTRIBUTION-TAX-ZERO (ACTIVE)
+- **Rule:** every `event_rsvp_contributions` row is a zero-tax GIFT — `pricing_breakdown.tax_basis='voluntary_contribution'` and tax_cents=0 (passed + absorbed both 0); a contribution is never a taxed sale. Reuses the ONE all-in engine (Constitution #2) — no divergent money path; NO Stripe Tax call / NO VAT (Paystack).
+- **Enforcement:** Deno engine-guard test `orch_1291_contribution_engine.test.ts` (asserts the `PricingBreakdown` shape) + the wall-test W6 (persisted gift shape).
+- **Fails-on-revert:** removing the `voluntary_contribution` TaxBasis member or the taxCents=0 wiring → the engine test RED. **Established:** ACTIVE 2026-07-04.
+
+### I-1291-CONTRIBUTION-MINGLA-FEE (ACTIVE)
+- **Rule:** every PAID contribution has `application_fee_amount_cents = round(amount_cents * effective_take_rate_bps / 10000)` — Mingla's platform cut is ALWAYS taken (the all-in engine sets `application_fee = miglaFee` regardless of pass/absorb).
+- **Enforcement:** the engine-guard Deno test (`application_fee_amount_cents > 0`) + the live wall-fire (SC-3/SC-4).
+- **Fails-on-revert:** zeroing the application_fee on the contribution path → the engine test RED. **Established:** ACTIVE 2026-07-04.
+
+### I-1291-CONTRIBUTION-BANK-GATED (ACTIVE)
+- **Rule:** a chip-in-enabled RSVP event cannot be `published` (nor edited-to-enabled) unless `pg_brand_can_collect(brand_id)` is true — PROVIDER-AWARE (Stripe `charges_enabled` OR Paystack subaccount present); reusing the Stripe-only `pg_brand_can_charge` here is FORBIDDEN (it would wrongly block every NGN brand). FREE RSVPs are NEVER gated.
+- **Enforcement:** SQL wall tests W2 (T-3 Stripe can't-collect blocked) + W3 (T-4 ADVERSARIAL: Paystack-subaccount brand publishes) + W4 (free RSVP ungated); the publish RPC `business_publish_rsvp_draft` + the edit RPC `biz_update_live_rsvp` both call `pg_brand_can_collect`.
+- **Fails-on-revert:** swapping to `pg_brand_can_charge`, or making the gate unconditional, or dropping it → W2/W3/W4 fail. **Established:** ACTIVE 2026-07-04 (migrations `20261220000000` + `20261222000000`).
+
+### I-1297-CHIPIN-BANNER-OPAQUE (ACTIVE)
+- **Rule:** the ORCH-1295 post-payment chip-in return banner (`returnBannerCard` in `PublicEventPage.tsx`) uses an OPAQUE fill (`palette.page`) — never the translucent `palette.card` token — and neither `returnBannerCard` nor `returnBannerWrap` carries an `opacity`/`rgba()` alpha, so the event cover never bleeds through.
+- **Enforcement:** strict-grep gate `.github/scripts/strict-grep/orch-1297-chipin-banner-opaque.mjs` (rules A/B/C, `--self-test` 7/7).
+- **Fails-on-revert:** reverting the fill to `palette.card` or adding an alpha → the gate exits 1 (proven). **Established:** ACTIVE 2026-07-04 at ORCH-1297 CLOSE (PR #755).
+
+### I-1298-CHIP-IN-RECEIPT-ENQUEUE (ACTIVE)
+- **Rule:** a PAID chip-in enqueues exactly ONE guest gift-receipt + the host alert (per owner/admin/finance member + brand contact_email fail-soft) into `notification_outbox`, on the NON-REPLAY branch of the ONE idempotent `finalize_rsvp_contribution` RPC (covers Stripe + Paystack), each `ON CONFLICT (idempotency_key) DO NOTHING`; a replayed webhook enqueues NOTHING; the enqueue is exception-safe (a notify failure never rolls back the paid flip); copy is gift-framed (no tax/invoice/VAT language).
+- **Enforcement:** strict-grep gate `.github/scripts/strict-grep/i-proposed-1298-chip-in-receipt-enqueue.mjs` (`--self-test` 7/7) + Deno `orch_1298_contribution_receipt_templates.test.ts` (6/6) + SQL `orch_1298_chip_in_receipt_enqueue.test.sql` (T-1..T-5,T-8).
+- **Fails-on-revert:** deleting the enqueue block or the replay guard → the gate + tests RED. **Established:** ACTIVE 2026-07-04 at ORCH-1298 CLOSE (migration `20261223000000`; `notify-dispatch` redeployed).
+
+### I-1299-RSVP-PICKER-WEB-IMMEDIATE-OPEN (ACTIVE)
+- **Rule:** on WEB the `@mingla/phone-input` country picker opens IMMEDIATELY (`setPickerVisible(true)`) — it is NOT deferred behind `InteractionManager.runAfterInteractions`, which never fires on the animated RSVP public page (Constitution #1 no-dead-taps). Native keeps the defer.
+- **Enforcement:** strict-grep gate `.github/scripts/strict-grep/orch-1299-rsvp-phone-picker-overlay.mjs` (`--self-test`) + `orch1299_picker_presentation.test.ts`.
+- **Fails-on-revert:** re-gating the web open behind `runAfterInteractions` → the gate RED. **Established:** ACTIVE 2026-07-04 at ORCH-1299 CLOSE (PR #759).
+
+### I-1300-RSVP-PICKER-PORTAL-TO-BODY (ACTIVE)
+- **Rule:** on WEB the country-picker overlay renders via a `document.body` react-dom portal (`WebOverlayPortal.web.tsx`), so its `position:fixed` is viewport-relative and cannot be trapped off-screen by a transformed/scrolling ancestor on mobile WebKit; the `.web.tsx`/`.tsx` split keeps react-dom OUT of the native bundle (native unchanged).
+- **Enforcement:** strict-grep gate `.github/scripts/strict-grep/orch-1300-rsvp-phone-picker-mobile-portal.mjs` (`--self-test` 7/7) + jest `orch1300_web_overlay_portal.test.ts`. **VERIFIED on real Playwright WebKit+iPhone13 vs deployed prod** (picker box top=0, was y=-683).
+- **Fails-on-revert:** removing the portal (overlay rendered inline again) → the gate RED. **Established:** ACTIVE 2026-07-04 at ORCH-1300 CLOSE (PR #762). ⚠️ SHARED ORCH-1300 with `[web-gallery-picker]` (COMMS-0073) — distinct gate on-disk.
+
+---
+
 ## ACTIVE — ORCH-1300 (web-gallery-picker: venue gallery "Add photos" routes through the real browser file input on web, 2026-07-04)
 
 > Registered directly ACTIVE at ORCH-1300 CLOSE (SHIPPED; merged squash `7dcbd4188` / PR #766 `[deploy]`; Vercel prod deploy; house style strips the `I-PROPOSED-` prefix on activation, mirroring the ORCH-1269/1270/1285/1290 precedent — the gate FILENAME keeps its on-disk name; only the invariant NAME is bare). Client-web only fix (no migration/edge/native change; native already works via the untouched `.native` split — business native OTA prohibited per COMMS-0052/0063, so native rides the next build with no change). Enforcement = the merged strict-grep gate `.github/scripts/strict-grep/orch-1300-web-gallery-picker.mjs` (`--self-test` 7/7, wired as job `orch-1300-web-gallery-picker` in `strict-grep-mingla-business.yml`) + the append-only jest suite `mingla-business/src/services/__tests__/venueGalleryWebPicker.orch1300.test.ts`. Extends the ORCH-1097 web-media cover lock to the gallery (registry pattern — appended job; the ORCH-1097 guard is untouched + still green). QA PASS; the authed-biz-web upload eyeball is the standing biz-web-authed-runtime cap, confirmed live by Seth on web. ⚠️ SHARED ORCH-1300: a separate concurrent session's `rsvp-phone-picker-mobile-portal` fix also merged under ORCH-1300 and shipped FIRST (PR #762 / `f7bc0251f`) → keeps the bare number; both are baked on main with distinct `orch-1300-*` gates, so neither renumbers (shared-label precedent, COMMS-0073 / COMMS-0071). Cross-ref `reports/IMPLEMENTATION_ORCH-1300_WEB_GALLERY_PICKER.md` + `reports/INVESTIGATION_ORCH-1300_WEB_PHOTO_COVER_UPLOAD.md`.
