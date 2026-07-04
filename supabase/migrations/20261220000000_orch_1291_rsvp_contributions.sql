@@ -609,4 +609,129 @@ COMMENT ON FUNCTION public.business_publish_rsvp_draft(uuid, jsonb, integer) IS
   'stripe_charges_disabled; FREE RSVPs stay ungated. Persists the 3 chip-in '
   'config columns. do NOT merge back into the event/ticket path.';
 
+-- ---------------------------------------------------------------------------
+-- (N) business_public_events_view — surface the 3 chip-in config columns so the
+--     shared RsvpOfferingBody's guest chip-in panel lights up on the CONSUMER
+--     app (fetchRsvpMomentum) + BUYER/ANON web (publicEventsService). Without
+--     this the columns live on `events` but never reach the shared body, so the
+--     panel stays dark on consumer + web (report §10.A).
+--
+--     ADDITIVE ONLY: this is the latest definition
+--     (20261015000000_orch_1167_event_city_geo.sql) copied VERBATIM with ONLY
+--     the 3 e.rsvp_contribution_* columns appended at the END. CREATE OR REPLACE
+--     VIEW requires new columns last (existing columns keep name, type AND
+--     order). Anon-safety UNCHANGED — the view still exposes only the same safe
+--     brand columns and never touches owner data; the additions are event-owned
+--     config (a boolean + two nullable integers), inert for non-chip-in events.
+--     security_invoker=false preserved (anon reads run as the view owner). The
+--     events ALTER above (committed in the first transaction) guarantees the
+--     columns exist before this REPLACE runs.
+-- ---------------------------------------------------------------------------
+CREATE OR REPLACE VIEW public.business_public_events_view AS
+  SELECT e.id,
+    e.brand_id,
+    b.slug AS brand_slug,
+    b.name AS brand_name,
+    b.description AS brand_description,
+    b.profile_photo_url AS brand_profile_photo_url,
+    b.display_attendee_count AS brand_display_attendee_count,
+    b.address AS brand_address,
+    b.cover_media_url AS brand_cover_media_url,
+    b.theme_color AS brand_theme_color,
+    b.theme_font AS brand_theme_font,
+    b.theme_animation AS brand_theme_animation,
+    e.title,
+    e.description,
+    e.slug,
+    e.event_type,
+    e.location_text,
+    e.online_url,
+    e.is_online,
+    e.is_recurring,
+    e.is_multi_date,
+    e.recurrence_rules,
+    e.cover_media_url,
+    e.cover_media_type,
+    e.visibility,
+    e.show_on_discover,
+    e.status,
+    e.published_at,
+    e.timezone,
+    e.created_at,
+    e.updated_at,
+    (e.theme - 'business_draft'::text) AS public_theme,
+    e.theme_color_override,
+    e.theme_font_override,
+    e.theme_animation_override,
+    e.currency,
+    e.cover_media_provider,
+    e.cover_media_source_url,
+    e.cover_media_credit,
+    e.cover_media_credit_url,
+    e.cover_media_alt,
+    ed.start_at AS master_start_at,
+    ed.end_at AS master_end_at,
+    ed.timezone AS master_timezone,
+    ed.id AS master_event_date_id,
+    e.city,
+    e.party_types,
+    e.vibe_tags,
+    e.music_genres,
+    e.location_geo,
+    COALESCE(e.pass_tax,         b.default_pass_tax)         AS pass_tax,
+    COALESCE(e.pass_mingla_fee,  b.default_pass_mingla_fee)  AS pass_mingla_fee,
+    COALESCE(e.pass_service_fee, b.default_pass_service_fee) AS pass_service_fee,
+    b.pricing_region   AS pricing_region,
+    b.pricing_currency AS pricing_currency,
+    (e.pricing_locked_at IS NOT NULL) AS pricing_locked,
+    (
+      SELECT public.compute_all_in_cents(
+               MIN(tt.price_cents),
+               COALESCE(e.pass_mingla_fee,  b.default_pass_mingla_fee),
+               COALESCE(e.pass_service_fee, b.default_pass_service_fee),
+               (SELECT r.effective_take_rate_bps FROM public.resolve_effective_take_rate_bps(b.id) r)
+             )
+      FROM public.ticket_types tt
+      WHERE tt.event_id = e.id
+        AND tt.price_cents > 0
+        AND tt.deleted_at IS NULL
+    ) AS display_price_cents,
+    -- ORCH-1150 RSVP host-control columns (inert for non-RSVP rows).
+    e.rsvp_discoverable,
+    e.rsvp_capacity,
+    e.rsvp_allow_plus_ones,
+    e.rsvp_plus_ones_max,
+    e.rsvp_waitlist_enabled,
+    e.rsvp_approval_mode,
+    (
+      SELECT COALESCE(SUM(1 + r.plus_count), 0)::integer
+      FROM public.event_rsvps r
+      WHERE r.event_id = e.id
+        AND r.rsvp_status = 'going'
+        AND r.approval_status = 'approved'
+    ) AS rsvp_going_count,
+    -- ORCH-1167 — city-level privacy centroid. location_geo (the exact pin) is
+    -- unchanged at its position.
+    e.city_geo,
+    -- ORCH-1291 [rsvp-chip-in] — voluntary contribution config. Appended LAST so
+    -- CREATE OR REPLACE keeps every existing column's name, type AND order. Inert
+    -- (enabled=false, amounts NULL) for every non-chip-in event; the shared
+    -- RsvpOfferingBody renders the guest panel only when enabled reaches it.
+    e.rsvp_contribution_enabled,
+    e.rsvp_contribution_suggested_cents,
+    e.rsvp_contribution_min_cents
+   FROM events e
+     JOIN brands b ON b.id = e.brand_id
+     LEFT JOIN event_dates ed ON ed.event_id = e.id AND ed.is_master = true
+  WHERE e.deleted_at IS NULL
+    AND b.deleted_at IS NULL
+    AND e.visibility = 'public'::text
+    AND (e.status = ANY (ARRAY['scheduled'::text, 'live'::text, 'ended'::text, 'cancelled'::text]));
+
+ALTER VIEW public.business_public_events_view SET (security_invoker = false);
+
 COMMIT;
+
+-- PostgREST schema-cache reload so the 3 new view columns are immediately
+-- selectable by the consumer + buyer-web supabase-js reads (mirrors ORCH-1167).
+NOTIFY pgrst, 'reload schema';

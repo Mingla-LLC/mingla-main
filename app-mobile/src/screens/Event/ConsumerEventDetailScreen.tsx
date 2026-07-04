@@ -567,17 +567,10 @@ export default function ConsumerEventDetailScreen({
           theme: null,
         }
       : null;
-  // ORCH-1291 [rsvp-chip-in] — the momentum read does not yet surface the
-  // contribution config; read it defensively so the panel lights up the moment
-  // fetchRsvpMomentum / business_public_events_view expose these columns
-  // (conductor follow-up — see implementation report). Until then it stays dark.
-  const rsvpContributionCfg = rsvpMomentum as
-    | (typeof rsvpMomentum & {
-        rsvpContributionEnabled?: boolean;
-        rsvpContributionSuggestedCents?: number | null;
-        rsvpContributionMinCents?: number | null;
-      })
-    | null;
+  // ORCH-1291 [rsvp-chip-in] — the momentum read now surfaces the 3 chip-in
+  // config columns from business_public_events_view (report §10.A CLOSED), so the
+  // shared RsvpOfferingBody's guest panel lights up when the host enabled it. Free
+  // RSVPs keep enabled=false → no panel.
   const rsvpConfig: RsvpOfferingConfig = {
     capacity: rsvpMomentum?.capacity ?? null,
     goingCount: rsvpMomentum?.goingCount ?? 0,
@@ -585,9 +578,9 @@ export default function ConsumerEventDetailScreen({
     plusOnesMax: rsvpMomentum?.plusOnesMax ?? 0,
     waitlistEnabled: rsvpMomentum?.waitlistEnabled ?? false,
     manualApproval: rsvpMomentum?.manualApproval ?? false,
-    rsvp_contribution_enabled: rsvpContributionCfg?.rsvpContributionEnabled ?? false,
-    rsvp_contribution_suggested_cents: rsvpContributionCfg?.rsvpContributionSuggestedCents ?? null,
-    rsvp_contribution_min_cents: rsvpContributionCfg?.rsvpContributionMinCents ?? null,
+    rsvp_contribution_enabled: rsvpMomentum?.rsvpContributionEnabled ?? false,
+    rsvp_contribution_suggested_cents: rsvpMomentum?.rsvpContributionSuggestedCents ?? null,
+    rsvp_contribution_min_cents: rsvpMomentum?.rsvpContributionMinCents ?? null,
     settlementCurrency: rsvpPublicEvent.currency ?? "USD",
     hostShortName: rsvpBrand?.displayName ?? undefined,
   };

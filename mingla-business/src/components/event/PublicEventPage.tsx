@@ -26,7 +26,7 @@
  * (checkoutPublicPathWithSeed(event.id, …)) — no address, no taxCalculationId.
  */
 
-import React, { useCallback, useMemo, useState } from "react";
+import React, { useCallback, useMemo, useRef, useState } from "react";
 import {
   Linking,
   Platform,
@@ -57,6 +57,7 @@ import {
   createThemePalette,
   boldFontFamily,
   buildStaticMapUrl,
+  type ChipInResult,
 } from "@mingla/offering-rendering";
 import {
   useResponsiveLayout,
@@ -66,7 +67,7 @@ import {
 
 import { FoundationEventPreview } from "./FoundationEventPreview";
 import { FoundationRsvpPreview } from "./FoundationRsvpPreview";
-import { submitPublicRsvp } from "../../services/rsvpEvents";
+import { submitPublicRsvp, submitRsvpContribution } from "../../services/rsvpEvents";
 
 import {
   checkoutPublicPathWithSeed,
@@ -256,6 +257,10 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
   const { user } = useAuth();
   const userBrands = useBrandList();
   const { isDesktop } = useResponsiveLayout();
+
+  // ORCH-1291 [rsvp-chip-in] — the last-submitted guest contact, captured at RSVP
+  // so an anon web chip-in can supply guestEmail to rsvp-contribution-create.
+  const lastRsvpContactRef = useRef<{ name: string; email: string } | null>(null);
 
   const [shareModalVisible, setShareModalVisible] = useState<boolean>(false);
   const [toast, setToast] = useState<{ visible: boolean; message: string }>({
@@ -562,8 +567,17 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
       approvalStatus: "pending" | "approved";
       rsvpId: string;
       confirmationToken: string | null;
-    }> =>
-      submitPublicRsvp({
+    }> => {
+      // ORCH-1291 [rsvp-chip-in] — remember the just-submitted guest contact so an
+      // anon web chip-in (a SEPARATE voluntary action AFTER the free RSVP) can
+      // supply guestEmail to rsvp-contribution-create (the edge fn requires it for
+      // anon buyers). The chip-in panel only shows AFTER going/pending, so this ref
+      // is always populated by the time onChipIn fires.
+      lastRsvpContactRef.current = {
+        name: input.guestName,
+        email: input.guestEmail,
+      };
+      return submitPublicRsvp({
         eventId: event.id,
         rsvpStatus: input.rsvpStatus,
         guestName: input.guestName,
@@ -571,7 +585,43 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
         guestPhone: input.guestPhone,
         plusCount: input.plusCount,
         guests: input.guests,
-      }),
+      });
+    },
+    [event.id],
+  );
+
+  // ORCH-1291 [rsvp-chip-in] — the buyer-web payment hand-off for a voluntary
+  // gift. surface:'web' → the edge fn returns a hosted Stripe Checkout URL (or a
+  // Paystack authorization URL for NGN); we navigate the browser there and report
+  // 'redirecting' to the shared body. A logged-in web viewer rides the client JWT
+  // (user_id resolved server-side); an anon guest supplies the remembered
+  // name/email. Present (non-null) → the shared body renders the guest chip-in
+  // panel on web; the post-return thank-you (contributionState='paid') is a
+  // web-return follow-up validated at TEST.
+  const handleChipIn = useCallback(
+    async ({ amountCents }: { amountCents: number }): Promise<ChipInResult> => {
+      const contact = lastRsvpContactRef.current;
+      const res = await submitRsvpContribution({
+        eventId: event.id,
+        amountCents,
+        surface: "web",
+        guestName: contact?.name,
+        guestEmail: contact?.email,
+      });
+      const redirectUrl =
+        res.kind === "requires_web_redirect"
+          ? res.hostedCheckoutUrl
+          : res.kind === "requires_paystack_redirect"
+            ? res.authorizationUrl
+            : null;
+      if (redirectUrl !== null && typeof window !== "undefined") {
+        window.location.assign(redirectUrl);
+        return { kind: "redirecting" };
+      }
+      // surface:'web' never returns requires_native_payment; a missing redirect
+      // URL is a real failure → surface it (the panel maps it to gift-framed copy).
+      throw new Error("contribution_create_failed");
+    },
     [event.id],
   );
 
@@ -621,7 +671,17 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
             // doors labels. No new field/schema.
             doorsOpenLabel: rsvpDoors.open,
             doorsCloseLabel: rsvpDoors.close,
+            // ORCH-1291 [rsvp-chip-in] — the chip-in config surfaced by the anon
+            // view (report §10.A). enabled=true lights up the shared body's guest
+            // panel on web; settlement currency drives its Intl amount formatting.
+            rsvp_contribution_enabled: event.rsvpContributionEnabled ?? false,
+            rsvp_contribution_suggested_cents:
+              event.rsvpContributionSuggestedCents ?? null,
+            rsvp_contribution_min_cents: event.rsvpContributionMinCents ?? null,
+            settlementCurrency: event.currency ?? "USD",
+            hostShortName: brand?.displayName ?? undefined,
           }}
+          onChipIn={handleChipIn}
           isLoggedIn={user !== null}
           muted={muted}
           onToggleMute={handleToggleMute}
