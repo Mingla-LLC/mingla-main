@@ -163,6 +163,7 @@ The RSVP publish gate calls `pg_brand_can_collect`, NOT `pg_brand_can_charge` (r
 - **`packages/offering-rendering/RsvpOfferingBody.tsx`** — add a **Chip-in section** rendered only when `config.rsvp_contribution_enabled` (extend `RsvpOfferingBodyProps.config`) and a new callback prop `onChipIn(input: { amountCents }) => Promise<...>`. Placement: a voluntary second action after the RSVP momentum decision / in the success popup ("You're in — want to chip in?"). Amount input with optional suggested-amount presets + free-form; enforces the min floor client-side (server re-validates). All states: idle / entering / submitting / success / error / (brand cannot collect → hidden). a11y labels + ≥44pt targets; RN inline colors hex/rgb only.
 - **RSVP wizard (business app, `mingla-business/src/...`)** — add the "Let guests chip in" toggle + suggested/min fields. When toggled ON and `pg_brand_can_collect` is false, surface the inline connect sub-flow: Stripe brand → `useStartBrandStripeOnboarding()` + `expo-web-browser.openAuthSessionAsync` (deep-link return, re-check readiness); Paystack brand → the `brand-paystack-onboard` create_subaccount form. On return, re-check and unlock.
 - **DESIGN dependency:** the exact pixel spec for the chip-in section + wizard toggle is produced by `mingla-designer` (5 surfaces, incl. Android opaque-glass delta) and embedded here before IMPLEMENT (see §11).
+  - **DELIVERED 2026-07-03** → `Mingla_Artifacts/specs/DESIGN_ORCH-1291_RSVP_CHIP_IN.md` (pixel-precise contract: `<RsvpChipInPanel>` component + two mounts, all states, motion, a11y, Cross-Surface Impact Declaration; wizard connect reuses `BrandOnboardView`/`BrandPaystackOnboardView`). The implementor builds §7 (shared body) + §8 (wizard) against that doc.
 
 ---
 
@@ -272,7 +273,7 @@ Orchestrator (NOT the implementor) applies the migration and deploys the edge fn
 
 ## 11. Downstream routing
 
-- **Next → DESIGN (`mingla-designer`):** produce the pixel-precise spec for the chip-in section (shared body, 5 surfaces incl. Android opaque-glass delta) + the wizard toggle + inline connect. Embed the result into §4.6 before IMPLEMENT. Worktree: `~/Desktop/mingla-orchs/ORCH-1291-[rsvp-chip-in]/` on branch `ORCH-1291-rsvp-chip-in`.
+- **Next → DESIGN (`mingla-designer`):** ~~produce the pixel-precise spec…~~ **DONE** → `Mingla_Artifacts/specs/DESIGN_ORCH-1291_RSVP_CHIP_IN.md` (delivered 2026-07-03; cross-referenced at §4.6). IMPLEMENT reads that doc for §8 steps 7–8.
 - **Then → IMPLEMENT (`mingla-implementor`):** build per §8 order + allowlist; do NOT apply the migration or deploy edge fns.
 - **Then → orchestrator:** apply migration `20261220000000_orch_1291_*` + deploy `rsvp-contribution-create`, `rsvp-contribution-refund`, redeploy webhook fns; verify with one curl each.
 - **Then → TEST (`mingla-tester`):** drive T-1..T-11 incl. the adversarial T-4 (Paystack-ready publish) and live-fire the chip-in on sim + physical device; live-fire the money path against Stripe/Paystack TEST APIs.
