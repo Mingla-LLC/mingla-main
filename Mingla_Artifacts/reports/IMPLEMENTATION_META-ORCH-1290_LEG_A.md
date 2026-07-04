@@ -34,8 +34,8 @@ SC-3/4/5/6/7 are Leg B/C (client) — out of Leg A scope; the backend hooks they
 
 | File | Δ | Commit |
 |------|---|--------|
-| `supabase/migrations/20261211000000_meta_orch_1290_venue_public_view_pitch.sql` | +56 (NEW) | `77a945a` |
-| `supabase/migrations/20261211000001_meta_orch_1290_servable_rpcs_generative_summary.sql` | +247 (NEW) | `77a945a` |
+| `supabase/migrations/20261221000000_meta_orch_1290_venue_public_view_pitch.sql` | +56 (NEW) | `77a945a` |
+| `supabase/migrations/20261221000001_meta_orch_1290_servable_rpcs_generative_summary.sql` | +247 (NEW) | `77a945a` |
 | `supabase/migrations/__tests__/orch_1255_public_view_anon.test.sql` | +30 (extend, 0 del) | `77a945a` |
 | `supabase/migrations/__tests__/meta_orch_1290_servable_rpc_pitch.test.sql` | +57 (NEW) | `77a945a` |
 | `.github/scripts/strict-grep/i-proposed-1285-...mjs` | −162 (DELETE) | `77a945a` |
@@ -53,9 +53,9 @@ SC-3/4/5/6/7 are Leg B/C (client) — out of Leg A scope; the backend hooks they
 
 ## 4. Data-model changes (write .sql only; NOT applied)
 
-- **M1** `20261211000000_...venue_public_view_pitch.sql` — DROP+CREATE `venue_public_view` re-adding the current SELECT list VERBATIM + `pp.generative_summary AS pitch`. `security_invoker=false`, `WHERE claim_status='verified'`, `GRANT SELECT TO anon, authenticated` unchanged. No table/column/RLS change.
-- **M2** `20261211000001_...servable_rpcs_generative_summary.sql` — DROP+CREATE `query_servable_places_by_signal` (solo) and `query_servable_places_by_signal_intersection` (collab) adding `generative_summary text` to `RETURNS TABLE` (after `primary_type`, before `signal_score`) + `pp.generative_summary` to the SELECT. **ORDER BY, three-gate WHERE, ai_reasoning/ai_score_raw, SECURITY DEFINER, SET search_path preserved BYTE-FOR-BYTE** (collab determinism, I-COLLAB-DECK-DETERMINISM). GRANTs re-issued to anon/authenticated/service_role on both (the intersection fn gains explicit grants — a safe superset of its PUBLIC-default EXECUTE; see §Deviations).
-- Prefixes `20261211000000/…001` collision-scanned across origin/main + all `~/Desktop/mingla-orchs/*` worktrees — FREE (latest sibling = `20261210000000_orch_1278`).
+- **M1** `20261221000000_...venue_public_view_pitch.sql` — DROP+CREATE `venue_public_view` re-adding the current SELECT list VERBATIM + `pp.generative_summary AS pitch`. `security_invoker=false`, `WHERE claim_status='verified'`, `GRANT SELECT TO anon, authenticated` unchanged. No table/column/RLS change.
+- **M2** `20261221000001_...servable_rpcs_generative_summary.sql` — DROP+CREATE `query_servable_places_by_signal` (solo) and `query_servable_places_by_signal_intersection` (collab) adding `generative_summary text` to `RETURNS TABLE` (after `primary_type`, before `signal_score`) + `pp.generative_summary` to the SELECT. **ORDER BY, three-gate WHERE, ai_reasoning/ai_score_raw, SECURITY DEFINER, SET search_path preserved BYTE-FOR-BYTE** (collab determinism, I-COLLAB-DECK-DETERMINISM). GRANTs re-issued to anon/authenticated/service_role on both (the intersection fn gains explicit grants — a safe superset of its PUBLIC-default EXECUTE; see §Deviations).
+- Prefixes `20261221000000/…001` collision-scanned across origin/main + all `~/Desktop/mingla-orchs/*` worktrees — FREE (latest sibling = `20261210000000_orch_1278`).
 
 ---
 
@@ -138,8 +138,8 @@ I did **NOT** modify T-A6 — the dispatch HARD GUARD is "Existing append-only t
 ## 11. Operator action required — ORDERED apply plan (orchestrator/operator)
 
 1. **Migrations (Management API SQL, project `gqnoajqerqhnvulmnyvv` — NOT blind `db push`; history-drift):** apply in order:
-   1. `20261211000000_meta_orch_1290_venue_public_view_pitch.sql`
-   2. `20261211000001_meta_orch_1290_servable_rpcs_generative_summary.sql`
+   1. `20261221000000_meta_orch_1290_venue_public_view_pitch.sql`
+   2. `20261221000001_meta_orch_1290_servable_rpcs_generative_summary.sql`
    - **Read-backs:** `SELECT pitch FROM venue_public_view LIMIT 1;` (column exists) and `SELECT generative_summary FROM query_servable_places_by_signal('x',0,0,0,1,'{}',1) LIMIT 0;` (column in the RETURNS TABLE for both RPCs). No guard/backfill in either migration → no pre-flight probe needed.
    - Copy-paste (if using CLI instead, from THIS worktree): `cd "/Users/sethogieva/Desktop/mingla-orchs/orch-1290-[venue-authoring-one-submission]" && /Users/sethogieva/bin/supabase db push --linked` — but Management-API-SQL is preferred per project_migration_history_drift.
 2. **Edge deploys (from MERGED main):** `run-business-place-authoring-pipeline`, `admin-review-venue-claim`, `discover-cards`. Preserve each verify_jwt (none in config.toml → default; do NOT add overrides). Verify curls: (a) `evaluate_signals` with a WRONG bearer → 401 `Service role required`; (b) a user action (`get_authoring_context`) with a service-role bearer → still rejected by `requireUser`; (c) approve a ≥5-photo test venue → 200 with `go_live.servable=true`.

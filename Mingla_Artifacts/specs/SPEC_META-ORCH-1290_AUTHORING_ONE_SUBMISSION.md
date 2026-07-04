@@ -77,12 +77,12 @@ Three legs: **A** backend (pipeline split + approve-eval + view/RPC pitch exposu
 
 Latest prefix on origin/main + this branch = `20261210000000`; no other worktree carries a colliding 2027* prefix. Allocate:
 
-**M1 — `supabase/migrations/20261211000000_meta_orch_1290_venue_public_view_pitch.sql`** (D-6 public page).
+**M1 — `supabase/migrations/20261221000000_meta_orch_1290_venue_public_view_pitch.sql`** (D-6 public page).
 - `DROP VIEW IF EXISTS public.venue_public_view;` then `CREATE VIEW` re-adding **exactly** the current SELECT list (per `20261130000003...:990-1009`) **plus** `pp.generative_summary AS pitch` (sourced from the already-joined `LEFT JOIN public.place_pool pp`). Keep `WHERE v.claim_status = 'verified'`, `security_invoker = false`, `GRANT SELECT ... TO anon, authenticated`, and the COMMENT (append "META-ORCH-1290: + pitch (generative_summary), anon-safe public-directory text").
 - Anon-safety: `generative_summary` is owner-authored public-directory prose on an already verified-only view → exposing it is within I-PROPOSED-1255-PUBLIC-VENUE-PAGE-ANON-SAFE. No new grant.
 - Runtime complement: extend `supabase/migrations/__tests__/orch_1255_public_view_anon.test.sql` to assert `pitch` is present for a verified venue and the view still excludes non-verified rows.
 
-**M2 — `supabase/migrations/20261211000001_meta_orch_1290_servable_rpcs_generative_summary.sql`** (D-6 swipe card).
+**M2 — `supabase/migrations/20261221000001_meta_orch_1290_servable_rpcs_generative_summary.sql`** (D-6 swipe card).
 - The two servable RPCs live in `20260806000000_meta_orch_1009_sub_b_rpcs_with_reasoning.sql`: `query_servable_places_by_signal` (solo) and `query_servable_places_by_signal_intersection` (collab/intersection). Both have a `RETURNS TABLE(...)` signature that OMITS `generative_summary`. A `RETURNS TABLE` shape change CANNOT use `CREATE OR REPLACE` (Postgres rejects an OUT-column change) — **DROP then CREATE** each function (mirror the precedent noted at `20260806000000...:50`).
 - For each: add `generative_summary text` to `RETURNS TABLE` (immediately after `stored_photo_urls`/`types` block, before `signal_score`) and add `pp.generative_summary` to the SELECT. **Preserve byte-for-byte** the three-gate serving WHERE, the `ORDER BY` (determinism contract — collab I-COLLAB-DECK-DETERMINISM), the `ai_reasoning`/`ai_score_raw` columns, `SECURITY DEFINER`, `SET search_path`, and the COMMENTs (append the 1290 note).
 - Re-`GRANT EXECUTE` to the same roles the originals grant (copy from the source migration).
@@ -277,8 +277,8 @@ Both migrations are additive/read-only to serving data. Apply via Management API
 ## Scoped allowlist (implementor may change ONLY these) + DO-NOT-TOUCH
 
 ### Allowlist
-- `supabase/migrations/20261211000000_meta_orch_1290_venue_public_view_pitch.sql` (NEW)
-- `supabase/migrations/20261211000001_meta_orch_1290_servable_rpcs_generative_summary.sql` (NEW)
+- `supabase/migrations/20261221000000_meta_orch_1290_venue_public_view_pitch.sql` (NEW)
+- `supabase/migrations/20261221000001_meta_orch_1290_servable_rpcs_generative_summary.sql` (NEW)
 - `supabase/migrations/__tests__/orch_1255_public_view_anon.test.sql` (extend) + `supabase/migrations/__tests__/meta_orch_1290_servable_rpc_pitch.test.sql` (NEW)
 - `supabase/functions/run-business-place-authoring-pipeline/index.ts`
 - `supabase/functions/admin-review-venue-claim/index.ts`
