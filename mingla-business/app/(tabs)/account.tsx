@@ -143,6 +143,14 @@ export default function AccountTab(): React.ReactElement {
     router.push("/account/edit-profile" as never);
   }, [router]);
 
+  // ORCH-1292 (Apple 5.1.1v) — DIRECT account-deletion entry in the Settings
+  // hub. The delete flow (app/account/delete.tsx) already exists but was buried
+  // under Edit Profile; Apple requires it to be easy to find. Routes straight to
+  // the confirm-and-delete screen (the Edit-Profile delete button stays too).
+  const handleDeleteAccount = useCallback((): void => {
+    router.push("/account/delete" as never);
+  }, [router]);
+
   const handleNotifications = useCallback((): void => {
     router.push("/account/notifications" as never);
   }, [router]);
@@ -398,6 +406,12 @@ export default function AccountTab(): React.ReactElement {
               icon="shield"
               label="Sign out everywhere"
               onPress={handleSignOut}
+            />
+            <SettingsNavRow
+              icon="trash"
+              label="Delete account"
+              destructive
+              onPress={handleDeleteAccount}
             />
             {isFeatureEnabled("accountSideToggle") ? (
               <SettingsNavRow

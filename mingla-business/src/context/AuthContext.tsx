@@ -272,33 +272,40 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     let mounted = true;
 
-    // ORCH-1102 Wave 2 — bounded-loading hard ceiling (web only). Independent
-    // wall-clock backstop: if neither the Promise.race timeout branch nor a
-    // resolved getSession() has flipped `loading` false by the ceiling (a
-    // GoTrue web-lock deadlock the race can't escape), force it false here so
-    // the spinner can never be permanent. Treats an unresolvable session as
-    // logged-out (the route gates redirect to sign-in). Cleared on unmount and
+    // ORCH-1102 Wave 2 — bounded-loading hard ceiling. Independent wall-clock
+    // backstop: if neither the Promise.race timeout branch nor a resolved
+    // getSession() has flipped `loading` false by the ceiling, force it false
+    // here so the spinner can never be permanent. Treats an unresolvable session
+    // as logged-out (the route gates redirect to sign-in). Cleared on unmount and
     // implicitly superseded by any real resolution (setLoading(false) is
-    // idempotent; bootstrapTimedOutRef already gates late real sessions). Not
-    // armed on native — native bootstrap resolves and the splash covers boot.
-    let hardCeilingTimer: ReturnType<typeof setTimeout> | null = null;
-    if (Platform.OS === "web") {
-      hardCeilingTimer = setTimeout(() => {
-        if (!mounted) return;
-        console.warn(
-          `[auth] resolution-hard-ceiling: auth did not resolve within ${AUTH_RESOLUTION_HARD_CEILING_MS}ms — releasing the loading gate (treating as logged-out so the user lands on sign-in, never an infinite spinner)`,
-        );
-        // Preserve any stored web session so a genuinely slow-but-valid session
-        // still warms via a late SIGNED_IN/TOKEN_REFRESHED event; only the
-        // spinner is released. With no stored session, user stays null and the
-        // route gates send the user to the real sign-in screen.
-        // ORCH-1204: the ceiling releases only `loading`; it MUST NOT clear
-        // `user`/`session` — a synchronously-hydrated valid web session must
-        // survive the ceiling (SC-4).
-        bootstrapTimedOutRef.current = true;
-        setLoading(false);
-      }, AUTH_RESOLUTION_HARD_CEILING_MS);
-    }
+    // idempotent; bootstrapTimedOutRef already gates late real sessions).
+    //
+    // ORCH-1292 (Apple 2.1a) — DE-GATED to native. This was `Platform.OS ===
+    // "web"` only, so on native (iPad) a stalled post-getSession chain — the
+    // getUser() probe / ensureCreatorAccount / tryRecoverAccountIfDeleted, run
+    // on Apple's throttled review network — could leave `loading` true forever
+    // and hang the NATIVE boot spinner with no escape (Apple's "activity
+    // indicator spins indefinitely"). Arming the ceiling on native too GUARANTEES
+    // `setLoading(false)` within AUTH_RESOLUTION_HARD_CEILING_MS. The happy path
+    // is unchanged: a normal cold start resolves in well under the ceiling and
+    // the timer is cleared on unmount. When it fires, session/user (already set
+    // from the resolved getSession above) are preserved — an authed user simply
+    // renders Home a beat early instead of spinning; the background chain
+    // continues harmlessly.
+    // ORCH-1204: the ceiling releases only `loading`; it MUST NOT clear
+    // `user`/`session` — a synchronously-hydrated valid session must survive it.
+    const hardCeilingTimer = setTimeout(() => {
+      if (!mounted) return;
+      console.warn(
+        `[auth] resolution-hard-ceiling: auth did not resolve within ${AUTH_RESOLUTION_HARD_CEILING_MS}ms — releasing the loading gate (treating as logged-out so the user lands on sign-in, never an infinite spinner)`,
+      );
+      // Preserve any stored session so a genuinely slow-but-valid session still
+      // warms via a late SIGNED_IN/TOKEN_REFRESHED event; only the spinner is
+      // released. With no stored session, user stays null and the route gates
+      // send the user to the real sign-in screen.
+      bootstrapTimedOutRef.current = true;
+      setLoading(false);
+    }, AUTH_RESOLUTION_HARD_CEILING_MS);
 
     const bootstrap = async () => {
       if (__DEV__) {
@@ -745,7 +752,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     return () => {
       mounted = false;
-      if (hardCeilingTimer !== null) clearTimeout(hardCeilingTimer);
+      // ORCH-1292 — the ceiling timer is now always armed (native + web), so it
+      // is always a live handle; clear it unconditionally on unmount.
+      clearTimeout(hardCeilingTimer);
       subscription.unsubscribe();
     };
   }, []);

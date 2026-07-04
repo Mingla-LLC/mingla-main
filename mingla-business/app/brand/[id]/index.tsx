@@ -12,7 +12,7 @@
  * Per spec §3.3.
  */
 
-import React, { useCallback, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { Linking, View } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -23,7 +23,10 @@ import { canvas } from "../../../src/constants/designSystem";
 import { useAuth } from "../../../src/context/AuthContext";
 import { useBrandStripeStatus } from "../../../src/hooks/useBrandStripeStatus";
 import { useBrand } from "../../../src/hooks/useBrands";
-import { isBrandRouteResolving } from "../../../src/utils/coldLoadAuthGates";
+import {
+  BRAND_RESOLVE_AUTH_CEILING_MS,
+  isBrandRouteResolving,
+} from "../../../src/utils/coldLoadAuthGates";
 import { routeForEventRowDefensive } from "../../../src/utils/routeForEventRow";
 import {
   useCurrentBrandStore,
@@ -49,13 +52,37 @@ export default function BrandProfileRoute(): React.ReactElement {
   // "Brand not found". Once auth is ready AND the query has settled (fetched,
   // not fetching), a still-null brand is a genuine not-found. A valid `brandId`
   // is required — a missing id segment is an immediate not-found, not loading.
+  //
+  // ORCH-1292 (Apple 2.1a) — feed a LIVE wall-clock elapsed-since-mount so the
+  // `!isAuthReady` warm-window term is TIME-BOUNDED: if auth never becomes ready
+  // (Apple's throttled review network) a brand read that has already settled to
+  // null can no longer spin forever. The wakeup timer below forces one re-render
+  // at the ceiling so this render-time bound actually flips to not-found.
+  const mountedAtRef = useRef<number>(Date.now());
+  const [, forceResolveTick] = useState(0);
   const isBrandResolving = isBrandRouteResolving({
     hasBrandId: brandId !== null,
     brandIsNull: brand === null,
     isAuthReady,
     queryIsFetched: brandQuery.isFetched,
     queryIsLoading: brandQuery.isLoading,
+    elapsedMs: Date.now() - mountedAtRef.current,
   });
+  // Wakeup for a QUIET stall (no other re-render before the ceiling): if we are
+  // still spinning on the auth-warm window, force a single re-render just past
+  // the ceiling so the render-time bound above re-evaluates and can degrade a
+  // settled-null brand to the not-found UI. Cleared once no longer resolving.
+  useEffect(() => {
+    if (!isBrandResolving) return;
+    const remaining =
+      BRAND_RESOLVE_AUTH_CEILING_MS - (Date.now() - mountedAtRef.current);
+    if (remaining <= 0) return;
+    const timer = setTimeout(
+      () => forceResolveTick((n) => n + 1),
+      remaining + 50,
+    );
+    return () => clearTimeout(timer);
+  }, [isBrandResolving]);
   const stripeStatusQuery = useBrandStripeStatus(brandId);
   const effectiveStripeStatus = getEffectiveBrandStripeStatus({
     liveStatus: stripeStatusQuery.data?.status,
