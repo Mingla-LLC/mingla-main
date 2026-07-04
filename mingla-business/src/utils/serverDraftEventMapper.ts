@@ -184,6 +184,11 @@ export interface BusinessDraftPayload {
   rsvpWaitlistEnabled: boolean;
   rsvpApprovalMode: "auto" | "manual";
   rsvpDiscoverable: boolean;
+  // ORCH-1291 [rsvp-chip-in] — voluntary contribution config passthrough. Only
+  // business_publish_rsvp_draft reads these (business_draft.rsvpContribution*).
+  rsvpContributionEnabled: boolean;
+  rsvpContributionSuggestedCents: number | null;
+  rsvpContributionMinCents: number | null;
   lastStepReached: number;
   clientRevision: number;
 }
@@ -343,6 +348,11 @@ const buildBusinessDraftPayload = (
   rsvpWaitlistEnabled: draft.rsvpWaitlistEnabled,
   rsvpApprovalMode: draft.rsvpApprovalMode,
   rsvpDiscoverable: draft.rsvpDiscoverable,
+  // ORCH-1291 [rsvp-chip-in] — voluntary contribution config into business_draft
+  // (the publish RPC reads business_draft.rsvpContributionEnabled/*Cents).
+  rsvpContributionEnabled: draft.rsvpContributionEnabled,
+  rsvpContributionSuggestedCents: draft.rsvpContributionSuggestedCents,
+  rsvpContributionMinCents: draft.rsvpContributionMinCents,
   lastStepReached: draft.lastStepReached,
   clientRevision,
 });

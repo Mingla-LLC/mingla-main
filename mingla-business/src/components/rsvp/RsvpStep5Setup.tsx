@@ -14,7 +14,7 @@
  */
 
 import React, { useCallback } from "react";
-import { Platform, Pressable, StyleSheet, Text, View } from "react-native";
+import { Platform, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 
 import {
   accent,
@@ -112,8 +112,58 @@ const NumberStepper: React.FC<StepperRowProps> = ({ label, value, min, onChange,
   </View>
 );
 
-export const RsvpStep5Setup: React.FC<StepBodyProps> = ({ draft, updateDraft }) => {
+// ORCH-1291 [rsvp-chip-in] — currency symbol for the money-field prefix.
+const currencySymbol = (currency: string): string => {
+  try {
+    return new Intl.NumberFormat(undefined, { style: "currency", currency: currency || "USD" })
+      .format(0)
+      .replace(/[\d.,\s]/g, "") || "$";
+  } catch {
+    return "$";
+  }
+};
+
+interface MoneyFieldProps {
+  label: string;
+  helper?: string;
+  currency: string;
+  cents: number | null;
+  onChange: (cents: number | null) => void;
+  testID?: string;
+}
+
+// ORCH-1291 — currency-prefixed money field (major units in, cents out).
+const MoneyField: React.FC<MoneyFieldProps> = ({ label, helper, currency, cents, onChange, testID }) => (
+  <View style={styles.field}>
+    <Text style={styles.fieldLabel}>{label}</Text>
+    <View style={styles.moneyRow}>
+      <Text style={styles.moneyPrefix}>{currencySymbol(currency)}</Text>
+      <TextInput
+        value={cents !== null && cents > 0 ? String(Math.round(cents / 100)) : ""}
+        onChangeText={(raw) => {
+          const digits = raw.replace(/[^\d]/g, "");
+          onChange(digits.length > 0 ? parseInt(digits, 10) * 100 : null);
+        }}
+        keyboardType={Platform.OS === "ios" ? "decimal-pad" : "numeric"}
+        placeholder="0"
+        placeholderTextColor={textTokens.tertiary}
+        accessibilityLabel={label}
+        style={styles.moneyInput}
+        testID={testID}
+      />
+    </View>
+    {helper !== undefined ? <Text style={styles.helper}>{helper}</Text> : null}
+  </View>
+);
+
+export const RsvpStep5Setup: React.FC<StepBodyProps> = ({ draft, updateDraft, brandDefaultCurrency }) => {
   const capacityOn = draft.rsvpCapacity !== null;
+  const chipCurrency = brandDefaultCurrency ?? draft.currency ?? "USD";
+  const contributionOn = draft.rsvpContributionEnabled;
+  const minGtSuggested =
+    draft.rsvpContributionMinCents !== null &&
+    draft.rsvpContributionSuggestedCents !== null &&
+    draft.rsvpContributionMinCents > draft.rsvpContributionSuggestedCents;
 
   const toggleCapacity = useCallback(() => {
     updateDraft({ rsvpCapacity: capacityOn ? null : Math.max(draft.rsvpCapacity ?? 1, 1) });
@@ -216,6 +266,51 @@ export const RsvpStep5Setup: React.FC<StepBodyProps> = ({ draft, updateDraft }) 
         </Text>
       </View>
 
+      {/* 4.5 ORCH-1291 [rsvp-chip-in] — Contributions (money settings cluster). */}
+      <View style={styles.field}>
+        <Text style={styles.fieldLabel}>Contributions</Text>
+        <ToggleRow
+          label="Let guests chip in"
+          sub="Guests can add a voluntary gift after they RSVP. Their RSVP stays free."
+          on={contributionOn}
+          onToggle={() => updateDraft({ rsvpContributionEnabled: !contributionOn })}
+          testID="rsvp-contribution-toggle"
+        />
+        {contributionOn ? (
+          <>
+            <MoneyField
+              label="Suggested amount (optional)"
+              currency={chipCurrency}
+              cents={draft.rsvpContributionSuggestedCents}
+              onChange={(c) => updateDraft({ rsvpContributionSuggestedCents: c })}
+              testID="rsvp-contribution-suggested"
+            />
+            <MoneyField
+              label="Minimum contribution (optional)"
+              helper={
+                minGtSuggested
+                  ? "Minimum can't be more than the suggested amount."
+                  : "Guests can't chip in less than this."
+              }
+              currency={chipCurrency}
+              cents={draft.rsvpContributionMinCents}
+              onChange={(c) => updateDraft({ rsvpContributionMinCents: c })}
+              testID="rsvp-contribution-min"
+            />
+            {/* Friendly early nudge — the HARD bank-gate lives at publish
+                (business_publish_rsvp_draft → pg_brand_can_collect → the
+                paidPublishGuards "Finish bank setup" route). */}
+            <View style={styles.connectCallout} testID="rsvp-contribution-connect-callout">
+              <Text style={styles.connectHeading}>Connect your bank to collect contributions</Text>
+              <Text style={styles.connectSub}>
+                Guests can chip in once your payouts are set up. If your bank isn't connected yet,
+                you'll be prompted to finish setup when you publish.
+              </Text>
+            </View>
+          </>
+        ) : null}
+      </View>
+
       {/* 5. Guest-list privacy */}
       <ToggleRow
         label="Keep the guest list private"
@@ -295,6 +390,55 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.xs,
   },
   rowDisabled: { opacity: 0.55 },
+
+  // ORCH-1291 [rsvp-chip-in] — money field + connect callout.
+  moneyRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+    borderRadius: radiusTokens.md,
+    overflow: "hidden",
+    backgroundColor: ROW_BG,
+    borderWidth: 1,
+    borderColor: glass.border.profileBase,
+    marginBottom: spacing.sm,
+    gap: 6,
+  },
+  moneyPrefix: {
+    fontSize: typography.bodyLg.fontSize,
+    fontWeight: "700",
+    color: textTokens.primary,
+    fontVariant: ["tabular-nums"],
+  },
+  moneyInput: {
+    flex: 1,
+    fontSize: typography.bodyLg.fontSize,
+    fontWeight: "700",
+    color: textTokens.primary,
+    fontVariant: ["tabular-nums"],
+    paddingVertical: spacing.sm,
+  },
+  connectCallout: {
+    padding: spacing.md,
+    borderRadius: radiusTokens.lg,
+    overflow: "hidden",
+    marginTop: spacing.sm,
+    backgroundColor: "rgba(245,158,11,0.18)",
+    borderWidth: 1,
+    borderColor: "rgba(245,158,11,0.45)",
+  },
+  connectHeading: {
+    fontSize: typography.bodySm.fontSize,
+    fontWeight: "600",
+    color: textTokens.primary,
+  },
+  connectSub: {
+    fontSize: typography.caption.fontSize,
+    lineHeight: typography.caption.lineHeight * 1.35,
+    color: textTokens.secondary,
+    marginTop: spacing.xxs,
+  },
 
   // Segmented control
   segmentWrap: {

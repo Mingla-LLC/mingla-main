@@ -364,6 +364,12 @@ export interface DraftEvent {
   rsvpApprovalMode: "auto" | "manual";
   /** ORCH-1150 — also surface on the consumer discovery feed (default off). */
   rsvpDiscoverable: boolean;
+  /** ORCH-1291 [rsvp-chip-in] — let guests add a voluntary gift after RSVP. */
+  rsvpContributionEnabled: boolean;
+  /** ORCH-1291 — optional suggested chip-in amount (settlement minor units). */
+  rsvpContributionSuggestedCents: number | null;
+  /** ORCH-1291 — optional minimum chip-in floor (settlement minor units). */
+  rsvpContributionMinCents: number | null;
   /**
    * Cycle 12: when true, /event/{id}/door surface is reachable + "Door Sales"
    * ActionTile appears on Event Detail. Default false; operator opt-in.
@@ -472,6 +478,9 @@ const DEFAULT_DRAFT_FIELDS: Omit<
   rsvpWaitlistEnabled: false,
   rsvpApprovalMode: "auto",
   rsvpDiscoverable: false,
+  rsvpContributionEnabled: false,
+  rsvpContributionSuggestedCents: null,
+  rsvpContributionMinCents: null,
   lastStepReached: 0,
   status: "draft",
   clientRevision: 0,
@@ -717,6 +726,9 @@ const upgradeV6DraftToV7 = (d: V6DraftEvent): DraftEvent => ({
   rsvpWaitlistEnabled: false,
   rsvpApprovalMode: "auto",
   rsvpDiscoverable: false,
+  rsvpContributionEnabled: false,
+  rsvpContributionSuggestedCents: null,
+  rsvpContributionMinCents: null,
 });
 
 const withProviderMetadataDefaults = (draft: DraftEvent): DraftEvent => ({
@@ -735,6 +747,9 @@ const withProviderMetadataDefaults = (draft: DraftEvent): DraftEvent => ({
   rsvpWaitlistEnabled: draft.rsvpWaitlistEnabled ?? false,
   rsvpApprovalMode: draft.rsvpApprovalMode ?? "auto",
   rsvpDiscoverable: draft.rsvpDiscoverable ?? false,
+  rsvpContributionEnabled: draft.rsvpContributionEnabled ?? false,
+  rsvpContributionSuggestedCents: draft.rsvpContributionSuggestedCents ?? null,
+  rsvpContributionMinCents: draft.rsvpContributionMinCents ?? null,
 });
 
 const persistOptions: PersistOptions<DraftEventState, PersistedState> = {
@@ -865,6 +880,9 @@ const persistOptions: PersistOptions<DraftEventState, PersistedState> = {
           rsvpWaitlistEnabled: false,
           rsvpApprovalMode: "auto",
           rsvpDiscoverable: false,
+          rsvpContributionEnabled: false,
+          rsvpContributionSuggestedCents: null,
+          rsvpContributionMinCents: null,
         })),
       };
     }

@@ -110,6 +110,13 @@ import {
   type NativeCheckoutOutcome,
   useNativeCheckoutFlow,
 } from "../../payments/nativeCheckoutFlow";
+// ORCH-1291 [rsvp-chip-in] — voluntary contribution hand-off (reuses the Stripe
+// RN PaymentSheet + connected-account initStripe pattern; NO new native dep).
+import { useStripePaymentSheet } from "@mingla/payments-native";
+import { initStripe } from "@stripe/stripe-react-native";
+import * as WebBrowser from "expo-web-browser";
+import { supabase } from "../../services/supabase";
+import { type ChipInResult } from "@mingla/offering-rendering";
 import { toastManager } from "../../components/ui/Toast";
 import { useAppStore } from "../../store/appStore";
 // META-ORCH-1187 [Growth Analytics Hub] — purchase conversion capture (PostHog
@@ -560,6 +567,10 @@ export default function ConsumerEventDetailScreen({
           theme: null,
         }
       : null;
+  // ORCH-1291 [rsvp-chip-in] — the momentum read now surfaces the 3 chip-in
+  // config columns from business_public_events_view (report §10.A CLOSED), so the
+  // shared RsvpOfferingBody's guest panel lights up when the host enabled it. Free
+  // RSVPs keep enabled=false → no panel.
   const rsvpConfig: RsvpOfferingConfig = {
     capacity: rsvpMomentum?.capacity ?? null,
     goingCount: rsvpMomentum?.goingCount ?? 0,
@@ -567,6 +578,11 @@ export default function ConsumerEventDetailScreen({
     plusOnesMax: rsvpMomentum?.plusOnesMax ?? 0,
     waitlistEnabled: rsvpMomentum?.waitlistEnabled ?? false,
     manualApproval: rsvpMomentum?.manualApproval ?? false,
+    rsvp_contribution_enabled: rsvpMomentum?.rsvpContributionEnabled ?? false,
+    rsvp_contribution_suggested_cents: rsvpMomentum?.rsvpContributionSuggestedCents ?? null,
+    rsvp_contribution_min_cents: rsvpMomentum?.rsvpContributionMinCents ?? null,
+    settlementCurrency: rsvpPublicEvent.currency ?? "USD",
+    hostShortName: rsvpBrand?.displayName ?? undefined,
   };
   const rsvpBodyStaticMapUrl: string | null = (() => {
     if (rsvpPublicEvent.format === "online") return null;
@@ -582,6 +598,62 @@ export default function ConsumerEventDetailScreen({
       height: 180,
     });
   })();
+  // ORCH-1291 [rsvp-chip-in] — voluntary-gift hand-off. Reuses the Stripe RN
+  // PaymentSheet (connected-account initStripe, mirroring nativeCheckoutFlow) for
+  // native; opens the Paystack/hosted page in the in-app browser for redirects.
+  const chipSheet = useStripePaymentSheet();
+  const handleChipIn = useCallback(
+    async ({ amountCents }: { amountCents: number }): Promise<ChipInResult> => {
+      const { data, error } = await supabase.functions.invoke("rsvp-contribution-create", {
+        body: { eventId, amountCents, surface: "native", rsvpId: null },
+      });
+      if (error) {
+        throw new Error(String((error as { message?: string }).message ?? "contribution_failed"));
+      }
+      const res = (data ?? {}) as {
+        kind?: string;
+        clientSecret?: string;
+        stripeAccountId?: string;
+        publishableKey?: string | null;
+        authorizationUrl?: string;
+        hostedCheckoutUrl?: string;
+      };
+      if (res.kind === "requires_native_payment") {
+        if (res.publishableKey && res.stripeAccountId) {
+          // Re-init the SDK for THIS PI's connected account (ORCH-0844 pattern);
+          // otherwise the confirm hits Stripe under the platform context → 404.
+          await initStripe({
+            publishableKey: res.publishableKey,
+            stripeAccountId: res.stripeAccountId,
+            merchantIdentifier: "merchant.com.mingla.app.v2",
+            urlScheme: "com.mingla.app.v2",
+          });
+        }
+        const init = await chipSheet.initPaymentSheet({
+          merchantDisplayName: "Mingla",
+          paymentIntentClientSecret: res.clientSecret ?? "",
+          returnURL: "com.mingla.app.v2://stripe-redirect",
+        });
+        if (init.error) throw new Error(init.error.message);
+        const present = await chipSheet.presentPaymentSheet();
+        if (present.error) {
+          throw new Error(present.error.code === "Canceled" ? "cancelled" : present.error.message);
+        }
+        return { kind: "paid" };
+      }
+      if (res.kind === "requires_paystack_redirect" && res.authorizationUrl) {
+        await WebBrowser.openBrowserAsync(res.authorizationUrl);
+        return { kind: "redirecting" };
+      }
+      if (res.kind === "requires_web_redirect" && res.hostedCheckoutUrl) {
+        await WebBrowser.openBrowserAsync(res.hostedCheckoutUrl);
+        return { kind: "redirecting" };
+      }
+      throw new Error("contribution_create_failed");
+    },
+    [eventId, chipSheet],
+  );
+
   const rsvpState = useRsvpOfferingState({
     event: rsvpPublicEvent,
     brand: rsvpBrand,
@@ -590,6 +662,7 @@ export default function ConsumerEventDetailScreen({
     config: rsvpConfig,
     isLoggedIn: user !== null,
     onSubmit: rsvpOnSubmit,
+    onChipIn: handleChipIn,
     onOpenBrand: (slug: string) => router.push(`/b/${slug}` as never),
     onOpenMaps: openMapsForQuery,
     staticMapUrl: rsvpBodyStaticMapUrl,

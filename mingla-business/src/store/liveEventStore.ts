@@ -203,6 +203,16 @@ export interface LiveEvent {
    * non-RSVP rows. Drives the public-page capacity-full state + Hub "N going".
    */
   rsvpGoingCount?: number;
+  /**
+   * ORCH-1291 [rsvp-chip-in] — voluntary contribution config snapshot (present
+   * only on chip-in RSVP rows; optional for back-compat). Surfaced anon-safe by
+   * business_public_events_view and threaded by publicEventsService into the
+   * buyer-web RsvpOfferingConfig so the shared RsvpOfferingBody guest chip-in
+   * panel lights up on web (report §10.A). false/NULL → free RSVP, no panel.
+   */
+  rsvpContributionEnabled?: boolean;
+  rsvpContributionSuggestedCents?: number | null;
+  rsvpContributionMinCents?: number | null;
   // Content snapshot (frozen from DraftEvent at publish)
   name: string;
   description: string;

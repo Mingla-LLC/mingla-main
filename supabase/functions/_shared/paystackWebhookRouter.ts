@@ -76,6 +76,65 @@ export async function handlePaystackChargeSuccess(
     return { status: "verify_not_success" };
   }
 
+  // ORCH-1291 [rsvp-chip-in] — a voluntary RSVP contribution shares the reference
+  // slot (stripe_payment_intent_id, UNIQUE) on this rail. Look it up FIRST; if the
+  // reference belongs to a contribution, finalize it via finalize_rsvp_contribution
+  // (NO order minted) and return. Else fall through to the ticket path unchanged
+  // (SC-10). Amount + currency guard mirrors the ticket path (verified kobo ==
+  // buyer_total_cents; currency NGN).
+  const { data: contribution, error: contributionError } = await supabase
+    .from("event_rsvp_contributions")
+    .select("id, status, buyer_total_cents, currency")
+    .eq("stripe_payment_intent_id", reference)
+    .maybeSingle();
+  if (contributionError) {
+    throw new Error(`paystack_contribution_lookup_failed: ${contributionError.message}`);
+  }
+  if (contribution) {
+    if (contribution.status === "paid") {
+      return { status: "replayed" };
+    }
+    const cAmount = Number(txn?.amount ?? NaN);
+    const cTotal = Number(contribution.buyer_total_cents ?? NaN);
+    const cCurrency = String(txn?.currency ?? "").toUpperCase();
+    if (!Number.isFinite(cAmount) || cAmount !== cTotal) {
+      await markContributionFailed(supabase, String(contribution.id));
+      await writeAudit(supabase, {
+        user_id: null,
+        brand_id: null,
+        action: "paystack.contribution_amount_mismatch",
+        target_type: "event_rsvp_contribution",
+        target_id: String(contribution.id),
+        after: { reference, verified_amount: cAmount, contribution_total: cTotal },
+      });
+      return { status: "amount_mismatch" };
+    }
+    if (cCurrency !== "NGN") {
+      await markContributionFailed(supabase, String(contribution.id));
+      await writeAudit(supabase, {
+        user_id: null,
+        brand_id: null,
+        action: "paystack.contribution_currency_mismatch",
+        target_type: "event_rsvp_contribution",
+        target_id: String(contribution.id),
+        after: { reference, verified_currency: cCurrency },
+      });
+      return { status: "currency_mismatch" };
+    }
+    const cChannel = typeof txn?.channel === "string" ? txn.channel : "card";
+    const cTxnId = txn?.id !== undefined && txn?.id !== null ? String(txn.id) : null;
+    const { error: cFinalizeError } = await supabase.rpc("finalize_rsvp_contribution", {
+      p_contribution_id: String(contribution.id),
+      p_provider_ref: reference,
+      p_charge_id: cTxnId,
+      p_payment_method_type: cChannel,
+    });
+    if (cFinalizeError) {
+      throw new Error(`paystack_contribution_finalize_failed: ${cFinalizeError.message}`);
+    }
+    return { status: "finalized" };
+  }
+
   // 3. Lookup the session by the persisted reference.
   const { data: session, error: sessionError } = await supabase
     .from("ticket_checkout_sessions")
@@ -179,4 +238,18 @@ async function markSessionFailed(
       updated_at: new Date().toISOString(),
     })
     .eq("id", sessionId);
+}
+
+// ORCH-1291 — mark a contribution row failed on an amount/currency mismatch.
+async function markContributionFailed(
+  supabase: SupabaseClient,
+  contributionId: string,
+): Promise<void> {
+  await supabase
+    .from("event_rsvp_contributions")
+    .update({
+      status: "failed",
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", contributionId);
 }

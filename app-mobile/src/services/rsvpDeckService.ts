@@ -33,6 +33,15 @@ export interface RsvpMomentumSnapshot {
   plusOnesMax: number;
   waitlistEnabled: boolean;
   manualApproval: boolean;
+  // ORCH-1291 [rsvp-chip-in] — voluntary contribution config, surfaced from the
+  // SAME anon-safe business_public_events_view. The shared RsvpOfferingBody's
+  // guest chip-in panel renders only when rsvpContributionEnabled reaches its
+  // config; before ORCH-1291's view redefinition these never left the DB so the
+  // panel stayed dark on consumer (report §10.A). Defaults keep every free RSVP
+  // unaffected (enabled=false → no panel).
+  rsvpContributionEnabled: boolean;
+  rsvpContributionSuggestedCents: number | null;
+  rsvpContributionMinCents: number | null;
 }
 
 interface RsvpMomentumRow {
@@ -42,6 +51,10 @@ interface RsvpMomentumRow {
   rsvp_plus_ones_max: number | null;
   rsvp_waitlist_enabled: boolean | null;
   rsvp_approval_mode: "auto" | "manual" | null;
+  // ORCH-1291 — chip-in config columns (view-surfaced; NULL/false for non-chip-in).
+  rsvp_contribution_enabled: boolean | null;
+  rsvp_contribution_suggested_cents: number | null;
+  rsvp_contribution_min_cents: number | null;
 }
 
 export const fetchRsvpMomentum = async (
@@ -50,7 +63,7 @@ export const fetchRsvpMomentum = async (
   const { data, error } = await supabase
     .from("business_public_events_view")
     .select(
-      "rsvp_going_count,rsvp_capacity,rsvp_allow_plus_ones,rsvp_plus_ones_max,rsvp_waitlist_enabled,rsvp_approval_mode",
+      "rsvp_going_count,rsvp_capacity,rsvp_allow_plus_ones,rsvp_plus_ones_max,rsvp_approval_mode,rsvp_waitlist_enabled,rsvp_contribution_enabled,rsvp_contribution_suggested_cents,rsvp_contribution_min_cents",
     )
     .eq("id", eventId)
     .maybeSingle();
@@ -64,6 +77,11 @@ export const fetchRsvpMomentum = async (
     plusOnesMax: row.rsvp_plus_ones_max ?? 0,
     waitlistEnabled: row.rsvp_waitlist_enabled ?? false,
     manualApproval: row.rsvp_approval_mode === "manual",
+    // ORCH-1291 — map the view's snake_case chip-in config into the camelCase
+    // shape the ConsumerEventDetailScreen builds RsvpOfferingConfig from.
+    rsvpContributionEnabled: row.rsvp_contribution_enabled ?? false,
+    rsvpContributionSuggestedCents: row.rsvp_contribution_suggested_cents ?? null,
+    rsvpContributionMinCents: row.rsvp_contribution_min_cents ?? null,
   };
 };
 

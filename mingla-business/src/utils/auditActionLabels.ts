@@ -121,6 +121,11 @@ export const KNOWN_STATIC_SLUGS: readonly string[] = [
   "paystack.charge_orphan_reference",
   "paystack.charge_amount_mismatch",
   "paystack.charge_currency_mismatch",
+  // ORCH-1291 [rsvp-chip-in] — Paystack (NG) RSVP contribution webhook amount/
+  // currency guards emitted by _shared/paystackWebhookRouter (contribution path
+  // mirrors the ticket charge guards; contribution marked failed, no order).
+  "paystack.contribution_amount_mismatch",
+  "paystack.contribution_currency_mismatch",
   "paystack.webhook_unhandled_event",
   // META-ORCH-1076 Phase 2 — Paystack (NG) payout onboarding + management.
   "paystack.subaccount_created",
@@ -174,6 +179,21 @@ export const resolveAuditActionLabel = (action: string): AuditActionLabel => {
       return {
         title: "Paystack charge currency mismatch",
         detail: "The paid currency was not NGN; no order was created.",
+        category: "orders",
+        iconHint: "shield",
+      };
+    // ORCH-1291 [rsvp-chip-in] — Paystack (NG) RSVP contribution webhook guards.
+    case "paystack.contribution_amount_mismatch":
+      return {
+        title: "Paystack contribution amount mismatch",
+        detail: "The paid amount did not match the contribution total; the contribution was marked failed.",
+        category: "orders",
+        iconHint: "shield",
+      };
+    case "paystack.contribution_currency_mismatch":
+      return {
+        title: "Paystack contribution currency mismatch",
+        detail: "The paid currency was not NGN; the contribution was marked failed.",
         category: "orders",
         iconHint: "shield",
       };

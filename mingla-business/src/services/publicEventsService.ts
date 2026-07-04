@@ -60,6 +60,13 @@ interface BusinessPublicEventViewRow {
   rsvp_waitlist_enabled?: boolean | null;
   rsvp_approval_mode?: "auto" | "manual" | null;
   rsvp_going_count?: number | null;
+  // ORCH-1291 [rsvp-chip-in] — voluntary contribution config, surfaced anon-safe
+  // by business_public_events_view (the view SELECTs e.rsvp_contribution_*).
+  // Arrives via the existing .select("*"); false/NULL for non-chip-in rows. Drive
+  // the shared RsvpOfferingBody guest chip-in panel (report §10.A).
+  rsvp_contribution_enabled?: boolean | null;
+  rsvp_contribution_suggested_cents?: number | null;
+  rsvp_contribution_min_cents?: number | null;
   // ORCH-1157 [rsvp-public-redesign] — canonical party-type + vibe slugs
   // (ORCH-0824), surfaced anon-safe by business_public_events_view (the view
   // SELECTs e.party_types / e.vibe_tags; security_invoker=false). Drive the
@@ -1076,6 +1083,13 @@ export const publicEventViewRowToEvent = (
     rsvpApprovalMode: row.rsvp_approval_mode ?? "auto",
     rsvpDiscoverable: row.rsvp_discoverable ?? false,
     rsvpGoingCount: row.rsvp_going_count ?? 0,
+    // ORCH-1291 [rsvp-chip-in] — thread the anon-view chip-in config into the
+    // buyer-web LiveEvent so PublicEventPage builds it into RsvpOfferingConfig and
+    // the shared body's guest panel renders on web (report §10.A). Inert defaults
+    // keep every free RSVP unchanged.
+    rsvpContributionEnabled: row.rsvp_contribution_enabled ?? false,
+    rsvpContributionSuggestedCents: row.rsvp_contribution_suggested_cents ?? null,
+    rsvpContributionMinCents: row.rsvp_contribution_min_cents ?? null,
     // ORCH-1157 [rsvp-public-redesign] — surface party types / vibe tags from the
     // anon view so the Direction-C RSVP page renders vibe chips. Default [] (rule
     // 9: missing is empty, never fabricated). Already-present columns; no migration.

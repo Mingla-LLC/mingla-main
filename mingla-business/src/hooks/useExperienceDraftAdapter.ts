@@ -118,6 +118,10 @@ function synthDraft(brandId: string, when: ExperienceWhenState): DraftEvent {
     themeOverrides: null,
     privateGuestList: false,
     inPersonPaymentsEnabled: false,
+    // ORCH-1291 [rsvp-chip-in] — inert for the experience When-adapter.
+    rsvpContributionEnabled: false,
+    rsvpContributionSuggestedCents: null,
+    rsvpContributionMinCents: null,
     lastStepReached: 1,
     status: "draft",
     createdAt: now,
