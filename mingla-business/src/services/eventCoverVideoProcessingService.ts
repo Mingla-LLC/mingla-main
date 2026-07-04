@@ -2,10 +2,16 @@ import { supabase } from "./supabase";
 import { BusinessAuthNotReadyError } from "../utils/authReadiness";
 import { Platform } from "react-native";
 import {
-  createBinaryUploadTask,
   createMultipartUploadTask,
   getFileInfoAsync,
 } from "../utils/platformFileSystem";
+// ORCH-1295 — native TUS PATCH transport (File.bytes() + expo/fetch). Metro
+// resolves the *.native.ts on device and the *.ts web stub in the web bundle,
+// keeping expo-file-system / expo/fetch out of web.
+import {
+  patchBunnyTusNative,
+  readEventCoverVideoBytes,
+} from "./eventCoverVideoTusPatch";
 
 declare const require: (moduleName: string) => {
   Video?: {
@@ -898,6 +904,16 @@ const patchTusWithXhr = (input: {
     xhr.send(input.blob);
   });
 
+// ORCH-1295 — the native TUS PATCH no longer streams through expo-file-system's
+// BINARY_CONTENT upload task (which dropped the TUS `Upload-Offset` header →
+// Bunny 400 "Video upload failed (400)") and does NOT use `fetch(uri).blob()`
+// (which silently returns a size-0 Blob on RN iOS — ORCH-0786 — i.e. an empty
+// body). It reads the clip bytes with the native `File` API and streams them via
+// `expo/fetch`, which sends `Upload-Offset` / `Tus-Resumable` /
+// `Content-Type: application/offset+octet-stream` VERBATIM → Bunny 204. All
+// native-module access is isolated in eventCoverVideoTusPatch.native.ts (Metro
+// web-excludes it). expo/fetch has no upload-progress event, so this leg emits a
+// coarse start/finish bar; abort is honored via the shared AbortSignal.
 const patchTusNative = async (input: {
   url: string;
   uri: string;
@@ -905,54 +921,53 @@ const patchTusNative = async (input: {
   onProgress?: (progress: EventCoverVideoUploadProgress) => void;
   signal?: AbortSignal;
 }): Promise<void> => {
-  let task:
-    | { uploadAsync: () => Promise<unknown>; cancelAsync?: () => Promise<void> }
-    | null = null;
-  const abort = (): void => {
-    void task?.cancelAsync?.();
-  };
+  if (input.signal?.aborted) throw cancelledUploadError();
+
+  let bytes: Uint8Array<ArrayBuffer>;
   try {
-    if (input.signal?.aborted) throw cancelledUploadError();
-    input.signal?.addEventListener("abort", abort, { once: true });
-    task = await createBinaryUploadTask(
-      input.url,
-      input.uri,
-      { headers: input.headers, httpMethod: "PATCH" },
-      (event: { totalBytesSent: number; totalBytesExpectedToSend: number }) => {
-        emitUploadProgress(
-          input.onProgress,
-          event.totalBytesSent,
-          event.totalBytesExpectedToSend,
-        );
-      },
-    );
-    const result = (await task.uploadAsync()) as
-      | { body?: string; status: number }
-      | null
-      | undefined;
-    input.signal?.removeEventListener("abort", abort);
-    if (input.signal?.aborted) throw cancelledUploadError();
-    if (result === null || result === undefined) {
-      throw new EventCoverVideoProcessingError(
-        "source_upload_failed",
-        "Video upload did not return a response.",
-      );
-    }
-    if (result.status !== 200 && result.status !== 204) {
-      throw new EventCoverVideoProcessingError(
-        "source_upload_failed",
-        `Video upload failed (${result.status}).`,
-      );
-    }
+    bytes = await readEventCoverVideoBytes(input.uri);
   } catch (error) {
-    input.signal?.removeEventListener("abort", abort);
-    if (error instanceof EventCoverVideoProcessingError) throw error;
     if (input.signal?.aborted) throw cancelledUploadError();
+    if (error instanceof EventCoverVideoProcessingError) throw error;
+    throw new EventCoverVideoProcessingError(
+      "source_upload_failed",
+      "Video file could not be read.",
+    );
+  }
+  if (input.signal?.aborted) throw cancelledUploadError();
+
+  emitUploadProgress(input.onProgress, 0, 1);
+
+  let result: { status: number; bodyText: string };
+  try {
+    result = await patchBunnyTusNative({
+      body: bytes,
+      headers: input.headers,
+      signal: input.signal,
+      url: input.url,
+    });
+  } catch (error) {
+    if (input.signal?.aborted) throw cancelledUploadError();
+    if (error instanceof EventCoverVideoProcessingError) throw error;
     throw new EventCoverVideoProcessingError(
       "source_upload_failed",
       error instanceof Error ? error.message : "Video upload failed.",
     );
   }
+  if (input.signal?.aborted) throw cancelledUploadError();
+
+  if (result.status !== 200 && result.status !== 204) {
+    // ORCH-1295 — surface Bunny's response body on a non-2xx PATCH so a future
+    // failure is not blind (the original 400 surfaced only the status code).
+    const body = result.bodyText.trim().slice(0, 500);
+    throw new EventCoverVideoProcessingError(
+      "source_upload_failed",
+      body.length > 0
+        ? `Video upload failed (${result.status}): ${body}`
+        : `Video upload failed (${result.status}).`,
+    );
+  }
+  emitUploadProgress(input.onProgress, 1, 1);
 };
 
 // Bunny resumable (TUS) upload: create → single-shot PATCH of the bytes. Valid
