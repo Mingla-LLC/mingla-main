@@ -109,6 +109,9 @@ export type {
   RsvpGuestContact,
   RsvpSubmitResult,
   ChipInResult,
+  // ORCH-1295 [chip-in-post-payment-polish] — BUG 2 host-supplied phone field.
+  RsvpPhoneFieldRenderArgs,
+  RsvpPhoneFieldRenderer,
 } from "./RsvpOfferingBody";
 export { RsvpGoingConfirmDialog } from "./RsvpGoingConfirmDialog";
 export type { RsvpGoingConfirmDialogProps } from "./RsvpGoingConfirmDialog";

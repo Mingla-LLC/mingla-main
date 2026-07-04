@@ -62,6 +62,10 @@ import {
   serviceClient,
   userIdFromAuthHeader,
 } from "../_shared/ticketCheckout.ts";
+// ORCH-1295 [chip-in-post-payment-polish] — pure builder for the web return URLs
+// (fixes BUG 1: brandSlug was omitted → dead page). Kept in a sibling module so
+// it is unit-testable without importing this serve()-on-load entry.
+import { buildContributionWebReturnUrls } from "./returnUrls.ts";
 
 type ContributionSurface = "native" | "web" | "mobile-web";
 
@@ -196,6 +200,19 @@ serve(async (req: Request): Promise<Response> => {
       | null;
     const row = Array.isArray(joined) ? joined[0] ?? null : joined;
     return typeof row?.name === "string" && row.name.length > 0 ? row.name : "the host";
+  })();
+
+  // ORCH-1295 [chip-in-post-payment-polish] — the brand's URL slug for the web
+  // return route `/e/{brandSlug}/{eventSlug}` (BUG 1: ORCH-1291 dropped it). Same
+  // object-or-array normalization as brandName above (the `brands(slug, name)`
+  // embed at the select). null → the web arm fails closed (never a partial path).
+  const brandSlug = ((): string | null => {
+    const joined = (eventRow as Record<string, unknown>).brands as
+      | { name?: string | null; slug?: string | null }
+      | Array<{ name?: string | null; slug?: string | null }>
+      | null;
+    const row = Array.isArray(joined) ? joined[0] ?? null : joined;
+    return typeof row?.slug === "string" && row.slug.length > 0 ? row.slug : null;
   })();
 
   const contributionId = crypto.randomUUID();
@@ -401,9 +418,27 @@ serve(async (req: Request): Promise<Response> => {
       if (!baseUrl || !/^https:\/\/[^\s]+$/.test(baseUrl)) {
         return jsonResponse({ error: "web_base_url_missing" }, 500);
       }
-      const eventSlug = typeof eventRow.slug === "string" ? eventRow.slug : eventId;
-      successUrl = `${baseUrl}/e/${eventSlug}?contribution=paid`;
-      cancelUrl = `${baseUrl}/e/${eventSlug}?contribution=cancel`;
+      // ORCH-1295 [chip-in-post-payment-polish] — BUG 1: build the return URLs as
+      // `/e/{brandSlug}/{eventSlug}` (ORCH-1291 dropped brandSlug → dead page).
+      // Fail closed if brandSlug is missing rather than strand the guest on a URL
+      // with a missing path segment (the pending row is marked failed first).
+      const eventSlug = typeof eventRow.slug === "string" && eventRow.slug.length > 0
+        ? eventRow.slug
+        : eventId;
+      const returnUrls = buildContributionWebReturnUrls(baseUrl, brandSlug, eventSlug);
+      if (returnUrls === null) {
+        console.error(
+          "[rsvp-contribution-create] cannot build web return URL — brandSlug missing",
+          { eventId, brandId },
+        );
+        await supabase
+          .from("event_rsvp_contributions")
+          .update({ status: "failed", updated_at: new Date().toISOString() })
+          .eq("id", contributionId);
+        return jsonResponse({ error: "brand_slug_unavailable" }, 500);
+      }
+      successUrl = returnUrls.successUrl;
+      cancelUrl = returnUrls.cancelUrl;
     } else {
       successUrl = `mingla-business://checkout/return?contribution=paid&contrib=${contributionId}`;
       cancelUrl = `mingla-business://checkout/return?contribution=cancel&contrib=${contributionId}`;
