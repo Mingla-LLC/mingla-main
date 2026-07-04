@@ -427,6 +427,14 @@ export interface RsvpUpdatePayload {
   // address keeps showing publicly. biz_update_live_rsvp (migration
   // 20261114000000) deep-merges it back into that leaf.
   hideAddressUntilTicket: boolean;
+  // ORCH-1296 [chip-in-edit-published-gap] — voluntary chip-in config on the EDIT
+  // path. These ARE real events columns (rsvp_contribution_enabled /
+  // rsvp_contribution_suggested_cents / rsvp_contribution_min_cents); ORCH-1296's
+  // biz_update_live_rsvp reads them, provider-aware bank-gates on ENABLE, and
+  // persists them. Absent → the RPC COALESCEs to the stored value (no clobber).
+  rsvpContributionEnabled: boolean;
+  rsvpContributionSuggestedCents: number | null;
+  rsvpContributionMinCents: number | null;
 }
 
 /**
@@ -462,6 +470,10 @@ export const buildRsvpUpdatePayload = (
   privateGuestList: draft.privateGuestList,
   hideRemainingCount: draft.hideRemainingCount,
   hideAddressUntilTicket: draft.hideAddressUntilTicket,
+  // ORCH-1296 — voluntary chip-in config (full-state builder parity).
+  rsvpContributionEnabled: draft.rsvpContributionEnabled,
+  rsvpContributionSuggestedCents: draft.rsvpContributionSuggestedCents,
+  rsvpContributionMinCents: draft.rsvpContributionMinCents,
 });
 
 /**
@@ -538,6 +550,26 @@ export const buildRsvpUpdatePayloadDiff = (
   }
   if (original.hideAddressUntilTicket !== edited.hideAddressUntilTicket) {
     payload.hideAddressUntilTicket = edited.hideAddressUntilTicket;
+  }
+  // ORCH-1296 [chip-in-edit-published-gap] — emit the 3 chip-in fields ONLY when
+  // changed from the loaded LiveEvent, so the RPC's COALESCE-to-existing safety
+  // keeps them untouched on an unrelated edit (no clobber), and a real chip-in
+  // change reaches biz_update_live_rsvp (which reads + gates + persists). Originals
+  // can be undefined on legacy / non-chip-in LiveEvents → coalesce to the
+  // create-wizard defaults so the diff is honest (mirrors editableDraftToPatch).
+  if ((original.rsvpContributionEnabled ?? false) !== edited.rsvpContributionEnabled) {
+    payload.rsvpContributionEnabled = edited.rsvpContributionEnabled;
+  }
+  if (
+    (original.rsvpContributionSuggestedCents ?? null) !==
+    edited.rsvpContributionSuggestedCents
+  ) {
+    payload.rsvpContributionSuggestedCents = edited.rsvpContributionSuggestedCents;
+  }
+  if (
+    (original.rsvpContributionMinCents ?? null) !== edited.rsvpContributionMinCents
+  ) {
+    payload.rsvpContributionMinCents = edited.rsvpContributionMinCents;
   }
 
   return payload;
