@@ -78,7 +78,7 @@ A fresh web return has **no live RSVP state** (the guest RSVP'd, redirected to S
 - **Path:** `supabase/functions/rsvp-contribution-create/__tests__/orch_1295_web_return_url.test.ts` (3 Deno tests).
 - **Passing run** (`deno test --allow-read …`): `ok | 3 passed | 0 failed`.
 - **Fails-on-revert (true line deletion, NOT comment-out):** deleted the brandSlug segment in `returnUrls.ts` (`/e/${brand}/${event}` → `/e/${event}`, reproducing the ORCH-1291 bug) → the exact-URL + `["e", brand, event]` path-segment assertions **FAILED** (`FAILED | 2 passed | 1 failed`). Restored the segment → `ok | 3 passed | 0 failed`.
-- **fails-on-revert verified at commit `181acc5d9`** (the ORCH-1295 fix commit on this branch; the pre-fix parent is `b92c21d2d`).
+- **fails-on-revert verified at commit `ec997f5f1`** (the ORCH-1295 fix commit on this branch, holding the identical verified fix code; the pre-fix parent is `b92c21d2d`).
 
 The test asserts the success_url contains BOTH brandSlug AND eventSlug in `/e/{brand}/{event}` order (exact URL + structural path-segment check), and that a missing brand/event slug returns null (fail closed).
 
