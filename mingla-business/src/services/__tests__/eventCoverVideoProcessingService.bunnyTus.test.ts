@@ -56,9 +56,19 @@ describe("META-ORCH-1270 — client Bunny TUS upload leg (C1 + C7)", () => {
   it("the PATCH leg uses the raw TUS body content type + offset headers", () => {
     expect(service).toMatch(/"Content-Type":\s*"application\/offset\+octet-stream"/);
     expect(service).toMatch(/"Upload-Offset":\s*"0"/);
-    // Native goes through the BINARY_CONTENT task with a PATCH method.
-    expect(service).toMatch(/createBinaryUploadTask\(/);
-    expect(service).toMatch(/httpMethod:\s*"PATCH"/);
+    // ORCH-1295 — the native PATCH reads bytes with the File API and streams them
+    // via expo/fetch (patchBunnyTusNative) so Upload-Offset reaches Bunny. It must
+    // NOT route through expo-file-system's binary upload task (dropped
+    // Upload-Offset → 400) NOR fetch(uri).blob() (size-0 on iOS → empty body).
+    // Native-module access is isolated in eventCoverVideoTusPatch.native.ts; web
+    // keeps the XHR path. (Prior assertions here pinned the buggy BINARY_CONTENT
+    // PATCH — replaced under [TEST-MOD-APPROVED ORCH-1295].)
+    expect(service).toMatch(/patchTusNative/);
+    expect(service).toMatch(/patchBunnyTusNative\(/);
+    expect(service).toMatch(/readEventCoverVideoBytes\(/);
+    expect(service).not.toMatch(/createBinaryUploadTask/);
+    // Web PATCH still rides the verbatim-header XHR helper.
+    expect(service).toMatch(/await patchTusWithXhr\(/);
   });
 
   it("platformFileSystem exposes a BINARY_CONTENT native task + a web stub (OTA-safe, no new native module)", () => {
