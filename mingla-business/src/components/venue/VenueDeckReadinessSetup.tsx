@@ -14,8 +14,6 @@
 
 import React, { useCallback, useEffect, useState } from "react";
 import {
-  ActivityIndicator,
-  Image,
   Pressable,
   StyleSheet,
   Text,
@@ -35,10 +33,9 @@ import {
 } from "../../constants/designSystem";
 import {
   refreshDeckReadiness,
-  runTier2Pipeline,
+  saveTier2,
   syncGallery,
   syncHeroMedia,
-  updateVenuePitch,
   type PipelineCoachingCard,
 } from "../../services/businessPlaceAuthoringService";
 import {
@@ -70,6 +67,11 @@ export interface VenueDeckReadinessSetupProps {
   onDone: () => void;
   focus?: DeckReadinessFocus;
   initialTier2?: Record<string, unknown>;
+  /**
+   * ORCH-1304 — accepted for route compatibility (the durable deck-readiness
+   * route still passes it) but no longer consumed: the pitch is written by
+   * Mingla at approve, not drafted on this screen.
+   */
   initialPendingBio?: string | null;
   initialFacets?: Record<string, boolean | null>;
   initialCoaching?: PipelineCoachingCard[];
@@ -94,29 +96,9 @@ const EMPTY_GALLERY: string[] = [];
 // chips and the listing-management score view never drift.
 const VIBE_SIGNALS = VENUE_SIGNALS;
 
-// WS8: playful staged loader copy shown while "Recommend me" runs (it's the long
-// op — website scan + multi-image AI). Rotates every ~2.6s in Mingla's voice.
-const RECOMMEND_STAGES: readonly string[] = [
-  "Fetching your website…",
-  "Reading the room…",
-  "Looking through your photos…",
-  "Getting your vibe…",
-  "Scoring your signals…",
-  "Almost there…",
-];
-
-// Sub-F: keyless on-demand website screenshot (no npm dep, no API key). Shown in
-// the loader so the operator sees their site actually being captured. Falls back
-// to a placeholder if the screenshot service is slow/unavailable.
-function websiteScreenshotUrl(website: string): string | null {
-  const w = website.trim();
-  if (w.length === 0) return null;
-  const full = /^https?:\/\//i.test(w) ? w : `https://${w}`;
-  return `https://image.thum.io/get/width/800/${full}`;
-}
-function websiteHost(website: string): string {
-  return website.trim().replace(/^https?:\/\//i, "").replace(/\/.*$/, "");
-}
+// ORCH-1304 — the old pitch-generation loader (staged copy + live website
+// screenshot) is REMOVED. Mingla writes the pitch and match scores at approve;
+// this screen only collects inputs and saves them.
 
 // WS5: price tiers mirror the consumer deck taxonomy (app-mobile priceTiers.ts).
 // Multi-select; persisted to place_pool.price_tiers + derived price_level (engine).
@@ -208,7 +190,6 @@ export function VenueDeckReadinessSetup({
   onDone,
   focus = "review",
   initialTier2 = EMPTY_TIER2,
-  initialPendingBio = null,
   initialFacets = EMPTY_FACETS,
   initialCoaching = EMPTY_COACHING,
   initialCover = null,
@@ -236,40 +217,22 @@ export function VenueDeckReadinessSetup({
   const [selectedVibes, setSelectedVibes] = useState<string[]>(
     stringArray(initialTier2.vibe_chips),
   );
-  const [generatedBio, setGeneratedBio] = useState(initialPendingBio ?? "");
-  const [editedBio, setEditedBio] = useState(initialPendingBio ?? "");
   const [facets, setFacets] = useState<Record<string, boolean | null>>(
     initialFacets,
   );
   const [coaching, setCoaching] = useState<PipelineCoachingCard[]>(initialCoaching);
-  const [busy, setBusy] = useState<"ai" | "confirm" | "refresh" | null>(null);
+  // ORCH-1304 — "save" replaces the old "ai"/"confirm" pitch-gen busy states;
+  // "refresh" stays for the deck-readiness status check.
+  const [busy, setBusy] = useState<"save" | "refresh" | null>(null);
   const [message, setMessage] = useState<string | null>(null);
-  // WS8 + Sub-F: rotating loader copy + a live website screenshot while "Recommend
-  // me" runs (spinner over the screenshot, messages beneath).
-  const [recommendStage, setRecommendStage] = useState(0);
-  const [shotFailed, setShotFailed] = useState(false);
-
-  useEffect(() => {
-    if (busy !== "ai") {
-      setRecommendStage(0);
-      setShotFailed(false);
-      return undefined;
-    }
-    const id = setInterval(() => {
-      setRecommendStage((i) => Math.min(i + 1, RECOMMEND_STAGES.length - 1));
-    }, 2000);
-    return () => clearInterval(id);
-  }, [busy]);
 
   useEffect(() => {
     setWebsite(stringValue(initialTier2.website, ""));
     setPriceTiers(stringArray(initialTier2.price_tiers));
     setSelectedVibes(stringArray(initialTier2.vibe_chips));
-    setGeneratedBio(initialPendingBio ?? "");
-    setEditedBio(initialPendingBio ?? "");
     setFacets(initialFacets);
     setCoaching(initialCoaching);
-  }, [initialCoaching, initialFacets, initialPendingBio, initialTier2]);
+  }, [initialCoaching, initialFacets, initialTier2]);
 
   useEffect(() => {
     setGallery(initialGallery);
@@ -292,13 +255,6 @@ export function VenueDeckReadinessSetup({
     }),
     [operatorDescription, operatorTagline, facets, priceTiers, selectedVibes, website],
   );
-
-  // WS5: "Recommend me" is only enabled once the venue has the must-haves.
-  const recommendReady =
-    cover.coverMediaUrl !== null &&
-    gallery.length >= GALLERY_MIN &&
-    website.trim().length > 0 &&
-    priceTiers.length > 0;
 
   const togglePrice = useCallback((id: string): void => {
     setPriceTiers((prev) =>
@@ -386,56 +342,26 @@ export function VenueDeckReadinessSetup({
     );
   }, []);
 
-  const handleRunAi = useCallback(async (): Promise<void> => {
-    setBusy("ai");
+  // ORCH-1304 [approve generates the pitch] — this screen no longer drafts a
+  // pitch (no pitch-gen button, no pitch textarea). It collects inputs and
+  // SAVES them via the owner-authed `save_tier2` action, which stages
+  // website/price/vibes/facets into `business_authoring_inputs.tier2` and writes
+  // NO serving column and calls NO Gemini (I-1263 preserved). Cover + gallery
+  // auto-save on change via syncHeroMedia/syncGallery. Mingla writes the pitch +
+  // match scores when an admin approves the venue; the owner edits the pitch
+  // afterward on the listing page.
+  const handleSaveChanges = useCallback(async (): Promise<void> => {
+    setBusy("save");
     setMessage(null);
     try {
-      const result = await runTier2Pipeline({
-        brandId,
-        venueId,
-        placePoolId,
-        tier2: buildTier2(),
-      });
-      setGeneratedBio(result.generated_bio);
-      setEditedBio(result.generated_bio);
-      setFacets(result.facets);
-      setCoaching(result.coaching);
-      // META-ORCH-1290 D-2 — no owner "approve": scoring + go-live are admin-
-      // owned now. The AI writes a pitch DRAFT; the owner reviews/edits + saves.
-      setMessage("Your pitch is ready — review it below and make it yours.");
-    } catch (error) {
-      setMessage(sanitizeAuthoringError(error, "Couldn't draft your pitch."));
-    } finally {
-      setBusy(null);
-    }
-  }, [brandId, venueId, buildTier2, placePoolId]);
-
-  // META-ORCH-1290 Leg B (§4.3.E) — the old owner self-publish confirm seam
-  // (which flipped deck_eligible before any admin review) is REMOVED (D-2).
-  // Editing here now just SAVES the pitch draft (staged; applied at approve) and
-  // returns — it flips NO serving column and NEVER sets deck_eligible. This is
-  // the pre-approval edit surface, so pitch saves stage (a live venue edits its
-  // pitch on the listing page, which writes generative_summary directly).
-  const handleSavePitch = useCallback(async (): Promise<void> => {
-    const pitch = editedBio.trim();
-    if (pitch.length > 0 && pitch.length < 20) {
-      setMessage("Your pitch needs at least 20 characters — or clear it.");
-      return;
-    }
-    setBusy("confirm");
-    setMessage(null);
-    try {
-      // META-ORCH-1290 (B2): pitch write via the `update_pitch` pipeline action
-      // (owner-authed, column-scoped). This is the pre-approval edit surface, so
-      // the server's placeWriteMode stages it (never a serving column).
-      await updateVenuePitch({ brandId, venueId, placePoolId, pitch });
+      await saveTier2({ brandId, venueId, placePoolId, tier2: buildTier2() });
       onDone();
     } catch (error) {
-      setMessage(sanitizeAuthoringError(error, "Could not save your pitch."));
+      setMessage(sanitizeAuthoringError(error, "Could not save your changes."));
     } finally {
       setBusy(null);
     }
-  }, [editedBio, onDone, brandId, venueId, placePoolId]);
+  }, [brandId, venueId, placePoolId, buildTier2, onDone]);
 
   const handleRefresh = useCallback(async (): Promise<void> => {
     setBusy("refresh");
@@ -469,9 +395,9 @@ export function VenueDeckReadinessSetup({
         <Text style={styles.chromeSub}>{venueName}</Text>
         <Text style={styles.deckTitle}>Get recommended on Mingla</Text>
         <Text style={styles.deckBody}>
-          Mingla recommends venues to people deciding where to go out. Add a few
-          details and our AI writes your listing and matches you to the right
-          customers — couples on date night, groups celebrating, and more.
+          Add photos, a website, and a price range so Mingla can match you to the
+          right customers. Mingla writes your pitch and match scores when it
+          approves your venue.
         </Text>
       </View>
 
@@ -695,77 +621,20 @@ export function VenueDeckReadinessSetup({
             );
           })}
 
+          {/* ORCH-1304 — no owner-side pitch generation. Save the collected
+              inputs; Mingla writes the pitch + match scores at approve. */}
           <Text style={styles.fieldHint}>
-            Our AI scans your website + photos and writes a first-draft pitch you
-            can edit. Mingla scores your vibes and decides go-live after you
-            submit — you never approve yourself.
+            Mingla writes your pitch and match scores when it approves your venue.
           </Text>
           <Button
-            label={busy === "ai" ? "Working on it…" : "Generate pitch with AI"}
+            label={busy === "save" ? "Saving…" : "Save changes"}
             variant="primary"
             size="md"
-            leadingIcon="sparkle"
-            loading={busy === "ai"}
-            disabled={busy !== null || !recommendReady}
-            onPress={() => void handleRunAi()}
+            loading={busy === "save"}
+            disabled={busy !== null}
+            onPress={() => void handleSaveChanges()}
           />
-          {busy === "ai" ? (
-            <View style={styles.loaderCard}>
-              {/* Live website screenshot with the spinner over it. */}
-              {websiteScreenshotUrl(website) !== null && !shotFailed ? (
-                <Image
-                  source={{ uri: websiteScreenshotUrl(website) as string }}
-                  style={styles.loaderShot}
-                  resizeMode="cover"
-                  onError={() => setShotFailed(true)}
-                />
-              ) : (
-                <View style={[styles.loaderShot, styles.loaderShotPlaceholder]} />
-              )}
-              <View style={styles.loaderOverlay}>
-                <ActivityIndicator size="large" color="#fff" />
-              </View>
-              <Text style={styles.recommendStage}>
-                {recommendStage === 0 && website.trim().length > 0
-                  ? `Reading ${websiteHost(website)}…`
-                  : RECOMMEND_STAGES[recommendStage]}
-              </Text>
-            </View>
-          ) : null}
-          {busy !== "ai" && !recommendReady ? (
-            <Text style={styles.fieldHint}>
-              Add a cover, {GALLERY_MIN}+ photos, a website, and a price range to
-              continue.
-            </Text>
-          ) : null}
         </View>
-
-        {generatedBio.length > 0 ? (
-          <View style={styles.deckBlock}>
-            <Text style={styles.blockTitle}>Your venue&apos;s pitch</Text>
-            <Text style={styles.blockBody}>
-              This is what people read when Mingla recommends you. Edit anything,
-              then save — we take it from here.
-            </Text>
-            <TextInput
-              value={editedBio}
-              onChangeText={setEditedBio}
-              multiline
-              textAlignVertical="top"
-              placeholder="Your venue's pitch"
-              placeholderTextColor={textTokens.tertiary}
-              style={[styles.input, styles.bioInput]}
-            />
-            <Button
-              label={busy === "confirm" ? "Saving…" : "Save pitch"}
-              variant="primary"
-              size="md"
-              loading={busy === "confirm"}
-              disabled={busy !== null}
-              onPress={() => void handleSavePitch()}
-            />
-          </View>
-        ) : null}
 
         {/* WS5: "Am I ready?" removed — readiness is automatic (gate + engine). */}
 
@@ -908,38 +777,6 @@ const styles = StyleSheet.create({
     color: textTokens.tertiary,
     marginTop: 1,
   },
-  recommendStage: {
-    fontSize: typography.bodySm.fontSize,
-    color: "#FF8A4C",
-    fontWeight: "600",
-    textAlign: "center",
-    marginTop: spacing.sm,
-  },
-  loaderCard: {
-    marginTop: spacing.sm,
-    alignItems: "center",
-  },
-  loaderShot: {
-    width: "100%",
-    height: 180,
-    borderRadius: 12,
-    backgroundColor: "rgba(255,255,255,0.06)",
-  },
-  loaderShotPlaceholder: {
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.12)",
-  },
-  loaderOverlay: {
-    position: "absolute",
-    top: 0,
-    left: 0,
-    right: 0,
-    height: 180,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "rgba(0,0,0,0.35)",
-    borderRadius: 12,
-  },
   facetRow: {
     flexDirection: "row",
     alignItems: "center",
@@ -988,9 +825,6 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(0,0,0,0.18)",
     color: textTokens.primary,
     fontSize: typography.body.fontSize,
-  },
-  bioInput: {
-    minHeight: 150,
   },
   chipRow: {
     flexDirection: "row",

@@ -3957,6 +3957,21 @@ jobs:
       - name: Run META-ORCH-1290 pitch-via-pipeline gate
         run: node .github/scripts/strict-grep/i-proposed-1290-pitch-via-pipeline.mjs
 
+  orch-1304-approve-generates-pitch:
+    name: "ORCH-1304: the venue pitch is generated at APPROVE, not by an owner pre-approval affordance (I-PROPOSED-1304-PITCH-GENERATED-AT-APPROVE)"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      # Self-test (GOOD/BAD fixtures) then run against the tree — reverting the
+      # approve-time pitch-gen (superseding META-ORCH-1290 D-3) fails this gate.
+      - name: Self-test the ORCH-1304 pitch-generated-at-approve gate
+        run: node .github/scripts/strict-grep/i-proposed-1304-pitch-generated-at-approve.mjs --self-test
+      - name: Run ORCH-1304 pitch-generated-at-approve gate
+        run: node .github/scripts/strict-grep/i-proposed-1304-pitch-generated-at-approve.mjs
+
   orch-1300-web-gallery-picker:
     name: "ORCH-1300: venue gallery 'Add photos' web picker routes through the real browser file input, never the platformImagePicker cancel-stub (mirrors the ORCH-1097 cover lock)"
     runs-on: ubuntu-latest

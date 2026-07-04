@@ -436,24 +436,35 @@ export function VenueListingContent({
                   </Text>
                 </View>
               </View>
-              {/* META-ORCH-1290 D-3 — the pitch is now EDITABLE here (the shared
-                  VenuePitchField): Draft/Regenerate with AI, edit, and Save. On
-                  a live venue Save re-scores (SC-6); on a pending one it stages
-                  the pitch for approve (SC-5). */}
+              {/* ORCH-1304 [approve generates the pitch] — the editable pitch
+                  field is shown ONLY once the venue is verified/live. Mingla
+                  writes the pitch at approve; before that there is nothing to
+                  edit, so a pending/rejected venue sees a read-only placeholder
+                  (no pre-approval owner-side pitch generation). The live branch
+                  (Regenerate + edit + Save → generative_summary) is unchanged. */}
               <Text style={styles.fieldLabel}>Your pitch</Text>
-              <VenuePitchField
-                value={pitchText}
-                onChangeText={setPitchText}
-                onGenerate={handleGeneratePitch}
-                onSave={handleSavePitch}
-                saveDisabled={pitchSaveDisabled}
-                reScoreCaption={
-                  isLive
-                    ? "Editing your pitch sends it back for a quick re-score — your listing stays live."
-                    : null
-                }
-                testIDPrefix="listing-pitch"
-              />
+              {isLive ? (
+                <VenuePitchField
+                  value={pitchText}
+                  onChangeText={setPitchText}
+                  onGenerate={handleGeneratePitch}
+                  onSave={handleSavePitch}
+                  saveDisabled={pitchSaveDisabled}
+                  reScoreCaption={
+                    isLive
+                      ? "Editing your pitch sends it back for a quick re-score — your listing stays live."
+                      : null
+                  }
+                  testIDPrefix="listing-pitch"
+                />
+              ) : (
+                <View style={styles.pitchPlaceholder} testID="listing-pitch-pending">
+                  <Text style={styles.pitchPlaceholderText}>
+                    Mingla writes your pitch when your venue is approved. You&apos;ll
+                    be able to edit it here after.
+                  </Text>
+                </View>
+              )}
             </GlassCard>
 
             {/* META-ORCH-1290 D-5 — the vibe-scores card ALWAYS renders: a LOCKED
@@ -682,6 +693,18 @@ const styles = StyleSheet.create({
     textTransform: "uppercase",
     marginTop: spacing.md,
     marginBottom: spacing.xs,
+  },
+  // ORCH-1304 — read-only pitch placeholder for a pending/rejected venue (the
+  // editable field appears only once the venue is approved/live).
+  pitchPlaceholder: {
+    padding: spacing.md,
+    borderRadius: 12,
+    backgroundColor: "rgba(255,255,255,0.06)",
+  },
+  pitchPlaceholderText: {
+    fontSize: typography.bodySm.fontSize,
+    lineHeight: 20,
+    color: textTokens.secondary,
   },
   scoreList: { marginTop: spacing.sm, gap: spacing.sm },
   scoreRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
