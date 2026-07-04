@@ -1,6 +1,3 @@
-import { File } from "expo-file-system";
-import { fetch as expoFetch } from "expo/fetch";
-
 // ORCH-1295 — native TUS PATCH transport for the Bunny cover-video upload.
 //
 // TWO native footguns are avoided here:
@@ -13,9 +10,21 @@ import { fetch as expoFetch } from "expo/fetch";
 // So the bytes are read with expo-file-system's `File` API (native-reliable) and
 // streamed with `expo/fetch` — a native fetch that sends the TUS headers
 // (`Upload-Offset` / `Tus-Resumable` / `Content-Type: application/offset+octet-stream`)
-// VERBATIM → Bunny 204. Native-module access is isolated in this `*.native.ts`
-// file so Metro never bundles expo-file-system / expo/fetch into the web bundle
-// (the web PATCH is driven by XHR; see eventCoverVideoTusPatch.ts for the stub).
+// VERBATIM → Bunny 204.
+//
+// ORCH-1296 — the `expo-file-system` (new `File` API) and `expo/fetch` imports are
+// LAZY (`await import(...)` INSIDE the functions), never top-level. Expo Router
+// eagerly require()s the whole `app/` route tree at startup (native, asyncRoutes
+// off), and the venue/experience routes transitively import CoverPicker → the
+// cover-video service → this module. A TOP-LEVEL native import here would
+// therefore EVALUATE during boot — before the native modules are fully
+// registered — and throw → splash brick. (It only bricks over-the-air: a native
+// build compiles the modules in and boots fine; the OTA runs new native-touching
+// JS on the already-installed core.) Requiring this module at boot must only
+// DEFINE functions; native is touched solely when a video actually uploads.
+// Mirrors the codebase's proven lazy pattern (platformFileSystem.native.ts's
+// `await import("expo-file-system/legacy")`, PostHogAnalyticsProvider's
+// `await import("posthog-react-native")`).
 
 export interface NativeTusPatchResult {
   status: number;
@@ -27,7 +36,10 @@ export interface NativeTusPatchResult {
 // `File.bytes()` yields a concrete `Uint8Array<ArrayBuffer>` (a valid `BodyInit`).
 export const readEventCoverVideoBytes = async (
   uri: string,
-): Promise<Uint8Array<ArrayBuffer>> => new File(uri).bytes();
+): Promise<Uint8Array<ArrayBuffer>> => {
+  const { File } = await import("expo-file-system");
+  return new File(uri).bytes();
+};
 
 // Single-shot TUS PATCH of the raw bytes via expo/fetch (headers verbatim).
 export const patchBunnyTusNative = async (input: {
@@ -36,6 +48,7 @@ export const patchBunnyTusNative = async (input: {
   headers: Record<string, string>;
   signal?: AbortSignal;
 }): Promise<NativeTusPatchResult> => {
+  const { fetch: expoFetch } = await import("expo/fetch");
   const response = await expoFetch(input.url, {
     body: input.body,
     headers: input.headers,
