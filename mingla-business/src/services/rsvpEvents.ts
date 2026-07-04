@@ -166,3 +166,80 @@ export const submitPublicRsvp = async (
     confirmationToken: res.confirmationToken ?? null,
   };
 };
+
+// ===========================================================================
+// ORCH-1291 [rsvp-chip-in] — voluntary contribution create via the anon-capable
+// rsvp-contribution-create edge fn. The chip-in is a SECOND, voluntary action
+// AFTER a free RSVP — it NEVER routes through the RSVP write. Mirrors
+// submitPublicRsvp's anon posture (a logged-in JWT rides the client;
+// guestName/guestEmail cover the anon buyer). NEVER a ticket/order.
+// ===========================================================================
+
+export interface SubmitRsvpContributionInput {
+  eventId: string;
+  amountCents: number;
+  rsvpId?: string | null;
+  guestName?: string;
+  guestEmail?: string;
+  surface: "native" | "web" | "mobile-web";
+}
+
+export type SubmitRsvpContributionResult =
+  | {
+      kind: "requires_native_payment";
+      contributionId: string;
+      clientSecret: string;
+      paymentIntentId: string;
+      stripeAccountId: string;
+      publishableKey: string | null;
+      amountCents: number;
+      buyerTotalCents: number;
+      currency: string;
+      brandName?: string;
+    }
+  | {
+      kind: "requires_web_redirect";
+      contributionId: string;
+      hostedCheckoutUrl: string;
+      amountCents: number;
+      buyerTotalCents: number;
+      currency: string;
+    }
+  | {
+      kind: "requires_paystack_redirect";
+      contributionId: string;
+      authorizationUrl: string;
+      reference: string;
+      amountCents: number;
+      buyerTotalCents: number;
+      currency: string;
+    };
+
+export const submitRsvpContribution = async (
+  input: SubmitRsvpContributionInput,
+): Promise<SubmitRsvpContributionResult> => {
+  const { data, error } = await supabase.functions.invoke("rsvp-contribution-create", {
+    body: {
+      eventId: input.eventId,
+      amountCents: input.amountCents,
+      rsvpId: input.rsvpId ?? null,
+      guestName: input.guestName,
+      guestEmail: input.guestEmail,
+      surface: input.surface,
+    },
+  });
+  // Bubble the edge fn's { error } code (amount_below_min / brand_cannot_collect /
+  // amount_invalid / …) so the panel maps it to the right gift-framed copy.
+  if (error !== null) {
+    throw new Error(parseRsvpErrorCode(error as RsvpInvokeError));
+  }
+  const res = (data ?? {}) as Partial<SubmitRsvpContributionResult> & { kind?: string };
+  if (
+    res.kind !== "requires_native_payment" &&
+    res.kind !== "requires_web_redirect" &&
+    res.kind !== "requires_paystack_redirect"
+  ) {
+    throw new Error("contribution_create_failed");
+  }
+  return res as SubmitRsvpContributionResult;
+};

@@ -42,6 +42,7 @@ import {
   type RsvpOfferingConfig,
   type RsvpGuestContact,
   type RsvpSubmitResult,
+  type ChipInResult,
   type ThemePalette,
 } from "@mingla/offering-rendering";
 
@@ -67,6 +68,12 @@ export interface FoundationRsvpPreviewProps {
     plusCount: number;
     guests: RsvpGuestContact[];
   }) => Promise<RsvpSubmitResult>;
+  // ORCH-1291 [rsvp-chip-in] — voluntary-gift hand-off passthrough. The buyer-web
+  // caller wires submitRsvpContribution (surface 'web'/'mobile-web' → hosted
+  // Checkout / Paystack redirect); the business in-app preview may pass a
+  // preview/no-op. Absent → the chip-in panel never renders.
+  onChipIn?: (input: { amountCents: number }) => Promise<ChipInResult>;
+  contributionState?: "idle" | "paid";
   contentBottomInset?: number;
   onScroll?: (event: NativeSyntheticEvent<NativeScrollEvent>) => void;
   onScrollViewLayout?: (event: LayoutChangeEvent) => void;
@@ -91,6 +98,8 @@ export const FoundationRsvpPreview: React.FC<FoundationRsvpPreviewProps> = (prop
     onOpenMaps,
     staticMapUrl = null,
     onSubmit,
+    onChipIn,
+    contributionState,
     contentBottomInset = 96,
     onScroll,
     onScrollViewLayout,
@@ -128,6 +137,8 @@ export const FoundationRsvpPreview: React.FC<FoundationRsvpPreviewProps> = (prop
     config,
     isLoggedIn,
     onSubmit,
+    onChipIn,
+    contributionState,
     onOpenBrand,
     onOpenMaps,
     staticMapUrl,

@@ -132,6 +132,69 @@ function accountIdForEvent(event: StripeWebhookEvent): string | null {
   return objectString(object, "account");
 }
 
+// ORCH-1291 [rsvp-chip-in] — discriminate a voluntary-contribution charge from a
+// ticket charge by the metadata marker set at create. Checked BEFORE the ticket
+// finalize path so the two money paths never cross (the ticket path is byte-
+// unchanged — SC-10). Works on both payment_intent.succeeded (PI metadata) and
+// checkout.session.completed (session metadata carries the same marker).
+function isRsvpContributionEvent(event: StripeWebhookEvent): boolean {
+  const metadata = (event.data.object?.metadata ?? {}) as Record<string, unknown>;
+  return metadata.mingla_purpose === "rsvp_contribution";
+}
+
+// ORCH-1291 — finalize a voluntary RSVP contribution from the verified webhook
+// via finalize_rsvp_contribution (idempotent; NO order/ticket minted). The
+// contribution_id comes from the provider-echoed metadata Mingla set at create.
+async function handleRsvpContributionEvent(
+  supabase: SupabaseClient,
+  event: StripeWebhookEvent,
+): Promise<string | null> {
+  const obj = event.data.object;
+  const metadata = (obj?.metadata ?? {}) as Record<string, unknown>;
+  const contributionId = typeof metadata.contribution_id === "string"
+    ? metadata.contribution_id
+    : null;
+  if (!contributionId) {
+    console.error("[stripe-webhook] rsvp_contribution event missing contribution_id");
+    return null;
+  }
+
+  const providerRef = objectString(obj, "id"); // PI id or Checkout Session id
+  let chargeId: string | null = null;
+  let methodType: string | null = null;
+  if (event.type === "payment_intent.succeeded") {
+    const charges = obj.charges as { data?: Array<Record<string, unknown>> } | undefined;
+    const latestCharge = charges?.data?.[0] ?? null;
+    chargeId = latestCharge ? objectString(latestCharge, "id") : null;
+    const pmTypes = Array.isArray(obj.payment_method_types) ? obj.payment_method_types : [];
+    methodType = typeof pmTypes[0] === "string" ? pmTypes[0] : null;
+  } else if (event.type === "checkout.session.completed") {
+    const piField = obj.payment_intent;
+    chargeId = typeof piField === "string"
+      ? piField
+      : piField && typeof piField === "object"
+      ? objectString(piField as Record<string, unknown>, "id")
+      : null;
+  }
+
+  const { error } = await supabase.rpc("finalize_rsvp_contribution", {
+    p_contribution_id: contributionId,
+    p_provider_ref: providerRef,
+    p_charge_id: chargeId,
+    p_payment_method_type: methodType,
+  });
+  if (error) {
+    throw new Error(`finalize_rsvp_contribution failed: ${error.message}`);
+  }
+
+  const { data: row } = await supabase
+    .from("event_rsvp_contributions")
+    .select("brand_id")
+    .eq("id", contributionId)
+    .maybeSingle();
+  return typeof row?.brand_id === "string" ? row.brand_id : null;
+}
+
 function char3(currency: unknown, fallback = "GBP"): string {
   return (typeof currency === "string" && currency.length > 0
     ? currency
@@ -1463,6 +1526,18 @@ export async function routeStripeEvent(
     case "payment_intent.succeeded":
     case "payment_intent.payment_failed":
     case "payment_intent.canceled":
+      // ORCH-1291 [rsvp-chip-in]: a voluntary RSVP contribution is discriminated
+      // by metadata.mingla_purpose='rsvp_contribution' and finalized via the
+      // contribution RPC (NO order/ticket). Checked FIRST so the ticket path is
+      // never entered for a gift (SC-10). Only succeeded finalizes; failed/
+      // canceled contribution PIs are a no-op (the pending row is left as-is /
+      // was marked failed by the create fn).
+      if (isRsvpContributionEvent(event)) {
+        if (event.type === "payment_intent.succeeded") {
+          brandId = await handleRsvpContributionEvent(supabase, event);
+        }
+        break;
+      }
       // ORCH-0869 [Tr3 Installment Payments]: discriminate by metadata.
       // Installment PIs (created by process-scheduled-installments cron) carry
       // `mingla_installment_id` in metadata. Route to installment handlers
@@ -1485,6 +1560,12 @@ export async function routeStripeEvent(
     // (whichever order it arrives in) can finalise tickets via the
     // existing handler. Idempotent: re-running this event is a no-op.
     case "checkout.session.completed":
+      // ORCH-1291 — a contribution's hosted Checkout completion finalizes the
+      // contribution row (idempotent with the payment_intent.succeeded finalize).
+      if (isRsvpContributionEvent(event)) {
+        brandId = await handleRsvpContributionEvent(supabase, event);
+        break;
+      }
       brandId = await handleCheckoutSessionCompleted(supabase, event);
       break;
     case "charge.dispute.created":

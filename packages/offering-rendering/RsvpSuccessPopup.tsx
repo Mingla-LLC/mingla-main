@@ -37,6 +37,13 @@ export interface RsvpSuccessPopupProps {
   /** Append the Calendar nudge for a signed-in consumer (anon web omits it). */
   showCalendarNudge: boolean;
   onClose: () => void;
+  /**
+   * ORCH-1291 [rsvp-chip-in] — an OPTIONAL voluntary chip-in panel rendered
+   * between the detail block and the Done button (the high-intent "you're in —
+   * want to chip in?" moment). Provided by the body ONLY for a going/pending
+   * guest on a chip-in-enabled event (SC-2); absent otherwise → no change.
+   */
+  chipInPanel?: React.ReactNode;
 }
 
 const Row: React.FC<{
@@ -60,6 +67,7 @@ export const RsvpSuccessPopup: React.FC<RsvpSuccessPopupProps> = ({
   details,
   showCalendarNudge,
   onClose,
+  chipInPanel,
 }) => {
   const boldFamily = boldFontFamily(theme);
   if (details === null) return null;
@@ -116,6 +124,11 @@ export const RsvpSuccessPopup: React.FC<RsvpSuccessPopupProps> = ({
             </Text>
           ) : null}
 
+          {/* ORCH-1291 [rsvp-chip-in] — the voluntary gift moment, above Done. */}
+          {chipInPanel !== undefined && chipInPanel !== null ? (
+            <View style={styles.chipInWrap}>{chipInPanel}</View>
+          ) : null}
+
           <Pressable
             onPress={onClose}
             accessibilityRole="button"
@@ -154,6 +167,7 @@ const styles = StyleSheet.create({
   detailLabel: { fontSize: 13, fontWeight: "700" },
   detailValue: { fontSize: 14, fontWeight: "800", flexShrink: 1, textAlign: "right" },
   nudge: { fontSize: 13, lineHeight: 19, marginTop: 14 },
+  chipInWrap: { marginTop: 16 },
   doneBtn: {
     alignItems: "center",
     justifyContent: "center",

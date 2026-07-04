@@ -55,7 +55,18 @@ export type TaxBasis =
   | "calc_failed_flat_absorb"
   // META-ORCH-1076 — NG VAT computed in-engine from country_vat_config (no
   // Stripe Tax round-trip). Self-describing receipt basis for the Paystack arm.
-  | "config_vat";
+  | "config_vat"
+  // ORCH-1291 [rsvp-chip-in] — a voluntary RSVP contribution is a GIFT, not a
+  // taxable sale: the caller passes taxCents=0 and skips the Stripe Tax /
+  // Paystack VAT round-trip entirely. Self-describing on the persisted
+  // pricing_breakdown so the receipt reads as a contribution, never a tax
+  // invoice (SPEC §10 Q-A; investigation F-1/F-8). ADDITIVE union member — the
+  // engine passes it through unchanged; no switch/never-guard consumes TaxBasis
+  // (dependency walk: ticket-checkout-create + venue-reservation-create only
+  // ASSIGN their own literals; ticket-checkout's `taxBasis !== "venue_resolved"`
+  // check safely falls to taxCents=0 if ever reached — but the contribution path
+  // lives in its own fn and never touches those files).
+  | "voluntary_contribution";
 
 // ORCH-1034 — per-region inclusive-VAT divisor (1 + VAT rate) used ONLY to
 // re-derive the display tax portion from Stripe's amount_total for INCLUSIVE

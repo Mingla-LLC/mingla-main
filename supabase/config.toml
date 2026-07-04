@@ -268,6 +268,21 @@ verify_jwt = false
 [functions.public-submit-rsvp]
 verify_jwt = false
 
+# ORCH-1291 [rsvp-chip-in] — rsvp-contribution-create is the anon-capable
+# voluntary-gift charge for a chip-in-enabled RSVP event. verify_jwt=false
+# (mirrors public-submit-rsvp + the ticket guest path): an optional Authorization
+# bearer resolves user_id, else an anon buyer with name/email. It runs under
+# service-role, prices via the shared all-in engine at tax_cents=0, and creates a
+# Stripe direct-charge / Paystack initialize before returning.
+[functions.rsvp-contribution-create]
+verify_jwt = false
+
+# ORCH-1291 [rsvp-chip-in] — rsvp-contribution-refund issues an organiser/admin
+# refund of a paid contribution (discretionary keeps-cut / event-cancellation
+# make-whole). verify_jwt=true (organiser identity gates the refund).
+[functions.rsvp-contribution-refund]
+verify_jwt = true
+
 # ORCH-1150 — rsvp-notify is the INTERNAL multi-channel transactional fan-out
 # (push + SMS + email) invoked server-to-server with the service-role bearer.
 # It is NOT a public anon route.

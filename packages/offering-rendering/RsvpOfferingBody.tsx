@@ -78,6 +78,7 @@ import { RsvpMomentumDecision } from "./RsvpMomentumDecision";
 import { RsvpGoingConfirmDialog } from "./RsvpGoingConfirmDialog";
 import { RsvpSuccessPopup, type RsvpConfirmationDetails } from "./RsvpSuccessPopup";
 import { RsvpDetailsModal } from "./RsvpDetailsModal";
+import { RsvpChipInPanel, type ChipInPanelState } from "./RsvpChipInPanel";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const PHONE_RE = /^\+?[0-9\s()-]{7,20}$/;
@@ -99,7 +100,22 @@ export interface RsvpOfferingConfig {
   manualApproval: boolean;
   doorsOpenLabel?: string | null;
   doorsCloseLabel?: string | null;
+  // ORCH-1291 [rsvp-chip-in] — voluntary contribution config (all optional so
+  // free RSVPs are unaffected; the chip-in panel renders only when enabled).
+  rsvp_contribution_enabled?: boolean;
+  rsvp_contribution_suggested_cents?: number | null;
+  rsvp_contribution_min_cents?: number | null;
+  /** Brand settlement currency for the chip-in Intl formatting (GBP/USD/NGN…). */
+  settlementCurrency?: string;
+  /** Brand display name for the "Chip in for {host}" copy (fallback "the host"). */
+  hostShortName?: string;
 }
+
+// ORCH-1291 — the payment hand-off contract (DESIGN §1.3). The body is
+// payment-SDK-agnostic (I-MOR-0827); the surface handler opens the native
+// PaymentSheet / Paystack browser (→ "paid") or navigates to a hosted page
+// (→ "redirecting"). It throws Error(code) on failure; the body maps code → copy.
+export type ChipInResult = { kind: "paid" } | { kind: "redirecting" };
 
 export interface RsvpGuestContact {
   name: string;
@@ -148,6 +164,17 @@ export interface RsvpOfferingBodyProps {
    * source for the canonical-order gate.
    */
   hideDecisionBox?: boolean;
+  // ORCH-1291 [rsvp-chip-in] — the surface's payment hand-off for a voluntary
+  // gift. Absent → the chip-in panel never renders (feature dark on that
+  // surface). Present + config.rsvp_contribution_enabled + a going guest → the
+  // panel appears in the success popup + the inline §5.5 section.
+  onChipIn?: (input: { amountCents: number }) => Promise<ChipInResult>;
+  /**
+   * ORCH-1291 — lets a WEB return (contribution=paid) or the business preview
+   * drive the terminal chip-in state without a callback round-trip. Default
+   * 'idle'. When 'paid', both mounts render the thank-you.
+   */
+  contributionState?: "idle" | "paid";
   testID?: string;
 }
 
@@ -188,6 +215,11 @@ export interface RsvpOfferingState extends RsvpDecisionState {
   // ORCH-1163-R3 — the floating-bar details modal (portal <Modal>, gorhom-safe).
   // Rendered ONCE in RsvpOfferingBody next to confirmDialog/successPopup.
   detailsModal: React.ReactNode;
+  // ORCH-1291 [rsvp-chip-in] — the inline §5.5 chip-in panel node (gated on a
+  // GOING guest + config-enabled + onChipIn present; null otherwise). The
+  // success-popup mount is injected directly into successPopup above (both read
+  // the ONE lifted chip-in state slice).
+  chipInInlinePanel: React.ReactNode;
 }
 
 /**
@@ -200,6 +232,7 @@ export const useRsvpOfferingState = (
   props: RsvpOfferingBodyProps,
 ): RsvpOfferingState => {
   const { event, brand, palette, theme, config, isLoggedIn, onSubmit } = props;
+  const { onChipIn, contributionState } = props;
   const surface = offeringSurfaceStyles(palette);
   const boldFamily = boldFontFamily(theme);
 
@@ -233,6 +266,22 @@ export const useRsvpOfferingState = (
   const [pendingDecision, setPendingDecision] = useState<
     "going" | "maybe" | "not_going" | null
   >(null);
+
+  // ── ORCH-1291 [rsvp-chip-in] — voluntary contribution state slice (lifted so
+  // the success-popup mount + the inline §5.5 mount never diverge/double-charge). ──
+  const chipCurrency = config.settlementCurrency ?? event.currency ?? "USD";
+  const chipMinCents = config.rsvp_contribution_min_cents ?? null;
+  const chipSuggestedCents = config.rsvp_contribution_suggested_cents ?? null;
+  const chipDefaultAmount = ((): number => {
+    const preselect = chipSuggestedCents ??
+      ((chipCurrency || "").toUpperCase() === "NGN" ? 2500 * 100 : 10 * 100);
+    return chipMinCents !== null ? Math.max(preselect, chipMinCents) : preselect;
+  })();
+  const [chipAmountCents, setChipAmountCents] = useState<number>(chipDefaultAmount);
+  const [chipInState, setChipInState] = useState<ChipInPanelState>(
+    contributionState === "paid" ? "success" : "idle",
+  );
+  const [chipError, setChipError] = useState<string | null>(null);
 
   const capacityFull =
     config.capacity !== null && config.goingCount >= config.capacity;
@@ -458,6 +507,62 @@ export const useRsvpOfferingState = (
     mapErrorCode,
   ]);
 
+  // ── ORCH-1291 — server-code → gift-framed copy (DESIGN §4.7). ──
+  const fmtChipWhole = useCallback((cents: number): string => {
+    try {
+      return new Intl.NumberFormat(undefined, {
+        style: "currency",
+        currency: chipCurrency || "USD",
+        maximumFractionDigits: 0,
+      }).format(cents / 100);
+    } catch {
+      return `${Math.round(cents / 100)} ${chipCurrency}`;
+    }
+  }, [chipCurrency]);
+
+  const runChipIn = useCallback(async (): Promise<void> => {
+    if (onChipIn == null) return;
+    if (chipInState === "submitting") return;
+    if (chipAmountCents <= 0) {
+      setChipError("Enter an amount to chip in.");
+      setChipInState("error");
+      return;
+    }
+    if (chipMinCents !== null && chipAmountCents < chipMinCents) {
+      setChipError(`Add at least ${fmtChipWhole(chipMinCents)}.`);
+      setChipInState("error");
+      return;
+    }
+    setChipInState("submitting");
+    setChipError(null);
+    try {
+      const result = await onChipIn({ amountCents: chipAmountCents });
+      // "redirecting" → the surface is navigating to a hosted page; HOLD
+      // submitting until it leaves (on return the surface passes
+      // contributionState='paid'). "paid" → native sheet / paystack verified.
+      if (result.kind === "paid") {
+        setChipInState("success");
+      }
+    } catch (err) {
+      const code = err instanceof Error ? err.message : String(err);
+      if (code.includes("brand_cannot_collect")) {
+        setChipInState("paused");
+        setChipError(null);
+      } else if (code.includes("amount_below_min")) {
+        setChipError(
+          chipMinCents !== null ? `Add at least ${fmtChipWhole(chipMinCents)}.` : "Add a little more.",
+        );
+        setChipInState("error");
+      } else if (code.includes("amount_invalid")) {
+        setChipError("Enter an amount to chip in.");
+        setChipInState("error");
+      } else {
+        setChipError("Couldn't process that. Try again.");
+        setChipInState("error");
+      }
+    }
+  }, [onChipIn, chipInState, chipAmountCents, chipMinCents, fmtChipWhole]);
+
   // ── resolved-state subcopy (carried verbatim from RsvpPublicBody) ──
   const goingResolved = guestStatus === "going" && guestApproval === "approved";
   const pendingResolved = guestApproval === "pending";
@@ -662,6 +767,49 @@ export const useRsvpOfferingState = (
     />
   );
 
+  // ── ORCH-1291 [rsvp-chip-in] — build the chip-in panel node (both mounts read
+  // this ONE lifted slice). Eligible ⇔ config-enabled AND the surface wired a
+  // payment hand-off. ──
+  const chipHostName = config.hostShortName ?? brand?.name ?? "the host";
+  const chipFeatureOn = config.rsvp_contribution_enabled === true && onChipIn != null;
+  const clearChipError = (): void => {
+    if (chipInState === "error") {
+      setChipInState("idle");
+      setChipError(null);
+    }
+  };
+  const buildChipPanel = (mountTestID: string): React.ReactNode => (
+    <RsvpChipInPanel
+      palette={palette}
+      theme={theme}
+      currency={chipCurrency}
+      hostShortName={chipHostName}
+      suggestedCents={chipSuggestedCents}
+      minCents={chipMinCents}
+      state={chipInState}
+      amountCents={chipAmountCents}
+      onAmountChange={(c) => {
+        setChipAmountCents(c);
+        clearChipError();
+      }}
+      onPreset={(c) => {
+        setChipAmountCents(c);
+        clearChipError();
+      }}
+      onSubmit={() => void runChipIn()}
+      errorText={chipError}
+      isWeb={Platform.OS === "web"}
+      testID={mountTestID}
+    />
+  );
+
+  // SC-2 gate (Seth-locked): the popup mount shows chip-in ONLY for a going /
+  // pending-approval guest — NOT waitlisted (capacity-gated) or maybe. (The
+  // DESIGN §5.5 broader set is SUPERSEDED by the SC-2 lock.)
+  const popupChipEligible = chipFeatureOn &&
+    successDetails !== null &&
+    successDetails.status !== "waitlisted";
+
   const successPopup = (
     <RsvpSuccessPopup
       visible={successDetails !== null}
@@ -670,8 +818,15 @@ export const useRsvpOfferingState = (
       details={successDetails}
       showCalendarNudge={isLoggedIn}
       onClose={() => setSuccessDetails(null)}
+      chipInPanel={popupChipEligible ? buildChipPanel("orch-1291-rsvp-chipin-panel-popup") : undefined}
     />
   );
+
+  // Inline §5.5 mount — SAME {going} gate (SC-2). Rendered between the §5
+  // decision box and the §6 brand card by the body below.
+  const chipInInlinePanel: React.ReactNode = chipFeatureOn && guestStatus === "going"
+    ? buildChipPanel("orch-1291-rsvp-chipin-panel-inline")
+    : null;
 
   // ── ORCH-1163-R3 — floating-bar details modal (extracted to RsvpDetailsModal,
   // a portal <Modal> mirroring RsvpGoingConfirmDialog so the BODY file hosts NO
@@ -722,6 +877,7 @@ export const useRsvpOfferingState = (
     confirmDialog,
     successPopup,
     detailsModal,
+    chipInInlinePanel,
   };
 };
 
@@ -1046,6 +1202,18 @@ export const RsvpOfferingBody: React.FC<
           />
         </View>
       )}
+
+      {/* (5.5) ORCH-1291 [rsvp-chip-in] — the persistent inline voluntary-gift
+          panel for a guest who dismissed the popup or returned later (incl. a web
+          redirect return). Gated on {going} + config-enabled + onChipIn wired
+          (SC-2). Inserted strictly AFTER the §5 inline box and BEFORE the §6
+          brand card so the canonical-order gate's anchors keep their relative
+          order; renders null in the default free flow. */}
+      {state.chipInInlinePanel !== null ? (
+        <View style={styles.section} testID="orch-1291-rsvp-chipin-section">
+          {state.chipInInlinePanel}
+        </View>
+      ) : null}
 
       {/* (6) Presented By — brand card → onOpenBrand. */}
       <View style={styles.section}>

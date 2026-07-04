@@ -101,6 +101,14 @@ export const liveEventToEditableDraft = (e: LiveEvent): DraftEvent => ({
   rsvpWaitlistEnabled: e.rsvpWaitlistEnabled ?? false,
   rsvpApprovalMode: e.rsvpApprovalMode ?? "auto",
   rsvpDiscoverable: e.rsvpDiscoverable ?? false,
+  // ORCH-1291 [rsvp-chip-in] — contribution config (edit path defaults; v1 edits
+  // do not re-gate contributions, so a legacy live event maps to safe defaults).
+  rsvpContributionEnabled:
+    (e as { rsvpContributionEnabled?: boolean }).rsvpContributionEnabled ?? false,
+  rsvpContributionSuggestedCents:
+    (e as { rsvpContributionSuggestedCents?: number | null }).rsvpContributionSuggestedCents ?? null,
+  rsvpContributionMinCents:
+    (e as { rsvpContributionMinCents?: number | null }).rsvpContributionMinCents ?? null,
   // ORCH-1006 — pricing switches; legacy events predate the field → all-inherit.
   pricingSwitches: e.pricingSwitches ?? {
     passTax: null,
