@@ -8,7 +8,12 @@ import { join } from "node:path";
 // The signed-out-recovery describe block below is rewritten to exercise the new
 // route-agnostic redirect predicate. The /brand and /account warming predicates
 // are unchanged and their tests are preserved verbatim.
+// [TEST-MOD-APPROVED ORCH-1292] Import extended with the new
+// BRAND_RESOLVE_AUTH_CEILING_MS constant for the time-bound regression tests
+// appended at the end of this file (Apple 2.1a infinite-spinner fix). Existing
+// imports + tests are preserved verbatim.
 import {
+  BRAND_RESOLVE_AUTH_CEILING_MS,
   isAccountAuthWarming,
   isBrandRouteResolving,
   shouldRedirectToSignIn,
@@ -236,5 +241,83 @@ describe("ORCH-1100 Wave 3 — route wiring (the fix is actually mounted)", () =
     const account = businessFile("app/(tabs)/account.tsx");
     expect(account).toContain("isAccountAuthWarming");
     expect(account).toContain("isAuthWarming");
+  });
+});
+
+// ORCH-1292 (Apple 2.1a) — the `!isAuthReady` warm-window term is now
+// TIME-BOUNDED so a brand read that has already settled to null can never spin
+// forever when auth never becomes ready (Apple's throttled review network).
+// These append-only tests FAIL ON REVERT of the time-bound (reverting drops the
+// ceiling → the settled-null + stuck-auth case stays `true` forever again).
+describe("ORCH-1292 — brand-resolve auth-warm window is time-bounded (no infinite spinner)", () => {
+  test("still RESOLVING within the ceiling: settled-null + auth-not-ready + elapsed < ceiling", () => {
+    expect(
+      isBrandRouteResolving({
+        hasBrandId: true,
+        brandIsNull: true,
+        isAuthReady: false,
+        queryIsFetched: true,
+        queryIsLoading: false,
+        elapsedMs: BRAND_RESOLVE_AUTH_CEILING_MS - 1,
+      }),
+    ).toBe(true);
+  });
+
+  test("NOT resolving past the ceiling: settled-null + auth-STUCK-not-ready + elapsed >= ceiling → not-found (the fix)", () => {
+    // The load-bearing assertion: on Apple's network `isAuthReady` can stay
+    // false forever; once the read has settled to null and the ceiling has
+    // passed, degrade to not-found instead of a permanent spinner.
+    expect(
+      isBrandRouteResolving({
+        hasBrandId: true,
+        brandIsNull: true,
+        isAuthReady: false,
+        queryIsFetched: true,
+        queryIsLoading: false,
+        elapsedMs: BRAND_RESOLVE_AUTH_CEILING_MS,
+      }),
+    ).toBe(false);
+  });
+
+  test("an in-flight read is ALWAYS resolving regardless of elapsed (never a premature not-found)", () => {
+    expect(
+      isBrandRouteResolving({
+        hasBrandId: true,
+        brandIsNull: true,
+        isAuthReady: false,
+        queryIsFetched: false,
+        queryIsLoading: true,
+        elapsedMs: BRAND_RESOLVE_AUTH_CEILING_MS * 10,
+      }),
+    ).toBe(true);
+  });
+
+  test("default elapsedMs preserves the pre-1292 behavior (backward-compatible)", () => {
+    // No elapsedMs passed → treated as 0 (< ceiling) → identical to the original
+    // sticky term, so every existing call site keeps its exact prior behavior.
+    expect(
+      isBrandRouteResolving({
+        hasBrandId: true,
+        brandIsNull: true,
+        isAuthReady: false,
+        queryIsFetched: true,
+        queryIsLoading: false,
+      }),
+    ).toBe(true);
+  });
+
+  test("app/brand/[id]/index.tsx feeds a live elapsedMs so the bound actually fires", () => {
+    const route = businessFile("app/brand/[id]/index.tsx");
+    expect(route).toContain("elapsedMs: Date.now() - mountedAtRef.current");
+    expect(route).toContain("BRAND_RESOLVE_AUTH_CEILING_MS");
+  });
+});
+
+// ORCH-1292 (Apple 5.1.1v) — DIRECT account-deletion entry in the Settings hub.
+describe("ORCH-1292 — account deletion is directly findable in the Settings hub", () => {
+  test("(tabs)/account.tsx has a Delete account row routing to /account/delete", () => {
+    const account = businessFile("app/(tabs)/account.tsx");
+    expect(account).toContain('label="Delete account"');
+    expect(account).toContain('router.push("/account/delete" as never)');
   });
 });

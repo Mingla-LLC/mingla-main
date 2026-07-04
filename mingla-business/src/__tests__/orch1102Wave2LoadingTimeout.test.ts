@@ -180,21 +180,26 @@ describe("ORCH-1102 Wave 2 — AuthContext.tsx hard-ceiling backstop", () => {
     }
   });
 
-  test("arms an independent web-only setTimeout that force-releases the loading gate (NOT a Promise.race arm the lock can starve)", () => {
-    // Web-gated arming.
-    expect(authNoComments).toMatch(
-      /if \(Platform\.OS === "web"\)\s*\{[\s\S]{0,400}?hardCeilingTimer = setTimeout\(/,
+  // [TEST-MOD-APPROVED ORCH-1292] The hard-ceiling backstop is DE-GATED to native
+  // (Apple 2.1a): previously `if (Platform.OS === "web")`-wrapped, it now arms on
+  // native AND web so a stalled post-getSession chain can never hang the iPad
+  // boot spinner forever. These two source-pinned assertions are updated to the
+  // new contract (unconditional arming + unconditional clear). The spinner is
+  // STILL guaranteed to release at AUTH_RESOLUTION_HARD_CEILING_MS.
+  test("arms an independent setTimeout on native AND web that force-releases the loading gate (NOT a Promise.race arm the lock can starve)", () => {
+    // Unconditional arming — no Platform gate around the timer (ORCH-1292).
+    expect(authNoComments).not.toMatch(
+      /if \(Platform\.OS === "web"\)\s*\{[\s\S]{0,200}?hardCeilingTimer = setTimeout\(/,
     );
     // Fires setLoading(false) at the ceiling — the spinner can never be permanent.
     expect(authNoComments).toMatch(
-      /hardCeilingTimer = setTimeout\([\s\S]{0,500}?setLoading\(false\);[\s\S]{0,200}?\}, AUTH_RESOLUTION_HARD_CEILING_MS\);/,
+      /hardCeilingTimer = setTimeout\([\s\S]{0,600}?setLoading\(false\);[\s\S]{0,200}?\}, AUTH_RESOLUTION_HARD_CEILING_MS\);/,
     );
   });
 
   test("clears the backstop timer on unmount (no leak)", () => {
-    expect(authNoComments).toMatch(
-      /if \(hardCeilingTimer !== null\) clearTimeout\(hardCeilingTimer\);/,
-    );
+    // ORCH-1292: the timer is always armed now, so it is cleared unconditionally.
+    expect(authNoComments).toMatch(/clearTimeout\(hardCeilingTimer\);/);
   });
 
   test("the ORCH-0887-A 3s Promise.race is PRESERVED (this is an additive backstop, not a replacement)", () => {

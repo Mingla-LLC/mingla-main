@@ -15,15 +15,33 @@
  */
 
 /**
+ * Time-bound (ms) on the brand-resolve auth-warm window — ORCH-1292 (Apple 2.1a).
+ * Matches the auth-resolution ceiling: once auth has had this long to become
+ * ready and the brand read has already settled to null, a still-`!isAuthReady`
+ * state is treated as resolved (not-found) rather than a permanent spinner.
+ */
+export const BRAND_RESOLVE_AUTH_CEILING_MS = 7000;
+
+/**
  * `/brand/{id}` — is the brand still RESOLVING (show a spinner) vs genuinely
  * not-found (show the not-found branch)?
  *
  * RESOLVING when there is a valid brand id, the brand row is not yet in hand,
- * AND either auth has not become ready yet OR the brand query has not settled
- * (still loading / not fetched). Once auth is ready and the query has fetched,
- * a still-null brand is a genuine not-found → returns false.
+ * AND either the brand query has not settled (still loading / not fetched) OR —
+ * only within a bounded warm window — auth has not become ready yet. Once the
+ * query has fetched, a still-null brand is a genuine not-found → returns false.
  *
  * A missing/empty id segment is an immediate not-found (never loading).
+ *
+ * ORCH-1292 (Apple 2.1a) — the `!isAuthReady` term used to be STICKY: on Apple's
+ * throttled review network `isAuthReady` could stay false indefinitely, so a
+ * brand read that had ALREADY settled to null still spun forever (the reviewer's
+ * "activity indicator spins indefinitely"). It is now TIME-BOUNDED: `!isAuthReady`
+ * keeps the spinner only while `elapsedMs < authCeilingMs`. Past the ceiling a
+ * settled-null brand falls through to the not-found / error UI instead of an
+ * infinite spinner. `elapsedMs` defaults to 0 so any caller that does not measure
+ * elapsed time keeps the EXACT prior behavior (fully backward-compatible); the
+ * `/brand/{id}` route feeds a live wall-clock elapsed so the bound actually fires.
  */
 export const isBrandRouteResolving = ({
   hasBrandId,
@@ -31,16 +49,26 @@ export const isBrandRouteResolving = ({
   isAuthReady,
   queryIsFetched,
   queryIsLoading,
+  elapsedMs = 0,
+  authCeilingMs = BRAND_RESOLVE_AUTH_CEILING_MS,
 }: {
   hasBrandId: boolean;
   brandIsNull: boolean;
   isAuthReady: boolean;
   queryIsFetched: boolean;
   queryIsLoading: boolean;
+  elapsedMs?: number;
+  authCeilingMs?: number;
 }): boolean => {
   if (!hasBrandId) return false;
   if (!brandIsNull) return false;
-  return !isAuthReady || !queryIsFetched || queryIsLoading;
+  // The brand query is UNGATED (fires regardless of auth): while it is still
+  // loading or has not fetched at all, we are genuinely resolving.
+  if (queryIsLoading || !queryIsFetched) return true;
+  // Query HAS fetched and settled to null. Keep spinning on the auth-warm window
+  // ONLY within the ceiling — never forever (ORCH-1292). Past the ceiling a
+  // settled-null brand is a genuine not-found.
+  return !isAuthReady && elapsedMs < authCeilingMs;
 };
 
 /**
