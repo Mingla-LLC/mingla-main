@@ -1,12 +1,15 @@
 /**
  * /brand/[id]/edit — founder-facing brand edit form (J-A8).
  *
- * Reads the dynamic `id` segment, resolves the brand from `useBrandList()`,
- * and renders BrandEditView. When `id` doesn't match any brand in the list,
- * BrandEditView's not-found state takes over.
+ * Reads the dynamic `id` segment, FETCHES the brand via `useBrand(id)`, and
+ * renders BrandEditView. ORCH-1309: this used to `useBrandList().find(id)` from
+ * the in-memory store, which is EMPTY on a cold deep-link/refresh — so every
+ * direct load flashed "Brand not found". Now it fetches by id and shows a
+ * spinner during the cold-load resolving window (isBrandRouteResolving, mirrors
+ * the /brand/[id] hub); a genuinely-missing brand still shows not-found.
  *
  * Format-agnostic ID resolver per Cycle 2 invariant I-11.
- * DO NOT add normalization logic; the find() handles all ID shapes
+ * DO NOT add normalization logic; useBrand(id) handles all ID shapes
  * (stub `lm`, user-created `b_<ts36>`, future UUIDs).
  *
  * Host-bg cascade per Cycle 2 invariant I-12.
@@ -17,7 +20,7 @@
  * Per spec §3.3.
  */
 
-import React, { useCallback, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { View } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -30,11 +33,14 @@ import {
 import { canvas } from "../../../src/constants/designSystem";
 import { useAuth } from "../../../src/context/AuthContext";
 import {
-  useBrandList,
   useCurrentBrandStore,
   type Brand,
 } from "../../../src/store/currentBrandStore";
-import { useUpdateBrand } from "../../../src/hooks/useBrands";
+import { useBrand, useUpdateBrand } from "../../../src/hooks/useBrands";
+import {
+  BRAND_RESOLVE_AUTH_CEILING_MS,
+  isBrandRouteResolving,
+} from "../../../src/utils/coldLoadAuthGates";
 import { joinBrandDescription } from "../../../src/services/brandMapping";
 import { computeDirtyFieldsPatch } from "../../../src/utils/brandPatch";
 
@@ -54,7 +60,7 @@ const isBrandEditSection = (
 export default function BrandEditRoute(): React.ReactElement {
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { user } = useAuth();
+  const { user, isAuthReady } = useAuth();
   const params = useLocalSearchParams<{
     id: string | string[];
     section?: string | string[];
@@ -70,13 +76,45 @@ export default function BrandEditRoute(): React.ReactElement {
   )
     ? sectionParam
     : undefined;
-  const brands = useBrandList();
+  const brandId =
+    typeof idParam === "string" && idParam.length > 0 ? idParam : null;
   const setCurrentBrand = useCurrentBrandStore((s) => s.setCurrentBrand);
   const updateBrandMutation = useUpdateBrand();
-  const brand =
-    typeof idParam === "string" && idParam.length > 0
-      ? brands.find((b) => b.id === idParam) ?? null
-      : null;
+  // ORCH-1309 — resolve the brand by FETCHING it (useBrand), not by finding it
+  // in the in-memory useBrandList(). On a cold deep-link / refresh / bookmark of
+  // /brand/{id}/edit that list is EMPTY (it is only populated after the app warms
+  // through home), so the old `brands.find(...)` returned null and the page
+  // flashed "Brand not found" for every direct load. useBrand fetches by id.
+  const brandQuery = useBrand(brandId);
+  const brand = brandQuery.data ?? null;
+  // ORCH-1309 — cold-direct-load auth-readiness guard (mirrors the /brand/[id]
+  // hub, ORCH-1100 Wave 3 + ORCH-1292). While the session is warming and the
+  // single-brand query has not settled, treat a null brand as RESOLVING so the
+  // view shows a spinner instead of the not-found empty state. Once auth is ready
+  // AND the query has settled (fetched, not fetching), a still-null brand is a
+  // genuine not-found. Time-bounded by BRAND_RESOLVE_AUTH_CEILING_MS so a warm
+  // window that never becomes ready still degrades to not-found.
+  const mountedAtRef = useRef<number>(Date.now());
+  const [, forceResolveTick] = useState(0);
+  const isBrandResolving = isBrandRouteResolving({
+    hasBrandId: brandId !== null,
+    brandIsNull: brand === null,
+    isAuthReady,
+    queryIsFetched: brandQuery.isFetched,
+    queryIsLoading: brandQuery.isLoading,
+    elapsedMs: Date.now() - mountedAtRef.current,
+  });
+  useEffect(() => {
+    if (!isBrandResolving) return;
+    const remaining =
+      BRAND_RESOLVE_AUTH_CEILING_MS - (Date.now() - mountedAtRef.current);
+    if (remaining <= 0) return;
+    const timer = setTimeout(
+      () => forceResolveTick((n) => n + 1),
+      remaining + 50,
+    );
+    return () => clearTimeout(timer);
+  }, [isBrandResolving]);
 
   const handleBack = (): void => {
     if (router.canGoBack()) {
@@ -141,6 +179,7 @@ export default function BrandEditRoute(): React.ReactElement {
     >
       <BrandEditView
         brand={brand}
+        isResolving={isBrandResolving}
         accountId={user?.id ?? null}
         onCancel={handleBack}
         onSave={handleSave}
