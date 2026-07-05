@@ -1,14 +1,30 @@
 import appsFlyer from 'react-native-appsflyer'
+import Constants from 'expo-constants'
 import { Platform } from 'react-native'
 import { supabase } from './supabase'
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Constants
+// Constants — ORCH-1313 (§4.C) env-driven (single-source + fail-loud on release)
+//
+// Read from the app.config `extra` block FIRST, then process.env — mirroring
+// supabase.ts. A DYNAMIC process.env read is NOT inlined by babel-preset-expo and
+// is undefined in Hermes standalone/OTA builds (COMMS-0028), so `extra` is the
+// build-safe path. The dev fallback lives in app.config.ts (release builds fail
+// loud if the env is unset); on any correctly-built binary these resolve to a
+// real value, so hasAppsFlyerEnv is defense-in-depth for a misconfigured dev build.
 // ─────────────────────────────────────────────────────────────────────────────
 
-const AF_DEV_KEY = 'W29Z6cqfWKvML3FdQAX27E'
-const AF_IOS_APP_ID = '6760440898'
-const AF_ANDROID_APP_ID = 'com.mingla.app.v2'
+const AF_DEV_KEY =
+  (Constants.expoConfig?.extra?.EXPO_PUBLIC_APPSFLYER_DEV_KEY as string | undefined) ??
+  process.env.EXPO_PUBLIC_APPSFLYER_DEV_KEY
+const AF_IOS_APP_ID =
+  (Constants.expoConfig?.extra?.EXPO_PUBLIC_APPSFLYER_IOS_APP_ID as string | undefined) ??
+  process.env.EXPO_PUBLIC_APPSFLYER_IOS_APP_ID
+const AF_ANDROID_APP_ID =
+  (Constants.expoConfig?.extra?.EXPO_PUBLIC_APPSFLYER_ANDROID_APP_ID as string | undefined) ??
+  process.env.EXPO_PUBLIC_APPSFLYER_ANDROID_APP_ID
+const hasAppsFlyerEnv =
+  Boolean(AF_DEV_KEY) && Boolean(AF_IOS_APP_ID) && Boolean(AF_ANDROID_APP_ID)
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Initialization
@@ -32,6 +48,17 @@ const registeredDeviceKeys = new Set<string>()
  */
 export function initializeAppsFlyer(): void {
   if (_initialized) return
+  // ORCH-1313 (§4.C) — defense-in-depth env guard. `hasAppsFlyerEnv` is the
+  // single-source flag; the explicit per-value checks also narrow the types to
+  // `string` for the initSdk config below. On release builds the app.config guard
+  // guarantees these are present, so this warn only fires in a misconfigured dev
+  // build. Constitution #3 — never fail silently.
+  if (!hasAppsFlyerEnv || !AF_DEV_KEY || !AF_IOS_APP_ID || !AF_ANDROID_APP_ID) {
+    console.warn(
+      '[AppsFlyer] env missing — init skipped. Set EXPO_PUBLIC_APPSFLYER_DEV_KEY + EXPO_PUBLIC_APPSFLYER_IOS_APP_ID + EXPO_PUBLIC_APPSFLYER_ANDROID_APP_ID.',
+    )
+    return
+  }
   try {
     appsFlyer.initSdk(
       {
@@ -93,6 +120,26 @@ export function setAppsFlyerUserId(userId: string): void {
     })
   } catch (e) {
     console.warn('[AppsFlyer] setCustomerUserId failed:', e)
+  }
+}
+
+/**
+ * Clear the AppsFlyer customer user ID. Call on signOut so a subsequent
+ * different sign-in on the same device does not inherit the prior user's
+ * attribution identity.
+ *
+ * ORCH-1313 (§4.B) — Constitution #6: logout clears everything, including
+ * third-party identity caches that survive Supabase signOut by default. Mirrors
+ * the business service's clearAppsFlyerUserId.
+ */
+export function clearAppsFlyerUserId(): void {
+  if (!_initialized) return
+  try {
+    appsFlyer.setCustomerUserId('', (result: unknown) => {
+      if (__DEV__) console.log('[AppsFlyer] Customer user ID cleared:', result)
+    })
+  } catch (e) {
+    console.warn('[AppsFlyer] clearCustomerUserId failed:', e)
   }
 }
 
@@ -159,6 +206,17 @@ export function registerAppsFlyerDevice(userId: string): void {
   } catch (e) {
     console.warn('[AppsFlyer] registerAppsFlyerDevice failed:', e)
   }
+}
+
+/**
+ * Reset the in-memory device-dedup cache. Call on signOut (and account-switch)
+ * so the next signed-in user is registered fresh rather than skipped as
+ * "already registered."
+ *
+ * ORCH-1313 (§4.B) — mirrors the business service's resetAppsFlyerDeviceCache.
+ */
+export function resetAppsFlyerDeviceCache(): void {
+  registeredDeviceKeys.clear()
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

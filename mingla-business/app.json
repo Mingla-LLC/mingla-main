@@ -17,7 +17,10 @@
         "NSPhotoLibraryAddUsageDescription": "Mingla Business saves event tickets to your photo library when you tap Save.",
         "NSFaceIDUsageDescription": "Mingla Business uses Face ID to confirm Apple Pay transactions at the door.",
         "NSUserTrackingUsageDescription": "Mingla Business uses your advertising identifier to measure the performance of our ads and help us reach more organizers like you.",
-        "NSLocationWhenInUseUsageDescription": "Mingla Business uses your location to help measure the performance of our marketing and improve our services."
+        "NSLocationWhenInUseUsageDescription": "Mingla Business uses your location to help measure the performance of our marketing and improve our services.",
+        "SKAdNetworkItems": [
+          { "SKAdNetworkIdentifier": "v9wttpbfk9.skadnetwork" }
+        ]
       },
       "entitlements": {
         "com.apple.developer.in-app-payments": [

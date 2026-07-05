@@ -4097,3 +4097,84 @@ jobs:
         run: node .github/scripts/strict-grep/orch-1312-video-duration-retry-delay.mjs --self-test
       - name: Run ORCH-1312 video-duration-retry-delay gate
         run: node .github/scripts/strict-grep/orch-1312-video-duration-retry-delay.mjs
+
+  # ── ORCH-1313 [AppsFlyer attribution + OneLink · Phase 1] ────────────────────
+  # Five DRAFT invariants (A/B/D) + the §4.C config fail-loud guard. Each job
+  # self-tests its detectors against GOOD/BAD fixtures, then runs against the tree.
+  orch-1313-consumer-att-not-auth-gated:
+    name: "ORCH-1313: consumer ATT/startAppsFlyer fires at first-open for ANONYMOUS sessions — no !isAuthenticated||!user?.id early-return, deps stay [] (I-PROPOSED-1313-CONSUMER-ATT-NOT-AUTH-GATED)"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Self-test the ORCH-1313 consumer-att-not-auth-gated gate
+        run: node .github/scripts/strict-grep/i-proposed-1313-consumer-att-not-auth-gated.mjs --self-test
+      - name: Run ORCH-1313 consumer-att-not-auth-gated gate
+        run: node .github/scripts/strict-grep/i-proposed-1313-consumer-att-not-auth-gated.mjs
+
+  orch-1313-att-before-any-tracking-transmission:
+    name: "ORCH-1313: no tracking SDK transmits before ATT resolves — every startAppsFlyer() is inside the ensureAttRequested() gate + postHog awaits whenAttResolved() before client construction (I-PROPOSED-1313-ATT-BEFORE-ANY-TRACKING-TRANSMISSION)"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Self-test the ORCH-1313 att-before-any-tracking gate
+        run: node .github/scripts/strict-grep/i-proposed-1313-att-before-any-tracking-transmission.mjs --self-test
+      - name: Run ORCH-1313 att-before-any-tracking gate
+        run: node .github/scripts/strict-grep/i-proposed-1313-att-before-any-tracking-transmission.mjs
+
+  orch-1313-logout-clears-appsflyer-identity:
+    name: "ORCH-1313: consumer performPrivateAuthCleanup integrations block calls BOTH clearAppsFlyerUserId() + resetAppsFlyerDeviceCache() (Constitution #6) (I-PROPOSED-1313-LOGOUT-CLEARS-APPSFLYER-IDENTITY)"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Self-test the ORCH-1313 logout-clears-appsflyer-identity gate
+        run: node .github/scripts/strict-grep/i-proposed-1313-logout-clears-appsflyer-identity.mjs --self-test
+      - name: Run ORCH-1313 logout-clears-appsflyer-identity gate
+        run: node .github/scripts/strict-grep/i-proposed-1313-logout-clears-appsflyer-identity.mjs
+
+  orch-1313-s2s-api3-auth-token-not-devkey:
+    name: "ORCH-1313: business api3 S2S authentication header carries APPSFLYER_S2S_TOKEN (fail-closed), never the legacy APPSFLYER_BUSINESS_DEV_KEY (I-PROPOSED-1313-S2S-API3-AUTH-TOKEN-NOT-DEVKEY)"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Self-test the ORCH-1313 s2s-api3-auth-token gate
+        run: node .github/scripts/strict-grep/i-proposed-1313-s2s-api3-auth-token-not-devkey.mjs --self-test
+      - name: Run ORCH-1313 s2s-api3-auth-token gate
+        run: node .github/scripts/strict-grep/i-proposed-1313-s2s-api3-auth-token-not-devkey.mjs
+
+  orch-1313-s2s-api3-ios-id-prefixed:
+    name: "ORCH-1313: business api3 S2S iOS app id is id-prefixed via idempotent ensureIdPrefix normalizer; Android stays bare package (I-PROPOSED-1313-S2S-API3-IOS-ID-PREFIXED)"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Self-test the ORCH-1313 s2s-api3-ios-id-prefixed gate
+        run: node .github/scripts/strict-grep/i-proposed-1313-s2s-api3-ios-id-prefixed.mjs --self-test
+      - name: Run ORCH-1313 s2s-api3-ios-id-prefixed gate
+        run: node .github/scripts/strict-grep/i-proposed-1313-s2s-api3-ios-id-prefixed.mjs
+
+  orch-1313-appsflyer-key-fail-loud:
+    name: "ORCH-1313 (§4.C): AppsFlyer dev key env-driven with a RELEASE-BOUND fail-loud build guard in BOTH app.config.ts files + consumer service reads Constants.expoConfig.extra first (never ships dark) (I-PROPOSED-1313-APPSFLYER-KEY-FAIL-LOUD)"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Self-test the ORCH-1313 appsflyer-key-fail-loud gate
+        run: node .github/scripts/strict-grep/i-proposed-1313-appsflyer-key-fail-loud.mjs --self-test
+      - name: Run ORCH-1313 appsflyer-key-fail-loud gate
+        run: node .github/scripts/strict-grep/i-proposed-1313-appsflyer-key-fail-loud.mjs

@@ -903,33 +903,39 @@ function AppContent() {
 
   // Email verification removed — all users are now OAuth (inherently verified)
 
-  // ── ATT (App Tracking Transparency) — ORCH-1228 / ORCH-1257 / ORCH-1258 ──────
+  // ── ATT (App Tracking Transparency) — ORCH-1228 / ORCH-1257 / ORCH-1258 / ORCH-1313 ──
   // (Apple Guideline 2.1). Apple rejected build 29 because the reviewer could not
   // locate the ATT prompt: it previously fired ONLY after the coach-mark tour
   // completed/was skipped, and on the reviewer's iPad the tour never reached that
-  // point. ORCH-1257 moved it earlier (post-onboarding). ORCH-1258 makes ATT the
-  // FIRST permission prompt the user sees: this effect now fires ATT as soon as the
-  // user is AUTHENTICATED — WITHOUT waiting for onboarding to finish — so the ATT
-  // dialog presents standalone, before onboarding's location step and before push.
+  // point. ORCH-1257 moved it earlier (post-onboarding). ORCH-1258 made ATT the
+  // FIRST permission prompt the user sees, right after sign-in.
+  //
+  // ORCH-1313: ATT fires at first-open (anonymous) — do NOT auth-gate.
+  // This effect was previously auth-gated (`if (!isAuthenticated || !user?.id) return`),
+  // so an install that bounced before sign-up NEVER triggered ATT — which on iOS also
+  // blocked startAppsFlyer() AND PostHog (both wait on whenAttResolved), making every
+  // anonymous install invisible to attribution (ORCH-1313 G-1). It now fires ONCE at
+  // cold app-open regardless of auth state (AppContent is mounted for anonymous users),
+  // so every install is capturable. Identity still binds later on sign-in via the
+  // separate effect above (setAppsFlyerUserId / registerAppsFlyerDevice on user?.id).
   //
   // ensureAttRequested() is AppState-`active` gated INTERNALLY (ORCH-1257): it waits
-  // for the first foreground-`active` transition before issuing the prompt, so
-  // firing it during onboarding still shows the dialog on-`active` (iOS would
+  // for the first foreground-`active` transition before issuing the prompt (iOS would
   // otherwise silently drop an off-`active` request). It is also single-flight — it
   // never double-prompts, and both the onboarding location step (which awaits
-  // whenAttResolved) and requestPostTourPermissions() route through the same gate.
-  // On a previously-answered install iOS resolves it without showing the dialog
-  // again. After ATT resolves we start AppsFlyer transmission with the now-final
-  // IDFA state. PostHog awaits the same gate (whenAttResolved) before it
-  // initializes, so no tracking SDK transmits before ATT — the ATT-before-tracking
-  // ordering Apple requires. This is the FIRST of three separate system dialogs;
-  // iOS queues them one at a time: ATT → location (onboarding) → notifications.
+  // whenAttResolved) and requestPostTourPermissions() route through the same gate, so
+  // the anonymous-first path and the post-onboarding path can never double-prompt or
+  // double-start. On a previously-answered install iOS resolves it without showing the
+  // dialog again. After ATT resolves we start AppsFlyer transmission with the now-final
+  // IDFA state. PostHog awaits the same gate (whenAttResolved) before it initializes,
+  // so no tracking SDK transmits before ATT — the ATT-before-tracking ordering Apple
+  // requires. This is the FIRST of three separate system dialogs; iOS queues them one
+  // at a time: ATT → location (onboarding) → notifications.
   const attFiredRef = useRef(false);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (attFiredRef.current) return;
-    if (isLoadingAuth) return;
-    if (!isAuthenticated || !user?.id) return;
-    // ORCH-1258: do NOT wait for onboarding — fire ATT FIRST, right after sign-in.
+    // ORCH-1313: fire once at first app-open for ANY session (anonymous included).
     attFiredRef.current = true;
     // ORCH-1260: hold ALL OneSignal In-App Messages until the ATT decision resolves,
     // then resume — so the ATT prompt is the SOLE first prompt at launch (a dashboard
@@ -949,7 +955,9 @@ function AppContent() {
         // Even if ATT failed, AppsFlyer should still start (gate is open).
         startAppsFlyer();
       });
-  }, [isAuthenticated, isLoadingAuth, user?.id]);
+    // ORCH-1313: intentionally-once at mount ([] deps) — no auth gate. attFiredRef +
+    // ensureAttRequested single-flight + startAppsFlyer _started guard keep it idempotent.
+  }, []);
   // ───────────────────────────────────────────────────────────────────────────
 
   // Structured navigation logging
