@@ -11,7 +11,12 @@ type FileInfoForUpload = { exists: boolean; size?: number };
 
 export const normalizePickerDurationMs = (duration?: number | null): number => {
   if (typeof duration !== "number" || !Number.isFinite(duration)) return 0;
-  return duration > 0 && duration < 1000 ? duration * 1000 : duration;
+  // ORCH-1308: the result feeds the INTEGER source_duration_ms / trim_end_ms
+  // columns via the upload intent. A browser/picker duration can be fractional
+  // (seconds → ms), so round to a whole millisecond — a non-integer makes the
+  // job INSERT fail ("invalid input syntax for type integer").
+  const ms = duration > 0 && duration < 1000 ? duration * 1000 : duration;
+  return Math.round(ms);
 };
 
 export const normalizeLocalFileUri = (path: string): string =>

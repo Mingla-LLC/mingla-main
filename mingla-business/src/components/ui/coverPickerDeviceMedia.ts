@@ -49,7 +49,14 @@ const readBrowserVideoDurationMs = async (uri: string): Promise<number | null> =
     };
     video.preload = "metadata";
     video.onloadedmetadata = (): void => {
-      const duration = Number.isFinite(video.duration) ? video.duration * 1000 : null;
+      // ORCH-1308: `video.duration` is FRACTIONAL seconds, so `* 1000` yields a
+      // non-integer ms (e.g. 17.971995 → 17971.995). source_duration_ms /
+      // trim_end_ms are INTEGER columns — a fractional value makes the upload
+      // intent INSERT fail ("invalid input syntax for type integer"). Round at
+      // the read so a whole-millisecond duration flows through the whole path.
+      const duration = Number.isFinite(video.duration)
+        ? Math.round(video.duration * 1000)
+        : null;
       cleanup();
       resolve(duration);
     };
