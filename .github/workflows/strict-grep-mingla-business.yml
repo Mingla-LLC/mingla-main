@@ -4069,3 +4069,17 @@ jobs:
         run: node .github/scripts/strict-grep/orch-1310-brand-edit-draft-async-sync.mjs --self-test
       - name: Run ORCH-1310 brand-edit-draft-async-sync gate
         run: node .github/scripts/strict-grep/orch-1310-brand-edit-draft-async-sync.mjs
+
+  orch-1311-web-video-duration-read-robust:
+    name: "ORCH-1311: a picked video's duration is read ROBUSTLY (seek-to-end resolves Infinity/0 + retry + timeout), so gallery video covers on Android web don't fail with 'Could not read this video's duration' (I-PROPOSED-1311-WEB-VIDEO-DURATION-READ-ROBUST)"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      # Self-tests (GOOD/BAD fixtures) then runs against the tree.
+      - name: Self-test the ORCH-1311 web-video-duration-read-robust gate
+        run: node .github/scripts/strict-grep/orch-1311-web-video-duration-read-robust.mjs --self-test
+      - name: Run ORCH-1311 web-video-duration-read-robust gate
+        run: node .github/scripts/strict-grep/orch-1311-web-video-duration-read-robust.mjs
