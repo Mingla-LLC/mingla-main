@@ -4055,3 +4055,17 @@ jobs:
         run: node .github/scripts/strict-grep/orch-1309-brand-deeplink-guard.mjs --self-test
       - name: Run ORCH-1309 brand-deeplink-guard gate
         run: node .github/scripts/strict-grep/orch-1309-brand-deeplink-guard.mjs
+
+  orch-1310-brand-edit-draft-async-sync:
+    name: "ORCH-1310: BrandEditView initializes its draft when the fetched brand arrives async (brand !== null && draft === null → setDraft(brand)), so a cold deep-link recovers to the edit form instead of flashing 'Brand not found' (I-PROPOSED-1310-BRAND-EDIT-DRAFT-ASYNC-SYNC)"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      # Self-tests (GOOD/BAD fixtures) then runs against the tree.
+      - name: Self-test the ORCH-1310 brand-edit-draft-async-sync gate
+        run: node .github/scripts/strict-grep/orch-1310-brand-edit-draft-async-sync.mjs --self-test
+      - name: Run ORCH-1310 brand-edit-draft-async-sync gate
+        run: node .github/scripts/strict-grep/orch-1310-brand-edit-draft-async-sync.mjs
