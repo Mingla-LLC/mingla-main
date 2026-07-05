@@ -101,12 +101,27 @@ const readBrowserVideoDurationOnce = (uri: string): Promise<number | null> => {
   });
 };
 
+// ORCH-1312 — retry with a DELAY between attempts. ORCH-1311 retried immediately,
+// but on Android web the read fails during the brief tab-resume window right
+// after the OS photo picker closes (deterministically: an immediate read errors,
+// while the SAME clip/URL reads a finite duration ~3s later — proven on Seth's
+// Samsung). Back-to-back attempts both land in that unstable window and both
+// fail. Spacing the retries out lets a later attempt land once the tab has
+// settled. The happy path (a stable read) still returns immediately; the delays
+// only cost time when the first read fails.
+const VIDEO_DURATION_RETRY_DELAYS_MS = [900, 1600, 2400];
+
+const delay = (ms: number): Promise<void> =>
+  new Promise((resolve) => setTimeout(resolve, ms));
+
 const readBrowserVideoDurationMs = async (uri: string): Promise<number | null> => {
-  const first = await readBrowserVideoDurationOnce(uri);
-  if (first !== null && first > 0) return first;
-  // Retry once — a just-resumed tab (post OS picker) occasionally misses the
-  // first metadata read for a content-URI-backed clip.
-  return readBrowserVideoDurationOnce(uri);
+  let result = await readBrowserVideoDurationOnce(uri);
+  for (const wait of VIDEO_DURATION_RETRY_DELAYS_MS) {
+    if (result !== null && result > 0) return result;
+    await delay(wait);
+    result = await readBrowserVideoDurationOnce(uri);
+  }
+  return result;
 };
 
 export const launchCoverImagePicker = async (): Promise<CoverPickerResult> => {
