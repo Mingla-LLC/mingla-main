@@ -4027,3 +4027,17 @@ jobs:
         run: node .github/scripts/strict-grep/orch-1308-video-duration-integer.mjs --self-test
       - name: Run ORCH-1308 video-duration-integer gate
         run: node .github/scripts/strict-grep/orch-1308-video-duration-integer.mjs
+
+  orch-1308-web-video-retry-blob:
+    name: "ORCH-1308: the picked cover video blob survives a retry on web (pickedVideoAssetsRef; freed on next pick/unmount, never in the pick finally) so 'try again' doesn't re-fetch a dead blob (I-PROPOSED-1308-WEB-VIDEO-RETRY-BLOB)"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      # Self-tests (GOOD/BAD fixtures) then runs against the tree.
+      - name: Self-test the ORCH-1308 web-video-retry-blob gate
+        run: node .github/scripts/strict-grep/orch-1308-web-video-retry-blob.mjs --self-test
+      - name: Run ORCH-1308 web-video-retry-blob gate
+        run: node .github/scripts/strict-grep/orch-1308-web-video-retry-blob.mjs

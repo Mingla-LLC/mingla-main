@@ -246,6 +246,21 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
   );
   const lastVideoUploadFileRef = useRef<EventCoverVideoUploadFile | null>(null);
   const lastEmittedProcessedVideoUrlRef = useRef<string | null>(null);
+  // ORCH-1308: hold the picked video blob assets across a retry. On web the
+  // upload reads the clip via fetch(blob:uri); revoking the blob in the pick's
+  // finally killed the "try again" path (retry re-fetched a dead blob →
+  // "Could not read the selected video in your browser"). Keep the blob alive
+  // until a NEW pick replaces it or the component unmounts. (Native assets carry
+  // no objectUrl, so revokeCoverPickedAssets is a no-op for them.)
+  const pickedVideoAssetsRef = useRef<
+    Parameters<typeof revokeCoverPickedAssets>[0]
+  >([]);
+  useEffect(
+    () => () => {
+      revokeCoverPickedAssets(pickedVideoAssetsRef.current);
+    },
+    [],
+  );
 
   const brandCover = useBrandCoverUpload();
 
@@ -558,11 +573,14 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
     if (!validateEventRowId()) return;
 
     setUploading(true);
-    let pickedAssets: Parameters<typeof revokeCoverPickedAssets>[0] = [];
     try {
       const result = await launchCoverVideoPicker();
       if (result.canceled || result.assets.length === 0) return;
-      pickedAssets = result.assets;
+      // ORCH-1308: free the PREVIOUS pick's blob, then retain THIS one so the
+      // "try again" retry (web fetch(blob:uri)) can re-read it. It is freed on
+      // the next pick or on unmount (effect above), NOT in the finally below.
+      revokeCoverPickedAssets(pickedVideoAssetsRef.current);
+      pickedVideoAssetsRef.current = result.assets;
       const asset = result.assets[0];
       // Web has no native trimmer (SC-7-Web-4): use the raw asset, no crash.
       // On web `trimVideoWithDedicatedEditor` resolves to a no-op stub, but we
@@ -625,7 +643,9 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
         error instanceof Error ? error.message : "Video cover upload failed. Try again.",
       );
     } finally {
-      revokeCoverPickedAssets(pickedAssets);
+      // ORCH-1308: do NOT revoke the picked blob here — the "try again" retry
+      // re-reads it (web fetch(blob:uri)). It is retained via
+      // pickedVideoAssetsRef and freed on the next pick / on unmount instead.
       setUploading(false);
     }
   }, [
