@@ -205,8 +205,9 @@ describe("ORCH-1304 — VenueSettingsModule drops the edit-cap copy", () => {
 
   test("the primary button is relabeled 'Edit photos & details'", () => {
     expect(src).toContain("Edit photos & details");
-    // The stable testIDs are preserved (ORCH-1186 T9c pins both).
-    expect(src).toContain("venue-settings-rerun-recommend");
+    // ORCH-1306: consolidated to ONE affordance — the duplicate
+    // venue-settings-rerun-recommend button was removed; the single primary CTA
+    // keeps the stable venue-settings-edit-photos testID.
     expect(src).toContain("venue-settings-edit-photos");
   });
 

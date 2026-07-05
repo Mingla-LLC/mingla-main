@@ -95,8 +95,10 @@ describe("ORCH-1186-A T9 — Settings has no read-only dead-end; real hours edit
 
   it("T9c — every creation field is reachable (details + photos/vibes/AI affordances)", () => {
     expect(mod).toContain("venue-settings-edit-details");
+    // ORCH-1306: the photos/vibes/AI section is now ONE affordance
+    // (venue-settings-edit-photos). The duplicate venue-settings-rerun-recommend
+    // button (same goToDeckReadiness target) was removed.
     expect(mod).toContain("venue-settings-edit-photos");
-    expect(mod).toContain("venue-settings-rerun-recommend");
   });
 
   it("T10 — every mutation control is manager-plus gated (canMutate)", () => {
