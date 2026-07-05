@@ -21,7 +21,13 @@
  * "Allow DMs" + "List in Discover" toggles belong in §5.3.6 settings — not here.
  */
 
-import React, { useCallback, useMemo, useRef, useState } from "react";
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import {
   ActivityIndicator,
   Pressable,
@@ -320,6 +326,21 @@ export const BrandEditView: React.FC<BrandEditViewProps> = ({
   // editable copy. When brand === null, draft is unused (we render not-found).
   const initialDraft = useMemo<Brand | null>(() => brand, [brand]);
   const [draft, setDraft] = useState<Brand | null>(initialDraft);
+  // ORCH-1310 — sync the draft once the brand arrives ASYNCHRONOUSLY. ORCH-1309
+  // made the route FETCH the brand (useBrand), so on a cold deep-link/refresh
+  // `brand` is null on the first render and non-null a beat later. `useState`
+  // reads its initializer ONLY once, so `draft` stayed null after the brand
+  // loaded — and the `draft === null` not-found branch below fired even though
+  // the brand was present (the true reason the deep-link still showed "Brand not
+  // found"). Initialize the draft the moment the brand first arrives; the
+  // `draft === null` guard means an in-progress edit is NEVER clobbered by a
+  // later brand identity change (e.g. a background refetch or post-save cache
+  // update), and a brand that goes back to null (nav away) is left alone.
+  useEffect(() => {
+    if (brand !== null && draft === null) {
+      setDraft(brand);
+    }
+  }, [brand, draft]);
   const [submitting, setSubmitting] = useState<boolean>(false);
   const [discardDialogVisible, setDiscardDialogVisible] = useState<boolean>(false);
   const [toast, setToast] = useState<ToastState>({ visible: false, message: "" });
