@@ -256,6 +256,10 @@ jobs:
             # ORCH-1313 §4.D — api3 token auth (not dev key), iOS id-prefix
             # (idempotent), os field, process-referral deletion.
             supabase/functions/_shared/__tests__/appsFlyerS2S.orch1313.test.ts
+            # ORCH-1313 §9 — TESTER adversarial regression: Android-branch token
+            # auth header (T-D4 omits it), cross-app-discriminator isolation,
+            # blank-token fail-close. Fails-on-revert of the auth/os fixes.
+            supabase/functions/_shared/__tests__/appsFlyerS2S.orch1313.adversarial.test.ts
           )
           for attempt in 1 2 3; do
             if deno test --allow-env --allow-net --allow-read --no-check "${DENO_TEST_FILES[@]}"; then
