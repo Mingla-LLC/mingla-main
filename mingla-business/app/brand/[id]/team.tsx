@@ -13,8 +13,15 @@
  * any early-return shell.
  */
 
-import React, { useCallback, useMemo, useState } from "react";
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import {
+  ActivityIndicator,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -51,7 +58,11 @@ import type {
   BrandInvitationRow,
   BrandTeamMemberRow,
 } from "../../../src/services/brandInvitationsService";
-import { useBrandList } from "../../../src/store/currentBrandStore";
+import { useBrand } from "../../../src/hooks/useBrands";
+import {
+  BRAND_RESOLVE_AUTH_CEILING_MS,
+  isBrandRouteResolving,
+} from "../../../src/utils/coldLoadAuthGates";
 import {
   type BrandRole,
   roleDisplayName,
@@ -82,15 +93,39 @@ export default function BrandTeamRoute(): React.ReactElement {
   const brandIdResolved =
     typeof idParam === "string" && idParam.length > 0 ? idParam : null;
 
-  const { user } = useAuth();
+  const { user, isAuthReady } = useAuth();
   const userId = user?.id ?? null;
   const operatorAccountId = userId ?? "";
 
-  const brands = useBrandList();
-  const brand =
-    brandIdResolved !== null
-      ? brands.find((b) => b.id === brandIdResolved) ?? null
-      : null;
+  // ORCH-1309 — resolve the brand by FETCHING it (useBrand), not by finding it in
+  // the in-memory useBrandList() (EMPTY on a cold deep-link / refresh, which made
+  // /brand/{id}/team flash "Brand not found" for every direct load). Guarded by
+  // the cold-load resolving window (mirrors the /brand/[id] hub, ORCH-1100/1292):
+  // a null brand while the session warms + the query settles renders a spinner,
+  // not the not-found empty state.
+  const brandQuery = useBrand(brandIdResolved);
+  const brand = brandQuery.data ?? null;
+  const mountedAtRef = useRef<number>(Date.now());
+  const [, forceResolveTick] = useState(0);
+  const isBrandResolving = isBrandRouteResolving({
+    hasBrandId: brandIdResolved !== null,
+    brandIsNull: brand === null,
+    isAuthReady,
+    queryIsFetched: brandQuery.isFetched,
+    queryIsLoading: brandQuery.isLoading,
+    elapsedMs: Date.now() - mountedAtRef.current,
+  });
+  useEffect(() => {
+    if (!isBrandResolving) return;
+    const remaining =
+      BRAND_RESOLVE_AUTH_CEILING_MS - (Date.now() - mountedAtRef.current);
+    if (remaining <= 0) return;
+    const timer = setTimeout(
+      () => forceResolveTick((n) => n + 1),
+      remaining + 50,
+    );
+    return () => clearTimeout(timer);
+  }, [isBrandResolving]);
 
   const { data: invitationRows = [] } = useBrandInvitations(brandIdResolved);
   const { data: memberRows = [] } = useBrandTeamMembers(brandIdResolved);
@@ -223,6 +258,20 @@ export default function BrandTeamRoute(): React.ReactElement {
     },
     [],
   );
+
+  // ORCH-1309 — cold-load resolving state: a valid brandId whose brand is still
+  // being fetched (session warming / query not settled) renders a spinner, not
+  // the "Brand not found" empty state. Only a settled-null brand falls through.
+  if (brandIdResolved !== null && brand === null && isBrandResolving) {
+    return (
+      <View style={[styles.host, { paddingTop: insets.top }]}>
+        <TopBar leftKind="back" title="Team" onBack={handleBack} rightSlot={null} />
+        <View style={styles.resolvingHost}>
+          <ActivityIndicator />
+        </View>
+      </View>
+    );
+  }
 
   if (brandIdResolved === null || brand === null) {
     return (
@@ -465,6 +514,12 @@ const styles = StyleSheet.create({
   emptyHost: {
     paddingTop: spacing.xl,
     alignItems: "center",
+  },
+  // ORCH-1309 — cold-load resolving spinner host.
+  resolvingHost: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
   },
   section: {
     marginTop: spacing.md,

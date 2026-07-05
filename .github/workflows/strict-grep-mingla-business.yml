@@ -4041,3 +4041,17 @@ jobs:
         run: node .github/scripts/strict-grep/orch-1308-web-video-retry-blob.mjs --self-test
       - name: Run ORCH-1308 web-video-retry-blob gate
         run: node .github/scripts/strict-grep/orch-1308-web-video-retry-blob.mjs
+
+  orch-1309-brand-deeplink-guard:
+    name: "ORCH-1309: /brand/[id]/edit + /team fetch the brand via useBrand(id) + guard the cold-load window (isBrandRouteResolving) instead of the empty-on-cold-load useBrandList().find, so a deep-link/refresh shows a spinner not 'Brand not found' (I-PROPOSED-1309-BRAND-DEEPLINK-COLD-LOAD-GUARD)"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      # Self-tests (GOOD/BAD fixtures) then runs against the tree.
+      - name: Self-test the ORCH-1309 brand-deeplink-guard gate
+        run: node .github/scripts/strict-grep/orch-1309-brand-deeplink-guard.mjs --self-test
+      - name: Run ORCH-1309 brand-deeplink-guard gate
+        run: node .github/scripts/strict-grep/orch-1309-brand-deeplink-guard.mjs

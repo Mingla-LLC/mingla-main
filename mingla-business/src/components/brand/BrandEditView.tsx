@@ -23,6 +23,7 @@
 
 import React, { useCallback, useMemo, useRef, useState } from "react";
 import {
+  ActivityIndicator,
   Pressable,
   StyleSheet,
   Text,
@@ -241,6 +242,14 @@ const textAreaStyles = StyleSheet.create({
 
 export interface BrandEditViewProps {
   brand: Brand | null;
+  /**
+   * ORCH-1309 — cold-direct-load resolving flag from the route. While the
+   * brand is being fetched on a deep-link/refresh (session warming, single-brand
+   * query not settled), `brand` is null but this is TRUE → render a loading
+   * spinner instead of the "Brand not found" empty state. Defaults to false so a
+   * genuinely-missing brand still shows not-found.
+   */
+  isResolving?: boolean;
   /** Operator account ID — required to drive useUpdateBrand from inside the
    * cover picker sheet (ORCH-0805 §7.1). Null when no auth user. */
   accountId: string | null;
@@ -271,6 +280,7 @@ export interface BrandEditViewProps {
 
 export const BrandEditView: React.FC<BrandEditViewProps> = ({
   brand,
+  isResolving = false,
   accountId,
   onCancel,
   onSave,
@@ -428,6 +438,24 @@ export const BrandEditView: React.FC<BrandEditViewProps> = ({
     },
     [],
   );
+
+  // ----- Resolving state (ORCH-1309) -----
+  // On a cold deep-link / refresh the brand is still being fetched (session
+  // warming, single-brand query not settled). Show a spinner instead of flashing
+  // "Brand not found". Only once the route stops resolving does a null brand fall
+  // through to the genuine not-found branch below.
+  if (brand === null && isResolving) {
+    return (
+      <View style={styles.host}>
+        <View style={styles.barWrap}>
+          <TopBar leftKind="back" title="Edit brand" onBack={onCancel} rightSlot={<View />} />
+        </View>
+        <View style={styles.resolvingHost}>
+          <ActivityIndicator />
+        </View>
+      </View>
+    );
+  }
 
   // ----- Not-found state -----
   if (brand === null || draft === null) {
@@ -921,6 +949,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.md,
     paddingTop: spacing.sm,
     gap: spacing.md,
+  },
+  // ORCH-1309 — cold-load resolving spinner host.
+  resolvingHost: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
   },
 
   // Not-found state ------------------------------------------------------
