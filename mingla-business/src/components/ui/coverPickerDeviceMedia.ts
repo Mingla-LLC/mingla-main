@@ -37,35 +37,76 @@ const toCoverAsset = (
   ...extras,
 });
 
-const readBrowserVideoDurationMs = async (uri: string): Promise<number | null> => {
-  if (typeof document === "undefined") return null;
+// ORCH-1311 — read a picked video's duration ROBUSTLY.
+// A gallery clip picked on Android web is a content-URI-backed File; reading its
+// duration through a single `loadedmetadata` read failed on-device ("Could not
+// read this video's duration") — reproduced 2/2 on the Samsung — even though the
+// SAME clip's bytes report a finite duration when loaded in memory. Two failure
+// modes are handled: (1) `video.duration` reports Infinity/0 until a seek forces
+// the browser to compute the real value (common for many MP4 encodings); (2) the
+// first metadata read misses (transient on a just-resumed tab after the OS photo
+// picker) and a retry succeeds. A single attempt is capped so a stuck load never
+// hangs the pick; the whole read retries once. ORCH-1308 rounding is preserved
+// (INTEGER source_duration_ms/trim_end_ms — never emit a fractional ms).
+const VIDEO_DURATION_ATTEMPT_TIMEOUT_MS = 6000;
+
+const readBrowserVideoDurationOnce = (uri: string): Promise<number | null> => {
+  if (typeof document === "undefined") return Promise.resolve(null);
   return new Promise<number | null>((resolve) => {
     const video = document.createElement("video");
-    const cleanup = (): void => {
+    let settled = false;
+    const finiteMs = (): number | null =>
+      Number.isFinite(video.duration) && video.duration > 0
+        ? Math.round(video.duration * 1000)
+        : null;
+    const finish = (value: number | null): void => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
       video.onloadedmetadata = null;
+      video.ondurationchange = null;
+      video.ontimeupdate = null;
       video.onerror = null;
       video.removeAttribute("src");
       video.load();
+      resolve(value);
+    };
+    const readIfReady = (): void => {
+      const ms = finiteMs();
+      if (ms !== null) finish(ms);
     };
     video.preload = "metadata";
+    video.muted = true;
     video.onloadedmetadata = (): void => {
-      // ORCH-1308: `video.duration` is FRACTIONAL seconds, so `* 1000` yields a
-      // non-integer ms (e.g. 17.971995 → 17971.995). source_duration_ms /
-      // trim_end_ms are INTEGER columns — a fractional value makes the upload
-      // intent INSERT fail ("invalid input syntax for type integer"). Round at
-      // the read so a whole-millisecond duration flows through the whole path.
-      const duration = Number.isFinite(video.duration)
-        ? Math.round(video.duration * 1000)
-        : null;
-      cleanup();
-      resolve(duration);
+      const ms = finiteMs();
+      if (ms !== null) {
+        finish(ms);
+        return;
+      }
+      // Infinity/0 until seek — force the browser to resolve the real duration.
+      video.ondurationchange = readIfReady;
+      video.ontimeupdate = readIfReady;
+      try {
+        video.currentTime = Number.MAX_SAFE_INTEGER;
+      } catch {
+        finish(null);
+      }
     };
-    video.onerror = (): void => {
-      cleanup();
-      resolve(null);
-    };
+    video.onerror = (): void => finish(null);
+    const timer = setTimeout(
+      () => finish(finiteMs()),
+      VIDEO_DURATION_ATTEMPT_TIMEOUT_MS,
+    );
     video.src = uri;
   });
+};
+
+const readBrowserVideoDurationMs = async (uri: string): Promise<number | null> => {
+  const first = await readBrowserVideoDurationOnce(uri);
+  if (first !== null && first > 0) return first;
+  // Retry once — a just-resumed tab (post OS picker) occasionally misses the
+  // first metadata read for a content-URI-backed clip.
+  return readBrowserVideoDurationOnce(uri);
 };
 
 export const launchCoverImagePicker = async (): Promise<CoverPickerResult> => {
