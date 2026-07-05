@@ -7,6 +7,48 @@
 
 ---
 
+## ACTIVE — ORCH-1313 (AppsFlyer attribution correctness · Phase 1, 2026-07-05)
+
+> Registered directly ACTIVE at ORCH-1313 Phase-1 CLOSE (SHIPPED; merged squash `89d4d7473` / PR #790). AppsFlyer attribution correctness Phase 1 (A–E): install capture from FIRST app-open (anonymous, not just sign-ups), logout clears the AppsFlyer identity, the dev key is env-driven with a release-bound fail-loud build guard, and the business api3 S2S is fixed (V2 S2S token — NOT the dev key — + id-prefixed iOS id + `os` field). The `I-PROPOSED-` prefix is KEPT here (the 6 CI guards ship on-disk as `.github/scripts/strict-grep/i-proposed-1313-*.mjs`; this CLOSE flips them DRAFT→ACTIVE). GO-LIVE is native-build-bound (Seth sets Supabase `APPSFLYER_S2S_TOKEN`; BOTH apps need FRESH native builds — no OTA; physical-device + dashboard live-fire per QA §7). Phase 2 = OneLink deferred deep-linking (deferred; both AF deep-link listeners kept false). Cross-ref `investigations/INVESTIGATION_ORCH-1313_APPSFLYER_ATTRIBUTION.md` → `specs/SPEC_ORCH-1313_APPSFLYER_ATTRIBUTION_PHASE1.md` → `reports/IMPLEMENTATION_ORCH-1313_APPSFLYER_ATTRIBUTION_PHASE1.md` → `reports/QA_ORCH-1313_APPSFLYER_ATTRIBUTION_PHASE1_REPORT.md`. See COMMS-0083.
+
+### I-PROPOSED-1313-CONSUMER-ATT-NOT-AUTH-GATED (ACTIVE)
+- **Rule:** the consumer ATT / `startAppsFlyer()` trigger in `app-mobile/app/index.tsx` MUST fire for anonymous (pre-sign-in) sessions so every install is capturable. The ATT effect MUST NOT early-return on `!isAuthenticated || !user?.id`, and its dependency array MUST stay `[]` (no re-introduced auth gate); a protective anchor comment (`ORCH-1313: ATT fires at first-open (anonymous)`) names the ORCH so the intent cannot be silently reverted.
+- **Enforcement:** strict-grep gate `.github/scripts/strict-grep/i-proposed-1313-consumer-att-not-auth-gated.mjs` (INV-1 anchor / INV-2 no-auth-gate / INV-3 empty-deps, comment-stripped, `--self-test`; job `orch-1313-consumer-att-not-auth-gated` in `strict-grep-mingla-business.yml`).
+- **Fails-on-revert:** re-adding the `if (!isAuthenticated || !user?.id) return` early-return, or putting auth deps back in the effect array, exits the gate 1 (SPEC_ORCH-1313 §4.A/§6).
+- **Established:** ACTIVE 2026-07-05 at ORCH-1313 Phase-1 CLOSE.
+
+### I-PROPOSED-1313-ATT-BEFORE-ANY-TRACKING-TRANSMISSION (ACTIVE)
+- **Rule:** moving the ATT trigger to first-open must NOT let any tracking SDK transmit before the ATT gate resolves. (a) In `app-mobile/app/index.tsx` every `startAppsFlyer()` call sits inside the `ensureAttRequested()` continuation (never top-level/ungated) and there is no `startAppsFlyer()` elsewhere in the file; (b) `app-mobile/src/services/postHogService.ts` retains `await whenAttResolved()` BEFORE constructing the PostHog client (`new PostHogClass(`).
+- **Enforcement:** strict-grep gate `.github/scripts/strict-grep/i-proposed-1313-att-before-any-tracking-transmission.mjs` (INV-1 appsflyer-gated / INV-2 posthog-att-first, comment-stripped, `--self-test`; job `orch-1313-att-before-any-tracking-transmission` in `strict-grep-mingla-business.yml`).
+- **Fails-on-revert:** an ungated `startAppsFlyer()` before `ensureAttRequested`, or removing the postHog `await whenAttResolved()` before client construction, exits the gate 1 (SPEC_ORCH-1313 §6/§11-B).
+- **Established:** ACTIVE 2026-07-05 at ORCH-1313 Phase-1 CLOSE.
+
+### I-PROPOSED-1313-LOGOUT-CLEARS-APPSFLYER-IDENTITY (ACTIVE)
+- **Rule:** Constitution #6 (logout clears everything) — the consumer `performPrivateAuthCleanup` integrations block (`app-mobile/src/utils/authCleanup.ts`, inside `if (includeIntegrations)`) MUST call BOTH `clearAppsFlyerUserId()` and `resetAppsFlyerDeviceCache()` (statically imported from `appsFlyerService`), alongside the OneSignal / RevenueCat / Mixpanel resets, so a subsequent different sign-in registers fresh and does not inherit the prior user's `customer_user_id`.
+- **Enforcement:** strict-grep gate `.github/scripts/strict-grep/i-proposed-1313-logout-clears-appsflyer-identity.mjs` (INV-1 import / INV-2 both-called-in-block, comment-stripped, `--self-test`; job `orch-1313-logout-clears-appsflyer-identity` in `strict-grep-mingla-business.yml`).
+- **Fails-on-revert:** removing either call (or the AppsFlyer-clear import) exits the gate 1 (Constitution #6 / SPEC_ORCH-1313 §4.B).
+- **Established:** ACTIVE 2026-07-05 at ORCH-1313 Phase-1 CLOSE.
+
+### I-PROPOSED-1313-APPSFLYER-KEY-FAIL-LOUD (ACTIVE)
+- **Rule:** (§4.C) the AppsFlyer dev key + app IDs are env-driven with a RELEASE-BOUND fail-loud guard so a release build can never silently ship AppsFlyer dark. (1) `app-mobile/app.config.ts` throws (naming ORCH-1313) on a missing key for a release `EAS_BUILD_PROFILE`, referencing `EXPO_PUBLIC_APPSFLYER_DEV_KEY`; (2) `mingla-business/app.config.ts` carries the symmetric release-bound throw tied to `hasAppsFlyerEnv()` + `EAS_BUILD_PROFILE`; (3) `app-mobile/src/services/appsFlyerService.ts` reads the key from `Constants.expoConfig.extra` FIRST (build-safe) and carries a `hasAppsFlyerEnv` guard. The build-time PRESENCE of the key in the EAS env is enforced by the guard itself (proven with a local `expo config` run; consumer EAS env provisioned on production+preview).
+- **Enforcement:** strict-grep gate `.github/scripts/strict-grep/i-proposed-1313-appsflyer-key-fail-loud.mjs` (INV-1 consumer-fail-loud / INV-2 business-fail-loud / INV-3 extra-first-read, `--self-test`; job `orch-1313-appsflyer-key-fail-loud` in `strict-grep-mingla-business.yml`).
+- **Fails-on-revert:** dropping either release-bound throw, or the consumer service's `Constants.expoConfig.extra`-first read, exits the gate 1 (SPEC_ORCH-1313 §4.C).
+- **Established:** ACTIVE 2026-07-05 at ORCH-1313 Phase-1 CLOSE.
+
+### I-PROPOSED-1313-S2S-API3-AUTH-TOKEN-NOT-DEVKEY (ACTIVE)
+- **Rule:** the AppsFlyer api3 `authentication` header in `supabase/functions/_shared/appsFlyerS2S.ts` MUST carry the V2 S2S token (`APPSFLYER_S2S_TOKEN`), read fail-closed, and MUST NEVER carry the legacy dev key. The file (a) reads `Deno.env.get("APPSFLYER_S2S_TOKEN")`; (b) sets the `authentication` header to the `s2sToken` variable (not `devKey`); (c) does NOT read `APPSFLYER_BUSINESS_DEV_KEY` anywhere (the dead auth path).
+- **Enforcement:** strict-grep gate `.github/scripts/strict-grep/i-proposed-1313-s2s-api3-auth-token-not-devkey.mjs` (INV-1 reads-token / INV-2 header-token / INV-3 no-devkey-auth, comment-stripped, `--self-test`; job `orch-1313-s2s-api3-auth-token-not-devkey` in `strict-grep-mingla-business.yml`) + Deno suites `supabase/functions/_shared/__tests__/appsFlyerS2S.orch1313.test.ts` (T-D2 fail-closed: token unset → NEVER sends the dev key) + `appsFlyerS2S.orch1313.adversarial.test.ts`, wired in `supabase-migrations-and-stripe-deno.yml`.
+- **Fails-on-revert:** reverting the header to the dev key (re-introducing `Deno.env.get("APPSFLYER_BUSINESS_DEV_KEY")` / `"authentication": devKey`) exits the gate 1 (SPEC_ORCH-1313 §4.D-i).
+- **Established:** ACTIVE 2026-07-05 at ORCH-1313 Phase-1 CLOSE.
+
+### I-PROPOSED-1313-S2S-API3-IOS-ID-PREFIXED (ACTIVE)
+- **Rule:** AppsFlyer api3 requires the iOS app id in the `id`-prefixed form — the bare number returns 200 OK but silently drops the event. `supabase/functions/_shared/appsFlyerS2S.ts` MUST define an idempotent `ensureIdPrefix` normalizer and apply it on the iOS branch (`device.platform === "ios" → ensureIdPrefix(iosAppId)`); Android stays the bare package name.
+- **Enforcement:** strict-grep gate `.github/scripts/strict-grep/i-proposed-1313-s2s-api3-ios-id-prefixed.mjs` (INV-1 defines-normalizer / INV-2 applies-on-ios, comment-stripped, `--self-test`; job `orch-1313-s2s-api3-ios-id-prefixed` in `strict-grep-mingla-business.yml`) + the Deno idempotency unit test (`appsFlyerS2S.orch1313.test.ts` — bare + prefixed both → single `id` prefix, T-D3) in `supabase-migrations-and-stripe-deno.yml`.
+- **Fails-on-revert:** removing the normalizer or its iOS application exits the gate 1 (SPEC_ORCH-1313 §4.D-ii).
+- **Established:** ACTIVE 2026-07-05 at ORCH-1313 Phase-1 CLOSE.
+
+---
+
 ## ACTIVE — ORCH-1303 (RSVP momentum loop no longer starves the web InteractionManager queue, 2026-07-04)
 
 > Registered directly ACTIVE at ORCH-1303 CLOSE (SHIPPED; merged squash `cc47cf937` / PR #773 `[deploy]`; web via Vercel; native unchanged). Root proven in the real react-native-web engine (`Mingla_Artifacts/evidence/ORCH-1303/im_starvation_probe.js` — current config starves the queue, the fix drains it). ⚠️ SHARED ORCH-1303 with the parallel session's `[web-cover-video-uri]` fix (distinct gate `orch-1303-web-cover-video-uri.mjs`; both jobs coexist) — COMMS-0076. Cross-ref `reports/IMPLEMENTATION_ORCH-1303_RSVP_IM_STARVATION.md` + `reports/INVESTIGATION_ORCH-1303_RSVP_IM_STARVATION.md`.
