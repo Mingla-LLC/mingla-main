@@ -569,20 +569,12 @@ export function VenueSettingsModule({
               venue.
             </Text>
           )}
-          {canMutate ? (
-            <Button
-              label="Edit photos & vibes"
-              onPress={goToDeckReadiness}
-              variant="secondary"
-              size="md"
-              style={styles.inlineBtn}
-              testID="venue-settings-edit-photos"
-            />
-          ) : null}
-          {/* ORCH-1304 [approve generates the pitch] — the old re-run edit-cap
-              affordance is retired (no owner-side pitch/score self-run). This is
-              now just the edit entry point into the deck-readiness inputs
-              surface; the pitch + match scores are written by Mingla at approve. */}
+          {/* ORCH-1306 — ONE edit affordance into the deck-readiness inputs
+              surface (photos, hero cover/video, website, price, vibes). The old
+              second "rerun-recommend" button was a redundant duplicate that
+              navigated to the exact same place (goToDeckReadiness); consolidated
+              to a single primary CTA. The pitch + match scores are still written
+              by Mingla at approve (ORCH-1304). */}
           {canMutate ? (
             <Button
               label="Edit photos & details"
@@ -590,7 +582,7 @@ export function VenueSettingsModule({
               variant="primary"
               size="md"
               style={styles.inlineBtn}
-              testID="venue-settings-rerun-recommend"
+              testID="venue-settings-edit-photos"
             />
           ) : null}
         </Section>

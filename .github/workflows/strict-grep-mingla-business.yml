@@ -3985,3 +3985,17 @@ jobs:
         run: node .github/scripts/strict-grep/orch-1300-web-gallery-picker.mjs --self-test
       - name: Run ORCH-1300 web-gallery-picker gate
         run: node .github/scripts/strict-grep/orch-1300-web-gallery-picker.mjs
+
+  orch-1306-single-photos-affordance:
+    name: "ORCH-1306: the venue-settings Photos & vibes & AI section exposes exactly ONE edit affordance (venue-settings-edit-photos → goToDeckReadiness); the duplicate rerun-recommend button is gone (I-PROPOSED-1306-SINGLE-PHOTOS-AFFORDANCE)"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      # Self-tests (GOOD/BAD fixtures) then runs against the tree.
+      - name: Self-test the ORCH-1306 single-photos-affordance gate
+        run: node .github/scripts/strict-grep/orch-1306-single-photos-affordance.mjs --self-test
+      - name: Run ORCH-1306 single-photos-affordance gate
+        run: node .github/scripts/strict-grep/orch-1306-single-photos-affordance.mjs
