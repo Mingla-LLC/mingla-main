@@ -25,8 +25,8 @@
  * generative_summary. BAD = handleEvaluateSignals without them (D-3 reverted) →
  * FAILS. Proves FAIL-on-revert.
  *
- * DRAFT until CLOSE (orchestrator flips
- * I-PROPOSED-1304-PITCH-GENERATED-AT-APPROVE ACTIVE).
+ * ACTIVE (flipped at ORCH-1304 CLOSE 2026-07-04 — registered as
+ * I-1304-PITCH-GENERATED-AT-APPROVE in INVARIANT_REGISTRY.md).
  */
 import fs from "node:fs";
 import path from "node:path";
