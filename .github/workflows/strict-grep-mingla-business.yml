@@ -4083,3 +4083,17 @@ jobs:
         run: node .github/scripts/strict-grep/orch-1311-web-video-duration-read-robust.mjs --self-test
       - name: Run ORCH-1311 web-video-duration-read-robust gate
         run: node .github/scripts/strict-grep/orch-1311-web-video-duration-read-robust.mjs
+
+  orch-1312-video-duration-retry-delay:
+    name: "ORCH-1312: the picked-video duration read spaces its retries with a delay so a later attempt lands after the tab settles from the OS photo picker (not back-to-back in the resume window) (I-PROPOSED-1312-VIDEO-DURATION-RETRY-DELAY)"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      # Self-tests (GOOD/BAD fixtures) then runs against the tree.
+      - name: Self-test the ORCH-1312 video-duration-retry-delay gate
+        run: node .github/scripts/strict-grep/orch-1312-video-duration-retry-delay.mjs --self-test
+      - name: Run ORCH-1312 video-duration-retry-delay gate
+        run: node .github/scripts/strict-grep/orch-1312-video-duration-retry-delay.mjs
