@@ -118,14 +118,20 @@ describe("ORCH-1088 business web event creator phone parity", () => {
   // "static Home Create marker" assertion was removed. The browser-safe cover
   // upload + degraded-video parity below remain the real ORCH-1088 contract.
 
-  test("phone-web cover image upload is browser-safe while video stays degraded", () => {
+  // ORCH-1307: phone-web video covers are NO LONGER degraded. The isPhoneWeb
+  // video gate + "available on desktop" copy + gated disabled expr were removed
+  // — mobile web now uploads video covers like desktop (Bunny TUS accepts
+  // browser uploads; over-30s clips get an actionable message since the web has
+  // no trimmer). Image + video device uploads are both browser-safe.
+  test("phone-web cover image AND video uploads are browser-safe (no isPhoneWeb video gate)", () => {
     const source = repoFile("src/components/ui/CoverPicker.tsx");
 
-    expect(source).toContain("isPhoneWeb");
-    expect(source).toContain("Device image uploads are available in this browser.");
-    expect(source).toContain("Video cover uploads are available on desktop or in the app for now.");
+    expect(source).not.toContain("isPhoneWeb");
+    expect(source).not.toContain(
+      "Video cover uploads are available on desktop or in the app for now.",
+    );
     expect(source).toContain("disabled={uploading || disabled}");
-    expect(source).toContain("disabled={uploading || disabled || isPhoneWeb}");
+    expect(source).toContain("video covers upload the clip as-is");
     expect(source).toContain("searchGiphyEventCovers");
     expect(source).toContain("searchPexelsEventCovers");
   });

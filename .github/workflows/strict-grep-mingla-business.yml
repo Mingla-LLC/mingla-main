@@ -3999,3 +3999,17 @@ jobs:
         run: node .github/scripts/strict-grep/orch-1306-single-photos-affordance.mjs --self-test
       - name: Run ORCH-1306 single-photos-affordance gate
         run: node .github/scripts/strict-grep/orch-1306-single-photos-affordance.mjs
+
+  orch-1307-web-video-cover-enabled:
+    name: "ORCH-1307: mobile-web video covers are enabled (no isPhoneWeb gate; video button disabled={uploading || disabled}; over-30s clips get an actionable web message) (I-PROPOSED-1307-WEB-VIDEO-COVER-ENABLED)"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      # Self-tests (GOOD/BAD fixtures) then runs against the tree.
+      - name: Self-test the ORCH-1307 web-video-cover gate
+        run: node .github/scripts/strict-grep/orch-1307-web-video-cover-enabled.mjs --self-test
+      - name: Run ORCH-1307 web-video-cover gate
+        run: node .github/scripts/strict-grep/orch-1307-web-video-cover-enabled.mjs

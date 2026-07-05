@@ -217,10 +217,6 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
   // video pipeline, ZERO brands-row writes (host persists the emitted patch).
   const isVenue = target.kind === "venue";
   const isNative = Platform.OS !== "web";
-  const isPhoneWeb =
-    Platform.OS === "web" &&
-    typeof window !== "undefined" &&
-    window.innerWidth < 768;
 
   const [activeTab, setActiveTab] = useState<CoverTabId>("library");
   const [uploading, setUploading] = useState(false);
@@ -550,10 +546,10 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
 
   const pickVideoCover = useCallback(async (): Promise<void> => {
     if (uploading || disabled || activeVideoUpload) return;
-    if (isPhoneWeb) {
-      onShowToast("Video cover uploads are available on desktop or in the app for now.");
-      return;
-    }
+    // ORCH-1307: mobile web is no longer gated out of video covers. The web has
+    // no trimmer (native-only react-native-video-trim), so a raw clip flows
+    // straight to the duration guard below; clips within the ceiling upload
+    // as-is on both desktop AND mobile web (Bunny TUS accepts browser uploads).
     if (!isAuthReady) {
       onShowToast("Finishing sign-in before upload. Try again in a moment.");
       return;
@@ -607,7 +603,15 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
           capMs: EVENT_COVER_MAX_VIDEO_DURATION_MS,
           overshoot: durationMs - EVENT_COVER_MAX_VIDEO_DURATION_MS,
         });
-        onShowToast("Please trim to 29 seconds first.");
+        // ORCH-1307: on native the trimmer already capped the clip, so this is a
+        // rare safety net ("trim to 29s"). On web there is NO trimmer — a raw
+        // over-ceiling clip is a dead end, so give an actionable web message
+        // instead of asking for a trim the browser can't do.
+        onShowToast(
+          isNative
+            ? "Please trim to 29 seconds first."
+            : "This video is over 30 seconds. Pick a shorter clip, or trim it in the Mingla Business app.",
+        );
         return;
       }
       if (uploadFile.bytes <= 0) {
@@ -630,7 +634,6 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
     ensureMediaPermission,
     isAuthReady,
     isNative,
-    isPhoneWeb,
     onShowToast,
     uploading,
     validateEventRowId,
@@ -1014,7 +1017,6 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
           }
           canRetryVideo={lastVideoUploadFileRef.current !== null}
           disabled={disabled}
-          isPhoneWeb={isPhoneWeb}
           onPickImage={pickImageOrGifCover}
           onPickVideo={() => {
             void pickVideoCover();
@@ -1092,7 +1094,6 @@ const LibraryTab: React.FC<{
   videoErrorMessage: string | null;
   canRetryVideo: boolean;
   disabled: boolean;
-  isPhoneWeb: boolean;
   onPickImage: () => void;
   onPickVideo: () => void;
   onRemove: () => void;
@@ -1114,7 +1115,6 @@ const LibraryTab: React.FC<{
   videoErrorMessage,
   canRetryVideo,
   disabled,
-  isPhoneWeb,
   onPickImage,
   onPickVideo,
   onRemove,
@@ -1190,7 +1190,7 @@ const LibraryTab: React.FC<{
             size="md"
             shape="square"
             onPress={onPickVideo}
-            disabled={uploading || disabled || isPhoneWeb}
+            disabled={uploading || disabled}
             style={styles.actionButton}
           />
           {hasCover ? (
@@ -1207,15 +1207,10 @@ const LibraryTab: React.FC<{
           ) : null}
         </View>
 
-        {isPhoneWeb ? (
+        {Platform.OS === "web" ? (
           <Text style={styles.helperText}>
-            Device image uploads are available in this browser. Video covers are
-            available on desktop or in the Mingla Business app for now.
-          </Text>
-        ) : Platform.OS === "web" ? (
-          <Text style={styles.helperText}>
-            On the web, video uploads use the clip as-is. For trimming, use the
-            Mingla Business app.
+            On the web, video covers upload the clip as-is, up to 30 seconds. To
+            trim a longer clip, use the Mingla Business app.
           </Text>
         ) : null}
 
