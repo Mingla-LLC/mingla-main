@@ -3,6 +3,13 @@ import { queryClient } from "../config/queryClient";
 import { useAppStore } from "../store/appStore";
 import { supabase } from "../services/supabase";
 import { shouldRemoveForAuthChange } from "./queryPersistence";
+// ORCH-1313 (§4.B) — AppsFlyer is a plain static module (native-only consumer
+// app); import synchronously (not a lazy dynamic import) so logout clears its
+// identity + device-dedup cache alongside the other integrations.
+import {
+  clearAppsFlyerUserId,
+  resetAppsFlyerDeviceCache,
+} from "../services/appsFlyerService";
 
 type CleanupOptions = {
   reason: string;
@@ -67,6 +74,18 @@ export async function performPrivateAuthCleanup(options: CleanupOptions): Promis
         console.warn(`[AUTH_CLEANUP] Mixpanel reset failed (${reason}):`, error);
       }
     }).catch(() => {});
+
+    // ORCH-1313 (§4.B) — Constitution #6: clear AppsFlyer identity + device-dedup
+    // cache on logout / account-switch / JWT-expiry (all route through here), so a
+    // subsequent different sign-in registers fresh and does not inherit the prior
+    // user's customer_user_id. Both calls are idempotent (no-op if AF not init /
+    // Set already empty), so this is safe on every cleanup.
+    try {
+      clearAppsFlyerUserId();
+      resetAppsFlyerDeviceCache();
+    } catch (error) {
+      console.warn(`[AUTH_CLEANUP] AppsFlyer clear failed (${reason}):`, error);
+    }
   }
 
   try {

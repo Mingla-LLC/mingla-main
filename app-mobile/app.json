@@ -26,7 +26,10 @@
         "NSRemindersUsageDescription": "Mingla adds a reminder for an event you choose to save — like a dinner reservation or a ticketed show — so you get a heads-up before it starts. This is only used when you tap Add to Calendar.",
         "NSRemindersFullAccessUsageDescription": "Mingla adds a reminder for an event you choose to save — like a dinner reservation or a ticketed show — so you get a heads-up before it starts. This is only used when you tap Add to Calendar.",
         "NSMicrophoneUsageDescription": "Mingla needs microphone access to record voice reviews about your experiences.",
-        "ITSAppUsesNonExemptEncryption": false
+        "ITSAppUsesNonExemptEncryption": false,
+        "SKAdNetworkItems": [
+          { "SKAdNetworkIdentifier": "v9wttpbfk9.skadnetwork" }
+        ]
       },
       "associatedDomains": [
         "applinks:usemingla.com",

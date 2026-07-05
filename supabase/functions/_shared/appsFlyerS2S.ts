@@ -11,11 +11,19 @@
  * notifications). All failures log + return false.
  *
  * Env required (set via `supabase secrets set` on the linked project):
- *   - APPSFLYER_BUSINESS_DEV_KEY
- *   - APPSFLYER_BUSINESS_IOS_APP_ID         (bare 10-digit Apple ID)
- *   - APPSFLYER_BUSINESS_ANDROID_APP_ID     (Android package name)
+ *   - APPSFLYER_S2S_TOKEN                    (ORCH-1313 — the api3 "V2 S2S token"
+ *                                             from AppsFlyer Security Center →
+ *                                             AppsFlyer API tokens. This is NOT the
+ *                                             dev key: api2 (dev-key auth) was
+ *                                             deprecated Dec 2023 and api3
+ *                                             authenticates with the S2S token.
+ *                                             Fail-closed when unset — never falls
+ *                                             back to the dev key.)
+ *   - APPSFLYER_BUSINESS_IOS_APP_ID          (Apple ID; `id`-prefixed at send time)
+ *   - APPSFLYER_BUSINESS_ANDROID_APP_ID      (Android package name)
  *
  * Spec: Mingla_Artifacts/specs/SPEC_ORCH-0808_APPSFLYER_MINGLA_BUSINESS.md §3.2
+ *       + Mingla_Artifacts/specs/SPEC_ORCH-1313_APPSFLYER_ATTRIBUTION_PHASE1.md §4.D
  */
 
 // ORCH-1201 — Layer-C passive health observation (fire-and-forget, best-effort).
@@ -25,6 +33,17 @@ import { recordApiCall } from "./apiHealthLog.ts";
 type SupabaseClient = any;
 
 const APPSFLYER_S2S_BASE = "https://api3.appsflyer.com/inappevent";
+
+/**
+ * ORCH-1313 (D-ii) — AppsFlyer api3 requires the iOS app id in the `id`-prefixed
+ * form (e.g. id6768737367). The bare number returns 200 OK but silently DROPS the
+ * event. Idempotent: an already-prefixed value is returned unchanged, so it is
+ * safe whether the APPSFLYER_BUSINESS_IOS_APP_ID secret holds `6768737367` or
+ * `id6768737367`. Android package names are NEVER prefixed.
+ */
+export function ensureIdPrefix(appleId: string): string {
+  return appleId.startsWith("id") ? appleId : `id${appleId}`;
+}
 
 export interface AppsFlyerS2SEventValues {
   // Reserved AppsFlyer revenue fields — string or number both accepted by AF.
@@ -131,12 +150,15 @@ function formatEventTime(d: Date): string {
 export async function postAppsFlyerS2SEvent(
   input: PostS2SInput,
 ): Promise<boolean> {
-  const devKey = Deno.env.get("APPSFLYER_BUSINESS_DEV_KEY");
+  // ORCH-1313 (D-i) — api3 authenticates with the V2 S2S token, NEVER the legacy
+  // dev key. Fail-closed when APPSFLYER_S2S_TOKEN is unset: log a clear reason and
+  // return false — do NOT fall back to the dev key (the silent auth-fail was the bug).
+  const s2sToken = Deno.env.get("APPSFLYER_S2S_TOKEN");
   const iosAppId = Deno.env.get("APPSFLYER_BUSINESS_IOS_APP_ID");
   const androidAppId = Deno.env.get("APPSFLYER_BUSINESS_ANDROID_APP_ID");
-  if (!devKey || !iosAppId || !androidAppId) {
+  if (!s2sToken || !iosAppId || !androidAppId) {
     console.warn(
-      "[AppsFlyerS2S] env missing — skip. Set APPSFLYER_BUSINESS_DEV_KEY + APPSFLYER_BUSINESS_IOS_APP_ID + APPSFLYER_BUSINESS_ANDROID_APP_ID.",
+      "[AppsFlyerS2S] env missing — skip (fail-closed). Set APPSFLYER_S2S_TOKEN (api3 V2 S2S token) + APPSFLYER_BUSINESS_IOS_APP_ID + APPSFLYER_BUSINESS_ANDROID_APP_ID.",
     );
     return false;
   }
@@ -151,7 +173,11 @@ export async function postAppsFlyerS2SEvent(
     return false;
   }
 
-  const appId = device.platform === "ios" ? iosAppId : androidAppId;
+  // ORCH-1313 (D-ii) — iOS app id MUST be `id`-prefixed for api3; Android is the
+  // bare Play package name (never prefixed).
+  const appId = device.platform === "ios"
+    ? ensureIdPrefix(iosAppId)
+    : androidAppId;
   const url = `${APPSFLYER_S2S_BASE}/${appId}`;
   const body = {
     appsflyer_id: device.appsflyer_uid,
@@ -163,6 +189,9 @@ export async function postAppsFlyerS2SEvent(
       typeof input.eventValues?.af_currency === "string"
         ? input.eventValues.af_currency
         : "USD",
+    // ORCH-1313 (D-iv) — api3 REQUIRES `os` ("must send this parameter") for
+    // correct data processing. device.platform is already "ios" | "android".
+    os: device.platform,
   };
 
   const _t0 = Date.now();
@@ -170,8 +199,10 @@ export async function postAppsFlyerS2SEvent(
     const res = await fetch(url, {
       method: "POST",
       headers: {
-        // AppsFlyer S2S spec: header key is literally lowercase `authentication`.
-        "authentication": devKey,
+        // AppsFlyer api3 spec: header key is literally lowercase `authentication`.
+        // ORCH-1313 — its VALUE is the V2 S2S token (APPSFLYER_S2S_TOKEN), NEVER
+        // the dev key.
+        "authentication": s2sToken,
         "Content-Type": "application/json",
       },
       body: JSON.stringify(body),

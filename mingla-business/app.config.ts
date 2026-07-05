@@ -57,6 +57,31 @@ const iosUrlScheme = iosClientId
 // Not needed for Cycles 0a–12.
 
 export default ({ config }: ConfigContext): ExpoConfig => {
+  // ORCH-1313 (§4.C) — business AppsFlyer previously shipped DARK (G-2) because the
+  // native plugin is SILENTLY stripped (filterOptionalNativeStartupPlugins) when the
+  // env is absent. Flip it from silently-optional to LOUDLY-required on release-bound
+  // EAS profiles: FAIL the build if the AppsFlyer env is ever unset on a profile a
+  // tester/user actually touches, so business installs/revenue can never go
+  // unattributed again. Dev/local builds keep the strip-and-no-op behavior (no throw)
+  // so a developer without the env still builds. Safe: the business EAS production env
+  // already carries the vars (dispatch's confirmed facts).
+  const APPSFLYER_RELEASE_BOUND_EAS_PROFILES = [
+    "production",
+    "production-apk",
+    "preview",
+    "preview-sim",
+  ];
+  const easBuildProfile = process.env.EAS_BUILD_PROFILE;
+  if (
+    easBuildProfile !== undefined &&
+    APPSFLYER_RELEASE_BOUND_EAS_PROFILES.includes(easBuildProfile) &&
+    !hasAppsFlyerEnv()
+  ) {
+    throw new Error(
+      `EXPO_PUBLIC_APPSFLYER_DEV_KEY + EXPO_PUBLIC_APPSFLYER_IOS_APP_ID + EXPO_PUBLIC_APPSFLYER_ANDROID_APP_ID are required for the ${easBuildProfile} EAS_BUILD_PROFILE build — business installs/revenue would not attribute (silent-dark). Set them in the EAS environment. [ORCH-1313]`,
+    );
+  }
+
   const basePlugins = filterOptionalNativeStartupPlugins(config.plugins);
 
   return {
