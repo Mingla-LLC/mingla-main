@@ -264,10 +264,19 @@ export const handleEventCoverVideoUploadIntent = async (
       : body.applyMode === "published_manual"
         ? "published_manual"
         : "draft_auto";
-  const sourceBytes = Number(body.sourceBytes ?? 0);
-  const sourceDurationMs = Number(body.sourceDurationMs ?? 0);
-  const trimStartMs = Number(body.trimStartMs ?? 0);
-  const rawTrimEndMs = Number(body.trimEndMs ?? sourceDurationMs);
+  // ORCH-1308: source_bytes/source_duration_ms/trim_*_ms are INTEGER (bytes are
+  // bigint) columns. A browser reports `<video>.duration` in FRACTIONAL seconds,
+  // so the web path can send a non-integer ms (e.g. 17971.995) — Postgres then
+  // rejects the INSERT with "invalid input syntax for type integer" →
+  // job_insert_failed → 500 (the true cause of web video covers "never
+  // working"). Coerce every integer-bound field to a whole number here, at the
+  // authoritative server gate, so no fractional value can ever reach the row
+  // (native is unaffected — it already sends integers). Round after Number() and
+  // before validation/insert.
+  const sourceBytes = Math.round(Number(body.sourceBytes ?? 0));
+  const sourceDurationMs = Math.round(Number(body.sourceDurationMs ?? 0));
+  const trimStartMs = Math.round(Number(body.trimStartMs ?? 0));
+  const rawTrimEndMs = Math.round(Number(body.trimEndMs ?? sourceDurationMs));
   // Accept a generous source window for native keyframe overshoot, but persist a
   // processed trim window capped at MAX_DURATION_MS. (ORCH-0978 AMENDMENT 8.)
   const trimEndMs = Math.min(rawTrimEndMs, MAX_DURATION_MS);

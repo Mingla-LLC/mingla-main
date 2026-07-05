@@ -4013,3 +4013,17 @@ jobs:
         run: node .github/scripts/strict-grep/orch-1307-web-video-cover-enabled.mjs --self-test
       - name: Run ORCH-1307 web-video-cover gate
         run: node .github/scripts/strict-grep/orch-1307-web-video-cover-enabled.mjs
+
+  orch-1308-video-duration-integer:
+    name: "ORCH-1308: video-cover durations reach the INTEGER event_cover_video_jobs columns rounded (edge Math.round(source/trim); web browser duration read + normalizePickerDurationMs round to whole ms) (I-PROPOSED-1308-VIDEO-DURATION-INTEGER)"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      # Self-tests (GOOD/BAD fixtures) then runs against the tree.
+      - name: Self-test the ORCH-1308 video-duration-integer gate
+        run: node .github/scripts/strict-grep/orch-1308-video-duration-integer.mjs --self-test
+      - name: Run ORCH-1308 video-duration-integer gate
+        run: node .github/scripts/strict-grep/orch-1308-video-duration-integer.mjs
