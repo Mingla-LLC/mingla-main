@@ -22,10 +22,14 @@ describe("ORCH-1097 browser picker component contracts", () => {
     expect(deviceMedia).toContain("duration: await readBrowserVideoDurationMs(file.uri)");
     expect(deviceMedia).toContain("revokeCoverPickedAssets");
 
-    expect(picker).toContain("isPhoneWeb");
-    expect(picker).toContain("Device image uploads are available in this browser.");
-    expect(picker).toContain("Video cover uploads are available on desktop or in the app for now.");
-    expect(picker).toContain("disabled={uploading || disabled || isPhoneWeb}");
+    // ORCH-1307: the isPhoneWeb video gate + desktop-only copy were removed —
+    // mobile web now uploads video covers too. The durable browser file-picker
+    // contracts (accept types, duration read, revoke) above are unchanged.
+    expect(picker).not.toContain("isPhoneWeb");
+    expect(picker).not.toContain(
+      "Video cover uploads are available on desktop or in the app for now.",
+    );
+    expect(picker).toContain("video covers upload the clip as-is");
     expect(picker).toContain("revokeCoverPickedAssets(pickedAssets)");
   });
 

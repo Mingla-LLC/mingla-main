@@ -107,8 +107,11 @@ assertNotIncludes(coverDevice, "canceled: true", "src/components/ui/coverPickerD
 
 const coverPicker = stripComments(read("src/components/ui/CoverPicker.tsx"));
 assertIncludes(coverPicker, "revokeCoverPickedAssets", "src/components/ui/CoverPicker.tsx");
-assertIncludes(coverPicker, "Device image uploads are available in this browser.", "src/components/ui/CoverPicker.tsx");
-assertIncludes(coverPicker, "Video cover uploads are available on desktop or in the app for now.", "src/components/ui/CoverPicker.tsx");
+// ORCH-1307: the phone-web video gate was removed — mobile web now uploads
+// video covers too. The old isPhoneWeb copy is gone; web shows the as-is/30s
+// message instead. (Locked structurally by orch-1307-web-video-cover-enabled.mjs.)
+assertNotIncludes(coverPicker, "Video cover uploads are available on desktop or in the app for now.", "src/components/ui/CoverPicker.tsx");
+assertIncludes(coverPicker, "video covers upload the clip as-is", "src/components/ui/CoverPicker.tsx");
 
 for (const file of [
   "src/components/brand/BrandAvatarPickerSheet.tsx",

@@ -19,6 +19,11 @@ describe("CoverPicker video source ceiling", () => {
     expect(pickerSource).not.toContain("videoMaxDuration");
     expect(pickerSource).toContain("durationMs > EVENT_COVER_SOURCE_CEILING_MS");
     expect(pickerSource).not.toContain("EVENT_COVER_MAX_VIDEO_DURATION_MS + 250");
-    expect(pickerSource).toContain('onShowToast("Please trim to 29 seconds first.")');
+    // ORCH-1307: the over-ceiling message is now platform-aware. Native keeps
+    // the "trim to 29s" copy (it has a trimmer); web has NO trimmer, so an
+    // over-30s clip gets an actionable "pick a shorter clip / trim in the app"
+    // message instead of an instruction the browser can't satisfy.
+    expect(pickerSource).toContain('"Please trim to 29 seconds first."');
+    expect(pickerSource).toContain("This video is over 30 seconds.");
   });
 });
