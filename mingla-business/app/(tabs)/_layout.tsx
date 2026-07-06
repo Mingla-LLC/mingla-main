@@ -132,6 +132,23 @@ export default function TabsLayout(): React.ReactElement {
   return (
     <View style={styles.host}>
       <DesktopCanvas>
+        {/* ORCH-1320 (biz Account-tab Apple crash) — FINDING, do not "disable the
+            tab-transition animation" here: tab switches render the focused route
+            INSIDE this <Slot/>. expo-router resolves <Slot/> to SlotNavigator
+            (backed by StackRouter), which renders ONLY the focused route via
+            `descriptors[...].render()` — there is NO react-native-screens
+            <ScreenStack> and NO `animation` prop on the tap-Account path. The
+            concurrent Fabric commit the crash log shows
+            (`uiManagerDidFinishTransaction`) is the plain React reconciliation of
+            the Slot route swap (unmount Home subtree → mount Account subtree),
+            intrinsic to switching tabs and not disable-able without breaking
+            navigation. The deterministic crash fix is therefore de-worklet-ing
+            the BottomNav spotlight (Fix A.1 — remove the concurrent Reanimated
+            worklet), NOT disabling a non-existent tab animation (OQ-1 RESOLVED).
+            DO NOT set the ROOT <Stack> (app/_layout.tsx) to animation:"none" —
+            that is OFF the crash path and would kill all root push animations
+            (auth→tabs, checkout, partner routes), a broad UX regression. See
+            I-PROPOSED-1320-NO-WORKLET-ON-TAB-COMMIT-PATH. */}
         <Slot />
       </DesktopCanvas>
       {hideBottomNav ? null : (

@@ -18,18 +18,17 @@
  * swap to 4-tab when Marketing ships, but Cycle 0a default is 3.
  */
 
-import React, { useCallback, useEffect, useState } from "react";
-import { Platform, Pressable, StyleSheet, Text, View } from "react-native";
-import type { LayoutChangeEvent, StyleProp, ViewStyle } from "react-native";
-import Animated, {
+import React, { useCallback, useEffect, useRef, useState } from "react";
+import {
+  Animated,
   Easing,
-  cancelAnimation,
-  useAnimatedStyle,
-  useReducedMotion,
-  useSharedValue,
-  withSpring,
-  withTiming,
-} from "react-native-reanimated";
+  Platform,
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
+import type { LayoutChangeEvent, StyleProp, ViewStyle } from "react-native";
 
 import {
   accent,
@@ -39,6 +38,7 @@ import {
   text as textTokens,
   typography,
 } from "../../constants/designSystem";
+import { useReducedMotionNative } from "../../hooks/useReducedMotionNative";
 import { HapticFeedback } from "../../utils/hapticFeedback";
 
 import { GlassChrome } from "./GlassChrome";
@@ -63,8 +63,22 @@ const NAV_HEIGHT = 64;
 const NAV_PADDING_X = spacing.sm;
 const NAV_PADDING_Y = spacing.sm;
 const SPOTLIGHT_HEIGHT = 48;
-const SPRING_CONFIG = { damping: 18, stiffness: 260, mass: 0.9 } as const;
-const REDUCE_TIMING = { duration: 200, easing: Easing.out(Easing.cubic) } as const;
+// ORCH-1320: layout props (`left`/`width`) require the JS driver
+// (`useNativeDriver: false`). The JS-driven RN-core Animated loop runs through
+// the Animated module on the JS thread — NOT the Reanimated worklets runtime —
+// so there is no second runtime, no AroundLock, no cross-runtime UAF race with
+// the Fabric mount-commit. That is the load-bearing property of this fix.
+const SPRING_CONFIG = {
+  damping: 18,
+  stiffness: 260,
+  mass: 0.9,
+  useNativeDriver: false,
+} as const;
+const REDUCE_TIMING = {
+  duration: 200,
+  easing: Easing.out(Easing.cubic),
+  useNativeDriver: false,
+} as const;
 const INACTIVE_ICON = "rgba(255, 255, 255, 0.55)";
 
 interface TabLayout {
@@ -80,27 +94,50 @@ export const BottomNav: React.FC<BottomNavProps> = ({
   style,
 }) => {
   const [layouts, setLayouts] = useState<Record<string, TabLayout>>({});
-  const left = useSharedValue(0);
-  const width = useSharedValue(0);
-  const reduceMotion = useReducedMotion();
+  const left = useRef(new Animated.Value(0)).current;
+  const width = useRef(new Animated.Value(0)).current;
+  const reduceMotion = useReducedMotionNative();
 
   const activeLayout = layouts[active];
 
+  // ORCH-1320 (biz Account-tab Apple crash): this spotlight animation MUST NOT
+  // use a Reanimated worklet. A worklet here races the Fabric mount-commit on
+  // the New Architecture → EXC_BAD_ACCESS use-after-free (Apple rejection 3).
+  // Keep it RN-core `Animated` (JS-driven, no worklets runtime) or a static
+  // highlight. See I-PROPOSED-1320-NO-WORKLET-ON-TAB-COMMIT-PATH.
   useEffect(() => {
     if (activeLayout === undefined) return;
-    if (reduceMotion) {
-      left.value = withTiming(activeLayout.x, REDUCE_TIMING);
-      width.value = withTiming(activeLayout.width, REDUCE_TIMING);
-    } else {
-      left.value = withSpring(activeLayout.x, SPRING_CONFIG);
-      width.value = withSpring(activeLayout.width, SPRING_CONFIG);
-    }
+    // ORCH-1320 A.2 (defense-in-depth): defer the `.start()` to the next frame
+    // so the spotlight animation begins AFTER the tab route mount-commit has
+    // settled and never interleaves with the Fabric tab-swap commit.
+    const rafId = requestAnimationFrame(() => {
+      if (reduceMotion) {
+        Animated.timing(left, {
+          toValue: activeLayout.x,
+          ...REDUCE_TIMING,
+        }).start();
+        Animated.timing(width, {
+          toValue: activeLayout.width,
+          ...REDUCE_TIMING,
+        }).start();
+      } else {
+        Animated.spring(left, {
+          toValue: activeLayout.x,
+          ...SPRING_CONFIG,
+        }).start();
+        Animated.spring(width, {
+          toValue: activeLayout.width,
+          ...SPRING_CONFIG,
+        }).start();
+      }
+    });
+    return (): void => cancelAnimationFrame(rafId);
   }, [activeLayout, left, reduceMotion, width]);
 
   useEffect(() => {
     return (): void => {
-      cancelAnimation(left);
-      cancelAnimation(width);
+      left.stopAnimation();
+      width.stopAnimation();
     };
   }, [left, width]);
 
@@ -130,11 +167,6 @@ export const BottomNav: React.FC<BottomNavProps> = ({
     [onChange],
   );
 
-  const spotlightStyle = useAnimatedStyle(() => ({
-    left: left.value,
-    width: width.value,
-  }));
-
   return (
     <View testID={testID} style={[styles.host, style]}>
       <GlassChrome
@@ -147,7 +179,7 @@ export const BottomNav: React.FC<BottomNavProps> = ({
         <View style={styles.tabsRow}>
           <Animated.View
             pointerEvents="none"
-            style={[styles.spotlight, shadows.glassChromeActive, spotlightStyle]}
+            style={[styles.spotlight, shadows.glassChromeActive, { left, width }]}
           />
           {tabs.map((tab) => {
             const isActive = tab.id === active;
