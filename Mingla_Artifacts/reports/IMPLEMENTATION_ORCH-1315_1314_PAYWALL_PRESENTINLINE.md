@@ -2,9 +2,23 @@
 
 - **ORCH-IDs:** ORCH-1315 [preferences-custom-location-paywall-not-firing] (primary) + ORCH-1314 [preferences-sheet-curated-paywall-dead-gate] (folded in)
 - **Worktree / branch:** `~/Desktop/mingla-orchs/orch-1315-[preferences-custom-location-paywall-not-firing]/` on `orch-1315-preferences-custom-location-paywall-not-firing`
-- **Commit:** `ea01e9ffa`
+- **Commits:** `ea01e9ffa` (initial), `59c464ed6` (P1 geometry rework — see §0)
 - **Specs:** `SPEC_ORCH-1315_CUSTOM_LOCATION_PAYWALL.md`, `SPEC_ORCH-1314_PREFERENCES_CURATED_PAYWALL.md`
-- **Status:** implemented, partially verified — typecheck + both regression tests green + fails-on-revert proven for both fixes. **Runtime presentation of the overlay is TEST-gated** (on-device blocked by ORCH-1317 tooling gaps — New-Arch keyboard-controller link failure + bracketed-worktree watchman). No on-device confirmation claimed.
+- **Status:** implemented, partially verified — typecheck + all 3 regression tests (2 implementor + 1 tester adversarial) green + fails-on-revert proven for both fixes AND the geometry rework. **Runtime presentation of the overlay is TEST-gated** (on-device blocked by ORCH-1317 tooling gaps — New-Arch keyboard-controller link failure + bracketed-worktree watchman). No on-device confirmation claimed.
+
+---
+
+## 0. REWORK — P1 geometry fix (commit `59c464ed6`)
+
+**TEST returned FAIL with one P1** (everything else GREEN). The initial fix mounted the `presentInline` paywall as the LAST child INSIDE `<BaseBottomSheet scrollMode="scroll">`, making it a `position:absolute` child of gorhom's `BottomSheetScrollView` — positioned relative to the SCROLL CONTENT, not the viewport. A free user who scrolled the sheet down before tapping a gated control (likely — the curated pills sit lower in the sheet) scrolled the overlay AND its close button off-screen → blank dark screen, no way to dismiss. This was the exact FAIL condition I had self-flagged in §9.2.
+
+**Fix (placement only — gate wiring, dead-tap fix, and `presentInline` mode all unchanged):**
+1. **`BaseBottomSheet.tsx` (additive, authorized by the rework dispatch):** new optional `overlay?: ReactNode` prop, rendered as a **SIBLING of the gorhom sheet** inside the same `wrapInRNModal` RN-Modal window (inside `GestureHandlerRootView`, painted AFTER `{sheet}`), and mirrored in the non-wrapped inline host for parity. Default `undefined` → renders nothing → **zero behavior change for every other consumer**. Because the slot is a sheet SIBLING (not a scroll child), an absolute inset:0 overlay is viewport-relative and covers the visible sheet at any scroll offset, close control always on-screen.
+2. **`PreferencesSheet.tsx`:** route the single shared `{paywall}` through `overlay={paywall}` instead of a scroll child.
+3. **`CustomPaywallScreen.tsx`:** unchanged — it already renders a viewport-covering absolute overlay; only its mount point moved.
+4. **Regression test updated** to pin the viewport-fixed slot (`overlay={paywall}` + BaseBottomSheet renders `{overlay}` as a sibling after `{sheet}`), so the geometry now fails-on-revert.
+
+**Dependency-walk (additive-prop safety):** 48 other `<BaseBottomSheet>` consumer files; grep confirms **none** pass an `overlay` prop (no collision). When `overlay` is `undefined` the render is `{sheet}{undefined}` (wrapped) / `{bottomFiller}{sheet}{undefined}` (inline) — byte-identical to before. `meta-orch-0991` sole-gorhom-consumer gate still GREEN. The tester's adversarial closed-state-null test (reads only `CustomPaywallScreen.tsx`, untouched) stays GREEN.
 
 ---
 
@@ -45,9 +59,10 @@ A free user tapping the GPS "Use my current location" switch OFF, or interacting
 | File | Δ (approx) | Kind |
 |------|-----------|------|
 | `app-mobile/src/components/CustomPaywallScreen.tsx` | +75 / −20 | product |
-| `app-mobile/src/components/PreferencesSheet.tsx` | +45 / −8 | product |
+| `app-mobile/src/components/PreferencesSheet.tsx` | +48 / −10 | product |
 | `app-mobile/src/components/PreferencesSheet/PreferencesSectionsAdvanced.tsx` | +38 / −16 | product |
-| `app-mobile/src/components/__tests__/orch-1315-preferences-custom-location-paywall.test.tsx` | +150 (new) | test |
+| `app-mobile/src/components/ui/BaseBottomSheet.tsx` | +38 / −2 | product (additive `overlay` slot — §0 rework) |
+| `app-mobile/src/components/__tests__/orch-1315-preferences-custom-location-paywall.test.tsx` | +175 (new) | test |
 | `app-mobile/src/components/__tests__/orch-1314-preferences-curated-paywall-gate.test.tsx` | +155 (new) | test |
 
 `PreferencesSheet/PreferencesSections.tsx` was **NOT** touched (curated pill gating done parent-side in `handleIntentToggle`, per spec preference — child stays presentational).
@@ -67,8 +82,9 @@ Both new tests follow the sibling conventions (`orch-0943-…` source-structure 
 - `orch-1315-preferences-custom-location-paywall.test.tsx` — pins: preferences paywall element carries `presentInline` + is mounted inside `<BaseBottomSheet>`; CustomPaywallScreen has the `presentInline` prop, `false` default, and the absolute opaque `inlineOverlay` branch; the locked GPS row is a `TouchableOpacity onPress={onLockedTap}` with button role + "Upgrade to set a custom starting point" label; behavioral GPS-locked-tap routing.
 - `orch-1314-preferences-curated-paywall-gate.test.tsx` — Part A source pins (`isCuratedLocked={!canAccess('curated_cards')}` present, `isCuratedLocked={false}` absent, both handlers short-circuit to the paywall BEFORE mutation); Part B behavioral decision-model (T-2 free→paywall/not-mutated, T-3 read-only→no-paywall, T-4 Mingla+→mutated/no-paywall, T-5 pill parity).
 
-**fails-on-revert — verified at commit `ea01e9ffa` (true line deletion, not comment-out):**
-- ORCH-1315: delete the `presentInline` prop line from the preferences paywall → `orch-1315-*` exits **1**; restore → exits **0**.
+**fails-on-revert — verified (true line deletion, not comment-out):**
+- ORCH-1315 presentInline (@ `ea01e9ffa`): delete the `presentInline` prop line from the preferences paywall → `orch-1315-*` exits **1**; restore → exits **0**.
+- ORCH-1315 geometry slot (@ `59c464ed6`): delete `overlay={paywall}` (revert to scroll-child placement) → `orch-1315-*` exits **1**; restore → exits **0**.
 - ORCH-1314 (line 1279): `isCuratedLocked={!canAccess('curated_cards')}` → `isCuratedLocked={false}` → `orch-1314-*` exits **1**; restore → exits **0**.
 - ORCH-1314 (handler gate): remove the `!canAccess('curated_cards')` short-circuit from `handleIntentToggleChange` → `orch-1314-*` exits **1**; restore → exits **0**.
 
@@ -83,10 +99,15 @@ Both new test files are visible in `git diff origin/main...HEAD --name-only` on 
 - **Now:** new optional `presentInline?: boolean` (default `false`). The paywall body is extracted into one shared `content` block. When `presentInline` is `false` → identical RN `<Modal>` (7 other call sites unchanged). When `true` → returns `null` while hidden, and while visible renders `content` in an opaque, absolutely-positioned `inlineOverlay` (`position:absolute; inset 0; #1C1C1E; zIndex/elevation 1000`) capped to one screen height at the top (`useWindowDimensions` + safe-area top), with a visible top-right close `X` (overlay mode has no OS swipe chrome). Analytics, purchase/restore, comparison table, packages, legal links, and `InAppBrowserModal` all preserved.
 - **Why:** F-1 (iOS modal-over-modal). `I-PROPOSED-1315-PAYWALL-PRESENTS-FROM-SHEET`.
 
+### BaseBottomSheet.tsx (§0 rework)
+- **Before:** no overlay slot; consumers could only place content as a scroll child or via header/stickyFooter (all inside the gorhom content tree).
+- **Now:** additive optional `overlay?: ReactNode` prop, rendered as a SIBLING of `{sheet}` inside the `wrapInRNModal` window (and the inline host), painted after it. Default `undefined` → renders nothing.
+- **Why:** the paywall needs a viewport-fixed mount point inside the modal window; a scroll child scrolled off-screen (P1). Additive + default-off → zero change to 48 other consumers.
+
 ### PreferencesSheet.tsx
 - **Before:** the shared `{paywall}` rendered OUTSIDE `<BaseBottomSheet>` as a nested RN Modal (never presented). `isCuratedLocked={false}` (dead) hid the curated banner; `handleIntentToggleChange`/`handleIntentToggle` had no gate — a free user could flip the Switch / select pills silently.
-- **Now:** the single shared paywall element gets `presentInline` and is moved to the LAST child INSIDE `<BaseBottomSheet>` (mounts in the `wrapInRNModal` window). ORCH-1314 Change 1 wires `isCuratedLocked={!canAccess('curated_cards')}`; Changes 2 & 3 add a `!canAccess('curated_cards')` short-circuit (→ `setPaywallFeature('curated_cards'); setShowPaywall(true); return;`) to `handleIntentToggleChange` and `handleIntentToggle`, each after the preserved `if (!isEditable) return`, with `canAccess` added to deps.
-- **Why:** F-1 presentation fix (both toggles) + ORCH-1314 F-1/F-2 reachability. GPS `onLockedTap` block and force-GPS effect untouched (SC-7).
+- **Now:** the single shared paywall element gets `presentInline` and is routed through `overlay={paywall}` (BaseBottomSheet's viewport-fixed slot — §0; NOT a scroll child). ORCH-1314 Change 1 wires `isCuratedLocked={!canAccess('curated_cards')}`; Changes 2 & 3 add a `!canAccess('curated_cards')` short-circuit (→ `setPaywallFeature('curated_cards'); setShowPaywall(true); return;`) to `handleIntentToggleChange` and `handleIntentToggle`, each after the preserved `if (!isEditable) return`, with `canAccess` added to deps.
+- **Why:** F-1 presentation fix + P1 geometry (both toggles) + ORCH-1314 F-1/F-2 reachability. GPS `onLockedTap` block and force-GPS effect untouched (SC-7).
 
 ### PreferencesSheet/PreferencesSectionsAdvanced.tsx
 - **Before:** only the `Switch` `onValueChange` fired `onLockedTap`; the row/label/lock icon were dead taps (F-3).
@@ -123,7 +144,7 @@ The 7 other `CustomPaywallScreen` call sites (SwipeableCards, DiscoverScreen, Co
 ## 9. Known issues / deferred / notes for TEST
 
 1. **Runtime presentation is TEST-gated (not device-confirmed).** On-device verification is blocked by ORCH-1317 tooling gaps. The tester must free-tier live-fire on an iOS sim/device AND an Android emulator/device: confirm the overlay presents over the sheet for BOTH the GPS switch and the curated section (banner + Switch + pills), SC-1..SC-6 (GPS) + SC-1..SC-7 (curated), dismiss-returns-intact, and NO regression on the other 7 paywall sites.
-2. **Overlay geometry choice (flag for the tester):** the inline overlay is a scroll-child inside gorhom's `BottomSheetScrollView`, so it is positioned relative to the scroll CONTENT. It uses opaque `inset:0` (covers the viewport at any scroll position) with the content itself capped to one window-height at the content top — chosen because the GPS + curated sections sit at the TOP of the sheet (the realistic trigger position). If the tester finds the paywall content off-screen when the sheet is scrolled far down before triggering, the fallback is to pass the paywall via BaseBottomSheet's `header` slot (viewport-relative, still in-window) — flagged, not applied, to keep the sheet's proven scroll layout branch unchanged.
+2. **Overlay geometry — RESOLVED in §0 rework.** The initial fix mounted the overlay as a scroll child (scroll-content-relative → scrolled off-screen; the tester's confirmed P1). Now routed through BaseBottomSheet's viewport-fixed `overlay` slot (a sheet SIBLING inside the wrapInRNModal window), so it covers the visible sheet at any scroll offset with the close control always on-screen. Tester should still live-fire: scroll the sheet DOWN, tap a curated pill / the locked GPS row, confirm the paywall fully covers the visible sheet and the top-right close dismisses it.
 3. **Legacy full-screen path (`visible===undefined`, app/index.tsx mount):** the same shared paywall now renders as an inline overlay there too (inside its own full-screen container — not a competing Modal window), which is correct and functional; worth a glance at TEST if that path is exercised.
 
 ---
