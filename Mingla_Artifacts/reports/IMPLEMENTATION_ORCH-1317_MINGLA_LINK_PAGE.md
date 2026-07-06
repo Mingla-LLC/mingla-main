@@ -112,3 +112,61 @@ Dark brand canvas `#08090b` with the same warm radial-gradient atmosphere as `/d
   absolute `https://usemingla.com/business` — it’s the same apex site, so an internal link is idiomatic,
   avoids a hardcoded host, and resolves to exactly usemingla.com/business.
 - X icon is an inline SVG (documented fallback), because lucide-react has no X (post-Twitter-rebrand) glyph.
+
+---
+
+## POLISH PASS (ORCH-1317, 2026-07-06) — 4 fixes from Seth's feedback
+
+Four targeted `/links` fixes. Scope: `mingla-marketing/` only. No app/native change, no other route,
+the organiser modal untouched, store-links single source of truth preserved, no hardcoded store URLs.
+
+### 1 — No scroll: the whole page fits one viewport ("snapshot")
+**Before:** root was `min-h-[100svh]` with generous `pt-12 sm:pt-16` / `pb-8` and an extra `<AppStoreBadges/>`
+block on Explorer — tall content could exceed the screen and scroll / clip on short phones.
+**After:** root is exactly one **dynamic** viewport tall and never scrolls:
+`className="… h-[100svh] … overflow-hidden"` + inline `style={{ height: '100dvh' }}` (dvh wins on modern
+browsers; where dvh is unsupported the declaration is dropped and the `h-[100svh]` class provides the fallback —
+`100svh` is the *smallest* visible height, so content sized to it always fits even with mobile browser chrome
+showing). Safe-area insets honored via `max(1.25rem, env(safe-area-inset-top|bottom))`. The content column is
+`flex-1 min-h-0 … justify-center` so it distributes/centres and can shrink; the socials row is a flex sibling
+pinned to the bottom. Compacted spacing to fit short phones without clipping: tagline `mt-4→mt-3`,
+tablist `mt-8→mt-6`, panel `mt-6→mt-5` (+ dropped the `sm:p-7`/`sm:pt-16` growth), CTA block `mt-6→mt-5`,
+socials `mt-10→mt-5`. Removing the Explorer badges (fix #4) freed ~180px.
+
+### 2 — Crisp tab animation (no spring/overshoot)
+**Before:** the active-tab pill used `transition={{ type: 'spring', stiffness: 380, damping: 32 }}` — it
+swung/overshot and read awkward.
+**After:** same sliding `layoutId="links-tab-pill"` pill, but a snappy **tween** with a standard ease-out and
+no overshoot: `{ type: 'tween', duration: 0.18, ease: [0.4, 0, 0.2, 1] }` (collapses to `duration: 0` under
+reduced-motion). The panel switch was also tightened to a quick crossfade (`duration: 0.2`, same ease,
+`y: 8→6`). No spring anywhere.
+
+### 3 — All 7 @usemingla socials
+**Before:** 4 (Instagram, X, LinkedIn, Facebook). **After:** 7, in `lib/links-config.ts` `LINKS_SOCIALS`
+(data-driven, order = render order): Instagram, X, TikTok, YouTube, LinkedIn, Facebook, Threads.
+Icons: lucide-react `Instagram` / `Linkedin` / `Facebook` / **`Youtube`**; inline brand SVGs for the marks
+lucide lacks — **X** (existing), **TikTok**, **Threads**. Kept 44×44px tap targets; the row is now
+`flex flex-wrap … gap-1.5` so all seven sit on one tidy row on standard phones (≥390px: 7×44 + 6×6 ≈ 344 ≤ ~350)
+and wrap cleanly (no horizontal overflow, no scroll) on narrower/shorter devices. All `target="_blank" rel="noopener noreferrer"`.
+
+### 4 — Removed the App Store / Google Play badges from Explorer
+The Explorer "Get Mingla" button already routes by device via `/download`, so `<AppStoreBadges/>` below it was
+redundant. Removed: the `AppStoreBadges` import, the "or pick your store" divider + badges block, and the
+`onBadgesClickCapture` analytics handler. Also removed the now-unused `showStoreBadges` field from the
+`LinksTab` model, both tab objects, and the JSX conditional. Explorer = the single smart CTA. `/download`
+still resolves the correct store per device from `lib/store-links.ts` — **no store URL is hardcoded anywhere**.
+
+### Guard test updated
+`lib/links-config.tester.test.ts`: socials assertion now pins **7** exact URLs (adds TikTok/YouTube/Threads);
+dropped the two `showStoreBadges` assertions (field removed). The no-hardcoded-store-URL guard is unchanged.
+
+### Verification (polish pass)
+- **Guard test:** all 6 cases pass, including "exposes the seven usemingla social profiles with exact URLs".
+- **`tsc --noEmit`:** exit 0, clean.
+- **`next build`:** "Compiled successfully"; `○ /links  4.67 kB  225 kB` prerendered static; all 15 routes green.
+- **Fit @ 375×667 (iPhone SE):** inner height 667 − 40 (insets) = 627. Content stack (wordmark 36 → tagline ~37 →
+  tablist ~76 → Explorer panel ~302) ≈ 451; socials block (mt-5 + one-or-two rows) ≈ 64–114. Total ≈ 515–565 ≤ 627 →
+  fits with 60–110px slack. Socials wrap to 2 tidy rows at this width (344 > ~335 avail). No scroll, nothing clipped.
+- **Fit @ 390×844 (iPhone 14):** inner 804; same ~451 content + one-row socials (344 ≤ ~350 avail) → ~145px slack
+  each side. Single clean socials row. No scroll, nothing clipped.
+- Desktop: `overflow-hidden` + `100dvh` → no vertical scrollbar; column centred, socials pinned to bottom.

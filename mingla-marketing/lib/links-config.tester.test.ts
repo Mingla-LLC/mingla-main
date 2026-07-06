@@ -39,13 +39,14 @@ const cases: ReadonlyArray<[string, () => void]> = [
   ],
 
   // ── Explorer CTA → the device-smart /download route (NOT a raw store URL) ────
+  // The single smart CTA is the ONLY download path — no store badges are rendered
+  // on /links (the /download route resolves the right store per device).
   [
     'Explorer CTA targets the /download route, never a hardcoded store URL',
     () => {
       const explorer = LINKS_TABS.find((t) => t.id === 'explorer')!
       assert(explorer.cta.href === LINKS_DOWNLOAD_PATH, `explorer href = ${explorer.cta.href}`)
       assert(explorer.cta.href === '/download', `explorer href not /download: ${explorer.cta.href}`)
-      assert(explorer.showStoreBadges === true, 'explorer must render the store badges')
     },
   ],
 
@@ -58,7 +59,7 @@ const cases: ReadonlyArray<[string, () => void]> = [
         assert(!/apps\.apple\.com/.test(href), `${tab.id} CTA hardcodes App Store: ${href}`)
         assert(!/play\.google\.com/.test(href), `${tab.id} CTA hardcodes Play: ${href}`)
         // The live store URLs must never be pasted into the config — they live in
-        // lib/store-links.ts and are rendered only via <AppStoreBadges/>.
+        // lib/store-links.ts and are resolved per device by the /download route.
         assert(href !== APP_STORE_URL, `${tab.id} CTA equals APP_STORE_URL`)
         assert(href !== PLAY_STORE_URL, `${tab.id} CTA equals PLAY_STORE_URL`)
       }
@@ -73,20 +74,22 @@ const cases: ReadonlyArray<[string, () => void]> = [
       assert(biz.cta.href === LINKS_BUSINESS_PATH, `business href = ${biz.cta.href}`)
       assert(LINKS_BUSINESS_PATH === BUSINESS_PATH, 'links business path drifted from subdomain BUSINESS_PATH')
       assert(biz.cta.href === '/business', `business href not /business: ${biz.cta.href}`)
-      assert(biz.showStoreBadges === false, 'business tab must NOT render app-store badges (no biz app yet)')
     },
   ],
 
-  // ── Socials: the four canonical usemingla profiles ──────────────────────────
+  // ── Socials: the full seven @usemingla profiles ─────────────────────────────
   [
-    'exposes the four usemingla social profiles with exact URLs',
+    'exposes the seven usemingla social profiles with exact URLs',
     () => {
       const byLabel = Object.fromEntries(LINKS_SOCIALS.map((s) => [s.label, s.href]))
       assert(byLabel['Instagram'] === 'https://www.instagram.com/usemingla', `IG: ${byLabel['Instagram']}`)
       assert(byLabel['X'] === 'https://x.com/usemingla', `X: ${byLabel['X']}`)
+      assert(byLabel['TikTok'] === 'https://www.tiktok.com/@usemingla', `TikTok: ${byLabel['TikTok']}`)
+      assert(byLabel['YouTube'] === 'https://www.youtube.com/@usemingla', `YouTube: ${byLabel['YouTube']}`)
       assert(byLabel['LinkedIn'] === 'https://www.linkedin.com/company/usemingla', `LinkedIn: ${byLabel['LinkedIn']}`)
       assert(byLabel['Facebook'] === 'https://www.facebook.com/usemingla', `Facebook: ${byLabel['Facebook']}`)
-      assert(LINKS_SOCIALS.length === 4, `expected 4 socials, got ${LINKS_SOCIALS.length}`)
+      assert(byLabel['Threads'] === 'https://www.threads.com/@usemingla', `Threads: ${byLabel['Threads']}`)
+      assert(LINKS_SOCIALS.length === 7, `expected 7 socials, got ${LINKS_SOCIALS.length}`)
     },
   ],
   [
