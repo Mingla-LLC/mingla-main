@@ -160,9 +160,13 @@ export const LocationInputSection = memo(
     onLockedTap?: () => void;
   }) => {
     const { t } = useTranslation(['preferences', 'common']);
-    return (
-    <View>
-      <View style={[styles.gpsSwitchRow, useGpsLocation && styles.gpsSwitchRowActive]}>
+    // ORCH-1315 [preferences-custom-location-paywall-not-firing] F-3 — the visually
+    // natural tap targets (label + lock icon + the row itself) were dead: only the
+    // Switch thumb fired the paywall. The row inner is shared; when `isLocked` the
+    // WHOLE row becomes a pressable that presents the paywall via `onLockedTap`
+    // (≥44pt target, button role), while the Switch keeps its own locked branch.
+    const gpsRowInner = (
+      <>
         <Icon
           name={useGpsLocation ? "navigate" : "navigate-outline"}
           size={16}
@@ -187,7 +191,25 @@ export const LocationInputSection = memo(
           thumbColor={useGpsLocation ? '#eb7825' : '#ffffff'}
           ios_backgroundColor={useGpsLocation ? '#ffffff' : '#e5e7eb'}
         />
-      </View>
+      </>
+    );
+    return (
+    <View>
+      {isLocked ? (
+        <TouchableOpacity
+          style={[styles.gpsSwitchRow, styles.gpsSwitchRowLocked, useGpsLocation && styles.gpsSwitchRowActive]}
+          onPress={onLockedTap}
+          activeOpacity={0.7}
+          accessibilityRole="button"
+          accessibilityLabel="Upgrade to set a custom starting point"
+        >
+          {gpsRowInner}
+        </TouchableOpacity>
+      ) : (
+        <View style={[styles.gpsSwitchRow, useGpsLocation && styles.gpsSwitchRowActive]}>
+          {gpsRowInner}
+        </View>
+      )}
 
       {!useGpsLocation && !isLocked && (
         <>
@@ -422,6 +444,11 @@ const styles = StyleSheet.create({
   gpsSwitchRowActive: {
     backgroundColor: '#eb7825',
     borderColor: '#eb7825',
+  },
+  // ORCH-1315 F-3 — locked GPS row is a whole-row paywall trigger; guarantee a
+  // ≥44pt touch target (paddingVertical:10 + Switch already clears it, but pin it).
+  gpsSwitchRowLocked: {
+    minHeight: 44,
   },
   gpsSwitchLabel: {
     flex: 1,

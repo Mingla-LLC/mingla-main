@@ -8,7 +8,9 @@ import {
   TouchableOpacity,
   Alert,
   ActivityIndicator,
+  useWindowDimensions,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Icon } from './ui/Icon';
 import InAppBrowserModal from './InAppBrowserModal';
 import { LEGAL_URLS } from '../constants/urls';
@@ -33,6 +35,18 @@ interface CustomPaywallScreenProps {
   onClose: () => void;
   userId: string;
   feature?: GatedFeature;
+  /**
+   * ORCH-1315 [preferences-custom-location-paywall-not-firing] — in-window overlay
+   * mode. When FALSE (default, the 7 non-preferences call sites) the paywall renders
+   * in its own RN <Modal presentationStyle="pageSheet"> exactly as before. When TRUE
+   * (PreferencesSheet, which itself lives inside a BaseBottomSheet `wrapInRNModal`
+   * window) the SAME content renders in a plain absolutely-positioned opaque <View>
+   * instead — because iOS will not reliably present a SECOND RN Modal over an
+   * already-presented one, so a nested Modal silently never appears (F-1). The
+   * overlay z-stacks inside the sheet's existing Modal window. Invariant
+   * I-PROPOSED-1315-PAYWALL-PRESENTS-FROM-SHEET.
+   */
+  presentInline?: boolean;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -107,10 +121,17 @@ export function CustomPaywallScreen({
   onClose,
   userId,
   feature,
+  presentInline = false,
 }: CustomPaywallScreenProps) {
   const queryClient = useQueryClient();
   const { showToast } = useToast();
   const { t } = useTranslation(['billing', 'common']);
+  // ORCH-1315: inline-overlay geometry. The overlay is a screen-tall opaque region
+  // pinned to the top of the host so the paywall content lands in the visible
+  // viewport (the realistic trigger — the GPS/curated sections sit at the top of
+  // the preferences sheet), while its opaque background also covers the sheet.
+  const { height: windowHeight } = useWindowDimensions();
+  const insets = useSafeAreaInsets();
   const { data: offering } = useOfferings(isVisible);
   const { mutateAsync: purchase, isPending: isPurchasing } = usePurchasePackage();
   const { mutateAsync: restore, isPending: isRestoring } = useRestorePurchases();
@@ -267,22 +288,30 @@ export function CustomPaywallScreen({
   };
 
   // ── Render ──────────────────────────────────────────────────────────────
-  return (
-    <>
-    <Modal
-      visible={isVisible}
-      animationType="slide"
-      presentationStyle="pageSheet"
-      onRequestClose={() => {
-        mixpanelService.trackPaywallDismissed({ trigger: feature || 'general' });
-        onClose();
-      }}
-    >
+  // ORCH-1315: the SAME content renders in BOTH modes (Modal default / inline
+  // overlay) so the two branches are byte-identical in content.
+  const content = (
       <View style={styles.safeArea}>
-        {/* Swipe-down handle */}
+        {/* Swipe-down handle — the existing close affordance (tap to dismiss). */}
         <TouchableOpacity style={styles.handleBar} onPress={onClose} activeOpacity={0.8}>
           <View style={styles.handle} />
         </TouchableOpacity>
+
+        {/* ORCH-1315: in overlay mode there is NO OS swipe-to-dismiss chrome, so a
+            VISIBLE close control MUST exist. Rendered top-right in presentInline
+            mode only, so the 7 pageSheet-Modal call sites are visually unchanged. */}
+        {presentInline && (
+          <TouchableOpacity
+            style={styles.inlineCloseButton}
+            onPress={onClose}
+            activeOpacity={0.7}
+            hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+            accessibilityRole="button"
+            accessibilityLabel={t('common:close', { defaultValue: 'Close' })}
+          >
+            <Icon name="close" size={24} color="#fff" />
+          </TouchableOpacity>
+        )}
 
         <ScrollView
           style={styles.scroll}
@@ -446,7 +475,36 @@ export function CustomPaywallScreen({
           </View>
         </ScrollView>
       </View>
-    </Modal>
+  );
+
+  return (
+    <>
+    {presentInline ? (
+      // ORCH-1315: in-window overlay. Return null when hidden so nothing mounts
+      // (no racing second RN Modal); when visible, an opaque absolutely-positioned
+      // View z-stacks inside the sheet's existing wrapInRNModal window. The inner
+      // one-screen-tall wrapper keeps the content in the visible viewport while the
+      // overlay's opaque background covers the sheet at any scroll position.
+      isVisible ? (
+        <View style={styles.inlineOverlay} accessibilityViewIsModal>
+          <View style={[styles.inlineViewport, { height: windowHeight, paddingTop: insets.top }]}>
+            {content}
+          </View>
+        </View>
+      ) : null
+    ) : (
+      <Modal
+        visible={isVisible}
+        animationType="slide"
+        presentationStyle="pageSheet"
+        onRequestClose={() => {
+          mixpanelService.trackPaywallDismissed({ trigger: feature || 'general' });
+          onClose();
+        }}
+      >
+        {content}
+      </Modal>
+    )}
     <InAppBrowserModal
       visible={legalBrowserVisible}
       url={legalBrowserUrl}
@@ -465,6 +523,34 @@ const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
     backgroundColor: '#1C1C1E',
+  },
+  // ORCH-1315 [preferences-custom-location-paywall-not-firing] — in-window overlay
+  // container. Absolutely positioned + opaque so it fully covers the sheet behind
+  // it; high zIndex/elevation so it z-stacks above the sheet content on both iOS
+  // and Android. Only mounted while isVisible (parent returns null otherwise).
+  inlineOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: '#1C1C1E',
+    zIndex: 1000,
+    elevation: 1000,
+  },
+  // The content is capped to one screen height, anchored at the overlay's top, so
+  // it lands in the visible viewport (the GPS/curated triggers sit at the top of
+  // the sheet). The opaque `inlineOverlay` background covers everything below it.
+  inlineViewport: {
+    width: '100%',
+  },
+  // ORCH-1315 — visible close control for overlay mode (no OS swipe chrome).
+  inlineCloseButton: {
+    position: 'absolute',
+    top: spacing.sm,
+    right: spacing.lg,
+    zIndex: 2,
+    padding: spacing.xs,
   },
   handleBar: {
     alignItems: 'center',
