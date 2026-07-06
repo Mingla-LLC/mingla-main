@@ -20,6 +20,20 @@
 
 **Dependency-walk (additive-prop safety):** 48 other `<BaseBottomSheet>` consumer files; grep confirms **none** pass an `overlay` prop (no collision). When `overlay` is `undefined` the render is `{sheet}{undefined}` (wrapped) / `{bottomFiller}{sheet}{undefined}` (inline) — byte-identical to before. `meta-orch-0991` sole-gorhom-consumer gate still GREEN. The tester's adversarial closed-state-null test (reads only `CustomPaywallScreen.tsx`, untouched) stays GREEN.
 
+### 0.1 Hardening — self-enforcing overlay slot (commit `d1dbad403`)
+
+Belt-and-suspenders per the orchestrator's clean-sweep follow-up (additive-only; allowlist `BaseBottomSheet.tsx` + the orch-1315 test). In BOTH render paths the slot now wraps its content in an absolute-fill, touch-transparent container, **only when provided**:
+```
+{overlay ? (
+  <View pointerEvents="box-none" style={StyleSheet.absoluteFill}>
+    {overlay}
+  </View>
+) : null}
+```
+This makes the shared slot self-enforcing for any FUTURE consumer (not just today's correct paywall): (a) `StyleSheet.absoluteFill` forces the content OUT-OF-FLOW — it can never become a flex child competing with the `flex:1` `GestureHandlerRootView`, so it structurally cannot trip the ORCH-1040/1043 content-size/flex class; (b) `pointerEvents="box-none"` means the wrapper itself never captures touches (it passes through to subviews), so a `null`/closed overlay can't swallow taps over the sheet, while a visible child still captures its own touches. The default-`undefined` ternary → `null` path is unchanged, so all 48 other consumers stay byte-identical. `View` + `StyleSheet` were already imported. Test extended with T-A1d pinning the box-none absolute-fill wrapper (fails-on-revert). Typecheck clean; all 3 tests green.
+
+**Invariant wording update (for orchestrator to apply at CLOSE — `INVARIANT_REGISTRY.md` is orchestrator-owned, out of this hardening's allowlist).** Add to `I-PROPOSED-1315-PAYWALL-PRESENTS-FROM-SHEET`: *"the overlay slot renders its content in an absolute-fill, `pointerEvents=box-none` wrapper so it stays out-of-flow and non-touch-capturing — it can never participate in gorhom's flex/measurement tree."*
+
 ---
 
 ## 1. Summary (plain English)
@@ -61,8 +75,8 @@ A free user tapping the GPS "Use my current location" switch OFF, or interacting
 | `app-mobile/src/components/CustomPaywallScreen.tsx` | +75 / −20 | product |
 | `app-mobile/src/components/PreferencesSheet.tsx` | +48 / −10 | product |
 | `app-mobile/src/components/PreferencesSheet/PreferencesSectionsAdvanced.tsx` | +38 / −16 | product |
-| `app-mobile/src/components/ui/BaseBottomSheet.tsx` | +38 / −2 | product (additive `overlay` slot — §0 rework) |
-| `app-mobile/src/components/__tests__/orch-1315-preferences-custom-location-paywall.test.tsx` | +175 (new) | test |
+| `app-mobile/src/components/ui/BaseBottomSheet.tsx` | +62 / −6 | product (additive `overlay` slot §0 + box-none wrapper §0.1) |
+| `app-mobile/src/components/__tests__/orch-1315-preferences-custom-location-paywall.test.tsx` | +195 (new) | test |
 | `app-mobile/src/components/__tests__/orch-1314-preferences-curated-paywall-gate.test.tsx` | +155 (new) | test |
 
 `PreferencesSheet/PreferencesSections.tsx` was **NOT** touched (curated pill gating done parent-side in `handleIntentToggle`, per spec preference — child stays presentational).
@@ -85,6 +99,7 @@ Both new tests follow the sibling conventions (`orch-0943-…` source-structure 
 **fails-on-revert — verified (true line deletion, not comment-out):**
 - ORCH-1315 presentInline (@ `ea01e9ffa`): delete the `presentInline` prop line from the preferences paywall → `orch-1315-*` exits **1**; restore → exits **0**.
 - ORCH-1315 geometry slot (@ `59c464ed6`): delete `overlay={paywall}` (revert to scroll-child placement) → `orch-1315-*` exits **1**; restore → exits **0**.
+- ORCH-1315 slot wrapper (@ `d1dbad403`): remove the `overlay ? (<View pointerEvents="box-none" style={StyleSheet.absoluteFill}>…)` wrapper (revert to bare `{overlay}`) → `orch-1315-*` T-A1d exits **1**; restore → exits **0**.
 - ORCH-1314 (line 1279): `isCuratedLocked={!canAccess('curated_cards')}` → `isCuratedLocked={false}` → `orch-1314-*` exits **1**; restore → exits **0**.
 - ORCH-1314 (handler gate): remove the `!canAccess('curated_cards')` short-circuit from `handleIntentToggleChange` → `orch-1314-*` exits **1**; restore → exits **0**.
 
