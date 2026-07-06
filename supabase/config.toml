@@ -117,12 +117,11 @@ verify_jwt = false
 [functions.beta-access-lead-submit]
 verify_jwt = false
 
-# ORCH-1216 — public explorer "Get the app" lead-submit. The explorer marketing
-# site is unauthenticated; anon callers POST a lead. The fn re-validates all
-# input, soft-throttles by salted IP hash, and writes via the service role (anon
-# has no table policy — deny-by-default). No JWT required. Per SPEC_ORCH-1216 §3.4.
-[functions.explorer-app-lead-submit]
-verify_jwt = false
+# ORCH-1319 — the ORCH-1216 explorer "Get the app" lead-submit edge function was
+# DECOMMISSIONED (the app is now LIVE on both public stores; the marketing CTA
+# links straight to the store / desktop QR, so there is no lead form to POST).
+# public.explorer_app_leads table + rows are PRESERVED; only the writer is retired.
+# (`supabase functions delete explorer-app-lead-submit` at deploy.)
 
 # META-ORCH-1222 — public careers application endpoint. career.usemingla.com is
 # unauthenticated; anon callers POST an application + CV. The fn re-validates all

@@ -3,17 +3,22 @@
  * ORCH-1216 [Explorer "Get the app" lead-capture] —
  * I-PROPOSED-1216-EXPLORER-ONLY-CTA.
  *
- * WHY: the explorer surface mounts GetTheAppModal; the organiser surface keeps
- * BetaAccessModal (ORCH-1045). Neither modal may cross surfaces. This gate
- * asserts, in glass-nav.tsx:
- *   1. <GetTheAppModal is mounted INSIDE a `surface === 'explorer'` guard.
- *   2. <BetaAccessModal is mounted INSIDE a `surface === 'organiser'` guard.
- * and in the two modal files:
- *   3. get-the-app-modal.tsx does NOT import/mount BetaAccessModal.
- *   4. beta-access-modal.tsx does NOT import/mount GetTheAppModal.
+ * AMENDED by ORCH-1319 → BETA/ORGANISER-ONLY. The GetTheAppModal half is GONE:
+ * ORCH-1319 deleted the explorer lead modal (the app is live on both public
+ * stores; the explorer CTA now links straight to the store / desktop QR). What
+ * remains — and what this gate STILL protects — is the LIVE organiser
+ * `BetaAccessModal`: it must stay mounted organiser-only and must never be
+ * cross-imported by any explorer surface. Do NOT delete this gate.
  *
- * `--self-test` injects fixtures (GetTheAppModal mounted in the organiser branch
- * → MUST fire; the compliant split → MUST pass).
+ * WHY (organiser): the organiser (`/business`) surface mounts BetaAccessModal
+ * (ORCH-1045). It must never leak onto the explorer surface. This gate asserts:
+ *   1. <BetaAccessModal is mounted INSIDE a `surface === 'organiser'` guard in
+ *      glass-nav.tsx.
+ *   2. beta-access-modal.tsx does NOT import/mount a GetTheAppModal (the deleted
+ *      explorer modal must never come back as a cross-import).
+ *
+ * `--self-test` injects fixtures (BetaAccessModal mounted in the explorer branch
+ * → MUST fire; the compliant organiser-only mount → MUST pass).
  *
  * Model: orch-1211-notif-web-render-safe.mjs.
  */
@@ -25,14 +30,13 @@ const root = process.cwd().endsWith("mingla-marketing")
   : process.cwd();
 
 const NAV = "mingla-marketing/components/marketing/glass-nav.tsx";
-const GETAPP_MODAL = "mingla-marketing/components/marketing/get-the-app-modal.tsx";
 const BETA_MODAL = "mingla-marketing/components/marketing/beta-access-modal.tsx";
 
 /**
  * Find the JSX mount of `<Tag` and verify it sits within a `surface === 'wanted'`
- * conditional region. Heuristic: locate each `<Tag` occurrence; require the
+ * conditional region. Heuristic: locate the `<Tag` occurrence; require the
  * `surface === 'wanted'` marker to appear in the ~400 chars preceding the mount
- * (the `{surface === 'explorer' ? ( … <Modal /> … ) : null}` block), and require
+ * (the `{surface === 'organiser' ? ( … <Modal /> … ) : null}` block), and require
  * the OPPOSITE surface marker NOT to be the nearest-preceding guard.
  */
 function mountGuardedBy(src, tag, wanted, other) {
@@ -49,15 +53,6 @@ function mountGuardedBy(src, tag, wanted, other) {
 }
 
 function checkNav(src, failures) {
-  const app = mountGuardedBy(src, "<GetTheAppModal", "explorer", "organiser");
-  if (!app.found) {
-    failures.push(`${NAV}: <GetTheAppModal is not mounted at all (explorer CTA wiring missing).`);
-  } else if (!app.guarded) {
-    failures.push(
-      `${NAV}: <GetTheAppModal is NOT inside a \`surface === 'explorer'\` guard ` +
-        `(it must never mount on the organiser surface).`,
-    );
-  }
   const beta = mountGuardedBy(src, "<BetaAccessModal", "organiser", "explorer");
   if (!beta.found) {
     failures.push(`${NAV}: <BetaAccessModal is not mounted at all (organiser CTA wiring broke).`);
@@ -72,8 +67,8 @@ function checkNav(src, failures) {
 function checkNoCrossRef(src, label, bannedSymbol, failures) {
   if (src.includes(bannedSymbol)) {
     failures.push(
-      `${label}: references "${bannedSymbol}" — the explorer + organiser modals ` +
-        `must never cross-import/mount each other.`,
+      `${label}: references "${bannedSymbol}" — the organiser beta modal must never ` +
+        `cross-import/mount the (deleted) explorer get-the-app modal.`,
     );
   }
 }
@@ -87,50 +82,44 @@ if (process.argv.includes("--self-test")) {
     return f;
   };
 
-  // (a) Compliant split → MUST pass.
+  // (a) Compliant organiser-only mount → MUST pass.
   const good = `
 {surface === 'organiser' ? (
   <BetaAccessModal open={betaOpen} onClose={x} source="organiser_marketing_nav" />
 ) : null}
 {surface === 'explorer' ? (
-  <GetTheAppModal open={appOpen} onClose={y} source="explorer_marketing_nav" />
+  <AppQrPanel open={qrOpen} onClose={y} />
 ) : null}
 `;
   if (runNav(good).length !== 0) {
-    selfFailures.push("compliant explorer/organiser split wrongly flagged");
+    selfFailures.push("compliant organiser-only BetaAccessModal mount wrongly flagged");
   }
 
-  // (b) GetTheAppModal mounted in the ORGANISER branch → MUST fire.
+  // (b) BetaAccessModal mounted in the EXPLORER branch → MUST fire.
   const crossed = `
-{surface === 'organiser' ? (
-  <GetTheAppModal open={appOpen} onClose={y} source="explorer_marketing_nav" />
-) : null}
-{surface === 'organiser' ? (
+{surface === 'explorer' ? (
   <BetaAccessModal open={betaOpen} onClose={x} source="organiser_marketing_nav" />
 ) : null}
 `;
   if (runNav(crossed).length === 0) {
-    selfFailures.push("GetTheAppModal mounted in the organiser branch not flagged");
-  }
-
-  // (c) BetaAccessModal mounted in the EXPLORER branch → MUST fire.
-  const crossed2 = `
-{surface === 'explorer' ? (
-  <BetaAccessModal open={betaOpen} onClose={x} source="organiser_marketing_nav" />
-) : null}
-{surface === 'explorer' ? (
-  <GetTheAppModal open={appOpen} onClose={y} source="explorer_marketing_nav" />
-) : null}
-`;
-  if (runNav(crossed2).length === 0) {
     selfFailures.push("BetaAccessModal mounted in the explorer branch not flagged");
   }
 
-  // (d) Cross-ref guard: a modal importing the other → MUST fire.
+  // (c) BetaAccessModal not mounted at all → MUST fire.
+  const missing = `
+{surface === 'explorer' ? (
+  <AppQrPanel open={qrOpen} onClose={y} />
+) : null}
+`;
+  if (runNav(missing).length === 0) {
+    selfFailures.push("missing BetaAccessModal mount not flagged");
+  }
+
+  // (d) Cross-ref guard: the beta modal importing the deleted GetTheAppModal → MUST fire.
   const crossRef = [];
-  checkNoCrossRef("import { BetaAccessModal } from '...'", "fixture", "BetaAccessModal", crossRef);
+  checkNoCrossRef("import { GetTheAppModal } from '...'", "fixture", "GetTheAppModal", crossRef);
   if (crossRef.length === 0) {
-    selfFailures.push("cross-import of BetaAccessModal not flagged");
+    selfFailures.push("cross-import of GetTheAppModal not flagged");
   }
 
   if (selfFailures.length) {
@@ -139,7 +128,8 @@ if (process.argv.includes("--self-test")) {
     process.exit(1);
   }
   console.log(
-    "ORCH-1216 I-PROPOSED-1216-EXPLORER-ONLY-CTA self-test PASS (4/4 cases).",
+    "ORCH-1216 I-PROPOSED-1216-EXPLORER-ONLY-CTA self-test PASS (4/4 cases; " +
+      "AMENDED beta/organiser-only by ORCH-1319 — explorer modal deleted).",
   );
   process.exit(0);
 }
@@ -153,13 +143,6 @@ if (!fs.existsSync(navAbs)) {
 }
 checkNav(fs.readFileSync(navAbs, "utf8"), failures);
 
-const getappAbs = path.join(root, GETAPP_MODAL);
-if (fs.existsSync(getappAbs)) {
-  checkNoCrossRef(fs.readFileSync(getappAbs, "utf8"), GETAPP_MODAL, "BetaAccessModal", failures);
-} else {
-  failures.push(`${GETAPP_MODAL}: not found (gate path out of sync).`);
-}
-
 const betaAbs = path.join(root, BETA_MODAL);
 if (fs.existsSync(betaAbs)) {
   checkNoCrossRef(fs.readFileSync(betaAbs, "utf8"), BETA_MODAL, "GetTheAppModal", failures);
@@ -169,13 +152,13 @@ if (fs.existsSync(betaAbs)) {
 
 if (failures.length > 0) {
   console.error(
-    "ORCH-1216 I-PROPOSED-1216-EXPLORER-ONLY-CTA FAIL — the explorer + organiser\n" +
-      "lead modals must stay surface-scoped and never cross.\n\nFailures:\n  " +
+    "ORCH-1216 I-PROPOSED-1216-EXPLORER-ONLY-CTA FAIL — the organiser beta modal must\n" +
+      "stay mounted organiser-only and never cross-import the (deleted) explorer modal.\n\nFailures:\n  " +
       failures.join("\n  "),
   );
   process.exit(1);
 }
 console.log(
-  "ORCH-1216 I-PROPOSED-1216-EXPLORER-ONLY-CTA PASS — GetTheAppModal is explorer-\n" +
-    "only, BetaAccessModal organiser-only; no cross-import between the two modals.",
+  "ORCH-1216 I-PROPOSED-1216-EXPLORER-ONLY-CTA PASS — BetaAccessModal is organiser-\n" +
+    "only; no cross-import of the deleted explorer get-the-app modal (AMENDED by ORCH-1319).",
 );

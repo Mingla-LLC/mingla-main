@@ -164,6 +164,10 @@ on:
 #   - ORCH-1298 COVER-PREVIEW-VIDEO-CAPABLE (orch-1298-cover-preview-video-capable.mjs) [ORCH-1301 close-hardening for META-ORCH-1270; NOT the chip-in ORCH-1298] — BrandEditView.tsx AND TripPreview.tsx must render the cover through the video-capable EventCoverMedia (image/gif/video/empty), never a raw Image/ExpoImage/RNImage sourced from the cover URL: per file (A) imports EventCoverMedia, (B) binds a cover via `mediaUrl={…coverMediaUrl}`, (C) has NO `source={{ uri: …coverMediaUrl }}` raw-image cover path. Scoped so the per-day GALLERY Image (source={{ uri: m.url }}) is not tripped; comment-stripped; npm-wiring self-check (test:orch-1298); self-tested 4/4 + fails-on-revert (ORCH-1301 — DRAFT until CLOSE)
 #   - I-PROPOSED-1303-WEB-COVER-VIDEO-URI-UNMANGLED (orch-1303-web-cover-video-uri.mjs) [SHARED ORCH-1303 — the Bunny/cover-video sibling, COMMS-0073/0075] — on business WEB the picked video's browser blob: object URL must reach the uploader UNMANGLED: (A) CoverPicker.tsx raw-clip branch calls `resolveRawClipUploadUri(asset.uri, Platform.OS === "web")` and carries NO unconditional `uri: normalizeLocalFileUri(asset.uri)` (which prefixes file:// → file://blob:… so the web TUS fetch(input.uri) rejects "Failed to fetch"); (B) coverPickerVideoTrimUpload.ts::resolveRawClipUploadUri returns the raw uri on web (`isWeb ? assetUri : normalizeLocalFileUri(assetUri)`) — dropping the isWeb guard re-normalizes the blob URL. Web-only; native (real file:// paths) byte-identical; Bunny signing/edge/TUS transport untouched. Comment-stripped; self-tested 4/4 + fails-on-revert (ORCH-1303 — DRAFT until CLOSE)
 #   - I-PROPOSED-1303-RSVP-LOOP-NO-INTERACTION-HANDLE (orch-1303-rsvp-loop-interaction-handle.mjs) [SHARED ORCH-1303 — the chip-in/RSVP sibling, COMMS-0073/0075] — the RSVP "kicker dot pulse" is an ENDLESS Animated.loop in packages/offering-rendering/RsvpMomentumDecision.tsx; its timings set useNativeDriver:true but react-native-web has no native animated module, so on web __isInteraction defaults `config.isInteraction ?? !useNativeDriver` = TRUE → the never-ending loop keeps an InteractionManager handle open forever and InteractionManager.runAfterInteractions(cb) NEVER drains page-wide on web (proven in the real RNW engine — evidence/ORCH-1303/im_starvation_probe.js; this is what froze the ORCH-1299/1300 guest phone-picker). FIX adds isInteraction:false (scheduling-only, visually identical) to (A) BOTH pulse-loop Animated.timing configs and (B) the meter-fill Animated.timing(meterWidth,{...}) (useNativeDriver:false ⇒ isInteraction TRUE on ALL platforms, re-holds a ~500ms handle per going-count change); (C) ADVERSARIAL — every Animated.timing/spring nested in ANY Animated.loop across the three RSVP shared-body files (RsvpMomentumDecision/RsvpOfferingBody/RsvpChipInPanel) must carry isInteraction:false, so a new flagless looping decorative animation re-opening the starvation fails CI; comment-stripped; self-tested 8/8 + fails-on-revert (ORCH-1303 — DRAFT until CLOSE)
+#   - I-1319-GETAPP-CTA-LINKS-LIVE-STORES-NOT-TESTFLIGHT (orch-1319-getapp-cta-direct-store.mjs) [G-1] — the explorer nav "Get the app" CTA (glass-nav.tsx, comment-stripped) references BOTH APP_STORE_URL and PLAY_STORE_URL, calls detectClientPlatform() and branches on `platform ===` (G-1b: store choice is device-driven, not a single hardcoded branch), fires get_the_app_clicked, and carries NO GetTheAppModal/get-the-app-modal/explorer-app-submit/explorer-interest/get_the_app_submitted/testflight/email-form token; self-tested 8/8 + fails-on-revert (ORCH-1319 — DRAFT until CLOSE)
+#   - I-1319-DOWNLOAD-ROUTE-UA-REDIRECT (orch-1319-download-route-ua.mjs) [G-2] — app/download/page.tsx (comment-stripped) reads the UA via headers()+resolvePlatformFromUa, references BOTH APP_STORE_URL and PLAY_STORE_URL + a redirect( call, and renders DownloadQr + AppStoreBadges on the desktop branch; G-2b: no inline apps.apple.com/play.google.com literals (uses the shared constants), no navigator/window (SSR-safe), no form/type=email/explorer-app/testflight; self-tested 6/6 + fails-on-revert (ORCH-1319 — DRAFT until CLOSE)
+#   - I-1319 QR SEAM (orch-1319-qr-encodes-download-url.mjs) [G-3] — download-qr.tsx binds <QRCode value={DOWNLOAD_URL}> from lib/site (NOT a literal store URL, so one QR serves both platforms); G-3b: the wrapper carries role="img"+aria-label and bgColor="#FFFFFF" (contrast); self-tested 5/5 + fails-on-revert (ORCH-1319 — DRAFT until CLOSE)
+#   - I-1319-NO-TESTFLIGHT (orch-1319-no-testflight-anywhere.mjs) [G-4] — repo scan: ZERO `testflight.apple.com` tokens (case-insensitive, comments included — NOT comment-stripped) under mingla-marketing/ + supabase/functions/; the single hard proof the beta link is gone forever; self-tested 4/4 + fails-on-revert (ORCH-1319 — DRAFT until CLOSE)
 #
 # Future gates to register (proposed but not yet implemented):
 #   - I-32 rank parity (Cycle 13a proposal)
@@ -3248,31 +3252,10 @@ jobs:
       - name: Run ORCH-1218 gate
         run: node .github/scripts/strict-grep/orch-1218-venue-authoring-no-vendor-leak.mjs
 
-  orch-1216-testflight-behind-submit:
-    name: "ORCH-1216: TestFlight link only behind submit success (iOS-only) — get-the-app-modal (I-PROPOSED-1216-TESTFLIGHT-BEHIND-SUBMIT)"
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "20"
-      - name: Self-test the ORCH-1216 testflight-behind-submit gate
-        run: node .github/scripts/strict-grep/i-proposed-1216-testflight-behind-submit.mjs --self-test
-      - name: Run ORCH-1216 testflight-behind-submit gate
-        run: node .github/scripts/strict-grep/i-proposed-1216-testflight-behind-submit.mjs
-
-  orch-1216-android-no-testflight-link:
-    name: "ORCH-1216: non-iOS success branch shows no TestFlight link (I-PROPOSED-1216-ANDROID-NO-TESTFLIGHT-LINK)"
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "20"
-      - name: Self-test the ORCH-1216 android-no-testflight-link gate
-        run: node .github/scripts/strict-grep/i-proposed-1216-android-no-testflight-link.mjs --self-test
-      - name: Run ORCH-1216 android-no-testflight-link gate
-        run: node .github/scripts/strict-grep/i-proposed-1216-android-no-testflight-link.mjs
+  # ORCH-1319 RETIRED: orch-1216-testflight-behind-submit + orch-1216-android-no-
+  # testflight-link — both scanned the now-deleted explorer get-the-app lead modal
+  # (the app is live on both public stores; the beta link is gone). Superseded by
+  # ORCH-1319 gates orch-1319-getapp-cta-direct-store + orch-1319-no-testflight-anywhere.
 
   orch-1216-no-service-key-client:
     name: "ORCH-1216: no service-role key/secret in mingla-marketing (I-PROPOSED-1216-NO-SERVICE-KEY-CLIENT)"
@@ -3288,56 +3271,85 @@ jobs:
         run: node .github/scripts/strict-grep/i-proposed-1216-no-service-key-client.mjs
 
   orch-1216-explorer-only-cta:
-    name: "ORCH-1216: GetTheAppModal explorer-only, BetaAccessModal organiser-only (I-PROPOSED-1216-EXPLORER-ONLY-CTA)"
+    name: "ORCH-1216 (AMENDED ORCH-1319): BetaAccessModal organiser-only + no cross-import of the deleted explorer modal (I-PROPOSED-1216-EXPLORER-ONLY-CTA)"
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: "20"
-      - name: Self-test the ORCH-1216 explorer-only-cta gate
+      - name: Self-test the ORCH-1216 explorer-only-cta gate (organiser-only)
         run: node .github/scripts/strict-grep/i-proposed-1216-explorer-only-cta.mjs --self-test
-      - name: Run ORCH-1216 explorer-only-cta gate
+      - name: Run ORCH-1216 explorer-only-cta gate (organiser-only)
         run: node .github/scripts/strict-grep/i-proposed-1216-explorer-only-cta.mjs
 
-  orch-1216-success-mount-gated:
-    name: "ORCH-1216: SuccessPanel mounts only under status==='success' with detected platform (I-PROPOSED-1216-SUCCESS-MOUNT-GATED)"
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "20"
-      - name: Self-test the ORCH-1216 success-mount-gated gate
-        run: node .github/scripts/strict-grep/i-proposed-1216-success-mount-gated.mjs --self-test
-      - name: Run ORCH-1216 success-mount-gated gate
-        run: node .github/scripts/strict-grep/i-proposed-1216-success-mount-gated.mjs
-
-  orch-1219-always-email-download-link:
-    name: "ORCH-1219: edge fn emails the lead the branded TestFlight link on every created submit (I-PROPOSED-1219-ALWAYS-EMAIL-DOWNLOAD-LINK)"
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "20"
-      - name: Self-test the ORCH-1219 always-email-download-link gate
-        run: node .github/scripts/strict-grep/i-proposed-1219-always-email-download-link.mjs --self-test
-      - name: Run ORCH-1219 always-email-download-link gate
-        run: node .github/scripts/strict-grep/i-proposed-1219-always-email-download-link.mjs
+  # ORCH-1319 RETIRED: orch-1216-success-mount-gated + orch-1219-always-email-
+  # download-link — both scanned the now-deleted explorer modal / edge fn. Obsolete.
 
   orch-1219-form-no-autoadvance-multiselect:
-    name: "ORCH-1219: explorer multi-select + no auto-advance; organiser single-select + no auto-advance (I-PROPOSED-1219-FORM-NO-AUTOADVANCE-MULTISELECT)"
+    name: "ORCH-1219 (AMENDED ORCH-1319): organiser BetaAccessModal is multi-select + no auto-advance (I-PROPOSED-1219-FORM-NO-AUTOADVANCE-MULTISELECT)"
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: "20"
-      - name: Self-test the ORCH-1219 form-no-autoadvance-multiselect gate
+      - name: Self-test the ORCH-1219 form-no-autoadvance-multiselect gate (organiser-only)
         run: node .github/scripts/strict-grep/i-proposed-1219-form-no-autoadvance-multiselect.mjs --self-test
-      - name: Run ORCH-1219 form-no-autoadvance-multiselect gate
+      - name: Run ORCH-1219 form-no-autoadvance-multiselect gate (organiser-only)
         run: node .github/scripts/strict-grep/i-proposed-1219-form-no-autoadvance-multiselect.mjs
+
+  orch-1319-getapp-cta-direct-store:
+    name: "ORCH-1319 G-1: explorer nav CTA links to the live stores by detected platform, fires get_the_app_clicked, no lead form/TestFlight (I-1319-GETAPP-CTA-LINKS-LIVE-STORES-NOT-TESTFLIGHT)"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Self-test the ORCH-1319 getapp-cta-direct-store gate
+        run: node .github/scripts/strict-grep/orch-1319-getapp-cta-direct-store.mjs --self-test
+      - name: Run ORCH-1319 getapp-cta-direct-store gate
+        run: node .github/scripts/strict-grep/orch-1319-getapp-cta-direct-store.mjs
+
+  orch-1319-download-route-ua:
+    name: "ORCH-1319 G-2: /download UA-redirects iOS/Android to the live store constants, renders QR+badges otherwise, SSR-safe (I-1319-DOWNLOAD-ROUTE-UA-REDIRECT)"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Self-test the ORCH-1319 download-route-ua gate
+        run: node .github/scripts/strict-grep/orch-1319-download-route-ua.mjs --self-test
+      - name: Run ORCH-1319 download-route-ua gate
+        run: node .github/scripts/strict-grep/orch-1319-download-route-ua.mjs
+
+  orch-1319-qr-encodes-download-url:
+    name: "ORCH-1319 G-3: download QR encodes DOWNLOAD_URL (one QR, both platforms) with role=img+aria-label + #FFFFFF bg"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Self-test the ORCH-1319 qr-encodes-download-url gate
+        run: node .github/scripts/strict-grep/orch-1319-qr-encodes-download-url.mjs --self-test
+      - name: Run ORCH-1319 qr-encodes-download-url gate
+        run: node .github/scripts/strict-grep/orch-1319-qr-encodes-download-url.mjs
+
+  orch-1319-no-testflight-anywhere:
+    name: "ORCH-1319 G-4: zero testflight.apple.com tokens under mingla-marketing/ + supabase/functions/ (the beta link is gone forever)"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Self-test the ORCH-1319 no-testflight-anywhere gate
+        run: node .github/scripts/strict-grep/orch-1319-no-testflight-anywhere.mjs --self-test
+      - name: Run ORCH-1319 no-testflight-anywhere gate
+        run: node .github/scripts/strict-grep/orch-1319-no-testflight-anywhere.mjs
 
   orch-1220-reviewer-bypass-locked:
     name: "ORCH-1220: reviewer-signin gates on REVIEWER_EMAIL + REVIEWER_BYPASS_CODE (constant-time) + generateLink anchored to locked email; AuthContext routes ONLY appreview@usemingla.com (I-PROPOSED-1220-REVIEWER-BYPASS-LOCKED)"
@@ -3352,18 +3364,8 @@ jobs:
       - name: Run ORCH-1220 reviewer-bypass-locked gate
         run: node .github/scripts/strict-grep/orch-1220-reviewer-bypass-locked.mjs
 
-  orch-1221-allpill-selects-all:
-    name: "ORCH-1221: explorer \"All of it\" chip is a select-all control (I-PROPOSED-1221-ALLPILL-SELECTS-ALL)"
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "20"
-      - name: Self-test the ORCH-1221 allpill-selects-all gate
-        run: node .github/scripts/strict-grep/i-proposed-1221-allpill-selects-all.mjs --self-test
-      - name: Run ORCH-1221 allpill-selects-all gate
-        run: node .github/scripts/strict-grep/i-proposed-1221-allpill-selects-all.mjs
+  # ORCH-1319 RETIRED: orch-1221-allpill-selects-all — scanned the now-deleted
+  # explorer interest reducer + modal ("All of it" select-all). Obsolete.
 
   orch-1222-careers-applications-deny-anon:
     name: "META-ORCH-1222: job_applications RLS deny-by-default, no permissive anon/public policy (I-PROPOSED-1222-APPLICATIONS-DENY-ANON)"

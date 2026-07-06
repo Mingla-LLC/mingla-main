@@ -1,117 +1,25 @@
 // ---------------------------------------------------------------
-// ORCH-1221 [Explorer "All of it" = SELECT-ALL] — implementor happy-path
-// regression for the pure `nextInterest` reducer.
+// ORCH-1319 [explorer direct store links] — explorer-interest reducer REMOVED.
 //
-// Proves the select-all contract the modal ships:
-//   - tapping "All of it" while NOT everything selected → selects ALL 5;
-//   - tapping "All of it" while everything selected      → clears everything;
-//   - individually selecting every specific pill auto-includes 'all';
-//   - deselecting any specific pill removes 'all';
-//   - specific pills toggle independently + preserve enum order;
-//   - the array stays length-gated for Next (≥1) and round-trips the enum.
+// `lib/explorer-interest.ts` (the ORCH-1219/1221 interest-chips select-all
+// reducer) backed the pre-launch "Get the app" 2-step lead form. That form was
+// retired when Mingla went live on the App Store + Google Play — ORCH-1319
+// replaced it with device-aware direct store links + a desktop QR. The reducer
+// no longer exists, so there is nothing left to unit-test here.
 //
-// Written for a Jest / Vitest harness (describe/it/expect). The marketing
-// package has no test runner wired (mirrors lib/city-decks.test.ts), so this
-// also ships a self-contained Node-assert runner block at the bottom — used to
-// prove fails-on-revert for the ORCH-1221 select-all contract:
-//   npx tsc lib/explorer-interest.ts lib/explorer-interest.test.ts --outDir /tmp/o \
-//     --module commonjs --target es2020 && node /tmp/o/explorer-interest.test.js
-// (Also runnable directly under Deno: `deno test lib/explorer-interest.test.ts`
-//  after switching the imports to `.ts` — but this file targets the tsc path so
-//  Next's typecheck stays green.)
+// This file is RETAINED (not deleted) per the append-only test policy
+// (ORCH-0840); its original reducer assertions were removed under
+// [TEST-MOD-APPROVED ORCH-1319]. Runs via the repo's tsc+node pattern.
 // ---------------------------------------------------------------
 
-import {
-  ALL_SELECTED,
-  ALL_VALUE,
-  SPECIFIC_INTERESTS,
-  allSpecificSelected,
-  nextInterest,
-} from './explorer-interest'
-
-const ALL_FIVE = [...SPECIFIC_INTERESTS, ALL_VALUE]
-
-// Minimal expect shim so this file runs under Node assert when no harness is
-// present (same approach as lib/city-decks.test.ts).
-function expectFn(actual: unknown) {
-  return {
-    toBe(expected: unknown) {
-      if (actual !== expected) {
-        throw new Error(`expected ${JSON.stringify(actual)} to be ${JSON.stringify(expected)}`)
-      }
-    },
-    toEqual(expected: unknown) {
-      const a = JSON.stringify(actual)
-      const e = JSON.stringify(expected)
-      if (a !== e) throw new Error(`expected ${a} to equal ${e}`)
-    },
-    toContain(item: unknown) {
-      if (!Array.isArray(actual) || !actual.includes(item)) {
-        throw new Error(`expected ${JSON.stringify(actual)} to contain ${JSON.stringify(item)}`)
-      }
-    },
-    notToContain(item: unknown) {
-      if (Array.isArray(actual) && actual.includes(item)) {
-        throw new Error(`expected ${JSON.stringify(actual)} NOT to contain ${JSON.stringify(item)}`)
-      }
-    },
-  }
+function assert(cond: boolean, msg: string): void {
+  if (!cond) throw new Error(msg)
 }
 
 const cases: ReadonlyArray<[string, () => void]> = [
   [
-    "tapping 'All of it' from empty → selects ALL 5 (incl. 'all')",
-    () => {
-      const next = nextInterest([], ALL_VALUE)
-      expectFn(next).toEqual([...ALL_SELECTED])
-      expectFn(next.length).toBe(5)
-      expectFn(next).toContain('places')
-      expectFn(next).toContain(ALL_VALUE)
-    },
-  ],
-  [
-    "tapping 'All of it' when everything selected → CLEARS everything",
-    () => expectFn(nextInterest(ALL_FIVE, ALL_VALUE)).toEqual([]),
-  ],
-  [
-    "tapping 'All of it' from a partial selection → selects ALL 5",
-    () => expectFn(nextInterest(['events'], ALL_VALUE)).toEqual([...ALL_SELECTED]),
-  ],
-  [
-    "individually selecting every specific pill auto-includes 'all'",
-    () => {
-      let state: string[] = []
-      for (const v of SPECIFIC_INTERESTS) state = nextInterest(state, v)
-      expectFn(state).toEqual([...ALL_SELECTED])
-      expectFn(allSpecificSelected(state)).toBe(true)
-    },
-  ],
-  [
-    "deselecting ANY specific pill removes 'all'",
-    () => {
-      const next = nextInterest([...ALL_SELECTED], 'places')
-      expectFn(next).notToContain(ALL_VALUE)
-      expectFn(next).notToContain('places')
-      expectFn(next).toEqual(['events', 'trips', 'experiences'])
-      expectFn(allSpecificSelected(next)).toBe(false)
-    },
-  ],
-  [
-    'specific pills toggle independently + preserve enum order',
-    () => {
-      let state = nextInterest([], 'trips') // ['trips']
-      state = nextInterest(state, 'places') // order preserved → ['places','trips']
-      expectFn(state).toEqual(['places', 'trips'])
-      state = nextInterest(state, 'trips') // toggle trips off
-      expectFn(state).toEqual(['places'])
-    },
-  ],
-  [
-    'array is length-gated for Next (≥1) — empty after full clear, ≥1 with a pill',
-    () => {
-      expectFn(nextInterest(ALL_FIVE, ALL_VALUE).length).toBe(0)
-      expectFn(nextInterest([], 'events').length >= 1).toBe(true)
-    },
+    'explorer-interest reducer intentionally removed by ORCH-1319 (beta lead-form retired at store launch)',
+    () => assert(true, 'removal is intentional'),
   ],
 ]
 
@@ -119,13 +27,10 @@ declare const describe: undefined | ((name: string, fn: () => void) => void)
 declare const it: undefined | ((name: string, fn: () => void) => void)
 
 if (typeof describe === 'function' && typeof it === 'function') {
-  describe('nextInterest (ORCH-1221 "All of it" select-all)', () => {
-    for (const [name, fn] of cases) {
-      it(name, fn)
-    }
+  describe('lib/explorer-interest (removed — ORCH-1319)', () => {
+    for (const [name, fn] of cases) it(name, fn)
   })
 } else {
-  // Node-assert fallback runner (no harness present).
   let failures = 0
   for (const [name, fn] of cases) {
     try {
@@ -144,5 +49,7 @@ if (typeof describe === 'function' && typeof it === 'function') {
     process.exit(1)
   }
   // eslint-disable-next-line no-console
-  console.log(`\nAll ${cases.length} tests passed`)
+  console.log(`\nAll ${cases.length} explorer-interest tests passed`)
 }
+
+export {}
