@@ -190,3 +190,108 @@ The load-bearing contradiction: the pre-dispatch premise ("an unhandled JS error
 1. **NEXT = RUNTIME crash-log capture, BEFORE any SPEC.** A SPEC cannot target a fix without the native frame; do NOT spec blind. Fastest path: pull the build-28 crash log from **App Store Connect → the rejection / Xcode Organizer → Crashes** and/or **Sentry** (verify the DSN shipped, D-3). In parallel, build an **EAS cloud dev/preview build** (local worktree builds red-screen — see blocker) and reproduce on an **iPad** in compat mode: first sign in with the `appreview@` bypass and tap Account (tests the provider-INDEPENDENT hypothesis, F-6); if that does not crash, do real Sign-in-with-Apple (needs a test Apple ID on the device/sim) to hit the fresh-Apple shape; capture `~/Library/Logs/DiagnosticReports`.
 2. **Fix DIRECTION (one line, gated on the crash log):** harden the Account-tab render for iPad iPhone-compatibility mode by neutralizing the crashing native view/module the crash log names — do NOT ship a blind guess. (Secondary, independent: fix D-1 so `ensureCreatorAccount` reliably persists for Apple users.)
 3. Once the frame is known → dispatch SPEC (this skill) → implementor → tester → a NEW build (the fix must ship in a fresh binary regardless, F-4).
+
+---
+
+## Reproduction + Pinpoint (2026-07-06 — crash log symbolicated + live sim probe)
+
+The native frame is now RESOLVED from a real crash log, and the leading "stacked expo-blur BlurView"
+hypothesis was live-tested on the exact crash simulator and **REFUTED as the standalone trigger**.
+Evidence redirects the root cause to a **Reanimated-4 worklets ↔ Fabric-commit concurrent
+use-after-free race**.
+
+### Repro status
+- **Captured crash (definitive):** `evidence/ORCH-1320/MinglaBusiness-2026-07-02-004349.ips`. The
+  crashing binary is the DerivedData dev build `MinglaBusiness.app` (mtime **Jul 2 00:14:44**); the
+  crash fired **Jul 2 00:43:49** on sim device `2C3312D9-EE52-4EBD-9704-15811D49A2EC` =
+  **iPhone 17 Pro Max, iOS 26.4** (NOT an iPad — the reviewer's iPad-compat framing was incidental;
+  the crash is device-independent, iOS/iPadOS-26 + Fabric).
+- **Live diagnostic (this session):** re-installed that exact binary on the same booted sim, served
+  worktree JS via Metro, and reached the **real Account tab render** (fresh zero-brand shape) by two
+  reverted worktree stubs (force-route to `/(tabs)/account` + neutralize `nativeRedirectToSignIn`;
+  a third reverted stub suppressed a local-only `StripeModeMismatchError` dev red-screen — pk_test
+  build vs live backend, unrelated to the crash). **Screen confirmed:** Account tab, "Create brand"
+  chip + Settings card + Home/Ari/Account nav — the exact fresh-account shape Apple hit.
+- **Blur probe result: DID NOT REPRODUCE.** With real iOS BlurView ON (`shouldUseRealBlur` returns
+  `true` on iOS), the Account tab (a) **cold-mounted cleanly** and (b) **survived 3× Home↔Account +
+  Ari→Account tab switches** driven by Maestro — process stayed alive, no `.ips`. A cold mount /
+  tab-switch of the stacked-blur tree is therefore **NOT** the trigger. I did not even need to force
+  the opaque fallback: the blur-ON baseline already refused to crash.
+
+### The native frame (crash log, symbolicated)
+- **Exception:** `EXC_BAD_ACCESS (SIGSEGV) / KERN_INVALID_ADDRESS at 0x620001000264003a`. That is a
+  **wild/poisoned pointer** (not a small null-offset) → **use-after-free / heap corruption**, not a
+  null-deref and not a memory-watchdog kill.
+- **Faulting thread 11 = `com.facebook.react.runtime.JavaScript`**, top frames:
+  `Scheduler::uiManagerDidFinishTransaction(...)::$_0` → `RuntimeScheduler_Modern::updateRendering`
+  → `runEventLoopTick` → `runEventLoop`. i.e. the crash is **inside the Fabric mount/commit
+  transaction** (committing native views under the New Architecture), below the JS ErrorBoundary
+  (F-2) → the app fully closes. **No expo-blur / UIVisualEffectView frame appears in any thread.**
+- **CONCURRENCY — the decisive datum:** at crash time the **main thread (T0) is executing Reanimated
+  worklets** inside Hermes: `worklets::SerializableWorklet::toJSValue` /
+  `SerializableArray::toJSValue` / `SerializableObject::toJSValue`, wrapped in
+  `worklets::AroundLock` + `worklets::WorkletsReentrancyCheck`, under
+  `HermesRuntimeImpl::setPropertyValue`. So **two runtimes touch shared state simultaneously**:
+  Reanimated's worklets runtime deserializing/running a worklet on T0, while React's Fabric commit
+  on T11 dereferences a freed/corrupted pointer. (A second idle JS runtime, T23, is also present.)
+
+### The offending component (named, with evidence)
+- **`react-native-reanimated ~4.1.1` + `react-native-worklets 0.5.1`** under the New Architecture,
+  racing the Fabric mount commit. The concrete animation on the crash path is the **BottomNav tab-bar
+  spotlight** (`src/components/ui/BottomNav.tsx`): `useSharedValue(left/width)` animated with
+  `withSpring`/`withTiming` + `useAnimatedStyle` on an absolutely-positioned `Animated.View` that
+  springs to the tapped tab on **every "tap Account."** `react-native-screens 4.16` drives the
+  screen transition concurrently. (`app/index.tsx:28-31` already records a *prior* "BottomNav
+  reanimated OOM" native failure — this area has a native-instability history.)
+- **Upstream corroboration (same signature):** software-mansion/react-native-reanimated issues
+  **#9402** ("[iOS] EXC_BAD_ACCESS in performOperations from handleRawEvent during screen pop") and
+  **#9293** ("EXC_BAD_ACCESS in ReanimatedModuleProxy::performOperations during
+  AnimationFrameBatchinator::flush", New Arch) describe **exactly** a "mount-time dereference of a
+  stale view during a Reanimated commit on Fabric," triggered by a screen/stack transition. A
+  **registry-locking fix landed in Reanimated 4.3.1 (2026-05-07)** for the `AnimatedPropsRegistry`
+  UAF variant — **newer than our pinned 4.1.1** (see Sources).
+- **Why the static probe didn't repro:** the race window is narrow. My diagnostic had **no live
+  session**, so no async data-settling re-commits (React Query resolving `usePartnerStripeStatus` /
+  `useBrands` / `useSupportStaff` on a *signed-in* account produce extra Fabric commits **while** the
+  spotlight worklet runs) and **OneSignal/AppsFlyer were env-disabled**. The real signed-in flow
+  multiplies concurrent commits → hits the race; ~4 static tab-taps did not. This is an
+  **intermittent** UAF race (repro'd once for Seth, sometimes for Apple), consistent with a data race.
+
+### Confidence
+- **Crash class = native Fabric mount-commit use-after-free:** **PROVEN** (crash log).
+- **Reanimated-4/worklets ↔ Fabric-commit concurrency at the fault:** **PROVEN** (T0 worklet frames
+  concurrent with the T11 commit crash).
+- **Reanimated as the root cause:** **PROBABLE (high)** — direct crash-log concurrency + exact-match
+  upstream issues, but I could NOT capture a positive *live* repro of the race (it needs the
+  auth-gated signed-in data-settling flow; the reviewer bypass needs a server secret I must not
+  read, and email OTP/OAuth are not headless → a genuine Prime-Directive-9 STOP for the live-repro
+  half; caps this at "probable").
+- **expo-blur BlurView as standalone cause:** **RULED OUT** (live blur-ON cold-mount + tab-switch on
+  the exact crash sim both survived).
+
+### Ranked fix options (component-level; New Arch preserved — Reanimated 4 requires it)
+1. **[RECOMMENDED — durable root fix] Bump `react-native-reanimated` 4.1.1 → ≥ 4.3.1 and
+   `react-native-worklets` 0.5.1 → its matching line**, which includes the 2026-05-07 registry-locking
+   UAF fix. Dependency-only (no product-code churn), targets the proven mechanism. RISK: upstream
+   #9402/#9293 show *some* variants persisted on 4.3.x → treat as necessary-not-sufficient; verify
+   the exact fixed version against the changelog and soak-test the signed-in Account path. Needs a
+   fresh native build.
+2. **[RECOMMENDED — deterministic launch mitigation] De-worklet the crash-path animations.** Replace
+   BottomNav's `withSpring`/`withTiming` shared-value spotlight with a non-worklet animation (RN
+   `Animated` on the JS thread) or a static/instant spotlight, AND disable the native-stack tab
+   screen-transition animation. Removes the concrete worklet that races "tap Account" without waiting
+   on an upstream release. RISK: cosmetic (loses the animated spotlight); Reanimated still used in
+   Toast/TopBar/IconChrome so a rare residual race is possible — but the always-mounted tab-switch
+   racer is eliminated. Scoped, ships in the same build.
+3. **[Most faithful to upstream, higher implement risk] Apply the documented app-side mitigation:**
+   before a tab/screen transition, cancel animations + drain the `SharedValue`s tied to animated
+   styles in the unmounting subtree and gate event-driven worklets behind a "closing" flag. Directly
+   starves the race, but is subtle to get right across the tab navigator.
+
+**Recommendation:** ship **Option 2 (deterministic) + Option 1 (durable)** together for the resubmit;
+gate the build on a device/sim soak of many rapid *signed-in* Home↔Account taps showing zero `.ips`.
+Do NOT ship the earlier "force opaque blur" idea as the fix — the blur probe refuted it.
+
+**Sources (fix-ranking):** react-native-reanimated Releases (4.3.1, 2026-05-07 registry-locking fix);
+GitHub issues software-mansion/react-native-reanimated#9402 and #9293 (Fabric mount-time
+EXC_BAD_ACCESS during screen transition, New Architecture).
