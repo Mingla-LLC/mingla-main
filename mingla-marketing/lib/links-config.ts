@@ -5,9 +5,9 @@
 // tabs / socials are added here as data — no component rewrite (extensibility, §5).
 //
 // STORE-LINK CONTRACT (§2 / HARD GUARD): this file NEVER hardcodes a store URL.
-// The Explorer CTA points at the device-smart `/download` route, and the explicit
-// store choices are rendered by <AppStoreBadges/>, which pulls the LIVE listings
-// from lib/store-links.ts (the single source of truth). Keep it that way.
+// The Explorer CTA points at the device-smart `/download` route, which resolves the
+// correct store per device from lib/store-links.ts (the single source of truth). No
+// store URL is ever pasted here — the smart CTA is the only download path. Keep it so.
 
 import { BUSINESS_PATH } from './subdomain'
 
@@ -35,8 +35,6 @@ export interface LinksTab {
   /** One-line supporting copy. */
   body: string
   cta: LinksTabCta
-  /** Explorer renders the explicit App Store / Play badges below its CTA. */
-  showStoreBadges: boolean
 }
 
 // The `/download` route is the device-smart redirect (iPhone→App Store,
@@ -62,7 +60,6 @@ export const LINKS_TABS: readonly LinksTab[] = [
       destination: 'download',
       intent: 'primary',
     },
-    showStoreBadges: true,
   },
   {
     id: 'business',
@@ -76,7 +73,6 @@ export const LINKS_TABS: readonly LinksTab[] = [
       destination: 'business',
       intent: 'glass',
     },
-    showStoreBadges: false,
   },
 ]
 
@@ -87,9 +83,14 @@ export interface LinksSocial {
   href: string
 }
 
+// The FULL @usemingla presence, in the order they sit in the bottom row. Add or
+// reorder here (data-driven) — links-experience renders each with its icon.
 export const LINKS_SOCIALS: readonly LinksSocial[] = [
   { label: 'Instagram', href: 'https://www.instagram.com/usemingla' },
   { label: 'X', href: 'https://x.com/usemingla' },
+  { label: 'TikTok', href: 'https://www.tiktok.com/@usemingla' },
+  { label: 'YouTube', href: 'https://www.youtube.com/@usemingla' },
   { label: 'LinkedIn', href: 'https://www.linkedin.com/company/usemingla' },
   { label: 'Facebook', href: 'https://www.facebook.com/usemingla' },
+  { label: 'Threads', href: 'https://www.threads.com/@usemingla' },
 ]
