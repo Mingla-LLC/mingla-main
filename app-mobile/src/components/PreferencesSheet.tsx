@@ -1454,9 +1454,10 @@ export default function PreferencesSheet({
   // on iOS (F-1: modal-over-modal race → the paywall silently never appears), which
   // broke BOTH the custom-location (GPS) and curated toggles. `presentInline` makes
   // this single shared element render as an in-window overlay instead, so it
-  // z-stacks inside the sheet's Modal window and actually appears. It is mounted
-  // INSIDE the <BaseBottomSheet> children below (sheet path) so the overlay lives
-  // in that same window. See I-PROPOSED-1315-PAYWALL-PRESENTS-FROM-SHEET.
+  // z-stacks inside the sheet's Modal window and actually appears. It is routed
+  // through BaseBottomSheet's VIEWPORT-FIXED `overlay` slot below (sheet path) — a
+  // sibling of the gorhom sheet, NOT a scroll child — so it covers the visible
+  // sheet at any scroll offset. See I-PROPOSED-1315-PAYWALL-PRESENTS-FROM-SHEET.
   const paywall = (
     <CustomPaywallScreen
       isVisible={showPaywall}
@@ -1536,6 +1537,16 @@ export default function PreferencesSheet({
             keyboardShouldPersistTaps: 'handled',
             showsVerticalScrollIndicator: false,
           }}
+          // ORCH-1315: the paywall renders through BaseBottomSheet's VIEWPORT-FIXED
+          // `overlay` slot — a sibling of the gorhom sheet INSIDE the same
+          // wrapInRNModal window, NOT a scroll child. As a scroll child (the prior
+          // placement) its absolute overlay was positioned relative to the scroll
+          // CONTENT, so it scrolled off-screen when the sheet was scrolled down
+          // before a gated tap (P1 geometry bug). The slot is viewport-relative, so
+          // the presentInline overlay + its close control always cover the visible
+          // sheet at any scroll offset. Fixes presentation for BOTH toggles (shared
+          // showPaywall state). I-PROPOSED-1315-PAYWALL-PRESENTS-FROM-SHEET.
+          overlay={paywall}
         >
           {preferencesLoading ? (
             <LoadingShimmer />
@@ -1548,14 +1559,6 @@ export default function PreferencesSheet({
                   {footerContent}
                 </View>
               )}
-              {/* ORCH-1315: the paywall renders as the LAST child INSIDE the sheet
-                  so its in-window overlay (presentInline) z-stacks inside the same
-                  BaseBottomSheet `wrapInRNModal` window and actually presents over
-                  the sheet. It is absolutely positioned (out of flow) and returns
-                  null while hidden, so it never affects gorhom's content-size
-                  measurement. This one placement fixes presentation for BOTH the
-                  custom-location AND curated toggles (shared showPaywall state). */}
-              {paywall}
             </>
           )}
         </BaseBottomSheet>
