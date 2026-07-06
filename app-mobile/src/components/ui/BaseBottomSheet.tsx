@@ -847,8 +847,19 @@ function BaseBottomSheetComponent(props: BaseBottomSheetProps): React.ReactEleme
             {/* ORCH-1315: viewport-fixed overlay slot — a SIBLING of {sheet} inside
                 the RN-Modal window + GestureHandlerRootView (touch registers on
                 Android), so an absolute inset:0 overlay covers the VISIBLE sheet at
-                any scroll offset. Default undefined → renders nothing. */}
-            {overlay}
+                any scroll offset. Wrapped in an absolute-fill, pointerEvents=box-none
+                container so the slot content is STRUCTURALLY out-of-flow (never a
+                flex child that competes with the flex:1 GHRV → can't trip the
+                ORCH-1040/1043 content-size/flex class) and the wrapper never captures
+                touches (box-none passes through to subviews — a null/closed overlay
+                can't swallow taps over the sheet; a visible child still captures its
+                own). Default undefined → ternary → null → nothing (byte-identical for
+                every other consumer). */}
+            {overlay ? (
+              <View pointerEvents="box-none" style={StyleSheet.absoluteFill}>
+                {overlay}
+              </View>
+            ) : null}
           </GestureHandlerRootView>
           <KeyboardToolbarRoot />
         </KeyboardRoot>
@@ -952,8 +963,15 @@ function BaseBottomSheetComponent(props: BaseBottomSheetProps): React.ReactEleme
       {/* ORCH-1315: viewport-fixed overlay slot (parity with the wrapInRNModal
           branch) — a SIBLING of {sheet}, above it, positioned relative to the
           bounded inline host, so an absolute inset:0 overlay covers the visible
-          sheet regardless of scroll. Default undefined → renders nothing. */}
-      {overlay}
+          sheet regardless of scroll. Wrapped in an absolute-fill, pointerEvents=
+          box-none container so the slot content is STRUCTURALLY out-of-flow and the
+          wrapper never captures touches (a null/closed overlay can't swallow taps).
+          Default undefined → ternary → null → nothing (byte-identical for others). */}
+      {overlay ? (
+        <View pointerEvents="box-none" style={StyleSheet.absoluteFill}>
+          {overlay}
+        </View>
+      ) : null}
     </View>
   );
 

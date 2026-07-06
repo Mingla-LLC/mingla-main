@@ -95,6 +95,27 @@ export function runOrch1315CustomLocationPaywallTest() {
     "T-A1c (fails-on-revert): {overlay} renders as a SIBLING of {sheet}, AFTER it (paints above), inside the wrapInRNModal window",
   );
 
+  // ── T-A1d: the overlay slot content is wrapped in an absolute-fill,
+  //    pointerEvents="box-none" container — STRUCTURALLY out-of-flow (can't become a
+  //    flex child that competes with the flex:1 GHRV → immune to the ORCH-1040/1043
+  //    content-size/flex class) and non-touch-capturing (a null/closed overlay can't
+  //    swallow taps over the sheet). Removing the wrapper must fail-on-revert. ──────
+  assert.match(
+    ghrvBlock,
+    /overlay\s*\?\s*\(/,
+    "T-A1d (fails-on-revert): the overlay slot must be gated by a `overlay ? (` ternary so the ~48 non-consumers render nothing",
+  );
+  assert.match(
+    ghrvBlock,
+    /pointerEvents="box-none"/,
+    "T-A1d (fails-on-revert): the overlay wrapper MUST be pointerEvents=\"box-none\" so the wrapper never captures touches over the sheet",
+  );
+  assert.match(
+    ghrvBlock,
+    /StyleSheet\.absoluteFill/,
+    "T-A1d (fails-on-revert): the overlay wrapper MUST be StyleSheet.absoluteFill so the slot content is out-of-flow (never a flex competitor)",
+  );
+
   // ── T-A2: CustomPaywallScreen exposes the `presentInline` prop + default ──────
   assert.match(paywall, /presentInline\?\s*:\s*boolean/, "T-A2: `presentInline?: boolean` prop declared");
   assert.match(paywall, /presentInline\s*=\s*false/, "T-A2: `presentInline` defaults false so the 7 other call sites keep RN Modal behavior");
