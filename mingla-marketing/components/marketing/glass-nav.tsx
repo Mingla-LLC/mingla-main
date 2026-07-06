@@ -5,9 +5,13 @@ import { usePathname } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { SurfaceToggle } from '@/components/marketing/surface-toggle'
 import { BetaAccessModal } from '@/components/marketing/beta-access-modal'
-import { GetTheAppModal } from '@/components/marketing/get-the-app-modal'
+import { AppQrPanel } from '@/components/marketing/app-qr-panel'
 import { cn } from '@/lib/cn'
 import { captureMarketing } from '@/components/marketing/posthog-provider'
+// ORCH-1319 — the explorer "Get the app" CTA is now a device-aware DIRECT action:
+// iOS → App Store, Android → Play, desktop/other → the QR panel. No lead form.
+import { detectClientPlatform } from '@/lib/device-platform'
+import { APP_STORE_URL, PLAY_STORE_URL } from '@/lib/store-links'
 
 export function GlassNav() {
   const pathname = usePathname()
@@ -31,9 +35,34 @@ export function GlassNav() {
 
   // ORCH-1045 — organiser-only "Get Beta Access" CTA opens the 3-step lead modal.
   const [betaOpen, setBetaOpen] = useState(false)
-  // ORCH-1216 — explorer-only "Get the app" CTA opens the 2-step lead modal
-  // (TestFlight hard-gate behind a successful submit).
-  const [appOpen, setAppOpen] = useState(false)
+  // ORCH-1319 — explorer-only "Get the app" CTA. Phones go straight to their
+  // store; desktop/other opens this QR panel (no more lead form / beta gate).
+  const [qrOpen, setQrOpen] = useState(false)
+
+  // ORCH-1319 — device-aware "Get the app" action. Runs only on a real browser
+  // click (detectClientPlatform is SSR-safe → 'other' when navigator is absent).
+  const handleGetTheApp = (): void => {
+    const platform = detectClientPlatform()
+    if (platform === 'ios' || platform === 'android') {
+      const store = platform === 'ios' ? APP_STORE_URL : PLAY_STORE_URL
+      captureMarketing('get_the_app_clicked', {
+        platform,
+        store: platform === 'ios' ? 'app_store' : 'play',
+        location: 'nav',
+      })
+      // Popup-blocked (window.open → null) → same-tab navigation fallback.
+      const win = window.open(store, '_blank', 'noopener,noreferrer')
+      if (!win) window.location.assign(store)
+      return
+    }
+    // Desktop / other → the QR panel.
+    captureMarketing('get_the_app_clicked', {
+      platform: 'other',
+      store: 'qr_panel',
+      location: 'nav',
+    })
+    setQrOpen(true)
+  }
 
   return (
     <>
@@ -91,7 +120,7 @@ export function GlassNav() {
 
           {/* CTA — branches by surface.
               organiser: "Get Beta Access" opens the 3-step lead modal (ORCH-1045).
-              explorer: "Get the app" opens the 2-step lead modal (ORCH-1216). */}
+              explorer: "Get the app" is a device-aware direct store action (ORCH-1319). */}
           {surface === 'organiser' ? (
             <Button
               variant="glass"
@@ -110,20 +139,16 @@ export function GlassNav() {
               Get Beta Access
             </Button>
           ) : (
-            // ORCH-1216 — explorer "Get the app" now opens the lead modal. The
-            // existing META-ORCH-1187 nav-tap analytics is PRESERVED.
+            // ORCH-1319 — explorer "Get the app" is a device-aware DIRECT action:
+            // iOS → App Store, Android → Play, desktop/other → QR panel. The
+            // aria-haspopup/aria-expanded stay set (the button CAN open a dialog;
+            // the phone branches simply never open it).
             <Button
               variant="glass"
               size="sm"
-              onClick={() => {
-                captureMarketing('marketing_cta_clicked', {
-                  cta_id: 'get_the_app',
-                  location: 'nav',
-                })
-                setAppOpen(true)
-              }}
+              onClick={handleGetTheApp}
               aria-haspopup="dialog"
-              aria-expanded={appOpen}
+              aria-expanded={qrOpen}
             >
               Get the app
             </Button>
@@ -140,13 +165,10 @@ export function GlassNav() {
         />
       ) : null}
 
-      {/* explorer-only — organiser never mounts the explorer modal (I-PROPOSED-1216-EXPLORER-ONLY-CTA) */}
+      {/* explorer-only — ORCH-1319 desktop QR panel (no lead form / beta gate).
+          The organiser surface never mounts it. */}
       {surface === 'explorer' ? (
-        <GetTheAppModal
-          open={appOpen}
-          onClose={() => setAppOpen(false)}
-          source="explorer_marketing_nav"
-        />
+        <AppQrPanel open={qrOpen} onClose={() => setQrOpen(false)} />
       ) : null}
     </>
   )

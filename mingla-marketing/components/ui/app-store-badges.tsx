@@ -1,5 +1,8 @@
 import Link from 'next/link'
 import { cn } from '@/lib/cn'
+// ORCH-1319 — the badge defaults are the LIVE public store listings (single
+// source of truth in lib/store-links.ts), replacing the old placeholder hrefs.
+import { APP_STORE_URL, PLAY_STORE_URL } from '@/lib/store-links'
 
 interface AppStoreBadgesProps {
   size?: 'md' | 'lg'
@@ -11,8 +14,8 @@ interface AppStoreBadgesProps {
 export function AppStoreBadges({
   size = 'md',
   className,
-  iosHref = 'https://apps.apple.com/app/mingla',
-  androidHref = 'https://play.google.com/store/apps/details?id=com.mingla',
+  iosHref = APP_STORE_URL,
+  androidHref = PLAY_STORE_URL,
 }: AppStoreBadgesProps) {
   const heightClass = size === 'lg' ? 'h-14' : 'h-12'
 

@@ -18,6 +18,7 @@
     "tailwind-merge": "^2.5.5",
     "lucide-react": "^0.460.0",
     "posthog-js": "^1.205.0",
+    "react-qr-code": "^2.0.15",
     "@next/third-parties": "^15.1.6"
   },
   "devDependencies": {
