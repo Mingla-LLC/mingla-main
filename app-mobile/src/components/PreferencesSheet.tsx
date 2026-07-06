@@ -555,6 +555,15 @@ export default function PreferencesSheet({
   // Memoized callbacks — side effects kept outside updater to stay StrictMode-safe
   const handleIntentToggle = useCallback((id: string) => {
     if (!isEditable) return;
+    // ORCH-1314 [preferences-sheet-curated-paywall-dead-gate] Change 3 — a locked
+    // free user tapping an experience-type pill presents the curated paywall
+    // instead of selecting. Short-circuits BEFORE any state mutation. The
+    // read-only guard above (isEditable) still wins for participant-view.
+    if (!canAccess('curated_cards')) {
+      setPaywallFeature('curated_cards');
+      setShowPaywall(true);
+      return;
+    }
     let blocked = false;
     setSelectedIntents((prev) => {
       if (prev.includes(id)) {
@@ -572,7 +581,7 @@ export default function PreferencesSheet({
       setMinSelectionMessage(true);
       setTimeout(() => setMinSelectionMessage(false), 2500);
     }
-  }, [categoryToggle, isEditable]);
+  }, [categoryToggle, isEditable, canAccess]);
 
   const handleCategoryToggle = useCallback((id: string) => {
     if (!isEditable) return;
@@ -609,12 +618,21 @@ export default function PreferencesSheet({
   // ORCH-0434: Toggle handlers with mutual exclusion guard
   const handleIntentToggleChange = useCallback((newValue: boolean) => {
     if (!isEditable) return;
+    // ORCH-1314 [preferences-sheet-curated-paywall-dead-gate] Change 2 — the
+    // curated section is ON by default, so the always-visible Switch is a primary
+    // entry point. A locked free user tapping it presents the curated paywall
+    // instead of silently flipping. Short-circuits BEFORE any state mutation.
+    if (!canAccess('curated_cards')) {
+      setPaywallFeature('curated_cards');
+      setShowPaywall(true);
+      return;
+    }
     if (!newValue && !categoryToggle) {
       toastManager.warning(t('preferences:experience_types.min_message'), 2000);
       return;
     }
     setIntentToggle(newValue);
-  }, [categoryToggle, isEditable, t]);
+  }, [categoryToggle, isEditable, t, canAccess]);
 
   const handleCategoryToggleChange = useCallback((newValue: boolean) => {
     if (!isEditable) return;
@@ -1276,7 +1294,11 @@ export default function PreferencesSheet({
               selectedIntents={selectedIntents}
               onIntentToggle={handleIntentToggle}
               minMessage={minSelectionMessage}
-              isCuratedLocked={false}
+              // ORCH-1314 Change 1 — wire the curated gate to the real signal. Was
+              // a dead hardcoded false that hid the lock banner and made the curated
+              // paywall unreachable for free users. `canAccess` is Mingla+-only for
+              // `curated_cards` (tierLimits.ts) — policy unchanged.
+              isCuratedLocked={!canAccess('curated_cards')}
               onLockedTap={() => {
                 if (!isEditable) return;
                 setPaywallFeature('curated_cards');
@@ -1426,12 +1448,23 @@ export default function PreferencesSheet({
     </View>
   ) : null;
 
+  // ORCH-1315 [preferences-custom-location-paywall-not-firing] — the preferences
+  // sheet renders inside a BaseBottomSheet `wrapInRNModal` RN-Modal window. A bare
+  // nested <CustomPaywallScreen> RN Modal will NOT reliably present over the sheet
+  // on iOS (F-1: modal-over-modal race → the paywall silently never appears), which
+  // broke BOTH the custom-location (GPS) and curated toggles. `presentInline` makes
+  // this single shared element render as an in-window overlay instead, so it
+  // z-stacks inside the sheet's Modal window and actually appears. It is routed
+  // through BaseBottomSheet's VIEWPORT-FIXED `overlay` slot below (sheet path) — a
+  // sibling of the gorhom sheet, NOT a scroll child — so it covers the visible
+  // sheet at any scroll offset. See I-PROPOSED-1315-PAYWALL-PRESENTS-FROM-SHEET.
   const paywall = (
     <CustomPaywallScreen
       isVisible={showPaywall}
       onClose={() => setShowPaywall(false)}
       userId={user?.id ?? ''}
       feature={paywallFeature}
+      presentInline
     />
   );
 
@@ -1504,6 +1537,16 @@ export default function PreferencesSheet({
             keyboardShouldPersistTaps: 'handled',
             showsVerticalScrollIndicator: false,
           }}
+          // ORCH-1315: the paywall renders through BaseBottomSheet's VIEWPORT-FIXED
+          // `overlay` slot — a sibling of the gorhom sheet INSIDE the same
+          // wrapInRNModal window, NOT a scroll child. As a scroll child (the prior
+          // placement) its absolute overlay was positioned relative to the scroll
+          // CONTENT, so it scrolled off-screen when the sheet was scrolled down
+          // before a gated tap (P1 geometry bug). The slot is viewport-relative, so
+          // the presentInline overlay + its close control always cover the visible
+          // sheet at any scroll offset. Fixes presentation for BOTH toggles (shared
+          // showPaywall state). I-PROPOSED-1315-PAYWALL-PRESENTS-FROM-SHEET.
+          overlay={paywall}
         >
           {preferencesLoading ? (
             <LoadingShimmer />
@@ -1519,11 +1562,6 @@ export default function PreferencesSheet({
             </>
           )}
         </BaseBottomSheet>
-        {/* Paywall is its own RN Modal — render it OUTSIDE the sheet's scroll
-            body so it neither lands inside the BottomSheetScrollView content
-            (which disrupts gorhom's content-size measurement) nor fights the
-            wrapInRNModal presentation window. It floats independently. */}
-        {paywall}
       </>
     );
   }

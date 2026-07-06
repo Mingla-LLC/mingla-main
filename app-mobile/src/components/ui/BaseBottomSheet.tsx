@@ -237,6 +237,23 @@ interface BaseBottomSheetSheetProps extends BaseBottomSheetCommonProps {
   backgroundStyle?: ViewStyle;
   /** Theme-derived default if omitted (light 0.32 / dark 0.55). */
   backdropOpacity?: number;
+  /**
+   * ORCH-1315 [preferences-custom-location-paywall-not-firing] — VIEWPORT-FIXED
+   * overlay slot. Rendered as a SIBLING of the gorhom sheet (NOT a child of the
+   * BottomSheetScrollView), INSIDE the same window (the `wrapInRNModal` RN-Modal
+   * window when wrapped, or the inline host otherwise). Because it is a sibling of
+   * `{sheet}` — not a scroll child — its content is positioned relative to the
+   * WINDOW/viewport, so an absolutely-positioned inset:0 overlay (e.g. an in-window
+   * paywall via CustomPaywallScreen `presentInline`) fully covers the VISIBLE sheet
+   * regardless of scroll offset, with its close control always on-screen. A scroll
+   * child would scroll off with the content (the ORCH-1315 P1 geometry bug).
+   *
+   * ADDITIVE / DEFAULT-OFF: when omitted (`undefined`) NOTHING extra renders, so
+   * every existing BaseBottomSheet consumer is byte-unchanged. The overlay content
+   * owns its own geometry + visibility (render `null` when hidden so it leaves no
+   * touch-capturing footprint over the sheet). Painted AFTER `{sheet}` → above it.
+   */
+  overlay?: ReactNode;
 }
 
 interface BaseBottomSheetCenterDialogProps extends BaseBottomSheetCommonProps {
@@ -354,6 +371,8 @@ function BaseBottomSheetComponent(props: BaseBottomSheetProps): React.ReactEleme
     handleStyle,
     backgroundStyle,
     backdropOpacity,
+    // ORCH-1315: additive viewport-fixed overlay slot (default undefined → nothing).
+    overlay,
   } = props;
 
   const effectiveBackdropOpacity = useEffectiveBackdropOpacity(theme, backdropOpacity);
@@ -825,6 +844,22 @@ function BaseBottomSheetComponent(props: BaseBottomSheetProps): React.ReactEleme
         <KeyboardRoot>
           <GestureHandlerRootView style={styles.flexContainer}>
             {sheet}
+            {/* ORCH-1315: viewport-fixed overlay slot — a SIBLING of {sheet} inside
+                the RN-Modal window + GestureHandlerRootView (touch registers on
+                Android), so an absolute inset:0 overlay covers the VISIBLE sheet at
+                any scroll offset. Wrapped in an absolute-fill, pointerEvents=box-none
+                container so the slot content is STRUCTURALLY out-of-flow (never a
+                flex child that competes with the flex:1 GHRV → can't trip the
+                ORCH-1040/1043 content-size/flex class) and the wrapper never captures
+                touches (box-none passes through to subviews — a null/closed overlay
+                can't swallow taps over the sheet; a visible child still captures its
+                own). Default undefined → ternary → null → nothing (byte-identical for
+                every other consumer). */}
+            {overlay ? (
+              <View pointerEvents="box-none" style={StyleSheet.absoluteFill}>
+                {overlay}
+              </View>
+            ) : null}
           </GestureHandlerRootView>
           <KeyboardToolbarRoot />
         </KeyboardRoot>
@@ -925,6 +960,18 @@ function BaseBottomSheetComponent(props: BaseBottomSheetProps): React.ReactEleme
           paths without darkening the backdrop above the sheet. */}
       {bottomFiller}
       {sheet}
+      {/* ORCH-1315: viewport-fixed overlay slot (parity with the wrapInRNModal
+          branch) — a SIBLING of {sheet}, above it, positioned relative to the
+          bounded inline host, so an absolute inset:0 overlay covers the visible
+          sheet regardless of scroll. Wrapped in an absolute-fill, pointerEvents=
+          box-none container so the slot content is STRUCTURALLY out-of-flow and the
+          wrapper never captures touches (a null/closed overlay can't swallow taps).
+          Default undefined → ternary → null → nothing (byte-identical for others). */}
+      {overlay ? (
+        <View pointerEvents="box-none" style={StyleSheet.absoluteFill}>
+          {overlay}
+        </View>
+      ) : null}
     </View>
   );
 
