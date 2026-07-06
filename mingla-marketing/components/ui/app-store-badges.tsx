@@ -20,20 +20,20 @@ export function AppStoreBadges({
   const heightClass = size === 'lg' ? 'h-14' : 'h-12'
 
   return (
-    <div className={cn('flex flex-wrap items-center gap-3', className)}>
+    <div className={cn('flex w-full flex-col items-stretch gap-3', className)}>
       <Link
         href={iosHref}
         aria-label="Download Mingla on the App Store"
-        className={cn('focus-ring rounded-md', heightClass)}
+        className={cn('focus-ring block w-full rounded-md', heightClass)}
       >
         <span
           className={cn(
-            'flex items-center gap-3 rounded-md bg-ink px-5 text-text-on-dark transition-opacity hover:opacity-90',
+            'flex w-full items-center justify-center gap-3 rounded-md bg-ink px-5 text-text-on-dark transition-opacity hover:opacity-90',
             heightClass,
           )}
         >
           <AppleGlyph />
-          <span className="flex flex-col text-left leading-tight">
+          <span className="flex flex-col text-center leading-tight">
             <span className="text-xs opacity-80">Download on the</span>
             <span className="text-base font-semibold">App Store</span>
           </span>
@@ -43,16 +43,16 @@ export function AppStoreBadges({
       <Link
         href={androidHref}
         aria-label="Get Mingla on Google Play"
-        className={cn('focus-ring rounded-md', heightClass)}
+        className={cn('focus-ring block w-full rounded-md', heightClass)}
       >
         <span
           className={cn(
-            'flex items-center gap-3 rounded-md bg-ink px-5 text-text-on-dark transition-opacity hover:opacity-90',
+            'flex w-full items-center justify-center gap-3 rounded-md bg-ink px-5 text-text-on-dark transition-opacity hover:opacity-90',
             heightClass,
           )}
         >
           <PlayGlyph />
-          <span className="flex flex-col text-left leading-tight">
+          <span className="flex flex-col text-center leading-tight">
             <span className="text-xs opacity-80">Get it on</span>
             <span className="text-base font-semibold">Google Play</span>
           </span>
