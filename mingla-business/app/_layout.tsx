@@ -64,7 +64,10 @@ import { canvas } from "../src/constants/designSystem";
 // byte-unaffected. The init is additionally guarded by Platform.OS === "web".
 import { initWebAnalytics } from "../src/analytics/webAnalytics";
 import { ConsentBanner } from "../src/analytics/ConsentBanner";
-import { initializeAppsFlyer } from "../src/services/appsFlyerService";
+import {
+  initializeAppsFlyer,
+  subscribeOneLinkDeepLink,
+} from "../src/services/appsFlyerService";
 import { mixpanelService } from "../src/services/mixpanelService";
 // META-ORCH-1187 [Growth Analytics Hub] Phase 1 — PostHog native (autocapture +
 // masked session replay) runs ALONGSIDE Mixpanel/AppsFlyer (parallel run; do
@@ -106,6 +109,12 @@ import { shouldRequestAttNow } from "../src/utils/attRequestTiming";
 // (mirrors the consumer deferred-deeplink pattern). Keyed in AsyncStorage so a
 // cold-launch from a tap survives the auth gate.
 const DEFERRED_PUSH_TARGET_KEY = "mingla-business.deferredPushTarget.v1";
+
+// ORCH-1318 (§B.3/§E.1, business B1) — AppsFlyer OneLink referral capture key.
+// Matches the consumer capture key (shared §B.1 payload contract). ATTRIBUTION
+// ONLY in B1: the code is persisted for later attribution; there is no read /
+// credit-apply path yet (that is a deferred §E.1 decision — no edge/RPC change).
+const REFERRAL_CODE_KEY = "@mingla_referral_code";
 
 // J-X3 — Sentry init (DEC-098 D-16-2). Guarded by env-absent so dev/build
 // without DSN is a no-op, not a runtime error. EXIT condition: operator
@@ -500,6 +509,28 @@ function RootLayoutInner(): React.ReactElement {
           // ATT has resolved (or platform is non-iOS) — AppsFlyer now reads the
           // settled IDFA state.
           initializeAppsFlyer();
+          // ORCH-1318 (§B.3, business B1) — minimal OneLink dispatcher/sink.
+          // Registered immediately after init (never before ATT) so the §A.4.3
+          // buffered-flush delivers a deferred hit that resolved before mount.
+          // B1 business handles ONLY universal-download (no-op landing) +
+          // referral (persist code, attribution-only). Per-entity business
+          // content routing is B2 (out of scope) — no navigation here.
+          subscribeOneLinkDeepLink((dest) => {
+            if (!dest) return;
+            if (dest.kind === "referral") {
+              void AsyncStorage.setItem(
+                REFERRAL_CODE_KEY,
+                dest.referralCode,
+              ).catch((e) => {
+                console.warn(
+                  "[AppsFlyer] referral code persist failed:",
+                  e,
+                );
+              });
+            }
+            // dest.kind === "download": universal-download link has no in-app
+            // landing target in B1 — intentional no-op.
+          });
         })();
         void mixpanelService.initialize();
         // META-ORCH-1187 — init PostHog alongside Mixpanel (idempotent; the root

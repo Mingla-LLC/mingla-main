@@ -32,7 +32,8 @@
         ]
       },
       "associatedDomains": [
-        "applinks:business.usemingla.com"
+        "applinks:business.usemingla.com",
+        "applinks:go.usemingla.com"
       ],
       "runtimeVersion": {
         "policy": "appVersion"
@@ -67,6 +68,20 @@
             {
               "scheme": "https",
               "host": "business.usemingla.com"
+            }
+          ],
+          "category": [
+            "BROWSABLE",
+            "DEFAULT"
+          ]
+        },
+        {
+          "action": "VIEW",
+          "autoVerify": true,
+          "data": [
+            {
+              "scheme": "https",
+              "host": "go.usemingla.com"
             }
           ],
           "category": [
@@ -119,7 +134,13 @@
           }
         }
       ],
-      "react-native-appsflyer",
+      [
+        "react-native-appsflyer",
+        {
+          "shouldUseStrictMode": false,
+          "shouldUsePurchaseConnector": false
+        }
+      ],
       [
         "onesignal-expo-plugin",
         {

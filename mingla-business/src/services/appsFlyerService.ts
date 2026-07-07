@@ -39,6 +39,17 @@ import { supabase } from "./supabase";
 // unaffected because `require` succeeds there.
 // ─────────────────────────────────────────────────────────────────────────────
 
+// ORCH-1318 (§A.2) — the shape AppsFlyer hands the `onDeepLink` callback. Kept
+// narrow + all-optional so a malformed native payload can never throw at the
+// bridge boundary (see `handleOneLinkPayload`). Mirrors the installed
+// `react-native-appsflyer` `UnifiedDeepLinkData` (`index.d.ts:58`) for the
+// fields B1 reads; the SDK cast below asserts compatibility.
+type OneLinkCallbackResult = {
+  deepLinkStatus?: "FOUND" | "NOT_FOUND" | "ERROR" | string;
+  isDeferred?: boolean;
+  data?: Record<string, unknown>;
+};
+
 type AppsFlyerSdk = {
   initSdk: (
     config: unknown,
@@ -53,6 +64,15 @@ type AppsFlyerSdk = {
     ok: (r: unknown) => void,
     fail: (e: unknown) => void,
   ) => void;
+  // ORCH-1318 (§A.2) — OneLink deferred deep-linking surface. The narrow type
+  // omitted these, so the calls below would not typecheck without the extension.
+  onDeepLink: (cb: (res: OneLinkCallbackResult) => void) => () => void;
+  setOneLinkCustomDomains: (
+    domains: string[],
+    ok: (r: unknown) => void,
+    fail: (e: unknown) => void,
+  ) => void;
+  performOnDeepLinking: () => void;
 };
 
 let appsFlyer: AppsFlyerSdk | null = null;
@@ -97,6 +117,158 @@ if (Platform.OS !== "web" && hasAppsFlyerEnv) {
 let _initialized = false;
 const registeredDeviceKeys = new Set<string>();
 
+// ─────────────────────────────────────────────────────────────────────────────
+// ORCH-1318 (§A.2/§B.3/§C.1) — OneLink deferred deep-linking (BUSINESS, B1)
+//
+// B1 business scope is deliberately minimal: enable the listeners, register
+// `onDeepLink` before transmission starts, register the branded OneLink domain,
+// and forward a resolved destination to a UI sink. The service NEVER navigates
+// (it has no router) and NEVER transmits early — it only resolves the payload.
+// Per-entity business content routing is B2 and OUT OF SCOPE here; B1 only
+// handles universal-download (no-op landing) + referral (attribution-only).
+// ─────────────────────────────────────────────────────────────────────────────
+
+// §C.1 — the branded OneLink subdomain the SDK must treat as a OneLink host.
+const ONELINK_BRANDED_DOMAIN = "go.usemingla.com";
+
+// §B.1 payload contract (shared with consumer). B1 business only acts on the
+// referral discriminator + a piggybacked `af_sub1`; everything else is a no-op
+// landing (universal-download links, and content links whose per-entity routing
+// is B2). `null` only for a genuinely empty/missing payload.
+export type BusinessOneLinkDestination =
+  | { kind: "referral"; referralCode: string }
+  | { kind: "download" }
+  | null;
+
+/**
+ * Pure — never throws, never navigates, never transmits. Maps a FOUND OneLink
+ * payload (`res.data`, §B.1) to the minimal B1 business destination.
+ *
+ * - `deep_link_value === 'referral'` → referral (code = `deep_link_sub1`).
+ * - ANY payload carrying `af_sub1` → referral (a content/entity link piggybacks
+ *   the referral code; B1 persists it for attribution even though the entity
+ *   itself is not routed until B2).
+ * - anything else (universal-download, or B2 content links) → `download` (no-op).
+ */
+export function resolveBusinessOneLinkDestination(
+  data: Record<string, unknown> | null | undefined,
+): BusinessOneLinkDestination {
+  if (!data || typeof data !== "object") return null;
+  const rawType = data["deep_link_value"];
+  const type =
+    typeof rawType === "string" ? rawType.trim().toLowerCase() : "";
+  const sub1 =
+    typeof data["deep_link_sub1"] === "string"
+      ? (data["deep_link_sub1"] as string).trim()
+      : "";
+  const afSub1 =
+    typeof data["af_sub1"] === "string"
+      ? (data["af_sub1"] as string).trim()
+      : "";
+
+  if (type === "referral" && sub1.length > 0) {
+    return { kind: "referral", referralCode: sub1 };
+  }
+  if (afSub1.length > 0) {
+    return { kind: "referral", referralCode: afSub1 };
+  }
+  return { kind: "download" };
+}
+
+// §A.4 — sink + buffer + dedup state.
+let _deepLinkSubscribed = false;
+let _deepLinkSink: ((dest: BusinessOneLinkDestination) => void) | null = null;
+let _bufferedDestination: BusinessOneLinkDestination = null;
+let _lastHandled: { link: string; at: number } | null = null;
+
+function forwardOneLinkDestination(dest: BusinessOneLinkDestination): void {
+  if (!dest) return;
+  if (_deepLinkSink) {
+    try {
+      _deepLinkSink(dest);
+    } catch (e) {
+      console.warn("[AppsFlyer] OneLink sink threw:", e);
+    }
+    return;
+  }
+  // §A.4.3 — the deferred resolution can beat sink registration (resolves
+  // faster than the UI mounts). Buffer the last FOUND destination; it flushes
+  // once when `subscribeOneLinkDeepLink` runs.
+  _bufferedDestination = dest;
+}
+
+function handleOneLinkPayload(res: OneLinkCallbackResult): void {
+  try {
+    if (!res || res.deepLinkStatus !== "FOUND") {
+      // §A.4.2 — NOT_FOUND on a normal organic open is expected; log at info in
+      // dev only, never a warning storm, never navigate.
+      if (__DEV__ && res) {
+        console.log(
+          "[AppsFlyer] onDeepLink non-FOUND (ignored):",
+          res.deepLinkStatus,
+        );
+      }
+      return;
+    }
+    const data = res.data ?? {};
+    // §A.4.1 — dedup a re-emitted identical link within a short window (resume
+    // can re-fire). Second identical emission is a no-op.
+    const link = typeof data.link === "string" ? (data.link as string) : "";
+    const now = Date.now();
+    if (
+      link.length > 0 &&
+      _lastHandled &&
+      _lastHandled.link === link &&
+      now - _lastHandled.at < 5000
+    ) {
+      return;
+    }
+    if (link.length > 0) _lastHandled = { link, at: now };
+
+    const dest = resolveBusinessOneLinkDestination(data);
+    forwardOneLinkDestination(dest);
+  } catch (e) {
+    console.warn("[AppsFlyer] onDeepLink handler failed:", e);
+  }
+}
+
+// §A.2.3 — register `onDeepLink` BEFORE `initSdk` fires transmission (business
+// has no `manualStart`, so init IS the start; a deferred link resolved during
+// the first session is dropped if the listener is not registered first).
+// Idempotent — a double-subscribe would double-navigate.
+function registerOneLinkDeepLink(sdk: AppsFlyerSdk): void {
+  if (_deepLinkSubscribed) return;
+  try {
+    sdk.onDeepLink((res) => handleOneLinkPayload(res));
+    _deepLinkSubscribed = true;
+  } catch (e) {
+    console.warn("[AppsFlyer] onDeepLink registration failed:", e);
+  }
+}
+
+/**
+ * Register the UI-layer sink that receives resolved OneLink destinations.
+ *
+ * §A.4.3 buffered flush — if a deferred FOUND destination resolved before the
+ * UI mounted (buffered above), deliver it exactly once here, then clear it.
+ * The service forwards a destination; the caller decides what to do with it —
+ * the service never navigates.
+ */
+export function subscribeOneLinkDeepLink(
+  onDestination: (dest: BusinessOneLinkDestination) => void,
+): void {
+  _deepLinkSink = onDestination;
+  if (_bufferedDestination) {
+    const buffered = _bufferedDestination;
+    _bufferedDestination = null;
+    try {
+      onDestination(buffered);
+    } catch (e) {
+      console.warn("[AppsFlyer] OneLink buffered flush threw:", e);
+    }
+  }
+}
+
 /**
  * Initialize the AppsFlyer SDK. Call once at app startup.
  * Tracks installs, sessions, and attribution automatically after init.
@@ -115,20 +287,65 @@ export function initializeAppsFlyer(): void {
     return;
   }
   if (!appsFlyer) return; // ORCH-0807 Rev 3 — native module unavailable; no-op.
+  const sdk = appsFlyer;
   try {
-    appsFlyer.initSdk(
+    // ORCH-1318 (§A.2.3 / I-ONELINK-NO-TRANSMIT-BEFORE-ATT) — register the
+    // OneLink listener BEFORE `initSdk` starts transmission. `initializeAppsFlyer`
+    // itself is only called post-ATT (`_layout.tsx`), so this stays behind the
+    // ATT gate; registering a listener transmits nothing.
+    registerOneLinkDeepLink(sdk);
+
+    // ORCH-1318 (§C.1) — treat the branded subdomain as a OneLink host so the
+    // SDK resolves `go.usemingla.com` links as OneLinks. Own try/catch so a
+    // failure here never blocks `initSdk`.
+    try {
+      sdk.setOneLinkCustomDomains(
+        [ONELINK_BRANDED_DOMAIN],
+        (result: unknown) => {
+          if (__DEV__) {
+            console.log(
+              "[AppsFlyer] OneLink custom domain registered:",
+              ONELINK_BRANDED_DOMAIN,
+              result,
+            );
+          }
+        },
+        (error: unknown) => {
+          console.warn(
+            "[AppsFlyer] setOneLinkCustomDomains failed:",
+            error,
+          );
+        },
+      );
+    } catch (e) {
+      console.warn("[AppsFlyer] setOneLinkCustomDomains threw:", e);
+    }
+
+    sdk.initSdk(
       {
         devKey: AF_DEV_KEY,
         isDebug: __DEV__,
         appId: Platform.OS === "ios" ? AF_IOS_APP_ID : undefined,
-        onInstallConversionDataListener: false,
-        onDeepLinkListener: false,
+        // ORCH-1318 (§A.2.1) — enable the listeners. Listener-enable only:
+        // transmission stays gated by the post-ATT init above.
+        onInstallConversionDataListener: true,
+        onDeepLinkListener: true,
         // ATT deferred — mirrors consumer ORCH-0349. We never prompt at cold start.
         timeToWaitForATTUserAuthorization: 0,
       },
       (result: unknown) => {
         if (__DEV__) console.log("[AppsFlyer] SDK initialized:", result);
         _initialized = true;
+        // ORCH-1318 (§A.3) — Android cold-start: force a deferred `onDeepLink`
+        // resolution pass now that transmission has begun. iOS resolves via the
+        // AppDelegate hooks the Expo plugin injects — no equivalent call needed.
+        if (Platform.OS === "android") {
+          try {
+            sdk.performOnDeepLinking();
+          } catch (e) {
+            console.warn("[AppsFlyer] performOnDeepLinking failed:", e);
+          }
+        }
       },
       (error: unknown) => {
         console.warn("[AppsFlyer] SDK initialization failed:", error);

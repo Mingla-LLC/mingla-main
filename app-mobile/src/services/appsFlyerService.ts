@@ -2,6 +2,11 @@ import appsFlyer from 'react-native-appsflyer'
 import Constants from 'expo-constants'
 import { Platform } from 'react-native'
 import { supabase } from './supabase'
+import { resolveOneLinkDestination, OneLinkDestination } from './oneLinkResolver'
+
+// ORCH-1318 — the branded OneLink subdomain the SDK must treat as a OneLink
+// host at runtime (SPEC §C.1). EXACT constant, shared with oneLinkShare.ts.
+const ONELINK_BRAND_DOMAIN = 'go.usemingla.com'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Constants — ORCH-1313 (§4.C) env-driven (single-source + fail-loud on release)
@@ -34,6 +39,32 @@ let _initialized = false
 let _started = false
 const registeredDeviceKeys = new Set<string>()
 
+// ─────────────────────────────────────────────────────────────────────────────
+// ORCH-1318 — OneLink deferred deep-link plumbing.
+//
+// The `onDeepLink` subscription is registered ONCE inside initializeAppsFlyer
+// (after initSdk success, before any startAppsFlyer/startSdk — AppsFlyer drops a
+// deferred link that resolves before the listener exists). Registering a
+// listener is transmission-inert: it does NOT start the SDK, so the
+// ATT-before-transmit invariant (I-ONELINK-NO-TRANSMIT-BEFORE-ATT) is preserved
+// — only startAppsFlyer() (behind the ATT gate in index.tsx) transmits.
+//
+// The service NEVER navigates. It resolves a FOUND payload to a typed
+// OneLinkDestination (the ONE resolver — I-ONELINK-SINGLE-RESOLVER) and forwards
+// it to the UI sink the app registers via subscribeOneLinkDeepLink. If a
+// destination resolves before the sink is registered (deferred link resolves
+// faster than mount), it is buffered and flushed once when the sink arrives.
+// ─────────────────────────────────────────────────────────────────────────────
+let _deepLinkSubscribed = false
+let _deepLinkUnsub: (() => void) | null = null
+let _oneLinkSink: ((dest: OneLinkDestination) => void) | null = null
+let _bufferedDestination: OneLinkDestination = null
+// Double-fire dedup: the SDK can re-emit the same link on resume. A second
+// identical `res.data.link` within this window is a no-op (SPEC §A.4.1).
+const DEEPLINK_DEDUP_WINDOW_MS = 5000
+let _lastHandledLink: string | null = null
+let _lastHandledAt = 0
+
 /**
  * Initialize the AppsFlyer SDK. Call once at app startup.
  *
@@ -59,19 +90,43 @@ export function initializeAppsFlyer(): void {
     )
     return
   }
+  // ORCH-1318 — register onDeepLink BEFORE initSdk fires. AppsFlyer requires the
+  // unified deep-link callback exist before the SDK starts, else a deferred link
+  // resolving during the first session is dropped. This is transmission-inert
+  // (it does NOT start the SDK) so the ATT gate is untouched.
+  registerOneLinkDeepLink()
   try {
     appsFlyer.initSdk(
       {
         devKey: AF_DEV_KEY,
         isDebug: __DEV__,
         appId: Platform.OS === 'ios' ? AF_IOS_APP_ID : undefined,
-        onInstallConversionDataListener: false,
-        onDeepLinkListener: false,
+        // ORCH-1318 — ENABLE the listeners. This only wires the callbacks; it does
+        // NOT transmit. Transmission stays gated by manualStart + startAppsFlyer()
+        // (I-ONELINK-NO-TRANSMIT-BEFORE-ATT).
+        onInstallConversionDataListener: true,
+        onDeepLinkListener: true,
         manualStart: true,
       },
       (result: unknown) => {
         if (__DEV__) console.log('[AppsFlyer] SDK initialized:', result)
         _initialized = true
+        // ORCH-1318 (SPEC §C.1) — register the branded subdomain so the SDK
+        // resolves go.usemingla.com links as OneLinks. Safe post-init; no-op on
+        // the *.onelink.me fallback domain.
+        try {
+          appsFlyer.setOneLinkCustomDomains(
+            [ONELINK_BRAND_DOMAIN],
+            (r: unknown) => {
+              if (__DEV__) console.log('[AppsFlyer] OneLink custom domain set:', r)
+            },
+            (err: unknown) => {
+              console.warn('[AppsFlyer] setOneLinkCustomDomains failed:', err)
+            },
+          )
+        } catch (e) {
+          console.warn('[AppsFlyer] setOneLinkCustomDomains threw:', e)
+        }
       },
       (error: unknown) => {
         console.warn('[AppsFlyer] SDK initialization failed:', error)
@@ -79,6 +134,96 @@ export function initializeAppsFlyer(): void {
     )
   } catch (e) {
     console.warn('[AppsFlyer] Native module not available:', e)
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ORCH-1318 — OneLink deep-link listener + sink
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Register the single `appsFlyer.onDeepLink` subscription (idempotent). Called
+ * from initializeAppsFlyer BEFORE initSdk. The callback:
+ *   1. ignores any non-FOUND status (log-only — a NOT_FOUND on an organic open
+ *      is expected; never a warning storm, never navigation — SPEC §A.4.2),
+ *   2. dedups a double-fire by `res.data.link` within a short window (§A.4.1),
+ *   3. resolves the payload via the ONE resolver, and
+ *   4. forwards the destination to the UI sink — or buffers it if the sink is
+ *      not yet registered (deferred resolves faster than mount — §A.4.3).
+ * It NEVER navigates (the service has no router).
+ */
+function registerOneLinkDeepLink(): void {
+  if (_deepLinkSubscribed) return
+  try {
+    _deepLinkUnsub = appsFlyer.onDeepLink((res: any) => {
+      try {
+        if (!res || res.deepLinkStatus !== 'FOUND') {
+          if (__DEV__) {
+            console.log('[AppsFlyer] onDeepLink non-FOUND (no-op):', res?.deepLinkStatus)
+          }
+          return
+        }
+        const data = (res.data ?? {}) as Record<string, any>
+        // Double-fire dedup (SPEC §A.4.1).
+        const link = typeof data.link === 'string' ? data.link : ''
+        const now = Date.now()
+        if (link && link === _lastHandledLink && now - _lastHandledAt < DEEPLINK_DEDUP_WINDOW_MS) {
+          if (__DEV__) console.log('[AppsFlyer] onDeepLink duplicate emission ignored')
+          return
+        }
+        _lastHandledLink = link
+        _lastHandledAt = now
+
+        const dest = resolveOneLinkDestination(data)
+        if (!dest) {
+          if (__DEV__) console.log('[AppsFlyer] onDeepLink FOUND but unresolvable payload:', data)
+          return
+        }
+        if (_oneLinkSink) {
+          _oneLinkSink(dest)
+        } else {
+          // Buffer the last FOUND destination until the UI sink registers (§A.4.3).
+          _bufferedDestination = dest
+        }
+      } catch (e) {
+        console.warn('[AppsFlyer] onDeepLink handler failed:', e)
+      }
+    })
+    _deepLinkSubscribed = true
+  } catch (e) {
+    // Native module absent (Expo Go / dev-client) → clean no-op (SPEC §A.4.4).
+    console.warn('[AppsFlyer] onDeepLink registration skipped (native module?):', e)
+  }
+}
+
+/**
+ * Register the UI sink that receives resolved OneLink destinations. Call ONCE
+ * from the app shell (index.tsx) inside the same effect that owns
+ * initializeAppsFlyer, so the sink exists for the buffered-flush. If a
+ * destination resolved before the sink was registered, it is flushed exactly
+ * once here, then cleared (SPEC §A.4.3).
+ */
+export function subscribeOneLinkDeepLink(onDestination: (dest: OneLinkDestination) => void): void {
+  _oneLinkSink = onDestination
+  if (_bufferedDestination) {
+    const buffered = _bufferedDestination
+    _bufferedDestination = null
+    onDestination(buffered)
+  }
+}
+
+/**
+ * Android-only: force a cold-start `onDeepLink` resolution pass. Invoke once
+ * right AFTER startAppsFlyer() (post-ATT) so the deferred link resolves with the
+ * settled GAID state. iOS resolves via the AppDelegate hooks the Expo plugin
+ * injects — no equivalent call (SPEC §A.1.3 / §A.3).
+ */
+export function triggerAndroidDeferredResolution(): void {
+  if (Platform.OS !== 'android') return
+  try {
+    appsFlyer.performOnDeepLinking()
+  } catch (e) {
+    console.warn('[AppsFlyer] performOnDeepLinking failed:', e)
   }
 }
 
