@@ -52,6 +52,7 @@
     "test:orch-1298": "node ../.github/scripts/strict-grep/orch-1298-cover-preview-video-capable.mjs --self-test && node ../.github/scripts/strict-grep/orch-1298-cover-preview-video-capable.mjs && npx jest brandCoverVideoPreview.orch1298 tripPreviewCoverVideo.orch1299 coverPreviewVideoCapable.orch1301",
     "test:orch-1301": "npx jest bootLoadingRelease.orch1301 coverPreviewVideoCapable.orch1301 && npx jest --config jest.orch1297.cfg.cjs tusPatchErrorSurface.orch1301",
     "test:orch-1303": "node ../.github/scripts/strict-grep/orch-1303-web-cover-video-uri.mjs --self-test && node ../.github/scripts/strict-grep/orch-1303-web-cover-video-uri.mjs && npx jest CoverPicker.webClipUri",
+    "test:orch-1321": "node ../.github/scripts/strict-grep/orch-1321-no-android-media-permissions.mjs --self-test && node ../.github/scripts/strict-grep/orch-1321-no-android-media-permissions.mjs && npx jest --config jest.orch1321.cfg.cjs orch1321AndroidMediaPermissionSkip --runInBand",
     "test:orch-1005": "node scripts/ci/orch-1005-dead-code-removed.mjs --self-test && node scripts/ci/orch-1005-dead-code-removed.mjs",
     "test:orch-1086": "npx jest __tests__/authCallbackStatic.test.ts --runInBand",
     "test:orch-1097": "node scripts/ci/orch-1097-business-web-media-picker-controls.mjs && npx jest src/utils/__tests__/browserFilePicker.test.ts src/utils/__tests__/orch_1097_browser_picker_component_contracts.test.ts --runInBand",

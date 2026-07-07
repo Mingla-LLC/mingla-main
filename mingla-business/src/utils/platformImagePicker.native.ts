@@ -1,3 +1,5 @@
+import { Platform } from "react-native";
+
 export type PlatformImagePickerAsset = {
   uri: string;
   mimeType?: string | null;
@@ -17,6 +19,10 @@ export const requestMediaLibraryPermissionsAsync = async (): Promise<{
   canAskAgain?: boolean;
   status?: string;
 }> => {
+  // [ORCH-1321] Android uses the system Photo Picker (launchImageLibraryAsync) which needs no permission.
+  if (Platform.OS === "android") {
+    return { granted: true, canAskAgain: true, status: "granted" };
+  }
   const ImagePicker = await import("expo-image-picker");
   return ImagePicker.requestMediaLibraryPermissionsAsync();
 };
