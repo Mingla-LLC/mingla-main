@@ -168,6 +168,7 @@ on:
 #   - I-1319-DOWNLOAD-ROUTE-UA-REDIRECT (orch-1319-download-route-ua.mjs) [G-2] — app/download/page.tsx (comment-stripped) reads the UA via headers()+resolvePlatformFromUa, references BOTH APP_STORE_URL and PLAY_STORE_URL + a redirect( call, and renders DownloadQr + AppStoreBadges on the desktop branch; G-2b: no inline apps.apple.com/play.google.com literals (uses the shared constants), no navigator/window (SSR-safe), no form/type=email/explorer-app/testflight; self-tested 6/6 + fails-on-revert (ORCH-1319 — DRAFT until CLOSE)
 #   - I-1319 QR SEAM (orch-1319-qr-encodes-download-url.mjs) [G-3] — download-qr.tsx binds <QRCode value={DOWNLOAD_URL}> from lib/site (NOT a literal store URL, so one QR serves both platforms); G-3b: the wrapper carries role="img"+aria-label and bgColor="#FFFFFF" (contrast); self-tested 5/5 + fails-on-revert (ORCH-1319 — DRAFT until CLOSE)
 #   - I-1319-NO-TESTFLIGHT (orch-1319-no-testflight-anywhere.mjs) [G-4] — repo scan: ZERO `testflight.apple.com` tokens (case-insensitive, comments included — NOT comment-stripped) under mingla-marketing/ + supabase/functions/; the single hard proof the beta link is gone forever; self-tested 4/4 + fails-on-revert (ORCH-1319 — DRAFT until CLOSE)
+#   - I-PROPOSED-1321-NO-ANDROID-MEDIA-PERMISSIONS (orch-1321-no-android-media-permissions.mjs) — Google Play rejected the BUSINESS app under the Photo & Video Permissions policy; mingla-business/app.json expo.android.permissions must NOT list READ_MEDIA_IMAGES / READ_MEDIA_VIDEO / READ_EXTERNAL_STORAGE (the app only PICKS files → must use the Android Photo Picker, which needs no permission), and expo.android.blockedPermissions must force-strip the full set (READ_MEDIA_IMAGES + READ_MEDIA_VIDEO + READ_EXTERNAL_STORAGE + WRITE_EXTERNAL_STORAGE) so no library-merged residue survives in the AAB; re-adding any media/storage permission or dropping any blocked entry fails CI; self-tested 5/5 + fails-on-revert (ORCH-1321 — DRAFT until CLOSE)
 #
 # Future gates to register (proposed but not yet implemented):
 #   - I-32 rank parity (Cycle 13a proposal)
@@ -181,6 +182,19 @@ on:
 # .github/scripts/strict-grep/README.md.
 
 jobs:
+  orch-1321-no-android-media-permissions:
+    name: "ORCH-1321: mingla-business/app.json declares no READ_MEDIA_*/READ_EXTERNAL_STORAGE android permission and blocks the full media/storage set (Google Play Photo & Video Permissions policy) (I-PROPOSED-1321-NO-ANDROID-MEDIA-PERMISSIONS)"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Self-test the ORCH-1321 no-android-media-permissions gate
+        run: node .github/scripts/strict-grep/orch-1321-no-android-media-permissions.mjs --self-test
+      - name: Run ORCH-1321 no-android-media-permissions gate
+        run: node .github/scripts/strict-grep/orch-1321-no-android-media-permissions.mjs
+
   orch-1303-web-cover-video-uri:
     name: "ORCH-1303: web picked-video blob: URL reaches the uploader UNMANGLED (resolveRawClipUploadUri web branch); no file://blob: mangle; native byte-identical (I-PROPOSED-1303-WEB-COVER-VIDEO-URI-UNMANGLED)"
     runs-on: ubuntu-latest
