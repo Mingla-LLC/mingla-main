@@ -32,6 +32,7 @@ import { cn } from '@/lib/cn'
 import {
   LINKS_SOCIALS,
   LINKS_TABS,
+  socialHref,
   type LinksTab,
   type LinksTabId,
 } from '@/lib/links-config'
@@ -154,9 +155,14 @@ export function LinksExperience({
     })
   }, [])
 
-  const onSocialClick = useCallback((network: string) => {
-    captureMarketing('links_page_social_clicked', { network })
-  }, [])
+  const onSocialClick = useCallback(
+    (network: string) => {
+      // `surface` distinguishes an @usemingla tap (explorer) from an
+      // @minglabusiness tap (business) on the same network icon.
+      captureMarketing('links_page_social_clicked', { network, surface: activeId })
+    },
+    [activeId],
+  )
 
   return (
     <main
@@ -286,12 +292,16 @@ export function LinksExperience({
         </motion.div>
       </div>
 
-      {/* Socials — pinned to the bottom of the viewport (§3, all 7 @usemingla).
-          `flex-wrap` + a tight gap keep all seven 44px tap targets on one tidy row
-          on standard phones (≥390px) and wrap them cleanly on narrower/very short
-          devices — never overflowing horizontally, never forcing a scroll (§1). */}
+      {/* Socials — pinned to the bottom of the viewport (§3, all 7 accounts).
+          The row is SURFACE-AWARE: on the Business tab the five business-branded
+          networks swap to @minglabusiness, while YouTube & LinkedIn stay universal
+          (resolved by `socialHref`). `flex-wrap` + a tight gap keep all seven 44px
+          tap targets on one tidy row on standard phones (≥390px) and wrap them
+          cleanly on narrower/very short devices — never forcing a scroll (§1). */}
       <motion.nav
-        aria-label="Mingla on social media"
+        aria-label={
+          activeId === 'business' ? 'Mingla Business on social media' : 'Mingla on social media'
+        }
         initial={reduced ? false : { opacity: 0 }}
         animate={{ opacity: 1 }}
         transition={{ duration: 0.6, delay: reduced ? 0 : 0.25, ease: EASE }}
@@ -300,10 +310,10 @@ export function LinksExperience({
         {LINKS_SOCIALS.map((s) => (
           <a
             key={s.label}
-            href={s.href}
+            href={socialHref(s, activeId)}
             target="_blank"
             rel="noopener noreferrer"
-            aria-label={`Mingla on ${s.label}`}
+            aria-label={`${activeId === 'business' ? 'Mingla Business' : 'Mingla'} on ${s.label}`}
             onClick={() => onSocialClick(s.label)}
             className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-white/10 bg-white/[0.04] text-white/70 transition-all duration-200 hover:-translate-y-0.5 hover:border-white/20 hover:bg-white/[0.08] hover:text-white focus-ring"
           >

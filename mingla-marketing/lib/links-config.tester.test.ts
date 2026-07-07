@@ -19,6 +19,7 @@ import {
   LINKS_SOCIALS,
   LINKS_DOWNLOAD_PATH,
   LINKS_BUSINESS_PATH,
+  socialHref,
 } from './links-config'
 import { BUSINESS_PATH } from './subdomain'
 import { APP_STORE_URL, PLAY_STORE_URL } from './store-links'
@@ -97,6 +98,51 @@ const cases: ReadonlyArray<[string, () => void]> = [
     () => {
       for (const s of LINKS_SOCIALS) {
         assert(/^https:\/\//.test(s.href), `${s.label} is not https: ${s.href}`)
+      }
+    },
+  ],
+
+  // ── Surface-aware socials: the Business tab swaps the 5 business-branded ─────
+  // networks to @minglabusiness; YouTube & LinkedIn stay universal on both tabs.
+  [
+    'Business tab swaps IG/X/TikTok/Facebook/Threads to @minglabusiness handles',
+    () => {
+      const byLabel = Object.fromEntries(LINKS_SOCIALS.map((s) => [s.label, s]))
+      const biz = (label: string) => socialHref(byLabel[label], 'business')
+      assert(biz('Instagram') === 'https://www.instagram.com/minglabusiness', `IG biz: ${biz('Instagram')}`)
+      assert(biz('X') === 'https://x.com/MinglaBusiness', `X biz: ${biz('X')}`)
+      assert(biz('TikTok') === 'https://www.tiktok.com/@minglabusiness', `TikTok biz: ${biz('TikTok')}`)
+      assert(biz('Facebook') === 'https://www.facebook.com/minglabusiness', `FB biz: ${biz('Facebook')}`)
+      assert(biz('Threads') === 'https://www.threads.com/@minglabusiness', `Threads biz: ${biz('Threads')}`)
+    },
+  ],
+  [
+    'YouTube & LinkedIn stay @usemingla on BOTH tabs (no business variant)',
+    () => {
+      const byLabel = Object.fromEntries(LINKS_SOCIALS.map((s) => [s.label, s]))
+      for (const label of ['YouTube', 'LinkedIn']) {
+        const s = byLabel[label]
+        assert(s.businessHref === undefined, `${label} must not define a businessHref`)
+        assert(socialHref(s, 'business') === s.href, `${label} must stay universal on business tab`)
+        assert(socialHref(s, 'explorer') === s.href, `${label} must be universal on explorer tab`)
+      }
+    },
+  ],
+  [
+    'Explorer tab always resolves to the universal @usemingla href',
+    () => {
+      for (const s of LINKS_SOCIALS) {
+        assert(socialHref(s, 'explorer') === s.href, `${s.label} explorer href drifted: ${socialHref(s, 'explorer')}`)
+      }
+    },
+  ],
+  [
+    'every business handle is also an absolute https:// link',
+    () => {
+      for (const s of LINKS_SOCIALS) {
+        if (s.businessHref !== undefined) {
+          assert(/^https:\/\//.test(s.businessHref), `${s.label} business is not https: ${s.businessHref}`)
+        }
       }
     },
   ],

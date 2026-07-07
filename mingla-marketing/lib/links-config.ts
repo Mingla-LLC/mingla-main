@@ -79,18 +79,50 @@ export const LINKS_TABS: readonly LinksTab[] = [
 export interface LinksSocial {
   /** Human network name (also the analytics `network` value). */
   label: string
-  /** Public profile URL — opened in a new tab with rel="noopener". */
+  /** Universal @usemingla profile — shown on the Explorer tab (and the default). */
   href: string
+  /**
+   * @minglabusiness profile — swapped in on the Business tab. Mingla runs a
+   * dedicated business account on Instagram, X, TikTok, Facebook & Threads
+   * (DEC-198 / [[reference-mingla-social-links]]). LinkedIn & YouTube stay
+   * universal on BOTH tabs, so they intentionally omit this.
+   */
+  businessHref?: string
 }
 
-// The FULL @usemingla presence, in the order they sit in the bottom row. Add or
-// reorder here (data-driven) — links-experience renders each with its icon.
+// The FULL Mingla social presence, in the order they sit in the bottom row. Add
+// or reorder here (data-driven) — links-experience renders each with its icon and
+// resolves the per-tab URL via `socialHref` below.
 export const LINKS_SOCIALS: readonly LinksSocial[] = [
-  { label: 'Instagram', href: 'https://www.instagram.com/usemingla' },
-  { label: 'X', href: 'https://x.com/usemingla' },
-  { label: 'TikTok', href: 'https://www.tiktok.com/@usemingla' },
+  {
+    label: 'Instagram',
+    href: 'https://www.instagram.com/usemingla',
+    businessHref: 'https://www.instagram.com/minglabusiness',
+  },
+  { label: 'X', href: 'https://x.com/usemingla', businessHref: 'https://x.com/MinglaBusiness' },
+  {
+    label: 'TikTok',
+    href: 'https://www.tiktok.com/@usemingla',
+    businessHref: 'https://www.tiktok.com/@minglabusiness',
+  },
+  // YouTube & LinkedIn stay universal on both tabs (no business variant).
   { label: 'YouTube', href: 'https://www.youtube.com/@usemingla' },
   { label: 'LinkedIn', href: 'https://www.linkedin.com/company/usemingla' },
-  { label: 'Facebook', href: 'https://www.facebook.com/usemingla' },
-  { label: 'Threads', href: 'https://www.threads.com/@usemingla' },
+  {
+    label: 'Facebook',
+    href: 'https://www.facebook.com/usemingla',
+    businessHref: 'https://www.facebook.com/minglabusiness',
+  },
+  {
+    label: 'Threads',
+    href: 'https://www.threads.com/@usemingla',
+    businessHref: 'https://www.threads.com/@minglabusiness',
+  },
 ]
+
+// Resolve the profile URL for the active tab: the Business tab uses the
+// @minglabusiness handle where one exists; everything else (Explorer, and the
+// universal-only YouTube/LinkedIn) falls back to the @usemingla `href`.
+export function socialHref(social: LinksSocial, tab: LinksTabId): string {
+  return tab === 'business' && social.businessHref ? social.businessHref : social.href
+}
