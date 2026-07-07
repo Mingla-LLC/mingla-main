@@ -32,6 +32,14 @@
           {
             "/": "/b/*",
             "comment": "Consumer app public brand profile deep links"
+          },
+          {
+            "/": "/t/*",
+            "comment": "Consumer app public trip deep links (ORCH-1318)"
+          },
+          {
+            "/": "/exp/*",
+            "comment": "Consumer app public experience deep links (ORCH-1318)"
           }
         ]
       }

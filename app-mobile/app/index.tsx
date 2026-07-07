@@ -63,7 +63,9 @@ import {
   onForegroundNotification,
   resumeInAppMessages,
 } from "../src/services/oneSignalService";
-import { initializeAppsFlyer, startAppsFlyer, setAppsFlyerUserId, registerAppsFlyerDevice, logAppsFlyerEvent } from "../src/services/appsFlyerService";
+import { initializeAppsFlyer, startAppsFlyer, setAppsFlyerUserId, registerAppsFlyerDevice, logAppsFlyerEvent, subscribeOneLinkDeepLink, triggerAndroidDeferredResolution } from "../src/services/appsFlyerService";
+import type { OneLinkDestination } from "../src/services/oneLinkResolver";
+import { router } from "expo-router";
 import { ensureAttRequested, requestPostTourPermissions, whenAttResolved } from "../src/services/permissionOrchestrator";
 import { useCustomerInfoListener } from "../src/hooks/useRevenueCat";
 import { useTrialExpiryTracking } from "../src/hooks/useSubscription";
@@ -383,6 +385,12 @@ function AppContent() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     initializeAppsFlyer();
+    // ORCH-1318 — register the OneLink destination sink in the SAME effect that
+    // owns initializeAppsFlyer, so the sink exists before the buffered-flush
+    // (SPEC §A.4.3 / §B.3). The service resolves a FOUND OneLink payload to a
+    // typed destination and forwards it here; dispatchOneLinkDestination routes
+    // it to the ONE nav system that owns the target. The service never navigates.
+    subscribeOneLinkDeepLink(dispatchOneLinkDestination);
   }, []); // intentionally once
 
   // Set the AppsFlyer customer user ID when the user signs in.
@@ -843,11 +851,24 @@ function AppContent() {
       if (!raw) return;
       AsyncStorage.removeItem('mingla_deferred_deeplink');
       try {
-        const { url, ts } = JSON.parse(raw);
+        const parsed = JSON.parse(raw);
+        const { url, ts } = parsed;
+        // ORCH-1318 (SPEC §B.4) — a deferred OneLink ENTITY target is persisted
+        // with a `router:true` marker + a leading-slash expo-route path (e.g.
+        // `/e/brand/event`). deepLinkService.parseDeepLink returns null for those
+        // paths (they belong to the expo-router file routes, a separate nav
+        // system), so replaying them through handleDeepLink would silently drop
+        // them. Route the marked target through router.push instead.
+        const isRouterTarget = parsed.router === true;
         const ageMs = Date.now() - (ts ?? 0);
         const MAX_AGE_MS = 24 * 60 * 60 * 1000; // 24 hours
         if (ageMs > MAX_AGE_MS) {
           console.log('[DEEPLINK] Discarded stale deferred link:', url);
+          return;
+        }
+        if (isRouterTarget && typeof url === 'string' && url.length > 0) {
+          console.log('[DEEPLINK] Processing deferred entity route:', url);
+          router.push(url as never);
           return;
         }
         console.log('[DEEPLINK] Processing deferred link:', url);
@@ -949,11 +970,16 @@ function AppContent() {
       .then(() => {
         // Begin AppsFlyer transmission with the resolved IDFA state (idempotent).
         startAppsFlyer();
+        // ORCH-1318 (SPEC §A.3) — Android-only: force the deferred onDeepLink
+        // resolution pass AFTER startAppsFlyer, so it runs post-ATT with the
+        // settled GAID state. No-op on iOS (AppDelegate hooks resolve there).
+        triggerAndroidDeferredResolution();
       })
       .catch((err) => {
         console.warn("[ATT] ensureAttRequested failed:", err);
         // Even if ATT failed, AppsFlyer should still start (gate is open).
         startAppsFlyer();
+        triggerAndroidDeferredResolution();
       });
     // ORCH-1313: intentionally-once at mount ([] deps) — no auth gate. attFiredRef +
     // ensureAttRequested single-flight + startAppsFlyer _started guard keep it idempotent.
@@ -1793,6 +1819,82 @@ function AppContent() {
       setDeepLinkParams: (params: Record<string, string>) => setDeepLinkParams(params),
     });
   };
+
+  // ORCH-1318 — a live ref to handleDeepLink so the mount-registered OneLink sink
+  // always invokes the CURRENT closure (correct auth state), not the stale one
+  // captured at mount. handleDeepLink itself defers-when-unauthenticated, so the
+  // `internal` OneLink kind reuses that proven pipeline unchanged.
+  const handleDeepLinkRef = useRef(handleDeepLink);
+  handleDeepLinkRef.current = handleDeepLink;
+
+  // ORCH-1318 (SPEC §B.3) — the ONE dispatcher that reconciles the two consumer
+  // nav systems for a resolved OneLink destination. The service resolves the
+  // payload (ONE resolver, I-ONELINK-SINGLE-RESOLVER) and forwards the typed
+  // destination here; this routes each kind to exactly ONE system:
+  //   • entity brand/event/trip/experience → expo-router file routes (/b,/e,/t,/exp)
+  //   • internal (mingla://…)               → the existing deepLinkService pipeline
+  //   • referral / any entity w/ referralCode → capture @mingla_referral_code
+  //     (ATTRIBUTION-ONLY for this build — no credit-apply RPC; SPEC §E.1(b)).
+  // Declared as a hoisted function so the mount effect that registers the sink
+  // (above) can reference it; it reads live refs, never stale render state.
+  function dispatchOneLinkDestination(dest: OneLinkDestination): void {
+    if (!dest) return;
+    try {
+      switch (dest.kind) {
+        case 'referral':
+          AsyncStorage.setItem('@mingla_referral_code', dest.referralCode).catch((e) =>
+            console.warn('[OneLink] Failed to persist referral code:', e),
+          );
+          return;
+
+        case 'internal':
+          handleDeepLinkRef.current(dest.url);
+          return;
+
+        case 'entity': {
+          // Any entity may piggyback a referral code — capture it before nav.
+          if (dest.referralCode) {
+            AsyncStorage.setItem('@mingla_referral_code', dest.referralCode).catch((e) =>
+              console.warn('[OneLink] Failed to persist referral code:', e),
+            );
+          }
+          // Build the expo-router path with the publicUrls.ts SHAPE, encoding
+          // each segment (SPEC §B.5.5 — never raw-concat). Never `/e/brand/undefined`.
+          let path: string | null = null;
+          const seg = (s: string) => encodeURIComponent(s);
+          if (dest.entity === 'brand') {
+            path = dest.brandSlug ? `/b/${seg(dest.brandSlug)}` : null;
+          } else if (dest.brandSlug && dest.entitySlug) {
+            const b = seg(dest.brandSlug);
+            const e = seg(dest.entitySlug);
+            path =
+              dest.entity === 'event'
+                ? `/e/${b}/${e}`
+                : dest.entity === 'trip'
+                  ? `/t/${b}/${e}`
+                  : `/exp/${b}/${e}`;
+          }
+          if (!path) return;
+
+          if (!userIdRef.current) {
+            // Deferred entity link (installed via a OneLink, first open while
+            // unauthenticated): persist the resolved expo-route target with the
+            // existing {url, ts} + 24h TTL shape PLUS a `router:true` marker, so
+            // the post-auth replay router.push-es it after onboarding (SPEC §B.4).
+            AsyncStorage.setItem(
+              'mingla_deferred_deeplink',
+              JSON.stringify({ url: path, ts: Date.now(), router: true }),
+            ).catch((e) => console.warn('[OneLink] Failed to defer entity link:', e));
+            return;
+          }
+          router.push(path as never);
+          return;
+        }
+      }
+    } catch (e) {
+      console.warn('[OneLink] dispatch failed:', e);
+    }
+  }
 
   // Fetch unread message count on app load (excluding muted users)
   useEffect(() => {

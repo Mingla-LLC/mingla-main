@@ -1,0 +1,92 @@
+/**
+ * OneLink Resolver — ORCH-1318 [appsflyer-onelink-deferred-deeplinking].
+ *
+ * The ONE pure function that converts a resolved AppsFlyer OneLink payload
+ * (`UnifiedDeepLinkData.data`) into a typed navigation destination. This is the
+ * single dispatch point (invariant I-ONELINK-SINGLE-RESOLVER): exactly ONE
+ * definition lives here and exactly ONE call site consumes it (the `onDeepLink`
+ * handler in `appsFlyerService.ts`, forwarded to the UI dispatcher in
+ * `app/index.tsx`). There is NO second inline payload→nav mapping anywhere.
+ *
+ * Payload contract (SPEC §B.1):
+ *   deep_link_value ∈ {brand, event, trip, experience, referral, internal}
+ *   deep_link_sub1  = primary slug (brandSlug for entities; referral_code for
+ *                     `referral`; a `mingla://` path for `internal`)
+ *   deep_link_sub2  = secondary slug (eventSlug/tripSlug/experienceSlug)
+ *   af_sub1         = optional referral_code carried alongside ANY entity link
+ *
+ * PURE by contract: no imports, no RN deps, never throws, never navigates,
+ * returns `null` on unknown / half-formed input — mirroring
+ * `deepLinkService.parseDeepLink`'s null-on-unknown contract so the two nav
+ * systems can never disagree (SPEC §B.2 / §1).
+ */
+
+export type OneLinkDestination =
+  | { kind: 'entity'; entity: 'brand'; brandSlug: string; referralCode?: string }
+  | {
+      kind: 'entity';
+      entity: 'event' | 'trip' | 'experience';
+      brandSlug: string;
+      entitySlug: string;
+      referralCode?: string;
+    }
+  | { kind: 'internal'; url: string } // a mingla:// path → deepLinkService
+  | { kind: 'referral'; referralCode: string }
+  | null;
+
+export function resolveOneLinkDestination(data: Record<string, any>): OneLinkDestination {
+  try {
+    if (!data || typeof data !== 'object') return null;
+
+    const str = (v: unknown): string => (typeof v === 'string' ? v.trim() : '');
+
+    const rawType = str(data.deep_link_value).toLowerCase();
+    const sub1 = str(data.deep_link_sub1);
+    const sub2 = str(data.deep_link_sub2);
+    // Any entity link may carry a referral code alongside it (referral + content
+    // in one link — SPEC §B.1 af_sub1).
+    const referralCode = str(data.af_sub1) || undefined;
+
+    // Missing type OR explicit `internal` → route the sub1 `mingla://` path
+    // through the existing deepLinkService state machine. A blank sub1 → null
+    // (never a dead tap; the caller no-ops).
+    if (rawType === '' || rawType === 'internal') {
+      return sub1 ? { kind: 'internal', url: sub1 } : null;
+    }
+
+    switch (rawType) {
+      case 'brand':
+        if (!sub1) return null;
+        return referralCode
+          ? { kind: 'entity', entity: 'brand', brandSlug: sub1, referralCode }
+          : { kind: 'entity', entity: 'brand', brandSlug: sub1 };
+
+      case 'event':
+      case 'trip':
+      case 'experience': {
+        // Never a half-formed route: both slugs are required, else `null`
+        // (SPEC §B.5.1 — never push `/e/brand/undefined`).
+        if (!sub1 || !sub2) return null;
+        const entity = rawType as 'event' | 'trip' | 'experience';
+        return referralCode
+          ? { kind: 'entity', entity, brandSlug: sub1, entitySlug: sub2, referralCode }
+          : { kind: 'entity', entity, brandSlug: sub1, entitySlug: sub2 };
+      }
+
+      case 'referral':
+        // Attribution-only capture target (SPEC §E.1(b)); credit-apply is out of
+        // scope for this build.
+        if (!sub1) return null;
+        return { kind: 'referral', referralCode: sub1 };
+
+      default:
+        // Unknown discriminator — log, never guess (SPEC §B.2).
+        console.warn('[oneLinkResolver] Unknown deep_link_value:', rawType);
+        return null;
+    }
+  } catch (err) {
+    // Pure + never throws: a malformed payload degrades to "no destination".
+    console.warn('[oneLinkResolver] Failed to resolve OneLink payload:', err);
+    return null;
+  }
+}

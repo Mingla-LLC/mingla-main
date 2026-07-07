@@ -13,6 +13,7 @@ import { PriceTierSlug, TIER_BY_SLUG, formatTierLabel } from '../constants/price
 import { colors } from '../constants/colors';
 import { mixpanelService } from '../services/mixpanelService';
 import { logAppsFlyerEvent } from '../services/appsFlyerService';
+import { buildReferralLink, type ShareEntity } from '../services/oneLinkShare';
 
 
 interface ShareModalProps {
@@ -107,6 +108,53 @@ export default function ShareModal({
 
   const personalizedMessage = generatePersonalizedMessage();
 
+  // ORCH-1318 (SPEC §E.3) — derive the shared entity from experienceData when it
+  // carries slugs. Curated/AI cards without a brand entity → undefined → a bare
+  // referral/universal link (never a broken /e/brand/undefined). Slug + type
+  // fields are optional on the loose experienceData shape, read defensively.
+  const buildShareEntity = (): ShareEntity | undefined => {
+    const brandSlug = experienceData?.brandSlug;
+    if (typeof brandSlug !== 'string' || brandSlug.trim().length === 0) return undefined;
+    const eventSlug = experienceData?.eventSlug;
+    const tripSlug = experienceData?.tripSlug;
+    const experienceSlug = experienceData?.experienceSlug;
+    const explicitType = experienceData?.entityType;
+    const type: ShareEntity['type'] =
+      explicitType === 'brand' ||
+      explicitType === 'event' ||
+      explicitType === 'trip' ||
+      explicitType === 'experience'
+        ? explicitType
+        : eventSlug
+          ? 'event'
+          : tripSlug
+            ? 'trip'
+            : experienceSlug
+              ? 'experience'
+              : 'brand';
+    const entitySlug =
+      typeof eventSlug === 'string'
+        ? eventSlug
+        : typeof tripSlug === 'string'
+          ? tripSlug
+          : typeof experienceSlug === 'string'
+            ? experienceSlug
+            : undefined;
+    return { type, brandSlug, entitySlug };
+  };
+
+  // ORCH-1318 (SPEC §E.3) — the tracked, install-surviving OneLink for this
+  // share. referralCode source is the signed-in user's code, once a user-code
+  // accessor exists (SPEC §REMAINS #6); until then it is undefined → an
+  // entity-only / attribution-via-content link (never an empty clipboard).
+  const buildTrackedLink = (channel: string): Promise<string> =>
+    buildReferralLink({
+      channel,
+      entity: buildShareEntity(),
+      referralCode:
+        typeof experienceData?.referralCode === 'string' ? experienceData.referralCode : undefined,
+    });
+
   const handleCopyMessage = async () => {
     try {
       await Clipboard.setString(personalizedMessage);
@@ -123,7 +171,12 @@ export default function ShareModal({
   const handleSocialShare = async (platform: string) => {
     setIsSharing(true);
     try {
-      const message = personalizedMessage;
+      // ORCH-1318 (SPEC §E.3) — APPEND the tracked, install-surviving OneLink to
+      // the human message so a share both reads well AND is attributable + lands
+      // the shared experience after install. buildReferralLink never blocks / never
+      // returns empty (static fallback on any SDK failure).
+      const trackedLink = await buildTrackedLink(platform);
+      const message = `${personalizedMessage}\n\n${trackedLink}`;
       mixpanelService.trackExperienceShared({ experienceTitle: title, method: platform });
       logAppsFlyerEvent('af_share', { af_content_type: platform });
       
@@ -160,7 +213,7 @@ export default function ShareModal({
         case 'instagram':
           // Instagram - use native share since direct sharing requires different approach
           await Share.share({
-            message: personalizedMessage,
+            message,
             title: experienceData.title,
           });
           break;
@@ -181,7 +234,7 @@ export default function ShareModal({
           break;
           
         default:
-          await Share.share({ message: personalizedMessage });
+          await Share.share({ message });
       }
     } catch (error) {
       console.error('Error sharing:', error);
@@ -361,8 +414,19 @@ export default function ShareModal({
                   <Text>{t('share:actions.more_options')}</Text>
                 </TrackedTouchableOpacity>
                 <TrackedTouchableOpacity logComponent="ShareModal" style={[styles.bottomButtons]}
-                  onPress={() => {
-                    Clipboard.setString(`Check out ${title} on Mingla!`);
+                  onPress={async () => {
+                    // ORCH-1318 (SPEC §E.3) — copy the tracked, install-surviving
+                    // OneLink instead of plain marketing text. buildTrackedLink
+                    // never blocks / never returns empty (static fallback on any
+                    // SDK failure), so the clipboard is never dead (SPEC §E.4.2).
+                    let link: string;
+                    try {
+                      link = await buildTrackedLink('copy_link');
+                    } catch (e) {
+                      console.error('[ShareModal] copy link build failed:', e);
+                      link = `https://go.usemingla.com`;
+                    }
+                    Clipboard.setString(link);
                     mixpanelService.trackExperienceShared({ experienceTitle: title, method: 'copy_link' });
                     logAppsFlyerEvent('af_share', { af_content_type: 'copy_link' });
                   }}

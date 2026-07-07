@@ -195,6 +195,39 @@ jobs:
       - name: Run ORCH-1321 no-android-media-permissions gate
         run: node .github/scripts/strict-grep/orch-1321-no-android-media-permissions.mjs
 
+  orch-1318-onelink-wiring-consumer:
+    name: "ORCH-1318: consumer OneLink listener flip + onDeepLink pre-initSdk + ATT-safe single startSdk + single resolver + ShareModal tracked link (I-ONELINK-SINGLE-RESOLVER / I-ONELINK-NO-TRANSMIT-BEFORE-ATT)"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Run ORCH-1318 consumer OneLink wiring gate (fails-on-revert)
+        run: node --test app-mobile/src/services/__tests__/oneLinkWiring.orch1318.test.mjs
+
+  orch-1318-onelink-wiring-business:
+    name: "ORCH-1318: business OneLink listener flip + onDeepLink pre-initSdk + go.usemingla.com domain + _layout referral capture (I-ONELINK-NO-TRANSMIT-BEFORE-ATT, business)"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Run ORCH-1318 business OneLink wiring gate (fails-on-revert)
+        run: node --test mingla-business/src/services/__tests__/businessOneLinkWiring.orch1318.test.mjs
+
+  orch-1318-aasa-claims-match-native-routes:
+    name: "ORCH-1318: consumer AASA claims /b,/t,/exp with matching Android intentFilters + no unbacked path claim (I-AASA-CLAIMS-MATCH-NATIVE-ROUTES)"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Run ORCH-1318 AASA claims-match-native-routes gate (fails-on-revert)
+        run: node --test .github/scripts/strict-grep/__tests__/i-aasa-claims-match-native-routes.test.mjs
+
   orch-1303-web-cover-video-uri:
     name: "ORCH-1303: web picked-video blob: URL reaches the uploader UNMANGLED (resolveRawClipUploadUri web branch); no file://blob: mangle; native byte-identical (I-PROPOSED-1303-WEB-COVER-VIDEO-URI-UNMANGLED)"
     runs-on: ubuntu-latest

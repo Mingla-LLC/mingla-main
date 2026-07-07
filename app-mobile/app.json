@@ -33,7 +33,8 @@
       },
       "associatedDomains": [
         "applinks:usemingla.com",
-        "applinks:business.usemingla.com"
+        "applinks:business.usemingla.com",
+        "applinks:go.usemingla.com"
       ]
     },
     "android": {
@@ -63,6 +64,16 @@
             },
             {
               "scheme": "https",
+              "host": "business.usemingla.com",
+              "pathPrefix": "/t"
+            },
+            {
+              "scheme": "https",
+              "host": "business.usemingla.com",
+              "pathPrefix": "/exp"
+            },
+            {
+              "scheme": "https",
               "host": "usemingla.com",
               "pathPrefix": "/invite"
             },
@@ -80,6 +91,20 @@
               "scheme": "https",
               "host": "usemingla.com",
               "pathPrefix": "/chat"
+            }
+          ],
+          "category": [
+            "BROWSABLE",
+            "DEFAULT"
+          ]
+        },
+        {
+          "action": "VIEW",
+          "autoVerify": true,
+          "data": [
+            {
+              "scheme": "https",
+              "host": "go.usemingla.com"
             }
           ],
           "category": [
@@ -169,7 +194,13 @@
           "smallIconAccentColor": "#EB7825"
         }
       ],
-      "react-native-appsflyer",
+      [
+        "react-native-appsflyer",
+        {
+          "shouldUseStrictMode": false,
+          "shouldUsePurchaseConnector": false
+        }
+      ],
       [
         "expo-tracking-transparency",
         {
