@@ -7,6 +7,20 @@
 
 ---
 
+## ACTIVE — ORCH-1320 (biz Account-tab crash on Sign-in-with-Apple — Reanimated↔Fabric UAF, 2026-07-07)
+
+> Registered directly ACTIVE at ORCH-1320 CLOSE (Apple's 3rd rejection, Guideline 2.1(a); build 30 device-verified PASS on TestFlight + submitted for review). Root cause (crash-log-proven — local `.ips`, `EXC_BAD_ACCESS`/`SIGSEGV` in `facebook::react::Scheduler::uiManagerDidFinishTransaction`): a `react-native-reanimated` worklet on the always-mounted BottomNav tab-bar spotlight (fires on every Account tap) raced React's Fabric mount-commit under the New Architecture — a use-after-free between the worklets runtime and the commit → the app terminated when tapping Account. NOT a JS throw (below the root ErrorBoundary), NOT memory/watchdog (red herring), NOT expo-blur (ruled out by live probe). Fix A (always): de-worklet BottomNav onto RN-core `Animated` + rAF-defer so no worklet runs on the tab-tap→commit path. Fix B (durable, boot-verified on build 30): reanimated 4.1.1→4.3.1 + worklets 0.5.1→0.8.3 (upstream registry-race UAF fix, app-wide). New Arch stays (Reanimated 4 requires it). Business-only (`mingla-business/`); consumer `app-mobile/` shares the stack → ORCH-1321 (registered, not dispatched). Cross-ref `investigations/INVESTIGATION_ORCH-1320_ACCOUNT_TAB_APPLE_CRASH.md` → `specs/SPEC_ORCH-1320_ACCOUNT_TAB_APPLE_CRASH.md` → `reports/IMPLEMENTATION_ORCH-1320_ACCOUNT_TAB_APPLE_CRASH.md` → `reports/APPLE_REPLY_ORCH-1320.md`. See COMMS-0085.
+
+### I-1320-NO-WORKLET-ON-TAB-COMMIT-PATH (ACTIVE)
+- **Rule:** The always-mounted business BottomNav tab-bar spotlight animation MUST NOT use any `react-native-reanimated` worklet API (it drives the crash-path Fabric mount-commit); it runs on RN-core `Animated` (JS driver).
+- **Enforcement:** append-only jest guard `mingla-business/src/components/ui/__tests__/BottomNav.reanimated-free.test.ts` (T-1) — asserts BottomNav imports no `react-native-reanimated` and uses no worklet API. Fails-on-revert proven at `d5098d04f`.
+- **Established:** ACTIVE 2026-07-07 at ORCH-1320 CLOSE.
+
+### I-1320-REANIMATED-WORKLETS-VERSION-FLOOR (ACTIVE)
+- **Rule:** In `mingla-business`, `react-native-reanimated` MUST stay ≥ 4.3.1 and `react-native-worklets` ≥ 0.8.0 (the versions carrying the upstream worklets-registry-race UAF fix); a downgrade reintroduces the crash class app-wide.
+- **Enforcement:** append-only jest guard `mingla-business/src/components/ui/__tests__/orch1320-reanimated-version-floor.test.ts` (T-7) — asserts the package.json floors. Fails-on-revert proven (downgrade → fail).
+- **Established:** ACTIVE 2026-07-07 at ORCH-1320 CLOSE.
+
 ## ACTIVE — ORCH-1315 + ORCH-1314 (preferences-sheet paywall presents over the sheet + gate reachable, 2026-07-06)
 
 > Registered directly ACTIVE at the joint ORCH-1315 + ORCH-1314 CLOSE (SHIPPED; Seth device-verified PASS on a fresh iOS dev build). Root cause (runtime-proven class): `CustomPaywallScreen` was a SECOND RN `<Modal>` that iOS silently refused to present over the preferences sheet's own `wrapInRNModal` Modal → the Mingla+ paywall never appeared for the custom-location (GPS) and curated toggles. Fix: an additive, self-enforcing `BaseBottomSheet.overlay` slot renders the paywall as a viewport-fixed in-window overlay. Cross-ref `investigations/INVESTIGATION_ORCH-1315_CUSTOM_LOCATION_PAYWALL.md` + `_ORCH-1314_*` → `specs/SPEC_ORCH-1315_*` + `_ORCH-1314_*` → `reports/IMPLEMENTATION_ORCH-1315_1314_PAYWALL_PRESENTINLINE.md` → `reports/TEST_ORCH-1315_1314_PAYWALL_PRESENTINLINE.md`. Consumer-only (`app-mobile/`). Discovery follow-ons registered NOT dispatched: ORCH-1316 (systemic sheet-nested modal-over-modal in BillingSheet/others) + ORCH-1317 (dev-build tooling).
