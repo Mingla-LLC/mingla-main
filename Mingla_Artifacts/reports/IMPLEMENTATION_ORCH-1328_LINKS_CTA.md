@@ -55,7 +55,7 @@ Reverting the CTA to the original `<Link href={activeTab.cta.href}>` soft-nav (r
 - Happy-path `links-cta-device-aware.test.ts` → FAILS (loses `<button type="button">`, `window.open(`, `window.location.assign(`, the `tab.id === 'business'` branch).
 - Strict-grep guard → FIRES (`next/link` import + `<Link` element banned; `<button`/`window.open(`/`window.location.assign(`/`platform ===`/all-four-consts required).
 
-**fails-on-revert verified at `<HASH>`** (see final chat payload for the concrete hash).
+**fails-on-revert verified at `22c9ff893`** — restored the pre-fix `<Link>` soft-nav component (`git show HEAD~1:…links-experience.tsx`): the strict-grep guard fired (exit 1, 10 failures — `next/link`/`<Link` banned, all four consts + `window.open(`/`window.location.assign(`/`platform ===`/detection missing) and the happy-path test failed (5/7, exit 1). Restored the fix; both green again; working tree clean.
 
 ---
 
