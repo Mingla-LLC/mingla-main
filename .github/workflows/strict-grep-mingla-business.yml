@@ -2476,12 +2476,25 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "20"
+      # ORCH-1325 — PIN typescript to the repo's version (~5.9.2). The dist-tag
+      # `latest` moved to TypeScript 7.0 (native rewrite), which dropped the
+      # classic `ts.ModuleKind`/`transpileModule` JS API these gates transpile
+      # with → an unpinned install crashed the gate repo-wide. Keep in lockstep
+      # with app-mobile/package.json. Guarded by orch-1325-ci-typescript-pinned.
       - name: Install transpile dep
-        run: npm install --no-save typescript
+        run: npm install --no-save typescript@~5.9.2
       - name: Run ORCH-1058 banner allowlist parity gate
         run: node app-mobile/scripts/ci/orch-1058-banner-allowlist-parity.mjs
       - name: Run ORCH-1058B intrinsic system-banner gate (incl. T-04 cross-build degrade)
         run: node app-mobile/scripts/ci/orch-1058b-system-banner-check.mjs
+
+  orch-1325-ci-typescript-pinned:
+    name: "ORCH-1325: CI typescript install is version-pinned (no `latest` = TS7 breakage)"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run ORCH-1325 CI typescript-pinned gate
+        run: node .github/scripts/strict-grep/orch-1325-ci-typescript-pinned.mjs
 
   meta-orch-0954-comms-ledger-stanza:
     name: "META-ORCH-0954: comms ledger stanza + 2-section output"

@@ -7,6 +7,18 @@
 
 ---
 
+## ACTIVE — ORCH-1325 (CI TypeScript pin — npm `latest` moved to TS 7.0 and broke the transpile gates, 2026-07-09)
+
+> Registered ACTIVE at ORCH-1325 CLOSE. Root cause (reproduced with TypeScript 7.0.2): the `orch-1058-collab-system-banner` CI job installed the transpile dep with an UNPINNED `npm install --no-save typescript`. On 2026-07-09 the npm dist-tag `latest` advanced to TypeScript 7.0 (the native/tsgo rewrite), whose package dropped the classic `ts.ModuleKind` / `ts.transpileModule` JS API that `app-mobile/scripts/ci/orch-1058-*.mjs` transpile with → the gate crashed (`TypeError: Cannot read properties of undefined (reading 'CommonJS')`) repo-wide, on every PR, unrelated to any diff. Fix: pin the install to `typescript@~5.9.2` (the version `app-mobile`/`mingla-business` already pin) + a guard that forbids any unpinned `typescript` install re-entering CI. Discovered while merging ORCH-1324 (business Get-the-app CTA) — its PR #806 was the first to surface the red. See COMMS-0087.
+
+### I-PROPOSED-1325-CI-TYPESCRIPT-PINNED (ACTIVE)
+- **Rule:** every `npm install|i|add` of the `typescript` package under `.github/workflows/**` MUST pin a version (`typescript@<range>`, kept in lockstep with `app-mobile/package.json` = `~5.9.2`). A bare, unpinned `typescript` install token is forbidden (npm `latest` is TypeScript 7.0, whose package lacks the classic `ts.ModuleKind`/`transpileModule` API the transpile gates depend on). Scoped/other packages that merely contain the substring (`@typescript-eslint/*`, `typescript-eslint`) are exempt (exact-token match).
+- **Enforcement:** strict-grep gate `.github/scripts/strict-grep/orch-1325-ci-typescript-pinned.mjs` (scans all `.github/workflows/*.yml`; `--self-test` 10/10; job `orch-1325-ci-typescript-pinned` in `strict-grep-mingla-business.yml`).
+- **Fails-on-revert:** reverting the pin (`typescript@~5.9.2` → `typescript`) makes the gate fire on that line (exit 1).
+- **Established:** ACTIVE 2026-07-09 at ORCH-1325 CLOSE.
+
+---
+
 ## ACTIVE — ORCH-1320 (biz Account-tab crash on Sign-in-with-Apple — Reanimated↔Fabric UAF, 2026-07-07)
 
 > Registered directly ACTIVE at ORCH-1320 CLOSE (Apple's 3rd rejection, Guideline 2.1(a); build 30 device-verified PASS on TestFlight + submitted for review). Root cause (crash-log-proven — local `.ips`, `EXC_BAD_ACCESS`/`SIGSEGV` in `facebook::react::Scheduler::uiManagerDidFinishTransaction`): a `react-native-reanimated` worklet on the always-mounted BottomNav tab-bar spotlight (fires on every Account tap) raced React's Fabric mount-commit under the New Architecture — a use-after-free between the worklets runtime and the commit → the app terminated when tapping Account. NOT a JS throw (below the root ErrorBoundary), NOT memory/watchdog (red herring), NOT expo-blur (ruled out by live probe). Fix A (always): de-worklet BottomNav onto RN-core `Animated` + rAF-defer so no worklet runs on the tab-tap→commit path. Fix B (durable, boot-verified on build 30): reanimated 4.1.1→4.3.1 + worklets 0.5.1→0.8.3 (upstream registry-race UAF fix, app-wide). New Arch stays (Reanimated 4 requires it). Business-only (`mingla-business/`); consumer `app-mobile/` shares the stack → ORCH-1321 (registered, not dispatched). Cross-ref `investigations/INVESTIGATION_ORCH-1320_ACCOUNT_TAB_APPLE_CRASH.md` → `specs/SPEC_ORCH-1320_ACCOUNT_TAB_APPLE_CRASH.md` → `reports/IMPLEMENTATION_ORCH-1320_ACCOUNT_TAB_APPLE_CRASH.md` → `reports/APPLE_REPLY_ORCH-1320.md`. See COMMS-0085.
