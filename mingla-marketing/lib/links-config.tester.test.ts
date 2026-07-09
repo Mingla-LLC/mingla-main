@@ -19,6 +19,7 @@ import {
   LINKS_SOCIALS,
   LINKS_DOWNLOAD_PATH,
   LINKS_BUSINESS_PATH,
+  LINKS_BUSINESS_DOWNLOAD_PATH,
   socialHref,
 } from './links-config'
 import { BUSINESS_PATH } from './subdomain'
@@ -67,14 +68,20 @@ const cases: ReadonlyArray<[string, () => void]> = [
     },
   ],
 
-  // ── Business CTA → usemingla.com/business, derived from the shared constant ──
+  // ── Business CTA → the device-smart /business/download route (ORCH-1326) ─────
+  // The business app is live on the App Store; the CTA now routes per device
+  // (iPhone → business App Store, else → business.usemingla.com) via the new
+  // /business/download server route — NOT the bare /business marketing page.
   [
-    'Business CTA targets the shared /business path (usemingla.com/business)',
+    'Business CTA targets the device-smart /business/download route (ORCH-1326)',
     () => {
       const biz = LINKS_TABS.find((t) => t.id === 'business')!
-      assert(biz.cta.href === LINKS_BUSINESS_PATH, `business href = ${biz.cta.href}`)
+      assert(biz.cta.href === LINKS_BUSINESS_DOWNLOAD_PATH, `business href = ${biz.cta.href}`)
+      assert(biz.cta.href === '/business/download', `business href not /business/download: ${biz.cta.href}`)
+      assert(biz.cta.href !== '/business', 'business CTA must NOT be the bare /business page (app is live)')
+      assert(biz.cta.destination === 'business_download', `business destination = ${biz.cta.destination}`)
+      // The /business surface path constant still derives from the shared source.
       assert(LINKS_BUSINESS_PATH === BUSINESS_PATH, 'links business path drifted from subdomain BUSINESS_PATH')
-      assert(biz.cta.href === '/business', `business href not /business: ${biz.cta.href}`)
     },
   ],
 
