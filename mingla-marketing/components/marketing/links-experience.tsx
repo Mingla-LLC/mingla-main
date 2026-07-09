@@ -23,12 +23,18 @@
 // tab switch + every CTA / store-badge / social click.
 
 import { useCallback, useId, useRef, useState } from 'react'
-import Link from 'next/link'
 import { motion } from 'framer-motion'
 import { Instagram, Linkedin, Facebook, Youtube } from 'lucide-react'
 import { captureMarketing } from '@/components/marketing/posthog-provider'
 import { useMinglaReducedMotion } from '@/lib/reduced-motion'
 import { cn } from '@/lib/cn'
+import { detectClientPlatform } from '@/lib/device-platform'
+import {
+  APP_STORE_URL,
+  PLAY_STORE_URL,
+  BUSINESS_APP_STORE_URL,
+  BUSINESS_WEB_URL,
+} from '@/lib/store-links'
 import {
   LINKS_SOCIALS,
   LINKS_TABS,
@@ -39,9 +45,11 @@ import {
 
 const EASE = [0.16, 1, 0.3, 1] as const
 
-// The CTA is an <a>/<Link> (navigation), so it can't use the <Button> element —
-// it mirrors the Button token recipe (rounded-full font-display, warm / glass
-// variant, lg size h-14 = 56px tap target, full width).
+// ORCH-1328 — the CTA is now a real <button> that performs a device-aware action
+// on the tap (open the store / web app directly, so /links stays mounted). It
+// mirrors the Button token recipe (rounded-full font-display, warm / glass
+// variant, lg size h-14 = 56px tap target, full width) rather than importing the
+// <Button> element, to preserve the exact /links visual (focus-ring, transitions).
 const CTA_BASE =
   'inline-flex h-14 w-full items-center justify-center gap-2 rounded-full px-7 text-base font-display font-medium tracking-[-0.005em] transition-all duration-200 ease-out-quart cursor-pointer focus-ring'
 const CTA_INTENT: Record<LinksTab['cta']['intent'], string> = {
@@ -148,12 +156,62 @@ export function LinksExperience({
     [selectTab],
   )
 
-  const onCtaClick = useCallback((tab: LinksTab) => {
-    captureMarketing('links_page_cta_clicked', {
-      tab: tab.id,
-      destination: tab.cta.destination,
-    })
+  // ORCH-1328 — open the destination DIRECTLY on the tap gesture so /links stays
+  // mounted (the CTA no longer soft-navigates into the /download or /business/download
+  // route, whose external redirect stranded the tab on a blank / footer-only shell —
+  // INVESTIGATION_ORCH-1328). Popup-blocked (window.open → null) → same-tab
+  // navigation fallback (no silent failure).
+  const openExternal = useCallback((dest: string) => {
+    const win = window.open(dest, '_blank', 'noopener,noreferrer')
+    if (!win) window.location.assign(dest)
   }, [])
+
+  // §7 — consent-gated tap analytics (kept), enriched with the resolved platform +
+  // store. Device map reuses the ORCH-1319/1324 store-links SSOT.
+  const onCtaClick = useCallback(
+    (tab: LinksTab) => {
+      const platform = detectClientPlatform()
+
+      // Business tab (ORCH-1324): iOS → the live business App Store, else → the
+      // business web app (business.usemingla.com owner get-started).
+      if (tab.id === 'business') {
+        const dest = platform === 'ios' ? BUSINESS_APP_STORE_URL : BUSINESS_WEB_URL
+        captureMarketing('links_page_cta_clicked', {
+          tab: tab.id,
+          destination: tab.cta.destination,
+          platform,
+          store: platform === 'ios' ? 'app_store' : 'business_web',
+        })
+        openExternal(dest)
+        return
+      }
+
+      // Explorer tab (ORCH-1319): iOS → App Store, Android → Play.
+      if (platform === 'ios' || platform === 'android') {
+        const store = platform === 'ios' ? APP_STORE_URL : PLAY_STORE_URL
+        captureMarketing('links_page_cta_clicked', {
+          tab: tab.id,
+          destination: tab.cta.destination,
+          platform,
+          store: platform === 'ios' ? 'app_store' : 'play',
+        })
+        openExternal(store)
+        return
+      }
+
+      // Explorer desktop / other → the device-smart /download QR page (tab.cta.href
+      // = '/download', UNCHANGED route). Opened in a new tab so /links stays; the
+      // popup-blocked fallback navigates same-tab (parity with today's desktop path).
+      captureMarketing('links_page_cta_clicked', {
+        tab: tab.id,
+        destination: tab.cta.destination,
+        platform: 'other',
+        store: 'qr_page',
+      })
+      openExternal(tab.cta.href)
+    },
+    [openExternal],
+  )
 
   const onSocialClick = useCallback(
     (network: string) => {
@@ -288,17 +346,20 @@ export function LinksExperience({
               {activeTab.body}
             </p>
 
-            {/* §4 — Explorer is a single smart CTA. `/download` already routes per
-                device (iPhone → App Store, Android → Play, desktop → QR) from the
-                store-links single source of truth, so no store badges are needed. */}
+            {/* §4 — a single smart CTA. ORCH-1328: it is a <button> that opens the
+                right destination DIRECTLY on the tap (from the store-links single
+                source of truth) so /links stays mounted — Explorer iPhone → App
+                Store, Android → Play, desktop/other → the `/download` QR page;
+                Business iPhone → the business App Store, else → the business web app.
+                No store badges are needed. */}
             <div className="mt-5">
-              <Link
-                href={activeTab.cta.href}
+              <button
+                type="button"
                 onClick={() => onCtaClick(activeTab)}
                 className={cn(CTA_BASE, CTA_INTENT[activeTab.cta.intent])}
               >
                 {activeTab.cta.label}
-              </Link>
+              </button>
             </div>
           </motion.div>
         </motion.div>

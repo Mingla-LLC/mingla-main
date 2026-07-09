@@ -172,6 +172,7 @@ on:
 #   - I-PROPOSED-1324-BUSINESS-GETAPP-DEVICE-AWARE (orch-1324-business-getapp-device-aware.mjs) — the business (organiser) marketing CTAs — glass-nav.tsx (organiser branch) AND components/sections/organiser-home/hero.tsx (both comment-stripped) — resolve device-aware: each references BOTH BUSINESS_APP_STORE_URL and BUSINESS_WEB_URL (from lib/store-links, not hardcoded), calls detectClientPlatform(), branches on `platform ===` (adversarial: BUSINESS_WEB_URL present so non-iOS is not stranded / everyone→App Store), fires get_the_app_clicked with a `surface: 'organiser'` prop, and carries the window.location.assign() popup fallback; BANS BetaAccessModal/beta-access-modal/beta-access-submit/Get Beta Access/Free during beta/type="email"/testflight (the retired beta funnel); self-tested + fails-on-revert. SUPERSEDES the retired orch-1216-explorer-only-cta + orch-1219-form-no-autoadvance-multiselect (ORCH-1324 — DRAFT until CLOSE)
 #   - I-PROPOSED-1327-LINKS-TAB-PERSISTENT-PILL (orch-1327-links-tab-switcher-persistent-pill.mjs) — the usemingla.com/links Explorer/Business segmented switcher (components/marketing/links-experience.tsx, comment-stripped) renders its active-tab highlight as ONE persistent, absolutely-positioned bg-warm pill that animates its horizontal `x` between the two equal-width slots (initial={false} + animate={{ x: … }}), with NO `layoutId` and NO motion element conditionally mounted inside a `selected ?` ternary — killing the framer-motion cross-instance layout-projection ARC (the swing); reduced motion → a { duration: 0 } transition tied to `reduced`; the WAI-ARIA roving-tabindex tablist (role="tablist"/"tab", aria-selected, tabIndex={selected ? 0 : -1}, ArrowRight/ArrowLeft via onTabKeyDown) and the text-white/text-white/60 color states survive; self-tested 8/8 + fails-on-revert (ORCH-1327 — DRAFT until CLOSE)
 #   - I-PROPOSED-1326-LINKS-BUSINESS-DOWNLOAD-DEVICE-AWARE (orch-1326-links-business-download-route.mjs) — the /links Business tab CTA targets the device-smart server route /business/download (LINKS_BUSINESS_DOWNLOAD_PATH, destination 'business_download') NOT the bare /business page; app/business/download/page.tsx (comment-stripped) reads the UA via headers()+resolvePlatformFromUa, references BOTH BUSINESS_APP_STORE_URL and BUSINESS_WEB_URL (from lib/store-links, never hardcoded), performs a redirect( and branches on `platform ===` (iOS→BUSINESS_APP_STORE_URL, else→BUSINESS_WEB_URL); adversarial: FAIL if BUSINESS_WEB_URL absent (non-iOS stranded) or no `platform ===`; BANS apps.apple.com/business.usemingla.com literals, navigator/window (SSR-safe), DownloadQr/AppStoreBadges/<QRCode (NO QR — the difference vs /download), <form/type="email", testflight, PLAY_STORE_URL (business Android→web); lib/links-config.ts references LINKS_BUSINESS_DOWNLOAD_PATH + '/business/download' + destination 'business_download'; self-tested 11/11 + fails-on-revert (ORCH-1326 — DRAFT until CLOSE)
+#   - I-PROPOSED-1328-LINKS-CTA-OPENS-STORE-CLIENT-SIDE (orch-1328-links-cta-opens-store-clientside.mjs) — the usemingla.com/links per-tab CTA (components/marketing/links-experience.tsx, comment-stripped) opens the store/web app DIRECTLY on the tap (client-side, device-aware, store-links SSOT) so /links stays mounted, and NEVER soft-navigates into the /download|/business/download external-redirect route (which stranded the tab on a blank Explorer / footer-only Business shell — INVESTIGATION_ORCH-1328): REQUIRES imports detectClientPlatform + references ALL FOUR store consts (APP_STORE_URL, PLAY_STORE_URL, BUSINESS_APP_STORE_URL, BUSINESS_WEB_URL) + a real `<button` control bound to onClick={() => onCtaClick( + `window.open(` AND the `window.location.assign(` popup-block fallback (no silent failure) + fires links_page_cta_clicked + branches on `platform ===` (device-driven, not a single hardcode); BANS a next/link import AND the `<Link` element (no soft-nav), `<a href="/download"`/`<a href="/business/download"` anchors, and hardcoded apps.apple.com/play.google.com store literals; self-tested 10/10 + fails-on-revert (ORCH-1328 — DRAFT until CLOSE)
 #
 # Future gates to register (proposed but not yet implemented):
 #   - I-32 rank parity (Cycle 13a proposal)
@@ -3352,6 +3353,19 @@ jobs:
         run: node .github/scripts/strict-grep/orch-1324-business-getapp-device-aware.mjs --self-test
       - name: Run ORCH-1324 business-getapp-device-aware gate
         run: node .github/scripts/strict-grep/orch-1324-business-getapp-device-aware.mjs
+
+  orch-1328-links-cta-opens-store-clientside:
+    name: "ORCH-1328: /links CTA opens the store client-side (device-aware window.open + assign fallback, store-links consts) and NEVER soft-navigates into the /download|/business/download external-redirect route (I-PROPOSED-1328-LINKS-CTA-OPENS-STORE-CLIENT-SIDE)"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Self-test the ORCH-1328 links-cta-opens-store gate
+        run: node .github/scripts/strict-grep/orch-1328-links-cta-opens-store-clientside.mjs --self-test
+      - name: Run ORCH-1328 links-cta-opens-store gate
+        run: node .github/scripts/strict-grep/orch-1328-links-cta-opens-store-clientside.mjs
 
   orch-1327-links-tab-switcher-persistent-pill:
     name: "ORCH-1327: /links tab switcher uses ONE persistent x-animated pill (no layoutId mount/unmount swing), reduced-motion + roving-tabindex a11y preserved (I-PROPOSED-1327-LINKS-TAB-PERSISTENT-PILL)"
