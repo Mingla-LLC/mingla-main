@@ -169,6 +169,7 @@ on:
 #   - I-1319 QR SEAM (orch-1319-qr-encodes-download-url.mjs) [G-3] — download-qr.tsx binds <QRCode value={DOWNLOAD_URL}> from lib/site (NOT a literal store URL, so one QR serves both platforms); G-3b: the wrapper carries role="img"+aria-label and bgColor="#FFFFFF" (contrast); self-tested 5/5 + fails-on-revert (ORCH-1319 — DRAFT until CLOSE)
 #   - I-1319-NO-TESTFLIGHT (orch-1319-no-testflight-anywhere.mjs) [G-4] — repo scan: ZERO `testflight.apple.com` tokens (case-insensitive, comments included — NOT comment-stripped) under mingla-marketing/ + supabase/functions/; the single hard proof the beta link is gone forever; self-tested 4/4 + fails-on-revert (ORCH-1319 — DRAFT until CLOSE)
 #   - I-PROPOSED-1321-NO-ANDROID-MEDIA-PERMISSIONS (orch-1321-no-android-media-permissions.mjs) — Google Play rejected the BUSINESS app under the Photo & Video Permissions policy; mingla-business/app.json expo.android.permissions must NOT list READ_MEDIA_IMAGES / READ_MEDIA_VIDEO / READ_EXTERNAL_STORAGE (the app only PICKS files → must use the Android Photo Picker, which needs no permission), and expo.android.blockedPermissions must force-strip the full set (READ_MEDIA_IMAGES + READ_MEDIA_VIDEO + READ_EXTERNAL_STORAGE + WRITE_EXTERNAL_STORAGE) so no library-merged residue survives in the AAB; re-adding any media/storage permission or dropping any blocked entry fails CI; self-tested 5/5 + fails-on-revert (ORCH-1321 — DRAFT until CLOSE)
+#   - I-PROPOSED-1324-BUSINESS-GETAPP-DEVICE-AWARE (orch-1324-business-getapp-device-aware.mjs) — the business (organiser) marketing CTAs — glass-nav.tsx (organiser branch) AND components/sections/organiser-home/hero.tsx (both comment-stripped) — resolve device-aware: each references BOTH BUSINESS_APP_STORE_URL and BUSINESS_WEB_URL (from lib/store-links, not hardcoded), calls detectClientPlatform(), branches on `platform ===` (adversarial: BUSINESS_WEB_URL present so non-iOS is not stranded / everyone→App Store), fires get_the_app_clicked with a `surface: 'organiser'` prop, and carries the window.location.assign() popup fallback; BANS BetaAccessModal/beta-access-modal/beta-access-submit/Get Beta Access/Free during beta/type="email"/testflight (the retired beta funnel); self-tested + fails-on-revert. SUPERSEDES the retired orch-1216-explorer-only-cta + orch-1219-form-no-autoadvance-multiselect (ORCH-1324 — DRAFT until CLOSE)
 #
 # Future gates to register (proposed but not yet implemented):
 #   - I-32 rank parity (Cycle 13a proposal)
@@ -3330,34 +3331,25 @@ jobs:
       - name: Run ORCH-1216 no-service-key-client gate
         run: node .github/scripts/strict-grep/i-proposed-1216-no-service-key-client.mjs
 
-  orch-1216-explorer-only-cta:
-    name: "ORCH-1216 (AMENDED ORCH-1319): BetaAccessModal organiser-only + no cross-import of the deleted explorer modal (I-PROPOSED-1216-EXPLORER-ONLY-CTA)"
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "20"
-      - name: Self-test the ORCH-1216 explorer-only-cta gate (organiser-only)
-        run: node .github/scripts/strict-grep/i-proposed-1216-explorer-only-cta.mjs --self-test
-      - name: Run ORCH-1216 explorer-only-cta gate (organiser-only)
-        run: node .github/scripts/strict-grep/i-proposed-1216-explorer-only-cta.mjs
-
+  # ORCH-1324 RETIRED: orch-1216-explorer-only-cta + orch-1219-form-no-autoadvance-
+  # multiselect — both scanned the now-deleted business BetaAccessModal. The business
+  # CTA is now a device-aware "Get the app" action (see orch-1324-business-getapp-
+  # device-aware). Obsolete.
   # ORCH-1319 RETIRED: orch-1216-success-mount-gated + orch-1219-always-email-
   # download-link — both scanned the now-deleted explorer modal / edge fn. Obsolete.
 
-  orch-1219-form-no-autoadvance-multiselect:
-    name: "ORCH-1219 (AMENDED ORCH-1319): organiser BetaAccessModal is multi-select + no auto-advance (I-PROPOSED-1219-FORM-NO-AUTOADVANCE-MULTISELECT)"
+  orch-1324-business-getapp-device-aware:
+    name: "ORCH-1324: business nav+hero CTAs are device-aware Get-the-app (iOS→business App Store, else→business web) with no beta funnel/QR (I-PROPOSED-1324-BUSINESS-GETAPP-DEVICE-AWARE)"
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: "20"
-      - name: Self-test the ORCH-1219 form-no-autoadvance-multiselect gate (organiser-only)
-        run: node .github/scripts/strict-grep/i-proposed-1219-form-no-autoadvance-multiselect.mjs --self-test
-      - name: Run ORCH-1219 form-no-autoadvance-multiselect gate (organiser-only)
-        run: node .github/scripts/strict-grep/i-proposed-1219-form-no-autoadvance-multiselect.mjs
+      - name: Self-test the ORCH-1324 business-getapp-device-aware gate
+        run: node .github/scripts/strict-grep/orch-1324-business-getapp-device-aware.mjs --self-test
+      - name: Run ORCH-1324 business-getapp-device-aware gate
+        run: node .github/scripts/strict-grep/orch-1324-business-getapp-device-aware.mjs
 
   orch-1319-getapp-cta-direct-store:
     name: "ORCH-1319 G-1: explorer nav CTA links to the live stores by detected platform, fires get_the_app_clicked, no lead form/TestFlight (I-1319-GETAPP-CTA-LINKS-LIVE-STORES-NOT-TESTFLIGHT)"

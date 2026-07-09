@@ -1,27 +1,46 @@
 'use client'
-import { useState } from 'react'
 import { motion } from 'framer-motion'
 import { ArrowRight } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { BetaAccessModal } from '@/components/marketing/beta-access-modal'
 import { HeroBookingWall } from '@/components/sections/organiser-home/hero-booking-wall'
 import { useMinglaReducedMotion } from '@/lib/reduced-motion'
+import { detectClientPlatform } from '@/lib/device-platform'
+import { BUSINESS_APP_STORE_URL, BUSINESS_WEB_URL } from '@/lib/store-links'
+import { captureMarketing } from '@/components/marketing/posthog-provider'
 
 // ORCH-1010 — business hero. A full-bleed 3D "booking wall" (vibe-themed booking
 // moments across restaurants, cafés, events, clubs, tables) runs as the section
 // background behind a dark overlay; the headline sits on top in high contrast.
 // Shows the DEMAND Mingla creates. Illustrative content, no stock art.
 //
-// ORCH-1045 — the hero CTA is now "Get Beta Access" (opens the 3-step lead
-// modal). The prior demo-clip launch tile + its modal wiring were removed
-// entirely (I-1045-HERO-NO-VIDEO); the shared ui/video-modal component itself is
-// left in the repo for reuse elsewhere.
+// ORCH-1324 — the hero CTA is now a device-aware "Get the app" action (iOS → the
+// live business App Store, Android/desktop/other → the business web app),
+// replacing the retired business beta lead modal. The hero stays video-free
+// (I-1045-HERO-NO-VIDEO): no demo-clip tile / video modal is added.
 
 const EASE = [0.16, 1, 0.3, 1] as const
 
 export function OrganiserHero() {
   const reduced = useMinglaReducedMotion()
-  const [betaOpen, setBetaOpen] = useState(false)
+
+  // ORCH-1324 — the business "Get the app" CTA is a device-aware DIRECT action:
+  // iOS → the live business App Store, Android/desktop/other → the business web
+  // app (business.usemingla.com root = owner get-started). No beta funnel. Runs
+  // only on a real browser click (detectClientPlatform is SSR-safe → 'other'
+  // when navigator is absent).
+  const handleGetTheBusinessApp = (): void => {
+    const platform = detectClientPlatform()
+    const dest = platform === 'ios' ? BUSINESS_APP_STORE_URL : BUSINESS_WEB_URL
+    captureMarketing('get_the_app_clicked', {
+      platform,
+      store: platform === 'ios' ? 'app_store' : 'business_web',
+      surface: 'organiser',
+      location: 'hero',
+    })
+    // Popup-blocked (window.open → null) → same-tab navigation fallback.
+    const win = window.open(dest, '_blank', 'noopener,noreferrer')
+    if (!win) window.location.assign(dest)
+  }
 
   return (
     <>
@@ -82,23 +101,17 @@ export function OrganiserHero() {
               transition={{ duration: 0.6, delay: reduced ? 0 : 0.5, ease: EASE }}
               className="mt-10"
             >
-              <Button variant="primary" size="lg" onClick={() => setBetaOpen(true)}>
-                Get Beta Access
+              <Button variant="primary" size="lg" onClick={handleGetTheBusinessApp}>
+                Get the app
                 <ArrowRight className="h-4 w-4" aria-hidden="true" />
               </Button>
               <p className="mt-4 text-sm text-white/70">
-                Free during beta. Two minutes to join.
+                On iPhone now — or get started on the web.
               </p>
             </motion.div>
           </div>
         </div>
       </section>
-
-      <BetaAccessModal
-        open={betaOpen}
-        onClose={() => setBetaOpen(false)}
-        source="organiser_marketing_hero"
-      />
     </>
   )
 }

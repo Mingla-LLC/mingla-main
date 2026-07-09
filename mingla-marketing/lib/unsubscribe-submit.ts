@@ -3,7 +3,7 @@
 // Thin, anon-safe POST to the public `self-serve-unsubscribe` edge function.
 // The marketing app has NO Supabase client (no @supabase/supabase-js dependency),
 // so this uses a raw `fetch` with the public anon key in the Authorization +
-// apikey headers — mirroring lib/beta-access-submit.ts exactly. The anon key is
+// apikey headers — mirroring the marketing lead-submit transport pattern. The anon key is
 // public by design: RLS denies anon writes and the edge fn writes via the service
 // role. The edge fn re-validates everything; this transport only shapes the call.
 

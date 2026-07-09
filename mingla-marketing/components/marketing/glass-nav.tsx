@@ -4,14 +4,20 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { SurfaceToggle } from '@/components/marketing/surface-toggle'
-import { BetaAccessModal } from '@/components/marketing/beta-access-modal'
 import { AppQrPanel } from '@/components/marketing/app-qr-panel'
 import { cn } from '@/lib/cn'
 import { captureMarketing } from '@/components/marketing/posthog-provider'
 // ORCH-1319 — the explorer "Get the app" CTA is now a device-aware DIRECT action:
 // iOS → App Store, Android → Play, desktop/other → the QR panel. No lead form.
+// ORCH-1324 — the organiser "Get the app" CTA is likewise device-aware:
+// iOS → the live business App Store, Android/desktop/other → the business web app.
 import { detectClientPlatform } from '@/lib/device-platform'
-import { APP_STORE_URL, PLAY_STORE_URL } from '@/lib/store-links'
+import {
+  APP_STORE_URL,
+  PLAY_STORE_URL,
+  BUSINESS_APP_STORE_URL,
+  BUSINESS_WEB_URL,
+} from '@/lib/store-links'
 
 export function GlassNav() {
   const pathname = usePathname()
@@ -33,8 +39,6 @@ export function GlassNav() {
     return () => window.removeEventListener('scroll', onScroll)
   }, [])
 
-  // ORCH-1045 — organiser-only "Get Beta Access" CTA opens the 3-step lead modal.
-  const [betaOpen, setBetaOpen] = useState(false)
   // ORCH-1319 — explorer-only "Get the app" CTA. Phones go straight to their
   // store; desktop/other opens this QR panel (no more lead form / beta gate).
   const [qrOpen, setQrOpen] = useState(false)
@@ -62,6 +66,25 @@ export function GlassNav() {
       location: 'nav',
     })
     setQrOpen(true)
+  }
+
+  // ORCH-1324 — the business "Get the app" CTA is a device-aware DIRECT action:
+  // iOS → the live business App Store, Android/desktop/other → the business web
+  // app (business.usemingla.com root = owner get-started). No QR panel, no beta
+  // funnel. Runs only on a real browser click (SSR-safe: detectClientPlatform
+  // returns 'other' when navigator is absent).
+  const handleGetTheBusinessApp = (): void => {
+    const platform = detectClientPlatform()
+    const dest = platform === 'ios' ? BUSINESS_APP_STORE_URL : BUSINESS_WEB_URL
+    captureMarketing('get_the_app_clicked', {
+      platform,
+      store: platform === 'ios' ? 'app_store' : 'business_web',
+      surface: 'organiser',
+      location: 'nav',
+    })
+    // Popup-blocked (window.open → null) → same-tab navigation fallback.
+    const win = window.open(dest, '_blank', 'noopener,noreferrer')
+    if (!win) window.location.assign(dest)
   }
 
   return (
@@ -119,24 +142,17 @@ export function GlassNav() {
           </div>
 
           {/* CTA — branches by surface.
-              organiser: "Get Beta Access" opens the 3-step lead modal (ORCH-1045).
+              organiser: "Get the app" is a device-aware direct action (ORCH-1324):
+                iOS → the live business App Store, Android/desktop/other → the
+                business web app. It NAVIGATES (no dialog) so no aria-haspopup.
               explorer: "Get the app" is a device-aware direct store action (ORCH-1319). */}
           {surface === 'organiser' ? (
             <Button
               variant="glass"
               size="sm"
-              onClick={() => {
-                // META-ORCH-1187 — nav CTA tap (analytics; consent-gated no-op).
-                captureMarketing('marketing_cta_clicked', {
-                  cta_id: 'get_beta_access',
-                  location: 'nav',
-                })
-                setBetaOpen(true)
-              }}
-              aria-haspopup="dialog"
-              aria-expanded={betaOpen}
+              onClick={handleGetTheBusinessApp}
             >
-              Get Beta Access
+              Get the app
             </Button>
           ) : (
             // ORCH-1319 — explorer "Get the app" is a device-aware DIRECT action:
@@ -156,17 +172,9 @@ export function GlassNav() {
         </div>
       </header>
 
-      {/* organiser-only — explorer never mounts the organiser modal (I-1045-ORGANISER-ONLY-CTA) */}
-      {surface === 'organiser' ? (
-        <BetaAccessModal
-          open={betaOpen}
-          onClose={() => setBetaOpen(false)}
-          source="organiser_marketing_nav"
-        />
-      ) : null}
-
       {/* explorer-only — ORCH-1319 desktop QR panel (no lead form / beta gate).
-          The organiser surface never mounts it. */}
+          The organiser surface never mounts it. ORCH-1324 removed the organiser
+          beta lead-modal mount — the business CTA now navigates device-aware. */}
       {surface === 'explorer' ? (
         <AppQrPanel open={qrOpen} onClose={() => setQrOpen(false)} />
       ) : null}
