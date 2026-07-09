@@ -47,6 +47,11 @@ export const LINKS_DOWNLOAD_PATH = '/download'
 // and usemingla.com/business can never drift.
 export const LINKS_BUSINESS_PATH = BUSINESS_PATH
 
+// ORCH-1326 — the business DEVICE-SMART route (iPhone → business App Store,
+// else → business.usemingla.com). Mirrors LINKS_DOWNLOAD_PATH for the business
+// surface; it is NOT a store URL, so it does not violate the SSOT guard.
+export const LINKS_BUSINESS_DOWNLOAD_PATH = '/business/download'
+
 export const LINKS_TABS: readonly LinksTab[] = [
   {
     id: 'explorer',
@@ -66,11 +71,11 @@ export const LINKS_TABS: readonly LinksTab[] = [
     label: 'For Business',
     eyebrow: 'For venues & organizers',
     heading: 'Run a venue, event, or trip?',
-    body: 'Put your experiences in front of people planning their next outing. Get started on the web.',
+    body: 'Put your experiences in front of people planning their next outing. Now on iPhone — or get started on the web.',
     cta: {
-      label: 'Get started on the web',
-      href: LINKS_BUSINESS_PATH,
-      destination: 'business',
+      label: 'Get the app',
+      href: LINKS_BUSINESS_DOWNLOAD_PATH,
+      destination: 'business_download',
       intent: 'glass',
     },
   },

@@ -170,6 +170,8 @@ on:
 #   - I-1319-NO-TESTFLIGHT (orch-1319-no-testflight-anywhere.mjs) [G-4] — repo scan: ZERO `testflight.apple.com` tokens (case-insensitive, comments included — NOT comment-stripped) under mingla-marketing/ + supabase/functions/; the single hard proof the beta link is gone forever; self-tested 4/4 + fails-on-revert (ORCH-1319 — DRAFT until CLOSE)
 #   - I-PROPOSED-1321-NO-ANDROID-MEDIA-PERMISSIONS (orch-1321-no-android-media-permissions.mjs) — Google Play rejected the BUSINESS app under the Photo & Video Permissions policy; mingla-business/app.json expo.android.permissions must NOT list READ_MEDIA_IMAGES / READ_MEDIA_VIDEO / READ_EXTERNAL_STORAGE (the app only PICKS files → must use the Android Photo Picker, which needs no permission), and expo.android.blockedPermissions must force-strip the full set (READ_MEDIA_IMAGES + READ_MEDIA_VIDEO + READ_EXTERNAL_STORAGE + WRITE_EXTERNAL_STORAGE) so no library-merged residue survives in the AAB; re-adding any media/storage permission or dropping any blocked entry fails CI; self-tested 5/5 + fails-on-revert (ORCH-1321 — DRAFT until CLOSE)
 #   - I-PROPOSED-1324-BUSINESS-GETAPP-DEVICE-AWARE (orch-1324-business-getapp-device-aware.mjs) — the business (organiser) marketing CTAs — glass-nav.tsx (organiser branch) AND components/sections/organiser-home/hero.tsx (both comment-stripped) — resolve device-aware: each references BOTH BUSINESS_APP_STORE_URL and BUSINESS_WEB_URL (from lib/store-links, not hardcoded), calls detectClientPlatform(), branches on `platform ===` (adversarial: BUSINESS_WEB_URL present so non-iOS is not stranded / everyone→App Store), fires get_the_app_clicked with a `surface: 'organiser'` prop, and carries the window.location.assign() popup fallback; BANS BetaAccessModal/beta-access-modal/beta-access-submit/Get Beta Access/Free during beta/type="email"/testflight (the retired beta funnel); self-tested + fails-on-revert. SUPERSEDES the retired orch-1216-explorer-only-cta + orch-1219-form-no-autoadvance-multiselect (ORCH-1324 — DRAFT until CLOSE)
+#   - I-PROPOSED-1327-LINKS-TAB-PERSISTENT-PILL (orch-1327-links-tab-switcher-persistent-pill.mjs) — the usemingla.com/links Explorer/Business segmented switcher (components/marketing/links-experience.tsx, comment-stripped) renders its active-tab highlight as ONE persistent, absolutely-positioned bg-warm pill that animates its horizontal `x` between the two equal-width slots (initial={false} + animate={{ x: … }}), with NO `layoutId` and NO motion element conditionally mounted inside a `selected ?` ternary — killing the framer-motion cross-instance layout-projection ARC (the swing); reduced motion → a { duration: 0 } transition tied to `reduced`; the WAI-ARIA roving-tabindex tablist (role="tablist"/"tab", aria-selected, tabIndex={selected ? 0 : -1}, ArrowRight/ArrowLeft via onTabKeyDown) and the text-white/text-white/60 color states survive; self-tested 8/8 + fails-on-revert (ORCH-1327 — DRAFT until CLOSE)
+#   - I-PROPOSED-1326-LINKS-BUSINESS-DOWNLOAD-DEVICE-AWARE (orch-1326-links-business-download-route.mjs) — the /links Business tab CTA targets the device-smart server route /business/download (LINKS_BUSINESS_DOWNLOAD_PATH, destination 'business_download') NOT the bare /business page; app/business/download/page.tsx (comment-stripped) reads the UA via headers()+resolvePlatformFromUa, references BOTH BUSINESS_APP_STORE_URL and BUSINESS_WEB_URL (from lib/store-links, never hardcoded), performs a redirect( and branches on `platform ===` (iOS→BUSINESS_APP_STORE_URL, else→BUSINESS_WEB_URL); adversarial: FAIL if BUSINESS_WEB_URL absent (non-iOS stranded) or no `platform ===`; BANS apps.apple.com/business.usemingla.com literals, navigator/window (SSR-safe), DownloadQr/AppStoreBadges/<QRCode (NO QR — the difference vs /download), <form/type="email", testflight, PLAY_STORE_URL (business Android→web); lib/links-config.ts references LINKS_BUSINESS_DOWNLOAD_PATH + '/business/download' + destination 'business_download'; self-tested 11/11 + fails-on-revert (ORCH-1326 — DRAFT until CLOSE)
 #
 # Future gates to register (proposed but not yet implemented):
 #   - I-32 rank parity (Cycle 13a proposal)
@@ -3350,6 +3352,32 @@ jobs:
         run: node .github/scripts/strict-grep/orch-1324-business-getapp-device-aware.mjs --self-test
       - name: Run ORCH-1324 business-getapp-device-aware gate
         run: node .github/scripts/strict-grep/orch-1324-business-getapp-device-aware.mjs
+
+  orch-1327-links-tab-switcher-persistent-pill:
+    name: "ORCH-1327: /links tab switcher uses ONE persistent x-animated pill (no layoutId mount/unmount swing), reduced-motion + roving-tabindex a11y preserved (I-PROPOSED-1327-LINKS-TAB-PERSISTENT-PILL)"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Self-test the ORCH-1327 links-tab-switcher gate
+        run: node .github/scripts/strict-grep/orch-1327-links-tab-switcher-persistent-pill.mjs --self-test
+      - name: Run ORCH-1327 links-tab-switcher gate
+        run: node .github/scripts/strict-grep/orch-1327-links-tab-switcher-persistent-pill.mjs
+
+  orch-1326-links-business-download-route:
+    name: "ORCH-1326: /business/download smart route + /links business CTA are device-aware (iOS→business App Store, else→business web) via store-links consts, no QR/hardcode (I-PROPOSED-1326-LINKS-BUSINESS-DOWNLOAD-DEVICE-AWARE)"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Self-test the ORCH-1326 links-business-download-route gate
+        run: node .github/scripts/strict-grep/orch-1326-links-business-download-route.mjs --self-test
+      - name: Run ORCH-1326 links-business-download-route gate
+        run: node .github/scripts/strict-grep/orch-1326-links-business-download-route.mjs
 
   orch-1319-getapp-cta-direct-store:
     name: "ORCH-1319 G-1: explorer nav CTA links to the live stores by detected platform, fires get_the_app_clicked, no lead form/TestFlight (I-1319-GETAPP-CTA-LINKS-LIVE-STORES-NOT-TESTFLIGHT)"

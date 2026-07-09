@@ -207,13 +207,38 @@ export function LinksExperience({
             </p>
           </div>
 
-          {/* Segmented tablist. */}
+          {/* Segmented tablist. `relative` makes it the positioning context for
+              the persistent highlight pill below (§2 / ORCH-1327). */}
           <div
             role="tablist"
             aria-label="Choose Mingla for you or your business"
             aria-orientation="horizontal"
-            className="glass-soft mt-6 flex gap-1 rounded-full p-1"
+            className="relative glass-soft mt-6 flex gap-1 rounded-full p-1"
           >
+            {/* ORCH-1327 — the active-tab highlight is ONE PERSISTENT, absolutely-
+                positioned pill that slides its horizontal position between the two
+                equal-width tab slots. It replaces the previous conditionally-mounted
+                framer shared-layout pill, whose mount/unmount forced a cross-instance
+                framer-motion layout projection that read a wrong mid-reflow origin
+                and swung the pill in a diagonal ARC
+                (INVESTIGATION_ORCH-1326_1327 §2). No shared-layout id, no
+                mount/unmount, no layout projection → a straight, crisp slide, immune
+                to ancestor transform/filter. Geometry (exactly two equal `flex-1`
+                tabs in a `p-1` container with `gap-1`): slot width = calc(50% - 6px);
+                slot-to-slot shift = one own-width + the 4px gap = calc(100% + 4px),
+                so x = activeIndex * that. */}
+            <motion.div
+              aria-hidden="true"
+              className="pointer-events-none absolute left-1 top-1 h-11 rounded-full bg-warm"
+              style={{ width: 'calc(50% - 0.375rem)' }}
+              initial={false}
+              animate={{ x: `calc(${activeIndex} * (100% + 0.25rem))` }}
+              transition={
+                reduced
+                  ? { duration: 0 }
+                  : { type: 'tween', duration: 0.18, ease: [0.4, 0, 0.2, 1] }
+              }
+            />
             {LINKS_TABS.map((tab, i) => {
               const selected = tab.id === activeId
               return (
@@ -234,19 +259,6 @@ export function LinksExperience({
                     selected ? 'text-white' : 'text-white/60 hover:text-white/85',
                   )}
                 >
-                  {selected ? (
-                    <motion.span
-                      layoutId="links-tab-pill"
-                      className="absolute inset-0 rounded-full bg-warm"
-                      // §2 — crisp, no spring/overshoot: a short ease-out slide.
-                      transition={
-                        reduced
-                          ? { duration: 0 }
-                          : { type: 'tween', duration: 0.18, ease: [0.4, 0, 0.2, 1] }
-                      }
-                      aria-hidden="true"
-                    />
-                  ) : null}
                   <span className="relative z-10">{tab.label}</span>
                 </button>
               )
