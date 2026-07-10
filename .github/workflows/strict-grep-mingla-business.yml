@@ -4274,3 +4274,16 @@ jobs:
         run: node .github/scripts/strict-grep/i-proposed-1313-appsflyer-key-fail-loud.mjs --self-test
       - name: Run ORCH-1313 appsflyer-key-fail-loud gate
         run: node .github/scripts/strict-grep/i-proposed-1313-appsflyer-key-fail-loud.mjs
+
+  orch-1336-notifications-top-align:
+    name: "ORCH-1336: consumer NotificationsSheet populated+online body contributes no flex-growing sibling above the section list — notifications hug the top (I-PROPOSED-1336-NOTIFICATIONS-TOP-ALIGN)"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Self-test the ORCH-1336 notifications-top-align gate
+        run: node .github/scripts/strict-grep/orch-1336-notifications-top-align.mjs --self-test
+      - name: Run ORCH-1336 notifications-top-align gate
+        run: node .github/scripts/strict-grep/orch-1336-notifications-top-align.mjs
