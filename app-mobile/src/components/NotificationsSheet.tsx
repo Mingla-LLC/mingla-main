@@ -666,19 +666,28 @@ export default function NotificationsSheet({
     }
 
     // META-ORCH-0991 Wave A — the BottomSheetSectionList now lives in
-    // BaseBottomSheet (scrollMode="sectionlist"). The populated branch renders
-    // ONLY the offline banner here; the list is fed to the primitive via
-    // `scrollProps.sections` so this file no longer imports gorhom (SC-01).
+    // BaseBottomSheet (scrollMode="sectionlist"). The list is fed to the
+    // primitive via `scrollProps.sections`; this branch renders ONLY the
+    // offline banner (when offline) so this file no longer imports gorhom (SC-01).
+    //
+    // ORCH-1336 [notifications-sheet-gap] top-align fix: when ONLINE + populated
+    // this branch returns null so it contributes NO flex space above the list.
+    // The prior wrapper carried `styles.notificationsBody` (flex:1); as a sibling
+    // of BaseBottomSheet's own flex:1 BottomSheetSectionList it split the bounded
+    // sheet height ~50/50 — opening a large empty band under the header and
+    // floating a lone card mid-sheet. Returning null lets the section list claim
+    // ALL remaining height below the header so the notifications hug the top. When
+    // OFFLINE the banner still renders ABOVE the list, in its own intrinsic-height
+    // View (no flex:1), so it sits at the top without reopening the gap.
+    if (!(isOffline && notifications.length > 0)) {
+      return null;
+    }
     return (
-      <View style={styles.notificationsBody}>
-        {isOffline && notifications.length > 0 && (
-          <View style={styles.offlineBanner}>
-            <Icon name="cloud-offline-outline" size={14} color={colors.gray[500]} />
-            <Text style={styles.offlineBannerText}>
-              {t('notifications:offline.banner')}
-            </Text>
-          </View>
-        )}
+      <View style={styles.offlineBanner} testID="notifications-offline-banner-wrap">
+        <Icon name="cloud-offline-outline" size={14} color={colors.gray[500]} />
+        <Text style={styles.offlineBannerText}>
+          {t('notifications:offline.banner')}
+        </Text>
       </View>
     );
   };
@@ -925,10 +934,6 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '500',
     color: colors.gray[500],
-  },
-  notificationsBody: {
-    flex: 1,
-    minHeight: 0,
   },
   sectionList: {
     flex: 1,
