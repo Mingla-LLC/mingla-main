@@ -79,6 +79,8 @@ import {
 } from "../../hooks/useRefundPolicy";
 import type { Trip, TripPublishValidationError } from "../../services/tripsService";
 import { setTripPricingSwitches } from "../../services/tripsService";
+// ORCH-1339 — guest-privacy leaf-write RPC (never the big trip edit RPCs).
+import { setEventGuestPrivacy } from "../../services/businessEvents";
 
 import {
   TripCreatorStep1Basics,
@@ -315,10 +317,14 @@ function step4PackagesSignature(packages: Step4Package[]): string {
 
 // ORCH-0875 [Tr4 Refund Tiers + Booking Deadline] — Step 5 draft seed from
 // trip's persisted refund_policy + booking_deadline columns.
+// ORCH-1339 — plus the two guest-privacy display gates (theme leaf via
+// tripsService.readGuestPrivacy; false defaults).
 function tripToStep5Draft(trip: Trip): Step5Draft {
   return {
     refundPolicy: trip.refundPolicy,
     bookingDeadline: trip.bookingDeadline,
+    privateGuestList: trip.guestPrivacy?.privateGuestList ?? false,
+    hideRemainingCount: trip.guestPrivacy?.hideRemainingCount ?? false,
   };
 }
 
@@ -397,7 +403,10 @@ function isTripWizardPristine(
   const initStep5 = tripToStep5Draft(trip);
   if (
     JSON.stringify(step5Draft.refundPolicy) !== JSON.stringify(initStep5.refundPolicy) ||
-    step5Draft.bookingDeadline !== initStep5.bookingDeadline
+    step5Draft.bookingDeadline !== initStep5.bookingDeadline ||
+    // ORCH-1339 — the two guest-privacy toggles count as edits too.
+    step5Draft.privateGuestList !== initStep5.privateGuestList ||
+    step5Draft.hideRemainingCount !== initStep5.hideRemainingCount
   ) {
     return false;
   }
@@ -857,11 +866,24 @@ export const TripCreatorWizard: React.FC<TripCreatorWizardProps> = ({
         deadlineIso: step5Draft.bookingDeadline,
       }),
     ]);
+    // ORCH-1339 — persist the two guest-privacy display gates via the
+    // leaf-write RPC (the server draft events row exists). NON-BLOCKING: a
+    // display-pref failure never blocks step navigation or publish — toast and
+    // continue (SPEC §4.7).
+    try {
+      await setEventGuestPrivacy(trip.id, {
+        privateGuestList: step5Draft.privateGuestList,
+        hideRemainingCount: step5Draft.hideRemainingCount,
+      });
+    } catch {
+      showToast("Couldn't save guest privacy — check Settings after publishing.");
+    }
   }, [
     step5Draft,
     trip.id,
     updateRefundPolicyMutation,
     updateBookingDeadlineMutation,
+    showToast,
   ]);
 
   // ORCH-0880 [Tr5 Traveler Intake Forms] — Step 6 autosave. Iterates the
@@ -1104,6 +1126,17 @@ export const TripCreatorWizard: React.FC<TripCreatorWizardProps> = ({
           timezone: trip.timezone,
         },
       });
+      // ORCH-1339 — re-assert the guest-privacy toggles on publish success
+      // (leaf write; belt-and-suspenders with the Step-5 autosave). NON-BLOCKING:
+      // display prefs never block publish (SPEC §4.7).
+      try {
+        await setEventGuestPrivacy(trip.id, {
+          privateGuestList: step5Draft.privateGuestList,
+          hideRemainingCount: step5Draft.hideRemainingCount,
+        });
+      } catch {
+        showToast("Couldn't save guest privacy — check Settings after publishing.");
+      }
       setPublishConfirmVisible(false);
       onPublished(published);
     } catch (e) {
@@ -1116,7 +1149,7 @@ export const TripCreatorWizard: React.FC<TripCreatorWizardProps> = ({
         router.push(brandStripeOnboardingRoute(trip.brandId) as never);
       }
     }
-  }, [publishMutation, router, step1Draft, trip.id, trip.brandId, trip.timezone, onPublished]);
+  }, [publishMutation, router, step1Draft, step5Draft, trip.id, trip.brandId, trip.timezone, onPublished, showToast]);
 
   // Suppress autosave-error toast surfacing via setPublishError; show via
   // the persistent banner in Step 5. Show toast for discard errors only.

@@ -66,7 +66,22 @@ const detectDeviceTimezone = (): string => {
  * meaningful; the rest are inert defaults so the type checks and the step body
  * (which reads only the When fields) renders correctly.
  */
-function synthDraft(brandId: string, when: ExperienceWhenState): DraftEvent {
+/** ORCH-1339 — the two guest-privacy display gates (wizard-owned state). */
+export interface ExperienceGuestPrivacyState {
+  privateGuestList: boolean;
+  hideRemainingCount: boolean;
+}
+
+const GUEST_PRIVACY_DEFAULTS: ExperienceGuestPrivacyState = {
+  privateGuestList: false,
+  hideRemainingCount: false,
+};
+
+function synthDraft(
+  brandId: string,
+  when: ExperienceWhenState,
+  guestPrivacy: ExperienceGuestPrivacyState,
+): DraftEvent {
   const now = new Date().toISOString();
   return {
     id: "experience-when-adapter",
@@ -113,10 +128,13 @@ function synthDraft(brandId: string, when: ExperienceWhenState): DraftEvent {
     visibility: "public",
     requireApproval: false,
     allowTransfers: true,
-    hideRemainingCount: false,
+    // ORCH-1339 — the two guest-privacy display gates now flow from the
+    // wizard-owned state (hydrated in edit mode; false in create mode) instead
+    // of hard-coded false.
+    hideRemainingCount: guestPrivacy.hideRemainingCount,
     passwordProtected: false,
     themeOverrides: null,
-    privateGuestList: false,
+    privateGuestList: guestPrivacy.privateGuestList,
     inPersonPaymentsEnabled: false,
     // ORCH-1291 [rsvp-chip-in] — inert for the experience When-adapter.
     rsvpContributionEnabled: false,
@@ -144,6 +162,9 @@ export function useExperienceDraftAdapter(
   brandId: string,
   // META-ORCH-1059 Sub-B — edit-mode seeds the When state from the loaded draft.
   initialWhen?: Partial<ExperienceWhenState>,
+  // ORCH-1339 — the wizard threads its guest-privacy toggle state so the
+  // synthetic draft carries the host's real values (defaults false).
+  guestPrivacy?: ExperienceGuestPrivacyState,
 ): UseExperienceDraftAdapterResult {
   const [whenState, setWhenState] = useState<ExperienceWhenState>({
     whenMode: initialWhen?.whenMode ?? "single",
@@ -157,8 +178,8 @@ export function useExperienceDraftAdapter(
   const [showErrors, setShowErrors] = useState(false);
 
   const draftEvent = useMemo(
-    () => synthDraft(brandId, whenState),
-    [brandId, whenState],
+    () => synthDraft(brandId, whenState, guestPrivacy ?? GUEST_PRIVACY_DEFAULTS),
+    [brandId, whenState, guestPrivacy],
   );
 
   // Patch only the When subset; non-When keys are ignored (the step body never

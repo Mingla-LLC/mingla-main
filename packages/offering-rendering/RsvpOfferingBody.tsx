@@ -109,6 +109,13 @@ export interface RsvpOfferingConfig {
   settlementCurrency?: string;
   /** Brand display name for the "Chip in for {host}" copy (fallback "the host"). */
   hostShortName?: string;
+  // ORCH-1339 [momentum-card-cross-entity] — the two D2 display gates
+  // (SERVER-authoritative; both default-absent = false so existing surfaces are
+  // unaffected until they thread the payload values).
+  /** Suppress the anonymous glyph cluster on the momentum unit (D2). */
+  privateGuestList?: boolean;
+  /** Hide scarcity: null DISPLAY capacity → "Open invite" + fixed low meter (D2). */
+  hideRemainingCount?: boolean;
 }
 
 // ORCH-1291 — the payment hand-off contract (DESIGN §1.3). The body is
@@ -1008,6 +1015,9 @@ const DecisionUnit: React.FC<{
       onPlusChange={() => undefined}
       // The body owns the per-guest mini-forms; hide the bare-integer stepper.
       hideStepper
+      // ORCH-1339 (D2) — forward the two server-authoritative display gates.
+      privateGuestList={config.privateGuestList ?? false}
+      hideRemainingCount={config.hideRemainingCount ?? false}
       waitlistEnabled={config.waitlistEnabled}
       submitting={state.submitting}
       contactReady={contactReadyOverride ?? state.contactReady}

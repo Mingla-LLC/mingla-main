@@ -82,6 +82,15 @@ export type {
   PeerGuestListPage,
 } from "./socialProofTypes";
 
+// ORCH-1339 [momentum-card-cross-entity] — the shared glyph-only cross-entity
+// momentum unit (event/trip/experience) + its dep-free honest derivation.
+// Props-only (the surfaces fetch pg_public_social_proof and pass the payload);
+// gates are SERVER-authoritative (D2); cluster is GLYPH-only until ORCH-1340.
+export { OfferingMomentum } from "./OfferingMomentum";
+export type { OfferingMomentumProps } from "./OfferingMomentum";
+export { deriveSocialProofMomentum } from "./socialProofMomentum";
+export type { SocialProofMomentumModel } from "./socialProofMomentum";
+
 // ORCH-1292 [public-page-tag-slug-labels] — the in-package canonical taxonomy
 // label resolver. Turns party/vibe/music SLUGS into their display LABELS at the
 // shared pill/chip render sites (EventOfferingBody / RsvpOfferingBody /

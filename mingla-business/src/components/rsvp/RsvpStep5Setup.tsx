@@ -314,16 +314,20 @@ export const RsvpStep5Setup: React.FC<StepBodyProps> = ({ draft, updateDraft, br
       {/* 5. Guest-list privacy */}
       <ToggleRow
         label="Keep the guest list private"
-        sub="Only you see who's coming."
+        // ORCH-1339 — D2-honest sub-copy (SPEC §4.8, byte-exact).
+        sub="Hide who's going. Only you see the list."
         on={draft.privateGuestList}
         onToggle={() => updateDraft({ privateGuestList: !draft.privateGuestList })}
         testID="rsvp-private-guestlist"
       />
 
-      {/* 6. Going-count visibility */}
+      {/* 6. Spots-left visibility. ORCH-1339 — label + sub corrected (SPEC
+          §4.8, byte-exact): the old label promised hiding the headcount —
+          D2 keeps the going count visible and hides only the spots-left/fill
+          scarcity, so the copy now says exactly that. */}
       <ToggleRow
-        label="Hide the Going count from guests"
-        sub="Guests won't see how many are coming."
+        label="Hide the spots-left count"
+        sub="Guests see who's going — not how many spots remain."
         on={draft.hideRemainingCount}
         onToggle={() => updateDraft({ hideRemainingCount: !draft.hideRemainingCount })}
         testID="rsvp-hide-count"

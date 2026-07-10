@@ -58,6 +58,9 @@ import { TripRefundLadder } from "./TripRefundLadder";
 import { TripPaymentChoice } from "./TripPaymentChoice";
 import { TripCountdownPill } from "./TripCountdownPill";
 import { BadgeCheck, Calendar, Minus, Moon, Plane, Plus, Users } from "./LucideIcons";
+// ORCH-1339 — cross-entity social-proof momentum (props-only; glyph cluster).
+import { OfferingMomentum } from "./OfferingMomentum";
+import { type SocialProofSummary } from "./socialProofTypes";
 import { buildStaticMapUrl } from "./mapboxStaticImage";
 import type {
   TripOfferingBrand,
@@ -123,6 +126,11 @@ export interface TripOfferingBodyProps {
    * reduce-motion flag so the About collapse skips the height settle when on.
    */
   reduceMotion?: boolean;
+  /**
+   * ORCH-1339 — the pg_public_social_proof payload (surface-fetched, props-only
+   * per I-MOR-0827). null (default) → no momentum unit, zero layout shift.
+   */
+  socialProof?: SocialProofSummary | null;
   testID?: string;
 }
 
@@ -142,6 +150,7 @@ export const TripOfferingBody: React.FC<TripOfferingBodyProps> = ({
   onChangePlanChoice,
   dockedReserve,
   reduceMotion = false,
+  socialProof = null,
   testID,
 }) => {
   const surface = offeringSurfaceStyles(palette);
@@ -350,6 +359,19 @@ export const TripOfferingBody: React.FC<TripOfferingBodyProps> = ({
           />
         ) : null}
       </View>
+
+      {/* ORCH-1339 — cross-entity social proof; gates are SERVER-authoritative
+          (D2); cluster is GLYPH-only until ORCH-1340. Mounts BETWEEN §4 meta
+          pills and §5 Presented-By (existing anchors unchanged — the §1 order
+          gate stays green). null payload → nothing renders (honest absence). */}
+      {socialProof ? (
+        <OfferingMomentum
+          palette={palette}
+          theme={theme}
+          socialProof={socialProof}
+          testID="orch-1339-momentum-trip"
+        />
+      ) : null}
 
       {/* (5) Presented By. */}
       <View style={styles.section} testID="trip-body-presented-by">

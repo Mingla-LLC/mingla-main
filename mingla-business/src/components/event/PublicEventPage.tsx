@@ -81,6 +81,13 @@ import { Icon } from "../ui/Icon";
 import { FoundationEventPreview } from "./FoundationEventPreview";
 import { FoundationRsvpPreview } from "./FoundationRsvpPreview";
 import { submitPublicRsvp, submitRsvpContribution } from "../../services/rsvpEvents";
+// ORCH-1339 — cross-entity social proof (pg_public_social_proof, ORCH-1338;
+// anon-safe RPC — this page is anon-tolerant). Keys from the entity factory.
+import { useQuery } from "@tanstack/react-query";
+import {
+  fetchSocialProof,
+  socialProofKeys,
+} from "../../services/socialProofService";
 
 import {
   checkoutPublicPathWithSeed,
@@ -324,6 +331,17 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
   const [ticketQuantities, setTicketQuantities] = useState<Record<string, number>>(
     {},
   );
+
+  // ORCH-1339 — cross-entity social proof for this page's event (anon-safe
+  // server RPC; ungated — buyer routes never gate on auth, ORCH-1004). The
+  // ticketed branch feeds the shared body's momentum unit; error/missing →
+  // data stays undefined → the unit is omitted (page renders as today).
+  const socialProofQuery = useQuery({
+    queryKey: socialProofKeys.summary(event.id),
+    enabled: event.id.length > 0,
+    staleTime: 60_000,
+    queryFn: () => fetchSocialProof(event.id),
+  });
 
   const viewerRole: ViewerRole = useMemo(() => {
     if (user === null) return "anonymous";
@@ -838,6 +856,20 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
             rsvp_contribution_min_cents: event.rsvpContributionMinCents ?? null,
             settlementCurrency: event.currency ?? "USD",
             hostShortName: brand?.displayName ?? undefined,
+            // ORCH-1339 (D2) — the two SERVER-authoritative display gates.
+            // Source binding (SPEC §4.6 / OQ-3): the LiveEvent model fields —
+            // they are non-optional booleans parsed server-side on BOTH the
+            // authed and the anon view paths (publicEventsService, F-4), so
+            // they are always populated on this page; the socialProof payload
+            // carries the same server truth and stays the fallback.
+            privateGuestList:
+              event.privateGuestList ??
+              socialProofQuery.data?.privateGuestList ??
+              false,
+            hideRemainingCount:
+              event.hideRemainingCount ??
+              socialProofQuery.data?.hideRemainingCount ??
+              false,
           }}
           onChipIn={handleChipIn}
           // ORCH-1295 [chip-in-post-payment-polish] — BUG 2: inject the country-code-
@@ -1032,6 +1064,8 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
           onChangeTicketQuantity={handleChangeTicketQuantity}
           onProceedToCart={handleProceedToCart}
           onDockLayout={handleDockLayout}
+          // ORCH-1339 — cross-entity social proof (server-gated payload).
+          socialProof={socialProofQuery.data ?? null}
           testID="orch-1167-event-foundation"
         />
       )}

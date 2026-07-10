@@ -128,14 +128,16 @@ import TicketCartSheet, {
 } from "../../components/expandedCard/TicketCartSheet";
 import { usePublicEventTickets } from "../../hooks/usePublicEventTickets";
 import { useTripIntakeSchemas } from "../../hooks/useTripIntakeSchemas";
-import { circleKeys } from "../../hooks/queryKeys";
+import { circleKeys, socialProofKeys } from "../../hooks/queryKeys";
+// ORCH-1339 — cross-entity social proof (pg_public_social_proof, ORCH-1338).
+import { fetchSocialProof } from "../../services/socialProofService";
 import { useAppStore } from "../../store/appStore";
 import {
   type NativeCheckoutOutcome,
   useNativeCheckoutFlow,
 } from "../../payments/nativeCheckoutFlow";
 import { toastManager } from "../../components/ui/Toast";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import * as Haptics from "expo-haptics";
 import { glass } from "../../constants/designSystem";
 import { hueFromId } from "../../utils/hueFromId";
@@ -285,6 +287,15 @@ export default function ConsumerTripDetailScreen({
   const tripId = detail !== null ? detail.tripId : null;
   const ticketsQuery = usePublicEventTickets(tripId);
   const intakeSchemasQuery = useTripIntakeSchemas(tripId);
+  // ORCH-1339 — cross-entity social proof, keyed by the trip's event id
+  // (eventId === tripId). Error/missing → data stays undefined → the momentum
+  // unit is omitted and the page renders exactly as today.
+  const socialProofQuery = useQuery({
+    queryKey: socialProofKeys.summary(tripId ?? ""),
+    enabled: tripId !== null,
+    staleTime: 60 * 1000,
+    queryFn: () => fetchSocialProof(tripId as string),
+  });
   const runNativeCheckout = useNativeCheckoutFlow();
   const queryClient = useQueryClient();
   const user = useAppStore((s) => s.user);
@@ -956,6 +967,8 @@ export default function ConsumerTripDetailScreen({
               onChangePlanChoice={handleChangePlanChoice}
               dockedReserve={dockedReserve}
               reduceMotion={reduceMotion}
+              // ORCH-1339 — cross-entity social proof (server-gated payload).
+              socialProof={socialProofQuery.data ?? null}
               testID="meta-orch-1174-consumer-trip-body"
             />
           </View>

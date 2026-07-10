@@ -46,7 +46,7 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import * as Haptics from "expo-haptics";
 import { useRouter } from "expo-router";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 
 import {
   boldFontFamily,
@@ -105,7 +105,9 @@ import {
 import { useConsumerThemeFont } from "../../theme/useConsumerThemeFont";
 import { usePublicEventTickets } from "../../hooks/usePublicEventTickets";
 import { useEventTheme } from "../../hooks/useEventTheme";
-import { circleKeys } from "../../hooks/queryKeys";
+import { circleKeys, socialProofKeys } from "../../hooks/queryKeys";
+// ORCH-1339 — cross-entity social proof (pg_public_social_proof, ORCH-1338).
+import { fetchSocialProof } from "../../services/socialProofService";
 import {
   type NativeCheckoutOutcome,
   useNativeCheckoutFlow,
@@ -260,6 +262,15 @@ export default function ConsumerExperienceDetailScreen({
   const ticketsQuery = usePublicEventTickets(eventId);
   const themeQuery = useEventTheme(seed);
   const runNativeCheckout = useNativeCheckoutFlow();
+  // ORCH-1339 — cross-entity social proof, keyed by the experience's event id.
+  // Error/missing → data stays undefined → the momentum unit is omitted and
+  // the page renders exactly as today.
+  const socialProofQuery = useQuery({
+    queryKey: socialProofKeys.summary(eventId ?? ""),
+    enabled: eventId !== null,
+    staleTime: 60 * 1000,
+    queryFn: () => fetchSocialProof(eventId as string),
+  });
 
   // ORCH-1187 FIX-3(a) (Seth device, open-daily misclassified as fixed-slot): the
   // deck SEED can be STALE — it may lack isRecurring/recurrenceRule and carry
@@ -902,6 +913,8 @@ export default function ConsumerExperienceDetailScreen({
               formatStopTime={(iso: string | null) => formatStartTime(iso)}
               stateBanner={stateBannerNode}
               dockedReserve={dockedReserve}
+              // ORCH-1339 — cross-entity social proof (server-gated payload).
+              socialProof={socialProofQuery.data ?? null}
               testID="orch-1183-consumer-experience-body"
             />
           </View>

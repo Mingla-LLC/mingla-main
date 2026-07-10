@@ -48,6 +48,14 @@ export const circleKeys = {
     [...circleKeys.forUser(viewerUserId), { limit, offset }] as const,
 };
 
+// ORCH-1339 — cross-entity social proof (pg_public_social_proof payload).
+// One key per event id; the three consumer detail screens read it (staleTime
+// refresh only — no client mutation invalidates it in this leg).
+export const socialProofKeys = {
+  all: ['socialProof'] as const,
+  summary: (eventId: string) => [...socialProofKeys.all, eventId] as const,
+};
+
 export const personCardKeys = {
   all: ['personCards'] as const,
   hero: (pairedUserId: string, holidayKey: string) =>

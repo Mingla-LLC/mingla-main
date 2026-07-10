@@ -59,6 +59,9 @@ import { type ResolvedTheme } from "./designTokens";
 import { EventCoverMedia } from "./EventCoverMedia";
 import { StopSpine } from "./StopSpine";
 import { BadgeCheck, Calendar, Clock, MapPin, Sparkles, Users } from "./LucideIcons";
+// ORCH-1339 — cross-entity social-proof momentum (props-only; glyph cluster).
+import { OfferingMomentum } from "./OfferingMomentum";
+import { type SocialProofSummary } from "./socialProofTypes";
 import { buildStaticMapUrl } from "./mapboxStaticImage";
 import {
   experienceAvailabilityBanner as computeAvailabilityBanner,
@@ -178,6 +181,11 @@ export interface ExperienceOfferingBodyProps {
   dockedReserve?: React.ReactNode;
   /** Reduce-motion-aware collapse animation toggle. */
   reduceMotion?: boolean;
+  /**
+   * ORCH-1339 — the pg_public_social_proof payload (surface-fetched, props-only
+   * per I-MOR-0827). null (default) → no momentum unit, zero layout shift.
+   */
+  socialProof?: SocialProofSummary | null;
   testID?: string;
 }
 
@@ -193,6 +201,7 @@ export const ExperienceOfferingBody: React.FC<ExperienceOfferingBodyProps> = ({
   stateBanner = null,
   dockedReserve,
   reduceMotion = false,
+  socialProof = null,
   testID,
 }) => {
   const surface = offeringSurfaceStyles(palette);
@@ -306,6 +315,20 @@ export const ExperienceOfferingBody: React.FC<ExperienceOfferingBodyProps> = ({
       {/* state banner (sold-out / ended / unavailable) — surface-owned. */}
       {stateBanner !== null ? (
         <View testID="experience-body-state-banner">{stateBanner}</View>
+      ) : null}
+
+      {/* ORCH-1339 — cross-entity social proof; gates are SERVER-authoritative
+          (D2); cluster is GLYPH-only until ORCH-1340. Mounts BETWEEN §4 vibe
+          chips and §5 Presented-By, AFTER the state banner (banner stays ABOVE
+          momentum; existing anchors unchanged — the 1183 order gate stays
+          green). null payload → nothing renders (honest absence). */}
+      {socialProof ? (
+        <OfferingMomentum
+          palette={palette}
+          theme={theme}
+          socialProof={socialProof}
+          testID="orch-1339-momentum-experience"
+        />
       ) : null}
 
       {/* (5) Presented By. */}

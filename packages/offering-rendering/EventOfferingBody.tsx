@@ -73,6 +73,9 @@ import {
   type PublicTicketProps,
 } from "./types";
 import { type ResolvedTheme } from "./designTokens";
+// ORCH-1339 — cross-entity social-proof momentum (props-only; glyph cluster).
+import { OfferingMomentum } from "./OfferingMomentum";
+import { type SocialProofSummary } from "./socialProofTypes";
 
 import { normalizeCityCountry } from "./normalizeCityCountry";
 import {
@@ -178,6 +181,11 @@ export interface EventOfferingBodyProps {
    * duplicate box paints). Phones + both native apps keep the inline box (false).
    */
   hideTicketBox?: boolean;
+  /**
+   * ORCH-1339 — the pg_public_social_proof payload (surface-fetched, props-only
+   * per I-MOR-0827). null (default) → no momentum unit, zero layout shift.
+   */
+  socialProof?: SocialProofSummary | null;
   testID?: string;
 }
 
@@ -197,6 +205,7 @@ export const EventOfferingBody: React.FC<EventOfferingBodyProps> = ({
   submitting = false,
   onTicketBoxLayout,
   hideTicketBox = false,
+  socialProof = null,
   testID,
 }) => {
   const surface = offeringSurfaceStyles(palette);
@@ -357,6 +366,19 @@ export const EventOfferingBody: React.FC<EventOfferingBodyProps> = ({
           </Pill>
         ) : null}
       </View>
+
+      {/* ORCH-1339 — cross-entity social proof; gates are SERVER-authoritative
+          (D2); cluster is GLYPH-only until ORCH-1340. Mounts BETWEEN §4 pills
+          and the §5 ticket box (social proof feeds the decision; the decision
+          stays the hero). null payload → nothing renders (honest absence). */}
+      {socialProof ? (
+        <OfferingMomentum
+          palette={palette}
+          theme={theme}
+          socialProof={socialProof}
+          testID="orch-1339-momentum-event"
+        />
+      ) : null}
 
       {/* (5) TICKET BOX — per-tier steppers + live Σ-all-in + in-box Proceed.
           ORCH-1167-R2 (change 4): wrapped in an onLayout View so the host can

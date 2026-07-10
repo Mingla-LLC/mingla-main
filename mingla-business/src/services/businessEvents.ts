@@ -1150,3 +1150,39 @@ export const patchPublishedEventWhen = async (
   }
   return response;
 };
+
+/**
+ * ORCH-1339 [momentum-card-cross-entity] — persist the two guest-privacy
+ * display gates (theme.business_event.settings.privateGuestList /
+ * .hideRemainingCount) via the dedicated NO-CLOBBER leaf-write RPC
+ * `biz_set_event_guest_privacy` (ORCH-1172/1296 jsonb deep-merge pattern).
+ * NEVER route these two keys through the big trip/experience edit RPCs
+ * (COMMS-0029 clobber class — that is exactly what this leaf RPC avoids).
+ *
+ * Omitted patch key → the server KEEPS the existing value (partial update).
+ * Returns the FINAL persisted values — callers keep their toggle UI on this
+ * echo, never on optimistic state. Throws on RPC error (callers toast).
+ */
+export const setEventGuestPrivacy = async (
+  eventId: string,
+  patch: { privateGuestList?: boolean; hideRemainingCount?: boolean },
+): Promise<{ privateGuestList: boolean; hideRemainingCount: boolean }> => {
+  const { data, error } = await supabase.rpc("biz_set_event_guest_privacy", {
+    p_event_id: eventId,
+    p_private_guest_list: patch.privateGuestList ?? null,
+    p_hide_remaining_count: patch.hideRemainingCount ?? null,
+  });
+  if (error !== null) {
+    throw new Error(error.message ?? "set_event_guest_privacy_failed");
+  }
+  const echo = data as
+    | { privateGuestList?: boolean; hideRemainingCount?: boolean }
+    | null;
+  if (echo === null) {
+    throw new Error("set_event_guest_privacy_empty_response");
+  }
+  return {
+    privateGuestList: echo.privateGuestList ?? false,
+    hideRemainingCount: echo.hideRemainingCount ?? false,
+  };
+};

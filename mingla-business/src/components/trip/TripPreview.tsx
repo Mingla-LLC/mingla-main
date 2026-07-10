@@ -68,6 +68,7 @@ import {
   TripOfferingBody,
   TripOfferingPaymentChoice,
   normalizeCityCountry,
+  type SocialProofSummary,
   type TripOfferingBrand,
   type TripOfferingCallbacks,
   type TripOfferingData,
@@ -179,6 +180,12 @@ export interface TripPreviewProps {
   /** Native safe-area top inset for the chrome. */
   safeAreaTop?: number;
   /**
+   * ORCH-1339 — passthrough of the pg_public_social_proof payload (route-
+   * fetched) into the shared body's momentum unit. FOUNDATION mode only;
+   * null/absent → no unit (wizard previews pass nothing — honest zero-state).
+   */
+  socialProof?: SocialProofSummary | null;
+  /**
    * ORCH-1138 device-rework #3 — the DOCKED Reserve CTA (TripReserveBar
    * variant="docked"), rendered as the LAST child of the PHONE body so it sits
    * flush beneath "Choose how you pay" (no black void). Route-owned (carries the
@@ -243,6 +250,7 @@ export const TripPreview: React.FC<TripPreviewProps> = ({
   onViewBrand,
   contentBottomInset = 0,
   safeAreaTop = 0,
+  socialProof = null,
   dockedReserve,
   onScroll,
   onScrollViewLayout,
@@ -285,6 +293,7 @@ export const TripPreview: React.FC<TripPreviewProps> = ({
         onViewBrand={onViewBrand}
         contentBottomInset={contentBottomInset}
         safeAreaTop={safeAreaTop}
+        socialProof={socialProof}
         dockedReserve={dockedReserve}
         onScroll={onScroll}
         onScrollViewLayout={onScrollViewLayout}
@@ -334,6 +343,8 @@ const FoundationTripPreview: React.FC<{
   onViewBrand?: () => void;
   contentBottomInset: number;
   safeAreaTop: number;
+  /** ORCH-1339 — route-fetched social proof for the shared body's momentum unit. */
+  socialProof?: SocialProofSummary | null;
   dockedReserve?: React.ReactNode;
   onScroll?: ParallaxScrollHandler;
   onScrollViewLayout?: ParallaxLayoutHandler;
@@ -362,6 +373,7 @@ const FoundationTripPreview: React.FC<{
   onViewBrand,
   contentBottomInset,
   safeAreaTop,
+  socialProof = null,
   dockedReserve,
   onScroll,
   onScrollViewLayout,
@@ -490,6 +502,8 @@ const FoundationTripPreview: React.FC<{
         planChoiceByTier={planChoiceByTier}
         onChangePlanChoice={onChangePlanChoice}
         dockedReserve={!isDesktop ? dockedReserve : undefined}
+        // ORCH-1339 — cross-entity social proof (route-fetched, props-only).
+        socialProof={socialProof}
         testID="meta-orch-1174-trip-body"
       />
     </ParallaxCoverShell>

@@ -32,6 +32,11 @@
  *     a club-night with no layout change.
  *   - The decision is the HERO — it is rendered docked/sticky, never buried
  *     mid-body (I-PROPOSED-1157-RSVP-DECISION-IS-HERO).
+ *   - ORCH-1339 (D2 display gates): `hideRemainingCount` derives the momentum with
+ *     a null DISPLAY capacity (sub-line flips to "Open invite", fixed low meter;
+ *     the going count stays) and `privateGuestList` suppresses the anonymous
+ *     cluster entirely. Both flags are SERVER-authoritative and forwarded
+ *     per-surface via RsvpOfferingConfig; ctaState/decision math never reads them.
  *
  * Pure: react-native + react-native-svg + the shared ThemePalette/ResolvedTheme
  * only. NO data fetch, NO React Query, NO app `src/` import
@@ -143,6 +148,17 @@ export interface RsvpMomentumDecisionProps {
    * RsvpPublicBody renders its own brand chip in the body on phone.
    */
   hostRow?: React.ReactNode;
+  /**
+   * ORCH-1339 (D2) — suppress the anonymous glyph cluster (server-authoritative
+   * host gate). Count / sub-line / meter / decision are unaffected.
+   */
+  privateGuestList?: boolean;
+  /**
+   * ORCH-1339 (D2) — hide scarcity for DISPLAY: the momentum derives with a null
+   * display capacity ("Open invite" sub-line + fixed low meter; count kept).
+   * ctaState/decision capacity truth stays upstream in resolveRsvpCta.
+   */
+  hideRemainingCount?: boolean;
   /** Optional microcopy under the decision (e.g. "Anyone with the link can RSVP"). */
   micro?: string;
   /** testID prefix for the going / maybe / not-going buttons + nodes. */
@@ -239,6 +255,8 @@ export const RsvpMomentumDecision: React.FC<RsvpMomentumDecisionProps> = ({
   showMomentum,
   showDecision = true,
   hideStepper = false,
+  privateGuestList = false,
+  hideRemainingCount = false,
   hostRow,
   micro,
   goingTestID,
@@ -247,7 +265,8 @@ export const RsvpMomentumDecision: React.FC<RsvpMomentumDecisionProps> = ({
   testID,
 }) => {
   const boldFamily = boldFontFamily(theme);
-  const momentum = deriveMomentum(goingCount, capacity);
+  // ORCH-1339 (D2) — hideRemainingCount nulls the DISPLAY capacity only.
+  const momentum = deriveMomentum(goingCount, hideRemainingCount ? null : capacity);
 
   // Kicker dot pulse (1.8s) + meter fill width transition (0.5s ease) — subtle.
   // isInteraction:false — a looping/animating timing on the RSVP page must NOT hold an
@@ -376,8 +395,9 @@ export const RsvpMomentumDecision: React.FC<RsvpMomentumDecisionProps> = ({
         />
       </View>
       {/* anonymous FACELESS attendee cluster — a COUNT motif, never identities.
-          Hidden entirely at goingCount=0. NO <Image>/uri anywhere (rule 9). */}
-      {momentum.hasGoing ? (
+          Hidden entirely at goingCount=0. NO <Image>/uri anywhere (rule 9).
+          ORCH-1339 (D2) — suppressed entirely under privateGuestList. */}
+      {momentum.hasGoing && !privateGuestList ? (
         <View
           style={styles.cluster}
           accessibilityLabel={`${goingCount} people going`}

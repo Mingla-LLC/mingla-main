@@ -59,6 +59,17 @@ export interface VenueExperience {
    */
   revenueCents: number;
   revenueCurrency: string | null;
+  /**
+   * ORCH-1339 — the two guest-privacy display gates, parsed from
+   * theme.business_event.settings.* with false defaults. Optional (existing
+   * fixtures/constructions omit it; consumers read `?? false`). `mapExperience`
+   * always populates it. Persisted via `setEventGuestPrivacy` (leaf-write RPC)
+   * — NEVER via the big edit RPCs.
+   */
+  guestPrivacy?: {
+    privateGuestList: boolean;
+    hideRemainingCount: boolean;
+  };
 }
 
 interface EventRow {
@@ -92,6 +103,27 @@ function deriveWhenMode(
   if (isRecurring) return "recurring";
   if (isMultiDate) return "multi_date";
   return "single";
+}
+
+// ORCH-1339 — parse the two guest-privacy display gates from
+// theme.business_event.settings.* (false defaults; the same object path the
+// server RPCs read). Mirrors tripsService.readGuestPrivacy.
+function readExperienceGuestPrivacy(theme: Record<string, unknown> | null): {
+  privateGuestList: boolean;
+  hideRemainingCount: boolean;
+} {
+  const be = theme?.business_event;
+  const beObj =
+    be !== null && typeof be === "object" ? (be as Record<string, unknown>) : {};
+  const settings = beObj.settings;
+  const s =
+    settings !== null && typeof settings === "object"
+      ? (settings as Record<string, unknown>)
+      : {};
+  return {
+    privateGuestList: s.privateGuestList === true,
+    hideRemainingCount: s.hideRemainingCount === true,
+  };
 }
 
 function mapExperience(
@@ -155,6 +187,8 @@ function mapExperience(
     spotsSold: agg?.ticketsSold ?? 0,
     revenueCents: agg?.revenueCents ?? 0,
     revenueCurrency: agg?.revenueCurrency ?? null,
+    // ORCH-1339 — guest-privacy display gates (theme leaf; false defaults).
+    guestPrivacy: readExperienceGuestPrivacy(row.theme),
   };
 }
 

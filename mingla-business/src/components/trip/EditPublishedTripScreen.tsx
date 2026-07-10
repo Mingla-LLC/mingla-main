@@ -101,6 +101,8 @@ import {
   UpdateLiveTripPermissionError,
   setTripPricingSwitches,
 } from "../../services/tripsService";
+// ORCH-1339 — guest-privacy leaf-write RPC (never biz_update_live_trip).
+import { setEventGuestPrivacy } from "../../services/businessEvents";
 import {
   computeRichTripFieldDiffs,
   computeTripDayDiffs,
@@ -217,6 +219,10 @@ interface LocalTripEditState {
   refundPolicy: RefundPolicy | null;
   bookingDeadline: string | null; // ISO timestamptz, or null to clear
   bookingsClosed: boolean;
+  // ORCH-1339 — the two guest-privacy display gates (side-channel: EXCLUDED
+  // from buildLiveTripPatch; persisted via setEventGuestPrivacy).
+  privateGuestList: boolean;
+  hideRemainingCount: boolean;
 }
 
 function tripToLocalEditState(trip: Trip): LocalTripEditState {
@@ -293,6 +299,9 @@ function tripToLocalEditState(trip: Trip): LocalTripEditState {
     refundPolicy: trip.refundPolicy,
     bookingDeadline: trip.bookingDeadline,
     bookingsClosed: trip.bookingsClosed,
+    // ORCH-1339 — guest-privacy server snapshot (theme leaf; false defaults).
+    privateGuestList: trip.guestPrivacy?.privateGuestList ?? false,
+    hideRemainingCount: trip.guestPrivacy?.hideRemainingCount ?? false,
   };
 }
 
@@ -313,6 +322,15 @@ interface PatchComputeResult {
     passTax: boolean | null;
     passMinglaFee: boolean | null;
     passServiceFee: boolean | null;
+  } | null;
+  // ORCH-1339 — the guest-privacy toggles when they differ from the trip's
+  // current values (only the DIRTY keys), else null. Side-channel like the
+  // pricing switches: persisted via setEventGuestPrivacy (leaf-write RPC), NOT
+  // through `patch` — so they never enter biz_update_live_trip and never trip
+  // the refund gate / reason prompt by themselves (SC-7).
+  guestPrivacyChanged: {
+    privateGuestList?: boolean;
+    hideRemainingCount?: boolean;
   } | null;
 }
 
@@ -567,6 +585,21 @@ function buildLiveTripPatch(
     patch.bookings_closed = state.bookingsClosed;
   }
 
+  // ORCH-1339 — diff the guest-privacy toggles (side-channel; dirty keys only).
+  const origPrivacy = {
+    privateGuestList: trip.guestPrivacy?.privateGuestList ?? false,
+    hideRemainingCount: trip.guestPrivacy?.hideRemainingCount ?? false,
+  };
+  const privacyPatch: { privateGuestList?: boolean; hideRemainingCount?: boolean } = {};
+  if (state.privateGuestList !== origPrivacy.privateGuestList) {
+    privacyPatch.privateGuestList = state.privateGuestList;
+  }
+  if (state.hideRemainingCount !== origPrivacy.hideRemainingCount) {
+    privacyPatch.hideRemainingCount = state.hideRemainingCount;
+  }
+  const guestPrivacyChanged =
+    Object.keys(privacyPatch).length > 0 ? privacyPatch : null;
+
   return {
     patch,
     dayDiffs,
@@ -576,6 +609,7 @@ function buildLiveTripPatch(
     droppedInclusionKeys,
     tierPriceChangedTicketTypeIds,
     pricingSwitchesChanged,
+    guestPrivacyChanged,
   };
 }
 
@@ -824,6 +858,13 @@ export const EditPublishedTripScreen: React.FC<EditPublishedTripScreenProps> = (
   const handleBookingsClosedChange = useCallback((next: boolean): void => {
     setEditState((prev) => ({ ...prev, bookingsClosed: next }));
   }, []);
+  // ORCH-1339 — guest-privacy toggle lifts (side-channel; never enter `patch`).
+  const handlePrivateGuestListChange = useCallback((next: boolean): void => {
+    setEditState((prev) => ({ ...prev, privateGuestList: next }));
+  }, []);
+  const handleHideRemainingCountChange = useCallback((next: boolean): void => {
+    setEditState((prev) => ({ ...prev, hideRemainingCount: next }));
+  }, []);
 
   const handleToggleSection = useCallback((key: SectionKey): void => {
     setOpenSection((prev) => (prev === key ? null : key));
@@ -837,6 +878,32 @@ export const EditPublishedTripScreen: React.FC<EditPublishedTripScreenProps> = (
       Object.keys(patch).length === 0 &&
       computed.pricingSwitchesChanged === null
     ) {
+      // ORCH-1339 — a guest-privacy-toggle-ONLY change persists DIRECTLY via
+      // the leaf-write RPC: display prefs are never a material change, so they
+      // bypass the ChangeSummaryModal reason prompt AND the refund gate (SC-7).
+      const privacyOnly = computed.guestPrivacyChanged;
+      if (privacyOnly !== null) {
+        void (async (): Promise<void> => {
+          setSubmitting(true);
+          try {
+            await setEventGuestPrivacy(trip.id, privacyOnly);
+            setSubmitting(false);
+            showToast("Saved. Live now.");
+            setTimeout(() => {
+              if (router.canGoBack()) {
+                router.back();
+              } else {
+                // orch-strict-grep-allow route-by-event-type — EditPublishedTripScreen is trip-only (app/trip/[id]/edit.tsx dispatch)
+                router.replace(`/trip/${trip.id}` as never);
+              }
+            }, TOAST_NAV_DELAY_MS);
+          } catch {
+            setSubmitting(false);
+            showToast("Couldn't save guest privacy. Tap to try again.");
+          }
+        })();
+        return;
+      }
       showToast("No changes to save.");
       return;
     }
@@ -885,7 +952,8 @@ export const EditPublishedTripScreen: React.FC<EditPublishedTripScreenProps> = (
       pricingTierDiffs: computed.pricingTierDiffs,
       severity,
     });
-  }, [computed, tripFieldDiffs, showToast, editState]);
+    // ORCH-1339 — trip.id + router feed the toggle-only direct-persist branch.
+  }, [computed, tripFieldDiffs, showToast, editState, trip.id, router]);
 
   // ---- Map rejection result to dialog content ----
   const buildRejectDialog = useCallback(
@@ -1105,6 +1173,15 @@ export const EditPublishedTripScreen: React.FC<EditPublishedTripScreenProps> = (
       // finish without it (no buyer notification: who-covers-cost never changes
       // the buyer's all-in price, T-1).
       if (Object.keys(patch).length === 0) {
+        // ORCH-1339 — persist any dirty guest-privacy toggles alongside (leaf
+        // write; NON-BLOCKING — display prefs never block the save).
+        if (computed.guestPrivacyChanged !== null) {
+          try {
+            await setEventGuestPrivacy(trip.id, computed.guestPrivacyChanged);
+          } catch {
+            showToast("Saved, but guest privacy didn't update. Try again from Settings.");
+          }
+        }
         setSubmitting(false);
         setModal((prev) => ({ ...prev, visible: false }));
         showToast("Saved. Live now.");
@@ -1178,6 +1255,17 @@ export const EditPublishedTripScreen: React.FC<EditPublishedTripScreenProps> = (
         },
         flags,
       );
+
+      // ORCH-1339 — the gated patch succeeded; persist any dirty guest-privacy
+      // toggles via the leaf-write RPC (SPEC §4.7: AFTER the gated patch).
+      // NON-BLOCKING: a display-pref failure never rolls back the saved patch.
+      if (computed.guestPrivacyChanged !== null) {
+        try {
+          await setEventGuestPrivacy(trip.id, computed.guestPrivacyChanged);
+        } catch {
+          showToast("Saved, but guest privacy didn't update. Try again from Settings.");
+        }
+      }
 
       setSubmitting(false);
       setModal((prev) => ({ ...prev, visible: false }));
@@ -1541,6 +1629,12 @@ export const EditPublishedTripScreen: React.FC<EditPublishedTripScreenProps> = (
               onBookingDeadlineChange={handleBookingDeadlineChange}
               bookingsClosed={editState.bookingsClosed}
               onBookingsClosedChange={handleBookingsClosedChange}
+              // ORCH-1339 — guest-privacy display gates (side-channel save via
+              // setEventGuestPrivacy; excluded from buildLiveTripPatch).
+              privateGuestList={editState.privateGuestList}
+              onPrivateGuestListChange={handlePrivateGuestListChange}
+              hideRemainingCount={editState.hideRemainingCount}
+              onHideRemainingCountChange={handleHideRemainingCountChange}
               tripStartIso={trip.businessTrip.startAt}
               brandTimezone={trip.timezone}
               affectedOrderCount={totalConfirmedOrders}
@@ -1579,6 +1673,10 @@ export const EditPublishedTripScreen: React.FC<EditPublishedTripScreenProps> = (
       handleRefundPolicyChange,
       handleBookingDeadlineChange,
       handleBookingsClosedChange,
+      // ORCH-1339 — guest-privacy controlled-editor wiring (same ORCH-1122
+      // stale-closure class: the memoized body renders the two switches).
+      handlePrivateGuestListChange,
+      handleHideRemainingCountChange,
     ],
   );
 

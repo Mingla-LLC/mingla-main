@@ -61,6 +61,14 @@ export interface EditPublishedTripSettingsAccordionProps {
   /** Controlled — current bookings-closed flag (parent owns edit state). */
   bookingsClosed: boolean;
   onBookingsClosedChange: (next: boolean) => void;
+  // ORCH-1339 — the two guest-privacy display gates (controlled; parent owns
+  // edit state). EXCLUDED from buildLiveTripPatch — the parent persists them
+  // via setEventGuestPrivacy (leaf-write RPC), never biz_update_live_trip, so
+  // toggling them NEVER trips the refund gate or the reason prompt by itself.
+  privateGuestList: boolean;
+  onPrivateGuestListChange: (next: boolean) => void;
+  hideRemainingCount: boolean;
+  onHideRemainingCountChange: (next: boolean) => void;
   tripStartIso: string | null;
   brandTimezone: string | null;
   /** Paid non-cancelled order count. >0 ⇒ proactive read-only sales banner +
@@ -81,6 +89,10 @@ export const EditPublishedTripSettingsAccordion: React.FC<
   onBookingDeadlineChange,
   bookingsClosed,
   onBookingsClosedChange,
+  privateGuestList,
+  onPrivateGuestListChange,
+  hideRemainingCount,
+  onHideRemainingCountChange,
   tripStartIso,
   brandTimezone,
   affectedOrderCount = 0,
@@ -149,7 +161,65 @@ export const EditPublishedTripSettingsAccordion: React.FC<
         </View>
       </View>
 
-      {/* Block C — Proactive sales-aware notice (read-only context; NOT a save
+      {/* Block C — ORCH-1339 Guest privacy (the two D2 display gates). Copy per
+          SPEC §4.8 — byte-exact. Persisted by the PARENT via the
+          setEventGuestPrivacy leaf-write RPC AFTER the gated patch (or directly
+          when nothing else changed) — these two switches never enter
+          buildLiveTripPatch / biz_update_live_trip and never trigger the
+          refund gate or reason prompt by themselves. */}
+      <View style={styles.block}>
+        <Text style={styles.blockLabel}>Guest privacy</Text>
+        <View style={styles.switchRow}>
+          <View style={styles.switchRowText}>
+            <Text style={styles.switchLabel}>Private guest list</Text>
+            <Text style={styles.switchHelp}>
+              Hide who's going. Travelers still see the going count.
+            </Text>
+          </View>
+          <Switch
+            value={privateGuestList}
+            onValueChange={onPrivateGuestListChange}
+            disabled={submitting}
+            trackColor={{
+              false: "rgba(255,255,255,0.16)",
+              true: accent.warm,
+            }}
+            thumbColor="#ffffff"
+            ios_backgroundColor="rgba(255,255,255,0.16)"
+            accessibilityRole="switch"
+            accessibilityLabel="Private guest list"
+            accessibilityState={{ checked: privateGuestList, disabled: submitting }}
+            accessibilityHint="Hides who's going from travelers."
+            testID="settings-private-guestlist-switch"
+          />
+        </View>
+        <View style={styles.switchRow}>
+          <View style={styles.switchRowText}>
+            <Text style={styles.switchLabel}>Hide remaining count</Text>
+            <Text style={styles.switchHelp}>
+              Don't show "X spots left" or how full it is.
+            </Text>
+          </View>
+          <Switch
+            value={hideRemainingCount}
+            onValueChange={onHideRemainingCountChange}
+            disabled={submitting}
+            trackColor={{
+              false: "rgba(255,255,255,0.16)",
+              true: accent.warm,
+            }}
+            thumbColor="#ffffff"
+            ios_backgroundColor="rgba(255,255,255,0.16)"
+            accessibilityRole="switch"
+            accessibilityLabel="Hide remaining count"
+            accessibilityState={{ checked: hideRemainingCount, disabled: submitting }}
+            accessibilityHint="Hides the spots-left count and fill level."
+            testID="settings-hide-count-switch"
+          />
+        </View>
+      </View>
+
+      {/* Block D — Proactive sales-aware notice (read-only context; NOT a save
           or reason control — the single gate lives on the parent's bottom
           Save button). */}
       {hasSales ? (

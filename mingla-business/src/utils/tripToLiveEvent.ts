@@ -129,9 +129,13 @@ export function tripToLiveEvent(trip: Trip | null): LiveEvent | null {
     visibility: trip.visibility === "public" ? "public" : "private",
     requireApproval: false,
     allowTransfers: true,
-    hideRemainingCount: false,
+    // ORCH-1339 — the two guest-privacy display gates now flow from the mapped
+    // Trip (theme.business_event.settings.*, tripsService.readGuestPrivacy)
+    // instead of hard-coded false, so trip-backed LiveEvent consumers see the
+    // host's real toggles.
+    hideRemainingCount: trip.guestPrivacy?.hideRemainingCount ?? false,
     passwordProtected: false,
-    privateGuestList: false,
+    privateGuestList: trip.guestPrivacy?.privateGuestList ?? false,
     inPersonPaymentsEnabled: false,
     orders: [],
     createdAt: trip.createdAt,

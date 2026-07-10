@@ -105,7 +105,9 @@ import {
   mapConsumerEventToFoundation,
   type ConsumerEventFoundationModel,
 } from "../../hooks/useConsumerEventFoundation";
-import { circleKeys } from "../../hooks/queryKeys";
+import { circleKeys, socialProofKeys } from "../../hooks/queryKeys";
+// ORCH-1339 — cross-entity social proof (pg_public_social_proof, ORCH-1338).
+import { fetchSocialProof } from "../../services/socialProofService";
 import {
   type NativeCheckoutOutcome,
   useNativeCheckoutFlow,
@@ -288,6 +290,17 @@ export default function ConsumerEventDetailScreen({
     queryFn: () => fetchRsvpMomentum(eventId as string),
   });
   const rsvpMomentum = rsvpMomentumQuery.data ?? null;
+
+  // ORCH-1339 — cross-entity social proof (pg_public_social_proof, ORCH-1338).
+  // Enabled for BOTH branches: the standard branch feeds the shared body's
+  // momentum unit; the RSVP branch reads the two D2 gates into rsvpConfig.
+  // Error/missing → data stays undefined → the unit is omitted (page as today).
+  const socialProofQuery = useQuery({
+    queryKey: socialProofKeys.summary(eventId ?? ""),
+    enabled: eventId !== null,
+    staleTime: 60 * 1000,
+    queryFn: () => fetchSocialProof(eventId as string),
+  });
 
   const theme = themeQuery.data ?? resolveTheme(null, null);
   const palette = useMemo(() => createThemePalette(theme), [theme]);
@@ -583,6 +596,12 @@ export default function ConsumerEventDetailScreen({
     rsvp_contribution_min_cents: rsvpMomentum?.rsvpContributionMinCents ?? null,
     settlementCurrency: rsvpPublicEvent.currency ?? "USD",
     hostShortName: rsvpBrand?.displayName ?? undefined,
+    // ORCH-1339 (D2) — the two SERVER-authoritative display gates, read from
+    // the social-proof payload (`?? false` until it resolves). Both the inline
+    // RsvpOfferingBody and the RsvpOfferingFloatingBar read this SAME config
+    // object, so the two mounts gate together.
+    privateGuestList: socialProofQuery.data?.privateGuestList ?? false,
+    hideRemainingCount: socialProofQuery.data?.hideRemainingCount ?? false,
   };
   const rsvpBodyStaticMapUrl: string | null = (() => {
     if (rsvpPublicEvent.format === "online") return null;
@@ -925,6 +944,8 @@ export default function ConsumerEventDetailScreen({
                 staticMapUrl={bodyStaticMapUrl}
                 submitting={checkoutInFlight}
                 onTicketBoxLayout={handleDockLayout}
+                // ORCH-1339 — cross-entity social proof (server-gated payload).
+                socialProof={socialProofQuery.data ?? null}
                 testID="orch-1167-consumer-event-body"
               />
             ) : (

@@ -48,6 +48,7 @@ import {
   resolveOfferingSurface,
   resolveTheme,
   type CtaState,
+  type SocialProofSummary,
 } from "@mingla/offering-rendering";
 import { useResponsiveLayout } from "@mingla/offering-rendering";
 import { useThemeFont } from "../../../src/theme/useThemeFont";
@@ -58,6 +59,13 @@ import {
   experiencePublicUrl,
 } from "../../../src/constants/publicUrls";
 import { usePublicExperienceBySlug } from "../../../src/hooks/usePublicExperience";
+// ORCH-1339 — cross-entity social proof (pg_public_social_proof, ORCH-1338;
+// anon-safe RPC — this is an anon buyer route, ungated per ORCH-1004).
+import { useQuery } from "@tanstack/react-query";
+import {
+  fetchSocialProof,
+  socialProofKeys,
+} from "../../../src/services/socialProofService";
 // META-ORCH-1187 LEG 2 — buyer-web public-offering view capture (web-only).
 import { captureWeb } from "../../../src/analytics/webAnalytics";
 import { ExperiencePreview } from "../../../src/components/experience/ExperiencePreview";
@@ -128,6 +136,19 @@ export default function PublicExperienceRoute(): React.ReactElement {
     typeof brandSlug === "string" ? brandSlug : null,
     typeof experienceSlug === "string" ? experienceSlug : null,
   );
+  // ORCH-1339 — social proof keyed by the resolved experience's event id.
+  // Error/missing → data stays undefined → the momentum unit is omitted (page
+  // renders as today).
+  const experienceEventId =
+    query.data?.experience?.id !== undefined && query.data.experience.id.length > 0
+      ? query.data.experience.id
+      : null;
+  const socialProofQuery = useQuery({
+    queryKey: socialProofKeys.summary(experienceEventId ?? ""),
+    enabled: experienceEventId !== null,
+    staleTime: 60_000,
+    queryFn: () => fetchSocialProof(experienceEventId as string),
+  });
 
   // META-ORCH-1187 LEG 2 — fire `web_public_offering_viewed` once on mount.
   // Web-only (no-op on native).
@@ -203,6 +224,7 @@ export default function PublicExperienceRoute(): React.ReactElement {
       payload={payload}
       brandSlug={typeof brandSlug === "string" ? brandSlug : ""}
       experienceSlug={typeof experienceSlug === "string" ? experienceSlug : ""}
+      socialProof={socialProofQuery.data ?? null}
       muted={muted}
       onToggleMute={handleToggleMute}
       onClose={handleClose}
@@ -220,6 +242,8 @@ const ResolvedExperiencePage: React.FC<{
   payload: NonNullable<ReturnType<typeof usePublicExperienceBySlug>["data"]>;
   brandSlug: string;
   experienceSlug: string;
+  /** ORCH-1339 — route-fetched social proof (props-only into the shared body). */
+  socialProof: SocialProofSummary | null;
   muted: boolean;
   onToggleMute: () => void;
   onClose: () => void;
@@ -233,6 +257,7 @@ const ResolvedExperiencePage: React.FC<{
   payload,
   brandSlug,
   experienceSlug,
+  socialProof,
   muted,
   onToggleMute,
   onClose,
@@ -497,6 +522,8 @@ const ResolvedExperiencePage: React.FC<{
         reserveControl={reserveControl}
         contentBottomInset={contentBottomInset}
         safeAreaTop={safeAreaTop}
+        // ORCH-1339 — cross-entity social proof (server-gated payload).
+        socialProof={socialProof}
         dockedReserve={dockedReserve}
         onScroll={handleScroll}
         onScrollViewLayout={handleScrollLayout}

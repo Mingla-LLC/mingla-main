@@ -39,6 +39,7 @@ import {
   type PublicBrandProps,
   type PublicEventProps,
   type ResolvedTheme,
+  type SocialProofSummary,
   type ThemePalette,
   boldFontFamily,
 } from "@mingla/offering-rendering";
@@ -87,6 +88,11 @@ export interface FoundationEventPreviewProps {
   onChangeTicketQuantity: (ticketTypeId: string, qty: number) => void;
   onProceedToCart: () => void;
   submitting?: boolean;
+  /**
+   * ORCH-1339 — passthrough of the pg_public_social_proof payload (adapter-
+   * fetched) into the shared body's momentum unit. null → no unit.
+   */
+  socialProof?: SocialProofSummary | null;
   testID?: string;
 }
 
@@ -116,6 +122,7 @@ export const FoundationEventPreview: React.FC<FoundationEventPreviewProps> = ({
   onChangeTicketQuantity,
   onProceedToCart,
   submitting = false,
+  socialProof = null,
   testID,
 }) => {
   const { isDesktop } = useResponsiveLayout();
@@ -155,6 +162,8 @@ export const FoundationEventPreview: React.FC<FoundationEventPreviewProps> = ({
       submitting={submitting}
       onTicketBoxLayout={onDockLayout}
       hideTicketBox={hideTicketBox}
+      // ORCH-1339 — cross-entity social proof (adapter-fetched, props-only).
+      socialProof={socialProof}
       testID="orch-1167-event-body"
     />
   );
