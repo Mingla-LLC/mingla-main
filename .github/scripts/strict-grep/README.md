@@ -36,6 +36,7 @@ scaffold rewrite needed.
 | I-1292-TAXONOMY-LABEL-AT-RENDER | `orch-1292-taxonomy-label-parity.mjs` | ORCH-1292 | ORCH-1292 — public-page taxonomy slug→canonical-label resolution + drift/fails-on-revert / adversarial scope+fallback-masking; `Mingla_Artifacts/INVARIANT_REGISTRY.md` I-1292-TAXONOMY-LABEL-AT-RENDER |
 | I-1292-TAXONOMY-LABEL-AT-RENDER | `orch-1292-taxonomy-label-adversarial.mjs` | ORCH-1292 | ORCH-1292 — public-page taxonomy slug→canonical-label resolution + drift/fails-on-revert / adversarial scope+fallback-masking; `Mingla_Artifacts/INVARIANT_REGISTRY.md` I-1292-TAXONOMY-LABEL-AT-RENDER |
 | I-PROPOSED-1303-WEB-COVER-VIDEO-URI-UNMANGLED | `orch-1303-web-cover-video-uri.mjs` | ORCH-1303 | ORCH-1303 — business-WEB picked-video blob: URL reaches the uploader unmangled (`resolveRawClipUploadUri` web branch); no `file://blob:` mangle; native byte-identical; `Mingla_Artifacts/reports/INVESTIGATION_ORCH-1303_HERO_COVER_VIDEO_WEB_UPLOAD.md` |
+| I-PROPOSED-1336-NOTIFICATIONS-TOP-ALIGN | `orch-1336-notifications-top-align.mjs` | ORCH-1336 | ORCH-1336 — consumer `NotificationsSheet` populated+online body contributes no flex-growing sibling above the section list (populated branch returns `null` when online; dead `notificationsBody` flex:1 style removed; offline banner intrinsic above list); notifications hug the top; `Mingla_Artifacts/INVARIANT_REGISTRY.md` I-PROPOSED-1336-NOTIFICATIONS-TOP-ALIGN |
 
 ## Future gates (proposed but not yet implemented)
 
