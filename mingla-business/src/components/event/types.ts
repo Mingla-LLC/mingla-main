@@ -78,6 +78,17 @@ export interface StepBodyProps {
    * the event path is byte-identical.
    */
   lockSingleDate?: boolean;
+  /**
+   * ORCH-1335 — provider-aware RSVP chip-in payout readiness. ONLY the RSVP
+   * chip-in authoring step (RsvpStep5Setup) reads this; it swaps the "Connect
+   * your bank" nudge for a positive "Payouts are on" confirmation when the brand
+   * is already payout-ready. Computed once at the wizard/edit-screen level via
+   * isChipInPayoutReady(brand, freshStripeStatus) and threaded through the shared
+   * base/step props spread. Optional + undefined-safe: every other step ignores
+   * it transparently, and undefined (loading) falls to the neutral nudge (no
+   * false-positive). Does NOT touch the publish-time pg_brand_can_collect gate.
+   */
+  chipInPayoutReady?: boolean;
   // ORCH-0892-A: legacy wizard-scroll-ref prop removed. CoverPicker
   // now relies on the keyboard-controller library's KeyboardAvoidingView
   // wrap for search-input visibility above the keyboard.

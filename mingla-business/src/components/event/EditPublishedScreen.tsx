@@ -104,6 +104,9 @@ import { CreatorStep6Settings } from "./CreatorStep6Settings";
 import { EditAfterPublishBanner } from "./EditAfterPublishBanner";
 
 import { useCurrentBrandRole } from "../../hooks/useCurrentBrandRole";
+import { useBrand } from "../../hooks/useBrands";
+import { useBrandStripeStatus } from "../../hooks/useBrandStripeStatus";
+import { isChipInPayoutReady } from "../../utils/chipInPayoutReadiness";
 import { canPerformAction } from "../../utils/permissionGates";
 import {
   clearEventCover,
@@ -376,6 +379,18 @@ export const EditPublishedScreen: React.FC<EditPublishedScreenProps> = ({
   // return shell (ORCH-0710 lesson).
   const { rank: currentRank } = useCurrentBrandRole(liveEvent?.brandId ?? null);
   const canEditTicketPrice = canPerformAction(currentRank, "EDIT_TICKET_PRICE");
+
+  // ORCH-1335 — chip-in payout readiness for the RSVP edit path (same banner as
+  // create). Gated to rsvpMode so ticketed edits make no extra queries (both
+  // hooks accept null → disabled). Fresh Stripe truth via the hook, Paystack via
+  // the brand subaccount; loading → false → neutral nudge (no false-positive).
+  const chipInBrandId = rsvpMode ? (liveEvent?.brandId ?? null) : null;
+  const chipInBrandQuery = useBrand(chipInBrandId);
+  const chipInStripeStatus = useBrandStripeStatus(chipInBrandId);
+  const chipInPayoutReady = useMemo(
+    () => isChipInPayoutReady(chipInBrandQuery.data ?? null, chipInStripeStatus.data?.status),
+    [chipInBrandQuery.data, chipInStripeStatus.data?.status],
+  );
 
   // ---- Update handler — local state only ----
   const handleUpdateDraft = useCallback(
@@ -1292,6 +1307,9 @@ export const EditPublishedScreen: React.FC<EditPublishedScreenProps> = ({
         brandDefaultCurrency: liveEvent.currency ?? null,
         coverMediaApplyMode: "published_manual" as const,
         onCoverVideoProcessingChange: setCoverVideoProcessing,
+        // ORCH-1335 — RsvpStep5Setup ("rsvp-setup" section) reads this to swap
+        // its chip-in bank callout. Undefined for non-RSVP sections (harmless).
+        chipInPayoutReady,
         // ORCH-0892-A: legacy CoverPicker scroll-ref prop removed.
         // CoverPicker now uses the keyboard-controller library's KAV wrap.
         // scrollViewRef remains for the Cycle 3 wizard root pattern.
@@ -1340,6 +1358,7 @@ export const EditPublishedScreen: React.FC<EditPublishedScreenProps> = ({
       canEditTicketPrice,
       liveEvent.serverEventId,
       liveEvent.currency,
+      chipInPayoutReady,
     ],
   );
 

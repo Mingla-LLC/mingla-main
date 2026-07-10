@@ -47,6 +47,7 @@ import {
   DESKTOP_WIZARD_RAIL_WIDTH,
 } from "../../constants/desktopLayout";
 import { useResponsiveLayout } from "../../hooks/useResponsiveLayout";
+import { useBrandStripeStatus } from "../../hooks/useBrandStripeStatus";
 import { type Brand } from "../../store/currentBrandStore";
 import {
   useDraftEventStore,
@@ -59,6 +60,7 @@ import {
 import type { ValidationError } from "../../utils/draftEventValidation";
 import { isDraftEventPristine } from "../../utils/draftEventPristine";
 import { resolvePaidPublishGuardCopy } from "../../utils/paidPublishGuards";
+import { isChipInPayoutReady } from "../../utils/chipInPayoutReadiness";
 
 import { Button } from "../ui/Button";
 import { ConfirmDialog } from "../ui/ConfirmDialog";
@@ -296,6 +298,15 @@ export const RsvpCreatorWizard: React.FC<RsvpCreatorWizardProps> = ({
   const stepErrors: ValidationError[] = useMemo(
     () => validateRsvpStep(currentStep, liveDraft),
     [currentStep, liveDraft],
+  );
+
+  // ORCH-1335 — provider-aware chip-in payout readiness (mirrors pg_brand_can_collect).
+  // Fresh Stripe truth via the hook; Paystack via the brand subaccount; loading → false.
+  // Drives the RsvpStep5Setup callout swap (nudge ↔ "Payouts are on"); does NOT gate publish.
+  const chipInStripeStatus = useBrandStripeStatus(brand?.id ?? null);
+  const chipInPayoutReady = useMemo(
+    () => isChipInPayoutReady(brand, chipInStripeStatus.data?.status),
+    [brand, chipInStripeStatus.data?.status],
   );
 
   // Track that the user has reached this step (for resume semantics).
@@ -575,6 +586,8 @@ export const RsvpCreatorWizard: React.FC<RsvpCreatorWizardProps> = ({
       brandDefaultCurrency: brand?.defaultCurrency ?? null,
       coverMediaApplyMode: "draft_auto" as const,
       onCoverVideoProcessingChange: setCoverVideoProcessing,
+      // ORCH-1335 — RsvpStep5Setup reads this to swap its chip-in bank callout.
+      chipInPayoutReady,
     };
     switch (currentStep) {
       case 0:
