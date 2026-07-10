@@ -13,7 +13,14 @@
  *     `wrapInRNModal` + `theme="dark"` (app-chrome surface, NEVER palette-themed)
  *     + fixed GUEST_LIST_SNAP ['70%'] single detent (ORCH-1138 — no dynamic
  *     sizing inside an RN-Modal wrap) + stock motion (ORCH-1064 — no
- *     animationConfigs) + #111418 canvas.
+ *     animationConfigs) + #111418 canvas + `scrollMode="scroll"` with the
+ *     PINNED intrinsic-height `header` sibling slot above the primitive-owned
+ *     BottomSheetScrollView body and mapped rows — the exemplar's exact
+ *     mechanics (MessageInterface.tsx:2221-2299). REVIEW ruling (ORCH-1341):
+ *     the title must never scroll away; flatlist mode folds `header` into
+ *     ListHeaderComponent, so scroll mode is the pinned-header path. Rows are
+ *     RPC-capped ≤100 (design §2.1 scale) — mapped rows, no virtualization
+ *     needed, no raw RN list (the primitive owns the one scroll container).
  *   - COMMS-0084 / ORCH-1315: NO second RN <Modal> ever. Anything that must
  *     layer above this sheet uses the BaseBottomSheet `overlay` slot (unused in
  *     v1 — nothing layers above).
@@ -467,6 +474,7 @@ export function EventGuestListSheet({
         // Rows are NOT pressable (SEALED) — a plain View group; the only
         // interactive elements are the trailing action buttons.
         <Animated.View
+          key={item.key}
           style={[styles.row, { opacity: bodyOpacity }]}
           accessible
           accessibilityLabel={a11yLabel}
@@ -673,8 +681,11 @@ export function EventGuestListSheet({
     </View>
   );
 
-  const listData = phase === "content" ? rows : [];
-
+  // REVIEW ruling (ORCH-1341 amendment): `header` must be the PINNED
+  // intrinsic-height sibling above the scroll body (the exemplar's mechanics —
+  // the title never scrolls away). scroll mode's `<>{header}{scroll}</>`
+  // branch is the primitive's supported pinned-header path; flatlist mode
+  // would fold the header into ListHeaderComponent (scrolls with content).
   return (
     <BaseBottomSheet
       visible={visible}
@@ -682,20 +693,24 @@ export function EventGuestListSheet({
       snapPoints={GUEST_LIST_SNAP}
       wrapInRNModal
       theme="dark"
-      scrollMode="flatlist"
+      scrollMode="scroll"
       backgroundStyle={styles.guestSheetBackground}
       accessibilityLabel="Who's going"
       header={header}
       scrollProps={{
-        data: listData,
-        renderItem: renderGuestRow,
-        keyExtractor: (item: GuestDisplayRow) => item.key,
-        showsVerticalScrollIndicator: false,
         contentContainerStyle: styles.listContent,
-        ListEmptyComponent: renderEmptyState(),
-        ListFooterComponent: listFooter,
+        showsVerticalScrollIndicator: false,
       }}
-    />
+    >
+      {phase === "content" ? (
+        <>
+          {rows.map((item) => renderGuestRow({ item }))}
+          {listFooter}
+        </>
+      ) : (
+        renderEmptyState()
+      )}
+    </BaseBottomSheet>
   );
 }
 
@@ -741,10 +756,9 @@ const styles = StyleSheet.create({
     fontWeight: "600",
     color: "rgba(255, 255, 255, 0.58)",
   },
-  // Horizontal inset lives on the ROWS/footer/states, NOT the list content
-  // container — in flatlist mode the header slot rides inside the list as its
-  // ListHeaderComponent, and a container inset would double the header's own
-  // paddingHorizontal 20 (exemplar parity: eventAudienceListInner owns it).
+  // Horizontal inset lives on the ROWS/footer/states, NOT the scroll content
+  // container (exemplar parity: eventAudienceListInner owns the inset while
+  // eventAudienceListContent carries only the vertical padding).
   listContent: {
     paddingTop: 10,
     paddingBottom: 24,

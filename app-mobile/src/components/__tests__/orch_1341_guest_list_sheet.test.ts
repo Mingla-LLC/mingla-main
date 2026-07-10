@@ -94,12 +94,21 @@ Deno.test("T-02 no @gorhom import; the sheet consumes BaseBottomSheet", () => {
 
 // ── T-03 — the EventAudienceSheet posture (SPEC §4.3 config lines) ──────────
 
-Deno.test("T-03 wrapInRNModal + dark theme + fixed ['70%'] snap + flatlist body", () => {
+Deno.test("T-03 wrapInRNModal + dark theme + fixed ['70%'] snap + PINNED header over scroll body", () => {
   assertStringIncludes(SHEET, 'const GUEST_LIST_SNAP = ["70%"];');
   assertStringIncludes(SHEET, "snapPoints={GUEST_LIST_SNAP}");
   assertStringIncludes(SHEET, "wrapInRNModal");
   assertStringIncludes(SHEET, 'theme="dark"');
-  assertStringIncludes(SHEET, 'scrollMode="flatlist"');
+  // REVIEW ruling (ORCH-1341 amendment): the header is the PINNED
+  // intrinsic-height sibling slot — scroll mode's `<>{header}{scroll}</>`
+  // branch (the EventAudienceSheet exemplar's mechanics). flatlist mode folds
+  // the header into ListHeaderComponent so the title scrolls away — banned.
+  assertStringIncludes(SHEET, 'scrollMode="scroll"');
+  assert(
+    !/scrollMode="flatlist"/.test(SHEET),
+    "flatlist folds the header into ListHeaderComponent (title scrolls away) — pinned-header ruling",
+  );
+  assertStringIncludes(SHEET, "header={header}");
   assertStringIncludes(SHEET, 'accessibilityLabel="Who\'s going"');
   // #111418 canvas — exemplar parity (design §2.2).
   assertStringIncludes(SHEET, '"#111418"');
@@ -171,9 +180,11 @@ Deno.test("T-08 every Animated.timing in the sheet carries isInteraction: false"
 
 Deno.test("T-09 no TouchableOpacity; row container is a plain accessible group", () => {
   assert(!/TouchableOpacity/.test(SHEET), "no TouchableOpacity anywhere");
+  // Mapped rows (scroll-mode body) carry their own key; the container stays a
+  // non-pressable Animated.View group.
   assert(
-    /<Animated\.View\s+style=\{\[styles\.row/.test(SHEET),
-    "row container renders as a non-pressable Animated.View group",
+    /<Animated\.View\s+key=\{item\.key\}\s+style=\{\[styles\.row/.test(SHEET),
+    "row container renders as a keyed, non-pressable Animated.View group",
   );
 });
 
