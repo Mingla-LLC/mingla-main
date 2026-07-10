@@ -18,7 +18,7 @@ Validated the core read-logic on the LIVE production DB (read-only) against a re
 
 ## 2. SPEC success-criteria coverage
 
-Single commit for all code: **`c539d15`** (this branch — see `git log -1`).
+Single commit for all code: **`3d58fa6`** (this branch — see `git log -1`).
 
 | SC | Criterion | How verified | Result |
 |----|-----------|--------------|--------|
@@ -74,7 +74,7 @@ No table/column/index/RLS changes. Three RPC bodies re-defined (migration `20261
 ## 6. Regression tests added + fails-on-revert proof
 
 - **Implementor happy-path (runnable):** `supabase/migrations/__tests__/orch_1334_rsvp_guest_identity.test.ts` — Deno source-contract (matches the proven `orch_1203` pattern). **11/11 PASS** (`deno test --allow-read`). Asserts: host DEFINER + guard predicate + `RAISE 'insufficient_event_permission'`; `LEFT JOIN public.profiles`; the display_name/email/phone COALESCEs; the `source` CASE; the preserved `maybe` bucket; no `SELECT p.*`; admin guard + profiles join + source key; consumer both-branch resolution AND no `email`/`phone` in the consumer fn body AND retained self-scopes; write-path function absent; `NOTIFY`.
-- **fails-on-revert (true LINE DELETION, not comment-out):** deleted the guard `RAISE EXCEPTION 'insufficient_event_permission';` line AND the host display_name COALESCE line → **2 assertions went RED** (`host RPC guards FIRST…`, `host RPC resolves identity…`), 9 passed. Restored → **11/11 PASS** again. **`fails-on-revert verified at c539d15`** (this branch; `/tmp` backup used for the temporary deletion, restored byte-identical — `grep -c` confirms both fix lines present = 1 each).
+- **fails-on-revert (true LINE DELETION, not comment-out):** deleted the guard `RAISE EXCEPTION 'insufficient_event_permission';` line AND the host display_name COALESCE line → **2 assertions went RED** (`host RPC guards FIRST…`, `host RPC resolves identity…`), 9 passed. Restored → **11/11 PASS** again. **`fails-on-revert verified at 3d58fa6`** (this branch; `/tmp` backup used for the temporary deletion, restored byte-identical — `grep -c` confirms both fix lines present = 1 each).
 - **Live-fire (tester-run post-apply):** `supabase/migrations/__tests__/orch_1334_rsvp_guest_identity.test.sql` — self-contained `BEGIN;…ROLLBACK;` fixtures (brand+event+profiles+event_rsvps; no auth.users FK on this DB, verified) impersonating the host via `set_config('request.jwt.claim.sub', …)`: T-1 (app identity resolves), T-2 (null phone → NULL), T-3 (web parity), T-4 (non-host → `insufficient_event_permission`). NOT run by the implementor (no prod apply); the core read-logic of T-1/T-2/T-3 was independently validated as a pure SELECT against LIVE data (see §1).
 - **SC-11 append-only:** `rsvpMaybeMigration.orch1150r2.test.ts` → **7/7 PASS** (immutable file untouched). Both new test files are additive (append-only gate satisfied); both appear in `git diff origin/main…HEAD --name-only`.
 
