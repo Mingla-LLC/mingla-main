@@ -69,6 +69,19 @@ export {
 } from "./rsvpMomentum";
 export type { RsvpMomentumModel } from "./rsvpMomentum";
 
+// ORCH-1338 [guest-read-backend] — THE ONE shared social-proof payload contract
+// (types + the sample-size constant; dep-free, no fetch — I-MOR-0827). Shapes are
+// camelCase-identical to the pg_public_social_proof / peer_list_event_guests RPC
+// payloads; consumed as PROPS by ORCH-1339 (card), 1340 (avatars), 1341 (sheet).
+export { SOCIAL_PROOF_SAMPLE_MAX } from "./socialProofTypes";
+export type {
+  SocialProofEntityType,
+  SocialProofSampleEntry,
+  SocialProofSummary,
+  PeerGuestRow,
+  PeerGuestListPage,
+} from "./socialProofTypes";
+
 // ORCH-1292 [public-page-tag-slug-labels] — the in-package canonical taxonomy
 // label resolver. Turns party/vibe/music SLUGS into their display LABELS at the
 // shared pill/chip render sites (EventOfferingBody / RsvpOfferingBody /
