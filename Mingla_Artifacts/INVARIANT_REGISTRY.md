@@ -7,6 +7,30 @@
 
 ---
 
+## ACTIVE — ORCH-1334 (RSVP guest console identity — host/admin/consumer read RPCs resolve profile identity at read time under a guard, 2026-07-10)
+
+> Flipped ACTIVE at ORCH-1334 CLOSE (mingla-tester CONDITIONAL PASS — live-fire on prod proved host/admin authz guards + DEFINER column whitelist + consumer no-leak + no fabrication; the sole P2 badge-AA defect was fixed and re-verified). Root cause: an in-app RSVP stores the sentinel `guest_name='Guest'` (identity is meant to be profile-inherited), but `host_list_rsvp_guests` / `admin_list_event_rsvps` / `fetch_user_going_rsvps` returned raw `event_rsvps` columns with NO `profiles` join, so the host/admin/consumer surfaces showed "Guest" for a person whose identity is fully on file. Fix (read-time, zero backfill): resolve `display_name`/`username`/`avatar_url` (+ host/admin-only `email`/`phone`) from `profiles` inside guard-first `SECURITY DEFINER` functions, plus a `source` (app|web) discriminator. Migration `20261224000000_orch_1334_rsvp_guest_identity`. Cross-ref `Mingla_Artifacts/reports/IMPLEMENTATION_ORCH-1334_RSVP_GUEST_CONSOLE_IDENTITY.md` + `.../TEST_ORCH-1334_RSVP_GUEST_CONSOLE_IDENTITY.md`.
+
+### I-PROPOSED-1334-RSVP-HOST-LIST-DEFINER-GUARD (ACTIVE)
+- **Rule:** `host_list_rsvp_guests(uuid)` MUST be `SECURITY DEFINER` with `SET search_path = public`, and its FIRST executable statement MUST be the authorization guard — `RAISE EXCEPTION 'insufficient_event_permission'` unless `biz_brand_effective_rank(e.brand_id, auth.uid()) >= biz_role_rank('event_manager')` for the target event's brand. No row may be produced before the guard passes. (A SECURITY INVOKER form silently degraded app rows to "App guest"; a DEFINER WITHOUT the guard is an open per-event guest-scraper.)
+- **Enforcement:** append-only tests `supabase/migrations/__tests__/orch_1334_rsvp_guest_identity.test.ts` (source-contract — DEFINER + guard-first + column shape) + `.../orch_1334_rsvp_identity_adversarial.test.ts` (guard-FIRST ordering + non-host rejection). Live-fire proven on prod (non-host → `insufficient_event_permission`; host → resolves).
+- **Fails-on-revert:** deleting the guard RAISE (or the host display_name resolution) turns the happy-path assertions RED; proven at IMPLEMENT `3d58fa6ec`.
+- **Established:** ACTIVE 2026-07-10 at ORCH-1334 CLOSE.
+
+### I-PROPOSED-1334-RSVP-GUEST-CONTACT-WHITELIST (ACTIVE)
+- **Rule:** all three RSVP identity RPCs expose ONLY whitelisted profile columns — `display_name`, `username`, `avatar_url`, and (host/admin surfaces only) `email` + `phone`. They MUST NOT return `visibility_mode`, `bio`, `birthday`, `gender`, `location`, or any other `profiles` column; the join resolves ONLY the profiles of this event's own RSVP-ers (not a general profile scraper). `phone` is NULL when absent — never fabricated (Constitution #9).
+- **Enforcement:** closed sensitive-column blocklist assertion in `orch_1334_rsvp_identity_adversarial.test.ts` (no `p.*`, no `visibility_mode`/`bio`/etc. in any of the 3 function bodies) + live-fire whitelist check on prod.
+- **Fails-on-revert:** widening the SELECT to `p.*` or adding a non-whitelisted column fails the blocklist assertion.
+- **Established:** ACTIVE 2026-07-10 at ORCH-1334 CLOSE.
+
+### I-PROPOSED-1334-RSVP-CONSUMER-SELF-IDENTITY-ONLY (ACTIVE)
+- **Rule:** `fetch_user_going_rsvps(uuid)` (the self-facing consumer calendar read) resolves DISPLAY IDENTITY only (real `display_name` from profiles on both the primary and matched-guest branches). It MUST NOT add `email`, `phone`, or any contact column — a user viewing their own going-list must never obtain another guest's contact. The self-scoping predicates (`r.user_id = p_user_id` / `g.matched_user_id = p_user_id`) are preserved.
+- **Enforcement:** consumer return-signature assertion in `orch_1334_rsvp_identity_adversarial.test.ts` (the RETURNS TABLE column set contains `display_name` but NO `email`/`phone`) + live-fire signature check.
+- **Fails-on-revert:** adding an `email`/`phone` column to `fetch_user_going_rsvps` fails the signature assertion.
+- **Established:** ACTIVE 2026-07-10 at ORCH-1334 CLOSE.
+
+---
+
 ## ACTIVE — ORCH-1336 (notifications sheet empty gap — the consumer NotificationsSheet was not top-aligned when few notifications existed, 2026-07-10)
 
 > Flipped ACTIVE at ORCH-1336 CLOSE (mingla-tester CONDITIONAL PASS — all 6 sheet states traced, no collateral regression; structural correctness proven by this strict-grep gate + implementor happy-path guard + tester adversarial guard, all fails-on-revert; the only deferred item is the on-device pixel eyeball, a Seth-gated LIVE-prod login step). Root cause: in the Explorer notifications sheet the populated + ONLINE branch of `renderBody()` returned an EMPTY `<View style={styles.notificationsBody}>` where `notificationsBody` was `{ flex: 1, minHeight: 0 }`. `BaseBottomSheet` (scrollMode="sectionlist") renders `{header}{children}{BottomSheetSectionList (flex:1)}` as sibling children, so two `flex:1` siblings (the empty wrapper + the list) split the bounded sheet height ~50/50 — the empty wrapper ate the top half (a large empty band under the header) and the list was shoved into the bottom half, floating a lone "THIS WEEK" card mid-sheet. Fix (approach A — consumer-side, OTA-able, layout only): the populated branch returns `null` when online so it contributes no flex space above the list; the `BottomSheetSectionList` then claims ALL bounded height below the header and the notifications hug the top. The offline banner still renders ABOVE the list (intrinsic-height View, no flex:1) when offline. `BaseBottomSheet.tsx` UNCHANGED (its `styles.sectionList { flex:1 }` preserved); the now-dead `notificationsBody` style deleted. ONE product file changed (`app-mobile/src/components/NotificationsSheet.tsx`). Cross-ref `Mingla_Artifacts/reports/IMPLEMENTATION_ORCH-1336_NOTIFICATIONS_TOP_ALIGN.md` + `Mingla_Artifacts/reports/TEST_ORCH-1336_NOTIFICATIONS_TOP_ALIGN.md`.
