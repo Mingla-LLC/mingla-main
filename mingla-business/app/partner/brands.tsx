@@ -35,13 +35,12 @@ import type {
 import {
   accent,
   canvas,
-  glass,
-  radius,
   semantic,
   spacing,
   text as textTokens,
   typography,
 } from "../../src/constants/designSystem";
+import { Button } from "../../src/components/ui/Button";
 import { GlassCard } from "../../src/components/ui/GlassCard";
 import { IconChrome } from "../../src/components/ui/IconChrome";
 
@@ -106,22 +105,22 @@ export default function PartnerBrandsScreen(): React.ReactElement {
     <SafeAreaView style={styles.safe} edges={["top", "bottom"]}>
       <Stack.Screen options={{ headerShown: false }} />
       <View style={styles.header}>
-        <View style={styles.headerTextCol}>
-          <Text style={styles.eyebrow}>MINGLA PARTNER</Text>
-          <Text style={styles.h1}>Brands</Text>
-          {(activeCount > 0 || pendingCount > 0) ? (
-            <Text style={styles.headerMeta}>
-              {activeCount} active · {pendingCount} pending
-            </Text>
-          ) : null}
-        </View>
         <IconChrome
-          icon="x"
+          icon="close"
           size={36}
           onPress={handleClose}
           accessibilityLabel="Close partner brands"
           testID="partner-brands-close-button"
         />
+        <View style={styles.headerMid}>
+          <Text style={styles.headerTitle}>Brands</Text>
+          {(activeCount > 0 || pendingCount > 0) ? (
+            <Text style={styles.headerSub}>
+              {activeCount} active · {pendingCount} pending
+            </Text>
+          ) : null}
+        </View>
+        <View style={styles.headerRightSlot} />
       </View>
       <ScrollView contentContainerStyle={styles.scroll}>
         {linksQuery.isLoading ? (
@@ -129,33 +128,38 @@ export default function PartnerBrandsScreen(): React.ReactElement {
             <ActivityIndicator color={accent.warm} />
           </View>
         ) : linksQuery.error ? (
-          <GlassCard variant="elevated" padding={spacing.lg}>
+          <GlassCard variant="elevated" radius="md" padding={spacing.lg}>
             <Text style={styles.cardTitle}>Couldn't load your brands</Text>
             <Text style={styles.cardBody}>{linksQuery.error.message}</Text>
-            <Pressable
-              accessibilityLabel="Retry"
-              style={styles.secondaryBtn}
-              onPress={() => linksQuery.refetch()}
-            >
-              <Text style={styles.secondaryBtnText}>Retry</Text>
-            </Pressable>
+            <View style={{ marginTop: spacing.md }}>
+              <Button
+                variant="secondary"
+                size="md"
+                label="Retry"
+                onPress={() => {
+                  void linksQuery.refetch();
+                }}
+              />
+            </View>
           </GlassCard>
         ) : sortedRows.length === 0 ? (
-          <GlassCard variant="elevated" padding={spacing.lg}>
+          <GlassCard variant="elevated" radius="md" padding={spacing.lg}>
             <Text style={styles.cardTitle}>No partner brands yet</Text>
             <Text style={styles.cardBody}>
               Brands you set up for clients show up here. You'll see them go
               from invite-sent to live to earning.
             </Text>
-            <Pressable
-              accessibilityLabel="Set up your first partner brand"
-              style={styles.primaryBtn}
-              onPress={handleSetUpFirst}
-            >
-              <Text style={styles.primaryBtnText}>
-                Set up your first partner brand →
-              </Text>
-            </Pressable>
+            <View style={{ marginTop: spacing.md }}>
+              <Button
+                variant="primary"
+                size="md"
+                fullWidth
+                label="Set up your first partner brand"
+                trailingIcon="chevR"
+                onPress={handleSetUpFirst}
+                accessibilityLabel="Set up your first partner brand"
+              />
+            </View>
           </GlassCard>
         ) : (
           sortedRows.map((row) => (
@@ -191,7 +195,7 @@ function BrandLinkRow(props: {
       accessibilityLabel={`Open ${brandName}`}
       onPress={onPress}
     >
-      <GlassCard variant="elevated" padding={spacing.md}>
+      <GlassCard variant="elevated" radius="md" padding={spacing.md}>
         <View style={styles.rowOuter}>
           <View style={styles.thumbWrap}>
             {hasStillCover ? (
@@ -290,7 +294,7 @@ function timeAgo(iso: string): string {
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: canvas.profile },
+  safe: { flex: 1, backgroundColor: canvas.discover },
   scroll: {
     paddingHorizontal: spacing.md,
     paddingTop: spacing.md,
@@ -301,24 +305,26 @@ const styles = StyleSheet.create({
   header: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "space-between",
     paddingHorizontal: spacing.md,
-    paddingTop: spacing.sm,
-    paddingBottom: spacing.md,
+    paddingVertical: spacing.sm,
+    gap: spacing.sm,
   },
-  headerTextCol: { flex: 1, gap: 2 },
-  eyebrow: {
-    ...typography.labelCap,
-    color: accent.warm,
+  headerMid: {
+    flex: 1,
+    alignItems: "center",
   },
-  h1: {
-    ...typography.h1,
+  headerTitle: {
+    fontSize: typography.body.fontSize,
+    fontWeight: "700",
     color: textTokens.primary,
   },
-  headerMeta: {
-    ...typography.caption,
+  headerSub: {
+    fontSize: typography.caption.fontSize,
     color: textTokens.tertiary,
     marginTop: 2,
+  },
+  headerRightSlot: {
+    width: 36,
   },
   cardTitle: {
     ...typography.h3,
@@ -329,32 +335,6 @@ const styles = StyleSheet.create({
     ...typography.body,
     color: textTokens.secondary,
     marginTop: spacing.xs,
-  },
-  primaryBtn: {
-    backgroundColor: accent.warm,
-    paddingVertical: spacing.sm + 4,
-    paddingHorizontal: spacing.lg,
-    borderRadius: radius.md,
-    alignItems: "center",
-    marginTop: spacing.md,
-  },
-  primaryBtnText: {
-    ...typography.buttonMd,
-    color: textTokens.inverse,
-  },
-  secondaryBtn: {
-    paddingVertical: spacing.sm + 2,
-    paddingHorizontal: spacing.md,
-    borderRadius: radius.md,
-    alignItems: "center",
-    borderWidth: 1,
-    borderColor: glass.border.profileElevated,
-    marginTop: spacing.md,
-    backgroundColor: glass.tint.profileBase,
-  },
-  secondaryBtnText: {
-    ...typography.buttonMd,
-    color: textTokens.primary,
   },
   rowOuter: {
     flexDirection: "row",
@@ -372,14 +352,14 @@ const styles = StyleSheet.create({
     overflow: "hidden",
   },
   thumbFallback: {
-    backgroundColor: accent.warm,
+    backgroundColor: accent.tint,
     alignItems: "center",
     justifyContent: "center",
   },
   thumbFallbackText: {
     fontSize: 22,
     fontWeight: "800",
-    color: "#FFFFFF",
+    color: accent.warm,
   },
   rowBody: {
     flex: 1,

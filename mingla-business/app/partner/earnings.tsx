@@ -54,11 +54,11 @@ import {
   glass,
   radius,
   semantic,
-  shadows,
   spacing,
   text as textTokens,
   typography,
 } from "../../src/constants/designSystem";
+import { Button } from "../../src/components/ui/Button";
 import { GlassCard } from "../../src/components/ui/GlassCard";
 import { IconChrome } from "../../src/components/ui/IconChrome";
 import { BrandStripeCountryPicker } from "../../src/components/brand/BrandStripeCountryPicker";
@@ -191,20 +191,20 @@ export default function PartnerEarningsScreen(): React.ReactElement {
           headerShown: false,
         }}
       />
-      {/* On-brand header bar — title + close X. Matches the IconChrome
-          glass-circular button style used in TopBar across the business app. */}
+      {/* Canonical ChromeRow header — close (LEFT) → centered title → right
+          spacer. Matches VenueCreatorWizard + the app/account/* screens. */}
       <View style={styles.header}>
-        <View style={styles.headerTextCol}>
-          <Text style={styles.eyebrow}>MINGLA PARTNER</Text>
-          <Text style={styles.h1}>Earnings</Text>
-        </View>
         <IconChrome
-          icon="x"
+          icon="close"
           size={36}
           onPress={handleClose}
           accessibilityLabel="Close partner earnings"
           testID="partner-earnings-close-button"
         />
+        <View style={styles.headerMid}>
+          <Text style={styles.headerTitle}>Earnings</Text>
+        </View>
+        <View style={styles.headerRightSlot} />
       </View>
 
       {/* ORCH-1081 — welcome-to-portfolio toast: fires once per (partner,
@@ -218,19 +218,22 @@ export default function PartnerEarningsScreen(): React.ReactElement {
             <ActivityIndicator color={accent.warm} />
           </View>
         ) : statusQuery.error ? (
-          <GlassCard variant="elevated" padding={spacing.lg}>
+          <GlassCard variant="elevated" radius="md" padding={spacing.lg}>
             <Text style={styles.cardTitle}>Couldn't load partner status</Text>
             <Text style={styles.cardBody}>{statusQuery.error.message}</Text>
-            <Pressable
-              accessibilityLabel="Retry"
-              style={styles.secondaryBtn}
-              onPress={() => statusQuery.refetch()}
-            >
-              <Text style={styles.secondaryBtnText}>Retry</Text>
-            </Pressable>
+            <View style={{ marginTop: spacing.md }}>
+              <Button
+                variant="secondary"
+                size="md"
+                label="Retry"
+                onPress={() => {
+                  void statusQuery.refetch();
+                }}
+              />
+            </View>
           </GlassCard>
         ) : statusQuery.data?.partner_enabled === false ? (
-          <GlassCard variant="elevated" padding={spacing.lg}>
+          <GlassCard variant="elevated" radius="md" padding={spacing.lg}>
             <Text style={styles.cardTitle}>Not a Mingla partner yet</Text>
             <Text style={styles.cardBody}>
               Mingla partners earn a share of every paid event they help bring
@@ -286,7 +289,7 @@ function ReadyToEarnNudge(): React.ReactElement | null {
   const links = linksQuery.data ?? [];
   if (links.length > 0) return null;
   return (
-    <GlassCard variant="elevated" padding={spacing.lg}>
+    <GlassCard variant="elevated" radius="md" padding={spacing.lg}>
       <Text style={styles.nudgeEyebrow}>✨ READY TO START EARNING?</Text>
       <Text style={styles.cardTitle}>Set up your first partner brand</Text>
       <Text style={styles.cardBody}>
@@ -295,15 +298,17 @@ function ReadyToEarnNudge(): React.ReactElement | null {
       <Text style={styles.nudgeStep}>① Create a brand for a venue you know</Text>
       <Text style={styles.nudgeStep}>② Build it out (events, cover, etc.)</Text>
       <Text style={styles.nudgeStep}>③ Invite the real owner</Text>
-      <Pressable
-        accessibilityLabel="Set up your first partner brand"
-        style={styles.primaryBtn}
-        onPress={() => router.push("/brand/new?partner_mode=client" as never)}
-      >
-        <Text style={styles.primaryBtnText}>
-          Set up your first partner brand →
-        </Text>
-      </Pressable>
+      <View style={{ marginTop: spacing.md }}>
+        <Button
+          variant="primary"
+          size="md"
+          fullWidth
+          label="Set up your first partner brand"
+          trailingIcon="chevR"
+          onPress={() => router.push("/brand/new?partner_mode=client" as never)}
+          accessibilityLabel="Set up your first partner brand"
+        />
+      </View>
     </GlassCard>
   );
 }
@@ -425,7 +430,7 @@ function PartnerSplitsSection(): React.ReactElement {
 
   if (summaryQuery.isLoading) {
     return (
-      <GlassCard variant="elevated" padding={spacing.lg}>
+      <GlassCard variant="elevated" radius="md" padding={spacing.lg}>
         <Text style={styles.cardTitle}>Splits</Text>
         <ActivityIndicator color={accent.warm} />
       </GlassCard>
@@ -434,7 +439,7 @@ function PartnerSplitsSection(): React.ReactElement {
 
   if (summaryQuery.error) {
     return (
-      <GlassCard variant="elevated" padding={spacing.lg}>
+      <GlassCard variant="elevated" radius="md" padding={spacing.lg}>
         <View style={styles.statusIndicatorRow}>
           <View style={styles.statusDotMuted} />
           <Text style={styles.statusLabelMuted}>SPLITS UNAVAILABLE</Text>
@@ -459,7 +464,7 @@ function PartnerSplitsSection(): React.ReactElement {
       ? `Almost there. You've set up ${firstBrandName}. You'll see your first split as soon as their Stripe is connected and tickets sell.`
       : "You'll see your first split as soon as a brand you set up makes a sale.";
     return (
-      <GlassCard variant="elevated" padding={spacing.lg}>
+      <GlassCard variant="elevated" radius="md" padding={spacing.lg}>
         <Text style={styles.cardTitle}>Splits</Text>
         <Text style={styles.cardBody}>{copy}</Text>
       </GlassCard>
@@ -468,7 +473,7 @@ function PartnerSplitsSection(): React.ReactElement {
 
   return (
     <>
-      <GlassCard variant="elevated" padding={spacing.lg}>
+      <GlassCard variant="elevated" radius="md" padding={spacing.lg}>
         <Text style={styles.cardTitle}>Earnings by currency</Text>
         {totals.map((bucket) => (
           <View key={bucket.currency} style={styles.currencyRow}>
@@ -538,7 +543,7 @@ function PartnerSplitsSection(): React.ReactElement {
         </View>
       ) : null}
 
-      <GlassCard variant="elevated" padding={spacing.lg}>
+      <GlassCard variant="elevated" radius="md" padding={spacing.lg}>
         <Text style={styles.cardTitle}>Recent splits</Text>
         {splits.length === 0 ? (
           <Text style={styles.cardBody}>
@@ -640,7 +645,7 @@ function StatusBlock(props: {
 
   if (status === "active") {
     return (
-      <GlassCard variant="elevated" padding={spacing.lg}>
+      <GlassCard variant="elevated" radius="md" padding={spacing.lg}>
         <View style={styles.statusIndicatorRow}>
           <View style={styles.statusDotSuccess} />
           <Text style={styles.statusLabelSuccess}>PAYOUTS READY</Text>
@@ -653,33 +658,38 @@ function StatusBlock(props: {
             ? ` We can settle in ${externalCurrencies.join(", ").toUpperCase()}.`
             : ""}
         </Text>
-        <Pressable
-          accessibilityLabel="Manage Stripe account"
-          style={[styles.primaryBtn, managing && styles.primaryBtnDisabled]}
-          onPress={onManage}
-          disabled={managing || disconnecting}
-        >
-          <Text style={styles.primaryBtnText}>
-            {managing ? "Opening…" : "Manage Stripe account"}
-          </Text>
-        </Pressable>
-        <Pressable
-          accessibilityLabel="Disconnect Stripe"
-          style={[styles.secondaryBtn, disconnecting && styles.primaryBtnDisabled]}
-          onPress={onDisconnect}
-          disabled={disconnecting || managing}
-        >
-          <Text style={styles.secondaryBtnTextDanger}>
-            {disconnecting ? "Disconnecting…" : "Disconnect Stripe"}
-          </Text>
-        </Pressable>
+        <View style={{ marginTop: spacing.md }}>
+          <Button
+            variant="primary"
+            size="md"
+            fullWidth
+            label={managing ? "Opening…" : "Manage Stripe account"}
+            loading={managing}
+            disabled={managing || disconnecting}
+            onPress={onManage}
+            accessibilityLabel="Manage Stripe account"
+          />
+        </View>
+        <View style={{ marginTop: spacing.md }}>
+          <Button
+            variant="secondary"
+            size="md"
+            fullWidth
+            label={disconnecting ? "Disconnecting…" : "Disconnect Stripe"}
+            labelStyle={{ color: semantic.error }}
+            loading={disconnecting}
+            disabled={disconnecting || managing}
+            onPress={onDisconnect}
+            accessibilityLabel="Disconnect Stripe"
+          />
+        </View>
       </GlassCard>
     );
   }
 
   if (status === "restricted") {
     return (
-      <GlassCard variant="elevated" padding={spacing.lg}>
+      <GlassCard variant="elevated" radius="md" padding={spacing.lg}>
         <View style={styles.statusIndicatorRow}>
           <View style={styles.statusDotWarning} />
           <Text style={styles.statusLabelWarning}>ACTION NEEDED</Text>
@@ -689,16 +699,18 @@ function StatusBlock(props: {
           Open your partner Stripe to finish the requirements Stripe is
           waiting on.
         </Text>
-        <Pressable
-          accessibilityLabel="Resume Stripe onboarding"
-          style={[styles.primaryBtn, starting && styles.primaryBtnDisabled]}
-          onPress={onStart}
-          disabled={starting}
-        >
-          <Text style={styles.primaryBtnText}>
-            {starting ? "Opening…" : "Resume onboarding"}
-          </Text>
-        </Pressable>
+        <View style={{ marginTop: spacing.md }}>
+          <Button
+            variant="primary"
+            size="md"
+            fullWidth
+            label={starting ? "Opening…" : "Resume onboarding"}
+            loading={starting}
+            disabled={starting}
+            onPress={onStart}
+            accessibilityLabel="Resume Stripe onboarding"
+          />
+        </View>
         {startError ? (
           <View style={styles.inlineError}>
             <Text style={styles.inlineErrorText}>{startError}</Text>
@@ -710,7 +722,7 @@ function StatusBlock(props: {
 
   if (status === "onboarding") {
     return (
-      <GlassCard variant="elevated" padding={spacing.lg}>
+      <GlassCard variant="elevated" radius="md" padding={spacing.lg}>
         <View style={styles.statusIndicatorRow}>
           <View style={styles.statusDotInfo} />
           <Text style={styles.statusLabelInfo}>IN PROGRESS</Text>
@@ -719,16 +731,18 @@ function StatusBlock(props: {
         <Text style={styles.cardBody}>
           You started Stripe onboarding. Pick up where you left off.
         </Text>
-        <Pressable
-          accessibilityLabel="Resume Stripe onboarding"
-          style={[styles.primaryBtn, starting && styles.primaryBtnDisabled]}
-          onPress={onStart}
-          disabled={starting}
-        >
-          <Text style={styles.primaryBtnText}>
-            {starting ? "Opening…" : "Resume onboarding"}
-          </Text>
-        </Pressable>
+        <View style={{ marginTop: spacing.md }}>
+          <Button
+            variant="primary"
+            size="md"
+            fullWidth
+            label={starting ? "Opening…" : "Resume onboarding"}
+            loading={starting}
+            disabled={starting}
+            onPress={onStart}
+            accessibilityLabel="Resume Stripe onboarding"
+          />
+        </View>
         {startError ? (
           <View style={styles.inlineError}>
             <Text style={styles.inlineErrorText}>{startError}</Text>
@@ -741,7 +755,7 @@ function StatusBlock(props: {
   // not_connected
   const connectDisabled = starting || selectedCountry === null;
   return (
-    <GlassCard variant="elevated" padding={spacing.lg}>
+    <GlassCard variant="elevated" radius="md" padding={spacing.lg}>
       <View style={styles.statusIndicatorRow}>
         <View style={styles.statusDotMuted} />
         <Text style={styles.statusLabelMuted}>NOT CONNECTED</Text>
@@ -760,20 +774,24 @@ function StatusBlock(props: {
           helperText={currencyHelper}
         />
       </View>
-      <Pressable
-        accessibilityLabel="Connect bank"
-        style={[styles.primaryBtn, connectDisabled && styles.primaryBtnDisabled]}
-        onPress={onStart}
-        disabled={connectDisabled}
-      >
-        <Text style={styles.primaryBtnText}>
-          {starting
-            ? "Opening…"
-            : selectedCountry === null
-              ? "Pick a country first"
-              : "Connect bank"}
-        </Text>
-      </Pressable>
+      <View style={{ marginTop: spacing.md }}>
+        <Button
+          variant="primary"
+          size="md"
+          fullWidth
+          label={
+            starting
+              ? "Opening…"
+              : selectedCountry === null
+                ? "Pick a country first"
+                : "Connect bank"
+          }
+          loading={starting}
+          disabled={connectDisabled}
+          onPress={onStart}
+          accessibilityLabel="Connect bank"
+        />
+      </View>
       {startError ? (
         <View style={styles.inlineError}>
           <Text style={styles.inlineErrorText}>{startError}</Text>
@@ -787,7 +805,7 @@ const styles = StyleSheet.create({
   // ORCH-1052 hotfix — Mingla brand alignment. Dark canvas + white-alpha text
   // + accent.warm for primary actions + GlassCard for sections (used in JSX
   // instead of bespoke white cards). Mirrors account.tsx / brand screens.
-  safe: { flex: 1, backgroundColor: canvas.profile },
+  safe: { flex: 1, backgroundColor: canvas.discover },
   scroll: {
     paddingHorizontal: spacing.md,
     paddingTop: spacing.md,
@@ -796,23 +814,25 @@ const styles = StyleSheet.create({
   },
   center: { paddingVertical: spacing.xxl, alignItems: "center" },
 
-  // Header bar — eyebrow + h1 on the left, close X on the right.
+  // Canonical ChromeRow header — close (LEFT) + centered title + right spacer.
   header: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "space-between",
     paddingHorizontal: spacing.md,
-    paddingTop: spacing.sm,
-    paddingBottom: spacing.md,
+    paddingVertical: spacing.sm,
+    gap: spacing.sm,
   },
-  headerTextCol: { flex: 1, gap: 2 },
-  eyebrow: {
-    ...typography.labelCap,
-    color: accent.warm,
+  headerMid: {
+    flex: 1,
+    alignItems: "center",
   },
-  h1: {
-    ...typography.h1,
+  headerTitle: {
+    fontSize: typography.body.fontSize,
+    fontWeight: "700",
     color: textTokens.primary,
+  },
+  headerRightSlot: {
+    width: 36,
   },
 
   // Card body content
@@ -866,42 +886,9 @@ const styles = StyleSheet.create({
   statusLabelInfo: { ...typography.labelCap, color: semantic.info },
   statusLabelMuted: { ...typography.labelCap, color: textTokens.tertiary },
 
-  // Buttons
-  primaryBtn: {
-    backgroundColor: accent.warm,
-    paddingVertical: spacing.sm + 4,
-    paddingHorizontal: spacing.lg,
-    borderRadius: radius.md,
-    alignItems: "center",
-    marginTop: spacing.md,
-    ...shadows.md,
-  },
-  primaryBtnDisabled: { opacity: 0.5 },
   countryPickerWrap: {
     marginTop: spacing.md,
     marginBottom: spacing.md,
-  },
-  primaryBtnText: {
-    ...typography.buttonLg,
-    color: textTokens.inverse,
-  },
-  secondaryBtn: {
-    paddingVertical: spacing.sm + 2,
-    paddingHorizontal: spacing.md,
-    borderRadius: radius.md,
-    alignItems: "center",
-    borderWidth: 1,
-    borderColor: glass.border.profileElevated,
-    marginTop: spacing.md,
-    backgroundColor: glass.tint.profileBase,
-  },
-  secondaryBtnText: {
-    ...typography.buttonMd,
-    color: textTokens.primary,
-  },
-  secondaryBtnTextDanger: {
-    ...typography.buttonMd,
-    color: semantic.error,
   },
 
   // Inline error pill — shows under primary button when Stripe call fails
