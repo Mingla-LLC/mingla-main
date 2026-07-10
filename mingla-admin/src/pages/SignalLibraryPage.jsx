@@ -174,6 +174,67 @@ function mergeBouncerSummary(acc, data) {
   return next;
 }
 
+// ORCH-1333 — accumulate per-batch scorer summaries from the cursor loop into one
+// total so the toast + preview reflect the WHOLE city, not just the last batch
+// (mirrors mergeBouncerSummary).
+function mergeScorerSummary(acc, data) {
+  const nextDist = { ...(acc?.score_distribution ?? {}) };
+  for (const [bucket, v] of Object.entries(data?.score_distribution ?? {})) {
+    nextDist[bucket] = (nextDist[bucket] ?? 0) + (v ?? 0);
+  }
+  return {
+    scored_count: (acc?.scored_count ?? 0) + (data?.scored_count ?? 0),
+    ineligible_count: (acc?.ineligible_count ?? 0) + (data?.ineligible_count ?? 0),
+    vetoed_count: (acc?.vetoed_count ?? 0) + (data?.vetoed_count ?? 0),
+    ai_blended_count: (acc?.ai_blended_count ?? 0) + (data?.ai_blended_count ?? 0),
+    written: (acc?.written ?? 0) + (data?.written ?? 0),
+    veto_deleted: (acc?.veto_deleted ?? 0) + (data?.veto_deleted ?? 0),
+    sticky_skipped: (acc?.sticky_skipped ?? 0) + (data?.sticky_skipped ?? 0),
+    signal_version_id: data?.signal_version_id ?? acc?.signal_version_id ?? null,
+    score_distribution: nextDist,
+  };
+}
+
+// ORCH-1333 — loop run-signal-scorer's cursor until the server reports done, so
+// ONE click finishes any size city (each call scores one 500-row page; New York
+// ≈ 20 batches/signal). Mirrors BouncerStep's inline loop. The prior single-shot
+// caller only ever scored the FIRST page and, on large post-Sub-B cities, tripped
+// the Edge compute budget and persisted 0 rows (INVESTIGATION_ORCH-1333 F-1…F-5).
+// onBatch?.({ batches, scored, remaining, done }). Returns the accumulated summary
+// (+ a `batches` count).
+async function runScorerToCompletion(signalId, cityId, onBatch) {
+  let cursor = null;
+  let acc = null;
+  let calls = 0;
+  // Safety bound: one 500-row page/call, so 500 calls covers 250k rows — far
+  // beyond any city; this only guards against a stuck/null cursor (Bouncer precedent).
+  const MAX_CALLS = 500;
+  while (calls < MAX_CALLS) {
+    calls += 1;
+    const { data, error } = await invokeWithRefresh("run-signal-scorer", {
+      body: { signal_id: signalId, city_id: cityId, after_id: cursor },
+    });
+    if (error) {
+      const msg = await extractFunctionError(error, "Edge function error");
+      throw new Error(msg);
+    }
+    if (data?.error) throw new Error(data.error);
+    acc = mergeScorerSummary(acc, data);
+    onBatch?.({
+      batches: calls,
+      scored: acc.scored_count,
+      remaining: data?.remaining ?? null,
+      done: data?.done === true,
+    });
+    if (data?.done === true) break;
+    const nextCursor = data?.next_cursor ?? null;
+    // Break on a missing or non-advancing cursor so we never spin forever.
+    if (!nextCursor || nextCursor === cursor) break;
+    cursor = nextCursor;
+  }
+  return { ...(acc ?? mergeScorerSummary(null, {})), batches: calls };
+}
+
 function BouncerStep({ stepNum, label, edgeFn, helpText, cityId, cityName, onComplete }) {
   const { showToast } = useToast();
   const [running, setRunning] = useState(false);
@@ -446,6 +507,7 @@ function RunScorerButton({ cityId, cityName, signalId, onComplete }) {
   const { showToast } = useToast();
   const [running, setRunning] = useState(false);
   const [lastResult, setLastResult] = useState(null);
+  const [progress, setProgress] = useState(null);
 
   async function trigger() {
     if (!cityId) {
@@ -454,20 +516,19 @@ function RunScorerButton({ cityId, cityName, signalId, onComplete }) {
     }
     setRunning(true);
     setLastResult(null);
+    setProgress(null);
     try {
-      const { data, error } = await invokeWithRefresh("run-signal-scorer", {
-        body: { signal_id: signalId, city_id: cityId },
-      });
-      if (error) {
-        const msg = await extractFunctionError(error, "Edge function error");
-        throw new Error(msg);
-      }
-      setLastResult(data);
+      // ORCH-1333 — loop the cursor until done so ONE click finishes any size
+      // city (each call scores one 500-row page). The prior single-shot caller
+      // only ever scored the first page and, on large post-Sub-B cities (New
+      // York / Paris), tripped the Edge budget and persisted 0 rows.
+      const acc = await runScorerToCompletion(signalId, cityId, (p) => setProgress(p));
+      setLastResult(acc);
       showToast(
-        `Scorer done: ${data?.scored_count ?? 0} scored, ${data?.ineligible_count ?? 0} ineligible (${data?.duration_ms ?? 0}ms)`,
+        `Scorer done: ${acc.scored_count ?? 0} scored, ${acc.ineligible_count ?? 0} ineligible across ${acc.batches} batch${acc.batches === 1 ? "" : "es"}`,
         "success",
       );
-      onComplete?.(data);
+      onComplete?.(acc);
     } catch (err) {
       console.error("[RunScorerButton]", err);
       showToast(`Scorer failed: ${err.message}`, "error");
@@ -482,8 +543,17 @@ function RunScorerButton({ cityId, cityName, signalId, onComplete }) {
     <div className="flex flex-col gap-2">
       <Button onClick={trigger} disabled={running || !cityId} size="sm">
         {running ? <Spinner size="sm" /> : <Play className="w-3 h-3" />}
-        {running ? `Scoring ${label}…` : `Run scorer for ${label}`}
+        {running
+          ? `Scoring ${label}… ${progress ? `batch ${progress.batches}` : ""}`
+          : `Run scorer for ${label}`}
       </Button>
+      {progress && (
+        <div className="text-xs text-[--color-text-tertiary] font-mono">
+          {progress.batches} batch{progress.batches === 1 ? "" : "es"} · scored={progress.scored}
+          {progress.remaining != null ? ` · remaining=${progress.remaining}` : ""}
+          {progress.done ? " · done" : "…"}
+        </div>
+      )}
       {lastResult && (
         <div className="text-xs text-[--color-text-tertiary] font-mono">
           Last: scored={lastResult.scored_count} · ineligible={lastResult.ineligible_count} ·
@@ -544,7 +614,7 @@ function formatRelative(ts) {
   return d.toLocaleDateString();
 }
 
-function CityPipelineHistory({ selectedCityId, onPickCity }) {
+function CityPipelineHistory({ selectedCityId, onPickCity, refreshSignal }) {
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -564,7 +634,11 @@ function CityPipelineHistory({ selectedCityId, onPickCity }) {
     }
   }, []);
 
-  useEffect(() => { refresh(); }, [refresh]);
+  // ORCH-1333 Defect A (F-6) — refetch admin_city_pipeline_status() whenever a
+  // scorer/Bouncer run completes. All four scorer/Bouncer onComplete handlers bump
+  // previewKey, which is threaded in as refreshSignal, so the "Scored" /
+  // "Bouncer-passed" columns move immediately without a manual Refresh click.
+  useEffect(() => { refresh(); }, [refresh, refreshSignal]);
 
   if (loading) {
     return (
@@ -694,22 +768,20 @@ function ScoreAllSignalsButton({ cityId, cityName, signals, onComplete }) {
     try {
       for (let i = 0; i < signals.length; i++) {
         const sig = signals[i];
-        setProgress({ current: i + 1, total: signals.length, label: sig.label });
+        setProgress({ current: i + 1, total: signals.length, label: sig.label, batch: 0 });
 
         try {
-          const { data, error } = await invokeWithRefresh("run-signal-scorer", {
-            body: { signal_id: sig.id, city_id: cityId },
-          });
-          if (error) {
-            const msg = await extractFunctionError(error, "Edge function error");
-            throw new Error(msg);
-          }
+          // ORCH-1333 — loop each signal to FULL completion across batches before
+          // moving to the next signal (each call scores one 500-row page).
+          const acc = await runScorerToCompletion(sig.id, cityId, (p) =>
+            setProgress({ current: i + 1, total: signals.length, label: sig.label, batch: p.batches }),
+          );
           results.push({
             signal_id: sig.id,
             label: sig.label,
             ok: true,
-            scored: data?.scored_count ?? 0,
-            ineligible: data?.ineligible_count ?? 0,
+            scored: acc.scored_count ?? 0,
+            ineligible: acc.ineligible_count ?? 0,
           });
         } catch (err) {
           console.error(`[ScoreAllSignalsButton] ${sig.id} failed:`, err);
@@ -753,7 +825,7 @@ function ScoreAllSignalsButton({ cityId, cityName, signals, onComplete }) {
       >
         {running ? <Spinner size="sm" /> : <Sparkles className="w-4 h-4" />}
         {running
-          ? `Scoring signal ${progress.current}/${progress.total}: ${progress.label}…`
+          ? `Scoring signal ${progress.current}/${progress.total}: ${progress.label}…${progress.batch ? ` (batch ${progress.batch})` : ""}`
           : `Score ALL ${signals?.length ?? 0} signals for ${cityName || "selected city"}`}
       </Button>
 
@@ -1084,6 +1156,7 @@ export function SignalLibraryPage() {
             <CityPipelineHistory
               selectedCityId={selectedCityId}
               onPickCity={(id) => setSelectedCityId(id)}
+              refreshSignal={previewKey}
             />
           </div>
 
