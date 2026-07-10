@@ -18,7 +18,7 @@ import path from "node:path";
  * Source-contract test (readFileSync, no RN renderer) matching the repo
  * convention in `__tests__/components/BrandCreationFlow.test.tsx`.
  *
- * fails-on-revert verified at 26fb3ce35
+ * fails-on-revert verified at b6765d26 (SC-1 route-exists + SC-6 F-2 branch go RED)
  */
 
 const repoRoot = path.resolve(__dirname, "../..");

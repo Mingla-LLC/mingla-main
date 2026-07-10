@@ -17,7 +17,7 @@ import path from "node:path";
  *
  * Source-contract test (readFileSync, no RN renderer).
  *
- * fails-on-revert verified at 26fb3ce35
+ * fails-on-revert verified at b6765d26 (all 4 assertions go RED on file revert)
  */
 
 const repoRoot = path.resolve(__dirname, "../..");
