@@ -123,6 +123,9 @@ import {
 // experiences detail+checkout sheet, mounted from ExpandedCardModal +
 // MessageInterface. The trip screen now owns the same cart + native-checkout
 // wiring EBES held, scoped to the trip.
+// ORCH-1341 [guest-list-sheet-consumer] — the "Who's going" roster sheet, the
+// destination of the ORCH-1340 onSeeWhosGoing affordance on the trip body.
+import EventGuestListSheet from "../../components/EventGuestListSheet";
 import TicketCartSheet, {
   type TicketCartCheckoutPayload,
 } from "../../components/expandedCard/TicketCartSheet";
@@ -398,6 +401,18 @@ export default function ConsumerTripDetailScreen({
   // video). Default muted (the immersive auto-play default).
   const [muted, setMuted] = useState<boolean>(true);
   const toggleMute = useCallback(() => setMuted((m) => !m), []);
+
+  // ORCH-1341 — "Who's going" guest-list sheet visibility (declared before the
+  // loading/error early returns per the Rules of Hooks).
+  const [guestSheetVisible, setGuestSheetVisible] = useState<boolean>(false);
+  const handleSeeWhosGoing = useCallback(
+    (): void => setGuestSheetVisible(true),
+    [],
+  );
+  const handleGuestSheetClose = useCallback(
+    (): void => setGuestSheetVisible(false),
+    [],
+  );
 
   // ORCH-1138 device-rework #3 — float→dock Reserve CTA visibility tracking. These
   // hooks MUST be declared BEFORE any early return (loading/error/not-found) per
@@ -969,6 +984,14 @@ export default function ConsumerTripDetailScreen({
               reduceMotion={reduceMotion}
               // ORCH-1339 — cross-entity social proof (server-gated payload).
               socialProof={socialProofQuery.data ?? null}
+              // ORCH-1341 — cluster/link tap opens the guest-list sheet
+              // (double-gated per SPEC §4.6; absent ⇒ inert, no dead tap).
+              onSeeWhosGoing={
+                socialProofQuery.data?.privateGuestList !== true &&
+                (socialProofQuery.data?.goingCount ?? 0) > 0
+                  ? handleSeeWhosGoing
+                  : undefined
+              }
               testID="meta-orch-1174-consumer-trip-body"
             />
           </View>
@@ -1037,6 +1060,17 @@ export default function ConsumerTripDetailScreen({
         installmentNoteByTicketId={installmentNoteByTicketId}
         onCancel={handleCartCancel}
         onCheckout={handleCartCheckout}
+      />
+
+      {/* ORCH-1341 — the "Who's going" guest-list sheet. Sibling root in the
+          same fragment; wrapInRNModal z-stacks it above this INLINE detail
+          sheet + the floating reserve pill (the ONLY RN-Modal window in this
+          context — SPEC §2). Mounted UNCONDITIONALLY with `visible` driving it. */}
+      <EventGuestListSheet
+        visible={guestSheetVisible}
+        onClose={handleGuestSheetClose}
+        eventId={detail.tripId}
+        goingCount={socialProofQuery.data?.goingCount ?? 0}
       />
     </>,
   );

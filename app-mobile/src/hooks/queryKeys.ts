@@ -56,6 +56,14 @@ export const socialProofKeys = {
   summary: (eventId: string) => [...socialProofKeys.all, eventId] as const,
 };
 
+// ORCH-1341 — consumer guest-list sheet (peer_list_event_guests payload).
+// One key per event id; useEventGuestList is the sole reader and pins
+// staleTime 0 + gcTime 0 (fresh fetch on every sheet open — DESIGN §2.6).
+export const guestListKeys = {
+  all: ['eventGuestList'] as const,
+  list: (eventId: string) => [...guestListKeys.all, eventId] as const,
+};
+
 export const personCardKeys = {
   all: ['personCards'] as const,
   hero: (pairedUserId: string, holidayKey: string) =>

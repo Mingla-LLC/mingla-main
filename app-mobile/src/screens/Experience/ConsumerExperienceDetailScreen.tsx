@@ -82,6 +82,9 @@ import {
   BaseBottomSheet,
   BottomSheetScrollView,
 } from "../../components/ui/BaseBottomSheet";
+// ORCH-1341 [guest-list-sheet-consumer] — the "Who's going" roster sheet, the
+// destination of the ORCH-1340 onSeeWhosGoing affordance on the experience body.
+import EventGuestListSheet from "../../components/EventGuestListSheet";
 import TicketCartSheet, {
   type TicketCartCheckoutPayload,
 } from "../../components/expandedCard/TicketCartSheet";
@@ -228,6 +231,18 @@ export default function ConsumerExperienceDetailScreen({
   );
   const [checkoutInFlight, setCheckoutInFlight] = useState<boolean>(false);
   const [muted, setMuted] = useState<boolean>(true);
+
+  // ORCH-1341 — "Who's going" guest-list sheet visibility (declared before the
+  // loading/error early returns per the Rules of Hooks).
+  const [guestSheetVisible, setGuestSheetVisible] = useState<boolean>(false);
+  const handleSeeWhosGoing = useCallback(
+    (): void => setGuestSheetVisible(true),
+    [],
+  );
+  const handleGuestSheetClose = useCallback(
+    (): void => setGuestSheetVisible(false),
+    [],
+  );
 
   // ORCH-1072 adaptive occurrence state (ported from EBES).
   const [occurrencePickerVisible, setOccurrencePickerVisible] =
@@ -915,6 +930,14 @@ export default function ConsumerExperienceDetailScreen({
               dockedReserve={dockedReserve}
               // ORCH-1339 — cross-entity social proof (server-gated payload).
               socialProof={socialProofQuery.data ?? null}
+              // ORCH-1341 — cluster/link tap opens the guest-list sheet
+              // (double-gated per SPEC §4.6; absent ⇒ inert, no dead tap).
+              onSeeWhosGoing={
+                socialProofQuery.data?.privateGuestList !== true &&
+                (socialProofQuery.data?.goingCount ?? 0) > 0
+                  ? handleSeeWhosGoing
+                  : undefined
+              }
               testID="orch-1183-consumer-experience-body"
             />
           </View>
@@ -982,6 +1005,17 @@ export default function ConsumerExperienceDetailScreen({
         clearFloatingNav={false}
         onCancel={handleCartCancel}
         onCheckout={handleCartCheckout}
+      />
+
+      {/* ORCH-1341 — the "Who's going" guest-list sheet. Sibling root in the
+          same fragment; wrapInRNModal z-stacks it above this INLINE detail
+          sheet + the floating reserve pill (the ONLY RN-Modal window in this
+          context — SPEC §2). Mounted UNCONDITIONALLY with `visible` driving it. */}
+      <EventGuestListSheet
+        visible={guestSheetVisible}
+        onClose={handleGuestSheetClose}
+        eventId={seed.eventId}
+        goingCount={socialProofQuery.data?.goingCount ?? 0}
       />
     </>
   );

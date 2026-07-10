@@ -93,6 +93,9 @@ import {
 import TicketCartSheet, {
   type TicketCartCheckoutPayload,
 } from "../../components/expandedCard/TicketCartSheet";
+// ORCH-1341 [guest-list-sheet-consumer] — the "Who's going" roster sheet, the
+// destination of the ORCH-1340 onSeeWhosGoing affordance on BOTH branches.
+import EventGuestListSheet from "../../components/EventGuestListSheet";
 import {
   fetchRsvpMomentum,
   submitDeckRsvp,
@@ -238,6 +241,18 @@ export default function ConsumerEventDetailScreen({
   );
   const [checkoutInFlight, setCheckoutInFlight] = useState<boolean>(false);
   const [muted, setMuted] = useState<boolean>(true);
+
+  // ORCH-1341 — "Who's going" guest-list sheet visibility. Both branches share
+  // the ONE sheet mount below; the momentum cluster/link opens it.
+  const [guestSheetVisible, setGuestSheetVisible] = useState<boolean>(false);
+  const handleSeeWhosGoing = useCallback(
+    (): void => setGuestSheetVisible(true),
+    [],
+  );
+  const handleGuestSheetClose = useCallback(
+    (): void => setGuestSheetVisible(false),
+    [],
+  );
 
   // ORCH-1150 — RSVP deck variant. A discoverable RSVP event (host opted in)
   // renders Going/Not-going instead of Book; tapping writes via the same
@@ -604,8 +619,16 @@ export default function ConsumerEventDetailScreen({
     hideRemainingCount: socialProofQuery.data?.hideRemainingCount ?? false,
     // ORCH-1340 — the server-filtered avatar sample rides the SAME payload;
     // photos fill the leading cluster disks ([] until it resolves — glyphs).
-    // No onSeeWhosGoing here: ORCH-1341 wires the consumer sheet handler.
     guestSample: socialProofQuery.data?.sample ?? [],
+    // ORCH-1341 — the cluster/link tap opens the guest-list sheet. Belt-and-
+    // braces double gate (SPEC §4.6): the card already suppresses the
+    // affordance for privateGuestList/zero-going; gating the handler too
+    // survives package regressions. Absent handler ⇒ inert cluster (1340).
+    onSeeWhosGoing:
+      socialProofQuery.data?.privateGuestList !== true &&
+      (rsvpMomentum?.goingCount ?? 0) > 0
+        ? handleSeeWhosGoing
+        : undefined,
   };
   const rsvpBodyStaticMapUrl: string | null = (() => {
     if (rsvpPublicEvent.format === "online") return null;
@@ -950,6 +973,14 @@ export default function ConsumerEventDetailScreen({
                 onTicketBoxLayout={handleDockLayout}
                 // ORCH-1339 — cross-entity social proof (server-gated payload).
                 socialProof={socialProofQuery.data ?? null}
+                // ORCH-1341 — cluster/link tap opens the guest-list sheet
+                // (double-gated per SPEC §4.6; absent ⇒ inert, no dead tap).
+                onSeeWhosGoing={
+                  socialProofQuery.data?.privateGuestList !== true &&
+                  (socialProofQuery.data?.goingCount ?? 0) > 0
+                    ? handleSeeWhosGoing
+                    : undefined
+                }
                 testID="orch-1167-consumer-event-body"
               />
             ) : (
@@ -1047,6 +1078,22 @@ export default function ConsumerEventDetailScreen({
         clearFloatingNav={false}
         onCancel={handleCartCancel}
         onCheckout={handleCartCheckout}
+      />
+
+      {/* ORCH-1341 — the "Who's going" guest-list sheet. Sibling root in the
+          same fragment; wrapInRNModal z-stacks it above this INLINE detail
+          sheet + the floating bar (the ONLY RN-Modal window in this context —
+          SPEC §2). Mounted UNCONDITIONALLY with `visible` driving it
+          (exemplar posture — never `{visible ? <Sheet/> : null}`). */}
+      <EventGuestListSheet
+        visible={guestSheetVisible}
+        onClose={handleGuestSheetClose}
+        eventId={isRsvp ? rsvpPublicEvent.id : seed.eventId}
+        goingCount={
+          isRsvp
+            ? (rsvpMomentum?.goingCount ?? 0)
+            : (socialProofQuery.data?.goingCount ?? 0)
+        }
       />
     </>
   );
