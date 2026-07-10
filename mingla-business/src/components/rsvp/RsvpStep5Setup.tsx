@@ -20,12 +20,14 @@ import {
   accent,
   glass,
   radius as radiusTokens,
+  semantic,
   spacing,
   text as textTokens,
   typography,
 } from "../../constants/designSystem";
 import type { DraftEventVisibility } from "../../store/draftEventStore";
 import { type StepBodyProps } from "../event/types";
+import { Icon } from "../ui/Icon";
 
 const ROW_BG = Platform.select({
   ios: glass.tint.profileBase,
@@ -156,7 +158,12 @@ const MoneyField: React.FC<MoneyFieldProps> = ({ label, helper, currency, cents,
   </View>
 );
 
-export const RsvpStep5Setup: React.FC<StepBodyProps> = ({ draft, updateDraft, brandDefaultCurrency }) => {
+export const RsvpStep5Setup: React.FC<StepBodyProps> = ({
+  draft,
+  updateDraft,
+  brandDefaultCurrency,
+  chipInPayoutReady,
+}) => {
   const capacityOn = draft.rsvpCapacity !== null;
   const chipCurrency = brandDefaultCurrency ?? draft.currency ?? "USD";
   const contributionOn = draft.rsvpContributionEnabled;
@@ -297,16 +304,34 @@ export const RsvpStep5Setup: React.FC<StepBodyProps> = ({ draft, updateDraft, br
               onChange={(c) => updateDraft({ rsvpContributionMinCents: c })}
               testID="rsvp-contribution-min"
             />
-            {/* Friendly early nudge — the HARD bank-gate lives at publish
-                (business_publish_rsvp_draft → pg_brand_can_collect → the
-                paidPublishGuards "Finish bank setup" route). */}
-            <View style={styles.connectCallout} testID="rsvp-contribution-connect-callout">
-              <Text style={styles.connectHeading}>Connect your bank to collect contributions</Text>
-              <Text style={styles.connectSub}>
-                Guests can chip in once your payouts are set up. If your bank isn't connected yet,
-                you'll be prompted to finish setup when you publish.
-              </Text>
-            </View>
+            {/* ORCH-1335 — payout-aware callout. The HARD bank-gate still lives
+                at publish (business_publish_rsvp_draft → pg_brand_can_collect →
+                the paidPublishGuards "Finish bank setup" route); this is only the
+                authoring hint. `chipInPayoutReady` is provider-aware (Stripe fresh
+                "active" OR Paystack subaccount) and undefined-safe: undefined/false
+                (or still-loading) falls to the neutral nudge so a false positive
+                can never flash. */}
+            {chipInPayoutReady ? (
+              /* READY — positive confirmation (ORCH-1335). */
+              <View style={styles.readyCallout} testID="rsvp-contribution-ready-callout">
+                <View style={styles.readyHeadingRow}>
+                  <Icon name="check" size={16} color={semantic.success} />
+                  <Text style={styles.readyHeading}>Payouts are on</Text>
+                </View>
+                <Text style={styles.readySub}>
+                  Guests can chip in the moment you publish — no extra setup needed.
+                </Text>
+              </View>
+            ) : (
+              /* NOT READY / UNKNOWN — today's neutral nudge, copy UNCHANGED. */
+              <View style={styles.connectCallout} testID="rsvp-contribution-connect-callout">
+                <Text style={styles.connectHeading}>Connect your bank to collect contributions</Text>
+                <Text style={styles.connectSub}>
+                  Guests can chip in once your payouts are set up. If your bank isn't connected yet,
+                  you'll be prompted to finish setup when you publish.
+                </Text>
+              </View>
+            )}
           </>
         ) : null}
       </View>
@@ -434,6 +459,30 @@ const styles = StyleSheet.create({
     color: textTokens.primary,
   },
   connectSub: {
+    fontSize: typography.caption.fontSize,
+    lineHeight: typography.caption.lineHeight * 1.35,
+    color: textTokens.secondary,
+    marginTop: spacing.xxs,
+  },
+
+  // ORCH-1335 — payout-ready positive callout (mirrors connectCallout with the
+  // kit's green success tokens).
+  readyCallout: {
+    padding: spacing.md,
+    borderRadius: radiusTokens.lg,
+    overflow: "hidden",
+    marginTop: spacing.sm,
+    backgroundColor: semantic.successTint, // rgba(34, 197, 94, 0.18) — designSystem token
+    borderWidth: 1,
+    borderColor: "rgba(34, 197, 94, 0.45)", // mirrors connectCallout's amber 0.45 border-alpha convention
+  },
+  readyHeadingRow: { flexDirection: "row", alignItems: "center", gap: 6 },
+  readyHeading: {
+    fontSize: typography.bodySm.fontSize,
+    fontWeight: "600",
+    color: textTokens.primary,
+  },
+  readySub: {
     fontSize: typography.caption.fontSize,
     lineHeight: typography.caption.lineHeight * 1.35,
     color: textTokens.secondary,

@@ -35,6 +35,10 @@ module.exports = {
     // (react-native→react-native-web alias); MUST NOT run under this default
     // node/ts-jest config (no web alias / react-dom types).
     "sheetBodyScrollBounded\\.orch1193\\.web\\.render\\.test\\.tsx$",
+    // ORCH-1335 RsvpStep5Setup chip-in bank-banner render-proof — runs under
+    // jest.orch1335.render.cjs (RN preset + RTL via the .orch1118-testdeps
+    // overlay); MUST NOT run under this default node/ts-jest config (no RTL).
+    "RsvpStep5Setup\\.orch1335\\.render\\.test\\.tsx$",
   ],
   moduleFileExtensions: ["ts", "tsx", "js", "jsx", "json"],
   transform: {
