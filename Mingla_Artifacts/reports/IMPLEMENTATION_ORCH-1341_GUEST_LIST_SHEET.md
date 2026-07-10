@@ -4,7 +4,7 @@
 **SPEC (binding):** `Mingla_Artifacts/specs/SPEC_ORCH-1341_GUEST_LIST_SHEET.md`
 **Design (binding):** `Mingla_Artifacts/specs/DESIGN_META-ORCH-1337_GUEST_SOCIAL_PROOF.md` §2/§4/§5
 **Worktree:** `~/Desktop/mingla-orchs/META-ORCH-1337-[social-proof-guest-list]` on `META-ORCH-1337-social-proof-guest-list`
-**Base:** `f0bf165ee` · **Code commit:** `f72513ecf` · **Polish commit (final):** `60231c23d`
+**Base:** `f0bf165ee` · **Code commit:** `f72513ecf` · **Polish commit:** `60231c23d` · **REVIEW-ruling amendment (final):** `b318c6fb9` (pinned header)
 **Status:** implemented, partially verified (all structural/type/gate verification done by the implementor; SC-R runtime open/close/z-index proof is the TESTER's hard gate per SPEC §5 — a first-pass sim attempt was made and stopped for an environment reason documented in §9/§12)
 **Date:** 2026-07-10
 
@@ -18,7 +18,7 @@ Tapping the guest cluster / "See who's going ›" link on any consumer detail sc
 
 | SC | Status | How verified | Commit |
 |---|---|---|---|
-| SC-1-iOS / SC-1-Android (open at 70%, header, sort bands, variants) | ✓ structural / **runtime = tester** | Component config + row derivation per §4.3 exactly; T-03/T-13 + A-3 assert the config, variants copy, and band logic source; runtime open per platform is SC-R (tester) | `f72513ecf` |
+| SC-1-iOS / SC-1-Android (open at 70%, header, sort bands, variants) | ✓ structural / **runtime = tester** | Component config + row derivation per §4.3 exactly; T-03/T-13 + A-3 assert the config, variants copy, and band logic source; runtime open per platform is SC-R (tester). **Header is PINNED per REVIEW ruling** — `scrollMode="scroll"` + the `header` sibling slot (EventAudienceSheet mechanics); T-03 bans flatlist mode (which folds the header into ListHeaderComponent so the title scrolls away) | `f72513ecf` + `b318c6fb9` |
 | SC-2 (4 entry points × both platforms) | ✓ structural / **runtime = tester** | All 4 mounts wired (RSVP config + EventOfferingBody + TripOfferingBody + ExperienceOfferingBody); T-14/T-15/T-16 assert import+mount+handler per screen | `f72513ecf` |
 | SC-3 (add-friend: spinner → Requested; cross-ref at reopen; failure hint) | ✓ structural / **live-fire = tester** | Exact `addFriend(profileId, "", username ?? undefined)` call (T-11b); in-flight/requested/pendingOutgoing/failure states implemented per design §2.5; live `friend_requests` row check is tester T-2 | `f72513ecf` |
 | SC-4 (message friend: ensure → close → navigate; locked: hint, no conversation) | ✓ structural / **live-fire = tester** | A-1 asserts ensure→close→navigate source order; locked branch returns before `ensureConversation` (gate KEPT — non-friends cannot reach it); live DB zero-effect check is tester T-5 | `f72513ecf` |
@@ -45,7 +45,7 @@ Tapping the guest cluster / "See who's going ›" link on any consumer detail sc
 | 8 | `app-mobile/src/components/__tests__/orch_1341_guest_list_sheet.test.ts` | NEW, 19 tests | T-9 source-structure suite |
 | 9 | `app-mobile/src/components/__tests__/orch_1341_guest_list_sheet_adversarial.test.ts` | NEW, 8 tests | §9 revert families + seals |
 
-Totals: `f72513ecf` = 9 files, +1615/−2; `60231c23d` = 3 files, +14/−2. DO-NOT-TOUCH list fully honored (BaseBottomSheet, MessageInterface, useFriends, friendsService/messagingService/blockService/deepLinkService, connectionsService, `packages/offering-rendering/**`, `supabase/**`, `mingla-business/**`, all existing tests, `app/index.tsx`, registries): `git diff origin/main...HEAD --name-only` shows none of them beyond upstream legs' own commits.
+Totals: `f72513ecf` = 9 files, +1615/−2; `60231c23d` = 3 files, +14/−2; `b318c6fb9` (REVIEW-ruling amendment) = 2 files, +44/−19. DO-NOT-TOUCH list fully honored (BaseBottomSheet, MessageInterface, useFriends, friendsService/messagingService/blockService/deepLinkService, connectionsService, `packages/offering-rendering/**`, `supabase/**`, `mingla-business/**`, all existing tests, `app/index.tsx`, registries): `git diff origin/main...HEAD --name-only` shows none of them beyond upstream legs' own commits.
 
 ## 4. Data-model changes
 
@@ -81,11 +81,20 @@ None. No deploy needed for this leg. (Consumer delivery = per-platform OTA at ME
 
 (The same 10-mutation battery was first proven at `f72513ecf` before the polish commit — identical failing-test mapping.)
 
+**Amendment fails-on-revert verified at b318c6fb9** (pinned-header ruling), same mutate → red → `git restore` → green protocol against the COMMITTED state, plus an original-family spot re-check:
+
+```
+== R1 flip scrollMode back to flatlist (rejected mechanic) == FAILED | 26 passed | 1 failed  (T-03)
+== R2 DELETE the header={header} line (unpin the header)   == FAILED | 26 passed | 1 failed  (T-03) ← true line deletion
+== spot F3 DELETE onClose(); (original family)             == FAILED | 26 passed | 1 failed  (A-1) ← true line deletion
+== CLEAN == 0 uncommitted                                     ok | 27 passed | 0 failed
+```
+
 ## 7. Old → New receipts
 
 ### EventGuestListSheet.tsx (NEW)
 **Before:** did not exist — 1340's "See who's going ›" affordance had no destination; handlers were absent everywhere so the cluster was inert.
-**Now:** the full §4.3 sheet. BaseBottomSheet `wrapInRNModal` + `theme="dark"` + `GUEST_LIST_SNAP = ["70%"]` + `scrollMode="flatlist"` + `#111418` canvas + `accessibilityLabel="Who's going"` + header slot (icon shell 42/r21 primary-500, `people` 18 white, title 20/800, "{n} going" 13/600). Display sort bands You → named-with-photo → named-no-photo → unlinked → anonymous, stable in-band. Row anatomy 64pt/paddingV 8/hairline, 46px avatars (photo w/ border → onError initials disk `#eb7825` → glyph disk for unlinked/anon), text column with `@username` / "On Mingla" / "Keeping it low-key" / "You" line-2. Actions per design §2.5 state machines; transient line-2 hint (fade 120/hold 2500/fade 200, reduced-motion instant). Five states; skeleton pulse 0.5↔1.0 1000ms/leg `isInteraction:false`, reduced-motion static 0.7; 150ms ease-out phase fade. Message: ensure → `onClose()` → one-rail deep link (or the `onOpenConversation` test seam).
+**Now:** the full §4.3 sheet. BaseBottomSheet `wrapInRNModal` + `theme="dark"` + `GUEST_LIST_SNAP = ["70%"]` + `scrollMode="scroll"` with the PINNED intrinsic-height `header` sibling slot above the primitive-owned BottomSheetScrollView and mapped keyed rows (REVIEW-ruling amendment `b318c6fb9` — the EventAudienceSheet exemplar's exact mechanics; the title never scrolls away; rows are RPC-capped ≤100 so mapped rows need no virtualization) + `#111418` canvas + `accessibilityLabel="Who's going"` + header content (icon shell 42/r21 primary-500, `people` 18 white, title 20/800, "{n} going" 13/600). Display sort bands You → named-with-photo → named-no-photo → unlinked → anonymous, stable in-band. Row anatomy 64pt/paddingV 8/hairline, 46px avatars (photo w/ border → onError initials disk `#eb7825` → glyph disk for unlinked/anon), text column with `@username` / "On Mingla" / "Keeping it low-key" / "You" line-2. Actions per design §2.5 state machines; transient line-2 hint (fade 120/hold 2500/fade 200, reduced-motion instant). Five states; skeleton pulse 0.5↔1.0 1000ms/leg `isInteraction:false`, reduced-motion static 0.7; 150ms ease-out phase fade. Message: ensure → `onClose()` → one-rail deep link (or the `onOpenConversation` test seam).
 **Why:** SPEC §4.3–§4.5; DESIGN §2.
 **Lines:** ~730.
 
@@ -146,7 +155,7 @@ Delivery: all pure-JS `app-mobile` ⇒ per-platform consumer OTA at META CLOSE (
 | 1 | META-0991 raw-Modal/second-gorhom | Sheet imports ONLY `BaseBottomSheet` from `./ui/BaseBottomSheet`; zero `@gorhom/*`, zero RN `<Modal>` in all new files | strict-grep `meta-orch-0991` OK (487 files, sole importer intact) + T-01/T-02 + F1a/F1b red |
 | 2 | ORCH-0908/1315/COMMS-0084 modal-over-modal | ONE `wrapInRNModal` sheet; all three hosts' detail sheets are INLINE (ORCH-1194 revert comment verbatim-read; ExpandedCardModal early-returns the event screen outside its own RN-Modal wrap) ⇒ the guest sheet is the only RN-Modal window when open; Message navigates only AFTER `onClose()`; profile-open excluded (rows not pressable); nothing layers above (no `overlay` usage) | T-01 + A-1 + T-04 (`overlay=` ban) + SC-R (tester runtime) |
 | 3 | ORCH-1016 nav painted over content | `wrapInRNModal` z-stacks above the nav; `tabBarAware`/`hidesBottomNav` both OMITTED (primitive defaults false) and T-04 bans the tokens from the file | T-04 + SC-R screenshots (tester) |
-| 4 | ORCH-1040/1043 header/body double-wrap | `header` passed to the primitive's slot; body is gorhom's OWN `BottomSheetFlatList` (`scrollMode="flatlist"`) — no raw list, no BottomSheetView wrapper anywhere in my file; the primitive's direct-child composition untouched | CI-registered `i-bottomsheet-inline-scroll-binding` OK + T-05; note on the local 1043 script in §12 |
+| 4 | ORCH-1040/1043 header/body double-wrap | `header` = the primitive's PINNED intrinsic-height sibling slot; body is gorhom's OWN `BottomSheetScrollView` via `scrollMode="scroll"` (the primitive's `<>{header}{scroll}</>` direct-child branch, flex:1 body — the exact ORCH-1043 mechanism) — no raw list, no BottomSheetView wrapper anywhere in my file; the primitive untouched | CI-registered `i-bottomsheet-inline-scroll-binding` OK + T-03/T-05; note on the local 1043 script in §12 |
 | 5 | ORCH-1064 release-only half-open stall | No `animationConfigs` passed — the primitive's ORCH-1064 deterministic timing drive is untouched | T-04 + F6-family red + SC-R rapid ×5 (tester) |
 | 6 | ORCH-1138 dynamic-size mismeasure | Fixed `GUEST_LIST_SNAP = ["70%"]` module const, single detent, `initialIndex` default 0, `enableDynamicSizing` never passed | T-03 + T-04 + A-8 + F1c/F6 red |
 | 7 | ORCH-1157 R8/R9 Android bottom gap | Primitive-owned (R13 screen-height host + ORCH-1190 filler live in BaseBottomSheet, untouched); sheet canvas opaque `#111418`; list `paddingBottom 24` + primitive's `withBottomInset` merge | T-03 (#111418) + SC-R Android bottom-edge screenshot (tester) |
