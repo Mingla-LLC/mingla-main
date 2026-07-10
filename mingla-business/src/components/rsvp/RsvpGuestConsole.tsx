@@ -85,10 +85,15 @@ const getInitials = (name: string): string => {
   return `${parts[0][0]}${parts[parts.length - 1][0]}`.toUpperCase();
 };
 
-// ORCH-1334 — source-badge palette. "On Mingla" uses the brand accent; the web
-// badge uses the AA-safe lightened info blue (#7ab0ff) — the token #3b82f6
-// measures ~4.28:1 on the info-tint fill over the dark canvas, below AA 4.5:1, so
-// the SPEC §4E-4 fallback variant is used (WCAG AA kit I-38/I-39).
+// ORCH-1334 — source-badge palette. Both badge texts are AA-safe LIGHTENED tokens
+// on their translucent tinted fills over the dark row (WCAG AA kit I-38/I-39;
+// SPEC §4E-4). The "On Mingla" text uses #ffa94d, NOT the brand accent.warm
+// #eb7825 which measures 3.94:1 (iOS) / 3.38:1 (Android) on the composited
+// accent.tint fill — below AA 4.5:1 for 11px/600 normal text; #ffa94d measures
+// 6.00:1 (iOS) / 5.15:1 (Android). The web badge uses #7ab0ff — the token #3b82f6
+// measures ~4.28:1 on the info-tint fill, below AA; #7ab0ff measures 6.43:1 (iOS)
+// / 5.45:1 (Android).
+const APP_BADGE_TEXT = "#ffa94d";
 const WEB_BADGE_TEXT = "#7ab0ff";
 const WEB_BADGE_BORDER = "rgba(59, 130, 246, 0.55)";
 
@@ -160,7 +165,7 @@ export const SourceBadge: React.FC<SourceBadgeProps> = ({ source }) => {
       ]}
     >
       <Text
-        style={[styles.badgeText, { color: isApp ? accent.warm : WEB_BADGE_TEXT }]}
+        style={[styles.badgeText, { color: isApp ? APP_BADGE_TEXT : WEB_BADGE_TEXT }]}
       >
         {isApp ? "On Mingla" : "RSVP'd on web"}
       </Text>

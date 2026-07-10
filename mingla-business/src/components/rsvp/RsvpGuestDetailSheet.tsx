@@ -56,8 +56,12 @@ const getInitials = (name: string): string => {
   return `${parts[0][0]}${parts[parts.length - 1][0]}`.toUpperCase();
 };
 
-// AA-safe lightened info blue for the web badge (see console for the contrast
-// rationale — #3b82f6 misses AA 4.5:1 on the info-tint fill over the dark canvas).
+// AA-safe LIGHTENED badge-text tokens (see RsvpGuestConsole for the full contrast
+// rationale). "On Mingla" uses #ffa94d, NOT the brand accent.warm #eb7825 which
+// misses AA 4.5:1 on the composited accent.tint fill (3.94:1 iOS / 3.38:1 Android);
+// #ffa94d measures 6.00:1 iOS / 5.15:1 Android. The web badge uses #7ab0ff since
+// the token #3b82f6 misses AA on the info-tint fill.
+const APP_BADGE_TEXT = "#ffa94d";
 const WEB_BADGE_TEXT = "#7ab0ff";
 const WEB_BADGE_BORDER = "rgba(59, 130, 246, 0.55)";
 
@@ -144,7 +148,7 @@ const SourceBadge: React.FC<{ source: RsvpSourceValue }> = ({ source }) => {
           : { backgroundColor: semantic.infoTint, borderColor: WEB_BADGE_BORDER },
       ]}
     >
-      <Text style={[styles.badgeText, { color: isApp ? accent.warm : WEB_BADGE_TEXT }]}>
+      <Text style={[styles.badgeText, { color: isApp ? APP_BADGE_TEXT : WEB_BADGE_TEXT }]}>
         {isApp ? "On Mingla" : "RSVP'd on web"}
       </Text>
     </View>

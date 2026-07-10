@@ -171,3 +171,32 @@ Business iOS/Android/web-preview parity is AUTOMATIC (one `RsvpGuestConsole`/`Rs
 ## Verdict
 
 **Implemented and (backend) live-verified; UI implemented, unverified on device.** All in-scope layers built per SPEC; happy-path regression green with fails-on-revert proof; all runnable gates green; changeset == allowlist. Ready for **REVIEW → tester** (business-sim + live-fire SQL).
+
+---
+
+## 13. Rework — P2-1 SourceBadge AA-contrast fix (2026-07-10)
+
+Tester finding **P2-1**: the "On Mingla" `SourceBadge` text used the brand token `accent.warm` (`#eb7825`) on the composited `accent.tint` fill and MEASURED **3.94:1 (iOS) / 3.38:1 (Android)** — below WCAG AA 4.5:1 for 11px/600 normal text (violates SPEC §4E-4 + invariants I-38/I-39). The web badge (`#7ab0ff`) already passed. Fix scope: color-literal + constant only — no logic/layout/fill/border/web-badge/scope change; migration + RPCs + all other files untouched.
+
+**Change:** introduced `const APP_BADGE_TEXT = "#ffa94d";` (mirroring the existing `WEB_BADGE_TEXT` pattern) in both rsvp components and swapped ONLY the app-badge TEXT color `accent.warm` → `APP_BADGE_TEXT`. Fill (`accent.tint`) and border (`accent.border`) unchanged.
+
+- `mingla-business/src/components/rsvp/RsvpGuestConsole.tsx` — +6/−4 (const + comment + usage)
+- `mingla-business/src/components/rsvp/RsvpGuestDetailSheet.tsx` — +6/−2 (const + comment + usage)
+
+**Composited WCAG contrast (independently recomputed from designSystem tokens; matches the tester's measured values):**
+
+| Badge | Text token | iOS | Android | AA 4.5:1 |
+|-------|-----------|-----|---------|----------|
+| "On Mingla" (OLD) | `accent.warm` `#eb7825` | 3.94:1 | 3.38:1 | ✗ FAIL |
+| "On Mingla" (NEW) | `#ffa94d` | **6.00:1** | **5.15:1** | ✓ PASS |
+| "RSVP'd on web" | `#7ab0ff` | **6.43:1** | **5.45:1** | ✓ PASS |
+
+(Compositing: `accent.tint` rgba(235,120,37,0.28) / `semantic.infoTint` rgba(59,130,246,0.18) over the iOS glass row `glass.tint.profileBase` over `canvas.discover` #0c0e12, and over the Android opaque row #23262b.)
+
+**Admin badge ruling (tester-flagged):** `mingla-admin/src/pages/OfferingDetailView.jsx:263` renders the "On Mingla" source label as `<Badge variant="info">`. Measured the shared admin `Badge` `info` variant (`bg=--color-info-50` / `text=--color-info-700`): **light theme 6.16:1** (text `#1d4ed8` on `#eff6ff`); **dark theme 7.22–9.42:1** (text `#93c5fd` on `rgba(59,130,246,0.1)` composited over the dark card backgrounds `#242833`→`#0f1117`). Both clear AA 4.5:1 → **PASSES, left untouched** (also a shared admin component — changing it would ripple beyond this ORCH).
+
+**Regression guard (append-only):** `mingla-business/src/components/rsvp/__tests__/rsvpSourceBadgeAAContrast.orch1334.test.ts` (NEW, +180). 13/13 PASS — source-contract layer (both files declare `APP_BADGE_TEXT="#ffa94d"`, render `isApp ? APP_BADGE_TEXT`, do NOT use `accent.warm`, keep the fill/border + web token) + a self-contained WCAG-math layer (composited #ffa94d and #7ab0ff clear AA on both platforms; the old #eb7825 fails). **fails-on-revert verified at commit `<pending>`**: deleting the `APP_BADGE_TEXT` const line + reverting the console usage to `accent.warm` → 3 console assertions RED; restored byte-identically → 13/13 PASS.
+
+**Gates:** `eslint` exit 0 on all 3 files; `tsc --noEmit` reports 0 errors in either rsvp file (the ~756 pre-existing repo-wide errors are all in unrelated `packages/*-rendering` files — a string-constant swap cannot introduce a type error). New AA test 13/13. Nothing outside the 2 fix files + 1 new test touched.
+
+_Note: a `git stash` during verification transiently entangled with a parallel ORCH-1318 session's shared `anchor-uncommitted-pre-ORCH1318-build` stash (stale artifact-file content). Recovered non-destructively: 3 shared artifact files (`COMMS_LEDGER.md`, `MASTER_BUG_LIST.md`, `OPEN_INVESTIGATIONS.md`) restored to their newer committed HEAD content; the ORCH-1318 stash retained intact; no artifact file or the untracked `SPEC_ORCH-1318_APPSFLYER_ONELINK.md` committed by this ORCH._
