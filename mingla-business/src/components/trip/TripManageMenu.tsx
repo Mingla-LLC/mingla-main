@@ -116,7 +116,7 @@ export const TripManageMenu: React.FC<TripManageMenuProps> = ({
           <>
             <View style={styles.divider} />
             <Row
-              icon="x"
+              icon="close"
               label="Cancel trip"
               destructive
               onPress={() => {

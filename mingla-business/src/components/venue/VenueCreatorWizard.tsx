@@ -576,7 +576,7 @@ export const VenueCreatorWizard: React.FC<VenueCreatorWizardProps> = ({
     <View style={[styles.root, { paddingTop: insets.top }]}>
       <View style={styles.chrome}>
         <IconChrome
-          icon="x"
+          icon="close"
           accessibilityLabel="Close venue setup"
           onPress={onClose}
         />

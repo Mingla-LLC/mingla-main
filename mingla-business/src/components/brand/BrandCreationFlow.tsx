@@ -275,6 +275,15 @@ export const BrandCreationFlow: React.FC<BrandCreationFlowProps> = ({
   // If partner status arrives AFTER initial mount (network race), promote the
   // user to step 0 IF they haven't started the wizard yet (still on step 1
   // with no name typed). Never demote.
+  //
+  // ORCH-1332 (F-2) — a late-arriving `isPartner` must not silently DEMOTE the
+  // partner-invite intent. The initial-state client preset (mode:'client',
+  // step:1) requires `isPartner` AT MOUNT; on a cold start / direct deep-link /
+  // auth-warm open of `/brand/new?partner_mode=client`, partner status can
+  // resolve AFTER mount, leaving the flow in self-mode with no path to step 5
+  // (the invite). The added `else if` re-applies client mode once `isPartner`
+  // becomes true. Both branches stay gated on "user hasn't started typing"
+  // (empty name + bio), so neither overrides real user intent.
   useEffect(() => {
     if (
       isPartner &&
@@ -285,6 +294,17 @@ export const BrandCreationFlow: React.FC<BrandCreationFlowProps> = ({
       partnerModeParam !== "client"
     ) {
       setState((prev) => ({ ...prev, step: 0 }));
+    } else if (
+      isPartner &&
+      partnerModeParam === "client" &&
+      state.step === 1 &&
+      state.mode === "self" &&
+      state.name === "" &&
+      state.bio === ""
+    ) {
+      // ORCH-1332 (F-2) — re-apply client mode when partner_enabled arrives
+      // late; stay on step 1 so the wizard flows straight to the invite.
+      setState((prev) => ({ ...prev, mode: "client" }));
     }
   }, [
     isPartner,
