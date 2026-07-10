@@ -16,13 +16,25 @@
 // Fails-on-revert: at Sub-D-implementor base commit, removing the per-place
 // branch (the `if (placeIds && placeIds.length > 0) { ... }` block in
 // run-signal-scorer/index.ts) flips T-01 → fail. Removing the
-// `ai_signal_scores_at: w.ai_signal_scores_at` line in the chunk payload
-// flips T-04 → fail.
+// `ai_signal_scores_at: w.aiSignalScoresAt` line in the chunk payload flips
+// T-04 → fail.
+//
+// ORCH-1333 [TEST-MOD-APPROVED ORCH-1333] — city/all_cities scoring is now a
+// bounded, resumable cursor loop in _shared/signalScorerBatch.ts (the old
+// `while(true)` + `.range(offset,…)` paging block in index.ts is gone). The AI
+// freshness passthrough moved into the shared engine's ScoreWrite type under the
+// gate-neutral camelCase name `aiSignalScoresAt` (the DB column name lives ONLY
+// in index.ts's upsert, so the meta-orch-1009-sub-d sole-writer gate stays
+// green). T-04/T-05/T-07 re-pinned to the new wiring; T-01/T-02/T-03/T-06 unchanged.
 
 import { assert, assertStringIncludes } from "https://deno.land/std@0.224.0/assert/mod.ts";
 
 const SOURCE = await Deno.readTextFile(
   new URL("../index.ts", import.meta.url),
+);
+// ORCH-1333 — the pure scoring engine that index.ts now drives via a cursor loop.
+const BATCH_SOURCE = await Deno.readTextFile(
+  new URL("../../_shared/signalScorerBatch.ts", import.meta.url),
 );
 
 Deno.test("T-01 [Sub-D] per-place mode branch present in run-signal-scorer", () => {
@@ -63,29 +75,37 @@ Deno.test("T-03 [Sub-D] place_ids + all_cities mutually exclusive", () => {
   );
 });
 
-Deno.test("T-04 [Sub-D] ai_signal_scores_at threaded into chunk payload", () => {
-  // SPEC §3.1: every place_scores UPSERT chunk includes ai_signal_scores_at.
-  // The field comes from result.ai_blended?.evaluated_at ?? null.
+Deno.test("T-04 [Sub-D / ORCH-1333] ai_signal_scores_at threaded into upsert payload", () => {
+  // The place_scores UPSERT (index.ts, the SOLE writer) still stamps the DB
+  // freshness column; ORCH-1333 renamed only the engine's passthrough field, so
+  // index.ts maps it: ai_signal_scores_at: w.aiSignalScoresAt.
   assertStringIncludes(
     SOURCE,
-    "ai_signal_scores_at: w.ai_signal_scores_at",
-    "chunk payload does not write ai_signal_scores_at",
+    "ai_signal_scores_at: w.aiSignalScoresAt",
+    "index.ts upsert does not write ai_signal_scores_at from the engine passthrough",
   );
+  // The value is sourced in the shared engine from result.ai_blended?.evaluated_at.
   assertStringIncludes(
-    SOURCE,
-    "ai_signal_scores_at: result.ai_blended?.evaluated_at ?? null",
-    "writes accumulator does not source ai_signal_scores_at from ai_blended.evaluated_at",
+    BATCH_SOURCE,
+    "aiSignalScoresAt: result.ai_blended?.evaluated_at ?? null",
+    "engine does not source the AI freshness passthrough from ai_blended.evaluated_at",
   );
 });
 
-Deno.test("T-05 [Sub-D] writes array typed with ai_signal_scores_at", () => {
-  // Defensive: the typed array signature must list the new field; if a future
-  // refactor drops the field from the type, the runtime write would silently
-  // omit it (Supabase ignores unknown keys on upsert).
+Deno.test("T-05 [Sub-D / ORCH-1333] ScoreWrite type declares the AI freshness passthrough", () => {
+  // Defensive: the engine's ScoreWrite type must declare the passthrough field;
+  // if a future refactor drops it, the runtime upsert would silently omit
+  // ai_signal_scores_at (Supabase ignores unknown keys on upsert).
+  assertStringIncludes(
+    BATCH_SOURCE,
+    "aiSignalScoresAt: string | null;",
+    "ScoreWrite type does not declare the aiSignalScoresAt passthrough",
+  );
+  // And index.ts must still carry the DB column name (sole-writer contract).
   assertStringIncludes(
     SOURCE,
-    "ai_signal_scores_at: string | null;",
-    "writes type does not declare ai_signal_scores_at",
+    "ai_signal_scores_at: w.aiSignalScoresAt",
+    "index.ts no longer writes the ai_signal_scores_at DB column",
   );
 });
 
@@ -98,16 +118,30 @@ Deno.test("T-06 [Sub-D] validation: at least one of place_ids/city_id/all_cities
   );
 });
 
-Deno.test("T-07 [Sub-D] paging-loop preserved for city/all_cities mode", () => {
-  // Regression guard: per-place mode must not have replaced the existing
-  // city/all_cities paging loop (Sub-B-shipped contract).
-  assert(
-    /while\s*\(\s*true\s*\)/.test(SOURCE),
-    "city/all_cities paging loop missing",
+Deno.test("T-07 [Sub-D / ORCH-1333] city/all_cities scoring is a bounded resumable cursor loop", () => {
+  // ORCH-1333: the old offset `while(true)` + `.range(offset,…)` whole-city
+  // accumulate-then-write-all block (F-4/F-5 abort-all footgun) is REPLACED by a
+  // per-page cursor loop. Pin the new contract so a revert to the offset loop
+  // fails: index.ts must parse after_id, page by id-cursor (.gt('id', cursor)),
+  // and drive the shared engine.
+  assertStringIncludes(
+    SOURCE,
+    "body.after_id",
+    "index.ts no longer parses the after_id resume cursor",
   );
   assertStringIncludes(
     SOURCE,
-    ".range(offset, offset + BATCH_SIZE - 1)",
-    "city/all_cities range pagination missing",
+    ".gt('id', cursor)",
+    "loadPage no longer pages by id-cursor (.gt('id', cursor))",
+  );
+  assertStringIncludes(
+    SOURCE,
+    "runSignalScorerBatch(",
+    "index.ts no longer drives the shared cursor-loop engine",
+  );
+  // The offset paging loop MUST be gone (it was the abort-all whole-city shape).
+  assert(
+    !/\.range\(offset,\s*offset \+ BATCH_SIZE - 1\)/.test(SOURCE),
+    "the old offset .range(...) whole-city paging loop is still present",
   );
 });

@@ -171,9 +171,13 @@ Deno.test("T-05 [ORCH-1066] isAdminOverridden detects every marker, ignores plai
   assertEquals(ADMIN_OVERRIDE_MARKERS.length, 3);
 });
 
-Deno.test("T-06 [ORCH-1066] scorer actually wires the shared sticky predicate", () => {
-  // Source guard: the scorer must import + call the shared predicate (so the
-  // behavioral simulation above reflects the real code path, not a parallel copy).
+Deno.test("T-06 [ORCH-1066 / ORCH-1333] scorer wires the shared sticky predicate into the cursor engine", () => {
+  // [TEST-MOD-APPROVED ORCH-1333] — ORCH-1333 moved the sticky filter from the
+  // old post-loop `writes.splice`/`vetoedPlaceIds.splice` block into the shared
+  // cursor engine's per-page `.filter(...)`. The sole-writer contract is intact:
+  // index.ts still imports isAdminOverridden and reads the protected set inside
+  // its readProtectedIds dep, and the engine drops protected ids from BOTH the
+  // write and veto batches per page. Pin the NEW wiring.
   assertStringIncludes(
     SCORER_SOURCE,
     "from '../_shared/stickyOverride.ts'",
@@ -184,7 +188,17 @@ Deno.test("T-06 [ORCH-1066] scorer actually wires the shared sticky predicate", 
     "isAdminOverridden(row.contributions)",
     "scorer does not use isAdminOverridden in its sticky pre-read",
   );
-  // Protected ids must be removed from BOTH the write batch and the veto-delete batch.
-  assertStringIncludes(SCORER_SOURCE, "writes.splice(i, 1)", "scorer does not drop protected rows from writes");
-  assertStringIncludes(SCORER_SOURCE, "vetoedPlaceIds.splice(i, 1)", "scorer does not protect admin rows from veto-delete");
+  // The scorer drives the shared cursor-loop engine (which runs the per-page
+  // sticky pre-read → filter → upsert → veto-delete).
+  assertStringIncludes(
+    SCORER_SOURCE,
+    "runSignalScorerBatch(",
+    "scorer does not drive the shared cursor-loop engine",
+  );
+  // The sticky pre-read is injected via the readProtectedIds dep (bounded per page).
+  assertStringIncludes(
+    SCORER_SOURCE,
+    "readProtectedIds:",
+    "scorer does not provide the readProtectedIds sticky-pre-read dep",
+  );
 });

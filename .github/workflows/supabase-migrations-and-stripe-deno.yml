@@ -272,3 +272,52 @@ jobs:
             echo "ORCH-1313 AppsFlyer S2S Deno tests failed (attempt ${attempt}), retrying in 10s..."
             sleep 10
           done
+
+  orch-1333-signal-scorer-deno-tests:
+    name: "Deno unit tests for ORCH-1333 signal-scorer city-run incremental persist (I-PROPOSED-1333-SCORER-CITY-RUN-INCREMENTAL-PERSIST)"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: denoland/setup-deno@v1
+        with:
+          deno-version: "1.46.x"
+      - name: Run ORCH-1333 signal-scorer batch Deno tests
+        env:
+          # Inert defaults — the ORCH-1333 engine (_shared/signalScorerBatch.ts)
+          # is PURE logic (no Supabase client; all DB IO is injected by
+          # run-signal-scorer/index.ts). These exist only for parity with the
+          # sibling jobs and are never read.
+          SUPABASE_URL: "https://example-test.supabase.co"
+          SUPABASE_SERVICE_ROLE_KEY: "test-service-role-key-not-real"
+        run: |
+          set -euo pipefail
+          DENO_TEST_FILES=(
+            # ORCH-1333 §9 — the load-bearing fails-on-revert guard: a large
+            # write-set city persists incrementally and does NOT abort-all when a
+            # per-page sticky pre-read/upsert fails mid-run (T-A/T-B/T-D/T-E).
+            supabase/functions/_shared/__tests__/signalScorerBatch.test.ts
+            # ORCH-1333 §9 — adversarial: a per-page sticky/upsert failure keeps
+            # prior pages + is resumable; admin pins stay sticky per page
+            # (T-B/T-B2/T-C). These are NOT wired into any other job — required so
+            # the incremental-persist guard is actually CI-enforced (I-CLOSE
+            # regression-protection HARD MUST).
+            supabase/functions/_shared/__tests__/signalScorerBatch.adversarial.test.ts
+            # ORCH-1333 TESTER — independent adversarial coverage on a DIFFERENT
+            # angle: resume-after-failure reconstructs the exact uninterrupted
+            # end-state with ZERO double-writes across the seam (TC-1, fails-on-
+            # revert), the real production city-mode loop (maxRows==pageSize==500)
+            # terminates across an exactly-divisible boundary (TC-2), and an
+            # admin-pin on the LAST short page stays sticky (TC-3).
+            supabase/functions/_shared/__tests__/signalScorerBatch.cursor_boundary.adversarial.test.ts
+          )
+          for attempt in 1 2 3; do
+            if deno test --allow-env --allow-net --allow-read --no-check "${DENO_TEST_FILES[@]}"; then
+              exit 0
+            fi
+            if [ "$attempt" -eq 3 ]; then
+              echo "ORCH-1333 signal-scorer Deno tests failed after 3 attempts (esm.sh flake?)"
+              exit 1
+            fi
+            echo "ORCH-1333 signal-scorer Deno tests failed (attempt ${attempt}), retrying in 10s..."
+            sleep 10
+          done
