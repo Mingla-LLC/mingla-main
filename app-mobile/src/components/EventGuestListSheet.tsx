@@ -741,16 +741,20 @@ const styles = StyleSheet.create({
     fontWeight: "600",
     color: "rgba(255, 255, 255, 0.58)",
   },
+  // Horizontal inset lives on the ROWS/footer/states, NOT the list content
+  // container — in flatlist mode the header slot rides inside the list as its
+  // ListHeaderComponent, and a container inset would double the header's own
+  // paddingHorizontal 20 (exemplar parity: eventAudienceListInner owns it).
   listContent: {
     paddingTop: 10,
     paddingBottom: 24,
-    paddingHorizontal: 20,
   },
   row: {
     flexDirection: "row",
     alignItems: "center",
     minHeight: 64,
     paddingVertical: 8,
+    paddingHorizontal: 20,
     borderBottomWidth: 1,
     borderBottomColor: "rgba(255, 255, 255, 0.06)",
   },
@@ -862,7 +866,7 @@ const styles = StyleSheet.create({
   stateBlock: {
     alignItems: "center",
     paddingVertical: 28,
-    paddingHorizontal: 16,
+    paddingHorizontal: 36,
   },
   stateTitle: {
     marginTop: 8,

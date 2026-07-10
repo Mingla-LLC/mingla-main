@@ -1,3 +1,7 @@
+// @ts-nocheck — Deno-runtime suite (Deno globals + deno.land import); the
+// app-mobile tsc sweep has no Deno types (house convention — see
+// curatedStopsAvailability.adversarial.test.ts). Deno typechecks it at run.
+//
 // ORCH-1341 [guest-list-sheet-consumer] — implementor-owned happy-path guard
 // suite (SPEC §7 T-9 + §9 structural safeguard; META-ORCH-1337 Leg 4).
 //

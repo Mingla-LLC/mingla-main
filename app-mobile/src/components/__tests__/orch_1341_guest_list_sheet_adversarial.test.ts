@@ -1,3 +1,7 @@
+// @ts-nocheck — Deno-runtime suite (Deno globals + deno.land import); the
+// app-mobile tsc sweep has no Deno types (house convention — see the happy
+// suite + curatedStopsAvailability.adversarial.test.ts). Deno typechecks it.
+//
 // ORCH-1341 [guest-list-sheet-consumer] — adversarial guard suite (SPEC §9
 // named-revert families 2/3/4/5 + the privacy/sequencing seals).
 //
