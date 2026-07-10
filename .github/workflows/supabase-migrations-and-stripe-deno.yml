@@ -302,6 +302,13 @@ jobs:
             # the incremental-persist guard is actually CI-enforced (I-CLOSE
             # regression-protection HARD MUST).
             supabase/functions/_shared/__tests__/signalScorerBatch.adversarial.test.ts
+            # ORCH-1333 TESTER — independent adversarial coverage on a DIFFERENT
+            # angle: resume-after-failure reconstructs the exact uninterrupted
+            # end-state with ZERO double-writes across the seam (TC-1, fails-on-
+            # revert), the real production city-mode loop (maxRows==pageSize==500)
+            # terminates across an exactly-divisible boundary (TC-2), and an
+            # admin-pin on the LAST short page stays sticky (TC-3).
+            supabase/functions/_shared/__tests__/signalScorerBatch.cursor_boundary.adversarial.test.ts
           )
           for attempt in 1 2 3; do
             if deno test --allow-env --allow-net --allow-read --no-check "${DENO_TEST_FILES[@]}"; then
