@@ -10,8 +10,14 @@ import { ticketCopyFor } from "./copy.ts";
 import { buildCalendarLinks, renderCalendarBlockHtml } from "./calendar.ts";
 import type { TicketBodyInput } from "./types.ts";
 
-const { BRAND_ORANGE, BRAND_INK, BRAND_MUTED, BRAND_BG_SOFT, BRAND_BORDER } =
-  SHELL_TOKENS;
+const {
+  BRAND_ORANGE,
+  BRAND_ORANGE_BUTTON,
+  BRAND_INK,
+  BRAND_MUTED,
+  BRAND_BG_SOFT,
+  BRAND_BORDER,
+} = SHELL_TOKENS;
 
 function isRenderableImage(
   url: string | null,
@@ -161,7 +167,7 @@ function renderDownloadAppCta(input: TicketBodyInput): string {
   return `<div style="margin-top:32px;padding:24px;background:#FFF5EC;border-radius:12px;border:1px solid #FFD9B8;text-align:center;">
     <p style="margin:0;font-size:15px;color:#6B5A47;">Join your event chat in the Mingla app</p>
     <a href="https://usemingla.com/orders/${escapeHtml(orderId)}/chat"
-       style="display:inline-block;margin-top:12px;padding:12px 24px;background:${BRAND_ORANGE};color:white;border-radius:8px;text-decoration:none;font-weight:600;font-size:15px;">
+       style="display:inline-block;margin-top:12px;padding:12px 24px;background:${BRAND_ORANGE_BUTTON};color:white;border-radius:8px;text-decoration:none;font-weight:600;font-size:15px;">
       Open in Mingla
     </a>
   </div>`;

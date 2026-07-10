@@ -7,6 +7,12 @@ import { escapeHtml } from "./escape.ts";
 import { FOOTER_DISCLAIMER } from "./copy.ts";
 
 const BRAND_ORANGE = "#FF6B2C";
+// ORCH-1329 — dedicated CTA button-fill token. White text on #FF6B2C is
+// 2.84:1 (fails WCAG AA); on #C4471A it is 4.93:1 (passes AA) and still reads
+// clearly orange. Use this ONLY for CTA buttons that carry white label text.
+// Decorative #FF6B2C (BRAND_ORANGE — links, borders, non-white-text accents)
+// stays unchanged.
+const BRAND_ORANGE_BUTTON = "#C4471A";
 const BRAND_INK = "#0F1115";
 const BRAND_MUTED = "#5B6172";
 const BRAND_BG_SOFT = "#FFF6F1";
@@ -96,6 +102,7 @@ export function renderShell(input: ShellInput): string {
 
 export const SHELL_TOKENS = {
   BRAND_ORANGE,
+  BRAND_ORANGE_BUTTON,
   BRAND_INK,
   BRAND_MUTED,
   BRAND_BG_SOFT,
