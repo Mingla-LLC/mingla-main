@@ -133,7 +133,7 @@ Both jobs added to `.github/workflows/strict-grep-mingla-business.yml` (triggers
 
 Both gate `--self-test`s additionally prove fails-on-revert programmatically (un-routing a site, re-adding a raw call, dropping a blocked entry, deleting `blockedPermissions`).
 
-**fails-on-revert verified at commit `__COMMIT_HASH__`** (branch `ORCH-1322-consumer-android-media-perms`).
+**fails-on-revert verified at commit `f63c7143b`** (branch `ORCH-1322-consumer-android-media-perms`; the three proofs were run on the exact working tree captured by this commit — line-deletion → guard FAIL → restore → guard PASS).
 
 ---
 
