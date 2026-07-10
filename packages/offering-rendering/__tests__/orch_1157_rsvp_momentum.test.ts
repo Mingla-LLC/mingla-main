@@ -3,17 +3,21 @@
 // dep-free (no RN imports), and the component invariants are enforced as
 // SOURCE-STRUCTURE assertions (the package has no react-native-testing-library).
 //
-// Covers the SPEC §7 cases for the shared unit + the 4 DRAFT invariants:
+// Covers the SPEC §7 cases for the shared unit + the invariants:
 //   T-1 open count>0 capacity set · T-2 unlimited · T-3 goingCount=0 zero-state ·
 //   T-4 full+waitlist (no number) · I-PROPOSED-1157-RSVP-NO-CHECKOUT-AFFORDANCE ·
-//   I-PROPOSED-1157-RSVP-DECISION-IS-HERO · -SOCIAL-PROOF-ANON-ONLY · -USES-BRAND-
-//   THEME-DIAL.
+//   I-PROPOSED-1157-RSVP-DECISION-IS-HERO · -USES-BRAND-THEME-DIAL ·
+//   I-PROPOSED-1340-GUEST-IDENTITY-PRIVACY-GATED (the ORCH-1340 successor of
+//   the retired anon-cluster half; the bundled ADDRESS half lives on verbatim
+//   as I-PROPOSED-1157-ADDRESS-PRIVACY, enforced by the untouched address-gate
+//   and round-4/5 tests — not this file).
 //
 // FAILS-ON-REVERT (proven by true line-deletion in the implementation report):
 //   - delete the goingCount=0 guard in deriveMomentum → T-3 expectations flip.
 //   - delete the capacity-null branch → T-2 "Open invite" flips.
-//   - re-introduce an <Image>/uri or a maybeCount/waitlistCount prop in the
-//     component → the anon-only source assertions FAIL.
+//   - re-introduce an <Image>/uri INTO THE CARD FILE (photos live ONLY inside
+//     the shared GuestAvatarCluster since ORCH-1340) or a maybeCount/
+//     waitlistCount/name-bearing prop → the identity-privacy assertions FAIL.
 //   - hardcode a hex on the meter/going-button → the theme-dial assertion FAILS.
 
 import {
@@ -117,16 +121,36 @@ Deno.test("I-PROPOSED-1157-RSVP-DECISION-IS-HERO: the unit supports floating-doc
   assertStringIncludes(COMPONENT, "variant:");
 });
 
-Deno.test("I-PROPOSED-1157-RSVP-SOCIAL-PROOF-ANON-ONLY: faceless cluster, no images, no maybe/waitlist count props", () => {
-  // The cluster avatars are GLYPH-only — never a photo.
-  assert(!/<Image\b/.test(COMPONENT));
-  assert(!/\buri\b/.test(COMPONENT));
-  assertStringIncludes(COMPONENT, "PersonGlyph"); // faceless person outline
-  // No public maybe / waitlist COUNT anywhere in the props or render.
+// ORCH-1340 [card-real-avatars] — SANCTIONED REWRITE of the retired anon-only
+// block ([TEST-MOD-APPROVED ORCH-1340]; SPEC_ORCH-1340 §4.5-b). WHY: sealed
+// decision D1 (META-ORCH-1337) made real avatar PHOTOS a sanctioned,
+// privacy-gated part of the cluster — the blanket <Image>/uri ban below was
+// the one assertion that correctly turned wrong. Guest NAMES/usernames and
+// maybe/waitlist counts stay banned FOREVER (tighter wall below); the
+// PersonGlyph presence pin moved to the orch_1340 suite against
+// GuestAvatarCluster.tsx (the glyph's new home); the ADDRESS-privacy half of
+// the old invariant lives on untouched as I-PROPOSED-1157-ADDRESS-PRIVACY.
+Deno.test("I-PROPOSED-1340-GUEST-IDENTITY-PRIVACY-GATED: photos only via GuestAvatarCluster; names never", () => {
+  // Carried forward from the retired block — no public maybe / waitlist COUNT
+  // anywhere in the props or render, and no guest identity fields.
   assert(!/maybeCount/.test(COMPONENT));
   assert(!/waitlistCount/.test(COMPONENT));
-  // No guest identity fields.
   assert(!/guestName|guestPhoto|attendeeName|guestAvatar/.test(COMPONENT));
+  // Tightened name wall: no username token; no name-bearing PROP declaration
+  // (React's `Component.displayName = "…"` assignment is excluded by shape).
+  assert(!/\busername\b/.test(COMPONENT));
+  assert(!/\bdisplayName\s*\??\s*:/.test(COMPONENT));
+  // Photos are sanctioned (D1) but SINGLE-OWNED: the card renders its cluster
+  // exclusively through the shared GuestAvatarCluster…
+  assertStringIncludes(COMPONENT, 'from "./GuestAvatarCluster"');
+  assertStringIncludes(COMPONENT, "<GuestAvatarCluster");
+  // …and THIS file still contains no <Image>/uri of its own.
+  assert(!/<Image\b/.test(COMPONENT));
+  assert(!/\buri\b/.test(COMPONENT));
+  // Affordance integrity: the tap callback is an OPTIONAL prop with NO no-op
+  // fallback — absent handler ⇒ the non-pressable cluster, never a dead tap.
+  assertStringIncludes(COMPONENT, "onSeeWhosGoing");
+  assert(!/onSeeWhosGoing\s*=\s*\(\)\s*=>/.test(COMPONENT));
 });
 
 Deno.test("I-PROPOSED-1157-RSVP-USES-BRAND-THEME-DIAL: meter + cluster + going + kicker dot read palette.accent (no hardcoded hue)", () => {

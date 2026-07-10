@@ -91,6 +91,14 @@ export type { OfferingMomentumProps } from "./OfferingMomentum";
 export { deriveSocialProofMomentum } from "./socialProofMomentum";
 export type { SocialProofMomentumModel } from "./socialProofMomentum";
 
+// ORCH-1340 [card-real-avatars] — THE ONE disk system (photo|glyph|+N|see-row)
+// rendered by BOTH momentum cards. Photos come ONLY from the server-filtered
+// avatar sample (the payload IS the privacy boundary — no name can reach it);
+// the glyph disk is the honest loading/fallback/anonymous state
+// (I-PROPOSED-1340-GUEST-IDENTITY-PRIVACY-GATED).
+export { GuestAvatarCluster } from "./GuestAvatarCluster";
+export type { GuestAvatarClusterProps } from "./GuestAvatarCluster";
+
 // ORCH-1292 [public-page-tag-slug-labels] — the in-package canonical taxonomy
 // label resolver. Turns party/vibe/music SLUGS into their display LABELS at the
 // shared pill/chip render sites (EventOfferingBody / RsvpOfferingBody /

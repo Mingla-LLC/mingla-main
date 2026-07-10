@@ -4,20 +4,24 @@
  * The ONE shared, pure-presentational cross-entity momentum unit for the three
  * NON-RSVP public bodies (EventOfferingBody / TripOfferingBody /
  * ExperienceOfferingBody). Renders the honest going/booked COUNT + an optional
- * scarcity sub-line + a capacity METER + an explicitly ANONYMOUS (FACELESS)
- * glyph cluster — a COUNT motif, never identities.
+ * scarcity sub-line + a capacity METER + a privacy-gated guest cluster (real
+ * avatar photos where the server-filtered sample provides them, honest glyph
+ * disks everywhere else) — a COUNT motif, never names.
  *
  * WHY this exists (read before editing):
  *   - Gates are SERVER-authoritative (D2): `privateGuestList === true`
- *     suppresses the cluster entirely (count/sub-line/meter still render);
- *     `hideRemainingCount` is applied inside deriveSocialProofMomentum (null
- *     DISPLAY capacity → sub-line omitted, fixed low meter, count kept).
- *   - The cluster is GLYPH-ONLY in this leg — NO <Image>, no avatar
- *     consumption, no identity props. Real avatars are ORCH-1340's (the props
- *     shape already carries `sample`, deliberately unread here). NO Pressable /
- *     onPress anywhere — the tap affordance is ORCH-1341's (the unit stays
- *     inert; Constitution rule 1 — no dead taps means no tap at all until the
- *     sheet exists).
+ *     suppresses the WHOLE cluster block — disks AND the "See who's going"
+ *     affordance (count/sub-line/meter still render); `hideRemainingCount` is
+ *     applied inside deriveSocialProofMomentum (null DISPLAY capacity →
+ *     sub-line omitted, fixed low meter, count kept).
+ *   - The cluster renders exclusively through the shared GuestAvatarCluster
+ *     (ORCH-1340) — the ONE photo-rendering owner. Photos come ONLY from
+ *     `socialProof.sample` (1338 frozen shape: avatarUrl + isMinglaUser, no
+ *     names — the payload IS the privacy boundary;
+ *     I-PROPOSED-1340-GUEST-IDENTITY-PRIVACY-GATED). This file itself still
+ *     contains NO <Image> and NO Pressable — the tap affordance lives inside
+ *     the cluster and fires only when a host passes `onSeeWhosGoing`
+ *     (ORCH-1341/1342 wire the handlers; absent ⇒ inert, no dead tap).
  *   - Honest absence: `socialProof` null OR derivation invisible → render null
  *     (zero layout shift; a fetch failure degrades to today's page).
  *   - Theme dial: every color derives from `palette.*` — never a hex literal
@@ -37,7 +41,6 @@
 
 import React from "react";
 import { Platform, StyleSheet, Text, View } from "react-native";
-import Svg, { Circle, Path } from "react-native-svg";
 
 import {
   boldFontFamily,
@@ -47,6 +50,9 @@ import {
 import { type ResolvedTheme } from "./designTokens";
 import { type SocialProofSummary } from "./socialProofTypes";
 import { deriveSocialProofMomentum } from "./socialProofMomentum";
+// ORCH-1340 — the ONE shared disk system (photo|glyph|+N|see-row) for both
+// momentum cards; the faceless PersonGlyph now lives inside it.
+import { GuestAvatarCluster } from "./GuestAvatarCluster";
 
 // ───────────────────────────── props contract ───────────────────────────────
 
@@ -55,24 +61,15 @@ export interface OfferingMomentumProps {
   theme: ResolvedTheme;
   /** ORCH-1338 payload (props-only — the surface owns the fetch). null → no unit. */
   socialProof: SocialProofSummary | null;
+  /**
+   * ORCH-1340 — present ⇒ the cluster block becomes ONE pressable group with
+   * the visible "See who's going" row (ORCH-1341 wires the consumer sheet,
+   * ORCH-1342 the web gate). Absent ⇒ inert cluster: non-pressable, no
+   * see-row, NO dead tap (Constitution #1).
+   */
+  onSeeWhosGoing?: () => void;
   testID?: string;
 }
-
-// ─────────────────────────────── glyph (SVG) ────────────────────────────────
-
-/** FACELESS person glyph for the anonymous cluster (NEVER a photo). Local copy
- * of the RsvpMomentumDecision glyph so the RSVP unit's file stays untouched. */
-const PersonGlyph: React.FC<{ color: string }> = ({ color }) => (
-  <Svg width={15} height={15} viewBox="0 0 24 24" fill="none">
-    <Circle cx={12} cy={8} r={4} stroke={color} strokeWidth={2} />
-    <Path
-      d="M4 21c0-4 4-7 8-7s8 3 8 7"
-      stroke={color}
-      strokeWidth={2}
-      strokeLinecap="round"
-    />
-  </Svg>
-);
 
 // Opaque neutral card fill on EVERY platform (byte-follows RsvpMomentumDecision:
 // Android keeps its raw opaque page; web/iOS composite the translucent card
@@ -87,6 +84,7 @@ export const OfferingMomentum: React.FC<OfferingMomentumProps> = ({
   palette,
   theme,
   socialProof,
+  onSeeWhosGoing,
   testID,
 }) => {
   if (socialProof === null) return null;
@@ -133,50 +131,24 @@ export const OfferingMomentum: React.FC<OfferingMomentumProps> = ({
           testID="orch-1339-momentum-meter"
         />
       </View>
-      {/* anonymous FACELESS cluster — suppressed entirely under privateGuestList
-          (D2); count/sub-line/meter above still render. GLYPH-only until 1340. */}
+      {/* guest cluster (ORCH-1340) — photos ONLY from the server-filtered
+          sample via the shared GuestAvatarCluster (single photo owner); glyph
+          = loading/fallback/anonymous, private ≡ no-photo by design. D2 —
+          privateGuestList suppresses the WHOLE block, see-row included;
+          count/sub-line/meter above still render. */}
       {!socialProof.privateGuestList ? (
-        <View
-          style={styles.cluster}
-          accessibilityLabel={a11yLabel}
+        <GuestAvatarCluster
+          palette={palette}
+          theme={theme}
+          shownCount={momentum.shownGlyphs}
+          overflowCount={momentum.overflowCount}
+          goingCount={socialProof.goingCount}
+          guestSample={socialProof.sample}
+          clusterNote={momentum.clusterNote}
+          chipFill={opaqueCardFill(palette)}
+          onSeeWhosGoing={onSeeWhosGoing}
           testID="orch-1339-momentum-cluster"
-        >
-          {Array.from({ length: momentum.shownGlyphs }).map((_, i) => (
-            <View
-              key={i}
-              style={[
-                styles.avatar,
-                {
-                  backgroundColor: palette.accent,
-                  borderColor: palette.page,
-                  marginLeft: i === 0 ? 0 : -8,
-                },
-              ]}
-            >
-              <PersonGlyph color={palette.accentText} />
-            </View>
-          ))}
-          {momentum.overflowCount > 0 ? (
-            <View
-              style={[
-                styles.avatar,
-                styles.avatarMore,
-                {
-                  backgroundColor: opaqueCardFill(palette),
-                  borderColor: palette.page,
-                  marginLeft: -8,
-                },
-              ]}
-            >
-              <Text style={[styles.avatarMoreText, { color: palette.secondaryText }]}>
-                +{momentum.overflowCount}
-              </Text>
-            </View>
-          ) : null}
-          <Text style={[styles.clusterNote, { color: palette.tertiaryText }]}>
-            {momentum.clusterNote}
-          </Text>
-        </View>
+        />
       ) : null}
     </View>
   );
@@ -185,8 +157,9 @@ export const OfferingMomentum: React.FC<OfferingMomentumProps> = ({
 OfferingMomentum.displayName = "OfferingMomentum";
 
 // Styles byte-follow RsvpMomentumDecision.styles.momentum/momTop/momCount/
-// momLabel/momSub/meterTrack/meterFill/cluster/avatar/avatarMore/avatarMoreText/
-// clusterNote so the two momentum cards read identically across pages.
+// momLabel/momSub/meterTrack/meterFill so the two momentum cards read
+// identically across pages (the disk/chip/note styles live in the shared
+// GuestAvatarCluster since ORCH-1340).
 const styles = StyleSheet.create({
   momentum: {
     borderRadius: 20,
@@ -201,19 +174,6 @@ const styles = StyleSheet.create({
   momSub: { fontSize: 12, fontWeight: "600", marginTop: 4 },
   meterTrack: { height: 8, borderRadius: 999, marginTop: 14, overflow: "hidden" },
   meterFill: { height: "100%", borderRadius: 999 },
-  cluster: { flexDirection: "row", alignItems: "center", marginTop: 14 },
-  avatar: {
-    width: 30,
-    height: 30,
-    borderRadius: 999,
-    borderWidth: 2,
-    alignItems: "center",
-    justifyContent: "center",
-    overflow: "hidden",
-  },
-  avatarMore: {},
-  avatarMoreText: { fontSize: 11, fontWeight: "800" },
-  clusterNote: { marginLeft: 12, fontSize: 12, fontWeight: "600" },
 });
 
 export default OfferingMomentum;

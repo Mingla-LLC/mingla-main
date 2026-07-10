@@ -9,8 +9,9 @@
  * It renders, per the approved Direction-C mockup:
  *   (1) the GOING-MOMENTUM unit — oversized going COUNT + "going", an honest
  *       derived sub-line (spots-left / open-invite / full+waitlist), a capacity
- *       METER, and an explicitly ANONYMOUS (FACELESS) attendee cluster that is a
- *       COUNT motif, never identities; and
+ *       METER, and a privacy-gated guest cluster (real avatar photos where the
+ *       server-filtered sample provides them, honest glyph disks everywhere
+ *       else) that remains a COUNT motif — never names; and
  *   (2) the GOING / MAYBE / CAN'T decision control as the thumb-zone hero
  *       (floating-dock on phone, sticky-panel on desktop, inline as fallback).
  *
@@ -18,13 +19,23 @@
  *   - RSVP is TICKETLESS. There is NO price, NO "Reserve"/"Get tickets", NO cart,
  *     NO /checkout anywhere on any RSVP surface (I-PROPOSED-1157-RSVP-NO-CHECKOUT-
  *     AFFORDANCE). Do not add one.
- *   - Social proof is HONEST: going COUNT + capacity meter + a FACELESS cluster
- *     ONLY. We store NO public guest list, NO public maybe count, NO public
- *     waitlist count, NO comments/photos/reactions — so this component renders
- *     none of those, and its props surface carries no name/photo/maybeCount/
- *     waitlistCount field (I-PROPOSED-1157-RSVP-SOCIAL-PROOF-ANON-ONLY; constitution
- *     rule 9 — missing is hidden, never faked). The cluster avatars are GLYPH-only
- *     (a person outline drawn in SVG) — never an <Image>/uri.
+ *   - Social proof is HONEST + PRIVACY-GATED (ORCH-1340): going COUNT +
+ *     capacity meter + a guest cluster whose photos render ONLY from the
+ *     server-filtered `SocialProofSummary.sample` (visibility public|friends,
+ *     avatar-bearing, blocked pairs excluded per authed viewer, empty under
+ *     privateGuestList — D1/D2/D9). The glyph disk is the honest loading/
+ *     fallback/anonymous state, and a PRIVATE guest is INDISTINGUISHABLE from
+ *     a guest with no photo or a failed photo load — deliberately. The props
+ *     surface carries the avatar sample + the onSeeWhosGoing tap callback but
+ *     NEVER a guest name / maybeCount / waitlistCount field — names live ONLY
+ *     in the authed guest-list sheet (ORCH-1341). We store NO public maybe
+ *     count and NO public waitlist count, so none is ever rendered
+ *     (constitution rule 9 — missing is hidden, never faked). The cluster
+ *     renders exclusively through the shared GuestAvatarCluster (the ONE
+ *     photo-rendering owner) — this file still contains no <Image> of its own.
+ *     (I-PROPOSED-1340-GUEST-IDENTITY-PRIVACY-GATED; the ADDRESS-privacy half
+ *     of the retired 1157 invariant survives verbatim as
+ *     I-PROPOSED-1157-ADDRESS-PRIVACY, untouched by this component.)
  *   - The brand THEME ACCENT is the "loudness dial": the meter, cluster, going
  *     button and kicker dot all derive their color from `palette.accent` /
  *     `palette.accentWash`, never a hardcoded hue (I-PROPOSED-1157-RSVP-USES-
@@ -34,8 +45,9 @@
  *     mid-body (I-PROPOSED-1157-RSVP-DECISION-IS-HERO).
  *   - ORCH-1339 (D2 display gates): `hideRemainingCount` derives the momentum with
  *     a null DISPLAY capacity (sub-line flips to "Open invite", fixed low meter;
- *     the going count stays) and `privateGuestList` suppresses the anonymous
- *     cluster entirely. Both flags are SERVER-authoritative and forwarded
+ *     the going count stays) and `privateGuestList` suppresses the WHOLE guest
+ *     cluster block — disks AND the "See who's going" affordance (nothing
+ *     replaces it). Both flags are SERVER-authoritative and forwarded
  *     per-surface via RsvpOfferingConfig; ctaState/decision math never reads them.
  *
  * Pure: react-native + react-native-svg + the shared ThemePalette/ResolvedTheme
@@ -65,6 +77,10 @@ import {
 } from "./themePalette";
 import { type ResolvedTheme } from "./designTokens";
 import { type RsvpCtaState } from "./offeringCta";
+// ORCH-1340 — the ONE shared disk system (photo|glyph|+N|see-row); the entry
+// type is the 1338 frozen shape that physically cannot carry names.
+import { GuestAvatarCluster } from "./GuestAvatarCluster";
+import { type SocialProofSampleEntry } from "./socialProofTypes";
 
 // Pure, dep-free momentum derivation (Deno/node-testable; no renderer).
 import { deriveMomentum } from "./rsvpMomentum";
@@ -159,6 +175,20 @@ export interface RsvpMomentumDecisionProps {
    * ctaState/decision capacity truth stays upstream in resolveRsvpCta.
    */
   hideRemainingCount?: boolean;
+  /**
+   * ORCH-1340 — the server-filtered avatar sample (`SocialProofSummary.sample`,
+   * 1338 frozen shape: avatarUrl + isMinglaUser ONLY). Photos fill the leading
+   * cluster disks; [] (default) keeps the all-glyph cluster. The payload IS the
+   * privacy boundary — no guest name can ever reach this card.
+   */
+  guestSample?: ReadonlyArray<SocialProofSampleEntry>;
+  /**
+   * ORCH-1340 — present ⇒ the cluster block becomes ONE pressable group with
+   * the visible "See who's going" row (ORCH-1341 wires the consumer sheet,
+   * ORCH-1342 the web gate). Absent ⇒ today's inert cluster: non-pressable
+   * View, no see-row, NO dead tap (Constitution #1).
+   */
+  onSeeWhosGoing?: () => void;
   /** Optional microcopy under the decision (e.g. "Anyone with the link can RSVP"). */
   micro?: string;
   /** testID prefix for the going / maybe / not-going buttons + nodes. */
@@ -169,19 +199,8 @@ export interface RsvpMomentumDecisionProps {
 }
 
 // ─────────────────────────────── glyphs (SVG) ───────────────────────────────
-
-/** FACELESS person glyph for the anonymous cluster (NEVER a photo/uri). */
-const PersonGlyph: React.FC<{ color: string }> = ({ color }) => (
-  <Svg width={15} height={15} viewBox="0 0 24 24" fill="none">
-    <Circle cx={12} cy={8} r={4} stroke={color} strokeWidth={2} />
-    <Path
-      d="M4 21c0-4 4-7 8-7s8 3 8 7"
-      stroke={color}
-      strokeWidth={2}
-      strokeLinecap="round"
-    />
-  </Svg>
-);
+// The faceless PersonGlyph moved INTO GuestAvatarCluster.tsx (ORCH-1340) — the
+// disk system's single home. Only the decision-button glyphs remain here.
 
 const CheckGlyph: React.FC<{ color: string }> = ({ color }) => (
   <Svg width={20} height={20} viewBox="0 0 24 24" fill="none">
@@ -257,6 +276,8 @@ export const RsvpMomentumDecision: React.FC<RsvpMomentumDecisionProps> = ({
   hideStepper = false,
   privateGuestList = false,
   hideRemainingCount = false,
+  guestSample = [],
+  onSeeWhosGoing,
   hostRow,
   micro,
   goingTestID,
@@ -394,47 +415,25 @@ export const RsvpMomentumDecision: React.FC<RsvpMomentumDecisionProps> = ({
           testID="orch-1157-rsvp-meter"
         />
       </View>
-      {/* anonymous FACELESS attendee cluster — a COUNT motif, never identities.
-          Hidden entirely at goingCount=0. NO <Image>/uri anywhere (rule 9).
-          ORCH-1339 (D2) — suppressed entirely under privateGuestList. */}
+      {/* guest cluster (ORCH-1340) — photos ONLY from the server-filtered
+          sample; the glyph disk is the loading/fallback/anonymous state and
+          private ≡ no-photo ≡ failed-photo by design. Rendered exclusively
+          through the shared GuestAvatarCluster (single photo owner). Hidden
+          entirely at goingCount=0. ORCH-1339 (D2) — privateGuestList
+          suppresses the WHOLE block, see-who's-going affordance included. */}
       {momentum.hasGoing && !privateGuestList ? (
-        <View
-          style={styles.cluster}
-          accessibilityLabel={`${goingCount} people going`}
+        <GuestAvatarCluster
+          palette={palette}
+          theme={theme}
+          shownCount={momentum.shownAvatars}
+          overflowCount={momentum.overflowCount}
+          goingCount={goingCount}
+          guestSample={guestSample}
+          clusterNote="are pulling up"
+          chipFill={opaqueCardFill(palette)}
+          onSeeWhosGoing={onSeeWhosGoing}
           testID="orch-1157-rsvp-cluster"
-        >
-          {Array.from({ length: momentum.shownAvatars }).map((_, i) => (
-            <View
-              key={i}
-              style={[
-                styles.avatar,
-                {
-                  backgroundColor: palette.accent,
-                  borderColor: palette.page,
-                  marginLeft: i === 0 ? 0 : -8,
-                },
-              ]}
-            >
-              <PersonGlyph color={palette.accentText} />
-            </View>
-          ))}
-          {momentum.overflowCount > 0 ? (
-            <View
-              style={[
-                styles.avatar,
-                styles.avatarMore,
-                { backgroundColor: opaqueCardFill(palette), borderColor: palette.page, marginLeft: -8 },
-              ]}
-            >
-              <Text style={[styles.avatarMoreText, { color: palette.secondaryText }]}>
-                +{momentum.overflowCount}
-              </Text>
-            </View>
-          ) : null}
-          <Text style={[styles.clusterNote, { color: palette.tertiaryText }]}>
-            are pulling up
-          </Text>
-        </View>
+        />
       ) : null}
     </View>
   );
@@ -694,19 +693,7 @@ const styles = StyleSheet.create({
   momSub: { fontSize: 12, fontWeight: "600", marginTop: 4 },
   meterTrack: { height: 8, borderRadius: 999, marginTop: 14, overflow: "hidden" },
   meterFill: { height: "100%", borderRadius: 999 },
-  cluster: { flexDirection: "row", alignItems: "center", marginTop: 14 },
-  avatar: {
-    width: 30,
-    height: 30,
-    borderRadius: 999,
-    borderWidth: 2,
-    alignItems: "center",
-    justifyContent: "center",
-    overflow: "hidden",
-  },
-  avatarMore: {},
-  avatarMoreText: { fontSize: 11, fontWeight: "800" },
-  clusterNote: { marginLeft: 12, fontSize: 12, fontWeight: "600" },
+  // cluster disk/chip/note styles moved INTO GuestAvatarCluster.tsx (ORCH-1340).
 
   decisionRow: { flexDirection: "row", gap: 10 },
   dbtn: {

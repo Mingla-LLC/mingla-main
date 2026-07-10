@@ -602,6 +602,10 @@ export default function ConsumerEventDetailScreen({
     // object, so the two mounts gate together.
     privateGuestList: socialProofQuery.data?.privateGuestList ?? false,
     hideRemainingCount: socialProofQuery.data?.hideRemainingCount ?? false,
+    // ORCH-1340 — the server-filtered avatar sample rides the SAME payload;
+    // photos fill the leading cluster disks ([] until it resolves — glyphs).
+    // No onSeeWhosGoing here: ORCH-1341 wires the consumer sheet handler.
+    guestSample: socialProofQuery.data?.sample ?? [],
   };
   const rsvpBodyStaticMapUrl: string | null = (() => {
     if (rsvpPublicEvent.format === "online") return null;

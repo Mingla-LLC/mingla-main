@@ -186,6 +186,12 @@ export interface ExperienceOfferingBodyProps {
    * per I-MOR-0827). null (default) → no momentum unit, zero layout shift.
    */
   socialProof?: SocialProofSummary | null;
+  /**
+   * ORCH-1340 — forwarded verbatim to the momentum unit's cluster. Present ⇒
+   * pressable cluster + "See who's going" row; absent (default) ⇒ inert
+   * cluster, no dead tap (ORCH-1341/1342 wire the per-surface handlers).
+   */
+  onSeeWhosGoing?: () => void;
   testID?: string;
 }
 
@@ -202,6 +208,7 @@ export const ExperienceOfferingBody: React.FC<ExperienceOfferingBodyProps> = ({
   dockedReserve,
   reduceMotion = false,
   socialProof = null,
+  onSeeWhosGoing,
   testID,
 }) => {
   const surface = offeringSurfaceStyles(palette);
@@ -327,6 +334,7 @@ export const ExperienceOfferingBody: React.FC<ExperienceOfferingBodyProps> = ({
           palette={palette}
           theme={theme}
           socialProof={socialProof}
+          onSeeWhosGoing={onSeeWhosGoing}
           testID="orch-1339-momentum-experience"
         />
       ) : null}

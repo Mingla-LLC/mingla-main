@@ -870,6 +870,10 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
               event.hideRemainingCount ??
               socialProofQuery.data?.hideRemainingCount ??
               false,
+            // ORCH-1340 — the server-filtered avatar sample ([] until the
+            // socialProof read resolves — glyph cluster meanwhile). No
+            // onSeeWhosGoing here: ORCH-1342 owns the web tap behavior.
+            guestSample: socialProofQuery.data?.sample ?? [],
           }}
           onChipIn={handleChipIn}
           // ORCH-1295 [chip-in-post-payment-polish] — BUG 2: inject the country-code-

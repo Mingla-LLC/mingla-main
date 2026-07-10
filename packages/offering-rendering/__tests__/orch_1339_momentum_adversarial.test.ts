@@ -33,27 +33,48 @@ const DERIVATION_CODE = DERIVATION.replace(/\/\*[\s\S]*?\*\//g, "").replace(
 );
 const RSVP_DERIVATION = await read("../rsvpMomentum.ts");
 
-// ───────────── T-2 — OfferingMomentum source contract (glyph-only leg) ──────
+// ───────────── T-2 — OfferingMomentum source contract ───────────────────────
+// ORCH-1340 [card-real-avatars] — SANCTIONED IN-BRANCH REWRITE (SPEC_ORCH-1340
+// §4.5-e): the 1339-era "glyph-only / sample-unread / no-Pressable" bans below
+// were CORRECT for leg 1339 in isolation and turned wrong BY DESIGN when
+// ORCH-1340 landed real avatars + the see-who's-going seam. Successor form:
+// photos, uri and the Pressable live ONLY inside the shared GuestAvatarCluster;
+// this unit forwards the sample + handler verbatim and stays pressless itself.
 
-Deno.test("T-2: NO <Image>, NO uri, NO identity props — glyph-only until ORCH-1340", () => {
-  assert(!/<Image\b/.test(COMPONENT), "no <Image> in the momentum unit");
-  assert(!/\buri\b/.test(COMPONENT), "no uri in the momentum unit");
+Deno.test("T-2 (ORCH-1340 successor): photos/sample flow ONLY through GuestAvatarCluster", () => {
+  assert(!/<Image\b/.test(COMPONENT), "no <Image> in OfferingMomentum ITSELF — the cluster owns photos");
+  assert(!/\buri\b/.test(COMPONENT), "no uri in OfferingMomentum ITSELF — the cluster owns photos");
   assert(
     !/guestName|guestPhoto|attendeeName|guestAvatar/.test(COMPONENT),
     "no guest identity fields",
   );
   assert(!/maybeCount|waitlistCount/.test(COMPONENT), "no maybe/waitlist counts");
-  // The sample field (real avatars) is deliberately UNREAD in this leg.
+  // The sample is now consumed (ORCH-1340) — but ONLY as a verbatim forward
+  // into the shared cluster (the 1338 frozen shape that cannot carry names).
   assert(
-    !/socialProof\.sample|\.sample\b/.test(COMPONENT),
-    "the avatar sample is NOT consumed in this leg (ORCH-1340's)",
+    COMPONENT.includes('from "./GuestAvatarCluster"'),
+    "the unit renders its cluster exclusively through GuestAvatarCluster",
+  );
+  assert(
+    COMPONENT.includes("guestSample={socialProof.sample}"),
+    "the sample is forwarded verbatim to the cluster",
   );
 });
 
-Deno.test("T-2: NO tap affordance — no Pressable/onPress anywhere (inert until ORCH-1341)", () => {
-  assert(!/\bPressable\b/.test(COMPONENT), "no Pressable in the momentum unit");
-  assert(!/\bonPress\b/.test(COMPONENT), "no onPress in the momentum unit");
-  assert(!/\bTouchable/.test(COMPONENT), "no Touchable* in the momentum unit");
+Deno.test("T-2 (ORCH-1340 successor): no tap plumbing in the unit ITSELF — the one Pressable lives in GuestAvatarCluster", () => {
+  assert(!/\bPressable\b/.test(COMPONENT), "no Pressable in OfferingMomentum itself");
+  assert(!/\bonPress\b/.test(COMPONENT), "no onPress in OfferingMomentum itself");
+  assert(!/\bTouchable/.test(COMPONENT), "no Touchable* in OfferingMomentum itself");
+  // The affordance seam is the OPTIONAL onSeeWhosGoing forward — no no-op
+  // default (absent handler ⇒ the cluster renders its inert non-pressable View).
+  assert(
+    COMPONENT.includes("onSeeWhosGoing={onSeeWhosGoing}"),
+    "the see-who's-going seam is forwarded verbatim",
+  );
+  assert(
+    !/onSeeWhosGoing\s*=\s*\(\)\s*=>/.test(COMPONENT),
+    "no dead-tap no-op fallback",
+  );
 });
 
 Deno.test("T-2: NO checkout affordance tokens (I-PROPOSED-1157-NO-CHECKOUT-AFFORDANCE sibling)", () => {
