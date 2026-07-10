@@ -44,6 +44,8 @@ const SELECT_FIELDS =
 
 const BATCH_SIZE = 500;
 
+const IN_CHUNK = 100; // max UUIDs per PostgREST .in() URL — 500 blew the HTTP/2 request-URL limit (ORCH-1333 retest). ~100 ≈ 3.7KB, safe.
+
 // ORCH-1333 — one page per city/all_cities invocation. Bounds per-call CPU +
 // sticky-read so a large post-Sub-B city (New York 9,903 / Paris 4,464) can
 // never trip the Edge isolate's resource budget mid-run; the admin client loops
@@ -162,17 +164,42 @@ serve(async (req: Request) => {
       // all_cities applies no scope filter (identical row set to the
       // pre-ORCH-1333 paths, only paged by id-cursor instead of offset).
       loadPage: async (cursor, size) => {
-        let q = supabaseAdmin
-          .from('place_pool')
-          .select(SELECT_FIELDS)
-          .eq('is_active', true)
-          .eq('is_servable', true)
-          .order('id')
-          .limit(size);
-        if (isPerPlace && placeIds) q = q.in('id', placeIds);
-        else if (cityId) q = q.eq('city_id', cityId);
-        if (cursor) q = q.gt('id', cursor);
-        const { data, error } = await q;
+        // Build a fresh, identically-filtered query each call — Supabase query
+        // builders are thenable and cannot be reused after an await.
+        const buildBase = () => {
+          let q = supabaseAdmin
+            .from('place_pool')
+            .select(SELECT_FIELDS)
+            .eq('is_active', true)
+            .eq('is_servable', true)
+            .order('id')
+            .limit(size);
+          if (!isPerPlace && cityId) q = q.eq('city_id', cityId);
+          if (cursor) q = q.gt('id', cursor);
+          return q;
+        };
+        // ORCH-1333 retest — per-place mode: chunk the id list into IN_CHUNK-sized
+        // `.in('id', …)` sub-queries so the PostgREST GET URL never exceeds the
+        // HTTP/2 request-URL limit (up to 1000 UUIDs ≈ 37KB blew the request). Each
+        // sub-query keeps the identical is_active+is_servable+cursor filters,
+        // order-by-id, and `.limit(size)`; the union is re-sorted by id and truncated
+        // to `size` to reproduce the exact single-query page (the global first-`size`
+        // rows after the cursor are a subset of the per-slice first-`size` rows, so
+        // no in-page row is ever lost).
+        if (isPerPlace && placeIds) {
+          const collected: unknown[] = [];
+          for (let i = 0; i < placeIds.length; i += IN_CHUNK) {
+            const idSlice = placeIds.slice(i, i + IN_CHUNK);
+            if (idSlice.length === 0) continue;
+            const { data, error } = await buildBase().in('id', idSlice);
+            if (error) throw new Error(`place_pool fetch failed: ${error.message}`);
+            if (data) collected.push(...data);
+          }
+          const rows = collected as Array<PlaceForScoring & { id: string }>;
+          rows.sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+          return rows.slice(0, size);
+        }
+        const { data, error } = await buildBase();
         if (error) throw new Error(`place_pool fetch failed: ${error.message}`);
         return (data ?? []) as Array<PlaceForScoring & { id: string }>;
       },
@@ -187,8 +214,11 @@ serve(async (req: Request) => {
       // Authority: I-1066-ADMIN-OVERRIDE-STICKY-THROUGH-RESCORE.
       readProtectedIds: async (ids) => {
         const out = new Set<string>();
-        for (let i = 0; i < ids.length; i += BATCH_SIZE) {
-          const idChunk = ids.slice(i, i + BATCH_SIZE);
+        // ORCH-1333 retest — chunk by IN_CHUNK (not BATCH_SIZE): a 500-UUID
+        // `.in('place_id', …)` GET URL (~18KB) tripped the HTTP/2 request-URL
+        // limit and failed the whole page. ~100 ids per URL is safe.
+        for (let i = 0; i < ids.length; i += IN_CHUNK) {
+          const idChunk = ids.slice(i, i + IN_CHUNK);
           if (idChunk.length === 0) continue;
           const { data: existingRows, error: existErr } = await supabaseAdmin
             .from('place_scores')
@@ -234,8 +264,11 @@ serve(async (req: Request) => {
       // a partial failure is logged but never aborts (the upserts already landed).
       deleteVetoed: async (ids) => {
         let deleted = 0;
-        for (let i = 0; i < ids.length; i += BATCH_SIZE) {
-          const idChunk = ids.slice(i, i + BATCH_SIZE);
+        // ORCH-1333 retest — chunk by IN_CHUNK (not BATCH_SIZE): a 500-UUID
+        // `.in('place_id', …)` DELETE URL (~18KB) tripped the HTTP/2 request-URL
+        // limit. ~100 ids per URL is safe.
+        for (let i = 0; i < ids.length; i += IN_CHUNK) {
+          const idChunk = ids.slice(i, i + IN_CHUNK);
           if (idChunk.length === 0) continue;
           const { error: delErr, count } = await supabaseAdmin
             .from('place_scores')
