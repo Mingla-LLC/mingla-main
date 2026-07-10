@@ -220,7 +220,7 @@ export function renderExperienceConfirmationEmail(
 
               <div style="margin-top:32px;padding:24px;background:#FFF5EC;border-radius:12px;border:1px solid #FFD9B8;text-align:center;">
                 <p style="margin:0;font-size:15px;color:#6B5A47;">Your ticket + details are in the Mingla app</p>
-                <a href="https://usemingla.com/orders/${escapeHtml(input.order.id)}/chat" style="display:inline-block;margin-top:12px;padding:12px 24px;background:#F97316;color:white;border-radius:8px;text-decoration:none;font-weight:600;font-size:15px;">Open in Mingla</a>
+                <a href="https://usemingla.com/orders/${escapeHtml(input.order.id)}/chat" style="display:inline-block;margin-top:12px;padding:12px 24px;background:#C4471A;color:white;border-radius:8px;text-decoration:none;font-weight:600;font-size:15px;">Open in Mingla</a>
               </div>
 
               <p style="font-size:13px;color:#475569;margin:24px 0 0 0;line-height:1.5;">Questions? Reply directly to ${escapeHtml(input.brand.name)} — they'll receive your message at the email they set up for the brand.</p>

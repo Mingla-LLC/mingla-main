@@ -121,7 +121,10 @@ Deno.test("buildInviteEmail — wires brand + role + acceptUrl into the body", (
     ),
   );
   assert(payload.text.includes("Acme Events"));
-  assert(payload.text.includes("Accept:"));
+  // ORCH-1329 — the standard-variant plain-text accept label changed from
+  // "Accept:" to "Accept your invitation:" (DESIGN_ORCH-1329 §6). Assert the
+  // new label. [TEST-MOD-APPROVED ORCH-1329]
+  assert(payload.text.includes("Accept your invitation:"));
 });
 
 Deno.test("buildInviteEmail — HTML-escapes brand name + inviter name", () => {

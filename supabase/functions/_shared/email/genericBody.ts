@@ -4,7 +4,10 @@ import { escapeHtml } from "./escape.ts";
 import { SHELL_TOKENS } from "./shell.ts";
 import type { GenericBodyInput } from "./types.ts";
 
-const { BRAND_ORANGE, BRAND_INK, BRAND_MUTED } = SHELL_TOKENS;
+// ORCH-1329 — genericBody's only orange is the CTA button fill (white label),
+// so it uses the AA-safe BRAND_ORANGE_BUTTON (#C4471A), not decorative
+// BRAND_ORANGE (#FF6B2C).
+const { BRAND_ORANGE_BUTTON, BRAND_INK, BRAND_MUTED } = SHELL_TOKENS;
 
 export function renderGenericBody(input: GenericBodyInput): {
   html: string;
@@ -25,7 +28,7 @@ export function renderGenericBody(input: GenericBodyInput): {
   const cta = input.cta
     ? `<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin-top:24px;">
       <tr>
-        <td style="background:${BRAND_ORANGE};border-radius:999px;">
+        <td style="background:${BRAND_ORANGE_BUTTON};border-radius:999px;">
           <a href="${escapeHtml(input.cta.url)}" style="display:inline-block;padding:12px 22px;color:#FFFFFF;font-size:14px;font-weight:600;text-decoration:none;">${
       escapeHtml(input.cta.label)
     }</a>

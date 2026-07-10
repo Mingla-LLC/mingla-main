@@ -1,0 +1,271 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>ORCH-1329 — Partner-invite email (improved) mockup</title>
+<style>
+  /* Inspector chrome only — the EMAIL bodies below use inline styles exclusively,
+     exactly as they will ship inside renderShell. */
+  html,body{margin:0;padding:0;background:#E7E7EB;-webkit-font-smoothing:antialiased;}
+  body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;color:#0F1115;}
+  .wrap{max-width:760px;margin:0 auto;padding:28px 16px 80px;}
+  .legend{background:#0F1115;color:#F5F5F7;border-radius:14px;padding:20px 22px;font-size:13px;line-height:1.6;margin-bottom:30px;}
+  .legend h1{margin:0 0 8px;font-size:16px;font-weight:700;letter-spacing:-0.2px;}
+  .legend code{background:#26282E;color:#FFCBB0;padding:1px 6px;border-radius:5px;font-size:12px;}
+  .legend .sw{display:inline-block;width:11px;height:11px;border-radius:3px;vertical-align:middle;margin:0 4px 2px 0;border:1px solid rgba(255,255,255,.18);}
+  .variant-label{display:flex;align-items:center;gap:10px;margin:34px 4px 12px;}
+  .variant-label .tag{background:#FF6B2C;color:#fff;font-size:11px;font-weight:700;letter-spacing:.8px;text-transform:uppercase;padding:5px 10px;border-radius:6px;}
+  .variant-label .desc{font-size:13px;color:#5B6172;}
+  .device{filter:drop-shadow(0 10px 34px rgba(15,17,21,.14));}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="legend">
+    <h1>ORCH-1329 — Partner-invite transactional email · improved design (both variants)</h1>
+    These render inside the existing shared <code>renderShell</code> (600px white card, 16px radius,
+    tokens: orange <span class="sw" style="background:#FF6B2C"></span><code>#FF6B2C</code>,
+    ink <span class="sw" style="background:#0F1115"></span><code>#0F1115</code>,
+    muted <span class="sw" style="background:#5B6172"></span><code>#5B6172</code>,
+    soft <span class="sw" style="background:#FFF6F1"></span><code>#FFF6F1</code>,
+    border <span class="sw" style="background:#ECECEE"></span><code>#ECECEE</code>,
+    page <span class="sw" style="background:#F5F5F7"></span><code>#F5F5F7</code>). Light-only.
+    <br><br>
+    <b>Placeholders (not final assets):</b> the header <b>gradient band</b> stands in for the brand's real
+    cover photo (still image, rendered full-width by the shell). The <b>“mingla.” wordmark</b> stands in for
+    the <code>mingla-logo.png</code> the shell loads from <code>usemingla.com/email-assets</code>. New
+    accessible dark-orange <span class="sw" style="background:#B23E12"></span><code>#B23E12</code> is used for
+    secondary-CTA text, step badges and the eyebrow chip (AA-safe on white/soft; brand <code>#FF6B2C</code>
+    text is not). The primary orange button keeps the shared brand fill — see the spec's a11y note.
+  </div>
+
+  <!-- ============================================================= -->
+  <!-- VARIANT 1 — PARTNER-SETUP -->
+  <!-- ============================================================= -->
+  <div class="variant-label">
+    <span class="tag">Variant 1</span>
+    <span class="desc">Partner-setup — a partner built the brand; invitee claims ownership (<code style="background:#EAEAEE;padding:1px 5px;border-radius:4px">partner_setup = true</code>)</span>
+  </div>
+
+  <div class="device">
+  <!-- BEGIN EMAIL (renderShell) -->
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#F5F5F7;">
+    <tr><td align="center" style="padding:24px 16px;">
+      <table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" style="width:100%;max-width:600px;background:#FFFFFF;border:1px solid #ECECEE;border-radius:16px;overflow:hidden;">
+
+        <!-- HEADER: brand cover hero (still image) -->
+        <tr>
+          <td style="padding:0;background:#FFFFFF;">
+            <div style="width:100%;height:180px;background:linear-gradient(135deg,#3A2C6E 0%,#B0335E 52%,#FF6B2C 100%);position:relative;">
+              <div style="position:absolute;left:20px;bottom:14px;color:rgba(255,255,255,.82);font-size:11px;letter-spacing:.4px;">[ brand cover photo — placeholder ]</div>
+            </div>
+          </td>
+        </tr>
+
+        <!-- BODY -->
+        <tr><td style="padding:28px;">
+
+          <!-- greeting -->
+          <p style="margin:0 0 14px 0;font-size:15px;line-height:1.55;color:#0F1115;">Hi Amara,</p>
+
+          <!-- eyebrow chip (AA dark-orange text) -->
+          <p style="margin:0 0 14px 0;">
+            <span style="display:inline-block;padding:6px 12px;border-radius:999px;background:#FFF6F1;color:#B23E12;font-size:12px;font-weight:700;letter-spacing:0.4px;text-transform:uppercase;">Set up for you by David Okon</span>
+          </p>
+
+          <!-- lead line -->
+          <p style="margin:0 0 20px 0;font-size:16px;line-height:1.5;color:#0F1115;font-weight:600;">
+            David Okon built <span style="color:#B23E12;">Zuri Kitchen</span> for you on Mingla — your page, events and photos are done.
+          </p>
+          <p style="margin:0 0 18px 0;font-size:15px;line-height:1.55;color:#5B6172;">Three quick steps and it's yours:</p>
+
+          <!-- STEPS -->
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 22px 0;">
+            <tr>
+              <td width="40" valign="top" style="padding:0 12px 16px 0;">
+                <div style="width:28px;height:28px;border-radius:14px;background:#FFF6F1;color:#B23E12;font-size:14px;font-weight:700;line-height:28px;text-align:center;">1</div>
+              </td>
+              <td valign="top" style="padding:0 0 16px 0;">
+                <p style="margin:0 0 2px 0;font-size:15px;font-weight:600;color:#0F1115;line-height:1.35;">Accept &amp; claim Zuri Kitchen</p>
+                <p style="margin:0;font-size:14px;color:#5B6172;line-height:1.5;">You take over as owner — nothing to rebuild.</p>
+              </td>
+            </tr>
+            <tr>
+              <td width="40" valign="top" style="padding:0 12px 16px 0;">
+                <div style="width:28px;height:28px;border-radius:14px;background:#FFF6F1;color:#B23E12;font-size:14px;font-weight:700;line-height:28px;text-align:center;">2</div>
+              </td>
+              <td valign="top" style="padding:0 0 16px 0;">
+                <p style="margin:0 0 2px 0;font-size:15px;font-weight:600;color:#0F1115;line-height:1.35;">Connect your bank</p>
+                <p style="margin:0;font-size:14px;color:#5B6172;line-height:1.5;">A few minutes through Stripe, so customers can pay you.</p>
+              </td>
+            </tr>
+            <tr>
+              <td width="40" valign="top" style="padding:0 12px 0 0;">
+                <div style="width:28px;height:28px;border-radius:14px;background:#FFF6F1;color:#B23E12;font-size:14px;font-weight:700;line-height:28px;text-align:center;">3</div>
+              </td>
+              <td valign="top" style="padding:0;">
+                <p style="margin:0 0 2px 0;font-size:15px;font-weight:600;color:#0F1115;line-height:1.35;">You're live</p>
+                <p style="margin:0;font-size:14px;color:#5B6172;line-height:1.5;">Your events open for tickets and the money lands in your account.</p>
+              </td>
+            </tr>
+          </table>
+
+          <!-- personal note -->
+          <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="width:100%;margin:0 0 22px 0;">
+            <tr>
+              <td style="padding:14px 16px;background:#FFF6F1;border-left:3px solid #FF6B2C;border-radius:6px;">
+                <p style="margin:0;font-size:14px;line-height:1.5;color:#0F1115;font-style:italic;">“Amara — this is the spot we talked about. I set it all up so you can just take it live. Call me if anything looks off.”</p>
+                <p style="margin:6px 0 0 0;font-size:12px;color:#5B6172;">— David Okon</p>
+              </td>
+            </tr>
+          </table>
+
+          <!-- PRIMARY CTA -->
+          <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 12px 0;">
+            <tr>
+              <td align="center" style="background:#FF6B2C;border-radius:10px;">
+                <a href="https://business.usemingla.com/accept-brand-invitation?token=EXAMPLE" style="display:inline-block;padding:15px 30px;color:#FFFFFF;text-decoration:none;font-weight:700;font-size:16px;line-height:20px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">Accept &amp; set up Zuri Kitchen</a>
+              </td>
+            </tr>
+          </table>
+
+          <!-- STRIPE TRUST NOTE (elevated) -->
+          <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="width:100%;margin:0 0 26px 0;">
+            <tr>
+              <td style="padding:12px 14px;background:#FFF6F1;border-radius:8px;">
+                <p style="margin:0;font-size:13px;line-height:1.5;color:#0F1115;"><span style="font-weight:700;color:#B23E12;">Bank-secure.</span> Your bank details go straight to Stripe. Mingla never sees them.</p>
+              </td>
+            </tr>
+          </table>
+
+          <!-- SECONDARY: app download -->
+          <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="width:100%;margin:0 0 6px 0;">
+            <tr>
+              <td style="padding:18px 20px;background:#FFFFFF;border:1px solid #ECECEE;border-radius:12px;">
+                <p style="margin:0 0 3px 0;font-size:14px;font-weight:600;color:#0F1115;line-height:1.4;">Prefer to run Zuri Kitchen from your phone?</p>
+                <p style="margin:0 0 14px 0;font-size:13px;color:#5B6172;line-height:1.5;">Get the Mingla Business app — iPhone opens the App Store, everywhere else opens your dashboard on the web.</p>
+                <table role="presentation" cellpadding="0" cellspacing="0" border="0">
+                  <tr>
+                    <td align="center" style="background:#FFFFFF;border:1.5px solid #FF6B2C;border-radius:8px;">
+                      <a href="https://usemingla.com/business/download" style="display:inline-block;padding:12px 22px;color:#B23E12;text-decoration:none;font-weight:600;font-size:15px;line-height:20px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">Get the Mingla Business app</a>
+                    </td>
+                  </tr>
+                </table>
+              </td>
+            </tr>
+          </table>
+
+          <!-- FINE PRINT (tightened) -->
+          <p style="margin:22px 0 0 0;font-size:13px;line-height:1.5;color:#5B6172;">This link expires in 7 days. If the button doesn't work, paste this into your browser:</p>
+          <p style="margin:5px 0 0 0;word-break:break-all;font-size:12px;color:#5B6172;">https://business.usemingla.com/accept-brand-invitation?token=EXAMPLE</p>
+
+        </td></tr>
+
+        <!-- FOOTER -->
+        <tr>
+          <td style="padding:24px 28px;border-top:1px solid #ECECEE;background:#FFF6F1;font-size:13px;line-height:1.5;color:#5B6172;">
+            <div style="font-size:20px;font-weight:800;letter-spacing:-0.5px;color:#0F1115;margin:0 0 10px 0;">mingla<span style="color:#FF6B2C;">.</span></div>
+            <p style="margin:0 0 8px 0;">Need help? <a href="mailto:support@usemingla.com" style="color:#FF6B2C;text-decoration:none;">support@usemingla.com</a></p>
+            <p style="margin:0 0 8px 0;">Mingla, hello@usemingla.com</p>
+            <p style="margin:0;font-size:12px;color:#5B6172;">You received this email because someone invited you to a brand on Mingla.</p>
+          </td>
+        </tr>
+
+      </table>
+    </td></tr>
+  </table>
+  <!-- END EMAIL -->
+  </div>
+
+  <!-- ============================================================= -->
+  <!-- VARIANT 2 — STANDARD TEAM INVITE -->
+  <!-- ============================================================= -->
+  <div class="variant-label">
+    <span class="tag">Variant 2</span>
+    <span class="desc">Standard team invite — added to an existing brand's team in a role (<code style="background:#EAEAEE;padding:1px 5px;border-radius:4px">partner_setup = false</code>)</span>
+  </div>
+
+  <div class="device">
+  <!-- BEGIN EMAIL (renderShell) -->
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#F5F5F7;">
+    <tr><td align="center" style="padding:24px 16px;">
+      <table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" style="width:100%;max-width:600px;background:#FFFFFF;border:1px solid #ECECEE;border-radius:16px;overflow:hidden;">
+
+        <!-- HEADER: Mingla logo (no brand cover) -->
+        <tr>
+          <td align="center" style="padding:28px 28px 24px 28px;border-bottom:1px solid #ECECEE;">
+            <div style="font-size:30px;font-weight:800;letter-spacing:-0.6px;color:#0F1115;">mingla<span style="color:#FF6B2C;">.</span></div>
+          </td>
+        </tr>
+
+        <!-- BODY -->
+        <tr><td style="padding:28px;">
+
+          <p style="margin:0 0 14px 0;font-size:15px;line-height:1.55;color:#0F1115;">Hi Sam,</p>
+
+          <!-- value line -->
+          <p style="margin:0 0 8px 0;font-size:16px;line-height:1.5;color:#0F1115;font-weight:600;">
+            David Okon invited you to join <span style="color:#B23E12;">Zuri Kitchen</span> on Mingla as <span style="color:#B23E12;">Event manager</span>.
+          </p>
+          <!-- role clarity -->
+          <p style="margin:0 0 16px 0;font-size:14px;line-height:1.55;color:#5B6172;">
+            As an event manager you can create and run events, and manage tickets and guests.
+          </p>
+          <!-- context value line -->
+          <p style="margin:0 0 4px 0;font-size:15px;line-height:1.55;color:#0F1115;">
+            Zuri Kitchen runs its events, tickets and page on Mingla — you're now part of the team that makes it happen.
+          </p>
+
+          <!-- PRIMARY CTA -->
+          <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:24px 0 26px 0;">
+            <tr>
+              <td align="center" style="background:#FF6B2C;border-radius:10px;">
+                <a href="https://business.usemingla.com/accept-brand-invitation?token=EXAMPLE" style="display:inline-block;padding:15px 30px;color:#FFFFFF;text-decoration:none;font-weight:700;font-size:16px;line-height:20px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">Accept invitation</a>
+              </td>
+            </tr>
+          </table>
+
+          <!-- SECONDARY: app download -->
+          <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="width:100%;margin:0 0 6px 0;">
+            <tr>
+              <td style="padding:18px 20px;background:#FFFFFF;border:1px solid #ECECEE;border-radius:12px;">
+                <p style="margin:0 0 3px 0;font-size:14px;font-weight:600;color:#0F1115;line-height:1.4;">Get the app to manage on the go</p>
+                <p style="margin:0 0 14px 0;font-size:13px;color:#5B6172;line-height:1.5;">The Mingla Business app is where you'll do the work — scan guests in, check sales, run events. iPhone opens the App Store, everywhere else opens the web.</p>
+                <table role="presentation" cellpadding="0" cellspacing="0" border="0">
+                  <tr>
+                    <td align="center" style="background:#FFFFFF;border:1.5px solid #FF6B2C;border-radius:8px;">
+                      <a href="https://usemingla.com/business/download" style="display:inline-block;padding:12px 22px;color:#B23E12;text-decoration:none;font-weight:600;font-size:15px;line-height:20px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">Get the Mingla Business app</a>
+                    </td>
+                  </tr>
+                </table>
+              </td>
+            </tr>
+          </table>
+
+          <!-- FINE PRINT -->
+          <p style="margin:22px 0 0 0;font-size:13px;line-height:1.5;color:#5B6172;">This link expires in 7 days. If the button doesn't work, paste this into your browser:</p>
+          <p style="margin:5px 0 0 0;word-break:break-all;font-size:12px;color:#5B6172;">https://business.usemingla.com/accept-brand-invitation?token=EXAMPLE</p>
+
+        </td></tr>
+
+        <!-- FOOTER -->
+        <tr>
+          <td style="padding:24px 28px;border-top:1px solid #ECECEE;background:#FFF6F1;font-size:13px;line-height:1.5;color:#5B6172;">
+            <div style="font-size:20px;font-weight:800;letter-spacing:-0.5px;color:#0F1115;margin:0 0 10px 0;">mingla<span style="color:#FF6B2C;">.</span></div>
+            <p style="margin:0 0 8px 0;">Need help? <a href="mailto:support@usemingla.com" style="color:#FF6B2C;text-decoration:none;">support@usemingla.com</a></p>
+            <p style="margin:0 0 8px 0;">Mingla, hello@usemingla.com</p>
+            <p style="margin:0;font-size:12px;color:#5B6172;">You received this email because someone invited you to a brand on Mingla.</p>
+          </td>
+        </tr>
+
+      </table>
+    </td></tr>
+  </table>
+  <!-- END EMAIL -->
+  </div>
+
+</div>
+</body>
+</html>
