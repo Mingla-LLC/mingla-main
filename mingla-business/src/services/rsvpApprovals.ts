@@ -14,6 +14,11 @@ import { supabase } from "./supabase";
 export type RsvpStatusValue = "going" | "not_going" | "waitlisted" | "maybe";
 export type RsvpApprovalValue = "pending" | "approved" | "denied";
 
+/** ORCH-1334 — where the RSVP came from. 'app' = a signed-in Mingla member
+ *  (identity resolved from their profile at read time); 'web' = an anonymous
+ *  link guest who typed their details. */
+export type RsvpSourceValue = "app" | "web";
+
 export interface RsvpGuest {
   id: string;
   eventId: string;
@@ -27,6 +32,16 @@ export interface RsvpGuest {
   waitlistedAt: string | null;
   promotedAt: string | null;
   createdAt: string;
+  // ORCH-1334 — read-time identity + provenance resolved from profiles by
+  // host_list_rsvp_guests. `displayName` is always the real name for app members
+  // (never the 'Guest' sentinel) and the typed name for web guests. `phone` is
+  // NULL when absent — never fabricated. `email` is always present for app rows.
+  displayName: string;
+  username: string | null;
+  avatarUrl: string | null;
+  email: string | null;
+  phone: string | null;
+  source: RsvpSourceValue;
 }
 
 interface RsvpGuestRow {
@@ -42,6 +57,13 @@ interface RsvpGuestRow {
   waitlisted_at: string | null;
   promoted_at: string | null;
   created_at: string;
+  // ORCH-1334 appended identity/provenance columns.
+  display_name: string;
+  username: string | null;
+  avatar_url: string | null;
+  email: string | null;
+  phone: string | null;
+  source: RsvpSourceValue;
 }
 
 const rowToGuest = (r: RsvpGuestRow): RsvpGuest => ({
@@ -57,6 +79,18 @@ const rowToGuest = (r: RsvpGuestRow): RsvpGuest => ({
   waitlistedAt: r.waitlisted_at,
   promotedAt: r.promoted_at,
   createdAt: r.created_at,
+  // ORCH-1334 — resolved identity/provenance. Defensive fallbacks keep older
+  // cached rows (pre-migration shape) from crashing the mapper: displayName falls
+  // back to the raw guest_name, source to a user_id-derived binary.
+  displayName:
+    typeof r.display_name === "string" && r.display_name.length > 0
+      ? r.display_name
+      : r.guest_name,
+  username: r.username ?? null,
+  avatarUrl: r.avatar_url ?? null,
+  email: r.email ?? r.guest_email ?? null,
+  phone: r.phone ?? null,
+  source: r.source ?? (r.user_id !== null ? "app" : "web"),
 });
 
 export const listRsvpGuests = async (eventId: string): Promise<RsvpGuest[]> => {

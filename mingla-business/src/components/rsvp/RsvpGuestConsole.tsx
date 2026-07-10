@@ -1,20 +1,28 @@
 /**
  * ORCH-1150 — RsvpGuestConsole (A2 + A2-NEW host remove).
+ * ORCH-1334 — read-time identity + provenance: avatar, real name, "On Mingla" /
+ * "RSVP'd on web" source badge, a PRESS-ISOLATED tappable row body that opens the
+ * new guest-detail sheet. The write path is untouched; identity is resolved by
+ * host_list_rsvp_guests at read time.
  *
  * A full-screen host console (NOT a sheet) for an RSVP event: pending approvals
  * (Approve / Deny per row + Approve-all), the Going list (each row carries a
  * Remove action → confirm dialog → approved→denied), and a read-only Waitlist.
  *
  * Constitution #1 (no dead taps): Approve / Deny / Remove / Approve-all all fire
- * a real mutation. Constitution #3 (no silent failures): per-row failures toast.
- * Android glass: rows use the opaque fallback.
+ * a real mutation AND stay isolated from the row-body press target (the tappable
+ * body is a Pressable SIBLING of the action cluster — tapping an action never
+ * opens the sheet, tapping the body never fires an action). Constitution #3 (no
+ * silent failures): per-row failures toast. Android glass: rows use the opaque
+ * fallback.
  *
- * See SPEC §5.4.
+ * See SPEC_ORCH-1150 §5.4 + SPEC_ORCH-1334 §4E.
  */
 
 import React, { useCallback, useMemo, useState } from "react";
 import {
   ActivityIndicator,
+  Image,
   Platform,
   Pressable,
   ScrollView,
@@ -45,13 +53,120 @@ import {
   useRsvpGuestList,
   useSetRsvpStatus,
 } from "../../hooks/useRsvpApprovals";
-import type { RsvpGuest } from "../../services/rsvpApprovals";
+import type { RsvpGuest, RsvpSourceValue } from "../../services/rsvpApprovals";
+import { RsvpGuestDetailSheet } from "./RsvpGuestDetailSheet";
 
 const ROW_BG = Platform.select({
   ios: glass.tint.profileBase,
   android: "#23262b",
   default: glass.tint.profileBase,
 });
+const ROW_BG_PRESSED = Platform.select({
+  ios: glass.tint.profileElevated,
+  android: "#2a2e34",
+  default: glass.tint.profileElevated,
+});
+
+// ORCH-1334 — avatar helpers copied inline (byte-for-byte from
+// app/event/[id]/guests/index.tsx:88-101 per SPEC §4E-10; NOT refactored into a
+// shared util this ORCH).
+const hashStringToHue = (s: string): number => {
+  let hash = 0;
+  for (let i = 0; i < s.length; i += 1) {
+    hash = (hash * 31 + s.charCodeAt(i)) | 0;
+  }
+  return Math.abs(hash) % 360;
+};
+
+const getInitials = (name: string): string => {
+  const parts = name.trim().split(/\s+/).filter((p) => p.length > 0);
+  if (parts.length === 0) return "?";
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+  return `${parts[0][0]}${parts[parts.length - 1][0]}`.toUpperCase();
+};
+
+// ORCH-1334 — source-badge palette. "On Mingla" uses the brand accent; the web
+// badge uses the AA-safe lightened info blue (#7ab0ff) — the token #3b82f6
+// measures ~4.28:1 on the info-tint fill over the dark canvas, below AA 4.5:1, so
+// the SPEC §4E-4 fallback variant is used (WCAG AA kit I-38/I-39).
+const WEB_BADGE_TEXT = "#7ab0ff";
+const WEB_BADGE_BORDER = "rgba(59, 130, 246, 0.55)";
+
+interface GuestAvatarProps {
+  guest: RsvpGuest;
+  size: number;
+}
+
+/** ORCH-1334 — profile image for app members (with initials fallback on error/
+ *  absence), hue-hashed initials tile for web guests. Never fabricates a photo. */
+export const GuestAvatar: React.FC<GuestAvatarProps> = ({ guest, size }) => {
+  const [imgFailed, setImgFailed] = useState<boolean>(false);
+  const showImage =
+    guest.source === "app" &&
+    typeof guest.avatarUrl === "string" &&
+    guest.avatarUrl.length > 0 &&
+    !imgFailed;
+
+  const dimensionStyle = {
+    width: size,
+    height: size,
+    borderRadius: radiusTokens.full,
+  };
+
+  if (showImage) {
+    return (
+      <Image
+        source={{ uri: guest.avatarUrl as string }}
+        style={[styles.avatarBase, dimensionStyle]}
+        onError={() => setImgFailed(true)}
+        accessibilityLabel={`${guest.displayName} avatar`}
+      />
+    );
+  }
+
+  return (
+    <View
+      style={[
+        styles.avatarBase,
+        dimensionStyle,
+        styles.avatarInitials,
+        { backgroundColor: `hsl(${hashStringToHue(guest.id)}, 60%, 45%)` },
+      ]}
+      accessibilityElementsHidden
+      importantForAccessibility="no-hide-descendants"
+    >
+      <Text style={[styles.avatarInitialsText, { fontSize: size * 0.4 }]}>
+        {getInitials(guest.displayName)}
+      </Text>
+    </View>
+  );
+};
+
+interface SourceBadgeProps {
+  source: RsvpSourceValue;
+}
+
+/** ORCH-1334 — the "where from" answer. The WORD carries the meaning (not
+ *  color-only, per §4E-7). */
+export const SourceBadge: React.FC<SourceBadgeProps> = ({ source }) => {
+  const isApp = source === "app";
+  return (
+    <View
+      style={[
+        styles.badge,
+        isApp
+          ? { backgroundColor: accent.tint, borderColor: accent.border }
+          : { backgroundColor: semantic.infoTint, borderColor: WEB_BADGE_BORDER },
+      ]}
+    >
+      <Text
+        style={[styles.badgeText, { color: isApp ? accent.warm : WEB_BADGE_TEXT }]}
+      >
+        {isApp ? "On Mingla" : "RSVP'd on web"}
+      </Text>
+    </View>
+  );
+};
 
 export interface RsvpGuestConsoleProps {
   eventId: string;
@@ -76,6 +191,8 @@ export const RsvpGuestConsole: React.FC<RsvpGuestConsoleProps> = ({
     message: "",
   });
   const [removeTarget, setRemoveTarget] = useState<RsvpGuest | null>(null);
+  // ORCH-1334 — the guest whose detail sheet is open (null = closed).
+  const [selectedGuest, setSelectedGuest] = useState<RsvpGuest | null>(null);
 
   const guests = useMemo<RsvpGuest[]>(() => data ?? [], [data]);
   const pending = useMemo(() => guests.filter((g) => g.approvalStatus === "pending"), [guests]);
@@ -100,7 +217,7 @@ export const RsvpGuestConsole: React.FC<RsvpGuestConsoleProps> = ({
       setStatus.mutate(
         { rsvpId: g.id, status: "approved" },
         {
-          onError: () => showToast(`Couldn't update ${g.guestName}. Try again.`),
+          onError: () => showToast(`Couldn't update ${g.displayName}. Try again.`),
         },
       );
     },
@@ -112,7 +229,7 @@ export const RsvpGuestConsole: React.FC<RsvpGuestConsoleProps> = ({
       setStatus.mutate(
         { rsvpId: g.id, status: "denied" },
         {
-          onError: () => showToast(`Couldn't update ${g.guestName}. Try again.`),
+          onError: () => showToast(`Couldn't update ${g.displayName}. Try again.`),
         },
       );
     },
@@ -128,7 +245,7 @@ export const RsvpGuestConsole: React.FC<RsvpGuestConsoleProps> = ({
         onSuccess: () => setRemoveTarget(null),
         onError: () => {
           setRemoveTarget(null);
-          showToast(`Couldn't remove ${g.guestName}. Try again.`);
+          showToast(`Couldn't remove ${g.displayName}. Try again.`);
         },
       },
     );
@@ -144,6 +261,79 @@ export const RsvpGuestConsole: React.FC<RsvpGuestConsoleProps> = ({
       onError: () => showToast("Couldn't approve everyone. Try again."),
     });
   }, [bulkApprove, showToast]);
+
+  // ORCH-1334 — sheet-scoped host actions. Approve/Deny fire the mutation and
+  // close the sheet on success; Remove closes the sheet FIRST, then opens the
+  // existing confirm dialog (no modal-over-modal).
+  const handleSheetApprove = useCallback(
+    (g: RsvpGuest): void => {
+      setStatus.mutate(
+        { rsvpId: g.id, status: "approved" },
+        {
+          onSuccess: () => setSelectedGuest(null),
+          onError: () => showToast(`Couldn't update ${g.displayName}. Try again.`),
+        },
+      );
+    },
+    [setStatus, showToast],
+  );
+
+  const handleSheetDeny = useCallback(
+    (g: RsvpGuest): void => {
+      setStatus.mutate(
+        { rsvpId: g.id, status: "denied" },
+        {
+          onSuccess: () => setSelectedGuest(null),
+          onError: () => showToast(`Couldn't update ${g.displayName}. Try again.`),
+        },
+      );
+    },
+    [setStatus, showToast],
+  );
+
+  const handleSheetRemove = useCallback((g: RsvpGuest): void => {
+    setSelectedGuest(null);
+    setRemoveTarget(g);
+  }, []);
+
+  // ORCH-1334 — one row: a press-isolated tappable body (avatar + name + source
+  // badge, opens the sheet) SIBLING to the trailing action/status cluster.
+  const renderRow = useCallback(
+    (g: RsvpGuest, trailing: React.ReactNode, testID?: string): React.ReactElement => (
+      <View key={g.id} style={styles.guestRow} testID={testID}>
+        <Pressable
+          style={({ pressed }) => [
+            styles.rowBody,
+            pressed ? { backgroundColor: ROW_BG_PRESSED, opacity: 0.92 } : null,
+          ]}
+          onPress={() => setSelectedGuest(g)}
+          accessibilityRole="button"
+          accessibilityLabel={`${g.displayName}, ${
+            g.source === "app" ? "on Mingla" : "RSVP'd on web"
+          }. Tap for details.`}
+          testID={`rsvp-row-${g.id}`}
+        >
+          <GuestAvatar guest={g} size={40} />
+          <View style={styles.guestInfo}>
+            <Text style={styles.guestName} numberOfLines={1} ellipsizeMode="tail">
+              {g.displayName}
+              {g.plusCount > 0 ? <Text style={styles.plusChip}>  +{g.plusCount}</Text> : null}
+            </Text>
+            <View style={styles.metaRow}>
+              <SourceBadge source={g.source} />
+              {g.email !== null || g.phone !== null ? (
+                <Text style={styles.guestContact} numberOfLines={1} ellipsizeMode="tail">
+                  {g.email ?? g.phone}
+                </Text>
+              ) : null}
+            </View>
+          </View>
+        </Pressable>
+        {trailing}
+      </View>
+    ),
+    [],
+  );
 
   const renderHeader = (): React.ReactElement => (
     <View style={styles.chromeRow}>
@@ -202,21 +392,13 @@ export const RsvpGuestConsole: React.FC<RsvpGuestConsoleProps> = ({
                 <Text style={styles.bulkBtnText}>Approve all ({pending.length})</Text>
               </Pressable>
             </View>
-            {pending.map((g) => (
-              <View key={g.id} style={styles.guestRow}>
-                <View style={styles.guestInfo}>
-                  <Text style={styles.guestName} numberOfLines={1}>
-                    {g.guestName}
-                    {g.plusCount > 0 ? <Text style={styles.plusChip}>  +{g.plusCount}</Text> : null}
-                  </Text>
-                  <Text style={styles.guestContact} numberOfLines={1}>
-                    {g.guestEmail ?? g.guestPhone ?? "App guest"}
-                  </Text>
-                </View>
+            {pending.map((g) =>
+              renderRow(
+                g,
                 <View style={styles.actionCol}>
                   <Pressable
                     accessibilityRole="button"
-                    accessibilityLabel={`Approve ${g.guestName}`}
+                    accessibilityLabel={`Approve ${g.displayName}`}
                     onPress={() => handleApprove(g)}
                     style={[styles.smallBtn, styles.approveBtn]}
                     testID={`rsvp-approve-${g.id}`}
@@ -225,16 +407,16 @@ export const RsvpGuestConsole: React.FC<RsvpGuestConsoleProps> = ({
                   </Pressable>
                   <Pressable
                     accessibilityRole="button"
-                    accessibilityLabel={`Deny ${g.guestName}`}
+                    accessibilityLabel={`Deny ${g.displayName}`}
                     onPress={() => handleDeny(g)}
                     style={[styles.smallBtn, styles.ghostBtn]}
                     testID={`rsvp-deny-${g.id}`}
                   >
                     <Text style={styles.ghostBtnText}>Deny</Text>
                   </Pressable>
-                </View>
-              </View>
-            ))}
+                </View>,
+              ),
+            )}
           </View>
         ) : null}
 
@@ -244,28 +426,20 @@ export const RsvpGuestConsole: React.FC<RsvpGuestConsoleProps> = ({
           {going.length === 0 ? (
             <Text style={styles.emptySub}>No one&apos;s confirmed yet.</Text>
           ) : (
-            going.map((g) => (
-              <View key={g.id} style={styles.guestRow}>
-                <View style={styles.guestInfo}>
-                  <Text style={styles.guestName} numberOfLines={1}>
-                    {g.guestName}
-                    {g.plusCount > 0 ? <Text style={styles.plusChip}>  +{g.plusCount}</Text> : null}
-                  </Text>
-                  <Text style={styles.guestContact} numberOfLines={1}>
-                    {g.guestEmail ?? g.guestPhone ?? "App guest"}
-                  </Text>
-                </View>
+            going.map((g) =>
+              renderRow(
+                g,
                 <Pressable
                   accessibilityRole="button"
-                  accessibilityLabel={`Remove ${g.guestName}`}
+                  accessibilityLabel={`Remove ${g.displayName}`}
                   onPress={() => setRemoveTarget(g)}
                   style={[styles.smallBtn, styles.removeBtn]}
                   testID={`rsvp-remove-${g.id}`}
                 >
                   <Text style={styles.removeBtnText}>Remove</Text>
-                </Pressable>
-              </View>
-            ))
+                </Pressable>,
+              ),
+            )
           )}
         </View>
 
@@ -273,20 +447,15 @@ export const RsvpGuestConsole: React.FC<RsvpGuestConsoleProps> = ({
         {maybe.length > 0 ? (
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Maybe ({maybe.length})</Text>
-            {maybe.map((g) => (
-              <View key={g.id} style={styles.guestRow} testID={`rsvp-maybe-${g.id}`}>
-                <View style={styles.guestInfo}>
-                  <Text style={styles.guestName} numberOfLines={1}>
-                    {g.guestName}
-                    {g.plusCount > 0 ? <Text style={styles.plusChip}>  +{g.plusCount}</Text> : null}
-                  </Text>
-                  <Text style={styles.guestContact} numberOfLines={1}>
-                    {g.guestEmail ?? g.guestPhone ?? "App guest"}
-                  </Text>
-                </View>
-                <Icon name="users" size={18} color={textTokens.tertiary} />
-              </View>
-            ))}
+            {maybe.map((g) =>
+              renderRow(
+                g,
+                <View style={styles.statusIconWrap}>
+                  <Icon name="users" size={18} color={textTokens.tertiary} />
+                </View>,
+                `rsvp-maybe-${g.id}`,
+              ),
+            )}
           </View>
         ) : null}
 
@@ -294,20 +463,14 @@ export const RsvpGuestConsole: React.FC<RsvpGuestConsoleProps> = ({
         {waitlisted.length > 0 ? (
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Waitlist ({waitlisted.length})</Text>
-            {waitlisted.map((g) => (
-              <View key={g.id} style={styles.guestRow}>
-                <View style={styles.guestInfo}>
-                  <Text style={styles.guestName} numberOfLines={1}>
-                    {g.guestName}
-                    {g.plusCount > 0 ? <Text style={styles.plusChip}>  +{g.plusCount}</Text> : null}
-                  </Text>
-                  <Text style={styles.guestContact} numberOfLines={1}>
-                    {g.guestEmail ?? g.guestPhone ?? "App guest"}
-                  </Text>
-                </View>
-                <Icon name="clock" size={18} color={textTokens.tertiary} />
-              </View>
-            ))}
+            {waitlisted.map((g) =>
+              renderRow(
+                g,
+                <View style={styles.statusIconWrap}>
+                  <Icon name="clock" size={18} color={textTokens.tertiary} />
+                </View>,
+              ),
+            )}
           </View>
         ) : null}
 
@@ -319,11 +482,21 @@ export const RsvpGuestConsole: React.FC<RsvpGuestConsoleProps> = ({
         ) : null}
       </ScrollView>
 
+      <RsvpGuestDetailSheet
+        visible={selectedGuest !== null}
+        guest={selectedGuest}
+        onClose={() => setSelectedGuest(null)}
+        onApprove={handleSheetApprove}
+        onDeny={handleSheetDeny}
+        onRemove={handleSheetRemove}
+        isActionPending={setStatus.isPending}
+      />
+
       <ConfirmDialog
         visible={removeTarget !== null}
         onClose={() => setRemoveTarget(null)}
         onConfirm={handleConfirmRemove}
-        title={removeTarget !== null ? `Remove ${removeTarget.guestName}?` : "Remove guest?"}
+        title={removeTarget !== null ? `Remove ${removeTarget.displayName}?` : "Remove guest?"}
         description="They'll be moved out of this event and notified. If you have a waitlist, the next person is moved in automatically."
         confirmLabel="Remove"
         cancelLabel="Cancel"
@@ -387,25 +560,67 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "space-between",
     gap: spacing.sm,
-    paddingVertical: spacing.sm + 2,
-    paddingHorizontal: spacing.md,
     borderRadius: radiusTokens.md,
     overflow: "hidden",
     backgroundColor: ROW_BG,
     borderWidth: 1,
     borderColor: glass.border.profileBase,
   },
-  guestInfo: { flex: 1, marginRight: spacing.sm },
+  // ORCH-1334 — the tappable body is its OWN press target (Constitution #1: the
+  // trailing action cluster is a sibling, never swallowed by the body press).
+  rowBody: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    minWidth: 0,
+    gap: spacing.sm,
+    paddingVertical: spacing.sm + 2,
+    paddingLeft: spacing.md,
+    paddingRight: spacing.xs,
+    minHeight: 44,
+  },
+  avatarBase: {
+    marginRight: spacing.sm,
+    backgroundColor: glass.tint.profileBase,
+  },
+  avatarInitials: { alignItems: "center", justifyContent: "center" },
+  avatarInitialsText: { color: "#fff", fontWeight: "700" },
+  guestInfo: { flex: 1, minWidth: 0 },
   guestName: { fontSize: typography.bodySm.fontSize, fontWeight: "600", color: textTokens.primary },
   plusChip: { fontSize: typography.caption.fontSize, fontWeight: "700", color: accent.warm },
-  guestContact: { fontSize: typography.caption.fontSize, color: textTokens.tertiary, marginTop: 2 },
-  actionCol: { flexDirection: "row", gap: spacing.xs },
+  metaRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.xs,
+    marginTop: 2,
+  },
+  guestContact: {
+    flex: 1,
+    minWidth: 0,
+    fontSize: typography.caption.fontSize,
+    color: textTokens.tertiary,
+  },
+  badge: {
+    paddingHorizontal: spacing.xs + 2,
+    paddingVertical: 2,
+    borderRadius: radiusTokens.sm,
+    borderWidth: 1,
+  },
+  badgeText: {
+    fontSize: typography.micro.fontSize,
+    lineHeight: typography.micro.lineHeight,
+    fontWeight: "600",
+    letterSpacing: typography.micro.letterSpacing,
+  },
+  actionCol: { flexDirection: "row", alignItems: "center", gap: spacing.xs, paddingRight: spacing.md },
+  statusIconWrap: { paddingRight: spacing.md, paddingLeft: spacing.xs },
   smallBtn: {
     paddingHorizontal: spacing.sm,
     paddingVertical: 8,
     borderRadius: radiusTokens.md,
     alignItems: "center",
     justifyContent: "center",
+    minHeight: 44,
   },
   approveBtn: { backgroundColor: accent.warm },
   approveBtnText: { fontSize: typography.caption.fontSize, fontWeight: "700", color: "#fff" },
