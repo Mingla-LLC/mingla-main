@@ -51,6 +51,7 @@ import { MentionPopover } from "./board/MentionPopover";
 import { CardTagPopover } from "./board/CardTagPopover";
 import type { Participant } from "./board/ParticipantAvatars";
 import { groupMessages, GroupedMessage } from "../utils/messageGrouping";
+import { requestGalleryPermission } from "../utils/mediaLibraryPermission";
 import { DirectMessage, messagingService, CardPayload, MentionEntry, CardTagEntry } from "../services/messagingService";
 import { cardPayloadToExpandedCardData } from "../services/cardPayloadAdapter";  // ORCH-0685
 import { savedCardsService } from "../services/savedCardsService";  // ORCH-0685
@@ -719,8 +720,7 @@ export default function MessageInterface({
 
       // Request permissions
       if (type === "image" || type === "video") {
-        const { status } =
-          await ImagePicker.requestMediaLibraryPermissionsAsync();
+        const { status } = await requestGalleryPermission();
         if (status !== "granted") {
           Alert.alert(
             t('chat:permissionRequired'),
