@@ -30,8 +30,12 @@
  *   - SEALED: Message navigation closes the sheet BEFORE navigating
  *     (I-PROPOSED-1341-MESSAGE-CLOSE-BEFORE-NAVIGATE). Binding order is
  *     ensure → close → navigate (SPEC §4.5 — the ensure failure needs the open
- *     sheet as its error surface); landing rides the ONE deep-link rail
- *     (`mingla://chat/{id}?type=direct` → parseDeepLink), never a second parser.
+ *     sheet as its error surface); landing rides the shell's open-DM rail
+ *     (openDirectMessageInApp → the Discover-map Message idiom:
+ *     setPendingOpenDmUserId + page 'connections'), never a second parser and
+ *     never Linking.openURL (P1-2: `mingla://` is not a registered scheme —
+ *     the app's scheme is com.mingla.app.v2 — and `chat` has no expo-router
+ *     file route, so an openURL default dead-ends).
  *   - Anonymous rows carry no profileId (D8) and expose NO actions — an action
  *     on an anonymous row would deanonymize it.
  *   - Blocked pairs are excluded SERVER-side (1338 SC-6) — this file contains
@@ -52,7 +56,6 @@ import {
   ActivityIndicator,
   Animated,
   Easing,
-  Linking,
   Pressable,
   StyleSheet,
   Text,
@@ -69,6 +72,10 @@ import { HapticFeedback } from "../utils/hapticFeedback";
 import { useAppStore } from "../store/appStore";
 import { useFriends } from "../hooks/useFriends";
 import { useEventGuestList } from "../hooks/useEventGuestList";
+import {
+  hasOpenDirectMessageSink,
+  openDirectMessageInApp,
+} from "../services/deepLinkService";
 import { GuestListGatedError } from "../services/socialProofService";
 import { messagingService } from "../services/messagingService";
 
@@ -94,7 +101,8 @@ export interface EventGuestListSheetProps {
   goingCount: number;
   /**
    * Optional override seam for tests/future hosts. Absent ⇒ the default
-   * deep-link rail (`mingla://chat/{conversationId}?type=direct`).
+   * in-app rail: openDirectMessageInApp(profileId) — the shell's open-DM
+   * sink riding the Discover-map Message idiom (P1-2: never Linking.openURL).
    */
   onOpenConversation?: (conversationId: string) => void;
 }
@@ -375,13 +383,27 @@ export function EventGuestListSheet({
         return;
       }
       // SEALED close-before-NAVIGATE: dismiss the sheet FIRST, then ride the
-      // ONE deep-link rail (deepLinkService parseDeepLink `chat` form).
-      onClose();
+      // shell's open-DM rail (the Discover-map Message idiom —
+      // setPendingOpenDmUserId + page 'connections' → MessageInterface opens
+      // the thread same-frame, resolving the conversation ensureConversation
+      // just created via its cold-start DB fallback). P1-2 REWORK
+      // (META-ORCH-1337 SC-R): NEVER Linking.openURL here — `mingla://` is
+      // not a registered scheme (app scheme: com.mingla.app.v2) and `chat`
+      // has no expo-router file route, so an openURL default dead-ends with
+      // "Unable to open URL" and the DM never opens.
       if (onOpenConversation !== undefined) {
+        onClose();
         onOpenConversation(conversationId);
         return;
       }
-      void Linking.openURL(`mingla://chat/${conversationId}?type=direct`);
+      if (!hasOpenDirectMessageSink()) {
+        // No shell sink (detached/test mount) — the OPEN sheet is the error
+        // surface (§4.5); closing first would strand the user on the detail.
+        showHint(row.key, "Couldn't open the chat — try again");
+        return;
+      }
+      onClose();
+      openDirectMessageInApp(profileId);
     },
     [viewerId, onClose, onOpenConversation, showHint],
   );

@@ -207,8 +207,23 @@ Deno.test("T-10 every <Pressable> is one of the sanctioned action controls", () 
 Deno.test("T-11 ensureConversation only; sendFirstMessage never called", () => {
   assertStringIncludes(SHEET, "messagingService.ensureConversation(");
   assert(!/sendFirstMessage/.test(SHEET), "compose path belongs to the thread UI (Q8)");
-  // The one deep-link rail — no second parser.
-  assertStringIncludes(SHEET, "mingla://chat/${conversationId}?type=direct");
+  // The shell's open-DM rail, no second parser. P1-2 REWORK (META-ORCH-1337
+  // SC-R): the prior pin (`mingla://chat/${conversationId}?type=direct` via
+  // Linking.openURL) pinned the DEAD-END idiom — `mingla://` is not a
+  // registered scheme (the app's scheme is com.mingla.app.v2) and `chat` has
+  // no expo-router file route, so openURL raised "Unable to open URL" and the
+  // DM never opened. The default now rides openDirectMessageInApp(profileId)
+  // (the Discover-map Message idiom: setPendingOpenDmUserId + page
+  // 'connections' → MessageInterface opens the thread).
+  assertStringIncludes(SHEET, "openDirectMessageInApp(profileId)");
+  assert(
+    !/Linking\.openURL/.test(SHEET),
+    "Linking.openURL is BANNED in the sheet (P1-2 unregistered-scheme dead-end)",
+  );
+  assert(
+    !/["'`]mingla:\/\//.test(SHEET),
+    "no hand-built mingla:// URL strings (typed Destination only)",
+  );
   // Friend-gate locked hint (D4).
   assertStringIncludes(SHEET, "Add them as a friend to message");
 });

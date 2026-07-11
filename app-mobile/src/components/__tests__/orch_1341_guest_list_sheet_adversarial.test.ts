@@ -57,13 +57,16 @@ Deno.test("A-1 message handler closes the sheet BEFORE navigating (source order)
   const handlerStart = SHEET.indexOf("const handleMessagePress");
   assert(handlerStart >= 0, "handleMessagePress exists");
   const closeIdx = SHEET.indexOf("onClose();", handlerStart);
-  const navIdx = SHEET.indexOf("Linking.openURL", handlerStart);
+  // P1-2 REWORK (META-ORCH-1337 SC-R): the default navigation is the shell's
+  // open-DM rail (openDirectMessageInApp), NOT Linking.openURL — the prior
+  // anchor pinned the dead-end idiom this REWORK deletes.
+  const navIdx = SHEET.indexOf("openDirectMessageInApp(profileId)", handlerStart);
   const overrideIdx = SHEET.indexOf("onOpenConversation(conversationId)", handlerStart);
   assert(closeIdx > handlerStart, "the handler calls onClose()");
-  assert(navIdx > handlerStart, "the handler navigates via the deep-link rail");
+  assert(navIdx > handlerStart, "the handler navigates via the in-app open-DM rail");
   assert(
     closeIdx < navIdx,
-    "onClose() must precede Linking.openURL (close-before-NAVIGATE seal)",
+    "onClose() must precede openDirectMessageInApp (close-before-NAVIGATE seal)",
   );
   assert(
     overrideIdx === -1 || closeIdx < overrideIdx,
@@ -182,4 +185,61 @@ Deno.test("A-8 fixed single detent and fresh-fetch-per-open stay pinned", () => 
   assert(!/"90%"|"50%"|"100%"/.test(SHEET), "single 70% detent only");
   assertStringIncludes(HOOK, "staleTime: 0");
   assertStringIncludes(HOOK, "gcTime: 0");
+});
+
+// ── A-9 — P1-2 regression seal: the Message default rides the INTERNAL rail ──
+//
+// META-ORCH-1337 SC-R runtime finding (P1-2): the shipped default was
+// `Linking.openURL('mingla://chat/…')` — but `mingla://` is NOT a registered
+// URL scheme (app.json `scheme` = com.mingla.app.v2; Info.plist has no
+// `mingla`), so iOS rejected the open ("Unable to open URL") and the DM never
+// opened; even the registered scheme lands on expo-router "Unmatched Route"
+// because `chat` has no file route. The working idiom (runtime-proven in the
+// REWORK) is the shell's open-DM sink riding the Discover-map Message rail
+// (setPendingOpenDmUserId + page 'connections' → MessageInterface opens the
+// thread with a cold-start DB fallback) — NOT the conversation-id
+// deepLinkParams rail, which lands a just-ensured, message-less DM on the
+// Messages LIST (the ORCH-1080 unresolvable-conversation fallback). This
+// test seals both halves: the sheet side (rail call, no URL strings) and the
+// shell side (sink registration onto the proven rail).
+
+const SHELL = strip(await read("../../../app/index.tsx"));
+
+Deno.test("A-9 message default uses the in-app open-DM rail, never Linking.openURL", () => {
+  assert(
+    !/Linking\.openURL/.test(SHEET),
+    "Linking.openURL is BANNED in the sheet (P1-2 unregistered-scheme dead-end)",
+  );
+  assert(
+    !/["'`]mingla:\/\//.test(SHEET),
+    "no hand-built mingla:// URL strings in the sheet",
+  );
+  // The sheet consumes the rail from the ONE deep-link service.
+  assertStringIncludes(SHEET, 'from "../services/deepLinkService"');
+  assertStringIncludes(SHEET, "openDirectMessageInApp(profileId)");
+  // Availability is checked BEFORE the sheet closes — a detached mount keeps
+  // the OPEN sheet as its error surface instead of closing into a dead-end.
+  const handlerStart = SHEET.indexOf("const handleMessagePress");
+  const sinkCheckIdx = SHEET.indexOf("hasOpenDirectMessageSink()", handlerStart);
+  const railCloseIdx = SHEET.lastIndexOf(
+    "onClose();",
+    SHEET.indexOf("openDirectMessageInApp(profileId)", handlerStart),
+  );
+  assert(sinkCheckIdx > handlerStart, "the handler checks hasOpenDirectMessageSink()");
+  assert(
+    sinkCheckIdx < railCloseIdx,
+    "sink availability is checked BEFORE the rail-path onClose()",
+  );
+});
+
+Deno.test("A-9b the shell registers the open-DM sink onto the PROVEN rail", () => {
+  assertStringIncludes(SHELL, "registerOpenDirectMessageSink(");
+  // The sink body rides the exact Discover-map Message idiom
+  // (handleOpenChatWithUserFromDiscover): pending DM user id + Connections.
+  const regIdx = SHELL.indexOf("registerOpenDirectMessageSink(");
+  const windowSrc = SHELL.slice(regIdx, regIdx + 700);
+  assertStringIncludes(windowSrc, "setPendingOpenDmUserId(userId)");
+  assertStringIncludes(windowSrc, 'setCurrentPage("connections")');
+  // A pushed expo-router file route must be popped so the thread is visible.
+  assertStringIncludes(windowSrc, "router.dismissAll()");
 });
