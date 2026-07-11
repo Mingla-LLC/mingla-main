@@ -185,3 +185,53 @@ Ran the `meta-orch-1337-social-proof-tests.yml` job's EXACT commands at HEAD:
 ## 11. Accepted conditions (CONDITIONAL PASS)
 
 This verdict is CONDITIONAL because the UI-runtime proofs (card T-14, sheet SC-R recorded, web interactive + consumer cold/warm sim) are deferred to the operator-unblock ask (fresh app-mobile dev build) — NOT because of any accepted defect. The single finding (P2-1) is defense-in-depth with no exposure and is routed as a follow-up, not a blocker. If the orchestrator/Seth accepts shipping the backend + web-[NOW] halves now and running the consumer-app SC-R after a fresh dev build (or post-merge from the anchor), this is a clean CONDITIONAL PASS. The `[NATIVE-GATED]` SC-10/11/12 are capped per COMMS-0083 by dispatch and are not conditions.
+
+---
+
+# ADDENDUM — SC-R LIVE-SIM CLOSE-OUT (tester SC-R, 2026-07-10, second dispatch)
+
+**Author:** mingla-tester (Claude), scoped SC-R dispatch · **Footer:** `[TEST-MOD-APPROVED ORCH-1340]` · `ORCH-1340 [card-real-avatars]` · `META-ORCH-1337 [tester SC-R]`
+
+The native-build blocker that capped every UI-runtime leg above is **RESOLVED**. All capped UI criteria were driven LIVE on a booted iPhone 17 Pro simulator (iOS 26.4, UDID `17091E60`). Evidence: `Mingla_Artifacts/evidence/META-ORCH-1337/SCR_*.png` (18 screenshots, gitignored) + full-session `session_recording.mp4` (kept at `/tmp/orch-1337/evidence/`, 674 MB — too large to commit).
+
+## R0. Blocker resolution (how the sim ran)
+
+- **Build:** EAS `development-simulator` `86d66d8f-b6a6-48b5-8df4-34bb641b5dda`, commit `0589e1755`, runtime `1.1.1`, bundle id `com.mingla.app.v2`. This build **includes ORCH-1171's `react-native-keyboard-controller` native module** — the app boots and renders every 1337 screen with **NO red-screen** (the exact `_layout.tsx:39` red-screen that capped the first sweep is gone). Screenshot `SCR_06`.
+- **Correction to the dispatch premise:** this build's JS is NOT actually embedded — the `.app` carries no `main.jsbundle` (0 app-JS strings in the debug dylib) and `EXUpdatesEnabled=true` points at the `development` channel, which has **only runtime-1.1.0 updates** (no 1.1.1 match). So the dev-client launcher had nothing to launch standalone. Resolved legitimately by connecting the fresh native build to the **existing worktree Metro on :8095** (same app-mobile worktree, `packager-status:running`, serves the current branch JS) via `com.mingla.app.v2://expo-development-client/?url=http://localhost:8095`. No second Metro started, no shared cache poisoned, no other sim/Metro touched.
+- **Sign-in mechanism (Apple/Google-only welcome screen has no email path):** created three `zz1337` Supabase **Auth** users via the sanctioned `execute_sql` MCP (GoTrue-compatible `auth.users`+`auth.identities` rows, bcrypt password, token columns set to `''`), password-granted a real session with the **public anon key** (from app source), and injected it into the sim's AsyncStorage spill file (`sb-gqnoajqerqhnvulmnyvv-auth-token`, md5 `d71f7513…`). App booted authed as the zz1337 host on the consumer home (`SCR_06`). No master-key / service-role read (that path is classifier-blocked and was not used).
+
+## R1. Fixture (zz1337-marked, self-owned, torn down — 0 residual proven)
+
+- Host/viewer **H** `13371337-…0001` (owns creator_account + brand + event); guests **G1 "Ada"** `…00a1` (public, avatar, NOT friend of H → add-friend target), **G2 "Bex"** `…00a2` (public, avatar, friend of H → message target), plus one **unlinked anonymous** RSVP ("Cal", guest_email/phone set → the no-leak row). Self-owned public **RSVP** event `zz1337-rooftop-co/zz1337-rooftop-sundowner`, scheduled, cap 20. Later expanded to 11 going (8 extra anon RSVPs) to force sheet-scroll for the pinned-header proof.
+- **Teardown:** every row deleted across 13 tables (friend_requests, friends, messages, conversation_participants, conversations, event_rsvps, event_dates, events, brands, creator_accounts, notification_preferences, profiles, auth.identities, auth.users). **Residual scan = all zeros.** Live host events `8b84539d…` (BBQ Pool Party, private) and `smokerhythm/fifa-grill-night` (ticketed) were **READ-ONLY** (navigation only, no writes). No messages/pushes sent to any real user (the one message action was H→Bex, both zz1337).
+
+## R2. Capped-criteria verdicts (each upgraded from CAPPED)
+
+| Criterion (was CAPPED) | New verdict | Live evidence |
+|---|---|---|
+| **SC-R** sheet opens at 70% + PINNED header | **PASS** | Tapping the cluster AND the "See who's going" link opens the roster sheet at 70% with a pinned "Who's going / N going" header; after scrolling 11 rows the named rows scroll off but the header stays fixed. `SCR_11`, `SCR_16`, `SCR_17` |
+| **SC-R** close (swipe + scrim) | **PASS** | Swipe-down dismiss (`SCR_18`) and scrim-tap dismiss (`SCR_20`) both return to a clean, fully-interactive event detail — no stuck scrim |
+| **SC-R** rapid open/close ×5, no ghost/dead-screen | **PASS** | 5 back-to-back open→swipe-close cycles → clean card, no ghost sheet, no stuck scrim, no dead screen (`SCR_19`); z-order clean (sheet above dimmed content) |
+| **Card — RSVP branch, real avatars vs glyphs** | **PASS** | 3-going card: cluster = 2 real photos (Ada, Bex) + 1 glyph (anon Cal) + "See who's going" link (`SCR_09`); 11-going = 2 photos + glyph + "+8" overflow chip (`SCR_15`) |
+| **Card — standard/ticketed branch** | **PASS** | FIFA Grill Night (event type, 2 going): same shared cluster, 2 glyph disks + "See who's going" (`SCR_28`) — cross-entity parity proven at runtime |
+| **Card — private event (READ-ONLY)** | **PASS** | Live BBQ Pool Party (privateGuestList=true): "4 going / 16 spots left" + meter render, but **NO cluster, NO "See who's going" link** (`SCR_22`) |
+| **Card — trip/experience** | **N/A (not reachable)** | Prod has 2 trips but **0 public+live**, so no consumer trip detail is navigable; the trip/experience RPC payload was already proven in §1/§2. Not a defect. |
+| **Sheet action — add-friend on named non-friend** | **PASS** | Tapping add-friend on Ada flips the row to a "Requested" chip (`SCR_12`); a real `friend_requests` row (H→Ada, status `pending`) was persisted server-side and re-renders as "Requested" on sheet re-open (`SCR_16`) |
+| **Sheet action — anonymous rows have NO actions** | **PASS** | The unlinked "Guest" row shows a glyph, no name, and **zero action buttons** (`SCR_11`) |
+| **Sheet action — message on already-friends row** | **FAIL (P1-2, new)** | See below |
+| **1342 landing — test event auto-opens ONCE** | **PASS** | `…?landing=guest-list` opens the event AND auto-opens the roster sheet (`SCR_23`); closing it does not re-open (fires exactly once, `SCR_24`) |
+| **1342 landing — private event must NOT open** | **PASS** | Private BBQ Pool Party `…?landing=guest-list` opens the event but the sheet does **NOT** auto-open (`SCR_25`) |
+
+## R3. NEW P1 finding
+
+### P1-2 — Guest-sheet "Message" dead-ends: closes the sheet then errors instead of opening the DM (all 3 consumer detail screens)
+
+- **Evidence (runtime + source + DB):** Tapping "Message" on the friend row (Bex) correctly ensures the conversation (`conversation_participants` row for conversation `c5264aa7…` with H+Bex was created — verified in the DB) and closes the sheet (SEALED close-before-navigate honored). Then it hits the fallback `void Linking.openURL(\`mingla://chat/${conversationId}?type=direct\`)` at `app-mobile/src/components/EventGuestListSheet.tsx:384`. The app's registered URL scheme is **`com.mingla.app.v2`** (app.json `scheme`; Info.plist `CFBundleURLSchemes` = `com.mingla.app.v2`,`exp+mingla` — **no `mingla`**), so iOS rejects the unregistered `mingla://` scheme → **"Uncaught (in promise) Error: Unable to open URL"** red toast, and the DM never opens (`SCR_13`). The DM is not reachable via `openURL` on either scheme: `com.mingla.app.v2://chat/…` opens the app but lands on expo-router **"Unmatched Route — Page could not be found"** (`SCR_14`), because `chat` is handled only by `deepLinkService.parseDeepLink` (notification-tap rail), not by any `app/chat/[id]` file route.
+- **Root cause:** all three consumer detail screens mount `EventGuestListSheet` **without the `onOpenConversation` override** (`ConsumerEventDetailScreen.tsx:1184`, `ConsumerTripDetailScreen.tsx:1108`, `ConsumerExperienceDetailScreen.tsx:1054` — only `visible/onClose/eventId/goingCount`), so the sheet falls to the broken `Linking.openURL('mingla://chat/…')` default. The same `mingla://chat/…` openURL exists at `OnboardingCollaborationStep.tsx:318` but there it is wrapped in `.catch()` (fails silently); the guest sheet's `void` surfaces the rejection.
+- **Impact:** From the guest list, "Message" on a friend is a dead-end on iOS — the user's sheet closes, an error toast appears, and they are left on the event detail, never reaching the conversation they just created. Reproducible in prod (the scheme mismatch is build-independent). P1 (feature broken + dead tap outcome), not P0 (no crash, no data loss, no security).
+- **Required fix (REWORK):** open the conversation via the app's real in-app navigation instead of `Linking.openURL('mingla://…')` — e.g. pass an `onOpenConversation` from each detail screen that runs `executeDeepLink(parseDeepLink('mingla://chat/{id}?type=direct'), handlers)` (the notification rail) or the in-app MessageInterface open path used by the Messages tab; do NOT use `Linking.openURL` with an unregistered scheme.
+- **Retest:** tap Message on a friend row → sheet closes → app lands on the DM conversation screen (no error toast, no Unmatched Route).
+
+## R4. Verdict delta
+
+The four legs the first sweep left CONDITIONAL/CAPPED on the native-build blocker are now runtime-proven: **ORCH-1339/1340 card runtime → PASS (proven)**, **ORCH-1341 sheet SC-R (open/close/z-order/pinned/rapid) → PASS (proven)**, **ORCH-1342 warm-landing auto-open (both branches) → PASS (proven)**. The add-friend action and anonymous-row suppression are PASS. **One new P1 (P1-2, message dead-end) is uncovered** and routes to REWORK (implementor) — it does not block the read/card/sheet/landing legs but must be fixed before the "Message from guest list" path ships. Backend legs (§1–§2) and CI-guard (§7) are unchanged (PASS). P2-1 (anon EXECUTE grant) unchanged. **Net: 0 P0, 1 P1 (new, message nav), 1 P2 (grant).**
