@@ -1377,6 +1377,7 @@
 
 | Status | Count | % |
 |--------|-------|---|
+| META-ORCH-1337 | social-proof-guest-list — cross-entity momentum card + real avatars + guest-list sheet + web install funnel; children 1338-1342 | S1 | missing-feature+ux | BUILD+TEST COMPLETE, PR-ready (Seth merge) | 2026-07-10 | Backend live on prod (3 migrations); tester 0-P0/0-P1; SC-R runtime-proven; discoveries 1350-1352 registered |
 | Open (F grade, unaudited) | 123 | 41% |
 | Open (F grade, known bug) | 7 | 2% |
 | Open (F grade, missing-feature) | 1 | <1% |

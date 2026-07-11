@@ -100,7 +100,7 @@ import { useOtaUpdates } from "../src/hooks/useOtaUpdates";
 import { OtaUpdateBanner } from "../src/components/ui/OtaUpdateBanner";
 import RealtimeSubscriptions from "../src/components/RealtimeSubscriptions";
 import * as friendsService from "../src/services/friendsService";
-import { parseDeepLink, executeDeepLink, typeFallbackDestination, type NavigationHandlers } from "../src/services/deepLinkService";
+import { parseDeepLink, executeDeepLink, typeFallbackDestination, registerOpenDirectMessageSink, type NavigationHandlers } from "../src/services/deepLinkService";
 import {
   dismissCollaborationInviteNotifications,
   type ServerNotification,
@@ -1103,6 +1103,37 @@ function AppContent() {
     setDeepLinkParams: (params: Record<string, string>) => setDeepLinkParams(params),
   }), [setCurrentPage, setViewingFriendProfileId, setShowPaywall, setDeepLinkParams]);
 
+  // ORCH-1341 P1-2 REWORK (META-ORCH-1337) — register the open-DM sink: the
+  // ONE way deeply-nested components (the guest-list sheet's Message default)
+  // open a DM thread from anywhere. NEVER via Linking.openURL — `mingla://` is
+  // not a registered scheme (app.json scheme is com.mingla.app.v2, so iOS
+  // rejects it with "Unable to open URL") and `chat` has no expo-router file
+  // route (a raw scheme open lands on "Unmatched Route"). The sink rides the
+  // PROVEN Discover-map Message rail (handleOpenChatWithUserFromDiscover
+  // below: setPendingOpenDmUserId + page 'connections' → ConnectionsPage
+  // opens MessageInterface same-frame with a cold-start DB fallback) — NOT
+  // the conversation-id deepLinkParams rail, which runtime-proof showed lands
+  // a just-ensured, message-less DM on the Messages LIST (the ORCH-1080
+  // unresolvable-conversation fallback), not the thread. A pushed expo-router
+  // file route (/e, /t, /exp, /b) sits ABOVE this shell in the stack, so pop
+  // back to it first (dismissAll → the stack root = this index). Mirrors the
+  // ORCH-1318 OneLink sink registration.
+  useEffect(() => {
+    registerOpenDirectMessageSink((userId: string): void => {
+      try {
+        if (router.canGoBack()) {
+          router.dismissAll();
+        }
+      } catch (e) {
+        console.warn("[DEEPLINK] open-DM sink route pop failed:", e);
+      }
+      setPendingOpenDmUserId(userId);
+      setCurrentPage("connections");
+    });
+    // All closure deps are React-stable setState setters — register once.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // ORCH-1080: the former ORCH-1030 Home-landing session effect is
   // deleted. Session/collab notifications now route to the session's group chat
   // (Messages tab) via deepLinkService's `session` executor branch; the deck is
@@ -1873,6 +1904,17 @@ function AppContent() {
                 : dest.entity === 'trip'
                   ? `/t/${b}/${e}`
                   : `/exp/${b}/${e}`;
+            // ORCH-1342 [web-see-whos-going-funnel] — the landing rides INSIDE
+            // the path string at this ONE composition point (SPEC §4.6), so the
+            // authed router.push AND the unauthenticated deferral below carry it
+            // automatically. The deferred-replay effect (above) is DO-NOT-TOUCH:
+            // it already router.push-es the persisted url VERBATIM, so
+            // `?landing=guest-list` survives the install→defer→replay cycle by
+            // construction. The typed field comes ONLY from the resolver
+            // (I-PROPOSED-1342-LANDING-SINGLE-PARSE).
+            if (dest.landing === 'guest-list') {
+              path = `${path}?landing=guest-list`;
+            }
           }
           if (!path) return;
 

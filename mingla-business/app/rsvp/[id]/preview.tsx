@@ -369,6 +369,11 @@ export default function RsvpPreviewRoute(): React.ReactElement {
           plusOnesMax: draft.rsvpPlusOnesMax,
           waitlistEnabled: draft.rsvpWaitlistEnabled,
           manualApproval: draft.rsvpApprovalMode === "manual",
+          // ORCH-1339 (D2) — the preview honestly previews the host's OWN
+          // draft toggles (goingCount stays 0, so the cluster is hidden by the
+          // zero-state anyway; the gates preview the momentum semantics).
+          privateGuestList: draft.privateGuestList,
+          hideRemainingCount: draft.hideRemainingCount,
         }}
         isLoggedIn={user !== null}
         muted={muted}

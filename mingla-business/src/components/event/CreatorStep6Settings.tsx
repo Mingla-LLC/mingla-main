@@ -133,7 +133,9 @@ export const CreatorStep6Settings: React.FC<StepBodyProps> = ({
 
       <ToggleRow
         label="Hide remaining count"
-        sub="Don't show 'X tickets left'."
+        // ORCH-1339 — D2-honest sub-copy (SPEC §4.8, byte-exact): the flag
+        // hides scarcity + fill level; the going count stays visible.
+        sub={'Don\'t show "X left" or how full it is.'}
         on={draft.hideRemainingCount}
         onToggle={() =>
           updateDraft({ hideRemainingCount: !draft.hideRemainingCount })
@@ -151,7 +153,9 @@ export const CreatorStep6Settings: React.FC<StepBodyProps> = ({
 
       <ToggleRow
         label="Private guest list"
-        sub="Hide attendee count from buyers."
+        // ORCH-1339 — D2-honest sub-copy (SPEC §4.8, byte-exact): the flag
+        // hides WHO is going (the cluster/list), never the going count.
+        sub="Hide who's going. Guests still see the going count."
         on={draft.privateGuestList}
         onToggle={() =>
           updateDraft({ privateGuestList: !draft.privateGuestList })

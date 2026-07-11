@@ -1,0 +1,141 @@
+name: META-ORCH-1337 Social-Proof + Guest-List Tests
+
+# META-ORCH-1337 [social-proof-guest-list] — CI registration of the META's
+# regression suites (legs ORCH-1338 social-proof reads, ORCH-1339 momentum
+# cross-entity + guest-privacy RPC, ORCH-1340 guest identity privacy /
+# card-real-avatars, ORCH-1341 guest-list sheet, ORCH-1342 web see-who's-going
+# funnel, plus the ORCH-1157 momentum suites REWRITTEN under
+# [TEST-MOD-APPROVED ORCH-1340]).
+#
+# House pattern (per supabase-migrations-and-stripe-deno.yml): EXPLICIT file
+# lists, never globs — a glob silently picks up unrelated pre-existing-red
+# suites (the 5 known stale families: 1163-R3, 1157 round-8/9 T-7/T-8,
+# 1150 T-10b/c, 1138 T5/E4 are deliberately NOT registered here) and a glob
+# also silently DROPS a renamed suite. Every file below was verified GREEN on
+# the registering branch before being listed.
+#
+# Path filters err BROAD (known hazard: a filter that misses a future edit
+# silently skips the guard): they cover the guarded SOURCE trees, not just the
+# test files — packages/offering-rendering (shared RSVP/social-proof bodies),
+# app-mobile app/ + src/ (OneLink resolver/dispatcher, cold-seed service,
+# guest-list sheet), mingla-business app/ + src/ (see-who's-going gate, funnel
+# link builder, store-links SSOT), mingla-marketing/lib (the store-links SSOT
+# byte-compare source), and supabase/migrations (the 1338/1339 SQL contracts).
+#
+# Pinning (COMMS-0087 lesson, binding): every tool is version-pinned —
+# denoland/setup-deno@v1 pinned to deno 1.46.x (the repo-wide idiom), node 20,
+# and jest resolved via `npm ci` from mingla-business/package-lock.json. No
+# @latest, no unpinned installs.
+
+on:
+  push:
+    branches: [Seth, main]
+    paths:
+      - "packages/offering-rendering/**"
+      - "app-mobile/app/**"
+      - "app-mobile/src/**"
+      - "mingla-business/app/**"
+      - "mingla-business/src/**"
+      - "mingla-marketing/lib/**"
+      - "supabase/migrations/**"
+      - ".github/workflows/meta-orch-1337-social-proof-tests.yml"
+  pull_request:
+    paths:
+      - "packages/offering-rendering/**"
+      - "app-mobile/app/**"
+      - "app-mobile/src/**"
+      - "mingla-business/app/**"
+      - "mingla-business/src/**"
+      - "mingla-marketing/lib/**"
+      - "supabase/migrations/**"
+      - ".github/workflows/meta-orch-1337-social-proof-tests.yml"
+
+jobs:
+  meta-1337-deno-suites:
+    name: "META-ORCH-1337: Deno suites — social-proof types/reads, momentum cross-entity, guest identity privacy, guest-privacy RPC, guest-list sheet, OneLink guest funnel (1338/1339/1340/1341/1342 + rewritten 1157)"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: denoland/setup-deno@v1
+        with:
+          deno-version: "1.46.x"
+      - name: Run META-ORCH-1337 Deno suites
+        env:
+          # Inert defaults — these suites are source-contract tests (they read
+          # SQL migration files + TS/TSX sources and assert structure); none
+          # reaches a real Supabase instance. The defaults keep any env-var
+          # presence guard in imported shared modules from throwing.
+          SUPABASE_URL: "https://example-test.supabase.co"
+          SUPABASE_SERVICE_ROLE_KEY: "test-service-role-key-not-real"
+        run: |
+          set -euo pipefail
+          # EXPLICIT registry — verified GREEN on META-ORCH-1337-social-proof-guest-list
+          # at registration (164 tests). Add new suites by appending a line; never glob.
+          DENO_TEST_FILES=(
+            # ORCH-1338 — SocialProofSummary / PeerGuestListPage typed contracts.
+            packages/offering-rendering/__tests__/orch_1338_social_proof_types.test.ts
+            # ORCH-1339 — momentum cross-entity (event/experience/trip) + tester adversarial.
+            packages/offering-rendering/__tests__/orch_1339_momentum_cross_entity.test.ts
+            packages/offering-rendering/__tests__/orch_1339_momentum_adversarial.test.ts
+            # ORCH-1340 — guest identity privacy (card-real-avatars) + tester adversarial.
+            packages/offering-rendering/__tests__/orch_1340_guest_identity_privacy.test.ts
+            packages/offering-rendering/__tests__/orch_1340_guest_identity_privacy_adversarial.test.ts
+            # ORCH-1157 — RSVP momentum, REWRITTEN for the cross-entity social-proof
+            # direction under [TEST-MOD-APPROVED ORCH-1340] (supersedes the 1157 anon
+            # invariant) + its adversarial sibling.
+            packages/offering-rendering/__tests__/orch_1157_rsvp_momentum.test.ts
+            packages/offering-rendering/__tests__/orch_1157_rsvp_momentum_adversarial.test.ts
+            # ORCH-1338 — SQL contract: social-proof read fns (SECURITY DEFINER posture,
+            # guard order, grants) + tester anti-scrape adversarial.
+            supabase/migrations/__tests__/orch_1338_social_proof_reads.test.ts
+            supabase/migrations/__tests__/orch_1338_social_proof_reads.antiScrape.adversarial.test.ts
+            # ORCH-1339 — SQL contract: set_event_guest_privacy RPC (host gate, leaf-write
+            # only, grants).
+            supabase/migrations/__tests__/orch_1339_set_event_guest_privacy.test.ts
+            # ORCH-1341 — consumer guest-list sheet (pinned header, no raw RN Modal) +
+            # tester adversarial.
+            app-mobile/src/components/__tests__/orch_1341_guest_list_sheet.test.ts
+            app-mobile/src/components/__tests__/orch_1341_guest_list_sheet_adversarial.test.ts
+            # ORCH-1342 — OneLink guest-funnel app side: cold /e/ seed landing, single
+            # resolver parse, public event seed mapping.
+            app-mobile/src/screens/Event/__tests__/orch_1342_cold_seed_landing.test.ts
+            app-mobile/src/services/__tests__/oneLinkResolver.orch1342.test.ts
+            app-mobile/src/services/__tests__/publicEventSeedService.orch1342.test.ts
+          )
+          for attempt in 1 2 3; do
+            if deno test --allow-env --allow-net --allow-read --no-check "${DENO_TEST_FILES[@]}"; then
+              exit 0
+            fi
+            if [ "$attempt" -eq 3 ]; then
+              echo "META-ORCH-1337 Deno suites failed after 3 attempts (esm.sh flake?)"
+              exit 1
+            fi
+            echo "META-ORCH-1337 Deno suites failed (attempt ${attempt}), retrying in 10s..."
+            sleep 10
+          done
+
+  meta-1337-business-jest-suites:
+    name: "META-ORCH-1337: mingla-business jest suites — 1339 trip/experience guest privacy + 1342 see-who's-going gate, guest funnel link, download-CTA store-links SSOT"
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: mingla-business
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: mingla-business/package-lock.json
+      - run: npm ci
+      # EXPLICIT registry — verified GREEN on META-ORCH-1337-social-proof-guest-list
+      # at registration (63 tests). Add new suites by appending a path; never glob.
+      - name: Run META-ORCH-1337 mingla-business jest suites
+        run: >
+          npx jest
+          src/components/trip/__tests__/orch_1339_trip_guest_privacy.test.ts
+          src/components/experience/__tests__/orch_1339_experience_guest_privacy.test.ts
+          src/components/checkout/__tests__/orch_1342_download_cta_ssot.test.ts
+          src/components/event/__tests__/orch_1342_see_whos_going_gate.test.tsx
+          src/services/__tests__/orch_1342_guest_funnel_link.test.ts
+          --runInBand

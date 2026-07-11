@@ -14,6 +14,7 @@
  *                     `referral`; a `mingla://` path for `internal`)
  *   deep_link_sub2  = secondary slug (eventSlug/tripSlug/experienceSlug)
  *   af_sub1         = optional referral_code carried alongside ANY entity link
+ *   deep_link_sub3  = optional landing discriminator ('guest-list') — ORCH-1342
  *
  * PURE by contract: no imports, no RN deps, never throws, never navigates,
  * returns `null` on unknown / half-formed input — mirroring
@@ -29,6 +30,17 @@ export type OneLinkDestination =
       brandSlug: string;
       entitySlug: string;
       referralCode?: string;
+      /**
+       * ORCH-1342 [web-see-whos-going-funnel] — optional landing discriminator
+       * (`deep_link_sub3`). Present ONLY on the exact lowercase token
+       * 'guest-list'; any other value is OMITTED so the entity link still
+       * resolves and navigates normally (graceful degrade — a bad landing must
+       * never kill the link). The `brand` variant does NOT carry it (a guest
+       * list is event-scoped). Parsed HERE and ONLY here
+       * (I-PROPOSED-1342-LANDING-SINGLE-PARSE; I-ONELINK-SINGLE-RESOLVER —
+       * extended IN PLACE, no second parser anywhere).
+       */
+      landing?: 'guest-list';
     }
   | { kind: 'internal'; url: string } // a mingla:// path → deepLinkService
   | { kind: 'referral'; referralCode: string }
@@ -68,9 +80,20 @@ export function resolveOneLinkDestination(data: Record<string, any>): OneLinkDes
         // (SPEC §B.5.1 — never push `/e/brand/undefined`).
         if (!sub1 || !sub2) return null;
         const entity = rawType as 'event' | 'trip' | 'experience';
-        return referralCode
+        const dest: Exclude<
+          Extract<OneLinkDestination, { kind: 'entity' }>,
+          { entity: 'brand' }
+        > = referralCode
           ? { kind: 'entity', entity, brandSlug: sub1, entitySlug: sub2, referralCode }
           : { kind: 'entity', entity, brandSlug: sub1, entitySlug: sub2 };
+        // ORCH-1342 — landing discriminator (SPEC §4.5). Conditional inclusion
+        // mirrors referralCode above: the key is added ONLY on the exact
+        // lowercase token, so every pre-1342 payload produces a byte-identical
+        // destination (the ORCH-1318 suite stays green unmodified). Absent /
+        // garbage / future tokens → field omitted, destination unchanged.
+        const landing = str(data.deep_link_sub3);
+        if (landing === 'guest-list') dest.landing = 'guest-list';
+        return dest;
       }
 
       case 'referral':

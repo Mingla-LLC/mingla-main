@@ -48,6 +48,22 @@ export const circleKeys = {
     [...circleKeys.forUser(viewerUserId), { limit, offset }] as const,
 };
 
+// ORCH-1339 — cross-entity social proof (pg_public_social_proof payload).
+// One key per event id; the three consumer detail screens read it (staleTime
+// refresh only — no client mutation invalidates it in this leg).
+export const socialProofKeys = {
+  all: ['socialProof'] as const,
+  summary: (eventId: string) => [...socialProofKeys.all, eventId] as const,
+};
+
+// ORCH-1341 — consumer guest-list sheet (peer_list_event_guests payload).
+// One key per event id; useEventGuestList is the sole reader and pins
+// staleTime 0 + gcTime 0 (fresh fetch on every sheet open — DESIGN §2.6).
+export const guestListKeys = {
+  all: ['eventGuestList'] as const,
+  list: (eventId: string) => [...guestListKeys.all, eventId] as const,
+};
+
 export const personCardKeys = {
   all: ['personCards'] as const,
   hero: (pairedUserId: string, holidayKey: string) =>

@@ -30,8 +30,13 @@ import {
 import { useAuth } from "../../context/AuthContext";
 import { useCurrentBrand } from "../../hooks/useCurrentBrand";
 import { useExperienceVenueDefault } from "../../hooks/useExperienceVenueDefault";
-import { useExperienceDraftAdapter } from "../../hooks/useExperienceDraftAdapter";
+import {
+  useExperienceDraftAdapter,
+  type ExperienceGuestPrivacyState,
+} from "../../hooks/useExperienceDraftAdapter";
 import { supabase } from "../../services/supabase";
+// ORCH-1339 — guest-privacy leaf-write RPC (never the big experience RPCs).
+import { setEventGuestPrivacy } from "../../services/businessEvents";
 // META-ORCH-1187 [Growth Analytics Hub] — offering-published conversion (SC-6).
 import { postHogService } from "../../services/postHogService";
 import { Button } from "../ui/Button";
@@ -269,8 +274,56 @@ export const ExperienceCreatorWizard: React.FC<ExperienceCreatorWizardProps> = (
   const draftCreateInFlight = useRef(false);
   const [cover, setCover] = useState<CoverPatch>(initialCover ?? EMPTY_COVER);
 
+  // ORCH-1339 (D5) — the two guest-privacy display gates (wizard-owned state;
+  // Pricing-step accordion is their single home for create AND edit).
+  const [guestPrivacy, setGuestPrivacy] = useState<ExperienceGuestPrivacyState>({
+    privateGuestList: false,
+    hideRemainingCount: false,
+  });
+  // ORCH-1339 — edit-mode hydration. SPEC §4.5-D routes hydration through the
+  // experience mappers, but the edit route's initialDraft is built from
+  // experienceDetailService (outside this leg's allowlist), so the wizard
+  // self-hydrates the two theme leaves with ONE owner-scoped read (the same
+  // events.theme path the RPCs read; RLS: brand members read their own rows).
+  // Create mode keeps the false defaults.
+  useEffect(() => {
+    if (existingExperienceId === undefined || existingExperienceId.length === 0) {
+      return;
+    }
+    let cancelled = false;
+    void (async (): Promise<void> => {
+      const { data, error } = await supabase
+        .from("events")
+        .select("theme")
+        .eq("id", existingExperienceId)
+        .maybeSingle();
+      if (cancelled || error !== null || data === null) return;
+      const theme = data.theme as Record<string, unknown> | null;
+      const be = theme?.business_event;
+      const beObj =
+        be !== null && typeof be === "object" ? (be as Record<string, unknown>) : {};
+      const settings = beObj.settings;
+      const s =
+        settings !== null && typeof settings === "object"
+          ? (settings as Record<string, unknown>)
+          : {};
+      setGuestPrivacy({
+        privateGuestList: s.privateGuestList === true,
+        hideRemainingCount: s.hideRemainingCount === true,
+      });
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [existingExperienceId]);
+
   // When-step adapter (feeds the lifted CreatorStep2When). Edit-mode seeds it.
-  const whenAdapter = useExperienceDraftAdapter(brandId, initialDraft?.when);
+  // ORCH-1339 — the synthetic draft carries the wizard's guest-privacy state.
+  const whenAdapter = useExperienceDraftAdapter(
+    brandId,
+    initialDraft?.when,
+    guestPrivacy,
+  );
 
   // Seed stop 1 from the brand venue default (design §2.7): name/address text
   // only; placeId stays null so the brand must confirm a real Mapbox pick.
@@ -570,6 +623,17 @@ export const ExperienceCreatorWizard: React.FC<ExperienceCreatorWizardProps> = (
         }
         const result = data as { event?: { id?: string } } | null;
         const savedId = result?.event?.id ?? targetId;
+        // ORCH-1339 — persist the guest-privacy toggles via the leaf-write RPC
+        // (NEVER inside biz_publish_experience's payload — COMMS-0029 class).
+        // NON-BLOCKING: display prefs never block publish/save (SPEC §4.7).
+        try {
+          await setEventGuestPrivacy(savedId, {
+            privateGuestList: guestPrivacy.privateGuestList,
+            hideRemainingCount: guestPrivacy.hideRemainingCount,
+          });
+        } catch {
+          setToast("Couldn't save guest privacy — check Settings after publishing.");
+        }
         // META-ORCH-1187 — offering-published conversion (SC-6). Only on a real
         // PUBLISH (not a draft save), mirroring biz_publish_experience semantics.
         if (publish) {
@@ -592,6 +656,7 @@ export const ExperienceCreatorWizard: React.FC<ExperienceCreatorWizardProps> = (
       buildPayload,
       ensureDraft,
       experienceNeedsStripe,
+      guestPrivacy,
       handlePaidPublishGuard,
       intents,
       onComplete,
@@ -701,6 +766,16 @@ export const ExperienceCreatorWizard: React.FC<ExperienceCreatorWizardProps> = (
         return;
       }
       const savedId = result?.event?.id ?? liveExperience.id;
+      // ORCH-1339 — persist the guest-privacy toggles via the leaf-write RPC
+      // AFTER the gated live save succeeds. NON-BLOCKING (display prefs).
+      try {
+        await setEventGuestPrivacy(savedId, {
+          privateGuestList: guestPrivacy.privateGuestList,
+          hideRemainingCount: guestPrivacy.hideRemainingCount,
+        });
+      } catch {
+        setToast("Couldn't save guest privacy — check Settings after publishing.");
+      }
       onComplete(savedId);
     } catch (e) {
       setToast(e instanceof Error ? e.message : "Couldn't save experience. Tap to retry.");
@@ -711,6 +786,7 @@ export const ExperienceCreatorWizard: React.FC<ExperienceCreatorWizardProps> = (
     brand,
     buildPayload,
     capacity,
+    guestPrivacy,
     handlePaidPublishGuard,
     intents,
     isFree,
@@ -877,6 +953,15 @@ export const ExperienceCreatorWizard: React.FC<ExperienceCreatorWizardProps> = (
             setUnlimited={setUnlimited}
             pricingSwitches={pricingSwitches}
             setPricingSwitches={setPricingSwitches}
+            // ORCH-1339 (D5) — guest-privacy accordion (single home, create+edit).
+            privateGuestList={guestPrivacy.privateGuestList}
+            setPrivateGuestList={(v: boolean) =>
+              setGuestPrivacy((prev) => ({ ...prev, privateGuestList: v }))
+            }
+            hideRemainingCount={guestPrivacy.hideRemainingCount}
+            setHideRemainingCount={(v: boolean) =>
+              setGuestPrivacy((prev) => ({ ...prev, hideRemainingCount: v }))
+            }
             brandDefaults={{
               passTax: brand.defaultPassTax ?? false,
               passMinglaFee: brand.defaultPassMinglaFee ?? false,

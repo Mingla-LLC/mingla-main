@@ -71,6 +71,8 @@ import { Calendar, Globe, MapPin, Minus, Plus } from "./LucideIcons";
 // ORCH-1292 — resolve party/vibe/music slugs to canonical labels at the pills row.
 import { taxonomyLabel } from "./taxonomyLabels";
 import { resolveRsvpCta, type RsvpCtaState } from "./offeringCta";
+// ORCH-1340 — the 1338 frozen avatar-sample entry type (avatarUrl only, no names).
+import { type SocialProofSampleEntry } from "./socialProofTypes";
 import { type PublicBrandProps, type PublicEventProps } from "./types";
 import { type ResolvedTheme } from "./designTokens";
 import { normalizeCityCountry } from "./normalizeCityCountry";
@@ -109,6 +111,20 @@ export interface RsvpOfferingConfig {
   settlementCurrency?: string;
   /** Brand display name for the "Chip in for {host}" copy (fallback "the host"). */
   hostShortName?: string;
+  // ORCH-1339 [momentum-card-cross-entity] — the two D2 display gates
+  // (SERVER-authoritative; both default-absent = false so existing surfaces are
+  // unaffected until they thread the payload values).
+  /** Suppress the whole guest cluster block (disks + see-who's-going) (D2). */
+  privateGuestList?: boolean;
+  /** Hide scarcity: null DISPLAY capacity → "Open invite" + fixed low meter (D2). */
+  hideRemainingCount?: boolean;
+  // ORCH-1340 [card-real-avatars] — the avatar sample + affordance seam.
+  /** Server-filtered avatar sample (1338 frozen shape — no names can ride it).
+   * Photos fill the leading cluster disks; absent/[] keeps the glyph cluster. */
+  guestSample?: ReadonlyArray<SocialProofSampleEntry>;
+  /** Present ⇒ the momentum cluster gains its "See who's going" affordance
+   * (ORCH-1341/1342 wire handlers). Absent ⇒ inert cluster, no dead tap. */
+  onSeeWhosGoing?: () => void;
 }
 
 // ORCH-1291 — the payment hand-off contract (DESIGN §1.3). The body is
@@ -1008,6 +1024,13 @@ const DecisionUnit: React.FC<{
       onPlusChange={() => undefined}
       // The body owns the per-guest mini-forms; hide the bare-integer stepper.
       hideStepper
+      // ORCH-1339 (D2) — forward the two server-authoritative display gates.
+      privateGuestList={config.privateGuestList ?? false}
+      hideRemainingCount={config.hideRemainingCount ?? false}
+      // ORCH-1340 — the avatar sample + the see-who's-going affordance seam
+      // (the floating-bar mount keeps showMomentum=false, so no cluster there).
+      guestSample={config.guestSample ?? []}
+      onSeeWhosGoing={config.onSeeWhosGoing}
       waitlistEnabled={config.waitlistEnabled}
       submitting={state.submitting}
       contactReady={contactReadyOverride ?? state.contactReady}

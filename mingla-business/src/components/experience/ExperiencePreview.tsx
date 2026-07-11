@@ -58,6 +58,7 @@ import {
   ExperienceOfferingBody,
   experiencePriceLabel,
   useResponsiveLayout,
+  type SocialProofSummary,
 } from "@mingla/offering-rendering";
 import { EventCoverMedia } from "../ui/EventCoverMedia";
 import { Icon } from "../ui/Icon";
@@ -106,6 +107,19 @@ export interface ExperiencePreviewProps {
   contentBottomInset?: number;
   /** Native safe-area top inset for the chrome. */
   safeAreaTop?: number;
+  /**
+   * ORCH-1339 — passthrough of the pg_public_social_proof payload (route-
+   * fetched) into the shared body's momentum unit. FOUNDATION mode only;
+   * null/absent → no unit (wizard previews pass nothing — honest zero-state).
+   */
+  socialProof?: SocialProofSummary | null;
+  /**
+   * ORCH-1342 — passthrough of the "See who's going" tap into the shared
+   * body's momentum cluster (mirrors the socialProof passthrough; FOUNDATION
+   * mode only). The route wires it WEB-ONLY; absent ⇒ inert cluster
+   * (DESIGN §1.5, no dead tap).
+   */
+  onSeeWhosGoing?: () => void;
   /** The DOCKED Reserve CTA — LAST child of the PHONE body (route-owned). */
   dockedReserve?: React.ReactNode;
   /** Scroll-awareness passthrough so the route hides its floating pill. */
@@ -188,6 +202,8 @@ export const ExperiencePreview: React.FC<ExperiencePreviewProps> = ({
   onViewBrand,
   contentBottomInset = 0,
   safeAreaTop = 0,
+  socialProof = null,
+  onSeeWhosGoing,
   dockedReserve,
   onScroll,
   onScrollViewLayout,
@@ -216,6 +232,8 @@ export const ExperiencePreview: React.FC<ExperiencePreviewProps> = ({
         onViewBrand={onViewBrand}
         contentBottomInset={contentBottomInset}
         safeAreaTop={safeAreaTop}
+        socialProof={socialProof}
+        onSeeWhosGoing={onSeeWhosGoing}
         dockedReserve={dockedReserve}
         onScroll={onScroll}
         onScrollViewLayout={onScrollViewLayout}
@@ -254,6 +272,10 @@ const FoundationExperiencePreview: React.FC<{
   onViewBrand?: () => void;
   contentBottomInset: number;
   safeAreaTop: number;
+  /** ORCH-1339 — route-fetched social proof for the shared body's momentum unit. */
+  socialProof?: SocialProofSummary | null;
+  /** ORCH-1342 — web-only "See who's going" tap (absent ⇒ inert cluster). */
+  onSeeWhosGoing?: () => void;
   dockedReserve?: React.ReactNode;
   onScroll?: ParallaxScrollHandler;
   onScrollViewLayout?: ParallaxLayoutHandler;
@@ -273,6 +295,8 @@ const FoundationExperiencePreview: React.FC<{
   onViewBrand,
   contentBottomInset,
   safeAreaTop,
+  socialProof = null,
+  onSeeWhosGoing,
   dockedReserve,
   onScroll,
   onScrollViewLayout,
@@ -389,6 +413,10 @@ const FoundationExperiencePreview: React.FC<{
         availabilityBlock={availabilityBlock}
         stateBanner={stateBanner}
         dockedReserve={!isDesktop ? dockedReserve : undefined}
+        // ORCH-1339 — cross-entity social proof (route-fetched, props-only).
+        socialProof={socialProof}
+        // ORCH-1342 — web-only "See who's going" → install gate (route-wired).
+        onSeeWhosGoing={onSeeWhosGoing}
         testID="orch-1183-experience-body"
       />
     </ParallaxCoverShell>

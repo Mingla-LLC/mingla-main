@@ -357,3 +357,59 @@ export function executeDeepLink(
     }
   }
 }
+
+// ── In-app open-DM sink (ORCH-1341 P1-2 REWORK, META-ORCH-1337) ──────────────
+//
+// Deeply-nested components (the guest-list sheet's Message default) must open
+// a DM WITHOUT `Linking.openURL`: `mingla://` is NOT a registered URL scheme
+// (app.json `scheme` is `com.mingla.app.v2`, so iOS rejects `mingla://…` with
+// "Unable to open URL"), and `chat` has no expo-router file route (a raw
+// scheme open lands on "Unmatched Route"). The PROVEN in-app idiom for
+// "open a DM with user X" is the Discover-map Message rail
+// (app/index.tsx handleOpenChatWithUserFromDiscover →
+// setPendingOpenDmUserId + setCurrentPage('connections') → ConnectionsPage
+// opens MessageInterface on the same frame and resolves the conversation
+// with a cold-start DB fallback). NOT the conversation-id deep-link params:
+// runtime-proven (this REWORK) that a just-ensured, message-less DM is not
+// yet in ConnectionsPage's conversations state, so the ORCH-1080 effect
+// falls back to the Messages LIST instead of the thread. The shell
+// (app/index.tsx) registers a sink here at mount; callers hand it the peer
+// USER id. Mirrors the ORCH-1318 OneLink sink registration pattern
+// (appsFlyerService `_oneLinkSink`).
+let _openDirectMessageSink: ((userId: string) => void) | null = null;
+
+/**
+ * Register the shell's open-DM sink. Called ONCE from app/index.tsx at mount
+ * with a handler that pops any pushed expo-router file route and rides the
+ * Discover-map Message rail (setPendingOpenDmUserId + page 'connections').
+ */
+export function registerOpenDirectMessageSink(
+  sink: (userId: string) => void,
+): void {
+  _openDirectMessageSink = sink;
+}
+
+/**
+ * True once the shell has registered its open-DM sink. Callers with their own
+ * error surface (e.g. the guest-list sheet's row hint) check this BEFORE
+ * tearing down that surface, so a detached mount never dead-ends silently.
+ */
+export function hasOpenDirectMessageSink(): boolean {
+  return _openDirectMessageSink !== null;
+}
+
+/**
+ * Open the DM thread with `userId` via the shell's registered rail. Returns
+ * false when no sink is registered (Constitution #3 — the caller surfaces the
+ * failure on its own error surface).
+ */
+export function openDirectMessageInApp(userId: string): boolean {
+  if (_openDirectMessageSink === null) {
+    console.warn(
+      '[deepLinkService] openDirectMessageInApp dropped — no open-DM sink registered',
+    );
+    return false;
+  }
+  _openDirectMessageSink(userId);
+  return true;
+}

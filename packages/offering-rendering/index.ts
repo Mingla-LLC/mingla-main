@@ -69,6 +69,36 @@ export {
 } from "./rsvpMomentum";
 export type { RsvpMomentumModel } from "./rsvpMomentum";
 
+// ORCH-1338 [guest-read-backend] — THE ONE shared social-proof payload contract
+// (types + the sample-size constant; dep-free, no fetch — I-MOR-0827). Shapes are
+// camelCase-identical to the pg_public_social_proof / peer_list_event_guests RPC
+// payloads; consumed as PROPS by ORCH-1339 (card), 1340 (avatars), 1341 (sheet).
+export { SOCIAL_PROOF_SAMPLE_MAX } from "./socialProofTypes";
+export type {
+  SocialProofEntityType,
+  SocialProofSampleEntry,
+  SocialProofSummary,
+  PeerGuestRow,
+  PeerGuestListPage,
+} from "./socialProofTypes";
+
+// ORCH-1339 [momentum-card-cross-entity] — the shared glyph-only cross-entity
+// momentum unit (event/trip/experience) + its dep-free honest derivation.
+// Props-only (the surfaces fetch pg_public_social_proof and pass the payload);
+// gates are SERVER-authoritative (D2); cluster is GLYPH-only until ORCH-1340.
+export { OfferingMomentum } from "./OfferingMomentum";
+export type { OfferingMomentumProps } from "./OfferingMomentum";
+export { deriveSocialProofMomentum } from "./socialProofMomentum";
+export type { SocialProofMomentumModel } from "./socialProofMomentum";
+
+// ORCH-1340 [card-real-avatars] — THE ONE disk system (photo|glyph|+N|see-row)
+// rendered by BOTH momentum cards. Photos come ONLY from the server-filtered
+// avatar sample (the payload IS the privacy boundary — no name can reach it);
+// the glyph disk is the honest loading/fallback/anonymous state
+// (I-PROPOSED-1340-GUEST-IDENTITY-PRIVACY-GATED).
+export { GuestAvatarCluster } from "./GuestAvatarCluster";
+export type { GuestAvatarClusterProps } from "./GuestAvatarCluster";
+
 // ORCH-1292 [public-page-tag-slug-labels] — the in-package canonical taxonomy
 // label resolver. Turns party/vibe/music SLUGS into their display LABELS at the
 // shared pill/chip render sites (EventOfferingBody / RsvpOfferingBody /

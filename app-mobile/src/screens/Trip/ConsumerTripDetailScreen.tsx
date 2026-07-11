@@ -51,6 +51,7 @@ import React, {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactElement,
 } from "react";
@@ -123,19 +124,24 @@ import {
 // experiences detail+checkout sheet, mounted from ExpandedCardModal +
 // MessageInterface. The trip screen now owns the same cart + native-checkout
 // wiring EBES held, scoped to the trip.
+// ORCH-1341 [guest-list-sheet-consumer] — the "Who's going" roster sheet, the
+// destination of the ORCH-1340 onSeeWhosGoing affordance on the trip body.
+import EventGuestListSheet from "../../components/EventGuestListSheet";
 import TicketCartSheet, {
   type TicketCartCheckoutPayload,
 } from "../../components/expandedCard/TicketCartSheet";
 import { usePublicEventTickets } from "../../hooks/usePublicEventTickets";
 import { useTripIntakeSchemas } from "../../hooks/useTripIntakeSchemas";
-import { circleKeys } from "../../hooks/queryKeys";
+import { circleKeys, socialProofKeys } from "../../hooks/queryKeys";
+// ORCH-1339 — cross-entity social proof (pg_public_social_proof, ORCH-1338).
+import { fetchSocialProof } from "../../services/socialProofService";
 import { useAppStore } from "../../store/appStore";
 import {
   type NativeCheckoutOutcome,
   useNativeCheckoutFlow,
 } from "../../payments/nativeCheckoutFlow";
 import { toastManager } from "../../components/ui/Toast";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import * as Haptics from "expo-haptics";
 import { glass } from "../../constants/designSystem";
 import { hueFromId } from "../../utils/hueFromId";
@@ -157,6 +163,12 @@ interface ConsumerTripDetailScreenProps {
   brandSlug: string;
   tripSlug: string;
   seed?: DiscoverTripRow | null;
+  /**
+   * ORCH-1342 (SPEC §4.8) — the OneLink deferred-funnel landing. Exactly
+   * 'guest-list' (route-validated) auto-opens the ORCH-1341 guest-list sheet
+   * ONCE after the page settles, iff the guest list is public and non-empty.
+   */
+  landing?: "guest-list";
   onBack: () => void;
   /**
    * ORCH-1016 REWORK — true when the detail is presented from the in-app
@@ -260,6 +272,7 @@ export default function ConsumerTripDetailScreen({
   brandSlug,
   tripSlug,
   seed = null,
+  landing,
   onBack,
   tabBarAware = true,
   accountPreferences,
@@ -285,6 +298,15 @@ export default function ConsumerTripDetailScreen({
   const tripId = detail !== null ? detail.tripId : null;
   const ticketsQuery = usePublicEventTickets(tripId);
   const intakeSchemasQuery = useTripIntakeSchemas(tripId);
+  // ORCH-1339 — cross-entity social proof, keyed by the trip's event id
+  // (eventId === tripId). Error/missing → data stays undefined → the momentum
+  // unit is omitted and the page renders exactly as today.
+  const socialProofQuery = useQuery({
+    queryKey: socialProofKeys.summary(tripId ?? ""),
+    enabled: tripId !== null,
+    staleTime: 60 * 1000,
+    queryFn: () => fetchSocialProof(tripId as string),
+  });
   const runNativeCheckout = useNativeCheckoutFlow();
   const queryClient = useQueryClient();
   const user = useAppStore((s) => s.user);
@@ -387,6 +409,49 @@ export default function ConsumerTripDetailScreen({
   // video). Default muted (the immersive auto-play default).
   const [muted, setMuted] = useState<boolean>(true);
   const toggleMute = useCallback(() => setMuted((m) => !m), []);
+
+  // ORCH-1341 — "Who's going" guest-list sheet visibility (declared before the
+  // loading/error early returns per the Rules of Hooks).
+  const [guestSheetVisible, setGuestSheetVisible] = useState<boolean>(false);
+  const handleSeeWhosGoing = useCallback(
+    (): void => setGuestSheetVisible(true),
+    [],
+  );
+  const handleGuestSheetClose = useCallback(
+    (): void => setGuestSheetVisible(false),
+    [],
+  );
+
+  // ORCH-1342 (SPEC §4.8) — landing auto-open: same one-shot contract as
+  // ConsumerEventDetailScreen, against THIS screen's data sources (detail +
+  // socialProof). Fires the SAME handler the card's onSeeWhosGoing invokes;
+  // opens ONLY under the affordance conditions (D9/D2 — settled socialProof,
+  // privateGuestList false, goingCount > 0; T-A4/T-A5); the ref flips on ANY
+  // terminal outcome so the sheet never pops later on a refetch.
+  const landingHandledRef = useRef<boolean>(false);
+  useEffect(() => {
+    if (landing !== "guest-list" || landingHandledRef.current) return;
+    if (detail === null) return; // wait for the by-slug detail to resolve
+    const settled = socialProofQuery.isSuccess || socialProofQuery.isError;
+    if (!settled) return;
+    landingHandledRef.current = true; // terminal — one-shot, refetch-proof
+    const sp = socialProofQuery.data ?? null;
+    if (
+      socialProofQuery.isSuccess &&
+      sp !== null &&
+      sp.privateGuestList === false &&
+      sp.goingCount > 0
+    ) {
+      handleSeeWhosGoing();
+    }
+  }, [
+    landing,
+    detail,
+    socialProofQuery.isSuccess,
+    socialProofQuery.isError,
+    socialProofQuery.data,
+    handleSeeWhosGoing,
+  ]);
 
   // ORCH-1138 device-rework #3 — float→dock Reserve CTA visibility tracking. These
   // hooks MUST be declared BEFORE any early return (loading/error/not-found) per
@@ -956,6 +1021,16 @@ export default function ConsumerTripDetailScreen({
               onChangePlanChoice={handleChangePlanChoice}
               dockedReserve={dockedReserve}
               reduceMotion={reduceMotion}
+              // ORCH-1339 — cross-entity social proof (server-gated payload).
+              socialProof={socialProofQuery.data ?? null}
+              // ORCH-1341 — cluster/link tap opens the guest-list sheet
+              // (double-gated per SPEC §4.6; absent ⇒ inert, no dead tap).
+              onSeeWhosGoing={
+                socialProofQuery.data?.privateGuestList !== true &&
+                (socialProofQuery.data?.goingCount ?? 0) > 0
+                  ? handleSeeWhosGoing
+                  : undefined
+              }
               testID="meta-orch-1174-consumer-trip-body"
             />
           </View>
@@ -1024,6 +1099,17 @@ export default function ConsumerTripDetailScreen({
         installmentNoteByTicketId={installmentNoteByTicketId}
         onCancel={handleCartCancel}
         onCheckout={handleCartCheckout}
+      />
+
+      {/* ORCH-1341 — the "Who's going" guest-list sheet. Sibling root in the
+          same fragment; wrapInRNModal z-stacks it above this INLINE detail
+          sheet + the floating reserve pill (the ONLY RN-Modal window in this
+          context — SPEC §2). Mounted UNCONDITIONALLY with `visible` driving it. */}
+      <EventGuestListSheet
+        visible={guestSheetVisible}
+        onClose={handleGuestSheetClose}
+        eventId={detail.tripId}
+        goingCount={socialProofQuery.data?.goingCount ?? 0}
       />
     </>,
   );

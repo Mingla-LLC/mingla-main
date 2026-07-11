@@ -2,6 +2,11 @@ import React, { useMemo } from "react";
 import { Linking, Platform, Pressable, StyleSheet, Text, View } from "react-native";
 
 import { accent, glass, radius, spacing, text as textTokens } from "../../constants/designSystem";
+// ORCH-1342 (F-12) — store URLs come from the drift-gated SSOT. The prior
+// local `apps.apple.com/app/mingla` literal was a DEAD App Store link (the
+// live listing is id6760440898); the strict-grep SSOT gate now bans any store
+// literal outside src/constants/storeLinks.ts.
+import { APP_STORE_URL, PLAY_STORE_URL } from "../../constants/storeLinks";
 import { Icon } from "../ui/Icon";
 
 interface DownloadMinglaCtaProps {
@@ -9,9 +14,6 @@ interface DownloadMinglaCtaProps {
   eventName: string;
   eventType: "event" | "trip";
 }
-
-const APP_STORE_URL = "https://apps.apple.com/app/mingla";
-const PLAY_STORE_URL = "https://play.google.com/store/apps/details?id=com.mingla.app.v2";
 
 export const DownloadMinglaCta: React.FC<DownloadMinglaCtaProps> = ({
   orderId,

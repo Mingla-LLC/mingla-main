@@ -60,6 +60,13 @@ export interface ExperiencePricingStepProps {
   onEditDefaults: () => void;
   onSetupVat: () => void;
   showErrors: boolean;
+  // ORCH-1339 (D5) — the two guest-privacy display gates (controlled; the
+  // wizard parent owns state + persists via the setEventGuestPrivacy leaf-write
+  // RPC — NEVER through biz_publish_experience / biz_update_live_experience).
+  privateGuestList: boolean;
+  setPrivateGuestList: (v: boolean) => void;
+  hideRemainingCount: boolean;
+  setHideRemainingCount: (v: boolean) => void;
 }
 
 const num = (s: string): number => {
@@ -90,6 +97,10 @@ export const ExperiencePricingStep: React.FC<ExperiencePricingStepProps> = ({
   onEditDefaults,
   onSetupVat,
   showErrors,
+  privateGuestList,
+  setPrivateGuestList,
+  hideRemainingCount,
+  setHideRemainingCount,
 }) => {
   const n = stops.length;
 
@@ -243,25 +254,56 @@ export const ExperiencePricingStep: React.FC<ExperiencePricingStepProps> = ({
         vatRegistered={vatRegistered}
         onSetupVat={onSetupVat}
       />
+
+      {/* ORCH-1339 (D5) — Guest privacy settings section, appended after the
+          pricing sections. Reuses the file's own ToggleRow (sub-capable).
+          Persisted by the wizard parent via biz_set_event_guest_privacy (leaf
+          write). Copy per SPEC §4.8 — byte-exact. */}
+      <Text style={styles.sectionLabel}>GUEST PRIVACY</Text>
+      <ToggleRow
+        label="Private guest list"
+        sub="Hide who's booked. Guests still see the booked count."
+        value={privateGuestList}
+        onToggle={() => setPrivateGuestList(!privateGuestList)}
+        testID="experience-pricing-private-guestlist"
+      />
+      <ToggleRow
+        label="Hide remaining count"
+        sub={'Don\'t show "X spots left" or how full it is.'}
+        value={hideRemainingCount}
+        onToggle={() => setHideRemainingCount(!hideRemainingCount)}
+        testID="experience-pricing-hide-count"
+      />
     </View>
   );
 };
 
 interface ToggleRowProps {
   label: string;
+  /** ORCH-1339 — optional sub-copy line under the label. */
+  sub?: string;
   value: boolean;
   onToggle: () => void;
+  testID?: string;
 }
 
-const ToggleRow: React.FC<ToggleRowProps> = ({ label, value, onToggle }) => (
+const ToggleRow: React.FC<ToggleRowProps> = ({ label, sub, value, onToggle, testID }) => (
   <Pressable
     onPress={onToggle}
     accessibilityRole="switch"
     accessibilityState={{ checked: value }}
     accessibilityLabel={label}
     style={styles.toggleRow}
+    testID={testID}
   >
-    <Text style={styles.toggleLabel}>{label}</Text>
+    {sub !== undefined ? (
+      <View style={styles.toggleLabelCol}>
+        <Text style={styles.toggleLabel}>{label}</Text>
+        <Text style={styles.toggleSub}>{sub}</Text>
+      </View>
+    ) : (
+      <Text style={styles.toggleLabel}>{label}</Text>
+    )}
     <View style={[styles.toggleTrack, value && styles.toggleTrackOn]}>
       <View style={[styles.toggleThumb, value && styles.toggleThumbOn]} />
     </View>
@@ -350,6 +392,13 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
   },
   toggleLabel: { flex: 1, fontSize: typography.body.fontSize, color: textTokens.primary },
+  // ORCH-1339 — label + sub column for the guest-privacy rows.
+  toggleLabelCol: { flex: 1, marginRight: spacing.sm },
+  toggleSub: {
+    fontSize: typography.caption.fontSize,
+    color: textTokens.tertiary,
+    marginTop: 2,
+  },
   toggleTrack: {
     width: 44,
     height: 26,

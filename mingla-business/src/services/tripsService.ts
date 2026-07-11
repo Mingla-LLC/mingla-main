@@ -212,6 +212,17 @@ export interface Trip {
     passMinglaFee: boolean | null;
     passServiceFee: boolean | null;
   };
+  /**
+   * ORCH-1339 — the two guest-privacy display gates, parsed from
+   * theme.business_event.settings.* with false defaults. Optional like
+   * `pricingSwitches`: `mapTrip` (the authoring read path) always populates it;
+   * public Trip constructions omit it (consumers read `?? false`). Persisted
+   * via `setEventGuestPrivacy` (leaf-write RPC) — NEVER via biz_update_live_trip.
+   */
+  guestPrivacy?: {
+    privateGuestList: boolean;
+    hideRemainingCount: boolean;
+  };
 }
 
 export interface CreateTripDraftInput {
@@ -514,6 +525,27 @@ function readBusinessTrip(
   };
 }
 
+// ORCH-1339 — parse the two guest-privacy display gates from
+// theme.business_event.settings.* (false defaults; the same object path the
+// server RPCs read). Kept as a tiny object-path read so no query widens.
+function readGuestPrivacy(theme: Record<string, unknown> | null): {
+  privateGuestList: boolean;
+  hideRemainingCount: boolean;
+} {
+  const be = theme?.business_event;
+  const beObj =
+    be !== null && typeof be === "object" ? (be as Record<string, unknown>) : {};
+  const settings = beObj.settings;
+  const s =
+    settings !== null && typeof settings === "object"
+      ? (settings as Record<string, unknown>)
+      : {};
+  return {
+    privateGuestList: s.privateGuestList === true,
+    hideRemainingCount: s.hideRemainingCount === true,
+  };
+}
+
 function mapTrip(
   event: EventRow,
   brandSlug: string | null,
@@ -574,6 +606,8 @@ function mapTrip(
       passMinglaFee: event.pass_mingla_fee ?? null,
       passServiceFee: event.pass_service_fee ?? null,
     },
+    // ORCH-1339 — guest-privacy display gates (theme leaf; false defaults).
+    guestPrivacy: readGuestPrivacy(event.theme),
   };
 }
 
