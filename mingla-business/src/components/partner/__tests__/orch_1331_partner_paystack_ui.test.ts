@@ -106,33 +106,48 @@ describe("ORCH-1331 · T-16 — picker extraOptions + NG fork (design §1.4)", (
     );
   });
 
-  it("the earnings scroll body is KAV-hosted via the ORCH-1296 lazy loader with persistTaps", () => {
-    // [TEST-MOD-APPROVED ORCH-1331] CI conformance rework: the ORCH-1296 gate
-    // forbids top-level static react-native-keyboard-controller imports in NEW
-    // files (OTA splash brick — COMMS-0051/0052). The KAV now loads lazily via
-    // useLazyKeyboardAvoidingView; this assertion pins the NEW contract.
+  it("the earnings scroll body rides the canonical SmartScrollView wrapper with persistTaps", () => {
+    // [TEST-MOD-APPROVED ORCH-1331] CI conformance rework 2 (ORCH-0892 +
+    // ORCH-1296): keyboard avoidance is owned by the SANCTIONED SmartScrollView
+    // wrapper (native = KeyboardAwareScrollView inside the ORCH-1296-safelisted
+    // .native file; web = plain RN ScrollView). No bespoke KAV plumbing and no
+    // top-level keyboard-controller import may reappear in this route file.
     expect(earnings).toMatch(
-      /import \{ useLazyKeyboardAvoidingView \} from "[^"]*lazyKeyboardAvoidingView"/,
+      /import \{ ScrollView \} from "[^"]*wrappers\/SmartScrollView"/,
     );
     expect(earnings).not.toMatch(
       /import[^;]*from\s+"react-native-keyboard-controller"/,
+    );
+    expect(earnings).not.toMatch(/\bKeyboardAvoidingView\b/);
+    // ScrollView must NOT also come from react-native (single owner).
+    expect(earnings).not.toMatch(
+      /import \{[^}]*\bScrollView\b[^}]*\} from "react-native"/,
     );
     expect(earnings).toContain('keyboardShouldPersistTaps="handled"');
     expect(earnings).toContain('keyboardDismissMode="on-drag"');
   });
 
-  it("the lazy KAV loader uses the guarded await-import pattern with the RN fallback (ORCH-1296)", () => {
-    const lazy = read("src/components/partner/lazyKeyboardAvoidingView.tsx");
-    expect(lazy).toContain('await import("react-native-keyboard-controller")');
-    expect(lazy).toMatch(/KeyboardAvoidingView as RNKeyboardAvoidingView/);
-    expect(lazy).toContain("LibKav ?? RNKeyboardAvoidingView");
-    // The form consumes the same loader (no static import there either).
-    expect(form).toMatch(
-      /import \{ useLazyKeyboardAvoidingView \} from "\.\/lazyKeyboardAvoidingView"/,
-    );
+  it("the form carries NO keyboard plumbing: no keyboard-controller import, no KAV, plain modal shell (ORCH-0892/1296)", () => {
+    // [TEST-MOD-APPROVED ORCH-1331] CI conformance rework 2: the bespoke lazy
+    // KAV loader is DELETED (ORCH-0892 flags KeyboardAvoidingView-from-
+    // react-native; ORCH-1296 flags the static library import). The modal
+    // shell is a plain View; keyboard handling = host screen SmartScrollView
+    // + the ORCH-1165 keyed Done-bar clearance on the bank list.
+    const fs = require("node:fs");
+    const path = require("node:path");
+    expect(
+      fs.existsSync(
+        path.join(
+          BUSINESS_ROOT,
+          "src/components/partner/lazyKeyboardAvoidingView.tsx",
+        ),
+      ),
+    ).toBe(false);
     expect(form).not.toMatch(
       /import[^;]*from\s+"react-native-keyboard-controller"/,
     );
+    expect(form).not.toMatch(/\bKeyboardAvoidingView\b/);
+    expect(form).toMatch(/<View style=\{styles\.modalRoot\}>/);
   });
 });
 
@@ -173,7 +188,9 @@ describe("ORCH-1331 · PartnerPaystackOnboardForm — design §3 contract", () =
   });
 
   it("bank sheet keeps the ORCH-1165 keyboard hardening (42dp clearance, opaque fill, dedupe)", () => {
-    expect(form).toContain("keyboardVerticalOffset={42}");
+    // [TEST-MOD-APPROVED ORCH-1331] rework 2: the KAV (and its
+    // keyboardVerticalOffset) is gone per ORCH-0892; the keyed 42dp Done-bar
+    // clearance on the list remains the hardening contract.
     expect(form).toContain("paddingBottom: 42");
     expect(form).toContain('"#14110f"');
     expect(form).toMatch(/seen\.has\(b\.code\)/); // dedupe-by-code

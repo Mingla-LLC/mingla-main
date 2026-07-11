@@ -30,11 +30,6 @@ import {
   Text,
   View,
 } from "react-native";
-// ORCH-0892 KAV semantics via the ORCH-1296-conformant LAZY loader:
-// react-native-keyboard-controller is boot-fragile (OTA splash brick —
-// COMMS-0051/0052), so it is resolved with a guarded await import() after
-// mount; RN's own KeyboardAvoidingView is the prop-compatible fallback.
-import { useLazyKeyboardAvoidingView } from "./lazyKeyboardAvoidingView";
 import Animated, {
   Easing,
   useAnimatedStyle,
@@ -129,8 +124,6 @@ export const PartnerPaystackOnboardForm: React.FC<Props> = ({
   const banksQuery = usePartnerPaystackBanks();
   const resolveMutation = useResolvePartnerPaystackAccount();
   const submitMutation = useCreatePartnerPaystackRecipient();
-  // ORCH-1296 — lazy KAV (library on native once loaded; RN fallback until/unless).
-  const KeyboardAvoidingView = useLazyKeyboardAvoidingView();
 
   const [pickerOpen, setPickerOpen] = useState(false);
   // ORCH-1165 DISC-1165-T3 pattern (verbatim from BrandPaystackOnboardView):
@@ -358,11 +351,11 @@ export const PartnerPaystackOnboardForm: React.FC<Props> = ({
         animationType="slide"
         onRequestClose={() => setPickerOpen(false)}
       >
-        <KeyboardAvoidingView
-          style={styles.modalRoot}
-          behavior={Platform.OS === "ios" ? "padding" : undefined}
-          keyboardVerticalOffset={42}
-        >
+        {/* ORCH-0892-B: the modal shell owns NO keyboard logic (no KAV —
+            bespoke keyboard plumbing is gate-blocked). The search input sits
+            at the TOP of the sheet (always visible above the keyboard) and
+            the list keeps the ORCH-1165 keyed 42dp Done-bar clearance. */}
+        <View style={styles.modalRoot}>
           <Pressable
             style={styles.backdrop}
             accessibilityRole="button"
@@ -389,7 +382,7 @@ export const PartnerPaystackOnboardForm: React.FC<Props> = ({
               <ScrollView
                 style={styles.bankList}
                 // Android-only 42dp Done-bar clearance, keyed on keyboard-open
-                // (no permanent gap). iOS clears via the KAV padding behavior.
+                // (no permanent gap).
                 contentContainerStyle={androidKbOpen
                   ? styles.bankListKbPad
                   : undefined}
@@ -415,7 +408,7 @@ export const PartnerPaystackOnboardForm: React.FC<Props> = ({
               </ScrollView>
             )}
           </View>
-        </KeyboardAvoidingView>
+        </View>
       </Modal>
     </GlassCard>
   );

@@ -20,7 +20,6 @@ import {
   Linking,
   Platform,
   Pressable,
-  ScrollView,
   StyleSheet,
   Text,
   View,
@@ -31,10 +30,13 @@ import * as WebBrowser from "expo-web-browser";
 // ORCH-1081 — AsyncStorage for the one-time welcome-to-portfolio toast.
 import AsyncStorage from "@react-native-async-storage/async-storage";
 // ORCH-1331 — the screen gains its first text input (the NG bank form), so the
-// scroll body rides a KAV host; the keyboard-controller library is BOOT-FRAGILE
-// (ORCH-1296 / COMMS-0051/0052 — OTA splash brick), so it loads lazily after
-// mount with RN's own KeyboardAvoidingView as the prop-compatible fallback.
-import { useLazyKeyboardAvoidingView } from "../../src/components/partner/lazyKeyboardAvoidingView";
+// body ScrollView routes through the canonical SmartScrollView wrapper
+// (ORCH-0892-B: native = react-native-keyboard-controller's
+// KeyboardAwareScrollView, bottomOffset=54 incl. the Done-bar clearance;
+// web = plain RN ScrollView). Focused-field keyboard avoidance is owned by
+// the wrapper — no bespoke KAV plumbing, and the boot-fragile library import
+// stays inside the SAFELISTED .native wrapper (ORCH-1296).
+import { ScrollView } from "../../src/wrappers/SmartScrollView";
 // ORCH-1331 — success haptic on Paystack connect (native only).
 import * as Haptics from "expo-haptics";
 
@@ -88,8 +90,6 @@ export default function PartnerEarningsScreen(): React.ReactElement {
   // ORCH-1331 — Paystack rail status + detach (Nigeria).
   const paystackQuery = usePartnerPaystackStatus();
   const disconnectPaystack = useDisconnectPartnerPaystack();
-  // ORCH-1296 — lazy KAV (library on native once loaded; RN fallback until/unless).
-  const KeyboardAvoidingView = useLazyKeyboardAvoidingView();
 
   // Country selection — pre-onboarding. Hydrates from persisted
   // partner_country if set, else null so the user MUST pick explicitly.
@@ -278,112 +278,107 @@ export default function PartnerEarningsScreen(): React.ReactElement {
           via AsyncStorage so it never replays. */}
       <PortfolioWelcomeToast />
 
-      {/* ORCH-1331 — KAV host for the NG bank form's inputs (design §2 row 7);
-          keyboardShouldPersistTaps so the Verify CTA fires on the first tap
-          with the keyboard up; drag dismisses. */}
-      <KeyboardAvoidingView
-        behavior={Platform.OS === "ios" ? "padding" : undefined}
-        keyboardVerticalOffset={0}
-        style={{ flex: 1 }}
+      {/* ORCH-1331 — SmartScrollView body (design §2 row 7): the wrapper's
+          KeyboardAwareScrollView keeps the NG form's account input above the
+          keyboard; keyboardShouldPersistTaps so the Verify CTA fires on the
+          first tap with the keyboard up; drag dismisses. */}
+      <ScrollView
+        contentContainerStyle={styles.scroll}
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="on-drag"
       >
-        <ScrollView
-          contentContainerStyle={styles.scroll}
-          keyboardShouldPersistTaps="handled"
-          keyboardDismissMode="on-drag"
-        >
-          {statusQuery.isLoading ? (
-            <View style={styles.center}>
-              <ActivityIndicator color={accent.warm} />
-            </View>
-          ) : statusQuery.error ? (
-            <GlassCard variant="elevated" radius="md" padding={spacing.lg}>
-              <Text style={styles.cardTitle}>Couldn't load partner status</Text>
-              <Text style={styles.cardBody}>{statusQuery.error.message}</Text>
-              <View style={{ marginTop: spacing.md }}>
-                <Button
-                  variant="secondary"
-                  size="md"
-                  label="Retry"
-                  onPress={() => {
-                    void statusQuery.refetch();
-                  }}
-                />
-              </View>
-            </GlassCard>
-          ) : statusQuery.data?.partner_enabled === false ? (
-            <GlassCard variant="elevated" radius="md" padding={spacing.lg}>
-              <Text style={styles.cardTitle}>Not a Mingla partner yet</Text>
-              <Text style={styles.cardBody}>
-                Mingla partners earn a share of every paid event they help bring
-                in. Want in? Email{" "}
-                <Text
-                  style={styles.link}
-                  onPress={() => Linking.openURL("mailto:partners@usemingla.com")}
-                >
-                  partners@usemingla.com
-                </Text>
-                .
-              </Text>
-            </GlassCard>
-          ) : paystackQuery.isLoading ? (
-            // ORCH-1331 — the paystack status joins the screen-level loading
-            // gate AFTER the partner gate (non-partners never reach it).
-            <View style={styles.center}>
-              <ActivityIndicator color={accent.warm} />
-            </View>
-          ) : paystackQuery.error ? (
-            // ORCH-1331 — joins the same screen-level error branch (design §4.1).
-            <GlassCard variant="elevated" radius="md" padding={spacing.lg}>
-              <Text style={styles.cardTitle}>Couldn't load partner status</Text>
-              <Text style={styles.cardBody}>{paystackQuery.error.message}</Text>
-              <View style={{ marginTop: spacing.md }}>
-                <Button
-                  variant="secondary"
-                  size="md"
-                  label="Retry"
-                  onPress={() => {
-                    void paystackQuery.refetch();
-                  }}
-                />
-              </View>
-            </GlassCard>
-          ) : (
-            <>
-              <StatusBlock
-                status={statusQuery.data?.status ?? "not_connected"}
-                country={statusQuery.data?.country ?? null}
-                externalCurrencies={
-                  statusQuery.data?.external_account_currencies ?? []
-                }
-                onStart={handleStartOnboarding}
-                starting={startOnboarding.isPending}
-                startError={startOnboarding.error?.message ?? null}
-                selectedCountry={selectedCountry}
-                onSelectCountry={handleSelectCountry}
-                countryLocked={countryLocked}
-                reopenPicker={reopenPickerOnReturn}
-                onManage={handleManageStripe}
-                managing={refreshSession.isPending}
-                onDisconnect={handleDisconnectStripe}
-                disconnecting={detachStripe.isPending}
-                paystackConnected={paystackConnected}
-                paystackBankName={paystackQuery.data?.bank_name ?? null}
-                paystackAccountMasked={paystackQuery.data?.account_number_masked ??
-                  null}
-                paystackAccountName={paystackQuery.data?.account_name ?? null}
-                onDisconnectPaystack={handleDisconnectPaystack}
-                disconnectingPaystack={disconnectPaystack.isPending}
-                onNgCancel={handleNgCancel}
-                onNgConnected={handleNgConnected}
+        {statusQuery.isLoading ? (
+          <View style={styles.center}>
+            <ActivityIndicator color={accent.warm} />
+          </View>
+        ) : statusQuery.error ? (
+          <GlassCard variant="elevated" radius="md" padding={spacing.lg}>
+            <Text style={styles.cardTitle}>Couldn't load partner status</Text>
+            <Text style={styles.cardBody}>{statusQuery.error.message}</Text>
+            <View style={{ marginTop: spacing.md }}>
+              <Button
+                variant="secondary"
+                size="md"
+                label="Retry"
+                onPress={() => {
+                  void statusQuery.refetch();
+                }}
               />
-              {/* ORCH-1081 — Ready-to-earn nudge. Visible only when the partner is
-                  connected (status=active) AND has zero partner_brand_links. */}
-              {statusQuery.data?.status === "active" ? <ReadyToEarnNudge /> : null}
-              <PartnerSplitsSection />
-            </>
-          )}
-        </ScrollView>
-      </KeyboardAvoidingView>
+            </View>
+          </GlassCard>
+        ) : statusQuery.data?.partner_enabled === false ? (
+          <GlassCard variant="elevated" radius="md" padding={spacing.lg}>
+            <Text style={styles.cardTitle}>Not a Mingla partner yet</Text>
+            <Text style={styles.cardBody}>
+              Mingla partners earn a share of every paid event they help bring
+              in. Want in? Email{" "}
+              <Text
+                style={styles.link}
+                onPress={() => Linking.openURL("mailto:partners@usemingla.com")}
+              >
+                partners@usemingla.com
+              </Text>
+              .
+            </Text>
+          </GlassCard>
+        ) : paystackQuery.isLoading ? (
+          // ORCH-1331 — the paystack status joins the screen-level loading
+          // gate AFTER the partner gate (non-partners never reach it).
+          <View style={styles.center}>
+            <ActivityIndicator color={accent.warm} />
+          </View>
+        ) : paystackQuery.error ? (
+          // ORCH-1331 — joins the same screen-level error branch (design §4.1).
+          <GlassCard variant="elevated" radius="md" padding={spacing.lg}>
+            <Text style={styles.cardTitle}>Couldn't load partner status</Text>
+            <Text style={styles.cardBody}>{paystackQuery.error.message}</Text>
+            <View style={{ marginTop: spacing.md }}>
+              <Button
+                variant="secondary"
+                size="md"
+                label="Retry"
+                onPress={() => {
+                  void paystackQuery.refetch();
+                }}
+              />
+            </View>
+          </GlassCard>
+        ) : (
+          <>
+            <StatusBlock
+              status={statusQuery.data?.status ?? "not_connected"}
+              country={statusQuery.data?.country ?? null}
+              externalCurrencies={
+                statusQuery.data?.external_account_currencies ?? []
+              }
+              onStart={handleStartOnboarding}
+              starting={startOnboarding.isPending}
+              startError={startOnboarding.error?.message ?? null}
+              selectedCountry={selectedCountry}
+              onSelectCountry={handleSelectCountry}
+              countryLocked={countryLocked}
+              reopenPicker={reopenPickerOnReturn}
+              onManage={handleManageStripe}
+              managing={refreshSession.isPending}
+              onDisconnect={handleDisconnectStripe}
+              disconnecting={detachStripe.isPending}
+              paystackConnected={paystackConnected}
+              paystackBankName={paystackQuery.data?.bank_name ?? null}
+              paystackAccountMasked={paystackQuery.data?.account_number_masked ??
+                null}
+              paystackAccountName={paystackQuery.data?.account_name ?? null}
+              onDisconnectPaystack={handleDisconnectPaystack}
+              disconnectingPaystack={disconnectPaystack.isPending}
+              onNgCancel={handleNgCancel}
+              onNgConnected={handleNgConnected}
+            />
+            {/* ORCH-1081 — Ready-to-earn nudge. Visible only when the partner is
+                connected (status=active) AND has zero partner_brand_links. */}
+            {statusQuery.data?.status === "active" ? <ReadyToEarnNudge /> : null}
+            <PartnerSplitsSection />
+          </>
+        )}
+      </ScrollView>
     </SafeAreaView>
   );
 }
