@@ -3,7 +3,9 @@
  *
  * Visible only to flagged Mingla partners (creator_accounts.partner_enabled
  * = true). Reads partner_brand_links via the usePartnerBrandLinks hook
- * (RLS gates: partner_account_id = auth.uid()) and surfaces:
+ * (RLS gates: partner_account_id = auth.uid()) and surfaces (labels are
+ * provider-neutral — ORCH-1331 added the Paystack payout rail; the internal
+ * "awaiting_stripe" status value is frozen):
  *   - rows in priority order (awaiting_owner → awaiting_stripe → active)
  *   - status chip + subtext per row
  *   - tap-through → /brand/{id} dashboard
@@ -246,7 +248,10 @@ function statusLabel(status: PartnerBrandLinkStatus): string {
     case "awaiting_owner":
       return "Awaiting Owner";
     case "awaiting_stripe":
-      return "Awaiting Stripe";
+      // ORCH-1331 — provider-neutral label (Stripe OR Paystack rail); the
+      // internal status VALUE stays awaiting_stripe (client contract,
+      // I-PROPOSED-1331-LINK-COLUMNS-FROZEN).
+      return "Awaiting payouts";
     case "active":
       return "Active";
     case "cancelled":
@@ -267,7 +272,7 @@ function subTextFor(row: PartnerBrandLinkWithStatus): string {
     case "active":
       return row.first_split_at !== null
         ? `First split ${timeAgo(row.first_split_at)}`
-        : "Stripe connected";
+        : "Payouts connected";
     case "cancelled":
       return "Cancelled";
     default:
