@@ -268,10 +268,13 @@ Deno.test("T-13 all five states render the design's copy", () => {
   // capped tail
   assertStringIncludes(SHEET, "orch-1341-guest-sheet-footer-more");
   assertStringIncludes(SHEET, "and ${moreCount} more");
-  // row variants
+  // row variants — ORCH-1359 [TEST-MOD-APPROVED ORCH-1359] superseded the
+  // named-row `@username` / "On Mingla" line2 with the public city (item b/c);
+  // unlinked rows now carry "Not on Mingla" (item e). "Someone" / "Keeping it
+  // low-key" / "You" are unchanged.
   assertStringIncludes(SHEET, '"Someone"');
   assertStringIncludes(SHEET, '"Keeping it low-key"');
-  assertStringIncludes(SHEET, '"On Mingla"');
+  assertStringIncludes(SHEET, '"Not on Mingla"');
   assertStringIncludes(SHEET, '"You"');
   assertStringIncludes(SHEET, "Requested");
   assertStringIncludes(SHEET, "Couldn't send — try again");

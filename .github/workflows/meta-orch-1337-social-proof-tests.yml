@@ -77,6 +77,8 @@ jobs:
             # ORCH-1339 — momentum cross-entity (event/experience/trip) + tester adversarial.
             packages/offering-rendering/__tests__/orch_1339_momentum_cross_entity.test.ts
             packages/offering-rendering/__tests__/orch_1339_momentum_adversarial.test.ts
+            # ORCH-1358 — momentum card top breathing room (marginTop:16 both twins).
+            packages/offering-rendering/__tests__/orch_1358_card_spacing.test.ts
             # ORCH-1340 — guest identity privacy (card-real-avatars) + tester adversarial.
             packages/offering-rendering/__tests__/orch_1340_guest_identity_privacy.test.ts
             packages/offering-rendering/__tests__/orch_1340_guest_identity_privacy_adversarial.test.ts
@@ -92,10 +94,15 @@ jobs:
             # ORCH-1339 — SQL contract: set_event_guest_privacy RPC (host gate, leaf-write
             # only, grants).
             supabase/migrations/__tests__/orch_1339_set_event_guest_privacy.test.ts
+            # ORCH-1359 — SQL contract: identity-gated location on peer_list_event_guests
+            # (named rows only, guard/whitelist preserved).
+            supabase/migrations/__tests__/orch_1359_peer_guest_location.test.ts
             # ORCH-1341 — consumer guest-list sheet (pinned header, no raw RN Modal) +
             # tester adversarial.
             app-mobile/src/components/__tests__/orch_1341_guest_list_sheet.test.ts
             app-mobile/src/components/__tests__/orch_1341_guest_list_sheet_adversarial.test.ts
+            # ORCH-1359 — guest-row identity display: name-only + city + "Not on Mingla".
+            app-mobile/src/components/__tests__/orch_1359_guest_sheet_identity.test.ts
             # ORCH-1342 — OneLink guest-funnel app side: cold /e/ seed landing, single
             # resolver parse, public event seed mapping.
             app-mobile/src/screens/Event/__tests__/orch_1342_cold_seed_landing.test.ts

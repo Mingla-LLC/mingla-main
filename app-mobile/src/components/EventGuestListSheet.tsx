@@ -128,6 +128,17 @@ const initialsFor = (name: string): string => {
   return joined.length > 0 ? joined : "?";
 };
 
+// ORCH-1359 — the guest's public CITY (first comma-segment of profiles.location,
+// mirroring ViewFriendProfileScreen:638). Returns null when there is no
+// location — the row then renders name-only (Constitution #9: missing is hidden,
+// never faked). `location` is server-gated to NAMED rows (null on
+// anonymous/private/unlinked), so this only ever runs against a public string.
+const cityFor = (loc: string | null): string | null => {
+  if (loc === null) return null;
+  const city = loc.split(",")[0]?.trim() ?? "";
+  return city.length > 0 ? city : null;
+};
+
 export function EventGuestListSheet({
   visible,
   onClose,
@@ -450,15 +461,16 @@ export function EventGuestListSheet({
       const { guest } = item;
       const name = guest.displayName ?? guest.username ?? "Guest";
       const line1 = item.isNamed ? name : guest.isMinglaUser ? "Someone" : "Guest";
+      // ORCH-1359 city (named rows only; null → name-only row). Computed once
+      // and reused by line2 + the a11y label.
+      const city = item.isNamed ? cityFor(guest.location) : null;
       const line2 = item.isYou
-        ? "You"
+        ? "You" // self unchanged
         : item.isNamed
-          ? guest.username !== null
-            ? `@${guest.username}`
-            : "On Mingla"
+          ? city // (b) drop @username → (c) public city, or null if absent (rule 9)
           : guest.isMinglaUser
-            ? "Keeping it low-key"
-            : null;
+            ? "Keeping it low-key" // anon-Mingla-private UNCHANGED
+            : "Not on Mingla"; // (e) unlinked no-app indicator
       const rowHint = hint !== null && hint.key === item.key ? hint.text : null;
 
       const isFriendRow =
@@ -485,12 +497,12 @@ export function EventGuestListSheet({
       const a11yLabel = item.isYou
         ? `${name}, you`
         : item.isNamed
-          ? guest.username !== null
-            ? `${name}, at-${guest.username}, on Mingla`
-            : `${name}, on Mingla`
+          ? city !== null
+            ? `${name}, ${city}`
+            : name
           : guest.isMinglaUser
             ? "Someone, keeping it low-key"
-            : "Guest";
+            : "Guest, not on Mingla";
 
       return (
         // Rows are NOT pressable (SEALED) — a plain View group; the only
