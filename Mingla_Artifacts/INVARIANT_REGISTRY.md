@@ -734,6 +734,35 @@
 
 ---
 
+## ACTIVE — META-ORCH-1337 (social-proof guest list: cross-entity momentum card + real avatars + guest-list sheet + web install funnel, 2026-07-10)
+
+### I-PROPOSED-1340-GUEST-IDENTITY-PRIVACY-GATED (ACTIVE)
+- **Rule:** Guest identity on public surfaces is PRIVACY-GATED, never anonymous-by-blanket and never fabricated: (i) the momentum cluster may render real avatar PHOTOS only from the server-filtered sample (`pg_public_social_proof().sample`) — guests with `visibility_mode IN ('public','friends')` AND a non-empty avatar, blocked pairs excluded per authed viewer, `private` profiles excluded (D1/D9); (ii) guest NAMES/usernames never render on the card and never cross the wire to anon callers — names exist only in the authed guest-list read (`peer_list_event_guests`, ORCH-1341's sheet); (iii) `privateGuestList = true` suppresses the cluster, the "See who's going" affordance, and the peer list, enforced SERVER-side (D2); (iv) the glyph disk is the honest loading/fallback/anonymous state, and a private guest is visually INDISTINGUISHABLE from a guest with no photo or a failed photo load — no lock/dim/badge treatment may ever mark private guests (the D1 visual half); (v) no public maybe/waitlist count (carried forward from the retired invariant).
+- **Enforcement:** rewritten `orch_1157_rsvp_momentum.test.ts` identity block + `packages/offering-rendering/__tests__/orch_1340_guest_identity_privacy*.test.ts` (client half) + ORCH-1338's `orch_1338_social_proof_reads.antiScrape.adversarial.test.ts` (server half) — ALL CI-executed via `meta-orch-1337-social-proof-tests.yml`; fails-on-revert.
+- **Established:** DRAFT at ORCH-1340 SPEC 2026-07-10; ACTIVE at META-ORCH-1337 CLOSE 2026-07-10. Supersedes the anon-cluster half of I-PROPOSED-1157-SOCIAL-PROOF-ANON-ONLY (a.k.a. the component/test spelling I-PROPOSED-1157-RSVP-SOCIAL-PROOF-ANON-ONLY — naming drift swept at this CLOSE).
+
+### I-PROPOSED-1338-GUARD-FIRST-PEER-READS (ACTIVE)
+- **Rule:** peer-facing guest reads exist ONLY via the two SECURITY DEFINER RPCs (`pg_public_social_proof`, `peer_list_event_guests`); guards run BEFORE any row read (auth → event public+live → server-side `privateGuestList` → LEAST/GREATEST row-cap ≤100); output columns are whitelisted (`display_name/username/avatar_url/profileId/isMinglaUser/partySize`) — contact data (email/phone) NEVER crosses; anon callers get counts + avatar-only sample, never names; table RLS unchanged (RPC-mediated); anon EXECUTE explicitly revoked on the authed-only functions (P2 revoke, `20261227000000`).
+- **Enforcement:** `orch_1338_social_proof_reads*.test.ts` + `orch_1338_p2_revoke_anon_execute.test.ts` + tester `orch_1337_guard_first_privilege.tester.adversarial.test.ts`; CI via `meta-orch-1337-social-proof-tests.yml`; fails-on-revert.
+- **Established:** DRAFT at ORCH-1338 SPEC; ACTIVE at META-ORCH-1337 CLOSE 2026-07-10. Prod-verified live-fire (tester sweep + `has_function_privilege` retest).
+
+### I-PROPOSED-1339-CROSS-ENTITY-HONEST-MOMENTUM (ACTIVE)
+- **Rule:** the momentum unit renders per-entity HONEST copy (event "going"/trip "going"/experience "booked"; no fake scarcity; capacity-null omits the scarcity sub-line) from per-entity reads (COMMS-0057 — RSVP never merges into the ticket path); `hideRemainingCount` suppresses the scarcity sub-line + meter semantics and `privateGuestList` suppresses the cluster + affordance on EVERY card surface (client mirrors, server authoritative); wizard toggle copy promises exactly what D2 enforces.
+- **Enforcement:** `orch_1339_momentum_cross_entity.test.ts` + `orch_1339_momentum_adversarial.test.ts` + `orch_1339_set_event_guest_privacy.test.ts` + business jest `orch_1339_trip/experience_guest_privacy.test.ts`; CI via `meta-orch-1337-social-proof-tests.yml`; fails-on-revert.
+- **Established:** DRAFT at ORCH-1339 SPEC; ACTIVE at META-ORCH-1337 CLOSE 2026-07-10.
+
+### I-PROPOSED-1342-LANDING-SINGLE-PARSE (ACTIVE)
+- **Rule:** the OneLink landing discriminator `deep_link_sub3` is parsed ONLY in `oneLinkResolver.ts` (the ONE resolver), maps only the exact `guest-list` token, and travels app-internally ONLY as the `?landing=guest-list` param composed at the dispatcher's single composition point; no second payload parser.
+- **Enforcement:** strict-grep `orch-1342-landing-single-parse.mjs` (registered job) + the 1342 deno/jest suites; fails-on-revert.
+- **Established:** DRAFT at ORCH-1342 SPEC; ACTIVE at META-ORCH-1337 CLOSE 2026-07-10.
+
+### I-PROPOSED-1342-STORE-LINKS-SSOT (ACTIVE)
+- **Rule:** mingla-business store/download URLs live ONLY in `mingla-business/src/constants/storeLinks.ts`, byte-matched to `mingla-marketing/lib/store-links.ts`; no `apps.apple.com`/`play.google.com/store`/`go.usemingla.com` literal outside the SSOT (go.* is consumer-owned OneLink territory per ORCH-1346 one-domain-one-template).
+- **Enforcement:** strict-grep `orch-1342-store-links-ssot.mjs` (registered job); fails-on-revert.
+- **Established:** DRAFT at ORCH-1342 SPEC; ACTIVE at META-ORCH-1337 CLOSE 2026-07-10. Known grandfathered violators registered as a follow-up ORCH at this CLOSE.
+
+---
+
 ## ACTIVE — ORCH-1157 (public RSVP page "Momentum" + address-privacy/doors/parity/Android-sheet-gap, 2026-06-18, PR #526)
 
 ### I-PROPOSED-1157-NO-CHECKOUT-AFFORDANCE (ACTIVE)
@@ -746,10 +775,10 @@
 - **Enforcement:** `packages/offering-rendering/__tests__/orch_1157_*` (single-decision assertions); fails-on-revert.
 - **Established:** ACTIVE on ORCH-1157 close 2026-06-18.
 
-### I-PROPOSED-1157-SOCIAL-PROOF-ANON-ONLY (ACTIVE)
-- **Rule:** RSVP social proof is the going COUNT + capacity meter + an anonymous faceless cluster ONLY — never guest names/avatars, no public maybe/waitlist count (constitution rule 9, no fabricated data). AND the exact street address is hidden until the viewer is Going/Maybe (RSVP) / purchased (ticketed); the venue NAME must never carry the street.
+### I-PROPOSED-1157-ADDRESS-PRIVACY (ACTIVE)
+- **Rule:** the exact street address is hidden until the viewer is Going/Maybe (RSVP) / purchased (ticketed); the venue NAME must never carry the street.
 - **Enforcement:** strict-grep + the address-gate + round-4/5 discover-card tests; fails-on-revert.
-- **Established:** ACTIVE on ORCH-1157 close 2026-06-18.
+- **Established:** ACTIVE on ORCH-1157 close 2026-06-18; split out of I-PROPOSED-1157-SOCIAL-PROOF-ANON-ONLY at META-ORCH-1337/ORCH-1340 CLOSE 2026-07-10 (anon-cluster half retired and superseded — see I-PROPOSED-1340-GUEST-IDENTITY-PRIVACY-GATED).
 
 ### I-PROPOSED-1157-USES-BRAND-THEME-DIAL (ACTIVE)
 - **Rule:** RSVP expression scales via the brand theme accent (the "loudness dial") with NO layout change between themes; doors times render in a pill, locale-aware (12h AM/PM vs 24h per device).
