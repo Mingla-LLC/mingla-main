@@ -235,3 +235,48 @@ The native-build blocker that capped every UI-runtime leg above is **RESOLVED**.
 ## R4. Verdict delta
 
 The four legs the first sweep left CONDITIONAL/CAPPED on the native-build blocker are now runtime-proven: **ORCH-1339/1340 card runtime → PASS (proven)**, **ORCH-1341 sheet SC-R (open/close/z-order/pinned/rapid) → PASS (proven)**, **ORCH-1342 warm-landing auto-open (both branches) → PASS (proven)**. The add-friend action and anonymous-row suppression are PASS. **One new P1 (P1-2, message dead-end) is uncovered** and routes to REWORK (implementor) — it does not block the read/card/sheet/landing legs but must be fixed before the "Message from guest list" path ships. Backend legs (§1–§2) and CI-guard (§7) are unchanged (PASS). P2-1 (anon EXECUTE grant) unchanged. **Net: 0 P0, 1 P1 (new, message nav), 1 P2 (grant).**
+
+## R5. P1-2 RESOLUTION (REWORK, mingla-implementor, 2026-07-10)
+
+**Fix commit:** `c36ec7a10` on `META-ORCH-1337-social-proof-guest-list` · **Footer:** `[TEST-MOD-APPROVED ORCH-1340]` · `ORCH-1340 [card-real-avatars]` · `ORCH-1341 [guest-list-sheet-consumer P1 message-nav]`
+
+### What changed
+
+- **`EventGuestListSheet.tsx`** — the Message default no longer calls `Linking.openURL('mingla://chat/…')` (the P1-2 dead-end: `mingla` is not a registered scheme — app scheme is `com.mingla.app.v2` — and `chat` has no expo-router file route). It now checks `hasOpenDirectMessageSink()` BEFORE closing (a detached mount keeps the OPEN sheet as its §4.5 error surface), preserves the SEALED ensure → close → navigate order, and calls `openDirectMessageInApp(profileId)`. The `onOpenConversation` override seam is unchanged. `Linking` import removed.
+- **`deepLinkService.ts`** — new open-DM sink (`registerOpenDirectMessageSink` / `hasOpenDirectMessageSink` / `openDirectMessageInApp`), mirroring the shipped ORCH-1318 OneLink sink registration pattern.
+- **`app/index.tsx`** — registers the sink at mount: pops any pushed expo-router file route (`router.dismissAll()` guarded by `canGoBack`) then rides the PROVEN Discover-map Message idiom (`setPendingOpenDmUserId` + `setCurrentPage('connections')` — the exact `handleOpenChatWithUserFromDiscover` body), which ConnectionsPage resolves into an open MessageInterface thread with a cold-start DB fallback (`findExistingDirectConversation`) that finds the conversation `ensureConversation` just created.
+
+**Why not `executeDeepLink({kind:'conversation'…})` (the R3-suggested notification rail):** implemented and runtime-driven FIRST — it delivered page+params correctly but landed on the Messages **LIST**, not the thread: a just-ensured, message-less DM is not yet in ConnectionsPage's `conversations` state, so the ORCH-1080 deep-link effect takes its unresolvable-conversation fallback (`ConnectionsPage.tsx:2070-2072` resolve-from-loaded-state → `:2132` land-on-tab). Screenshot `REWORK_R06/R07`. The Discover-map rail is the app's real "open a DM with user X" idiom and lands INSIDE the thread.
+
+### Test-file edits (in-branch, sanctioned by the REWORK dispatch — both files are this branch's new suites)
+
+`orch_1341_guest_list_sheet.test.ts` T-11 and `orch_1341_guest_list_sheet_adversarial.test.ts` A-1 had pinned the broken `openURL` idiom verbatim; repointed to the open-DM rail. NEW seals: T-11/A-9 BAN `Linking.openURL` and hand-built `mingla://` strings in the sheet; A-9 pins sink-check-before-rail-close; A-9b pins the shell registration onto the exact Discover idiom + route pop. Suites now 29 tests (19 happy + 10 adversarial).
+
+### Static verification (verbatim summaries)
+
+- 1341 pair: `ok | 29 passed | 0 failed`
+- Full META-1337 CI deno battery + tester adversarial + deep-link suites (1030/1080/1318/1342): `ok | 213 passed | 0 failed`
+- `orch_1187_posthog_native_consumer` (node --test, reads app/index.tsx): `# pass 1 / # fail 0`
+- strict-grep `orch-1342-landing-single-parse` + `orch-1342-store-links-ssot`: PASS
+- app-mobile `tsc --noEmit`: **0 errors in the three touched files** (repo-wide pre-existing sweep reds unchanged)
+- **fails-on-revert verified at `c36ec7a10`** — two true line-deletion reverts: delete `openDirectMessageInApp(profileId);` → T-11 + A-1 + A-9 FAIL; delete the index registration block → A-9b FAIL (`9 passed | 1 failed`); restored → `ok | 29 passed | 0 failed`, tree clean.
+
+### Runtime re-proof (the P1 was a runtime finding — re-proven live)
+
+Same environment class as the SC-R addendum: booted iPhone 17 Pro sim `17091E60` (iOS 26.4), EAS dev-client `com.mingla.app.v2` connected to the worktree Metro on :8095. Fresh minimal zz1337 fixture re-seeded via sanctioned `execute_sql` (host H `13371337-…0001` signs in via GoTrue password-grant + AsyncStorage injection; friend G2 "Bex zz1337" `…00a2` public+avatar, accepted friendship both directions; self-owned public RSVP event `zz1337-rooftop-co/zz1337-rooftop-sundowner`, Bex going/approved).
+
+Drive (evidence `Mingla_Artifacts/evidence/META-ORCH-1337/REWORK_R*.png`, gitignored):
+1. `com.mingla.app.v2://e/zz1337-rooftop-co/zz1337-rooftop-sundowner` → event detail renders on the pushed /e/ route, RSVP branch, social-proof card with Bex's real avatar + "See who's going" (`REWORK_R08_card2`).
+2. Tap cluster → sheet opens at 70%, pinned "Who's going / 1 going" header, Bex row with Message action (`REWORK_R09_sheet2`).
+3. Tap Message on the friend row → **sheet closes → the pushed /e/ route pops → the DM conversation screen RENDERS**: MessageInterface thread with zz1337-bex header, "Start your conversation" body, live composer — **no "Unable to open URL" toast, no Unmatched Route** (`REWORK_R10_after_msg`). The retest criterion in R3 is met verbatim.
+4. DB: `ensureConversation` created direct conversation `f8d3310c…` with 2 participants (verified server-side before teardown).
+
+(The first-rail drive `REWORK_R06/R07` — Messages-list landing — is retained as the negative evidence that motivated the rail change.)
+
+**Fixture teardown:** all zz1337 rows deleted across auth.users, auth.identities, profiles, notification_preferences, friends, friend_requests, creator_accounts, brands, events, event_dates, event_rsvps, conversations, conversation_participants, messages — **residual scan = all zeros (14/14 tables)**. No real user touched; no messages/pushes sent.
+
+**Known incidental observations (pre-existing, NOT this REWORK's scope):** the COMMS-0066 OneSignal false "Open Settings" dialog fires repeatedly on this dev build (already ledgered); dev-env PostHog key toast (dev-only noise). `OnboardingCollaborationStep.tsx:318` still carries a silently-`.catch()`ed `mingla://chat/…` openURL (flagged in R3; separate surface, untouched per single-P1 scope — routes to the orchestrator).
+
+### Verdict delta
+
+**P1-2 → RESOLVED (runtime-proven).** The "Message from guest list" path now lands in the DM thread on all three consumer detail screens via the shared sheet default; the override seam remains for future hosts. Net for the META: **0 P0, 0 P1 open, 1 P2 (grant, unchanged)**.
