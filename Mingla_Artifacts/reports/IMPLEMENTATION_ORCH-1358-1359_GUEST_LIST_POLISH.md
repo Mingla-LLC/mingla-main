@@ -229,3 +229,58 @@ Confirmed at source and by test: the name `<Pressable>` renders ONLY when `canOp
 
 - The dispatch phrase "Back returns to the event detail **+ the guest sheet they came from**" is built per the SEALED close-before-navigate contract: the sheet is CLOSED when the profile opens, and Back returns the user to the **event detail** (the context they came from — NOT the home shell, which was the whole point of choosing D-B over D-A). Per SPEC §4.4 the overlay `onBack` simply clears `guestProfileUserId`; it does **not** auto-re-open the guest sheet. Auto-reopening the sheet on Back is a trivial one-line enhancement (restore `guestSheetVisible` on the overlay's `onBack`) but is NOT in the SPEC contract — flagged here so Seth can request it as a fast-follow if that exact behavior is wanted. Everything else is per-spec.
 - **Operator action:** item (d) adds NO new migration and NO new edge function — the same ONE consumer per-platform OTA (ios+android) that carries the first pass's 1358/1359 client changes also carries item (d) (shared branch). Nothing else new to deploy for (d).
+
+---
+
+# REGRESSION FIX — anon EXECUTE re-open (orchestrator deploy-verify)
+
+**Phase:** IMPLEMENT rework (mingla-implementor) · **Status:** implemented and self-verified (source + gate level; prod already corrected by the orchestrator — this makes the committed FILE match that state).
+**Worktree:** same branch `ORCH-1359-guest-sheet-polish` (rebased clean on `origin/main` @ `c9b8206ea`). **Fix commit:** `117f49551`.
+**Scope:** migration `.sql` + its Deno migration test ONLY. No client/native/TS-product change (OTA-safe; nothing new to deploy — prod is already correct). Items (a)/(b)/(c)/(d)/(e) untouched.
+
+## R.1 The bug (confirmed on prod by the orchestrator)
+
+`20261229000000_orch_1359_peer_guest_location.sql` `DROP`s + `CREATE`s `peer_list_event_guests`, then revoked **only** `FROM PUBLIC`:
+```
+REVOKE ALL ON FUNCTION public.peer_list_event_guests(uuid, integer, integer) FROM PUBLIC;
+```
+On `CREATE`, Supabase default privileges (`ALTER DEFAULT PRIVILEGES … GRANT EXECUTE ON FUNCTIONS TO anon, authenticated, service_role`) re-attach a per-ROLE `anon=X` EXECUTE ACL, and `REVOKE … FROM PUBLIC` does **not** strip a role grant — so recreating FN-B silently **re-opened `anon` EXECUTE**, regressing the sealed ORCH-1338 P2 hardening (`20261227000000`). The in-function `authentication_required` guard still held (zero rows crossed), but the grant layer was not the barrier it should be. The orchestrator already fixed PROD (`REVOKE ALL … FROM anon`; re-verified `anon_can_exec=false`, `authenticated=true`, `has_location=true`).
+
+## R.2 The fix — one-line migration diff
+
+```diff
+-REVOKE ALL ON FUNCTION public.peer_list_event_guests(uuid, integer, integer) FROM PUBLIC;
++REVOKE ALL ON FUNCTION public.peer_list_event_guests(uuid, integer, integer) FROM PUBLIC, anon;
+```
+Matches the canonical P2 pattern in `20261227000000_orch_1338_p2_revoke_anon_execute.sql`. `GRANT EXECUTE … TO authenticated;` unchanged. Function body / guards / branch markers / whitelist untouched. The SAFE-MIGRATION-PROTOCOL header comment was updated (comment-only) to document the anon-strip + why. **The file, when applied, now produces EXACTLY: `authenticated` = EXECUTE, `anon` = NONE, `PUBLIC` = NONE** — matching the corrected prod grants.
+
+## R.3 Regression guard added — why 196/0 stayed green while the regression shipped
+
+Root cause of the false-green: the existing 1359 migration test **T-8** literally pinned the BUGGY string `"… FROM PUBLIC;"` (`orch_1359_peer_guest_location.test.ts`), so it codified the bug and passed. The P2 test only scans the `20261227000000` file, so it never covered this recreating migration. Both are now closed:
+
+- **T-8 corrected** — now asserts `"… FROM PUBLIC, anon;"` (was `"… FROM PUBLIC;"`). It becomes a real anon-strip pin instead of a bug-pin.
+- **T-10 added — `T-10 REGRESSION GUARD — FN-B recreate strips anon EXECUTE (not just PUBLIC), no anon re-grant`.** Regex-scans the migration for a `REVOKE … ON FUNCTION public.peer_list_event_guests(…) FROM …` whose FROM list names `anon` (accepts `FROM PUBLIC, anon` **or** an explicit `FROM anon`), and bans `anon`/`PUBLIC` as a GRANT target on FN-B. Mirrors the P2 suite's "§A REVOKE strips BOTH the PUBLIC path AND the anon role grant", applied to THIS function-recreating migration — so the P2 invariant is now enforced against `20261229000000` too, and against any future migration that recreates this function via this suite.
+
+Both live in `supabase/migrations/__tests__/orch_1359_peer_guest_location.test.ts` (registered in the META-ORCH-1337 CI battery, workflow line 99 — PR-blocking). The 1359 migration test is status `A` (net-new this branch) so the T-8 edit needs no append-only token; the fix commit carries `[TEST-MOD-APPROVED ORCH-1359]` anyway (required by the pre-existing `orch_1341` mod, which the append-only gate reads from HEAD).
+
+## R.4 Fails-on-revert proof (true line deletion)
+
+Deleted `, anon` from the migration REVOKE line (working tree, true deletion — NOT comment-out), re-ran the 1359 migration suite:
+```
+T-8  … anon-revoke …                    FAILED  (AssertionError: REVOKE strips BOTH the PUBLIC path AND the … anon role grant)
+T-10 REGRESSION GUARD — FN-B recreate … FAILED  (AssertionError: REVOKE on peer_list_event_guests MUST strip anon …)
+FAILED | 8 passed | 2 failed
+```
+Restored `, anon` → **10 passed, 0 failed**. **fails-on-revert verified at `117f49551`.**
+
+## R.5 Gate results (rework)
+
+- **Full META-ORCH-1337 deno battery** (exact CI invocation `deno test --allow-env --allow-net --allow-read --no-check`, all 19 registered files): **197 passed, 0 failed** (was 196; +1 = the new T-10 guard).
+- **ORCH-1359 migration suite + ORCH-1338 P2 sibling** together: **17 passed, 0 failed** (10 + 7).
+- **Append-only gate** (`node .github/scripts/test-append-only-check.js`, HEAD `117f49551`): **6 passed, 0 failed** — `orch_1359_peer_guest_location.test.ts` reported `ADDED`; `orch_1341` mod accepted via the token.
+- **`deno check supabase/migrations/__tests__/orch_1359_peer_guest_location.test.ts`:** clean (exit 0). No TS product source changed — the rework diff is exactly the migration `.sql` + this Deno test — so `tsc` is unaffected (the first-pass offering-rendering tsc + app-mobile baseline in §9/§D.9 stand).
+
+## R.6 Operator action required (orchestrator / Seth — NOT the implementor)
+
+- **PROD is already correct** (orchestrator ran the `REVOKE ALL … FROM anon` + re-verified). **Do NOT re-apply / db-push this migration for the anon fix** — the file now simply matches the live grant state so any fresh replay / new environment cannot re-regress. If the migration is applied to a brand-new environment, it will yield `authenticated`-only by construction.
+- No edge functions. No OTA (backend-grant + test only). Route back to orchestrator for REVIEW → tester (the tester's adversarial P2 re-probe against the recreating migration is the natural coverage add).
