@@ -276,6 +276,17 @@ function classifyTransferError(
   const message = err instanceof Error ? err.message : String(err);
   const isBalance = /insufficient/i.test(message) || /balance/i.test(message);
   if (isBalance) return { kind: "retryable", message };
+  // P2-1331-DUPLICATE-REFERENCE-SHAPE defense-in-depth (REWORK): the rail's
+  // double-pay defense assumes Paystack's documented behavior that re-using a
+  // reference returns the ORIGINAL transfer. If live Paystack instead answers
+  // a 4xx "duplicate/already exists" error for a re-used reference, minting a
+  // NEW reference could double-pay the in-flight original — so re-using the
+  // SAME reference (retryable, no attempt bump) is the only money-safe
+  // posture. Over-matching errs toward a stalled-pending row (recoverable,
+  // visible in error_message), never toward a double payment.
+  const isDuplicateReference = /duplicate/i.test(message) ||
+    /reference.*(exists|already)/i.test(message);
+  if (isDuplicateReference) return { kind: "retryable", message };
   if (err instanceof PaystackApiError) {
     if (err.status >= 500 || err.status === 429) {
       return { kind: "retryable", message };
@@ -603,6 +614,34 @@ export async function handlePaystackTransferEvent(
   if (eventName === "transfer.failed") {
     // Definitive failure — burn the attempt (new reference next sweep).
     if (status !== "pending") return; // late/duplicate event on a settled row
+
+    // P1-1331-STALE-TRANSFER-CODE (REWORK) idempotency guard: only a
+    // DEFINITIVE failure of the row's CURRENT in-flight transfer burns the
+    // attempt. The in-flight transfer is identified by the row's
+    // stripe_transfer_id and its reference psplit_<id>_a<attempt_count>
+    // (attempt_count is unchanged between initiate and the definitive bump).
+    //  * row has NO transfer code → already cleared by a prior bump (or never
+    //    stamped): a replayed transfer.failed is a no-op — no double-bump.
+    //  * event transfer_code ≠ row's current code → stale event for an OLDER
+    //    attempt: no-op — never bump for, or clear, a DIFFERENT in-flight
+    //    transfer (that would re-open the double-initiate seam).
+    //  * event reference attempt ≠ row attempt_count → same staleness, for
+    //    payloads that omit transfer_code.
+    const currentTransferCode =
+      typeof r.stripe_transfer_id === "string" &&
+        r.stripe_transfer_id.length > 0
+        ? r.stripe_transfer_id
+        : null;
+    if (!currentTransferCode) return;
+    const eventTransferCode = typeof data?.transfer_code === "string"
+      ? data.transfer_code
+      : null;
+    if (eventTransferCode !== null && eventTransferCode !== currentTransferCode) {
+      return;
+    }
+    const eventAttempt = Number(match[2]);
+    if (eventAttempt !== attemptCount) return;
+
     const reason = typeof data?.reason === "string"
       ? data.reason
       : (typeof data?.message === "string" ? data.message : "transfer.failed");
@@ -624,6 +663,26 @@ export async function handlePaystackTransferEvent(
         ],
         recipients: paystackPartnerAlertRecipients(),
       });
+      return;
+    }
+    // P1-1331-STALE-TRANSFER-CODE (REWORK): the failed transfer is DEAD for
+    // this exact code — clear stripe_transfer_id (+ the stale
+    // payout_reference) so the reconcile-first sweep takes the INITIATE path
+    // with the bumped psplit_<id>_a<attempt+1> reference instead of
+    // re-reconciling the dead transfer forever (SC-9 / SPEC §4.5.3 "row stays
+    // pending — sweep retries with new reference"). Mirrors the
+    // reconcile-reversed clear in partner-paystack-split-retry/index.ts.
+    // At the cap (above) the code is intentionally KEPT on the finalized
+    // 'failed' row for forensics.
+    const { error: clearErr } = await supabase
+      .from("partner_splits")
+      .update({ stripe_transfer_id: null, payout_reference: null })
+      .eq("id", splitId)
+      .eq("status", "pending");
+    if (clearErr) {
+      throw new Error(
+        `failed transfer_code clear failed: ${clearErr.message}`,
+      );
     }
     return;
   }
