@@ -152,3 +152,80 @@ Parity is **automatic** for 1358 (shared `packages/offering-rendering`). ORCH-13
 - **D-2 (append-only mechanics):** removing the now-false `"On Mingla"` pin in the existing `orch_1341_guest_list_sheet.test.ts` required `[TEST-MOD-APPROVED ORCH-1359]`. The append-only CI reads the HEAD commit body — the report commit (this file) also carries the token so the PR HEAD retains it; if the orchestrator adds further commits before the PR, ensure the branch HEAD keeps `[TEST-MOD-APPROVED ORCH-1359]` in its body.
 - **D-3 (pre-existing baseline):** `app-mobile` `tsc --noEmit` reports 902 pre-existing errors (Deno test files pulled into the sweep + other legacy), unrelated to this ORCH. Flagged for visibility; out of scope to fix here.
 - **COMMS acks (entry):** BLOCK rows COMMS-0006 (targets ORCH-0980) and COMMS-0052 (business-OTA deploy gate, ALL) are deploy-time/other-ORCH concerns — the implementor deploys nothing, so neither gates this code work. WARN rows COMMS-0093 (no `Linking.openURL` — honored), COMMS-0088 (BaseBottomSheet reuse — untouched), COMMS-0094 (additive migration after frontier, never `db push` — honored) were acked on entry in the investigation and factored in. Global COMMS_LEDGER not mutated from the worktree (orchestrator-owned).
+
+---
+
+# ADDENDUM — ORCH-1359 item (d) tap-name → profile (D-B) — IMPLEMENTED (second pass)
+
+**Phase:** IMPLEMENT (mingla-implementor) · **Status:** implemented and self-verified (source + gate level; device open/close/z-order runtime deferred to tester per SC-7)
+**Worktree:** same branch `ORCH-1359-guest-sheet-polish`; item-(d) commit **`ebc185dac`** (on top of the first pass, prior HEAD `f68e8f6c2`).
+**Decision built:** **D-B — detail-local in-context overlay** (Seth's ruling; D-A shell-sink + D-C defer REJECTED).
+
+## D.1 Summary (plain English)
+
+Tapping a NAMED guest's name in the "Who's going" sheet now opens that person's public profile, rendered as an overlay that lives ON the event/trip/experience detail screen — so Back drops the user right back onto the detail they came from, never the home app shell. Anonymous-private guests and "Not on Mingla" (unlinked) guests are NOT tappable — no affordance, no dead tap. It reuses the existing `ViewFriendProfileScreen` (no new profile screen), which already handles non-friends and shows the person's city.
+
+## D.2 D-B overlay mechanism (exact wiring)
+
+- **Sheet seam:** `EventGuestListSheet` gained an optional `onOpenProfile?: (userId: string) => void` prop (mirrors the existing `onOpenConversation?` seam). A `handleOpenProfilePress(row)` handler: `if (profileId === null || onOpenProfile === undefined) return; HapticFeedback.selection(); onClose(); onOpenProfile(profileId);` — **close-before-navigate**: the `wrapInRNModal` sheet is dismissed FIRST, so the host's overlay is never z-covered by the RN Modal (COMMS-0084: never a modal-over-modal; no second RN `<Modal>`). NO `Linking.openURL` / `mingla://` (COMMS-0093) — pure in-app overlay.
+- **Name pressability gate:** `const canOpenProfile = item.isNamed && !item.isYou && guest.profileId !== null && onOpenProfile !== undefined;`. When true, `line1` (the name) renders inside a `<Pressable testID={`orch-1359-guest-sheet-open-profile-${item.key}`}>`; otherwise it renders as the original plain `<Text>`. Anonymous/unlinked/You names → plain Text (non-pressable). The **row CONTAINER** stays a non-pressable `Animated.View` (T-09 preserved).
+- **Host overlay (all 3 screens):** `Consumer{Event,Trip,Experience}DetailScreen` each hold `const [guestProfileUserId, setGuestProfileUserId] = useState<string | null>(null)`, pass `onOpenProfile={setGuestProfileUserId}` to the sheet, and render — as a sibling above the detail body — `{guestProfileUserId !== null ? (<View style={styles.guestProfileOverlay}><ViewFriendProfileScreen userId={guestProfileUserId} onBack={() => setGuestProfileUserId(null)} onMessage={(userId) => { setGuestProfileUserId(null); if (hasOpenDirectMessageSink()) openDirectMessageInApp(userId); }} /></View>) : null}`. `guestProfileOverlay = { ...StyleSheet.absoluteFillObject, zIndex: 100, backgroundColor: "#ffffff" }` — absolute-fill above the detail chrome (zIndex 100 > chrome 70 > reserve 6 > scroll 2 > cover 1), opaque.
+
+## D.3 Files changed (item d — commit `ebc185dac`)
+
+| File | Δ | Change |
+|------|---|--------|
+| `app-mobile/src/components/EventGuestListSheet.tsx` | +~55/−4 | `onOpenProfile?` prop + destructure; `handleOpenProfilePress` (close-before-navigate); `canOpenProfile` gate; `line1` wrapped in the name-open `Pressable` (named non-You rows only); `namePressed` style; deps. |
+| `app-mobile/src/screens/Event/ConsumerEventDetailScreen.tsx` | +41 | import `ViewFriendProfileScreen` + `hasOpenDirectMessageSink`/`openDirectMessageInApp`; `guestProfileUserId` state; `onOpenProfile={setGuestProfileUserId}`; overlay block; `guestProfileOverlay` style. |
+| `app-mobile/src/screens/Trip/ConsumerTripDetailScreen.tsx` | +40 | Same wiring (inside the `renderSheetGroup(<>…</>,)` return). |
+| `app-mobile/src/screens/Experience/ConsumerExperienceDetailScreen.tsx` | +40 | Same wiring. |
+| `app-mobile/src/components/__tests__/orch_1359_guest_sheet_open_profile.test.ts` | new (9 tests) | Happy-path suite (T-1..T-9). |
+| `app-mobile/src/components/__tests__/orch_1341_guest_list_sheet.test.ts` | +~13/−6 | T-10 widened to whitelist the name-open Pressable; header doc updated. `[TEST-MOD-APPROVED ORCH-1359]`. |
+| `.github/workflows/meta-orch-1337-social-proof-tests.yml` | +2 | Registered the new suite (append-only). |
+
+No migration, no edge function, no native/app.json/config change, no new dep — **OTA-safe pure-JS**.
+
+## D.4 SC-7 coverage (now satisfied)
+
+| SC | Criterion | Status | Commit |
+|----|-----------|--------|--------|
+| SC-7 (d) | Tapping a named guest's name closes the sheet and opens `ViewFriendProfileScreen` for that userId; anonymous/unlinked/You names are not tappable | ✓ source + gate verified (T-1..T-9 green); device open/close/z-order → tester | `ebc185dac` |
+
+## D.5 Regression tests — fails-on-revert proof (true line deletion, at `ebc185dac`)
+
+New suite `app-mobile/src/components/__tests__/orch_1359_guest_sheet_open_profile.test.ts` — **9/9 green**.
+
+- **Proof A (name-open affordance):** deleted the `canOpenProfile ? <Pressable …> : <Text>` block in `EventGuestListSheet.tsx` (reverted the name to a plain Text) → **T-2 (testID) + T-3 (gate) FAILED** (7 passed / 2 failed). `git checkout` restored → clean (empty diff).
+- **Proof B (detail-local overlay):** deleted the overlay block from `ConsumerEventDetailScreen.tsx` → **T-7 FAILED** (8 passed / 1 failed). `git checkout` restored → **9/9 green** again.
+
+Both the new suite AND the widened `orch_1341` guard are in `git diff origin/main...HEAD --name-only` (shipped in the same branch as the fix).
+
+## D.6 Overlay open / close / z-order verification
+
+- **Open path (source-verified; T-2/T-3/T-5/T-7/T-8/T-9):** named-name tap → `handleOpenProfilePress` → `onClose()` (sheet's `wrapInRNModal` dismisses) → `onOpenProfile(profileId)` → host `setGuestProfileUserId(profileId)` → the `guestProfileUserId !== null` overlay mounts. Because the sheet closes FIRST, the profile is not layered over a live RN Modal — **no modal-over-modal** (COMMS-0084).
+- **Close path (source-verified):** overlay `onBack` → `setGuestProfileUserId(null)` → overlay unmounts → user is back on THIS detail (never the home shell — the D-A failure mode is avoided by construction).
+- **Z-order (source-verified):** the overlay wrapper is `absoluteFillObject` + `zIndex 100` (above the detail's cover 1 / scroll 2 / reserve 6 / chrome 70) + opaque `#ffffff`; `ViewFriendProfileScreen` itself is an opaque `flex:1` white container with its own top Back button. **Device runtime** (the actual open/close animation, exact paint order, Android z on the shell-overlay trip mount where the GlassBottomNav floats) is **deferred to the tester per SC-7** (implementor scope is source + gate).
+
+## D.7 Anonymous / unlinked non-pressable — confirmation
+
+Confirmed at source and by test: the name `<Pressable>` renders ONLY when `canOpenProfile` (named, non-You, `profileId !== null`, seam wired). Anonymous-private rows (`isMinglaUser===true, isAnonymous===true`) and unlinked "Not on Mingla" rows (`isMinglaUser===false`) carry `profileId === null` → `canOpenProfile === false` → the name renders as a plain, non-pressable `<Text>` with no affordance and no handler (deanonymization guard intact). The You row is also excluded (`!item.isYou`).
+
+## D.8 Guard / invariant supersession note
+
+- **Superseded:** `I-PROPOSED-1341-GUEST-SHEET-ACTIONS-ONLY` (DRAFT) — its "the guest name never opens a profile / rows action-only" clause is overturned for the NAME target. Replaced by **`I-PROPOSED-1359-GUEST-NAME-OPENS-PROFILE`** (DRAFT): *the guest name (named non-You rows only) opens the peer `ViewFriendProfileScreen` via close-before-navigate as a detail-local overlay; the row CONTAINER stays non-pressable; anonymous/unlinked rows expose no profile affordance.* The row-container half of the old invariant SURVIVES and is still enforced by `orch_1341` **T-09** (unchanged).
+- **Guard update:** `orch_1341_guest_list_sheet.test.ts` **T-10** ("every `<Pressable>` is a sanctioned control") was WIDENED — not deleted — to whitelist `orch-1359-guest-sheet-open-profile-${item.key}` alongside add-friend/message/retry. Authorized append-only via `[TEST-MOD-APPROVED ORCH-1359]` in commit `ebc185dac`'s body (append-only check: 6 passed / 0 failed).
+- **Registry:** these 1341 invariants were never promoted to `INVARIANT_REGISTRY.md` (investigation D-1). The orchestrator at CLOSE should register `I-PROPOSED-1359-GUEST-NAME-OPENS-PROFILE` (DRAFT→ACTIVE) and record the supersession. Registry edits are orchestrator-owned — NOT touched from this worktree.
+- **`I-PROPOSED-1341-MESSAGE-CLOSE-BEFORE-NAVIGATE`** (DRAFT) — PRESERVED and EXTENDED to profile-open (close fires before navigate).
+
+## D.9 Gate results (item d)
+
+- **Full META-ORCH-1337 deno battery** (exact CI invocation, now 19 files incl. the new suite): **196 passed, 0 failed** (was 187; +9 from `orch_1359_guest_sheet_open_profile`).
+- **Append-only check** (`node .github/scripts/test-append-only-check.js`): **6 passed, 0 failed** (T-10 mod accepted via the token).
+- **Strict greps:** `meta-orch-0991-base-bottom-sheet-sole-consumer` PASS (BaseBottomSheet still the sole gorhom consumer — no new sheet/Modal), `orch-1303-rsvp-loop-interaction-handle` PASS.
+- **tsc** (`app-mobile`, `tsc --noEmit -p tsconfig.json`): 902 **pre-existing** baseline errors, **ZERO** referencing `EventGuestListSheet`, the 3 detail screens, `ViewFriendProfileScreen`, `deepLinkService`, `onOpenProfile`, `handleOpenProfilePress`, `canOpenProfile`, or `guestProfileUserId` — item (d) adds no type error.
+- **No device/sim runtime** (implementor scope) — SC-7 device open/close/z-order to the tester.
+
+## D.10 Scope note / interpretation flag (for Seth)
+
+- The dispatch phrase "Back returns to the event detail **+ the guest sheet they came from**" is built per the SEALED close-before-navigate contract: the sheet is CLOSED when the profile opens, and Back returns the user to the **event detail** (the context they came from — NOT the home shell, which was the whole point of choosing D-B over D-A). Per SPEC §4.4 the overlay `onBack` simply clears `guestProfileUserId`; it does **not** auto-re-open the guest sheet. Auto-reopening the sheet on Back is a trivial one-line enhancement (restore `guestSheetVisible` on the overlay's `onBack`) but is NOT in the SPEC contract — flagged here so Seth can request it as a fast-follow if that exact behavior is wanted. Everything else is per-spec.
+- **Operator action:** item (d) adds NO new migration and NO new edge function — the same ONE consumer per-platform OTA (ios+android) that carries the first pass's 1358/1359 client changes also carries item (d) (shared branch). Nothing else new to deploy for (d).
