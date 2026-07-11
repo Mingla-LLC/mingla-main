@@ -93,6 +93,13 @@ export interface FoundationEventPreviewProps {
    * fetched) into the shared body's momentum unit. null → no unit.
    */
   socialProof?: SocialProofSummary | null;
+  /**
+   * ORCH-1342 — passthrough of the "See who's going" tap into the shared
+   * body's momentum cluster (mirrors the socialProof passthrough). The adapter
+   * wires it WEB-ONLY (Platform.OS === 'web'); absent ⇒ inert cluster, no
+   * dead tap (DESIGN §1.5).
+   */
+  onSeeWhosGoing?: () => void;
   testID?: string;
 }
 
@@ -123,6 +130,7 @@ export const FoundationEventPreview: React.FC<FoundationEventPreviewProps> = ({
   onProceedToCart,
   submitting = false,
   socialProof = null,
+  onSeeWhosGoing,
   testID,
 }) => {
   const { isDesktop } = useResponsiveLayout();
@@ -164,6 +172,8 @@ export const FoundationEventPreview: React.FC<FoundationEventPreviewProps> = ({
       hideTicketBox={hideTicketBox}
       // ORCH-1339 — cross-entity social proof (adapter-fetched, props-only).
       socialProof={socialProof}
+      // ORCH-1342 — web-only "See who's going" → install gate (adapter-wired).
+      onSeeWhosGoing={onSeeWhosGoing}
       testID="orch-1167-event-body"
     />
   );

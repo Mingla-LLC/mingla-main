@@ -51,6 +51,7 @@ import React, {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactElement,
 } from "react";
@@ -162,6 +163,12 @@ interface ConsumerTripDetailScreenProps {
   brandSlug: string;
   tripSlug: string;
   seed?: DiscoverTripRow | null;
+  /**
+   * ORCH-1342 (SPEC §4.8) — the OneLink deferred-funnel landing. Exactly
+   * 'guest-list' (route-validated) auto-opens the ORCH-1341 guest-list sheet
+   * ONCE after the page settles, iff the guest list is public and non-empty.
+   */
+  landing?: "guest-list";
   onBack: () => void;
   /**
    * ORCH-1016 REWORK — true when the detail is presented from the in-app
@@ -265,6 +272,7 @@ export default function ConsumerTripDetailScreen({
   brandSlug,
   tripSlug,
   seed = null,
+  landing,
   onBack,
   tabBarAware = true,
   accountPreferences,
@@ -413,6 +421,37 @@ export default function ConsumerTripDetailScreen({
     (): void => setGuestSheetVisible(false),
     [],
   );
+
+  // ORCH-1342 (SPEC §4.8) — landing auto-open: same one-shot contract as
+  // ConsumerEventDetailScreen, against THIS screen's data sources (detail +
+  // socialProof). Fires the SAME handler the card's onSeeWhosGoing invokes;
+  // opens ONLY under the affordance conditions (D9/D2 — settled socialProof,
+  // privateGuestList false, goingCount > 0; T-A4/T-A5); the ref flips on ANY
+  // terminal outcome so the sheet never pops later on a refetch.
+  const landingHandledRef = useRef<boolean>(false);
+  useEffect(() => {
+    if (landing !== "guest-list" || landingHandledRef.current) return;
+    if (detail === null) return; // wait for the by-slug detail to resolve
+    const settled = socialProofQuery.isSuccess || socialProofQuery.isError;
+    if (!settled) return;
+    landingHandledRef.current = true; // terminal — one-shot, refetch-proof
+    const sp = socialProofQuery.data ?? null;
+    if (
+      socialProofQuery.isSuccess &&
+      sp !== null &&
+      sp.privateGuestList === false &&
+      sp.goingCount > 0
+    ) {
+      handleSeeWhosGoing();
+    }
+  }, [
+    landing,
+    detail,
+    socialProofQuery.isSuccess,
+    socialProofQuery.isError,
+    socialProofQuery.data,
+    handleSeeWhosGoing,
+  ]);
 
   // ORCH-1138 device-rework #3 — float→dock Reserve CTA visibility tracking. These
   // hooks MUST be declared BEFORE any early return (loading/error/not-found) per

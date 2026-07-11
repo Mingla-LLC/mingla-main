@@ -28,7 +28,9 @@
 
 import React, {
   useCallback,
+  useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactElement,
 } from "react";
@@ -172,6 +174,12 @@ const SHEET_INITIAL_INDEX = 1; // open at the 90% snap (full view)
 interface ConsumerExperienceDetailScreenProps {
   /** The deck/venue card seed. null on a cold deep-link (capped, mirror event). */
   seed?: BusinessEventCard | null;
+  /**
+   * ORCH-1342 (SPEC §4.8) — the OneLink deferred-funnel landing. Exactly
+   * 'guest-list' (route-validated) auto-opens the ORCH-1341 guest-list sheet
+   * ONCE after the page settles, iff the guest list is public and non-empty.
+   */
+  landing?: "guest-list";
   onBack: () => void;
   tabBarAware?: boolean;
 }
@@ -215,6 +223,7 @@ const cardToPublicEvent = (
 
 export default function ConsumerExperienceDetailScreen({
   seed = null,
+  landing,
   onBack,
   tabBarAware = true,
 }: ConsumerExperienceDetailScreenProps): React.ReactElement {
@@ -286,6 +295,37 @@ export default function ConsumerExperienceDetailScreen({
     staleTime: 60 * 1000,
     queryFn: () => fetchSocialProof(eventId as string),
   });
+
+  // ORCH-1342 (SPEC §4.8) — landing auto-open: same one-shot contract as
+  // ConsumerEventDetailScreen, against THIS screen's data sources (the route-
+  // synthesized seed + socialProof). Fires the SAME handler the card's
+  // onSeeWhosGoing invokes; opens ONLY under the affordance conditions (D9/D2
+  // — settled socialProof, privateGuestList false, goingCount > 0; T-A4/T-A5);
+  // the ref flips on ANY terminal outcome so the sheet never pops on refetch.
+  const landingHandledRef = useRef<boolean>(false);
+  useEffect(() => {
+    if (landing !== "guest-list" || landingHandledRef.current) return;
+    if (seed === null) return; // the /exp/ route resolves the seed by slug
+    const settled = socialProofQuery.isSuccess || socialProofQuery.isError;
+    if (!settled) return;
+    landingHandledRef.current = true; // terminal — one-shot, refetch-proof
+    const sp = socialProofQuery.data ?? null;
+    if (
+      socialProofQuery.isSuccess &&
+      sp !== null &&
+      sp.privateGuestList === false &&
+      sp.goingCount > 0
+    ) {
+      handleSeeWhosGoing();
+    }
+  }, [
+    landing,
+    seed,
+    socialProofQuery.isSuccess,
+    socialProofQuery.isError,
+    socialProofQuery.data,
+    handleSeeWhosGoing,
+  ]);
 
   // ORCH-1187 FIX-3(a) (Seth device, open-daily misclassified as fixed-slot): the
   // deck SEED can be STALE — it may lack isRecurring/recurrenceRule and carry

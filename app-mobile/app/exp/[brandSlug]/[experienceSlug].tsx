@@ -38,6 +38,7 @@ export default function ExperienceDeepLinkScreen(): React.ReactElement | null {
   const params = useLocalSearchParams<{
     brandSlug: string | string[];
     experienceSlug: string | string[];
+    landing?: string | string[];
   }>();
   const brandSlug = Array.isArray(params.brandSlug)
     ? params.brandSlug[0]
@@ -45,6 +46,13 @@ export default function ExperienceDeepLinkScreen(): React.ReactElement | null {
   const experienceSlug = Array.isArray(params.experienceSlug)
     ? params.experienceSlug[0]
     : params.experienceSlug;
+  // ORCH-1342 — `?landing=guest-list` (OneLink deferred-funnel landing,
+  // composed ONLY by dispatchOneLinkDestination): normalize array→first,
+  // EXACT-match validate (SPEC §4.6); any other value → undefined.
+  const landingRaw = Array.isArray(params.landing)
+    ? params.landing[0]
+    : params.landing;
+  const landing = landingRaw === "guest-list" ? ("guest-list" as const) : undefined;
 
   const onBack = (): void => {
     if (router.canGoBack()) router.back();
@@ -153,6 +161,7 @@ export default function ExperienceDeepLinkScreen(): React.ReactElement | null {
   return (
     <ConsumerExperienceDetailScreen
       seed={seed}
+      landing={landing}
       tabBarAware={false}
       onBack={onBack}
     />

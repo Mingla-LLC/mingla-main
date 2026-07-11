@@ -28,15 +28,20 @@
  *
  * I-MOR-0827-PACKAGE-ISOLATION: no import from mingla-business/src.
  *
- * OQ-6 (cold deep-link cap): the deck path passes `seed` (a BusinessEventCard);
- * the cold deep-link route passes `seed=null`. An anon event-by-slug fetch hook is
- * outside the §11 allowlist, so the cold path renders a graceful "Open from the
- * app" state rather than adding scope (OQ-6 orchestrator-approved degradation).
+ * ORCH-1342 (D6 — supersedes the OQ-6 cold cap): the deck path passes `seed`
+ * (a BusinessEventCard); the cold deep-link route passes `seed=null` and the
+ * screen now RESOLVES a seed by slug (publicEventSeedService → anon
+ * business_public_events_view read) so the full page renders cold, RSVP branch
+ * included. The "Open from the app" cap is the terminal state for
+ * unknown/private/deleted slugs only. `?landing=guest-list` (SPEC §4.8)
+ * auto-opens the ORCH-1341 guest-list sheet once the page + socialProof settle.
  */
 
 import React, {
   useCallback,
+  useEffect,
   useMemo,
+  useRef,
   useState,
 } from "react";
 import {
@@ -111,6 +116,9 @@ import {
 import { circleKeys, socialProofKeys } from "../../hooks/queryKeys";
 // ORCH-1339 — cross-entity social proof (pg_public_social_proof, ORCH-1338).
 import { fetchSocialProof } from "../../services/socialProofService";
+// ORCH-1342 (D6) — the cold-route seed-by-slug read (anon
+// business_public_events_view; COMMS-0009 — never `.from('brands')`).
+import { fetchPublicEventSeedBySlug } from "../../services/publicEventSeedService";
 import {
   type NativeCheckoutOutcome,
   useNativeCheckoutFlow,
@@ -142,11 +150,22 @@ const SHEET_SNAP_POINTS = glass.bottomSheet.snapPoints as unknown as (
 const SHEET_INITIAL_INDEX = 1; // open at the 90% snap (full view)
 
 interface ConsumerEventDetailScreenProps {
-  /** The deck card seed. null on the cold deep-link route (OQ-6 capped). */
+  /**
+   * The deck card seed. null on the cold deep-link route — ORCH-1342 (D6):
+   * the screen now RESOLVES a seed by slug (publicEventSeedService) instead of
+   * capping; the "open from the app" cap is the terminal state for
+   * unknown/private/deleted slugs only.
+   */
   seed?: BusinessEventCard | null;
   /** Present on the cold deep-link route (re-export). Unused on the deck path. */
   brandSlug?: string;
   eventSlug?: string;
+  /**
+   * ORCH-1342 (SPEC §4.8) — the OneLink deferred-funnel landing. Exactly
+   * 'guest-list' (route-validated) auto-opens the ORCH-1341 guest-list sheet
+   * ONCE after the page settles, iff the guest list is public and non-empty.
+   */
+  landing?: "guest-list";
   onBack: () => void;
   tabBarAware?: boolean;
 }
@@ -216,9 +235,10 @@ const openMapsForQuery = (query: string): void => {
 };
 
 export default function ConsumerEventDetailScreen({
-  seed = null,
+  seed: seedProp = null,
   brandSlug,
   eventSlug,
+  landing,
   onBack,
   tabBarAware = true,
 }: ConsumerEventDetailScreenProps): React.ReactElement {
@@ -228,6 +248,21 @@ export default function ConsumerEventDetailScreen({
   const queryClient = useQueryClient();
   const user = useAppStore((s) => s.user);
   const profile = useAppStore((s) => s.profile);
+
+  // ORCH-1342 (D6, SPEC §4.7) — the cold /e/ route passes seed=null; resolve a
+  // seed by slug from the anon public view so the FULL page (RSVP branch
+  // included) renders cold. Deck path (seedProp present) → query disabled,
+  // byte-identical behavior. In-file sibling key convention (rsvpMomentum).
+  const coldSeedQuery = useQuery({
+    queryKey: ["publicEventSeed", brandSlug, eventSlug],
+    enabled: seedProp == null && !!brandSlug && !!eventSlug,
+    staleTime: 60_000,
+    queryFn: () =>
+      fetchPublicEventSeedBySlug(brandSlug as string, eventSlug as string),
+  });
+  // THE seed every read below consumes — deck seed first, cold-resolved second
+  // (all existing `seed?.…` reads, both branches, both mounts now work cold).
+  const seed = seedProp ?? coldSeedQuery.data ?? null;
 
   const [cartVisible, setCartVisible] = useState<boolean>(false);
   const [initialTicketTypeId, setInitialTicketTypeId] = useState<string | null>(
@@ -316,6 +351,43 @@ export default function ConsumerEventDetailScreen({
     staleTime: 60 * 1000,
     queryFn: () => fetchSocialProof(eventId as string),
   });
+
+  // ORCH-1342 (SPEC §4.8) — landing auto-open: `?landing=guest-list` opens the
+  // ORCH-1341 sheet ONCE after the page settles, via the SAME handler the
+  // card's onSeeWhosGoing invokes (never a parallel path). Conditions are
+  // evaluated REACTIVELY (no timers, no nav retries): the effect simply waits
+  // for the seed + the 1339 socialProof query. Auto-open fires ONLY under the
+  // exact conditions the card shows the affordance (D9/D2; DESIGN §1.5):
+  // socialProof settled with data, privateGuestList === false, goingCount > 0
+  // — a privateGuestList=true event NEVER auto-opens (T-A4; defense-in-depth:
+  // 1338's Function B raises guest_list_private if a race ever force-opens).
+  // The ref flips on ANY terminal outcome (opened OR disqualified OR query
+  // error) so the sheet never pops later on a refetch; a null cold seed means
+  // the graceful cap renders and the landing intent dies silently with it.
+  const landingHandledRef = useRef<boolean>(false);
+  useEffect(() => {
+    if (landing !== "guest-list" || landingHandledRef.current) return;
+    if (seed === null) return; // not resolved yet (or cap — intent dies there)
+    const settled = socialProofQuery.isSuccess || socialProofQuery.isError;
+    if (!settled) return;
+    landingHandledRef.current = true; // terminal — one-shot, refetch-proof
+    const sp = socialProofQuery.data ?? null;
+    if (
+      socialProofQuery.isSuccess &&
+      sp !== null &&
+      sp.privateGuestList === false &&
+      sp.goingCount > 0
+    ) {
+      handleSeeWhosGoing();
+    }
+  }, [
+    landing,
+    seed,
+    socialProofQuery.isSuccess,
+    socialProofQuery.isError,
+    socialProofQuery.data,
+    handleSeeWhosGoing,
+  ]);
 
   const theme = themeQuery.data ?? resolveTheme(null, null);
   const palette = useMemo(() => createThemePalette(theme), [theme]);
@@ -732,7 +804,31 @@ export default function ConsumerEventDetailScreen({
     </View>
   );
 
-  // ── Cold deep-link cap (OQ-6) — no seed, no anon-by-slug fetch in scope ──
+  // ── ORCH-1342 (D6) — cold seed resolving: the EXISTING loading sheet while
+  //    the by-slug read is in flight (never a blank screen, never the cap). ──
+  if (seedProp == null && coldSeedQuery.isLoading) {
+    return (
+      <BaseBottomSheet
+        visible
+        onClose={onBack}
+        theme="dark"
+        snapPoints={SHEET_SNAP_POINTS}
+        initialIndex={SHEET_INITIAL_INDEX}
+        scrollMode="view"
+        hidesBottomNav
+        accessibilityLabel="Event detail"
+      >
+        <View style={[styles.stateBody, { paddingBottom: insets.bottom + 48 }]}>
+          {chrome}
+          <ActivityIndicator color={ACCENT} />
+        </View>
+      </BaseBottomSheet>
+    );
+  }
+
+  // ── Cold cap — ORCH-1342 (D6): now the honest TERMINAL state for
+  //    unknown/private/deleted slugs only (the seed fetch settled null/error);
+  //    the OQ-6 "every cold open" cap is superseded. Copy kept as-is (§10-3). ──
   if (seed === null) {
     return (
       <BaseBottomSheet

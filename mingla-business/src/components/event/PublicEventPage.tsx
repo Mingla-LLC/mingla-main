@@ -80,6 +80,15 @@ import { Icon } from "../ui/Icon";
 
 import { FoundationEventPreview } from "./FoundationEventPreview";
 import { FoundationRsvpPreview } from "./FoundationRsvpPreview";
+// ORCH-1342 [web-see-whos-going-funnel] — the buyer-web install gate (DESIGN
+// §3) + its entity payload type; analytics ride the buyer-web PostHog facade
+// (captureWeb — postHogService is a deliberate no-op stub on web, I-1187).
+// LAZY (ORCH-1083 budget): the gate is tap-opened, never boot-path — a static
+// import re-enters the eager __common chunk and fails the budget gate.
+import { captureWeb } from "../../analytics/webAnalytics";
+import type { GuestFunnelEntity } from "../../services/guestFunnelLink";
+
+const SeeWhosGoingGate = React.lazy(() => import("./SeeWhosGoingGate"));
 import { submitPublicRsvp, submitRsvpContribution } from "../../services/rsvpEvents";
 // ORCH-1339 — cross-entity social proof (pg_public_social_proof, ORCH-1338;
 // anon-safe RPC — this page is anon-tolerant). Keys from the entity factory.
@@ -342,6 +351,35 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
     staleTime: 60_000,
     queryFn: () => fetchSocialProof(event.id),
   });
+
+  // ORCH-1342 [web-see-whos-going-funnel] — the buyer-web install gate
+  // (DESIGN §3). `onSeeWhosGoing` is wired ONLY under Platform.OS === 'web'
+  // (SPEC §4.4.1): on the business NATIVE apps the prop is simply not passed →
+  // the package renders the inert cluster (DESIGN §1.5, no dead tap). ONE gate
+  // mount serves BOTH branches (the same element is included in each return).
+  const [gateVisible, setGateVisible] = useState<boolean>(false);
+  const gateEntity = useMemo<GuestFunnelEntity>(
+    () => ({
+      entityType: event.event_type === "rsvp" ? "rsvp" : "event",
+      brandSlug: event.brandSlug,
+      entitySlug: event.eventSlug,
+    }),
+    [event.event_type, event.brandSlug, event.eventSlug],
+  );
+  const gateVariant: "phone_panel" | "desktop_qr" = isDesktop
+    ? "desktop_qr"
+    : "phone_panel";
+  const handleSeeWhosGoingWeb = useCallback((): void => {
+    // §4.4.3 (a) — fired on the affordance tap, BEFORE the gate opens.
+    captureWeb("see_whos_going_clicked", {
+      entity_type: gateEntity.entityType,
+      event_id: event.id,
+      variant: gateVariant,
+    });
+    setGateVisible(true);
+  }, [gateEntity.entityType, event.id, gateVariant]);
+  const onSeeWhosGoingProp =
+    Platform.OS === "web" ? handleSeeWhosGoingWeb : undefined;
 
   const viewerRole: ViewerRole = useMemo(() => {
     if (user === null) return "anonymous";
@@ -871,9 +909,13 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
               socialProofQuery.data?.hideRemainingCount ??
               false,
             // ORCH-1340 — the server-filtered avatar sample ([] until the
-            // socialProof read resolves — glyph cluster meanwhile). No
-            // onSeeWhosGoing here: ORCH-1342 owns the web tap behavior.
+            // socialProof read resolves — glyph cluster meanwhile).
             guestSample: socialProofQuery.data?.sample ?? [],
+            // ORCH-1342 — the web "See who's going" tap opens the install
+            // gate (web-only; undefined on business native → inert cluster,
+            // DESIGN §1.5). The package's own D2 gates (privateGuestList /
+            // goingCount 0) keep the affordance absent when gated.
+            onSeeWhosGoing: onSeeWhosGoingProp,
           }}
           onChipIn={handleChipIn}
           // ORCH-1295 [chip-in-post-payment-polish] — BUG 2: inject the country-code-
@@ -975,6 +1017,23 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
             </View>
           </View>
         ) : null}
+
+        {/* ORCH-1342 — the ONE web install gate. Conditionally rendered so the
+            lazy chunk fetches ONLY on the first open (hidden ⇒ nothing in the
+            tree — the COMMS-0084 no-residue posture holds by construction). */}
+        {gateVisible ? (
+          <React.Suspense fallback={null}>
+            <SeeWhosGoingGate
+              visible={gateVisible}
+              onClose={() => setGateVisible(false)}
+              entity={gateEntity}
+              eventId={event.id}
+              guestSample={socialProofQuery.data?.sample ?? []}
+              palette={palette}
+              theme={resolvedTheme}
+            />
+          </React.Suspense>
+        ) : null}
       </View>
     );
   }
@@ -1070,6 +1129,9 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
           onDockLayout={handleDockLayout}
           // ORCH-1339 — cross-entity social proof (server-gated payload).
           socialProof={socialProofQuery.data ?? null}
+          // ORCH-1342 — web-only "See who's going" → install gate (undefined
+          // on business native → inert cluster, DESIGN §1.5).
+          onSeeWhosGoing={onSeeWhosGoingProp}
           testID="orch-1167-event-foundation"
         />
       )}
@@ -1120,6 +1182,23 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
           onDismiss={dismissToast}
         />
       </View>
+
+      {/* ORCH-1342 — the ONE web install gate. Conditionally rendered so the
+          lazy chunk fetches ONLY on the first open (hidden ⇒ nothing in the
+          tree — the COMMS-0084 no-residue posture holds by construction). */}
+      {gateVisible ? (
+        <React.Suspense fallback={null}>
+          <SeeWhosGoingGate
+            visible={gateVisible}
+            onClose={() => setGateVisible(false)}
+            entity={gateEntity}
+            eventId={event.id}
+            guestSample={socialProofQuery.data?.sample ?? []}
+            palette={palette}
+            theme={resolvedTheme}
+          />
+        </React.Suspense>
+      ) : null}
     </View>
   );
 };

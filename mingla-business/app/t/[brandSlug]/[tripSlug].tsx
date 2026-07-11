@@ -23,6 +23,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
+  Platform,
   Pressable,
   StyleSheet,
   Text,
@@ -70,6 +71,14 @@ import {
 // META-ORCH-1187 LEG 2 — buyer-web public-offering view capture (web-only).
 import { captureWeb } from "../../../src/analytics/webAnalytics";
 import { TripPreview } from "../../../src/components/trip/TripPreview";
+// ORCH-1342 [web-see-whos-going-funnel] — the buyer-web install gate (DESIGN
+// §3). LAZY (ORCH-1083 budget): tap-opened, never boot-path — a static import
+// re-enters the eager __common chunk and fails the budget gate.
+import type { GuestFunnelEntity } from "../../../src/services/guestFunnelLink";
+
+const SeeWhosGoingGate = React.lazy(
+  () => import("../../../src/components/event/SeeWhosGoingGate"),
+);
 import {
   buildTripOfferingBrand,
   buildTripOfferingData,
@@ -314,6 +323,29 @@ const ResolvedTripPage: React.FC<{
   const palette = useMemo(() => createThemePalette(theme), [theme]);
   const surface = useMemo(() => resolveOfferingSurface(theme), [theme]);
 
+  // ORCH-1342 [web-see-whos-going-funnel] — the buyer-web install gate (DESIGN
+  // §3). Wired WEB-ONLY (SPEC §4.4.1): on business native the prop is not
+  // passed → inert cluster (DESIGN §1.5, no dead tap).
+  const [gateVisible, setGateVisible] = useState<boolean>(false);
+  const gateEntity = useMemo<GuestFunnelEntity>(
+    () => ({ entityType: "trip", brandSlug, entitySlug: tripSlug }),
+    [brandSlug, tripSlug],
+  );
+  const gateVariant: "phone_panel" | "desktop_qr" = isDesktop
+    ? "desktop_qr"
+    : "phone_panel";
+  const handleSeeWhosGoingWeb = useCallback((): void => {
+    // §4.4.3 (a) — fired on the affordance tap, BEFORE the gate opens.
+    captureWeb("see_whos_going_clicked", {
+      entity_type: "trip",
+      event_id: trip.id,
+      variant: gateVariant,
+    });
+    setGateVisible(true);
+  }, [trip.id, gateVariant]);
+  const onSeeWhosGoingProp =
+    Platform.OS === "web" ? handleSeeWhosGoingWeb : undefined;
+
   // ORCH-1138 R2 — load the resolved brand font (medium + bold) on demand.
   useThemeFont(theme.fontFamilyValue);
   const boldFamily = boldFontFamily(theme);
@@ -538,11 +570,31 @@ const ResolvedTripPage: React.FC<{
         safeAreaTop={safeAreaTop}
         // ORCH-1339 — cross-entity social proof (server-gated payload).
         socialProof={socialProof}
+        // ORCH-1342 — web-only "See who's going" → install gate (undefined on
+        // business native → inert cluster, DESIGN §1.5).
+        onSeeWhosGoing={onSeeWhosGoingProp}
         dockedReserve={dockedReserve}
         onScroll={handleScroll}
         onScrollViewLayout={handleScrollLayout}
         testID="orch-1138-trip-preview"
       />
+
+      {/* ORCH-1342 — the ONE web install gate. Conditionally rendered so the
+          lazy chunk fetches ONLY on the first open (hidden ⇒ nothing in the
+          tree — the COMMS-0084 no-residue posture holds by construction). */}
+      {gateVisible ? (
+        <React.Suspense fallback={null}>
+          <SeeWhosGoingGate
+            visible={gateVisible}
+            onClose={() => setGateVisible(false)}
+            entity={gateEntity}
+            eventId={trip.id}
+            guestSample={socialProof?.sample ?? []}
+            palette={palette}
+            theme={theme}
+          />
+        </React.Suspense>
+      ) : null}
 
       {brandSlug.length > 0 && tripSlug.length > 0 ? (
         <ShareModal

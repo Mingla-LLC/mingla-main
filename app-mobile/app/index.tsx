@@ -1873,6 +1873,17 @@ function AppContent() {
                 : dest.entity === 'trip'
                   ? `/t/${b}/${e}`
                   : `/exp/${b}/${e}`;
+            // ORCH-1342 [web-see-whos-going-funnel] — the landing rides INSIDE
+            // the path string at this ONE composition point (SPEC §4.6), so the
+            // authed router.push AND the unauthenticated deferral below carry it
+            // automatically. The deferred-replay effect (above) is DO-NOT-TOUCH:
+            // it already router.push-es the persisted url VERBATIM, so
+            // `?landing=guest-list` survives the install→defer→replay cycle by
+            // construction. The typed field comes ONLY from the resolver
+            // (I-PROPOSED-1342-LANDING-SINGLE-PARSE).
+            if (dest.landing === 'guest-list') {
+              path = `${path}?landing=guest-list`;
+            }
           }
           if (!path) return;
 
