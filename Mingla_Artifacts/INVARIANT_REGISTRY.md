@@ -57,6 +57,30 @@
 
 ---
 
+## ORCH-1331 (Nigeria partner-payout rail — Paystack)
+
+> Registered DRAFT at ORCH-1331 SPEC (`specs/SPEC_ORCH-1331_PARTNER_PAYSTACK_RAIL.md` §6); ALL FLIPPED ACTIVE at CLOSE 2026-07-11 (merged `81f28c2cd` / PR #829; tester PASS-mocked; DB migration `20261228000000` applied).
+
+### I-PROPOSED-1331-PARTNER-SPLIT-FAIL-SOFT (ACTIVE — ORCH-1331 CLOSE 2026-07-11)
+- **Rule:** Partner-split machinery can NEVER fail a checkout. The Paystack split fan-out runs AFTER `biz_ticket_checkout_finalize` inside a dedicated catch-and-log block in `paystack-webhook/index.ts` and must never set `processingError` or alter the webhook's response.
+- **Enforcement:** strict-grep gate `.github/scripts/strict-grep/orch-1331-partner-split-fail-soft.mjs` (self-test 5/5) + runtime test T-8 (engine forced to throw at every stage → ticket still finalizes, 200 returned).
+- **Fails-on-revert:** deleting the try/catch → T-8 + gate both RED (verified at `49bd06da9`).
+
+### I-PROPOSED-1331-PARTNER-SHARE-FROM-PLATFORM-FEE (ACTIVE — ORCH-1331 CLOSE 2026-07-11)
+- **Rule:** The partner share is computed ONLY from Mingla's persisted platform fee and paid ONLY from Mingla's revenue/balance — never from the brand's share. Rate = `PARTNER_SHARE_OF_FEE` IMPORTED from `_shared/partnerSplits.ts` (single source, both rails); `Math.round` to the kobo; NGN zero-FX.
+- **Enforcement:** strict-grep gate `.github/scripts/strict-grep/orch-1331-share-single-source.mjs` (self-test 4/4; bans any duplicated rate literal) + rounding-parity test T-4.
+- **Fails-on-revert:** replacing the import with a drifted local constant → T-4 + gate RED (verified at `49bd06da9`).
+
+### I-PROPOSED-1331-NUBAN-NEVER-PERSISTED (ACTIVE — ORCH-1331 CLOSE 2026-07-11)
+- **Rule:** The full Nigerian bank account number (NUBAN) NEVER lands in any Mingla table, log line, audit payload, or error message — `account_number_last4` only. The full number lives only inside Paystack's recipient object.
+- **Enforcement:** DB comments + `partner_paystack_accounts` schema (no full-number column); tester PII suite (console/audit leak-hunt) in `partnerRailExclusivity.tester.orch1331.test.ts`; SQL-armor suite asserts zero write policies (service-role-only writes).
+
+### I-PROPOSED-1331-LINK-COLUMNS-FROZEN (ACTIVE — ORCH-1331 CLOSE 2026-07-11)
+- **Rule:** `partner_brand_links` timestamp column NAMES are frozen (deployed clients read `owner_stripe_connected_at` by name in `deriveLinkStatus`). Provider generalization stamps the EXISTING columns (Paystack owner-connect stamps `owner_stripe_connected_at` via the brands trigger) — never renames.
+- **Enforcement:** migration COMMENT on the column records the generalized semantics; SQL contract test T-13 asserts trigger + no-rename; `partnerBrandLinksService.ts` is on the ORCH-1331 DO-NOT-TOUCH list.
+
+---
+
 ## DRAFT — ORCH-1328 (links CTA soft-nav blank page — the /links CTA opens the store client-side instead of soft-navigating into an external-redirect route, 2026-07-09)
 
 > Registered DRAFT at ORCH-1328 IMPLEMENT (`specs/SPEC_ORCH-1328_LINKS_CTA_FIX.md`, root cause proven in `investigations/INVESTIGATION_ORCH-1328_LINKS_CTA_SOFT_NAV.md`). Root cause (driven, WebKit/iPhone-14 on live prod): the `usemingla.com/links` per-tab CTA was a Next `<Link>` soft-navigation into `/download` (Explorer) / `/business/download` (Business) — server routes that only `redirect()` to an external store URL. The client router tears `/links` down into the route's layout shell and, on real iOS Safari, the App Store universal-link handoff cancels the last hop, stranding the tab on the **bare root shell (BLANK — Explorer)** / **GlassNav+Footer with empty main (FOOTER-only — Business)**. Fix (Option A — the ORCH-1319/1324 glass-nav pattern): convert the CTA to a client `<button>` whose `onClick` opens the destination DIRECTLY on the tap via `window.open` + a `window.location.assign` popup-block fallback, choosing the destination with `detectClientPlatform()` from the `lib/store-links` SSOT, so `/links` stays mounted. ONE product file changed (`components/marketing/links-experience.tsx`); `lib/links-config.ts` / `lib/store-links.ts` / `lib/device-platform.ts` / the two `/download` routes / both layouts UNCHANGED. The orchestrator flips DRAFT → ACTIVE at CLOSE once the tester re-proves "stay on /links" + the store-open leg. Cross-ref `reports/IMPLEMENTATION_ORCH-1328_LINKS_CTA.md`.
