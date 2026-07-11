@@ -191,6 +191,29 @@ serve(async (req) => {
       );
     }
 
+    // ORCH-1331 — payout-rail exclusivity (I-PROPOSED-1331-PARTNER-PAYOUT-
+    // RAIL-EXCLUSIVE): a partner with an ACTIVE Paystack recipient cannot also
+    // onboard Stripe. Mirror guard lives in partner-paystack-onboard
+    // (409 stripe_already_connected). Additive — nothing else changes.
+    const { data: paystackRow, error: paystackErr } = await supabase
+      .from("partner_paystack_accounts")
+      .select("recipient_code, detached_at")
+      .eq("account_id", userId)
+      .maybeSingle<{ recipient_code: string | null; detached_at: string | null }>();
+    if (paystackErr) {
+      console.error(
+        "[partner-stripe-onboard] paystack exclusivity read failed:",
+        paystackErr,
+      );
+      return jsonResponse({ error: "internal_error" }, 500);
+    }
+    if (paystackRow?.recipient_code && paystackRow.detached_at === null) {
+      return jsonResponse(
+        { error: "conflict", detail: "paystack_already_connected" },
+        409,
+      );
+    }
+
     // Existing partner row? If active, reuse + mint a fresh AccountSession.
     const { data: existingSca, error: existingErr } = await supabase
       .from("partner_stripe_connect_accounts")

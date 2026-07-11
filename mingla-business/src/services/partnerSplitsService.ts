@@ -17,6 +17,9 @@ export type PartnerSplitStatus =
   | "transferred"
   | "blocked_currency_mismatch"
   | "blocked_no_stripe"
+  // ORCH-1331 — Paystack rail: partner had no active Transfer Recipient at
+  // sale time.
+  | "blocked_no_paystack"
   | "failed"
   | "reversed"
   | "reversed_pending";
@@ -36,6 +39,10 @@ export interface PartnerSplitRow {
   created_at: string;
   transferred_at: string | null;
   reversed_at: string | null;
+  // ORCH-1331 — additive provider columns (optional: pre-migration rows and
+  // cached snapshots may lack them).
+  provider?: "stripe" | "paystack";
+  payout_reference?: string | null;
 }
 
 export interface PartnerEarningsCurrencyBucket {
@@ -92,7 +99,7 @@ export async function listPartnerSplits(
   let query = supabase
     .from("partner_splits")
     .select(
-      "id, order_id, brand_id, partner_account_id, mingla_fee_cents, partner_share_cents, transfer_currency, stripe_transfer_id, stripe_application_fee_id, status, error_message, created_at, transferred_at, reversed_at",
+      "id, order_id, brand_id, partner_account_id, mingla_fee_cents, partner_share_cents, transfer_currency, stripe_transfer_id, stripe_application_fee_id, status, error_message, created_at, transferred_at, reversed_at, provider",
     )
     .order("created_at", { ascending: false })
     .limit(params.limit ?? 200);

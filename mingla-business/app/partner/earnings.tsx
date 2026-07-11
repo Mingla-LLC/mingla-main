@@ -20,7 +20,6 @@ import {
   Linking,
   Platform,
   Pressable,
-  ScrollView,
   StyleSheet,
   Text,
   View,
@@ -30,6 +29,16 @@ import { Stack, useRouter } from "expo-router";
 import * as WebBrowser from "expo-web-browser";
 // ORCH-1081 — AsyncStorage for the one-time welcome-to-portfolio toast.
 import AsyncStorage from "@react-native-async-storage/async-storage";
+// ORCH-1331 — the screen gains its first text input (the NG bank form), so the
+// body ScrollView routes through the canonical SmartScrollView wrapper
+// (ORCH-0892-B: native = react-native-keyboard-controller's
+// KeyboardAwareScrollView, bottomOffset=54 incl. the Done-bar clearance;
+// web = plain RN ScrollView). Focused-field keyboard avoidance is owned by
+// the wrapper — no bespoke KAV plumbing, and the boot-fragile library import
+// stays inside the SAFELISTED .native wrapper (ORCH-1296).
+import { ScrollView } from "../../src/wrappers/SmartScrollView";
+// ORCH-1331 — success haptic on Paystack connect (native only).
+import * as Haptics from "expo-haptics";
 
 import {
   useDetachPartnerStripe,
@@ -37,6 +46,12 @@ import {
   useRefreshPartnerAccountSession,
   useStartPartnerStripeOnboarding,
 } from "../../src/hooks/usePartnerStripe";
+// ORCH-1331 — Nigeria/Paystack payout rail (partner Transfer Recipient).
+import {
+  useDisconnectPartnerPaystack,
+  usePartnerPaystackStatus,
+} from "../../src/hooks/usePartnerPaystack";
+import { PartnerPaystackOnboardForm } from "../../src/components/partner/PartnerPaystackOnboardForm";
 import {
   usePartnerEarningsSummary,
   usePartnerSplits,
@@ -72,6 +87,9 @@ export default function PartnerEarningsScreen(): React.ReactElement {
   const startOnboarding = useStartPartnerStripeOnboarding();
   const refreshSession = useRefreshPartnerAccountSession();
   const detachStripe = useDetachPartnerStripe();
+  // ORCH-1331 — Paystack rail status + detach (Nigeria).
+  const paystackQuery = usePartnerPaystackStatus();
+  const disconnectPaystack = useDisconnectPartnerPaystack();
 
   // Country selection — pre-onboarding. Hydrates from persisted
   // partner_country if set, else null so the user MUST pick explicitly.
@@ -87,8 +105,56 @@ export default function PartnerEarningsScreen(): React.ReactElement {
     }
   }, [statusQuery.data?.partner_country]);
 
+  // ORCH-1331 — "‹ Choose a different country" re-opens the country sheet
+  // immediately on return (the picker's defaultOpen affordance; design §1.4).
+  const [reopenPickerOnReturn, setReopenPickerOnReturn] = useState(false);
+
   const stripeAccountStatus = statusQuery.data?.status ?? "not_connected";
-  const countryLocked = stripeAccountStatus !== "not_connected";
+  const paystackConnected = paystackQuery.data?.connected === true;
+  // ORCH-1331 — either active rail locks the country choice (design §2 row 4).
+  const countryLocked = stripeAccountStatus !== "not_connected" ||
+    paystackConnected;
+
+  const handleSelectCountry = useCallback((code: string): void => {
+    setReopenPickerOnReturn(false);
+    setSelectedCountry(code);
+  }, []);
+
+  const handleNgCancel = useCallback((): void => {
+    setSelectedCountry(null);
+    setReopenPickerOnReturn(true);
+  }, []);
+
+  const handleNgConnected = useCallback((): void => {
+    if (Platform.OS !== "web") {
+      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    }
+  }, []);
+
+  const handleDisconnectPaystack = useCallback((): void => {
+    Alert.alert(
+      "Disconnect bank?",
+      "Your bank account will be unlinked from Mingla partner payouts. Splits already paid stay in your bank. You can reconnect anytime — with the same or a different account.",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Disconnect",
+          style: "destructive",
+          onPress: async () => {
+            try {
+              await disconnectPaystack.mutateAsync();
+              // Fresh, explicit choice on return (design §4.2).
+              setSelectedCountry(null);
+              await paystackQuery.refetch();
+            } catch (err) {
+              const message = err instanceof Error ? err.message : String(err);
+              Alert.alert("Couldn't disconnect", message);
+            }
+          },
+        },
+      ],
+    );
+  }, [disconnectPaystack, paystackQuery]);
 
   const handleStartOnboarding = useCallback(async () => {
     if (!statusQuery.data) return;
@@ -212,7 +278,15 @@ export default function PartnerEarningsScreen(): React.ReactElement {
           via AsyncStorage so it never replays. */}
       <PortfolioWelcomeToast />
 
-      <ScrollView contentContainerStyle={styles.scroll}>
+      {/* ORCH-1331 — SmartScrollView body (design §2 row 7): the wrapper's
+          KeyboardAwareScrollView keeps the NG form's account input above the
+          keyboard; keyboardShouldPersistTaps so the Verify CTA fires on the
+          first tap with the keyboard up; drag dismisses. */}
+      <ScrollView
+        contentContainerStyle={styles.scroll}
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="on-drag"
+      >
         {statusQuery.isLoading ? (
           <View style={styles.center}>
             <ActivityIndicator color={accent.warm} />
@@ -247,6 +321,28 @@ export default function PartnerEarningsScreen(): React.ReactElement {
               .
             </Text>
           </GlassCard>
+        ) : paystackQuery.isLoading ? (
+          // ORCH-1331 — the paystack status joins the screen-level loading
+          // gate AFTER the partner gate (non-partners never reach it).
+          <View style={styles.center}>
+            <ActivityIndicator color={accent.warm} />
+          </View>
+        ) : paystackQuery.error ? (
+          // ORCH-1331 — joins the same screen-level error branch (design §4.1).
+          <GlassCard variant="elevated" radius="md" padding={spacing.lg}>
+            <Text style={styles.cardTitle}>Couldn't load partner status</Text>
+            <Text style={styles.cardBody}>{paystackQuery.error.message}</Text>
+            <View style={{ marginTop: spacing.md }}>
+              <Button
+                variant="secondary"
+                size="md"
+                label="Retry"
+                onPress={() => {
+                  void paystackQuery.refetch();
+                }}
+              />
+            </View>
+          </GlassCard>
         ) : (
           <>
             <StatusBlock
@@ -259,12 +355,22 @@ export default function PartnerEarningsScreen(): React.ReactElement {
               starting={startOnboarding.isPending}
               startError={startOnboarding.error?.message ?? null}
               selectedCountry={selectedCountry}
-              onSelectCountry={setSelectedCountry}
+              onSelectCountry={handleSelectCountry}
               countryLocked={countryLocked}
+              reopenPicker={reopenPickerOnReturn}
               onManage={handleManageStripe}
               managing={refreshSession.isPending}
               onDisconnect={handleDisconnectStripe}
               disconnecting={detachStripe.isPending}
+              paystackConnected={paystackConnected}
+              paystackBankName={paystackQuery.data?.bank_name ?? null}
+              paystackAccountMasked={paystackQuery.data?.account_number_masked ??
+                null}
+              paystackAccountName={paystackQuery.data?.account_name ?? null}
+              onDisconnectPaystack={handleDisconnectPaystack}
+              disconnectingPaystack={disconnectPaystack.isPending}
+              onNgCancel={handleNgCancel}
+              onNgConnected={handleNgConnected}
             />
             {/* ORCH-1081 — Ready-to-earn nudge. Visible only when the partner is
                 connected (status=active) AND has zero partner_brand_links. */}
@@ -392,7 +498,7 @@ function PortfolioWelcomeToast(): React.ReactElement | null {
       >
         <Text style={styles.welcomeToastText}>
           🎉 Welcome aboard, partner of {showLink.brand}. You'll see splits
-          here once they connect Stripe and sell their first ticket.
+          here once they connect payouts and sell their first ticket.
         </Text>
         <Text style={styles.welcomeToastClose}>Tap to dismiss</Text>
       </Pressable>
@@ -461,7 +567,7 @@ function PartnerSplitsSection(): React.ReactElement {
       ? (links[0].brand?.name ?? "your brand")
       : null;
     const copy = hasLinks
-      ? `Almost there. You've set up ${firstBrandName}. You'll see your first split as soon as their Stripe is connected and tickets sell.`
+      ? `Almost there. You've set up ${firstBrandName}. You'll see your first split as soon as their payouts are connected and tickets sell.`
       : "You'll see your first split as soon as a brand you set up makes a sale.";
     return (
       <GlassCard variant="elevated" radius="md" padding={spacing.lg}>
@@ -580,6 +686,8 @@ function StatusBadge({ status }: { status: PartnerSplitStatus }): React.ReactEle
     pending: { label: "Pending", color: semantic.warning, bg: semantic.warningTint },
     blocked_currency_mismatch: { label: "Blocked — currency", color: semantic.error, bg: semantic.errorTint },
     blocked_no_stripe: { label: "Blocked — Stripe", color: semantic.error, bg: semantic.errorTint },
+    // ORCH-1331 — Paystack rail: no active Transfer Recipient at sale time.
+    blocked_no_paystack: { label: "Blocked — Paystack", color: semantic.error, bg: semantic.errorTint },
     failed: { label: "Failed", color: semantic.error, bg: semantic.errorTint },
     reversed: { label: "Reversed", color: textTokens.tertiary, bg: glass.tint.profileElevated },
     reversed_pending: { label: "Reversed (pending)", color: textTokens.tertiary, bg: glass.tint.profileElevated },
@@ -614,10 +722,21 @@ function StatusBlock(props: {
   selectedCountry: string | null;
   onSelectCountry: (code: string) => void;
   countryLocked: boolean;
+  /** ORCH-1331 — re-open the country sheet on mount (returning from the NG form). */
+  reopenPicker: boolean;
   onManage: () => void;
   managing: boolean;
   onDisconnect: () => void;
   disconnecting: boolean;
+  /** ORCH-1331 — Paystack rail state + actions. */
+  paystackConnected: boolean;
+  paystackBankName: string | null;
+  paystackAccountMasked: string | null;
+  paystackAccountName: string | null;
+  onDisconnectPaystack: () => void;
+  disconnectingPaystack: boolean;
+  onNgCancel: () => void;
+  onNgConnected: () => void;
 }): React.ReactElement {
   const {
     status,
@@ -629,10 +748,19 @@ function StatusBlock(props: {
     selectedCountry,
     onSelectCountry,
     countryLocked,
+    reopenPicker,
     onManage,
     managing,
     onDisconnect,
     disconnecting,
+    paystackConnected,
+    paystackBankName,
+    paystackAccountMasked,
+    paystackAccountName,
+    onDisconnectPaystack,
+    disconnectingPaystack,
+    onNgCancel,
+    onNgConnected,
   } = props;
 
   const selectedCountryMeta = selectedCountry
@@ -681,6 +809,48 @@ function StatusBlock(props: {
             disabled={disconnecting || managing}
             onPress={onDisconnect}
             accessibilityLabel="Disconnect Stripe"
+          />
+        </View>
+      </GlassCard>
+    );
+  }
+
+  // ORCH-1331 — PAYOUTS READY (Paystack). Same slot + card grammar as the
+  // Stripe active card. Takes precedence over every Stripe branch except a
+  // genuinely active Stripe account (mutually exclusive by backend 409s; if
+  // both ever read true, the Stripe card above wins — defensive, unreachable).
+  if (paystackConnected) {
+    return (
+      <GlassCard
+        variant="elevated"
+        radius="md"
+        padding={spacing.lg}
+        testID="partner-paystack-ready-card"
+      >
+        <View style={styles.statusIndicatorRow}>
+          <View style={styles.statusDotSuccess} />
+          <Text style={styles.statusLabelSuccess}>PAYOUTS READY</Text>
+        </View>
+        <Text style={styles.cardTitle}>You're earning</Text>
+        <Text style={styles.cardBody}>
+          Your partner payouts go to {paystackBankName ?? "your bank"}{" "}
+          {paystackAccountMasked ?? ""} (NGN).
+        </Text>
+        <Text style={styles.paystackHolderRow}>
+          Account holder: {paystackAccountName ?? "—"}
+        </Text>
+        <View style={{ marginTop: spacing.md }}>
+          <Button
+            variant="secondary"
+            size="md"
+            fullWidth
+            label={disconnectingPaystack ? "Disconnecting…" : "Disconnect bank"}
+            labelStyle={{ color: semantic.error }}
+            loading={disconnectingPaystack}
+            disabled={disconnectingPaystack}
+            onPress={onDisconnectPaystack}
+            accessibilityLabel="Disconnect Nigerian bank account"
+            testID="partner-paystack-disconnect"
           />
         </View>
       </GlassCard>
@@ -752,6 +922,19 @@ function StatusBlock(props: {
     );
   }
 
+  // ORCH-1331 — NG fork (design §1.4): picking Nigeria REPLACES the
+  // not-connected card with the Paystack bank form; the picker is NOT
+  // rendered in this state (its frozen trigger has no NG label — the form's
+  // ghost back button returns to a re-opened country sheet instead).
+  if (status === "not_connected" && selectedCountry === "NG" && !paystackConnected) {
+    return (
+      <PartnerPaystackOnboardForm
+        onConnected={onNgConnected}
+        onCancel={onNgCancel}
+      />
+    );
+  }
+
   // not_connected
   const connectDisabled = starting || selectedCountry === null;
   return (
@@ -772,6 +955,13 @@ function StatusBlock(props: {
           onChange={onSelectCountry}
           disabled={countryLocked || starting}
           helperText={currencyHelper}
+          // ORCH-1331 — Nigeria rides the designed extraOptions slot; NG is
+          // NEVER added to STRIPE_SUPPORTED_COUNTRIES (I-PROPOSED-T).
+          extraOptions={[
+            { code: "NG", name: "Nigeria", currency: "NGN", sublabel: "Paystack" },
+          ]}
+          // Returning from the NG form re-opens the sheet for a fresh pick.
+          defaultOpen={reopenPicker}
         />
       </View>
       <View style={{ marginTop: spacing.md }}>
@@ -882,6 +1072,12 @@ const styles = StyleSheet.create({
     backgroundColor: textTokens.tertiary,
   },
   statusLabelSuccess: { ...typography.labelCap, color: semantic.success },
+  // ORCH-1331 — PAYOUTS READY (Paystack) holder caption.
+  paystackHolderRow: {
+    ...typography.caption,
+    color: textTokens.tertiary,
+    marginTop: spacing.xs,
+  },
   statusLabelWarning: { ...typography.labelCap, color: semantic.warning },
   statusLabelInfo: { ...typography.labelCap, color: semantic.info },
   statusLabelMuted: { ...typography.labelCap, color: textTokens.tertiary },

@@ -314,6 +314,166 @@ export async function paystackFetchSubaccount(
   return json.data as PaystackSubaccount;
 }
 
+// ───────────────────────────────────────────────────────────────────────────
+// ORCH-1331 — Partner payout rail: Transfer Recipients + Transfers.
+// The PARTNER's payout identity is a Paystack Transfer Recipient (≈ the
+// partner's bank on file); the partner share is paid post-hoc via a Transfer
+// from Mingla's Paystack Balance (SPEC §4.1 Option B — the LIVE checkout
+// initialize call is untouched).
+//   - Transfer Recipient API: https://paystack.com/docs/api/transfer-recipient/
+//   - Transfer API:           https://paystack.com/docs/api/transfer/
+//   - Single transfers (OTP + reference idempotency):
+//       https://paystack.com/docs/transfers/single-transfers/
+// ───────────────────────────────────────────────────────────────────────────
+
+/**
+ * ORCH-1331 — error carrying the HTTP status so the split engine can classify
+ * retryable (5xx/429/network) vs definitive (other 4xx) transfer failures.
+ * Additive: pre-existing helpers keep throwing plain Errors.
+ */
+export class PaystackApiError extends Error {
+  readonly status: number;
+  constructor(message: string, status: number) {
+    super(message);
+    this.name = "PaystackApiError";
+    this.status = status;
+  }
+}
+
+export interface PaystackTransferRecipient {
+  recipient_code: string;
+  details?: Record<string, unknown>;
+}
+
+/**
+ * POST /transferrecipient — create a NUBAN transfer recipient for a partner.
+ * Body per https://paystack.com/docs/api/transfer-recipient/:
+ *   { type: "nuban", name, account_number, bank_code, currency: "NGN" }
+ * `name` MUST be the resolved account holder name (bank/resolve confirms it).
+ */
+export async function paystackCreateTransferRecipient(params: {
+  name: string;
+  accountNumber: string;
+  bankCode: string;
+}): Promise<PaystackTransferRecipient> {
+  const secret = resolvePaystackSecretKey();
+  const _t0 = Date.now();
+  const res = await fetch(`${PAYSTACK_BASE_URL}/transferrecipient`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${secret}`, "Content-Type": "application/json" },
+    body: JSON.stringify({
+      type: "nuban",
+      name: params.name,
+      account_number: params.accountNumber,
+      bank_code: params.bankCode,
+      currency: "NGN",
+    }),
+  });
+  void recordApiCall("paystack", res.ok, Date.now() - _t0, res.status); // ORCH-1201 Layer-C
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok || json?.status !== true) {
+    throw new PaystackApiError(
+      `Paystack create-transfer-recipient failed (${res.status}): ${json?.message ?? "unknown error"}`,
+      res.status,
+    );
+  }
+  return json.data as PaystackTransferRecipient;
+}
+
+/**
+ * DELETE /transferrecipient/{code} — best-effort delete on disconnect.
+ * https://paystack.com/docs/api/transfer-recipient/#delete
+ * Callers treat failure as non-fatal (the local row is the source of truth).
+ */
+export async function paystackDeleteTransferRecipient(
+  recipientCode: string,
+): Promise<void> {
+  const secret = resolvePaystackSecretKey();
+  const _t0 = Date.now();
+  const res = await fetch(
+    `${PAYSTACK_BASE_URL}/transferrecipient/${encodeURIComponent(recipientCode)}`,
+    { method: "DELETE", headers: { Authorization: `Bearer ${secret}` } },
+  );
+  void recordApiCall("paystack", res.ok, Date.now() - _t0, res.status); // ORCH-1201 Layer-C
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok || json?.status !== true) {
+    throw new PaystackApiError(
+      `Paystack delete-transfer-recipient failed (${res.status}): ${json?.message ?? "unknown error"}`,
+      res.status,
+    );
+  }
+}
+
+export interface PaystackTransferResult {
+  transfer_code: string;
+  status: string; // "pending" | "success" | "otp" | …
+  reference: string;
+}
+
+/**
+ * POST /transfer — initiate a balance-sourced transfer to a recipient.
+ * Body per https://paystack.com/docs/api/transfer/:
+ *   { source: "balance", amount (subunits/kobo), recipient (RCP_…),
+ *     reference, reason, currency: "NGN" }
+ * The `reference` IS the idempotency key ("If you are retrying a transfer,
+ * use the same reference" — single-transfers doc). ORCH-1331 contract:
+ * reference = psplit_<partner_splits.id>_a<attempt_count>.
+ */
+export async function paystackInitiateTransfer(params: {
+  amountSubunits: number;
+  recipientCode: string;
+  reference: string;
+  reason: string;
+}): Promise<PaystackTransferResult> {
+  const secret = resolvePaystackSecretKey();
+  const _t0 = Date.now();
+  const res = await fetch(`${PAYSTACK_BASE_URL}/transfer`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${secret}`, "Content-Type": "application/json" },
+    body: JSON.stringify({
+      source: "balance",
+      amount: params.amountSubunits,
+      recipient: params.recipientCode,
+      reference: params.reference,
+      reason: params.reason,
+      currency: "NGN",
+    }),
+  });
+  void recordApiCall("paystack", res.ok, Date.now() - _t0, res.status); // ORCH-1201 Layer-C
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok || json?.status !== true) {
+    throw new PaystackApiError(
+      `Paystack transfer failed (${res.status}): ${json?.message ?? "unknown error"}`,
+      res.status,
+    );
+  }
+  return json.data as PaystackTransferResult;
+}
+
+/**
+ * GET /transfer/{code} — fetch a transfer for sweep reconciliation.
+ * https://paystack.com/docs/api/transfer/#fetch
+ */
+export async function paystackFetchTransfer(
+  codeOrId: string,
+): Promise<Record<string, unknown>> {
+  const secret = resolvePaystackSecretKey();
+  const _t0 = Date.now();
+  const res = await fetch(
+    `${PAYSTACK_BASE_URL}/transfer/${encodeURIComponent(codeOrId)}`,
+    { headers: { Authorization: `Bearer ${secret}` } },
+  );
+  void recordApiCall("paystack", res.ok, Date.now() - _t0, res.status); // ORCH-1201 Layer-C
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok || json?.status !== true) {
+    throw new PaystackApiError(
+      `Paystack fetch-transfer failed (${res.status}): ${json?.message ?? "unknown error"}`,
+      res.status,
+    );
+  }
+  return json.data as Record<string, unknown>;
+}
+
 /**
  * Verify the x-paystack-signature header.
  * HMAC-SHA512 of the RAW request body using the SECRET key, hex-encoded.

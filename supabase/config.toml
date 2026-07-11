@@ -227,6 +227,18 @@ verify_jwt = true
 [functions.partner-stripe-account-session]
 verify_jwt = true
 
+# ORCH-1331 [partner Paystack payout rail] — partner Transfer-Recipient
+# onboarding requires an authenticated caller (auth.uid() → partner gate;
+# mirrors partner-stripe-onboard).
+[functions.partner-paystack-onboard]
+verify_jwt = true
+
+# ORCH-1331 — cron sweep; no Supabase JWT (pg_cron net.http_post sends the
+# service-role key as a Bearer token; the fn's first statement gates on it —
+# mirrors reconcile-stuck-checkouts).
+[functions.partner-paystack-split-retry]
+verify_jwt = false
+
 # META-ORCH-1076 [Paystack Africa / Nigeria] — proof slice.
 # paystack-webhook MUST be verify_jwt=false (Paystack sends no Supabase JWT;
 # it is authenticated by the x-paystack-signature HMAC-SHA512 check instead).
