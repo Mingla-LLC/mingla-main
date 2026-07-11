@@ -12,8 +12,9 @@
 // FAILS-ON-REVERT (SPEC §9): deleting the migration file, dropping either
 // `named_location` CASE projection, dropping the `'location', n.named_location`
 // payload key, loosening the CASE guard so location leaks onto non-named rows,
-// widening the profiles whitelist beyond the six allowed columns, or weakening a
-// guard makes this suite FAIL; restoring the contract makes it PASS.
+// widening the profiles whitelist beyond the six allowed columns, weakening a
+// guard, OR dropping `anon` from the FN-B REVOKE (re-opening anon EXECUTE —
+// T-8/T-10) makes this suite FAIL; restoring the contract makes it PASS.
 //
 // Sibling contract: the ORCH-1338 anti-scrape suite still pins the FN-B guards
 // on the untouched 20261225000000 file — this file adds only the location facet.
@@ -214,9 +215,9 @@ Deno.test("T-8 posture: DEFINER + STABLE + pinned search_path, anon-revoke, auth
   );
   assert(
     migration.includes(
-      "REVOKE ALL ON FUNCTION public.peer_list_event_guests(uuid, integer, integer) FROM PUBLIC;",
+      "REVOKE ALL ON FUNCTION public.peer_list_event_guests(uuid, integer, integer) FROM PUBLIC, anon;",
     ),
-    "REVOKE FROM PUBLIC pairs with SECURITY DEFINER",
+    "REVOKE strips BOTH the PUBLIC path AND the default-privileges anon role grant (pairs with SECURITY DEFINER)",
   );
   const grants = migration.match(
     /GRANT EXECUTE ON FUNCTION public\.peer_list_event_guests\([^)]*\) TO ([^;]+);/g,
@@ -236,4 +237,51 @@ Deno.test("T-9 no typed contact data of non-users leaks anywhere in the migratio
       .test(migration),
     "no guest_*/buyer-contact/attendee_* token in any expression OR comment",
   );
+});
+
+// ── T-10 — REGRESSION GUARD (ORCH-1359): recreating FN-B must strip anon ─────
+//          EXECUTE, not merely PUBLIC.
+//
+// Root cause of the shipped regression (orchestrator deploy-verify): this
+// migration DROPs + CREATEs public.peer_list_event_guests, and Supabase's
+// default privileges (`ALTER DEFAULT PRIVILEGES … GRANT EXECUTE ON FUNCTIONS TO
+// anon, authenticated, service_role`) re-attach a per-ROLE `anon=X` ACL on every
+// CREATE FUNCTION. A bare `REVOKE … FROM PUBLIC` does NOT strip that role grant,
+// so recreating FN-B silently re-opened anon EXECUTE — regressing the sealed
+// ORCH-1338 P2 hardening (20261227000000). This is the exact assertion the P2
+// suite makes ("§A REVOKE strips BOTH the PUBLIC path AND the anon role grant"),
+// applied to THIS function-recreating migration so the P2 invariant is enforced
+// against 20261229000000 too (the P2 test only scans 20261227000000). The revoke
+// must name anon — `FROM PUBLIC, anon` (canonical) or an explicit `FROM anon`.
+Deno.test("T-10 REGRESSION GUARD — FN-B recreate strips anon EXECUTE (not just PUBLIC), no anon re-grant", () => {
+  const revokes = migration.match(
+    /REVOKE\s+[A-Z ]*ON\s+FUNCTION\s+public\.peer_list_event_guests\([^)]*\)\s+FROM\s+([^;]+);/gi,
+  ) ?? [];
+  assert(
+    revokes.length >= 1,
+    "a REVOKE on public.peer_list_event_guests(...) is present",
+  );
+  // At least one REVOKE must name anon in its FROM list.
+  const stripsAnon = revokes.some((r) => {
+    const targets = r.replace(/^[\s\S]*\bFROM\b/i, "");
+    return /\banon\b/i.test(targets);
+  });
+  assert(
+    stripsAnon,
+    "REVOKE on peer_list_event_guests MUST strip anon (e.g. FROM PUBLIC, anon) — " +
+      "a bare `FROM PUBLIC` re-opens the default-privileges anon EXECUTE grant " +
+      "when the function is DROP+CREATE recreated (ORCH-1338 P2 regression)",
+  );
+  // anon (and PUBLIC) must never be re-granted EXECUTE on FN-B.
+  const grants = migration.match(
+    /GRANT\s+EXECUTE\s+ON\s+FUNCTION\s+public\.peer_list_event_guests\([^)]*\)\s+TO\s+([^;]+);/gi,
+  ) ?? [];
+  for (const g of grants) {
+    const grantees = g.replace(/^[\s\S]*\bTO\b/i, "");
+    assert(!/\banon\b/i.test(grantees), `FN-B GRANT must not target anon: ${g}`);
+    assert(
+      !/\bPUBLIC\b/i.test(grantees),
+      `FN-B GRANT must not target PUBLIC: ${g}`,
+    );
+  }
 });

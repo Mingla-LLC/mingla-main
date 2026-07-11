@@ -28,7 +28,12 @@
 --   • SECURITY DEFINER, STABLE, SET search_path = public.
 --   • $function$ terminator BEFORE the grants.
 --   • DROP IF EXISTS before CREATE (RETURNS json — no RETURNS-TABLE hazard).
---   • REVOKE ALL FROM PUBLIC; GRANT authenticated ONLY (D1 — no anon).
+--   • REVOKE ALL FROM PUBLIC, anon; GRANT authenticated ONLY (D1 — no anon).
+--     anon MUST be named: this migration DROPs+CREATEs FN-B, so Supabase's
+--     default privileges (ALTER DEFAULT PRIVILEGES … GRANT EXECUTE … TO anon)
+--     re-attach a per-ROLE anon=X ACL on CREATE, and a bare REVOKE … FROM PUBLIC
+--     does NOT strip that role grant (matches the sealed ORCH-1338 P2 pattern in
+--     20261227000000_orch_1338_p2_revoke_anon_execute.sql).
 --   • NOTIFY pgrst at the end.
 --
 -- DO NOT auto-apply — orchestrator/Seth applies via `supabase db push --linked`
@@ -298,7 +303,7 @@ COMMENT ON FUNCTION public.peer_list_event_guests(uuid, integer, integer) IS
   'SPEC_ORCH-1338_GUEST_READ_BACKEND / SPEC_ORCH-1359_GUEST_LIST_IDENTITY / '
   'I-PROPOSED-1338-PEER-GUEST-READ-GUARDED / I-PROPOSED-1340-GUEST-IDENTITY-PRIVACY-GATED.';
 
-REVOKE ALL ON FUNCTION public.peer_list_event_guests(uuid, integer, integer) FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.peer_list_event_guests(uuid, integer, integer) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.peer_list_event_guests(uuid, integer, integer) TO authenticated;
 
 COMMIT;
